@@ -457,9 +457,28 @@ function showSortMenu(e: MouseEvent) {
   if (!sortMenu) return;
   
   const rect = sortBtn.getBoundingClientRect();
-  sortMenu.style.left = rect.left + 'px';
-  sortMenu.style.top = rect.bottom + 5 + 'px';
   sortMenu.style.display = 'block';
+  
+  const menuRect = sortMenu.getBoundingClientRect();
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+  
+  let left = rect.left;
+  let top = rect.bottom + 5;
+  
+  if (left + menuRect.width > viewportWidth) {
+    left = viewportWidth - menuRect.width - 10;
+  }
+  
+  if (top + menuRect.height > viewportHeight) {
+    top = rect.top - menuRect.height - 5;
+  }
+  
+  if (left < 10) left = 10;
+  if (top < 10) top = 10;
+  
+  sortMenu.style.left = left + 'px';
+  sortMenu.style.top = top + 'px';
   
   updateSortIndicators();
   
@@ -1161,12 +1180,32 @@ function startInlineRename(fileItem, currentName, itemPath) {
 
 function showContextMenu(x, y, item) {
   const contextMenu = document.getElementById('context-menu');
+  if (!contextMenu) return;
   
   contextMenuData = item;
   
   contextMenu.style.display = 'block';
-  contextMenu.style.left = x + 'px';
-  contextMenu.style.top = y + 'px';
+  
+  const menuRect = contextMenu.getBoundingClientRect();
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+  
+  let left = x;
+  let top = y;
+  
+  if (left + menuRect.width > viewportWidth) {
+    left = viewportWidth - menuRect.width - 10;
+  }
+  
+  if (top + menuRect.height > viewportHeight) {
+    top = viewportHeight - menuRect.height - 10;
+  }
+  
+  if (left < 10) left = 10;
+  if (top < 10) top = 10;
+  
+  contextMenu.style.left = left + 'px';
+  contextMenu.style.top = top + 'px';
 }
 
 function hideContextMenu() {
@@ -1179,12 +1218,32 @@ function hideContextMenu() {
 
 function showEmptySpaceContextMenu(x, y) {
   const emptySpaceContextMenu = document.getElementById('empty-space-context-menu');
+  if (!emptySpaceContextMenu) return;
   
   hideContextMenu();
   
   emptySpaceContextMenu.style.display = 'block';
-  emptySpaceContextMenu.style.left = x + 'px';
-  emptySpaceContextMenu.style.top = y + 'px';
+  
+  const menuRect = emptySpaceContextMenu.getBoundingClientRect();
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+  
+  let left = x;
+  let top = y;
+  
+  if (left + menuRect.width > viewportWidth) {
+    left = viewportWidth - menuRect.width - 10;
+  }
+  
+  if (top + menuRect.height > viewportHeight) {
+    top = viewportHeight - menuRect.height - 10;
+  }
+  
+  if (left < 10) left = 10;
+  if (top < 10) top = 10;
+  
+  emptySpaceContextMenu.style.left = left + 'px';
+  emptySpaceContextMenu.style.top = top + 'px';
 }
 
 function hideEmptySpaceContextMenu() {
