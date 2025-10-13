@@ -1384,7 +1384,7 @@ function showPropertiesDialog(props) {
 async function restartAsAdmin() {
   const confirmed = await showDialog(
     'Restart as Administrator',
-    'The app will restart with elevated privileges. Any unsaved work will be lost. Continue?',
+    "Restarting the app with elevated permissions can lead to possible damage of your computer/files if you don't know what you're doing.",
     'warning',
     true
   );
