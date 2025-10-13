@@ -1255,22 +1255,27 @@ function hideEmptySpaceContextMenu() {
 
 async function handleEmptySpaceContextMenuAction(action) {
   switch (action) {
-    case 'create-file':
-      await createNewFileWithInlineRename();
-      break;
-      
-    case 'create-folder':
+    case 'new-folder':
       await createNewFolderWithInlineRename();
       break;
       
-    case 'refresh':
-      refresh();
+    case 'new-file':
+      await createNewFileWithInlineRename();
       break;
       
     case 'paste':
       await pasteFromClipboard();
       break;
+      
+    case 'open-terminal':
+      const terminalResult = await window.electronAPI.openTerminal(currentPath);
+      if (!terminalResult.success) {
+        showToast(terminalResult.error || 'Failed to open terminal', 'Error', 'error');
+      }
+      break;
   }
+  
+  hideEmptySpaceContextMenu();
 }
 
 async function handleContextMenuAction(action, item) {
@@ -1299,6 +1304,14 @@ async function handleContextMenuAction(action, item) {
       
     case 'cut':
       cutToClipboard();
+      break;
+      
+    case 'open-terminal':
+      const terminalPath = item.isDirectory ? item.path : path.dirname(item.path);
+      const terminalResult = await window.electronAPI.openTerminal(terminalPath);
+      if (!terminalResult.success) {
+        showToast(terminalResult.error || 'Failed to open terminal', 'Error', 'error');
+      }
       break;
       
     case 'properties':

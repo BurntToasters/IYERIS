@@ -81,6 +81,7 @@ export interface ElectronAPI {
   searchFiles: (dirPath: string, query: string) => Promise<SearchResponse>;
   getDiskSpace: (drivePath: string) => Promise<{success: boolean; total?: number; free?: number; error?: string}>;
   restartAsAdmin: () => Promise<ApiResponse>;
+  openTerminal: (dirPath: string) => Promise<ApiResponse>;
 }
 
 declare global {

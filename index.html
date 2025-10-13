@@ -153,44 +153,27 @@
     </div>
   </div>
 
-  <div class="context-menu glass-panel" id="context-menu" style="display: none;">
-    <div class="context-menu-item" data-action="open">
-      <span>Open</span>
-    </div>
-    <div class="context-menu-item" data-action="rename">
-      <span>Rename</span>
-    </div>
-    <div class="context-menu-divider"></div>
-    <div class="context-menu-item" data-action="copy">
-      <span>📋 Copy</span>
-    </div>
-    <div class="context-menu-item" data-action="cut">
-      <span>✂️ Cut</span>
-    </div>
-    <div class="context-menu-divider"></div>
-    <div class="context-menu-item" data-action="properties">
-      <span>Properties</span>
-    </div>
-    <div class="context-menu-divider"></div>
-    <div class="context-menu-item danger" data-action="delete">
-      <span>Delete</span>
-    </div>
+  <div id="context-menu" class="context-menu" style="display: none;">
+    <div class="context-menu-item" data-action="open">Open</div>
+    <div class="context-menu-separator"></div>
+    <div class="context-menu-item" data-action="cut">Cut</div>
+    <div class="context-menu-item" data-action="copy">Copy</div>
+    <div class="context-menu-separator"></div>
+    <div class="context-menu-item" data-action="rename">Rename</div>
+    <div class="context-menu-item" data-action="delete">Delete</div>
+    <div class="context-menu-separator"></div>
+    <div class="context-menu-item" data-action="open-terminal">Open in Terminal</div>
+    <div class="context-menu-separator"></div>
+    <div class="context-menu-item" data-action="properties">Properties</div>
   </div>
 
-  <div class="context-menu glass-panel" id="empty-space-context-menu" style="display: none;">
-    <div class="context-menu-item" data-action="create-file">
-      <span>📄 New File</span>
-    </div>
-    <div class="context-menu-item" data-action="create-folder">
-      <span>📁 New Folder</span>
-    </div>
-    <div class="context-menu-divider"></div>
-    <div class="context-menu-item" data-action="refresh">
-      <span>🔄 Refresh</span>
-    </div>
-    <div class="context-menu-item" data-action="paste">
-      <span>📋 Paste</span>
-    </div>
+  <div id="empty-space-context-menu" class="context-menu" style="display: none;">
+    <div class="context-menu-item" data-action="new-folder">New Folder</div>
+    <div class="context-menu-item" data-action="new-file">New File</div>
+    <div class="context-menu-separator"></div>
+    <div class="context-menu-item" data-action="paste">Paste</div>
+    <div class="context-menu-separator"></div>
+    <div class="context-menu-item" data-action="open-terminal">Open in Terminal</div>
   </div>
 
   <div class="modal-overlay" id="properties-modal" style="display: none;">

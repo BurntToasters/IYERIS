@@ -5,6 +5,8 @@ import type { Settings, FileItem, ApiResponse, DirectoryResponse, PathResponse, 
 
 let mainWindow: BrowserWindow | null = null;
 
+const isDev = process.argv.includes('--dev');
+
 const defaultSettings: Settings = {
   transparency: true,
   theme: 'default',
@@ -51,12 +53,17 @@ function createWindow(): void {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      preload: path.join(__dirname, 'preload.js')
+      preload: path.join(__dirname, 'preload.js'),
+      devTools: isDev
     },
     icon: path.join(__dirname, '..', 'assets', 'icon.png')
   });
 
   mainWindow.loadFile(path.join(__dirname, '..', 'index.html'));
+
+  if (isDev) {
+    mainWindow.webContents.openDevTools();
+  }
 }
 
 app.whenReady().then(() => {
@@ -70,9 +77,9 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
+  //if (process.platform !== 'darwin') {
     app.quit();
-  }
+  //}
 });
 
 ipcMain.handle('get-directory-contents', async (_event: IpcMainInvokeEvent, dirPath: string): Promise<DirectoryResponse> => {
@@ -414,6 +421,33 @@ ipcMain.handle('restart-as-admin', async (): Promise<ApiResponse> => {
     } else {
       return { success: false, error: 'Unsupported platform' };
     }
+  } catch (error) {
+    return { success: false, error: (error as Error).message };
+  }
+});
+
+ipcMain.handle('open-terminal', async (_event: IpcMainInvokeEvent, dirPath: string): Promise<ApiResponse> => {
+  try {
+    const { exec } = require('child_process');
+    const platform = process.platform;
+    
+    let command: string;
+    
+    if (platform === 'win32') {
+      command = `start cmd /K "cd /d "${dirPath}""`;
+    } else if (platform === 'darwin') {
+      command = `open -a Terminal "${dirPath}"`;
+    } else {
+      command = `x-terminal-emulator -e "cd '${dirPath}' && bash" || gnome-terminal --working-directory="${dirPath}" || xterm -e "cd '${dirPath}' && bash"`;
+    }
+    
+    exec(command, (error: any) => {
+      if (error) {
+        console.error('Error opening terminal:', error);
+      }
+    });
+    
+    return { success: true };
   } catch (error) {
     return { success: false, error: (error as Error).message };
   }
