@@ -1,0 +1,29 @@
+import { contextBridge, ipcRenderer } from 'electron';
+import type { ElectronAPI, Settings } from './types';
+
+const electronAPI: ElectronAPI = {
+  getDirectoryContents: (dirPath: string) => ipcRenderer.invoke('get-directory-contents', dirPath),
+  getDrives: () => ipcRenderer.invoke('get-drives'),
+  getHomeDirectory: () => ipcRenderer.invoke('get-home-directory'),
+  openFile: (filePath: string) => ipcRenderer.invoke('open-file', filePath),
+  selectFolder: () => ipcRenderer.invoke('select-folder'),
+  minimizeWindow: () => ipcRenderer.invoke('minimize-window'),
+  maximizeWindow: () => ipcRenderer.invoke('maximize-window'),
+  closeWindow: () => ipcRenderer.invoke('close-window'),
+  createFolder: (parentPath: string, folderName: string) => ipcRenderer.invoke('create-folder', parentPath, folderName),
+  createFile: (parentPath: string, fileName: string) => ipcRenderer.invoke('create-file', parentPath, fileName),
+  deleteItem: (itemPath: string) => ipcRenderer.invoke('delete-item', itemPath),
+  renameItem: (oldPath: string, newName: string) => ipcRenderer.invoke('rename-item', oldPath, newName),
+  getItemProperties: (itemPath: string) => ipcRenderer.invoke('get-item-properties', itemPath),
+  getSettings: () => ipcRenderer.invoke('get-settings'),
+  saveSettings: (settings: Settings) => ipcRenderer.invoke('save-settings', settings),
+  resetSettings: () => ipcRenderer.invoke('reset-settings'),
+  getSettingsPath: () => ipcRenderer.invoke('get-settings-path'),
+  copyItems: (sourcePaths: string[], destPath: string) => ipcRenderer.invoke('copy-items', sourcePaths, destPath),
+  moveItems: (sourcePaths: string[], destPath: string) => ipcRenderer.invoke('move-items', sourcePaths, destPath),
+  searchFiles: (dirPath: string, query: string) => ipcRenderer.invoke('search-files', dirPath, query),
+  getDiskSpace: (drivePath: string) => ipcRenderer.invoke('get-disk-space', drivePath),
+  restartAsAdmin: () => ipcRenderer.invoke('restart-as-admin')
+};
+
+contextBridge.exposeInMainWorld('electronAPI', electronAPI);
