@@ -75,7 +75,7 @@
     "start": "npm run build && electron .",
     "dev": "npm run build && electron . --enable-logging",
     "build:win:x64": "npm run build && electron-builder --win --x64",
-    "build:macos:universal": "npm run build && electron-builder --mac --universal",
+    "build:mac:universal": "npm run build && electron-builder --mac --universal",
     "build:linux": "npm run build && electron-builder --linux AppImage deb rpm"
   },
   "build": {
