@@ -77,6 +77,7 @@
     "watch": "tsc --watch",
     "start": "npm run build && electron .",
     "dev": "npm run build && electron . --enable-logging",
+    "build:win": "npm run build && electron-builder --win --x64 --arm64",
     "build:win:x64": "npm run build && electron-builder --win --x64",
     "build:win:arm64": "npm run build && electron-builder --win --arm64",
     "build:mac:universal": "npm run build && dotenv -e .env -- electron-builder --mac --universal",
@@ -120,18 +121,21 @@
         {
           "target": "nsis",
           "arch": [
-            "x64"
+            "x64",
+            "arm64"
           ]
         }
       ],
-      "icon": "assets/icon.png"
+      "icon": "assets/icon.png",
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
     },
     "nsis": {
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
-      "createStartMenuShortcut": true
+      "createStartMenuShortcut": true,
+      "artifactName": "${productName}-Setup-${version}-${arch}.${ext}"
     },
     "linux": {
       "target": [
