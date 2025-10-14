@@ -740,6 +740,59 @@ function setupEventListeners() {
     }
   });
   
+  fileGrid.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (!currentPath) {
+      e.dataTransfer.dropEffect = 'none';
+      return;
+    }
+    
+    e.dataTransfer.dropEffect = e.ctrlKey ? 'copy' : 'move';
+    fileGrid.classList.add('drag-over');
+  });
+  
+  fileGrid.addEventListener('dragleave', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const rect = fileGrid.getBoundingClientRect();
+    if (e.clientX < rect.left || e.clientX >= rect.right ||
+        e.clientY < rect.top || e.clientY >= rect.bottom) {
+      fileGrid.classList.remove('drag-over');
+    }
+  });
+  
+  fileGrid.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    fileGrid.classList.remove('drag-over');
+    
+    if (e.target.closest('.file-item')) {
+      return;
+    }
+    
+    const draggedPaths = JSON.parse(e.dataTransfer.getData('text/plain') || '[]');
+    if (draggedPaths.length === 0 || !currentPath) {
+      return;
+    }
+    
+    const alreadyInCurrentDir = draggedPaths.some(path => {
+      const parentDir = path.substring(0, path.lastIndexOf(path.includes('\\') ? '\\' : '/'));
+      return parentDir === currentPath || path === currentPath;
+    });
+    
+    if (alreadyInCurrentDir) {
+      showToast('Items are already in this directory', 'Info', 'info');
+      return;
+    }
+    
+    const operation = e.ctrlKey ? 'copy' : 'move';
+    await handleDrop(draggedPaths, currentPath, operation);
+  });
+  
   document.addEventListener('contextmenu', (e) => {
     if (!e.target.closest('.file-item')) {
       e.preventDefault();
@@ -881,6 +934,84 @@ function createFileItem(item) {
     showContextMenu(e.pageX, e.pageY, item);
   });
   
+  fileItem.draggable = true;
+  
+  fileItem.addEventListener('dragstart', (e) => {
+    e.stopPropagation();
+
+    if (!fileItem.classList.contains('selected')) {
+      clearSelection();
+      toggleSelection(fileItem);
+    }
+    
+    const selectedPaths = Array.from(selectedItems);
+    e.dataTransfer.effectAllowed = 'copyMove';
+    e.dataTransfer.setData('text/plain', JSON.stringify(selectedPaths));
+    
+    fileItem.classList.add('dragging');
+
+    if (selectedPaths.length > 1) {
+      const dragImage = document.createElement('div');
+      dragImage.className = 'drag-image';
+      dragImage.textContent = `${selectedPaths.length} items`;
+      dragImage.style.position = 'absolute';
+      dragImage.style.top = '-1000px';
+      document.body.appendChild(dragImage);
+      e.dataTransfer.setDragImage(dragImage, 0, 0);
+      setTimeout(() => dragImage.remove(), 0);
+    }
+  });
+  
+  fileItem.addEventListener('dragend', (e) => {
+    fileItem.classList.remove('dragging');
+    document.querySelectorAll('.file-item.drag-over').forEach(el => {
+      el.classList.remove('drag-over');
+    });
+    document.getElementById('file-grid')?.classList.remove('drag-over');
+  });
+
+  if (item.isDirectory) {
+    fileItem.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const draggedPaths = JSON.parse(e.dataTransfer.getData('text/plain') || '[]');
+      if (draggedPaths.includes(item.path)) {
+        e.dataTransfer.dropEffect = 'none';
+        return;
+      }
+      
+      e.dataTransfer.dropEffect = e.ctrlKey ? 'copy' : 'move';
+      fileItem.classList.add('drag-over');
+    });
+    
+    fileItem.addEventListener('dragleave', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const rect = fileItem.getBoundingClientRect();
+      if (e.clientX < rect.left || e.clientX >= rect.right ||
+          e.clientY < rect.top || e.clientY >= rect.bottom) {
+        fileItem.classList.remove('drag-over');
+      }
+    });
+    
+    fileItem.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      
+      fileItem.classList.remove('drag-over');
+      
+      const draggedPaths = JSON.parse(e.dataTransfer.getData('text/plain') || '[]');
+      if (draggedPaths.length === 0 || draggedPaths.includes(item.path)) {
+        return;
+      }
+      
+      const operation = e.ctrlKey ? 'copy' : 'move';
+      await handleDrop(draggedPaths, item.path, operation);
+    });
+  }
+  
   return fileItem;
 }
 
@@ -902,6 +1033,25 @@ function getFileIcon(filename) {
   };
   
   return iconMap[ext] || '📄';
+}
+
+async function handleDrop(sourcePaths: string[], destPath: string, operation: 'copy' | 'move'): Promise<void> {
+  try {
+    const result = operation === 'copy' 
+      ? await window.electronAPI.copyItems(sourcePaths, destPath)
+      : await window.electronAPI.moveItems(sourcePaths, destPath);
+    
+    if (result.success) {
+      showToast(`${operation === 'copy' ? 'Copied' : 'Moved'} ${sourcePaths.length} item(s)`, 'Success', 'success');
+      await navigateTo(currentPath);
+      clearSelection();
+    } else {
+      showToast(result.message || `Failed to ${operation} items`, 'Error', 'error');
+    }
+  } catch (error) {
+    console.error(`Error during ${operation}:`, error);
+    showToast(`Failed to ${operation} items`, 'Error', 'error');
+  }
 }
 
 function toggleSelection(fileItem) {
@@ -1265,6 +1415,10 @@ async function handleEmptySpaceContextMenuAction(action) {
       
     case 'paste':
       await pasteFromClipboard();
+      break;
+      
+    case 'refresh':
+      await navigateTo(currentPath);
       break;
       
     case 'open-terminal':
