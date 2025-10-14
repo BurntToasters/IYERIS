@@ -1,0 +1,2132 @@
+{
+  "7zip-bin@5.2.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/develar/7zip-bin",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\7zip-bin",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\7zip-bin\\LICENSE.txt"
+  },
+  "@develar/schema-utils@2.6.5": {
+    "licenses": "MIT",
+    "repository": "https://github.com/webpack/schema-utils",
+    "publisher": "webpack Contrib",
+    "url": "https://github.com/webpack-contrib",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@develar\\schema-utils",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@develar\\schema-utils\\LICENSE"
+  },
+  "@electron/asar@3.4.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/electron/asar",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@electron\\asar",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@electron\\asar\\LICENSE.md"
+  },
+  "@electron/get@2.0.3": {
+    "licenses": "MIT",
+    "repository": "https://github.com/electron/get",
+    "publisher": "Samuel Attard",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@electron\\get",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@electron\\get\\LICENSE"
+  },
+  "@electron/notarize@2.2.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/electron/notarize",
+    "publisher": "Samuel Attard",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@electron\\notarize",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@electron\\notarize\\LICENSE"
+  },
+  "@electron/osx-sign@1.0.5": {
+    "licenses": "BSD-2-Clause",
+    "repository": "https://github.com/electron/osx-sign",
+    "publisher": "electron",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@electron\\osx-sign",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@electron\\osx-sign\\LICENSE"
+  },
+  "@electron/universal@1.5.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/electron/universal",
+    "publisher": "Samuel Attard",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@electron\\universal",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@electron\\universal\\LICENSE"
+  },
+  "@isaacs/cliui@8.0.2": {
+    "licenses": "ISC",
+    "repository": "https://github.com/yargs/cliui",
+    "publisher": "Ben Coe",
+    "email": "ben@npmjs.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@isaacs\\cliui",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@isaacs\\cliui\\LICENSE.txt"
+  },
+  "@malept/cross-spawn-promise@1.1.1": {
+    "licenses": "Apache-2.0",
+    "repository": "https://github.com/malept/cross-spawn-promise",
+    "publisher": "Mark Lee",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@malept\\cross-spawn-promise",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@malept\\cross-spawn-promise\\LICENSE"
+  },
+  "@malept/flatpak-bundler@0.4.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/malept/flatpak-bundler",
+    "publisher": "Matt Watson",
+    "email": "mattdangerw@gmail.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@malept\\flatpak-bundler",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@malept\\flatpak-bundler\\LICENSE"
+  },
+  "@pkgjs/parseargs@0.11.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/pkgjs/parseargs",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@pkgjs\\parseargs",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@pkgjs\\parseargs\\LICENSE"
+  },
+  "@sindresorhus/is@4.6.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/sindresorhus/is",
+    "publisher": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "https://sindresorhus.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@sindresorhus\\is",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@sindresorhus\\is\\license"
+  },
+  "@szmarczak/http-timer@4.0.6": {
+    "licenses": "MIT",
+    "repository": "https://github.com/szmarczak/http-timer",
+    "publisher": "Szymon Marczak",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@szmarczak\\http-timer",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@szmarczak\\http-timer\\LICENSE"
+  },
+  "@tootallnate/once@2.0.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/TooTallNate/once",
+    "publisher": "Nathan Rajlich",
+    "email": "nathan@tootallnate.net",
+    "url": "http://n8.io/",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@tootallnate\\once",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@tootallnate\\once\\LICENSE"
+  },
+  "@types/cacheable-request@6.0.3": {
+    "licenses": "MIT",
+    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@types\\cacheable-request",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@types\\cacheable-request\\LICENSE"
+  },
+  "@types/debug@4.1.12": {
+    "licenses": "MIT",
+    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@types\\debug",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@types\\debug\\LICENSE"
+  },
+  "@types/fs-extra@9.0.13": {
+    "licenses": "MIT",
+    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@types\\fs-extra",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@types\\fs-extra\\LICENSE"
+  },
+  "@types/http-cache-semantics@4.0.4": {
+    "licenses": "MIT",
+    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@types\\http-cache-semantics",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@types\\http-cache-semantics\\LICENSE"
+  },
+  "@types/keyv@3.1.4": {
+    "licenses": "MIT",
+    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@types\\keyv",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@types\\keyv\\LICENSE"
+  },
+  "@types/ms@2.1.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@types\\ms",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@types\\ms\\LICENSE"
+  },
+  "@types/node@22.18.10": {
+    "licenses": "MIT",
+    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\electron\\node_modules\\@types\\node",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\electron\\node_modules\\@types\\node\\LICENSE"
+  },
+  "@types/node@24.7.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@types\\node",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@types\\node\\LICENSE"
+  },
+  "@types/responselike@1.0.3": {
+    "licenses": "MIT",
+    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@types\\responselike",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@types\\responselike\\LICENSE"
+  },
+  "@types/yauzl@2.10.3": {
+    "licenses": "MIT",
+    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@types\\yauzl",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@types\\yauzl\\LICENSE"
+  },
+  "@xmldom/xmldom@0.8.11": {
+    "licenses": "MIT",
+    "repository": "https://github.com/xmldom/xmldom",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@xmldom\\xmldom",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@xmldom\\xmldom\\LICENSE"
+  },
+  "agent-base@6.0.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/TooTallNate/node-agent-base",
+    "publisher": "Nathan Rajlich",
+    "email": "nathan@tootallnate.net",
+    "url": "http://n8.io/",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\agent-base",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\agent-base\\README.md"
+  },
+  "ajv-keywords@3.5.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/epoberezkin/ajv-keywords",
+    "publisher": "Evgeny Poberezkin",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\ajv-keywords",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\ajv-keywords\\LICENSE"
+  },
+  "ajv@6.12.6": {
+    "licenses": "MIT",
+    "repository": "https://github.com/ajv-validator/ajv",
+    "publisher": "Evgeny Poberezkin",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\ajv",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\ajv\\LICENSE"
+  },
+  "ansi-regex@5.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/chalk/ansi-regex",
+    "publisher": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "sindresorhus.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\ansi-regex",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\ansi-regex\\license"
+  },
+  "ansi-regex@6.2.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/chalk/ansi-regex",
+    "publisher": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "https://sindresorhus.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@isaacs\\cliui\\node_modules\\ansi-regex",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@isaacs\\cliui\\node_modules\\ansi-regex\\license"
+  },
+  "ansi-styles@4.3.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/chalk/ansi-styles",
+    "publisher": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "sindresorhus.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\ansi-styles",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\ansi-styles\\license"
+  },
+  "ansi-styles@6.2.3": {
+    "licenses": "MIT",
+    "repository": "https://github.com/chalk/ansi-styles",
+    "publisher": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "https://sindresorhus.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@isaacs\\cliui\\node_modules\\ansi-styles",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@isaacs\\cliui\\node_modules\\ansi-styles\\license"
+  },
+  "app-builder-bin@4.0.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/develar/app-builder",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\app-builder-bin",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\app-builder-bin\\readme.md"
+  },
+  "app-builder-lib@24.13.3": {
+    "licenses": "MIT",
+    "repository": "https://github.com/electron-userland/electron-builder",
+    "publisher": "Vladimir Krivosheev",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\app-builder-lib"
+  },
+  "archiver-utils@2.1.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/archiverjs/archiver-utils",
+    "publisher": "Chris Talkington",
+    "url": "http://christalkington.com/",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\archiver-utils",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\archiver-utils\\LICENSE"
+  },
+  "archiver-utils@3.0.4": {
+    "licenses": "MIT",
+    "repository": "https://github.com/archiverjs/archiver-utils",
+    "publisher": "Chris Talkington",
+    "url": "http://christalkington.com/",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\zip-stream\\node_modules\\archiver-utils",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\zip-stream\\node_modules\\archiver-utils\\LICENSE"
+  },
+  "archiver@5.3.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/archiverjs/node-archiver",
+    "publisher": "Chris Talkington",
+    "url": "http://christalkington.com/",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\archiver",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\archiver\\LICENSE"
+  },
+  "argparse@2.0.1": {
+    "licenses": "Python-2.0",
+    "repository": "https://github.com/nodeca/argparse",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\argparse",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\argparse\\LICENSE"
+  },
+  "async-exit-hook@2.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/tapppi/async-exit-hook",
+    "publisher": "Tapani Moilanen",
+    "email": "moilanen.tapani@gmail.com",
+    "url": "https://github.com/tapppi",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\async-exit-hook",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\async-exit-hook\\license"
+  },
+  "async@3.2.6": {
+    "licenses": "MIT",
+    "repository": "https://github.com/caolan/async",
+    "publisher": "Caolan McMahon",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\async",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\async\\LICENSE"
+  },
+  "asynckit@0.4.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/alexindigo/asynckit",
+    "publisher": "Alex Indigo",
+    "email": "iam@alexindigo.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\asynckit",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\asynckit\\LICENSE"
+  },
+  "at-least-node@1.0.0": {
+    "licenses": "ISC",
+    "repository": "https://github.com/RyanZim/at-least-node",
+    "publisher": "Ryan Zimmerman",
+    "email": "opensrc@ryanzim.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\at-least-node",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\at-least-node\\LICENSE"
+  },
+  "balanced-match@1.0.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/juliangruber/balanced-match",
+    "publisher": "Julian Gruber",
+    "email": "mail@juliangruber.com",
+    "url": "http://juliangruber.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\balanced-match",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\balanced-match\\LICENSE.md"
+  },
+  "base64-js@1.5.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/beatgammit/base64-js",
+    "publisher": "T. Jameson Little",
+    "email": "t.jameson.little@gmail.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\base64-js",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\base64-js\\LICENSE"
+  },
+  "bl@4.1.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/rvagg/bl",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\bl",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\bl\\LICENSE.md"
+  },
+  "bluebird-lst@1.0.9": {
+    "licenses": "MIT",
+    "repository": "https://github.com/develar/fs-extra-p",
+    "publisher": "Vladimir Krivosheev",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\bluebird-lst"
+  },
+  "bluebird@3.7.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/petkaantonov/bluebird",
+    "publisher": "Petka Antonov",
+    "email": "petka_antonov@hotmail.com",
+    "url": "http://github.com/petkaantonov/",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\bluebird",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\bluebird\\LICENSE"
+  },
+  "boolean@3.2.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/thenativeweb/boolean",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\boolean",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\boolean\\LICENSE.txt"
+  },
+  "brace-expansion@1.1.12": {
+    "licenses": "MIT",
+    "repository": "https://github.com/juliangruber/brace-expansion",
+    "publisher": "Julian Gruber",
+    "email": "mail@juliangruber.com",
+    "url": "http://juliangruber.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\glob\\node_modules\\brace-expansion",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\glob\\node_modules\\brace-expansion\\LICENSE"
+  },
+  "brace-expansion@2.0.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/juliangruber/brace-expansion",
+    "publisher": "Julian Gruber",
+    "email": "mail@juliangruber.com",
+    "url": "http://juliangruber.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\brace-expansion",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\brace-expansion\\LICENSE"
+  },
+  "buffer-crc32@0.2.13": {
+    "licenses": "MIT",
+    "repository": "https://github.com/brianloveswords/buffer-crc32",
+    "publisher": "Brian J. Brennan",
+    "email": "brianloveswords@gmail.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\buffer-crc32",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\buffer-crc32\\LICENSE"
+  },
+  "buffer-equal@1.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/inspect-js/buffer-equal",
+    "publisher": "James Halliday",
+    "email": "mail@substack.net",
+    "url": "http://substack.net",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\buffer-equal",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\buffer-equal\\LICENSE"
+  },
+  "buffer-from@1.1.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/LinusU/buffer-from",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\buffer-from",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\buffer-from\\LICENSE"
+  },
+  "buffer@5.7.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/feross/buffer",
+    "publisher": "Feross Aboukhadijeh",
+    "email": "feross@feross.org",
+    "url": "https://feross.org",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\buffer",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\buffer\\LICENSE"
+  },
+  "builder-util-runtime@9.2.4": {
+    "licenses": "MIT",
+    "repository": "https://github.com/electron-userland/electron-builder",
+    "publisher": "Vladimir Krivosheev",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\builder-util-runtime",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\builder-util-runtime\\LICENSE"
+  },
+  "builder-util@24.13.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/electron-userland/electron-builder",
+    "publisher": "Vladimir Krivosheev",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\builder-util",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\builder-util\\LICENSE"
+  },
+  "cacheable-lookup@5.0.4": {
+    "licenses": "MIT",
+    "repository": "https://github.com/szmarczak/cacheable-lookup",
+    "publisher": "Szymon Marczak",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\cacheable-lookup",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\cacheable-lookup\\LICENSE"
+  },
+  "cacheable-request@7.0.4": {
+    "licenses": "MIT",
+    "repository": "https://github.com/lukechilds/cacheable-request",
+    "publisher": "Luke Childs",
+    "email": "lukechilds123@gmail.com",
+    "url": "http://lukechilds.co.uk",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\cacheable-request",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\cacheable-request\\LICENSE"
+  },
+  "call-bind-apply-helpers@1.0.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/ljharb/call-bind-apply-helpers",
+    "publisher": "Jordan Harband",
+    "email": "ljharb@gmail.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\call-bind-apply-helpers",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\call-bind-apply-helpers\\LICENSE"
+  },
+  "chalk@4.1.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/chalk/chalk",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\chalk",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\chalk\\license"
+  },
+  "chownr@2.0.0": {
+    "licenses": "ISC",
+    "repository": "https://github.com/isaacs/chownr",
+    "publisher": "Isaac Z. Schlueter",
+    "email": "i@izs.me",
+    "url": "http://blog.izs.me/",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\chownr",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\chownr\\LICENSE"
+  },
+  "chromium-pickle-js@0.2.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/electron/node-chromium-pickle-js",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\chromium-pickle-js",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\chromium-pickle-js\\README.md"
+  },
+  "ci-info@3.9.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/watson/ci-info",
+    "publisher": "Thomas Watson Steen",
+    "email": "w@tson.dk",
+    "url": "https://twitter.com/wa7son",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\ci-info",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\ci-info\\LICENSE"
+  },
+  "cliui@8.0.1": {
+    "licenses": "ISC",
+    "repository": "https://github.com/yargs/cliui",
+    "publisher": "Ben Coe",
+    "email": "ben@npmjs.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\cliui",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\cliui\\LICENSE.txt"
+  },
+  "clone-response@1.0.3": {
+    "licenses": "MIT",
+    "repository": "https://github.com/sindresorhus/clone-response",
+    "publisher": "Luke Childs",
+    "email": "lukechilds123@gmail.com",
+    "url": "http://lukechilds.co.uk",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\clone-response",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\clone-response\\LICENSE"
+  },
+  "color-convert@2.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/Qix-/color-convert",
+    "publisher": "Heather Arthur",
+    "email": "fayearthur@gmail.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\color-convert",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\color-convert\\LICENSE"
+  },
+  "color-name@1.1.4": {
+    "licenses": "MIT",
+    "repository": "https://github.com/colorjs/color-name",
+    "publisher": "DY",
+    "email": "dfcreative@gmail.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\color-name",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\color-name\\LICENSE"
+  },
+  "combined-stream@1.0.8": {
+    "licenses": "MIT",
+    "repository": "https://github.com/felixge/node-combined-stream",
+    "publisher": "Felix Geisendörfer",
+    "email": "felix@debuggable.com",
+    "url": "http://debuggable.com/",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\combined-stream",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\combined-stream\\License"
+  },
+  "commander@5.1.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/tj/commander.js",
+    "publisher": "TJ Holowaychuk",
+    "email": "tj@vision-media.ca",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\commander",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\commander\\LICENSE"
+  },
+  "compare-version@0.1.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/kevva/compare-version",
+    "publisher": "Kevin Mårtensson",
+    "email": "kevinmartensson@gmail.com",
+    "url": "https://github.com/kevva",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\compare-version",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\compare-version\\README.md"
+  },
+  "compress-commons@4.1.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/archiverjs/node-compress-commons",
+    "publisher": "Chris Talkington",
+    "url": "http://christalkington.com/",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\compress-commons",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\compress-commons\\LICENSE"
+  },
+  "concat-map@0.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/substack/node-concat-map",
+    "publisher": "James Halliday",
+    "email": "mail@substack.net",
+    "url": "http://substack.net",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\concat-map",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\concat-map\\LICENSE"
+  },
+  "config-file-ts@0.2.6": {
+    "licenses": "MIT",
+    "repository": "https://github.com/mighdoll/config-file-ts",
+    "publisher": "lee mighdoll",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\config-file-ts",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\config-file-ts\\LICENSE"
+  },
+  "core-util-is@1.0.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/isaacs/core-util-is",
+    "publisher": "Isaac Z. Schlueter",
+    "email": "i@izs.me",
+    "url": "http://blog.izs.me/",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\core-util-is",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\core-util-is\\LICENSE"
+  },
+  "crc-32@1.2.2": {
+    "licenses": "Apache-2.0",
+    "repository": "https://github.com/SheetJS/js-crc32",
+    "publisher": "sheetjs",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\crc-32",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\crc-32\\LICENSE"
+  },
+  "crc32-stream@4.0.3": {
+    "licenses": "MIT",
+    "repository": "https://github.com/archiverjs/node-crc32-stream",
+    "publisher": "Chris Talkington",
+    "url": "http://christalkington.com/",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\crc32-stream",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\crc32-stream\\LICENSE"
+  },
+  "cross-spawn@7.0.6": {
+    "licenses": "MIT",
+    "repository": "https://github.com/moxystudio/node-cross-spawn",
+    "publisher": "André Cruz",
+    "email": "andre@moxy.studio",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\cross-spawn",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\cross-spawn\\LICENSE"
+  },
+  "debug@4.4.3": {
+    "licenses": "MIT",
+    "repository": "https://github.com/debug-js/debug",
+    "publisher": "Josh Junon",
+    "url": "https://github.com/qix-",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\debug",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\debug\\LICENSE"
+  },
+  "decompress-response@6.0.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/sindresorhus/decompress-response",
+    "publisher": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "https://sindresorhus.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\decompress-response",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\decompress-response\\license"
+  },
+  "defer-to-connect@2.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/szmarczak/defer-to-connect",
+    "publisher": "Szymon Marczak",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\defer-to-connect",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\defer-to-connect\\LICENSE"
+  },
+  "define-data-property@1.1.4": {
+    "licenses": "MIT",
+    "repository": "https://github.com/ljharb/define-data-property",
+    "publisher": "Jordan Harband",
+    "email": "ljharb@gmail.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\define-data-property",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\define-data-property\\LICENSE"
+  },
+  "define-properties@1.2.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/ljharb/define-properties",
+    "publisher": "Jordan Harband",
+    "email": "ljharb@gmail.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\define-properties",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\define-properties\\LICENSE"
+  },
+  "delayed-stream@1.0.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/felixge/node-delayed-stream",
+    "publisher": "Felix Geisendörfer",
+    "email": "felix@debuggable.com",
+    "url": "http://debuggable.com/",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\delayed-stream",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\delayed-stream\\License"
+  },
+  "detect-node@2.1.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/iliakan/detect-node",
+    "publisher": "Ilya Kantor",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\detect-node",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\detect-node\\LICENSE"
+  },
+  "dir-compare@3.3.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/gliviu/dir-compare",
+    "publisher": "Liviu Grigorescu",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\dir-compare",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\dir-compare\\LICENSE"
+  },
+  "dmg-builder@24.13.3": {
+    "licenses": "MIT",
+    "repository": "https://github.com/electron-userland/electron-builder",
+    "publisher": "Vladimir Krivosheev",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\dmg-builder",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\dmg-builder\\readme.md"
+  },
+  "dotenv-expand@5.1.0": {
+    "licenses": "BSD-2-Clause",
+    "publisher": "motdotla",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\dotenv-expand",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\dotenv-expand\\LICENSE"
+  },
+  "dotenv@9.0.2": {
+    "licenses": "BSD-2-Clause",
+    "repository": "https://github.com/motdotla/dotenv",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\dotenv",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\dotenv\\LICENSE"
+  },
+  "dunder-proto@1.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/es-shims/dunder-proto",
+    "publisher": "Jordan Harband",
+    "email": "ljharb@gmail.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\dunder-proto",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\dunder-proto\\LICENSE"
+  },
+  "eastasianwidth@0.2.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/komagata/eastasianwidth",
+    "publisher": "Masaki Komagata",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\eastasianwidth",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\eastasianwidth\\README.md"
+  },
+  "ejs@3.1.10": {
+    "licenses": "Apache-2.0",
+    "repository": "https://github.com/mde/ejs",
+    "publisher": "Matthew Eernisse",
+    "email": "mde@fleegix.org",
+    "url": "http://fleegix.org",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\ejs",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\ejs\\LICENSE"
+  },
+  "electron-builder-squirrel-windows@24.13.3": {
+    "licenses": "MIT",
+    "repository": "https://github.com/electron-userland/electron-builder",
+    "publisher": "Vladimir Krivosheev",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\electron-builder-squirrel-windows",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\electron-builder-squirrel-windows\\LICENSE"
+  },
+  "electron-builder@24.13.3": {
+    "licenses": "MIT",
+    "repository": "https://github.com/electron-userland/electron-builder",
+    "publisher": "Vladimir Krivosheev",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\electron-builder",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\electron-builder\\LICENSE"
+  },
+  "electron-publish@24.13.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/electron-userland/electron-builder",
+    "publisher": "Vladimir Krivosheev",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\electron-publish",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\electron-publish\\LICENSE"
+  },
+  "electron@38.2.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/electron/electron",
+    "publisher": "Electron Community",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\electron",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\electron\\LICENSE"
+  },
+  "emoji-regex@8.0.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/mathiasbynens/emoji-regex",
+    "publisher": "Mathias Bynens",
+    "url": "https://mathiasbynens.be/",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\emoji-regex",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\emoji-regex\\LICENSE-MIT.txt"
+  },
+  "emoji-regex@9.2.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/mathiasbynens/emoji-regex",
+    "publisher": "Mathias Bynens",
+    "url": "https://mathiasbynens.be/",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@isaacs\\cliui\\node_modules\\emoji-regex",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@isaacs\\cliui\\node_modules\\emoji-regex\\LICENSE-MIT.txt"
+  },
+  "end-of-stream@1.4.5": {
+    "licenses": "MIT",
+    "repository": "https://github.com/mafintosh/end-of-stream",
+    "publisher": "Mathias Buus",
+    "email": "mathiasbuus@gmail.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\end-of-stream",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\end-of-stream\\LICENSE"
+  },
+  "env-paths@2.2.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/sindresorhus/env-paths",
+    "publisher": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "sindresorhus.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\env-paths",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\env-paths\\license"
+  },
+  "err-code@2.0.3": {
+    "licenses": "MIT",
+    "repository": "https://github.com/IndigoUnited/js-err-code",
+    "publisher": "IndigoUnited",
+    "email": "hello@indigounited.com",
+    "url": "http://indigounited.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\err-code",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\err-code\\README.md"
+  },
+  "es-define-property@1.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/ljharb/es-define-property",
+    "publisher": "Jordan Harband",
+    "email": "ljharb@gmail.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\es-define-property",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\es-define-property\\LICENSE"
+  },
+  "es-errors@1.3.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/ljharb/es-errors",
+    "publisher": "Jordan Harband",
+    "email": "ljharb@gmail.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\es-errors",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\es-errors\\LICENSE"
+  },
+  "es-object-atoms@1.1.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/ljharb/es-object-atoms",
+    "publisher": "Jordan Harband",
+    "email": "ljharb@gmail.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\es-object-atoms",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\es-object-atoms\\LICENSE"
+  },
+  "es-set-tostringtag@2.1.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/es-shims/es-set-tostringtag",
+    "publisher": "Jordan Harband",
+    "email": "ljharb@gmail.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\es-set-tostringtag",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\es-set-tostringtag\\LICENSE"
+  },
+  "es6-error@4.1.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/bjyoungblood/es6-error",
+    "publisher": "Ben Youngblood",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\es6-error",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\es6-error\\LICENSE.md"
+  },
+  "escalade@3.2.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/lukeed/escalade",
+    "publisher": "Luke Edwards",
+    "email": "luke.edwards05@gmail.com",
+    "url": "https://lukeed.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\escalade",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\escalade\\license"
+  },
+  "escape-string-regexp@4.0.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/sindresorhus/escape-string-regexp",
+    "publisher": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "https://sindresorhus.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\escape-string-regexp",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\escape-string-regexp\\license"
+  },
+  "extract-zip@2.0.1": {
+    "licenses": "BSD-2-Clause",
+    "repository": "https://github.com/maxogden/extract-zip",
+    "publisher": "max ogden",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\extract-zip",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\extract-zip\\LICENSE"
+  },
+  "fast-deep-equal@3.1.3": {
+    "licenses": "MIT",
+    "repository": "https://github.com/epoberezkin/fast-deep-equal",
+    "publisher": "Evgeny Poberezkin",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\fast-deep-equal",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\fast-deep-equal\\LICENSE"
+  },
+  "fast-json-stable-stringify@2.1.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/epoberezkin/fast-json-stable-stringify",
+    "publisher": "James Halliday",
+    "email": "mail@substack.net",
+    "url": "http://substack.net",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\fast-json-stable-stringify",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\fast-json-stable-stringify\\LICENSE"
+  },
+  "fd-slicer@1.1.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/andrewrk/node-fd-slicer",
+    "publisher": "Andrew Kelley",
+    "email": "superjoe30@gmail.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\fd-slicer",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\fd-slicer\\LICENSE"
+  },
+  "filelist@1.0.4": {
+    "licenses": "Apache-2.0",
+    "repository": "https://github.com/mde/filelist",
+    "publisher": "Matthew Eernisse",
+    "email": "mde@fleegix.org",
+    "url": "http://fleegix.org",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\filelist",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\filelist\\README.md"
+  },
+  "foreground-child@3.3.1": {
+    "licenses": "ISC",
+    "repository": "https://github.com/tapjs/foreground-child",
+    "publisher": "Isaac Z. Schlueter",
+    "email": "i@izs.me",
+    "url": "http://blog.izs.me/",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\foreground-child",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\foreground-child\\LICENSE"
+  },
+  "form-data@4.0.4": {
+    "licenses": "MIT",
+    "repository": "https://github.com/form-data/form-data",
+    "publisher": "Felix Geisendörfer",
+    "email": "felix@debuggable.com",
+    "url": "http://debuggable.com/",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\form-data",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\form-data\\License"
+  },
+  "fs-constants@1.0.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/mafintosh/fs-constants",
+    "publisher": "Mathias Buus",
+    "url": "@mafintosh",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\fs-constants",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\fs-constants\\LICENSE"
+  },
+  "fs-extra@10.1.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/jprichardson/node-fs-extra",
+    "publisher": "JP Richardson",
+    "email": "jprichardson@gmail.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@electron\\osx-sign\\node_modules\\fs-extra",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@electron\\osx-sign\\node_modules\\fs-extra\\LICENSE"
+  },
+  "fs-extra@8.1.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/jprichardson/node-fs-extra",
+    "publisher": "JP Richardson",
+    "email": "jprichardson@gmail.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\fs-extra",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\fs-extra\\LICENSE"
+  },
+  "fs-extra@9.1.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/jprichardson/node-fs-extra",
+    "publisher": "JP Richardson",
+    "email": "jprichardson@gmail.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@electron\\notarize\\node_modules\\fs-extra",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@electron\\notarize\\node_modules\\fs-extra\\LICENSE"
+  },
+  "fs-minipass@2.1.0": {
+    "licenses": "ISC",
+    "repository": "https://github.com/npm/fs-minipass",
+    "publisher": "Isaac Z. Schlueter",
+    "email": "i@izs.me",
+    "url": "http://blog.izs.me/",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\fs-minipass",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\fs-minipass\\LICENSE"
+  },
+  "fs.realpath@1.0.0": {
+    "licenses": "ISC",
+    "repository": "https://github.com/isaacs/fs.realpath",
+    "publisher": "Isaac Z. Schlueter",
+    "email": "i@izs.me",
+    "url": "http://blog.izs.me/",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\fs.realpath",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\fs.realpath\\LICENSE"
+  },
+  "function-bind@1.1.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/Raynos/function-bind",
+    "publisher": "Raynos",
+    "email": "raynos2@gmail.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\function-bind",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\function-bind\\LICENSE"
+  },
+  "get-caller-file@2.0.5": {
+    "licenses": "ISC",
+    "repository": "https://github.com/stefanpenner/get-caller-file",
+    "publisher": "Stefan Penner",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\get-caller-file",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\get-caller-file\\LICENSE.md"
+  },
+  "get-intrinsic@1.3.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/ljharb/get-intrinsic",
+    "publisher": "Jordan Harband",
+    "email": "ljharb@gmail.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\get-intrinsic",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\get-intrinsic\\LICENSE"
+  },
+  "get-proto@1.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/ljharb/get-proto",
+    "publisher": "Jordan Harband",
+    "email": "ljharb@gmail.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\get-proto",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\get-proto\\LICENSE"
+  },
+  "get-stream@5.2.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/sindresorhus/get-stream",
+    "publisher": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "https://sindresorhus.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\get-stream",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\get-stream\\license"
+  },
+  "glob@10.4.5": {
+    "licenses": "ISC",
+    "repository": "https://github.com/isaacs/node-glob",
+    "publisher": "Isaac Z. Schlueter",
+    "email": "i@izs.me",
+    "url": "https://blog.izs.me/",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\config-file-ts\\node_modules\\glob",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\config-file-ts\\node_modules\\glob\\LICENSE"
+  },
+  "glob@7.2.3": {
+    "licenses": "ISC",
+    "repository": "https://github.com/isaacs/node-glob",
+    "publisher": "Isaac Z. Schlueter",
+    "email": "i@izs.me",
+    "url": "http://blog.izs.me/",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\glob",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\glob\\LICENSE"
+  },
+  "global-agent@3.0.0": {
+    "licenses": "BSD-3-Clause",
+    "repository": "https://github.com/gajus/global-agent",
+    "publisher": "Gajus Kuizinas",
+    "email": "gajus@gajus.com",
+    "url": "http://gajus.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\global-agent",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\global-agent\\LICENSE"
+  },
+  "globalthis@1.0.4": {
+    "licenses": "MIT",
+    "repository": "https://github.com/ljharb/System.global",
+    "publisher": "Jordan Harband",
+    "email": "ljharb@gmail.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\globalthis",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\globalthis\\LICENSE"
+  },
+  "gopd@1.2.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/ljharb/gopd",
+    "publisher": "Jordan Harband",
+    "email": "ljharb@gmail.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\gopd",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\gopd\\LICENSE"
+  },
+  "got@11.8.6": {
+    "licenses": "MIT",
+    "repository": "https://github.com/sindresorhus/got",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\got",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\got\\license"
+  },
+  "graceful-fs@4.2.11": {
+    "licenses": "ISC",
+    "repository": "https://github.com/isaacs/node-graceful-fs",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\graceful-fs",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\graceful-fs\\LICENSE"
+  },
+  "has-flag@4.0.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/sindresorhus/has-flag",
+    "publisher": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "sindresorhus.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\has-flag",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\has-flag\\license"
+  },
+  "has-property-descriptors@1.0.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/inspect-js/has-property-descriptors",
+    "publisher": "Jordan Harband",
+    "email": "ljharb@gmail.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\has-property-descriptors",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\has-property-descriptors\\LICENSE"
+  },
+  "has-symbols@1.1.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/inspect-js/has-symbols",
+    "publisher": "Jordan Harband",
+    "email": "ljharb@gmail.com",
+    "url": "http://ljharb.codes",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\has-symbols",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\has-symbols\\LICENSE"
+  },
+  "has-tostringtag@1.0.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/inspect-js/has-tostringtag",
+    "publisher": "Jordan Harband",
+    "email": "ljharb@gmail.com",
+    "url": "http://ljharb.codes",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\has-tostringtag",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\has-tostringtag\\LICENSE"
+  },
+  "hasown@2.0.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/inspect-js/hasOwn",
+    "publisher": "Jordan Harband",
+    "email": "ljharb@gmail.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\hasown",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\hasown\\LICENSE"
+  },
+  "hosted-git-info@4.1.0": {
+    "licenses": "ISC",
+    "repository": "https://github.com/npm/hosted-git-info",
+    "publisher": "Rebecca Turner",
+    "email": "me@re-becca.org",
+    "url": "http://re-becca.org",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\hosted-git-info",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\hosted-git-info\\LICENSE"
+  },
+  "http-cache-semantics@4.2.0": {
+    "licenses": "BSD-2-Clause",
+    "repository": "https://github.com/kornelski/http-cache-semantics",
+    "publisher": "Kornel Lesiński",
+    "email": "npms2@geekhood.net",
+    "url": "https://kornel.ski/",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\http-cache-semantics",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\http-cache-semantics\\LICENSE"
+  },
+  "http-proxy-agent@5.0.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/TooTallNate/node-http-proxy-agent",
+    "publisher": "Nathan Rajlich",
+    "email": "nathan@tootallnate.net",
+    "url": "http://n8.io/",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\http-proxy-agent",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\http-proxy-agent\\README.md"
+  },
+  "http2-wrapper@1.0.3": {
+    "licenses": "MIT",
+    "repository": "https://github.com/szmarczak/http2-wrapper",
+    "publisher": "Szymon Marczak",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\http2-wrapper",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\http2-wrapper\\LICENSE"
+  },
+  "https-proxy-agent@5.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/TooTallNate/node-https-proxy-agent",
+    "publisher": "Nathan Rajlich",
+    "email": "nathan@tootallnate.net",
+    "url": "http://n8.io/",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\https-proxy-agent",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\https-proxy-agent\\README.md"
+  },
+  "iconv-lite@0.6.3": {
+    "licenses": "MIT",
+    "repository": "https://github.com/ashtuchkin/iconv-lite",
+    "publisher": "Alexander Shtuchkin",
+    "email": "ashtuchkin@gmail.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\iconv-lite",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\iconv-lite\\LICENSE"
+  },
+  "ieee754@1.2.1": {
+    "licenses": "BSD-3-Clause",
+    "repository": "https://github.com/feross/ieee754",
+    "publisher": "Feross Aboukhadijeh",
+    "email": "feross@feross.org",
+    "url": "https://feross.org",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\ieee754",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\ieee754\\LICENSE"
+  },
+  "inflight@1.0.6": {
+    "licenses": "ISC",
+    "repository": "https://github.com/npm/inflight",
+    "publisher": "Isaac Z. Schlueter",
+    "email": "i@izs.me",
+    "url": "http://blog.izs.me/",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\inflight",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\inflight\\LICENSE"
+  },
+  "inherits@2.0.4": {
+    "licenses": "ISC",
+    "repository": "https://github.com/isaacs/inherits",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\inherits",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\inherits\\LICENSE"
+  },
+  "is-ci@3.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/watson/is-ci",
+    "publisher": "Thomas Watson Steen",
+    "email": "w@tson.dk",
+    "url": "https://twitter.com/wa7son",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\is-ci",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\is-ci\\LICENSE"
+  },
+  "is-fullwidth-code-point@3.0.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/sindresorhus/is-fullwidth-code-point",
+    "publisher": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "sindresorhus.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\is-fullwidth-code-point",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\is-fullwidth-code-point\\license"
+  },
+  "isarray@1.0.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/juliangruber/isarray",
+    "publisher": "Julian Gruber",
+    "email": "mail@juliangruber.com",
+    "url": "http://juliangruber.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\isarray",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\isarray\\README.md"
+  },
+  "isbinaryfile@4.0.10": {
+    "licenses": "MIT",
+    "repository": "https://github.com/gjtorikian/isBinaryFile",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@electron\\osx-sign\\node_modules\\isbinaryfile",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@electron\\osx-sign\\node_modules\\isbinaryfile\\LICENSE.txt"
+  },
+  "isbinaryfile@5.0.6": {
+    "licenses": "MIT",
+    "repository": "https://github.com/gjtorikian/isBinaryFile",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\isbinaryfile",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\isbinaryfile\\LICENSE.txt"
+  },
+  "isexe@2.0.0": {
+    "licenses": "ISC",
+    "repository": "https://github.com/isaacs/isexe",
+    "publisher": "Isaac Z. Schlueter",
+    "email": "i@izs.me",
+    "url": "http://blog.izs.me/",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\isexe",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\isexe\\LICENSE"
+  },
+  "iyeris@0.1.0": {
+    "licenses": "MPL-2.0",
+    "repository": "https://github.com/BurntToasters/IYERIS",
+    "publisher": "BurntToasters",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\LICENSE"
+  },
+  "jackspeak@3.4.3": {
+    "licenses": "BlueOak-1.0.0",
+    "repository": "https://github.com/isaacs/jackspeak",
+    "publisher": "Isaac Z. Schlueter",
+    "email": "i@izs.me",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\jackspeak",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\jackspeak\\LICENSE.md"
+  },
+  "jake@10.9.4": {
+    "licenses": "Apache-2.0",
+    "repository": "https://github.com/jakejs/jake",
+    "publisher": "Matthew Eernisse",
+    "email": "mde@fleegix.org",
+    "url": "http://fleegix.org",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\jake",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\jake\\README.md"
+  },
+  "js-yaml@4.1.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/nodeca/js-yaml",
+    "publisher": "Vladimir Zapparov",
+    "email": "dervus.grim@gmail.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\js-yaml",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\js-yaml\\LICENSE"
+  },
+  "json-buffer@3.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/dominictarr/json-buffer",
+    "publisher": "Dominic Tarr",
+    "email": "dominic.tarr@gmail.com",
+    "url": "http://dominictarr.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\json-buffer",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\json-buffer\\LICENSE"
+  },
+  "json-schema-traverse@0.4.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/epoberezkin/json-schema-traverse",
+    "publisher": "Evgeny Poberezkin",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\json-schema-traverse",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\json-schema-traverse\\LICENSE"
+  },
+  "json-stringify-safe@5.0.1": {
+    "licenses": "ISC",
+    "repository": "https://github.com/isaacs/json-stringify-safe",
+    "publisher": "Isaac Z. Schlueter",
+    "email": "i@izs.me",
+    "url": "http://blog.izs.me",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\json-stringify-safe",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\json-stringify-safe\\LICENSE"
+  },
+  "json5@2.2.3": {
+    "licenses": "MIT",
+    "repository": "https://github.com/json5/json5",
+    "publisher": "Aseem Kishore",
+    "email": "aseem.kishore@gmail.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\json5",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\json5\\LICENSE.md"
+  },
+  "jsonfile@4.0.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/jprichardson/node-jsonfile",
+    "publisher": "JP Richardson",
+    "email": "jprichardson@gmail.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\jsonfile",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\jsonfile\\LICENSE"
+  },
+  "jsonfile@6.2.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/jprichardson/node-jsonfile",
+    "publisher": "JP Richardson",
+    "email": "jprichardson@gmail.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@electron\\notarize\\node_modules\\jsonfile",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@electron\\notarize\\node_modules\\jsonfile\\LICENSE"
+  },
+  "keyv@4.5.4": {
+    "licenses": "MIT",
+    "repository": "https://github.com/jaredwray/keyv",
+    "publisher": "Jared Wray",
+    "email": "me@jaredwray.com",
+    "url": "http://jaredwray.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\keyv",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\keyv\\README.md"
+  },
+  "lazy-val@1.0.5": {
+    "licenses": "MIT",
+    "repository": "https://github.com/develar/lazy-val",
+    "publisher": "Vladimir Krivosheev",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\lazy-val",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\lazy-val\\readme.md"
+  },
+  "lazystream@1.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/jpommerening/node-lazystream",
+    "publisher": "Jonas Pommerening",
+    "email": "jonas.pommerening@gmail.com",
+    "url": "https://npmjs.org/~jpommerening",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\lazystream",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\lazystream\\LICENSE"
+  },
+  "lodash.defaults@4.2.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/lodash/lodash",
+    "publisher": "John-David Dalton",
+    "email": "john.david.dalton@gmail.com",
+    "url": "http://allyoucanleet.com/",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\lodash.defaults",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\lodash.defaults\\LICENSE"
+  },
+  "lodash.difference@4.5.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/lodash/lodash",
+    "publisher": "John-David Dalton",
+    "email": "john.david.dalton@gmail.com",
+    "url": "http://allyoucanleet.com/",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\lodash.difference",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\lodash.difference\\LICENSE"
+  },
+  "lodash.flatten@4.4.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/lodash/lodash",
+    "publisher": "John-David Dalton",
+    "email": "john.david.dalton@gmail.com",
+    "url": "http://allyoucanleet.com/",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\lodash.flatten",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\lodash.flatten\\LICENSE"
+  },
+  "lodash.isplainobject@4.0.6": {
+    "licenses": "MIT",
+    "repository": "https://github.com/lodash/lodash",
+    "publisher": "John-David Dalton",
+    "email": "john.david.dalton@gmail.com",
+    "url": "http://allyoucanleet.com/",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\lodash.isplainobject",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\lodash.isplainobject\\LICENSE"
+  },
+  "lodash.union@4.6.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/lodash/lodash",
+    "publisher": "John-David Dalton",
+    "email": "john.david.dalton@gmail.com",
+    "url": "http://allyoucanleet.com/",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\lodash.union",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\lodash.union\\LICENSE"
+  },
+  "lodash@4.17.21": {
+    "licenses": "MIT",
+    "repository": "https://github.com/lodash/lodash",
+    "publisher": "John-David Dalton",
+    "email": "john.david.dalton@gmail.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\lodash",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\lodash\\LICENSE"
+  },
+  "lowercase-keys@2.0.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/sindresorhus/lowercase-keys",
+    "publisher": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "sindresorhus.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\lowercase-keys",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\lowercase-keys\\license"
+  },
+  "lru-cache@10.4.3": {
+    "licenses": "ISC",
+    "repository": "https://github.com/isaacs/node-lru-cache",
+    "publisher": "Isaac Z. Schlueter",
+    "email": "i@izs.me",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\path-scurry\\node_modules\\lru-cache",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\path-scurry\\node_modules\\lru-cache\\LICENSE"
+  },
+  "lru-cache@6.0.0": {
+    "licenses": "ISC",
+    "repository": "https://github.com/isaacs/node-lru-cache",
+    "publisher": "Isaac Z. Schlueter",
+    "email": "i@izs.me",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\lru-cache",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\lru-cache\\LICENSE"
+  },
+  "matcher@3.0.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/sindresorhus/matcher",
+    "publisher": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "https://sindresorhus.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\matcher",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\matcher\\license"
+  },
+  "math-intrinsics@1.1.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/es-shims/math-intrinsics",
+    "publisher": "Jordan Harband",
+    "email": "ljharb@gmail.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\math-intrinsics",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\math-intrinsics\\LICENSE"
+  },
+  "mime-db@1.52.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/jshttp/mime-db",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\mime-db",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\mime-db\\LICENSE"
+  },
+  "mime-types@2.1.35": {
+    "licenses": "MIT",
+    "repository": "https://github.com/jshttp/mime-types",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\mime-types",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\mime-types\\LICENSE"
+  },
+  "mime@2.6.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/broofa/mime",
+    "publisher": "Robert Kieffer",
+    "email": "robert@broofa.com",
+    "url": "http://github.com/broofa",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\mime",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\mime\\LICENSE"
+  },
+  "mimic-response@1.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/sindresorhus/mimic-response",
+    "publisher": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "sindresorhus.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\mimic-response",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\mimic-response\\license"
+  },
+  "mimic-response@3.1.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/sindresorhus/mimic-response",
+    "publisher": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "https://sindresorhus.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\decompress-response\\node_modules\\mimic-response",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\decompress-response\\node_modules\\mimic-response\\license"
+  },
+  "minimatch@3.1.2": {
+    "licenses": "ISC",
+    "repository": "https://github.com/isaacs/minimatch",
+    "publisher": "Isaac Z. Schlueter",
+    "email": "i@izs.me",
+    "url": "http://blog.izs.me",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\glob\\node_modules\\minimatch",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\glob\\node_modules\\minimatch\\LICENSE"
+  },
+  "minimatch@5.1.6": {
+    "licenses": "ISC",
+    "repository": "https://github.com/isaacs/minimatch",
+    "publisher": "Isaac Z. Schlueter",
+    "email": "i@izs.me",
+    "url": "http://blog.izs.me",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\minimatch",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\minimatch\\LICENSE"
+  },
+  "minimatch@9.0.5": {
+    "licenses": "ISC",
+    "repository": "https://github.com/isaacs/minimatch",
+    "publisher": "Isaac Z. Schlueter",
+    "email": "i@izs.me",
+    "url": "http://blog.izs.me",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\config-file-ts\\node_modules\\minimatch",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\config-file-ts\\node_modules\\minimatch\\LICENSE"
+  },
+  "minimist@1.2.8": {
+    "licenses": "MIT",
+    "repository": "https://github.com/minimistjs/minimist",
+    "publisher": "James Halliday",
+    "email": "mail@substack.net",
+    "url": "http://substack.net",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\minimist",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\minimist\\LICENSE"
+  },
+  "minipass@3.3.6": {
+    "licenses": "ISC",
+    "repository": "https://github.com/isaacs/minipass",
+    "publisher": "Isaac Z. Schlueter",
+    "email": "i@izs.me",
+    "url": "http://blog.izs.me/",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\fs-minipass\\node_modules\\minipass",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\fs-minipass\\node_modules\\minipass\\LICENSE"
+  },
+  "minipass@5.0.0": {
+    "licenses": "ISC",
+    "repository": "https://github.com/isaacs/minipass",
+    "publisher": "Isaac Z. Schlueter",
+    "email": "i@izs.me",
+    "url": "http://blog.izs.me/",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\minipass",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\minipass\\LICENSE"
+  },
+  "minipass@7.1.2": {
+    "licenses": "ISC",
+    "repository": "https://github.com/isaacs/minipass",
+    "publisher": "Isaac Z. Schlueter",
+    "email": "i@izs.me",
+    "url": "http://blog.izs.me/",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\config-file-ts\\node_modules\\minipass",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\config-file-ts\\node_modules\\minipass\\LICENSE"
+  },
+  "minizlib@2.1.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/isaacs/minizlib",
+    "publisher": "Isaac Z. Schlueter",
+    "email": "i@izs.me",
+    "url": "http://blog.izs.me/",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\minizlib",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\minizlib\\LICENSE"
+  },
+  "mkdirp@1.0.4": {
+    "licenses": "MIT",
+    "repository": "https://github.com/isaacs/node-mkdirp",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\mkdirp",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\mkdirp\\LICENSE"
+  },
+  "ms@2.1.3": {
+    "licenses": "MIT",
+    "repository": "https://github.com/vercel/ms",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\ms",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\ms\\license.md"
+  },
+  "normalize-path@3.0.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/jonschlinkert/normalize-path",
+    "publisher": "Jon Schlinkert",
+    "url": "https://github.com/jonschlinkert",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\normalize-path",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\normalize-path\\LICENSE"
+  },
+  "normalize-url@6.1.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/sindresorhus/normalize-url",
+    "publisher": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "https://sindresorhus.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\normalize-url",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\normalize-url\\license"
+  },
+  "object-keys@1.1.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/ljharb/object-keys",
+    "publisher": "Jordan Harband",
+    "email": "ljharb@gmail.com",
+    "url": "http://ljharb.codes",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\object-keys",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\object-keys\\LICENSE"
+  },
+  "once@1.4.0": {
+    "licenses": "ISC",
+    "repository": "https://github.com/isaacs/once",
+    "publisher": "Isaac Z. Schlueter",
+    "email": "i@izs.me",
+    "url": "http://blog.izs.me/",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\once",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\once\\LICENSE"
+  },
+  "p-cancelable@2.1.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/sindresorhus/p-cancelable",
+    "publisher": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "sindresorhus.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\p-cancelable",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\p-cancelable\\license"
+  },
+  "package-json-from-dist@1.0.1": {
+    "licenses": "BlueOak-1.0.0",
+    "repository": "https://github.com/isaacs/package-json-from-dist",
+    "publisher": "Isaac Z. Schlueter",
+    "email": "i@izs.me",
+    "url": "https://izs.me",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\package-json-from-dist",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\package-json-from-dist\\LICENSE.md"
+  },
+  "path-is-absolute@1.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/sindresorhus/path-is-absolute",
+    "publisher": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "sindresorhus.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\path-is-absolute",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\path-is-absolute\\license"
+  },
+  "path-key@3.1.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/sindresorhus/path-key",
+    "publisher": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "sindresorhus.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\path-key",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\path-key\\license"
+  },
+  "path-scurry@1.11.1": {
+    "licenses": "BlueOak-1.0.0",
+    "repository": "https://github.com/isaacs/path-scurry",
+    "publisher": "Isaac Z. Schlueter",
+    "email": "i@izs.me",
+    "url": "https://blog.izs.me",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\path-scurry",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\path-scurry\\LICENSE.md"
+  },
+  "pend@1.2.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/andrewrk/node-pend",
+    "publisher": "Andrew Kelley",
+    "email": "superjoe30@gmail.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\pend",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\pend\\LICENSE"
+  },
+  "picocolors@1.1.1": {
+    "licenses": "ISC",
+    "repository": "https://github.com/alexeyraspopov/picocolors",
+    "publisher": "Alexey Raspopov",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\picocolors",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\picocolors\\LICENSE"
+  },
+  "plist@3.1.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/TooTallNate/node-plist",
+    "publisher": "Nathan Rajlich",
+    "email": "nathan@tootallnate.net",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\plist",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\plist\\LICENSE"
+  },
+  "process-nextick-args@2.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/calvinmetcalf/process-nextick-args",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\process-nextick-args",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\process-nextick-args\\license.md"
+  },
+  "progress@2.0.3": {
+    "licenses": "MIT",
+    "repository": "https://github.com/visionmedia/node-progress",
+    "publisher": "TJ Holowaychuk",
+    "email": "tj@vision-media.ca",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\progress",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\progress\\LICENSE"
+  },
+  "promise-retry@2.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/IndigoUnited/node-promise-retry",
+    "publisher": "IndigoUnited",
+    "email": "hello@indigounited.com",
+    "url": "http://indigounited.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\promise-retry",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\promise-retry\\LICENSE"
+  },
+  "pump@3.0.3": {
+    "licenses": "MIT",
+    "repository": "https://github.com/mafintosh/pump",
+    "publisher": "Mathias Buus Madsen",
+    "email": "mathiasbuus@gmail.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\pump",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\pump\\LICENSE"
+  },
+  "punycode@2.3.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/mathiasbynens/punycode.js",
+    "publisher": "Mathias Bynens",
+    "url": "https://mathiasbynens.be/",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\punycode",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\punycode\\LICENSE-MIT.txt"
+  },
+  "quick-lru@5.1.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/sindresorhus/quick-lru",
+    "publisher": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "https://sindresorhus.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\quick-lru",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\quick-lru\\license"
+  },
+  "read-config-file@6.3.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/develar/read-config-file",
+    "publisher": "Vladimir Krivosheev",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\read-config-file",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\read-config-file\\LICENSE"
+  },
+  "readable-stream@2.3.8": {
+    "licenses": "MIT",
+    "repository": "https://github.com/nodejs/readable-stream",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\lazystream\\node_modules\\readable-stream",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\lazystream\\node_modules\\readable-stream\\LICENSE"
+  },
+  "readable-stream@3.6.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/nodejs/readable-stream",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\readable-stream",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\readable-stream\\LICENSE"
+  },
+  "readdir-glob@1.1.3": {
+    "licenses": "Apache-2.0",
+    "repository": "https://github.com/Yqnn/node-readdir-glob",
+    "publisher": "Yann Armelin",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\readdir-glob",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\readdir-glob\\LICENSE"
+  },
+  "require-directory@2.1.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/troygoode/node-require-directory",
+    "publisher": "Troy Goode",
+    "email": "troygoode@gmail.com",
+    "url": "http://github.com/troygoode/",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\require-directory",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\require-directory\\LICENSE"
+  },
+  "resolve-alpn@1.2.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/szmarczak/resolve-alpn",
+    "publisher": "Szymon Marczak",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\resolve-alpn",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\resolve-alpn\\LICENSE"
+  },
+  "responselike@2.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/sindresorhus/responselike",
+    "publisher": "lukechilds",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\responselike",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\responselike\\LICENSE"
+  },
+  "retry@0.12.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/tim-kos/node-retry",
+    "publisher": "Tim Koschützki",
+    "email": "tim@debuggable.com",
+    "url": "http://debuggable.com/",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\retry",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\retry\\License"
+  },
+  "roarr@2.15.4": {
+    "licenses": "BSD-3-Clause",
+    "repository": "https://github.com/gajus/roarr",
+    "publisher": "Gajus Kuizinas",
+    "email": "gajus@gajus.com",
+    "url": "http://gajus.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\roarr",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\roarr\\LICENSE"
+  },
+  "safe-buffer@5.1.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/feross/safe-buffer",
+    "publisher": "Feross Aboukhadijeh",
+    "email": "feross@feross.org",
+    "url": "http://feross.org",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\lazystream\\node_modules\\safe-buffer",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\lazystream\\node_modules\\safe-buffer\\LICENSE"
+  },
+  "safe-buffer@5.2.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/feross/safe-buffer",
+    "publisher": "Feross Aboukhadijeh",
+    "email": "feross@feross.org",
+    "url": "https://feross.org",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\safe-buffer",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\safe-buffer\\LICENSE"
+  },
+  "safer-buffer@2.1.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/ChALkeR/safer-buffer",
+    "publisher": "Nikita Skovoroda",
+    "email": "chalkerx@gmail.com",
+    "url": "https://github.com/ChALkeR",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\safer-buffer",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\safer-buffer\\LICENSE"
+  },
+  "sanitize-filename@1.6.3": {
+    "licenses": "WTFPL OR ISC",
+    "repository": "https://github.com/parshap/node-sanitize-filename",
+    "publisher": "Parsha Pourkhomami",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\sanitize-filename",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\sanitize-filename\\LICENSE.md"
+  },
+  "sax@1.4.1": {
+    "licenses": "ISC",
+    "repository": "https://github.com/isaacs/sax-js",
+    "publisher": "Isaac Z. Schlueter",
+    "email": "i@izs.me",
+    "url": "http://blog.izs.me/",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\sax",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\sax\\LICENSE"
+  },
+  "semver-compare@1.0.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/substack/semver-compare",
+    "publisher": "James Halliday",
+    "email": "mail@substack.net",
+    "url": "http://substack.net",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\semver-compare",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\semver-compare\\LICENSE"
+  },
+  "semver@6.3.1": {
+    "licenses": "ISC",
+    "repository": "https://github.com/npm/node-semver",
+    "publisher": "GitHub Inc.",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\semver",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\semver\\LICENSE"
+  },
+  "semver@7.7.3": {
+    "licenses": "ISC",
+    "repository": "https://github.com/npm/node-semver",
+    "publisher": "GitHub Inc.",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\global-agent\\node_modules\\semver",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\global-agent\\node_modules\\semver\\LICENSE"
+  },
+  "serialize-error@7.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/sindresorhus/serialize-error",
+    "publisher": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "https://sindresorhus.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\serialize-error",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\serialize-error\\license"
+  },
+  "shebang-command@2.0.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/kevva/shebang-command",
+    "publisher": "Kevin Mårtensson",
+    "email": "kevinmartensson@gmail.com",
+    "url": "github.com/kevva",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\shebang-command",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\shebang-command\\license"
+  },
+  "shebang-regex@3.0.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/sindresorhus/shebang-regex",
+    "publisher": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "sindresorhus.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\shebang-regex",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\shebang-regex\\license"
+  },
+  "signal-exit@4.1.0": {
+    "licenses": "ISC",
+    "repository": "https://github.com/tapjs/signal-exit",
+    "publisher": "Ben Coe",
+    "email": "ben@npmjs.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\signal-exit",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\signal-exit\\LICENSE.txt"
+  },
+  "simple-update-notifier@2.0.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/alexbrazier/simple-update-notifier",
+    "publisher": "alexbrazier",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\simple-update-notifier",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\simple-update-notifier\\LICENSE"
+  },
+  "source-map-support@0.5.21": {
+    "licenses": "MIT",
+    "repository": "https://github.com/evanw/node-source-map-support",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\source-map-support",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\source-map-support\\LICENSE.md"
+  },
+  "source-map@0.6.1": {
+    "licenses": "BSD-3-Clause",
+    "repository": "https://github.com/mozilla/source-map",
+    "publisher": "Nick Fitzgerald",
+    "email": "nfitzgerald@mozilla.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\source-map",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\source-map\\LICENSE"
+  },
+  "sprintf-js@1.1.3": {
+    "licenses": "BSD-3-Clause",
+    "repository": "https://github.com/alexei/sprintf.js",
+    "publisher": "Alexandru Mărășteanu",
+    "email": "hello@alexei.ro",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\sprintf-js",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\sprintf-js\\LICENSE"
+  },
+  "stat-mode@1.0.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/TooTallNate/stat-mode",
+    "publisher": "Nathan Rajlich",
+    "email": "nathan@tootallnate.net",
+    "url": "http://n8.io/",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\stat-mode",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\stat-mode\\LICENSE"
+  },
+  "string-width@4.2.3": {
+    "licenses": "MIT",
+    "repository": "https://github.com/sindresorhus/string-width",
+    "publisher": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "sindresorhus.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\string-width",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\string-width\\license"
+  },
+  "string-width@5.1.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/sindresorhus/string-width",
+    "publisher": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "https://sindresorhus.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@isaacs\\cliui\\node_modules\\string-width",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@isaacs\\cliui\\node_modules\\string-width\\license"
+  },
+  "string_decoder@1.1.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/nodejs/string_decoder",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\lazystream\\node_modules\\string_decoder",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\lazystream\\node_modules\\string_decoder\\LICENSE"
+  },
+  "string_decoder@1.3.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/nodejs/string_decoder",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\string_decoder",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\string_decoder\\LICENSE"
+  },
+  "strip-ansi@6.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/chalk/strip-ansi",
+    "publisher": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "sindresorhus.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\strip-ansi",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\strip-ansi\\license"
+  },
+  "strip-ansi@7.1.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/chalk/strip-ansi",
+    "publisher": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "https://sindresorhus.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@isaacs\\cliui\\node_modules\\strip-ansi",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@isaacs\\cliui\\node_modules\\strip-ansi\\license"
+  },
+  "sumchecker@3.0.1": {
+    "licenses": "Apache-2.0",
+    "repository": "https://github.com/malept/sumchecker",
+    "publisher": "Mark Lee",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\sumchecker",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\sumchecker\\LICENSE"
+  },
+  "supports-color@7.2.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/chalk/supports-color",
+    "publisher": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "sindresorhus.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\supports-color",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\supports-color\\license"
+  },
+  "tar-stream@2.2.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/mafintosh/tar-stream",
+    "publisher": "Mathias Buus",
+    "email": "mathiasbuus@gmail.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\tar-stream",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\tar-stream\\LICENSE"
+  },
+  "tar@6.2.1": {
+    "licenses": "ISC",
+    "repository": "https://github.com/isaacs/node-tar",
+    "publisher": "GitHub Inc.",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\tar",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\tar\\LICENSE"
+  },
+  "temp-file@3.4.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/develar/temp-file",
+    "publisher": "Vladimir Krivosheev",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\temp-file",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\temp-file\\readme.md"
+  },
+  "tmp-promise@3.0.3": {
+    "licenses": "MIT",
+    "repository": "https://github.com/benjamingr/tmp-promise",
+    "publisher": "Benjamin Gruenbaum and Collaborators.",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\tmp-promise",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\tmp-promise\\README.md"
+  },
+  "tmp@0.2.5": {
+    "licenses": "MIT",
+    "repository": "https://github.com/raszi/node-tmp",
+    "publisher": "KARASZI István",
+    "email": "github@spam.raszi.hu",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\tmp",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\tmp\\LICENSE"
+  },
+  "truncate-utf8-bytes@1.0.2": {
+    "licenses": "WTFPL",
+    "repository": "https://github.com/parshap/truncate-utf8-bytes",
+    "publisher": "Carl Xiong",
+    "email": "xiongc05@gmail.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\truncate-utf8-bytes",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\truncate-utf8-bytes\\README.md"
+  },
+  "type-fest@0.13.1": {
+    "licenses": "(MIT OR CC0-1.0)",
+    "repository": "https://github.com/sindresorhus/type-fest",
+    "publisher": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "https://sindresorhus.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\type-fest",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\type-fest\\license"
+  },
+  "typescript@5.9.3": {
+    "licenses": "Apache-2.0",
+    "repository": "https://github.com/microsoft/TypeScript",
+    "publisher": "Microsoft Corp.",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\typescript",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\typescript\\LICENSE.txt"
+  },
+  "undici-types@6.21.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/nodejs/undici",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\undici-types",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\undici-types\\LICENSE"
+  },
+  "undici-types@7.14.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/nodejs/undici",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@types\\node\\node_modules\\undici-types",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@types\\node\\node_modules\\undici-types\\LICENSE"
+  },
+  "universalify@0.1.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/RyanZim/universalify",
+    "publisher": "Ryan Zimmerman",
+    "email": "opensrc@ryanzim.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\universalify",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\universalify\\LICENSE"
+  },
+  "universalify@2.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/RyanZim/universalify",
+    "publisher": "Ryan Zimmerman",
+    "email": "opensrc@ryanzim.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@electron\\notarize\\node_modules\\universalify",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@electron\\notarize\\node_modules\\universalify\\LICENSE"
+  },
+  "uri-js@4.4.1": {
+    "licenses": "BSD-2-Clause",
+    "repository": "https://github.com/garycourt/uri-js",
+    "publisher": "Gary Court",
+    "email": "gary.court@gmail.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\uri-js",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\uri-js\\LICENSE"
+  },
+  "utf8-byte-length@1.0.5": {
+    "licenses": "(WTFPL OR MIT)",
+    "repository": "https://github.com/parshap/utf8-byte-length",
+    "publisher": "Carl Xiong",
+    "email": "xiongc05@gmail.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\utf8-byte-length",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\utf8-byte-length\\README.md"
+  },
+  "util-deprecate@1.0.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/TooTallNate/util-deprecate",
+    "publisher": "Nathan Rajlich",
+    "email": "nathan@tootallnate.net",
+    "url": "http://n8.io/",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\util-deprecate",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\util-deprecate\\LICENSE"
+  },
+  "which@2.0.2": {
+    "licenses": "ISC",
+    "repository": "https://github.com/isaacs/node-which",
+    "publisher": "Isaac Z. Schlueter",
+    "email": "i@izs.me",
+    "url": "http://blog.izs.me",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\which",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\which\\LICENSE"
+  },
+  "wrap-ansi@7.0.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/chalk/wrap-ansi",
+    "publisher": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "https://sindresorhus.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\wrap-ansi",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\wrap-ansi\\license"
+  },
+  "wrap-ansi@8.1.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/chalk/wrap-ansi",
+    "publisher": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "https://sindresorhus.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@isaacs\\cliui\\node_modules\\wrap-ansi",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\@isaacs\\cliui\\node_modules\\wrap-ansi\\license"
+  },
+  "wrappy@1.0.2": {
+    "licenses": "ISC",
+    "repository": "https://github.com/npm/wrappy",
+    "publisher": "Isaac Z. Schlueter",
+    "email": "i@izs.me",
+    "url": "http://blog.izs.me/",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\wrappy",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\wrappy\\LICENSE"
+  },
+  "xmlbuilder@15.1.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/oozcitak/xmlbuilder-js",
+    "publisher": "Ozgur Ozcitak",
+    "email": "oozcitak@gmail.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\xmlbuilder",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\xmlbuilder\\LICENSE"
+  },
+  "y18n@5.0.8": {
+    "licenses": "ISC",
+    "repository": "https://github.com/yargs/y18n",
+    "publisher": "Ben Coe",
+    "email": "bencoe@gmail.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\y18n",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\y18n\\LICENSE"
+  },
+  "yallist@4.0.0": {
+    "licenses": "ISC",
+    "repository": "https://github.com/isaacs/yallist",
+    "publisher": "Isaac Z. Schlueter",
+    "email": "i@izs.me",
+    "url": "http://blog.izs.me/",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\yallist",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\yallist\\LICENSE"
+  },
+  "yargs-parser@21.1.1": {
+    "licenses": "ISC",
+    "repository": "https://github.com/yargs/yargs-parser",
+    "publisher": "Ben Coe",
+    "email": "ben@npmjs.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\yargs-parser",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\yargs-parser\\LICENSE.txt"
+  },
+  "yargs@17.7.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/yargs/yargs",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\yargs",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\yargs\\LICENSE"
+  },
+  "yauzl@2.10.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/thejoshwolfe/yauzl",
+    "publisher": "Josh Wolfe",
+    "email": "thejoshwolfe@gmail.com",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\yauzl",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\yauzl\\LICENSE"
+  },
+  "zip-stream@4.1.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/archiverjs/node-zip-stream",
+    "publisher": "Chris Talkington",
+    "url": "http://christalkington.com/",
+    "path": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\zip-stream",
+    "licenseFile": "C:\\Users\\dev\\Documents\\GitHub\\IYERIS\\node_modules\\zip-stream\\LICENSE"
+  }
+}

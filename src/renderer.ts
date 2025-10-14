@@ -235,6 +235,94 @@ function hideSettingsModal() {
   settingsModal.style.display = 'none';
 }
 
+async function showLicensesModal() {
+  const licensesModal = document.getElementById('licenses-modal');
+  if (!licensesModal) return;
+  
+  licensesModal.style.display = 'flex';
+  
+  const licensesContent = document.getElementById('licenses-content');
+  const totalDeps = document.getElementById('total-deps');
+  
+  if (!licensesContent) return;
+  
+  licensesContent.innerHTML = '<p style="text-align: center; color: var(--text-secondary);">Loading licenses...</p>';
+  
+  try {
+    const result = await window.electronAPI.getLicenses();
+    
+    if (result.success && result.licenses) {
+      const licenses = result.licenses;
+      const packageCount = Object.keys(licenses).length;
+      
+      if (totalDeps) {
+        totalDeps.textContent = packageCount.toString();
+      }
+      
+      let html = '';
+      
+      for (const [packageName, packageInfo] of Object.entries(licenses)) {
+        const info = packageInfo as any;
+        html += '<div class="license-package">';
+        html += `<div class="license-package-name">${packageName}</div>`;
+        html += '<div class="license-package-info">';
+        html += `<span class="license-package-license">${info.licenses || 'Unknown'}</span>`;
+        if (info.repository) {
+          html += `<span>Repository: ${info.repository}</span>`;
+        }
+        if (info.publisher) {
+          html += `<span>Publisher: ${info.publisher}</span>`;
+        }
+        html += '</div>';
+        
+        if (info.licenseFile && info.licenseText) {
+          html += `<div class="license-package-text">${escapeHtml(info.licenseText.substring(0, 1000))}${info.licenseText.length > 1000 ? '...' : ''}</div>`;
+        }
+        
+        html += '</div>';
+      }
+      
+      licensesContent.innerHTML = html;
+    } else {
+      licensesContent.innerHTML = `<p style="color: var(--error-color); text-align: center;">Error loading licenses: ${result.error || 'Unknown error'}</p>`;
+    }
+  } catch (error) {
+    licensesContent.innerHTML = `<p style="color: var(--error-color); text-align: center;">Error: ${(error as Error).message}</p>`;
+  }
+}
+
+function hideLicensesModal() {
+  const licensesModal = document.getElementById('licenses-modal');
+  if (licensesModal) {
+    licensesModal.style.display = 'none';
+  }
+}
+
+function copyLicensesText() {
+  const licensesContent = document.getElementById('licenses-content');
+  if (!licensesContent) return;
+  
+  const text = licensesContent.innerText;
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.getElementById('copy-licenses-btn');
+    if (btn) {
+      const originalText = btn.textContent;
+      btn.textContent = 'Copied!';
+      setTimeout(() => {
+        btn.textContent = originalText;
+      }, 2000);
+    }
+  }).catch(err => {
+    console.error('Failed to copy:', err);
+  });
+}
+
+function escapeHtml(text: string): string {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
 async function saveSettings() {
   const transparencyToggle = document.getElementById('transparency-toggle') as HTMLInputElement;
   const themeSelect = document.getElementById('theme-select') as HTMLSelectElement;
@@ -1649,11 +1737,25 @@ document.getElementById('version-indicator')?.addEventListener('click', () => {
   window.electronAPI.openFile(`https://github.com/BurntToasters/IYERIS/releases/tag/${version}`);
 });
 
+document.getElementById('licenses-btn')?.addEventListener('click', showLicensesModal);
+document.getElementById('licenses-close')?.addEventListener('click', hideLicensesModal);
+document.getElementById('close-licenses-btn')?.addEventListener('click', hideLicensesModal);
+document.getElementById('copy-licenses-btn')?.addEventListener('click', copyLicensesText);
+
 const settingsModal = document.getElementById('settings-modal');
 if (settingsModal) {
   settingsModal.addEventListener('click', (e) => {
     if (e.target.id === 'settings-modal') {
       hideSettingsModal();
+    }
+  });
+}
+
+const licensesModal = document.getElementById('licenses-modal');
+if (licensesModal) {
+  licensesModal.addEventListener('click', (e) => {
+    if (e.target.id === 'licenses-modal') {
+      hideLicensesModal();
     }
   });
 }
@@ -1813,12 +1915,6 @@ function generateFileInfo(file: FileItem, props: ItemProperties | null): string 
       </div>` : ''}
     </div>
   `;
-}
-
-function escapeHtml(text: string): string {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
 }
 
 const quicklookModal = document.getElementById('quicklook-modal') as HTMLElement;

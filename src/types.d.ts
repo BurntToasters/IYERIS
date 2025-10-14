@@ -84,6 +84,7 @@ export interface ElectronAPI {
   openTerminal: (dirPath: string) => Promise<ApiResponse>;
   readFileContent: (filePath: string, maxSize?: number) => Promise<{success: boolean; content?: string; error?: string; isTruncated?: boolean}>;
   getFileDataUrl: (filePath: string, maxSize?: number) => Promise<{success: boolean; dataUrl?: string; error?: string}>;
+  getLicenses: () => Promise<{success: boolean; licenses?: any; error?: string}>;
 }
 
 declare global {

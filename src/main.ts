@@ -508,3 +508,14 @@ ipcMain.handle('get-file-data-url', async (_event: IpcMainInvokeEvent, filePath:
   }
 });
 
+ipcMain.handle('get-licenses', async (): Promise<{ success: boolean; licenses?: any; error?: string }> => {
+  try {
+    const licensesPath = path.join(__dirname, '..', 'licenses.json');
+    const data = await fs.readFile(licensesPath, 'utf-8');
+    const licenses = JSON.parse(data);
+    return { success: true, licenses };
+  } catch (error) {
+    return { success: false, error: (error as Error).message };
+  }
+});
+
