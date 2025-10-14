@@ -77,7 +77,7 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
-  //if (process.platform !== 'darwin') {
+  //if (process.platform !== 'darwin') { uncomment this to keep app running in background on macOS
     app.quit();
   //}
 });
@@ -448,6 +448,61 @@ ipcMain.handle('open-terminal', async (_event: IpcMainInvokeEvent, dirPath: stri
     });
     
     return { success: true };
+  } catch (error) {
+    return { success: false, error: (error as Error).message };
+  }
+});
+
+ipcMain.handle('read-file-content', async (_event: IpcMainInvokeEvent, filePath: string, maxSize: number = 1024 * 1024): Promise<{ success: boolean; content?: string; error?: string; isTruncated?: boolean }> => {
+  try {
+    const stats = await fs.stat(filePath);
+    
+    if (stats.size > maxSize) {
+      const buffer = Buffer.alloc(maxSize);
+      const fileHandle = await fs.open(filePath, 'r');
+      await fileHandle.read(buffer, 0, maxSize, 0);
+      await fileHandle.close();
+      return { 
+        success: true, 
+        content: buffer.toString('utf8'),
+        isTruncated: true
+      };
+    }
+    
+    const content = await fs.readFile(filePath, 'utf8');
+    return { success: true, content, isTruncated: false };
+  } catch (error) {
+    return { success: false, error: (error as Error).message };
+  }
+});
+
+ipcMain.handle('get-file-data-url', async (_event: IpcMainInvokeEvent, filePath: string, maxSize: number = 10 * 1024 * 1024): Promise<{ success: boolean; dataUrl?: string; error?: string }> => {
+  try {
+    const stats = await fs.stat(filePath);
+    
+    if (stats.size > maxSize) {
+      return { success: false, error: 'File too large to preview' };
+    }
+    
+    const buffer = await fs.readFile(filePath);
+    const ext = path.extname(filePath).toLowerCase();
+    
+    const mimeTypes: Record<string, string> = {
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.png': 'image/png',
+      '.gif': 'image/gif',
+      '.webp': 'image/webp',
+      '.svg': 'image/svg+xml',
+      '.bmp': 'image/bmp',
+      '.ico': 'image/x-icon'
+    };
+    
+    const mimeType = mimeTypes[ext] || 'application/octet-stream';
+    const base64 = buffer.toString('base64');
+    const dataUrl = `data:${mimeType};base64,${base64}`;
+    
+    return { success: true, dataUrl };
   } catch (error) {
     return { success: false, error: (error as Error).message };
   }

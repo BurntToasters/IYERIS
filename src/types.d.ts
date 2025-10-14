@@ -82,6 +82,8 @@ export interface ElectronAPI {
   getDiskSpace: (drivePath: string) => Promise<{success: boolean; total?: number; free?: number; error?: string}>;
   restartAsAdmin: () => Promise<ApiResponse>;
   openTerminal: (dirPath: string) => Promise<ApiResponse>;
+  readFileContent: (filePath: string, maxSize?: number) => Promise<{success: boolean; content?: string; error?: string; isTruncated?: boolean}>;
+  getFileDataUrl: (filePath: string, maxSize?: number) => Promise<{success: boolean; dataUrl?: string; error?: string}>;
 }
 
 declare global {

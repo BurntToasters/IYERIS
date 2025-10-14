@@ -17,6 +17,9 @@ let contextMenuData: FileItem | null = null;
 let clipboard: { operation: 'copy' | 'cut'; paths: string[] } | null = null;
 let allFiles: FileItem[] = [];
 let isSearchMode: boolean = false;
+let isPreviewPanelVisible: boolean = false;
+let currentPreviewFile: FileItem | null = null;
+let currentQuicklookFile: FileItem | null = null;
 
 const addressInput = document.getElementById('address-input') as HTMLInputElement;
 const fileGrid = document.getElementById('file-grid') as HTMLElement;
@@ -572,17 +575,28 @@ function formatFileSize(bytes: number): string {
 }
 
 async function init() {
+  console.log('Init: Loading settings...');
   await loadSettings();
   
+  console.log('Init: Getting home directory...');
   const homeDir = await window.electronAPI.getHomeDirectory();
+  console.log('Init: Home directory is', homeDir);
+  
+  console.log('Init: Navigating to home...');
   navigateTo(homeDir);
   
+  console.log('Init: Loading drives...');
   loadDrives();
   
+  console.log('Init: Setting up event listeners...');
   setupEventListeners();
+  
+  console.log('Init: Complete');
 }
 
 async function loadDrives() {
+  if (!drivesList) return;
+  
   const drives = await window.electronAPI.getDrives();
   drivesList.innerHTML = '';
   
@@ -599,44 +613,44 @@ async function loadDrives() {
 }
 
 function setupEventListeners() {
-  document.getElementById('minimize-btn').addEventListener('click', () => {
+  document.getElementById('minimize-btn')?.addEventListener('click', () => {
     window.electronAPI.minimizeWindow();
   });
   
-  document.getElementById('maximize-btn').addEventListener('click', () => {
+  document.getElementById('maximize-btn')?.addEventListener('click', () => {
     window.electronAPI.maximizeWindow();
   });
   
-  document.getElementById('close-btn').addEventListener('click', () => {
+  document.getElementById('close-btn')?.addEventListener('click', () => {
     window.electronAPI.closeWindow();
   });
   
-  backBtn.addEventListener('click', goBack);
-  forwardBtn.addEventListener('click', goForward);
-  upBtn.addEventListener('click', goUp);
-  refreshBtn.addEventListener('click', refresh);
-  newFileBtn.addEventListener('click', createNewFile);
-  newFolderBtn.addEventListener('click', createNewFolder);
-  viewToggleBtn.addEventListener('click', toggleView);
+  backBtn?.addEventListener('click', goBack);
+  forwardBtn?.addEventListener('click', goForward);
+  upBtn?.addEventListener('click', goUp);
+  refreshBtn?.addEventListener('click', refresh);
+  newFileBtn?.addEventListener('click', createNewFile);
+  newFolderBtn?.addEventListener('click', createNewFolder);
+  viewToggleBtn?.addEventListener('click', toggleView);
   
-  searchBtn.addEventListener('click', toggleSearch);
-  searchClose.addEventListener('click', closeSearch);
-  sortBtn.addEventListener('click', showSortMenu);
-  bookmarkAddBtn.addEventListener('click', addBookmark);
+  searchBtn?.addEventListener('click', toggleSearch);
+  searchClose?.addEventListener('click', closeSearch);
+  sortBtn?.addEventListener('click', showSortMenu);
+  bookmarkAddBtn?.addEventListener('click', addBookmark);
   
-  searchInput.addEventListener('keypress', (e) => {
+  searchInput?.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') {
       performSearch();
     }
   });
   
-  searchInput.addEventListener('input', () => {
+  searchInput?.addEventListener('input', () => {
     if (searchInput.value.length === 0) {
       closeSearch();
     }
   });
   
-  addressInput.addEventListener('keypress', (e) => {
+  addressInput?.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') {
       navigateTo(addressInput.value);
     }
@@ -734,47 +748,48 @@ function setupEventListeners() {
     }
   });
   
-  fileGrid.addEventListener('click', (e) => {
-    if (e.target === fileGrid) {
-      clearSelection();
-    }
-  });
-  
-  fileGrid.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
+  if (fileGrid) {
+    fileGrid.addEventListener('click', (e) => {
+      if (e.target === fileGrid) {
+        clearSelection();
+      }
+    });
     
-    if (!currentPath) {
-      e.dataTransfer.dropEffect = 'none';
-      return;
-    }
+    fileGrid.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      
+      if (!currentPath) {
+        e.dataTransfer.dropEffect = 'none';
+        return;
+      }
+      
+      e.dataTransfer.dropEffect = e.ctrlKey ? 'copy' : 'move';
+      fileGrid.classList.add('drag-over');
+    });
     
-    e.dataTransfer.dropEffect = e.ctrlKey ? 'copy' : 'move';
-    fileGrid.classList.add('drag-over');
-  });
-  
-  fileGrid.addEventListener('dragleave', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
+    fileGrid.addEventListener('dragleave', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      
+      const rect = fileGrid.getBoundingClientRect();
+      if (e.clientX < rect.left || e.clientX >= rect.right ||
+          e.clientY < rect.top || e.clientY >= rect.bottom) {
+        fileGrid.classList.remove('drag-over');
+      }
+    });
     
-    const rect = fileGrid.getBoundingClientRect();
-    if (e.clientX < rect.left || e.clientX >= rect.right ||
-        e.clientY < rect.top || e.clientY >= rect.bottom) {
+    fileGrid.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      
       fileGrid.classList.remove('drag-over');
-    }
-  });
-  
-  fileGrid.addEventListener('drop', async (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    
-    fileGrid.classList.remove('drag-over');
-    
-    if (e.target.closest('.file-item')) {
-      return;
-    }
-    
-    const draggedPaths = JSON.parse(e.dataTransfer.getData('text/plain') || '[]');
+      
+      if (e.target.closest('.file-item')) {
+        return;
+      }
+      
+      const draggedPaths = JSON.parse(e.dataTransfer.getData('text/plain') || '[]');
     if (draggedPaths.length === 0 || !currentPath) {
       return;
     }
@@ -791,7 +806,8 @@ function setupEventListeners() {
     
     const operation = e.ctrlKey ? 'copy' : 'move';
     await handleDrop(draggedPaths, currentPath, operation);
-  });
+    });
+  }
   
   document.addEventListener('contextmenu', (e) => {
     if (!e.target.closest('.file-item')) {
@@ -819,15 +835,15 @@ async function navigateTo(path) {
     closeSearch();
   }
   
-  loading.style.display = 'flex';
-  emptyState.style.display = 'none';
-  fileGrid.innerHTML = '';
+  if (loading) loading.style.display = 'flex';
+  if (emptyState) emptyState.style.display = 'none';
+  if (fileGrid) fileGrid.innerHTML = '';
   
   const result = await window.electronAPI.getDirectoryContents(path);
   
   if (result.success) {
     currentPath = path;
-    addressInput.value = path;
+    if (addressInput) addressInput.value = path;
     
     if (historyIndex === -1 || history[historyIndex] !== path) {
       history = history.slice(0, historyIndex + 1);
@@ -843,16 +859,18 @@ async function navigateTo(path) {
     showToast(result.error, 'Error Loading Directory', 'error');
   }
   
-  loading.style.display = 'none';
+  if (loading) loading.style.display = 'none';
 }
 
 function renderFiles(items) {
+  if (!fileGrid) return;
+  
   fileGrid.innerHTML = '';
   clearSelection();
   allFiles = items;
   
   if (items.length === 0) {
-    emptyState.style.display = 'flex';
+    if (emptyState) emptyState.style.display = 'flex';
     updateStatusBar();
     return;
   }
@@ -903,11 +921,26 @@ function createFileItem(item) {
   fileItem.dataset.isDirectory = item.isDirectory;
   
   const icon = item.isDirectory ? '📁' : getFileIcon(item.name);
+  const ext = item.name.split('.').pop()?.toLowerCase() || '';
+  const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'ico'];
+  const isImage = !item.isDirectory && imageExts.includes(ext);
   
-  fileItem.innerHTML = `
-    <div class="file-icon">${icon}</div>
-    <div class="file-name">${item.name}</div>
-  `;
+  if (isImage) {
+    fileItem.classList.add('has-thumbnail');
+    fileItem.innerHTML = `
+      <div class="file-icon">
+        <div class="spinner" style="width: 30px; height: 30px; border-width: 2px;"></div>
+      </div>
+      <div class="file-name">${item.name}</div>
+    `;
+    
+    loadThumbnail(fileItem, item);
+  } else {
+    fileItem.innerHTML = `
+      <div class="file-icon">${icon}</div>
+      <div class="file-name">${item.name}</div>
+    `;
+  }
   
   fileItem.addEventListener('dblclick', () => {
     if (item.isDirectory) {
@@ -1015,6 +1048,28 @@ function createFileItem(item) {
   return fileItem;
 }
 
+async function loadThumbnail(fileItem: HTMLElement, item: FileItem) {
+  try {
+    const result = await window.electronAPI.getFileDataUrl(item.path, 500 * 1024);
+    const iconDiv = fileItem.querySelector('.file-icon');
+    
+    if (result.success && result.dataUrl && iconDiv) {
+      iconDiv.innerHTML = `<img src="${result.dataUrl}" class="file-thumbnail" alt="${item.name}">`;
+    } else {
+      if (iconDiv) {
+        iconDiv.innerHTML = getFileIcon(item.name);
+      }
+      fileItem.classList.remove('has-thumbnail');
+    }
+  } catch (error) {
+    const iconDiv = fileItem.querySelector('.file-icon');
+    if (iconDiv) {
+      iconDiv.innerHTML = getFileIcon(item.name);
+    }
+    fileItem.classList.remove('has-thumbnail');
+  }
+}
+
 function getFileIcon(filename) {
   const ext = filename.split('.').pop().toLowerCase();
   const iconMap = {
@@ -1062,6 +1117,18 @@ function toggleSelection(fileItem) {
     selectedItems.delete(fileItem.dataset.path);
   }
   updateStatusBar();
+  
+  if (isPreviewPanelVisible && selectedItems.size === 1) {
+    const selectedPath = Array.from(selectedItems)[0];
+    const file = allFiles.find(f => f.path === selectedPath);
+    if (file && file.isFile) {
+      updatePreview(file);
+    } else {
+      showEmptyPreview();
+    }
+  } else if (isPreviewPanelVisible && selectedItems.size !== 1) {
+    showEmptyPreview();
+  }
 }
 
 function clearSelection() {
@@ -1070,6 +1137,10 @@ function clearSelection() {
   });
   selectedItems.clear();
   updateStatusBar();
+  
+  if (isPreviewPanelVisible) {
+    showEmptyPreview();
+  }
 }
 
 function selectAll() {
@@ -1565,22 +1636,318 @@ async function restartAsAdmin() {
 }
 
 
-document.getElementById('settings-btn').addEventListener('click', showSettingsModal);
-document.getElementById('settings-close').addEventListener('click', hideSettingsModal);
-document.getElementById('save-settings-btn').addEventListener('click', saveSettings);
-document.getElementById('reset-settings-btn').addEventListener('click', resetSettings);
-document.getElementById('restart-admin-btn').addEventListener('click', restartAsAdmin);
-document.getElementById('github-btn').addEventListener('click', () => {
+document.getElementById('settings-btn')?.addEventListener('click', showSettingsModal);
+document.getElementById('settings-close')?.addEventListener('click', hideSettingsModal);
+document.getElementById('save-settings-btn')?.addEventListener('click', saveSettings);
+document.getElementById('reset-settings-btn')?.addEventListener('click', resetSettings);
+document.getElementById('restart-admin-btn')?.addEventListener('click', restartAsAdmin);
+document.getElementById('github-btn')?.addEventListener('click', () => {
   window.electronAPI.openFile('https://github.com/BurntToasters/IYERIS');
 });
+document.getElementById('version-indicator')?.addEventListener('click', () => {
+  const version = document.getElementById('version-indicator')?.textContent || 'v0.1.0';
+  window.electronAPI.openFile(`https://github.com/BurntToasters/IYERIS/releases/tag/${version}`);
+});
 
-document.getElementById('settings-modal').addEventListener('click', (e) => {
-  if (e.target.id === 'settings-modal') {
-    hideSettingsModal();
+const settingsModal = document.getElementById('settings-modal');
+if (settingsModal) {
+  settingsModal.addEventListener('click', (e) => {
+    if (e.target.id === 'settings-modal') {
+      hideSettingsModal();
+    }
+  });
+}
+
+const previewPanel = document.getElementById('preview-panel') as HTMLElement;
+const previewContent = document.getElementById('preview-content') as HTMLElement;
+const previewToggleBtn = document.getElementById('preview-toggle-btn') as HTMLButtonElement;
+const previewCloseBtn = document.getElementById('preview-close') as HTMLButtonElement;
+
+function showEmptyPreview() {
+  if (!previewContent) return;
+  previewContent.innerHTML = `
+    <div class="preview-empty">
+      <div class="preview-empty-icon">👁️</div>
+      <p>Select a file to preview</p>
+      <small>Press Space for quick look</small>
+    </div>
+  `;
+}
+
+function togglePreviewPanel() {
+  isPreviewPanelVisible = !isPreviewPanelVisible;
+  if (isPreviewPanelVisible) {
+    previewPanel.style.display = 'flex';
+    if (selectedItems.size === 1) {
+      const selectedPath = Array.from(selectedItems)[0];
+      const file = allFiles.find(f => f.path === selectedPath);
+      if (file && file.isFile) {
+        updatePreview(file);
+      }
+    }
+  } else {
+    previewPanel.style.display = 'none';
+  }
+}
+
+function updatePreview(file: FileItem) {
+  if (!file || file.isDirectory) {
+    showEmptyPreview();
+    return;
+  }
+  
+  currentPreviewFile = file;
+  const ext = file.name.split('.').pop()?.toLowerCase() || '';
+  
+  const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico'];
+  const textExts = ['txt', 'md', 'json', 'xml', 'html', 'css', 'js', 'ts', 'jsx', 'tsx', 'py', 'java', 'c', 'cpp', 'h', 'cs', 'php', 'rb', 'go', 'rs', 'log', 'ini', 'cfg', 'yml', 'yaml'];
+  
+  if (imageExts.includes(ext)) {
+    showImagePreview(file);
+  } else if (textExts.includes(ext)) {
+    showTextPreview(file);
+  } else {
+    showFileInfo(file);
+  }
+}
+
+async function showImagePreview(file: FileItem) {
+  if (!previewContent) return;
+  previewContent.innerHTML = `
+    <div class="preview-loading">
+      <div class="spinner"></div>
+      <p>Loading image...</p>
+    </div>
+  `;
+  
+  const result = await window.electronAPI.getFileDataUrl(file.path);
+  
+  if (result.success && result.dataUrl) {
+    const props = await window.electronAPI.getItemProperties(file.path);
+    const info = props.success && props.properties ? props.properties : null;
+    
+    previewContent.innerHTML = `
+      <img src="${result.dataUrl}" class="preview-image" alt="${file.name}">
+      ${generateFileInfo(file, info)}
+    `;
+  } else {
+    previewContent.innerHTML = `
+      <div class="preview-error">
+        Failed to load image: ${result.error || 'Unknown error'}
+      </div>
+      ${generateFileInfo(file, null)}
+    `;
+  }
+}
+
+async function showTextPreview(file: FileItem) {
+  if (!previewContent) return;
+  previewContent.innerHTML = `
+    <div class="preview-loading">
+      <div class="spinner"></div>
+      <p>Loading text...</p>
+    </div>
+  `;
+  
+  const result = await window.electronAPI.readFileContent(file.path, 50 * 1024);
+  
+  if (result.success && result.content) {
+    const props = await window.electronAPI.getItemProperties(file.path);
+    const info = props.success && props.properties ? props.properties : null;
+    
+    previewContent.innerHTML = `
+      ${result.isTruncated ? '<div class="preview-truncated">⚠️ File truncated to first 50KB</div>' : ''}
+      <div class="preview-text">${escapeHtml(result.content)}</div>
+      ${generateFileInfo(file, info)}
+    `;
+  } else {
+    previewContent.innerHTML = `
+      <div class="preview-error">
+        Failed to load text: ${result.error || 'Unknown error'}
+      </div>
+      ${generateFileInfo(file, null)}
+    `;
+  }
+}
+
+async function showFileInfo(file: FileItem) {
+  if (!previewContent) return;
+  const props = await window.electronAPI.getItemProperties(file.path);
+  const info = props.success && props.properties ? props.properties : null;
+  
+  previewContent.innerHTML = `
+    <div class="preview-unsupported">
+      <div class="preview-unsupported-icon">${getFileIcon(file.name)}</div>
+      <div>
+        <strong>${file.name}</strong>
+        <p>Preview not available for this file type</p>
+      </div>
+    </div>
+    ${generateFileInfo(file, info)}
+  `;
+}
+
+function generateFileInfo(file: FileItem, props: ItemProperties | null): string {
+  const size = props ? props.size : file.size;
+  const sizeDisplay = formatFileSize(size);
+  const modified = props ? new Date(props.modified) : new Date(file.modified);
+  
+  return `
+    <div class="preview-info">
+      <div class="preview-info-item">
+        <span class="preview-info-label">Name</span>
+        <span class="preview-info-value">${file.name}</span>
+      </div>
+      <div class="preview-info-item">
+        <span class="preview-info-label">Size</span>
+        <span class="preview-info-value">${sizeDisplay}</span>
+      </div>
+      <div class="preview-info-item">
+        <span class="preview-info-label">Modified</span>
+        <span class="preview-info-value">${modified.toLocaleDateString()} ${modified.toLocaleTimeString()}</span>
+      </div>
+      ${props && props.created ? `
+      <div class="preview-info-item">
+        <span class="preview-info-label">Created</span>
+        <span class="preview-info-value">${new Date(props.created).toLocaleDateString()} ${new Date(props.created).toLocaleTimeString()}</span>
+      </div>` : ''}
+    </div>
+  `;
+}
+
+function escapeHtml(text: string): string {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+const quicklookModal = document.getElementById('quicklook-modal') as HTMLElement;
+const quicklookContent = document.getElementById('quicklook-content') as HTMLElement;
+const quicklookTitle = document.getElementById('quicklook-title') as HTMLElement;
+const quicklookInfo = document.getElementById('quicklook-info') as HTMLElement;
+const quicklookClose = document.getElementById('quicklook-close') as HTMLButtonElement;
+const quicklookOpen = document.getElementById('quicklook-open') as HTMLButtonElement;
+
+async function showQuickLook() {
+  if (selectedItems.size !== 1) return;
+  if (!quicklookModal || !quicklookTitle || !quicklookContent || !quicklookInfo) return;
+  
+  const selectedPath = Array.from(selectedItems)[0];
+  const file = allFiles.find(f => f.path === selectedPath);
+  
+  if (!file || file.isDirectory) return;
+  
+  currentQuicklookFile = file;
+  quicklookTitle.textContent = file.name;
+  quicklookModal.style.display = 'flex';
+  
+  const ext = file.name.split('.').pop()?.toLowerCase() || '';
+  const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico'];
+  const textExts = ['txt', 'md', 'json', 'xml', 'html', 'css', 'js', 'ts', 'jsx', 'tsx', 'py', 'java', 'c', 'cpp', 'h', 'cs', 'php', 'rb', 'go', 'rs', 'log', 'ini', 'cfg', 'yml', 'yaml'];
+  
+  quicklookContent.innerHTML = `
+    <div class="preview-loading">
+      <div class="spinner"></div>
+      <p>Loading preview...</p>
+    </div>
+  `;
+  
+  if (imageExts.includes(ext)) {
+    const result = await window.electronAPI.getFileDataUrl(file.path);
+    if (result.success && result.dataUrl) {
+      quicklookContent.innerHTML = `<img src="${result.dataUrl}" alt="${file.name}">`;
+      quicklookInfo.textContent = `${formatFileSize(file.size)} • ${new Date(file.modified).toLocaleDateString()}`;
+    } else {
+      quicklookContent.innerHTML = `<div class="preview-error">Failed to load image</div>`;
+    }
+  } else if (textExts.includes(ext)) {
+    const result = await window.electronAPI.readFileContent(file.path, 100 * 1024);
+    if (result.success && result.content) {
+      quicklookContent.innerHTML = `
+        ${result.isTruncated ? '<div class="preview-truncated">⚠️ File truncated to first 100KB</div>' : ''}
+        <div class="preview-text">${escapeHtml(result.content)}</div>
+      `;
+      quicklookInfo.textContent = `${formatFileSize(file.size)} • ${new Date(file.modified).toLocaleDateString()}`;
+    } else {
+      quicklookContent.innerHTML = `<div class="preview-error">Failed to load text</div>`;
+    }
+  } else {
+    quicklookContent.innerHTML = `
+      <div class="preview-unsupported">
+        <div class="preview-unsupported-icon">${getFileIcon(file.name)}</div>
+        <p>Preview not available for this file type</p>
+      </div>
+    `;
+    quicklookInfo.textContent = `${formatFileSize(file.size)} • ${new Date(file.modified).toLocaleDateString()}`;
+  }
+}
+
+function closeQuickLook() {
+  if (quicklookModal) quicklookModal.style.display = 'none';
+  currentQuicklookFile = null;
+}
+
+if (previewToggleBtn) {
+  previewToggleBtn.addEventListener('click', togglePreviewPanel);
+}
+
+if (previewCloseBtn) {
+  previewCloseBtn.addEventListener('click', () => {
+    isPreviewPanelVisible = false;
+    if (previewPanel) previewPanel.style.display = 'none';
+  });
+}
+
+if (quicklookClose) {
+  quicklookClose.addEventListener('click', closeQuickLook);
+}
+
+if (quicklookOpen) {
+  quicklookOpen.addEventListener('click', () => {
+    if (currentQuicklookFile) {
+      window.electronAPI.openFile(currentQuicklookFile.path);
+      closeQuickLook();
+    }
+  });
+}
+
+if (quicklookModal) {
+  quicklookModal.addEventListener('click', (e) => {
+    if (e.target === quicklookModal) {
+      closeQuickLook();
+    }
+  });
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space' && !e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey) {
+    const activeElement = document.activeElement;
+    if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
+      return;
+    }
+    e.preventDefault();
+    if (quicklookModal && quicklookModal.style.display === 'flex') {
+      closeQuickLook();
+    } else {
+      showQuickLook();
+    }
+  }
+  
+  if (e.key === 'Escape' && quicklookModal && quicklookModal.style.display === 'flex') {
+    closeQuickLook();
   }
 });
 
-init();
+(async () => {
+  try {
+    console.log('Starting IYERIS...');
+    await init();
+    console.log('IYERIS initialized successfully');
+  } catch (error) {
+    console.error('Failed to initialize IYERIS:', error);
+    alert('Failed to start IYERIS: ' + error.message);
+  }
+})();
 
 
 

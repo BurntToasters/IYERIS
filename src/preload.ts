@@ -24,7 +24,9 @@ const electronAPI: ElectronAPI = {
   searchFiles: (dirPath: string, query: string) => ipcRenderer.invoke('search-files', dirPath, query),
   openTerminal: (dirPath: string) => ipcRenderer.invoke('open-terminal', dirPath),
   getDiskSpace: (drivePath: string) => ipcRenderer.invoke('get-disk-space', drivePath),
-  restartAsAdmin: () => ipcRenderer.invoke('restart-as-admin')
+  restartAsAdmin: () => ipcRenderer.invoke('restart-as-admin'),
+  readFileContent: (filePath: string, maxSize?: number) => ipcRenderer.invoke('read-file-content', filePath, maxSize),
+  getFileDataUrl: (filePath: string, maxSize?: number) => ipcRenderer.invoke('get-file-data-url', filePath, maxSize)
 };
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);

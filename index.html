@@ -130,21 +130,43 @@
               <rect x="9" y="9" width="5" height="5" fill="currentColor" rx="1"/>
             </svg>
           </button>
+          <button class="toolbar-button" id="preview-toggle-btn" title="Toggle Preview Panel">
+            <svg width="16" height="16" viewBox="0 0 16 16">
+              <rect x="1" y="2" width="7" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
+              <rect x="10" y="2" width="5" height="12" fill="currentColor" stroke="currentColor" stroke-width="1.5" rx="1"/>
+            </svg>
+          </button>
           <button class="toolbar-button" id="settings-btn" title="Settings">⚙️
           </button>
         </div>
       </div>
 
-      <div class="file-view glass-panel" id="file-view">
-        <div class="loading-spinner" id="loading">
-          <div class="spinner"></div>
-          <p>Loading...</p>
+      <div class="content-wrapper">
+        <div class="file-view glass-panel" id="file-view">
+          <div class="loading-spinner" id="loading">
+            <div class="spinner"></div>
+            <p>Loading...</p>
+          </div>
+          <div class="empty-state" id="empty-state" style="display: none;">
+            <div class="empty-icon">📭</div>
+            <p>This folder is empty</p>
+          </div>
+          <div class="file-grid" id="file-grid"></div>
         </div>
-        <div class="empty-state" id="empty-state" style="display: none;">
-          <div class="empty-icon">📭</div>
-          <p>This folder is empty</p>
+
+        <div class="preview-panel glass-panel" id="preview-panel" style="display: none;">
+          <div class="preview-header">
+            <h3>Preview</h3>
+            <button class="preview-close" id="preview-close" title="Close Preview">✕</button>
+          </div>
+          <div class="preview-content" id="preview-content">
+            <div class="preview-empty">
+              <div class="preview-empty-icon">👁️</div>
+              <p>Select a file to preview</p>
+              <small>Press Space for quick look</small>
+            </div>
+          </div>
         </div>
-        <div class="file-grid" id="file-grid"></div>
       </div>
     </div>
   </div>
@@ -282,11 +304,11 @@
       <div class="modal-footer">
         <div class="footer-left">
           <span class="footer-credit">Made with ❤️ By: <strong>BurntToasters</strong></span>
+          <span class="footer-version" id="version-indicator" title="Click to view release">v0.1.0</span>
           <button class="modal-button" id="github-btn" title="View on GitHub">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
               <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
             </svg>
-            GitHub
           </button>
         </div>
         <div class="footer-right">
@@ -308,6 +330,25 @@
   </div>
 
   <div id="toast-container"></div>
+
+  <div class="modal-overlay" id="quicklook-modal" style="display: none;">
+    <div class="modal quicklook-modal glass-panel">
+      <div class="modal-header">
+        <h3 id="quicklook-title">Quick Look</h3>
+        <button class="modal-close" id="quicklook-close">✕</button>
+      </div>
+      <div class="modal-content quicklook-content" id="quicklook-content">
+        <div class="preview-loading">
+          <div class="spinner"></div>
+          <p>Loading preview...</p>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <span id="quicklook-info"></span>
+        <button class="modal-button" id="quicklook-open">Open File</button>
+      </div>
+    </div>
+  </div>
 
   <div class="sort-menu glass-panel" id="sort-menu" style="display: none;">
     <div class="context-menu-item" data-sort="name">
