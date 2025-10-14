@@ -1728,12 +1728,65 @@ async function restartAsAdmin() {
   }
 }
 
+async function checkForUpdates() {
+  const btn = document.getElementById('check-updates-btn');
+  if (!btn) return;
+  
+  const originalText = btn.textContent;
+  btn.textContent = '🔄 Checking...';
+  btn.disabled = true;
+  
+  try {
+    const result = await window.electronAPI.checkForUpdates();
+    
+    if (result.success) {
+      if (result.hasUpdate) {
+        const confirmed = await showDialog(
+          'Update Available',
+          `A new version is available!\n\nCurrent Version: ${result.currentVersion}\nLatest Version: ${result.latestVersion}\n\nWould you like to visit the releases page to download it?`,
+          'success',
+          true
+        );
+        
+        if (confirmed && result.releaseUrl) {
+          window.electronAPI.openFile(result.releaseUrl);
+        }
+      } else {
+        showDialog(
+          'No Updates Available',
+          `You're running the latest version (${result.currentVersion})!`,
+          'info',
+          false
+        );
+      }
+    } else {
+      showDialog(
+        'Update Check Failed',
+        `Failed to check for updates: ${result.error}`,
+        'error',
+        false
+      );
+    }
+  } catch (error) {
+    showDialog(
+      'Update Check Failed',
+      `An error occurred while checking for updates: ${(error as Error).message}`,
+      'error',
+      false
+    );
+  } finally {
+    btn.textContent = originalText;
+    btn.disabled = false;
+  }
+}
+
 
 document.getElementById('settings-btn')?.addEventListener('click', showSettingsModal);
 document.getElementById('settings-close')?.addEventListener('click', hideSettingsModal);
 document.getElementById('save-settings-btn')?.addEventListener('click', saveSettings);
 document.getElementById('reset-settings-btn')?.addEventListener('click', resetSettings);
 document.getElementById('restart-admin-btn')?.addEventListener('click', restartAsAdmin);
+document.getElementById('check-updates-btn')?.addEventListener('click', checkForUpdates);
 document.getElementById('github-btn')?.addEventListener('click', () => {
   window.electronAPI.openFile('https://github.com/BurntToasters/IYERIS');
 });

@@ -28,7 +28,8 @@ const electronAPI: ElectronAPI = {
   readFileContent: (filePath: string, maxSize?: number) => ipcRenderer.invoke('read-file-content', filePath, maxSize),
   getFileDataUrl: (filePath: string, maxSize?: number) => ipcRenderer.invoke('get-file-data-url', filePath, maxSize),
   getLicenses: () => ipcRenderer.invoke('get-licenses'),
-  getPlatform: () => ipcRenderer.invoke('get-platform')
+  getPlatform: () => ipcRenderer.invoke('get-platform'),
+  checkForUpdates: () => ipcRenderer.invoke('check-for-updates')
 };
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);

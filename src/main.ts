@@ -523,3 +523,45 @@ ipcMain.handle('get-platform', (): string => {
   return process.platform;
 });
 
+ipcMain.handle('check-for-updates', async (): Promise<{ success: boolean; hasUpdate?: boolean; latestVersion?: string; currentVersion?: string; releaseUrl?: string; error?: string }> => {
+  try {
+    const currentVersion = app.getVersion();
+    const response = await fetch('https://api.github.com/repos/BurntToasters/IYERIS/releases/latest');
+    
+    if (!response.ok) {
+      throw new Error(`GitHub API returned ${response.status}`);
+    }
+    
+    const data = await response.json();
+    const latestVersion = data.tag_name.replace(/^v/, '');
+    const releaseUrl = data.html_url;
+    
+    const hasUpdate = compareVersions(latestVersion, currentVersion) > 0;
+    
+    return {
+      success: true,
+      hasUpdate,
+      latestVersion: data.tag_name,
+      currentVersion: `v${currentVersion}`,
+      releaseUrl
+    };
+  } catch (error) {
+    return { success: false, error: (error as Error).message };
+  }
+});
+
+function compareVersions(v1: string, v2: string): number {
+  const parts1 = v1.split('.').map(Number);
+  const parts2 = v2.split('.').map(Number);
+  
+  for (let i = 0; i < Math.max(parts1.length, parts2.length); i++) {
+    const part1 = parts1[i] || 0;
+    const part2 = parts2[i] || 0;
+    
+    if (part1 > part2) return 1;
+    if (part1 < part2) return -1;
+  }
+  
+  return 0;
+}
+
