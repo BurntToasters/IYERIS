@@ -86,6 +86,8 @@ export interface ElectronAPI {
   getFileDataUrl: (filePath: string, maxSize?: number) => Promise<{success: boolean; dataUrl?: string; error?: string}>;
   getLicenses: () => Promise<{success: boolean; licenses?: any; error?: string}>;
   getPlatform: () => Promise<string>;
+  checkFullDiskAccess: () => Promise<{success: boolean; hasAccess: boolean}>;
+  requestFullDiskAccess: () => Promise<ApiResponse>;
   checkForUpdates: () => Promise<{success: boolean; hasUpdate?: boolean; latestVersion?: string; currentVersion?: string; releaseUrl?: string; error?: string}>;
 }
 

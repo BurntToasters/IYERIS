@@ -64,7 +64,10 @@
     "yauzl": "^2.10.0"
   },
   "devDependencies": {
+    "@electron/notarize": "^3.1.0",
     "@types/node": "^24.7.1",
+    "dotenv": "^17.2.3",
+    "dotenv-cli": "^10.0.0",
     "electron": "^38.2.2",
     "electron-builder": "^24.13.3",
     "typescript": "^5.9.3"
@@ -75,12 +78,14 @@
     "start": "npm run build && electron .",
     "dev": "npm run build && electron . --enable-logging",
     "build:win:x64": "npm run build && electron-builder --win --x64",
-    "build:mac:universal": "npm run build && electron-builder --mac --universal",
+    "build:mac:universal": "npm run build && dotenv -e .env -- electron-builder --mac --universal",
+    "build:mac:universal:unsigned": "npm run build && electron-builder --mac --universal",
     "build:linux": "npm run build && electron-builder --linux AppImage deb rpm"
   },
   "build": {
     "appId": "com.burnttoasters.iyeris",
     "productName": "IYERIS",
+    "afterSign": "build/notarize.js",
     "directories": {
       "output": "release",
       "buildResources": "assets"
@@ -102,7 +107,12 @@
         "dmg",
         "zip"
       ],
-      "icon": "assets/icon.png"
+      "icon": "assets/icon.png",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "notarize": false
     },
     "win": {
       "target": [

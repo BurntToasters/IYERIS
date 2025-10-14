@@ -1,7 +1,12 @@
 import { app, BrowserWindow, ipcMain, dialog, shell, IpcMainInvokeEvent } from 'electron';
 import * as path from 'path';
 import { promises as fs } from 'fs';
+import * as fsSync from 'fs';
+import { exec } from 'child_process';
+import { promisify } from 'util';
 import type { Settings, FileItem, ApiResponse, DirectoryResponse, PathResponse, PropertiesResponse, SettingsResponse } from './types';
+
+const execAsync = promisify(exec);
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -24,9 +29,13 @@ function getSettingsPath(): string {
 async function loadSettings(): Promise<Settings> {
   try {
     const settingsPath = getSettingsPath();
+    console.log('[Settings] Loading from:', settingsPath);
     const data = await fs.readFile(settingsPath, 'utf8');
-    return { ...defaultSettings, ...JSON.parse(data) };
+    const settings = { ...defaultSettings, ...JSON.parse(data) };
+    console.log('[Settings] Loaded:', JSON.stringify(settings, null, 2));
+    return settings;
   } catch (error) {
+    console.log('[Settings] File not found, using defaults');
     return { ...defaultSettings };
   }
 }
@@ -34,9 +43,13 @@ async function loadSettings(): Promise<Settings> {
 async function saveSettings(settings: Settings): Promise<ApiResponse> {
   try {
     const settingsPath = getSettingsPath();
+    console.log('[Settings] Saving to:', settingsPath);
+    console.log('[Settings] Data:', JSON.stringify(settings, null, 2));
     await fs.writeFile(settingsPath, JSON.stringify(settings, null, 2), 'utf8');
+    console.log('[Settings] Saved successfully');
     return { success: true };
   } catch (error) {
+    console.log('[Settings] Save failed:', (error as Error).message);
     return { success: false, error: (error as Error).message };
   }
 }
@@ -66,8 +79,126 @@ function createWindow(): void {
   }
 }
 
-app.whenReady().then(() => {
+async function checkFullDiskAccess(): Promise<boolean> {
+  if (process.platform !== 'darwin') {
+    console.log('[FDA] Not on macOS, skipping check');
+    return true;
+  }
+
+  console.log('[FDA] Testing Full Disk Access...');
+  console.log('[FDA] App path:', app.getPath('exe'));
+  console.log('[FDA] Process path:', process.execPath);
+
+  try {
+    const tccPath = path.join(app.getPath('home'), 'Library', 'Application Support', 'com.apple.TCC', 'TCC.db');
+    console.log('[FDA] Testing TCC.db at:', tccPath);
+
+    const fileHandle = await fs.open(tccPath, 'r');
+    await fileHandle.close();
+    
+    console.log('[FDA] Can read TCC.db');
+    return true;
+  } catch (error) {
+    const err = error as any;
+    console.log('[FDA] Cannot read TCC.db:', err.code || 'ERROR', '-', err.message);
+  }
+
+  const testPaths = [
+    path.join(app.getPath('home'), 'Library', 'Safari'),
+    path.join(app.getPath('home'), 'Library', 'Mail'),
+    path.join(app.getPath('home'), 'Library', 'Messages')
+  ];
+
+  for (const testPath of testPaths) {
+    try {
+      console.log('[FDA] Testing:', testPath);
+      const stats = await fs.stat(testPath);
+      if (stats.isDirectory()) {
+        const files = await fs.readdir(testPath);
+        console.log('[FDA] Full Disk Access (read', files.length, 'items from', testPath + '): OK');
+        return true;
+      }
+    } catch (error) {
+      const err = error as any;
+      console.log('[FDA] Failed:', testPath, '-', err.code || err.message);
+    }
+  }
+
+  console.log('[FDA] Full Disk Access: NOT granted');
+  return false;
+}
+
+async function showFullDiskAccessDialog(): Promise<void> {
+  console.log('[FDA] Showing Full Disk Access dialog');
+  const result = await dialog.showMessageBox(mainWindow!, {
+    type: 'warning',
+    title: 'Full Disk Access Required',
+    message: 'IYERIS needs Full Disk Access for full functionality',
+    detail: 'To browse all files and folders on your Mac without repeated permission prompts, IYERIS needs Full Disk Access.\n\n' +
+            'How to grant access:\n' +
+            '1. Click "Open Settings" below\n' +
+            '2. Click the + button to add an app\n' +
+            '3. Navigate to Applications and select IYERIS\n' +
+            '4. Make sure the toggle next to IYERIS is ON\n' +
+            '5. Restart IYERIS\n\n' +
+            'Without this, you\'ll see permission prompts for each folder.',
+    buttons: ['Open Settings', 'Remind Me Later', 'Don\'t Ask Again'],
+    defaultId: 0,
+    cancelId: 1
+  });
+
+  console.log('[FDA] User selected option:', result.response);
+  if (result.response === 0) {
+    console.log('[FDA] Opening System Settings...');
+    shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles');
+  } else if (result.response === 2) {
+    console.log('[FDA] User: "Don\'t Ask Again"');
+    const settings = await loadSettings();
+    (settings as any).skipFullDiskAccessPrompt = true;
+    await saveSettings(settings);
+  }
+}
+
+app.whenReady().then(async () => {
   createWindow();
+
+  if (process.platform === 'darwin') {
+    console.log('[FDA] Scheduling Full Disk Access check...');
+    console.log('[FDA] App version:', app.getVersion());
+    console.log('[FDA] Is packaged:', app.isPackaged);
+    console.log('[FDA] User data path:', app.getPath('userData'));
+    
+    setTimeout(async () => {
+      console.log('[FDA] Running Full Disk Access check');
+      console.log('[FDA] Running from:', process.execPath);
+      
+      const hasAccess = await checkFullDiskAccess();
+      
+      if (hasAccess) {
+        console.log('[FDA] Full Disk Access already granted');
+        const settings = await loadSettings();
+        console.log('[FDA] Current settings:', JSON.stringify(settings, null, 2));
+        if ((settings as any).skipFullDiskAccessPrompt) {
+          console.log('[FDA] Clearing "Don\'t Ask Again" flag');
+          delete (settings as any).skipFullDiskAccessPrompt;
+          const saveResult = await saveSettings(settings);
+          console.log('[FDA] Save result:', saveResult);
+        }
+        return;
+      }
+      
+      console.log('[FDA] Full Disk Access NOT granted');
+      const settings = await loadSettings();
+      console.log('[FDA] Current settings:', JSON.stringify(settings, null, 2));
+      if ((settings as any).skipFullDiskAccessPrompt) {
+        console.log('[FDA] User has opted out of prompts');
+        return;
+      }
+      
+      console.log('[FDA] No Full Disk Access detected');
+      await showFullDiskAccessDialog();
+    }, 1500);
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -521,6 +652,24 @@ ipcMain.handle('get-licenses', async (): Promise<{ success: boolean; licenses?: 
 
 ipcMain.handle('get-platform', (): string => {
   return process.platform;
+});
+
+ipcMain.handle('check-full-disk-access', async (): Promise<{ success: boolean; hasAccess: boolean }> => {
+  const hasAccess = await checkFullDiskAccess();
+  return { success: true, hasAccess };
+});
+
+ipcMain.handle('request-full-disk-access', async (): Promise<ApiResponse> => {
+  try {
+    if (process.platform !== 'darwin') {
+      return { success: false, error: 'Full Disk Access is only applicable on macOS' };
+    }
+    
+    await showFullDiskAccessDialog();
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: (error as Error).message };
+  }
 });
 
 ipcMain.handle('check-for-updates', async (): Promise<{ success: boolean; hasUpdate?: boolean; latestVersion?: string; currentVersion?: string; releaseUrl?: string; error?: string }> => {
