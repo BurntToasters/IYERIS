@@ -20,6 +20,7 @@ let isSearchMode: boolean = false;
 let isPreviewPanelVisible: boolean = false;
 let currentPreviewFile: FileItem | null = null;
 let currentQuicklookFile: FileItem | null = null;
+let platformOS: string = '';
 
 const addressInput = document.getElementById('address-input') as HTMLInputElement;
 const fileGrid = document.getElementById('file-grid') as HTMLElement;
@@ -640,7 +641,7 @@ async function updateDiskSpace() {
   if (!statusDiskSpace || !currentPath) return;
   
   let drivePath = currentPath;
-  if (process.platform === 'win32') {
+  if (platformOS === 'win32') {
     drivePath = currentPath.substring(0, 3);
   } else {
     drivePath = '/';
@@ -663,6 +664,10 @@ function formatFileSize(bytes: number): string {
 }
 
 async function init() {
+  console.log('Init: Getting platform...');
+  platformOS = await window.electronAPI.getPlatform();
+  console.log('Init: Platform is', platformOS);
+  
   console.log('Init: Loading settings...');
   await loadSettings();
   

@@ -519,3 +519,7 @@ ipcMain.handle('get-licenses', async (): Promise<{ success: boolean; licenses?: 
   }
 });
 
+ipcMain.handle('get-platform', (): string => {
+  return process.platform;
+});
+

@@ -88,8 +88,9 @@
     "files": [
       "dist/**/*",
       "index.html",
-      "styles.css",
-      "assets/**/*"
+      "main.css",
+      "assets/**/*",
+      "licenses.json"
     ],
     "extraMetadata": {
       "main": "dist/main.js"

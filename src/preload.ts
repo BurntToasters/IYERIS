@@ -27,7 +27,8 @@ const electronAPI: ElectronAPI = {
   restartAsAdmin: () => ipcRenderer.invoke('restart-as-admin'),
   readFileContent: (filePath: string, maxSize?: number) => ipcRenderer.invoke('read-file-content', filePath, maxSize),
   getFileDataUrl: (filePath: string, maxSize?: number) => ipcRenderer.invoke('get-file-data-url', filePath, maxSize),
-  getLicenses: () => ipcRenderer.invoke('get-licenses')
+  getLicenses: () => ipcRenderer.invoke('get-licenses'),
+  getPlatform: () => ipcRenderer.invoke('get-platform')
 };
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);
