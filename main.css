@@ -430,6 +430,7 @@ body::before {
   backdrop-filter: blur(20px) saturate(120%) !important;
   -webkit-backdrop-filter: blur(20px) saturate(120%) !important;
   border: 1px solid var(--glass-modal-border) !important;
+  border-radius: 12px;
 }
 
 .context-menu-item {
@@ -446,6 +447,12 @@ body::before {
 
 .context-menu-item.danger {
   color: var(--danger-color);
+}
+
+.context-menu-separator {
+  height: 1px;
+  background: var(--glass-border);
+  margin: 5px 0;
 }
 
 .context-menu-divider {
