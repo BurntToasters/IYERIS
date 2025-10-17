@@ -2,8 +2,7 @@
  
 *Note: this is a just-for-fun project and currently isn't intended to be a full replacement for any file exploration/browser application.*
 
-<img width="800" height="897" alt="IYERIS" src="https://github.com/user-attachments/assets/900f00e9-efd6-44b9-87d5-ef1673b802de" />
-
+<img width="800" height="893" alt="IYERIS-0-1-1" src="https://github.com/user-attachments/assets/0c95974f-bbb8-4483-840a-fc2cf861d132" />
 
 # Current Features
 - File browsing
