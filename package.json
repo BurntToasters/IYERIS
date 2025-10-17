@@ -114,7 +114,8 @@
       "gatekeeperAssess": false,
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
-      "notarize": false
+      "notarize": false,
+      "artifactName": "${productName}-MacOS-universal.${ext}"
     },
     "win": {
       "target": [
@@ -127,7 +128,7 @@
         }
       ],
       "icon": "assets/icon.png",
-      "artifactName": "${productName}-${version}-${arch}.${ext}"
+      "artifactName": "${productName}-Win-${arch}.${ext}"
     },
     "nsis": {
       "oneClick": false,
@@ -135,7 +136,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "artifactName": "${productName}-Setup-${version}-${arch}.${ext}"
+      "artifactName": "${productName}-Win-${arch}.${ext}"
     },
     "linux": {
       "target": [
@@ -144,7 +145,8 @@
         "rpm"
       ],
       "icon": "assets/icon.png",
-      "category": "Utility"
+      "category": "Utility",
+      "artifactName": "${productName}-Linux-${arch}.${ext}"
     }
   },
   "repository": {
