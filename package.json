@@ -83,7 +83,7 @@
     "build:mac:universal": "npm run build && dotenv -e .env -- electron-builder --mac --universal",
     "build:mac:universal:dev": "npm run build && electron-builder --mac --universal",
     "build:linux": "npm run build && electron-builder --linux AppImage deb rpm",
-    "build:linux:arm64": "npm run build && electron-builder --linux --arm64 AppImage deb rpm"
+    "build:linux:arm64": "npm run build && electron-builder --linux AppImage deb rpm --arm64"
   },
   "build": {
     "appId": "com.burnttoasters.iyeris",
@@ -160,7 +160,7 @@
     "glassmorphism",
     "cross-platform"
   ],
-  "author": "BurntToasters",
+  "author": "BurntToasters <code@rosie.run>",
   "license": "MPL-2.0",
   "bugs": {
     "url": "https://github.com/BurntToasters/IYERIS/issues"
