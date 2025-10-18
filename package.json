@@ -110,7 +110,7 @@
         "dmg",
         "zip"
       ],
-      "icon": "assets/icon.png",
+      "icon": "assets/iyeris.icns",
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
       "entitlements": "build/entitlements.mac.plist",
