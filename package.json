@@ -82,8 +82,10 @@
     "build:win:arm64": "npm run build && electron-builder --win --arm64",
     "build:mac:universal": "npm run build && dotenv -e .env -- electron-builder --mac --universal",
     "build:mac:universal:dev": "npm run build && electron-builder --mac --universal",
-    "build:linux": "npm run build && electron-builder --linux AppImage deb rpm",
-    "build:linux:arm64": "npm run build && electron-builder --linux AppImage deb rpm --arm64"
+    "build:linux": "npm run build && electron-builder --linux AppImage deb rpm --x64 --arm64",
+    "build:linux:x64": "npm run build && electron-builder --linux AppImage deb rpm --x64",
+    "build:linux:arm64": "npm run build && electron-builder --linux AppImage deb rpm --arm64",
+    "build:linux:native": "npm run build && USE_SYSTEM_FPM=true electron-builder --linux AppImage deb rpm --x64 --arm64"
   },
   "build": {
     "appId": "com.burnttoasters.iyeris",
