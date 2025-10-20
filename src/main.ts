@@ -271,7 +271,12 @@ ipcMain.handle('get-home-directory', (): string => {
 
 ipcMain.handle('open-file', async (_event: IpcMainInvokeEvent, filePath: string): Promise<ApiResponse> => {
   try {
-    await shell.openPath(filePath);
+    // Check if it's a URL
+    if (filePath.startsWith('http://') || filePath.startsWith('https://')) {
+      await shell.openExternal(filePath);
+    } else {
+      await shell.openPath(filePath);
+    }
     return { success: true };
   } catch (error) {
     return { success: false, error: (error as Error).message };
