@@ -13,6 +13,7 @@ const electronAPI: ElectronAPI = {
   createFolder: (parentPath: string, folderName: string) => ipcRenderer.invoke('create-folder', parentPath, folderName),
   createFile: (parentPath: string, fileName: string) => ipcRenderer.invoke('create-file', parentPath, fileName),
   deleteItem: (itemPath: string) => ipcRenderer.invoke('delete-item', itemPath),
+  trashItem: (itemPath: string) => ipcRenderer.invoke('trash-item', itemPath),
   renameItem: (oldPath: string, newName: string) => ipcRenderer.invoke('rename-item', oldPath, newName),
   getItemProperties: (itemPath: string) => ipcRenderer.invoke('get-item-properties', itemPath),
   getSettings: () => ipcRenderer.invoke('get-settings'),
@@ -31,7 +32,10 @@ const electronAPI: ElectronAPI = {
   getPlatform: () => ipcRenderer.invoke('get-platform'),
   checkFullDiskAccess: () => ipcRenderer.invoke('check-full-disk-access'),
   requestFullDiskAccess: () => ipcRenderer.invoke('request-full-disk-access'),
-  checkForUpdates: () => ipcRenderer.invoke('check-for-updates')
+  checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
+  undoAction: () => ipcRenderer.invoke('undo-action'),
+  redoAction: () => ipcRenderer.invoke('redo-action'),
+  getUndoRedoState: () => ipcRenderer.invoke('get-undo-redo-state')
 };
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);

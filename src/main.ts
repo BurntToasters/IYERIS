@@ -12,13 +12,32 @@ let mainWindow: BrowserWindow | null = null;
 
 const isDev = process.argv.includes('--dev');
 
+interface UndoAction {
+  type: 'trash' | 'rename' | 'move' | 'create';
+  data: any;
+}
+
+const undoStack: UndoAction[] = [];
+const redoStack: UndoAction[] = [];
+const MAX_UNDO_STACK = 50;
+
+function pushUndoAction(action: UndoAction): void {
+  undoStack.push(action);
+  if (undoStack.length > MAX_UNDO_STACK) {
+    undoStack.shift();
+  }
+  redoStack.length = 0;
+  console.log('[Undo] Action pushed:', action.type, 'Stack size:', undoStack.length);
+}
+
 const defaultSettings: Settings = {
   transparency: true,
   theme: 'default',
   sortBy: 'name',
   sortOrder: 'asc',
   bookmarks: [],
-  viewMode: 'grid'
+  viewMode: 'grid',
+  showDangerousOptions: false
 };
 
 function getSettingsPath(): string {
@@ -208,9 +227,7 @@ app.whenReady().then(async () => {
 });
 
 app.on('window-all-closed', () => {
-  //if (process.platform !== 'darwin') { uncomment this to keep app running in background on macOS
-    app.quit();
-  //}
+  app.quit();
 });
 
 ipcMain.handle('get-directory-contents', async (_event: IpcMainInvokeEvent, dirPath: string): Promise<DirectoryResponse> => {
@@ -271,7 +288,6 @@ ipcMain.handle('get-home-directory', (): string => {
 
 ipcMain.handle('open-file', async (_event: IpcMainInvokeEvent, filePath: string): Promise<ApiResponse> => {
   try {
-    // Check if it's a URL
     if (filePath.startsWith('http://') || filePath.startsWith('https://')) {
       await shell.openExternal(filePath);
     } else {
@@ -318,8 +334,67 @@ ipcMain.handle('create-folder', async (_event: IpcMainInvokeEvent, parentPath: s
   try {
     const newPath = path.join(parentPath, folderName);
     await fs.mkdir(newPath);
+    
+    pushUndoAction({
+      type: 'create',
+      data: {
+        path: newPath,
+        isDirectory: true
+      }
+    });
+    
+    console.log('[Create] Folder created:', newPath);
     return { success: true, path: newPath };
   } catch (error) {
+    return { success: false, error: (error as Error).message };
+  }
+});
+
+ipcMain.handle('trash-item', async (_event: IpcMainInvokeEvent, itemPath: string): Promise<ApiResponse> => {
+  try {
+    const stats = await fs.stat(itemPath);
+    const itemName = path.basename(itemPath);
+    const parentPath = path.dirname(itemPath);
+    
+    await shell.trashItem(itemPath);
+    
+    const pathsToRemove = [itemPath];
+    
+    for (let i = undoStack.length - 1; i >= 0; i--) {
+      const action = undoStack[i];
+      if (action.type === 'rename' && action.data.newPath === itemPath) {
+        pathsToRemove.push(action.data.oldPath);
+      }
+    }
+    
+    for (let i = undoStack.length - 1; i >= 0; i--) {
+      const action = undoStack[i];
+      let shouldRemove = false;
+      
+      if (action.type === 'rename') {
+        if (pathsToRemove.includes(action.data.oldPath) || pathsToRemove.includes(action.data.newPath)) {
+          shouldRemove = true;
+        }
+      } else if (action.type === 'create') {
+        if (pathsToRemove.includes(action.data.path)) {
+          shouldRemove = true;
+        }
+      } else if (action.type === 'move') {
+        if (action.data.sourcePaths.some((p: string) => pathsToRemove.includes(p))) {
+          shouldRemove = true;
+        }
+      }
+      
+      if (shouldRemove) {
+        undoStack.splice(i, 1);
+        console.log('[Trash] Removed related undo action:', action.type);
+      }
+    }
+    
+    console.log('[Trash] Item moved to trash:', itemPath, '- Undo stack size:', undoStack.length);
+    return { success: true };
+  } catch (error) {
+    console.error('[Trash] Error:', error);
     return { success: false, error: (error as Error).message };
   }
 });
@@ -332,16 +407,31 @@ ipcMain.handle('delete-item', async (_event: IpcMainInvokeEvent, itemPath: strin
     } else {
       await fs.unlink(itemPath);
     }
+    console.log('[Delete] Item permanently deleted:', itemPath);
     return { success: true };
   } catch (error) {
+    console.error('[Delete] Error:', error);
     return { success: false, error: (error as Error).message };
   }
 });
 
 ipcMain.handle('rename-item', async (_event: IpcMainInvokeEvent, oldPath: string, newName: string): Promise<PathResponse> => {
+  const oldName = path.basename(oldPath);
   const newPath = path.join(path.dirname(oldPath), newName);
   try {
     await fs.rename(oldPath, newPath);
+    
+    pushUndoAction({
+      type: 'rename',
+      data: {
+        oldPath: oldPath,
+        newPath: newPath,
+        oldName: oldName,
+        newName: newName
+      }
+    });
+    
+    console.log('[Rename] Item renamed:', oldPath, '->', newPath);
     return { success: true, path: newPath };
   } catch (error) {
     const err = error as NodeJS.ErrnoException;
@@ -359,6 +449,16 @@ ipcMain.handle('create-file', async (_event: IpcMainInvokeEvent, parentPath: str
   try {
     const newPath = path.join(parentPath, fileName);
     await fs.writeFile(newPath, '');
+    
+    pushUndoAction({
+      type: 'create',
+      data: {
+        path: newPath,
+        isDirectory: false
+      }
+    });
+    
+    console.log('[Create] File created:', newPath);
     return { success: true, path: newPath };
   } catch (error) {
     return { success: false, error: (error as Error).message };
@@ -428,11 +528,26 @@ ipcMain.handle('copy-items', async (_event: IpcMainInvokeEvent, sourcePaths: str
 
 ipcMain.handle('move-items', async (_event: IpcMainInvokeEvent, sourcePaths: string[], destPath: string): Promise<ApiResponse> => {
   try {
+    const originalParent = path.dirname(sourcePaths[0]);
+    const movedPaths: string[] = [];
+    
     for (const sourcePath of sourcePaths) {
-      const itemName = path.basename(sourcePath);
-      const destItemPath = path.join(destPath, itemName);
-      await fs.rename(sourcePath, destItemPath);
+      const fileName = path.basename(sourcePath);
+      const newPath = path.join(destPath, fileName);
+      await fs.rename(sourcePath, newPath);
+      movedPaths.push(newPath);
     }
+    
+    pushUndoAction({
+      type: 'move',
+      data: {
+        sourcePaths: movedPaths,
+        destPath: destPath,
+        originalParent: originalParent
+      }
+    });
+    
+    console.log('[Move] Items moved:', sourcePaths.length);
     return { success: true };
   } catch (error) {
     return { success: false, error: (error as Error).message };
@@ -718,4 +833,143 @@ function compareVersions(v1: string, v2: string): number {
   
   return 0;
 }
+
+ipcMain.handle('undo-action', async (_event: IpcMainInvokeEvent): Promise<ApiResponse> => {
+  if (undoStack.length === 0) {
+    return { success: false, error: 'Nothing to undo' };
+  }
+  
+  const action = undoStack.pop()!;
+  console.log('[Undo] Undoing action:', action.type);
+  
+  try {
+    switch (action.type) {
+      case 'rename':
+        try {
+          await fs.access(action.data.newPath);
+        } catch {
+          console.log('[Undo] File no longer exists:', action.data.newPath);
+          return { success: false, error: 'Cannot undo: File no longer exists (may have been moved or deleted)' };
+        }
+        
+        try {
+          await fs.access(action.data.oldPath);
+          console.log('[Undo] Old path already exists:', action.data.oldPath);
+          return { success: false, error: 'Cannot undo: A file already exists at the original location' };
+        } catch {
+        }
+        
+        await fs.rename(action.data.newPath, action.data.oldPath);
+        redoStack.push(action);
+        console.log('[Undo] Renamed back:', action.data.newPath, '->', action.data.oldPath);
+        return { success: true };
+      
+      case 'move':
+        const moveSourcePaths = action.data.sourcePaths;
+        const originalParent = action.data.originalParent;
+        
+        for (const source of moveSourcePaths) {
+          try {
+            await fs.access(source);
+          } catch {
+            console.log('[Undo] File no longer exists:', source);
+            return { success: false, error: 'Cannot undo: One or more files no longer exist' };
+          }
+        }
+        
+        for (const source of moveSourcePaths) {
+          const fileName = path.basename(source);
+          const originalPath = path.join(originalParent, fileName);
+          await fs.rename(source, originalPath);
+        }
+        redoStack.push(action);
+        console.log('[Undo] Moved back to original location');
+        return { success: true };
+      
+      case 'create':
+        const itemPath = action.data.path;
+        
+        try {
+          await fs.access(itemPath);
+        } catch {
+          console.log('[Undo] Created item no longer exists:', itemPath);
+          return { success: false, error: 'Cannot undo: File no longer exists' };
+        }
+        
+        const stats = await fs.stat(itemPath);
+        if (stats.isDirectory()) {
+          await fs.rm(itemPath, { recursive: true, force: true });
+        } else {
+          await fs.unlink(itemPath);
+        }
+        redoStack.push(action);
+        console.log('[Undo] Deleted created item:', itemPath);
+        return { success: true };
+      
+      default:
+        return { success: false, error: 'Unknown action type' };
+    }
+  } catch (error) {
+    console.error('[Undo] Error:', error);
+    undoStack.push(action);
+    return { success: false, error: (error as Error).message };
+  }
+});
+
+ipcMain.handle('redo-action', async (_event: IpcMainInvokeEvent): Promise<ApiResponse> => {
+  if (redoStack.length === 0) {
+    return { success: false, error: 'Nothing to redo' };
+  }
+  
+  const action = redoStack.pop()!;
+  console.log('[Redo] Redoing action:', action.type);
+  
+  try {
+    switch (action.type) {
+      case 'rename':
+        await fs.rename(action.data.oldPath, action.data.newPath);
+        undoStack.push(action);
+        console.log('[Redo] Renamed:', action.data.oldPath, '->', action.data.newPath);
+        return { success: true };
+      
+      case 'move':
+        const redoSourcePaths = action.data.sourcePaths;
+        const destPath = action.data.destPath;
+        for (const source of redoSourcePaths) {
+          const fileName = path.basename(source);
+          const newPath = path.join(destPath, fileName);
+          await fs.rename(source, newPath);
+        }
+        undoStack.push(action);
+        console.log('[Redo] Moved to destination');
+        return { success: true };
+      
+      case 'create':
+        const itemPath = action.data.path;
+        if (action.data.isDirectory) {
+          await fs.mkdir(itemPath);
+        } else {
+          await fs.writeFile(itemPath, '');
+        }
+        undoStack.push(action);
+        console.log('[Redo] Recreated item:', itemPath);
+        return { success: true };
+      
+      default:
+        return { success: false, error: 'Unknown action type' };
+    }
+  } catch (error) {
+    console.error('[Redo] Error:', error);
+    redoStack.push(action);
+    return { success: false, error: (error as Error).message };
+  }
+});
+
+ipcMain.handle('get-undo-redo-state', async (): Promise<{canUndo: boolean; canRedo: boolean}> => {
+  return {
+    canUndo: undoStack.length > 0,
+    canRedo: redoStack.length > 0
+  };
+});
+
 

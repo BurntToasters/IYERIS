@@ -21,6 +21,8 @@ let isPreviewPanelVisible: boolean = false;
 let currentPreviewFile: FileItem | null = null;
 let currentQuicklookFile: FileItem | null = null;
 let platformOS: string = '';
+let canUndo: boolean = false;
+let canRedo: boolean = false;
 
 const addressInput = document.getElementById('address-input') as HTMLInputElement;
 const fileGrid = document.getElementById('file-grid') as HTMLElement;
@@ -42,6 +44,8 @@ const addressBar = document.querySelector('.address-bar') as HTMLElement;
 const sortBtn = document.getElementById('sort-btn') as HTMLButtonElement;
 const bookmarksList = document.getElementById('bookmarks-list') as HTMLElement;
 const bookmarkAddBtn = document.getElementById('bookmark-add-btn') as HTMLButtonElement;
+const undoBtn = document.getElementById('undo-btn') as HTMLButtonElement;
+const redoBtn = document.getElementById('redo-btn') as HTMLButtonElement;
 
 function showDialog(title: string, message: string, type: DialogType = 'info', showCancel: boolean = false): Promise<boolean> {
   return new Promise((resolve) => {
@@ -118,7 +122,8 @@ let currentSettings: Settings = {
   sortBy: 'name',
   sortOrder: 'asc',
   bookmarks: [],
-  viewMode: 'grid'
+  viewMode: 'grid',
+  showDangerousOptions: false
 };
 
 function showToast(message: string, title: string = '', type: 'success' | 'error' | 'info' | 'warning' = 'info'): void {
@@ -203,6 +208,7 @@ async function showSettingsModal() {
   const themeSelect = document.getElementById('theme-select') as HTMLSelectElement;
   const sortBySelect = document.getElementById('sort-by-select') as HTMLSelectElement;
   const sortOrderSelect = document.getElementById('sort-order-select') as HTMLSelectElement;
+  const dangerousOptionsToggle = document.getElementById('dangerous-options-toggle') as HTMLInputElement;
   const settingsPath = document.getElementById('settings-path');
   
   if (transparencyToggle) {
@@ -221,6 +227,11 @@ async function showSettingsModal() {
     sortOrderSelect.value = currentSettings.sortOrder || 'asc';
   }
   
+  if (dangerousOptionsToggle) {
+    dangerousOptionsToggle.checked = currentSettings.showDangerousOptions || false;
+    updateDangerousOptionsVisibility(dangerousOptionsToggle.checked);
+  }
+  
   const path = await window.electronAPI.getSettingsPath();
   if (settingsPath) {
     settingsPath.textContent = path;
@@ -234,6 +245,13 @@ async function showSettingsModal() {
 function hideSettingsModal() {
   const settingsModal = document.getElementById('settings-modal');
   settingsModal.style.display = 'none';
+}
+
+function updateDangerousOptionsVisibility(show: boolean) {
+  const dangerousOptions = document.querySelectorAll('.dangerous-option');
+  dangerousOptions.forEach(option => {
+    (option as HTMLElement).style.display = show ? 'flex' : 'none';
+  });
 }
 
 async function showLicensesModal() {
@@ -329,6 +347,7 @@ async function saveSettings() {
   const themeSelect = document.getElementById('theme-select') as HTMLSelectElement;
   const sortBySelect = document.getElementById('sort-by-select') as HTMLSelectElement;
   const sortOrderSelect = document.getElementById('sort-order-select') as HTMLSelectElement;
+  const dangerousOptionsToggle = document.getElementById('dangerous-options-toggle') as HTMLInputElement;
   
   if (transparencyToggle) {
     currentSettings.transparency = transparencyToggle.checked;
@@ -344,6 +363,10 @@ async function saveSettings() {
   
   if (sortOrderSelect) {
     currentSettings.sortOrder = sortOrderSelect.value as any;
+  }
+  
+  if (dangerousOptionsToggle) {
+    currentSettings.showDangerousOptions = dangerousOptionsToggle.checked;
   }
   
   currentSettings.viewMode = viewMode;
@@ -420,17 +443,20 @@ function loadBookmarks() {
 
 async function addBookmark() {
   if (!currentPath) return;
-  
+  await addBookmarkByPath(currentPath);
+}
+
+async function addBookmarkByPath(path: string) {
   if (!currentSettings.bookmarks) {
     currentSettings.bookmarks = [];
   }
   
-  if (currentSettings.bookmarks.includes(currentPath)) {
+  if (currentSettings.bookmarks.includes(path)) {
     showToast('This folder is already bookmarked', 'Bookmarks', 'info');
     return;
   }
   
-  currentSettings.bookmarks.push(currentPath);
+  currentSettings.bookmarks.push(path);
   const result = await window.electronAPI.saveSettings(currentSettings);
   
   if (result.success) {
@@ -525,6 +551,11 @@ async function pasteFromClipboard() {
   
   if (result.success) {
     showToast(`${clipboard.paths.length} item(s) ${clipboard.operation === 'copy' ? 'copied' : 'moved'}`, 'Success', 'success');
+    
+    if (clipboard.operation === 'cut') {
+      await updateUndoRedoState();
+    }
+    
     clipboard = null;
     updateCutVisuals();
     refresh();
@@ -670,6 +701,8 @@ async function init() {
   
   console.log('Init: Loading settings...');
   await loadSettings();
+  await loadBookmarks();
+  await updateUndoRedoState();
   
   console.log('Init: Getting home directory...');
   const homeDir = await window.electronAPI.getHomeDirectory();
@@ -721,6 +754,8 @@ function setupEventListeners() {
   backBtn?.addEventListener('click', goBack);
   forwardBtn?.addEventListener('click', goForward);
   upBtn?.addEventListener('click', goUp);
+  undoBtn?.addEventListener('click', performUndo);
+  redoBtn?.addEventListener('click', performRedo);
   refreshBtn?.addEventListener('click', refresh);
   newFileBtn?.addEventListener('click', createNewFile);
   newFolderBtn?.addEventListener('click', createNewFolder);
@@ -766,7 +801,16 @@ function setupEventListeners() {
       } else if (e.key === 'a') {
         e.preventDefault();
         selectAll();
+      } else if (e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        performUndo();
+      } else if (e.key === 'y' || (e.key === 'z' && e.shiftKey)) {
+        e.preventDefault();
+        performRedo();
       }
+    } else if (e.key === ' ' && selectedItems.size === 1) {
+      e.preventDefault();
+      showQuickLook();
     } else if (e.key === 'F5') {
       e.preventDefault();
       refresh();
@@ -775,7 +819,11 @@ function setupEventListeners() {
       renameSelected();
     } else if (e.key === 'Delete') {
       e.preventDefault();
-      deleteSelected();
+      if (e.shiftKey) {
+        permanentlyDeleteSelected();
+      } else {
+        deleteSelected();
+      }
     } else if (e.key === 'Escape') {
       if (isSearchMode) {
         closeSearch();
@@ -1191,6 +1239,11 @@ async function handleDrop(sourcePaths: string[], destPath: string, operation: 'c
     
     if (result.success) {
       showToast(`${operation === 'copy' ? 'Copied' : 'Moved'} ${sourcePaths.length} item(s)`, 'Success', 'success');
+      
+      if (operation === 'move') {
+        await updateUndoRedoState();
+      }
+      
       await navigateTo(currentPath);
       clearSelection();
     } else {
@@ -1264,9 +1317,34 @@ async function deleteSelected() {
   
   const count = selectedItems.size;
   const confirmed = await showConfirm(
-    `Are you sure you want to delete ${count} item${count > 1 ? 's' : ''}?`,
-    'Confirm Delete',
+    `Move ${count} item${count > 1 ? 's' : ''} to ${platformOS === 'win32' ? 'Recycle Bin' : 'Trash'}?`,
+    'Move to Trash',
     'warning'
+  );
+  
+  if (confirmed) {
+    let successCount = 0;
+    for (const itemPath of selectedItems) {
+      const result = await window.electronAPI.trashItem(itemPath);
+      if (result.success) successCount++;
+    }
+    
+    if (successCount > 0) {
+      showToast(`${successCount} item${successCount > 1 ? 's' : ''} moved to ${platformOS === 'win32' ? 'Recycle Bin' : 'Trash'}`, 'Success', 'success');
+      await updateUndoRedoState();
+      refresh();
+    }
+  }
+}
+
+async function permanentlyDeleteSelected() {
+  if (selectedItems.size === 0) return;
+  
+  const count = selectedItems.size;
+  const confirmed = await showConfirm(
+    `⚠️ PERMANENTLY delete ${count} item${count > 1 ? 's' : ''}? This CANNOT be undone!`,
+    'Permanent Delete',
+    'error'
   );
   
   if (confirmed) {
@@ -1277,11 +1355,47 @@ async function deleteSelected() {
     }
     
     if (successCount > 0) {
-      showToast(`${successCount} item${successCount > 1 ? 's' : ''} deleted`, 'Success', 'success');
+      showToast(`${successCount} item${successCount > 1 ? 's' : ''} permanently deleted`, 'Success', 'success');
       refresh();
     }
   }
 }
+
+async function updateUndoRedoState() {
+  const state = await window.electronAPI.getUndoRedoState();
+  canUndo = state.canUndo;
+  canRedo = state.canRedo;
+  
+  const undoBtn = document.getElementById('undo-btn') as HTMLButtonElement;
+  const redoBtn = document.getElementById('redo-btn') as HTMLButtonElement;
+  if (undoBtn) undoBtn.disabled = !canUndo;
+  if (redoBtn) redoBtn.disabled = !canRedo;
+}
+
+async function performUndo() {
+  const result = await window.electronAPI.undoAction();
+  if (result.success) {
+    showToast('Action undone', 'Undo', 'success');
+    await updateUndoRedoState();
+    refresh();
+  } else {
+    showToast(result.error || 'Cannot undo', 'Undo Failed', 'warning');
+    await updateUndoRedoState();
+  }
+}
+
+async function performRedo() {
+  const result = await window.electronAPI.redoAction();
+  if (result.success) {
+    showToast('Action redone', 'Redo', 'success');
+    await updateUndoRedoState();
+    refresh();
+  } else {
+    showToast(result.error || 'Cannot redo', 'Redo Failed', 'warning');
+    await updateUndoRedoState();
+  }
+}
+
 
 function goBack() {
   if (historyIndex > 0) {
@@ -1494,9 +1608,19 @@ function startInlineRename(fileItem, currentName, itemPath) {
 
 function showContextMenu(x, y, item) {
   const contextMenu = document.getElementById('context-menu');
+  const addToBookmarksItem = document.getElementById('add-to-bookmarks-item');
+  
   if (!contextMenu) return;
   
   contextMenuData = item;
+  
+  if (addToBookmarksItem) {
+    if (item.isDirectory) {
+      addToBookmarksItem.style.display = 'flex';
+    } else {
+      addToBookmarksItem.style.display = 'none';
+    }
+  }
   
   contextMenu.style.display = 'block';
   
@@ -1624,6 +1748,12 @@ async function handleContextMenuAction(action, item) {
       cutToClipboard();
       break;
       
+    case 'add-to-bookmarks':
+      if (item.isDirectory) {
+        await addBookmarkByPath(item.path);
+      }
+      break;
+      
     case 'open-terminal':
       const terminalPath = item.isDirectory ? item.path : path.dirname(item.path);
       const terminalResult = await window.electronAPI.openTerminal(terminalPath);
@@ -1643,17 +1773,18 @@ async function handleContextMenuAction(action, item) {
       
     case 'delete':
       const confirmDelete = await showConfirm(
-        `Are you sure you want to delete "${item.name}"?`,
-        'Confirm Delete',
+        `Move "${item.name}" to ${platformOS === 'win32' ? 'Recycle Bin' : 'Trash'}?`,
+        'Move to Trash',
         'warning'
       );
       if (confirmDelete) {
-        const result = await window.electronAPI.deleteItem(item.path);
+        const result = await window.electronAPI.trashItem(item.path);
         if (result.success) {
-          showToast('Item deleted', 'Success', 'success');
+          showToast('Item moved to trash', 'Success', 'success');
+          await updateUndoRedoState();
           refresh();
         } else {
-          showToast(result.error, 'Error Deleting', 'error');
+          showToast(result.error, 'Error', 'error');
         }
       }
       break;
@@ -1785,6 +1916,10 @@ document.getElementById('settings-btn')?.addEventListener('click', showSettingsM
 document.getElementById('settings-close')?.addEventListener('click', hideSettingsModal);
 document.getElementById('save-settings-btn')?.addEventListener('click', saveSettings);
 document.getElementById('reset-settings-btn')?.addEventListener('click', resetSettings);
+document.getElementById('dangerous-options-toggle')?.addEventListener('change', (e) => {
+  const target = e.target as HTMLInputElement;
+  updateDangerousOptionsVisibility(target.checked);
+});
 document.getElementById('restart-admin-btn')?.addEventListener('click', restartAsAdmin);
 document.getElementById('check-updates-btn')?.addEventListener('click', checkForUpdates);
 document.getElementById('github-btn')?.addEventListener('click', () => {

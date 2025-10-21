@@ -5,6 +5,7 @@ export interface Settings {
   sortOrder: 'asc' | 'desc';
   bookmarks: string[];
   viewMode: 'grid' | 'list';
+  showDangerousOptions: boolean;
 }
 
 export interface FileItem {
@@ -58,6 +59,16 @@ export interface SearchResponse extends ApiResponse {
   results?: FileItem[];
 }
 
+export interface UndoAction {
+  type: 'delete' | 'rename' | 'move' | 'create';
+  data: any;
+}
+
+export interface UndoResponse extends ApiResponse {
+  canUndo?: boolean;
+  canRedo?: boolean;
+}
+
 export interface ElectronAPI {
   getDirectoryContents: (dirPath: string) => Promise<DirectoryResponse>;
   getDrives: () => Promise<string[]>;
@@ -70,6 +81,7 @@ export interface ElectronAPI {
   createFolder: (parentPath: string, folderName: string) => Promise<PathResponse>;
   createFile: (parentPath: string, fileName: string) => Promise<PathResponse>;
   deleteItem: (itemPath: string) => Promise<ApiResponse>;
+  trashItem: (itemPath: string) => Promise<ApiResponse>;
   renameItem: (oldPath: string, newName: string) => Promise<PathResponse>;
   getItemProperties: (itemPath: string) => Promise<PropertiesResponse>;
   getSettings: () => Promise<SettingsResponse>;
@@ -89,6 +101,9 @@ export interface ElectronAPI {
   checkFullDiskAccess: () => Promise<{success: boolean; hasAccess: boolean}>;
   requestFullDiskAccess: () => Promise<ApiResponse>;
   checkForUpdates: () => Promise<{success: boolean; hasUpdate?: boolean; latestVersion?: string; currentVersion?: string; releaseUrl?: string; error?: string}>;
+  undoAction: () => Promise<UndoResponse>;
+  redoAction: () => Promise<UndoResponse>;
+  getUndoRedoState: () => Promise<{canUndo: boolean; canRedo: boolean}>;
 }
 
 declare global {

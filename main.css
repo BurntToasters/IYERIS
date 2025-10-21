@@ -313,6 +313,14 @@ body::before {
 .toolbar-right {
   display: flex;
   gap: 4px;
+  align-items: center;
+}
+
+.toolbar-separator {
+  width: 1px;
+  height: 20px;
+  background: rgba(255, 255, 255, 0.1);
+  margin: 0 4px;
 }
 
 .toolbar-button {

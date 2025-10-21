@@ -79,6 +79,17 @@
               <path d="M2 10 L8 4 L14 10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
           </button>
+          <div class="toolbar-separator"></div>
+          <button class="toolbar-button" id="undo-btn" title="Undo (Ctrl+Z)" disabled>
+            <svg width="16" height="16" viewBox="0 0 16 16">
+              <path d="M3 7 L3 3 L7 3 M3 3 Q3 3 6 6 Q9 9 12 9 Q14 9 14 11 Q14 13 12 13 L8 13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+          <button class="toolbar-button" id="redo-btn" title="Redo (Ctrl+Y)" disabled>
+            <svg width="16" height="16" viewBox="0 0 16 16">
+              <path d="M13 7 L13 3 L9 3 M13 3 Q13 3 10 6 Q7 9 4 9 Q2 9 2 11 Q2 13 4 13 L8 13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
         </div>
         
         <div class="address-bar glass-input">
@@ -181,6 +192,7 @@
     <div class="context-menu-item" data-action="refresh">🔄 Refresh</div>
     <div class="context-menu-item" data-action="delete">🗑️ Delete</div>
     <div class="context-menu-separator"></div>
+    <div class="context-menu-item" data-action="add-to-bookmarks" id="add-to-bookmarks-item" style="display: none;">⭐ Add to Bookmarks</div>
     <div class="context-menu-item" data-action="open-terminal">🖥️ Open in Terminal</div>
     <div class="context-menu-separator"></div>
     <div class="context-menu-item" data-action="properties">ℹ️ Properties</div>
@@ -291,6 +303,18 @@
             </div>
           </div>
           
+          <h4>Developer</h4>
+          <div class="setting-item">
+            <div class="setting-info">
+              <label for="dangerous-options-toggle">Show potentially dangerous options (developer)</label>
+              <p class="setting-description">Enable access to advanced options that could be dangerous if misused.</p>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="dangerous-options-toggle">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          
           <h4>Advanced</h4>
           <div class="setting-item">
             <div class="setting-info">
@@ -300,7 +324,7 @@
             <button class="modal-button" id="check-updates-btn" style="margin-left: auto;">🔃 Check for Updates</button>
           </div>
           
-          <div class="setting-item">
+          <div class="setting-item dangerous-option" id="restart-admin-setting" style="display: none;">
             <div class="setting-info">
               <label>Restart with Administrator Privileges</label>
               <p class="setting-description">This will restart IYERIS with Admin/Sudo permissions. This can be dangerous if you don't know what you're doing.</p>
@@ -312,7 +336,7 @@
       <div class="modal-footer">
         <div class="footer-top">
           <span class="footer-credit">Made with ❤️ By: <strong>BurntToasters</strong>/<strong id="rosie-link" style="cursor: pointer; text-decoration: underline;">Rosie.run</strong></span>
-          <span class="footer-version" id="version-indicator" title="Click to view release">v0.1.4</span>
+          <span class="footer-version" id="version-indicator" title="Click to view release">v0.2.0</span>
         </div>
         <div class="footer-bottom">
           <div class="footer-left">
@@ -335,7 +359,6 @@
     </div>
   </div>
 
-  <!-- Licenses Modal -->
   <div id="licenses-modal" class="modal-overlay" style="display: none;">
     <div class="modal-content licenses-modal-content">
       <div class="modal-header">
@@ -368,7 +391,7 @@
       <span id="status-selected" style="display: none;"></span>
     </div>
     <div class="status-right">
-      <p>Beta Build @ [v0.1.4]</p>
+      <p>Beta Build; non-stable @ [v0.2.0]</p>
       <span id="status-disk-space"></span>
     </div>
   </div>
