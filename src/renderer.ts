@@ -323,6 +323,31 @@ function hideLicensesModal() {
   }
 }
 
+function showShortcutsModal() {
+  const shortcutsModal = document.getElementById('shortcuts-modal');
+  if (shortcutsModal) {
+    shortcutsModal.style.display = 'flex';
+    
+    if (platformOS === 'darwin') {
+      const allKbdElements = shortcutsModal.querySelectorAll('kbd');
+      allKbdElements.forEach(kbd => {
+        if (kbd.textContent === 'Ctrl') {
+          kbd.textContent = '⌘ Cmd';
+        } else if (kbd.textContent === 'Alt') {
+          kbd.textContent = '⌥ Option';
+        }
+      });
+    }
+  }
+}
+
+function hideShortcutsModal() {
+  const shortcutsModal = document.getElementById('shortcuts-modal');
+  if (shortcutsModal) {
+    shortcutsModal.style.display = 'none';
+  }
+}
+
 function copyLicensesText() {
   const licensesContent = document.getElementById('licenses-content');
   if (!licensesContent) return;
@@ -799,7 +824,13 @@ function setupEventListeners() {
   
   document.addEventListener('keydown', (e) => {
     if (e.ctrlKey || e.metaKey) {
-      if (e.key === 'c') {
+      if (e.key === ',') {
+        e.preventDefault();
+        showSettingsModal();
+      } else if (e.key === '.') {
+        e.preventDefault();
+        showShortcutsModal();
+      } else if (e.key === 'c') {
         e.preventDefault();
         copyToClipboard();
       } else if (e.key === 'x') {
@@ -1960,6 +1991,9 @@ document.getElementById('licenses-close')?.addEventListener('click', hideLicense
 document.getElementById('close-licenses-btn')?.addEventListener('click', hideLicensesModal);
 document.getElementById('copy-licenses-btn')?.addEventListener('click', copyLicensesText);
 
+document.getElementById('shortcuts-close')?.addEventListener('click', hideShortcutsModal);
+document.getElementById('close-shortcuts-btn')?.addEventListener('click', hideShortcutsModal);
+
 const settingsModal = document.getElementById('settings-modal');
 if (settingsModal) {
   settingsModal.addEventListener('click', (e) => {
@@ -1974,6 +2008,15 @@ if (licensesModal) {
   licensesModal.addEventListener('click', (e) => {
     if (e.target.id === 'licenses-modal') {
       hideLicensesModal();
+    }
+  });
+}
+
+const shortcutsModal = document.getElementById('shortcuts-modal');
+if (shortcutsModal) {
+  shortcutsModal.addEventListener('click', (e) => {
+    if (e.target.id === 'shortcuts-modal') {
+      hideShortcutsModal();
     }
   });
 }

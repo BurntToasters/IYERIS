@@ -397,6 +397,125 @@
     </div>
   </div>
 
+  <div id="shortcuts-modal" class="modal-overlay" style="display: none;">
+    <div class="modal-content shortcuts-modal-content">
+      <div class="modal-header">
+        <h2>⌨️ Keyboard Shortcuts</h2>
+        <button class="close-button" id="shortcuts-close" aria-label="Close">×</button>
+      </div>
+      <div class="modal-body shortcuts-modal-body">
+        <div class="shortcuts-section">
+          <h3>General</h3>
+          <div class="shortcut-item">
+            <span class="shortcut-description">Open Settings</span>
+            <span class="shortcut-keys"><kbd>Ctrl</kbd> + <kbd>,</kbd></span>
+          </div>
+          <div class="shortcut-item">
+            <span class="shortcut-description">Show Shortcuts</span>
+            <span class="shortcut-keys"><kbd>Ctrl</kbd> + <kbd>.</kbd></span>
+          </div>
+          <div class="shortcut-item">
+            <span class="shortcut-description">Refresh</span>
+            <span class="shortcut-keys"><kbd>F5</kbd></span>
+          </div>
+          <div class="shortcut-item">
+            <span class="shortcut-description">Search</span>
+            <span class="shortcut-keys"><kbd>Ctrl</kbd> + <kbd>F</kbd></span>
+          </div>
+          <div class="shortcut-item">
+            <span class="shortcut-description">Close Search</span>
+            <span class="shortcut-keys"><kbd>Esc</kbd></span>
+          </div>
+        </div>
+        
+        <div class="shortcuts-section">
+          <h3>Navigation</h3>
+          <div class="shortcut-item">
+            <span class="shortcut-description">Go Back</span>
+            <span class="shortcut-keys"><kbd>Alt</kbd> + <kbd>←</kbd></span>
+          </div>
+          <div class="shortcut-item">
+            <span class="shortcut-description">Go Forward</span>
+            <span class="shortcut-keys"><kbd>Alt</kbd> + <kbd>→</kbd></span>
+          </div>
+          <div class="shortcut-item">
+            <span class="shortcut-description">Go Up</span>
+            <span class="shortcut-keys"><kbd>Alt</kbd> + <kbd>↑</kbd></span>
+          </div>
+          <div class="shortcut-item">
+            <span class="shortcut-description">Go Home</span>
+            <span class="shortcut-keys"><kbd>Alt</kbd> + <kbd>Home</kbd></span>
+          </div>
+        </div>
+        
+        <div class="shortcuts-section">
+          <h3>File Operations</h3>
+          <div class="shortcut-item">
+            <span class="shortcut-description">New Folder</span>
+            <span class="shortcut-keys"><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>N</kbd></span>
+          </div>
+          <div class="shortcut-item">
+            <span class="shortcut-description">New File</span>
+            <span class="shortcut-keys"><kbd>Ctrl</kbd> + <kbd>N</kbd></span>
+          </div>
+          <div class="shortcut-item">
+            <span class="shortcut-description">Rename</span>
+            <span class="shortcut-keys"><kbd>F2</kbd></span>
+          </div>
+          <div class="shortcut-item">
+            <span class="shortcut-description">Delete (Trash)</span>
+            <span class="shortcut-keys"><kbd>Delete</kbd></span>
+          </div>
+          <div class="shortcut-item">
+            <span class="shortcut-description">Permanent Delete</span>
+            <span class="shortcut-keys"><kbd>Shift</kbd> + <kbd>Delete</kbd></span>
+          </div>
+          <div class="shortcut-item">
+            <span class="shortcut-description">Copy</span>
+            <span class="shortcut-keys"><kbd>Ctrl</kbd> + <kbd>C</kbd></span>
+          </div>
+          <div class="shortcut-item">
+            <span class="shortcut-description">Cut</span>
+            <span class="shortcut-keys"><kbd>Ctrl</kbd> + <kbd>X</kbd></span>
+          </div>
+          <div class="shortcut-item">
+            <span class="shortcut-description">Paste</span>
+            <span class="shortcut-keys"><kbd>Ctrl</kbd> + <kbd>V</kbd></span>
+          </div>
+        </div>
+        
+        <div class="shortcuts-section">
+          <h3>Selection</h3>
+          <div class="shortcut-item">
+            <span class="shortcut-description">Select All</span>
+            <span class="shortcut-keys"><kbd>Ctrl</kbd> + <kbd>A</kbd></span>
+          </div>
+          <div class="shortcut-item">
+            <span class="shortcut-description">Multi-select</span>
+            <span class="shortcut-keys"><kbd>Ctrl</kbd> + <kbd>Click</kbd></span>
+          </div>
+        </div>
+        
+        <div class="shortcuts-section">
+          <h3>Undo/Redo</h3>
+          <div class="shortcut-item">
+            <span class="shortcut-description">Undo</span>
+            <span class="shortcut-keys"><kbd>Ctrl</kbd> + <kbd>Z</kbd></span>
+          </div>
+          <div class="shortcut-item">
+            <span class="shortcut-description">Redo</span>
+            <span class="shortcut-keys"><kbd>Ctrl</kbd> + <kbd>Y</kbd></span>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <div class="footer-right">
+          <button class="modal-button primary" id="close-shortcuts-btn">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="status-bar glass-panel">
     <div class="status-left">
       <span id="status-items">0 items</span>
