@@ -123,7 +123,8 @@ let currentSettings: Settings = {
   sortOrder: 'asc',
   bookmarks: [],
   viewMode: 'grid',
-  showDangerousOptions: false
+  showDangerousOptions: false,
+  startupPath: ''
 };
 
 function showToast(message: string, title: string = '', type: 'success' | 'error' | 'info' | 'warning' = 'info'): void {
@@ -209,6 +210,7 @@ async function showSettingsModal() {
   const sortBySelect = document.getElementById('sort-by-select') as HTMLSelectElement;
   const sortOrderSelect = document.getElementById('sort-order-select') as HTMLSelectElement;
   const dangerousOptionsToggle = document.getElementById('dangerous-options-toggle') as HTMLInputElement;
+  const startupPathInput = document.getElementById('startup-path-input') as HTMLInputElement;
   const settingsPath = document.getElementById('settings-path');
   
   if (transparencyToggle) {
@@ -230,6 +232,10 @@ async function showSettingsModal() {
   if (dangerousOptionsToggle) {
     dangerousOptionsToggle.checked = currentSettings.showDangerousOptions || false;
     updateDangerousOptionsVisibility(dangerousOptionsToggle.checked);
+  }
+  
+  if (startupPathInput) {
+    startupPathInput.value = currentSettings.startupPath || '';
   }
   
   const path = await window.electronAPI.getSettingsPath();
@@ -348,6 +354,7 @@ async function saveSettings() {
   const sortBySelect = document.getElementById('sort-by-select') as HTMLSelectElement;
   const sortOrderSelect = document.getElementById('sort-order-select') as HTMLSelectElement;
   const dangerousOptionsToggle = document.getElementById('dangerous-options-toggle') as HTMLInputElement;
+  const startupPathInput = document.getElementById('startup-path-input') as HTMLInputElement;
   
   if (transparencyToggle) {
     currentSettings.transparency = transparencyToggle.checked;
@@ -367,6 +374,10 @@ async function saveSettings() {
   
   if (dangerousOptionsToggle) {
     currentSettings.showDangerousOptions = dangerousOptionsToggle.checked;
+  }
+  
+  if (startupPathInput) {
+    currentSettings.startupPath = startupPathInput.value.trim();
   }
   
   currentSettings.viewMode = viewMode;
@@ -704,12 +715,14 @@ async function init() {
   await loadBookmarks();
   await updateUndoRedoState();
   
-  console.log('Init: Getting home directory...');
-  const homeDir = await window.electronAPI.getHomeDirectory();
-  console.log('Init: Home directory is', homeDir);
+  console.log('Init: Determining startup path...');
+  let startupPath = currentSettings.startupPath && currentSettings.startupPath.trim() !== '' 
+    ? currentSettings.startupPath 
+    : await window.electronAPI.getHomeDirectory();
+  console.log('Init: Startup path is', startupPath);
   
-  console.log('Init: Navigating to home...');
-  navigateTo(homeDir);
+  console.log('Init: Navigating to startup path...');
+  navigateTo(startupPath);
   
   console.log('Init: Loading drives...');
   loadDrives();
@@ -1919,6 +1932,15 @@ document.getElementById('reset-settings-btn')?.addEventListener('click', resetSe
 document.getElementById('dangerous-options-toggle')?.addEventListener('change', (e) => {
   const target = e.target as HTMLInputElement;
   updateDangerousOptionsVisibility(target.checked);
+});
+document.getElementById('browse-startup-path-btn')?.addEventListener('click', async () => {
+  const result = await window.electronAPI.selectFolder();
+  if (result.success && result.path) {
+    const startupPathInput = document.getElementById('startup-path-input') as HTMLInputElement;
+    if (startupPathInput) {
+      startupPathInput.value = result.path;
+    }
+  }
 });
 document.getElementById('restart-admin-btn')?.addEventListener('click', restartAsAdmin);
 document.getElementById('check-updates-btn')?.addEventListener('click', checkForUpdates);

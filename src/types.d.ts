@@ -6,6 +6,7 @@ export interface Settings {
   bookmarks: string[];
   viewMode: 'grid' | 'list';
   showDangerousOptions: boolean;
+  startupPath: string;
 }
 
 export interface FileItem {

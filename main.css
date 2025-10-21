@@ -1355,6 +1355,31 @@ body.no-transparency .file-view::before {
   color: var(--text-primary);
 }
 
+.settings-input {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--glass-border);
+  border-radius: 6px;
+  padding: 6px 12px;
+  color: var(--text-primary);
+  font-size: 13px;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.settings-input:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.settings-input:focus {
+  border-color: var(--accent-color);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.settings-input::placeholder {
+  color: var(--text-secondary);
+  opacity: 0.5;
+}
+
 body.theme-light {
   background: linear-gradient(145deg, #f0f2f5 0%, #ffffff 50%, #f0f2f5 100%);
   --text-primary: #1f2937;
@@ -1551,6 +1576,21 @@ body.theme-light .settings-select {
 }
 
 body.theme-light .settings-select:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+body.theme-light .settings-input {
+  background: rgba(0, 0, 0, 0.03);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  color: var(--text-primary);
+}
+
+body.theme-light .settings-input:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+body.theme-light .settings-input:focus {
+  border-color: var(--accent-color);
   background: rgba(0, 0, 0, 0.05);
 }
 

@@ -37,7 +37,8 @@ const defaultSettings: Settings = {
   sortOrder: 'asc',
   bookmarks: [],
   viewMode: 'grid',
-  showDangerousOptions: false
+  showDangerousOptions: false,
+  startupPath: ''
 };
 
 function getSettingsPath(): string {
