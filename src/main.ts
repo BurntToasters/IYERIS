@@ -1,10 +1,11 @@
 import { app, BrowserWindow, ipcMain, dialog, shell, IpcMainInvokeEvent } from 'electron';
+import { autoUpdater } from 'electron-updater';
 import * as path from 'path';
 import { promises as fs } from 'fs';
 import * as fsSync from 'fs';
 import { exec } from 'child_process';
 import { promisify } from 'util';
-import type { Settings, FileItem, ApiResponse, DirectoryResponse, PathResponse, PropertiesResponse, SettingsResponse } from './types';
+import type { Settings, FileItem, ApiResponse, DirectoryResponse, PathResponse, PropertiesResponse, SettingsResponse, UpdateCheckResponse } from './types';
 
 const execAsync = promisify(exec);
 
@@ -181,6 +182,47 @@ async function showFullDiskAccessDialog(): Promise<void> {
 
 app.whenReady().then(async () => {
   createWindow();
+
+  // Configure auto-updater
+  autoUpdater.logger = console;
+  autoUpdater.autoDownload = false; // Manual download control
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  // Auto-updater event handlers
+  autoUpdater.on('checking-for-update', () => {
+    console.log('[AutoUpdater] Checking for update...');
+    mainWindow?.webContents.send('update-checking');
+  });
+
+  autoUpdater.on('update-available', (info) => {
+    console.log('[AutoUpdater] Update available:', info.version);
+    mainWindow?.webContents.send('update-available', info);
+  });
+
+  autoUpdater.on('update-not-available', (info) => {
+    console.log('[AutoUpdater] Update not available. Current version:', info.version);
+    mainWindow?.webContents.send('update-not-available', info);
+  });
+
+  autoUpdater.on('error', (err) => {
+    console.error('[AutoUpdater] Error:', err);
+    mainWindow?.webContents.send('update-error', err.message);
+  });
+
+  autoUpdater.on('download-progress', (progressObj) => {
+    console.log(`[AutoUpdater] Download progress: ${progressObj.percent.toFixed(2)}%`);
+    mainWindow?.webContents.send('update-download-progress', {
+      percent: progressObj.percent,
+      bytesPerSecond: progressObj.bytesPerSecond,
+      transferred: progressObj.transferred,
+      total: progressObj.total
+    });
+  });
+
+  autoUpdater.on('update-downloaded', (info) => {
+    console.log('[AutoUpdater] Update downloaded:', info.version);
+    mainWindow?.webContents.send('update-downloaded', info);
+  });
 
   if (process.platform === 'darwin') {
     console.log('[FDA] Scheduling Full Disk Access check...');
@@ -793,47 +835,65 @@ ipcMain.handle('request-full-disk-access', async (): Promise<ApiResponse> => {
   }
 });
 
-ipcMain.handle('check-for-updates', async (): Promise<{ success: boolean; hasUpdate?: boolean; latestVersion?: string; currentVersion?: string; releaseUrl?: string; error?: string }> => {
+ipcMain.handle('check-for-updates', async (): Promise<UpdateCheckResponse> => {
   try {
     const currentVersion = app.getVersion();
-    const response = await fetch('https://api.github.com/repos/BurntToasters/IYERIS/releases/latest');
+    console.log('[AutoUpdater] Manually checking for updates. Current version:', currentVersion);
     
-    if (!response.ok) {
-      throw new Error(`GitHub API returned ${response.status}`);
+    const updateCheckResult = await autoUpdater.checkForUpdates();
+    
+    if (!updateCheckResult) {
+      return { success: false, error: 'Update check returned no result' };
     }
-    
-    const data = await response.json();
-    const latestVersion = data.tag_name.replace(/^v/, '');
-    const releaseUrl = data.html_url;
-    
-    const hasUpdate = compareVersions(latestVersion, currentVersion) > 0;
-    
+
+    const updateInfo = updateCheckResult.updateInfo;
+    const hasUpdate = updateCheckResult.updateInfo.version !== currentVersion;
+
+    console.log('[AutoUpdater] Update check result:', {
+      hasUpdate,
+      currentVersion,
+      latestVersion: updateInfo.version
+    });
+
     return {
       success: true,
       hasUpdate,
-      latestVersion: data.tag_name,
+      updateInfo: {
+        version: updateInfo.version,
+        releaseDate: updateInfo.releaseDate,
+        releaseNotes: updateInfo.releaseNotes as string | undefined
+      },
       currentVersion: `v${currentVersion}`,
-      releaseUrl
+      latestVersion: `v${updateInfo.version}`,
+      releaseUrl: `https://github.com/BurntToasters/IYERIS/releases/tag/v${updateInfo.version}`
     };
   } catch (error) {
+    console.error('[AutoUpdater] Check for updates failed:', error);
     return { success: false, error: (error as Error).message };
   }
 });
 
-function compareVersions(v1: string, v2: string): number {
-  const parts1 = v1.split('.').map(Number);
-  const parts2 = v2.split('.').map(Number);
-  
-  for (let i = 0; i < Math.max(parts1.length, parts2.length); i++) {
-    const part1 = parts1[i] || 0;
-    const part2 = parts2[i] || 0;
-    
-    if (part1 > part2) return 1;
-    if (part1 < part2) return -1;
+ipcMain.handle('download-update', async (): Promise<ApiResponse> => {
+  try {
+    console.log('[AutoUpdater] Starting update download...');
+    await autoUpdater.downloadUpdate();
+    return { success: true };
+  } catch (error) {
+    console.error('[AutoUpdater] Download failed:', error);
+    return { success: false, error: (error as Error).message };
   }
-  
-  return 0;
-}
+});
+
+ipcMain.handle('install-update', async (): Promise<ApiResponse> => {
+  try {
+    console.log('[AutoUpdater] Installing update and restarting...');
+    autoUpdater.quitAndInstall(false, true);
+    return { success: true };
+  } catch (error) {
+    console.error('[AutoUpdater] Install failed:', error);
+    return { success: false, error: (error as Error).message };
+  }
+});
 
 ipcMain.handle('undo-action', async (_event: IpcMainInvokeEvent): Promise<ApiResponse> => {
   if (undoStack.length === 0) {

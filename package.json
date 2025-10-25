@@ -15,6 +15,7 @@
     "define-data-property": "^1.1.4",
     "define-properties": "^1.2.1",
     "detect-node": "^2.1.0",
+    "electron-updater": "^6.6.2",
     "end-of-stream": "^1.4.5",
     "env-paths": "^2.2.1",
     "es-define-property": "^1.0.1",
@@ -91,6 +92,11 @@
     "appId": "com.burnttoasters.iyeris",
     "productName": "IYERIS",
     "afterSign": "build/notarize.js",
+    "publish": {
+      "provider": "github",
+      "owner": "BurntToasters",
+      "repo": "IYERIS"
+    },
     "directories": {
       "output": "release",
       "buildResources": "assets"
