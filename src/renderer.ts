@@ -1903,6 +1903,15 @@ async function restartAsAdmin() {
   }
 }
 
+function stripHtmlTags(html: string): string {
+  let text = html.replace(/<[^>]*>/g, '');
+  text = text.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+  text = text.replace(/!\[.*?\]\(.*?\)/g, '');
+  text = text.replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1');
+  text = text.replace(/\n\s*\n\s*\n/g, '\n\n').trim();
+  return text;
+}
+
 async function checkForUpdates() {
   const btn = document.getElementById('check-updates-btn');
   if (!btn) return;
@@ -1916,14 +1925,9 @@ async function checkForUpdates() {
     
     if (result.success) {
       if (result.hasUpdate) {
-        const releaseNotes = result.updateInfo?.releaseNotes || 'No release notes available.';
-        const truncatedNotes = releaseNotes.length > 200 
-          ? releaseNotes.substring(0, 200) + '...' 
-          : releaseNotes;
-        
         const confirmed = await showDialog(
           'Update Available',
-          `A new version is available!\n\nCurrent: ${result.currentVersion}\nLatest: ${result.latestVersion}\n\n${truncatedNotes}\n\nWould you like to download and install the update?`,
+          `A new version is available!\n\nCurrent Version: ${result.currentVersion}\nNew Version: ${result.latestVersion}\n\nWould you like to download and install the update?`,
           'success',
           true
         );
