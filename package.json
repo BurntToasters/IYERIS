@@ -1,6 +1,6 @@
 {
   "name": "iyeris",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "A beautiful cross-platform file explorer built with Electron, featuring a stunning liquid-glass interface with smooth animations and modern design.",
   "main": "dist/main.js",
   "dependencies": {
@@ -15,6 +15,7 @@
     "define-data-property": "^1.1.4",
     "define-properties": "^1.2.1",
     "detect-node": "^2.1.0",
+    "electron-updater": "^6.6.2",
     "end-of-stream": "^1.4.5",
     "env-paths": "^2.2.1",
     "es-define-property": "^1.0.1",
@@ -78,8 +79,8 @@
     "start": "npm run build && electron .",
     "dev": "npm run build && electron . --enable-logging",
     "build:win": "npm run build && electron-builder --win --x64 --arm64",
-    "build:win:x64": "npm run build && electron-builder --win --x64",
-    "build:win:arm64": "npm run build && electron-builder --win --arm64",
+    "build:win:x64": "npm run build && electron-builder --win --x64 --publish never",
+    "build:win:arm64": "npm run build && electron-builder --win --arm64 --publish never",
     "build:mac:universal": "npm run build && dotenv -e .env -- electron-builder --mac --universal",
     "build:mac:universal:dev": "npm run build && electron-builder --mac --universal",
     "build:linux": "npm run build && electron-builder --linux AppImage deb rpm --x64 --arm64",
@@ -91,6 +92,11 @@
     "appId": "com.burnttoasters.iyeris",
     "productName": "IYERIS",
     "afterSign": "build/notarize.js",
+    "publish": {
+      "provider": "github",
+      "owner": "BurntToasters",
+      "repo": "IYERIS"
+    },
     "directories": {
       "output": "release",
       "buildResources": "assets"

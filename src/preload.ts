@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { ElectronAPI, Settings } from './types';
+import type { ElectronAPI, Settings, UpdateDownloadProgress } from './types';
 
 const electronAPI: ElectronAPI = {
   getDirectoryContents: (dirPath: string) => ipcRenderer.invoke('get-directory-contents', dirPath),
@@ -33,6 +33,11 @@ const electronAPI: ElectronAPI = {
   checkFullDiskAccess: () => ipcRenderer.invoke('check-full-disk-access'),
   requestFullDiskAccess: () => ipcRenderer.invoke('request-full-disk-access'),
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
+  downloadUpdate: () => ipcRenderer.invoke('download-update'),
+  installUpdate: () => ipcRenderer.invoke('install-update'),
+  onUpdateDownloadProgress: (callback: (progress: UpdateDownloadProgress) => void) => {
+    ipcRenderer.on('update-download-progress', (_event, progress) => callback(progress));
+  },
   undoAction: () => ipcRenderer.invoke('undo-action'),
   redoAction: () => ipcRenderer.invoke('redo-action'),
   getUndoRedoState: () => ipcRenderer.invoke('get-undo-redo-state')

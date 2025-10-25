@@ -1903,6 +1903,15 @@ async function restartAsAdmin() {
   }
 }
 
+function stripHtmlTags(html: string): string {
+  let text = html.replace(/<[^>]*>/g, '');
+  text = text.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+  text = text.replace(/!\[.*?\]\(.*?\)/g, '');
+  text = text.replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1');
+  text = text.replace(/\n\s*\n\s*\n/g, '\n\n').trim();
+  return text;
+}
+
 async function checkForUpdates() {
   const btn = document.getElementById('check-updates-btn');
   if (!btn) return;
@@ -1918,13 +1927,13 @@ async function checkForUpdates() {
       if (result.hasUpdate) {
         const confirmed = await showDialog(
           'Update Available',
-          `A new version is available!\n\nCurrent Version: ${result.currentVersion}\nLatest Version: ${result.latestVersion}\n\nWould you like to visit the releases page to download it?`,
+          `A new version is available!\n\nCurrent Version: ${result.currentVersion}\nNew Version: ${result.latestVersion}\n\nWould you like to download and install the update?`,
           'success',
           true
         );
         
-        if (confirmed && result.releaseUrl) {
-          window.electronAPI.openFile(result.releaseUrl);
+        if (confirmed) {
+          await downloadAndInstallUpdate();
         }
       } else {
         showDialog(
@@ -1952,6 +1961,93 @@ async function checkForUpdates() {
   } finally {
     btn.textContent = originalText;
     btn.disabled = false;
+  }
+}
+
+async function downloadAndInstallUpdate() {
+  const dialogModal = document.getElementById('dialog-modal') as HTMLElement;
+  const dialogTitle = document.getElementById('dialog-title') as HTMLElement;
+  const dialogContent = document.getElementById('dialog-content') as HTMLElement;
+  const dialogIcon = document.getElementById('dialog-icon') as HTMLElement;
+  const dialogOk = document.getElementById('dialog-ok') as HTMLButtonElement;
+  const dialogCancel = document.getElementById('dialog-cancel') as HTMLButtonElement;
+  
+  dialogIcon.textContent = '⬇️';
+  dialogTitle.textContent = 'Downloading Update';
+  dialogContent.textContent = 'Preparing download... 0%';
+  dialogOk.style.display = 'none';
+  dialogCancel.style.display = 'none';
+  dialogModal.style.display = 'flex';
+  
+  // Listen for download progress
+  window.electronAPI.onUpdateDownloadProgress((progress) => {
+    const percent = progress.percent.toFixed(1);
+    const transferred = formatFileSize(progress.transferred);
+    const total = formatFileSize(progress.total);
+    const speed = formatFileSize(progress.bytesPerSecond);
+    
+    dialogContent.textContent = `Downloading update...\n\n${percent}% (${transferred} / ${total})\nSpeed: ${speed}/s`;
+  });
+  
+  try {
+    // Start download
+    const downloadResult = await window.electronAPI.downloadUpdate();
+    
+    if (!downloadResult.success) {
+      dialogModal.style.display = 'none';
+      showDialog(
+        'Download Failed',
+        `Failed to download update: ${downloadResult.error}`,
+        'error',
+        false
+      );
+      return;
+    }
+    
+    // Show install confirmation
+    dialogIcon.textContent = '✅';
+    dialogTitle.textContent = 'Update Downloaded';
+    dialogContent.textContent = 'The update has been downloaded successfully.\n\nThe application will restart to install the update.';
+    dialogOk.style.display = 'block';
+    dialogOk.textContent = 'Install & Restart';
+    dialogCancel.style.display = 'block';
+    dialogCancel.textContent = 'Later';
+    
+    const installPromise = new Promise<boolean>((resolve) => {
+      const handleOk = () => {
+        cleanup();
+        resolve(true);
+      };
+      
+      const handleCancel = () => {
+        cleanup();
+        resolve(false);
+      };
+      
+      const cleanup = () => {
+        dialogOk.removeEventListener('click', handleOk);
+        dialogCancel.removeEventListener('click', handleCancel);
+      };
+      
+      dialogOk.addEventListener('click', handleOk);
+      dialogCancel.addEventListener('click', handleCancel);
+    });
+    
+    const shouldInstall = await installPromise;
+    dialogModal.style.display = 'none';
+    
+    if (shouldInstall) {
+      // Install and restart
+      await window.electronAPI.installUpdate();
+    }
+  } catch (error) {
+    dialogModal.style.display = 'none';
+    showDialog(
+      'Update Error',
+      `An error occurred during the update process: ${(error as Error).message}`,
+      'error',
+      false
+    );
   }
 }
 

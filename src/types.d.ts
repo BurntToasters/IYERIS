@@ -70,6 +70,27 @@ export interface UndoResponse extends ApiResponse {
   canRedo?: boolean;
 }
 
+export interface UpdateInfo {
+  version: string;
+  releaseDate: string;
+  releaseNotes?: string;
+}
+
+export interface UpdateCheckResponse extends ApiResponse {
+  hasUpdate?: boolean;
+  updateInfo?: UpdateInfo;
+  currentVersion?: string;
+  latestVersion?: string;
+  releaseUrl?: string;
+}
+
+export interface UpdateDownloadProgress {
+  percent: number;
+  bytesPerSecond: number;
+  transferred: number;
+  total: number;
+}
+
 export interface ElectronAPI {
   getDirectoryContents: (dirPath: string) => Promise<DirectoryResponse>;
   getDrives: () => Promise<string[]>;
@@ -101,7 +122,10 @@ export interface ElectronAPI {
   getPlatform: () => Promise<string>;
   checkFullDiskAccess: () => Promise<{success: boolean; hasAccess: boolean}>;
   requestFullDiskAccess: () => Promise<ApiResponse>;
-  checkForUpdates: () => Promise<{success: boolean; hasUpdate?: boolean; latestVersion?: string; currentVersion?: string; releaseUrl?: string; error?: string}>;
+  checkForUpdates: () => Promise<UpdateCheckResponse>;
+  downloadUpdate: () => Promise<ApiResponse>;
+  installUpdate: () => Promise<ApiResponse>;
+  onUpdateDownloadProgress: (callback: (progress: UpdateDownloadProgress) => void) => void;
   undoAction: () => Promise<UndoResponse>;
   redoAction: () => Promise<UndoResponse>;
   getUndoRedoState: () => Promise<{canUndo: boolean; canRedo: boolean}>;
