@@ -883,6 +883,24 @@ function setupEventListeners() {
         deleteSelected();
       }
     } else if (e.key === 'Escape') {
+      const settingsModal = document.getElementById('settings-modal');
+      if (settingsModal && settingsModal.style.display === 'flex') {
+        hideSettingsModal();
+        return;
+      }
+
+      const contextMenu = document.getElementById('context-menu');
+      if (contextMenu && contextMenu.style.display === 'block') {
+        hideContextMenu();
+        return;
+      }
+
+      const emptySpaceContextMenu = document.getElementById('empty-space-context-menu');
+      if (emptySpaceContextMenu && emptySpaceContextMenu.style.display === 'block') {
+        hideEmptySpaceContextMenu();
+        return;
+      }
+
       if (isSearchMode) {
         closeSearch();
       }
