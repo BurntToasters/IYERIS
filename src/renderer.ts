@@ -534,7 +534,6 @@ async function removeBookmark(path: string) {
 function toggleSearch() {
   if (searchBar.style.display === 'none' || !searchBar.style.display) {
     searchBar.style.display = 'flex';
-    addressBar.style.display = 'none';
     searchInput.focus();
     isSearchMode = true;
   } else {
@@ -544,7 +543,6 @@ function toggleSearch() {
 
 function closeSearch() {
   searchBar.style.display = 'none';
-  addressBar.style.display = 'flex';
   searchInput.value = '';
   isSearchMode = false;
   if (currentPath) {
