@@ -8,6 +8,7 @@
 | **EXE:** **[x64](https://github.com/BurntToasters/IYERIS/releases/latest/download/IYERIS-Win-x64.exe)** / **[arm64](https://github.com/BurntToasters/IYERIS/releases/latest/download/IYERIS-Win-arm64.exe)**      | **DMG:** **[Universal DMG](https://github.com/BurntToasters/IYERIS/releases/latest/download/IYERIS-MacOS-universal.dmg)**         | **AppImage:** **[x64](https://github.com/BurntToasters/IYERIS/releases/latest/download/IYERIS-Linux-x86_64.AppImage)** / **[arm64](https://github.com/BurntToasters/IYERIS/releases/latest/download/IYERIS-Linux-arm64.AppImage)**
 | | **ZIP:** **[Universal ZIP](https://github.com/BurntToasters/IYERIS/releases/latest/download/IYERIS-MacOS-universal.zip)** | **DEB:** **[x64](https://github.com/BurntToasters/IYERIS/releases/latest/download/IYERIS-Linux-amd64.deb)** / **[arm64](https://github.com/BurntToasters/IYERIS/releases/latest/download/IYERIS-Linux-arm64.deb)** 
 | | | **RPM:** **[x64](https://github.com/BurntToasters/IYERIS/releases/latest/download/IYERIS-Linux-x86_64.rpm)** / **[arm64](https://github.com/BurntToasters/IYERIS/releases/latest/download/IYERIS-Linux-aarch64.rpm)**
+| | | **Flatpak:** **[Universal Bundle](https://github.com/BurntToasters/IYERIS/releases/latest/download/iyeris.flatpak)**
 
 <img width="800" height="893" alt="IYERIS-0-1-1" src="https://github.com/user-attachments/assets/ef15206d-6aea-4c41-aaa5-af6179797bc2" />
 

@@ -84,6 +84,8 @@ export interface UpdateCheckResponse extends ApiResponse {
   currentVersion?: string;
   latestVersion?: string;
   releaseUrl?: string;
+  isFlatpak?: boolean;
+  flatpakMessage?: string;
 }
 
 export interface UpdateDownloadProgress {

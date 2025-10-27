@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.burnttoasters.iyeris</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MPL-2.0</project_license>
+  <name>IYERIS</name>
+  <summary>A beautiful cross-platform file explorer</summary>
+  <description>
+    <p>
+      IYERIS is an alternative file browser for Linux, featuring a stunning 
+      liquid-glass interface with smooth animations and modern design.
+    </p>
+    <p>Features:</p>
+    <ul>
+      <li>File browsing with a beautiful interface</li>
+      <li>File previewing for common file types</li>
+      <li>File renaming, creation, and management</li>
+      <li>Drag and drop support</li>
+      <li>Cut, copy, and paste operations</li>
+      <li>File properties viewer</li>
+      <li>Basic theming support</li>
+      <li>Favorites management</li>
+    </ul>
+    <p>
+      Note: This is a just-for-fun project and currently isn't intended 
+      to be a full replacement for any file exploration application.
+    </p>
+  </description>
+  <url type="homepage">https://github.com/BurntToasters/IYERIS</url>
+  <url type="bugtracker">https://github.com/BurntToasters/IYERIS/issues</url>
+  <developer_name>BurntToasters</developer_name>
+  <launchable type="desktop-id">com.burnttoasters.iyeris.desktop</launchable>
+  <screenshots>
+    <screenshot type="default">
+      <image>https://github.com/user-attachments/assets/ef15206d-6aea-4c41-aaa5-af6179797bc2</image>
+      <caption>IYERIS file browser interface</caption>
+    </screenshot>
+  </screenshots>
+  <releases>
+    <release version="0.2.3" date="2025-10-27"/>
+  </releases>
+  <content_rating type="oars-1.1"/>
+</component>

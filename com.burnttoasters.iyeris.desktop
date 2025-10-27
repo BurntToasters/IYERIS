@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=IYERIS
+Comment=A beautiful cross-platform file explorer with liquid-glass interface
+Exec=iyeris %U
+Icon=com.burnttoasters.iyeris
+Type=Application
+Categories=Utility;FileManager;FileTools;
+StartupNotify=true
+StartupWMClass=IYERIS
+MimeType=inode/directory;
+Keywords=file;manager;explorer;browser;

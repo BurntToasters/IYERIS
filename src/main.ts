@@ -9,6 +9,11 @@ import type { Settings, FileItem, ApiResponse, DirectoryResponse, PathResponse, 
 
 const execAsync = promisify(exec);
 
+const isRunningInFlatpak = (): boolean => {
+  return process.env.FLATPAK_ID !== undefined || 
+         fsSync.existsSync('/.flatpak-info');
+};
+
 let mainWindow: BrowserWindow | null = null;
 
 const isDev = process.argv.includes('--dev');
@@ -260,6 +265,12 @@ app.whenReady().then(async () => {
   autoUpdater.logger = console;
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = true;
+
+  // Disable auto-updater in Flatpak (updates handled by Flatpak system)
+  if (isRunningInFlatpak()) {
+    console.log('[AutoUpdater] Running in Flatpak - auto-updater disabled');
+    console.log('[AutoUpdater] Updates should be installed via: flatpak update com.burnttoasters.iyeris');
+  }
 
   autoUpdater.on('checking-for-update', () => {
     console.log('[AutoUpdater] Checking for update...');
@@ -913,6 +924,20 @@ ipcMain.handle('request-full-disk-access', async (): Promise<ApiResponse> => {
 });
 
 ipcMain.handle('check-for-updates', async (): Promise<UpdateCheckResponse> => {
+  // If running in Flatpak, return a message about Flatpak updates
+  if (isRunningInFlatpak()) {
+    const currentVersion = app.getVersion();
+    console.log('[AutoUpdater] Flatpak detected - redirecting to Flatpak update mechanism');
+    return {
+      success: true,
+      hasUpdate: false,
+      currentVersion: `v${currentVersion}`,
+      latestVersion: `v${currentVersion}`,
+      isFlatpak: true,
+      flatpakMessage: 'Updates are managed by Flatpak. Run: flatpak update com.burnttoasters.iyeris'
+    };
+  }
+
   try {
     const currentVersion = app.getVersion();
     console.log('[AutoUpdater] Manually checking for updates. Current version:', currentVersion);

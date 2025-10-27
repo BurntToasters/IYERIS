@@ -1958,6 +1958,16 @@ async function checkForUpdates() {
     const result = await window.electronAPI.checkForUpdates();
     
     if (result.success) {
+      if (result.isFlatpak) {
+        showDialog(
+          'Updates via Flatpak',
+          `You're running IYERIS as a Flatpak (${result.currentVersion}).\n\n${result.flatpakMessage}\n\nOr use your system's software center to check for updates.`,
+          'info',
+          false
+        );
+        return;
+      }
+
       if (result.hasUpdate) {
         const confirmed = await showDialog(
           'Update Available',
