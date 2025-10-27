@@ -10,7 +10,7 @@
 | | | **RPM:** **[x64](https://github.com/BurntToasters/IYERIS/releases/latest/download/IYERIS-Linux-x86_64.rpm)** / **[arm64](https://github.com/BurntToasters/IYERIS/releases/latest/download/IYERIS-Linux-aarch64.rpm)**
 | | | **Flatpak:** **[Universal Bundle](https://github.com/BurntToasters/IYERIS/releases/latest/download/iyeris.flatpak)**
 
-<img width="800" height="893" alt="IYERIS-0-1-1" src="https://github.com/user-attachments/assets/ef15206d-6aea-4c41-aaa5-af6179797bc2" />
+<img width="800" height="893" alt="IYERIS" src="https://github.com/user-attachments/assets/fa6d7321-9a8b-40d5-913e-5c8082a95f8e" />
 
 # Current Features
 - File browsing
