@@ -7,6 +7,7 @@ export interface Settings {
   viewMode: 'grid' | 'list';
   showDangerousOptions: boolean;
   startupPath: string;
+  showHiddenFiles: boolean;
 }
 
 export interface FileItem {
@@ -16,6 +17,7 @@ export interface FileItem {
   isFile: boolean;
   size: number;
   modified: Date;
+  isHidden: boolean;
 }
 
 export interface ItemProperties {

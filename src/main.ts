@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, shell, IpcMainInvokeEvent } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell, IpcMainInvokeEvent, Menu } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import * as path from 'path';
 import { promises as fs } from 'fs';
@@ -39,7 +39,8 @@ const defaultSettings: Settings = {
   bookmarks: [],
   viewMode: 'grid',
   showDangerousOptions: false,
-  startupPath: ''
+  startupPath: '',
+  showHiddenFiles: false
 };
 
 function getSettingsPath(): string {
@@ -72,6 +73,19 @@ async function saveSettings(settings: Settings): Promise<ApiResponse> {
   } catch (error) {
     console.log('[Settings] Save failed:', (error as Error).message);
     return { success: false, error: (error as Error).message };
+  }
+}
+
+async function isFileHidden(filePath: string, fileName: string): Promise<boolean> {
+  if (process.platform !== 'win32') {
+    return fileName.startsWith('.');
+  }
+  
+  try {
+    const { stdout } = await execAsync(`attrib "${filePath}"`, { windowsHide: true });
+    return stdout.trim().startsWith('H') || stdout.includes(' H ');
+  } catch (error) {
+    return fileName.startsWith('.');
   }
 }
 
@@ -180,15 +194,73 @@ async function showFullDiskAccessDialog(): Promise<void> {
   }
 }
 
+function setupApplicationMenu(): void {
+  if (process.platform === 'darwin') {
+    const template: Electron.MenuItemConstructorOptions[] = [
+      {
+        label: app.name,
+        submenu: [
+          { role: 'about', label: 'About IYERIS' },
+          { type: 'separator' },
+          { role: 'services' },
+          { type: 'separator' },
+          { role: 'hide' },
+          { role: 'hideOthers' },
+          { role: 'unhide' },
+          { type: 'separator' },
+          { role: 'quit' }
+        ]
+      },
+      {
+        label: 'Edit',
+        submenu: [
+          { role: 'undo' },
+          { role: 'redo' },
+          { type: 'separator' },
+          { role: 'cut' },
+          { role: 'copy' },
+          { role: 'paste' },
+          { role: 'selectAll' }
+        ]
+      },
+      {
+        label: 'View',
+        submenu: [
+          { role: 'reload' },
+          { role: 'forceReload' },
+          { role: 'toggleDevTools' },
+          { type: 'separator' },
+          { role: 'resetZoom' },
+          { role: 'zoomIn' },
+          { role: 'zoomOut' },
+          { type: 'separator' },
+          { role: 'togglefullscreen' }
+        ]
+      },
+      {
+        label: 'Window',
+        submenu: [
+          { role: 'minimize' },
+          { role: 'zoom' },
+          { type: 'separator' },
+          { role: 'front' }
+        ]
+      }
+    ];
+
+    const menu = Menu.buildFromTemplate(template);
+    Menu.setApplicationMenu(menu);
+  }
+}
+
 app.whenReady().then(async () => {
+  setupApplicationMenu();
   createWindow();
 
-  // Configure auto-updater
   autoUpdater.logger = console;
-  autoUpdater.autoDownload = false; // Manual download control
+  autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = true;
 
-  // Auto-updater event handlers
   autoUpdater.on('checking-for-update', () => {
     console.log('[AutoUpdater] Checking for update...');
     mainWindow?.webContents.send('update-checking');
@@ -279,6 +351,7 @@ ipcMain.handle('get-directory-contents', async (_event: IpcMainInvokeEvent, dirP
     const contents: FileItem[] = await Promise.all(
       items.map(async (item): Promise<FileItem> => {
         const fullPath = path.join(dirPath, item.name);
+        const isHidden = await isFileHidden(fullPath, item.name);
         try {
           const stats = await fs.stat(fullPath);
           return {
@@ -287,7 +360,8 @@ ipcMain.handle('get-directory-contents', async (_event: IpcMainInvokeEvent, dirP
             isDirectory: item.isDirectory(),
             isFile: item.isFile(),
             size: stats.size,
-            modified: stats.mtime
+            modified: stats.mtime,
+            isHidden
           };
         } catch (err) {
           return {
@@ -296,7 +370,8 @@ ipcMain.handle('get-directory-contents', async (_event: IpcMainInvokeEvent, dirP
             isDirectory: item.isDirectory(),
             isFile: item.isFile(),
             size: 0,
-            modified: new Date()
+            modified: new Date(),
+            isHidden
           };
         }
       })
@@ -612,13 +687,15 @@ ipcMain.handle('search-files', async (_event: IpcMainInvokeEvent, dirPath: strin
           if (item.name.toLowerCase().includes(searchQuery)) {
             try {
               const stats = await fs.stat(fullPath);
+              const isHidden = await isFileHidden(fullPath, item.name);
               results.push({
                 name: item.name,
                 path: fullPath,
                 isDirectory: item.isDirectory(),
                 isFile: item.isFile(),
                 size: stats.size,
-                modified: stats.mtime
+                modified: stats.mtime,
+                isHidden
               });
             } catch (err) {
             }

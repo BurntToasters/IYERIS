@@ -124,7 +124,8 @@ let currentSettings: Settings = {
   bookmarks: [],
   viewMode: 'grid',
   showDangerousOptions: false,
-  startupPath: ''
+  startupPath: '',
+  showHiddenFiles: false
 };
 
 function showToast(message: string, title: string = '', type: 'success' | 'error' | 'info' | 'warning' = 'info'): void {
@@ -176,6 +177,9 @@ async function loadSettings(): Promise<void> {
       sortOrder: 'asc',
       bookmarks: [],
       viewMode: 'grid',
+      showDangerousOptions: false,
+      startupPath: '',
+      showHiddenFiles: false,
       ...result.settings
     };
     applySettings(currentSettings);
@@ -209,6 +213,7 @@ async function showSettingsModal() {
   const themeSelect = document.getElementById('theme-select') as HTMLSelectElement;
   const sortBySelect = document.getElementById('sort-by-select') as HTMLSelectElement;
   const sortOrderSelect = document.getElementById('sort-order-select') as HTMLSelectElement;
+  const showHiddenFilesToggle = document.getElementById('show-hidden-files-toggle') as HTMLInputElement;
   const dangerousOptionsToggle = document.getElementById('dangerous-options-toggle') as HTMLInputElement;
   const startupPathInput = document.getElementById('startup-path-input') as HTMLInputElement;
   const settingsPath = document.getElementById('settings-path');
@@ -227,6 +232,10 @@ async function showSettingsModal() {
   
   if (sortOrderSelect) {
     sortOrderSelect.value = currentSettings.sortOrder || 'asc';
+  }
+  
+  if (showHiddenFilesToggle) {
+    showHiddenFilesToggle.checked = currentSettings.showHiddenFiles || false;
   }
   
   if (dangerousOptionsToggle) {
@@ -378,6 +387,7 @@ async function saveSettings() {
   const themeSelect = document.getElementById('theme-select') as HTMLSelectElement;
   const sortBySelect = document.getElementById('sort-by-select') as HTMLSelectElement;
   const sortOrderSelect = document.getElementById('sort-order-select') as HTMLSelectElement;
+  const showHiddenFilesToggle = document.getElementById('show-hidden-files-toggle') as HTMLInputElement;
   const dangerousOptionsToggle = document.getElementById('dangerous-options-toggle') as HTMLInputElement;
   const startupPathInput = document.getElementById('startup-path-input') as HTMLInputElement;
   
@@ -395,6 +405,10 @@ async function saveSettings() {
   
   if (sortOrderSelect) {
     currentSettings.sortOrder = sortOrderSelect.value as any;
+  }
+  
+  if (showHiddenFilesToggle) {
+    currentSettings.showHiddenFiles = showHiddenFilesToggle.checked;
   }
   
   if (dangerousOptionsToggle) {
@@ -1054,13 +1068,17 @@ function renderFiles(items) {
   clearSelection();
   allFiles = items;
   
-  if (items.length === 0) {
+  const visibleItems = currentSettings.showHiddenFiles 
+    ? items 
+    : items.filter(item => !item.isHidden);
+  
+  if (visibleItems.length === 0) {
     if (emptyState) emptyState.style.display = 'flex';
     updateStatusBar();
     return;
   }
   
-  const sortedItems = [...items].sort((a, b) => {
+  const sortedItems = [...visibleItems].sort((a, b) => {
     const dirSort = (b.isDirectory ? 1 : 0) - (a.isDirectory ? 1 : 0);
     if (dirSort !== 0) return dirSort;
     
@@ -1979,7 +1997,6 @@ async function downloadAndInstallUpdate() {
   dialogCancel.style.display = 'none';
   dialogModal.style.display = 'flex';
   
-  // Listen for download progress
   window.electronAPI.onUpdateDownloadProgress((progress) => {
     const percent = progress.percent.toFixed(1);
     const transferred = formatFileSize(progress.transferred);
@@ -1990,7 +2007,6 @@ async function downloadAndInstallUpdate() {
   });
   
   try {
-    // Start download
     const downloadResult = await window.electronAPI.downloadUpdate();
     
     if (!downloadResult.success) {
@@ -2004,7 +2020,6 @@ async function downloadAndInstallUpdate() {
       return;
     }
     
-    // Show install confirmation
     dialogIcon.textContent = '✅';
     dialogTitle.textContent = 'Update Downloaded';
     dialogContent.textContent = 'The update has been downloaded successfully.\n\nThe application will restart to install the update.';
@@ -2037,7 +2052,6 @@ async function downloadAndInstallUpdate() {
     dialogModal.style.display = 'none';
     
     if (shouldInstall) {
-      // Install and restart
       await window.electronAPI.installUpdate();
     }
   } catch (error) {
