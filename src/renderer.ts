@@ -1687,8 +1687,12 @@ function startInlineRename(fileItem, currentName, itemPath) {
 function showContextMenu(x, y, item) {
   const contextMenu = document.getElementById('context-menu');
   const addToBookmarksItem = document.getElementById('add-to-bookmarks-item');
+  const copyPathItem = document.getElementById('copy-path-item');
+  const openTerminalItem = document.getElementById('open-terminal-item');
   
   if (!contextMenu) return;
+  
+  hideEmptySpaceContextMenu();
   
   contextMenuData = item;
   
@@ -1697,6 +1701,22 @@ function showContextMenu(x, y, item) {
       addToBookmarksItem.style.display = 'flex';
     } else {
       addToBookmarksItem.style.display = 'none';
+    }
+  }
+  
+  if (copyPathItem) {
+    if (!item.isDirectory) {
+      copyPathItem.style.display = 'flex';
+    } else {
+      copyPathItem.style.display = 'none';
+    }
+  }
+  
+  if (openTerminalItem) {
+    if (item.isDirectory) {
+      openTerminalItem.style.display = 'flex';
+    } else {
+      openTerminalItem.style.display = 'none';
     }
   }
   
@@ -1824,6 +1844,15 @@ async function handleContextMenuAction(action, item) {
       
     case 'cut':
       cutToClipboard();
+      break;
+      
+    case 'copy-path':
+      try {
+        await navigator.clipboard.writeText(item.path);
+        showToast('File path copied to clipboard', 'Success', 'success');
+      } catch (error) {
+        showToast('Failed to copy file path', 'Error', 'error');
+      }
       break;
       
     case 'add-to-bookmarks':

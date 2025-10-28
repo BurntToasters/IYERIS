@@ -189,13 +189,14 @@
     <div class="context-menu-separator"></div>
     <div class="context-menu-item" data-action="cut">✂️ Cut</div>
     <div class="context-menu-item" data-action="copy">📄 Copy</div>
+    <div class="context-menu-item" data-action="copy-path" id="copy-path-item">📋 Copy file path</div>
     <div class="context-menu-separator"></div>
     <div class="context-menu-item" data-action="rename">✍️ Rename</div>
     <div class="context-menu-item" data-action="refresh">🔄 Refresh</div>
     <div class="context-menu-item" data-action="delete">🗑️ Delete</div>
     <div class="context-menu-separator"></div>
     <div class="context-menu-item" data-action="add-to-bookmarks" id="add-to-bookmarks-item" style="display: none;">⭐ Add to Bookmarks</div>
-    <div class="context-menu-item" data-action="open-terminal">🖥️ Open in Terminal</div>
+    <div class="context-menu-item" data-action="open-terminal" id="open-terminal-item">🖥️ Open folder in Terminal</div>
     <div class="context-menu-separator"></div>
     <div class="context-menu-item" data-action="properties">ℹ️ Properties</div>
   </div>
@@ -208,7 +209,7 @@
     <div class="context-menu-separator"></div>
     <div class="context-menu-item" data-action="refresh">🔄 Refresh</div>
     <div class="context-menu-separator"></div>
-    <div class="context-menu-item" data-action="open-terminal">🖥️ Open in Terminal</div>
+    <div class="context-menu-item" data-action="open-terminal">🖥️ Open folder in Terminal</div>
   </div>
 
   <div class="modal-overlay" id="properties-modal" style="display: none;">
@@ -330,7 +331,7 @@
           <h4>Developer</h4>
           <div class="setting-item">
             <div class="setting-info">
-              <label for="dangerous-options-toggle">Show potentially dangerous options (developer)</label>
+              <label for="dangerous-options-toggle">🛠️ Enable developer mode (Show hidden options)</label>
               <p class="setting-description">Enable access to advanced options that could be dangerous if misused.</p>
             </div>
             <label class="toggle-switch">
@@ -360,7 +361,7 @@
       <div class="modal-footer">
         <div class="footer-top">
           <span class="footer-credit">Made with ❤️ By: <strong>BurntToasters</strong>/<strong id="rosie-link" style="cursor: pointer; text-decoration: underline;">Rosie.run</strong></span>
-          <span class="footer-version" id="version-indicator" title="Click to view release">v0.2.3</span>
+          <span class="footer-version" id="version-indicator" title="Click to view release">v0.3.0</span>
         </div>
         <div class="footer-bottom">
           <div class="footer-left">
@@ -534,7 +535,7 @@
       <span id="status-selected" style="display: none;"></span>
     </div>
     <div class="status-right">
-      <p>Beta Build; non-stable @ [v0.2.3]</p>
+      <p>Beta Build; non-stable @ [v0.3.0]</p>
       <span id="status-disk-space"></span>
     </div>
   </div>
