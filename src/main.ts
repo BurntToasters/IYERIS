@@ -101,8 +101,8 @@ function createWindow(): void {
     minWidth: 1000,
     minHeight: 700,
     frame: false,
-    transparent: true,
-    backgroundColor: '#00000000',
+    resizable: true,
+    backgroundColor: '#1e1e1e',
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
