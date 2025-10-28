@@ -93,15 +93,21 @@
         </div>
         
         <div class="toolbar-center">
-          <div class="address-bar glass-input">
-            <span class="address-icon">📍</span>
-            <input type="text" id="address-input" placeholder="Enter path...">
+          <div class="address-bar-wrapper">
+            <div class="address-bar glass-input">
+              <span class="address-icon">📍</span>
+              <input type="text" id="address-input" placeholder="Enter path...">
+            </div>
+            <div class="history-dropdown" id="directory-history-dropdown" style="display: none;"></div>
           </div>
 
-          <div class="search-bar glass-input" style="display: none;">
-            <span class="search-icon">🔍</span>
-            <input type="text" id="search-input" placeholder="Search files...">
-            <button class="search-close" id="search-close">✕</button>
+          <div class="search-bar-wrapper" style="display: none;">
+            <div class="search-bar glass-input">
+              <span class="search-icon">🔍</span>
+              <input type="text" id="search-input" placeholder="Search files...">
+              <button class="search-close" id="search-close">✕</button>
+            </div>
+            <div class="history-dropdown" id="search-history-dropdown" style="display: none;"></div>
           </div>
         </div>
         
@@ -281,6 +287,16 @@
             </div>
             <label class="toggle-switch">
               <input type="checkbox" id="show-hidden-files-toggle">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <div class="setting-item">
+            <div class="setting-info">
+              <label for="enable-search-history-toggle">Enable Search History</label>
+              <p class="setting-description">Save your recent searches and directory navigation</p>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="enable-search-history-toggle" checked>
               <span class="toggle-slider"></span>
             </label>
           </div>

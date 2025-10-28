@@ -38,8 +38,10 @@ const viewToggleBtn = document.getElementById('view-toggle-btn') as HTMLButtonEl
 const drivesList = document.getElementById('drives-list') as HTMLElement;
 const searchBtn = document.getElementById('search-btn') as HTMLButtonElement;
 const searchInput = document.getElementById('search-input') as HTMLInputElement;
+const searchBarWrapper = document.querySelector('.search-bar-wrapper') as HTMLElement;
 const searchBar = document.querySelector('.search-bar') as HTMLElement;
 const searchClose = document.getElementById('search-close') as HTMLButtonElement;
+const addressBarWrapper = document.querySelector('.address-bar-wrapper') as HTMLElement;
 const addressBar = document.querySelector('.address-bar') as HTMLElement;
 const sortBtn = document.getElementById('sort-btn') as HTMLButtonElement;
 const bookmarksList = document.getElementById('bookmarks-list') as HTMLElement;
@@ -214,6 +216,7 @@ async function showSettingsModal() {
   const sortBySelect = document.getElementById('sort-by-select') as HTMLSelectElement;
   const sortOrderSelect = document.getElementById('sort-order-select') as HTMLSelectElement;
   const showHiddenFilesToggle = document.getElementById('show-hidden-files-toggle') as HTMLInputElement;
+  const enableSearchHistoryToggle = document.getElementById('enable-search-history-toggle') as HTMLInputElement;
   const dangerousOptionsToggle = document.getElementById('dangerous-options-toggle') as HTMLInputElement;
   const startupPathInput = document.getElementById('startup-path-input') as HTMLInputElement;
   const settingsPath = document.getElementById('settings-path');
@@ -236,6 +239,10 @@ async function showSettingsModal() {
   
   if (showHiddenFilesToggle) {
     showHiddenFilesToggle.checked = currentSettings.showHiddenFiles || false;
+  }
+  
+  if (enableSearchHistoryToggle) {
+    enableSearchHistoryToggle.checked = currentSettings.enableSearchHistory !== false;
   }
   
   if (dangerousOptionsToggle) {
@@ -388,6 +395,7 @@ async function saveSettings() {
   const sortBySelect = document.getElementById('sort-by-select') as HTMLSelectElement;
   const sortOrderSelect = document.getElementById('sort-order-select') as HTMLSelectElement;
   const showHiddenFilesToggle = document.getElementById('show-hidden-files-toggle') as HTMLInputElement;
+  const enableSearchHistoryToggle = document.getElementById('enable-search-history-toggle') as HTMLInputElement;
   const dangerousOptionsToggle = document.getElementById('dangerous-options-toggle') as HTMLInputElement;
   const startupPathInput = document.getElementById('startup-path-input') as HTMLInputElement;
   
@@ -409,6 +417,10 @@ async function saveSettings() {
   
   if (showHiddenFilesToggle) {
     currentSettings.showHiddenFiles = showHiddenFilesToggle.checked;
+  }
+  
+  if (enableSearchHistoryToggle) {
+    currentSettings.enableSearchHistory = enableSearchHistoryToggle.checked;
   }
   
   if (dangerousOptionsToggle) {
@@ -532,8 +544,8 @@ async function removeBookmark(path: string) {
 }
 
 function toggleSearch() {
-  if (searchBar.style.display === 'none' || !searchBar.style.display) {
-    searchBar.style.display = 'flex';
+  if (searchBarWrapper.style.display === 'none' || !searchBarWrapper.style.display) {
+    searchBarWrapper.style.display = 'block';
     searchInput.focus();
     isSearchMode = true;
   } else {
@@ -542,9 +554,10 @@ function toggleSearch() {
 }
 
 function closeSearch() {
-  searchBar.style.display = 'none';
+  searchBarWrapper.style.display = 'none';
   searchInput.value = '';
   isSearchMode = false;
+  hideSearchHistoryDropdown();
   if (currentPath) {
     navigateTo(currentPath);
   }
@@ -553,6 +566,8 @@ function closeSearch() {
 async function performSearch() {
   const query = searchInput.value.trim();
   if (!query || !currentPath) return;
+  
+  addToSearchHistory(query);
   
   loading.style.display = 'flex';
   emptyState.style.display = 'none';
@@ -1043,6 +1058,86 @@ function setupEventListeners() {
   });
 }
 
+function addToSearchHistory(query: string) {
+  if (!currentSettings.enableSearchHistory || !query.trim()) return;
+  if (!currentSettings.searchHistory) {
+    currentSettings.searchHistory = [];
+  }
+  currentSettings.searchHistory = currentSettings.searchHistory.filter(item => item !== query);
+  currentSettings.searchHistory.unshift(query);
+  currentSettings.searchHistory = currentSettings.searchHistory.slice(0, 5);
+  window.electronAPI.saveSettings(currentSettings);
+}
+
+function addToDirectoryHistory(dirPath: string) {
+  if (!currentSettings.enableSearchHistory || !dirPath.trim()) return;
+  if (!currentSettings.directoryHistory) {
+    currentSettings.directoryHistory = [];
+  }
+  currentSettings.directoryHistory = currentSettings.directoryHistory.filter(item => item !== dirPath);
+  currentSettings.directoryHistory.unshift(dirPath);
+  currentSettings.directoryHistory = currentSettings.directoryHistory.slice(0, 5);
+  window.electronAPI.saveSettings(currentSettings);
+}
+
+function showSearchHistoryDropdown() {
+  const dropdown = document.getElementById('search-history-dropdown');
+  if (!dropdown || !currentSettings.enableSearchHistory) return;
+  
+  const history = currentSettings.searchHistory || [];
+  
+  if (history.length === 0) {
+    dropdown.innerHTML = '<div class="history-empty">No recent searches</div>';
+  } else {
+    dropdown.innerHTML = history.map(item => 
+      `<div class="history-item" data-query="${escapeHtml(item)}">🔍 ${escapeHtml(item)}</div>`
+    ).join('') + '<div class="history-clear" data-action="clear-search">🗑️ Clear Search History</div>';
+  }
+  
+  dropdown.style.display = 'block';
+}
+
+function showDirectoryHistoryDropdown() {
+  const dropdown = document.getElementById('directory-history-dropdown');
+  if (!dropdown || !currentSettings.enableSearchHistory) return;
+  
+  const history = currentSettings.directoryHistory || [];
+  
+  if (history.length === 0) {
+    dropdown.innerHTML = '<div class="history-empty">No recent directories</div>';
+  } else {
+    dropdown.innerHTML = history.map(item => 
+      `<div class="history-item" data-path="${escapeHtml(item)}">📁 ${escapeHtml(item)}</div>`
+    ).join('') + '<div class="history-clear" data-action="clear-directory">🗑️ Clear Directory History</div>';
+  }
+  
+  dropdown.style.display = 'block';
+}
+
+function hideSearchHistoryDropdown() {
+  const dropdown = document.getElementById('search-history-dropdown');
+  if (dropdown) dropdown.style.display = 'none';
+}
+
+function hideDirectoryHistoryDropdown() {
+  const dropdown = document.getElementById('directory-history-dropdown');
+  if (dropdown) dropdown.style.display = 'none';
+}
+
+function clearSearchHistory() {
+  currentSettings.searchHistory = [];
+  window.electronAPI.saveSettings(currentSettings);
+  hideSearchHistoryDropdown();
+  showToast('Search history cleared', 'History', 'success');
+}
+
+function clearDirectoryHistory() {
+  currentSettings.directoryHistory = [];
+  window.electronAPI.saveSettings(currentSettings);
+  hideDirectoryHistoryDropdown();
+  showToast('Directory history cleared', 'History', 'success');
+}
+
 async function navigateTo(path) {
   if (!path) return;
   
@@ -1059,6 +1154,7 @@ async function navigateTo(path) {
   if (result.success) {
     currentPath = path;
     if (addressInput) addressInput.value = path;
+    addToDirectoryHistory(path);
     
     if (historyIndex === -1 || history[historyIndex] !== path) {
       history = history.slice(0, historyIndex + 1);
@@ -2471,6 +2567,74 @@ document.addEventListener('keydown', (e) => {
   
   if (e.key === 'Escape' && quicklookModal && quicklookModal.style.display === 'flex') {
     closeQuickLook();
+  }
+});
+if (searchInput) {
+  searchInput.addEventListener('focus', () => {
+    if (currentSettings.enableSearchHistory) {
+      showSearchHistoryDropdown();
+    }
+  });
+  
+  searchInput.addEventListener('blur', (e) => {
+    setTimeout(() => {
+      const searchDropdown = document.getElementById('search-history-dropdown');
+      if (searchDropdown && !searchDropdown.matches(':hover')) {
+        hideSearchHistoryDropdown();
+      }
+    }, 150);
+  });
+}
+
+if (addressInput) {
+  addressInput.addEventListener('focus', () => {
+    if (currentSettings.enableSearchHistory) {
+      showDirectoryHistoryDropdown();
+    }
+  });
+  
+  addressInput.addEventListener('blur', (e) => {
+    setTimeout(() => {
+      const directoryDropdown = document.getElementById('directory-history-dropdown');
+      if (directoryDropdown && !directoryDropdown.matches(':hover')) {
+        hideDirectoryHistoryDropdown();
+      }
+    }, 150);
+  });
+}
+
+document.addEventListener('mousedown', (e) => {
+  const target = e.target as HTMLElement;
+
+  if (target.classList.contains('history-item') && target.dataset.query) {
+    e.preventDefault();
+    const query = target.dataset.query;
+    if (searchInput) {
+      searchInput.value = query;
+      setTimeout(() => searchInput.focus(), 0);
+    }
+    hideSearchHistoryDropdown();
+    return;
+  }
+
+  if (target.classList.contains('history-item') && target.dataset.path) {
+    e.preventDefault();
+    const path = target.dataset.path;
+    navigateTo(path);
+    hideDirectoryHistoryDropdown();
+    return;
+  }
+
+  if (target.classList.contains('history-clear') && target.dataset.action === 'clear-search') {
+    e.preventDefault();
+    clearSearchHistory();
+    return;
+  }
+  
+  if (target.classList.contains('history-clear') && target.dataset.action === 'clear-directory') {
+    e.preventDefault();
+    clearDirectoryHistory();
+    return;
   }
 });
 

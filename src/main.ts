@@ -45,7 +45,10 @@ const defaultSettings: Settings = {
   viewMode: 'grid',
   showDangerousOptions: false,
   startupPath: '',
-  showHiddenFiles: false
+  showHiddenFiles: false,
+  enableSearchHistory: true,
+  searchHistory: [],
+  directoryHistory: []
 };
 
 function getSettingsPath(): string {

@@ -307,6 +307,8 @@ body::before {
   gap: 12px;
   padding: 10px 16px;
   min-height: 52px;
+  position: relative;
+  z-index: 100;
 }
 
 .toolbar-left,
@@ -362,6 +364,12 @@ body::before {
   cursor: not-allowed;
 }
 
+.address-bar-wrapper {
+  position: relative;
+  width: 100%;
+  z-index: 200;
+}
+
 .address-bar {
   display: flex;
   align-items: center;
@@ -394,6 +402,107 @@ body::before {
 #address-input::selection {
   background: var(--accent-color);
   color: #ffffff;
+}
+
+.search-bar-wrapper {
+  position: relative;
+  width: 100%;
+  z-index: 200;
+}
+
+.history-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: #2d2d2d;
+  backdrop-filter: blur(40px) saturate(180%);
+  -webkit-backdrop-filter: blur(40px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: var(--radius-medium);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8),
+              0 2px 8px rgba(0, 0, 0, 0.6),
+              inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  z-index: 5000;
+  max-height: 300px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  pointer-events: auto;
+}
+
+.history-dropdown::-webkit-scrollbar {
+  width: 8px;
+}
+
+.history-dropdown::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.history-dropdown::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+}
+
+.history-dropdown::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.history-item {
+  padding: 12px 14px;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background 0.15s ease;
+  font-size: 13px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  user-select: none;
+  background: transparent;
+  pointer-events: auto;
+}
+
+.history-item:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.history-item:active {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.history-item:last-of-type {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.history-clear {
+  padding: 12px 14px;
+  color: #ff6b6b;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-size: 13px;
+  text-align: center;
+  font-weight: 500;
+  user-select: none;
+  display: block;
+  background: transparent;
+  pointer-events: auto;
+}
+
+.history-clear:hover {
+  background: rgba(232, 17, 35, 0.2);
+  color: #ff8888;
+}
+
+.history-clear:active {
+  background: rgba(232, 17, 35, 0.3);
+}
+
+.history-empty {
+  padding: 20px 14px;
+  color: var(--text-secondary);
+  text-align: center;
+  font-size: 13px;
 }
 
 .file-view {

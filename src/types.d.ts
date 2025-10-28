@@ -8,6 +8,9 @@ export interface Settings {
   showDangerousOptions: boolean;
   startupPath: string;
   showHiddenFiles: boolean;
+  enableSearchHistory: boolean;
+  searchHistory: string[];
+  directoryHistory: string[];
 }
 
 export interface FileItem {
