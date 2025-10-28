@@ -456,14 +456,20 @@ ipcMain.handle('maximize-window', (): void => {
     mainWindow?.maximize();
   }
 });
-
-ipcMain.handle('close-window', (): void => {
-  mainWindow?.close();
+ipcMain.handle('close-window', (event: IpcMainInvokeEvent): void => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (win && !win.isDestroyed()) {
+    win.close();
+  }
+});
+ipcMain.handle('open-new-window', (): void => {
+  createWindow();
 });
 
 ipcMain.handle('create-folder', async (_event: IpcMainInvokeEvent, parentPath: string, folderName: string): Promise<PathResponse> => {
   try {
     const newPath = path.join(parentPath, folderName);
+
     await fs.mkdir(newPath);
     
     pushUndoAction({

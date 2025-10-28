@@ -364,6 +364,10 @@ function hideShortcutsModal() {
   }
 }
 
+function openNewWindow() {
+  window.electronAPI.openNewWindow();
+}
+
 function copyLicensesText() {
   const licensesContent = document.getElementById('licenses-content');
   if (!licensesContent) return;
@@ -882,6 +886,9 @@ function setupEventListeners() {
       } else if (e.key === '.') {
         e.preventDefault();
         showShortcutsModal();
+      } else if (e.key === 'n' && !e.shiftKey) {
+        e.preventDefault();
+        openNewWindow();
       } else if (e.key === 'c') {
         e.preventDefault();
         copyToClipboard();
