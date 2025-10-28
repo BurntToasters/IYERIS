@@ -1569,6 +1569,14 @@ body.theme-light .footer-top {
   background: rgba(0, 0, 0, 0.02);
 }
 
+body.theme-light .footer-credit {
+  color: rgba(0, 0, 0, 0.75);
+}
+
+body.theme-light .footer-credit strong {
+  color: #1f2937;
+}
+
 body.theme-light .close-button,
 body.theme-light .modal-close {
   color: var(--text-secondary);

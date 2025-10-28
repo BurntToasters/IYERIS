@@ -732,6 +732,7 @@ function updateStatusBar() {
 
 async function updateDiskSpace() {
   const statusDiskSpace = document.getElementById('status-disk-space');
+  console.log('[DiskSpace] Element found:', !!statusDiskSpace, 'Current path:', currentPath);
   if (!statusDiskSpace || !currentPath) return;
   
   let drivePath = currentPath;
@@ -741,11 +742,35 @@ async function updateDiskSpace() {
     drivePath = '/';
   }
   
+  console.log('[DiskSpace] Checking drive:', drivePath, 'Platform:', platformOS);
   const result = await window.electronAPI.getDiskSpace(drivePath);
+  console.log('[DiskSpace] Result:', result);
   if (result.success && result.total && result.free) {
     const freeStr = formatFileSize(result.free);
     const totalStr = formatFileSize(result.total);
-    statusDiskSpace.textContent = `${freeStr} free of ${totalStr}`;
+    const usedBytes = result.total - result.free;
+    const usedPercent = ((usedBytes / result.total) * 100).toFixed(1);
+    let usageColor = '#107c10';
+    if (parseFloat(usedPercent) > 80) {
+      usageColor = '#ff8c00';
+    }
+    if (parseFloat(usedPercent) > 90) {
+      usageColor = '#e81123';
+    }
+
+    statusDiskSpace.innerHTML = `
+      <span style="display: inline-flex; align-items: center; gap: 6px;">
+        💾 ${freeStr} free of ${totalStr}
+        <span style="display: inline-block; width: 60px; height: 8px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden; position: relative;">
+          <span style="position: absolute; left: 0; top: 0; height: 100%; width: ${usedPercent}%; background: ${usageColor}; transition: width 0.3s ease;"></span>
+        </span>
+        <span style="opacity: 0.7;">(${usedPercent}% used)</span>
+      </span>
+    `;
+    console.log('[DiskSpace] Updated display successfully');
+  } else {
+    console.log('[DiskSpace] Failed to get disk space info');
+    statusDiskSpace.textContent = '';
   }
 }
 
@@ -2630,7 +2655,7 @@ document.addEventListener('mousedown', (e) => {
     clearSearchHistory();
     return;
   }
-  
+
   if (target.classList.contains('history-clear') && target.dataset.action === 'clear-directory') {
     e.preventDefault();
     clearDirectoryHistory();
