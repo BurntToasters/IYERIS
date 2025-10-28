@@ -2226,9 +2226,14 @@ function updatePreview(file: FileItem) {
   
   currentPreviewFile = file;
   const ext = file.name.split('.').pop()?.toLowerCase() || '';
-  
-  const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico'];
-  const textExts = ['txt', 'md', 'json', 'xml', 'html', 'css', 'js', 'ts', 'jsx', 'tsx', 'py', 'java', 'c', 'cpp', 'h', 'cs', 'php', 'rb', 'go', 'rs', 'log', 'ini', 'cfg', 'yml', 'yaml'];
+
+  const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico', 'tiff', 'tif', 'avif', 'jfif'];
+
+  const textExts = [
+    'txt', 'text', 'md', 'markdown', 'log', 'readme', 'html', 'htm', 'css', 'scss', 'sass', 'less', 'js', 'jsx', 'ts', 'tsx', 'vue', 'svelte', 'py', 'pyc', 'pyw', 'java', 'c', 'cpp', 'cc', 'cxx', 'h', 'hpp', 'cs', 'php', 'rb', 'go', 'rs', 'swift', 'kt', 'kts', 'scala', 'r', 'lua', 'perl', 'pl', 'sh', 'bash', 'zsh', 'fish', 'ps1', 'bat', 'cmd',
+    'json', 'xml', 'yml', 'yaml', 'toml', 'csv', 'tsv', 'sql', 'ini', 'conf', 'config', 'cfg', 'env', 'properties', 'gitignore', 'gitattributes', 'editorconfig', 'dockerfile', 'dockerignore',
+    'rst', 'tex', 'adoc', 'asciidoc', 'makefile', 'cmake', 'gradle', 'maven'
+  ];
   
   if (imageExts.includes(ext)) {
     showImagePreview(file);
@@ -2364,8 +2369,17 @@ async function showQuickLook() {
   quicklookModal.style.display = 'flex';
   
   const ext = file.name.split('.').pop()?.toLowerCase() || '';
-  const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico'];
-  const textExts = ['txt', 'md', 'json', 'xml', 'html', 'css', 'js', 'ts', 'jsx', 'tsx', 'py', 'java', 'c', 'cpp', 'h', 'cs', 'php', 'rb', 'go', 'rs', 'log', 'ini', 'cfg', 'yml', 'yaml'];
+
+  const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico', 'tiff', 'tif', 'avif', 'jfif'];
+
+  const textExts = [
+    'txt', 'text', 'md', 'markdown', 'log', 'readme',
+    'html', 'htm', 'css', 'scss', 'sass', 'less', 'js', 'jsx', 'ts', 'tsx', 'vue', 'svelte',
+    'py', 'pyc', 'pyw', 'java', 'c', 'cpp', 'cc', 'cxx', 'h', 'hpp', 'cs', 'php', 'rb', 'go', 'rs', 'swift', 'kt', 'kts', 'scala', 'r', 'lua', 'perl', 'pl', 'sh', 'bash', 'zsh', 'fish', 'ps1', 'bat', 'cmd',
+    'json', 'xml', 'yml', 'yaml', 'toml', 'csv', 'tsv', 'sql',
+    'ini', 'conf', 'config', 'cfg', 'env', 'properties', 'gitignore', 'gitattributes', 'editorconfig', 'dockerfile', 'dockerignore',
+    'rst', 'tex', 'adoc', 'asciidoc','makefile', 'cmake', 'gradle', 'maven'
+  ];
   
   quicklookContent.innerHTML = `
     <div class="preview-loading">
