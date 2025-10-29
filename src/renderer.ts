@@ -2272,7 +2272,10 @@ document.getElementById('github-btn')?.addEventListener('click', () => {
   window.electronAPI.openFile('https://github.com/BurntToasters/IYERIS');
 });
 document.getElementById('rosie-link')?.addEventListener('click', () => {
-  window.electronAPI.openFile('https://rosie.run');
+  window.electronAPI.openFile('https://rosie.run/support');
+});
+document.getElementById('heart-button')?.addEventListener('click', () => {
+  window.electronAPI.openFile('https://rosie.run/support');
 });
 document.getElementById('version-indicator')?.addEventListener('click', () => {
   const version = document.getElementById('version-indicator')?.textContent || 'v0.1.0';
