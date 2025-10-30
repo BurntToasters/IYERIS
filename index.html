@@ -93,15 +93,21 @@
         </div>
         
         <div class="toolbar-center">
-          <div class="address-bar glass-input">
-            <span class="address-icon">📍</span>
-            <input type="text" id="address-input" placeholder="Enter path...">
+          <div class="address-bar-wrapper">
+            <div class="address-bar glass-input">
+              <span class="address-icon">📍</span>
+              <input type="text" id="address-input" placeholder="Enter path...">
+            </div>
+            <div class="history-dropdown" id="directory-history-dropdown" style="display: none;"></div>
           </div>
 
-          <div class="search-bar glass-input" style="display: none;">
-            <span class="search-icon">🔍</span>
-            <input type="text" id="search-input" placeholder="Search files...">
-            <button class="search-close" id="search-close">✕</button>
+          <div class="search-bar-wrapper" style="display: none;">
+            <div class="search-bar glass-input">
+              <span class="search-icon">🔍</span>
+              <input type="text" id="search-input" placeholder="Search files...">
+              <button class="search-close" id="search-close">✕</button>
+            </div>
+            <div class="history-dropdown" id="search-history-dropdown" style="display: none;"></div>
           </div>
         </div>
         
@@ -286,6 +292,16 @@
           </div>
           <div class="setting-item">
             <div class="setting-info">
+              <label for="enable-search-history-toggle">Enable Search History</label>
+              <p class="setting-description">Save your recent searches and directory navigation</p>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="enable-search-history-toggle" checked>
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <div class="setting-item">
+            <div class="setting-info">
               <label for="sort-by-select">Default Sort By</label>
               <p class="setting-description">Default sorting method for files</p>
             </div>
@@ -464,12 +480,12 @@
         <div class="shortcuts-section">
           <h3>File Operations</h3>
           <div class="shortcut-item">
-            <span class="shortcut-description">New Folder</span>
-            <span class="shortcut-keys"><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>N</kbd></span>
+            <span class="shortcut-description">New Window</span>
+            <span class="shortcut-keys"><kbd>Ctrl</kbd> + <kbd>N</kbd></span>
           </div>
           <div class="shortcut-item">
-            <span class="shortcut-description">New File</span>
-            <span class="shortcut-keys"><kbd>Ctrl</kbd> + <kbd>N</kbd></span>
+            <span class="shortcut-description">New Folder</span>
+            <span class="shortcut-keys"><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>N</kbd></span>
           </div>
           <div class="shortcut-item">
             <span class="shortcut-description">Rename</span>
@@ -535,8 +551,9 @@
       <span id="status-selected" style="display: none;"></span>
     </div>
     <div class="status-right">
-      <p>Beta Build; non-stable @ [v0.3.0]</p>
       <span id="status-disk-space"></span>
+      <p>Beta Build @ [v0.3.0]</p>
+      <span id="heart-button" title="Support this project!" style="margin-left: -10px; margin-right: -15px; cursor: pointer;">❤️</span>
     </div>
   </div>
 

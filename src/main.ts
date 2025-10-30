@@ -45,7 +45,10 @@ const defaultSettings: Settings = {
   viewMode: 'grid',
   showDangerousOptions: false,
   startupPath: '',
-  showHiddenFiles: false
+  showHiddenFiles: false,
+  enableSearchHistory: true,
+  searchHistory: [],
+  directoryHistory: []
 };
 
 function getSettingsPath(): string {
@@ -101,8 +104,8 @@ function createWindow(): void {
     minWidth: 1000,
     minHeight: 700,
     frame: false,
-    transparent: true,
-    backgroundColor: '#00000000',
+    resizable: true,
+    backgroundColor: '#1e1e1e',
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -266,7 +269,6 @@ app.whenReady().then(async () => {
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = true;
 
-  // Disable auto-updater in Flatpak (updates handled by Flatpak system)
   if (isRunningInFlatpak()) {
     console.log('[AutoUpdater] Running in Flatpak - auto-updater disabled');
     console.log('[AutoUpdater] Updates should be installed via: flatpak update com.burnttoasters.iyeris');
@@ -454,14 +456,20 @@ ipcMain.handle('maximize-window', (): void => {
     mainWindow?.maximize();
   }
 });
-
-ipcMain.handle('close-window', (): void => {
-  mainWindow?.close();
+ipcMain.handle('close-window', (event: IpcMainInvokeEvent): void => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (win && !win.isDestroyed()) {
+    win.close();
+  }
+});
+ipcMain.handle('open-new-window', (): void => {
+  createWindow();
 });
 
 ipcMain.handle('create-folder', async (_event: IpcMainInvokeEvent, parentPath: string, folderName: string): Promise<PathResponse> => {
   try {
     const newPath = path.join(parentPath, folderName);
+
     await fs.mkdir(newPath);
     
     pushUndoAction({
@@ -731,39 +739,60 @@ ipcMain.handle('search-files', async (_event: IpcMainInvokeEvent, dirPath: strin
 });
 
 ipcMain.handle('get-disk-space', async (_event: IpcMainInvokeEvent, drivePath: string): Promise<{ success: boolean; total?: number; free?: number; error?: string }> => {
+  console.log('[Main] get-disk-space called with path:', drivePath, 'Platform:', process.platform);
   try {
     if (process.platform === 'win32') {
       const { exec } = require('child_process');
       return new Promise((resolve) => {
-        exec(`wmic logicaldisk where "DeviceID='${drivePath.replace(':\\', ':')}'" get Size,FreeSpace`, (error: Error | null, stdout: string) => {
+        const driveLetter = drivePath.substring(0, 2);
+        console.log('[Main] Getting disk space for drive:', driveLetter);
+        const psCommand = `powershell -Command "Get-PSDrive -Name ${driveLetter.charAt(0)} | Select-Object @{Name='Free';Expression={$_.Free}}, @{Name='Used';Expression={$_.Used}} | ConvertTo-Json"`;
+        
+        exec(psCommand, (error: Error | null, stdout: string) => {
+          if (error) {
+            console.error('[Main] PowerShell error:', error);
+            resolve({ success: false, error: error.message });
+            return;
+          }
+          console.log('[Main] PowerShell output:', stdout);
+          try {
+            const data = JSON.parse(stdout.trim());
+            const free = parseInt(data.Free);
+            const used = parseInt(data.Used);
+            const total = free + used;
+            console.log('[Main] Success - Free:', free, 'Used:', used, 'Total:', total);
+            resolve({ success: true, free, total });
+          } catch (parseError) {
+            console.error('[Main] JSON parse error:', parseError);
+            resolve({ success: false, error: 'Could not parse disk info' });
+          }
+        });
+      });
+    } else if (process.platform === 'darwin' || process.platform === 'linux') {
+      const { exec } = require('child_process');
+      return new Promise((resolve) => {
+        exec(`df -k "${drivePath}"`, (error: Error | null, stdout: string) => {
           if (error) {
             resolve({ success: false, error: error.message });
             return;
           }
-          const lines = stdout.trim().split('\n').filter(line => line.trim());
+          const lines = stdout.trim().split('\n');
           if (lines.length < 2) {
             resolve({ success: false, error: 'Could not parse disk info' });
             return;
           }
-          const values = lines[1].trim().split(/\s+/);
-          if (values.length >= 2) {
-            const free = parseInt(values[0]);
-            const total = parseInt(values[1]);
-            resolve({ success: true, free, total });
+
+          const parts = lines[1].trim().split(/\s+/);
+          if (parts.length >= 4) {
+            const total = parseInt(parts[1]) * 1024;
+            const available = parseInt(parts[3]) * 1024;
+            resolve({ success: true, total, free: available });
           } else {
             resolve({ success: false, error: 'Invalid disk info format' });
           }
         });
       });
     } else {
-      const stats = await fs.statfs ? fs.statfs(drivePath) : null;
-      if (stats) {
-        return {
-          success: true,
-          total: (stats as any).blocks * (stats as any).bsize,
-          free: (stats as any).bfree * (stats as any).bsize
-        };
-      }
       return { success: false, error: 'Disk space info not available on this platform' };
     }
   } catch (error) {
@@ -924,7 +953,6 @@ ipcMain.handle('request-full-disk-access', async (): Promise<ApiResponse> => {
 });
 
 ipcMain.handle('check-for-updates', async (): Promise<UpdateCheckResponse> => {
-  // If running in Flatpak, return a message about Flatpak updates
   if (isRunningInFlatpak()) {
     const currentVersion = app.getVersion();
     console.log('[AutoUpdater] Flatpak detected - redirecting to Flatpak update mechanism');

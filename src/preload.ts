@@ -10,6 +10,7 @@ const electronAPI: ElectronAPI = {
   minimizeWindow: () => ipcRenderer.invoke('minimize-window'),
   maximizeWindow: () => ipcRenderer.invoke('maximize-window'),
   closeWindow: () => ipcRenderer.invoke('close-window'),
+  openNewWindow: () => ipcRenderer.invoke('open-new-window'),
   createFolder: (parentPath: string, folderName: string) => ipcRenderer.invoke('create-folder', parentPath, folderName),
   createFile: (parentPath: string, fileName: string) => ipcRenderer.invoke('create-file', parentPath, fileName),
   deleteItem: (itemPath: string) => ipcRenderer.invoke('delete-item', itemPath),

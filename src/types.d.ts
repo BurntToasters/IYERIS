@@ -8,6 +8,9 @@ export interface Settings {
   showDangerousOptions: boolean;
   startupPath: string;
   showHiddenFiles: boolean;
+  enableSearchHistory: boolean;
+  searchHistory: string[];
+  directoryHistory: string[];
 }
 
 export interface FileItem {
@@ -104,6 +107,7 @@ export interface ElectronAPI {
   minimizeWindow: () => Promise<void>;
   maximizeWindow: () => Promise<void>;
   closeWindow: () => Promise<void>;
+  openNewWindow: () => Promise<void>;
   createFolder: (parentPath: string, folderName: string) => Promise<PathResponse>;
   createFile: (parentPath: string, fileName: string) => Promise<PathResponse>;
   deleteItem: (itemPath: string) => Promise<ApiResponse>;
