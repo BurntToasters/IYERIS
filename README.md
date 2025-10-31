@@ -1,34 +1,68 @@
-# Welcome to IYERIS: An alternative file browser for Windows, macOS, and Linux!
- 
-*Note: this is a just-for-fun project and currently isn't intended to be a full replacement for any file exploration/browser application.*
+# <p align="center">IYERIS is An alternative file browser for Windows, MacOS, and Linux!</p>
+<div align="center">
+  <table>
+    <tr>
+      <td valign="middle" align="center" width="220">
+        <img src="https://tuxedo.rosie.run/assets/iyeris-appicon.png"
+             alt="IYERIS logo" width="180" />
+      </td>
+      <td valign="middle" align="center">
+        <img src="https://github.com/user-attachments/assets/8d7ab428-7f92-4501-974c-ede3f9abcfca"
+             alt="IYERIS screenshot" width="680" />
+      </td>
+    </tr>
+  </table>
+</div>
 
-# ⬇️Downloads
-| <img width="12" height="40" alt="windows" src="https://github.com/user-attachments/assets/340d360e-79b1-4c70-bfab-d944085f75df" /> Windows | <img width="12" height="2047" alt="apple" src="https://github.com/user-attachments/assets/42d7e887-4616-4e8c-b1d3-e44e01340f8c" /> MacOS | <img width="12" height="195" alt="linux" src="https://github.com/user-attachments/assets/e0cc4f33-4516-408b-9c5c-be71a3ac316b" /> Linux |
-| :----------- | :------------: | ------------: |
-| **EXE:** **[x64](https://github.com/BurntToasters/IYERIS/releases/latest/download/IYERIS-Win-x64.exe)** / **[arm64](https://github.com/BurntToasters/IYERIS/releases/latest/download/IYERIS-Win-arm64.exe)**      | **DMG:** **[Universal DMG](https://github.com/BurntToasters/IYERIS/releases/latest/download/IYERIS-MacOS-universal.dmg)**         | **AppImage:** **[x64](https://github.com/BurntToasters/IYERIS/releases/latest/download/IYERIS-Linux-x86_64.AppImage)** / **[arm64](https://github.com/BurntToasters/IYERIS/releases/latest/download/IYERIS-Linux-arm64.AppImage)**
-| | **ZIP:** **[Universal ZIP](https://github.com/BurntToasters/IYERIS/releases/latest/download/IYERIS-MacOS-universal.zip)** | **DEB:** **[x64](https://github.com/BurntToasters/IYERIS/releases/latest/download/IYERIS-Linux-amd64.deb)** / **[arm64](https://github.com/BurntToasters/IYERIS/releases/latest/download/IYERIS-Linux-arm64.deb)** 
-| | | **RPM:** **[x64](https://github.com/BurntToasters/IYERIS/releases/latest/download/IYERIS-Linux-x86_64.rpm)** / **[arm64](https://github.com/BurntToasters/IYERIS/releases/latest/download/IYERIS-Linux-aarch64.rpm)**
-| | | **Flatpak:** **[Universal Bundle](https://github.com/BurntToasters/IYERIS/releases/latest/download/iyeris.flatpak)**
 
-<img width="800" height="893" alt="IYERIS" src="https://github.com/user-attachments/assets/fa6d7321-9a8b-40d5-913e-5c8082a95f8e" />
+
+<h1 align="center">⬇️Downloads</h1>
+
+<div align="center">
+  <table>
+    <thead>
+      <tr>
+        <th><img width="12" height="40" alt="windows" src="https://github.com/user-attachments/assets/340d360e-79b1-4c70-bfab-d944085f75df" /> Windows</th>
+        <th><img width="12" height="2047" alt="apple" src="https://github.com/user-attachments/assets/42d7e887-4616-4e8c-b1d3-e44e01340f8c" /> MacOS</th>
+        <th><img width="12" height="195" alt="linux" src="https://github.com/user-attachments/assets/e0cc4f33-4516-408b-9c5c-be71a3ac316b" /> Linux</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td align="left"><strong>EXE:</strong> <strong><a href="https://github.com/BurntToasters/IYERIS/releases/latest/download/IYERIS-Win.exe">Universal EXE</a></strong> / </strong> <strong><a href="https://github.com/BurntToasters/IYERIS/releases/latest/download/IYERIS-Win-x64.exe">x64</a></strong> / <strong><a href="https://github.com/BurntToasters/IYERIS/releases/latest/download/IYERIS-Win-arm64.exe">arm64</a></strong></td>
+        <td align="center"><strong>DMG:</strong> <strong><a href="https://github.com/BurntToasters/IYERIS/releases/latest/download/IYERIS-MacOS-universal.dmg">Universal DMG</a></strong></td>
+        <td align="right"><strong>AppImage:</strong> <strong><a href="https://github.com/BurntToasters/IYERIS/releases/latest/download/IYERIS-Linux-x86_64.AppImage">x64</a></strong> / <strong><a href="https://github.com/BurntToasters/IYERIS/releases/latest/download/IYERIS-Linux-arm64.AppImage">arm64</a></strong></td>
+      </tr>
+      <tr>
+        <td></td>
+        <td align="center"><strong>ZIP:</strong> <strong><a href="https://github.com/BurntToasters/IYERIS/releases/latest/download/IYERIS-MacOS-universal.zip">Universal ZIP</a></strong></td>
+        <td align="right"><strong>DEB:</strong> <strong><a href="https://github.com/BurntToasters/IYERIS/releases/latest/download/IYERIS-Linux-amd64.deb">x64</a></strong> / <strong><a href="https://github.com/BurntToasters/IYERIS/releases/latest/download/IYERIS-Linux-arm64.deb">arm64</a></strong></td>
+      </tr>
+      <tr>
+        <td></td>
+        <td></td>
+        <td align="right"><strong>RPM:</strong> <strong><a href="https://github.com/BurntToasters/IYERIS/releases/latest/download/IYERIS-Linux-x86_64.rpm">x64</a></strong> / <strong><a href="https://github.com/BurntToasters/IYERIS/releases/latest/download/IYERIS-Linux-aarch64.rpm">arm64</a></strong></td>
+      </tr>
+      <tr>
+        <td></td>
+        <td></td>
+        <td align="right"><strong>Flatpak:</strong> <strong><a href="https://github.com/BurntToasters/IYERIS/releases/latest/download/iyeris.flatpak">Universal Bundle</a></strong></td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+
+
+
+### ℹ️ More information on IYERIS is available at: <b><u>[https://help.rosie.run/iyeris/en-us/faq](https://help.rosie.run/iyeris/en-us/faq)</u></b>
 
 # Current Features
-- File browsing
-- File previewing *(for select common filetypes)
-- File renaming
-- File/Folder creation
-- Drag and drop
-- Cut/Copy/Paste
-- File properties
-- Basic theming
-- Favorites
-- Manual pointing to directories
-
-<u>More features are expected to come.</u>
+Checkout the roadmap and more <b>[➡️HERE!](https://help.rosie.run/iyeris/en-us/feature-set-and-roadmap)</b>
 
 # Notes
-- Linux binaries are coming soon. This initial release only contains binary installers for Windows and Mac for testing (but you can of course build it yourself!).
-- Update checker has NOT been fully tested yet.
+- This is a just-for-fun project and currently isn't intended to be a full replacement for any file exploration/browser application.
+- Self update function has been added. It has been tested as stable on Mac and Windows. Unconfirmed on Linux.
 
 # Warning
 This project is *NOT* stable. You *WILL* encounter bugs. This version is *NOT* intended for production/stable use.
