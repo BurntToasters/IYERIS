@@ -109,16 +109,22 @@ function createWindow(): void {
     frame: false,
     resizable: true,
     backgroundColor: '#1e1e1e',
+    show: false,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.js'),
-      devTools: isDev
+      devTools: isDev,
+      backgroundThrottling: false
     },
     icon: path.join(__dirname, '..', 'assets', 'icon.png')
   });
 
   mainWindow.loadFile(path.join(__dirname, '..', 'index.html'));
+
+  mainWindow.once('ready-to-show', () => {
+    mainWindow?.show();
+  });
 
   if (isDev) {
     mainWindow.webContents.openDevTools();
@@ -266,93 +272,112 @@ function setupApplicationMenu(): void {
 
 app.whenReady().then(async () => {
   setupApplicationMenu();
+
   createWindow();
 
-  fileIndexer = new FileIndexer();
-  const settings = await loadSettings();
-  await fileIndexer.initialize(settings.enableIndexer);
-
-  autoUpdater.logger = console;
-  autoUpdater.autoDownload = false;
-  autoUpdater.autoInstallOnAppQuit = true;
-
-  if (isRunningInFlatpak()) {
-    console.log('[AutoUpdater] Running in Flatpak - auto-updater disabled');
-    console.log('[AutoUpdater] Updates should be installed via: flatpak update com.burnttoasters.iyeris');
-  }
-
-  autoUpdater.on('checking-for-update', () => {
-    console.log('[AutoUpdater] Checking for update...');
-    mainWindow?.webContents.send('update-checking');
-  });
-
-  autoUpdater.on('update-available', (info) => {
-    console.log('[AutoUpdater] Update available:', info.version);
-    mainWindow?.webContents.send('update-available', info);
-  });
-
-  autoUpdater.on('update-not-available', (info) => {
-    console.log('[AutoUpdater] Update not available. Current version:', info.version);
-    mainWindow?.webContents.send('update-not-available', info);
-  });
-
-  autoUpdater.on('error', (err) => {
-    console.error('[AutoUpdater] Error:', err);
-    mainWindow?.webContents.send('update-error', err.message);
-  });
-
-  autoUpdater.on('download-progress', (progressObj) => {
-    console.log(`[AutoUpdater] Download progress: ${progressObj.percent.toFixed(2)}%`);
-    mainWindow?.webContents.send('update-download-progress', {
-      percent: progressObj.percent,
-      bytesPerSecond: progressObj.bytesPerSecond,
-      transferred: progressObj.transferred,
-      total: progressObj.total
-    });
-  });
-
-  autoUpdater.on('update-downloaded', (info) => {
-    console.log('[AutoUpdater] Update downloaded:', info.version);
-    mainWindow?.webContents.send('update-downloaded', info);
-  });
-
-  if (process.platform === 'darwin') {
-    console.log('[FDA] Scheduling Full Disk Access check...');
-    console.log('[FDA] App version:', app.getVersion());
-    console.log('[FDA] Is packaged:', app.isPackaged);
-    console.log('[FDA] User data path:', app.getPath('userData'));
-    
-    setTimeout(async () => {
-      console.log('[FDA] Running Full Disk Access check');
-      console.log('[FDA] Running from:', process.execPath);
-      
-      const hasAccess = await checkFullDiskAccess();
-      
-      if (hasAccess) {
-        console.log('[FDA] Full Disk Access already granted');
+  Promise.all([
+    (async () => {
+      try {
         const settings = await loadSettings();
-        console.log('[FDA] Current settings:', JSON.stringify(settings, null, 2));
-        if ((settings as any).skipFullDiskAccessPrompt) {
-          console.log('[FDA] Clearing "Don\'t Ask Again" flag');
-          delete (settings as any).skipFullDiskAccessPrompt;
-          const saveResult = await saveSettings(settings);
-          console.log('[FDA] Save result:', saveResult);
+        fileIndexer = new FileIndexer();
+        fileIndexer.initialize(settings.enableIndexer).catch(err => 
+          console.error('[Indexer] Background initialization failed:', err)
+        );
+      } catch (error) {
+        console.error('[Settings] Failed to load:', error);
+      }
+    })(),
+
+    (async () => {
+      try {
+        autoUpdater.logger = console;
+        autoUpdater.autoDownload = false;
+        autoUpdater.autoInstallOnAppQuit = true;
+
+        if (isRunningInFlatpak()) {
+          console.log('[AutoUpdater] Running in Flatpak - auto-updater disabled');
+          console.log('[AutoUpdater] Updates should be installed via: flatpak update com.burnttoasters.iyeris');
         }
-        return;
+
+        autoUpdater.on('checking-for-update', () => {
+          console.log('[AutoUpdater] Checking for update...');
+          mainWindow?.webContents.send('update-checking');
+        });
+
+        autoUpdater.on('update-available', (info) => {
+          console.log('[AutoUpdater] Update available:', info.version);
+          mainWindow?.webContents.send('update-available', info);
+        });
+
+        autoUpdater.on('update-not-available', (info) => {
+          console.log('[AutoUpdater] Update not available. Current version:', info.version);
+          mainWindow?.webContents.send('update-not-available', info);
+        });
+
+        autoUpdater.on('error', (err) => {
+          console.error('[AutoUpdater] Error:', err);
+          mainWindow?.webContents.send('update-error', err.message);
+        });
+
+        autoUpdater.on('download-progress', (progressObj) => {
+          console.log(`[AutoUpdater] Download progress: ${progressObj.percent.toFixed(2)}%`);
+          mainWindow?.webContents.send('update-download-progress', {
+            percent: progressObj.percent,
+            bytesPerSecond: progressObj.bytesPerSecond,
+            transferred: progressObj.transferred,
+            total: progressObj.total
+          });
+        });
+
+        autoUpdater.on('update-downloaded', (info) => {
+          console.log('[AutoUpdater] Update downloaded:', info.version);
+          mainWindow?.webContents.send('update-downloaded', info);
+        });
+      } catch (error) {
+        console.error('[AutoUpdater] Setup failed:', error);
       }
-      
-      console.log('[FDA] Full Disk Access NOT granted');
-      const settings = await loadSettings();
-      console.log('[FDA] Current settings:', JSON.stringify(settings, null, 2));
-      if ((settings as any).skipFullDiskAccessPrompt) {
-        console.log('[FDA] User has opted out of prompts');
-        return;
+    })(),
+
+    (async () => {
+      if (process.platform === 'darwin') {
+        console.log('[FDA] Scheduling Full Disk Access check...');
+        console.log('[FDA] App version:', app.getVersion());
+        console.log('[FDA] Is packaged:', app.isPackaged);
+        console.log('[FDA] User data path:', app.getPath('userData'));
+        
+        setTimeout(async () => {
+          console.log('[FDA] Running Full Disk Access check');
+          console.log('[FDA] Running from:', process.execPath);
+          
+          const hasAccess = await checkFullDiskAccess();
+          
+          if (hasAccess) {
+            console.log('[FDA] Full Disk Access already granted');
+            const settings = await loadSettings();
+            console.log('[FDA] Current settings:', JSON.stringify(settings, null, 2));
+            if ((settings as any).skipFullDiskAccessPrompt) {
+              console.log('[FDA] Clearing "Don\'t Ask Again" flag');
+              delete (settings as any).skipFullDiskAccessPrompt;
+              const saveResult = await saveSettings(settings);
+              console.log('[FDA] Save result:', saveResult);
+            }
+            return;
+          }
+          
+          console.log('[FDA] Full Disk Access NOT granted');
+          const settings = await loadSettings();
+          console.log('[FDA] Current settings:', JSON.stringify(settings, null, 2));
+          if ((settings as any).skipFullDiskAccessPrompt) {
+            console.log('[FDA] User has opted out of prompts');
+            return;
+          }
+          
+          console.log('[FDA] No Full Disk Access detected');
+          await showFullDiskAccessDialog();
+        }, 1500);
       }
-      
-      console.log('[FDA] No Full Disk Access detected');
-      await showFullDiskAccessDialog();
-    }, 1500);
-  }
+    })()
+  ]).catch(err => console.error('[Startup] Background initialization error:', err));
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

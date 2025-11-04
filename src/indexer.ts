@@ -200,9 +200,16 @@ export class FileIndexer {
     if (!this.enabled) {
       return [];
     }
-
     if (this.index.size === 0) {
       await this.loadIndex();
+      if (this.index.size === 0 || 
+          !this.lastIndexTime || 
+          (Date.now() - this.lastIndexTime.getTime() > 7 * 24 * 60 * 60 * 1000)) {
+        console.log('[Indexer] Index empty or outdated on first search, building...');
+        this.buildIndex().catch(err => 
+          console.error('[Indexer] Background build failed:', err)
+        );
+      }
     }
 
     const lowerQuery = query.toLowerCase();
@@ -319,19 +326,11 @@ export class FileIndexer {
       return;
     }
 
-    console.log('[Indexer] Initializing...');
-    
-    try {
-      await this.loadIndex();
-
-      if (this.index.size === 0 || 
-          !this.lastIndexTime || 
-          (Date.now() - this.lastIndexTime.getTime() > 7 * 24 * 60 * 60 * 1000)) {
-        console.log('[Indexer] Index is empty or outdated, building in background...');
-        this.buildIndex();
-      }
-    } catch (error) {
-      console.error('[Indexer] Error initializing:', error);
-    }
+    console.log('[Indexer] Initializing in lazy mode...');
+    setImmediate(() => {
+      this.loadIndex().catch(err => 
+        console.error('[Indexer] Background load failed:', err)
+      );
+    });
   }
 }

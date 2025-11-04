@@ -116,6 +116,9 @@
       "main": "dist/main.js"
     },
     "asar": true,
+    "asarUnpack": [
+      "**/*.node"
+    ],
     "mac": {
       "category": "public.app-category.productivity",
       "target": [
