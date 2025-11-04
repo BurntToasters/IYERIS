@@ -11,6 +11,7 @@ export interface Settings {
   enableSearchHistory: boolean;
   searchHistory: string[];
   directoryHistory: string[];
+  enableIndexer: boolean;
 }
 
 export interface FileItem {
@@ -63,6 +64,26 @@ export interface ClipboardOperation {
 
 export interface SearchResponse extends ApiResponse {
   results?: FileItem[];
+}
+
+export interface IndexEntry {
+  name: string;
+  path: string;
+  isDirectory: boolean;
+  isFile: boolean;
+  size: number;
+  modified: Date;
+}
+
+export interface IndexStatus {
+  isIndexing: boolean;
+  totalFiles: number;
+  indexedFiles: number;
+  lastIndexTime: Date | null;
+}
+
+export interface IndexSearchResponse extends ApiResponse {
+  results?: IndexEntry[];
 }
 
 export interface UndoAction {
@@ -137,6 +158,9 @@ export interface ElectronAPI {
   undoAction: () => Promise<UndoResponse>;
   redoAction: () => Promise<UndoResponse>;
   getUndoRedoState: () => Promise<{canUndo: boolean; canRedo: boolean}>;
+  searchIndex: (query: string) => Promise<IndexSearchResponse>;
+  rebuildIndex: () => Promise<ApiResponse>;
+  getIndexStatus: () => Promise<{success: boolean; status?: IndexStatus; error?: string}>;
 }
 
 declare global {

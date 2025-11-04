@@ -127,7 +127,11 @@ let currentSettings: Settings = {
   viewMode: 'grid',
   showDangerousOptions: false,
   startupPath: '',
-  showHiddenFiles: false
+  showHiddenFiles: false,
+  enableSearchHistory: true,
+  searchHistory: [],
+  directoryHistory: [],
+  enableIndexer: true
 };
 
 function showToast(message: string, title: string = '', type: 'success' | 'error' | 'info' | 'warning' = 'info'): void {
@@ -219,6 +223,7 @@ async function showSettingsModal() {
   const enableSearchHistoryToggle = document.getElementById('enable-search-history-toggle') as HTMLInputElement;
   const dangerousOptionsToggle = document.getElementById('dangerous-options-toggle') as HTMLInputElement;
   const startupPathInput = document.getElementById('startup-path-input') as HTMLInputElement;
+  const enableIndexerToggle = document.getElementById('enable-indexer-toggle') as HTMLInputElement;
   const settingsPath = document.getElementById('settings-path');
   
   if (transparencyToggle) {
@@ -254,6 +259,12 @@ async function showSettingsModal() {
     startupPathInput.value = currentSettings.startupPath || '';
   }
   
+  if (enableIndexerToggle) {
+    enableIndexerToggle.checked = currentSettings.enableIndexer !== false;
+  }
+
+  updateIndexStatus();
+  
   const path = await window.electronAPI.getSettingsPath();
   if (settingsPath) {
     settingsPath.textContent = path;
@@ -268,6 +279,56 @@ function hideSettingsModal() {
   const settingsModal = document.getElementById('settings-modal');
   settingsModal.style.display = 'none';
 }
+
+async function updateIndexStatus() {
+  const indexStatus = document.getElementById('index-status');
+  if (!indexStatus) return;
+  
+  try {
+    const result = await window.electronAPI.getIndexStatus();
+    if (result.success && result.status) {
+      const status = result.status;
+      if (status.isIndexing) {
+        indexStatus.textContent = `Status: Indexing... (${status.indexedFiles} files)`;
+      } else if (status.lastIndexTime) {
+        const date = new Date(status.lastIndexTime);
+        indexStatus.textContent = `Status: ${status.indexedFiles} files indexed on ${date.toLocaleDateString()}`;
+      } else {
+        indexStatus.textContent = 'Status: Not indexed yet';
+      }
+    } else {
+      indexStatus.textContent = 'Status: Unknown';
+    }
+  } catch (error) {
+    console.error('Failed to get index status:', error);
+    indexStatus.textContent = 'Status: Error';
+  }
+}
+
+async function rebuildIndex() {
+  const rebuildBtn = document.getElementById('rebuild-index-btn') as HTMLButtonElement;
+  if (!rebuildBtn) return;
+  
+  const originalText = rebuildBtn.textContent;
+  rebuildBtn.disabled = true;
+  rebuildBtn.textContent = '⏳ Rebuilding...';
+  
+  try {
+    const result = await window.electronAPI.rebuildIndex();
+    if (result.success) {
+      showToast('Index rebuild started in background', 'File Indexer', 'success');
+      setTimeout(updateIndexStatus, 1000);
+    } else {
+      showToast('Failed to rebuild index: ' + result.error, 'Error', 'error');
+    }
+  } catch (error) {
+    showToast('Error rebuilding index', 'Error', 'error');
+  } finally {
+    rebuildBtn.disabled = false;
+    rebuildBtn.textContent = originalText;
+  }
+}
+
 
 function updateDangerousOptionsVisibility(show: boolean) {
   const dangerousOptions = document.querySelectorAll('.dangerous-option');
@@ -402,6 +463,7 @@ async function saveSettings() {
   const enableSearchHistoryToggle = document.getElementById('enable-search-history-toggle') as HTMLInputElement;
   const dangerousOptionsToggle = document.getElementById('dangerous-options-toggle') as HTMLInputElement;
   const startupPathInput = document.getElementById('startup-path-input') as HTMLInputElement;
+  const enableIndexerToggle = document.getElementById('enable-indexer-toggle') as HTMLInputElement;
   
   if (transparencyToggle) {
     currentSettings.transparency = transparencyToggle.checked;
@@ -433,6 +495,10 @@ async function saveSettings() {
   
   if (startupPathInput) {
     currentSettings.startupPath = startupPathInput.value.trim();
+  }
+  
+  if (enableIndexerToggle) {
+    currentSettings.enableIndexer = enableIndexerToggle.checked;
   }
   
   currentSettings.viewMode = viewMode;
@@ -2266,6 +2332,7 @@ document.getElementById('browse-startup-path-btn')?.addEventListener('click', as
     }
   }
 });
+document.getElementById('rebuild-index-btn')?.addEventListener('click', rebuildIndex);
 document.getElementById('restart-admin-btn')?.addEventListener('click', restartAsAdmin);
 document.getElementById('check-updates-btn')?.addEventListener('click', checkForUpdates);
 document.getElementById('github-btn')?.addEventListener('click', () => {

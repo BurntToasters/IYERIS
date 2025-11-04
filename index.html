@@ -344,6 +344,25 @@
             </div>
           </div>
           
+          <h4>File Indexing</h4>
+          <div class="setting-item">
+            <div class="setting-info">
+              <label for="enable-indexer-toggle">Enable File Indexer</label>
+              <p class="setting-description">Index files and folders for faster searching. Indexes common locations in the background.</p>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="enable-indexer-toggle" checked>
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <div class="setting-item">
+            <div class="setting-info">
+              <label>Rebuild Index</label>
+              <p class="setting-description">Clear and rebuild the file index. <span id="index-status">Status: Unknown</span></p>
+            </div>
+            <button class="modal-button" id="rebuild-index-btn" style="margin-left: auto;">🔄 Rebuild Index</button>
+          </div>
+          
           <h4>Developer</h4>
           <div class="setting-item">
             <div class="setting-info">

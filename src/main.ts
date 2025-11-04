@@ -5,7 +5,8 @@ import { promises as fs } from 'fs';
 import * as fsSync from 'fs';
 import { exec } from 'child_process';
 import { promisify } from 'util';
-import type { Settings, FileItem, ApiResponse, DirectoryResponse, PathResponse, PropertiesResponse, SettingsResponse, UpdateCheckResponse } from './types';
+import type { Settings, FileItem, ApiResponse, DirectoryResponse, PathResponse, PropertiesResponse, SettingsResponse, UpdateCheckResponse, IndexSearchResponse } from './types';
+import { FileIndexer } from './indexer';
 
 const execAsync = promisify(exec);
 
@@ -15,6 +16,7 @@ const isRunningInFlatpak = (): boolean => {
 };
 
 let mainWindow: BrowserWindow | null = null;
+let fileIndexer: FileIndexer | null = null;
 
 const isDev = process.argv.includes('--dev');
 
@@ -48,7 +50,8 @@ const defaultSettings: Settings = {
   showHiddenFiles: false,
   enableSearchHistory: true,
   searchHistory: [],
-  directoryHistory: []
+  directoryHistory: [],
+  enableIndexer: true
 };
 
 function getSettingsPath(): string {
@@ -264,6 +267,10 @@ function setupApplicationMenu(): void {
 app.whenReady().then(async () => {
   setupApplicationMenu();
   createWindow();
+
+  fileIndexer = new FileIndexer();
+  const settings = await loadSettings();
+  await fileIndexer.initialize(settings.enableIndexer);
 
   autoUpdater.logger = console;
   autoUpdater.autoDownload = false;
@@ -633,7 +640,17 @@ ipcMain.handle('get-settings', async (): Promise<SettingsResponse> => {
 });
 
 ipcMain.handle('save-settings', async (_event: IpcMainInvokeEvent, settings: Settings): Promise<ApiResponse> => {
-  return await saveSettings(settings);
+  const result = await saveSettings(settings);
+
+  if (result.success && fileIndexer) {
+    fileIndexer.setEnabled(settings.enableIndexer);
+
+    if (settings.enableIndexer) {
+      fileIndexer.initialize(true);
+    }
+  }
+  
+  return result;
 });
 
 ipcMain.handle('reset-settings', async (): Promise<ApiResponse> => {
@@ -1161,6 +1178,53 @@ ipcMain.handle('get-undo-redo-state', async (): Promise<{canUndo: boolean; canRe
     canUndo: undoStack.length > 0,
     canRedo: redoStack.length > 0
   };
+});
+
+ipcMain.handle('search-index', async (_event: IpcMainInvokeEvent, query: string): Promise<IndexSearchResponse> => {
+  try {
+    if (!fileIndexer) {
+      return { success: false, error: 'Indexer not initialized' };
+    }
+
+    if (!fileIndexer.isEnabled()) {
+      return { success: false, error: 'Indexer is disabled' };
+    }
+
+    const results = await fileIndexer.search(query);
+    return { success: true, results };
+  } catch (error) {
+    console.error('[Indexer] Search error:', error);
+    return { success: false, error: (error as Error).message };
+  }
+});
+
+ipcMain.handle('rebuild-index', async (): Promise<ApiResponse> => {
+  try {
+    if (!fileIndexer) {
+      return { success: false, error: 'Indexer not initialized' };
+    }
+
+    console.log('[Indexer] Rebuild requested');
+    fileIndexer.rebuildIndex();
+    return { success: true };
+  } catch (error) {
+    console.error('[Indexer] Rebuild error:', error);
+    return { success: false, error: (error as Error).message };
+  }
+});
+
+ipcMain.handle('get-index-status', async (): Promise<{success: boolean; status?: any; error?: string}> => {
+  try {
+    if (!fileIndexer) {
+      return { success: false, error: 'Indexer not initialized' };
+    }
+
+    const status = fileIndexer.getStatus();
+    return { success: true, status };
+  } catch (error) {
+    console.error('[Indexer] Status error:', error);
+    return { success: false, error: (error as Error).message };
+  }
 });
 
 

@@ -41,7 +41,10 @@ const electronAPI: ElectronAPI = {
   },
   undoAction: () => ipcRenderer.invoke('undo-action'),
   redoAction: () => ipcRenderer.invoke('redo-action'),
-  getUndoRedoState: () => ipcRenderer.invoke('get-undo-redo-state')
+  getUndoRedoState: () => ipcRenderer.invoke('get-undo-redo-state'),
+  searchIndex: (query: string) => ipcRenderer.invoke('search-index', query),
+  rebuildIndex: () => ipcRenderer.invoke('rebuild-index'),
+  getIndexStatus: () => ipcRenderer.invoke('get-index-status')
 };
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);
