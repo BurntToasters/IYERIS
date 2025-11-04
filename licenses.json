@@ -189,7 +189,19 @@
         "licenseUrl": "https://github.com/DefinitelyTyped/DefinitelyTyped/raw/master/LICENSE",
         "parents": "iyeris"
     },
+    "@types/plist@3.0.5": {
+        "licenses": "MIT",
+        "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped",
+        "licenseUrl": "https://github.com/DefinitelyTyped/DefinitelyTyped/raw/master/LICENSE",
+        "parents": "iyeris"
+    },
     "@types/responselike@1.0.3": {
+        "licenses": "MIT",
+        "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped",
+        "licenseUrl": "https://github.com/DefinitelyTyped/DefinitelyTyped/raw/master/LICENSE",
+        "parents": "iyeris"
+    },
+    "@types/verror@1.10.11": {
         "licenses": "MIT",
         "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped",
         "licenseUrl": "https://github.com/DefinitelyTyped/DefinitelyTyped/raw/master/LICENSE",
@@ -289,6 +301,18 @@
         "licenses": "Python-2.0",
         "repository": "https://github.com/nodeca/argparse",
         "licenseUrl": "https://github.com/nodeca/argparse/raw/master/LICENSE",
+        "parents": "iyeris"
+    },
+    "assert-plus@1.0.0": {
+        "licenses": "MIT",
+        "repository": "https://github.com/mcavage/node-assert-plus",
+        "licenseUrl": "https://github.com/mcavage/node-assert-plus",
+        "parents": "iyeris"
+    },
+    "astral-regex@2.0.0": {
+        "licenses": "MIT",
+        "repository": "https://github.com/kevva/astral-regex",
+        "licenseUrl": "https://github.com/kevva/astral-regex/raw/master/license",
         "parents": "iyeris"
     },
     "async-exit-hook@2.0.1": {
@@ -447,6 +471,12 @@
         "licenseUrl": "https://github.com/sindresorhus/cli-spinners/raw/master/license",
         "parents": "iyeris"
     },
+    "cli-truncate@2.1.0": {
+        "licenses": "MIT",
+        "repository": "https://github.com/sindresorhus/cli-truncate",
+        "licenseUrl": "https://github.com/sindresorhus/cli-truncate/raw/master/license",
+        "parents": "iyeris"
+    },
     "cliui@8.0.1": {
         "licenses": "ISC",
         "repository": "https://github.com/yargs/cliui",
@@ -511,6 +541,18 @@
         "licenses": "MIT",
         "repository": "https://github.com/mighdoll/config-file-ts",
         "licenseUrl": "https://github.com/mighdoll/config-file-ts/raw/master/LICENSE",
+        "parents": "iyeris"
+    },
+    "core-util-is@1.0.2": {
+        "licenses": "MIT",
+        "repository": "https://github.com/isaacs/core-util-is",
+        "licenseUrl": "https://github.com/isaacs/core-util-is/raw/master/LICENSE",
+        "parents": "iyeris"
+    },
+    "crc@3.8.0": {
+        "licenses": "MIT",
+        "repository": "https://github.com/alexgorbatchev/node-crc",
+        "licenseUrl": "https://github.com/alexgorbatchev/node-crc/raw/master/LICENSE",
         "parents": "iyeris"
     },
     "cross-dirname@0.1.0": {
@@ -589,6 +631,12 @@
         "licenses": "MIT",
         "repository": "https://github.com/electron-userland/electron-builder",
         "licenseUrl": "https://github.com/electron-userland/electron-builder",
+        "parents": "iyeris"
+    },
+    "dmg-license@1.0.11": {
+        "licenses": "MIT",
+        "repository": "https://github.com/argv-minus-one/dmg-license",
+        "licenseUrl": "https://github.com/argv-minus-one/dmg-license/raw/master/LICENSE",
         "parents": "iyeris"
     },
     "dotenv-cli@10.0.0": {
@@ -757,6 +805,12 @@
         "licenses": "BSD-2-Clause",
         "repository": "https://github.com/maxogden/extract-zip",
         "licenseUrl": "https://github.com/maxogden/extract-zip/raw/master/LICENSE",
+        "parents": "iyeris"
+    },
+    "extsprintf@1.4.1": {
+        "licenses": "MIT",
+        "repository": "https://github.com/davepacheco/node-extsprintf",
+        "licenseUrl": "https://github.com/davepacheco/node-extsprintf/raw/master/LICENSE",
         "parents": "iyeris"
     },
     "fast-deep-equal@3.1.3": {
@@ -991,6 +1045,12 @@
         "licenses": "MIT",
         "repository": "https://github.com/node-modules/humanize-ms",
         "licenseUrl": "https://github.com/node-modules/humanize-ms/raw/master/LICENSE",
+        "parents": "iyeris"
+    },
+    "iconv-corefoundation@1.1.7": {
+        "licenses": "MIT",
+        "repository": "https://github.com/argv-minus-one/iconv-corefoundation",
+        "licenseUrl": "https://github.com/argv-minus-one/iconv-corefoundation/raw/master/LICENSE",
         "parents": "iyeris"
     },
     "iconv-lite@0.6.3": {
@@ -1367,10 +1427,16 @@
         "licenseUrl": "https://github.com/jshttp/negotiator/raw/master/LICENSE",
         "parents": "iyeris"
     },
-    "node-abi@3.79.0": {
+    "node-abi@3.80.0": {
         "licenses": "MIT",
         "repository": "https://github.com/electron/node-abi",
         "licenseUrl": "https://github.com/electron/node-abi/raw/master/LICENSE",
+        "parents": "iyeris"
+    },
+    "node-addon-api@1.7.2": {
+        "licenses": "MIT",
+        "repository": "https://github.com/nodejs/node-addon-api",
+        "licenseUrl": "https://github.com/nodejs/node-addon-api/raw/master/LICENSE.md",
         "parents": "iyeris"
     },
     "node-api-version@0.2.1": {
@@ -1679,6 +1745,12 @@
         "licenseUrl": "https://github.com/alexbrazier/simple-update-notifier/raw/master/LICENSE",
         "parents": "iyeris"
     },
+    "slice-ansi@3.0.0": {
+        "licenses": "MIT",
+        "repository": "https://github.com/chalk/slice-ansi",
+        "licenseUrl": "https://github.com/chalk/slice-ansi/raw/master/license",
+        "parents": "iyeris"
+    },
     "smart-buffer@4.2.0": {
         "licenses": "MIT",
         "repository": "https://github.com/JoshGlazebrook/smart-buffer",
@@ -1881,6 +1953,12 @@
         "licenses": "MIT",
         "repository": "https://github.com/TooTallNate/util-deprecate",
         "licenseUrl": "https://github.com/TooTallNate/util-deprecate/raw/master/LICENSE",
+        "parents": "iyeris"
+    },
+    "verror@1.10.1": {
+        "licenses": "MIT",
+        "repository": "https://github.com/joyent/node-verror",
+        "licenseUrl": "https://github.com/joyent/node-verror/raw/master/LICENSE",
         "parents": "iyeris"
     },
     "wcwidth@1.0.1": {
