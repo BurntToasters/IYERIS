@@ -200,16 +200,10 @@ export class FileIndexer {
     if (!this.enabled) {
       return [];
     }
-    if (this.index.size === 0) {
+
+    // If index is still empty and not currently building, load from disk
+    if (this.index.size === 0 && !this.isIndexing) {
       await this.loadIndex();
-      if (this.index.size === 0 || 
-          !this.lastIndexTime || 
-          (Date.now() - this.lastIndexTime.getTime() > 7 * 24 * 60 * 60 * 1000)) {
-        console.log('[Indexer] Index empty or outdated on first search, building...');
-        this.buildIndex().catch(err => 
-          console.error('[Indexer] Background build failed:', err)
-        );
-      }
     }
 
     const lowerQuery = query.toLowerCase();
@@ -326,11 +320,26 @@ export class FileIndexer {
       return;
     }
 
-    console.log('[Indexer] Initializing in lazy mode...');
-    setImmediate(() => {
-      this.loadIndex().catch(err => 
-        console.error('[Indexer] Background load failed:', err)
-      );
+    console.log('[Indexer] Initializing...');
+
+    setImmediate(async () => {
+      try {
+        await this.loadIndex();
+
+        if (this.index.size === 0) {
+          console.log('[Indexer] No existing index found, building now...');
+          await this.buildIndex();
+        } 
+        else if (!this.lastIndexTime || 
+                 (Date.now() - this.lastIndexTime.getTime() > 7 * 24 * 60 * 60 * 1000)) {
+          console.log('[Indexer] Index is outdated, rebuilding...');
+          await this.buildIndex();
+        } else {
+          console.log('[Indexer] Using existing index with', this.index.size, 'files');
+        }
+      } catch (err) {
+        console.error('[Indexer] Initialization failed:', err);
+      }
     });
   }
 }
