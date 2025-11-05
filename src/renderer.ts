@@ -576,7 +576,7 @@ function loadBookmarks() {
     bookmarkItem.innerHTML = `
       <span class="bookmark-icon">${twemojiImg(String.fromCodePoint(0x2B50), 'twemoji')}</span>
       <span class="bookmark-label">${name}</span>
-      <button class="bookmark-remove" title="Remove bookmark">${twemojiImg(String.fromCodePoint(0x2715), 'twemoji')}</button>
+      <button class="bookmark-remove" title="Remove bookmark">${twemojiImg(String.fromCodePoint(0x274C), 'twemoji')}</button>
     `;
     
     bookmarkItem.addEventListener('click', (e) => {
