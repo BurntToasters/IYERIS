@@ -1,6 +1,30 @@
 // @ts-nocheck
 import type { Settings, FileItem, ItemProperties } from './types';
 
+function emojiToCodepoint(emoji: string): string {
+  const codePoints: number[] = [];
+  let i = 0;
+  while (i < emoji.length) {
+    const code = emoji.codePointAt(i);
+    if (code !== undefined) {
+      if (code !== 0xFE0F) {
+        codePoints.push(code);
+      }
+      i += code > 0xFFFF ? 2 : 1;
+    } else {
+      i++;
+    }
+  }
+  return codePoints.map(cp => cp.toString(16)).join('-');
+}
+
+function twemojiImg(emoji: string, className: string = 'twemoji', alt?: string): string {
+  const codepoint = emojiToCodepoint(emoji);
+  const src = `assets/twemoji/${codepoint}.svg`;
+  const altText = alt || emoji;
+  return `<img src="${src}" class="${className}" alt="${altText}" draggable="false" />`;
+}
+
 type ViewMode = 'grid' | 'list';
 type DialogType = 'info' | 'warning' | 'error' | 'success' | 'question';
 
@@ -59,14 +83,14 @@ function showDialog(title: string, message: string, type: DialogType = 'info', s
     const dialogCancel = document.getElementById('dialog-cancel') as HTMLButtonElement;
 
     const icons: Record<DialogType, string> = {
-      info: 'ℹ️',
-      warning: '⚠️',
-      error: '❌',
-      success: '✅',
-      question: '❓'
+      info: '2139',
+      warning: '26a0',
+      error: '274c',
+      success: '2705',
+      question: '2753'
     };
 
-    dialogIcon.textContent = icons[type] || icons.info;
+    dialogIcon.innerHTML = twemojiImg(String.fromCodePoint(parseInt(icons[type] || icons.info, 16)), 'twemoji');
     dialogTitle.textContent = title;
     dialogContent.textContent = message;
     
@@ -142,15 +166,15 @@ function showToast(message: string, title: string = '', type: 'success' | 'error
   toast.className = `toast ${type}`;
   toast.style.cursor = 'pointer';
   
-  const icons = {
-    success: '✅',
-    error: '❌',
-    info: 'ℹ️',
-    warning: '⚠️'
+  const icons: Record<string, string> = {
+    success: '2705',
+    error: '274c',
+    info: '2139',
+    warning: '26a0'
   };
 
   toast.innerHTML = `
-    <span class="toast-icon">${icons[type]}</span>
+    <span class="toast-icon">${twemojiImg(String.fromCodePoint(parseInt(icons[type], 16)), 'twemoji')}</span>
     <div class="toast-content">
       ${title ? `<div class="toast-title">${title}</div>` : ''}
       <div class="toast-message">${message}</div>
@@ -550,9 +574,9 @@ function loadBookmarks() {
     const name = pathParts[pathParts.length - 1] || bookmarkPath;
     
     bookmarkItem.innerHTML = `
-      <span class="bookmark-icon">⭐</span>
+      <span class="bookmark-icon">${twemojiImg(String.fromCodePoint(0x2B50), 'twemoji')}</span>
       <span class="bookmark-label">${name}</span>
-      <button class="bookmark-remove" title="Remove bookmark">✕</button>
+      <button class="bookmark-remove" title="Remove bookmark">${twemojiImg(String.fromCodePoint(0x2715), 'twemoji')}</button>
     `;
     
     bookmarkItem.addEventListener('click', (e) => {
@@ -830,7 +854,7 @@ async function updateDiskSpace() {
 
     statusDiskSpace.innerHTML = `
       <span style="display: inline-flex; align-items: center; gap: 6px;">
-        💾 ${freeStr} free of ${totalStr}
+        ${twemojiImg(String.fromCodePoint(0x1F4BE), 'twemoji')} ${freeStr} free of ${totalStr}
         <span style="display: inline-block; width: 60px; height: 8px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden; position: relative;">
           <span style="position: absolute; left: 0; top: 0; height: 100%; width: ${usedPercent}%; background: ${usageColor}; transition: width 0.3s ease;"></span>
         </span>
@@ -890,7 +914,7 @@ async function loadDrives() {
     const driveItem = document.createElement('div');
     driveItem.className = 'nav-item';
     driveItem.innerHTML = `
-      <span class="nav-icon">💾</span>
+      <span class="nav-icon">${twemojiImg(String.fromCodePoint(0x1F4BE), 'twemoji')}</span>
       <span class="nav-label">${drive}</span>
     `;
     driveItem.addEventListener('click', () => navigateTo(drive));
@@ -1188,8 +1212,8 @@ function showSearchHistoryDropdown() {
     dropdown.innerHTML = '<div class="history-empty">No recent searches</div>';
   } else {
     dropdown.innerHTML = history.map(item => 
-      `<div class="history-item" data-query="${escapeHtml(item)}">🔍 ${escapeHtml(item)}</div>`
-    ).join('') + '<div class="history-clear" data-action="clear-search">🗑️ Clear Search History</div>';
+      `<div class="history-item" data-query="${escapeHtml(item)}">${twemojiImg(String.fromCodePoint(0x1F50D), 'twemoji')} ${escapeHtml(item)}</div>`
+    ).join('') + `<div class="history-clear" data-action="clear-search">${twemojiImg(String.fromCodePoint(0x1F5D1), 'twemoji')} Clear Search History</div>`;
   }
   
   dropdown.style.display = 'block';
@@ -1205,8 +1229,8 @@ function showDirectoryHistoryDropdown() {
     dropdown.innerHTML = '<div class="history-empty">No recent directories</div>';
   } else {
     dropdown.innerHTML = history.map(item => 
-      `<div class="history-item" data-path="${escapeHtml(item)}">📁 ${escapeHtml(item)}</div>`
-    ).join('') + '<div class="history-clear" data-action="clear-directory">🗑️ Clear Directory History</div>';
+      `<div class="history-item" data-path="${escapeHtml(item)}">${twemojiImg(String.fromCodePoint(0x1F4C1), 'twemoji')} ${escapeHtml(item)}</div>`
+    ).join('') + `<div class="history-clear" data-action="clear-directory">${twemojiImg(String.fromCodePoint(0x1F5D1), 'twemoji')} Clear Directory History</div>`;
   }
   
   dropdown.style.display = 'block';
@@ -1333,7 +1357,7 @@ function createFileItem(item) {
   fileItem.dataset.path = item.path;
   fileItem.dataset.isDirectory = item.isDirectory;
   
-  const icon = item.isDirectory ? '📁' : getFileIcon(item.name);
+  const icon = item.isDirectory ? twemojiImg(String.fromCodePoint(0x1F4C1), 'twemoji file-icon') : getFileIcon(item.name);
   const ext = item.name.split('.').pop()?.toLowerCase() || '';
   const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'ico'];
   const isImage = !item.isDirectory && imageExts.includes(ext);
@@ -1485,22 +1509,23 @@ async function loadThumbnail(fileItem: HTMLElement, item: FileItem) {
 
 function getFileIcon(filename) {
   const ext = filename.split('.').pop().toLowerCase();
-  const iconMap = {
-    'jpg': '🖼️', 'jpeg': '🖼️', 'png': '🖼️', 'gif': '🖼️', 'svg': '🖼️', 'bmp': '🖼️',
-    'mp4': '🎬', 'avi': '🎬', 'mov': '🎬', 'mkv': '🎬', 'webm': '🎬',
-    'mp3': '🎵', 'wav': '🎵', 'flac': '🎵', 'ogg': '🎵', 'm4a': '🎵',
-    'pdf': '📄', 'doc': '📝', 'docx': '📝', 'txt': '📝', 'rtf': '📝',
-    'xls': '📊', 'xlsx': '📊', 'csv': '📊',
-    'ppt': '📊', 'pptx': '📊',
-    'js': '📜', 'ts': '📜', 'jsx': '📜', 'tsx': '📜',
-    'html': '🌐', 'css': '🎨', 'json': '⚙️', 'xml': '⚙️',
-    'py': '🐍', 'java': '☕', 'c': '©️', 'cpp': '©️', 'cs': '©️',
-    'php': '🐘', 'rb': '💎', 'go': '🐹', 'rs': '🦀',
-    'zip': '🗜️', 'rar': '🗜️', '7z': '🗜️', 'tar': '🗜️', 'gz': '🗜️',
-    'exe': '⚙️', 'app': '⚙️', 'msi': '⚙️', 'dmg': '⚙️'
+  const iconMap: Record<string, string> = {
+    'jpg': '1f5bc', 'jpeg': '1f5bc', 'png': '1f5bc', 'gif': '1f5bc', 'svg': '1f5bc', 'bmp': '1f5bc',
+    'mp4': '1f3ac', 'avi': '1f3ac', 'mov': '1f3ac', 'mkv': '1f3ac', 'webm': '1f3ac',
+    'mp3': '1f3b5', 'wav': '1f3b5', 'flac': '1f3b5', 'ogg': '1f3b5', 'm4a': '1f3b5',
+    'pdf': '1f4c4', 'doc': '1f4dd', 'docx': '1f4dd', 'txt': '1f4dd', 'rtf': '1f4dd',
+    'xls': '1f4ca', 'xlsx': '1f4ca', 'csv': '1f4ca',
+    'ppt': '1f4ca', 'pptx': '1f4ca',
+    'js': '1f4dc', 'ts': '1f4dc', 'jsx': '1f4dc', 'tsx': '1f4dc',
+    'html': '1f310', 'css': '1f3a8', 'json': '2699', 'xml': '2699',
+    'py': '1f40d', 'java': '2615', 'c': 'a9', 'cpp': 'a9', 'cs': 'a9',
+    'php': '1f418', 'rb': '1f48e', 'go': '1f439', 'rs': '1f980',
+    'zip': '1f5dc', 'rar': '1f5dc', '7z': '1f5dc', 'tar': '1f5dc', 'gz': '1f5dc',
+    'exe': '2699', 'app': '2699', 'msi': '2699', 'dmg': '2699'
   };
   
-  return iconMap[ext] || '📄';
+  const codepoint = iconMap[ext] || '1f4c4';
+  return twemojiImg(String.fromCodePoint(parseInt(codepoint, 16)), 'twemoji file-icon');
 }
 
 async function handleDrop(sourcePaths: string[], destPath: string, operation: 'copy' | 'move'): Promise<void> {
@@ -1614,7 +1639,7 @@ async function permanentlyDeleteSelected() {
   
   const count = selectedItems.size;
   const confirmed = await showConfirm(
-    `⚠️ PERMANENTLY delete ${count} item${count > 1 ? 's' : ''}? This CANNOT be undone!`,
+    `${twemojiImg(String.fromCodePoint(0x26A0), 'twemoji')} PERMANENTLY delete ${count} item${count > 1 ? 's' : ''}? This CANNOT be undone!`,
     'Permanent Delete',
     'error'
   );
@@ -2174,7 +2199,7 @@ async function checkForUpdates() {
   if (!btn) return;
   
   const originalText = btn.textContent;
-  btn.textContent = '🔄 Checking...';
+  btn.innerHTML = `${twemojiImg(String.fromCodePoint(0x1F504), 'twemoji')} Checking...`;
   btn.disabled = true;
   
   try {
@@ -2269,7 +2294,7 @@ async function downloadAndInstallUpdate() {
       return;
     }
     
-    dialogIcon.textContent = '✅';
+    dialogIcon.innerHTML = twemojiImg(String.fromCodePoint(0x2705), 'twemoji-large');
     dialogTitle.textContent = 'Update Downloaded';
     dialogContent.textContent = 'The update has been downloaded successfully.\n\nThe application will restart to install the update.';
     dialogOk.style.display = 'block';
@@ -2393,7 +2418,7 @@ function showEmptyPreview() {
   if (!previewContent) return;
   previewContent.innerHTML = `
     <div class="preview-empty">
-      <div class="preview-empty-icon">👁️</div>
+      <div class="preview-empty-icon">${twemojiImg(String.fromCodePoint(0x1F441), 'twemoji-xlarge')}</div>
       <p>Select a file to preview</p>
       <small>Press Space for quick look</small>
     </div>
@@ -2487,7 +2512,7 @@ async function showTextPreview(file: FileItem) {
     const info = props.success && props.properties ? props.properties : null;
     
     previewContent.innerHTML = `
-      ${result.isTruncated ? '<div class="preview-truncated">⚠️ File truncated to first 50KB</div>' : ''}
+      ${result.isTruncated ? `<div class="preview-truncated">${twemojiImg(String.fromCodePoint(0x26A0), 'twemoji')} File truncated to first 50KB</div>` : ''}
       <div class="preview-text">${escapeHtml(result.content)}</div>
       ${generateFileInfo(file, info)}
     `;
@@ -2598,7 +2623,7 @@ async function showQuickLook() {
     const result = await window.electronAPI.readFileContent(file.path, 100 * 1024);
     if (result.success && result.content) {
       quicklookContent.innerHTML = `
-        ${result.isTruncated ? '<div class="preview-truncated">⚠️ File truncated to first 100KB</div>' : ''}
+        ${result.isTruncated ? `<div class="preview-truncated">${twemojiImg(String.fromCodePoint(0x26A0), 'twemoji')} File truncated to first 100KB</div>` : ''}
         <div class="preview-text">${escapeHtml(result.content)}</div>
       `;
       quicklookInfo.textContent = `${formatFileSize(file.size)} • ${new Date(file.modified).toLocaleDateString()}`;

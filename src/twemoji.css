@@ -1,0 +1,135 @@
+.twemoji {
+  display: inline-block;
+  width: 1.2em;
+  height: 1.2em;
+  vertical-align: middle;
+  margin: 0 0.05em 0 0.1em;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.twemoji-small {
+  width: 1em;
+  height: 1em;
+}
+
+.twemoji-medium {
+  width: 1.5em;
+  height: 1.5em;
+}
+
+.twemoji-large {
+  width: 2em;
+  height: 2em;
+}
+
+.twemoji-xlarge {
+  width: 3em;
+  height: 3em;
+}
+
+.nav-icon .twemoji {
+  width: 1.2em;
+  height: 1.2em;
+  margin-right: 0.5em;
+}
+
+.empty-icon .twemoji {
+  width: 4em;
+  height: 4em;
+  margin-bottom: 1rem;
+}
+
+.preview-empty-icon .twemoji {
+  width: 3em;
+  height: 3em;
+  margin-bottom: 0.5rem;
+}
+
+.context-menu-item .twemoji {
+  width: 1em;
+  height: 1em;
+  margin-right: 0.5em;
+}
+
+.bookmark-icon .twemoji {
+  width: 1em;
+  height: 1em;
+  margin-right: 0.5em;
+}
+
+.file-icon .twemoji {
+  width: 48px;
+  height: 48px;
+  margin-bottom: 0.5rem;
+}
+
+.list-view .file-icon .twemoji {
+  width: 24px;
+  height: 24px;
+  margin-right: 0.5rem;
+  margin-bottom: 0;
+}
+
+.dialog-icon .twemoji {
+  width: 2em;
+  height: 2em;
+  margin-right: 0.5rem;
+}
+
+.toolbar-button .twemoji {
+  width: 1em;
+  height: 1em;
+}
+
+.address-icon .twemoji,
+.search-icon .twemoji {
+  width: 1em;
+  height: 1em;
+}
+
+.status-bar .twemoji {
+  width: 1em;
+  height: 1em;
+}
+
+.settings-modal h3 .twemoji {
+  width: 1.2em;
+  height: 1.2em;
+  margin-right: 0.3em;
+}
+
+.history-item .twemoji {
+  width: 1em;
+  height: 1em;
+  margin-right: 0.5em;
+}
+
+.history-clear .twemoji {
+  width: 1em;
+  height: 1em;
+  margin-right: 0.5em;
+}
+
+.sort-menu .twemoji {
+  width: 1em;
+  height: 1em;
+  margin-right: 0.5em;
+}
+
+.bookmark-add-btn .twemoji {
+  width: 1em;
+  height: 1em;
+}
+
+.preview-close .twemoji,
+.search-close .twemoji,
+.modal-close .twemoji {
+  width: 1em;
+  height: 1em;
+}
+
+button .twemoji {
+  vertical-align: middle;
+  margin: 0;
+}

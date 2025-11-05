@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>IYERIS - File Explorer</title>
   <link rel="stylesheet" href="main.css">
+  <link rel="stylesheet" href="dist/twemoji.css">
 </head>
 <body>
   <div class="titlebar">
@@ -38,11 +39,11 @@
       <div class="sidebar-section">
         <div class="section-title">Quick Access</div>
         <div class="nav-item" data-action="home">
-          <span class="nav-icon">🏠</span>
+          <span class="nav-icon"><img src="assets/twemoji/1f3e0.svg" class="twemoji" alt="🏠" draggable="false" /></span>
           <span class="nav-label">Home</span>
         </div>
         <div class="nav-item" data-action="browse">
-          <span class="nav-icon">📂</span>
+          <span class="nav-icon"><img src="assets/twemoji/1f4c2.svg" class="twemoji" alt="📂" draggable="false" /></span>
           <span class="nav-label">Browse...</span>
         </div>
       </div>
@@ -55,7 +56,7 @@
       <div class="sidebar-section">
         <div class="section-title">
           Bookmarks
-          <button class="bookmark-add-btn" id="bookmark-add-btn" title="Add current folder">+📂</button>
+          <button class="bookmark-add-btn" id="bookmark-add-btn" title="Add current folder">+<img src="assets/twemoji/1f4c2.svg" class="twemoji" alt="📂" draggable="false" /></button>
         </div>
         <div id="bookmarks-list"></div>
       </div>
@@ -95,7 +96,7 @@
         <div class="toolbar-center">
           <div class="address-bar-wrapper">
             <div class="address-bar glass-input">
-              <span class="address-icon">📍</span>
+              <span class="address-icon"><img src="assets/twemoji/1f4cd.svg" class="twemoji" alt="📍" draggable="false" /></span>
               <input type="text" id="address-input" placeholder="Enter path...">
             </div>
             <div class="history-dropdown" id="directory-history-dropdown" style="display: none;"></div>
@@ -103,7 +104,7 @@
 
           <div class="search-bar-wrapper" style="display: none;">
             <div class="search-bar glass-input">
-              <span class="search-icon">🔍</span>
+              <span class="search-icon"><img src="assets/twemoji/1f50d.svg" class="twemoji" alt="🔍" draggable="false" /></span>
               <input type="text" id="search-input" placeholder="Search files...">
               <button class="search-close" id="search-close">✕</button>
             </div>
@@ -155,7 +156,7 @@
               <rect x="10" y="2" width="5" height="12" fill="currentColor" stroke="currentColor" stroke-width="1.5" rx="1"/>
             </svg>
           </button>
-          <button class="toolbar-button" id="settings-btn" title="Settings">⚙️
+          <button class="toolbar-button" id="settings-btn" title="Settings"><img src="assets/twemoji/2699.svg" class="twemoji" alt="⚙️" draggable="false" />
           </button>
         </div>
       </div>
@@ -167,7 +168,7 @@
             <p>Loading...</p>
           </div>
           <div class="empty-state" id="empty-state" style="display: none;">
-            <div class="empty-icon">📭</div>
+            <div class="empty-icon"><img src="assets/twemoji/1f4ed.svg" class="twemoji-xlarge" alt="📭" draggable="false" /></div>
             <p>This folder is empty</p>
           </div>
           <div class="file-grid" id="file-grid"></div>
@@ -180,7 +181,7 @@
           </div>
           <div class="preview-content" id="preview-content">
             <div class="preview-empty">
-              <div class="preview-empty-icon">👁️</div>
+              <div class="preview-empty-icon"><img src="assets/twemoji/1f441.svg" class="twemoji-xlarge" alt="👁️" draggable="false" /></div>
               <p>Select a file to preview</p>
               <small>Press Space for quick look</small>
             </div>
@@ -191,31 +192,31 @@
   </div>
 
   <div id="context-menu" class="context-menu" style="display: none;">
-    <div class="context-menu-item" data-action="open">📂 Open</div>
+    <div class="context-menu-item" data-action="open"><img src="assets/twemoji/1f4c2.svg" class="twemoji" alt="📂" draggable="false" /> Open</div>
     <div class="context-menu-separator"></div>
-    <div class="context-menu-item" data-action="cut">✂️ Cut</div>
-    <div class="context-menu-item" data-action="copy">📄 Copy</div>
-    <div class="context-menu-item" data-action="copy-path" id="copy-path-item">📋 Copy file path</div>
+    <div class="context-menu-item" data-action="cut"><img src="assets/twemoji/2702.svg" class="twemoji" alt="✂️" draggable="false" /> Cut</div>
+    <div class="context-menu-item" data-action="copy"><img src="assets/twemoji/1f4c4.svg" class="twemoji" alt="📄" draggable="false" /> Copy</div>
+    <div class="context-menu-item" data-action="copy-path" id="copy-path-item"><img src="assets/twemoji/1f4cb.svg" class="twemoji" alt="📋" draggable="false" /> Copy file path</div>
     <div class="context-menu-separator"></div>
-    <div class="context-menu-item" data-action="rename">✍️ Rename</div>
-    <div class="context-menu-item" data-action="refresh">🔄 Refresh</div>
-    <div class="context-menu-item" data-action="delete">🗑️ Delete</div>
+    <div class="context-menu-item" data-action="rename"><img src="assets/twemoji/270d.svg" class="twemoji" alt="✍️" draggable="false" /> Rename</div>
+    <div class="context-menu-item" data-action="refresh"><img src="assets/twemoji/1f504.svg" class="twemoji" alt="🔄" draggable="false" /> Refresh</div>
+    <div class="context-menu-item" data-action="delete"><img src="assets/twemoji/1f5d1.svg" class="twemoji" alt="🗑️" draggable="false" /> Delete</div>
     <div class="context-menu-separator"></div>
-    <div class="context-menu-item" data-action="add-to-bookmarks" id="add-to-bookmarks-item" style="display: none;">⭐ Add to Bookmarks</div>
-    <div class="context-menu-item" data-action="open-terminal" id="open-terminal-item">🖥️ Open folder in Terminal</div>
+    <div class="context-menu-item" data-action="add-to-bookmarks" id="add-to-bookmarks-item" style="display: none;"><img src="assets/twemoji/2b50.svg" class="twemoji" alt="⭐" draggable="false" /> Add to Bookmarks</div>
+    <div class="context-menu-item" data-action="open-terminal" id="open-terminal-item"><img src="assets/twemoji/1f5a5.svg" class="twemoji" alt="🖥️" draggable="false" /> Open folder in Terminal</div>
     <div class="context-menu-separator"></div>
-    <div class="context-menu-item" data-action="properties">ℹ️ Properties</div>
+    <div class="context-menu-item" data-action="properties"><img src="assets/twemoji/2139.svg" class="twemoji" alt="ℹ️" draggable="false" /> Properties</div>
   </div>
 
   <div id="empty-space-context-menu" class="context-menu" style="display: none;">
-    <div class="context-menu-item" data-action="new-folder">📁 New Folder</div>
-    <div class="context-menu-item" data-action="new-file">🗃️ New File</div>
+    <div class="context-menu-item" data-action="new-folder"><img src="assets/twemoji/1f4c1.svg" class="twemoji" alt="📁" draggable="false" /> New Folder</div>
+    <div class="context-menu-item" data-action="new-file"><img src="assets/twemoji/1f5c3.svg" class="twemoji" alt="🗃️" draggable="false" /> New File</div>
     <div class="context-menu-separator"></div>
-    <div class="context-menu-item" data-action="paste">📜 Paste</div>
+    <div class="context-menu-item" data-action="paste"><img src="assets/twemoji/1f4dc.svg" class="twemoji" alt="📜" draggable="false" /> Paste</div>
     <div class="context-menu-separator"></div>
-    <div class="context-menu-item" data-action="refresh">🔄 Refresh</div>
+    <div class="context-menu-item" data-action="refresh"><img src="assets/twemoji/1f504.svg" class="twemoji" alt="🔄" draggable="false" /> Refresh</div>
     <div class="context-menu-separator"></div>
-    <div class="context-menu-item" data-action="open-terminal">🖥️ Open folder in Terminal</div>
+    <div class="context-menu-item" data-action="open-terminal"><img src="assets/twemoji/1f5a5.svg" class="twemoji" alt="🖥️" draggable="false" /> Open folder in Terminal</div>
   </div>
 
   <div class="modal-overlay" id="properties-modal" style="display: none;">
@@ -250,7 +251,7 @@
   <div class="modal-overlay" id="settings-modal" style="display: none;">
     <div class="modal settings-modal glass-panel">
       <div class="modal-header">
-        <h3>⚙️ Settings</h3>
+        <h3><img src="assets/twemoji/2699.svg" class="twemoji" alt="⚙️" draggable="false" /> Settings</h3>
         <button class="modal-close" id="settings-close">✕</button>
       </div>
       <div class="modal-content settings-content" id="settings-content">
@@ -332,7 +333,7 @@
             </div>
             <div style="display: flex; gap: 8px; align-items: center; flex: 1;">
               <input type="text" id="startup-path-input" class="settings-input" placeholder="Leave empty for default (Home folder)" style="flex: 1;">
-              <button class="modal-button" id="browse-startup-path-btn" title="Browse for folder">📁 Browse</button>
+              <button class="modal-button" id="browse-startup-path-btn" title="Browse for folder"><img src="assets/twemoji/1f4c1.svg" class="twemoji" alt="📁" draggable="false" /> Browse</button>
             </div>
           </div>
           
@@ -366,7 +367,7 @@
           <h4>Developer</h4>
           <div class="setting-item">
             <div class="setting-info">
-              <label for="dangerous-options-toggle">🛠️ Enable developer mode (Show hidden options)</label>
+              <label for="dangerous-options-toggle"><img src="assets/twemoji/1f6e0.svg" class="twemoji" alt="🛠️" draggable="false" /> Enable developer mode (Show hidden options)</label>
               <p class="setting-description">Enable access to advanced options that could be dangerous if misused.</p>
             </div>
             <label class="toggle-switch">
@@ -381,7 +382,7 @@
               <label>Check for Updates</label>
               <p class="setting-description">Check if a new version of IYERIS is available.</p>
             </div>
-            <button class="modal-button" id="check-updates-btn" style="margin-left: auto;">🔃 Check for Updates</button>
+            <button class="modal-button" id="check-updates-btn" style="margin-left: auto;"><img src="assets/twemoji/1f503.svg" class="twemoji" alt="🔃" draggable="false" /> Check for Updates</button>
           </div>
           
           <div class="setting-item dangerous-option" id="restart-admin-setting" style="display: none;">
@@ -389,14 +390,17 @@
               <label>Restart with Administrator Privileges</label>
               <p class="setting-description">This will restart IYERIS with Admin/Sudo permissions. This can be dangerous if you don't know what you're doing.</p>
             </div>
-            <button class="modal-button" id="restart-admin-btn" style="margin-left: auto;">⚠️ Restart as Admin</button>
+            <button class="modal-button" id="restart-admin-btn" style="margin-left: auto;"><img src="assets/twemoji/26a0.svg" class="twemoji" alt="⚠️" draggable="false" /> Restart as Admin</button>
           </div>
         </div>
       </div>
       <div class="modal-footer">
         <div class="footer-top">
-          <span class="footer-credit">Made with ❤️ By: <strong>BurntToasters</strong>/<strong id="rosie-link" style="cursor: pointer; text-decoration: underline;">Rosie.run</strong></span>
+          <span class="footer-credit">Made with <img src="assets/twemoji/2764.svg" class="twemoji" alt="❤️" draggable="false" /> By: <strong>BurntToasters</strong>/<strong id="rosie-link" style="cursor: pointer; text-decoration: underline;">Rosie.run</strong></span>
           <span class="footer-version" id="version-indicator" title="Click to view release">v0.4.0</span>
+        </div>
+        <div class="footer-top" style="margin-top: 0.5rem; font-size: 0.85em; opacity: 0.8;">
+          <span class="footer-credit">Emoji graphics by <strong>Twemoji</strong> (Twitter) • <a href="https://github.com/jdecked/twemoji" target="_blank" style="text-decoration: underline; color: inherit;">CC-BY 4.0</a></span>
         </div>
         <div class="footer-bottom">
           <div class="footer-left">
@@ -448,7 +452,7 @@
   <div id="shortcuts-modal" class="modal-overlay" style="display: none;">
     <div class="modal-content shortcuts-modal-content">
       <div class="modal-header">
-        <h2>⌨️ Keyboard Shortcuts</h2>
+        <h2><img src="assets/twemoji/2328.svg" class="twemoji" alt="⌨️" draggable="false" /> Keyboard Shortcuts</h2>
         <button class="close-button" id="shortcuts-close" aria-label="Close">×</button>
       </div>
       <div class="modal-body shortcuts-modal-body">
@@ -572,7 +576,7 @@
     <div class="status-right">
       <span id="status-disk-space"></span>
       <p>Beta Build @ [v0.4.0]</p>
-      <span id="heart-button" title="Support this project!" style="margin-left: -10px; margin-right: -15px; cursor: pointer;">❤️</span>
+      <span id="heart-button" title="Support this project!" style="margin-left: -10px; margin-right: -15px; cursor: pointer;"><img src="assets/twemoji/2764.svg" class="twemoji" alt="❤️" draggable="false" /></span>
     </div>
   </div>
 
