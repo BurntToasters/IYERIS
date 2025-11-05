@@ -2424,6 +2424,9 @@ document.getElementById('rosie-link')?.addEventListener('click', () => {
 document.getElementById('twemoji-cc-link')?.addEventListener('click', () => {
   window.electronAPI.openFile('https://github.com/jdecked/twemoji');
 });
+document.getElementById('help-link')?.addEventListener('click', () => {
+  window.electronAPI.openFile('https://help.rosie.run/iyeris/en-us/faq');
+});
 document.getElementById('heart-button')?.addEventListener('click', () => {
   window.electronAPI.openFile('https://rosie.run/support');
 });
