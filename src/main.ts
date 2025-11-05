@@ -393,34 +393,48 @@ app.on('window-all-closed', () => {
 ipcMain.handle('get-directory-contents', async (_event: IpcMainInvokeEvent, dirPath: string): Promise<DirectoryResponse> => {
   try {
     const items = await fs.readdir(dirPath, { withFileTypes: true });
-    const contents: FileItem[] = await Promise.all(
-      items.map(async (item): Promise<FileItem> => {
-        const fullPath = path.join(dirPath, item.name);
-        const isHidden = await isFileHidden(fullPath, item.name);
-        try {
-          const stats = await fs.stat(fullPath);
-          return {
-            name: item.name,
-            path: fullPath,
-            isDirectory: item.isDirectory(),
-            isFile: item.isFile(),
-            size: stats.size,
-            modified: stats.mtime,
-            isHidden
-          };
-        } catch (err) {
-          return {
-            name: item.name,
-            path: fullPath,
-            isDirectory: item.isDirectory(),
-            isFile: item.isFile(),
-            size: 0,
-            modified: new Date(),
-            isHidden
-          };
-        }
-      })
-    );
+
+    const batchSize = 100;
+    const contents: FileItem[] = [];
+    
+    for (let i = 0; i < items.length; i += batchSize) {
+      const batch = items.slice(i, i + batchSize);
+      const batchResults = await Promise.all(
+        batch.map(async (item): Promise<FileItem> => {
+          const fullPath = path.join(dirPath, item.name);
+
+          let isHidden = item.name.startsWith('.');
+          if (process.platform === 'win32' && !isHidden) {
+            isHidden = false;
+          }
+          
+          try {
+            const stats = await fs.stat(fullPath);
+            return {
+              name: item.name,
+              path: fullPath,
+              isDirectory: item.isDirectory(),
+              isFile: item.isFile(),
+              size: stats.size,
+              modified: stats.mtime,
+              isHidden
+            };
+          } catch (err) {
+            return {
+              name: item.name,
+              path: fullPath,
+              isDirectory: item.isDirectory(),
+              isFile: item.isFile(),
+              size: 0,
+              modified: new Date(),
+              isHidden
+            };
+          }
+        })
+      );
+      contents.push(...batchResults);
+    }
+    
     return { success: true, contents };
   } catch (error) {
     return { success: false, error: (error as Error).message };

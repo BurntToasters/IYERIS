@@ -576,7 +576,7 @@ function loadBookmarks() {
     bookmarkItem.innerHTML = `
       <span class="bookmark-icon">${twemojiImg(String.fromCodePoint(0x2B50), 'twemoji')}</span>
       <span class="bookmark-label">${name}</span>
-      <button class="bookmark-remove" title="Remove bookmark">${twemojiImg(String.fromCodePoint(0x2715), 'twemoji')}</button>
+      <button class="bookmark-remove" title="Remove bookmark">${twemojiImg(String.fromCodePoint(0x274C), 'twemoji')}</button>
     `;
     
     bookmarkItem.addEventListener('click', (e) => {
@@ -1341,14 +1341,66 @@ function renderFiles(items) {
     
     return sortOrder === 'asc' ? comparison : -comparison;
   });
+
+  const fragment = document.createDocumentFragment();
+
+  const batchSize = 50;
+  let currentBatch = 0;
   
-  sortedItems.forEach(item => {
-    const fileItem = createFileItem(item);
-    fileGrid.appendChild(fileItem);
+  const renderBatch = () => {
+    const start = currentBatch * batchSize;
+    const end = Math.min(start + batchSize, sortedItems.length);
+    
+    for (let i = start; i < end; i++) {
+      const fileItem = createFileItem(sortedItems[i]);
+      fragment.appendChild(fileItem);
+    }
+    
+    fileGrid.appendChild(fragment);
+    currentBatch++;
+    
+    if (end < sortedItems.length) {
+      requestAnimationFrame(renderBatch);
+    } else {
+      updateCutVisuals();
+      updateStatusBar();
+
+      lazyLoadThumbnails();
+    }
+  };
+  
+  renderBatch();
+}
+
+let thumbnailObserver: IntersectionObserver | null = null;
+
+function lazyLoadThumbnails() {
+  if (thumbnailObserver) {
+    thumbnailObserver.disconnect();
+  }
+  
+  thumbnailObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        const fileItem = entry.target as HTMLElement;
+        const path = fileItem.dataset.path;
+        const item = allFiles.find(f => f.path === path);
+        
+        if (item && fileItem.classList.contains('has-thumbnail')) {
+          loadThumbnail(fileItem, item);
+          thumbnailObserver?.unobserve(fileItem);
+        }
+      }
+    });
+  }, {
+    root: null,
+    rootMargin: '50px',
+    threshold: 0.01
   });
-  
-  updateCutVisuals();
-  updateStatusBar();
+
+  document.querySelectorAll('.file-item.has-thumbnail').forEach(item => {
+    thumbnailObserver?.observe(item);
+  });
 }
 
 function createFileItem(item) {
@@ -1366,12 +1418,10 @@ function createFileItem(item) {
     fileItem.classList.add('has-thumbnail');
     fileItem.innerHTML = `
       <div class="file-icon">
-        <div class="spinner" style="width: 30px; height: 30px; border-width: 2px;"></div>
+        ${getFileIcon(item.name)}
       </div>
       <div class="file-name">${item.name}</div>
     `;
-    
-    loadThumbnail(fileItem, item);
   } else {
     fileItem.innerHTML = `
       <div class="file-icon">${icon}</div>
@@ -1487,8 +1537,13 @@ function createFileItem(item) {
 
 async function loadThumbnail(fileItem: HTMLElement, item: FileItem) {
   try {
-    const result = await window.electronAPI.getFileDataUrl(item.path, 500 * 1024);
     const iconDiv = fileItem.querySelector('.file-icon');
+
+    if (iconDiv) {
+      iconDiv.innerHTML = `<div class="spinner" style="width: 30px; height: 30px; border-width: 2px;"></div>`;
+    }
+    
+    const result = await window.electronAPI.getFileDataUrl(item.path, 500 * 1024);
     
     if (result.success && result.dataUrl && iconDiv) {
       iconDiv.innerHTML = `<img src="${result.dataUrl}" class="file-thumbnail" alt="${item.name}">`;
@@ -2365,6 +2420,12 @@ document.getElementById('github-btn')?.addEventListener('click', () => {
 });
 document.getElementById('rosie-link')?.addEventListener('click', () => {
   window.electronAPI.openFile('https://rosie.run/support');
+});
+document.getElementById('twemoji-cc-link')?.addEventListener('click', () => {
+  window.electronAPI.openFile('https://github.com/jdecked/twemoji');
+});
+document.getElementById('help-link')?.addEventListener('click', () => {
+  window.electronAPI.openFile('https://help.rosie.run/iyeris/en-us/faq');
 });
 document.getElementById('heart-button')?.addEventListener('click', () => {
   window.electronAPI.openFile('https://rosie.run/support');
