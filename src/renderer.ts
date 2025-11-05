@@ -75,6 +75,10 @@ const redoBtn = document.getElementById('redo-btn') as HTMLButtonElement;
 
 function showDialog(title: string, message: string, type: DialogType = 'info', showCancel: boolean = false): Promise<boolean> {
   return new Promise((resolve) => {
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+    
     const dialogModal = document.getElementById('dialog-modal') as HTMLElement;
     const dialogTitle = document.getElementById('dialog-title') as HTMLElement;
     const dialogContent = document.getElementById('dialog-content') as HTMLElement;
@@ -238,6 +242,10 @@ function applySettings(settings) {
 }
 
 async function showSettingsModal() {
+  if (document.activeElement instanceof HTMLElement) {
+    document.activeElement.blur();
+  }
+  
   const settingsModal = document.getElementById('settings-modal');
   const transparencyToggle = document.getElementById('transparency-toggle') as HTMLInputElement;
   const themeSelect = document.getElementById('theme-select') as HTMLSelectElement;
@@ -362,6 +370,10 @@ function updateDangerousOptionsVisibility(show: boolean) {
 }
 
 async function showLicensesModal() {
+  if (document.activeElement instanceof HTMLElement) {
+    document.activeElement.blur();
+  }
+  
   const licensesModal = document.getElementById('licenses-modal');
   if (!licensesModal) return;
   
@@ -425,6 +437,10 @@ function hideLicensesModal() {
 }
 
 function showShortcutsModal() {
+  if (document.activeElement instanceof HTMLElement) {
+    document.activeElement.blur();
+  }
+  
   const shortcutsModal = document.getElementById('shortcuts-modal');
   if (shortcutsModal) {
     shortcutsModal.style.display = 'flex';
@@ -944,6 +960,16 @@ function setupEventListeners() {
   newFileBtn?.addEventListener('click', createNewFile);
   newFolderBtn?.addEventListener('click', createNewFolder);
   viewToggleBtn?.addEventListener('click', toggleView);
+
+  document.addEventListener('mouseup', (e) => {
+    if (e.button === 3) {
+      e.preventDefault();
+      goBack();
+    } else if (e.button === 4) {
+      e.preventDefault();
+      goForward();
+    }
+  });
   
   searchBtn?.addEventListener('click', toggleSearch);
   searchClose?.addEventListener('click', closeSearch);
@@ -967,8 +993,64 @@ function setupEventListeners() {
       navigateTo(addressInput.value);
     }
   });
+
+  function isModalOpen(): boolean {
+    const settingsModal = document.getElementById('settings-modal');
+    const shortcutsModal = document.getElementById('shortcuts-modal');
+    const dialogModal = document.getElementById('dialog-modal');
+    const licensesModal = document.getElementById('licenses-modal');
+    const quicklookModal = document.getElementById('quicklook-modal');
+    
+    return (
+      (settingsModal && settingsModal.style.display === 'flex') ||
+      (shortcutsModal && shortcutsModal.style.display === 'flex') ||
+      (dialogModal && dialogModal.style.display === 'flex') ||
+      (licensesModal && licensesModal.style.display === 'flex') ||
+      (quicklookModal && quicklookModal.style.display === 'flex')
+    );
+  }
   
   document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      const settingsModal = document.getElementById('settings-modal');
+      if (settingsModal && settingsModal.style.display === 'flex') {
+        hideSettingsModal();
+        return;
+      }
+      
+      const shortcutsModal = document.getElementById('shortcuts-modal');
+      if (shortcutsModal && shortcutsModal.style.display === 'flex') {
+        hideShortcutsModal();
+        return;
+      }
+
+      const contextMenu = document.getElementById('context-menu');
+      if (contextMenu && contextMenu.style.display === 'block') {
+        hideContextMenu();
+        return;
+      }
+
+      const emptySpaceContextMenu = document.getElementById('empty-space-context-menu');
+      if (emptySpaceContextMenu && emptySpaceContextMenu.style.display === 'block') {
+        hideEmptySpaceContextMenu();
+        return;
+      }
+
+      if (isSearchMode) {
+        closeSearch();
+      }
+      return;
+    }
+
+    if (isModalOpen()) {
+      return;
+    }
+
+    const hasTextSelection = (): boolean => {
+      const selection = window.getSelection();
+      return selection !== null && selection.toString().length > 0;
+    };
+    
     if (e.ctrlKey || e.metaKey) {
       if (e.key === ',') {
         e.preventDefault();
@@ -980,18 +1062,32 @@ function setupEventListeners() {
         e.preventDefault();
         openNewWindow();
       } else if (e.key === 'c') {
+        if (hasTextSelection()) {
+          return;
+        }
         e.preventDefault();
         copyToClipboard();
       } else if (e.key === 'x') {
+        if (hasTextSelection()) {
+          return;
+        }
         e.preventDefault();
         cutToClipboard();
       } else if (e.key === 'v') {
+        const activeElement = document.activeElement;
+        if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
+          return;
+        }
         e.preventDefault();
         pasteFromClipboard();
       } else if (e.key === 'f') {
         e.preventDefault();
         toggleSearch();
       } else if (e.key === 'a') {
+        const activeElement = document.activeElement;
+        if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
+          return;
+        }
         e.preventDefault();
         selectAll();
       } else if (e.key === 'z' && !e.shiftKey) {
@@ -1016,28 +1112,6 @@ function setupEventListeners() {
         permanentlyDeleteSelected();
       } else {
         deleteSelected();
-      }
-    } else if (e.key === 'Escape') {
-      const settingsModal = document.getElementById('settings-modal');
-      if (settingsModal && settingsModal.style.display === 'flex') {
-        hideSettingsModal();
-        return;
-      }
-
-      const contextMenu = document.getElementById('context-menu');
-      if (contextMenu && contextMenu.style.display === 'block') {
-        hideContextMenu();
-        return;
-      }
-
-      const emptySpaceContextMenu = document.getElementById('empty-space-context-menu');
-      if (emptySpaceContextMenu && emptySpaceContextMenu.style.display === 'block') {
-        hideEmptySpaceContextMenu();
-        return;
-      }
-
-      if (isSearchMode) {
-        closeSearch();
       }
     }
   });
@@ -2642,6 +2716,10 @@ const quicklookOpen = document.getElementById('quicklook-open') as HTMLButtonEle
 async function showQuickLook() {
   if (selectedItems.size !== 1) return;
   if (!quicklookModal || !quicklookTitle || !quicklookContent || !quicklookInfo) return;
+
+  if (document.activeElement instanceof HTMLElement) {
+    document.activeElement.blur();
+  }
   
   const selectedPath = Array.from(selectedItems)[0];
   const file = allFiles.find(f => f.path === selectedPath);
@@ -2745,6 +2823,19 @@ document.addEventListener('keydown', (e) => {
     if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
       return;
     }
+
+    const settingsModal = document.getElementById('settings-modal');
+    const shortcutsModal = document.getElementById('shortcuts-modal');
+    const dialogModal = document.getElementById('dialog-modal');
+    const licensesModal = document.getElementById('licenses-modal');
+    
+    if ((settingsModal && settingsModal.style.display === 'flex') ||
+        (shortcutsModal && shortcutsModal.style.display === 'flex') ||
+        (dialogModal && dialogModal.style.display === 'flex') ||
+        (licensesModal && licensesModal.style.display === 'flex')) {
+      return;
+    }
+    
     e.preventDefault();
     if (quicklookModal && quicklookModal.style.display === 'flex') {
       closeQuickLook();
@@ -2802,6 +2893,7 @@ document.addEventListener('mousedown', (e) => {
       setTimeout(() => searchInput.focus(), 0);
     }
     hideSearchHistoryDropdown();
+    performSearch();
     return;
   }
 
