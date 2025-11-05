@@ -55,10 +55,10 @@
 
 
 
-### ℹ️ More information on IYERIS is available at: <b><u>[https://help.rosie.run/iyeris/en-us/faq](https://help.rosie.run/iyeris/en-us/faq)</u></b>
+### <p align="center">ℹ️ More information on IYERIS is available at: <b>[https://help.rosie.run/iyeris/en-us/faq](https://help.rosie.run/iyeris/en-us/faq)</b></p>
 
-# Current Features
-Checkout the roadmap and more <b>[➡️HERE!](https://help.rosie.run/iyeris/en-us/feature-set-and-roadmap)</b>
+# Feature List & Roadmap
+📌 Checkout the roadmap and more <b>[➡️HERE!](https://help.rosie.run/iyeris/en-us/feature-set-and-roadmap)</b>
 
 # Notes
 - This is a just-for-fun project and currently isn't intended to be a full replacement for any file exploration/browser application.
