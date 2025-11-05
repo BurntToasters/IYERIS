@@ -3,7 +3,7 @@
   <table>
     <tr>
       <td valign="middle" align="center" width="220">
-        <img src="https://tuxedo.rosie.run/assets/iyeris-appicon.png"
+        <img src="https://tuxedo.rosie.run/assets/iyeris-icon.png"
              alt="IYERIS logo" width="180" />
       </td>
       <td valign="middle" align="center">
