@@ -185,7 +185,7 @@ body::before {
 }
 
 .sidebar {
-  width: 240px;
+  width: 180px;
   padding: 20px 12px;
   overflow-y: auto;
   display: flex;
