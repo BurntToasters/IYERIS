@@ -144,7 +144,7 @@
           ]
         }
       ],
-      "icon": "assets/icon-square.png",
+      "icon": "assets/icon-square.ico",
       "artifactName": "${productName}-Win-${arch}.${ext}"
     },
     "nsis": {
