@@ -179,18 +179,18 @@ body::before {
 .container {
   display: flex;
   height: calc(100vh - 48px - 32px);
-  padding: 16px;
-  padding-bottom: 16px;
-  gap: 12px;
+  padding: 12px;
+  padding-bottom: 12px;
+  gap: 8px;
 }
 
 .sidebar {
   width: 180px;
-  padding: 20px 12px;
+  padding: 16px 10px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 18px;
 }
 
 .sidebar::-webkit-scrollbar {
@@ -225,15 +225,15 @@ body::before {
   text-transform: uppercase;
   letter-spacing: 0.8px;
   color: var(--text-tertiary);
-  margin-bottom: 8px;
-  padding: 0 12px;
+  margin-bottom: 6px;
+  padding: 0 10px;
 }
 
 .nav-item {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 8px 12px;
+  gap: 10px;
+  padding: 6px 10px;
   border-radius: var(--radius-medium);
   cursor: pointer;
   transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
@@ -297,16 +297,16 @@ body::before {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
   min-width: 0;
 }
 
 .toolbar {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 16px;
-  min-height: 52px;
+  gap: 8px;
+  padding: 8px 12px;
+  min-height: 48px;
   position: relative;
   z-index: 100;
 }
@@ -507,7 +507,7 @@ body::before {
 
 .file-view {
   flex: 1;
-  padding: 16px;
+  padding: 12px;
   overflow-y: auto;
   position: relative;
 }
@@ -536,8 +536,8 @@ body::before {
 .file-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
-  gap: 12px 16px;
-  padding: 8px;
+  gap: 10px 12px;
+  padding: 6px;
 }
 
 .file-grid.list-view {
@@ -549,7 +549,7 @@ body::before {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 12px 10px;
+  padding: 10px 8px;
   border-radius: var(--radius-medium);
   cursor: pointer;
   transition: all 0.12s cubic-bezier(0.4, 0, 0.2, 1);
@@ -1383,7 +1383,7 @@ body.no-transparency .file-view::before {
 .bookmark-item {
   display: flex;
   align-items: center;
-  padding: 8px 12px;
+  padding: 6px 10px;
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -1785,7 +1785,7 @@ body.theme-dark.no-transparency .titlebar {
 
 .content-wrapper {
   display: flex;
-  gap: 15px;
+  gap: 10px;
   flex: 1;
   overflow: hidden;
 }
