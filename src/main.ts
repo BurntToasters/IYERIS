@@ -119,16 +119,23 @@ function createWindow(): void {
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.js'),
       devTools: isDev,
-      backgroundThrottling: false
+      backgroundThrottling: false,
+      spellcheck: false,
+      v8CacheOptions: 'code'
     },
     icon: path.join(__dirname, '..', 'assets', 'icon.png')
   });
 
   mainWindow.loadFile(path.join(__dirname, '..', 'index.html'));
-
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show();
   });
+
+  setTimeout(() => {
+    if (mainWindow && !mainWindow.isVisible()) {
+      mainWindow.show();
+    }
+  }, 100);
 
   if (isDev) {
     mainWindow.webContents.openDevTools();
@@ -279,24 +286,27 @@ app.whenReady().then(async () => {
 
   createWindow();
 
-  Promise.all([
-    (async () => {
-      try {
-        const settings = await loadSettings();
-        fileIndexer = new FileIndexer();
-        fileIndexer.initialize(settings.enableIndexer).catch(err => 
-          console.error('[Indexer] Background initialization failed:', err)
-        );
-      } catch (error) {
-        console.error('[Settings] Failed to load:', error);
-      }
-    })(),
+  setTimeout(() => {
+    Promise.all([
+      (async () => {
+        try {
+          const settings = await loadSettings();
+          fileIndexer = new FileIndexer();
+          setTimeout(() => {
+            fileIndexer!.initialize(settings.enableIndexer).catch(err => 
+              console.error('[Indexer] Background initialization failed:', err)
+            );
+          }, 2000);
+        } catch (error) {
+          console.error('[Settings] Failed to load:', error);
+        }
+      })(),
 
-    (async () => {
-      try {
-        autoUpdater.logger = console;
-        autoUpdater.autoDownload = false;
-        autoUpdater.autoInstallOnAppQuit = true;
+      (async () => {
+        try {
+          autoUpdater.logger = console;
+          autoUpdater.autoDownload = false;
+          autoUpdater.autoInstallOnAppQuit = true;
 
         if (isRunningInFlatpak()) {
           console.log('[AutoUpdater] Running in Flatpak - auto-updater disabled');
@@ -378,10 +388,11 @@ app.whenReady().then(async () => {
           
           console.log('[FDA] No Full Disk Access detected');
           await showFullDiskAccessDialog();
-        }, 1500);
+        }, 3000);
       }
     })()
   ]).catch(err => console.error('[Startup] Background initialization error:', err));
+  }, 500);
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
