@@ -1281,6 +1281,104 @@ ipcMain.handle('compress-files', async (_event: IpcMainInvokeEvent, sourcePaths:
     } catch (err) {
     }
 
+    if (format === 'tar.gz') {
+      return new Promise(async (resolve, reject) => {
+        const sevenZipPath = sevenBin.path7za;
+        console.log('[Compress] Using 7zip at:', sevenZipPath);
+        const tarPath = outputPath.replace(/\.gz$/, '');
+        console.log('[Compress] Creating tar file:', tarPath);
+        
+        const tarProcess = Seven.add(tarPath, sourcePaths, {
+          $bin: sevenZipPath,
+          recursive: true
+        });
+
+        if (operationId) {
+          activeArchiveProcesses.set(operationId, tarProcess);
+        }
+
+        let fileCount = 0;
+        
+        tarProcess.on('progress', (progress) => {
+          fileCount++;
+          if (mainWindow) {
+            mainWindow.webContents.send('compress-progress', {
+              operationId,
+              current: fileCount,
+              total: fileCount + 20,
+              name: progress.file || 'Creating tar...'
+            });
+          }
+        });
+
+        tarProcess.on('end', async () => {
+          console.log('[Compress] Tar created, now compressing with gzip...');
+          const gzipProcess = Seven.add(outputPath, [tarPath], {
+            $bin: sevenZipPath
+          });
+
+          if (operationId) {
+            activeArchiveProcesses.set(operationId, gzipProcess);
+          }
+
+          gzipProcess.on('progress', () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('compress-progress', {
+                operationId,
+                current: fileCount + 10,
+                total: fileCount + 20,
+                name: 'Compressing with gzip...'
+              });
+            }
+          });
+
+          gzipProcess.on('end', async () => {
+            console.log('[Compress] tar.gz compression completed');
+
+            try {
+              await fs.unlink(tarPath);
+            } catch (err) {
+              console.error('[Compress] Failed to delete intermediate tar:', err);
+            }
+            
+            if (operationId) {
+              activeArchiveProcesses.delete(operationId);
+            }
+            resolve({ success: true });
+          });
+
+          gzipProcess.on('error', async (error) => {
+            console.error('[Compress] Gzip error:', error);
+
+            try {
+              await fs.unlink(tarPath);
+            } catch (err) {}
+            try {
+              await fs.unlink(outputPath);
+            } catch (err) {}
+            
+            if (operationId) {
+              activeArchiveProcesses.delete(operationId);
+            }
+            reject({ success: false, error: error.message || 'Gzip compression failed' });
+          });
+        });
+
+        tarProcess.on('error', async (error) => {
+          console.error('[Compress] Tar error:', error);
+
+          try {
+            await fs.unlink(tarPath);
+          } catch (err) {}
+          
+          if (operationId) {
+            activeArchiveProcesses.delete(operationId);
+          }
+          reject({ success: false, error: error.message || 'Tar creation failed' });
+        });
+      });
+    }
+
     return new Promise((resolve, reject) => {
       const sevenZipPath = sevenBin.path7za;
       console.log('[Compress] Using 7zip at:', sevenZipPath);
