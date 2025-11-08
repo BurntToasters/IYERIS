@@ -5,6 +5,9 @@ import { promises as fs } from 'fs';
 import * as fsSync from 'fs';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import AdmZip = require('adm-zip');
+import * as tar from 'tar-fs';
+import { createGzip, createGunzip } from 'zlib';
 import type { Settings, FileItem, ApiResponse, DirectoryResponse, PathResponse, PropertiesResponse, SettingsResponse, UpdateCheckResponse, IndexSearchResponse } from './types';
 import { FileIndexer } from './indexer';
 
@@ -31,7 +34,7 @@ const MAX_UNDO_STACK = 50;
 
 function pushUndoAction(action: UndoAction): void {
   undoStack.push(action);
-  if (undoStack.length > MAX_UNDO_STACK) {
+if (undoStack.length > MAX_UNDO_STACK) {
     undoStack.shift();
   }
   redoStack.length = 0;
@@ -1262,6 +1265,171 @@ ipcMain.handle('get-index-status', async (): Promise<{success: boolean; status?:
     return { success: true, status };
   } catch (error) {
     console.error('[Indexer] Status error:', error);
+    return { success: false, error: (error as Error).message };
+  }
+});
+
+async function getAllFiles(dirPath: string, baseDir: string = dirPath): Promise<{filePath: string; relativePath: string}[]> {
+  const files: {filePath: string; relativePath: string}[] = [];
+  const entries = await fs.readdir(dirPath, { withFileTypes: true });
+
+  for (const entry of entries) {
+    const fullPath = path.join(dirPath, entry.name);
+    const relativePath = path.relative(baseDir, fullPath);
+
+    if (entry.isDirectory()) {
+      const subFiles = await getAllFiles(fullPath, baseDir);
+      files.push(...subFiles);
+    } else {
+      files.push({ filePath: fullPath, relativePath });
+    }
+  }
+
+  return files;
+}
+
+ipcMain.handle('compress-files', async (_event: IpcMainInvokeEvent, sourcePaths: string[], outputZipPath: string): Promise<ApiResponse> => {
+  try {
+    console.log('[Compress] Starting compression:', sourcePaths, 'to', outputZipPath);
+    const zip = new AdmZip();
+    let totalFiles = 0;
+    let processedFiles = 0;
+
+    for (const sourcePath of sourcePaths) {
+      const stats = await fs.stat(sourcePath);
+      if (stats.isDirectory()) {
+        const files = await getAllFiles(sourcePath);
+        totalFiles += files.length;
+      } else {
+        totalFiles += 1;
+      }
+    }
+
+    for (const sourcePath of sourcePaths) {
+      const stats = await fs.stat(sourcePath);
+      const baseName = path.basename(sourcePath);
+
+      if (stats.isDirectory()) {
+        const files = await getAllFiles(sourcePath);
+        for (const { filePath, relativePath } of files) {
+          const zipPath = path.join(baseName, relativePath).split(path.sep).join('/');
+          zip.addLocalFile(filePath, path.dirname(zipPath).split(path.sep).join('/'));
+          
+          processedFiles++;
+          if (mainWindow) {
+            mainWindow.webContents.send('compress-progress', {
+              current: processedFiles,
+              total: totalFiles,
+              name: path.basename(filePath)
+            });
+          }
+        }
+        console.log('[Compress] Added folder:', baseName);
+      } else {
+        zip.addLocalFile(sourcePath);
+        processedFiles++;
+        if (mainWindow) {
+          mainWindow.webContents.send('compress-progress', {
+            current: processedFiles,
+            total: totalFiles,
+            name: baseName
+          });
+        }
+        console.log('[Compress] Added file:', baseName);
+      }
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      zip.writeZip(outputZipPath, (error) => {
+        if (error) reject(error);
+        else resolve();
+      });
+    });
+
+    console.log('[Compress] Successfully created:', outputZipPath);
+    return { success: true };
+  } catch (error) {
+    console.error('[Compress] Error:', error);
+    return { success: false, error: (error as Error).message };
+  }
+});
+
+ipcMain.handle('extract-archive', async (_event: IpcMainInvokeEvent, archivePath: string, destPath: string): Promise<ApiResponse> => {
+  try {
+    console.log('[Extract] Starting extraction:', archivePath, 'to', destPath);
+    const ext = path.extname(archivePath).toLowerCase();
+    const fileName = path.basename(archivePath, ext);
+
+    await fs.mkdir(destPath, { recursive: true });
+
+    if (ext === '.zip') {
+      const zip = new AdmZip(archivePath);
+      const zipEntries = zip.getEntries();
+      const totalEntries = zipEntries.length;
+
+      let processed = 0;
+
+      for (const entry of zipEntries) {
+        const entryPath = path.join(destPath, entry.entryName);
+        
+        if (entry.isDirectory) {
+          await fs.mkdir(entryPath, { recursive: true });
+        } else {
+          await fs.mkdir(path.dirname(entryPath), { recursive: true });
+          const content = entry.getData();
+          await fs.writeFile(entryPath, content);
+        }
+        
+        processed++;
+        if (mainWindow) {
+          mainWindow.webContents.send('extract-progress', {
+            current: processed,
+            total: totalEntries,
+            name: path.basename(entry.entryName)
+          });
+        }
+      }
+
+      console.log('[Extract] ZIP extraction completed');
+      return { success: true };
+
+    } else if (ext === '.gz' && archivePath.endsWith('.tar.gz')) {
+      return new Promise((resolve, reject) => {
+        const readStream = fsSync.createReadStream(archivePath);
+        const gunzip = createGunzip();
+        const extract = tar.extract(destPath);
+
+        let fileCount = 0;
+        extract.on('entry', (header) => {
+          fileCount++;
+          if (mainWindow) {
+            mainWindow.webContents.send('extract-progress', {
+              current: fileCount,
+              total: fileCount + 10,
+              name: path.basename(header.name)
+            });
+          }
+        });
+
+        extract.on('finish', () => {
+          console.log('[Extract] TAR.GZ extraction completed');
+          resolve({ success: true });
+        });
+
+        extract.on('error', (error) => {
+          console.error('[Extract] TAR.GZ error:', error);
+          reject({ success: false, error: error.message });
+        });
+
+        readStream.pipe(gunzip).pipe(extract);
+      });
+
+    } else {
+      return { success: false, error: `Unsupported archive format: ${ext}. Supported formats: .zip, .tar.gz` };
+    }
+
+  } catch (error) {
+    console.error('[Extract] Error:', error);
     return { success: false, error: (error as Error).message };
   }
 });

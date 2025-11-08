@@ -1,6 +1,28 @@
 // @ts-nocheck
 import type { Settings, FileItem, ItemProperties } from './types';
 
+// Simple path utilities for renderer
+const path = {
+  basename: (filePath: string, ext?: string): string => {
+    const name = filePath.split(/[\\/]/).pop() || '';
+    if (ext && name.endsWith(ext)) {
+      return name.slice(0, -ext.length);
+    }
+    return name;
+  },
+  dirname: (filePath: string): string => {
+    return filePath.split(/[\\/]/).slice(0, -1).join('/');
+  },
+  extname: (filePath: string): string => {
+    const name = filePath.split(/[\\/]/).pop() || '';
+    const dotIndex = name.lastIndexOf('.');
+    return dotIndex === -1 ? '' : name.slice(dotIndex);
+  },
+  join: (...parts: string[]): string => {
+    return parts.join('/').replace(/\/+/g, '/');
+  }
+};
+
 function emojiToCodepoint(emoji: string): string {
   const codePoints: number[] = [];
   let i = 0;
@@ -2037,6 +2059,8 @@ function showContextMenu(x, y, item) {
   const addToBookmarksItem = document.getElementById('add-to-bookmarks-item');
   const copyPathItem = document.getElementById('copy-path-item');
   const openTerminalItem = document.getElementById('open-terminal-item');
+  const compressItem = document.getElementById('compress-item');
+  const extractItem = document.getElementById('extract-item');
   
   if (!contextMenu) return;
   
@@ -2065,6 +2089,27 @@ function showContextMenu(x, y, item) {
       openTerminalItem.style.display = 'flex';
     } else {
       openTerminalItem.style.display = 'none';
+    }
+  }
+  
+  // Show compress for any file or folder
+  if (compressItem) {
+    compressItem.style.display = 'flex';
+  }
+  
+  // Show extract only for supported archive formats
+  if (extractItem) {
+    const fileName = item.name.toLowerCase();
+    const isArchive = fileName.endsWith('.zip') || 
+                      fileName.endsWith('.tar.gz') || 
+                      fileName.endsWith('.tgz') ||
+                      fileName.endsWith('.7z') ||
+                      fileName.endsWith('.rar');
+    
+    if (isArchive && !item.isDirectory) {
+      extractItem.style.display = 'flex';
+    } else {
+      extractItem.style.display = 'none';
     }
   }
   
@@ -2243,6 +2288,130 @@ async function handleContextMenuAction(action, item) {
         }
       }
       break;
+      
+    case 'compress':
+      await handleCompress();
+      break;
+      
+    case 'extract':
+      await handleExtract(item);
+      break;
+  }
+}
+
+async function handleCompress() {
+  const selectedPaths = Array.from(selectedItems);
+  
+  if (selectedPaths.length === 0) {
+    showToast('No items selected', 'Error', 'error');
+    return;
+  }
+  
+  // Generate default zip file name
+  let zipName: string;
+  if (selectedPaths.length === 1) {
+    const itemName = path.basename(selectedPaths[0]);
+    const nameWithoutExt = itemName.replace(/\.[^/.]+$/, '');
+    zipName = `${nameWithoutExt}.zip`;
+  } else {
+    const folderName = path.basename(currentPath);
+    zipName = `${folderName}_${selectedPaths.length}_items.zip`;
+  }
+  
+  const outputPath = path.join(currentPath, zipName);
+  
+  // Show progress modal
+  const modal = document.getElementById('compression-progress-modal') as HTMLElement;
+  const title = document.getElementById('compression-title') as HTMLElement;
+  const fileName = document.getElementById('compression-file-name') as HTMLElement;
+  const stats = document.getElementById('compression-stats') as HTMLElement;
+  const progressBar = document.getElementById('compression-progress-bar') as HTMLElement;
+  const percentage = document.getElementById('compression-percentage') as HTMLElement;
+  
+  title.innerHTML = '<img src="assets/twemoji/1f5dc.svg" class="twemoji" alt="🗜️" draggable="false" /> Compressing...';
+  fileName.textContent = 'Preparing...';
+  stats.textContent = '0 / 0 files';
+  progressBar.style.width = '0%';
+  percentage.textContent = '0%';
+  modal.style.display = 'flex';
+  
+  // Setup progress listener
+  window.electronAPI.onCompressProgress((progress) => {
+    const percent = Math.round((progress.current / progress.total) * 100);
+    fileName.textContent = progress.name;
+    stats.textContent = `${progress.current} / ${progress.total} files`;
+    progressBar.style.width = `${percent}%`;
+    percentage.textContent = `${percent}%`;
+  });
+  
+  try {
+    const result = await window.electronAPI.compressFiles(selectedPaths, outputPath);
+    
+    if (result.success) {
+      modal.style.display = 'none';
+      showToast(`Created ${zipName}`, 'Compressed Successfully', 'success');
+      await navigateTo(currentPath); // Refresh to show new zip file
+    } else {
+      modal.style.display = 'none';
+      showToast(result.error || 'Compression failed', 'Error', 'error');
+    }
+  } catch (error) {
+    modal.style.display = 'none';
+    showToast((error as Error).message, 'Compression Error', 'error');
+  }
+}
+
+async function handleExtract(item: FileItem) {
+  const ext = path.extname(item.path).toLowerCase();
+  const supportedFormats = ['.zip', '.tar.gz'];
+  
+  if (!supportedFormats.some(format => item.path.toLowerCase().endsWith(format))) {
+    showToast('Unsupported archive format. Supported: .zip, .tar.gz', 'Error', 'error');
+    return;
+  }
+  
+  // Extract to a folder with the archive's name (without extension)
+  const baseName = path.basename(item.path, ext);
+  const destPath = path.join(currentPath, baseName);
+  
+  // Show progress modal
+  const modal = document.getElementById('compression-progress-modal') as HTMLElement;
+  const title = document.getElementById('compression-title') as HTMLElement;
+  const fileName = document.getElementById('compression-file-name') as HTMLElement;
+  const stats = document.getElementById('compression-stats') as HTMLElement;
+  const progressBar = document.getElementById('compression-progress-bar') as HTMLElement;
+  const percentage = document.getElementById('compression-percentage') as HTMLElement;
+  
+  title.innerHTML = '<img src="assets/twemoji/1f4e6.svg" class="twemoji" alt="📦" draggable="false" /> Extracting...';
+  fileName.textContent = 'Preparing...';
+  stats.textContent = '0 / 0 files';
+  progressBar.style.width = '0%';
+  percentage.textContent = '0%';
+  modal.style.display = 'flex';
+  
+  // Setup progress listener
+  window.electronAPI.onExtractProgress((progress) => {
+    const percent = Math.round((progress.current / progress.total) * 100);
+    fileName.textContent = progress.name;
+    stats.textContent = `${progress.current} / ${progress.total} files`;
+    progressBar.style.width = `${percent}%`;
+    percentage.textContent = `${percent}%`;
+  });
+  
+  try {
+    const result = await window.electronAPI.extractArchive(item.path, destPath);
+    
+    if (result.success) {
+      modal.style.display = 'none';
+      showToast(`Extracted to ${baseName}`, 'Extraction Complete', 'success');
+      await navigateTo(currentPath); // Refresh to show extracted folder
+    } else {
+      modal.style.display = 'none';
+      showToast(result.error || 'Extraction failed', 'Error', 'error');
+    }
+  } catch (error) {
+    modal.style.display = 'none';
+    showToast((error as Error).message, 'Extraction Error', 'error');
   }
 }
 

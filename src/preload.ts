@@ -44,7 +44,15 @@ const electronAPI: ElectronAPI = {
   getUndoRedoState: () => ipcRenderer.invoke('get-undo-redo-state'),
   searchIndex: (query: string) => ipcRenderer.invoke('search-index', query),
   rebuildIndex: () => ipcRenderer.invoke('rebuild-index'),
-  getIndexStatus: () => ipcRenderer.invoke('get-index-status')
+  getIndexStatus: () => ipcRenderer.invoke('get-index-status'),
+  compressFiles: (sourcePaths: string[], outputZipPath: string) => ipcRenderer.invoke('compress-files', sourcePaths, outputZipPath),
+  extractArchive: (archivePath: string, destPath: string) => ipcRenderer.invoke('extract-archive', archivePath, destPath),
+  onCompressProgress: (callback: (progress: {current: number; total: number; name: string}) => void) => {
+    ipcRenderer.on('compress-progress', (_event, progress) => callback(progress));
+  },
+  onExtractProgress: (callback: (progress: {current: number; total: number; name: string}) => void) => {
+    ipcRenderer.on('extract-progress', (_event, progress) => callback(progress));
+  }
 };
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);

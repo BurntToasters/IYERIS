@@ -141,6 +141,12 @@
         "licenseUrl": "https://github.com/TooTallNate/once/raw/master/LICENSE",
         "parents": "iyeris"
     },
+    "@types/adm-zip@0.5.7": {
+        "licenses": "MIT",
+        "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped",
+        "licenseUrl": "https://github.com/DefinitelyTyped/DefinitelyTyped/raw/master/LICENSE",
+        "parents": "iyeris"
+    },
     "@types/cacheable-request@6.0.3": {
         "licenses": "MIT",
         "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped",
@@ -189,7 +195,31 @@
         "licenseUrl": "https://github.com/DefinitelyTyped/DefinitelyTyped/raw/master/LICENSE",
         "parents": "iyeris"
     },
+    "@types/plist@3.0.5": {
+        "licenses": "MIT",
+        "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped",
+        "licenseUrl": "https://github.com/DefinitelyTyped/DefinitelyTyped/raw/master/LICENSE",
+        "parents": "iyeris"
+    },
     "@types/responselike@1.0.3": {
+        "licenses": "MIT",
+        "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped",
+        "licenseUrl": "https://github.com/DefinitelyTyped/DefinitelyTyped/raw/master/LICENSE",
+        "parents": "iyeris"
+    },
+    "@types/tar-fs@2.0.4": {
+        "licenses": "MIT",
+        "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped",
+        "licenseUrl": "https://github.com/DefinitelyTyped/DefinitelyTyped/raw/master/LICENSE",
+        "parents": "iyeris"
+    },
+    "@types/tar-stream@3.1.4": {
+        "licenses": "MIT",
+        "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped",
+        "licenseUrl": "https://github.com/DefinitelyTyped/DefinitelyTyped/raw/master/LICENSE",
+        "parents": "iyeris"
+    },
+    "@types/verror@1.10.11": {
         "licenses": "MIT",
         "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped",
         "licenseUrl": "https://github.com/DefinitelyTyped/DefinitelyTyped/raw/master/LICENSE",
@@ -211,6 +241,12 @@
         "licenses": "ISC",
         "repository": "http://github.com/isaacs/abbrev-js",
         "licenseUrl": "http://github.com/isaacs/abbrev-js/raw/master/LICENSE",
+        "parents": "iyeris"
+    },
+    "adm-zip@0.5.16": {
+        "licenses": "MIT",
+        "repository": "https://github.com/cthackers/adm-zip",
+        "licenseUrl": "https://github.com/cthackers/adm-zip/raw/master/LICENSE",
         "parents": "iyeris"
     },
     "agent-base@6.0.2": {
@@ -291,6 +327,18 @@
         "licenseUrl": "https://github.com/nodeca/argparse/raw/master/LICENSE",
         "parents": "iyeris"
     },
+    "assert-plus@1.0.0": {
+        "licenses": "MIT",
+        "repository": "https://github.com/mcavage/node-assert-plus",
+        "licenseUrl": "https://github.com/mcavage/node-assert-plus",
+        "parents": "iyeris"
+    },
+    "astral-regex@2.0.0": {
+        "licenses": "MIT",
+        "repository": "https://github.com/kevva/astral-regex",
+        "licenseUrl": "https://github.com/kevva/astral-regex/raw/master/license",
+        "parents": "iyeris"
+    },
     "async-exit-hook@2.0.1": {
         "licenses": "MIT",
         "repository": "https://github.com/tapppi/async-exit-hook",
@@ -315,10 +363,52 @@
         "licenseUrl": "https://github.com/RyanZim/at-least-node/raw/master/LICENSE",
         "parents": "iyeris"
     },
+    "b4a@1.7.3": {
+        "licenses": "Apache-2.0",
+        "repository": "https://github.com/holepunchto/b4a",
+        "licenseUrl": "https://github.com/holepunchto/b4a/raw/master/LICENSE",
+        "parents": "iyeris"
+    },
     "balanced-match@1.0.2": {
         "licenses": "MIT",
         "repository": "https://github.com/juliangruber/balanced-match",
         "licenseUrl": "https://github.com/juliangruber/balanced-match/raw/master/LICENSE.md",
+        "parents": "iyeris"
+    },
+    "bare-events@2.8.2": {
+        "licenses": "Apache-2.0",
+        "repository": "https://github.com/holepunchto/bare-events",
+        "licenseUrl": "https://github.com/holepunchto/bare-events/raw/master/LICENSE",
+        "parents": "iyeris"
+    },
+    "bare-fs@4.5.0": {
+        "licenses": "Apache-2.0",
+        "repository": "https://github.com/holepunchto/bare-fs",
+        "licenseUrl": "https://github.com/holepunchto/bare-fs/raw/master/LICENSE",
+        "parents": "iyeris"
+    },
+    "bare-os@3.6.2": {
+        "licenses": "Apache-2.0",
+        "repository": "https://github.com/holepunchto/bare-os",
+        "licenseUrl": "https://github.com/holepunchto/bare-os/raw/master/LICENSE",
+        "parents": "iyeris"
+    },
+    "bare-path@3.0.0": {
+        "licenses": "Apache-2.0",
+        "repository": "https://github.com/holepunchto/bare-path",
+        "licenseUrl": "https://github.com/holepunchto/bare-path/raw/master/LICENSE",
+        "parents": "iyeris"
+    },
+    "bare-stream@2.7.0": {
+        "licenses": "Apache-2.0",
+        "repository": "https://github.com/holepunchto/bare-stream",
+        "licenseUrl": "https://github.com/holepunchto/bare-stream/raw/master/LICENSE",
+        "parents": "iyeris"
+    },
+    "bare-url@2.3.2": {
+        "licenses": "Apache-2.0",
+        "repository": "https://github.com/holepunchto/bare-url",
+        "licenseUrl": "https://github.com/holepunchto/bare-url/raw/master/LICENSE",
         "parents": "iyeris"
     },
     "base64-js@1.5.1": {
@@ -447,6 +537,12 @@
         "licenseUrl": "https://github.com/sindresorhus/cli-spinners/raw/master/license",
         "parents": "iyeris"
     },
+    "cli-truncate@2.1.0": {
+        "licenses": "MIT",
+        "repository": "https://github.com/sindresorhus/cli-truncate",
+        "licenseUrl": "https://github.com/sindresorhus/cli-truncate/raw/master/license",
+        "parents": "iyeris"
+    },
     "cliui@8.0.1": {
         "licenses": "ISC",
         "repository": "https://github.com/yargs/cliui",
@@ -511,6 +607,18 @@
         "licenses": "MIT",
         "repository": "https://github.com/mighdoll/config-file-ts",
         "licenseUrl": "https://github.com/mighdoll/config-file-ts/raw/master/LICENSE",
+        "parents": "iyeris"
+    },
+    "core-util-is@1.0.2": {
+        "licenses": "MIT",
+        "repository": "https://github.com/isaacs/core-util-is",
+        "licenseUrl": "https://github.com/isaacs/core-util-is/raw/master/LICENSE",
+        "parents": "iyeris"
+    },
+    "crc@3.8.0": {
+        "licenses": "MIT",
+        "repository": "https://github.com/alexgorbatchev/node-crc",
+        "licenseUrl": "https://github.com/alexgorbatchev/node-crc/raw/master/LICENSE",
         "parents": "iyeris"
     },
     "cross-dirname@0.1.0": {
@@ -591,6 +699,12 @@
         "licenseUrl": "https://github.com/electron-userland/electron-builder",
         "parents": "iyeris"
     },
+    "dmg-license@1.0.11": {
+        "licenses": "MIT",
+        "repository": "https://github.com/argv-minus-one/dmg-license",
+        "licenseUrl": "https://github.com/argv-minus-one/dmg-license/raw/master/LICENSE",
+        "parents": "iyeris"
+    },
     "dotenv-cli@10.0.0": {
         "licenses": "MIT",
         "repository": "https://github.com/entropitor/dotenv-cli",
@@ -663,7 +777,7 @@
         "licenseUrl": "https://github.com/electron/windows-installer/raw/master/LICENSE",
         "parents": "iyeris"
     },
-    "electron@39.0.0": {
+    "electron@39.1.1": {
         "licenses": "MIT",
         "repository": "https://github.com/electron/electron",
         "licenseUrl": "https://github.com/electron/electron/raw/master/LICENSE",
@@ -747,6 +861,12 @@
         "licenseUrl": "https://github.com/sindresorhus/escape-string-regexp/raw/master/license",
         "parents": "iyeris"
     },
+    "events-universal@1.0.1": {
+        "licenses": "Apache-2.0",
+        "repository": "https://github.com/holepunchto/events-universal",
+        "licenseUrl": "https://github.com/holepunchto/events-universal/raw/master/LICENSE",
+        "parents": "iyeris"
+    },
     "exponential-backoff@3.1.3": {
         "licenses": "Apache-2.0",
         "repository": "https://github.com/coveooss/exponential-backoff",
@@ -759,10 +879,22 @@
         "licenseUrl": "https://github.com/maxogden/extract-zip/raw/master/LICENSE",
         "parents": "iyeris"
     },
+    "extsprintf@1.4.1": {
+        "licenses": "MIT",
+        "repository": "https://github.com/davepacheco/node-extsprintf",
+        "licenseUrl": "https://github.com/davepacheco/node-extsprintf/raw/master/LICENSE",
+        "parents": "iyeris"
+    },
     "fast-deep-equal@3.1.3": {
         "licenses": "MIT",
         "repository": "https://github.com/epoberezkin/fast-deep-equal",
         "licenseUrl": "https://github.com/epoberezkin/fast-deep-equal/raw/master/LICENSE",
+        "parents": "iyeris"
+    },
+    "fast-fifo@1.3.2": {
+        "licenses": "MIT",
+        "repository": "https://github.com/mafintosh/fast-fifo",
+        "licenseUrl": "https://github.com/mafintosh/fast-fifo/raw/master/LICENSE",
         "parents": "iyeris"
     },
     "fast-json-stable-stringify@2.1.0": {
@@ -993,6 +1125,12 @@
         "licenseUrl": "https://github.com/node-modules/humanize-ms/raw/master/LICENSE",
         "parents": "iyeris"
     },
+    "iconv-corefoundation@1.1.7": {
+        "licenses": "MIT",
+        "repository": "https://github.com/argv-minus-one/iconv-corefoundation",
+        "licenseUrl": "https://github.com/argv-minus-one/iconv-corefoundation/raw/master/LICENSE",
+        "parents": "iyeris"
+    },
     "iconv-lite@0.6.3": {
         "licenses": "MIT",
         "repository": "https://github.com/ashtuchkin/iconv-lite",
@@ -1089,7 +1227,7 @@
         "licenseUrl": "https://github.com/isaacs/isexe/raw/master/LICENSE",
         "parents": "iyeris"
     },
-    "iyeris@0.4.0": {
+    "iyeris@0.5.0": {
         "licenses": "MPL-2.0",
         "repository": "https://github.com/BurntToasters/IYERIS",
         "licenseUrl": "https://github.com/BurntToasters/IYERIS/raw/master/LICENSE",
@@ -1371,6 +1509,12 @@
         "licenses": "MIT",
         "repository": "https://github.com/electron/node-abi",
         "licenseUrl": "https://github.com/electron/node-abi/raw/master/LICENSE",
+        "parents": "iyeris"
+    },
+    "node-addon-api@1.7.2": {
+        "licenses": "MIT",
+        "repository": "https://github.com/nodejs/node-addon-api",
+        "licenseUrl": "https://github.com/nodejs/node-addon-api/raw/master/LICENSE.md",
         "parents": "iyeris"
     },
     "node-api-version@0.2.1": {
@@ -1679,6 +1823,12 @@
         "licenseUrl": "https://github.com/alexbrazier/simple-update-notifier/raw/master/LICENSE",
         "parents": "iyeris"
     },
+    "slice-ansi@3.0.0": {
+        "licenses": "MIT",
+        "repository": "https://github.com/chalk/slice-ansi",
+        "licenseUrl": "https://github.com/chalk/slice-ansi/raw/master/license",
+        "parents": "iyeris"
+    },
     "smart-buffer@4.2.0": {
         "licenses": "MIT",
         "repository": "https://github.com/JoshGlazebrook/smart-buffer",
@@ -1727,6 +1877,12 @@
         "licenseUrl": "https://github.com/TooTallNate/stat-mode/raw/master/LICENSE",
         "parents": "iyeris"
     },
+    "streamx@2.23.0": {
+        "licenses": "MIT",
+        "repository": "https://github.com/mafintosh/streamx",
+        "licenseUrl": "https://github.com/mafintosh/streamx/raw/master/LICENSE",
+        "parents": "iyeris"
+    },
     "string-width@4.2.3": {
         "licenses": "MIT",
         "repository": "https://github.com/sindresorhus/string-width",
@@ -1769,6 +1925,18 @@
         "licenseUrl": "https://github.com/chalk/supports-color/raw/master/license",
         "parents": "iyeris"
     },
+    "tar-fs@3.1.1": {
+        "licenses": "MIT",
+        "repository": "https://github.com/mafintosh/tar-fs",
+        "licenseUrl": "https://github.com/mafintosh/tar-fs/raw/master/LICENSE",
+        "parents": "iyeris"
+    },
+    "tar-stream@3.1.7": {
+        "licenses": "MIT",
+        "repository": "https://github.com/mafintosh/tar-stream",
+        "licenseUrl": "https://github.com/mafintosh/tar-stream/raw/master/LICENSE",
+        "parents": "iyeris"
+    },
     "tar@6.2.1": {
         "licenses": "ISC",
         "repository": "https://github.com/isaacs/node-tar",
@@ -1785,6 +1953,12 @@
         "licenses": "MIT",
         "repository": "https://github.com/bruce/node-temp",
         "licenseUrl": "https://github.com/bruce/node-temp/raw/master/LICENSE",
+        "parents": "iyeris"
+    },
+    "text-decoder@1.2.3": {
+        "licenses": "Apache-2.0",
+        "repository": "https://github.com/holepunchto/text-decoder",
+        "licenseUrl": "https://github.com/holepunchto/text-decoder/raw/master/LICENSE",
         "parents": "iyeris"
     },
     "tiny-async-pool@1.3.0": {
@@ -1881,6 +2055,12 @@
         "licenses": "MIT",
         "repository": "https://github.com/TooTallNate/util-deprecate",
         "licenseUrl": "https://github.com/TooTallNate/util-deprecate/raw/master/LICENSE",
+        "parents": "iyeris"
+    },
+    "verror@1.10.1": {
+        "licenses": "MIT",
+        "repository": "https://github.com/joyent/node-verror",
+        "licenseUrl": "https://github.com/joyent/node-verror/raw/master/LICENSE",
         "parents": "iyeris"
     },
     "wcwidth@1.0.1": {

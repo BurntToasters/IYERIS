@@ -161,6 +161,10 @@ export interface ElectronAPI {
   searchIndex: (query: string) => Promise<IndexSearchResponse>;
   rebuildIndex: () => Promise<ApiResponse>;
   getIndexStatus: () => Promise<{success: boolean; status?: IndexStatus; error?: string}>;
+  compressFiles: (sourcePaths: string[], outputZipPath: string) => Promise<ApiResponse>;
+  extractArchive: (archivePath: string, destPath: string) => Promise<ApiResponse>;
+  onCompressProgress: (callback: (progress: {current: number; total: number; name: string}) => void) => void;
+  onExtractProgress: (callback: (progress: {current: number; total: number; name: string}) => void) => void;
 }
 
 declare global {

@@ -198,6 +198,9 @@
     <div class="context-menu-item" data-action="copy"><img src="assets/twemoji/1f4c4.svg" class="twemoji" alt="📄" draggable="false" /> Copy</div>
     <div class="context-menu-item" data-action="copy-path" id="copy-path-item"><img src="assets/twemoji/1f4cb.svg" class="twemoji" alt="📋" draggable="false" /> Copy file path</div>
     <div class="context-menu-separator"></div>
+    <div class="context-menu-item" data-action="compress" id="compress-item"><img src="assets/twemoji/1f5dc.svg" class="twemoji" alt="🗜️" draggable="false" /> Compress to ZIP</div>
+    <div class="context-menu-item" data-action="extract" id="extract-item" style="display: none;"><img src="assets/twemoji/1f4e6.svg" class="twemoji" alt="📦" draggable="false" /> Extract Here</div>
+    <div class="context-menu-separator"></div>
     <div class="context-menu-item" data-action="rename"><img src="assets/twemoji/270d.svg" class="twemoji" alt="✍️" draggable="false" /> Rename</div>
     <div class="context-menu-item" data-action="refresh"><img src="assets/twemoji/1f504.svg" class="twemoji" alt="🔄" draggable="false" /> Refresh</div>
     <div class="context-menu-item" data-action="delete"><img src="assets/twemoji/1f5d1.svg" class="twemoji" alt="🗑️" draggable="false" /> Delete</div>
@@ -229,6 +232,24 @@
       </div>
       <div class="modal-footer">
         <button class="modal-button" id="properties-ok">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="compression-progress-modal" style="display: none;">
+    <div class="modal glass-panel">
+      <div class="modal-header">
+        <h3 id="compression-title"><img src="assets/twemoji/1f5dc.svg" class="twemoji" alt="🗜️" draggable="false" /> Compressing...</h3>
+      </div>
+      <div class="modal-content">
+        <div class="progress-info">
+          <div class="progress-file-name" id="compression-file-name">Preparing...</div>
+          <div class="progress-stats" id="compression-stats">0 / 0 files</div>
+        </div>
+        <div class="progress-bar-container">
+          <div class="progress-bar" id="compression-progress-bar" style="width: 0%;"></div>
+        </div>
+        <div class="progress-percentage" id="compression-percentage">0%</div>
       </div>
     </div>
   </div>
