@@ -161,10 +161,13 @@ export interface ElectronAPI {
   searchIndex: (query: string) => Promise<IndexSearchResponse>;
   rebuildIndex: () => Promise<ApiResponse>;
   getIndexStatus: () => Promise<{success: boolean; status?: IndexStatus; error?: string}>;
-  compressFiles: (sourcePaths: string[], outputZipPath: string) => Promise<ApiResponse>;
-  extractArchive: (archivePath: string, destPath: string) => Promise<ApiResponse>;
-  onCompressProgress: (callback: (progress: {current: number; total: number; name: string}) => void) => void;
-  onExtractProgress: (callback: (progress: {current: number; total: number; name: string}) => void) => void;
+  compressFiles: (sourcePaths: string[], outputPath: string, format?: string, operationId?: string) => Promise<ApiResponse>;
+  extractArchive: (archivePath: string, destPath: string, operationId?: string) => Promise<ApiResponse>;
+  cancelArchiveOperation: (operationId: string) => Promise<ApiResponse>;
+  onCompressProgress: (callback: (progress: {operationId?: string; current: number; total: number; name: string}) => void) => void;
+  onExtractProgress: (callback: (progress: {operationId?: string; current: number; total: number; name: string}) => void) => void;
+  setZoomLevel: (zoomLevel: number) => Promise<ApiResponse>;
+  getZoomLevel: () => Promise<{success: boolean; zoomLevel?: number; error?: string}>;
 }
 
 declare global {

@@ -198,7 +198,16 @@
     <div class="context-menu-item" data-action="copy"><img src="assets/twemoji/1f4c4.svg" class="twemoji" alt="📄" draggable="false" /> Copy</div>
     <div class="context-menu-item" data-action="copy-path" id="copy-path-item"><img src="assets/twemoji/1f4cb.svg" class="twemoji" alt="📋" draggable="false" /> Copy file path</div>
     <div class="context-menu-separator"></div>
-    <div class="context-menu-item" data-action="compress" id="compress-item"><img src="assets/twemoji/1f5dc.svg" class="twemoji" alt="🗜️" draggable="false" /> Compress to ZIP</div>
+    <div class="context-menu-item has-submenu" id="compress-item">
+      <img src="assets/twemoji/1f5dc.svg" class="twemoji" alt="🗜️" draggable="false" /> Compress To...
+      <span class="submenu-arrow">▸</span>
+      <div class="context-submenu">
+        <div class="context-menu-item" data-action="compress" data-format="zip"><img src="assets/twemoji/1f5dc.svg" class="twemoji" alt="🗜️" draggable="false" /> ZIP</div>
+        <div class="context-menu-item" data-action="compress" data-format="7z"><img src="assets/twemoji/1f5dc.svg" class="twemoji" alt="🗜️" draggable="false" /> 7Z</div>
+        <div class="context-menu-item" data-action="compress" data-format="tar"><img src="assets/twemoji/1f5dc.svg" class="twemoji" alt="🗜️" draggable="false" /> TAR</div>
+        <div class="context-menu-item" data-action="compress" data-format="tar.gz"><img src="assets/twemoji/1f5dc.svg" class="twemoji" alt="🗜️" draggable="false" /> TAR.GZ</div>
+      </div>
+    </div>
     <div class="context-menu-item" data-action="extract" id="extract-item" style="display: none;"><img src="assets/twemoji/1f4e6.svg" class="twemoji" alt="📦" draggable="false" /> Extract Here</div>
     <div class="context-menu-separator"></div>
     <div class="context-menu-item" data-action="rename"><img src="assets/twemoji/270d.svg" class="twemoji" alt="✍️" draggable="false" /> Rename</div>
@@ -236,21 +245,11 @@
     </div>
   </div>
 
-  <div class="modal-overlay" id="compression-progress-modal" style="display: none;">
-    <div class="modal glass-panel">
-      <div class="modal-header">
-        <h3 id="compression-title"><img src="assets/twemoji/1f5dc.svg" class="twemoji" alt="🗜️" draggable="false" /> Compressing...</h3>
-      </div>
-      <div class="modal-content">
-        <div class="progress-info">
-          <div class="progress-file-name" id="compression-file-name">Preparing...</div>
-          <div class="progress-stats" id="compression-stats">0 / 0 files</div>
-        </div>
-        <div class="progress-bar-container">
-          <div class="progress-bar" id="compression-progress-bar" style="width: 0%;"></div>
-        </div>
-        <div class="progress-percentage" id="compression-percentage">0%</div>
-      </div>
+  <div class="archive-operations-panel" id="archive-operations-panel" style="display: none;">
+    <div class="archive-operations-header">
+      <span><img src="assets/twemoji/1f5c4.svg" class="twemoji" alt="�️" draggable="false" /> Active Operations</span>
+    </div>
+    <div class="archive-operations-list" id="archive-operations-list">
     </div>
   </div>
 
@@ -382,7 +381,7 @@
               <label>Rebuild Index</label>
               <p class="setting-description">Clear and rebuild the file index. <span id="index-status">Status: Unknown</span></p>
             </div>
-            <button class="modal-button" id="rebuild-index-btn" style="margin-left: auto;">🔄 Rebuild Index</button>
+            <button class="modal-button" id="rebuild-index-btn" style="margin-left: auto;"><img src="assets/twemoji/1f504.svg" class="twemoji" alt="🔄" draggable="false" /> Rebuild Index</button>
           </div>
           
           <h4>Developer</h4>
@@ -418,7 +417,7 @@
       <div class="modal-footer">
         <div class="footer-top">
           <span class="footer-credit">Made with <img src="assets/twemoji/2764.svg" class="twemoji" alt="❤️" draggable="false" /> By: <strong>BurntToasters</strong>/<strong id="rosie-link" style="cursor: pointer; text-decoration: underline;">Rosie.run</strong></span>
-          <span class="footer-version" id="version-indicator" title="Click to view release">v0.4.3</span>
+          <span class="footer-version" id="version-indicator" title="Click to view release">v0.5.0</span>
         </div>
         <div class="footer-top" style="margin-top: 0.5rem; font-size: 0.85em; opacity: 0.8;">
           <span class="footer-credit">Emoji graphics by <strong>Twemoji</strong> (Twitter) + Additional Contributors: <span id="twemoji-cc-link" style="text-decoration: underline; color: inherit; cursor: pointer;">CC-BY 4.0</span></span>
@@ -597,7 +596,7 @@
     </div>
     <div class="status-right">
       <span id="status-disk-space"></span>
-      <p>Beta Build @ [v0.4.3]</p>
+      <p>Beta Build @ [v0.5.0]</p>
       <span id="heart-button" title="Support this project!" style="margin-left: -10px; margin-right: -15px; cursor: pointer;"><img src="assets/twemoji/2764.svg" class="twemoji" alt="❤️" draggable="false" /></span>
     </div>
   </div>
@@ -640,6 +639,20 @@
       <span>📋 Type</span>
       <span class="sort-indicator" id="sort-type"></span>
     </div>
+  </div>
+
+  <div class="zoom-popup" id="zoom-popup" style="display: none;">
+    <button class="zoom-btn" id="zoom-out-btn" title="Zoom Out (Ctrl/Cmd + -)">
+      <img src="assets/twemoji/2796.svg" class="twemoji" alt="➖" draggable="false" />
+    </button>
+    <div class="zoom-level" id="zoom-level-display">100%</div>
+    <button class="zoom-btn" id="zoom-in-btn" title="Zoom In (Ctrl/Cmd + +)">
+      <img src="assets/twemoji/2795.svg" class="twemoji" alt="➕" draggable="false" />
+    </button>
+    <div class="zoom-divider"></div>
+    <button class="zoom-btn" id="zoom-reset-btn" title="Reset to 100%">
+      <img src="assets/twemoji/1f504.svg" class="twemoji-small" alt="🔄" draggable="false" />
+    </button>
   </div>
 
   <script type="module" src="dist/renderer.js"></script>

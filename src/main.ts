@@ -5,9 +5,8 @@ import { promises as fs } from 'fs';
 import * as fsSync from 'fs';
 import { exec } from 'child_process';
 import { promisify } from 'util';
-import AdmZip = require('adm-zip');
-import * as tar from 'tar-fs';
-import { createGzip, createGunzip } from 'zlib';
+import Seven = require('node-7z');
+import sevenBin = require('7zip-bin');
 import type { Settings, FileItem, ApiResponse, DirectoryResponse, PathResponse, PropertiesResponse, SettingsResponse, UpdateCheckResponse, IndexSearchResponse } from './types';
 import { FileIndexer } from './indexer';
 
@@ -31,6 +30,8 @@ interface UndoAction {
 const undoStack: UndoAction[] = [];
 const redoStack: UndoAction[] = [];
 const MAX_UNDO_STACK = 50;
+
+const activeArchiveProcesses = new Map<string, any>();
 
 function pushUndoAction(action: UndoAction): void {
   undoStack.push(action);
@@ -1269,167 +1270,166 @@ ipcMain.handle('get-index-status', async (): Promise<{success: boolean; status?:
   }
 });
 
-async function getAllFiles(dirPath: string, baseDir: string = dirPath): Promise<{filePath: string; relativePath: string}[]> {
-  const files: {filePath: string; relativePath: string}[] = [];
-  const entries = await fs.readdir(dirPath, { withFileTypes: true });
-
-  for (const entry of entries) {
-    const fullPath = path.join(dirPath, entry.name);
-    const relativePath = path.relative(baseDir, fullPath);
-
-    if (entry.isDirectory()) {
-      const subFiles = await getAllFiles(fullPath, baseDir);
-      files.push(...subFiles);
-    } else {
-      files.push({ filePath: fullPath, relativePath });
-    }
-  }
-
-  return files;
-}
-
-ipcMain.handle('compress-files', async (_event: IpcMainInvokeEvent, sourcePaths: string[], outputZipPath: string): Promise<ApiResponse> => {
+ipcMain.handle('compress-files', async (_event: IpcMainInvokeEvent, sourcePaths: string[], outputPath: string, format: string = 'zip', operationId?: string): Promise<ApiResponse> => {
   try {
-    console.log('[Compress] Starting compression:', sourcePaths, 'to', outputZipPath);
-    const zip = new AdmZip();
-    let totalFiles = 0;
-    let processedFiles = 0;
+    console.log('[Compress] Starting compression:', sourcePaths, 'to', outputPath, 'format:', format);
 
-    for (const sourcePath of sourcePaths) {
-      const stats = await fs.stat(sourcePath);
-      if (stats.isDirectory()) {
-        const files = await getAllFiles(sourcePath);
-        totalFiles += files.length;
-      } else {
-        totalFiles += 1;
-      }
+    try {
+      await fs.access(outputPath);
+      console.log('[Compress] Removing existing file:', outputPath);
+      await fs.unlink(outputPath);
+    } catch (err) {
     }
 
-    for (const sourcePath of sourcePaths) {
-      const stats = await fs.stat(sourcePath);
-      const baseName = path.basename(sourcePath);
+    return new Promise((resolve, reject) => {
+      const sevenZipPath = sevenBin.path7za;
+      console.log('[Compress] Using 7zip at:', sevenZipPath);
+      
+      const seven = Seven.add(outputPath, sourcePaths, {
+        $bin: sevenZipPath,
+        recursive: true
+      });
 
-      if (stats.isDirectory()) {
-        const files = await getAllFiles(sourcePath);
-        for (const { filePath, relativePath } of files) {
-          const zipPath = path.join(baseName, relativePath).split(path.sep).join('/');
-          zip.addLocalFile(filePath, path.dirname(zipPath).split(path.sep).join('/'));
-          
-          processedFiles++;
-          if (mainWindow) {
-            mainWindow.webContents.send('compress-progress', {
-              current: processedFiles,
-              total: totalFiles,
-              name: path.basename(filePath)
-            });
-          }
-        }
-        console.log('[Compress] Added folder:', baseName);
-      } else {
-        zip.addLocalFile(sourcePath);
-        processedFiles++;
+      if (operationId) {
+        activeArchiveProcesses.set(operationId, seven);
+      }
+
+      let fileCount = 0;
+      
+      seven.on('progress', (progress) => {
+        fileCount++;
         if (mainWindow) {
           mainWindow.webContents.send('compress-progress', {
-            current: processedFiles,
-            total: totalFiles,
-            name: baseName
+            operationId,
+            current: fileCount,
+            total: fileCount + 10,
+            name: progress.file || 'Compressing...'
           });
         }
-        console.log('[Compress] Added file:', baseName);
-      }
-    }
+      });
 
-    await new Promise<void>((resolve, reject) => {
-      zip.writeZip(outputZipPath, (error) => {
-        if (error) reject(error);
-        else resolve();
+      seven.on('end', () => {
+        console.log('[Compress] 7zip compression completed for format:', format);
+        if (operationId) {
+          activeArchiveProcesses.delete(operationId);
+        }
+        resolve({ success: true });
+      });
+
+      seven.on('error', (error) => {
+        console.error('[Compress] 7zip error:', error);
+        if (operationId) {
+          activeArchiveProcesses.delete(operationId);
+        }
+        fs.unlink(outputPath).catch(() => {});
+        reject({ success: false, error: error.message || 'Compression failed' });
       });
     });
-
-    console.log('[Compress] Successfully created:', outputZipPath);
-    return { success: true };
   } catch (error) {
     console.error('[Compress] Error:', error);
     return { success: false, error: (error as Error).message };
   }
 });
 
-ipcMain.handle('extract-archive', async (_event: IpcMainInvokeEvent, archivePath: string, destPath: string): Promise<ApiResponse> => {
+ipcMain.handle('extract-archive', async (_event: IpcMainInvokeEvent, archivePath: string, destPath: string, operationId?: string): Promise<ApiResponse> => {
   try {
     console.log('[Extract] Starting extraction:', archivePath, 'to', destPath);
     const ext = path.extname(archivePath).toLowerCase();
     const fileName = path.basename(archivePath, ext);
 
     await fs.mkdir(destPath, { recursive: true });
-
-    if (ext === '.zip') {
-      const zip = new AdmZip(archivePath);
-      const zipEntries = zip.getEntries();
-      const totalEntries = zipEntries.length;
-
-      let processed = 0;
-
-      for (const entry of zipEntries) {
-        const entryPath = path.join(destPath, entry.entryName);
-        
-        if (entry.isDirectory) {
-          await fs.mkdir(entryPath, { recursive: true });
-        } else {
-          await fs.mkdir(path.dirname(entryPath), { recursive: true });
-          const content = entry.getData();
-          await fs.writeFile(entryPath, content);
-        }
-        
-        processed++;
-        if (mainWindow) {
-          mainWindow.webContents.send('extract-progress', {
-            current: processed,
-            total: totalEntries,
-            name: path.basename(entry.entryName)
-          });
-        }
-      }
-
-      console.log('[Extract] ZIP extraction completed');
-      return { success: true };
-
-    } else if (ext === '.gz' && archivePath.endsWith('.tar.gz')) {
-      return new Promise((resolve, reject) => {
-        const readStream = fsSync.createReadStream(archivePath);
-        const gunzip = createGunzip();
-        const extract = tar.extract(destPath);
-
-        let fileCount = 0;
-        extract.on('entry', (header) => {
-          fileCount++;
-          if (mainWindow) {
-            mainWindow.webContents.send('extract-progress', {
-              current: fileCount,
-              total: fileCount + 10,
-              name: path.basename(header.name)
-            });
-          }
-        });
-
-        extract.on('finish', () => {
-          console.log('[Extract] TAR.GZ extraction completed');
-          resolve({ success: true });
-        });
-
-        extract.on('error', (error) => {
-          console.error('[Extract] TAR.GZ error:', error);
-          reject({ success: false, error: error.message });
-        });
-
-        readStream.pipe(gunzip).pipe(extract);
+    return new Promise((resolve, reject) => {
+      const sevenZipPath = sevenBin.path7za;
+      console.log('[Extract] Using 7zip at:', sevenZipPath);
+      
+      const seven = Seven.extractFull(archivePath, destPath, {
+        $bin: sevenZipPath,
+        recursive: true
       });
 
-    } else {
-      return { success: false, error: `Unsupported archive format: ${ext}. Supported formats: .zip, .tar.gz` };
-    }
+      if (operationId) {
+        activeArchiveProcesses.set(operationId, seven);
+      }
 
+      let fileCount = 0;
+      
+      seven.on('progress', (progress) => {
+        fileCount++;
+        if (mainWindow) {
+          mainWindow.webContents.send('extract-progress', {
+            operationId,
+            current: fileCount,
+            total: fileCount + 10,
+            name: progress.file || 'Extracting...'
+          });
+        }
+      });
+
+      seven.on('end', () => {
+        console.log('[Extract] 7zip extraction completed for:', ext);
+        if (operationId) {
+          activeArchiveProcesses.delete(operationId);
+        }
+        resolve({ success: true });
+      });
+
+      seven.on('error', (error) => {
+        console.error('[Extract] 7zip error:', error);
+        if (operationId) {
+          activeArchiveProcesses.delete(operationId);
+        }
+        reject({ success: false, error: error.message });
+      });
+    });
   } catch (error) {
     console.error('[Extract] Error:', error);
+    return { success: false, error: (error as Error).message };
+  }
+});
+
+ipcMain.handle('cancel-archive-operation', async (_event: IpcMainInvokeEvent, operationId: string): Promise<ApiResponse> => {
+  try {
+    const process = activeArchiveProcesses.get(operationId);
+    if (process && process._childProcess) {
+      console.log('[Archive] Cancelling operation:', operationId);
+      process._childProcess.kill('SIGTERM');
+      activeArchiveProcesses.delete(operationId);
+      return { success: true };
+    }
+    return { success: false, error: 'Operation not found' };
+  } catch (error) {
+    console.error('[Archive] Cancel error:', error);
+    return { success: false, error: (error as Error).message };
+  }
+});
+
+ipcMain.handle('set-zoom-level', async (_event: IpcMainInvokeEvent, zoomLevel: number): Promise<ApiResponse> => {
+  try {
+    if (!mainWindow) {
+      return { success: false, error: 'Window not available' };
+    }
+
+    const clampedZoom = Math.max(0.5, Math.min(2.0, zoomLevel));
+    mainWindow.webContents.setZoomFactor(clampedZoom);
+    
+    console.log('[Zoom] Set zoom level to:', clampedZoom);
+    return { success: true };
+  } catch (error) {
+    console.error('[Zoom] Error:', error);
+    return { success: false, error: (error as Error).message };
+  }
+});
+
+ipcMain.handle('get-zoom-level', async (): Promise<{success: boolean; zoomLevel?: number; error?: string}> => {
+  try {
+    if (!mainWindow) {
+      return { success: false, error: 'Window not available' };
+    }
+    
+    const zoomLevel = mainWindow.webContents.getZoomFactor();
+    return { success: true, zoomLevel };
+  } catch (error) {
+    console.error('[Zoom] Error:', error);
     return { success: false, error: (error as Error).message };
   }
 });

@@ -1,7 +1,6 @@
 // @ts-nocheck
 import type { Settings, FileItem, ItemProperties } from './types';
 
-// Simple path utilities for renderer
 const path = {
   basename: (filePath: string, ext?: string): string => {
     const name = filePath.split(/[\\/]/).pop() || '';
@@ -48,6 +47,135 @@ function twemojiImg(emoji: string, className: string = 'twemoji', alt?: string):
 }
 
 type ViewMode = 'grid' | 'list';
+
+interface ArchiveOperation {
+  id: string;
+  type: 'compress' | 'extract';
+  name: string;
+  current: number;
+  total: number;
+  currentFile: string;
+  aborted: boolean;
+}
+
+const activeOperations = new Map<string, ArchiveOperation>();
+
+function generateOperationId(): string {
+  return `op_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+}
+
+function showOperationsPanel() {
+  const panel = document.getElementById('archive-operations-panel');
+  if (panel && activeOperations.size > 0) {
+    panel.style.display = 'block';
+  }
+}
+
+function hideOperationsPanel() {
+  const panel = document.getElementById('archive-operations-panel');
+  if (panel && activeOperations.size === 0) {
+    panel.style.display = 'none';
+  }
+}
+
+function addOperation(id: string, type: 'compress' | 'extract', name: string) {
+  const operation: ArchiveOperation = {
+    id,
+    type,
+    name,
+    current: 0,
+    total: 0,
+    currentFile: 'Preparing...',
+    aborted: false
+  };
+  
+  activeOperations.set(id, operation);
+  renderOperations();
+  showOperationsPanel();
+}
+
+function updateOperation(id: string, current: number, total: number, currentFile: string) {
+  const operation = activeOperations.get(id);
+  if (operation && !operation.aborted) {
+    operation.current = current;
+    operation.total = total;
+    operation.currentFile = currentFile;
+    renderOperations();
+  }
+}
+
+function removeOperation(id: string) {
+  activeOperations.delete(id);
+  renderOperations();
+  hideOperationsPanel();
+}
+
+function abortOperation(id: string) {
+  const operation = activeOperations.get(id);
+  if (operation) {
+    operation.aborted = true;
+    operation.currentFile = 'Cancelling...';
+    renderOperations();
+
+    window.electronAPI.cancelArchiveOperation(id).then((result) => {
+      if (result.success) {
+        console.log('[Archive] Operation cancelled:', id);
+      } else {
+        console.error('[Archive] Failed to cancel:', result.error);
+      }
+    });
+
+    setTimeout(() => {
+      removeOperation(id);
+    }, 1500);
+  }
+}
+
+function renderOperations() {
+  const list = document.getElementById('archive-operations-list');
+  if (!list) return;
+  
+  list.innerHTML = '';
+  
+  for (const [id, operation] of activeOperations) {
+    const item = document.createElement('div');
+    item.className = 'archive-operation-item';
+    
+    const icon = operation.type === 'compress' ? '1f5dc' : '1f4e6';
+    const iconEmoji = operation.type === 'compress' ? '🗜️' : '📦';
+    const title = operation.type === 'compress' ? 'Compressing' : 'Extracting';
+    
+    const percent = operation.total > 0 
+      ? Math.round((operation.current / operation.total) * 100) 
+      : 0;
+    
+    item.innerHTML = `
+      <div class="archive-operation-header">
+        <div class="archive-operation-title">
+          <img src="assets/twemoji/${icon}.svg" class="twemoji" alt="${iconEmoji}" draggable="false" />
+          <span class="archive-operation-name" title="${operation.name}">${title}: ${operation.name}</span>
+        </div>
+        ${!operation.aborted ? `<button class="archive-operation-cancel" data-id="${id}">Cancel</button>` : ''}
+      </div>
+      <div class="archive-operation-file">${operation.currentFile}</div>
+      <div class="archive-operation-stats">${operation.current} / ${operation.total} files</div>
+      <div class="archive-progress-bar-container">
+        <div class="archive-progress-bar" style="width: ${percent}%"></div>
+      </div>
+    `;
+    
+    const cancelBtn = item.querySelector('.archive-operation-cancel');
+    if (cancelBtn) {
+      cancelBtn.addEventListener('click', () => {
+        abortOperation(id);
+      });
+    }
+    
+    list.appendChild(item);
+  }
+}
+
+type ViewMode = 'grid' | 'list';
 type DialogType = 'info' | 'warning' | 'error' | 'success' | 'question';
 
 function asElement(target: EventTarget | null): HTMLElement | null {
@@ -69,6 +197,8 @@ let currentQuicklookFile: FileItem | null = null;
 let platformOS: string = '';
 let canUndo: boolean = false;
 let canRedo: boolean = false;
+let currentZoomLevel: number = 1.0;
+let zoomPopupTimeout: NodeJS.Timeout | null = null;
 
 const addressInput = document.getElementById('address-input') as HTMLInputElement;
 const fileGrid = document.getElementById('file-grid') as HTMLElement;
@@ -363,9 +493,9 @@ async function rebuildIndex() {
   const rebuildBtn = document.getElementById('rebuild-index-btn') as HTMLButtonElement;
   if (!rebuildBtn) return;
   
-  const originalText = rebuildBtn.textContent;
+  const originalHTML = rebuildBtn.innerHTML;
   rebuildBtn.disabled = true;
-  rebuildBtn.textContent = '⏳ Rebuilding...';
+  rebuildBtn.innerHTML = `${twemojiImg(String.fromCodePoint(0x23F3), 'twemoji')} Rebuilding...`;
   
   try {
     const result = await window.electronAPI.rebuildIndex();
@@ -379,7 +509,7 @@ async function rebuildIndex() {
     showToast('Error rebuilding index', 'Error', 'error');
   } finally {
     rebuildBtn.disabled = false;
-    rebuildBtn.textContent = originalText;
+    rebuildBtn.innerHTML = originalHTML;
   }
 }
 
@@ -914,6 +1044,50 @@ function formatFileSize(bytes: number): string {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
+async function updateZoomLevel(newZoom: number) {
+  currentZoomLevel = Math.max(0.5, Math.min(2.0, newZoom));
+  const result = await window.electronAPI.setZoomLevel(currentZoomLevel);
+  
+  if (result.success) {
+    updateZoomDisplay();
+    showZoomPopup();
+  }
+}
+
+function updateZoomDisplay() {
+  const zoomDisplay = document.getElementById('zoom-level-display');
+  if (zoomDisplay) {
+    zoomDisplay.textContent = `${Math.round(currentZoomLevel * 100)}%`;
+  }
+}
+
+function showZoomPopup() {
+  const zoomPopup = document.getElementById('zoom-popup') as HTMLElement;
+  if (!zoomPopup) return;
+  
+  zoomPopup.style.display = 'flex';
+
+  if (zoomPopupTimeout) {
+    clearTimeout(zoomPopupTimeout);
+  }
+
+  zoomPopupTimeout = setTimeout(() => {
+    zoomPopup.style.display = 'none';
+  }, 2000);
+}
+
+async function zoomIn() {
+  await updateZoomLevel(currentZoomLevel + 0.1);
+}
+
+async function zoomOut() {
+  await updateZoomLevel(currentZoomLevel - 0.1);
+}
+
+async function zoomReset() {
+  await updateZoomLevel(1.0);
+}
+
 async function init() {
   console.log('Init: Getting platform...');
   platformOS = await window.electronAPI.getPlatform();
@@ -923,6 +1097,12 @@ async function init() {
   await loadSettings();
   await loadBookmarks();
   await updateUndoRedoState();
+
+  const zoomResult = await window.electronAPI.getZoomLevel();
+  if (zoomResult.success && zoomResult.zoomLevel) {
+    currentZoomLevel = zoomResult.zoomLevel;
+    updateZoomDisplay();
+  }
   
   console.log('Init: Determining startup path...');
   let startupPath = currentSettings.startupPath && currentSettings.startupPath.trim() !== '' 
@@ -1118,6 +1298,15 @@ function setupEventListeners() {
       } else if (e.key === 'y' || (e.key === 'z' && e.shiftKey)) {
         e.preventDefault();
         performRedo();
+      } else if (e.key === '=' || e.key === '+') {
+        e.preventDefault();
+        zoomIn();
+      } else if (e.key === '-' || e.key === '_') {
+        e.preventDefault();
+        zoomOut();
+      } else if (e.key === '0') {
+        e.preventDefault();
+        zoomReset();
       }
     } else if (e.key === ' ' && selectedItems.size === 1) {
       e.preventDefault();
@@ -1182,7 +1371,8 @@ function setupEventListeners() {
     }
     
     if (menuItem && contextMenuData) {
-      handleContextMenuAction(menuItem.dataset.action, contextMenuData);
+      const format = menuItem.dataset.format;
+      handleContextMenuAction(menuItem.dataset.action, contextMenuData, format);
       hideContextMenu();
     }
   });
@@ -2091,20 +2281,27 @@ function showContextMenu(x, y, item) {
       openTerminalItem.style.display = 'none';
     }
   }
-  
-  // Show compress for any file or folder
+
   if (compressItem) {
     compressItem.style.display = 'flex';
   }
-  
-  // Show extract only for supported archive formats
+
   if (extractItem) {
     const fileName = item.name.toLowerCase();
     const isArchive = fileName.endsWith('.zip') || 
                       fileName.endsWith('.tar.gz') || 
                       fileName.endsWith('.tgz') ||
                       fileName.endsWith('.7z') ||
-                      fileName.endsWith('.rar');
+                      fileName.endsWith('.rar') ||
+                      fileName.endsWith('.tar') ||
+                      fileName.endsWith('.gz') ||
+                      fileName.endsWith('.bz2') ||
+                      fileName.endsWith('.xz') ||
+                      fileName.endsWith('.iso') ||
+                      fileName.endsWith('.cab') ||
+                      fileName.endsWith('.arj') ||
+                      fileName.endsWith('.lzh') ||
+                      fileName.endsWith('.wim');
     
     if (isArchive && !item.isDirectory) {
       extractItem.style.display = 'flex';
@@ -2211,7 +2408,7 @@ async function handleEmptySpaceContextMenuAction(action) {
   hideEmptySpaceContextMenu();
 }
 
-async function handleContextMenuAction(action, item) {
+async function handleContextMenuAction(action, item, format?: string) {
   switch (action) {
     case 'open':
       if (item.isDirectory) {
@@ -2290,7 +2487,7 @@ async function handleContextMenuAction(action, item) {
       break;
       
     case 'compress':
-      await handleCompress();
+      await handleCompress(format || 'zip');
       break;
       
     case 'extract':
@@ -2299,118 +2496,124 @@ async function handleContextMenuAction(action, item) {
   }
 }
 
-async function handleCompress() {
+async function handleCompress(format: string = 'zip') {
   const selectedPaths = Array.from(selectedItems);
   
   if (selectedPaths.length === 0) {
     showToast('No items selected', 'Error', 'error');
     return;
   }
+
+  const extensionMap: Record<string, string> = {
+    'zip': '.zip',
+    '7z': '.7z',
+    'tar': '.tar',
+    'tar.gz': '.tar.gz'
+  };
   
-  // Generate default zip file name
-  let zipName: string;
+  const extension = extensionMap[format] || '.zip';
+
+  let archiveName: string;
   if (selectedPaths.length === 1) {
     const itemName = path.basename(selectedPaths[0]);
     const nameWithoutExt = itemName.replace(/\.[^/.]+$/, '');
-    zipName = `${nameWithoutExt}.zip`;
+    archiveName = `${nameWithoutExt}${extension}`;
   } else {
     const folderName = path.basename(currentPath);
-    zipName = `${folderName}_${selectedPaths.length}_items.zip`;
+    archiveName = `${folderName}_${selectedPaths.length}_items${extension}`;
   }
   
-  const outputPath = path.join(currentPath, zipName);
+  const outputPath = path.join(currentPath, archiveName);
+  const operationId = generateOperationId();
+
+  addOperation(operationId, 'compress', archiveName);
+
+  const progressHandler = (progress: {operationId?: string; current: number; total: number; name: string}) => {
+    if (progress.operationId === operationId) {
+      const operation = activeOperations.get(operationId);
+      if (operation && !operation.aborted) {
+        updateOperation(operationId, progress.current, progress.total, progress.name);
+      }
+    }
+  };
   
-  // Show progress modal
-  const modal = document.getElementById('compression-progress-modal') as HTMLElement;
-  const title = document.getElementById('compression-title') as HTMLElement;
-  const fileName = document.getElementById('compression-file-name') as HTMLElement;
-  const stats = document.getElementById('compression-stats') as HTMLElement;
-  const progressBar = document.getElementById('compression-progress-bar') as HTMLElement;
-  const percentage = document.getElementById('compression-percentage') as HTMLElement;
-  
-  title.innerHTML = '<img src="assets/twemoji/1f5dc.svg" class="twemoji" alt="🗜️" draggable="false" /> Compressing...';
-  fileName.textContent = 'Preparing...';
-  stats.textContent = '0 / 0 files';
-  progressBar.style.width = '0%';
-  percentage.textContent = '0%';
-  modal.style.display = 'flex';
-  
-  // Setup progress listener
-  window.electronAPI.onCompressProgress((progress) => {
-    const percent = Math.round((progress.current / progress.total) * 100);
-    fileName.textContent = progress.name;
-    stats.textContent = `${progress.current} / ${progress.total} files`;
-    progressBar.style.width = `${percent}%`;
-    percentage.textContent = `${percent}%`;
-  });
+  window.electronAPI.onCompressProgress(progressHandler);
   
   try {
-    const result = await window.electronAPI.compressFiles(selectedPaths, outputPath);
+    const operation = activeOperations.get(operationId);
+    if (operation?.aborted) {
+      removeOperation(operationId);
+      return;
+    }
+    
+    const result = await window.electronAPI.compressFiles(selectedPaths, outputPath, format, operationId);
+    
+    removeOperation(operationId);
     
     if (result.success) {
-      modal.style.display = 'none';
-      showToast(`Created ${zipName}`, 'Compressed Successfully', 'success');
-      await navigateTo(currentPath); // Refresh to show new zip file
+      showToast(`Created ${archiveName}`, 'Compressed Successfully', 'success');
+      await navigateTo(currentPath);
     } else {
-      modal.style.display = 'none';
       showToast(result.error || 'Compression failed', 'Error', 'error');
     }
   } catch (error) {
-    modal.style.display = 'none';
+    removeOperation(operationId);
     showToast((error as Error).message, 'Compression Error', 'error');
   }
 }
 
 async function handleExtract(item: FileItem) {
   const ext = path.extname(item.path).toLowerCase();
-  const supportedFormats = ['.zip', '.tar.gz'];
+  const supportedFormats = ['.zip', '.tar.gz', '.7z', '.rar', '.tar', '.gz', '.bz2', '.xz', '.iso', '.cab', '.arj', '.lzh', '.wim'];
+
+  const isSupported = supportedFormats.some(format => item.path.toLowerCase().endsWith(format));
   
-  if (!supportedFormats.some(format => item.path.toLowerCase().endsWith(format))) {
-    showToast('Unsupported archive format. Supported: .zip, .tar.gz', 'Error', 'error');
+  if (!isSupported) {
+    showToast('Unsupported archive format. Supported: .zip, .7z, .rar, .tar.gz, and more', 'Error', 'error');
     return;
   }
-  
-  // Extract to a folder with the archive's name (without extension)
-  const baseName = path.basename(item.path, ext);
+
+  let baseName = path.basename(item.path);
+  if (item.path.toLowerCase().endsWith('.tar.gz')) {
+    baseName = baseName.replace(/\.tar\.gz$/i, '');
+  } else {
+    baseName = path.basename(item.path, ext);
+  }
   const destPath = path.join(currentPath, baseName);
+  const operationId = generateOperationId();
+
+  addOperation(operationId, 'extract', baseName);
+
+  const progressHandler = (progress: {operationId?: string; current: number; total: number; name: string}) => {
+    if (progress.operationId === operationId) {
+      const operation = activeOperations.get(operationId);
+      if (operation && !operation.aborted) {
+        updateOperation(operationId, progress.current, progress.total, progress.name);
+      }
+    }
+  };
   
-  // Show progress modal
-  const modal = document.getElementById('compression-progress-modal') as HTMLElement;
-  const title = document.getElementById('compression-title') as HTMLElement;
-  const fileName = document.getElementById('compression-file-name') as HTMLElement;
-  const stats = document.getElementById('compression-stats') as HTMLElement;
-  const progressBar = document.getElementById('compression-progress-bar') as HTMLElement;
-  const percentage = document.getElementById('compression-percentage') as HTMLElement;
-  
-  title.innerHTML = '<img src="assets/twemoji/1f4e6.svg" class="twemoji" alt="📦" draggable="false" /> Extracting...';
-  fileName.textContent = 'Preparing...';
-  stats.textContent = '0 / 0 files';
-  progressBar.style.width = '0%';
-  percentage.textContent = '0%';
-  modal.style.display = 'flex';
-  
-  // Setup progress listener
-  window.electronAPI.onExtractProgress((progress) => {
-    const percent = Math.round((progress.current / progress.total) * 100);
-    fileName.textContent = progress.name;
-    stats.textContent = `${progress.current} / ${progress.total} files`;
-    progressBar.style.width = `${percent}%`;
-    percentage.textContent = `${percent}%`;
-  });
+  window.electronAPI.onExtractProgress(progressHandler);
   
   try {
-    const result = await window.electronAPI.extractArchive(item.path, destPath);
+    const operation = activeOperations.get(operationId);
+    if (operation?.aborted) {
+      removeOperation(operationId);
+      return;
+    }
+    
+    const result = await window.electronAPI.extractArchive(item.path, destPath, operationId);
+    
+    removeOperation(operationId);
     
     if (result.success) {
-      modal.style.display = 'none';
       showToast(`Extracted to ${baseName}`, 'Extraction Complete', 'success');
-      await navigateTo(currentPath); // Refresh to show extracted folder
+      await navigateTo(currentPath);
     } else {
-      modal.style.display = 'none';
       showToast(result.error || 'Extraction failed', 'Error', 'error');
     }
   } catch (error) {
-    modal.style.display = 'none';
+    removeOperation(operationId);
     showToast((error as Error).message, 'Extraction Error', 'error');
   }
 }
@@ -2496,7 +2699,7 @@ async function checkForUpdates() {
   const btn = document.getElementById('check-updates-btn');
   if (!btn) return;
   
-  const originalText = btn.textContent;
+  const originalHTML = btn.innerHTML;
   btn.innerHTML = `${twemojiImg(String.fromCodePoint(0x1F504), 'twemoji')} Checking...`;
   btn.disabled = true;
   
@@ -2511,6 +2714,8 @@ async function checkForUpdates() {
           'info',
           false
         );
+        btn.innerHTML = originalHTML;
+        btn.disabled = false;
         return;
       }
 
@@ -2549,7 +2754,7 @@ async function checkForUpdates() {
       false
     );
   } finally {
-    btn.textContent = originalText;
+    btn.innerHTML = originalHTML;
     btn.disabled = false;
   }
 }
@@ -2677,6 +2882,10 @@ document.getElementById('version-indicator')?.addEventListener('click', () => {
   const version = document.getElementById('version-indicator')?.textContent || 'v0.1.0';
   window.electronAPI.openFile(`https://github.com/BurntToasters/IYERIS/releases/tag/${version}`);
 });
+
+document.getElementById('zoom-in-btn')?.addEventListener('click', zoomIn);
+document.getElementById('zoom-out-btn')?.addEventListener('click', zoomOut);
+document.getElementById('zoom-reset-btn')?.addEventListener('click', zoomReset);
 
 document.getElementById('licenses-btn')?.addEventListener('click', showLicensesModal);
 document.getElementById('licenses-close')?.addEventListener('click', hideLicensesModal);

@@ -45,14 +45,17 @@ const electronAPI: ElectronAPI = {
   searchIndex: (query: string) => ipcRenderer.invoke('search-index', query),
   rebuildIndex: () => ipcRenderer.invoke('rebuild-index'),
   getIndexStatus: () => ipcRenderer.invoke('get-index-status'),
-  compressFiles: (sourcePaths: string[], outputZipPath: string) => ipcRenderer.invoke('compress-files', sourcePaths, outputZipPath),
-  extractArchive: (archivePath: string, destPath: string) => ipcRenderer.invoke('extract-archive', archivePath, destPath),
-  onCompressProgress: (callback: (progress: {current: number; total: number; name: string}) => void) => {
+  compressFiles: (sourcePaths: string[], outputPath: string, format?: string, operationId?: string) => ipcRenderer.invoke('compress-files', sourcePaths, outputPath, format, operationId),
+  extractArchive: (archivePath: string, destPath: string, operationId?: string) => ipcRenderer.invoke('extract-archive', archivePath, destPath, operationId),
+  cancelArchiveOperation: (operationId: string) => ipcRenderer.invoke('cancel-archive-operation', operationId),
+  onCompressProgress: (callback: (progress: {operationId?: string; current: number; total: number; name: string}) => void) => {
     ipcRenderer.on('compress-progress', (_event, progress) => callback(progress));
   },
-  onExtractProgress: (callback: (progress: {current: number; total: number; name: string}) => void) => {
+  onExtractProgress: (callback: (progress: {operationId?: string; current: number; total: number; name: string}) => void) => {
     ipcRenderer.on('extract-progress', (_event, progress) => callback(progress));
-  }
+  },
+  setZoomLevel: (zoomLevel: number) => ipcRenderer.invoke('set-zoom-level', zoomLevel),
+  getZoomLevel: () => ipcRenderer.invoke('get-zoom-level')
 };
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);
