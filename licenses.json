@@ -1095,7 +1095,7 @@
         "licenseUrl": "https://github.com/isaacs/inherits/raw/master/LICENSE",
         "parents": "iyeris"
     },
-    "ip-address@10.0.1": {
+    "ip-address@10.1.0": {
         "licenses": "MIT",
         "repository": "https://github.com/beaugunderson/ip-address",
         "licenseUrl": "https://github.com/beaugunderson/ip-address/raw/master/LICENSE",
