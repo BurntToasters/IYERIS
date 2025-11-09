@@ -87,6 +87,7 @@
     "build:mac:universal": "npm run build && dotenv -e .env -- electron-builder --mac --universal",
     "build:mac:universal:dev": "npm run build && electron-builder --mac --universal",
     "build:linux": "npm run build && electron-builder --linux AppImage deb rpm --x64 --arm64",
+    "build:linux:all": "npm run build:linux && npm run flatpak:clean && npm run flatpak:build && npm run flatpak:bundle",
     "build:linux:x64": "npm run build && electron-builder --linux AppImage deb rpm --x64",
     "build:linux:arm64": "npm run build && electron-builder --linux AppImage deb rpm --arm64",
     "build:linux:native": "npm run build && USE_SYSTEM_FPM=true electron-builder --linux AppImage deb rpm --x64 --arm64",
