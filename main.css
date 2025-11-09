@@ -85,7 +85,6 @@ body::before {
   z-index: -1;
 }
 
-/* Subtle noise texture to reduce color banding */
 body::after {
   content: '';
   position: fixed;
