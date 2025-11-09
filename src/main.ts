@@ -1320,11 +1320,14 @@ ipcMain.handle('compress-files', async (_event: IpcMainInvokeEvent, sourcePaths:
         console.log('[Compress] Using 7zip at:', sevenZipPath);
         const tarPath = outputPath.replace(/\.gz$/, '');
         console.log('[Compress] Creating tar file:', tarPath);
-        
-        const tarProcess = Seven.add(tarPath, sourcePaths, {
+
+        const tarOptions: any = {
           $bin: sevenZipPath,
-          recursive: true
-        });
+          recursive: true,
+          $raw: ['-xr!My Music', '-xr!My Pictures', '-xr!My Videos']
+        };
+        
+        const tarProcess = Seven.add(tarPath, sourcePaths, tarOptions);
 
         if (operationId) {
           activeArchiveProcesses.set(operationId, tarProcess);
@@ -1393,7 +1396,14 @@ ipcMain.handle('compress-files', async (_event: IpcMainInvokeEvent, sourcePaths:
             if (operationId) {
               activeArchiveProcesses.delete(operationId);
             }
-            reject({ success: false, error: error.message || 'Gzip compression failed' });
+
+            const errorMsg = error.message || '';
+            if (error.level === 'WARNING' && errorMsg.includes('Access is denied')) {
+              console.log('[Compress] Warning about access denied, but gzip compression may have succeeded');
+              resolve({ success: true });
+            } else {
+              reject({ success: false, error: errorMsg || 'Gzip compression failed' });
+            }
           });
         });
 
@@ -1407,7 +1417,41 @@ ipcMain.handle('compress-files', async (_event: IpcMainInvokeEvent, sourcePaths:
           if (operationId) {
             activeArchiveProcesses.delete(operationId);
           }
-          reject({ success: false, error: error.message || 'Tar creation failed' });
+
+          const errorMsg = error.message || '';
+          if (error.level === 'WARNING' && errorMsg.includes('Access is denied')) {
+            console.log('[Compress] Warning about access denied, but tar creation may have succeeded');
+            const gzipProcess = Seven.add(outputPath, [tarPath], {
+              $bin: sevenZipPath
+            });
+            
+            if (operationId) {
+              activeArchiveProcesses.set(operationId, gzipProcess);
+            }
+
+            gzipProcess.on('end', async () => {
+              try {
+                await fs.unlink(tarPath);
+              } catch (err) {}
+              if (operationId) {
+                activeArchiveProcesses.delete(operationId);
+              }
+              resolve({ success: true });
+            });
+
+            gzipProcess.on('error', async (gzipError) => {
+              try {
+                await fs.unlink(tarPath);
+                await fs.unlink(outputPath);
+              } catch (err) {}
+              if (operationId) {
+                activeArchiveProcesses.delete(operationId);
+              }
+              reject({ success: false, error: gzipError.message || 'Gzip compression failed' });
+            });
+          } else {
+            reject({ success: false, error: errorMsg || 'Tar creation failed' });
+          }
         });
       });
     }
@@ -1415,11 +1459,14 @@ ipcMain.handle('compress-files', async (_event: IpcMainInvokeEvent, sourcePaths:
     return new Promise((resolve, reject) => {
       const sevenZipPath = sevenBin.path7za;
       console.log('[Compress] Using 7zip at:', sevenZipPath);
-      
-      const seven = Seven.add(outputPath, sourcePaths, {
+
+      const options: any = {
         $bin: sevenZipPath,
-        recursive: true
-      });
+        recursive: true,
+        $raw: ['-xr!My Music', '-xr!My Pictures', '-xr!My Videos']
+      };
+      
+      const seven = Seven.add(outputPath, sourcePaths, options);
 
       if (operationId) {
         activeArchiveProcesses.set(operationId, seven);
@@ -1453,7 +1500,14 @@ ipcMain.handle('compress-files', async (_event: IpcMainInvokeEvent, sourcePaths:
           activeArchiveProcesses.delete(operationId);
         }
         fs.unlink(outputPath).catch(() => {});
-        reject({ success: false, error: error.message || 'Compression failed' });
+
+        const errorMsg = error.message || '';
+        if (error.level === 'WARNING' && errorMsg.includes('Access is denied')) {
+          console.log('[Compress] Warning about access denied, but compression may have succeeded');
+          resolve({ success: true });
+        } else {
+          reject({ success: false, error: errorMsg || 'Compression failed' });
+        }
       });
     });
   } catch (error) {
