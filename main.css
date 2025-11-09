@@ -1395,15 +1395,15 @@ body.no-transparency .file-view::before {
   justify-content: space-between;
   align-items: center;
   padding: 0 16px;
-  font-size: 11px;
-  color: var(--text-tertiary);
+  font-size: 11.5px;
+  color: var(--text-secondary);
   z-index: 100;
   border-radius: 0;
   border-bottom: none;
   border-top: 1px solid rgba(255, 255, 255, 0.06);
-  background: rgba(var(--bg-primary-rgb), 0.9);
+  background: rgba(var(--bg-primary-rgb), 0.95);
   backdrop-filter: blur(20px) saturate(130%);
-  font-weight: 400;
+  font-weight: 500;
   letter-spacing: 0;
 }
 
@@ -1415,15 +1415,17 @@ body.no-transparency .file-view::before {
 
 .status-left span,
 .status-right span {
-  opacity: 0.85;
+  opacity: 1;
+  color: var(--text-primary);
 }
 
 .status-path {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 10px;
-  opacity: 0.7;
+  font-size: 10.5px;
+  opacity: 0.9;
+  color: var(--text-secondary);
   max-width: 300px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2039,33 +2041,43 @@ body.theme-light .shortcuts-modal-content {
 }
 
 body.theme-dark {
-  background: linear-gradient(135deg, #1a1d3a 0%, #2d1b3d 50%, #1a1d3a 100%);
-  --bg-primary: #1e2139;
-  --bg-primary-rgb: 30, 33, 57;
-  --dropdown-bg: #2a2d4a;
+  background: linear-gradient(135deg, #2a3554 0%, #2f3d5a 50%, #2a3554 100%);
+  --bg-primary: #2e3a58;
+  --bg-primary-rgb: 46, 58, 88;
+  --dropdown-bg: #3a4568;
 }
 
 body.theme-dark::before {
   background: 
-    radial-gradient(circle at 20% 50%, rgba(99, 102, 241, 0.12) 0%, transparent 50%),
-    radial-gradient(circle at 80% 80%, rgba(139, 92, 246, 0.12) 0%, transparent 50%),
-    radial-gradient(circle at 40% 20%, rgba(124, 58, 237, 0.08) 0%, transparent 50%);
+    radial-gradient(circle at 20% 50%, rgba(66, 135, 245, 0.14) 0%, transparent 50%),
+    radial-gradient(circle at 80% 80%, rgba(99, 150, 255, 0.12) 0%, transparent 50%),
+    radial-gradient(circle at 40% 20%, rgba(80, 120, 220, 0.10) 0%, transparent 50%);
 }
 
 body.theme-dark.no-transparency {
-  background: #1e2139 !important;
+  background: #2e3a58 !important;
 }
 
 body.theme-dark.no-transparency .glass-panel,
 body.theme-dark.no-transparency .modal,
 body.theme-dark.no-transparency .context-menu,
 body.theme-dark.no-transparency .sort-menu {
-  background: #1e2139 !important;
+  background: #2e3a58 !important;
   border: 1px solid rgba(255, 255, 255, 0.12) !important;
 }
 
 body.theme-dark.no-transparency .titlebar {
-  background: #1e2139 !important;
+  background: #2e3a58 !important;
+}
+
+body.theme-dark .status-bar {
+  background: rgba(46, 58, 88, 0.95);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+body.theme-dark .status-left span,
+body.theme-dark .status-right span {
+  color: rgba(255, 255, 255, 0.95);
 }
 
 .file-item.cut {
