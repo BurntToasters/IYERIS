@@ -597,6 +597,28 @@ ipcMain.handle('trash-item', async (_event: IpcMainInvokeEvent, itemPath: string
   }
 });
 
+ipcMain.handle('open-trash', async (): Promise<ApiResponse> => {
+  try {
+    const platform = process.platform;
+    
+    if (platform === 'darwin') {
+      const trashPath = path.join(app.getPath('home'), '.Trash');
+      await shell.openPath(trashPath);
+    } else if (platform === 'win32') {
+      await shell.openExternal('shell:RecycleBinFolder');
+    } else if (platform === 'linux') {
+      const trashPath = path.join(app.getPath('home'), '.local/share/Trash/files');
+      await shell.openPath(trashPath);
+    }
+    
+    console.log('[Trash] Opened system trash folder');
+    return { success: true };
+  } catch (error) {
+    console.error('[Trash] Error opening trash:', error);
+    return { success: false, error: (error as Error).message };
+  }
+});
+
 ipcMain.handle('delete-item', async (_event: IpcMainInvokeEvent, itemPath: string): Promise<ApiResponse> => {
   try {
     const stats = await fs.stat(itemPath);

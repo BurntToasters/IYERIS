@@ -133,6 +133,7 @@ export interface ElectronAPI {
   createFile: (parentPath: string, fileName: string) => Promise<PathResponse>;
   deleteItem: (itemPath: string) => Promise<ApiResponse>;
   trashItem: (itemPath: string) => Promise<ApiResponse>;
+  openTrash: () => Promise<ApiResponse>;
   renameItem: (oldPath: string, newName: string) => Promise<PathResponse>;
   getItemProperties: (itemPath: string) => Promise<PropertiesResponse>;
   getSettings: () => Promise<SettingsResponse>;

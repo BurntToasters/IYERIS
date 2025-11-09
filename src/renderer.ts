@@ -1338,6 +1338,13 @@ function setupEventListeners() {
         if (result.success) {
           navigateTo(result.path);
         }
+      } else if (action === 'trash') {
+        const result = await window.electronAPI.openTrash();
+        if (result.success) {
+          showToast('Opening system trash folder', 'Info', 'info');
+        } else {
+          showToast('Failed to open trash folder', 'Error', 'error');
+        }
       }
     });
   });

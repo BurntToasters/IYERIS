@@ -15,6 +15,7 @@ const electronAPI: ElectronAPI = {
   createFile: (parentPath: string, fileName: string) => ipcRenderer.invoke('create-file', parentPath, fileName),
   deleteItem: (itemPath: string) => ipcRenderer.invoke('delete-item', itemPath),
   trashItem: (itemPath: string) => ipcRenderer.invoke('trash-item', itemPath),
+  openTrash: () => ipcRenderer.invoke('open-trash'),
   renameItem: (oldPath: string, newName: string) => ipcRenderer.invoke('rename-item', oldPath, newName),
   getItemProperties: (itemPath: string) => ipcRenderer.invoke('get-item-properties', itemPath),
   getSettings: () => ipcRenderer.invoke('get-settings'),
