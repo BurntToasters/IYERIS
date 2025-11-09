@@ -43,11 +43,33 @@ body {
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
   overflow: hidden;
-  background: linear-gradient(145deg, #1f1f1f 0%, #353535 50%, #1f1f1f 100%);
+  background-color: #2a2a2a;
+  background-image: 
+    linear-gradient(145deg, 
+      rgba(0, 0, 0, 0.4) 0%, 
+      rgba(0, 0, 0, 0.35) 5%,
+      rgba(0, 0, 0, 0.3) 10%,
+      rgba(0, 0, 0, 0.25) 15%,
+      rgba(0, 0, 0, 0.2) 20%,
+      rgba(0, 0, 0, 0.15) 25%,
+      rgba(0, 0, 0, 0.1) 30%,
+      rgba(0, 0, 0, 0.05) 35%,
+      rgba(0, 0, 0, 0) 40%,
+      rgba(255, 255, 255, 0.05) 50%,
+      rgba(0, 0, 0, 0) 60%,
+      rgba(0, 0, 0, 0.05) 65%,
+      rgba(0, 0, 0, 0.1) 70%,
+      rgba(0, 0, 0, 0.15) 75%,
+      rgba(0, 0, 0, 0.2) 80%,
+      rgba(0, 0, 0, 0.25) 85%,
+      rgba(0, 0, 0, 0.3) 90%,
+      rgba(0, 0, 0, 0.35) 95%,
+      rgba(0, 0, 0, 0.4) 100%);
   color: var(--text-primary);
   height: 100vh;
   font-size: 13px;
   letter-spacing: -0.01em;
+  filter: contrast(1.01) brightness(1.01);
 }
 
 body::before {
@@ -58,16 +80,25 @@ body::before {
   right: 0;
   bottom: 0;
   background: 
-    radial-gradient(circle at 15% 20%, rgba(0, 120, 212, 0.08) 0%, transparent 50%),
-    radial-gradient(circle at 85% 80%, rgba(0, 120, 212, 0.06) 0%, transparent 50%),
-    radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.02) 0%, transparent 60%);
-  animation: subtleGlow 20s ease-in-out infinite alternate;
+    radial-gradient(ellipse 100% 80% at 15% 20%, rgba(0, 120, 212, 0.05) 0%, transparent 60%),
+    radial-gradient(ellipse 90% 70% at 85% 80%, rgba(0, 120, 212, 0.04) 0%, transparent 60%);
   z-index: -1;
 }
 
-@keyframes subtleGlow {
-  0% { opacity: 0.6; }
-  100% { opacity: 1; }
+/* Subtle noise texture to reduce color banding */
+body::after {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 600 600' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='7' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.06'/%3E%3C/svg%3E");
+  background-size: 256px 256px;
+  pointer-events: none;
+  z-index: 1;
+  mix-blend-mode: soft-light;
+  opacity: 0.7;
 }
 
 .glass-panel {
@@ -109,6 +140,8 @@ body::before {
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   -webkit-app-region: drag;
   padding: 0 0 0 12px;
+  position: relative;
+  z-index: 10;
 }
 
 .titlebar-drag-region {
@@ -184,6 +217,8 @@ body::before {
   padding: 12px;
   padding-bottom: 12px;
   gap: 8px;
+  position: relative;
+  z-index: 2;
 }
 
 .sidebar {
@@ -1157,7 +1192,11 @@ body::before {
 
 .progress-bar {
   height: 100%;
-  background: linear-gradient(90deg, var(--accent-color), var(--accent-hover));
+  background: linear-gradient(90deg, 
+    var(--accent-color) 0%, 
+    color-mix(in srgb, var(--accent-color) 70%, var(--accent-hover) 30%) 33%,
+    color-mix(in srgb, var(--accent-color) 30%, var(--accent-hover) 70%) 66%,
+    var(--accent-hover) 100%);
   border-radius: 3px;
   transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   box-shadow: 0 0 8px rgba(0, 120, 212, 0.5);
@@ -1669,7 +1708,18 @@ body.no-transparency .file-view::before {
 }
 
 body.theme-light {
-  background: linear-gradient(145deg, #f0f2f5 0%, #ffffff 50%, #f0f2f5 100%);
+  background: linear-gradient(145deg, 
+    #f0f2f5 0%, 
+    #f2f3f6 10%,
+    #f4f5f7 20%,
+    #f6f7f9 30%,
+    #f8f9fa 40%,
+    #ffffff 50%, 
+    #f8f9fa 60%,
+    #f6f7f9 70%,
+    #f4f5f7 80%,
+    #f2f3f6 90%,
+    #f0f2f5 100%);
   --text-primary: #1f2937;
   --text-secondary: rgba(0, 0, 0, 0.65);
   --text-tertiary: rgba(0, 0, 0, 0.45);
@@ -1695,9 +1745,9 @@ body.theme-light .titlebar {
 
 body.theme-light::before {
   background: 
-    radial-gradient(circle at 15% 20%, rgba(0, 120, 212, 0.04) 0%, transparent 50%),
-    radial-gradient(circle at 85% 80%, rgba(0, 120, 212, 0.03) 0%, transparent 50%),
-    radial-gradient(circle at 50% 50%, rgba(0, 0, 0, 0.01) 0%, transparent 60%);
+    radial-gradient(ellipse at 15% 20%, rgba(0, 120, 212, 0.04) 0%, rgba(0, 120, 212, 0.03) 15%, rgba(0, 120, 212, 0.02) 30%, rgba(0, 120, 212, 0.01) 45%, transparent 60%),
+    radial-gradient(ellipse at 85% 80%, rgba(0, 120, 212, 0.03) 0%, rgba(0, 120, 212, 0.0225) 15%, rgba(0, 120, 212, 0.015) 30%, rgba(0, 120, 212, 0.0075) 45%, transparent 60%),
+    radial-gradient(ellipse at 50% 50%, rgba(0, 0, 0, 0.01) 0%, rgba(0, 0, 0, 0.0075) 20%, rgba(0, 0, 0, 0.005) 40%, rgba(0, 0, 0, 0.0025) 50%, transparent 70%);
 }
 
 body.theme-light .modal.glass-panel {
@@ -2041,7 +2091,24 @@ body.theme-light .shortcuts-modal-content {
 }
 
 body.theme-dark {
-  background: linear-gradient(135deg, #2a3554 0%, #2f3d5a 50%, #2a3554 100%);
+  background: 
+    radial-gradient(ellipse 120% 120% at 50% 50%, rgba(99, 150, 255, 0.02) 0%, transparent 50%),
+    linear-gradient(135deg, 
+      #293452 0%, 
+      #2a3553 8%,
+      #2b3655 16%,
+      #2c3756 24%,
+      #2d3857 32%,
+      #2e3a58 40%,
+      #2f3c5a 48%,
+      #2f3d5a 50%,
+      #2f3c5a 52%,
+      #2e3a58 60%,
+      #2d3857 68%,
+      #2c3756 76%,
+      #2b3655 84%,
+      #2a3553 92%,
+      #293452 100%);
   --bg-primary: #2e3a58;
   --bg-primary-rgb: 46, 58, 88;
   --dropdown-bg: #3a4568;
@@ -2049,9 +2116,9 @@ body.theme-dark {
 
 body.theme-dark::before {
   background: 
-    radial-gradient(circle at 20% 50%, rgba(66, 135, 245, 0.14) 0%, transparent 50%),
-    radial-gradient(circle at 80% 80%, rgba(99, 150, 255, 0.12) 0%, transparent 50%),
-    radial-gradient(circle at 40% 20%, rgba(80, 120, 220, 0.10) 0%, transparent 50%);
+    radial-gradient(ellipse 80% 60% at 20% 50%, rgba(66, 135, 245, 0.10) 0%, transparent 50%),
+    radial-gradient(ellipse 70% 50% at 80% 80%, rgba(99, 150, 255, 0.08) 0%, transparent 50%),
+    radial-gradient(ellipse 60% 40% at 40% 20%, rgba(80, 120, 220, 0.06) 0%, transparent 50%);
 }
 
 body.theme-dark.no-transparency {
@@ -2778,7 +2845,11 @@ body.theme-dark .status-right span {
 
 .archive-progress-bar {
   height: 100%;
-  background: linear-gradient(90deg, var(--accent-color), var(--accent-light));
+  background: linear-gradient(90deg, 
+    var(--accent-color) 0%, 
+    color-mix(in srgb, var(--accent-color) 70%, var(--accent-light) 30%) 33%,
+    color-mix(in srgb, var(--accent-color) 30%, var(--accent-light) 70%) 66%,
+    var(--accent-light) 100%);
   border-radius: 2px;
   transition: width 0.3s ease;
   position: relative;
