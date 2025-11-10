@@ -17,6 +17,17 @@ const isRunningInFlatpak = (): boolean => {
          fsSync.existsSync('/.flatpak-info');
 };
 
+const get7zipPath = (): string => {
+  let sevenZipPath = sevenBin.path7za;
+
+  if (app.isPackaged) {
+    sevenZipPath = sevenZipPath.replace('app.asar', 'app.asar.unpacked');
+  }
+  
+  console.log('[7zip] Using path:', sevenZipPath);
+  return sevenZipPath;
+};
+
 let mainWindow: BrowserWindow | null = null;
 let fileIndexer: FileIndexer | null = null;
 
@@ -1316,7 +1327,7 @@ ipcMain.handle('compress-files', async (_event: IpcMainInvokeEvent, sourcePaths:
 
     if (format === 'tar.gz') {
       return new Promise(async (resolve, reject) => {
-        const sevenZipPath = sevenBin.path7za;
+        const sevenZipPath = get7zipPath();
         console.log('[Compress] Using 7zip at:', sevenZipPath);
         const tarPath = outputPath.replace(/\.gz$/, '');
         console.log('[Compress] Creating tar file:', tarPath);
@@ -1457,7 +1468,7 @@ ipcMain.handle('compress-files', async (_event: IpcMainInvokeEvent, sourcePaths:
     }
 
     return new Promise((resolve, reject) => {
-      const sevenZipPath = sevenBin.path7za;
+      const sevenZipPath = get7zipPath();
       console.log('[Compress] Using 7zip at:', sevenZipPath);
 
       const options: any = {
@@ -1524,7 +1535,7 @@ ipcMain.handle('extract-archive', async (_event: IpcMainInvokeEvent, archivePath
 
     await fs.mkdir(destPath, { recursive: true });
     return new Promise((resolve, reject) => {
-      const sevenZipPath = sevenBin.path7za;
+      const sevenZipPath = get7zipPath();
       console.log('[Extract] Using 7zip at:', sevenZipPath);
       
       const seven = Seven.extractFull(archivePath, destPath, {

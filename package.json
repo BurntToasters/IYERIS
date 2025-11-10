@@ -122,7 +122,8 @@
     },
     "asar": true,
     "asarUnpack": [
-      "**/*.node"
+      "**/*.node",
+      "**/node_modules/7zip-bin/**/*"
     ],
     "mac": {
       "category": "public.app-category.productivity",
