@@ -7,7 +7,7 @@
              alt="IYERIS logo" width="180" />
       </td>
       <td valign="middle" align="center">
-        <img src="https://github.com/user-attachments/assets/f7060d7b-c804-451d-990a-4196a01674ab"
+        <img src="https://github.com/user-attachments/assets/634b9960-8fa3-4229-bff6-21fa9c2b8221"
              alt="IYERIS screenshot" width="680" />
       </td>
     </tr>
