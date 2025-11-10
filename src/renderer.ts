@@ -1095,14 +1095,6 @@ async function init() {
   
   console.log('Init: Loading settings...');
   await loadSettings();
-  await loadBookmarks();
-  await updateUndoRedoState();
-
-  const zoomResult = await window.electronAPI.getZoomLevel();
-  if (zoomResult.success && zoomResult.zoomLevel) {
-    currentZoomLevel = zoomResult.zoomLevel;
-    updateZoomDisplay();
-  }
   
   console.log('Init: Determining startup path...');
   let startupPath = currentSettings.startupPath && currentSettings.startupPath.trim() !== '' 
@@ -1113,11 +1105,28 @@ async function init() {
   console.log('Init: Navigating to startup path...');
   navigateTo(startupPath);
   
-  console.log('Init: Loading drives...');
-  loadDrives();
-  
   console.log('Init: Setting up event listeners...');
   setupEventListeners();
+  
+  // Defer non-critical init
+  setTimeout(() => {
+    console.log('Init: Loading bookmarks...');
+    loadBookmarks();
+    
+    console.log('Init: Updating undo/redo state...');
+    updateUndoRedoState();
+    
+    console.log('Init: Loading drives...');
+    loadDrives();
+    
+    console.log('Init: Getting zoom level...');
+    window.electronAPI.getZoomLevel().then(zoomResult => {
+      if (zoomResult.success && zoomResult.zoomLevel) {
+        currentZoomLevel = zoomResult.zoomLevel;
+        updateZoomDisplay();
+      }
+    });
+  }, 0);
   
   console.log('Init: Complete');
 }
@@ -1180,6 +1189,7 @@ function setupEventListeners() {
   
   searchInput?.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') {
+      hideSearchHistoryDropdown();
       performSearch();
     }
   });

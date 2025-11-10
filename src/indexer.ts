@@ -201,7 +201,6 @@ export class FileIndexer {
       return [];
     }
 
-    // If index is still empty and not currently building, load from disk
     if (this.index.size === 0 && !this.isIndexing) {
       await this.loadIndex();
     }
@@ -322,24 +321,28 @@ export class FileIndexer {
 
     console.log('[Indexer] Initializing...');
 
-    setImmediate(async () => {
+    setTimeout(async () => {
       try {
         await this.loadIndex();
 
         if (this.index.size === 0) {
-          console.log('[Indexer] No existing index found, building now...');
-          await this.buildIndex();
+          console.log('[Indexer] No existing index found, will build on first search');
+          this.buildIndex().catch(err => 
+            console.error('[Indexer] Background index build failed:', err)
+          );
         } 
         else if (!this.lastIndexTime || 
                  (Date.now() - this.lastIndexTime.getTime() > 7 * 24 * 60 * 60 * 1000)) {
-          console.log('[Indexer] Index is outdated, rebuilding...');
-          await this.buildIndex();
+          console.log('[Indexer] Index is outdated, rebuilding in background...');
+          this.buildIndex().catch(err => 
+            console.error('[Indexer] Background index rebuild failed:', err)
+          );
         } else {
           console.log('[Indexer] Using existing index with', this.index.size, 'files');
         }
       } catch (err) {
         console.error('[Indexer] Initialization failed:', err);
       }
-    });
+    }, 0);
   }
 }
