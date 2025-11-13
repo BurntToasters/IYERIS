@@ -112,16 +112,43 @@ async function saveSettings(settings: Settings): Promise<ApiResponse> {
 }
 
 async function isFileHidden(filePath: string, fileName: string): Promise<boolean> {
-  if (process.platform !== 'win32') {
-    return fileName.startsWith('.');
+  if (fileName.startsWith('.')) {
+    return true;
+  }
+
+  if (process.platform === 'win32') {
+    try {
+      const stats = await fs.stat(filePath);
+      return false;
+    } catch (error) {
+      return false;
+    }
   }
   
-  try {
-    const { stdout } = await execAsync(`attrib "${filePath}"`, { windowsHide: true });
-    return stdout.trim().startsWith('H') || stdout.includes(' H ');
-  } catch (error) {
-    return fileName.startsWith('.');
+  return false;
+}
+
+const hiddenFileCache = new Map<string, { isHidden: boolean; timestamp: number }>();
+const HIDDEN_CACHE_TTL = 60000;
+
+async function isFileHiddenCached(filePath: string, fileName: string): Promise<boolean> {
+  if (fileName.startsWith('.')) {
+    return true;
   }
+
+  if (process.platform !== 'win32') {
+    return false;
+  }
+
+  const cached = hiddenFileCache.get(filePath);
+  if (cached && (Date.now() - cached.timestamp) < HIDDEN_CACHE_TTL) {
+    return cached.isHidden;
+  }
+
+  const isHidden = false;
+  hiddenFileCache.set(filePath, { isHidden, timestamp: Date.now() });
+  
+  return isHidden;
 }
 
 function createWindow(): void {
@@ -301,68 +328,71 @@ app.whenReady().then(async () => {
   setupApplicationMenu();
   createWindow();
 
-  // Defer all background init
   mainWindow?.once('ready-to-show', () => {
     setTimeout(async () => {
       try {
         const settings = await loadSettings();
 
         if (settings.enableIndexer) {
+          const indexerDelay = process.platform === 'win32' ? 2000 : 500;
           fileIndexer = new FileIndexer();
           setTimeout(() => {
             fileIndexer!.initialize(settings.enableIndexer).catch(err => 
               console.error('[Indexer] Background initialization failed:', err)
             );
-          }, 500);
+          }, indexerDelay);
         }
 
-        try {
-          autoUpdater.logger = console;
-          autoUpdater.autoDownload = false;
-          autoUpdater.autoInstallOnAppQuit = true;
+        // Defer auto-updater setup
+        setTimeout(() => {
+          try {
+            autoUpdater.logger = console;
+            autoUpdater.autoDownload = false;
+            autoUpdater.autoInstallOnAppQuit = true;
 
-          if (isRunningInFlatpak()) {
-            console.log('[AutoUpdater] Running in Flatpak - auto-updater disabled');
-            console.log('[AutoUpdater] Updates should be installed via: flatpak update com.burnttoasters.iyeris');
-          }
+            if (isRunningInFlatpak()) {
+              console.log('[AutoUpdater] Running in Flatpak - auto-updater disabled');
+              console.log('[AutoUpdater] Updates should be installed via: flatpak update com.burnttoasters.iyeris');
+            }
 
-          autoUpdater.on('checking-for-update', () => {
-            console.log('[AutoUpdater] Checking for update...');
-            mainWindow?.webContents.send('update-checking');
-          });
-
-          autoUpdater.on('update-available', (info) => {
-            console.log('[AutoUpdater] Update available:', info.version);
-            mainWindow?.webContents.send('update-available', info);
-          });
-
-          autoUpdater.on('update-not-available', (info) => {
-            console.log('[AutoUpdater] Update not available. Current version:', info.version);
-            mainWindow?.webContents.send('update-not-available', info);
-          });
-
-          autoUpdater.on('error', (err) => {
-            console.error('[AutoUpdater] Error:', err);
-            mainWindow?.webContents.send('update-error', err.message);
-          });
-
-          autoUpdater.on('download-progress', (progressObj) => {
-            console.log(`[AutoUpdater] Download progress: ${progressObj.percent.toFixed(2)}%`);
-            mainWindow?.webContents.send('update-download-progress', {
-              percent: progressObj.percent,
-              bytesPerSecond: progressObj.bytesPerSecond,
-              transferred: progressObj.transferred,
-              total: progressObj.total
+            autoUpdater.on('checking-for-update', () => {
+              console.log('[AutoUpdater] Checking for update...');
+              mainWindow?.webContents.send('update-checking');
             });
-          });
 
-          autoUpdater.on('update-downloaded', (info) => {
-            console.log('[AutoUpdater] Update downloaded:', info.version);
-            mainWindow?.webContents.send('update-downloaded', info);
-          });
-        } catch (error) {
-          console.error('[AutoUpdater] Setup failed:', error);
-        }
+            autoUpdater.on('update-available', (info) => {
+              console.log('[AutoUpdater] Update available:', info.version);
+              mainWindow?.webContents.send('update-available', info);
+            });
+
+            autoUpdater.on('update-not-available', (info) => {
+              console.log('[AutoUpdater] Update not available. Current version:', info.version);
+              mainWindow?.webContents.send('update-not-available', info);
+            });
+
+            autoUpdater.on('error', (err) => {
+              console.error('[AutoUpdater] Error:', err);
+              mainWindow?.webContents.send('update-error', err.message);
+            });
+
+            autoUpdater.on('download-progress', (progressObj) => {
+              console.log(`[AutoUpdater] Download progress: ${progressObj.percent.toFixed(2)}%`);
+              mainWindow?.webContents.send('update-download-progress', {
+                percent: progressObj.percent,
+                bytesPerSecond: progressObj.bytesPerSecond,
+                transferred: progressObj.transferred,
+                total: progressObj.total
+              });
+            });
+
+            autoUpdater.on('update-downloaded', (info) => {
+              console.log('[AutoUpdater] Update downloaded:', info.version);
+              mainWindow?.webContents.send('update-downloaded', info);
+            });
+          } catch (error) {
+            console.error('[AutoUpdater] Setup failed:', error);
+          }
+        }, 1000);
 
         if (process.platform === 'darwin') {
           setTimeout(async () => {
@@ -414,11 +444,7 @@ ipcMain.handle('get-directory-contents', async (_event: IpcMainInvokeEvent, dirP
       const batchResults = await Promise.all(
         batch.map(async (item): Promise<FileItem> => {
           const fullPath = path.join(dirPath, item.name);
-
-          let isHidden = item.name.startsWith('.');
-          if (process.platform === 'win32' && !isHidden) {
-            isHidden = false;
-          }
+          const isHidden = item.name.startsWith('.');
           
           try {
             const stats = await fs.stat(fullPath);
@@ -796,7 +822,7 @@ ipcMain.handle('search-files', async (_event: IpcMainInvokeEvent, dirPath: strin
           if (item.name.toLowerCase().includes(searchQuery)) {
             try {
               const stats = await fs.stat(fullPath);
-              const isHidden = await isFileHidden(fullPath, item.name);
+              const isHidden = item.name.startsWith('.');
               results.push({
                 name: item.name,
                 path: fullPath,

@@ -2091,53 +2091,53 @@ body.theme-light .shortcuts-modal-content {
 
 body.theme-dark {
   background: 
-    radial-gradient(ellipse 120% 120% at 50% 50%, rgba(99, 150, 255, 0.02) 0%, transparent 50%),
+    radial-gradient(ellipse 120% 120% at 50% 50%, rgba(50, 100, 180, 0.015) 0%, transparent 50%),
     linear-gradient(135deg, 
-      #293452 0%, 
-      #2a3553 8%,
-      #2b3655 16%,
-      #2c3756 24%,
-      #2d3857 32%,
-      #2e3a58 40%,
-      #2f3c5a 48%,
-      #2f3d5a 50%,
-      #2f3c5a 52%,
-      #2e3a58 60%,
-      #2d3857 68%,
-      #2c3756 76%,
-      #2b3655 84%,
-      #2a3553 92%,
-      #293452 100%);
-  --bg-primary: #2e3a58;
-  --bg-primary-rgb: 46, 58, 88;
-  --dropdown-bg: #3a4568;
+      #1a2332 0%, 
+      #1b2535 8%,
+      #1c2738 16%,
+      #1d293b 24%,
+      #1e2b3e 32%,
+      #1f2d41 40%,
+      #202f44 48%,
+      #213047 50%,
+      #202f44 52%,
+      #1f2d41 60%,
+      #1e2b3e 68%,
+      #1d293b 76%,
+      #1c2738 84%,
+      #1b2535 92%,
+      #1a2332 100%);
+  --bg-primary: #1f2d41;
+  --bg-primary-rgb: 31, 45, 65;
+  --dropdown-bg: #263548;
 }
 
 body.theme-dark::before {
   background: 
-    radial-gradient(ellipse 80% 60% at 20% 50%, rgba(66, 135, 245, 0.10) 0%, transparent 50%),
-    radial-gradient(ellipse 70% 50% at 80% 80%, rgba(99, 150, 255, 0.08) 0%, transparent 50%),
-    radial-gradient(ellipse 60% 40% at 40% 20%, rgba(80, 120, 220, 0.06) 0%, transparent 50%);
+    radial-gradient(ellipse 80% 60% at 20% 50%, rgba(50, 110, 200, 0.045) 0%, transparent 50%),
+    radial-gradient(ellipse 70% 50% at 80% 80%, rgba(70, 130, 220, 0.035) 0%, transparent 50%),
+    radial-gradient(ellipse 60% 40% at 40% 20%, rgba(60, 100, 180, 0.025) 0%, transparent 50%);
 }
 
 body.theme-dark.no-transparency {
-  background: #2e3a58 !important;
+  background: #1f2d41 !important;
 }
 
 body.theme-dark.no-transparency .glass-panel,
 body.theme-dark.no-transparency .modal,
 body.theme-dark.no-transparency .context-menu,
 body.theme-dark.no-transparency .sort-menu {
-  background: #2e3a58 !important;
+  background: #1f2d41 !important;
   border: 1px solid rgba(255, 255, 255, 0.12) !important;
 }
 
 body.theme-dark.no-transparency .titlebar {
-  background: #2e3a58 !important;
+  background: #1f2d41 !important;
 }
 
 body.theme-dark .status-bar {
-  background: rgba(46, 58, 88, 0.95);
+  background: rgba(31, 45, 65, 0.95);
   border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 

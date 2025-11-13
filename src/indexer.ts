@@ -31,13 +31,6 @@ export class FileIndexer {
         path.join(homeDir, 'Music'),
         path.join(homeDir, 'Videos')
       );
-      const drives = ['C:', 'D:', 'E:'];
-      for (const drive of drives) {
-        try {
-          locations.push(drive + '\\');
-        } catch {
-        }
-      }
     } else if (platform === 'darwin') {
       locations.push(
         path.join(homeDir, 'Desktop'),
@@ -78,13 +71,29 @@ export class FileIndexer {
       'System Volume Information',
       '.npm',
       '.docker',
+      'AppData',
+      'ProgramData',
+      'Windows',
+      'Program Files',
+      'Program Files (x86)',
+      '$Windows.~BT',
+      '$Windows.~WS',
+      'Recovery',
+      'PerfLogs',
+      'pagefile.sys',
+      'hiberfil.sys',
+      'swapfile.sys',
+      'DumpStack.log.tmp',
       'AppData\\Local\\Temp',
       'Library/Caches',
-      '/tmp',
-      '/var/tmp',
+      'Library/Logs',
+      '/System',
+      '/private',
+      '/dev',
       '/proc',
       '/sys',
-      '/dev'
+      '/tmp',
+      '/var/tmp'
     ];
 
     const lowerPath = filePath.toLowerCase();
@@ -327,16 +336,22 @@ export class FileIndexer {
 
         if (this.index.size === 0) {
           console.log('[Indexer] No existing index found, will build on first search');
-          this.buildIndex().catch(err => 
-            console.error('[Indexer] Background index build failed:', err)
-          );
+          const buildDelay = process.platform === 'win32' ? 5000 : 1000;
+          setTimeout(() => {
+            this.buildIndex().catch(err => 
+              console.error('[Indexer] Background index build failed:', err)
+            );
+          }, buildDelay);
         } 
         else if (!this.lastIndexTime || 
                  (Date.now() - this.lastIndexTime.getTime() > 7 * 24 * 60 * 60 * 1000)) {
           console.log('[Indexer] Index is outdated, rebuilding in background...');
-          this.buildIndex().catch(err => 
-            console.error('[Indexer] Background index rebuild failed:', err)
-          );
+          const rebuildDelay = process.platform === 'win32' ? 10000 : 2000;
+          setTimeout(() => {
+            this.buildIndex().catch(err => 
+              console.error('[Indexer] Background index rebuild failed:', err)
+            );
+          }, rebuildDelay);
         } else {
           console.log('[Indexer] Using existing index with', this.index.size, 'files');
         }
