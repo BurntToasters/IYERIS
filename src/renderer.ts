@@ -191,6 +191,7 @@ let contextMenuData: FileItem | null = null;
 let clipboard: { operation: 'copy' | 'cut'; paths: string[] } | null = null;
 let allFiles: FileItem[] = [];
 let isSearchMode: boolean = false;
+let isGlobalSearch: boolean = false;
 let isPreviewPanelVisible: boolean = false;
 let currentPreviewFile: FileItem | null = null;
 let currentQuicklookFile: FileItem | null = null;
@@ -217,6 +218,7 @@ const searchInput = document.getElementById('search-input') as HTMLInputElement;
 const searchBarWrapper = document.querySelector('.search-bar-wrapper') as HTMLElement;
 const searchBar = document.querySelector('.search-bar') as HTMLElement;
 const searchClose = document.getElementById('search-close') as HTMLButtonElement;
+const searchScopeToggle = document.getElementById('search-scope-toggle') as HTMLButtonElement;
 const addressBarWrapper = document.querySelector('.address-bar-wrapper') as HTMLElement;
 const addressBar = document.querySelector('.address-bar') as HTMLElement;
 const sortBtn = document.getElementById('sort-btn') as HTMLButtonElement;
@@ -810,6 +812,7 @@ function toggleSearch() {
     searchBarWrapper.style.display = 'block';
     searchInput.focus();
     isSearchMode = true;
+    updateSearchPlaceholder();
   } else {
     closeSearch();
   }
@@ -819,15 +822,54 @@ function closeSearch() {
   searchBarWrapper.style.display = 'none';
   searchInput.value = '';
   isSearchMode = false;
+  isGlobalSearch = false;
+  searchScopeToggle.classList.remove('global');
   hideSearchHistoryDropdown();
+  updateSearchPlaceholder();
   if (currentPath) {
     navigateTo(currentPath);
   }
 }
 
+function toggleSearchScope() {
+  isGlobalSearch = !isGlobalSearch;
+  if (isGlobalSearch) {
+    searchScopeToggle.classList.add('global');
+    searchScopeToggle.title = 'Global Search (All Indexed Files)';
+    const img = searchScopeToggle.querySelector('img');
+    if (img) {
+      img.src = 'assets/twemoji/1f30d.svg';
+      img.alt = '🌍';
+    }
+  } else {
+    searchScopeToggle.classList.remove('global');
+    searchScopeToggle.title = 'Local Search (Current Folder)';
+    const img = searchScopeToggle.querySelector('img');
+    if (img) {
+      img.src = 'assets/twemoji/1f4c1.svg';
+      img.alt = '📁';
+    }
+  }
+  updateSearchPlaceholder();
+
+  if (searchInput.value.trim()) {
+    performSearch();
+  }
+}
+
+function updateSearchPlaceholder() {
+  if (isGlobalSearch) {
+    searchInput.placeholder = 'Search all files...';
+  } else {
+    searchInput.placeholder = 'Search files...';
+  }
+}
+
 async function performSearch() {
   const query = searchInput.value.trim();
-  if (!query || !currentPath) return;
+  if (!query) return;
+
+  if (!isGlobalSearch && !currentPath) return;
   
   addToSearchHistory(query);
   
@@ -835,13 +877,39 @@ async function performSearch() {
   emptyState.style.display = 'none';
   fileGrid.innerHTML = '';
   
-  const result = await window.electronAPI.searchFiles(currentPath, query);
+  let result;
   
-  if (result.success && result.results) {
-    allFiles = result.results;
-    renderFiles(result.results);
+  if (isGlobalSearch) {
+    result = await window.electronAPI.searchIndex(query);
+    
+    if (result.success && result.results) {
+      const fileItems: FileItem[] = result.results.map((entry: any) => ({
+        name: entry.name,
+        path: entry.path,
+        isDirectory: entry.isDirectory,
+        isFile: entry.isFile,
+        size: entry.size,
+        modified: entry.modified,
+        isHidden: entry.name.startsWith('.')
+      }));
+      allFiles = fileItems;
+      renderFiles(fileItems);
+    } else {
+      if (result.error === 'Indexer is disabled') {
+        showToast('File indexer is disabled. Enable it in settings to use global search.', 'Index Disabled', 'warning');
+      } else {
+        showToast(result.error || 'Global search failed', 'Search Error', 'error');
+      }
+    }
   } else {
-    showToast(result.error || 'Search failed', 'Search Error', 'error');
+    result = await window.electronAPI.searchFiles(currentPath, query);
+    
+    if (result.success && result.results) {
+      allFiles = result.results;
+      renderFiles(result.results);
+    } else {
+      showToast(result.error || 'Search failed', 'Search Error', 'error');
+    }
   }
   
   loading.style.display = 'none';
@@ -1107,8 +1175,7 @@ async function init() {
   
   console.log('Init: Setting up event listeners...');
   setupEventListeners();
-  
-  // Defer non-critical init
+
   setTimeout(() => {
     console.log('Init: Loading bookmarks...');
     loadBookmarks();
@@ -1184,6 +1251,7 @@ function setupEventListeners() {
   
   searchBtn?.addEventListener('click', toggleSearch);
   searchClose?.addEventListener('click', closeSearch);
+  searchScopeToggle?.addEventListener('click', toggleSearchScope);
   sortBtn?.addEventListener('click', showSortMenu);
   bookmarkAddBtn?.addEventListener('click', addBookmark);
   
@@ -1292,9 +1360,41 @@ function setupEventListeners() {
         }
         e.preventDefault();
         pasteFromClipboard();
-      } else if (e.key === 'f') {
+      } else if (e.key === 'f' || e.key === 'F') {
         e.preventDefault();
-        toggleSearch();
+        if (e.shiftKey) {
+          // Ctrl+Shift+F - Open search in global mode
+          if (!isSearchMode) {
+            searchBarWrapper.style.display = 'block';
+            isSearchMode = true;
+          }
+          // Always set to global search mode
+          isGlobalSearch = true;
+          searchScopeToggle.classList.add('global');
+          searchScopeToggle.title = 'Global Search (All Indexed Files)';
+          const img = searchScopeToggle.querySelector('img');
+          if (img) {
+            img.src = 'assets/twemoji/1f30d.svg';
+            img.alt = '🌍';
+          }
+          updateSearchPlaceholder();
+          searchInput.focus();
+        } else {
+          if (!isSearchMode) {
+            searchBarWrapper.style.display = 'block';
+            isSearchMode = true;
+          }
+          isGlobalSearch = false;
+          searchScopeToggle.classList.remove('global');
+          searchScopeToggle.title = 'Local Search (Current Folder)';
+          const img = searchScopeToggle.querySelector('img');
+          if (img) {
+            img.src = 'assets/twemoji/1f4c1.svg';
+            img.alt = '📁';
+          }
+          updateSearchPlaceholder();
+          searchInput.focus();
+        }
       } else if (e.key === 'a') {
         const activeElement = document.activeElement;
         if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {

@@ -31,6 +31,13 @@ export class FileIndexer {
         path.join(homeDir, 'Music'),
         path.join(homeDir, 'Videos')
       );
+      const drives = ['C:', 'D:', 'E:'];
+      for (const drive of drives) {
+        try {
+          locations.push(drive + '\\');
+        } catch {
+        }
+      }
     } else if (platform === 'darwin') {
       locations.push(
         path.join(homeDir, 'Desktop'),
@@ -330,34 +337,24 @@ export class FileIndexer {
 
     console.log('[Indexer] Initializing...');
 
-    setTimeout(async () => {
+    setImmediate(async () => {
       try {
         await this.loadIndex();
 
         if (this.index.size === 0) {
-          console.log('[Indexer] No existing index found, will build on first search');
-          const buildDelay = process.platform === 'win32' ? 5000 : 1000;
-          setTimeout(() => {
-            this.buildIndex().catch(err => 
-              console.error('[Indexer] Background index build failed:', err)
-            );
-          }, buildDelay);
+          console.log('[Indexer] No existing index found, building now...');
+          await this.buildIndex();
         } 
         else if (!this.lastIndexTime || 
                  (Date.now() - this.lastIndexTime.getTime() > 7 * 24 * 60 * 60 * 1000)) {
-          console.log('[Indexer] Index is outdated, rebuilding in background...');
-          const rebuildDelay = process.platform === 'win32' ? 10000 : 2000;
-          setTimeout(() => {
-            this.buildIndex().catch(err => 
-              console.error('[Indexer] Background index rebuild failed:', err)
-            );
-          }, rebuildDelay);
+          console.log('[Indexer] Index is outdated, rebuilding...');
+          await this.buildIndex();
         } else {
           console.log('[Indexer] Using existing index with', this.index.size, 'files');
         }
       } catch (err) {
         console.error('[Indexer] Initialization failed:', err);
       }
-    }, 0);
+    });
   }
 }

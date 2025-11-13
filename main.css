@@ -1423,6 +1423,47 @@ body.no-transparency .file-view::before {
   transform: scale(0.9);
 }
 
+.search-scope-toggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-small);
+  transition: all 0.12s cubic-bezier(0.4, 0, 0.2, 1);
+  opacity: 0.6;
+  margin-right: 4px;
+}
+
+.search-scope-toggle:hover {
+  background: rgba(255, 255, 255, 0.08);
+  opacity: 1;
+}
+
+.search-scope-toggle:active {
+  background: rgba(255, 255, 255, 0.12);
+  transform: scale(0.95);
+}
+
+.search-scope-toggle.global {
+  background: var(--accent-gradient);
+  opacity: 1;
+}
+
+.search-scope-toggle.global:hover {
+  background: var(--accent-gradient);
+  filter: brightness(1.1);
+}
+
+.search-scope-toggle .twemoji {
+  width: 18px;
+  height: 18px;
+}
+
 .status-bar {
   position: fixed;
   bottom: 0;
