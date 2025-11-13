@@ -1959,6 +1959,11 @@ body.theme-light .zoom-btn:hover {
   background: rgba(0, 0, 0, 0.06);
 }
 
+body.theme-light .zoom-btn .twemoji,
+body.theme-light .zoom-btn .twemoji-small {
+  filter: none;
+}
+
 body.theme-light .zoom-btn:active {
   background: rgba(0, 0, 0, 0.08);
 }
@@ -2696,11 +2701,13 @@ body.theme-dark .status-right span {
 .zoom-btn .twemoji {
   width: 16px;
   height: 16px;
+  filter: brightness(0) invert(1);
 }
 
 .zoom-btn .twemoji-small {
   width: 14px;
   height: 14px;
+  filter: brightness(0) invert(1);
 }
 
 .zoom-level {

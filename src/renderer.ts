@@ -883,15 +883,22 @@ async function performSearch() {
     result = await window.electronAPI.searchIndex(query);
     
     if (result.success && result.results) {
-      const fileItems: FileItem[] = result.results.map((entry: any) => ({
-        name: entry.name,
-        path: entry.path,
-        isDirectory: entry.isDirectory,
-        isFile: entry.isFile,
-        size: entry.size,
-        modified: entry.modified,
-        isHidden: entry.name.startsWith('.')
-      }));
+      const fileItems: FileItem[] = [];
+      
+      for (const entry of result.results) {
+        const isHidden = entry.name.startsWith('.');
+        
+        fileItems.push({
+          name: entry.name,
+          path: entry.path,
+          isDirectory: entry.isDirectory,
+          isFile: entry.isFile,
+          size: entry.size,
+          modified: entry.modified,
+          isHidden
+        });
+      }
+      
       allFiles = fileItems;
       renderFiles(fileItems);
     } else {
@@ -2586,21 +2593,7 @@ async function handleContextMenuAction(action, item, format?: string) {
       break;
       
     case 'delete':
-      const confirmDelete = await showConfirm(
-        `Move "${item.name}" to ${platformOS === 'win32' ? 'Recycle Bin' : 'Trash'}?`,
-        'Move to Trash',
-        'warning'
-      );
-      if (confirmDelete) {
-        const result = await window.electronAPI.trashItem(item.path);
-        if (result.success) {
-          showToast('Item moved to trash', 'Success', 'success');
-          await updateUndoRedoState();
-          refresh();
-        } else {
-          showToast(result.error, 'Error', 'error');
-        }
-      }
+      await deleteSelected();
       break;
       
     case 'compress':
