@@ -118,8 +118,16 @@ async function isFileHidden(filePath: string, fileName: string): Promise<boolean
 
   if (process.platform === 'win32') {
     try {
-      const stats = await fs.stat(filePath);
-      return false;
+      const { exec } = require('child_process');
+      const { promisify } = require('util');
+      const execPromise = promisify(exec);
+      
+      const { stdout } = await execPromise(`cmd /c attrib "${filePath}"`, { 
+        timeout: 200,
+        windowsHide: true 
+      });
+      
+      return stdout.trim().charAt(0).toUpperCase() === 'H';
     } catch (error) {
       return false;
     }
@@ -129,9 +137,10 @@ async function isFileHidden(filePath: string, fileName: string): Promise<boolean
 }
 
 const hiddenFileCache = new Map<string, { isHidden: boolean; timestamp: number }>();
-const HIDDEN_CACHE_TTL = 60000;
+const HIDDEN_CACHE_TTL = 300000;
 
 async function isFileHiddenCached(filePath: string, fileName: string): Promise<boolean> {
+
   if (fileName.startsWith('.')) {
     return true;
   }
@@ -145,7 +154,7 @@ async function isFileHiddenCached(filePath: string, fileName: string): Promise<b
     return cached.isHidden;
   }
 
-  const isHidden = false;
+  const isHidden = await isFileHidden(filePath, fileName);
   hiddenFileCache.set(filePath, { isHidden, timestamp: Date.now() });
   
   return isHidden;
@@ -444,7 +453,7 @@ ipcMain.handle('get-directory-contents', async (_event: IpcMainInvokeEvent, dirP
       const batchResults = await Promise.all(
         batch.map(async (item): Promise<FileItem> => {
           const fullPath = path.join(dirPath, item.name);
-          const isHidden = item.name.startsWith('.');
+          const isHidden = await isFileHiddenCached(fullPath, item.name);
           
           try {
             const stats = await fs.stat(fullPath);
@@ -822,7 +831,7 @@ ipcMain.handle('search-files', async (_event: IpcMainInvokeEvent, dirPath: strin
           if (item.name.toLowerCase().includes(searchQuery)) {
             try {
               const stats = await fs.stat(fullPath);
-              const isHidden = item.name.startsWith('.');
+              const isHidden = await isFileHiddenCached(fullPath, item.name);
               results.push({
                 name: item.name,
                 path: fullPath,

@@ -31,7 +31,7 @@ export class FileIndexer {
         path.join(homeDir, 'Music'),
         path.join(homeDir, 'Videos')
       );
-      const drives = ['C:', 'D:', 'E:'];
+      const drives = ['C:', 'D:', 'E:']; // I will probably change this later and make it dynamic its not the best way to do this by any means
       for (const drive of drives) {
         try {
           locations.push(drive + '\\');

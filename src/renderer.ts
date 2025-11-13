@@ -200,6 +200,7 @@ let canUndo: boolean = false;
 let canRedo: boolean = false;
 let currentZoomLevel: number = 1.0;
 let zoomPopupTimeout: NodeJS.Timeout | null = null;
+let indexStatusInterval: NodeJS.Timeout | null = null;
 
 const addressInput = document.getElementById('address-input') as HTMLInputElement;
 const fileGrid = document.getElementById('file-grid') as HTMLElement;
@@ -449,7 +450,7 @@ async function showSettingsModal() {
     enableIndexerToggle.checked = currentSettings.enableIndexer !== false;
   }
 
-  updateIndexStatus();
+  await updateIndexStatus();
   
   const path = await window.electronAPI.getSettingsPath();
   if (settingsPath) {
@@ -464,6 +465,25 @@ async function showSettingsModal() {
 function hideSettingsModal() {
   const settingsModal = document.getElementById('settings-modal');
   settingsModal.style.display = 'none';
+  stopIndexStatusPolling();
+}
+
+function startIndexStatusPolling() {
+  stopIndexStatusPolling();
+  indexStatusInterval = setInterval(async () => {
+    await updateIndexStatus();
+    const result = await window.electronAPI.getIndexStatus();
+    if (result.success && result.status && !result.status.isIndexing) {
+      stopIndexStatusPolling();
+    }
+  }, 500);
+}
+
+function stopIndexStatusPolling() {
+  if (indexStatusInterval) {
+    clearInterval(indexStatusInterval);
+    indexStatusInterval = null;
+  }
 }
 
 async function updateIndexStatus() {
@@ -475,10 +495,13 @@ async function updateIndexStatus() {
     if (result.success && result.status) {
       const status = result.status;
       if (status.isIndexing) {
-        indexStatus.textContent = `Status: Indexing... (${status.indexedFiles} files)`;
+        indexStatus.textContent = `Status: Indexing... (${status.indexedFiles.toLocaleString()} files found)`;
+        if (!indexStatusInterval) {
+          startIndexStatusPolling();
+        }
       } else if (status.lastIndexTime) {
         const date = new Date(status.lastIndexTime);
-        indexStatus.textContent = `Status: ${status.indexedFiles} files indexed on ${date.toLocaleDateString()}`;
+        indexStatus.textContent = `Status: ${status.indexedFiles.toLocaleString()} files indexed on ${date.toLocaleDateString()} at ${date.toLocaleTimeString()}`;
       } else {
         indexStatus.textContent = 'Status: Not indexed yet';
       }
@@ -502,8 +525,10 @@ async function rebuildIndex() {
   try {
     const result = await window.electronAPI.rebuildIndex();
     if (result.success) {
-      showToast('Index rebuild started in background', 'File Indexer', 'success');
-      setTimeout(updateIndexStatus, 1000);
+      showToast('Index rebuild started', 'File Indexer', 'success');
+      setTimeout(async () => {
+        await updateIndexStatus();
+      }, 300);
     } else {
       showToast('Failed to rebuild index: ' + result.error, 'Error', 'error');
     }
@@ -883,15 +908,22 @@ async function performSearch() {
     result = await window.electronAPI.searchIndex(query);
     
     if (result.success && result.results) {
-      const fileItems: FileItem[] = result.results.map((entry: any) => ({
-        name: entry.name,
-        path: entry.path,
-        isDirectory: entry.isDirectory,
-        isFile: entry.isFile,
-        size: entry.size,
-        modified: entry.modified,
-        isHidden: entry.name.startsWith('.')
-      }));
+      const fileItems: FileItem[] = [];
+      
+      for (const entry of result.results) {
+        const isHidden = entry.name.startsWith('.');
+        
+        fileItems.push({
+          name: entry.name,
+          path: entry.path,
+          isDirectory: entry.isDirectory,
+          isFile: entry.isFile,
+          size: entry.size,
+          modified: entry.modified,
+          isHidden
+        });
+      }
+      
       allFiles = fileItems;
       renderFiles(fileItems);
     } else {
@@ -2586,21 +2618,7 @@ async function handleContextMenuAction(action, item, format?: string) {
       break;
       
     case 'delete':
-      const confirmDelete = await showConfirm(
-        `Move "${item.name}" to ${platformOS === 'win32' ? 'Recycle Bin' : 'Trash'}?`,
-        'Move to Trash',
-        'warning'
-      );
-      if (confirmDelete) {
-        const result = await window.electronAPI.trashItem(item.path);
-        if (result.success) {
-          showToast('Item moved to trash', 'Success', 'success');
-          await updateUndoRedoState();
-          refresh();
-        } else {
-          showToast(result.error, 'Error', 'error');
-        }
-      }
+      await deleteSelected();
       break;
       
     case 'compress':
