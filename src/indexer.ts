@@ -78,13 +78,29 @@ export class FileIndexer {
       'System Volume Information',
       '.npm',
       '.docker',
+      'AppData',
+      'ProgramData',
+      'Windows',
+      'Program Files',
+      'Program Files (x86)',
+      '$Windows.~BT',
+      '$Windows.~WS',
+      'Recovery',
+      'PerfLogs',
+      'pagefile.sys',
+      'hiberfil.sys',
+      'swapfile.sys',
+      'DumpStack.log.tmp',
       'AppData\\Local\\Temp',
       'Library/Caches',
-      '/tmp',
-      '/var/tmp',
+      'Library/Logs',
+      '/System',
+      '/private',
+      '/dev',
       '/proc',
       '/sys',
-      '/dev'
+      '/tmp',
+      '/var/tmp'
     ];
 
     const lowerPath = filePath.toLowerCase();
@@ -201,7 +217,6 @@ export class FileIndexer {
       return [];
     }
 
-    // If index is still empty and not currently building, load from disk
     if (this.index.size === 0 && !this.isIndexing) {
       await this.loadIndex();
     }

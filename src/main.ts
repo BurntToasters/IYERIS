@@ -12,6 +12,15 @@ import { FileIndexer } from './indexer';
 
 const execAsync = promisify(exec);
 
+// Disable hardware accel via cli arg
+if (process.argv.includes('--disable-hardware-acceleration')) {
+  console.log('[Performance] Hardware acceleration disabled via command line flag');
+  app.disableHardwareAcceleration();
+}
+
+// Enable V8 code caching via cli args
+app.commandLine.appendSwitch('--enable-blink-features', 'CodeCache');
+
 const isRunningInFlatpak = (): boolean => {
   return process.env.FLATPAK_ID !== undefined || 
          fsSync.existsSync('/.flatpak-info');
@@ -103,16 +112,43 @@ async function saveSettings(settings: Settings): Promise<ApiResponse> {
 }
 
 async function isFileHidden(filePath: string, fileName: string): Promise<boolean> {
-  if (process.platform !== 'win32') {
-    return fileName.startsWith('.');
+  if (fileName.startsWith('.')) {
+    return true;
+  }
+
+  if (process.platform === 'win32') {
+    try {
+      const stats = await fs.stat(filePath);
+      return false;
+    } catch (error) {
+      return false;
+    }
   }
   
-  try {
-    const { stdout } = await execAsync(`attrib "${filePath}"`, { windowsHide: true });
-    return stdout.trim().startsWith('H') || stdout.includes(' H ');
-  } catch (error) {
-    return fileName.startsWith('.');
+  return false;
+}
+
+const hiddenFileCache = new Map<string, { isHidden: boolean; timestamp: number }>();
+const HIDDEN_CACHE_TTL = 60000;
+
+async function isFileHiddenCached(filePath: string, fileName: string): Promise<boolean> {
+  if (fileName.startsWith('.')) {
+    return true;
   }
+
+  if (process.platform !== 'win32') {
+    return false;
+  }
+
+  const cached = hiddenFileCache.get(filePath);
+  if (cached && (Date.now() - cached.timestamp) < HIDDEN_CACHE_TTL) {
+    return cached.isHidden;
+  }
+
+  const isHidden = false;
+  hiddenFileCache.set(filePath, { isHidden, timestamp: Date.now() });
+  
+  return isHidden;
 }
 
 function createWindow(): void {
@@ -132,21 +168,17 @@ function createWindow(): void {
       devTools: isDev,
       backgroundThrottling: false,
       spellcheck: false,
-      v8CacheOptions: 'code'
+      v8CacheOptions: 'code',
+      enableWebSQL: false
     },
     icon: path.join(__dirname, '..', 'assets', 'icon.png')
   });
 
   mainWindow.loadFile(path.join(__dirname, '..', 'index.html'));
+
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show();
   });
-
-  setTimeout(() => {
-    if (mainWindow && !mainWindow.isVisible()) {
-      mainWindow.show();
-    }
-  }, 100);
 
   if (isDev) {
     mainWindow.webContents.openDevTools();
@@ -294,116 +326,100 @@ function setupApplicationMenu(): void {
 
 app.whenReady().then(async () => {
   setupApplicationMenu();
-
   createWindow();
 
-  setTimeout(() => {
-    Promise.all([
-      (async () => {
-        try {
-          const settings = await loadSettings();
+  mainWindow?.once('ready-to-show', () => {
+    setTimeout(async () => {
+      try {
+        const settings = await loadSettings();
+
+        if (settings.enableIndexer) {
+          const indexerDelay = process.platform === 'win32' ? 2000 : 500;
           fileIndexer = new FileIndexer();
           setTimeout(() => {
             fileIndexer!.initialize(settings.enableIndexer).catch(err => 
               console.error('[Indexer] Background initialization failed:', err)
             );
-          }, 2000);
-        } catch (error) {
-          console.error('[Settings] Failed to load:', error);
-        }
-      })(),
-
-      (async () => {
-        try {
-          autoUpdater.logger = console;
-          autoUpdater.autoDownload = false;
-          autoUpdater.autoInstallOnAppQuit = true;
-
-        if (isRunningInFlatpak()) {
-          console.log('[AutoUpdater] Running in Flatpak - auto-updater disabled');
-          console.log('[AutoUpdater] Updates should be installed via: flatpak update com.burnttoasters.iyeris');
+          }, indexerDelay);
         }
 
-        autoUpdater.on('checking-for-update', () => {
-          console.log('[AutoUpdater] Checking for update...');
-          mainWindow?.webContents.send('update-checking');
-        });
+        // Defer auto-updater setup
+        setTimeout(() => {
+          try {
+            autoUpdater.logger = console;
+            autoUpdater.autoDownload = false;
+            autoUpdater.autoInstallOnAppQuit = true;
 
-        autoUpdater.on('update-available', (info) => {
-          console.log('[AutoUpdater] Update available:', info.version);
-          mainWindow?.webContents.send('update-available', info);
-        });
-
-        autoUpdater.on('update-not-available', (info) => {
-          console.log('[AutoUpdater] Update not available. Current version:', info.version);
-          mainWindow?.webContents.send('update-not-available', info);
-        });
-
-        autoUpdater.on('error', (err) => {
-          console.error('[AutoUpdater] Error:', err);
-          mainWindow?.webContents.send('update-error', err.message);
-        });
-
-        autoUpdater.on('download-progress', (progressObj) => {
-          console.log(`[AutoUpdater] Download progress: ${progressObj.percent.toFixed(2)}%`);
-          mainWindow?.webContents.send('update-download-progress', {
-            percent: progressObj.percent,
-            bytesPerSecond: progressObj.bytesPerSecond,
-            transferred: progressObj.transferred,
-            total: progressObj.total
-          });
-        });
-
-        autoUpdater.on('update-downloaded', (info) => {
-          console.log('[AutoUpdater] Update downloaded:', info.version);
-          mainWindow?.webContents.send('update-downloaded', info);
-        });
-      } catch (error) {
-        console.error('[AutoUpdater] Setup failed:', error);
-      }
-    })(),
-
-    (async () => {
-      if (process.platform === 'darwin') {
-        console.log('[FDA] Scheduling Full Disk Access check...');
-        console.log('[FDA] App version:', app.getVersion());
-        console.log('[FDA] Is packaged:', app.isPackaged);
-        console.log('[FDA] User data path:', app.getPath('userData'));
-        
-        setTimeout(async () => {
-          console.log('[FDA] Running Full Disk Access check');
-          console.log('[FDA] Running from:', process.execPath);
-          
-          const hasAccess = await checkFullDiskAccess();
-          
-          if (hasAccess) {
-            console.log('[FDA] Full Disk Access already granted');
-            const settings = await loadSettings();
-            console.log('[FDA] Current settings:', JSON.stringify(settings, null, 2));
-            if ((settings as any).skipFullDiskAccessPrompt) {
-              console.log('[FDA] Clearing "Don\'t Ask Again" flag');
-              delete (settings as any).skipFullDiskAccessPrompt;
-              const saveResult = await saveSettings(settings);
-              console.log('[FDA] Save result:', saveResult);
+            if (isRunningInFlatpak()) {
+              console.log('[AutoUpdater] Running in Flatpak - auto-updater disabled');
+              console.log('[AutoUpdater] Updates should be installed via: flatpak update com.burnttoasters.iyeris');
             }
-            return;
+
+            autoUpdater.on('checking-for-update', () => {
+              console.log('[AutoUpdater] Checking for update...');
+              mainWindow?.webContents.send('update-checking');
+            });
+
+            autoUpdater.on('update-available', (info) => {
+              console.log('[AutoUpdater] Update available:', info.version);
+              mainWindow?.webContents.send('update-available', info);
+            });
+
+            autoUpdater.on('update-not-available', (info) => {
+              console.log('[AutoUpdater] Update not available. Current version:', info.version);
+              mainWindow?.webContents.send('update-not-available', info);
+            });
+
+            autoUpdater.on('error', (err) => {
+              console.error('[AutoUpdater] Error:', err);
+              mainWindow?.webContents.send('update-error', err.message);
+            });
+
+            autoUpdater.on('download-progress', (progressObj) => {
+              console.log(`[AutoUpdater] Download progress: ${progressObj.percent.toFixed(2)}%`);
+              mainWindow?.webContents.send('update-download-progress', {
+                percent: progressObj.percent,
+                bytesPerSecond: progressObj.bytesPerSecond,
+                transferred: progressObj.transferred,
+                total: progressObj.total
+              });
+            });
+
+            autoUpdater.on('update-downloaded', (info) => {
+              console.log('[AutoUpdater] Update downloaded:', info.version);
+              mainWindow?.webContents.send('update-downloaded', info);
+            });
+          } catch (error) {
+            console.error('[AutoUpdater] Setup failed:', error);
           }
-          
-          console.log('[FDA] Full Disk Access NOT granted');
-          const settings = await loadSettings();
-          console.log('[FDA] Current settings:', JSON.stringify(settings, null, 2));
-          if ((settings as any).skipFullDiskAccessPrompt) {
-            console.log('[FDA] User has opted out of prompts');
-            return;
-          }
-          
-          console.log('[FDA] No Full Disk Access detected');
-          await showFullDiskAccessDialog();
-        }, 3000);
+        }, 1000);
+
+        if (process.platform === 'darwin') {
+          setTimeout(async () => {
+            console.log('[FDA] Running Full Disk Access check');
+            const hasAccess = await checkFullDiskAccess();
+            
+            if (hasAccess) {
+              console.log('[FDA] Full Disk Access already granted');
+              const settings = await loadSettings();
+              if ((settings as any).skipFullDiskAccessPrompt) {
+                delete (settings as any).skipFullDiskAccessPrompt;
+                await saveSettings(settings);
+              }
+              return;
+            }
+            
+            const settings = await loadSettings();
+            if (!(settings as any).skipFullDiskAccessPrompt) {
+              await showFullDiskAccessDialog();
+            }
+          }, 5000);
+        }
+      } catch (error) {
+        console.error('[Startup] Background initialization error:', error);
       }
-    })()
-  ]).catch(err => console.error('[Startup] Background initialization error:', err));
-  }, 500);
+    }, 100);
+  });
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -428,11 +444,7 @@ ipcMain.handle('get-directory-contents', async (_event: IpcMainInvokeEvent, dirP
       const batchResults = await Promise.all(
         batch.map(async (item): Promise<FileItem> => {
           const fullPath = path.join(dirPath, item.name);
-
-          let isHidden = item.name.startsWith('.');
-          if (process.platform === 'win32' && !isHidden) {
-            isHidden = false;
-          }
+          const isHidden = item.name.startsWith('.');
           
           try {
             const stats = await fs.stat(fullPath);
@@ -810,7 +822,7 @@ ipcMain.handle('search-files', async (_event: IpcMainInvokeEvent, dirPath: strin
           if (item.name.toLowerCase().includes(searchQuery)) {
             try {
               const stats = await fs.stat(fullPath);
-              const isHidden = await isFileHidden(fullPath, item.name);
+              const isHidden = item.name.startsWith('.');
               results.push({
                 name: item.name,
                 path: fullPath,
