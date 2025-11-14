@@ -106,7 +106,9 @@ body::after {
   -webkit-backdrop-filter: blur(20px) saturate(120%);
   border: 1px solid rgba(255, 255, 255, 0.08);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1),
-              inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
+              0 4px 12px rgba(0, 0, 0, 0.05),
+              inset 0 1px 0 0 rgba(255, 255, 255, 0.08),
+              inset 0 0 20px rgba(255, 255, 255, 0.02);
   border-radius: var(--radius-medium);
 }
 
@@ -121,12 +123,17 @@ body::after {
 .glass-input:hover {
   background: rgba(255, 255, 255, 0.05);
   border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05),
+              0 0 0 1px rgba(255, 255, 255, 0.03);
 }
 
 .glass-input:focus {
   background: rgba(255, 255, 255, 0.06);
   border-color: var(--accent-color);
   outline: none;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06),
+              0 0 0 2px rgba(var(--accent-rgb), 0.15),
+              0 0 12px rgba(var(--accent-rgb), 0.1);
 }
 
 .titlebar {
@@ -137,6 +144,8 @@ body::after {
   background: rgba(var(--bg-primary-rgb), 0.95);
   backdrop-filter: blur(20px) saturate(150%);
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05),
+              0 1px 3px rgba(0, 0, 0, 0.08);
   -webkit-app-region: drag;
   padding: 0 0 0 12px;
   position: relative;
@@ -264,6 +273,7 @@ body::after {
   margin-bottom: 6px;
   padding: 0 8px;
   opacity: 0.7;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
 }
 
 .nav-item {
@@ -282,16 +292,20 @@ body::after {
 
 .nav-item:hover {
   background: rgba(255, 255, 255, 0.05);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
 .nav-item:active {
   background: rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
 .nav-item.active {
   background: rgba(var(--accent-rgb), 0.15);
   color: var(--accent-color);
   font-weight: 500;
+  box-shadow: inset 0 1px 0 rgba(var(--accent-rgb), 0.2),
+              0 0 8px rgba(var(--accent-rgb), 0.1);
 }
 
 .nav-item.active::before {
@@ -343,6 +357,7 @@ body::after {
   min-height: 48px;
   position: relative;
   z-index: 100;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .toolbar .view-options {
@@ -391,10 +406,13 @@ body::after {
 
 .toolbar-button:hover:not(:disabled) {
   background: rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .toolbar-button:active:not(:disabled) {
   background: rgba(255, 255, 255, 0.1);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.15),
+              inset 0 0 8px rgba(0, 0, 0, 0.05);
 }
 
 .toolbar-button:disabled {
@@ -439,6 +457,7 @@ body::after {
 
 .breadcrumb-item:hover {
   background: rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
 .breadcrumb-separator {
@@ -490,7 +509,8 @@ body::after {
   border-radius: var(--radius-medium);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8),
               0 2px 8px rgba(0, 0, 0, 0.6),
-              inset 0 1px 0 rgba(255, 255, 255, 0.1);
+              inset 0 1px 0 rgba(255, 255, 255, 0.12),
+              inset 0 0 24px rgba(255, 255, 255, 0.03);
   z-index: 5000;
   max-height: 300px;
   overflow-y: auto;
@@ -533,10 +553,12 @@ body::after {
 
 .history-item:hover {
   background: rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .history-item:active {
   background: rgba(255, 255, 255, 0.18);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
 .history-item:last-of-type {
@@ -628,15 +650,23 @@ body::after {
 
 .file-item:hover {
   background: rgba(255, 255, 255, 0.04);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05),
+              0 1px 3px rgba(0, 0, 0, 0.08);
 }
 
 .file-item.selected {
   background: rgba(var(--accent-rgb), 0.12);
   border-color: rgba(var(--accent-rgb), 0.3);
+  box-shadow: inset 0 1px 0 rgba(var(--accent-rgb), 0.25),
+              0 0 8px rgba(var(--accent-rgb), 0.12),
+              0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .file-item.selected:hover {
   background: rgba(var(--accent-rgb), 0.15);
+  box-shadow: inset 0 1px 0 rgba(var(--accent-rgb), 0.3),
+              0 0 12px rgba(var(--accent-rgb), 0.15),
+              0 2px 6px rgba(0, 0, 0, 0.12);
 }
 
 .file-icon {
@@ -781,7 +811,9 @@ body::after {
   border: 1px solid rgba(255, 255, 255, 0.1) !important;
   border-radius: 8px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4),
-              0 0 0 0.5px rgba(0, 0, 0, 0.15);
+              0 0 0 0.5px rgba(0, 0, 0, 0.15),
+              inset 0 1px 0 rgba(255, 255, 255, 0.08),
+              inset 0 0 20px rgba(255, 255, 255, 0.02);
 }
 
 .context-menu-item {
@@ -798,6 +830,7 @@ body::after {
 
 .context-menu-item:hover {
   background: rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .context-menu-item:active {
@@ -917,7 +950,9 @@ body::after {
   -webkit-backdrop-filter: blur(30px) saturate(150%);
   border: 1px solid rgba(255, 255, 255, 0.1);
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5),
-              0 0 0 0.5px rgba(0, 0, 0, 0.15);
+              0 0 0 0.5px rgba(0, 0, 0, 0.15),
+              inset 0 1px 0 rgba(255, 255, 255, 0.08),
+              inset 0 0 30px rgba(255, 255, 255, 0.03);
 }
 
 .modal-header {
@@ -927,6 +962,7 @@ body::after {
   padding: 18px 24px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   background: rgba(255, 255, 255, 0.01);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .modal-header h2,
@@ -1018,6 +1054,7 @@ body::after {
   padding: 12px 25px;
   border-bottom: 1px solid var(--glass-border);
   background: rgba(255, 255, 255, 0.01);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
 .footer-bottom {
@@ -1108,6 +1145,9 @@ body::after {
   background: rgba(255, 255, 255, 0.1);
   border-color: rgba(255, 255, 255, 0.2);
   transform: translateY(-1px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1),
+              0 2px 8px rgba(0, 0, 0, 0.1),
+              0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
 .modal-button:active {
@@ -1482,8 +1522,8 @@ body.no-transparency .file-view::before {
   border-top: 1px solid rgba(255, 255, 255, 0.06);
   background: rgba(var(--bg-primary-rgb), 0.95);
   backdrop-filter: blur(20px) saturate(130%);
-  font-weight: 500;
-  letter-spacing: 0;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04),
+              0 -1px 3px rgba(0, 0, 0, 0.08);
 }
 
 .status-left, .status-right {
@@ -1645,6 +1685,7 @@ body.no-transparency .file-view::before {
 
 .bookmark-item:hover {
   background: var(--hover-color);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 .bookmark-icon {
@@ -1711,10 +1752,14 @@ body.no-transparency .file-view::before {
 
 .settings-select:hover {
   background: rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05),
+              0 0 0 1px rgba(255, 255, 255, 0.03);
 }
 
 .settings-select:focus {
   border-color: var(--accent-color);
+  box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.15),
+              inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 .settings-select option {
@@ -1735,11 +1780,15 @@ body.no-transparency .file-view::before {
 
 .settings-input:hover {
   background: rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05),
+              0 0 0 1px rgba(255, 255, 255, 0.03);
 }
 
 .settings-input:focus {
   border-color: var(--accent-color);
   background: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.15),
+              inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
 .settings-input::placeholder {
@@ -1796,7 +1845,9 @@ body.theme-light .modal.glass-panel {
   -webkit-backdrop-filter: blur(30px) saturate(150%);
   border: 1px solid rgba(0, 0, 0, 0.1);
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15),
-              0 0 0 0.5px rgba(0, 0, 0, 0.08);
+              0 0 0 0.5px rgba(0, 0, 0, 0.08),
+              inset 0 1px 0 rgba(255, 255, 255, 0.8),
+              inset 0 0 24px rgba(255, 255, 255, 0.3);
 }
 
 body.theme-light .context-menu {
@@ -1806,7 +1857,9 @@ body.theme-light .context-menu {
   border: 1px solid rgba(0, 0, 0, 0.1) !important;
   border-radius: 8px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12),
-              0 0 0 0.5px rgba(0, 0, 0, 0.08) !important;
+              0 0 0 0.5px rgba(0, 0, 0, 0.08),
+              inset 0 1px 0 rgba(255, 255, 255, 0.9),
+              inset 0 0 20px rgba(255, 255, 255, 0.4);
 }
 
 body.theme-light .context-submenu {
@@ -1824,7 +1877,8 @@ body.theme-light .toast {
   border: 1px solid rgba(0, 0, 0, 0.12);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15),
               0 0 0 1px rgba(0, 0, 0, 0.05),
-              inset 0 1px 0 rgba(255, 255, 255, 0.5);
+              inset 0 1px 0 rgba(255, 255, 255, 0.9),
+              inset 0 0 24px rgba(255, 255, 255, 0.3);
   color: var(--text-primary);
 }
 
@@ -1929,6 +1983,8 @@ body.theme-light .modal-button {
 body.theme-light .modal-button:hover {
   background: rgba(0, 0, 0, 0.08);
   border-color: rgba(0, 0, 0, 0.2);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5),
+              0 1px 3px rgba(0, 0, 0, 0.08);
 }
 
 body.theme-light .modal-button#dialog-cancel {
@@ -1947,7 +2003,9 @@ body.theme-light .zoom-popup {
   border: 1px solid rgba(0, 0, 0, 0.1);
   border-radius: 8px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12),
-              0 0 0 0.5px rgba(0, 0, 0, 0.08);
+              0 0 0 0.5px rgba(0, 0, 0, 0.08),
+              inset 0 1px 0 rgba(255, 255, 255, 0.9),
+              inset 0 0 20px rgba(255, 255, 255, 0.3);
 }
 
 body.theme-light .zoom-btn {
@@ -1983,7 +2041,9 @@ body.theme-light .archive-operations-panel {
   border: 1px solid rgba(0, 0, 0, 0.1);
   border-radius: 12px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12),
-              0 0 0 0.5px rgba(0, 0, 0, 0.08);
+              0 0 0 0.5px rgba(0, 0, 0, 0.08),
+              inset 0 1px 0 rgba(255, 255, 255, 0.9),
+              inset 0 0 24px rgba(255, 255, 255, 0.3);
 }
 
 body.theme-light .archive-operations-header {
@@ -2229,6 +2289,8 @@ body.theme-dark .status-right span {
   align-items: center;
   padding: 12px 16px;
   border-bottom: 1px solid var(--glass-border);
+  background: rgba(255, 255, 255, 0.02);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .preview-header h3 {
@@ -2691,6 +2753,8 @@ body.theme-dark .status-right span {
   background: rgba(255, 255, 255, 0.18);
   border-color: rgba(255, 255, 255, 0.3);
   transform: scale(1.05);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1),
+              0 0 8px rgba(255, 255, 255, 0.1);
 }
 
 .zoom-btn:active {
@@ -2799,6 +2863,8 @@ body.theme-dark .status-right span {
   padding: 12px;
   margin-bottom: 8px;
   animation: fadeIn 0.2s ease-out;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06),
+              0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 @keyframes fadeIn {
