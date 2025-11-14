@@ -10,8 +10,6 @@ import sevenBin = require('7zip-bin');
 import type { Settings, FileItem, ApiResponse, DirectoryResponse, PathResponse, PropertiesResponse, SettingsResponse, UpdateCheckResponse, IndexSearchResponse } from './types';
 import { FileIndexer } from './indexer';
 
-const execAsync = promisify(exec);
-
 // Disable hardware accel via cli arg
 if (process.argv.includes('--disable-hardware-acceleration')) {
   console.log('[Performance] Hardware acceleration disabled via command line flag');
@@ -118,8 +116,6 @@ async function isFileHidden(filePath: string, fileName: string): Promise<boolean
 
   if (process.platform === 'win32') {
     try {
-      const { exec } = require('child_process');
-      const { promisify } = require('util');
       const execPromise = promisify(exec);
       
       const { stdout } = await execPromise(`cmd /c attrib "${filePath}"`, { 
@@ -867,7 +863,6 @@ ipcMain.handle('get-disk-space', async (_event: IpcMainInvokeEvent, drivePath: s
   console.log('[Main] get-disk-space called with path:', drivePath, 'Platform:', process.platform);
   try {
     if (process.platform === 'win32') {
-      const { exec } = require('child_process');
       return new Promise((resolve) => {
         const driveLetter = drivePath.substring(0, 2);
         console.log('[Main] Getting disk space for drive:', driveLetter);
@@ -894,7 +889,6 @@ ipcMain.handle('get-disk-space', async (_event: IpcMainInvokeEvent, drivePath: s
         });
       });
     } else if (process.platform === 'darwin' || process.platform === 'linux') {
-      const { exec } = require('child_process');
       return new Promise((resolve) => {
         exec(`df -k "${drivePath}"`, (error: Error | null, stdout: string) => {
           if (error) {
@@ -927,7 +921,6 @@ ipcMain.handle('get-disk-space', async (_event: IpcMainInvokeEvent, drivePath: s
 
 ipcMain.handle('restart-as-admin', async (): Promise<ApiResponse> => {
   try {
-    const { exec } = require('child_process');
     const platform = process.platform;
     const appPath = app.getPath('exe');
     
@@ -964,7 +957,6 @@ ipcMain.handle('restart-as-admin', async (): Promise<ApiResponse> => {
 
 ipcMain.handle('open-terminal', async (_event: IpcMainInvokeEvent, dirPath: string): Promise<ApiResponse> => {
   try {
-    const { exec } = require('child_process');
     const platform = process.platform;
     
     let command: string;
