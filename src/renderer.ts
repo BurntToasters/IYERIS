@@ -1228,6 +1228,11 @@ async function init() {
         updateBtn.style.display = 'none';
       }
     }
+
+    const restartAdminSetting = document.getElementById('restart-admin-setting');
+    if (restartAdminSetting) {
+      restartAdminSetting.remove();
+    }
   }
 
   setTimeout(() => {
