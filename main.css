@@ -3109,6 +3109,42 @@ body.theme-dark .status-right span {
   }
 }
 
+.preview-video {
+  width: 100%;
+  border-radius: 8px;
+  margin-bottom: 15px;
+  max-height: 300px;
+  background: #000;
+}
+
+.preview-audio-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 15px;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+}
+
+.preview-audio-icon {
+  font-size: 48px;
+  margin-bottom: 15px;
+}
+
+.preview-audio {
+  width: 100%;
+}
+
+.preview-pdf {
+  width: 100%;
+  height: 400px;
+  border-radius: 8px;
+  margin-bottom: 15px;
+  border: none;
+  background: #fff;
+}
+
 
 
 

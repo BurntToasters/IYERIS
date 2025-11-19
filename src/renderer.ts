@@ -3140,11 +3140,21 @@ function updatePreview(file: FileItem) {
     'json', 'xml', 'yml', 'yaml', 'toml', 'csv', 'tsv', 'sql', 'ini', 'conf', 'config', 'cfg', 'env', 'properties', 'gitignore', 'gitattributes', 'editorconfig', 'dockerfile', 'dockerignore',
     'rst', 'tex', 'adoc', 'asciidoc', 'makefile', 'cmake', 'gradle', 'maven'
   ];
+
+  const videoExts = ['mp4', 'webm', 'ogg', 'mov', 'mkv', 'avi'];
+  const audioExts = ['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac'];
+  const pdfExts = ['pdf'];
   
   if (imageExts.includes(ext)) {
     showImagePreview(file);
   } else if (textExts.includes(ext)) {
     showTextPreview(file);
+  } else if (videoExts.includes(ext)) {
+    showVideoPreview(file);
+  } else if (audioExts.includes(ext)) {
+    showAudioPreview(file);
+  } else if (pdfExts.includes(ext)) {
+    showPdfPreview(file);
   } else {
     showFileInfo(file);
   }
@@ -3207,6 +3217,55 @@ async function showTextPreview(file: FileItem) {
       ${generateFileInfo(file, null)}
     `;
   }
+}
+
+async function showVideoPreview(file: FileItem) {
+  if (!previewContent) return;
+  
+  const props = await window.electronAPI.getItemProperties(file.path);
+  const info = props.success && props.properties ? props.properties : null;
+  
+  const fileUrl = `file:///${file.path.replace(/\\/g, '/')}`;
+  
+  previewContent.innerHTML = `
+    <video src="${fileUrl}" class="preview-video" controls controlsList="nodownload">
+      Your browser does not support the video tag.
+    </video>
+    ${generateFileInfo(file, info)}
+  `;
+}
+
+async function showAudioPreview(file: FileItem) {
+  if (!previewContent) return;
+  
+  const props = await window.electronAPI.getItemProperties(file.path);
+  const info = props.success && props.properties ? props.properties : null;
+  
+  const fileUrl = `file:///${file.path.replace(/\\/g, '/')}`;
+  
+  previewContent.innerHTML = `
+    <div class="preview-audio-container">
+      <div class="preview-audio-icon">${twemojiImg(String.fromCodePoint(0x1F3B5), 'twemoji-xlarge')}</div>
+      <audio src="${fileUrl}" class="preview-audio" controls controlsList="nodownload">
+        Your browser does not support the audio tag.
+      </audio>
+    </div>
+    ${generateFileInfo(file, info)}
+  `;
+}
+
+async function showPdfPreview(file: FileItem) {
+  if (!previewContent) return;
+  
+  const props = await window.electronAPI.getItemProperties(file.path);
+  const info = props.success && props.properties ? props.properties : null;
+  
+  const fileUrl = `file:///${file.path.replace(/\\/g, '/')}`;
+  
+  previewContent.innerHTML = `
+    <iframe src="${fileUrl}" class="preview-pdf" frameborder="0"></iframe>
+    ${generateFileInfo(file, info)}
+  `;
 }
 
 async function showFileInfo(file: FileItem) {
@@ -3283,9 +3342,7 @@ async function showQuickLook() {
   const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico', 'tiff', 'tif', 'avif', 'jfif'];
 
   const textExts = [
-    'txt', 'text', 'md', 'markdown', 'log', 'readme',
-    'html', 'htm', 'css', 'scss', 'sass', 'less', 'js', 'jsx', 'ts', 'tsx', 'vue', 'svelte',
-    'py', 'pyc', 'pyw', 'java', 'c', 'cpp', 'cc', 'cxx', 'h', 'hpp', 'cs', 'php', 'rb', 'go', 'rs', 'swift', 'kt', 'kts', 'scala', 'r', 'lua', 'perl', 'pl', 'sh', 'bash', 'zsh', 'fish', 'ps1', 'bat', 'cmd',
+    'txt', 'text', 'md', 'markdown', 'log', 'readme', 'html', 'htm', 'css', 'scss', 'sass', 'less', 'js', 'jsx', 'ts', 'tsx', 'vue', 'svelte', 'py', 'pyc', 'pyw', 'java', 'c', 'cpp', 'cc', 'cxx', 'h', 'hpp', 'cs', 'php', 'rb', 'go', 'rs', 'swift', 'kt', 'kts', 'scala', 'r', 'lua', 'perl', 'pl', 'sh', 'bash', 'zsh', 'fish', 'ps1', 'bat', 'cmd',
     'json', 'xml', 'yml', 'yaml', 'toml', 'csv', 'tsv', 'sql',
     'ini', 'conf', 'config', 'cfg', 'env', 'properties', 'gitignore', 'gitattributes', 'editorconfig', 'dockerfile', 'dockerignore',
     'rst', 'tex', 'adoc', 'asciidoc', 'makefile', 'cmake', 'gradle', 'maven'
@@ -3465,6 +3522,7 @@ document.addEventListener('mousedown', (e) => {
     return;
   }
 });
+
 
 (async () => {
   try {

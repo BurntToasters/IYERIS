@@ -174,7 +174,8 @@ function createWindow(): void {
       backgroundThrottling: false,
       spellcheck: false,
       v8CacheOptions: 'code',
-      enableWebSQL: false
+      enableWebSQL: false,
+      plugins: true
     },
     icon: path.join(__dirname, '..', 'assets', 'icon.png')
   });
