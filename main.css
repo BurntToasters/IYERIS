@@ -1272,13 +1272,15 @@ body::after {
   font-variant-numeric: tabular-nums;
 }
 
-.settings-modal {
+.modal.settings-modal {
   max-width: 800px;
   width: 90%;
   height: 600px;
   display: flex;
   flex-direction: column;
-  background: rgba(30, 30, 30, 0.85);
+  background: rgba(20, 20, 20, 0.98);
+  backdrop-filter: blur(60px) saturate(180%);
+  -webkit-backdrop-filter: blur(60px) saturate(180%);
 }
 
 .settings-content {
