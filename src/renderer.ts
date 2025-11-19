@@ -402,6 +402,17 @@ async function showSettingsModal() {
   }
   
   const settingsModal = document.getElementById('settings-modal');
+  
+  // Reset tabs
+  const tabs = document.querySelectorAll('.settings-tab');
+  const sections = document.querySelectorAll('.settings-section');
+  
+  tabs.forEach(t => t.classList.remove('active'));
+  sections.forEach(s => s.classList.remove('active'));
+  
+  if (tabs.length > 0) tabs[0].classList.add('active');
+  if (sections.length > 0) sections[0].classList.add('active');
+
   const transparencyToggle = document.getElementById('transparency-toggle') as HTMLInputElement;
   const themeSelect = document.getElementById('theme-select') as HTMLSelectElement;
   const sortBySelect = document.getElementById('sort-by-select') as HTMLSelectElement;
@@ -1249,6 +1260,7 @@ async function loadDrives() {
 }
 
 function setupEventListeners() {
+  initSettingsTabs();
   document.getElementById('minimize-btn')?.addEventListener('click', () => {
     window.electronAPI.minimizeWindow();
   });
@@ -2015,7 +2027,7 @@ function getFileIcon(filename) {
   };
   
   const codepoint = iconMap[ext] || '1f4c4';
-  return twemojiImg(String.fromCodePoint(parseInt(codepoint, 16)), 'twemoji file-icon');
+  return twemojiImg(String.fromCodePoint(parseInt(codepoint, 16)), 'twemoji');
 }
 
 async function handleDrop(sourcePaths: string[], destPath: string, operation: 'copy' | 'move'): Promise<void> {
@@ -2977,6 +2989,29 @@ async function downloadAndInstallUpdate() {
   }
 }
 
+function initSettingsTabs() {
+  const tabs = document.querySelectorAll('.settings-tab');
+  const sections = document.querySelectorAll('.settings-section');
+
+  tabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      // Remove active class from all tabs
+      tabs.forEach(t => t.classList.remove('active'));
+      // Add active class to clicked tab
+      tab.classList.add('active');
+
+      // Hide all sections
+      sections.forEach(section => section.classList.remove('active'));
+      
+      // Show target section
+      const targetId = `tab-${tab.getAttribute('data-tab')}`;
+      const targetSection = document.getElementById(targetId);
+      if (targetSection) {
+        targetSection.classList.add('active');
+      }
+    });
+  });
+}
 
 document.getElementById('settings-btn')?.addEventListener('click', showSettingsModal);
 document.getElementById('settings-close')?.addEventListener('click', hideSettingsModal);
@@ -3253,7 +3288,7 @@ async function showQuickLook() {
     'py', 'pyc', 'pyw', 'java', 'c', 'cpp', 'cc', 'cxx', 'h', 'hpp', 'cs', 'php', 'rb', 'go', 'rs', 'swift', 'kt', 'kts', 'scala', 'r', 'lua', 'perl', 'pl', 'sh', 'bash', 'zsh', 'fish', 'ps1', 'bat', 'cmd',
     'json', 'xml', 'yml', 'yaml', 'toml', 'csv', 'tsv', 'sql',
     'ini', 'conf', 'config', 'cfg', 'env', 'properties', 'gitignore', 'gitattributes', 'editorconfig', 'dockerfile', 'dockerignore',
-    'rst', 'tex', 'adoc', 'asciidoc','makefile', 'cmake', 'gradle', 'maven'
+    'rst', 'tex', 'adoc', 'asciidoc', 'makefile', 'cmake', 'gradle', 'maven'
   ];
   
   quicklookContent.innerHTML = `
@@ -3441,6 +3476,8 @@ document.addEventListener('mousedown', (e) => {
     alert('Failed to start IYERIS: ' + error.message);
   }
 })();
+
+initSettingsTabs();
 
 
 
