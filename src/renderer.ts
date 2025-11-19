@@ -1217,6 +1217,19 @@ async function init() {
   console.log('Init: Setting up event listeners...');
   setupEventListeners();
 
+  const isMas = await window.electronAPI.isMas();
+  if (isMas) {
+    const updateBtn = document.getElementById('check-updates-btn');
+    if (updateBtn) {
+      const container = updateBtn.closest('.setting-item') as HTMLElement;
+      if (container) {
+        container.style.display = 'none';
+      } else {
+        updateBtn.style.display = 'none';
+      }
+    }
+  }
+
   setTimeout(() => {
     console.log('Init: Loading bookmarks...');
     loadBookmarks();
@@ -2067,7 +2080,7 @@ function toggleSelection(fileItem) {
     const selectedPath = Array.from(selectedItems)[0];
     const file = allFiles.find(f => f.path === selectedPath);
     if (file && file.isFile) {
-      updatePreview(file);
+           updatePreview(file);
     } else {
       showEmptyPreview();
     }

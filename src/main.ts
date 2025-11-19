@@ -359,6 +359,8 @@ app.whenReady().then(async () => {
             if (isRunningInFlatpak()) {
               console.log('[AutoUpdater] Running in Flatpak - auto-updater disabled');
               console.log('[AutoUpdater] Updates should be installed via: flatpak update com.burnttoasters.iyeris');
+            } else if (process.mas) {
+              console.log('[AutoUpdater] Running in Mac App Store - auto-updater disabled');
             }
 
             autoUpdater.on('checking-for-update', () => {
@@ -1132,6 +1134,10 @@ ipcMain.handle('get-platform', (): string => {
   return process.platform;
 });
 
+ipcMain.handle('is-mas', (): boolean => {
+  return process.mas === true;
+});
+
 ipcMain.handle('check-full-disk-access', async (): Promise<{ success: boolean; hasAccess: boolean }> => {
   const hasAccess = await checkFullDiskAccess();
   return { success: true, hasAccess };
@@ -1161,6 +1167,19 @@ ipcMain.handle('check-for-updates', async (): Promise<UpdateCheckResponse> => {
       latestVersion: `v${currentVersion}`,
       isFlatpak: true,
       flatpakMessage: 'Updates are managed by Flatpak. Run: flatpak update com.burnttoasters.iyeris'
+    };
+  }
+
+  if (process.mas) {
+    const currentVersion = app.getVersion();
+    console.log('[AutoUpdater] MAS detected - updates managed by App Store');
+    return {
+      success: true,
+      hasUpdate: false,
+      currentVersion: `v${currentVersion}`,
+      latestVersion: `v${currentVersion}`,
+      isMas: true,
+      masMessage: 'Updates are managed by the Mac App Store.'
     };
   }
 
