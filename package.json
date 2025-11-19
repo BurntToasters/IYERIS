@@ -1,6 +1,6 @@
 {
   "name": "iyeris",
-  "version": "0.5.4",
+  "version": "0.6.0",
   "description": "A beautiful cross-platform file explorer built with Electron, featuring a stunning liquid-glass interface with smooth animations and modern design.",
   "main": "dist/main.js",
   "dependencies": {
@@ -27,6 +27,7 @@
     "build:win:x64": "npm run build && electron-builder --win --x64 --publish never",
     "build:win:arm64": "npm run build && electron-builder --win --arm64 --publish never",
     "build:mac:universal": "npm run build && dotenv -e .env -- electron-builder --mac --universal",
+    "build:mac:mas": "npm run build && dotenv -e .env -- electron-builder --mac mas --universal",
     "build:mac:universal:dev": "npm run build && electron-builder --mac --universal",
     "build:linux": "npm run build && electron-builder --linux AppImage deb rpm --x64 --arm64",
     "build:linux:all": "npm run build:linux && npm run flatpak:clean && npm run flatpak:build && npm run flatpak:bundle",
@@ -80,6 +81,13 @@
       "entitlementsInherit": "build/entitlements.mac.plist",
       "notarize": false,
       "artifactName": "${productName}-MacOS-universal.${ext}"
+    },
+    "mas": {
+      "type": "distribution",
+      "category": "public.app-category.productivity",
+      "entitlements": "build/entitlements.mas.plist",
+      "entitlementsInherit": "build/entitlements.mas.inherit.plist",
+      "provisioningProfile": "build/embedded.provisionprofile"
     },
     "win": {
       "target": [

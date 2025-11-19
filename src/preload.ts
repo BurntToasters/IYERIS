@@ -32,6 +32,7 @@ const electronAPI: ElectronAPI = {
   getFileDataUrl: (filePath: string, maxSize?: number) => ipcRenderer.invoke('get-file-data-url', filePath, maxSize),
   getLicenses: () => ipcRenderer.invoke('get-licenses'),
   getPlatform: () => ipcRenderer.invoke('get-platform'),
+  isMas: () => ipcRenderer.invoke('is-mas'),
   checkFullDiskAccess: () => ipcRenderer.invoke('check-full-disk-access'),
   requestFullDiskAccess: () => ipcRenderer.invoke('request-full-disk-access'),
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),

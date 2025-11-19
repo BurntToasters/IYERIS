@@ -110,6 +110,8 @@ export interface UpdateCheckResponse extends ApiResponse {
   releaseUrl?: string;
   isFlatpak?: boolean;
   flatpakMessage?: string;
+  isMas?: boolean;
+  masMessage?: string;
 }
 
 export interface UpdateDownloadProgress {
@@ -148,9 +150,10 @@ export interface ElectronAPI {
   openTerminal: (dirPath: string) => Promise<ApiResponse>;
   readFileContent: (filePath: string, maxSize?: number) => Promise<{success: boolean; content?: string; error?: string; isTruncated?: boolean}>;
   getFileDataUrl: (filePath: string, maxSize?: number) => Promise<{success: boolean; dataUrl?: string; error?: string}>;
-  getLicenses: () => Promise<{success: boolean; licenses?: any; error?: string}>;
+  getLicenses: () => Promise<{ success: boolean; licenses?: any; error?: string }>;
   getPlatform: () => Promise<string>;
-  checkFullDiskAccess: () => Promise<{success: boolean; hasAccess: boolean}>;
+  isMas: () => Promise<boolean>;
+  checkFullDiskAccess: () => Promise<{ success: boolean; hasAccess: boolean }>;
   requestFullDiskAccess: () => Promise<ApiResponse>;
   checkForUpdates: () => Promise<UpdateCheckResponse>;
   downloadUpdate: () => Promise<ApiResponse>;

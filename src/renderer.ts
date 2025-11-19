@@ -1,4 +1,3 @@
-// @ts-nocheck
 import type { Settings, FileItem, ItemProperties } from './types';
 
 const path = {
@@ -175,7 +174,6 @@ function renderOperations() {
   }
 }
 
-type ViewMode = 'grid' | 'list';
 type DialogType = 'info' | 'warning' | 'error' | 'success' | 'question';
 
 function asElement(target: EventTarget | null): HTMLElement | null {
@@ -402,6 +400,17 @@ async function showSettingsModal() {
   }
   
   const settingsModal = document.getElementById('settings-modal');
+  
+  // Reset tabs
+  const tabs = document.querySelectorAll('.settings-tab');
+  const sections = document.querySelectorAll('.settings-section');
+  
+  tabs.forEach(t => t.classList.remove('active'));
+  sections.forEach(s => s.classList.remove('active'));
+  
+  if (tabs.length > 0) tabs[0].classList.add('active');
+  if (sections.length > 0) sections[0].classList.add('active');
+
   const transparencyToggle = document.getElementById('transparency-toggle') as HTMLInputElement;
   const themeSelect = document.getElementById('theme-select') as HTMLSelectElement;
   const sortBySelect = document.getElementById('sort-by-select') as HTMLSelectElement;
@@ -1208,6 +1217,24 @@ async function init() {
   console.log('Init: Setting up event listeners...');
   setupEventListeners();
 
+  const isMas = await window.electronAPI.isMas();
+  if (isMas) {
+    const updateBtn = document.getElementById('check-updates-btn');
+    if (updateBtn) {
+      const container = updateBtn.closest('.setting-item') as HTMLElement;
+      if (container) {
+        container.style.display = 'none';
+      } else {
+        updateBtn.style.display = 'none';
+      }
+    }
+
+    const restartAdminSetting = document.getElementById('restart-admin-setting');
+    if (restartAdminSetting) {
+      restartAdminSetting.remove();
+    }
+  }
+
   setTimeout(() => {
     console.log('Init: Loading bookmarks...');
     loadBookmarks();
@@ -1249,6 +1276,7 @@ async function loadDrives() {
 }
 
 function setupEventListeners() {
+  initSettingsTabs();
   document.getElementById('minimize-btn')?.addEventListener('click', () => {
     window.electronAPI.minimizeWindow();
   });
@@ -1469,7 +1497,8 @@ function setupEventListeners() {
     }
   });
   
-  document.querySelectorAll('.nav-item[data-action]').forEach(item => {
+  document.querySelectorAll('.nav-item[data-action]').forEach(element => {
+    const item = element as HTMLElement;
     item.addEventListener('click', async () => {
       const action = item.dataset.action;
       if (action === 'home') {
@@ -1496,25 +1525,25 @@ function setupEventListeners() {
     const emptySpaceContextMenu = document.getElementById('empty-space-context-menu');
     const sortMenu = document.getElementById('sort-menu');
     
-    if (contextMenu && contextMenu.style.display === 'block' && !contextMenu.contains(e.target)) {
+    if (contextMenu && contextMenu.style.display === 'block' && !contextMenu.contains(e.target as Node)) {
       hideContextMenu();
     }
-    if (emptySpaceContextMenu && emptySpaceContextMenu.style.display === 'block' && !emptySpaceContextMenu.contains(e.target)) {
+    if (emptySpaceContextMenu && emptySpaceContextMenu.style.display === 'block' && !emptySpaceContextMenu.contains(e.target as Node)) {
       hideEmptySpaceContextMenu();
     }
-    if (sortMenu && sortMenu.style.display === 'block' && !sortMenu.contains(e.target) && e.target !== sortBtn) {
+    if (sortMenu && sortMenu.style.display === 'block' && !sortMenu.contains(e.target as Node) && e.target !== sortBtn) {
       hideSortMenu();
     }
   });
   
   document.addEventListener('click', (e) => {
     const sortMenu = document.getElementById('sort-menu');
-    const menuItem = e.target.closest('.context-menu-item');
+    const menuItem = (e.target as HTMLElement).closest('.context-menu-item') as HTMLElement;
     
     if (menuItem && sortMenu && sortMenu.style.display === 'block') {
       const sortType = menuItem.getAttribute('data-sort');
       if (sortType) {
-        changeSortMode(sortType);
+        changeSortMode(sortType as any);
       }
       return;
     }
@@ -1528,7 +1557,7 @@ function setupEventListeners() {
   
   document.addEventListener('click', (e) => {
     const emptySpaceMenu = document.getElementById('empty-space-context-menu');
-    const menuItem = e.target.closest('.context-menu-item');
+    const menuItem = (e.target as HTMLElement).closest('.context-menu-item') as HTMLElement;
     if (menuItem && emptySpaceMenu && emptySpaceMenu.style.display === 'block') {
       handleEmptySpaceContextMenuAction(menuItem.dataset.action);
       hideEmptySpaceContextMenu();
@@ -1572,7 +1601,7 @@ function setupEventListeners() {
       
       fileGrid.classList.remove('drag-over');
       
-      if (e.target.closest('.file-item')) {
+      if ((e.target as HTMLElement).closest('.file-item')) {
         return;
       }
       
@@ -1597,14 +1626,15 @@ function setupEventListeners() {
   }
   
   document.addEventListener('contextmenu', (e) => {
-    if (!e.target.closest('.file-item')) {
+    if (!(e.target as HTMLElement).closest('.file-item')) {
       e.preventDefault();
-      const clickedOnFileView = e.target.closest('#file-view') || 
-                                 e.target.id === 'file-view' || 
-                                 e.target.closest('.file-grid') || 
-                                 e.target.id === 'file-grid' ||
-                                 e.target.closest('.empty-state') ||
-                                 e.target.id === 'empty-state';
+      const target = e.target as HTMLElement;
+      const clickedOnFileView = target.closest('#file-view') || 
+                                 target.id === 'file-view' || 
+                                 target.closest('.file-grid') || 
+                                 target.id === 'file-grid' ||
+                                 target.closest('.empty-state') ||
+                                 target.id === 'empty-state';
       if (clickedOnFileView && currentPath) {
         showEmptySpaceContextMenu(e.pageX, e.pageY);
       } else {
@@ -2015,7 +2045,7 @@ function getFileIcon(filename) {
   };
   
   const codepoint = iconMap[ext] || '1f4c4';
-  return twemojiImg(String.fromCodePoint(parseInt(codepoint, 16)), 'twemoji file-icon');
+  return twemojiImg(String.fromCodePoint(parseInt(codepoint, 16)), 'twemoji');
 }
 
 async function handleDrop(sourcePaths: string[], destPath: string, operation: 'copy' | 'move'): Promise<void> {
@@ -2034,7 +2064,7 @@ async function handleDrop(sourcePaths: string[], destPath: string, operation: 'c
       await navigateTo(currentPath);
       clearSelection();
     } else {
-      showToast(result.message || `Failed to ${operation} items`, 'Error', 'error');
+      showToast(result.error || `Failed to ${operation} items`, 'Error', 'error');
     }
   } catch (error) {
     console.error(`Error during ${operation}:`, error);
@@ -2055,7 +2085,7 @@ function toggleSelection(fileItem) {
     const selectedPath = Array.from(selectedItems)[0];
     const file = allFiles.find(f => f.path === selectedPath);
     if (file && file.isFile) {
-      updatePreview(file);
+           updatePreview(file);
     } else {
       showEmptyPreview();
     }
@@ -2088,11 +2118,11 @@ async function renameSelected() {
   if (selectedItems.size !== 1) return;
   const itemPath = Array.from(selectedItems)[0];
   const fileItems = document.querySelectorAll('.file-item');
-  for (const fileItem of fileItems) {
+  for (const fileItem of Array.from(fileItems)) {
     if (fileItem.getAttribute('data-path') === itemPath) {
       const item = allFiles.find(f => f.path === itemPath);
       if (item) {
-        startInlineRename(fileItem, item.name, item.path);
+        startInlineRename(fileItem as HTMLElement, item.name, item.path);
       }
       break;
     }
@@ -2275,10 +2305,10 @@ async function createNewFileWithInlineRename() {
     
     setTimeout(() => {
       const fileItems = document.querySelectorAll('.file-item');
-      for (const item of fileItems) {
+      for (const item of Array.from(fileItems)) {
         const nameElement = item.querySelector('.file-name');
         if (nameElement && nameElement.textContent === finalFileName) {
-          startInlineRename(item, finalFileName, createdFilePath);
+          startInlineRename(item as HTMLElement, finalFileName, createdFilePath);
           break;
         }
       }
@@ -2309,10 +2339,10 @@ async function createNewFolderWithInlineRename() {
     
     setTimeout(() => {
       const fileItems = document.querySelectorAll('.file-item');
-      for (const item of fileItems) {
+      for (const item of Array.from(fileItems)) {
         const nameElement = item.querySelector('.file-name');
         if (nameElement && nameElement.textContent === finalFolderName) {
-          startInlineRename(item, finalFolderName, createdFolderPath);
+          startInlineRename(item as HTMLElement, finalFolderName, createdFolderPath);
           break;
         }
       }
@@ -2569,9 +2599,9 @@ async function handleContextMenuAction(action, item, format?: string) {
       
     case 'rename':
       const fileItems = document.querySelectorAll('.file-item');
-      for (const fileItem of fileItems) {
-        if (fileItem.dataset.path === item.path) {
-          startInlineRename(fileItem, item.name, item.path);
+      for (const fileItem of Array.from(fileItems)) {
+        if ((fileItem as HTMLElement).dataset.path === item.path) {
+          startInlineRename(fileItem as HTMLElement, item.name, item.path);
           break;
         }
       }
@@ -2831,7 +2861,7 @@ function stripHtmlTags(html: string): string {
 }
 
 async function checkForUpdates() {
-  const btn = document.getElementById('check-updates-btn');
+  const btn = document.getElementById('check-updates-btn') as HTMLButtonElement;
   if (!btn) return;
   
   const originalHTML = btn.innerHTML;
@@ -2977,6 +3007,29 @@ async function downloadAndInstallUpdate() {
   }
 }
 
+function initSettingsTabs() {
+  const tabs = document.querySelectorAll('.settings-tab');
+  const sections = document.querySelectorAll('.settings-section');
+
+  tabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      // Remove active class from all tabs
+      tabs.forEach(t => t.classList.remove('active'));
+      // Add active class to clicked tab
+      tab.classList.add('active');
+
+      // Hide all sections
+      sections.forEach(section => section.classList.remove('active'));
+      
+      // Show target section
+      const targetId = `tab-${tab.getAttribute('data-tab')}`;
+      const targetSection = document.getElementById(targetId);
+      if (targetSection) {
+        targetSection.classList.add('active');
+      }
+    });
+  });
+}
 
 document.getElementById('settings-btn')?.addEventListener('click', showSettingsModal);
 document.getElementById('settings-close')?.addEventListener('click', hideSettingsModal);
@@ -3033,7 +3086,7 @@ document.getElementById('close-shortcuts-btn')?.addEventListener('click', hideSh
 const settingsModal = document.getElementById('settings-modal');
 if (settingsModal) {
   settingsModal.addEventListener('click', (e) => {
-    if (e.target.id === 'settings-modal') {
+    if ((e.target as HTMLElement).id === 'settings-modal') {
       hideSettingsModal();
     }
   });
@@ -3042,7 +3095,7 @@ if (settingsModal) {
 const licensesModal = document.getElementById('licenses-modal');
 if (licensesModal) {
   licensesModal.addEventListener('click', (e) => {
-    if (e.target.id === 'licenses-modal') {
+    if ((e.target as HTMLElement).id === 'licenses-modal') {
       hideLicensesModal();
     }
   });
@@ -3051,7 +3104,7 @@ if (licensesModal) {
 const shortcutsModal = document.getElementById('shortcuts-modal');
 if (shortcutsModal) {
   shortcutsModal.addEventListener('click', (e) => {
-    if (e.target.id === 'shortcuts-modal') {
+    if ((e.target as HTMLElement).id === 'shortcuts-modal') {
       hideShortcutsModal();
     }
   });
@@ -3105,11 +3158,21 @@ function updatePreview(file: FileItem) {
     'json', 'xml', 'yml', 'yaml', 'toml', 'csv', 'tsv', 'sql', 'ini', 'conf', 'config', 'cfg', 'env', 'properties', 'gitignore', 'gitattributes', 'editorconfig', 'dockerfile', 'dockerignore',
     'rst', 'tex', 'adoc', 'asciidoc', 'makefile', 'cmake', 'gradle', 'maven'
   ];
+
+  const videoExts = ['mp4', 'webm', 'ogg', 'mov', 'mkv', 'avi'];
+  const audioExts = ['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac'];
+  const pdfExts = ['pdf'];
   
   if (imageExts.includes(ext)) {
     showImagePreview(file);
   } else if (textExts.includes(ext)) {
     showTextPreview(file);
+  } else if (videoExts.includes(ext)) {
+    showVideoPreview(file);
+  } else if (audioExts.includes(ext)) {
+    showAudioPreview(file);
+  } else if (pdfExts.includes(ext)) {
+    showPdfPreview(file);
   } else {
     showFileInfo(file);
   }
@@ -3172,6 +3235,55 @@ async function showTextPreview(file: FileItem) {
       ${generateFileInfo(file, null)}
     `;
   }
+}
+
+async function showVideoPreview(file: FileItem) {
+  if (!previewContent) return;
+  
+  const props = await window.electronAPI.getItemProperties(file.path);
+  const info = props.success && props.properties ? props.properties : null;
+  
+  const fileUrl = `file:///${file.path.replace(/\\/g, '/')}`;
+  
+  previewContent.innerHTML = `
+    <video src="${fileUrl}" class="preview-video" controls controlsList="nodownload">
+      Your browser does not support the video tag.
+    </video>
+    ${generateFileInfo(file, info)}
+  `;
+}
+
+async function showAudioPreview(file: FileItem) {
+  if (!previewContent) return;
+  
+  const props = await window.electronAPI.getItemProperties(file.path);
+  const info = props.success && props.properties ? props.properties : null;
+  
+  const fileUrl = `file:///${file.path.replace(/\\/g, '/')}`;
+  
+  previewContent.innerHTML = `
+    <div class="preview-audio-container">
+      <div class="preview-audio-icon">${twemojiImg(String.fromCodePoint(0x1F3B5), 'twemoji-xlarge')}</div>
+      <audio src="${fileUrl}" class="preview-audio" controls controlsList="nodownload">
+        Your browser does not support the audio tag.
+      </audio>
+    </div>
+    ${generateFileInfo(file, info)}
+  `;
+}
+
+async function showPdfPreview(file: FileItem) {
+  if (!previewContent) return;
+  
+  const props = await window.electronAPI.getItemProperties(file.path);
+  const info = props.success && props.properties ? props.properties : null;
+  
+  const fileUrl = `file:///${file.path.replace(/\\/g, '/')}`;
+  
+  previewContent.innerHTML = `
+    <iframe src="${fileUrl}" class="preview-pdf" frameborder="0"></iframe>
+    ${generateFileInfo(file, info)}
+  `;
 }
 
 async function showFileInfo(file: FileItem) {
@@ -3248,12 +3360,10 @@ async function showQuickLook() {
   const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico', 'tiff', 'tif', 'avif', 'jfif'];
 
   const textExts = [
-    'txt', 'text', 'md', 'markdown', 'log', 'readme',
-    'html', 'htm', 'css', 'scss', 'sass', 'less', 'js', 'jsx', 'ts', 'tsx', 'vue', 'svelte',
-    'py', 'pyc', 'pyw', 'java', 'c', 'cpp', 'cc', 'cxx', 'h', 'hpp', 'cs', 'php', 'rb', 'go', 'rs', 'swift', 'kt', 'kts', 'scala', 'r', 'lua', 'perl', 'pl', 'sh', 'bash', 'zsh', 'fish', 'ps1', 'bat', 'cmd',
+    'txt', 'text', 'md', 'markdown', 'log', 'readme', 'html', 'htm', 'css', 'scss', 'sass', 'less', 'js', 'jsx', 'ts', 'tsx', 'vue', 'svelte', 'py', 'pyc', 'pyw', 'java', 'c', 'cpp', 'cc', 'cxx', 'h', 'hpp', 'cs', 'php', 'rb', 'go', 'rs', 'swift', 'kt', 'kts', 'scala', 'r', 'lua', 'perl', 'pl', 'sh', 'bash', 'zsh', 'fish', 'ps1', 'bat', 'cmd',
     'json', 'xml', 'yml', 'yaml', 'toml', 'csv', 'tsv', 'sql',
     'ini', 'conf', 'config', 'cfg', 'env', 'properties', 'gitignore', 'gitattributes', 'editorconfig', 'dockerfile', 'dockerignore',
-    'rst', 'tex', 'adoc', 'asciidoc','makefile', 'cmake', 'gradle', 'maven'
+    'rst', 'tex', 'adoc', 'asciidoc', 'makefile', 'cmake', 'gradle', 'maven'
   ];
   
   quicklookContent.innerHTML = `
@@ -3431,6 +3541,7 @@ document.addEventListener('mousedown', (e) => {
   }
 });
 
+
 (async () => {
   try {
     console.log('Starting IYERIS...');
@@ -3441,6 +3552,8 @@ document.addEventListener('mousedown', (e) => {
     alert('Failed to start IYERIS: ' + error.message);
   }
 })();
+
+initSettingsTabs();
 
 
 

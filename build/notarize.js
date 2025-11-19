@@ -7,6 +7,12 @@ exports.default = async function notarizing(context) {
     return;
   }
 
+  // Skip notarization for MAS builds
+  if (process.env.MAS || context.targets?.some(t => t.name === 'mas') || appOutDir.includes('mas')) {
+    console.log('Skipping notarization for MAS build');
+    return;
+  }
+
   const appName = context.packager.appInfo.productFilename;
   const appPath = `${appOutDir}/${appName}.app`;
 

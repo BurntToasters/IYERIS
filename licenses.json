@@ -663,7 +663,7 @@
         "licenseUrl": "https://github.com/electron/windows-installer/raw/master/LICENSE",
         "parents": "iyeris"
     },
-    "electron@39.1.2": {
+    "electron@39.2.2": {
         "licenses": "MIT",
         "repository": "https://github.com/electron/electron",
         "licenseUrl": "https://github.com/electron/electron/raw/master/LICENSE",
@@ -789,7 +789,7 @@
         "licenseUrl": "https://github.com/tapjs/foreground-child/raw/master/LICENSE",
         "parents": "iyeris"
     },
-    "form-data@4.0.4": {
+    "form-data@4.0.5": {
         "licenses": "MIT",
         "repository": "https://github.com/form-data/form-data",
         "licenseUrl": "https://github.com/form-data/form-data/raw/master/License",
@@ -867,7 +867,7 @@
         "licenseUrl": "https://github.com/sindresorhus/get-stream/raw/master/license",
         "parents": "iyeris"
     },
-    "glob@10.4.5": {
+    "glob@10.5.0": {
         "licenses": "ISC",
         "repository": "https://github.com/isaacs/node-glob",
         "licenseUrl": "https://github.com/isaacs/node-glob/raw/master/LICENSE",
@@ -1089,7 +1089,7 @@
         "licenseUrl": "https://github.com/isaacs/isexe/raw/master/LICENSE",
         "parents": "iyeris"
     },
-    "iyeris@0.5.3": {
+    "iyeris@0.6.0": {
         "licenses": "MPL-2.0",
         "repository": "https://github.com/BurntToasters/IYERIS",
         "licenseUrl": "https://github.com/BurntToasters/IYERIS/raw/master/LICENSE",
@@ -1875,13 +1875,13 @@
         "licenses": "MIT",
         "repository": "https://github.com/nodejs/undici",
         "licenseUrl": "https://github.com/nodejs/undici/raw/master/LICENSE",
-        "parents": "iyeris"
+        "parents": "electron:iyeris"
     },
     "undici-types@7.16.0": {
         "licenses": "MIT",
         "repository": "https://github.com/nodejs/undici",
         "licenseUrl": "https://github.com/nodejs/undici/raw/master/LICENSE",
-        "parents": "@types/node:iyeris"
+        "parents": "iyeris"
     },
     "unique-filename@2.0.1": {
         "licenses": "ISC",

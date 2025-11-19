@@ -174,7 +174,8 @@ function createWindow(): void {
       backgroundThrottling: false,
       spellcheck: false,
       v8CacheOptions: 'code',
-      enableWebSQL: false
+      enableWebSQL: false,
+      plugins: true
     },
     icon: path.join(__dirname, '..', 'assets', 'icon.png')
   });
@@ -358,6 +359,8 @@ app.whenReady().then(async () => {
             if (isRunningInFlatpak()) {
               console.log('[AutoUpdater] Running in Flatpak - auto-updater disabled');
               console.log('[AutoUpdater] Updates should be installed via: flatpak update com.burnttoasters.iyeris');
+            } else if (process.mas) {
+              console.log('[AutoUpdater] Running in Mac App Store - auto-updater disabled');
             }
 
             autoUpdater.on('checking-for-update', () => {
@@ -485,21 +488,92 @@ ipcMain.handle('get-directory-contents', async (_event: IpcMainInvokeEvent, dirP
 });
 
 ipcMain.handle('get-drives', async (): Promise<string[]> => {
-  if (process.platform === 'win32') {
-    const drives: string[] = [];
-    for (let i = 65; i <= 90; i++) {
-      const drive = String.fromCharCode(i) + ':\\';
+  const platform = process.platform;
+
+  if (platform === 'win32') {
+    const drives: Set<string> = new Set();
+    const execAsync = promisify(exec);
+
+    // WMIC
+    try {
+      const { stdout } = await execAsync('wmic logicaldisk get name', { timeout: 2000 });
+      const lines = stdout.split(/[\r\n]+/);
+      for (const line of lines) {
+        const drive = line.trim();
+        if (/^[A-Z]:$/.test(drive)) {
+          drives.add(drive + '\\');
+        }
+      }
+    } catch (e) {
+      console.log('WMIC drive detection failed:', (e as Error).message);
+    }
+
+    // PS
+    if (drives.size === 0) {
       try {
-        await fs.access(drive);
-        drives.push(drive);
-      } catch (err) {
+        const { stdout } = await execAsync('powershell -NoProfile -Command "Get-CimInstance -ClassName Win32_LogicalDisk | Select-Object -ExpandProperty DeviceID"', { timeout: 3000 });
+        const lines = stdout.split(/[\r\n]+/);
+        for (const line of lines) {
+          const drive = line.trim();
+          if (/^[A-Z]:$/.test(drive)) {
+            drives.add(drive + '\\');
+          }
+        }
+      } catch (e) {
+        console.log('PowerShell drive detection failed:', (e as Error).message);
       }
     }
-    return drives;
-  } else if (process.platform === 'darwin' || process.platform === 'linux') {
-    return ['/'];
+
+    // A-Z drive check
+    if (drives.size === 0) {
+      const driveLetters: string[] = [];
+      for (let i = 65; i <= 90; i++) {
+        driveLetters.push(String.fromCharCode(i) + ':\\');
+      }
+
+      const checkDrive = async (drive: string): Promise<string | null> => {
+        try {
+          await Promise.race([
+            fs.access(drive),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 200))
+          ]);
+          return drive;
+        } catch {
+          return null;
+        }
+      };
+
+      const results = await Promise.all(driveLetters.map(checkDrive));
+      results.forEach(d => {
+        if (d) drives.add(d);
+      });
+    }
+
+    if (drives.size === 0) return ['C:\\'];
+    return Array.from(drives).sort();
+
+  } else {
+    const commonRoots = platform === 'darwin' ? ['/Volumes'] : ['/media', '/mnt', '/run/media'];
+    const detected: string[] = ['/'];
+    
+    for (const root of commonRoots) {
+      try {
+        const subs = await fs.readdir(root);
+        for (const sub of subs) {
+          if (sub.startsWith('.')) continue;
+          
+          const fullPath = path.join(root, sub);
+          try {
+            const stats = await fs.stat(fullPath);
+            if (stats.isDirectory()) {
+              detected.push(fullPath);
+            }
+          } catch {}
+        }
+      } catch {}
+    }
+    return detected;
   }
-  return [];
 });
 
 ipcMain.handle('get-home-directory', (): string => {
@@ -962,7 +1036,16 @@ ipcMain.handle('open-terminal', async (_event: IpcMainInvokeEvent, dirPath: stri
     let command: string;
     
     if (platform === 'win32') {
-      command = `start cmd /K "cd /d "${dirPath}""`;
+      // wt -> cmd.exe fallback
+      const hasWT = await new Promise<boolean>((resolve) => {
+        exec('where wt', (error) => resolve(!error));
+      });
+
+      if (hasWT) {
+        command = `wt -d "${dirPath}"`;
+      } else {
+        command = `start cmd /K "cd /d "${dirPath}""`;
+      }
     } else if (platform === 'darwin') {
       command = `open -a Terminal "${dirPath}"`;
     } else {
@@ -1051,6 +1134,10 @@ ipcMain.handle('get-platform', (): string => {
   return process.platform;
 });
 
+ipcMain.handle('is-mas', (): boolean => {
+  return process.mas === true;
+});
+
 ipcMain.handle('check-full-disk-access', async (): Promise<{ success: boolean; hasAccess: boolean }> => {
   const hasAccess = await checkFullDiskAccess();
   return { success: true, hasAccess };
@@ -1080,6 +1167,19 @@ ipcMain.handle('check-for-updates', async (): Promise<UpdateCheckResponse> => {
       latestVersion: `v${currentVersion}`,
       isFlatpak: true,
       flatpakMessage: 'Updates are managed by Flatpak. Run: flatpak update com.burnttoasters.iyeris'
+    };
+  }
+
+  if (process.mas) {
+    const currentVersion = app.getVersion();
+    console.log('[AutoUpdater] MAS detected - updates managed by App Store');
+    return {
+      success: true,
+      hasUpdate: false,
+      currentVersion: `v${currentVersion}`,
+      latestVersion: `v${currentVersion}`,
+      isMas: true,
+      masMessage: 'Updates are managed by the Mac App Store.'
     };
   }
 
