@@ -1479,6 +1479,10 @@ function setupEventListeners() {
         zoomReset();
       }
     } else if (e.key === ' ' && selectedItems.size === 1) {
+      const activeElement = document.activeElement;
+      if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
+        return;
+      }
       e.preventDefault();
       showQuickLook();
     } else if (e.key === 'F5') {
