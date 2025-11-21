@@ -2371,7 +2371,13 @@ function startInlineRename(fileItem, currentName, itemPath) {
   fileItem.classList.add('renaming');
   
   input.focus();
-  input.select();
+  
+  const lastDotIndex = currentName.lastIndexOf('.');
+  if (lastDotIndex > 0) {
+    input.setSelectionRange(0, lastDotIndex);
+  } else {
+    input.select();
+  }
   
   let renameHandled = false;
 
