@@ -1252,6 +1252,27 @@ async function init() {
         updateZoomDisplay();
       }
     });
+
+    window.electronAPI.onUpdateAvailable((info) => {
+      console.log('Update available:', info);
+
+      const settingsBtn = document.getElementById('settings-btn');
+      if (settingsBtn) {
+        if (!settingsBtn.querySelector('.notification-badge')) {
+          const badge = document.createElement('span');
+          badge.className = 'notification-badge';
+          badge.textContent = '1';
+          settingsBtn.style.position = 'relative';
+          settingsBtn.appendChild(badge);
+        }
+      }
+
+      const checkUpdatesBtn = document.getElementById('check-updates-btn');
+      if (checkUpdatesBtn) {
+        checkUpdatesBtn.innerHTML = `${twemojiImg(String.fromCodePoint(0x1F389), 'twemoji')} Update Available!`;
+        checkUpdatesBtn.classList.add('primary');
+      }
+    });
   }, 0);
   
   console.log('Init: Complete');
@@ -3325,8 +3346,20 @@ function generateFileInfo(file: FileItem, props: ItemProperties | null): string 
         <span class="preview-info-value">${file.name}</span>
       </div>
       <div class="preview-info-item">
+        <span class="preview-info-label">Type</span>
+        <span class="preview-info-value">${file.isDirectory ? 'Folder' : 'File'}</span>
+      </div>
+      <div class="preview-info-item">
         <span class="preview-info-label">Size</span>
         <span class="preview-info-value">${sizeDisplay}</span>
+      </div>
+      <div class="preview-info-item">
+        <span class="preview-info-label">Location</span>
+        <span class="preview-info-value">${file.path}</span>
+      </div>
+      <div class="preview-info-item">
+        <span class="preview-info-label">Created</span>
+        <span class="preview-info-value">${new Date(props.created).toLocaleString()}</span>
       </div>
       <div class="preview-info-item">
         <span class="preview-info-label">Modified</span>
@@ -3334,8 +3367,8 @@ function generateFileInfo(file: FileItem, props: ItemProperties | null): string 
       </div>
       ${props && props.created ? `
       <div class="preview-info-item">
-        <span class="preview-info-label">Created</span>
-        <span class="preview-info-value">${new Date(props.created).toLocaleDateString()} ${new Date(props.created).toLocaleTimeString()}</span>
+        <span class="preview-info-label">Accessed</span>
+        <span class="preview-info-value">${new Date(props.accessed).toLocaleString()}</span>
       </div>` : ''}
     </div>
   `;

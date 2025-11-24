@@ -41,6 +41,9 @@ const electronAPI: ElectronAPI = {
   onUpdateDownloadProgress: (callback: (progress: UpdateDownloadProgress) => void) => {
     ipcRenderer.on('update-download-progress', (_event, progress) => callback(progress));
   },
+  onUpdateAvailable: (callback: (info: any) => void) => {
+    ipcRenderer.on('update-available', (_event, info) => callback(info));
+  },
   undoAction: () => ipcRenderer.invoke('undo-action'),
   redoAction: () => ipcRenderer.invoke('redo-action'),
   getUndoRedoState: () => ipcRenderer.invoke('get-undo-redo-state'),
