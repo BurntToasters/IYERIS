@@ -397,6 +397,14 @@ app.whenReady().then(async () => {
               console.log('[AutoUpdater] Update downloaded:', info.version);
               mainWindow?.webContents.send('update-downloaded', info);
             });
+
+            // Check for updates on startup
+            if (!isRunningInFlatpak() && !process.mas && !isDev) {
+              console.log('[AutoUpdater] Checking for updates on startup...');
+              autoUpdater.checkForUpdates().catch(err => {
+                console.error('[AutoUpdater] Startup check failed:', err);
+              });
+            }
           } catch (error) {
             console.error('[AutoUpdater] Setup failed:', error);
           }

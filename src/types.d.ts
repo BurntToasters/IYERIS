@@ -159,6 +159,7 @@ export interface ElectronAPI {
   downloadUpdate: () => Promise<ApiResponse>;
   installUpdate: () => Promise<ApiResponse>;
   onUpdateDownloadProgress: (callback: (progress: UpdateDownloadProgress) => void) => void;
+  onUpdateAvailable: (callback: (info: UpdateInfo) => void) => void;
   undoAction: () => Promise<UndoResponse>;
   redoAction: () => Promise<UndoResponse>;
   getUndoRedoState: () => Promise<{canUndo: boolean; canRedo: boolean}>;
