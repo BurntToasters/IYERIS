@@ -1,6 +1,6 @@
 {
   "name": "iyeris",
-  "version": "0.6.2",
+  "version": "0.7.0",
   "description": "A beautiful cross-platform file explorer built with Electron, featuring a stunning liquid-glass interface with smooth animations and modern design.",
   "main": "dist/main.js",
   "dependencies": {
@@ -68,6 +68,7 @@
       "**/*.node",
       "**/node_modules/7zip-bin/**/*"
     ],
+    "compression": "maximum",
     "mac": {
       "category": "public.app-category.productivity",
       "target": [
