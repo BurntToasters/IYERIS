@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, shell, IpcMainInvokeEvent, Menu } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell, IpcMainInvokeEvent, Menu, Tray, nativeImage } from 'electron';
 import * as path from 'path';
 import { promises as fs } from 'fs';
 import * as fsSync from 'fs';
@@ -37,6 +37,8 @@ const get7zipPath = (): string => {
 
 let mainWindow: BrowserWindow | null = null;
 let fileIndexer: FileIndexer | null = null;
+let tray: Tray | null = null;
+let isQuitting = false;
 
 const isDev = process.argv.includes('--dev');
 
@@ -73,7 +75,8 @@ const defaultSettings: Settings = {
   enableSearchHistory: true,
   searchHistory: [],
   directoryHistory: [],
-  enableIndexer: true
+  enableIndexer: true,
+  minimizeToTray: false
 };
 
 function getSettingsPath(): string {
@@ -184,6 +187,18 @@ function createWindow(): void {
 
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show();
+  });
+
+  mainWindow.on('close', async (event) => {
+    if (!isQuitting) {
+      const settings = await loadSettings();
+      if (settings.minimizeToTray) {
+        event.preventDefault();
+        mainWindow?.hide();
+        return;
+      }
+    }
+    return;
   });
 
   if (isDev) {
@@ -333,6 +348,7 @@ function setupApplicationMenu(): void {
 app.whenReady().then(async () => {
   setupApplicationMenu();
   createWindow();
+  createTray();
 
   mainWindow?.once('ready-to-show', () => {
     setTimeout(async () => {
@@ -441,8 +457,14 @@ app.whenReady().then(async () => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
+    } else {
+      mainWindow?.show();
     }
   });
+});
+
+app.on('before-quit', () => {
+  isQuitting = true;
 });
 
 app.on('window-all-closed', () => {
@@ -1760,5 +1782,40 @@ ipcMain.handle('get-zoom-level', async (): Promise<{success: boolean; zoomLevel?
     return { success: false, error: (error as Error).message };
   }
 });
+
+function createTray(): void {
+  const iconPath = path.join(__dirname, '..', 'assets', 'icon.png');
+  const trayIcon = nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 });
+  
+  tray = new Tray(trayIcon);
+  tray.setToolTip('IYERIS');
+  
+  const contextMenu = Menu.buildFromTemplate([
+    { 
+      label: 'Show IYERIS', 
+      click: () => {
+        mainWindow?.show();
+      } 
+    },
+    { type: 'separator' },
+    { 
+      label: 'Quit', 
+      click: () => {
+        isQuitting = true;
+        app.quit();
+      } 
+    }
+  ]);
+  
+  tray.setContextMenu(contextMenu);
+  
+  tray.on('click', () => {
+    if (mainWindow?.isVisible()) {
+      mainWindow.hide();
+    } else {
+      mainWindow?.show();
+    }
+  });
+}
 
 

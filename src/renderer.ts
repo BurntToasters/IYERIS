@@ -325,7 +325,8 @@ let currentSettings: Settings = {
   enableSearchHistory: true,
   searchHistory: [],
   directoryHistory: [],
-  enableIndexer: true
+  enableIndexer: true,
+  minimizeToTray: false
 };
 
 function showToast(message: string, title: string = '', type: 'success' | 'error' | 'info' | 'warning' = 'info'): void {
@@ -429,6 +430,7 @@ async function showSettingsModal() {
   const sortBySelect = document.getElementById('sort-by-select') as HTMLSelectElement;
   const sortOrderSelect = document.getElementById('sort-order-select') as HTMLSelectElement;
   const showHiddenFilesToggle = document.getElementById('show-hidden-files-toggle') as HTMLInputElement;
+  const minimizeToTrayToggle = document.getElementById('minimize-to-tray-toggle') as HTMLInputElement;
   const enableSearchHistoryToggle = document.getElementById('enable-search-history-toggle') as HTMLInputElement;
   const dangerousOptionsToggle = document.getElementById('dangerous-options-toggle') as HTMLInputElement;
   const startupPathInput = document.getElementById('startup-path-input') as HTMLInputElement;
@@ -453,6 +455,10 @@ async function showSettingsModal() {
   
   if (showHiddenFilesToggle) {
     showHiddenFilesToggle.checked = currentSettings.showHiddenFiles || false;
+  }
+
+  if (minimizeToTrayToggle) {
+    minimizeToTrayToggle.checked = currentSettings.minimizeToTray || false;
   }
   
   if (enableSearchHistoryToggle) {
@@ -695,6 +701,7 @@ async function saveSettings() {
   const sortBySelect = document.getElementById('sort-by-select') as HTMLSelectElement;
   const sortOrderSelect = document.getElementById('sort-order-select') as HTMLSelectElement;
   const showHiddenFilesToggle = document.getElementById('show-hidden-files-toggle') as HTMLInputElement;
+  const minimizeToTrayToggle = document.getElementById('minimize-to-tray-toggle') as HTMLInputElement;
   const enableSearchHistoryToggle = document.getElementById('enable-search-history-toggle') as HTMLInputElement;
   const dangerousOptionsToggle = document.getElementById('dangerous-options-toggle') as HTMLInputElement;
   const startupPathInput = document.getElementById('startup-path-input') as HTMLInputElement;
@@ -720,18 +727,23 @@ async function saveSettings() {
     currentSettings.showHiddenFiles = showHiddenFilesToggle.checked;
   }
   
+  if (minimizeToTrayToggle) {
+    currentSettings.minimizeToTray = minimizeToTrayToggle.checked;
+  }
+  
   if (enableSearchHistoryToggle) {
     currentSettings.enableSearchHistory = enableSearchHistoryToggle.checked;
   }
-  
+
   if (dangerousOptionsToggle) {
     currentSettings.showDangerousOptions = dangerousOptionsToggle.checked;
+    updateDangerousOptionsVisibility(currentSettings.showDangerousOptions);
   }
-  
+
   if (startupPathInput) {
-    currentSettings.startupPath = startupPathInput.value.trim();
+    currentSettings.startupPath = startupPathInput.value;
   }
-  
+
   if (enableIndexerToggle) {
     currentSettings.enableIndexer = enableIndexerToggle.checked;
   }

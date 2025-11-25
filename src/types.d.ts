@@ -12,6 +12,7 @@ export interface Settings {
   searchHistory: string[];
   directoryHistory: string[];
   enableIndexer: boolean;
+  minimizeToTray: boolean;
 }
 
 export interface FileItem {
