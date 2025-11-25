@@ -43,10 +43,13 @@ export class FileIndexer {
       // Method PS
       if (drives.size === 0) {
         try {
-          const { stdout } = await execAsync('powershell -NoProfile -Command "Get-CimInstance -ClassName Win32_LogicalDisk | Select-Object -ExpandProperty DeviceID"', { timeout: 3000 });
+          const { stdout } = await execAsync('powershell -NoProfile -Command "Get-PSDrive -PSProvider FileSystem | Select-Object -ExpandProperty Name"', { timeout: 3000 });
           const lines = stdout.split(/[\r\n]+/);
           for (const line of lines) {
-            const drive = line.trim();
+            let drive = line.trim();
+            if (/^[A-Z]$/.test(drive)) {
+              drive += ':';
+            }
             if (/^[A-Z]:$/.test(drive)) {
               drives.add(drive + '\\');
             }

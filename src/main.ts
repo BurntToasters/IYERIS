@@ -1,12 +1,9 @@
 import { app, BrowserWindow, ipcMain, dialog, shell, IpcMainInvokeEvent, Menu } from 'electron';
-import { autoUpdater } from 'electron-updater';
 import * as path from 'path';
 import { promises as fs } from 'fs';
 import * as fsSync from 'fs';
 import { exec } from 'child_process';
 import { promisify } from 'util';
-import Seven = require('node-7z');
-import sevenBin = require('7zip-bin');
 import type { Settings, FileItem, ApiResponse, DirectoryResponse, PathResponse, PropertiesResponse, SettingsResponse, UpdateCheckResponse, IndexSearchResponse } from './types';
 import { FileIndexer } from './indexer';
 
@@ -18,6 +15,8 @@ if (process.argv.includes('--disable-hardware-acceleration')) {
 
 // Enable V8 code caching via cli args
 app.commandLine.appendSwitch('--enable-blink-features', 'CodeCache');
+app.commandLine.appendSwitch('wm-window-animations-disabled');
+app.commandLine.appendSwitch('disable-http-cache');
 
 const isRunningInFlatpak = (): boolean => {
   return process.env.FLATPAK_ID !== undefined || 
@@ -25,6 +24,7 @@ const isRunningInFlatpak = (): boolean => {
 };
 
 const get7zipPath = (): string => {
+  const sevenBin = require('7zip-bin');
   let sevenZipPath = sevenBin.path7za;
 
   if (app.isPackaged) {
@@ -352,6 +352,7 @@ app.whenReady().then(async () => {
         // Defer auto-updater setup
         setTimeout(() => {
           try {
+            const { autoUpdater } = require('electron-updater');
             autoUpdater.logger = console;
             autoUpdater.autoDownload = false;
             autoUpdater.autoInstallOnAppQuit = true;
@@ -519,10 +520,13 @@ ipcMain.handle('get-drives', async (): Promise<string[]> => {
     // PS
     if (drives.size === 0) {
       try {
-        const { stdout } = await execAsync('powershell -NoProfile -Command "Get-CimInstance -ClassName Win32_LogicalDisk | Select-Object -ExpandProperty DeviceID"', { timeout: 3000 });
+        const { stdout } = await execAsync('powershell -NoProfile -Command "Get-PSDrive -PSProvider FileSystem | Select-Object -ExpandProperty Name"', { timeout: 3000 });
         const lines = stdout.split(/[\r\n]+/);
         for (const line of lines) {
-          const drive = line.trim();
+          let drive = line.trim();
+          if (/^[A-Z]$/.test(drive)) {
+            drive += ':';
+          }
           if (/^[A-Z]:$/.test(drive)) {
             drives.add(drive + '\\');
           }
@@ -1192,6 +1196,7 @@ ipcMain.handle('check-for-updates', async (): Promise<UpdateCheckResponse> => {
   }
 
   try {
+    const { autoUpdater } = require('electron-updater');
     const currentVersion = app.getVersion();
     console.log('[AutoUpdater] Manually checking for updates. Current version:', currentVersion);
     
@@ -1230,6 +1235,7 @@ ipcMain.handle('check-for-updates', async (): Promise<UpdateCheckResponse> => {
 
 ipcMain.handle('download-update', async (): Promise<ApiResponse> => {
   try {
+    const { autoUpdater } = require('electron-updater');
     console.log('[AutoUpdater] Starting update download...');
     await autoUpdater.downloadUpdate();
     return { success: true };
@@ -1241,6 +1247,7 @@ ipcMain.handle('download-update', async (): Promise<ApiResponse> => {
 
 ipcMain.handle('install-update', async (): Promise<ApiResponse> => {
   try {
+    const { autoUpdater } = require('electron-updater');
     console.log('[AutoUpdater] Installing update and restarting...');
     autoUpdater.quitAndInstall(false, true);
     return { success: true };
@@ -1448,6 +1455,7 @@ ipcMain.handle('compress-files', async (_event: IpcMainInvokeEvent, sourcePaths:
 
     if (format === 'tar.gz') {
       return new Promise(async (resolve, reject) => {
+        const Seven = require('node-7z');
         const sevenZipPath = get7zipPath();
         console.log('[Compress] Using 7zip at:', sevenZipPath);
         const tarPath = outputPath.replace(/\.gz$/, '');
@@ -1589,6 +1597,7 @@ ipcMain.handle('compress-files', async (_event: IpcMainInvokeEvent, sourcePaths:
     }
 
     return new Promise((resolve, reject) => {
+      const Seven = require('node-7z');
       const sevenZipPath = get7zipPath();
       console.log('[Compress] Using 7zip at:', sevenZipPath);
 
@@ -1656,6 +1665,7 @@ ipcMain.handle('extract-archive', async (_event: IpcMainInvokeEvent, archivePath
 
     await fs.mkdir(destPath, { recursive: true });
     return new Promise((resolve, reject) => {
+      const Seven = require('node-7z');
       const sevenZipPath = get7zipPath();
       console.log('[Extract] Using 7zip at:', sevenZipPath);
       
