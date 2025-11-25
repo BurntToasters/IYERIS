@@ -326,7 +326,8 @@ let currentSettings: Settings = {
   searchHistory: [],
   directoryHistory: [],
   enableIndexer: true,
-  minimizeToTray: false
+  minimizeToTray: false,
+  startOnLogin: false
 };
 
 function showToast(message: string, title: string = '', type: 'success' | 'error' | 'info' | 'warning' = 'info'): void {
@@ -431,6 +432,7 @@ async function showSettingsModal() {
   const sortOrderSelect = document.getElementById('sort-order-select') as HTMLSelectElement;
   const showHiddenFilesToggle = document.getElementById('show-hidden-files-toggle') as HTMLInputElement;
   const minimizeToTrayToggle = document.getElementById('minimize-to-tray-toggle') as HTMLInputElement;
+  const startOnLoginToggle = document.getElementById('start-on-login-toggle') as HTMLInputElement;
   const enableSearchHistoryToggle = document.getElementById('enable-search-history-toggle') as HTMLInputElement;
   const dangerousOptionsToggle = document.getElementById('dangerous-options-toggle') as HTMLInputElement;
   const startupPathInput = document.getElementById('startup-path-input') as HTMLInputElement;
@@ -459,6 +461,10 @@ async function showSettingsModal() {
 
   if (minimizeToTrayToggle) {
     minimizeToTrayToggle.checked = currentSettings.minimizeToTray || false;
+  }
+  
+  if (startOnLoginToggle) {
+    startOnLoginToggle.checked = currentSettings.startOnLogin || false;
   }
   
   if (enableSearchHistoryToggle) {
@@ -702,6 +708,7 @@ async function saveSettings() {
   const sortOrderSelect = document.getElementById('sort-order-select') as HTMLSelectElement;
   const showHiddenFilesToggle = document.getElementById('show-hidden-files-toggle') as HTMLInputElement;
   const minimizeToTrayToggle = document.getElementById('minimize-to-tray-toggle') as HTMLInputElement;
+  const startOnLoginToggle = document.getElementById('start-on-login-toggle') as HTMLInputElement;
   const enableSearchHistoryToggle = document.getElementById('enable-search-history-toggle') as HTMLInputElement;
   const dangerousOptionsToggle = document.getElementById('dangerous-options-toggle') as HTMLInputElement;
   const startupPathInput = document.getElementById('startup-path-input') as HTMLInputElement;
@@ -729,6 +736,10 @@ async function saveSettings() {
   
   if (minimizeToTrayToggle) {
     currentSettings.minimizeToTray = minimizeToTrayToggle.checked;
+  }
+  
+  if (startOnLoginToggle) {
+    currentSettings.startOnLogin = startOnLoginToggle.checked;
   }
   
   if (enableSearchHistoryToggle) {

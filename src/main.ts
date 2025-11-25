@@ -42,6 +42,23 @@ let isQuitting = false;
 
 const isDev = process.argv.includes('--dev');
 
+// inst lock
+const gotTheLock = app.requestSingleInstanceLock();
+
+if (!gotTheLock) {
+  console.log('[SingleInstance] Another instance is already running, quitting...');
+  app.quit();
+} else {
+  app.on('second-instance', (event, commandLine, workingDirectory) => {
+    console.log('[SingleInstance] Second instance attempted to start');
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      if (!mainWindow.isVisible()) mainWindow.show();
+      mainWindow.focus();
+    }
+  });
+}
+
 interface UndoAction {
   type: 'trash' | 'rename' | 'move' | 'create';
   data: any;
@@ -76,8 +93,23 @@ const defaultSettings: Settings = {
   searchHistory: [],
   directoryHistory: [],
   enableIndexer: true,
-  minimizeToTray: false
+  minimizeToTray: false,
+  startOnLogin: false
 };
+
+function applyLoginItemSettings(settings: Settings): void {
+  try {
+    console.log('[LoginItem] Applying settings:', settings.startOnLogin);
+    app.setLoginItemSettings({
+      openAtLogin: settings.startOnLogin,
+      openAsHidden: settings.startOnLogin,
+      args: settings.startOnLogin ? ['--hidden'] : [], // not supported on Linux
+      name: 'IYERIS'
+    });
+  } catch (error) {
+    console.error('[LoginItem] Failed to set login item:', error);
+  }
+}
 
 function getSettingsPath(): string {
   const userDataPath = app.getPath('userData');
@@ -105,6 +137,9 @@ async function saveSettings(settings: Settings): Promise<ApiResponse> {
     console.log('[Settings] Data:', JSON.stringify(settings, null, 2));
     await fs.writeFile(settingsPath, JSON.stringify(settings, null, 2), 'utf8');
     console.log('[Settings] Saved successfully');
+
+    applyLoginItemSettings(settings);
+    
     return { success: true };
   } catch (error) {
     console.log('[Settings] Save failed:', (error as Error).message);
@@ -185,8 +220,12 @@ function createWindow(): void {
 
   mainWindow.loadFile(path.join(__dirname, '..', 'index.html'));
 
+  const startHidden = process.argv.includes('--hidden');
+  
   mainWindow.once('ready-to-show', () => {
-    mainWindow?.show();
+    if (!startHidden) {
+      mainWindow?.show();
+    }
   });
 
   mainWindow.on('close', async (event) => {
@@ -354,6 +393,8 @@ app.whenReady().then(async () => {
     setTimeout(async () => {
       try {
         const settings = await loadSettings();
+
+        applyLoginItemSettings(settings);
 
         if (settings.enableIndexer) {
           const indexerDelay = process.platform === 'win32' ? 2000 : 500;

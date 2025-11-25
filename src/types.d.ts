@@ -13,6 +13,7 @@ export interface Settings {
   directoryHistory: string[];
   enableIndexer: boolean;
   minimizeToTray: boolean;
+  startOnLogin: boolean;
 }
 
 export interface FileItem {
