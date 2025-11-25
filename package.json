@@ -68,7 +68,6 @@
       "**/*.node",
       "**/node_modules/7zip-bin/**/*"
     ],
-    "compression": "maximum",
     "mac": {
       "category": "public.app-category.productivity",
       "target": [
