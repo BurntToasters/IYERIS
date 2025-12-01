@@ -326,6 +326,16 @@
             <h4>View</h4>
             <div class="setting-item">
               <div class="setting-info">
+                <label for="minimize-to-tray-toggle">Minimize to Tray</label>
+                <p class="setting-description">Minimize the application to the system tray instead of closing</p>
+              </div>
+              <label class="toggle-switch">
+                <input type="checkbox" id="minimize-to-tray-toggle">
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+            <div class="setting-item">
+              <div class="setting-info">
                 <label for="show-hidden-files-toggle">Show Hidden Files</label>
                 <p class="setting-description">Display files and folders that are hidden by the system</p>
               </div>
@@ -370,6 +380,16 @@
 
           <div class="settings-section" id="tab-startup">
             <h4>Startup</h4>
+            <div class="setting-item">
+              <div class="setting-info">
+                <label for="start-on-login-toggle">Start on Login</label>
+                <p class="setting-description">Automatically start IYERIS when you log in (minimized to tray)</p>
+              </div>
+              <label class="toggle-switch">
+                <input type="checkbox" id="start-on-login-toggle">
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
             <div class="setting-item">
               <div class="setting-info">
                 <label for="startup-path-input">Custom Startup Folder</label>
@@ -443,7 +463,7 @@
       <div class="modal-footer">
         <div class="footer-top">
           <span class="footer-credit">Made with <img src="assets/twemoji/2764.svg" class="twemoji" alt="❤️" draggable="false" /> By: <strong>BurntToasters</strong>/<strong id="rosie-link" style="cursor: pointer; text-decoration: underline;">Rosie.run</strong></span>
-          <span class="footer-version" id="version-indicator" title="Click to view release">v0.6.2</span>
+          <span class="footer-version" id="version-indicator" title="Click to view release">v0.7.0</span>
         </div>
         <div class="footer-top" style="margin-top: 0.5rem; font-size: 0.85em; opacity: 0.8;">
           <span class="footer-credit">Emoji graphics by <strong>Twemoji</strong> (Twitter) + Additional Contributors: <span id="twemoji-cc-link" style="text-decoration: underline; color: inherit; cursor: pointer;">CC-BY 4.0</span></span>
@@ -629,7 +649,7 @@
     </div>
     <div class="status-right">
       <span id="status-disk-space"></span>
-      <p>Beta Build @ [v0.6.2]</p>
+      <p>Beta Build @ [v0.7.0]</p>
       <span id="heart-button" title="Support this project!" style="margin-left: -10px; margin-right: -15px; cursor: pointer;"> <img src="assets/twemoji/2764.svg" class="twemoji" alt="❤️" draggable="false" /> </span>
     </div>
   </div>

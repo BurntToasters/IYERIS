@@ -21,6 +21,19 @@ const path = {
   }
 };
 
+function escapeHtml(text: any): string {
+  if (text === null || text === undefined) return '';
+  const str = String(text);
+  const map: { [key: string]: string } = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#039;'
+  };
+  return str.replace(/[&<>"']/g, (m) => map[m]);
+}
+
 function emojiToCodepoint(emoji: string): string {
   const codePoints: number[] = [];
   let i = 0;
@@ -312,7 +325,9 @@ let currentSettings: Settings = {
   enableSearchHistory: true,
   searchHistory: [],
   directoryHistory: [],
-  enableIndexer: true
+  enableIndexer: true,
+  minimizeToTray: false,
+  startOnLogin: false
 };
 
 function showToast(message: string, title: string = '', type: 'success' | 'error' | 'info' | 'warning' = 'info'): void {
@@ -333,8 +348,8 @@ function showToast(message: string, title: string = '', type: 'success' | 'error
   toast.innerHTML = `
     <span class="toast-icon">${twemojiImg(String.fromCodePoint(parseInt(icons[type], 16)), 'twemoji')}</span>
     <div class="toast-content">
-      ${title ? `<div class="toast-title">${title}</div>` : ''}
-      <div class="toast-message">${message}</div>
+      ${title ? `<div class="toast-title">${escapeHtml(title)}</div>` : ''}
+      <div class="toast-message">${escapeHtml(message)}</div>
     </div>
   `;
 
@@ -416,6 +431,8 @@ async function showSettingsModal() {
   const sortBySelect = document.getElementById('sort-by-select') as HTMLSelectElement;
   const sortOrderSelect = document.getElementById('sort-order-select') as HTMLSelectElement;
   const showHiddenFilesToggle = document.getElementById('show-hidden-files-toggle') as HTMLInputElement;
+  const minimizeToTrayToggle = document.getElementById('minimize-to-tray-toggle') as HTMLInputElement;
+  const startOnLoginToggle = document.getElementById('start-on-login-toggle') as HTMLInputElement;
   const enableSearchHistoryToggle = document.getElementById('enable-search-history-toggle') as HTMLInputElement;
   const dangerousOptionsToggle = document.getElementById('dangerous-options-toggle') as HTMLInputElement;
   const startupPathInput = document.getElementById('startup-path-input') as HTMLInputElement;
@@ -440,6 +457,14 @@ async function showSettingsModal() {
   
   if (showHiddenFilesToggle) {
     showHiddenFilesToggle.checked = currentSettings.showHiddenFiles || false;
+  }
+
+  if (minimizeToTrayToggle) {
+    minimizeToTrayToggle.checked = currentSettings.minimizeToTray || false;
+  }
+  
+  if (startOnLoginToggle) {
+    startOnLoginToggle.checked = currentSettings.startOnLogin || false;
   }
   
   if (enableSearchHistoryToggle) {
@@ -676,18 +701,14 @@ function copyLicensesText() {
   });
 }
 
-function escapeHtml(text: string): string {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
-}
-
 async function saveSettings() {
   const transparencyToggle = document.getElementById('transparency-toggle') as HTMLInputElement;
   const themeSelect = document.getElementById('theme-select') as HTMLSelectElement;
   const sortBySelect = document.getElementById('sort-by-select') as HTMLSelectElement;
   const sortOrderSelect = document.getElementById('sort-order-select') as HTMLSelectElement;
   const showHiddenFilesToggle = document.getElementById('show-hidden-files-toggle') as HTMLInputElement;
+  const minimizeToTrayToggle = document.getElementById('minimize-to-tray-toggle') as HTMLInputElement;
+  const startOnLoginToggle = document.getElementById('start-on-login-toggle') as HTMLInputElement;
   const enableSearchHistoryToggle = document.getElementById('enable-search-history-toggle') as HTMLInputElement;
   const dangerousOptionsToggle = document.getElementById('dangerous-options-toggle') as HTMLInputElement;
   const startupPathInput = document.getElementById('startup-path-input') as HTMLInputElement;
@@ -713,18 +734,27 @@ async function saveSettings() {
     currentSettings.showHiddenFiles = showHiddenFilesToggle.checked;
   }
   
+  if (minimizeToTrayToggle) {
+    currentSettings.minimizeToTray = minimizeToTrayToggle.checked;
+  }
+  
+  if (startOnLoginToggle) {
+    currentSettings.startOnLogin = startOnLoginToggle.checked;
+  }
+  
   if (enableSearchHistoryToggle) {
     currentSettings.enableSearchHistory = enableSearchHistoryToggle.checked;
   }
-  
+
   if (dangerousOptionsToggle) {
     currentSettings.showDangerousOptions = dangerousOptionsToggle.checked;
+    updateDangerousOptionsVisibility(currentSettings.showDangerousOptions);
   }
-  
+
   if (startupPathInput) {
-    currentSettings.startupPath = startupPathInput.value.trim();
+    currentSettings.startupPath = startupPathInput.value;
   }
-  
+
   if (enableIndexerToggle) {
     currentSettings.enableIndexer = enableIndexerToggle.checked;
   }
@@ -779,7 +809,7 @@ function loadBookmarks() {
     
     bookmarkItem.innerHTML = `
       <span class="bookmark-icon">${twemojiImg(String.fromCodePoint(0x2B50), 'twemoji')}</span>
-      <span class="bookmark-label">${name}</span>
+      <span class="bookmark-label">${escapeHtml(name)}</span>
       <button class="bookmark-remove" title="Remove bookmark">${twemojiImg(String.fromCodePoint(0x274C), 'twemoji')}</button>
     `;
     
@@ -1289,7 +1319,7 @@ async function loadDrives() {
     driveItem.className = 'nav-item';
     driveItem.innerHTML = `
       <span class="nav-icon">${twemojiImg(String.fromCodePoint(0x1F4BE), 'twemoji')}</span>
-      <span class="nav-label">${drive}</span>
+      <span class="nav-label">${escapeHtml(drive)}</span>
     `;
     driveItem.addEventListener('click', () => navigateTo(drive));
     drivesList.appendChild(driveItem);
@@ -1910,12 +1940,12 @@ function createFileItem(item) {
       <div class="file-icon">
         ${getFileIcon(item.name)}
       </div>
-      <div class="file-name">${item.name}</div>
+      <div class="file-name">${escapeHtml(item.name)}</div>
     `;
   } else {
     fileItem.innerHTML = `
       <div class="file-icon">${icon}</div>
-      <div class="file-name">${item.name}</div>
+      <div class="file-name">${escapeHtml(item.name)}</div>
     `;
   }
   
@@ -2825,7 +2855,7 @@ function showPropertiesDialog(props) {
   content.innerHTML = `
     <div class="property-row">
       <div class="property-label">Name:</div>
-      <div class="property-value">${props.name}</div>
+      <div class="property-value">${escapeHtml(props.name)}</div>
     </div>
     <div class="property-row">
       <div class="property-label">Type:</div>
@@ -2837,7 +2867,7 @@ function showPropertiesDialog(props) {
     </div>
     <div class="property-row">
       <div class="property-label">Location:</div>
-      <div class="property-value">${props.path}</div>
+      <div class="property-value">${escapeHtml(props.path)}</div>
     </div>
     <div class="property-row">
       <div class="property-label">Created:</div>
@@ -2907,6 +2937,30 @@ async function checkForUpdates() {
         showDialog(
           'Updates via Flatpak',
           `You're running IYERIS as a Flatpak (${result.currentVersion}).\n\n${result.flatpakMessage}\n\nOr use your system's software center to check for updates.`,
+          'info',
+          false
+        );
+        btn.innerHTML = originalHTML;
+        btn.disabled = false;
+        return;
+      }
+
+      if (result.isMas) {
+        showDialog(
+          'Updates via App Store',
+          `You're running IYERIS from the Mac App Store (${result.currentVersion}).\n\n${result.masMessage}`,
+          'info',
+          false
+        );
+        btn.innerHTML = originalHTML;
+        btn.disabled = false;
+        return;
+      }
+
+      if (result.isMsi) {
+        showDialog(
+          'Enterprise Installation',
+          `You're running IYERIS as an enterprise installation (${result.currentVersion}).\n\n${result.msiMessage}`,
           'info',
           false
         );
@@ -3186,7 +3240,8 @@ function updatePreview(file: FileItem) {
 
   const textExts = [
     'txt', 'text', 'md', 'markdown', 'log', 'readme', 'html', 'htm', 'css', 'scss', 'sass', 'less', 'js', 'jsx', 'ts', 'tsx', 'vue', 'svelte', 'py', 'pyc', 'pyw', 'java', 'c', 'cpp', 'cc', 'cxx', 'h', 'hpp', 'cs', 'php', 'rb', 'go', 'rs', 'swift', 'kt', 'kts', 'scala', 'r', 'lua', 'perl', 'pl', 'sh', 'bash', 'zsh', 'fish', 'ps1', 'bat', 'cmd',
-    'json', 'xml', 'yml', 'yaml', 'toml', 'csv', 'tsv', 'sql', 'ini', 'conf', 'config', 'cfg', 'env', 'properties', 'gitignore', 'gitattributes', 'editorconfig', 'dockerfile', 'dockerignore',
+    'json', 'xml', 'yml', 'yaml', 'toml', 'csv', 'tsv', 'sql',
+    'ini', 'conf', 'config', 'cfg', 'env', 'properties', 'gitignore', 'gitattributes', 'editorconfig', 'dockerfile', 'dockerignore',
     'rst', 'tex', 'adoc', 'asciidoc', 'makefile', 'cmake', 'gradle', 'maven'
   ];
 
@@ -3343,7 +3398,7 @@ function generateFileInfo(file: FileItem, props: ItemProperties | null): string 
     <div class="preview-info">
       <div class="preview-info-item">
         <span class="preview-info-label">Name</span>
-        <span class="preview-info-value">${file.name}</span>
+        <span class="preview-info-value">${escapeHtml(file.name)}</span>
       </div>
       <div class="preview-info-item">
         <span class="preview-info-label">Type</span>
@@ -3355,7 +3410,7 @@ function generateFileInfo(file: FileItem, props: ItemProperties | null): string 
       </div>
       <div class="preview-info-item">
         <span class="preview-info-label">Location</span>
-        <span class="preview-info-value">${file.path}</span>
+        <span class="preview-info-value">${escapeHtml(file.path)}</span>
       </div>
       <div class="preview-info-item">
         <span class="preview-info-label">Created</span>

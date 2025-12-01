@@ -1,12 +1,9 @@
-import { app, BrowserWindow, ipcMain, dialog, shell, IpcMainInvokeEvent, Menu } from 'electron';
-import { autoUpdater } from 'electron-updater';
+import { app, BrowserWindow, ipcMain, dialog, shell, IpcMainInvokeEvent, Menu, Tray, nativeImage } from 'electron';
 import * as path from 'path';
 import { promises as fs } from 'fs';
 import * as fsSync from 'fs';
 import { exec } from 'child_process';
 import { promisify } from 'util';
-import Seven = require('node-7z');
-import sevenBin = require('7zip-bin');
 import type { Settings, FileItem, ApiResponse, DirectoryResponse, PathResponse, PropertiesResponse, SettingsResponse, UpdateCheckResponse, IndexSearchResponse } from './types';
 import { FileIndexer } from './indexer';
 
@@ -18,13 +15,32 @@ if (process.argv.includes('--disable-hardware-acceleration')) {
 
 // Enable V8 code caching via cli args
 app.commandLine.appendSwitch('--enable-blink-features', 'CodeCache');
+app.commandLine.appendSwitch('wm-window-animations-disabled');
+app.commandLine.appendSwitch('disable-http-cache');
 
 const isRunningInFlatpak = (): boolean => {
   return process.env.FLATPAK_ID !== undefined || 
          fsSync.existsSync('/.flatpak-info');
 };
 
+// Check if installed via MSI
+const isInstalledViaMsi = (): boolean => {
+  if (process.platform !== 'win32') return false;
+  
+  try {
+    const { execSync } = require('child_process');
+    const result = execSync(
+      'reg query "HKCU\\Software\\IYERIS" /v InstalledViaMsi 2>nul',
+      { encoding: 'utf8', windowsHide: true }
+    );
+    return result.includes('InstalledViaMsi') && result.includes('0x1');
+  } catch {
+    return false;
+  }
+};
+
 const get7zipPath = (): string => {
+  const sevenBin = require('7zip-bin');
   let sevenZipPath = sevenBin.path7za;
 
   if (app.isPackaged) {
@@ -37,8 +53,27 @@ const get7zipPath = (): string => {
 
 let mainWindow: BrowserWindow | null = null;
 let fileIndexer: FileIndexer | null = null;
+let tray: Tray | null = null;
+let isQuitting = false;
 
 const isDev = process.argv.includes('--dev');
+
+// inst lock
+const gotTheLock = app.requestSingleInstanceLock();
+
+if (!gotTheLock) {
+  console.log('[SingleInstance] Another instance is already running, quitting...');
+  app.quit();
+} else {
+  app.on('second-instance', (event, commandLine, workingDirectory) => {
+    console.log('[SingleInstance] Second instance attempted to start');
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      if (!mainWindow.isVisible()) mainWindow.show();
+      mainWindow.focus();
+    }
+  });
+}
 
 interface UndoAction {
   type: 'trash' | 'rename' | 'move' | 'create';
@@ -73,8 +108,24 @@ const defaultSettings: Settings = {
   enableSearchHistory: true,
   searchHistory: [],
   directoryHistory: [],
-  enableIndexer: true
+  enableIndexer: true,
+  minimizeToTray: false,
+  startOnLogin: false
 };
+
+function applyLoginItemSettings(settings: Settings): void {
+  try {
+    console.log('[LoginItem] Applying settings:', settings.startOnLogin);
+    app.setLoginItemSettings({
+      openAtLogin: settings.startOnLogin,
+      openAsHidden: settings.startOnLogin,
+      args: settings.startOnLogin ? ['--hidden'] : [], // not supported on Linux
+      name: 'IYERIS'
+    });
+  } catch (error) {
+    console.error('[LoginItem] Failed to set login item:', error);
+  }
+}
 
 function getSettingsPath(): string {
   const userDataPath = app.getPath('userData');
@@ -102,6 +153,9 @@ async function saveSettings(settings: Settings): Promise<ApiResponse> {
     console.log('[Settings] Data:', JSON.stringify(settings, null, 2));
     await fs.writeFile(settingsPath, JSON.stringify(settings, null, 2), 'utf8');
     console.log('[Settings] Saved successfully');
+
+    applyLoginItemSettings(settings);
+    
     return { success: true };
   } catch (error) {
     console.log('[Settings] Save failed:', (error as Error).message);
@@ -156,8 +210,8 @@ async function isFileHiddenCached(filePath: string, fileName: string): Promise<b
   return isHidden;
 }
 
-function createWindow(): void {
-  mainWindow = new BrowserWindow({
+function createWindow(isInitialWindow: boolean = false): BrowserWindow {
+  const newWindow = new BrowserWindow({
     width: 1400,
     height: 900,
     minWidth: 1000,
@@ -180,15 +234,76 @@ function createWindow(): void {
     icon: path.join(__dirname, '..', 'assets', 'icon.png')
   });
 
-  mainWindow.loadFile(path.join(__dirname, '..', 'index.html'));
+  newWindow.loadFile(path.join(__dirname, '..', 'index.html'));
 
-  mainWindow.once('ready-to-show', () => {
-    mainWindow?.show();
+  const startHidden = isInitialWindow && process.argv.includes('--hidden');
+  console.log('[Window] Creating window, isInitial:', isInitialWindow, 'startHidden:', startHidden);
+  
+  newWindow.once('ready-to-show', async () => {
+    if (startHidden) {
+      console.log('[Window] Starting minimized to tray');
+      if (process.platform === 'darwin') {
+        if (!tray) {
+          await createTray();
+        }
+        app.dock?.hide();
+      }
+    } else {
+      newWindow.show();
+    }
+  });
+
+  newWindow.on('close', async (event) => {
+    if (!isQuitting) {
+      const settings = await loadSettings();
+      if (settings.minimizeToTray && tray) {
+        event.preventDefault();
+        newWindow.hide();
+        if (process.platform === 'darwin') {
+          const allWindows = BrowserWindow.getAllWindows();
+          const visibleWindows = allWindows.filter(w => w.isVisible());
+          if (visibleWindows.length === 0) {
+            app.dock?.hide();
+          }
+        }
+        return;
+      }
+    }
+    return;
+  });
+
+  newWindow.on('minimize', async () => {
+    const settings = await loadSettings();
+    if (settings.minimizeToTray && tray) {
+      newWindow.restore();
+      newWindow.hide();
+      if (process.platform === 'darwin') {
+        const allWindows = BrowserWindow.getAllWindows();
+        const visibleWindows = allWindows.filter(w => w.isVisible());
+        if (visibleWindows.length === 0) {
+          app.dock?.hide();
+        }
+      }
+    }
   });
 
   if (isDev) {
-    mainWindow.webContents.openDevTools();
+    newWindow.webContents.openDevTools();
   }
+
+  newWindow.on('closed', () => {
+    if (mainWindow === newWindow) {
+      const allWindows = BrowserWindow.getAllWindows();
+      mainWindow = allWindows.length > 0 ? allWindows[0] : null;
+      console.log('[Window] mainWindow updated after close, remaining windows:', allWindows.length);
+    }
+  });
+
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    mainWindow = newWindow;
+  }
+
+  return newWindow;
 }
 
 async function checkFullDiskAccess(): Promise<boolean> {
@@ -332,12 +447,15 @@ function setupApplicationMenu(): void {
 
 app.whenReady().then(async () => {
   setupApplicationMenu();
-  createWindow();
+  createWindow(true); // Initial window
+  await createTray();
 
   mainWindow?.once('ready-to-show', () => {
     setTimeout(async () => {
       try {
         const settings = await loadSettings();
+
+        applyLoginItemSettings(settings);
 
         if (settings.enableIndexer) {
           const indexerDelay = process.platform === 'win32' ? 2000 : 500;
@@ -352,6 +470,7 @@ app.whenReady().then(async () => {
         // Defer auto-updater setup
         setTimeout(() => {
           try {
+            const { autoUpdater } = require('electron-updater');
             autoUpdater.logger = console;
             autoUpdater.autoDownload = false;
             autoUpdater.autoInstallOnAppQuit = true;
@@ -361,6 +480,9 @@ app.whenReady().then(async () => {
               console.log('[AutoUpdater] Updates should be installed via: flatpak update com.burnttoasters.iyeris');
             } else if (process.mas) {
               console.log('[AutoUpdater] Running in Mac App Store - auto-updater disabled');
+            } else if (isInstalledViaMsi()) {
+              console.log('[AutoUpdater] Installed via MSI (enterprise) - auto-updater disabled');
+              console.log('[AutoUpdater] Updates should be managed by your IT administrator');
             }
 
             autoUpdater.on('checking-for-update', () => {
@@ -398,8 +520,8 @@ app.whenReady().then(async () => {
               mainWindow?.webContents.send('update-downloaded', info);
             });
 
-            // Check for updates on startup
-            if (!isRunningInFlatpak() && !process.mas && !isDev) {
+            // Check for updates on startup (skip for managed installations)
+            if (!isRunningInFlatpak() && !process.mas && !isInstalledViaMsi() && !isDev) {
               console.log('[AutoUpdater] Checking for updates on startup...');
               autoUpdater.checkForUpdates().catch(err => {
                 console.error('[AutoUpdater] Startup check failed:', err);
@@ -439,9 +561,23 @@ app.whenReady().then(async () => {
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
+      createWindow(false); // Not initial window
+    } else {
+      mainWindow?.show();
+      mainWindow?.focus();
+      if (process.platform === 'darwin') {
+        app.dock?.show();
+      }
     }
   });
+});
+
+app.on('before-quit', () => {
+  isQuitting = true;
+  if (tray) {
+    tray.destroy();
+    tray = null;
+  }
 });
 
 app.on('window-all-closed', () => {
@@ -519,10 +655,13 @@ ipcMain.handle('get-drives', async (): Promise<string[]> => {
     // PS
     if (drives.size === 0) {
       try {
-        const { stdout } = await execAsync('powershell -NoProfile -Command "Get-CimInstance -ClassName Win32_LogicalDisk | Select-Object -ExpandProperty DeviceID"', { timeout: 3000 });
+        const { stdout } = await execAsync('powershell -NoProfile -Command "Get-PSDrive -PSProvider FileSystem | Select-Object -ExpandProperty Name"', { timeout: 3000 });
         const lines = stdout.split(/[\r\n]+/);
         for (const line of lines) {
-          const drive = line.trim();
+          let drive = line.trim();
+          if (/^[A-Z]$/.test(drive)) {
+            drive += ':';
+          }
           if (/^[A-Z]:$/.test(drive)) {
             drives.add(drive + '\\');
           }
@@ -634,7 +773,7 @@ ipcMain.handle('close-window', (event: IpcMainInvokeEvent): void => {
   }
 });
 ipcMain.handle('open-new-window', (): void => {
-  createWindow();
+  createWindow(false); // User-triggered window
 });
 
 ipcMain.handle('create-folder', async (_event: IpcMainInvokeEvent, parentPath: string, folderName: string): Promise<PathResponse> => {
@@ -833,6 +972,16 @@ ipcMain.handle('save-settings', async (_event: IpcMainInvokeEvent, settings: Set
 
     if (settings.enableIndexer) {
       fileIndexer.initialize(true);
+    }
+  }
+
+  if (result.success) {
+    if (settings.minimizeToTray && !tray) {
+      await createTray();
+    } else if (!settings.minimizeToTray && tray) {
+      tray.destroy();
+      tray = null;
+      console.log('[Tray] Tray destroyed (setting disabled)');
     }
   }
   
@@ -1191,7 +1340,21 @@ ipcMain.handle('check-for-updates', async (): Promise<UpdateCheckResponse> => {
     };
   }
 
+  if (isInstalledViaMsi()) {
+    const currentVersion = app.getVersion();
+    console.log('[AutoUpdater] MSI installation detected - auto-updates disabled');
+    return {
+      success: true,
+      hasUpdate: false,
+      currentVersion: `v${currentVersion}`,
+      latestVersion: `v${currentVersion}`,
+      isMsi: true,
+      msiMessage: 'This is an enterprise installation. Updates are managed by your IT administrator. To enable auto-updates, uninstall the MSI version and install the regular version from the website.'
+    };
+  }
+
   try {
+    const { autoUpdater } = require('electron-updater');
     const currentVersion = app.getVersion();
     console.log('[AutoUpdater] Manually checking for updates. Current version:', currentVersion);
     
@@ -1230,6 +1393,7 @@ ipcMain.handle('check-for-updates', async (): Promise<UpdateCheckResponse> => {
 
 ipcMain.handle('download-update', async (): Promise<ApiResponse> => {
   try {
+    const { autoUpdater } = require('electron-updater');
     console.log('[AutoUpdater] Starting update download...');
     await autoUpdater.downloadUpdate();
     return { success: true };
@@ -1241,6 +1405,7 @@ ipcMain.handle('download-update', async (): Promise<ApiResponse> => {
 
 ipcMain.handle('install-update', async (): Promise<ApiResponse> => {
   try {
+    const { autoUpdater } = require('electron-updater');
     console.log('[AutoUpdater] Installing update and restarting...');
     autoUpdater.quitAndInstall(false, true);
     return { success: true };
@@ -1448,6 +1613,7 @@ ipcMain.handle('compress-files', async (_event: IpcMainInvokeEvent, sourcePaths:
 
     if (format === 'tar.gz') {
       return new Promise(async (resolve, reject) => {
+        const Seven = require('node-7z');
         const sevenZipPath = get7zipPath();
         console.log('[Compress] Using 7zip at:', sevenZipPath);
         const tarPath = outputPath.replace(/\.gz$/, '');
@@ -1589,6 +1755,7 @@ ipcMain.handle('compress-files', async (_event: IpcMainInvokeEvent, sourcePaths:
     }
 
     return new Promise((resolve, reject) => {
+      const Seven = require('node-7z');
       const sevenZipPath = get7zipPath();
       console.log('[Compress] Using 7zip at:', sevenZipPath);
 
@@ -1656,6 +1823,7 @@ ipcMain.handle('extract-archive', async (_event: IpcMainInvokeEvent, archivePath
 
     await fs.mkdir(destPath, { recursive: true });
     return new Promise((resolve, reject) => {
+      const Seven = require('node-7z');
       const sevenZipPath = get7zipPath();
       console.log('[Extract] Using 7zip at:', sevenZipPath);
       
@@ -1750,5 +1918,131 @@ ipcMain.handle('get-zoom-level', async (): Promise<{success: boolean; zoomLevel?
     return { success: false, error: (error as Error).message };
   }
 });
+
+async function createTray(): Promise<void> {
+  const settings = await loadSettings();
+  if (!settings.minimizeToTray) {
+    console.log('[Tray] Tray disabled in settings');
+    return;
+  }
+
+  if (tray) {
+    tray.destroy();
+    tray = null;
+  }
+
+  let iconPath: string;
+  let trayIcon: Electron.NativeImage;
+
+  if (process.platform === 'darwin') {
+    const templateIconPath = path.join(__dirname, '..', 'assets', 'iconTemplate.png');
+    const regularIconPath = path.join(__dirname, '..', 'assets', 'icon.png');
+
+    if (fsSync.existsSync(templateIconPath)) {
+      iconPath = templateIconPath;
+      trayIcon = nativeImage.createFromPath(iconPath);
+      trayIcon.setTemplateImage(true);
+    } else {
+      iconPath = regularIconPath;
+      trayIcon = nativeImage.createFromPath(iconPath).resize({ width: 22, height: 22 });
+      trayIcon.setTemplateImage(true);
+    }
+  } else {
+    iconPath = path.join(__dirname, '..', 'assets', 'icon.png');
+    trayIcon = nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 });
+  }
+
+  if (trayIcon.isEmpty()) {
+    console.error('[Tray] Failed to load tray icon from:', iconPath);
+    return;
+  }
+  
+  try {
+    tray = new Tray(trayIcon);
+  } catch (error) {
+    console.error('[Tray] Failed to create tray icon (system may not support tray icons):', error);
+    console.log('[Tray] Minimize to tray feature will be disabled');
+    tray = null;
+    return;
+  }
+
+  tray.setToolTip('IYERIS');
+  
+  const contextMenu = Menu.buildFromTemplate([
+    { 
+      label: 'Show IYERIS', 
+      click: () => {
+        let targetWindow = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+        if (!targetWindow) {
+          const allWindows = BrowserWindow.getAllWindows();
+          targetWindow = allWindows.length > 0 ? allWindows[0] : null;
+        }
+        
+        if (targetWindow) {
+          targetWindow.show();
+          targetWindow.focus();
+        } else {
+          createWindow(false);
+        }
+        
+        if (process.platform === 'darwin') {
+          app.dock?.show();
+        }
+      } 
+    },
+    { type: 'separator' },
+    { 
+      label: 'Quit', 
+      click: () => {
+        isQuitting = true;
+        app.quit();
+      } 
+    }
+  ]);
+  
+  tray.setContextMenu(contextMenu);
+
+  if (process.platform !== 'darwin') {
+    tray.on('click', () => {
+      let targetWindow = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+      if (!targetWindow) {
+        const allWindows = BrowserWindow.getAllWindows();
+        targetWindow = allWindows.length > 0 ? allWindows[0] : null;
+      }
+      
+      if (targetWindow) {
+        if (targetWindow.isVisible()) {
+          targetWindow.hide();
+        } else {
+          targetWindow.show();
+          targetWindow.focus();
+        }
+      } else {
+        createWindow(false);
+      }
+    });
+  }
+
+  if (process.platform === 'darwin') {
+    tray.on('double-click', () => {
+      let targetWindow = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+      if (!targetWindow) {
+        const allWindows = BrowserWindow.getAllWindows();
+        targetWindow = allWindows.length > 0 ? allWindows[0] : null;
+      }
+      
+      if (targetWindow) {
+        targetWindow.show();
+        targetWindow.focus();
+      } else {
+        createWindow(false);
+      }
+      
+      app.dock?.show();
+    });
+  }
+
+  console.log('[Tray] Tray created successfully');
+}
 
 

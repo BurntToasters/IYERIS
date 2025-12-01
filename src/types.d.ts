@@ -12,6 +12,8 @@ export interface Settings {
   searchHistory: string[];
   directoryHistory: string[];
   enableIndexer: boolean;
+  minimizeToTray: boolean;
+  startOnLogin: boolean;
 }
 
 export interface FileItem {
@@ -112,6 +114,8 @@ export interface UpdateCheckResponse extends ApiResponse {
   flatpakMessage?: string;
   isMas?: boolean;
   masMessage?: string;
+  isMsi?: boolean;
+  msiMessage?: string;
 }
 
 export interface UpdateDownloadProgress {
