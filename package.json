@@ -119,8 +119,10 @@
       "perMachine": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "artifactName": "${productName}-Win-${arch}.${ext}"
+      "artifactName": "${productName}-Win-${arch}-Enterprise.${ext}",
+      "warningsAsErrors": false
     },
+    "msiProjectCreated": "build/msi-hook.js",
     "linux": {
       "target": [
         "AppImage",
