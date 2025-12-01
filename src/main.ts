@@ -221,9 +221,18 @@ function createWindow(): void {
   mainWindow.loadFile(path.join(__dirname, '..', 'index.html'));
 
   const startHidden = process.argv.includes('--hidden');
+  console.log('[Window] Start hidden:', startHidden, 'Args:', process.argv);
   
-  mainWindow.once('ready-to-show', () => {
-    if (!startHidden) {
+  mainWindow.once('ready-to-show', async () => {
+    if (startHidden) {
+      console.log('[Window] Starting minimized to tray');
+      if (process.platform === 'darwin') {
+        if (!tray) {
+          await createTray();
+        }
+        app.dock?.hide();
+      }
+    } else {
       mainWindow?.show();
     }
   });
@@ -234,6 +243,9 @@ function createWindow(): void {
       if (settings.minimizeToTray) {
         event.preventDefault();
         mainWindow?.hide();
+        if (process.platform === 'darwin') {
+          app.dock?.hide();
+        }
         return;
       }
     }
@@ -387,7 +399,7 @@ function setupApplicationMenu(): void {
 app.whenReady().then(async () => {
   setupApplicationMenu();
   createWindow();
-  createTray();
+  await createTray();
 
   mainWindow?.once('ready-to-show', () => {
     setTimeout(async () => {
@@ -500,12 +512,20 @@ app.whenReady().then(async () => {
       createWindow();
     } else {
       mainWindow?.show();
+      mainWindow?.focus();
+      if (process.platform === 'darwin') {
+        app.dock?.show();
+      }
     }
   });
 });
 
 app.on('before-quit', () => {
   isQuitting = true;
+  if (tray) {
+    tray.destroy();
+    tray = null;
+  }
 });
 
 app.on('window-all-closed', () => {
@@ -900,6 +920,16 @@ ipcMain.handle('save-settings', async (_event: IpcMainInvokeEvent, settings: Set
 
     if (settings.enableIndexer) {
       fileIndexer.initialize(true);
+    }
+  }
+
+  if (result.success) {
+    if (settings.minimizeToTray && !tray) {
+      await createTray();
+    } else if (!settings.minimizeToTray && tray) {
+      tray.destroy();
+      tray = null;
+      console.log('[Tray] Tray destroyed (setting disabled)');
     }
   }
   
@@ -1824,9 +1854,43 @@ ipcMain.handle('get-zoom-level', async (): Promise<{success: boolean; zoomLevel?
   }
 });
 
-function createTray(): void {
-  const iconPath = path.join(__dirname, '..', 'assets', 'icon.png');
-  const trayIcon = nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 });
+async function createTray(): Promise<void> {
+  const settings = await loadSettings();
+  if (!settings.minimizeToTray) {
+    console.log('[Tray] Tray disabled in settings');
+    return;
+  }
+
+  if (tray) {
+    tray.destroy();
+    tray = null;
+  }
+
+  let iconPath: string;
+  let trayIcon: Electron.NativeImage;
+
+  if (process.platform === 'darwin') {
+    const templateIconPath = path.join(__dirname, '..', 'assets', 'iconTemplate.png');
+    const regularIconPath = path.join(__dirname, '..', 'assets', 'icon.png');
+
+    if (fsSync.existsSync(templateIconPath)) {
+      iconPath = templateIconPath;
+      trayIcon = nativeImage.createFromPath(iconPath);
+      trayIcon.setTemplateImage(true);
+    } else {
+      iconPath = regularIconPath;
+      trayIcon = nativeImage.createFromPath(iconPath).resize({ width: 22, height: 22 });
+      trayIcon.setTemplateImage(true);
+    }
+  } else {
+    iconPath = path.join(__dirname, '..', 'assets', 'icon.png');
+    trayIcon = nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 });
+  }
+
+  if (trayIcon.isEmpty()) {
+    console.error('[Tray] Failed to load tray icon from:', iconPath);
+    return;
+  }
   
   tray = new Tray(trayIcon);
   tray.setToolTip('IYERIS');
@@ -1836,6 +1900,10 @@ function createTray(): void {
       label: 'Show IYERIS', 
       click: () => {
         mainWindow?.show();
+        mainWindow?.focus();
+        if (process.platform === 'darwin') {
+          app.dock?.show();
+        }
       } 
     },
     { type: 'separator' },
@@ -1849,14 +1917,27 @@ function createTray(): void {
   ]);
   
   tray.setContextMenu(contextMenu);
-  
-  tray.on('click', () => {
-    if (mainWindow?.isVisible()) {
-      mainWindow.hide();
-    } else {
+
+  if (process.platform !== 'darwin') {
+    tray.on('click', () => {
+      if (mainWindow?.isVisible()) {
+        mainWindow.hide();
+      } else {
+        mainWindow?.show();
+        mainWindow?.focus();
+      }
+    });
+  }
+
+  if (process.platform === 'darwin') {
+    tray.on('double-click', () => {
       mainWindow?.show();
-    }
-  });
+      mainWindow?.focus();
+      app.dock?.show();
+    });
+  }
+
+  console.log('[Tray] Tray created successfully');
 }
 
 
