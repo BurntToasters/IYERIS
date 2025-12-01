@@ -194,8 +194,8 @@ async function isFileHiddenCached(filePath: string, fileName: string): Promise<b
   return isHidden;
 }
 
-function createWindow(): void {
-  mainWindow = new BrowserWindow({
+function createWindow(isInitialWindow: boolean = false): BrowserWindow {
+  const newWindow = new BrowserWindow({
     width: 1400,
     height: 900,
     minWidth: 1000,
@@ -218,12 +218,12 @@ function createWindow(): void {
     icon: path.join(__dirname, '..', 'assets', 'icon.png')
   });
 
-  mainWindow.loadFile(path.join(__dirname, '..', 'index.html'));
+  newWindow.loadFile(path.join(__dirname, '..', 'index.html'));
 
-  const startHidden = process.argv.includes('--hidden');
-  console.log('[Window] Start hidden:', startHidden, 'Args:', process.argv);
+  const startHidden = isInitialWindow && process.argv.includes('--hidden');
+  console.log('[Window] Creating window, isInitial:', isInitialWindow, 'startHidden:', startHidden);
   
-  mainWindow.once('ready-to-show', async () => {
+  newWindow.once('ready-to-show', async () => {
     if (startHidden) {
       console.log('[Window] Starting minimized to tray');
       if (process.platform === 'darwin') {
@@ -233,18 +233,22 @@ function createWindow(): void {
         app.dock?.hide();
       }
     } else {
-      mainWindow?.show();
+      newWindow.show();
     }
   });
 
-  mainWindow.on('close', async (event) => {
+  newWindow.on('close', async (event) => {
     if (!isQuitting) {
       const settings = await loadSettings();
       if (settings.minimizeToTray) {
         event.preventDefault();
-        mainWindow?.hide();
+        newWindow.hide();
         if (process.platform === 'darwin') {
-          app.dock?.hide();
+          const allWindows = BrowserWindow.getAllWindows();
+          const visibleWindows = allWindows.filter(w => w.isVisible());
+          if (visibleWindows.length === 0) {
+            app.dock?.hide();
+          }
         }
         return;
       }
@@ -252,9 +256,38 @@ function createWindow(): void {
     return;
   });
 
+  newWindow.on('minimize', async () => {
+    const settings = await loadSettings();
+    if (settings.minimizeToTray) {
+      newWindow.restore();
+      newWindow.hide();
+      if (process.platform === 'darwin') {
+        const allWindows = BrowserWindow.getAllWindows();
+        const visibleWindows = allWindows.filter(w => w.isVisible());
+        if (visibleWindows.length === 0) {
+          app.dock?.hide();
+        }
+      }
+    }
+  });
+
   if (isDev) {
-    mainWindow.webContents.openDevTools();
+    newWindow.webContents.openDevTools();
   }
+
+  newWindow.on('closed', () => {
+    if (mainWindow === newWindow) {
+      const allWindows = BrowserWindow.getAllWindows();
+      mainWindow = allWindows.length > 0 ? allWindows[0] : null;
+      console.log('[Window] mainWindow updated after close, remaining windows:', allWindows.length);
+    }
+  });
+
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    mainWindow = newWindow;
+  }
+
+  return newWindow;
 }
 
 async function checkFullDiskAccess(): Promise<boolean> {
@@ -398,7 +431,7 @@ function setupApplicationMenu(): void {
 
 app.whenReady().then(async () => {
   setupApplicationMenu();
-  createWindow();
+  createWindow(true); // Initial window
   await createTray();
 
   mainWindow?.once('ready-to-show', () => {
@@ -509,7 +542,7 @@ app.whenReady().then(async () => {
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
+      createWindow(false); // Not initial window
     } else {
       mainWindow?.show();
       mainWindow?.focus();
@@ -721,7 +754,7 @@ ipcMain.handle('close-window', (event: IpcMainInvokeEvent): void => {
   }
 });
 ipcMain.handle('open-new-window', (): void => {
-  createWindow();
+  createWindow(false); // User-triggered window
 });
 
 ipcMain.handle('create-folder', async (_event: IpcMainInvokeEvent, parentPath: string, folderName: string): Promise<PathResponse> => {
@@ -1899,8 +1932,19 @@ async function createTray(): Promise<void> {
     { 
       label: 'Show IYERIS', 
       click: () => {
-        mainWindow?.show();
-        mainWindow?.focus();
+        let targetWindow = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+        if (!targetWindow) {
+          const allWindows = BrowserWindow.getAllWindows();
+          targetWindow = allWindows.length > 0 ? allWindows[0] : null;
+        }
+        
+        if (targetWindow) {
+          targetWindow.show();
+          targetWindow.focus();
+        } else {
+          createWindow(false);
+        }
+        
         if (process.platform === 'darwin') {
           app.dock?.show();
         }
@@ -1920,19 +1964,40 @@ async function createTray(): Promise<void> {
 
   if (process.platform !== 'darwin') {
     tray.on('click', () => {
-      if (mainWindow?.isVisible()) {
-        mainWindow.hide();
+      let targetWindow = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+      if (!targetWindow) {
+        const allWindows = BrowserWindow.getAllWindows();
+        targetWindow = allWindows.length > 0 ? allWindows[0] : null;
+      }
+      
+      if (targetWindow) {
+        if (targetWindow.isVisible()) {
+          targetWindow.hide();
+        } else {
+          targetWindow.show();
+          targetWindow.focus();
+        }
       } else {
-        mainWindow?.show();
-        mainWindow?.focus();
+        createWindow(false);
       }
     });
   }
 
   if (process.platform === 'darwin') {
     tray.on('double-click', () => {
-      mainWindow?.show();
-      mainWindow?.focus();
+      let targetWindow = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+      if (!targetWindow) {
+        const allWindows = BrowserWindow.getAllWindows();
+        targetWindow = allWindows.length > 0 ? allWindows[0] : null;
+      }
+      
+      if (targetWindow) {
+        targetWindow.show();
+        targetWindow.focus();
+      } else {
+        createWindow(false);
+      }
+      
       app.dock?.show();
     });
   }
