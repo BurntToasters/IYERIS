@@ -240,7 +240,7 @@ function createWindow(isInitialWindow: boolean = false): BrowserWindow {
   newWindow.on('close', async (event) => {
     if (!isQuitting) {
       const settings = await loadSettings();
-      if (settings.minimizeToTray) {
+      if (settings.minimizeToTray && tray) {
         event.preventDefault();
         newWindow.hide();
         if (process.platform === 'darwin') {
@@ -258,7 +258,7 @@ function createWindow(isInitialWindow: boolean = false): BrowserWindow {
 
   newWindow.on('minimize', async () => {
     const settings = await loadSettings();
-    if (settings.minimizeToTray) {
+    if (settings.minimizeToTray && tray) {
       newWindow.restore();
       newWindow.hide();
       if (process.platform === 'darwin') {
@@ -1925,7 +1925,15 @@ async function createTray(): Promise<void> {
     return;
   }
   
-  tray = new Tray(trayIcon);
+  try {
+    tray = new Tray(trayIcon);
+  } catch (error) {
+    console.error('[Tray] Failed to create tray icon (system may not support tray icons):', error);
+    console.log('[Tray] Minimize to tray feature will be disabled');
+    tray = null;
+    return;
+  }
+
   tray.setToolTip('IYERIS');
   
   const contextMenu = Menu.buildFromTemplate([
