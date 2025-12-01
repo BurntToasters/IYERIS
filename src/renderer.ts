@@ -2945,6 +2945,30 @@ async function checkForUpdates() {
         return;
       }
 
+      if (result.isMas) {
+        showDialog(
+          'Updates via App Store',
+          `You're running IYERIS from the Mac App Store (${result.currentVersion}).\n\n${result.masMessage}`,
+          'info',
+          false
+        );
+        btn.innerHTML = originalHTML;
+        btn.disabled = false;
+        return;
+      }
+
+      if (result.isMsi) {
+        showDialog(
+          'Enterprise Installation',
+          `You're running IYERIS as an enterprise installation (${result.currentVersion}).\n\n${result.msiMessage}`,
+          'info',
+          false
+        );
+        btn.innerHTML = originalHTML;
+        btn.disabled = false;
+        return;
+      }
+
       if (result.hasUpdate) {
         const confirmed = await showDialog(
           'Update Available',

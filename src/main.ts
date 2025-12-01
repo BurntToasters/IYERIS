@@ -23,6 +23,22 @@ const isRunningInFlatpak = (): boolean => {
          fsSync.existsSync('/.flatpak-info');
 };
 
+// Check if installed via MSI
+const isInstalledViaMsi = (): boolean => {
+  if (process.platform !== 'win32') return false;
+  
+  try {
+    const { execSync } = require('child_process');
+    const result = execSync(
+      'reg query "HKCU\\Software\\IYERIS" /v InstalledViaMsi 2>nul',
+      { encoding: 'utf8', windowsHide: true }
+    );
+    return result.includes('InstalledViaMsi') && result.includes('0x1');
+  } catch {
+    return false;
+  }
+};
+
 const get7zipPath = (): string => {
   const sevenBin = require('7zip-bin');
   let sevenZipPath = sevenBin.path7za;
@@ -464,6 +480,9 @@ app.whenReady().then(async () => {
               console.log('[AutoUpdater] Updates should be installed via: flatpak update com.burnttoasters.iyeris');
             } else if (process.mas) {
               console.log('[AutoUpdater] Running in Mac App Store - auto-updater disabled');
+            } else if (isInstalledViaMsi()) {
+              console.log('[AutoUpdater] Installed via MSI (enterprise) - auto-updater disabled');
+              console.log('[AutoUpdater] Updates should be managed by your IT administrator');
             }
 
             autoUpdater.on('checking-for-update', () => {
@@ -501,8 +520,8 @@ app.whenReady().then(async () => {
               mainWindow?.webContents.send('update-downloaded', info);
             });
 
-            // Check for updates on startup
-            if (!isRunningInFlatpak() && !process.mas && !isDev) {
+            // Check for updates on startup (skip for managed installations)
+            if (!isRunningInFlatpak() && !process.mas && !isInstalledViaMsi() && !isDev) {
               console.log('[AutoUpdater] Checking for updates on startup...');
               autoUpdater.checkForUpdates().catch(err => {
                 console.error('[AutoUpdater] Startup check failed:', err);
@@ -1318,6 +1337,19 @@ ipcMain.handle('check-for-updates', async (): Promise<UpdateCheckResponse> => {
       latestVersion: `v${currentVersion}`,
       isMas: true,
       masMessage: 'Updates are managed by the Mac App Store.'
+    };
+  }
+
+  if (isInstalledViaMsi()) {
+    const currentVersion = app.getVersion();
+    console.log('[AutoUpdater] MSI installation detected - auto-updates disabled');
+    return {
+      success: true,
+      hasUpdate: false,
+      currentVersion: `v${currentVersion}`,
+      latestVersion: `v${currentVersion}`,
+      isMsi: true,
+      msiMessage: 'This is an enterprise installation. Updates are managed by your IT administrator. To enable auto-updates, uninstall the MSI version and install the regular version from the website.'
     };
   }
 

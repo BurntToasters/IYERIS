@@ -52,6 +52,23 @@ exports.default = async function(wxsFilePath) {
     console.log('MSI Hook: Added LicenseAgreementDlg->InstallScopeDlg navigation');
   }
 
+  const msiMarkerComponent = `
+    <!-- MSI Installation marker - disables in-app auto-updates -->
+    <Component Id="MsiInstallMarker" Guid="A1B2C3D4-E5F6-7890-ABCD-EF1234567890">
+      <RegistryKey Root="HKCU" Key="Software\\IYERIS">
+        <RegistryValue Name="InstalledViaMsi" Type="integer" Value="1" KeyPath="yes"/>
+      </RegistryKey>
+    </Component>`;
+
+  if (!content.includes('MsiInstallMarker')) {
+    content = content.replace(
+      /(<ComponentGroup\s+Id="ProductComponents"[^>]*>)/i,
+      '$1' + msiMarkerComponent
+    );
+    
+    console.log('MSI Hook: Added MSI installation marker registry component');
+  }
+
   fs.writeFileSync(wxsFile, content, 'utf8');
   console.log('MSI Hook: Modifications complete');
 
