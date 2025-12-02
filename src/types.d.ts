@@ -14,6 +14,7 @@ export interface Settings {
   enableIndexer: boolean;
   minimizeToTray: boolean;
   startOnLogin: boolean;
+  autoCheckUpdates: boolean;
 }
 
 export interface FileItem {

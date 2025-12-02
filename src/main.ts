@@ -110,7 +110,8 @@ const defaultSettings: Settings = {
   directoryHistory: [],
   enableIndexer: true,
   minimizeToTray: false,
-  startOnLogin: false
+  startOnLogin: false,
+  autoCheckUpdates: true
 };
 
 function applyLoginItemSettings(settings: Settings): void {
@@ -525,12 +526,14 @@ app.whenReady().then(async () => {
               mainWindow?.webContents.send('update-downloaded', info);
             });
 
-            // Check for updates on startup (skip for managed installations)
-            if (!isRunningInFlatpak() && !process.mas && !isInstalledViaMsi() && !isDev) {
+            // Check for updates on startup (skip msi installations or disabled)
+            if (!isRunningInFlatpak() && !process.mas && !isInstalledViaMsi() && !isDev && settings.autoCheckUpdates !== false) {
               console.log('[AutoUpdater] Checking for updates on startup...');
               autoUpdater.checkForUpdates().catch(err => {
                 console.error('[AutoUpdater] Startup check failed:', err);
               });
+            } else if (settings.autoCheckUpdates === false) {
+              console.log('[AutoUpdater] Auto-check on startup disabled by user');
             }
           } catch (error) {
             console.error('[AutoUpdater] Setup failed:', error);
