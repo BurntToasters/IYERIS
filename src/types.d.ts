@@ -146,6 +146,7 @@ export interface ElectronAPI {
   getSettings: () => Promise<SettingsResponse>;
   saveSettings: (settings: Settings) => Promise<ApiResponse>;
   resetSettings: () => Promise<ApiResponse>;
+  relaunchApp: () => Promise<void>;
   getSettingsPath: () => Promise<string>;
   copyItems: (sourcePaths: string[], destPath: string) => Promise<ApiResponse>;
   moveItems: (sourcePaths: string[], destPath: string) => Promise<ApiResponse>;

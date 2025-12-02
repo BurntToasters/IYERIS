@@ -787,7 +787,7 @@ async function saveSettings() {
 
 async function resetSettings() {
   const confirmed = await showConfirm(
-    'Are you sure you want to reset all settings to default? This cannot be undone.',
+    'Are you sure you want to reset all settings to default? The app will restart. This cannot be undone.',
     'Reset Settings',
     'warning'
   );
@@ -795,9 +795,7 @@ async function resetSettings() {
   if (confirmed) {
     const result = await window.electronAPI.resetSettings();
     if (result.success) {
-      await loadSettings();
-      hideSettingsModal();
-      showToast('Settings have been reset to default.', 'Settings Reset', 'success');
+      await window.electronAPI.relaunchApp();
     } else {
       showToast('Failed to reset settings: ' + result.error, 'Error', 'error');
     }

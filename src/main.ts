@@ -1000,6 +1000,11 @@ ipcMain.handle('reset-settings', async (): Promise<ApiResponse> => {
   return await saveSettings(defaultSettings);
 });
 
+ipcMain.handle('relaunch-app', (): void => {
+  app.relaunch();
+  app.quit();
+});
+
 ipcMain.handle('get-settings-path', (): string => {
   return getSettingsPath();
 });
