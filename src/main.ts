@@ -242,10 +242,11 @@ function createWindow(isInitialWindow: boolean = false): BrowserWindow {
   newWindow.once('ready-to-show', async () => {
     if (startHidden) {
       console.log('[Window] Starting minimized to tray');
+      if (!tray) {
+        await createTray();
+      }
+      newWindow.hide();
       if (process.platform === 'darwin') {
-        if (!tray) {
-          await createTray();
-        }
         app.dock?.hide();
       }
     } else {
@@ -275,14 +276,18 @@ function createWindow(isInitialWindow: boolean = false): BrowserWindow {
   newWindow.on('minimize', async () => {
     const settings = await loadSettings();
     if (settings.minimizeToTray && tray) {
-      newWindow.restore();
-      newWindow.hide();
       if (process.platform === 'darwin') {
-        const allWindows = BrowserWindow.getAllWindows();
-        const visibleWindows = allWindows.filter(w => w.isVisible());
-        if (visibleWindows.length === 0) {
-          app.dock?.hide();
-        }
+        setImmediate(() => {
+          newWindow.hide();
+          const allWindows = BrowserWindow.getAllWindows();
+          const visibleWindows = allWindows.filter(w => w.isVisible());
+          if (visibleWindows.length === 0) {
+            app.dock?.hide();
+          }
+        });
+      } else {
+        newWindow.restore();
+        newWindow.hide();
       }
     }
   });
@@ -1934,22 +1939,44 @@ async function createTray(): Promise<void> {
   let iconPath: string;
   let trayIcon: Electron.NativeImage;
 
-  if (process.platform === 'darwin') {
-    const templateIconPath = path.join(__dirname, '..', 'assets', 'iconTemplate.png');
-    const regularIconPath = path.join(__dirname, '..', 'assets', 'icon.png');
+  const assetsPath = path.join(__dirname, '..', 'assets');
 
-    if (fsSync.existsSync(templateIconPath)) {
-      iconPath = templateIconPath;
-      trayIcon = nativeImage.createFromPath(iconPath);
-      trayIcon.setTemplateImage(true);
-    } else {
-      iconPath = regularIconPath;
+  if (process.platform === 'darwin') {
+    const icon32Path = path.join(assetsPath, 'iyeris.iconset', 'icon_32x32@1x.png');
+    const iconFallback = path.join(assetsPath, 'icon.png');
+    
+    if (fsSync.existsSync(icon32Path)) {
+      iconPath = icon32Path;
       trayIcon = nativeImage.createFromPath(iconPath).resize({ width: 22, height: 22 });
-      trayIcon.setTemplateImage(true);
+    } else {
+      iconPath = iconFallback;
+      trayIcon = nativeImage.createFromPath(iconPath).resize({ width: 22, height: 22 });
     }
+    console.log('[Tray] macOS: Using color icon from:', iconPath);
+  } else if (process.platform === 'win32') {
+    const icoPath = path.join(assetsPath, 'icon-square.ico');
+    const pngPath = path.join(assetsPath, 'icon.png');
+    
+    if (fsSync.existsSync(icoPath)) {
+      iconPath = icoPath;
+      trayIcon = nativeImage.createFromPath(iconPath);
+    } else {
+      iconPath = pngPath;
+      trayIcon = nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 });
+    }
+    console.log('[Tray] Windows: Using icon from:', iconPath);
   } else {
-    iconPath = path.join(__dirname, '..', 'assets', 'icon.png');
-    trayIcon = nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 });
+    const icon32Path = path.join(assetsPath, 'iyeris.iconset', 'icon_32x32@1x.png');
+    const iconFallback = path.join(assetsPath, 'icon.png');
+    
+    if (fsSync.existsSync(icon32Path)) {
+      iconPath = icon32Path;
+      trayIcon = nativeImage.createFromPath(iconPath).resize({ width: 24, height: 24 });
+    } else {
+      iconPath = iconFallback;
+      trayIcon = nativeImage.createFromPath(iconPath).resize({ width: 24, height: 24 });
+    }
+    console.log('[Tray] Linux: Using icon from:', iconPath);
   }
 
   if (trayIcon.isEmpty()) {
