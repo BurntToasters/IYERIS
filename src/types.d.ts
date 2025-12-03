@@ -177,6 +177,7 @@ export interface ElectronAPI {
   cancelArchiveOperation: (operationId: string) => Promise<ApiResponse>;
   onCompressProgress: (callback: (progress: {operationId?: string; current: number; total: number; name: string}) => void) => () => void;
   onExtractProgress: (callback: (progress: {operationId?: string; current: number; total: number; name: string}) => void) => () => void;
+  onSystemResumed: (callback: () => void) => () => void;
   setZoomLevel: (zoomLevel: number) => Promise<ApiResponse>;
   getZoomLevel: () => Promise<{success: boolean; zoomLevel?: number; error?: string}>;
 }

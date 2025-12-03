@@ -1147,9 +1147,12 @@ function updateStatusBar() {
   }
 }
 
+// disk space query timer
+let diskSpaceDebounceTimer: NodeJS.Timeout | null = null;
+let lastDiskSpacePath: string = '';
+
 async function updateDiskSpace() {
   const statusDiskSpace = document.getElementById('status-disk-space');
-  console.log('[DiskSpace] Element found:', !!statusDiskSpace, 'Current path:', currentPath);
   if (!statusDiskSpace || !currentPath) return;
   
   let drivePath = currentPath;
@@ -1159,36 +1162,45 @@ async function updateDiskSpace() {
     drivePath = '/';
   }
   
-  console.log('[DiskSpace] Checking drive:', drivePath, 'Platform:', platformOS);
-  const result = await window.electronAPI.getDiskSpace(drivePath);
-  console.log('[DiskSpace] Result:', result);
-  if (result.success && result.total && result.free) {
-    const freeStr = formatFileSize(result.free);
-    const totalStr = formatFileSize(result.total);
-    const usedBytes = result.total - result.free;
-    const usedPercent = ((usedBytes / result.total) * 100).toFixed(1);
-    let usageColor = '#107c10';
-    if (parseFloat(usedPercent) > 80) {
-      usageColor = '#ff8c00';
-    }
-    if (parseFloat(usedPercent) > 90) {
-      usageColor = '#e81123';
-    }
-
-    statusDiskSpace.innerHTML = `
-      <span style="display: inline-flex; align-items: center; gap: 6px;">
-        ${twemojiImg(String.fromCodePoint(0x1F4BE), 'twemoji')} ${freeStr} free of ${totalStr}
-        <span style="display: inline-block; width: 60px; height: 8px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden; position: relative;">
-          <span style="position: absolute; left: 0; top: 0; height: 100%; width: ${usedPercent}%; background: ${usageColor}; transition: width 0.3s ease;"></span>
-        </span>
-        <span style="opacity: 0.7;">(${usedPercent}% used)</span>
-      </span>
-    `;
-    console.log('[DiskSpace] Updated display successfully');
-  } else {
-    console.log('[DiskSpace] Failed to get disk space info');
-    statusDiskSpace.textContent = '';
+  if (drivePath === lastDiskSpacePath && diskSpaceDebounceTimer) {
+    return;
   }
+
+  if (diskSpaceDebounceTimer) {
+    clearTimeout(diskSpaceDebounceTimer);
+  }
+  
+  lastDiskSpacePath = drivePath;
+
+  diskSpaceDebounceTimer = setTimeout(async () => {
+    const result = await window.electronAPI.getDiskSpace(drivePath);
+    if (result.success && result.total && result.free) {
+      const freeStr = formatFileSize(result.free);
+      const totalStr = formatFileSize(result.total);
+      const usedBytes = result.total - result.free;
+      const usedPercent = ((usedBytes / result.total) * 100).toFixed(1);
+      let usageColor = '#107c10';
+      if (parseFloat(usedPercent) > 80) {
+        usageColor = '#ff8c00';
+      }
+      if (parseFloat(usedPercent) > 90) {
+        usageColor = '#e81123';
+      }
+
+      statusDiskSpace.innerHTML = `
+        <span style="display: inline-flex; align-items: center; gap: 6px;">
+          ${twemojiImg(String.fromCodePoint(0x1F4BE), 'twemoji')} ${freeStr} free of ${totalStr}
+          <span style="display: inline-block; width: 60px; height: 8px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden; position: relative;">
+            <span style="position: absolute; left: 0; top: 0; height: 100%; width: ${usedPercent}%; background: ${usageColor}; transition: width 0.3s ease;"></span>
+          </span>
+          <span style="opacity: 0.7;">(${usedPercent}% used)</span>
+        </span>
+      `;
+    } else {
+      statusDiskSpace.textContent = '';
+    }
+    diskSpaceDebounceTimer = null;
+  }, 300);
 }
 
 function formatFileSize(bytes: number): string {
@@ -1318,6 +1330,19 @@ async function init() {
         checkUpdatesBtn.innerHTML = `${twemojiImg(String.fromCodePoint(0x1F389), 'twemoji')} Update Available!`;
         checkUpdatesBtn.classList.add('primary');
       }
+    });
+
+    window.electronAPI.onSystemResumed(() => {
+      console.log('[Renderer] System resumed from sleep, refreshing view...');
+      lastDiskSpacePath = '';
+      if (diskSpaceDebounceTimer) {
+        clearTimeout(diskSpaceDebounceTimer);
+        diskSpaceDebounceTimer = null;
+      }
+      if (currentPath) {
+        refresh();
+      }
+      loadDrives();
     });
   }, 0);
   
@@ -2779,17 +2804,20 @@ async function handleCompress(format: string = 'zip') {
     }
   };
   
-  window.electronAPI.onCompressProgress(progressHandler);
+  // Store cleanup function to prevent memory leaks
+  const cleanupProgressHandler = window.electronAPI.onCompressProgress(progressHandler);
   
   try {
     const operation = activeOperations.get(operationId);
     if (operation?.aborted) {
+      cleanupProgressHandler();
       removeOperation(operationId);
       return;
     }
     
     const result = await window.electronAPI.compressFiles(selectedPaths, outputPath, format, operationId);
-    
+
+    cleanupProgressHandler();
     removeOperation(operationId);
     
     if (result.success) {
@@ -2799,6 +2827,7 @@ async function handleCompress(format: string = 'zip') {
       showToast(result.error || 'Compression failed', 'Error', 'error');
     }
   } catch (error) {
+    cleanupProgressHandler();
     removeOperation(operationId);
     showToast((error as Error).message, 'Compression Error', 'error');
   }
@@ -2834,18 +2863,20 @@ async function handleExtract(item: FileItem) {
       }
     }
   };
-  
-  window.electronAPI.onExtractProgress(progressHandler);
+
+  const cleanupProgressHandler = window.electronAPI.onExtractProgress(progressHandler);
   
   try {
     const operation = activeOperations.get(operationId);
     if (operation?.aborted) {
+      cleanupProgressHandler();
       removeOperation(operationId);
       return;
     }
     
     const result = await window.electronAPI.extractArchive(item.path, destPath, operationId);
-    
+
+    cleanupProgressHandler();
     removeOperation(operationId);
     
     if (result.success) {
@@ -2855,6 +2886,7 @@ async function handleExtract(item: FileItem) {
       showToast(result.error || 'Extraction failed', 'Error', 'error');
     }
   } catch (error) {
+    cleanupProgressHandler();
     removeOperation(operationId);
     showToast((error as Error).message, 'Extraction Error', 'error');
   }

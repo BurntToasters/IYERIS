@@ -533,29 +533,39 @@ app.whenReady().then(async () => {
               console.log('[AutoUpdater] Updates should be managed by your IT administrator');
             }
 
+            const safeSend = (channel: string, ...args: any[]) => {
+              try {
+                if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
+                  mainWindow.webContents.send(channel, ...args);
+                }
+              } catch (error) {
+                console.error(`[AutoUpdater] Failed to send ${channel}:`, error);
+              }
+            };
+
             autoUpdater.on('checking-for-update', () => {
               console.log('[AutoUpdater] Checking for update...');
-              mainWindow?.webContents.send('update-checking');
+              safeSend('update-checking');
             });
 
             autoUpdater.on('update-available', (info) => {
               console.log('[AutoUpdater] Update available:', info.version);
-              mainWindow?.webContents.send('update-available', info);
+              safeSend('update-available', info);
             });
 
             autoUpdater.on('update-not-available', (info) => {
               console.log('[AutoUpdater] Update not available. Current version:', info.version);
-              mainWindow?.webContents.send('update-not-available', info);
+              safeSend('update-not-available', info);
             });
 
             autoUpdater.on('error', (err) => {
               console.error('[AutoUpdater] Error:', err);
-              mainWindow?.webContents.send('update-error', err.message);
+              safeSend('update-error', err.message);
             });
 
             autoUpdater.on('download-progress', (progressObj) => {
               console.log(`[AutoUpdater] Download progress: ${progressObj.percent.toFixed(2)}%`);
-              mainWindow?.webContents.send('update-download-progress', {
+              safeSend('update-download-progress', {
                 percent: progressObj.percent,
                 bytesPerSecond: progressObj.bytesPerSecond,
                 transferred: progressObj.transferred,
@@ -565,7 +575,7 @@ app.whenReady().then(async () => {
 
             autoUpdater.on('update-downloaded', (info) => {
               console.log('[AutoUpdater] Update downloaded:', info.version);
-              mainWindow?.webContents.send('update-downloaded', info);
+              safeSend('update-downloaded', info);
             });
 
             // Check for updates on startup (skip msi installations or disabled)
@@ -625,18 +635,34 @@ app.whenReady().then(async () => {
   powerMonitor.on('suspend', () => {
     console.log('[PowerMonitor] System is going to sleep');
     // Pause bg operations
-    if (fileIndexer) {
-      console.log('[PowerMonitor] Pausing indexer before sleep');
+    try {
+      if (fileIndexer) {
+        console.log('[PowerMonitor] Pausing indexer before sleep');
+        fileIndexer.setEnabled(false);
+      }
+    } catch (error) {
+      console.error('[PowerMonitor] Error pausing indexer:', error);
     }
   });
 
-  powerMonitor.on('resume', () => {
+  powerMonitor.on('resume', async () => {
     console.log('[PowerMonitor] System resumed from sleep');
-    setTimeout(() => {
+    setTimeout(async () => {
       console.log('[PowerMonitor] Post-resume initialization');
+
+      try {
+        const settings = await loadSettings();
+        if (fileIndexer && settings.enableIndexer) {
+          console.log('[PowerMonitor] Re-enabling indexer after resume');
+          fileIndexer.setEnabled(true);
+        }
+      } catch (error) {
+        console.error('[PowerMonitor] Error re-enabling indexer:', error);
+      }
+
       if (mainWindow && !mainWindow.isDestroyed()) {
         try {
-          if (mainWindow.isVisible()) {
+          if (mainWindow.isVisible() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
             mainWindow.webContents.send('system-resumed');
           }
         } catch (error) {
@@ -1635,7 +1661,7 @@ ipcMain.handle('compress-files', async (_event: IpcMainInvokeEvent, sourcePaths:
         
         tarProcess.on('progress', (progress) => {
           fileCount++;
-          if (mainWindow) {
+          if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
             mainWindow.webContents.send('compress-progress', {
               operationId,
               current: fileCount,
@@ -1656,7 +1682,7 @@ ipcMain.handle('compress-files', async (_event: IpcMainInvokeEvent, sourcePaths:
           }
 
           gzipProcess.on('progress', () => {
-            if (mainWindow) {
+            if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
               mainWindow.webContents.send('compress-progress', {
                 operationId,
                 current: fileCount + 10,
@@ -1775,7 +1801,7 @@ ipcMain.handle('compress-files', async (_event: IpcMainInvokeEvent, sourcePaths:
       
       seven.on('progress', (progress) => {
         fileCount++;
-        if (mainWindow) {
+        if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
           mainWindow.webContents.send('compress-progress', {
             operationId,
             current: fileCount,
@@ -1838,7 +1864,7 @@ ipcMain.handle('extract-archive', async (_event: IpcMainInvokeEvent, archivePath
       
       seven.on('progress', (progress) => {
         fileCount++;
-        if (mainWindow) {
+        if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
           mainWindow.webContents.send('extract-progress', {
             operationId,
             current: fileCount,

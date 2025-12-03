@@ -68,6 +68,11 @@ const electronAPI: ElectronAPI = {
     ipcRenderer.on('extract-progress', handler);
     return () => ipcRenderer.removeListener('extract-progress', handler);
   },
+  onSystemResumed: (callback: () => void) => {
+    const handler = () => callback();
+    ipcRenderer.on('system-resumed', handler);
+    return () => ipcRenderer.removeListener('system-resumed', handler);
+  },
   setZoomLevel: (zoomLevel: number) => ipcRenderer.invoke('set-zoom-level', zoomLevel),
   getZoomLevel: () => ipcRenderer.invoke('get-zoom-level')
 };

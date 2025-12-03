@@ -83,41 +83,54 @@ export class FileIndexer {
       'node_modules',
       '.git',
       '.cache',
-      'Cache',
-      'Caches',
-      '.Trash',
-      'Trash',
-      '$RECYCLE.BIN',
-      'System Volume Information',
+      'cache',
+      'caches',
+      '.trash',
+      'trash',
+      '$recycle.bin',
+      'system volume information',
       '.npm',
       '.docker',
-      'AppData',
-      'ProgramData',
-      'Windows',
-      'Program Files',
-      'Program Files (x86)',
-      '$Windows.~BT',
-      '$Windows.~WS',
-      'Recovery',
-      'PerfLogs',
-      'Library'
+      'appdata',
+      'programdata',
+      'windows',
+      'program files',
+      'program files (x86)',
+      '$windows.~bt',
+      '$windows.~ws',
+      'recovery',
+      'perflogs',
+      'library',
+      '$winreagent',
+      'config.msi',
+      'msocache',
+      'intel',
+      'nvidia',
+      'amd'
     ]);
 
     const excludeFiles = new Set([
       'pagefile.sys',
       'hiberfil.sys',
       'swapfile.sys',
-      'DumpStack.log.tmp',
-      '.DS_Store',
-      'Thumbs.db'
+      'dumpstack.log.tmp',
+      'dumpstack.log',
+      '.ds_store',
+      'thumbs.db',
+      'desktop.ini',
+      'ntuser.dat',
+      'ntuser.dat.log',
+      'ntuser.dat.log1',
+      'ntuser.dat.log2'
     ]);
 
     const parts = filePath.split(/[/\\]/);
-    const filename = parts[parts.length - 1];
+    const filename = parts[parts.length - 1].toLowerCase();
 
     if (excludeFiles.has(filename)) return true;
     
-    return parts.some(part => excludeSegments.has(part));
+    // case-insensitive comparison
+    return parts.some(part => excludeSegments.has(part.toLowerCase()));
   }
 
   private async scanDirectory(dirPath: string, signal?: AbortSignal): Promise<void> {
@@ -196,6 +209,7 @@ export class FileIndexer {
 
     try {
       const locations = await this.getCommonLocations();
+      console.log(`[Indexer] Locations to scan: ${locations.join(', ')}`);
       this.totalFiles = await this.estimateTotalFiles(locations);
 
       for (const location of locations) {
@@ -203,10 +217,12 @@ export class FileIndexer {
           break;
         }
 
+        const beforeCount = this.indexedFiles;
         try {
           await fs.access(location);
           console.log(`[Indexer] Scanning: ${location}`);
           await this.scanDirectory(location, this.abortController.signal);
+          console.log(`[Indexer] Finished ${location}: indexed ${this.indexedFiles - beforeCount} new files (total: ${this.indexedFiles})`);
         } catch (error) {
           console.log(`[Indexer] Skipping ${location}:`, (error as Error).message);
         }
