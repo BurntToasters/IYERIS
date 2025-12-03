@@ -530,8 +530,9 @@ app.whenReady().then(async () => {
             const isBetaBuild = process.env.IS_BETA === 'true' || isBetaVersion;
             
             if (isBetaBuild) {
+              autoUpdater.channel = 'beta';
               autoUpdater.allowPrerelease = true;
-              console.log('[AutoUpdater] Beta mode enabled - will check for prerelease updates');
+              console.log('[AutoUpdater] Beta channel enabled - will ONLY check for beta/prerelease updates');
               console.log('[AutoUpdater] Current version:', currentVersion);
             }
 
