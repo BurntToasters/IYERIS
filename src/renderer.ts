@@ -3678,9 +3678,14 @@ async function checkForUpdates() {
       }
 
       if (result.hasUpdate) {
+        const updateTitle = result.isBeta ? 'Beta Update Available' : 'Update Available';
+        const updateMessage = result.isBeta 
+          ? `[BETA CHANNEL] A new beta build is available!\n\nCurrent Version: ${result.currentVersion}\nNew Version: ${result.latestVersion}\n\nWould you like to download and install the update?`
+          : `A new version is available!\n\nCurrent Version: ${result.currentVersion}\nNew Version: ${result.latestVersion}\n\nWould you like to download and install the update?`;
+        
         const confirmed = await showDialog(
-          'Update Available',
-          `A new version is available!\n\nCurrent Version: ${result.currentVersion}\nNew Version: ${result.latestVersion}\n\nWould you like to download and install the update?`,
+          updateTitle,
+          updateMessage,
           'success',
           true
         );
@@ -3689,12 +3694,21 @@ async function checkForUpdates() {
           await downloadAndInstallUpdate();
         }
       } else {
-        showDialog(
-          'No Updates Available',
-          `You're running the latest version (${result.currentVersion})!`,
-          'info',
-          false
-        );
+        if (result.isBeta) {
+          showDialog(
+            'No Updates Available',
+            `You're on the latest beta channel build (${result.currentVersion})!`,
+            'info',
+            false
+          );
+        } else {
+          showDialog(
+            'No Updates Available',
+            `You're running the latest version (${result.currentVersion})!`,
+            'info',
+            false
+          );
+        }
       }
     } else {
       showDialog(

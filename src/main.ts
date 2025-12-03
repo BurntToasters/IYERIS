@@ -590,6 +590,13 @@ app.whenReady().then(async () => {
 
             autoUpdater.on('update-available', (info) => {
               console.log('[AutoUpdater] Update available:', info.version);
+
+              const updateIsBeta = /-(beta|alpha|rc)/i.test(info.version);
+              if (isBetaBuild && !updateIsBeta) {
+                console.log(`[AutoUpdater] Beta build ignoring stable release ${info.version} - only accepting beta/prerelease updates`);
+                safeSend('update-not-available', { version: currentVersion });
+                return;
+              }
               
               // Prevent downgrade
               const comparison = compareVersions(info.version, currentVersion);
@@ -1440,25 +1447,74 @@ ipcMain.handle('check-for-updates', async (): Promise<UpdateCheckResponse> => {
     }
 
     const updateInfo = updateCheckResult.updateInfo;
-    const hasUpdate = updateCheckResult.updateInfo.version !== currentVersion;
+    const latestVersion = updateInfo.version;
+    
+    // Check if this is a beta build
+    const isBetaVersion = /-(beta|alpha|rc)/i.test(currentVersion);
+    const updateIsBeta = /-(beta|alpha|rc)/i.test(latestVersion);
+    
+    // Beta builds should only update to other beta versions
+    if (isBetaVersion && !updateIsBeta) {
+      console.log(`[AutoUpdater] Beta build ignoring stable release ${latestVersion} - only accepting beta/prerelease updates`);
+      return {
+        success: true,
+        hasUpdate: false,
+        isBeta: true,
+        currentVersion: `v${currentVersion}`,
+        latestVersion: `v${currentVersion}`
+      };
+    }
+    
+    // Compare versions to check for actual update (not downgrade)
+    const parseVersion = (v: string) => {
+      const match = v.match(/^v?(\d+)\.(\d+)\.(\d+)(?:-(.+))?$/);
+      if (!match) return { major: 0, minor: 0, patch: 0, prerelease: '' };
+      return {
+        major: parseInt(match[1], 10),
+        minor: parseInt(match[2], 10),
+        patch: parseInt(match[3], 10),
+        prerelease: match[4] || ''
+      };
+    };
+    
+    const current = parseVersion(currentVersion);
+    const latest = parseVersion(latestVersion);
+    
+    let hasUpdate = false;
+    if (latest.major > current.major) {
+      hasUpdate = true;
+    } else if (latest.major === current.major && latest.minor > current.minor) {
+      hasUpdate = true;
+    } else if (latest.major === current.major && latest.minor === current.minor && latest.patch > current.patch) {
+      hasUpdate = true;
+    } else if (latest.major === current.major && latest.minor === current.minor && latest.patch === current.patch) {
+      if (!latest.prerelease && current.prerelease) {
+        hasUpdate = true;
+      } else if (latest.prerelease && current.prerelease && latest.prerelease > current.prerelease) {
+        hasUpdate = true;
+      }
+    }
 
     console.log('[AutoUpdater] Update check result:', {
       hasUpdate,
       currentVersion,
-      latestVersion: updateInfo.version
+      latestVersion,
+      isBetaVersion,
+      updateIsBeta
     });
 
     return {
       success: true,
       hasUpdate,
+      isBeta: isBetaVersion,
       updateInfo: {
         version: updateInfo.version,
         releaseDate: updateInfo.releaseDate,
         releaseNotes: updateInfo.releaseNotes as string | undefined
       },
       currentVersion: `v${currentVersion}`,
-      latestVersion: `v${updateInfo.version}`,
-      releaseUrl: `https://github.com/BurntToasters/IYERIS/releases/tag/v${updateInfo.version}`
+      latestVersion: `v${latestVersion}`,
+      releaseUrl: `https://github.com/BurntToasters/IYERIS/releases/tag/v${latestVersion}`
     };
   } catch (error) {
     console.error('[AutoUpdater] Check for updates failed:', error);

@@ -130,6 +130,7 @@ export interface UpdateCheckResponse extends ApiResponse {
   currentVersion?: string;
   latestVersion?: string;
   releaseUrl?: string;
+  isBeta?: boolean;
   isFlatpak?: boolean;
   flatpakMessage?: string;
   isMas?: boolean;
