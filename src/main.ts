@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, shell, IpcMainInvokeEvent, Menu, Tray, nativeImage } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell, IpcMainInvokeEvent, Menu, Tray, nativeImage, powerMonitor } from 'electron';
 import * as path from 'path';
 import { promises as fs } from 'fs';
 import * as fsSync from 'fs';
@@ -6,6 +6,7 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import type { Settings, FileItem, ApiResponse, DirectoryResponse, PathResponse, PropertiesResponse, SettingsResponse, UpdateCheckResponse, IndexSearchResponse } from './types';
 import { FileIndexer } from './indexer';
+import { getDrives } from './utils';
 
 // Disable hardware accel via cli arg
 if (process.argv.includes('--disable-hardware-acceleration')) {
@@ -18,9 +19,14 @@ app.commandLine.appendSwitch('--enable-blink-features', 'CodeCache');
 app.commandLine.appendSwitch('wm-window-animations-disabled');
 app.commandLine.appendSwitch('disable-http-cache');
 
+// Check Flatpak status at start
+let isInFlatpak: boolean | null = null;
 const isRunningInFlatpak = (): boolean => {
-  return process.env.FLATPAK_ID !== undefined || 
-         fsSync.existsSync('/.flatpak-info');
+  if (isInFlatpak === null) {
+    isInFlatpak = process.env.FLATPAK_ID !== undefined || 
+                  fsSync.existsSync('/.flatpak-info');
+  }
+  return isInFlatpak;
 };
 
 // Check if installed via MSI
@@ -117,12 +123,33 @@ const defaultSettings: Settings = {
 function applyLoginItemSettings(settings: Settings): void {
   try {
     console.log('[LoginItem] Applying settings:', settings.startOnLogin);
-    app.setLoginItemSettings({
-      openAtLogin: settings.startOnLogin,
-      openAsHidden: settings.startOnLogin,
-      args: settings.startOnLogin ? ['--hidden'] : [], // not supported on Linux
-      name: 'IYERIS'
-    });
+    
+    if (process.platform === 'win32') {
+      // Windows - Use exe path and pass --hidden
+      const exePath = app.getPath('exe');
+      app.setLoginItemSettings({
+        openAtLogin: settings.startOnLogin,
+        path: exePath,
+        args: settings.startOnLogin ? ['--hidden'] : [],
+        name: 'IYERIS'
+      });
+    } else if (process.platform === 'darwin') {
+      // macOS - openAsHidden
+      app.setLoginItemSettings({
+        openAtLogin: settings.startOnLogin,
+        openAsHidden: settings.startOnLogin,
+        name: 'IYERIS'
+      });
+    } else {
+      // Linux - basic login
+      app.setLoginItemSettings({
+        openAtLogin: settings.startOnLogin,
+        args: settings.startOnLogin ? ['--hidden'] : [],
+        name: 'IYERIS'
+      });
+    }
+    
+    console.log('[LoginItem] Login item settings applied successfully');
   } catch (error) {
     console.error('[LoginItem] Failed to set login item:', error);
   }
@@ -453,8 +480,23 @@ function setupApplicationMenu(): void {
 
 app.whenReady().then(async () => {
   setupApplicationMenu();
+
+  const startHidden = process.argv.includes('--hidden');
+  console.log('[Startup] Starting with hidden mode:', startHidden);
+
+  if (startHidden) {
+    const settings = await loadSettings();
+    if (settings.minimizeToTray || settings.startOnLogin) {
+      console.log('[Startup] Creating tray before window for hidden start');
+      await createTrayForHiddenStart();
+    }
+  }
+  
   createWindow(true); // Initial window
-  await createTray();
+
+  if (!tray) {
+    await createTray();
+  }
 
   mainWindow?.once('ready-to-show', () => {
     setTimeout(async () => {
@@ -491,29 +533,39 @@ app.whenReady().then(async () => {
               console.log('[AutoUpdater] Updates should be managed by your IT administrator');
             }
 
+            const safeSend = (channel: string, ...args: any[]) => {
+              try {
+                if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
+                  mainWindow.webContents.send(channel, ...args);
+                }
+              } catch (error) {
+                console.error(`[AutoUpdater] Failed to send ${channel}:`, error);
+              }
+            };
+
             autoUpdater.on('checking-for-update', () => {
               console.log('[AutoUpdater] Checking for update...');
-              mainWindow?.webContents.send('update-checking');
+              safeSend('update-checking');
             });
 
             autoUpdater.on('update-available', (info) => {
               console.log('[AutoUpdater] Update available:', info.version);
-              mainWindow?.webContents.send('update-available', info);
+              safeSend('update-available', info);
             });
 
             autoUpdater.on('update-not-available', (info) => {
               console.log('[AutoUpdater] Update not available. Current version:', info.version);
-              mainWindow?.webContents.send('update-not-available', info);
+              safeSend('update-not-available', info);
             });
 
             autoUpdater.on('error', (err) => {
               console.error('[AutoUpdater] Error:', err);
-              mainWindow?.webContents.send('update-error', err.message);
+              safeSend('update-error', err.message);
             });
 
             autoUpdater.on('download-progress', (progressObj) => {
               console.log(`[AutoUpdater] Download progress: ${progressObj.percent.toFixed(2)}%`);
-              mainWindow?.webContents.send('update-download-progress', {
+              safeSend('update-download-progress', {
                 percent: progressObj.percent,
                 bytesPerSecond: progressObj.bytesPerSecond,
                 transferred: progressObj.transferred,
@@ -523,7 +575,7 @@ app.whenReady().then(async () => {
 
             autoUpdater.on('update-downloaded', (info) => {
               console.log('[AutoUpdater] Update downloaded:', info.version);
-              mainWindow?.webContents.send('update-downloaded', info);
+              safeSend('update-downloaded', info);
             });
 
             // Check for updates on startup (skip msi installations or disabled)
@@ -577,6 +629,55 @@ app.whenReady().then(async () => {
         app.dock?.show();
       }
     }
+  });
+
+  // Power management event handling
+  powerMonitor.on('suspend', () => {
+    console.log('[PowerMonitor] System is going to sleep');
+    // Pause bg operations
+    try {
+      if (fileIndexer) {
+        console.log('[PowerMonitor] Pausing indexer before sleep');
+        fileIndexer.setEnabled(false);
+      }
+    } catch (error) {
+      console.error('[PowerMonitor] Error pausing indexer:', error);
+    }
+  });
+
+  powerMonitor.on('resume', async () => {
+    console.log('[PowerMonitor] System resumed from sleep');
+    setTimeout(async () => {
+      console.log('[PowerMonitor] Post-resume initialization');
+
+      try {
+        const settings = await loadSettings();
+        if (fileIndexer && settings.enableIndexer) {
+          console.log('[PowerMonitor] Re-enabling indexer after resume');
+          fileIndexer.setEnabled(true);
+        }
+      } catch (error) {
+        console.error('[PowerMonitor] Error re-enabling indexer:', error);
+      }
+
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        try {
+          if (mainWindow.isVisible() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
+            mainWindow.webContents.send('system-resumed');
+          }
+        } catch (error) {
+          console.error('[PowerMonitor] Error after resume:', error);
+        }
+      }
+    }, 2000);
+  });
+
+  powerMonitor.on('lock-screen', () => {
+    console.log('[PowerMonitor] Screen locked');
+  });
+
+  powerMonitor.on('unlock-screen', () => {
+    console.log('[PowerMonitor] Screen unlocked');
   });
 });
 
@@ -640,95 +741,7 @@ ipcMain.handle('get-directory-contents', async (_event: IpcMainInvokeEvent, dirP
 });
 
 ipcMain.handle('get-drives', async (): Promise<string[]> => {
-  const platform = process.platform;
-
-  if (platform === 'win32') {
-    const drives: Set<string> = new Set();
-    const execAsync = promisify(exec);
-
-    // WMIC
-    try {
-      const { stdout } = await execAsync('wmic logicaldisk get name', { timeout: 2000 });
-      const lines = stdout.split(/[\r\n]+/);
-      for (const line of lines) {
-        const drive = line.trim();
-        if (/^[A-Z]:$/.test(drive)) {
-          drives.add(drive + '\\');
-        }
-      }
-    } catch (e) {
-      console.log('WMIC drive detection failed:', (e as Error).message);
-    }
-
-    // PS
-    if (drives.size === 0) {
-      try {
-        const { stdout } = await execAsync('powershell -NoProfile -Command "Get-PSDrive -PSProvider FileSystem | Select-Object -ExpandProperty Name"', { timeout: 3000 });
-        const lines = stdout.split(/[\r\n]+/);
-        for (const line of lines) {
-          let drive = line.trim();
-          if (/^[A-Z]$/.test(drive)) {
-            drive += ':';
-          }
-          if (/^[A-Z]:$/.test(drive)) {
-            drives.add(drive + '\\');
-          }
-        }
-      } catch (e) {
-        console.log('PowerShell drive detection failed:', (e as Error).message);
-      }
-    }
-
-    // A-Z drive check
-    if (drives.size === 0) {
-      const driveLetters: string[] = [];
-      for (let i = 65; i <= 90; i++) {
-        driveLetters.push(String.fromCharCode(i) + ':\\');
-      }
-
-      const checkDrive = async (drive: string): Promise<string | null> => {
-        try {
-          await Promise.race([
-            fs.access(drive),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 200))
-          ]);
-          return drive;
-        } catch {
-          return null;
-        }
-      };
-
-      const results = await Promise.all(driveLetters.map(checkDrive));
-      results.forEach(d => {
-        if (d) drives.add(d);
-      });
-    }
-
-    if (drives.size === 0) return ['C:\\'];
-    return Array.from(drives).sort();
-
-  } else {
-    const commonRoots = platform === 'darwin' ? ['/Volumes'] : ['/media', '/mnt', '/run/media'];
-    const detected: string[] = ['/'];
-    
-    for (const root of commonRoots) {
-      try {
-        const subs = await fs.readdir(root);
-        for (const sub of subs) {
-          if (sub.startsWith('.')) continue;
-          
-          const fullPath = path.join(root, sub);
-          try {
-            const stats = await fs.stat(fullPath);
-            if (stats.isDirectory()) {
-              detected.push(fullPath);
-            }
-          } catch {}
-        }
-      } catch {}
-    }
-    return detected;
-  }
+  return getDrives();
 });
 
 ipcMain.handle('get-home-directory', (): string => {
@@ -1648,7 +1661,7 @@ ipcMain.handle('compress-files', async (_event: IpcMainInvokeEvent, sourcePaths:
         
         tarProcess.on('progress', (progress) => {
           fileCount++;
-          if (mainWindow) {
+          if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
             mainWindow.webContents.send('compress-progress', {
               operationId,
               current: fileCount,
@@ -1669,7 +1682,7 @@ ipcMain.handle('compress-files', async (_event: IpcMainInvokeEvent, sourcePaths:
           }
 
           gzipProcess.on('progress', () => {
-            if (mainWindow) {
+            if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
               mainWindow.webContents.send('compress-progress', {
                 operationId,
                 current: fileCount + 10,
@@ -1788,7 +1801,7 @@ ipcMain.handle('compress-files', async (_event: IpcMainInvokeEvent, sourcePaths:
       
       seven.on('progress', (progress) => {
         fileCount++;
-        if (mainWindow) {
+        if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
           mainWindow.webContents.send('compress-progress', {
             operationId,
             current: fileCount,
@@ -1831,8 +1844,6 @@ ipcMain.handle('compress-files', async (_event: IpcMainInvokeEvent, sourcePaths:
 ipcMain.handle('extract-archive', async (_event: IpcMainInvokeEvent, archivePath: string, destPath: string, operationId?: string): Promise<ApiResponse> => {
   try {
     console.log('[Extract] Starting extraction:', archivePath, 'to', destPath);
-    const ext = path.extname(archivePath).toLowerCase();
-    const fileName = path.basename(archivePath, ext);
 
     await fs.mkdir(destPath, { recursive: true });
     return new Promise((resolve, reject) => {
@@ -1853,7 +1864,7 @@ ipcMain.handle('extract-archive', async (_event: IpcMainInvokeEvent, archivePath
       
       seven.on('progress', (progress) => {
         fileCount++;
-        if (mainWindow) {
+        if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
           mainWindow.webContents.send('extract-progress', {
             operationId,
             current: fileCount,
@@ -1864,7 +1875,7 @@ ipcMain.handle('extract-archive', async (_event: IpcMainInvokeEvent, archivePath
       });
 
       seven.on('end', () => {
-        console.log('[Extract] 7zip extraction completed for:', ext);
+        console.log('[Extract] 7zip extraction completed for:', archivePath);
         if (operationId) {
           activeArchiveProcesses.delete(operationId);
         }
@@ -2079,5 +2090,148 @@ async function createTray(): Promise<void> {
 
   console.log('[Tray] Tray created successfully');
 }
+
+async function createTrayForHiddenStart(): Promise<void> {
+  if (tray) {
+    console.log('[Tray] Tray already exists for hidden start');
+    return;
+  }
+
+  let iconPath: string;
+  let trayIcon: Electron.NativeImage;
+
+  const assetsPath = path.join(__dirname, '..', 'assets');
+
+  if (process.platform === 'darwin') {
+    const icon32Path = path.join(assetsPath, 'iyeris.iconset', 'icon_32x32@1x.png');
+    const iconFallback = path.join(assetsPath, 'icon.png');
+    
+    if (fsSync.existsSync(icon32Path)) {
+      iconPath = icon32Path;
+      trayIcon = nativeImage.createFromPath(iconPath).resize({ width: 22, height: 22 });
+    } else {
+      iconPath = iconFallback;
+      trayIcon = nativeImage.createFromPath(iconPath).resize({ width: 22, height: 22 });
+    }
+    console.log('[Tray] macOS hidden start: Using color icon from:', iconPath);
+  } else if (process.platform === 'win32') {
+    const icoPath = path.join(assetsPath, 'icon-square.ico');
+    const pngPath = path.join(assetsPath, 'icon.png');
+    
+    if (fsSync.existsSync(icoPath)) {
+      iconPath = icoPath;
+      trayIcon = nativeImage.createFromPath(iconPath);
+    } else {
+      iconPath = pngPath;
+      trayIcon = nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 });
+    }
+    console.log('[Tray] Windows hidden start: Using icon from:', iconPath);
+  } else {
+    const icon32Path = path.join(assetsPath, 'iyeris.iconset', 'icon_32x32@1x.png');
+    const iconFallback = path.join(assetsPath, 'icon.png');
+    
+    if (fsSync.existsSync(icon32Path)) {
+      iconPath = icon32Path;
+      trayIcon = nativeImage.createFromPath(iconPath).resize({ width: 24, height: 24 });
+    } else {
+      iconPath = iconFallback;
+      trayIcon = nativeImage.createFromPath(iconPath).resize({ width: 24, height: 24 });
+    }
+    console.log('[Tray] Linux hidden start: Using icon from:', iconPath);
+  }
+
+  if (trayIcon.isEmpty()) {
+    console.error('[Tray] Failed to load tray icon for hidden start from:', iconPath);
+    return;
+  }
+  
+  try {
+    tray = new Tray(trayIcon);
+  } catch (error) {
+    console.error('[Tray] Failed to create tray icon for hidden start:', error);
+    tray = null;
+    return;
+  }
+
+  tray.setToolTip('IYERIS');
+  
+  const contextMenu = Menu.buildFromTemplate([
+    { 
+      label: 'Show IYERIS', 
+      click: () => {
+        let targetWindow = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+        if (!targetWindow) {
+          const allWindows = BrowserWindow.getAllWindows();
+          targetWindow = allWindows.length > 0 ? allWindows[0] : null;
+        }
+        
+        if (targetWindow) {
+          targetWindow.show();
+          targetWindow.focus();
+        } else {
+          createWindow(false);
+        }
+        
+        if (process.platform === 'darwin') {
+          app.dock?.show();
+        }
+      } 
+    },
+    { type: 'separator' },
+    { 
+      label: 'Quit', 
+      click: () => {
+        isQuitting = true;
+        app.quit();
+      } 
+    }
+  ]);
+  
+  tray.setContextMenu(contextMenu);
+
+  if (process.platform !== 'darwin') {
+    tray.on('click', () => {
+      let targetWindow = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+      if (!targetWindow) {
+        const allWindows = BrowserWindow.getAllWindows();
+        targetWindow = allWindows.length > 0 ? allWindows[0] : null;
+      }
+      
+      if (targetWindow) {
+        if (targetWindow.isVisible()) {
+          targetWindow.hide();
+        } else {
+          targetWindow.show();
+          targetWindow.focus();
+        }
+      } else {
+        createWindow(false);
+      }
+    });
+  }
+
+  if (process.platform === 'darwin') {
+    tray.on('double-click', () => {
+      let targetWindow = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+      if (!targetWindow) {
+        const allWindows = BrowserWindow.getAllWindows();
+        targetWindow = allWindows.length > 0 ? allWindows[0] : null;
+      }
+      
+      if (targetWindow) {
+        targetWindow.show();
+        targetWindow.focus();
+      } else {
+        createWindow(false);
+      }
+      
+      app.dock?.show();
+    });
+  }
+
+  console.log('[Tray] Tray created successfully for hidden start');
+}
+
+
 
 
