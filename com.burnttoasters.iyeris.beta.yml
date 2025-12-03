@@ -1,0 +1,81 @@
+app-id: com.burnttoasters.iyeris
+runtime: org.freedesktop.Platform
+runtime-version: '23.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '23.08'
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node18
+command: iyeris
+separate-locales: false
+
+finish-args:
+  # X11 + XShm access
+  - --share=ipc
+  - --socket=x11
+  # Wayland access
+  - --socket=wayland
+  # Audio (if needed for previews)
+  - --socket=pulseaudio
+  # Network access (for updates)
+  - --share=network
+  # GPU acceleration
+  - --device=dri
+  # File system access - for a file browser, you need broad access
+  - --filesystem=host
+  # Allow access to home directory
+  - --filesystem=home
+  # Allow access to external drives
+  - --filesystem=/media
+  - --filesystem=/run/media
+  # Notifications
+  - --talk-name=org.freedesktop.Notifications
+  # Needed for Electron
+  - --env=ELECTRON_TRASH=gio
+
+modules:
+  - name: iyeris
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/node18/bin
+      env:
+        # Use system Electron from base app
+        ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+        # npm cache
+        npm_config_cache: /run/build/iyeris/flatpak-node/npm-cache
+        # Disable husky hooks
+        HUSKY: '0'
+        # Beta build flag
+        IS_BETA: 'true'
+    build-commands:
+      # Install dependencies (with network access)
+      - npm install --legacy-peer-deps
+      
+      # Build the application
+      - npm run build
+      
+      # Copy application files to /app
+      - mkdir -p /app/iyeris
+      - cp -r dist /app/iyeris/
+      - cp -r assets /app/iyeris/
+      - cp -r node_modules /app/iyeris/
+      - cp index.html /app/iyeris/
+      - cp main.css /app/iyeris/
+      - cp package.json /app/iyeris/
+      - cp licenses.json /app/iyeris/
+      
+      # Install BETA icon
+      - install -Dm644 assets/icon-square-beta.png /app/share/icons/hicolor/512x512/apps/com.burnttoasters.iyeris.png
+      
+      # Create desktop file
+      - install -Dm644 com.burnttoasters.iyeris.desktop /app/share/applications/com.burnttoasters.iyeris.desktop
+      
+      # Create AppStream metadata
+      - install -Dm644 com.burnttoasters.iyeris.metainfo.xml /app/share/metainfo/com.burnttoasters.iyeris.metainfo.xml
+      
+      # Create wrapper script
+      - install -Dm755 iyeris.sh /app/bin/iyeris
+    
+    sources:
+      - type: dir
+        path: .

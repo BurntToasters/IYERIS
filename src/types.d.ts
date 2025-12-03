@@ -4,7 +4,7 @@ export interface Settings {
   sortBy: 'name' | 'date' | 'size' | 'type';
   sortOrder: 'asc' | 'desc';
   bookmarks: string[];
-  viewMode: 'grid' | 'list';
+  viewMode: 'grid' | 'list' | 'column';
   showDangerousOptions: boolean;
   startupPath: string;
   showHiddenFiles: boolean;
@@ -36,6 +36,25 @@ export interface ItemProperties {
   created: Date;
   modified: Date;
   accessed: Date;
+}
+
+export interface FolderSizeProgress {
+  calculatedSize: number;
+  fileCount: number;
+  folderCount: number;
+  currentPath: string;
+}
+
+export interface FolderSizeResult {
+  totalSize: number;
+  fileCount: number;
+  folderCount: number;
+}
+
+export interface ChecksumResult {
+  md5?: string;
+  sha256?: string;
+  error?: string;
 }
 
 export interface ApiResponse<T = void> {
@@ -180,6 +199,12 @@ export interface ElectronAPI {
   onSystemResumed: (callback: () => void) => () => void;
   setZoomLevel: (zoomLevel: number) => Promise<ApiResponse>;
   getZoomLevel: () => Promise<{success: boolean; zoomLevel?: number; error?: string}>;
+  calculateFolderSize: (folderPath: string, operationId: string) => Promise<{success: boolean; result?: FolderSizeResult; error?: string}>;
+  cancelFolderSizeCalculation: (operationId: string) => Promise<ApiResponse>;
+  onFolderSizeProgress: (callback: (progress: FolderSizeProgress & {operationId: string}) => void) => () => void;
+  calculateChecksum: (filePath: string, operationId: string, algorithms: string[]) => Promise<{success: boolean; result?: ChecksumResult; error?: string}>;
+  cancelChecksumCalculation: (operationId: string) => Promise<ApiResponse>;
+  onChecksumProgress: (callback: (progress: {operationId: string; percent: number; algorithm: string}) => void) => () => void;
 }
 
 declare global {

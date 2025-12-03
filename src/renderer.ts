@@ -65,7 +65,11 @@ function twemojiImg(emoji: string, className: string = 'twemoji', alt?: string):
   return `<img src="${src}" class="${className}" alt="${altText}" draggable="false" />`;
 }
 
-type ViewMode = 'grid' | 'list';
+type ViewMode = 'grid' | 'list' | 'column';
+
+// Breadcrumb state
+let isBreadcrumbMode = true;
+let breadcrumbContainer: HTMLElement | null = null;
 
 interface ArchiveOperation {
   id: string;
@@ -194,6 +198,142 @@ function renderOperations() {
   }
 }
 
+// Breadcrumb nav
+function parsePath(filePath: string): { segments: string[]; isWindows: boolean } {
+  const isWindows = /^[A-Za-z]:/.test(filePath);
+  const normalizedPath = filePath.replace(/\\/g, '/');
+  const segments = normalizedPath.split('/').filter(s => s.length > 0);
+  if (isWindows && segments.length > 0) {
+    if (!segments[0].includes(':')) {
+      segments[0] = segments[0] + ':';
+    }
+  }
+  
+  return { segments, isWindows };
+}
+
+function buildPathFromSegments(segments: string[], index: number, isWindows: boolean): string {
+  if (index < 0) return '';
+  
+  const pathSegments = segments.slice(0, index + 1);
+  
+  if (isWindows) {
+    if (pathSegments.length === 1) {
+      return pathSegments[0] + '\\';
+    }
+    return pathSegments.join('\\');
+  } else {
+    return '/' + pathSegments.join('/');
+  }
+}
+
+function updateBreadcrumb(currentPath: string): void {
+  if (!breadcrumbContainer) {
+    breadcrumbContainer = document.getElementById('breadcrumb-container');
+  }
+  
+  if (!breadcrumbContainer || !addressInput) return;
+  
+  if (!isBreadcrumbMode || !currentPath) {
+    breadcrumbContainer.style.display = 'none';
+    addressInput.style.display = 'block';
+    addressInput.value = currentPath || '';
+    return;
+  }
+  
+  const { segments, isWindows } = parsePath(currentPath);
+  
+  if (segments.length === 0) {
+    breadcrumbContainer.style.display = 'none';
+    addressInput.style.display = 'block';
+    addressInput.value = currentPath;
+    return;
+  }
+  
+  breadcrumbContainer.style.display = 'inline-flex';
+  addressInput.style.display = 'none';
+  breadcrumbContainer.innerHTML = '';
+  
+  segments.forEach((segment, index) => {
+    const item = document.createElement('span');
+    item.className = 'breadcrumb-item';
+    item.textContent = segment;
+    item.title = buildPathFromSegments(segments, index, isWindows);
+    
+    item.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const targetPath = buildPathFromSegments(segments, index, isWindows);
+      navigateTo(targetPath);
+    });
+    
+    breadcrumbContainer!.appendChild(item);
+
+    if (index < segments.length - 1) {
+      const separator = document.createElement('span');
+      separator.className = 'breadcrumb-separator';
+      separator.textContent = isWindows ? '›' : '/';
+      breadcrumbContainer!.appendChild(separator);
+    }
+  });
+}
+
+function toggleBreadcrumbMode(): void {
+  isBreadcrumbMode = !isBreadcrumbMode;
+  
+  if (!breadcrumbContainer) {
+    breadcrumbContainer = document.getElementById('breadcrumb-container');
+  }
+  
+  if (isBreadcrumbMode) {
+    updateBreadcrumb(currentPath);
+  } else {
+    if (breadcrumbContainer) breadcrumbContainer.style.display = 'none';
+    if (addressInput) {
+      addressInput.style.display = 'block';
+      addressInput.value = currentPath;
+      addressInput.focus();
+      addressInput.select();
+    }
+  }
+}
+
+function setupBreadcrumbListeners(): void {
+  breadcrumbContainer = document.getElementById('breadcrumb-container');
+  
+  const addressBar = document.querySelector('.address-bar');
+  if (addressBar) {
+    addressBar.addEventListener('dblclick', (e) => {
+      const target = e.target as HTMLElement;
+      if (target.classList.contains('address-bar') || 
+          target.classList.contains('breadcrumb') ||
+          target.id === 'breadcrumb-container') {
+        if (isBreadcrumbMode) {
+          toggleBreadcrumbMode();
+        }
+      }
+    });
+  }
+
+  if (addressInput) {
+    addressInput.addEventListener('blur', () => {
+      setTimeout(() => {
+        if (!isBreadcrumbMode && currentPath) {
+          isBreadcrumbMode = true;
+          updateBreadcrumb(currentPath);
+        }
+      }, 150);
+    });
+    
+    addressInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        isBreadcrumbMode = true;
+        updateBreadcrumb(currentPath);
+        addressInput.blur();
+      }
+    });
+  }
+}
+
 type DialogType = 'info' | 'warning' | 'error' | 'success' | 'question';
 
 function asElement(target: EventTarget | null): HTMLElement | null {
@@ -222,6 +362,7 @@ let indexStatusInterval: NodeJS.Timeout | null = null;
 
 const addressInput = document.getElementById('address-input') as HTMLInputElement;
 const fileGrid = document.getElementById('file-grid') as HTMLElement;
+const columnView = document.getElementById('column-view') as HTMLElement;
 const loading = document.getElementById('loading') as HTMLElement;
 const emptyState = document.getElementById('empty-state') as HTMLElement;
 const backBtn = document.getElementById('back-btn') as HTMLButtonElement;
@@ -410,7 +551,7 @@ function applySettings(settings: Settings) {
   
   if (settings.viewMode) {
     viewMode = settings.viewMode;
-    fileGrid.className = viewMode === 'list' ? 'file-grid list-view' : 'file-grid';
+    applyViewMode();
     updateViewToggleButton();
   }
   
@@ -1263,6 +1404,9 @@ async function init() {
   console.log('Init: Loading settings...');
   await loadSettings();
   
+  console.log('Init: Setting up breadcrumb navigation...');
+  setupBreadcrumbListeners();
+  
   console.log('Init: Determining startup path...');
   let startupPath = currentSettings.startupPath && currentSettings.startupPath.trim() !== '' 
     ? currentSettings.startupPath 
@@ -1837,6 +1981,7 @@ async function navigateTo(path: string) {
   if (result.success) {
     currentPath = path;
     if (addressInput) addressInput.value = path;
+    updateBreadcrumb(path);
     addToDirectoryHistory(path);
     
     if (historyIndex === -1 || history[historyIndex] !== path) {
@@ -1846,7 +1991,12 @@ async function navigateTo(path: string) {
     }
     
     updateNavigationButtons();
-    renderFiles(result.contents);
+
+    if (viewMode === 'column') {
+      await renderColumnView();
+    } else {
+      renderFiles(result.contents);
+    }
     updateDiskSpace();
   } else {
     console.error('Error loading directory:', result.error);
@@ -2346,9 +2496,245 @@ function updateNavigationButtons() {
 }
 
 function toggleView() {
-  viewMode = viewMode === 'grid' ? 'list' : 'grid';
-  fileGrid.className = viewMode === 'list' ? 'file-grid list-view' : 'file-grid';
+  // Cycle through: grid → list → column → grid
+  if (viewMode === 'grid') {
+    viewMode = 'list';
+  } else if (viewMode === 'list') {
+    viewMode = 'column';
+  } else {
+    viewMode = 'grid';
+  }
+  applyViewMode();
   updateViewToggleButton();
+  
+  // Save view mode
+  currentSettings.viewMode = viewMode;
+  window.electronAPI.saveSettings(currentSettings);
+}
+
+async function applyViewMode() {
+  if (viewMode === 'column') {
+    fileGrid.style.display = 'none';
+    columnView.style.display = 'flex';
+    await renderColumnView();
+  } else {
+    columnView.style.display = 'none';
+    fileGrid.style.display = '';
+    fileGrid.className = viewMode === 'list' ? 'file-grid list-view' : 'file-grid';
+
+    if (currentPath) {
+      const result = await window.electronAPI.getDirectoryContents(currentPath);
+      if (result.success) {
+        renderFiles(result.contents);
+      }
+    }
+  }
+}
+
+let columnPaths: string[] = [];
+
+async function renderColumnView() {
+  if (!columnView) return;
+  
+  const savedScrollLeft = columnView.scrollLeft;
+  
+  columnView.innerHTML = '';
+
+  columnPaths = [];
+  
+  if (!currentPath) {
+    await renderDriveColumn();
+    return;
+  }
+
+  const isWindows = currentPath.includes(':\\');
+  
+  if (isWindows) {
+    const parts = currentPath.split('\\').filter(Boolean);
+    for (let i = 0; i < parts.length; i++) {
+      if (i === 0) {
+        columnPaths.push(parts[0] + '\\');
+      } else {
+        columnPaths.push(parts.slice(0, i + 1).join('\\'));
+      }
+    }
+  } else {
+    const parts = currentPath.split('/').filter(Boolean);
+    columnPaths.push('/');
+    for (let i = 0; i < parts.length; i++) {
+      columnPaths.push('/' + parts.slice(0, i + 1).join('/'));
+    }
+  }
+
+  for (let index = 0; index < columnPaths.length; index++) {
+    await renderColumn(columnPaths[index], index);
+  }
+
+  setTimeout(() => {
+    if (savedScrollLeft > 0) {
+      columnView.scrollLeft = savedScrollLeft;
+    } else {
+      columnView.scrollLeft = columnView.scrollWidth;
+    }
+  }, 50);
+}
+
+async function renderDriveColumn() {
+  const pane = document.createElement('div');
+  pane.className = 'column-pane';
+  
+  try {
+    const drives = await window.electronAPI.getDrives();
+    drives.forEach(drive => {
+      const item = document.createElement('div');
+      item.className = 'column-item is-directory';
+      item.dataset.path = drive;
+      item.innerHTML = `
+        <span class="column-item-icon"><img src="assets/twemoji/1f4bf.svg" class="twemoji" alt="💿" draggable="false" /></span>
+        <span class="column-item-name">${escapeHtml(drive)}</span>
+        <span class="column-item-arrow">▸</span>
+      `;
+      item.addEventListener('click', () => handleColumnItemClick(item, drive, true, 0));
+      pane.appendChild(item);
+    });
+  } catch {
+    pane.innerHTML = '<div class="column-item" style="opacity: 0.5;">Error loading drives</div>';
+  }
+  
+  columnView.appendChild(pane);
+}
+
+async function renderColumn(path: string, columnIndex: number) {
+  const pane = document.createElement('div');
+  pane.className = 'column-pane';
+  pane.dataset.columnIndex = String(columnIndex);
+  
+  try {
+    const result = await window.electronAPI.getDirectoryContents(path);
+    const items = result.contents;
+
+    const sortedItems = [...items].sort((a, b) => {
+      const dirSort = (b.isDirectory ? 1 : 0) - (a.isDirectory ? 1 : 0);
+      if (dirSort !== 0) return dirSort;
+      return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+    });
+
+    const visibleItems = currentSettings.showHiddenFiles 
+      ? sortedItems 
+      : sortedItems.filter(item => !item.isHidden);
+    
+    if (visibleItems.length === 0) {
+      pane.innerHTML = '<div class="column-item" style="opacity: 0.5; font-style: italic;">Empty folder</div>';
+    } else {
+      visibleItems.forEach(fileItem => {
+        const item = document.createElement('div');
+        item.className = 'column-item';
+        if (fileItem.isDirectory) item.classList.add('is-directory');
+        item.dataset.path = fileItem.path;
+
+        const nextColPath = columnPaths[columnIndex + 1];
+        if (nextColPath && fileItem.path === nextColPath) {
+          item.classList.add('expanded');
+        }
+        
+        const icon = fileItem.isDirectory 
+          ? '<img src="assets/twemoji/1f4c1.svg" class="twemoji" alt="📁" draggable="false" />'
+          : getFileIcon(fileItem.name);
+        
+        item.innerHTML = `
+          <span class="column-item-icon">${icon}</span>
+          <span class="column-item-name">${escapeHtml(fileItem.name)}</span>
+          ${fileItem.isDirectory ? '<span class="column-item-arrow">▸</span>' : ''}
+        `;
+        
+        item.addEventListener('click', () => handleColumnItemClick(item, fileItem.path, fileItem.isDirectory, columnIndex));
+        item.addEventListener('dblclick', () => {
+          if (!fileItem.isDirectory) {
+            window.electronAPI.openFile(fileItem.path);
+          }
+        });
+
+        item.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+
+          pane.querySelectorAll('.column-item').forEach(i => {
+            i.classList.remove('selected');
+          });
+          item.classList.add('selected');
+
+          clearSelection();
+          selectedItems.add(fileItem.path);
+
+          const colPath = columnPaths[columnIndex];
+          if (colPath && colPath !== currentPath) {
+            currentPath = colPath;
+            addressInput.value = colPath;
+            updateBreadcrumb(colPath);
+          }
+
+          showContextMenu(e.pageX, e.pageY, fileItem);
+        });
+        
+        pane.appendChild(item);
+      });
+    }
+  } catch {
+    pane.innerHTML = '<div class="column-item" style="opacity: 0.5;">Error loading folder</div>';
+  }
+  
+  columnView.appendChild(pane);
+}
+
+async function handleColumnItemClick(element: HTMLElement, path: string, isDirectory: boolean, columnIndex: number) {
+  const currentPane = element.closest('.column-pane');
+  if (!currentPane) return;
+
+  const allPanes = Array.from(columnView.querySelectorAll('.column-pane'));
+  const currentPaneIndex = allPanes.indexOf(currentPane as Element);
+  
+  for (let i = allPanes.length - 1; i > currentPaneIndex; i--) {
+    allPanes[i].remove();
+  }
+  columnPaths = columnPaths.slice(0, currentPaneIndex + 1);
+
+  currentPane.querySelectorAll('.column-item').forEach(item => {
+    item.classList.remove('expanded', 'selected');
+  });
+  
+  if (isDirectory) {
+    element.classList.add('expanded');
+    columnPaths.push(path);
+
+    currentPath = path;
+    addressInput.value = path;
+    updateBreadcrumb(path);
+    
+    await renderColumn(path, currentPaneIndex + 1);
+
+    setTimeout(() => {
+      columnView.scrollLeft = columnView.scrollWidth;
+    }, 50);
+  } else {
+    element.classList.add('selected');
+    clearSelection();
+    selectedItems.add(path);
+
+    const parentPath = columnPaths[currentPaneIndex];
+    if (parentPath && parentPath !== currentPath) {
+      currentPath = parentPath;
+      addressInput.value = parentPath;
+      updateBreadcrumb(parentPath);
+    }
+
+    const previewPanel = document.getElementById('preview-panel');
+    if (previewPanel && previewPanel.style.display !== 'none') {
+      const file = allFiles.find(f => f.path === path);
+      if (file) {
+        updatePreview(file);
+      }
+    }
+  }
 }
 
 function updateViewToggleButton() {
@@ -2360,6 +2746,16 @@ function updateViewToggleButton() {
         <rect x="2" y="11" width="12" height="2" fill="currentColor" rx="1"/>
       </svg>
     `;
+    viewToggleBtn.title = 'Switch to Column View';
+  } else if (viewMode === 'column') {
+    viewToggleBtn.innerHTML = `
+      <svg width="16" height="16" viewBox="0 0 16 16">
+        <rect x="1" y="2" width="4" height="12" fill="currentColor" rx="1"/>
+        <rect x="6" y="2" width="4" height="12" fill="currentColor" rx="1"/>
+        <rect x="11" y="2" width="4" height="12" fill="currentColor" rx="1"/>
+      </svg>
+    `;
+    viewToggleBtn.title = 'Switch to Grid View';
   } else {
     viewToggleBtn.innerHTML = `
       <svg width="16" height="16" viewBox="0 0 16 16">
@@ -2369,6 +2765,7 @@ function updateViewToggleButton() {
         <rect x="9" y="9" width="5" height="5" fill="currentColor" rx="1"/>
       </svg>
     `;
+    viewToggleBtn.title = 'Switch to List View';
   }
 }
 
@@ -2613,6 +3010,17 @@ function showContextMenu(x: number, y: number, item: FileItem) {
   
   contextMenu.style.left = left + 'px';
   contextMenu.style.top = top + 'px';
+
+  const submenu = contextMenu.querySelector('.context-submenu') as HTMLElement;
+  if (submenu) {
+    submenu.classList.remove('flip-left');
+    const menuRight = left + menuRect.width;
+    const submenuWidth = 160;
+    
+    if (menuRight + submenuWidth > viewportWidth - 10) {
+      submenu.classList.add('flip-left');
+    }
+  }
 }
 
 function hideContextMenu() {
@@ -2896,11 +3304,26 @@ function showPropertiesDialog(props: ItemProperties) {
   const modal = document.getElementById('properties-modal');
   const content = document.getElementById('properties-content');
   
-  const sizeInKB = (props.size / 1024).toFixed(2);
-  const sizeInMB = (props.size / (1024 * 1024)).toFixed(2);
-  const sizeDisplay = props.size > 1024 * 1024 ? `${sizeInMB} MB` : `${sizeInKB} KB`;
+  // unique op IDs
+  const folderSizeOperationId = `foldersize_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
+  const checksumOperationId = `checksum_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
+
+  let folderSizeActive = false;
+  let checksumActive = false;
+  let folderSizeProgressCleanup: (() => void) | null = null;
+  let checksumProgressCleanup: (() => void) | null = null;
   
-  content.innerHTML = `
+  const formatSize = (bytes: number): string => {
+    if (bytes === 0) return '0 bytes';
+    const units = ['bytes', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(1024));
+    const size = (bytes / Math.pow(1024, i)).toFixed(2);
+    return `${bytes.toLocaleString()} bytes (${size} ${units[i]})`;
+  };
+  
+  const sizeDisplay = formatSize(props.size);
+
+  let html = `
     <div class="property-row">
       <div class="property-label">Name:</div>
       <div class="property-value">${escapeHtml(props.name)}</div>
@@ -2911,11 +3334,34 @@ function showPropertiesDialog(props: ItemProperties) {
     </div>
     <div class="property-row">
       <div class="property-label">Size:</div>
-      <div class="property-value">${props.size.toLocaleString()} bytes (${sizeDisplay})</div>
+      <div class="property-value" id="props-size-value">${sizeDisplay}</div>
+    </div>`;
+
+  if (props.isDirectory) {
+    html += `
+    <div class="property-row property-folder-size">
+      <div class="property-label">Contents:</div>
+      <div class="property-value">
+        <span id="folder-size-info">Not calculated</span>
+        <button class="property-btn" id="calculate-folder-size-btn">${twemojiImg(String.fromCodePoint(0x1F4CA), 'twemoji')} Calculate Size</button>
+      </div>
     </div>
+    <div class="property-row" id="folder-size-progress-row" style="display: none;">
+      <div class="property-label"></div>
+      <div class="property-value">
+        <div class="property-progress-container">
+          <div class="property-progress-bar" id="folder-size-progress-bar"></div>
+        </div>
+        <div class="property-progress-text" id="folder-size-progress-text">Calculating...</div>
+        <button class="property-btn property-btn-cancel" id="cancel-folder-size-btn">${twemojiImg(String.fromCodePoint(0x274C), 'twemoji')} Cancel</button>
+      </div>
+    </div>`;
+  }
+  
+  html += `
     <div class="property-row">
       <div class="property-label">Location:</div>
-      <div class="property-value">${escapeHtml(props.path)}</div>
+      <div class="property-value property-path">${escapeHtml(props.path)}</div>
     </div>
     <div class="property-row">
       <div class="property-label">Created:</div>
@@ -2928,14 +3374,228 @@ function showPropertiesDialog(props: ItemProperties) {
     <div class="property-row">
       <div class="property-label">Accessed:</div>
       <div class="property-value">${new Date(props.accessed).toLocaleString()}</div>
+    </div>`;
+
+  if (props.isFile) {
+    html += `
+    <div class="property-separator"></div>
+    <div class="property-row property-checksum-header">
+      <div class="property-label">Checksums:</div>
+      <div class="property-value">
+        <button class="property-btn" id="calculate-checksum-btn">${twemojiImg(String.fromCodePoint(0x1F510), 'twemoji')} Calculate Checksums</button>
+      </div>
     </div>
-  `;
+    <div class="property-row" id="checksum-progress-row" style="display: none;">
+      <div class="property-label"></div>
+      <div class="property-value">
+        <div class="property-progress-container">
+          <div class="property-progress-bar" id="checksum-progress-bar"></div>
+        </div>
+        <div class="property-progress-text" id="checksum-progress-text">Calculating...</div>
+        <button class="property-btn property-btn-cancel" id="cancel-checksum-btn">${twemojiImg(String.fromCodePoint(0x274C), 'twemoji')} Cancel</button>
+      </div>
+    </div>
+    <div class="property-row" id="checksum-md5-row" style="display: none;">
+      <div class="property-label">MD5:</div>
+      <div class="property-value property-checksum">
+        <code id="checksum-md5-value"></code>
+        <button class="property-btn-copy" id="copy-md5-btn" title="Copy MD5">${twemojiImg(String.fromCodePoint(0x1F4CB), 'twemoji')}</button>
+      </div>
+    </div>
+    <div class="property-row" id="checksum-sha256-row" style="display: none;">
+      <div class="property-label">SHA-256:</div>
+      <div class="property-value property-checksum">
+        <code id="checksum-sha256-value"></code>
+        <button class="property-btn-copy" id="copy-sha256-btn" title="Copy SHA-256">${twemojiImg(String.fromCodePoint(0x1F4CB), 'twemoji')}</button>
+      </div>
+    </div>`;
+  }
   
+  content.innerHTML = html;
   modal.style.display = 'flex';
+
+  const cleanup = () => {
+    if (folderSizeActive) {
+      window.electronAPI.cancelFolderSizeCalculation(folderSizeOperationId);
+      folderSizeActive = false;
+    }
+    if (checksumActive) {
+      window.electronAPI.cancelChecksumCalculation(checksumOperationId);
+      checksumActive = false;
+    }
+    if (folderSizeProgressCleanup) {
+      folderSizeProgressCleanup();
+      folderSizeProgressCleanup = null;
+    }
+    if (checksumProgressCleanup) {
+      checksumProgressCleanup();
+      checksumProgressCleanup = null;
+    }
+  };
   
   const closeModal = () => {
+    cleanup();
     modal.style.display = 'none';
   };
+
+  if (props.isDirectory) {
+    const calculateBtn = document.getElementById('calculate-folder-size-btn');
+    const cancelBtn = document.getElementById('cancel-folder-size-btn');
+    const progressRow = document.getElementById('folder-size-progress-row');
+    const progressBar = document.getElementById('folder-size-progress-bar');
+    const progressText = document.getElementById('folder-size-progress-text');
+    const sizeInfo = document.getElementById('folder-size-info');
+    
+    if (calculateBtn) {
+      calculateBtn.addEventListener('click', async () => {
+        calculateBtn.style.display = 'none';
+        if (progressRow) progressRow.style.display = 'flex';
+        folderSizeActive = true;
+        
+        // progress listener
+        folderSizeProgressCleanup = window.electronAPI.onFolderSizeProgress((progress) => {
+          if (progress.operationId === folderSizeOperationId && progressBar && progressText) {
+            const currentSize = formatSize(progress.calculatedSize);
+            progressText.textContent = `${progress.fileCount} files, ${progress.folderCount} folders - ${currentSize}`;
+            progressBar.style.width = '100%';
+            progressBar.classList.add('indeterminate');
+          }
+        });
+        
+        try {
+          const result = await window.electronAPI.calculateFolderSize(props.path, folderSizeOperationId);
+          
+          if (result.success && result.result) {
+            const totalSize = formatSize(result.result.totalSize);
+            if (sizeInfo) {
+              sizeInfo.textContent = `${result.result.fileCount} files, ${result.result.folderCount} folders (${totalSize})`;
+            }
+            const propsSize = document.getElementById('props-size-value');
+            if (propsSize) {
+              propsSize.textContent = totalSize;
+            }
+          } else if (result.error !== 'Calculation cancelled') {
+            if (sizeInfo) sizeInfo.textContent = `Error: ${result.error}`;
+          }
+        } catch (err) {
+          if (sizeInfo) sizeInfo.textContent = `Error: ${(err as Error).message}`;
+        } finally {
+          folderSizeActive = false;
+          if (folderSizeProgressCleanup) {
+            folderSizeProgressCleanup();
+            folderSizeProgressCleanup = null;
+          }
+          if (progressRow) progressRow.style.display = 'none';
+          if (progressBar) {
+            progressBar.classList.remove('indeterminate');
+            progressBar.style.width = '0%';
+          }
+        }
+      });
+    }
+    
+    if (cancelBtn) {
+      cancelBtn.addEventListener('click', () => {
+        if (folderSizeActive) {
+          window.electronAPI.cancelFolderSizeCalculation(folderSizeOperationId);
+          folderSizeActive = false;
+        }
+        if (folderSizeProgressCleanup) {
+          folderSizeProgressCleanup();
+          folderSizeProgressCleanup = null;
+        }
+        if (progressRow) progressRow.style.display = 'none';
+        if (calculateBtn) calculateBtn.style.display = 'inline-flex';
+        if (sizeInfo) sizeInfo.textContent = 'Calculation cancelled';
+      });
+    }
+  }
+  
+  // checksum calculation
+  if (props.isFile) {
+    const calculateBtn = document.getElementById('calculate-checksum-btn');
+    const cancelBtn = document.getElementById('cancel-checksum-btn');
+    const progressRow = document.getElementById('checksum-progress-row');
+    const progressBar = document.getElementById('checksum-progress-bar');
+    const progressText = document.getElementById('checksum-progress-text');
+    const md5Row = document.getElementById('checksum-md5-row');
+    const sha256Row = document.getElementById('checksum-sha256-row');
+    const md5Value = document.getElementById('checksum-md5-value');
+    const sha256Value = document.getElementById('checksum-sha256-value');
+    const copyMd5Btn = document.getElementById('copy-md5-btn');
+    const copySha256Btn = document.getElementById('copy-sha256-btn');
+    
+    if (calculateBtn) {
+      calculateBtn.addEventListener('click', async () => {
+        calculateBtn.style.display = 'none';
+        if (progressRow) progressRow.style.display = 'flex';
+        checksumActive = true;
+
+        checksumProgressCleanup = window.electronAPI.onChecksumProgress((progress) => {
+          if (progress.operationId === checksumOperationId && progressBar && progressText) {
+            progressBar.style.width = `${progress.percent}%`;
+            progressText.textContent = `Calculating ${progress.algorithm.toUpperCase()}... ${progress.percent.toFixed(1)}%`;
+          }
+        });
+        
+        try {
+          const result = await window.electronAPI.calculateChecksum(props.path, checksumOperationId, ['md5', 'sha256']);
+          
+          if (result.success && result.result) {
+            if (result.result.md5 && md5Row && md5Value) {
+              md5Value.textContent = result.result.md5;
+              md5Row.style.display = 'flex';
+            }
+            if (result.result.sha256 && sha256Row && sha256Value) {
+              sha256Value.textContent = result.result.sha256;
+              sha256Row.style.display = 'flex';
+            }
+          } else if (result.error !== 'Calculation cancelled') {
+            showToast(result.error || 'Checksum calculation failed', 'Error', 'error');
+          }
+        } catch (err) {
+          showToast((err as Error).message, 'Error', 'error');
+        } finally {
+          checksumActive = false;
+          if (checksumProgressCleanup) {
+            checksumProgressCleanup();
+            checksumProgressCleanup = null;
+          }
+          if (progressRow) progressRow.style.display = 'none';
+          if (progressBar) progressBar.style.width = '0%';
+        }
+      });
+    }
+    
+    if (cancelBtn) {
+      cancelBtn.addEventListener('click', () => {
+        if (checksumActive) {
+          window.electronAPI.cancelChecksumCalculation(checksumOperationId);
+          checksumActive = false;
+        }
+        if (checksumProgressCleanup) {
+          checksumProgressCleanup();
+          checksumProgressCleanup = null;
+        }
+        if (progressRow) progressRow.style.display = 'none';
+        if (calculateBtn) calculateBtn.style.display = 'inline-flex';
+      });
+    }
+
+    if (copyMd5Btn && md5Value) {
+      copyMd5Btn.addEventListener('click', () => {
+        navigator.clipboard.writeText(md5Value.textContent || '');
+        showToast('MD5 copied to clipboard', 'Copied', 'success');
+      });
+    }
+    
+    if (copySha256Btn && sha256Value) {
+      copySha256Btn.addEventListener('click', () => {
+        navigator.clipboard.writeText(sha256Value.textContent || '');
+        showToast('SHA-256 copied to clipboard', 'Copied', 'success');
+      });
+    }
+  }
   
   document.getElementById('properties-close').onclick = closeModal;
   document.getElementById('properties-ok').onclick = closeModal;

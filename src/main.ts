@@ -91,6 +91,8 @@ const redoStack: UndoAction[] = [];
 const MAX_UNDO_STACK = 50;
 
 const activeArchiveProcesses = new Map<string, any>();
+const activeFolderSizeCalculations = new Map<string, { aborted: boolean }>();
+const activeChecksumCalculations = new Map<string, { aborted: boolean }>();
 
 function pushUndoAction(action: UndoAction): void {
   undoStack.push(action);
@@ -522,6 +524,16 @@ app.whenReady().then(async () => {
             autoUpdater.logger = console;
             autoUpdater.autoDownload = false;
             autoUpdater.autoInstallOnAppQuit = true;
+            
+            const currentVersion = app.getVersion();
+            const isBetaVersion = /-(beta|alpha|rc)/i.test(currentVersion);
+            const isBetaBuild = process.env.IS_BETA === 'true' || isBetaVersion;
+            
+            if (isBetaBuild) {
+              autoUpdater.allowPrerelease = true;
+              console.log('[AutoUpdater] Beta mode enabled - will check for prerelease updates');
+              console.log('[AutoUpdater] Current version:', currentVersion);
+            }
 
             if (isRunningInFlatpak()) {
               console.log('[AutoUpdater] Running in Flatpak - auto-updater disabled');
@@ -2231,6 +2243,208 @@ async function createTrayForHiddenStart(): Promise<void> {
 
   console.log('[Tray] Tray created successfully for hidden start');
 }
+
+// Folder Size Calc
+ipcMain.handle('calculate-folder-size', async (_event: IpcMainInvokeEvent, folderPath: string, operationId: string): Promise<{success: boolean; result?: {totalSize: number; fileCount: number; folderCount: number}; error?: string}> => {
+  try {
+    console.log('[FolderSize] Starting calculation for:', folderPath, 'operationId:', operationId);
+    
+    const operation = { aborted: false };
+    activeFolderSizeCalculations.set(operationId, operation);
+    
+    let totalSize = 0;
+    let fileCount = 0;
+    let folderCount = 0;
+    let lastProgressUpdate = Date.now();
+    
+    const safeSend = (channel: string, ...args: any[]) => {
+      try {
+        if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
+          mainWindow.webContents.send(channel, ...args);
+        }
+      } catch (error) {
+        console.error(`[FolderSize] Failed to send ${channel}:`, error);
+      }
+    };
+    
+    async function calculateSize(dirPath: string): Promise<void> {
+      if (operation.aborted) {
+        throw new Error('Calculation cancelled');
+      }
+      
+      try {
+        const entries = await fs.readdir(dirPath, { withFileTypes: true });
+        
+        for (const entry of entries) {
+          if (operation.aborted) {
+            throw new Error('Calculation cancelled');
+          }
+          
+          const fullPath = path.join(dirPath, entry.name);
+          
+          try {
+            if (entry.isDirectory()) {
+              folderCount++;
+              await calculateSize(fullPath);
+            } else if (entry.isFile()) {
+              const stats = await fs.stat(fullPath);
+              totalSize += stats.size;
+              fileCount++;
+            }
+
+            const now = Date.now();
+            if (now - lastProgressUpdate > 100) {
+              lastProgressUpdate = now;
+              safeSend('folder-size-progress', {
+                operationId,
+                calculatedSize: totalSize,
+                fileCount,
+                folderCount,
+                currentPath: fullPath
+              });
+            }
+          } catch (err) {
+            console.log(`[FolderSize] Skipping ${fullPath}:`, (err as Error).message);
+          }
+        }
+      } catch (err) {
+        console.log(`[FolderSize] Cannot read ${dirPath}:`, (err as Error).message);
+      }
+    }
+    
+    await calculateSize(folderPath);
+    
+    activeFolderSizeCalculations.delete(operationId);
+    
+    console.log('[FolderSize] Completed:', { totalSize, fileCount, folderCount });
+    return {
+      success: true,
+      result: { totalSize, fileCount, folderCount }
+    };
+  } catch (error) {
+    activeFolderSizeCalculations.delete(operationId);
+    const errorMessage = (error as Error).message;
+    if (errorMessage === 'Calculation cancelled') {
+      console.log('[FolderSize] Calculation cancelled for operationId:', operationId);
+      return { success: false, error: 'Calculation cancelled' };
+    }
+    console.error('[FolderSize] Error:', error);
+    return { success: false, error: errorMessage };
+  }
+});
+
+ipcMain.handle('cancel-folder-size-calculation', async (_event: IpcMainInvokeEvent, operationId: string): Promise<{success: boolean; error?: string}> => {
+  const operation = activeFolderSizeCalculations.get(operationId);
+  if (operation) {
+    operation.aborted = true;
+    activeFolderSizeCalculations.delete(operationId);
+    console.log('[FolderSize] Cancellation requested for operationId:', operationId);
+    return { success: true };
+  }
+  return { success: false, error: 'Operation not found' };
+});
+
+// Checksum Calc
+ipcMain.handle('calculate-checksum', async (_event: IpcMainInvokeEvent, filePath: string, operationId: string, algorithms: string[]): Promise<{success: boolean; result?: {md5?: string; sha256?: string}; error?: string}> => {
+  try {
+    console.log('[Checksum] Starting calculation for:', filePath, 'algorithms:', algorithms, 'operationId:', operationId);
+    
+    const crypto = require('crypto');
+    const operation = { aborted: false };
+    activeChecksumCalculations.set(operationId, operation);
+    
+    const stats = await fs.stat(filePath);
+    const fileSize = stats.size;
+    
+    const safeSend = (channel: string, ...args: any[]) => {
+      try {
+        if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
+          mainWindow.webContents.send(channel, ...args);
+        }
+      } catch (error) {
+        console.error(`[Checksum] Failed to send ${channel}:`, error);
+      }
+    };
+    
+    const result: {md5?: string; sha256?: string} = {};
+    
+    for (const algorithm of algorithms) {
+      if (operation.aborted) {
+        throw new Error('Calculation cancelled');
+      }
+      
+      const hash = crypto.createHash(algorithm);
+      const stream = fsSync.createReadStream(filePath);
+      
+      let bytesRead = 0;
+      let lastProgressUpdate = Date.now();
+      
+      await new Promise<void>((resolve, reject) => {
+        stream.on('data', (chunk: Buffer) => {
+          if (operation.aborted) {
+            stream.destroy();
+            reject(new Error('Calculation cancelled'));
+            return;
+          }
+          
+          hash.update(chunk);
+          bytesRead += chunk.length;
+          const now = Date.now();
+          if (now - lastProgressUpdate > 100) {
+            lastProgressUpdate = now;
+            const percent = fileSize > 0 ? (bytesRead / fileSize) * 100 : 0;
+            safeSend('checksum-progress', {
+              operationId,
+              percent,
+              algorithm
+            });
+          }
+        });
+        
+        stream.on('end', () => {
+          if (!operation.aborted) {
+            const hashValue = hash.digest('hex');
+            if (algorithm === 'md5') {
+              result.md5 = hashValue;
+            } else if (algorithm === 'sha256') {
+              result.sha256 = hashValue;
+            }
+          }
+          resolve();
+        });
+        
+        stream.on('error', (err) => {
+          reject(err);
+        });
+      });
+    }
+    
+    activeChecksumCalculations.delete(operationId);
+    
+    console.log('[Checksum] Completed:', result);
+    return { success: true, result };
+  } catch (error) {
+    activeChecksumCalculations.delete(operationId);
+    const errorMessage = (error as Error).message;
+    if (errorMessage === 'Calculation cancelled') {
+      console.log('[Checksum] Calculation cancelled for operationId:', operationId);
+      return { success: false, error: 'Calculation cancelled' };
+    }
+    console.error('[Checksum] Error:', error);
+    return { success: false, error: errorMessage };
+  }
+});
+
+ipcMain.handle('cancel-checksum-calculation', async (_event: IpcMainInvokeEvent, operationId: string): Promise<{success: boolean; error?: string}> => {
+  const operation = activeChecksumCalculations.get(operationId);
+  if (operation) {
+    operation.aborted = true;
+    activeChecksumCalculations.delete(operationId);
+    console.log('[Checksum] Cancellation requested for operationId:', operationId);
+    return { success: true };
+  }
+  return { success: false, error: 'Operation not found' };
+});
 
 
 

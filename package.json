@@ -1,6 +1,6 @@
 {
   "name": "iyeris",
-  "version": "0.7.2",
+  "version": "0.8.0",
   "description": "A beautiful cross-platform file explorer built with Electron, featuring a stunning liquid-glass interface with smooth animations and modern design.",
   "main": "dist/main.js",
   "dependencies": {
@@ -11,6 +11,7 @@
   "devDependencies": {
     "@electron/notarize": "^3.1.1",
     "@types/node": "^24.10.0",
+    "cross-env": "^7.0.3",
     "dotenv": "^17.2.3",
     "dotenv-cli": "^10.0.0",
     "electron": "^39.0.0",
@@ -42,7 +43,15 @@
     "flatpak:build": "flatpak-builder --user --install --force-clean build-dir com.burnttoasters.iyeris.yml",
     "flatpak:run": "flatpak run com.burnttoasters.iyeris",
     "flatpak:bundle": "flatpak-builder --repo=repo --force-clean build-dir com.burnttoasters.iyeris.yml && flatpak build-bundle repo iyeris.flatpak com.burnttoasters.iyeris",
-    "flatpak:clean": "rm -rf build-dir .flatpak-builder repo"
+    "flatpak:clean": "rm -rf build-dir .flatpak-builder repo",
+    "flatpak:beta:build": "flatpak-builder --user --install --force-clean build-dir com.burnttoasters.iyeris.beta.yml",
+    "flatpak:beta:bundle": "flatpak-builder --repo=repo --force-clean build-dir com.burnttoasters.iyeris.beta.yml && flatpak build-bundle repo iyeris-beta.flatpak com.burnttoasters.iyeris",
+    "patch:beta": "node build/patch-beta.js",
+    "restore:release": "node build/restore-release.js",
+    "build:beta:win": "npm run patch:beta && cross-env IS_BETA=true npm run build && electron-builder --win --x64 --arm64 -c.win.icon=assets/icon-square-beta.ico && npm run restore:release",
+    "build:beta:win:x64": "npm run patch:beta && cross-env IS_BETA=true npm run build && electron-builder --win --x64 --publish never -c.win.icon=assets/icon-square-beta.ico && npm run restore:release",
+    "build:beta:mac": "npm run patch:beta && cross-env IS_BETA=true npm run build && dotenv -e .env -- electron-builder --mac --universal -c.mac.icon=assets/iyeris-beta.icns && npm run restore:release",
+    "build:beta:linux": "npm run patch:beta && cross-env IS_BETA=true npm run build && electron-builder --linux AppImage deb rpm --x64 --arm64 -c.linux.icon=assets/icon-beta.png && npm run flatpak:clean && npm run flatpak:beta:build && npm run flatpak:beta:bundle && npm run restore:release"
   },
   "build": {
     "appId": "com.burnttoasters.iyeris",

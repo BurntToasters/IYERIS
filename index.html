@@ -101,6 +101,7 @@
           <div class="address-bar-wrapper">
             <div class="address-bar glass-input">
               <span class="address-icon"><img src="assets/twemoji/1f4cd.svg" class="twemoji" alt="📍" draggable="false" /></span>
+              <div class="breadcrumb" id="breadcrumb-container"></div>
               <input type="text" id="address-input" placeholder="Enter path...">
             </div>
             <div class="history-dropdown" id="directory-history-dropdown" style="display: none;"></div>
@@ -184,6 +185,7 @@
             <p>This folder is empty</p>
           </div>
           <div class="file-grid" id="file-grid"></div>
+          <div class="column-view" id="column-view" style="display: none;"></div>
         </div>
 
         <div class="preview-panel glass-panel" id="preview-panel" style="display: none;">
@@ -474,7 +476,7 @@
       <div class="modal-footer">
         <div class="footer-top">
           <span class="footer-credit">Made with <img src="assets/twemoji/2764.svg" class="twemoji" alt="❤️" draggable="false" /> By: <strong>BurntToasters</strong>/<strong id="rosie-link" style="cursor: pointer; text-decoration: underline;">Rosie.run</strong></span>
-          <span class="footer-version" id="version-indicator" title="Click to view release">v0.7.2</span>
+          <span class="footer-version" id="version-indicator" title="Click to view release">v0.8.0</span>
         </div>
         <div class="footer-top" style="margin-top: 0.5rem; font-size: 0.85em; opacity: 0.8;">
           <span class="footer-credit">Emoji graphics by <strong>Twemoji</strong> (Twitter) + Additional Contributors: <span id="twemoji-cc-link" style="text-decoration: underline; color: inherit; cursor: pointer;">CC-BY 4.0</span></span>
@@ -660,7 +662,7 @@
     </div>
     <div class="status-right">
       <span id="status-disk-space"></span>
-      <p>Beta Build @ [v0.7.2]</p>
+      <p>Build @ [v0.8.0]</p>
       <span id="heart-button" title="Support this project!" style="margin-left: -10px; margin-right: -15px; cursor: pointer;"> <img src="assets/twemoji/2764.svg" class="twemoji" alt="❤️" draggable="false" /> </span>
     </div>
   </div>

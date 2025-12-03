@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { ElectronAPI, Settings, UpdateDownloadProgress } from './types';
+import type { ElectronAPI, Settings, UpdateDownloadProgress, FolderSizeProgress, ChecksumResult } from './types';
 
 const electronAPI: ElectronAPI = {
   getDirectoryContents: (dirPath: string) => ipcRenderer.invoke('get-directory-contents', dirPath),
@@ -74,7 +74,21 @@ const electronAPI: ElectronAPI = {
     return () => ipcRenderer.removeListener('system-resumed', handler);
   },
   setZoomLevel: (zoomLevel: number) => ipcRenderer.invoke('set-zoom-level', zoomLevel),
-  getZoomLevel: () => ipcRenderer.invoke('get-zoom-level')
+  getZoomLevel: () => ipcRenderer.invoke('get-zoom-level'),
+  calculateFolderSize: (folderPath: string, operationId: string) => ipcRenderer.invoke('calculate-folder-size', folderPath, operationId),
+  cancelFolderSizeCalculation: (operationId: string) => ipcRenderer.invoke('cancel-folder-size-calculation', operationId),
+  onFolderSizeProgress: (callback: (progress: FolderSizeProgress & {operationId: string}) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, progress: FolderSizeProgress & {operationId: string}) => callback(progress);
+    ipcRenderer.on('folder-size-progress', handler);
+    return () => ipcRenderer.removeListener('folder-size-progress', handler);
+  },
+  calculateChecksum: (filePath: string, operationId: string, algorithms: string[]) => ipcRenderer.invoke('calculate-checksum', filePath, operationId, algorithms),
+  cancelChecksumCalculation: (operationId: string) => ipcRenderer.invoke('cancel-checksum-calculation', operationId),
+  onChecksumProgress: (callback: (progress: {operationId: string; percent: number; algorithm: string}) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, progress: {operationId: string; percent: number; algorithm: string}) => callback(progress);
+    ipcRenderer.on('checksum-progress', handler);
+    return () => ipcRenderer.removeListener('checksum-progress', handler);
+  }
 };
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);
