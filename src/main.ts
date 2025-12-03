@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, shell, IpcMainInvokeEvent, Menu, Tray, nativeImage } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell, IpcMainInvokeEvent, Menu, Tray, nativeImage, powerMonitor } from 'electron';
 import * as path from 'path';
 import { promises as fs } from 'fs';
 import * as fsSync from 'fs';
@@ -123,12 +123,33 @@ const defaultSettings: Settings = {
 function applyLoginItemSettings(settings: Settings): void {
   try {
     console.log('[LoginItem] Applying settings:', settings.startOnLogin);
-    app.setLoginItemSettings({
-      openAtLogin: settings.startOnLogin,
-      openAsHidden: settings.startOnLogin,
-      args: settings.startOnLogin ? ['--hidden'] : [], // not supported on Linux
-      name: 'IYERIS'
-    });
+    
+    if (process.platform === 'win32') {
+      // Windows - Use exe path and pass --hidden
+      const exePath = app.getPath('exe');
+      app.setLoginItemSettings({
+        openAtLogin: settings.startOnLogin,
+        path: exePath,
+        args: settings.startOnLogin ? ['--hidden'] : [],
+        name: 'IYERIS'
+      });
+    } else if (process.platform === 'darwin') {
+      // macOS - openAsHidden
+      app.setLoginItemSettings({
+        openAtLogin: settings.startOnLogin,
+        openAsHidden: settings.startOnLogin,
+        name: 'IYERIS'
+      });
+    } else {
+      // Linux - basic login
+      app.setLoginItemSettings({
+        openAtLogin: settings.startOnLogin,
+        args: settings.startOnLogin ? ['--hidden'] : [],
+        name: 'IYERIS'
+      });
+    }
+    
+    console.log('[LoginItem] Login item settings applied successfully');
   } catch (error) {
     console.error('[LoginItem] Failed to set login item:', error);
   }
@@ -459,8 +480,23 @@ function setupApplicationMenu(): void {
 
 app.whenReady().then(async () => {
   setupApplicationMenu();
+
+  const startHidden = process.argv.includes('--hidden');
+  console.log('[Startup] Starting with hidden mode:', startHidden);
+
+  if (startHidden) {
+    const settings = await loadSettings();
+    if (settings.minimizeToTray || settings.startOnLogin) {
+      console.log('[Startup] Creating tray before window for hidden start');
+      await createTrayForHiddenStart();
+    }
+  }
+  
   createWindow(true); // Initial window
-  await createTray();
+
+  if (!tray) {
+    await createTray();
+  }
 
   mainWindow?.once('ready-to-show', () => {
     setTimeout(async () => {
@@ -583,6 +619,39 @@ app.whenReady().then(async () => {
         app.dock?.show();
       }
     }
+  });
+
+  // Power management event handling
+  powerMonitor.on('suspend', () => {
+    console.log('[PowerMonitor] System is going to sleep');
+    // Pause bg operations
+    if (fileIndexer) {
+      console.log('[PowerMonitor] Pausing indexer before sleep');
+    }
+  });
+
+  powerMonitor.on('resume', () => {
+    console.log('[PowerMonitor] System resumed from sleep');
+    setTimeout(() => {
+      console.log('[PowerMonitor] Post-resume initialization');
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        try {
+          if (mainWindow.isVisible()) {
+            mainWindow.webContents.send('system-resumed');
+          }
+        } catch (error) {
+          console.error('[PowerMonitor] Error after resume:', error);
+        }
+      }
+    }, 2000);
+  });
+
+  powerMonitor.on('lock-screen', () => {
+    console.log('[PowerMonitor] Screen locked');
+  });
+
+  powerMonitor.on('unlock-screen', () => {
+    console.log('[PowerMonitor] Screen unlocked');
   });
 });
 
@@ -1995,5 +2064,148 @@ async function createTray(): Promise<void> {
 
   console.log('[Tray] Tray created successfully');
 }
+
+async function createTrayForHiddenStart(): Promise<void> {
+  if (tray) {
+    console.log('[Tray] Tray already exists for hidden start');
+    return;
+  }
+
+  let iconPath: string;
+  let trayIcon: Electron.NativeImage;
+
+  const assetsPath = path.join(__dirname, '..', 'assets');
+
+  if (process.platform === 'darwin') {
+    const icon32Path = path.join(assetsPath, 'iyeris.iconset', 'icon_32x32@1x.png');
+    const iconFallback = path.join(assetsPath, 'icon.png');
+    
+    if (fsSync.existsSync(icon32Path)) {
+      iconPath = icon32Path;
+      trayIcon = nativeImage.createFromPath(iconPath).resize({ width: 22, height: 22 });
+    } else {
+      iconPath = iconFallback;
+      trayIcon = nativeImage.createFromPath(iconPath).resize({ width: 22, height: 22 });
+    }
+    console.log('[Tray] macOS hidden start: Using color icon from:', iconPath);
+  } else if (process.platform === 'win32') {
+    const icoPath = path.join(assetsPath, 'icon-square.ico');
+    const pngPath = path.join(assetsPath, 'icon.png');
+    
+    if (fsSync.existsSync(icoPath)) {
+      iconPath = icoPath;
+      trayIcon = nativeImage.createFromPath(iconPath);
+    } else {
+      iconPath = pngPath;
+      trayIcon = nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 });
+    }
+    console.log('[Tray] Windows hidden start: Using icon from:', iconPath);
+  } else {
+    const icon32Path = path.join(assetsPath, 'iyeris.iconset', 'icon_32x32@1x.png');
+    const iconFallback = path.join(assetsPath, 'icon.png');
+    
+    if (fsSync.existsSync(icon32Path)) {
+      iconPath = icon32Path;
+      trayIcon = nativeImage.createFromPath(iconPath).resize({ width: 24, height: 24 });
+    } else {
+      iconPath = iconFallback;
+      trayIcon = nativeImage.createFromPath(iconPath).resize({ width: 24, height: 24 });
+    }
+    console.log('[Tray] Linux hidden start: Using icon from:', iconPath);
+  }
+
+  if (trayIcon.isEmpty()) {
+    console.error('[Tray] Failed to load tray icon for hidden start from:', iconPath);
+    return;
+  }
+  
+  try {
+    tray = new Tray(trayIcon);
+  } catch (error) {
+    console.error('[Tray] Failed to create tray icon for hidden start:', error);
+    tray = null;
+    return;
+  }
+
+  tray.setToolTip('IYERIS');
+  
+  const contextMenu = Menu.buildFromTemplate([
+    { 
+      label: 'Show IYERIS', 
+      click: () => {
+        let targetWindow = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+        if (!targetWindow) {
+          const allWindows = BrowserWindow.getAllWindows();
+          targetWindow = allWindows.length > 0 ? allWindows[0] : null;
+        }
+        
+        if (targetWindow) {
+          targetWindow.show();
+          targetWindow.focus();
+        } else {
+          createWindow(false);
+        }
+        
+        if (process.platform === 'darwin') {
+          app.dock?.show();
+        }
+      } 
+    },
+    { type: 'separator' },
+    { 
+      label: 'Quit', 
+      click: () => {
+        isQuitting = true;
+        app.quit();
+      } 
+    }
+  ]);
+  
+  tray.setContextMenu(contextMenu);
+
+  if (process.platform !== 'darwin') {
+    tray.on('click', () => {
+      let targetWindow = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+      if (!targetWindow) {
+        const allWindows = BrowserWindow.getAllWindows();
+        targetWindow = allWindows.length > 0 ? allWindows[0] : null;
+      }
+      
+      if (targetWindow) {
+        if (targetWindow.isVisible()) {
+          targetWindow.hide();
+        } else {
+          targetWindow.show();
+          targetWindow.focus();
+        }
+      } else {
+        createWindow(false);
+      }
+    });
+  }
+
+  if (process.platform === 'darwin') {
+    tray.on('double-click', () => {
+      let targetWindow = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+      if (!targetWindow) {
+        const allWindows = BrowserWindow.getAllWindows();
+        targetWindow = allWindows.length > 0 ? allWindows[0] : null;
+      }
+      
+      if (targetWindow) {
+        targetWindow.show();
+        targetWindow.focus();
+      } else {
+        createWindow(false);
+      }
+      
+      app.dock?.show();
+    });
+  }
+
+  console.log('[Tray] Tray created successfully for hidden start');
+}
+
+
 
 
