@@ -556,6 +556,33 @@ app.whenReady().then(async () => {
               }
             };
 
+            const compareVersions = (a: string, b: string): number => {
+              const parseVersion = (v: string) => {
+                const match = v.match(/^v?(\d+)\.(\d+)\.(\d+)(?:-(.+))?$/);
+                if (!match) return { major: 0, minor: 0, patch: 0, prerelease: '' };
+                return {
+                  major: parseInt(match[1], 10),
+                  minor: parseInt(match[2], 10),
+                  patch: parseInt(match[3], 10),
+                  prerelease: match[4] || ''
+                };
+              };
+              
+              const vA = parseVersion(a);
+              const vB = parseVersion(b);
+
+              if (vA.major !== vB.major) return vA.major > vB.major ? 1 : -1;
+              if (vA.minor !== vB.minor) return vA.minor > vB.minor ? 1 : -1;
+              if (vA.patch !== vB.patch) return vA.patch > vB.patch ? 1 : -1;
+              if (!vA.prerelease && vB.prerelease) return 1;
+              if (vA.prerelease && !vB.prerelease) return -1;
+              if (vA.prerelease && vB.prerelease) {
+                return vA.prerelease.localeCompare(vB.prerelease);
+              }
+              
+              return 0;
+            };
+
             autoUpdater.on('checking-for-update', () => {
               console.log('[AutoUpdater] Checking for update...');
               safeSend('update-checking');
@@ -563,6 +590,15 @@ app.whenReady().then(async () => {
 
             autoUpdater.on('update-available', (info) => {
               console.log('[AutoUpdater] Update available:', info.version);
+              
+              // Prevent downgrade
+              const comparison = compareVersions(info.version, currentVersion);
+              if (comparison <= 0) {
+                console.log(`[AutoUpdater] Ignoring update ${info.version} - current version ${currentVersion} is newer or equal`);
+                safeSend('update-not-available', { version: currentVersion });
+                return;
+              }
+              
               safeSend('update-available', info);
             });
 
