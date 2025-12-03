@@ -6,6 +6,7 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import type { Settings, FileItem, ApiResponse, DirectoryResponse, PathResponse, PropertiesResponse, SettingsResponse, UpdateCheckResponse, IndexSearchResponse } from './types';
 import { FileIndexer } from './indexer';
+import { getDrives } from './utils';
 
 // Disable hardware accel via cli arg
 if (process.argv.includes('--disable-hardware-acceleration')) {
@@ -18,9 +19,14 @@ app.commandLine.appendSwitch('--enable-blink-features', 'CodeCache');
 app.commandLine.appendSwitch('wm-window-animations-disabled');
 app.commandLine.appendSwitch('disable-http-cache');
 
+// Check Flatpak status at start
+let isInFlatpak: boolean | null = null;
 const isRunningInFlatpak = (): boolean => {
-  return process.env.FLATPAK_ID !== undefined || 
-         fsSync.existsSync('/.flatpak-info');
+  if (isInFlatpak === null) {
+    isInFlatpak = process.env.FLATPAK_ID !== undefined || 
+                  fsSync.existsSync('/.flatpak-info');
+  }
+  return isInFlatpak;
 };
 
 // Check if installed via MSI
@@ -640,95 +646,7 @@ ipcMain.handle('get-directory-contents', async (_event: IpcMainInvokeEvent, dirP
 });
 
 ipcMain.handle('get-drives', async (): Promise<string[]> => {
-  const platform = process.platform;
-
-  if (platform === 'win32') {
-    const drives: Set<string> = new Set();
-    const execAsync = promisify(exec);
-
-    // WMIC
-    try {
-      const { stdout } = await execAsync('wmic logicaldisk get name', { timeout: 2000 });
-      const lines = stdout.split(/[\r\n]+/);
-      for (const line of lines) {
-        const drive = line.trim();
-        if (/^[A-Z]:$/.test(drive)) {
-          drives.add(drive + '\\');
-        }
-      }
-    } catch (e) {
-      console.log('WMIC drive detection failed:', (e as Error).message);
-    }
-
-    // PS
-    if (drives.size === 0) {
-      try {
-        const { stdout } = await execAsync('powershell -NoProfile -Command "Get-PSDrive -PSProvider FileSystem | Select-Object -ExpandProperty Name"', { timeout: 3000 });
-        const lines = stdout.split(/[\r\n]+/);
-        for (const line of lines) {
-          let drive = line.trim();
-          if (/^[A-Z]$/.test(drive)) {
-            drive += ':';
-          }
-          if (/^[A-Z]:$/.test(drive)) {
-            drives.add(drive + '\\');
-          }
-        }
-      } catch (e) {
-        console.log('PowerShell drive detection failed:', (e as Error).message);
-      }
-    }
-
-    // A-Z drive check
-    if (drives.size === 0) {
-      const driveLetters: string[] = [];
-      for (let i = 65; i <= 90; i++) {
-        driveLetters.push(String.fromCharCode(i) + ':\\');
-      }
-
-      const checkDrive = async (drive: string): Promise<string | null> => {
-        try {
-          await Promise.race([
-            fs.access(drive),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 200))
-          ]);
-          return drive;
-        } catch {
-          return null;
-        }
-      };
-
-      const results = await Promise.all(driveLetters.map(checkDrive));
-      results.forEach(d => {
-        if (d) drives.add(d);
-      });
-    }
-
-    if (drives.size === 0) return ['C:\\'];
-    return Array.from(drives).sort();
-
-  } else {
-    const commonRoots = platform === 'darwin' ? ['/Volumes'] : ['/media', '/mnt', '/run/media'];
-    const detected: string[] = ['/'];
-    
-    for (const root of commonRoots) {
-      try {
-        const subs = await fs.readdir(root);
-        for (const sub of subs) {
-          if (sub.startsWith('.')) continue;
-          
-          const fullPath = path.join(root, sub);
-          try {
-            const stats = await fs.stat(fullPath);
-            if (stats.isDirectory()) {
-              detected.push(fullPath);
-            }
-          } catch {}
-        }
-      } catch {}
-    }
-    return detected;
-  }
+  return getDrives();
 });
 
 ipcMain.handle('get-home-directory', (): string => {
@@ -1831,8 +1749,6 @@ ipcMain.handle('compress-files', async (_event: IpcMainInvokeEvent, sourcePaths:
 ipcMain.handle('extract-archive', async (_event: IpcMainInvokeEvent, archivePath: string, destPath: string, operationId?: string): Promise<ApiResponse> => {
   try {
     console.log('[Extract] Starting extraction:', archivePath, 'to', destPath);
-    const ext = path.extname(archivePath).toLowerCase();
-    const fileName = path.basename(archivePath, ext);
 
     await fs.mkdir(destPath, { recursive: true });
     return new Promise((resolve, reject) => {
@@ -1864,7 +1780,7 @@ ipcMain.handle('extract-archive', async (_event: IpcMainInvokeEvent, archivePath
       });
 
       seven.on('end', () => {
-        console.log('[Extract] 7zip extraction completed for:', ext);
+        console.log('[Extract] 7zip extraction completed for:', archivePath);
         if (operationId) {
           activeArchiveProcesses.delete(operationId);
         }

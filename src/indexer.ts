@@ -4,6 +4,7 @@ import { app } from 'electron';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import type { IndexEntry, IndexStatus } from './types';
+import { getDrives } from './utils';
 
 const execAsync = promisify(exec);
 
@@ -21,93 +22,6 @@ export class FileIndexer {
     const userDataPath = app.getPath('userData');
     this.indexPath = path.join(userDataPath, 'file-index.json');
   }
-  private async getDrives(): Promise<string[]> {
-    const platform = process.platform;
-
-    if (platform === 'win32') {
-      const drives: Set<string> = new Set();
-
-      // WMIC
-      try {
-        const { stdout } = await execAsync('wmic logicaldisk get name', { timeout: 2000 });
-        const lines = stdout.split(/[\r\n]+/);
-        for (const line of lines) {
-          const drive = line.trim();
-          if (/^[A-Z]:$/.test(drive)) {
-            drives.add(drive + '\\');
-          }
-        }
-      } catch (e) {
-      }
-
-      // Method PS
-      if (drives.size === 0) {
-        try {
-          const { stdout } = await execAsync('powershell -NoProfile -Command "Get-PSDrive -PSProvider FileSystem | Select-Object -ExpandProperty Name"', { timeout: 3000 });
-          const lines = stdout.split(/[\r\n]+/);
-          for (const line of lines) {
-            let drive = line.trim();
-            if (/^[A-Z]$/.test(drive)) {
-              drive += ':';
-            }
-            if (/^[A-Z]:$/.test(drive)) {
-              drives.add(drive + '\\');
-            }
-          }
-        } catch (e) {
-        }
-      }
-
-      // if all else fails, go down the line from A-Z
-      if (drives.size === 0) {
-        const driveLetters: string[] = [];
-        for (let i = 65; i <= 90; i++) {
-          driveLetters.push(String.fromCharCode(i) + ':\\');
-        }
-
-        const checkDrive = async (drive: string): Promise<string | null> => {
-          try {
-            await Promise.race([
-              fs.access(drive),
-              new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 200))
-            ]);
-            return drive;
-          } catch {
-            return null;
-          }
-        };
-
-        const results = await Promise.all(driveLetters.map(checkDrive));
-        results.forEach(d => {
-          if (d) drives.add(d);
-        });
-      }
-
-      if (drives.size === 0) return ['C:\\'];
-      return Array.from(drives).sort();
-    } else {
-      // macOS and Linux
-      const commonRoots = platform === 'darwin' ? ['/Volumes'] : ['/media', '/mnt', '/run/media'];
-      const detected: string[] = ['/'];
-      
-      for (const root of commonRoots) {
-        try {
-          const subs = await fs.readdir(root);
-          for (const sub of subs) {
-            if (sub.startsWith('.')) continue;
-            const fullPath = path.join(root, sub);
-            try {
-              const stats = await fs.stat(fullPath);
-              if (stats.isDirectory()) {
-                detected.push(fullPath);
-              }
-            } catch {}
-          }
-        } catch {}
-      }
-      return detected;
-    }
-  }
 
   private async getCommonLocations(): Promise<string[]> {
     const platform = process.platform;
@@ -123,7 +37,7 @@ export class FileIndexer {
         path.join(homeDir, 'Music'),
         path.join(homeDir, 'Videos')
       );
-      const drives = await this.getDrives();
+      const drives = await getDrives();
       locations.push(...drives);
     } else if (platform === 'darwin') {
       locations.push(
@@ -136,7 +50,7 @@ export class FileIndexer {
         '/Applications',
         '/Users'
       );
-      const drives = await this.getDrives();
+      const drives = await getDrives();
       for (const drive of drives) {
         if (drive !== '/' && !locations.includes(drive)) {
           locations.push(drive);
@@ -154,7 +68,7 @@ export class FileIndexer {
         '/opt',
         '/home'
       );
-      const drives = await this.getDrives();
+      const drives = await getDrives();
       for (const drive of drives) {
         if (drive !== '/' && !locations.includes(drive)) {
           locations.push(drive);
@@ -203,8 +117,6 @@ export class FileIndexer {
 
     if (excludeFiles.has(filename)) return true;
     
-    // Check if any segment matches exactly an excluded folder name
-    // This prevents "Windows App" from being excluded because it contains "Windows"
     return parts.some(part => excludeSegments.has(part));
   }
 

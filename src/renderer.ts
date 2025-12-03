@@ -34,6 +34,13 @@ function escapeHtml(text: any): string {
   return str.replace(/[&<>"']/g, (m) => map[m]);
 }
 
+function encodeFileUrl(filePath: string): string {
+  const normalizedPath = filePath.replace(/\\/g, '/');
+  // Encode each path segment
+  const encoded = normalizedPath.split('/').map(segment => encodeURIComponent(segment)).join('/');
+  return `file:///${encoded}`;
+}
+
 function emojiToCodepoint(emoji: string): string {
   const codePoints: number[] = [];
   let i = 0;
@@ -73,7 +80,7 @@ interface ArchiveOperation {
 const activeOperations = new Map<string, ArchiveOperation>();
 
 function generateOperationId(): string {
-  return `op_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  return `op_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
 }
 
 function showOperationsPanel() {
@@ -389,7 +396,7 @@ async function loadSettings(): Promise<void> {
   }
 }
 
-function applySettings(settings) {
+function applySettings(settings: Settings) {
   if (settings.transparency === false) {
     document.body.classList.add('no-transparency');
   } else {
@@ -1789,7 +1796,7 @@ function clearDirectoryHistory() {
   showToast('Directory history cleared', 'History', 'success');
 }
 
-async function navigateTo(path) {
+async function navigateTo(path: string) {
   if (!path) return;
   
   if (isSearchMode) {
@@ -1824,7 +1831,7 @@ async function navigateTo(path) {
   if (loading) loading.style.display = 'none';
 }
 
-function renderFiles(items) {
+function renderFiles(items: FileItem[]) {
   if (!fileGrid) return;
   
   fileGrid.innerHTML = '';
@@ -1932,11 +1939,11 @@ function lazyLoadThumbnails() {
   });
 }
 
-function createFileItem(item) {
+function createFileItem(item: FileItem): HTMLElement {
   const fileItem = document.createElement('div');
   fileItem.className = 'file-item';
   fileItem.dataset.path = item.path;
-  fileItem.dataset.isDirectory = item.isDirectory;
+  fileItem.dataset.isDirectory = String(item.isDirectory);
   
   const icon = item.isDirectory ? twemojiImg(String.fromCodePoint(0x1F4C1), 'twemoji file-icon') : getFileIcon(item.name);
   const ext = item.name.split('.').pop()?.toLowerCase() || '';
@@ -2091,7 +2098,7 @@ async function loadThumbnail(fileItem: HTMLElement, item: FileItem) {
   }
 }
 
-function getFileIcon(filename) {
+function getFileIcon(filename: string): string {
   const ext = filename.split('.').pop().toLowerCase();
   const iconMap: Record<string, string> = {
     'jpg': '1f5bc', 'jpeg': '1f5bc', 'png': '1f5bc', 'gif': '1f5bc', 'svg': '1f5bc', 'bmp': '1f5bc',
@@ -2136,7 +2143,7 @@ async function handleDrop(sourcePaths: string[], destPath: string, operation: 'c
   }
 }
 
-function toggleSelection(fileItem) {
+function toggleSelection(fileItem: HTMLElement) {
   fileItem.classList.toggle('selected');
   if (fileItem.classList.contains('selected')) {
     selectedItems.add(fileItem.dataset.path);
@@ -2416,8 +2423,8 @@ async function createNewFolderWithInlineRename() {
   }
 }
 
-function startInlineRename(fileItem, currentName, itemPath) {
-  const nameElement = fileItem.querySelector('.file-name');
+function startInlineRename(fileItem: HTMLElement, currentName: string, itemPath: string) {
+  const nameElement = fileItem.querySelector('.file-name') as HTMLElement | null;
   if (!nameElement) return;
   
   nameElement.style.display = 'none';
@@ -2493,7 +2500,7 @@ function startInlineRename(fileItem, currentName, itemPath) {
   input.addEventListener('keydown', handleKeyDown);
 }
 
-function showContextMenu(x, y, item) {
+function showContextMenu(x: number, y: number, item: FileItem) {
   const contextMenu = document.getElementById('context-menu');
   const addToBookmarksItem = document.getElementById('add-to-bookmarks-item');
   const copyPathItem = document.getElementById('copy-path-item');
@@ -2628,7 +2635,7 @@ function hideEmptySpaceContextMenu() {
   }
 }
 
-async function handleEmptySpaceContextMenuAction(action) {
+async function handleEmptySpaceContextMenuAction(action: string | undefined) {
   switch (action) {
     case 'new-folder':
       await createNewFolderWithInlineRename();
@@ -2657,7 +2664,7 @@ async function handleEmptySpaceContextMenuAction(action) {
   hideEmptySpaceContextMenu();
 }
 
-async function handleContextMenuAction(action, item, format?: string) {
+async function handleContextMenuAction(action: string | undefined, item: FileItem, format?: string) {
   switch (action) {
     case 'open':
       if (item.isDirectory) {
@@ -2853,7 +2860,7 @@ async function handleExtract(item: FileItem) {
   }
 }
 
-function showPropertiesDialog(props) {
+function showPropertiesDialog(props: ItemProperties) {
   const modal = document.getElementById('properties-modal');
   const content = document.getElementById('properties-content');
   
@@ -3338,7 +3345,7 @@ async function showVideoPreview(file: FileItem) {
   const props = await window.electronAPI.getItemProperties(file.path);
   const info = props.success && props.properties ? props.properties : null;
   
-  const fileUrl = `file:///${file.path.replace(/\\/g, '/')}`;
+  const fileUrl = encodeFileUrl(file.path);
   
   previewContent.innerHTML = `
     <video src="${fileUrl}" class="preview-video" controls controlsList="nodownload">
@@ -3354,7 +3361,7 @@ async function showAudioPreview(file: FileItem) {
   const props = await window.electronAPI.getItemProperties(file.path);
   const info = props.success && props.properties ? props.properties : null;
   
-  const fileUrl = `file:///${file.path.replace(/\\/g, '/')}`;
+  const fileUrl = encodeFileUrl(file.path);
   
   previewContent.innerHTML = `
     <div class="preview-audio-container">
@@ -3373,7 +3380,7 @@ async function showPdfPreview(file: FileItem) {
   const props = await window.electronAPI.getItemProperties(file.path);
   const info = props.success && props.properties ? props.properties : null;
   
-  const fileUrl = `file:///${file.path.replace(/\\/g, '/')}`;
+  const fileUrl = encodeFileUrl(file.path);
   
   previewContent.innerHTML = `
     <iframe src="${fileUrl}" class="preview-pdf" frameborder="0"></iframe>
@@ -3421,15 +3428,16 @@ function generateFileInfo(file: FileItem, props: ItemProperties | null): string 
         <span class="preview-info-label">Location</span>
         <span class="preview-info-value">${escapeHtml(file.path)}</span>
       </div>
+      ${props && props.created ? `
       <div class="preview-info-item">
         <span class="preview-info-label">Created</span>
         <span class="preview-info-value">${new Date(props.created).toLocaleString()}</span>
-      </div>
+      </div>` : ''}
       <div class="preview-info-item">
         <span class="preview-info-label">Modified</span>
         <span class="preview-info-value">${modified.toLocaleDateString()} ${modified.toLocaleTimeString()}</span>
       </div>
-      ${props && props.created ? `
+      ${props && props.accessed ? `
       <div class="preview-info-item">
         <span class="preview-info-label">Accessed</span>
         <span class="preview-info-value">${new Date(props.accessed).toLocaleString()}</span>

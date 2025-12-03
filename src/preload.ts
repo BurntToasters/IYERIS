@@ -40,10 +40,14 @@ const electronAPI: ElectronAPI = {
   downloadUpdate: () => ipcRenderer.invoke('download-update'),
   installUpdate: () => ipcRenderer.invoke('install-update'),
   onUpdateDownloadProgress: (callback: (progress: UpdateDownloadProgress) => void) => {
-    ipcRenderer.on('update-download-progress', (_event, progress) => callback(progress));
+    const handler = (_event: Electron.IpcRendererEvent, progress: UpdateDownloadProgress) => callback(progress);
+    ipcRenderer.on('update-download-progress', handler);
+    return () => ipcRenderer.removeListener('update-download-progress', handler);
   },
   onUpdateAvailable: (callback: (info: any) => void) => {
-    ipcRenderer.on('update-available', (_event, info) => callback(info));
+    const handler = (_event: Electron.IpcRendererEvent, info: any) => callback(info);
+    ipcRenderer.on('update-available', handler);
+    return () => ipcRenderer.removeListener('update-available', handler);
   },
   undoAction: () => ipcRenderer.invoke('undo-action'),
   redoAction: () => ipcRenderer.invoke('redo-action'),
@@ -55,10 +59,14 @@ const electronAPI: ElectronAPI = {
   extractArchive: (archivePath: string, destPath: string, operationId?: string) => ipcRenderer.invoke('extract-archive', archivePath, destPath, operationId),
   cancelArchiveOperation: (operationId: string) => ipcRenderer.invoke('cancel-archive-operation', operationId),
   onCompressProgress: (callback: (progress: {operationId?: string; current: number; total: number; name: string}) => void) => {
-    ipcRenderer.on('compress-progress', (_event, progress) => callback(progress));
+    const handler = (_event: Electron.IpcRendererEvent, progress: {operationId?: string; current: number; total: number; name: string}) => callback(progress);
+    ipcRenderer.on('compress-progress', handler);
+    return () => ipcRenderer.removeListener('compress-progress', handler);
   },
   onExtractProgress: (callback: (progress: {operationId?: string; current: number; total: number; name: string}) => void) => {
-    ipcRenderer.on('extract-progress', (_event, progress) => callback(progress));
+    const handler = (_event: Electron.IpcRendererEvent, progress: {operationId?: string; current: number; total: number; name: string}) => callback(progress);
+    ipcRenderer.on('extract-progress', handler);
+    return () => ipcRenderer.removeListener('extract-progress', handler);
   },
   setZoomLevel: (zoomLevel: number) => ipcRenderer.invoke('set-zoom-level', zoomLevel),
   getZoomLevel: () => ipcRenderer.invoke('get-zoom-level')

@@ -90,7 +90,7 @@ export interface IndexSearchResponse extends ApiResponse {
 }
 
 export interface UndoAction {
-  type: 'delete' | 'rename' | 'move' | 'create';
+  type: 'trash' | 'rename' | 'move' | 'create';
   data: any;
 }
 
@@ -164,8 +164,8 @@ export interface ElectronAPI {
   checkForUpdates: () => Promise<UpdateCheckResponse>;
   downloadUpdate: () => Promise<ApiResponse>;
   installUpdate: () => Promise<ApiResponse>;
-  onUpdateDownloadProgress: (callback: (progress: UpdateDownloadProgress) => void) => void;
-  onUpdateAvailable: (callback: (info: UpdateInfo) => void) => void;
+  onUpdateDownloadProgress: (callback: (progress: UpdateDownloadProgress) => void) => () => void;
+  onUpdateAvailable: (callback: (info: UpdateInfo) => void) => () => void;
   undoAction: () => Promise<UndoResponse>;
   redoAction: () => Promise<UndoResponse>;
   getUndoRedoState: () => Promise<{canUndo: boolean; canRedo: boolean}>;
@@ -175,8 +175,8 @@ export interface ElectronAPI {
   compressFiles: (sourcePaths: string[], outputPath: string, format?: string, operationId?: string) => Promise<ApiResponse>;
   extractArchive: (archivePath: string, destPath: string, operationId?: string) => Promise<ApiResponse>;
   cancelArchiveOperation: (operationId: string) => Promise<ApiResponse>;
-  onCompressProgress: (callback: (progress: {operationId?: string; current: number; total: number; name: string}) => void) => void;
-  onExtractProgress: (callback: (progress: {operationId?: string; current: number; total: number; name: string}) => void) => void;
+  onCompressProgress: (callback: (progress: {operationId?: string; current: number; total: number; name: string}) => void) => () => void;
+  onExtractProgress: (callback: (progress: {operationId?: string; current: number; total: number; name: string}) => void) => () => void;
   setZoomLevel: (zoomLevel: number) => Promise<ApiResponse>;
   getZoomLevel: () => Promise<{success: boolean; zoomLevel?: number; error?: string}>;
 }
