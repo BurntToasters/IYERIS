@@ -51,7 +51,8 @@
     "build:beta:win": "npm run patch:beta && cross-env IS_BETA=true npm run build && electron-builder --win --x64 --arm64 -c.win.icon=assets/icon-square-beta.ico && npm run restore:release",
     "build:beta:win:x64": "npm run patch:beta && cross-env IS_BETA=true npm run build && electron-builder --win --x64 --publish never -c.win.icon=assets/icon-square-beta.ico && npm run restore:release",
     "build:beta:mac": "npm run patch:beta && cross-env IS_BETA=true npm run build && dotenv -e .env -- electron-builder --mac --universal -c.mac.icon=assets/iyeris-beta.icns && npm run restore:release",
-    "build:beta:linux": "npm run patch:beta && cross-env IS_BETA=true npm run build && electron-builder --linux AppImage deb rpm --x64 --arm64 -c.linux.icon=assets/icon-beta.png && npm run flatpak:clean && npm run flatpak:beta:build && npm run flatpak:beta:bundle && npm run restore:release"
+    "build:beta:linux": "npm run patch:beta && cross-env IS_BETA=true npm run build && electron-builder --linux AppImage deb rpm --x64 --arm64 -c.linux.icon=assets/icon-beta.png && npm run flatpak:clean && npm run flatpak:beta:build && npm run flatpak:beta:bundle && npm run restore:release",
+    "build:beta:linux:native": "npm run patch:beta && cross-env IS_BETA=true npm run build && USE_SYSTEM_FPM=true electron-builder --linux AppImage deb rpm --x64 --arm64 -c.linux.icon=assets/icon-beta.png && npm run flatpak:clean && npm run flatpak:beta:build && npm run flatpak:beta:bundle && npm run restore:release"
   },
   "build": {
     "appId": "com.burnttoasters.iyeris",
