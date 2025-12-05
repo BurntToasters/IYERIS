@@ -3058,10 +3058,21 @@ async function handleColumnItemClick(element: HTMLElement, path: string, isDirec
 
     const previewPanel = document.getElementById('preview-panel');
     if (previewPanel && previewPanel.style.display !== 'none') {
-      const file = allFiles.find(f => f.path === path);
-      if (file) {
-        updatePreview(file);
+
+      let file = allFiles.find(f => f.path === path);
+      if (!file) {
+        const fileName = path.split(/[\\/]/).pop() || '';
+        file = {
+          name: fileName,
+          path: path,
+          isDirectory: false,
+          isFile: true,
+          size: 0,
+          modified: new Date(),
+          isHidden: fileName.startsWith('.')
+        };
       }
+      updatePreview(file);
     }
   }
 }
