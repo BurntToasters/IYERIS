@@ -531,9 +531,18 @@ async function loadSettings(): Promise<void> {
       showDangerousOptions: false,
       startupPath: '',
       showHiddenFiles: false,
+      launchCount: 0,
+      supportPopupDismissed: false,
       ...result.settings
     };
     applySettings(currentSettings);
+    const newLaunchCount = (currentSettings.launchCount || 0) + 1;
+    currentSettings.launchCount = newLaunchCount;
+    await window.electronAPI.saveSettings(currentSettings);
+
+    if (newLaunchCount === 2 && !currentSettings.supportPopupDismissed) {
+      setTimeout(() => showSupportPopup(), 1500);
+    }
   }
 }
 
@@ -4196,6 +4205,32 @@ document.getElementById('heart-button')?.addEventListener('click', () => {
 document.getElementById('version-indicator')?.addEventListener('click', () => {
   const version = document.getElementById('version-indicator')?.textContent || 'v0.1.0';
   window.electronAPI.openFile(`https://github.com/BurntToasters/IYERIS/releases/tag/${version}`);
+});
+
+// Support Window
+function showSupportPopup() {
+  const modal = document.getElementById('support-popup-modal');
+  if (modal) {
+    modal.style.display = 'flex';
+  }
+}
+
+function hideSupportPopup() {
+  const modal = document.getElementById('support-popup-modal');
+  if (modal) {
+    modal.style.display = 'none';
+  }
+}
+
+document.getElementById('support-popup-dismiss')?.addEventListener('click', async () => {
+  currentSettings.supportPopupDismissed = true;
+  await window.electronAPI.saveSettings(currentSettings);
+  hideSupportPopup();
+});
+
+document.getElementById('support-popup-yes')?.addEventListener('click', () => {
+  window.electronAPI.openFile('https://rosie.run/support');
+  hideSupportPopup();
 });
 
 document.getElementById('zoom-in-btn')?.addEventListener('click', zoomIn);

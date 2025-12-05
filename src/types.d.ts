@@ -27,6 +27,8 @@ export interface Settings {
   startOnLogin: boolean;
   autoCheckUpdates: boolean;
   customTheme?: CustomTheme;
+  launchCount?: number;
+  supportPopupDismissed?: boolean;
 }
 
 export interface FileItem {
