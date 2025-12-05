@@ -320,6 +320,7 @@
                 <option value="default">Charcoal</option>
                 <option value="dark">Cobalt</option>
                 <option value="light">Light</option>
+                <option value="custom">Custom...</option>
               </select>
             </div>
           </div>
@@ -719,6 +720,112 @@
     <button class="zoom-btn" id="zoom-reset-btn" title="Reset to 100%">
       <img src="assets/twemoji/1f504.svg" class="twemoji-small" alt="🔄" draggable="false" />
     </button>
+  </div>
+
+  <!-- Theme Editor Modal -->
+  <div class="modal-overlay" id="theme-editor-modal" style="display: none;">
+    <div class="modal glass-panel theme-editor-modal">
+      <div class="modal-header">
+        <h3><img src="assets/twemoji/1f3a8.svg" class="twemoji" alt="🎨" draggable="false" /> Custom Theme Editor</h3>
+        <button class="close-button" id="theme-editor-close">&times;</button>
+      </div>
+      <div class="modal-body theme-editor-body">
+        <div class="theme-editor-preview" id="theme-preview">
+          <div class="preview-titlebar">
+            <span class="preview-title">Preview</span>
+            <div class="preview-controls">
+              <span class="preview-dot"></span>
+              <span class="preview-dot"></span>
+              <span class="preview-dot"></span>
+            </div>
+          </div>
+          <div class="preview-sidebar">
+            <div class="preview-sidebar-item active">📁 Documents</div>
+            <div class="preview-sidebar-item">📁 Downloads</div>
+            <div class="preview-sidebar-item">📁 Pictures</div>
+          </div>
+          <div class="preview-content">
+            <div class="preview-file selected">📄 File.txt</div>
+            <div class="preview-file">📁 Folder</div>
+            <div class="preview-file">🖼️ Image.png</div>
+          </div>
+        </div>
+        
+        <div class="theme-editor-controls">
+          <div class="theme-color-group">
+            <label>Theme Name</label>
+            <input type="text" id="theme-name-input" class="glass-input" placeholder="My Custom Theme" maxlength="30">
+          </div>
+          
+          <div class="theme-color-row">
+            <div class="theme-color-group">
+              <label>Accent Color</label>
+              <div class="color-input-wrapper">
+                <input type="color" id="theme-accent-color" value="#0078d4">
+                <input type="text" id="theme-accent-color-text" class="glass-input color-text" value="#0078d4" maxlength="7">
+              </div>
+            </div>
+            <div class="theme-color-group">
+              <label>Background</label>
+              <div class="color-input-wrapper">
+                <input type="color" id="theme-bg-primary" value="#1a1a1a">
+                <input type="text" id="theme-bg-primary-text" class="glass-input color-text" value="#1a1a1a" maxlength="7">
+              </div>
+            </div>
+          </div>
+          
+          <div class="theme-color-row">
+            <div class="theme-color-group">
+              <label>Secondary Background</label>
+              <div class="color-input-wrapper">
+                <input type="color" id="theme-bg-secondary" value="#252525">
+                <input type="text" id="theme-bg-secondary-text" class="glass-input color-text" value="#252525" maxlength="7">
+              </div>
+            </div>
+            <div class="theme-color-group">
+              <label>Text Color</label>
+              <div class="color-input-wrapper">
+                <input type="color" id="theme-text-primary" value="#ffffff">
+                <input type="text" id="theme-text-primary-text" class="glass-input color-text" value="#ffffff" maxlength="7">
+              </div>
+            </div>
+          </div>
+          
+          <div class="theme-color-row">
+            <div class="theme-color-group">
+              <label>Secondary Text</label>
+              <div class="color-input-wrapper">
+                <input type="color" id="theme-text-secondary" value="#b0b0b0">
+                <input type="text" id="theme-text-secondary-text" class="glass-input color-text" value="#b0b0b0" maxlength="7">
+              </div>
+            </div>
+            <div class="theme-color-group">
+              <label>Glass Overlay</label>
+              <div class="color-input-wrapper">
+                <input type="color" id="theme-glass-bg" value="#ffffff">
+                <input type="text" id="theme-glass-bg-text" class="glass-input color-text" value="#ffffff" maxlength="7">
+              </div>
+            </div>
+          </div>
+          
+          <div class="theme-presets">
+            <label>Presets</label>
+            <div class="preset-buttons">
+              <button class="preset-btn" data-preset="midnight" title="Midnight Blue">🌙</button>
+              <button class="preset-btn" data-preset="forest" title="Forest Green">🌲</button>
+              <button class="preset-btn" data-preset="sunset" title="Sunset Orange">🌅</button>
+              <button class="preset-btn" data-preset="lavender" title="Lavender Purple">💜</button>
+              <button class="preset-btn" data-preset="rose" title="Rose Pink">🌸</button>
+              <button class="preset-btn" data-preset="ocean" title="Ocean Teal">🌊</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="modal-button secondary" id="theme-editor-cancel">Cancel</button>
+        <button class="modal-button primary" id="theme-editor-save">Save Theme</button>
+      </div>
+    </div>
   </div>
 
   <script type="module" src="dist/renderer.js"></script>

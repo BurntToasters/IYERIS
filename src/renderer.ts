@@ -1,4 +1,4 @@
-import type { Settings, FileItem, ItemProperties } from './types';
+import type { Settings, FileItem, ItemProperties, CustomTheme } from './types';
 
 const path = {
   basename: (filePath: string, ext?: string): string => {
@@ -544,9 +544,15 @@ function applySettings(settings: Settings) {
     document.body.classList.remove('no-transparency');
   }
   
-  document.body.classList.remove('theme-dark', 'theme-light', 'theme-default');
+  document.body.classList.remove('theme-dark', 'theme-light', 'theme-default', 'theme-custom');
   if (settings.theme && settings.theme !== 'default') {
     document.body.classList.add(`theme-${settings.theme}`);
+  }
+
+  if (settings.theme === 'custom' && settings.customTheme) {
+    applyCustomThemeColors(settings.customTheme);
+  } else {
+    clearCustomThemeColors();
   }
   
   if (settings.viewMode) {
@@ -556,6 +562,311 @@ function applySettings(settings: Settings) {
   }
   
   loadBookmarks();
+}
+
+function hexToRgb(hex: string): string {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  if (result) {
+    return `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}`;
+  }
+  return '0, 120, 212';
+}
+
+function applyCustomThemeColors(theme: CustomTheme) {
+  const root = document.documentElement;
+  root.style.setProperty('--custom-accent-color', theme.accentColor);
+  root.style.setProperty('--custom-accent-rgb', hexToRgb(theme.accentColor));
+  root.style.setProperty('--custom-bg-primary', theme.bgPrimary);
+  root.style.setProperty('--custom-bg-primary-rgb', hexToRgb(theme.bgPrimary));
+  root.style.setProperty('--custom-bg-secondary', theme.bgSecondary);
+  root.style.setProperty('--custom-text-primary', theme.textPrimary);
+  root.style.setProperty('--custom-text-secondary', theme.textSecondary);
+  root.style.setProperty('--custom-glass-bg', `${theme.glassBg}08`);
+  root.style.setProperty('--custom-glass-border', `${theme.glassBorder}14`);
+  document.body.style.backgroundColor = theme.bgPrimary;
+}
+
+function clearCustomThemeColors() {
+  const root = document.documentElement;
+  const props = [
+    '--custom-accent-color', '--custom-accent-rgb',
+    '--custom-bg-primary', '--custom-bg-primary-rgb', '--custom-bg-secondary',
+    '--custom-text-primary', '--custom-text-secondary',
+    '--custom-glass-bg', '--custom-glass-border'
+  ];
+  props.forEach(prop => root.style.removeProperty(prop));
+  document.body.style.backgroundColor = '';
+}
+
+// Theme Editor
+const themePresets: Record<string, CustomTheme> = {
+  midnight: {
+    name: 'Midnight Blue',
+    accentColor: '#4a9eff',
+    bgPrimary: '#0d1b2a',
+    bgSecondary: '#1b263b',
+    textPrimary: '#e0e1dd',
+    textSecondary: '#a0a4a8',
+    glassBg: '#ffffff',
+    glassBorder: '#4a9eff'
+  },
+  forest: {
+    name: 'Forest Green',
+    accentColor: '#2ecc71',
+    bgPrimary: '#1a2f1a',
+    bgSecondary: '#243524',
+    textPrimary: '#e8f5e9',
+    textSecondary: '#a5d6a7',
+    glassBg: '#ffffff',
+    glassBorder: '#2ecc71'
+  },
+  sunset: {
+    name: 'Sunset Orange',
+    accentColor: '#ff7043',
+    bgPrimary: '#1f1410',
+    bgSecondary: '#2d1f1a',
+    textPrimary: '#fff3e0',
+    textSecondary: '#ffab91',
+    glassBg: '#ffffff',
+    glassBorder: '#ff7043'
+  },
+  lavender: {
+    name: 'Lavender Purple',
+    accentColor: '#9c7cf4',
+    bgPrimary: '#1a1625',
+    bgSecondary: '#251f33',
+    textPrimary: '#ede7f6',
+    textSecondary: '#b39ddb',
+    glassBg: '#ffffff',
+    glassBorder: '#9c7cf4'
+  },
+  rose: {
+    name: 'Rose Pink',
+    accentColor: '#f48fb1',
+    bgPrimary: '#1f1418',
+    bgSecondary: '#2d1f24',
+    textPrimary: '#fce4ec',
+    textSecondary: '#f8bbd9',
+    glassBg: '#ffffff',
+    glassBorder: '#f48fb1'
+  },
+  ocean: {
+    name: 'Ocean Teal',
+    accentColor: '#26c6da',
+    bgPrimary: '#0d1f22',
+    bgSecondary: '#1a2f33',
+    textPrimary: '#e0f7fa',
+    textSecondary: '#80deea',
+    glassBg: '#ffffff',
+    glassBorder: '#26c6da'
+  }
+};
+
+let tempCustomTheme: CustomTheme = {
+  name: 'My Custom Theme',
+  accentColor: '#0078d4',
+  bgPrimary: '#1a1a1a',
+  bgSecondary: '#252525',
+  textPrimary: '#ffffff',
+  textSecondary: '#b0b0b0',
+  glassBg: '#ffffff',
+  glassBorder: '#ffffff'
+};
+
+function showThemeEditor() {
+  const modal = document.getElementById('theme-editor-modal');
+  if (!modal) return;
+
+  if (currentSettings.customTheme) {
+    tempCustomTheme = { ...currentSettings.customTheme };
+  }
+
+  const inputs: Record<string, { color: string; text: string }> = {
+    'theme-accent-color': { color: tempCustomTheme.accentColor, text: tempCustomTheme.accentColor },
+    'theme-bg-primary': { color: tempCustomTheme.bgPrimary, text: tempCustomTheme.bgPrimary },
+    'theme-bg-secondary': { color: tempCustomTheme.bgSecondary, text: tempCustomTheme.bgSecondary },
+    'theme-text-primary': { color: tempCustomTheme.textPrimary, text: tempCustomTheme.textPrimary },
+    'theme-text-secondary': { color: tempCustomTheme.textSecondary, text: tempCustomTheme.textSecondary },
+    'theme-glass-bg': { color: tempCustomTheme.glassBg, text: tempCustomTheme.glassBg }
+  };
+  
+  for (const [id, values] of Object.entries(inputs)) {
+    const colorInput = document.getElementById(id) as HTMLInputElement;
+    const textInput = document.getElementById(`${id}-text`) as HTMLInputElement;
+    if (colorInput) colorInput.value = values.color;
+    if (textInput) textInput.value = values.text;
+  }
+  
+  const nameInput = document.getElementById('theme-name-input') as HTMLInputElement;
+  if (nameInput) nameInput.value = tempCustomTheme.name;
+  
+  updateThemePreview();
+  modal.style.display = 'flex';
+}
+
+function hideThemeEditor() {
+  const modal = document.getElementById('theme-editor-modal');
+  if (modal) modal.style.display = 'none';
+}
+
+function updateThemePreview() {
+  const preview = document.getElementById('theme-preview');
+  if (!preview) return;
+  
+  preview.style.setProperty('--custom-accent-color', tempCustomTheme.accentColor);
+  preview.style.setProperty('--custom-accent-rgb', hexToRgb(tempCustomTheme.accentColor));
+  preview.style.setProperty('--custom-bg-primary', tempCustomTheme.bgPrimary);
+  preview.style.setProperty('--custom-bg-secondary', tempCustomTheme.bgSecondary);
+  preview.style.setProperty('--custom-text-primary', tempCustomTheme.textPrimary);
+  preview.style.setProperty('--custom-text-secondary', tempCustomTheme.textSecondary);
+  preview.style.setProperty('--custom-glass-bg', `${tempCustomTheme.glassBg}08`);
+  preview.style.setProperty('--custom-glass-border', `${tempCustomTheme.glassBorder}20`);
+  preview.style.backgroundColor = tempCustomTheme.bgPrimary;
+}
+
+function syncColorInputs(colorId: string, value: string) {
+  const colorInput = document.getElementById(colorId) as HTMLInputElement;
+  const textInput = document.getElementById(`${colorId}-text`) as HTMLInputElement;
+  
+  if (colorInput) colorInput.value = value;
+  if (textInput) textInput.value = value.toUpperCase();
+
+  const mapping: Record<string, keyof CustomTheme> = {
+    'theme-accent-color': 'accentColor',
+    'theme-bg-primary': 'bgPrimary',
+    'theme-bg-secondary': 'bgSecondary',
+    'theme-text-primary': 'textPrimary',
+    'theme-text-secondary': 'textSecondary',
+    'theme-glass-bg': 'glassBg'
+  };
+  
+  const key = mapping[colorId];
+  if (key) {
+    (tempCustomTheme as any)[key] = value;
+    if (key === 'glassBg') {
+      tempCustomTheme.glassBorder = value;
+    }
+  }
+  
+  updateThemePreview();
+}
+
+function applyThemePreset(presetName: string) {
+  const preset = themePresets[presetName];
+  if (!preset) return;
+  
+  tempCustomTheme = { ...preset };
+
+  const nameInput = document.getElementById('theme-name-input') as HTMLInputElement;
+  if (nameInput) nameInput.value = preset.name;
+  
+  syncColorInputs('theme-accent-color', preset.accentColor);
+  syncColorInputs('theme-bg-primary', preset.bgPrimary);
+  syncColorInputs('theme-bg-secondary', preset.bgSecondary);
+  syncColorInputs('theme-text-primary', preset.textPrimary);
+  syncColorInputs('theme-text-secondary', preset.textSecondary);
+  syncColorInputs('theme-glass-bg', preset.glassBg);
+}
+
+async function saveCustomTheme() {
+  const nameInput = document.getElementById('theme-name-input') as HTMLInputElement;
+  if (nameInput && nameInput.value.trim()) {
+    tempCustomTheme.name = nameInput.value.trim();
+  }
+  
+  currentSettings.customTheme = { ...tempCustomTheme };
+  currentSettings.theme = 'custom';
+
+  const themeSelect = document.getElementById('theme-select') as HTMLSelectElement;
+  if (themeSelect) {
+    themeSelect.value = 'custom';
+    const customOption = themeSelect.querySelector('option[value="custom"]');
+    if (customOption) {
+      customOption.textContent = tempCustomTheme.name;
+    }
+  }
+  
+  // Apply theme
+  applySettings(currentSettings);
+  
+  // Save to disk
+  const result = await window.electronAPI.saveSettings(currentSettings);
+  if (result.success) {
+    hideThemeEditor();
+    showToast('Custom theme saved!', 'Theme', 'success');
+  } else {
+    showToast('Failed to save theme: ' + result.error, 'Error', 'error');
+  }
+}
+
+function setupThemeEditorListeners() {
+  document.getElementById('theme-editor-close')?.addEventListener('click', hideThemeEditor);
+  document.getElementById('theme-editor-cancel')?.addEventListener('click', hideThemeEditor);
+  document.getElementById('theme-editor-save')?.addEventListener('click', saveCustomTheme);
+  
+  // Color inputs
+  const colorIds = [
+    'theme-accent-color',
+    'theme-bg-primary',
+    'theme-bg-secondary',
+    'theme-text-primary',
+    'theme-text-secondary',
+    'theme-glass-bg'
+  ];
+  
+  colorIds.forEach(id => {
+    const colorInput = document.getElementById(id) as HTMLInputElement;
+    const textInput = document.getElementById(`${id}-text`) as HTMLInputElement;
+    
+    colorInput?.addEventListener('input', (e) => {
+      const value = (e.target as HTMLInputElement).value;
+      syncColorInputs(id, value);
+    });
+    
+    textInput?.addEventListener('input', (e) => {
+      let value = (e.target as HTMLInputElement).value;
+      if (!value.startsWith('#')) value = '#' + value;
+      if (/^#[0-9A-Fa-f]{6}$/.test(value)) {
+        syncColorInputs(id, value);
+      }
+    });
+    
+    textInput?.addEventListener('blur', (e) => {
+      let value = (e.target as HTMLInputElement).value;
+      if (!value.startsWith('#')) value = '#' + value;
+      if (!/^#[0-9A-Fa-f]{6}$/.test(value)) {
+        // Reset
+        const colorInput = document.getElementById(id) as HTMLInputElement;
+        if (colorInput && textInput) {
+          textInput.value = colorInput.value.toUpperCase();
+        }
+      }
+    });
+  });
+
+  document.getElementById('theme-name-input')?.addEventListener('input', (e) => {
+    tempCustomTheme.name = (e.target as HTMLInputElement).value || 'My Custom Theme';
+  });
+  
+  document.querySelectorAll('.preset-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const preset = (btn as HTMLElement).dataset.preset;
+      if (preset) applyThemePreset(preset);
+    });
+  });
+  
+  document.getElementById('theme-select')?.addEventListener('change', (e) => {
+    const value = (e.target as HTMLSelectElement).value;
+    if (value === 'custom') {
+      showThemeEditor();
+    }
+  });
+
+  document.getElementById('theme-editor-modal')?.addEventListener('click', (e) => {
+    if ((e.target as HTMLElement).classList.contains('modal-overlay')) {
+      hideThemeEditor();
+    }
+  });
 }
 
 async function showSettingsModal() {
@@ -595,6 +906,12 @@ async function showSettingsModal() {
   
   if (themeSelect) {
     themeSelect.value = currentSettings.theme || 'default';
+    const customOption = themeSelect.querySelector('option[value="custom"]');
+    if (customOption && currentSettings.customTheme?.name) {
+      customOption.textContent = currentSettings.customTheme.name;
+    } else if (customOption) {
+      customOption.textContent = 'Custom...';
+    }
   }
   
   if (sortBySelect) {
@@ -1406,6 +1723,9 @@ async function init() {
   
   console.log('Init: Setting up breadcrumb navigation...');
   setupBreadcrumbListeners();
+  
+  console.log('Init: Setting up theme editor...');
+  setupThemeEditorListeners();
   
   console.log('Init: Determining startup path...');
   let startupPath = currentSettings.startupPath && currentSettings.startupPath.trim() !== '' 

@@ -2,6 +2,14 @@
 
 ## New Features
 
+### Custom Theme Editor
+- Create your own custom color theme
+- Live preview of theme changes
+- Customize: accent color, backgrounds, text colors, glass overlay
+- 6 built-in theme presets (Midnight Blue, Forest Green, Sunset Orange, Lavender Purple, Rose Pink, Ocean Teal)
+- Theme name customization
+- Theme saved to settings and persists across sessions
+
 ### Column View Mode
 - Added new "Column" view mode (macOS Finder-style navigation)
 - Grid → List → Column view cycle

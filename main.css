@@ -3299,6 +3299,216 @@ body.theme-dark .status-right span {
   background: #fff;
 }
 
+.theme-editor-modal {
+  width: 580px;
+  max-width: 95vw;
+}
+
+.theme-editor-body {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 20px;
+}
+
+.theme-editor-preview {
+  background: var(--custom-bg-primary, var(--bg-primary));
+  border-radius: var(--radius-medium);
+  overflow: hidden;
+  border: 1px solid var(--custom-glass-border, var(--glass-border));
+  min-height: 160px;
+}
+
+.preview-titlebar {
+  background: var(--custom-bg-secondary, var(--bg-secondary));
+  padding: 8px 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--custom-glass-border, var(--glass-border));
+}
+
+.preview-title {
+  font-size: 12px;
+  color: var(--custom-text-secondary, var(--text-secondary));
+}
+
+.preview-controls {
+  display: flex;
+  gap: 6px;
+}
+
+.preview-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--custom-text-secondary, var(--text-secondary));
+  opacity: 0.3;
+}
+
+.preview-sidebar {
+  position: absolute;
+  left: 0;
+  top: 34px;
+  bottom: 0;
+  width: 120px;
+  background: var(--custom-glass-bg, rgba(255, 255, 255, 0.03));
+  border-right: 1px solid var(--custom-glass-border, var(--glass-border));
+  padding: 8px;
+}
+
+.theme-editor-preview {
+  position: relative;
+}
+
+.preview-sidebar-item {
+  padding: 6px 8px;
+  font-size: 11px;
+  border-radius: 4px;
+  color: var(--custom-text-primary, var(--text-primary));
+  cursor: default;
+  margin-bottom: 2px;
+}
+
+.preview-sidebar-item.active {
+  background: var(--custom-accent-color, var(--accent-color));
+  color: #fff;
+}
+
+.preview-content {
+  margin-left: 120px;
+  padding: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.preview-file {
+  padding: 8px 12px;
+  font-size: 11px;
+  border-radius: 6px;
+  color: var(--custom-text-primary, var(--text-primary));
+  background: var(--custom-glass-bg, rgba(255, 255, 255, 0.03));
+  border: 1px solid transparent;
+  cursor: default;
+}
+
+.preview-file.selected {
+  background: rgba(var(--custom-accent-rgb, var(--accent-rgb)), 0.2);
+  border-color: var(--custom-accent-color, var(--accent-color));
+}
+
+.theme-editor-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.theme-color-row {
+  display: flex;
+  gap: 16px;
+}
+
+.theme-color-group {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.theme-color-group label {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.color-input-wrapper {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.color-input-wrapper input[type="color"] {
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: var(--radius-small);
+  cursor: pointer;
+  padding: 0;
+  background: transparent;
+}
+
+.color-input-wrapper input[type="color"]::-webkit-color-swatch-wrapper {
+  padding: 2px;
+}
+
+.color-input-wrapper input[type="color"]::-webkit-color-swatch {
+  border-radius: 4px;
+  border: 1px solid var(--glass-border);
+}
+
+.color-text {
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.theme-presets {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.theme-presets label {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.preset-buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.preset-btn {
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-small);
+  background: var(--glass-bg);
+  cursor: pointer;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.preset-btn:hover {
+  background: var(--hover-color);
+  transform: scale(1.05);
+}
+
+.preset-btn:active {
+  transform: scale(0.95);
+}
+
+body.theme-custom {
+  --accent-color: var(--custom-accent-color, #0078d4);
+  --accent-rgb: var(--custom-accent-rgb, 0, 120, 212);
+  --bg-primary: var(--custom-bg-primary, #1a1a1a);
+  --bg-primary-rgb: var(--custom-bg-primary-rgb, 26, 26, 26);
+  --bg-secondary: var(--custom-bg-secondary, #252525);
+  --text-primary: var(--custom-text-primary, #ffffff);
+  --text-secondary: var(--custom-text-secondary, rgba(255, 255, 255, 0.75));
+  --glass-bg: var(--custom-glass-bg, rgba(255, 255, 255, 0.03));
+  --glass-border: var(--custom-glass-border, rgba(255, 255, 255, 0.08));
+}
+
+body.theme-custom {
+  background-color: var(--custom-bg-primary, #1a1a1a);
+}
+
 
 
 

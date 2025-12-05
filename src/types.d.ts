@@ -1,6 +1,17 @@
+export interface CustomTheme {
+  name: string;
+  accentColor: string;
+  bgPrimary: string;
+  bgSecondary: string;
+  textPrimary: string;
+  textSecondary: string;
+  glassBg: string;
+  glassBorder: string;
+}
+
 export interface Settings {
   transparency: boolean;
-  theme: 'dark' | 'light' | 'default';
+  theme: 'dark' | 'light' | 'default' | 'custom';
   sortBy: 'name' | 'date' | 'size' | 'type';
   sortOrder: 'asc' | 'desc';
   bookmarks: string[];
@@ -15,6 +26,7 @@ export interface Settings {
   minimizeToTray: boolean;
   startOnLogin: boolean;
   autoCheckUpdates: boolean;
+  customTheme?: CustomTheme;
 }
 
 export interface FileItem {
