@@ -335,6 +335,13 @@ async function main() {
 
   const filesToUpload = [...signatureFiles, checksumFile];
 
+  for (const file of files) {
+    const lowerFile = file.toLowerCase();
+    if (lowerFile.endsWith('.flatpak')) {
+      filesToUpload.push(path.join(RELEASE_DIR, file));
+    }
+  }
+
   if (GH_TOKEN) {
     try {
       const release = await getOrCreateRelease();
