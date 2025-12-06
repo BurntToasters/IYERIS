@@ -973,6 +973,8 @@ async function showSettingsModal() {
   
   if (settingsModal) {
     settingsModal.style.display = 'flex';
+    clearSettingsChanged();
+    initSettingsChangeTracking();
   }
 }
 
@@ -1249,6 +1251,7 @@ async function saveSettings() {
   const result = await window.electronAPI.saveSettings(currentSettings);
   if (result.success) {
     applySettings(currentSettings);
+    clearSettingsChanged();
     hideSettingsModal();
     showToast('Settings saved successfully!', 'Settings', 'success');
     if (currentPath) {
@@ -4217,6 +4220,162 @@ document.getElementById('version-indicator')?.addEventListener('click', () => {
   const version = document.getElementById('version-indicator')?.textContent || 'v0.1.0';
   window.electronAPI.openFile(`https://github.com/BurntToasters/IYERIS/releases/tag/${version}`);
 });
+
+document.getElementById('settings-search')?.addEventListener('input', (e) => {
+  const searchTerm = (e.target as HTMLInputElement).value.toLowerCase().trim();
+  const settingItems = document.querySelectorAll('.setting-item, .setting-item-toggle');
+  const sections = document.querySelectorAll('.settings-section-card');
+  
+  if (!searchTerm) {
+    settingItems.forEach(item => {
+      (item as HTMLElement).style.display = '';
+      item.classList.remove('search-highlight');
+    });
+    sections.forEach(section => {
+      (section as HTMLElement).style.display = '';
+    });
+    return;
+  }
+  
+  sections.forEach(section => {
+    let hasVisibleItem = false;
+    const items = section.querySelectorAll('.setting-item, .setting-item-toggle');
+    
+    items.forEach(item => {
+      const label = item.querySelector('.setting-label, span')?.textContent?.toLowerCase() || '';
+      const description = item.querySelector('.setting-description')?.textContent?.toLowerCase() || '';
+      
+      if (label.includes(searchTerm) || description.includes(searchTerm)) {
+        (item as HTMLElement).style.display = '';
+        item.classList.add('search-highlight');
+        hasVisibleItem = true;
+      } else {
+        (item as HTMLElement).style.display = 'none';
+        item.classList.remove('search-highlight');
+      }
+    });
+
+    (section as HTMLElement).style.display = hasVisibleItem ? '' : 'none';
+  });
+});
+
+// Export
+document.getElementById('export-settings-btn')?.addEventListener('click', async () => {
+  try {
+    const settingsJson = JSON.stringify(currentSettings, null, 2);
+    const blob = new Blob([settingsJson], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `iyeris-settings-${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('Settings exported successfully', 'Export', 'success');
+  } catch (error) {
+    showToast('Failed to export settings', 'Export', 'error');
+  }
+});
+
+// Import
+document.getElementById('import-settings-btn')?.addEventListener('click', () => {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json';
+  input.onchange = async (e) => {
+    const file = (e.target as HTMLInputElement).files?.[0];
+    if (!file) return;
+    
+    try {
+      const text = await file.text();
+      const importedSettings = JSON.parse(text) as Settings;
+      
+      // Merge
+      currentSettings = { ...currentSettings, ...importedSettings };
+      await window.electronAPI.saveSettings(currentSettings);
+
+      hideSettingsModal();
+      showSettingsModal();
+      showToast('Settings imported successfully', 'Import', 'success');
+    } catch (error) {
+      showToast('Failed to import settings: Invalid file format', 'Import', 'error');
+    }
+  };
+  input.click();
+});
+
+document.getElementById('clear-search-history-btn')?.addEventListener('click', async () => {
+  if (confirm('Are you sure you want to clear your search history?')) {
+    currentSettings.searchHistory = [];
+    await window.electronAPI.saveSettings(currentSettings);
+    showToast('Search history cleared', 'Data', 'success');
+  }
+});
+
+document.getElementById('clear-bookmarks-btn')?.addEventListener('click', async () => {
+  if (confirm('Are you sure you want to clear all bookmarks?')) {
+    currentSettings.bookmarks = [];
+    await window.electronAPI.saveSettings(currentSettings);
+    loadBookmarks();
+    showToast('Bookmarks cleared', 'Data', 'success');
+  }
+});
+
+document.getElementById('about-github-btn')?.addEventListener('click', () => {
+  window.electronAPI.openFile('https://github.com/BurntToasters/IYERIS');
+});
+document.getElementById('about-support-btn')?.addEventListener('click', () => {
+  window.electronAPI.openFile('https://rosie.run/support');
+});
+document.getElementById('about-help-btn')?.addEventListener('click', () => {
+  window.electronAPI.openFile('https://help.rosie.run/iyeris/en-us/faq');
+});
+document.getElementById('about-licenses-btn')?.addEventListener('click', () => {
+  showLicensesModal();
+});
+document.getElementById('about-shortcuts-btn')?.addEventListener('click', () => {
+  showShortcutsModal();
+});
+document.getElementById('about-rosie-link')?.addEventListener('click', (e) => {
+  e.preventDefault();
+  window.electronAPI.openFile('https://rosie.run');
+});
+document.getElementById('about-twemoji-link')?.addEventListener('click', (e) => {
+  e.preventDefault();
+  window.electronAPI.openFile('https://github.com/jdecked/twemoji');
+});
+
+// Unsaved changes
+let hasUnsavedChanges = false;
+
+function markSettingsChanged() {
+  hasUnsavedChanges = true;
+  const indicator = document.querySelector('.settings-unsaved-indicator');
+  if (indicator) {
+    indicator.classList.add('visible');
+  }
+}
+
+function clearSettingsChanged() {
+  hasUnsavedChanges = false;
+  const indicator = document.querySelector('.settings-unsaved-indicator');
+  if (indicator) {
+    indicator.classList.remove('visible');
+  }
+}
+
+function initSettingsChangeTracking() {
+  const settingsModal = document.getElementById('settings-modal');
+  if (!settingsModal) return;
+  
+  settingsModal.querySelectorAll('input, select').forEach(input => {
+    input.addEventListener('change', markSettingsChanged);
+    if (input.tagName === 'INPUT' && (input as HTMLInputElement).type === 'text') {
+      input.addEventListener('input', markSettingsChanged);
+    }
+  });
+}
 
 // Support Window
 function showSupportPopup() {

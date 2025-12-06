@@ -286,222 +286,348 @@
     <div class="modal settings-modal glass-panel">
       <div class="modal-header">
         <h3><img src="assets/twemoji/2699.svg" class="twemoji" alt="⚙️" draggable="false" /> Settings</h3>
+        <div class="settings-search-wrapper">
+          <input type="text" id="settings-search" class="settings-search-input" placeholder="Search settings...">
+          <span class="settings-search-icon"><img src="assets/twemoji/1f50d.svg" class="twemoji-small" alt="🔍" draggable="false" /></span>
+        </div>
         <button class="modal-close" id="settings-close">✕</button>
       </div>
       <div class="modal-content settings-content" id="settings-content">
         <div class="settings-sidebar">
-          <button class="settings-tab active" data-tab="appearance"><img src="assets/twemoji/1f3a8.svg" class="twemoji" alt="🎨" draggable="false" /> Appearance</button>
-          <button class="settings-tab" data-tab="view"><img src="assets/twemoji/1f441.svg" class="twemoji" alt="👁️" draggable="false" /> View</button>
-          <button class="settings-tab" data-tab="startup"><img src="assets/twemoji/1f680.svg" class="twemoji" alt="🚀" draggable="false" /> Startup</button>
-          <button class="settings-tab" data-tab="data"><img src="assets/twemoji/1f4be.svg" class="twemoji" alt="💾" draggable="false" /> Data</button>
-          <button class="settings-tab" data-tab="indexing"><img src="assets/twemoji/1f50d.svg" class="twemoji" alt="🔍" draggable="false" /> File Indexing</button>
-          <button class="settings-tab" data-tab="developer"><img src="assets/twemoji/1f6e0.svg" class="twemoji" alt="🛠️" draggable="false" /> Developer</button>
-          <button class="settings-tab" data-tab="advanced"><img src="assets/twemoji/2699.svg" class="twemoji" alt="⚙️" draggable="false" /> Advanced</button>
+          <div class="settings-sidebar-section">
+            <button class="settings-tab active" data-tab="appearance"><img src="assets/twemoji/1f3a8.svg" class="twemoji" alt="🎨" draggable="false" /> Appearance</button>
+            <button class="settings-tab" data-tab="view"><img src="assets/twemoji/1f441.svg" class="twemoji" alt="👁️" draggable="false" /> View</button>
+            <button class="settings-tab" data-tab="startup"><img src="assets/twemoji/1f680.svg" class="twemoji" alt="🚀" draggable="false" /> Startup</button>
+          </div>
+          <div class="settings-sidebar-section">
+            <span class="settings-sidebar-label">System</span>
+            <button class="settings-tab" data-tab="data"><img src="assets/twemoji/1f4be.svg" class="twemoji" alt="💾" draggable="false" /> Data</button>
+            <button class="settings-tab" data-tab="indexing"><img src="assets/twemoji/1f50d.svg" class="twemoji" alt="🔍" draggable="false" /> File Indexing</button>
+            <button class="settings-tab" data-tab="advanced"><img src="assets/twemoji/2699.svg" class="twemoji" alt="⚙️" draggable="false" /> Advanced</button>
+          </div>
+          <div class="settings-sidebar-spacer"></div>
+          <div class="settings-sidebar-section">
+            <button class="settings-tab" data-tab="about"><img src="assets/twemoji/2139.svg" class="twemoji" alt="ℹ️" draggable="false" /> About</button>
+          </div>
         </div>
         <div class="settings-pages">
           <div class="settings-section active" id="tab-appearance">
-            <h4>Appearance</h4>
-            <div class="setting-item">
-              <div class="setting-info">
-                <label for="transparency-toggle">Enable Transparency</label>
-                <p class="setting-description">Enable glassmorphism effects and window transparency</p>
+            <h4><img src="assets/twemoji/1f3a8.svg" class="twemoji" alt="🎨" draggable="false" /> Appearance</h4>
+            
+            <div class="settings-card">
+              <div class="settings-card-header">Theme</div>
+              <div class="setting-item" data-searchable="transparency glassmorphism effects window">
+                <div class="setting-info">
+                  <label for="transparency-toggle">Enable Transparency</label>
+                  <p class="setting-description">Enable glassmorphism effects and window transparency</p>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="transparency-toggle" checked>
+                  <span class="toggle-slider"></span>
+                </label>
               </div>
-              <label class="toggle-switch">
-                <input type="checkbox" id="transparency-toggle" checked>
-                <span class="toggle-slider"></span>
-              </label>
-            </div>
-            <div class="setting-item">
-              <div class="setting-info">
-                <label for="theme-select">Theme</label>
-                <p class="setting-description">Choose your preferred theme</p>
+              <div class="setting-item" data-searchable="theme color scheme charcoal cobalt light dark custom">
+                <div class="setting-info">
+                  <label for="theme-select">Color Theme</label>
+                  <p class="setting-description">Choose your preferred color scheme</p>
+                </div>
+                <select id="theme-select" class="settings-select">
+                  <option value="default">Charcoal</option>
+                  <option value="dark">Cobalt</option>
+                  <option value="light">Light</option>
+                  <option value="custom">Custom...</option>
+                </select>
               </div>
-              <select id="theme-select" class="settings-select">
-                <option value="default">Charcoal</option>
-                <option value="dark">Cobalt</option>
-                <option value="light">Light</option>
-                <option value="custom">Custom...</option>
-              </select>
             </div>
           </div>
 
           <div class="settings-section" id="tab-view">
-            <h4>View</h4>
-            <div class="setting-item">
-              <div class="setting-info">
-                <label for="minimize-to-tray-toggle">Minimize to Tray</label>
-                <p class="setting-description">Minimize the application to the system tray instead of closing</p>
+            <h4><img src="assets/twemoji/1f441.svg" class="twemoji" alt="👁️" draggable="false" /> View</h4>
+            
+            <div class="settings-card">
+              <div class="settings-card-header">Window Behavior</div>
+              <div class="setting-item" data-searchable="minimize tray system close">
+                <div class="setting-info">
+                  <label for="minimize-to-tray-toggle">Minimize to Tray</label>
+                  <p class="setting-description">Minimize the application to the system tray instead of closing</p>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="minimize-to-tray-toggle">
+                  <span class="toggle-slider"></span>
+                </label>
               </div>
-              <label class="toggle-switch">
-                <input type="checkbox" id="minimize-to-tray-toggle">
-                <span class="toggle-slider"></span>
-              </label>
             </div>
-            <div class="setting-item">
-              <div class="setting-info">
-                <label for="show-hidden-files-toggle">Show Hidden Files</label>
-                <p class="setting-description">Display files and folders that are hidden by the system</p>
+            
+            <div class="settings-card">
+              <div class="settings-card-header">File Display</div>
+              <div class="setting-item" data-searchable="hidden files folders show display dotfiles">
+                <div class="setting-info">
+                  <label for="show-hidden-files-toggle">Show Hidden Files</label>
+                  <p class="setting-description">Display files and folders that are hidden by the system</p>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="show-hidden-files-toggle">
+                  <span class="toggle-slider"></span>
+                </label>
               </div>
-              <label class="toggle-switch">
-                <input type="checkbox" id="show-hidden-files-toggle">
-                <span class="toggle-slider"></span>
-              </label>
+              <div class="setting-item" data-searchable="sort order name date size type ascending descending">
+                <div class="setting-info">
+                  <label for="sort-by-select">Default Sort By</label>
+                  <p class="setting-description">Default sorting method for files</p>
+                </div>
+                <select id="sort-by-select" class="settings-select">
+                  <option value="name">Name</option>
+                  <option value="date">Date Modified</option>
+                  <option value="size">Size</option>
+                  <option value="type">Type</option>
+                </select>
+              </div>
+              <div class="setting-item" data-searchable="sort order ascending descending">
+                <div class="setting-info">
+                  <label for="sort-order-select">Sort Order</label>
+                  <p class="setting-description">Ascending or descending order</p>
+                </div>
+                <select id="sort-order-select" class="settings-select">
+                  <option value="asc">Ascending</option>
+                  <option value="desc">Descending</option>
+                </select>
+              </div>
             </div>
-            <div class="setting-item">
-              <div class="setting-info">
-                <label for="enable-search-history-toggle">Enable Search History</label>
-                <p class="setting-description">Save your recent searches and directory navigation</p>
+            
+            <div class="settings-card">
+              <div class="settings-card-header">History</div>
+              <div class="setting-item" data-searchable="search history recent navigation save">
+                <div class="setting-info">
+                  <label for="enable-search-history-toggle">Enable Search History</label>
+                  <p class="setting-description">Save your recent searches and directory navigation</p>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="enable-search-history-toggle" checked>
+                  <span class="toggle-slider"></span>
+                </label>
               </div>
-              <label class="toggle-switch">
-                <input type="checkbox" id="enable-search-history-toggle" checked>
-                <span class="toggle-slider"></span>
-              </label>
-            </div>
-            <div class="setting-item">
-              <div class="setting-info">
-                <label for="sort-by-select">Default Sort By</label>
-                <p class="setting-description">Default sorting method for files</p>
-              </div>
-              <select id="sort-by-select" class="settings-select">
-                <option value="name">Name</option>
-                <option value="date">Date Modified</option>
-                <option value="size">Size</option>
-                <option value="type">Type</option>
-              </select>
-            </div>
-            <div class="setting-item">
-              <div class="setting-info">
-                <label for="sort-order-select">Sort Order</label>
-                <p class="setting-description">Ascending or descending order</p>
-              </div>
-              <select id="sort-order-select" class="settings-select">
-                <option value="asc">Ascending</option>
-                <option value="desc">Descending</option>
-              </select>
             </div>
           </div>
 
           <div class="settings-section" id="tab-startup">
-            <h4>Startup</h4>
-            <div class="setting-item">
-              <div class="setting-info">
-                <label for="start-on-login-toggle">Start on Login</label>
-                <p class="setting-description">Automatically start IYERIS when you log in (minimized to tray)</p>
+            <h4><img src="assets/twemoji/1f680.svg" class="twemoji" alt="🚀" draggable="false" /> Startup</h4>
+            
+            <div class="settings-card">
+              <div class="settings-card-header">Launch Options</div>
+              <div class="setting-item" data-searchable="start login boot autostart automatic launch">
+                <div class="setting-info">
+                  <label for="start-on-login-toggle">Start on Login</label>
+                  <p class="setting-description">Automatically start IYERIS when you log in (minimized to tray)</p>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="start-on-login-toggle">
+                  <span class="toggle-slider"></span>
+                </label>
               </div>
-              <label class="toggle-switch">
-                <input type="checkbox" id="start-on-login-toggle">
-                <span class="toggle-slider"></span>
-              </label>
-            </div>
-            <div class="setting-item">
-              <div class="setting-info">
-                <label for="startup-path-input">Custom Startup Folder</label>
-                <p class="setting-description">Set a custom folder to open when IYERIS starts. Leave empty to use your home folder.</p>
-              </div>
-              <div style="display: flex; gap: 8px; align-items: center; flex: 1;">
-                <input type="text" id="startup-path-input" class="settings-input" placeholder="Leave empty for default (Home folder)" style="flex: 1;">
-                <button class="modal-button" id="browse-startup-path-btn" title="Browse for folder"><img src="assets/twemoji/1f4c1.svg" class="twemoji" alt="📁" draggable="false" /> Browse</button>
+              <div class="setting-item" data-searchable="startup folder path directory home default">
+                <div class="setting-info">
+                  <label for="startup-path-input">Custom Startup Folder</label>
+                  <p class="setting-description">Set a custom folder to open when IYERIS starts. Leave empty to use your home folder.</p>
+                </div>
+                <div class="setting-input-group">
+                  <input type="text" id="startup-path-input" class="settings-input" placeholder="Leave empty for default (Home folder)">
+                  <button class="modal-button compact" id="browse-startup-path-btn" title="Browse for folder"><img src="assets/twemoji/1f4c1.svg" class="twemoji" alt="📁" draggable="false" /></button>
+                </div>
               </div>
             </div>
           </div>
           
           <div class="settings-section" id="tab-data">
-            <h4>Data</h4>
-            <div class="setting-item">
-              <div class="setting-info">
-                <label>Settings File Location</label>
-                <p class="setting-description" id="settings-path">Loading...</p>
+            <h4><img src="assets/twemoji/1f4be.svg" class="twemoji" alt="💾" draggable="false" /> Data</h4>
+            
+            <div class="settings-card">
+              <div class="settings-card-header">Storage</div>
+              <div class="setting-item" data-searchable="settings file location path config configuration">
+                <div class="setting-info">
+                  <label>Settings File Location</label>
+                  <p class="setting-description" id="settings-path">Loading...</p>
+                </div>
+                <button class="modal-button compact" id="open-settings-folder-btn" title="Open folder"><img src="assets/twemoji/1f4c2.svg" class="twemoji" alt="📂" draggable="false" /></button>
+              </div>
+            </div>
+            
+            <div class="settings-card">
+              <div class="settings-card-header">Manage Data</div>
+              <div class="setting-item" data-searchable="export settings backup save">
+                <div class="setting-info">
+                  <label>Export Settings</label>
+                  <p class="setting-description">Save your current settings to a file for backup</p>
+                </div>
+                <button class="modal-button" id="export-settings-btn"><img src="assets/twemoji/1f4e4.svg" class="twemoji" alt="📤" draggable="false" /> Export</button>
+              </div>
+              <div class="setting-item" data-searchable="import settings restore load">
+                <div class="setting-info">
+                  <label>Import Settings</label>
+                  <p class="setting-description">Load settings from a previously exported file</p>
+                </div>
+                <button class="modal-button" id="import-settings-btn"><img src="assets/twemoji/1f4e5.svg" class="twemoji" alt="📥" draggable="false" /> Import</button>
+              </div>
+            </div>
+            
+            <div class="settings-card">
+              <div class="settings-card-header">Clear Data</div>
+              <div class="setting-item" data-searchable="clear search history recent delete">
+                <div class="setting-info">
+                  <label>Clear Search History</label>
+                  <p class="setting-description">Remove all saved search and navigation history</p>
+                </div>
+                <button class="modal-button" id="clear-search-history-btn"><img src="assets/twemoji/1f5d1.svg" class="twemoji" alt="🗑️" draggable="false" /> Clear</button>
+              </div>
+              <div class="setting-item" data-searchable="clear bookmarks favorites delete remove">
+                <div class="setting-info">
+                  <label>Clear Bookmarks</label>
+                  <p class="setting-description">Remove all saved folder bookmarks</p>
+                </div>
+                <button class="modal-button" id="clear-bookmarks-btn"><img src="assets/twemoji/1f5d1.svg" class="twemoji" alt="🗑️" draggable="false" /> Clear</button>
               </div>
             </div>
           </div>
           
           <div class="settings-section" id="tab-indexing">
-            <h4>File Indexing</h4>
-            <div class="setting-item">
-              <div class="setting-info">
-                <label for="enable-indexer-toggle">Enable File Indexer</label>
-                <p class="setting-description">Index files and folders for faster searching. Indexes common locations in the background.</p>
+            <h4><img src="assets/twemoji/1f50d.svg" class="twemoji" alt="🔍" draggable="false" /> File Indexing</h4>
+            
+            <div class="settings-card">
+              <div class="settings-card-header">Search Index</div>
+              <div class="setting-item" data-searchable="indexer search fast background enable">
+                <div class="setting-info">
+                  <label for="enable-indexer-toggle">Enable File Indexer</label>
+                  <p class="setting-description">Index files and folders for faster searching. Indexes common locations in the background.</p>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="enable-indexer-toggle" checked>
+                  <span class="toggle-slider"></span>
+                </label>
               </div>
-              <label class="toggle-switch">
-                <input type="checkbox" id="enable-indexer-toggle" checked>
-                <span class="toggle-slider"></span>
-              </label>
-            </div>
-            <div class="setting-item">
-              <div class="setting-info">
-                <label>Rebuild Index</label>
-                <p class="setting-description">Clear and rebuild the file index. <span id="index-status">Status: Unknown</span></p>
+              <div class="setting-item" data-searchable="rebuild index refresh reindex clear">
+                <div class="setting-info">
+                  <label>Rebuild Index</label>
+                  <p class="setting-description">Clear and rebuild the file index. <span id="index-status" class="index-status-badge">Status: Unknown</span></p>
+                </div>
+                <button class="modal-button" id="rebuild-index-btn"><img src="assets/twemoji/1f504.svg" class="twemoji" alt="🔄" draggable="false" /> Rebuild</button>
               </div>
-              <button class="modal-button" id="rebuild-index-btn" style="margin-left: auto;"><img src="assets/twemoji/1f504.svg" class="twemoji" alt="🔄" draggable="false" /> Rebuild Index</button>
-            </div>
-          </div>
-          
-          <div class="settings-section" id="tab-developer">
-            <h4>Developer</h4>
-            <div class="setting-item">
-              <div class="setting-info">
-                <label for="dangerous-options-toggle"><img src="assets/twemoji/1f6e0.svg" class="twemoji" alt="🛠️" draggable="false" /> Enable developer mode (Show hidden options)</label>
-                <p class="setting-description">Enable access to advanced options that could be dangerous if misused.</p>
-              </div>
-              <label class="toggle-switch">
-                <input type="checkbox" id="dangerous-options-toggle">
-                <span class="toggle-slider"></span>
-              </label>
             </div>
           </div>
           
           <div class="settings-section" id="tab-advanced">
-            <h4>Advanced</h4>
+            <h4><img src="assets/twemoji/2699.svg" class="twemoji" alt="⚙️" draggable="false" /> Advanced</h4>
             
-            <div class="setting-item">
-              <div class="setting-info">
-                <label for="auto-check-updates-toggle">Auto Check for Updates on Startup</label>
-                <p class="setting-description">Automatically check for new versions when IYERIS starts.</p>
+            <div class="settings-card">
+              <div class="settings-card-header">Updates</div>
+              <div class="setting-item" data-searchable="auto check updates startup automatic version">
+                <div class="setting-info">
+                  <label for="auto-check-updates-toggle">Auto Check for Updates</label>
+                  <p class="setting-description">Automatically check for new versions when IYERIS starts</p>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="auto-check-updates-toggle">
+                  <span class="toggle-slider"></span>
+                </label>
               </div>
-              <label class="toggle-switch">
-                <input type="checkbox" id="auto-check-updates-toggle">
-                <span class="toggle-slider"></span>
-              </label>
+              <div class="setting-item" data-searchable="check updates now manual version new">
+                <div class="setting-info">
+                  <label>Check for Updates</label>
+                  <p class="setting-description">Manually check if a new version is available</p>
+                </div>
+                <button class="modal-button" id="check-updates-btn"><img src="assets/twemoji/1f503.svg" class="twemoji" alt="🔃" draggable="false" /> Check Now</button>
+              </div>
             </div>
             
-            <div class="setting-item dangerous-option" id="restart-admin-setting" style="display: none;">
-              <div class="setting-info">
-                <label>Restart with Administrator Privileges</label>
-                <p class="setting-description">This will restart IYERIS with Admin/Sudo permissions. This can be dangerous if you don't know what you're doing.</p>
+            <div class="settings-card">
+              <div class="settings-card-header">Developer Options</div>
+              <div class="setting-item" data-searchable="developer mode debug hidden dangerous options">
+                <div class="setting-info">
+                  <label for="dangerous-options-toggle"><img src="assets/twemoji/1f6e0.svg" class="twemoji" alt="🛠️" draggable="false" /> Enable Developer Mode</label>
+                  <p class="setting-description">Show advanced developer options (use with caution)</p>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="dangerous-options-toggle">
+                  <span class="toggle-slider"></span>
+                </label>
               </div>
-              <button class="modal-button" id="restart-admin-btn" style="margin-left: auto;"><img src="assets/twemoji/26a0.svg" class="twemoji" alt="⚠️" draggable="false" /> Restart as Admin</button>
+              <div class="setting-item dangerous-option" id="restart-admin-setting" style="display: none;" data-searchable="restart admin administrator sudo privileges elevated">
+                <div class="setting-info">
+                  <label><img src="assets/twemoji/26a0.svg" class="twemoji" alt="⚠️" draggable="false" /> Restart with Administrator Privileges</label>
+                  <p class="setting-description">Restart IYERIS with elevated permissions. Use with caution!</p>
+                </div>
+                <button class="modal-button warning" id="restart-admin-btn"><img src="assets/twemoji/26a0.svg" class="twemoji" alt="⚠️" draggable="false" /> Restart as Admin</button>
+              </div>
+            </div>
+          </div>
+          
+          <div class="settings-section" id="tab-about">
+            <h4><img src="assets/twemoji/2139.svg" class="twemoji" alt="ℹ️" draggable="false" /> About IYERIS</h4>
+            
+            <div class="about-hero">
+              <div class="about-logo">
+                <img src="assets/folder.png" alt="IYERIS" class="about-logo-img" />
+              </div>
+              <div class="about-info">
+                <h2 class="about-title">IYERIS</h2>
+                <p class="about-version" id="about-version-display">Version 0.8.0-beta.3</p>
+                <p class="about-tagline">A modern, cross-platform file explorer</p>
+              </div>
+            </div>
+            
+            <div class="settings-card">
+              <div class="settings-card-header">Credits</div>
+              <div class="about-credit-item">
+                <span class="about-credit-label">Created by</span>
+                <span class="about-credit-value"><strong>BurntToasters</strong> / <a href="#" id="about-rosie-link" class="about-link">Rosie.run</a></span>
+              </div>
+              <div class="about-credit-item">
+                <span class="about-credit-label">Emoji Graphics</span>
+                <span class="about-credit-value"><a href="#" id="about-twemoji-link" class="about-link">Twemoji</a> by Twitter + Contributors (CC-BY 4.0)</span>
+              </div>
+            </div>
+            
+            <div class="settings-card">
+              <div class="settings-card-header">Links</div>
+              <div class="about-links">
+                <button class="about-link-btn" id="about-github-btn">
+                  <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+                  </svg>
+                  GitHub
+                </button>
+                <button class="about-link-btn" id="about-help-btn">
+                  <img src="assets/twemoji/2753.svg" class="twemoji" alt="❓" draggable="false" />
+                  Help & FAQ
+                </button>
+                <button class="about-link-btn" id="about-licenses-btn">
+                  <img src="assets/twemoji/1f4dc.svg" class="twemoji" alt="📜" draggable="false" />
+                  Licenses
+                </button>
+                <button class="about-link-btn" id="about-support-btn">
+                  <img src="assets/twemoji/2764.svg" class="twemoji" alt="❤️" draggable="false" />
+                  Support
+                </button>
+              </div>
+            </div>
+            
+            <div class="settings-card">
+              <div class="settings-card-header">Keyboard Shortcuts</div>
+              <div class="about-shortcuts-hint">
+                <p>Press <kbd>Ctrl</kbd> + <kbd>.</kbd> to view all keyboard shortcuts</p>
+                <button class="modal-button" id="about-shortcuts-btn"><img src="assets/twemoji/2328.svg" class="twemoji" alt="⌨️" draggable="false" /> View Shortcuts</button>
+              </div>
             </div>
           </div>
         </div>
       </div>
-      <div class="modal-footer">
-        <div class="footer-top">
-          <span class="footer-credit">Made with <img src="assets/twemoji/2764.svg" class="twemoji" alt="❤️" draggable="false" /> By: <strong>BurntToasters</strong>/<strong id="rosie-link" style="cursor: pointer; text-decoration: underline;">Rosie.run</strong></span>
-          <span class="footer-version" id="version-indicator" title="Click to view release">v0.8.0-beta.2</span>
+      <div class="modal-footer settings-footer">
+        <div class="settings-footer-left">
+          <span class="unsaved-indicator" id="unsaved-indicator" style="display: none;">
+            <img src="assets/twemoji/1f534.svg" class="twemoji-small" alt="🔴" draggable="false" /> Unsaved changes
+          </span>
         </div>
-        <div class="footer-top" style="margin-top: 0.5rem; font-size: 0.85em; opacity: 0.8;">
-          <span class="footer-credit">Emoji graphics by <strong>Twemoji</strong> (Twitter) + Additional Contributors: <span id="twemoji-cc-link" style="text-decoration: underline; color: inherit; cursor: pointer;">CC-BY 4.0</span></span>
-        </div>
-        <div class="footer-bottom">
-          <div class="footer-left">
-            <button class="modal-button" id="help-link" title="Get help for IYERIS"><img style="margin-left: -10px; margin-right: -10px; margin-top: -10px; margin-bottom: -10px;" src="assets/twemoji/2139.svg" class="twemoji" alt="ℹ️" draggable="false"/></button>
-            <button class="modal-button" id="github-btn" title="View on GitHub">
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">ß
-                <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
-              </svg>
-              GitHub
-            </button>
-            <button class="modal-button" id="licenses-btn" title="View Third-Party Licenses">
-              Licenses
-            </button>
-            <button class="modal-button" id="check-updates-btn" title="Check for Updates">
-              <img src="assets/twemoji/1f503.svg" class="twemoji" alt="🔃" draggable="false" /> Check for Updates
-            </button>
-          </div>
-          <div class="footer-right">
-            <button class="modal-button" id="reset-settings-btn">Reset to Default</button>
-            <button class="modal-button primary" id="save-settings-btn">Save</button>
-          </div>
+        <div class="settings-footer-right">
+          <button class="modal-button" id="reset-settings-btn">Reset to Default</button>
+          <button class="modal-button primary" id="save-settings-btn">Save</button>
         </div>
       </div>
     </div>
@@ -664,7 +790,7 @@
     <div class="status-right">
       <span id="status-disk-space"></span>
       <span class="status-separator"></span>
-      <span class="status-version" id="status-version" title="Version 0.8.0-beta.2">v0.8.0-beta.2</span>
+      <span class="status-version" id="status-version" title="Version 0.8.0-beta.3">v0.8.0-beta.3</span>
       <span class="status-separator"></span>
       <button class="status-support-btn" id="heart-button" title="Support this project!">
         <img src="assets/twemoji/2764.svg" class="twemoji" alt="❤️" draggable="false" />
