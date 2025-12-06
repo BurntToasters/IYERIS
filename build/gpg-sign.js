@@ -206,9 +206,32 @@ async function getOrCreateRelease() {
       'GET', 
       '/repos/' + REPO_OWNER + '/' + REPO_NAME + '/releases/tags/' + TAG_NAME
     );
-    console.log('   Found existing release: ' + (release.name || TAG_NAME));
+    console.log('   Found published release: ' + (release.name || TAG_NAME));
     return release;
   } catch (error) {
+    console.log('   Tag not published, searching draft releases...');
+    try {
+      const releases = await githubRequest(
+        'GET',
+        '/repos/' + REPO_OWNER + '/' + REPO_NAME + '/releases?per_page=20'
+      );
+      
+      const matchingReleases = releases.filter(function(r) {
+        return r.tag_name === TAG_NAME;
+      });
+      
+      if (matchingReleases.length > 0) {
+        matchingReleases.sort(function(a, b) {
+          return b.assets.length - a.assets.length;
+        });
+        const release = matchingReleases[0];
+        console.log('   Found draft release: ' + release.name + ' (' + release.assets.length + ' assets)');
+        return release;
+      }
+    } catch (listError) {
+      console.log('   Could not list releases: ' + listError.message);
+    }
+
     console.log('   Creating draft release for ' + TAG_NAME + '...');
     try {
       const release = await githubRequest(
