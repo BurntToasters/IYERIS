@@ -52,7 +52,18 @@
     "build:beta:win:x64": "npm run patch:beta && cross-env IS_BETA=true npm run build && electron-builder --win --x64 --publish never -c.win.icon=assets/icon-square-beta.ico && npm run restore:release",
     "build:beta:mac": "npm run patch:beta && cross-env IS_BETA=true npm run build && dotenv -e .env -- electron-builder --mac --universal -c.mac.icon=assets/iyeris-beta.icns && npm run restore:release",
     "build:beta:linux": "npm run patch:beta && cross-env IS_BETA=true npm run build && electron-builder --linux AppImage deb rpm --x64 --arm64 -c.linux.icon=assets/icon-beta.png && npm run flatpak:clean && npm run flatpak:beta:build && npm run flatpak:beta:bundle && npm run restore:release",
-    "build:beta:linux:native": "npm run patch:beta && cross-env IS_BETA=true npm run build && USE_SYSTEM_FPM=true electron-builder --linux AppImage deb rpm --x64 --arm64 -c.linux.icon=assets/icon-beta.png && npm run flatpak:clean && npm run flatpak:beta:build && npm run flatpak:beta:bundle && npm run restore:release"
+    "build:beta:linux:native": "npm run patch:beta && cross-env IS_BETA=true npm run build && USE_SYSTEM_FPM=true electron-builder --linux AppImage deb rpm --x64 --arm64 -c.linux.icon=assets/icon-beta.png && npm run flatpak:clean && npm run flatpak:beta:build && npm run flatpak:beta:bundle && npm run restore:release",
+    "release:mac": "npm run build && dotenv -e .env -- electron-builder --mac --universal --publish always && npm run sign:gpg",
+    "release:win": "npm run build && dotenv -e .env -- electron-builder --win nsis msi --x64 --arm64 --publish always && npm run sign:gpg",
+    "release:win:nsis": "npm run build && dotenv -e .env -- electron-builder --win nsis --x64 --arm64 --publish always && npm run sign:gpg",
+    "release:win:msi": "npm run build && dotenv -e .env -- electron-builder --win msi --x64 --arm64 --publish always && npm run sign:gpg",
+    "release:linux": "npm run build && dotenv -e .env -- electron-builder --linux AppImage deb rpm --x64 --arm64 --publish always && npm run sign:gpg",
+    "release:all": "npm run release:mac && npm run release:win && npm run release:linux",
+    "release:beta:mac": "npm run patch:beta && cross-env IS_BETA=true npm run build && dotenv -e .env -- electron-builder --mac --universal -c.mac.icon=assets/iyeris-beta.icns --publish always && npm run restore:release && npm run sign:gpg",
+    "release:beta:win": "npm run patch:beta && cross-env IS_BETA=true npm run build && dotenv -e .env -- electron-builder --win nsis --x64 --arm64 -c.win.icon=assets/icon-square-beta.ico --publish always && npm run restore:release && npm run sign:gpg",
+    "release:beta:linux": "npm run patch:beta && cross-env IS_BETA=true npm run build && dotenv -e .env -- electron-builder --linux AppImage deb rpm --x64 --arm64 -c.linux.icon=assets/icon-beta.png --publish always && npm run restore:release && npm run sign:gpg",
+    "release:beta:all": "npm run release:beta:mac && npm run release:beta:win && npm run release:beta:linux",
+    "sign:gpg": "node build/gpg-sign.js"
   },
   "build": {
     "appId": "com.burnttoasters.iyeris",
