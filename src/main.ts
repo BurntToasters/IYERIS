@@ -1083,6 +1083,18 @@ ipcMain.handle('copy-items', async (_event: IpcMainInvokeEvent, sourcePaths: str
     for (const sourcePath of sourcePaths) {
       const itemName = path.basename(sourcePath);
       const destItemPath = path.join(destPath, itemName);
+
+      const sourceExists = await fs.stat(sourcePath).then(() => true).catch(() => false);
+      if (!sourceExists) {
+        console.log('[Copy] Source file not found:', sourcePath);
+        return { success: false, error: `Source file not found: ${itemName}` };
+      }
+
+      const destExists = await fs.stat(destItemPath).then(() => true).catch(() => false);
+      if (destExists) {
+        console.log('[Copy] Destination already exists:', destItemPath);
+        return { success: false, error: `A file named "${itemName}" already exists in the destination` };
+      }
       
       const stats = await fs.stat(sourcePath);
       if (stats.isDirectory()) {
@@ -1105,7 +1117,38 @@ ipcMain.handle('move-items', async (_event: IpcMainInvokeEvent, sourcePaths: str
     for (const sourcePath of sourcePaths) {
       const fileName = path.basename(sourcePath);
       const newPath = path.join(destPath, fileName);
-      await fs.rename(sourcePath, newPath);
+
+      const sourceExists = await fs.stat(sourcePath).then(() => true).catch(() => false);
+      if (!sourceExists) {
+        console.log('[Move] Source file not found:', sourcePath);
+        return { success: false, error: `Source file not found: ${fileName}` };
+      }
+
+      const destExists = await fs.stat(newPath).then(() => true).catch(() => false);
+      if (destExists) {
+        console.log('[Move] Destination already exists:', newPath);
+        return { success: false, error: `A file named "${fileName}" already exists in the destination` };
+      }
+      
+      try {
+        await fs.rename(sourcePath, newPath);
+      } catch (renameError) {
+        const err = renameError as NodeJS.ErrnoException;
+        // If rename fails (e.g., cross-drive), fall back to copy+delete
+        if (err.code === 'EXDEV') {
+          console.log('[Move] Cross-device move, using copy+delete:', sourcePath);
+          const stats = await fs.stat(sourcePath);
+          if (stats.isDirectory()) {
+            await fs.cp(sourcePath, newPath, { recursive: true });
+          } else {
+            await fs.copyFile(sourcePath, newPath);
+          }
+          await fs.rm(sourcePath, { recursive: true, force: true });
+        } else {
+          throw renameError;
+        }
+      }
+      
       movedPaths.push(newPath);
     }
     

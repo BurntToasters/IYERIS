@@ -980,7 +980,9 @@ async function showSettingsModal() {
 
 function hideSettingsModal() {
   const settingsModal = document.getElementById('settings-modal');
-  settingsModal.style.display = 'none';
+  if (settingsModal) {
+    settingsModal.style.display = 'none';
+  }
   stopIndexStatusPolling();
 }
 
@@ -2606,7 +2608,7 @@ async function loadThumbnail(fileItem: HTMLElement, item: FileItem) {
 }
 
 function getFileIcon(filename: string): string {
-  const ext = filename.split('.').pop().toLowerCase();
+  const ext = filename.split('.').pop()?.toLowerCase() || '';
   const iconMap: Record<string, string> = {
     'jpg': '1f5bc', 'jpeg': '1f5bc', 'png': '1f5bc', 'gif': '1f5bc', 'svg': '1f5bc', 'bmp': '1f5bc',
     'mp4': '1f3ac', 'avi': '1f3ac', 'mov': '1f3ac', 'mkv': '1f3ac', 'webm': '1f3ac',
@@ -3646,6 +3648,8 @@ async function handleExtract(item: FileItem) {
 function showPropertiesDialog(props: ItemProperties) {
   const modal = document.getElementById('properties-modal');
   const content = document.getElementById('properties-content');
+  
+  if (!modal || !content) return;
   
   // unique op IDs
   const folderSizeOperationId = `foldersize_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
@@ -4899,7 +4903,12 @@ document.addEventListener('mousedown', (e) => {
   }
 })();
 
-initSettingsTabs();
+window.addEventListener('beforeunload', () => {
+  stopIndexStatusPolling();
+  if (thumbnailObserver) {
+    thumbnailObserver.disconnect();
+  }
+});
 
 
 
