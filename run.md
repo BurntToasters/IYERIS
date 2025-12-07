@@ -11,4 +11,4 @@ npm run dev
 npm run watch
 
 # Update License:
-npx npm-license-crawler --json licenses.json
+npx npm-license-crawler --production --json licenses.json
