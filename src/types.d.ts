@@ -182,6 +182,17 @@ export interface ElectronAPI {
   resetSettings: () => Promise<ApiResponse>;
   relaunchApp: () => Promise<void>;
   getSettingsPath: () => Promise<string>;
+
+  setClipboard: (clipboardData: { operation: 'copy' | 'cut'; paths: string[] } | null) => Promise<void>;
+  getClipboard: () => Promise<{ operation: 'copy' | 'cut'; paths: string[] } | null>;
+  onClipboardChanged: (callback: (clipboardData: { operation: 'copy' | 'cut'; paths: string[] } | null) => void) => () => void;
+
+  setDragData: (paths: string[]) => Promise<void>;
+  getDragData: () => Promise<{ paths: string[] } | null>;
+  clearDragData: () => Promise<void>;
+
+  onSettingsChanged: (callback: (settings: Settings) => void) => () => void;
+  
   copyItems: (sourcePaths: string[], destPath: string) => Promise<ApiResponse>;
   moveItems: (sourcePaths: string[], destPath: string) => Promise<ApiResponse>;
   searchFiles: (dirPath: string, query: string) => Promise<SearchResponse>;

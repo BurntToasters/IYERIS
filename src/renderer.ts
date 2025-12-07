@@ -362,6 +362,7 @@ let indexStatusInterval: NodeJS.Timeout | null = null;
 
 const addressInput = document.getElementById('address-input') as HTMLInputElement;
 const fileGrid = document.getElementById('file-grid') as HTMLElement;
+const fileView = document.getElementById('file-view') as HTMLElement;
 const columnView = document.getElementById('column-view') as HTMLElement;
 const loading = document.getElementById('loading') as HTMLElement;
 const emptyState = document.getElementById('empty-state') as HTMLElement;
@@ -543,6 +544,13 @@ async function loadSettings(): Promise<void> {
     if (newLaunchCount === 2 && !currentSettings.supportPopupDismissed) {
       setTimeout(() => showSupportPopup(), 1500);
     }
+  }
+  
+  // shared clipboard from main
+  const sharedClipboard = await window.electronAPI.getClipboard();
+  if (sharedClipboard) {
+    clipboard = sharedClipboard;
+    console.log('[Init] Loaded shared clipboard:', clipboard.operation, clipboard.paths.length, 'items');
   }
 }
 
@@ -833,22 +841,33 @@ function setupThemeEditorListeners() {
     });
     
     textInput?.addEventListener('input', (e) => {
-      let value = (e.target as HTMLInputElement).value;
+      let value = (e.target as HTMLInputElement).value.trim();
       if (!value.startsWith('#')) value = '#' + value;
       if (/^#[0-9A-Fa-f]{6}$/.test(value)) {
         syncColorInputs(id, value);
+        textInput.classList.remove('invalid');
+      } else if (/^#[0-9A-Fa-f]{3}$/.test(value)) {
+        const expanded = '#' + value[1] + value[1] + value[2] + value[2] + value[3] + value[3];
+        syncColorInputs(id, expanded);
+        textInput.classList.remove('invalid');
+      } else if (value.length > 1) {
+        textInput.classList.add('invalid');
       }
     });
     
     textInput?.addEventListener('blur', (e) => {
-      let value = (e.target as HTMLInputElement).value;
+      let value = (e.target as HTMLInputElement).value.trim();
       if (!value.startsWith('#')) value = '#' + value;
-      if (!/^#[0-9A-Fa-f]{6}$/.test(value)) {
-        // Reset
+      // Validate and reset
+      if (!/^#[0-9A-Fa-f]{3}$/.test(value) && !/^#[0-9A-Fa-f]{6}$/.test(value)) {
+        // Reset to current color picker value
         const colorInput = document.getElementById(id) as HTMLInputElement;
         if (colorInput && textInput) {
           textInput.value = colorInput.value.toUpperCase();
+          textInput.classList.remove('invalid');
         }
+      } else {
+        textInput.classList.remove('invalid');
       }
     });
   });
@@ -1481,6 +1500,8 @@ function copyToClipboard() {
     operation: 'copy',
     paths: Array.from(selectedItems)
   };
+  // Sync main process
+  window.electronAPI.setClipboard(clipboard);
   updateCutVisuals();
   showToast(`${selectedItems.size} item(s) copied`, 'Clipboard', 'success');
 }
@@ -1491,6 +1512,7 @@ function cutToClipboard() {
     operation: 'cut',
     paths: Array.from(selectedItems)
   };
+  window.electronAPI.setClipboard(clipboard);
   updateCutVisuals();
   showToast(`${selectedItems.size} item(s) cut`, 'Clipboard', 'success');
 }
@@ -1506,9 +1528,10 @@ async function pasteFromClipboard() {
     
     if (clipboard.operation === 'cut') {
       await updateUndoRedoState();
+      clipboard = null;
+      window.electronAPI.setClipboard(null);
     }
     
-    clipboard = null;
     updateCutVisuals();
     refresh();
   } else {
@@ -1847,6 +1870,19 @@ async function loadDrives() {
 
 function setupEventListeners() {
   initSettingsTabs();
+
+  window.electronAPI.onClipboardChanged((newClipboard) => {
+    clipboard = newClipboard;
+    updateCutVisuals();
+    console.log('[Sync] Clipboard updated from another window');
+  });
+
+  window.electronAPI.onSettingsChanged((newSettings) => {
+    console.log('[Sync] Settings updated from another window');
+    currentSettings = newSettings;
+    applySettings(newSettings);
+  });
+  
   document.getElementById('minimize-btn')?.addEventListener('click', () => {
     window.electronAPI.minimizeWindow();
   });
@@ -2179,23 +2215,130 @@ function setupEventListeners() {
         return;
       }
       
-      const draggedPaths = JSON.parse(e.dataTransfer.getData('text/plain') || '[]');
-    if (draggedPaths.length === 0 || !currentPath) {
-      return;
-    }
+      let draggedPaths: string[] = [];
+      
+      // Try to get paths from our app's dataTransfer
+      try {
+        const textData = e.dataTransfer.getData('text/plain');
+        if (textData) {
+          draggedPaths = JSON.parse(textData);
+        }
+      } catch {
+        // Not valid JSON, ignore
+      }
+      
+      // If empty, check for files from external drag (Windows Explorer or cross-window native drag)
+      if (draggedPaths.length === 0 && e.dataTransfer.files.length > 0) {
+        draggedPaths = Array.from(e.dataTransfer.files).map(f => (f as File & { path: string }).path);
+      }
+      
+      // If still empty, check shared drag data from main process (cross-window)
+      if (draggedPaths.length === 0) {
+        const sharedData = await window.electronAPI.getDragData();
+        if (sharedData) {
+          draggedPaths = sharedData.paths;
+        }
+      }
+      
+      if (draggedPaths.length === 0 || !currentPath) {
+        return;
+      }
     
-    const alreadyInCurrentDir = draggedPaths.some(path => {
-      const parentDir = path.substring(0, path.lastIndexOf(path.includes('\\') ? '\\' : '/'));
-      return parentDir === currentPath || path === currentPath;
+      const alreadyInCurrentDir = draggedPaths.some((path: string) => {
+        const parentDir = path.substring(0, path.lastIndexOf(path.includes('\\') ? '\\' : '/'));
+        return parentDir === currentPath || path === currentPath;
+      });
+    
+      if (alreadyInCurrentDir) {
+        showToast('Items are already in this directory', 'Info', 'info');
+        return;
+      }
+    
+      const operation = e.ctrlKey ? 'copy' : 'move';
+      await handleDrop(draggedPaths, currentPath, operation);
+    });
+  }
+
+  if (fileView) {
+    fileView.addEventListener('dragover', (e) => {
+      if ((e.target as HTMLElement).closest('.file-grid') || 
+          (e.target as HTMLElement).closest('.column-view') ||
+          (e.target as HTMLElement).closest('.file-item') ||
+          (e.target as HTMLElement).closest('.column-item')) {
+        return;
+      }
+      
+      e.preventDefault();
+      e.stopPropagation();
+      
+      if (!currentPath) {
+        e.dataTransfer!.dropEffect = 'none';
+        return;
+      }
+      
+      e.dataTransfer!.dropEffect = e.ctrlKey ? 'copy' : 'move';
+      fileView.classList.add('drag-over');
     });
     
-    if (alreadyInCurrentDir) {
-      showToast('Items are already in this directory', 'Info', 'info');
-      return;
-    }
+    fileView.addEventListener('dragleave', (e) => {
+      e.preventDefault();
+      const rect = fileView.getBoundingClientRect();
+      if (e.clientX < rect.left || e.clientX >= rect.right ||
+          e.clientY < rect.top || e.clientY >= rect.bottom) {
+        fileView.classList.remove('drag-over');
+      }
+    });
     
-    const operation = e.ctrlKey ? 'copy' : 'move';
-    await handleDrop(draggedPaths, currentPath, operation);
+    fileView.addEventListener('drop', async (e) => {
+      if ((e.target as HTMLElement).closest('.file-grid') || 
+          (e.target as HTMLElement).closest('.column-view') ||
+          (e.target as HTMLElement).closest('.file-item') ||
+          (e.target as HTMLElement).closest('.column-item')) {
+        return;
+      }
+      
+      e.preventDefault();
+      e.stopPropagation();
+      
+      fileView.classList.remove('drag-over');
+      
+      let draggedPaths: string[] = [];
+      
+      try {
+        const textData = e.dataTransfer!.getData('text/plain');
+        if (textData) {
+          draggedPaths = JSON.parse(textData);
+        }
+      } catch {
+      }
+      
+      if (draggedPaths.length === 0 && e.dataTransfer!.files.length > 0) {
+        draggedPaths = Array.from(e.dataTransfer!.files).map(f => (f as File & { path: string }).path);
+      }
+      
+      if (draggedPaths.length === 0) {
+        const sharedData = await window.electronAPI.getDragData();
+        if (sharedData) {
+          draggedPaths = sharedData.paths;
+        }
+      }
+      
+      if (draggedPaths.length === 0 || !currentPath) {
+        return;
+      }
+      
+      const alreadyInCurrentDir = draggedPaths.some((path: string) => {
+        const parentDir = path.substring(0, path.lastIndexOf(path.includes('\\') ? '\\' : '/'));
+        return parentDir === currentPath || path === currentPath;
+      });
+      
+      if (alreadyInCurrentDir) {
+        showToast('Items are already in this directory', 'Info', 'info');
+        return;
+      }
+      
+      const operation = e.ctrlKey ? 'copy' : 'move';
+      await handleDrop(draggedPaths, currentPath, operation);
     });
   }
   
@@ -2513,6 +2656,9 @@ function createFileItem(item: FileItem): HTMLElement {
     e.dataTransfer.effectAllowed = 'copyMove';
     e.dataTransfer.setData('text/plain', JSON.stringify(selectedPaths));
     
+    // Store in main
+    window.electronAPI.setDragData(selectedPaths);
+    
     fileItem.classList.add('dragging');
 
     if (selectedPaths.length > 1) {
@@ -2533,6 +2679,9 @@ function createFileItem(item: FileItem): HTMLElement {
       el.classList.remove('drag-over');
     });
     document.getElementById('file-grid')?.classList.remove('drag-over');
+    
+    // Clear drag data main
+    window.electronAPI.clearDragData();
   });
 
   if (item.isDirectory) {
@@ -2540,8 +2689,7 @@ function createFileItem(item: FileItem): HTMLElement {
       e.preventDefault();
       e.stopPropagation();
 
-      const draggedPaths = JSON.parse(e.dataTransfer.getData('text/plain') || '[]');
-      if (draggedPaths.includes(item.path)) {
+      if (!e.dataTransfer.types.includes('text/plain')) {
         e.dataTransfer.dropEffect = 'none';
         return;
       }
@@ -2567,7 +2715,27 @@ function createFileItem(item: FileItem): HTMLElement {
       
       fileItem.classList.remove('drag-over');
       
-      const draggedPaths = JSON.parse(e.dataTransfer.getData('text/plain') || '[]');
+      let draggedPaths: string[] = [];
+
+      try {
+        const textData = e.dataTransfer.getData('text/plain');
+        if (textData) {
+          draggedPaths = JSON.parse(textData);
+        }
+      } catch {
+      }
+
+      if (draggedPaths.length === 0 && e.dataTransfer.files.length > 0) {
+        draggedPaths = Array.from(e.dataTransfer.files).map(f => (f as File & { path: string }).path);
+      }
+
+      if (draggedPaths.length === 0) {
+        const sharedData = await window.electronAPI.getDragData();
+        if (sharedData) {
+          draggedPaths = sharedData.paths;
+        }
+      }
+      
       if (draggedPaths.length === 0 || draggedPaths.includes(item.path)) {
         return;
       }
@@ -2636,6 +2804,7 @@ async function handleDrop(sourcePaths: string[], destPath: string, operation: 'c
     
     if (result.success) {
       showToast(`${operation === 'copy' ? 'Copied' : 'Moved'} ${sourcePaths.length} item(s)`, 'Success', 'success');
+      await window.electronAPI.clearDragData();
       
       if (operation === 'move') {
         await updateUndoRedoState();
@@ -2942,6 +3111,83 @@ async function renderColumn(path: string, columnIndex: number) {
   const pane = document.createElement('div');
   pane.className = 'column-pane';
   pane.dataset.columnIndex = String(columnIndex);
+  pane.dataset.path = path;
+
+  pane.addEventListener('dragover', (e) => {
+    if ((e.target as HTMLElement).closest('.column-item')) {
+      return;
+    }
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (!e.dataTransfer!.types.includes('text/plain') && e.dataTransfer!.files.length === 0) {
+      e.dataTransfer!.dropEffect = 'none';
+      return;
+    }
+    
+    e.dataTransfer!.dropEffect = e.ctrlKey ? 'copy' : 'move';
+    pane.classList.add('drag-over');
+  });
+  
+  pane.addEventListener('dragleave', (e) => {
+    if ((e.target as HTMLElement).closest('.column-item')) {
+      return;
+    }
+    e.preventDefault();
+    const rect = pane.getBoundingClientRect();
+    if (e.clientX < rect.left || e.clientX >= rect.right ||
+        e.clientY < rect.top || e.clientY >= rect.bottom) {
+      pane.classList.remove('drag-over');
+    }
+  });
+  
+  pane.addEventListener('drop', async (e) => {
+    if ((e.target as HTMLElement).closest('.column-item')) {
+      return;
+    }
+    e.preventDefault();
+    e.stopPropagation();
+    
+    pane.classList.remove('drag-over');
+    
+    let draggedPaths: string[] = [];
+    
+    try {
+      const textData = e.dataTransfer!.getData('text/plain');
+      if (textData) {
+        draggedPaths = JSON.parse(textData);
+      }
+    } catch {
+    }
+    
+    if (draggedPaths.length === 0 && e.dataTransfer!.files.length > 0) {
+      draggedPaths = Array.from(e.dataTransfer!.files).map(f => (f as File & { path: string }).path);
+    }
+    
+    if (draggedPaths.length === 0) {
+      const sharedData = await window.electronAPI.getDragData();
+      if (sharedData) {
+        draggedPaths = sharedData.paths;
+      }
+    }
+    
+    if (draggedPaths.length === 0) {
+      return;
+    }
+
+    const alreadyInCurrentDir = draggedPaths.some((filePath: string) => {
+      const parentDir = filePath.substring(0, filePath.lastIndexOf(filePath.includes('\\') ? '\\' : '/'));
+      return parentDir === path || filePath === path;
+    });
+    
+    if (alreadyInCurrentDir) {
+      showToast('Items are already in this directory', 'Info', 'info');
+      return;
+    }
+    
+    const operation = e.ctrlKey ? 'copy' : 'move';
+    await handleDrop(draggedPaths, path, operation);
+  });
   
   try {
     const result = await window.electronAPI.getDirectoryContents(path);
@@ -3009,6 +3255,95 @@ async function renderColumn(path: string, columnIndex: number) {
 
           showContextMenu(e.pageX, e.pageY, fileItem);
         });
+
+        item.draggable = true;
+        
+        item.addEventListener('dragstart', (e) => {
+          e.stopPropagation();
+
+          if (!item.classList.contains('selected')) {
+            pane.querySelectorAll('.column-item').forEach(i => i.classList.remove('selected'));
+            item.classList.add('selected');
+            clearSelection();
+            selectedItems.add(fileItem.path);
+          }
+          
+          const selectedPaths = Array.from(selectedItems);
+          e.dataTransfer!.effectAllowed = 'copyMove';
+          e.dataTransfer!.setData('text/plain', JSON.stringify(selectedPaths));
+
+          window.electronAPI.setDragData(selectedPaths);
+          
+          item.classList.add('dragging');
+        });
+        
+        item.addEventListener('dragend', () => {
+          item.classList.remove('dragging');
+          document.querySelectorAll('.column-item.drag-over').forEach(el => {
+            el.classList.remove('drag-over');
+          });
+          window.electronAPI.clearDragData();
+        });
+
+        if (fileItem.isDirectory) {
+          item.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            if (!e.dataTransfer!.types.includes('text/plain') && e.dataTransfer!.files.length === 0) {
+              e.dataTransfer!.dropEffect = 'none';
+              return;
+            }
+            
+            e.dataTransfer!.dropEffect = e.ctrlKey ? 'copy' : 'move';
+            item.classList.add('drag-over');
+          });
+          
+          item.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const rect = item.getBoundingClientRect();
+            if (e.clientX < rect.left || e.clientX >= rect.right ||
+                e.clientY < rect.top || e.clientY >= rect.bottom) {
+              item.classList.remove('drag-over');
+            }
+          });
+          
+          item.addEventListener('drop', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            item.classList.remove('drag-over');
+            
+            let draggedPaths: string[] = [];
+            
+            try {
+              const textData = e.dataTransfer!.getData('text/plain');
+              if (textData) {
+                draggedPaths = JSON.parse(textData);
+              }
+            } catch {
+            }
+            
+            if (draggedPaths.length === 0 && e.dataTransfer!.files.length > 0) {
+              draggedPaths = Array.from(e.dataTransfer!.files).map(f => (f as File & { path: string }).path);
+            }
+            
+            if (draggedPaths.length === 0) {
+              const sharedData = await window.electronAPI.getDragData();
+              if (sharedData) {
+                draggedPaths = sharedData.paths;
+              }
+            }
+            
+            if (draggedPaths.length === 0 || draggedPaths.includes(fileItem.path)) {
+              return;
+            }
+            
+            const operation = e.ctrlKey ? 'copy' : 'move';
+            await handleDrop(draggedPaths, fileItem.path, operation);
+          });
+        }
         
         pane.appendChild(item);
       });

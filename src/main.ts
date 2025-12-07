@@ -62,7 +62,19 @@ let fileIndexer: FileIndexer | null = null;
 let tray: Tray | null = null;
 let isQuitting = false;
 
+let sharedClipboard: { operation: 'copy' | 'cut'; paths: string[] } | null = null;
+let sharedDragData: { paths: string[] } | null = null;
+
 const isDev = process.argv.includes('--dev');
+
+function broadcastToAllWindows(channel: string, data?: any): void {
+  const allWindows = BrowserWindow.getAllWindows();
+  for (const win of allWindows) {
+    if (!win.isDestroyed()) {
+      win.webContents.send(channel, data);
+    }
+  }
+}
 
 // inst lock
 const gotTheLock = app.requestSingleInstanceLock();
@@ -1041,7 +1053,7 @@ ipcMain.handle('get-settings', async (): Promise<SettingsResponse> => {
   }
 });
 
-ipcMain.handle('save-settings', async (_event: IpcMainInvokeEvent, settings: Settings): Promise<ApiResponse> => {
+ipcMain.handle('save-settings', async (event: IpcMainInvokeEvent, settings: Settings): Promise<ApiResponse> => {
   const result = await saveSettings(settings);
 
   if (result.success && fileIndexer) {
@@ -1060,6 +1072,14 @@ ipcMain.handle('save-settings', async (_event: IpcMainInvokeEvent, settings: Set
       tray = null;
       console.log('[Tray] Tray destroyed (setting disabled)');
     }
+
+    const senderWindow = BrowserWindow.fromWebContents(event.sender);
+    const allWindows = BrowserWindow.getAllWindows();
+    for (const win of allWindows) {
+      if (!win.isDestroyed() && win !== senderWindow) {
+        win.webContents.send('settings-changed', settings);
+      }
+    }
   }
   
   return result;
@@ -1067,6 +1087,36 @@ ipcMain.handle('save-settings', async (_event: IpcMainInvokeEvent, settings: Set
 
 ipcMain.handle('reset-settings', async (): Promise<ApiResponse> => {
   return await saveSettings(defaultSettings);
+});
+
+ipcMain.handle('set-clipboard', (event: IpcMainInvokeEvent, clipboardData: { operation: 'copy' | 'cut'; paths: string[] } | null): void => {
+  sharedClipboard = clipboardData;
+  console.log('[Clipboard] Updated:', clipboardData ? `${clipboardData.operation} ${clipboardData.paths.length} items` : 'cleared');
+
+  const senderWindow = BrowserWindow.fromWebContents(event.sender);
+  const allWindows = BrowserWindow.getAllWindows();
+  for (const win of allWindows) {
+    if (!win.isDestroyed() && win !== senderWindow) {
+      win.webContents.send('clipboard-changed', sharedClipboard);
+    }
+  }
+});
+
+ipcMain.handle('get-clipboard', (): { operation: 'copy' | 'cut'; paths: string[] } | null => {
+  return sharedClipboard;
+});
+
+ipcMain.handle('set-drag-data', (_event: IpcMainInvokeEvent, paths: string[]): void => {
+  sharedDragData = paths.length > 0 ? { paths } : null;
+  console.log('[Drag] Set drag data:', sharedDragData ? `${paths.length} items` : 'cleared');
+});
+
+ipcMain.handle('get-drag-data', (): { paths: string[] } | null => {
+  return sharedDragData;
+});
+
+ipcMain.handle('clear-drag-data', (): void => {
+  sharedDragData = null;
 });
 
 ipcMain.handle('relaunch-app', (): void => {

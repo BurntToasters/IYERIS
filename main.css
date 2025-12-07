@@ -3936,6 +3936,11 @@ body.theme-dark .status-right span {
   outline: none;
 }
 
+.color-text.invalid {
+  border-color: #e81123;
+  background: rgba(232, 17, 35, 0.1);
+}
+
 .theme-presets {
   display: flex;
   flex-direction: column;

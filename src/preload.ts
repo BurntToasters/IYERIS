@@ -23,6 +23,28 @@ const electronAPI: ElectronAPI = {
   resetSettings: () => ipcRenderer.invoke('reset-settings'),
   relaunchApp: () => ipcRenderer.invoke('relaunch-app'),
   getSettingsPath: () => ipcRenderer.invoke('get-settings-path'),
+  
+  // Shared clipboard
+  setClipboard: (clipboardData: { operation: 'copy' | 'cut'; paths: string[] } | null) => ipcRenderer.invoke('set-clipboard', clipboardData),
+  getClipboard: () => ipcRenderer.invoke('get-clipboard'),
+  onClipboardChanged: (callback: (clipboardData: { operation: 'copy' | 'cut'; paths: string[] } | null) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, clipboardData: { operation: 'copy' | 'cut'; paths: string[] } | null) => callback(clipboardData);
+    ipcRenderer.on('clipboard-changed', handler);
+    return () => ipcRenderer.removeListener('clipboard-changed', handler);
+  },
+  
+  // Cross-window drag and drop
+  setDragData: (paths: string[]) => ipcRenderer.invoke('set-drag-data', paths),
+  getDragData: () => ipcRenderer.invoke('get-drag-data'),
+  clearDragData: () => ipcRenderer.invoke('clear-drag-data'),
+  
+  // Settings sync
+  onSettingsChanged: (callback: (settings: Settings) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, settings: Settings) => callback(settings);
+    ipcRenderer.on('settings-changed', handler);
+    return () => ipcRenderer.removeListener('settings-changed', handler);
+  },
+  
   copyItems: (sourcePaths: string[], destPath: string) => ipcRenderer.invoke('copy-items', sourcePaths, destPath),
   moveItems: (sourcePaths: string[], destPath: string) => ipcRenderer.invoke('move-items', sourcePaths, destPath),
   searchFiles: (dirPath: string, query: string) => ipcRenderer.invoke('search-files', dirPath, query),
