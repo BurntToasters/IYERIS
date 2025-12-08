@@ -61,6 +61,8 @@ let mainWindow: BrowserWindow | null = null;
 let fileIndexer: FileIndexer | null = null;
 let tray: Tray | null = null;
 let isQuitting = false;
+let hiddenFileCacheCleanupInterval: NodeJS.Timeout | null = null;
+import * as crypto from 'crypto';
 
 let sharedClipboard: { operation: 'copy' | 'cut'; paths: string[] } | null = null;
 let sharedDragData: { paths: string[] } | null = null;
@@ -106,13 +108,31 @@ const activeArchiveProcesses = new Map<string, any>();
 const activeFolderSizeCalculations = new Map<string, { aborted: boolean }>();
 const activeChecksumCalculations = new Map<string, { aborted: boolean }>();
 
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (typeof error === 'string') {
+    return error;
+  }
+  return String(error);
+}
+
 function pushUndoAction(action: UndoAction): void {
   undoStack.push(action);
-if (undoStack.length > MAX_UNDO_STACK) {
+  if (undoStack.length > MAX_UNDO_STACK) {
     undoStack.shift();
   }
   redoStack.length = 0;
   console.log('[Undo] Action pushed:', action.type, 'Stack size:', undoStack.length);
+}
+
+function pushRedoAction(action: UndoAction): void {
+  redoStack.push(action);
+  if (redoStack.length > MAX_UNDO_STACK) {
+    redoStack.shift();
+  }
+  console.log('[Redo] Action pushed:', action.type, 'Stack size:', redoStack.length);
 }
 
 const defaultSettings: Settings = {
@@ -200,8 +220,8 @@ async function saveSettings(settings: Settings): Promise<ApiResponse> {
     
     return { success: true };
   } catch (error) {
-    console.log('[Settings] Save failed:', (error as Error).message);
-    return { success: false, error: (error as Error).message };
+    console.log('[Settings] Save failed:', getErrorMessage(error));
+    return { success: false, error: getErrorMessage(error) };
   }
 }
 
@@ -230,9 +250,38 @@ async function isFileHidden(filePath: string, fileName: string): Promise<boolean
 
 const hiddenFileCache = new Map<string, { isHidden: boolean; timestamp: number }>();
 const HIDDEN_CACHE_TTL = 300000;
+const HIDDEN_CACHE_MAX_SIZE = 5000;
+
+// Periodic cleanup
+function cleanupHiddenFileCache(): void {
+  const now = Date.now();
+  let entriesRemoved = 0;
+  
+  for (const [key, value] of hiddenFileCache) {
+    if (now - value.timestamp > HIDDEN_CACHE_TTL) {
+      hiddenFileCache.delete(key);
+      entriesRemoved++;
+    }
+  }
+
+  if (hiddenFileCache.size > HIDDEN_CACHE_MAX_SIZE) {
+    const entries = Array.from(hiddenFileCache.entries())
+      .sort((a, b) => a[1].timestamp - b[1].timestamp);
+    const toRemove = entries.slice(0, hiddenFileCache.size - HIDDEN_CACHE_MAX_SIZE);
+    for (const [key] of toRemove) {
+      hiddenFileCache.delete(key);
+      entriesRemoved++;
+    }
+  }
+  
+  if (entriesRemoved > 0) {
+    console.log(`[Cache] Cleaned up ${entriesRemoved} hidden file cache entries, ${hiddenFileCache.size} remaining`);
+  }
+}
+
+hiddenFileCacheCleanupInterval = setInterval(cleanupHiddenFileCache, 5 * 60 * 1000);
 
 async function isFileHiddenCached(filePath: string, fileName: string): Promise<boolean> {
-
   if (fileName.startsWith('.')) {
     return true;
   }
@@ -247,6 +296,11 @@ async function isFileHiddenCached(filePath: string, fileName: string): Promise<b
   }
 
   const isHidden = await isFileHidden(filePath, fileName);
+
+  if (hiddenFileCache.size >= HIDDEN_CACHE_MAX_SIZE) {
+    cleanupHiddenFileCache();
+  }
+  
   hiddenFileCache.set(filePath, { isHidden, timestamp: Date.now() });
   
   return isHidden;
@@ -751,6 +805,12 @@ app.whenReady().then(async () => {
 
 app.on('before-quit', () => {
   isQuitting = true;
+  if (hiddenFileCacheCleanupInterval) {
+    clearInterval(hiddenFileCacheCleanupInterval);
+    hiddenFileCacheCleanupInterval = null;
+  }
+  hiddenFileCache.clear();
+  
   if (tray) {
     tray.destroy();
     tray = null;
@@ -804,7 +864,7 @@ ipcMain.handle('get-directory-contents', async (_event: IpcMainInvokeEvent, dirP
     
     return { success: true, contents };
   } catch (error) {
-    return { success: false, error: (error as Error).message };
+    return { success: false, error: getErrorMessage(error) };
   }
 });
 
@@ -825,7 +885,7 @@ ipcMain.handle('open-file', async (_event: IpcMainInvokeEvent, filePath: string)
     }
     return { success: true };
   } catch (error) {
-    return { success: false, error: (error as Error).message };
+    return { success: false, error: getErrorMessage(error) };
   }
 });
 
@@ -882,7 +942,7 @@ ipcMain.handle('create-folder', async (_event: IpcMainInvokeEvent, parentPath: s
     console.log('[Create] Folder created:', newPath);
     return { success: true, path: newPath };
   } catch (error) {
-    return { success: false, error: (error as Error).message };
+    return { success: false, error: getErrorMessage(error) };
   }
 });
 
@@ -931,7 +991,7 @@ ipcMain.handle('trash-item', async (_event: IpcMainInvokeEvent, itemPath: string
     return { success: true };
   } catch (error) {
     console.error('[Trash] Error:', error);
-    return { success: false, error: (error as Error).message };
+    return { success: false, error: getErrorMessage(error) };
   }
 });
 
@@ -953,7 +1013,7 @@ ipcMain.handle('open-trash', async (): Promise<ApiResponse> => {
     return { success: true };
   } catch (error) {
     console.error('[Trash] Error opening trash:', error);
-    return { success: false, error: (error as Error).message };
+    return { success: false, error: getErrorMessage(error) };
   }
 });
 
@@ -969,7 +1029,7 @@ ipcMain.handle('delete-item', async (_event: IpcMainInvokeEvent, itemPath: strin
     return { success: true };
   } catch (error) {
     console.error('[Delete] Error:', error);
-    return { success: false, error: (error as Error).message };
+    return { success: false, error: getErrorMessage(error) };
   }
 });
 
@@ -999,7 +1059,7 @@ ipcMain.handle('rename-item', async (_event: IpcMainInvokeEvent, oldPath: string
         return { success: true, path: newPath };
       }
     }
-    return { success: false, error: (error as Error).message };
+    return { success: false, error: getErrorMessage(error) };
   }
 });
 
@@ -1019,7 +1079,7 @@ ipcMain.handle('create-file', async (_event: IpcMainInvokeEvent, parentPath: str
     console.log('[Create] File created:', newPath);
     return { success: true, path: newPath };
   } catch (error) {
-    return { success: false, error: (error as Error).message };
+    return { success: false, error: getErrorMessage(error) };
   }
 });
 
@@ -1040,7 +1100,7 @@ ipcMain.handle('get-item-properties', async (_event: IpcMainInvokeEvent, itemPat
       }
     };
   } catch (error) {
-    return { success: false, error: (error as Error).message };
+    return { success: false, error: getErrorMessage(error) };
   }
 });
 
@@ -1049,7 +1109,7 @@ ipcMain.handle('get-settings', async (): Promise<SettingsResponse> => {
     const settings = await loadSettings();
     return { success: true, settings };
   } catch (error) {
-    return { success: false, error: (error as Error).message };
+    return { success: false, error: getErrorMessage(error) };
   }
 });
 
@@ -1155,7 +1215,7 @@ ipcMain.handle('copy-items', async (_event: IpcMainInvokeEvent, sourcePaths: str
     }
     return { success: true };
   } catch (error) {
-    return { success: false, error: (error as Error).message };
+    return { success: false, error: getErrorMessage(error) };
   }
 });
 
@@ -1163,6 +1223,7 @@ ipcMain.handle('move-items', async (_event: IpcMainInvokeEvent, sourcePaths: str
   try {
     const originalParent = path.dirname(sourcePaths[0]);
     const movedPaths: string[] = [];
+    const originalPaths: string[] = [];
     
     for (const sourcePath of sourcePaths) {
       const fileName = path.basename(sourcePath);
@@ -1199,6 +1260,7 @@ ipcMain.handle('move-items', async (_event: IpcMainInvokeEvent, sourcePaths: str
         }
       }
       
+      originalPaths.push(sourcePath);
       movedPaths.push(newPath);
     }
     
@@ -1206,6 +1268,7 @@ ipcMain.handle('move-items', async (_event: IpcMainInvokeEvent, sourcePaths: str
       type: 'move',
       data: {
         sourcePaths: movedPaths,
+        originalPaths: originalPaths,
         destPath: destPath,
         originalParent: originalParent
       }
@@ -1214,7 +1277,8 @@ ipcMain.handle('move-items', async (_event: IpcMainInvokeEvent, sourcePaths: str
     console.log('[Move] Items moved:', sourcePaths.length);
     return { success: true };
   } catch (error) {
-    return { success: false, error: (error as Error).message };
+    const message = error instanceof Error ? error.message : String(error);
+    return { success: false, error: message };
   }
 });
 
@@ -1222,12 +1286,22 @@ ipcMain.handle('search-files', async (_event: IpcMainInvokeEvent, dirPath: strin
   try {
     const results: FileItem[] = [];
     const searchQuery = query.toLowerCase();
+    const MAX_SEARCH_DEPTH = 10;
+    const MAX_RESULTS = 100;
     
-    async function searchDirectory(currentPath: string): Promise<void> {
+    async function searchDirectory(currentPath: string, depth: number = 0): Promise<void> {
+      if (depth >= MAX_SEARCH_DEPTH || results.length >= MAX_RESULTS) {
+        return;
+      }
+      
       try {
         const items = await fs.readdir(currentPath, { withFileTypes: true });
         
         for (const item of items) {
+          if (results.length >= MAX_RESULTS) {
+            return;
+          }
+          
           const fullPath = path.join(currentPath, item.name);
           
           if (item.name.toLowerCase().includes(searchQuery)) {
@@ -1247,9 +1321,9 @@ ipcMain.handle('search-files', async (_event: IpcMainInvokeEvent, dirPath: strin
             }
           }
           
-          if (item.isDirectory() && results.length < 100) {
+          if (item.isDirectory() && results.length < MAX_RESULTS) {
             try {
-              await searchDirectory(fullPath);
+              await searchDirectory(fullPath, depth + 1);
             } catch (err) {
             }
           }
@@ -1258,10 +1332,11 @@ ipcMain.handle('search-files', async (_event: IpcMainInvokeEvent, dirPath: strin
       }
     }
     
-    await searchDirectory(dirPath);
+    await searchDirectory(dirPath, 0);
     return { success: true, results };
   } catch (error) {
-    return { success: false, error: (error as Error).message };
+    const message = error instanceof Error ? error.message : String(error);
+    return { success: false, error: message };
   }
 });
 
@@ -1321,7 +1396,7 @@ ipcMain.handle('get-disk-space', async (_event: IpcMainInvokeEvent, drivePath: s
       return { success: false, error: 'Disk space info not available on this platform' };
     }
   } catch (error) {
-    return { success: false, error: (error as Error).message };
+    return { success: false, error: getErrorMessage(error) };
   }
 });
 
@@ -1357,7 +1432,7 @@ ipcMain.handle('restart-as-admin', async (): Promise<ApiResponse> => {
       return { success: false, error: 'Unsupported platform' };
     }
   } catch (error) {
-    return { success: false, error: (error as Error).message };
+    return { success: false, error: getErrorMessage(error) };
   }
 });
 
@@ -1392,7 +1467,7 @@ ipcMain.handle('open-terminal', async (_event: IpcMainInvokeEvent, dirPath: stri
     
     return { success: true };
   } catch (error) {
-    return { success: false, error: (error as Error).message };
+    return { success: false, error: getErrorMessage(error) };
   }
 });
 
@@ -1415,7 +1490,7 @@ ipcMain.handle('read-file-content', async (_event: IpcMainInvokeEvent, filePath:
     const content = await fs.readFile(filePath, 'utf8');
     return { success: true, content, isTruncated: false };
   } catch (error) {
-    return { success: false, error: (error as Error).message };
+    return { success: false, error: getErrorMessage(error) };
   }
 });
 
@@ -1447,7 +1522,7 @@ ipcMain.handle('get-file-data-url', async (_event: IpcMainInvokeEvent, filePath:
     
     return { success: true, dataUrl };
   } catch (error) {
-    return { success: false, error: (error as Error).message };
+    return { success: false, error: getErrorMessage(error) };
   }
 });
 
@@ -1458,7 +1533,7 @@ ipcMain.handle('get-licenses', async (): Promise<{ success: boolean; licenses?: 
     const licenses = JSON.parse(data);
     return { success: true, licenses };
   } catch (error) {
-    return { success: false, error: (error as Error).message };
+    return { success: false, error: getErrorMessage(error) };
   }
 });
 
@@ -1484,7 +1559,7 @@ ipcMain.handle('request-full-disk-access', async (): Promise<ApiResponse> => {
     await showFullDiskAccessDialog();
     return { success: true };
   } catch (error) {
-    return { success: false, error: (error as Error).message };
+    return { success: false, error: getErrorMessage(error) };
   }
 });
 
@@ -1611,7 +1686,7 @@ ipcMain.handle('check-for-updates', async (): Promise<UpdateCheckResponse> => {
     };
   } catch (error) {
     console.error('[AutoUpdater] Check for updates failed:', error);
-    return { success: false, error: (error as Error).message };
+    return { success: false, error: getErrorMessage(error) };
   }
 });
 
@@ -1623,7 +1698,7 @@ ipcMain.handle('download-update', async (): Promise<ApiResponse> => {
     return { success: true };
   } catch (error) {
     console.error('[AutoUpdater] Download failed:', error);
-    return { success: false, error: (error as Error).message };
+    return { success: false, error: getErrorMessage(error) };
   }
 });
 
@@ -1635,7 +1710,7 @@ ipcMain.handle('install-update', async (): Promise<ApiResponse> => {
     return { success: true };
   } catch (error) {
     console.error('[AutoUpdater] Install failed:', error);
-    return { success: false, error: (error as Error).message };
+    return { success: false, error: getErrorMessage(error) };
   }
 });
 
@@ -1665,7 +1740,7 @@ ipcMain.handle('undo-action', async (_event: IpcMainInvokeEvent): Promise<ApiRes
         }
         
         await fs.rename(action.data.newPath, action.data.oldPath);
-        redoStack.push(action);
+        pushRedoAction(action);
         console.log('[Undo] Renamed back:', action.data.newPath, '->', action.data.oldPath);
         return { success: true };
       
@@ -1687,7 +1762,7 @@ ipcMain.handle('undo-action', async (_event: IpcMainInvokeEvent): Promise<ApiRes
           const originalPath = path.join(originalParent, fileName);
           await fs.rename(source, originalPath);
         }
-        redoStack.push(action);
+        pushRedoAction(action);
         console.log('[Undo] Moved back to original location');
         return { success: true };
       
@@ -1707,7 +1782,7 @@ ipcMain.handle('undo-action', async (_event: IpcMainInvokeEvent): Promise<ApiRes
         } else {
           await fs.unlink(itemPath);
         }
-        redoStack.push(action);
+        pushRedoAction(action);
         console.log('[Undo] Deleted created item:', itemPath);
         return { success: true };
       
@@ -1717,7 +1792,8 @@ ipcMain.handle('undo-action', async (_event: IpcMainInvokeEvent): Promise<ApiRes
   } catch (error) {
     console.error('[Undo] Error:', error);
     undoStack.push(action);
-    return { success: false, error: (error as Error).message };
+    const message = error instanceof Error ? error.message : String(error);
+    return { success: false, error: message };
   }
 });
 
@@ -1738,13 +1814,26 @@ ipcMain.handle('redo-action', async (_event: IpcMainInvokeEvent): Promise<ApiRes
         return { success: true };
       
       case 'move':
-        const redoSourcePaths = action.data.sourcePaths;
+        const originalParent = action.data.originalParent;
         const destPath = action.data.destPath;
-        for (const source of redoSourcePaths) {
-          const fileName = path.basename(source);
+        const newMovedPaths: string[] = [];
+        const filesToMove = action.data.originalPaths || action.data.sourcePaths;
+        
+        for (const originalPath of filesToMove) {
+          const fileName = path.basename(originalPath);
+          const currentPath = path.join(originalParent, fileName);
           const newPath = path.join(destPath, fileName);
-          await fs.rename(source, newPath);
+          try {
+            await fs.access(currentPath);
+          } catch {
+            console.log('[Redo] File not found at expected location:', currentPath);
+            return { success: false, error: 'Cannot redo: File not found at original location' };
+          }
+          
+          await fs.rename(currentPath, newPath);
+          newMovedPaths.push(newPath);
         }
+        action.data.sourcePaths = newMovedPaths;
         undoStack.push(action);
         console.log('[Redo] Moved to destination');
         return { success: true };
@@ -1766,7 +1855,8 @@ ipcMain.handle('redo-action', async (_event: IpcMainInvokeEvent): Promise<ApiRes
   } catch (error) {
     console.error('[Redo] Error:', error);
     redoStack.push(action);
-    return { success: false, error: (error as Error).message };
+    const message = error instanceof Error ? error.message : String(error);
+    return { success: false, error: message };
   }
 });
 
@@ -1791,7 +1881,7 @@ ipcMain.handle('search-index', async (_event: IpcMainInvokeEvent, query: string)
     return { success: true, results };
   } catch (error) {
     console.error('[Indexer] Search error:', error);
-    return { success: false, error: (error as Error).message };
+    return { success: false, error: getErrorMessage(error) };
   }
 });
 
@@ -1806,7 +1896,7 @@ ipcMain.handle('rebuild-index', async (): Promise<ApiResponse> => {
     return { success: true };
   } catch (error) {
     console.error('[Indexer] Rebuild error:', error);
-    return { success: false, error: (error as Error).message };
+    return { success: false, error: getErrorMessage(error) };
   }
 });
 
@@ -1820,7 +1910,7 @@ ipcMain.handle('get-index-status', async (): Promise<{success: boolean; status?:
     return { success: true, status };
   } catch (error) {
     console.error('[Indexer] Status error:', error);
-    return { success: false, error: (error as Error).message };
+    return { success: false, error: getErrorMessage(error) };
   }
 });
 
@@ -2035,7 +2125,7 @@ ipcMain.handle('compress-files', async (_event: IpcMainInvokeEvent, sourcePaths:
     });
   } catch (error) {
     console.error('[Compress] Error:', error);
-    return { success: false, error: (error as Error).message };
+    return { success: false, error: getErrorMessage(error) };
   }
 });
 
@@ -2090,23 +2180,34 @@ ipcMain.handle('extract-archive', async (_event: IpcMainInvokeEvent, archivePath
     });
   } catch (error) {
     console.error('[Extract] Error:', error);
-    return { success: false, error: (error as Error).message };
+    return { success: false, error: getErrorMessage(error) };
   }
 });
 
 ipcMain.handle('cancel-archive-operation', async (_event: IpcMainInvokeEvent, operationId: string): Promise<ApiResponse> => {
   try {
     const process = activeArchiveProcesses.get(operationId);
-    if (process && process._childProcess) {
-      console.log('[Archive] Cancelling operation:', operationId);
-      process._childProcess.kill('SIGTERM');
-      activeArchiveProcesses.delete(operationId);
-      return { success: true };
+    if (!process) {
+      console.log('[Archive] Operation not found for cancellation:', operationId);
+      return { success: false, error: 'Operation not found' };
     }
-    return { success: false, error: 'Operation not found' };
+    
+    console.log('[Archive] Cancelling operation:', operationId);
+    if (process._childProcess) {
+      try {
+        process._childProcess.kill('SIGTERM');
+      } catch (killError) {
+        console.log('[Archive] Process already terminated:', killError);
+      }
+    } else if (typeof process.cancel === 'function') {
+      process.cancel();
+    }
+    
+    activeArchiveProcesses.delete(operationId);
+    return { success: true };
   } catch (error) {
     console.error('[Archive] Cancel error:', error);
-    return { success: false, error: (error as Error).message };
+    return { success: false, error: getErrorMessage(error) };
   }
 });
 
@@ -2123,7 +2224,7 @@ ipcMain.handle('set-zoom-level', async (_event: IpcMainInvokeEvent, zoomLevel: n
     return { success: true };
   } catch (error) {
     console.error('[Zoom] Error:', error);
-    return { success: false, error: (error as Error).message };
+    return { success: false, error: getErrorMessage(error) };
   }
 });
 
@@ -2137,20 +2238,29 @@ ipcMain.handle('get-zoom-level', async (): Promise<{success: boolean; zoomLevel?
     return { success: true, zoomLevel };
   } catch (error) {
     console.error('[Zoom] Error:', error);
-    return { success: false, error: (error as Error).message };
+    return { success: false, error: getErrorMessage(error) };
   }
 });
 
-async function createTray(): Promise<void> {
-  const settings = await loadSettings();
-  if (!settings.minimizeToTray) {
-    console.log('[Tray] Tray disabled in settings');
-    return;
-  }
-
-  if (tray) {
-    tray.destroy();
-    tray = null;
+async function createTray(forHiddenStart: boolean = false): Promise<void> {
+  const logPrefix = forHiddenStart ? '[Tray] (hidden start)' : '[Tray]';
+  
+  if (forHiddenStart) {
+    if (tray) {
+      console.log(`${logPrefix} Tray already exists`);
+      return;
+    }
+  } else {
+    const settings = await loadSettings();
+    if (!settings.minimizeToTray) {
+      console.log(`${logPrefix} Tray disabled in settings`);
+      return;
+    }
+    
+    if (tray) {
+      tray.destroy();
+      tray = null;
+    }
   }
 
   let iconPath: string;
@@ -2169,7 +2279,7 @@ async function createTray(): Promise<void> {
       iconPath = iconFallback;
       trayIcon = nativeImage.createFromPath(iconPath).resize({ width: 22, height: 22 });
     }
-    console.log('[Tray] macOS: Using color icon from:', iconPath);
+    console.log(`${logPrefix} macOS: Using color icon from:`, iconPath);
   } else if (process.platform === 'win32') {
     const icoPath = path.join(assetsPath, 'icon-square.ico');
     const pngPath = path.join(assetsPath, 'icon.png');
@@ -2181,7 +2291,7 @@ async function createTray(): Promise<void> {
       iconPath = pngPath;
       trayIcon = nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 });
     }
-    console.log('[Tray] Windows: Using icon from:', iconPath);
+    console.log(`${logPrefix} Windows: Using icon from:`, iconPath);
   } else {
     const icon32Path = path.join(assetsPath, 'iyeris.iconset', 'icon_32x32@1x.png');
     const iconFallback = path.join(assetsPath, 'icon.png');
@@ -2193,19 +2303,21 @@ async function createTray(): Promise<void> {
       iconPath = iconFallback;
       trayIcon = nativeImage.createFromPath(iconPath).resize({ width: 24, height: 24 });
     }
-    console.log('[Tray] Linux: Using icon from:', iconPath);
+    console.log(`${logPrefix} Linux: Using icon from:`, iconPath);
   }
 
   if (trayIcon.isEmpty()) {
-    console.error('[Tray] Failed to load tray icon from:', iconPath);
+    console.error(`${logPrefix} Failed to load tray icon from:`, iconPath);
     return;
   }
   
   try {
     tray = new Tray(trayIcon);
   } catch (error) {
-    console.error('[Tray] Failed to create tray icon (system may not support tray icons):', error);
-    console.log('[Tray] Minimize to tray feature will be disabled');
+    console.error(`${logPrefix} Failed to create tray icon:`, error);
+    if (!forHiddenStart) {
+      console.log(`${logPrefix} Minimize to tray feature will be disabled`);
+    }
     tray = null;
     return;
   }
@@ -2286,148 +2398,12 @@ async function createTray(): Promise<void> {
     });
   }
 
-  console.log('[Tray] Tray created successfully');
+  console.log(`${logPrefix} Tray created successfully`);
 }
 
+// Legacy wrapper for hidden start calls
 async function createTrayForHiddenStart(): Promise<void> {
-  if (tray) {
-    console.log('[Tray] Tray already exists for hidden start');
-    return;
-  }
-
-  let iconPath: string;
-  let trayIcon: Electron.NativeImage;
-
-  const assetsPath = path.join(__dirname, '..', 'assets');
-
-  if (process.platform === 'darwin') {
-    const icon32Path = path.join(assetsPath, 'iyeris.iconset', 'icon_32x32@1x.png');
-    const iconFallback = path.join(assetsPath, 'icon.png');
-    
-    if (fsSync.existsSync(icon32Path)) {
-      iconPath = icon32Path;
-      trayIcon = nativeImage.createFromPath(iconPath).resize({ width: 22, height: 22 });
-    } else {
-      iconPath = iconFallback;
-      trayIcon = nativeImage.createFromPath(iconPath).resize({ width: 22, height: 22 });
-    }
-    console.log('[Tray] macOS hidden start: Using color icon from:', iconPath);
-  } else if (process.platform === 'win32') {
-    const icoPath = path.join(assetsPath, 'icon-square.ico');
-    const pngPath = path.join(assetsPath, 'icon.png');
-    
-    if (fsSync.existsSync(icoPath)) {
-      iconPath = icoPath;
-      trayIcon = nativeImage.createFromPath(iconPath);
-    } else {
-      iconPath = pngPath;
-      trayIcon = nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 });
-    }
-    console.log('[Tray] Windows hidden start: Using icon from:', iconPath);
-  } else {
-    const icon32Path = path.join(assetsPath, 'iyeris.iconset', 'icon_32x32@1x.png');
-    const iconFallback = path.join(assetsPath, 'icon.png');
-    
-    if (fsSync.existsSync(icon32Path)) {
-      iconPath = icon32Path;
-      trayIcon = nativeImage.createFromPath(iconPath).resize({ width: 24, height: 24 });
-    } else {
-      iconPath = iconFallback;
-      trayIcon = nativeImage.createFromPath(iconPath).resize({ width: 24, height: 24 });
-    }
-    console.log('[Tray] Linux hidden start: Using icon from:', iconPath);
-  }
-
-  if (trayIcon.isEmpty()) {
-    console.error('[Tray] Failed to load tray icon for hidden start from:', iconPath);
-    return;
-  }
-  
-  try {
-    tray = new Tray(trayIcon);
-  } catch (error) {
-    console.error('[Tray] Failed to create tray icon for hidden start:', error);
-    tray = null;
-    return;
-  }
-
-  tray.setToolTip('IYERIS');
-  
-  const contextMenu = Menu.buildFromTemplate([
-    { 
-      label: 'Show IYERIS', 
-      click: () => {
-        let targetWindow = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
-        if (!targetWindow) {
-          const allWindows = BrowserWindow.getAllWindows();
-          targetWindow = allWindows.length > 0 ? allWindows[0] : null;
-        }
-        
-        if (targetWindow) {
-          targetWindow.show();
-          targetWindow.focus();
-        } else {
-          createWindow(false);
-        }
-        
-        if (process.platform === 'darwin') {
-          app.dock?.show();
-        }
-      } 
-    },
-    { type: 'separator' },
-    { 
-      label: 'Quit', 
-      click: () => {
-        isQuitting = true;
-        app.quit();
-      } 
-    }
-  ]);
-  
-  tray.setContextMenu(contextMenu);
-
-  if (process.platform !== 'darwin') {
-    tray.on('click', () => {
-      let targetWindow = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
-      if (!targetWindow) {
-        const allWindows = BrowserWindow.getAllWindows();
-        targetWindow = allWindows.length > 0 ? allWindows[0] : null;
-      }
-      
-      if (targetWindow) {
-        if (targetWindow.isVisible()) {
-          targetWindow.hide();
-        } else {
-          targetWindow.show();
-          targetWindow.focus();
-        }
-      } else {
-        createWindow(false);
-      }
-    });
-  }
-
-  if (process.platform === 'darwin') {
-    tray.on('double-click', () => {
-      let targetWindow = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
-      if (!targetWindow) {
-        const allWindows = BrowserWindow.getAllWindows();
-        targetWindow = allWindows.length > 0 ? allWindows[0] : null;
-      }
-      
-      if (targetWindow) {
-        targetWindow.show();
-        targetWindow.focus();
-      } else {
-        createWindow(false);
-      }
-      
-      app.dock?.show();
-    });
-  }
-
-  console.log('[Tray] Tray created successfully for hidden start');
+  return createTray(true);
 }
 
 // Folder Size Calc
@@ -2509,7 +2485,7 @@ ipcMain.handle('calculate-folder-size', async (_event: IpcMainInvokeEvent, folde
     };
   } catch (error) {
     activeFolderSizeCalculations.delete(operationId);
-    const errorMessage = (error as Error).message;
+    const errorMessage = getErrorMessage(error);
     if (errorMessage === 'Calculation cancelled') {
       console.log('[FolderSize] Calculation cancelled for operationId:', operationId);
       return { success: false, error: 'Calculation cancelled' };
@@ -2611,7 +2587,7 @@ ipcMain.handle('calculate-checksum', async (_event: IpcMainInvokeEvent, filePath
     return { success: true, result };
   } catch (error) {
     activeChecksumCalculations.delete(operationId);
-    const errorMessage = (error as Error).message;
+    const errorMessage = getErrorMessage(error);
     if (errorMessage === 'Calculation cancelled') {
       console.log('[Checksum] Calculation cancelled for operationId:', operationId);
       return { success: false, error: 'Calculation cancelled' };

@@ -65,6 +65,16 @@ function twemojiImg(emoji: string, className: string = 'twemoji', alt?: string):
   return `<img src="${src}" class="${className}" alt="${altText}" draggable="false" />`;
 }
 
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (typeof error === 'string') {
+    return error;
+  }
+  return String(error);
+}
+
 type ViewMode = 'grid' | 'list' | 'column';
 
 // Breadcrumb state
@@ -82,6 +92,8 @@ interface ArchiveOperation {
 }
 
 const activeOperations = new Map<string, ArchiveOperation>();
+
+const ipcCleanupFunctions: (() => void)[] = [];
 
 function generateOperationId(): string {
   return `op_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
@@ -1141,7 +1153,7 @@ async function showLicensesModal() {
       licensesContent.innerHTML = `<p style="color: var(--error-color); text-align: center;">Error loading licenses: ${result.error || 'Unknown error'}</p>`;
     }
   } catch (error) {
-    licensesContent.innerHTML = `<p style="color: var(--error-color); text-align: center;">Error: ${(error as Error).message}</p>`;
+    licensesContent.innerHTML = `<p style="color: var(--error-color); text-align: center;">Error: ${getErrorMessage(error)}</p>`;
   }
 }
 
@@ -1812,7 +1824,7 @@ async function init() {
       }
     });
 
-    window.electronAPI.onUpdateAvailable((info) => {
+    const cleanupUpdateAvailable = window.electronAPI.onUpdateAvailable((info) => {
       console.log('Update available:', info);
 
       const settingsBtn = document.getElementById('settings-btn');
@@ -1832,8 +1844,9 @@ async function init() {
         checkUpdatesBtn.classList.add('primary');
       }
     });
+    ipcCleanupFunctions.push(cleanupUpdateAvailable);
 
-    window.electronAPI.onSystemResumed(() => {
+    const cleanupSystemResumed = window.electronAPI.onSystemResumed(() => {
       console.log('[Renderer] System resumed from sleep, refreshing view...');
       lastDiskSpacePath = '';
       if (diskSpaceDebounceTimer) {
@@ -1845,6 +1858,7 @@ async function init() {
       }
       loadDrives();
     });
+    ipcCleanupFunctions.push(cleanupSystemResumed);
   }, 0);
   
   console.log('Init: Complete');
@@ -1871,17 +1885,19 @@ async function loadDrives() {
 function setupEventListeners() {
   initSettingsTabs();
 
-  window.electronAPI.onClipboardChanged((newClipboard) => {
+  const cleanupClipboard = window.electronAPI.onClipboardChanged((newClipboard) => {
     clipboard = newClipboard;
     updateCutVisuals();
     console.log('[Sync] Clipboard updated from another window');
   });
+  ipcCleanupFunctions.push(cleanupClipboard);
 
-  window.electronAPI.onSettingsChanged((newSettings) => {
+  const cleanupSettings = window.electronAPI.onSettingsChanged((newSettings) => {
     console.log('[Sync] Settings updated from another window');
     currentSettings = newSettings;
     applySettings(newSettings);
   });
+  ipcCleanupFunctions.push(cleanupSettings);
   
   document.getElementById('minimize-btn')?.addEventListener('click', () => {
     window.electronAPI.minimizeWindow();
@@ -3917,7 +3933,7 @@ async function handleCompress(format: string = 'zip') {
   } catch (error) {
     cleanupProgressHandler();
     removeOperation(operationId);
-    showToast((error as Error).message, 'Compression Error', 'error');
+    showToast(getErrorMessage(error), 'Compression Error', 'error');
   }
 }
 
@@ -3976,7 +3992,7 @@ async function handleExtract(item: FileItem) {
   } catch (error) {
     cleanupProgressHandler();
     removeOperation(operationId);
-    showToast((error as Error).message, 'Extraction Error', 'error');
+    showToast(getErrorMessage(error), 'Extraction Error', 'error');
   }
 }
 
@@ -4160,7 +4176,7 @@ function showPropertiesDialog(props: ItemProperties) {
             if (sizeInfo) sizeInfo.textContent = `Error: ${result.error}`;
           }
         } catch (err) {
-          if (sizeInfo) sizeInfo.textContent = `Error: ${(err as Error).message}`;
+          if (sizeInfo) sizeInfo.textContent = `Error: ${getErrorMessage(err)}`;
         } finally {
           folderSizeActive = false;
           if (folderSizeProgressCleanup) {
@@ -4236,7 +4252,7 @@ function showPropertiesDialog(props: ItemProperties) {
             showToast(result.error || 'Checksum calculation failed', 'Error', 'error');
           }
         } catch (err) {
-          showToast((err as Error).message, 'Error', 'error');
+          showToast(getErrorMessage(err), 'Error', 'error');
         } finally {
           checksumActive = false;
           if (checksumProgressCleanup) {
@@ -4403,7 +4419,7 @@ async function checkForUpdates() {
   } catch (error) {
     showDialog(
       'Update Check Failed',
-      `An error occurred while checking for updates: ${(error as Error).message}`,
+      `An error occurred while checking for updates: ${getErrorMessage(error)}`,
       'error',
       false
     );
@@ -4489,7 +4505,7 @@ async function downloadAndInstallUpdate() {
     dialogModal.style.display = 'none';
     showDialog(
       'Update Error',
-      `An error occurred during the update process: ${(error as Error).message}`,
+      `An error occurred during the update process: ${getErrorMessage(error)}`,
       'error',
       false
     );
@@ -4617,6 +4633,57 @@ document.getElementById('export-settings-btn')?.addEventListener('click', async 
   }
 });
 
+// Settings validation
+function validateImportedSettings(imported: any): Partial<Settings> {
+  const validated: Partial<Settings> = {};
+
+  if (typeof imported.transparency === 'boolean') validated.transparency = imported.transparency;
+  if (typeof imported.showDangerousOptions === 'boolean') validated.showDangerousOptions = imported.showDangerousOptions;
+  if (typeof imported.showHiddenFiles === 'boolean') validated.showHiddenFiles = imported.showHiddenFiles;
+  if (typeof imported.enableSearchHistory === 'boolean') validated.enableSearchHistory = imported.enableSearchHistory;
+  if (typeof imported.enableIndexer === 'boolean') validated.enableIndexer = imported.enableIndexer;
+  if (typeof imported.minimizeToTray === 'boolean') validated.minimizeToTray = imported.minimizeToTray;
+  if (typeof imported.startOnLogin === 'boolean') validated.startOnLogin = imported.startOnLogin;
+  if (typeof imported.autoCheckUpdates === 'boolean') validated.autoCheckUpdates = imported.autoCheckUpdates;
+  
+  if (typeof imported.startupPath === 'string') validated.startupPath = imported.startupPath;
+
+  const validThemes = ['dark', 'light', 'default', 'custom'];
+  if (validThemes.includes(imported.theme)) validated.theme = imported.theme;
+  
+  const validSortBy = ['name', 'date', 'size', 'type'];
+  if (validSortBy.includes(imported.sortBy)) validated.sortBy = imported.sortBy;
+  
+  const validSortOrder = ['asc', 'desc'];
+  if (validSortOrder.includes(imported.sortOrder)) validated.sortOrder = imported.sortOrder;
+  
+  const validViewModes = ['grid', 'list', 'column'];
+  if (validViewModes.includes(imported.viewMode)) validated.viewMode = imported.viewMode;
+
+  if (Array.isArray(imported.bookmarks)) {
+    validated.bookmarks = imported.bookmarks.filter((b: any) => typeof b === 'string');
+  }
+  if (Array.isArray(imported.searchHistory)) {
+    validated.searchHistory = imported.searchHistory.filter((s: any) => typeof s === 'string').slice(0, 100);
+  }
+  if (Array.isArray(imported.directoryHistory)) {
+    validated.directoryHistory = imported.directoryHistory.filter((d: any) => typeof d === 'string').slice(0, 100);
+  }
+
+  if (imported.customTheme && typeof imported.customTheme === 'object') {
+    const ct = imported.customTheme;
+    const isValidHex = (s: any) => typeof s === 'string' && /^#[0-9a-fA-F]{6}$/.test(s);
+    if (typeof ct.name === 'string' && 
+        isValidHex(ct.accentColor) && isValidHex(ct.bgPrimary) && 
+        isValidHex(ct.bgSecondary) && isValidHex(ct.textPrimary) && 
+        isValidHex(ct.textSecondary) && isValidHex(ct.glassBg) && isValidHex(ct.glassBorder)) {
+      validated.customTheme = ct;
+    }
+  }
+  
+  return validated;
+}
+
 // Import
 document.getElementById('import-settings-btn')?.addEventListener('click', () => {
   const input = document.createElement('input');
@@ -4628,15 +4695,21 @@ document.getElementById('import-settings-btn')?.addEventListener('click', () => 
     
     try {
       const text = await file.text();
-      const importedSettings = JSON.parse(text) as Settings;
+      const parsed = JSON.parse(text);
+
+      const validatedSettings = validateImportedSettings(parsed);
       
-      // Merge
-      currentSettings = { ...currentSettings, ...importedSettings };
+      if (Object.keys(validatedSettings).length === 0) {
+        showToast('No valid settings found in file', 'Import', 'warning');
+        return;
+      }
+
+      currentSettings = { ...currentSettings, ...validatedSettings };
       await window.electronAPI.saveSettings(currentSettings);
 
       hideSettingsModal();
       showSettingsModal();
-      showToast('Settings imported successfully', 'Import', 'success');
+      showToast(`Imported ${Object.keys(validatedSettings).length} settings successfully`, 'Import', 'success');
     } catch (error) {
       showToast('Failed to import settings: Invalid file format', 'Import', 'error');
     }
@@ -5234,7 +5307,7 @@ document.addEventListener('mousedown', (e) => {
     console.log('IYERIS initialized successfully');
   } catch (error) {
     console.error('Failed to initialize IYERIS:', error);
-    alert('Failed to start IYERIS: ' + error.message);
+    alert('Failed to start IYERIS: ' + getErrorMessage(error));
   }
 })();
 
@@ -5243,6 +5316,24 @@ window.addEventListener('beforeunload', () => {
   if (thumbnailObserver) {
     thumbnailObserver.disconnect();
   }
+
+  if (diskSpaceDebounceTimer) {
+    clearTimeout(diskSpaceDebounceTimer);
+    diskSpaceDebounceTimer = null;
+  }
+  if (zoomPopupTimeout) {
+    clearTimeout(zoomPopupTimeout);
+    zoomPopupTimeout = null;
+  }
+
+  for (const cleanup of ipcCleanupFunctions) {
+    try {
+      cleanup();
+    } catch (e) {
+      console.error('[Cleanup] Error cleaning up IPC listener:', e);
+    }
+  }
+  ipcCleanupFunctions.length = 0;
 });
 
 

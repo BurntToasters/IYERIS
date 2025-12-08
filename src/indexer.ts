@@ -17,6 +17,9 @@ export class FileIndexer {
   private indexPath: string;
   private enabled: boolean = true;
   private abortController: AbortController | null = null;
+  
+  // Maximum number of files to index
+  private static readonly MAX_INDEX_SIZE = 200000;
 
   constructor() {
     const userDataPath = app.getPath('userData');
@@ -167,7 +170,7 @@ export class FileIndexer {
           this.index.set(fullPath, indexEntry);
           this.indexedFiles++;
 
-          if (entry.isDirectory() && this.index.size < 100000) { 
+          if (entry.isDirectory() && this.index.size < FileIndexer.MAX_INDEX_SIZE) { 
             await this.scanDirectory(fullPath, signal);
           }
         } catch (error) {
@@ -235,7 +238,10 @@ export class FileIndexer {
       console.error('[Indexer] Error building index:', error);
     } finally {
       this.isIndexing = false;
-      this.abortController = null;
+      if (this.abortController) {
+        this.abortController.abort();
+        this.abortController = null;
+      }
     }
   }
 
@@ -347,6 +353,7 @@ export class FileIndexer {
     
     if (!enabled && this.abortController) {
       this.abortController.abort();
+      this.abortController = null;
     }
   }
 
