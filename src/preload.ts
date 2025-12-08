@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { ElectronAPI, Settings, UpdateDownloadProgress } from './types';
+import type { ElectronAPI, Settings, UpdateDownloadProgress, FolderSizeProgress, ChecksumResult } from './types';
 
 const electronAPI: ElectronAPI = {
   getDirectoryContents: (dirPath: string) => ipcRenderer.invoke('get-directory-contents', dirPath),
@@ -23,6 +23,28 @@ const electronAPI: ElectronAPI = {
   resetSettings: () => ipcRenderer.invoke('reset-settings'),
   relaunchApp: () => ipcRenderer.invoke('relaunch-app'),
   getSettingsPath: () => ipcRenderer.invoke('get-settings-path'),
+  
+  // Shared clipboard
+  setClipboard: (clipboardData: { operation: 'copy' | 'cut'; paths: string[] } | null) => ipcRenderer.invoke('set-clipboard', clipboardData),
+  getClipboard: () => ipcRenderer.invoke('get-clipboard'),
+  onClipboardChanged: (callback: (clipboardData: { operation: 'copy' | 'cut'; paths: string[] } | null) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, clipboardData: { operation: 'copy' | 'cut'; paths: string[] } | null) => callback(clipboardData);
+    ipcRenderer.on('clipboard-changed', handler);
+    return () => ipcRenderer.removeListener('clipboard-changed', handler);
+  },
+  
+  // Cross-window drag and drop
+  setDragData: (paths: string[]) => ipcRenderer.invoke('set-drag-data', paths),
+  getDragData: () => ipcRenderer.invoke('get-drag-data'),
+  clearDragData: () => ipcRenderer.invoke('clear-drag-data'),
+  
+  // Settings sync
+  onSettingsChanged: (callback: (settings: Settings) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, settings: Settings) => callback(settings);
+    ipcRenderer.on('settings-changed', handler);
+    return () => ipcRenderer.removeListener('settings-changed', handler);
+  },
+  
   copyItems: (sourcePaths: string[], destPath: string) => ipcRenderer.invoke('copy-items', sourcePaths, destPath),
   moveItems: (sourcePaths: string[], destPath: string) => ipcRenderer.invoke('move-items', sourcePaths, destPath),
   searchFiles: (dirPath: string, query: string) => ipcRenderer.invoke('search-files', dirPath, query),
@@ -74,7 +96,21 @@ const electronAPI: ElectronAPI = {
     return () => ipcRenderer.removeListener('system-resumed', handler);
   },
   setZoomLevel: (zoomLevel: number) => ipcRenderer.invoke('set-zoom-level', zoomLevel),
-  getZoomLevel: () => ipcRenderer.invoke('get-zoom-level')
+  getZoomLevel: () => ipcRenderer.invoke('get-zoom-level'),
+  calculateFolderSize: (folderPath: string, operationId: string) => ipcRenderer.invoke('calculate-folder-size', folderPath, operationId),
+  cancelFolderSizeCalculation: (operationId: string) => ipcRenderer.invoke('cancel-folder-size-calculation', operationId),
+  onFolderSizeProgress: (callback: (progress: FolderSizeProgress & {operationId: string}) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, progress: FolderSizeProgress & {operationId: string}) => callback(progress);
+    ipcRenderer.on('folder-size-progress', handler);
+    return () => ipcRenderer.removeListener('folder-size-progress', handler);
+  },
+  calculateChecksum: (filePath: string, operationId: string, algorithms: string[]) => ipcRenderer.invoke('calculate-checksum', filePath, operationId, algorithms),
+  cancelChecksumCalculation: (operationId: string) => ipcRenderer.invoke('cancel-checksum-calculation', operationId),
+  onChecksumProgress: (callback: (progress: {operationId: string; percent: number; algorithm: string}) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, progress: {operationId: string; percent: number; algorithm: string}) => callback(progress);
+    ipcRenderer.on('checksum-progress', handler);
+    return () => ipcRenderer.removeListener('checksum-progress', handler);
+  }
 };
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);

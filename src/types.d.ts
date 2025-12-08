@@ -1,10 +1,21 @@
+export interface CustomTheme {
+  name: string;
+  accentColor: string;
+  bgPrimary: string;
+  bgSecondary: string;
+  textPrimary: string;
+  textSecondary: string;
+  glassBg: string;
+  glassBorder: string;
+}
+
 export interface Settings {
   transparency: boolean;
-  theme: 'dark' | 'light' | 'default';
+  theme: 'dark' | 'light' | 'default' | 'custom';
   sortBy: 'name' | 'date' | 'size' | 'type';
   sortOrder: 'asc' | 'desc';
   bookmarks: string[];
-  viewMode: 'grid' | 'list';
+  viewMode: 'grid' | 'list' | 'column';
   showDangerousOptions: boolean;
   startupPath: string;
   showHiddenFiles: boolean;
@@ -15,6 +26,9 @@ export interface Settings {
   minimizeToTray: boolean;
   startOnLogin: boolean;
   autoCheckUpdates: boolean;
+  customTheme?: CustomTheme;
+  launchCount?: number;
+  supportPopupDismissed?: boolean;
 }
 
 export interface FileItem {
@@ -36,6 +50,25 @@ export interface ItemProperties {
   created: Date;
   modified: Date;
   accessed: Date;
+}
+
+export interface FolderSizeProgress {
+  calculatedSize: number;
+  fileCount: number;
+  folderCount: number;
+  currentPath: string;
+}
+
+export interface FolderSizeResult {
+  totalSize: number;
+  fileCount: number;
+  folderCount: number;
+}
+
+export interface ChecksumResult {
+  md5?: string;
+  sha256?: string;
+  error?: string;
 }
 
 export interface ApiResponse<T = void> {
@@ -111,6 +144,7 @@ export interface UpdateCheckResponse extends ApiResponse {
   currentVersion?: string;
   latestVersion?: string;
   releaseUrl?: string;
+  isBeta?: boolean;
   isFlatpak?: boolean;
   flatpakMessage?: string;
   isMas?: boolean;
@@ -148,6 +182,17 @@ export interface ElectronAPI {
   resetSettings: () => Promise<ApiResponse>;
   relaunchApp: () => Promise<void>;
   getSettingsPath: () => Promise<string>;
+
+  setClipboard: (clipboardData: { operation: 'copy' | 'cut'; paths: string[] } | null) => Promise<void>;
+  getClipboard: () => Promise<{ operation: 'copy' | 'cut'; paths: string[] } | null>;
+  onClipboardChanged: (callback: (clipboardData: { operation: 'copy' | 'cut'; paths: string[] } | null) => void) => () => void;
+
+  setDragData: (paths: string[]) => Promise<void>;
+  getDragData: () => Promise<{ paths: string[] } | null>;
+  clearDragData: () => Promise<void>;
+
+  onSettingsChanged: (callback: (settings: Settings) => void) => () => void;
+  
   copyItems: (sourcePaths: string[], destPath: string) => Promise<ApiResponse>;
   moveItems: (sourcePaths: string[], destPath: string) => Promise<ApiResponse>;
   searchFiles: (dirPath: string, query: string) => Promise<SearchResponse>;
@@ -180,6 +225,12 @@ export interface ElectronAPI {
   onSystemResumed: (callback: () => void) => () => void;
   setZoomLevel: (zoomLevel: number) => Promise<ApiResponse>;
   getZoomLevel: () => Promise<{success: boolean; zoomLevel?: number; error?: string}>;
+  calculateFolderSize: (folderPath: string, operationId: string) => Promise<{success: boolean; result?: FolderSizeResult; error?: string}>;
+  cancelFolderSizeCalculation: (operationId: string) => Promise<ApiResponse>;
+  onFolderSizeProgress: (callback: (progress: FolderSizeProgress & {operationId: string}) => void) => () => void;
+  calculateChecksum: (filePath: string, operationId: string, algorithms: string[]) => Promise<{success: boolean; result?: ChecksumResult; error?: string}>;
+  cancelChecksumCalculation: (operationId: string) => Promise<ApiResponse>;
+  onChecksumProgress: (callback: (progress: {operationId: string; percent: number; algorithm: string}) => void) => () => void;
 }
 
 declare global {

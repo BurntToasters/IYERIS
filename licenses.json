@@ -519,6 +519,12 @@
         "licenseUrl": "https://github.com/JumpLink/cross-dirname",
         "parents": "iyeris"
     },
+    "cross-env@7.0.3": {
+        "licenses": "MIT",
+        "repository": "https://github.com/kentcdodds/cross-env",
+        "licenseUrl": "https://github.com/kentcdodds/cross-env/raw/master/LICENSE",
+        "parents": "iyeris"
+    },
     "cross-spawn@7.0.6": {
         "licenses": "MIT",
         "repository": "https://github.com/moxystudio/node-cross-spawn",
@@ -663,7 +669,7 @@
         "licenseUrl": "https://github.com/electron/windows-installer/raw/master/LICENSE",
         "parents": "iyeris"
     },
-    "electron@39.2.4": {
+    "electron@39.2.6": {
         "licenses": "MIT",
         "repository": "https://github.com/electron/electron",
         "licenseUrl": "https://github.com/electron/electron/raw/master/LICENSE",
@@ -1089,7 +1095,7 @@
         "licenseUrl": "https://github.com/isaacs/isexe/raw/master/LICENSE",
         "parents": "iyeris"
     },
-    "iyeris@0.7.1": {
+    "iyeris@0.8.0": {
         "licenses": "MPL-2.0",
         "repository": "https://github.com/BurntToasters/IYERIS",
         "licenseUrl": "https://github.com/BurntToasters/IYERIS/raw/master/LICENSE",

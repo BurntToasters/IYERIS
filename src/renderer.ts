@@ -1,4 +1,4 @@
-import type { Settings, FileItem, ItemProperties } from './types';
+import type { Settings, FileItem, ItemProperties, CustomTheme } from './types';
 
 const path = {
   basename: (filePath: string, ext?: string): string => {
@@ -65,7 +65,21 @@ function twemojiImg(emoji: string, className: string = 'twemoji', alt?: string):
   return `<img src="${src}" class="${className}" alt="${altText}" draggable="false" />`;
 }
 
-type ViewMode = 'grid' | 'list';
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (typeof error === 'string') {
+    return error;
+  }
+  return String(error);
+}
+
+type ViewMode = 'grid' | 'list' | 'column';
+
+// Breadcrumb state
+let isBreadcrumbMode = true;
+let breadcrumbContainer: HTMLElement | null = null;
 
 interface ArchiveOperation {
   id: string;
@@ -78,6 +92,8 @@ interface ArchiveOperation {
 }
 
 const activeOperations = new Map<string, ArchiveOperation>();
+
+const ipcCleanupFunctions: (() => void)[] = [];
 
 function generateOperationId(): string {
   return `op_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
@@ -194,6 +210,142 @@ function renderOperations() {
   }
 }
 
+// Breadcrumb nav
+function parsePath(filePath: string): { segments: string[]; isWindows: boolean } {
+  const isWindows = /^[A-Za-z]:/.test(filePath);
+  const normalizedPath = filePath.replace(/\\/g, '/');
+  const segments = normalizedPath.split('/').filter(s => s.length > 0);
+  if (isWindows && segments.length > 0) {
+    if (!segments[0].includes(':')) {
+      segments[0] = segments[0] + ':';
+    }
+  }
+  
+  return { segments, isWindows };
+}
+
+function buildPathFromSegments(segments: string[], index: number, isWindows: boolean): string {
+  if (index < 0) return '';
+  
+  const pathSegments = segments.slice(0, index + 1);
+  
+  if (isWindows) {
+    if (pathSegments.length === 1) {
+      return pathSegments[0] + '\\';
+    }
+    return pathSegments.join('\\');
+  } else {
+    return '/' + pathSegments.join('/');
+  }
+}
+
+function updateBreadcrumb(currentPath: string): void {
+  if (!breadcrumbContainer) {
+    breadcrumbContainer = document.getElementById('breadcrumb-container');
+  }
+  
+  if (!breadcrumbContainer || !addressInput) return;
+  
+  if (!isBreadcrumbMode || !currentPath) {
+    breadcrumbContainer.style.display = 'none';
+    addressInput.style.display = 'block';
+    addressInput.value = currentPath || '';
+    return;
+  }
+  
+  const { segments, isWindows } = parsePath(currentPath);
+  
+  if (segments.length === 0) {
+    breadcrumbContainer.style.display = 'none';
+    addressInput.style.display = 'block';
+    addressInput.value = currentPath;
+    return;
+  }
+  
+  breadcrumbContainer.style.display = 'inline-flex';
+  addressInput.style.display = 'none';
+  breadcrumbContainer.innerHTML = '';
+  
+  segments.forEach((segment, index) => {
+    const item = document.createElement('span');
+    item.className = 'breadcrumb-item';
+    item.textContent = segment;
+    item.title = buildPathFromSegments(segments, index, isWindows);
+    
+    item.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const targetPath = buildPathFromSegments(segments, index, isWindows);
+      navigateTo(targetPath);
+    });
+    
+    breadcrumbContainer!.appendChild(item);
+
+    if (index < segments.length - 1) {
+      const separator = document.createElement('span');
+      separator.className = 'breadcrumb-separator';
+      separator.textContent = isWindows ? '›' : '/';
+      breadcrumbContainer!.appendChild(separator);
+    }
+  });
+}
+
+function toggleBreadcrumbMode(): void {
+  isBreadcrumbMode = !isBreadcrumbMode;
+  
+  if (!breadcrumbContainer) {
+    breadcrumbContainer = document.getElementById('breadcrumb-container');
+  }
+  
+  if (isBreadcrumbMode) {
+    updateBreadcrumb(currentPath);
+  } else {
+    if (breadcrumbContainer) breadcrumbContainer.style.display = 'none';
+    if (addressInput) {
+      addressInput.style.display = 'block';
+      addressInput.value = currentPath;
+      addressInput.focus();
+      addressInput.select();
+    }
+  }
+}
+
+function setupBreadcrumbListeners(): void {
+  breadcrumbContainer = document.getElementById('breadcrumb-container');
+  
+  const addressBar = document.querySelector('.address-bar');
+  if (addressBar) {
+    addressBar.addEventListener('dblclick', (e) => {
+      const target = e.target as HTMLElement;
+      if (target.classList.contains('address-bar') || 
+          target.classList.contains('breadcrumb') ||
+          target.id === 'breadcrumb-container') {
+        if (isBreadcrumbMode) {
+          toggleBreadcrumbMode();
+        }
+      }
+    });
+  }
+
+  if (addressInput) {
+    addressInput.addEventListener('blur', () => {
+      setTimeout(() => {
+        if (!isBreadcrumbMode && currentPath) {
+          isBreadcrumbMode = true;
+          updateBreadcrumb(currentPath);
+        }
+      }, 150);
+    });
+    
+    addressInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        isBreadcrumbMode = true;
+        updateBreadcrumb(currentPath);
+        addressInput.blur();
+      }
+    });
+  }
+}
+
 type DialogType = 'info' | 'warning' | 'error' | 'success' | 'question';
 
 function asElement(target: EventTarget | null): HTMLElement | null {
@@ -222,6 +374,8 @@ let indexStatusInterval: NodeJS.Timeout | null = null;
 
 const addressInput = document.getElementById('address-input') as HTMLInputElement;
 const fileGrid = document.getElementById('file-grid') as HTMLElement;
+const fileView = document.getElementById('file-view') as HTMLElement;
+const columnView = document.getElementById('column-view') as HTMLElement;
 const loading = document.getElementById('loading') as HTMLElement;
 const emptyState = document.getElementById('empty-state') as HTMLElement;
 const backBtn = document.getElementById('back-btn') as HTMLButtonElement;
@@ -390,9 +544,25 @@ async function loadSettings(): Promise<void> {
       showDangerousOptions: false,
       startupPath: '',
       showHiddenFiles: false,
+      launchCount: 0,
+      supportPopupDismissed: false,
       ...result.settings
     };
     applySettings(currentSettings);
+    const newLaunchCount = (currentSettings.launchCount || 0) + 1;
+    currentSettings.launchCount = newLaunchCount;
+    await window.electronAPI.saveSettings(currentSettings);
+
+    if (newLaunchCount === 2 && !currentSettings.supportPopupDismissed) {
+      setTimeout(() => showSupportPopup(), 1500);
+    }
+  }
+  
+  // shared clipboard from main
+  const sharedClipboard = await window.electronAPI.getClipboard();
+  if (sharedClipboard) {
+    clipboard = sharedClipboard;
+    console.log('[Init] Loaded shared clipboard:', clipboard.operation, clipboard.paths.length, 'items');
   }
 }
 
@@ -403,18 +573,340 @@ function applySettings(settings: Settings) {
     document.body.classList.remove('no-transparency');
   }
   
-  document.body.classList.remove('theme-dark', 'theme-light', 'theme-default');
+  document.body.classList.remove('theme-dark', 'theme-light', 'theme-default', 'theme-custom');
   if (settings.theme && settings.theme !== 'default') {
     document.body.classList.add(`theme-${settings.theme}`);
+  }
+
+  if (settings.theme === 'custom' && settings.customTheme) {
+    applyCustomThemeColors(settings.customTheme);
+  } else {
+    clearCustomThemeColors();
   }
   
   if (settings.viewMode) {
     viewMode = settings.viewMode;
-    fileGrid.className = viewMode === 'list' ? 'file-grid list-view' : 'file-grid';
+    applyViewMode();
     updateViewToggleButton();
   }
   
   loadBookmarks();
+}
+
+function hexToRgb(hex: string): string {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  if (result) {
+    return `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}`;
+  }
+  return '0, 120, 212';
+}
+
+function applyCustomThemeColors(theme: CustomTheme) {
+  const root = document.documentElement;
+  root.style.setProperty('--custom-accent-color', theme.accentColor);
+  root.style.setProperty('--custom-accent-rgb', hexToRgb(theme.accentColor));
+  root.style.setProperty('--custom-bg-primary', theme.bgPrimary);
+  root.style.setProperty('--custom-bg-primary-rgb', hexToRgb(theme.bgPrimary));
+  root.style.setProperty('--custom-bg-secondary', theme.bgSecondary);
+  root.style.setProperty('--custom-text-primary', theme.textPrimary);
+  root.style.setProperty('--custom-text-secondary', theme.textSecondary);
+  root.style.setProperty('--custom-glass-bg', `${theme.glassBg}08`);
+  root.style.setProperty('--custom-glass-border', `${theme.glassBorder}14`);
+  document.body.style.backgroundColor = theme.bgPrimary;
+}
+
+function clearCustomThemeColors() {
+  const root = document.documentElement;
+  const props = [
+    '--custom-accent-color', '--custom-accent-rgb',
+    '--custom-bg-primary', '--custom-bg-primary-rgb', '--custom-bg-secondary',
+    '--custom-text-primary', '--custom-text-secondary',
+    '--custom-glass-bg', '--custom-glass-border'
+  ];
+  props.forEach(prop => root.style.removeProperty(prop));
+  document.body.style.backgroundColor = '';
+}
+
+// Theme Editor
+const themePresets: Record<string, CustomTheme> = {
+  midnight: {
+    name: 'Midnight Blue',
+    accentColor: '#4a9eff',
+    bgPrimary: '#0d1b2a',
+    bgSecondary: '#1b263b',
+    textPrimary: '#e0e1dd',
+    textSecondary: '#a0a4a8',
+    glassBg: '#ffffff',
+    glassBorder: '#4a9eff'
+  },
+  forest: {
+    name: 'Forest Green',
+    accentColor: '#2ecc71',
+    bgPrimary: '#1a2f1a',
+    bgSecondary: '#243524',
+    textPrimary: '#e8f5e9',
+    textSecondary: '#a5d6a7',
+    glassBg: '#ffffff',
+    glassBorder: '#2ecc71'
+  },
+  sunset: {
+    name: 'Sunset Orange',
+    accentColor: '#ff7043',
+    bgPrimary: '#1f1410',
+    bgSecondary: '#2d1f1a',
+    textPrimary: '#fff3e0',
+    textSecondary: '#ffab91',
+    glassBg: '#ffffff',
+    glassBorder: '#ff7043'
+  },
+  lavender: {
+    name: 'Lavender Purple',
+    accentColor: '#9c7cf4',
+    bgPrimary: '#1a1625',
+    bgSecondary: '#251f33',
+    textPrimary: '#ede7f6',
+    textSecondary: '#b39ddb',
+    glassBg: '#ffffff',
+    glassBorder: '#9c7cf4'
+  },
+  rose: {
+    name: 'Rose Pink',
+    accentColor: '#f48fb1',
+    bgPrimary: '#1f1418',
+    bgSecondary: '#2d1f24',
+    textPrimary: '#fce4ec',
+    textSecondary: '#f8bbd9',
+    glassBg: '#ffffff',
+    glassBorder: '#f48fb1'
+  },
+  ocean: {
+    name: 'Ocean Teal',
+    accentColor: '#26c6da',
+    bgPrimary: '#0d1f22',
+    bgSecondary: '#1a2f33',
+    textPrimary: '#e0f7fa',
+    textSecondary: '#80deea',
+    glassBg: '#ffffff',
+    glassBorder: '#26c6da'
+  }
+};
+
+let tempCustomTheme: CustomTheme = {
+  name: 'My Custom Theme',
+  accentColor: '#0078d4',
+  bgPrimary: '#1a1a1a',
+  bgSecondary: '#252525',
+  textPrimary: '#ffffff',
+  textSecondary: '#b0b0b0',
+  glassBg: '#ffffff',
+  glassBorder: '#ffffff'
+};
+
+function showThemeEditor() {
+  const modal = document.getElementById('theme-editor-modal');
+  if (!modal) return;
+
+  if (currentSettings.customTheme) {
+    tempCustomTheme = { ...currentSettings.customTheme };
+  }
+
+  const inputs: Record<string, { color: string; text: string }> = {
+    'theme-accent-color': { color: tempCustomTheme.accentColor, text: tempCustomTheme.accentColor },
+    'theme-bg-primary': { color: tempCustomTheme.bgPrimary, text: tempCustomTheme.bgPrimary },
+    'theme-bg-secondary': { color: tempCustomTheme.bgSecondary, text: tempCustomTheme.bgSecondary },
+    'theme-text-primary': { color: tempCustomTheme.textPrimary, text: tempCustomTheme.textPrimary },
+    'theme-text-secondary': { color: tempCustomTheme.textSecondary, text: tempCustomTheme.textSecondary },
+    'theme-glass-bg': { color: tempCustomTheme.glassBg, text: tempCustomTheme.glassBg }
+  };
+  
+  for (const [id, values] of Object.entries(inputs)) {
+    const colorInput = document.getElementById(id) as HTMLInputElement;
+    const textInput = document.getElementById(`${id}-text`) as HTMLInputElement;
+    if (colorInput) colorInput.value = values.color;
+    if (textInput) textInput.value = values.text;
+  }
+  
+  const nameInput = document.getElementById('theme-name-input') as HTMLInputElement;
+  if (nameInput) nameInput.value = tempCustomTheme.name;
+  
+  updateThemePreview();
+  modal.style.display = 'flex';
+}
+
+function hideThemeEditor() {
+  const modal = document.getElementById('theme-editor-modal');
+  if (modal) modal.style.display = 'none';
+}
+
+function updateThemePreview() {
+  const preview = document.getElementById('theme-preview');
+  if (!preview) return;
+  
+  preview.style.setProperty('--custom-accent-color', tempCustomTheme.accentColor);
+  preview.style.setProperty('--custom-accent-rgb', hexToRgb(tempCustomTheme.accentColor));
+  preview.style.setProperty('--custom-bg-primary', tempCustomTheme.bgPrimary);
+  preview.style.setProperty('--custom-bg-secondary', tempCustomTheme.bgSecondary);
+  preview.style.setProperty('--custom-text-primary', tempCustomTheme.textPrimary);
+  preview.style.setProperty('--custom-text-secondary', tempCustomTheme.textSecondary);
+  preview.style.setProperty('--custom-glass-bg', `${tempCustomTheme.glassBg}08`);
+  preview.style.setProperty('--custom-glass-border', `${tempCustomTheme.glassBorder}20`);
+  preview.style.backgroundColor = tempCustomTheme.bgPrimary;
+}
+
+function syncColorInputs(colorId: string, value: string) {
+  const colorInput = document.getElementById(colorId) as HTMLInputElement;
+  const textInput = document.getElementById(`${colorId}-text`) as HTMLInputElement;
+  
+  if (colorInput) colorInput.value = value;
+  if (textInput) textInput.value = value.toUpperCase();
+
+  const mapping: Record<string, keyof CustomTheme> = {
+    'theme-accent-color': 'accentColor',
+    'theme-bg-primary': 'bgPrimary',
+    'theme-bg-secondary': 'bgSecondary',
+    'theme-text-primary': 'textPrimary',
+    'theme-text-secondary': 'textSecondary',
+    'theme-glass-bg': 'glassBg'
+  };
+  
+  const key = mapping[colorId];
+  if (key) {
+    (tempCustomTheme as any)[key] = value;
+    if (key === 'glassBg') {
+      tempCustomTheme.glassBorder = value;
+    }
+  }
+  
+  updateThemePreview();
+}
+
+function applyThemePreset(presetName: string) {
+  const preset = themePresets[presetName];
+  if (!preset) return;
+  
+  tempCustomTheme = { ...preset };
+
+  const nameInput = document.getElementById('theme-name-input') as HTMLInputElement;
+  if (nameInput) nameInput.value = preset.name;
+  
+  syncColorInputs('theme-accent-color', preset.accentColor);
+  syncColorInputs('theme-bg-primary', preset.bgPrimary);
+  syncColorInputs('theme-bg-secondary', preset.bgSecondary);
+  syncColorInputs('theme-text-primary', preset.textPrimary);
+  syncColorInputs('theme-text-secondary', preset.textSecondary);
+  syncColorInputs('theme-glass-bg', preset.glassBg);
+}
+
+async function saveCustomTheme() {
+  const nameInput = document.getElementById('theme-name-input') as HTMLInputElement;
+  if (nameInput && nameInput.value.trim()) {
+    tempCustomTheme.name = nameInput.value.trim();
+  }
+  
+  currentSettings.customTheme = { ...tempCustomTheme };
+  currentSettings.theme = 'custom';
+
+  const themeSelect = document.getElementById('theme-select') as HTMLSelectElement;
+  if (themeSelect) {
+    themeSelect.value = 'custom';
+    const customOption = themeSelect.querySelector('option[value="custom"]');
+    if (customOption) {
+      customOption.textContent = tempCustomTheme.name;
+    }
+  }
+  
+  // Apply theme
+  applySettings(currentSettings);
+  
+  // Save to disk
+  const result = await window.electronAPI.saveSettings(currentSettings);
+  if (result.success) {
+    hideThemeEditor();
+    showToast('Custom theme saved!', 'Theme', 'success');
+  } else {
+    showToast('Failed to save theme: ' + result.error, 'Error', 'error');
+  }
+}
+
+function setupThemeEditorListeners() {
+  document.getElementById('theme-editor-close')?.addEventListener('click', hideThemeEditor);
+  document.getElementById('theme-editor-cancel')?.addEventListener('click', hideThemeEditor);
+  document.getElementById('theme-editor-save')?.addEventListener('click', saveCustomTheme);
+  
+  // Color inputs
+  const colorIds = [
+    'theme-accent-color',
+    'theme-bg-primary',
+    'theme-bg-secondary',
+    'theme-text-primary',
+    'theme-text-secondary',
+    'theme-glass-bg'
+  ];
+  
+  colorIds.forEach(id => {
+    const colorInput = document.getElementById(id) as HTMLInputElement;
+    const textInput = document.getElementById(`${id}-text`) as HTMLInputElement;
+    
+    colorInput?.addEventListener('input', (e) => {
+      const value = (e.target as HTMLInputElement).value;
+      syncColorInputs(id, value);
+    });
+    
+    textInput?.addEventListener('input', (e) => {
+      let value = (e.target as HTMLInputElement).value.trim();
+      if (!value.startsWith('#')) value = '#' + value;
+      if (/^#[0-9A-Fa-f]{6}$/.test(value)) {
+        syncColorInputs(id, value);
+        textInput.classList.remove('invalid');
+      } else if (/^#[0-9A-Fa-f]{3}$/.test(value)) {
+        const expanded = '#' + value[1] + value[1] + value[2] + value[2] + value[3] + value[3];
+        syncColorInputs(id, expanded);
+        textInput.classList.remove('invalid');
+      } else if (value.length > 1) {
+        textInput.classList.add('invalid');
+      }
+    });
+    
+    textInput?.addEventListener('blur', (e) => {
+      let value = (e.target as HTMLInputElement).value.trim();
+      if (!value.startsWith('#')) value = '#' + value;
+      // Validate and reset
+      if (!/^#[0-9A-Fa-f]{3}$/.test(value) && !/^#[0-9A-Fa-f]{6}$/.test(value)) {
+        // Reset to current color picker value
+        const colorInput = document.getElementById(id) as HTMLInputElement;
+        if (colorInput && textInput) {
+          textInput.value = colorInput.value.toUpperCase();
+          textInput.classList.remove('invalid');
+        }
+      } else {
+        textInput.classList.remove('invalid');
+      }
+    });
+  });
+
+  document.getElementById('theme-name-input')?.addEventListener('input', (e) => {
+    tempCustomTheme.name = (e.target as HTMLInputElement).value || 'My Custom Theme';
+  });
+  
+  document.querySelectorAll('.preset-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const preset = (btn as HTMLElement).dataset.preset;
+      if (preset) applyThemePreset(preset);
+    });
+  });
+  
+  document.getElementById('theme-select')?.addEventListener('change', (e) => {
+    const value = (e.target as HTMLSelectElement).value;
+    if (value === 'custom') {
+      showThemeEditor();
+    }
+  });
+
+  document.getElementById('theme-editor-modal')?.addEventListener('click', (e) => {
+    if ((e.target as HTMLElement).classList.contains('modal-overlay')) {
+      hideThemeEditor();
+    }
+  });
 }
 
 async function showSettingsModal() {
@@ -454,6 +946,12 @@ async function showSettingsModal() {
   
   if (themeSelect) {
     themeSelect.value = currentSettings.theme || 'default';
+    const customOption = themeSelect.querySelector('option[value="custom"]');
+    if (customOption && currentSettings.customTheme?.name) {
+      customOption.textContent = currentSettings.customTheme.name;
+    } else if (customOption) {
+      customOption.textContent = 'Custom...';
+    }
   }
   
   if (sortBySelect) {
@@ -506,12 +1004,16 @@ async function showSettingsModal() {
   
   if (settingsModal) {
     settingsModal.style.display = 'flex';
+    clearSettingsChanged();
+    initSettingsChangeTracking();
   }
 }
 
 function hideSettingsModal() {
   const settingsModal = document.getElementById('settings-modal');
-  settingsModal.style.display = 'none';
+  if (settingsModal) {
+    settingsModal.style.display = 'none';
+  }
   stopIndexStatusPolling();
 }
 
@@ -651,7 +1153,7 @@ async function showLicensesModal() {
       licensesContent.innerHTML = `<p style="color: var(--error-color); text-align: center;">Error loading licenses: ${result.error || 'Unknown error'}</p>`;
     }
   } catch (error) {
-    licensesContent.innerHTML = `<p style="color: var(--error-color); text-align: center;">Error: ${(error as Error).message}</p>`;
+    licensesContent.innerHTML = `<p style="color: var(--error-color); text-align: center;">Error: ${getErrorMessage(error)}</p>`;
   }
 }
 
@@ -782,6 +1284,7 @@ async function saveSettings() {
   const result = await window.electronAPI.saveSettings(currentSettings);
   if (result.success) {
     applySettings(currentSettings);
+    clearSettingsChanged();
     hideSettingsModal();
     showToast('Settings saved successfully!', 'Settings', 'success');
     if (currentPath) {
@@ -1009,6 +1512,8 @@ function copyToClipboard() {
     operation: 'copy',
     paths: Array.from(selectedItems)
   };
+  // Sync main process
+  window.electronAPI.setClipboard(clipboard);
   updateCutVisuals();
   showToast(`${selectedItems.size} item(s) copied`, 'Clipboard', 'success');
 }
@@ -1019,6 +1524,7 @@ function cutToClipboard() {
     operation: 'cut',
     paths: Array.from(selectedItems)
   };
+  window.electronAPI.setClipboard(clipboard);
   updateCutVisuals();
   showToast(`${selectedItems.size} item(s) cut`, 'Clipboard', 'success');
 }
@@ -1034,9 +1540,10 @@ async function pasteFromClipboard() {
     
     if (clipboard.operation === 'cut') {
       await updateUndoRedoState();
+      clipboard = null;
+      window.electronAPI.setClipboard(null);
     }
     
-    clipboard = null;
     updateCutVisuals();
     refresh();
   } else {
@@ -1263,6 +1770,12 @@ async function init() {
   console.log('Init: Loading settings...');
   await loadSettings();
   
+  console.log('Init: Setting up breadcrumb navigation...');
+  setupBreadcrumbListeners();
+  
+  console.log('Init: Setting up theme editor...');
+  setupThemeEditorListeners();
+  
   console.log('Init: Determining startup path...');
   let startupPath = currentSettings.startupPath && currentSettings.startupPath.trim() !== '' 
     ? currentSettings.startupPath 
@@ -1311,7 +1824,7 @@ async function init() {
       }
     });
 
-    window.electronAPI.onUpdateAvailable((info) => {
+    const cleanupUpdateAvailable = window.electronAPI.onUpdateAvailable((info) => {
       console.log('Update available:', info);
 
       const settingsBtn = document.getElementById('settings-btn');
@@ -1331,8 +1844,9 @@ async function init() {
         checkUpdatesBtn.classList.add('primary');
       }
     });
+    ipcCleanupFunctions.push(cleanupUpdateAvailable);
 
-    window.electronAPI.onSystemResumed(() => {
+    const cleanupSystemResumed = window.electronAPI.onSystemResumed(() => {
       console.log('[Renderer] System resumed from sleep, refreshing view...');
       lastDiskSpacePath = '';
       if (diskSpaceDebounceTimer) {
@@ -1344,6 +1858,7 @@ async function init() {
       }
       loadDrives();
     });
+    ipcCleanupFunctions.push(cleanupSystemResumed);
   }, 0);
   
   console.log('Init: Complete');
@@ -1369,6 +1884,21 @@ async function loadDrives() {
 
 function setupEventListeners() {
   initSettingsTabs();
+
+  const cleanupClipboard = window.electronAPI.onClipboardChanged((newClipboard) => {
+    clipboard = newClipboard;
+    updateCutVisuals();
+    console.log('[Sync] Clipboard updated from another window');
+  });
+  ipcCleanupFunctions.push(cleanupClipboard);
+
+  const cleanupSettings = window.electronAPI.onSettingsChanged((newSettings) => {
+    console.log('[Sync] Settings updated from another window');
+    currentSettings = newSettings;
+    applySettings(newSettings);
+  });
+  ipcCleanupFunctions.push(cleanupSettings);
+  
   document.getElementById('minimize-btn')?.addEventListener('click', () => {
     window.electronAPI.minimizeWindow();
   });
@@ -1701,23 +2231,130 @@ function setupEventListeners() {
         return;
       }
       
-      const draggedPaths = JSON.parse(e.dataTransfer.getData('text/plain') || '[]');
-    if (draggedPaths.length === 0 || !currentPath) {
-      return;
-    }
+      let draggedPaths: string[] = [];
+      
+      // Try to get paths from our app's dataTransfer
+      try {
+        const textData = e.dataTransfer.getData('text/plain');
+        if (textData) {
+          draggedPaths = JSON.parse(textData);
+        }
+      } catch {
+        // Not valid JSON, ignore
+      }
+      
+      // If empty, check for files from external drag (Windows Explorer or cross-window native drag)
+      if (draggedPaths.length === 0 && e.dataTransfer.files.length > 0) {
+        draggedPaths = Array.from(e.dataTransfer.files).map(f => (f as File & { path: string }).path);
+      }
+      
+      // If still empty, check shared drag data from main process (cross-window)
+      if (draggedPaths.length === 0) {
+        const sharedData = await window.electronAPI.getDragData();
+        if (sharedData) {
+          draggedPaths = sharedData.paths;
+        }
+      }
+      
+      if (draggedPaths.length === 0 || !currentPath) {
+        return;
+      }
     
-    const alreadyInCurrentDir = draggedPaths.some(path => {
-      const parentDir = path.substring(0, path.lastIndexOf(path.includes('\\') ? '\\' : '/'));
-      return parentDir === currentPath || path === currentPath;
+      const alreadyInCurrentDir = draggedPaths.some((path: string) => {
+        const parentDir = path.substring(0, path.lastIndexOf(path.includes('\\') ? '\\' : '/'));
+        return parentDir === currentPath || path === currentPath;
+      });
+    
+      if (alreadyInCurrentDir) {
+        showToast('Items are already in this directory', 'Info', 'info');
+        return;
+      }
+    
+      const operation = e.ctrlKey ? 'copy' : 'move';
+      await handleDrop(draggedPaths, currentPath, operation);
+    });
+  }
+
+  if (fileView) {
+    fileView.addEventListener('dragover', (e) => {
+      if ((e.target as HTMLElement).closest('.file-grid') || 
+          (e.target as HTMLElement).closest('.column-view') ||
+          (e.target as HTMLElement).closest('.file-item') ||
+          (e.target as HTMLElement).closest('.column-item')) {
+        return;
+      }
+      
+      e.preventDefault();
+      e.stopPropagation();
+      
+      if (!currentPath) {
+        e.dataTransfer!.dropEffect = 'none';
+        return;
+      }
+      
+      e.dataTransfer!.dropEffect = e.ctrlKey ? 'copy' : 'move';
+      fileView.classList.add('drag-over');
     });
     
-    if (alreadyInCurrentDir) {
-      showToast('Items are already in this directory', 'Info', 'info');
-      return;
-    }
+    fileView.addEventListener('dragleave', (e) => {
+      e.preventDefault();
+      const rect = fileView.getBoundingClientRect();
+      if (e.clientX < rect.left || e.clientX >= rect.right ||
+          e.clientY < rect.top || e.clientY >= rect.bottom) {
+        fileView.classList.remove('drag-over');
+      }
+    });
     
-    const operation = e.ctrlKey ? 'copy' : 'move';
-    await handleDrop(draggedPaths, currentPath, operation);
+    fileView.addEventListener('drop', async (e) => {
+      if ((e.target as HTMLElement).closest('.file-grid') || 
+          (e.target as HTMLElement).closest('.column-view') ||
+          (e.target as HTMLElement).closest('.file-item') ||
+          (e.target as HTMLElement).closest('.column-item')) {
+        return;
+      }
+      
+      e.preventDefault();
+      e.stopPropagation();
+      
+      fileView.classList.remove('drag-over');
+      
+      let draggedPaths: string[] = [];
+      
+      try {
+        const textData = e.dataTransfer!.getData('text/plain');
+        if (textData) {
+          draggedPaths = JSON.parse(textData);
+        }
+      } catch {
+      }
+      
+      if (draggedPaths.length === 0 && e.dataTransfer!.files.length > 0) {
+        draggedPaths = Array.from(e.dataTransfer!.files).map(f => (f as File & { path: string }).path);
+      }
+      
+      if (draggedPaths.length === 0) {
+        const sharedData = await window.electronAPI.getDragData();
+        if (sharedData) {
+          draggedPaths = sharedData.paths;
+        }
+      }
+      
+      if (draggedPaths.length === 0 || !currentPath) {
+        return;
+      }
+      
+      const alreadyInCurrentDir = draggedPaths.some((path: string) => {
+        const parentDir = path.substring(0, path.lastIndexOf(path.includes('\\') ? '\\' : '/'));
+        return parentDir === currentPath || path === currentPath;
+      });
+      
+      if (alreadyInCurrentDir) {
+        showToast('Items are already in this directory', 'Info', 'info');
+        return;
+      }
+      
+      const operation = e.ctrlKey ? 'copy' : 'move';
+      await handleDrop(draggedPaths, currentPath, operation);
     });
   }
   
@@ -1837,6 +2474,7 @@ async function navigateTo(path: string) {
   if (result.success) {
     currentPath = path;
     if (addressInput) addressInput.value = path;
+    updateBreadcrumb(path);
     addToDirectoryHistory(path);
     
     if (historyIndex === -1 || history[historyIndex] !== path) {
@@ -1846,7 +2484,12 @@ async function navigateTo(path: string) {
     }
     
     updateNavigationButtons();
-    renderFiles(result.contents);
+
+    if (viewMode === 'column') {
+      await renderColumnView();
+    } else {
+      renderFiles(result.contents);
+    }
     updateDiskSpace();
   } else {
     console.error('Error loading directory:', result.error);
@@ -2029,6 +2672,9 @@ function createFileItem(item: FileItem): HTMLElement {
     e.dataTransfer.effectAllowed = 'copyMove';
     e.dataTransfer.setData('text/plain', JSON.stringify(selectedPaths));
     
+    // Store in main
+    window.electronAPI.setDragData(selectedPaths);
+    
     fileItem.classList.add('dragging');
 
     if (selectedPaths.length > 1) {
@@ -2049,6 +2695,9 @@ function createFileItem(item: FileItem): HTMLElement {
       el.classList.remove('drag-over');
     });
     document.getElementById('file-grid')?.classList.remove('drag-over');
+    
+    // Clear drag data main
+    window.electronAPI.clearDragData();
   });
 
   if (item.isDirectory) {
@@ -2056,8 +2705,7 @@ function createFileItem(item: FileItem): HTMLElement {
       e.preventDefault();
       e.stopPropagation();
 
-      const draggedPaths = JSON.parse(e.dataTransfer.getData('text/plain') || '[]');
-      if (draggedPaths.includes(item.path)) {
+      if (!e.dataTransfer.types.includes('text/plain')) {
         e.dataTransfer.dropEffect = 'none';
         return;
       }
@@ -2083,7 +2731,27 @@ function createFileItem(item: FileItem): HTMLElement {
       
       fileItem.classList.remove('drag-over');
       
-      const draggedPaths = JSON.parse(e.dataTransfer.getData('text/plain') || '[]');
+      let draggedPaths: string[] = [];
+
+      try {
+        const textData = e.dataTransfer.getData('text/plain');
+        if (textData) {
+          draggedPaths = JSON.parse(textData);
+        }
+      } catch {
+      }
+
+      if (draggedPaths.length === 0 && e.dataTransfer.files.length > 0) {
+        draggedPaths = Array.from(e.dataTransfer.files).map(f => (f as File & { path: string }).path);
+      }
+
+      if (draggedPaths.length === 0) {
+        const sharedData = await window.electronAPI.getDragData();
+        if (sharedData) {
+          draggedPaths = sharedData.paths;
+        }
+      }
+      
       if (draggedPaths.length === 0 || draggedPaths.includes(item.path)) {
         return;
       }
@@ -2124,7 +2792,7 @@ async function loadThumbnail(fileItem: HTMLElement, item: FileItem) {
 }
 
 function getFileIcon(filename: string): string {
-  const ext = filename.split('.').pop().toLowerCase();
+  const ext = filename.split('.').pop()?.toLowerCase() || '';
   const iconMap: Record<string, string> = {
     'jpg': '1f5bc', 'jpeg': '1f5bc', 'png': '1f5bc', 'gif': '1f5bc', 'svg': '1f5bc', 'bmp': '1f5bc',
     'mp4': '1f3ac', 'avi': '1f3ac', 'mov': '1f3ac', 'mkv': '1f3ac', 'webm': '1f3ac',
@@ -2152,6 +2820,7 @@ async function handleDrop(sourcePaths: string[], destPath: string, operation: 'c
     
     if (result.success) {
       showToast(`${operation === 'copy' ? 'Copied' : 'Moved'} ${sourcePaths.length} item(s)`, 'Success', 'success');
+      await window.electronAPI.clearDragData();
       
       if (operation === 'move') {
         await updateUndoRedoState();
@@ -2346,9 +3015,422 @@ function updateNavigationButtons() {
 }
 
 function toggleView() {
-  viewMode = viewMode === 'grid' ? 'list' : 'grid';
-  fileGrid.className = viewMode === 'list' ? 'file-grid list-view' : 'file-grid';
+  // Cycle through: grid → list → column → grid
+  if (viewMode === 'grid') {
+    viewMode = 'list';
+  } else if (viewMode === 'list') {
+    viewMode = 'column';
+  } else {
+    viewMode = 'grid';
+  }
+  applyViewMode();
   updateViewToggleButton();
+  
+  // Save view mode
+  currentSettings.viewMode = viewMode;
+  window.electronAPI.saveSettings(currentSettings);
+}
+
+async function applyViewMode() {
+  if (viewMode === 'column') {
+    fileGrid.style.display = 'none';
+    columnView.style.display = 'flex';
+    await renderColumnView();
+  } else {
+    columnView.style.display = 'none';
+    fileGrid.style.display = '';
+    fileGrid.className = viewMode === 'list' ? 'file-grid list-view' : 'file-grid';
+
+    if (currentPath) {
+      const result = await window.electronAPI.getDirectoryContents(currentPath);
+      if (result.success) {
+        renderFiles(result.contents);
+      }
+    }
+  }
+}
+
+let columnPaths: string[] = [];
+
+async function renderColumnView() {
+  if (!columnView) return;
+  
+  const savedScrollLeft = columnView.scrollLeft;
+  
+  columnView.innerHTML = '';
+
+  columnPaths = [];
+  
+  if (!currentPath) {
+    await renderDriveColumn();
+    return;
+  }
+
+  const isWindows = currentPath.includes(':\\');
+  
+  if (isWindows) {
+    const parts = currentPath.split('\\').filter(Boolean);
+    for (let i = 0; i < parts.length; i++) {
+      if (i === 0) {
+        columnPaths.push(parts[0] + '\\');
+      } else {
+        columnPaths.push(parts.slice(0, i + 1).join('\\'));
+      }
+    }
+  } else {
+    const parts = currentPath.split('/').filter(Boolean);
+    columnPaths.push('/');
+    for (let i = 0; i < parts.length; i++) {
+      columnPaths.push('/' + parts.slice(0, i + 1).join('/'));
+    }
+  }
+
+  for (let index = 0; index < columnPaths.length; index++) {
+    await renderColumn(columnPaths[index], index);
+  }
+
+  setTimeout(() => {
+    if (savedScrollLeft > 0) {
+      columnView.scrollLeft = savedScrollLeft;
+    } else {
+      columnView.scrollLeft = columnView.scrollWidth;
+    }
+  }, 50);
+}
+
+async function renderDriveColumn() {
+  const pane = document.createElement('div');
+  pane.className = 'column-pane';
+  
+  try {
+    const drives = await window.electronAPI.getDrives();
+    drives.forEach(drive => {
+      const item = document.createElement('div');
+      item.className = 'column-item is-directory';
+      item.dataset.path = drive;
+      item.innerHTML = `
+        <span class="column-item-icon"><img src="assets/twemoji/1f4bf.svg" class="twemoji" alt="💿" draggable="false" /></span>
+        <span class="column-item-name">${escapeHtml(drive)}</span>
+        <span class="column-item-arrow">▸</span>
+      `;
+      item.addEventListener('click', () => handleColumnItemClick(item, drive, true, 0));
+      pane.appendChild(item);
+    });
+  } catch {
+    pane.innerHTML = '<div class="column-item" style="opacity: 0.5;">Error loading drives</div>';
+  }
+  
+  columnView.appendChild(pane);
+}
+
+async function renderColumn(path: string, columnIndex: number) {
+  const pane = document.createElement('div');
+  pane.className = 'column-pane';
+  pane.dataset.columnIndex = String(columnIndex);
+  pane.dataset.path = path;
+
+  pane.addEventListener('dragover', (e) => {
+    if ((e.target as HTMLElement).closest('.column-item')) {
+      return;
+    }
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (!e.dataTransfer!.types.includes('text/plain') && e.dataTransfer!.files.length === 0) {
+      e.dataTransfer!.dropEffect = 'none';
+      return;
+    }
+    
+    e.dataTransfer!.dropEffect = e.ctrlKey ? 'copy' : 'move';
+    pane.classList.add('drag-over');
+  });
+  
+  pane.addEventListener('dragleave', (e) => {
+    if ((e.target as HTMLElement).closest('.column-item')) {
+      return;
+    }
+    e.preventDefault();
+    const rect = pane.getBoundingClientRect();
+    if (e.clientX < rect.left || e.clientX >= rect.right ||
+        e.clientY < rect.top || e.clientY >= rect.bottom) {
+      pane.classList.remove('drag-over');
+    }
+  });
+  
+  pane.addEventListener('drop', async (e) => {
+    if ((e.target as HTMLElement).closest('.column-item')) {
+      return;
+    }
+    e.preventDefault();
+    e.stopPropagation();
+    
+    pane.classList.remove('drag-over');
+    
+    let draggedPaths: string[] = [];
+    
+    try {
+      const textData = e.dataTransfer!.getData('text/plain');
+      if (textData) {
+        draggedPaths = JSON.parse(textData);
+      }
+    } catch {
+    }
+    
+    if (draggedPaths.length === 0 && e.dataTransfer!.files.length > 0) {
+      draggedPaths = Array.from(e.dataTransfer!.files).map(f => (f as File & { path: string }).path);
+    }
+    
+    if (draggedPaths.length === 0) {
+      const sharedData = await window.electronAPI.getDragData();
+      if (sharedData) {
+        draggedPaths = sharedData.paths;
+      }
+    }
+    
+    if (draggedPaths.length === 0) {
+      return;
+    }
+
+    const alreadyInCurrentDir = draggedPaths.some((filePath: string) => {
+      const parentDir = filePath.substring(0, filePath.lastIndexOf(filePath.includes('\\') ? '\\' : '/'));
+      return parentDir === path || filePath === path;
+    });
+    
+    if (alreadyInCurrentDir) {
+      showToast('Items are already in this directory', 'Info', 'info');
+      return;
+    }
+    
+    const operation = e.ctrlKey ? 'copy' : 'move';
+    await handleDrop(draggedPaths, path, operation);
+  });
+  
+  try {
+    const result = await window.electronAPI.getDirectoryContents(path);
+    const items = result.contents;
+
+    const sortedItems = [...items].sort((a, b) => {
+      const dirSort = (b.isDirectory ? 1 : 0) - (a.isDirectory ? 1 : 0);
+      if (dirSort !== 0) return dirSort;
+      return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+    });
+
+    const visibleItems = currentSettings.showHiddenFiles 
+      ? sortedItems 
+      : sortedItems.filter(item => !item.isHidden);
+    
+    if (visibleItems.length === 0) {
+      pane.innerHTML = '<div class="column-item" style="opacity: 0.5; font-style: italic;">Empty folder</div>';
+    } else {
+      visibleItems.forEach(fileItem => {
+        const item = document.createElement('div');
+        item.className = 'column-item';
+        if (fileItem.isDirectory) item.classList.add('is-directory');
+        item.dataset.path = fileItem.path;
+
+        const nextColPath = columnPaths[columnIndex + 1];
+        if (nextColPath && fileItem.path === nextColPath) {
+          item.classList.add('expanded');
+        }
+        
+        const icon = fileItem.isDirectory 
+          ? '<img src="assets/twemoji/1f4c1.svg" class="twemoji" alt="📁" draggable="false" />'
+          : getFileIcon(fileItem.name);
+        
+        item.innerHTML = `
+          <span class="column-item-icon">${icon}</span>
+          <span class="column-item-name">${escapeHtml(fileItem.name)}</span>
+          ${fileItem.isDirectory ? '<span class="column-item-arrow">▸</span>' : ''}
+        `;
+        
+        item.addEventListener('click', () => handleColumnItemClick(item, fileItem.path, fileItem.isDirectory, columnIndex));
+        item.addEventListener('dblclick', () => {
+          if (!fileItem.isDirectory) {
+            window.electronAPI.openFile(fileItem.path);
+          }
+        });
+
+        item.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+
+          pane.querySelectorAll('.column-item').forEach(i => {
+            i.classList.remove('selected');
+          });
+          item.classList.add('selected');
+
+          clearSelection();
+          selectedItems.add(fileItem.path);
+
+          const colPath = columnPaths[columnIndex];
+          if (colPath && colPath !== currentPath) {
+            currentPath = colPath;
+            addressInput.value = colPath;
+            updateBreadcrumb(colPath);
+          }
+
+          showContextMenu(e.pageX, e.pageY, fileItem);
+        });
+
+        item.draggable = true;
+        
+        item.addEventListener('dragstart', (e) => {
+          e.stopPropagation();
+
+          if (!item.classList.contains('selected')) {
+            pane.querySelectorAll('.column-item').forEach(i => i.classList.remove('selected'));
+            item.classList.add('selected');
+            clearSelection();
+            selectedItems.add(fileItem.path);
+          }
+          
+          const selectedPaths = Array.from(selectedItems);
+          e.dataTransfer!.effectAllowed = 'copyMove';
+          e.dataTransfer!.setData('text/plain', JSON.stringify(selectedPaths));
+
+          window.electronAPI.setDragData(selectedPaths);
+          
+          item.classList.add('dragging');
+        });
+        
+        item.addEventListener('dragend', () => {
+          item.classList.remove('dragging');
+          document.querySelectorAll('.column-item.drag-over').forEach(el => {
+            el.classList.remove('drag-over');
+          });
+          window.electronAPI.clearDragData();
+        });
+
+        if (fileItem.isDirectory) {
+          item.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            if (!e.dataTransfer!.types.includes('text/plain') && e.dataTransfer!.files.length === 0) {
+              e.dataTransfer!.dropEffect = 'none';
+              return;
+            }
+            
+            e.dataTransfer!.dropEffect = e.ctrlKey ? 'copy' : 'move';
+            item.classList.add('drag-over');
+          });
+          
+          item.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const rect = item.getBoundingClientRect();
+            if (e.clientX < rect.left || e.clientX >= rect.right ||
+                e.clientY < rect.top || e.clientY >= rect.bottom) {
+              item.classList.remove('drag-over');
+            }
+          });
+          
+          item.addEventListener('drop', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            item.classList.remove('drag-over');
+            
+            let draggedPaths: string[] = [];
+            
+            try {
+              const textData = e.dataTransfer!.getData('text/plain');
+              if (textData) {
+                draggedPaths = JSON.parse(textData);
+              }
+            } catch {
+            }
+            
+            if (draggedPaths.length === 0 && e.dataTransfer!.files.length > 0) {
+              draggedPaths = Array.from(e.dataTransfer!.files).map(f => (f as File & { path: string }).path);
+            }
+            
+            if (draggedPaths.length === 0) {
+              const sharedData = await window.electronAPI.getDragData();
+              if (sharedData) {
+                draggedPaths = sharedData.paths;
+              }
+            }
+            
+            if (draggedPaths.length === 0 || draggedPaths.includes(fileItem.path)) {
+              return;
+            }
+            
+            const operation = e.ctrlKey ? 'copy' : 'move';
+            await handleDrop(draggedPaths, fileItem.path, operation);
+          });
+        }
+        
+        pane.appendChild(item);
+      });
+    }
+  } catch {
+    pane.innerHTML = '<div class="column-item" style="opacity: 0.5;">Error loading folder</div>';
+  }
+  
+  columnView.appendChild(pane);
+}
+
+async function handleColumnItemClick(element: HTMLElement, path: string, isDirectory: boolean, columnIndex: number) {
+  const currentPane = element.closest('.column-pane');
+  if (!currentPane) return;
+
+  const allPanes = Array.from(columnView.querySelectorAll('.column-pane'));
+  const currentPaneIndex = allPanes.indexOf(currentPane as Element);
+  
+  for (let i = allPanes.length - 1; i > currentPaneIndex; i--) {
+    allPanes[i].remove();
+  }
+  columnPaths = columnPaths.slice(0, currentPaneIndex + 1);
+
+  currentPane.querySelectorAll('.column-item').forEach(item => {
+    item.classList.remove('expanded', 'selected');
+  });
+  
+  if (isDirectory) {
+    element.classList.add('expanded');
+    columnPaths.push(path);
+
+    currentPath = path;
+    addressInput.value = path;
+    updateBreadcrumb(path);
+    
+    await renderColumn(path, currentPaneIndex + 1);
+
+    setTimeout(() => {
+      columnView.scrollLeft = columnView.scrollWidth;
+    }, 50);
+  } else {
+    element.classList.add('selected');
+    clearSelection();
+    selectedItems.add(path);
+
+    const parentPath = columnPaths[currentPaneIndex];
+    if (parentPath && parentPath !== currentPath) {
+      currentPath = parentPath;
+      addressInput.value = parentPath;
+      updateBreadcrumb(parentPath);
+    }
+
+    const previewPanel = document.getElementById('preview-panel');
+    if (previewPanel && previewPanel.style.display !== 'none') {
+
+      let file = allFiles.find(f => f.path === path);
+      if (!file) {
+        const fileName = path.split(/[\\/]/).pop() || '';
+        file = {
+          name: fileName,
+          path: path,
+          isDirectory: false,
+          isFile: true,
+          size: 0,
+          modified: new Date(),
+          isHidden: fileName.startsWith('.')
+        };
+      }
+      updatePreview(file);
+    }
+  }
 }
 
 function updateViewToggleButton() {
@@ -2360,6 +3442,16 @@ function updateViewToggleButton() {
         <rect x="2" y="11" width="12" height="2" fill="currentColor" rx="1"/>
       </svg>
     `;
+    viewToggleBtn.title = 'Switch to Column View';
+  } else if (viewMode === 'column') {
+    viewToggleBtn.innerHTML = `
+      <svg width="16" height="16" viewBox="0 0 16 16">
+        <rect x="1" y="2" width="4" height="12" fill="currentColor" rx="1"/>
+        <rect x="6" y="2" width="4" height="12" fill="currentColor" rx="1"/>
+        <rect x="11" y="2" width="4" height="12" fill="currentColor" rx="1"/>
+      </svg>
+    `;
+    viewToggleBtn.title = 'Switch to Grid View';
   } else {
     viewToggleBtn.innerHTML = `
       <svg width="16" height="16" viewBox="0 0 16 16">
@@ -2369,6 +3461,7 @@ function updateViewToggleButton() {
         <rect x="9" y="9" width="5" height="5" fill="currentColor" rx="1"/>
       </svg>
     `;
+    viewToggleBtn.title = 'Switch to List View';
   }
 }
 
@@ -2613,6 +3706,17 @@ function showContextMenu(x: number, y: number, item: FileItem) {
   
   contextMenu.style.left = left + 'px';
   contextMenu.style.top = top + 'px';
+
+  const submenu = contextMenu.querySelector('.context-submenu') as HTMLElement;
+  if (submenu) {
+    submenu.classList.remove('flip-left');
+    const menuRight = left + menuRect.width;
+    const submenuWidth = 160;
+    
+    if (menuRight + submenuWidth > viewportWidth - 10) {
+      submenu.classList.add('flip-left');
+    }
+  }
 }
 
 function hideContextMenu() {
@@ -2829,7 +3933,7 @@ async function handleCompress(format: string = 'zip') {
   } catch (error) {
     cleanupProgressHandler();
     removeOperation(operationId);
-    showToast((error as Error).message, 'Compression Error', 'error');
+    showToast(getErrorMessage(error), 'Compression Error', 'error');
   }
 }
 
@@ -2888,7 +3992,7 @@ async function handleExtract(item: FileItem) {
   } catch (error) {
     cleanupProgressHandler();
     removeOperation(operationId);
-    showToast((error as Error).message, 'Extraction Error', 'error');
+    showToast(getErrorMessage(error), 'Extraction Error', 'error');
   }
 }
 
@@ -2896,11 +4000,28 @@ function showPropertiesDialog(props: ItemProperties) {
   const modal = document.getElementById('properties-modal');
   const content = document.getElementById('properties-content');
   
-  const sizeInKB = (props.size / 1024).toFixed(2);
-  const sizeInMB = (props.size / (1024 * 1024)).toFixed(2);
-  const sizeDisplay = props.size > 1024 * 1024 ? `${sizeInMB} MB` : `${sizeInKB} KB`;
+  if (!modal || !content) return;
   
-  content.innerHTML = `
+  // unique op IDs
+  const folderSizeOperationId = `foldersize_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
+  const checksumOperationId = `checksum_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
+
+  let folderSizeActive = false;
+  let checksumActive = false;
+  let folderSizeProgressCleanup: (() => void) | null = null;
+  let checksumProgressCleanup: (() => void) | null = null;
+  
+  const formatSize = (bytes: number): string => {
+    if (bytes === 0) return '0 bytes';
+    const units = ['bytes', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(1024));
+    const size = (bytes / Math.pow(1024, i)).toFixed(2);
+    return `${bytes.toLocaleString()} bytes (${size} ${units[i]})`;
+  };
+  
+  const sizeDisplay = formatSize(props.size);
+
+  let html = `
     <div class="property-row">
       <div class="property-label">Name:</div>
       <div class="property-value">${escapeHtml(props.name)}</div>
@@ -2911,11 +4032,34 @@ function showPropertiesDialog(props: ItemProperties) {
     </div>
     <div class="property-row">
       <div class="property-label">Size:</div>
-      <div class="property-value">${props.size.toLocaleString()} bytes (${sizeDisplay})</div>
+      <div class="property-value" id="props-size-value">${sizeDisplay}</div>
+    </div>`;
+
+  if (props.isDirectory) {
+    html += `
+    <div class="property-row property-folder-size">
+      <div class="property-label">Contents:</div>
+      <div class="property-value">
+        <span id="folder-size-info">Not calculated</span>
+        <button class="property-btn" id="calculate-folder-size-btn">${twemojiImg(String.fromCodePoint(0x1F4CA), 'twemoji')} Calculate Size</button>
+      </div>
     </div>
+    <div class="property-row" id="folder-size-progress-row" style="display: none;">
+      <div class="property-label"></div>
+      <div class="property-value">
+        <div class="property-progress-container">
+          <div class="property-progress-bar" id="folder-size-progress-bar"></div>
+        </div>
+        <div class="property-progress-text" id="folder-size-progress-text">Calculating...</div>
+        <button class="property-btn property-btn-cancel" id="cancel-folder-size-btn">${twemojiImg(String.fromCodePoint(0x274C), 'twemoji')} Cancel</button>
+      </div>
+    </div>`;
+  }
+  
+  html += `
     <div class="property-row">
       <div class="property-label">Location:</div>
-      <div class="property-value">${escapeHtml(props.path)}</div>
+      <div class="property-value property-path">${escapeHtml(props.path)}</div>
     </div>
     <div class="property-row">
       <div class="property-label">Created:</div>
@@ -2928,14 +4072,228 @@ function showPropertiesDialog(props: ItemProperties) {
     <div class="property-row">
       <div class="property-label">Accessed:</div>
       <div class="property-value">${new Date(props.accessed).toLocaleString()}</div>
+    </div>`;
+
+  if (props.isFile) {
+    html += `
+    <div class="property-separator"></div>
+    <div class="property-row property-checksum-header">
+      <div class="property-label">Checksums:</div>
+      <div class="property-value">
+        <button class="property-btn" id="calculate-checksum-btn">${twemojiImg(String.fromCodePoint(0x1F510), 'twemoji')} Calculate Checksums</button>
+      </div>
     </div>
-  `;
+    <div class="property-row" id="checksum-progress-row" style="display: none;">
+      <div class="property-label"></div>
+      <div class="property-value">
+        <div class="property-progress-container">
+          <div class="property-progress-bar" id="checksum-progress-bar"></div>
+        </div>
+        <div class="property-progress-text" id="checksum-progress-text">Calculating...</div>
+        <button class="property-btn property-btn-cancel" id="cancel-checksum-btn">${twemojiImg(String.fromCodePoint(0x274C), 'twemoji')} Cancel</button>
+      </div>
+    </div>
+    <div class="property-row" id="checksum-md5-row" style="display: none;">
+      <div class="property-label">MD5:</div>
+      <div class="property-value property-checksum">
+        <code id="checksum-md5-value"></code>
+        <button class="property-btn-copy" id="copy-md5-btn" title="Copy MD5">${twemojiImg(String.fromCodePoint(0x1F4CB), 'twemoji')}</button>
+      </div>
+    </div>
+    <div class="property-row" id="checksum-sha256-row" style="display: none;">
+      <div class="property-label">SHA-256:</div>
+      <div class="property-value property-checksum">
+        <code id="checksum-sha256-value"></code>
+        <button class="property-btn-copy" id="copy-sha256-btn" title="Copy SHA-256">${twemojiImg(String.fromCodePoint(0x1F4CB), 'twemoji')}</button>
+      </div>
+    </div>`;
+  }
   
+  content.innerHTML = html;
   modal.style.display = 'flex';
+
+  const cleanup = () => {
+    if (folderSizeActive) {
+      window.electronAPI.cancelFolderSizeCalculation(folderSizeOperationId);
+      folderSizeActive = false;
+    }
+    if (checksumActive) {
+      window.electronAPI.cancelChecksumCalculation(checksumOperationId);
+      checksumActive = false;
+    }
+    if (folderSizeProgressCleanup) {
+      folderSizeProgressCleanup();
+      folderSizeProgressCleanup = null;
+    }
+    if (checksumProgressCleanup) {
+      checksumProgressCleanup();
+      checksumProgressCleanup = null;
+    }
+  };
   
   const closeModal = () => {
+    cleanup();
     modal.style.display = 'none';
   };
+
+  if (props.isDirectory) {
+    const calculateBtn = document.getElementById('calculate-folder-size-btn');
+    const cancelBtn = document.getElementById('cancel-folder-size-btn');
+    const progressRow = document.getElementById('folder-size-progress-row');
+    const progressBar = document.getElementById('folder-size-progress-bar');
+    const progressText = document.getElementById('folder-size-progress-text');
+    const sizeInfo = document.getElementById('folder-size-info');
+    
+    if (calculateBtn) {
+      calculateBtn.addEventListener('click', async () => {
+        calculateBtn.style.display = 'none';
+        if (progressRow) progressRow.style.display = 'flex';
+        folderSizeActive = true;
+        
+        // progress listener
+        folderSizeProgressCleanup = window.electronAPI.onFolderSizeProgress((progress) => {
+          if (progress.operationId === folderSizeOperationId && progressBar && progressText) {
+            const currentSize = formatSize(progress.calculatedSize);
+            progressText.textContent = `${progress.fileCount} files, ${progress.folderCount} folders - ${currentSize}`;
+            progressBar.style.width = '100%';
+            progressBar.classList.add('indeterminate');
+          }
+        });
+        
+        try {
+          const result = await window.electronAPI.calculateFolderSize(props.path, folderSizeOperationId);
+          
+          if (result.success && result.result) {
+            const totalSize = formatSize(result.result.totalSize);
+            if (sizeInfo) {
+              sizeInfo.textContent = `${result.result.fileCount} files, ${result.result.folderCount} folders (${totalSize})`;
+            }
+            const propsSize = document.getElementById('props-size-value');
+            if (propsSize) {
+              propsSize.textContent = totalSize;
+            }
+          } else if (result.error !== 'Calculation cancelled') {
+            if (sizeInfo) sizeInfo.textContent = `Error: ${result.error}`;
+          }
+        } catch (err) {
+          if (sizeInfo) sizeInfo.textContent = `Error: ${getErrorMessage(err)}`;
+        } finally {
+          folderSizeActive = false;
+          if (folderSizeProgressCleanup) {
+            folderSizeProgressCleanup();
+            folderSizeProgressCleanup = null;
+          }
+          if (progressRow) progressRow.style.display = 'none';
+          if (progressBar) {
+            progressBar.classList.remove('indeterminate');
+            progressBar.style.width = '0%';
+          }
+        }
+      });
+    }
+    
+    if (cancelBtn) {
+      cancelBtn.addEventListener('click', () => {
+        if (folderSizeActive) {
+          window.electronAPI.cancelFolderSizeCalculation(folderSizeOperationId);
+          folderSizeActive = false;
+        }
+        if (folderSizeProgressCleanup) {
+          folderSizeProgressCleanup();
+          folderSizeProgressCleanup = null;
+        }
+        if (progressRow) progressRow.style.display = 'none';
+        if (calculateBtn) calculateBtn.style.display = 'inline-flex';
+        if (sizeInfo) sizeInfo.textContent = 'Calculation cancelled';
+      });
+    }
+  }
+  
+  // checksum calculation
+  if (props.isFile) {
+    const calculateBtn = document.getElementById('calculate-checksum-btn');
+    const cancelBtn = document.getElementById('cancel-checksum-btn');
+    const progressRow = document.getElementById('checksum-progress-row');
+    const progressBar = document.getElementById('checksum-progress-bar');
+    const progressText = document.getElementById('checksum-progress-text');
+    const md5Row = document.getElementById('checksum-md5-row');
+    const sha256Row = document.getElementById('checksum-sha256-row');
+    const md5Value = document.getElementById('checksum-md5-value');
+    const sha256Value = document.getElementById('checksum-sha256-value');
+    const copyMd5Btn = document.getElementById('copy-md5-btn');
+    const copySha256Btn = document.getElementById('copy-sha256-btn');
+    
+    if (calculateBtn) {
+      calculateBtn.addEventListener('click', async () => {
+        calculateBtn.style.display = 'none';
+        if (progressRow) progressRow.style.display = 'flex';
+        checksumActive = true;
+
+        checksumProgressCleanup = window.electronAPI.onChecksumProgress((progress) => {
+          if (progress.operationId === checksumOperationId && progressBar && progressText) {
+            progressBar.style.width = `${progress.percent}%`;
+            progressText.textContent = `Calculating ${progress.algorithm.toUpperCase()}... ${progress.percent.toFixed(1)}%`;
+          }
+        });
+        
+        try {
+          const result = await window.electronAPI.calculateChecksum(props.path, checksumOperationId, ['md5', 'sha256']);
+          
+          if (result.success && result.result) {
+            if (result.result.md5 && md5Row && md5Value) {
+              md5Value.textContent = result.result.md5;
+              md5Row.style.display = 'flex';
+            }
+            if (result.result.sha256 && sha256Row && sha256Value) {
+              sha256Value.textContent = result.result.sha256;
+              sha256Row.style.display = 'flex';
+            }
+          } else if (result.error !== 'Calculation cancelled') {
+            showToast(result.error || 'Checksum calculation failed', 'Error', 'error');
+          }
+        } catch (err) {
+          showToast(getErrorMessage(err), 'Error', 'error');
+        } finally {
+          checksumActive = false;
+          if (checksumProgressCleanup) {
+            checksumProgressCleanup();
+            checksumProgressCleanup = null;
+          }
+          if (progressRow) progressRow.style.display = 'none';
+          if (progressBar) progressBar.style.width = '0%';
+        }
+      });
+    }
+    
+    if (cancelBtn) {
+      cancelBtn.addEventListener('click', () => {
+        if (checksumActive) {
+          window.electronAPI.cancelChecksumCalculation(checksumOperationId);
+          checksumActive = false;
+        }
+        if (checksumProgressCleanup) {
+          checksumProgressCleanup();
+          checksumProgressCleanup = null;
+        }
+        if (progressRow) progressRow.style.display = 'none';
+        if (calculateBtn) calculateBtn.style.display = 'inline-flex';
+      });
+    }
+
+    if (copyMd5Btn && md5Value) {
+      copyMd5Btn.addEventListener('click', () => {
+        navigator.clipboard.writeText(md5Value.textContent || '');
+        showToast('MD5 copied to clipboard', 'Copied', 'success');
+      });
+    }
+    
+    if (copySha256Btn && sha256Value) {
+      copySha256Btn.addEventListener('click', () => {
+        navigator.clipboard.writeText(sha256Value.textContent || '');
+        showToast('SHA-256 copied to clipboard', 'Copied', 'success');
+      });
+    }
+  }
   
   document.getElementById('properties-close').onclick = closeModal;
   document.getElementById('properties-ok').onclick = closeModal;
@@ -3018,9 +4376,14 @@ async function checkForUpdates() {
       }
 
       if (result.hasUpdate) {
+        const updateTitle = result.isBeta ? 'Beta Update Available' : 'Update Available';
+        const updateMessage = result.isBeta 
+          ? `[BETA CHANNEL] A new beta build is available!\n\nCurrent Version: ${result.currentVersion}\nNew Version: ${result.latestVersion}\n\nWould you like to download and install the update?`
+          : `A new version is available!\n\nCurrent Version: ${result.currentVersion}\nNew Version: ${result.latestVersion}\n\nWould you like to download and install the update?`;
+        
         const confirmed = await showDialog(
-          'Update Available',
-          `A new version is available!\n\nCurrent Version: ${result.currentVersion}\nNew Version: ${result.latestVersion}\n\nWould you like to download and install the update?`,
+          updateTitle,
+          updateMessage,
           'success',
           true
         );
@@ -3029,12 +4392,21 @@ async function checkForUpdates() {
           await downloadAndInstallUpdate();
         }
       } else {
-        showDialog(
-          'No Updates Available',
-          `You're running the latest version (${result.currentVersion})!`,
-          'info',
-          false
-        );
+        if (result.isBeta) {
+          showDialog(
+            'No Updates Available',
+            `You're on the latest beta channel build (${result.currentVersion})!`,
+            'info',
+            false
+          );
+        } else {
+          showDialog(
+            'No Updates Available',
+            `You're running the latest version (${result.currentVersion})!`,
+            'info',
+            false
+          );
+        }
       }
     } else {
       showDialog(
@@ -3047,7 +4419,7 @@ async function checkForUpdates() {
   } catch (error) {
     showDialog(
       'Update Check Failed',
-      `An error occurred while checking for updates: ${(error as Error).message}`,
+      `An error occurred while checking for updates: ${getErrorMessage(error)}`,
       'error',
       false
     );
@@ -3133,7 +4505,7 @@ async function downloadAndInstallUpdate() {
     dialogModal.style.display = 'none';
     showDialog(
       'Update Error',
-      `An error occurred during the update process: ${(error as Error).message}`,
+      `An error occurred during the update process: ${getErrorMessage(error)}`,
       'error',
       false
     );
@@ -3202,6 +4574,245 @@ document.getElementById('heart-button')?.addEventListener('click', () => {
 document.getElementById('version-indicator')?.addEventListener('click', () => {
   const version = document.getElementById('version-indicator')?.textContent || 'v0.1.0';
   window.electronAPI.openFile(`https://github.com/BurntToasters/IYERIS/releases/tag/${version}`);
+});
+
+document.getElementById('settings-search')?.addEventListener('input', (e) => {
+  const searchTerm = (e.target as HTMLInputElement).value.toLowerCase().trim();
+  const settingItems = document.querySelectorAll('.setting-item, .setting-item-toggle');
+  const sections = document.querySelectorAll('.settings-section-card');
+  
+  if (!searchTerm) {
+    settingItems.forEach(item => {
+      (item as HTMLElement).style.display = '';
+      item.classList.remove('search-highlight');
+    });
+    sections.forEach(section => {
+      (section as HTMLElement).style.display = '';
+    });
+    return;
+  }
+  
+  sections.forEach(section => {
+    let hasVisibleItem = false;
+    const items = section.querySelectorAll('.setting-item, .setting-item-toggle');
+    
+    items.forEach(item => {
+      const label = item.querySelector('.setting-label, span')?.textContent?.toLowerCase() || '';
+      const description = item.querySelector('.setting-description')?.textContent?.toLowerCase() || '';
+      
+      if (label.includes(searchTerm) || description.includes(searchTerm)) {
+        (item as HTMLElement).style.display = '';
+        item.classList.add('search-highlight');
+        hasVisibleItem = true;
+      } else {
+        (item as HTMLElement).style.display = 'none';
+        item.classList.remove('search-highlight');
+      }
+    });
+
+    (section as HTMLElement).style.display = hasVisibleItem ? '' : 'none';
+  });
+});
+
+// Export
+document.getElementById('export-settings-btn')?.addEventListener('click', async () => {
+  try {
+    const settingsJson = JSON.stringify(currentSettings, null, 2);
+    const blob = new Blob([settingsJson], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `iyeris-settings-${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('Settings exported successfully', 'Export', 'success');
+  } catch (error) {
+    showToast('Failed to export settings', 'Export', 'error');
+  }
+});
+
+// Settings validation
+function validateImportedSettings(imported: any): Partial<Settings> {
+  const validated: Partial<Settings> = {};
+
+  if (typeof imported.transparency === 'boolean') validated.transparency = imported.transparency;
+  if (typeof imported.showDangerousOptions === 'boolean') validated.showDangerousOptions = imported.showDangerousOptions;
+  if (typeof imported.showHiddenFiles === 'boolean') validated.showHiddenFiles = imported.showHiddenFiles;
+  if (typeof imported.enableSearchHistory === 'boolean') validated.enableSearchHistory = imported.enableSearchHistory;
+  if (typeof imported.enableIndexer === 'boolean') validated.enableIndexer = imported.enableIndexer;
+  if (typeof imported.minimizeToTray === 'boolean') validated.minimizeToTray = imported.minimizeToTray;
+  if (typeof imported.startOnLogin === 'boolean') validated.startOnLogin = imported.startOnLogin;
+  if (typeof imported.autoCheckUpdates === 'boolean') validated.autoCheckUpdates = imported.autoCheckUpdates;
+  
+  if (typeof imported.startupPath === 'string') validated.startupPath = imported.startupPath;
+
+  const validThemes = ['dark', 'light', 'default', 'custom'];
+  if (validThemes.includes(imported.theme)) validated.theme = imported.theme;
+  
+  const validSortBy = ['name', 'date', 'size', 'type'];
+  if (validSortBy.includes(imported.sortBy)) validated.sortBy = imported.sortBy;
+  
+  const validSortOrder = ['asc', 'desc'];
+  if (validSortOrder.includes(imported.sortOrder)) validated.sortOrder = imported.sortOrder;
+  
+  const validViewModes = ['grid', 'list', 'column'];
+  if (validViewModes.includes(imported.viewMode)) validated.viewMode = imported.viewMode;
+
+  if (Array.isArray(imported.bookmarks)) {
+    validated.bookmarks = imported.bookmarks.filter((b: any) => typeof b === 'string');
+  }
+  if (Array.isArray(imported.searchHistory)) {
+    validated.searchHistory = imported.searchHistory.filter((s: any) => typeof s === 'string').slice(0, 100);
+  }
+  if (Array.isArray(imported.directoryHistory)) {
+    validated.directoryHistory = imported.directoryHistory.filter((d: any) => typeof d === 'string').slice(0, 100);
+  }
+
+  if (imported.customTheme && typeof imported.customTheme === 'object') {
+    const ct = imported.customTheme;
+    const isValidHex = (s: any) => typeof s === 'string' && /^#[0-9a-fA-F]{6}$/.test(s);
+    if (typeof ct.name === 'string' && 
+        isValidHex(ct.accentColor) && isValidHex(ct.bgPrimary) && 
+        isValidHex(ct.bgSecondary) && isValidHex(ct.textPrimary) && 
+        isValidHex(ct.textSecondary) && isValidHex(ct.glassBg) && isValidHex(ct.glassBorder)) {
+      validated.customTheme = ct;
+    }
+  }
+  
+  return validated;
+}
+
+// Import
+document.getElementById('import-settings-btn')?.addEventListener('click', () => {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json';
+  input.onchange = async (e) => {
+    const file = (e.target as HTMLInputElement).files?.[0];
+    if (!file) return;
+    
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+
+      const validatedSettings = validateImportedSettings(parsed);
+      
+      if (Object.keys(validatedSettings).length === 0) {
+        showToast('No valid settings found in file', 'Import', 'warning');
+        return;
+      }
+
+      currentSettings = { ...currentSettings, ...validatedSettings };
+      await window.electronAPI.saveSettings(currentSettings);
+
+      hideSettingsModal();
+      showSettingsModal();
+      showToast(`Imported ${Object.keys(validatedSettings).length} settings successfully`, 'Import', 'success');
+    } catch (error) {
+      showToast('Failed to import settings: Invalid file format', 'Import', 'error');
+    }
+  };
+  input.click();
+});
+
+document.getElementById('clear-search-history-btn')?.addEventListener('click', async () => {
+  if (confirm('Are you sure you want to clear your search history?')) {
+    currentSettings.searchHistory = [];
+    await window.electronAPI.saveSettings(currentSettings);
+    showToast('Search history cleared', 'Data', 'success');
+  }
+});
+
+document.getElementById('clear-bookmarks-btn')?.addEventListener('click', async () => {
+  if (confirm('Are you sure you want to clear all bookmarks?')) {
+    currentSettings.bookmarks = [];
+    await window.electronAPI.saveSettings(currentSettings);
+    loadBookmarks();
+    showToast('Bookmarks cleared', 'Data', 'success');
+  }
+});
+
+document.getElementById('about-github-btn')?.addEventListener('click', () => {
+  window.electronAPI.openFile('https://github.com/BurntToasters/IYERIS');
+});
+document.getElementById('about-support-btn')?.addEventListener('click', () => {
+  window.electronAPI.openFile('https://rosie.run/support');
+});
+document.getElementById('about-help-btn')?.addEventListener('click', () => {
+  window.electronAPI.openFile('https://help.rosie.run/iyeris/en-us/faq');
+});
+document.getElementById('about-licenses-btn')?.addEventListener('click', () => {
+  showLicensesModal();
+});
+document.getElementById('about-shortcuts-btn')?.addEventListener('click', () => {
+  showShortcutsModal();
+});
+document.getElementById('about-rosie-link')?.addEventListener('click', (e) => {
+  e.preventDefault();
+  window.electronAPI.openFile('https://rosie.run');
+});
+document.getElementById('about-twemoji-link')?.addEventListener('click', (e) => {
+  e.preventDefault();
+  window.electronAPI.openFile('https://github.com/jdecked/twemoji');
+});
+
+// Unsaved changes
+let hasUnsavedChanges = false;
+
+function markSettingsChanged() {
+  hasUnsavedChanges = true;
+  const indicator = document.querySelector('.settings-unsaved-indicator');
+  if (indicator) {
+    indicator.classList.add('visible');
+  }
+}
+
+function clearSettingsChanged() {
+  hasUnsavedChanges = false;
+  const indicator = document.querySelector('.settings-unsaved-indicator');
+  if (indicator) {
+    indicator.classList.remove('visible');
+  }
+}
+
+function initSettingsChangeTracking() {
+  const settingsModal = document.getElementById('settings-modal');
+  if (!settingsModal) return;
+  
+  settingsModal.querySelectorAll('input, select').forEach(input => {
+    input.addEventListener('change', markSettingsChanged);
+    if (input.tagName === 'INPUT' && (input as HTMLInputElement).type === 'text') {
+      input.addEventListener('input', markSettingsChanged);
+    }
+  });
+}
+
+// Support Window
+function showSupportPopup() {
+  const modal = document.getElementById('support-popup-modal');
+  if (modal) {
+    modal.style.display = 'flex';
+  }
+}
+
+function hideSupportPopup() {
+  const modal = document.getElementById('support-popup-modal');
+  if (modal) {
+    modal.style.display = 'none';
+  }
+}
+
+document.getElementById('support-popup-dismiss')?.addEventListener('click', async () => {
+  currentSettings.supportPopupDismissed = true;
+  await window.electronAPI.saveSettings(currentSettings);
+  hideSupportPopup();
+});
+
+document.getElementById('support-popup-yes')?.addEventListener('click', () => {
+  window.electronAPI.openFile('https://rosie.run/support');
+  hideSupportPopup();
 });
 
 document.getElementById('zoom-in-btn')?.addEventListener('click', zoomIn);
@@ -3696,11 +5307,34 @@ document.addEventListener('mousedown', (e) => {
     console.log('IYERIS initialized successfully');
   } catch (error) {
     console.error('Failed to initialize IYERIS:', error);
-    alert('Failed to start IYERIS: ' + error.message);
+    alert('Failed to start IYERIS: ' + getErrorMessage(error));
   }
 })();
 
-initSettingsTabs();
+window.addEventListener('beforeunload', () => {
+  stopIndexStatusPolling();
+  if (thumbnailObserver) {
+    thumbnailObserver.disconnect();
+  }
+
+  if (diskSpaceDebounceTimer) {
+    clearTimeout(diskSpaceDebounceTimer);
+    diskSpaceDebounceTimer = null;
+  }
+  if (zoomPopupTimeout) {
+    clearTimeout(zoomPopupTimeout);
+    zoomPopupTimeout = null;
+  }
+
+  for (const cleanup of ipcCleanupFunctions) {
+    try {
+      cleanup();
+    } catch (e) {
+      console.error('[Cleanup] Error cleaning up IPC listener:', e);
+    }
+  }
+  ipcCleanupFunctions.length = 0;
+});
 
 
 
