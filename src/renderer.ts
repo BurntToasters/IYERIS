@@ -2582,7 +2582,9 @@ function lazyLoadThumbnails() {
   if (thumbnailObserver) {
     thumbnailObserver.disconnect();
   }
-  
+    
+  const scrollContainer = document.getElementById('file-view');
+
   thumbnailObserver = new IntersectionObserver((entries) => {
     entries.forEach(entry => {
       if (entry.isIntersecting) {
@@ -2597,7 +2599,7 @@ function lazyLoadThumbnails() {
       }
     });
   }, {
-    root: null,
+    root: scrollContainer,
     rootMargin: '50px',
     threshold: 0.01
   });
@@ -2772,7 +2774,7 @@ async function loadThumbnail(fileItem: HTMLElement, item: FileItem) {
       iconDiv.innerHTML = `<div class="spinner" style="width: 30px; height: 30px; border-width: 2px;"></div>`;
     }
     
-    const result = await window.electronAPI.getFileDataUrl(item.path, 500 * 1024);
+    const result = await window.electronAPI.getFileDataUrl(item.path, 10 * 1024 * 1024);
     
     if (result.success && result.dataUrl && iconDiv) {
       iconDiv.innerHTML = `<img src="${result.dataUrl}" class="file-thumbnail" alt="${item.name}">`;
