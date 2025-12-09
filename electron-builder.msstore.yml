@@ -1,0 +1,27 @@
+appId: BurntToasters.IYERIS
+productName: IYERIS
+directories:
+  output: release
+files:
+  - dist/**/*
+  - index.html
+  - main.css
+  - assets/**/*
+  - licenses.json
+asar: true
+asarUnpack:
+  - '**/*.node'
+  - '**/node_modules/7zip-bin/**/*'
+win:
+  target: appx
+  icon: assets/icon-square.png
+appx:
+  identityName: BurntToasters.IYERIS
+  publisher: CN=BC0CB990-55E8-4580-97B7-1E2DAA4B44F6
+  publisherDisplayName: BurntToasters
+  displayName: IYERIS
+  backgroundColor: '#1a1a2e'
+  minVersion: 10.0.10240.0
+  maxVersionTested: 10.0.22621.0
+  customManifestPath: build/appx/appxmanifest.xml
+  artifactName: IYERIS-${version}-${arch}.${ext}
