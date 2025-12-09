@@ -2582,7 +2582,9 @@ function lazyLoadThumbnails() {
   if (thumbnailObserver) {
     thumbnailObserver.disconnect();
   }
-  
+    
+  const scrollContainer = document.getElementById('file-view');
+
   thumbnailObserver = new IntersectionObserver((entries) => {
     entries.forEach(entry => {
       if (entry.isIntersecting) {
@@ -2597,7 +2599,7 @@ function lazyLoadThumbnails() {
       }
     });
   }, {
-    root: null,
+    root: scrollContainer,
     rootMargin: '50px',
     threshold: 0.01
   });
