@@ -4365,6 +4365,18 @@ async function checkForUpdates() {
         return;
       }
 
+      if (result.isMsStore) {
+        showDialog(
+          'Updates via Microsoft Store',
+          `You're running IYERIS from the Microsoft Store (${result.currentVersion}).\n\n${result.msStoreMessage}`,
+          'info',
+          false
+        );
+        btn.innerHTML = originalHTML;
+        btn.disabled = false;
+        return;
+      }
+
       if (result.isMsi) {
         showDialog(
           'Enterprise Installation',

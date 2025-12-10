@@ -607,6 +607,9 @@ app.whenReady().then(async () => {
               console.log('[AutoUpdater] Updates should be installed via: flatpak update com.burnttoasters.iyeris');
             } else if (process.mas) {
               console.log('[AutoUpdater] Running in Mac App Store - auto-updater disabled');
+            } else if (process.windowsStore) {
+              console.log('[AutoUpdater] Running in Microsoft Store - auto-updater disabled');
+              console.log('[AutoUpdater] Updates are handled by the Microsoft Store');
             } else if (isInstalledViaMsi()) {
               console.log('[AutoUpdater] Installed via MSI (enterprise) - auto-updater disabled');
               console.log('[AutoUpdater] Updates should be managed by your IT administrator');
@@ -700,8 +703,8 @@ app.whenReady().then(async () => {
               safeSend('update-downloaded', info);
             });
 
-            // Check for updates on startup (skip msi installations or disabled)
-            if (!isRunningInFlatpak() && !process.mas && !isInstalledViaMsi() && !isDev && settings.autoCheckUpdates !== false) {
+            // Check for updates on startup (skip store/enterprise installations or disabled)
+            if (!isRunningInFlatpak() && !process.mas && !process.windowsStore && !isInstalledViaMsi() && !isDev && settings.autoCheckUpdates !== false) {
               console.log('[AutoUpdater] Checking for updates on startup...');
               autoUpdater.checkForUpdates().catch(err => {
                 console.error('[AutoUpdater] Startup check failed:', err);
@@ -1587,6 +1590,19 @@ ipcMain.handle('check-for-updates', async (): Promise<UpdateCheckResponse> => {
       latestVersion: `v${currentVersion}`,
       isMas: true,
       masMessage: 'Updates are managed by the Mac App Store.'
+    };
+  }
+
+  if (process.windowsStore) {
+    const currentVersion = app.getVersion();
+    console.log('[AutoUpdater] Microsoft Store detected - updates managed by Microsoft Store');
+    return {
+      success: true,
+      hasUpdate: false,
+      currentVersion: `v${currentVersion}`,
+      latestVersion: `v${currentVersion}`,
+      isMsStore: true,
+      msStoreMessage: 'Updates are managed by the Microsoft Store.'
     };
   }
 

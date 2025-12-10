@@ -149,6 +149,8 @@ export interface UpdateCheckResponse extends ApiResponse {
   flatpakMessage?: string;
   isMas?: boolean;
   masMessage?: string;
+  isMsStore?: boolean;
+  msStoreMessage?: string;
   isMsi?: boolean;
   msiMessage?: string;
 }
