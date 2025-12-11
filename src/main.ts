@@ -1548,6 +1548,14 @@ ipcMain.handle('is-mas', (): boolean => {
   return process.mas === true;
 });
 
+ipcMain.handle('is-flatpak', (): boolean => {
+  return isRunningInFlatpak();
+});
+
+ipcMain.handle('is-ms-store', (): boolean => {
+  return process.windowsStore === true;
+});
+
 ipcMain.handle('check-full-disk-access', async (): Promise<{ success: boolean; hasAccess: boolean }> => {
   const hasAccess = await checkFullDiskAccess();
   return { success: true, hasAccess };
