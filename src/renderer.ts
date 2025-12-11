@@ -1789,21 +1789,45 @@ async function init() {
   setupEventListeners();
 
   const isMas = await window.electronAPI.isMas();
-  if (isMas) {
+  const isFlatpak = await window.electronAPI.isFlatpak();
+  const isMsStore = await window.electronAPI.isMsStore();
+  const isStoreVersion = isMas || isFlatpak || isMsStore;
+  
+  if (isStoreVersion) {
     const updateBtn = document.getElementById('check-updates-btn');
     if (updateBtn) {
-      const container = updateBtn.closest('.setting-item') as HTMLElement;
-      if (container) {
-        container.style.display = 'none';
-      } else {
-        updateBtn.style.display = 'none';
+      updateBtn.style.display = 'none';
+    }
+
+    const autoCheckToggle = document.getElementById('auto-check-updates-toggle');
+    if (autoCheckToggle) {
+      const settingItem = autoCheckToggle.closest('.setting-item') as HTMLElement;
+      if (settingItem) {
+        settingItem.style.display = 'none';
       }
     }
 
-    const restartAdminSetting = document.getElementById('restart-admin-setting');
-    if (restartAdminSetting) {
-      restartAdminSetting.remove();
-    }
+    const updatesCards = document.querySelectorAll('.settings-card-header');
+    updatesCards.forEach(header => {
+      if (header.textContent === 'Updates') {
+        const card = header.closest('.settings-card') as HTMLElement;
+        if (card) {
+          card.style.display = 'none';
+        }
+      }
+    });
+  }
+  
+  if (isMas || isMsStore) {
+    const settingsCards = document.querySelectorAll('.settings-card-header');
+    settingsCards.forEach(header => {
+      if (header.textContent === 'Developer Options') {
+        const card = header.closest('.settings-card') as HTMLElement;
+        if (card) {
+          card.style.display = 'none';
+        }
+      }
+    });
   }
 
   setTimeout(() => {

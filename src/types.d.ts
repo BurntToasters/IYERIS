@@ -206,6 +206,8 @@ export interface ElectronAPI {
   getLicenses: () => Promise<{ success: boolean; licenses?: any; error?: string }>;
   getPlatform: () => Promise<string>;
   isMas: () => Promise<boolean>;
+  isFlatpak: () => Promise<boolean>;
+  isMsStore: () => Promise<boolean>;
   checkFullDiskAccess: () => Promise<{ success: boolean; hasAccess: boolean }>;
   requestFullDiskAccess: () => Promise<ApiResponse>;
   checkForUpdates: () => Promise<UpdateCheckResponse>;
