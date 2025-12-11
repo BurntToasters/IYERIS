@@ -266,6 +266,8 @@ function updateBreadcrumb(currentPath: string): void {
   addressInput.style.display = 'none';
   breadcrumbContainer.innerHTML = '';
   
+  const container = breadcrumbContainer;
+  
   segments.forEach((segment, index) => {
     const item = document.createElement('span');
     item.className = 'breadcrumb-item';
@@ -278,13 +280,13 @@ function updateBreadcrumb(currentPath: string): void {
       navigateTo(targetPath);
     });
     
-    breadcrumbContainer!.appendChild(item);
+    container.appendChild(item);
 
     if (index < segments.length - 1) {
       const separator = document.createElement('span');
       separator.className = 'breadcrumb-separator';
       separator.textContent = isWindows ? '›' : '/';
-      breadcrumbContainer!.appendChild(separator);
+      container.appendChild(separator);
     }
   });
 }

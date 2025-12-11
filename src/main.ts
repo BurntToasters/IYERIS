@@ -251,31 +251,39 @@ async function isFileHidden(filePath: string, fileName: string): Promise<boolean
 const hiddenFileCache = new Map<string, { isHidden: boolean; timestamp: number }>();
 const HIDDEN_CACHE_TTL = 300000;
 const HIDDEN_CACHE_MAX_SIZE = 5000;
+let isCleaningCache = false;
 
 // Periodic cleanup
 function cleanupHiddenFileCache(): void {
-  const now = Date.now();
-  let entriesRemoved = 0;
+  if (isCleaningCache) return;
+  isCleaningCache = true;
   
-  for (const [key, value] of hiddenFileCache) {
-    if (now - value.timestamp > HIDDEN_CACHE_TTL) {
-      hiddenFileCache.delete(key);
-      entriesRemoved++;
+  try {
+    const now = Date.now();
+    let entriesRemoved = 0;
+    
+    for (const [key, value] of hiddenFileCache) {
+      if (now - value.timestamp > HIDDEN_CACHE_TTL) {
+        hiddenFileCache.delete(key);
+        entriesRemoved++;
+      }
     }
-  }
 
-  if (hiddenFileCache.size > HIDDEN_CACHE_MAX_SIZE) {
-    const entries = Array.from(hiddenFileCache.entries())
-      .sort((a, b) => a[1].timestamp - b[1].timestamp);
-    const toRemove = entries.slice(0, hiddenFileCache.size - HIDDEN_CACHE_MAX_SIZE);
-    for (const [key] of toRemove) {
-      hiddenFileCache.delete(key);
-      entriesRemoved++;
+    if (hiddenFileCache.size > HIDDEN_CACHE_MAX_SIZE) {
+      const entries = Array.from(hiddenFileCache.entries())
+        .sort((a, b) => a[1].timestamp - b[1].timestamp);
+      const toRemove = entries.slice(0, hiddenFileCache.size - HIDDEN_CACHE_MAX_SIZE);
+      for (const [key] of toRemove) {
+        hiddenFileCache.delete(key);
+        entriesRemoved++;
+      }
     }
-  }
-  
-  if (entriesRemoved > 0) {
-    console.log(`[Cache] Cleaned up ${entriesRemoved} hidden file cache entries, ${hiddenFileCache.size} remaining`);
+    
+    if (entriesRemoved > 0) {
+      console.log(`[Cache] Cleaned up ${entriesRemoved} hidden file cache entries, ${hiddenFileCache.size} remaining`);
+    }
+  } finally {
+    isCleaningCache = false;
   }
 }
 
@@ -951,10 +959,6 @@ ipcMain.handle('create-folder', async (_event: IpcMainInvokeEvent, parentPath: s
 
 ipcMain.handle('trash-item', async (_event: IpcMainInvokeEvent, itemPath: string): Promise<ApiResponse> => {
   try {
-    const stats = await fs.stat(itemPath);
-    const itemName = path.basename(itemPath);
-    const parentPath = path.dirname(itemPath);
-    
     await shell.trashItem(itemPath);
     
     const pathsToRemove = [itemPath];
@@ -1123,7 +1127,9 @@ ipcMain.handle('save-settings', async (event: IpcMainInvokeEvent, settings: Sett
     fileIndexer.setEnabled(settings.enableIndexer);
 
     if (settings.enableIndexer) {
-      fileIndexer.initialize(true);
+      fileIndexer.initialize(true).catch(err => {
+        console.error('[Settings] Failed to initialize indexer:', err);
+      });
     }
   }
 
@@ -2235,14 +2241,15 @@ ipcMain.handle('cancel-archive-operation', async (_event: IpcMainInvokeEvent, op
   }
 });
 
-ipcMain.handle('set-zoom-level', async (_event: IpcMainInvokeEvent, zoomLevel: number): Promise<ApiResponse> => {
+ipcMain.handle('set-zoom-level', async (event: IpcMainInvokeEvent, zoomLevel: number): Promise<ApiResponse> => {
   try {
-    if (!mainWindow) {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (!win || win.isDestroyed()) {
       return { success: false, error: 'Window not available' };
     }
 
     const clampedZoom = Math.max(0.5, Math.min(2.0, zoomLevel));
-    mainWindow.webContents.setZoomFactor(clampedZoom);
+    win.webContents.setZoomFactor(clampedZoom);
     
     console.log('[Zoom] Set zoom level to:', clampedZoom);
     return { success: true };
@@ -2252,13 +2259,14 @@ ipcMain.handle('set-zoom-level', async (_event: IpcMainInvokeEvent, zoomLevel: n
   }
 });
 
-ipcMain.handle('get-zoom-level', async (): Promise<{success: boolean; zoomLevel?: number; error?: string}> => {
+ipcMain.handle('get-zoom-level', async (event: IpcMainInvokeEvent): Promise<{success: boolean; zoomLevel?: number; error?: string}> => {
   try {
-    if (!mainWindow) {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (!win || win.isDestroyed()) {
       return { success: false, error: 'Window not available' };
     }
     
-    const zoomLevel = mainWindow.webContents.getZoomFactor();
+    const zoomLevel = win.webContents.getZoomFactor();
     return { success: true, zoomLevel };
   } catch (error) {
     console.error('[Zoom] Error:', error);
