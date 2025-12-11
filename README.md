@@ -74,8 +74,8 @@
 
 # Notes
 - This is a just-for-fun project and currently isn't intended to be a full replacement for any file exploration/browser application.
-- Self update function has been added. It has been tested as stable on Mac and Windows. Unconfirmed on Linux.
+- Self update function has been added. It has been tested as stable on Mac and Windows.
 
 # Warning
-This project is *NOT* stable. You *WILL* encounter bugs. This version is *NOT* intended for production/stable use.
+This project is *NOT* stable. You *WILL* encounter bugs.
 If you encounter an issue, please include screenshots, errors, crash logs, and steps to reproduce and create a github issue :)
