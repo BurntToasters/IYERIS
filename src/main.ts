@@ -168,10 +168,10 @@ function applyLoginItemSettings(settings: Settings): void {
         name: 'IYERIS'
       });
     } else if (process.platform === 'darwin') {
-      // macOS - openAsHidden
+      // macOS - open args
       app.setLoginItemSettings({
         openAtLogin: settings.startOnLogin,
-        openAsHidden: settings.startOnLogin,
+        args: settings.startOnLogin ? ['--hidden'] : [],
         name: 'IYERIS'
       });
     } else {
@@ -557,7 +557,23 @@ function setupApplicationMenu(): void {
 app.whenReady().then(async () => {
   setupApplicationMenu();
 
-  const startHidden = process.argv.includes('--hidden');
+  let startHidden = process.argv.includes('--hidden');
+
+  if (!startHidden && process.platform === 'darwin') {
+    try {
+      const loginItemSettings = app.getLoginItemSettings();
+      if (loginItemSettings.wasOpenedAtLogin) {
+        const settings = await loadSettings();
+        if (settings.startOnLogin) {
+          startHidden = true;
+          console.log('[Startup] macOS: Detected wasOpenedAtLogin, starting hidden');
+        }
+      }
+    } catch (error) {
+      console.error('[Startup] Error checking login item settings:', error);
+    }
+  }
+  
   console.log('[Startup] Starting with hidden mode:', startHidden);
 
   if (startHidden) {
