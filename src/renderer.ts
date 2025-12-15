@@ -188,11 +188,11 @@ function renderOperations() {
       <div class="archive-operation-header">
         <div class="archive-operation-title">
           <img src="assets/twemoji/${icon}.svg" class="twemoji" alt="${iconEmoji}" draggable="false" />
-          <span class="archive-operation-name" title="${operation.name}">${title}: ${operation.name}</span>
+          <span class="archive-operation-name" title="${escapeHtml(operation.name)}">${title}: ${escapeHtml(operation.name)}</span>
         </div>
-        ${!operation.aborted ? `<button class="archive-operation-cancel" data-id="${id}">Cancel</button>` : ''}
+        ${!operation.aborted ? `<button class="archive-operation-cancel" data-id="${escapeHtml(id)}">Cancel</button>` : ''}
       </div>
-      <div class="archive-operation-file">${operation.currentFile}</div>
+      <div class="archive-operation-file">${escapeHtml(operation.currentFile)}</div>
       <div class="archive-operation-stats">${operation.current} / ${operation.total} files</div>
       <div class="archive-progress-bar-container">
         <div class="archive-progress-bar" style="width: ${percent}%"></div>
@@ -4979,7 +4979,7 @@ async function showImagePreview(file: FileItem) {
     const info = props.success && props.properties ? props.properties : null;
     
     previewContent.innerHTML = `
-      <img src="${result.dataUrl}" class="preview-image" alt="${file.name}">
+      <img src="${result.dataUrl}" class="preview-image" alt="${escapeHtml(file.name)}">
       ${generateFileInfo(file, info)}
     `;
   } else {
@@ -5080,7 +5080,7 @@ async function showFileInfo(file: FileItem) {
     <div class="preview-unsupported">
       <div class="preview-unsupported-icon">${getFileIcon(file.name)}</div>
       <div>
-        <strong>${file.name}</strong>
+        <strong>${escapeHtml(file.name)}</strong>
         <p>Preview not available for this file type</p>
       </div>
     </div>
@@ -5174,7 +5174,7 @@ async function showQuickLook() {
   if (imageExts.includes(ext)) {
     const result = await window.electronAPI.getFileDataUrl(file.path);
     if (result.success && result.dataUrl) {
-      quicklookContent.innerHTML = `<img src="${result.dataUrl}" alt="${file.name}">`;
+      quicklookContent.innerHTML = `<img src="${result.dataUrl}" alt="${escapeHtml(file.name)}">`;
       quicklookInfo.textContent = `${formatFileSize(file.size)} • ${new Date(file.modified).toLocaleDateString()}`;
     } else {
       quicklookContent.innerHTML = `<div class="preview-error">Failed to load image</div>`;

@@ -61,6 +61,7 @@ let mainWindow: BrowserWindow | null = null;
 let fileIndexer: FileIndexer | null = null;
 let tray: Tray | null = null;
 let isQuitting = false;
+let shouldStartHidden = false;
 let hiddenFileCacheCleanupInterval: NodeJS.Timeout | null = null;
 import * as crypto from 'crypto';
 
@@ -340,8 +341,8 @@ function createWindow(isInitialWindow: boolean = false): BrowserWindow {
 
   newWindow.loadFile(path.join(__dirname, '..', 'index.html'));
 
-  const startHidden = isInitialWindow && process.argv.includes('--hidden');
-  console.log('[Window] Creating window, isInitial:', isInitialWindow, 'startHidden:', startHidden);
+  const startHidden = isInitialWindow && shouldStartHidden;
+  console.log('[Window] Creating window, isInitial:', isInitialWindow, 'startHidden:', startHidden, 'shouldStartHidden:', shouldStartHidden);
   
   newWindow.once('ready-to-show', async () => {
     if (startHidden) {
@@ -557,16 +558,17 @@ function setupApplicationMenu(): void {
 app.whenReady().then(async () => {
   setupApplicationMenu();
 
-  let startHidden = process.argv.includes('--hidden');
+  shouldStartHidden = process.argv.includes('--hidden');
 
-  if (!startHidden && process.platform === 'darwin') {
+  if (!shouldStartHidden && process.platform === 'darwin') {
     try {
       const loginItemSettings = app.getLoginItemSettings();
+      console.log('[Startup] macOS login item settings:', JSON.stringify(loginItemSettings));
       if (loginItemSettings.wasOpenedAtLogin) {
         const settings = await loadSettings();
         if (settings.startOnLogin) {
-          startHidden = true;
-          console.log('[Startup] macOS: Detected wasOpenedAtLogin, starting hidden');
+          shouldStartHidden = true;
+          console.log('[Startup] macOS: Detected wasOpenedAtLogin, will start hidden');
         }
       }
     } catch (error) {
@@ -574,9 +576,9 @@ app.whenReady().then(async () => {
     }
   }
   
-  console.log('[Startup] Starting with hidden mode:', startHidden);
+  console.log('[Startup] Starting with hidden mode:', shouldStartHidden);
 
-  if (startHidden) {
+  if (shouldStartHidden) {
     const settings = await loadSettings();
     if (settings.minimizeToTray || settings.startOnLogin) {
       console.log('[Startup] Creating tray before window for hidden start');
