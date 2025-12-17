@@ -65,6 +65,78 @@ let shouldStartHidden = false;
 let hiddenFileCacheCleanupInterval: NodeJS.Timeout | null = null;
 import * as crypto from 'crypto';
 
+function isPathSafe(inputPath: string): boolean {
+  if (!inputPath || typeof inputPath !== 'string') {
+    return false;
+  }
+
+  const normalized = path.normalize(inputPath);
+
+  if (inputPath.includes('\0')) {
+    console.warn('[Security] Path contains null byte:', inputPath);
+    return false;
+  }
+
+  if (process.platform === 'win32' && normalized.startsWith('\\\\')) {
+    const parts = normalized.split('\\').filter(Boolean);
+    if (parts.length < 2) {
+      console.warn('[Security] Invalid UNC path:', inputPath);
+      return false;
+    }
+  }
+  
+  return true;
+}
+
+const ALLOWED_URL_SCHEMES = ['http:', 'https:', 'mailto:', 'file:'];
+function isUrlSafe(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return ALLOWED_URL_SCHEMES.includes(parsed.protocol);
+  } catch {
+    return false;
+  }
+}
+
+function safeSendToWindow(win: BrowserWindow | null, channel: string, ...args: any[]): boolean {
+  try {
+    if (win && !win.isDestroyed() && win.webContents && !win.webContents.isDestroyed()) {
+      win.webContents.send(channel, ...args);
+      return true;
+    }
+  } catch (error) {
+    console.error(`[IPC] Failed to send ${channel}:`, error);
+  }
+  return false;
+}
+
+function parseVersion(v: string): { major: number; minor: number; patch: number; prerelease: string } {
+  const match = v.match(/^v?(\d+)\.(\d+)\.(\d+)(?:-(.+))?$/);
+  if (!match) return { major: 0, minor: 0, patch: 0, prerelease: '' };
+  return {
+    major: parseInt(match[1], 10),
+    minor: parseInt(match[2], 10),
+    patch: parseInt(match[3], 10),
+    prerelease: match[4] || ''
+  };
+}
+
+function compareVersions(a: string, b: string): number {
+  const vA = parseVersion(a);
+  const vB = parseVersion(b);
+
+  if (vA.major !== vB.major) return vA.major > vB.major ? 1 : -1;
+  if (vA.minor !== vB.minor) return vA.minor > vB.minor ? 1 : -1;
+  if (vA.patch !== vB.patch) return vA.patch > vB.patch ? 1 : -1;
+  if (!vA.prerelease && vB.prerelease) return 1;
+  if (vA.prerelease && !vB.prerelease) return -1;
+  if (vA.prerelease && vB.prerelease) {
+    return vA.prerelease.localeCompare(vB.prerelease);
+  }
+  
+  return 0;
+}
+
 let sharedClipboard: { operation: 'copy' | 'cut'; paths: string[] } | null = null;
 let sharedDragData: { paths: string[] } | null = null;
 
@@ -491,7 +563,7 @@ async function showFullDiskAccessDialog(): Promise<void> {
   } else if (result.response === 2) {
     console.log('[FDA] User: "Don\'t Ask Again"');
     const settings = await loadSettings();
-    (settings as any).skipFullDiskAccessPrompt = true;
+    settings.skipFullDiskAccessPrompt = true;
     await saveSettings(settings);
   }
 }
@@ -640,47 +712,9 @@ app.whenReady().then(async () => {
               console.log('[AutoUpdater] Installed via MSI (enterprise) - auto-updater disabled');
               console.log('[AutoUpdater] Updates should be managed by your IT administrator');
             }
-
-            const safeSend = (channel: string, ...args: any[]) => {
-              try {
-                if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
-                  mainWindow.webContents.send(channel, ...args);
-                }
-              } catch (error) {
-                console.error(`[AutoUpdater] Failed to send ${channel}:`, error);
-              }
-            };
-
-            const compareVersions = (a: string, b: string): number => {
-              const parseVersion = (v: string) => {
-                const match = v.match(/^v?(\d+)\.(\d+)\.(\d+)(?:-(.+))?$/);
-                if (!match) return { major: 0, minor: 0, patch: 0, prerelease: '' };
-                return {
-                  major: parseInt(match[1], 10),
-                  minor: parseInt(match[2], 10),
-                  patch: parseInt(match[3], 10),
-                  prerelease: match[4] || ''
-                };
-              };
-              
-              const vA = parseVersion(a);
-              const vB = parseVersion(b);
-
-              if (vA.major !== vB.major) return vA.major > vB.major ? 1 : -1;
-              if (vA.minor !== vB.minor) return vA.minor > vB.minor ? 1 : -1;
-              if (vA.patch !== vB.patch) return vA.patch > vB.patch ? 1 : -1;
-              if (!vA.prerelease && vB.prerelease) return 1;
-              if (vA.prerelease && !vB.prerelease) return -1;
-              if (vA.prerelease && vB.prerelease) {
-                return vA.prerelease.localeCompare(vB.prerelease);
-              }
-              
-              return 0;
-            };
-
             autoUpdater.on('checking-for-update', () => {
               console.log('[AutoUpdater] Checking for update...');
-              safeSend('update-checking');
+              safeSendToWindow(mainWindow, 'update-checking');
             });
 
             autoUpdater.on('update-available', (info) => {
@@ -689,7 +723,7 @@ app.whenReady().then(async () => {
               const updateIsBeta = /-(beta|alpha|rc)/i.test(info.version);
               if (isBetaBuild && !updateIsBeta) {
                 console.log(`[AutoUpdater] Beta build ignoring stable release ${info.version} - only accepting beta/prerelease updates`);
-                safeSend('update-not-available', { version: currentVersion });
+                safeSendToWindow(mainWindow, 'update-not-available', { version: currentVersion });
                 return;
               }
               
@@ -697,26 +731,26 @@ app.whenReady().then(async () => {
               const comparison = compareVersions(info.version, currentVersion);
               if (comparison <= 0) {
                 console.log(`[AutoUpdater] Ignoring update ${info.version} - current version ${currentVersion} is newer or equal`);
-                safeSend('update-not-available', { version: currentVersion });
+                safeSendToWindow(mainWindow, 'update-not-available', { version: currentVersion });
                 return;
               }
               
-              safeSend('update-available', info);
+              safeSendToWindow(mainWindow, 'update-available', info);
             });
 
             autoUpdater.on('update-not-available', (info) => {
               console.log('[AutoUpdater] Update not available. Current version:', info.version);
-              safeSend('update-not-available', info);
+              safeSendToWindow(mainWindow, 'update-not-available', info);
             });
 
             autoUpdater.on('error', (err) => {
               console.error('[AutoUpdater] Error:', err);
-              safeSend('update-error', err.message);
+              safeSendToWindow(mainWindow, 'update-error', err.message);
             });
 
             autoUpdater.on('download-progress', (progressObj) => {
               console.log(`[AutoUpdater] Download progress: ${progressObj.percent.toFixed(2)}%`);
-              safeSend('update-download-progress', {
+              safeSendToWindow(mainWindow, 'update-download-progress', {
                 percent: progressObj.percent,
                 bytesPerSecond: progressObj.bytesPerSecond,
                 transferred: progressObj.transferred,
@@ -726,7 +760,7 @@ app.whenReady().then(async () => {
 
             autoUpdater.on('update-downloaded', (info) => {
               console.log('[AutoUpdater] Update downloaded:', info.version);
-              safeSend('update-downloaded', info);
+              safeSendToWindow(mainWindow, 'update-downloaded', info);
             });
 
             // Check for updates on startup (skip store/enterprise installations or disabled)
@@ -751,15 +785,15 @@ app.whenReady().then(async () => {
             if (hasAccess) {
               console.log('[FDA] Full Disk Access already granted');
               const settings = await loadSettings();
-              if ((settings as any).skipFullDiskAccessPrompt) {
-                delete (settings as any).skipFullDiskAccessPrompt;
+              if (settings.skipFullDiskAccessPrompt) {
+                delete settings.skipFullDiskAccessPrompt;
                 await saveSettings(settings);
               }
               return;
             }
             
             const settings = await loadSettings();
-            if (!(settings as any).skipFullDiskAccessPrompt) {
+            if (!settings.skipFullDiskAccessPrompt) {
               await showFullDiskAccessDialog();
             }
           }, 5000);
@@ -834,11 +868,38 @@ app.whenReady().then(async () => {
 
 app.on('before-quit', () => {
   isQuitting = true;
+
   if (hiddenFileCacheCleanupInterval) {
     clearInterval(hiddenFileCacheCleanupInterval);
     hiddenFileCacheCleanupInterval = null;
   }
   hiddenFileCache.clear();
+
+  for (const [operationId, process] of activeArchiveProcesses) {
+    console.log('[Cleanup] Aborting archive operation:', operationId);
+    try {
+      if (process._childProcess) {
+        process._childProcess.kill('SIGTERM');
+      } else if (typeof process.cancel === 'function') {
+        process.cancel();
+      }
+    } catch (error) {
+      console.error('[Cleanup] Error aborting archive operation:', error);
+    }
+  }
+  activeArchiveProcesses.clear();
+
+  for (const [operationId, operation] of activeFolderSizeCalculations) {
+    console.log('[Cleanup] Aborting folder size calculation:', operationId);
+    operation.aborted = true;
+  }
+  activeFolderSizeCalculations.clear();
+
+  for (const [operationId, operation] of activeChecksumCalculations) {
+    console.log('[Cleanup] Aborting checksum calculation:', operationId);
+    operation.aborted = true;
+  }
+  activeChecksumCalculations.clear();
   
   if (tray) {
     tray.destroy();
@@ -852,6 +913,11 @@ app.on('window-all-closed', () => {
 
 ipcMain.handle('get-directory-contents', async (_event: IpcMainInvokeEvent, dirPath: string): Promise<DirectoryResponse> => {
   try {
+    if (!isPathSafe(dirPath)) {
+      console.warn('[Security] Invalid path rejected:', dirPath);
+      return { success: false, error: 'Invalid path' };
+    }
+    
     const items = await fs.readdir(dirPath, { withFileTypes: true });
 
     const batchSize = 100;
@@ -908,8 +974,16 @@ ipcMain.handle('get-home-directory', (): string => {
 ipcMain.handle('open-file', async (_event: IpcMainInvokeEvent, filePath: string): Promise<ApiResponse> => {
   try {
     if (filePath.startsWith('http://') || filePath.startsWith('https://')) {
+      if (!isUrlSafe(filePath)) {
+        console.warn('[Security] Unsafe URL rejected:', filePath);
+        return { success: false, error: 'Invalid or unsafe URL' };
+      }
       await shell.openExternal(filePath);
     } else {
+      if (!isPathSafe(filePath)) {
+        console.warn('[Security] Invalid path rejected:', filePath);
+        return { success: false, error: 'Invalid path' };
+      }
       await shell.openPath(filePath);
     }
     return { success: true };
@@ -956,6 +1030,15 @@ ipcMain.handle('open-new-window', (): void => {
 
 ipcMain.handle('create-folder', async (_event: IpcMainInvokeEvent, parentPath: string, folderName: string): Promise<PathResponse> => {
   try {
+    if (!isPathSafe(parentPath)) {
+      console.warn('[Security] Invalid parent path rejected:', parentPath);
+      return { success: false, error: 'Invalid path' };
+    }
+    if (folderName.includes('..') || folderName.includes('/') || folderName.includes('\\')) {
+      console.warn('[Security] Invalid folder name rejected:', folderName);
+      return { success: false, error: 'Invalid folder name' };
+    }
+    
     const newPath = path.join(parentPath, folderName);
 
     await fs.mkdir(newPath);
@@ -977,6 +1060,11 @@ ipcMain.handle('create-folder', async (_event: IpcMainInvokeEvent, parentPath: s
 
 ipcMain.handle('trash-item', async (_event: IpcMainInvokeEvent, itemPath: string): Promise<ApiResponse> => {
   try {
+    if (!isPathSafe(itemPath)) {
+      console.warn('[Security] Invalid path rejected:', itemPath);
+      return { success: false, error: 'Invalid path' };
+    }
+    
     await shell.trashItem(itemPath);
     
     const pathsToRemove = [itemPath];
@@ -1044,6 +1132,11 @@ ipcMain.handle('open-trash', async (): Promise<ApiResponse> => {
 
 ipcMain.handle('delete-item', async (_event: IpcMainInvokeEvent, itemPath: string): Promise<ApiResponse> => {
   try {
+    if (!isPathSafe(itemPath)) {
+      console.warn('[Security] Invalid path rejected:', itemPath);
+      return { success: false, error: 'Invalid path' };
+    }
+    
     const stats = await fs.stat(itemPath);
     if (stats.isDirectory()) {
       await fs.rm(itemPath, { recursive: true, force: true });
@@ -1059,6 +1152,15 @@ ipcMain.handle('delete-item', async (_event: IpcMainInvokeEvent, itemPath: strin
 });
 
 ipcMain.handle('rename-item', async (_event: IpcMainInvokeEvent, oldPath: string, newName: string): Promise<PathResponse> => {
+  if (!isPathSafe(oldPath)) {
+    console.warn('[Security] Invalid path rejected:', oldPath);
+    return { success: false, error: 'Invalid path' };
+  }
+  if (newName.includes('..') || newName.includes('/') || newName.includes('\\')) {
+    console.warn('[Security] Invalid new name rejected:', newName);
+    return { success: false, error: 'Invalid file name' };
+  }
+  
   const oldName = path.basename(oldPath);
   const newPath = path.join(path.dirname(oldPath), newName);
   try {
@@ -1090,6 +1192,15 @@ ipcMain.handle('rename-item', async (_event: IpcMainInvokeEvent, oldPath: string
 
 ipcMain.handle('create-file', async (_event: IpcMainInvokeEvent, parentPath: string, fileName: string): Promise<PathResponse> => {
   try {
+    if (!isPathSafe(parentPath)) {
+      console.warn('[Security] Invalid parent path rejected:', parentPath);
+      return { success: false, error: 'Invalid path' };
+    }
+    if (fileName.includes('..') || fileName.includes('/') || fileName.includes('\\')) {
+      console.warn('[Security] Invalid file name rejected:', fileName);
+      return { success: false, error: 'Invalid file name' };
+    }
+    
     const newPath = path.join(parentPath, fileName);
     await fs.writeFile(newPath, '');
     
@@ -1217,7 +1328,17 @@ ipcMain.handle('get-settings-path', (): string => {
 
 ipcMain.handle('copy-items', async (_event: IpcMainInvokeEvent, sourcePaths: string[], destPath: string): Promise<ApiResponse> => {
   try {
+    if (!isPathSafe(destPath)) {
+      console.warn('[Security] Invalid destination path rejected:', destPath);
+      return { success: false, error: 'Invalid destination path' };
+    }
+    
     for (const sourcePath of sourcePaths) {
+      if (!isPathSafe(sourcePath)) {
+        console.warn('[Security] Invalid source path rejected:', sourcePath);
+        return { success: false, error: 'Invalid source path' };
+      }
+      
       const itemName = path.basename(sourcePath);
       const destItemPath = path.join(destPath, itemName);
 
@@ -1248,6 +1369,18 @@ ipcMain.handle('copy-items', async (_event: IpcMainInvokeEvent, sourcePaths: str
 
 ipcMain.handle('move-items', async (_event: IpcMainInvokeEvent, sourcePaths: string[], destPath: string): Promise<ApiResponse> => {
   try {
+    if (!isPathSafe(destPath)) {
+      console.warn('[Security] Invalid destination path rejected:', destPath);
+      return { success: false, error: 'Invalid destination path' };
+    }
+
+    for (const sourcePath of sourcePaths) {
+      if (!isPathSafe(sourcePath)) {
+        console.warn('[Security] Invalid source path rejected:', sourcePath);
+        return { success: false, error: 'Invalid source path' };
+      }
+    }
+    
     const originalParent = path.dirname(sourcePaths[0]);
     const movedPaths: string[] = [];
     const originalPaths: string[] = [];
@@ -1682,34 +1815,12 @@ ipcMain.handle('check-for-updates', async (): Promise<UpdateCheckResponse> => {
     }
     
     // Compare versions to check for actual update (not downgrade)
-    const parseVersion = (v: string) => {
-      const match = v.match(/^v?(\d+)\.(\d+)\.(\d+)(?:-(.+))?$/);
-      if (!match) return { major: 0, minor: 0, patch: 0, prerelease: '' };
-      return {
-        major: parseInt(match[1], 10),
-        minor: parseInt(match[2], 10),
-        patch: parseInt(match[3], 10),
-        prerelease: match[4] || ''
-      };
-    };
-    
+
     const current = parseVersion(currentVersion);
     const latest = parseVersion(latestVersion);
     
-    let hasUpdate = false;
-    if (latest.major > current.major) {
-      hasUpdate = true;
-    } else if (latest.major === current.major && latest.minor > current.minor) {
-      hasUpdate = true;
-    } else if (latest.major === current.major && latest.minor === current.minor && latest.patch > current.patch) {
-      hasUpdate = true;
-    } else if (latest.major === current.major && latest.minor === current.minor && latest.patch === current.patch) {
-      if (!latest.prerelease && current.prerelease) {
-        hasUpdate = true;
-      } else if (latest.prerelease && current.prerelease && latest.prerelease > current.prerelease) {
-        hasUpdate = true;
-      }
-    }
+    const comparison = compareVersions(latestVersion, currentVersion);
+    const hasUpdate = comparison > 0;
 
     console.log('[AutoUpdater] Update check result:', {
       hasUpdate,
@@ -1964,6 +2075,24 @@ ipcMain.handle('get-index-status', async (): Promise<{success: boolean; status?:
 
 ipcMain.handle('compress-files', async (_event: IpcMainInvokeEvent, sourcePaths: string[], outputPath: string, format: string = 'zip', operationId?: string): Promise<ApiResponse> => {
   try {
+    if (!isPathSafe(outputPath)) {
+      console.warn('[Security] Invalid output path rejected:', outputPath);
+      return { success: false, error: 'Invalid output path' };
+    }
+
+    for (const sourcePath of sourcePaths) {
+      if (!isPathSafe(sourcePath)) {
+        console.warn('[Security] Invalid source path rejected:', sourcePath);
+        return { success: false, error: 'Invalid source path' };
+      }
+    }
+
+    const allowedFormats = ['zip', '7z', 'tar', 'tar.gz', 'gz'];
+    if (!allowedFormats.includes(format)) {
+      console.warn('[Security] Invalid archive format rejected:', format);
+      return { success: false, error: 'Invalid archive format' };
+    }
+    
     console.log('[Compress] Starting compression:', sourcePaths, 'to', outputPath, 'format:', format);
 
     try {
@@ -2179,6 +2308,15 @@ ipcMain.handle('compress-files', async (_event: IpcMainInvokeEvent, sourcePaths:
 
 ipcMain.handle('extract-archive', async (_event: IpcMainInvokeEvent, archivePath: string, destPath: string, operationId?: string): Promise<ApiResponse> => {
   try {
+    if (!isPathSafe(archivePath)) {
+      console.warn('[Security] Invalid archive path rejected:', archivePath);
+      return { success: false, error: 'Invalid archive path' };
+    }
+    if (!isPathSafe(destPath)) {
+      console.warn('[Security] Invalid destination path rejected:', destPath);
+      return { success: false, error: 'Invalid destination path' };
+    }
+    
     console.log('[Extract] Starting extraction:', archivePath, 'to', destPath);
 
     await fs.mkdir(destPath, { recursive: true });
@@ -2469,15 +2607,6 @@ ipcMain.handle('calculate-folder-size', async (_event: IpcMainInvokeEvent, folde
     let folderCount = 0;
     let lastProgressUpdate = Date.now();
     
-    const safeSend = (channel: string, ...args: any[]) => {
-      try {
-        if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
-          mainWindow.webContents.send(channel, ...args);
-        }
-      } catch (error) {
-        console.error(`[FolderSize] Failed to send ${channel}:`, error);
-      }
-    };
     
     async function calculateSize(dirPath: string): Promise<void> {
       if (operation.aborted) {
@@ -2507,7 +2636,7 @@ ipcMain.handle('calculate-folder-size', async (_event: IpcMainInvokeEvent, folde
             const now = Date.now();
             if (now - lastProgressUpdate > 100) {
               lastProgressUpdate = now;
-              safeSend('folder-size-progress', {
+              safeSendToWindow(mainWindow, 'folder-size-progress', {
                 operationId,
                 calculatedSize: totalSize,
                 fileCount,
@@ -2561,22 +2690,11 @@ ipcMain.handle('calculate-checksum', async (_event: IpcMainInvokeEvent, filePath
   try {
     console.log('[Checksum] Starting calculation for:', filePath, 'algorithms:', algorithms, 'operationId:', operationId);
     
-    const crypto = require('crypto');
     const operation = { aborted: false };
     activeChecksumCalculations.set(operationId, operation);
     
     const stats = await fs.stat(filePath);
     const fileSize = stats.size;
-    
-    const safeSend = (channel: string, ...args: any[]) => {
-      try {
-        if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
-          mainWindow.webContents.send(channel, ...args);
-        }
-      } catch (error) {
-        console.error(`[Checksum] Failed to send ${channel}:`, error);
-      }
-    };
     
     const result: {md5?: string; sha256?: string} = {};
     
@@ -2605,7 +2723,7 @@ ipcMain.handle('calculate-checksum', async (_event: IpcMainInvokeEvent, filePath
           if (now - lastProgressUpdate > 100) {
             lastProgressUpdate = now;
             const percent = fileSize > 0 ? (bytesRead / fileSize) * 100 : 0;
-            safeSend('checksum-progress', {
+            safeSendToWindow(mainWindow, 'checksum-progress', {
               operationId,
               percent,
               algorithm

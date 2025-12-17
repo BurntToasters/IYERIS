@@ -29,6 +29,7 @@ export interface Settings {
   customTheme?: CustomTheme;
   launchCount?: number;
   supportPopupDismissed?: boolean;
+  skipFullDiskAccessPrompt?: boolean;
 }
 
 export interface FileItem {

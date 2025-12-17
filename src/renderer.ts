@@ -95,6 +95,25 @@ const activeOperations = new Map<string, ArchiveOperation>();
 
 const ipcCleanupFunctions: (() => void)[] = [];
 
+let archiveOperationsPanelListenerInitialized = false;
+function initArchiveOperationsPanelListener(): void {
+  if (archiveOperationsPanelListenerInitialized) return;
+  
+  const list = document.getElementById('archive-operations-list');
+  if (list) {
+    list.addEventListener('click', (e) => {
+      const target = e.target as HTMLElement;
+      if (target.classList.contains('archive-operation-cancel')) {
+        const operationId = target.getAttribute('data-id');
+        if (operationId) {
+          abortOperation(operationId);
+        }
+      }
+    });
+    archiveOperationsPanelListenerInitialized = true;
+  }
+}
+
 function generateOperationId(): string {
   return `op_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
 }
@@ -169,6 +188,8 @@ function abortOperation(id: string) {
 function renderOperations() {
   const list = document.getElementById('archive-operations-list');
   if (!list) return;
+
+  initArchiveOperationsPanelListener();
   
   list.innerHTML = '';
   
@@ -199,12 +220,6 @@ function renderOperations() {
       </div>
     `;
     
-    const cancelBtn = item.querySelector('.archive-operation-cancel');
-    if (cancelBtn) {
-      cancelBtn.addEventListener('click', () => {
-        abortOperation(id);
-      });
-    }
     
     list.appendChild(item);
   }
