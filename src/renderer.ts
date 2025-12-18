@@ -95,6 +95,25 @@ const activeOperations = new Map<string, ArchiveOperation>();
 
 const ipcCleanupFunctions: (() => void)[] = [];
 
+let archiveOperationsPanelListenerInitialized = false;
+function initArchiveOperationsPanelListener(): void {
+  if (archiveOperationsPanelListenerInitialized) return;
+  
+  const list = document.getElementById('archive-operations-list');
+  if (list) {
+    list.addEventListener('click', (e) => {
+      const target = e.target as HTMLElement;
+      if (target.classList.contains('archive-operation-cancel')) {
+        const operationId = target.getAttribute('data-id');
+        if (operationId) {
+          abortOperation(operationId);
+        }
+      }
+    });
+    archiveOperationsPanelListenerInitialized = true;
+  }
+}
+
 function generateOperationId(): string {
   return `op_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
 }
@@ -169,6 +188,8 @@ function abortOperation(id: string) {
 function renderOperations() {
   const list = document.getElementById('archive-operations-list');
   if (!list) return;
+
+  initArchiveOperationsPanelListener();
   
   list.innerHTML = '';
   
@@ -199,12 +220,6 @@ function renderOperations() {
       </div>
     `;
     
-    const cancelBtn = item.querySelector('.archive-operation-cancel');
-    if (cancelBtn) {
-      cancelBtn.addEventListener('click', () => {
-        abortOperation(id);
-      });
-    }
     
     list.appendChild(item);
   }
@@ -3079,9 +3094,19 @@ async function applyViewMode() {
 }
 
 let columnPaths: string[] = [];
+let columnViewRenderId = 0;
+let isRenderingColumnView = false;
 
 async function renderColumnView() {
   if (!columnView) return;
+
+  const currentRenderId = ++columnViewRenderId;
+  while (isRenderingColumnView) {
+    await new Promise(resolve => setTimeout(resolve, 10));
+    if (currentRenderId !== columnViewRenderId) return;
+  }
+  
+  isRenderingColumnView = true;
   
   const savedScrollLeft = columnView.scrollLeft;
   
@@ -3091,6 +3116,7 @@ async function renderColumnView() {
   
   if (!currentPath) {
     await renderDriveColumn();
+    isRenderingColumnView = false;
     return;
   }
 
@@ -3113,11 +3139,27 @@ async function renderColumnView() {
     }
   }
 
-  for (let index = 0; index < columnPaths.length; index++) {
-    await renderColumn(columnPaths[index], index);
+  const panePromises = columnPaths.map((colPath, index) => 
+    renderColumn(colPath, index, currentRenderId)
+  );
+  
+  const panes = await Promise.all(panePromises);
+
+  if (currentRenderId !== columnViewRenderId) {
+    isRenderingColumnView = false;
+    return;
   }
 
+  for (const pane of panes) {
+    if (pane) {
+      columnView.appendChild(pane);
+    }
+  }
+  
+  isRenderingColumnView = false;
+
   setTimeout(() => {
+    if (currentRenderId !== columnViewRenderId) return;
     if (savedScrollLeft > 0) {
       columnView.scrollLeft = savedScrollLeft;
     } else {
@@ -3151,7 +3193,11 @@ async function renderDriveColumn() {
   columnView.appendChild(pane);
 }
 
-async function renderColumn(path: string, columnIndex: number) {
+async function renderColumn(path: string, columnIndex: number, renderId?: number): Promise<HTMLDivElement | null> {
+  if (renderId !== undefined && renderId !== columnViewRenderId) {
+    return null;
+  }
+  
   const pane = document.createElement('div');
   pane.className = 'column-pane';
   pane.dataset.columnIndex = String(columnIndex);
@@ -3396,13 +3442,14 @@ async function renderColumn(path: string, columnIndex: number) {
     pane.innerHTML = '<div class="column-item" style="opacity: 0.5;">Error loading folder</div>';
   }
   
-  columnView.appendChild(pane);
+  return pane;
 }
 
 async function handleColumnItemClick(element: HTMLElement, path: string, isDirectory: boolean, columnIndex: number) {
   const currentPane = element.closest('.column-pane');
   if (!currentPane) return;
 
+  const clickRenderId = ++columnViewRenderId;
   const allPanes = Array.from(columnView.querySelectorAll('.column-pane'));
   const currentPaneIndex = allPanes.indexOf(currentPane as Element);
   
@@ -3423,9 +3470,14 @@ async function handleColumnItemClick(element: HTMLElement, path: string, isDirec
     addressInput.value = path;
     updateBreadcrumb(path);
     
-    await renderColumn(path, currentPaneIndex + 1);
+    const newPane = await renderColumn(path, currentPaneIndex + 1, clickRenderId);
+
+    if (clickRenderId === columnViewRenderId && newPane) {
+      columnView.appendChild(newPane);
+    }
 
     setTimeout(() => {
+      if (clickRenderId !== columnViewRenderId) return;
       columnView.scrollLeft = columnView.scrollWidth;
     }, 50);
   } else {
