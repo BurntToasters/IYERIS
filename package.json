@@ -1,6 +1,6 @@
 {
   "name": "iyeris",
-  "version": "0.8.5.1",
+  "version": "0.8.6",
   "description": "A beautiful cross-platform file explorer built with Electron, featuring a stunning liquid-glass interface with smooth animations and modern design.",
   "main": "dist/main.js",
   "dependencies": {
@@ -10,7 +10,7 @@
   },
   "devDependencies": {
     "@electron/notarize": "^3.1.1",
-    "@types/node": "^24.10.0",
+    "@types/node": "^25.0.3",
     "cross-env": "^7.0.3",
     "dotenv": "^17.2.3",
     "dotenv-cli": "^10.0.0",
