@@ -79,7 +79,7 @@ function isPathSafe(inputPath: string): boolean {
 
   if (process.platform === 'win32' && normalized.startsWith('\\\\')) {
     const parts = normalized.split('\\').filter(Boolean);
-    if (parts.length < 2) {
+    if (parts.length < 1) {
       console.warn('[Security] Invalid UNC path:', inputPath);
       return false;
     }
@@ -308,7 +308,7 @@ async function isFileHidden(filePath: string, fileName: string): Promise<boolean
       const execPromise = promisify(exec);
       
       const { stdout } = await execPromise(`cmd /c attrib "${filePath}"`, { 
-        timeout: 200,
+        timeout: 500,
         windowsHide: true 
       });
       
@@ -360,7 +360,9 @@ function cleanupHiddenFileCache(): void {
   }
 }
 
-hiddenFileCacheCleanupInterval = setInterval(cleanupHiddenFileCache, 5 * 60 * 1000);
+if (!hiddenFileCacheCleanupInterval) {
+  hiddenFileCacheCleanupInterval = setInterval(cleanupHiddenFileCache, 5 * 60 * 1000);
+}
 
 async function isFileHiddenCached(filePath: string, fileName: string): Promise<boolean> {
   if (fileName.startsWith('.')) {
@@ -1564,15 +1566,18 @@ ipcMain.handle('restart-as-admin', async (): Promise<ApiResponse> => {
   try {
     const platform = process.platform;
     const appPath = app.getPath('exe');
+    const execPromise = promisify(exec);
     
     if (platform === 'win32') {
       const command = `Start-Process -FilePath "${appPath}" -Verb RunAs`;
-      exec(`powershell -Command "${command}"`, (error: any) => {
-        if (!error) {
-          app.quit();
-        }
-      });
-      return { success: true };
+      try {
+        await execPromise(`powershell -Command "${command}"`);
+        app.quit();
+        return { success: true };
+      } catch (error) {
+        console.log('[Admin] Failed to restart as admin:', getErrorMessage(error));
+        return { success: false, error: 'Failed to restart with admin privileges. The request may have been cancelled.' };
+      }
     } else if (platform === 'darwin' || platform === 'linux') {
       let command: string;
       
@@ -1582,12 +1587,14 @@ ipcMain.handle('restart-as-admin', async (): Promise<ApiResponse> => {
         command = `pkexec "${appPath}" || gksudo "${appPath}"`;
       }
       
-      exec(command, (error: any) => {
-        if (!error) {
-          app.quit();
-        }
-      });
-      return { success: true };
+      try {
+        await execPromise(command);
+        app.quit();
+        return { success: true };
+      } catch (error) {
+        console.log('[Admin] Failed to restart as admin:', getErrorMessage(error));
+        return { success: false, error: 'Failed to restart with admin privileges. The request may have been cancelled.' };
+      }
     } else {
       return { success: false, error: 'Unsupported platform' };
     }
@@ -1815,10 +1822,6 @@ ipcMain.handle('check-for-updates', async (): Promise<UpdateCheckResponse> => {
     }
     
     // Compare versions to check for actual update (not downgrade)
-
-    const current = parseVersion(currentVersion);
-    const latest = parseVersion(latestVersion);
-    
     const comparison = compareVersions(latestVersion, currentVersion);
     const hasUpdate = comparison > 0;
 
@@ -2177,10 +2180,12 @@ ipcMain.handle('compress-files', async (_event: IpcMainInvokeEvent, sourcePaths:
 
             try {
               await fs.unlink(tarPath);
-            } catch (err) {}
+            } catch (err) {
+            }
             try {
               await fs.unlink(outputPath);
-            } catch (err) {}
+            } catch (err) {
+            }
             
             if (operationId) {
               activeArchiveProcesses.delete(operationId);
@@ -2201,7 +2206,8 @@ ipcMain.handle('compress-files', async (_event: IpcMainInvokeEvent, sourcePaths:
 
           try {
             await fs.unlink(tarPath);
-          } catch (err) {}
+          } catch (err) {
+          }
           
           if (operationId) {
             activeArchiveProcesses.delete(operationId);
@@ -2221,7 +2227,8 @@ ipcMain.handle('compress-files', async (_event: IpcMainInvokeEvent, sourcePaths:
             gzipProcess.on('end', async () => {
               try {
                 await fs.unlink(tarPath);
-              } catch (err) {}
+              } catch (err) {
+              }
               if (operationId) {
                 activeArchiveProcesses.delete(operationId);
               }
@@ -2232,7 +2239,8 @@ ipcMain.handle('compress-files', async (_event: IpcMainInvokeEvent, sourcePaths:
               try {
                 await fs.unlink(tarPath);
                 await fs.unlink(outputPath);
-              } catch (err) {}
+              } catch (err) {
+              }
               if (operationId) {
                 activeArchiveProcesses.delete(operationId);
               }

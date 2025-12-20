@@ -2917,7 +2917,10 @@ function clearSelection() {
 function selectAll() {
   document.querySelectorAll('.file-item').forEach(item => {
     item.classList.add('selected');
-    selectedItems.add(item.getAttribute('data-path'));
+    const itemPath = item.getAttribute('data-path');
+    if (itemPath) {
+      selectedItems.add(itemPath);
+    }
   });
   updateStatusBar();
 }
