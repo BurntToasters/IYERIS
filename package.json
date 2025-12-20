@@ -20,7 +20,8 @@
   },
   "scripts": {
     "copy:css": "node -e \"require('fs').copyFileSync('src/twemoji.css', 'dist/twemoji.css')\"",
-    "build": "tsc && tsc --project tsconfig.renderer.json && npm run copy:css",
+    "build:cleanup": "node -e \"const fs=require('fs');['release','dist'].forEach(d=>{try{fs.rmSync(d,{recursive:true,force:true})}catch(e){}})\"",
+    "build": "npm run build:cleanup && tsc && tsc --project tsconfig.renderer.json && npm run copy:css",
     "watch": "tsc --watch",
     "start": "npm run build && electron .",
     "dev": "npm run build && electron . --enable-logging",
