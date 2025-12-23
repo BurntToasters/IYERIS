@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain, dialog, shell, IpcMainInvokeEvent, Menu, T
 import * as path from 'path';
 import { promises as fs } from 'fs';
 import * as fsSync from 'fs';
-import { exec } from 'child_process';
+import { exec, spawn } from 'child_process';
 import { promisify } from 'util';
 import type { Settings, FileItem, ApiResponse, DirectoryResponse, PathResponse, PropertiesResponse, SettingsResponse, UpdateCheckResponse, IndexSearchResponse } from './types';
 import { FileIndexer } from './indexer';
@@ -70,13 +70,27 @@ function isPathSafe(inputPath: string): boolean {
     return false;
   }
 
-  const normalized = path.normalize(inputPath);
-
+  // Check for null bytes
   if (inputPath.includes('\0')) {
     console.warn('[Security] Path contains null byte:', inputPath);
     return false;
   }
 
+  const suspiciousChars = /[<>"|*?]/;
+  if (suspiciousChars.test(inputPath)) {
+    console.warn('[Security] Path contains suspicious characters:', inputPath);
+    return false;
+  }
+
+  const normalized = path.normalize(inputPath);
+  const resolved = path.resolve(inputPath);
+
+  if (normalized.includes('..')) {
+    console.warn('[Security] Path contains parent directory reference after normalization:', inputPath);
+    return false;
+  }
+
+  // Validate UNC paths on Windows
   if (process.platform === 'win32' && normalized.startsWith('\\\\')) {
     const parts = normalized.split('\\').filter(Boolean);
     if (parts.length < 1) {
@@ -84,7 +98,23 @@ function isPathSafe(inputPath: string): boolean {
       return false;
     }
   }
-  
+
+  if (process.platform === 'win32') {
+    const lowerResolved = resolved.toLowerCase();
+    const restrictedPaths = [
+      'c:\\windows\\system32\\config\\sam',
+      'c:\\windows\\system32\\config\\system',
+      'c:\\windows\\system32\\config\\security'
+    ];
+
+    for (const restricted of restrictedPaths) {
+      if (lowerResolved === restricted || lowerResolved.startsWith(restricted + '\\')) {
+        console.warn('[Security] Attempt to access restricted system file:', inputPath);
+        return false;
+      }
+    }
+  }
+
   return true;
 }
 
@@ -1508,13 +1538,34 @@ ipcMain.handle('get-disk-space', async (_event: IpcMainInvokeEvent, drivePath: s
     if (process.platform === 'win32') {
       return new Promise((resolve) => {
         const driveLetter = drivePath.substring(0, 2);
-        console.log('[Main] Getting disk space for drive:', driveLetter);
-        const psCommand = `powershell -Command "Get-PSDrive -Name ${driveLetter.charAt(0)} | Select-Object @{Name='Free';Expression={$_.Free}}, @{Name='Used';Expression={$_.Used}} | ConvertTo-Json"`;
-        
-        exec(psCommand, (error: Error | null, stdout: string) => {
-          if (error) {
-            console.error('[Main] PowerShell error:', error);
-            resolve({ success: false, error: error.message });
+        const driveChar = driveLetter.charAt(0).toUpperCase();
+
+        // Validate A-Z
+        if (!/^[A-Z]$/.test(driveChar)) {
+          console.error('[Main] Invalid drive letter:', driveChar);
+          resolve({ success: false, error: 'Invalid drive letter' });
+          return;
+        }
+
+        console.log('[Main] Getting disk space for drive:', driveChar);
+        const psCommand = `Get-PSDrive -Name ${driveChar} | Select-Object @{Name='Free';Expression={$_.Free}}, @{Name='Used';Expression={$_.Used}} | ConvertTo-Json`;
+
+        const psProcess = spawn('powershell', ['-Command', psCommand], { shell: false });
+        let stdout = '';
+        let stderr = '';
+
+        psProcess.stdout.on('data', (data) => {
+          stdout += data.toString();
+        });
+
+        psProcess.stderr.on('data', (data) => {
+          stderr += data.toString();
+        });
+
+        psProcess.on('close', (code) => {
+          if (code !== 0) {
+            console.error('[Main] PowerShell error:', stderr);
+            resolve({ success: false, error: 'PowerShell command failed' });
             return;
           }
           console.log('[Main] PowerShell output:', stdout);
@@ -1533,9 +1584,22 @@ ipcMain.handle('get-disk-space', async (_event: IpcMainInvokeEvent, drivePath: s
       });
     } else if (process.platform === 'darwin' || process.platform === 'linux') {
       return new Promise((resolve) => {
-        exec(`df -k "${drivePath}"`, (error: Error | null, stdout: string) => {
-          if (error) {
-            resolve({ success: false, error: error.message });
+        const dfProcess = spawn('df', ['-k', drivePath], { shell: false });
+        let stdout = '';
+        let stderr = '';
+
+        dfProcess.stdout.on('data', (data) => {
+          stdout += data.toString();
+        });
+
+        dfProcess.stderr.on('data', (data) => {
+          stderr += data.toString();
+        });
+
+        dfProcess.on('close', (code) => {
+          if (code !== 0) {
+            console.error('[Main] df error:', stderr);
+            resolve({ success: false, error: 'df command failed' });
             return;
           }
           const lines = stdout.trim().split('\n');
@@ -1606,9 +1670,7 @@ ipcMain.handle('restart-as-admin', async (): Promise<ApiResponse> => {
 ipcMain.handle('open-terminal', async (_event: IpcMainInvokeEvent, dirPath: string): Promise<ApiResponse> => {
   try {
     const platform = process.platform;
-    
-    let command: string;
-    
+
     if (platform === 'win32') {
       // wt -> cmd.exe fallback
       const hasWT = await new Promise<boolean>((resolve) => {
@@ -1616,22 +1678,35 @@ ipcMain.handle('open-terminal', async (_event: IpcMainInvokeEvent, dirPath: stri
       });
 
       if (hasWT) {
-        command = `wt -d "${dirPath}"`;
+        spawn('wt', ['-d', dirPath], { shell: false, detached: true });
       } else {
-        command = `start cmd /K "cd /d "${dirPath}""`;
+        spawn('cmd', ['/K', 'cd', '/d', dirPath], { shell: false, detached: true });
       }
     } else if (platform === 'darwin') {
-      command = `open -a Terminal "${dirPath}"`;
+      spawn('open', ['-a', 'Terminal', dirPath], { shell: false, detached: true });
     } else {
-      command = `x-terminal-emulator -e "cd '${dirPath}' && bash" || gnome-terminal --working-directory="${dirPath}" || xterm -e "cd '${dirPath}' && bash"`;
-    }
-    
-    exec(command, (error: any) => {
-      if (error) {
-        console.error('Error opening terminal:', error);
+      const terminals = [
+        { cmd: 'x-terminal-emulator', args: ['--working-directory', dirPath] },
+        { cmd: 'gnome-terminal', args: ['--working-directory=' + dirPath] },
+        { cmd: 'xterm', args: ['-e', 'cd', dirPath, '&&', 'bash'] }
+      ];
+
+      let launched = false;
+      for (const term of terminals) {
+        try {
+          spawn(term.cmd, term.args, { shell: false, detached: true });
+          launched = true;
+          break;
+        } catch (e) {
+          continue;
+        }
       }
-    });
-    
+
+      if (!launched) {
+        console.error('No suitable terminal emulator found');
+      }
+    }
+
     return { success: true };
   } catch (error) {
     return { success: false, error: getErrorMessage(error) };
