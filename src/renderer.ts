@@ -61,7 +61,7 @@ function emojiToCodepoint(emoji: string): string {
 function twemojiImg(emoji: string, className: string = 'twemoji', alt?: string): string {
   const codepoint = emojiToCodepoint(emoji);
   const src = `assets/twemoji/${codepoint}.svg`;
-  const altText = alt || emoji;
+  const altText = escapeHtml(alt || emoji);
   return `<img src="${src}" class="${className}" alt="${altText}" draggable="false" />`;
 }
 
@@ -1147,14 +1147,14 @@ async function showLicensesModal() {
       for (const [packageName, packageInfo] of Object.entries(licenses)) {
         const info = packageInfo as any;
         html += '<div class="license-package">';
-        html += `<div class="license-package-name">${packageName}</div>`;
+        html += `<div class="license-package-name">${escapeHtml(packageName)}</div>`;
         html += '<div class="license-package-info">';
-        html += `<span class="license-package-license">${info.licenses || 'Unknown'}</span>`;
+        html += `<span class="license-package-license">${escapeHtml(info.licenses || 'Unknown')}</span>`;
         if (info.repository) {
-          html += `<span>Repository: ${info.repository}</span>`;
+          html += `<span>Repository: ${escapeHtml(info.repository)}</span>`;
         }
         if (info.publisher) {
-          html += `<span>Publisher: ${info.publisher}</span>`;
+          html += `<span>Publisher: ${escapeHtml(info.publisher)}</span>`;
         }
         html += '</div>';
         
@@ -1167,10 +1167,10 @@ async function showLicensesModal() {
       
       licensesContent.innerHTML = html;
     } else {
-      licensesContent.innerHTML = `<p style="color: var(--error-color); text-align: center;">Error loading licenses: ${result.error || 'Unknown error'}</p>`;
+      licensesContent.innerHTML = `<p style="color: var(--error-color); text-align: center;">Error loading licenses: ${escapeHtml(result.error || 'Unknown error')}</p>`;
     }
   } catch (error) {
-    licensesContent.innerHTML = `<p style="color: var(--error-color); text-align: center;">Error: ${getErrorMessage(error)}</p>`;
+    licensesContent.innerHTML = `<p style="color: var(--error-color); text-align: center;">Error: ${escapeHtml(getErrorMessage(error))}</p>`;
   }
 }
 
