@@ -260,16 +260,24 @@ const defaultSettings: Settings = {
 function applyLoginItemSettings(settings: Settings): void {
   try {
     console.log('[LoginItem] Applying settings:', settings.startOnLogin);
-    
+
     if (process.platform === 'win32') {
-      // Windows - Use exe path and pass --hidden
-      const exePath = app.getPath('exe');
-      app.setLoginItemSettings({
-        openAtLogin: settings.startOnLogin,
-        path: exePath,
-        args: settings.startOnLogin ? ['--hidden'] : [],
-        name: 'IYERIS'
-      });
+      if (process.windowsStore) {
+        console.log('[LoginItem] MS Store app - using StartupTask');
+        app.setLoginItemSettings({
+          openAtLogin: settings.startOnLogin,
+          name: 'IYERIS',
+          // can't use path || args for APPX apps
+        });
+      } else {
+        const exePath = app.getPath('exe');
+        app.setLoginItemSettings({
+          openAtLogin: settings.startOnLogin,
+          path: exePath,
+          args: settings.startOnLogin ? ['--hidden'] : [],
+          name: 'IYERIS'
+        });
+      }
     } else if (process.platform === 'darwin') {
       // macOS - open args
       app.setLoginItemSettings({
@@ -285,7 +293,7 @@ function applyLoginItemSettings(settings: Settings): void {
         name: 'IYERIS'
       });
     }
-    
+
     console.log('[LoginItem] Login item settings applied successfully');
   } catch (error) {
     console.error('[LoginItem] Failed to set login item:', error);
@@ -663,6 +671,22 @@ app.whenReady().then(async () => {
   setupApplicationMenu();
 
   shouldStartHidden = process.argv.includes('--hidden');
+
+  if (!shouldStartHidden && process.windowsStore) {
+    try {
+      const loginItemSettings = app.getLoginItemSettings();
+      console.log('[Startup] MS Store login item settings:', JSON.stringify(loginItemSettings));
+      if (loginItemSettings.wasOpenedAtLogin) {
+        const settings = await loadSettings();
+        if (settings.startOnLogin) {
+          shouldStartHidden = true;
+          console.log('[Startup] MS Store: Detected wasOpenedAtLogin, will start hidden');
+        }
+      }
+    } catch (error) {
+      console.error('[Startup] Error checking MS Store login settings:', error);
+    }
+  }
 
   if (!shouldStartHidden && process.platform === 'darwin') {
     try {
