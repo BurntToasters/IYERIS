@@ -377,9 +377,6 @@ function setupBreadcrumbListeners(): void {
 
 type DialogType = 'info' | 'warning' | 'error' | 'success' | 'question';
 
-function asElement(target: EventTarget | null): HTMLElement | null {
-  return target as HTMLElement;
-}
 
 let currentPath: string = '';
 let history: string[] = [];
@@ -392,7 +389,6 @@ let allFiles: FileItem[] = [];
 let isSearchMode: boolean = false;
 let isGlobalSearch: boolean = false;
 let isPreviewPanelVisible: boolean = false;
-let currentPreviewFile: FileItem | null = null;
 let currentQuicklookFile: FileItem | null = null;
 let platformOS: string = '';
 let canUndo: boolean = false;
@@ -418,11 +414,8 @@ const drivesList = document.getElementById('drives-list') as HTMLElement;
 const searchBtn = document.getElementById('search-btn') as HTMLButtonElement;
 const searchInput = document.getElementById('search-input') as HTMLInputElement;
 const searchBarWrapper = document.querySelector('.search-bar-wrapper') as HTMLElement;
-const searchBar = document.querySelector('.search-bar') as HTMLElement;
 const searchClose = document.getElementById('search-close') as HTMLButtonElement;
 const searchScopeToggle = document.getElementById('search-scope-toggle') as HTMLButtonElement;
-const addressBarWrapper = document.querySelector('.address-bar-wrapper') as HTMLElement;
-const addressBar = document.querySelector('.address-bar') as HTMLElement;
 const sortBtn = document.getElementById('sort-btn') as HTMLButtonElement;
 const bookmarksList = document.getElementById('bookmarks-list') as HTMLElement;
 const bookmarkAddBtn = document.getElementById('bookmark-add-btn') as HTMLButtonElement;
@@ -2252,46 +2245,42 @@ function setupEventListeners() {
   });
   
   document.addEventListener('click', (e) => {
+    const target = e.target as HTMLElement;
     const contextMenu = document.getElementById('context-menu');
-    const emptySpaceContextMenu = document.getElementById('empty-space-context-menu');
-    const sortMenu = document.getElementById('sort-menu');
-    
-    if (contextMenu && contextMenu.style.display === 'block' && !contextMenu.contains(e.target as Node)) {
-      hideContextMenu();
-    }
-    if (emptySpaceContextMenu && emptySpaceContextMenu.style.display === 'block' && !emptySpaceContextMenu.contains(e.target as Node)) {
-      hideEmptySpaceContextMenu();
-    }
-    if (sortMenu && sortMenu.style.display === 'block' && !sortMenu.contains(e.target as Node) && e.target !== sortBtn) {
-      hideSortMenu();
-    }
-  });
-  
-  document.addEventListener('click', (e) => {
-    const sortMenu = document.getElementById('sort-menu');
-    const menuItem = (e.target as HTMLElement).closest('.context-menu-item') as HTMLElement;
-    
-    if (menuItem && sortMenu && sortMenu.style.display === 'block') {
-      const sortType = menuItem.getAttribute('data-sort');
-      if (sortType) {
-        changeSortMode(sortType as any);
-      }
-      return;
-    }
-    
-    if (menuItem && contextMenuData) {
-      const format = menuItem.dataset.format;
-      handleContextMenuAction(menuItem.dataset.action, contextMenuData, format);
-      hideContextMenu();
-    }
-  });
-  
-  document.addEventListener('click', (e) => {
     const emptySpaceMenu = document.getElementById('empty-space-context-menu');
-    const menuItem = (e.target as HTMLElement).closest('.context-menu-item') as HTMLElement;
-    if (menuItem && emptySpaceMenu && emptySpaceMenu.style.display === 'block') {
-      handleEmptySpaceContextMenuAction(menuItem.dataset.action);
+    const sortMenu = document.getElementById('sort-menu');
+    const menuItem = target.closest('.context-menu-item') as HTMLElement;
+
+    if (menuItem) {
+      if (sortMenu && sortMenu.style.display === 'block') {
+        const sortType = menuItem.getAttribute('data-sort');
+        if (sortType) {
+          changeSortMode(sortType as any);
+        }
+        return;
+      }
+
+      if (emptySpaceMenu && emptySpaceMenu.style.display === 'block') {
+        handleEmptySpaceContextMenuAction(menuItem.dataset.action);
+        hideEmptySpaceContextMenu();
+        return;
+      }
+
+      if (contextMenuData) {
+        handleContextMenuAction(menuItem.dataset.action, contextMenuData, menuItem.dataset.format);
+        hideContextMenu();
+        return;
+      }
+    }
+
+    if (contextMenu && contextMenu.style.display === 'block' && !contextMenu.contains(target)) {
+      hideContextMenu();
+    }
+    if (emptySpaceMenu && emptySpaceMenu.style.display === 'block' && !emptySpaceMenu.contains(target)) {
       hideEmptySpaceContextMenu();
+    }
+    if (sortMenu && sortMenu.style.display === 'block' && !sortMenu.contains(target) && target !== sortBtn) {
+      hideSortMenu();
     }
   });
   
@@ -2735,26 +2724,24 @@ function createFileItem(item: FileItem): HTMLElement {
   fileItem.className = 'file-item';
   fileItem.dataset.path = item.path;
   fileItem.dataset.isDirectory = String(item.isDirectory);
-  
-  const icon = item.isDirectory ? twemojiImg(String.fromCodePoint(0x1F4C1), 'twemoji file-icon') : getFileIcon(item.name);
-  const ext = item.name.split('.').pop()?.toLowerCase() || '';
-  const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'ico'];
-  const isImage = !item.isDirectory && imageExts.includes(ext);
-  
-  if (isImage) {
-    fileItem.classList.add('has-thumbnail');
-    fileItem.innerHTML = `
-      <div class="file-icon">
-        ${getFileIcon(item.name)}
-      </div>
-      <div class="file-name">${escapeHtml(item.name)}</div>
-    `;
+
+  let icon: string;
+  if (item.isDirectory) {
+    icon = FOLDER_ICON;
   } else {
-    fileItem.innerHTML = `
-      <div class="file-icon">${icon}</div>
-      <div class="file-name">${escapeHtml(item.name)}</div>
-    `;
+    const ext = item.name.split('.').pop()?.toLowerCase() || '';
+    if (IMAGE_EXTENSIONS.has(ext)) {
+      fileItem.classList.add('has-thumbnail');
+      icon = IMAGE_ICON;
+    } else {
+      icon = getFileIcon(item.name);
+    }
   }
+
+  fileItem.innerHTML = `
+    <div class="file-icon">${icon}</div>
+    <div class="file-name">${escapeHtml(item.name)}</div>
+  `;
   
   fileItem.addEventListener('dblclick', () => {
     if (item.isDirectory) {
@@ -2915,24 +2902,32 @@ async function loadThumbnail(fileItem: HTMLElement, item: FileItem) {
   }
 }
 
+const FILE_ICON_MAP: Record<string, string> = {
+  'jpg': '1f5bc', 'jpeg': '1f5bc', 'png': '1f5bc', 'gif': '1f5bc', 'svg': '1f5bc', 'bmp': '1f5bc',
+  'webp': '1f5bc', 'ico': '1f5bc', 'tiff': '1f5bc', 'tif': '1f5bc', 'avif': '1f5bc', 'jfif': '1f5bc',
+  'mp4': '1f3ac', 'avi': '1f3ac', 'mov': '1f3ac', 'mkv': '1f3ac', 'webm': '1f3ac',
+  'mp3': '1f3b5', 'wav': '1f3b5', 'flac': '1f3b5', 'ogg': '1f3b5', 'm4a': '1f3b5',
+  'pdf': '1f4c4', 'doc': '1f4dd', 'docx': '1f4dd', 'txt': '1f4dd', 'rtf': '1f4dd',
+  'xls': '1f4ca', 'xlsx': '1f4ca', 'csv': '1f4ca',
+  'ppt': '1f4ca', 'pptx': '1f4ca',
+  'js': '1f4dc', 'ts': '1f4dc', 'jsx': '1f4dc', 'tsx': '1f4dc',
+  'html': '1f310', 'css': '1f3a8', 'json': '2699', 'xml': '2699',
+  'py': '1f40d', 'java': '2615', 'c': 'a9', 'cpp': 'a9', 'cs': 'a9',
+  'php': '1f418', 'rb': '1f48e', 'go': '1f439', 'rs': '1f980',
+  'zip': '1f5dc', 'rar': '1f5dc', '7z': '1f5dc', 'tar': '1f5dc', 'gz': '1f5dc',
+  'exe': '2699', 'app': '2699', 'msi': '2699', 'dmg': '2699'
+};
+
+const IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'ico', 'tiff', 'tif', 'avif', 'jfif']);
+const FOLDER_ICON = twemojiImg(String.fromCodePoint(0x1F4C1), 'twemoji file-icon');
+const IMAGE_ICON = twemojiImg(String.fromCodePoint(parseInt('1f5bc', 16)), 'twemoji');
+const DEFAULT_FILE_ICON = twemojiImg(String.fromCodePoint(parseInt('1f4c4', 16)), 'twemoji');
+
 function getFileIcon(filename: string): string {
   const ext = filename.split('.').pop()?.toLowerCase() || '';
-  const iconMap: Record<string, string> = {
-    'jpg': '1f5bc', 'jpeg': '1f5bc', 'png': '1f5bc', 'gif': '1f5bc', 'svg': '1f5bc', 'bmp': '1f5bc',
-    'mp4': '1f3ac', 'avi': '1f3ac', 'mov': '1f3ac', 'mkv': '1f3ac', 'webm': '1f3ac',
-    'mp3': '1f3b5', 'wav': '1f3b5', 'flac': '1f3b5', 'ogg': '1f3b5', 'm4a': '1f3b5',
-    'pdf': '1f4c4', 'doc': '1f4dd', 'docx': '1f4dd', 'txt': '1f4dd', 'rtf': '1f4dd',
-    'xls': '1f4ca', 'xlsx': '1f4ca', 'csv': '1f4ca',
-    'ppt': '1f4ca', 'pptx': '1f4ca',
-    'js': '1f4dc', 'ts': '1f4dc', 'jsx': '1f4dc', 'tsx': '1f4dc',
-    'html': '1f310', 'css': '1f3a8', 'json': '2699', 'xml': '2699',
-    'py': '1f40d', 'java': '2615', 'c': 'a9', 'cpp': 'a9', 'cs': 'a9',
-    'php': '1f418', 'rb': '1f48e', 'go': '1f439', 'rs': '1f980',
-    'zip': '1f5dc', 'rar': '1f5dc', '7z': '1f5dc', 'tar': '1f5dc', 'gz': '1f5dc',
-    'exe': '2699', 'app': '2699', 'msi': '2699', 'dmg': '2699'
-  };
-  
-  const codepoint = iconMap[ext] || '1f4c4';
+  const codepoint = FILE_ICON_MAP[ext];
+  if (!codepoint) return DEFAULT_FILE_ICON;
+  if (codepoint === '1f5bc') return IMAGE_ICON;
   return twemojiImg(String.fromCodePoint(parseInt(codepoint, 16)), 'twemoji');
 }
 
@@ -5094,8 +5089,7 @@ function updatePreview(file: FileItem) {
     showEmptyPreview();
     return;
   }
-  
-  currentPreviewFile = file;
+
   const ext = file.name.split('.').pop()?.toLowerCase() || '';
 
   const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico', 'tiff', 'tif', 'avif', 'jfif'];
