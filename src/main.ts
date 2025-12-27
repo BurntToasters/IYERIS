@@ -37,20 +37,31 @@ const isRunningInFlatpak = (): boolean => {
   return isInFlatpak;
 };
 
-// Check if installed via MSI
-const isInstalledViaMsi = (): boolean => {
-  if (process.platform !== 'win32') return false;
-  
-  try {
-    const { execSync } = require('child_process');
-    const result = execSync(
-      'reg query "HKCU\\Software\\IYERIS" /v InstalledViaMsi 2>nul',
-      { encoding: 'utf8', windowsHide: true }
-    );
-    return result.includes('InstalledViaMsi') && result.includes('0x1');
-  } catch {
-    return false;
+// Check if installed via MSI (async to avoid blocking startup)
+let msiCheckPromise: Promise<boolean> | null = null;
+let msiCheckResult: boolean | null = null;
+
+const checkMsiInstallation = (): Promise<boolean> => {
+  if (process.platform !== 'win32') return Promise.resolve(false);
+  if (msiCheckResult !== null) return Promise.resolve(msiCheckResult);
+
+  if (!msiCheckPromise) {
+    msiCheckPromise = new Promise((resolve) => {
+      exec(
+        'reg query "HKCU\\Software\\IYERIS" /v InstalledViaMsi 2>nul',
+        { encoding: 'utf8', windowsHide: true },
+        (error, stdout) => {
+          msiCheckResult = !error && stdout.includes('InstalledViaMsi') && stdout.includes('0x1');
+          resolve(msiCheckResult);
+        }
+      );
+    });
   }
+  return msiCheckPromise;
+};
+
+const isInstalledViaMsi = (): boolean => {
+  return msiCheckResult === true;
 };
 
 let cached7zipPath: string | null = null;
@@ -861,18 +872,18 @@ function setupApplicationMenu(): void {
 app.whenReady().then(async () => {
   setupApplicationMenu();
 
+  checkMsiInstallation();
+  const startupSettings = await loadSettings();
+
   shouldStartHidden = process.argv.includes('--hidden');
 
   if (!shouldStartHidden && process.windowsStore) {
     try {
       const loginItemSettings = app.getLoginItemSettings();
       console.log('[Startup] MS Store login item settings:', JSON.stringify(loginItemSettings));
-      if (loginItemSettings.wasOpenedAtLogin) {
-        const settings = await loadSettings();
-        if (settings.startOnLogin) {
-          shouldStartHidden = true;
-          console.log('[Startup] MS Store: Detected wasOpenedAtLogin, will start hidden');
-        }
+      if (loginItemSettings.wasOpenedAtLogin && startupSettings.startOnLogin) {
+        shouldStartHidden = true;
+        console.log('[Startup] MS Store: Detected wasOpenedAtLogin, will start hidden');
       }
     } catch (error) {
       console.error('[Startup] Error checking MS Store login settings:', error);
@@ -883,26 +894,20 @@ app.whenReady().then(async () => {
     try {
       const loginItemSettings = app.getLoginItemSettings();
       console.log('[Startup] macOS login item settings:', JSON.stringify(loginItemSettings));
-      if (loginItemSettings.wasOpenedAtLogin) {
-        const settings = await loadSettings();
-        if (settings.startOnLogin) {
-          shouldStartHidden = true;
-          console.log('[Startup] macOS: Detected wasOpenedAtLogin, will start hidden');
-        }
+      if (loginItemSettings.wasOpenedAtLogin && startupSettings.startOnLogin) {
+        shouldStartHidden = true;
+        console.log('[Startup] macOS: Detected wasOpenedAtLogin, will start hidden');
       }
     } catch (error) {
       console.error('[Startup] Error checking login item settings:', error);
     }
   }
-  
+
   console.log('[Startup] Starting with hidden mode:', shouldStartHidden);
 
-  if (shouldStartHidden) {
-    const settings = await loadSettings();
-    if (settings.minimizeToTray || settings.startOnLogin) {
-      console.log('[Startup] Creating tray before window for hidden start');
-      await createTrayForHiddenStart();
-    }
+  if (shouldStartHidden && (startupSettings.minimizeToTray || startupSettings.startOnLogin)) {
+    console.log('[Startup] Creating tray before window for hidden start');
+    await createTrayForHiddenStart();
   }
   
   createWindow(true); // Initial window
@@ -914,16 +919,14 @@ app.whenReady().then(async () => {
   mainWindow?.once('ready-to-show', () => {
     setTimeout(async () => {
       try {
-        const settings = await loadSettings();
+        applyLoginItemSettings(startupSettings);
 
-        applyLoginItemSettings(settings);
-
-        if (settings.enableIndexer) {
+        if (startupSettings.enableIndexer) {
           const indexerDelay = process.platform === 'win32' ? 2000 : 500;
           fileIndexer = new FileIndexer();
           const indexer = fileIndexer;
           setTimeout(() => {
-            indexer.initialize(settings.enableIndexer).catch(err =>
+            indexer.initialize(startupSettings.enableIndexer).catch(err =>
               console.error('[Indexer] Background initialization failed:', err)
             );
           }, indexerDelay);
@@ -1012,12 +1015,12 @@ app.whenReady().then(async () => {
             });
 
             // Check for updates on startup (skip store/enterprise installations or disabled)
-            if (!isRunningInFlatpak() && !process.mas && !process.windowsStore && !isInstalledViaMsi() && !isDev && settings.autoCheckUpdates !== false) {
+            if (!isRunningInFlatpak() && !process.mas && !process.windowsStore && !isInstalledViaMsi() && !isDev && startupSettings.autoCheckUpdates !== false) {
               console.log('[AutoUpdater] Checking for updates on startup...');
               autoUpdater.checkForUpdates().catch(err => {
                 console.error('[AutoUpdater] Startup check failed:', err);
               });
-            } else if (settings.autoCheckUpdates === false) {
+            } else if (startupSettings.autoCheckUpdates === false) {
               console.log('[AutoUpdater] Auto-check on startup disabled by user');
             }
           } catch (error) {
@@ -2107,7 +2110,7 @@ ipcMain.handle('check-for-updates', async (): Promise<UpdateCheckResponse> => {
     };
   }
 
-  if (isInstalledViaMsi()) {
+  if (await checkMsiInstallation()) {
     const currentVersion = app.getVersion();
     console.log('[AutoUpdater] MSI installation detected - auto-updates disabled');
     return {

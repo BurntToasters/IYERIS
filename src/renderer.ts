@@ -1860,20 +1860,18 @@ async function zoomReset() {
 }
 
 async function init() {
-  console.log('Init: Getting platform and store info...');
+  console.log('Init: Getting platform, store info, and settings...');
 
   const [platform, mas, flatpak, msStore] = await Promise.all([
     window.electronAPI.getPlatform(),
     window.electronAPI.isMas(),
     window.electronAPI.isFlatpak(),
-    window.electronAPI.isMsStore()
+    window.electronAPI.isMsStore(),
+    loadSettings()
   ]);
 
   platformOS = platform;
   console.log('Init: Platform is', platformOS);
-
-  console.log('Init: Loading settings...');
-  await loadSettings();
 
   console.log('Init: Setting up breadcrumb navigation...');
   setupBreadcrumbListeners();
@@ -1882,13 +1880,15 @@ async function init() {
   setupThemeEditorListeners();
 
   console.log('Init: Determining startup path...');
-  let startupPath = currentSettings.startupPath && currentSettings.startupPath.trim() !== ''
+  const startupPath = currentSettings.startupPath && currentSettings.startupPath.trim() !== ''
     ? currentSettings.startupPath
     : await window.electronAPI.getHomeDirectory();
   console.log('Init: Startup path is', startupPath);
 
-  console.log('Init: Navigating to startup path...');
+  console.log('Init: Starting navigation and drives in parallel...');
   navigateTo(startupPath);
+  loadDrives();
+  loadBookmarks();
 
   console.log('Init: Setting up event listeners...');
   setupEventListeners();
@@ -1937,16 +1937,8 @@ async function init() {
   }
 
   setTimeout(() => {
-    console.log('Init: Loading bookmarks...');
-    loadBookmarks();
-    
-    console.log('Init: Updating undo/redo state...');
     updateUndoRedoState();
-    
-    console.log('Init: Loading drives...');
-    loadDrives();
-    
-    console.log('Init: Getting zoom level...');
+
     window.electronAPI.getZoomLevel().then(zoomResult => {
       if (zoomResult.success && zoomResult.zoomLevel) {
         currentZoomLevel = zoomResult.zoomLevel;
