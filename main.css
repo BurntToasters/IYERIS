@@ -82,8 +82,8 @@ body::after {
 
 .glass-panel {
   background: rgba(30, 30, 30, 0.4);
-  backdrop-filter: blur(40px) saturate(180%);
-  -webkit-backdrop-filter: blur(40px) saturate(180%);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
   border: 1px solid rgba(255, 255, 255, 0.08);
   box-shadow: 
     0 4px 24px -1px rgba(0, 0, 0, 0.2),
@@ -507,8 +507,8 @@ body::after {
   left: 0;
   right: 0;
   background: rgba(30, 30, 30, 0.6);
-  backdrop-filter: blur(40px) saturate(180%);
-  -webkit-backdrop-filter: blur(40px) saturate(180%);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: var(--radius-medium);
   box-shadow: 
@@ -1096,8 +1096,8 @@ body::after {
 
 .modal.glass-panel {
   background: rgba(30, 30, 30, 0.88);
-  backdrop-filter: blur(50px) saturate(180%);
-  -webkit-backdrop-filter: blur(50px) saturate(180%);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
   border: 1px solid rgba(255, 255, 255, 0.12);
   box-shadow: 
     0 24px 64px rgba(0, 0, 0, 0.6),
@@ -1481,8 +1481,8 @@ body::after {
   display: flex;
   flex-direction: column;
   background: rgba(20, 20, 20, 0.98);
-  backdrop-filter: blur(60px) saturate(180%);
-  -webkit-backdrop-filter: blur(60px) saturate(180%);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
 }
 
 .settings-content {
@@ -2067,7 +2067,7 @@ body.no-transparency .file-view::before {
 
 .toast {
   background: rgba(28, 28, 28, 0.96);
-  backdrop-filter: blur(40px) saturate(180%);
+  backdrop-filter: blur(16px) saturate(180%);
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: var(--radius-large);
   padding: 14px 18px;
@@ -3362,7 +3362,7 @@ body.theme-dark .status-right span {
   max-width: 900px;
   max-height: 85vh;
   background: rgba(30, 30, 35, 0.98) !important;
-  backdrop-filter: blur(40px) !important;
+  backdrop-filter: blur(16px) !important;
   border-radius: 16px;
   overflow: hidden;
 }
@@ -3444,7 +3444,7 @@ body.theme-dark .status-right span {
   max-width: 800px;
   max-height: 85vh;
   background: rgba(30, 30, 35, 0.98) !important;
-  backdrop-filter: blur(40px) !important;
+  backdrop-filter: blur(16px) !important;
   border-radius: 16px;
   overflow: hidden;
 }
@@ -3549,8 +3549,8 @@ body.theme-dark .status-right span {
   gap: 8px;
   padding: 8px 14px;
   background: rgba(28, 28, 28, 0.98);
-  backdrop-filter: blur(40px) saturate(180%);
-  -webkit-backdrop-filter: blur(40px) saturate(180%);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 12px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6),
@@ -3634,8 +3634,8 @@ body.theme-dark .status-right span {
   width: 350px;
   max-height: 400px;
   background: rgba(30, 30, 30, 0.7);
-  backdrop-filter: blur(50px) saturate(180%);
-  -webkit-backdrop-filter: blur(50px) saturate(180%);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: var(--radius-large);
   box-shadow: 

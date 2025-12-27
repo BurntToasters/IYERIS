@@ -369,9 +369,10 @@ async function isFileHidden(filePath: string, fileName: string): Promise<boolean
 
   if (process.platform === 'win32') {
     try {
-      const execPromise = promisify(exec);
+      const { execFile } = await import('child_process');
+      const execFilePromise = promisify(execFile);
 
-      const { stdout } = await execPromise(`cmd /c attrib "${filePath}"`, {
+      const { stdout } = await execFilePromise('attrib', [filePath], {
         timeout: 500,
         windowsHide: true
       });
@@ -399,28 +400,31 @@ async function batchCheckHiddenFiles(dirPath: string, fileNames: string[]): Prom
   }
 
   try {
-    const execPromise = promisify(exec);
-    const { stdout } = await execPromise(`cmd /c attrib "${dirPath}\\*"`, {
-      timeout: 2000,
-      windowsHide: true
-    });
+    const { execFile } = await import('child_process');
+    const execFilePromise = promisify(execFile);
 
-    const lines = stdout.split('\n');
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed) continue;
+    const nonDotFiles = fileNames.filter(f => !f.startsWith('.'));
+    const batchSize = 50;
 
-      const isHidden = trimmed.charAt(0).toUpperCase() === 'H';
-      const pathMatch = trimmed.match(/[A-Z]\s+(.+)$/i);
-      if (pathMatch) {
-        const fullPath = pathMatch[1].trim();
-        const fileName = fullPath.split('\\').pop();
-        if (fileName) {
+    for (let i = 0; i < nonDotFiles.length; i += batchSize) {
+      const batch = nonDotFiles.slice(i, i + batchSize);
+      const checks = batch.map(async (fileName) => {
+        try {
+          const filePath = path.join(dirPath, fileName);
+          const { stdout } = await execFilePromise('attrib', [filePath], {
+            timeout: 500,
+            windowsHide: true
+          });
+          const isHidden = stdout.trim().charAt(0).toUpperCase() === 'H';
           results.set(fileName, isHidden);
+        } catch {
+          results.set(fileName, false);
         }
-      }
+      });
+      await Promise.all(checks);
     }
   } catch (error) {
+    console.error('Error checking hidden files:', error);
   }
 
   return results;
@@ -1348,6 +1352,9 @@ ipcMain.handle('create-file', async (_event: IpcMainInvokeEvent, parentPath: str
 });
 
 ipcMain.handle('get-item-properties', async (_event: IpcMainInvokeEvent, itemPath: string): Promise<PropertiesResponse> => {
+  if (!isPathSafe(itemPath)) {
+    return { success: false, error: 'Invalid path' };
+  }
   try {
     const stats = await fs.stat(itemPath);
     return {
@@ -1825,13 +1832,16 @@ ipcMain.handle('read-file-content', async (_event: IpcMainInvokeEvent, filePath:
     if (stats.size > maxSize) {
       const buffer = Buffer.alloc(maxSize);
       const fileHandle = await fs.open(filePath, 'r');
-      await fileHandle.read(buffer, 0, maxSize, 0);
-      await fileHandle.close();
-      return { 
-        success: true, 
-        content: buffer.toString('utf8'),
-        isTruncated: true
-      };
+      try {
+        await fileHandle.read(buffer, 0, maxSize, 0);
+        return {
+          success: true,
+          content: buffer.toString('utf8'),
+          isTruncated: true
+        };
+      } finally {
+        await fileHandle.close();
+      }
     }
     
     const content = await fs.readFile(filePath, 'utf8');

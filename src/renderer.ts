@@ -181,13 +181,16 @@ function addOperation(id: string, type: 'compress' | 'extract', name: string) {
   showOperationsPanel();
 }
 
+let renderOperationsTimeout: ReturnType<typeof setTimeout> | null = null;
+
 function updateOperation(id: string, current: number, total: number, currentFile: string) {
   const operation = activeOperations.get(id);
   if (operation && !operation.aborted) {
     operation.current = current;
     operation.total = total;
     operation.currentFile = currentFile;
-    renderOperations();
+    if (renderOperationsTimeout) clearTimeout(renderOperationsTimeout);
+    renderOperationsTimeout = setTimeout(renderOperations, 50);
   }
 }
 
@@ -2584,7 +2587,7 @@ function clearDirectoryHistory() {
   showToast('Directory history cleared', 'History', 'success');
 }
 
-async function navigateTo(path: string) {
+async function navigateTo(path: string, skipHistoryUpdate = false) {
   if (!path) return;
 
   if (isSearchMode) {
@@ -2598,21 +2601,21 @@ async function navigateTo(path: string) {
   if (loading) loading.style.display = 'flex';
   if (emptyState) emptyState.style.display = 'none';
   if (fileGrid) fileGrid.innerHTML = '';
-  
+
   const result = await window.electronAPI.getDirectoryContents(path);
-  
+
   if (result.success) {
     currentPath = path;
     if (addressInput) addressInput.value = path;
     updateBreadcrumb(path);
     addToDirectoryHistory(path);
-    
-    if (historyIndex === -1 || history[historyIndex] !== path) {
+
+    if (!skipHistoryUpdate && (historyIndex === -1 || history[historyIndex] !== path)) {
       history = history.slice(0, historyIndex + 1);
       history.push(path);
       historyIndex = history.length - 1;
     }
-    
+
     updateNavigationButtons();
 
     if (viewMode === 'column') {
@@ -3024,11 +3027,14 @@ async function handleDrop(sourcePaths: string[], destPath: string, operation: 'c
 }
 
 function toggleSelection(fileItem: HTMLElement) {
+  const itemPath = fileItem.dataset.path;
+  if (!itemPath) return;
+
   fileItem.classList.toggle('selected');
   if (fileItem.classList.contains('selected')) {
-    selectedItems.add(fileItem.dataset.path);
+    selectedItems.add(itemPath);
   } else {
-    selectedItems.delete(fileItem.dataset.path);
+    selectedItems.delete(itemPath);
   }
   updateStatusBar();
   
@@ -3172,7 +3178,7 @@ function goBack() {
   if (historyIndex > 0) {
     historyIndex--;
     const path = history[historyIndex];
-    navigateTo(path);
+    navigateTo(path, true);
   }
 }
 
@@ -3180,7 +3186,7 @@ function goForward() {
   if (historyIndex < history.length - 1) {
     historyIndex++;
     const path = history[historyIndex];
-    navigateTo(path);
+    navigateTo(path, true);
   }
 }
 
@@ -3251,67 +3257,65 @@ async function renderColumnView() {
     await new Promise(resolve => setTimeout(resolve, 10));
     if (currentRenderId !== columnViewRenderId) return;
   }
-  
+
   isRenderingColumnView = true;
-  
   const savedScrollLeft = columnView.scrollLeft;
-  
-  columnView.innerHTML = '';
 
-  columnPaths = [];
-  
-  if (!currentPath) {
-    await renderDriveColumn();
-    isRenderingColumnView = false;
-    return;
-  }
+  try {
+    columnView.innerHTML = '';
+    columnPaths = [];
 
-  const isWindows = currentPath.includes(':\\');
-  
-  if (isWindows) {
-    const parts = currentPath.split('\\').filter(Boolean);
-    for (let i = 0; i < parts.length; i++) {
-      if (i === 0) {
-        columnPaths.push(parts[0] + '\\');
-      } else {
-        columnPaths.push(parts.slice(0, i + 1).join('\\'));
+    if (!currentPath) {
+      await renderDriveColumn();
+      return;
+    }
+
+    const isWindows = currentPath.includes(':\\');
+
+    if (isWindows) {
+      const parts = currentPath.split('\\').filter(Boolean);
+      for (let i = 0; i < parts.length; i++) {
+        if (i === 0) {
+          columnPaths.push(parts[0] + '\\');
+        } else {
+          columnPaths.push(parts.slice(0, i + 1).join('\\'));
+        }
+      }
+    } else {
+      const parts = currentPath.split('/').filter(Boolean);
+      columnPaths.push('/');
+      for (let i = 0; i < parts.length; i++) {
+        columnPaths.push('/' + parts.slice(0, i + 1).join('/'));
       }
     }
-  } else {
-    const parts = currentPath.split('/').filter(Boolean);
-    columnPaths.push('/');
-    for (let i = 0; i < parts.length; i++) {
-      columnPaths.push('/' + parts.slice(0, i + 1).join('/'));
+
+    const panePromises = columnPaths.map((colPath, index) =>
+      renderColumn(colPath, index, currentRenderId)
+    );
+
+    const panes = await Promise.all(panePromises);
+
+    if (currentRenderId !== columnViewRenderId) {
+      return;
     }
-  }
 
-  const panePromises = columnPaths.map((colPath, index) => 
-    renderColumn(colPath, index, currentRenderId)
-  );
-  
-  const panes = await Promise.all(panePromises);
+    for (const pane of panes) {
+      if (pane) {
+        columnView.appendChild(pane);
+      }
+    }
 
-  if (currentRenderId !== columnViewRenderId) {
+    setTimeout(() => {
+      if (currentRenderId !== columnViewRenderId) return;
+      if (savedScrollLeft > 0) {
+        columnView.scrollLeft = savedScrollLeft;
+      } else {
+        columnView.scrollLeft = columnView.scrollWidth;
+      }
+    }, 50);
+  } finally {
     isRenderingColumnView = false;
-    return;
   }
-
-  for (const pane of panes) {
-    if (pane) {
-      columnView.appendChild(pane);
-    }
-  }
-  
-  isRenderingColumnView = false;
-
-  setTimeout(() => {
-    if (currentRenderId !== columnViewRenderId) return;
-    if (savedScrollLeft > 0) {
-      columnView.scrollLeft = savedScrollLeft;
-    } else {
-      columnView.scrollLeft = columnView.scrollWidth;
-    }
-  }, 50);
 }
 
 async function renderDriveColumn() {
@@ -4708,19 +4712,20 @@ async function downloadAndInstallUpdate() {
   dialogOk.style.display = 'none';
   dialogCancel.style.display = 'none';
   dialogModal.style.display = 'flex';
-  
-  window.electronAPI.onUpdateDownloadProgress((progress) => {
+
+  const cleanupProgress = window.electronAPI.onUpdateDownloadProgress((progress) => {
     const percent = progress.percent.toFixed(1);
     const transferred = formatFileSize(progress.transferred);
     const total = formatFileSize(progress.total);
     const speed = formatFileSize(progress.bytesPerSecond);
-    
+
     dialogContent.textContent = `Downloading update...\n\n${percent}% (${transferred} / ${total})\nSpeed: ${speed}/s`;
   });
-  
+
   try {
     const downloadResult = await window.electronAPI.downloadUpdate();
-    
+    cleanupProgress();
+
     if (!downloadResult.success) {
       dialogModal.style.display = 'none';
       showDialog(
@@ -4731,7 +4736,7 @@ async function downloadAndInstallUpdate() {
       );
       return;
     }
-    
+
     dialogIcon.innerHTML = twemojiImg(String.fromCodePoint(0x2705), 'twemoji-large');
     dialogTitle.textContent = 'Update Downloaded';
     dialogContent.textContent = 'The update has been downloaded successfully.\n\nThe application will restart to install the update.';
@@ -4767,6 +4772,7 @@ async function downloadAndInstallUpdate() {
       await window.electronAPI.installUpdate();
     }
   } catch (error) {
+    cleanupProgress();
     dialogModal.style.display = 'none';
     showDialog(
       'Update Error',
@@ -5042,16 +5048,22 @@ function clearSettingsChanged() {
   }
 }
 
+let settingsChangeTrackingInitialized = false;
+
 function initSettingsChangeTracking() {
+  if (settingsChangeTrackingInitialized) return;
+
   const settingsModal = document.getElementById('settings-modal');
   if (!settingsModal) return;
-  
+
   settingsModal.querySelectorAll('input, select').forEach(input => {
     input.addEventListener('change', markSettingsChanged);
     if (input.tagName === 'INPUT' && (input as HTMLInputElement).type === 'text') {
       input.addEventListener('input', markSettingsChanged);
     }
   });
+
+  settingsChangeTrackingInitialized = true;
 }
 
 // Support Window
