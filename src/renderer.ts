@@ -856,10 +856,6 @@ async function saveCustomTheme() {
   const themeSelect = document.getElementById('theme-select') as HTMLSelectElement;
   if (themeSelect) {
     themeSelect.value = 'custom';
-    const customOption = themeSelect.querySelector('option[value="custom"]');
-    if (customOption) {
-      customOption.textContent = tempCustomTheme.name;
-    }
   }
   
   // Apply theme
@@ -942,12 +938,21 @@ function setupThemeEditorListeners() {
     });
   });
   
-  document.getElementById('theme-select')?.addEventListener('change', (e) => {
-    const value = (e.target as HTMLSelectElement).value;
-    if (value === 'custom') {
-      showThemeEditor();
-    }
-  });
+  const themeSelectEl = document.getElementById('theme-select') as HTMLSelectElement;
+  if (themeSelectEl) {
+    themeSelectEl.addEventListener('change', (e) => {
+      const value = (e.target as HTMLSelectElement).value;
+      if (value === 'custom') {
+        showThemeEditor();
+      }
+    });
+
+    themeSelectEl.addEventListener('click', () => {
+      if (themeSelectEl.value === 'custom') {
+        showThemeEditor();
+      }
+    });
+  }
 
   document.getElementById('theme-editor-modal')?.addEventListener('click', (e) => {
     if ((e.target as HTMLElement).classList.contains('modal-overlay')) {
@@ -993,12 +998,6 @@ async function showSettingsModal() {
   
   if (themeSelect) {
     themeSelect.value = currentSettings.theme || 'default';
-    const customOption = themeSelect.querySelector('option[value="custom"]');
-    if (customOption && currentSettings.customTheme?.name) {
-      customOption.textContent = currentSettings.customTheme.name;
-    } else if (customOption) {
-      customOption.textContent = 'Custom...';
-    }
   }
   
   if (sortBySelect) {

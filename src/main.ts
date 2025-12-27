@@ -596,13 +596,34 @@ function createWindow(isInitialWindow: boolean = false): BrowserWindow {
   newWindow.loadFile(path.join(__dirname, '..', 'index.html'));
   const indexUrl = pathToFileURL(path.join(__dirname, '..', 'index.html')).toString();
 
-  newWindow.webContents.setWindowOpenHandler(() => {
-    console.warn('[Security] Blocked window.open');
+  const openExternalIfAllowed = (url: string): boolean => {
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol === 'http:' || parsed.protocol === 'https:' || parsed.protocol === 'mailto:') {
+        shell.openExternal(url).catch(error => {
+          console.error('[Security] Failed to open external URL:', error);
+        });
+        return true;
+      }
+    } catch {
+    }
+    return false;
+  };
+
+  newWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (openExternalIfAllowed(url)) {
+      return { action: 'deny' };
+    }
+    console.warn('[Security] Blocked window.open to:', url);
     return { action: 'deny' };
   });
 
   newWindow.webContents.on('will-navigate', (event, url) => {
     if (url !== indexUrl) {
+      if (openExternalIfAllowed(url)) {
+        event.preventDefault();
+        return;
+      }
       console.warn('[Security] Blocked navigation to:', url);
       event.preventDefault();
     }
@@ -610,6 +631,10 @@ function createWindow(isInitialWindow: boolean = false): BrowserWindow {
 
   newWindow.webContents.on('will-redirect', (event, url) => {
     if (url !== indexUrl) {
+      if (openExternalIfAllowed(url)) {
+        event.preventDefault();
+        return;
+      }
       console.warn('[Security] Blocked redirect to:', url);
       event.preventDefault();
     }
