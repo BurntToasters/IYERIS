@@ -117,10 +117,61 @@
             <div class="search-bar glass-input">
               <span class="search-icon"><img src="assets/twemoji/1f50d.svg" class="twemoji" alt="🔍" draggable="false" /></span>
               <input type="text" id="search-input" placeholder="Search files...">
+              <button class="search-filter-toggle" id="search-filter-toggle" title="Search Filters">
+                <svg width="14" height="14" viewBox="0 0 16 16">
+                  <path d="M1 2 L6 8 L6 14 L10 12 L10 8 L15 2 Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+                </svg>
+              </button>
               <button class="search-scope-toggle" id="search-scope-toggle" title="Toggle Global Search">
                 <img src="assets/twemoji/1f4c1.svg" class="twemoji" alt="📁" draggable="false" />
               </button>
               <button class="search-close" id="search-close">✕</button>
+            </div>
+            <div class="search-filters-panel" id="search-filters-panel" style="display: none;">
+              <div class="search-filter-group">
+                <label>Type</label>
+                <select id="search-filter-type">
+                  <option value="all">All Types</option>
+                  <option value="folder">Folders Only</option>
+                  <option value="image">Images</option>
+                  <option value="video">Videos</option>
+                  <option value="audio">Audio</option>
+                  <option value="document">Documents</option>
+                  <option value="archive">Archives</option>
+                </select>
+              </div>
+              <div class="search-filter-group">
+                <label>Size</label>
+                <div class="search-filter-size-inputs">
+                  <input type="number" id="search-filter-min-size" placeholder="Min" min="0">
+                  <select id="search-filter-size-unit-min">
+                    <option value="1">B</option>
+                    <option value="1024" selected>KB</option>
+                    <option value="1048576">MB</option>
+                    <option value="1073741824">GB</option>
+                  </select>
+                  <span>to</span>
+                  <input type="number" id="search-filter-max-size" placeholder="Max" min="0">
+                  <select id="search-filter-size-unit-max">
+                    <option value="1">B</option>
+                    <option value="1024">KB</option>
+                    <option value="1048576" selected>MB</option>
+                    <option value="1073741824">GB</option>
+                  </select>
+                </div>
+              </div>
+              <div class="search-filter-group">
+                <label>Modified Date</label>
+                <div class="search-filter-date-inputs">
+                  <input type="date" id="search-filter-date-from" placeholder="From">
+                  <span>to</span>
+                  <input type="date" id="search-filter-date-to" placeholder="To">
+                </div>
+              </div>
+              <div class="search-filter-actions">
+                <button id="search-filter-clear" class="search-filter-btn secondary">Clear</button>
+                <button id="search-filter-apply" class="search-filter-btn primary">Apply</button>
+              </div>
             </div>
             <div class="history-dropdown" id="search-history-dropdown" style="display: none;"></div>
           </div>
@@ -567,7 +618,7 @@
               </div>
               <div class="about-info">
                 <h2 class="about-title">IYERIS</h2>
-                <p class="about-version" id="about-version-display">Version 0.9.0-beta.1</p>
+                <p class="about-version" id="about-version-display">Version 0.9.0-beta.2</p>
                 <p class="about-tagline">A modern, cross-platform file explorer</p>
               </div>
             </div>
@@ -790,7 +841,7 @@
     <div class="status-right">
       <span id="status-disk-space"></span>
       <span class="status-separator"></span>
-      <span class="status-version" id="status-version" title="Version 0.9.0-beta.1">v0.9.0-beta.1</span>
+      <span class="status-version" id="status-version" title="Version 0.9.0-beta.2">v0.9.0-beta.2</span>
       <span class="status-separator"></span>
       <button class="status-support-btn" id="heart-button" title="Support this project!">
         <img src="assets/twemoji/2764.svg" class="twemoji" alt="❤️" draggable="false" />

@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { ElectronAPI, Settings, UpdateDownloadProgress, FolderSizeProgress, ChecksumResult } from './types';
+import type { ElectronAPI, Settings, UpdateDownloadProgress, FolderSizeProgress, ChecksumResult, SearchFilters } from './types';
 
 const electronAPI: ElectronAPI = {
   getDirectoryContents: (dirPath: string) => ipcRenderer.invoke('get-directory-contents', dirPath),
@@ -47,7 +47,7 @@ const electronAPI: ElectronAPI = {
   
   copyItems: (sourcePaths: string[], destPath: string) => ipcRenderer.invoke('copy-items', sourcePaths, destPath),
   moveItems: (sourcePaths: string[], destPath: string) => ipcRenderer.invoke('move-items', sourcePaths, destPath),
-  searchFiles: (dirPath: string, query: string) => ipcRenderer.invoke('search-files', dirPath, query),
+  searchFiles: (dirPath: string, query: string, filters?: SearchFilters) => ipcRenderer.invoke('search-files', dirPath, query, filters),
   openTerminal: (dirPath: string) => ipcRenderer.invoke('open-terminal', dirPath),
   getDiskSpace: (drivePath: string) => ipcRenderer.invoke('get-disk-space', drivePath),
   restartAsAdmin: () => ipcRenderer.invoke('restart-as-admin'),

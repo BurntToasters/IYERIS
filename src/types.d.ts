@@ -43,6 +43,14 @@ export interface FileItem {
   isHidden: boolean;
 }
 
+export interface SearchFilters {
+  fileType?: string;
+  minSize?: number;
+  maxSize?: number;
+  dateFrom?: string;
+  dateTo?: string;
+}
+
 export interface ItemProperties {
   path: string;
   name: string;
@@ -223,7 +231,7 @@ export interface ElectronAPI {
   
   copyItems: (sourcePaths: string[], destPath: string) => Promise<ApiResponse>;
   moveItems: (sourcePaths: string[], destPath: string) => Promise<ApiResponse>;
-  searchFiles: (dirPath: string, query: string) => Promise<SearchResponse>;
+  searchFiles: (dirPath: string, query: string, filters?: SearchFilters) => Promise<SearchResponse>;
   getDiskSpace: (drivePath: string) => Promise<{success: boolean; total?: number; free?: number; error?: string}>;
   restartAsAdmin: () => Promise<ApiResponse>;
   openTerminal: (dirPath: string) => Promise<ApiResponse>;

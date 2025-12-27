@@ -968,7 +968,7 @@ app.whenReady().then(async () => {
               safeSendToWindow(mainWindow, 'update-checking');
             });
 
-            autoUpdater.on('update-available', (info) => {
+            autoUpdater.on('update-available', (info: { version: string }) => {
               console.log('[AutoUpdater] Update available:', info.version);
 
               const updateIsBeta = /-(beta|alpha|rc)/i.test(info.version);
@@ -977,29 +977,28 @@ app.whenReady().then(async () => {
                 safeSendToWindow(mainWindow, 'update-not-available', { version: currentVersion });
                 return;
               }
-              
-              // Prevent downgrade
+
               const comparison = compareVersions(info.version, currentVersion);
               if (comparison <= 0) {
                 console.log(`[AutoUpdater] Ignoring update ${info.version} - current version ${currentVersion} is newer or equal`);
                 safeSendToWindow(mainWindow, 'update-not-available', { version: currentVersion });
                 return;
               }
-              
+
               safeSendToWindow(mainWindow, 'update-available', info);
             });
 
-            autoUpdater.on('update-not-available', (info) => {
+            autoUpdater.on('update-not-available', (info: { version: string }) => {
               console.log('[AutoUpdater] Update not available. Current version:', info.version);
               safeSendToWindow(mainWindow, 'update-not-available', info);
             });
 
-            autoUpdater.on('error', (err) => {
+            autoUpdater.on('error', (err: Error) => {
               console.error('[AutoUpdater] Error:', err);
               safeSendToWindow(mainWindow, 'update-error', err.message);
             });
 
-            autoUpdater.on('download-progress', (progressObj) => {
+            autoUpdater.on('download-progress', (progressObj: { percent: number; bytesPerSecond: number; transferred: number; total: number }) => {
               console.log(`[AutoUpdater] Download progress: ${progressObj.percent.toFixed(2)}%`);
               safeSendToWindow(mainWindow, 'update-download-progress', {
                 percent: progressObj.percent,
@@ -1009,15 +1008,14 @@ app.whenReady().then(async () => {
               });
             });
 
-            autoUpdater.on('update-downloaded', (info) => {
+            autoUpdater.on('update-downloaded', (info: { version: string }) => {
               console.log('[AutoUpdater] Update downloaded:', info.version);
               safeSendToWindow(mainWindow, 'update-downloaded', info);
             });
 
-            // Check for updates on startup (skip store/enterprise installations or disabled)
             if (!isRunningInFlatpak() && !process.mas && !process.windowsStore && !isInstalledViaMsi() && !isDev && startupSettings.autoCheckUpdates !== false) {
               console.log('[AutoUpdater] Checking for updates on startup...');
-              autoUpdater.checkForUpdates().catch(err => {
+              autoUpdater.checkForUpdates().catch((err: Error) => {
                 console.error('[AutoUpdater] Startup check failed:', err);
               });
             } else if (startupSettings.autoCheckUpdates === false) {
@@ -1698,7 +1696,15 @@ ipcMain.handle('move-items', async (_event: IpcMainInvokeEvent, sourcePaths: str
   }
 });
 
-ipcMain.handle('search-files', async (_event: IpcMainInvokeEvent, dirPath: string, query: string): Promise<{ success: boolean; results?: FileItem[]; error?: string }> => {
+interface SearchFilters {
+  fileType?: string;
+  minSize?: number;
+  maxSize?: number;
+  dateFrom?: string;
+  dateTo?: string;
+}
+
+ipcMain.handle('search-files', async (_event: IpcMainInvokeEvent, dirPath: string, query: string, filters?: SearchFilters): Promise<{ success: boolean; results?: FileItem[]; error?: string }> => {
   try {
     if (!isPathSafe(dirPath)) {
       return { success: false, error: 'Invalid directory path' };
@@ -1707,50 +1713,88 @@ ipcMain.handle('search-files', async (_event: IpcMainInvokeEvent, dirPath: strin
     const searchQuery = query.toLowerCase();
     const MAX_SEARCH_DEPTH = 10;
     const MAX_RESULTS = 100;
-    
+
+    const dateFrom = filters?.dateFrom ? new Date(filters.dateFrom) : null;
+    const dateTo = filters?.dateTo ? new Date(filters.dateTo) : null;
+    if (dateTo) dateTo.setHours(23, 59, 59, 999);
+
+    const fileTypeFilter = filters?.fileType?.toLowerCase();
+    const minSize = filters?.minSize;
+    const maxSize = filters?.maxSize;
+
+    function matchesFilters(itemName: string, isDir: boolean, stats: { size: number; mtime: Date }): boolean {
+      if (fileTypeFilter && fileTypeFilter !== 'all') {
+        if (fileTypeFilter === 'folder') {
+          if (!isDir) return false;
+        } else {
+          if (isDir) return false;
+          const ext = path.extname(itemName).toLowerCase().slice(1);
+          if (fileTypeFilter === 'image' && !['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg', 'ico'].includes(ext)) return false;
+          if (fileTypeFilter === 'video' && !['mp4', 'mkv', 'avi', 'mov', 'wmv', 'webm', 'flv'].includes(ext)) return false;
+          if (fileTypeFilter === 'audio' && !['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a', 'wma'].includes(ext)) return false;
+          if (fileTypeFilter === 'document' && !['pdf', 'doc', 'docx', 'txt', 'rtf', 'odt', 'xls', 'xlsx', 'ppt', 'pptx'].includes(ext)) return false;
+          if (fileTypeFilter === 'archive' && !['zip', '7z', 'rar', 'tar', 'gz', 'bz2', 'xz'].includes(ext)) return false;
+        }
+      }
+
+      if (!isDir) {
+        if (minSize !== undefined && stats.size < minSize) return false;
+        if (maxSize !== undefined && stats.size > maxSize) return false;
+      }
+
+      if (dateFrom && stats.mtime < dateFrom) return false;
+      if (dateTo && stats.mtime > dateTo) return false;
+
+      return true;
+    }
+
     async function searchDirectory(currentPath: string, depth: number = 0): Promise<void> {
       if (depth >= MAX_SEARCH_DEPTH || results.length >= MAX_RESULTS) {
         return;
       }
-      
+
       try {
         const items = await fs.readdir(currentPath, { withFileTypes: true });
-        
+
         for (const item of items) {
           if (results.length >= MAX_RESULTS) {
             return;
           }
-          
+
           const fullPath = path.join(currentPath, item.name);
-          
+
           if (item.name.toLowerCase().includes(searchQuery)) {
             try {
               const stats = await fs.stat(fullPath);
-              const isHidden = await isFileHiddenCached(fullPath, item.name);
-              results.push({
-                name: item.name,
-                path: fullPath,
-                isDirectory: item.isDirectory(),
-                isFile: item.isFile(),
-                size: stats.size,
-                modified: stats.mtime,
-                isHidden
-              });
-            } catch (err) {
+              const isDir = item.isDirectory();
+
+              if (matchesFilters(item.name, isDir, stats)) {
+                const isHidden = await isFileHiddenCached(fullPath, item.name);
+                results.push({
+                  name: item.name,
+                  path: fullPath,
+                  isDirectory: isDir,
+                  isFile: item.isFile(),
+                  size: stats.size,
+                  modified: stats.mtime,
+                  isHidden
+                });
+              }
+            } catch {
             }
           }
-          
+
           if (item.isDirectory() && results.length < MAX_RESULTS) {
             try {
               await searchDirectory(fullPath, depth + 1);
-            } catch (err) {
+            } catch {
             }
           }
         }
-      } catch (err) {
+      } catch {
       }
     }
-    
+
     await searchDirectory(dirPath, 0);
     return { success: true, results };
   } catch (error) {
@@ -1786,13 +1830,17 @@ ipcMain.handle('get-disk-space', async (_event: IpcMainInvokeEvent, drivePath: s
         let stdout = '';
         let stderr = '';
 
-        psProcess.stdout.on('data', (data) => {
-          stdout += data.toString();
-        });
+        if (psProcess.stdout) {
+          psProcess.stdout.on('data', (data: Buffer) => {
+            stdout += data.toString();
+          });
+        }
 
-        psProcess.stderr.on('data', (data) => {
-          stderr += data.toString();
-        });
+        if (psProcess.stderr) {
+          psProcess.stderr.on('data', (data: Buffer) => {
+            stderr += data.toString();
+          });
+        }
 
         psProcess.on('close', (code) => {
           if (timedOut()) {
@@ -1829,13 +1877,17 @@ ipcMain.handle('get-disk-space', async (_event: IpcMainInvokeEvent, drivePath: s
         let stdout = '';
         let stderr = '';
 
-        dfProcess.stdout.on('data', (data) => {
-          stdout += data.toString();
-        });
+        if (dfProcess.stdout) {
+          dfProcess.stdout.on('data', (data: Buffer) => {
+            stdout += data.toString();
+          });
+        }
 
-        dfProcess.stderr.on('data', (data) => {
-          stderr += data.toString();
-        });
+        if (dfProcess.stderr) {
+          dfProcess.stderr.on('data', (data: Buffer) => {
+            stderr += data.toString();
+          });
+        }
 
         dfProcess.on('close', (code) => {
           if (timedOut()) {
@@ -2241,7 +2293,11 @@ ipcMain.handle('undo-action', async (_event: IpcMainInvokeEvent): Promise<ApiRes
       case 'move':
         const moveSourcePaths = action.data.sourcePaths;
         const originalParent = action.data.originalParent;
-        
+
+        if (!originalParent) {
+          return { success: false, error: 'Cannot undo: Original parent path not available' };
+        }
+
         for (const source of moveSourcePaths) {
           try {
             await fs.access(source);
@@ -2250,7 +2306,7 @@ ipcMain.handle('undo-action', async (_event: IpcMainInvokeEvent): Promise<ApiRes
             return { success: false, error: 'Cannot undo: One or more files no longer exist' };
           }
         }
-        
+
         for (const source of moveSourcePaths) {
           const fileName = path.basename(source);
           const originalPath = path.join(originalParent, fileName);
@@ -2308,15 +2364,19 @@ ipcMain.handle('redo-action', async (_event: IpcMainInvokeEvent): Promise<ApiRes
         return { success: true };
       
       case 'move':
-        const originalParent = action.data.originalParent;
-        const destPath = action.data.destPath;
+        const redoOriginalParent = action.data.originalParent;
+        const redoDestPath = action.data.destPath;
         const newMovedPaths: string[] = [];
         const filesToMove = action.data.originalPaths || action.data.sourcePaths;
-        
+
+        if (!redoOriginalParent) {
+          return { success: false, error: 'Cannot redo: Original parent path not available' };
+        }
+
         for (const originalPath of filesToMove) {
           const fileName = path.basename(originalPath);
-          const currentPath = path.join(originalParent, fileName);
-          const newPath = path.join(destPath, fileName);
+          const currentPath = path.join(redoOriginalParent, fileName);
+          const newPath = path.join(redoDestPath, fileName);
           try {
             await fs.access(currentPath);
           } catch {
@@ -2459,7 +2519,7 @@ ipcMain.handle('compress-files', async (_event: IpcMainInvokeEvent, sourcePaths:
 
         let fileCount = 0;
         
-        tarProcess.on('progress', (progress) => {
+        tarProcess.on('progress', (progress: { file?: string }) => {
           fileCount++;
           if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
             mainWindow.webContents.send('compress-progress', {
@@ -2507,18 +2567,18 @@ ipcMain.handle('compress-files', async (_event: IpcMainInvokeEvent, sourcePaths:
             resolve({ success: true });
           });
 
-          gzipProcess.on('error', async (error) => {
+          gzipProcess.on('error', async (error: { message?: string; level?: string }) => {
             console.error('[Compress] Gzip error:', error);
 
             try {
               await fs.unlink(tarPath);
-            } catch (err) {
+            } catch {
             }
             try {
               await fs.unlink(outputPath);
-            } catch (err) {
+            } catch {
             }
-            
+
             if (operationId) {
               activeArchiveProcesses.delete(operationId);
             }
@@ -2533,14 +2593,14 @@ ipcMain.handle('compress-files', async (_event: IpcMainInvokeEvent, sourcePaths:
           });
         });
 
-        tarProcess.on('error', async (error) => {
+        tarProcess.on('error', async (error: { message?: string; level?: string }) => {
           console.error('[Compress] Tar error:', error);
 
           try {
             await fs.unlink(tarPath);
-          } catch (err) {
+          } catch {
           }
-          
+
           if (operationId) {
             activeArchiveProcesses.delete(operationId);
           }
@@ -2551,7 +2611,7 @@ ipcMain.handle('compress-files', async (_event: IpcMainInvokeEvent, sourcePaths:
             const gzipProcess = Seven.add(outputPath, [tarPath], {
               $bin: sevenZipPath
             });
-            
+
             if (operationId) {
               activeArchiveProcesses.set(operationId, gzipProcess);
             }
@@ -2559,7 +2619,7 @@ ipcMain.handle('compress-files', async (_event: IpcMainInvokeEvent, sourcePaths:
             gzipProcess.on('end', async () => {
               try {
                 await fs.unlink(tarPath);
-              } catch (err) {
+              } catch {
               }
               if (operationId) {
                 activeArchiveProcesses.delete(operationId);
@@ -2567,11 +2627,11 @@ ipcMain.handle('compress-files', async (_event: IpcMainInvokeEvent, sourcePaths:
               resolve({ success: true });
             });
 
-            gzipProcess.on('error', async (gzipError) => {
+            gzipProcess.on('error', async (gzipError: { message?: string }) => {
               try {
                 await fs.unlink(tarPath);
                 await fs.unlink(outputPath);
-              } catch (err) {
+              } catch {
               }
               if (operationId) {
                 activeArchiveProcesses.delete(operationId);
@@ -2604,7 +2664,7 @@ ipcMain.handle('compress-files', async (_event: IpcMainInvokeEvent, sourcePaths:
 
       let fileCount = 0;
       
-      seven.on('progress', (progress) => {
+      seven.on('progress', (progress: { file?: string }) => {
         fileCount++;
         if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
           mainWindow.webContents.send('compress-progress', {
@@ -2624,7 +2684,7 @@ ipcMain.handle('compress-files', async (_event: IpcMainInvokeEvent, sourcePaths:
         resolve({ success: true });
       });
 
-      seven.on('error', (error) => {
+      seven.on('error', (error: { message?: string; level?: string }) => {
         console.error('[Compress] 7zip error:', error);
         if (operationId) {
           activeArchiveProcesses.delete(operationId);
@@ -2682,7 +2742,7 @@ ipcMain.handle('extract-archive', async (_event: IpcMainInvokeEvent, archivePath
 
       let fileCount = 0;
       
-      seven.on('progress', (progress) => {
+      seven.on('progress', (progress: { file?: string }) => {
         fileCount++;
         if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
           mainWindow.webContents.send('extract-progress', {
@@ -2702,12 +2762,12 @@ ipcMain.handle('extract-archive', async (_event: IpcMainInvokeEvent, archivePath
         resolve({ success: true });
       });
 
-      seven.on('error', (error) => {
+      seven.on('error', (error: { message?: string }) => {
         console.error('[Extract] 7zip error:', error);
         if (operationId) {
           activeArchiveProcesses.delete(operationId);
         }
-        reject({ success: false, error: error.message });
+        reject({ success: false, error: error.message || 'Extraction failed' });
       });
     });
   } catch (error) {

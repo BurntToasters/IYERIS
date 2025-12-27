@@ -108,6 +108,16 @@ function debouncedSearch(delay: number = SEARCH_DEBOUNCE_MS) {
   }, delay);
 }
 
+interface SearchFilters {
+  fileType?: string;
+  minSize?: number;
+  maxSize?: number;
+  dateFrom?: string;
+  dateTo?: string;
+}
+
+let currentSearchFilters: SearchFilters = {};
+
 type ViewMode = 'grid' | 'list' | 'column';
 
 // Breadcrumb state
@@ -440,6 +450,17 @@ const searchInput = document.getElementById('search-input') as HTMLInputElement;
 const searchBarWrapper = document.querySelector('.search-bar-wrapper') as HTMLElement;
 const searchClose = document.getElementById('search-close') as HTMLButtonElement;
 const searchScopeToggle = document.getElementById('search-scope-toggle') as HTMLButtonElement;
+const searchFilterToggle = document.getElementById('search-filter-toggle') as HTMLButtonElement;
+const searchFiltersPanel = document.getElementById('search-filters-panel') as HTMLElement;
+const searchFilterType = document.getElementById('search-filter-type') as HTMLSelectElement;
+const searchFilterMinSize = document.getElementById('search-filter-min-size') as HTMLInputElement;
+const searchFilterMaxSize = document.getElementById('search-filter-max-size') as HTMLInputElement;
+const searchFilterSizeUnitMin = document.getElementById('search-filter-size-unit-min') as HTMLSelectElement;
+const searchFilterSizeUnitMax = document.getElementById('search-filter-size-unit-max') as HTMLSelectElement;
+const searchFilterDateFrom = document.getElementById('search-filter-date-from') as HTMLInputElement;
+const searchFilterDateTo = document.getElementById('search-filter-date-to') as HTMLInputElement;
+const searchFilterClear = document.getElementById('search-filter-clear') as HTMLButtonElement;
+const searchFilterApply = document.getElementById('search-filter-apply') as HTMLButtonElement;
 const sortBtn = document.getElementById('sort-btn') as HTMLButtonElement;
 const bookmarksList = document.getElementById('bookmarks-list') as HTMLElement;
 const bookmarkAddBtn = document.getElementById('bookmark-add-btn') as HTMLButtonElement;
@@ -580,7 +601,7 @@ function showToast(message: string, title: string = '', type: 'success' | 'error
 async function loadSettings(): Promise<void> {
   const result = await window.electronAPI.getSettings();
   if (result.success && result.settings) {
-    currentSettings = {
+    const defaults: Settings = {
       transparency: true,
       theme: 'default',
       sortBy: 'name',
@@ -590,10 +611,17 @@ async function loadSettings(): Promise<void> {
       showDangerousOptions: false,
       startupPath: '',
       showHiddenFiles: false,
+      enableSearchHistory: true,
+      searchHistory: [],
+      directoryHistory: [],
+      enableIndexer: true,
+      minimizeToTray: false,
+      startOnLogin: false,
+      autoCheckUpdates: false,
       launchCount: 0,
-      supportPopupDismissed: false,
-      ...result.settings
+      supportPopupDismissed: false
     };
+    currentSettings = { ...defaults, ...result.settings };
     applySettings(currentSettings);
     const newLaunchCount = (currentSettings.launchCount || 0) + 1;
     currentSettings.launchCount = newLaunchCount;
@@ -1506,6 +1534,11 @@ function closeSearch() {
   searchScopeToggle.classList.remove('global');
   hideSearchHistoryDropdown();
   updateSearchPlaceholder();
+
+  searchFiltersPanel.style.display = 'none';
+  searchFilterToggle.classList.remove('active');
+  currentSearchFilters = {};
+
   if (currentPath) {
     navigateTo(currentPath);
   }
@@ -1589,8 +1622,18 @@ async function performSearch() {
       }
     }
   } else {
-    result = await window.electronAPI.searchFiles(currentPath, query);
-    
+    const hasFilters = currentSearchFilters.fileType ||
+                       currentSearchFilters.minSize !== undefined ||
+                       currentSearchFilters.maxSize !== undefined ||
+                       currentSearchFilters.dateFrom ||
+                       currentSearchFilters.dateTo;
+
+    result = await window.electronAPI.searchFiles(
+      currentPath,
+      query,
+      hasFilters ? currentSearchFilters : undefined
+    );
+
     if (result.success && result.results) {
       allFiles = result.results;
       renderFiles(result.results);
@@ -1651,7 +1694,7 @@ async function pasteFromClipboard() {
 function updateCutVisuals() {
   document.querySelectorAll('.file-item').forEach(item => {
     const itemPath = item.getAttribute('data-path');
-    if (clipboard && clipboard.operation === 'cut' && clipboard.paths.includes(itemPath)) {
+    if (itemPath && clipboard && clipboard.operation === 'cut' && clipboard.paths.includes(itemPath)) {
       item.classList.add('cut');
     } else {
       item.classList.remove('cut');
@@ -2056,6 +2099,65 @@ function setupEventListeners() {
   searchBtn?.addEventListener('click', toggleSearch);
   searchClose?.addEventListener('click', closeSearch);
   searchScopeToggle?.addEventListener('click', toggleSearchScope);
+
+  searchFilterToggle?.addEventListener('click', () => {
+    if (searchFiltersPanel.style.display === 'none' || !searchFiltersPanel.style.display) {
+      searchFiltersPanel.style.display = 'block';
+      searchFilterToggle.classList.add('active');
+    } else {
+      searchFiltersPanel.style.display = 'none';
+      searchFilterToggle.classList.remove('active');
+    }
+  });
+
+  searchFilterApply?.addEventListener('click', () => {
+    const fileType = searchFilterType.value;
+    const minSizeValue = searchFilterMinSize.value ? parseFloat(searchFilterMinSize.value) : undefined;
+    const maxSizeValue = searchFilterMaxSize.value ? parseFloat(searchFilterMaxSize.value) : undefined;
+    const minSizeUnit = parseFloat(searchFilterSizeUnitMin.value);
+    const maxSizeUnit = parseFloat(searchFilterSizeUnitMax.value);
+
+    currentSearchFilters = {
+      fileType: fileType !== 'all' ? fileType : undefined,
+      minSize: minSizeValue !== undefined ? minSizeValue * minSizeUnit : undefined,
+      maxSize: maxSizeValue !== undefined ? maxSizeValue * maxSizeUnit : undefined,
+      dateFrom: searchFilterDateFrom.value || undefined,
+      dateTo: searchFilterDateTo.value || undefined
+    };
+
+    const hasActiveFilters = currentSearchFilters.fileType ||
+                             currentSearchFilters.minSize !== undefined ||
+                             currentSearchFilters.maxSize !== undefined ||
+                             currentSearchFilters.dateFrom ||
+                             currentSearchFilters.dateTo;
+
+    if (hasActiveFilters) {
+      searchFilterToggle.classList.add('active');
+    }
+
+    searchFiltersPanel.style.display = 'none';
+
+    if (searchInput.value.trim()) {
+      performSearch();
+    }
+  });
+
+  searchFilterClear?.addEventListener('click', () => {
+    searchFilterType.value = 'all';
+    searchFilterMinSize.value = '';
+    searchFilterMaxSize.value = '';
+    searchFilterSizeUnitMin.value = '1024';
+    searchFilterSizeUnitMax.value = '1048576';
+    searchFilterDateFrom.value = '';
+    searchFilterDateTo.value = '';
+    currentSearchFilters = {};
+    searchFilterToggle.classList.remove('active');
+
+    if (searchInput.value.trim()) {
+      performSearch();
+    }
+  });
+
   sortBtn?.addEventListener('click', showSortMenu);
   bookmarkAddBtn?.addEventListener('click', addBookmark);
   
@@ -2086,8 +2188,8 @@ function setupEventListeners() {
     const dialogModal = document.getElementById('dialog-modal');
     const licensesModal = document.getElementById('licenses-modal');
     const quicklookModal = document.getElementById('quicklook-modal');
-    
-    return (
+
+    return !!(
       (settingsModal && settingsModal.style.display === 'flex') ||
       (shortcutsModal && shortcutsModal.style.display === 'flex') ||
       (dialogModal && dialogModal.style.display === 'flex') ||
@@ -2256,7 +2358,7 @@ function setupEventListeners() {
         navigateTo(homeDir);
       } else if (action === 'browse') {
         const result = await window.electronAPI.selectFolder();
-        if (result.success) {
+        if (result.success && result.path) {
           navigateTo(result.path);
         }
       } else if (action === 'trash') {
@@ -2320,12 +2422,14 @@ function setupEventListeners() {
     fileGrid.addEventListener('dragover', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      
+
+      if (!e.dataTransfer) return;
+
       if (!currentPath) {
         e.dataTransfer.dropEffect = 'none';
         return;
       }
-      
+
       e.dataTransfer.dropEffect = e.ctrlKey ? 'copy' : 'move';
       fileGrid.classList.add('drag-over');
     });
@@ -2352,18 +2456,17 @@ function setupEventListeners() {
       }
       
       let draggedPaths: string[] = [];
-      
-      // Try to get paths from our app's dataTransfer
+
+      if (!e.dataTransfer) return;
+
       try {
         const textData = e.dataTransfer.getData('text/plain');
         if (textData) {
           draggedPaths = JSON.parse(textData);
         }
       } catch {
-        // Not valid JSON, ignore
       }
-      
-      // If empty, check for files from external drag (Windows Explorer or cross-window native drag)
+
       if (draggedPaths.length === 0 && e.dataTransfer.files.length > 0) {
         draggedPaths = Array.from(e.dataTransfer.files).map(f => (f as File & { path: string }).path);
       }
@@ -2612,12 +2715,12 @@ async function navigateTo(path: string, skipHistoryUpdate = false) {
     if (viewMode === 'column') {
       await renderColumnView();
     } else {
-      renderFiles(result.contents);
+      renderFiles(result.contents || []);
     }
     updateDiskSpace();
   } else {
     console.error('Error loading directory:', result.error);
-    showToast(result.error, 'Error Loading Directory', 'error');
+    showToast(result.error || 'Unknown error', 'Error Loading Directory', 'error');
   }
   
   if (loading) loading.style.display = 'none';
@@ -2640,6 +2743,15 @@ function renderFiles(items: FileItem[]) {
     }
     filePathMap.set(item.path, item);
   });
+
+  const LARGE_FOLDER_THRESHOLD = 10000;
+  if (items.length >= LARGE_FOLDER_THRESHOLD) {
+    showToast(
+      `This folder contains ${items.length.toLocaleString()} items. Performance may be affected.`,
+      'Large Folder',
+      'warning'
+    );
+  }
 
   const visibleItems = currentSettings.showHiddenFiles
     ? items
@@ -2816,12 +2928,14 @@ function createFileItem(item: FileItem): HTMLElement {
     }
     
     const selectedPaths = Array.from(selectedItems);
+
+    if (!e.dataTransfer) return;
+
     e.dataTransfer.effectAllowed = 'copyMove';
     e.dataTransfer.setData('text/plain', JSON.stringify(selectedPaths));
-    
-    // Store in main
+
     window.electronAPI.setDragData(selectedPaths);
-    
+
     fileItem.classList.add('dragging');
 
     if (selectedPaths.length > 1) {
@@ -2852,11 +2966,13 @@ function createFileItem(item: FileItem): HTMLElement {
       e.preventDefault();
       e.stopPropagation();
 
+      if (!e.dataTransfer) return;
+
       if (!e.dataTransfer.types.includes('text/plain')) {
         e.dataTransfer.dropEffect = 'none';
         return;
       }
-      
+
       e.dataTransfer.dropEffect = e.ctrlKey ? 'copy' : 'move';
       fileItem.classList.add('drag-over');
     });
@@ -2879,6 +2995,8 @@ function createFileItem(item: FileItem): HTMLElement {
       fileItem.classList.remove('drag-over');
       
       let draggedPaths: string[] = [];
+
+      if (!e.dataTransfer) return;
 
       try {
         const textData = e.dataTransfer.getData('text/plain');
@@ -3230,7 +3348,7 @@ async function applyViewMode() {
     if (currentPath) {
       const result = await window.electronAPI.getDirectoryContents(currentPath);
       if (result.success) {
-        renderFiles(result.contents);
+        renderFiles(result.contents || []);
       }
     }
   }
@@ -3422,7 +3540,7 @@ async function renderColumn(columnPath: string, columnIndex: number, renderId?: 
 
   try {
     const result = await window.electronAPI.getDirectoryContents(columnPath);
-    const items = result.contents;
+    const items = result.contents || [];
 
     const sortedItems = [...items].sort((a, b) => {
       const dirSort = (b.isDirectory ? 1 : 0) - (a.isDirectory ? 1 : 0);
@@ -3708,10 +3826,10 @@ async function createNewFileWithInlineRename() {
   }
   
   const result = await window.electronAPI.createFile(currentPath, finalFileName);
-  if (result.success) {
+  if (result.success && result.path) {
     const createdFilePath = result.path;
     await navigateTo(currentPath);
-    
+
     setTimeout(() => {
       const fileItems = document.querySelectorAll('.file-item');
       for (const item of Array.from(fileItems)) {
@@ -3723,7 +3841,7 @@ async function createNewFileWithInlineRename() {
       }
     }, 100);
   } else {
-    await showAlert(result.error, 'Error Creating File', 'error');
+    await showAlert(result.error || 'Unknown error', 'Error Creating File', 'error');
   }
 }
 
@@ -3740,10 +3858,10 @@ async function createNewFolderWithInlineRename() {
   }
   
   const result = await window.electronAPI.createFolder(currentPath, finalFolderName);
-  if (result.success) {
+  if (result.success && result.path) {
     const createdFolderPath = result.path;
     await navigateTo(currentPath);
-    
+
     setTimeout(() => {
       const fileItems = document.querySelectorAll('.file-item');
       for (const item of Array.from(fileItems)) {
@@ -3755,7 +3873,7 @@ async function createNewFolderWithInlineRename() {
       }
     }, 100);
   } else {
-    await showAlert(result.error, 'Error Creating Folder', 'error');
+    await showAlert(result.error || 'Unknown error', 'Error Creating Folder', 'error');
   }
 }
 
@@ -3801,7 +3919,7 @@ function startInlineRename(fileItem: HTMLElement, currentName: string, itemPath:
       if (result.success) {
         await navigateTo(currentPath);
       } else {
-        await showAlert(result.error, 'Error Renaming', 'error');
+        await showAlert(result.error || 'Unknown error', 'Error Renaming', 'error');
         nameElement.style.display = '';
         input.remove();
         fileItem.classList.remove('renaming');
@@ -3812,14 +3930,14 @@ function startInlineRename(fileItem: HTMLElement, currentName: string, itemPath:
       fileItem.classList.remove('renaming');
     }
   };
-  
-  const handleKeyPress = (e) => {
+
+  const handleKeyPress = (e: KeyboardEvent) => {
     if (e.key === 'Enter') {
       finishRename();
     }
   };
-  
-  const handleKeyDown = (e) => {
+
+  const handleKeyDown = (e: KeyboardEvent) => {
     if (e.key === 'Escape') {
       renameHandled = true;
       input.removeEventListener('blur', finishRename);
@@ -3945,7 +4063,7 @@ function hideContextMenu() {
   }
 }
 
-function showEmptySpaceContextMenu(x, y) {
+function showEmptySpaceContextMenu(x: number, y: number) {
   const emptySpaceContextMenu = document.getElementById('empty-space-context-menu');
   if (!emptySpaceContextMenu) return;
   
@@ -4065,10 +4183,10 @@ async function handleContextMenuAction(action: string | undefined, item: FileIte
       
     case 'properties':
       const propsResult = await window.electronAPI.getItemProperties(item.path);
-      if (propsResult.success) {
+      if (propsResult.success && propsResult.properties) {
         showPropertiesDialog(propsResult.properties);
       } else {
-        showToast(propsResult.error, 'Error Getting Properties', 'error');
+        showToast(propsResult.error || 'Unknown error', 'Error Getting Properties', 'error');
       }
       break;
       
@@ -4543,8 +4661,10 @@ function showPropertiesDialog(props: ItemProperties) {
     }
   }
   
-  document.getElementById('properties-close').onclick = closeModal;
-  document.getElementById('properties-ok').onclick = closeModal;
+  const propsCloseBtn = document.getElementById('properties-close');
+  const propsOkBtn = document.getElementById('properties-ok');
+  if (propsCloseBtn) propsCloseBtn.onclick = closeModal;
+  if (propsOkBtn) propsOkBtn.onclick = closeModal;
   modal.onclick = (e) => {
     if (e.target === modal) closeModal();
   };
@@ -5384,20 +5504,26 @@ async function showQuickLook() {
 
   const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico', 'tiff', 'tif', 'avif', 'jfif'];
 
+  const videoExts = ['mp4', 'webm', 'ogg', 'mov', 'mkv', 'avi', 'm4v'];
+
+  const audioExts = ['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a', 'wma', 'opus'];
+
+  const pdfExts = ['pdf'];
+
   const textExts = [
     'txt', 'text', 'md', 'markdown', 'log', 'readme', 'html', 'htm', 'css', 'scss', 'sass', 'less', 'js', 'jsx', 'ts', 'tsx', 'vue', 'svelte', 'py', 'pyc', 'pyw', 'java', 'c', 'cpp', 'cc', 'cxx', 'h', 'hpp', 'cs', 'php', 'rb', 'go', 'rs', 'swift', 'kt', 'kts', 'scala', 'r', 'lua', 'perl', 'pl', 'sh', 'bash', 'zsh', 'fish', 'ps1', 'bat', 'cmd',
     'json', 'xml', 'yml', 'yaml', 'toml', 'csv', 'tsv', 'sql',
     'ini', 'conf', 'config', 'cfg', 'env', 'properties', 'gitignore', 'gitattributes', 'editorconfig', 'dockerfile', 'dockerignore',
     'rst', 'tex', 'adoc', 'asciidoc', 'makefile', 'cmake', 'gradle', 'maven'
   ];
-  
+
   quicklookContent.innerHTML = `
     <div class="preview-loading">
       <div class="spinner"></div>
       <p>Loading preview...</p>
     </div>
   `;
-  
+
   if (imageExts.includes(ext)) {
     const result = await window.electronAPI.getFileDataUrl(file.path);
     if (result.success && result.dataUrl) {
@@ -5406,6 +5532,33 @@ async function showQuickLook() {
     } else {
       quicklookContent.innerHTML = `<div class="preview-error">Failed to load image</div>`;
     }
+  } else if (videoExts.includes(ext)) {
+    const filePath = file.path.replace(/\\/g, '/');
+    quicklookContent.innerHTML = `
+      <video controls autoplay class="preview-video">
+        <source src="file:///${filePath}" type="video/${ext === 'mkv' ? 'x-matroska' : ext === 'avi' ? 'x-msvideo' : ext === 'mov' ? 'quicktime' : ext}">
+        Your browser does not support the video tag.
+      </video>
+    `;
+    quicklookInfo.textContent = `${formatFileSize(file.size)} • ${new Date(file.modified).toLocaleDateString()}`;
+  } else if (audioExts.includes(ext)) {
+    const filePath = file.path.replace(/\\/g, '/');
+    quicklookContent.innerHTML = `
+      <div class="preview-audio-container">
+        <div class="preview-audio-icon">${twemojiImg(String.fromCodePoint(0x1F3B5), 'twemoji-large')}</div>
+        <audio controls autoplay class="preview-audio">
+          <source src="file:///${filePath}" type="audio/${ext === 'mp3' ? 'mpeg' : ext === 'wav' ? 'wav' : ext === 'ogg' || ext === 'opus' ? 'ogg' : ext}">
+          Your browser does not support the audio tag.
+        </audio>
+      </div>
+    `;
+    quicklookInfo.textContent = `${formatFileSize(file.size)} • ${new Date(file.modified).toLocaleDateString()}`;
+  } else if (pdfExts.includes(ext)) {
+    const filePath = file.path.replace(/\\/g, '/');
+    quicklookContent.innerHTML = `
+      <embed src="file:///${filePath}" type="application/pdf" class="preview-pdf">
+    `;
+    quicklookInfo.textContent = `${formatFileSize(file.size)} • ${new Date(file.modified).toLocaleDateString()}`;
   } else if (textExts.includes(ext)) {
     const result = await window.electronAPI.readFileContent(file.path, 100 * 1024);
     if (result.success && result.content) {
