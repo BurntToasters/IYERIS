@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain, dialog, shell, IpcMainInvokeEvent, Menu, Tray, nativeImage, powerMonitor } from 'electron';
 import * as path from 'path';
+import { pathToFileURL } from 'url';
 import { promises as fs } from 'fs';
 import * as fsSync from 'fs';
 import { exec, spawn } from 'child_process';
@@ -151,6 +152,77 @@ function safeSendToWindow(win: BrowserWindow | null, channel: string, ...args: a
     console.error(`[IPC] Failed to send ${channel}:`, error);
   }
   return false;
+}
+
+function spawnWithTimeout(
+  command: string,
+  args: string[],
+  timeoutMs: number,
+  options: Parameters<typeof spawn>[2]
+): { child: ReturnType<typeof spawn>; timedOut: () => boolean } {
+  let didTimeout = false;
+  const child = spawn(command, args, options);
+  const timeout = setTimeout(() => {
+    didTimeout = true;
+    try {
+      child.kill();
+    } catch {
+    }
+  }, timeoutMs);
+
+  const clear = () => clearTimeout(timeout);
+  child.on('close', clear);
+  child.on('error', clear);
+
+  return { child, timedOut: () => didTimeout };
+}
+
+async function assertArchiveEntriesSafe(archivePath: string, destPath: string): Promise<void> {
+  const Seven = require('node-7z');
+  const sevenZipPath = get7zipPath();
+
+  const entries = await new Promise<string[]>((resolve, reject) => {
+    const list = Seven.list(archivePath, { $bin: sevenZipPath });
+    const names: string[] = [];
+
+    list.on('data', (data: { file?: string }) => {
+      if (data && data.file) {
+        names.push(String(data.file));
+      }
+    });
+    list.on('end', () => resolve(names));
+    list.on('error', (err: Error) => reject(err));
+  });
+
+  const destRoot = path.resolve(destPath);
+  const destRootWithSep = destRoot.endsWith(path.sep) ? destRoot : destRoot + path.sep;
+  const invalidEntries: string[] = [];
+
+  for (const entry of entries) {
+    if (!entry) continue;
+
+    const normalized = entry.replace(/\\/g, '/').replace(/^\.\/+/, '');
+    if (!normalized) continue;
+    if (normalized.startsWith('/') || normalized.startsWith('//') || /^[a-zA-Z]:/.test(normalized)) {
+      invalidEntries.push(entry);
+      continue;
+    }
+    const parts = normalized.split('/');
+    if (parts.some(part => part === '..')) {
+      invalidEntries.push(entry);
+      continue;
+    }
+
+    const targetPath = path.resolve(destRoot, normalized);
+    if (targetPath !== destRoot && !targetPath.startsWith(destRootWithSep)) {
+      invalidEntries.push(entry);
+    }
+  }
+
+  if (invalidEntries.length > 0) {
+    const preview = invalidEntries.slice(0, 5).join(', ');
+    throw new Error(`Archive contains unsafe paths: ${preview}${invalidEntries.length > 5 ? '...' : ''}`);
+  }
 }
 
 function parseVersion(v: string): { major: number; minor: number; patch: number; prerelease: string } {
@@ -509,18 +581,39 @@ function createWindow(isInitialWindow: boolean = false): BrowserWindow {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      sandbox: true,
       preload: path.join(__dirname, 'preload.js'),
       devTools: isDev,
       backgroundThrottling: false,
       spellcheck: false,
       v8CacheOptions: 'code',
       enableWebSQL: false,
-      plugins: true
+      plugins: false
     },
     icon: path.join(__dirname, '..', 'assets', 'icon.png')
   });
 
   newWindow.loadFile(path.join(__dirname, '..', 'index.html'));
+  const indexUrl = pathToFileURL(path.join(__dirname, '..', 'index.html')).toString();
+
+  newWindow.webContents.setWindowOpenHandler(() => {
+    console.warn('[Security] Blocked window.open');
+    return { action: 'deny' };
+  });
+
+  newWindow.webContents.on('will-navigate', (event, url) => {
+    if (url !== indexUrl) {
+      console.warn('[Security] Blocked navigation to:', url);
+      event.preventDefault();
+    }
+  });
+
+  newWindow.webContents.on('will-redirect', (event, url) => {
+    if (url !== indexUrl) {
+      console.warn('[Security] Blocked redirect to:', url);
+      event.preventDefault();
+    }
+  });
 
   const startHidden = isInitialWindow && shouldStartHidden;
   console.log('[Window] Creating window, isInitial:', isInitialWindow, 'startHidden:', startHidden, 'shouldStartHidden:', shouldStartHidden);
@@ -1656,7 +1749,12 @@ ipcMain.handle('get-disk-space', async (_event: IpcMainInvokeEvent, drivePath: s
         console.log('[Main] Getting disk space for drive:', driveChar);
         const psCommand = `Get-PSDrive -Name ${driveChar} | Select-Object @{Name='Free';Expression={$_.Free}}, @{Name='Used';Expression={$_.Used}} | ConvertTo-Json`;
 
-        const psProcess = spawn('powershell', ['-Command', psCommand], { shell: false });
+        const { child: psProcess, timedOut } = spawnWithTimeout(
+          'powershell',
+          ['-Command', psCommand],
+          5000,
+          { shell: false }
+        );
         let stdout = '';
         let stderr = '';
 
@@ -1669,6 +1767,10 @@ ipcMain.handle('get-disk-space', async (_event: IpcMainInvokeEvent, drivePath: s
         });
 
         psProcess.on('close', (code) => {
+          if (timedOut()) {
+            resolve({ success: false, error: 'Disk space query timed out' });
+            return;
+          }
           if (code !== 0) {
             console.error('[Main] PowerShell error:', stderr);
             resolve({ success: false, error: 'PowerShell command failed' });
@@ -1690,7 +1792,12 @@ ipcMain.handle('get-disk-space', async (_event: IpcMainInvokeEvent, drivePath: s
       });
     } else if (process.platform === 'darwin' || process.platform === 'linux') {
       return new Promise((resolve) => {
-        const dfProcess = spawn('df', ['-k', drivePath], { shell: false });
+        const { child: dfProcess, timedOut } = spawnWithTimeout(
+          'df',
+          ['-k', drivePath],
+          5000,
+          { shell: false }
+        );
         let stdout = '';
         let stderr = '';
 
@@ -1703,6 +1810,10 @@ ipcMain.handle('get-disk-space', async (_event: IpcMainInvokeEvent, drivePath: s
         });
 
         dfProcess.on('close', (code) => {
+          if (timedOut()) {
+            resolve({ success: false, error: 'Disk space query timed out' });
+            return;
+          }
           if (code !== 0) {
             console.error('[Main] df error:', stderr);
             resolve({ success: false, error: 'df command failed' });
@@ -1797,13 +1908,13 @@ ipcMain.handle('open-terminal', async (_event: IpcMainInvokeEvent, dirPath: stri
       const terminals = [
         { cmd: 'x-terminal-emulator', args: ['--working-directory', dirPath] },
         { cmd: 'gnome-terminal', args: ['--working-directory=' + dirPath] },
-        { cmd: 'xterm', args: ['-e', 'cd', dirPath, '&&', 'bash'] }
+        { cmd: 'xterm', args: ['-e', 'bash'] }
       ];
 
       let launched = false;
       for (const term of terminals) {
         try {
-          spawn(term.cmd, term.args, { shell: false, detached: true });
+          spawn(term.cmd, term.args, { shell: false, detached: true, cwd: dirPath });
           launched = true;
           break;
         } catch (e) {
@@ -2517,10 +2628,16 @@ ipcMain.handle('extract-archive', async (_event: IpcMainInvokeEvent, archivePath
       console.warn('[Security] Invalid destination path rejected:', destPath);
       return { success: false, error: 'Invalid destination path' };
     }
-    
+
     console.log('[Extract] Starting extraction:', archivePath, 'to', destPath);
 
     await fs.mkdir(destPath, { recursive: true });
+    try {
+      await assertArchiveEntriesSafe(archivePath, destPath);
+    } catch (error) {
+      console.error('[Extract] Unsafe archive:', error);
+      return { success: false, error: 'Archive contains unsafe paths' };
+    }
     return new Promise((resolve, reject) => {
       const Seven = require('node-7z');
       const sevenZipPath = get7zipPath();
