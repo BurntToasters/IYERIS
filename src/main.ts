@@ -8,6 +8,13 @@ import type { Settings, FileItem, ApiResponse, DirectoryResponse, PathResponse, 
 import { FileIndexer } from './indexer';
 import { getDrives } from './utils';
 
+const MAX_UNDO_STACK_SIZE = 50;
+const HIDDEN_FILE_CACHE_TTL = 300000;
+const HIDDEN_FILE_CACHE_MAX = 5000;
+const SETTINGS_CACHE_TTL_MS = 5000;
+const ZOOM_MIN = 0.5;
+const ZOOM_MAX = 2.0;
+
 // Disable hardware accel via cli arg
 if (process.argv.includes('--disable-hardware-acceleration')) {
   console.log('[Performance] Hardware acceleration disabled via command line flag');
@@ -45,15 +52,21 @@ const isInstalledViaMsi = (): boolean => {
   }
 };
 
+let cached7zipPath: string | null = null;
 const get7zipPath = (): string => {
+  if (cached7zipPath) {
+    return cached7zipPath;
+  }
+
   const sevenBin = require('7zip-bin');
   let sevenZipPath = sevenBin.path7za;
 
   if (app.isPackaged) {
     sevenZipPath = sevenZipPath.replace('app.asar', 'app.asar.unpacked');
   }
-  
+
   console.log('[7zip] Using path:', sevenZipPath);
+  cached7zipPath = sevenZipPath;
   return sevenZipPath;
 };
 
@@ -202,7 +215,6 @@ if (!gotTheLock) {
 
 const undoStack: UndoAction[] = [];
 const redoStack: UndoAction[] = [];
-const MAX_UNDO_STACK = 50;
 
 const activeArchiveProcesses = new Map<string, any>();
 const activeFolderSizeCalculations = new Map<string, { aborted: boolean }>();
@@ -220,7 +232,7 @@ function getErrorMessage(error: unknown): string {
 
 function pushUndoAction(action: UndoAction): void {
   undoStack.push(action);
-  if (undoStack.length > MAX_UNDO_STACK) {
+  if (undoStack.length > MAX_UNDO_STACK_SIZE) {
     undoStack.shift();
   }
   redoStack.length = 0;
@@ -229,7 +241,7 @@ function pushUndoAction(action: UndoAction): void {
 
 function pushRedoAction(action: UndoAction): void {
   redoStack.push(action);
-  if (redoStack.length > MAX_UNDO_STACK) {
+  if (redoStack.length > MAX_UNDO_STACK_SIZE) {
     redoStack.shift();
   }
   console.log('[Redo] Action pushed:', action.type, 'Stack size:', redoStack.length);
@@ -304,11 +316,10 @@ function getSettingsPath(): string {
 
 let cachedSettings: Settings | null = null;
 let settingsCacheTime: number = 0;
-const SETTINGS_CACHE_TTL = 5000;
 
 async function loadSettings(): Promise<Settings> {
   const now = Date.now();
-  if (cachedSettings && (now - settingsCacheTime) < SETTINGS_CACHE_TTL) {
+  if (cachedSettings && (now - settingsCacheTime) < SETTINGS_CACHE_TTL_MS) {
     console.log('[Settings] Using cached settings');
     return cachedSettings;
   }
@@ -359,24 +370,63 @@ async function isFileHidden(filePath: string, fileName: string): Promise<boolean
   if (process.platform === 'win32') {
     try {
       const execPromise = promisify(exec);
-      
-      const { stdout } = await execPromise(`cmd /c attrib "${filePath}"`, { 
+
+      const { stdout } = await execPromise(`cmd /c attrib "${filePath}"`, {
         timeout: 500,
-        windowsHide: true 
+        windowsHide: true
       });
-      
+
       return stdout.trim().charAt(0).toUpperCase() === 'H';
     } catch (error) {
       return false;
     }
   }
-  
+
   return false;
 }
 
+async function batchCheckHiddenFiles(dirPath: string, fileNames: string[]): Promise<Map<string, boolean>> {
+  const results = new Map<string, boolean>();
+
+  for (const fileName of fileNames) {
+    if (fileName.startsWith('.')) {
+      results.set(fileName, true);
+    }
+  }
+
+  if (process.platform !== 'win32') {
+    return results;
+  }
+
+  try {
+    const execPromise = promisify(exec);
+    const { stdout } = await execPromise(`cmd /c attrib "${dirPath}\\*"`, {
+      timeout: 2000,
+      windowsHide: true
+    });
+
+    const lines = stdout.split('\n');
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+
+      const isHidden = trimmed.charAt(0).toUpperCase() === 'H';
+      const pathMatch = trimmed.match(/[A-Z]\s+(.+)$/i);
+      if (pathMatch) {
+        const fullPath = pathMatch[1].trim();
+        const fileName = fullPath.split('\\').pop();
+        if (fileName) {
+          results.set(fileName, isHidden);
+        }
+      }
+    }
+  } catch (error) {
+  }
+
+  return results;
+}
+
 const hiddenFileCache = new Map<string, { isHidden: boolean; timestamp: number }>();
-const HIDDEN_CACHE_TTL = 300000;
-const HIDDEN_CACHE_MAX_SIZE = 5000;
 let isCleaningCache = false;
 
 // Periodic cleanup
@@ -387,18 +437,18 @@ function cleanupHiddenFileCache(): void {
   try {
     const now = Date.now();
     let entriesRemoved = 0;
-    
+
     for (const [key, value] of hiddenFileCache) {
-      if (now - value.timestamp > HIDDEN_CACHE_TTL) {
+      if (now - value.timestamp > HIDDEN_FILE_CACHE_TTL) {
         hiddenFileCache.delete(key);
         entriesRemoved++;
       }
     }
 
-    if (hiddenFileCache.size > HIDDEN_CACHE_MAX_SIZE) {
+    if (hiddenFileCache.size > HIDDEN_FILE_CACHE_MAX) {
       const entries = Array.from(hiddenFileCache.entries())
         .sort((a, b) => a[1].timestamp - b[1].timestamp);
-      const toRemove = entries.slice(0, hiddenFileCache.size - HIDDEN_CACHE_MAX_SIZE);
+      const toRemove = entries.slice(0, hiddenFileCache.size - HIDDEN_FILE_CACHE_MAX);
       for (const [key] of toRemove) {
         hiddenFileCache.delete(key);
         entriesRemoved++;
@@ -427,13 +477,13 @@ async function isFileHiddenCached(filePath: string, fileName: string): Promise<b
   }
 
   const cached = hiddenFileCache.get(filePath);
-  if (cached && (Date.now() - cached.timestamp) < HIDDEN_CACHE_TTL) {
+  if (cached && (Date.now() - cached.timestamp) < HIDDEN_FILE_CACHE_TTL) {
     return cached.isHidden;
   }
 
   const isHidden = await isFileHidden(filePath, fileName);
 
-  if (hiddenFileCache.size >= HIDDEN_CACHE_MAX_SIZE) {
+  if (hiddenFileCache.size >= HIDDEN_FILE_CACHE_MAX) {
     cleanupHiddenFileCache();
   }
   
@@ -993,19 +1043,21 @@ ipcMain.handle('get-directory-contents', async (_event: IpcMainInvokeEvent, dirP
       console.warn('[Security] Invalid path rejected:', dirPath);
       return { success: false, error: 'Invalid path' };
     }
-    
+
     const items = await fs.readdir(dirPath, { withFileTypes: true });
+
+    const hiddenMap = await batchCheckHiddenFiles(dirPath, items.map(item => item.name));
 
     const batchSize = 100;
     const contents: FileItem[] = [];
-    
+
     for (let i = 0; i < items.length; i += batchSize) {
       const batch = items.slice(i, i + batchSize);
       const batchResults = await Promise.all(
         batch.map(async (item): Promise<FileItem> => {
           const fullPath = path.join(dirPath, item.name);
-          const isHidden = await isFileHiddenCached(fullPath, item.name);
-          
+          const isHidden = hiddenMap.get(item.name) || item.name.startsWith('.');
+
           try {
             const stats = await fs.stat(fullPath);
             return {
@@ -1032,7 +1084,7 @@ ipcMain.handle('get-directory-contents', async (_event: IpcMainInvokeEvent, dirP
       );
       contents.push(...batchResults);
     }
-    
+
     return { success: true, contents };
   } catch (error) {
     return { success: false, error: getErrorMessage(error) };
@@ -1520,6 +1572,9 @@ ipcMain.handle('move-items', async (_event: IpcMainInvokeEvent, sourcePaths: str
 
 ipcMain.handle('search-files', async (_event: IpcMainInvokeEvent, dirPath: string, query: string): Promise<{ success: boolean; results?: FileItem[]; error?: string }> => {
   try {
+    if (!isPathSafe(dirPath)) {
+      return { success: false, error: 'Invalid directory path' };
+    }
     const results: FileItem[] = [];
     const searchQuery = query.toLowerCase();
     const MAX_SEARCH_DEPTH = 10;
@@ -1713,6 +1768,9 @@ ipcMain.handle('restart-as-admin', async (): Promise<ApiResponse> => {
 
 ipcMain.handle('open-terminal', async (_event: IpcMainInvokeEvent, dirPath: string): Promise<ApiResponse> => {
   try {
+    if (!isPathSafe(dirPath)) {
+      return { success: false, error: 'Invalid directory path' };
+    }
     const platform = process.platform;
 
     if (platform === 'win32') {
@@ -1759,6 +1817,9 @@ ipcMain.handle('open-terminal', async (_event: IpcMainInvokeEvent, dirPath: stri
 
 ipcMain.handle('read-file-content', async (_event: IpcMainInvokeEvent, filePath: string, maxSize: number = 1024 * 1024): Promise<{ success: boolean; content?: string; error?: string; isTruncated?: boolean }> => {
   try {
+    if (!isPathSafe(filePath)) {
+      return { success: false, error: 'Invalid file path' };
+    }
     const stats = await fs.stat(filePath);
     
     if (stats.size > maxSize) {
@@ -1782,8 +1843,11 @@ ipcMain.handle('read-file-content', async (_event: IpcMainInvokeEvent, filePath:
 
 ipcMain.handle('get-file-data-url', async (_event: IpcMainInvokeEvent, filePath: string, maxSize: number = 10 * 1024 * 1024): Promise<{ success: boolean; dataUrl?: string; error?: string }> => {
   try {
+    if (!isPathSafe(filePath)) {
+      return { success: false, error: 'Invalid file path' };
+    }
     const stats = await fs.stat(filePath);
-    
+
     if (stats.size > maxSize) {
       return { success: false, error: 'File too large to preview' };
     }
@@ -2531,7 +2595,7 @@ ipcMain.handle('set-zoom-level', async (event: IpcMainInvokeEvent, zoomLevel: nu
       return { success: false, error: 'Window not available' };
     }
 
-    const clampedZoom = Math.max(0.5, Math.min(2.0, zoomLevel));
+    const clampedZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, zoomLevel));
     win.webContents.setZoomFactor(clampedZoom);
     
     console.log('[Zoom] Set zoom level to:', clampedZoom);
@@ -2724,6 +2788,9 @@ async function createTrayForHiddenStart(): Promise<void> {
 // Folder Size Calc
 ipcMain.handle('calculate-folder-size', async (_event: IpcMainInvokeEvent, folderPath: string, operationId: string): Promise<{success: boolean; result?: {totalSize: number; fileCount: number; folderCount: number; fileTypes?: {extension: string; count: number; size: number}[]}; error?: string}> => {
   try {
+    if (!isPathSafe(folderPath)) {
+      return { success: false, error: 'Invalid folder path' };
+    }
     console.log('[FolderSize] Starting calculation for:', folderPath, 'operationId:', operationId);
 
     const operation = { aborted: false };
@@ -2824,8 +2891,11 @@ ipcMain.handle('cancel-folder-size-calculation', async (_event: IpcMainInvokeEve
 // Checksum Calc
 ipcMain.handle('calculate-checksum', async (_event: IpcMainInvokeEvent, filePath: string, operationId: string, algorithms: string[]): Promise<{success: boolean; result?: {md5?: string; sha256?: string}; error?: string}> => {
   try {
+    if (!isPathSafe(filePath)) {
+      return { success: false, error: 'Invalid file path' };
+    }
     console.log('[Checksum] Starting calculation for:', filePath, 'algorithms:', algorithms, 'operationId:', operationId);
-    
+
     const operation = { aborted: false };
     activeChecksumCalculations.set(operationId, operation);
     

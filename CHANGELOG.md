@@ -22,7 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [0.9.0-beta.1] - 2024-12-26
+## [0.8.0] - 2024-12-20
 
 ### Added
 - Custom theme editor with live preview

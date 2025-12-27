@@ -1,5 +1,15 @@
 import type { Settings, FileItem, ItemProperties, CustomTheme } from './types';
 
+const THUMBNAIL_MAX_SIZE = 10 * 1024 * 1024;
+const SEARCH_DEBOUNCE_MS = 300;
+const SETTINGS_SAVE_DEBOUNCE_MS = 1000;
+const TOAST_DURATION_MS = 3000;
+const SEARCH_HISTORY_MAX = 5;
+const DIRECTORY_HISTORY_MAX = 5;
+const RENDER_BATCH_SIZE = 50;
+const THUMBNAIL_ROOT_MARGIN = '50px';
+const FILE_PATH_MAP_MAX = 10000;
+
 const path = {
   basename: (filePath: string, ext?: string): string => {
     const name = filePath.split(/[\\/]/).pop() || '';
@@ -77,13 +87,24 @@ function getErrorMessage(error: unknown): string {
 
 // Debounced settings save for non-critical updates (history, recent files, etc.)
 let settingsSaveTimeout: ReturnType<typeof setTimeout> | null = null;
-function debouncedSaveSettings(delay: number = 1000) {
+function debouncedSaveSettings(delay: number = SETTINGS_SAVE_DEBOUNCE_MS) {
   if (settingsSaveTimeout) {
     clearTimeout(settingsSaveTimeout);
   }
   settingsSaveTimeout = setTimeout(() => {
     window.electronAPI.saveSettings(currentSettings);
     settingsSaveTimeout = null;
+  }, delay);
+}
+
+let searchDebounceTimeout: ReturnType<typeof setTimeout> | null = null;
+function debouncedSearch(delay: number = SEARCH_DEBOUNCE_MS) {
+  if (searchDebounceTimeout) {
+    clearTimeout(searchDebounceTimeout);
+  }
+  searchDebounceTimeout = setTimeout(() => {
+    performSearch();
+    searchDebounceTimeout = null;
   }, delay);
 }
 
@@ -550,7 +571,7 @@ function showToast(message: string, title: string = '', type: 'success' | 'error
 
   toast.addEventListener('click', removeToast);
 
-  setTimeout(removeToast, 3000);
+  setTimeout(removeToast, TOAST_DURATION_MS);
 }
 
 async function loadSettings(): Promise<void> {
@@ -1837,69 +1858,78 @@ async function zoomReset() {
 }
 
 async function init() {
-  console.log('Init: Getting platform...');
-  platformOS = await window.electronAPI.getPlatform();
+  console.log('Init: Getting platform and store info...');
+
+  const [platform, mas, flatpak, msStore] = await Promise.all([
+    window.electronAPI.getPlatform(),
+    window.electronAPI.isMas(),
+    window.electronAPI.isFlatpak(),
+    window.electronAPI.isMsStore()
+  ]);
+
+  platformOS = platform;
   console.log('Init: Platform is', platformOS);
-  
+
   console.log('Init: Loading settings...');
   await loadSettings();
-  
+
   console.log('Init: Setting up breadcrumb navigation...');
   setupBreadcrumbListeners();
-  
+
   console.log('Init: Setting up theme editor...');
   setupThemeEditorListeners();
-  
+
   console.log('Init: Determining startup path...');
-  let startupPath = currentSettings.startupPath && currentSettings.startupPath.trim() !== '' 
-    ? currentSettings.startupPath 
+  let startupPath = currentSettings.startupPath && currentSettings.startupPath.trim() !== ''
+    ? currentSettings.startupPath
     : await window.electronAPI.getHomeDirectory();
   console.log('Init: Startup path is', startupPath);
-  
+
   console.log('Init: Navigating to startup path...');
   navigateTo(startupPath);
-  
+
   console.log('Init: Setting up event listeners...');
   setupEventListeners();
 
-  const isMas = await window.electronAPI.isMas();
-  const isFlatpak = await window.electronAPI.isFlatpak();
-  const isMsStore = await window.electronAPI.isMsStore();
-  const isStoreVersion = isMas || isFlatpak || isMsStore;
-  
-  if (isStoreVersion) {
-    const updateBtn = document.getElementById('check-updates-btn');
-    if (updateBtn) {
-      updateBtn.style.display = 'none';
-    }
+  const isStoreVersion = mas || flatpak || msStore;
 
-    const autoCheckToggle = document.getElementById('auto-check-updates-toggle');
-    if (autoCheckToggle) {
-      const settingItem = autoCheckToggle.closest('.setting-item') as HTMLElement;
-      if (settingItem) {
-        settingItem.style.display = 'none';
-      }
-    }
+  if (typeof requestIdleCallback !== 'undefined') {
+    requestIdleCallback(() => {
+      if (isStoreVersion) {
+        const updateBtn = document.getElementById('check-updates-btn');
+        if (updateBtn) {
+          updateBtn.style.display = 'none';
+        }
 
-    const updatesCards = document.querySelectorAll('.settings-card-header');
-    updatesCards.forEach(header => {
-      if (header.textContent === 'Updates') {
-        const card = header.closest('.settings-card') as HTMLElement;
-        if (card) {
-          card.style.display = 'none';
+        const autoCheckToggle = document.getElementById('auto-check-updates-toggle');
+        if (autoCheckToggle) {
+          const settingItem = autoCheckToggle.closest('.setting-item') as HTMLElement;
+          if (settingItem) {
+            settingItem.style.display = 'none';
+          }
         }
+
+        const updatesCards = document.querySelectorAll('.settings-card-header');
+        updatesCards.forEach(header => {
+          if (header.textContent === 'Updates') {
+            const card = header.closest('.settings-card') as HTMLElement;
+            if (card) {
+              card.style.display = 'none';
+            }
+          }
+        });
       }
-    });
-  }
-  
-  if (isMas || isMsStore) {
-    const settingsCards = document.querySelectorAll('.settings-card-header');
-    settingsCards.forEach(header => {
-      if (header.textContent === 'Developer Options') {
-        const card = header.closest('.settings-card') as HTMLElement;
-        if (card) {
-          card.style.display = 'none';
-        }
+
+      if (mas || msStore) {
+        const settingsCards = document.querySelectorAll('.settings-card-header');
+        settingsCards.forEach(header => {
+          if (header.textContent === 'Developer Options') {
+            const card = header.closest('.settings-card') as HTMLElement;
+            if (card) {
+              card.style.display = 'none';
+            }
+          }
+        });
       }
     });
   }
@@ -2045,6 +2075,8 @@ function setupEventListeners() {
   searchInput?.addEventListener('input', () => {
     if (searchInput.value.length === 0) {
       closeSearch();
+    } else if (searchInput.value.length >= 2) {
+      debouncedSearch();
     }
   });
   
@@ -2479,7 +2511,7 @@ function addToSearchHistory(query: string) {
   }
   currentSettings.searchHistory = currentSettings.searchHistory.filter(item => item !== query);
   currentSettings.searchHistory.unshift(query);
-  currentSettings.searchHistory = currentSettings.searchHistory.slice(0, 5);
+  currentSettings.searchHistory = currentSettings.searchHistory.slice(0, SEARCH_HISTORY_MAX);
   debouncedSaveSettings();
 }
 
@@ -2490,7 +2522,7 @@ function addToDirectoryHistory(dirPath: string) {
   }
   currentSettings.directoryHistory = currentSettings.directoryHistory.filter(item => item !== dirPath);
   currentSettings.directoryHistory.unshift(dirPath);
-  currentSettings.directoryHistory = currentSettings.directoryHistory.slice(0, 5);
+  currentSettings.directoryHistory = currentSettings.directoryHistory.slice(0, DIRECTORY_HISTORY_MAX);
   debouncedSaveSettings();
 }
 
@@ -2554,11 +2586,15 @@ function clearDirectoryHistory() {
 
 async function navigateTo(path: string) {
   if (!path) return;
-  
+
   if (isSearchMode) {
     closeSearch();
   }
-  
+
+  if (thumbnailObserver) {
+    thumbnailObserver.disconnect();
+  }
+
   if (loading) loading.style.display = 'flex';
   if (emptyState) emptyState.style.display = 'none';
   if (fileGrid) fileGrid.innerHTML = '';
@@ -2603,7 +2639,13 @@ function renderFiles(items: FileItem[]) {
   allFiles = items;
 
   filePathMap.clear();
-  items.forEach(item => filePathMap.set(item.path, item));
+  items.forEach(item => {
+    if (filePathMap.size >= FILE_PATH_MAP_MAX) {
+      const firstKey = filePathMap.keys().next().value;
+      if (firstKey) filePathMap.delete(firstKey);
+    }
+    filePathMap.set(item.path, item);
+  });
 
   const visibleItems = currentSettings.showHiddenFiles
     ? items
@@ -2658,7 +2700,7 @@ function renderFiles(items: FileItem[]) {
 
   const fragment = document.createDocumentFragment();
 
-  const batchSize = 50;
+  const batchSize = RENDER_BATCH_SIZE;
   let currentBatch = 0;
   
   const renderBatch = () => {
@@ -2710,7 +2752,7 @@ function lazyLoadThumbnails() {
     });
   }, {
     root: scrollContainer,
-    rootMargin: '50px',
+    rootMargin: THUMBNAIL_ROOT_MARGIN,
     threshold: 0.01
   });
 
@@ -2877,16 +2919,24 @@ function createFileItem(item: FileItem): HTMLElement {
 
 async function loadThumbnail(fileItem: HTMLElement, item: FileItem) {
   try {
+    if (!document.body.contains(fileItem)) {
+      return;
+    }
+
     const iconDiv = fileItem.querySelector('.file-icon');
 
     if (iconDiv) {
       iconDiv.innerHTML = `<div class="spinner" style="width: 30px; height: 30px; border-width: 2px;"></div>`;
     }
-    
-    const result = await window.electronAPI.getFileDataUrl(item.path, 10 * 1024 * 1024);
-    
+
+    const result = await window.electronAPI.getFileDataUrl(item.path, THUMBNAIL_MAX_SIZE);
+
+    if (!document.body.contains(fileItem)) {
+      return;
+    }
+
     if (result.success && result.dataUrl && iconDiv) {
-      iconDiv.innerHTML = `<img src="${result.dataUrl}" class="file-thumbnail" alt="${item.name}">`;
+      iconDiv.innerHTML = `<img src="${result.dataUrl}" class="file-thumbnail" alt="${escapeHtml(item.name)}">`;
     } else {
       if (iconDiv) {
         iconDiv.innerHTML = getFileIcon(item.name);
@@ -2894,6 +2944,9 @@ async function loadThumbnail(fileItem: HTMLElement, item: FileItem) {
       fileItem.classList.remove('has-thumbnail');
     }
   } catch (error) {
+    if (!document.body.contains(fileItem)) {
+      return;
+    }
     const iconDiv = fileItem.querySelector('.file-icon');
     if (iconDiv) {
       iconDiv.innerHTML = getFileIcon(item.name);
@@ -2918,17 +2971,31 @@ const FILE_ICON_MAP: Record<string, string> = {
   'exe': '2699', 'app': '2699', 'msi': '2699', 'dmg': '2699'
 };
 
-const IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'ico', 'tiff', 'tif', 'avif', 'jfif']);
+const IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'ico', 'tiff', 'tif', 'avif', 'jfif', 'svg']);
 const FOLDER_ICON = twemojiImg(String.fromCodePoint(0x1F4C1), 'twemoji file-icon');
 const IMAGE_ICON = twemojiImg(String.fromCodePoint(parseInt('1f5bc', 16)), 'twemoji');
 const DEFAULT_FILE_ICON = twemojiImg(String.fromCodePoint(parseInt('1f4c4', 16)), 'twemoji');
 
+const fileIconCache = new Map<string, string>();
 function getFileIcon(filename: string): string {
   const ext = filename.split('.').pop()?.toLowerCase() || '';
+
+  const cached = fileIconCache.get(ext);
+  if (cached) return cached;
+
   const codepoint = FILE_ICON_MAP[ext];
-  if (!codepoint) return DEFAULT_FILE_ICON;
-  if (codepoint === '1f5bc') return IMAGE_ICON;
-  return twemojiImg(String.fromCodePoint(parseInt(codepoint, 16)), 'twemoji');
+  let icon: string;
+
+  if (!codepoint) {
+    icon = DEFAULT_FILE_ICON;
+  } else if (codepoint === '1f5bc') {
+    icon = IMAGE_ICON;
+  } else {
+    icon = twemojiImg(String.fromCodePoint(parseInt(codepoint, 16)), 'twemoji');
+  }
+
+  fileIconCache.set(ext, icon);
+  return icon;
 }
 
 async function handleDrop(sourcePaths: string[], destPath: string, operation: 'copy' | 'move'): Promise<void> {
