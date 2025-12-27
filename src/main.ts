@@ -4,7 +4,7 @@ import { promises as fs } from 'fs';
 import * as fsSync from 'fs';
 import { exec, spawn } from 'child_process';
 import { promisify } from 'util';
-import type { Settings, FileItem, ApiResponse, DirectoryResponse, PathResponse, PropertiesResponse, SettingsResponse, UpdateCheckResponse, IndexSearchResponse } from './types';
+import type { Settings, FileItem, ApiResponse, DirectoryResponse, PathResponse, PropertiesResponse, SettingsResponse, UpdateCheckResponse, IndexSearchResponse, UndoAction } from './types';
 import { FileIndexer } from './indexer';
 import { getDrives } from './utils';
 
@@ -198,10 +198,7 @@ if (!gotTheLock) {
   });
 }
 
-interface UndoAction {
-  type: 'trash' | 'rename' | 'move' | 'create';
-  data: any;
-}
+// UndoAction type is imported from './types'
 
 const undoStack: UndoAction[] = [];
 const redoStack: UndoAction[] = [];
@@ -305,17 +302,32 @@ function getSettingsPath(): string {
   return path.join(userDataPath, 'settings.json');
 }
 
+let cachedSettings: Settings | null = null;
+let settingsCacheTime: number = 0;
+const SETTINGS_CACHE_TTL = 5000;
+
 async function loadSettings(): Promise<Settings> {
+  const now = Date.now();
+  if (cachedSettings && (now - settingsCacheTime) < SETTINGS_CACHE_TTL) {
+    console.log('[Settings] Using cached settings');
+    return cachedSettings;
+  }
+
   try {
     const settingsPath = getSettingsPath();
     console.log('[Settings] Loading from:', settingsPath);
     const data = await fs.readFile(settingsPath, 'utf8');
     const settings = { ...defaultSettings, ...JSON.parse(data) };
     console.log('[Settings] Loaded:', JSON.stringify(settings, null, 2));
+    cachedSettings = settings;
+    settingsCacheTime = now;
     return settings;
   } catch (error) {
     console.log('[Settings] File not found, using defaults');
-    return { ...defaultSettings };
+    const settings = { ...defaultSettings };
+    cachedSettings = settings;
+    settingsCacheTime = now;
+    return settings;
   }
 }
 
@@ -327,8 +339,11 @@ async function saveSettings(settings: Settings): Promise<ApiResponse> {
     await fs.writeFile(settingsPath, JSON.stringify(settings, null, 2), 'utf8');
     console.log('[Settings] Saved successfully');
 
+    cachedSettings = settings;
+    settingsCacheTime = Date.now();
+
     applyLoginItemSettings(settings);
-    
+
     return { success: true };
   } catch (error) {
     console.log('[Settings] Save failed:', getErrorMessage(error));
@@ -578,8 +593,12 @@ async function checkFullDiskAccess(): Promise<boolean> {
 }
 
 async function showFullDiskAccessDialog(): Promise<void> {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    console.log('[FDA] Cannot show dialog - no valid window');
+    return;
+  }
   console.log('[FDA] Showing Full Disk Access dialog');
-  const result = await dialog.showMessageBox(mainWindow!, {
+  const result = await dialog.showMessageBox(mainWindow, {
     type: 'warning',
     title: 'Full Disk Access Required',
     message: 'IYERIS needs Full Disk Access for full functionality',
@@ -730,8 +749,9 @@ app.whenReady().then(async () => {
         if (settings.enableIndexer) {
           const indexerDelay = process.platform === 'win32' ? 2000 : 500;
           fileIndexer = new FileIndexer();
+          const indexer = fileIndexer;
           setTimeout(() => {
-            fileIndexer!.initialize(settings.enableIndexer).catch(err => 
+            indexer.initialize(settings.enableIndexer).catch(err =>
               console.error('[Indexer] Background initialization failed:', err)
             );
           }, indexerDelay);
@@ -2702,34 +2722,34 @@ async function createTrayForHiddenStart(): Promise<void> {
 }
 
 // Folder Size Calc
-ipcMain.handle('calculate-folder-size', async (_event: IpcMainInvokeEvent, folderPath: string, operationId: string): Promise<{success: boolean; result?: {totalSize: number; fileCount: number; folderCount: number}; error?: string}> => {
+ipcMain.handle('calculate-folder-size', async (_event: IpcMainInvokeEvent, folderPath: string, operationId: string): Promise<{success: boolean; result?: {totalSize: number; fileCount: number; folderCount: number; fileTypes?: {extension: string; count: number; size: number}[]}; error?: string}> => {
   try {
     console.log('[FolderSize] Starting calculation for:', folderPath, 'operationId:', operationId);
-    
+
     const operation = { aborted: false };
     activeFolderSizeCalculations.set(operationId, operation);
-    
+
     let totalSize = 0;
     let fileCount = 0;
     let folderCount = 0;
     let lastProgressUpdate = Date.now();
-    
-    
+    const fileTypeMap = new Map<string, { count: number; size: number }>();
+
     async function calculateSize(dirPath: string): Promise<void> {
       if (operation.aborted) {
         throw new Error('Calculation cancelled');
       }
-      
+
       try {
         const entries = await fs.readdir(dirPath, { withFileTypes: true });
-        
+
         for (const entry of entries) {
           if (operation.aborted) {
             throw new Error('Calculation cancelled');
           }
-          
+
           const fullPath = path.join(dirPath, entry.name);
-          
+
           try {
             if (entry.isDirectory()) {
               folderCount++;
@@ -2738,6 +2758,10 @@ ipcMain.handle('calculate-folder-size', async (_event: IpcMainInvokeEvent, folde
               const stats = await fs.stat(fullPath);
               totalSize += stats.size;
               fileCount++;
+
+              const ext = path.extname(entry.name).toLowerCase() || '(no extension)';
+              const existing = fileTypeMap.get(ext) || { count: 0, size: 0 };
+              fileTypeMap.set(ext, { count: existing.count + 1, size: existing.size + stats.size });
             }
 
             const now = Date.now();
@@ -2759,15 +2783,20 @@ ipcMain.handle('calculate-folder-size', async (_event: IpcMainInvokeEvent, folde
         console.log(`[FolderSize] Cannot read ${dirPath}:`, (err as Error).message);
       }
     }
-    
+
     await calculateSize(folderPath);
-    
+
     activeFolderSizeCalculations.delete(operationId);
-    
-    console.log('[FolderSize] Completed:', { totalSize, fileCount, folderCount });
+
+    const fileTypes = Array.from(fileTypeMap.entries())
+      .map(([extension, data]) => ({ extension, count: data.count, size: data.size }))
+      .sort((a, b) => b.size - a.size)
+      .slice(0, 10);
+
+    console.log('[FolderSize] Completed:', { totalSize, fileCount, folderCount, fileTypes: fileTypes.length });
     return {
       success: true,
-      result: { totalSize, fileCount, folderCount }
+      result: { totalSize, fileCount, folderCount, fileTypes }
     };
   } catch (error) {
     activeFolderSizeCalculations.delete(operationId);

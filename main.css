@@ -1191,6 +1191,52 @@ body::after {
   flex: 1;
 }
 
+.folder-stats-content {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.file-type-stat {
+  display: grid;
+  grid-template-columns: 80px 70px 1fr;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: var(--radius-small);
+  position: relative;
+  font-size: 12px;
+}
+
+.file-type-ext {
+  font-family: monospace;
+  color: var(--accent-color);
+  font-weight: 600;
+}
+
+.file-type-count {
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.file-type-size {
+  color: var(--text-primary);
+  text-align: right;
+}
+
+.file-type-bar {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 2px;
+  background: var(--accent-color);
+  opacity: 0.5;
+  border-radius: 0 0 var(--radius-small) var(--radius-small);
+}
+
 .modal-footer {
   display: flex;
   flex-direction: column;
@@ -3289,6 +3335,14 @@ body.theme-dark .status-right span {
 .file-grid.list-view .file-item.has-thumbnail .file-icon {
   width: 40px;
   height: 40px;
+  min-width: 40px;
+  border-radius: 4px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.file-grid.list-view .file-item.has-thumbnail .file-thumbnail {
+  border-radius: 4px;
 }
 
 @media (max-width: 1200px) {

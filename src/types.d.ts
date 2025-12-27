@@ -30,6 +30,7 @@ export interface Settings {
   launchCount?: number;
   supportPopupDismissed?: boolean;
   skipFullDiskAccessPrompt?: boolean;
+  recentFiles?: string[];
 }
 
 export interface FileItem {
@@ -60,10 +61,17 @@ export interface FolderSizeProgress {
   currentPath: string;
 }
 
+export interface FileTypeStats {
+  extension: string;
+  count: number;
+  size: number;
+}
+
 export interface FolderSizeResult {
   totalSize: number;
   fileCount: number;
   folderCount: number;
+  fileTypes?: FileTypeStats[];
 }
 
 export interface ChecksumResult {
@@ -123,10 +131,27 @@ export interface IndexSearchResponse extends ApiResponse {
   results?: IndexEntry[];
 }
 
-export interface UndoAction {
-  type: 'trash' | 'rename' | 'move' | 'create';
-  data: any;
+export interface UndoCreateAction {
+  type: 'create';
+  data: { path: string; isDirectory: boolean };
 }
+
+export interface UndoRenameAction {
+  type: 'rename';
+  data: { oldPath: string; newPath: string; oldName: string; newName: string };
+}
+
+export interface UndoMoveAction {
+  type: 'move';
+  data: { sourcePaths: string[]; originalPaths?: string[]; originalParent?: string; destPath: string };
+}
+
+export interface UndoTrashAction {
+  type: 'trash';
+  data: { path: string; originalPath?: string };
+}
+
+export type UndoAction = UndoCreateAction | UndoRenameAction | UndoMoveAction | UndoTrashAction;
 
 export interface UndoResponse extends ApiResponse {
   canUndo?: boolean;

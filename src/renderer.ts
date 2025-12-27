@@ -75,6 +75,18 @@ function getErrorMessage(error: unknown): string {
   return String(error);
 }
 
+// Debounced settings save for non-critical updates (history, recent files, etc.)
+let settingsSaveTimeout: ReturnType<typeof setTimeout> | null = null;
+function debouncedSaveSettings(delay: number = 1000) {
+  if (settingsSaveTimeout) {
+    clearTimeout(settingsSaveTimeout);
+  }
+  settingsSaveTimeout = setTimeout(() => {
+    window.electronAPI.saveSettings(currentSettings);
+    settingsSaveTimeout = null;
+  }, delay);
+}
+
 type ViewMode = 'grid' | 'list' | 'column';
 
 // Breadcrumb state
@@ -608,6 +620,7 @@ function applySettings(settings: Settings) {
   }
   
   loadBookmarks();
+  loadRecentFiles();
 }
 
 function hexToRgb(hex: string): string {
@@ -1395,16 +1408,67 @@ async function addBookmarkByPath(path: string) {
 
 async function removeBookmark(path: string) {
   if (!currentSettings.bookmarks) return;
-  
+
   currentSettings.bookmarks = currentSettings.bookmarks.filter(b => b !== path);
   const result = await window.electronAPI.saveSettings(currentSettings);
-  
+
   if (result.success) {
     loadBookmarks();
     showToast('Bookmark removed', 'Bookmarks', 'success');
   } else {
     showToast('Failed to remove bookmark', 'Error', 'error');
   }
+}
+
+const MAX_RECENT_FILES = 10;
+
+function loadRecentFiles() {
+  const recentList = document.getElementById('recent-list');
+  const recentSection = document.getElementById('recent-section');
+  if (!recentList || !recentSection) return;
+
+  recentList.innerHTML = '';
+
+  if (!currentSettings.recentFiles || currentSettings.recentFiles.length === 0) {
+    recentSection.style.display = 'none';
+    return;
+  }
+
+  recentSection.style.display = 'block';
+
+  currentSettings.recentFiles.forEach(filePath => {
+    const recentItem = document.createElement('div');
+    recentItem.className = 'nav-item recent-item';
+    const pathParts = filePath.split(/[/\\]/);
+    const name = pathParts[pathParts.length - 1] || filePath;
+    const icon = getFileIcon(name);
+
+    recentItem.innerHTML = `
+      <span class="nav-icon">${icon}</span>
+      <span class="nav-label" title="${escapeHtml(filePath)}">${escapeHtml(name)}</span>
+    `;
+
+    recentItem.addEventListener('click', () => {
+      window.electronAPI.openFile(filePath);
+    });
+
+    recentList.appendChild(recentItem);
+  });
+}
+
+async function addToRecentFiles(filePath: string) {
+  if (!filePath || filePath.startsWith('http://') || filePath.startsWith('https://')) return;
+
+  if (!currentSettings.recentFiles) {
+    currentSettings.recentFiles = [];
+  }
+
+  currentSettings.recentFiles = currentSettings.recentFiles.filter(f => f !== filePath);
+  currentSettings.recentFiles.unshift(filePath);
+  currentSettings.recentFiles = currentSettings.recentFiles.slice(0, MAX_RECENT_FILES);
+
+  debouncedSaveSettings();
+  loadRecentFiles();
 }
 
 function toggleSearch() {
@@ -1659,7 +1723,7 @@ function updateStatusBar() {
   if (statusSelected) {
     if (selectedItems.size > 0) {
       const totalSize = Array.from(selectedItems).reduce((acc, path) => {
-        const item = allFiles.find(f => f.path === path);
+        const item = filePathMap.get(path);
         return acc + (item ? item.size : 0);
       }, 0);
       const sizeStr = formatFileSize(totalSize);
@@ -2301,9 +2365,9 @@ function setupEventListeners() {
         return;
       }
     
-      const alreadyInCurrentDir = draggedPaths.some((path: string) => {
-        const parentDir = path.substring(0, path.lastIndexOf(path.includes('\\') ? '\\' : '/'));
-        return parentDir === currentPath || path === currentPath;
+      const alreadyInCurrentDir = draggedPaths.some((dragPath: string) => {
+        const parentDir = path.dirname(dragPath);
+        return parentDir === currentPath || dragPath === currentPath;
       });
     
       if (alreadyInCurrentDir) {
@@ -2384,9 +2448,9 @@ function setupEventListeners() {
         return;
       }
       
-      const alreadyInCurrentDir = draggedPaths.some((path: string) => {
-        const parentDir = path.substring(0, path.lastIndexOf(path.includes('\\') ? '\\' : '/'));
-        return parentDir === currentPath || path === currentPath;
+      const alreadyInCurrentDir = draggedPaths.some((dragPath: string) => {
+        const parentDir = path.dirname(dragPath);
+        return parentDir === currentPath || dragPath === currentPath;
       });
       
       if (alreadyInCurrentDir) {
@@ -2427,7 +2491,7 @@ function addToSearchHistory(query: string) {
   currentSettings.searchHistory = currentSettings.searchHistory.filter(item => item !== query);
   currentSettings.searchHistory.unshift(query);
   currentSettings.searchHistory = currentSettings.searchHistory.slice(0, 5);
-  window.electronAPI.saveSettings(currentSettings);
+  debouncedSaveSettings();
 }
 
 function addToDirectoryHistory(dirPath: string) {
@@ -2438,7 +2502,7 @@ function addToDirectoryHistory(dirPath: string) {
   currentSettings.directoryHistory = currentSettings.directoryHistory.filter(item => item !== dirPath);
   currentSettings.directoryHistory.unshift(dirPath);
   currentSettings.directoryHistory = currentSettings.directoryHistory.slice(0, 5);
-  window.electronAPI.saveSettings(currentSettings);
+  debouncedSaveSettings();
 }
 
 function showSearchHistoryDropdown() {
@@ -2540,31 +2604,47 @@ async function navigateTo(path: string) {
   if (loading) loading.style.display = 'none';
 }
 
+let filePathMap: Map<string, FileItem> = new Map();
+
 function renderFiles(items: FileItem[]) {
   if (!fileGrid) return;
-  
+
   fileGrid.innerHTML = '';
   clearSelection();
   allFiles = items;
-  
-  const visibleItems = currentSettings.showHiddenFiles 
-    ? items 
+
+  filePathMap.clear();
+  items.forEach(item => filePathMap.set(item.path, item));
+
+  const visibleItems = currentSettings.showHiddenFiles
+    ? items
     : items.filter(item => !item.isHidden);
-  
+
   if (visibleItems.length === 0) {
     if (emptyState) emptyState.style.display = 'flex';
     updateStatusBar();
     return;
   }
-  
+
+  const sortBy = currentSettings.sortBy || 'name';
+  const sortOrder = currentSettings.sortOrder || 'asc';
+  const extCache = new Map<FileItem, string>();
+
+  if (sortBy === 'type') {
+    visibleItems.forEach(item => {
+      if (!item.isDirectory) {
+        const ext = item.name.split('.').pop()?.toLowerCase() || '';
+        extCache.set(item, ext);
+      }
+    });
+  }
+
   const sortedItems = [...visibleItems].sort((a, b) => {
     const dirSort = (b.isDirectory ? 1 : 0) - (a.isDirectory ? 1 : 0);
     if (dirSort !== 0) return dirSort;
-    
+
     let comparison = 0;
-    const sortBy = currentSettings.sortBy || 'name';
-    const sortOrder = currentSettings.sortOrder || 'asc';
-    
+
     switch (sortBy) {
       case 'name':
         comparison = a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
@@ -2576,14 +2656,14 @@ function renderFiles(items: FileItem[]) {
         comparison = a.size - b.size;
         break;
       case 'type':
-        const extA = a.name.split('.').pop()?.toLowerCase() || '';
-        const extB = b.name.split('.').pop()?.toLowerCase() || '';
+        const extA = extCache.get(a) || '';
+        const extB = extCache.get(b) || '';
         comparison = extA.localeCompare(extB);
         break;
       default:
         comparison = a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
     }
-    
+
     return sortOrder === 'asc' ? comparison : -comparison;
   });
 
@@ -2631,7 +2711,7 @@ function lazyLoadThumbnails() {
       if (entry.isIntersecting) {
         const fileItem = entry.target as HTMLElement;
         const path = fileItem.dataset.path;
-        const item = allFiles.find(f => f.path === path);
+        const item = path ? filePathMap.get(path) : undefined;
         
         if (item && fileItem.classList.contains('has-thumbnail')) {
           loadThumbnail(fileItem, item);
@@ -2681,6 +2761,7 @@ function createFileItem(item: FileItem): HTMLElement {
       navigateTo(item.path);
     } else {
       window.electronAPI.openFile(item.path);
+      addToRecentFiles(item.path);
     }
   });
   
@@ -2891,7 +2972,7 @@ function toggleSelection(fileItem: HTMLElement) {
   
   if (isPreviewPanelVisible && selectedItems.size === 1) {
     const selectedPath = Array.from(selectedItems)[0];
-    const file = allFiles.find(f => f.path === selectedPath);
+    const file = filePathMap.get(selectedPath);
     if (file && file.isFile) {
            updatePreview(file);
     } else {
@@ -2931,7 +3012,7 @@ async function renameSelected() {
   const fileItems = document.querySelectorAll('.file-item');
   for (const fileItem of Array.from(fileItems)) {
     if (fileItem.getAttribute('data-path') === itemPath) {
-      const item = allFiles.find(f => f.path === itemPath);
+      const item = filePathMap.get(itemPath);
       if (item) {
         startInlineRename(fileItem as HTMLElement, item.name, item.path);
       }
@@ -3196,15 +3277,15 @@ async function renderDriveColumn() {
   columnView.appendChild(pane);
 }
 
-async function renderColumn(path: string, columnIndex: number, renderId?: number): Promise<HTMLDivElement | null> {
+async function renderColumn(columnPath: string, columnIndex: number, renderId?: number): Promise<HTMLDivElement | null> {
   if (renderId !== undefined && renderId !== columnViewRenderId) {
     return null;
   }
-  
+
   const pane = document.createElement('div');
   pane.className = 'column-pane';
   pane.dataset.columnIndex = String(columnIndex);
-  pane.dataset.path = path;
+  pane.dataset.path = columnPath;
 
   pane.addEventListener('dragover', (e) => {
     if ((e.target as HTMLElement).closest('.column-item')) {
@@ -3269,21 +3350,21 @@ async function renderColumn(path: string, columnIndex: number, renderId?: number
     }
 
     const alreadyInCurrentDir = draggedPaths.some((filePath: string) => {
-      const parentDir = filePath.substring(0, filePath.lastIndexOf(filePath.includes('\\') ? '\\' : '/'));
-      return parentDir === path || filePath === path;
+      const parentDir = path.dirname(filePath);
+      return parentDir === columnPath || filePath === columnPath;
     });
-    
+
     if (alreadyInCurrentDir) {
       showToast('Items are already in this directory', 'Info', 'info');
       return;
     }
-    
+
     const operation = e.ctrlKey ? 'copy' : 'move';
-    await handleDrop(draggedPaths, path, operation);
+    await handleDrop(draggedPaths, columnPath, operation);
   });
-  
+
   try {
-    const result = await window.electronAPI.getDirectoryContents(path);
+    const result = await window.electronAPI.getDirectoryContents(columnPath);
     const items = result.contents;
 
     const sortedItems = [...items].sort((a, b) => {
@@ -3324,6 +3405,7 @@ async function renderColumn(path: string, columnIndex: number, renderId?: number
         item.addEventListener('dblclick', () => {
           if (!fileItem.isDirectory) {
             window.electronAPI.openFile(fileItem.path);
+            addToRecentFiles(fileItem.path);
           }
         });
 
@@ -3498,7 +3580,7 @@ async function handleColumnItemClick(element: HTMLElement, path: string, isDirec
     const previewPanel = document.getElementById('preview-panel');
     if (previewPanel && previewPanel.style.display !== 'none') {
 
-      let file = allFiles.find(f => f.path === path);
+      let file = filePathMap.get(path);
       if (!file) {
         const fileName = path.split(/[\\/]/).pop() || '';
         file = {
@@ -3560,12 +3642,10 @@ async function createNewFileWithInlineRename() {
   let fileName = 'File';
   let counter = 1;
   let finalFileName = fileName;
-  
-  const existingFiles = Array.from(document.querySelectorAll('.file-item')).map(item => {
-    return item.querySelector('.file-name')?.textContent || '';
-  });
-  
-  while (existingFiles.includes(finalFileName)) {
+
+  const existingNames = new Set(allFiles.map(f => f.name));
+
+  while (existingNames.has(finalFileName)) {
     finalFileName = `${fileName} (${counter})`;
     counter++;
   }
@@ -3594,12 +3674,10 @@ async function createNewFolderWithInlineRename() {
   let folderName = 'New Folder';
   let counter = 1;
   let finalFolderName = folderName;
-  
-  const existingFolders = Array.from(document.querySelectorAll('.file-item')).map(item => {
-    return item.querySelector('.file-name')?.textContent || '';
-  });
-  
-  while (existingFolders.includes(finalFolderName)) {
+
+  const existingNames = new Set(allFiles.map(f => f.name));
+
+  while (existingNames.has(finalFolderName)) {
     finalFolderName = `${folderName} (${counter})`;
     counter++;
   }
@@ -3883,6 +3961,7 @@ async function handleContextMenuAction(action: string | undefined, item: FileIte
         navigateTo(item.path);
       } else {
         window.electronAPI.openFile(item.path);
+        addToRecentFiles(item.path);
       }
       break;
       
@@ -4136,6 +4215,12 @@ function showPropertiesDialog(props: ItemProperties) {
         <div class="property-progress-text" id="folder-size-progress-text">Calculating...</div>
         <button class="property-btn property-btn-cancel" id="cancel-folder-size-btn">${twemojiImg(String.fromCodePoint(0x274C), 'twemoji')} Cancel</button>
       </div>
+    </div>
+    <div class="property-row" id="folder-stats-row" style="display: none;">
+      <div class="property-label">File Types:</div>
+      <div class="property-value">
+        <div id="folder-stats-content" class="folder-stats-content"></div>
+      </div>
     </div>`;
   }
   
@@ -4254,6 +4339,29 @@ function showPropertiesDialog(props: ItemProperties) {
             const propsSize = document.getElementById('props-size-value');
             if (propsSize) {
               propsSize.textContent = totalSize;
+            }
+
+            if (result.result.fileTypes && result.result.fileTypes.length > 0) {
+              const statsRow = document.getElementById('folder-stats-row');
+              const statsContent = document.getElementById('folder-stats-content');
+              if (statsRow && statsContent) {
+                statsRow.style.display = 'flex';
+                const formatBytes = (bytes: number): string => {
+                  if (bytes === 0) return '0 B';
+                  const units = ['B', 'KB', 'MB', 'GB'];
+                  const i = Math.floor(Math.log(bytes) / Math.log(1024));
+                  return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${units[i]}`;
+                };
+                statsContent.innerHTML = result.result.fileTypes.map(ft => {
+                  const pct = result.result!.totalSize > 0 ? (ft.size / result.result!.totalSize * 100).toFixed(1) : '0';
+                  return `<div class="file-type-stat">
+                    <span class="file-type-ext">${escapeHtml(ft.extension)}</span>
+                    <span class="file-type-count">${ft.count} files</span>
+                    <span class="file-type-size">${formatBytes(ft.size)} (${pct}%)</span>
+                    <div class="file-type-bar" style="width: ${pct}%"></div>
+                  </div>`;
+                }).join('');
+              }
             }
           } else if (result.error !== 'Calculation cancelled') {
             if (sizeInfo) sizeInfo.textContent = `Error: ${result.error}`;
@@ -4971,7 +5079,7 @@ function togglePreviewPanel() {
     previewPanel.style.display = 'flex';
     if (selectedItems.size === 1) {
       const selectedPath = Array.from(selectedItems)[0];
-      const file = allFiles.find(f => f.path === selectedPath);
+      const file = filePathMap.get(selectedPath);
       if (file && file.isFile) {
         updatePreview(file);
       }
@@ -5198,12 +5306,12 @@ async function showQuickLook() {
   if (document.activeElement instanceof HTMLElement) {
     document.activeElement.blur();
   }
-  
+
   const selectedPath = Array.from(selectedItems)[0];
-  const file = allFiles.find(f => f.path === selectedPath);
-  
+  const file = filePathMap.get(selectedPath);
+
   if (!file || file.isDirectory) return;
-  
+
   currentQuicklookFile = file;
   quicklookTitle.textContent = file.name;
   quicklookModal.style.display = 'flex';
@@ -5280,6 +5388,7 @@ if (quicklookOpen) {
   quicklookOpen.addEventListener('click', () => {
     if (currentQuicklookFile) {
       window.electronAPI.openFile(currentQuicklookFile.path);
+      addToRecentFiles(currentQuicklookFile.path);
       closeQuickLook();
     }
   });
