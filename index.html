@@ -392,8 +392,21 @@
                   <option value="default">Charcoal</option>
                   <option value="dark">Cobalt</option>
                   <option value="light">Light</option>
-                  <option value="custom">Custom...</option>
                 </select>
+              </div>
+              <div class="setting-item" data-searchable="theme color scheme custom customize editor">
+                <div class="setting-info">
+                  <label>Custom Theme</label>
+                  <p class="setting-description" id="custom-theme-description">Create your own color scheme</p>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                  <button class="modal-button" id="open-theme-editor-btn" style="min-width: 120px;">
+                    <img src="assets/twemoji/1f3a8.svg" class="twemoji" alt="🎨" draggable="false" /> Customize
+                  </button>
+                  <button class="modal-button secondary" id="use-custom-theme-btn" style="min-width: 100px; display: none;">
+                    <img src="assets/twemoji/2714.svg" class="twemoji" alt="✔️" draggable="false" /> Use Custom
+                  </button>
+                </div>
               </div>
             </div>
           </div>

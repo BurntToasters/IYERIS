@@ -877,22 +877,16 @@ async function saveCustomTheme() {
   if (nameInput && nameInput.value.trim()) {
     tempCustomTheme.name = nameInput.value.trim();
   }
-  
+
   currentSettings.customTheme = { ...tempCustomTheme };
   currentSettings.theme = 'custom';
 
-  const themeSelect = document.getElementById('theme-select') as HTMLSelectElement;
-  if (themeSelect) {
-    themeSelect.value = 'custom';
-  }
-  
-  // Apply theme
   applySettings(currentSettings);
-  
-  // Save to disk
+
   const result = await window.electronAPI.saveSettings(currentSettings);
   if (result.success) {
     hideThemeEditor();
+    updateCustomThemeUI();
     showToast('Custom theme saved!', 'Theme', 'success');
   } else {
     showToast('Failed to save theme: ' + result.error, 'Error', 'error');
@@ -966,18 +960,21 @@ function setupThemeEditorListeners() {
     });
   });
   
-  const themeSelectEl = document.getElementById('theme-select') as HTMLSelectElement;
-  if (themeSelectEl) {
-    themeSelectEl.addEventListener('change', (e) => {
-      const value = (e.target as HTMLSelectElement).value;
-      if (value === 'custom') {
-        showThemeEditor();
-      }
+  const openThemeEditorBtn = document.getElementById('open-theme-editor-btn');
+  if (openThemeEditorBtn) {
+    openThemeEditorBtn.addEventListener('click', () => {
+      showThemeEditor();
     });
+  }
 
-    themeSelectEl.addEventListener('click', () => {
-      if (themeSelectEl.value === 'custom') {
-        showThemeEditor();
+  const useCustomThemeBtn = document.getElementById('use-custom-theme-btn');
+  if (useCustomThemeBtn) {
+    useCustomThemeBtn.addEventListener('click', async () => {
+      if (currentSettings.customTheme) {
+        currentSettings.theme = 'custom';
+        applySettings(currentSettings);
+        await window.electronAPI.saveSettings(currentSettings);
+        updateCustomThemeUI();
       }
     });
   }
@@ -987,6 +984,40 @@ function setupThemeEditorListeners() {
       hideThemeEditor();
     }
   });
+}
+
+function updateCustomThemeUI() {
+  const useCustomThemeBtn = document.getElementById('use-custom-theme-btn');
+  const customThemeDescription = document.getElementById('custom-theme-description');
+  const themeSelect = document.getElementById('theme-select') as HTMLSelectElement;
+
+  if (currentSettings.customTheme) {
+    if (useCustomThemeBtn) {
+      useCustomThemeBtn.style.display = 'block';
+    }
+    if (customThemeDescription) {
+      const themeName = currentSettings.customTheme.name || 'Custom Theme';
+      if (currentSettings.theme === 'custom') {
+        customThemeDescription.textContent = `Currently using: ${themeName}`;
+      } else {
+        customThemeDescription.textContent = `Edit or use your custom theme: ${themeName}`;
+      }
+    }
+    if (themeSelect && currentSettings.theme === 'custom') {
+      themeSelect.value = 'default';
+    }
+  } else {
+    if (useCustomThemeBtn) {
+      useCustomThemeBtn.style.display = 'none';
+    }
+    if (customThemeDescription) {
+      customThemeDescription.textContent = 'Create your own color scheme';
+    }
+  }
+
+  if (themeSelect && currentSettings.theme !== 'custom') {
+    themeSelect.value = currentSettings.theme || 'default';
+  }
 }
 
 async function showSettingsModal() {
@@ -1007,7 +1038,6 @@ async function showSettingsModal() {
   if (sections.length > 0) sections[0].classList.add('active');
 
   const transparencyToggle = document.getElementById('transparency-toggle') as HTMLInputElement;
-  const themeSelect = document.getElementById('theme-select') as HTMLSelectElement;
   const sortBySelect = document.getElementById('sort-by-select') as HTMLSelectElement;
   const sortOrderSelect = document.getElementById('sort-order-select') as HTMLSelectElement;
   const showHiddenFilesToggle = document.getElementById('show-hidden-files-toggle') as HTMLInputElement;
@@ -1023,11 +1053,17 @@ async function showSettingsModal() {
   if (transparencyToggle) {
     transparencyToggle.checked = currentSettings.transparency;
   }
-  
-  if (themeSelect) {
-    themeSelect.value = currentSettings.theme || 'default';
+
+  updateCustomThemeUI();
+
+  const themeSelectForTracking = document.getElementById('theme-select') as HTMLSelectElement;
+  if (themeSelectForTracking) {
+    themeSelectForTracking.onchange = () => {
+      themeDropdownChanged = true;
+      markSettingsChanged();
+    };
   }
-  
+
   if (sortBySelect) {
     sortBySelect.value = currentSettings.sortBy || 'name';
   }
@@ -1307,9 +1343,15 @@ async function saveSettings() {
   if (transparencyToggle) {
     currentSettings.transparency = transparencyToggle.checked;
   }
-  
+
   if (themeSelect) {
-    currentSettings.theme = themeSelect.value as any;
+    if (currentSettings.theme === 'custom') {
+      if (themeDropdownChanged) {
+        currentSettings.theme = themeSelect.value as any;
+      }
+    } else {
+      currentSettings.theme = themeSelect.value as any;
+    }
   }
   
   if (sortBySelect) {
@@ -5142,6 +5184,7 @@ document.getElementById('about-twemoji-link')?.addEventListener('click', (e) => 
 
 // Unsaved changes
 let hasUnsavedChanges = false;
+let themeDropdownChanged = false;
 
 function markSettingsChanged() {
   hasUnsavedChanges = true;
@@ -5153,6 +5196,7 @@ function markSettingsChanged() {
 
 function clearSettingsChanged() {
   hasUnsavedChanges = false;
+  themeDropdownChanged = false;
   const indicator = document.querySelector('.settings-unsaved-indicator');
   if (indicator) {
     indicator.classList.remove('visible');
