@@ -115,7 +115,6 @@ let mainWindow: BrowserWindow | null = null;
 let fileIndexer: FileIndexer | null = null;
 let tray: Tray | null = null;
 let isQuitting = false;
-let cachedMinimizeToTray = false;
 let currentTrayState: 'idle' | 'active' | 'notification' = 'idle';
 let trayAssetsPath: string = '';
 
@@ -796,22 +795,28 @@ function createWindow(isInitialWindow: boolean = false): BrowserWindow {
     }
   });
 
-  newWindow.on('close', (event) => {
-    if (!isQuitting && cachedMinimizeToTray && tray) {
-      event.preventDefault();
-      newWindow.hide();
-      if (process.platform === 'darwin') {
-        const allWindows = BrowserWindow.getAllWindows();
-        const visibleWindows = allWindows.filter(w => w.isVisible());
-        if (visibleWindows.length === 0) {
-          app.dock?.hide();
+  newWindow.on('close', async (event) => {
+    if (!isQuitting) {
+      const settings = await loadSettings();
+      if (settings.minimizeToTray && tray) {
+        event.preventDefault();
+        newWindow.hide();
+        if (process.platform === 'darwin') {
+          const allWindows = BrowserWindow.getAllWindows();
+          const visibleWindows = allWindows.filter(w => w.isVisible());
+          if (visibleWindows.length === 0) {
+            app.dock?.hide();
+          }
         }
+        return;
       }
     }
+    return;
   });
 
-  newWindow.on('minimize', () => {
-    if (cachedMinimizeToTray && tray) {
+  newWindow.on('minimize', async () => {
+    const settings = await loadSettings();
+    if (settings.minimizeToTray && tray) {
       if (process.platform === 'darwin') {
         setImmediate(() => {
           newWindow.hide();
@@ -1001,7 +1006,6 @@ app.whenReady().then(async () => {
   shouldStartHidden = process.argv.includes('--hidden');
 
   const startupSettings = await settingsPromise;
-  cachedMinimizeToTray = startupSettings.minimizeToTray;
 
   if (!shouldStartHidden && process.windowsStore) {
     try {
@@ -1643,8 +1647,6 @@ ipcMain.handle('save-settings', async (event: IpcMainInvokeEvent, settings: Sett
   }
 
   if (result.success) {
-    cachedMinimizeToTray = settings.minimizeToTray;
-
     if (settings.minimizeToTray && !tray) {
       await createTray();
     } else if (!settings.minimizeToTray && tray) {
