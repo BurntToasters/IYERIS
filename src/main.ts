@@ -47,10 +47,16 @@ if (process.argv.includes('--disable-hardware-acceleration')) {
   app.disableHardwareAcceleration();
 }
 
-// Enable V8 code caching via cli args
-app.commandLine.appendSwitch('--enable-blink-features', 'CodeCache');
+// Memory and performance optimizations
+app.commandLine.appendSwitch('js-flags', '--max-old-space-size=1024 --optimize-for-size --gc-interval=100');
+app.commandLine.appendSwitch('enable-features', 'ReducedReferrerGranularity,V8VmFuture');
+app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion,MediaRouter');
+app.commandLine.appendSwitch('disable-renderer-backgrounding');
+app.commandLine.appendSwitch('disable-background-timer-throttling');
 app.commandLine.appendSwitch('wm-window-animations-disabled');
-app.commandLine.appendSwitch('disable-http-cache');
+app.commandLine.appendSwitch('force-color-profile', 'srgb');
+app.commandLine.appendSwitch('disable-ipc-flooding-protection');
+app.commandLine.appendSwitch('disable-component-update');
 
 // Check Flatpak status at start
 let isInFlatpak: boolean | null = null;
@@ -624,7 +630,11 @@ function createWindow(isInitialWindow: boolean = false): BrowserWindow {
       spellcheck: false,
       v8CacheOptions: 'code',
       enableWebSQL: false,
-      plugins: false
+      plugins: false,
+      webgl: false,
+      images: true,
+      autoplayPolicy: 'user-gesture-required',
+      defaultEncoding: 'UTF-8'
     },
     icon: path.join(__dirname, '..', 'assets', 'icon.png')
   });

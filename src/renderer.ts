@@ -7,8 +7,35 @@ const TOAST_DURATION_MS = 3000;
 const SEARCH_HISTORY_MAX = 5;
 const DIRECTORY_HISTORY_MAX = 5;
 const RENDER_BATCH_SIZE = 50;
-const THUMBNAIL_ROOT_MARGIN = '50px';
+const THUMBNAIL_ROOT_MARGIN = '100px';
 const FILE_PATH_MAP_MAX = 10000;
+const THUMBNAIL_CACHE_MAX = 100;
+const THUMBNAIL_CONCURRENT_LOADS = 4;
+
+const thumbnailCache = new Map<string, string>();
+let activeThumbnailLoads = 0;
+const pendingThumbnailLoads: Array<() => void> = [];
+
+function enqueueThumbnailLoad(loadFn: () => Promise<void>): void {
+  const execute = async () => {
+    activeThumbnailLoads++;
+    try {
+      await loadFn();
+    } finally {
+      activeThumbnailLoads--;
+      if (pendingThumbnailLoads.length > 0) {
+        const next = pendingThumbnailLoads.shift();
+        if (next) next();
+      }
+    }
+  };
+
+  if (activeThumbnailLoads < THUMBNAIL_CONCURRENT_LOADS) {
+    execute();
+  } else {
+    pendingThumbnailLoads.push(execute);
+  }
+}
 
 const path = {
   basename: (filePath: string, ext?: string): string => {
@@ -3071,42 +3098,58 @@ function createFileItem(item: FileItem): HTMLElement {
   return fileItem;
 }
 
-async function loadThumbnail(fileItem: HTMLElement, item: FileItem) {
-  try {
-    if (!document.body.contains(fileItem)) {
-      return;
-    }
-
+function loadThumbnail(fileItem: HTMLElement, item: FileItem) {
+  const cached = thumbnailCache.get(item.path);
+  if (cached) {
     const iconDiv = fileItem.querySelector('.file-icon');
-
     if (iconDiv) {
-      iconDiv.innerHTML = `<div class="spinner" style="width: 30px; height: 30px; border-width: 2px;"></div>`;
+      iconDiv.innerHTML = `<img src="${cached}" class="file-thumbnail" alt="${escapeHtml(item.name)}">`;
     }
+    return;
+  }
 
-    const result = await window.electronAPI.getFileDataUrl(item.path, THUMBNAIL_MAX_SIZE);
+  enqueueThumbnailLoad(async () => {
+    try {
+      if (!document.body.contains(fileItem)) {
+        return;
+      }
 
-    if (!document.body.contains(fileItem)) {
-      return;
-    }
+      const iconDiv = fileItem.querySelector('.file-icon');
 
-    if (result.success && result.dataUrl && iconDiv) {
-      iconDiv.innerHTML = `<img src="${result.dataUrl}" class="file-thumbnail" alt="${escapeHtml(item.name)}">`;
-    } else {
+      if (iconDiv) {
+        iconDiv.innerHTML = `<div class="spinner" style="width: 30px; height: 30px; border-width: 2px;"></div>`;
+      }
+
+      const result = await window.electronAPI.getFileDataUrl(item.path, THUMBNAIL_MAX_SIZE);
+
+      if (!document.body.contains(fileItem)) {
+        return;
+      }
+
+      if (result.success && result.dataUrl && iconDiv) {
+        if (thumbnailCache.size >= THUMBNAIL_CACHE_MAX) {
+          const firstKey = thumbnailCache.keys().next().value;
+          if (firstKey) thumbnailCache.delete(firstKey);
+        }
+        thumbnailCache.set(item.path, result.dataUrl);
+        iconDiv.innerHTML = `<img src="${result.dataUrl}" class="file-thumbnail" alt="${escapeHtml(item.name)}">`;
+      } else {
+        if (iconDiv) {
+          iconDiv.innerHTML = getFileIcon(item.name);
+        }
+        fileItem.classList.remove('has-thumbnail');
+      }
+    } catch (error) {
+      if (!document.body.contains(fileItem)) {
+        return;
+      }
+      const iconDiv = fileItem.querySelector('.file-icon');
       if (iconDiv) {
         iconDiv.innerHTML = getFileIcon(item.name);
       }
       fileItem.classList.remove('has-thumbnail');
     }
-  } catch (error) {
-    if (!document.body.contains(fileItem)) {
-      return;
-    }
-    const iconDiv = fileItem.querySelector('.file-icon');
-    if (iconDiv) {
-      iconDiv.innerHTML = getFileIcon(item.name);
-    }
-    fileItem.classList.remove('has-thumbnail');
-  }
+  });
 }
 
 const FILE_ICON_MAP: Record<string, string> = {
@@ -5805,6 +5848,8 @@ window.addEventListener('beforeunload', () => {
   }
 
   filePathMap.clear();
+  thumbnailCache.clear();
+  pendingThumbnailLoads.length = 0;
 
   for (const cleanup of ipcCleanupFunctions) {
     try {
