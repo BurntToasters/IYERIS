@@ -7,7 +7,32 @@ import { exec, spawn } from 'child_process';
 import { promisify } from 'util';
 import type { Settings, FileItem, ApiResponse, DirectoryResponse, PathResponse, PropertiesResponse, SettingsResponse, UpdateCheckResponse, IndexSearchResponse, UndoAction } from './types';
 import { FileIndexer } from './indexer';
-import { getDrives } from './utils';
+import { getDrives, getCachedDrives, warmupDrivesCache } from './utils';
+
+let autoUpdaterModule: typeof import('electron-updater') | null = null;
+let sevenBinModule: { path7za: string } | null = null;
+let sevenZipModule: any = null;
+
+function getAutoUpdater() {
+  if (!autoUpdaterModule) {
+    autoUpdaterModule = require('electron-updater');
+  }
+  return autoUpdaterModule!.autoUpdater;
+}
+
+function get7zipBin(): { path7za: string } {
+  if (!sevenBinModule) {
+    sevenBinModule = require('7zip-bin');
+  }
+  return sevenBinModule!;
+}
+
+function get7zipModule() {
+  if (!sevenZipModule) {
+    sevenZipModule = require('node-7z');
+  }
+  return sevenZipModule;
+}
 
 const MAX_UNDO_STACK_SIZE = 50;
 const HIDDEN_FILE_CACHE_TTL = 300000;
@@ -70,7 +95,7 @@ const get7zipPath = (): string => {
     return cached7zipPath;
   }
 
-  const sevenBin = require('7zip-bin');
+  const sevenBin = get7zipBin();
   let sevenZipPath = sevenBin.path7za;
 
   if (app.isPackaged) {
@@ -189,7 +214,7 @@ function spawnWithTimeout(
 }
 
 async function assertArchiveEntriesSafe(archivePath: string, destPath: string): Promise<void> {
-  const Seven = require('node-7z');
+  const Seven = get7zipModule();
   const sevenZipPath = get7zipPath();
 
   const entries = await new Promise<string[]>((resolve, reject) => {
@@ -873,9 +898,13 @@ app.whenReady().then(async () => {
   setupApplicationMenu();
 
   checkMsiInstallation();
-  const startupSettings = await loadSettings();
+  warmupDrivesCache();
+
+  const settingsPromise = loadSettings();
 
   shouldStartHidden = process.argv.includes('--hidden');
+
+  const startupSettings = await settingsPromise;
 
   if (!shouldStartHidden && process.windowsStore) {
     try {
@@ -907,13 +936,13 @@ app.whenReady().then(async () => {
 
   if (shouldStartHidden && (startupSettings.minimizeToTray || startupSettings.startOnLogin)) {
     console.log('[Startup] Creating tray before window for hidden start');
-    await createTrayForHiddenStart();
+    createTrayForHiddenStart();
   }
-  
-  createWindow(true); // Initial window
+
+  createWindow(true);
 
   if (!tray) {
-    await createTray();
+    createTray();
   }
 
   mainWindow?.once('ready-to-show', () => {
@@ -935,7 +964,7 @@ app.whenReady().then(async () => {
         // Defer auto-updater setup
         setTimeout(() => {
           try {
-            const { autoUpdater } = require('electron-updater');
+            const autoUpdater = getAutoUpdater();
             autoUpdater.logger = console;
             autoUpdater.autoDownload = false;
             autoUpdater.autoInstallOnAppQuit = true;
@@ -2176,7 +2205,7 @@ ipcMain.handle('check-for-updates', async (): Promise<UpdateCheckResponse> => {
   }
 
   try {
-    const { autoUpdater } = require('electron-updater');
+    const autoUpdater = getAutoUpdater();
     const currentVersion = app.getVersion();
     console.log('[AutoUpdater] Manually checking for updates. Current version:', currentVersion);
     
@@ -2238,7 +2267,7 @@ ipcMain.handle('check-for-updates', async (): Promise<UpdateCheckResponse> => {
 
 ipcMain.handle('download-update', async (): Promise<ApiResponse> => {
   try {
-    const { autoUpdater } = require('electron-updater');
+    const autoUpdater = getAutoUpdater();
     console.log('[AutoUpdater] Starting update download...');
     await autoUpdater.downloadUpdate();
     return { success: true };
@@ -2250,7 +2279,7 @@ ipcMain.handle('download-update', async (): Promise<ApiResponse> => {
 
 ipcMain.handle('install-update', async (): Promise<ApiResponse> => {
   try {
-    const { autoUpdater } = require('electron-updater');
+    const autoUpdater = getAutoUpdater();
     console.log('[AutoUpdater] Installing update and restarting...');
     autoUpdater.quitAndInstall(false, true);
     return { success: true };
@@ -2499,7 +2528,7 @@ ipcMain.handle('compress-files', async (_event: IpcMainInvokeEvent, sourcePaths:
 
     if (format === 'tar.gz') {
       return new Promise(async (resolve, reject) => {
-        const Seven = require('node-7z');
+        const Seven = get7zipModule();
         const sevenZipPath = get7zipPath();
         console.log('[Compress] Using 7zip at:', sevenZipPath);
         const tarPath = outputPath.replace(/\.gz$/, '');
@@ -2646,7 +2675,7 @@ ipcMain.handle('compress-files', async (_event: IpcMainInvokeEvent, sourcePaths:
     }
 
     return new Promise((resolve, reject) => {
-      const Seven = require('node-7z');
+      const Seven = get7zipModule();
       const sevenZipPath = get7zipPath();
       console.log('[Compress] Using 7zip at:', sevenZipPath);
 
@@ -2727,7 +2756,7 @@ ipcMain.handle('extract-archive', async (_event: IpcMainInvokeEvent, archivePath
       return { success: false, error: 'Archive contains unsafe paths' };
     }
     return new Promise((resolve, reject) => {
-      const Seven = require('node-7z');
+      const Seven = get7zipModule();
       const sevenZipPath = get7zipPath();
       console.log('[Extract] Using 7zip at:', sevenZipPath);
       

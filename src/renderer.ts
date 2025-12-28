@@ -599,7 +599,11 @@ function showToast(message: string, title: string = '', type: 'success' | 'error
 }
 
 async function loadSettings(): Promise<void> {
-  const result = await window.electronAPI.getSettings();
+  const [result, sharedClipboard] = await Promise.all([
+    window.electronAPI.getSettings(),
+    window.electronAPI.getClipboard()
+  ]);
+
   if (result.success && result.settings) {
     const defaults: Settings = {
       transparency: true,
@@ -625,15 +629,13 @@ async function loadSettings(): Promise<void> {
     applySettings(currentSettings);
     const newLaunchCount = (currentSettings.launchCount || 0) + 1;
     currentSettings.launchCount = newLaunchCount;
-    await window.electronAPI.saveSettings(currentSettings);
+    debouncedSaveSettings(100);
 
     if (newLaunchCount === 2 && !currentSettings.supportPopupDismissed) {
       setTimeout(() => showSupportPopup(), 1500);
     }
   }
-  
-  // shared clipboard from main
-  const sharedClipboard = await window.electronAPI.getClipboard();
+
   if (sharedClipboard) {
     clipboard = sharedClipboard;
     console.log('[Init] Loaded shared clipboard:', clipboard.operation, clipboard.paths.length, 'items');
@@ -1947,6 +1949,8 @@ async function zoomReset() {
 async function init() {
   console.log('Init: Getting platform, store info, and settings...');
 
+  const homeDirectoryPromise = window.electronAPI.getHomeDirectory();
+
   const [platform, mas, flatpak, msStore] = await Promise.all([
     window.electronAPI.getPlatform(),
     window.electronAPI.isMas(),
@@ -1956,27 +1960,21 @@ async function init() {
   ]);
 
   platformOS = platform;
-  console.log('Init: Platform is', platformOS);
 
-  console.log('Init: Setting up breadcrumb navigation...');
-  setupBreadcrumbListeners();
-
-  console.log('Init: Setting up theme editor...');
-  setupThemeEditorListeners();
-
-  console.log('Init: Determining startup path...');
   const startupPath = currentSettings.startupPath && currentSettings.startupPath.trim() !== ''
     ? currentSettings.startupPath
-    : await window.electronAPI.getHomeDirectory();
-  console.log('Init: Startup path is', startupPath);
+    : await homeDirectoryPromise;
 
-  console.log('Init: Starting navigation and drives in parallel...');
   navigateTo(startupPath);
   loadDrives();
-  loadBookmarks();
 
-  console.log('Init: Setting up event listeners...');
   setupEventListeners();
+
+  queueMicrotask(() => {
+    setupBreadcrumbListeners();
+    setupThemeEditorListeners();
+    loadBookmarks();
+  });
 
   const isStoreVersion = mas || flatpak || msStore;
 
