@@ -55,8 +55,6 @@ app.commandLine.appendSwitch('disable-renderer-backgrounding');
 app.commandLine.appendSwitch('disable-background-timer-throttling');
 app.commandLine.appendSwitch('wm-window-animations-disabled');
 app.commandLine.appendSwitch('force-color-profile', 'srgb');
-app.commandLine.appendSwitch('disable-ipc-flooding-protection');
-app.commandLine.appendSwitch('disable-component-update');
 
 // Check Flatpak status at start
 let isInFlatpak: boolean | null = null;
