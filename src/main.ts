@@ -115,6 +115,100 @@ let mainWindow: BrowserWindow | null = null;
 let fileIndexer: FileIndexer | null = null;
 let tray: Tray | null = null;
 let isQuitting = false;
+let cachedMinimizeToTray = false;
+let currentTrayState: 'idle' | 'active' | 'notification' = 'idle';
+let trayAssetsPath: string = '';
+
+function getActiveWindow(): BrowserWindow | null {
+  if (mainWindow && !mainWindow.isDestroyed()) return mainWindow;
+  const allWindows = BrowserWindow.getAllWindows();
+  return allWindows.length > 0 ? allWindows[0] : null;
+}
+
+function showAppWindow(): void {
+  const targetWindow = getActiveWindow();
+  if (targetWindow) {
+    targetWindow.show();
+    targetWindow.focus();
+  } else {
+    createWindow(false);
+  }
+  if (process.platform === 'darwin') {
+    app.dock?.show();
+  }
+}
+
+function quitApp(): void {
+  isQuitting = true;
+  app.quit();
+}
+
+function updateTrayMenu(status?: string): void {
+  if (!tray) return;
+  const menuItems: Electron.MenuItemConstructorOptions[] = [];
+
+  if (status) {
+    menuItems.push({ label: status, enabled: false });
+    menuItems.push({ type: 'separator' });
+  }
+
+  menuItems.push({ label: 'Show IYERIS', click: showAppWindow });
+  menuItems.push({ type: 'separator' });
+  menuItems.push({ label: 'Quit', click: quitApp });
+
+  tray.setContextMenu(Menu.buildFromTemplate(menuItems));
+}
+
+function setTrayState(state: 'idle' | 'active' | 'notification'): void {
+  if (!tray || !trayAssetsPath || currentTrayState === state) return;
+  currentTrayState = state;
+
+  const iconFiles: Record<string, Record<string, string>> = {
+    darwin: { idle: 'icon-tray-Template.png', active: 'icon-tray-Template.png', notification: 'icon-tray-Template.png' },
+    win32: { idle: 'icon-square.ico', active: 'icon-square.ico', notification: 'icon-square.ico' },
+    linux: { idle: 'icon_32x32@1x.png', active: 'icon_32x32@1x.png', notification: 'icon_32x32@1x.png' }
+  };
+
+  const platform = process.platform as 'darwin' | 'win32' | 'linux';
+  const iconFile = iconFiles[platform]?.[state] || iconFiles[platform]?.idle;
+
+  let iconPath: string;
+  if (platform === 'darwin') {
+    iconPath = path.join(trayAssetsPath, iconFile);
+    if (!fsSync.existsSync(iconPath)) {
+      const fallbackPath = path.join(trayAssetsPath, 'iyeris.iconset', 'icon_32x32@1x.png');
+      iconPath = fsSync.existsSync(fallbackPath) ? fallbackPath : path.join(trayAssetsPath, 'icon.png');
+    }
+  } else if (platform === 'linux') {
+    iconPath = path.join(trayAssetsPath, 'iyeris.iconset', iconFile);
+    if (!fsSync.existsSync(iconPath)) {
+      iconPath = path.join(trayAssetsPath, 'icon.png');
+    }
+  } else {
+    iconPath = path.join(trayAssetsPath, iconFile);
+    if (!fsSync.existsSync(iconPath)) {
+      iconPath = path.join(trayAssetsPath, 'icon.png');
+    }
+  }
+
+  const sizes: Record<string, { width: number; height: number }> = {
+    darwin: { width: 22, height: 22 },
+    win32: { width: 16, height: 16 },
+    linux: { width: 24, height: 24 }
+  };
+
+  let newIcon = nativeImage.createFromPath(iconPath);
+  if (platform !== 'win32' || !iconPath.endsWith('.ico')) {
+    newIcon = newIcon.resize(sizes[platform] || sizes.linux);
+  }
+
+  if (platform === 'darwin') {
+    newIcon.setTemplateImage(true);
+  }
+
+  tray.setImage(newIcon);
+}
+
 let shouldStartHidden = false;
 let hiddenFileCacheCleanupInterval: NodeJS.Timeout | null = null;
 import * as crypto from 'crypto';
@@ -702,28 +796,22 @@ function createWindow(isInitialWindow: boolean = false): BrowserWindow {
     }
   });
 
-  newWindow.on('close', async (event) => {
-    if (!isQuitting) {
-      const settings = await loadSettings();
-      if (settings.minimizeToTray && tray) {
-        event.preventDefault();
-        newWindow.hide();
-        if (process.platform === 'darwin') {
-          const allWindows = BrowserWindow.getAllWindows();
-          const visibleWindows = allWindows.filter(w => w.isVisible());
-          if (visibleWindows.length === 0) {
-            app.dock?.hide();
-          }
+  newWindow.on('close', (event) => {
+    if (!isQuitting && cachedMinimizeToTray && tray) {
+      event.preventDefault();
+      newWindow.hide();
+      if (process.platform === 'darwin') {
+        const allWindows = BrowserWindow.getAllWindows();
+        const visibleWindows = allWindows.filter(w => w.isVisible());
+        if (visibleWindows.length === 0) {
+          app.dock?.hide();
         }
-        return;
       }
     }
-    return;
   });
 
-  newWindow.on('minimize', async () => {
-    const settings = await loadSettings();
-    if (settings.minimizeToTray && tray) {
+  newWindow.on('minimize', () => {
+    if (cachedMinimizeToTray && tray) {
       if (process.platform === 'darwin') {
         setImmediate(() => {
           newWindow.hide();
@@ -913,6 +1001,7 @@ app.whenReady().then(async () => {
   shouldStartHidden = process.argv.includes('--hidden');
 
   const startupSettings = await settingsPromise;
+  cachedMinimizeToTray = startupSettings.minimizeToTray;
 
   if (!shouldStartHidden && process.windowsStore) {
     try {
@@ -1554,6 +1643,8 @@ ipcMain.handle('save-settings', async (event: IpcMainInvokeEvent, settings: Sett
   }
 
   if (result.success) {
+    cachedMinimizeToTray = settings.minimizeToTray;
+
     if (settings.minimizeToTray && !tray) {
       await createTray();
     } else if (!settings.minimizeToTray && tray) {
@@ -2883,7 +2974,7 @@ ipcMain.handle('get-zoom-level', async (event: IpcMainInvokeEvent): Promise<{suc
 
 async function createTray(forHiddenStart: boolean = false): Promise<void> {
   const logPrefix = forHiddenStart ? '[Tray] (hidden start)' : '[Tray]';
-  
+
   if (forHiddenStart) {
     if (tray) {
       console.log(`${logPrefix} Tray already exists`);
@@ -2895,7 +2986,7 @@ async function createTray(forHiddenStart: boolean = false): Promise<void> {
       console.log(`${logPrefix} Tray disabled in settings`);
       return;
     }
-    
+
     if (tray) {
       tray.destroy();
       tray = null;
@@ -2905,24 +2996,29 @@ async function createTray(forHiddenStart: boolean = false): Promise<void> {
   let iconPath: string;
   let trayIcon: Electron.NativeImage;
 
-  const assetsPath = path.join(__dirname, '..', 'assets');
+  trayAssetsPath = path.join(__dirname, '..', 'assets');
 
   if (process.platform === 'darwin') {
-    const icon32Path = path.join(assetsPath, 'iyeris.iconset', 'icon_32x32@1x.png');
-    const iconFallback = path.join(assetsPath, 'icon.png');
-    
-    if (fsSync.existsSync(icon32Path)) {
+    const templatePath = path.join(trayAssetsPath, 'icon-tray-Template.png');
+    const icon32Path = path.join(trayAssetsPath, 'iyeris.iconset', 'icon_32x32@1x.png');
+    const iconFallback = path.join(trayAssetsPath, 'icon.png');
+
+    if (fsSync.existsSync(templatePath)) {
+      iconPath = templatePath;
+      trayIcon = nativeImage.createFromPath(iconPath).resize({ width: 22, height: 22 });
+    } else if (fsSync.existsSync(icon32Path)) {
       iconPath = icon32Path;
       trayIcon = nativeImage.createFromPath(iconPath).resize({ width: 22, height: 22 });
     } else {
       iconPath = iconFallback;
       trayIcon = nativeImage.createFromPath(iconPath).resize({ width: 22, height: 22 });
     }
-    console.log(`${logPrefix} macOS: Using color icon from:`, iconPath);
+    trayIcon.setTemplateImage(true);
+    console.log(`${logPrefix} macOS: Using template icon from:`, iconPath);
   } else if (process.platform === 'win32') {
-    const icoPath = path.join(assetsPath, 'icon-square.ico');
-    const pngPath = path.join(assetsPath, 'icon.png');
-    
+    const icoPath = path.join(trayAssetsPath, 'icon-square.ico');
+    const pngPath = path.join(trayAssetsPath, 'icon.png');
+
     if (fsSync.existsSync(icoPath)) {
       iconPath = icoPath;
       trayIcon = nativeImage.createFromPath(iconPath);
@@ -2932,9 +3028,9 @@ async function createTray(forHiddenStart: boolean = false): Promise<void> {
     }
     console.log(`${logPrefix} Windows: Using icon from:`, iconPath);
   } else {
-    const icon32Path = path.join(assetsPath, 'iyeris.iconset', 'icon_32x32@1x.png');
-    const iconFallback = path.join(assetsPath, 'icon.png');
-    
+    const icon32Path = path.join(trayAssetsPath, 'iyeris.iconset', 'icon_32x32@1x.png');
+    const iconFallback = path.join(trayAssetsPath, 'icon.png');
+
     if (fsSync.existsSync(icon32Path)) {
       iconPath = icon32Path;
       trayIcon = nativeImage.createFromPath(iconPath).resize({ width: 24, height: 24 });
@@ -2949,7 +3045,7 @@ async function createTray(forHiddenStart: boolean = false): Promise<void> {
     console.error(`${logPrefix} Failed to load tray icon from:`, iconPath);
     return;
   }
-  
+
   try {
     tray = new Tray(trayIcon);
   } catch (error) {
@@ -2962,49 +3058,12 @@ async function createTray(forHiddenStart: boolean = false): Promise<void> {
   }
 
   tray.setToolTip('IYERIS');
-  
-  const contextMenu = Menu.buildFromTemplate([
-    { 
-      label: 'Show IYERIS', 
-      click: () => {
-        let targetWindow = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
-        if (!targetWindow) {
-          const allWindows = BrowserWindow.getAllWindows();
-          targetWindow = allWindows.length > 0 ? allWindows[0] : null;
-        }
-        
-        if (targetWindow) {
-          targetWindow.show();
-          targetWindow.focus();
-        } else {
-          createWindow(false);
-        }
-        
-        if (process.platform === 'darwin') {
-          app.dock?.show();
-        }
-      } 
-    },
-    { type: 'separator' },
-    { 
-      label: 'Quit', 
-      click: () => {
-        isQuitting = true;
-        app.quit();
-      } 
-    }
-  ]);
-  
-  tray.setContextMenu(contextMenu);
+  currentTrayState = 'idle';
+  updateTrayMenu();
 
   if (process.platform !== 'darwin') {
     tray.on('click', () => {
-      let targetWindow = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
-      if (!targetWindow) {
-        const allWindows = BrowserWindow.getAllWindows();
-        targetWindow = allWindows.length > 0 ? allWindows[0] : null;
-      }
-      
+      const targetWindow = getActiveWindow();
       if (targetWindow) {
         if (targetWindow.isVisible()) {
           targetWindow.hide();
@@ -3020,20 +3079,7 @@ async function createTray(forHiddenStart: boolean = false): Promise<void> {
 
   if (process.platform === 'darwin') {
     tray.on('double-click', () => {
-      let targetWindow = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
-      if (!targetWindow) {
-        const allWindows = BrowserWindow.getAllWindows();
-        targetWindow = allWindows.length > 0 ? allWindows[0] : null;
-      }
-      
-      if (targetWindow) {
-        targetWindow.show();
-        targetWindow.focus();
-      } else {
-        createWindow(false);
-      }
-      
-      app.dock?.show();
+      showAppWindow();
     });
   }
 
