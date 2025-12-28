@@ -17,8 +17,8 @@ export class FileIndexer {
   private indexPath: string;
   private enabled: boolean = true;
   private abortController: AbortController | null = null;
-  
-  // Maximum number of files to index
+  private initializationPromise: Promise<void> | null = null;
+
   private static readonly MAX_INDEX_SIZE = 200000;
 
   constructor() {
@@ -155,9 +155,13 @@ export class FileIndexer {
           continue;
         }
 
+        if (this.index.size >= FileIndexer.MAX_INDEX_SIZE) {
+          return;
+        }
+
         try {
           const stats = await fs.stat(fullPath);
-          
+
           const indexEntry: IndexEntry = {
             name: entry.name,
             path: fullPath,
@@ -170,7 +174,7 @@ export class FileIndexer {
           this.index.set(fullPath, indexEntry);
           this.indexedFiles++;
 
-          if (entry.isDirectory() && this.index.size < FileIndexer.MAX_INDEX_SIZE) { 
+          if (entry.isDirectory() && this.index.size < FileIndexer.MAX_INDEX_SIZE) {
             await this.scanDirectory(fullPath, signal);
           }
         } catch (error) {
@@ -248,6 +252,10 @@ export class FileIndexer {
   async search(query: string): Promise<IndexEntry[]> {
     if (!this.enabled) {
       return [];
+    }
+
+    if (this.initializationPromise) {
+      await this.initializationPromise;
     }
 
     if (this.index.size === 0 && !this.isIndexing) {
@@ -363,7 +371,7 @@ export class FileIndexer {
 
   async initialize(enabled: boolean): Promise<void> {
     this.enabled = enabled;
-    
+
     if (!enabled) {
       console.log('[Indexer] Indexer disabled, skipping initialization');
       return;
@@ -371,16 +379,15 @@ export class FileIndexer {
 
     console.log('[Indexer] Initializing...');
 
-    setImmediate(async () => {
+    this.initializationPromise = (async () => {
       try {
         await this.loadIndex();
 
         if (this.index.size === 0) {
           console.log('[Indexer] No existing index found, building now...');
           await this.buildIndex();
-        } 
-        else if (!this.lastIndexTime || 
-                 (Date.now() - this.lastIndexTime.getTime() > 7 * 24 * 60 * 60 * 1000)) {
+        } else if (!this.lastIndexTime ||
+                   (Date.now() - this.lastIndexTime.getTime() > 7 * 24 * 60 * 60 * 1000)) {
           console.log('[Indexer] Index is outdated, rebuilding...');
           await this.buildIndex();
         } else {
@@ -388,7 +395,9 @@ export class FileIndexer {
         }
       } catch (err) {
         console.error('[Indexer] Initialization failed:', err);
+      } finally {
+        this.initializationPromise = null;
       }
-    });
+    })();
   }
 }

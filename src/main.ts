@@ -3,7 +3,7 @@ import * as path from 'path';
 import { pathToFileURL } from 'url';
 import { promises as fs } from 'fs';
 import * as fsSync from 'fs';
-import { exec, spawn } from 'child_process';
+import { exec, execFile, spawn } from 'child_process';
 import { promisify } from 'util';
 import type { Settings, FileItem, ApiResponse, DirectoryResponse, PathResponse, PropertiesResponse, SettingsResponse, UpdateCheckResponse, IndexSearchResponse, UndoAction } from './types';
 import { FileIndexer } from './indexer';
@@ -1956,29 +1956,37 @@ ipcMain.handle('restart-as-admin', async (): Promise<ApiResponse> => {
   try {
     const platform = process.platform;
     const appPath = app.getPath('exe');
-    const execPromise = promisify(exec);
-    
+    const execFilePromise = promisify(execFile);
+
     if (platform === 'win32') {
-      const command = `Start-Process -FilePath "${appPath}" -Verb RunAs`;
       try {
-        await execPromise(`powershell -Command "${command}"`);
+        await execFilePromise('powershell', [
+          '-NoProfile',
+          '-Command',
+          'Start-Process',
+          '-FilePath', appPath,
+          '-Verb', 'RunAs'
+        ]);
         app.quit();
         return { success: true };
       } catch (error) {
         console.log('[Admin] Failed to restart as admin:', getErrorMessage(error));
         return { success: false, error: 'Failed to restart with admin privileges. The request may have been cancelled.' };
       }
-    } else if (platform === 'darwin' || platform === 'linux') {
-      let command: string;
-      
-      if (platform === 'darwin') {
-        command = `osascript -e 'do shell script "${appPath}" with administrator privileges'`;
-      } else {
-        command = `pkexec "${appPath}" || gksudo "${appPath}"`;
-      }
-      
+    } else if (platform === 'darwin') {
       try {
-        await execPromise(command);
+        await execFilePromise('osascript', [
+          '-e', `do shell script quoted form of "${appPath}" with administrator privileges`
+        ]);
+        app.quit();
+        return { success: true };
+      } catch (error) {
+        console.log('[Admin] Failed to restart as admin:', getErrorMessage(error));
+        return { success: false, error: 'Failed to restart with admin privileges. The request may have been cancelled.' };
+      }
+    } else if (platform === 'linux') {
+      try {
+        await execFilePromise('pkexec', [appPath]);
         app.quit();
         return { success: true };
       } catch (error) {

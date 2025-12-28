@@ -1715,19 +1715,21 @@ function cutToClipboard() {
 
 async function pasteFromClipboard() {
   if (!clipboard || !currentPath) return;
-  
-  const operation = clipboard.operation === 'copy' ? 'copyItems' : 'moveItems';
-  const result = await window.electronAPI[operation](clipboard.paths, currentPath);
-  
+
+  const isCopy = clipboard.operation === 'copy';
+  const result = isCopy
+    ? await window.electronAPI.copyItems(clipboard.paths, currentPath)
+    : await window.electronAPI.moveItems(clipboard.paths, currentPath);
+
   if (result.success) {
-    showToast(`${clipboard.paths.length} item(s) ${clipboard.operation === 'copy' ? 'copied' : 'moved'}`, 'Success', 'success');
-    
-    if (clipboard.operation === 'cut') {
+    showToast(`${clipboard.paths.length} item(s) ${isCopy ? 'copied' : 'moved'}`, 'Success', 'success');
+
+    if (!isCopy) {
       await updateUndoRedoState();
       clipboard = null;
       window.electronAPI.setClipboard(null);
     }
-    
+
     updateCutVisuals();
     refresh();
   } else {
@@ -5778,6 +5780,7 @@ window.addEventListener('beforeunload', () => {
   stopIndexStatusPolling();
   if (thumbnailObserver) {
     thumbnailObserver.disconnect();
+    thumbnailObserver = null;
   }
 
   if (diskSpaceDebounceTimer) {
@@ -5788,6 +5791,20 @@ window.addEventListener('beforeunload', () => {
     clearTimeout(zoomPopupTimeout);
     zoomPopupTimeout = null;
   }
+  if (settingsSaveTimeout) {
+    clearTimeout(settingsSaveTimeout);
+    settingsSaveTimeout = null;
+  }
+  if (searchDebounceTimeout) {
+    clearTimeout(searchDebounceTimeout);
+    searchDebounceTimeout = null;
+  }
+  if (renderOperationsTimeout) {
+    clearTimeout(renderOperationsTimeout);
+    renderOperationsTimeout = null;
+  }
+
+  filePathMap.clear();
 
   for (const cleanup of ipcCleanupFunctions) {
     try {
