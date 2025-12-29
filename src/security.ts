@@ -22,12 +22,15 @@ export function isPathSafe(inputPath: string, platform: NodeJS.Platform = proces
     return false;
   }
 
-  const suspiciousChars = /[<>"|*?]/;
-  if (suspiciousChars.test(inputPath)) {
-    return false;
+  if (platform === 'win32') {
+    const suspiciousChars = /[<>"|*?]/;
+    if (suspiciousChars.test(inputPath)) {
+      return false;
+    }
   }
 
-  if (inputPath.includes('..')) {
+  const segments = inputPath.split(/[/\\]+/).filter(Boolean);
+  if (segments.some(segment => segment === '..')) {
     return false;
   }
 

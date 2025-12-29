@@ -41,6 +41,8 @@ const HIDDEN_FILE_CACHE_MAX = 5000;
 const SETTINGS_CACHE_TTL_MS = 5000;
 const ZOOM_MIN = 0.5;
 const ZOOM_MAX = 2.0;
+const MAX_TEXT_PREVIEW_BYTES = 1024 * 1024;
+const MAX_DATA_URL_BYTES = 10 * 1024 * 1024;
 
 // Disable hardware accel via cli arg
 if (process.argv.includes('--disable-hardware-acceleration')) {
@@ -293,6 +295,73 @@ async function assertArchiveEntriesSafe(archivePath: string, destPath: string): 
   if (invalidEntries.length > 0) {
     const preview = invalidEntries.slice(0, 5).join(', ');
     throw new Error(`Archive contains unsafe paths: ${preview}${invalidEntries.length > 5 ? '...' : ''}`);
+  }
+}
+
+async function assertExtractedPathsSafe(destPath: string): Promise<void> {
+  const destRoot = await fs.realpath(destPath);
+  const destRootWithSep = destRoot.endsWith(path.sep) ? destRoot : destRoot + path.sep;
+  const unsafe: string[] = [];
+  const stack: string[] = [destRoot];
+
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!current) continue;
+    let entries: fsSync.Dirent[];
+    try {
+      entries = await fs.readdir(current, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+
+    for (const entry of entries) {
+      const fullPath = path.join(current, entry.name);
+      let stat: fsSync.Stats;
+      try {
+        stat = await fs.lstat(fullPath);
+      } catch {
+        continue;
+      }
+
+      if (stat.isSymbolicLink()) {
+        unsafe.push(fullPath);
+        try {
+          await fs.unlink(fullPath);
+        } catch {
+        }
+        continue;
+      }
+
+      let realPath: string;
+      try {
+        realPath = await fs.realpath(fullPath);
+      } catch {
+        unsafe.push(fullPath);
+        try {
+          await fs.rm(fullPath, { recursive: true, force: true });
+        } catch {
+        }
+        continue;
+      }
+
+      if (realPath !== destRoot && !realPath.startsWith(destRootWithSep)) {
+        unsafe.push(fullPath);
+        try {
+          await fs.rm(fullPath, { recursive: true, force: true });
+        } catch {
+        }
+        continue;
+      }
+
+      if (stat.isDirectory()) {
+        stack.push(fullPath);
+      }
+    }
+  }
+
+  if (unsafe.length > 0) {
+    const preview = unsafe.slice(0, 5).join(', ');
+    throw new Error(`Archive extraction created unsafe paths: ${preview}${unsafe.length > 5 ? '...' : ''}`);
   }
 }
 
@@ -1343,7 +1412,7 @@ ipcMain.handle('create-folder', async (_event: IpcMainInvokeEvent, parentPath: s
       console.warn('[Security] Invalid parent path rejected:', parentPath);
       return { success: false, error: 'Invalid path' };
     }
-    if (folderName.includes('..') || folderName.includes('/') || folderName.includes('\\')) {
+    if (!folderName || folderName === '.' || folderName === '..' || folderName.includes('/') || folderName.includes('\\')) {
       console.warn('[Security] Invalid folder name rejected:', folderName);
       return { success: false, error: 'Invalid folder name' };
     }
@@ -1465,7 +1534,7 @@ ipcMain.handle('rename-item', async (_event: IpcMainInvokeEvent, oldPath: string
     console.warn('[Security] Invalid path rejected:', oldPath);
     return { success: false, error: 'Invalid path' };
   }
-  if (newName.includes('..') || newName.includes('/') || newName.includes('\\')) {
+  if (!newName || newName === '.' || newName === '..' || newName.includes('/') || newName.includes('\\')) {
     console.warn('[Security] Invalid new name rejected:', newName);
     return { success: false, error: 'Invalid file name' };
   }
@@ -1505,7 +1574,7 @@ ipcMain.handle('create-file', async (_event: IpcMainInvokeEvent, parentPath: str
       console.warn('[Security] Invalid parent path rejected:', parentPath);
       return { success: false, error: 'Invalid path' };
     }
-    if (fileName.includes('..') || fileName.includes('/') || fileName.includes('\\')) {
+    if (!fileName || fileName === '.' || fileName === '..' || fileName.includes('/') || fileName.includes('\\')) {
       console.warn('[Security] Invalid file name rejected:', fileName);
       return { success: false, error: 'Invalid file name' };
     }
@@ -2046,7 +2115,8 @@ ipcMain.handle('open-terminal', async (_event: IpcMainInvokeEvent, dirPath: stri
       if (hasWT) {
         spawn('wt', ['-d', dirPath], { shell: false, detached: true });
       } else {
-        spawn('cmd', ['/K', 'cd', '/d', dirPath], { shell: false, detached: true });
+        const quotedPath = `"${dirPath.replace(/"/g, '""')}"`;
+        spawn('cmd', ['/K', 'cd', '/d', quotedPath], { shell: false, detached: true });
       }
     } else if (platform === 'darwin') {
       spawn('open', ['-a', 'Terminal', dirPath], { shell: false, detached: true });
@@ -2059,12 +2129,17 @@ ipcMain.handle('open-terminal', async (_event: IpcMainInvokeEvent, dirPath: stri
 
       let launched = false;
       for (const term of terminals) {
-        try {
-          spawn(term.cmd, term.args, { shell: false, detached: true, cwd: dirPath });
+        const success = await new Promise<boolean>((resolve) => {
+          const child = spawn(term.cmd, term.args, { shell: false, detached: true, cwd: dirPath });
+          child.once('spawn', () => {
+            child.unref();
+            resolve(true);
+          });
+          child.once('error', () => resolve(false));
+        });
+        if (success) {
           launched = true;
           break;
-        } catch (e) {
-          continue;
         }
       }
 
@@ -2084,13 +2159,15 @@ ipcMain.handle('read-file-content', async (_event: IpcMainInvokeEvent, filePath:
     if (!isPathSafe(filePath)) {
       return { success: false, error: 'Invalid file path' };
     }
+    const requestedMaxSize = Number.isFinite(maxSize) ? maxSize : MAX_TEXT_PREVIEW_BYTES;
+    const safeMaxSize = Math.min(Math.max(1, requestedMaxSize), MAX_TEXT_PREVIEW_BYTES);
     const stats = await fs.stat(filePath);
     
-    if (stats.size > maxSize) {
-      const buffer = Buffer.alloc(maxSize);
+    if (stats.size > safeMaxSize) {
+      const buffer = Buffer.alloc(safeMaxSize);
       const fileHandle = await fs.open(filePath, 'r');
       try {
-        await fileHandle.read(buffer, 0, maxSize, 0);
+        await fileHandle.read(buffer, 0, safeMaxSize, 0);
         return {
           success: true,
           content: buffer.toString('utf8'),
@@ -2113,9 +2190,11 @@ ipcMain.handle('get-file-data-url', async (_event: IpcMainInvokeEvent, filePath:
     if (!isPathSafe(filePath)) {
       return { success: false, error: 'Invalid file path' };
     }
+    const requestedMaxSize = Number.isFinite(maxSize) ? maxSize : MAX_DATA_URL_BYTES;
+    const safeMaxSize = Math.min(Math.max(1, requestedMaxSize), MAX_DATA_URL_BYTES);
     const stats = await fs.stat(filePath);
 
-    if (stats.size > maxSize) {
+    if (stats.size > safeMaxSize) {
       return { success: false, error: 'File too large to preview' };
     }
     
@@ -2357,26 +2436,51 @@ ipcMain.handle('undo-action', async (_event: IpcMainInvokeEvent): Promise<ApiRes
         return { success: true };
       
       case 'move':
-        const moveSourcePaths = action.data.sourcePaths;
+        const movedPaths = action.data.sourcePaths;
+        const originalPaths = action.data.originalPaths;
         const originalParent = action.data.originalParent;
 
-        if (!originalParent) {
-          return { success: false, error: 'Cannot undo: Original parent path not available' };
-        }
-
-        for (const source of moveSourcePaths) {
-          try {
-            await fs.access(source);
-          } catch {
-            console.log('[Undo] File no longer exists:', source);
-            return { success: false, error: 'Cannot undo: One or more files no longer exist' };
+        if (Array.isArray(originalPaths) && originalPaths.length === movedPaths.length) {
+          for (const movedPath of movedPaths) {
+            try {
+              await fs.access(movedPath);
+            } catch {
+              console.log('[Undo] File no longer exists:', movedPath);
+              return { success: false, error: 'Cannot undo: One or more files no longer exist' };
+            }
           }
-        }
 
-        for (const source of moveSourcePaths) {
-          const fileName = path.basename(source);
-          const originalPath = path.join(originalParent, fileName);
-          await fs.rename(source, originalPath);
+          for (const originalPath of originalPaths) {
+            try {
+              await fs.access(originalPath);
+              console.log('[Undo] Original path already exists:', originalPath);
+              return { success: false, error: 'Cannot undo: A file already exists at the original location' };
+            } catch {
+            }
+          }
+
+          for (let i = 0; i < movedPaths.length; i++) {
+            await fs.rename(movedPaths[i], originalPaths[i]);
+          }
+        } else {
+          if (!originalParent) {
+            return { success: false, error: 'Cannot undo: Original parent path not available' };
+          }
+
+          for (const source of movedPaths) {
+            try {
+              await fs.access(source);
+            } catch {
+              console.log('[Undo] File no longer exists:', source);
+              return { success: false, error: 'Cannot undo: One or more files no longer exist' };
+            }
+          }
+
+          for (const source of movedPaths) {
+            const fileName = path.basename(source);
+            const originalPath = path.join(originalParent, fileName);
+            await fs.rename(source, originalPath);
+          }
         }
         pushRedoAction(action);
         console.log('[Undo] Moved back to original location');
@@ -2444,28 +2548,56 @@ ipcMain.handle('redo-action', async (_event: IpcMainInvokeEvent): Promise<ApiRes
         return { success: true };
       
       case 'move':
-        const redoOriginalParent = action.data.originalParent;
         const redoDestPath = action.data.destPath;
         const newMovedPaths: string[] = [];
-        const filesToMove = action.data.originalPaths || action.data.sourcePaths;
+        const originalPaths = action.data.originalPaths;
 
-        if (!redoOriginalParent) {
-          return { success: false, error: 'Cannot redo: Original parent path not available' };
-        }
-
-        for (const originalPath of filesToMove) {
-          const fileName = path.basename(originalPath);
-          const currentPath = path.join(redoOriginalParent, fileName);
-          const newPath = path.join(redoDestPath, fileName);
-          try {
-            await fs.access(currentPath);
-          } catch {
-            console.log('[Redo] File not found at expected location:', currentPath);
-            return { success: false, error: 'Cannot redo: File not found at original location' };
+        if (Array.isArray(originalPaths) && originalPaths.length > 0) {
+          for (const originalPath of originalPaths) {
+            const fileName = path.basename(originalPath);
+            const newPath = path.join(redoDestPath, fileName);
+            try {
+              await fs.access(originalPath);
+            } catch {
+              console.log('[Redo] File not found at expected location:', originalPath);
+              return { success: false, error: 'Cannot redo: File not found at original location' };
+            }
+            try {
+              await fs.access(newPath);
+              console.log('[Redo] Target path already exists:', newPath);
+              return { success: false, error: 'Cannot redo: A file already exists at the target location' };
+            } catch {
+            }
+            await fs.rename(originalPath, newPath);
+            newMovedPaths.push(newPath);
           }
-          
-          await fs.rename(currentPath, newPath);
-          newMovedPaths.push(newPath);
+        } else {
+          const redoOriginalParent = action.data.originalParent;
+          const filesToMove = action.data.sourcePaths;
+
+          if (!redoOriginalParent) {
+            return { success: false, error: 'Cannot redo: Original parent path not available' };
+          }
+
+          for (const sourcePath of filesToMove) {
+            const fileName = path.basename(sourcePath);
+            const currentPath = path.join(redoOriginalParent, fileName);
+            const newPath = path.join(redoDestPath, fileName);
+            try {
+              await fs.access(currentPath);
+            } catch {
+              console.log('[Redo] File not found at expected location:', currentPath);
+              return { success: false, error: 'Cannot redo: File not found at original location' };
+            }
+            try {
+              await fs.access(newPath);
+              console.log('[Redo] Target path already exists:', newPath);
+              return { success: false, error: 'Cannot redo: A file already exists at the target location' };
+            } catch {
+            }
+            await fs.rename(currentPath, newPath);
+            newMovedPaths.push(newPath);
+          }
         }
         action.data.sourcePaths = newMovedPaths;
         undoStack.push(action);
@@ -2842,12 +2974,21 @@ ipcMain.handle('extract-archive', async (_event: IpcMainInvokeEvent, archivePath
         }
       });
 
-      seven.on('end', () => {
+      seven.on('end', async () => {
         console.log('[Extract] 7zip extraction completed for:', archivePath);
-        if (operationId) {
-          activeArchiveProcesses.delete(operationId);
+        try {
+          await assertExtractedPathsSafe(destPath);
+          if (operationId) {
+            activeArchiveProcesses.delete(operationId);
+          }
+          resolve({ success: true });
+        } catch (error) {
+          console.error('[Extract] Unsafe extracted paths:', error);
+          if (operationId) {
+            activeArchiveProcesses.delete(operationId);
+          }
+          reject({ success: false, error: getErrorMessage(error) });
         }
-        resolve({ success: true });
       });
 
       seven.on('error', (error: { message?: string }) => {
@@ -3239,7 +3380,3 @@ ipcMain.handle('cancel-checksum-calculation', async (_event: IpcMainInvokeEvent,
   }
   return { success: false, error: 'Operation not found' };
 });
-
-
-
-

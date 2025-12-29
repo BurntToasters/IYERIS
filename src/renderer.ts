@@ -73,7 +73,18 @@ function escapeHtml(text: any): string {
 
 function encodeFileUrl(filePath: string): string {
   const normalizedPath = filePath.replace(/\\/g, '/');
-  // Encode each path segment
+  if (/^[A-Za-z]:/.test(normalizedPath)) {
+    const drive = normalizedPath.slice(0, 2);
+    const rest = normalizedPath.slice(2);
+    const encodedRest = rest.split('/').map(segment => encodeURIComponent(segment)).join('/');
+    const normalizedRest = encodedRest.startsWith('/') ? encodedRest : `/${encodedRest}`;
+    return `file:///${drive}${normalizedRest}`;
+  }
+  if (normalizedPath.startsWith('//')) {
+    const uncPath = normalizedPath.slice(2);
+    const encoded = uncPath.split('/').map(segment => encodeURIComponent(segment)).join('/');
+    return `file://${encoded}`;
+  }
   const encoded = normalizedPath.split('/').map(segment => encodeURIComponent(segment)).join('/');
   return `file:///${encoded}`;
 }
@@ -1957,6 +1968,24 @@ function updateStatusBar() {
 let diskSpaceDebounceTimer: NodeJS.Timeout | null = null;
 let lastDiskSpacePath: string = '';
 
+function getUnixDrivePath(pathValue: string): string {
+  const normalized = pathValue.replace(/\\/g, '/');
+  const roots = ['/Volumes', '/media', '/mnt', '/run/media'];
+  for (const root of roots) {
+    if (normalized === root || normalized.startsWith(root + '/')) {
+      const parts = normalized.split('/').filter(Boolean);
+      const rootParts = root.split('/').filter(Boolean);
+      const extraSegments = root === '/run/media' ? 2 : 1;
+      const needed = rootParts.length + extraSegments;
+      if (parts.length >= needed) {
+        return '/' + parts.slice(0, needed).join('/');
+      }
+      return root;
+    }
+  }
+  return '/';
+}
+
 async function updateDiskSpace() {
   const statusDiskSpace = document.getElementById('status-disk-space');
   if (!statusDiskSpace || !currentPath) return;
@@ -1965,7 +1994,7 @@ async function updateDiskSpace() {
   if (platformOS === 'win32') {
     drivePath = currentPath.substring(0, 3);
   } else {
-    drivePath = '/';
+    drivePath = getUnixDrivePath(currentPath);
   }
   
   if (drivePath === lastDiskSpacePath && diskSpaceDebounceTimer) {
@@ -5544,7 +5573,7 @@ async function showImagePreview(file: FileItem) {
   } else {
     previewContent.innerHTML = `
       <div class="preview-error">
-        Failed to load image: ${result.error || 'Unknown error'}
+        Failed to load image: ${escapeHtml(result.error || 'Unknown error')}
       </div>
       ${generateFileInfo(file, null)}
     `;
@@ -5574,7 +5603,7 @@ async function showTextPreview(file: FileItem) {
   } else {
     previewContent.innerHTML = `
       <div class="preview-error">
-        Failed to load text: ${result.error || 'Unknown error'}
+        Failed to load text: ${escapeHtml(result.error || 'Unknown error')}
       </div>
       ${generateFileInfo(file, null)}
     `;
@@ -5736,40 +5765,82 @@ async function showQuickLook() {
     </div>
   `;
 
+  const videoMimeTypes: Record<string, string> = {
+    mp4: 'video/mp4',
+    webm: 'video/webm',
+    ogg: 'video/ogg',
+    mov: 'video/quicktime',
+    mkv: 'video/x-matroska',
+    avi: 'video/x-msvideo',
+    m4v: 'video/x-m4v'
+  };
+
+  const audioMimeTypes: Record<string, string> = {
+    mp3: 'audio/mpeg',
+    wav: 'audio/wav',
+    ogg: 'audio/ogg',
+    flac: 'audio/flac',
+    aac: 'audio/aac',
+    m4a: 'audio/mp4',
+    wma: 'audio/x-ms-wma',
+    opus: 'audio/ogg'
+  };
+
   if (imageExts.includes(ext)) {
     const result = await window.electronAPI.getFileDataUrl(file.path);
     if (result.success && result.dataUrl) {
-      quicklookContent.innerHTML = `<img src="${result.dataUrl}" alt="${escapeHtml(file.name)}">`;
+      quicklookContent.innerHTML = '';
+      const img = document.createElement('img');
+      img.src = result.dataUrl;
+      img.alt = file.name;
+      quicklookContent.appendChild(img);
       quicklookInfo.textContent = `${formatFileSize(file.size)} • ${new Date(file.modified).toLocaleDateString()}`;
     } else {
       quicklookContent.innerHTML = `<div class="preview-error">Failed to load image</div>`;
     }
   } else if (videoExts.includes(ext)) {
-    const filePath = file.path.replace(/\\/g, '/');
-    quicklookContent.innerHTML = `
-      <video controls autoplay class="preview-video">
-        <source src="file:///${filePath}" type="video/${ext === 'mkv' ? 'x-matroska' : ext === 'avi' ? 'x-msvideo' : ext === 'mov' ? 'quicktime' : ext}">
-        Your browser does not support the video tag.
-      </video>
-    `;
+    const fileUrl = encodeFileUrl(file.path);
+    quicklookContent.innerHTML = '';
+    const video = document.createElement('video');
+    video.controls = true;
+    video.autoplay = true;
+    video.className = 'preview-video';
+    const source = document.createElement('source');
+    source.src = fileUrl;
+    source.type = videoMimeTypes[ext] || 'video/*';
+    video.appendChild(source);
+    video.appendChild(document.createTextNode('Your browser does not support the video tag.'));
+    quicklookContent.appendChild(video);
     quicklookInfo.textContent = `${formatFileSize(file.size)} • ${new Date(file.modified).toLocaleDateString()}`;
   } else if (audioExts.includes(ext)) {
-    const filePath = file.path.replace(/\\/g, '/');
-    quicklookContent.innerHTML = `
-      <div class="preview-audio-container">
-        <div class="preview-audio-icon">${twemojiImg(String.fromCodePoint(0x1F3B5), 'twemoji-large')}</div>
-        <audio controls autoplay class="preview-audio">
-          <source src="file:///${filePath}" type="audio/${ext === 'mp3' ? 'mpeg' : ext === 'wav' ? 'wav' : ext === 'ogg' || ext === 'opus' ? 'ogg' : ext}">
-          Your browser does not support the audio tag.
-        </audio>
-      </div>
-    `;
+    const fileUrl = encodeFileUrl(file.path);
+    quicklookContent.innerHTML = '';
+    const container = document.createElement('div');
+    container.className = 'preview-audio-container';
+    const icon = document.createElement('div');
+    icon.className = 'preview-audio-icon';
+    icon.innerHTML = twemojiImg(String.fromCodePoint(0x1F3B5), 'twemoji-large');
+    const audio = document.createElement('audio');
+    audio.controls = true;
+    audio.autoplay = true;
+    audio.className = 'preview-audio';
+    const source = document.createElement('source');
+    source.src = fileUrl;
+    source.type = audioMimeTypes[ext] || 'audio/*';
+    audio.appendChild(source);
+    audio.appendChild(document.createTextNode('Your browser does not support the audio tag.'));
+    container.appendChild(icon);
+    container.appendChild(audio);
+    quicklookContent.appendChild(container);
     quicklookInfo.textContent = `${formatFileSize(file.size)} • ${new Date(file.modified).toLocaleDateString()}`;
   } else if (pdfExts.includes(ext)) {
-    const filePath = file.path.replace(/\\/g, '/');
-    quicklookContent.innerHTML = `
-      <embed src="file:///${filePath}" type="application/pdf" class="preview-pdf">
-    `;
+    const fileUrl = encodeFileUrl(file.path);
+    quicklookContent.innerHTML = '';
+    const iframe = document.createElement('iframe');
+    iframe.src = fileUrl;
+    iframe.className = 'preview-pdf';
+    iframe.setAttribute('frameborder', '0');
+    quicklookContent.appendChild(iframe);
     quicklookInfo.textContent = `${formatFileSize(file.size)} • ${new Date(file.modified).toLocaleDateString()}`;
   } else if (textExts.includes(ext)) {
     const result = await window.electronAPI.readFileContent(file.path, 100 * 1024);
@@ -5985,7 +6056,3 @@ window.addEventListener('beforeunload', () => {
   }
   ipcCleanupFunctions.length = 0;
 });
-
-
-
-

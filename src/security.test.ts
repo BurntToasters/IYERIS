@@ -62,17 +62,19 @@ describe('isPathSafe', () => {
   });
 
   it('rejects paths with suspicious characters', () => {
-    expect(isPathSafe('/home/user/<script>.txt')).toBe(false);
-    expect(isPathSafe('/home/user/file>.txt')).toBe(false);
-    expect(isPathSafe('/home/user/file".txt')).toBe(false);
-    expect(isPathSafe('/home/user/file|pipe.txt')).toBe(false);
-    expect(isPathSafe('/home/user/file*.txt')).toBe(false);
-    expect(isPathSafe('/home/user/file?.txt')).toBe(false);
+    expect(isPathSafe('/home/user/<script>.txt', 'win32')).toBe(false);
+    expect(isPathSafe('/home/user/file>.txt', 'win32')).toBe(false);
+    expect(isPathSafe('/home/user/file".txt', 'win32')).toBe(false);
+    expect(isPathSafe('/home/user/file|pipe.txt', 'win32')).toBe(false);
+    expect(isPathSafe('/home/user/file*.txt', 'win32')).toBe(false);
+    expect(isPathSafe('/home/user/file?.txt', 'win32')).toBe(false);
   });
 
   it('rejects paths with parent directory traversal', () => {
     expect(isPathSafe('/home/user/../../../etc/passwd')).toBe(false);
     expect(isPathSafe('../../etc/passwd')).toBe(false);
+    expect(isPathSafe('/home/user/../etc/passwd')).toBe(false);
+    expect(isPathSafe('C:\\Users\\..\\Windows', 'win32')).toBe(false);
   });
 
   it('accepts valid Unix paths', () => {
@@ -98,6 +100,20 @@ describe('isPathSafe', () => {
 
   it('accepts paths with unicode characters', () => {
     expect(isPathSafe('/home/user/文档/file.txt', 'linux')).toBe(true);
+  });
+
+  it('accepts paths containing ".." in names', () => {
+    expect(isPathSafe('/home/user/..hidden/file.txt', 'linux')).toBe(true);
+    expect(isPathSafe('/home/user/foo..bar/baz.txt', 'linux')).toBe(true);
+    expect(isPathSafe('C:\\Users\\test\\..hidden\\file.txt', 'win32')).toBe(true);
+  });
+
+  it('accepts characters allowed on Unix', () => {
+    expect(isPathSafe('/home/user/file?.txt', 'linux')).toBe(true);
+    expect(isPathSafe('/home/user/file*.txt', 'linux')).toBe(true);
+    expect(isPathSafe('/home/user/file|pipe.txt', 'linux')).toBe(true);
+    expect(isPathSafe('/home/user/file<name>.txt', 'linux')).toBe(true);
+    expect(isPathSafe('/home/user/file>name.txt', 'linux')).toBe(true);
   });
 });
 
