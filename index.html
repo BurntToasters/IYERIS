@@ -35,6 +35,15 @@
     </div>
   </div>
 
+  <div class="tab-bar glass-panel" id="tab-bar" style="display: none;">
+    <div class="tab-list" id="tab-list"></div>
+    <button class="tab-new-btn" id="new-tab-btn" title="New Tab (Ctrl+T)">
+      <svg width="14" height="14" viewBox="0 0 14 14">
+        <path d="M7 1 L7 13 M1 7 L13 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+      </svg>
+    </button>
+  </div>
+
   <div class="container">
     <div class="sidebar glass-panel">
       <div class="sidebar-section">
@@ -167,6 +176,14 @@
                   <span>to</span>
                   <input type="date" id="search-filter-date-to" placeholder="To">
                 </div>
+              </div>
+              <div class="search-filter-group">
+                <label class="search-content-toggle">
+                  <input type="checkbox" id="search-in-contents-toggle">
+                  <span class="toggle-slider-small"></span>
+                  Search in file contents
+                </label>
+                <p class="filter-hint">Searches inside text files (txt, md, js, ts, etc.) up to 1MB</p>
               </div>
               <div class="search-filter-actions">
                 <button id="search-filter-clear" class="search-filter-btn secondary">Clear</button>
@@ -479,6 +496,30 @@
                 </label>
               </div>
             </div>
+
+            <div class="settings-card">
+              <div class="settings-card-header">Sidebar & Tabs</div>
+              <div class="setting-item" data-searchable="recent files sidebar show hide display">
+                <div class="setting-info">
+                  <label for="show-recent-files-toggle">Show Recent Files</label>
+                  <p class="setting-description">Display recently opened files in the sidebar</p>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="show-recent-files-toggle" checked>
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+              <div class="setting-item" data-searchable="tabs tabbed browsing enable disable">
+                <div class="setting-info">
+                  <label for="enable-tabs-toggle">Enable Tabs</label>
+                  <p class="setting-description">Enable tabbed browsing within a single window (requires restart)</p>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="enable-tabs-toggle" checked>
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+            </div>
           </div>
 
           <div class="settings-section" id="tab-startup">
@@ -582,9 +623,19 @@
                 </div>
                 <button class="modal-button" id="rebuild-index-btn"><img src="assets/twemoji/1f504.svg" class="twemoji" alt="🔄" draggable="false" /> Rebuild</button>
               </div>
+              <div class="setting-item" data-searchable="global content search file inside text">
+                <div class="setting-info">
+                  <label for="global-content-search-toggle">Global Content Search</label>
+                  <p class="setting-description">Allow searching inside file contents during global search (may be slow on large indexes)</p>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="global-content-search-toggle">
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
             </div>
           </div>
-          
+
           <div class="settings-section" id="tab-advanced">
             <h4><img src="assets/twemoji/2699.svg" class="twemoji" alt="⚙️" draggable="false" /> Advanced</h4>
             
@@ -633,7 +684,7 @@
               </div>
               <div class="about-info">
                 <h2 class="about-title">IYERIS</h2>
-                <p class="about-version" id="about-version-display">Version 0.9.0-beta.3</p>
+                <p class="about-version" id="about-version-display">Version 0.9.0-beta.4</p>
                 <p class="about-tagline">A modern, cross-platform file explorer</p>
               </div>
             </div>
@@ -856,7 +907,7 @@
     <div class="status-right">
       <span id="status-disk-space"></span>
       <span class="status-separator"></span>
-      <span class="status-version" id="status-version" title="Version 0.9.0-beta.3">v0.9.0-beta.3</span>
+      <span class="status-version" id="status-version" title="Version 0.9.0-beta.4">v0.9.0-beta.4</span>
       <span class="status-separator"></span>
       <button class="status-support-btn" id="heart-button" title="Support this project!">
         <img src="assets/twemoji/2764.svg" class="twemoji" alt="❤️" draggable="false" />

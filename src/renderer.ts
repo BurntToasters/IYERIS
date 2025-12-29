@@ -1,4 +1,4 @@
-import type { Settings, FileItem, ItemProperties, CustomTheme } from './types';
+import type { Settings, FileItem, ItemProperties, CustomTheme, ContentSearchResult } from './types';
 import { escapeHtml, getErrorMessage } from './shared.js';
 import { createDefaultSettings } from './settings.js';
 
@@ -482,6 +482,7 @@ let clipboard: { operation: 'copy' | 'cut'; paths: string[] } | null = null;
 let allFiles: FileItem[] = [];
 let isSearchMode: boolean = false;
 let isGlobalSearch: boolean = false;
+let searchInContents: boolean = false;
 let isPreviewPanelVisible: boolean = false;
 let currentQuicklookFile: FileItem | null = null;
 let platformOS: string = '';
@@ -490,6 +491,267 @@ let canRedo: boolean = false;
 let currentZoomLevel: number = 1.0;
 let zoomPopupTimeout: NodeJS.Timeout | null = null;
 let indexStatusInterval: NodeJS.Timeout | null = null;
+
+interface TabData {
+  id: string;
+  path: string;
+  history: string[];
+  historyIndex: number;
+  selectedItems: Set<string>;
+  scrollPosition: number;
+  cachedFiles?: FileItem[];
+}
+
+let tabs: TabData[] = [];
+let activeTabId: string = '';
+let tabsEnabled: boolean = false;
+
+function generateTabId(): string {
+  return `tab-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+}
+
+function initializeTabs() {
+  if (currentSettings.enableTabs === false) {
+    tabsEnabled = false;
+    document.body.classList.remove('tabs-enabled');
+    const tabBar = document.getElementById('tab-bar');
+    if (tabBar) tabBar.style.display = 'none';
+    return;
+  }
+
+  tabsEnabled = true;
+  document.body.classList.add('tabs-enabled');
+  const tabBar = document.getElementById('tab-bar');
+  if (tabBar) tabBar.style.display = 'flex';
+
+  if (currentSettings.tabState && currentSettings.tabState.tabs.length > 0) {
+    tabs = currentSettings.tabState.tabs.map(t => ({
+      ...t,
+      selectedItems: new Set(t.selectedItems || [])
+    }));
+    activeTabId = currentSettings.tabState.activeTabId;
+
+    const activeTab = tabs.find(t => t.id === activeTabId);
+    if (activeTab) {
+      history = [...activeTab.history];
+      historyIndex = activeTab.historyIndex;
+      selectedItems = new Set(activeTab.selectedItems);
+    }
+  } else {
+    const initialTab = createNewTabData(currentPath || '');
+    tabs = [initialTab];
+    activeTabId = initialTab.id;
+  }
+
+  renderTabs();
+
+  document.getElementById('new-tab-btn')?.addEventListener('click', () => {
+    addNewTab();
+  });
+}
+
+function createNewTabData(path: string): TabData {
+  return {
+    id: generateTabId(),
+    path: path,
+    history: path ? [path] : [],
+    historyIndex: path ? 0 : -1,
+    selectedItems: new Set(),
+    scrollPosition: 0
+  };
+}
+
+function renderTabs() {
+  const tabList = document.getElementById('tab-list');
+  if (!tabList || !tabsEnabled) return;
+
+  tabList.innerHTML = '';
+
+  tabs.forEach(tab => {
+    const tabElement = document.createElement('div');
+    tabElement.className = `tab-item${tab.id === activeTabId ? ' active' : ''}`;
+    tabElement.dataset.tabId = tab.id;
+
+    const pathParts = tab.path.split(/[/\\]/);
+    const folderName = pathParts[pathParts.length - 1] || tab.path || 'New Tab';
+
+    tabElement.innerHTML = `
+      <span class="tab-icon">
+        <img src="assets/twemoji/1f4c2.svg" class="twemoji" alt="📂" draggable="false" />
+      </span>
+      <span class="tab-title" title="${escapeHtml(tab.path)}">${escapeHtml(folderName)}</span>
+      <button class="tab-close" title="Close Tab">&times;</button>
+    `;
+
+    tabElement.addEventListener('click', (e) => {
+      if ((e.target as HTMLElement).classList.contains('tab-close')) {
+        e.stopPropagation();
+        closeTab(tab.id);
+      } else {
+        switchToTab(tab.id);
+      }
+    });
+
+    tabElement.addEventListener('auxclick', (e) => {
+      if (e.button === 1) {
+        e.preventDefault();
+        closeTab(tab.id);
+      }
+    });
+
+    tabList.appendChild(tabElement);
+  });
+}
+
+function switchToTab(tabId: string) {
+  if (activeTabId === tabId || !tabsEnabled) return;
+
+  const currentTab = tabs.find(t => t.id === activeTabId);
+  if (currentTab) {
+    currentTab.path = currentPath;
+    currentTab.history = [...history];
+    currentTab.historyIndex = historyIndex;
+    currentTab.selectedItems = new Set(selectedItems);
+    currentTab.scrollPosition = fileView?.scrollTop || 0;
+    currentTab.cachedFiles = [...allFiles];
+  }
+
+  activeTabId = tabId;
+  const newTab = tabs.find(t => t.id === tabId);
+  if (newTab) {
+    history = [...newTab.history];
+    historyIndex = newTab.historyIndex;
+    selectedItems = new Set(newTab.selectedItems);
+
+    if (newTab.path) {
+      if (newTab.cachedFiles !== undefined) {
+        restoreTabView(newTab);
+      } else {
+        navigateTo(newTab.path, true);
+      }
+    }
+
+    setTimeout(() => {
+      if (fileView) fileView.scrollTop = newTab.scrollPosition;
+    }, 50);
+  }
+
+  renderTabs();
+  debouncedSaveTabState();
+}
+
+function restoreTabView(tab: TabData) {
+  currentPath = tab.path;
+  if (addressInput) addressInput.value = tab.path;
+  updateBreadcrumb(tab.path);
+  updateNavigationButtons();
+
+  if (viewMode === 'column') {
+    renderColumnView();
+  } else {
+    renderFiles(tab.cachedFiles || []);
+  }
+}
+
+let saveTabStateTimeout: NodeJS.Timeout | null = null;
+function debouncedSaveTabState() {
+  if (saveTabStateTimeout) {
+    clearTimeout(saveTabStateTimeout);
+  }
+  saveTabStateTimeout = setTimeout(() => {
+    saveTabState();
+  }, 500);
+}
+
+async function addNewTab(path?: string) {
+  if (!tabsEnabled) return;
+
+  const currentTab = tabs.find(t => t.id === activeTabId);
+  if (currentTab) {
+    currentTab.path = currentPath;
+    currentTab.history = [...history];
+    currentTab.historyIndex = historyIndex;
+    currentTab.selectedItems = new Set(selectedItems);
+    currentTab.scrollPosition = fileView?.scrollTop || 0;
+    currentTab.cachedFiles = [...allFiles];
+  }
+
+  let tabPath = path;
+  if (!tabPath) {
+    tabPath = await window.electronAPI.getHomeDirectory();
+  }
+
+  const newTab = createNewTabData(tabPath);
+  tabs.push(newTab);
+  activeTabId = newTab.id;
+
+  history = [tabPath];
+  historyIndex = 0;
+  selectedItems = new Set();
+
+  navigateTo(tabPath, true);
+
+  renderTabs();
+  debouncedSaveTabState();
+}
+
+function closeTab(tabId: string) {
+  if (!tabsEnabled || tabs.length <= 1) return;
+
+  const tabIndex = tabs.findIndex(t => t.id === tabId);
+  if (tabIndex === -1) return;
+
+  tabs.splice(tabIndex, 1);
+
+  if (activeTabId === tabId) {
+    const newIndex = Math.min(tabIndex, tabs.length - 1);
+    activeTabId = tabs[newIndex].id;
+    const newTab = tabs[newIndex];
+
+    history = [...newTab.history];
+    historyIndex = newTab.historyIndex;
+    selectedItems = new Set(newTab.selectedItems);
+
+    if (newTab.path) {
+      if (newTab.cachedFiles !== undefined) {
+        restoreTabView(newTab);
+      } else {
+        navigateTo(newTab.path, true);
+      }
+    }
+  }
+
+  renderTabs();
+  debouncedSaveTabState();
+}
+
+function saveTabState() {
+  if (!tabsEnabled) return;
+
+  currentSettings.tabState = {
+    tabs: tabs.map(t => ({
+      id: t.id,
+      path: t.path,
+      history: t.history,
+      historyIndex: t.historyIndex,
+      selectedItems: Array.from(t.selectedItems),
+      scrollPosition: t.scrollPosition
+    })),
+    activeTabId
+  };
+  debouncedSaveSettings();
+}
+
+function updateCurrentTabPath(newPath: string) {
+  if (!tabsEnabled) return;
+
+  const currentTab = tabs.find(t => t.id === activeTabId);
+  if (currentTab) {
+    currentTab.path = newPath;
+    renderTabs();
+    saveTabState();
+  }
+}
 
 const addressInput = document.getElementById('address-input') as HTMLInputElement;
 const fileGrid = document.getElementById('file-grid') as HTMLElement;
@@ -521,6 +783,7 @@ const searchFilterDateFrom = document.getElementById('search-filter-date-from') 
 const searchFilterDateTo = document.getElementById('search-filter-date-to') as HTMLInputElement;
 const searchFilterClear = document.getElementById('search-filter-clear') as HTMLButtonElement;
 const searchFilterApply = document.getElementById('search-filter-apply') as HTMLButtonElement;
+const searchInContentsToggle = document.getElementById('search-in-contents-toggle') as HTMLInputElement;
 const sortBtn = document.getElementById('sort-btn') as HTMLButtonElement;
 const bookmarksList = document.getElementById('bookmarks-list') as HTMLElement;
 const bookmarkAddBtn = document.getElementById('bookmark-add-btn') as HTMLButtonElement;
@@ -1074,6 +1337,9 @@ async function showSettingsModal() {
   const dangerousOptionsToggle = document.getElementById('dangerous-options-toggle') as HTMLInputElement;
   const startupPathInput = document.getElementById('startup-path-input') as HTMLInputElement;
   const enableIndexerToggle = document.getElementById('enable-indexer-toggle') as HTMLInputElement;
+  const showRecentFilesToggle = document.getElementById('show-recent-files-toggle') as HTMLInputElement;
+  const enableTabsToggle = document.getElementById('enable-tabs-toggle') as HTMLInputElement;
+  const globalContentSearchToggle = document.getElementById('global-content-search-toggle') as HTMLInputElement;
   const settingsPath = document.getElementById('settings-path');
   
   if (transparencyToggle) {
@@ -1129,6 +1395,18 @@ async function showSettingsModal() {
   
   if (enableIndexerToggle) {
     enableIndexerToggle.checked = currentSettings.enableIndexer !== false;
+  }
+
+  if (showRecentFilesToggle) {
+    showRecentFilesToggle.checked = currentSettings.showRecentFiles !== false;
+  }
+
+  if (enableTabsToggle) {
+    enableTabsToggle.checked = currentSettings.enableTabs !== false;
+  }
+
+  if (globalContentSearchToggle) {
+    globalContentSearchToggle.checked = currentSettings.globalContentSearch || false;
   }
 
   await updateIndexStatus();
@@ -1451,7 +1729,10 @@ async function saveSettings() {
   const dangerousOptionsToggle = document.getElementById('dangerous-options-toggle') as HTMLInputElement;
   const startupPathInput = document.getElementById('startup-path-input') as HTMLInputElement;
   const enableIndexerToggle = document.getElementById('enable-indexer-toggle') as HTMLInputElement;
-  
+  const showRecentFilesToggle = document.getElementById('show-recent-files-toggle') as HTMLInputElement;
+  const enableTabsToggle = document.getElementById('enable-tabs-toggle') as HTMLInputElement;
+  const globalContentSearchToggle = document.getElementById('global-content-search-toggle') as HTMLInputElement;
+
   if (transparencyToggle) {
     currentSettings.transparency = transparencyToggle.checked;
   }
@@ -1506,7 +1787,19 @@ async function saveSettings() {
   if (enableIndexerToggle) {
     currentSettings.enableIndexer = enableIndexerToggle.checked;
   }
-  
+
+  if (showRecentFilesToggle) {
+    currentSettings.showRecentFiles = showRecentFilesToggle.checked;
+  }
+
+  if (enableTabsToggle) {
+    currentSettings.enableTabs = enableTabsToggle.checked;
+  }
+
+  if (globalContentSearchToggle) {
+    currentSettings.globalContentSearch = globalContentSearchToggle.checked;
+  }
+
   currentSettings.viewMode = viewMode;
   
   const result = await window.electronAPI.saveSettings(currentSettings);
@@ -1627,6 +1920,11 @@ function loadRecentFiles() {
 
   recentList.innerHTML = '';
 
+  if (currentSettings.showRecentFiles === false) {
+    recentSection.style.display = 'none';
+    return;
+  }
+
   if (!currentSettings.recentFiles || currentSettings.recentFiles.length === 0) {
     recentSection.style.display = 'none';
     return;
@@ -1718,9 +2016,26 @@ function toggleSearchScope() {
     }
   }
   updateSearchPlaceholder();
+  updateContentSearchToggle();
 
   if (searchInput.value.trim()) {
     performSearch();
+  }
+}
+
+function updateContentSearchToggle() {
+  if (!searchInContentsToggle) return;
+
+  if (isGlobalSearch && !currentSettings.globalContentSearch) {
+    searchInContentsToggle.disabled = true;
+    searchInContentsToggle.checked = false;
+    searchInContents = false;
+    searchInContentsToggle.parentElement?.classList.add('disabled');
+    searchInContentsToggle.title = 'Enable "Global Content Search" in settings to use this feature';
+  } else {
+    searchInContentsToggle.disabled = false;
+    searchInContentsToggle.parentElement?.classList.remove('disabled');
+    searchInContentsToggle.title = '';
   }
 }
 
@@ -1780,17 +2095,26 @@ async function performSearch() {
                        currentSearchFilters.minSize !== undefined ||
                        currentSearchFilters.maxSize !== undefined ||
                        currentSearchFilters.dateFrom ||
-                       currentSearchFilters.dateTo;
+                       currentSearchFilters.dateTo ||
+                       searchInContents;
 
-    result = await window.electronAPI.searchFiles(
-      currentPath,
-      query,
-      hasFilters ? currentSearchFilters : undefined
-    );
+    if (searchInContents) {
+      result = await window.electronAPI.searchFilesWithContent(
+        currentPath,
+        query,
+        hasFilters ? currentSearchFilters : undefined
+      );
+    } else {
+      result = await window.electronAPI.searchFiles(
+        currentPath,
+        query,
+        hasFilters ? currentSearchFilters : undefined
+      );
+    }
 
     if (result.success && result.results) {
       allFiles = result.results;
-      renderFiles(result.results);
+      renderFiles(result.results, searchInContents ? query : undefined);
     } else {
       showToast(result.error || 'Search failed', 'Search Error', 'error');
     }
@@ -2097,6 +2421,7 @@ async function init() {
 
   setupEventListeners();
   loadDrives();
+  initializeTabs();
 
   await navigateTo(startupPath);
 
@@ -2328,6 +2653,13 @@ function setupEventListeners() {
     }
   });
 
+  searchInContentsToggle?.addEventListener('change', () => {
+    searchInContents = searchInContentsToggle.checked;
+    if (searchInput.value.trim()) {
+      performSearch();
+    }
+  });
+
   sortBtn?.addEventListener('click', showSortMenu);
   bookmarkAddBtn?.addEventListener('click', addBookmark);
   
@@ -2495,6 +2827,25 @@ function setupEventListeners() {
       } else if (e.key === '0') {
         e.preventDefault();
         zoomReset();
+      } else if (e.key === 't' || e.key === 'T') {
+        e.preventDefault();
+        if (tabsEnabled) {
+          addNewTab();
+        }
+      } else if (e.key === 'w' || e.key === 'W') {
+        e.preventDefault();
+        if (tabsEnabled && tabs.length > 1) {
+          closeTab(activeTabId);
+        }
+      } else if (e.key === 'Tab') {
+        e.preventDefault();
+        if (tabsEnabled && tabs.length > 1) {
+          const currentIndex = tabs.findIndex(t => t.id === activeTabId);
+          const nextIndex = e.shiftKey
+            ? (currentIndex - 1 + tabs.length) % tabs.length
+            : (currentIndex + 1) % tabs.length;
+          switchToTab(tabs[nextIndex].id);
+        }
       }
     } else if (e.key === ' ' && selectedItems.size === 1) {
       const activeElement = document.activeElement;
@@ -2871,6 +3222,7 @@ async function navigateTo(path: string, skipHistoryUpdate = false) {
 
     if (result.success) {
       currentPath = path;
+      updateCurrentTabPath(path);
       if (addressInput) addressInput.value = path;
       updateBreadcrumb(path);
       addToDirectoryHistory(path);
@@ -2903,7 +3255,7 @@ async function navigateTo(path: string, skipHistoryUpdate = false) {
 
 let filePathMap: Map<string, FileItem> = new Map();
 
-function renderFiles(items: FileItem[]) {
+function renderFiles(items: FileItem[], searchQuery?: string) {
   if (!fileGrid) return;
 
   fileGrid.innerHTML = '';
@@ -2987,9 +3339,9 @@ function renderFiles(items: FileItem[]) {
   const renderBatch = () => {
     const start = currentBatch * batchSize;
     const end = Math.min(start + batchSize, sortedItems.length);
-    
+
     for (let i = start; i < end; i++) {
-      const fileItem = createFileItem(sortedItems[i]);
+      const fileItem = createFileItem(sortedItems[i], searchQuery);
       fragment.appendChild(fileItem);
     }
     
@@ -3042,7 +3394,7 @@ function lazyLoadThumbnails() {
   });
 }
 
-function createFileItem(item: FileItem): HTMLElement {
+function createFileItem(item: FileItem, searchQuery?: string): HTMLElement {
   const fileItem = document.createElement('div');
   fileItem.className = 'file-item';
   fileItem.dataset.path = item.path;
@@ -3068,9 +3420,21 @@ function createFileItem(item: FileItem): HTMLElement {
     day: 'numeric'
   });
 
+  const contentResult = item as ContentSearchResult;
+  let matchContextHtml = '';
+  if (contentResult.matchContext && searchQuery) {
+    const escapedContext = escapeHtml(contentResult.matchContext);
+    const escapedQuery = escapeHtml(searchQuery);
+    const regex = new RegExp(`(${escapedQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+    const highlightedContext = escapedContext.replace(regex, '<span class="match-highlight">$1</span>');
+    const lineInfo = contentResult.matchLineNumber ? `<span class="match-line-number">Line ${contentResult.matchLineNumber}</span>` : '';
+    matchContextHtml = `<div class="match-context">${highlightedContext}${lineInfo}</div>`;
+  }
+
   fileItem.innerHTML = `
     <div class="file-icon">${icon}</div>
     <div class="file-name">${escapeHtml(item.name)}</div>
+    ${matchContextHtml}
     <div class="file-info">
       <span class="file-size" data-path="${escapeHtml(item.path)}">${sizeDisplay}</span>
       <span class="file-modified">${dateDisplay}</span>
@@ -3085,7 +3449,14 @@ function createFileItem(item: FileItem): HTMLElement {
       addToRecentFiles(item.path);
     }
   });
-  
+
+  fileItem.addEventListener('auxclick', (e) => {
+    if (e.button === 1 && item.isDirectory && tabsEnabled) {
+      e.preventDefault();
+      addNewTab(item.path);
+    }
+  });
+
   fileItem.addEventListener('click', (e) => {
     e.stopPropagation();
     if (!e.ctrlKey && !e.metaKey) {
@@ -5313,7 +5684,10 @@ function validateImportedSettings(imported: any): Partial<Settings> {
   if (typeof imported.minimizeToTray === 'boolean') validated.minimizeToTray = imported.minimizeToTray;
   if (typeof imported.startOnLogin === 'boolean') validated.startOnLogin = imported.startOnLogin;
   if (typeof imported.autoCheckUpdates === 'boolean') validated.autoCheckUpdates = imported.autoCheckUpdates;
-  
+  if (typeof imported.showRecentFiles === 'boolean') validated.showRecentFiles = imported.showRecentFiles;
+  if (typeof imported.enableTabs === 'boolean') validated.enableTabs = imported.enableTabs;
+  if (typeof imported.globalContentSearch === 'boolean') validated.globalContentSearch = imported.globalContentSearch;
+
   if (typeof imported.startupPath === 'string') validated.startupPath = imported.startupPath;
 
   const validThemes = ['dark', 'light', 'default', 'custom'];

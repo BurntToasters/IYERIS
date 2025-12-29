@@ -9,6 +9,21 @@ export interface CustomTheme {
   glassBorder: string;
 }
 
+export interface Tab {
+  id: string;
+  path: string;
+  history: string[];
+  historyIndex: number;
+  selectedItems: string[];
+  scrollPosition: number;
+  cachedFiles?: FileItem[];
+}
+
+export interface TabState {
+  tabs: Tab[];
+  activeTabId: string;
+}
+
 export interface Settings {
   transparency: boolean;
   theme: 'dark' | 'light' | 'default' | 'custom';
@@ -32,6 +47,10 @@ export interface Settings {
   skipFullDiskAccessPrompt?: boolean;
   recentFiles?: string[];
   folderIcons?: { [path: string]: string };
+  showRecentFiles: boolean;
+  enableTabs: boolean;
+  globalContentSearch: boolean;
+  tabState?: TabState;
 }
 
 export interface FileItem {
@@ -50,6 +69,16 @@ export interface SearchFilters {
   maxSize?: number;
   dateFrom?: string;
   dateTo?: string;
+  searchInContents?: boolean;
+}
+
+export interface ContentSearchResult extends FileItem {
+  matchContext?: string;
+  matchLineNumber?: number;
+}
+
+export interface ContentSearchResponse extends ApiResponse {
+  results?: ContentSearchResult[];
 }
 
 export interface ItemProperties {
@@ -233,6 +262,7 @@ export interface ElectronAPI {
   copyItems: (sourcePaths: string[], destPath: string) => Promise<ApiResponse>;
   moveItems: (sourcePaths: string[], destPath: string) => Promise<ApiResponse>;
   searchFiles: (dirPath: string, query: string, filters?: SearchFilters) => Promise<SearchResponse>;
+  searchFilesWithContent: (dirPath: string, query: string, filters?: SearchFilters) => Promise<ContentSearchResponse>;
   getDiskSpace: (drivePath: string) => Promise<{success: boolean; total?: number; free?: number; error?: string}>;
   restartAsAdmin: () => Promise<ApiResponse>;
   openTerminal: (dirPath: string) => Promise<ApiResponse>;

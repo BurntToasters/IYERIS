@@ -1977,6 +1977,142 @@ ipcMain.handle('search-files', async (_event: IpcMainInvokeEvent, dirPath: strin
   }
 });
 
+const TEXT_FILE_EXTENSIONS = new Set([
+  'txt', 'md', 'markdown', 'js', 'jsx', 'ts', 'tsx', 'json',
+  'xml', 'html', 'htm', 'css', 'scss', 'less', 'py', 'rb',
+  'java', 'c', 'cpp', 'h', 'hpp', 'cs', 'go', 'rs', 'swift',
+  'yaml', 'yml', 'toml', 'ini', 'cfg', 'conf', 'sh', 'bash',
+  'ps1', 'bat', 'cmd', 'sql', 'log', 'csv', 'env', 'gitignore',
+  'vue', 'svelte', 'php', 'pl', 'r', 'lua', 'kt', 'kts', 'scala'
+]);
+
+const CONTENT_SEARCH_MAX_FILE_SIZE = 1024 * 1024;
+const CONTENT_CONTEXT_CHARS = 60;
+
+interface ContentSearchResult {
+  name: string;
+  path: string;
+  isDirectory: boolean;
+  isFile: boolean;
+  size: number;
+  modified: Date;
+  isHidden: boolean;
+  matchContext?: string;
+  matchLineNumber?: number;
+}
+
+ipcMain.handle('search-files-content', async (_event: IpcMainInvokeEvent, dirPath: string, query: string, filters?: SearchFilters): Promise<{ success: boolean; results?: ContentSearchResult[]; error?: string }> => {
+  try {
+    if (!isPathSafe(dirPath)) {
+      return { success: false, error: 'Invalid directory path' };
+    }
+
+    const results: ContentSearchResult[] = [];
+    const searchQuery = query.toLowerCase();
+    const MAX_SEARCH_DEPTH = 10;
+    const MAX_RESULTS = 100;
+
+    const dateFrom = filters?.dateFrom ? new Date(filters.dateFrom) : null;
+    const dateTo = filters?.dateTo ? new Date(filters.dateTo) : null;
+    if (dateTo) dateTo.setHours(23, 59, 59, 999);
+
+    const minSize = filters?.minSize;
+    const maxSize = filters?.maxSize;
+
+    async function searchFileContent(filePath: string): Promise<{ found: boolean; context?: string; lineNumber?: number }> {
+      const ext = path.extname(filePath).slice(1).toLowerCase();
+      if (!TEXT_FILE_EXTENSIONS.has(ext)) {
+        return { found: false };
+      }
+
+      try {
+        const stats = await fs.stat(filePath);
+        if (stats.size > CONTENT_SEARCH_MAX_FILE_SIZE) {
+          return { found: false };
+        }
+
+        const content = await fs.readFile(filePath, 'utf-8');
+        const lines = content.split('\n');
+
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i];
+          const lowerLine = line.toLowerCase();
+          const matchIndex = lowerLine.indexOf(searchQuery);
+
+          if (matchIndex !== -1) {
+            const start = Math.max(0, matchIndex - CONTENT_CONTEXT_CHARS);
+            const end = Math.min(line.length, matchIndex + searchQuery.length + CONTENT_CONTEXT_CHARS);
+            let context = line.substring(start, end).trim();
+            if (start > 0) context = '...' + context;
+            if (end < line.length) context = context + '...';
+
+            return { found: true, context, lineNumber: i + 1 };
+          }
+        }
+      } catch {
+        return { found: false };
+      }
+
+      return { found: false };
+    }
+
+    async function searchDirectory(currentPath: string, depth: number = 0): Promise<void> {
+      if (depth >= MAX_SEARCH_DEPTH || results.length >= MAX_RESULTS) {
+        return;
+      }
+
+      try {
+        const items = await fs.readdir(currentPath, { withFileTypes: true });
+
+        for (const item of items) {
+          if (results.length >= MAX_RESULTS) return;
+
+          const fullPath = path.join(currentPath, item.name);
+
+          if (item.isFile()) {
+            try {
+              const stats = await fs.stat(fullPath);
+
+              if (minSize !== undefined && stats.size < minSize) continue;
+              if (maxSize !== undefined && stats.size > maxSize) continue;
+              if (dateFrom && stats.mtime < dateFrom) continue;
+              if (dateTo && stats.mtime > dateTo) continue;
+
+              const contentResult = await searchFileContent(fullPath);
+              if (contentResult.found) {
+                const isHidden = await isFileHiddenCached(fullPath, item.name);
+                results.push({
+                  name: item.name,
+                  path: fullPath,
+                  isDirectory: false,
+                  isFile: true,
+                  size: stats.size,
+                  modified: stats.mtime,
+                  isHidden,
+                  matchContext: contentResult.context,
+                  matchLineNumber: contentResult.lineNumber
+                });
+              }
+            } catch { /* Skip inaccessible files */ }
+          }
+
+          if (item.isDirectory() && results.length < MAX_RESULTS) {
+            try {
+              await searchDirectory(fullPath, depth + 1);
+            } catch { /* Skip inaccessible directories */ }
+          }
+        }
+      } catch { /* Skip inaccessible directories */ }
+    }
+
+    await searchDirectory(dirPath);
+    return { success: true, results };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { success: false, error: message };
+  }
+});
+
 ipcMain.handle('get-disk-space', async (_event: IpcMainInvokeEvent, drivePath: string): Promise<{ success: boolean; total?: number; free?: number; error?: string }> => {
   console.log('[Main] get-disk-space called with path:', drivePath, 'Platform:', process.platform);
   try {

@@ -22,6 +22,9 @@ export function createDefaultSettings(): Settings {
     supportPopupDismissed: false,
     skipFullDiskAccessPrompt: false,
     recentFiles: [],
-    folderIcons: {}
+    folderIcons: {},
+    showRecentFiles: true,
+    enableTabs: true,
+    globalContentSearch: false
   };
 }
