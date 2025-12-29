@@ -201,7 +201,7 @@ export interface ElectronAPI {
   getDirectoryContents: (dirPath: string) => Promise<DirectoryResponse>;
   getDrives: () => Promise<string[]>;
   getHomeDirectory: () => Promise<string>;
-  openFile: (filePath: string) => Promise<void>;
+  openFile: (filePath: string) => Promise<ApiResponse>;
   selectFolder: () => Promise<PathResponse>;
   minimizeWindow: () => Promise<void>;
   maximizeWindow: () => Promise<void>;

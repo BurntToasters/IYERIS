@@ -1,4 +1,6 @@
 import type { Settings, FileItem, ItemProperties, CustomTheme } from './types';
+import { escapeHtml, getErrorMessage } from './shared';
+import { createDefaultSettings } from './settings';
 
 const THUMBNAIL_MAX_SIZE = 10 * 1024 * 1024;
 const SEARCH_DEBOUNCE_MS = 300;
@@ -37,6 +39,14 @@ function enqueueThumbnailLoad(loadFn: () => Promise<void>): void {
   }
 }
 
+function isWindowsPath(value: string): boolean {
+  return /^[A-Za-z]:[\\/]/.test(value) || value.startsWith('\\\\');
+}
+
+function normalizeWindowsPath(value: string): string {
+  return value.replace(/\//g, '\\');
+}
+
 const path = {
   basename: (filePath: string, ext?: string): string => {
     const name = filePath.split(/[\\/]/).pop() || '';
@@ -46,7 +56,33 @@ const path = {
     return name;
   },
   dirname: (filePath: string): string => {
-    return filePath.split(/[\\/]/).slice(0, -1).join('/');
+    if (!isWindowsPath(filePath)) {
+      const normalized = filePath.replace(/\\/g, '/');
+      const trimmed = normalized.length > 1 ? normalized.replace(/\/+$/, '') : normalized;
+      if (!trimmed || trimmed === '/') return '/';
+      const idx = trimmed.lastIndexOf('/');
+      return idx <= 0 ? '/' : trimmed.slice(0, idx);
+    }
+
+    const normalized = normalizeWindowsPath(filePath);
+    const trimmed = normalized.length > 3 ? normalized.replace(/\\+$/, '') : normalized;
+
+    if (trimmed.startsWith('\\\\')) {
+      const parts = trimmed.split('\\').filter(Boolean);
+      if (parts.length <= 2) {
+        return `\\\\${parts.join('\\')}\\`;
+      }
+      return `\\\\${parts.slice(0, -1).join('\\')}`;
+    }
+
+    const driveMatch = trimmed.match(/^([A-Za-z]:)(\\.*)?$/);
+    if (!driveMatch) return trimmed;
+    const drive = driveMatch[1];
+    const rest = (driveMatch[2] || '').replace(/\\+$/, '');
+    if (!rest) return `${drive}\\`;
+    const lastSep = rest.lastIndexOf('\\');
+    if (lastSep <= 0) return `${drive}\\`;
+    return `${drive}${rest.slice(0, lastSep)}`;
   },
   extname: (filePath: string): string => {
     const name = filePath.split(/[\\/]/).pop() || '';
@@ -58,18 +94,6 @@ const path = {
   }
 };
 
-function escapeHtml(text: any): string {
-  if (text === null || text === undefined) return '';
-  const str = String(text);
-  const map: { [key: string]: string } = {
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;',
-    '"': '&quot;',
-    "'": '&#039;'
-  };
-  return str.replace(/[&<>"']/g, (m) => map[m]);
-}
 
 function encodeFileUrl(filePath: string): string {
   const normalizedPath = filePath.replace(/\\/g, '/');
@@ -113,15 +137,6 @@ function twemojiImg(emoji: string, className: string = 'twemoji', alt?: string):
   return `<img src="${src}" class="${className}" alt="${altText}" draggable="false" />`;
 }
 
-function getErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  if (typeof error === 'string') {
-    return error;
-  }
-  return String(error);
-}
 
 // Debounced settings save for non-critical updates (history, recent files, etc.)
 let settingsSaveTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -310,25 +325,32 @@ function renderOperations() {
 }
 
 // Breadcrumb nav
-function parsePath(filePath: string): { segments: string[]; isWindows: boolean } {
-  const isWindows = /^[A-Za-z]:/.test(filePath);
+function parsePath(filePath: string): { segments: string[]; isWindows: boolean; isUnc: boolean } {
+  const isUnc = filePath.startsWith('\\\\');
+  const isWindows = isUnc || /^[A-Za-z]:/.test(filePath);
   const normalizedPath = filePath.replace(/\\/g, '/');
   const segments = normalizedPath.split('/').filter(s => s.length > 0);
-  if (isWindows && segments.length > 0) {
+  if (isWindows && !isUnc && segments.length > 0) {
     if (!segments[0].includes(':')) {
       segments[0] = segments[0] + ':';
     }
   }
   
-  return { segments, isWindows };
+  return { segments, isWindows, isUnc };
 }
 
-function buildPathFromSegments(segments: string[], index: number, isWindows: boolean): string {
+function buildPathFromSegments(segments: string[], index: number, isWindows: boolean, isUnc: boolean): string {
   if (index < 0) return '';
   
   const pathSegments = segments.slice(0, index + 1);
   
   if (isWindows) {
+    if (isUnc) {
+      if (pathSegments.length <= 2) {
+        return `\\\\${pathSegments.join('\\')}\\`;
+      }
+      return `\\\\${pathSegments.join('\\')}`;
+    }
     if (pathSegments.length === 1) {
       return pathSegments[0] + '\\';
     }
@@ -352,7 +374,7 @@ function updateBreadcrumb(currentPath: string): void {
     return;
   }
   
-  const { segments, isWindows } = parsePath(currentPath);
+  const { segments, isWindows, isUnc } = parsePath(currentPath);
   
   if (segments.length === 0) {
     breadcrumbContainer.style.display = 'none';
@@ -371,11 +393,11 @@ function updateBreadcrumb(currentPath: string): void {
     const item = document.createElement('span');
     item.className = 'breadcrumb-item';
     item.textContent = segment;
-    item.title = buildPathFromSegments(segments, index, isWindows);
+    item.title = buildPathFromSegments(segments, index, isWindows, isUnc);
     
     item.addEventListener('click', (e) => {
       e.stopPropagation();
-      const targetPath = buildPathFromSegments(segments, index, isWindows);
+      const targetPath = buildPathFromSegments(segments, index, isWindows, isUnc);
       navigateTo(targetPath);
     });
     
@@ -578,24 +600,7 @@ async function showConfirm(message: string, title: string = 'Confirm', type: Dia
   return await showDialog(title, message, type, true);
 }
 
-let currentSettings: Settings = {
-  transparency: true,
-  theme: 'default',
-  sortBy: 'name',
-  sortOrder: 'asc',
-  bookmarks: [],
-  viewMode: 'grid',
-  showDangerousOptions: false,
-  startupPath: '',
-  showHiddenFiles: false,
-  enableSearchHistory: true,
-  searchHistory: [],
-  directoryHistory: [],
-  enableIndexer: true,
-  minimizeToTray: false,
-  startOnLogin: false,
-  autoCheckUpdates: true
-};
+let currentSettings: Settings = createDefaultSettings();
 
 function showToast(message: string, title: string = '', type: 'success' | 'error' | 'info' | 'warning' = 'info'): void {
   const container = document.getElementById('toast-container');
@@ -643,26 +648,7 @@ async function loadSettings(): Promise<void> {
   ]);
 
   if (result.success && result.settings) {
-    const defaults: Settings = {
-      transparency: true,
-      theme: 'default',
-      sortBy: 'name',
-      sortOrder: 'asc',
-      bookmarks: [],
-      viewMode: 'grid',
-      showDangerousOptions: false,
-      startupPath: '',
-      showHiddenFiles: false,
-      enableSearchHistory: true,
-      searchHistory: [],
-      directoryHistory: [],
-      enableIndexer: true,
-      minimizeToTray: false,
-      startOnLogin: false,
-      autoCheckUpdates: false,
-      launchCount: 0,
-      supportPopupDismissed: false
-    };
+    const defaults = createDefaultSettings();
     currentSettings = { ...defaults, ...result.settings };
     applySettings(currentSettings);
     const newLaunchCount = (currentSettings.launchCount || 0) + 1;
@@ -3229,7 +3215,19 @@ function loadThumbnail(fileItem: HTMLElement, item: FileItem) {
   if (cached) {
     const iconDiv = fileItem.querySelector('.file-icon');
     if (iconDiv) {
-      iconDiv.innerHTML = `<img src="${cached}" class="file-thumbnail" alt="${escapeHtml(item.name)}">`;
+      iconDiv.innerHTML = '';
+      const img = document.createElement('img');
+      img.src = cached;
+      img.className = 'file-thumbnail';
+      img.alt = item.name;
+      img.addEventListener('error', () => {
+        if (!document.body.contains(fileItem)) {
+          return;
+        }
+        iconDiv.innerHTML = getFileIcon(item.name);
+        fileItem.classList.remove('has-thumbnail');
+      });
+      iconDiv.appendChild(img);
     }
     return;
   }
@@ -3246,24 +3244,39 @@ function loadThumbnail(fileItem: HTMLElement, item: FileItem) {
         iconDiv.innerHTML = `<div class="spinner" style="width: 30px; height: 30px; border-width: 2px;"></div>`;
       }
 
-      const result = await window.electronAPI.getFileDataUrl(item.path, THUMBNAIL_MAX_SIZE);
+      if (item.size > THUMBNAIL_MAX_SIZE) {
+        if (iconDiv) {
+          iconDiv.innerHTML = getFileIcon(item.name);
+        }
+        fileItem.classList.remove('has-thumbnail');
+        return;
+      }
+
+      const fileUrl = encodeFileUrl(item.path);
 
       if (!document.body.contains(fileItem)) {
         return;
       }
 
-      if (result.success && result.dataUrl && iconDiv) {
+      if (iconDiv) {
         if (thumbnailCache.size >= THUMBNAIL_CACHE_MAX) {
           const firstKey = thumbnailCache.keys().next().value;
           if (firstKey) thumbnailCache.delete(firstKey);
         }
-        thumbnailCache.set(item.path, result.dataUrl);
-        iconDiv.innerHTML = `<img src="${result.dataUrl}" class="file-thumbnail" alt="${escapeHtml(item.name)}">`;
-      } else {
-        if (iconDiv) {
+        thumbnailCache.set(item.path, fileUrl);
+        iconDiv.innerHTML = '';
+        const img = document.createElement('img');
+        img.src = fileUrl;
+        img.className = 'file-thumbnail';
+        img.alt = item.name;
+        img.addEventListener('error', () => {
+          if (!document.body.contains(fileItem)) {
+            return;
+          }
           iconDiv.innerHTML = getFileIcon(item.name);
-        }
-        fileItem.classList.remove('has-thumbnail');
+          fileItem.classList.remove('has-thumbnail');
+        });
+        iconDiv.appendChild(img);
       }
     } catch (error) {
       if (!document.body.contains(fileItem)) {
@@ -3295,6 +3308,34 @@ const FILE_ICON_MAP: Record<string, string> = {
 };
 
 const IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'ico', 'tiff', 'tif', 'avif', 'jfif', 'svg']);
+const VIDEO_EXTENSIONS = new Set(['mp4', 'webm', 'ogg', 'mov', 'mkv', 'avi', 'm4v']);
+const AUDIO_EXTENSIONS = new Set(['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac', 'wma', 'opus']);
+const PDF_EXTENSIONS = new Set(['pdf']);
+const TEXT_EXTENSIONS = new Set([
+  'txt', 'text', 'md', 'markdown', 'log', 'readme', 'html', 'htm', 'css', 'scss', 'sass', 'less', 'js', 'jsx', 'ts', 'tsx', 'vue', 'svelte', 'py', 'pyc', 'pyw', 'java', 'c', 'cpp', 'cc', 'cxx', 'h', 'hpp', 'cs', 'php', 'rb', 'go', 'rs', 'swift', 'kt', 'kts', 'scala', 'r', 'lua', 'perl', 'pl', 'sh', 'bash', 'zsh', 'fish', 'ps1', 'bat', 'cmd',
+  'json', 'xml', 'yml', 'yaml', 'toml', 'csv', 'tsv', 'sql',
+  'ini', 'conf', 'config', 'cfg', 'env', 'properties', 'gitignore', 'gitattributes', 'editorconfig', 'dockerfile', 'dockerignore',
+  'rst', 'tex', 'adoc', 'asciidoc', 'makefile', 'cmake', 'gradle', 'maven'
+]);
+const VIDEO_MIME_TYPES: Record<string, string> = {
+  mp4: 'video/mp4',
+  webm: 'video/webm',
+  ogg: 'video/ogg',
+  mov: 'video/quicktime',
+  mkv: 'video/x-matroska',
+  avi: 'video/x-msvideo',
+  m4v: 'video/x-m4v'
+};
+const AUDIO_MIME_TYPES: Record<string, string> = {
+  mp3: 'audio/mpeg',
+  wav: 'audio/wav',
+  ogg: 'audio/ogg',
+  flac: 'audio/flac',
+  aac: 'audio/aac',
+  m4a: 'audio/mp4',
+  wma: 'audio/x-ms-wma',
+  opus: 'audio/ogg'
+};
 const FOLDER_ICON = twemojiImg(String.fromCodePoint(0x1F4C1), 'twemoji file-icon');
 const IMAGE_ICON = twemojiImg(String.fromCodePoint(parseInt('1f5bc', 16)), 'twemoji');
 const DEFAULT_FILE_ICON = twemojiImg(String.fromCodePoint(parseInt('1f4c4', 16)), 'twemoji');
@@ -3510,10 +3551,24 @@ function goForward() {
   }
 }
 
+function isRootPath(pathValue: string): boolean {
+  if (!pathValue) return true;
+  if (!isWindowsPath(pathValue)) {
+    return pathValue === '/';
+  }
+  const normalized = normalizeWindowsPath(pathValue);
+  if (normalized.startsWith('\\\\')) {
+    const parts = normalized.split('\\').filter(Boolean);
+    return parts.length <= 2;
+  }
+  return /^[A-Za-z]:\\?$/.test(normalized);
+}
+
 function goUp() {
   if (!currentPath) return;
-  const parentPath = currentPath.split(/[\\/]/).slice(0, -1).join('/') || 
-                     (currentPath.includes(':\\') ? currentPath.split(':\\')[0] + ':\\' : '/');
+  if (isRootPath(currentPath)) return;
+  const parentPath = path.dirname(currentPath);
+  if (!parentPath) return;
   navigateTo(parentPath);
 }
 
@@ -3526,7 +3581,7 @@ function refresh() {
 function updateNavigationButtons() {
   backBtn.disabled = historyIndex <= 0;
   forwardBtn.disabled = historyIndex >= history.length - 1;
-  upBtn.disabled = !currentPath || currentPath === '/' || currentPath.endsWith(':\\');
+  upBtn.disabled = !currentPath || isRootPath(currentPath);
 }
 
 function toggleView() {
@@ -3590,7 +3645,7 @@ async function renderColumnView() {
       return;
     }
 
-    const isWindows = currentPath.includes(':\\');
+    const isWindows = isWindowsPath(currentPath);
 
     if (isWindows) {
       const parts = currentPath.split('\\').filter(Boolean);
@@ -5523,28 +5578,15 @@ function updatePreview(file: FileItem) {
 
   const ext = file.name.split('.').pop()?.toLowerCase() || '';
 
-  const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico', 'tiff', 'tif', 'avif', 'jfif'];
-
-  const textExts = [
-    'txt', 'text', 'md', 'markdown', 'log', 'readme', 'html', 'htm', 'css', 'scss', 'sass', 'less', 'js', 'jsx', 'ts', 'tsx', 'vue', 'svelte', 'py', 'pyc', 'pyw', 'java', 'c', 'cpp', 'cc', 'cxx', 'h', 'hpp', 'cs', 'php', 'rb', 'go', 'rs', 'swift', 'kt', 'kts', 'scala', 'r', 'lua', 'perl', 'pl', 'sh', 'bash', 'zsh', 'fish', 'ps1', 'bat', 'cmd',
-    'json', 'xml', 'yml', 'yaml', 'toml', 'csv', 'tsv', 'sql',
-    'ini', 'conf', 'config', 'cfg', 'env', 'properties', 'gitignore', 'gitattributes', 'editorconfig', 'dockerfile', 'dockerignore',
-    'rst', 'tex', 'adoc', 'asciidoc', 'makefile', 'cmake', 'gradle', 'maven'
-  ];
-
-  const videoExts = ['mp4', 'webm', 'ogg', 'mov', 'mkv', 'avi'];
-  const audioExts = ['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac'];
-  const pdfExts = ['pdf'];
-  
-  if (imageExts.includes(ext)) {
+  if (IMAGE_EXTENSIONS.has(ext)) {
     showImagePreview(file);
-  } else if (textExts.includes(ext)) {
+  } else if (TEXT_EXTENSIONS.has(ext)) {
     showTextPreview(file);
-  } else if (videoExts.includes(ext)) {
+  } else if (VIDEO_EXTENSIONS.has(ext)) {
     showVideoPreview(file);
-  } else if (audioExts.includes(ext)) {
+  } else if (AUDIO_EXTENSIONS.has(ext)) {
     showAudioPreview(file);
-  } else if (pdfExts.includes(ext)) {
+  } else if (PDF_EXTENSIONS.has(ext)) {
     showPdfPreview(file);
   } else {
     showFileInfo(file);
@@ -5560,23 +5602,36 @@ async function showImagePreview(file: FileItem) {
     </div>
   `;
   
-  const result = await window.electronAPI.getFileDataUrl(file.path);
-  
-  if (result.success && result.dataUrl) {
-    const props = await window.electronAPI.getItemProperties(file.path);
-    const info = props.success && props.properties ? props.properties : null;
-    
-    previewContent.innerHTML = `
-      <img src="${result.dataUrl}" class="preview-image" alt="${escapeHtml(file.name)}">
-      ${generateFileInfo(file, info)}
-    `;
-  } else {
+  if (file.size > THUMBNAIL_MAX_SIZE) {
     previewContent.innerHTML = `
       <div class="preview-error">
-        Failed to load image: ${escapeHtml(result.error || 'Unknown error')}
+        Failed to load image: ${escapeHtml('File too large to preview')}
       </div>
       ${generateFileInfo(file, null)}
     `;
+    return;
+  }
+
+  const props = await window.electronAPI.getItemProperties(file.path);
+  const info = props.success && props.properties ? props.properties : null;
+  const fileUrl = encodeFileUrl(file.path);
+  const altText = escapeHtml(file.name);
+  
+  previewContent.innerHTML = `
+    <img src="${fileUrl}" class="preview-image" alt="${altText}">
+    ${generateFileInfo(file, info)}
+  `;
+  
+  const img = previewContent.querySelector('.preview-image') as HTMLImageElement | null;
+  if (img) {
+    img.addEventListener('error', () => {
+      previewContent.innerHTML = `
+        <div class="preview-error">
+          Failed to load image
+        </div>
+        ${generateFileInfo(file, info)}
+      `;
+    });
   }
 }
 
@@ -5743,62 +5798,30 @@ async function showQuickLook() {
   
   const ext = file.name.split('.').pop()?.toLowerCase() || '';
 
-  const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico', 'tiff', 'tif', 'avif', 'jfif'];
-
-  const videoExts = ['mp4', 'webm', 'ogg', 'mov', 'mkv', 'avi', 'm4v'];
-
-  const audioExts = ['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a', 'wma', 'opus'];
-
-  const pdfExts = ['pdf'];
-
-  const textExts = [
-    'txt', 'text', 'md', 'markdown', 'log', 'readme', 'html', 'htm', 'css', 'scss', 'sass', 'less', 'js', 'jsx', 'ts', 'tsx', 'vue', 'svelte', 'py', 'pyc', 'pyw', 'java', 'c', 'cpp', 'cc', 'cxx', 'h', 'hpp', 'cs', 'php', 'rb', 'go', 'rs', 'swift', 'kt', 'kts', 'scala', 'r', 'lua', 'perl', 'pl', 'sh', 'bash', 'zsh', 'fish', 'ps1', 'bat', 'cmd',
-    'json', 'xml', 'yml', 'yaml', 'toml', 'csv', 'tsv', 'sql',
-    'ini', 'conf', 'config', 'cfg', 'env', 'properties', 'gitignore', 'gitattributes', 'editorconfig', 'dockerfile', 'dockerignore',
-    'rst', 'tex', 'adoc', 'asciidoc', 'makefile', 'cmake', 'gradle', 'maven'
-  ];
-
   quicklookContent.innerHTML = `
     <div class="preview-loading">
       <div class="spinner"></div>
       <p>Loading preview...</p>
     </div>
   `;
-
-  const videoMimeTypes: Record<string, string> = {
-    mp4: 'video/mp4',
-    webm: 'video/webm',
-    ogg: 'video/ogg',
-    mov: 'video/quicktime',
-    mkv: 'video/x-matroska',
-    avi: 'video/x-msvideo',
-    m4v: 'video/x-m4v'
-  };
-
-  const audioMimeTypes: Record<string, string> = {
-    mp3: 'audio/mpeg',
-    wav: 'audio/wav',
-    ogg: 'audio/ogg',
-    flac: 'audio/flac',
-    aac: 'audio/aac',
-    m4a: 'audio/mp4',
-    wma: 'audio/x-ms-wma',
-    opus: 'audio/ogg'
-  };
-
-  if (imageExts.includes(ext)) {
-    const result = await window.electronAPI.getFileDataUrl(file.path);
-    if (result.success && result.dataUrl) {
-      quicklookContent.innerHTML = '';
-      const img = document.createElement('img');
-      img.src = result.dataUrl;
-      img.alt = file.name;
-      quicklookContent.appendChild(img);
+  
+  if (IMAGE_EXTENSIONS.has(ext)) {
+    if (file.size > THUMBNAIL_MAX_SIZE) {
+      quicklookContent.innerHTML = `<div class="preview-error">Image too large to preview</div>`;
       quicklookInfo.textContent = `${formatFileSize(file.size)} • ${new Date(file.modified).toLocaleDateString()}`;
     } else {
-      quicklookContent.innerHTML = `<div class="preview-error">Failed to load image</div>`;
+      const fileUrl = encodeFileUrl(file.path);
+      quicklookContent.innerHTML = '';
+      const img = document.createElement('img');
+      img.src = fileUrl;
+      img.alt = file.name;
+      img.addEventListener('error', () => {
+        quicklookContent.innerHTML = `<div class="preview-error">Failed to load image</div>`;
+      });
+      quicklookContent.appendChild(img);
+      quicklookInfo.textContent = `${formatFileSize(file.size)} • ${new Date(file.modified).toLocaleDateString()}`;
     }
-  } else if (videoExts.includes(ext)) {
+  } else if (VIDEO_EXTENSIONS.has(ext)) {
     const fileUrl = encodeFileUrl(file.path);
     quicklookContent.innerHTML = '';
     const video = document.createElement('video');
@@ -5807,12 +5830,12 @@ async function showQuickLook() {
     video.className = 'preview-video';
     const source = document.createElement('source');
     source.src = fileUrl;
-    source.type = videoMimeTypes[ext] || 'video/*';
+    source.type = VIDEO_MIME_TYPES[ext] || 'video/*';
     video.appendChild(source);
     video.appendChild(document.createTextNode('Your browser does not support the video tag.'));
     quicklookContent.appendChild(video);
     quicklookInfo.textContent = `${formatFileSize(file.size)} • ${new Date(file.modified).toLocaleDateString()}`;
-  } else if (audioExts.includes(ext)) {
+  } else if (AUDIO_EXTENSIONS.has(ext)) {
     const fileUrl = encodeFileUrl(file.path);
     quicklookContent.innerHTML = '';
     const container = document.createElement('div');
@@ -5826,14 +5849,14 @@ async function showQuickLook() {
     audio.className = 'preview-audio';
     const source = document.createElement('source');
     source.src = fileUrl;
-    source.type = audioMimeTypes[ext] || 'audio/*';
+    source.type = AUDIO_MIME_TYPES[ext] || 'audio/*';
     audio.appendChild(source);
     audio.appendChild(document.createTextNode('Your browser does not support the audio tag.'));
     container.appendChild(icon);
     container.appendChild(audio);
     quicklookContent.appendChild(container);
     quicklookInfo.textContent = `${formatFileSize(file.size)} • ${new Date(file.modified).toLocaleDateString()}`;
-  } else if (pdfExts.includes(ext)) {
+  } else if (PDF_EXTENSIONS.has(ext)) {
     const fileUrl = encodeFileUrl(file.path);
     quicklookContent.innerHTML = '';
     const iframe = document.createElement('iframe');
@@ -5842,7 +5865,7 @@ async function showQuickLook() {
     iframe.setAttribute('frameborder', '0');
     quicklookContent.appendChild(iframe);
     quicklookInfo.textContent = `${formatFileSize(file.size)} • ${new Date(file.modified).toLocaleDateString()}`;
-  } else if (textExts.includes(ext)) {
+  } else if (TEXT_EXTENSIONS.has(ext)) {
     const result = await window.electronAPI.readFileContent(file.path, 100 * 1024);
     if (result.success && result.content) {
       quicklookContent.innerHTML = `

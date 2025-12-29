@@ -9,6 +9,7 @@ import type { Settings, FileItem, ApiResponse, DirectoryResponse, PathResponse, 
 import { FileIndexer } from './indexer';
 import { getDrives, getCachedDrives, warmupDrivesCache } from './utils';
 import { isPathSafe, isUrlSafe, getErrorMessage } from './security';
+import { createDefaultSettings } from './settings';
 
 let autoUpdaterModule: typeof import('electron-updater') | null = null;
 let sevenBinModule: { path7za: string } | null = null;
@@ -449,24 +450,6 @@ function pushRedoAction(action: UndoAction): void {
   console.log('[Redo] Action pushed:', action.type, 'Stack size:', redoStack.length);
 }
 
-const defaultSettings: Settings = {
-  transparency: true,
-  theme: 'default',
-  sortBy: 'name',
-  sortOrder: 'asc',
-  bookmarks: [],
-  viewMode: 'grid',
-  showDangerousOptions: false,
-  startupPath: '',
-  showHiddenFiles: false,
-  enableSearchHistory: true,
-  searchHistory: [],
-  directoryHistory: [],
-  enableIndexer: true,
-  minimizeToTray: false,
-  startOnLogin: false,
-  autoCheckUpdates: true
-};
 
 function applyLoginItemSettings(settings: Settings): void {
   try {
@@ -530,14 +513,14 @@ async function loadSettings(): Promise<Settings> {
     const settingsPath = getSettingsPath();
     console.log('[Settings] Loading from:', settingsPath);
     const data = await fs.readFile(settingsPath, 'utf8');
-    const settings = { ...defaultSettings, ...JSON.parse(data) };
+    const settings = { ...createDefaultSettings(), ...JSON.parse(data) };
     console.log('[Settings] Loaded:', JSON.stringify(settings, null, 2));
     cachedSettings = settings;
     settingsCacheTime = now;
     return settings;
   } catch (error) {
     console.log('[Settings] File not found, using defaults');
-    const settings = { ...defaultSettings };
+    const settings = createDefaultSettings();
     cachedSettings = settings;
     settingsCacheTime = now;
     return settings;
@@ -1665,7 +1648,7 @@ ipcMain.handle('save-settings', async (event: IpcMainInvokeEvent, settings: Sett
 });
 
 ipcMain.handle('reset-settings', async (): Promise<ApiResponse> => {
-  return await saveSettings(defaultSettings);
+  return await saveSettings(createDefaultSettings());
 });
 
 ipcMain.handle('set-clipboard', (event: IpcMainInvokeEvent, clipboardData: { operation: 'copy' | 'cut'; paths: string[] } | null): void => {
@@ -1713,18 +1696,28 @@ ipcMain.handle('copy-items', async (_event: IpcMainInvokeEvent, sourcePaths: str
       console.warn('[Security] Invalid destination path rejected:', destPath);
       return { success: false, error: 'Invalid destination path' };
     }
-    
+
+    const planned: Array<{ sourcePath: string; destItemPath: string; itemName: string; isDirectory: boolean }> = [];
+    const destKeys = new Set<string>();
+
     for (const sourcePath of sourcePaths) {
       if (!isPathSafe(sourcePath)) {
         console.warn('[Security] Invalid source path rejected:', sourcePath);
         return { success: false, error: 'Invalid source path' };
       }
-      
+
       const itemName = path.basename(sourcePath);
       const destItemPath = path.join(destPath, itemName);
+      const destKey = process.platform === 'win32' ? destItemPath.toLowerCase() : destItemPath;
+      if (destKeys.has(destKey)) {
+        return { success: false, error: `Multiple items share the same name: "${itemName}"` };
+      }
+      destKeys.add(destKey);
 
-      const sourceExists = await fs.stat(sourcePath).then(() => true).catch(() => false);
-      if (!sourceExists) {
+      let stats: fsSync.Stats;
+      try {
+        stats = await fs.stat(sourcePath);
+      } catch {
         console.log('[Copy] Source file not found:', sourcePath);
         return { success: false, error: `Source file not found: ${itemName}` };
       }
@@ -1734,14 +1727,30 @@ ipcMain.handle('copy-items', async (_event: IpcMainInvokeEvent, sourcePaths: str
         console.log('[Copy] Destination already exists:', destItemPath);
         return { success: false, error: `A file named "${itemName}" already exists in the destination` };
       }
-      
-      const stats = await fs.stat(sourcePath);
-      if (stats.isDirectory()) {
-        await fs.cp(sourcePath, destItemPath, { recursive: true });
-      } else {
-        await fs.copyFile(sourcePath, destItemPath);
-      }
+
+      planned.push({ sourcePath, destItemPath, itemName, isDirectory: stats.isDirectory() });
     }
+
+    const copiedPaths: string[] = [];
+    try {
+      for (const item of planned) {
+        if (item.isDirectory) {
+          await fs.cp(item.sourcePath, item.destItemPath, { recursive: true });
+        } else {
+          await fs.copyFile(item.sourcePath, item.destItemPath);
+        }
+        copiedPaths.push(item.destItemPath);
+      }
+    } catch (error) {
+      for (const copied of copiedPaths.reverse()) {
+        try {
+          await fs.rm(copied, { recursive: true, force: true });
+        } catch {
+        }
+      }
+      return { success: false, error: getErrorMessage(error) };
+    }
+
     return { success: true };
   } catch (error) {
     return { success: false, error: getErrorMessage(error) };
@@ -1761,17 +1770,23 @@ ipcMain.handle('move-items', async (_event: IpcMainInvokeEvent, sourcePaths: str
         return { success: false, error: 'Invalid source path' };
       }
     }
-    
-    const originalParent = path.dirname(sourcePaths[0]);
-    const movedPaths: string[] = [];
-    const originalPaths: string[] = [];
-    
+
+    const planned: Array<{ sourcePath: string; newPath: string; fileName: string; isDirectory: boolean }> = [];
+    const destKeys = new Set<string>();
+
     for (const sourcePath of sourcePaths) {
       const fileName = path.basename(sourcePath);
       const newPath = path.join(destPath, fileName);
+      const destKey = process.platform === 'win32' ? newPath.toLowerCase() : newPath;
+      if (destKeys.has(destKey)) {
+        return { success: false, error: `Multiple items share the same name: "${fileName}"` };
+      }
+      destKeys.add(destKey);
 
-      const sourceExists = await fs.stat(sourcePath).then(() => true).catch(() => false);
-      if (!sourceExists) {
+      let stats: fsSync.Stats;
+      try {
+        stats = await fs.stat(sourcePath);
+      } catch {
         console.log('[Move] Source file not found:', sourcePath);
         return { success: false, error: `Source file not found: ${fileName}` };
       }
@@ -1781,28 +1796,60 @@ ipcMain.handle('move-items', async (_event: IpcMainInvokeEvent, sourcePaths: str
         console.log('[Move] Destination already exists:', newPath);
         return { success: false, error: `A file named "${fileName}" already exists in the destination` };
       }
-      
-      try {
-        await fs.rename(sourcePath, newPath);
-      } catch (renameError) {
-        const err = renameError as NodeJS.ErrnoException;
-        // If rename fails (e.g., cross-drive), fall back to copy+delete
-        if (err.code === 'EXDEV') {
-          console.log('[Move] Cross-device move, using copy+delete:', sourcePath);
-          const stats = await fs.stat(sourcePath);
-          if (stats.isDirectory()) {
-            await fs.cp(sourcePath, newPath, { recursive: true });
+
+      planned.push({ sourcePath, newPath, fileName, isDirectory: stats.isDirectory() });
+    }
+
+    const originalParent = path.dirname(sourcePaths[0]);
+    const movedPaths: string[] = [];
+    const originalPaths: string[] = [];
+    const completed: Array<{ sourcePath: string; newPath: string }> = [];
+
+    try {
+      for (const item of planned) {
+        try {
+          await fs.rename(item.sourcePath, item.newPath);
+        } catch (renameError) {
+          const err = renameError as NodeJS.ErrnoException;
+          if (err.code === 'EXDEV') {
+            console.log('[Move] Cross-device move, using copy+delete:', item.sourcePath);
+            if (item.isDirectory) {
+              await fs.cp(item.sourcePath, item.newPath, { recursive: true });
+            } else {
+              await fs.copyFile(item.sourcePath, item.newPath);
+            }
+            await fs.rm(item.sourcePath, { recursive: true, force: true });
           } else {
-            await fs.copyFile(sourcePath, newPath);
+            throw renameError;
           }
-          await fs.rm(sourcePath, { recursive: true, force: true });
-        } else {
-          throw renameError;
+        }
+
+        originalPaths.push(item.sourcePath);
+        movedPaths.push(item.newPath);
+        completed.push({ sourcePath: item.sourcePath, newPath: item.newPath });
+      }
+    } catch (error) {
+      for (const item of completed.reverse()) {
+        try {
+          await fs.rename(item.newPath, item.sourcePath);
+        } catch (restoreError) {
+          const err = restoreError as NodeJS.ErrnoException;
+          if (err.code === 'EXDEV') {
+            try {
+              const stats = await fs.stat(item.newPath);
+              if (stats.isDirectory()) {
+                await fs.cp(item.newPath, item.sourcePath, { recursive: true });
+              } else {
+                await fs.copyFile(item.newPath, item.sourcePath);
+              }
+              await fs.rm(item.newPath, { recursive: true, force: true });
+            } catch {
+            }
+          }
         }
       }
-      
-      originalPaths.push(sourcePath);
-      movedPaths.push(newPath);
+      const message = error instanceof Error ? error.message : String(error);
+      return { success: false, error: message };
     }
     
     pushUndoAction({

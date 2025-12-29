@@ -93,6 +93,26 @@ describe('isPathSafe', () => {
     expect(isPathSafe('C:\\Windows\\System32\\config\\SECURITY', 'win32')).toBe(false);
   });
 
+  it('rejects Windows device and extended-length paths', () => {
+    expect(isPathSafe('\\\\?\\C:\\Windows\\System32', 'win32')).toBe(false);
+    expect(isPathSafe('\\\\.\\C:\\Windows\\System32', 'win32')).toBe(false);
+  });
+
+  it('rejects Windows alternate data streams', () => {
+    expect(isPathSafe('C:\\Users\\test\\file.txt:stream', 'win32')).toBe(false);
+    expect(isPathSafe('\\\\server\\share\\file.txt:stream', 'win32')).toBe(false);
+  });
+
+  it('rejects Windows reserved device names', () => {
+    expect(isPathSafe('C:\\Temp\\CON.txt', 'win32')).toBe(false);
+    expect(isPathSafe('C:\\Temp\\LPT1', 'win32')).toBe(false);
+  });
+
+  it('rejects Windows names with trailing dots or spaces', () => {
+    expect(isPathSafe('C:\\Temp\\badname.', 'win32')).toBe(false);
+    expect(isPathSafe('C:\\Temp\\badname ', 'win32')).toBe(false);
+  });
+
   it('accepts paths with spaces', () => {
     expect(isPathSafe('/home/user/my documents/file.txt', 'linux')).toBe(true);
     expect(isPathSafe('C:\\Users\\test\\My Documents\\file.txt', 'win32')).toBe(true);
