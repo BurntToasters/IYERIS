@@ -8,6 +8,7 @@ import { promisify } from 'util';
 import type { Settings, FileItem, ApiResponse, DirectoryResponse, PathResponse, PropertiesResponse, SettingsResponse, UpdateCheckResponse, IndexSearchResponse, UndoAction } from './types';
 import { FileIndexer } from './indexer';
 import { getDrives, getCachedDrives, warmupDrivesCache } from './utils';
+import { isPathSafe, isUrlSafe, getErrorMessage } from './security';
 
 let autoUpdaterModule: typeof import('electron-updater') | null = null;
 let sevenBinModule: { path7za: string } | null = null;
@@ -212,69 +213,6 @@ let shouldStartHidden = false;
 let hiddenFileCacheCleanupInterval: NodeJS.Timeout | null = null;
 import * as crypto from 'crypto';
 
-function isPathSafe(inputPath: string): boolean {
-  if (!inputPath || typeof inputPath !== 'string') {
-    return false;
-  }
-
-  // Check for null bytes
-  if (inputPath.includes('\0')) {
-    console.warn('[Security] Path contains null byte:', inputPath);
-    return false;
-  }
-
-  const suspiciousChars = /[<>"|*?]/;
-  if (suspiciousChars.test(inputPath)) {
-    console.warn('[Security] Path contains suspicious characters:', inputPath);
-    return false;
-  }
-
-  const normalized = path.normalize(inputPath);
-  const resolved = path.resolve(inputPath);
-
-  if (normalized.includes('..')) {
-    console.warn('[Security] Path contains parent directory reference after normalization:', inputPath);
-    return false;
-  }
-
-  // Validate UNC paths on Windows
-  if (process.platform === 'win32' && normalized.startsWith('\\\\')) {
-    const parts = normalized.split('\\').filter(Boolean);
-    if (parts.length < 1) {
-      console.warn('[Security] Invalid UNC path:', inputPath);
-      return false;
-    }
-  }
-
-  if (process.platform === 'win32') {
-    const lowerResolved = resolved.toLowerCase();
-    const restrictedPaths = [
-      'c:\\windows\\system32\\config\\sam',
-      'c:\\windows\\system32\\config\\system',
-      'c:\\windows\\system32\\config\\security'
-    ];
-
-    for (const restricted of restrictedPaths) {
-      if (lowerResolved === restricted || lowerResolved.startsWith(restricted + '\\')) {
-        console.warn('[Security] Attempt to access restricted system file:', inputPath);
-        return false;
-      }
-    }
-  }
-
-  return true;
-}
-
-const ALLOWED_URL_SCHEMES = ['http:', 'https:', 'mailto:', 'file:'];
-function isUrlSafe(url: string): boolean {
-  try {
-    const parsed = new URL(url);
-    return ALLOWED_URL_SCHEMES.includes(parsed.protocol);
-  } catch {
-    return false;
-  }
-}
-
 function safeSendToWindow(win: BrowserWindow | null, channel: string, ...args: any[]): boolean {
   try {
     if (win && !win.isDestroyed() && win.webContents && !win.webContents.isDestroyed()) {
@@ -424,16 +362,6 @@ const redoStack: UndoAction[] = [];
 const activeArchiveProcesses = new Map<string, any>();
 const activeFolderSizeCalculations = new Map<string, { aborted: boolean }>();
 const activeChecksumCalculations = new Map<string, { aborted: boolean }>();
-
-function getErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  if (typeof error === 'string') {
-    return error;
-  }
-  return String(error);
-}
 
 function pushUndoAction(action: UndoAction): void {
   undoStack.push(action);
@@ -2496,6 +2424,20 @@ ipcMain.handle('redo-action', async (_event: IpcMainInvokeEvent): Promise<ApiRes
   try {
     switch (action.type) {
       case 'rename':
+        try {
+          await fs.access(action.data.oldPath);
+        } catch {
+          console.log('[Redo] Source file no longer exists:', action.data.oldPath);
+          return { success: false, error: 'Cannot redo: Source file no longer exists' };
+        }
+
+        try {
+          await fs.access(action.data.newPath);
+          console.log('[Redo] Target path already exists:', action.data.newPath);
+          return { success: false, error: 'Cannot redo: A file already exists at the target location' };
+        } catch {
+        }
+
         await fs.rename(action.data.oldPath, action.data.newPath);
         undoStack.push(action);
         console.log('[Redo] Renamed:', action.data.oldPath, '->', action.data.newPath);
@@ -2532,6 +2474,14 @@ ipcMain.handle('redo-action', async (_event: IpcMainInvokeEvent): Promise<ApiRes
       
       case 'create':
         const itemPath = action.data.path;
+
+        try {
+          await fs.access(itemPath);
+          console.log('[Redo] Item already exists at path:', itemPath);
+          return { success: false, error: 'Cannot redo: A file or folder already exists at this location' };
+        } catch {
+        }
+
         if (action.data.isDirectory) {
           await fs.mkdir(itemPath);
         } else {

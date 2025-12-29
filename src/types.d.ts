@@ -31,6 +31,7 @@ export interface Settings {
   supportPopupDismissed?: boolean;
   skipFullDiskAccessPrompt?: boolean;
   recentFiles?: string[];
+  folderIcons?: { [path: string]: string };
 }
 
 export interface FileItem {

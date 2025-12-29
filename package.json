@@ -16,9 +16,12 @@
     "dotenv-cli": "^10.0.0",
     "electron": "^39.0.0",
     "electron-builder": "^26.0.12",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^2.1.8"
   },
   "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
     "copy:css": "node -e \"require('fs').copyFileSync('src/twemoji.css', 'dist/twemoji.css')\"",
     "build:cleanup": "node -e \"const fs=require('fs');['release','dist'].forEach(d=>{try{fs.rmSync(d,{recursive:true,force:true})}catch(e){}})\"",
     "build": "npm run build:cleanup && tsc && tsc --project tsconfig.renderer.json && npm run copy:css",

@@ -238,8 +238,9 @@
             <p>Loading...</p>
           </div>
           <div class="empty-state" id="empty-state" style="display: none;">
-            <div class="empty-icon"><img src="assets/twemoji/1f4ed.svg" class="twemoji-xlarge" alt="📭" draggable="false" /></div>
+            <div class="empty-icon"><img src="assets/twemoji/1f4c2.svg" class="twemoji-xlarge" alt="📂" draggable="false" /></div>
             <p>This folder is empty</p>
+            <p class="empty-hint">Drop files here or right-click to create new items</p>
           </div>
           <div class="file-grid" id="file-grid"></div>
           <div class="column-view" id="column-view" style="display: none;"></div>
@@ -286,6 +287,7 @@
     <div class="context-menu-item" data-action="delete"><img src="assets/twemoji/1f5d1.svg" class="twemoji" alt="🗑️" draggable="false" /> Delete</div>
     <div class="context-menu-separator"></div>
     <div class="context-menu-item" data-action="add-to-bookmarks" id="add-to-bookmarks-item" style="display: none;"><img src="assets/twemoji/2b50.svg" class="twemoji" alt="⭐" draggable="false" /> Add to Bookmarks</div>
+    <div class="context-menu-item" data-action="change-folder-icon" id="change-folder-icon-item" style="display: none;"><img src="assets/twemoji/1f3a8.svg" class="twemoji" alt="🎨" draggable="false" /> Change Folder Icon</div>
     <div class="context-menu-item" data-action="open-terminal" id="open-terminal-item"><img src="assets/twemoji/1f5a5.svg" class="twemoji" alt="🖥️" draggable="false" /> Open folder in Terminal</div>
     <div class="context-menu-separator"></div>
     <div class="context-menu-item" data-action="properties"><img src="assets/twemoji/2139.svg" class="twemoji" alt="ℹ️" draggable="false" /> Properties</div>
@@ -738,7 +740,7 @@
           </div>
           <div class="shortcut-item">
             <span class="shortcut-description">Show Shortcuts</span>
-            <span class="shortcut-keys"><kbd>Ctrl</kbd> + <kbd>.</kbd></span>
+            <span class="shortcut-keys"><kbd>Ctrl</kbd> + <kbd>?</kbd></span>
           </div>
           <div class="shortcut-item">
             <span class="shortcut-description">Refresh</span>
@@ -1019,6 +1021,23 @@
       <div class="modal-footer">
         <button class="modal-button secondary" id="theme-editor-cancel">Cancel</button>
         <button class="modal-button primary" id="theme-editor-save">Save Theme</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="folder-icon-modal" style="display: none;">
+    <div class="modal glass-panel folder-icon-modal">
+      <div class="modal-header">
+        <h3><img src="assets/twemoji/1f3a8.svg" class="twemoji" alt="🎨" draggable="false" /> Change Folder Icon</h3>
+        <button class="modal-close" id="folder-icon-close">✕</button>
+      </div>
+      <div class="modal-body folder-icon-body">
+        <p class="folder-icon-path" id="folder-icon-path"></p>
+        <div class="folder-icon-grid" id="folder-icon-grid"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="modal-button secondary" id="folder-icon-reset">Reset to Default</button>
+        <button class="modal-button primary" id="folder-icon-cancel">Cancel</button>
       </div>
     </div>
   </div>

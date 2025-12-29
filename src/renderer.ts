@@ -1332,6 +1332,92 @@ function hideShortcutsModal() {
   }
 }
 
+const FOLDER_ICON_OPTIONS = [
+  0x1F4C1, 0x1F4C2, 0x1F4C1, 0x1F5C2, 0x1F5C3, 0x1F4BC,
+  0x2B50, 0x1F31F, 0x2764, 0x1F499, 0x1F49A, 0x1F49B,
+  0x1F4A1, 0x1F3AE, 0x1F3B5, 0x1F3AC, 0x1F4F7, 0x1F4F9,
+  0x1F4DA, 0x1F4D6, 0x1F4DD, 0x270F, 0x1F4BB, 0x1F5A5,
+  0x1F3E0, 0x1F3E2, 0x1F6E0, 0x2699, 0x1F512, 0x1F513,
+  0x1F4E6, 0x1F4E5, 0x1F4E4, 0x1F5D1, 0x2601, 0x1F310,
+  0x1F680, 0x2708, 0x1F697, 0x1F6B2, 0x26BD, 0x1F3C0,
+  0x1F352, 0x1F34E, 0x1F33F, 0x1F333, 0x1F308, 0x2600
+];
+
+let folderIconPickerPath: string | null = null;
+
+function showFolderIconPicker(folderPath: string) {
+  const modal = document.getElementById('folder-icon-modal');
+  const pathDisplay = document.getElementById('folder-icon-path');
+  const grid = document.getElementById('folder-icon-grid');
+
+  if (!modal || !pathDisplay || !grid) return;
+
+  folderIconPickerPath = folderPath;
+
+  const folderName = folderPath.split(/[/\\]/).pop() || folderPath;
+  pathDisplay.textContent = folderName;
+
+  const currentIcon = currentSettings.folderIcons?.[folderPath];
+
+  grid.innerHTML = FOLDER_ICON_OPTIONS.map(code => {
+    const emoji = String.fromCodePoint(code);
+    const isSelected = currentIcon === emoji;
+    return `
+      <div class="folder-icon-option${isSelected ? ' selected' : ''}" data-icon="${emoji}">
+        ${twemojiImg(emoji, 'twemoji')}
+      </div>
+    `;
+  }).join('');
+
+  grid.querySelectorAll('.folder-icon-option').forEach(option => {
+    option.addEventListener('click', () => {
+      const icon = (option as HTMLElement).dataset.icon;
+      if (icon && folderIconPickerPath) {
+        setFolderIcon(folderIconPickerPath, icon);
+        hideFolderIconPicker();
+      }
+    });
+  });
+
+  modal.style.display = 'flex';
+}
+
+function hideFolderIconPicker() {
+  const modal = document.getElementById('folder-icon-modal');
+  if (modal) {
+    modal.style.display = 'none';
+  }
+  folderIconPickerPath = null;
+}
+
+async function setFolderIcon(folderPath: string, icon: string) {
+  if (!currentSettings.folderIcons) {
+    currentSettings.folderIcons = {};
+  }
+  currentSettings.folderIcons[folderPath] = icon;
+  await saveSettings();
+  if (currentPath) navigateTo(currentPath);
+  showToast('Folder icon updated', 'Success', 'success');
+}
+
+async function resetFolderIcon() {
+  if (folderIconPickerPath && currentSettings.folderIcons && currentSettings.folderIcons[folderIconPickerPath]) {
+    delete currentSettings.folderIcons[folderIconPickerPath];
+    await saveSettings();
+    if (currentPath) navigateTo(currentPath);
+    showToast('Folder icon reset to default', 'Success', 'success');
+  }
+  hideFolderIconPicker();
+}
+
+function getFolderIcon(folderPath: string): string {
+  const customIcon = currentSettings.folderIcons?.[folderPath];
+  if (customIcon) {
+    return twemojiImg(customIcon, 'twemoji file-icon');
+  }
+  return FOLDER_ICON;
+}
+
 function openNewWindow() {
   window.electronAPI.openNewWindow();
 }
@@ -2312,7 +2398,7 @@ function setupEventListeners() {
       if (e.key === ',') {
         e.preventDefault();
         showSettingsModal();
-      } else if (e.key === '.') {
+      } else if (e.key === '?') {
         e.preventDefault();
         showShortcutsModal();
       } else if (e.key === 'n' && !e.shiftKey) {
@@ -2944,7 +3030,7 @@ function createFileItem(item: FileItem): HTMLElement {
 
   let icon: string;
   if (item.isDirectory) {
-    icon = FOLDER_ICON;
+    icon = getFolderIcon(item.path);
   } else {
     const ext = item.name.split('.').pop()?.toLowerCase() || '';
     if (IMAGE_EXTENSIONS.has(ext)) {
@@ -2955,9 +3041,20 @@ function createFileItem(item: FileItem): HTMLElement {
     }
   }
 
+  const sizeDisplay = item.isDirectory ? '--' : formatFileSize(item.size);
+  const dateDisplay = new Date(item.modified).toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric'
+  });
+
   fileItem.innerHTML = `
     <div class="file-icon">${icon}</div>
     <div class="file-name">${escapeHtml(item.name)}</div>
+    <div class="file-info">
+      <span class="file-size" data-path="${escapeHtml(item.path)}">${sizeDisplay}</span>
+      <span class="file-modified">${dateDisplay}</span>
+    </div>
   `;
   
   fileItem.addEventListener('dblclick', () => {
@@ -4042,22 +4139,31 @@ function startInlineRename(fileItem: HTMLElement, currentName: string, itemPath:
 function showContextMenu(x: number, y: number, item: FileItem) {
   const contextMenu = document.getElementById('context-menu');
   const addToBookmarksItem = document.getElementById('add-to-bookmarks-item');
+  const changeFolderIconItem = document.getElementById('change-folder-icon-item');
   const copyPathItem = document.getElementById('copy-path-item');
   const openTerminalItem = document.getElementById('open-terminal-item');
   const compressItem = document.getElementById('compress-item');
   const extractItem = document.getElementById('extract-item');
-  
+
   if (!contextMenu) return;
-  
+
   hideEmptySpaceContextMenu();
-  
+
   contextMenuData = item;
-  
+
   if (addToBookmarksItem) {
     if (item.isDirectory) {
       addToBookmarksItem.style.display = 'flex';
     } else {
       addToBookmarksItem.style.display = 'none';
+    }
+  }
+
+  if (changeFolderIconItem) {
+    if (item.isDirectory) {
+      changeFolderIconItem.style.display = 'flex';
+    } else {
+      changeFolderIconItem.style.display = 'none';
     }
   }
   
@@ -4257,7 +4363,13 @@ async function handleContextMenuAction(action: string | undefined, item: FileIte
         await addBookmarkByPath(item.path);
       }
       break;
-      
+
+    case 'change-folder-icon':
+      if (item.isDirectory) {
+        showFolderIconPicker(item.path);
+      }
+      break;
+
     case 'open-terminal':
       const terminalPath = item.isDirectory ? item.path : path.dirname(item.path);
       const terminalResult = await window.electronAPI.openTerminal(terminalPath);
@@ -5301,6 +5413,19 @@ document.getElementById('copy-licenses-btn')?.addEventListener('click', copyLice
 
 document.getElementById('shortcuts-close')?.addEventListener('click', hideShortcutsModal);
 document.getElementById('close-shortcuts-btn')?.addEventListener('click', hideShortcutsModal);
+
+document.getElementById('folder-icon-close')?.addEventListener('click', hideFolderIconPicker);
+document.getElementById('folder-icon-cancel')?.addEventListener('click', hideFolderIconPicker);
+document.getElementById('folder-icon-reset')?.addEventListener('click', resetFolderIcon);
+
+const folderIconModal = document.getElementById('folder-icon-modal');
+if (folderIconModal) {
+  folderIconModal.addEventListener('click', (e) => {
+    if ((e.target as HTMLElement).id === 'folder-icon-modal') {
+      hideFolderIconPicker();
+    }
+  });
+}
 
 const settingsModal = document.getElementById('settings-modal');
 if (settingsModal) {
