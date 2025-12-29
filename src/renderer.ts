@@ -1,6 +1,6 @@
 import type { Settings, FileItem, ItemProperties, CustomTheme } from './types';
-import { escapeHtml, getErrorMessage } from './shared';
-import { createDefaultSettings } from './settings';
+import { escapeHtml, getErrorMessage } from './shared.js';
+import { createDefaultSettings } from './settings.js';
 
 const THUMBNAIL_MAX_SIZE = 10 * 1024 * 1024;
 const SEARCH_DEBOUNCE_MS = 300;
@@ -2095,10 +2095,10 @@ async function init() {
     ? currentSettings.startupPath
     : await homeDirectoryPromise;
 
-  navigateTo(startupPath);
+  setupEventListeners();
   loadDrives();
 
-  setupEventListeners();
+  await navigateTo(startupPath);
 
   queueMicrotask(() => {
     setupBreadcrumbListeners();
@@ -2854,46 +2854,51 @@ function clearDirectoryHistory() {
 async function navigateTo(path: string, skipHistoryUpdate = false) {
   if (!path) return;
 
-  if (isSearchMode) {
-    closeSearch();
-  }
-
-  if (thumbnailObserver) {
-    thumbnailObserver.disconnect();
-  }
-
-  if (loading) loading.style.display = 'flex';
-  if (emptyState) emptyState.style.display = 'none';
-  if (fileGrid) fileGrid.innerHTML = '';
-
-  const result = await window.electronAPI.getDirectoryContents(path);
-
-  if (result.success) {
-    currentPath = path;
-    if (addressInput) addressInput.value = path;
-    updateBreadcrumb(path);
-    addToDirectoryHistory(path);
-
-    if (!skipHistoryUpdate && (historyIndex === -1 || history[historyIndex] !== path)) {
-      history = history.slice(0, historyIndex + 1);
-      history.push(path);
-      historyIndex = history.length - 1;
+  try {
+    if (isSearchMode) {
+      closeSearch();
     }
 
-    updateNavigationButtons();
+    if (thumbnailObserver) {
+      thumbnailObserver.disconnect();
+    }
 
-    if (viewMode === 'column') {
-      await renderColumnView();
+    if (loading) loading.style.display = 'flex';
+    if (emptyState) emptyState.style.display = 'none';
+    if (fileGrid) fileGrid.innerHTML = '';
+
+    const result = await window.electronAPI.getDirectoryContents(path);
+
+    if (result.success) {
+      currentPath = path;
+      if (addressInput) addressInput.value = path;
+      updateBreadcrumb(path);
+      addToDirectoryHistory(path);
+
+      if (!skipHistoryUpdate && (historyIndex === -1 || history[historyIndex] !== path)) {
+        history = history.slice(0, historyIndex + 1);
+        history.push(path);
+        historyIndex = history.length - 1;
+      }
+
+      updateNavigationButtons();
+
+      if (viewMode === 'column') {
+        await renderColumnView();
+      } else {
+        renderFiles(result.contents || []);
+      }
+      updateDiskSpace();
     } else {
-      renderFiles(result.contents || []);
+      console.error('Error loading directory:', result.error);
+      showToast(result.error || 'Unknown error', 'Error Loading Directory', 'error');
     }
-    updateDiskSpace();
-  } else {
-    console.error('Error loading directory:', result.error);
-    showToast(result.error || 'Unknown error', 'Error Loading Directory', 'error');
+  } catch (error) {
+    console.error('Error navigating:', error);
+    showToast(getErrorMessage(error), 'Error Loading Directory', 'error');
+  } finally {
+    if (loading) loading.style.display = 'none';
   }
-  
-  if (loading) loading.style.display = 'none';
 }
 
 let filePathMap: Map<string, FileItem> = new Map();
