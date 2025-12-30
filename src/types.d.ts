@@ -263,6 +263,7 @@ export interface ElectronAPI {
   moveItems: (sourcePaths: string[], destPath: string) => Promise<ApiResponse>;
   searchFiles: (dirPath: string, query: string, filters?: SearchFilters) => Promise<SearchResponse>;
   searchFilesWithContent: (dirPath: string, query: string, filters?: SearchFilters) => Promise<ContentSearchResponse>;
+  searchFilesWithContentGlobal: (query: string, filters?: SearchFilters) => Promise<ContentSearchResponse>;
   getDiskSpace: (drivePath: string) => Promise<{success: boolean; total?: number; free?: number; error?: string}>;
   restartAsAdmin: () => Promise<ApiResponse>;
   openTerminal: (dirPath: string) => Promise<ApiResponse>;

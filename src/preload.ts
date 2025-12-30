@@ -49,6 +49,7 @@ const electronAPI: ElectronAPI = {
   moveItems: (sourcePaths: string[], destPath: string) => ipcRenderer.invoke('move-items', sourcePaths, destPath),
   searchFiles: (dirPath: string, query: string, filters?: SearchFilters) => ipcRenderer.invoke('search-files', dirPath, query, filters),
   searchFilesWithContent: (dirPath: string, query: string, filters?: SearchFilters) => ipcRenderer.invoke('search-files-content', dirPath, query, filters),
+  searchFilesWithContentGlobal: (query: string, filters?: SearchFilters) => ipcRenderer.invoke('search-files-content-global', query, filters),
   openTerminal: (dirPath: string) => ipcRenderer.invoke('open-terminal', dirPath),
   getDiskSpace: (drivePath: string) => ipcRenderer.invoke('get-disk-space', drivePath),
   restartAsAdmin: () => ipcRenderer.invoke('restart-as-admin'),

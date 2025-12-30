@@ -286,6 +286,22 @@ export class FileIndexer {
     return results;
   }
 
+  async getEntries(): Promise<IndexEntry[]> {
+    if (!this.enabled) {
+      return [];
+    }
+
+    if (this.initializationPromise) {
+      await this.initializationPromise;
+    }
+
+    if (this.index.size === 0 && !this.isIndexing) {
+      await this.loadIndex();
+    }
+
+    return Array.from(this.index.values());
+  }
+
   async saveIndex(): Promise<void> {
     try {
       const data = {

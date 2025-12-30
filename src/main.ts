@@ -366,15 +366,46 @@ async function assertExtractedPathsSafe(destPath: string): Promise<void> {
   }
 }
 
-function parseVersion(v: string): { major: number; minor: number; patch: number; prerelease: string } {
-  const match = v.match(/^v?(\d+)\.(\d+)\.(\d+)(?:-(.+))?$/);
-  if (!match) return { major: 0, minor: 0, patch: 0, prerelease: '' };
+function parseVersion(v: string): { major: number; minor: number; patch: number; prerelease: string[] } {
+  const cleaned = v.split('+')[0];
+  const match = cleaned.match(/^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/);
+  if (!match) return { major: 0, minor: 0, patch: 0, prerelease: [] };
   return {
     major: parseInt(match[1], 10),
     minor: parseInt(match[2], 10),
     patch: parseInt(match[3], 10),
-    prerelease: match[4] || ''
+    prerelease: match[4] ? match[4].split('.') : []
   };
+}
+
+function comparePrerelease(a: string[], b: string[]): number {
+  if (a.length === 0 && b.length === 0) return 0;
+  if (a.length === 0) return 1;
+  if (b.length === 0) return -1;
+
+  const maxLen = Math.max(a.length, b.length);
+  for (let i = 0; i < maxLen; i++) {
+    const aId = a[i];
+    const bId = b[i];
+    if (aId === undefined) return -1;
+    if (bId === undefined) return 1;
+
+    const aNum = /^\d+$/.test(aId) ? parseInt(aId, 10) : null;
+    const bNum = /^\d+$/.test(bId) ? parseInt(bId, 10) : null;
+
+    if (aNum !== null && bNum !== null) {
+      if (aNum !== bNum) return aNum > bNum ? 1 : -1;
+    } else if (aNum !== null) {
+      return -1;
+    } else if (bNum !== null) {
+      return 1;
+    } else {
+      const cmp = aId.localeCompare(bId);
+      if (cmp !== 0) return cmp;
+    }
+  }
+
+  return 0;
 }
 
 function compareVersions(a: string, b: string): number {
@@ -384,13 +415,8 @@ function compareVersions(a: string, b: string): number {
   if (vA.major !== vB.major) return vA.major > vB.major ? 1 : -1;
   if (vA.minor !== vB.minor) return vA.minor > vB.minor ? 1 : -1;
   if (vA.patch !== vB.patch) return vA.patch > vB.patch ? 1 : -1;
-  if (!vA.prerelease && vB.prerelease) return 1;
-  if (vA.prerelease && !vB.prerelease) return -1;
-  if (vA.prerelease && vB.prerelease) {
-    return vA.prerelease.localeCompare(vB.prerelease);
-  }
-  
-  return 0;
+
+  return comparePrerelease(vA.prerelease, vB.prerelease);
 }
 
 let sharedClipboard: { operation: 'copy' | 'cut'; paths: string[] } | null = null;
@@ -1616,13 +1642,17 @@ ipcMain.handle('get-settings', async (): Promise<SettingsResponse> => {
 ipcMain.handle('save-settings', async (event: IpcMainInvokeEvent, settings: Settings): Promise<ApiResponse> => {
   const result = await saveSettings(settings);
 
-  if (result.success && fileIndexer) {
-    fileIndexer.setEnabled(settings.enableIndexer);
-
+  if (result.success) {
     if (settings.enableIndexer) {
+      if (!fileIndexer) {
+        fileIndexer = new FileIndexer();
+      }
+      fileIndexer.setEnabled(true);
       fileIndexer.initialize(true).catch(err => {
         console.error('[Settings] Failed to initialize indexer:', err);
       });
+    } else if (fileIndexer) {
+      fileIndexer.setEnabled(false);
     }
   }
 
@@ -2001,6 +2031,122 @@ interface ContentSearchResult {
   matchLineNumber?: number;
 }
 
+interface ContentSearchFilters {
+  dateFrom: Date | null;
+  dateTo: Date | null;
+  minSize?: number;
+  maxSize?: number;
+}
+
+function parseContentFilters(filters?: SearchFilters): ContentSearchFilters {
+  const dateFrom = filters?.dateFrom ? new Date(filters.dateFrom) : null;
+  const dateTo = filters?.dateTo ? new Date(filters.dateTo) : null;
+  if (dateTo) dateTo.setHours(23, 59, 59, 999);
+  return {
+    dateFrom,
+    dateTo,
+    minSize: filters?.minSize,
+    maxSize: filters?.maxSize
+  };
+}
+
+async function searchFileContent(filePath: string, searchQuery: string): Promise<{ found: boolean; context?: string; lineNumber?: number }> {
+  const ext = path.extname(filePath).slice(1).toLowerCase();
+  if (!TEXT_FILE_EXTENSIONS.has(ext)) {
+    return { found: false };
+  }
+
+  try {
+    const stats = await fs.stat(filePath);
+    if (stats.size > CONTENT_SEARCH_MAX_FILE_SIZE) {
+      return { found: false };
+    }
+
+    const content = await fs.readFile(filePath, 'utf-8');
+    const lines = content.split('\n');
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const lowerLine = line.toLowerCase();
+      const matchIndex = lowerLine.indexOf(searchQuery);
+
+      if (matchIndex !== -1) {
+        const start = Math.max(0, matchIndex - CONTENT_CONTEXT_CHARS);
+        const end = Math.min(line.length, matchIndex + searchQuery.length + CONTENT_CONTEXT_CHARS);
+        let context = line.substring(start, end).trim();
+        if (start > 0) context = '...' + context;
+        if (end < line.length) context = context + '...';
+
+        return { found: true, context, lineNumber: i + 1 };
+      }
+    }
+  } catch {
+    return { found: false };
+  }
+
+  return { found: false };
+}
+
+async function searchDirectoryForContent(
+  currentPath: string,
+  searchQuery: string,
+  filters: ContentSearchFilters,
+  results: ContentSearchResult[],
+  depth: number,
+  maxDepth: number,
+  maxResults: number
+): Promise<void> {
+  if (depth >= maxDepth || results.length >= maxResults) {
+    return;
+  }
+
+  try {
+    const items = await fs.readdir(currentPath, { withFileTypes: true });
+
+    for (const item of items) {
+      if (results.length >= maxResults) return;
+
+      const fullPath = path.join(currentPath, item.name);
+
+      if (item.isFile()) {
+        try {
+          const stats = await fs.stat(fullPath);
+
+          if (filters.minSize !== undefined && stats.size < filters.minSize) continue;
+          if (filters.maxSize !== undefined && stats.size > filters.maxSize) continue;
+          if (filters.dateFrom && stats.mtime < filters.dateFrom) continue;
+          if (filters.dateTo && stats.mtime > filters.dateTo) continue;
+
+          const contentResult = await searchFileContent(fullPath, searchQuery);
+          if (contentResult.found) {
+            const isHidden = await isFileHiddenCached(fullPath, item.name);
+            results.push({
+              name: item.name,
+              path: fullPath,
+              isDirectory: false,
+              isFile: true,
+              size: stats.size,
+              modified: stats.mtime,
+              isHidden,
+              matchContext: contentResult.context,
+              matchLineNumber: contentResult.lineNumber
+            });
+          }
+        } catch {
+        }
+      }
+
+      if (item.isDirectory() && results.length < maxResults) {
+        try {
+          await searchDirectoryForContent(fullPath, searchQuery, filters, results, depth + 1, maxDepth, maxResults);
+        } catch {
+        }
+      }
+    }
+  } catch {
+  }
+}
+
 ipcMain.handle('search-files-content', async (_event: IpcMainInvokeEvent, dirPath: string, query: string, filters?: SearchFilters): Promise<{ success: boolean; results?: ContentSearchResult[]; error?: string }> => {
   try {
     if (!isPathSafe(dirPath)) {
@@ -2011,101 +2157,68 @@ ipcMain.handle('search-files-content', async (_event: IpcMainInvokeEvent, dirPat
     const searchQuery = query.toLowerCase();
     const MAX_SEARCH_DEPTH = 10;
     const MAX_RESULTS = 100;
+    const parsedFilters = parseContentFilters(filters);
 
-    const dateFrom = filters?.dateFrom ? new Date(filters.dateFrom) : null;
-    const dateTo = filters?.dateTo ? new Date(filters.dateTo) : null;
-    if (dateTo) dateTo.setHours(23, 59, 59, 999);
+    await searchDirectoryForContent(dirPath, searchQuery, parsedFilters, results, 0, MAX_SEARCH_DEPTH, MAX_RESULTS);
+    return { success: true, results };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { success: false, error: message };
+  }
+});
 
-    const minSize = filters?.minSize;
-    const maxSize = filters?.maxSize;
-
-    async function searchFileContent(filePath: string): Promise<{ found: boolean; context?: string; lineNumber?: number }> {
-      const ext = path.extname(filePath).slice(1).toLowerCase();
-      if (!TEXT_FILE_EXTENSIONS.has(ext)) {
-        return { found: false };
-      }
-
-      try {
-        const stats = await fs.stat(filePath);
-        if (stats.size > CONTENT_SEARCH_MAX_FILE_SIZE) {
-          return { found: false };
-        }
-
-        const content = await fs.readFile(filePath, 'utf-8');
-        const lines = content.split('\n');
-
-        for (let i = 0; i < lines.length; i++) {
-          const line = lines[i];
-          const lowerLine = line.toLowerCase();
-          const matchIndex = lowerLine.indexOf(searchQuery);
-
-          if (matchIndex !== -1) {
-            const start = Math.max(0, matchIndex - CONTENT_CONTEXT_CHARS);
-            const end = Math.min(line.length, matchIndex + searchQuery.length + CONTENT_CONTEXT_CHARS);
-            let context = line.substring(start, end).trim();
-            if (start > 0) context = '...' + context;
-            if (end < line.length) context = context + '...';
-
-            return { found: true, context, lineNumber: i + 1 };
-          }
-        }
-      } catch {
-        return { found: false };
-      }
-
-      return { found: false };
+ipcMain.handle('search-files-content-global', async (_event: IpcMainInvokeEvent, query: string, filters?: SearchFilters): Promise<{ success: boolean; results?: ContentSearchResult[]; error?: string }> => {
+  try {
+    if (!fileIndexer) {
+      return { success: false, error: 'Indexer not initialized' };
+    }
+    if (!fileIndexer.isEnabled()) {
+      return { success: false, error: 'Indexer is disabled' };
     }
 
-    async function searchDirectory(currentPath: string, depth: number = 0): Promise<void> {
-      if (depth >= MAX_SEARCH_DEPTH || results.length >= MAX_RESULTS) {
-        return;
-      }
-
-      try {
-        const items = await fs.readdir(currentPath, { withFileTypes: true });
-
-        for (const item of items) {
-          if (results.length >= MAX_RESULTS) return;
-
-          const fullPath = path.join(currentPath, item.name);
-
-          if (item.isFile()) {
-            try {
-              const stats = await fs.stat(fullPath);
-
-              if (minSize !== undefined && stats.size < minSize) continue;
-              if (maxSize !== undefined && stats.size > maxSize) continue;
-              if (dateFrom && stats.mtime < dateFrom) continue;
-              if (dateTo && stats.mtime > dateTo) continue;
-
-              const contentResult = await searchFileContent(fullPath);
-              if (contentResult.found) {
-                const isHidden = await isFileHiddenCached(fullPath, item.name);
-                results.push({
-                  name: item.name,
-                  path: fullPath,
-                  isDirectory: false,
-                  isFile: true,
-                  size: stats.size,
-                  modified: stats.mtime,
-                  isHidden,
-                  matchContext: contentResult.context,
-                  matchLineNumber: contentResult.lineNumber
-                });
-              }
-            } catch { /* Skip inaccessible files */ }
-          }
-
-          if (item.isDirectory() && results.length < MAX_RESULTS) {
-            try {
-              await searchDirectory(fullPath, depth + 1);
-            } catch { /* Skip inaccessible directories */ }
-          }
-        }
-      } catch { /* Skip inaccessible directories */ }
+    const entries = await fileIndexer.getEntries();
+    if (entries.length === 0) {
+      return { success: false, error: 'Index is empty. Rebuild the index to enable global content search.' };
     }
 
-    await searchDirectory(dirPath);
+    const results: ContentSearchResult[] = [];
+    const searchQuery = query.toLowerCase();
+    const parsedFilters = parseContentFilters(filters);
+    const MAX_RESULTS = 100;
+
+    for (const entry of entries) {
+      if (results.length >= MAX_RESULTS) break;
+      if (!entry.isFile) continue;
+
+      const filePath = entry.path;
+      const fileName = entry.name || path.basename(filePath);
+      const ext = path.extname(fileName).slice(1).toLowerCase();
+      if (!TEXT_FILE_EXTENSIONS.has(ext)) continue;
+
+      if (parsedFilters.minSize !== undefined && entry.size < parsedFilters.minSize) continue;
+      if (parsedFilters.maxSize !== undefined && entry.size > parsedFilters.maxSize) continue;
+
+      const modified = entry.modified instanceof Date ? entry.modified : new Date(entry.modified);
+      if (parsedFilters.dateFrom && modified < parsedFilters.dateFrom) continue;
+      if (parsedFilters.dateTo && modified > parsedFilters.dateTo) continue;
+
+      const contentResult = await searchFileContent(filePath, searchQuery);
+      if (contentResult.found) {
+        const isHidden = await isFileHiddenCached(filePath, fileName);
+        results.push({
+          name: fileName,
+          path: filePath,
+          isDirectory: false,
+          isFile: true,
+          size: entry.size,
+          modified,
+          isHidden,
+          matchContext: contentResult.context,
+          matchLineNumber: contentResult.lineNumber
+        });
+      }
+    }
+
     return { success: true, results };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

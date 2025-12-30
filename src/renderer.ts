@@ -505,6 +505,7 @@ interface TabData {
 let tabs: TabData[] = [];
 let activeTabId: string = '';
 let tabsEnabled: boolean = false;
+let tabNewButtonListenerAttached: boolean = false;
 
 function generateTabId(): string {
   return `tab-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
@@ -545,9 +546,15 @@ function initializeTabs() {
 
   renderTabs();
 
-  document.getElementById('new-tab-btn')?.addEventListener('click', () => {
-    addNewTab();
-  });
+  if (!tabNewButtonListenerAttached) {
+    const newTabBtn = document.getElementById('new-tab-btn');
+    if (newTabBtn) {
+      newTabBtn.addEventListener('click', () => {
+        addNewTab();
+      });
+      tabNewButtonListenerAttached = true;
+    }
+  }
 }
 
 function createNewTabData(path: string): TabData {
@@ -1717,6 +1724,7 @@ function copyLicensesText() {
 }
 
 async function saveSettings() {
+  const previousTabsEnabled = tabsEnabled;
   const transparencyToggle = document.getElementById('transparency-toggle') as HTMLInputElement;
   const themeSelect = document.getElementById('theme-select') as HTMLSelectElement;
   const sortBySelect = document.getElementById('sort-by-select') as HTMLSelectElement;
@@ -1804,6 +1812,9 @@ async function saveSettings() {
   
   const result = await window.electronAPI.saveSettings(currentSettings);
   if (result.success) {
+    if (previousTabsEnabled !== currentSettings.enableTabs) {
+      initializeTabs();
+    }
     applySettings(currentSettings);
     clearSettingsChanged();
     hideSettingsModal();
@@ -2060,44 +2071,61 @@ async function performSearch() {
   fileGrid.innerHTML = '';
   
   let result;
+  const hasFilters = currentSearchFilters.fileType ||
+                     currentSearchFilters.minSize !== undefined ||
+                     currentSearchFilters.maxSize !== undefined ||
+                     currentSearchFilters.dateFrom ||
+                     currentSearchFilters.dateTo ||
+                     searchInContents;
   
   if (isGlobalSearch) {
-    result = await window.electronAPI.searchIndex(query);
-    
-    if (result.success && result.results) {
-      const fileItems: FileItem[] = [];
-      
-      for (const entry of result.results) {
-        const isHidden = entry.name.startsWith('.');
-        
-        fileItems.push({
-          name: entry.name,
-          path: entry.path,
-          isDirectory: entry.isDirectory,
-          isFile: entry.isFile,
-          size: entry.size,
-          modified: entry.modified,
-          isHidden
-        });
-      }
-      
-      allFiles = fileItems;
-      renderFiles(fileItems);
-    } else {
-      if (result.error === 'Indexer is disabled') {
-        showToast('File indexer is disabled. Enable it in settings to use global search.', 'Index Disabled', 'warning');
+    if (searchInContents) {
+      result = await window.electronAPI.searchFilesWithContentGlobal(
+        query,
+        hasFilters ? currentSearchFilters : undefined
+      );
+
+      if (result.success && result.results) {
+        allFiles = result.results;
+        renderFiles(result.results, query);
       } else {
-        showToast(result.error || 'Global search failed', 'Search Error', 'error');
+        if (result.error === 'Indexer is disabled') {
+          showToast('File indexer is disabled. Enable it in settings to use global search.', 'Index Disabled', 'warning');
+        } else {
+          showToast(result.error || 'Global content search failed', 'Search Error', 'error');
+        }
+      }
+    } else {
+      result = await window.electronAPI.searchIndex(query);
+      
+      if (result.success && result.results) {
+        const fileItems: FileItem[] = [];
+        
+        for (const entry of result.results) {
+          const isHidden = entry.name.startsWith('.');
+          
+          fileItems.push({
+            name: entry.name,
+            path: entry.path,
+            isDirectory: entry.isDirectory,
+            isFile: entry.isFile,
+            size: entry.size,
+            modified: entry.modified,
+            isHidden
+          });
+        }
+        
+        allFiles = fileItems;
+        renderFiles(fileItems);
+      } else {
+        if (result.error === 'Indexer is disabled') {
+          showToast('File indexer is disabled. Enable it in settings to use global search.', 'Index Disabled', 'warning');
+        } else {
+          showToast(result.error || 'Global search failed', 'Search Error', 'error');
+        }
       }
     }
   } else {
-    const hasFilters = currentSearchFilters.fileType ||
-                       currentSearchFilters.minSize !== undefined ||
-                       currentSearchFilters.maxSize !== undefined ||
-                       currentSearchFilters.dateFrom ||
-                       currentSearchFilters.dateTo ||
-                       searchInContents;
-
     if (searchInContents) {
       result = await window.electronAPI.searchFilesWithContent(
         currentPath,
@@ -2863,6 +2891,10 @@ function setupEventListeners() {
     } else if (e.key === 'Delete') {
       e.preventDefault();
       if (e.shiftKey) {
+        if (!currentSettings.showDangerousOptions) {
+          showToast('Enable Developer Mode in settings to permanently delete items', 'Developer Mode Required', 'warning');
+          return;
+        }
         permanentlyDeleteSelected();
       } else {
         deleteSelected();
