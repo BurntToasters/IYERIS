@@ -515,6 +515,7 @@ function initializeTabs() {
   if (currentSettings.enableTabs === false) {
     tabsEnabled = false;
     document.body.classList.remove('tabs-enabled');
+    document.body.classList.remove('tabs-single');
     const tabBar = document.getElementById('tab-bar');
     if (tabBar) tabBar.style.display = 'none';
     return;
@@ -523,7 +524,7 @@ function initializeTabs() {
   tabsEnabled = true;
   document.body.classList.add('tabs-enabled');
   const tabBar = document.getElementById('tab-bar');
-  if (tabBar) tabBar.style.display = 'flex';
+  if (tabBar) tabBar.style.removeProperty('display');
 
   if (currentSettings.tabState && currentSettings.tabState.tabs.length > 0) {
     tabs = currentSettings.tabState.tabs.map(t => ({
@@ -552,8 +553,16 @@ function initializeTabs() {
       newTabBtn.addEventListener('click', () => {
         addNewTab();
       });
-      tabNewButtonListenerAttached = true;
     }
+
+    const toolbarNewTabBtn = document.getElementById('toolbar-new-tab-btn');
+    if (toolbarNewTabBtn) {
+      toolbarNewTabBtn.addEventListener('click', () => {
+        addNewTab();
+      });
+    }
+
+    tabNewButtonListenerAttached = true;
   }
 }
 
@@ -568,9 +577,22 @@ function createNewTabData(path: string): TabData {
   };
 }
 
+function updateTabBarVisibility() {
+  if (!tabsEnabled) return;
+  if (tabs.length <= 1) {
+    document.body.classList.add('tabs-single');
+  } else {
+    document.body.classList.remove('tabs-single');
+  }
+}
+
 function renderTabs() {
   const tabList = document.getElementById('tab-list');
-  if (!tabList || !tabsEnabled) return;
+  if (!tabsEnabled) return;
+
+  updateTabBarVisibility();
+
+  if (!tabList) return;
 
   tabList.innerHTML = '';
 

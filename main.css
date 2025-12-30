@@ -327,6 +327,26 @@ body.tabs-enabled .container {
   height: calc(100vh - 32px - 36px - 12px);
 }
 
+body.tabs-enabled .tab-bar {
+  display: flex;
+}
+
+body.tabs-enabled.tabs-single .container {
+  height: calc(100vh - 32px - 12px);
+}
+
+body.tabs-enabled.tabs-single .tab-bar {
+  display: none;
+}
+
+.toolbar-new-tab-btn {
+  display: none;
+}
+
+body.tabs-enabled.tabs-single .toolbar-new-tab-btn {
+  display: flex;
+}
+
 .container {
   display: flex;
   height: calc(100vh - 32px - 12px);
