@@ -51,6 +51,13 @@ export interface Settings {
   enableTabs: boolean;
   globalContentSearch: boolean;
   tabState?: TabState;
+
+  reduceMotion: boolean;
+  highContrast: boolean;
+  largeText: boolean;
+  boldText: boolean;
+  visibleFocus: boolean;
+  reduceTransparency: boolean;
 }
 
 export interface FileItem {

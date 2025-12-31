@@ -4643,6 +4643,177 @@ body.theme-custom {
   background-color: var(--custom-bg-primary, #1a1a1a);
 }
 
+body.reduce-motion,
+body.reduce-motion *,
+body.reduce-motion *::before,
+body.reduce-motion *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  transition-delay: 0ms !important;
+}
+
+body.high-contrast {
+  --text-secondary: rgba(255, 255, 255, 0.95) !important;
+  --text-tertiary: rgba(255, 255, 255, 0.85) !important;
+  --glass-border: rgba(255, 255, 255, 0.35) !important;
+  --separator: rgba(255, 255, 255, 0.3) !important;
+}
+
+body.high-contrast .setting-description,
+body.high-contrast .section-title,
+body.high-contrast .nav-label,
+body.high-contrast .status-bar,
+body.high-contrast .file-item-details,
+body.high-contrast .breadcrumb-separator,
+body.high-contrast .modal-footer,
+body.high-contrast .preview-empty p,
+body.high-contrast .about-tagline,
+body.high-contrast .filter-hint {
+  opacity: 1 !important;
+  color: var(--text-secondary) !important;
+}
+
+body.high-contrast .glass-panel {
+  border-width: 2px !important;
+  border-color: var(--glass-border) !important;
+}
+
+body.large-text {
+  font-size: 16px !important;
+}
+
+body.large-text .file-item-name,
+body.large-text .nav-label,
+body.large-text .section-title,
+body.large-text .setting-description,
+body.large-text .settings-tab,
+body.large-text .context-menu-item,
+body.large-text .breadcrumb-item,
+body.large-text .tab-title,
+body.large-text .status-bar,
+body.large-text .modal-button,
+body.large-text input,
+body.large-text select,
+body.large-text button {
+  font-size: 14px !important;
+}
+
+body.large-text .setting-info label,
+body.large-text .settings-card-header,
+body.large-text .modal-header h3,
+body.large-text h4 {
+  font-size: 16px !important;
+}
+
+body.large-text .shortcut-description,
+body.large-text .shortcut-keys {
+  font-size: 14px !important;
+}
+
+body.bold-text,
+body.bold-text * {
+  font-weight: 500 !important;
+}
+
+body.bold-text .file-item-name,
+body.bold-text .nav-label,
+body.bold-text .breadcrumb-item,
+body.bold-text .modal-header h3,
+body.bold-text .settings-card-header,
+body.bold-text .setting-info label,
+body.bold-text h3,
+body.bold-text h4 {
+  font-weight: 700 !important;
+}
+
+body.bold-text .setting-description,
+body.bold-text .section-title {
+  font-weight: 600 !important;
+}
+
+body.visible-focus *:focus {
+  outline: 3px solid var(--accent-color) !important;
+  outline-offset: 2px !important;
+}
+
+body.visible-focus button:focus,
+body.visible-focus input:focus,
+body.visible-focus select:focus,
+body.visible-focus a:focus,
+body.visible-focus .file-item:focus,
+body.visible-focus .nav-item:focus,
+body.visible-focus .tab-item:focus,
+body.visible-focus .settings-tab:focus,
+body.visible-focus .context-menu-item:focus {
+  outline: 3px solid var(--accent-color) !important;
+  outline-offset: 2px !important;
+  box-shadow: 0 0 0 6px rgba(var(--accent-rgb), 0.3) !important;
+}
+
+body.reduce-transparency .glass-panel {
+  background: var(--bg-secondary) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+body.reduce-transparency .modal-overlay {
+  background: rgba(0, 0, 0, 0.9) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+body.reduce-transparency .modal {
+  background: var(--bg-secondary) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+body.reduce-transparency .glass-input,
+body.reduce-transparency .address-bar,
+body.reduce-transparency .search-bar {
+  background: var(--bg-primary) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+body.reduce-transparency .context-menu,
+body.reduce-transparency .sort-menu {
+  background: var(--bg-secondary) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+body.reduce-transparency .history-dropdown {
+  background: var(--bg-secondary) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+body.reduce-transparency .titlebar {
+  background: var(--bg-secondary) !important;
+}
+
+body.reduce-transparency .tab-bar {
+  background: var(--bg-secondary) !important;
+}
+
+body.reduce-transparency .status-bar {
+  background: var(--bg-secondary) !important;
+}
+
+body.reduce-transparency .sidebar {
+  background: var(--bg-secondary) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+body.reduce-transparency .toolbar {
+  background: var(--bg-secondary) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
 
 
 

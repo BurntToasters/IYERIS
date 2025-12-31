@@ -981,7 +981,43 @@ function applySettings(settings: Settings) {
     applyViewMode();
     updateViewToggleButton();
   }
-  
+
+  if (settings.reduceMotion) {
+    document.body.classList.add('reduce-motion');
+  } else {
+    document.body.classList.remove('reduce-motion');
+  }
+
+  if (settings.highContrast) {
+    document.body.classList.add('high-contrast');
+  } else {
+    document.body.classList.remove('high-contrast');
+  }
+
+  if (settings.largeText) {
+    document.body.classList.add('large-text');
+  } else {
+    document.body.classList.remove('large-text');
+  }
+
+  if (settings.boldText) {
+    document.body.classList.add('bold-text');
+  } else {
+    document.body.classList.remove('bold-text');
+  }
+
+  if (settings.visibleFocus) {
+    document.body.classList.add('visible-focus');
+  } else {
+    document.body.classList.remove('visible-focus');
+  }
+
+  if (settings.reduceTransparency) {
+    document.body.classList.add('reduce-transparency');
+  } else {
+    document.body.classList.remove('reduce-transparency');
+  }
+
   loadBookmarks();
   loadRecentFiles();
 }
@@ -1369,6 +1405,12 @@ async function showSettingsModal() {
   const showRecentFilesToggle = document.getElementById('show-recent-files-toggle') as HTMLInputElement;
   const enableTabsToggle = document.getElementById('enable-tabs-toggle') as HTMLInputElement;
   const globalContentSearchToggle = document.getElementById('global-content-search-toggle') as HTMLInputElement;
+  const reduceMotionToggle = document.getElementById('reduce-motion-toggle') as HTMLInputElement;
+  const highContrastToggle = document.getElementById('high-contrast-toggle') as HTMLInputElement;
+  const largeTextToggle = document.getElementById('large-text-toggle') as HTMLInputElement;
+  const boldTextToggle = document.getElementById('bold-text-toggle') as HTMLInputElement;
+  const visibleFocusToggle = document.getElementById('visible-focus-toggle') as HTMLInputElement;
+  const reduceTransparencyToggle = document.getElementById('reduce-transparency-toggle') as HTMLInputElement;
   const settingsPath = document.getElementById('settings-path');
   
   if (transparencyToggle) {
@@ -1436,6 +1478,30 @@ async function showSettingsModal() {
 
   if (globalContentSearchToggle) {
     globalContentSearchToggle.checked = currentSettings.globalContentSearch || false;
+  }
+
+  if (reduceMotionToggle) {
+    reduceMotionToggle.checked = currentSettings.reduceMotion || false;
+  }
+
+  if (highContrastToggle) {
+    highContrastToggle.checked = currentSettings.highContrast || false;
+  }
+
+  if (largeTextToggle) {
+    largeTextToggle.checked = currentSettings.largeText || false;
+  }
+
+  if (boldTextToggle) {
+    boldTextToggle.checked = currentSettings.boldText || false;
+  }
+
+  if (visibleFocusToggle) {
+    visibleFocusToggle.checked = currentSettings.visibleFocus || false;
+  }
+
+  if (reduceTransparencyToggle) {
+    reduceTransparencyToggle.checked = currentSettings.reduceTransparency || false;
   }
 
   await updateIndexStatus();
@@ -1762,6 +1828,12 @@ async function saveSettings() {
   const showRecentFilesToggle = document.getElementById('show-recent-files-toggle') as HTMLInputElement;
   const enableTabsToggle = document.getElementById('enable-tabs-toggle') as HTMLInputElement;
   const globalContentSearchToggle = document.getElementById('global-content-search-toggle') as HTMLInputElement;
+  const reduceMotionToggle = document.getElementById('reduce-motion-toggle') as HTMLInputElement;
+  const highContrastToggle = document.getElementById('high-contrast-toggle') as HTMLInputElement;
+  const largeTextToggle = document.getElementById('large-text-toggle') as HTMLInputElement;
+  const boldTextToggle = document.getElementById('bold-text-toggle') as HTMLInputElement;
+  const visibleFocusToggle = document.getElementById('visible-focus-toggle') as HTMLInputElement;
+  const reduceTransparencyToggle = document.getElementById('reduce-transparency-toggle') as HTMLInputElement;
 
   if (transparencyToggle) {
     currentSettings.transparency = transparencyToggle.checked;
@@ -1828,6 +1900,30 @@ async function saveSettings() {
 
   if (globalContentSearchToggle) {
     currentSettings.globalContentSearch = globalContentSearchToggle.checked;
+  }
+
+  if (reduceMotionToggle) {
+    currentSettings.reduceMotion = reduceMotionToggle.checked;
+  }
+
+  if (highContrastToggle) {
+    currentSettings.highContrast = highContrastToggle.checked;
+  }
+
+  if (largeTextToggle) {
+    currentSettings.largeText = largeTextToggle.checked;
+  }
+
+  if (boldTextToggle) {
+    currentSettings.boldText = boldTextToggle.checked;
+  }
+
+  if (visibleFocusToggle) {
+    currentSettings.visibleFocus = visibleFocusToggle.checked;
+  }
+
+  if (reduceTransparencyToggle) {
+    currentSettings.reduceTransparency = reduceTransparencyToggle.checked;
   }
 
   currentSettings.viewMode = viewMode;
@@ -2921,6 +3017,34 @@ function setupEventListeners() {
       } else {
         deleteSelected();
       }
+    } else if (e.key === 'Enter') {
+      const activeElement = document.activeElement;
+      if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
+        return;
+      }
+      e.preventDefault();
+      openSelectedItem();
+    } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      const activeElement = document.activeElement;
+      if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
+        return;
+      }
+      e.preventDefault();
+      navigateFileGrid(e.key, e.shiftKey);
+    } else if (e.key === 'Home') {
+      const activeElement = document.activeElement;
+      if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
+        return;
+      }
+      e.preventDefault();
+      selectFirstItem(e.shiftKey);
+    } else if (e.key === 'End') {
+      const activeElement = document.activeElement;
+      if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
+        return;
+      }
+      e.preventDefault();
+      selectLastItem(e.shiftKey);
     }
   });
   
@@ -3863,6 +3987,128 @@ function selectAll() {
     }
   });
   updateStatusBar();
+}
+
+let lastSelectedIndex = -1;
+
+function openSelectedItem() {
+  if (selectedItems.size !== 1) return;
+  const itemPath = Array.from(selectedItems)[0];
+  const item = filePathMap.get(itemPath);
+  if (item) {
+    if (item.isDirectory) {
+      navigateTo(item.path);
+    } else {
+      window.electronAPI.openFile(item.path);
+      addToRecentFiles(item.path);
+    }
+  }
+}
+
+function getFileItemsArray(): HTMLElement[] {
+  return Array.from(document.querySelectorAll('.file-item')) as HTMLElement[];
+}
+
+function getGridColumns(): number {
+  const fileGrid = document.getElementById('file-grid');
+  if (!fileGrid || viewMode === 'list') return 1;
+  const gridStyle = window.getComputedStyle(fileGrid);
+  const columns = gridStyle.getPropertyValue('grid-template-columns').split(' ').length;
+  return columns || 1;
+}
+
+function navigateFileGrid(key: string, shiftKey: boolean) {
+  const fileItems = getFileItemsArray();
+  if (fileItems.length === 0) return;
+
+  let currentIndex = lastSelectedIndex;
+  if (currentIndex === -1 || currentIndex >= fileItems.length) {
+    const selectedPath = Array.from(selectedItems)[selectedItems.size - 1];
+    currentIndex = fileItems.findIndex(item => item.getAttribute('data-path') === selectedPath);
+  }
+  if (currentIndex === -1) currentIndex = 0;
+
+  const columns = getGridColumns();
+  let newIndex = currentIndex;
+
+  switch (key) {
+    case 'ArrowUp':
+      newIndex = Math.max(0, currentIndex - columns);
+      break;
+    case 'ArrowDown':
+      newIndex = Math.min(fileItems.length - 1, currentIndex + columns);
+      break;
+    case 'ArrowLeft':
+      newIndex = Math.max(0, currentIndex - 1);
+      break;
+    case 'ArrowRight':
+      newIndex = Math.min(fileItems.length - 1, currentIndex + 1);
+      break;
+  }
+
+  if (newIndex !== currentIndex || selectedItems.size === 0) {
+    selectItemAtIndex(fileItems, newIndex, shiftKey, currentIndex);
+  }
+}
+
+function selectFirstItem(shiftKey: boolean) {
+  const fileItems = getFileItemsArray();
+  if (fileItems.length === 0) return;
+
+  if (shiftKey && lastSelectedIndex !== -1) {
+    selectItemAtIndex(fileItems, 0, true, lastSelectedIndex);
+  } else {
+    selectItemAtIndex(fileItems, 0, false, -1);
+  }
+}
+
+function selectLastItem(shiftKey: boolean) {
+  const fileItems = getFileItemsArray();
+  if (fileItems.length === 0) return;
+
+  if (shiftKey && lastSelectedIndex !== -1) {
+    selectItemAtIndex(fileItems, fileItems.length - 1, true, lastSelectedIndex);
+  } else {
+    selectItemAtIndex(fileItems, fileItems.length - 1, false, -1);
+  }
+}
+
+function selectItemAtIndex(fileItems: HTMLElement[], index: number, shiftKey: boolean, anchorIndex: number) {
+  if (index < 0 || index >= fileItems.length) return;
+
+  if (shiftKey && anchorIndex !== -1) {
+    const start = Math.min(anchorIndex, index);
+    const end = Math.max(anchorIndex, index);
+    clearSelection();
+    for (let i = start; i <= end; i++) {
+      const item = fileItems[i];
+      item.classList.add('selected');
+      const itemPath = item.getAttribute('data-path');
+      if (itemPath) {
+        selectedItems.add(itemPath);
+      }
+    }
+  } else {
+    clearSelection();
+    const item = fileItems[index];
+    item.classList.add('selected');
+    const itemPath = item.getAttribute('data-path');
+    if (itemPath) {
+      selectedItems.add(itemPath);
+    }
+    lastSelectedIndex = index;
+  }
+
+  fileItems[index].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  updateStatusBar();
+
+  if (isPreviewPanelVisible && selectedItems.size === 1) {
+    const itemPath = Array.from(selectedItems)[0];
+    const fileItem = filePathMap.get(itemPath);
+    if (fileItem) {
+      updatePreview(fileItem);
+    }
+  }
 }
 
 async function renameSelected() {

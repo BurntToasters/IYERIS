@@ -378,6 +378,7 @@
           <div class="settings-sidebar-section">
             <button class="settings-tab active" data-tab="appearance"><img src="assets/twemoji/1f3a8.svg" class="twemoji" alt="🎨" draggable="false" /> Appearance</button>
             <button class="settings-tab" data-tab="view"><img src="assets/twemoji/1f441.svg" class="twemoji" alt="👁️" draggable="false" /> View</button>
+            <button class="settings-tab" data-tab="accessibility"><img src="assets/twemoji/267f.svg" class="twemoji" alt="♿" draggable="false" /> Accessibility</button>
             <button class="settings-tab" data-tab="startup"><img src="assets/twemoji/1f680.svg" class="twemoji" alt="🚀" draggable="false" /> Startup</button>
           </div>
           <div class="settings-sidebar-section">
@@ -554,7 +555,83 @@
               </div>
             </div>
           </div>
-          
+
+          <div class="settings-section" id="tab-accessibility">
+            <h4><img src="assets/twemoji/267f.svg" class="twemoji" alt="♿" draggable="false" /> Accessibility</h4>
+
+            <div class="settings-card">
+              <div class="settings-card-header">Motion</div>
+              <div class="setting-item" data-searchable="reduce motion animation transition movement">
+                <div class="setting-info">
+                  <label for="reduce-motion-toggle">Reduce Motion</label>
+                  <p class="setting-description">Disable animations and transitions throughout the app</p>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="reduce-motion-toggle">
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+            </div>
+
+            <div class="settings-card">
+              <div class="settings-card-header">Display</div>
+              <div class="setting-item" data-searchable="high contrast visibility color">
+                <div class="setting-info">
+                  <label for="high-contrast-toggle">High Contrast</label>
+                  <p class="setting-description">Increase color contrast for better readability</p>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="high-contrast-toggle">
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+              <div class="setting-item" data-searchable="large text font size bigger reading">
+                <div class="setting-info">
+                  <label for="large-text-toggle">Large Text</label>
+                  <p class="setting-description">Increase the base font size for easier reading</p>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="large-text-toggle">
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+              <div class="setting-item" data-searchable="bold text font weight thicker">
+                <div class="setting-info">
+                  <label for="bold-text-toggle">Bold Text</label>
+                  <p class="setting-description">Make text bolder throughout the app</p>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="bold-text-toggle">
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+              <div class="setting-item" data-searchable="reduce transparency blur glass solid background">
+                <div class="setting-info">
+                  <label for="reduce-transparency-toggle">Reduce Transparency</label>
+                  <p class="setting-description">Replace transparent glass effects with solid backgrounds</p>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="reduce-transparency-toggle">
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+            </div>
+
+            <div class="settings-card">
+              <div class="settings-card-header">Keyboard</div>
+              <div class="setting-item" data-searchable="visible focus indicator outline keyboard navigation">
+                <div class="setting-info">
+                  <label for="visible-focus-toggle">Visible Focus Indicators</label>
+                  <p class="setting-description">Show clear outlines around focused elements for keyboard navigation</p>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="visible-focus-toggle">
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+            </div>
+          </div>
+
           <div class="settings-section" id="tab-data">
             <h4><img src="assets/twemoji/1f4be.svg" class="twemoji" alt="💾" draggable="false" /> Data</h4>
             
@@ -819,6 +896,18 @@
         <div class="shortcuts-section">
           <h3>Navigation</h3>
           <div class="shortcut-item">
+            <span class="shortcut-description">Navigate Files</span>
+            <span class="shortcut-keys"><kbd>↑</kbd> <kbd>↓</kbd> <kbd>←</kbd> <kbd>→</kbd></span>
+          </div>
+          <div class="shortcut-item">
+            <span class="shortcut-description">Open Selected</span>
+            <span class="shortcut-keys"><kbd>Enter</kbd></span>
+          </div>
+          <div class="shortcut-item">
+            <span class="shortcut-description">First / Last File</span>
+            <span class="shortcut-keys"><kbd>Home</kbd> / <kbd>End</kbd></span>
+          </div>
+          <div class="shortcut-item">
             <span class="shortcut-description">New Tab</span>
             <span class="shortcut-keys"><kbd>Ctrl</kbd> + <kbd>T</kbd></span>
           </div>
@@ -835,7 +924,7 @@
             <span class="shortcut-keys"><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>Tab</kbd></span>
           </div>
         </div>
-        
+
         <div class="shortcuts-section">
           <h3>File Operations</h3>
           <div class="shortcut-item">
@@ -877,6 +966,10 @@
           <div class="shortcut-item">
             <span class="shortcut-description">Multi-select</span>
             <span class="shortcut-keys"><kbd>Ctrl</kbd> + <kbd>Click</kbd></span>
+          </div>
+          <div class="shortcut-item">
+            <span class="shortcut-description">Extend Selection</span>
+            <span class="shortcut-keys"><kbd>Shift</kbd> + <kbd>↑</kbd> <kbd>↓</kbd> <kbd>←</kbd> <kbd>→</kbd></span>
           </div>
         </div>
 

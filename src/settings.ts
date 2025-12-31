@@ -25,6 +25,13 @@ export function createDefaultSettings(): Settings {
     folderIcons: {},
     showRecentFiles: true,
     enableTabs: true,
-    globalContentSearch: false
+    globalContentSearch: false,
+
+    reduceMotion: false,
+    highContrast: false,
+    largeText: false,
+    boldText: false,
+    visibleFocus: false,
+    reduceTransparency: false
   };
 }
