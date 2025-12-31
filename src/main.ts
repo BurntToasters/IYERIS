@@ -5,8 +5,10 @@ import { promises as fs } from 'fs';
 import * as fsSync from 'fs';
 import { exec, execFile, spawn } from 'child_process';
 import { promisify } from 'util';
+import * as os from 'os';
 import type { Settings, FileItem, ApiResponse, DirectoryResponse, PathResponse, PropertiesResponse, SettingsResponse, UpdateCheckResponse, IndexSearchResponse, UndoAction } from './types';
 import { FileIndexer } from './indexer';
+import { FileTaskManager } from './fileTasks';
 import { getDrives, getCachedDrives, warmupDrivesCache } from './utils';
 import { isPathSafe, isUrlSafe, getErrorMessage } from './security';
 import { createDefaultSettings } from './settings';
@@ -45,6 +47,14 @@ const ZOOM_MAX = 2.0;
 const MAX_TEXT_PREVIEW_BYTES = 1024 * 1024;
 const MAX_DATA_URL_BYTES = 10 * 1024 * 1024;
 
+const CPU_COUNT = Math.max(1, os.cpus().length);
+const TOTAL_MEM_GB = os.totalmem() / (1024 ** 3);
+const MAX_WORKERS = TOTAL_MEM_GB < 6 ? 2 : TOTAL_MEM_GB < 12 ? 4 : TOTAL_MEM_GB < 24 ? 6 : 8;
+const WORKER_COUNT = Math.max(1, Math.min(CPU_COUNT, MAX_WORKERS));
+const FILE_OP_CONCURRENCY = Math.max(1, Math.min(CPU_COUNT, TOTAL_MEM_GB < 6 ? 2 : TOTAL_MEM_GB < 12 ? 4 : TOTAL_MEM_GB < 24 ? 6 : 8));
+
+const fileTasks = new FileTaskManager(WORKER_COUNT);
+
 // Disable hardware accel via cli arg
 if (process.argv.includes('--disable-hardware-acceleration')) {
   console.log('[Performance] Hardware acceleration disabled via command line flag');
@@ -52,7 +62,12 @@ if (process.argv.includes('--disable-hardware-acceleration')) {
 }
 
 // Memory and performance optimizations
-app.commandLine.appendSwitch('js-flags', '--max-old-space-size=1024 --optimize-for-size --gc-interval=100');
+const MAX_OLD_SPACE_MB = TOTAL_MEM_GB < 6 ? 512 : TOTAL_MEM_GB < 12 ? 1024 : TOTAL_MEM_GB < 24 ? 2048 : 3072;
+const jsFlags: string[] = [`--max-old-space-size=${MAX_OLD_SPACE_MB}`];
+if (TOTAL_MEM_GB < 12) {
+  jsFlags.push('--optimize-for-size', '--gc-interval=100');
+}
+app.commandLine.appendSwitch('js-flags', jsFlags.join(' '));
 app.commandLine.appendSwitch('enable-features', 'ReducedReferrerGranularity,V8VmFuture');
 app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion,MediaRouter');
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
@@ -214,7 +229,6 @@ function setTrayState(state: 'idle' | 'active' | 'notification'): void {
 
 let shouldStartHidden = false;
 let hiddenFileCacheCleanupInterval: NodeJS.Timeout | null = null;
-import * as crypto from 'crypto';
 
 function safeSendToWindow(win: BrowserWindow | null, channel: string, ...args: any[]): boolean {
   try {
@@ -227,6 +241,26 @@ function safeSendToWindow(win: BrowserWindow | null, channel: string, ...args: a
   }
   return false;
 }
+
+fileTasks.on('progress', (message: { task: string; operationId: string; data: any }) => {
+  if (message.task === 'folder-size') {
+    if (activeFolderSizeCalculations.has(message.operationId)) {
+      safeSendToWindow(mainWindow, 'folder-size-progress', {
+        operationId: message.operationId,
+        ...message.data
+      });
+    }
+    return;
+  }
+  if (message.task === 'checksum') {
+    if (activeChecksumCalculations.has(message.operationId)) {
+      safeSendToWindow(mainWindow, 'checksum-progress', {
+        operationId: message.operationId,
+        ...message.data
+      });
+    }
+  }
+});
 
 function spawnWithTimeout(
   command: string,
@@ -249,6 +283,36 @@ function spawnWithTimeout(
   child.on('error', clear);
 
   return { child, timedOut: () => didTimeout };
+}
+
+async function runWithConcurrency<T>(
+  items: T[],
+  limit: number,
+  worker: (item: T, index: number) => Promise<void>
+): Promise<void> {
+  const concurrency = Math.max(1, Math.min(limit, items.length));
+  let currentIndex = 0;
+  let error: unknown = null;
+
+  const runners = new Array(concurrency).fill(0).map(async () => {
+    while (true) {
+      const index = currentIndex++;
+      if (index >= items.length) break;
+      if (error) break;
+      try {
+        await worker(items[index], index);
+      } catch (err) {
+        if (!error) {
+          error = err;
+        }
+      }
+    }
+  });
+
+  await Promise.all(runners);
+  if (error) {
+    throw error;
+  }
 }
 
 async function assertArchiveEntriesSafe(archivePath: string, destPath: string): Promise<void> {
@@ -615,24 +679,53 @@ async function batchCheckHiddenFiles(dirPath: string, fileNames: string[]): Prom
     const execFilePromise = promisify(execFile);
 
     const nonDotFiles = fileNames.filter(f => !f.startsWith('.'));
-    const batchSize = 50;
+    const batchSize = 100;
 
     for (let i = 0; i < nonDotFiles.length; i += batchSize) {
       const batch = nonDotFiles.slice(i, i + batchSize);
-      const checks = batch.map(async (fileName) => {
-        try {
-          const filePath = path.join(dirPath, fileName);
-          const { stdout } = await execFilePromise('attrib', [filePath], {
-            timeout: 500,
-            windowsHide: true
-          });
-          const isHidden = stdout.trim().charAt(0).toUpperCase() === 'H';
-          results.set(fileName, isHidden);
-        } catch {
-          results.set(fileName, false);
+      const filePaths = batch.map(fileName => path.join(dirPath, fileName));
+      const escapedPaths = filePaths
+        .map(filePath => `'${filePath.replace(/'/g, "''")}'`)
+        .join(',');
+
+      const psCommand = `$paths=@(${escapedPaths}); Get-Item -LiteralPath $paths -ErrorAction SilentlyContinue | ForEach-Object { $_.Name + \"\\t\" + $_.Attributes }`;
+
+      try {
+        const { stdout } = await execFilePromise('powershell', ['-NoProfile', '-Command', psCommand], {
+          timeout: 2000,
+          windowsHide: true,
+          maxBuffer: 1024 * 1024
+        });
+
+        const lines = stdout.split(/\r?\n/).filter(line => line.trim().length > 0);
+        for (const line of lines) {
+          const [name, attrs] = line.split('\t');
+          if (!name) continue;
+          const isHidden = (attrs || '').toLowerCase().includes('hidden');
+          results.set(name, isHidden);
         }
-      });
-      await Promise.all(checks);
+
+        for (const fileName of batch) {
+          if (!results.has(fileName)) {
+            results.set(fileName, false);
+          }
+        }
+      } catch {
+        const checks = batch.map(async (fileName) => {
+          try {
+            const filePath = path.join(dirPath, fileName);
+            const { stdout } = await execFilePromise('attrib', [filePath], {
+              timeout: 500,
+              windowsHide: true
+            });
+            const isHidden = stdout.trim().charAt(0).toUpperCase() === 'H';
+            results.set(fileName, isHidden);
+          } catch {
+            results.set(fileName, false);
+          }
+        });
+        await Promise.all(checks);
+      }
     }
   } catch (error) {
     console.error('Error checking hidden files:', error);
@@ -1059,7 +1152,7 @@ app.whenReady().then(async () => {
 
         if (startupSettings.enableIndexer) {
           const indexerDelay = process.platform === 'win32' ? 2000 : 500;
-          fileIndexer = new FileIndexer();
+          fileIndexer = new FileIndexer(fileTasks);
           const indexer = fileIndexer;
           setTimeout(() => {
             indexer.initialize(startupSettings.enableIndexer).catch(err =>
@@ -1277,14 +1370,18 @@ app.on('before-quit', () => {
   for (const [operationId, operation] of activeFolderSizeCalculations) {
     console.log('[Cleanup] Aborting folder size calculation:', operationId);
     operation.aborted = true;
+    fileTasks.cancelOperation(operationId);
   }
   activeFolderSizeCalculations.clear();
 
   for (const [operationId, operation] of activeChecksumCalculations) {
     console.log('[Cleanup] Aborting checksum calculation:', operationId);
     operation.aborted = true;
+    fileTasks.cancelOperation(operationId);
   }
   activeChecksumCalculations.clear();
+
+  fileTasks.shutdown().catch(() => {});
   
   if (tray) {
     tray.destroy();
@@ -1645,7 +1742,7 @@ ipcMain.handle('save-settings', async (event: IpcMainInvokeEvent, settings: Sett
   if (result.success) {
     if (settings.enableIndexer) {
       if (!fileIndexer) {
-        fileIndexer = new FileIndexer();
+        fileIndexer = new FileIndexer(fileTasks);
       }
       fileIndexer.setEnabled(true);
       fileIndexer.initialize(true).catch(err => {
@@ -1763,14 +1860,14 @@ ipcMain.handle('copy-items', async (_event: IpcMainInvokeEvent, sourcePaths: str
 
     const copiedPaths: string[] = [];
     try {
-      for (const item of planned) {
+      await runWithConcurrency(planned, FILE_OP_CONCURRENCY, async (item) => {
         if (item.isDirectory) {
           await fs.cp(item.sourcePath, item.destItemPath, { recursive: true });
         } else {
           await fs.copyFile(item.sourcePath, item.destItemPath);
         }
         copiedPaths.push(item.destItemPath);
-      }
+      });
     } catch (error) {
       for (const copied of copiedPaths.reverse()) {
         try {
@@ -1831,12 +1928,13 @@ ipcMain.handle('move-items', async (_event: IpcMainInvokeEvent, sourcePaths: str
     }
 
     const originalParent = path.dirname(sourcePaths[0]);
-    const movedPaths: string[] = [];
-    const originalPaths: string[] = [];
+    const movedPaths: string[] = new Array(planned.length);
+    const originalPaths: string[] = new Array(planned.length);
     const completed: Array<{ sourcePath: string; newPath: string }> = [];
 
     try {
-      for (const item of planned) {
+      const plannedWithIndex = planned.map((item, index) => ({ item, index }));
+      await runWithConcurrency(plannedWithIndex, FILE_OP_CONCURRENCY, async ({ item, index }) => {
         try {
           await fs.rename(item.sourcePath, item.newPath);
         } catch (renameError) {
@@ -1854,10 +1952,10 @@ ipcMain.handle('move-items', async (_event: IpcMainInvokeEvent, sourcePaths: str
           }
         }
 
-        originalPaths.push(item.sourcePath);
-        movedPaths.push(item.newPath);
+        originalPaths[index] = item.sourcePath;
+        movedPaths[index] = item.newPath;
         completed.push({ sourcePath: item.sourcePath, newPath: item.newPath });
-      }
+      });
     } catch (error) {
       for (const item of completed.reverse()) {
         try {
@@ -1913,93 +2011,13 @@ ipcMain.handle('search-files', async (_event: IpcMainInvokeEvent, dirPath: strin
     if (!isPathSafe(dirPath)) {
       return { success: false, error: 'Invalid directory path' };
     }
-    const results: FileItem[] = [];
-    const searchQuery = query.toLowerCase();
-    const MAX_SEARCH_DEPTH = 10;
-    const MAX_RESULTS = 100;
-
-    const dateFrom = filters?.dateFrom ? new Date(filters.dateFrom) : null;
-    const dateTo = filters?.dateTo ? new Date(filters.dateTo) : null;
-    if (dateTo) dateTo.setHours(23, 59, 59, 999);
-
-    const fileTypeFilter = filters?.fileType?.toLowerCase();
-    const minSize = filters?.minSize;
-    const maxSize = filters?.maxSize;
-
-    function matchesFilters(itemName: string, isDir: boolean, stats: { size: number; mtime: Date }): boolean {
-      if (fileTypeFilter && fileTypeFilter !== 'all') {
-        if (fileTypeFilter === 'folder') {
-          if (!isDir) return false;
-        } else {
-          if (isDir) return false;
-          const ext = path.extname(itemName).toLowerCase().slice(1);
-          if (fileTypeFilter === 'image' && !['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg', 'ico'].includes(ext)) return false;
-          if (fileTypeFilter === 'video' && !['mp4', 'mkv', 'avi', 'mov', 'wmv', 'webm', 'flv'].includes(ext)) return false;
-          if (fileTypeFilter === 'audio' && !['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a', 'wma'].includes(ext)) return false;
-          if (fileTypeFilter === 'document' && !['pdf', 'doc', 'docx', 'txt', 'rtf', 'odt', 'xls', 'xlsx', 'ppt', 'pptx'].includes(ext)) return false;
-          if (fileTypeFilter === 'archive' && !['zip', '7z', 'rar', 'tar', 'gz', 'bz2', 'xz'].includes(ext)) return false;
-        }
-      }
-
-      if (!isDir) {
-        if (minSize !== undefined && stats.size < minSize) return false;
-        if (maxSize !== undefined && stats.size > maxSize) return false;
-      }
-
-      if (dateFrom && stats.mtime < dateFrom) return false;
-      if (dateTo && stats.mtime > dateTo) return false;
-
-      return true;
-    }
-
-    async function searchDirectory(currentPath: string, depth: number = 0): Promise<void> {
-      if (depth >= MAX_SEARCH_DEPTH || results.length >= MAX_RESULTS) {
-        return;
-      }
-
-      try {
-        const items = await fs.readdir(currentPath, { withFileTypes: true });
-
-        for (const item of items) {
-          if (results.length >= MAX_RESULTS) {
-            return;
-          }
-
-          const fullPath = path.join(currentPath, item.name);
-
-          if (item.name.toLowerCase().includes(searchQuery)) {
-            try {
-              const stats = await fs.stat(fullPath);
-              const isDir = item.isDirectory();
-
-              if (matchesFilters(item.name, isDir, stats)) {
-                const isHidden = await isFileHiddenCached(fullPath, item.name);
-                results.push({
-                  name: item.name,
-                  path: fullPath,
-                  isDirectory: isDir,
-                  isFile: item.isFile(),
-                  size: stats.size,
-                  modified: stats.mtime,
-                  isHidden
-                });
-              }
-            } catch {
-            }
-          }
-
-          if (item.isDirectory() && results.length < MAX_RESULTS) {
-            try {
-              await searchDirectory(fullPath, depth + 1);
-            } catch {
-            }
-          }
-        }
-      } catch {
-      }
-    }
-
-    await searchDirectory(dirPath, 0);
+    const results = await fileTasks.runTask<FileItem[]>('search-files', {
+      dirPath,
+      query,
+      filters,
+      maxDepth: 10,
+      maxResults: 100
+    });
     return { success: true, results };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -2153,13 +2171,13 @@ ipcMain.handle('search-files-content', async (_event: IpcMainInvokeEvent, dirPat
       return { success: false, error: 'Invalid directory path' };
     }
 
-    const results: ContentSearchResult[] = [];
-    const searchQuery = query.toLowerCase();
-    const MAX_SEARCH_DEPTH = 10;
-    const MAX_RESULTS = 100;
-    const parsedFilters = parseContentFilters(filters);
-
-    await searchDirectoryForContent(dirPath, searchQuery, parsedFilters, results, 0, MAX_SEARCH_DEPTH, MAX_RESULTS);
+    const results = await fileTasks.runTask<ContentSearchResult[]>('search-content', {
+      dirPath,
+      query,
+      filters,
+      maxDepth: 10,
+      maxResults: 100
+    });
     return { success: true, results };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -2181,20 +2199,17 @@ ipcMain.handle('search-files-content-global', async (_event: IpcMainInvokeEvent,
       return { success: false, error: 'Index is empty. Rebuild the index to enable global content search.' };
     }
 
-    const results: ContentSearchResult[] = [];
     const searchQuery = query.toLowerCase();
     const parsedFilters = parseContentFilters(filters);
     const MAX_RESULTS = 100;
 
+    const candidates: Array<{ name: string; path: string; size: number; modified: Date }> = [];
     for (const entry of entries) {
-      if (results.length >= MAX_RESULTS) break;
       if (!entry.isFile) continue;
-
       const filePath = entry.path;
       const fileName = entry.name || path.basename(filePath);
       const ext = path.extname(fileName).slice(1).toLowerCase();
       if (!TEXT_FILE_EXTENSIONS.has(ext)) continue;
-
       if (parsedFilters.minSize !== undefined && entry.size < parsedFilters.minSize) continue;
       if (parsedFilters.maxSize !== undefined && entry.size > parsedFilters.maxSize) continue;
 
@@ -2202,22 +2217,15 @@ ipcMain.handle('search-files-content-global', async (_event: IpcMainInvokeEvent,
       if (parsedFilters.dateFrom && modified < parsedFilters.dateFrom) continue;
       if (parsedFilters.dateTo && modified > parsedFilters.dateTo) continue;
 
-      const contentResult = await searchFileContent(filePath, searchQuery);
-      if (contentResult.found) {
-        const isHidden = await isFileHiddenCached(filePath, fileName);
-        results.push({
-          name: fileName,
-          path: filePath,
-          isDirectory: false,
-          isFile: true,
-          size: entry.size,
-          modified,
-          isHidden,
-          matchContext: contentResult.context,
-          matchLineNumber: contentResult.lineNumber
-        });
-      }
+      candidates.push({ name: fileName, path: filePath, size: entry.size, modified });
     }
+
+    const results = await fileTasks.runTask<ContentSearchResult[]>('search-content-list', {
+      files: candidates,
+      query: searchQuery,
+      filters,
+      maxResults: MAX_RESULTS
+    });
 
     return { success: true, results };
   } catch (error) {
@@ -3491,75 +3499,15 @@ ipcMain.handle('calculate-folder-size', async (_event: IpcMainInvokeEvent, folde
     const operation = { aborted: false };
     activeFolderSizeCalculations.set(operationId, operation);
 
-    let totalSize = 0;
-    let fileCount = 0;
-    let folderCount = 0;
-    let lastProgressUpdate = Date.now();
-    const fileTypeMap = new Map<string, { count: number; size: number }>();
-
-    async function calculateSize(dirPath: string): Promise<void> {
-      if (operation.aborted) {
-        throw new Error('Calculation cancelled');
-      }
-
-      try {
-        const entries = await fs.readdir(dirPath, { withFileTypes: true });
-
-        for (const entry of entries) {
-          if (operation.aborted) {
-            throw new Error('Calculation cancelled');
-          }
-
-          const fullPath = path.join(dirPath, entry.name);
-
-          try {
-            if (entry.isDirectory()) {
-              folderCount++;
-              await calculateSize(fullPath);
-            } else if (entry.isFile()) {
-              const stats = await fs.stat(fullPath);
-              totalSize += stats.size;
-              fileCount++;
-
-              const ext = path.extname(entry.name).toLowerCase() || '(no extension)';
-              const existing = fileTypeMap.get(ext) || { count: 0, size: 0 };
-              fileTypeMap.set(ext, { count: existing.count + 1, size: existing.size + stats.size });
-            }
-
-            const now = Date.now();
-            if (now - lastProgressUpdate > 100) {
-              lastProgressUpdate = now;
-              safeSendToWindow(mainWindow, 'folder-size-progress', {
-                operationId,
-                calculatedSize: totalSize,
-                fileCount,
-                folderCount,
-                currentPath: fullPath
-              });
-            }
-          } catch (err) {
-            console.log(`[FolderSize] Skipping ${fullPath}:`, (err as Error).message);
-          }
-        }
-      } catch (err) {
-        console.log(`[FolderSize] Cannot read ${dirPath}:`, (err as Error).message);
-      }
-    }
-
-    await calculateSize(folderPath);
+    const result = await fileTasks.runTask<{ totalSize: number; fileCount: number; folderCount: number; fileTypes?: { extension: string; count: number; size: number }[] }>(
+      'folder-size',
+      { folderPath, operationId },
+      operationId
+    );
 
     activeFolderSizeCalculations.delete(operationId);
-
-    const fileTypes = Array.from(fileTypeMap.entries())
-      .map(([extension, data]) => ({ extension, count: data.count, size: data.size }))
-      .sort((a, b) => b.size - a.size)
-      .slice(0, 10);
-
-    console.log('[FolderSize] Completed:', { totalSize, fileCount, folderCount, fileTypes: fileTypes.length });
-    return {
-      success: true,
-      result: { totalSize, fileCount, folderCount, fileTypes }
-    };
+    console.log('[FolderSize] Completed:', { totalSize: result.totalSize, fileCount: result.fileCount, folderCount: result.folderCount, fileTypes: result.fileTypes?.length || 0 });
+    return { success: true, result };
   } catch (error) {
     activeFolderSizeCalculations.delete(operationId);
     const errorMessage = getErrorMessage(error);
@@ -3576,6 +3524,7 @@ ipcMain.handle('cancel-folder-size-calculation', async (_event: IpcMainInvokeEve
   const operation = activeFolderSizeCalculations.get(operationId);
   if (operation) {
     operation.aborted = true;
+    fileTasks.cancelOperation(operationId);
     activeFolderSizeCalculations.delete(operationId);
     console.log('[FolderSize] Cancellation requested for operationId:', operationId);
     return { success: true };
@@ -3593,65 +3542,14 @@ ipcMain.handle('calculate-checksum', async (_event: IpcMainInvokeEvent, filePath
 
     const operation = { aborted: false };
     activeChecksumCalculations.set(operationId, operation);
-    
-    const stats = await fs.stat(filePath);
-    const fileSize = stats.size;
-    
-    const result: {md5?: string; sha256?: string} = {};
-    
-    for (const algorithm of algorithms) {
-      if (operation.aborted) {
-        throw new Error('Calculation cancelled');
-      }
-      
-      const hash = crypto.createHash(algorithm);
-      const stream = fsSync.createReadStream(filePath);
-      
-      let bytesRead = 0;
-      let lastProgressUpdate = Date.now();
-      
-      await new Promise<void>((resolve, reject) => {
-        stream.on('data', (chunk: Buffer) => {
-          if (operation.aborted) {
-            stream.destroy();
-            reject(new Error('Calculation cancelled'));
-            return;
-          }
-          
-          hash.update(chunk);
-          bytesRead += chunk.length;
-          const now = Date.now();
-          if (now - lastProgressUpdate > 100) {
-            lastProgressUpdate = now;
-            const percent = fileSize > 0 ? (bytesRead / fileSize) * 100 : 0;
-            safeSendToWindow(mainWindow, 'checksum-progress', {
-              operationId,
-              percent,
-              algorithm
-            });
-          }
-        });
-        
-        stream.on('end', () => {
-          if (!operation.aborted) {
-            const hashValue = hash.digest('hex');
-            if (algorithm === 'md5') {
-              result.md5 = hashValue;
-            } else if (algorithm === 'sha256') {
-              result.sha256 = hashValue;
-            }
-          }
-          resolve();
-        });
-        
-        stream.on('error', (err) => {
-          reject(err);
-        });
-      });
-    }
-    
+
+    const result = await fileTasks.runTask<{ md5?: string; sha256?: string }>(
+      'checksum',
+      { filePath, operationId, algorithms },
+      operationId
+    );
+
     activeChecksumCalculations.delete(operationId);
-    
     console.log('[Checksum] Completed:', result);
     return { success: true, result };
   } catch (error) {
@@ -3670,6 +3568,7 @@ ipcMain.handle('cancel-checksum-calculation', async (_event: IpcMainInvokeEvent,
   const operation = activeChecksumCalculations.get(operationId);
   if (operation) {
     operation.aborted = true;
+    fileTasks.cancelOperation(operationId);
     activeChecksumCalculations.delete(operationId);
     console.log('[Checksum] Cancellation requested for operationId:', operationId);
     return { success: true };
