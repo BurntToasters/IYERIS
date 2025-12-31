@@ -1494,6 +1494,7 @@ async function showSettingsModal() {
   const minimizeToTrayToggle = document.getElementById('minimize-to-tray-toggle') as HTMLInputElement;
   const startOnLoginToggle = document.getElementById('start-on-login-toggle') as HTMLInputElement;
   const autoCheckUpdatesToggle = document.getElementById('auto-check-updates-toggle') as HTMLInputElement;
+  const updateChannelSelect = document.getElementById('update-channel-select') as HTMLSelectElement;
   const enableSearchHistoryToggle = document.getElementById('enable-search-history-toggle') as HTMLInputElement;
   const dangerousOptionsToggle = document.getElementById('dangerous-options-toggle') as HTMLInputElement;
   const startupPathInput = document.getElementById('startup-path-input') as HTMLInputElement;
@@ -1550,7 +1551,11 @@ async function showSettingsModal() {
   if (autoCheckUpdatesToggle) {
     autoCheckUpdatesToggle.checked = currentSettings.autoCheckUpdates !== false;
   }
-  
+
+  if (updateChannelSelect) {
+    updateChannelSelect.value = currentSettings.updateChannel || 'auto';
+  }
+
   if (enableSearchHistoryToggle) {
     enableSearchHistoryToggle.checked = currentSettings.enableSearchHistory !== false;
   }
@@ -1921,6 +1926,7 @@ async function saveSettings() {
   const minimizeToTrayToggle = document.getElementById('minimize-to-tray-toggle') as HTMLInputElement;
   const startOnLoginToggle = document.getElementById('start-on-login-toggle') as HTMLInputElement;
   const autoCheckUpdatesToggle = document.getElementById('auto-check-updates-toggle') as HTMLInputElement;
+  const updateChannelSelect = document.getElementById('update-channel-select') as HTMLSelectElement;
   const enableSearchHistoryToggle = document.getElementById('enable-search-history-toggle') as HTMLInputElement;
   const dangerousOptionsToggle = document.getElementById('dangerous-options-toggle') as HTMLInputElement;
   const startupPathInput = document.getElementById('startup-path-input') as HTMLInputElement;
@@ -1976,7 +1982,11 @@ async function saveSettings() {
   if (autoCheckUpdatesToggle) {
     currentSettings.autoCheckUpdates = autoCheckUpdatesToggle.checked;
   }
-  
+
+  if (updateChannelSelect) {
+    currentSettings.updateChannel = updateChannelSelect.value as 'auto' | 'beta' | 'stable';
+  }
+
   if (enableSearchHistoryToggle) {
     currentSettings.enableSearchHistory = enableSearchHistoryToggle.checked;
   }

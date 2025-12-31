@@ -59,6 +59,7 @@ export interface Settings {
   boldText: boolean;
   visibleFocus: boolean;
   reduceTransparency: boolean;
+  updateChannel: 'auto' | 'beta' | 'stable';
 }
 
 export interface FileItem {

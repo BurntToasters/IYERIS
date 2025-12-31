@@ -1094,14 +1094,27 @@ app.whenReady().then(async () => {
             
             const currentVersion = app.getVersion();
             const isBetaVersion = /-(beta|alpha|rc)/i.test(currentVersion);
-            const isBetaBuild = process.env.IS_BETA === 'true' || isBetaVersion;
-            
-            if (isBetaBuild) {
+            const updateChannel = startupSettings.updateChannel || 'auto';
+
+            let useBetaChannel = false;
+            if (updateChannel === 'beta') {
+              useBetaChannel = true;
+            } else if (updateChannel === 'stable') {
+              useBetaChannel = false;
+            } else {
+              useBetaChannel = process.env.IS_BETA === 'true' || isBetaVersion;
+            }
+
+            if (useBetaChannel) {
               autoUpdater.channel = 'beta';
               autoUpdater.allowPrerelease = true;
-              console.log('[AutoUpdater] Beta channel enabled - will ONLY check for beta/prerelease updates');
-              console.log('[AutoUpdater] Current version:', currentVersion);
+              console.log('[AutoUpdater] Beta channel enabled');
+            } else {
+              autoUpdater.channel = 'latest';
+              autoUpdater.allowPrerelease = false;
+              console.log('[AutoUpdater] Stable channel enabled');
             }
+            console.log('[AutoUpdater] Current version:', currentVersion, '| Channel setting:', updateChannel);
 
             if (isRunningInFlatpak()) {
               console.log('[AutoUpdater] Running in Flatpak - auto-updater disabled');
@@ -1124,8 +1137,13 @@ app.whenReady().then(async () => {
               console.log('[AutoUpdater] Update available:', info.version);
 
               const updateIsBeta = /-(beta|alpha|rc)/i.test(info.version);
-              if (isBetaBuild && !updateIsBeta) {
-                console.log(`[AutoUpdater] Beta build ignoring stable release ${info.version} - only accepting beta/prerelease updates`);
+              if (useBetaChannel && !updateIsBeta) {
+                console.log(`[AutoUpdater] Beta channel ignoring stable release ${info.version}`);
+                safeSendToWindow(mainWindow, 'update-not-available', { version: currentVersion });
+                return;
+              }
+              if (!useBetaChannel && updateIsBeta) {
+                console.log(`[AutoUpdater] Stable channel ignoring beta release ${info.version}`);
                 safeSendToWindow(mainWindow, 'update-not-available', { version: currentVersion });
                 return;
               }
@@ -2541,24 +2559,40 @@ ipcMain.handle('check-for-updates', async (): Promise<UpdateCheckResponse> => {
   try {
     const autoUpdater = getAutoUpdater();
     const currentVersion = app.getVersion();
-    console.log('[AutoUpdater] Manually checking for updates. Current version:', currentVersion);
-    
+    const settings = await loadSettings();
+    const updateChannel = settings.updateChannel || 'auto';
+    console.log('[AutoUpdater] Manually checking for updates. Current version:', currentVersion, '| Channel:', updateChannel);
+
+    const isBetaVersion = /-(beta|alpha|rc)/i.test(currentVersion);
+    let preferBeta = false;
+    if (updateChannel === 'beta') {
+      preferBeta = true;
+    } else if (updateChannel === 'stable') {
+      preferBeta = false;
+    } else {
+      preferBeta = isBetaVersion;
+    }
+
+    if (preferBeta) {
+      autoUpdater.channel = 'beta';
+      autoUpdater.allowPrerelease = true;
+    } else {
+      autoUpdater.channel = 'latest';
+      autoUpdater.allowPrerelease = false;
+    }
+
     const updateCheckResult = await autoUpdater.checkForUpdates();
-    
+
     if (!updateCheckResult) {
       return { success: false, error: 'Update check returned no result' };
     }
 
     const updateInfo = updateCheckResult.updateInfo;
     const latestVersion = updateInfo.version;
-    
-    // Check if this is a beta build
-    const isBetaVersion = /-(beta|alpha|rc)/i.test(currentVersion);
     const updateIsBeta = /-(beta|alpha|rc)/i.test(latestVersion);
-    
-    // Beta builds should only update to other beta versions
-    if (isBetaVersion && !updateIsBeta) {
-      console.log(`[AutoUpdater] Beta build ignoring stable release ${latestVersion} - only accepting beta/prerelease updates`);
+
+    if (preferBeta && !updateIsBeta) {
+      console.log(`[AutoUpdater] Beta channel ignoring stable release ${latestVersion}`);
       return {
         success: true,
         hasUpdate: false,
@@ -2567,8 +2601,18 @@ ipcMain.handle('check-for-updates', async (): Promise<UpdateCheckResponse> => {
         latestVersion: `v${currentVersion}`
       };
     }
-    
-    // Compare versions to check for actual update (not downgrade)
+
+    if (!preferBeta && updateIsBeta) {
+      console.log(`[AutoUpdater] Stable channel ignoring beta release ${latestVersion}`);
+      return {
+        success: true,
+        hasUpdate: false,
+        isBeta: false,
+        currentVersion: `v${currentVersion}`,
+        latestVersion: `v${currentVersion}`
+      };
+    }
+
     const comparison = compareVersions(latestVersion, currentVersion);
     const hasUpdate = comparison > 0;
 
@@ -2576,14 +2620,14 @@ ipcMain.handle('check-for-updates', async (): Promise<UpdateCheckResponse> => {
       hasUpdate,
       currentVersion,
       latestVersion,
-      isBetaVersion,
+      preferBeta,
       updateIsBeta
     });
 
     return {
       success: true,
       hasUpdate,
-      isBeta: isBetaVersion,
+      isBeta: preferBeta,
       updateInfo: {
         version: updateInfo.version,
         releaseDate: updateInfo.releaseDate,

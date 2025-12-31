@@ -33,6 +33,7 @@ export function createDefaultSettings(): Settings {
     largeText: false,
     boldText: false,
     visibleFocus: false,
-    reduceTransparency: false
+    reduceTransparency: false,
+    updateChannel: 'auto'
   };
 }

@@ -757,8 +757,19 @@
                   <span class="toggle-slider"></span>
                 </label>
               </div>
+              <div class="setting-item" id="update-channel-setting" data-searchable="update channel beta stable release prerelease version">
+                <div class="setting-info">
+                  <label for="update-channel-select">Update Channel</label>
+                  <p class="setting-description">Choose which release channel to receive updates from</p>
+                </div>
+                <select id="update-channel-select" class="settings-select">
+                  <option value="auto">Auto (follow version)</option>
+                  <option value="beta">Beta</option>
+                  <option value="stable">Stable</option>
+                </select>
+              </div>
             </div>
-            
+
             <div class="settings-card">
               <div class="settings-card-header">Developer Options</div>
               <div class="setting-item" data-searchable="developer mode debug hidden dangerous options">
