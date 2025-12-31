@@ -262,7 +262,17 @@
           <div class="empty-state" id="empty-state" style="display: none;">
             <div class="empty-icon"><img src="assets/twemoji/1f4c2.svg" class="twemoji-xlarge" alt="📂" draggable="false" /></div>
             <p>This folder is empty</p>
-            <p class="empty-hint">Drop files here or right-click to create new items</p>
+            <div class="empty-actions">
+              <button class="empty-action-btn" id="empty-new-folder-btn">
+                <img src="assets/twemoji/1f4c1.svg" class="twemoji" alt="📁" draggable="false" />
+                <span>New Folder</span>
+              </button>
+              <button class="empty-action-btn" id="empty-new-file-btn">
+                <img src="assets/twemoji/1f5c3.svg" class="twemoji" alt="🗃️" draggable="false" />
+                <span>New File</span>
+              </button>
+            </div>
+            <p class="empty-hint">or drop files here</p>
           </div>
           <div class="file-grid" id="file-grid"></div>
           <div class="column-view" id="column-view" style="display: none;"></div>
@@ -522,6 +532,20 @@
                 </div>
                 <label class="toggle-switch">
                   <input type="checkbox" id="enable-tabs-toggle" checked>
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+            </div>
+
+            <div class="settings-card">
+              <div class="settings-card-header">Preview</div>
+              <div class="setting-item" data-searchable="syntax highlighting code preview color">
+                <div class="setting-info">
+                  <label for="enable-syntax-highlighting-toggle">Syntax Highlighting</label>
+                  <p class="setting-description">Enable code syntax highlighting in file previews. This loads highlight.js from Cloudflare CDN (read-only, no data collection).</p>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="enable-syntax-highlighting-toggle">
                   <span class="toggle-slider"></span>
                 </label>
               </div>

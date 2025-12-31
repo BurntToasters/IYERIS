@@ -26,6 +26,7 @@ export function createDefaultSettings(): Settings {
     showRecentFiles: true,
     enableTabs: true,
     globalContentSearch: false,
+    enableSyntaxHighlighting: false,
 
     reduceMotion: false,
     highContrast: false,

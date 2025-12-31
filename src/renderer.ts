@@ -819,6 +819,42 @@ const bookmarkAddBtn = document.getElementById('bookmark-add-btn') as HTMLButton
 const undoBtn = document.getElementById('undo-btn') as HTMLButtonElement;
 const redoBtn = document.getElementById('redo-btn') as HTMLButtonElement;
 
+let currentGitStatuses: Map<string, string> = new Map();
+
+async function fetchGitStatusAsync(dirPath: string) {
+  try {
+    const result = await window.electronAPI.getGitStatus(dirPath);
+    currentGitStatuses.clear();
+
+    if (result.success && result.isGitRepo && result.statuses) {
+      for (const item of result.statuses) {
+        currentGitStatuses.set(item.path, item.status);
+      }
+      updateGitIndicators();
+    }
+  } catch (error) {
+    console.error('[Git Status] Failed to fetch:', error);
+  }
+}
+
+function updateGitIndicators() {
+  document.querySelectorAll('.file-item').forEach(item => {
+    const itemPath = item.getAttribute('data-path');
+    if (!itemPath) return;
+
+    const existingIndicator = item.querySelector('.git-indicator');
+    if (existingIndicator) existingIndicator.remove();
+
+    const status = currentGitStatuses.get(itemPath);
+    if (status) {
+      const indicator = document.createElement('span');
+      indicator.className = `git-indicator ${status}`;
+      indicator.title = status.charAt(0).toUpperCase() + status.slice(1);
+      item.appendChild(indicator);
+    }
+  });
+}
+
 function showDialog(title: string, message: string, type: DialogType = 'info', showCancel: boolean = false): Promise<boolean> {
   return new Promise((resolve) => {
     if (document.activeElement instanceof HTMLElement) {
@@ -1405,6 +1441,7 @@ async function showSettingsModal() {
   const showRecentFilesToggle = document.getElementById('show-recent-files-toggle') as HTMLInputElement;
   const enableTabsToggle = document.getElementById('enable-tabs-toggle') as HTMLInputElement;
   const globalContentSearchToggle = document.getElementById('global-content-search-toggle') as HTMLInputElement;
+  const enableSyntaxHighlightingToggle = document.getElementById('enable-syntax-highlighting-toggle') as HTMLInputElement;
   const reduceMotionToggle = document.getElementById('reduce-motion-toggle') as HTMLInputElement;
   const highContrastToggle = document.getElementById('high-contrast-toggle') as HTMLInputElement;
   const largeTextToggle = document.getElementById('large-text-toggle') as HTMLInputElement;
@@ -1412,9 +1449,12 @@ async function showSettingsModal() {
   const visibleFocusToggle = document.getElementById('visible-focus-toggle') as HTMLInputElement;
   const reduceTransparencyToggle = document.getElementById('reduce-transparency-toggle') as HTMLInputElement;
   const settingsPath = document.getElementById('settings-path');
-  
+
   if (transparencyToggle) {
     transparencyToggle.checked = currentSettings.transparency;
+  }
+  if (enableSyntaxHighlightingToggle) {
+    enableSyntaxHighlightingToggle.checked = currentSettings.enableSyntaxHighlighting || false;
   }
 
   updateCustomThemeUI();
@@ -1828,6 +1868,7 @@ async function saveSettings() {
   const showRecentFilesToggle = document.getElementById('show-recent-files-toggle') as HTMLInputElement;
   const enableTabsToggle = document.getElementById('enable-tabs-toggle') as HTMLInputElement;
   const globalContentSearchToggle = document.getElementById('global-content-search-toggle') as HTMLInputElement;
+  const enableSyntaxHighlightingToggle = document.getElementById('enable-syntax-highlighting-toggle') as HTMLInputElement;
   const reduceMotionToggle = document.getElementById('reduce-motion-toggle') as HTMLInputElement;
   const highContrastToggle = document.getElementById('high-contrast-toggle') as HTMLInputElement;
   const largeTextToggle = document.getElementById('large-text-toggle') as HTMLInputElement;
@@ -1837,6 +1878,9 @@ async function saveSettings() {
 
   if (transparencyToggle) {
     currentSettings.transparency = transparencyToggle.checked;
+  }
+  if (enableSyntaxHighlightingToggle) {
+    currentSettings.enableSyntaxHighlighting = enableSyntaxHighlightingToggle.checked;
   }
 
   if (themeSelect) {
@@ -2727,6 +2771,11 @@ function setupEventListeners() {
   newFolderBtn?.addEventListener('click', createNewFolder);
   viewToggleBtn?.addEventListener('click', toggleView);
 
+  const emptyNewFolderBtn = document.getElementById('empty-new-folder-btn');
+  const emptyNewFileBtn = document.getElementById('empty-new-file-btn');
+  emptyNewFolderBtn?.addEventListener('click', createNewFolder);
+  emptyNewFileBtn?.addEventListener('click', createNewFile);
+
   document.addEventListener('mouseup', (e) => {
     if (e.button === 3) {
       e.preventDefault();
@@ -2876,6 +2925,60 @@ function setupEventListeners() {
         closeSearch();
       }
       return;
+    }
+
+    const contextMenu = document.getElementById('context-menu');
+    const emptySpaceContextMenu = document.getElementById('empty-space-context-menu');
+
+    if (contextMenu && contextMenu.style.display === 'block') {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        contextMenuFocusedIndex = navigateContextMenu(contextMenu, 'down', contextMenuFocusedIndex);
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        contextMenuFocusedIndex = navigateContextMenu(contextMenu, 'up', contextMenuFocusedIndex);
+        return;
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        if (contextMenuFocusedIndex >= 0) {
+          activateContextMenuItem(contextMenu, contextMenuFocusedIndex);
+        }
+        return;
+      }
+      if (e.key === 'ArrowRight') {
+        const items = getVisibleMenuItems(contextMenu);
+        if (contextMenuFocusedIndex >= 0 && items[contextMenuFocusedIndex]?.classList.contains('has-submenu')) {
+          e.preventDefault();
+          activateContextMenuItem(contextMenu, contextMenuFocusedIndex);
+        }
+        return;
+      }
+    }
+
+    if (emptySpaceContextMenu && emptySpaceContextMenu.style.display === 'block') {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        emptySpaceMenuFocusedIndex = navigateContextMenu(emptySpaceContextMenu, 'down', emptySpaceMenuFocusedIndex);
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        emptySpaceMenuFocusedIndex = navigateContextMenu(emptySpaceContextMenu, 'up', emptySpaceMenuFocusedIndex);
+        return;
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        if (emptySpaceMenuFocusedIndex >= 0) {
+          const items = getVisibleMenuItems(emptySpaceContextMenu);
+          if (items[emptySpaceMenuFocusedIndex]) {
+            items[emptySpaceMenuFocusedIndex].click();
+          }
+        }
+        return;
+      }
     }
 
     if (isModalOpen()) {
@@ -3419,6 +3522,7 @@ async function navigateTo(path: string, skipHistoryUpdate = false) {
         renderFiles(result.contents || []);
       }
       updateDiskSpace();
+      fetchGitStatusAsync(path);
     } else {
       console.error('Error loading directory:', result.error);
       showToast(result.error || 'Unknown error', 'Error Loading Directory', 'error');
@@ -4369,10 +4473,45 @@ async function renderColumnView() {
   }
 }
 
+function addColumnResizeHandle(pane: HTMLElement) {
+  const handle = document.createElement('div');
+  handle.className = 'column-resize-handle';
+
+  let startX: number;
+  let startWidth: number;
+
+  const onMouseMove = (e: MouseEvent) => {
+    const delta = e.clientX - startX;
+    const newWidth = Math.max(150, Math.min(500, startWidth + delta));
+    pane.style.width = newWidth + 'px';
+  };
+
+  const onMouseUp = () => {
+    handle.classList.remove('resizing');
+    document.removeEventListener('mousemove', onMouseMove);
+    document.removeEventListener('mouseup', onMouseUp);
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  };
+
+  handle.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    startX = e.clientX;
+    startWidth = pane.offsetWidth;
+    handle.classList.add('resizing');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+  });
+
+  pane.appendChild(handle);
+}
+
 async function renderDriveColumn() {
   const pane = document.createElement('div');
   pane.className = 'column-pane';
-  
+
   try {
     const drives = await window.electronAPI.getDrives();
     drives.forEach(drive => {
@@ -4390,7 +4529,8 @@ async function renderDriveColumn() {
   } catch {
     pane.innerHTML = '<div class="column-item" style="opacity: 0.5;">Error loading drives</div>';
   }
-  
+
+  addColumnResizeHandle(pane);
   columnView.appendChild(pane);
 }
 
@@ -4643,7 +4783,8 @@ async function renderColumn(columnPath: string, columnIndex: number, renderId?: 
   } catch {
     pane.innerHTML = '<div class="column-item" style="opacity: 0.5;">Error loading folder</div>';
   }
-  
+
+  addColumnResizeHandle(pane);
   return pane;
 }
 
@@ -5006,12 +5147,72 @@ function showContextMenu(x: number, y: number, item: FileItem) {
   }
 }
 
+let contextMenuFocusedIndex = -1;
+let emptySpaceMenuFocusedIndex = -1;
+
 function hideContextMenu() {
   const contextMenuElement = document.getElementById('context-menu');
   if (contextMenuElement) {
     contextMenuElement.style.display = 'none';
     contextMenuData = null;
+    clearContextMenuFocus(contextMenuElement);
+    contextMenuFocusedIndex = -1;
   }
+}
+
+function clearContextMenuFocus(menu: HTMLElement) {
+  menu.querySelectorAll('.context-menu-item.focused').forEach(item => {
+    item.classList.remove('focused');
+  });
+}
+
+function getVisibleMenuItems(menu: HTMLElement): HTMLElement[] {
+  const items = menu.querySelectorAll('.context-menu-item');
+  return Array.from(items).filter(item => {
+    const el = item as HTMLElement;
+    const parent = el.parentElement;
+    if (parent?.classList.contains('context-submenu')) return false;
+    return el.style.display !== 'none' && el.offsetParent !== null;
+  }) as HTMLElement[];
+}
+
+function navigateContextMenu(menu: HTMLElement, direction: 'up' | 'down', focusIndex: number): number {
+  const items = getVisibleMenuItems(menu);
+  if (items.length === 0) return -1;
+
+  clearContextMenuFocus(menu);
+
+  let newIndex = focusIndex;
+  if (direction === 'down') {
+    newIndex = focusIndex < items.length - 1 ? focusIndex + 1 : 0;
+  } else {
+    newIndex = focusIndex > 0 ? focusIndex - 1 : items.length - 1;
+  }
+
+  items[newIndex].classList.add('focused');
+  items[newIndex].scrollIntoView({ block: 'nearest' });
+  return newIndex;
+}
+
+function activateContextMenuItem(menu: HTMLElement, focusIndex: number): boolean {
+  const items = getVisibleMenuItems(menu);
+  if (focusIndex < 0 || focusIndex >= items.length) return false;
+
+  const item = items[focusIndex];
+  if (item.classList.contains('has-submenu')) {
+    const submenu = item.querySelector('.context-submenu') as HTMLElement;
+    if (submenu) {
+      submenu.style.display = 'block';
+      const submenuItems = submenu.querySelectorAll('.context-menu-item') as NodeListOf<HTMLElement>;
+      if (submenuItems.length > 0) {
+        submenuItems[0].classList.add('focused');
+      }
+    }
+    return false;
+  }
+
+  item.click();
+  return true;
 }
 
 function showEmptySpaceContextMenu(x: number, y: number) {
@@ -5048,6 +5249,8 @@ function hideEmptySpaceContextMenu() {
   const emptySpaceContextMenu = document.getElementById('empty-space-context-menu');
   if (emptySpaceContextMenu) {
     emptySpaceContextMenu.style.display = 'none';
+    clearContextMenuFocus(emptySpaceContextMenu);
+    emptySpaceMenuFocusedIndex = -1;
   }
 }
 
@@ -6314,6 +6517,50 @@ async function showImagePreview(file: FileItem) {
   }
 }
 
+let hljs: any = null;
+let hljsLoading: Promise<any> | null = null;
+
+const EXT_TO_LANG: Record<string, string> = {
+  js: 'javascript', jsx: 'javascript', ts: 'typescript', tsx: 'typescript',
+  py: 'python', pyc: 'python', pyw: 'python', rb: 'ruby', go: 'go', rs: 'rust',
+  java: 'java', kt: 'kotlin', kts: 'kotlin', scala: 'scala', swift: 'swift',
+  c: 'c', cpp: 'cpp', cc: 'cpp', cxx: 'cpp', h: 'c', hpp: 'cpp', cs: 'csharp',
+  php: 'php', r: 'r', lua: 'lua', perl: 'perl', pl: 'perl',
+  sh: 'bash', bash: 'bash', zsh: 'bash', fish: 'bash', ps1: 'powershell',
+  html: 'xml', htm: 'xml', xml: 'xml', svg: 'xml', vue: 'xml', svelte: 'xml',
+  css: 'css', scss: 'scss', sass: 'scss', less: 'less',
+  json: 'json', yml: 'yaml', yaml: 'yaml', toml: 'ini', ini: 'ini',
+  sql: 'sql', md: 'markdown', markdown: 'markdown',
+  dockerfile: 'dockerfile', makefile: 'makefile', cmake: 'cmake'
+};
+
+async function loadHighlightJs(): Promise<any> {
+  if (hljs) return hljs;
+  if (hljsLoading) return hljsLoading;
+
+  hljsLoading = new Promise((resolve) => {
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css';
+    document.head.appendChild(link);
+
+    const script = document.createElement('script');
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js';
+    script.onload = () => {
+      hljs = (window as any).hljs;
+      resolve(hljs);
+    };
+    script.onerror = () => resolve(null);
+    document.head.appendChild(script);
+  });
+
+  return hljsLoading;
+}
+
+function getLanguageForExt(ext: string): string | null {
+  return EXT_TO_LANG[ext.toLowerCase()] || null;
+}
+
 async function showTextPreview(file: FileItem) {
   if (!previewContent) return;
   previewContent.innerHTML = `
@@ -6322,18 +6569,29 @@ async function showTextPreview(file: FileItem) {
       <p>Loading text...</p>
     </div>
   `;
-  
+
   const result = await window.electronAPI.readFileContent(file.path, 50 * 1024);
-  
+
   if (result.success && result.content) {
     const props = await window.electronAPI.getItemProperties(file.path);
     const info = props.success && props.properties ? props.properties : null;
-    
+    const ext = file.name.split('.').pop()?.toLowerCase() || '';
+    const lang = getLanguageForExt(ext);
+
     previewContent.innerHTML = `
       ${result.isTruncated ? `<div class="preview-truncated">${twemojiImg(String.fromCodePoint(0x26A0), 'twemoji')} File truncated to first 50KB</div>` : ''}
-      <div class="preview-text">${escapeHtml(result.content)}</div>
+      <pre class="preview-text"><code class="${lang ? `language-${lang}` : ''}">${escapeHtml(result.content)}</code></pre>
       ${generateFileInfo(file, info)}
     `;
+
+    if (lang && currentSettings.enableSyntaxHighlighting) {
+      loadHighlightJs().then(hl => {
+        if (hl) {
+          const codeBlock = previewContent?.querySelector('code');
+          if (codeBlock) hl.highlightElement(codeBlock);
+        }
+      });
+    }
   } else {
     previewContent.innerHTML = `
       <div class="preview-error">
@@ -6547,11 +6805,20 @@ async function showQuickLook() {
   } else if (TEXT_EXTENSIONS.has(ext)) {
     const result = await window.electronAPI.readFileContent(file.path, 100 * 1024);
     if (result.success && result.content) {
+      const lang = getLanguageForExt(ext);
       quicklookContent.innerHTML = `
         ${result.isTruncated ? `<div class="preview-truncated">${twemojiImg(String.fromCodePoint(0x26A0), 'twemoji')} File truncated to first 100KB</div>` : ''}
-        <div class="preview-text">${escapeHtml(result.content)}</div>
+        <pre class="preview-text"><code class="${lang ? `language-${lang}` : ''}">${escapeHtml(result.content)}</code></pre>
       `;
       quicklookInfo.textContent = `${formatFileSize(file.size)} • ${new Date(file.modified).toLocaleDateString()}`;
+      if (lang && currentSettings.enableSyntaxHighlighting) {
+        loadHighlightJs().then(hl => {
+          if (hl) {
+            const codeBlock = quicklookContent?.querySelector('code');
+            if (codeBlock) hl.highlightElement(codeBlock);
+          }
+        });
+      }
     } else {
       quicklookContent.innerHTML = `<div class="preview-error">Failed to load text</div>`;
     }

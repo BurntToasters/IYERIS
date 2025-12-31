@@ -51,6 +51,7 @@ export interface Settings {
   enableTabs: boolean;
   globalContentSearch: boolean;
   tabState?: TabState;
+  enableSyntaxHighlighting: boolean;
 
   reduceMotion: boolean;
   highContrast: boolean;
@@ -226,6 +227,16 @@ export interface UpdateCheckResponse extends ApiResponse {
   msiMessage?: string;
 }
 
+export interface GitFileStatus {
+  path: string;
+  status: 'modified' | 'added' | 'deleted' | 'renamed' | 'untracked' | 'ignored' | 'conflict';
+}
+
+export interface GitStatusResponse extends ApiResponse {
+  isGitRepo?: boolean;
+  statuses?: GitFileStatus[];
+}
+
 export interface UpdateDownloadProgress {
   percent: number;
   bytesPerSecond: number;
@@ -308,6 +319,7 @@ export interface ElectronAPI {
   calculateChecksum: (filePath: string, operationId: string, algorithms: string[]) => Promise<{success: boolean; result?: ChecksumResult; error?: string}>;
   cancelChecksumCalculation: (operationId: string) => Promise<ApiResponse>;
   onChecksumProgress: (callback: (progress: {operationId: string; percent: number; algorithm: string}) => void) => () => void;
+  getGitStatus: (dirPath: string) => Promise<GitStatusResponse>;
 }
 
 declare global {

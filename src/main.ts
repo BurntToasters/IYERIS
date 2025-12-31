@@ -3676,3 +3676,60 @@ ipcMain.handle('cancel-checksum-calculation', async (_event: IpcMainInvokeEvent,
   }
   return { success: false, error: 'Operation not found' };
 });
+
+ipcMain.handle('get-git-status', async (_event: IpcMainInvokeEvent, dirPath: string): Promise<{success: boolean; isGitRepo?: boolean; statuses?: {path: string; status: string}[]; error?: string}> => {
+  try {
+    if (!isPathSafe(dirPath)) {
+      return { success: false, error: 'Invalid directory path' };
+    }
+
+    const execPromise = promisify(exec);
+
+    try {
+      await execPromise('git rev-parse --git-dir', { cwd: dirPath });
+    } catch {
+      return { success: true, isGitRepo: false, statuses: [] };
+    }
+
+    const { stdout } = await execPromise('git status --porcelain -uall', { cwd: dirPath, maxBuffer: 10 * 1024 * 1024 });
+
+    const statuses: {path: string; status: string}[] = [];
+    const lines = stdout.split('\n').filter(line => line.trim());
+
+    for (const line of lines) {
+      const statusCode = line.substring(0, 2);
+      let filePath = line.substring(3);
+
+      if (filePath.includes(' -> ')) {
+        filePath = filePath.split(' -> ')[1];
+      }
+
+      let status: string;
+      if (statusCode === '??') {
+        status = 'untracked';
+      } else if (statusCode === '!!') {
+        status = 'ignored';
+      } else if (statusCode.includes('U') || statusCode === 'AA' || statusCode === 'DD') {
+        status = 'conflict';
+      } else if (statusCode.includes('A') || statusCode.includes('C')) {
+        status = 'added';
+      } else if (statusCode.includes('D')) {
+        status = 'deleted';
+      } else if (statusCode.includes('R')) {
+        status = 'renamed';
+      } else if (statusCode.includes('M') || statusCode.includes('T')) {
+        status = 'modified';
+      } else {
+        status = 'modified';
+      }
+
+      const fullPath = path.join(dirPath, filePath);
+      statuses.push({ path: fullPath, status });
+    }
+
+    return { success: true, isGitRepo: true, statuses };
+  } catch (error) {
+    console.error('[Git Status] Error:', error);
+    return { success: true, isGitRepo: false, statuses: [] };
+  }
+});
