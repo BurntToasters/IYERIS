@@ -2795,7 +2795,7 @@ function setupEventListeners() {
       if (e.key === ',') {
         e.preventDefault();
         showSettingsModal();
-      } else if (e.key === '?') {
+      } else if (e.key === '?' || e.key === '/') {
         e.preventDefault();
         showShortcutsModal();
       } else if (e.key === 'n' && !e.shiftKey) {
