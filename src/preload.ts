@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { ElectronAPI, Settings, UpdateDownloadProgress, FolderSizeProgress, ChecksumResult, SearchFilters } from './types';
+import type { ElectronAPI, Settings, UpdateDownloadProgress, FolderSizeProgress, ChecksumResult, SearchFilters, DirectoryContentsProgress } from './types';
 
 const electronAPI: ElectronAPI = {
   getDirectoryContents: (dirPath: string) => ipcRenderer.invoke('get-directory-contents', dirPath),
@@ -107,6 +107,11 @@ const electronAPI: ElectronAPI = {
     const handler = (_event: Electron.IpcRendererEvent, progress: FolderSizeProgress & {operationId: string}) => callback(progress);
     ipcRenderer.on('folder-size-progress', handler);
     return () => ipcRenderer.removeListener('folder-size-progress', handler);
+  },
+  onDirectoryContentsProgress: (callback: (progress: DirectoryContentsProgress) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, progress: DirectoryContentsProgress) => callback(progress);
+    ipcRenderer.on('directory-contents-progress', handler);
+    return () => ipcRenderer.removeListener('directory-contents-progress', handler);
   },
   calculateChecksum: (filePath: string, operationId: string, algorithms: string[]) => ipcRenderer.invoke('calculate-checksum', filePath, operationId, algorithms),
   cancelChecksumCalculation: (operationId: string) => ipcRenderer.invoke('cancel-checksum-calculation', operationId),

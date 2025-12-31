@@ -20,7 +20,7 @@ export class FileIndexer {
   private abortController: AbortController | null = null;
   private initializationPromise: Promise<void> | null = null;
   private fileTasks: FileTaskManager | null = null;
-  private buildOperationIds: string[] = [];
+  private buildOperationId: string | null = null;
 
   private static readonly MAX_INDEX_SIZE = 200000;
 
@@ -224,45 +224,16 @@ export class FileIndexer {
       this.totalFiles = await this.estimateTotalFiles(locations);
 
       if (this.fileTasks) {
-        const perLocationLimit = Math.max(1000, Math.ceil(FileIndexer.MAX_INDEX_SIZE / Math.max(1, locations.length)));
-        this.buildOperationIds = locations.map((_, index) => `index-${Date.now()}-${index}-${Math.random().toString(36).slice(2)}`);
-        const tasks = locations.map((location, index) =>
-          this.fileTasks!.runTask<{ entries: IndexEntry[] }>(
-            'build-index',
-            { locations: [location], maxIndexSize: perLocationLimit },
-            this.buildOperationIds[index]
-          )
+        this.buildOperationId = `index-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        const result = await this.fileTasks.runTask<{ entries: IndexEntry[] }>(
+          'build-index',
+          { locations, maxIndexSize: FileIndexer.MAX_INDEX_SIZE },
+          this.buildOperationId
         );
-
-        const results = await Promise.allSettled(tasks);
-        let cancelled = false;
-        for (const result of results) {
-          if (result.status === 'fulfilled') {
-            for (const entry of result.value.entries) {
-              if (this.index.size >= FileIndexer.MAX_INDEX_SIZE) break;
-              this.index.set(entry.path, entry);
-            }
-          } else {
-            const message = result.reason instanceof Error ? result.reason.message : String(result.reason);
-            if (message === 'Cancelled' || message === 'Calculation cancelled') {
-              cancelled = true;
-            } else {
-              console.log('[Indexer] Worker scan error:', message);
-            }
-          }
-          if (this.index.size >= FileIndexer.MAX_INDEX_SIZE) {
-            cancelled = false;
-            break;
-          }
+        for (const entry of result.entries) {
+          if (this.index.size >= FileIndexer.MAX_INDEX_SIZE) break;
+          this.index.set(entry.path, entry);
         }
-
-        if (cancelled) {
-          this.index.clear();
-          this.indexedFiles = 0;
-          console.log('[Indexer] Index build cancelled');
-          return;
-        }
-
         this.indexedFiles = this.index.size;
         console.log(`[Indexer] Worker scan complete. Indexed ${this.indexedFiles} files.`);
       } else {
@@ -287,14 +258,21 @@ export class FileIndexer {
       await this.saveIndex();
       console.log(`[Indexer] Index build complete. Indexed ${this.indexedFiles} files.`);
     } catch (error) {
-      console.error('[Indexer] Error building index:', error);
+      const message = error instanceof Error ? error.message : String(error);
+      if (message === 'Cancelled' || message === 'Calculation cancelled') {
+        this.index.clear();
+        this.indexedFiles = 0;
+        console.log('[Indexer] Index build cancelled');
+      } else {
+        console.error('[Indexer] Error building index:', error);
+      }
     } finally {
       this.isIndexing = false;
       if (this.abortController) {
         this.abortController.abort();
         this.abortController = null;
       }
-      this.buildOperationIds = [];
+      this.buildOperationId = null;
     }
   }
 
@@ -429,11 +407,9 @@ export class FileIndexer {
     if (this.abortController) {
       this.abortController.abort();
     }
-    if (this.fileTasks && this.buildOperationIds.length > 0) {
-      for (const operationId of this.buildOperationIds) {
-        this.fileTasks.cancelOperation(operationId);
-      }
-      this.buildOperationIds = [];
+    if (this.fileTasks && this.buildOperationId) {
+      this.fileTasks.cancelOperation(this.buildOperationId);
+      this.buildOperationId = null;
     }
     
     await this.clearIndex();
@@ -457,11 +433,9 @@ export class FileIndexer {
       this.abortController.abort();
       this.abortController = null;
     }
-    if (!enabled && this.fileTasks && this.buildOperationIds.length > 0) {
-      for (const operationId of this.buildOperationIds) {
-        this.fileTasks.cancelOperation(operationId);
-      }
-      this.buildOperationIds = [];
+    if (!enabled && this.fileTasks && this.buildOperationId) {
+      this.fileTasks.cancelOperation(this.buildOperationId);
+      this.buildOperationId = null;
     }
   }
 

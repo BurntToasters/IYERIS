@@ -71,6 +71,13 @@ export interface FileItem {
   isHidden: boolean;
 }
 
+export interface DirectoryContentsProgress {
+  dirPath: string;
+  items: FileItem[];
+  loaded: number;
+  operationId?: string;
+}
+
 export interface SearchFilters {
   fileType?: string;
   minSize?: number;
@@ -316,6 +323,7 @@ export interface ElectronAPI {
   calculateFolderSize: (folderPath: string, operationId: string) => Promise<{success: boolean; result?: FolderSizeResult; error?: string}>;
   cancelFolderSizeCalculation: (operationId: string) => Promise<ApiResponse>;
   onFolderSizeProgress: (callback: (progress: FolderSizeProgress & {operationId: string}) => void) => () => void;
+  onDirectoryContentsProgress: (callback: (progress: DirectoryContentsProgress) => void) => () => void;
   calculateChecksum: (filePath: string, operationId: string, algorithms: string[]) => Promise<{success: boolean; result?: ChecksumResult; error?: string}>;
   cancelChecksumCalculation: (operationId: string) => Promise<ApiResponse>;
   onChecksumProgress: (callback: (progress: {operationId: string; percent: number; algorithm: string}) => void) => () => void;

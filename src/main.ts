@@ -51,8 +51,6 @@ const CPU_COUNT = Math.max(1, os.cpus().length);
 const TOTAL_MEM_GB = os.totalmem() / (1024 ** 3);
 const MAX_WORKERS = TOTAL_MEM_GB < 6 ? 2 : TOTAL_MEM_GB < 12 ? 4 : TOTAL_MEM_GB < 24 ? 6 : 8;
 const WORKER_COUNT = Math.max(1, Math.min(CPU_COUNT, MAX_WORKERS));
-const FILE_OP_CONCURRENCY = Math.max(1, Math.min(CPU_COUNT, TOTAL_MEM_GB < 6 ? 2 : TOTAL_MEM_GB < 12 ? 4 : TOTAL_MEM_GB < 24 ? 6 : 8));
-
 const fileTasks = new FileTaskManager(WORKER_COUNT);
 
 // Disable hardware accel via cli arg
@@ -259,6 +257,13 @@ fileTasks.on('progress', (message: { task: string; operationId: string; data: an
         ...message.data
       });
     }
+    return;
+  }
+  if (message.task === 'list-directory') {
+    safeSendToWindow(mainWindow, 'directory-contents-progress', {
+      operationId: message.operationId,
+      ...message.data
+    });
   }
 });
 
@@ -283,36 +288,6 @@ function spawnWithTimeout(
   child.on('error', clear);
 
   return { child, timedOut: () => didTimeout };
-}
-
-async function runWithConcurrency<T>(
-  items: T[],
-  limit: number,
-  worker: (item: T, index: number) => Promise<void>
-): Promise<void> {
-  const concurrency = Math.max(1, Math.min(limit, items.length));
-  let currentIndex = 0;
-  let error: unknown = null;
-
-  const runners = new Array(concurrency).fill(0).map(async () => {
-    while (true) {
-      const index = currentIndex++;
-      if (index >= items.length) break;
-      if (error) break;
-      try {
-        await worker(items[index], index);
-      } catch (err) {
-        if (!error) {
-          error = err;
-        }
-      }
-    }
-  });
-
-  await Promise.all(runners);
-  if (error) {
-    throw error;
-  }
 }
 
 async function assertArchiveEntriesSafe(archivePath: string, destPath: string): Promise<void> {
@@ -659,79 +634,6 @@ async function isFileHidden(filePath: string, fileName: string): Promise<boolean
   }
 
   return false;
-}
-
-async function batchCheckHiddenFiles(dirPath: string, fileNames: string[]): Promise<Map<string, boolean>> {
-  const results = new Map<string, boolean>();
-
-  for (const fileName of fileNames) {
-    if (fileName.startsWith('.')) {
-      results.set(fileName, true);
-    }
-  }
-
-  if (process.platform !== 'win32') {
-    return results;
-  }
-
-  try {
-    const { execFile } = await import('child_process');
-    const execFilePromise = promisify(execFile);
-
-    const nonDotFiles = fileNames.filter(f => !f.startsWith('.'));
-    const batchSize = 100;
-
-    for (let i = 0; i < nonDotFiles.length; i += batchSize) {
-      const batch = nonDotFiles.slice(i, i + batchSize);
-      const filePaths = batch.map(fileName => path.join(dirPath, fileName));
-      const escapedPaths = filePaths
-        .map(filePath => `'${filePath.replace(/'/g, "''")}'`)
-        .join(',');
-
-      const psCommand = `$paths=@(${escapedPaths}); Get-Item -LiteralPath $paths -ErrorAction SilentlyContinue | ForEach-Object { $_.Name + \"\\t\" + $_.Attributes }`;
-
-      try {
-        const { stdout } = await execFilePromise('powershell', ['-NoProfile', '-Command', psCommand], {
-          timeout: 2000,
-          windowsHide: true,
-          maxBuffer: 1024 * 1024
-        });
-
-        const lines = stdout.split(/\r?\n/).filter(line => line.trim().length > 0);
-        for (const line of lines) {
-          const [name, attrs] = line.split('\t');
-          if (!name) continue;
-          const isHidden = (attrs || '').toLowerCase().includes('hidden');
-          results.set(name, isHidden);
-        }
-
-        for (const fileName of batch) {
-          if (!results.has(fileName)) {
-            results.set(fileName, false);
-          }
-        }
-      } catch {
-        const checks = batch.map(async (fileName) => {
-          try {
-            const filePath = path.join(dirPath, fileName);
-            const { stdout } = await execFilePromise('attrib', [filePath], {
-              timeout: 500,
-              windowsHide: true
-            });
-            const isHidden = stdout.trim().charAt(0).toUpperCase() === 'H';
-            results.set(fileName, isHidden);
-          } catch {
-            results.set(fileName, false);
-          }
-        });
-        await Promise.all(checks);
-      }
-    }
-  } catch (error) {
-    console.error('Error checking hidden files:', error);
-  }
-
-  return results;
 }
 
 const hiddenFileCache = new Map<string, { isHidden: boolean; timestamp: number }>();
@@ -1399,49 +1301,14 @@ ipcMain.handle('get-directory-contents', async (_event: IpcMainInvokeEvent, dirP
       console.warn('[Security] Invalid path rejected:', dirPath);
       return { success: false, error: 'Invalid path' };
     }
+    const operationId = `list-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const result = await fileTasks.runTask<{ contents: FileItem[] }>(
+      'list-directory',
+      { dirPath, batchSize: 100 },
+      operationId
+    );
 
-    const items = await fs.readdir(dirPath, { withFileTypes: true });
-
-    const hiddenMap = await batchCheckHiddenFiles(dirPath, items.map(item => item.name));
-
-    const batchSize = 100;
-    const contents: FileItem[] = [];
-
-    for (let i = 0; i < items.length; i += batchSize) {
-      const batch = items.slice(i, i + batchSize);
-      const batchResults = await Promise.all(
-        batch.map(async (item): Promise<FileItem> => {
-          const fullPath = path.join(dirPath, item.name);
-          const isHidden = hiddenMap.get(item.name) || item.name.startsWith('.');
-
-          try {
-            const stats = await fs.stat(fullPath);
-            return {
-              name: item.name,
-              path: fullPath,
-              isDirectory: item.isDirectory(),
-              isFile: item.isFile(),
-              size: stats.size,
-              modified: stats.mtime,
-              isHidden
-            };
-          } catch (err) {
-            return {
-              name: item.name,
-              path: fullPath,
-              isDirectory: item.isDirectory(),
-              isFile: item.isFile(),
-              size: 0,
-              modified: new Date(),
-              isHidden
-            };
-          }
-        })
-      );
-      contents.push(...batchResults);
-    }
-
-    return { success: true, contents };
+    return { success: true, contents: result.contents };
   } catch (error) {
     return { success: false, error: getErrorMessage(error) };
   }
@@ -1860,14 +1727,14 @@ ipcMain.handle('copy-items', async (_event: IpcMainInvokeEvent, sourcePaths: str
 
     const copiedPaths: string[] = [];
     try {
-      await runWithConcurrency(planned, FILE_OP_CONCURRENCY, async (item) => {
+      for (const item of planned) {
         if (item.isDirectory) {
           await fs.cp(item.sourcePath, item.destItemPath, { recursive: true });
         } else {
           await fs.copyFile(item.sourcePath, item.destItemPath);
         }
         copiedPaths.push(item.destItemPath);
-      });
+      }
     } catch (error) {
       for (const copied of copiedPaths.reverse()) {
         try {
@@ -1928,13 +1795,12 @@ ipcMain.handle('move-items', async (_event: IpcMainInvokeEvent, sourcePaths: str
     }
 
     const originalParent = path.dirname(sourcePaths[0]);
-    const movedPaths: string[] = new Array(planned.length);
-    const originalPaths: string[] = new Array(planned.length);
+    const movedPaths: string[] = [];
+    const originalPaths: string[] = [];
     const completed: Array<{ sourcePath: string; newPath: string }> = [];
 
     try {
-      const plannedWithIndex = planned.map((item, index) => ({ item, index }));
-      await runWithConcurrency(plannedWithIndex, FILE_OP_CONCURRENCY, async ({ item, index }) => {
+      for (const item of planned) {
         try {
           await fs.rename(item.sourcePath, item.newPath);
         } catch (renameError) {
@@ -1952,10 +1818,10 @@ ipcMain.handle('move-items', async (_event: IpcMainInvokeEvent, sourcePaths: str
           }
         }
 
-        originalPaths[index] = item.sourcePath;
-        movedPaths[index] = item.newPath;
+        originalPaths.push(item.sourcePath);
+        movedPaths.push(item.newPath);
         completed.push({ sourcePath: item.sourcePath, newPath: item.newPath });
-      });
+      }
     } catch (error) {
       for (const item of completed.reverse()) {
         try {

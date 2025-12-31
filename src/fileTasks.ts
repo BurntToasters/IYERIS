@@ -3,7 +3,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { EventEmitter } from 'events';
 
-type TaskType = 'build-index' | 'search-files' | 'search-content' | 'search-content-list' | 'folder-size' | 'checksum' | 'load-index' | 'save-index';
+type TaskType = 'build-index' | 'search-files' | 'search-content' | 'search-content-list' | 'folder-size' | 'checksum' | 'load-index' | 'save-index' | 'list-directory';
 
 interface TaskRequest {
   id: string;

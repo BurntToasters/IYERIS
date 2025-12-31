@@ -819,6 +819,24 @@ const bookmarkAddBtn = document.getElementById('bookmark-add-btn') as HTMLButton
 const undoBtn = document.getElementById('undo-btn') as HTMLButtonElement;
 const redoBtn = document.getElementById('redo-btn') as HTMLButtonElement;
 
+const loadingText = loading ? loading.querySelector('p') as HTMLElement | null : null;
+let activeDirectoryProgressPath: string | null = null;
+let directoryProgressCount = 0;
+let lastDirectoryProgressUpdate = 0;
+
+window.electronAPI.onDirectoryContentsProgress((progress) => {
+  if (!activeDirectoryProgressPath || progress.dirPath !== activeDirectoryProgressPath) {
+    return;
+  }
+  directoryProgressCount = progress.loaded;
+  const now = Date.now();
+  if (now - lastDirectoryProgressUpdate < 100) return;
+  lastDirectoryProgressUpdate = now;
+  if (loadingText) {
+    loadingText.textContent = `Loading... (${directoryProgressCount.toLocaleString()} items)`;
+  }
+});
+
 let currentGitStatuses: Map<string, string> = new Map();
 
 async function fetchGitStatusAsync(dirPath: string) {
@@ -3498,6 +3516,10 @@ async function navigateTo(path: string, skipHistoryUpdate = false) {
     if (loading) loading.style.display = 'flex';
     if (emptyState) emptyState.style.display = 'none';
     if (fileGrid) fileGrid.innerHTML = '';
+    activeDirectoryProgressPath = path;
+    directoryProgressCount = 0;
+    lastDirectoryProgressUpdate = 0;
+    if (loadingText) loadingText.textContent = 'Loading...';
 
     const result = await window.electronAPI.getDirectoryContents(path);
 
@@ -3531,6 +3553,10 @@ async function navigateTo(path: string, skipHistoryUpdate = false) {
     console.error('Error navigating:', error);
     showToast(getErrorMessage(error), 'Error Loading Directory', 'error');
   } finally {
+    activeDirectoryProgressPath = null;
+    directoryProgressCount = 0;
+    lastDirectoryProgressUpdate = 0;
+    if (loadingText) loadingText.textContent = 'Loading...';
     if (loading) loading.style.display = 'none';
   }
 }
@@ -4392,10 +4418,18 @@ async function applyViewMode() {
     fileGrid.className = viewMode === 'list' ? 'file-grid list-view' : 'file-grid';
 
     if (currentPath) {
+      activeDirectoryProgressPath = currentPath;
+      directoryProgressCount = 0;
+      lastDirectoryProgressUpdate = 0;
+      if (loadingText) loadingText.textContent = 'Loading...';
       const result = await window.electronAPI.getDirectoryContents(currentPath);
       if (result.success) {
         renderFiles(result.contents || []);
       }
+      activeDirectoryProgressPath = null;
+      directoryProgressCount = 0;
+      lastDirectoryProgressUpdate = 0;
+      if (loadingText) loadingText.textContent = 'Loading...';
     }
   }
 }

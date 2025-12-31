@@ -7,7 +7,7 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import * as readline from 'readline';
 
-type TaskType = 'build-index' | 'search-files' | 'search-content' | 'search-content-list' | 'folder-size' | 'checksum' | 'load-index' | 'save-index';
+type TaskType = 'build-index' | 'search-files' | 'search-content' | 'search-content-list' | 'folder-size' | 'checksum' | 'load-index' | 'save-index' | 'list-directory';
 
 interface TaskRequest {
   id: string;
@@ -53,6 +53,61 @@ async function isHidden(filePath: string, fileName: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+async function batchCheckHidden(dirPath: string, fileNames: string[]): Promise<Map<string, boolean>> {
+  const results = new Map<string, boolean>();
+  for (const fileName of fileNames) {
+    if (fileName.startsWith('.')) {
+      results.set(fileName, true);
+    }
+  }
+
+  if (process.platform !== 'win32') {
+    return results;
+  }
+
+  const nonDotFiles = fileNames.filter(name => !name.startsWith('.'));
+  if (nonDotFiles.length === 0) {
+    return results;
+  }
+
+  try {
+    const filePaths = nonDotFiles.map(fileName => path.join(dirPath, fileName));
+    const escapedPaths = filePaths
+      .map(filePath => `'${filePath.replace(/'/g, "''")}'`)
+      .join(',');
+    const psCommand = `$paths=@(${escapedPaths}); Get-Item -LiteralPath $paths -ErrorAction SilentlyContinue | ForEach-Object { $_.Name + \"\\t\" + $_.Attributes }`;
+
+    const { stdout } = await execFileAsync('powershell', ['-NoProfile', '-Command', psCommand], {
+      timeout: 2000,
+      windowsHide: true,
+      maxBuffer: 1024 * 1024
+    });
+
+    const lines = stdout.split(/\r?\n/).filter(line => line.trim().length > 0);
+    for (const line of lines) {
+      const [name, attrs] = line.split('\t');
+      if (!name) continue;
+      const isHiddenAttr = (attrs || '').toLowerCase().includes('hidden');
+      results.set(name, isHiddenAttr);
+    }
+
+    for (const fileName of nonDotFiles) {
+      if (!results.has(fileName)) {
+        results.set(fileName, false);
+      }
+    }
+  } catch {
+    for (const fileName of nonDotFiles) {
+      if (!results.has(fileName)) {
+        const filePath = path.join(dirPath, fileName);
+        results.set(fileName, await isHidden(filePath, fileName));
+      }
+    }
+  }
+
+  return results;
 }
 
 function matchesFilters(itemName: string, isDir: boolean, stats: { size: number; mtime: Date }, filters?: any): boolean {
@@ -543,6 +598,76 @@ async function saveIndexFile(payload: any): Promise<any> {
   return { success: true };
 }
 
+async function listDirectory(payload: any, operationId?: string): Promise<any> {
+  const { dirPath, batchSize = 100 } = payload;
+  const results: any[] = [];
+  const batch: fsSync.Dirent[] = [];
+  let loaded = 0;
+  let dir: fsSync.Dir | null = null;
+
+  const flushBatch = async (): Promise<void> => {
+    if (batch.length === 0) return;
+    if (isCancelled(operationId)) throw new Error('Calculation cancelled');
+
+    const names = batch.map(entry => entry.name);
+    const hiddenMap = await batchCheckHidden(dirPath, names);
+    const items = await Promise.all(
+      batch.map(async (entry) => {
+        const fullPath = path.join(dirPath, entry.name);
+        const isHiddenFlag = hiddenMap.get(entry.name) || entry.name.startsWith('.');
+        try {
+          const stats = await fs.stat(fullPath);
+          return {
+            name: entry.name,
+            path: fullPath,
+            isDirectory: entry.isDirectory(),
+            isFile: entry.isFile(),
+            size: stats.size,
+            modified: stats.mtime,
+            isHidden: isHiddenFlag
+          };
+        } catch {
+          return {
+            name: entry.name,
+            path: fullPath,
+            isDirectory: entry.isDirectory(),
+            isFile: entry.isFile(),
+            size: 0,
+            modified: new Date(),
+            isHidden: isHiddenFlag
+          };
+        }
+      })
+    );
+
+    results.push(...items);
+    loaded += items.length;
+    if (operationId) {
+      sendProgress('list-directory', operationId, { dirPath, items, loaded });
+    }
+    batch.length = 0;
+  };
+
+  try {
+    dir = await fs.opendir(dirPath);
+    for await (const entry of dir) {
+      if (isCancelled(operationId)) throw new Error('Calculation cancelled');
+      batch.push(entry);
+      if (batch.length >= batchSize) {
+        await flushBatch();
+      }
+    }
+    await flushBatch();
+  } finally {
+    try {
+      await dir?.close();
+    } catch {
+    }
+  }
+
+  return { contents: results };
+}
+
 async function handleTask(message: TaskRequest): Promise<any> {
   switch (message.type) {
     case 'search-files':
@@ -561,6 +686,8 @@ async function handleTask(message: TaskRequest): Promise<any> {
       return await loadIndexFile(message.payload);
     case 'save-index':
       return await saveIndexFile(message.payload);
+    case 'list-directory':
+      return await listDirectory(message.payload, message.operationId);
     default:
       throw new Error('Unknown task');
   }
