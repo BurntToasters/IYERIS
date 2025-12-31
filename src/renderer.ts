@@ -821,11 +821,16 @@ const redoBtn = document.getElementById('redo-btn') as HTMLButtonElement;
 
 const loadingText = loading ? loading.querySelector('p') as HTMLElement | null : null;
 let activeDirectoryProgressPath: string | null = null;
+let activeDirectoryProgressOperationId: string | null = null;
+let activeDirectoryOperationId: string | null = null;
+let directoryRequestId = 0;
 let directoryProgressCount = 0;
 let lastDirectoryProgressUpdate = 0;
 
 window.electronAPI.onDirectoryContentsProgress((progress) => {
-  if (!activeDirectoryProgressPath || progress.dirPath !== activeDirectoryProgressPath) {
+  if (activeDirectoryProgressOperationId) {
+    if (progress.operationId !== activeDirectoryProgressOperationId) return;
+  } else if (!activeDirectoryProgressPath || progress.dirPath !== activeDirectoryProgressPath) {
     return;
   }
   directoryProgressCount = progress.loaded;
@@ -836,6 +841,43 @@ window.electronAPI.onDirectoryContentsProgress((progress) => {
     loadingText.textContent = `Loading... (${directoryProgressCount.toLocaleString()} items)`;
   }
 });
+
+function createDirectoryOperationId(prefix: string): string {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function startDirectoryRequest(path: string): { requestId: number; operationId: string } {
+  const requestId = ++directoryRequestId;
+  if (activeDirectoryOperationId) {
+    window.electronAPI.cancelDirectoryContents(activeDirectoryOperationId).catch(() => {});
+  }
+  const operationId = createDirectoryOperationId('dir');
+  activeDirectoryOperationId = operationId;
+  activeDirectoryProgressOperationId = operationId;
+  activeDirectoryProgressPath = path;
+  directoryProgressCount = 0;
+  lastDirectoryProgressUpdate = 0;
+  if (loadingText) loadingText.textContent = 'Loading...';
+  return { requestId, operationId };
+}
+
+function finishDirectoryRequest(requestId: number): void {
+  if (requestId !== directoryRequestId) return;
+  activeDirectoryOperationId = null;
+  activeDirectoryProgressOperationId = null;
+  activeDirectoryProgressPath = null;
+  directoryProgressCount = 0;
+  lastDirectoryProgressUpdate = 0;
+  if (loadingText) loadingText.textContent = 'Loading...';
+}
+
+function cancelDirectoryRequest(): void {
+  if (activeDirectoryOperationId) {
+    window.electronAPI.cancelDirectoryContents(activeDirectoryOperationId).catch(() => {});
+  }
+  directoryRequestId += 1;
+  finishDirectoryRequest(directoryRequestId);
+}
 
 let currentGitStatuses: Map<string, string> = new Map();
 
@@ -3503,6 +3545,8 @@ function clearDirectoryHistory() {
 
 async function navigateTo(path: string, skipHistoryUpdate = false) {
   if (!path) return;
+  let requestId = 0;
+  let operationId = '';
 
   try {
     if (isSearchMode) {
@@ -3516,12 +3560,12 @@ async function navigateTo(path: string, skipHistoryUpdate = false) {
     if (loading) loading.style.display = 'flex';
     if (emptyState) emptyState.style.display = 'none';
     if (fileGrid) fileGrid.innerHTML = '';
-    activeDirectoryProgressPath = path;
-    directoryProgressCount = 0;
-    lastDirectoryProgressUpdate = 0;
-    if (loadingText) loadingText.textContent = 'Loading...';
+    const request = startDirectoryRequest(path);
+    requestId = request.requestId;
+    operationId = request.operationId;
 
-    const result = await window.electronAPI.getDirectoryContents(path);
+    const result = await window.electronAPI.getDirectoryContents(path, operationId);
+    if (requestId !== directoryRequestId) return;
 
     if (result.success) {
       currentPath = path;
@@ -3553,11 +3597,9 @@ async function navigateTo(path: string, skipHistoryUpdate = false) {
     console.error('Error navigating:', error);
     showToast(getErrorMessage(error), 'Error Loading Directory', 'error');
   } finally {
-    activeDirectoryProgressPath = null;
-    directoryProgressCount = 0;
-    lastDirectoryProgressUpdate = 0;
-    if (loadingText) loadingText.textContent = 'Loading...';
-    if (loading) loading.style.display = 'none';
+    const isCurrentRequest = requestId !== 0 && requestId === directoryRequestId;
+    finishDirectoryRequest(requestId);
+    if (isCurrentRequest && loading) loading.style.display = 'none';
   }
 }
 
@@ -4409,6 +4451,8 @@ function toggleView() {
 
 async function applyViewMode() {
   if (viewMode === 'column') {
+    cancelDirectoryRequest();
+    if (loading) loading.style.display = 'none';
     fileGrid.style.display = 'none';
     columnView.style.display = 'flex';
     await renderColumnView();
@@ -4418,18 +4462,20 @@ async function applyViewMode() {
     fileGrid.className = viewMode === 'list' ? 'file-grid list-view' : 'file-grid';
 
     if (currentPath) {
-      activeDirectoryProgressPath = currentPath;
-      directoryProgressCount = 0;
-      lastDirectoryProgressUpdate = 0;
-      if (loadingText) loadingText.textContent = 'Loading...';
-      const result = await window.electronAPI.getDirectoryContents(currentPath);
-      if (result.success) {
-        renderFiles(result.contents || []);
+      let requestId = 0;
+      let operationId = '';
+      try {
+        const request = startDirectoryRequest(currentPath);
+        requestId = request.requestId;
+        operationId = request.operationId;
+        const result = await window.electronAPI.getDirectoryContents(currentPath, operationId);
+        if (requestId !== directoryRequestId) return;
+        if (result.success) {
+          renderFiles(result.contents || []);
+        }
+      } finally {
+        finishDirectoryRequest(requestId);
       }
-      activeDirectoryProgressPath = null;
-      directoryProgressCount = 0;
-      lastDirectoryProgressUpdate = 0;
-      if (loadingText) loadingText.textContent = 'Loading...';
     }
   }
 }
@@ -4655,7 +4701,8 @@ async function renderColumn(columnPath: string, columnIndex: number, renderId?: 
   });
 
   try {
-    const result = await window.electronAPI.getDirectoryContents(columnPath);
+    const operationId = createDirectoryOperationId('column');
+    const result = await window.electronAPI.getDirectoryContents(columnPath, operationId);
     const items = result.contents || [];
 
     const sortedItems = [...items].sort((a, b) => {

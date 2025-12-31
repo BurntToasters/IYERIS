@@ -643,7 +643,7 @@ async function listDirectory(payload: any, operationId?: string): Promise<any> {
     results.push(...items);
     loaded += items.length;
     if (operationId) {
-      sendProgress('list-directory', operationId, { dirPath, items, loaded });
+      sendProgress('list-directory', operationId, { dirPath, loaded });
     }
     batch.length = 0;
   };

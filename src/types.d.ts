@@ -73,7 +73,7 @@ export interface FileItem {
 
 export interface DirectoryContentsProgress {
   dirPath: string;
-  items: FileItem[];
+  items?: FileItem[];
   loaded: number;
   operationId?: string;
 }
@@ -252,7 +252,8 @@ export interface UpdateDownloadProgress {
 }
 
 export interface ElectronAPI {
-  getDirectoryContents: (dirPath: string) => Promise<DirectoryResponse>;
+  getDirectoryContents: (dirPath: string, operationId?: string) => Promise<DirectoryResponse>;
+  cancelDirectoryContents: (operationId: string) => Promise<ApiResponse>;
   getDrives: () => Promise<string[]>;
   getHomeDirectory: () => Promise<string>;
   openFile: (filePath: string) => Promise<ApiResponse>;

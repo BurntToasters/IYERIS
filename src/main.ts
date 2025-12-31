@@ -1,4 +1,5 @@
 import { app, BrowserWindow, ipcMain, dialog, shell, IpcMainInvokeEvent, Menu, Tray, nativeImage, powerMonitor } from 'electron';
+import type { WebContents } from 'electron';
 import * as path from 'path';
 import { pathToFileURL } from 'url';
 import { promises as fs } from 'fs';
@@ -50,8 +51,11 @@ const MAX_DATA_URL_BYTES = 10 * 1024 * 1024;
 const CPU_COUNT = Math.max(1, os.cpus().length);
 const TOTAL_MEM_GB = os.totalmem() / (1024 ** 3);
 const MAX_WORKERS = TOTAL_MEM_GB < 6 ? 2 : TOTAL_MEM_GB < 12 ? 4 : TOTAL_MEM_GB < 24 ? 6 : 8;
-const WORKER_COUNT = Math.max(1, Math.min(CPU_COUNT, MAX_WORKERS));
-const fileTasks = new FileTaskManager(WORKER_COUNT);
+const TOTAL_WORKER_COUNT = Math.max(1, Math.min(CPU_COUNT, MAX_WORKERS));
+const INDEXER_WORKER_COUNT = TOTAL_WORKER_COUNT > 1 ? 1 : 0;
+const UI_WORKER_COUNT = Math.max(1, TOTAL_WORKER_COUNT - INDEXER_WORKER_COUNT);
+const fileTasks = new FileTaskManager(UI_WORKER_COUNT);
+const indexerTasks = INDEXER_WORKER_COUNT > 0 ? new FileTaskManager(INDEXER_WORKER_COUNT) : null;
 
 // Disable hardware accel via cli arg
 if (process.argv.includes('--disable-hardware-acceleration')) {
@@ -227,11 +231,24 @@ function setTrayState(state: 'idle' | 'active' | 'notification'): void {
 
 let shouldStartHidden = false;
 let hiddenFileCacheCleanupInterval: NodeJS.Timeout | null = null;
+const directoryOperationTargets = new Map<string, WebContents>();
 
 function safeSendToWindow(win: BrowserWindow | null, channel: string, ...args: any[]): boolean {
   try {
     if (win && !win.isDestroyed() && win.webContents && !win.webContents.isDestroyed()) {
       win.webContents.send(channel, ...args);
+      return true;
+    }
+  } catch (error) {
+    console.error(`[IPC] Failed to send ${channel}:`, error);
+  }
+  return false;
+}
+
+function safeSendToContents(contents: WebContents | null, channel: string, ...args: any[]): boolean {
+  try {
+    if (contents && !contents.isDestroyed()) {
+      contents.send(channel, ...args);
       return true;
     }
   } catch (error) {
@@ -260,10 +277,14 @@ fileTasks.on('progress', (message: { task: string; operationId: string; data: an
     return;
   }
   if (message.task === 'list-directory') {
-    safeSendToWindow(mainWindow, 'directory-contents-progress', {
+    const target = directoryOperationTargets.get(message.operationId) || null;
+    const sent = safeSendToContents(target, 'directory-contents-progress', {
       operationId: message.operationId,
       ...message.data
     });
+    if (!sent) {
+      directoryOperationTargets.delete(message.operationId);
+    }
   }
 });
 
@@ -1054,7 +1075,7 @@ app.whenReady().then(async () => {
 
         if (startupSettings.enableIndexer) {
           const indexerDelay = process.platform === 'win32' ? 2000 : 500;
-          fileIndexer = new FileIndexer(fileTasks);
+          fileIndexer = new FileIndexer(indexerTasks ?? undefined);
           const indexer = fileIndexer;
           setTimeout(() => {
             indexer.initialize(startupSettings.enableIndexer).catch(err =>
@@ -1284,6 +1305,7 @@ app.on('before-quit', () => {
   activeChecksumCalculations.clear();
 
   fileTasks.shutdown().catch(() => {});
+  indexerTasks?.shutdown().catch(() => {});
   
   if (tray) {
     tray.destroy();
@@ -1295,13 +1317,23 @@ app.on('window-all-closed', () => {
   app.quit();
 });
 
-ipcMain.handle('get-directory-contents', async (_event: IpcMainInvokeEvent, dirPath: string): Promise<DirectoryResponse> => {
+ipcMain.handle('get-directory-contents', async (event: IpcMainInvokeEvent, dirPath: string, requestOperationId?: string): Promise<DirectoryResponse> => {
+  if (!isPathSafe(dirPath)) {
+    console.warn('[Security] Invalid path rejected:', dirPath);
+    return { success: false, error: 'Invalid path' };
+  }
+
+  const operationId = requestOperationId || `list-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const sender = event.sender;
+  const handleDestroyed = () => {
+    directoryOperationTargets.delete(operationId);
+    fileTasks.cancelOperation(operationId);
+  };
+
+  sender.once('destroyed', handleDestroyed);
+  directoryOperationTargets.set(operationId, sender);
+
   try {
-    if (!isPathSafe(dirPath)) {
-      console.warn('[Security] Invalid path rejected:', dirPath);
-      return { success: false, error: 'Invalid path' };
-    }
-    const operationId = `list-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const result = await fileTasks.runTask<{ contents: FileItem[] }>(
       'list-directory',
       { dirPath, batchSize: 100 },
@@ -1309,6 +1341,22 @@ ipcMain.handle('get-directory-contents', async (_event: IpcMainInvokeEvent, dirP
     );
 
     return { success: true, contents: result.contents };
+  } catch (error) {
+    return { success: false, error: getErrorMessage(error) };
+  } finally {
+    directoryOperationTargets.delete(operationId);
+    sender.removeListener('destroyed', handleDestroyed);
+  }
+});
+
+ipcMain.handle('cancel-directory-contents', async (_event: IpcMainInvokeEvent, operationId: string): Promise<ApiResponse> => {
+  try {
+    if (!operationId) {
+      return { success: false, error: 'Missing operationId' };
+    }
+    directoryOperationTargets.delete(operationId);
+    fileTasks.cancelOperation(operationId);
+    return { success: true };
   } catch (error) {
     return { success: false, error: getErrorMessage(error) };
   }
@@ -1609,7 +1657,7 @@ ipcMain.handle('save-settings', async (event: IpcMainInvokeEvent, settings: Sett
   if (result.success) {
     if (settings.enableIndexer) {
       if (!fileIndexer) {
-        fileIndexer = new FileIndexer(fileTasks);
+        fileIndexer = new FileIndexer(indexerTasks ?? undefined);
       }
       fileIndexer.setEnabled(true);
       fileIndexer.initialize(true).catch(err => {
