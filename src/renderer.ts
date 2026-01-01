@@ -1719,6 +1719,64 @@ function updateDangerousOptionsVisibility(show: boolean) {
   });
 }
 
+function getRepositoryText(repository: unknown): string | null {
+  if (typeof repository === 'string') {
+    const trimmed = repository.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+
+  if (repository && typeof repository === 'object' && 'url' in repository) {
+    const repoUrl = (repository as { url?: unknown }).url;
+    if (typeof repoUrl === 'string') {
+      const trimmed = repoUrl.trim();
+      return trimmed.length > 0 ? trimmed : null;
+    }
+  }
+
+  return null;
+}
+
+function normalizeRepositoryUrl(repository: unknown): string | null {
+  const raw = getRepositoryText(repository);
+  if (!raw) return null;
+
+  let normalized = raw;
+
+  if (normalized.startsWith('git+')) {
+    normalized = normalized.slice(4);
+  }
+
+  if (normalized.startsWith('git@')) {
+    const match = normalized.match(/^git@([^:]+):(.+)$/);
+    if (match) {
+      normalized = `https://${match[1]}/${match[2]}`;
+    }
+  }
+
+  if (normalized.startsWith('ssh://git@')) {
+    normalized = normalized.replace(/^ssh:\/\/git@/, 'https://');
+  }
+
+  if (normalized.startsWith('git://')) {
+    normalized = normalized.replace(/^git:\/\//, 'https://');
+  }
+
+  if (normalized.endsWith('.git')) {
+    normalized = normalized.slice(0, -4);
+  }
+
+  try {
+    const parsed = new URL(normalized);
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+      return parsed.toString();
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
 async function showLicensesModal() {
   if (document.activeElement instanceof HTMLElement) {
     document.activeElement.blur();
@@ -1755,8 +1813,12 @@ async function showLicensesModal() {
         html += `<div class="license-package-name">${escapeHtml(packageName)}</div>`;
         html += '<div class="license-package-info">';
         html += `<span class="license-package-license">${escapeHtml(info.licenses || 'Unknown')}</span>`;
-        if (info.repository) {
-          html += `<span>Repository: ${escapeHtml(info.repository)}</span>`;
+        const repositoryUrl = normalizeRepositoryUrl(info.repository);
+        const repositoryText = getRepositoryText(info.repository);
+        if (repositoryUrl) {
+          html += `<span>Repository: <a class="license-link" href="${escapeHtml(repositoryUrl)}" data-url="${escapeHtml(repositoryUrl)}" rel="noopener noreferrer">${escapeHtml(repositoryUrl)}</a></span>`;
+        } else if (repositoryText) {
+          html += `<span>Repository: ${escapeHtml(repositoryText)}</span>`;
         }
         if (info.publisher) {
           html += `<span>Publisher: ${escapeHtml(info.publisher)}</span>`;
@@ -6520,6 +6582,20 @@ document.getElementById('licenses-btn')?.addEventListener('click', showLicensesM
 document.getElementById('licenses-close')?.addEventListener('click', hideLicensesModal);
 document.getElementById('close-licenses-btn')?.addEventListener('click', hideLicensesModal);
 document.getElementById('copy-licenses-btn')?.addEventListener('click', copyLicensesText);
+const licensesContent = document.getElementById('licenses-content');
+if (licensesContent) {
+  licensesContent.addEventListener('click', (event) => {
+    const target = event.target as HTMLElement | null;
+    const link = target?.closest('a.license-link') as HTMLAnchorElement | null;
+    if (!link) return;
+
+    const url = link.dataset.url || link.getAttribute('href');
+    if (!url) return;
+
+    event.preventDefault();
+    window.electronAPI.openFile(url);
+  });
+}
 
 document.getElementById('shortcuts-close')?.addEventListener('click', hideShortcutsModal);
 document.getElementById('close-shortcuts-btn')?.addEventListener('click', hideShortcutsModal);
