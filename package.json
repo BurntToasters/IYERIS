@@ -4,9 +4,9 @@
   "description": "A beautiful cross-platform file explorer built with Electron, featuring a stunning liquid-glass interface with smooth animations and modern design.",
   "main": "dist/main.js",
   "dependencies": {
+    "@highlightjs/cdn-assets": "^11.11.1",
     "7zip-bin": "^5.2.0",
     "electron-updater": "^6.6.2",
-    "highlight.js": "^11.11.1",
     "node-7z": "^3.0.0"
   },
   "devDependencies": {
