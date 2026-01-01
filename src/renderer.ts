@@ -10,9 +10,9 @@ const SEARCH_HISTORY_MAX = 5;
 const DIRECTORY_HISTORY_MAX = 5;
 const RENDER_BATCH_SIZE = 50;
 const THUMBNAIL_ROOT_MARGIN = '100px';
-const FILE_PATH_MAP_MAX = 10000;
 const THUMBNAIL_CACHE_MAX = 100;
 const THUMBNAIL_CONCURRENT_LOADS = 4;
+const NAME_COLLATOR = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
 
 const thumbnailCache = new Map<string, string>();
 let activeThumbnailLoads = 0;
@@ -151,6 +151,7 @@ function debouncedSaveSettings(delay: number = SETTINGS_SAVE_DEBOUNCE_MS) {
 }
 
 let searchDebounceTimeout: ReturnType<typeof setTimeout> | null = null;
+let searchRequestId = 0;
 function debouncedSearch(delay: number = SEARCH_DEBOUNCE_MS) {
   if (searchDebounceTimeout) {
     clearTimeout(searchDebounceTimeout);
@@ -170,6 +171,13 @@ interface SearchFilters {
 }
 
 let currentSearchFilters: SearchFilters = {};
+let activeSearchOperationId: string | null = null;
+
+function cancelActiveSearch(): void {
+  if (!activeSearchOperationId) return;
+  window.electronAPI.cancelSearch(activeSearchOperationId).catch(() => {});
+  activeSearchOperationId = null;
+}
 
 type ViewMode = 'grid' | 'list' | 'column';
 
@@ -2222,6 +2230,8 @@ function toggleSearch() {
 }
 
 function closeSearch() {
+  searchRequestId += 1;
+  cancelActiveSearch();
   searchBarWrapper.style.display = 'none';
   searchInput.value = '';
   isSearchMode = false;
@@ -2292,9 +2302,18 @@ function updateSearchPlaceholder() {
 
 async function performSearch() {
   const query = searchInput.value.trim();
-  if (!query) return;
+  if (!query) {
+    searchRequestId += 1;
+    cancelActiveSearch();
+    return;
+  }
 
   if (!isGlobalSearch && !currentPath) return;
+
+  const currentRequestId = ++searchRequestId;
+  cancelActiveSearch();
+  const operationId = createDirectoryOperationId('search');
+  activeSearchOperationId = operationId;
   
   addToSearchHistory(query);
   
@@ -2314,13 +2333,15 @@ async function performSearch() {
     if (searchInContents) {
       result = await window.electronAPI.searchFilesWithContentGlobal(
         query,
-        hasFilters ? currentSearchFilters : undefined
+        hasFilters ? currentSearchFilters : undefined,
+        operationId
       );
+      if (currentRequestId !== searchRequestId) return;
 
       if (result.success && result.results) {
         allFiles = result.results;
         renderFiles(result.results, query);
-      } else {
+      } else if (result.error !== 'Calculation cancelled') {
         if (result.error === 'Indexer is disabled') {
           showToast('File indexer is disabled. Enable it in settings to use global search.', 'Index Disabled', 'warning');
         } else {
@@ -2328,7 +2349,8 @@ async function performSearch() {
         }
       }
     } else {
-      result = await window.electronAPI.searchIndex(query);
+      result = await window.electronAPI.searchIndex(query, operationId);
+      if (currentRequestId !== searchRequestId) return;
       
       if (result.success && result.results) {
         const fileItems: FileItem[] = [];
@@ -2349,7 +2371,7 @@ async function performSearch() {
         
         allFiles = fileItems;
         renderFiles(fileItems);
-      } else {
+      } else if (result.error !== 'Calculation cancelled') {
         if (result.error === 'Indexer is disabled') {
           showToast('File indexer is disabled. Enable it in settings to use global search.', 'Index Disabled', 'warning');
         } else {
@@ -2362,26 +2384,31 @@ async function performSearch() {
       result = await window.electronAPI.searchFilesWithContent(
         currentPath,
         query,
-        hasFilters ? currentSearchFilters : undefined
+        hasFilters ? currentSearchFilters : undefined,
+        operationId
       );
     } else {
       result = await window.electronAPI.searchFiles(
         currentPath,
         query,
-        hasFilters ? currentSearchFilters : undefined
+        hasFilters ? currentSearchFilters : undefined,
+        operationId
       );
     }
+    if (currentRequestId !== searchRequestId) return;
 
     if (result.success && result.results) {
       allFiles = result.results;
       renderFiles(result.results, searchInContents ? query : undefined);
-    } else {
+    } else if (result.error !== 'Calculation cancelled') {
       showToast(result.error || 'Search failed', 'Search Error', 'error');
     }
   }
   
+  if (currentRequestId !== searchRequestId) return;
   loading.style.display = 'none';
   updateStatusBar();
+  activeSearchOperationId = null;
 }
 
 function copyToClipboard() {
@@ -3623,13 +3650,9 @@ function renderFiles(items: FileItem[], searchQuery?: string) {
   allFiles = items;
 
   filePathMap.clear();
-  items.forEach(item => {
-    if (filePathMap.size >= FILE_PATH_MAP_MAX) {
-      const firstKey = filePathMap.keys().next().value;
-      if (firstKey) filePathMap.delete(firstKey);
-    }
+  for (const item of items) {
     filePathMap.set(item.path, item);
-  });
+  }
 
   const LARGE_FOLDER_THRESHOLD = 10000;
   if (items.length >= LARGE_FOLDER_THRESHOLD) {
@@ -3652,14 +3675,20 @@ function renderFiles(items: FileItem[], searchQuery?: string) {
 
   const sortBy = currentSettings.sortBy || 'name';
   const sortOrder = currentSettings.sortOrder || 'asc';
-  const extCache = new Map<FileItem, string>();
+  const extCache = sortBy === 'type' ? new Map<FileItem, string>() : null;
+  const modifiedCache = sortBy === 'date' ? new Map<FileItem, number>() : null;
 
   if (sortBy === 'type') {
     visibleItems.forEach(item => {
       if (!item.isDirectory) {
         const ext = item.name.split('.').pop()?.toLowerCase() || '';
-        extCache.set(item, ext);
+        extCache?.set(item, ext);
       }
+    });
+  } else if (sortBy === 'date') {
+    visibleItems.forEach(item => {
+      const time = item.modified instanceof Date ? item.modified.getTime() : new Date(item.modified).getTime();
+      modifiedCache?.set(item, time);
     });
   }
 
@@ -3671,21 +3700,21 @@ function renderFiles(items: FileItem[], searchQuery?: string) {
 
     switch (sortBy) {
       case 'name':
-        comparison = a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+        comparison = NAME_COLLATOR.compare(a.name, b.name);
         break;
       case 'date':
-        comparison = new Date(a.modified).getTime() - new Date(b.modified).getTime();
+        comparison = (modifiedCache?.get(a) || 0) - (modifiedCache?.get(b) || 0);
         break;
       case 'size':
         comparison = a.size - b.size;
         break;
       case 'type':
-        const extA = extCache.get(a) || '';
-        const extB = extCache.get(b) || '';
-        comparison = extA.localeCompare(extB);
+        const extA = extCache?.get(a) || '';
+        const extB = extCache?.get(b) || '';
+        comparison = NAME_COLLATOR.compare(extA, extB);
         break;
       default:
-        comparison = a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+        comparison = NAME_COLLATOR.compare(a.name, b.name);
     }
 
     return sortOrder === 'asc' ? comparison : -comparison;
@@ -4467,6 +4496,7 @@ async function applyViewMode() {
     columnView.style.display = 'flex';
     await renderColumnView();
   } else {
+    cancelColumnOperations();
     columnView.style.display = 'none';
     fileGrid.style.display = '';
     fileGrid.className = viewMode === 'list' ? 'file-grid list-view' : 'file-grid';
@@ -4493,9 +4523,19 @@ async function applyViewMode() {
 let columnPaths: string[] = [];
 let columnViewRenderId = 0;
 let isRenderingColumnView = false;
+const activeColumnOperationIds = new Set<string>();
+
+function cancelColumnOperations(): void {
+  for (const operationId of activeColumnOperationIds) {
+    window.electronAPI.cancelDirectoryContents(operationId).catch(() => {});
+  }
+  activeColumnOperationIds.clear();
+}
 
 async function renderColumnView() {
   if (!columnView) return;
+
+  cancelColumnOperations();
 
   const currentRenderId = ++columnViewRenderId;
   while (isRenderingColumnView) {
@@ -4709,16 +4749,28 @@ async function renderColumn(columnPath: string, columnIndex: number, renderId?: 
     const operation = e.ctrlKey ? 'copy' : 'move';
     await handleDrop(draggedPaths, columnPath, operation);
   });
-
+  
   try {
     const operationId = createDirectoryOperationId('column');
-    const result = await window.electronAPI.getDirectoryContents(columnPath, operationId);
+    activeColumnOperationIds.add(operationId);
+    let result: { success: boolean; contents?: FileItem[]; error?: string };
+    try {
+      result = await window.electronAPI.getDirectoryContents(columnPath, operationId);
+    } finally {
+      activeColumnOperationIds.delete(operationId);
+    }
+    if (renderId !== undefined && renderId !== columnViewRenderId) {
+      return null;
+    }
+    if (!result.success) {
+      throw new Error(result.error || 'Error loading folder');
+    }
     const items = result.contents || [];
 
     const sortedItems = [...items].sort((a, b) => {
       const dirSort = (b.isDirectory ? 1 : 0) - (a.isDirectory ? 1 : 0);
       if (dirSort !== 0) return dirSort;
-      return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+      return NAME_COLLATOR.compare(a.name, b.name);
     });
 
     const visibleItems = currentSettings.showHiddenFiles 
@@ -4883,6 +4935,7 @@ async function handleColumnItemClick(element: HTMLElement, path: string, isDirec
   const currentPane = element.closest('.column-pane');
   if (!currentPane) return;
 
+  cancelColumnOperations();
   const clickRenderId = ++columnViewRenderId;
   const allPanes = Array.from(columnView.querySelectorAll('.column-pane'));
   const currentPaneIndex = allPanes.indexOf(currentPane as Element);
@@ -6630,15 +6683,35 @@ async function loadHighlightJs(): Promise<any> {
   if (hljsLoading) return hljsLoading;
 
   hljsLoading = new Promise((resolve) => {
-    const link = document.createElement('link');
-    link.rel = 'stylesheet';
-    link.href = 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css';
-    document.head.appendChild(link);
+    const existingLink = document.querySelector('link[data-highlightjs="theme"]');
+    if (!existingLink) {
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = 'dist/vendor/highlight.css';
+      link.dataset.highlightjs = 'theme';
+      document.head.appendChild(link);
+    }
+
+    const existingScript = document.querySelector('script[data-highlightjs="core"]') as HTMLScriptElement | null;
+    if (existingScript) {
+      existingScript.addEventListener('load', () => {
+        hljs = (window as any).hljs || null;
+        resolve(hljs);
+      });
+      existingScript.addEventListener('error', () => resolve(null));
+      const existingGlobal = (window as any).hljs;
+      if (existingGlobal) {
+        hljs = existingGlobal;
+        resolve(hljs);
+      }
+      return;
+    }
 
     const script = document.createElement('script');
-    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js';
+    script.src = 'dist/vendor/highlight.js';
+    script.dataset.highlightjs = 'core';
     script.onload = () => {
-      hljs = (window as any).hljs;
+      hljs = (window as any).hljs || null;
       resolve(hljs);
     };
     script.onerror = () => resolve(null);
@@ -7077,6 +7150,7 @@ document.addEventListener('mousedown', (e) => {
 
 window.addEventListener('beforeunload', () => {
   stopIndexStatusPolling();
+  cancelActiveSearch();
   if (thumbnailObserver) {
     thumbnailObserver.disconnect();
     thumbnailObserver = null;

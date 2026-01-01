@@ -7,7 +7,7 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import * as readline from 'readline';
 
-type TaskType = 'build-index' | 'search-files' | 'search-content' | 'search-content-list' | 'folder-size' | 'checksum' | 'load-index' | 'save-index' | 'list-directory';
+type TaskType = 'build-index' | 'search-files' | 'search-content' | 'search-content-list' | 'search-content-index' | 'search-index' | 'folder-size' | 'checksum' | 'load-index' | 'save-index' | 'list-directory';
 
 interface TaskRequest {
   id: string;
@@ -159,15 +159,19 @@ function matchesContentFilters(stats: { size: number; mtime: Date }, filters?: a
   return true;
 }
 
-async function searchFileContent(filePath: string, searchQuery: string, operationId?: string): Promise<{ found: boolean; context?: string; lineNumber?: number }> {
+async function searchFileContent(filePath: string, searchQuery: string, operationId?: string, sizeHint?: number): Promise<{ found: boolean; context?: string; lineNumber?: number }> {
   const ext = path.extname(filePath).slice(1).toLowerCase();
   if (!TEXT_FILE_EXTENSIONS.has(ext)) {
     return { found: false };
   }
 
   try {
-    const stats = await fs.stat(filePath);
-    if (stats.size > CONTENT_SEARCH_MAX_FILE_SIZE) {
+    let size = Number.isFinite(sizeHint) ? Number(sizeHint) : undefined;
+    if (size === undefined) {
+      const stats = await fs.stat(filePath);
+      size = stats.size;
+    }
+    if (size > CONTENT_SEARCH_MAX_FILE_SIZE) {
       return { found: false };
     }
 
@@ -289,7 +293,7 @@ async function searchDirectoryContent(payload: any, operationId?: string): Promi
           if (!matchesContentFilters(stats, filters)) {
             continue;
           }
-          const contentResult = await searchFileContent(fullPath, searchQuery, operationId);
+          const contentResult = await searchFileContent(fullPath, searchQuery, operationId, stats.size);
           if (contentResult.found) {
             results.push({
               name: item.name,
@@ -339,7 +343,7 @@ async function searchContentList(payload: any, operationId?: string): Promise<an
     if (dateFrom && modified < dateFrom) continue;
     if (dateTo && modified > dateTo) continue;
 
-    const contentResult = await searchFileContent(filePath, searchQuery, operationId);
+    const contentResult = await searchFileContent(filePath, searchQuery, operationId, item.size);
     if (contentResult.found) {
       results.push({
         name: fileName,
@@ -354,6 +358,160 @@ async function searchContentList(payload: any, operationId?: string): Promise<an
       });
     }
   }
+
+  return results;
+}
+
+async function searchContentIndex(payload: any, operationId?: string): Promise<any[]> {
+  const { indexPath, query, maxResults, filters } = payload;
+  const searchQuery = String(query || '').toLowerCase();
+  const limit = Number.isFinite(maxResults) ? Math.max(1, maxResults) : 100;
+
+  let rawData: string;
+  try {
+    rawData = await fs.readFile(indexPath, 'utf-8');
+  } catch (error) {
+    const err = error as NodeJS.ErrnoException;
+    if (err?.code === 'ENOENT') {
+      throw new Error('Index is empty. Rebuild the index to enable global content search.');
+    }
+    throw error;
+  }
+
+  let parsed: any;
+  try {
+    parsed = JSON.parse(rawData);
+  } catch {
+    throw new Error('Index file is corrupted');
+  }
+
+  const indexEntries = parsed?.index;
+  if (!Array.isArray(indexEntries) || indexEntries.length === 0) {
+    throw new Error('Index is empty. Rebuild the index to enable global content search.');
+  }
+
+  const results: any[] = [];
+
+  for (const entry of indexEntries) {
+    if (results.length >= limit) break;
+    if (isCancelled(operationId)) throw new Error('Calculation cancelled');
+
+    let item: any;
+    let filePath: string | undefined;
+
+    if (Array.isArray(entry)) {
+      filePath = entry[0];
+      item = entry[1];
+    } else {
+      item = entry;
+      filePath = item?.path;
+    }
+
+    if (!item || !item.isFile || !filePath) continue;
+
+    const fileName = item.name || path.basename(filePath);
+    const ext = path.extname(fileName).slice(1).toLowerCase();
+    if (!TEXT_FILE_EXTENSIONS.has(ext)) continue;
+
+    const modified = item.modified ? new Date(item.modified) : new Date(0);
+    const sizeValue = typeof item.size === 'number' ? item.size : Number(item.size);
+    const size = Number.isFinite(sizeValue) ? sizeValue : 0;
+    if (!matchesContentFilters({ size, mtime: modified }, filters)) continue;
+
+    const contentResult = await searchFileContent(filePath, searchQuery, operationId, size);
+    if (contentResult.found) {
+      results.push({
+        name: fileName,
+        path: filePath,
+        isDirectory: false,
+        isFile: true,
+        size,
+        modified,
+        isHidden: await isHidden(filePath, fileName),
+        matchContext: contentResult.context,
+        matchLineNumber: contentResult.lineNumber
+      });
+    }
+  }
+
+  return results;
+}
+
+async function searchIndexFile(payload: any, operationId?: string): Promise<any[]> {
+  const { indexPath, query, maxResults } = payload;
+  const searchQuery = String(query || '').toLowerCase();
+  const limit = Number.isFinite(maxResults) ? Math.max(1, maxResults) : 100;
+
+  if (!searchQuery) {
+    return [];
+  }
+
+  let rawData: string;
+  try {
+    rawData = await fs.readFile(indexPath, 'utf-8');
+  } catch (error) {
+    const err = error as NodeJS.ErrnoException;
+    if (err?.code === 'ENOENT') {
+      throw new Error('Index is empty. Rebuild the index to enable global search.');
+    }
+    throw error;
+  }
+
+  let parsed: any;
+  try {
+    parsed = JSON.parse(rawData);
+  } catch {
+    throw new Error('Index file is corrupted');
+  }
+
+  const indexEntries = parsed?.index;
+  if (!Array.isArray(indexEntries) || indexEntries.length === 0) {
+    throw new Error('Index is empty. Rebuild the index to enable global search.');
+  }
+
+  const results: any[] = [];
+
+  for (const entry of indexEntries) {
+    if (results.length >= limit) break;
+    if (isCancelled(operationId)) throw new Error('Calculation cancelled');
+
+    let item: any;
+    let filePath: string | undefined;
+
+    if (Array.isArray(entry)) {
+      filePath = entry[0];
+      item = entry[1];
+    } else {
+      item = entry;
+      filePath = item?.path;
+    }
+
+    if (!item || !filePath) continue;
+    const name = item.name || path.basename(filePath);
+    if (!String(name).toLowerCase().includes(searchQuery)) continue;
+
+    const sizeValue = typeof item.size === 'number' ? item.size : Number(item.size);
+    const size = Number.isFinite(sizeValue) ? sizeValue : 0;
+    const modified = item.modified ? new Date(item.modified) : new Date(0);
+
+    results.push({
+      name,
+      path: filePath,
+      isDirectory: Boolean(item.isDirectory),
+      isFile: Boolean(item.isFile),
+      size,
+      modified
+    });
+  }
+
+  results.sort((a, b) => {
+    const aExact = a.name.toLowerCase() === searchQuery;
+    const bExact = b.name.toLowerCase() === searchQuery;
+
+    if (aExact && !bExact) return -1;
+    if (!aExact && bExact) return 1;
+    return a.name.localeCompare(b.name);
+  });
 
   return results;
 }
@@ -676,6 +834,10 @@ async function handleTask(message: TaskRequest): Promise<any> {
       return await searchDirectoryContent(message.payload, message.operationId);
     case 'search-content-list':
       return await searchContentList(message.payload, message.operationId);
+    case 'search-content-index':
+      return await searchContentIndex(message.payload, message.operationId);
+    case 'search-index':
+      return await searchIndexFile(message.payload, message.operationId);
     case 'folder-size':
       return await calculateFolderSize(message.payload, message.operationId);
     case 'checksum':

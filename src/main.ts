@@ -7,7 +7,7 @@ import * as fsSync from 'fs';
 import { exec, execFile, spawn } from 'child_process';
 import { promisify } from 'util';
 import * as os from 'os';
-import type { Settings, FileItem, ApiResponse, DirectoryResponse, PathResponse, PropertiesResponse, SettingsResponse, UpdateCheckResponse, IndexSearchResponse, UndoAction } from './types';
+import type { Settings, FileItem, ApiResponse, DirectoryResponse, PathResponse, PropertiesResponse, SettingsResponse, UpdateCheckResponse, IndexSearchResponse, IndexEntry, UndoAction } from './types';
 import { FileIndexer } from './indexer';
 import { FileTaskManager } from './fileTasks';
 import { getDrives, getCachedDrives, warmupDrivesCache } from './utils';
@@ -51,11 +51,11 @@ const MAX_DATA_URL_BYTES = 10 * 1024 * 1024;
 const CPU_COUNT = Math.max(1, os.cpus().length);
 const TOTAL_MEM_GB = os.totalmem() / (1024 ** 3);
 const MAX_WORKERS = TOTAL_MEM_GB < 6 ? 2 : TOTAL_MEM_GB < 12 ? 4 : TOTAL_MEM_GB < 24 ? 6 : 8;
-const TOTAL_WORKER_COUNT = Math.max(1, Math.min(CPU_COUNT, MAX_WORKERS));
-const INDEXER_WORKER_COUNT = TOTAL_WORKER_COUNT > 1 ? 1 : 0;
-const UI_WORKER_COUNT = Math.max(1, TOTAL_WORKER_COUNT - INDEXER_WORKER_COUNT);
+const BASE_WORKER_COUNT = Math.max(1, Math.min(CPU_COUNT, MAX_WORKERS));
+const INDEXER_WORKER_COUNT = 1;
+const UI_WORKER_COUNT = Math.max(1, BASE_WORKER_COUNT);
 const fileTasks = new FileTaskManager(UI_WORKER_COUNT);
-const indexerTasks = INDEXER_WORKER_COUNT > 0 ? new FileTaskManager(INDEXER_WORKER_COUNT) : null;
+const indexerTasks = new FileTaskManager(INDEXER_WORKER_COUNT);
 
 // Disable hardware accel via cli arg
 if (process.argv.includes('--disable-hardware-acceleration')) {
@@ -1938,7 +1938,7 @@ interface SearchFilters {
   dateTo?: string;
 }
 
-ipcMain.handle('search-files', async (_event: IpcMainInvokeEvent, dirPath: string, query: string, filters?: SearchFilters): Promise<{ success: boolean; results?: FileItem[]; error?: string }> => {
+ipcMain.handle('search-files', async (_event: IpcMainInvokeEvent, dirPath: string, query: string, filters?: SearchFilters, operationId?: string): Promise<{ success: boolean; results?: FileItem[]; error?: string }> => {
   try {
     if (!isPathSafe(dirPath)) {
       return { success: false, error: 'Invalid directory path' };
@@ -1949,7 +1949,7 @@ ipcMain.handle('search-files', async (_event: IpcMainInvokeEvent, dirPath: strin
       filters,
       maxDepth: 10,
       maxResults: 100
-    });
+    }, operationId);
     return { success: true, results };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -2097,7 +2097,7 @@ async function searchDirectoryForContent(
   }
 }
 
-ipcMain.handle('search-files-content', async (_event: IpcMainInvokeEvent, dirPath: string, query: string, filters?: SearchFilters): Promise<{ success: boolean; results?: ContentSearchResult[]; error?: string }> => {
+ipcMain.handle('search-files-content', async (_event: IpcMainInvokeEvent, dirPath: string, query: string, filters?: SearchFilters, operationId?: string): Promise<{ success: boolean; results?: ContentSearchResult[]; error?: string }> => {
   try {
     if (!isPathSafe(dirPath)) {
       return { success: false, error: 'Invalid directory path' };
@@ -2109,7 +2109,7 @@ ipcMain.handle('search-files-content', async (_event: IpcMainInvokeEvent, dirPat
       filters,
       maxDepth: 10,
       maxResults: 100
-    });
+    }, operationId);
     return { success: true, results };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -2117,7 +2117,7 @@ ipcMain.handle('search-files-content', async (_event: IpcMainInvokeEvent, dirPat
   }
 });
 
-ipcMain.handle('search-files-content-global', async (_event: IpcMainInvokeEvent, query: string, filters?: SearchFilters): Promise<{ success: boolean; results?: ContentSearchResult[]; error?: string }> => {
+ipcMain.handle('search-files-content-global', async (_event: IpcMainInvokeEvent, query: string, filters?: SearchFilters, operationId?: string): Promise<{ success: boolean; results?: ContentSearchResult[]; error?: string }> => {
   try {
     if (!fileIndexer) {
       return { success: false, error: 'Indexer not initialized' };
@@ -2125,44 +2125,34 @@ ipcMain.handle('search-files-content-global', async (_event: IpcMainInvokeEvent,
     if (!fileIndexer.isEnabled()) {
       return { success: false, error: 'Indexer is disabled' };
     }
-
-    const entries = await fileIndexer.getEntries();
-    if (entries.length === 0) {
-      return { success: false, error: 'Index is empty. Rebuild the index to enable global content search.' };
-    }
-
-    const searchQuery = query.toLowerCase();
-    const parsedFilters = parseContentFilters(filters);
     const MAX_RESULTS = 100;
+    const indexPath = path.join(app.getPath('userData'), 'file-index.json');
+    const searchTasks = indexerTasks ?? fileTasks;
 
-    const candidates: Array<{ name: string; path: string; size: number; modified: Date }> = [];
-    for (const entry of entries) {
-      if (!entry.isFile) continue;
-      const filePath = entry.path;
-      const fileName = entry.name || path.basename(filePath);
-      const ext = path.extname(fileName).slice(1).toLowerCase();
-      if (!TEXT_FILE_EXTENSIONS.has(ext)) continue;
-      if (parsedFilters.minSize !== undefined && entry.size < parsedFilters.minSize) continue;
-      if (parsedFilters.maxSize !== undefined && entry.size > parsedFilters.maxSize) continue;
-
-      const modified = entry.modified instanceof Date ? entry.modified : new Date(entry.modified);
-      if (parsedFilters.dateFrom && modified < parsedFilters.dateFrom) continue;
-      if (parsedFilters.dateTo && modified > parsedFilters.dateTo) continue;
-
-      candidates.push({ name: fileName, path: filePath, size: entry.size, modified });
-    }
-
-    const results = await fileTasks.runTask<ContentSearchResult[]>('search-content-list', {
-      files: candidates,
-      query: searchQuery,
+    const results = await searchTasks.runTask<ContentSearchResult[]>('search-content-index', {
+      indexPath,
+      query,
       filters,
       maxResults: MAX_RESULTS
-    });
+    }, operationId);
 
     return { success: true, results };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return { success: false, error: message };
+  }
+});
+
+ipcMain.handle('cancel-search', async (_event: IpcMainInvokeEvent, operationId: string): Promise<ApiResponse> => {
+  try {
+    if (!operationId) {
+      return { success: false, error: 'Missing operationId' };
+    }
+    fileTasks.cancelOperation(operationId);
+    indexerTasks?.cancelOperation(operationId);
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: getErrorMessage(error) };
   }
 });
 
@@ -2903,7 +2893,7 @@ ipcMain.handle('get-undo-redo-state', async (): Promise<{canUndo: boolean; canRe
   };
 });
 
-ipcMain.handle('search-index', async (_event: IpcMainInvokeEvent, query: string): Promise<IndexSearchResponse> => {
+ipcMain.handle('search-index', async (_event: IpcMainInvokeEvent, query: string, operationId?: string): Promise<IndexSearchResponse> => {
   try {
     if (!fileIndexer) {
       return { success: false, error: 'Indexer not initialized' };
@@ -2913,7 +2903,16 @@ ipcMain.handle('search-index', async (_event: IpcMainInvokeEvent, query: string)
       return { success: false, error: 'Indexer is disabled' };
     }
 
-    const results = await fileIndexer.search(query);
+    const MAX_RESULTS = 100;
+    const indexPath = path.join(app.getPath('userData'), 'file-index.json');
+    const searchTasks = indexerTasks ?? fileTasks;
+
+    const results = await searchTasks.runTask<IndexEntry[]>('search-index', {
+      indexPath,
+      query,
+      maxResults: MAX_RESULTS
+    }, operationId);
+
     return { success: true, results };
   } catch (error) {
     console.error('[Indexer] Search error:', error);

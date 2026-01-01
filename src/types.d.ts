@@ -288,9 +288,9 @@ export interface ElectronAPI {
   
   copyItems: (sourcePaths: string[], destPath: string) => Promise<ApiResponse>;
   moveItems: (sourcePaths: string[], destPath: string) => Promise<ApiResponse>;
-  searchFiles: (dirPath: string, query: string, filters?: SearchFilters) => Promise<SearchResponse>;
-  searchFilesWithContent: (dirPath: string, query: string, filters?: SearchFilters) => Promise<ContentSearchResponse>;
-  searchFilesWithContentGlobal: (query: string, filters?: SearchFilters) => Promise<ContentSearchResponse>;
+  searchFiles: (dirPath: string, query: string, filters?: SearchFilters, operationId?: string) => Promise<SearchResponse>;
+  searchFilesWithContent: (dirPath: string, query: string, filters?: SearchFilters, operationId?: string) => Promise<ContentSearchResponse>;
+  searchFilesWithContentGlobal: (query: string, filters?: SearchFilters, operationId?: string) => Promise<ContentSearchResponse>;
   getDiskSpace: (drivePath: string) => Promise<{success: boolean; total?: number; free?: number; error?: string}>;
   restartAsAdmin: () => Promise<ApiResponse>;
   openTerminal: (dirPath: string) => Promise<ApiResponse>;
@@ -311,7 +311,8 @@ export interface ElectronAPI {
   undoAction: () => Promise<UndoResponse>;
   redoAction: () => Promise<UndoResponse>;
   getUndoRedoState: () => Promise<{canUndo: boolean; canRedo: boolean}>;
-  searchIndex: (query: string) => Promise<IndexSearchResponse>;
+  searchIndex: (query: string, operationId?: string) => Promise<IndexSearchResponse>;
+  cancelSearch: (operationId: string) => Promise<ApiResponse>;
   rebuildIndex: () => Promise<ApiResponse>;
   getIndexStatus: () => Promise<{success: boolean; status?: IndexStatus; error?: string}>;
   compressFiles: (sourcePaths: string[], outputPath: string, format?: string, operationId?: string) => Promise<ApiResponse>;

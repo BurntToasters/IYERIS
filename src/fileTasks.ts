@@ -3,7 +3,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { EventEmitter } from 'events';
 
-type TaskType = 'build-index' | 'search-files' | 'search-content' | 'search-content-list' | 'folder-size' | 'checksum' | 'load-index' | 'save-index' | 'list-directory';
+type TaskType = 'build-index' | 'search-files' | 'search-content' | 'search-content-list' | 'search-content-index' | 'search-index' | 'folder-size' | 'checksum' | 'load-index' | 'save-index' | 'list-directory';
 
 interface TaskRequest {
   id: string;
@@ -78,7 +78,7 @@ export class FileTaskManager extends EventEmitter {
       if (task.operationId === operationId) {
         const pending = this.pending.get(task.id);
         if (pending) {
-          pending.reject(new Error('Cancelled'));
+          pending.reject(new Error('Calculation cancelled'));
           this.pending.delete(task.id);
         }
       } else {
