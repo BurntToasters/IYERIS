@@ -1046,6 +1046,7 @@ async function loadSettings(): Promise<void> {
   if (result.success && result.settings) {
     const defaults = createDefaultSettings();
     currentSettings = { ...defaults, ...result.settings };
+    currentSettings.enableSyntaxHighlighting = currentSettings.enableSyntaxHighlighting !== false;
     applySettings(currentSettings);
     const newLaunchCount = (currentSettings.launchCount || 0) + 1;
     currentSettings.launchCount = newLaunchCount;
@@ -1523,7 +1524,7 @@ async function showSettingsModal() {
     transparencyToggle.checked = currentSettings.transparency;
   }
   if (enableSyntaxHighlightingToggle) {
-    enableSyntaxHighlightingToggle.checked = currentSettings.enableSyntaxHighlighting || false;
+    enableSyntaxHighlightingToggle.checked = currentSettings.enableSyntaxHighlighting !== false;
   }
 
   updateCustomThemeUI();
