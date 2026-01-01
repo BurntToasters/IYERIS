@@ -888,10 +888,26 @@ function cancelDirectoryRequest(): void {
 }
 
 let currentGitStatuses: Map<string, string> = new Map();
+let gitStatusRequestId = 0;
+
+function clearGitIndicators(): void {
+  currentGitStatuses.clear();
+  document.querySelectorAll('.git-indicator').forEach(indicator => indicator.remove());
+}
 
 async function fetchGitStatusAsync(dirPath: string) {
+  if (!currentSettings.enableGitStatus) {
+    return;
+  }
+
+  const requestId = ++gitStatusRequestId;
+
   try {
     const result = await window.electronAPI.getGitStatus(dirPath);
+    if (requestId !== gitStatusRequestId || dirPath !== currentPath || !currentSettings.enableGitStatus) {
+      return;
+    }
+
     currentGitStatuses.clear();
 
     if (result.success && result.isGitRepo && result.statuses) {
@@ -899,6 +915,8 @@ async function fetchGitStatusAsync(dirPath: string) {
         currentGitStatuses.set(item.path, item.status);
       }
       updateGitIndicators();
+    } else {
+      clearGitIndicators();
     }
   } catch (error) {
     console.error('[Git Status] Failed to fetch:', error);
@@ -906,6 +924,11 @@ async function fetchGitStatusAsync(dirPath: string) {
 }
 
 function updateGitIndicators() {
+  if (!currentSettings.enableGitStatus) {
+    clearGitIndicators();
+    return;
+  }
+
   document.querySelectorAll('.file-item').forEach(item => {
     const itemPath = item.getAttribute('data-path');
     if (!itemPath) return;
@@ -1121,6 +1144,14 @@ function applySettings(settings: Settings) {
     document.body.classList.add('reduce-transparency');
   } else {
     document.body.classList.remove('reduce-transparency');
+  }
+
+  if (settings.enableGitStatus) {
+    if (currentPath) {
+      fetchGitStatusAsync(currentPath);
+    }
+  } else {
+    clearGitIndicators();
   }
 
   loadBookmarks();
@@ -1500,6 +1531,7 @@ async function showSettingsModal() {
   const sortBySelect = document.getElementById('sort-by-select') as HTMLSelectElement;
   const sortOrderSelect = document.getElementById('sort-order-select') as HTMLSelectElement;
   const showHiddenFilesToggle = document.getElementById('show-hidden-files-toggle') as HTMLInputElement;
+  const enableGitStatusToggle = document.getElementById('enable-git-status-toggle') as HTMLInputElement;
   const minimizeToTrayToggle = document.getElementById('minimize-to-tray-toggle') as HTMLInputElement;
   const startOnLoginToggle = document.getElementById('start-on-login-toggle') as HTMLInputElement;
   const autoCheckUpdatesToggle = document.getElementById('auto-check-updates-toggle') as HTMLInputElement;
@@ -1525,6 +1557,9 @@ async function showSettingsModal() {
   }
   if (enableSyntaxHighlightingToggle) {
     enableSyntaxHighlightingToggle.checked = currentSettings.enableSyntaxHighlighting !== false;
+  }
+  if (enableGitStatusToggle) {
+    enableGitStatusToggle.checked = currentSettings.enableGitStatus === true;
   }
 
   updateCustomThemeUI();
@@ -1994,6 +2029,7 @@ async function saveSettings() {
   const sortBySelect = document.getElementById('sort-by-select') as HTMLSelectElement;
   const sortOrderSelect = document.getElementById('sort-order-select') as HTMLSelectElement;
   const showHiddenFilesToggle = document.getElementById('show-hidden-files-toggle') as HTMLInputElement;
+  const enableGitStatusToggle = document.getElementById('enable-git-status-toggle') as HTMLInputElement;
   const minimizeToTrayToggle = document.getElementById('minimize-to-tray-toggle') as HTMLInputElement;
   const startOnLoginToggle = document.getElementById('start-on-login-toggle') as HTMLInputElement;
   const autoCheckUpdatesToggle = document.getElementById('auto-check-updates-toggle') as HTMLInputElement;
@@ -2040,6 +2076,9 @@ async function saveSettings() {
   
   if (showHiddenFilesToggle) {
     currentSettings.showHiddenFiles = showHiddenFilesToggle.checked;
+  }
+  if (enableGitStatusToggle) {
+    currentSettings.enableGitStatus = enableGitStatusToggle.checked;
   }
   
   if (minimizeToTrayToggle) {
@@ -3664,7 +3703,7 @@ async function navigateTo(path: string, skipHistoryUpdate = false) {
     requestId = request.requestId;
     operationId = request.operationId;
 
-    const result = await window.electronAPI.getDirectoryContents(path, operationId);
+    const result = await window.electronAPI.getDirectoryContents(path, operationId, currentSettings.showHiddenFiles);
     if (requestId !== directoryRequestId) return;
 
     if (result.success) {
@@ -3688,7 +3727,9 @@ async function navigateTo(path: string, skipHistoryUpdate = false) {
         renderFiles(result.contents || []);
       }
       updateDiskSpace();
-      fetchGitStatusAsync(path);
+      if (currentSettings.enableGitStatus) {
+        fetchGitStatusAsync(path);
+      }
     } else {
       console.error('Error loading directory:', result.error);
       showToast(result.error || 'Unknown error', 'Error Loading Directory', 'error');
@@ -4571,7 +4612,7 @@ async function applyViewMode() {
         const request = startDirectoryRequest(currentPath);
         requestId = request.requestId;
         operationId = request.operationId;
-        const result = await window.electronAPI.getDirectoryContents(currentPath, operationId);
+        const result = await window.electronAPI.getDirectoryContents(currentPath, operationId, currentSettings.showHiddenFiles);
         if (requestId !== directoryRequestId) return;
         if (result.success) {
           renderFiles(result.contents || []);
@@ -4818,7 +4859,7 @@ async function renderColumn(columnPath: string, columnIndex: number, renderId?: 
     activeColumnOperationIds.add(operationId);
     let result: { success: boolean; contents?: FileItem[]; error?: string };
     try {
-      result = await window.electronAPI.getDirectoryContents(columnPath, operationId);
+      result = await window.electronAPI.getDirectoryContents(columnPath, operationId, currentSettings.showHiddenFiles);
     } finally {
       activeColumnOperationIds.delete(operationId);
     }
@@ -6389,6 +6430,7 @@ function validateImportedSettings(imported: any): Partial<Settings> {
   if (typeof imported.transparency === 'boolean') validated.transparency = imported.transparency;
   if (typeof imported.showDangerousOptions === 'boolean') validated.showDangerousOptions = imported.showDangerousOptions;
   if (typeof imported.showHiddenFiles === 'boolean') validated.showHiddenFiles = imported.showHiddenFiles;
+  if (typeof imported.enableGitStatus === 'boolean') validated.enableGitStatus = imported.enableGitStatus;
   if (typeof imported.enableSearchHistory === 'boolean') validated.enableSearchHistory = imported.enableSearchHistory;
   if (typeof imported.enableIndexer === 'boolean') validated.enableIndexer = imported.enableIndexer;
   if (typeof imported.minimizeToTray === 'boolean') validated.minimizeToTray = imported.minimizeToTray;

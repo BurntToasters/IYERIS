@@ -52,6 +52,7 @@ export interface Settings {
   globalContentSearch: boolean;
   tabState?: TabState;
   enableSyntaxHighlighting: boolean;
+  enableGitStatus: boolean;
 
   reduceMotion: boolean;
   highContrast: boolean;
@@ -253,7 +254,7 @@ export interface UpdateDownloadProgress {
 }
 
 export interface ElectronAPI {
-  getDirectoryContents: (dirPath: string, operationId?: string) => Promise<DirectoryResponse>;
+  getDirectoryContents: (dirPath: string, operationId?: string, includeHidden?: boolean) => Promise<DirectoryResponse>;
   cancelDirectoryContents: (operationId: string) => Promise<ApiResponse>;
   getDrives: () => Promise<string[]>;
   getHomeDirectory: () => Promise<string>;

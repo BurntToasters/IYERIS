@@ -648,7 +648,11 @@ async function isFileHidden(filePath: string, fileName: string): Promise<boolean
         windowsHide: true
       });
 
-      return stdout.trim().charAt(0).toUpperCase() === 'H';
+      const line = stdout.split(/\r?\n/).find(item => item.trim().length > 0);
+      if (!line) return false;
+      const match = line.match(/^\s*([A-Za-z ]+)\s+.+$/);
+      if (!match) return false;
+      return match[1].toUpperCase().includes('H');
     } catch (error) {
       return false;
     }
@@ -1335,7 +1339,12 @@ app.on('window-all-closed', () => {
   app.quit();
 });
 
-ipcMain.handle('get-directory-contents', async (event: IpcMainInvokeEvent, dirPath: string, requestOperationId?: string): Promise<DirectoryResponse> => {
+ipcMain.handle('get-directory-contents', async (
+  event: IpcMainInvokeEvent,
+  dirPath: string,
+  requestOperationId?: string,
+  includeHidden?: boolean
+): Promise<DirectoryResponse> => {
   if (!isPathSafe(dirPath)) {
     console.warn('[Security] Invalid path rejected:', dirPath);
     return { success: false, error: 'Invalid path' };
@@ -1354,7 +1363,7 @@ ipcMain.handle('get-directory-contents', async (event: IpcMainInvokeEvent, dirPa
   try {
     const result = await fileTasks.runTask<{ contents: FileItem[] }>(
       'list-directory',
-      { dirPath, batchSize: 100 },
+      { dirPath, batchSize: 100, includeHidden: Boolean(includeHidden) },
       operationId
     );
 

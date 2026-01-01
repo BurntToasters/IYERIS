@@ -2,7 +2,8 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type { ElectronAPI, Settings, UpdateDownloadProgress, FolderSizeProgress, ChecksumResult, SearchFilters, DirectoryContentsProgress } from './types';
 
 const electronAPI: ElectronAPI = {
-  getDirectoryContents: (dirPath: string, operationId?: string) => ipcRenderer.invoke('get-directory-contents', dirPath, operationId),
+  getDirectoryContents: (dirPath: string, operationId?: string, includeHidden?: boolean) =>
+    ipcRenderer.invoke('get-directory-contents', dirPath, operationId, includeHidden),
   cancelDirectoryContents: (operationId: string) => ipcRenderer.invoke('cancel-directory-contents', operationId),
   getDrives: () => ipcRenderer.invoke('get-drives'),
   getHomeDirectory: () => ipcRenderer.invoke('get-home-directory'),

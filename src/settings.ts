@@ -27,6 +27,7 @@ export function createDefaultSettings(): Settings {
     enableTabs: true,
     globalContentSearch: false,
     enableSyntaxHighlighting: true,
+    enableGitStatus: false,
 
     reduceMotion: false,
     highContrast: false,

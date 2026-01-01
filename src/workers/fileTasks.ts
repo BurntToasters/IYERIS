@@ -30,6 +30,10 @@ const TEXT_FILE_EXTENSIONS = new Set([
 
 const CONTENT_SEARCH_MAX_FILE_SIZE = 1024 * 1024;
 const CONTENT_CONTEXT_CHARS = 60;
+const HIDDEN_ATTR_CACHE_TTL_MS = 5 * 60 * 1000;
+const HIDDEN_ATTR_CACHE_MAX = 5000;
+
+const hiddenAttrCache = new Map<string, { isHidden: boolean; timestamp: number }>();
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
@@ -44,12 +48,36 @@ function sendProgress(task: TaskType, operationId: string, data: any): void {
   parentPort?.postMessage({ type: 'progress', task, operationId, data });
 }
 
+function getHiddenCache(filePath: string): boolean | null {
+  const cached = hiddenAttrCache.get(filePath);
+  if (!cached) return null;
+  if (Date.now() - cached.timestamp > HIDDEN_ATTR_CACHE_TTL_MS) {
+    hiddenAttrCache.delete(filePath);
+    return null;
+  }
+  return cached.isHidden;
+}
+
+function setHiddenCache(filePath: string, isHidden: boolean): void {
+  if (hiddenAttrCache.size >= HIDDEN_ATTR_CACHE_MAX) {
+    const oldestKey = hiddenAttrCache.keys().next().value;
+    if (oldestKey) {
+      hiddenAttrCache.delete(oldestKey);
+    }
+  }
+  hiddenAttrCache.set(filePath, { isHidden, timestamp: Date.now() });
+}
+
 async function isHidden(filePath: string, fileName: string): Promise<boolean> {
   if (fileName.startsWith('.')) return true;
   if (process.platform !== 'win32') return false;
   try {
     const { stdout } = await execFileAsync('attrib', [filePath], { timeout: 500, windowsHide: true });
-    return stdout.trim().charAt(0).toUpperCase() === 'H';
+    const line = stdout.split(/\r?\n/).find(item => item.trim().length > 0);
+    if (!line) return false;
+    const match = line.match(/^\s*([A-Za-z ]+)\s+.+$/);
+    if (!match) return false;
+    return match[1].toUpperCase().includes('H');
   } catch {
     return false;
   }
@@ -57,29 +85,41 @@ async function isHidden(filePath: string, fileName: string): Promise<boolean> {
 
 async function batchCheckHidden(dirPath: string, fileNames: string[]): Promise<Map<string, boolean>> {
   const results = new Map<string, boolean>();
-  for (const fileName of fileNames) {
-    if (fileName.startsWith('.')) {
-      results.set(fileName, true);
-    }
-  }
 
   if (process.platform !== 'win32') {
+    for (const fileName of fileNames) {
+      if (fileName.startsWith('.')) {
+        results.set(fileName, true);
+      }
+    }
     return results;
   }
 
-  const nonDotFiles = fileNames.filter(name => !name.startsWith('.'));
-  if (nonDotFiles.length === 0) {
+  const pending: string[] = [];
+
+  for (const fileName of fileNames) {
+    if (fileName.startsWith('.')) {
+      results.set(fileName, true);
+      continue;
+    }
+
+    const filePath = path.join(dirPath, fileName);
+    const cached = getHiddenCache(filePath);
+    if (cached !== null) {
+      results.set(fileName, cached);
+      continue;
+    }
+
+    pending.push(fileName);
+  }
+
+  if (pending.length === 0) {
     return results;
   }
 
   try {
-    const filePaths = nonDotFiles.map(fileName => path.join(dirPath, fileName));
-    const escapedPaths = filePaths
-      .map(filePath => `'${filePath.replace(/'/g, "''")}'`)
-      .join(',');
-    const psCommand = `$paths=@(${escapedPaths}); Get-Item -LiteralPath $paths -ErrorAction SilentlyContinue | ForEach-Object { $_.Name + \"\\t\" + $_.Attributes }`;
-
-    const { stdout } = await execFileAsync('powershell', ['-NoProfile', '-Command', psCommand], {
+    const filePaths = pending.map(fileName => path.join(dirPath, fileName));
+    const { stdout } = await execFileAsync('attrib', filePaths, {
       timeout: 2000,
       windowsHide: true,
       maxBuffer: 1024 * 1024
@@ -87,23 +127,29 @@ async function batchCheckHidden(dirPath: string, fileNames: string[]): Promise<M
 
     const lines = stdout.split(/\r?\n/).filter(line => line.trim().length > 0);
     for (const line of lines) {
-      const [name, attrs] = line.split('\t');
-      if (!name) continue;
-      const isHiddenAttr = (attrs || '').toLowerCase().includes('hidden');
+      const match = line.match(/^\s*([A-Za-z ]+)\s+(.+)$/);
+      if (!match) continue;
+      const attrs = match[1].toUpperCase();
+      const filePath = match[2].trim();
+      const name = path.basename(filePath);
+      const isHiddenAttr = attrs.includes('H');
       results.set(name, isHiddenAttr);
+      setHiddenCache(path.join(dirPath, name), isHiddenAttr);
     }
 
-    for (const fileName of nonDotFiles) {
+    for (const fileName of pending) {
       if (!results.has(fileName)) {
         results.set(fileName, false);
+        setHiddenCache(path.join(dirPath, fileName), false);
       }
     }
   } catch {
-    for (const fileName of nonDotFiles) {
-      if (!results.has(fileName)) {
-        const filePath = path.join(dirPath, fileName);
-        results.set(fileName, await isHidden(filePath, fileName));
-      }
+    for (const fileName of pending) {
+      if (results.has(fileName)) continue;
+      const filePath = path.join(dirPath, fileName);
+      const hidden = await isHidden(filePath, fileName);
+      results.set(fileName, hidden);
+      setHiddenCache(filePath, hidden);
     }
   }
 
@@ -757,22 +803,25 @@ async function saveIndexFile(payload: any): Promise<any> {
 }
 
 async function listDirectory(payload: any, operationId?: string): Promise<any> {
-  const { dirPath, batchSize = 100 } = payload;
+  const { dirPath, batchSize = 100, includeHidden = false } = payload;
   const results: any[] = [];
   const batch: fsSync.Dirent[] = [];
   let loaded = 0;
   let dir: fsSync.Dir | null = null;
+  const shouldCheckHidden = !includeHidden;
 
   const flushBatch = async (): Promise<void> => {
     if (batch.length === 0) return;
     if (isCancelled(operationId)) throw new Error('Calculation cancelled');
 
     const names = batch.map(entry => entry.name);
-    const hiddenMap = await batchCheckHidden(dirPath, names);
+    const hiddenMap = shouldCheckHidden ? await batchCheckHidden(dirPath, names) : new Map<string, boolean>();
     const items = await Promise.all(
       batch.map(async (entry) => {
         const fullPath = path.join(dirPath, entry.name);
-        const isHiddenFlag = hiddenMap.get(entry.name) || entry.name.startsWith('.');
+        const isHiddenFlag = shouldCheckHidden
+          ? (hiddenMap.get(entry.name) ?? entry.name.startsWith('.'))
+          : entry.name.startsWith('.');
         try {
           const stats = await fs.stat(fullPath);
           return {
