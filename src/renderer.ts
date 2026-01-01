@@ -2709,11 +2709,13 @@ async function updateDiskSpace() {
 
   diskSpaceDebounceTimer = setTimeout(async () => {
     const result = await window.electronAPI.getDiskSpace(drivePath);
-    if (result.success && Number.isFinite(result.total) && Number.isFinite(result.free) && result.total > 0) {
-      const freeStr = formatFileSize(result.free);
-      const totalStr = formatFileSize(result.total);
-      const usedBytes = result.total - result.free;
-      const usedPercent = ((usedBytes / result.total) * 100).toFixed(1);
+    if (result.success && typeof result.total === 'number' && typeof result.free === 'number' && result.total > 0) {
+      const total = result.total;
+      const free = result.free;
+      const freeStr = formatFileSize(free);
+      const totalStr = formatFileSize(total);
+      const usedBytes = total - free;
+      const usedPercent = ((usedBytes / total) * 100).toFixed(1);
       let usageColor = '#107c10';
       if (parseFloat(usedPercent) > 80) {
         usageColor = '#ff8c00';
