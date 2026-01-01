@@ -1410,7 +1410,10 @@ ipcMain.handle('open-file', async (_event: IpcMainInvokeEvent, filePath: string)
         console.warn('[Security] Invalid path rejected:', filePath);
         return { success: false, error: 'Invalid path' };
       }
-      await shell.openPath(filePath);
+      const openResult = await shell.openPath(filePath);
+      if (openResult) {
+        return { success: false, error: openResult };
+      }
     }
     return { success: true };
   } catch (error) {
@@ -2348,13 +2351,16 @@ ipcMain.handle('open-terminal', async (_event: IpcMainInvokeEvent, dirPath: stri
       });
 
       if (hasWT) {
-        spawn('wt', ['-d', dirPath], { shell: false, detached: true });
+        const child = spawn('wt', ['-d', dirPath], { shell: false, detached: true, stdio: 'ignore' });
+        child.unref();
       } else {
         const quotedPath = `"${dirPath.replace(/"/g, '""')}"`;
-        spawn('cmd', ['/K', 'cd', '/d', quotedPath], { shell: false, detached: true });
+        const child = spawn('cmd', ['/K', 'cd', '/d', quotedPath], { shell: false, detached: true, stdio: 'ignore' });
+        child.unref();
       }
     } else if (platform === 'darwin') {
-      spawn('open', ['-a', 'Terminal', dirPath], { shell: false, detached: true });
+      const child = spawn('open', ['-a', 'Terminal', dirPath], { shell: false, detached: true, stdio: 'ignore' });
+      child.unref();
     } else {
       const terminals = [
         { cmd: 'x-terminal-emulator', args: ['--working-directory', dirPath] },

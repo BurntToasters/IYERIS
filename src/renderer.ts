@@ -492,6 +492,7 @@ let isSearchMode: boolean = false;
 let isGlobalSearch: boolean = false;
 let searchInContents: boolean = false;
 let isPreviewPanelVisible: boolean = false;
+let previewRequestId = 0;
 let currentQuicklookFile: FileItem | null = null;
 let platformOS: string = '';
 let canUndo: boolean = false;
@@ -2708,7 +2709,7 @@ async function updateDiskSpace() {
 
   diskSpaceDebounceTimer = setTimeout(async () => {
     const result = await window.electronAPI.getDiskSpace(drivePath);
-    if (result.success && result.total && result.free) {
+    if (result.success && Number.isFinite(result.total) && Number.isFinite(result.free) && result.total > 0) {
       const freeStr = formatFileSize(result.free);
       const totalStr = formatFileSize(result.total);
       const usedBytes = result.total - result.free;
@@ -3744,11 +3745,13 @@ async function navigateTo(path: string, skipHistoryUpdate = false) {
   }
 }
 
+let renderFilesToken = 0;
 let filePathMap: Map<string, FileItem> = new Map();
 
 function renderFiles(items: FileItem[], searchQuery?: string) {
   if (!fileGrid) return;
 
+  const renderToken = ++renderFilesToken;
   fileGrid.innerHTML = '';
   clearSelection();
   allFiles = items;
@@ -3830,6 +3833,7 @@ function renderFiles(items: FileItem[], searchQuery?: string) {
   let currentBatch = 0;
   
   const renderBatch = () => {
+    if (renderToken !== renderFilesToken) return;
     const start = currentBatch * batchSize;
     const end = Math.min(start + batchSize, sortedItems.length);
 
@@ -3840,7 +3844,8 @@ function renderFiles(items: FileItem[], searchQuery?: string) {
     
     fileGrid.appendChild(fragment);
     currentBatch++;
-    
+
+    if (renderToken !== renderFilesToken) return;
     if (end < sortedItems.length) {
       requestAnimationFrame(renderBatch);
     } else {
@@ -4274,9 +4279,11 @@ function toggleSelection(fileItem: HTMLElement) {
     if (file && file.isFile) {
            updatePreview(file);
     } else {
+      previewRequestId++;
       showEmptyPreview();
     }
   } else if (isPreviewPanelVisible && selectedItems.size !== 1) {
+    previewRequestId++;
     showEmptyPreview();
   }
 }
@@ -4289,6 +4296,7 @@ function clearSelection() {
   updateStatusBar();
   
   if (isPreviewPanelVisible) {
+    previewRequestId++;
     showEmptyPreview();
   }
 }
@@ -6712,10 +6720,12 @@ function togglePreviewPanel() {
     }
   } else {
     previewPanel.style.display = 'none';
+    previewRequestId++;
   }
 }
 
 function updatePreview(file: FileItem) {
+  const requestId = ++previewRequestId;
   if (!file || file.isDirectory) {
     showEmptyPreview();
     return;
@@ -6724,22 +6734,22 @@ function updatePreview(file: FileItem) {
   const ext = file.name.split('.').pop()?.toLowerCase() || '';
 
   if (IMAGE_EXTENSIONS.has(ext)) {
-    showImagePreview(file);
+    showImagePreview(file, requestId);
   } else if (TEXT_EXTENSIONS.has(ext)) {
-    showTextPreview(file);
+    showTextPreview(file, requestId);
   } else if (VIDEO_EXTENSIONS.has(ext)) {
-    showVideoPreview(file);
+    showVideoPreview(file, requestId);
   } else if (AUDIO_EXTENSIONS.has(ext)) {
-    showAudioPreview(file);
+    showAudioPreview(file, requestId);
   } else if (PDF_EXTENSIONS.has(ext)) {
-    showPdfPreview(file);
+    showPdfPreview(file, requestId);
   } else {
-    showFileInfo(file);
+    showFileInfo(file, requestId);
   }
 }
 
-async function showImagePreview(file: FileItem) {
-  if (!previewContent) return;
+async function showImagePreview(file: FileItem, requestId: number) {
+  if (!previewContent || requestId !== previewRequestId) return;
   previewContent.innerHTML = `
     <div class="preview-loading">
       <div class="spinner"></div>
@@ -6748,6 +6758,7 @@ async function showImagePreview(file: FileItem) {
   `;
   
   if (file.size > THUMBNAIL_MAX_SIZE) {
+    if (requestId !== previewRequestId) return;
     previewContent.innerHTML = `
       <div class="preview-error">
         Failed to load image: ${escapeHtml('File too large to preview')}
@@ -6758,6 +6769,7 @@ async function showImagePreview(file: FileItem) {
   }
 
   const props = await window.electronAPI.getItemProperties(file.path);
+  if (requestId !== previewRequestId) return;
   const info = props.success && props.properties ? props.properties : null;
   const fileUrl = encodeFileUrl(file.path);
   const altText = escapeHtml(file.name);
@@ -6770,6 +6782,7 @@ async function showImagePreview(file: FileItem) {
   const img = previewContent.querySelector('.preview-image') as HTMLImageElement | null;
   if (img) {
     img.addEventListener('error', () => {
+      if (requestId !== previewRequestId) return;
       previewContent.innerHTML = `
         <div class="preview-error">
           Failed to load image
@@ -6844,8 +6857,8 @@ function getLanguageForExt(ext: string): string | null {
   return EXT_TO_LANG[ext.toLowerCase()] || null;
 }
 
-async function showTextPreview(file: FileItem) {
-  if (!previewContent) return;
+async function showTextPreview(file: FileItem, requestId: number) {
+  if (!previewContent || requestId !== previewRequestId) return;
   previewContent.innerHTML = `
     <div class="preview-loading">
       <div class="spinner"></div>
@@ -6854,9 +6867,11 @@ async function showTextPreview(file: FileItem) {
   `;
 
   const result = await window.electronAPI.readFileContent(file.path, 50 * 1024);
+  if (requestId !== previewRequestId) return;
 
-  if (result.success && result.content) {
+  if (result.success && typeof result.content === 'string') {
     const props = await window.electronAPI.getItemProperties(file.path);
+    if (requestId !== previewRequestId) return;
     const info = props.success && props.properties ? props.properties : null;
     const ext = file.name.split('.').pop()?.toLowerCase() || '';
     const lang = getLanguageForExt(ext);
@@ -6869,10 +6884,9 @@ async function showTextPreview(file: FileItem) {
 
     if (lang && currentSettings.enableSyntaxHighlighting) {
       loadHighlightJs().then(hl => {
-        if (hl) {
-          const codeBlock = previewContent?.querySelector('code');
-          if (codeBlock) hl.highlightElement(codeBlock);
-        }
+        if (requestId !== previewRequestId || !hl) return;
+        const codeBlock = previewContent?.querySelector('code');
+        if (codeBlock) hl.highlightElement(codeBlock);
       });
     }
   } else {
@@ -6885,10 +6899,11 @@ async function showTextPreview(file: FileItem) {
   }
 }
 
-async function showVideoPreview(file: FileItem) {
-  if (!previewContent) return;
+async function showVideoPreview(file: FileItem, requestId: number) {
+  if (!previewContent || requestId !== previewRequestId) return;
   
   const props = await window.electronAPI.getItemProperties(file.path);
+  if (requestId !== previewRequestId) return;
   const info = props.success && props.properties ? props.properties : null;
   
   const fileUrl = encodeFileUrl(file.path);
@@ -6901,10 +6916,11 @@ async function showVideoPreview(file: FileItem) {
   `;
 }
 
-async function showAudioPreview(file: FileItem) {
-  if (!previewContent) return;
+async function showAudioPreview(file: FileItem, requestId: number) {
+  if (!previewContent || requestId !== previewRequestId) return;
   
   const props = await window.electronAPI.getItemProperties(file.path);
+  if (requestId !== previewRequestId) return;
   const info = props.success && props.properties ? props.properties : null;
   
   const fileUrl = encodeFileUrl(file.path);
@@ -6920,10 +6936,11 @@ async function showAudioPreview(file: FileItem) {
   `;
 }
 
-async function showPdfPreview(file: FileItem) {
-  if (!previewContent) return;
+async function showPdfPreview(file: FileItem, requestId: number) {
+  if (!previewContent || requestId !== previewRequestId) return;
   
   const props = await window.electronAPI.getItemProperties(file.path);
+  if (requestId !== previewRequestId) return;
   const info = props.success && props.properties ? props.properties : null;
   
   const fileUrl = encodeFileUrl(file.path);
@@ -6934,9 +6951,10 @@ async function showPdfPreview(file: FileItem) {
   `;
 }
 
-async function showFileInfo(file: FileItem) {
-  if (!previewContent) return;
+async function showFileInfo(file: FileItem, requestId: number) {
+  if (!previewContent || requestId !== previewRequestId) return;
   const props = await window.electronAPI.getItemProperties(file.path);
+  if (requestId !== previewRequestId) return;
   const info = props.success && props.properties ? props.properties : null;
   
   previewContent.innerHTML = `
@@ -6998,6 +7016,7 @@ const quicklookTitle = document.getElementById('quicklook-title') as HTMLElement
 const quicklookInfo = document.getElementById('quicklook-info') as HTMLElement;
 const quicklookClose = document.getElementById('quicklook-close') as HTMLButtonElement;
 const quicklookOpen = document.getElementById('quicklook-open') as HTMLButtonElement;
+let quicklookRequestId = 0;
 
 async function showQuickLook() {
   if (selectedItems.size !== 1) return;
@@ -7012,6 +7031,7 @@ async function showQuickLook() {
 
   if (!file || file.isDirectory) return;
 
+  const requestId = ++quicklookRequestId;
   currentQuicklookFile = file;
   quicklookTitle.textContent = file.name;
   quicklookModal.style.display = 'flex';
@@ -7036,6 +7056,9 @@ async function showQuickLook() {
       img.src = fileUrl;
       img.alt = file.name;
       img.addEventListener('error', () => {
+        if (requestId !== quicklookRequestId || currentQuicklookFile?.path !== file.path) {
+          return;
+        }
         quicklookContent.innerHTML = `<div class="preview-error">Failed to load image</div>`;
       });
       quicklookContent.appendChild(img);
@@ -7087,7 +7110,10 @@ async function showQuickLook() {
     quicklookInfo.textContent = `${formatFileSize(file.size)} • ${new Date(file.modified).toLocaleDateString()}`;
   } else if (TEXT_EXTENSIONS.has(ext)) {
     const result = await window.electronAPI.readFileContent(file.path, 100 * 1024);
-    if (result.success && result.content) {
+    if (requestId !== quicklookRequestId || currentQuicklookFile?.path !== file.path) {
+      return;
+    }
+    if (result.success && typeof result.content === 'string') {
       const lang = getLanguageForExt(ext);
       quicklookContent.innerHTML = `
         ${result.isTruncated ? `<div class="preview-truncated">${twemojiImg(String.fromCodePoint(0x26A0), 'twemoji')} File truncated to first 100KB</div>` : ''}
@@ -7096,10 +7122,9 @@ async function showQuickLook() {
       quicklookInfo.textContent = `${formatFileSize(file.size)} • ${new Date(file.modified).toLocaleDateString()}`;
       if (lang && currentSettings.enableSyntaxHighlighting) {
         loadHighlightJs().then(hl => {
-          if (hl) {
-            const codeBlock = quicklookContent?.querySelector('code');
-            if (codeBlock) hl.highlightElement(codeBlock);
-          }
+          if (requestId !== quicklookRequestId || currentQuicklookFile?.path !== file.path || !hl) return;
+          const codeBlock = quicklookContent?.querySelector('code');
+          if (codeBlock) hl.highlightElement(codeBlock);
         });
       }
     } else {
@@ -7119,6 +7144,7 @@ async function showQuickLook() {
 function closeQuickLook() {
   if (quicklookModal) quicklookModal.style.display = 'none';
   currentQuicklookFile = null;
+  quicklookRequestId++;
 }
 
 if (previewToggleBtn) {
@@ -7129,6 +7155,7 @@ if (previewCloseBtn) {
   previewCloseBtn.addEventListener('click', () => {
     isPreviewPanelVisible = false;
     if (previewPanel) previewPanel.style.display = 'none';
+    previewRequestId++;
   });
 }
 
