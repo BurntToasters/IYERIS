@@ -7,8 +7,13 @@
              alt="IYERIS logo" width="180" />
       </td>
       <td valign="middle" align="center">
-        <img src="https://github.com/user-attachments/assets/e164f5c8-3a8d-41e2-b47f-2cd3015d730b"
-             alt="IYERIS screenshot" width="680" />
+        <p align="center">
+  <img width="45%" height="1012" alt="IYERIS-9-1" src="https://github.com/user-attachments/assets/b276996e-1a60-4f5e-ae2a-5de82b5e5ba8" />
+&nbsp;
+<img width="45%" height="1012" alt="IYERIS-9-2" src="https://github.com/user-attachments/assets/6719c3e8-a525-4557-9029-856369113da8" />
+&nbsp;
+<img width="45%" height="1012" alt="IYERIS-9-3" src="https://github.com/user-attachments/assets/b8acd2a8-0c6d-49d3-8c45-96c4501f974f" />
+</p>
       </td>
     </tr>
   </table>
