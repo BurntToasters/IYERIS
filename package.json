@@ -1,9 +1,10 @@
 {
   "name": "iyeris",
-  "version": "0.8.7",
+  "version": "0.9.0",
   "description": "A beautiful cross-platform file explorer built with Electron, featuring a stunning liquid-glass interface with smooth animations and modern design.",
   "main": "dist/main.js",
   "dependencies": {
+    "@highlightjs/cdn-assets": "^11.11.1",
     "7zip-bin": "^5.2.0",
     "electron-updater": "^6.6.2",
     "node-7z": "^3.0.0"
@@ -16,12 +17,16 @@
     "dotenv-cli": "^10.0.0",
     "electron": "^39.0.0",
     "electron-builder": "^26.0.12",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.16"
   },
   "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
     "copy:css": "node -e \"require('fs').copyFileSync('src/twemoji.css', 'dist/twemoji.css')\"",
+    "copy:highlight": "node -e \"const fs=require('fs');const path=require('path');const base=path.dirname(require.resolve('@highlightjs/cdn-assets/package.json'));const jsSrc=path.join(base,'highlight.min.js');const cssSrc=path.join(base,'styles','atom-one-dark.min.css');const dest=path.join('dist','vendor');fs.mkdirSync(dest,{recursive:true});fs.copyFileSync(jsSrc,path.join(dest,'highlight.js'));fs.copyFileSync(cssSrc,path.join(dest,'highlight.css'));\"",
     "build:cleanup": "node -e \"const fs=require('fs');['release','dist'].forEach(d=>{try{fs.rmSync(d,{recursive:true,force:true})}catch(e){}})\"",
-    "build": "npm run build:cleanup && tsc && tsc --project tsconfig.renderer.json && npm run copy:css",
+    "build": "npm run build:cleanup && tsc && tsc --project tsconfig.renderer.json && npm run copy:css && npm run copy:highlight",
     "watch": "tsc --watch",
     "start": "npm run build && electron .",
     "dev": "npm run build && electron . --enable-logging",

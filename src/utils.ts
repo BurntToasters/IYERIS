@@ -4,7 +4,31 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 
 const execAsync = promisify(exec);
+
+let cachedDrives: string[] | null = null;
+let drivesCacheTime: number = 0;
+const DRIVES_CACHE_TTL = 30000;
+
+export function getCachedDrives(): string[] | null {
+  if (cachedDrives && (Date.now() - drivesCacheTime) < DRIVES_CACHE_TTL) {
+    return cachedDrives;
+  }
+  return null;
+}
+
+export function warmupDrivesCache(): void {
+  getDrives().then(drives => {
+    cachedDrives = drives;
+    drivesCacheTime = Date.now();
+  }).catch(() => {});
+}
+
 export async function getDrives(): Promise<string[]> {
+  const cached = getCachedDrives();
+  if (cached) {
+    return cached;
+  }
+
   const platform = process.platform;
 
   if (platform === 'win32') {
@@ -76,13 +100,19 @@ export async function getDrives(): Promise<string[]> {
 
     if (drives.size === 0) {
       console.log('[Drives] No drives detected, defaulting to C:\\');
-      return ['C:\\'];
+      const result = ['C:\\'];
+      cachedDrives = result;
+      drivesCacheTime = Date.now();
+      return result;
     }
-    return Array.from(drives).sort();
+    const result = Array.from(drives).sort();
+    cachedDrives = result;
+    drivesCacheTime = Date.now();
+    return result;
   } else {
     const commonRoots = platform === 'darwin' ? ['/Volumes'] : ['/media', '/mnt', '/run/media'];
     const detected: string[] = ['/'];
-    
+
     for (const root of commonRoots) {
       try {
         const subs = await fs.readdir(root);
@@ -100,6 +130,8 @@ export async function getDrives(): Promise<string[]> {
       } catch {
       }
     }
+    cachedDrives = detected;
+    drivesCacheTime = Date.now();
     return detected;
   }
 }

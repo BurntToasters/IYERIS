@@ -4,6 +4,7 @@ import { app } from 'electron';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import type { IndexEntry, IndexStatus } from './types';
+import type { FileTaskManager } from './fileTasks';
 import { getDrives } from './utils';
 
 const execAsync = promisify(exec);
@@ -17,13 +18,16 @@ export class FileIndexer {
   private indexPath: string;
   private enabled: boolean = true;
   private abortController: AbortController | null = null;
-  
-  // Maximum number of files to index
+  private initializationPromise: Promise<void> | null = null;
+  private fileTasks: FileTaskManager | null = null;
+  private buildOperationId: string | null = null;
+
   private static readonly MAX_INDEX_SIZE = 200000;
 
-  constructor() {
+  constructor(fileTasks?: FileTaskManager) {
     const userDataPath = app.getPath('userData');
     this.indexPath = path.join(userDataPath, 'file-index.json');
+    this.fileTasks = fileTasks ?? null;
   }
 
   private async getCommonLocations(): Promise<string[]> {
@@ -155,9 +159,13 @@ export class FileIndexer {
           continue;
         }
 
+        if (this.index.size >= FileIndexer.MAX_INDEX_SIZE) {
+          return;
+        }
+
         try {
           const stats = await fs.stat(fullPath);
-          
+
           const indexEntry: IndexEntry = {
             name: entry.name,
             path: fullPath,
@@ -170,7 +178,7 @@ export class FileIndexer {
           this.index.set(fullPath, indexEntry);
           this.indexedFiles++;
 
-          if (entry.isDirectory() && this.index.size < FileIndexer.MAX_INDEX_SIZE) { 
+          if (entry.isDirectory() && this.index.size < FileIndexer.MAX_INDEX_SIZE) {
             await this.scanDirectory(fullPath, signal);
           }
         } catch (error) {
@@ -215,19 +223,34 @@ export class FileIndexer {
       console.log(`[Indexer] Locations to scan: ${locations.join(', ')}`);
       this.totalFiles = await this.estimateTotalFiles(locations);
 
-      for (const location of locations) {
-        if (this.abortController.signal.aborted) {
-          break;
+      if (this.fileTasks) {
+        this.buildOperationId = `index-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        const result = await this.fileTasks.runTask<{ entries: IndexEntry[] }>(
+          'build-index',
+          { locations, maxIndexSize: FileIndexer.MAX_INDEX_SIZE },
+          this.buildOperationId
+        );
+        for (const entry of result.entries) {
+          if (this.index.size >= FileIndexer.MAX_INDEX_SIZE) break;
+          this.index.set(entry.path, entry);
         }
+        this.indexedFiles = this.index.size;
+        console.log(`[Indexer] Worker scan complete. Indexed ${this.indexedFiles} files.`);
+      } else {
+        for (const location of locations) {
+          if (this.abortController.signal.aborted) {
+            break;
+          }
 
-        const beforeCount = this.indexedFiles;
-        try {
-          await fs.access(location);
-          console.log(`[Indexer] Scanning: ${location}`);
-          await this.scanDirectory(location, this.abortController.signal);
-          console.log(`[Indexer] Finished ${location}: indexed ${this.indexedFiles - beforeCount} new files (total: ${this.indexedFiles})`);
-        } catch (error) {
-          console.log(`[Indexer] Skipping ${location}:`, (error as Error).message);
+          const beforeCount = this.indexedFiles;
+          try {
+            await fs.access(location);
+            console.log(`[Indexer] Scanning: ${location}`);
+            await this.scanDirectory(location, this.abortController.signal);
+            console.log(`[Indexer] Finished ${location}: indexed ${this.indexedFiles - beforeCount} new files (total: ${this.indexedFiles})`);
+          } catch (error) {
+            console.log(`[Indexer] Skipping ${location}:`, (error as Error).message);
+          }
         }
       }
 
@@ -235,19 +258,31 @@ export class FileIndexer {
       await this.saveIndex();
       console.log(`[Indexer] Index build complete. Indexed ${this.indexedFiles} files.`);
     } catch (error) {
-      console.error('[Indexer] Error building index:', error);
+      const message = error instanceof Error ? error.message : String(error);
+      if (message === 'Cancelled' || message === 'Calculation cancelled') {
+        this.index.clear();
+        this.indexedFiles = 0;
+        console.log('[Indexer] Index build cancelled');
+      } else {
+        console.error('[Indexer] Error building index:', error);
+      }
     } finally {
       this.isIndexing = false;
       if (this.abortController) {
         this.abortController.abort();
         this.abortController = null;
       }
+      this.buildOperationId = null;
     }
   }
 
   async search(query: string): Promise<IndexEntry[]> {
     if (!this.enabled) {
       return [];
+    }
+
+    if (this.initializationPromise) {
+      await this.initializationPromise;
     }
 
     if (this.index.size === 0 && !this.isIndexing) {
@@ -278,15 +313,40 @@ export class FileIndexer {
     return results;
   }
 
+  async getEntries(): Promise<IndexEntry[]> {
+    if (!this.enabled) {
+      return [];
+    }
+
+    if (this.initializationPromise) {
+      await this.initializationPromise;
+    }
+
+    if (this.index.size === 0 && !this.isIndexing) {
+      await this.loadIndex();
+    }
+
+    return Array.from(this.index.values());
+  }
+
   async saveIndex(): Promise<void> {
     try {
-      const data = {
-        index: Array.from(this.index.entries()),
-        lastIndexTime: this.lastIndexTime,
-        version: 1
-      };
+      const entries = Array.from(this.index.entries());
+      if (this.fileTasks) {
+        await this.fileTasks.runTask(
+          'save-index',
+          { indexPath: this.indexPath, entries, lastIndexTime: this.lastIndexTime },
+          `save-index-${Date.now()}`
+        );
+      } else {
+        const data = {
+          index: entries,
+          lastIndexTime: this.lastIndexTime,
+          version: 1
+        };
 
-      await fs.writeFile(this.indexPath, JSON.stringify(data), 'utf-8');
+        await fs.writeFile(this.indexPath, JSON.stringify(data), 'utf-8');
+      }
       console.log(`[Indexer] Index saved to ${this.indexPath}`);
     } catch (error) {
       console.error('[Indexer] Error saving index:', error);
@@ -295,13 +355,27 @@ export class FileIndexer {
 
   async loadIndex(): Promise<void> {
     try {
-      const data = await fs.readFile(this.indexPath, 'utf-8');
-      const parsed = JSON.parse(data);
+      if (this.fileTasks) {
+        const result = await this.fileTasks.runTask<{ exists: boolean; index?: Array<[string, IndexEntry]>; lastIndexTime?: string | null }>(
+          'load-index',
+          { indexPath: this.indexPath },
+          `load-index-${Date.now()}`
+        );
+        if (!result.exists) {
+          console.log('[Indexer] No existing index found, will build on first search');
+          return;
+        }
+        this.index = new Map(result.index || []);
+        this.lastIndexTime = result.lastIndexTime ? new Date(result.lastIndexTime) : null;
+        this.indexedFiles = this.index.size;
+      } else {
+        const data = await fs.readFile(this.indexPath, 'utf-8');
+        const parsed = JSON.parse(data);
 
-      this.index = new Map(parsed.index);
-      this.lastIndexTime = parsed.lastIndexTime ? new Date(parsed.lastIndexTime) : null;
-      this.indexedFiles = this.index.size;
-
+        this.index = new Map(parsed.index);
+        this.lastIndexTime = parsed.lastIndexTime ? new Date(parsed.lastIndexTime) : null;
+        this.indexedFiles = this.index.size;
+      }
       console.log(`[Indexer] Index loaded: ${this.indexedFiles} files`);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
@@ -333,6 +407,10 @@ export class FileIndexer {
     if (this.abortController) {
       this.abortController.abort();
     }
+    if (this.fileTasks && this.buildOperationId) {
+      this.fileTasks.cancelOperation(this.buildOperationId);
+      this.buildOperationId = null;
+    }
     
     await this.clearIndex();
     await this.buildIndex();
@@ -355,6 +433,10 @@ export class FileIndexer {
       this.abortController.abort();
       this.abortController = null;
     }
+    if (!enabled && this.fileTasks && this.buildOperationId) {
+      this.fileTasks.cancelOperation(this.buildOperationId);
+      this.buildOperationId = null;
+    }
   }
 
   isEnabled(): boolean {
@@ -363,7 +445,7 @@ export class FileIndexer {
 
   async initialize(enabled: boolean): Promise<void> {
     this.enabled = enabled;
-    
+
     if (!enabled) {
       console.log('[Indexer] Indexer disabled, skipping initialization');
       return;
@@ -371,16 +453,15 @@ export class FileIndexer {
 
     console.log('[Indexer] Initializing...');
 
-    setImmediate(async () => {
+    this.initializationPromise = (async () => {
       try {
         await this.loadIndex();
 
         if (this.index.size === 0) {
           console.log('[Indexer] No existing index found, building now...');
           await this.buildIndex();
-        } 
-        else if (!this.lastIndexTime || 
-                 (Date.now() - this.lastIndexTime.getTime() > 7 * 24 * 60 * 60 * 1000)) {
+        } else if (!this.lastIndexTime ||
+                   (Date.now() - this.lastIndexTime.getTime() > 7 * 24 * 60 * 60 * 1000)) {
           console.log('[Indexer] Index is outdated, rebuilding...');
           await this.buildIndex();
         } else {
@@ -388,7 +469,9 @@ export class FileIndexer {
         }
       } catch (err) {
         console.error('[Indexer] Initialization failed:', err);
+      } finally {
+        this.initializationPromise = null;
       }
-    });
+    })();
   }
 }

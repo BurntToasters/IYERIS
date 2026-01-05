@@ -1,8 +1,10 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { ElectronAPI, Settings, UpdateDownloadProgress, FolderSizeProgress, ChecksumResult } from './types';
+import type { ElectronAPI, Settings, UpdateDownloadProgress, FolderSizeProgress, ChecksumResult, SearchFilters, DirectoryContentsProgress } from './types';
 
 const electronAPI: ElectronAPI = {
-  getDirectoryContents: (dirPath: string) => ipcRenderer.invoke('get-directory-contents', dirPath),
+  getDirectoryContents: (dirPath: string, operationId?: string, includeHidden?: boolean) =>
+    ipcRenderer.invoke('get-directory-contents', dirPath, operationId, includeHidden),
+  cancelDirectoryContents: (operationId: string) => ipcRenderer.invoke('cancel-directory-contents', operationId),
   getDrives: () => ipcRenderer.invoke('get-drives'),
   getHomeDirectory: () => ipcRenderer.invoke('get-home-directory'),
   openFile: (filePath: string) => ipcRenderer.invoke('open-file', filePath),
@@ -47,7 +49,9 @@ const electronAPI: ElectronAPI = {
   
   copyItems: (sourcePaths: string[], destPath: string) => ipcRenderer.invoke('copy-items', sourcePaths, destPath),
   moveItems: (sourcePaths: string[], destPath: string) => ipcRenderer.invoke('move-items', sourcePaths, destPath),
-  searchFiles: (dirPath: string, query: string) => ipcRenderer.invoke('search-files', dirPath, query),
+  searchFiles: (dirPath: string, query: string, filters?: SearchFilters, operationId?: string) => ipcRenderer.invoke('search-files', dirPath, query, filters, operationId),
+  searchFilesWithContent: (dirPath: string, query: string, filters?: SearchFilters, operationId?: string) => ipcRenderer.invoke('search-files-content', dirPath, query, filters, operationId),
+  searchFilesWithContentGlobal: (query: string, filters?: SearchFilters, operationId?: string) => ipcRenderer.invoke('search-files-content-global', query, filters, operationId),
   openTerminal: (dirPath: string) => ipcRenderer.invoke('open-terminal', dirPath),
   getDiskSpace: (drivePath: string) => ipcRenderer.invoke('get-disk-space', drivePath),
   restartAsAdmin: () => ipcRenderer.invoke('restart-as-admin'),
@@ -76,7 +80,8 @@ const electronAPI: ElectronAPI = {
   undoAction: () => ipcRenderer.invoke('undo-action'),
   redoAction: () => ipcRenderer.invoke('redo-action'),
   getUndoRedoState: () => ipcRenderer.invoke('get-undo-redo-state'),
-  searchIndex: (query: string) => ipcRenderer.invoke('search-index', query),
+  searchIndex: (query: string, operationId?: string) => ipcRenderer.invoke('search-index', query, operationId),
+  cancelSearch: (operationId: string) => ipcRenderer.invoke('cancel-search', operationId),
   rebuildIndex: () => ipcRenderer.invoke('rebuild-index'),
   getIndexStatus: () => ipcRenderer.invoke('get-index-status'),
   compressFiles: (sourcePaths: string[], outputPath: string, format?: string, operationId?: string) => ipcRenderer.invoke('compress-files', sourcePaths, outputPath, format, operationId),
@@ -106,13 +111,19 @@ const electronAPI: ElectronAPI = {
     ipcRenderer.on('folder-size-progress', handler);
     return () => ipcRenderer.removeListener('folder-size-progress', handler);
   },
+  onDirectoryContentsProgress: (callback: (progress: DirectoryContentsProgress) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, progress: DirectoryContentsProgress) => callback(progress);
+    ipcRenderer.on('directory-contents-progress', handler);
+    return () => ipcRenderer.removeListener('directory-contents-progress', handler);
+  },
   calculateChecksum: (filePath: string, operationId: string, algorithms: string[]) => ipcRenderer.invoke('calculate-checksum', filePath, operationId, algorithms),
   cancelChecksumCalculation: (operationId: string) => ipcRenderer.invoke('cancel-checksum-calculation', operationId),
   onChecksumProgress: (callback: (progress: {operationId: string; percent: number; algorithm: string}) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, progress: {operationId: string; percent: number; algorithm: string}) => callback(progress);
     ipcRenderer.on('checksum-progress', handler);
     return () => ipcRenderer.removeListener('checksum-progress', handler);
-  }
+  },
+  getGitStatus: (dirPath: string) => ipcRenderer.invoke('get-git-status', dirPath)
 };
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);

@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: file:; media-src 'self' file:; font-src 'self' data:; frame-src 'self' file:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
   <title>IYERIS - File Explorer</title>
   <link rel="stylesheet" href="main.css">
   <link rel="stylesheet" href="dist/twemoji.css">
@@ -34,6 +35,15 @@
     </div>
   </div>
 
+  <div class="tab-bar glass-panel" id="tab-bar" style="display: none;">
+    <div class="tab-list" id="tab-list"></div>
+    <button class="tab-new-btn" id="new-tab-btn" title="New Tab (Ctrl+T)">
+      <svg width="14" height="14" viewBox="0 0 14 14">
+        <path d="M7 1 L7 13 M1 7 L13 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+      </svg>
+    </button>
+  </div>
+
   <div class="container">
     <div class="sidebar glass-panel">
       <div class="sidebar-section">
@@ -52,6 +62,11 @@
         </div>
       </div>
       
+      <div class="sidebar-section" id="recent-section" style="display: none;">
+        <div class="section-title">Recent</div>
+        <div id="recent-list"></div>
+      </div>
+
       <div class="sidebar-section">
         <div class="section-title">Drives</div>
         <div id="drives-list"></div>
@@ -111,16 +126,80 @@
             <div class="search-bar glass-input">
               <span class="search-icon"><img src="assets/twemoji/1f50d.svg" class="twemoji" alt="🔍" draggable="false" /></span>
               <input type="text" id="search-input" placeholder="Search files...">
+              <button class="search-filter-toggle" id="search-filter-toggle" title="Search Filters">
+                <svg width="14" height="14" viewBox="0 0 16 16">
+                  <path d="M1 2 L6 8 L6 14 L10 12 L10 8 L15 2 Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+                </svg>
+              </button>
               <button class="search-scope-toggle" id="search-scope-toggle" title="Toggle Global Search">
                 <img src="assets/twemoji/1f4c1.svg" class="twemoji" alt="📁" draggable="false" />
               </button>
               <button class="search-close" id="search-close">✕</button>
+            </div>
+            <div class="search-filters-panel" id="search-filters-panel" style="display: none;">
+              <div class="search-filter-group">
+                <label>Type</label>
+                <select id="search-filter-type">
+                  <option value="all">All Types</option>
+                  <option value="folder">Folders Only</option>
+                  <option value="image">Images</option>
+                  <option value="video">Videos</option>
+                  <option value="audio">Audio</option>
+                  <option value="document">Documents</option>
+                  <option value="archive">Archives</option>
+                </select>
+              </div>
+              <div class="search-filter-group">
+                <label>Size</label>
+                <div class="search-filter-size-inputs">
+                  <input type="number" id="search-filter-min-size" placeholder="Min" min="0">
+                  <select id="search-filter-size-unit-min">
+                    <option value="1">B</option>
+                    <option value="1024" selected>KB</option>
+                    <option value="1048576">MB</option>
+                    <option value="1073741824">GB</option>
+                  </select>
+                  <span>to</span>
+                  <input type="number" id="search-filter-max-size" placeholder="Max" min="0">
+                  <select id="search-filter-size-unit-max">
+                    <option value="1">B</option>
+                    <option value="1024">KB</option>
+                    <option value="1048576" selected>MB</option>
+                    <option value="1073741824">GB</option>
+                  </select>
+                </div>
+              </div>
+              <div class="search-filter-group">
+                <label>Modified Date</label>
+                <div class="search-filter-date-inputs">
+                  <input type="date" id="search-filter-date-from" placeholder="From">
+                  <span>to</span>
+                  <input type="date" id="search-filter-date-to" placeholder="To">
+                </div>
+              </div>
+              <div class="search-filter-group">
+                <label class="search-content-toggle">
+                  <input type="checkbox" id="search-in-contents-toggle">
+                  <span class="toggle-slider-small"></span>
+                  Search in file contents
+                </label>
+                <p class="filter-hint">Searches inside text files (txt, md, js, ts, etc.) up to 1MB</p>
+              </div>
+              <div class="search-filter-actions">
+                <button id="search-filter-clear" class="search-filter-btn secondary">Clear</button>
+                <button id="search-filter-apply" class="search-filter-btn primary">Apply</button>
+              </div>
             </div>
             <div class="history-dropdown" id="search-history-dropdown" style="display: none;"></div>
           </div>
         </div>
         
         <div class="toolbar-right">
+          <button class="toolbar-button toolbar-new-tab-btn" id="toolbar-new-tab-btn" title="New Tab (Ctrl+T)">
+            <svg width="16" height="16" viewBox="0 0 14 14">
+              <path d="M7 1 L7 13 M1 7 L13 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+          </button>
           <button class="toolbar-button" id="search-btn" title="Search (Ctrl+F)">
             <svg width="16" height="16" viewBox="0 0 16 16">
               <circle cx="6.5" cy="6.5" r="4" fill="none" stroke="currentColor" stroke-width="1.5"/>
@@ -181,8 +260,19 @@
             <p>Loading...</p>
           </div>
           <div class="empty-state" id="empty-state" style="display: none;">
-            <div class="empty-icon"><img src="assets/twemoji/1f4ed.svg" class="twemoji-xlarge" alt="📭" draggable="false" /></div>
+            <div class="empty-icon"><img src="assets/twemoji/1f4c2.svg" class="twemoji-xlarge" alt="📂" draggable="false" /></div>
             <p>This folder is empty</p>
+            <div class="empty-actions">
+              <button class="empty-action-btn" id="empty-new-folder-btn">
+                <img src="assets/twemoji/1f4c1.svg" class="twemoji" alt="📁" draggable="false" />
+                <span>New Folder</span>
+              </button>
+              <button class="empty-action-btn" id="empty-new-file-btn">
+                <img src="assets/twemoji/1f5c3.svg" class="twemoji" alt="🗃️" draggable="false" />
+                <span>New File</span>
+              </button>
+            </div>
+            <p class="empty-hint">or drop files here</p>
           </div>
           <div class="file-grid" id="file-grid"></div>
           <div class="column-view" id="column-view" style="display: none;"></div>
@@ -229,6 +319,7 @@
     <div class="context-menu-item" data-action="delete"><img src="assets/twemoji/1f5d1.svg" class="twemoji" alt="🗑️" draggable="false" /> Delete</div>
     <div class="context-menu-separator"></div>
     <div class="context-menu-item" data-action="add-to-bookmarks" id="add-to-bookmarks-item" style="display: none;"><img src="assets/twemoji/2b50.svg" class="twemoji" alt="⭐" draggable="false" /> Add to Bookmarks</div>
+    <div class="context-menu-item" data-action="change-folder-icon" id="change-folder-icon-item" style="display: none;"><img src="assets/twemoji/1f3a8.svg" class="twemoji" alt="🎨" draggable="false" /> Change Folder Icon</div>
     <div class="context-menu-item" data-action="open-terminal" id="open-terminal-item"><img src="assets/twemoji/1f5a5.svg" class="twemoji" alt="🖥️" draggable="false" /> Open folder in Terminal</div>
     <div class="context-menu-separator"></div>
     <div class="context-menu-item" data-action="properties"><img src="assets/twemoji/2139.svg" class="twemoji" alt="ℹ️" draggable="false" /> Properties</div>
@@ -297,6 +388,7 @@
           <div class="settings-sidebar-section">
             <button class="settings-tab active" data-tab="appearance"><img src="assets/twemoji/1f3a8.svg" class="twemoji" alt="🎨" draggable="false" /> Appearance</button>
             <button class="settings-tab" data-tab="view"><img src="assets/twemoji/1f441.svg" class="twemoji" alt="👁️" draggable="false" /> View</button>
+            <button class="settings-tab" data-tab="accessibility"><img src="assets/twemoji/267f.svg" class="twemoji" alt="♿" draggable="false" /> Accessibility</button>
             <button class="settings-tab" data-tab="startup"><img src="assets/twemoji/1f680.svg" class="twemoji" alt="🚀" draggable="false" /> Startup</button>
           </div>
           <div class="settings-sidebar-section">
@@ -335,8 +427,21 @@
                   <option value="default">Charcoal</option>
                   <option value="dark">Cobalt</option>
                   <option value="light">Light</option>
-                  <option value="custom">Custom...</option>
                 </select>
+              </div>
+              <div class="setting-item" data-searchable="theme color scheme custom customize editor">
+                <div class="setting-info">
+                  <label>Custom Theme</label>
+                  <p class="setting-description" id="custom-theme-description">Create your own color scheme</p>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                  <button class="modal-button" id="open-theme-editor-btn" style="min-width: 120px;">
+                    <img src="assets/twemoji/1f3a8.svg" class="twemoji" alt="🎨" draggable="false" /> Customize
+                  </button>
+                  <button class="modal-button secondary" id="use-custom-theme-btn" style="min-width: 100px; display: none;">
+                    <img src="assets/twemoji/2714.svg" class="twemoji" alt="✔️" draggable="false" /> Use Custom
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -367,6 +472,16 @@
                 </div>
                 <label class="toggle-switch">
                   <input type="checkbox" id="show-hidden-files-toggle">
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+              <div class="setting-item" data-searchable="git status vcs repository indicators badges">
+                <div class="setting-info">
+                  <label for="enable-git-status-toggle">Git Status Indicators</label>
+                  <p class="setting-description">Show Git status badges in file lists (may slow navigation in large repositories)</p>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="enable-git-status-toggle">
                   <span class="toggle-slider"></span>
                 </label>
               </div>
@@ -407,6 +522,44 @@
                 </label>
               </div>
             </div>
+
+            <div class="settings-card">
+              <div class="settings-card-header">Sidebar & Tabs</div>
+              <div class="setting-item" data-searchable="recent files sidebar show hide display">
+                <div class="setting-info">
+                  <label for="show-recent-files-toggle">Show Recent Files</label>
+                  <p class="setting-description">Display recently opened files in the sidebar</p>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="show-recent-files-toggle" checked>
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+              <div class="setting-item" data-searchable="tabs tabbed browsing enable disable">
+                <div class="setting-info">
+                  <label for="enable-tabs-toggle">Enable Tabs</label>
+                  <p class="setting-description">Enable tabbed browsing within a single window (requires restart)</p>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="enable-tabs-toggle" checked>
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+            </div>
+
+            <div class="settings-card">
+              <div class="settings-card-header">Preview</div>
+              <div class="setting-item" data-searchable="syntax highlighting code preview color">
+                <div class="setting-info">
+                  <label for="enable-syntax-highlighting-toggle">Syntax Highlighting</label>
+                  <p class="setting-description">Enable code syntax highlighting in file previews.</p>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="enable-syntax-highlighting-toggle">
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+            </div>
           </div>
 
           <div class="settings-section" id="tab-startup">
@@ -436,7 +589,83 @@
               </div>
             </div>
           </div>
-          
+
+          <div class="settings-section" id="tab-accessibility">
+            <h4><img src="assets/twemoji/267f.svg" class="twemoji" alt="♿" draggable="false" /> Accessibility</h4>
+
+            <div class="settings-card">
+              <div class="settings-card-header">Motion</div>
+              <div class="setting-item" data-searchable="reduce motion animation transition movement">
+                <div class="setting-info">
+                  <label for="reduce-motion-toggle">Reduce Motion</label>
+                  <p class="setting-description">Disable animations and transitions throughout the app</p>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="reduce-motion-toggle">
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+            </div>
+
+            <div class="settings-card">
+              <div class="settings-card-header">Display</div>
+              <div class="setting-item" data-searchable="high contrast visibility color">
+                <div class="setting-info">
+                  <label for="high-contrast-toggle">High Contrast</label>
+                  <p class="setting-description">Increase color contrast for better readability</p>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="high-contrast-toggle">
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+              <div class="setting-item" data-searchable="large text font size bigger reading">
+                <div class="setting-info">
+                  <label for="large-text-toggle">Large Text</label>
+                  <p class="setting-description">Increase the base font size for easier reading</p>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="large-text-toggle">
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+              <div class="setting-item" data-searchable="bold text font weight thicker">
+                <div class="setting-info">
+                  <label for="bold-text-toggle">Bold Text</label>
+                  <p class="setting-description">Make text bolder throughout the app</p>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="bold-text-toggle">
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+              <div class="setting-item" data-searchable="reduce transparency blur glass solid background">
+                <div class="setting-info">
+                  <label for="reduce-transparency-toggle">Reduce Transparency</label>
+                  <p class="setting-description">Replace transparent glass effects with solid backgrounds</p>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="reduce-transparency-toggle">
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+            </div>
+
+            <div class="settings-card">
+              <div class="settings-card-header">Keyboard</div>
+              <div class="setting-item" data-searchable="visible focus indicator outline keyboard navigation">
+                <div class="setting-info">
+                  <label for="visible-focus-toggle">Visible Focus Indicators</label>
+                  <p class="setting-description">Show clear outlines around focused elements for keyboard navigation</p>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="visible-focus-toggle">
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+            </div>
+          </div>
+
           <div class="settings-section" id="tab-data">
             <h4><img src="assets/twemoji/1f4be.svg" class="twemoji" alt="💾" draggable="false" /> Data</h4>
             
@@ -510,9 +739,19 @@
                 </div>
                 <button class="modal-button" id="rebuild-index-btn"><img src="assets/twemoji/1f504.svg" class="twemoji" alt="🔄" draggable="false" /> Rebuild</button>
               </div>
+              <div class="setting-item" data-searchable="global content search file inside text">
+                <div class="setting-info">
+                  <label for="global-content-search-toggle">Global Content Search</label>
+                  <p class="setting-description">Allow searching inside file contents during global search (may be slow on large indexes)</p>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="global-content-search-toggle">
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
             </div>
           </div>
-          
+
           <div class="settings-section" id="tab-advanced">
             <h4><img src="assets/twemoji/2699.svg" class="twemoji" alt="⚙️" draggable="false" /> Advanced</h4>
             
@@ -528,8 +767,19 @@
                   <span class="toggle-slider"></span>
                 </label>
               </div>
+              <div class="setting-item" id="update-channel-setting" data-searchable="update channel beta stable release prerelease version">
+                <div class="setting-info">
+                  <label for="update-channel-select">Update Channel</label>
+                  <p class="setting-description">Choose which release channel to receive updates from</p>
+                </div>
+                <select id="update-channel-select" class="settings-select">
+                  <option value="auto">Auto (follow version)</option>
+                  <option value="beta">Beta</option>
+                  <option value="stable">Stable</option>
+                </select>
+              </div>
             </div>
-            
+
             <div class="settings-card">
               <div class="settings-card-header">Developer Options</div>
               <div class="setting-item" data-searchable="developer mode debug hidden dangerous options">
@@ -561,7 +811,7 @@
               </div>
               <div class="about-info">
                 <h2 class="about-title">IYERIS</h2>
-                <p class="about-version" id="about-version-display">Version 0.8.7</p>
+                <p class="about-version" id="about-version-display">Version 0.9.0</p>
                 <p class="about-tagline">A modern, cross-platform file explorer</p>
               </div>
             </div>
@@ -668,7 +918,7 @@
           </div>
           <div class="shortcut-item">
             <span class="shortcut-description">Show Shortcuts</span>
-            <span class="shortcut-keys"><kbd>Ctrl</kbd> + <kbd>.</kbd></span>
+            <span class="shortcut-keys"><kbd>Ctrl</kbd> + <kbd>?</kbd></span>
           </div>
           <div class="shortcut-item">
             <span class="shortcut-description">Refresh</span>
@@ -691,32 +941,40 @@
         <div class="shortcuts-section">
           <h3>Navigation</h3>
           <div class="shortcut-item">
-            <span class="shortcut-description">Go Back</span>
-            <span class="shortcut-keys"><kbd>Alt</kbd> + <kbd>←</kbd></span>
+            <span class="shortcut-description">Navigate Files</span>
+            <span class="shortcut-keys"><kbd>↑</kbd> <kbd>↓</kbd> <kbd>←</kbd> <kbd>→</kbd></span>
           </div>
           <div class="shortcut-item">
-            <span class="shortcut-description">Go Forward</span>
-            <span class="shortcut-keys"><kbd>Alt</kbd> + <kbd>→</kbd></span>
+            <span class="shortcut-description">Open Selected</span>
+            <span class="shortcut-keys"><kbd>Enter</kbd></span>
           </div>
           <div class="shortcut-item">
-            <span class="shortcut-description">Go Up</span>
-            <span class="shortcut-keys"><kbd>Alt</kbd> + <kbd>↑</kbd></span>
+            <span class="shortcut-description">First / Last File</span>
+            <span class="shortcut-keys"><kbd>Home</kbd> / <kbd>End</kbd></span>
           </div>
           <div class="shortcut-item">
-            <span class="shortcut-description">Go Home</span>
-            <span class="shortcut-keys"><kbd>Alt</kbd> + <kbd>Home</kbd></span>
+            <span class="shortcut-description">New Tab</span>
+            <span class="shortcut-keys"><kbd>Ctrl</kbd> + <kbd>T</kbd></span>
+          </div>
+          <div class="shortcut-item">
+            <span class="shortcut-description">Close Current Tab</span>
+            <span class="shortcut-keys"><kbd>Ctrl</kbd> + <kbd>W</kbd></span>
+          </div>
+          <div class="shortcut-item">
+            <span class="shortcut-description">Next Tab</span>
+            <span class="shortcut-keys"><kbd>Ctrl</kbd> + <kbd>Tab</kbd></span>
+          </div>
+          <div class="shortcut-item">
+            <span class="shortcut-description">Previous Tab</span>
+            <span class="shortcut-keys"><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>Tab</kbd></span>
           </div>
         </div>
-        
+
         <div class="shortcuts-section">
           <h3>File Operations</h3>
           <div class="shortcut-item">
             <span class="shortcut-description">New Window</span>
             <span class="shortcut-keys"><kbd>Ctrl</kbd> + <kbd>N</kbd></span>
-          </div>
-          <div class="shortcut-item">
-            <span class="shortcut-description">New Folder</span>
-            <span class="shortcut-keys"><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>N</kbd></span>
           </div>
           <div class="shortcut-item">
             <span class="shortcut-description">Rename</span>
@@ -754,8 +1012,12 @@
             <span class="shortcut-description">Multi-select</span>
             <span class="shortcut-keys"><kbd>Ctrl</kbd> + <kbd>Click</kbd></span>
           </div>
+          <div class="shortcut-item">
+            <span class="shortcut-description">Extend Selection</span>
+            <span class="shortcut-keys"><kbd>Shift</kbd> + <kbd>↑</kbd> <kbd>↓</kbd> <kbd>←</kbd> <kbd>→</kbd></span>
+          </div>
         </div>
-        
+
         <div class="shortcuts-section">
           <h3>Undo/Redo</h3>
           <div class="shortcut-item">
@@ -764,7 +1026,27 @@
           </div>
           <div class="shortcut-item">
             <span class="shortcut-description">Redo</span>
-            <span class="shortcut-keys"><kbd>Ctrl</kbd> + <kbd>Y</kbd></span>
+            <span class="shortcut-keys"><kbd>Ctrl</kbd> + <kbd>Y</kbd> or <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>Z</kbd></span>
+          </div>
+        </div>
+
+        <div class="shortcuts-section">
+          <h3>View</h3>
+          <div class="shortcut-item">
+            <span class="shortcut-description">Quick Look</span>
+            <span class="shortcut-keys"><kbd>Space</kbd></span>
+          </div>
+          <div class="shortcut-item">
+            <span class="shortcut-description">Zoom In</span>
+            <span class="shortcut-keys"><kbd>Ctrl</kbd> + <kbd>+</kbd></span>
+          </div>
+          <div class="shortcut-item">
+            <span class="shortcut-description">Zoom Out</span>
+            <span class="shortcut-keys"><kbd>Ctrl</kbd> + <kbd>-</kbd></span>
+          </div>
+          <div class="shortcut-item">
+            <span class="shortcut-description">Reset Zoom</span>
+            <span class="shortcut-keys"><kbd>Ctrl</kbd> + <kbd>0</kbd></span>
           </div>
         </div>
       </div>
@@ -784,7 +1066,7 @@
     <div class="status-right">
       <span id="status-disk-space"></span>
       <span class="status-separator"></span>
-      <span class="status-version" id="status-version" title="Version 0.8.7">v0.8.7</span>
+      <span class="status-version" id="status-version" title="Version 0.9.0">v0.9.0</span>
       <span class="status-separator"></span>
       <button class="status-support-btn" id="heart-button" title="Support this project!">
         <img src="assets/twemoji/2764.svg" class="twemoji" alt="❤️" draggable="false" />
@@ -949,6 +1231,23 @@
       <div class="modal-footer">
         <button class="modal-button secondary" id="theme-editor-cancel">Cancel</button>
         <button class="modal-button primary" id="theme-editor-save">Save Theme</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="folder-icon-modal" style="display: none;">
+    <div class="modal glass-panel folder-icon-modal">
+      <div class="modal-header">
+        <h3><img src="assets/twemoji/1f3a8.svg" class="twemoji" alt="🎨" draggable="false" /> Change Folder Icon</h3>
+        <button class="modal-close" id="folder-icon-close">✕</button>
+      </div>
+      <div class="modal-body folder-icon-body">
+        <p class="folder-icon-path" id="folder-icon-path"></p>
+        <div class="folder-icon-grid" id="folder-icon-grid"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="modal-button secondary" id="folder-icon-reset">Reset to Default</button>
+        <button class="modal-button primary" id="folder-icon-cancel">Cancel</button>
       </div>
     </div>
   </div>

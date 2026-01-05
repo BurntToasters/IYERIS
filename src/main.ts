@@ -1,12 +1,61 @@
 import { app, BrowserWindow, ipcMain, dialog, shell, IpcMainInvokeEvent, Menu, Tray, nativeImage, powerMonitor } from 'electron';
+import type { WebContents } from 'electron';
 import * as path from 'path';
+import { pathToFileURL } from 'url';
 import { promises as fs } from 'fs';
 import * as fsSync from 'fs';
-import { exec, spawn } from 'child_process';
+import { exec, execFile, spawn } from 'child_process';
 import { promisify } from 'util';
-import type { Settings, FileItem, ApiResponse, DirectoryResponse, PathResponse, PropertiesResponse, SettingsResponse, UpdateCheckResponse, IndexSearchResponse } from './types';
+import * as os from 'os';
+import type { Settings, FileItem, ApiResponse, DirectoryResponse, PathResponse, PropertiesResponse, SettingsResponse, UpdateCheckResponse, IndexSearchResponse, IndexEntry, UndoAction } from './types';
 import { FileIndexer } from './indexer';
-import { getDrives } from './utils';
+import { FileTaskManager } from './fileTasks';
+import { getDrives, getCachedDrives, warmupDrivesCache } from './utils';
+import { isPathSafe, isUrlSafe, getErrorMessage } from './security';
+import { createDefaultSettings } from './settings';
+
+let autoUpdaterModule: typeof import('electron-updater') | null = null;
+let sevenBinModule: { path7za: string } | null = null;
+let sevenZipModule: any = null;
+
+function getAutoUpdater() {
+  if (!autoUpdaterModule) {
+    autoUpdaterModule = require('electron-updater');
+  }
+  return autoUpdaterModule!.autoUpdater;
+}
+
+function get7zipBin(): { path7za: string } {
+  if (!sevenBinModule) {
+    sevenBinModule = require('7zip-bin');
+  }
+  return sevenBinModule!;
+}
+
+function get7zipModule() {
+  if (!sevenZipModule) {
+    sevenZipModule = require('node-7z');
+  }
+  return sevenZipModule;
+}
+
+const MAX_UNDO_STACK_SIZE = 50;
+const HIDDEN_FILE_CACHE_TTL = 300000;
+const HIDDEN_FILE_CACHE_MAX = 5000;
+const SETTINGS_CACHE_TTL_MS = 5000;
+const ZOOM_MIN = 0.5;
+const ZOOM_MAX = 2.0;
+const MAX_TEXT_PREVIEW_BYTES = 1024 * 1024;
+const MAX_DATA_URL_BYTES = 10 * 1024 * 1024;
+
+const CPU_COUNT = Math.max(1, os.cpus().length);
+const TOTAL_MEM_GB = os.totalmem() / (1024 ** 3);
+const MAX_WORKERS = TOTAL_MEM_GB < 6 ? 2 : TOTAL_MEM_GB < 12 ? 4 : TOTAL_MEM_GB < 24 ? 6 : 8;
+const BASE_WORKER_COUNT = Math.max(1, Math.min(CPU_COUNT, MAX_WORKERS));
+const INDEXER_WORKER_COUNT = 1;
+const UI_WORKER_COUNT = Math.max(1, BASE_WORKER_COUNT);
+const fileTasks = new FileTaskManager(UI_WORKER_COUNT);
+const indexerTasks = new FileTaskManager(INDEXER_WORKER_COUNT);
 
 // Disable hardware accel via cli arg
 if (process.argv.includes('--disable-hardware-acceleration')) {
@@ -14,10 +63,19 @@ if (process.argv.includes('--disable-hardware-acceleration')) {
   app.disableHardwareAcceleration();
 }
 
-// Enable V8 code caching via cli args
-app.commandLine.appendSwitch('--enable-blink-features', 'CodeCache');
+// Memory and performance optimizations
+const MAX_OLD_SPACE_MB = TOTAL_MEM_GB < 6 ? 512 : TOTAL_MEM_GB < 12 ? 1024 : TOTAL_MEM_GB < 24 ? 2048 : 3072;
+const jsFlags: string[] = [`--max-old-space-size=${MAX_OLD_SPACE_MB}`];
+if (TOTAL_MEM_GB < 12) {
+  jsFlags.push('--optimize-for-size', '--gc-interval=100');
+}
+app.commandLine.appendSwitch('js-flags', jsFlags.join(' '));
+app.commandLine.appendSwitch('enable-features', 'ReducedReferrerGranularity,V8VmFuture');
+app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion,MediaRouter');
+app.commandLine.appendSwitch('disable-renderer-backgrounding');
+app.commandLine.appendSwitch('disable-background-timer-throttling');
 app.commandLine.appendSwitch('wm-window-animations-disabled');
-app.commandLine.appendSwitch('disable-http-cache');
+app.commandLine.appendSwitch('force-color-profile', 'srgb');
 
 // Check Flatpak status at start
 let isInFlatpak: boolean | null = null;
@@ -29,31 +87,48 @@ const isRunningInFlatpak = (): boolean => {
   return isInFlatpak;
 };
 
-// Check if installed via MSI
-const isInstalledViaMsi = (): boolean => {
-  if (process.platform !== 'win32') return false;
-  
-  try {
-    const { execSync } = require('child_process');
-    const result = execSync(
-      'reg query "HKCU\\Software\\IYERIS" /v InstalledViaMsi 2>nul',
-      { encoding: 'utf8', windowsHide: true }
-    );
-    return result.includes('InstalledViaMsi') && result.includes('0x1');
-  } catch {
-    return false;
+// Check if installed via MSI (async to avoid blocking startup)
+let msiCheckPromise: Promise<boolean> | null = null;
+let msiCheckResult: boolean | null = null;
+
+const checkMsiInstallation = (): Promise<boolean> => {
+  if (process.platform !== 'win32') return Promise.resolve(false);
+  if (msiCheckResult !== null) return Promise.resolve(msiCheckResult);
+
+  if (!msiCheckPromise) {
+    msiCheckPromise = new Promise((resolve) => {
+      exec(
+        'reg query "HKCU\\Software\\IYERIS" /v InstalledViaMsi 2>nul',
+        { encoding: 'utf8', windowsHide: true },
+        (error, stdout) => {
+          msiCheckResult = !error && stdout.includes('InstalledViaMsi') && stdout.includes('0x1');
+          resolve(msiCheckResult);
+        }
+      );
+    });
   }
+  return msiCheckPromise;
 };
 
+const isInstalledViaMsi = (): boolean => {
+  return msiCheckResult === true;
+};
+
+let cached7zipPath: string | null = null;
 const get7zipPath = (): string => {
-  const sevenBin = require('7zip-bin');
+  if (cached7zipPath) {
+    return cached7zipPath;
+  }
+
+  const sevenBin = get7zipBin();
   let sevenZipPath = sevenBin.path7za;
 
   if (app.isPackaged) {
     sevenZipPath = sevenZipPath.replace('app.asar', 'app.asar.unpacked');
   }
-  
+
   console.log('[7zip] Using path:', sevenZipPath);
+  cached7zipPath = sevenZipPath;
   return sevenZipPath;
 };
 
@@ -61,72 +136,102 @@ let mainWindow: BrowserWindow | null = null;
 let fileIndexer: FileIndexer | null = null;
 let tray: Tray | null = null;
 let isQuitting = false;
+let currentTrayState: 'idle' | 'active' | 'notification' = 'idle';
+let trayAssetsPath: string = '';
+
+function getActiveWindow(): BrowserWindow | null {
+  if (mainWindow && !mainWindow.isDestroyed()) return mainWindow;
+  const allWindows = BrowserWindow.getAllWindows();
+  return allWindows.length > 0 ? allWindows[0] : null;
+}
+
+function showAppWindow(): void {
+  const targetWindow = getActiveWindow();
+  if (targetWindow) {
+    targetWindow.show();
+    targetWindow.focus();
+  } else {
+    createWindow(false);
+  }
+  if (process.platform === 'darwin') {
+    app.dock?.show();
+  }
+}
+
+function quitApp(): void {
+  isQuitting = true;
+  app.quit();
+}
+
+function updateTrayMenu(status?: string): void {
+  if (!tray) return;
+  const menuItems: Electron.MenuItemConstructorOptions[] = [];
+
+  if (status) {
+    menuItems.push({ label: status, enabled: false });
+    menuItems.push({ type: 'separator' });
+  }
+
+  menuItems.push({ label: 'Show IYERIS', click: showAppWindow });
+  menuItems.push({ type: 'separator' });
+  menuItems.push({ label: 'Quit', click: quitApp });
+
+  tray.setContextMenu(Menu.buildFromTemplate(menuItems));
+}
+
+function setTrayState(state: 'idle' | 'active' | 'notification'): void {
+  if (!tray || !trayAssetsPath || currentTrayState === state) return;
+  currentTrayState = state;
+
+  const iconFiles: Record<string, Record<string, string>> = {
+    darwin: { idle: 'icon-tray-Template.png', active: 'icon-tray-Template.png', notification: 'icon-tray-Template.png' },
+    win32: { idle: 'icon-square.ico', active: 'icon-square.ico', notification: 'icon-square.ico' },
+    linux: { idle: 'icon_32x32@1x.png', active: 'icon_32x32@1x.png', notification: 'icon_32x32@1x.png' }
+  };
+
+  const platform = process.platform as 'darwin' | 'win32' | 'linux';
+  const iconFile = iconFiles[platform]?.[state] || iconFiles[platform]?.idle;
+
+  let iconPath: string;
+  if (platform === 'darwin') {
+    iconPath = path.join(trayAssetsPath, iconFile);
+    if (!fsSync.existsSync(iconPath)) {
+      const fallbackPath = path.join(trayAssetsPath, 'iyeris.iconset', 'icon_32x32@1x.png');
+      iconPath = fsSync.existsSync(fallbackPath) ? fallbackPath : path.join(trayAssetsPath, 'icon.png');
+    }
+  } else if (platform === 'linux') {
+    iconPath = path.join(trayAssetsPath, 'iyeris.iconset', iconFile);
+    if (!fsSync.existsSync(iconPath)) {
+      iconPath = path.join(trayAssetsPath, 'icon.png');
+    }
+  } else {
+    iconPath = path.join(trayAssetsPath, iconFile);
+    if (!fsSync.existsSync(iconPath)) {
+      iconPath = path.join(trayAssetsPath, 'icon.png');
+    }
+  }
+
+  const sizes: Record<string, { width: number; height: number }> = {
+    darwin: { width: 22, height: 22 },
+    win32: { width: 16, height: 16 },
+    linux: { width: 24, height: 24 }
+  };
+
+  let newIcon = nativeImage.createFromPath(iconPath);
+  if (platform !== 'win32' || !iconPath.endsWith('.ico')) {
+    newIcon = newIcon.resize(sizes[platform] || sizes.linux);
+  }
+
+  if (platform === 'darwin') {
+    newIcon.setTemplateImage(true);
+  }
+
+  tray.setImage(newIcon);
+}
+
 let shouldStartHidden = false;
 let hiddenFileCacheCleanupInterval: NodeJS.Timeout | null = null;
-import * as crypto from 'crypto';
-
-function isPathSafe(inputPath: string): boolean {
-  if (!inputPath || typeof inputPath !== 'string') {
-    return false;
-  }
-
-  // Check for null bytes
-  if (inputPath.includes('\0')) {
-    console.warn('[Security] Path contains null byte:', inputPath);
-    return false;
-  }
-
-  const suspiciousChars = /[<>"|*?]/;
-  if (suspiciousChars.test(inputPath)) {
-    console.warn('[Security] Path contains suspicious characters:', inputPath);
-    return false;
-  }
-
-  const normalized = path.normalize(inputPath);
-  const resolved = path.resolve(inputPath);
-
-  if (normalized.includes('..')) {
-    console.warn('[Security] Path contains parent directory reference after normalization:', inputPath);
-    return false;
-  }
-
-  // Validate UNC paths on Windows
-  if (process.platform === 'win32' && normalized.startsWith('\\\\')) {
-    const parts = normalized.split('\\').filter(Boolean);
-    if (parts.length < 1) {
-      console.warn('[Security] Invalid UNC path:', inputPath);
-      return false;
-    }
-  }
-
-  if (process.platform === 'win32') {
-    const lowerResolved = resolved.toLowerCase();
-    const restrictedPaths = [
-      'c:\\windows\\system32\\config\\sam',
-      'c:\\windows\\system32\\config\\system',
-      'c:\\windows\\system32\\config\\security'
-    ];
-
-    for (const restricted of restrictedPaths) {
-      if (lowerResolved === restricted || lowerResolved.startsWith(restricted + '\\')) {
-        console.warn('[Security] Attempt to access restricted system file:', inputPath);
-        return false;
-      }
-    }
-  }
-
-  return true;
-}
-
-const ALLOWED_URL_SCHEMES = ['http:', 'https:', 'mailto:', 'file:'];
-function isUrlSafe(url: string): boolean {
-  try {
-    const parsed = new URL(url);
-    return ALLOWED_URL_SCHEMES.includes(parsed.protocol);
-  } catch {
-    return false;
-  }
-}
+const directoryOperationTargets = new Map<string, WebContents>();
 
 function safeSendToWindow(win: BrowserWindow | null, channel: string, ...args: any[]): boolean {
   try {
@@ -140,15 +245,227 @@ function safeSendToWindow(win: BrowserWindow | null, channel: string, ...args: a
   return false;
 }
 
-function parseVersion(v: string): { major: number; minor: number; patch: number; prerelease: string } {
-  const match = v.match(/^v?(\d+)\.(\d+)\.(\d+)(?:-(.+))?$/);
-  if (!match) return { major: 0, minor: 0, patch: 0, prerelease: '' };
+function safeSendToContents(contents: WebContents | null, channel: string, ...args: any[]): boolean {
+  try {
+    if (contents && !contents.isDestroyed()) {
+      contents.send(channel, ...args);
+      return true;
+    }
+  } catch (error) {
+    console.error(`[IPC] Failed to send ${channel}:`, error);
+  }
+  return false;
+}
+
+fileTasks.on('progress', (message: { task: string; operationId: string; data: any }) => {
+  if (message.task === 'folder-size') {
+    if (activeFolderSizeCalculations.has(message.operationId)) {
+      safeSendToWindow(mainWindow, 'folder-size-progress', {
+        operationId: message.operationId,
+        ...message.data
+      });
+    }
+    return;
+  }
+  if (message.task === 'checksum') {
+    if (activeChecksumCalculations.has(message.operationId)) {
+      safeSendToWindow(mainWindow, 'checksum-progress', {
+        operationId: message.operationId,
+        ...message.data
+      });
+    }
+    return;
+  }
+  if (message.task === 'list-directory') {
+    const target = directoryOperationTargets.get(message.operationId) || null;
+    const sent = safeSendToContents(target, 'directory-contents-progress', {
+      operationId: message.operationId,
+      ...message.data
+    });
+    if (!sent) {
+      directoryOperationTargets.delete(message.operationId);
+    }
+  }
+});
+
+function spawnWithTimeout(
+  command: string,
+  args: string[],
+  timeoutMs: number,
+  options: Parameters<typeof spawn>[2]
+): { child: ReturnType<typeof spawn>; timedOut: () => boolean } {
+  let didTimeout = false;
+  const child = spawn(command, args, options);
+  const timeout = setTimeout(() => {
+    didTimeout = true;
+    try {
+      child.kill();
+    } catch {
+    }
+  }, timeoutMs);
+
+  const clear = () => clearTimeout(timeout);
+  child.on('close', clear);
+  child.on('error', clear);
+
+  return { child, timedOut: () => didTimeout };
+}
+
+async function assertArchiveEntriesSafe(archivePath: string, destPath: string): Promise<void> {
+  const Seven = get7zipModule();
+  const sevenZipPath = get7zipPath();
+
+  const entries = await new Promise<string[]>((resolve, reject) => {
+    const list = Seven.list(archivePath, { $bin: sevenZipPath });
+    const names: string[] = [];
+
+    list.on('data', (data: { file?: string }) => {
+      if (data && data.file) {
+        names.push(String(data.file));
+      }
+    });
+    list.on('end', () => resolve(names));
+    list.on('error', (err: Error) => reject(err));
+  });
+
+  const destRoot = path.resolve(destPath);
+  const destRootWithSep = destRoot.endsWith(path.sep) ? destRoot : destRoot + path.sep;
+  const invalidEntries: string[] = [];
+
+  for (const entry of entries) {
+    if (!entry) continue;
+
+    const normalized = entry.replace(/\\/g, '/').replace(/^\.\/+/, '');
+    if (!normalized) continue;
+    if (normalized.startsWith('/') || normalized.startsWith('//') || /^[a-zA-Z]:/.test(normalized)) {
+      invalidEntries.push(entry);
+      continue;
+    }
+    const parts = normalized.split('/');
+    if (parts.some(part => part === '..')) {
+      invalidEntries.push(entry);
+      continue;
+    }
+
+    const targetPath = path.resolve(destRoot, normalized);
+    if (targetPath !== destRoot && !targetPath.startsWith(destRootWithSep)) {
+      invalidEntries.push(entry);
+    }
+  }
+
+  if (invalidEntries.length > 0) {
+    const preview = invalidEntries.slice(0, 5).join(', ');
+    throw new Error(`Archive contains unsafe paths: ${preview}${invalidEntries.length > 5 ? '...' : ''}`);
+  }
+}
+
+async function assertExtractedPathsSafe(destPath: string): Promise<void> {
+  const destRoot = await fs.realpath(destPath);
+  const destRootWithSep = destRoot.endsWith(path.sep) ? destRoot : destRoot + path.sep;
+  const unsafe: string[] = [];
+  const stack: string[] = [destRoot];
+
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!current) continue;
+    let entries: fsSync.Dirent[];
+    try {
+      entries = await fs.readdir(current, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+
+    for (const entry of entries) {
+      const fullPath = path.join(current, entry.name);
+      let stat: fsSync.Stats;
+      try {
+        stat = await fs.lstat(fullPath);
+      } catch {
+        continue;
+      }
+
+      if (stat.isSymbolicLink()) {
+        unsafe.push(fullPath);
+        try {
+          await fs.unlink(fullPath);
+        } catch {
+        }
+        continue;
+      }
+
+      let realPath: string;
+      try {
+        realPath = await fs.realpath(fullPath);
+      } catch {
+        unsafe.push(fullPath);
+        try {
+          await fs.rm(fullPath, { recursive: true, force: true });
+        } catch {
+        }
+        continue;
+      }
+
+      if (realPath !== destRoot && !realPath.startsWith(destRootWithSep)) {
+        unsafe.push(fullPath);
+        try {
+          await fs.rm(fullPath, { recursive: true, force: true });
+        } catch {
+        }
+        continue;
+      }
+
+      if (stat.isDirectory()) {
+        stack.push(fullPath);
+      }
+    }
+  }
+
+  if (unsafe.length > 0) {
+    const preview = unsafe.slice(0, 5).join(', ');
+    throw new Error(`Archive extraction created unsafe paths: ${preview}${unsafe.length > 5 ? '...' : ''}`);
+  }
+}
+
+function parseVersion(v: string): { major: number; minor: number; patch: number; prerelease: string[] } {
+  const cleaned = v.split('+')[0];
+  const match = cleaned.match(/^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/);
+  if (!match) return { major: 0, minor: 0, patch: 0, prerelease: [] };
   return {
     major: parseInt(match[1], 10),
     minor: parseInt(match[2], 10),
     patch: parseInt(match[3], 10),
-    prerelease: match[4] || ''
+    prerelease: match[4] ? match[4].split('.') : []
   };
+}
+
+function comparePrerelease(a: string[], b: string[]): number {
+  if (a.length === 0 && b.length === 0) return 0;
+  if (a.length === 0) return 1;
+  if (b.length === 0) return -1;
+
+  const maxLen = Math.max(a.length, b.length);
+  for (let i = 0; i < maxLen; i++) {
+    const aId = a[i];
+    const bId = b[i];
+    if (aId === undefined) return -1;
+    if (bId === undefined) return 1;
+
+    const aNum = /^\d+$/.test(aId) ? parseInt(aId, 10) : null;
+    const bNum = /^\d+$/.test(bId) ? parseInt(bId, 10) : null;
+
+    if (aNum !== null && bNum !== null) {
+      if (aNum !== bNum) return aNum > bNum ? 1 : -1;
+    } else if (aNum !== null) {
+      return -1;
+    } else if (bNum !== null) {
+      return 1;
+    } else {
+      const cmp = aId.localeCompare(bId);
+      if (cmp !== 0) return cmp;
+    }
+  }
+
+  return 0;
 }
 
 function compareVersions(a: string, b: string): number {
@@ -158,13 +475,8 @@ function compareVersions(a: string, b: string): number {
   if (vA.major !== vB.major) return vA.major > vB.major ? 1 : -1;
   if (vA.minor !== vB.minor) return vA.minor > vB.minor ? 1 : -1;
   if (vA.patch !== vB.patch) return vA.patch > vB.patch ? 1 : -1;
-  if (!vA.prerelease && vB.prerelease) return 1;
-  if (vA.prerelease && !vB.prerelease) return -1;
-  if (vA.prerelease && vB.prerelease) {
-    return vA.prerelease.localeCompare(vB.prerelease);
-  }
-  
-  return 0;
+
+  return comparePrerelease(vA.prerelease, vB.prerelease);
 }
 
 let sharedClipboard: { operation: 'copy' | 'cut'; paths: string[] } | null = null;
@@ -198,32 +510,18 @@ if (!gotTheLock) {
   });
 }
 
-interface UndoAction {
-  type: 'trash' | 'rename' | 'move' | 'create';
-  data: any;
-}
+// UndoAction type is imported from './types'
 
 const undoStack: UndoAction[] = [];
 const redoStack: UndoAction[] = [];
-const MAX_UNDO_STACK = 50;
 
 const activeArchiveProcesses = new Map<string, any>();
 const activeFolderSizeCalculations = new Map<string, { aborted: boolean }>();
 const activeChecksumCalculations = new Map<string, { aborted: boolean }>();
 
-function getErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  if (typeof error === 'string') {
-    return error;
-  }
-  return String(error);
-}
-
 function pushUndoAction(action: UndoAction): void {
   undoStack.push(action);
-  if (undoStack.length > MAX_UNDO_STACK) {
+  if (undoStack.length > MAX_UNDO_STACK_SIZE) {
     undoStack.shift();
   }
   redoStack.length = 0;
@@ -232,44 +530,34 @@ function pushUndoAction(action: UndoAction): void {
 
 function pushRedoAction(action: UndoAction): void {
   redoStack.push(action);
-  if (redoStack.length > MAX_UNDO_STACK) {
+  if (redoStack.length > MAX_UNDO_STACK_SIZE) {
     redoStack.shift();
   }
   console.log('[Redo] Action pushed:', action.type, 'Stack size:', redoStack.length);
 }
 
-const defaultSettings: Settings = {
-  transparency: true,
-  theme: 'default',
-  sortBy: 'name',
-  sortOrder: 'asc',
-  bookmarks: [],
-  viewMode: 'grid',
-  showDangerousOptions: false,
-  startupPath: '',
-  showHiddenFiles: false,
-  enableSearchHistory: true,
-  searchHistory: [],
-  directoryHistory: [],
-  enableIndexer: true,
-  minimizeToTray: false,
-  startOnLogin: false,
-  autoCheckUpdates: true
-};
 
 function applyLoginItemSettings(settings: Settings): void {
   try {
     console.log('[LoginItem] Applying settings:', settings.startOnLogin);
-    
+
     if (process.platform === 'win32') {
-      // Windows - Use exe path and pass --hidden
-      const exePath = app.getPath('exe');
-      app.setLoginItemSettings({
-        openAtLogin: settings.startOnLogin,
-        path: exePath,
-        args: settings.startOnLogin ? ['--hidden'] : [],
-        name: 'IYERIS'
-      });
+      if (process.windowsStore) {
+        console.log('[LoginItem] MS Store app - using StartupTask');
+        app.setLoginItemSettings({
+          openAtLogin: settings.startOnLogin,
+          name: 'IYERIS',
+          // can't use path || args for APPX apps
+        });
+      } else {
+        const exePath = app.getPath('exe');
+        app.setLoginItemSettings({
+          openAtLogin: settings.startOnLogin,
+          path: exePath,
+          args: settings.startOnLogin ? ['--hidden'] : [],
+          name: 'IYERIS'
+        });
+      }
     } else if (process.platform === 'darwin') {
       // macOS - open args
       app.setLoginItemSettings({
@@ -285,7 +573,7 @@ function applyLoginItemSettings(settings: Settings): void {
         name: 'IYERIS'
       });
     }
-    
+
     console.log('[LoginItem] Login item settings applied successfully');
   } catch (error) {
     console.error('[LoginItem] Failed to set login item:', error);
@@ -297,17 +585,31 @@ function getSettingsPath(): string {
   return path.join(userDataPath, 'settings.json');
 }
 
+let cachedSettings: Settings | null = null;
+let settingsCacheTime: number = 0;
+
 async function loadSettings(): Promise<Settings> {
+  const now = Date.now();
+  if (cachedSettings && (now - settingsCacheTime) < SETTINGS_CACHE_TTL_MS) {
+    console.log('[Settings] Using cached settings');
+    return cachedSettings;
+  }
+
   try {
     const settingsPath = getSettingsPath();
     console.log('[Settings] Loading from:', settingsPath);
     const data = await fs.readFile(settingsPath, 'utf8');
-    const settings = { ...defaultSettings, ...JSON.parse(data) };
+    const settings = { ...createDefaultSettings(), ...JSON.parse(data) };
     console.log('[Settings] Loaded:', JSON.stringify(settings, null, 2));
+    cachedSettings = settings;
+    settingsCacheTime = now;
     return settings;
   } catch (error) {
     console.log('[Settings] File not found, using defaults');
-    return { ...defaultSettings };
+    const settings = createDefaultSettings();
+    cachedSettings = settings;
+    settingsCacheTime = now;
+    return settings;
   }
 }
 
@@ -319,8 +621,11 @@ async function saveSettings(settings: Settings): Promise<ApiResponse> {
     await fs.writeFile(settingsPath, JSON.stringify(settings, null, 2), 'utf8');
     console.log('[Settings] Saved successfully');
 
+    cachedSettings = settings;
+    settingsCacheTime = Date.now();
+
     applyLoginItemSettings(settings);
-    
+
     return { success: true };
   } catch (error) {
     console.log('[Settings] Save failed:', getErrorMessage(error));
@@ -335,25 +640,28 @@ async function isFileHidden(filePath: string, fileName: string): Promise<boolean
 
   if (process.platform === 'win32') {
     try {
-      const execPromise = promisify(exec);
-      
-      const { stdout } = await execPromise(`cmd /c attrib "${filePath}"`, { 
+      const { execFile } = await import('child_process');
+      const execFilePromise = promisify(execFile);
+
+      const { stdout } = await execFilePromise('attrib', [filePath], {
         timeout: 500,
-        windowsHide: true 
+        windowsHide: true
       });
-      
-      return stdout.trim().charAt(0).toUpperCase() === 'H';
+
+      const line = stdout.split(/\r?\n/).find(item => item.trim().length > 0);
+      if (!line) return false;
+      const match = line.match(/^\s*([A-Za-z ]+)\s+.+$/);
+      if (!match) return false;
+      return match[1].toUpperCase().includes('H');
     } catch (error) {
       return false;
     }
   }
-  
+
   return false;
 }
 
 const hiddenFileCache = new Map<string, { isHidden: boolean; timestamp: number }>();
-const HIDDEN_CACHE_TTL = 300000;
-const HIDDEN_CACHE_MAX_SIZE = 5000;
 let isCleaningCache = false;
 
 // Periodic cleanup
@@ -364,18 +672,18 @@ function cleanupHiddenFileCache(): void {
   try {
     const now = Date.now();
     let entriesRemoved = 0;
-    
+
     for (const [key, value] of hiddenFileCache) {
-      if (now - value.timestamp > HIDDEN_CACHE_TTL) {
+      if (now - value.timestamp > HIDDEN_FILE_CACHE_TTL) {
         hiddenFileCache.delete(key);
         entriesRemoved++;
       }
     }
 
-    if (hiddenFileCache.size > HIDDEN_CACHE_MAX_SIZE) {
+    if (hiddenFileCache.size > HIDDEN_FILE_CACHE_MAX) {
       const entries = Array.from(hiddenFileCache.entries())
         .sort((a, b) => a[1].timestamp - b[1].timestamp);
-      const toRemove = entries.slice(0, hiddenFileCache.size - HIDDEN_CACHE_MAX_SIZE);
+      const toRemove = entries.slice(0, hiddenFileCache.size - HIDDEN_FILE_CACHE_MAX);
       for (const [key] of toRemove) {
         hiddenFileCache.delete(key);
         entriesRemoved++;
@@ -404,13 +712,13 @@ async function isFileHiddenCached(filePath: string, fileName: string): Promise<b
   }
 
   const cached = hiddenFileCache.get(filePath);
-  if (cached && (Date.now() - cached.timestamp) < HIDDEN_CACHE_TTL) {
+  if (cached && (Date.now() - cached.timestamp) < HIDDEN_FILE_CACHE_TTL) {
     return cached.isHidden;
   }
 
   const isHidden = await isFileHidden(filePath, fileName);
 
-  if (hiddenFileCache.size >= HIDDEN_CACHE_MAX_SIZE) {
+  if (hiddenFileCache.size >= HIDDEN_FILE_CACHE_MAX) {
     cleanupHiddenFileCache();
   }
   
@@ -432,18 +740,68 @@ function createWindow(isInitialWindow: boolean = false): BrowserWindow {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      sandbox: true,
       preload: path.join(__dirname, 'preload.js'),
       devTools: isDev,
       backgroundThrottling: false,
       spellcheck: false,
       v8CacheOptions: 'code',
       enableWebSQL: false,
-      plugins: true
+      plugins: false,
+      webgl: false,
+      images: true,
+      autoplayPolicy: 'user-gesture-required',
+      defaultEncoding: 'UTF-8'
     },
     icon: path.join(__dirname, '..', 'assets', 'icon.png')
   });
 
   newWindow.loadFile(path.join(__dirname, '..', 'index.html'));
+  const indexUrl = pathToFileURL(path.join(__dirname, '..', 'index.html')).toString();
+
+  const openExternalIfAllowed = (url: string): boolean => {
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol === 'http:' || parsed.protocol === 'https:' || parsed.protocol === 'mailto:') {
+        shell.openExternal(url).catch(error => {
+          console.error('[Security] Failed to open external URL:', error);
+        });
+        return true;
+      }
+    } catch {
+    }
+    return false;
+  };
+
+  newWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (openExternalIfAllowed(url)) {
+      return { action: 'deny' };
+    }
+    console.warn('[Security] Blocked window.open to:', url);
+    return { action: 'deny' };
+  });
+
+  newWindow.webContents.on('will-navigate', (event, url) => {
+    if (url !== indexUrl) {
+      if (openExternalIfAllowed(url)) {
+        event.preventDefault();
+        return;
+      }
+      console.warn('[Security] Blocked navigation to:', url);
+      event.preventDefault();
+    }
+  });
+
+  newWindow.webContents.on('will-redirect', (event, url) => {
+    if (url !== indexUrl) {
+      if (openExternalIfAllowed(url)) {
+        event.preventDefault();
+        return;
+      }
+      console.warn('[Security] Blocked redirect to:', url);
+      event.preventDefault();
+    }
+  });
 
   const startHidden = isInitialWindow && shouldStartHidden;
   console.log('[Window] Creating window, isInitial:', isInitialWindow, 'startHidden:', startHidden, 'shouldStartHidden:', shouldStartHidden);
@@ -570,8 +928,12 @@ async function checkFullDiskAccess(): Promise<boolean> {
 }
 
 async function showFullDiskAccessDialog(): Promise<void> {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    console.log('[FDA] Cannot show dialog - no valid window');
+    return;
+  }
   console.log('[FDA] Showing Full Disk Access dialog');
-  const result = await dialog.showMessageBox(mainWindow!, {
+  const result = await dialog.showMessageBox(mainWindow, {
     type: 'warning',
     title: 'Full Disk Access Required',
     message: 'IYERIS needs Full Disk Access for full functionality',
@@ -662,52 +1024,65 @@ function setupApplicationMenu(): void {
 app.whenReady().then(async () => {
   setupApplicationMenu();
 
+  checkMsiInstallation();
+  warmupDrivesCache();
+
+  const settingsPromise = loadSettings();
+
   shouldStartHidden = process.argv.includes('--hidden');
+
+  const startupSettings = await settingsPromise;
+
+  if (!shouldStartHidden && process.windowsStore) {
+    try {
+      const loginItemSettings = app.getLoginItemSettings();
+      console.log('[Startup] MS Store login item settings:', JSON.stringify(loginItemSettings));
+      if (loginItemSettings.wasOpenedAtLogin && startupSettings.startOnLogin) {
+        shouldStartHidden = true;
+        console.log('[Startup] MS Store: Detected wasOpenedAtLogin, will start hidden');
+      }
+    } catch (error) {
+      console.error('[Startup] Error checking MS Store login settings:', error);
+    }
+  }
 
   if (!shouldStartHidden && process.platform === 'darwin') {
     try {
       const loginItemSettings = app.getLoginItemSettings();
       console.log('[Startup] macOS login item settings:', JSON.stringify(loginItemSettings));
-      if (loginItemSettings.wasOpenedAtLogin) {
-        const settings = await loadSettings();
-        if (settings.startOnLogin) {
-          shouldStartHidden = true;
-          console.log('[Startup] macOS: Detected wasOpenedAtLogin, will start hidden');
-        }
+      if (loginItemSettings.wasOpenedAtLogin && startupSettings.startOnLogin) {
+        shouldStartHidden = true;
+        console.log('[Startup] macOS: Detected wasOpenedAtLogin, will start hidden');
       }
     } catch (error) {
       console.error('[Startup] Error checking login item settings:', error);
     }
   }
-  
+
   console.log('[Startup] Starting with hidden mode:', shouldStartHidden);
 
-  if (shouldStartHidden) {
-    const settings = await loadSettings();
-    if (settings.minimizeToTray || settings.startOnLogin) {
-      console.log('[Startup] Creating tray before window for hidden start');
-      await createTrayForHiddenStart();
-    }
+  if (shouldStartHidden && (startupSettings.minimizeToTray || startupSettings.startOnLogin)) {
+    console.log('[Startup] Creating tray before window for hidden start');
+    createTrayForHiddenStart();
   }
-  
-  createWindow(true); // Initial window
+
+  createWindow(true);
 
   if (!tray) {
-    await createTray();
+    createTray();
   }
 
   mainWindow?.once('ready-to-show', () => {
     setTimeout(async () => {
       try {
-        const settings = await loadSettings();
+        applyLoginItemSettings(startupSettings);
 
-        applyLoginItemSettings(settings);
-
-        if (settings.enableIndexer) {
+        if (startupSettings.enableIndexer) {
           const indexerDelay = process.platform === 'win32' ? 2000 : 500;
-          fileIndexer = new FileIndexer();
+          fileIndexer = new FileIndexer(indexerTasks ?? undefined);
+          const indexer = fileIndexer;
           setTimeout(() => {
-            fileIndexer!.initialize(settings.enableIndexer).catch(err => 
+            indexer.initialize(startupSettings.enableIndexer).catch(err =>
               console.error('[Indexer] Background initialization failed:', err)
             );
           }, indexerDelay);
@@ -716,21 +1091,34 @@ app.whenReady().then(async () => {
         // Defer auto-updater setup
         setTimeout(() => {
           try {
-            const { autoUpdater } = require('electron-updater');
+            const autoUpdater = getAutoUpdater();
             autoUpdater.logger = console;
             autoUpdater.autoDownload = false;
             autoUpdater.autoInstallOnAppQuit = true;
             
             const currentVersion = app.getVersion();
             const isBetaVersion = /-(beta|alpha|rc)/i.test(currentVersion);
-            const isBetaBuild = process.env.IS_BETA === 'true' || isBetaVersion;
-            
-            if (isBetaBuild) {
+            const updateChannel = startupSettings.updateChannel || 'auto';
+
+            let useBetaChannel = false;
+            if (updateChannel === 'beta') {
+              useBetaChannel = true;
+            } else if (updateChannel === 'stable') {
+              useBetaChannel = false;
+            } else {
+              useBetaChannel = process.env.IS_BETA === 'true' || isBetaVersion;
+            }
+
+            if (useBetaChannel) {
               autoUpdater.channel = 'beta';
               autoUpdater.allowPrerelease = true;
-              console.log('[AutoUpdater] Beta channel enabled - will ONLY check for beta/prerelease updates');
-              console.log('[AutoUpdater] Current version:', currentVersion);
+              console.log('[AutoUpdater] Beta channel enabled');
+            } else {
+              autoUpdater.channel = 'latest';
+              autoUpdater.allowPrerelease = false;
+              console.log('[AutoUpdater] Stable channel enabled');
             }
+            console.log('[AutoUpdater] Current version:', currentVersion, '| Channel setting:', updateChannel);
 
             if (isRunningInFlatpak()) {
               console.log('[AutoUpdater] Running in Flatpak - auto-updater disabled');
@@ -749,38 +1137,42 @@ app.whenReady().then(async () => {
               safeSendToWindow(mainWindow, 'update-checking');
             });
 
-            autoUpdater.on('update-available', (info) => {
+            autoUpdater.on('update-available', (info: { version: string }) => {
               console.log('[AutoUpdater] Update available:', info.version);
 
               const updateIsBeta = /-(beta|alpha|rc)/i.test(info.version);
-              if (isBetaBuild && !updateIsBeta) {
-                console.log(`[AutoUpdater] Beta build ignoring stable release ${info.version} - only accepting beta/prerelease updates`);
+              if (useBetaChannel && !updateIsBeta) {
+                console.log(`[AutoUpdater] Beta channel ignoring stable release ${info.version}`);
                 safeSendToWindow(mainWindow, 'update-not-available', { version: currentVersion });
                 return;
               }
-              
-              // Prevent downgrade
+              if (!useBetaChannel && updateIsBeta) {
+                console.log(`[AutoUpdater] Stable channel ignoring beta release ${info.version}`);
+                safeSendToWindow(mainWindow, 'update-not-available', { version: currentVersion });
+                return;
+              }
+
               const comparison = compareVersions(info.version, currentVersion);
               if (comparison <= 0) {
                 console.log(`[AutoUpdater] Ignoring update ${info.version} - current version ${currentVersion} is newer or equal`);
                 safeSendToWindow(mainWindow, 'update-not-available', { version: currentVersion });
                 return;
               }
-              
+
               safeSendToWindow(mainWindow, 'update-available', info);
             });
 
-            autoUpdater.on('update-not-available', (info) => {
+            autoUpdater.on('update-not-available', (info: { version: string }) => {
               console.log('[AutoUpdater] Update not available. Current version:', info.version);
               safeSendToWindow(mainWindow, 'update-not-available', info);
             });
 
-            autoUpdater.on('error', (err) => {
+            autoUpdater.on('error', (err: Error) => {
               console.error('[AutoUpdater] Error:', err);
               safeSendToWindow(mainWindow, 'update-error', err.message);
             });
 
-            autoUpdater.on('download-progress', (progressObj) => {
+            autoUpdater.on('download-progress', (progressObj: { percent: number; bytesPerSecond: number; transferred: number; total: number }) => {
               console.log(`[AutoUpdater] Download progress: ${progressObj.percent.toFixed(2)}%`);
               safeSendToWindow(mainWindow, 'update-download-progress', {
                 percent: progressObj.percent,
@@ -790,18 +1182,17 @@ app.whenReady().then(async () => {
               });
             });
 
-            autoUpdater.on('update-downloaded', (info) => {
+            autoUpdater.on('update-downloaded', (info: { version: string }) => {
               console.log('[AutoUpdater] Update downloaded:', info.version);
               safeSendToWindow(mainWindow, 'update-downloaded', info);
             });
 
-            // Check for updates on startup (skip store/enterprise installations or disabled)
-            if (!isRunningInFlatpak() && !process.mas && !process.windowsStore && !isInstalledViaMsi() && !isDev && settings.autoCheckUpdates !== false) {
+            if (!isRunningInFlatpak() && !process.mas && !process.windowsStore && !isInstalledViaMsi() && !isDev && startupSettings.autoCheckUpdates !== false) {
               console.log('[AutoUpdater] Checking for updates on startup...');
-              autoUpdater.checkForUpdates().catch(err => {
+              autoUpdater.checkForUpdates().catch((err: Error) => {
                 console.error('[AutoUpdater] Startup check failed:', err);
               });
-            } else if (settings.autoCheckUpdates === false) {
+            } else if (startupSettings.autoCheckUpdates === false) {
               console.log('[AutoUpdater] Auto-check on startup disabled by user');
             }
           } catch (error) {
@@ -924,14 +1315,19 @@ app.on('before-quit', () => {
   for (const [operationId, operation] of activeFolderSizeCalculations) {
     console.log('[Cleanup] Aborting folder size calculation:', operationId);
     operation.aborted = true;
+    fileTasks.cancelOperation(operationId);
   }
   activeFolderSizeCalculations.clear();
 
   for (const [operationId, operation] of activeChecksumCalculations) {
     console.log('[Cleanup] Aborting checksum calculation:', operationId);
     operation.aborted = true;
+    fileTasks.cancelOperation(operationId);
   }
   activeChecksumCalculations.clear();
+
+  fileTasks.shutdown().catch(() => {});
+  indexerTasks?.shutdown().catch(() => {});
   
   if (tray) {
     tray.destroy();
@@ -943,53 +1339,51 @@ app.on('window-all-closed', () => {
   app.quit();
 });
 
-ipcMain.handle('get-directory-contents', async (_event: IpcMainInvokeEvent, dirPath: string): Promise<DirectoryResponse> => {
-  try {
-    if (!isPathSafe(dirPath)) {
-      console.warn('[Security] Invalid path rejected:', dirPath);
-      return { success: false, error: 'Invalid path' };
-    }
-    
-    const items = await fs.readdir(dirPath, { withFileTypes: true });
+ipcMain.handle('get-directory-contents', async (
+  event: IpcMainInvokeEvent,
+  dirPath: string,
+  requestOperationId?: string,
+  includeHidden?: boolean
+): Promise<DirectoryResponse> => {
+  if (!isPathSafe(dirPath)) {
+    console.warn('[Security] Invalid path rejected:', dirPath);
+    return { success: false, error: 'Invalid path' };
+  }
 
-    const batchSize = 100;
-    const contents: FileItem[] = [];
-    
-    for (let i = 0; i < items.length; i += batchSize) {
-      const batch = items.slice(i, i + batchSize);
-      const batchResults = await Promise.all(
-        batch.map(async (item): Promise<FileItem> => {
-          const fullPath = path.join(dirPath, item.name);
-          const isHidden = await isFileHiddenCached(fullPath, item.name);
-          
-          try {
-            const stats = await fs.stat(fullPath);
-            return {
-              name: item.name,
-              path: fullPath,
-              isDirectory: item.isDirectory(),
-              isFile: item.isFile(),
-              size: stats.size,
-              modified: stats.mtime,
-              isHidden
-            };
-          } catch (err) {
-            return {
-              name: item.name,
-              path: fullPath,
-              isDirectory: item.isDirectory(),
-              isFile: item.isFile(),
-              size: 0,
-              modified: new Date(),
-              isHidden
-            };
-          }
-        })
-      );
-      contents.push(...batchResults);
+  const operationId = requestOperationId || `list-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const sender = event.sender;
+  const handleDestroyed = () => {
+    directoryOperationTargets.delete(operationId);
+    fileTasks.cancelOperation(operationId);
+  };
+
+  sender.once('destroyed', handleDestroyed);
+  directoryOperationTargets.set(operationId, sender);
+
+  try {
+    const result = await fileTasks.runTask<{ contents: FileItem[] }>(
+      'list-directory',
+      { dirPath, batchSize: 100, includeHidden: Boolean(includeHidden) },
+      operationId
+    );
+
+    return { success: true, contents: result.contents };
+  } catch (error) {
+    return { success: false, error: getErrorMessage(error) };
+  } finally {
+    directoryOperationTargets.delete(operationId);
+    sender.removeListener('destroyed', handleDestroyed);
+  }
+});
+
+ipcMain.handle('cancel-directory-contents', async (_event: IpcMainInvokeEvent, operationId: string): Promise<ApiResponse> => {
+  try {
+    if (!operationId) {
+      return { success: false, error: 'Missing operationId' };
     }
-    
-    return { success: true, contents };
+    directoryOperationTargets.delete(operationId);
+    fileTasks.cancelOperation(operationId);
+    return { success: true };
   } catch (error) {
     return { success: false, error: getErrorMessage(error) };
   }
@@ -1016,7 +1410,10 @@ ipcMain.handle('open-file', async (_event: IpcMainInvokeEvent, filePath: string)
         console.warn('[Security] Invalid path rejected:', filePath);
         return { success: false, error: 'Invalid path' };
       }
-      await shell.openPath(filePath);
+      const openResult = await shell.openPath(filePath);
+      if (openResult) {
+        return { success: false, error: openResult };
+      }
     }
     return { success: true };
   } catch (error) {
@@ -1066,7 +1463,7 @@ ipcMain.handle('create-folder', async (_event: IpcMainInvokeEvent, parentPath: s
       console.warn('[Security] Invalid parent path rejected:', parentPath);
       return { success: false, error: 'Invalid path' };
     }
-    if (folderName.includes('..') || folderName.includes('/') || folderName.includes('\\')) {
+    if (!folderName || folderName === '.' || folderName === '..' || folderName.includes('/') || folderName.includes('\\')) {
       console.warn('[Security] Invalid folder name rejected:', folderName);
       return { success: false, error: 'Invalid folder name' };
     }
@@ -1188,7 +1585,7 @@ ipcMain.handle('rename-item', async (_event: IpcMainInvokeEvent, oldPath: string
     console.warn('[Security] Invalid path rejected:', oldPath);
     return { success: false, error: 'Invalid path' };
   }
-  if (newName.includes('..') || newName.includes('/') || newName.includes('\\')) {
+  if (!newName || newName === '.' || newName === '..' || newName.includes('/') || newName.includes('\\')) {
     console.warn('[Security] Invalid new name rejected:', newName);
     return { success: false, error: 'Invalid file name' };
   }
@@ -1228,7 +1625,7 @@ ipcMain.handle('create-file', async (_event: IpcMainInvokeEvent, parentPath: str
       console.warn('[Security] Invalid parent path rejected:', parentPath);
       return { success: false, error: 'Invalid path' };
     }
-    if (fileName.includes('..') || fileName.includes('/') || fileName.includes('\\')) {
+    if (!fileName || fileName === '.' || fileName === '..' || fileName.includes('/') || fileName.includes('\\')) {
       console.warn('[Security] Invalid file name rejected:', fileName);
       return { success: false, error: 'Invalid file name' };
     }
@@ -1252,6 +1649,9 @@ ipcMain.handle('create-file', async (_event: IpcMainInvokeEvent, parentPath: str
 });
 
 ipcMain.handle('get-item-properties', async (_event: IpcMainInvokeEvent, itemPath: string): Promise<PropertiesResponse> => {
+  if (!isPathSafe(itemPath)) {
+    return { success: false, error: 'Invalid path' };
+  }
   try {
     const stats = await fs.stat(itemPath);
     return {
@@ -1284,13 +1684,17 @@ ipcMain.handle('get-settings', async (): Promise<SettingsResponse> => {
 ipcMain.handle('save-settings', async (event: IpcMainInvokeEvent, settings: Settings): Promise<ApiResponse> => {
   const result = await saveSettings(settings);
 
-  if (result.success && fileIndexer) {
-    fileIndexer.setEnabled(settings.enableIndexer);
-
+  if (result.success) {
     if (settings.enableIndexer) {
+      if (!fileIndexer) {
+        fileIndexer = new FileIndexer(indexerTasks ?? undefined);
+      }
+      fileIndexer.setEnabled(true);
       fileIndexer.initialize(true).catch(err => {
         console.error('[Settings] Failed to initialize indexer:', err);
       });
+    } else if (fileIndexer) {
+      fileIndexer.setEnabled(false);
     }
   }
 
@@ -1316,7 +1720,7 @@ ipcMain.handle('save-settings', async (event: IpcMainInvokeEvent, settings: Sett
 });
 
 ipcMain.handle('reset-settings', async (): Promise<ApiResponse> => {
-  return await saveSettings(defaultSettings);
+  return await saveSettings(createDefaultSettings());
 });
 
 ipcMain.handle('set-clipboard', (event: IpcMainInvokeEvent, clipboardData: { operation: 'copy' | 'cut'; paths: string[] } | null): void => {
@@ -1364,18 +1768,28 @@ ipcMain.handle('copy-items', async (_event: IpcMainInvokeEvent, sourcePaths: str
       console.warn('[Security] Invalid destination path rejected:', destPath);
       return { success: false, error: 'Invalid destination path' };
     }
-    
+
+    const planned: Array<{ sourcePath: string; destItemPath: string; itemName: string; isDirectory: boolean }> = [];
+    const destKeys = new Set<string>();
+
     for (const sourcePath of sourcePaths) {
       if (!isPathSafe(sourcePath)) {
         console.warn('[Security] Invalid source path rejected:', sourcePath);
         return { success: false, error: 'Invalid source path' };
       }
-      
+
       const itemName = path.basename(sourcePath);
       const destItemPath = path.join(destPath, itemName);
+      const destKey = process.platform === 'win32' ? destItemPath.toLowerCase() : destItemPath;
+      if (destKeys.has(destKey)) {
+        return { success: false, error: `Multiple items share the same name: "${itemName}"` };
+      }
+      destKeys.add(destKey);
 
-      const sourceExists = await fs.stat(sourcePath).then(() => true).catch(() => false);
-      if (!sourceExists) {
+      let stats: fsSync.Stats;
+      try {
+        stats = await fs.stat(sourcePath);
+      } catch {
         console.log('[Copy] Source file not found:', sourcePath);
         return { success: false, error: `Source file not found: ${itemName}` };
       }
@@ -1385,14 +1799,30 @@ ipcMain.handle('copy-items', async (_event: IpcMainInvokeEvent, sourcePaths: str
         console.log('[Copy] Destination already exists:', destItemPath);
         return { success: false, error: `A file named "${itemName}" already exists in the destination` };
       }
-      
-      const stats = await fs.stat(sourcePath);
-      if (stats.isDirectory()) {
-        await fs.cp(sourcePath, destItemPath, { recursive: true });
-      } else {
-        await fs.copyFile(sourcePath, destItemPath);
-      }
+
+      planned.push({ sourcePath, destItemPath, itemName, isDirectory: stats.isDirectory() });
     }
+
+    const copiedPaths: string[] = [];
+    try {
+      for (const item of planned) {
+        if (item.isDirectory) {
+          await fs.cp(item.sourcePath, item.destItemPath, { recursive: true });
+        } else {
+          await fs.copyFile(item.sourcePath, item.destItemPath);
+        }
+        copiedPaths.push(item.destItemPath);
+      }
+    } catch (error) {
+      for (const copied of copiedPaths.reverse()) {
+        try {
+          await fs.rm(copied, { recursive: true, force: true });
+        } catch {
+        }
+      }
+      return { success: false, error: getErrorMessage(error) };
+    }
+
     return { success: true };
   } catch (error) {
     return { success: false, error: getErrorMessage(error) };
@@ -1412,17 +1842,23 @@ ipcMain.handle('move-items', async (_event: IpcMainInvokeEvent, sourcePaths: str
         return { success: false, error: 'Invalid source path' };
       }
     }
-    
-    const originalParent = path.dirname(sourcePaths[0]);
-    const movedPaths: string[] = [];
-    const originalPaths: string[] = [];
-    
+
+    const planned: Array<{ sourcePath: string; newPath: string; fileName: string; isDirectory: boolean }> = [];
+    const destKeys = new Set<string>();
+
     for (const sourcePath of sourcePaths) {
       const fileName = path.basename(sourcePath);
       const newPath = path.join(destPath, fileName);
+      const destKey = process.platform === 'win32' ? newPath.toLowerCase() : newPath;
+      if (destKeys.has(destKey)) {
+        return { success: false, error: `Multiple items share the same name: "${fileName}"` };
+      }
+      destKeys.add(destKey);
 
-      const sourceExists = await fs.stat(sourcePath).then(() => true).catch(() => false);
-      if (!sourceExists) {
+      let stats: fsSync.Stats;
+      try {
+        stats = await fs.stat(sourcePath);
+      } catch {
         console.log('[Move] Source file not found:', sourcePath);
         return { success: false, error: `Source file not found: ${fileName}` };
       }
@@ -1432,28 +1868,60 @@ ipcMain.handle('move-items', async (_event: IpcMainInvokeEvent, sourcePaths: str
         console.log('[Move] Destination already exists:', newPath);
         return { success: false, error: `A file named "${fileName}" already exists in the destination` };
       }
-      
-      try {
-        await fs.rename(sourcePath, newPath);
-      } catch (renameError) {
-        const err = renameError as NodeJS.ErrnoException;
-        // If rename fails (e.g., cross-drive), fall back to copy+delete
-        if (err.code === 'EXDEV') {
-          console.log('[Move] Cross-device move, using copy+delete:', sourcePath);
-          const stats = await fs.stat(sourcePath);
-          if (stats.isDirectory()) {
-            await fs.cp(sourcePath, newPath, { recursive: true });
+
+      planned.push({ sourcePath, newPath, fileName, isDirectory: stats.isDirectory() });
+    }
+
+    const originalParent = path.dirname(sourcePaths[0]);
+    const movedPaths: string[] = [];
+    const originalPaths: string[] = [];
+    const completed: Array<{ sourcePath: string; newPath: string }> = [];
+
+    try {
+      for (const item of planned) {
+        try {
+          await fs.rename(item.sourcePath, item.newPath);
+        } catch (renameError) {
+          const err = renameError as NodeJS.ErrnoException;
+          if (err.code === 'EXDEV') {
+            console.log('[Move] Cross-device move, using copy+delete:', item.sourcePath);
+            if (item.isDirectory) {
+              await fs.cp(item.sourcePath, item.newPath, { recursive: true });
+            } else {
+              await fs.copyFile(item.sourcePath, item.newPath);
+            }
+            await fs.rm(item.sourcePath, { recursive: true, force: true });
           } else {
-            await fs.copyFile(sourcePath, newPath);
+            throw renameError;
           }
-          await fs.rm(sourcePath, { recursive: true, force: true });
-        } else {
-          throw renameError;
+        }
+
+        originalPaths.push(item.sourcePath);
+        movedPaths.push(item.newPath);
+        completed.push({ sourcePath: item.sourcePath, newPath: item.newPath });
+      }
+    } catch (error) {
+      for (const item of completed.reverse()) {
+        try {
+          await fs.rename(item.newPath, item.sourcePath);
+        } catch (restoreError) {
+          const err = restoreError as NodeJS.ErrnoException;
+          if (err.code === 'EXDEV') {
+            try {
+              const stats = await fs.stat(item.newPath);
+              if (stats.isDirectory()) {
+                await fs.cp(item.newPath, item.sourcePath, { recursive: true });
+              } else {
+                await fs.copyFile(item.newPath, item.sourcePath);
+              }
+              await fs.rm(item.newPath, { recursive: true, force: true });
+            } catch {
+            }
+          }
         }
       }
-      
-      originalPaths.push(sourcePath);
-      movedPaths.push(newPath);
+      const message = error instanceof Error ? error.message : String(error);
+      return { success: false, error: message };
     }
     
     pushUndoAction({
@@ -1474,61 +1942,229 @@ ipcMain.handle('move-items', async (_event: IpcMainInvokeEvent, sourcePaths: str
   }
 });
 
-ipcMain.handle('search-files', async (_event: IpcMainInvokeEvent, dirPath: string, query: string): Promise<{ success: boolean; results?: FileItem[]; error?: string }> => {
+interface SearchFilters {
+  fileType?: string;
+  minSize?: number;
+  maxSize?: number;
+  dateFrom?: string;
+  dateTo?: string;
+}
+
+ipcMain.handle('search-files', async (_event: IpcMainInvokeEvent, dirPath: string, query: string, filters?: SearchFilters, operationId?: string): Promise<{ success: boolean; results?: FileItem[]; error?: string }> => {
   try {
-    const results: FileItem[] = [];
-    const searchQuery = query.toLowerCase();
-    const MAX_SEARCH_DEPTH = 10;
-    const MAX_RESULTS = 100;
-    
-    async function searchDirectory(currentPath: string, depth: number = 0): Promise<void> {
-      if (depth >= MAX_SEARCH_DEPTH || results.length >= MAX_RESULTS) {
-        return;
-      }
-      
-      try {
-        const items = await fs.readdir(currentPath, { withFileTypes: true });
-        
-        for (const item of items) {
-          if (results.length >= MAX_RESULTS) {
-            return;
-          }
-          
-          const fullPath = path.join(currentPath, item.name);
-          
-          if (item.name.toLowerCase().includes(searchQuery)) {
-            try {
-              const stats = await fs.stat(fullPath);
-              const isHidden = await isFileHiddenCached(fullPath, item.name);
-              results.push({
-                name: item.name,
-                path: fullPath,
-                isDirectory: item.isDirectory(),
-                isFile: item.isFile(),
-                size: stats.size,
-                modified: stats.mtime,
-                isHidden
-              });
-            } catch (err) {
-            }
-          }
-          
-          if (item.isDirectory() && results.length < MAX_RESULTS) {
-            try {
-              await searchDirectory(fullPath, depth + 1);
-            } catch (err) {
-            }
-          }
-        }
-      } catch (err) {
-      }
+    if (!isPathSafe(dirPath)) {
+      return { success: false, error: 'Invalid directory path' };
     }
-    
-    await searchDirectory(dirPath, 0);
+    const results = await fileTasks.runTask<FileItem[]>('search-files', {
+      dirPath,
+      query,
+      filters,
+      maxDepth: 10,
+      maxResults: 100
+    }, operationId);
     return { success: true, results };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return { success: false, error: message };
+  }
+});
+
+const TEXT_FILE_EXTENSIONS = new Set([
+  'txt', 'md', 'markdown', 'js', 'jsx', 'ts', 'tsx', 'json',
+  'xml', 'html', 'htm', 'css', 'scss', 'less', 'py', 'rb',
+  'java', 'c', 'cpp', 'h', 'hpp', 'cs', 'go', 'rs', 'swift',
+  'yaml', 'yml', 'toml', 'ini', 'cfg', 'conf', 'sh', 'bash',
+  'ps1', 'bat', 'cmd', 'sql', 'log', 'csv', 'env', 'gitignore',
+  'vue', 'svelte', 'php', 'pl', 'r', 'lua', 'kt', 'kts', 'scala'
+]);
+
+const CONTENT_SEARCH_MAX_FILE_SIZE = 1024 * 1024;
+const CONTENT_CONTEXT_CHARS = 60;
+
+interface ContentSearchResult {
+  name: string;
+  path: string;
+  isDirectory: boolean;
+  isFile: boolean;
+  size: number;
+  modified: Date;
+  isHidden: boolean;
+  matchContext?: string;
+  matchLineNumber?: number;
+}
+
+interface ContentSearchFilters {
+  dateFrom: Date | null;
+  dateTo: Date | null;
+  minSize?: number;
+  maxSize?: number;
+}
+
+function parseContentFilters(filters?: SearchFilters): ContentSearchFilters {
+  const dateFrom = filters?.dateFrom ? new Date(filters.dateFrom) : null;
+  const dateTo = filters?.dateTo ? new Date(filters.dateTo) : null;
+  if (dateTo) dateTo.setHours(23, 59, 59, 999);
+  return {
+    dateFrom,
+    dateTo,
+    minSize: filters?.minSize,
+    maxSize: filters?.maxSize
+  };
+}
+
+async function searchFileContent(filePath: string, searchQuery: string): Promise<{ found: boolean; context?: string; lineNumber?: number }> {
+  const ext = path.extname(filePath).slice(1).toLowerCase();
+  if (!TEXT_FILE_EXTENSIONS.has(ext)) {
+    return { found: false };
+  }
+
+  try {
+    const stats = await fs.stat(filePath);
+    if (stats.size > CONTENT_SEARCH_MAX_FILE_SIZE) {
+      return { found: false };
+    }
+
+    const content = await fs.readFile(filePath, 'utf-8');
+    const lines = content.split('\n');
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const lowerLine = line.toLowerCase();
+      const matchIndex = lowerLine.indexOf(searchQuery);
+
+      if (matchIndex !== -1) {
+        const start = Math.max(0, matchIndex - CONTENT_CONTEXT_CHARS);
+        const end = Math.min(line.length, matchIndex + searchQuery.length + CONTENT_CONTEXT_CHARS);
+        let context = line.substring(start, end).trim();
+        if (start > 0) context = '...' + context;
+        if (end < line.length) context = context + '...';
+
+        return { found: true, context, lineNumber: i + 1 };
+      }
+    }
+  } catch {
+    return { found: false };
+  }
+
+  return { found: false };
+}
+
+async function searchDirectoryForContent(
+  currentPath: string,
+  searchQuery: string,
+  filters: ContentSearchFilters,
+  results: ContentSearchResult[],
+  depth: number,
+  maxDepth: number,
+  maxResults: number
+): Promise<void> {
+  if (depth >= maxDepth || results.length >= maxResults) {
+    return;
+  }
+
+  try {
+    const items = await fs.readdir(currentPath, { withFileTypes: true });
+
+    for (const item of items) {
+      if (results.length >= maxResults) return;
+
+      const fullPath = path.join(currentPath, item.name);
+
+      if (item.isFile()) {
+        try {
+          const stats = await fs.stat(fullPath);
+
+          if (filters.minSize !== undefined && stats.size < filters.minSize) continue;
+          if (filters.maxSize !== undefined && stats.size > filters.maxSize) continue;
+          if (filters.dateFrom && stats.mtime < filters.dateFrom) continue;
+          if (filters.dateTo && stats.mtime > filters.dateTo) continue;
+
+          const contentResult = await searchFileContent(fullPath, searchQuery);
+          if (contentResult.found) {
+            const isHidden = await isFileHiddenCached(fullPath, item.name);
+            results.push({
+              name: item.name,
+              path: fullPath,
+              isDirectory: false,
+              isFile: true,
+              size: stats.size,
+              modified: stats.mtime,
+              isHidden,
+              matchContext: contentResult.context,
+              matchLineNumber: contentResult.lineNumber
+            });
+          }
+        } catch {
+        }
+      }
+
+      if (item.isDirectory() && results.length < maxResults) {
+        try {
+          await searchDirectoryForContent(fullPath, searchQuery, filters, results, depth + 1, maxDepth, maxResults);
+        } catch {
+        }
+      }
+    }
+  } catch {
+  }
+}
+
+ipcMain.handle('search-files-content', async (_event: IpcMainInvokeEvent, dirPath: string, query: string, filters?: SearchFilters, operationId?: string): Promise<{ success: boolean; results?: ContentSearchResult[]; error?: string }> => {
+  try {
+    if (!isPathSafe(dirPath)) {
+      return { success: false, error: 'Invalid directory path' };
+    }
+
+    const results = await fileTasks.runTask<ContentSearchResult[]>('search-content', {
+      dirPath,
+      query,
+      filters,
+      maxDepth: 10,
+      maxResults: 100
+    }, operationId);
+    return { success: true, results };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { success: false, error: message };
+  }
+});
+
+ipcMain.handle('search-files-content-global', async (_event: IpcMainInvokeEvent, query: string, filters?: SearchFilters, operationId?: string): Promise<{ success: boolean; results?: ContentSearchResult[]; error?: string }> => {
+  try {
+    if (!fileIndexer) {
+      return { success: false, error: 'Indexer not initialized' };
+    }
+    if (!fileIndexer.isEnabled()) {
+      return { success: false, error: 'Indexer is disabled' };
+    }
+    const MAX_RESULTS = 100;
+    const indexPath = path.join(app.getPath('userData'), 'file-index.json');
+    const searchTasks = indexerTasks ?? fileTasks;
+
+    const results = await searchTasks.runTask<ContentSearchResult[]>('search-content-index', {
+      indexPath,
+      query,
+      filters,
+      maxResults: MAX_RESULTS
+    }, operationId);
+
+    return { success: true, results };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { success: false, error: message };
+  }
+});
+
+ipcMain.handle('cancel-search', async (_event: IpcMainInvokeEvent, operationId: string): Promise<ApiResponse> => {
+  try {
+    if (!operationId) {
+      return { success: false, error: 'Missing operationId' };
+    }
+    fileTasks.cancelOperation(operationId);
+    indexerTasks?.cancelOperation(operationId);
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: getErrorMessage(error) };
   }
 });
 
@@ -1550,19 +2186,32 @@ ipcMain.handle('get-disk-space', async (_event: IpcMainInvokeEvent, drivePath: s
         console.log('[Main] Getting disk space for drive:', driveChar);
         const psCommand = `Get-PSDrive -Name ${driveChar} | Select-Object @{Name='Free';Expression={$_.Free}}, @{Name='Used';Expression={$_.Used}} | ConvertTo-Json`;
 
-        const psProcess = spawn('powershell', ['-Command', psCommand], { shell: false });
+        const { child: psProcess, timedOut } = spawnWithTimeout(
+          'powershell',
+          ['-Command', psCommand],
+          5000,
+          { shell: false }
+        );
         let stdout = '';
         let stderr = '';
 
-        psProcess.stdout.on('data', (data) => {
-          stdout += data.toString();
-        });
+        if (psProcess.stdout) {
+          psProcess.stdout.on('data', (data: Buffer) => {
+            stdout += data.toString();
+          });
+        }
 
-        psProcess.stderr.on('data', (data) => {
-          stderr += data.toString();
-        });
+        if (psProcess.stderr) {
+          psProcess.stderr.on('data', (data: Buffer) => {
+            stderr += data.toString();
+          });
+        }
 
         psProcess.on('close', (code) => {
+          if (timedOut()) {
+            resolve({ success: false, error: 'Disk space query timed out' });
+            return;
+          }
           if (code !== 0) {
             console.error('[Main] PowerShell error:', stderr);
             resolve({ success: false, error: 'PowerShell command failed' });
@@ -1584,19 +2233,32 @@ ipcMain.handle('get-disk-space', async (_event: IpcMainInvokeEvent, drivePath: s
       });
     } else if (process.platform === 'darwin' || process.platform === 'linux') {
       return new Promise((resolve) => {
-        const dfProcess = spawn('df', ['-k', drivePath], { shell: false });
+        const { child: dfProcess, timedOut } = spawnWithTimeout(
+          'df',
+          ['-k', drivePath],
+          5000,
+          { shell: false }
+        );
         let stdout = '';
         let stderr = '';
 
-        dfProcess.stdout.on('data', (data) => {
-          stdout += data.toString();
-        });
+        if (dfProcess.stdout) {
+          dfProcess.stdout.on('data', (data: Buffer) => {
+            stdout += data.toString();
+          });
+        }
 
-        dfProcess.stderr.on('data', (data) => {
-          stderr += data.toString();
-        });
+        if (dfProcess.stderr) {
+          dfProcess.stderr.on('data', (data: Buffer) => {
+            stderr += data.toString();
+          });
+        }
 
         dfProcess.on('close', (code) => {
+          if (timedOut()) {
+            resolve({ success: false, error: 'Disk space query timed out' });
+            return;
+          }
           if (code !== 0) {
             console.error('[Main] df error:', stderr);
             resolve({ success: false, error: 'df command failed' });
@@ -1630,29 +2292,37 @@ ipcMain.handle('restart-as-admin', async (): Promise<ApiResponse> => {
   try {
     const platform = process.platform;
     const appPath = app.getPath('exe');
-    const execPromise = promisify(exec);
-    
+    const execFilePromise = promisify(execFile);
+
     if (platform === 'win32') {
-      const command = `Start-Process -FilePath "${appPath}" -Verb RunAs`;
       try {
-        await execPromise(`powershell -Command "${command}"`);
+        await execFilePromise('powershell', [
+          '-NoProfile',
+          '-Command',
+          'Start-Process',
+          '-FilePath', appPath,
+          '-Verb', 'RunAs'
+        ]);
         app.quit();
         return { success: true };
       } catch (error) {
         console.log('[Admin] Failed to restart as admin:', getErrorMessage(error));
         return { success: false, error: 'Failed to restart with admin privileges. The request may have been cancelled.' };
       }
-    } else if (platform === 'darwin' || platform === 'linux') {
-      let command: string;
-      
-      if (platform === 'darwin') {
-        command = `osascript -e 'do shell script "${appPath}" with administrator privileges'`;
-      } else {
-        command = `pkexec "${appPath}" || gksudo "${appPath}"`;
-      }
-      
+    } else if (platform === 'darwin') {
       try {
-        await execPromise(command);
+        await execFilePromise('osascript', [
+          '-e', `do shell script quoted form of "${appPath}" with administrator privileges`
+        ]);
+        app.quit();
+        return { success: true };
+      } catch (error) {
+        console.log('[Admin] Failed to restart as admin:', getErrorMessage(error));
+        return { success: false, error: 'Failed to restart with admin privileges. The request may have been cancelled.' };
+      }
+    } else if (platform === 'linux') {
+      try {
+        await execFilePromise('pkexec', [appPath]);
         app.quit();
         return { success: true };
       } catch (error) {
@@ -1669,6 +2339,9 @@ ipcMain.handle('restart-as-admin', async (): Promise<ApiResponse> => {
 
 ipcMain.handle('open-terminal', async (_event: IpcMainInvokeEvent, dirPath: string): Promise<ApiResponse> => {
   try {
+    if (!isPathSafe(dirPath)) {
+      return { success: false, error: 'Invalid directory path' };
+    }
     const platform = process.platform;
 
     if (platform === 'win32') {
@@ -1678,27 +2351,36 @@ ipcMain.handle('open-terminal', async (_event: IpcMainInvokeEvent, dirPath: stri
       });
 
       if (hasWT) {
-        spawn('wt', ['-d', dirPath], { shell: false, detached: true });
+        const child = spawn('wt', ['-d', dirPath], { shell: false, detached: true, stdio: 'ignore' });
+        child.unref();
       } else {
-        spawn('cmd', ['/K', 'cd', '/d', dirPath], { shell: false, detached: true });
+        const quotedPath = `"${dirPath.replace(/"/g, '""')}"`;
+        const child = spawn('cmd', ['/K', 'cd', '/d', quotedPath], { shell: false, detached: true, stdio: 'ignore' });
+        child.unref();
       }
     } else if (platform === 'darwin') {
-      spawn('open', ['-a', 'Terminal', dirPath], { shell: false, detached: true });
+      const child = spawn('open', ['-a', 'Terminal', dirPath], { shell: false, detached: true, stdio: 'ignore' });
+      child.unref();
     } else {
       const terminals = [
         { cmd: 'x-terminal-emulator', args: ['--working-directory', dirPath] },
         { cmd: 'gnome-terminal', args: ['--working-directory=' + dirPath] },
-        { cmd: 'xterm', args: ['-e', 'cd', dirPath, '&&', 'bash'] }
+        { cmd: 'xterm', args: ['-e', 'bash'] }
       ];
 
       let launched = false;
       for (const term of terminals) {
-        try {
-          spawn(term.cmd, term.args, { shell: false, detached: true });
+        const success = await new Promise<boolean>((resolve) => {
+          const child = spawn(term.cmd, term.args, { shell: false, detached: true, cwd: dirPath });
+          child.once('spawn', () => {
+            child.unref();
+            resolve(true);
+          });
+          child.once('error', () => resolve(false));
+        });
+        if (success) {
           launched = true;
           break;
-        } catch (e) {
-          continue;
         }
       }
 
@@ -1715,18 +2397,26 @@ ipcMain.handle('open-terminal', async (_event: IpcMainInvokeEvent, dirPath: stri
 
 ipcMain.handle('read-file-content', async (_event: IpcMainInvokeEvent, filePath: string, maxSize: number = 1024 * 1024): Promise<{ success: boolean; content?: string; error?: string; isTruncated?: boolean }> => {
   try {
+    if (!isPathSafe(filePath)) {
+      return { success: false, error: 'Invalid file path' };
+    }
+    const requestedMaxSize = Number.isFinite(maxSize) ? maxSize : MAX_TEXT_PREVIEW_BYTES;
+    const safeMaxSize = Math.min(Math.max(1, requestedMaxSize), MAX_TEXT_PREVIEW_BYTES);
     const stats = await fs.stat(filePath);
     
-    if (stats.size > maxSize) {
-      const buffer = Buffer.alloc(maxSize);
+    if (stats.size > safeMaxSize) {
+      const buffer = Buffer.alloc(safeMaxSize);
       const fileHandle = await fs.open(filePath, 'r');
-      await fileHandle.read(buffer, 0, maxSize, 0);
-      await fileHandle.close();
-      return { 
-        success: true, 
-        content: buffer.toString('utf8'),
-        isTruncated: true
-      };
+      try {
+        await fileHandle.read(buffer, 0, safeMaxSize, 0);
+        return {
+          success: true,
+          content: buffer.toString('utf8'),
+          isTruncated: true
+        };
+      } finally {
+        await fileHandle.close();
+      }
     }
     
     const content = await fs.readFile(filePath, 'utf8');
@@ -1738,9 +2428,14 @@ ipcMain.handle('read-file-content', async (_event: IpcMainInvokeEvent, filePath:
 
 ipcMain.handle('get-file-data-url', async (_event: IpcMainInvokeEvent, filePath: string, maxSize: number = 10 * 1024 * 1024): Promise<{ success: boolean; dataUrl?: string; error?: string }> => {
   try {
+    if (!isPathSafe(filePath)) {
+      return { success: false, error: 'Invalid file path' };
+    }
+    const requestedMaxSize = Number.isFinite(maxSize) ? maxSize : MAX_DATA_URL_BYTES;
+    const safeMaxSize = Math.min(Math.max(1, requestedMaxSize), MAX_DATA_URL_BYTES);
     const stats = await fs.stat(filePath);
-    
-    if (stats.size > maxSize) {
+
+    if (stats.size > safeMaxSize) {
       return { success: false, error: 'File too large to preview' };
     }
     
@@ -1853,7 +2548,7 @@ ipcMain.handle('check-for-updates', async (): Promise<UpdateCheckResponse> => {
     };
   }
 
-  if (isInstalledViaMsi()) {
+  if (await checkMsiInstallation()) {
     const currentVersion = app.getVersion();
     console.log('[AutoUpdater] MSI installation detected - auto-updates disabled');
     return {
@@ -1867,26 +2562,42 @@ ipcMain.handle('check-for-updates', async (): Promise<UpdateCheckResponse> => {
   }
 
   try {
-    const { autoUpdater } = require('electron-updater');
+    const autoUpdater = getAutoUpdater();
     const currentVersion = app.getVersion();
-    console.log('[AutoUpdater] Manually checking for updates. Current version:', currentVersion);
-    
+    const settings = await loadSettings();
+    const updateChannel = settings.updateChannel || 'auto';
+    console.log('[AutoUpdater] Manually checking for updates. Current version:', currentVersion, '| Channel:', updateChannel);
+
+    const isBetaVersion = /-(beta|alpha|rc)/i.test(currentVersion);
+    let preferBeta = false;
+    if (updateChannel === 'beta') {
+      preferBeta = true;
+    } else if (updateChannel === 'stable') {
+      preferBeta = false;
+    } else {
+      preferBeta = isBetaVersion;
+    }
+
+    if (preferBeta) {
+      autoUpdater.channel = 'beta';
+      autoUpdater.allowPrerelease = true;
+    } else {
+      autoUpdater.channel = 'latest';
+      autoUpdater.allowPrerelease = false;
+    }
+
     const updateCheckResult = await autoUpdater.checkForUpdates();
-    
+
     if (!updateCheckResult) {
       return { success: false, error: 'Update check returned no result' };
     }
 
     const updateInfo = updateCheckResult.updateInfo;
     const latestVersion = updateInfo.version;
-    
-    // Check if this is a beta build
-    const isBetaVersion = /-(beta|alpha|rc)/i.test(currentVersion);
     const updateIsBeta = /-(beta|alpha|rc)/i.test(latestVersion);
-    
-    // Beta builds should only update to other beta versions
-    if (isBetaVersion && !updateIsBeta) {
-      console.log(`[AutoUpdater] Beta build ignoring stable release ${latestVersion} - only accepting beta/prerelease updates`);
+
+    if (preferBeta && !updateIsBeta) {
+      console.log(`[AutoUpdater] Beta channel ignoring stable release ${latestVersion}`);
       return {
         success: true,
         hasUpdate: false,
@@ -1895,8 +2606,18 @@ ipcMain.handle('check-for-updates', async (): Promise<UpdateCheckResponse> => {
         latestVersion: `v${currentVersion}`
       };
     }
-    
-    // Compare versions to check for actual update (not downgrade)
+
+    if (!preferBeta && updateIsBeta) {
+      console.log(`[AutoUpdater] Stable channel ignoring beta release ${latestVersion}`);
+      return {
+        success: true,
+        hasUpdate: false,
+        isBeta: false,
+        currentVersion: `v${currentVersion}`,
+        latestVersion: `v${currentVersion}`
+      };
+    }
+
     const comparison = compareVersions(latestVersion, currentVersion);
     const hasUpdate = comparison > 0;
 
@@ -1904,14 +2625,14 @@ ipcMain.handle('check-for-updates', async (): Promise<UpdateCheckResponse> => {
       hasUpdate,
       currentVersion,
       latestVersion,
-      isBetaVersion,
+      preferBeta,
       updateIsBeta
     });
 
     return {
       success: true,
       hasUpdate,
-      isBeta: isBetaVersion,
+      isBeta: preferBeta,
       updateInfo: {
         version: updateInfo.version,
         releaseDate: updateInfo.releaseDate,
@@ -1929,7 +2650,7 @@ ipcMain.handle('check-for-updates', async (): Promise<UpdateCheckResponse> => {
 
 ipcMain.handle('download-update', async (): Promise<ApiResponse> => {
   try {
-    const { autoUpdater } = require('electron-updater');
+    const autoUpdater = getAutoUpdater();
     console.log('[AutoUpdater] Starting update download...');
     await autoUpdater.downloadUpdate();
     return { success: true };
@@ -1941,7 +2662,7 @@ ipcMain.handle('download-update', async (): Promise<ApiResponse> => {
 
 ipcMain.handle('install-update', async (): Promise<ApiResponse> => {
   try {
-    const { autoUpdater } = require('electron-updater');
+    const autoUpdater = getAutoUpdater();
     console.log('[AutoUpdater] Installing update and restarting...');
     autoUpdater.quitAndInstall(false, true);
     return { success: true };
@@ -1982,22 +2703,51 @@ ipcMain.handle('undo-action', async (_event: IpcMainInvokeEvent): Promise<ApiRes
         return { success: true };
       
       case 'move':
-        const moveSourcePaths = action.data.sourcePaths;
+        const movedPaths = action.data.sourcePaths;
+        const originalPaths = action.data.originalPaths;
         const originalParent = action.data.originalParent;
-        
-        for (const source of moveSourcePaths) {
-          try {
-            await fs.access(source);
-          } catch {
-            console.log('[Undo] File no longer exists:', source);
-            return { success: false, error: 'Cannot undo: One or more files no longer exist' };
+
+        if (Array.isArray(originalPaths) && originalPaths.length === movedPaths.length) {
+          for (const movedPath of movedPaths) {
+            try {
+              await fs.access(movedPath);
+            } catch {
+              console.log('[Undo] File no longer exists:', movedPath);
+              return { success: false, error: 'Cannot undo: One or more files no longer exist' };
+            }
           }
-        }
-        
-        for (const source of moveSourcePaths) {
-          const fileName = path.basename(source);
-          const originalPath = path.join(originalParent, fileName);
-          await fs.rename(source, originalPath);
+
+          for (const originalPath of originalPaths) {
+            try {
+              await fs.access(originalPath);
+              console.log('[Undo] Original path already exists:', originalPath);
+              return { success: false, error: 'Cannot undo: A file already exists at the original location' };
+            } catch {
+            }
+          }
+
+          for (let i = 0; i < movedPaths.length; i++) {
+            await fs.rename(movedPaths[i], originalPaths[i]);
+          }
+        } else {
+          if (!originalParent) {
+            return { success: false, error: 'Cannot undo: Original parent path not available' };
+          }
+
+          for (const source of movedPaths) {
+            try {
+              await fs.access(source);
+            } catch {
+              console.log('[Undo] File no longer exists:', source);
+              return { success: false, error: 'Cannot undo: One or more files no longer exist' };
+            }
+          }
+
+          for (const source of movedPaths) {
+            const fileName = path.basename(source);
+            const originalPath = path.join(originalParent, fileName);
+            await fs.rename(source, originalPath);
+          }
         }
         pushRedoAction(action);
         console.log('[Undo] Moved back to original location');
@@ -2045,30 +2795,76 @@ ipcMain.handle('redo-action', async (_event: IpcMainInvokeEvent): Promise<ApiRes
   try {
     switch (action.type) {
       case 'rename':
+        try {
+          await fs.access(action.data.oldPath);
+        } catch {
+          console.log('[Redo] Source file no longer exists:', action.data.oldPath);
+          return { success: false, error: 'Cannot redo: Source file no longer exists' };
+        }
+
+        try {
+          await fs.access(action.data.newPath);
+          console.log('[Redo] Target path already exists:', action.data.newPath);
+          return { success: false, error: 'Cannot redo: A file already exists at the target location' };
+        } catch {
+        }
+
         await fs.rename(action.data.oldPath, action.data.newPath);
         undoStack.push(action);
         console.log('[Redo] Renamed:', action.data.oldPath, '->', action.data.newPath);
         return { success: true };
       
       case 'move':
-        const originalParent = action.data.originalParent;
-        const destPath = action.data.destPath;
+        const redoDestPath = action.data.destPath;
         const newMovedPaths: string[] = [];
-        const filesToMove = action.data.originalPaths || action.data.sourcePaths;
-        
-        for (const originalPath of filesToMove) {
-          const fileName = path.basename(originalPath);
-          const currentPath = path.join(originalParent, fileName);
-          const newPath = path.join(destPath, fileName);
-          try {
-            await fs.access(currentPath);
-          } catch {
-            console.log('[Redo] File not found at expected location:', currentPath);
-            return { success: false, error: 'Cannot redo: File not found at original location' };
+        const originalPaths = action.data.originalPaths;
+
+        if (Array.isArray(originalPaths) && originalPaths.length > 0) {
+          for (const originalPath of originalPaths) {
+            const fileName = path.basename(originalPath);
+            const newPath = path.join(redoDestPath, fileName);
+            try {
+              await fs.access(originalPath);
+            } catch {
+              console.log('[Redo] File not found at expected location:', originalPath);
+              return { success: false, error: 'Cannot redo: File not found at original location' };
+            }
+            try {
+              await fs.access(newPath);
+              console.log('[Redo] Target path already exists:', newPath);
+              return { success: false, error: 'Cannot redo: A file already exists at the target location' };
+            } catch {
+            }
+            await fs.rename(originalPath, newPath);
+            newMovedPaths.push(newPath);
           }
-          
-          await fs.rename(currentPath, newPath);
-          newMovedPaths.push(newPath);
+        } else {
+          const redoOriginalParent = action.data.originalParent;
+          const filesToMove = action.data.sourcePaths;
+
+          if (!redoOriginalParent) {
+            return { success: false, error: 'Cannot redo: Original parent path not available' };
+          }
+
+          for (const sourcePath of filesToMove) {
+            const fileName = path.basename(sourcePath);
+            const currentPath = path.join(redoOriginalParent, fileName);
+            const newPath = path.join(redoDestPath, fileName);
+            try {
+              await fs.access(currentPath);
+            } catch {
+              console.log('[Redo] File not found at expected location:', currentPath);
+              return { success: false, error: 'Cannot redo: File not found at original location' };
+            }
+            try {
+              await fs.access(newPath);
+              console.log('[Redo] Target path already exists:', newPath);
+              return { success: false, error: 'Cannot redo: A file already exists at the target location' };
+            } catch {
+            }
+            await fs.rename(currentPath, newPath);
+            newMovedPaths.push(newPath);
+          }
         }
         action.data.sourcePaths = newMovedPaths;
         undoStack.push(action);
@@ -2077,6 +2873,14 @@ ipcMain.handle('redo-action', async (_event: IpcMainInvokeEvent): Promise<ApiRes
       
       case 'create':
         const itemPath = action.data.path;
+
+        try {
+          await fs.access(itemPath);
+          console.log('[Redo] Item already exists at path:', itemPath);
+          return { success: false, error: 'Cannot redo: A file or folder already exists at this location' };
+        } catch {
+        }
+
         if (action.data.isDirectory) {
           await fs.mkdir(itemPath);
         } else {
@@ -2104,7 +2908,7 @@ ipcMain.handle('get-undo-redo-state', async (): Promise<{canUndo: boolean; canRe
   };
 });
 
-ipcMain.handle('search-index', async (_event: IpcMainInvokeEvent, query: string): Promise<IndexSearchResponse> => {
+ipcMain.handle('search-index', async (_event: IpcMainInvokeEvent, query: string, operationId?: string): Promise<IndexSearchResponse> => {
   try {
     if (!fileIndexer) {
       return { success: false, error: 'Indexer not initialized' };
@@ -2114,7 +2918,16 @@ ipcMain.handle('search-index', async (_event: IpcMainInvokeEvent, query: string)
       return { success: false, error: 'Indexer is disabled' };
     }
 
-    const results = await fileIndexer.search(query);
+    const MAX_RESULTS = 100;
+    const indexPath = path.join(app.getPath('userData'), 'file-index.json');
+    const searchTasks = indexerTasks ?? fileTasks;
+
+    const results = await searchTasks.runTask<IndexEntry[]>('search-index', {
+      indexPath,
+      query,
+      maxResults: MAX_RESULTS
+    }, operationId);
+
     return { success: true, results };
   } catch (error) {
     console.error('[Indexer] Search error:', error);
@@ -2182,7 +2995,7 @@ ipcMain.handle('compress-files', async (_event: IpcMainInvokeEvent, sourcePaths:
 
     if (format === 'tar.gz') {
       return new Promise(async (resolve, reject) => {
-        const Seven = require('node-7z');
+        const Seven = get7zipModule();
         const sevenZipPath = get7zipPath();
         console.log('[Compress] Using 7zip at:', sevenZipPath);
         const tarPath = outputPath.replace(/\.gz$/, '');
@@ -2202,7 +3015,7 @@ ipcMain.handle('compress-files', async (_event: IpcMainInvokeEvent, sourcePaths:
 
         let fileCount = 0;
         
-        tarProcess.on('progress', (progress) => {
+        tarProcess.on('progress', (progress: { file?: string }) => {
           fileCount++;
           if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
             mainWindow.webContents.send('compress-progress', {
@@ -2250,18 +3063,18 @@ ipcMain.handle('compress-files', async (_event: IpcMainInvokeEvent, sourcePaths:
             resolve({ success: true });
           });
 
-          gzipProcess.on('error', async (error) => {
+          gzipProcess.on('error', async (error: { message?: string; level?: string }) => {
             console.error('[Compress] Gzip error:', error);
 
             try {
               await fs.unlink(tarPath);
-            } catch (err) {
+            } catch {
             }
             try {
               await fs.unlink(outputPath);
-            } catch (err) {
+            } catch {
             }
-            
+
             if (operationId) {
               activeArchiveProcesses.delete(operationId);
             }
@@ -2276,14 +3089,14 @@ ipcMain.handle('compress-files', async (_event: IpcMainInvokeEvent, sourcePaths:
           });
         });
 
-        tarProcess.on('error', async (error) => {
+        tarProcess.on('error', async (error: { message?: string; level?: string }) => {
           console.error('[Compress] Tar error:', error);
 
           try {
             await fs.unlink(tarPath);
-          } catch (err) {
+          } catch {
           }
-          
+
           if (operationId) {
             activeArchiveProcesses.delete(operationId);
           }
@@ -2294,7 +3107,7 @@ ipcMain.handle('compress-files', async (_event: IpcMainInvokeEvent, sourcePaths:
             const gzipProcess = Seven.add(outputPath, [tarPath], {
               $bin: sevenZipPath
             });
-            
+
             if (operationId) {
               activeArchiveProcesses.set(operationId, gzipProcess);
             }
@@ -2302,7 +3115,7 @@ ipcMain.handle('compress-files', async (_event: IpcMainInvokeEvent, sourcePaths:
             gzipProcess.on('end', async () => {
               try {
                 await fs.unlink(tarPath);
-              } catch (err) {
+              } catch {
               }
               if (operationId) {
                 activeArchiveProcesses.delete(operationId);
@@ -2310,11 +3123,11 @@ ipcMain.handle('compress-files', async (_event: IpcMainInvokeEvent, sourcePaths:
               resolve({ success: true });
             });
 
-            gzipProcess.on('error', async (gzipError) => {
+            gzipProcess.on('error', async (gzipError: { message?: string }) => {
               try {
                 await fs.unlink(tarPath);
                 await fs.unlink(outputPath);
-              } catch (err) {
+              } catch {
               }
               if (operationId) {
                 activeArchiveProcesses.delete(operationId);
@@ -2329,7 +3142,7 @@ ipcMain.handle('compress-files', async (_event: IpcMainInvokeEvent, sourcePaths:
     }
 
     return new Promise((resolve, reject) => {
-      const Seven = require('node-7z');
+      const Seven = get7zipModule();
       const sevenZipPath = get7zipPath();
       console.log('[Compress] Using 7zip at:', sevenZipPath);
 
@@ -2347,7 +3160,7 @@ ipcMain.handle('compress-files', async (_event: IpcMainInvokeEvent, sourcePaths:
 
       let fileCount = 0;
       
-      seven.on('progress', (progress) => {
+      seven.on('progress', (progress: { file?: string }) => {
         fileCount++;
         if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
           mainWindow.webContents.send('compress-progress', {
@@ -2367,7 +3180,7 @@ ipcMain.handle('compress-files', async (_event: IpcMainInvokeEvent, sourcePaths:
         resolve({ success: true });
       });
 
-      seven.on('error', (error) => {
+      seven.on('error', (error: { message?: string; level?: string }) => {
         console.error('[Compress] 7zip error:', error);
         if (operationId) {
           activeArchiveProcesses.delete(operationId);
@@ -2399,12 +3212,18 @@ ipcMain.handle('extract-archive', async (_event: IpcMainInvokeEvent, archivePath
       console.warn('[Security] Invalid destination path rejected:', destPath);
       return { success: false, error: 'Invalid destination path' };
     }
-    
+
     console.log('[Extract] Starting extraction:', archivePath, 'to', destPath);
 
     await fs.mkdir(destPath, { recursive: true });
+    try {
+      await assertArchiveEntriesSafe(archivePath, destPath);
+    } catch (error) {
+      console.error('[Extract] Unsafe archive:', error);
+      return { success: false, error: 'Archive contains unsafe paths' };
+    }
     return new Promise((resolve, reject) => {
-      const Seven = require('node-7z');
+      const Seven = get7zipModule();
       const sevenZipPath = get7zipPath();
       console.log('[Extract] Using 7zip at:', sevenZipPath);
       
@@ -2419,7 +3238,7 @@ ipcMain.handle('extract-archive', async (_event: IpcMainInvokeEvent, archivePath
 
       let fileCount = 0;
       
-      seven.on('progress', (progress) => {
+      seven.on('progress', (progress: { file?: string }) => {
         fileCount++;
         if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
           mainWindow.webContents.send('extract-progress', {
@@ -2431,20 +3250,29 @@ ipcMain.handle('extract-archive', async (_event: IpcMainInvokeEvent, archivePath
         }
       });
 
-      seven.on('end', () => {
+      seven.on('end', async () => {
         console.log('[Extract] 7zip extraction completed for:', archivePath);
-        if (operationId) {
-          activeArchiveProcesses.delete(operationId);
+        try {
+          await assertExtractedPathsSafe(destPath);
+          if (operationId) {
+            activeArchiveProcesses.delete(operationId);
+          }
+          resolve({ success: true });
+        } catch (error) {
+          console.error('[Extract] Unsafe extracted paths:', error);
+          if (operationId) {
+            activeArchiveProcesses.delete(operationId);
+          }
+          reject({ success: false, error: getErrorMessage(error) });
         }
-        resolve({ success: true });
       });
 
-      seven.on('error', (error) => {
+      seven.on('error', (error: { message?: string }) => {
         console.error('[Extract] 7zip error:', error);
         if (operationId) {
           activeArchiveProcesses.delete(operationId);
         }
-        reject({ success: false, error: error.message });
+        reject({ success: false, error: error.message || 'Extraction failed' });
       });
     });
   } catch (error) {
@@ -2487,7 +3315,7 @@ ipcMain.handle('set-zoom-level', async (event: IpcMainInvokeEvent, zoomLevel: nu
       return { success: false, error: 'Window not available' };
     }
 
-    const clampedZoom = Math.max(0.5, Math.min(2.0, zoomLevel));
+    const clampedZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, zoomLevel));
     win.webContents.setZoomFactor(clampedZoom);
     
     console.log('[Zoom] Set zoom level to:', clampedZoom);
@@ -2515,7 +3343,7 @@ ipcMain.handle('get-zoom-level', async (event: IpcMainInvokeEvent): Promise<{suc
 
 async function createTray(forHiddenStart: boolean = false): Promise<void> {
   const logPrefix = forHiddenStart ? '[Tray] (hidden start)' : '[Tray]';
-  
+
   if (forHiddenStart) {
     if (tray) {
       console.log(`${logPrefix} Tray already exists`);
@@ -2527,7 +3355,7 @@ async function createTray(forHiddenStart: boolean = false): Promise<void> {
       console.log(`${logPrefix} Tray disabled in settings`);
       return;
     }
-    
+
     if (tray) {
       tray.destroy();
       tray = null;
@@ -2537,24 +3365,29 @@ async function createTray(forHiddenStart: boolean = false): Promise<void> {
   let iconPath: string;
   let trayIcon: Electron.NativeImage;
 
-  const assetsPath = path.join(__dirname, '..', 'assets');
+  trayAssetsPath = path.join(__dirname, '..', 'assets');
 
   if (process.platform === 'darwin') {
-    const icon32Path = path.join(assetsPath, 'iyeris.iconset', 'icon_32x32@1x.png');
-    const iconFallback = path.join(assetsPath, 'icon.png');
-    
-    if (fsSync.existsSync(icon32Path)) {
+    const templatePath = path.join(trayAssetsPath, 'icon-tray-Template.png');
+    const icon32Path = path.join(trayAssetsPath, 'iyeris.iconset', 'icon_32x32@1x.png');
+    const iconFallback = path.join(trayAssetsPath, 'icon.png');
+
+    if (fsSync.existsSync(templatePath)) {
+      iconPath = templatePath;
+      trayIcon = nativeImage.createFromPath(iconPath).resize({ width: 22, height: 22 });
+    } else if (fsSync.existsSync(icon32Path)) {
       iconPath = icon32Path;
       trayIcon = nativeImage.createFromPath(iconPath).resize({ width: 22, height: 22 });
     } else {
       iconPath = iconFallback;
       trayIcon = nativeImage.createFromPath(iconPath).resize({ width: 22, height: 22 });
     }
-    console.log(`${logPrefix} macOS: Using color icon from:`, iconPath);
+    trayIcon.setTemplateImage(true);
+    console.log(`${logPrefix} macOS: Using template icon from:`, iconPath);
   } else if (process.platform === 'win32') {
-    const icoPath = path.join(assetsPath, 'icon-square.ico');
-    const pngPath = path.join(assetsPath, 'icon.png');
-    
+    const icoPath = path.join(trayAssetsPath, 'icon-square.ico');
+    const pngPath = path.join(trayAssetsPath, 'icon.png');
+
     if (fsSync.existsSync(icoPath)) {
       iconPath = icoPath;
       trayIcon = nativeImage.createFromPath(iconPath);
@@ -2564,9 +3397,9 @@ async function createTray(forHiddenStart: boolean = false): Promise<void> {
     }
     console.log(`${logPrefix} Windows: Using icon from:`, iconPath);
   } else {
-    const icon32Path = path.join(assetsPath, 'iyeris.iconset', 'icon_32x32@1x.png');
-    const iconFallback = path.join(assetsPath, 'icon.png');
-    
+    const icon32Path = path.join(trayAssetsPath, 'iyeris.iconset', 'icon_32x32@1x.png');
+    const iconFallback = path.join(trayAssetsPath, 'icon.png');
+
     if (fsSync.existsSync(icon32Path)) {
       iconPath = icon32Path;
       trayIcon = nativeImage.createFromPath(iconPath).resize({ width: 24, height: 24 });
@@ -2581,7 +3414,7 @@ async function createTray(forHiddenStart: boolean = false): Promise<void> {
     console.error(`${logPrefix} Failed to load tray icon from:`, iconPath);
     return;
   }
-  
+
   try {
     tray = new Tray(trayIcon);
   } catch (error) {
@@ -2594,49 +3427,12 @@ async function createTray(forHiddenStart: boolean = false): Promise<void> {
   }
 
   tray.setToolTip('IYERIS');
-  
-  const contextMenu = Menu.buildFromTemplate([
-    { 
-      label: 'Show IYERIS', 
-      click: () => {
-        let targetWindow = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
-        if (!targetWindow) {
-          const allWindows = BrowserWindow.getAllWindows();
-          targetWindow = allWindows.length > 0 ? allWindows[0] : null;
-        }
-        
-        if (targetWindow) {
-          targetWindow.show();
-          targetWindow.focus();
-        } else {
-          createWindow(false);
-        }
-        
-        if (process.platform === 'darwin') {
-          app.dock?.show();
-        }
-      } 
-    },
-    { type: 'separator' },
-    { 
-      label: 'Quit', 
-      click: () => {
-        isQuitting = true;
-        app.quit();
-      } 
-    }
-  ]);
-  
-  tray.setContextMenu(contextMenu);
+  currentTrayState = 'idle';
+  updateTrayMenu();
 
   if (process.platform !== 'darwin') {
     tray.on('click', () => {
-      let targetWindow = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
-      if (!targetWindow) {
-        const allWindows = BrowserWindow.getAllWindows();
-        targetWindow = allWindows.length > 0 ? allWindows[0] : null;
-      }
-      
+      const targetWindow = getActiveWindow();
       if (targetWindow) {
         if (targetWindow.isVisible()) {
           targetWindow.hide();
@@ -2652,20 +3448,7 @@ async function createTray(forHiddenStart: boolean = false): Promise<void> {
 
   if (process.platform === 'darwin') {
     tray.on('double-click', () => {
-      let targetWindow = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
-      if (!targetWindow) {
-        const allWindows = BrowserWindow.getAllWindows();
-        targetWindow = allWindows.length > 0 ? allWindows[0] : null;
-      }
-      
-      if (targetWindow) {
-        targetWindow.show();
-        targetWindow.focus();
-      } else {
-        createWindow(false);
-      }
-      
-      app.dock?.show();
+      showAppWindow();
     });
   }
 
@@ -2678,73 +3461,25 @@ async function createTrayForHiddenStart(): Promise<void> {
 }
 
 // Folder Size Calc
-ipcMain.handle('calculate-folder-size', async (_event: IpcMainInvokeEvent, folderPath: string, operationId: string): Promise<{success: boolean; result?: {totalSize: number; fileCount: number; folderCount: number}; error?: string}> => {
+ipcMain.handle('calculate-folder-size', async (_event: IpcMainInvokeEvent, folderPath: string, operationId: string): Promise<{success: boolean; result?: {totalSize: number; fileCount: number; folderCount: number; fileTypes?: {extension: string; count: number; size: number}[]}; error?: string}> => {
   try {
+    if (!isPathSafe(folderPath)) {
+      return { success: false, error: 'Invalid folder path' };
+    }
     console.log('[FolderSize] Starting calculation for:', folderPath, 'operationId:', operationId);
-    
+
     const operation = { aborted: false };
     activeFolderSizeCalculations.set(operationId, operation);
-    
-    let totalSize = 0;
-    let fileCount = 0;
-    let folderCount = 0;
-    let lastProgressUpdate = Date.now();
-    
-    
-    async function calculateSize(dirPath: string): Promise<void> {
-      if (operation.aborted) {
-        throw new Error('Calculation cancelled');
-      }
-      
-      try {
-        const entries = await fs.readdir(dirPath, { withFileTypes: true });
-        
-        for (const entry of entries) {
-          if (operation.aborted) {
-            throw new Error('Calculation cancelled');
-          }
-          
-          const fullPath = path.join(dirPath, entry.name);
-          
-          try {
-            if (entry.isDirectory()) {
-              folderCount++;
-              await calculateSize(fullPath);
-            } else if (entry.isFile()) {
-              const stats = await fs.stat(fullPath);
-              totalSize += stats.size;
-              fileCount++;
-            }
 
-            const now = Date.now();
-            if (now - lastProgressUpdate > 100) {
-              lastProgressUpdate = now;
-              safeSendToWindow(mainWindow, 'folder-size-progress', {
-                operationId,
-                calculatedSize: totalSize,
-                fileCount,
-                folderCount,
-                currentPath: fullPath
-              });
-            }
-          } catch (err) {
-            console.log(`[FolderSize] Skipping ${fullPath}:`, (err as Error).message);
-          }
-        }
-      } catch (err) {
-        console.log(`[FolderSize] Cannot read ${dirPath}:`, (err as Error).message);
-      }
-    }
-    
-    await calculateSize(folderPath);
-    
+    const result = await fileTasks.runTask<{ totalSize: number; fileCount: number; folderCount: number; fileTypes?: { extension: string; count: number; size: number }[] }>(
+      'folder-size',
+      { folderPath, operationId },
+      operationId
+    );
+
     activeFolderSizeCalculations.delete(operationId);
-    
-    console.log('[FolderSize] Completed:', { totalSize, fileCount, folderCount });
-    return {
-      success: true,
-      result: { totalSize, fileCount, folderCount }
-    };
+    console.log('[FolderSize] Completed:', { totalSize: result.totalSize, fileCount: result.fileCount, folderCount: result.folderCount, fileTypes: result.fileTypes?.length || 0 });
+    return { success: true, result };
   } catch (error) {
     activeFolderSizeCalculations.delete(operationId);
     const errorMessage = getErrorMessage(error);
@@ -2761,6 +3496,7 @@ ipcMain.handle('cancel-folder-size-calculation', async (_event: IpcMainInvokeEve
   const operation = activeFolderSizeCalculations.get(operationId);
   if (operation) {
     operation.aborted = true;
+    fileTasks.cancelOperation(operationId);
     activeFolderSizeCalculations.delete(operationId);
     console.log('[FolderSize] Cancellation requested for operationId:', operationId);
     return { success: true };
@@ -2771,69 +3507,21 @@ ipcMain.handle('cancel-folder-size-calculation', async (_event: IpcMainInvokeEve
 // Checksum Calc
 ipcMain.handle('calculate-checksum', async (_event: IpcMainInvokeEvent, filePath: string, operationId: string, algorithms: string[]): Promise<{success: boolean; result?: {md5?: string; sha256?: string}; error?: string}> => {
   try {
+    if (!isPathSafe(filePath)) {
+      return { success: false, error: 'Invalid file path' };
+    }
     console.log('[Checksum] Starting calculation for:', filePath, 'algorithms:', algorithms, 'operationId:', operationId);
-    
+
     const operation = { aborted: false };
     activeChecksumCalculations.set(operationId, operation);
-    
-    const stats = await fs.stat(filePath);
-    const fileSize = stats.size;
-    
-    const result: {md5?: string; sha256?: string} = {};
-    
-    for (const algorithm of algorithms) {
-      if (operation.aborted) {
-        throw new Error('Calculation cancelled');
-      }
-      
-      const hash = crypto.createHash(algorithm);
-      const stream = fsSync.createReadStream(filePath);
-      
-      let bytesRead = 0;
-      let lastProgressUpdate = Date.now();
-      
-      await new Promise<void>((resolve, reject) => {
-        stream.on('data', (chunk: Buffer) => {
-          if (operation.aborted) {
-            stream.destroy();
-            reject(new Error('Calculation cancelled'));
-            return;
-          }
-          
-          hash.update(chunk);
-          bytesRead += chunk.length;
-          const now = Date.now();
-          if (now - lastProgressUpdate > 100) {
-            lastProgressUpdate = now;
-            const percent = fileSize > 0 ? (bytesRead / fileSize) * 100 : 0;
-            safeSendToWindow(mainWindow, 'checksum-progress', {
-              operationId,
-              percent,
-              algorithm
-            });
-          }
-        });
-        
-        stream.on('end', () => {
-          if (!operation.aborted) {
-            const hashValue = hash.digest('hex');
-            if (algorithm === 'md5') {
-              result.md5 = hashValue;
-            } else if (algorithm === 'sha256') {
-              result.sha256 = hashValue;
-            }
-          }
-          resolve();
-        });
-        
-        stream.on('error', (err) => {
-          reject(err);
-        });
-      });
-    }
-    
+
+    const result = await fileTasks.runTask<{ md5?: string; sha256?: string }>(
+      'checksum',
+      { filePath, operationId, algorithms },
+      operationId
+    );
+
     activeChecksumCalculations.delete(operationId);
-    
     console.log('[Checksum] Completed:', result);
     return { success: true, result };
   } catch (error) {
@@ -2852,6 +3540,7 @@ ipcMain.handle('cancel-checksum-calculation', async (_event: IpcMainInvokeEvent,
   const operation = activeChecksumCalculations.get(operationId);
   if (operation) {
     operation.aborted = true;
+    fileTasks.cancelOperation(operationId);
     activeChecksumCalculations.delete(operationId);
     console.log('[Checksum] Cancellation requested for operationId:', operationId);
     return { success: true };
@@ -2859,6 +3548,59 @@ ipcMain.handle('cancel-checksum-calculation', async (_event: IpcMainInvokeEvent,
   return { success: false, error: 'Operation not found' };
 });
 
+ipcMain.handle('get-git-status', async (_event: IpcMainInvokeEvent, dirPath: string): Promise<{success: boolean; isGitRepo?: boolean; statuses?: {path: string; status: string}[]; error?: string}> => {
+  try {
+    if (!isPathSafe(dirPath)) {
+      return { success: false, error: 'Invalid directory path' };
+    }
 
+    const execPromise = promisify(exec);
 
+    try {
+      await execPromise('git rev-parse --git-dir', { cwd: dirPath });
+    } catch {
+      return { success: true, isGitRepo: false, statuses: [] };
+    }
 
+    const { stdout } = await execPromise('git status --porcelain -uall', { cwd: dirPath, maxBuffer: 10 * 1024 * 1024 });
+
+    const statuses: {path: string; status: string}[] = [];
+    const lines = stdout.split('\n').filter(line => line.trim());
+
+    for (const line of lines) {
+      const statusCode = line.substring(0, 2);
+      let filePath = line.substring(3);
+
+      if (filePath.includes(' -> ')) {
+        filePath = filePath.split(' -> ')[1];
+      }
+
+      let status: string;
+      if (statusCode === '??') {
+        status = 'untracked';
+      } else if (statusCode === '!!') {
+        status = 'ignored';
+      } else if (statusCode.includes('U') || statusCode === 'AA' || statusCode === 'DD') {
+        status = 'conflict';
+      } else if (statusCode.includes('A') || statusCode.includes('C')) {
+        status = 'added';
+      } else if (statusCode.includes('D')) {
+        status = 'deleted';
+      } else if (statusCode.includes('R')) {
+        status = 'renamed';
+      } else if (statusCode.includes('M') || statusCode.includes('T')) {
+        status = 'modified';
+      } else {
+        status = 'modified';
+      }
+
+      const fullPath = path.join(dirPath, filePath);
+      statuses.push({ path: fullPath, status });
+    }
+
+    return { success: true, isGitRepo: true, statuses };
+  } catch (error) {
+    console.error('[Git Status] Error:', error);
+    return { success: true, isGitRepo: false, statuses: [] };
+  }
+});

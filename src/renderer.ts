@@ -1,4 +1,51 @@
-import type { Settings, FileItem, ItemProperties, CustomTheme } from './types';
+import type { Settings, FileItem, ItemProperties, CustomTheme, ContentSearchResult } from './types';
+import { escapeHtml, getErrorMessage } from './shared.js';
+import { createDefaultSettings } from './settings.js';
+
+const THUMBNAIL_MAX_SIZE = 10 * 1024 * 1024;
+const SEARCH_DEBOUNCE_MS = 300;
+const SETTINGS_SAVE_DEBOUNCE_MS = 1000;
+const TOAST_DURATION_MS = 3000;
+const SEARCH_HISTORY_MAX = 5;
+const DIRECTORY_HISTORY_MAX = 5;
+const RENDER_BATCH_SIZE = 50;
+const THUMBNAIL_ROOT_MARGIN = '100px';
+const THUMBNAIL_CACHE_MAX = 100;
+const THUMBNAIL_CONCURRENT_LOADS = 4;
+const NAME_COLLATOR = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+
+const thumbnailCache = new Map<string, string>();
+let activeThumbnailLoads = 0;
+const pendingThumbnailLoads: Array<() => void> = [];
+
+function enqueueThumbnailLoad(loadFn: () => Promise<void>): void {
+  const execute = async () => {
+    activeThumbnailLoads++;
+    try {
+      await loadFn();
+    } finally {
+      activeThumbnailLoads--;
+      if (pendingThumbnailLoads.length > 0) {
+        const next = pendingThumbnailLoads.shift();
+        if (next) next();
+      }
+    }
+  };
+
+  if (activeThumbnailLoads < THUMBNAIL_CONCURRENT_LOADS) {
+    execute();
+  } else {
+    pendingThumbnailLoads.push(execute);
+  }
+}
+
+function isWindowsPath(value: string): boolean {
+  return /^[A-Za-z]:[\\/]/.test(value) || value.startsWith('\\\\');
+}
+
+function normalizeWindowsPath(value: string): string {
+  return value.replace(/\//g, '\\');
+}
 
 const path = {
   basename: (filePath: string, ext?: string): string => {
@@ -9,7 +56,33 @@ const path = {
     return name;
   },
   dirname: (filePath: string): string => {
-    return filePath.split(/[\\/]/).slice(0, -1).join('/');
+    if (!isWindowsPath(filePath)) {
+      const normalized = filePath.replace(/\\/g, '/');
+      const trimmed = normalized.length > 1 ? normalized.replace(/\/+$/, '') : normalized;
+      if (!trimmed || trimmed === '/') return '/';
+      const idx = trimmed.lastIndexOf('/');
+      return idx <= 0 ? '/' : trimmed.slice(0, idx);
+    }
+
+    const normalized = normalizeWindowsPath(filePath);
+    const trimmed = normalized.length > 3 ? normalized.replace(/\\+$/, '') : normalized;
+
+    if (trimmed.startsWith('\\\\')) {
+      const parts = trimmed.split('\\').filter(Boolean);
+      if (parts.length <= 2) {
+        return `\\\\${parts.join('\\')}\\`;
+      }
+      return `\\\\${parts.slice(0, -1).join('\\')}`;
+    }
+
+    const driveMatch = trimmed.match(/^([A-Za-z]:)(\\.*)?$/);
+    if (!driveMatch) return trimmed;
+    const drive = driveMatch[1];
+    const rest = (driveMatch[2] || '').replace(/\\+$/, '');
+    if (!rest) return `${drive}\\`;
+    const lastSep = rest.lastIndexOf('\\');
+    if (lastSep <= 0) return `${drive}\\`;
+    return `${drive}${rest.slice(0, lastSep)}`;
   },
   extname: (filePath: string): string => {
     const name = filePath.split(/[\\/]/).pop() || '';
@@ -21,22 +94,21 @@ const path = {
   }
 };
 
-function escapeHtml(text: any): string {
-  if (text === null || text === undefined) return '';
-  const str = String(text);
-  const map: { [key: string]: string } = {
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;',
-    '"': '&quot;',
-    "'": '&#039;'
-  };
-  return str.replace(/[&<>"']/g, (m) => map[m]);
-}
 
 function encodeFileUrl(filePath: string): string {
   const normalizedPath = filePath.replace(/\\/g, '/');
-  // Encode each path segment
+  if (/^[A-Za-z]:/.test(normalizedPath)) {
+    const drive = normalizedPath.slice(0, 2);
+    const rest = normalizedPath.slice(2);
+    const encodedRest = rest.split('/').map(segment => encodeURIComponent(segment)).join('/');
+    const normalizedRest = encodedRest.startsWith('/') ? encodedRest : `/${encodedRest}`;
+    return `file:///${drive}${normalizedRest}`;
+  }
+  if (normalizedPath.startsWith('//')) {
+    const uncPath = normalizedPath.slice(2);
+    const encoded = uncPath.split('/').map(segment => encodeURIComponent(segment)).join('/');
+    return `file://${encoded}`;
+  }
   const encoded = normalizedPath.split('/').map(segment => encodeURIComponent(segment)).join('/');
   return `file:///${encoded}`;
 }
@@ -65,14 +137,46 @@ function twemojiImg(emoji: string, className: string = 'twemoji', alt?: string):
   return `<img src="${src}" class="${className}" alt="${altText}" draggable="false" />`;
 }
 
-function getErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
+
+// Debounced settings save for non-critical updates (history, recent files, etc.)
+let settingsSaveTimeout: ReturnType<typeof setTimeout> | null = null;
+function debouncedSaveSettings(delay: number = SETTINGS_SAVE_DEBOUNCE_MS) {
+  if (settingsSaveTimeout) {
+    clearTimeout(settingsSaveTimeout);
   }
-  if (typeof error === 'string') {
-    return error;
+  settingsSaveTimeout = setTimeout(() => {
+    window.electronAPI.saveSettings(currentSettings);
+    settingsSaveTimeout = null;
+  }, delay);
+}
+
+let searchDebounceTimeout: ReturnType<typeof setTimeout> | null = null;
+let searchRequestId = 0;
+function debouncedSearch(delay: number = SEARCH_DEBOUNCE_MS) {
+  if (searchDebounceTimeout) {
+    clearTimeout(searchDebounceTimeout);
   }
-  return String(error);
+  searchDebounceTimeout = setTimeout(() => {
+    performSearch();
+    searchDebounceTimeout = null;
+  }, delay);
+}
+
+interface SearchFilters {
+  fileType?: string;
+  minSize?: number;
+  maxSize?: number;
+  dateFrom?: string;
+  dateTo?: string;
+}
+
+let currentSearchFilters: SearchFilters = {};
+let activeSearchOperationId: string | null = null;
+
+function cancelActiveSearch(): void {
+  if (!activeSearchOperationId) return;
+  window.electronAPI.cancelSearch(activeSearchOperationId).catch(() => {});
+  activeSearchOperationId = null;
 }
 
 type ViewMode = 'grid' | 'list' | 'column';
@@ -148,13 +252,16 @@ function addOperation(id: string, type: 'compress' | 'extract', name: string) {
   showOperationsPanel();
 }
 
+let renderOperationsTimeout: ReturnType<typeof setTimeout> | null = null;
+
 function updateOperation(id: string, current: number, total: number, currentFile: string) {
   const operation = activeOperations.get(id);
   if (operation && !operation.aborted) {
     operation.current = current;
     operation.total = total;
     operation.currentFile = currentFile;
-    renderOperations();
+    if (renderOperationsTimeout) clearTimeout(renderOperationsTimeout);
+    renderOperationsTimeout = setTimeout(renderOperations, 50);
   }
 }
 
@@ -226,25 +333,32 @@ function renderOperations() {
 }
 
 // Breadcrumb nav
-function parsePath(filePath: string): { segments: string[]; isWindows: boolean } {
-  const isWindows = /^[A-Za-z]:/.test(filePath);
+function parsePath(filePath: string): { segments: string[]; isWindows: boolean; isUnc: boolean } {
+  const isUnc = filePath.startsWith('\\\\');
+  const isWindows = isUnc || /^[A-Za-z]:/.test(filePath);
   const normalizedPath = filePath.replace(/\\/g, '/');
   const segments = normalizedPath.split('/').filter(s => s.length > 0);
-  if (isWindows && segments.length > 0) {
+  if (isWindows && !isUnc && segments.length > 0) {
     if (!segments[0].includes(':')) {
       segments[0] = segments[0] + ':';
     }
   }
   
-  return { segments, isWindows };
+  return { segments, isWindows, isUnc };
 }
 
-function buildPathFromSegments(segments: string[], index: number, isWindows: boolean): string {
+function buildPathFromSegments(segments: string[], index: number, isWindows: boolean, isUnc: boolean): string {
   if (index < 0) return '';
   
   const pathSegments = segments.slice(0, index + 1);
   
   if (isWindows) {
+    if (isUnc) {
+      if (pathSegments.length <= 2) {
+        return `\\\\${pathSegments.join('\\')}\\`;
+      }
+      return `\\\\${pathSegments.join('\\')}`;
+    }
     if (pathSegments.length === 1) {
       return pathSegments[0] + '\\';
     }
@@ -268,7 +382,7 @@ function updateBreadcrumb(currentPath: string): void {
     return;
   }
   
-  const { segments, isWindows } = parsePath(currentPath);
+  const { segments, isWindows, isUnc } = parsePath(currentPath);
   
   if (segments.length === 0) {
     breadcrumbContainer.style.display = 'none';
@@ -287,11 +401,11 @@ function updateBreadcrumb(currentPath: string): void {
     const item = document.createElement('span');
     item.className = 'breadcrumb-item';
     item.textContent = segment;
-    item.title = buildPathFromSegments(segments, index, isWindows);
+    item.title = buildPathFromSegments(segments, index, isWindows, isUnc);
     
     item.addEventListener('click', (e) => {
       e.stopPropagation();
-      const targetPath = buildPathFromSegments(segments, index, isWindows);
+      const targetPath = buildPathFromSegments(segments, index, isWindows, isUnc);
       navigateTo(targetPath);
     });
     
@@ -365,9 +479,6 @@ function setupBreadcrumbListeners(): void {
 
 type DialogType = 'info' | 'warning' | 'error' | 'success' | 'question';
 
-function asElement(target: EventTarget | null): HTMLElement | null {
-  return target as HTMLElement;
-}
 
 let currentPath: string = '';
 let history: string[] = [];
@@ -379,8 +490,9 @@ let clipboard: { operation: 'copy' | 'cut'; paths: string[] } | null = null;
 let allFiles: FileItem[] = [];
 let isSearchMode: boolean = false;
 let isGlobalSearch: boolean = false;
+let searchInContents: boolean = false;
 let isPreviewPanelVisible: boolean = false;
-let currentPreviewFile: FileItem | null = null;
+let previewRequestId = 0;
 let currentQuicklookFile: FileItem | null = null;
 let platformOS: string = '';
 let canUndo: boolean = false;
@@ -388,6 +500,296 @@ let canRedo: boolean = false;
 let currentZoomLevel: number = 1.0;
 let zoomPopupTimeout: NodeJS.Timeout | null = null;
 let indexStatusInterval: NodeJS.Timeout | null = null;
+
+interface TabData {
+  id: string;
+  path: string;
+  history: string[];
+  historyIndex: number;
+  selectedItems: Set<string>;
+  scrollPosition: number;
+  cachedFiles?: FileItem[];
+}
+
+let tabs: TabData[] = [];
+let activeTabId: string = '';
+let tabsEnabled: boolean = false;
+let tabNewButtonListenerAttached: boolean = false;
+
+function generateTabId(): string {
+  return `tab-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+}
+
+function initializeTabs() {
+  if (currentSettings.enableTabs === false) {
+    tabsEnabled = false;
+    document.body.classList.remove('tabs-enabled');
+    document.body.classList.remove('tabs-single');
+    const tabBar = document.getElementById('tab-bar');
+    if (tabBar) tabBar.style.display = 'none';
+    return;
+  }
+
+  tabsEnabled = true;
+  document.body.classList.add('tabs-enabled');
+  const tabBar = document.getElementById('tab-bar');
+  if (tabBar) tabBar.style.removeProperty('display');
+
+  if (currentSettings.tabState && currentSettings.tabState.tabs.length > 0) {
+    tabs = currentSettings.tabState.tabs.map(t => ({
+      ...t,
+      selectedItems: new Set(t.selectedItems || [])
+    }));
+    activeTabId = currentSettings.tabState.activeTabId;
+
+    const activeTab = tabs.find(t => t.id === activeTabId);
+    if (activeTab) {
+      history = [...activeTab.history];
+      historyIndex = activeTab.historyIndex;
+      selectedItems = new Set(activeTab.selectedItems);
+    }
+  } else {
+    const initialTab = createNewTabData(currentPath || '');
+    tabs = [initialTab];
+    activeTabId = initialTab.id;
+  }
+
+  renderTabs();
+
+  if (!tabNewButtonListenerAttached) {
+    const newTabBtn = document.getElementById('new-tab-btn');
+    if (newTabBtn) {
+      newTabBtn.addEventListener('click', () => {
+        addNewTab();
+      });
+    }
+
+    const toolbarNewTabBtn = document.getElementById('toolbar-new-tab-btn');
+    if (toolbarNewTabBtn) {
+      toolbarNewTabBtn.addEventListener('click', () => {
+        addNewTab();
+      });
+    }
+
+    tabNewButtonListenerAttached = true;
+  }
+}
+
+function createNewTabData(path: string): TabData {
+  return {
+    id: generateTabId(),
+    path: path,
+    history: path ? [path] : [],
+    historyIndex: path ? 0 : -1,
+    selectedItems: new Set(),
+    scrollPosition: 0
+  };
+}
+
+function updateTabBarVisibility() {
+  if (!tabsEnabled) return;
+  if (tabs.length <= 1) {
+    document.body.classList.add('tabs-single');
+  } else {
+    document.body.classList.remove('tabs-single');
+  }
+}
+
+function renderTabs() {
+  const tabList = document.getElementById('tab-list');
+  if (!tabsEnabled) return;
+
+  updateTabBarVisibility();
+
+  if (!tabList) return;
+
+  tabList.innerHTML = '';
+
+  tabs.forEach(tab => {
+    const tabElement = document.createElement('div');
+    tabElement.className = `tab-item${tab.id === activeTabId ? ' active' : ''}`;
+    tabElement.dataset.tabId = tab.id;
+
+    const pathParts = tab.path.split(/[/\\]/);
+    const folderName = pathParts[pathParts.length - 1] || tab.path || 'New Tab';
+
+    tabElement.innerHTML = `
+      <span class="tab-icon">
+        <img src="assets/twemoji/1f4c2.svg" class="twemoji" alt="📂" draggable="false" />
+      </span>
+      <span class="tab-title" title="${escapeHtml(tab.path)}">${escapeHtml(folderName)}</span>
+      <button class="tab-close" title="Close Tab">&times;</button>
+    `;
+
+    tabElement.addEventListener('click', (e) => {
+      if ((e.target as HTMLElement).classList.contains('tab-close')) {
+        e.stopPropagation();
+        closeTab(tab.id);
+      } else {
+        switchToTab(tab.id);
+      }
+    });
+
+    tabElement.addEventListener('auxclick', (e) => {
+      if (e.button === 1) {
+        e.preventDefault();
+        closeTab(tab.id);
+      }
+    });
+
+    tabList.appendChild(tabElement);
+  });
+}
+
+function switchToTab(tabId: string) {
+  if (activeTabId === tabId || !tabsEnabled) return;
+
+  const currentTab = tabs.find(t => t.id === activeTabId);
+  if (currentTab) {
+    currentTab.path = currentPath;
+    currentTab.history = [...history];
+    currentTab.historyIndex = historyIndex;
+    currentTab.selectedItems = new Set(selectedItems);
+    currentTab.scrollPosition = fileView?.scrollTop || 0;
+    currentTab.cachedFiles = [...allFiles];
+  }
+
+  activeTabId = tabId;
+  const newTab = tabs.find(t => t.id === tabId);
+  if (newTab) {
+    history = [...newTab.history];
+    historyIndex = newTab.historyIndex;
+    selectedItems = new Set(newTab.selectedItems);
+
+    if (newTab.path) {
+      if (newTab.cachedFiles !== undefined) {
+        restoreTabView(newTab);
+      } else {
+        navigateTo(newTab.path, true);
+      }
+    }
+
+    setTimeout(() => {
+      if (fileView) fileView.scrollTop = newTab.scrollPosition;
+    }, 50);
+  }
+
+  renderTabs();
+  debouncedSaveTabState();
+}
+
+function restoreTabView(tab: TabData) {
+  currentPath = tab.path;
+  if (addressInput) addressInput.value = tab.path;
+  updateBreadcrumb(tab.path);
+  updateNavigationButtons();
+
+  if (viewMode === 'column') {
+    renderColumnView();
+  } else {
+    renderFiles(tab.cachedFiles || []);
+  }
+}
+
+let saveTabStateTimeout: NodeJS.Timeout | null = null;
+function debouncedSaveTabState() {
+  if (saveTabStateTimeout) {
+    clearTimeout(saveTabStateTimeout);
+  }
+  saveTabStateTimeout = setTimeout(() => {
+    saveTabState();
+  }, 500);
+}
+
+async function addNewTab(path?: string) {
+  if (!tabsEnabled) return;
+
+  const currentTab = tabs.find(t => t.id === activeTabId);
+  if (currentTab) {
+    currentTab.path = currentPath;
+    currentTab.history = [...history];
+    currentTab.historyIndex = historyIndex;
+    currentTab.selectedItems = new Set(selectedItems);
+    currentTab.scrollPosition = fileView?.scrollTop || 0;
+    currentTab.cachedFiles = [...allFiles];
+  }
+
+  let tabPath = path;
+  if (!tabPath) {
+    tabPath = await window.electronAPI.getHomeDirectory();
+  }
+
+  const newTab = createNewTabData(tabPath);
+  tabs.push(newTab);
+  activeTabId = newTab.id;
+
+  history = [tabPath];
+  historyIndex = 0;
+  selectedItems = new Set();
+
+  navigateTo(tabPath, true);
+
+  renderTabs();
+  debouncedSaveTabState();
+}
+
+function closeTab(tabId: string) {
+  if (!tabsEnabled || tabs.length <= 1) return;
+
+  const tabIndex = tabs.findIndex(t => t.id === tabId);
+  if (tabIndex === -1) return;
+
+  tabs.splice(tabIndex, 1);
+
+  if (activeTabId === tabId) {
+    const newIndex = Math.min(tabIndex, tabs.length - 1);
+    activeTabId = tabs[newIndex].id;
+    const newTab = tabs[newIndex];
+
+    history = [...newTab.history];
+    historyIndex = newTab.historyIndex;
+    selectedItems = new Set(newTab.selectedItems);
+
+    if (newTab.path) {
+      if (newTab.cachedFiles !== undefined) {
+        restoreTabView(newTab);
+      } else {
+        navigateTo(newTab.path, true);
+      }
+    }
+  }
+
+  renderTabs();
+  debouncedSaveTabState();
+}
+
+function saveTabState() {
+  if (!tabsEnabled) return;
+
+  currentSettings.tabState = {
+    tabs: tabs.map(t => ({
+      id: t.id,
+      path: t.path,
+      history: t.history,
+      historyIndex: t.historyIndex,
+      selectedItems: Array.from(t.selectedItems),
+      scrollPosition: t.scrollPosition
+    })),
+    activeTabId
+  };
+  debouncedSaveSettings();
+}
+
+function updateCurrentTabPath(newPath: string) {
+  if (!tabsEnabled) return;
+
+  const currentTab = tabs.find(t => t.id === activeTabId);
+  if (currentTab) {
+    currentTab.path = newPath;
+    renderTabs();
+    saveTabState();
+  }
+}
 
 const addressInput = document.getElementById('address-input') as HTMLInputElement;
 const fileGrid = document.getElementById('file-grid') as HTMLElement;
@@ -406,16 +808,144 @@ const drivesList = document.getElementById('drives-list') as HTMLElement;
 const searchBtn = document.getElementById('search-btn') as HTMLButtonElement;
 const searchInput = document.getElementById('search-input') as HTMLInputElement;
 const searchBarWrapper = document.querySelector('.search-bar-wrapper') as HTMLElement;
-const searchBar = document.querySelector('.search-bar') as HTMLElement;
 const searchClose = document.getElementById('search-close') as HTMLButtonElement;
 const searchScopeToggle = document.getElementById('search-scope-toggle') as HTMLButtonElement;
-const addressBarWrapper = document.querySelector('.address-bar-wrapper') as HTMLElement;
-const addressBar = document.querySelector('.address-bar') as HTMLElement;
+const searchFilterToggle = document.getElementById('search-filter-toggle') as HTMLButtonElement;
+const searchFiltersPanel = document.getElementById('search-filters-panel') as HTMLElement;
+const searchFilterType = document.getElementById('search-filter-type') as HTMLSelectElement;
+const searchFilterMinSize = document.getElementById('search-filter-min-size') as HTMLInputElement;
+const searchFilterMaxSize = document.getElementById('search-filter-max-size') as HTMLInputElement;
+const searchFilterSizeUnitMin = document.getElementById('search-filter-size-unit-min') as HTMLSelectElement;
+const searchFilterSizeUnitMax = document.getElementById('search-filter-size-unit-max') as HTMLSelectElement;
+const searchFilterDateFrom = document.getElementById('search-filter-date-from') as HTMLInputElement;
+const searchFilterDateTo = document.getElementById('search-filter-date-to') as HTMLInputElement;
+const searchFilterClear = document.getElementById('search-filter-clear') as HTMLButtonElement;
+const searchFilterApply = document.getElementById('search-filter-apply') as HTMLButtonElement;
+const searchInContentsToggle = document.getElementById('search-in-contents-toggle') as HTMLInputElement;
 const sortBtn = document.getElementById('sort-btn') as HTMLButtonElement;
 const bookmarksList = document.getElementById('bookmarks-list') as HTMLElement;
 const bookmarkAddBtn = document.getElementById('bookmark-add-btn') as HTMLButtonElement;
 const undoBtn = document.getElementById('undo-btn') as HTMLButtonElement;
 const redoBtn = document.getElementById('redo-btn') as HTMLButtonElement;
+
+const loadingText = loading ? loading.querySelector('p') as HTMLElement | null : null;
+let activeDirectoryProgressPath: string | null = null;
+let activeDirectoryProgressOperationId: string | null = null;
+let activeDirectoryOperationId: string | null = null;
+let directoryRequestId = 0;
+let directoryProgressCount = 0;
+let lastDirectoryProgressUpdate = 0;
+
+window.electronAPI.onDirectoryContentsProgress((progress) => {
+  if (activeDirectoryProgressOperationId) {
+    if (progress.operationId !== activeDirectoryProgressOperationId) return;
+  } else if (!activeDirectoryProgressPath || progress.dirPath !== activeDirectoryProgressPath) {
+    return;
+  }
+  directoryProgressCount = progress.loaded;
+  const now = Date.now();
+  if (now - lastDirectoryProgressUpdate < 100) return;
+  lastDirectoryProgressUpdate = now;
+  if (loadingText) {
+    loadingText.textContent = `Loading... (${directoryProgressCount.toLocaleString()} items)`;
+  }
+});
+
+function createDirectoryOperationId(prefix: string): string {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function startDirectoryRequest(path: string): { requestId: number; operationId: string } {
+  const requestId = ++directoryRequestId;
+  if (activeDirectoryOperationId) {
+    window.electronAPI.cancelDirectoryContents(activeDirectoryOperationId).catch(() => {});
+  }
+  const operationId = createDirectoryOperationId('dir');
+  activeDirectoryOperationId = operationId;
+  activeDirectoryProgressOperationId = operationId;
+  activeDirectoryProgressPath = path;
+  directoryProgressCount = 0;
+  lastDirectoryProgressUpdate = 0;
+  if (loadingText) loadingText.textContent = 'Loading...';
+  return { requestId, operationId };
+}
+
+function finishDirectoryRequest(requestId: number): void {
+  if (requestId !== directoryRequestId) return;
+  activeDirectoryOperationId = null;
+  activeDirectoryProgressOperationId = null;
+  activeDirectoryProgressPath = null;
+  directoryProgressCount = 0;
+  lastDirectoryProgressUpdate = 0;
+  if (loadingText) loadingText.textContent = 'Loading...';
+}
+
+function cancelDirectoryRequest(): void {
+  if (activeDirectoryOperationId) {
+    window.electronAPI.cancelDirectoryContents(activeDirectoryOperationId).catch(() => {});
+  }
+  directoryRequestId += 1;
+  finishDirectoryRequest(directoryRequestId);
+}
+
+let currentGitStatuses: Map<string, string> = new Map();
+let gitStatusRequestId = 0;
+
+function clearGitIndicators(): void {
+  currentGitStatuses.clear();
+  document.querySelectorAll('.git-indicator').forEach(indicator => indicator.remove());
+}
+
+async function fetchGitStatusAsync(dirPath: string) {
+  if (!currentSettings.enableGitStatus) {
+    return;
+  }
+
+  const requestId = ++gitStatusRequestId;
+
+  try {
+    const result = await window.electronAPI.getGitStatus(dirPath);
+    if (requestId !== gitStatusRequestId || dirPath !== currentPath || !currentSettings.enableGitStatus) {
+      return;
+    }
+
+    currentGitStatuses.clear();
+
+    if (result.success && result.isGitRepo && result.statuses) {
+      for (const item of result.statuses) {
+        currentGitStatuses.set(item.path, item.status);
+      }
+      updateGitIndicators();
+    } else {
+      clearGitIndicators();
+    }
+  } catch (error) {
+    console.error('[Git Status] Failed to fetch:', error);
+  }
+}
+
+function updateGitIndicators() {
+  if (!currentSettings.enableGitStatus) {
+    clearGitIndicators();
+    return;
+  }
+
+  document.querySelectorAll('.file-item').forEach(item => {
+    const itemPath = item.getAttribute('data-path');
+    if (!itemPath) return;
+
+    const existingIndicator = item.querySelector('.git-indicator');
+    if (existingIndicator) existingIndicator.remove();
+
+    const status = currentGitStatuses.get(itemPath);
+    if (status) {
+      const indicator = document.createElement('span');
+      indicator.className = `git-indicator ${status}`;
+      indicator.title = status.charAt(0).toUpperCase() + status.slice(1);
+      item.appendChild(indicator);
+    }
+  });
+}
 
 function showDialog(title: string, message: string, type: DialogType = 'info', showCancel: boolean = false): Promise<boolean> {
   return new Promise((resolve) => {
@@ -490,24 +1020,7 @@ async function showConfirm(message: string, title: string = 'Confirm', type: Dia
   return await showDialog(title, message, type, true);
 }
 
-let currentSettings: Settings = {
-  transparency: true,
-  theme: 'default',
-  sortBy: 'name',
-  sortOrder: 'asc',
-  bookmarks: [],
-  viewMode: 'grid',
-  showDangerousOptions: false,
-  startupPath: '',
-  showHiddenFiles: false,
-  enableSearchHistory: true,
-  searchHistory: [],
-  directoryHistory: [],
-  enableIndexer: true,
-  minimizeToTray: false,
-  startOnLogin: false,
-  autoCheckUpdates: true
-};
+let currentSettings: Settings = createDefaultSettings();
 
 function showToast(message: string, title: string = '', type: 'success' | 'error' | 'info' | 'warning' = 'info'): void {
   const container = document.getElementById('toast-container');
@@ -545,38 +1058,29 @@ function showToast(message: string, title: string = '', type: 'success' | 'error
 
   toast.addEventListener('click', removeToast);
 
-  setTimeout(removeToast, 3000);
+  setTimeout(removeToast, TOAST_DURATION_MS);
 }
 
 async function loadSettings(): Promise<void> {
-  const result = await window.electronAPI.getSettings();
+  const [result, sharedClipboard] = await Promise.all([
+    window.electronAPI.getSettings(),
+    window.electronAPI.getClipboard()
+  ]);
+
   if (result.success && result.settings) {
-    currentSettings = {
-      transparency: true,
-      theme: 'default',
-      sortBy: 'name',
-      sortOrder: 'asc',
-      bookmarks: [],
-      viewMode: 'grid',
-      showDangerousOptions: false,
-      startupPath: '',
-      showHiddenFiles: false,
-      launchCount: 0,
-      supportPopupDismissed: false,
-      ...result.settings
-    };
+    const defaults = createDefaultSettings();
+    currentSettings = { ...defaults, ...result.settings };
+    currentSettings.enableSyntaxHighlighting = currentSettings.enableSyntaxHighlighting !== false;
     applySettings(currentSettings);
     const newLaunchCount = (currentSettings.launchCount || 0) + 1;
     currentSettings.launchCount = newLaunchCount;
-    await window.electronAPI.saveSettings(currentSettings);
+    debouncedSaveSettings(100);
 
     if (newLaunchCount === 2 && !currentSettings.supportPopupDismissed) {
       setTimeout(() => showSupportPopup(), 1500);
     }
   }
-  
-  // shared clipboard from main
-  const sharedClipboard = await window.electronAPI.getClipboard();
+
   if (sharedClipboard) {
     clipboard = sharedClipboard;
     console.log('[Init] Loaded shared clipboard:', clipboard.operation, clipboard.paths.length, 'items');
@@ -606,8 +1110,53 @@ function applySettings(settings: Settings) {
     applyViewMode();
     updateViewToggleButton();
   }
-  
+
+  if (settings.reduceMotion) {
+    document.body.classList.add('reduce-motion');
+  } else {
+    document.body.classList.remove('reduce-motion');
+  }
+
+  if (settings.highContrast) {
+    document.body.classList.add('high-contrast');
+  } else {
+    document.body.classList.remove('high-contrast');
+  }
+
+  if (settings.largeText) {
+    document.body.classList.add('large-text');
+  } else {
+    document.body.classList.remove('large-text');
+  }
+
+  if (settings.boldText) {
+    document.body.classList.add('bold-text');
+  } else {
+    document.body.classList.remove('bold-text');
+  }
+
+  if (settings.visibleFocus) {
+    document.body.classList.add('visible-focus');
+  } else {
+    document.body.classList.remove('visible-focus');
+  }
+
+  if (settings.reduceTransparency) {
+    document.body.classList.add('reduce-transparency');
+  } else {
+    document.body.classList.remove('reduce-transparency');
+  }
+
+  if (settings.enableGitStatus) {
+    if (currentPath) {
+      fetchGitStatusAsync(currentPath);
+    }
+  } else {
+    clearGitIndicators();
+  }
+
   loadBookmarks();
+  loadRecentFiles();
 }
 
 function hexToRgb(hex: string): string {
@@ -819,26 +1368,16 @@ async function saveCustomTheme() {
   if (nameInput && nameInput.value.trim()) {
     tempCustomTheme.name = nameInput.value.trim();
   }
-  
+
   currentSettings.customTheme = { ...tempCustomTheme };
   currentSettings.theme = 'custom';
 
-  const themeSelect = document.getElementById('theme-select') as HTMLSelectElement;
-  if (themeSelect) {
-    themeSelect.value = 'custom';
-    const customOption = themeSelect.querySelector('option[value="custom"]');
-    if (customOption) {
-      customOption.textContent = tempCustomTheme.name;
-    }
-  }
-  
-  // Apply theme
   applySettings(currentSettings);
-  
-  // Save to disk
+
   const result = await window.electronAPI.saveSettings(currentSettings);
   if (result.success) {
     hideThemeEditor();
+    updateCustomThemeUI();
     showToast('Custom theme saved!', 'Theme', 'success');
   } else {
     showToast('Failed to save theme: ' + result.error, 'Error', 'error');
@@ -912,18 +1451,64 @@ function setupThemeEditorListeners() {
     });
   });
   
-  document.getElementById('theme-select')?.addEventListener('change', (e) => {
-    const value = (e.target as HTMLSelectElement).value;
-    if (value === 'custom') {
+  const openThemeEditorBtn = document.getElementById('open-theme-editor-btn');
+  if (openThemeEditorBtn) {
+    openThemeEditorBtn.addEventListener('click', () => {
       showThemeEditor();
-    }
-  });
+    });
+  }
+
+  const useCustomThemeBtn = document.getElementById('use-custom-theme-btn');
+  if (useCustomThemeBtn) {
+    useCustomThemeBtn.addEventListener('click', async () => {
+      if (currentSettings.customTheme) {
+        currentSettings.theme = 'custom';
+        applySettings(currentSettings);
+        await window.electronAPI.saveSettings(currentSettings);
+        updateCustomThemeUI();
+      }
+    });
+  }
 
   document.getElementById('theme-editor-modal')?.addEventListener('click', (e) => {
     if ((e.target as HTMLElement).classList.contains('modal-overlay')) {
       hideThemeEditor();
     }
   });
+}
+
+function updateCustomThemeUI() {
+  const useCustomThemeBtn = document.getElementById('use-custom-theme-btn');
+  const customThemeDescription = document.getElementById('custom-theme-description');
+  const themeSelect = document.getElementById('theme-select') as HTMLSelectElement;
+
+  if (currentSettings.customTheme) {
+    if (useCustomThemeBtn) {
+      useCustomThemeBtn.style.display = 'block';
+    }
+    if (customThemeDescription) {
+      const themeName = currentSettings.customTheme.name || 'Custom Theme';
+      if (currentSettings.theme === 'custom') {
+        customThemeDescription.textContent = `Currently using: ${themeName}`;
+      } else {
+        customThemeDescription.textContent = `Edit or use your custom theme: ${themeName}`;
+      }
+    }
+    if (themeSelect && currentSettings.theme === 'custom') {
+      themeSelect.value = 'default';
+    }
+  } else {
+    if (useCustomThemeBtn) {
+      useCustomThemeBtn.style.display = 'none';
+    }
+    if (customThemeDescription) {
+      customThemeDescription.textContent = 'Create your own color scheme';
+    }
+  }
+
+  if (themeSelect && currentSettings.theme !== 'custom') {
+    themeSelect.value = currentSettings.theme || 'default';
+  }
 }
 
 async function showSettingsModal() {
@@ -944,33 +1529,50 @@ async function showSettingsModal() {
   if (sections.length > 0) sections[0].classList.add('active');
 
   const transparencyToggle = document.getElementById('transparency-toggle') as HTMLInputElement;
-  const themeSelect = document.getElementById('theme-select') as HTMLSelectElement;
   const sortBySelect = document.getElementById('sort-by-select') as HTMLSelectElement;
   const sortOrderSelect = document.getElementById('sort-order-select') as HTMLSelectElement;
   const showHiddenFilesToggle = document.getElementById('show-hidden-files-toggle') as HTMLInputElement;
+  const enableGitStatusToggle = document.getElementById('enable-git-status-toggle') as HTMLInputElement;
   const minimizeToTrayToggle = document.getElementById('minimize-to-tray-toggle') as HTMLInputElement;
   const startOnLoginToggle = document.getElementById('start-on-login-toggle') as HTMLInputElement;
   const autoCheckUpdatesToggle = document.getElementById('auto-check-updates-toggle') as HTMLInputElement;
+  const updateChannelSelect = document.getElementById('update-channel-select') as HTMLSelectElement;
   const enableSearchHistoryToggle = document.getElementById('enable-search-history-toggle') as HTMLInputElement;
   const dangerousOptionsToggle = document.getElementById('dangerous-options-toggle') as HTMLInputElement;
   const startupPathInput = document.getElementById('startup-path-input') as HTMLInputElement;
   const enableIndexerToggle = document.getElementById('enable-indexer-toggle') as HTMLInputElement;
+  const showRecentFilesToggle = document.getElementById('show-recent-files-toggle') as HTMLInputElement;
+  const enableTabsToggle = document.getElementById('enable-tabs-toggle') as HTMLInputElement;
+  const globalContentSearchToggle = document.getElementById('global-content-search-toggle') as HTMLInputElement;
+  const enableSyntaxHighlightingToggle = document.getElementById('enable-syntax-highlighting-toggle') as HTMLInputElement;
+  const reduceMotionToggle = document.getElementById('reduce-motion-toggle') as HTMLInputElement;
+  const highContrastToggle = document.getElementById('high-contrast-toggle') as HTMLInputElement;
+  const largeTextToggle = document.getElementById('large-text-toggle') as HTMLInputElement;
+  const boldTextToggle = document.getElementById('bold-text-toggle') as HTMLInputElement;
+  const visibleFocusToggle = document.getElementById('visible-focus-toggle') as HTMLInputElement;
+  const reduceTransparencyToggle = document.getElementById('reduce-transparency-toggle') as HTMLInputElement;
   const settingsPath = document.getElementById('settings-path');
-  
+
   if (transparencyToggle) {
     transparencyToggle.checked = currentSettings.transparency;
   }
-  
-  if (themeSelect) {
-    themeSelect.value = currentSettings.theme || 'default';
-    const customOption = themeSelect.querySelector('option[value="custom"]');
-    if (customOption && currentSettings.customTheme?.name) {
-      customOption.textContent = currentSettings.customTheme.name;
-    } else if (customOption) {
-      customOption.textContent = 'Custom...';
-    }
+  if (enableSyntaxHighlightingToggle) {
+    enableSyntaxHighlightingToggle.checked = currentSettings.enableSyntaxHighlighting !== false;
   }
-  
+  if (enableGitStatusToggle) {
+    enableGitStatusToggle.checked = currentSettings.enableGitStatus === true;
+  }
+
+  updateCustomThemeUI();
+
+  const themeSelectForTracking = document.getElementById('theme-select') as HTMLSelectElement;
+  if (themeSelectForTracking) {
+    themeSelectForTracking.onchange = () => {
+      themeDropdownChanged = true;
+      markSettingsChanged();
+    };
+  }
+
   if (sortBySelect) {
     sortBySelect.value = currentSettings.sortBy || 'name';
   }
@@ -994,7 +1596,11 @@ async function showSettingsModal() {
   if (autoCheckUpdatesToggle) {
     autoCheckUpdatesToggle.checked = currentSettings.autoCheckUpdates !== false;
   }
-  
+
+  if (updateChannelSelect) {
+    updateChannelSelect.value = currentSettings.updateChannel || 'auto';
+  }
+
   if (enableSearchHistoryToggle) {
     enableSearchHistoryToggle.checked = currentSettings.enableSearchHistory !== false;
   }
@@ -1010,6 +1616,42 @@ async function showSettingsModal() {
   
   if (enableIndexerToggle) {
     enableIndexerToggle.checked = currentSettings.enableIndexer !== false;
+  }
+
+  if (showRecentFilesToggle) {
+    showRecentFilesToggle.checked = currentSettings.showRecentFiles !== false;
+  }
+
+  if (enableTabsToggle) {
+    enableTabsToggle.checked = currentSettings.enableTabs !== false;
+  }
+
+  if (globalContentSearchToggle) {
+    globalContentSearchToggle.checked = currentSettings.globalContentSearch || false;
+  }
+
+  if (reduceMotionToggle) {
+    reduceMotionToggle.checked = currentSettings.reduceMotion || false;
+  }
+
+  if (highContrastToggle) {
+    highContrastToggle.checked = currentSettings.highContrast || false;
+  }
+
+  if (largeTextToggle) {
+    largeTextToggle.checked = currentSettings.largeText || false;
+  }
+
+  if (boldTextToggle) {
+    boldTextToggle.checked = currentSettings.boldText || false;
+  }
+
+  if (visibleFocusToggle) {
+    visibleFocusToggle.checked = currentSettings.visibleFocus || false;
+  }
+
+  if (reduceTransparencyToggle) {
+    reduceTransparencyToggle.checked = currentSettings.reduceTransparency || false;
   }
 
   await updateIndexStatus();
@@ -1114,6 +1756,64 @@ function updateDangerousOptionsVisibility(show: boolean) {
   });
 }
 
+function getRepositoryText(repository: unknown): string | null {
+  if (typeof repository === 'string') {
+    const trimmed = repository.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+
+  if (repository && typeof repository === 'object' && 'url' in repository) {
+    const repoUrl = (repository as { url?: unknown }).url;
+    if (typeof repoUrl === 'string') {
+      const trimmed = repoUrl.trim();
+      return trimmed.length > 0 ? trimmed : null;
+    }
+  }
+
+  return null;
+}
+
+function normalizeRepositoryUrl(repository: unknown): string | null {
+  const raw = getRepositoryText(repository);
+  if (!raw) return null;
+
+  let normalized = raw;
+
+  if (normalized.startsWith('git+')) {
+    normalized = normalized.slice(4);
+  }
+
+  if (normalized.startsWith('git@')) {
+    const match = normalized.match(/^git@([^:]+):(.+)$/);
+    if (match) {
+      normalized = `https://${match[1]}/${match[2]}`;
+    }
+  }
+
+  if (normalized.startsWith('ssh://git@')) {
+    normalized = normalized.replace(/^ssh:\/\/git@/, 'https://');
+  }
+
+  if (normalized.startsWith('git://')) {
+    normalized = normalized.replace(/^git:\/\//, 'https://');
+  }
+
+  if (normalized.endsWith('.git')) {
+    normalized = normalized.slice(0, -4);
+  }
+
+  try {
+    const parsed = new URL(normalized);
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+      return parsed.toString();
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
 async function showLicensesModal() {
   if (document.activeElement instanceof HTMLElement) {
     document.activeElement.blur();
@@ -1150,8 +1850,12 @@ async function showLicensesModal() {
         html += `<div class="license-package-name">${escapeHtml(packageName)}</div>`;
         html += '<div class="license-package-info">';
         html += `<span class="license-package-license">${escapeHtml(info.licenses || 'Unknown')}</span>`;
-        if (info.repository) {
-          html += `<span>Repository: ${escapeHtml(info.repository)}</span>`;
+        const repositoryUrl = normalizeRepositoryUrl(info.repository);
+        const repositoryText = getRepositoryText(info.repository);
+        if (repositoryUrl) {
+          html += `<span>Repository: <a class="license-link" href="${escapeHtml(repositoryUrl)}" data-url="${escapeHtml(repositoryUrl)}" rel="noopener noreferrer">${escapeHtml(repositoryUrl)}</a></span>`;
+        } else if (repositoryText) {
+          html += `<span>Repository: ${escapeHtml(repositoryText)}</span>`;
         }
         if (info.publisher) {
           html += `<span>Publisher: ${escapeHtml(info.publisher)}</span>`;
@@ -1210,6 +1914,92 @@ function hideShortcutsModal() {
   }
 }
 
+const FOLDER_ICON_OPTIONS = [
+  0x1F4C1, 0x1F4C2, 0x1F4C1, 0x1F5C2, 0x1F5C3, 0x1F4BC,
+  0x2B50, 0x1F31F, 0x2764, 0x1F499, 0x1F49A, 0x1F49B,
+  0x1F4A1, 0x1F3AE, 0x1F3B5, 0x1F3AC, 0x1F4F7, 0x1F4F9,
+  0x1F4DA, 0x1F4D6, 0x1F4DD, 0x270F, 0x1F4BB, 0x1F5A5,
+  0x1F3E0, 0x1F3E2, 0x1F6E0, 0x2699, 0x1F512, 0x1F513,
+  0x1F4E6, 0x1F4E5, 0x1F4E4, 0x1F5D1, 0x2601, 0x1F310,
+  0x1F680, 0x2708, 0x1F697, 0x1F6B2, 0x26BD, 0x1F3C0,
+  0x1F352, 0x1F34E, 0x1F33F, 0x1F333, 0x1F308, 0x2600
+];
+
+let folderIconPickerPath: string | null = null;
+
+function showFolderIconPicker(folderPath: string) {
+  const modal = document.getElementById('folder-icon-modal');
+  const pathDisplay = document.getElementById('folder-icon-path');
+  const grid = document.getElementById('folder-icon-grid');
+
+  if (!modal || !pathDisplay || !grid) return;
+
+  folderIconPickerPath = folderPath;
+
+  const folderName = folderPath.split(/[/\\]/).pop() || folderPath;
+  pathDisplay.textContent = folderName;
+
+  const currentIcon = currentSettings.folderIcons?.[folderPath];
+
+  grid.innerHTML = FOLDER_ICON_OPTIONS.map(code => {
+    const emoji = String.fromCodePoint(code);
+    const isSelected = currentIcon === emoji;
+    return `
+      <div class="folder-icon-option${isSelected ? ' selected' : ''}" data-icon="${emoji}">
+        ${twemojiImg(emoji, 'twemoji')}
+      </div>
+    `;
+  }).join('');
+
+  grid.querySelectorAll('.folder-icon-option').forEach(option => {
+    option.addEventListener('click', () => {
+      const icon = (option as HTMLElement).dataset.icon;
+      if (icon && folderIconPickerPath) {
+        setFolderIcon(folderIconPickerPath, icon);
+        hideFolderIconPicker();
+      }
+    });
+  });
+
+  modal.style.display = 'flex';
+}
+
+function hideFolderIconPicker() {
+  const modal = document.getElementById('folder-icon-modal');
+  if (modal) {
+    modal.style.display = 'none';
+  }
+  folderIconPickerPath = null;
+}
+
+async function setFolderIcon(folderPath: string, icon: string) {
+  if (!currentSettings.folderIcons) {
+    currentSettings.folderIcons = {};
+  }
+  currentSettings.folderIcons[folderPath] = icon;
+  await saveSettings();
+  if (currentPath) navigateTo(currentPath);
+  showToast('Folder icon updated', 'Success', 'success');
+}
+
+async function resetFolderIcon() {
+  if (folderIconPickerPath && currentSettings.folderIcons && currentSettings.folderIcons[folderIconPickerPath]) {
+    delete currentSettings.folderIcons[folderIconPickerPath];
+    await saveSettings();
+    if (currentPath) navigateTo(currentPath);
+    showToast('Folder icon reset to default', 'Success', 'success');
+  }
+  hideFolderIconPicker();
+}
+
+function getFolderIcon(folderPath: string): string {
+  const customIcon = currentSettings.folderIcons?.[folderPath];
+  if (customIcon) {
+    return twemojiImg(customIcon, 'twemoji file-icon');
+  }
+  return FOLDER_ICON;
+}
+
 function openNewWindow() {
   window.electronAPI.openNewWindow();
 }
@@ -1234,25 +2024,47 @@ function copyLicensesText() {
 }
 
 async function saveSettings() {
+  const previousTabsEnabled = tabsEnabled;
   const transparencyToggle = document.getElementById('transparency-toggle') as HTMLInputElement;
   const themeSelect = document.getElementById('theme-select') as HTMLSelectElement;
   const sortBySelect = document.getElementById('sort-by-select') as HTMLSelectElement;
   const sortOrderSelect = document.getElementById('sort-order-select') as HTMLSelectElement;
   const showHiddenFilesToggle = document.getElementById('show-hidden-files-toggle') as HTMLInputElement;
+  const enableGitStatusToggle = document.getElementById('enable-git-status-toggle') as HTMLInputElement;
   const minimizeToTrayToggle = document.getElementById('minimize-to-tray-toggle') as HTMLInputElement;
   const startOnLoginToggle = document.getElementById('start-on-login-toggle') as HTMLInputElement;
   const autoCheckUpdatesToggle = document.getElementById('auto-check-updates-toggle') as HTMLInputElement;
+  const updateChannelSelect = document.getElementById('update-channel-select') as HTMLSelectElement;
   const enableSearchHistoryToggle = document.getElementById('enable-search-history-toggle') as HTMLInputElement;
   const dangerousOptionsToggle = document.getElementById('dangerous-options-toggle') as HTMLInputElement;
   const startupPathInput = document.getElementById('startup-path-input') as HTMLInputElement;
   const enableIndexerToggle = document.getElementById('enable-indexer-toggle') as HTMLInputElement;
-  
+  const showRecentFilesToggle = document.getElementById('show-recent-files-toggle') as HTMLInputElement;
+  const enableTabsToggle = document.getElementById('enable-tabs-toggle') as HTMLInputElement;
+  const globalContentSearchToggle = document.getElementById('global-content-search-toggle') as HTMLInputElement;
+  const enableSyntaxHighlightingToggle = document.getElementById('enable-syntax-highlighting-toggle') as HTMLInputElement;
+  const reduceMotionToggle = document.getElementById('reduce-motion-toggle') as HTMLInputElement;
+  const highContrastToggle = document.getElementById('high-contrast-toggle') as HTMLInputElement;
+  const largeTextToggle = document.getElementById('large-text-toggle') as HTMLInputElement;
+  const boldTextToggle = document.getElementById('bold-text-toggle') as HTMLInputElement;
+  const visibleFocusToggle = document.getElementById('visible-focus-toggle') as HTMLInputElement;
+  const reduceTransparencyToggle = document.getElementById('reduce-transparency-toggle') as HTMLInputElement;
+
   if (transparencyToggle) {
     currentSettings.transparency = transparencyToggle.checked;
   }
-  
+  if (enableSyntaxHighlightingToggle) {
+    currentSettings.enableSyntaxHighlighting = enableSyntaxHighlightingToggle.checked;
+  }
+
   if (themeSelect) {
-    currentSettings.theme = themeSelect.value as any;
+    if (currentSettings.theme === 'custom') {
+      if (themeDropdownChanged) {
+        currentSettings.theme = themeSelect.value as any;
+      }
+    } else {
+      currentSettings.theme = themeSelect.value as any;
+    }
   }
   
   if (sortBySelect) {
@@ -1266,6 +2078,9 @@ async function saveSettings() {
   if (showHiddenFilesToggle) {
     currentSettings.showHiddenFiles = showHiddenFilesToggle.checked;
   }
+  if (enableGitStatusToggle) {
+    currentSettings.enableGitStatus = enableGitStatusToggle.checked;
+  }
   
   if (minimizeToTrayToggle) {
     currentSettings.minimizeToTray = minimizeToTrayToggle.checked;
@@ -1278,7 +2093,11 @@ async function saveSettings() {
   if (autoCheckUpdatesToggle) {
     currentSettings.autoCheckUpdates = autoCheckUpdatesToggle.checked;
   }
-  
+
+  if (updateChannelSelect) {
+    currentSettings.updateChannel = updateChannelSelect.value as 'auto' | 'beta' | 'stable';
+  }
+
   if (enableSearchHistoryToggle) {
     currentSettings.enableSearchHistory = enableSearchHistoryToggle.checked;
   }
@@ -1295,11 +2114,50 @@ async function saveSettings() {
   if (enableIndexerToggle) {
     currentSettings.enableIndexer = enableIndexerToggle.checked;
   }
-  
+
+  if (showRecentFilesToggle) {
+    currentSettings.showRecentFiles = showRecentFilesToggle.checked;
+  }
+
+  if (enableTabsToggle) {
+    currentSettings.enableTabs = enableTabsToggle.checked;
+  }
+
+  if (globalContentSearchToggle) {
+    currentSettings.globalContentSearch = globalContentSearchToggle.checked;
+  }
+
+  if (reduceMotionToggle) {
+    currentSettings.reduceMotion = reduceMotionToggle.checked;
+  }
+
+  if (highContrastToggle) {
+    currentSettings.highContrast = highContrastToggle.checked;
+  }
+
+  if (largeTextToggle) {
+    currentSettings.largeText = largeTextToggle.checked;
+  }
+
+  if (boldTextToggle) {
+    currentSettings.boldText = boldTextToggle.checked;
+  }
+
+  if (visibleFocusToggle) {
+    currentSettings.visibleFocus = visibleFocusToggle.checked;
+  }
+
+  if (reduceTransparencyToggle) {
+    currentSettings.reduceTransparency = reduceTransparencyToggle.checked;
+  }
+
   currentSettings.viewMode = viewMode;
   
   const result = await window.electronAPI.saveSettings(currentSettings);
   if (result.success) {
+    if (previousTabsEnabled !== currentSettings.enableTabs) {
+      initializeTabs();
+    }
     applySettings(currentSettings);
     clearSettingsChanged();
     hideSettingsModal();
@@ -1395,16 +2253,72 @@ async function addBookmarkByPath(path: string) {
 
 async function removeBookmark(path: string) {
   if (!currentSettings.bookmarks) return;
-  
+
   currentSettings.bookmarks = currentSettings.bookmarks.filter(b => b !== path);
   const result = await window.electronAPI.saveSettings(currentSettings);
-  
+
   if (result.success) {
     loadBookmarks();
     showToast('Bookmark removed', 'Bookmarks', 'success');
   } else {
     showToast('Failed to remove bookmark', 'Error', 'error');
   }
+}
+
+const MAX_RECENT_FILES = 10;
+
+function loadRecentFiles() {
+  const recentList = document.getElementById('recent-list');
+  const recentSection = document.getElementById('recent-section');
+  if (!recentList || !recentSection) return;
+
+  recentList.innerHTML = '';
+
+  if (currentSettings.showRecentFiles === false) {
+    recentSection.style.display = 'none';
+    return;
+  }
+
+  if (!currentSettings.recentFiles || currentSettings.recentFiles.length === 0) {
+    recentSection.style.display = 'none';
+    return;
+  }
+
+  recentSection.style.display = 'block';
+
+  currentSettings.recentFiles.forEach(filePath => {
+    const recentItem = document.createElement('div');
+    recentItem.className = 'nav-item recent-item';
+    const pathParts = filePath.split(/[/\\]/);
+    const name = pathParts[pathParts.length - 1] || filePath;
+    const icon = getFileIcon(name);
+
+    recentItem.innerHTML = `
+      <span class="nav-icon">${icon}</span>
+      <span class="nav-label" title="${escapeHtml(filePath)}">${escapeHtml(name)}</span>
+    `;
+
+    recentItem.addEventListener('click', () => {
+      window.electronAPI.openFile(filePath);
+    });
+
+    recentList.appendChild(recentItem);
+  });
+}
+
+async function addToRecentFiles(filePath: string) {
+  if (!filePath || filePath.startsWith('http://') || filePath.startsWith('https://')) return;
+
+  if (!currentSettings.recentFiles) {
+    currentSettings.recentFiles = [];
+  }
+
+  currentSettings.recentFiles = currentSettings.recentFiles.filter(f => f !== filePath);
+  currentSettings.recentFiles.unshift(filePath);
+  currentSettings.recentFiles = currentSettings.recentFiles.slice(0, MAX_RECENT_FILES);
+
+  debouncedSaveSettings();
+  loadRecentFiles();
 }
 
 function toggleSearch() {
@@ -1419,6 +2333,8 @@ function toggleSearch() {
 }
 
 function closeSearch() {
+  searchRequestId += 1;
+  cancelActiveSearch();
   searchBarWrapper.style.display = 'none';
   searchInput.value = '';
   isSearchMode = false;
@@ -1426,6 +2342,11 @@ function closeSearch() {
   searchScopeToggle.classList.remove('global');
   hideSearchHistoryDropdown();
   updateSearchPlaceholder();
+
+  searchFiltersPanel.style.display = 'none';
+  searchFilterToggle.classList.remove('active');
+  currentSearchFilters = {};
+
   if (currentPath) {
     navigateTo(currentPath);
   }
@@ -1451,9 +2372,26 @@ function toggleSearchScope() {
     }
   }
   updateSearchPlaceholder();
+  updateContentSearchToggle();
 
   if (searchInput.value.trim()) {
     performSearch();
+  }
+}
+
+function updateContentSearchToggle() {
+  if (!searchInContentsToggle) return;
+
+  if (isGlobalSearch && !currentSettings.globalContentSearch) {
+    searchInContentsToggle.disabled = true;
+    searchInContentsToggle.checked = false;
+    searchInContents = false;
+    searchInContentsToggle.parentElement?.classList.add('disabled');
+    searchInContentsToggle.title = 'Enable "Global Content Search" in settings to use this feature';
+  } else {
+    searchInContentsToggle.disabled = false;
+    searchInContentsToggle.parentElement?.classList.remove('disabled');
+    searchInContentsToggle.title = '';
   }
 }
 
@@ -1467,9 +2405,18 @@ function updateSearchPlaceholder() {
 
 async function performSearch() {
   const query = searchInput.value.trim();
-  if (!query) return;
+  if (!query) {
+    searchRequestId += 1;
+    cancelActiveSearch();
+    return;
+  }
 
   if (!isGlobalSearch && !currentPath) return;
+
+  const currentRequestId = ++searchRequestId;
+  cancelActiveSearch();
+  const operationId = createDirectoryOperationId('search');
+  activeSearchOperationId = operationId;
   
   addToSearchHistory(query);
   
@@ -1478,49 +2425,93 @@ async function performSearch() {
   fileGrid.innerHTML = '';
   
   let result;
+  const hasFilters = currentSearchFilters.fileType ||
+                     currentSearchFilters.minSize !== undefined ||
+                     currentSearchFilters.maxSize !== undefined ||
+                     currentSearchFilters.dateFrom ||
+                     currentSearchFilters.dateTo ||
+                     searchInContents;
   
   if (isGlobalSearch) {
-    result = await window.electronAPI.searchIndex(query);
-    
-    if (result.success && result.results) {
-      const fileItems: FileItem[] = [];
-      
-      for (const entry of result.results) {
-        const isHidden = entry.name.startsWith('.');
-        
-        fileItems.push({
-          name: entry.name,
-          path: entry.path,
-          isDirectory: entry.isDirectory,
-          isFile: entry.isFile,
-          size: entry.size,
-          modified: entry.modified,
-          isHidden
-        });
+    if (searchInContents) {
+      result = await window.electronAPI.searchFilesWithContentGlobal(
+        query,
+        hasFilters ? currentSearchFilters : undefined,
+        operationId
+      );
+      if (currentRequestId !== searchRequestId) return;
+
+      if (result.success && result.results) {
+        allFiles = result.results;
+        renderFiles(result.results, query);
+      } else if (result.error !== 'Calculation cancelled') {
+        if (result.error === 'Indexer is disabled') {
+          showToast('File indexer is disabled. Enable it in settings to use global search.', 'Index Disabled', 'warning');
+        } else {
+          showToast(result.error || 'Global content search failed', 'Search Error', 'error');
+        }
       }
-      
-      allFiles = fileItems;
-      renderFiles(fileItems);
     } else {
-      if (result.error === 'Indexer is disabled') {
-        showToast('File indexer is disabled. Enable it in settings to use global search.', 'Index Disabled', 'warning');
-      } else {
-        showToast(result.error || 'Global search failed', 'Search Error', 'error');
+      result = await window.electronAPI.searchIndex(query, operationId);
+      if (currentRequestId !== searchRequestId) return;
+      
+      if (result.success && result.results) {
+        const fileItems: FileItem[] = [];
+        
+        for (const entry of result.results) {
+          const isHidden = entry.name.startsWith('.');
+          
+          fileItems.push({
+            name: entry.name,
+            path: entry.path,
+            isDirectory: entry.isDirectory,
+            isFile: entry.isFile,
+            size: entry.size,
+            modified: entry.modified,
+            isHidden
+          });
+        }
+        
+        allFiles = fileItems;
+        renderFiles(fileItems);
+      } else if (result.error !== 'Calculation cancelled') {
+        if (result.error === 'Indexer is disabled') {
+          showToast('File indexer is disabled. Enable it in settings to use global search.', 'Index Disabled', 'warning');
+        } else {
+          showToast(result.error || 'Global search failed', 'Search Error', 'error');
+        }
       }
     }
   } else {
-    result = await window.electronAPI.searchFiles(currentPath, query);
-    
+    if (searchInContents) {
+      result = await window.electronAPI.searchFilesWithContent(
+        currentPath,
+        query,
+        hasFilters ? currentSearchFilters : undefined,
+        operationId
+      );
+    } else {
+      result = await window.electronAPI.searchFiles(
+        currentPath,
+        query,
+        hasFilters ? currentSearchFilters : undefined,
+        operationId
+      );
+    }
+    if (currentRequestId !== searchRequestId) return;
+
     if (result.success && result.results) {
       allFiles = result.results;
-      renderFiles(result.results);
-    } else {
+      renderFiles(result.results, searchInContents ? query : undefined);
+    } else if (result.error !== 'Calculation cancelled') {
       showToast(result.error || 'Search failed', 'Search Error', 'error');
     }
   }
   
+  if (currentRequestId !== searchRequestId) return;
   loading.style.display = 'none';
   updateStatusBar();
+  activeSearchOperationId = null;
 }
 
 function copyToClipboard() {
@@ -1548,19 +2539,21 @@ function cutToClipboard() {
 
 async function pasteFromClipboard() {
   if (!clipboard || !currentPath) return;
-  
-  const operation = clipboard.operation === 'copy' ? 'copyItems' : 'moveItems';
-  const result = await window.electronAPI[operation](clipboard.paths, currentPath);
-  
+
+  const isCopy = clipboard.operation === 'copy';
+  const result = isCopy
+    ? await window.electronAPI.copyItems(clipboard.paths, currentPath)
+    : await window.electronAPI.moveItems(clipboard.paths, currentPath);
+
   if (result.success) {
-    showToast(`${clipboard.paths.length} item(s) ${clipboard.operation === 'copy' ? 'copied' : 'moved'}`, 'Success', 'success');
-    
-    if (clipboard.operation === 'cut') {
+    showToast(`${clipboard.paths.length} item(s) ${isCopy ? 'copied' : 'moved'}`, 'Success', 'success');
+
+    if (!isCopy) {
       await updateUndoRedoState();
       clipboard = null;
       window.electronAPI.setClipboard(null);
     }
-    
+
     updateCutVisuals();
     refresh();
   } else {
@@ -1571,7 +2564,7 @@ async function pasteFromClipboard() {
 function updateCutVisuals() {
   document.querySelectorAll('.file-item').forEach(item => {
     const itemPath = item.getAttribute('data-path');
-    if (clipboard && clipboard.operation === 'cut' && clipboard.paths.includes(itemPath)) {
+    if (itemPath && clipboard && clipboard.operation === 'cut' && clipboard.paths.includes(itemPath)) {
       item.classList.add('cut');
     } else {
       item.classList.remove('cut');
@@ -1659,7 +2652,7 @@ function updateStatusBar() {
   if (statusSelected) {
     if (selectedItems.size > 0) {
       const totalSize = Array.from(selectedItems).reduce((acc, path) => {
-        const item = allFiles.find(f => f.path === path);
+        const item = filePathMap.get(path);
         return acc + (item ? item.size : 0);
       }, 0);
       const sizeStr = formatFileSize(totalSize);
@@ -1675,6 +2668,24 @@ function updateStatusBar() {
 let diskSpaceDebounceTimer: NodeJS.Timeout | null = null;
 let lastDiskSpacePath: string = '';
 
+function getUnixDrivePath(pathValue: string): string {
+  const normalized = pathValue.replace(/\\/g, '/');
+  const roots = ['/Volumes', '/media', '/mnt', '/run/media'];
+  for (const root of roots) {
+    if (normalized === root || normalized.startsWith(root + '/')) {
+      const parts = normalized.split('/').filter(Boolean);
+      const rootParts = root.split('/').filter(Boolean);
+      const extraSegments = root === '/run/media' ? 2 : 1;
+      const needed = rootParts.length + extraSegments;
+      if (parts.length >= needed) {
+        return '/' + parts.slice(0, needed).join('/');
+      }
+      return root;
+    }
+  }
+  return '/';
+}
+
 async function updateDiskSpace() {
   const statusDiskSpace = document.getElementById('status-disk-space');
   if (!statusDiskSpace || !currentPath) return;
@@ -1683,7 +2694,7 @@ async function updateDiskSpace() {
   if (platformOS === 'win32') {
     drivePath = currentPath.substring(0, 3);
   } else {
-    drivePath = '/';
+    drivePath = getUnixDrivePath(currentPath);
   }
   
   if (drivePath === lastDiskSpacePath && diskSpaceDebounceTimer) {
@@ -1698,11 +2709,13 @@ async function updateDiskSpace() {
 
   diskSpaceDebounceTimer = setTimeout(async () => {
     const result = await window.electronAPI.getDiskSpace(drivePath);
-    if (result.success && result.total && result.free) {
-      const freeStr = formatFileSize(result.free);
-      const totalStr = formatFileSize(result.total);
-      const usedBytes = result.total - result.free;
-      const usedPercent = ((usedBytes / result.total) * 100).toFixed(1);
+    if (result.success && typeof result.total === 'number' && typeof result.free === 'number' && result.total > 0) {
+      const total = result.total;
+      const free = result.free;
+      const freeStr = formatFileSize(free);
+      const totalStr = formatFileSize(total);
+      const usedBytes = total - free;
+      const usedPercent = ((usedBytes / total) * 100).toFixed(1);
       let usageColor = '#107c10';
       if (parseFloat(usedPercent) > 80) {
         usageColor = '#ff8c00';
@@ -1780,84 +2793,82 @@ async function zoomReset() {
 }
 
 async function init() {
-  console.log('Init: Getting platform...');
-  platformOS = await window.electronAPI.getPlatform();
-  console.log('Init: Platform is', platformOS);
-  
-  console.log('Init: Loading settings...');
-  await loadSettings();
-  
-  console.log('Init: Setting up breadcrumb navigation...');
-  setupBreadcrumbListeners();
-  
-  console.log('Init: Setting up theme editor...');
-  setupThemeEditorListeners();
-  
-  console.log('Init: Determining startup path...');
-  let startupPath = currentSettings.startupPath && currentSettings.startupPath.trim() !== '' 
-    ? currentSettings.startupPath 
-    : await window.electronAPI.getHomeDirectory();
-  console.log('Init: Startup path is', startupPath);
-  
-  console.log('Init: Navigating to startup path...');
-  navigateTo(startupPath);
-  
-  console.log('Init: Setting up event listeners...');
+  console.log('Init: Getting platform, store info, and settings...');
+
+  const homeDirectoryPromise = window.electronAPI.getHomeDirectory();
+
+  const [platform, mas, flatpak, msStore] = await Promise.all([
+    window.electronAPI.getPlatform(),
+    window.electronAPI.isMas(),
+    window.electronAPI.isFlatpak(),
+    window.electronAPI.isMsStore(),
+    loadSettings()
+  ]);
+
+  platformOS = platform;
+
+  const startupPath = currentSettings.startupPath && currentSettings.startupPath.trim() !== ''
+    ? currentSettings.startupPath
+    : await homeDirectoryPromise;
+
   setupEventListeners();
+  loadDrives();
+  initializeTabs();
 
-  const isMas = await window.electronAPI.isMas();
-  const isFlatpak = await window.electronAPI.isFlatpak();
-  const isMsStore = await window.electronAPI.isMsStore();
-  const isStoreVersion = isMas || isFlatpak || isMsStore;
-  
-  if (isStoreVersion) {
-    const updateBtn = document.getElementById('check-updates-btn');
-    if (updateBtn) {
-      updateBtn.style.display = 'none';
-    }
+  await navigateTo(startupPath);
 
-    const autoCheckToggle = document.getElementById('auto-check-updates-toggle');
-    if (autoCheckToggle) {
-      const settingItem = autoCheckToggle.closest('.setting-item') as HTMLElement;
-      if (settingItem) {
-        settingItem.style.display = 'none';
-      }
-    }
+  queueMicrotask(() => {
+    setupBreadcrumbListeners();
+    setupThemeEditorListeners();
+    loadBookmarks();
+  });
 
-    const updatesCards = document.querySelectorAll('.settings-card-header');
-    updatesCards.forEach(header => {
-      if (header.textContent === 'Updates') {
-        const card = header.closest('.settings-card') as HTMLElement;
-        if (card) {
-          card.style.display = 'none';
+  const isStoreVersion = mas || flatpak || msStore;
+
+  if (typeof requestIdleCallback !== 'undefined') {
+    requestIdleCallback(() => {
+      if (isStoreVersion) {
+        const updateBtn = document.getElementById('check-updates-btn');
+        if (updateBtn) {
+          updateBtn.style.display = 'none';
         }
-      }
-    });
-  }
-  
-  if (isMas || isMsStore) {
-    const settingsCards = document.querySelectorAll('.settings-card-header');
-    settingsCards.forEach(header => {
-      if (header.textContent === 'Developer Options') {
-        const card = header.closest('.settings-card') as HTMLElement;
-        if (card) {
-          card.style.display = 'none';
+
+        const autoCheckToggle = document.getElementById('auto-check-updates-toggle');
+        if (autoCheckToggle) {
+          const settingItem = autoCheckToggle.closest('.setting-item') as HTMLElement;
+          if (settingItem) {
+            settingItem.style.display = 'none';
+          }
         }
+
+        const updatesCards = document.querySelectorAll('.settings-card-header');
+        updatesCards.forEach(header => {
+          if (header.textContent === 'Updates') {
+            const card = header.closest('.settings-card') as HTMLElement;
+            if (card) {
+              card.style.display = 'none';
+            }
+          }
+        });
+      }
+
+      if (mas || msStore) {
+        const settingsCards = document.querySelectorAll('.settings-card-header');
+        settingsCards.forEach(header => {
+          if (header.textContent === 'Developer Options') {
+            const card = header.closest('.settings-card') as HTMLElement;
+            if (card) {
+              card.style.display = 'none';
+            }
+          }
+        });
       }
     });
   }
 
   setTimeout(() => {
-    console.log('Init: Loading bookmarks...');
-    loadBookmarks();
-    
-    console.log('Init: Updating undo/redo state...');
     updateUndoRedoState();
-    
-    console.log('Init: Loading drives...');
-    loadDrives();
-    
-    console.log('Init: Getting zoom level...');
+
     window.electronAPI.getZoomLevel().then(zoomResult => {
       if (zoomResult.success && zoomResult.zoomLevel) {
         currentZoomLevel = zoomResult.zoomLevel;
@@ -1962,6 +2973,11 @@ function setupEventListeners() {
   newFolderBtn?.addEventListener('click', createNewFolder);
   viewToggleBtn?.addEventListener('click', toggleView);
 
+  const emptyNewFolderBtn = document.getElementById('empty-new-folder-btn');
+  const emptyNewFileBtn = document.getElementById('empty-new-file-btn');
+  emptyNewFolderBtn?.addEventListener('click', createNewFolder);
+  emptyNewFileBtn?.addEventListener('click', createNewFile);
+
   document.addEventListener('mouseup', (e) => {
     if (e.button === 3) {
       e.preventDefault();
@@ -1975,6 +2991,72 @@ function setupEventListeners() {
   searchBtn?.addEventListener('click', toggleSearch);
   searchClose?.addEventListener('click', closeSearch);
   searchScopeToggle?.addEventListener('click', toggleSearchScope);
+
+  searchFilterToggle?.addEventListener('click', () => {
+    if (searchFiltersPanel.style.display === 'none' || !searchFiltersPanel.style.display) {
+      searchFiltersPanel.style.display = 'block';
+      searchFilterToggle.classList.add('active');
+    } else {
+      searchFiltersPanel.style.display = 'none';
+      searchFilterToggle.classList.remove('active');
+    }
+  });
+
+  searchFilterApply?.addEventListener('click', () => {
+    const fileType = searchFilterType.value;
+    const minSizeValue = searchFilterMinSize.value ? parseFloat(searchFilterMinSize.value) : undefined;
+    const maxSizeValue = searchFilterMaxSize.value ? parseFloat(searchFilterMaxSize.value) : undefined;
+    const minSizeUnit = parseFloat(searchFilterSizeUnitMin.value);
+    const maxSizeUnit = parseFloat(searchFilterSizeUnitMax.value);
+
+    currentSearchFilters = {
+      fileType: fileType !== 'all' ? fileType : undefined,
+      minSize: minSizeValue !== undefined ? minSizeValue * minSizeUnit : undefined,
+      maxSize: maxSizeValue !== undefined ? maxSizeValue * maxSizeUnit : undefined,
+      dateFrom: searchFilterDateFrom.value || undefined,
+      dateTo: searchFilterDateTo.value || undefined
+    };
+
+    const hasActiveFilters = currentSearchFilters.fileType ||
+                             currentSearchFilters.minSize !== undefined ||
+                             currentSearchFilters.maxSize !== undefined ||
+                             currentSearchFilters.dateFrom ||
+                             currentSearchFilters.dateTo;
+
+    if (hasActiveFilters) {
+      searchFilterToggle.classList.add('active');
+    }
+
+    searchFiltersPanel.style.display = 'none';
+
+    if (searchInput.value.trim()) {
+      performSearch();
+    }
+  });
+
+  searchFilterClear?.addEventListener('click', () => {
+    searchFilterType.value = 'all';
+    searchFilterMinSize.value = '';
+    searchFilterMaxSize.value = '';
+    searchFilterSizeUnitMin.value = '1024';
+    searchFilterSizeUnitMax.value = '1048576';
+    searchFilterDateFrom.value = '';
+    searchFilterDateTo.value = '';
+    currentSearchFilters = {};
+    searchFilterToggle.classList.remove('active');
+
+    if (searchInput.value.trim()) {
+      performSearch();
+    }
+  });
+
+  searchInContentsToggle?.addEventListener('change', () => {
+    searchInContents = searchInContentsToggle.checked;
+    if (searchInput.value.trim()) {
+      performSearch();
+    }
+  });
+
   sortBtn?.addEventListener('click', showSortMenu);
   bookmarkAddBtn?.addEventListener('click', addBookmark);
   
@@ -1988,6 +3070,8 @@ function setupEventListeners() {
   searchInput?.addEventListener('input', () => {
     if (searchInput.value.length === 0) {
       closeSearch();
+    } else if (searchInput.value.length >= 2) {
+      debouncedSearch();
     }
   });
   
@@ -2003,8 +3087,8 @@ function setupEventListeners() {
     const dialogModal = document.getElementById('dialog-modal');
     const licensesModal = document.getElementById('licenses-modal');
     const quicklookModal = document.getElementById('quicklook-modal');
-    
-    return (
+
+    return !!(
       (settingsModal && settingsModal.style.display === 'flex') ||
       (shortcutsModal && shortcutsModal.style.display === 'flex') ||
       (dialogModal && dialogModal.style.display === 'flex') ||
@@ -2045,6 +3129,60 @@ function setupEventListeners() {
       return;
     }
 
+    const contextMenu = document.getElementById('context-menu');
+    const emptySpaceContextMenu = document.getElementById('empty-space-context-menu');
+
+    if (contextMenu && contextMenu.style.display === 'block') {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        contextMenuFocusedIndex = navigateContextMenu(contextMenu, 'down', contextMenuFocusedIndex);
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        contextMenuFocusedIndex = navigateContextMenu(contextMenu, 'up', contextMenuFocusedIndex);
+        return;
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        if (contextMenuFocusedIndex >= 0) {
+          activateContextMenuItem(contextMenu, contextMenuFocusedIndex);
+        }
+        return;
+      }
+      if (e.key === 'ArrowRight') {
+        const items = getVisibleMenuItems(contextMenu);
+        if (contextMenuFocusedIndex >= 0 && items[contextMenuFocusedIndex]?.classList.contains('has-submenu')) {
+          e.preventDefault();
+          activateContextMenuItem(contextMenu, contextMenuFocusedIndex);
+        }
+        return;
+      }
+    }
+
+    if (emptySpaceContextMenu && emptySpaceContextMenu.style.display === 'block') {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        emptySpaceMenuFocusedIndex = navigateContextMenu(emptySpaceContextMenu, 'down', emptySpaceMenuFocusedIndex);
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        emptySpaceMenuFocusedIndex = navigateContextMenu(emptySpaceContextMenu, 'up', emptySpaceMenuFocusedIndex);
+        return;
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        if (emptySpaceMenuFocusedIndex >= 0) {
+          const items = getVisibleMenuItems(emptySpaceContextMenu);
+          if (items[emptySpaceMenuFocusedIndex]) {
+            items[emptySpaceMenuFocusedIndex].click();
+          }
+        }
+        return;
+      }
+    }
+
     if (isModalOpen()) {
       return;
     }
@@ -2058,7 +3196,7 @@ function setupEventListeners() {
       if (e.key === ',') {
         e.preventDefault();
         showSettingsModal();
-      } else if (e.key === '.') {
+      } else if (e.key === '?' || e.key === '/') {
         e.preventDefault();
         showShortcutsModal();
       } else if (e.key === 'n' && !e.shiftKey) {
@@ -2140,6 +3278,25 @@ function setupEventListeners() {
       } else if (e.key === '0') {
         e.preventDefault();
         zoomReset();
+      } else if (e.key === 't' || e.key === 'T') {
+        e.preventDefault();
+        if (tabsEnabled) {
+          addNewTab();
+        }
+      } else if (e.key === 'w' || e.key === 'W') {
+        e.preventDefault();
+        if (tabsEnabled && tabs.length > 1) {
+          closeTab(activeTabId);
+        }
+      } else if (e.key === 'Tab') {
+        e.preventDefault();
+        if (tabsEnabled && tabs.length > 1) {
+          const currentIndex = tabs.findIndex(t => t.id === activeTabId);
+          const nextIndex = e.shiftKey
+            ? (currentIndex - 1 + tabs.length) % tabs.length
+            : (currentIndex + 1) % tabs.length;
+          switchToTab(tabs[nextIndex].id);
+        }
       }
     } else if (e.key === ' ' && selectedItems.size === 1) {
       const activeElement = document.activeElement;
@@ -2157,10 +3314,42 @@ function setupEventListeners() {
     } else if (e.key === 'Delete') {
       e.preventDefault();
       if (e.shiftKey) {
+        if (!currentSettings.showDangerousOptions) {
+          showToast('Enable Developer Mode in settings to permanently delete items', 'Developer Mode Required', 'warning');
+          return;
+        }
         permanentlyDeleteSelected();
       } else {
         deleteSelected();
       }
+    } else if (e.key === 'Enter') {
+      const activeElement = document.activeElement;
+      if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
+        return;
+      }
+      e.preventDefault();
+      openSelectedItem();
+    } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      const activeElement = document.activeElement;
+      if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
+        return;
+      }
+      e.preventDefault();
+      navigateFileGrid(e.key, e.shiftKey);
+    } else if (e.key === 'Home') {
+      const activeElement = document.activeElement;
+      if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
+        return;
+      }
+      e.preventDefault();
+      selectFirstItem(e.shiftKey);
+    } else if (e.key === 'End') {
+      const activeElement = document.activeElement;
+      if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
+        return;
+      }
+      e.preventDefault();
+      selectLastItem(e.shiftKey);
     }
   });
   
@@ -2173,7 +3362,7 @@ function setupEventListeners() {
         navigateTo(homeDir);
       } else if (action === 'browse') {
         const result = await window.electronAPI.selectFolder();
-        if (result.success) {
+        if (result.success && result.path) {
           navigateTo(result.path);
         }
       } else if (action === 'trash') {
@@ -2188,46 +3377,42 @@ function setupEventListeners() {
   });
   
   document.addEventListener('click', (e) => {
+    const target = e.target as HTMLElement;
     const contextMenu = document.getElementById('context-menu');
-    const emptySpaceContextMenu = document.getElementById('empty-space-context-menu');
-    const sortMenu = document.getElementById('sort-menu');
-    
-    if (contextMenu && contextMenu.style.display === 'block' && !contextMenu.contains(e.target as Node)) {
-      hideContextMenu();
-    }
-    if (emptySpaceContextMenu && emptySpaceContextMenu.style.display === 'block' && !emptySpaceContextMenu.contains(e.target as Node)) {
-      hideEmptySpaceContextMenu();
-    }
-    if (sortMenu && sortMenu.style.display === 'block' && !sortMenu.contains(e.target as Node) && e.target !== sortBtn) {
-      hideSortMenu();
-    }
-  });
-  
-  document.addEventListener('click', (e) => {
-    const sortMenu = document.getElementById('sort-menu');
-    const menuItem = (e.target as HTMLElement).closest('.context-menu-item') as HTMLElement;
-    
-    if (menuItem && sortMenu && sortMenu.style.display === 'block') {
-      const sortType = menuItem.getAttribute('data-sort');
-      if (sortType) {
-        changeSortMode(sortType as any);
-      }
-      return;
-    }
-    
-    if (menuItem && contextMenuData) {
-      const format = menuItem.dataset.format;
-      handleContextMenuAction(menuItem.dataset.action, contextMenuData, format);
-      hideContextMenu();
-    }
-  });
-  
-  document.addEventListener('click', (e) => {
     const emptySpaceMenu = document.getElementById('empty-space-context-menu');
-    const menuItem = (e.target as HTMLElement).closest('.context-menu-item') as HTMLElement;
-    if (menuItem && emptySpaceMenu && emptySpaceMenu.style.display === 'block') {
-      handleEmptySpaceContextMenuAction(menuItem.dataset.action);
+    const sortMenu = document.getElementById('sort-menu');
+    const menuItem = target.closest('.context-menu-item') as HTMLElement;
+
+    if (menuItem) {
+      if (sortMenu && sortMenu.style.display === 'block') {
+        const sortType = menuItem.getAttribute('data-sort');
+        if (sortType) {
+          changeSortMode(sortType as any);
+        }
+        return;
+      }
+
+      if (emptySpaceMenu && emptySpaceMenu.style.display === 'block') {
+        handleEmptySpaceContextMenuAction(menuItem.dataset.action);
+        hideEmptySpaceContextMenu();
+        return;
+      }
+
+      if (contextMenuData) {
+        handleContextMenuAction(menuItem.dataset.action, contextMenuData, menuItem.dataset.format);
+        hideContextMenu();
+        return;
+      }
+    }
+
+    if (contextMenu && contextMenu.style.display === 'block' && !contextMenu.contains(target)) {
+      hideContextMenu();
+    }
+    if (emptySpaceMenu && emptySpaceMenu.style.display === 'block' && !emptySpaceMenu.contains(target)) {
       hideEmptySpaceContextMenu();
+    }
+    if (sortMenu && sortMenu.style.display === 'block' && !sortMenu.contains(target) && target !== sortBtn) {
+      hideSortMenu();
     }
   });
   
@@ -2241,12 +3426,14 @@ function setupEventListeners() {
     fileGrid.addEventListener('dragover', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      
+
+      if (!e.dataTransfer) return;
+
       if (!currentPath) {
         e.dataTransfer.dropEffect = 'none';
         return;
       }
-      
+
       e.dataTransfer.dropEffect = e.ctrlKey ? 'copy' : 'move';
       fileGrid.classList.add('drag-over');
     });
@@ -2273,18 +3460,17 @@ function setupEventListeners() {
       }
       
       let draggedPaths: string[] = [];
-      
-      // Try to get paths from our app's dataTransfer
+
+      if (!e.dataTransfer) return;
+
       try {
         const textData = e.dataTransfer.getData('text/plain');
         if (textData) {
           draggedPaths = JSON.parse(textData);
         }
       } catch {
-        // Not valid JSON, ignore
       }
-      
-      // If empty, check for files from external drag (Windows Explorer or cross-window native drag)
+
       if (draggedPaths.length === 0 && e.dataTransfer.files.length > 0) {
         draggedPaths = Array.from(e.dataTransfer.files).map(f => (f as File & { path: string }).path);
       }
@@ -2301,9 +3487,9 @@ function setupEventListeners() {
         return;
       }
     
-      const alreadyInCurrentDir = draggedPaths.some((path: string) => {
-        const parentDir = path.substring(0, path.lastIndexOf(path.includes('\\') ? '\\' : '/'));
-        return parentDir === currentPath || path === currentPath;
+      const alreadyInCurrentDir = draggedPaths.some((dragPath: string) => {
+        const parentDir = path.dirname(dragPath);
+        return parentDir === currentPath || dragPath === currentPath;
       });
     
       if (alreadyInCurrentDir) {
@@ -2384,9 +3570,9 @@ function setupEventListeners() {
         return;
       }
       
-      const alreadyInCurrentDir = draggedPaths.some((path: string) => {
-        const parentDir = path.substring(0, path.lastIndexOf(path.includes('\\') ? '\\' : '/'));
-        return parentDir === currentPath || path === currentPath;
+      const alreadyInCurrentDir = draggedPaths.some((dragPath: string) => {
+        const parentDir = path.dirname(dragPath);
+        return parentDir === currentPath || dragPath === currentPath;
       });
       
       if (alreadyInCurrentDir) {
@@ -2426,8 +3612,8 @@ function addToSearchHistory(query: string) {
   }
   currentSettings.searchHistory = currentSettings.searchHistory.filter(item => item !== query);
   currentSettings.searchHistory.unshift(query);
-  currentSettings.searchHistory = currentSettings.searchHistory.slice(0, 5);
-  window.electronAPI.saveSettings(currentSettings);
+  currentSettings.searchHistory = currentSettings.searchHistory.slice(0, SEARCH_HISTORY_MAX);
+  debouncedSaveSettings();
 }
 
 function addToDirectoryHistory(dirPath: string) {
@@ -2437,8 +3623,8 @@ function addToDirectoryHistory(dirPath: string) {
   }
   currentSettings.directoryHistory = currentSettings.directoryHistory.filter(item => item !== dirPath);
   currentSettings.directoryHistory.unshift(dirPath);
-  currentSettings.directoryHistory = currentSettings.directoryHistory.slice(0, 5);
-  window.electronAPI.saveSettings(currentSettings);
+  currentSettings.directoryHistory = currentSettings.directoryHistory.slice(0, DIRECTORY_HISTORY_MAX);
+  debouncedSaveSettings();
 }
 
 function showSearchHistoryDropdown() {
@@ -2499,111 +3685,169 @@ function clearDirectoryHistory() {
   showToast('Directory history cleared', 'History', 'success');
 }
 
-async function navigateTo(path: string) {
+async function navigateTo(path: string, skipHistoryUpdate = false) {
   if (!path) return;
-  
-  if (isSearchMode) {
-    closeSearch();
-  }
-  
-  if (loading) loading.style.display = 'flex';
-  if (emptyState) emptyState.style.display = 'none';
-  if (fileGrid) fileGrid.innerHTML = '';
-  
-  const result = await window.electronAPI.getDirectoryContents(path);
-  
-  if (result.success) {
-    currentPath = path;
-    if (addressInput) addressInput.value = path;
-    updateBreadcrumb(path);
-    addToDirectoryHistory(path);
-    
-    if (historyIndex === -1 || history[historyIndex] !== path) {
-      history = history.slice(0, historyIndex + 1);
-      history.push(path);
-      historyIndex = history.length - 1;
-    }
-    
-    updateNavigationButtons();
+  let requestId = 0;
+  let operationId = '';
 
-    if (viewMode === 'column') {
-      await renderColumnView();
-    } else {
-      renderFiles(result.contents);
+  try {
+    if (isSearchMode) {
+      closeSearch();
     }
-    updateDiskSpace();
-  } else {
-    console.error('Error loading directory:', result.error);
-    showToast(result.error, 'Error Loading Directory', 'error');
+
+    if (thumbnailObserver) {
+      thumbnailObserver.disconnect();
+    }
+
+    if (loading) loading.style.display = 'flex';
+    if (emptyState) emptyState.style.display = 'none';
+    if (fileGrid) fileGrid.innerHTML = '';
+    const request = startDirectoryRequest(path);
+    requestId = request.requestId;
+    operationId = request.operationId;
+
+    const result = await window.electronAPI.getDirectoryContents(path, operationId, currentSettings.showHiddenFiles);
+    if (requestId !== directoryRequestId) return;
+
+    if (result.success) {
+      currentPath = path;
+      updateCurrentTabPath(path);
+      if (addressInput) addressInput.value = path;
+      updateBreadcrumb(path);
+      addToDirectoryHistory(path);
+
+      if (!skipHistoryUpdate && (historyIndex === -1 || history[historyIndex] !== path)) {
+        history = history.slice(0, historyIndex + 1);
+        history.push(path);
+        historyIndex = history.length - 1;
+      }
+
+      updateNavigationButtons();
+
+      if (viewMode === 'column') {
+        await renderColumnView();
+      } else {
+        renderFiles(result.contents || []);
+      }
+      updateDiskSpace();
+      if (currentSettings.enableGitStatus) {
+        fetchGitStatusAsync(path);
+      }
+    } else {
+      console.error('Error loading directory:', result.error);
+      showToast(result.error || 'Unknown error', 'Error Loading Directory', 'error');
+    }
+  } catch (error) {
+    console.error('Error navigating:', error);
+    showToast(getErrorMessage(error), 'Error Loading Directory', 'error');
+  } finally {
+    const isCurrentRequest = requestId !== 0 && requestId === directoryRequestId;
+    finishDirectoryRequest(requestId);
+    if (isCurrentRequest && loading) loading.style.display = 'none';
   }
-  
-  if (loading) loading.style.display = 'none';
 }
 
-function renderFiles(items: FileItem[]) {
+let renderFilesToken = 0;
+let filePathMap: Map<string, FileItem> = new Map();
+
+function renderFiles(items: FileItem[], searchQuery?: string) {
   if (!fileGrid) return;
-  
+
+  const renderToken = ++renderFilesToken;
   fileGrid.innerHTML = '';
   clearSelection();
   allFiles = items;
-  
-  const visibleItems = currentSettings.showHiddenFiles 
-    ? items 
+
+  filePathMap.clear();
+  for (const item of items) {
+    filePathMap.set(item.path, item);
+  }
+
+  const LARGE_FOLDER_THRESHOLD = 10000;
+  if (items.length >= LARGE_FOLDER_THRESHOLD) {
+    showToast(
+      `This folder contains ${items.length.toLocaleString()} items. Performance may be affected.`,
+      'Large Folder',
+      'warning'
+    );
+  }
+
+  const visibleItems = currentSettings.showHiddenFiles
+    ? items
     : items.filter(item => !item.isHidden);
-  
+
   if (visibleItems.length === 0) {
     if (emptyState) emptyState.style.display = 'flex';
     updateStatusBar();
     return;
   }
-  
+
+  const sortBy = currentSettings.sortBy || 'name';
+  const sortOrder = currentSettings.sortOrder || 'asc';
+  const extCache = sortBy === 'type' ? new Map<FileItem, string>() : null;
+  const modifiedCache = sortBy === 'date' ? new Map<FileItem, number>() : null;
+
+  if (sortBy === 'type') {
+    visibleItems.forEach(item => {
+      if (!item.isDirectory) {
+        const ext = item.name.split('.').pop()?.toLowerCase() || '';
+        extCache?.set(item, ext);
+      }
+    });
+  } else if (sortBy === 'date') {
+    visibleItems.forEach(item => {
+      const time = item.modified instanceof Date ? item.modified.getTime() : new Date(item.modified).getTime();
+      modifiedCache?.set(item, time);
+    });
+  }
+
   const sortedItems = [...visibleItems].sort((a, b) => {
     const dirSort = (b.isDirectory ? 1 : 0) - (a.isDirectory ? 1 : 0);
     if (dirSort !== 0) return dirSort;
-    
+
     let comparison = 0;
-    const sortBy = currentSettings.sortBy || 'name';
-    const sortOrder = currentSettings.sortOrder || 'asc';
-    
+
     switch (sortBy) {
       case 'name':
-        comparison = a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+        comparison = NAME_COLLATOR.compare(a.name, b.name);
         break;
       case 'date':
-        comparison = new Date(a.modified).getTime() - new Date(b.modified).getTime();
+        comparison = (modifiedCache?.get(a) || 0) - (modifiedCache?.get(b) || 0);
         break;
       case 'size':
         comparison = a.size - b.size;
         break;
       case 'type':
-        const extA = a.name.split('.').pop()?.toLowerCase() || '';
-        const extB = b.name.split('.').pop()?.toLowerCase() || '';
-        comparison = extA.localeCompare(extB);
+        const extA = extCache?.get(a) || '';
+        const extB = extCache?.get(b) || '';
+        comparison = NAME_COLLATOR.compare(extA, extB);
         break;
       default:
-        comparison = a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+        comparison = NAME_COLLATOR.compare(a.name, b.name);
     }
-    
+
     return sortOrder === 'asc' ? comparison : -comparison;
   });
 
   const fragment = document.createDocumentFragment();
 
-  const batchSize = 50;
+  const batchSize = RENDER_BATCH_SIZE;
   let currentBatch = 0;
   
   const renderBatch = () => {
+    if (renderToken !== renderFilesToken) return;
     const start = currentBatch * batchSize;
     const end = Math.min(start + batchSize, sortedItems.length);
-    
+
     for (let i = start; i < end; i++) {
-      const fileItem = createFileItem(sortedItems[i]);
+      const fileItem = createFileItem(sortedItems[i], searchQuery);
       fragment.appendChild(fileItem);
     }
     
     fileGrid.appendChild(fragment);
     currentBatch++;
-    
+
+    if (renderToken !== renderFilesToken) return;
     if (end < sortedItems.length) {
       requestAnimationFrame(renderBatch);
     } else {
@@ -2631,7 +3875,7 @@ function lazyLoadThumbnails() {
       if (entry.isIntersecting) {
         const fileItem = entry.target as HTMLElement;
         const path = fileItem.dataset.path;
-        const item = allFiles.find(f => f.path === path);
+        const item = path ? filePathMap.get(path) : undefined;
         
         if (item && fileItem.classList.contains('has-thumbnail')) {
           loadThumbnail(fileItem, item);
@@ -2641,7 +3885,7 @@ function lazyLoadThumbnails() {
     });
   }, {
     root: scrollContainer,
-    rootMargin: '50px',
+    rootMargin: THUMBNAIL_ROOT_MARGIN,
     threshold: 0.01
   });
 
@@ -2650,40 +3894,69 @@ function lazyLoadThumbnails() {
   });
 }
 
-function createFileItem(item: FileItem): HTMLElement {
+function createFileItem(item: FileItem, searchQuery?: string): HTMLElement {
   const fileItem = document.createElement('div');
   fileItem.className = 'file-item';
   fileItem.dataset.path = item.path;
   fileItem.dataset.isDirectory = String(item.isDirectory);
-  
-  const icon = item.isDirectory ? twemojiImg(String.fromCodePoint(0x1F4C1), 'twemoji file-icon') : getFileIcon(item.name);
-  const ext = item.name.split('.').pop()?.toLowerCase() || '';
-  const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'ico'];
-  const isImage = !item.isDirectory && imageExts.includes(ext);
-  
-  if (isImage) {
-    fileItem.classList.add('has-thumbnail');
-    fileItem.innerHTML = `
-      <div class="file-icon">
-        ${getFileIcon(item.name)}
-      </div>
-      <div class="file-name">${escapeHtml(item.name)}</div>
-    `;
+
+  let icon: string;
+  if (item.isDirectory) {
+    icon = getFolderIcon(item.path);
   } else {
-    fileItem.innerHTML = `
-      <div class="file-icon">${icon}</div>
-      <div class="file-name">${escapeHtml(item.name)}</div>
-    `;
+    const ext = item.name.split('.').pop()?.toLowerCase() || '';
+    if (IMAGE_EXTENSIONS.has(ext)) {
+      fileItem.classList.add('has-thumbnail');
+      icon = IMAGE_ICON;
+    } else {
+      icon = getFileIcon(item.name);
+    }
   }
+
+  const sizeDisplay = item.isDirectory ? '--' : formatFileSize(item.size);
+  const dateDisplay = new Date(item.modified).toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric'
+  });
+
+  const contentResult = item as ContentSearchResult;
+  let matchContextHtml = '';
+  if (contentResult.matchContext && searchQuery) {
+    const escapedContext = escapeHtml(contentResult.matchContext);
+    const escapedQuery = escapeHtml(searchQuery);
+    const regex = new RegExp(`(${escapedQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+    const highlightedContext = escapedContext.replace(regex, '<span class="match-highlight">$1</span>');
+    const lineInfo = contentResult.matchLineNumber ? `<span class="match-line-number">Line ${contentResult.matchLineNumber}</span>` : '';
+    matchContextHtml = `<div class="match-context">${highlightedContext}${lineInfo}</div>`;
+  }
+
+  fileItem.innerHTML = `
+    <div class="file-icon">${icon}</div>
+    <div class="file-name">${escapeHtml(item.name)}</div>
+    ${matchContextHtml}
+    <div class="file-info">
+      <span class="file-size" data-path="${escapeHtml(item.path)}">${sizeDisplay}</span>
+      <span class="file-modified">${dateDisplay}</span>
+    </div>
+  `;
   
   fileItem.addEventListener('dblclick', () => {
     if (item.isDirectory) {
       navigateTo(item.path);
     } else {
       window.electronAPI.openFile(item.path);
+      addToRecentFiles(item.path);
     }
   });
-  
+
+  fileItem.addEventListener('auxclick', (e) => {
+    if (e.button === 1 && item.isDirectory && tabsEnabled) {
+      e.preventDefault();
+      addNewTab(item.path);
+    }
+  });
+
   fileItem.addEventListener('click', (e) => {
     e.stopPropagation();
     if (!e.ctrlKey && !e.metaKey) {
@@ -2712,12 +3985,14 @@ function createFileItem(item: FileItem): HTMLElement {
     }
     
     const selectedPaths = Array.from(selectedItems);
+
+    if (!e.dataTransfer) return;
+
     e.dataTransfer.effectAllowed = 'copyMove';
     e.dataTransfer.setData('text/plain', JSON.stringify(selectedPaths));
-    
-    // Store in main
+
     window.electronAPI.setDragData(selectedPaths);
-    
+
     fileItem.classList.add('dragging');
 
     if (selectedPaths.length > 1) {
@@ -2748,11 +4023,13 @@ function createFileItem(item: FileItem): HTMLElement {
       e.preventDefault();
       e.stopPropagation();
 
+      if (!e.dataTransfer) return;
+
       if (!e.dataTransfer.types.includes('text/plain')) {
         e.dataTransfer.dropEffect = 'none';
         return;
       }
-      
+
       e.dataTransfer.dropEffect = e.ctrlKey ? 'copy' : 'move';
       fileItem.classList.add('drag-over');
     });
@@ -2775,6 +4052,8 @@ function createFileItem(item: FileItem): HTMLElement {
       fileItem.classList.remove('drag-over');
       
       let draggedPaths: string[] = [];
+
+      if (!e.dataTransfer) return;
 
       try {
         const textData = e.dataTransfer.getData('text/plain');
@@ -2807,52 +4086,156 @@ function createFileItem(item: FileItem): HTMLElement {
   return fileItem;
 }
 
-async function loadThumbnail(fileItem: HTMLElement, item: FileItem) {
-  try {
+function loadThumbnail(fileItem: HTMLElement, item: FileItem) {
+  const cached = thumbnailCache.get(item.path);
+  if (cached) {
     const iconDiv = fileItem.querySelector('.file-icon');
-
     if (iconDiv) {
-      iconDiv.innerHTML = `<div class="spinner" style="width: 30px; height: 30px; border-width: 2px;"></div>`;
+      iconDiv.innerHTML = '';
+      const img = document.createElement('img');
+      img.src = cached;
+      img.className = 'file-thumbnail';
+      img.alt = item.name;
+      img.addEventListener('error', () => {
+        if (!document.body.contains(fileItem)) {
+          return;
+        }
+        iconDiv.innerHTML = getFileIcon(item.name);
+        fileItem.classList.remove('has-thumbnail');
+      });
+      iconDiv.appendChild(img);
     }
-    
-    const result = await window.electronAPI.getFileDataUrl(item.path, 10 * 1024 * 1024);
-    
-    if (result.success && result.dataUrl && iconDiv) {
-      iconDiv.innerHTML = `<img src="${result.dataUrl}" class="file-thumbnail" alt="${item.name}">`;
-    } else {
+    return;
+  }
+
+  enqueueThumbnailLoad(async () => {
+    try {
+      if (!document.body.contains(fileItem)) {
+        return;
+      }
+
+      const iconDiv = fileItem.querySelector('.file-icon');
+
+      if (iconDiv) {
+        iconDiv.innerHTML = `<div class="spinner" style="width: 30px; height: 30px; border-width: 2px;"></div>`;
+      }
+
+      if (item.size > THUMBNAIL_MAX_SIZE) {
+        if (iconDiv) {
+          iconDiv.innerHTML = getFileIcon(item.name);
+        }
+        fileItem.classList.remove('has-thumbnail');
+        return;
+      }
+
+      const fileUrl = encodeFileUrl(item.path);
+
+      if (!document.body.contains(fileItem)) {
+        return;
+      }
+
+      if (iconDiv) {
+        if (thumbnailCache.size >= THUMBNAIL_CACHE_MAX) {
+          const firstKey = thumbnailCache.keys().next().value;
+          if (firstKey) thumbnailCache.delete(firstKey);
+        }
+        thumbnailCache.set(item.path, fileUrl);
+        iconDiv.innerHTML = '';
+        const img = document.createElement('img');
+        img.src = fileUrl;
+        img.className = 'file-thumbnail';
+        img.alt = item.name;
+        img.addEventListener('error', () => {
+          if (!document.body.contains(fileItem)) {
+            return;
+          }
+          iconDiv.innerHTML = getFileIcon(item.name);
+          fileItem.classList.remove('has-thumbnail');
+        });
+        iconDiv.appendChild(img);
+      }
+    } catch (error) {
+      if (!document.body.contains(fileItem)) {
+        return;
+      }
+      const iconDiv = fileItem.querySelector('.file-icon');
       if (iconDiv) {
         iconDiv.innerHTML = getFileIcon(item.name);
       }
       fileItem.classList.remove('has-thumbnail');
     }
-  } catch (error) {
-    const iconDiv = fileItem.querySelector('.file-icon');
-    if (iconDiv) {
-      iconDiv.innerHTML = getFileIcon(item.name);
-    }
-    fileItem.classList.remove('has-thumbnail');
-  }
+  });
 }
 
+const FILE_ICON_MAP: Record<string, string> = {
+  'jpg': '1f5bc', 'jpeg': '1f5bc', 'png': '1f5bc', 'gif': '1f5bc', 'svg': '1f5bc', 'bmp': '1f5bc',
+  'webp': '1f5bc', 'ico': '1f5bc', 'tiff': '1f5bc', 'tif': '1f5bc', 'avif': '1f5bc', 'jfif': '1f5bc',
+  'mp4': '1f3ac', 'avi': '1f3ac', 'mov': '1f3ac', 'mkv': '1f3ac', 'webm': '1f3ac',
+  'mp3': '1f3b5', 'wav': '1f3b5', 'flac': '1f3b5', 'ogg': '1f3b5', 'm4a': '1f3b5',
+  'pdf': '1f4c4', 'doc': '1f4dd', 'docx': '1f4dd', 'txt': '1f4dd', 'rtf': '1f4dd',
+  'xls': '1f4ca', 'xlsx': '1f4ca', 'csv': '1f4ca',
+  'ppt': '1f4ca', 'pptx': '1f4ca',
+  'js': '1f4dc', 'ts': '1f4dc', 'jsx': '1f4dc', 'tsx': '1f4dc',
+  'html': '1f310', 'css': '1f3a8', 'json': '2699', 'xml': '2699',
+  'py': '1f40d', 'java': '2615', 'c': 'a9', 'cpp': 'a9', 'cs': 'a9',
+  'php': '1f418', 'rb': '1f48e', 'go': '1f439', 'rs': '1f980',
+  'zip': '1f5dc', 'rar': '1f5dc', '7z': '1f5dc', 'tar': '1f5dc', 'gz': '1f5dc',
+  'exe': '2699', 'app': '2699', 'msi': '2699', 'dmg': '2699'
+};
+
+const IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'ico', 'tiff', 'tif', 'avif', 'jfif', 'svg']);
+const VIDEO_EXTENSIONS = new Set(['mp4', 'webm', 'ogg', 'mov', 'mkv', 'avi', 'm4v']);
+const AUDIO_EXTENSIONS = new Set(['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac', 'wma', 'opus']);
+const PDF_EXTENSIONS = new Set(['pdf']);
+const TEXT_EXTENSIONS = new Set([
+  'txt', 'text', 'md', 'markdown', 'log', 'readme', 'html', 'htm', 'css', 'scss', 'sass', 'less', 'js', 'jsx', 'ts', 'tsx', 'vue', 'svelte', 'py', 'pyc', 'pyw', 'java', 'c', 'cpp', 'cc', 'cxx', 'h', 'hpp', 'cs', 'php', 'rb', 'go', 'rs', 'swift', 'kt', 'kts', 'scala', 'r', 'lua', 'perl', 'pl', 'sh', 'bash', 'zsh', 'fish', 'ps1', 'bat', 'cmd',
+  'json', 'xml', 'yml', 'yaml', 'toml', 'csv', 'tsv', 'sql',
+  'ini', 'conf', 'config', 'cfg', 'env', 'properties', 'gitignore', 'gitattributes', 'editorconfig', 'dockerfile', 'dockerignore',
+  'rst', 'tex', 'adoc', 'asciidoc', 'makefile', 'cmake', 'gradle', 'maven'
+]);
+const VIDEO_MIME_TYPES: Record<string, string> = {
+  mp4: 'video/mp4',
+  webm: 'video/webm',
+  ogg: 'video/ogg',
+  mov: 'video/quicktime',
+  mkv: 'video/x-matroska',
+  avi: 'video/x-msvideo',
+  m4v: 'video/x-m4v'
+};
+const AUDIO_MIME_TYPES: Record<string, string> = {
+  mp3: 'audio/mpeg',
+  wav: 'audio/wav',
+  ogg: 'audio/ogg',
+  flac: 'audio/flac',
+  aac: 'audio/aac',
+  m4a: 'audio/mp4',
+  wma: 'audio/x-ms-wma',
+  opus: 'audio/ogg'
+};
+const FOLDER_ICON = twemojiImg(String.fromCodePoint(0x1F4C1), 'twemoji file-icon');
+const IMAGE_ICON = twemojiImg(String.fromCodePoint(parseInt('1f5bc', 16)), 'twemoji');
+const DEFAULT_FILE_ICON = twemojiImg(String.fromCodePoint(parseInt('1f4c4', 16)), 'twemoji');
+
+const fileIconCache = new Map<string, string>();
 function getFileIcon(filename: string): string {
   const ext = filename.split('.').pop()?.toLowerCase() || '';
-  const iconMap: Record<string, string> = {
-    'jpg': '1f5bc', 'jpeg': '1f5bc', 'png': '1f5bc', 'gif': '1f5bc', 'svg': '1f5bc', 'bmp': '1f5bc',
-    'mp4': '1f3ac', 'avi': '1f3ac', 'mov': '1f3ac', 'mkv': '1f3ac', 'webm': '1f3ac',
-    'mp3': '1f3b5', 'wav': '1f3b5', 'flac': '1f3b5', 'ogg': '1f3b5', 'm4a': '1f3b5',
-    'pdf': '1f4c4', 'doc': '1f4dd', 'docx': '1f4dd', 'txt': '1f4dd', 'rtf': '1f4dd',
-    'xls': '1f4ca', 'xlsx': '1f4ca', 'csv': '1f4ca',
-    'ppt': '1f4ca', 'pptx': '1f4ca',
-    'js': '1f4dc', 'ts': '1f4dc', 'jsx': '1f4dc', 'tsx': '1f4dc',
-    'html': '1f310', 'css': '1f3a8', 'json': '2699', 'xml': '2699',
-    'py': '1f40d', 'java': '2615', 'c': 'a9', 'cpp': 'a9', 'cs': 'a9',
-    'php': '1f418', 'rb': '1f48e', 'go': '1f439', 'rs': '1f980',
-    'zip': '1f5dc', 'rar': '1f5dc', '7z': '1f5dc', 'tar': '1f5dc', 'gz': '1f5dc',
-    'exe': '2699', 'app': '2699', 'msi': '2699', 'dmg': '2699'
-  };
-  
-  const codepoint = iconMap[ext] || '1f4c4';
-  return twemojiImg(String.fromCodePoint(parseInt(codepoint, 16)), 'twemoji');
+
+  const cached = fileIconCache.get(ext);
+  if (cached) return cached;
+
+  const codepoint = FILE_ICON_MAP[ext];
+  let icon: string;
+
+  if (!codepoint) {
+    icon = DEFAULT_FILE_ICON;
+  } else if (codepoint === '1f5bc') {
+    icon = IMAGE_ICON;
+  } else {
+    icon = twemojiImg(String.fromCodePoint(parseInt(codepoint, 16)), 'twemoji');
+  }
+
+  fileIconCache.set(ext, icon);
+  return icon;
 }
 
 async function handleDrop(sourcePaths: string[], destPath: string, operation: 'copy' | 'move'): Promise<void> {
@@ -2881,23 +4264,28 @@ async function handleDrop(sourcePaths: string[], destPath: string, operation: 'c
 }
 
 function toggleSelection(fileItem: HTMLElement) {
+  const itemPath = fileItem.dataset.path;
+  if (!itemPath) return;
+
   fileItem.classList.toggle('selected');
   if (fileItem.classList.contains('selected')) {
-    selectedItems.add(fileItem.dataset.path);
+    selectedItems.add(itemPath);
   } else {
-    selectedItems.delete(fileItem.dataset.path);
+    selectedItems.delete(itemPath);
   }
   updateStatusBar();
   
   if (isPreviewPanelVisible && selectedItems.size === 1) {
     const selectedPath = Array.from(selectedItems)[0];
-    const file = allFiles.find(f => f.path === selectedPath);
+    const file = filePathMap.get(selectedPath);
     if (file && file.isFile) {
            updatePreview(file);
     } else {
+      previewRequestId++;
       showEmptyPreview();
     }
   } else if (isPreviewPanelVisible && selectedItems.size !== 1) {
+    previewRequestId++;
     showEmptyPreview();
   }
 }
@@ -2910,6 +4298,7 @@ function clearSelection() {
   updateStatusBar();
   
   if (isPreviewPanelVisible) {
+    previewRequestId++;
     showEmptyPreview();
   }
 }
@@ -2925,13 +4314,135 @@ function selectAll() {
   updateStatusBar();
 }
 
+let lastSelectedIndex = -1;
+
+function openSelectedItem() {
+  if (selectedItems.size !== 1) return;
+  const itemPath = Array.from(selectedItems)[0];
+  const item = filePathMap.get(itemPath);
+  if (item) {
+    if (item.isDirectory) {
+      navigateTo(item.path);
+    } else {
+      window.electronAPI.openFile(item.path);
+      addToRecentFiles(item.path);
+    }
+  }
+}
+
+function getFileItemsArray(): HTMLElement[] {
+  return Array.from(document.querySelectorAll('.file-item')) as HTMLElement[];
+}
+
+function getGridColumns(): number {
+  const fileGrid = document.getElementById('file-grid');
+  if (!fileGrid || viewMode === 'list') return 1;
+  const gridStyle = window.getComputedStyle(fileGrid);
+  const columns = gridStyle.getPropertyValue('grid-template-columns').split(' ').length;
+  return columns || 1;
+}
+
+function navigateFileGrid(key: string, shiftKey: boolean) {
+  const fileItems = getFileItemsArray();
+  if (fileItems.length === 0) return;
+
+  let currentIndex = lastSelectedIndex;
+  if (currentIndex === -1 || currentIndex >= fileItems.length) {
+    const selectedPath = Array.from(selectedItems)[selectedItems.size - 1];
+    currentIndex = fileItems.findIndex(item => item.getAttribute('data-path') === selectedPath);
+  }
+  if (currentIndex === -1) currentIndex = 0;
+
+  const columns = getGridColumns();
+  let newIndex = currentIndex;
+
+  switch (key) {
+    case 'ArrowUp':
+      newIndex = Math.max(0, currentIndex - columns);
+      break;
+    case 'ArrowDown':
+      newIndex = Math.min(fileItems.length - 1, currentIndex + columns);
+      break;
+    case 'ArrowLeft':
+      newIndex = Math.max(0, currentIndex - 1);
+      break;
+    case 'ArrowRight':
+      newIndex = Math.min(fileItems.length - 1, currentIndex + 1);
+      break;
+  }
+
+  if (newIndex !== currentIndex || selectedItems.size === 0) {
+    selectItemAtIndex(fileItems, newIndex, shiftKey, currentIndex);
+  }
+}
+
+function selectFirstItem(shiftKey: boolean) {
+  const fileItems = getFileItemsArray();
+  if (fileItems.length === 0) return;
+
+  if (shiftKey && lastSelectedIndex !== -1) {
+    selectItemAtIndex(fileItems, 0, true, lastSelectedIndex);
+  } else {
+    selectItemAtIndex(fileItems, 0, false, -1);
+  }
+}
+
+function selectLastItem(shiftKey: boolean) {
+  const fileItems = getFileItemsArray();
+  if (fileItems.length === 0) return;
+
+  if (shiftKey && lastSelectedIndex !== -1) {
+    selectItemAtIndex(fileItems, fileItems.length - 1, true, lastSelectedIndex);
+  } else {
+    selectItemAtIndex(fileItems, fileItems.length - 1, false, -1);
+  }
+}
+
+function selectItemAtIndex(fileItems: HTMLElement[], index: number, shiftKey: boolean, anchorIndex: number) {
+  if (index < 0 || index >= fileItems.length) return;
+
+  if (shiftKey && anchorIndex !== -1) {
+    const start = Math.min(anchorIndex, index);
+    const end = Math.max(anchorIndex, index);
+    clearSelection();
+    for (let i = start; i <= end; i++) {
+      const item = fileItems[i];
+      item.classList.add('selected');
+      const itemPath = item.getAttribute('data-path');
+      if (itemPath) {
+        selectedItems.add(itemPath);
+      }
+    }
+  } else {
+    clearSelection();
+    const item = fileItems[index];
+    item.classList.add('selected');
+    const itemPath = item.getAttribute('data-path');
+    if (itemPath) {
+      selectedItems.add(itemPath);
+    }
+    lastSelectedIndex = index;
+  }
+
+  fileItems[index].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  updateStatusBar();
+
+  if (isPreviewPanelVisible && selectedItems.size === 1) {
+    const itemPath = Array.from(selectedItems)[0];
+    const fileItem = filePathMap.get(itemPath);
+    if (fileItem) {
+      updatePreview(fileItem);
+    }
+  }
+}
+
 async function renameSelected() {
   if (selectedItems.size !== 1) return;
   const itemPath = Array.from(selectedItems)[0];
   const fileItems = document.querySelectorAll('.file-item');
   for (const fileItem of Array.from(fileItems)) {
     if (fileItem.getAttribute('data-path') === itemPath) {
-      const item = allFiles.find(f => f.path === itemPath);
+      const item = filePathMap.get(itemPath);
       if (item) {
         startInlineRename(fileItem as HTMLElement, item.name, item.path);
       }
@@ -3029,7 +4540,7 @@ function goBack() {
   if (historyIndex > 0) {
     historyIndex--;
     const path = history[historyIndex];
-    navigateTo(path);
+    navigateTo(path, true);
   }
 }
 
@@ -3037,14 +4548,28 @@ function goForward() {
   if (historyIndex < history.length - 1) {
     historyIndex++;
     const path = history[historyIndex];
-    navigateTo(path);
+    navigateTo(path, true);
   }
+}
+
+function isRootPath(pathValue: string): boolean {
+  if (!pathValue) return true;
+  if (!isWindowsPath(pathValue)) {
+    return pathValue === '/';
+  }
+  const normalized = normalizeWindowsPath(pathValue);
+  if (normalized.startsWith('\\\\')) {
+    const parts = normalized.split('\\').filter(Boolean);
+    return parts.length <= 2;
+  }
+  return /^[A-Za-z]:\\?$/.test(normalized);
 }
 
 function goUp() {
   if (!currentPath) return;
-  const parentPath = currentPath.split(/[\\/]/).slice(0, -1).join('/') || 
-                     (currentPath.includes(':\\') ? currentPath.split(':\\')[0] + ':\\' : '/');
+  if (isRootPath(currentPath)) return;
+  const parentPath = path.dirname(currentPath);
+  if (!parentPath) return;
   navigateTo(parentPath);
 }
 
@@ -3057,7 +4582,7 @@ function refresh() {
 function updateNavigationButtons() {
   backBtn.disabled = historyIndex <= 0;
   forwardBtn.disabled = historyIndex >= history.length - 1;
-  upBtn.disabled = !currentPath || currentPath === '/' || currentPath.endsWith(':\\');
+  upBtn.disabled = !currentPath || isRootPath(currentPath);
 }
 
 function toggleView() {
@@ -3079,18 +4604,31 @@ function toggleView() {
 
 async function applyViewMode() {
   if (viewMode === 'column') {
+    cancelDirectoryRequest();
+    if (loading) loading.style.display = 'none';
     fileGrid.style.display = 'none';
     columnView.style.display = 'flex';
     await renderColumnView();
   } else {
+    cancelColumnOperations();
     columnView.style.display = 'none';
     fileGrid.style.display = '';
     fileGrid.className = viewMode === 'list' ? 'file-grid list-view' : 'file-grid';
 
     if (currentPath) {
-      const result = await window.electronAPI.getDirectoryContents(currentPath);
-      if (result.success) {
-        renderFiles(result.contents);
+      let requestId = 0;
+      let operationId = '';
+      try {
+        const request = startDirectoryRequest(currentPath);
+        requestId = request.requestId;
+        operationId = request.operationId;
+        const result = await window.electronAPI.getDirectoryContents(currentPath, operationId, currentSettings.showHiddenFiles);
+        if (requestId !== directoryRequestId) return;
+        if (result.success) {
+          renderFiles(result.contents || []);
+        }
+      } finally {
+        finishDirectoryRequest(requestId);
       }
     }
   }
@@ -3099,82 +4637,125 @@ async function applyViewMode() {
 let columnPaths: string[] = [];
 let columnViewRenderId = 0;
 let isRenderingColumnView = false;
+const activeColumnOperationIds = new Set<string>();
+
+function cancelColumnOperations(): void {
+  for (const operationId of activeColumnOperationIds) {
+    window.electronAPI.cancelDirectoryContents(operationId).catch(() => {});
+  }
+  activeColumnOperationIds.clear();
+}
 
 async function renderColumnView() {
   if (!columnView) return;
+
+  cancelColumnOperations();
 
   const currentRenderId = ++columnViewRenderId;
   while (isRenderingColumnView) {
     await new Promise(resolve => setTimeout(resolve, 10));
     if (currentRenderId !== columnViewRenderId) return;
   }
-  
+
   isRenderingColumnView = true;
-  
   const savedScrollLeft = columnView.scrollLeft;
-  
-  columnView.innerHTML = '';
 
-  columnPaths = [];
-  
-  if (!currentPath) {
-    await renderDriveColumn();
-    isRenderingColumnView = false;
-    return;
-  }
+  try {
+    columnView.innerHTML = '';
+    columnPaths = [];
 
-  const isWindows = currentPath.includes(':\\');
-  
-  if (isWindows) {
-    const parts = currentPath.split('\\').filter(Boolean);
-    for (let i = 0; i < parts.length; i++) {
-      if (i === 0) {
-        columnPaths.push(parts[0] + '\\');
-      } else {
-        columnPaths.push(parts.slice(0, i + 1).join('\\'));
+    if (!currentPath) {
+      await renderDriveColumn();
+      return;
+    }
+
+    const isWindows = isWindowsPath(currentPath);
+
+    if (isWindows) {
+      const parts = currentPath.split('\\').filter(Boolean);
+      for (let i = 0; i < parts.length; i++) {
+        if (i === 0) {
+          columnPaths.push(parts[0] + '\\');
+        } else {
+          columnPaths.push(parts.slice(0, i + 1).join('\\'));
+        }
+      }
+    } else {
+      const parts = currentPath.split('/').filter(Boolean);
+      columnPaths.push('/');
+      for (let i = 0; i < parts.length; i++) {
+        columnPaths.push('/' + parts.slice(0, i + 1).join('/'));
       }
     }
-  } else {
-    const parts = currentPath.split('/').filter(Boolean);
-    columnPaths.push('/');
-    for (let i = 0; i < parts.length; i++) {
-      columnPaths.push('/' + parts.slice(0, i + 1).join('/'));
+
+    const panePromises = columnPaths.map((colPath, index) =>
+      renderColumn(colPath, index, currentRenderId)
+    );
+
+    const panes = await Promise.all(panePromises);
+
+    if (currentRenderId !== columnViewRenderId) {
+      return;
     }
-  }
 
-  const panePromises = columnPaths.map((colPath, index) => 
-    renderColumn(colPath, index, currentRenderId)
-  );
-  
-  const panes = await Promise.all(panePromises);
+    for (const pane of panes) {
+      if (pane) {
+        columnView.appendChild(pane);
+      }
+    }
 
-  if (currentRenderId !== columnViewRenderId) {
+    setTimeout(() => {
+      if (currentRenderId !== columnViewRenderId) return;
+      if (savedScrollLeft > 0) {
+        columnView.scrollLeft = savedScrollLeft;
+      } else {
+        columnView.scrollLeft = columnView.scrollWidth;
+      }
+    }, 50);
+  } finally {
     isRenderingColumnView = false;
-    return;
   }
+}
 
-  for (const pane of panes) {
-    if (pane) {
-      columnView.appendChild(pane);
-    }
-  }
-  
-  isRenderingColumnView = false;
+function addColumnResizeHandle(pane: HTMLElement) {
+  const handle = document.createElement('div');
+  handle.className = 'column-resize-handle';
 
-  setTimeout(() => {
-    if (currentRenderId !== columnViewRenderId) return;
-    if (savedScrollLeft > 0) {
-      columnView.scrollLeft = savedScrollLeft;
-    } else {
-      columnView.scrollLeft = columnView.scrollWidth;
-    }
-  }, 50);
+  let startX: number;
+  let startWidth: number;
+
+  const onMouseMove = (e: MouseEvent) => {
+    const delta = e.clientX - startX;
+    const newWidth = Math.max(150, Math.min(500, startWidth + delta));
+    pane.style.width = newWidth + 'px';
+  };
+
+  const onMouseUp = () => {
+    handle.classList.remove('resizing');
+    document.removeEventListener('mousemove', onMouseMove);
+    document.removeEventListener('mouseup', onMouseUp);
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  };
+
+  handle.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    startX = e.clientX;
+    startWidth = pane.offsetWidth;
+    handle.classList.add('resizing');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+  });
+
+  pane.appendChild(handle);
 }
 
 async function renderDriveColumn() {
   const pane = document.createElement('div');
   pane.className = 'column-pane';
-  
+
   try {
     const drives = await window.electronAPI.getDrives();
     drives.forEach(drive => {
@@ -3192,19 +4773,20 @@ async function renderDriveColumn() {
   } catch {
     pane.innerHTML = '<div class="column-item" style="opacity: 0.5;">Error loading drives</div>';
   }
-  
+
+  addColumnResizeHandle(pane);
   columnView.appendChild(pane);
 }
 
-async function renderColumn(path: string, columnIndex: number, renderId?: number): Promise<HTMLDivElement | null> {
+async function renderColumn(columnPath: string, columnIndex: number, renderId?: number): Promise<HTMLDivElement | null> {
   if (renderId !== undefined && renderId !== columnViewRenderId) {
     return null;
   }
-  
+
   const pane = document.createElement('div');
   pane.className = 'column-pane';
   pane.dataset.columnIndex = String(columnIndex);
-  pane.dataset.path = path;
+  pane.dataset.path = columnPath;
 
   pane.addEventListener('dragover', (e) => {
     if ((e.target as HTMLElement).closest('.column-item')) {
@@ -3269,27 +4851,40 @@ async function renderColumn(path: string, columnIndex: number, renderId?: number
     }
 
     const alreadyInCurrentDir = draggedPaths.some((filePath: string) => {
-      const parentDir = filePath.substring(0, filePath.lastIndexOf(filePath.includes('\\') ? '\\' : '/'));
-      return parentDir === path || filePath === path;
+      const parentDir = path.dirname(filePath);
+      return parentDir === columnPath || filePath === columnPath;
     });
-    
+
     if (alreadyInCurrentDir) {
       showToast('Items are already in this directory', 'Info', 'info');
       return;
     }
-    
+
     const operation = e.ctrlKey ? 'copy' : 'move';
-    await handleDrop(draggedPaths, path, operation);
+    await handleDrop(draggedPaths, columnPath, operation);
   });
   
   try {
-    const result = await window.electronAPI.getDirectoryContents(path);
-    const items = result.contents;
+    const operationId = createDirectoryOperationId('column');
+    activeColumnOperationIds.add(operationId);
+    let result: { success: boolean; contents?: FileItem[]; error?: string };
+    try {
+      result = await window.electronAPI.getDirectoryContents(columnPath, operationId, currentSettings.showHiddenFiles);
+    } finally {
+      activeColumnOperationIds.delete(operationId);
+    }
+    if (renderId !== undefined && renderId !== columnViewRenderId) {
+      return null;
+    }
+    if (!result.success) {
+      throw new Error(result.error || 'Error loading folder');
+    }
+    const items = result.contents || [];
 
     const sortedItems = [...items].sort((a, b) => {
       const dirSort = (b.isDirectory ? 1 : 0) - (a.isDirectory ? 1 : 0);
       if (dirSort !== 0) return dirSort;
-      return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+      return NAME_COLLATOR.compare(a.name, b.name);
     });
 
     const visibleItems = currentSettings.showHiddenFiles 
@@ -3324,6 +4919,7 @@ async function renderColumn(path: string, columnIndex: number, renderId?: number
         item.addEventListener('dblclick', () => {
           if (!fileItem.isDirectory) {
             window.electronAPI.openFile(fileItem.path);
+            addToRecentFiles(fileItem.path);
           }
         });
 
@@ -3444,7 +5040,8 @@ async function renderColumn(path: string, columnIndex: number, renderId?: number
   } catch {
     pane.innerHTML = '<div class="column-item" style="opacity: 0.5;">Error loading folder</div>';
   }
-  
+
+  addColumnResizeHandle(pane);
   return pane;
 }
 
@@ -3452,6 +5049,7 @@ async function handleColumnItemClick(element: HTMLElement, path: string, isDirec
   const currentPane = element.closest('.column-pane');
   if (!currentPane) return;
 
+  cancelColumnOperations();
   const clickRenderId = ++columnViewRenderId;
   const allPanes = Array.from(columnView.querySelectorAll('.column-pane'));
   const currentPaneIndex = allPanes.indexOf(currentPane as Element);
@@ -3498,7 +5096,7 @@ async function handleColumnItemClick(element: HTMLElement, path: string, isDirec
     const previewPanel = document.getElementById('preview-panel');
     if (previewPanel && previewPanel.style.display !== 'none') {
 
-      let file = allFiles.find(f => f.path === path);
+      let file = filePathMap.get(path);
       if (!file) {
         const fileName = path.split(/[\\/]/).pop() || '';
         file = {
@@ -3560,21 +5158,19 @@ async function createNewFileWithInlineRename() {
   let fileName = 'File';
   let counter = 1;
   let finalFileName = fileName;
-  
-  const existingFiles = Array.from(document.querySelectorAll('.file-item')).map(item => {
-    return item.querySelector('.file-name')?.textContent || '';
-  });
-  
-  while (existingFiles.includes(finalFileName)) {
+
+  const existingNames = new Set(allFiles.map(f => f.name));
+
+  while (existingNames.has(finalFileName)) {
     finalFileName = `${fileName} (${counter})`;
     counter++;
   }
   
   const result = await window.electronAPI.createFile(currentPath, finalFileName);
-  if (result.success) {
+  if (result.success && result.path) {
     const createdFilePath = result.path;
     await navigateTo(currentPath);
-    
+
     setTimeout(() => {
       const fileItems = document.querySelectorAll('.file-item');
       for (const item of Array.from(fileItems)) {
@@ -3586,7 +5182,7 @@ async function createNewFileWithInlineRename() {
       }
     }, 100);
   } else {
-    await showAlert(result.error, 'Error Creating File', 'error');
+    await showAlert(result.error || 'Unknown error', 'Error Creating File', 'error');
   }
 }
 
@@ -3594,21 +5190,19 @@ async function createNewFolderWithInlineRename() {
   let folderName = 'New Folder';
   let counter = 1;
   let finalFolderName = folderName;
-  
-  const existingFolders = Array.from(document.querySelectorAll('.file-item')).map(item => {
-    return item.querySelector('.file-name')?.textContent || '';
-  });
-  
-  while (existingFolders.includes(finalFolderName)) {
+
+  const existingNames = new Set(allFiles.map(f => f.name));
+
+  while (existingNames.has(finalFolderName)) {
     finalFolderName = `${folderName} (${counter})`;
     counter++;
   }
   
   const result = await window.electronAPI.createFolder(currentPath, finalFolderName);
-  if (result.success) {
+  if (result.success && result.path) {
     const createdFolderPath = result.path;
     await navigateTo(currentPath);
-    
+
     setTimeout(() => {
       const fileItems = document.querySelectorAll('.file-item');
       for (const item of Array.from(fileItems)) {
@@ -3620,7 +5214,7 @@ async function createNewFolderWithInlineRename() {
       }
     }, 100);
   } else {
-    await showAlert(result.error, 'Error Creating Folder', 'error');
+    await showAlert(result.error || 'Unknown error', 'Error Creating Folder', 'error');
   }
 }
 
@@ -3666,7 +5260,7 @@ function startInlineRename(fileItem: HTMLElement, currentName: string, itemPath:
       if (result.success) {
         await navigateTo(currentPath);
       } else {
-        await showAlert(result.error, 'Error Renaming', 'error');
+        await showAlert(result.error || 'Unknown error', 'Error Renaming', 'error');
         nameElement.style.display = '';
         input.remove();
         fileItem.classList.remove('renaming');
@@ -3677,14 +5271,14 @@ function startInlineRename(fileItem: HTMLElement, currentName: string, itemPath:
       fileItem.classList.remove('renaming');
     }
   };
-  
-  const handleKeyPress = (e) => {
+
+  const handleKeyPress = (e: KeyboardEvent) => {
     if (e.key === 'Enter') {
       finishRename();
     }
   };
-  
-  const handleKeyDown = (e) => {
+
+  const handleKeyDown = (e: KeyboardEvent) => {
     if (e.key === 'Escape') {
       renameHandled = true;
       input.removeEventListener('blur', finishRename);
@@ -3704,22 +5298,31 @@ function startInlineRename(fileItem: HTMLElement, currentName: string, itemPath:
 function showContextMenu(x: number, y: number, item: FileItem) {
   const contextMenu = document.getElementById('context-menu');
   const addToBookmarksItem = document.getElementById('add-to-bookmarks-item');
+  const changeFolderIconItem = document.getElementById('change-folder-icon-item');
   const copyPathItem = document.getElementById('copy-path-item');
   const openTerminalItem = document.getElementById('open-terminal-item');
   const compressItem = document.getElementById('compress-item');
   const extractItem = document.getElementById('extract-item');
-  
+
   if (!contextMenu) return;
-  
+
   hideEmptySpaceContextMenu();
-  
+
   contextMenuData = item;
-  
+
   if (addToBookmarksItem) {
     if (item.isDirectory) {
       addToBookmarksItem.style.display = 'flex';
     } else {
       addToBookmarksItem.style.display = 'none';
+    }
+  }
+
+  if (changeFolderIconItem) {
+    if (item.isDirectory) {
+      changeFolderIconItem.style.display = 'flex';
+    } else {
+      changeFolderIconItem.style.display = 'none';
     }
   }
   
@@ -3802,15 +5405,75 @@ function showContextMenu(x: number, y: number, item: FileItem) {
   }
 }
 
+let contextMenuFocusedIndex = -1;
+let emptySpaceMenuFocusedIndex = -1;
+
 function hideContextMenu() {
   const contextMenuElement = document.getElementById('context-menu');
   if (contextMenuElement) {
     contextMenuElement.style.display = 'none';
     contextMenuData = null;
+    clearContextMenuFocus(contextMenuElement);
+    contextMenuFocusedIndex = -1;
   }
 }
 
-function showEmptySpaceContextMenu(x, y) {
+function clearContextMenuFocus(menu: HTMLElement) {
+  menu.querySelectorAll('.context-menu-item.focused').forEach(item => {
+    item.classList.remove('focused');
+  });
+}
+
+function getVisibleMenuItems(menu: HTMLElement): HTMLElement[] {
+  const items = menu.querySelectorAll('.context-menu-item');
+  return Array.from(items).filter(item => {
+    const el = item as HTMLElement;
+    const parent = el.parentElement;
+    if (parent?.classList.contains('context-submenu')) return false;
+    return el.style.display !== 'none' && el.offsetParent !== null;
+  }) as HTMLElement[];
+}
+
+function navigateContextMenu(menu: HTMLElement, direction: 'up' | 'down', focusIndex: number): number {
+  const items = getVisibleMenuItems(menu);
+  if (items.length === 0) return -1;
+
+  clearContextMenuFocus(menu);
+
+  let newIndex = focusIndex;
+  if (direction === 'down') {
+    newIndex = focusIndex < items.length - 1 ? focusIndex + 1 : 0;
+  } else {
+    newIndex = focusIndex > 0 ? focusIndex - 1 : items.length - 1;
+  }
+
+  items[newIndex].classList.add('focused');
+  items[newIndex].scrollIntoView({ block: 'nearest' });
+  return newIndex;
+}
+
+function activateContextMenuItem(menu: HTMLElement, focusIndex: number): boolean {
+  const items = getVisibleMenuItems(menu);
+  if (focusIndex < 0 || focusIndex >= items.length) return false;
+
+  const item = items[focusIndex];
+  if (item.classList.contains('has-submenu')) {
+    const submenu = item.querySelector('.context-submenu') as HTMLElement;
+    if (submenu) {
+      submenu.style.display = 'block';
+      const submenuItems = submenu.querySelectorAll('.context-menu-item') as NodeListOf<HTMLElement>;
+      if (submenuItems.length > 0) {
+        submenuItems[0].classList.add('focused');
+      }
+    }
+    return false;
+  }
+
+  item.click();
+  return true;
+}
+
+function showEmptySpaceContextMenu(x: number, y: number) {
   const emptySpaceContextMenu = document.getElementById('empty-space-context-menu');
   if (!emptySpaceContextMenu) return;
   
@@ -3844,6 +5507,8 @@ function hideEmptySpaceContextMenu() {
   const emptySpaceContextMenu = document.getElementById('empty-space-context-menu');
   if (emptySpaceContextMenu) {
     emptySpaceContextMenu.style.display = 'none';
+    clearContextMenuFocus(emptySpaceContextMenu);
+    emptySpaceMenuFocusedIndex = -1;
   }
 }
 
@@ -3883,6 +5548,7 @@ async function handleContextMenuAction(action: string | undefined, item: FileIte
         navigateTo(item.path);
       } else {
         window.electronAPI.openFile(item.path);
+        addToRecentFiles(item.path);
       }
       break;
       
@@ -3918,7 +5584,13 @@ async function handleContextMenuAction(action: string | undefined, item: FileIte
         await addBookmarkByPath(item.path);
       }
       break;
-      
+
+    case 'change-folder-icon':
+      if (item.isDirectory) {
+        showFolderIconPicker(item.path);
+      }
+      break;
+
     case 'open-terminal':
       const terminalPath = item.isDirectory ? item.path : path.dirname(item.path);
       const terminalResult = await window.electronAPI.openTerminal(terminalPath);
@@ -3929,10 +5601,10 @@ async function handleContextMenuAction(action: string | undefined, item: FileIte
       
     case 'properties':
       const propsResult = await window.electronAPI.getItemProperties(item.path);
-      if (propsResult.success) {
+      if (propsResult.success && propsResult.properties) {
         showPropertiesDialog(propsResult.properties);
       } else {
-        showToast(propsResult.error, 'Error Getting Properties', 'error');
+        showToast(propsResult.error || 'Unknown error', 'Error Getting Properties', 'error');
       }
       break;
       
@@ -4136,6 +5808,12 @@ function showPropertiesDialog(props: ItemProperties) {
         <div class="property-progress-text" id="folder-size-progress-text">Calculating...</div>
         <button class="property-btn property-btn-cancel" id="cancel-folder-size-btn">${twemojiImg(String.fromCodePoint(0x274C), 'twemoji')} Cancel</button>
       </div>
+    </div>
+    <div class="property-row" id="folder-stats-row" style="display: none;">
+      <div class="property-label">File Types:</div>
+      <div class="property-value">
+        <div id="folder-stats-content" class="folder-stats-content"></div>
+      </div>
     </div>`;
   }
   
@@ -4254,6 +5932,29 @@ function showPropertiesDialog(props: ItemProperties) {
             const propsSize = document.getElementById('props-size-value');
             if (propsSize) {
               propsSize.textContent = totalSize;
+            }
+
+            if (result.result.fileTypes && result.result.fileTypes.length > 0) {
+              const statsRow = document.getElementById('folder-stats-row');
+              const statsContent = document.getElementById('folder-stats-content');
+              if (statsRow && statsContent) {
+                statsRow.style.display = 'flex';
+                const formatBytes = (bytes: number): string => {
+                  if (bytes === 0) return '0 B';
+                  const units = ['B', 'KB', 'MB', 'GB'];
+                  const i = Math.floor(Math.log(bytes) / Math.log(1024));
+                  return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${units[i]}`;
+                };
+                statsContent.innerHTML = result.result.fileTypes.map(ft => {
+                  const pct = result.result!.totalSize > 0 ? (ft.size / result.result!.totalSize * 100).toFixed(1) : '0';
+                  return `<div class="file-type-stat">
+                    <span class="file-type-ext">${escapeHtml(ft.extension)}</span>
+                    <span class="file-type-count">${ft.count} files</span>
+                    <span class="file-type-size">${formatBytes(ft.size)} (${pct}%)</span>
+                    <div class="file-type-bar" style="width: ${pct}%"></div>
+                  </div>`;
+                }).join('');
+              }
             }
           } else if (result.error !== 'Calculation cancelled') {
             if (sizeInfo) sizeInfo.textContent = `Error: ${result.error}`;
@@ -4378,8 +6079,10 @@ function showPropertiesDialog(props: ItemProperties) {
     }
   }
   
-  document.getElementById('properties-close').onclick = closeModal;
-  document.getElementById('properties-ok').onclick = closeModal;
+  const propsCloseBtn = document.getElementById('properties-close');
+  const propsOkBtn = document.getElementById('properties-ok');
+  if (propsCloseBtn) propsCloseBtn.onclick = closeModal;
+  if (propsOkBtn) propsOkBtn.onclick = closeModal;
   modal.onclick = (e) => {
     if (e.target === modal) closeModal();
   };
@@ -4538,19 +6241,20 @@ async function downloadAndInstallUpdate() {
   dialogOk.style.display = 'none';
   dialogCancel.style.display = 'none';
   dialogModal.style.display = 'flex';
-  
-  window.electronAPI.onUpdateDownloadProgress((progress) => {
+
+  const cleanupProgress = window.electronAPI.onUpdateDownloadProgress((progress) => {
     const percent = progress.percent.toFixed(1);
     const transferred = formatFileSize(progress.transferred);
     const total = formatFileSize(progress.total);
     const speed = formatFileSize(progress.bytesPerSecond);
-    
+
     dialogContent.textContent = `Downloading update...\n\n${percent}% (${transferred} / ${total})\nSpeed: ${speed}/s`;
   });
-  
+
   try {
     const downloadResult = await window.electronAPI.downloadUpdate();
-    
+    cleanupProgress();
+
     if (!downloadResult.success) {
       dialogModal.style.display = 'none';
       showDialog(
@@ -4561,7 +6265,7 @@ async function downloadAndInstallUpdate() {
       );
       return;
     }
-    
+
     dialogIcon.innerHTML = twemojiImg(String.fromCodePoint(0x2705), 'twemoji-large');
     dialogTitle.textContent = 'Update Downloaded';
     dialogContent.textContent = 'The update has been downloaded successfully.\n\nThe application will restart to install the update.';
@@ -4597,6 +6301,7 @@ async function downloadAndInstallUpdate() {
       await window.electronAPI.installUpdate();
     }
   } catch (error) {
+    cleanupProgress();
     dialogModal.style.display = 'none';
     showDialog(
       'Update Error',
@@ -4735,12 +6440,16 @@ function validateImportedSettings(imported: any): Partial<Settings> {
   if (typeof imported.transparency === 'boolean') validated.transparency = imported.transparency;
   if (typeof imported.showDangerousOptions === 'boolean') validated.showDangerousOptions = imported.showDangerousOptions;
   if (typeof imported.showHiddenFiles === 'boolean') validated.showHiddenFiles = imported.showHiddenFiles;
+  if (typeof imported.enableGitStatus === 'boolean') validated.enableGitStatus = imported.enableGitStatus;
   if (typeof imported.enableSearchHistory === 'boolean') validated.enableSearchHistory = imported.enableSearchHistory;
   if (typeof imported.enableIndexer === 'boolean') validated.enableIndexer = imported.enableIndexer;
   if (typeof imported.minimizeToTray === 'boolean') validated.minimizeToTray = imported.minimizeToTray;
   if (typeof imported.startOnLogin === 'boolean') validated.startOnLogin = imported.startOnLogin;
   if (typeof imported.autoCheckUpdates === 'boolean') validated.autoCheckUpdates = imported.autoCheckUpdates;
-  
+  if (typeof imported.showRecentFiles === 'boolean') validated.showRecentFiles = imported.showRecentFiles;
+  if (typeof imported.enableTabs === 'boolean') validated.enableTabs = imported.enableTabs;
+  if (typeof imported.globalContentSearch === 'boolean') validated.globalContentSearch = imported.globalContentSearch;
+
   if (typeof imported.startupPath === 'string') validated.startupPath = imported.startupPath;
 
   const validThemes = ['dark', 'light', 'default', 'custom'];
@@ -4855,6 +6564,7 @@ document.getElementById('about-twemoji-link')?.addEventListener('click', (e) => 
 
 // Unsaved changes
 let hasUnsavedChanges = false;
+let themeDropdownChanged = false;
 
 function markSettingsChanged() {
   hasUnsavedChanges = true;
@@ -4866,22 +6576,29 @@ function markSettingsChanged() {
 
 function clearSettingsChanged() {
   hasUnsavedChanges = false;
+  themeDropdownChanged = false;
   const indicator = document.querySelector('.settings-unsaved-indicator');
   if (indicator) {
     indicator.classList.remove('visible');
   }
 }
 
+let settingsChangeTrackingInitialized = false;
+
 function initSettingsChangeTracking() {
+  if (settingsChangeTrackingInitialized) return;
+
   const settingsModal = document.getElementById('settings-modal');
   if (!settingsModal) return;
-  
+
   settingsModal.querySelectorAll('input, select').forEach(input => {
     input.addEventListener('change', markSettingsChanged);
     if (input.tagName === 'INPUT' && (input as HTMLInputElement).type === 'text') {
       input.addEventListener('input', markSettingsChanged);
     }
   });
+
+  settingsChangeTrackingInitialized = true;
 }
 
 // Support Window
@@ -4918,9 +6635,36 @@ document.getElementById('licenses-btn')?.addEventListener('click', showLicensesM
 document.getElementById('licenses-close')?.addEventListener('click', hideLicensesModal);
 document.getElementById('close-licenses-btn')?.addEventListener('click', hideLicensesModal);
 document.getElementById('copy-licenses-btn')?.addEventListener('click', copyLicensesText);
+const licensesContent = document.getElementById('licenses-content');
+if (licensesContent) {
+  licensesContent.addEventListener('click', (event) => {
+    const target = event.target as HTMLElement | null;
+    const link = target?.closest('a.license-link') as HTMLAnchorElement | null;
+    if (!link) return;
+
+    const url = link.dataset.url || link.getAttribute('href');
+    if (!url) return;
+
+    event.preventDefault();
+    window.electronAPI.openFile(url);
+  });
+}
 
 document.getElementById('shortcuts-close')?.addEventListener('click', hideShortcutsModal);
 document.getElementById('close-shortcuts-btn')?.addEventListener('click', hideShortcutsModal);
+
+document.getElementById('folder-icon-close')?.addEventListener('click', hideFolderIconPicker);
+document.getElementById('folder-icon-cancel')?.addEventListener('click', hideFolderIconPicker);
+document.getElementById('folder-icon-reset')?.addEventListener('click', resetFolderIcon);
+
+const folderIconModal = document.getElementById('folder-icon-modal');
+if (folderIconModal) {
+  folderIconModal.addEventListener('click', (e) => {
+    if ((e.target as HTMLElement).id === 'folder-icon-modal') {
+      hideFolderIconPicker();
+    }
+  });
+}
 
 const settingsModal = document.getElementById('settings-modal');
 if (settingsModal) {
@@ -4971,55 +6715,43 @@ function togglePreviewPanel() {
     previewPanel.style.display = 'flex';
     if (selectedItems.size === 1) {
       const selectedPath = Array.from(selectedItems)[0];
-      const file = allFiles.find(f => f.path === selectedPath);
+      const file = filePathMap.get(selectedPath);
       if (file && file.isFile) {
         updatePreview(file);
       }
     }
   } else {
     previewPanel.style.display = 'none';
+    previewRequestId++;
   }
 }
 
 function updatePreview(file: FileItem) {
+  const requestId = ++previewRequestId;
   if (!file || file.isDirectory) {
     showEmptyPreview();
     return;
   }
-  
-  currentPreviewFile = file;
+
   const ext = file.name.split('.').pop()?.toLowerCase() || '';
 
-  const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico', 'tiff', 'tif', 'avif', 'jfif'];
-
-  const textExts = [
-    'txt', 'text', 'md', 'markdown', 'log', 'readme', 'html', 'htm', 'css', 'scss', 'sass', 'less', 'js', 'jsx', 'ts', 'tsx', 'vue', 'svelte', 'py', 'pyc', 'pyw', 'java', 'c', 'cpp', 'cc', 'cxx', 'h', 'hpp', 'cs', 'php', 'rb', 'go', 'rs', 'swift', 'kt', 'kts', 'scala', 'r', 'lua', 'perl', 'pl', 'sh', 'bash', 'zsh', 'fish', 'ps1', 'bat', 'cmd',
-    'json', 'xml', 'yml', 'yaml', 'toml', 'csv', 'tsv', 'sql',
-    'ini', 'conf', 'config', 'cfg', 'env', 'properties', 'gitignore', 'gitattributes', 'editorconfig', 'dockerfile', 'dockerignore',
-    'rst', 'tex', 'adoc', 'asciidoc', 'makefile', 'cmake', 'gradle', 'maven'
-  ];
-
-  const videoExts = ['mp4', 'webm', 'ogg', 'mov', 'mkv', 'avi'];
-  const audioExts = ['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac'];
-  const pdfExts = ['pdf'];
-  
-  if (imageExts.includes(ext)) {
-    showImagePreview(file);
-  } else if (textExts.includes(ext)) {
-    showTextPreview(file);
-  } else if (videoExts.includes(ext)) {
-    showVideoPreview(file);
-  } else if (audioExts.includes(ext)) {
-    showAudioPreview(file);
-  } else if (pdfExts.includes(ext)) {
-    showPdfPreview(file);
+  if (IMAGE_EXTENSIONS.has(ext)) {
+    showImagePreview(file, requestId);
+  } else if (TEXT_EXTENSIONS.has(ext)) {
+    showTextPreview(file, requestId);
+  } else if (VIDEO_EXTENSIONS.has(ext)) {
+    showVideoPreview(file, requestId);
+  } else if (AUDIO_EXTENSIONS.has(ext)) {
+    showAudioPreview(file, requestId);
+  } else if (PDF_EXTENSIONS.has(ext)) {
+    showPdfPreview(file, requestId);
   } else {
-    showFileInfo(file);
+    showFileInfo(file, requestId);
   }
 }
 
-async function showImagePreview(file: FileItem) {
-  if (!previewContent) return;
+async function showImagePreview(file: FileItem, requestId: number) {
+  if (!previewContent || requestId !== previewRequestId) return;
   previewContent.innerHTML = `
     <div class="preview-loading">
       <div class="spinner"></div>
@@ -5027,60 +6759,153 @@ async function showImagePreview(file: FileItem) {
     </div>
   `;
   
-  const result = await window.electronAPI.getFileDataUrl(file.path);
-  
-  if (result.success && result.dataUrl) {
-    const props = await window.electronAPI.getItemProperties(file.path);
-    const info = props.success && props.properties ? props.properties : null;
-    
-    previewContent.innerHTML = `
-      <img src="${result.dataUrl}" class="preview-image" alt="${escapeHtml(file.name)}">
-      ${generateFileInfo(file, info)}
-    `;
-  } else {
+  if (file.size > THUMBNAIL_MAX_SIZE) {
+    if (requestId !== previewRequestId) return;
     previewContent.innerHTML = `
       <div class="preview-error">
-        Failed to load image: ${result.error || 'Unknown error'}
+        Failed to load image: ${escapeHtml('File too large to preview')}
       </div>
       ${generateFileInfo(file, null)}
     `;
+    return;
+  }
+
+  const props = await window.electronAPI.getItemProperties(file.path);
+  if (requestId !== previewRequestId) return;
+  const info = props.success && props.properties ? props.properties : null;
+  const fileUrl = encodeFileUrl(file.path);
+  const altText = escapeHtml(file.name);
+  
+  previewContent.innerHTML = `
+    <img src="${fileUrl}" class="preview-image" alt="${altText}">
+    ${generateFileInfo(file, info)}
+  `;
+  
+  const img = previewContent.querySelector('.preview-image') as HTMLImageElement | null;
+  if (img) {
+    img.addEventListener('error', () => {
+      if (requestId !== previewRequestId) return;
+      previewContent.innerHTML = `
+        <div class="preview-error">
+          Failed to load image
+        </div>
+        ${generateFileInfo(file, info)}
+      `;
+    });
   }
 }
 
-async function showTextPreview(file: FileItem) {
-  if (!previewContent) return;
+let hljs: any = null;
+let hljsLoading: Promise<any> | null = null;
+
+const EXT_TO_LANG: Record<string, string> = {
+  js: 'javascript', jsx: 'javascript', ts: 'typescript', tsx: 'typescript',
+  py: 'python', pyc: 'python', pyw: 'python', rb: 'ruby', go: 'go', rs: 'rust',
+  java: 'java', kt: 'kotlin', kts: 'kotlin', scala: 'scala', swift: 'swift',
+  c: 'c', cpp: 'cpp', cc: 'cpp', cxx: 'cpp', h: 'c', hpp: 'cpp', cs: 'csharp',
+  php: 'php', r: 'r', lua: 'lua', perl: 'perl', pl: 'perl',
+  sh: 'bash', bash: 'bash', zsh: 'bash', fish: 'bash', ps1: 'powershell',
+  html: 'xml', htm: 'xml', xml: 'xml', svg: 'xml', vue: 'xml', svelte: 'xml',
+  css: 'css', scss: 'scss', sass: 'scss', less: 'less',
+  json: 'json', yml: 'yaml', yaml: 'yaml', toml: 'ini', ini: 'ini',
+  sql: 'sql', md: 'markdown', markdown: 'markdown',
+  dockerfile: 'dockerfile', makefile: 'makefile', cmake: 'cmake'
+};
+
+async function loadHighlightJs(): Promise<any> {
+  if (hljs) return hljs;
+  if (hljsLoading) return hljsLoading;
+
+  hljsLoading = new Promise((resolve) => {
+    const existingLink = document.querySelector('link[data-highlightjs="theme"]');
+    if (!existingLink) {
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = 'dist/vendor/highlight.css';
+      link.dataset.highlightjs = 'theme';
+      document.head.appendChild(link);
+    }
+
+    const existingScript = document.querySelector('script[data-highlightjs="core"]') as HTMLScriptElement | null;
+    if (existingScript) {
+      existingScript.addEventListener('load', () => {
+        hljs = (window as any).hljs || null;
+        resolve(hljs);
+      });
+      existingScript.addEventListener('error', () => resolve(null));
+      const existingGlobal = (window as any).hljs;
+      if (existingGlobal) {
+        hljs = existingGlobal;
+        resolve(hljs);
+      }
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = 'dist/vendor/highlight.js';
+    script.dataset.highlightjs = 'core';
+    script.onload = () => {
+      hljs = (window as any).hljs || null;
+      resolve(hljs);
+    };
+    script.onerror = () => resolve(null);
+    document.head.appendChild(script);
+  });
+
+  return hljsLoading;
+}
+
+function getLanguageForExt(ext: string): string | null {
+  return EXT_TO_LANG[ext.toLowerCase()] || null;
+}
+
+async function showTextPreview(file: FileItem, requestId: number) {
+  if (!previewContent || requestId !== previewRequestId) return;
   previewContent.innerHTML = `
     <div class="preview-loading">
       <div class="spinner"></div>
       <p>Loading text...</p>
     </div>
   `;
-  
+
   const result = await window.electronAPI.readFileContent(file.path, 50 * 1024);
-  
-  if (result.success && result.content) {
+  if (requestId !== previewRequestId) return;
+
+  if (result.success && typeof result.content === 'string') {
     const props = await window.electronAPI.getItemProperties(file.path);
+    if (requestId !== previewRequestId) return;
     const info = props.success && props.properties ? props.properties : null;
-    
+    const ext = file.name.split('.').pop()?.toLowerCase() || '';
+    const lang = getLanguageForExt(ext);
+
     previewContent.innerHTML = `
       ${result.isTruncated ? `<div class="preview-truncated">${twemojiImg(String.fromCodePoint(0x26A0), 'twemoji')} File truncated to first 50KB</div>` : ''}
-      <div class="preview-text">${escapeHtml(result.content)}</div>
+      <pre class="preview-text"><code class="${lang ? `language-${lang}` : ''}">${escapeHtml(result.content)}</code></pre>
       ${generateFileInfo(file, info)}
     `;
+
+    if (lang && currentSettings.enableSyntaxHighlighting) {
+      loadHighlightJs().then(hl => {
+        if (requestId !== previewRequestId || !hl) return;
+        const codeBlock = previewContent?.querySelector('code');
+        if (codeBlock) hl.highlightElement(codeBlock);
+      });
+    }
   } else {
     previewContent.innerHTML = `
       <div class="preview-error">
-        Failed to load text: ${result.error || 'Unknown error'}
+        Failed to load text: ${escapeHtml(result.error || 'Unknown error')}
       </div>
       ${generateFileInfo(file, null)}
     `;
   }
 }
 
-async function showVideoPreview(file: FileItem) {
-  if (!previewContent) return;
+async function showVideoPreview(file: FileItem, requestId: number) {
+  if (!previewContent || requestId !== previewRequestId) return;
   
   const props = await window.electronAPI.getItemProperties(file.path);
+  if (requestId !== previewRequestId) return;
   const info = props.success && props.properties ? props.properties : null;
   
   const fileUrl = encodeFileUrl(file.path);
@@ -5093,10 +6918,11 @@ async function showVideoPreview(file: FileItem) {
   `;
 }
 
-async function showAudioPreview(file: FileItem) {
-  if (!previewContent) return;
+async function showAudioPreview(file: FileItem, requestId: number) {
+  if (!previewContent || requestId !== previewRequestId) return;
   
   const props = await window.electronAPI.getItemProperties(file.path);
+  if (requestId !== previewRequestId) return;
   const info = props.success && props.properties ? props.properties : null;
   
   const fileUrl = encodeFileUrl(file.path);
@@ -5112,10 +6938,11 @@ async function showAudioPreview(file: FileItem) {
   `;
 }
 
-async function showPdfPreview(file: FileItem) {
-  if (!previewContent) return;
+async function showPdfPreview(file: FileItem, requestId: number) {
+  if (!previewContent || requestId !== previewRequestId) return;
   
   const props = await window.electronAPI.getItemProperties(file.path);
+  if (requestId !== previewRequestId) return;
   const info = props.success && props.properties ? props.properties : null;
   
   const fileUrl = encodeFileUrl(file.path);
@@ -5126,9 +6953,10 @@ async function showPdfPreview(file: FileItem) {
   `;
 }
 
-async function showFileInfo(file: FileItem) {
-  if (!previewContent) return;
+async function showFileInfo(file: FileItem, requestId: number) {
+  if (!previewContent || requestId !== previewRequestId) return;
   const props = await window.electronAPI.getItemProperties(file.path);
+  if (requestId !== previewRequestId) return;
   const info = props.success && props.properties ? props.properties : null;
   
   previewContent.innerHTML = `
@@ -5190,6 +7018,7 @@ const quicklookTitle = document.getElementById('quicklook-title') as HTMLElement
 const quicklookInfo = document.getElementById('quicklook-info') as HTMLElement;
 const quicklookClose = document.getElementById('quicklook-close') as HTMLButtonElement;
 const quicklookOpen = document.getElementById('quicklook-open') as HTMLButtonElement;
+let quicklookRequestId = 0;
 
 async function showQuickLook() {
   if (selectedItems.size !== 1) return;
@@ -5198,27 +7027,19 @@ async function showQuickLook() {
   if (document.activeElement instanceof HTMLElement) {
     document.activeElement.blur();
   }
-  
+
   const selectedPath = Array.from(selectedItems)[0];
-  const file = allFiles.find(f => f.path === selectedPath);
-  
+  const file = filePathMap.get(selectedPath);
+
   if (!file || file.isDirectory) return;
-  
+
+  const requestId = ++quicklookRequestId;
   currentQuicklookFile = file;
   quicklookTitle.textContent = file.name;
   quicklookModal.style.display = 'flex';
   
   const ext = file.name.split('.').pop()?.toLowerCase() || '';
 
-  const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico', 'tiff', 'tif', 'avif', 'jfif'];
-
-  const textExts = [
-    'txt', 'text', 'md', 'markdown', 'log', 'readme', 'html', 'htm', 'css', 'scss', 'sass', 'less', 'js', 'jsx', 'ts', 'tsx', 'vue', 'svelte', 'py', 'pyc', 'pyw', 'java', 'c', 'cpp', 'cc', 'cxx', 'h', 'hpp', 'cs', 'php', 'rb', 'go', 'rs', 'swift', 'kt', 'kts', 'scala', 'r', 'lua', 'perl', 'pl', 'sh', 'bash', 'zsh', 'fish', 'ps1', 'bat', 'cmd',
-    'json', 'xml', 'yml', 'yaml', 'toml', 'csv', 'tsv', 'sql',
-    'ini', 'conf', 'config', 'cfg', 'env', 'properties', 'gitignore', 'gitattributes', 'editorconfig', 'dockerfile', 'dockerignore',
-    'rst', 'tex', 'adoc', 'asciidoc', 'makefile', 'cmake', 'gradle', 'maven'
-  ];
-  
   quicklookContent.innerHTML = `
     <div class="preview-loading">
       <div class="spinner"></div>
@@ -5226,22 +7047,88 @@ async function showQuickLook() {
     </div>
   `;
   
-  if (imageExts.includes(ext)) {
-    const result = await window.electronAPI.getFileDataUrl(file.path);
-    if (result.success && result.dataUrl) {
-      quicklookContent.innerHTML = `<img src="${result.dataUrl}" alt="${escapeHtml(file.name)}">`;
+  if (IMAGE_EXTENSIONS.has(ext)) {
+    if (file.size > THUMBNAIL_MAX_SIZE) {
+      quicklookContent.innerHTML = `<div class="preview-error">Image too large to preview</div>`;
       quicklookInfo.textContent = `${formatFileSize(file.size)} • ${new Date(file.modified).toLocaleDateString()}`;
     } else {
-      quicklookContent.innerHTML = `<div class="preview-error">Failed to load image</div>`;
+      const fileUrl = encodeFileUrl(file.path);
+      quicklookContent.innerHTML = '';
+      const img = document.createElement('img');
+      img.src = fileUrl;
+      img.alt = file.name;
+      img.addEventListener('error', () => {
+        if (requestId !== quicklookRequestId || currentQuicklookFile?.path !== file.path) {
+          return;
+        }
+        quicklookContent.innerHTML = `<div class="preview-error">Failed to load image</div>`;
+      });
+      quicklookContent.appendChild(img);
+      quicklookInfo.textContent = `${formatFileSize(file.size)} • ${new Date(file.modified).toLocaleDateString()}`;
     }
-  } else if (textExts.includes(ext)) {
+  } else if (VIDEO_EXTENSIONS.has(ext)) {
+    const fileUrl = encodeFileUrl(file.path);
+    quicklookContent.innerHTML = '';
+    const video = document.createElement('video');
+    video.controls = true;
+    video.autoplay = true;
+    video.className = 'preview-video';
+    const source = document.createElement('source');
+    source.src = fileUrl;
+    source.type = VIDEO_MIME_TYPES[ext] || 'video/*';
+    video.appendChild(source);
+    video.appendChild(document.createTextNode('Your browser does not support the video tag.'));
+    quicklookContent.appendChild(video);
+    quicklookInfo.textContent = `${formatFileSize(file.size)} • ${new Date(file.modified).toLocaleDateString()}`;
+  } else if (AUDIO_EXTENSIONS.has(ext)) {
+    const fileUrl = encodeFileUrl(file.path);
+    quicklookContent.innerHTML = '';
+    const container = document.createElement('div');
+    container.className = 'preview-audio-container';
+    const icon = document.createElement('div');
+    icon.className = 'preview-audio-icon';
+    icon.innerHTML = twemojiImg(String.fromCodePoint(0x1F3B5), 'twemoji-large');
+    const audio = document.createElement('audio');
+    audio.controls = true;
+    audio.autoplay = true;
+    audio.className = 'preview-audio';
+    const source = document.createElement('source');
+    source.src = fileUrl;
+    source.type = AUDIO_MIME_TYPES[ext] || 'audio/*';
+    audio.appendChild(source);
+    audio.appendChild(document.createTextNode('Your browser does not support the audio tag.'));
+    container.appendChild(icon);
+    container.appendChild(audio);
+    quicklookContent.appendChild(container);
+    quicklookInfo.textContent = `${formatFileSize(file.size)} • ${new Date(file.modified).toLocaleDateString()}`;
+  } else if (PDF_EXTENSIONS.has(ext)) {
+    const fileUrl = encodeFileUrl(file.path);
+    quicklookContent.innerHTML = '';
+    const iframe = document.createElement('iframe');
+    iframe.src = fileUrl;
+    iframe.className = 'preview-pdf';
+    iframe.setAttribute('frameborder', '0');
+    quicklookContent.appendChild(iframe);
+    quicklookInfo.textContent = `${formatFileSize(file.size)} • ${new Date(file.modified).toLocaleDateString()}`;
+  } else if (TEXT_EXTENSIONS.has(ext)) {
     const result = await window.electronAPI.readFileContent(file.path, 100 * 1024);
-    if (result.success && result.content) {
+    if (requestId !== quicklookRequestId || currentQuicklookFile?.path !== file.path) {
+      return;
+    }
+    if (result.success && typeof result.content === 'string') {
+      const lang = getLanguageForExt(ext);
       quicklookContent.innerHTML = `
         ${result.isTruncated ? `<div class="preview-truncated">${twemojiImg(String.fromCodePoint(0x26A0), 'twemoji')} File truncated to first 100KB</div>` : ''}
-        <div class="preview-text">${escapeHtml(result.content)}</div>
+        <pre class="preview-text"><code class="${lang ? `language-${lang}` : ''}">${escapeHtml(result.content)}</code></pre>
       `;
       quicklookInfo.textContent = `${formatFileSize(file.size)} • ${new Date(file.modified).toLocaleDateString()}`;
+      if (lang && currentSettings.enableSyntaxHighlighting) {
+        loadHighlightJs().then(hl => {
+          if (requestId !== quicklookRequestId || currentQuicklookFile?.path !== file.path || !hl) return;
+          const codeBlock = quicklookContent?.querySelector('code');
+          if (codeBlock) hl.highlightElement(codeBlock);
+        });
+      }
     } else {
       quicklookContent.innerHTML = `<div class="preview-error">Failed to load text</div>`;
     }
@@ -5259,6 +7146,7 @@ async function showQuickLook() {
 function closeQuickLook() {
   if (quicklookModal) quicklookModal.style.display = 'none';
   currentQuicklookFile = null;
+  quicklookRequestId++;
 }
 
 if (previewToggleBtn) {
@@ -5269,6 +7157,7 @@ if (previewCloseBtn) {
   previewCloseBtn.addEventListener('click', () => {
     isPreviewPanelVisible = false;
     if (previewPanel) previewPanel.style.display = 'none';
+    previewRequestId++;
   });
 }
 
@@ -5280,6 +7169,7 @@ if (quicklookOpen) {
   quicklookOpen.addEventListener('click', () => {
     if (currentQuicklookFile) {
       window.electronAPI.openFile(currentQuicklookFile.path);
+      addToRecentFiles(currentQuicklookFile.path);
       closeQuickLook();
     }
   });
@@ -5408,8 +7298,10 @@ document.addEventListener('mousedown', (e) => {
 
 window.addEventListener('beforeunload', () => {
   stopIndexStatusPolling();
+  cancelActiveSearch();
   if (thumbnailObserver) {
     thumbnailObserver.disconnect();
+    thumbnailObserver = null;
   }
 
   if (diskSpaceDebounceTimer) {
@@ -5420,6 +7312,22 @@ window.addEventListener('beforeunload', () => {
     clearTimeout(zoomPopupTimeout);
     zoomPopupTimeout = null;
   }
+  if (settingsSaveTimeout) {
+    clearTimeout(settingsSaveTimeout);
+    settingsSaveTimeout = null;
+  }
+  if (searchDebounceTimeout) {
+    clearTimeout(searchDebounceTimeout);
+    searchDebounceTimeout = null;
+  }
+  if (renderOperationsTimeout) {
+    clearTimeout(renderOperationsTimeout);
+    renderOperationsTimeout = null;
+  }
+
+  filePathMap.clear();
+  thumbnailCache.clear();
+  pendingThumbnailLoads.length = 0;
 
   for (const cleanup of ipcCleanupFunctions) {
     try {
@@ -5430,7 +7338,3 @@ window.addEventListener('beforeunload', () => {
   }
   ipcCleanupFunctions.length = 0;
 });
-
-
-
-

@@ -9,6 +9,21 @@ export interface CustomTheme {
   glassBorder: string;
 }
 
+export interface Tab {
+  id: string;
+  path: string;
+  history: string[];
+  historyIndex: number;
+  selectedItems: string[];
+  scrollPosition: number;
+  cachedFiles?: FileItem[];
+}
+
+export interface TabState {
+  tabs: Tab[];
+  activeTabId: string;
+}
+
 export interface Settings {
   transparency: boolean;
   theme: 'dark' | 'light' | 'default' | 'custom';
@@ -30,6 +45,22 @@ export interface Settings {
   launchCount?: number;
   supportPopupDismissed?: boolean;
   skipFullDiskAccessPrompt?: boolean;
+  recentFiles?: string[];
+  folderIcons?: { [path: string]: string };
+  showRecentFiles: boolean;
+  enableTabs: boolean;
+  globalContentSearch: boolean;
+  tabState?: TabState;
+  enableSyntaxHighlighting: boolean;
+  enableGitStatus: boolean;
+
+  reduceMotion: boolean;
+  highContrast: boolean;
+  largeText: boolean;
+  boldText: boolean;
+  visibleFocus: boolean;
+  reduceTransparency: boolean;
+  updateChannel: 'auto' | 'beta' | 'stable';
 }
 
 export interface FileItem {
@@ -40,6 +71,31 @@ export interface FileItem {
   size: number;
   modified: Date;
   isHidden: boolean;
+}
+
+export interface DirectoryContentsProgress {
+  dirPath: string;
+  items?: FileItem[];
+  loaded: number;
+  operationId?: string;
+}
+
+export interface SearchFilters {
+  fileType?: string;
+  minSize?: number;
+  maxSize?: number;
+  dateFrom?: string;
+  dateTo?: string;
+  searchInContents?: boolean;
+}
+
+export interface ContentSearchResult extends FileItem {
+  matchContext?: string;
+  matchLineNumber?: number;
+}
+
+export interface ContentSearchResponse extends ApiResponse {
+  results?: ContentSearchResult[];
 }
 
 export interface ItemProperties {
@@ -60,10 +116,17 @@ export interface FolderSizeProgress {
   currentPath: string;
 }
 
+export interface FileTypeStats {
+  extension: string;
+  count: number;
+  size: number;
+}
+
 export interface FolderSizeResult {
   totalSize: number;
   fileCount: number;
   folderCount: number;
+  fileTypes?: FileTypeStats[];
 }
 
 export interface ChecksumResult {
@@ -123,10 +186,27 @@ export interface IndexSearchResponse extends ApiResponse {
   results?: IndexEntry[];
 }
 
-export interface UndoAction {
-  type: 'trash' | 'rename' | 'move' | 'create';
-  data: any;
+export interface UndoCreateAction {
+  type: 'create';
+  data: { path: string; isDirectory: boolean };
 }
+
+export interface UndoRenameAction {
+  type: 'rename';
+  data: { oldPath: string; newPath: string; oldName: string; newName: string };
+}
+
+export interface UndoMoveAction {
+  type: 'move';
+  data: { sourcePaths: string[]; originalPaths?: string[]; originalParent?: string; destPath: string };
+}
+
+export interface UndoTrashAction {
+  type: 'trash';
+  data: { path: string; originalPath?: string };
+}
+
+export type UndoAction = UndoCreateAction | UndoRenameAction | UndoMoveAction | UndoTrashAction;
 
 export interface UndoResponse extends ApiResponse {
   canUndo?: boolean;
@@ -156,6 +236,16 @@ export interface UpdateCheckResponse extends ApiResponse {
   msiMessage?: string;
 }
 
+export interface GitFileStatus {
+  path: string;
+  status: 'modified' | 'added' | 'deleted' | 'renamed' | 'untracked' | 'ignored' | 'conflict';
+}
+
+export interface GitStatusResponse extends ApiResponse {
+  isGitRepo?: boolean;
+  statuses?: GitFileStatus[];
+}
+
 export interface UpdateDownloadProgress {
   percent: number;
   bytesPerSecond: number;
@@ -164,10 +254,11 @@ export interface UpdateDownloadProgress {
 }
 
 export interface ElectronAPI {
-  getDirectoryContents: (dirPath: string) => Promise<DirectoryResponse>;
+  getDirectoryContents: (dirPath: string, operationId?: string, includeHidden?: boolean) => Promise<DirectoryResponse>;
+  cancelDirectoryContents: (operationId: string) => Promise<ApiResponse>;
   getDrives: () => Promise<string[]>;
   getHomeDirectory: () => Promise<string>;
-  openFile: (filePath: string) => Promise<void>;
+  openFile: (filePath: string) => Promise<ApiResponse>;
   selectFolder: () => Promise<PathResponse>;
   minimizeWindow: () => Promise<void>;
   maximizeWindow: () => Promise<void>;
@@ -198,7 +289,9 @@ export interface ElectronAPI {
   
   copyItems: (sourcePaths: string[], destPath: string) => Promise<ApiResponse>;
   moveItems: (sourcePaths: string[], destPath: string) => Promise<ApiResponse>;
-  searchFiles: (dirPath: string, query: string) => Promise<SearchResponse>;
+  searchFiles: (dirPath: string, query: string, filters?: SearchFilters, operationId?: string) => Promise<SearchResponse>;
+  searchFilesWithContent: (dirPath: string, query: string, filters?: SearchFilters, operationId?: string) => Promise<ContentSearchResponse>;
+  searchFilesWithContentGlobal: (query: string, filters?: SearchFilters, operationId?: string) => Promise<ContentSearchResponse>;
   getDiskSpace: (drivePath: string) => Promise<{success: boolean; total?: number; free?: number; error?: string}>;
   restartAsAdmin: () => Promise<ApiResponse>;
   openTerminal: (dirPath: string) => Promise<ApiResponse>;
@@ -219,7 +312,8 @@ export interface ElectronAPI {
   undoAction: () => Promise<UndoResponse>;
   redoAction: () => Promise<UndoResponse>;
   getUndoRedoState: () => Promise<{canUndo: boolean; canRedo: boolean}>;
-  searchIndex: (query: string) => Promise<IndexSearchResponse>;
+  searchIndex: (query: string, operationId?: string) => Promise<IndexSearchResponse>;
+  cancelSearch: (operationId: string) => Promise<ApiResponse>;
   rebuildIndex: () => Promise<ApiResponse>;
   getIndexStatus: () => Promise<{success: boolean; status?: IndexStatus; error?: string}>;
   compressFiles: (sourcePaths: string[], outputPath: string, format?: string, operationId?: string) => Promise<ApiResponse>;
@@ -233,9 +327,11 @@ export interface ElectronAPI {
   calculateFolderSize: (folderPath: string, operationId: string) => Promise<{success: boolean; result?: FolderSizeResult; error?: string}>;
   cancelFolderSizeCalculation: (operationId: string) => Promise<ApiResponse>;
   onFolderSizeProgress: (callback: (progress: FolderSizeProgress & {operationId: string}) => void) => () => void;
+  onDirectoryContentsProgress: (callback: (progress: DirectoryContentsProgress) => void) => () => void;
   calculateChecksum: (filePath: string, operationId: string, algorithms: string[]) => Promise<{success: boolean; result?: ChecksumResult; error?: string}>;
   cancelChecksumCalculation: (operationId: string) => Promise<ApiResponse>;
   onChecksumProgress: (callback: (progress: {operationId: string; percent: number; algorithm: string}) => void) => () => void;
+  getGitStatus: (dirPath: string) => Promise<GitStatusResponse>;
 }
 
 declare global {
