@@ -339,3 +339,5 @@ declare global {
     electronAPI: ElectronAPI;
   }
 }
+
+export type DialogType = 'info' | 'warning' | 'error' | 'success' | 'question';

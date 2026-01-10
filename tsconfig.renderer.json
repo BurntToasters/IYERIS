@@ -5,6 +5,7 @@
     "moduleResolution": "bundler"
   },
   "include": [
-    "src/renderer.ts"
+    "src/renderer.ts",
+    "src/renderer/**/*.ts"
   ]
 }

@@ -1,6 +1,8 @@
 import type { Settings, FileItem, ItemProperties, CustomTheme, ContentSearchResult } from './types';
 import { escapeHtml, getErrorMessage } from './shared.js';
 import { createDefaultSettings } from './settings.js';
+import { ThemeManager } from './renderer/ThemeManager.js';
+import { hexToRgb, showDialog, showToast, emojiToCodepoint, twemojiImg } from './renderer/utils.js';
 
 const THUMBNAIL_MAX_SIZE = 10 * 1024 * 1024;
 const SEARCH_DEBOUNCE_MS = 300;
@@ -113,29 +115,7 @@ function encodeFileUrl(filePath: string): string {
   return `file:///${encoded}`;
 }
 
-function emojiToCodepoint(emoji: string): string {
-  const codePoints: number[] = [];
-  let i = 0;
-  while (i < emoji.length) {
-    const code = emoji.codePointAt(i);
-    if (code !== undefined) {
-      if (code !== 0xFE0F) {
-        codePoints.push(code);
-      }
-      i += code > 0xFFFF ? 2 : 1;
-    } else {
-      i++;
-    }
-  }
-  return codePoints.map(cp => cp.toString(16)).join('-');
-}
 
-function twemojiImg(emoji: string, className: string = 'twemoji', alt?: string): string {
-  const codepoint = emojiToCodepoint(emoji);
-  const src = `assets/twemoji/${codepoint}.svg`;
-  const altText = escapeHtml(alt || emoji);
-  return `<img src="${src}" class="${className}" alt="${altText}" draggable="false" />`;
-}
 
 
 // Debounced settings save for non-critical updates (history, recent files, etc.)
@@ -947,70 +927,7 @@ function updateGitIndicators() {
   });
 }
 
-function showDialog(title: string, message: string, type: DialogType = 'info', showCancel: boolean = false): Promise<boolean> {
-  return new Promise((resolve) => {
-    if (document.activeElement instanceof HTMLElement) {
-      document.activeElement.blur();
-    }
-    
-    const dialogModal = document.getElementById('dialog-modal') as HTMLElement;
-    const dialogTitle = document.getElementById('dialog-title') as HTMLElement;
-    const dialogContent = document.getElementById('dialog-content') as HTMLElement;
-    const dialogIcon = document.getElementById('dialog-icon') as HTMLElement;
-    const dialogOk = document.getElementById('dialog-ok') as HTMLButtonElement;
-    const dialogCancel = document.getElementById('dialog-cancel') as HTMLButtonElement;
 
-    const icons: Record<DialogType, string> = {
-      info: '2139',
-      warning: '26a0',
-      error: '274c',
-      success: '2705',
-      question: '2753'
-    };
-
-    dialogIcon.innerHTML = twemojiImg(String.fromCodePoint(parseInt(icons[type] || icons.info, 16)), 'twemoji');
-    dialogTitle.textContent = title;
-    dialogContent.textContent = message;
-    
-    if (showCancel) {
-      dialogCancel.style.display = 'block';
-    } else {
-      dialogCancel.style.display = 'none';
-    }
-
-    dialogModal.style.display = 'flex';
-
-    const handleOk = (): void => {
-      dialogModal.style.display = 'none';
-      cleanup();
-      resolve(true);
-    };
-
-    const handleCancel = (): void => {
-      dialogModal.style.display = 'none';
-      cleanup();
-      resolve(false);
-    };
-
-    const handleEscape = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') {
-        dialogModal.style.display = 'none';
-        cleanup();
-        resolve(false);
-      }
-    };
-
-    const cleanup = (): void => {
-      dialogOk.removeEventListener('click', handleOk);
-      dialogCancel.removeEventListener('click', handleCancel);
-      document.removeEventListener('keydown', handleEscape);
-    };
-
-    dialogOk.addEventListener('click', handleOk);
-    dialogCancel.addEventListener('click', handleCancel);
-    document.addEventListener('keydown', handleEscape);
-  });
-}
 
 async function showAlert(message: string, title: string = 'IYERIS', type: DialogType = 'info'): Promise<void> {
   await showDialog(title, message, type, false);
@@ -1021,45 +938,9 @@ async function showConfirm(message: string, title: string = 'Confirm', type: Dia
 }
 
 let currentSettings: Settings = createDefaultSettings();
+let themeManager: ThemeManager;
 
-function showToast(message: string, title: string = '', type: 'success' | 'error' | 'info' | 'warning' = 'info'): void {
-  const container = document.getElementById('toast-container');
-  if (!container) return;
 
-  const toast = document.createElement('div');
-  toast.className = `toast ${type}`;
-  toast.style.cursor = 'pointer';
-  
-  const icons: Record<string, string> = {
-    success: '2705',
-    error: '274c',
-    info: '2139',
-    warning: '26a0'
-  };
-
-  toast.innerHTML = `
-    <span class="toast-icon">${twemojiImg(String.fromCodePoint(parseInt(icons[type], 16)), 'twemoji')}</span>
-    <div class="toast-content">
-      ${title ? `<div class="toast-title">${escapeHtml(title)}</div>` : ''}
-      <div class="toast-message">${escapeHtml(message)}</div>
-    </div>
-  `;
-
-  container.appendChild(toast);
-
-  const removeToast = () => {
-    toast.classList.add('removing');
-    setTimeout(() => {
-      if (container.contains(toast)) {
-        container.removeChild(toast);
-      }
-    }, 300);
-  };
-
-  toast.addEventListener('click', removeToast);
-
-  setTimeout(removeToast, TOAST_DURATION_MS);
-}
 
 async function loadSettings(): Promise<void> {
   const [result, sharedClipboard] = await Promise.all([
@@ -1070,6 +951,7 @@ async function loadSettings(): Promise<void> {
   if (result.success && result.settings) {
     const defaults = createDefaultSettings();
     currentSettings = { ...defaults, ...result.settings };
+    themeManager = new ThemeManager(currentSettings, applySettings);
     currentSettings.enableSyntaxHighlighting = currentSettings.enableSyntaxHighlighting !== false;
     applySettings(currentSettings);
     const newLaunchCount = (currentSettings.launchCount || 0) + 1;
@@ -1100,9 +982,9 @@ function applySettings(settings: Settings) {
   }
 
   if (settings.theme === 'custom' && settings.customTheme) {
-    applyCustomThemeColors(settings.customTheme);
+    themeManager?.applyCustomThemeColors(settings.customTheme);
   } else {
-    clearCustomThemeColors();
+    themeManager?.clearCustomThemeColors();
   }
   
   if (settings.viewMode) {
@@ -1159,358 +1041,6 @@ function applySettings(settings: Settings) {
   loadRecentFiles();
 }
 
-function hexToRgb(hex: string): string {
-  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-  if (result) {
-    return `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}`;
-  }
-  return '0, 120, 212';
-}
-
-function applyCustomThemeColors(theme: CustomTheme) {
-  const root = document.documentElement;
-  root.style.setProperty('--custom-accent-color', theme.accentColor);
-  root.style.setProperty('--custom-accent-rgb', hexToRgb(theme.accentColor));
-  root.style.setProperty('--custom-bg-primary', theme.bgPrimary);
-  root.style.setProperty('--custom-bg-primary-rgb', hexToRgb(theme.bgPrimary));
-  root.style.setProperty('--custom-bg-secondary', theme.bgSecondary);
-  root.style.setProperty('--custom-text-primary', theme.textPrimary);
-  root.style.setProperty('--custom-text-secondary', theme.textSecondary);
-  root.style.setProperty('--custom-glass-bg', `${theme.glassBg}08`);
-  root.style.setProperty('--custom-glass-border', `${theme.glassBorder}14`);
-  document.body.style.backgroundColor = theme.bgPrimary;
-}
-
-function clearCustomThemeColors() {
-  const root = document.documentElement;
-  const props = [
-    '--custom-accent-color', '--custom-accent-rgb',
-    '--custom-bg-primary', '--custom-bg-primary-rgb', '--custom-bg-secondary',
-    '--custom-text-primary', '--custom-text-secondary',
-    '--custom-glass-bg', '--custom-glass-border'
-  ];
-  props.forEach(prop => root.style.removeProperty(prop));
-  document.body.style.backgroundColor = '';
-}
-
-// Theme Editor
-const themePresets: Record<string, CustomTheme> = {
-  midnight: {
-    name: 'Midnight Blue',
-    accentColor: '#4a9eff',
-    bgPrimary: '#0d1b2a',
-    bgSecondary: '#1b263b',
-    textPrimary: '#e0e1dd',
-    textSecondary: '#a0a4a8',
-    glassBg: '#ffffff',
-    glassBorder: '#4a9eff'
-  },
-  forest: {
-    name: 'Forest Green',
-    accentColor: '#2ecc71',
-    bgPrimary: '#1a2f1a',
-    bgSecondary: '#243524',
-    textPrimary: '#e8f5e9',
-    textSecondary: '#a5d6a7',
-    glassBg: '#ffffff',
-    glassBorder: '#2ecc71'
-  },
-  sunset: {
-    name: 'Sunset Orange',
-    accentColor: '#ff7043',
-    bgPrimary: '#1f1410',
-    bgSecondary: '#2d1f1a',
-    textPrimary: '#fff3e0',
-    textSecondary: '#ffab91',
-    glassBg: '#ffffff',
-    glassBorder: '#ff7043'
-  },
-  lavender: {
-    name: 'Lavender Purple',
-    accentColor: '#9c7cf4',
-    bgPrimary: '#1a1625',
-    bgSecondary: '#251f33',
-    textPrimary: '#ede7f6',
-    textSecondary: '#b39ddb',
-    glassBg: '#ffffff',
-    glassBorder: '#9c7cf4'
-  },
-  rose: {
-    name: 'Rose Pink',
-    accentColor: '#f48fb1',
-    bgPrimary: '#1f1418',
-    bgSecondary: '#2d1f24',
-    textPrimary: '#fce4ec',
-    textSecondary: '#f8bbd9',
-    glassBg: '#ffffff',
-    glassBorder: '#f48fb1'
-  },
-  ocean: {
-    name: 'Ocean Teal',
-    accentColor: '#26c6da',
-    bgPrimary: '#0d1f22',
-    bgSecondary: '#1a2f33',
-    textPrimary: '#e0f7fa',
-    textSecondary: '#80deea',
-    glassBg: '#ffffff',
-    glassBorder: '#26c6da'
-  }
-};
-
-let tempCustomTheme: CustomTheme = {
-  name: 'My Custom Theme',
-  accentColor: '#0078d4',
-  bgPrimary: '#1a1a1a',
-  bgSecondary: '#252525',
-  textPrimary: '#ffffff',
-  textSecondary: '#b0b0b0',
-  glassBg: '#ffffff',
-  glassBorder: '#ffffff'
-};
-
-function showThemeEditor() {
-  const modal = document.getElementById('theme-editor-modal');
-  if (!modal) return;
-
-  if (currentSettings.customTheme) {
-    tempCustomTheme = { ...currentSettings.customTheme };
-  }
-
-  const inputs: Record<string, { color: string; text: string }> = {
-    'theme-accent-color': { color: tempCustomTheme.accentColor, text: tempCustomTheme.accentColor },
-    'theme-bg-primary': { color: tempCustomTheme.bgPrimary, text: tempCustomTheme.bgPrimary },
-    'theme-bg-secondary': { color: tempCustomTheme.bgSecondary, text: tempCustomTheme.bgSecondary },
-    'theme-text-primary': { color: tempCustomTheme.textPrimary, text: tempCustomTheme.textPrimary },
-    'theme-text-secondary': { color: tempCustomTheme.textSecondary, text: tempCustomTheme.textSecondary },
-    'theme-glass-bg': { color: tempCustomTheme.glassBg, text: tempCustomTheme.glassBg }
-  };
-  
-  for (const [id, values] of Object.entries(inputs)) {
-    const colorInput = document.getElementById(id) as HTMLInputElement;
-    const textInput = document.getElementById(`${id}-text`) as HTMLInputElement;
-    if (colorInput) colorInput.value = values.color;
-    if (textInput) textInput.value = values.text;
-  }
-  
-  const nameInput = document.getElementById('theme-name-input') as HTMLInputElement;
-  if (nameInput) nameInput.value = tempCustomTheme.name;
-  
-  updateThemePreview();
-  modal.style.display = 'flex';
-}
-
-function hideThemeEditor() {
-  const modal = document.getElementById('theme-editor-modal');
-  if (modal) modal.style.display = 'none';
-}
-
-function updateThemePreview() {
-  const preview = document.getElementById('theme-preview');
-  if (!preview) return;
-  
-  preview.style.setProperty('--custom-accent-color', tempCustomTheme.accentColor);
-  preview.style.setProperty('--custom-accent-rgb', hexToRgb(tempCustomTheme.accentColor));
-  preview.style.setProperty('--custom-bg-primary', tempCustomTheme.bgPrimary);
-  preview.style.setProperty('--custom-bg-secondary', tempCustomTheme.bgSecondary);
-  preview.style.setProperty('--custom-text-primary', tempCustomTheme.textPrimary);
-  preview.style.setProperty('--custom-text-secondary', tempCustomTheme.textSecondary);
-  preview.style.setProperty('--custom-glass-bg', `${tempCustomTheme.glassBg}08`);
-  preview.style.setProperty('--custom-glass-border', `${tempCustomTheme.glassBorder}20`);
-  preview.style.backgroundColor = tempCustomTheme.bgPrimary;
-}
-
-function syncColorInputs(colorId: string, value: string) {
-  const colorInput = document.getElementById(colorId) as HTMLInputElement;
-  const textInput = document.getElementById(`${colorId}-text`) as HTMLInputElement;
-  
-  if (colorInput) colorInput.value = value;
-  if (textInput) textInput.value = value.toUpperCase();
-
-  const mapping: Record<string, keyof CustomTheme> = {
-    'theme-accent-color': 'accentColor',
-    'theme-bg-primary': 'bgPrimary',
-    'theme-bg-secondary': 'bgSecondary',
-    'theme-text-primary': 'textPrimary',
-    'theme-text-secondary': 'textSecondary',
-    'theme-glass-bg': 'glassBg'
-  };
-  
-  const key = mapping[colorId];
-  if (key) {
-    (tempCustomTheme as any)[key] = value;
-    if (key === 'glassBg') {
-      tempCustomTheme.glassBorder = value;
-    }
-  }
-  
-  updateThemePreview();
-}
-
-function applyThemePreset(presetName: string) {
-  const preset = themePresets[presetName];
-  if (!preset) return;
-  
-  tempCustomTheme = { ...preset };
-
-  const nameInput = document.getElementById('theme-name-input') as HTMLInputElement;
-  if (nameInput) nameInput.value = preset.name;
-  
-  syncColorInputs('theme-accent-color', preset.accentColor);
-  syncColorInputs('theme-bg-primary', preset.bgPrimary);
-  syncColorInputs('theme-bg-secondary', preset.bgSecondary);
-  syncColorInputs('theme-text-primary', preset.textPrimary);
-  syncColorInputs('theme-text-secondary', preset.textSecondary);
-  syncColorInputs('theme-glass-bg', preset.glassBg);
-}
-
-async function saveCustomTheme() {
-  const nameInput = document.getElementById('theme-name-input') as HTMLInputElement;
-  if (nameInput && nameInput.value.trim()) {
-    tempCustomTheme.name = nameInput.value.trim();
-  }
-
-  currentSettings.customTheme = { ...tempCustomTheme };
-  currentSettings.theme = 'custom';
-
-  applySettings(currentSettings);
-
-  const result = await window.electronAPI.saveSettings(currentSettings);
-  if (result.success) {
-    hideThemeEditor();
-    updateCustomThemeUI();
-    showToast('Custom theme saved!', 'Theme', 'success');
-  } else {
-    showToast('Failed to save theme: ' + result.error, 'Error', 'error');
-  }
-}
-
-function setupThemeEditorListeners() {
-  document.getElementById('theme-editor-close')?.addEventListener('click', hideThemeEditor);
-  document.getElementById('theme-editor-cancel')?.addEventListener('click', hideThemeEditor);
-  document.getElementById('theme-editor-save')?.addEventListener('click', saveCustomTheme);
-  
-  // Color inputs
-  const colorIds = [
-    'theme-accent-color',
-    'theme-bg-primary',
-    'theme-bg-secondary',
-    'theme-text-primary',
-    'theme-text-secondary',
-    'theme-glass-bg'
-  ];
-  
-  colorIds.forEach(id => {
-    const colorInput = document.getElementById(id) as HTMLInputElement;
-    const textInput = document.getElementById(`${id}-text`) as HTMLInputElement;
-    
-    colorInput?.addEventListener('input', (e) => {
-      const value = (e.target as HTMLInputElement).value;
-      syncColorInputs(id, value);
-    });
-    
-    textInput?.addEventListener('input', (e) => {
-      let value = (e.target as HTMLInputElement).value.trim();
-      if (!value.startsWith('#')) value = '#' + value;
-      if (/^#[0-9A-Fa-f]{6}$/.test(value)) {
-        syncColorInputs(id, value);
-        textInput.classList.remove('invalid');
-      } else if (/^#[0-9A-Fa-f]{3}$/.test(value)) {
-        const expanded = '#' + value[1] + value[1] + value[2] + value[2] + value[3] + value[3];
-        syncColorInputs(id, expanded);
-        textInput.classList.remove('invalid');
-      } else if (value.length > 1) {
-        textInput.classList.add('invalid');
-      }
-    });
-    
-    textInput?.addEventListener('blur', (e) => {
-      let value = (e.target as HTMLInputElement).value.trim();
-      if (!value.startsWith('#')) value = '#' + value;
-      // Validate and reset
-      if (!/^#[0-9A-Fa-f]{3}$/.test(value) && !/^#[0-9A-Fa-f]{6}$/.test(value)) {
-        // Reset to current color picker value
-        const colorInput = document.getElementById(id) as HTMLInputElement;
-        if (colorInput && textInput) {
-          textInput.value = colorInput.value.toUpperCase();
-          textInput.classList.remove('invalid');
-        }
-      } else {
-        textInput.classList.remove('invalid');
-      }
-    });
-  });
-
-  document.getElementById('theme-name-input')?.addEventListener('input', (e) => {
-    tempCustomTheme.name = (e.target as HTMLInputElement).value || 'My Custom Theme';
-  });
-  
-  document.querySelectorAll('.preset-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const preset = (btn as HTMLElement).dataset.preset;
-      if (preset) applyThemePreset(preset);
-    });
-  });
-  
-  const openThemeEditorBtn = document.getElementById('open-theme-editor-btn');
-  if (openThemeEditorBtn) {
-    openThemeEditorBtn.addEventListener('click', () => {
-      showThemeEditor();
-    });
-  }
-
-  const useCustomThemeBtn = document.getElementById('use-custom-theme-btn');
-  if (useCustomThemeBtn) {
-    useCustomThemeBtn.addEventListener('click', async () => {
-      if (currentSettings.customTheme) {
-        currentSettings.theme = 'custom';
-        applySettings(currentSettings);
-        await window.electronAPI.saveSettings(currentSettings);
-        updateCustomThemeUI();
-      }
-    });
-  }
-
-  document.getElementById('theme-editor-modal')?.addEventListener('click', (e) => {
-    if ((e.target as HTMLElement).classList.contains('modal-overlay')) {
-      hideThemeEditor();
-    }
-  });
-}
-
-function updateCustomThemeUI() {
-  const useCustomThemeBtn = document.getElementById('use-custom-theme-btn');
-  const customThemeDescription = document.getElementById('custom-theme-description');
-  const themeSelect = document.getElementById('theme-select') as HTMLSelectElement;
-
-  if (currentSettings.customTheme) {
-    if (useCustomThemeBtn) {
-      useCustomThemeBtn.style.display = 'block';
-    }
-    if (customThemeDescription) {
-      const themeName = currentSettings.customTheme.name || 'Custom Theme';
-      if (currentSettings.theme === 'custom') {
-        customThemeDescription.textContent = `Currently using: ${themeName}`;
-      } else {
-        customThemeDescription.textContent = `Edit or use your custom theme: ${themeName}`;
-      }
-    }
-    if (themeSelect && currentSettings.theme === 'custom') {
-      themeSelect.value = 'default';
-    }
-  } else {
-    if (useCustomThemeBtn) {
-      useCustomThemeBtn.style.display = 'none';
-    }
-    if (customThemeDescription) {
-      customThemeDescription.textContent = 'Create your own color scheme';
-    }
-  }
-
-  if (themeSelect && currentSettings.theme !== 'custom') {
-    themeSelect.value = currentSettings.theme || 'default';
-  }
-}
-
 async function showSettingsModal() {
   if (document.activeElement instanceof HTMLElement) {
     document.activeElement.blur();
@@ -1563,7 +1093,7 @@ async function showSettingsModal() {
     enableGitStatusToggle.checked = currentSettings.enableGitStatus === true;
   }
 
-  updateCustomThemeUI();
+  themeManager?.updateCustomThemeUI();
 
   const themeSelectForTracking = document.getElementById('theme-select') as HTMLSelectElement;
   if (themeSelectForTracking) {
@@ -2819,7 +2349,7 @@ async function init() {
 
   queueMicrotask(() => {
     setupBreadcrumbListeners();
-    setupThemeEditorListeners();
+    themeManager?.setupThemeEditorListeners();
     loadBookmarks();
   });
 

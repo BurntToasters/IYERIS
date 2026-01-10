@@ -1,3 +1,4 @@
+import { setupWindowControllers } from './main/controllers/WindowController';
 import { app, BrowserWindow, ipcMain, dialog, shell, IpcMainInvokeEvent, Menu, Tray, nativeImage, powerMonitor } from 'electron';
 import type { WebContents } from 'electron';
 import * as path from 'path';
@@ -1436,26 +1437,7 @@ ipcMain.handle('select-folder', async (): Promise<PathResponse> => {
   return { success: false };
 });
 
-ipcMain.handle('minimize-window', (): void => {
-  mainWindow?.minimize();
-});
-
-ipcMain.handle('maximize-window', (): void => {
-  if (mainWindow?.isMaximized()) {
-    mainWindow.unmaximize();
-  } else {
-    mainWindow?.maximize();
-  }
-});
-ipcMain.handle('close-window', (event: IpcMainInvokeEvent): void => {
-  const win = BrowserWindow.fromWebContents(event.sender);
-  if (win && !win.isDestroyed()) {
-    win.close();
-  }
-});
-ipcMain.handle('open-new-window', (): void => {
-  createWindow(false); // User-triggered window
-});
+setupWindowControllers(createWindow);
 
 ipcMain.handle('create-folder', async (_event: IpcMainInvokeEvent, parentPath: string, folderName: string): Promise<PathResponse> => {
   try {
