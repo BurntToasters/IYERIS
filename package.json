@@ -103,7 +103,8 @@
     "asar": true,
     "asarUnpack": [
       "**/*.node",
-      "**/node_modules/7zip-bin/**/*"
+      "**/node_modules/7zip-bin/**/*",
+      "assets/admin-worker.js"
     ],
     "mac": {
       "category": "public.app-category.productivity",
