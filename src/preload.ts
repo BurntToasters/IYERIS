@@ -123,7 +123,8 @@ const electronAPI: ElectronAPI = {
     ipcRenderer.on('checksum-progress', handler);
     return () => ipcRenderer.removeListener('checksum-progress', handler);
   },
-  getGitStatus: (dirPath: string) => ipcRenderer.invoke('get-git-status', dirPath)
+  getGitStatus: (dirPath: string) => ipcRenderer.invoke('get-git-status', dirPath),
+  runElevated: (action: string, args: string[]) => ipcRenderer.invoke('run-elevated', action, args)
 };
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);

@@ -951,6 +951,43 @@ async function showConfirm(message: string, title: string = 'Confirm', type: Dia
   return await showDialog(title, message, type, true);
 }
 
+async function handleElevatedOperation(
+  action: 'copy' | 'move' | 'delete' | 'createFolder' | 'createFile', 
+  args: string[], 
+  initialResult: { success: boolean; error?: string }
+): Promise<boolean> {
+  const errorMsg = initialResult.error || '';
+  if (errorMsg.includes('EACCES') || errorMsg.includes('EPERM')) {
+    const confirmed = await showConfirm(
+      'Access denied. This operation requires administrator privileges. Do you want to continue?',
+      'Permission Denied',
+      'warning'
+    );
+    
+    if (confirmed) {
+      try {
+        const result = await window.electronAPI.runElevated(action, args);
+        if (result.success) {
+          return true;
+        }
+        if (result.error && (result.error.includes('User did not grant permission') || result.error.includes('cancelled'))) {
+           showToast('Elevation cancelled', 'Admin Action', 'info');
+        } else {
+           showToast('Elevation failed: ' + result.error, 'Admin Action', 'error');
+        }
+        return false;
+      } catch (e) {
+        showToast('Elevation error occurred', 'Error', 'error');
+        return false;
+      }
+    } else {
+      showToast('Operation cancelled', 'Admin Action', 'info');
+      return false;
+    }
+  }
+  return false;
+}
+
 let currentSettings: Settings = createDefaultSettings();
 let themeManager: ThemeManager;
 
@@ -3976,7 +4013,13 @@ async function permanentlyDeleteSelected() {
     let successCount = 0;
     for (const itemPath of selectedItems) {
       const result = await window.electronAPI.deleteItem(itemPath);
-      if (result.success) successCount++;
+      if (result.success) {
+        successCount++;
+      } else {
+        if (await handleElevatedOperation('delete', [itemPath], result)) {
+          successCount++;
+        }
+      }
     }
     
     if (successCount > 0) {
@@ -4653,8 +4696,22 @@ async function createNewFileWithInlineRename() {
   }
   
   const result = await window.electronAPI.createFile(currentPath, finalFileName);
-  if (result.success && result.path) {
-    const createdFilePath = result.path;
+  let success = result.success;
+  let createdFilePath = result.path;
+
+  if (!success) {
+    if (await handleElevatedOperation('createFile', [path.join(currentPath, finalFileName)], result)) {
+      success = true;
+      createdFilePath = path.join(currentPath, finalFileName);
+    } else if (!result.error?.includes('EACCES') && !result.error?.includes('EPERM')) {
+      await showAlert(result.error || 'Unknown error', 'Error Creating File', 'error');
+      return; // Exit if failed and not handled/elevated
+    } else {
+      return; // Exit if elevation failed/cancelled
+    }
+  }
+
+  if (success && createdFilePath) {
     await navigateTo(currentPath);
 
     setTimeout(() => {
@@ -4662,13 +4719,11 @@ async function createNewFileWithInlineRename() {
       for (const item of Array.from(fileItems)) {
         const nameElement = item.querySelector('.file-name');
         if (nameElement && nameElement.textContent === finalFileName) {
-          startInlineRename(item as HTMLElement, finalFileName, createdFilePath);
+          startInlineRename(item as HTMLElement, finalFileName, createdFilePath || '');
           break;
         }
       }
     }, 100);
-  } else {
-    await showAlert(result.error || 'Unknown error', 'Error Creating File', 'error');
   }
 }
 
@@ -4685,8 +4740,22 @@ async function createNewFolderWithInlineRename() {
   }
   
   const result = await window.electronAPI.createFolder(currentPath, finalFolderName);
-  if (result.success && result.path) {
-    const createdFolderPath = result.path;
+  let success = result.success;
+  let createdFolderPath = result.path;
+
+  if (!success) {
+    if (await handleElevatedOperation('createFolder', [path.join(currentPath, finalFolderName)], result)) {
+      success = true;
+      createdFolderPath = path.join(currentPath, finalFolderName);
+    } else if (!result.error?.includes('EACCES') && !result.error?.includes('EPERM')) {
+      await showAlert(result.error || 'Unknown error', 'Error Creating Folder', 'error');
+      return; 
+    } else {
+      return;
+    }
+  }
+
+  if (success && createdFolderPath) {
     await navigateTo(currentPath);
 
     setTimeout(() => {
@@ -4694,13 +4763,11 @@ async function createNewFolderWithInlineRename() {
       for (const item of Array.from(fileItems)) {
         const nameElement = item.querySelector('.file-name');
         if (nameElement && nameElement.textContent === finalFolderName) {
-          startInlineRename(item as HTMLElement, finalFolderName, createdFolderPath);
+          startInlineRename(item as HTMLElement, finalFolderName, createdFolderPath || '');
           break;
         }
       }
     }, 100);
-  } else {
-    await showAlert(result.error || 'Unknown error', 'Error Creating Folder', 'error');
   }
 }
 
@@ -4743,10 +4810,21 @@ function startInlineRename(fileItem: HTMLElement, currentName: string, itemPath:
     
     if (newName && newName !== currentName) {
       const result = await window.electronAPI.renameItem(itemPath, newName);
-      if (result.success) {
+      let success = result.success;
+
+      if (!success) {
+        // Construct target path for rename/move
+        const targetPath = path.join(path.dirname(itemPath), newName);
+         if (await handleElevatedOperation('move', [itemPath, targetPath], result)) {
+           success = true;
+         } else if (!result.error?.includes('EACCES') && !result.error?.includes('EPERM')) {
+            await showAlert(result.error || 'Unknown error', 'Error Renaming', 'error');
+         }
+      }
+
+      if (success) {
         await navigateTo(currentPath);
       } else {
-        await showAlert(result.error || 'Unknown error', 'Error Renaming', 'error');
         nameElement.style.display = '';
         input.remove();
         fileItem.classList.remove('renaming');

@@ -102,6 +102,7 @@ export interface ElectronAPI {
   cancelChecksumCalculation: (operationId: string) => Promise<ApiResponse>;
   onChecksumProgress: (callback: (progress: {operationId: string; percent: number; algorithm: string}) => void) => () => void;
   getGitStatus: (dirPath: string) => Promise<GitStatusResponse>;
+  runElevated: (action: 'copy' | 'move' | 'delete' | 'createFolder' | 'createFile', args: string[]) => Promise<ApiResponse>;
 }
 
 declare global {

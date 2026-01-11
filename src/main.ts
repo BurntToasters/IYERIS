@@ -27,6 +27,7 @@ import {
   CONTENT_CONTEXT_CHARS
 } from './shared/constants';
 import { TEXT_FILE_EXTENSIONS } from './shared/fileExtensions';
+import { runElevated } from './main/AdminHandler';
 
 let autoUpdaterModule: typeof import('electron-updater') | null = null;
 let sevenBinModule: { path7za: string } | null = null;
@@ -1631,6 +1632,20 @@ ipcMain.handle('create-file', async (_event: IpcMainInvokeEvent, parentPath: str
     console.log('[Create] File created:', newPath);
     return { success: true, path: newPath };
   } catch (error) {
+    return { success: false, error: getErrorMessage(error) };
+  }
+});
+
+ipcMain.handle('run-elevated', async (_event: IpcMainInvokeEvent, action: string, args: string[]): Promise<ApiResponse> => {
+  try {
+    // Basic validation
+    if (!['copy', 'move', 'delete', 'createFolder', 'createFile'].includes(action)) {
+      return { success: false, error: 'Invalid action' };
+    }
+    await runElevated(action, args);
+    return { success: true };
+  } catch (error) {
+    console.error('[Admin] Elevated task failed:', error);
     return { success: false, error: getErrorMessage(error) };
   }
 });
