@@ -2,12 +2,12 @@ import { promises as fs } from 'fs';
 import * as path from 'path';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { DRIVES_CACHE_TTL } from './shared/constants';
 
 const execAsync = promisify(exec);
 
 let cachedDrives: string[] | null = null;
 let drivesCacheTime: number = 0;
-const DRIVES_CACHE_TTL = 30000;
 
 export function getCachedDrives(): string[] | null {
   if (cachedDrives && (Date.now() - drivesCacheTime) < DRIVES_CACHE_TTL) {

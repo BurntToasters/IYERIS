@@ -2,18 +2,32 @@ import type { Settings, FileItem, ItemProperties, CustomTheme, ContentSearchResu
 import { escapeHtml, getErrorMessage } from './shared.js';
 import { createDefaultSettings } from './settings.js';
 import { ThemeManager } from './renderer/ThemeManager.js';
-import { hexToRgb, showDialog, showToast, emojiToCodepoint, twemojiImg } from './renderer/utils.js';
+import { showDialog, showToast, twemojiImg } from './renderer/utils.js';
+import {
+  THUMBNAIL_MAX_SIZE,
+  SEARCH_DEBOUNCE_MS,
+  SETTINGS_SAVE_DEBOUNCE_MS,
+  TOAST_DURATION_MS,
+  SEARCH_HISTORY_MAX,
+  DIRECTORY_HISTORY_MAX,
+  RENDER_BATCH_SIZE,
+  THUMBNAIL_ROOT_MARGIN,
+  THUMBNAIL_CACHE_MAX,
+  THUMBNAIL_CONCURRENT_LOADS,
+  MAX_RECENT_FILES,
+  FOLDER_ICON_OPTIONS
+} from './shared/constants.js';
+import {
+  IMAGE_EXTENSIONS,
+  VIDEO_EXTENSIONS,
+  AUDIO_EXTENSIONS,
+  PDF_EXTENSIONS,
+  TEXT_PREVIEW_EXTENSIONS,
+  VIDEO_MIME_TYPES,
+  AUDIO_MIME_TYPES,
+  FILE_ICON_MAP
+} from './shared/fileExtensions.js';
 
-const THUMBNAIL_MAX_SIZE = 10 * 1024 * 1024;
-const SEARCH_DEBOUNCE_MS = 300;
-const SETTINGS_SAVE_DEBOUNCE_MS = 1000;
-const TOAST_DURATION_MS = 3000;
-const SEARCH_HISTORY_MAX = 5;
-const DIRECTORY_HISTORY_MAX = 5;
-const RENDER_BATCH_SIZE = 50;
-const THUMBNAIL_ROOT_MARGIN = '100px';
-const THUMBNAIL_CACHE_MAX = 100;
-const THUMBNAIL_CONCURRENT_LOADS = 4;
 const NAME_COLLATOR = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
 
 const thumbnailCache = new Map<string, string>();
@@ -1444,17 +1458,6 @@ function hideShortcutsModal() {
   }
 }
 
-const FOLDER_ICON_OPTIONS = [
-  0x1F4C1, 0x1F4C2, 0x1F4C1, 0x1F5C2, 0x1F5C3, 0x1F4BC,
-  0x2B50, 0x1F31F, 0x2764, 0x1F499, 0x1F49A, 0x1F49B,
-  0x1F4A1, 0x1F3AE, 0x1F3B5, 0x1F3AC, 0x1F4F7, 0x1F4F9,
-  0x1F4DA, 0x1F4D6, 0x1F4DD, 0x270F, 0x1F4BB, 0x1F5A5,
-  0x1F3E0, 0x1F3E2, 0x1F6E0, 0x2699, 0x1F512, 0x1F513,
-  0x1F4E6, 0x1F4E5, 0x1F4E4, 0x1F5D1, 0x2601, 0x1F310,
-  0x1F680, 0x2708, 0x1F697, 0x1F6B2, 0x26BD, 0x1F3C0,
-  0x1F352, 0x1F34E, 0x1F33F, 0x1F333, 0x1F308, 0x2600
-];
-
 let folderIconPickerPath: string | null = null;
 
 function showFolderIconPicker(folderPath: string) {
@@ -1794,8 +1797,6 @@ async function removeBookmark(path: string) {
     showToast('Failed to remove bookmark', 'Error', 'error');
   }
 }
-
-const MAX_RECENT_FILES = 10;
 
 function loadRecentFiles() {
   const recentList = document.getElementById('recent-list');
@@ -3697,51 +3698,6 @@ function loadThumbnail(fileItem: HTMLElement, item: FileItem) {
   });
 }
 
-const FILE_ICON_MAP: Record<string, string> = {
-  'jpg': '1f5bc', 'jpeg': '1f5bc', 'png': '1f5bc', 'gif': '1f5bc', 'svg': '1f5bc', 'bmp': '1f5bc',
-  'webp': '1f5bc', 'ico': '1f5bc', 'tiff': '1f5bc', 'tif': '1f5bc', 'avif': '1f5bc', 'jfif': '1f5bc',
-  'mp4': '1f3ac', 'avi': '1f3ac', 'mov': '1f3ac', 'mkv': '1f3ac', 'webm': '1f3ac',
-  'mp3': '1f3b5', 'wav': '1f3b5', 'flac': '1f3b5', 'ogg': '1f3b5', 'm4a': '1f3b5',
-  'pdf': '1f4c4', 'doc': '1f4dd', 'docx': '1f4dd', 'txt': '1f4dd', 'rtf': '1f4dd',
-  'xls': '1f4ca', 'xlsx': '1f4ca', 'csv': '1f4ca',
-  'ppt': '1f4ca', 'pptx': '1f4ca',
-  'js': '1f4dc', 'ts': '1f4dc', 'jsx': '1f4dc', 'tsx': '1f4dc',
-  'html': '1f310', 'css': '1f3a8', 'json': '2699', 'xml': '2699',
-  'py': '1f40d', 'java': '2615', 'c': 'a9', 'cpp': 'a9', 'cs': 'a9',
-  'php': '1f418', 'rb': '1f48e', 'go': '1f439', 'rs': '1f980',
-  'zip': '1f5dc', 'rar': '1f5dc', '7z': '1f5dc', 'tar': '1f5dc', 'gz': '1f5dc',
-  'exe': '2699', 'app': '2699', 'msi': '2699', 'dmg': '2699'
-};
-
-const IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'ico', 'tiff', 'tif', 'avif', 'jfif', 'svg']);
-const VIDEO_EXTENSIONS = new Set(['mp4', 'webm', 'ogg', 'mov', 'mkv', 'avi', 'm4v']);
-const AUDIO_EXTENSIONS = new Set(['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac', 'wma', 'opus']);
-const PDF_EXTENSIONS = new Set(['pdf']);
-const TEXT_EXTENSIONS = new Set([
-  'txt', 'text', 'md', 'markdown', 'log', 'readme', 'html', 'htm', 'css', 'scss', 'sass', 'less', 'js', 'jsx', 'ts', 'tsx', 'vue', 'svelte', 'py', 'pyc', 'pyw', 'java', 'c', 'cpp', 'cc', 'cxx', 'h', 'hpp', 'cs', 'php', 'rb', 'go', 'rs', 'swift', 'kt', 'kts', 'scala', 'r', 'lua', 'perl', 'pl', 'sh', 'bash', 'zsh', 'fish', 'ps1', 'bat', 'cmd',
-  'json', 'xml', 'yml', 'yaml', 'toml', 'csv', 'tsv', 'sql',
-  'ini', 'conf', 'config', 'cfg', 'env', 'properties', 'gitignore', 'gitattributes', 'editorconfig', 'dockerfile', 'dockerignore',
-  'rst', 'tex', 'adoc', 'asciidoc', 'makefile', 'cmake', 'gradle', 'maven'
-]);
-const VIDEO_MIME_TYPES: Record<string, string> = {
-  mp4: 'video/mp4',
-  webm: 'video/webm',
-  ogg: 'video/ogg',
-  mov: 'video/quicktime',
-  mkv: 'video/x-matroska',
-  avi: 'video/x-msvideo',
-  m4v: 'video/x-m4v'
-};
-const AUDIO_MIME_TYPES: Record<string, string> = {
-  mp3: 'audio/mpeg',
-  wav: 'audio/wav',
-  ogg: 'audio/ogg',
-  flac: 'audio/flac',
-  aac: 'audio/aac',
-  m4a: 'audio/mp4',
-  wma: 'audio/x-ms-wma',
-  opus: 'audio/ogg'
-};
 const FOLDER_ICON = twemojiImg(String.fromCodePoint(0x1F4C1), 'twemoji file-icon');
 const IMAGE_ICON = twemojiImg(String.fromCodePoint(parseInt('1f5bc', 16)), 'twemoji');
 const DEFAULT_FILE_ICON = twemojiImg(String.fromCodePoint(parseInt('1f4c4', 16)), 'twemoji');
@@ -6267,7 +6223,7 @@ function updatePreview(file: FileItem) {
 
   if (IMAGE_EXTENSIONS.has(ext)) {
     showImagePreview(file, requestId);
-  } else if (TEXT_EXTENSIONS.has(ext)) {
+  } else if (TEXT_PREVIEW_EXTENSIONS.has(ext)) {
     showTextPreview(file, requestId);
   } else if (VIDEO_EXTENSIONS.has(ext)) {
     showVideoPreview(file, requestId);
@@ -6640,7 +6596,7 @@ async function showQuickLook() {
     iframe.setAttribute('frameborder', '0');
     quicklookContent.appendChild(iframe);
     quicklookInfo.textContent = `${formatFileSize(file.size)} • ${new Date(file.modified).toLocaleDateString()}`;
-  } else if (TEXT_EXTENSIONS.has(ext)) {
+  } else if (TEXT_PREVIEW_EXTENSIONS.has(ext)) {
     const result = await window.electronAPI.readFileContent(file.path, 100 * 1024);
     if (requestId !== quicklookRequestId || currentQuicklookFile?.path !== file.path) {
       return;

@@ -14,6 +14,19 @@ import { FileTaskManager } from './fileTasks';
 import { getDrives, getCachedDrives, warmupDrivesCache } from './utils';
 import { isPathSafe, isUrlSafe, getErrorMessage } from './security';
 import { createDefaultSettings } from './settings';
+import {
+  MAX_UNDO_STACK_SIZE,
+  HIDDEN_FILE_CACHE_TTL,
+  HIDDEN_FILE_CACHE_MAX,
+  SETTINGS_CACHE_TTL_MS,
+  ZOOM_MIN,
+  ZOOM_MAX,
+  MAX_TEXT_PREVIEW_BYTES,
+  MAX_DATA_URL_BYTES,
+  CONTENT_SEARCH_MAX_FILE_SIZE,
+  CONTENT_CONTEXT_CHARS
+} from './shared/constants';
+import { TEXT_FILE_EXTENSIONS } from './shared/fileExtensions';
 
 let autoUpdaterModule: typeof import('electron-updater') | null = null;
 let sevenBinModule: { path7za: string } | null = null;
@@ -40,14 +53,6 @@ function get7zipModule() {
   return sevenZipModule;
 }
 
-const MAX_UNDO_STACK_SIZE = 50;
-const HIDDEN_FILE_CACHE_TTL = 300000;
-const HIDDEN_FILE_CACHE_MAX = 5000;
-const SETTINGS_CACHE_TTL_MS = 5000;
-const ZOOM_MIN = 0.5;
-const ZOOM_MAX = 2.0;
-const MAX_TEXT_PREVIEW_BYTES = 1024 * 1024;
-const MAX_DATA_URL_BYTES = 10 * 1024 * 1024;
 
 const CPU_COUNT = Math.max(1, os.cpus().length);
 const TOTAL_MEM_GB = os.totalmem() / (1024 ** 3);
@@ -1950,18 +1955,6 @@ ipcMain.handle('search-files', async (_event: IpcMainInvokeEvent, dirPath: strin
     return { success: false, error: message };
   }
 });
-
-const TEXT_FILE_EXTENSIONS = new Set([
-  'txt', 'md', 'markdown', 'js', 'jsx', 'ts', 'tsx', 'json',
-  'xml', 'html', 'htm', 'css', 'scss', 'less', 'py', 'rb',
-  'java', 'c', 'cpp', 'h', 'hpp', 'cs', 'go', 'rs', 'swift',
-  'yaml', 'yml', 'toml', 'ini', 'cfg', 'conf', 'sh', 'bash',
-  'ps1', 'bat', 'cmd', 'sql', 'log', 'csv', 'env', 'gitignore',
-  'vue', 'svelte', 'php', 'pl', 'r', 'lua', 'kt', 'kts', 'scala'
-]);
-
-const CONTENT_SEARCH_MAX_FILE_SIZE = 1024 * 1024;
-const CONTENT_CONTEXT_CHARS = 60;
 
 interface ContentSearchResult {
   name: string;

@@ -6,6 +6,13 @@ import { createHash } from 'crypto';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import * as readline from 'readline';
+import {
+  CONTENT_SEARCH_MAX_FILE_SIZE,
+  CONTENT_CONTEXT_CHARS,
+  HIDDEN_FILE_CACHE_TTL,
+  HIDDEN_FILE_CACHE_MAX
+} from '../shared/constants';
+import { TEXT_FILE_EXTENSIONS } from '../shared/fileExtensions';
 
 type TaskType = 'build-index' | 'search-files' | 'search-content' | 'search-content-list' | 'search-content-index' | 'search-index' | 'folder-size' | 'checksum' | 'load-index' | 'save-index' | 'list-directory';
 
@@ -18,20 +25,6 @@ interface TaskRequest {
 
 const execFileAsync = promisify(execFile);
 const cancelled = new Set<string>();
-
-const TEXT_FILE_EXTENSIONS = new Set([
-  'txt', 'md', 'markdown', 'js', 'jsx', 'ts', 'tsx', 'json',
-  'xml', 'html', 'htm', 'css', 'scss', 'less', 'py', 'rb',
-  'java', 'c', 'cpp', 'h', 'hpp', 'cs', 'go', 'rs', 'swift',
-  'yaml', 'yml', 'toml', 'ini', 'cfg', 'conf', 'sh', 'bash',
-  'ps1', 'bat', 'cmd', 'sql', 'log', 'csv', 'env', 'gitignore',
-  'vue', 'svelte', 'php', 'pl', 'r', 'lua', 'kt', 'kts', 'scala'
-]);
-
-const CONTENT_SEARCH_MAX_FILE_SIZE = 1024 * 1024;
-const CONTENT_CONTEXT_CHARS = 60;
-const HIDDEN_ATTR_CACHE_TTL_MS = 5 * 60 * 1000;
-const HIDDEN_ATTR_CACHE_MAX = 5000;
 
 const hiddenAttrCache = new Map<string, { isHidden: boolean; timestamp: number }>();
 
@@ -51,7 +44,7 @@ function sendProgress(task: TaskType, operationId: string, data: any): void {
 function getHiddenCache(filePath: string): boolean | null {
   const cached = hiddenAttrCache.get(filePath);
   if (!cached) return null;
-  if (Date.now() - cached.timestamp > HIDDEN_ATTR_CACHE_TTL_MS) {
+  if (Date.now() - cached.timestamp > HIDDEN_FILE_CACHE_TTL) {
     hiddenAttrCache.delete(filePath);
     return null;
   }
@@ -59,7 +52,7 @@ function getHiddenCache(filePath: string): boolean | null {
 }
 
 function setHiddenCache(filePath: string, isHidden: boolean): void {
-  if (hiddenAttrCache.size >= HIDDEN_ATTR_CACHE_MAX) {
+  if (hiddenAttrCache.size >= HIDDEN_FILE_CACHE_MAX) {
     const oldestKey = hiddenAttrCache.keys().next().value;
     if (oldestKey) {
       hiddenAttrCache.delete(oldestKey);
