@@ -11,7 +11,7 @@
         "licenseUrl": "https://github.com/webpack/schema-utils/raw/master/LICENSE",
         "parents": "iyeris"
     },
-    "@electron/asar@3.2.18": {
+    "@electron/asar@3.4.1": {
         "licenses": "MIT",
         "repository": "https://github.com/electron/asar",
         "licenseUrl": "https://github.com/electron/asar/raw/master/LICENSE.md",
@@ -29,12 +29,6 @@
         "licenseUrl": "https://github.com/electron/get/raw/master/LICENSE",
         "parents": "iyeris"
     },
-    "@electron/node-gyp@10.2.0-electron.1": {
-        "licenses": "MIT",
-        "repository": "https://github.com/nodejs/node-gyp",
-        "licenseUrl": "https://github.com/nodejs/node-gyp/raw/master/LICENSE",
-        "parents": "iyeris"
-    },
     "@electron/notarize@2.5.0": {
         "licenses": "MIT",
         "repository": "https://github.com/electron/notarize",
@@ -47,19 +41,19 @@
         "licenseUrl": "https://github.com/electron/notarize/raw/master/LICENSE",
         "parents": "iyeris"
     },
-    "@electron/osx-sign@1.3.1": {
+    "@electron/osx-sign@1.3.3": {
         "licenses": "BSD-2-Clause",
         "repository": "https://github.com/electron/osx-sign",
         "licenseUrl": "https://github.com/electron/osx-sign/raw/master/LICENSE",
         "parents": "iyeris"
     },
-    "@electron/rebuild@3.7.0": {
+    "@electron/rebuild@4.0.1": {
         "licenses": "MIT",
         "repository": "https://github.com/electron/rebuild",
         "licenseUrl": "https://github.com/electron/rebuild/raw/master/LICENSE",
         "parents": "iyeris"
     },
-    "@electron/universal@2.0.1": {
+    "@electron/universal@2.0.3": {
         "licenses": "MIT",
         "repository": "https://github.com/electron/universal",
         "licenseUrl": "https://github.com/electron/universal/raw/master/LICENSE",
@@ -75,12 +69,6 @@
         "licenses": "MIT",
         "repository": "https://github.com/evanw/esbuild",
         "licenseUrl": "https://github.com/evanw/esbuild",
-        "parents": "iyeris"
-    },
-    "@gar/promisify@1.1.3": {
-        "licenses": "MIT",
-        "repository": "https://github.com/wraithgar/gar-promisify",
-        "licenseUrl": "https://github.com/wraithgar/gar-promisify/raw/master/LICENSE.md",
         "parents": "iyeris"
     },
     "@highlightjs/cdn-assets@11.11.1": {
@@ -105,6 +93,12 @@
         "licenseUrl": "https://github.com/yargs/cliui/raw/master/LICENSE.txt",
         "parents": "iyeris"
     },
+    "@isaacs/fs-minipass@4.0.1": {
+        "licenses": "ISC",
+        "repository": "https://github.com/npm/fs-minipass",
+        "licenseUrl": "https://github.com/npm/fs-minipass/raw/master/LICENSE",
+        "parents": "iyeris"
+    },
     "@jridgewell/sourcemap-codec@1.5.5": {
         "licenses": "MIT",
         "repository": "https://github.com/jridgewell/sourcemaps",
@@ -123,16 +117,16 @@
         "licenseUrl": "https://github.com/malept/flatpak-bundler/raw/master/LICENSE",
         "parents": "iyeris"
     },
-    "@npmcli/fs@2.1.2": {
+    "@npmcli/agent@3.0.0": {
+        "licenses": "ISC",
+        "repository": "https://github.com/npm/agent",
+        "licenseUrl": "https://github.com/npm/agent",
+        "parents": "iyeris"
+    },
+    "@npmcli/fs@4.0.0": {
         "licenses": "ISC",
         "repository": "https://github.com/npm/fs",
         "licenseUrl": "https://github.com/npm/fs/raw/master/LICENSE.md",
-        "parents": "iyeris"
-    },
-    "@npmcli/move-file@2.0.1": {
-        "licenses": "MIT",
-        "repository": "https://github.com/npm/move-file",
-        "licenseUrl": "https://github.com/npm/move-file/raw/master/LICENSE.md",
         "parents": "iyeris"
     },
     "@pkgjs/parseargs@0.11.0": {
@@ -141,7 +135,7 @@
         "licenseUrl": "https://github.com/pkgjs/parseargs/raw/master/LICENSE",
         "parents": "iyeris"
     },
-    "@rollup/rollup-darwin-arm64@4.54.0": {
+    "@rollup/rollup-darwin-arm64@4.55.1": {
         "licenses": "MIT",
         "repository": "https://github.com/rollup/rollup",
         "licenseUrl": "https://github.com/rollup/rollup",
@@ -163,12 +157,6 @@
         "licenses": "MIT",
         "repository": "https://github.com/szmarczak/http-timer",
         "licenseUrl": "https://github.com/szmarczak/http-timer/raw/master/LICENSE",
-        "parents": "iyeris"
-    },
-    "@tootallnate/once@2.0.0": {
-        "licenses": "MIT",
-        "repository": "https://github.com/TooTallNate/once",
-        "licenseUrl": "https://github.com/TooTallNate/once/raw/master/LICENSE",
         "parents": "iyeris"
     },
     "@types/cacheable-request@6.0.3": {
@@ -225,13 +213,13 @@
         "licenseUrl": "https://github.com/DefinitelyTyped/DefinitelyTyped/raw/master/LICENSE",
         "parents": "iyeris"
     },
-    "@types/node@22.19.3": {
+    "@types/node@22.19.6": {
         "licenses": "MIT",
         "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped",
         "licenseUrl": "https://github.com/DefinitelyTyped/DefinitelyTyped/raw/master/LICENSE",
         "parents": "electron:iyeris"
     },
-    "@types/node@25.0.3": {
+    "@types/node@25.0.8": {
         "licenses": "MIT",
         "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped",
         "licenseUrl": "https://github.com/DefinitelyTyped/DefinitelyTyped/raw/master/LICENSE",
@@ -261,43 +249,43 @@
         "licenseUrl": "https://github.com/DefinitelyTyped/DefinitelyTyped/raw/master/LICENSE",
         "parents": "iyeris"
     },
-    "@vitest/expect@4.0.16": {
+    "@vitest/expect@4.0.17": {
         "licenses": "MIT",
         "repository": "https://github.com/vitest-dev/vitest",
         "licenseUrl": "https://github.com/vitest-dev/vitest/raw/master/LICENSE",
         "parents": "iyeris"
     },
-    "@vitest/mocker@4.0.16": {
+    "@vitest/mocker@4.0.17": {
         "licenses": "MIT",
         "repository": "https://github.com/vitest-dev/vitest",
         "licenseUrl": "https://github.com/vitest-dev/vitest/raw/master/LICENSE",
         "parents": "iyeris"
     },
-    "@vitest/pretty-format@4.0.16": {
+    "@vitest/pretty-format@4.0.17": {
         "licenses": "MIT",
         "repository": "https://github.com/vitest-dev/vitest",
         "licenseUrl": "https://github.com/vitest-dev/vitest/raw/master/LICENSE",
         "parents": "iyeris"
     },
-    "@vitest/runner@4.0.16": {
+    "@vitest/runner@4.0.17": {
         "licenses": "MIT",
         "repository": "https://github.com/vitest-dev/vitest",
         "licenseUrl": "https://github.com/vitest-dev/vitest/raw/master/LICENSE",
         "parents": "iyeris"
     },
-    "@vitest/snapshot@4.0.16": {
+    "@vitest/snapshot@4.0.17": {
         "licenses": "MIT",
         "repository": "https://github.com/vitest-dev/vitest",
         "licenseUrl": "https://github.com/vitest-dev/vitest/raw/master/LICENSE",
         "parents": "iyeris"
     },
-    "@vitest/spy@4.0.16": {
+    "@vitest/spy@4.0.17": {
         "licenses": "MIT",
         "repository": "https://github.com/vitest-dev/vitest",
         "licenseUrl": "https://github.com/vitest-dev/vitest/raw/master/LICENSE",
         "parents": "iyeris"
     },
-    "@vitest/utils@4.0.16": {
+    "@vitest/utils@4.0.17": {
         "licenses": "MIT",
         "repository": "https://github.com/vitest-dev/vitest",
         "licenseUrl": "https://github.com/vitest-dev/vitest/raw/master/LICENSE",
@@ -309,34 +297,16 @@
         "licenseUrl": "https://github.com/xmldom/xmldom/raw/master/LICENSE",
         "parents": "iyeris"
     },
-    "abbrev@1.1.1": {
+    "abbrev@3.0.1": {
         "licenses": "ISC",
-        "repository": "http://github.com/isaacs/abbrev-js",
-        "licenseUrl": "http://github.com/isaacs/abbrev-js/raw/master/LICENSE",
+        "repository": "https://github.com/npm/abbrev-js",
+        "licenseUrl": "https://github.com/npm/abbrev-js/raw/master/LICENSE",
         "parents": "iyeris"
-    },
-    "agent-base@6.0.2": {
-        "licenses": "MIT",
-        "repository": "https://github.com/TooTallNate/node-agent-base",
-        "licenseUrl": "https://github.com/TooTallNate/node-agent-base",
-        "parents": "make-fetch-happen:iyeris"
     },
     "agent-base@7.1.4": {
         "licenses": "MIT",
         "repository": "https://github.com/TooTallNate/proxy-agents",
         "licenseUrl": "https://github.com/TooTallNate/proxy-agents/raw/master/LICENSE",
-        "parents": "iyeris"
-    },
-    "agentkeepalive@4.6.0": {
-        "licenses": "MIT",
-        "repository": "https://github.com/node-modules/agentkeepalive",
-        "licenseUrl": "https://github.com/node-modules/agentkeepalive/raw/master/LICENSE",
-        "parents": "iyeris"
-    },
-    "aggregate-error@3.1.0": {
-        "licenses": "MIT",
-        "repository": "https://github.com/sindresorhus/aggregate-error",
-        "licenseUrl": "https://github.com/sindresorhus/aggregate-error/raw/master/license",
         "parents": "iyeris"
     },
     "ajv-keywords@3.5.2": {
@@ -381,7 +351,7 @@
         "licenseUrl": "https://github.com/develar/app-builder/raw/master/LICENSE",
         "parents": "iyeris"
     },
-    "app-builder-lib@26.0.12": {
+    "app-builder-lib@26.4.0": {
         "licenses": "MIT",
         "repository": "https://github.com/electron-userland/electron-builder",
         "licenseUrl": "https://github.com/electron-userland/electron-builder",
@@ -469,7 +439,7 @@
         "licenses": "MIT",
         "repository": "https://github.com/juliangruber/brace-expansion",
         "licenseUrl": "https://github.com/juliangruber/brace-expansion/raw/master/LICENSE",
-        "parents": "@electron/node-gyp:iyeris"
+        "parents": "cacache:iyeris"
     },
     "buffer-crc32@0.2.13": {
         "licenses": "MIT",
@@ -489,19 +459,19 @@
         "licenseUrl": "https://github.com/feross/buffer/raw/master/LICENSE",
         "parents": "iyeris"
     },
-    "builder-util-runtime@9.3.1": {
+    "builder-util-runtime@9.5.1": {
         "licenses": "MIT",
         "repository": "https://github.com/electron-userland/electron-builder",
         "licenseUrl": "https://github.com/electron-userland/electron-builder/raw/master/LICENSE",
         "parents": "iyeris"
     },
-    "builder-util@26.0.11": {
+    "builder-util@26.3.4": {
         "licenses": "MIT",
         "repository": "https://github.com/electron-userland/electron-builder",
         "licenseUrl": "https://github.com/electron-userland/electron-builder/raw/master/LICENSE",
         "parents": "iyeris"
     },
-    "cacache@16.1.3": {
+    "cacache@19.0.1": {
         "licenses": "ISC",
         "repository": "https://github.com/npm/cacache",
         "licenseUrl": "https://github.com/npm/cacache/raw/master/LICENSE.md",
@@ -543,22 +513,22 @@
         "licenseUrl": "https://github.com/isaacs/chownr/raw/master/LICENSE",
         "parents": "iyeris"
     },
+    "chownr@3.0.0": {
+        "licenses": "BlueOak-1.0.0",
+        "repository": "https://github.com/isaacs/chownr",
+        "licenseUrl": "https://github.com/isaacs/chownr/raw/master/LICENSE.md",
+        "parents": "cacache:iyeris"
+    },
     "chromium-pickle-js@0.2.0": {
         "licenses": "MIT",
         "repository": "https://github.com/electron/node-chromium-pickle-js",
         "licenseUrl": "https://github.com/electron/node-chromium-pickle-js",
         "parents": "iyeris"
     },
-    "ci-info@3.9.0": {
+    "ci-info@4.3.1": {
         "licenses": "MIT",
-        "repository": "https://github.com/watson/ci-info",
-        "licenseUrl": "https://github.com/watson/ci-info/raw/master/LICENSE",
-        "parents": "iyeris"
-    },
-    "clean-stack@2.2.0": {
-        "licenses": "MIT",
-        "repository": "https://github.com/sindresorhus/clean-stack",
-        "licenseUrl": "https://github.com/sindresorhus/clean-stack/raw/master/license",
+        "repository": "github:watson/ci-info",
+        "licenseUrl": "github:watson/ci-info",
         "parents": "iyeris"
     },
     "cli-cursor@3.1.0": {
@@ -637,12 +607,6 @@
         "licenses": "MIT",
         "repository": "https://github.com/substack/node-concat-map",
         "licenseUrl": "https://github.com/substack/node-concat-map/raw/master/LICENSE",
-        "parents": "iyeris"
-    },
-    "config-file-ts@0.2.8-rc1": {
-        "licenses": "MIT",
-        "repository": "https://github.com/mighdoll/config-file-ts",
-        "licenseUrl": "https://github.com/mighdoll/config-file-ts/raw/master/LICENSE",
         "parents": "iyeris"
     },
     "core-util-is@1.0.2": {
@@ -735,7 +699,7 @@
         "licenseUrl": "https://github.com/gliviu/dir-compare/raw/master/LICENSE",
         "parents": "iyeris"
     },
-    "dmg-builder@26.0.12": {
+    "dmg-builder@26.4.0": {
         "licenses": "MIT",
         "repository": "https://github.com/electron-userland/electron-builder",
         "licenseUrl": "https://github.com/electron-userland/electron-builder",
@@ -789,25 +753,25 @@
         "licenseUrl": "https://github.com/mde/ejs/raw/master/LICENSE",
         "parents": "iyeris"
     },
-    "electron-builder-squirrel-windows@26.0.12": {
+    "electron-builder-squirrel-windows@26.4.0": {
         "licenses": "MIT",
         "repository": "https://github.com/electron-userland/electron-builder",
         "licenseUrl": "https://github.com/electron-userland/electron-builder/raw/master/LICENSE",
         "parents": "iyeris"
     },
-    "electron-builder@26.0.12": {
+    "electron-builder@26.4.0": {
         "licenses": "MIT",
         "repository": "https://github.com/electron-userland/electron-builder",
         "licenseUrl": "https://github.com/electron-userland/electron-builder/raw/master/LICENSE",
         "parents": "iyeris"
     },
-    "electron-publish@26.0.11": {
+    "electron-publish@26.3.4": {
         "licenses": "MIT",
         "repository": "https://github.com/electron-userland/electron-builder",
         "licenseUrl": "https://github.com/electron-userland/electron-builder/raw/master/LICENSE",
         "parents": "iyeris"
     },
-    "electron-updater@6.6.2": {
+    "electron-updater@6.7.3": {
         "licenses": "MIT",
         "repository": "https://github.com/electron-userland/electron-builder",
         "licenseUrl": "https://github.com/electron-userland/electron-builder/raw/master/LICENSE",
@@ -1021,6 +985,12 @@
         "licenses": "ISC",
         "repository": "https://github.com/npm/fs-minipass",
         "licenseUrl": "https://github.com/npm/fs-minipass/raw/master/LICENSE",
+        "parents": "tar:iyeris"
+    },
+    "fs-minipass@3.0.3": {
+        "licenses": "ISC",
+        "repository": "https://github.com/npm/fs-minipass",
+        "licenseUrl": "https://github.com/npm/fs-minipass/raw/master/LICENSE",
         "parents": "iyeris"
     },
     "fs.realpath@1.0.0": {
@@ -1069,19 +1039,13 @@
         "licenses": "ISC",
         "repository": "https://github.com/isaacs/node-glob",
         "licenseUrl": "https://github.com/isaacs/node-glob/raw/master/LICENSE",
-        "parents": "config-file-ts:iyeris"
+        "parents": "cacache:iyeris"
     },
     "glob@7.2.3": {
         "licenses": "ISC",
         "repository": "https://github.com/isaacs/node-glob",
         "licenseUrl": "https://github.com/isaacs/node-glob/raw/master/LICENSE",
         "parents": "iyeris"
-    },
-    "glob@8.1.0": {
-        "licenses": "ISC",
-        "repository": "https://github.com/isaacs/node-glob",
-        "licenseUrl": "https://github.com/isaacs/node-glob/raw/master/LICENSE",
-        "parents": "@electron/node-gyp:iyeris"
     },
     "global-agent@3.0.0": {
         "licenses": "BSD-3-Clause",
@@ -1143,12 +1107,6 @@
         "licenseUrl": "https://github.com/inspect-js/hasOwn/raw/master/LICENSE",
         "parents": "iyeris"
     },
-    "highlight.js@11.11.1": {
-        "licenses": "BSD-3-Clause",
-        "repository": "https://github.com/highlightjs/highlight.js",
-        "licenseUrl": "https://github.com/highlightjs/highlight.js/raw/master/LICENSE",
-        "parents": "iyeris"
-    },
     "hosted-git-info@4.1.0": {
         "licenses": "ISC",
         "repository": "https://github.com/npm/hosted-git-info",
@@ -1160,12 +1118,6 @@
         "repository": "https://github.com/kornelski/http-cache-semantics",
         "licenseUrl": "https://github.com/kornelski/http-cache-semantics/raw/master/LICENSE",
         "parents": "iyeris"
-    },
-    "http-proxy-agent@5.0.0": {
-        "licenses": "MIT",
-        "repository": "https://github.com/TooTallNate/node-http-proxy-agent",
-        "licenseUrl": "https://github.com/TooTallNate/node-http-proxy-agent",
-        "parents": "make-fetch-happen:iyeris"
     },
     "http-proxy-agent@7.0.2": {
         "licenses": "MIT",
@@ -1179,22 +1131,10 @@
         "licenseUrl": "https://github.com/szmarczak/http2-wrapper/raw/master/LICENSE",
         "parents": "iyeris"
     },
-    "https-proxy-agent@5.0.1": {
-        "licenses": "MIT",
-        "repository": "https://github.com/TooTallNate/node-https-proxy-agent",
-        "licenseUrl": "https://github.com/TooTallNate/node-https-proxy-agent",
-        "parents": "make-fetch-happen:iyeris"
-    },
     "https-proxy-agent@7.0.6": {
         "licenses": "MIT",
         "repository": "https://github.com/TooTallNate/proxy-agents",
         "licenseUrl": "https://github.com/TooTallNate/proxy-agents/raw/master/LICENSE",
-        "parents": "iyeris"
-    },
-    "humanize-ms@1.2.1": {
-        "licenses": "MIT",
-        "repository": "https://github.com/node-modules/humanize-ms",
-        "licenseUrl": "https://github.com/node-modules/humanize-ms/raw/master/LICENSE",
         "parents": "iyeris"
     },
     "iconv-corefoundation@1.1.7": {
@@ -1221,18 +1161,6 @@
         "licenseUrl": "https://github.com/jensyt/imurmurhash-js",
         "parents": "iyeris"
     },
-    "indent-string@4.0.0": {
-        "licenses": "MIT",
-        "repository": "https://github.com/sindresorhus/indent-string",
-        "licenseUrl": "https://github.com/sindresorhus/indent-string/raw/master/license",
-        "parents": "iyeris"
-    },
-    "infer-owner@1.0.4": {
-        "licenses": "ISC",
-        "repository": "https://github.com/npm/infer-owner",
-        "licenseUrl": "https://github.com/npm/infer-owner/raw/master/LICENSE",
-        "parents": "iyeris"
-    },
     "inflight@1.0.6": {
         "licenses": "ISC",
         "repository": "https://github.com/npm/inflight",
@@ -1251,12 +1179,6 @@
         "licenseUrl": "https://github.com/beaugunderson/ip-address/raw/master/LICENSE",
         "parents": "iyeris"
     },
-    "is-ci@3.0.1": {
-        "licenses": "MIT",
-        "repository": "https://github.com/watson/is-ci",
-        "licenseUrl": "https://github.com/watson/is-ci/raw/master/LICENSE",
-        "parents": "iyeris"
-    },
     "is-fullwidth-code-point@3.0.0": {
         "licenses": "MIT",
         "repository": "https://github.com/sindresorhus/is-fullwidth-code-point",
@@ -1267,12 +1189,6 @@
         "licenses": "MIT",
         "repository": "https://github.com/sindresorhus/is-interactive",
         "licenseUrl": "https://github.com/sindresorhus/is-interactive/raw/master/license",
-        "parents": "iyeris"
-    },
-    "is-lambda@1.0.1": {
-        "licenses": "MIT",
-        "repository": "https://github.com/watson/is-lambda",
-        "licenseUrl": "https://github.com/watson/is-lambda/raw/master/LICENSE",
         "parents": "iyeris"
     },
     "is-unicode-supported@0.1.0": {
@@ -1299,7 +1215,13 @@
         "licenseUrl": "https://github.com/isaacs/isexe/raw/master/LICENSE",
         "parents": "iyeris"
     },
-    "iyeris@0.9.0-beta.6": {
+    "isexe@3.1.1": {
+        "licenses": "ISC",
+        "repository": "https://github.com/isaacs/isexe",
+        "licenseUrl": "https://github.com/isaacs/isexe/raw/master/LICENSE",
+        "parents": "node-gyp:iyeris"
+    },
+    "iyeris@0.9.1": {
         "licenses": "MPL-2.0",
         "repository": "https://github.com/BurntToasters/IYERIS",
         "licenseUrl": "https://github.com/BurntToasters/IYERIS/raw/master/LICENSE",
@@ -1315,6 +1237,12 @@
         "licenses": "Apache-2.0",
         "repository": "https://github.com/jakejs/jake",
         "licenseUrl": "https://github.com/jakejs/jake",
+        "parents": "iyeris"
+    },
+    "jiti@2.6.1": {
+        "licenses": "MIT",
+        "repository": "https://github.com/unjs/jiti",
+        "licenseUrl": "https://github.com/unjs/jiti/raw/master/LICENSE",
         "parents": "iyeris"
     },
     "js-yaml@4.1.1": {
@@ -1435,7 +1363,7 @@
         "licenses": "ISC",
         "repository": "https://github.com/isaacs/node-lru-cache",
         "licenseUrl": "https://github.com/isaacs/node-lru-cache/raw/master/LICENSE",
-        "parents": "path-scurry:iyeris"
+        "parents": "@npmcli/agent:iyeris"
     },
     "lru-cache@6.0.0": {
         "licenses": "ISC",
@@ -1443,19 +1371,13 @@
         "licenseUrl": "https://github.com/isaacs/node-lru-cache/raw/master/LICENSE",
         "parents": "iyeris"
     },
-    "lru-cache@7.18.3": {
-        "licenses": "ISC",
-        "repository": "https://github.com/isaacs/node-lru-cache",
-        "licenseUrl": "https://github.com/isaacs/node-lru-cache/raw/master/LICENSE",
-        "parents": "cacache:iyeris"
-    },
     "magic-string@0.30.21": {
         "licenses": "MIT",
         "repository": "https://github.com/Rich-Harris/magic-string",
         "licenseUrl": "https://github.com/Rich-Harris/magic-string/raw/master/LICENSE",
         "parents": "iyeris"
     },
-    "make-fetch-happen@10.2.1": {
+    "make-fetch-happen@14.0.3": {
         "licenses": "ISC",
         "repository": "https://github.com/npm/make-fetch-happen",
         "licenseUrl": "https://github.com/npm/make-fetch-happen/raw/master/LICENSE",
@@ -1525,13 +1447,13 @@
         "licenses": "ISC",
         "repository": "https://github.com/isaacs/minimatch",
         "licenseUrl": "https://github.com/isaacs/minimatch/raw/master/LICENSE",
-        "parents": "@electron/node-gyp:iyeris"
+        "parents": "filelist:iyeris"
     },
     "minimatch@9.0.5": {
         "licenses": "ISC",
         "repository": "https://github.com/isaacs/minimatch",
         "licenseUrl": "https://github.com/isaacs/minimatch/raw/master/LICENSE",
-        "parents": "@electron/universal:iyeris"
+        "parents": "cacache:iyeris"
     },
     "minimist@1.2.8": {
         "licenses": "MIT",
@@ -1539,11 +1461,13 @@
         "licenseUrl": "https://github.com/minimistjs/minimist/raw/master/LICENSE",
         "parents": "iyeris"
     },
-    "minipass-collect@1.0.2": {
+    "minipass-collect@2.0.1": {
         "licenses": "ISC",
+        "repository": "https://github.com/isaacs/minipass-collect",
+        "licenseUrl": "https://github.com/isaacs/minipass-collect/raw/master/LICENSE",
         "parents": "iyeris"
     },
-    "minipass-fetch@2.1.2": {
+    "minipass-fetch@4.0.1": {
         "licenses": "MIT",
         "repository": "https://github.com/npm/minipass-fetch",
         "licenseUrl": "https://github.com/npm/minipass-fetch/raw/master/LICENSE",
@@ -1569,7 +1493,7 @@
         "licenses": "ISC",
         "repository": "https://github.com/isaacs/minipass",
         "licenseUrl": "https://github.com/isaacs/minipass/raw/master/LICENSE",
-        "parents": "iyeris"
+        "parents": "minipass-flush:iyeris"
     },
     "minipass@5.0.0": {
         "licenses": "ISC",
@@ -1581,9 +1505,15 @@
         "licenses": "ISC",
         "repository": "https://github.com/isaacs/minipass",
         "licenseUrl": "https://github.com/isaacs/minipass/raw/master/LICENSE",
-        "parents": "config-file-ts:iyeris"
+        "parents": "iyeris"
     },
     "minizlib@2.1.2": {
+        "licenses": "MIT",
+        "repository": "https://github.com/isaacs/minizlib",
+        "licenseUrl": "https://github.com/isaacs/minizlib/raw/master/LICENSE",
+        "parents": "tar:iyeris"
+    },
+    "minizlib@3.1.0": {
         "licenses": "MIT",
         "repository": "https://github.com/isaacs/minizlib",
         "licenseUrl": "https://github.com/isaacs/minizlib/raw/master/LICENSE",
@@ -1613,7 +1543,7 @@
         "licenseUrl": "https://github.com/ai/nanoid/raw/master/LICENSE",
         "parents": "iyeris"
     },
-    "negotiator@0.6.4": {
+    "negotiator@1.0.0": {
         "licenses": "MIT",
         "repository": "https://github.com/jshttp/negotiator",
         "licenseUrl": "https://github.com/jshttp/negotiator/raw/master/LICENSE",
@@ -1625,7 +1555,7 @@
         "licenseUrl": "https://github.com/quentinrossetti/node-7z/raw/master/LICENSE",
         "parents": "iyeris"
     },
-    "node-abi@3.85.0": {
+    "node-abi@4.24.0": {
         "licenses": "MIT",
         "repository": "https://github.com/electron/node-abi",
         "licenseUrl": "https://github.com/electron/node-abi/raw/master/LICENSE",
@@ -1643,7 +1573,13 @@
         "licenseUrl": "https://github.com/timfish/node-api-version",
         "parents": "iyeris"
     },
-    "nopt@6.0.0": {
+    "node-gyp@11.5.0": {
+        "licenses": "MIT",
+        "repository": "https://github.com/nodejs/node-gyp",
+        "licenseUrl": "https://github.com/nodejs/node-gyp/raw/master/LICENSE",
+        "parents": "iyeris"
+    },
+    "nopt@8.1.0": {
         "licenses": "ISC",
         "repository": "https://github.com/npm/nopt",
         "licenseUrl": "https://github.com/npm/nopt/raw/master/LICENSE",
@@ -1703,7 +1639,7 @@
         "licenseUrl": "https://github.com/sindresorhus/p-limit/raw/master/license",
         "parents": "iyeris"
     },
-    "p-map@4.0.0": {
+    "p-map@7.0.4": {
         "licenses": "MIT",
         "repository": "https://github.com/sindresorhus/p-map",
         "licenseUrl": "https://github.com/sindresorhus/p-map/raw/master/license",
@@ -1781,7 +1717,7 @@
         "licenseUrl": "https://github.com/nodejs/postject/raw/master/LICENSE",
         "parents": "iyeris"
     },
-    "proc-log@2.0.1": {
+    "proc-log@5.0.0": {
         "licenses": "ISC",
         "repository": "https://github.com/npm/proc-log",
         "licenseUrl": "https://github.com/npm/proc-log/raw/master/LICENSE",
@@ -1791,12 +1727,6 @@
         "licenses": "MIT",
         "repository": "https://github.com/visionmedia/node-progress",
         "licenseUrl": "https://github.com/visionmedia/node-progress/raw/master/LICENSE",
-        "parents": "iyeris"
-    },
-    "promise-inflight@1.0.1": {
-        "licenses": "ISC",
-        "repository": "https://github.com/iarna/promise-inflight",
-        "licenseUrl": "https://github.com/iarna/promise-inflight/raw/master/LICENSE",
         "parents": "iyeris"
     },
     "promise-retry@2.0.1": {
@@ -1875,12 +1805,6 @@
         "licenses": "ISC",
         "repository": "https://github.com/isaacs/rimraf",
         "licenseUrl": "https://github.com/isaacs/rimraf/raw/master/LICENSE",
-        "parents": "temp:iyeris"
-    },
-    "rimraf@3.0.2": {
-        "licenses": "ISC",
-        "repository": "https://github.com/isaacs/rimraf",
-        "licenseUrl": "https://github.com/isaacs/rimraf/raw/master/LICENSE",
         "parents": "iyeris"
     },
     "roarr@2.15.4": {
@@ -1889,7 +1813,7 @@
         "licenseUrl": "https://github.com/gajus/roarr/raw/master/LICENSE",
         "parents": "iyeris"
     },
-    "rollup@4.54.0": {
+    "rollup@4.55.1": {
         "licenses": "MIT",
         "repository": "https://github.com/rollup/rollup",
         "licenseUrl": "https://github.com/rollup/rollup/raw/master/LICENSE.md",
@@ -1913,7 +1837,7 @@
         "licenseUrl": "https://github.com/parshap/node-sanitize-filename/raw/master/LICENSE.md",
         "parents": "iyeris"
     },
-    "sax@1.4.3": {
+    "sax@1.4.4": {
         "licenses": "BlueOak-1.0.0",
         "repository": "https://github.com/isaacs/sax-js",
         "licenseUrl": "https://github.com/isaacs/sax-js/raw/master/LICENSE.md",
@@ -1997,10 +1921,10 @@
         "licenseUrl": "https://github.com/JoshGlazebrook/smart-buffer/raw/master/LICENSE",
         "parents": "iyeris"
     },
-    "socks-proxy-agent@7.0.0": {
+    "socks-proxy-agent@8.0.5": {
         "licenses": "MIT",
-        "repository": "https://github.com/TooTallNate/node-socks-proxy-agent",
-        "licenseUrl": "https://github.com/TooTallNate/node-socks-proxy-agent",
+        "repository": "https://github.com/TooTallNate/proxy-agents",
+        "licenseUrl": "https://github.com/TooTallNate/proxy-agents/raw/master/LICENSE",
         "parents": "iyeris"
     },
     "socks@2.8.7": {
@@ -2033,7 +1957,7 @@
         "licenseUrl": "https://github.com/alexei/sprintf.js/raw/master/LICENSE",
         "parents": "iyeris"
     },
-    "ssri@9.0.1": {
+    "ssri@12.0.0": {
         "licenses": "ISC",
         "repository": "https://github.com/npm/ssri",
         "licenseUrl": "https://github.com/npm/ssri/raw/master/LICENSE.md",
@@ -2104,6 +2028,12 @@
         "repository": "https://github.com/isaacs/node-tar",
         "licenseUrl": "https://github.com/isaacs/node-tar/raw/master/LICENSE",
         "parents": "iyeris"
+    },
+    "tar@7.5.2": {
+        "licenses": "BlueOak-1.0.0",
+        "repository": "https://github.com/isaacs/node-tar",
+        "licenseUrl": "https://github.com/isaacs/node-tar/raw/master/LICENSE.md",
+        "parents": "cacache:iyeris"
     },
     "temp-file@3.4.0": {
         "licenses": "MIT",
@@ -2195,13 +2125,13 @@
         "licenseUrl": "https://github.com/nodejs/undici/raw/master/LICENSE",
         "parents": "iyeris"
     },
-    "unique-filename@2.0.1": {
+    "unique-filename@4.0.0": {
         "licenses": "ISC",
         "repository": "https://github.com/npm/unique-filename",
         "licenseUrl": "https://github.com/npm/unique-filename/raw/master/LICENSE",
         "parents": "iyeris"
     },
-    "unique-slug@3.0.0": {
+    "unique-slug@5.0.0": {
         "licenses": "ISC",
         "repository": "https://github.com/npm/unique-slug",
         "licenseUrl": "https://github.com/npm/unique-slug/raw/master/LICENSE",
@@ -2243,13 +2173,13 @@
         "licenseUrl": "https://github.com/joyent/node-verror/raw/master/LICENSE",
         "parents": "iyeris"
     },
-    "vite@7.3.0": {
+    "vite@7.3.1": {
         "licenses": "MIT",
         "repository": "https://github.com/vitejs/vite",
         "licenseUrl": "https://github.com/vitejs/vite/raw/master/LICENSE.md",
         "parents": "iyeris"
     },
-    "vitest@4.0.16": {
+    "vitest@4.0.17": {
         "licenses": "MIT",
         "repository": "https://github.com/vitest-dev/vitest",
         "licenseUrl": "https://github.com/vitest-dev/vitest/raw/master/LICENSE.md",
@@ -2266,6 +2196,12 @@
         "repository": "https://github.com/isaacs/node-which",
         "licenseUrl": "https://github.com/isaacs/node-which/raw/master/LICENSE",
         "parents": "iyeris"
+    },
+    "which@5.0.0": {
+        "licenses": "ISC",
+        "repository": "https://github.com/npm/node-which",
+        "licenseUrl": "https://github.com/npm/node-which/raw/master/LICENSE",
+        "parents": "node-gyp:iyeris"
     },
     "why-is-node-running@2.3.0": {
         "licenses": "MIT",
@@ -2308,6 +2244,12 @@
         "repository": "https://github.com/isaacs/yallist",
         "licenseUrl": "https://github.com/isaacs/yallist/raw/master/LICENSE",
         "parents": "iyeris"
+    },
+    "yallist@5.0.0": {
+        "licenses": "BlueOak-1.0.0",
+        "repository": "https://github.com/isaacs/yallist",
+        "licenseUrl": "https://github.com/isaacs/yallist/raw/master/LICENSE.md",
+        "parents": "cacache:iyeris"
     },
     "yargs-parser@21.1.1": {
         "licenses": "ISC",
