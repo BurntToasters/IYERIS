@@ -113,7 +113,7 @@ export class FileIndexer {
       'msocache',
       'intel',
       'nvidia',
-      'amd'
+      'amd',
     ]);
 
     const excludeFiles = new Set([
@@ -128,16 +128,15 @@ export class FileIndexer {
       'ntuser.dat',
       'ntuser.dat.log',
       'ntuser.dat.log1',
-      'ntuser.dat.log2'
+      'ntuser.dat.log2',
     ]);
 
     const parts = filePath.split(/[/\\]/);
     const filename = parts[parts.length - 1].toLowerCase();
 
     if (excludeFiles.has(filename)) return true;
-    
-    // case-insensitive comparison
-    return parts.some(part => excludeSegments.has(part.toLowerCase()));
+
+    return parts.some((part) => excludeSegments.has(part.toLowerCase()));
   }
 
   private async scanDirectory(dirPath: string, signal?: AbortSignal): Promise<void> {
@@ -172,7 +171,7 @@ export class FileIndexer {
             isDirectory: entry.isDirectory(),
             isFile: entry.isFile(),
             size: stats.size,
-            modified: stats.mtime
+            modified: stats.mtime,
           };
 
           this.index.set(fullPath, indexEntry);
@@ -195,8 +194,7 @@ export class FileIndexer {
       try {
         await fs.access(location);
         estimate += 1000;
-      } catch {
-      }
+      } catch {}
     }
     return estimate;
   }
@@ -247,7 +245,9 @@ export class FileIndexer {
             await fs.access(location);
             console.log(`[Indexer] Scanning: ${location}`);
             await this.scanDirectory(location, this.abortController.signal);
-            console.log(`[Indexer] Finished ${location}: indexed ${this.indexedFiles - beforeCount} new files (total: ${this.indexedFiles})`);
+            console.log(
+              `[Indexer] Finished ${location}: indexed ${this.indexedFiles - beforeCount} new files (total: ${this.indexedFiles})`
+            );
           } catch (error) {
             console.log(`[Indexer] Skipping ${location}:`, (error as Error).message);
           }
@@ -303,10 +303,10 @@ export class FileIndexer {
     results.sort((a, b) => {
       const aExact = a.name.toLowerCase() === lowerQuery;
       const bExact = b.name.toLowerCase() === lowerQuery;
-      
+
       if (aExact && !bExact) return -1;
       if (!aExact && bExact) return 1;
-      
+
       return a.name.localeCompare(b.name);
     });
 
@@ -342,7 +342,7 @@ export class FileIndexer {
         const data = {
           index: entries,
           lastIndexTime: this.lastIndexTime,
-          version: 1
+          version: 1,
         };
 
         await fs.writeFile(this.indexPath, JSON.stringify(data), 'utf-8');
@@ -356,11 +356,11 @@ export class FileIndexer {
   async loadIndex(): Promise<void> {
     try {
       if (this.fileTasks) {
-        const result = await this.fileTasks.runTask<{ exists: boolean; index?: Array<[string, IndexEntry]>; lastIndexTime?: string | null }>(
-          'load-index',
-          { indexPath: this.indexPath },
-          `load-index-${Date.now()}`
-        );
+        const result = await this.fileTasks.runTask<{
+          exists: boolean;
+          index?: Array<[string, IndexEntry]>;
+          lastIndexTime?: string | null;
+        }>('load-index', { indexPath: this.indexPath }, `load-index-${Date.now()}`);
         if (!result.exists) {
           console.log('[Indexer] No existing index found, will build on first search');
           return;
@@ -411,7 +411,7 @@ export class FileIndexer {
       this.fileTasks.cancelOperation(this.buildOperationId);
       this.buildOperationId = null;
     }
-    
+
     await this.clearIndex();
     await this.buildIndex();
   }
@@ -421,14 +421,14 @@ export class FileIndexer {
       isIndexing: this.isIndexing,
       totalFiles: this.totalFiles,
       indexedFiles: this.indexedFiles,
-      lastIndexTime: this.lastIndexTime
+      lastIndexTime: this.lastIndexTime,
     };
   }
 
   setEnabled(enabled: boolean): void {
     this.enabled = enabled;
     console.log(`[Indexer] Indexer ${enabled ? 'enabled' : 'disabled'}`);
-    
+
     if (!enabled && this.abortController) {
       this.abortController.abort();
       this.abortController = null;
@@ -460,8 +460,10 @@ export class FileIndexer {
         if (this.index.size === 0) {
           console.log('[Indexer] No existing index found, building now...');
           await this.buildIndex();
-        } else if (!this.lastIndexTime ||
-                   (Date.now() - this.lastIndexTime.getTime() > 7 * 24 * 60 * 60 * 1000)) {
+        } else if (
+          !this.lastIndexTime ||
+          Date.now() - this.lastIndexTime.getTime() > 7 * 24 * 60 * 60 * 1000
+        ) {
           console.log('[Indexer] Index is outdated, rebuilding...');
           await this.buildIndex();
         } else {

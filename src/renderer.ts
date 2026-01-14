@@ -91,25 +91,33 @@ const path = {
   },
   join: (...parts: string[]): string => {
     return parts.join('/').replace(/\/+/g, '/');
-  }
+  },
 };
-
 
 function encodeFileUrl(filePath: string): string {
   const normalizedPath = filePath.replace(/\\/g, '/');
   if (/^[A-Za-z]:/.test(normalizedPath)) {
     const drive = normalizedPath.slice(0, 2);
     const rest = normalizedPath.slice(2);
-    const encodedRest = rest.split('/').map(segment => encodeURIComponent(segment)).join('/');
+    const encodedRest = rest
+      .split('/')
+      .map((segment) => encodeURIComponent(segment))
+      .join('/');
     const normalizedRest = encodedRest.startsWith('/') ? encodedRest : `/${encodedRest}`;
     return `file:///${drive}${normalizedRest}`;
   }
   if (normalizedPath.startsWith('//')) {
     const uncPath = normalizedPath.slice(2);
-    const encoded = uncPath.split('/').map(segment => encodeURIComponent(segment)).join('/');
+    const encoded = uncPath
+      .split('/')
+      .map((segment) => encodeURIComponent(segment))
+      .join('/');
     return `file://${encoded}`;
   }
-  const encoded = normalizedPath.split('/').map(segment => encodeURIComponent(segment)).join('/');
+  const encoded = normalizedPath
+    .split('/')
+    .map((segment) => encodeURIComponent(segment))
+    .join('/');
   return `file:///${encoded}`;
 }
 
@@ -119,15 +127,15 @@ function emojiToCodepoint(emoji: string): string {
   while (i < emoji.length) {
     const code = emoji.codePointAt(i);
     if (code !== undefined) {
-      if (code !== 0xFE0F) {
+      if (code !== 0xfe0f) {
         codePoints.push(code);
       }
-      i += code > 0xFFFF ? 2 : 1;
+      i += code > 0xffff ? 2 : 1;
     } else {
       i++;
     }
   }
-  return codePoints.map(cp => cp.toString(16)).join('-');
+  return codePoints.map((cp) => cp.toString(16)).join('-');
 }
 
 function twemojiImg(emoji: string, className: string = 'twemoji', alt?: string): string {
@@ -136,7 +144,6 @@ function twemojiImg(emoji: string, className: string = 'twemoji', alt?: string):
   const altText = escapeHtml(alt || emoji);
   return `<img src="${src}" class="${className}" alt="${altText}" draggable="false" />`;
 }
-
 
 // Debounced settings save for non-critical updates (history, recent files, etc.)
 let settingsSaveTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -202,7 +209,7 @@ const ipcCleanupFunctions: (() => void)[] = [];
 let archiveOperationsPanelListenerInitialized = false;
 function initArchiveOperationsPanelListener(): void {
   if (archiveOperationsPanelListenerInitialized) return;
-  
+
   const list = document.getElementById('archive-operations-list');
   if (list) {
     list.addEventListener('click', (e) => {
@@ -244,9 +251,9 @@ function addOperation(id: string, type: 'compress' | 'extract', name: string) {
     current: 0,
     total: 0,
     currentFile: 'Preparing...',
-    aborted: false
+    aborted: false,
   };
-  
+
   activeOperations.set(id, operation);
   renderOperations();
   showOperationsPanel();
@@ -297,21 +304,20 @@ function renderOperations() {
   if (!list) return;
 
   initArchiveOperationsPanelListener();
-  
+
   list.innerHTML = '';
-  
+
   for (const [id, operation] of activeOperations) {
     const item = document.createElement('div');
     item.className = 'archive-operation-item';
-    
+
     const icon = operation.type === 'compress' ? '1f5dc' : '1f4e6';
     const iconEmoji = operation.type === 'compress' ? '🗜️' : '📦';
     const title = operation.type === 'compress' ? 'Compressing' : 'Extracting';
-    
-    const percent = operation.total > 0 
-      ? Math.round((operation.current / operation.total) * 100) 
-      : 0;
-    
+
+    const percent =
+      operation.total > 0 ? Math.round((operation.current / operation.total) * 100) : 0;
+
     item.innerHTML = `
       <div class="archive-operation-header">
         <div class="archive-operation-title">
@@ -326,8 +332,7 @@ function renderOperations() {
         <div class="archive-progress-bar" style="width: ${percent}%"></div>
       </div>
     `;
-    
-    
+
     list.appendChild(item);
   }
 }
@@ -337,21 +342,26 @@ function parsePath(filePath: string): { segments: string[]; isWindows: boolean; 
   const isUnc = filePath.startsWith('\\\\');
   const isWindows = isUnc || /^[A-Za-z]:/.test(filePath);
   const normalizedPath = filePath.replace(/\\/g, '/');
-  const segments = normalizedPath.split('/').filter(s => s.length > 0);
+  const segments = normalizedPath.split('/').filter((s) => s.length > 0);
   if (isWindows && !isUnc && segments.length > 0) {
     if (!segments[0].includes(':')) {
       segments[0] = segments[0] + ':';
     }
   }
-  
+
   return { segments, isWindows, isUnc };
 }
 
-function buildPathFromSegments(segments: string[], index: number, isWindows: boolean, isUnc: boolean): string {
+function buildPathFromSegments(
+  segments: string[],
+  index: number,
+  isWindows: boolean,
+  isUnc: boolean
+): string {
   if (index < 0) return '';
-  
+
   const pathSegments = segments.slice(0, index + 1);
-  
+
   if (isWindows) {
     if (isUnc) {
       if (pathSegments.length <= 2) {
@@ -372,43 +382,43 @@ function updateBreadcrumb(currentPath: string): void {
   if (!breadcrumbContainer) {
     breadcrumbContainer = document.getElementById('breadcrumb-container');
   }
-  
+
   if (!breadcrumbContainer || !addressInput) return;
-  
+
   if (!isBreadcrumbMode || !currentPath) {
     breadcrumbContainer.style.display = 'none';
     addressInput.style.display = 'block';
     addressInput.value = currentPath || '';
     return;
   }
-  
+
   const { segments, isWindows, isUnc } = parsePath(currentPath);
-  
+
   if (segments.length === 0) {
     breadcrumbContainer.style.display = 'none';
     addressInput.style.display = 'block';
     addressInput.value = currentPath;
     return;
   }
-  
+
   breadcrumbContainer.style.display = 'inline-flex';
   addressInput.style.display = 'none';
   breadcrumbContainer.innerHTML = '';
-  
+
   const container = breadcrumbContainer;
-  
+
   segments.forEach((segment, index) => {
     const item = document.createElement('span');
     item.className = 'breadcrumb-item';
     item.textContent = segment;
     item.title = buildPathFromSegments(segments, index, isWindows, isUnc);
-    
+
     item.addEventListener('click', (e) => {
       e.stopPropagation();
       const targetPath = buildPathFromSegments(segments, index, isWindows, isUnc);
       navigateTo(targetPath);
     });
-    
+
     container.appendChild(item);
 
     if (index < segments.length - 1) {
@@ -422,11 +432,11 @@ function updateBreadcrumb(currentPath: string): void {
 
 function toggleBreadcrumbMode(): void {
   isBreadcrumbMode = !isBreadcrumbMode;
-  
+
   if (!breadcrumbContainer) {
     breadcrumbContainer = document.getElementById('breadcrumb-container');
   }
-  
+
   if (isBreadcrumbMode) {
     updateBreadcrumb(currentPath);
   } else {
@@ -442,14 +452,16 @@ function toggleBreadcrumbMode(): void {
 
 function setupBreadcrumbListeners(): void {
   breadcrumbContainer = document.getElementById('breadcrumb-container');
-  
+
   const addressBar = document.querySelector('.address-bar');
   if (addressBar) {
     addressBar.addEventListener('dblclick', (e) => {
       const target = e.target as HTMLElement;
-      if (target.classList.contains('address-bar') || 
-          target.classList.contains('breadcrumb') ||
-          target.id === 'breadcrumb-container') {
+      if (
+        target.classList.contains('address-bar') ||
+        target.classList.contains('breadcrumb') ||
+        target.id === 'breadcrumb-container'
+      ) {
         if (isBreadcrumbMode) {
           toggleBreadcrumbMode();
         }
@@ -466,7 +478,7 @@ function setupBreadcrumbListeners(): void {
         }
       }, 150);
     });
-    
+
     addressInput.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
         isBreadcrumbMode = true;
@@ -478,7 +490,6 @@ function setupBreadcrumbListeners(): void {
 }
 
 type DialogType = 'info' | 'warning' | 'error' | 'success' | 'question';
-
 
 let currentPath: string = '';
 let history: string[] = [];
@@ -536,13 +547,13 @@ function initializeTabs() {
   if (tabBar) tabBar.style.removeProperty('display');
 
   if (currentSettings.tabState && currentSettings.tabState.tabs.length > 0) {
-    tabs = currentSettings.tabState.tabs.map(t => ({
+    tabs = currentSettings.tabState.tabs.map((t) => ({
       ...t,
-      selectedItems: new Set(t.selectedItems || [])
+      selectedItems: new Set(t.selectedItems || []),
     }));
     activeTabId = currentSettings.tabState.activeTabId;
 
-    const activeTab = tabs.find(t => t.id === activeTabId);
+    const activeTab = tabs.find((t) => t.id === activeTabId);
     if (activeTab) {
       history = [...activeTab.history];
       historyIndex = activeTab.historyIndex;
@@ -582,7 +593,7 @@ function createNewTabData(path: string): TabData {
     history: path ? [path] : [],
     historyIndex: path ? 0 : -1,
     selectedItems: new Set(),
-    scrollPosition: 0
+    scrollPosition: 0,
   };
 }
 
@@ -605,7 +616,7 @@ function renderTabs() {
 
   tabList.innerHTML = '';
 
-  tabs.forEach(tab => {
+  tabs.forEach((tab) => {
     const tabElement = document.createElement('div');
     tabElement.className = `tab-item${tab.id === activeTabId ? ' active' : ''}`;
     tabElement.dataset.tabId = tab.id;
@@ -644,7 +655,7 @@ function renderTabs() {
 function switchToTab(tabId: string) {
   if (activeTabId === tabId || !tabsEnabled) return;
 
-  const currentTab = tabs.find(t => t.id === activeTabId);
+  const currentTab = tabs.find((t) => t.id === activeTabId);
   if (currentTab) {
     currentTab.path = currentPath;
     currentTab.history = [...history];
@@ -655,7 +666,7 @@ function switchToTab(tabId: string) {
   }
 
   activeTabId = tabId;
-  const newTab = tabs.find(t => t.id === tabId);
+  const newTab = tabs.find((t) => t.id === tabId);
   if (newTab) {
     history = [...newTab.history];
     historyIndex = newTab.historyIndex;
@@ -704,7 +715,7 @@ function debouncedSaveTabState() {
 async function addNewTab(path?: string) {
   if (!tabsEnabled) return;
 
-  const currentTab = tabs.find(t => t.id === activeTabId);
+  const currentTab = tabs.find((t) => t.id === activeTabId);
   if (currentTab) {
     currentTab.path = currentPath;
     currentTab.history = [...history];
@@ -736,7 +747,7 @@ async function addNewTab(path?: string) {
 function closeTab(tabId: string) {
   if (!tabsEnabled || tabs.length <= 1) return;
 
-  const tabIndex = tabs.findIndex(t => t.id === tabId);
+  const tabIndex = tabs.findIndex((t) => t.id === tabId);
   if (tabIndex === -1) return;
 
   tabs.splice(tabIndex, 1);
@@ -767,15 +778,15 @@ function saveTabState() {
   if (!tabsEnabled) return;
 
   currentSettings.tabState = {
-    tabs: tabs.map(t => ({
+    tabs: tabs.map((t) => ({
       id: t.id,
       path: t.path,
       history: t.history,
       historyIndex: t.historyIndex,
       selectedItems: Array.from(t.selectedItems),
-      scrollPosition: t.scrollPosition
+      scrollPosition: t.scrollPosition,
     })),
-    activeTabId
+    activeTabId,
   };
   debouncedSaveSettings();
 }
@@ -783,7 +794,7 @@ function saveTabState() {
 function updateCurrentTabPath(newPath: string) {
   if (!tabsEnabled) return;
 
-  const currentTab = tabs.find(t => t.id === activeTabId);
+  const currentTab = tabs.find((t) => t.id === activeTabId);
   if (currentTab) {
     currentTab.path = newPath;
     renderTabs();
@@ -815,20 +826,26 @@ const searchFiltersPanel = document.getElementById('search-filters-panel') as HT
 const searchFilterType = document.getElementById('search-filter-type') as HTMLSelectElement;
 const searchFilterMinSize = document.getElementById('search-filter-min-size') as HTMLInputElement;
 const searchFilterMaxSize = document.getElementById('search-filter-max-size') as HTMLInputElement;
-const searchFilterSizeUnitMin = document.getElementById('search-filter-size-unit-min') as HTMLSelectElement;
-const searchFilterSizeUnitMax = document.getElementById('search-filter-size-unit-max') as HTMLSelectElement;
+const searchFilterSizeUnitMin = document.getElementById(
+  'search-filter-size-unit-min'
+) as HTMLSelectElement;
+const searchFilterSizeUnitMax = document.getElementById(
+  'search-filter-size-unit-max'
+) as HTMLSelectElement;
 const searchFilterDateFrom = document.getElementById('search-filter-date-from') as HTMLInputElement;
 const searchFilterDateTo = document.getElementById('search-filter-date-to') as HTMLInputElement;
 const searchFilterClear = document.getElementById('search-filter-clear') as HTMLButtonElement;
 const searchFilterApply = document.getElementById('search-filter-apply') as HTMLButtonElement;
-const searchInContentsToggle = document.getElementById('search-in-contents-toggle') as HTMLInputElement;
+const searchInContentsToggle = document.getElementById(
+  'search-in-contents-toggle'
+) as HTMLInputElement;
 const sortBtn = document.getElementById('sort-btn') as HTMLButtonElement;
 const bookmarksList = document.getElementById('bookmarks-list') as HTMLElement;
 const bookmarkAddBtn = document.getElementById('bookmark-add-btn') as HTMLButtonElement;
 const undoBtn = document.getElementById('undo-btn') as HTMLButtonElement;
 const redoBtn = document.getElementById('redo-btn') as HTMLButtonElement;
 
-const loadingText = loading ? loading.querySelector('p') as HTMLElement | null : null;
+const loadingText = loading ? (loading.querySelector('p') as HTMLElement | null) : null;
 let activeDirectoryProgressPath: string | null = null;
 let activeDirectoryProgressOperationId: string | null = null;
 let activeDirectoryOperationId: string | null = null;
@@ -888,12 +905,12 @@ function cancelDirectoryRequest(): void {
   finishDirectoryRequest(directoryRequestId);
 }
 
-let currentGitStatuses: Map<string, string> = new Map();
+const currentGitStatuses: Map<string, string> = new Map();
 let gitStatusRequestId = 0;
 
 function clearGitIndicators(): void {
   currentGitStatuses.clear();
-  document.querySelectorAll('.git-indicator').forEach(indicator => indicator.remove());
+  document.querySelectorAll('.git-indicator').forEach((indicator) => indicator.remove());
 }
 
 async function fetchGitStatusAsync(dirPath: string) {
@@ -905,7 +922,11 @@ async function fetchGitStatusAsync(dirPath: string) {
 
   try {
     const result = await window.electronAPI.getGitStatus(dirPath);
-    if (requestId !== gitStatusRequestId || dirPath !== currentPath || !currentSettings.enableGitStatus) {
+    if (
+      requestId !== gitStatusRequestId ||
+      dirPath !== currentPath ||
+      !currentSettings.enableGitStatus
+    ) {
       return;
     }
 
@@ -930,7 +951,7 @@ function updateGitIndicators() {
     return;
   }
 
-  document.querySelectorAll('.file-item').forEach(item => {
+  document.querySelectorAll('.file-item').forEach((item) => {
     const itemPath = item.getAttribute('data-path');
     if (!itemPath) return;
 
@@ -947,12 +968,17 @@ function updateGitIndicators() {
   });
 }
 
-function showDialog(title: string, message: string, type: DialogType = 'info', showCancel: boolean = false): Promise<boolean> {
+function showDialog(
+  title: string,
+  message: string,
+  type: DialogType = 'info',
+  showCancel: boolean = false
+): Promise<boolean> {
   return new Promise((resolve) => {
     if (document.activeElement instanceof HTMLElement) {
       document.activeElement.blur();
     }
-    
+
     const dialogModal = document.getElementById('dialog-modal') as HTMLElement;
     const dialogTitle = document.getElementById('dialog-title') as HTMLElement;
     const dialogContent = document.getElementById('dialog-content') as HTMLElement;
@@ -965,13 +991,16 @@ function showDialog(title: string, message: string, type: DialogType = 'info', s
       warning: '26a0',
       error: '274c',
       success: '2705',
-      question: '2753'
+      question: '2753',
     };
 
-    dialogIcon.innerHTML = twemojiImg(String.fromCodePoint(parseInt(icons[type] || icons.info, 16)), 'twemoji');
+    dialogIcon.innerHTML = twemojiImg(
+      String.fromCodePoint(parseInt(icons[type] || icons.info, 16)),
+      'twemoji'
+    );
     dialogTitle.textContent = title;
     dialogContent.textContent = message;
-    
+
     if (showCancel) {
       dialogCancel.style.display = 'block';
     } else {
@@ -1012,29 +1041,41 @@ function showDialog(title: string, message: string, type: DialogType = 'info', s
   });
 }
 
-async function showAlert(message: string, title: string = 'IYERIS', type: DialogType = 'info'): Promise<void> {
+async function showAlert(
+  message: string,
+  title: string = 'IYERIS',
+  type: DialogType = 'info'
+): Promise<void> {
   await showDialog(title, message, type, false);
 }
 
-async function showConfirm(message: string, title: string = 'Confirm', type: DialogType = 'question'): Promise<boolean> {
+async function showConfirm(
+  message: string,
+  title: string = 'Confirm',
+  type: DialogType = 'question'
+): Promise<boolean> {
   return await showDialog(title, message, type, true);
 }
 
 let currentSettings: Settings = createDefaultSettings();
 
-function showToast(message: string, title: string = '', type: 'success' | 'error' | 'info' | 'warning' = 'info'): void {
+function showToast(
+  message: string,
+  title: string = '',
+  type: 'success' | 'error' | 'info' | 'warning' = 'info'
+): void {
   const container = document.getElementById('toast-container');
   if (!container) return;
 
   const toast = document.createElement('div');
   toast.className = `toast ${type}`;
   toast.style.cursor = 'pointer';
-  
+
   const icons: Record<string, string> = {
     success: '2705',
     error: '274c',
     info: '2139',
-    warning: '26a0'
+    warning: '26a0',
   };
 
   toast.innerHTML = `
@@ -1064,7 +1105,7 @@ function showToast(message: string, title: string = '', type: 'success' | 'error
 async function loadSettings(): Promise<void> {
   const [result, sharedClipboard] = await Promise.all([
     window.electronAPI.getSettings(),
-    window.electronAPI.getClipboard()
+    window.electronAPI.getClipboard(),
   ]);
 
   if (result.success && result.settings) {
@@ -1083,7 +1124,12 @@ async function loadSettings(): Promise<void> {
 
   if (sharedClipboard) {
     clipboard = sharedClipboard;
-    console.log('[Init] Loaded shared clipboard:', clipboard.operation, clipboard.paths.length, 'items');
+    console.log(
+      '[Init] Loaded shared clipboard:',
+      clipboard.operation,
+      clipboard.paths.length,
+      'items'
+    );
   }
 }
 
@@ -1093,7 +1139,7 @@ function applySettings(settings: Settings) {
   } else {
     document.body.classList.remove('no-transparency');
   }
-  
+
   document.body.classList.remove('theme-dark', 'theme-light', 'theme-default', 'theme-custom');
   if (settings.theme && settings.theme !== 'default') {
     document.body.classList.add(`theme-${settings.theme}`);
@@ -1104,7 +1150,7 @@ function applySettings(settings: Settings) {
   } else {
     clearCustomThemeColors();
   }
-  
+
   if (settings.viewMode) {
     viewMode = settings.viewMode;
     applyViewMode();
@@ -1184,12 +1230,17 @@ function applyCustomThemeColors(theme: CustomTheme) {
 function clearCustomThemeColors() {
   const root = document.documentElement;
   const props = [
-    '--custom-accent-color', '--custom-accent-rgb',
-    '--custom-bg-primary', '--custom-bg-primary-rgb', '--custom-bg-secondary',
-    '--custom-text-primary', '--custom-text-secondary',
-    '--custom-glass-bg', '--custom-glass-border'
+    '--custom-accent-color',
+    '--custom-accent-rgb',
+    '--custom-bg-primary',
+    '--custom-bg-primary-rgb',
+    '--custom-bg-secondary',
+    '--custom-text-primary',
+    '--custom-text-secondary',
+    '--custom-glass-bg',
+    '--custom-glass-border',
   ];
-  props.forEach(prop => root.style.removeProperty(prop));
+  props.forEach((prop) => root.style.removeProperty(prop));
   document.body.style.backgroundColor = '';
 }
 
@@ -1203,7 +1254,7 @@ const themePresets: Record<string, CustomTheme> = {
     textPrimary: '#e0e1dd',
     textSecondary: '#a0a4a8',
     glassBg: '#ffffff',
-    glassBorder: '#4a9eff'
+    glassBorder: '#4a9eff',
   },
   forest: {
     name: 'Forest Green',
@@ -1213,7 +1264,7 @@ const themePresets: Record<string, CustomTheme> = {
     textPrimary: '#e8f5e9',
     textSecondary: '#a5d6a7',
     glassBg: '#ffffff',
-    glassBorder: '#2ecc71'
+    glassBorder: '#2ecc71',
   },
   sunset: {
     name: 'Sunset Orange',
@@ -1223,7 +1274,7 @@ const themePresets: Record<string, CustomTheme> = {
     textPrimary: '#fff3e0',
     textSecondary: '#ffab91',
     glassBg: '#ffffff',
-    glassBorder: '#ff7043'
+    glassBorder: '#ff7043',
   },
   lavender: {
     name: 'Lavender Purple',
@@ -1233,7 +1284,7 @@ const themePresets: Record<string, CustomTheme> = {
     textPrimary: '#ede7f6',
     textSecondary: '#b39ddb',
     glassBg: '#ffffff',
-    glassBorder: '#9c7cf4'
+    glassBorder: '#9c7cf4',
   },
   rose: {
     name: 'Rose Pink',
@@ -1243,7 +1294,7 @@ const themePresets: Record<string, CustomTheme> = {
     textPrimary: '#fce4ec',
     textSecondary: '#f8bbd9',
     glassBg: '#ffffff',
-    glassBorder: '#f48fb1'
+    glassBorder: '#f48fb1',
   },
   ocean: {
     name: 'Ocean Teal',
@@ -1253,8 +1304,8 @@ const themePresets: Record<string, CustomTheme> = {
     textPrimary: '#e0f7fa',
     textSecondary: '#80deea',
     glassBg: '#ffffff',
-    glassBorder: '#26c6da'
-  }
+    glassBorder: '#26c6da',
+  },
 };
 
 let tempCustomTheme: CustomTheme = {
@@ -1265,7 +1316,7 @@ let tempCustomTheme: CustomTheme = {
   textPrimary: '#ffffff',
   textSecondary: '#b0b0b0',
   glassBg: '#ffffff',
-  glassBorder: '#ffffff'
+  glassBorder: '#ffffff',
 };
 
 function showThemeEditor() {
@@ -1281,20 +1332,23 @@ function showThemeEditor() {
     'theme-bg-primary': { color: tempCustomTheme.bgPrimary, text: tempCustomTheme.bgPrimary },
     'theme-bg-secondary': { color: tempCustomTheme.bgSecondary, text: tempCustomTheme.bgSecondary },
     'theme-text-primary': { color: tempCustomTheme.textPrimary, text: tempCustomTheme.textPrimary },
-    'theme-text-secondary': { color: tempCustomTheme.textSecondary, text: tempCustomTheme.textSecondary },
-    'theme-glass-bg': { color: tempCustomTheme.glassBg, text: tempCustomTheme.glassBg }
+    'theme-text-secondary': {
+      color: tempCustomTheme.textSecondary,
+      text: tempCustomTheme.textSecondary,
+    },
+    'theme-glass-bg': { color: tempCustomTheme.glassBg, text: tempCustomTheme.glassBg },
   };
-  
+
   for (const [id, values] of Object.entries(inputs)) {
     const colorInput = document.getElementById(id) as HTMLInputElement;
     const textInput = document.getElementById(`${id}-text`) as HTMLInputElement;
     if (colorInput) colorInput.value = values.color;
     if (textInput) textInput.value = values.text;
   }
-  
+
   const nameInput = document.getElementById('theme-name-input') as HTMLInputElement;
   if (nameInput) nameInput.value = tempCustomTheme.name;
-  
+
   updateThemePreview();
   modal.style.display = 'flex';
 }
@@ -1307,7 +1361,7 @@ function hideThemeEditor() {
 function updateThemePreview() {
   const preview = document.getElementById('theme-preview');
   if (!preview) return;
-  
+
   preview.style.setProperty('--custom-accent-color', tempCustomTheme.accentColor);
   preview.style.setProperty('--custom-accent-rgb', hexToRgb(tempCustomTheme.accentColor));
   preview.style.setProperty('--custom-bg-primary', tempCustomTheme.bgPrimary);
@@ -1322,7 +1376,7 @@ function updateThemePreview() {
 function syncColorInputs(colorId: string, value: string) {
   const colorInput = document.getElementById(colorId) as HTMLInputElement;
   const textInput = document.getElementById(`${colorId}-text`) as HTMLInputElement;
-  
+
   if (colorInput) colorInput.value = value;
   if (textInput) textInput.value = value.toUpperCase();
 
@@ -1332,9 +1386,9 @@ function syncColorInputs(colorId: string, value: string) {
     'theme-bg-secondary': 'bgSecondary',
     'theme-text-primary': 'textPrimary',
     'theme-text-secondary': 'textSecondary',
-    'theme-glass-bg': 'glassBg'
+    'theme-glass-bg': 'glassBg',
   };
-  
+
   const key = mapping[colorId];
   if (key) {
     (tempCustomTheme as any)[key] = value;
@@ -1342,19 +1396,19 @@ function syncColorInputs(colorId: string, value: string) {
       tempCustomTheme.glassBorder = value;
     }
   }
-  
+
   updateThemePreview();
 }
 
 function applyThemePreset(presetName: string) {
   const preset = themePresets[presetName];
   if (!preset) return;
-  
+
   tempCustomTheme = { ...preset };
 
   const nameInput = document.getElementById('theme-name-input') as HTMLInputElement;
   if (nameInput) nameInput.value = preset.name;
-  
+
   syncColorInputs('theme-accent-color', preset.accentColor);
   syncColorInputs('theme-bg-primary', preset.bgPrimary);
   syncColorInputs('theme-bg-secondary', preset.bgSecondary);
@@ -1388,7 +1442,7 @@ function setupThemeEditorListeners() {
   document.getElementById('theme-editor-close')?.addEventListener('click', hideThemeEditor);
   document.getElementById('theme-editor-cancel')?.addEventListener('click', hideThemeEditor);
   document.getElementById('theme-editor-save')?.addEventListener('click', saveCustomTheme);
-  
+
   // Color inputs
   const colorIds = [
     'theme-accent-color',
@@ -1396,18 +1450,18 @@ function setupThemeEditorListeners() {
     'theme-bg-secondary',
     'theme-text-primary',
     'theme-text-secondary',
-    'theme-glass-bg'
+    'theme-glass-bg',
   ];
-  
-  colorIds.forEach(id => {
+
+  colorIds.forEach((id) => {
     const colorInput = document.getElementById(id) as HTMLInputElement;
     const textInput = document.getElementById(`${id}-text`) as HTMLInputElement;
-    
+
     colorInput?.addEventListener('input', (e) => {
       const value = (e.target as HTMLInputElement).value;
       syncColorInputs(id, value);
     });
-    
+
     textInput?.addEventListener('input', (e) => {
       let value = (e.target as HTMLInputElement).value.trim();
       if (!value.startsWith('#')) value = '#' + value;
@@ -1422,7 +1476,7 @@ function setupThemeEditorListeners() {
         textInput.classList.add('invalid');
       }
     });
-    
+
     textInput?.addEventListener('blur', (e) => {
       let value = (e.target as HTMLInputElement).value.trim();
       if (!value.startsWith('#')) value = '#' + value;
@@ -1443,14 +1497,14 @@ function setupThemeEditorListeners() {
   document.getElementById('theme-name-input')?.addEventListener('input', (e) => {
     tempCustomTheme.name = (e.target as HTMLInputElement).value || 'My Custom Theme';
   });
-  
-  document.querySelectorAll('.preset-btn').forEach(btn => {
+
+  document.querySelectorAll('.preset-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
       const preset = (btn as HTMLElement).dataset.preset;
       if (preset) applyThemePreset(preset);
     });
   });
-  
+
   const openThemeEditorBtn = document.getElementById('open-theme-editor-btn');
   if (openThemeEditorBtn) {
     openThemeEditorBtn.addEventListener('click', () => {
@@ -1515,42 +1569,62 @@ async function showSettingsModal() {
   if (document.activeElement instanceof HTMLElement) {
     document.activeElement.blur();
   }
-  
+
   const settingsModal = document.getElementById('settings-modal');
-  
+
   // Reset tabs
   const tabs = document.querySelectorAll('.settings-tab');
   const sections = document.querySelectorAll('.settings-section');
-  
-  tabs.forEach(t => t.classList.remove('active'));
-  sections.forEach(s => s.classList.remove('active'));
-  
+
+  tabs.forEach((t) => t.classList.remove('active'));
+  sections.forEach((s) => s.classList.remove('active'));
+
   if (tabs.length > 0) tabs[0].classList.add('active');
   if (sections.length > 0) sections[0].classList.add('active');
 
   const transparencyToggle = document.getElementById('transparency-toggle') as HTMLInputElement;
   const sortBySelect = document.getElementById('sort-by-select') as HTMLSelectElement;
   const sortOrderSelect = document.getElementById('sort-order-select') as HTMLSelectElement;
-  const showHiddenFilesToggle = document.getElementById('show-hidden-files-toggle') as HTMLInputElement;
-  const enableGitStatusToggle = document.getElementById('enable-git-status-toggle') as HTMLInputElement;
-  const minimizeToTrayToggle = document.getElementById('minimize-to-tray-toggle') as HTMLInputElement;
+  const showHiddenFilesToggle = document.getElementById(
+    'show-hidden-files-toggle'
+  ) as HTMLInputElement;
+  const enableGitStatusToggle = document.getElementById(
+    'enable-git-status-toggle'
+  ) as HTMLInputElement;
+  const minimizeToTrayToggle = document.getElementById(
+    'minimize-to-tray-toggle'
+  ) as HTMLInputElement;
   const startOnLoginToggle = document.getElementById('start-on-login-toggle') as HTMLInputElement;
-  const autoCheckUpdatesToggle = document.getElementById('auto-check-updates-toggle') as HTMLInputElement;
+  const autoCheckUpdatesToggle = document.getElementById(
+    'auto-check-updates-toggle'
+  ) as HTMLInputElement;
   const updateChannelSelect = document.getElementById('update-channel-select') as HTMLSelectElement;
-  const enableSearchHistoryToggle = document.getElementById('enable-search-history-toggle') as HTMLInputElement;
-  const dangerousOptionsToggle = document.getElementById('dangerous-options-toggle') as HTMLInputElement;
+  const enableSearchHistoryToggle = document.getElementById(
+    'enable-search-history-toggle'
+  ) as HTMLInputElement;
+  const dangerousOptionsToggle = document.getElementById(
+    'dangerous-options-toggle'
+  ) as HTMLInputElement;
   const startupPathInput = document.getElementById('startup-path-input') as HTMLInputElement;
   const enableIndexerToggle = document.getElementById('enable-indexer-toggle') as HTMLInputElement;
-  const showRecentFilesToggle = document.getElementById('show-recent-files-toggle') as HTMLInputElement;
+  const showRecentFilesToggle = document.getElementById(
+    'show-recent-files-toggle'
+  ) as HTMLInputElement;
   const enableTabsToggle = document.getElementById('enable-tabs-toggle') as HTMLInputElement;
-  const globalContentSearchToggle = document.getElementById('global-content-search-toggle') as HTMLInputElement;
-  const enableSyntaxHighlightingToggle = document.getElementById('enable-syntax-highlighting-toggle') as HTMLInputElement;
+  const globalContentSearchToggle = document.getElementById(
+    'global-content-search-toggle'
+  ) as HTMLInputElement;
+  const enableSyntaxHighlightingToggle = document.getElementById(
+    'enable-syntax-highlighting-toggle'
+  ) as HTMLInputElement;
   const reduceMotionToggle = document.getElementById('reduce-motion-toggle') as HTMLInputElement;
   const highContrastToggle = document.getElementById('high-contrast-toggle') as HTMLInputElement;
   const largeTextToggle = document.getElementById('large-text-toggle') as HTMLInputElement;
   const boldTextToggle = document.getElementById('bold-text-toggle') as HTMLInputElement;
   const visibleFocusToggle = document.getElementById('visible-focus-toggle') as HTMLInputElement;
-  const reduceTransparencyToggle = document.getElementById('reduce-transparency-toggle') as HTMLInputElement;
+  const reduceTransparencyToggle = document.getElementById(
+    'reduce-transparency-toggle'
+  ) as HTMLInputElement;
   const settingsPath = document.getElementById('settings-path');
 
   if (transparencyToggle) {
@@ -1576,11 +1650,11 @@ async function showSettingsModal() {
   if (sortBySelect) {
     sortBySelect.value = currentSettings.sortBy || 'name';
   }
-  
+
   if (sortOrderSelect) {
     sortOrderSelect.value = currentSettings.sortOrder || 'asc';
   }
-  
+
   if (showHiddenFilesToggle) {
     showHiddenFilesToggle.checked = currentSettings.showHiddenFiles || false;
   }
@@ -1588,7 +1662,7 @@ async function showSettingsModal() {
   if (minimizeToTrayToggle) {
     minimizeToTrayToggle.checked = currentSettings.minimizeToTray || false;
   }
-  
+
   if (startOnLoginToggle) {
     startOnLoginToggle.checked = currentSettings.startOnLogin || false;
   }
@@ -1604,16 +1678,16 @@ async function showSettingsModal() {
   if (enableSearchHistoryToggle) {
     enableSearchHistoryToggle.checked = currentSettings.enableSearchHistory !== false;
   }
-  
+
   if (dangerousOptionsToggle) {
     dangerousOptionsToggle.checked = currentSettings.showDangerousOptions || false;
     updateDangerousOptionsVisibility(dangerousOptionsToggle.checked);
   }
-  
+
   if (startupPathInput) {
     startupPathInput.value = currentSettings.startupPath || '';
   }
-  
+
   if (enableIndexerToggle) {
     enableIndexerToggle.checked = currentSettings.enableIndexer !== false;
   }
@@ -1655,12 +1729,12 @@ async function showSettingsModal() {
   }
 
   await updateIndexStatus();
-  
+
   const path = await window.electronAPI.getSettingsPath();
   if (settingsPath) {
     settingsPath.textContent = path;
   }
-  
+
   if (settingsModal) {
     settingsModal.style.display = 'flex';
     clearSettingsChanged();
@@ -1697,7 +1771,7 @@ function stopIndexStatusPolling() {
 async function updateIndexStatus() {
   const indexStatus = document.getElementById('index-status');
   if (!indexStatus) return;
-  
+
   try {
     const result = await window.electronAPI.getIndexStatus();
     if (result.success && result.status) {
@@ -1725,11 +1799,11 @@ async function updateIndexStatus() {
 async function rebuildIndex() {
   const rebuildBtn = document.getElementById('rebuild-index-btn') as HTMLButtonElement;
   if (!rebuildBtn) return;
-  
+
   const originalHTML = rebuildBtn.innerHTML;
   rebuildBtn.disabled = true;
-  rebuildBtn.innerHTML = `${twemojiImg(String.fromCodePoint(0x23F3), 'twemoji')} Rebuilding...`;
-  
+  rebuildBtn.innerHTML = `${twemojiImg(String.fromCodePoint(0x23f3), 'twemoji')} Rebuilding...`;
+
   try {
     const result = await window.electronAPI.rebuildIndex();
     if (result.success) {
@@ -1748,10 +1822,9 @@ async function rebuildIndex() {
   }
 }
 
-
 function updateDangerousOptionsVisibility(show: boolean) {
   const dangerousOptions = document.querySelectorAll('.dangerous-option');
-  dangerousOptions.forEach(option => {
+  dangerousOptions.forEach((option) => {
     (option as HTMLElement).style.display = show ? 'flex' : 'none';
   });
 }
@@ -1818,32 +1891,33 @@ async function showLicensesModal() {
   if (document.activeElement instanceof HTMLElement) {
     document.activeElement.blur();
   }
-  
+
   const licensesModal = document.getElementById('licenses-modal');
   if (!licensesModal) return;
-  
+
   licensesModal.style.display = 'flex';
-  
+
   const licensesContent = document.getElementById('licenses-content');
   const totalDeps = document.getElementById('total-deps');
-  
+
   if (!licensesContent) return;
-  
-  licensesContent.innerHTML = '<p style="text-align: center; color: var(--text-secondary);">Loading licenses...</p>';
-  
+
+  licensesContent.innerHTML =
+    '<p style="text-align: center; color: var(--text-secondary);">Loading licenses...</p>';
+
   try {
     const result = await window.electronAPI.getLicenses();
-    
+
     if (result.success && result.licenses) {
       const licenses = result.licenses;
       const packageCount = Object.keys(licenses).length;
-      
+
       if (totalDeps) {
         totalDeps.textContent = packageCount.toString();
       }
-      
+
       let html = '';
-      
+
       for (const [packageName, packageInfo] of Object.entries(licenses)) {
         const info = packageInfo as any;
         html += '<div class="license-package">';
@@ -1861,14 +1935,14 @@ async function showLicensesModal() {
           html += `<span>Publisher: ${escapeHtml(info.publisher)}</span>`;
         }
         html += '</div>';
-        
+
         if (info.licenseFile && info.licenseText) {
           html += `<div class="license-package-text">${escapeHtml(info.licenseText.substring(0, 1000))}${info.licenseText.length > 1000 ? '...' : ''}</div>`;
         }
-        
+
         html += '</div>';
       }
-      
+
       licensesContent.innerHTML = html;
     } else {
       licensesContent.innerHTML = `<p style="color: var(--error-color); text-align: center;">Error loading licenses: ${escapeHtml(result.error || 'Unknown error')}</p>`;
@@ -1889,14 +1963,14 @@ function showShortcutsModal() {
   if (document.activeElement instanceof HTMLElement) {
     document.activeElement.blur();
   }
-  
+
   const shortcutsModal = document.getElementById('shortcuts-modal');
   if (shortcutsModal) {
     shortcutsModal.style.display = 'flex';
-    
+
     if (platformOS === 'darwin') {
       const allKbdElements = shortcutsModal.querySelectorAll('kbd');
-      allKbdElements.forEach(kbd => {
+      allKbdElements.forEach((kbd) => {
         if (kbd.textContent === 'Ctrl') {
           kbd.textContent = '⌘ Cmd';
         } else if (kbd.textContent === 'Alt') {
@@ -1915,14 +1989,11 @@ function hideShortcutsModal() {
 }
 
 const FOLDER_ICON_OPTIONS = [
-  0x1F4C1, 0x1F4C2, 0x1F4C1, 0x1F5C2, 0x1F5C3, 0x1F4BC,
-  0x2B50, 0x1F31F, 0x2764, 0x1F499, 0x1F49A, 0x1F49B,
-  0x1F4A1, 0x1F3AE, 0x1F3B5, 0x1F3AC, 0x1F4F7, 0x1F4F9,
-  0x1F4DA, 0x1F4D6, 0x1F4DD, 0x270F, 0x1F4BB, 0x1F5A5,
-  0x1F3E0, 0x1F3E2, 0x1F6E0, 0x2699, 0x1F512, 0x1F513,
-  0x1F4E6, 0x1F4E5, 0x1F4E4, 0x1F5D1, 0x2601, 0x1F310,
-  0x1F680, 0x2708, 0x1F697, 0x1F6B2, 0x26BD, 0x1F3C0,
-  0x1F352, 0x1F34E, 0x1F33F, 0x1F333, 0x1F308, 0x2600
+  0x1f4c1, 0x1f4c2, 0x1f4c1, 0x1f5c2, 0x1f5c3, 0x1f4bc, 0x2b50, 0x1f31f, 0x2764, 0x1f499, 0x1f49a,
+  0x1f49b, 0x1f4a1, 0x1f3ae, 0x1f3b5, 0x1f3ac, 0x1f4f7, 0x1f4f9, 0x1f4da, 0x1f4d6, 0x1f4dd, 0x270f,
+  0x1f4bb, 0x1f5a5, 0x1f3e0, 0x1f3e2, 0x1f6e0, 0x2699, 0x1f512, 0x1f513, 0x1f4e6, 0x1f4e5, 0x1f4e4,
+  0x1f5d1, 0x2601, 0x1f310, 0x1f680, 0x2708, 0x1f697, 0x1f6b2, 0x26bd, 0x1f3c0, 0x1f352, 0x1f34e,
+  0x1f33f, 0x1f333, 0x1f308, 0x2600,
 ];
 
 let folderIconPickerPath: string | null = null;
@@ -1941,7 +2012,7 @@ function showFolderIconPicker(folderPath: string) {
 
   const currentIcon = currentSettings.folderIcons?.[folderPath];
 
-  grid.innerHTML = FOLDER_ICON_OPTIONS.map(code => {
+  grid.innerHTML = FOLDER_ICON_OPTIONS.map((code) => {
     const emoji = String.fromCodePoint(code);
     const isSelected = currentIcon === emoji;
     return `
@@ -1951,7 +2022,7 @@ function showFolderIconPicker(folderPath: string) {
     `;
   }).join('');
 
-  grid.querySelectorAll('.folder-icon-option').forEach(option => {
+  grid.querySelectorAll('.folder-icon-option').forEach((option) => {
     option.addEventListener('click', () => {
       const icon = (option as HTMLElement).dataset.icon;
       if (icon && folderIconPickerPath) {
@@ -1983,7 +2054,11 @@ async function setFolderIcon(folderPath: string, icon: string) {
 }
 
 async function resetFolderIcon() {
-  if (folderIconPickerPath && currentSettings.folderIcons && currentSettings.folderIcons[folderIconPickerPath]) {
+  if (
+    folderIconPickerPath &&
+    currentSettings.folderIcons &&
+    currentSettings.folderIcons[folderIconPickerPath]
+  ) {
     delete currentSettings.folderIcons[folderIconPickerPath];
     await saveSettings();
     if (currentPath) navigateTo(currentPath);
@@ -2007,20 +2082,23 @@ function openNewWindow() {
 function copyLicensesText() {
   const licensesContent = document.getElementById('licenses-content');
   if (!licensesContent) return;
-  
+
   const text = licensesContent.innerText;
-  navigator.clipboard.writeText(text).then(() => {
-    const btn = document.getElementById('copy-licenses-btn');
-    if (btn) {
-      const originalText = btn.textContent;
-      btn.textContent = 'Copied!';
-      setTimeout(() => {
-        btn.textContent = originalText;
-      }, 2000);
-    }
-  }).catch(err => {
-    console.error('Failed to copy:', err);
-  });
+  navigator.clipboard
+    .writeText(text)
+    .then(() => {
+      const btn = document.getElementById('copy-licenses-btn');
+      if (btn) {
+        const originalText = btn.textContent;
+        btn.textContent = 'Copied!';
+        setTimeout(() => {
+          btn.textContent = originalText;
+        }, 2000);
+      }
+    })
+    .catch((err) => {
+      console.error('Failed to copy:', err);
+    });
 }
 
 async function saveSettings() {
@@ -2029,26 +2107,46 @@ async function saveSettings() {
   const themeSelect = document.getElementById('theme-select') as HTMLSelectElement;
   const sortBySelect = document.getElementById('sort-by-select') as HTMLSelectElement;
   const sortOrderSelect = document.getElementById('sort-order-select') as HTMLSelectElement;
-  const showHiddenFilesToggle = document.getElementById('show-hidden-files-toggle') as HTMLInputElement;
-  const enableGitStatusToggle = document.getElementById('enable-git-status-toggle') as HTMLInputElement;
-  const minimizeToTrayToggle = document.getElementById('minimize-to-tray-toggle') as HTMLInputElement;
+  const showHiddenFilesToggle = document.getElementById(
+    'show-hidden-files-toggle'
+  ) as HTMLInputElement;
+  const enableGitStatusToggle = document.getElementById(
+    'enable-git-status-toggle'
+  ) as HTMLInputElement;
+  const minimizeToTrayToggle = document.getElementById(
+    'minimize-to-tray-toggle'
+  ) as HTMLInputElement;
   const startOnLoginToggle = document.getElementById('start-on-login-toggle') as HTMLInputElement;
-  const autoCheckUpdatesToggle = document.getElementById('auto-check-updates-toggle') as HTMLInputElement;
+  const autoCheckUpdatesToggle = document.getElementById(
+    'auto-check-updates-toggle'
+  ) as HTMLInputElement;
   const updateChannelSelect = document.getElementById('update-channel-select') as HTMLSelectElement;
-  const enableSearchHistoryToggle = document.getElementById('enable-search-history-toggle') as HTMLInputElement;
-  const dangerousOptionsToggle = document.getElementById('dangerous-options-toggle') as HTMLInputElement;
+  const enableSearchHistoryToggle = document.getElementById(
+    'enable-search-history-toggle'
+  ) as HTMLInputElement;
+  const dangerousOptionsToggle = document.getElementById(
+    'dangerous-options-toggle'
+  ) as HTMLInputElement;
   const startupPathInput = document.getElementById('startup-path-input') as HTMLInputElement;
   const enableIndexerToggle = document.getElementById('enable-indexer-toggle') as HTMLInputElement;
-  const showRecentFilesToggle = document.getElementById('show-recent-files-toggle') as HTMLInputElement;
+  const showRecentFilesToggle = document.getElementById(
+    'show-recent-files-toggle'
+  ) as HTMLInputElement;
   const enableTabsToggle = document.getElementById('enable-tabs-toggle') as HTMLInputElement;
-  const globalContentSearchToggle = document.getElementById('global-content-search-toggle') as HTMLInputElement;
-  const enableSyntaxHighlightingToggle = document.getElementById('enable-syntax-highlighting-toggle') as HTMLInputElement;
+  const globalContentSearchToggle = document.getElementById(
+    'global-content-search-toggle'
+  ) as HTMLInputElement;
+  const enableSyntaxHighlightingToggle = document.getElementById(
+    'enable-syntax-highlighting-toggle'
+  ) as HTMLInputElement;
   const reduceMotionToggle = document.getElementById('reduce-motion-toggle') as HTMLInputElement;
   const highContrastToggle = document.getElementById('high-contrast-toggle') as HTMLInputElement;
   const largeTextToggle = document.getElementById('large-text-toggle') as HTMLInputElement;
   const boldTextToggle = document.getElementById('bold-text-toggle') as HTMLInputElement;
   const visibleFocusToggle = document.getElementById('visible-focus-toggle') as HTMLInputElement;
-  const reduceTransparencyToggle = document.getElementById('reduce-transparency-toggle') as HTMLInputElement;
+  const reduceTransparencyToggle = document.getElementById(
+    'reduce-transparency-toggle'
+  ) as HTMLInputElement;
 
   if (transparencyToggle) {
     currentSettings.transparency = transparencyToggle.checked;
@@ -2066,26 +2164,26 @@ async function saveSettings() {
       currentSettings.theme = themeSelect.value as any;
     }
   }
-  
+
   if (sortBySelect) {
     currentSettings.sortBy = sortBySelect.value as any;
   }
-  
+
   if (sortOrderSelect) {
     currentSettings.sortOrder = sortOrderSelect.value as any;
   }
-  
+
   if (showHiddenFilesToggle) {
     currentSettings.showHiddenFiles = showHiddenFilesToggle.checked;
   }
   if (enableGitStatusToggle) {
     currentSettings.enableGitStatus = enableGitStatusToggle.checked;
   }
-  
+
   if (minimizeToTrayToggle) {
     currentSettings.minimizeToTray = minimizeToTrayToggle.checked;
   }
-  
+
   if (startOnLoginToggle) {
     currentSettings.startOnLogin = startOnLoginToggle.checked;
   }
@@ -2152,7 +2250,7 @@ async function saveSettings() {
   }
 
   currentSettings.viewMode = viewMode;
-  
+
   const result = await window.electronAPI.saveSettings(currentSettings);
   if (result.success) {
     if (previousTabsEnabled !== currentSettings.enableTabs) {
@@ -2176,7 +2274,7 @@ async function resetSettings() {
     'Reset Settings',
     'warning'
   );
-  
+
   if (confirmed) {
     const result = await window.electronAPI.resetSettings();
     if (result.success) {
@@ -2190,29 +2288,29 @@ async function resetSettings() {
 function loadBookmarks() {
   if (!bookmarksList) return;
   bookmarksList.innerHTML = '';
-  
+
   if (!currentSettings.bookmarks || currentSettings.bookmarks.length === 0) {
     return;
   }
-  
-  currentSettings.bookmarks.forEach(bookmarkPath => {
+
+  currentSettings.bookmarks.forEach((bookmarkPath) => {
     const bookmarkItem = document.createElement('div');
     bookmarkItem.className = 'bookmark-item';
     const pathParts = bookmarkPath.split(/[/\\]/);
     const name = pathParts[pathParts.length - 1] || bookmarkPath;
-    
+
     bookmarkItem.innerHTML = `
-      <span class="bookmark-icon">${twemojiImg(String.fromCodePoint(0x2B50), 'twemoji')}</span>
+      <span class="bookmark-icon">${twemojiImg(String.fromCodePoint(0x2b50), 'twemoji')}</span>
       <span class="bookmark-label">${escapeHtml(name)}</span>
-      <button class="bookmark-remove" title="Remove bookmark">${twemojiImg(String.fromCodePoint(0x274C), 'twemoji')}</button>
+      <button class="bookmark-remove" title="Remove bookmark">${twemojiImg(String.fromCodePoint(0x274c), 'twemoji')}</button>
     `;
-    
+
     bookmarkItem.addEventListener('click', (e) => {
       if (!(e.target as HTMLElement).classList.contains('bookmark-remove')) {
         navigateTo(bookmarkPath);
       }
     });
-    
+
     const removeBtn = bookmarkItem.querySelector('.bookmark-remove');
     if (removeBtn) {
       removeBtn.addEventListener('click', (e) => {
@@ -2220,7 +2318,7 @@ function loadBookmarks() {
         removeBookmark(bookmarkPath);
       });
     }
-    
+
     bookmarksList.appendChild(bookmarkItem);
   });
 }
@@ -2234,15 +2332,15 @@ async function addBookmarkByPath(path: string) {
   if (!currentSettings.bookmarks) {
     currentSettings.bookmarks = [];
   }
-  
+
   if (currentSettings.bookmarks.includes(path)) {
     showToast('This folder is already bookmarked', 'Bookmarks', 'info');
     return;
   }
-  
+
   currentSettings.bookmarks.push(path);
   const result = await window.electronAPI.saveSettings(currentSettings);
-  
+
   if (result.success) {
     loadBookmarks();
     showToast('Bookmark added', 'Bookmarks', 'success');
@@ -2254,7 +2352,7 @@ async function addBookmarkByPath(path: string) {
 async function removeBookmark(path: string) {
   if (!currentSettings.bookmarks) return;
 
-  currentSettings.bookmarks = currentSettings.bookmarks.filter(b => b !== path);
+  currentSettings.bookmarks = currentSettings.bookmarks.filter((b) => b !== path);
   const result = await window.electronAPI.saveSettings(currentSettings);
 
   if (result.success) {
@@ -2286,7 +2384,7 @@ function loadRecentFiles() {
 
   recentSection.style.display = 'block';
 
-  currentSettings.recentFiles.forEach(filePath => {
+  currentSettings.recentFiles.forEach((filePath) => {
     const recentItem = document.createElement('div');
     recentItem.className = 'nav-item recent-item';
     const pathParts = filePath.split(/[/\\]/);
@@ -2313,7 +2411,7 @@ async function addToRecentFiles(filePath: string) {
     currentSettings.recentFiles = [];
   }
 
-  currentSettings.recentFiles = currentSettings.recentFiles.filter(f => f !== filePath);
+  currentSettings.recentFiles = currentSettings.recentFiles.filter((f) => f !== filePath);
   currentSettings.recentFiles.unshift(filePath);
   currentSettings.recentFiles = currentSettings.recentFiles.slice(0, MAX_RECENT_FILES);
 
@@ -2417,21 +2515,22 @@ async function performSearch() {
   cancelActiveSearch();
   const operationId = createDirectoryOperationId('search');
   activeSearchOperationId = operationId;
-  
+
   addToSearchHistory(query);
-  
+
   loading.style.display = 'flex';
   emptyState.style.display = 'none';
   fileGrid.innerHTML = '';
-  
+
   let result;
-  const hasFilters = currentSearchFilters.fileType ||
-                     currentSearchFilters.minSize !== undefined ||
-                     currentSearchFilters.maxSize !== undefined ||
-                     currentSearchFilters.dateFrom ||
-                     currentSearchFilters.dateTo ||
-                     searchInContents;
-  
+  const hasFilters =
+    currentSearchFilters.fileType ||
+    currentSearchFilters.minSize !== undefined ||
+    currentSearchFilters.maxSize !== undefined ||
+    currentSearchFilters.dateFrom ||
+    currentSearchFilters.dateTo ||
+    searchInContents;
+
   if (isGlobalSearch) {
     if (searchInContents) {
       result = await window.electronAPI.searchFilesWithContentGlobal(
@@ -2446,7 +2545,11 @@ async function performSearch() {
         renderFiles(result.results, query);
       } else if (result.error !== 'Calculation cancelled') {
         if (result.error === 'Indexer is disabled') {
-          showToast('File indexer is disabled. Enable it in settings to use global search.', 'Index Disabled', 'warning');
+          showToast(
+            'File indexer is disabled. Enable it in settings to use global search.',
+            'Index Disabled',
+            'warning'
+          );
         } else {
           showToast(result.error || 'Global content search failed', 'Search Error', 'error');
         }
@@ -2454,13 +2557,13 @@ async function performSearch() {
     } else {
       result = await window.electronAPI.searchIndex(query, operationId);
       if (currentRequestId !== searchRequestId) return;
-      
+
       if (result.success && result.results) {
         const fileItems: FileItem[] = [];
-        
+
         for (const entry of result.results) {
           const isHidden = entry.name.startsWith('.');
-          
+
           fileItems.push({
             name: entry.name,
             path: entry.path,
@@ -2468,15 +2571,19 @@ async function performSearch() {
             isFile: entry.isFile,
             size: entry.size,
             modified: entry.modified,
-            isHidden
+            isHidden,
           });
         }
-        
+
         allFiles = fileItems;
         renderFiles(fileItems);
       } else if (result.error !== 'Calculation cancelled') {
         if (result.error === 'Indexer is disabled') {
-          showToast('File indexer is disabled. Enable it in settings to use global search.', 'Index Disabled', 'warning');
+          showToast(
+            'File indexer is disabled. Enable it in settings to use global search.',
+            'Index Disabled',
+            'warning'
+          );
         } else {
           showToast(result.error || 'Global search failed', 'Search Error', 'error');
         }
@@ -2507,7 +2614,7 @@ async function performSearch() {
       showToast(result.error || 'Search failed', 'Search Error', 'error');
     }
   }
-  
+
   if (currentRequestId !== searchRequestId) return;
   loading.style.display = 'none';
   updateStatusBar();
@@ -2518,7 +2625,7 @@ function copyToClipboard() {
   if (selectedItems.size === 0) return;
   clipboard = {
     operation: 'copy',
-    paths: Array.from(selectedItems)
+    paths: Array.from(selectedItems),
   };
   // Sync main process
   window.electronAPI.setClipboard(clipboard);
@@ -2530,7 +2637,7 @@ function cutToClipboard() {
   if (selectedItems.size === 0) return;
   clipboard = {
     operation: 'cut',
-    paths: Array.from(selectedItems)
+    paths: Array.from(selectedItems),
   };
   window.electronAPI.setClipboard(clipboard);
   updateCutVisuals();
@@ -2546,7 +2653,11 @@ async function pasteFromClipboard() {
     : await window.electronAPI.moveItems(clipboard.paths, currentPath);
 
   if (result.success) {
-    showToast(`${clipboard.paths.length} item(s) ${isCopy ? 'copied' : 'moved'}`, 'Success', 'success');
+    showToast(
+      `${clipboard.paths.length} item(s) ${isCopy ? 'copied' : 'moved'}`,
+      'Success',
+      'success'
+    );
 
     if (!isCopy) {
       await updateUndoRedoState();
@@ -2562,9 +2673,14 @@ async function pasteFromClipboard() {
 }
 
 function updateCutVisuals() {
-  document.querySelectorAll('.file-item').forEach(item => {
+  document.querySelectorAll('.file-item').forEach((item) => {
     const itemPath = item.getAttribute('data-path');
-    if (itemPath && clipboard && clipboard.operation === 'cut' && clipboard.paths.includes(itemPath)) {
+    if (
+      itemPath &&
+      clipboard &&
+      clipboard.operation === 'cut' &&
+      clipboard.paths.includes(itemPath)
+    ) {
       item.classList.add('cut');
     } else {
       item.classList.remove('cut');
@@ -2575,33 +2691,33 @@ function updateCutVisuals() {
 function showSortMenu(e: MouseEvent) {
   const sortMenu = document.getElementById('sort-menu');
   if (!sortMenu) return;
-  
+
   const rect = sortBtn.getBoundingClientRect();
   sortMenu.style.display = 'block';
-  
+
   const menuRect = sortMenu.getBoundingClientRect();
   const viewportWidth = window.innerWidth;
   const viewportHeight = window.innerHeight;
-  
+
   let left = rect.left;
   let top = rect.bottom + 5;
-  
+
   if (left + menuRect.width > viewportWidth) {
     left = viewportWidth - menuRect.width - 10;
   }
-  
+
   if (top + menuRect.height > viewportHeight) {
     top = rect.top - menuRect.height - 5;
   }
-  
+
   if (left < 10) left = 10;
   if (top < 10) top = 10;
-  
+
   sortMenu.style.left = left + 'px';
   sortMenu.style.top = top + 'px';
-  
+
   updateSortIndicators();
-  
+
   e.stopPropagation();
 }
 
@@ -2613,7 +2729,7 @@ function hideSortMenu() {
 }
 
 function updateSortIndicators() {
-  ['name', 'date', 'size', 'type'].forEach(sortType => {
+  ['name', 'date', 'size', 'type'].forEach((sortType) => {
     const indicator = document.getElementById(`sort-${sortType}`);
     if (indicator) {
       if (currentSettings.sortBy === sortType) {
@@ -2632,10 +2748,10 @@ async function changeSortMode(sortBy: string) {
     currentSettings.sortBy = sortBy as any;
     currentSettings.sortOrder = 'asc';
   }
-  
+
   await window.electronAPI.saveSettings(currentSettings);
   hideSortMenu();
-  
+
   if (allFiles.length > 0) {
     renderFiles(allFiles);
   }
@@ -2644,11 +2760,11 @@ async function changeSortMode(sortBy: string) {
 function updateStatusBar() {
   const statusItems = document.getElementById('status-items');
   const statusSelected = document.getElementById('status-selected');
-  
+
   if (statusItems) {
     statusItems.textContent = `${allFiles.length} item${allFiles.length !== 1 ? 's' : ''}`;
   }
-  
+
   if (statusSelected) {
     if (selectedItems.size > 0) {
       const totalSize = Array.from(selectedItems).reduce((acc, path) => {
@@ -2689,14 +2805,14 @@ function getUnixDrivePath(pathValue: string): string {
 async function updateDiskSpace() {
   const statusDiskSpace = document.getElementById('status-disk-space');
   if (!statusDiskSpace || !currentPath) return;
-  
+
   let drivePath = currentPath;
   if (platformOS === 'win32') {
     drivePath = currentPath.substring(0, 3);
   } else {
     drivePath = getUnixDrivePath(currentPath);
   }
-  
+
   if (drivePath === lastDiskSpacePath && diskSpaceDebounceTimer) {
     return;
   }
@@ -2704,12 +2820,17 @@ async function updateDiskSpace() {
   if (diskSpaceDebounceTimer) {
     clearTimeout(diskSpaceDebounceTimer);
   }
-  
+
   lastDiskSpacePath = drivePath;
 
   diskSpaceDebounceTimer = setTimeout(async () => {
     const result = await window.electronAPI.getDiskSpace(drivePath);
-    if (result.success && typeof result.total === 'number' && typeof result.free === 'number' && result.total > 0) {
+    if (
+      result.success &&
+      typeof result.total === 'number' &&
+      typeof result.free === 'number' &&
+      result.total > 0
+    ) {
       const total = result.total;
       const free = result.free;
       const freeStr = formatFileSize(free);
@@ -2726,7 +2847,7 @@ async function updateDiskSpace() {
 
       statusDiskSpace.innerHTML = `
         <span style="display: inline-flex; align-items: center; gap: 6px;">
-          ${twemojiImg(String.fromCodePoint(0x1F4BE), 'twemoji')} ${freeStr} free of ${totalStr}
+          ${twemojiImg(String.fromCodePoint(0x1f4be), 'twemoji')} ${freeStr} free of ${totalStr}
           <span style="display: inline-block; width: 60px; height: 8px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden; position: relative;">
             <span style="position: absolute; left: 0; top: 0; height: 100%; width: ${usedPercent}%; background: ${usageColor}; transition: width 0.3s ease;"></span>
           </span>
@@ -2751,7 +2872,7 @@ function formatFileSize(bytes: number): string {
 async function updateZoomLevel(newZoom: number) {
   currentZoomLevel = Math.max(0.5, Math.min(2.0, newZoom));
   const result = await window.electronAPI.setZoomLevel(currentZoomLevel);
-  
+
   if (result.success) {
     updateZoomDisplay();
     showZoomPopup();
@@ -2768,7 +2889,7 @@ function updateZoomDisplay() {
 function showZoomPopup() {
   const zoomPopup = document.getElementById('zoom-popup') as HTMLElement;
   if (!zoomPopup) return;
-  
+
   zoomPopup.style.display = 'flex';
 
   if (zoomPopupTimeout) {
@@ -2802,14 +2923,15 @@ async function init() {
     window.electronAPI.isMas(),
     window.electronAPI.isFlatpak(),
     window.electronAPI.isMsStore(),
-    loadSettings()
+    loadSettings(),
   ]);
 
   platformOS = platform;
 
-  const startupPath = currentSettings.startupPath && currentSettings.startupPath.trim() !== ''
-    ? currentSettings.startupPath
-    : await homeDirectoryPromise;
+  const startupPath =
+    currentSettings.startupPath && currentSettings.startupPath.trim() !== ''
+      ? currentSettings.startupPath
+      : await homeDirectoryPromise;
 
   setupEventListeners();
   loadDrives();
@@ -2842,7 +2964,7 @@ async function init() {
         }
 
         const updatesCards = document.querySelectorAll('.settings-card-header');
-        updatesCards.forEach(header => {
+        updatesCards.forEach((header) => {
           if (header.textContent === 'Updates') {
             const card = header.closest('.settings-card') as HTMLElement;
             if (card) {
@@ -2854,7 +2976,7 @@ async function init() {
 
       if (mas || msStore) {
         const settingsCards = document.querySelectorAll('.settings-card-header');
-        settingsCards.forEach(header => {
+        settingsCards.forEach((header) => {
           if (header.textContent === 'Developer Options') {
             const card = header.closest('.settings-card') as HTMLElement;
             if (card) {
@@ -2869,7 +2991,7 @@ async function init() {
   setTimeout(() => {
     updateUndoRedoState();
 
-    window.electronAPI.getZoomLevel().then(zoomResult => {
+    window.electronAPI.getZoomLevel().then((zoomResult) => {
       if (zoomResult.success && zoomResult.zoomLevel) {
         currentZoomLevel = zoomResult.zoomLevel;
         updateZoomDisplay();
@@ -2892,7 +3014,7 @@ async function init() {
 
       const checkUpdatesBtn = document.getElementById('check-updates-btn');
       if (checkUpdatesBtn) {
-        checkUpdatesBtn.innerHTML = `${twemojiImg(String.fromCodePoint(0x1F389), 'twemoji')} Update Available!`;
+        checkUpdatesBtn.innerHTML = `${twemojiImg(String.fromCodePoint(0x1f389), 'twemoji')} Update Available!`;
         checkUpdatesBtn.classList.add('primary');
       }
     });
@@ -2912,21 +3034,21 @@ async function init() {
     });
     ipcCleanupFunctions.push(cleanupSystemResumed);
   }, 0);
-  
+
   console.log('Init: Complete');
 }
 
 async function loadDrives() {
   if (!drivesList) return;
-  
+
   const drives = await window.electronAPI.getDrives();
   drivesList.innerHTML = '';
-  
-  drives.forEach(drive => {
+
+  drives.forEach((drive) => {
     const driveItem = document.createElement('div');
     driveItem.className = 'nav-item';
     driveItem.innerHTML = `
-      <span class="nav-icon">${twemojiImg(String.fromCodePoint(0x1F4BE), 'twemoji')}</span>
+      <span class="nav-icon">${twemojiImg(String.fromCodePoint(0x1f4be), 'twemoji')}</span>
       <span class="nav-label">${escapeHtml(drive)}</span>
     `;
     driveItem.addEventListener('click', () => navigateTo(drive));
@@ -2950,19 +3072,19 @@ function setupEventListeners() {
     applySettings(newSettings);
   });
   ipcCleanupFunctions.push(cleanupSettings);
-  
+
   document.getElementById('minimize-btn')?.addEventListener('click', () => {
     window.electronAPI.minimizeWindow();
   });
-  
+
   document.getElementById('maximize-btn')?.addEventListener('click', () => {
     window.electronAPI.maximizeWindow();
   });
-  
+
   document.getElementById('close-btn')?.addEventListener('click', () => {
     window.electronAPI.closeWindow();
   });
-  
+
   backBtn?.addEventListener('click', goBack);
   forwardBtn?.addEventListener('click', goForward);
   upBtn?.addEventListener('click', goUp);
@@ -2987,7 +3109,7 @@ function setupEventListeners() {
       goForward();
     }
   });
-  
+
   searchBtn?.addEventListener('click', toggleSearch);
   searchClose?.addEventListener('click', closeSearch);
   searchScopeToggle?.addEventListener('click', toggleSearchScope);
@@ -3004,8 +3126,12 @@ function setupEventListeners() {
 
   searchFilterApply?.addEventListener('click', () => {
     const fileType = searchFilterType.value;
-    const minSizeValue = searchFilterMinSize.value ? parseFloat(searchFilterMinSize.value) : undefined;
-    const maxSizeValue = searchFilterMaxSize.value ? parseFloat(searchFilterMaxSize.value) : undefined;
+    const minSizeValue = searchFilterMinSize.value
+      ? parseFloat(searchFilterMinSize.value)
+      : undefined;
+    const maxSizeValue = searchFilterMaxSize.value
+      ? parseFloat(searchFilterMaxSize.value)
+      : undefined;
     const minSizeUnit = parseFloat(searchFilterSizeUnitMin.value);
     const maxSizeUnit = parseFloat(searchFilterSizeUnitMax.value);
 
@@ -3014,14 +3140,15 @@ function setupEventListeners() {
       minSize: minSizeValue !== undefined ? minSizeValue * minSizeUnit : undefined,
       maxSize: maxSizeValue !== undefined ? maxSizeValue * maxSizeUnit : undefined,
       dateFrom: searchFilterDateFrom.value || undefined,
-      dateTo: searchFilterDateTo.value || undefined
+      dateTo: searchFilterDateTo.value || undefined,
     };
 
-    const hasActiveFilters = currentSearchFilters.fileType ||
-                             currentSearchFilters.minSize !== undefined ||
-                             currentSearchFilters.maxSize !== undefined ||
-                             currentSearchFilters.dateFrom ||
-                             currentSearchFilters.dateTo;
+    const hasActiveFilters =
+      currentSearchFilters.fileType ||
+      currentSearchFilters.minSize !== undefined ||
+      currentSearchFilters.maxSize !== undefined ||
+      currentSearchFilters.dateFrom ||
+      currentSearchFilters.dateTo;
 
     if (hasActiveFilters) {
       searchFilterToggle.classList.add('active');
@@ -3059,14 +3186,14 @@ function setupEventListeners() {
 
   sortBtn?.addEventListener('click', showSortMenu);
   bookmarkAddBtn?.addEventListener('click', addBookmark);
-  
+
   searchInput?.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') {
       hideSearchHistoryDropdown();
       performSearch();
     }
   });
-  
+
   searchInput?.addEventListener('input', () => {
     if (searchInput.value.length === 0) {
       closeSearch();
@@ -3074,7 +3201,7 @@ function setupEventListeners() {
       debouncedSearch();
     }
   });
-  
+
   addressInput?.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') {
       navigateTo(addressInput.value);
@@ -3096,7 +3223,7 @@ function setupEventListeners() {
       (quicklookModal && quicklookModal.style.display === 'flex')
     );
   }
-  
+
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
       const settingsModal = document.getElementById('settings-modal');
@@ -3104,7 +3231,7 @@ function setupEventListeners() {
         hideSettingsModal();
         return;
       }
-      
+
       const shortcutsModal = document.getElementById('shortcuts-modal');
       if (shortcutsModal && shortcutsModal.style.display === 'flex') {
         hideShortcutsModal();
@@ -3152,7 +3279,10 @@ function setupEventListeners() {
       }
       if (e.key === 'ArrowRight') {
         const items = getVisibleMenuItems(contextMenu);
-        if (contextMenuFocusedIndex >= 0 && items[contextMenuFocusedIndex]?.classList.contains('has-submenu')) {
+        if (
+          contextMenuFocusedIndex >= 0 &&
+          items[contextMenuFocusedIndex]?.classList.contains('has-submenu')
+        ) {
           e.preventDefault();
           activateContextMenuItem(contextMenu, contextMenuFocusedIndex);
         }
@@ -3163,12 +3293,20 @@ function setupEventListeners() {
     if (emptySpaceContextMenu && emptySpaceContextMenu.style.display === 'block') {
       if (e.key === 'ArrowDown') {
         e.preventDefault();
-        emptySpaceMenuFocusedIndex = navigateContextMenu(emptySpaceContextMenu, 'down', emptySpaceMenuFocusedIndex);
+        emptySpaceMenuFocusedIndex = navigateContextMenu(
+          emptySpaceContextMenu,
+          'down',
+          emptySpaceMenuFocusedIndex
+        );
         return;
       }
       if (e.key === 'ArrowUp') {
         e.preventDefault();
-        emptySpaceMenuFocusedIndex = navigateContextMenu(emptySpaceContextMenu, 'up', emptySpaceMenuFocusedIndex);
+        emptySpaceMenuFocusedIndex = navigateContextMenu(
+          emptySpaceContextMenu,
+          'up',
+          emptySpaceMenuFocusedIndex
+        );
         return;
       }
       if (e.key === 'Enter') {
@@ -3191,7 +3329,7 @@ function setupEventListeners() {
       const selection = window.getSelection();
       return selection !== null && selection.toString().length > 0;
     };
-    
+
     if (e.ctrlKey || e.metaKey) {
       if (e.key === ',') {
         e.preventDefault();
@@ -3216,7 +3354,10 @@ function setupEventListeners() {
         cutToClipboard();
       } else if (e.key === 'v') {
         const activeElement = document.activeElement;
-        if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
+        if (
+          activeElement &&
+          (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')
+        ) {
           return;
         }
         e.preventDefault();
@@ -3258,7 +3399,10 @@ function setupEventListeners() {
         }
       } else if (e.key === 'a') {
         const activeElement = document.activeElement;
-        if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
+        if (
+          activeElement &&
+          (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')
+        ) {
           return;
         }
         e.preventDefault();
@@ -3291,7 +3435,7 @@ function setupEventListeners() {
       } else if (e.key === 'Tab') {
         e.preventDefault();
         if (tabsEnabled && tabs.length > 1) {
-          const currentIndex = tabs.findIndex(t => t.id === activeTabId);
+          const currentIndex = tabs.findIndex((t) => t.id === activeTabId);
           const nextIndex = e.shiftKey
             ? (currentIndex - 1 + tabs.length) % tabs.length
             : (currentIndex + 1) % tabs.length;
@@ -3300,7 +3444,10 @@ function setupEventListeners() {
       }
     } else if (e.key === ' ' && selectedItems.size === 1) {
       const activeElement = document.activeElement;
-      if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
+      if (
+        activeElement &&
+        (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')
+      ) {
         return;
       }
       e.preventDefault();
@@ -3315,7 +3462,11 @@ function setupEventListeners() {
       e.preventDefault();
       if (e.shiftKey) {
         if (!currentSettings.showDangerousOptions) {
-          showToast('Enable Developer Mode in settings to permanently delete items', 'Developer Mode Required', 'warning');
+          showToast(
+            'Enable Developer Mode in settings to permanently delete items',
+            'Developer Mode Required',
+            'warning'
+          );
           return;
         }
         permanentlyDeleteSelected();
@@ -3324,36 +3475,53 @@ function setupEventListeners() {
       }
     } else if (e.key === 'Enter') {
       const activeElement = document.activeElement;
-      if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
+      if (
+        activeElement &&
+        (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')
+      ) {
         return;
       }
       e.preventDefault();
       openSelectedItem();
-    } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+    } else if (
+      e.key === 'ArrowUp' ||
+      e.key === 'ArrowDown' ||
+      e.key === 'ArrowLeft' ||
+      e.key === 'ArrowRight'
+    ) {
       const activeElement = document.activeElement;
-      if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
+      if (
+        activeElement &&
+        (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')
+      ) {
         return;
       }
       e.preventDefault();
       navigateFileGrid(e.key, e.shiftKey);
     } else if (e.key === 'Home') {
       const activeElement = document.activeElement;
-      if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
+      if (
+        activeElement &&
+        (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')
+      ) {
         return;
       }
       e.preventDefault();
       selectFirstItem(e.shiftKey);
     } else if (e.key === 'End') {
       const activeElement = document.activeElement;
-      if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
+      if (
+        activeElement &&
+        (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')
+      ) {
         return;
       }
       e.preventDefault();
       selectLastItem(e.shiftKey);
     }
   });
-  
-  document.querySelectorAll('.nav-item[data-action]').forEach(element => {
+
+  document.querySelectorAll('.nav-item[data-action]').forEach((element) => {
     const item = element as HTMLElement;
     item.addEventListener('click', async () => {
       const action = item.dataset.action;
@@ -3375,7 +3543,7 @@ function setupEventListeners() {
       }
     });
   });
-  
+
   document.addEventListener('click', (e) => {
     const target = e.target as HTMLElement;
     const contextMenu = document.getElementById('context-menu');
@@ -3408,21 +3576,30 @@ function setupEventListeners() {
     if (contextMenu && contextMenu.style.display === 'block' && !contextMenu.contains(target)) {
       hideContextMenu();
     }
-    if (emptySpaceMenu && emptySpaceMenu.style.display === 'block' && !emptySpaceMenu.contains(target)) {
+    if (
+      emptySpaceMenu &&
+      emptySpaceMenu.style.display === 'block' &&
+      !emptySpaceMenu.contains(target)
+    ) {
       hideEmptySpaceContextMenu();
     }
-    if (sortMenu && sortMenu.style.display === 'block' && !sortMenu.contains(target) && target !== sortBtn) {
+    if (
+      sortMenu &&
+      sortMenu.style.display === 'block' &&
+      !sortMenu.contains(target) &&
+      target !== sortBtn
+    ) {
       hideSortMenu();
     }
   });
-  
+
   if (fileGrid) {
     fileGrid.addEventListener('click', (e) => {
       if (e.target === fileGrid) {
         clearSelection();
       }
     });
-    
+
     fileGrid.addEventListener('dragover', (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -3437,28 +3614,32 @@ function setupEventListeners() {
       e.dataTransfer.dropEffect = e.ctrlKey ? 'copy' : 'move';
       fileGrid.classList.add('drag-over');
     });
-    
+
     fileGrid.addEventListener('dragleave', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      
+
       const rect = fileGrid.getBoundingClientRect();
-      if (e.clientX < rect.left || e.clientX >= rect.right ||
-          e.clientY < rect.top || e.clientY >= rect.bottom) {
+      if (
+        e.clientX < rect.left ||
+        e.clientX >= rect.right ||
+        e.clientY < rect.top ||
+        e.clientY >= rect.bottom
+      ) {
         fileGrid.classList.remove('drag-over');
       }
     });
-    
+
     fileGrid.addEventListener('drop', async (e) => {
       e.preventDefault();
       e.stopPropagation();
-      
+
       fileGrid.classList.remove('drag-over');
-      
+
       if ((e.target as HTMLElement).closest('.file-item')) {
         return;
       }
-      
+
       let draggedPaths: string[] = [];
 
       if (!e.dataTransfer) return;
@@ -3468,13 +3649,14 @@ function setupEventListeners() {
         if (textData) {
           draggedPaths = JSON.parse(textData);
         }
-      } catch {
-      }
+      } catch {}
 
       if (draggedPaths.length === 0 && e.dataTransfer.files.length > 0) {
-        draggedPaths = Array.from(e.dataTransfer.files).map(f => (f as File & { path: string }).path);
+        draggedPaths = Array.from(e.dataTransfer.files).map(
+          (f) => (f as File & { path: string }).path
+        );
       }
-      
+
       // If still empty, check shared drag data from main process (cross-window)
       if (draggedPaths.length === 0) {
         const sharedData = await window.electronAPI.getDragData();
@@ -3482,21 +3664,21 @@ function setupEventListeners() {
           draggedPaths = sharedData.paths;
         }
       }
-      
+
       if (draggedPaths.length === 0 || !currentPath) {
         return;
       }
-    
+
       const alreadyInCurrentDir = draggedPaths.some((dragPath: string) => {
         const parentDir = path.dirname(dragPath);
         return parentDir === currentPath || dragPath === currentPath;
       });
-    
+
       if (alreadyInCurrentDir) {
         showToast('Items are already in this directory', 'Info', 'info');
         return;
       }
-    
+
       const operation = e.ctrlKey ? 'copy' : 'move';
       await handleDrop(draggedPaths, currentPath, operation);
     });
@@ -3504,97 +3686,107 @@ function setupEventListeners() {
 
   if (fileView) {
     fileView.addEventListener('dragover', (e) => {
-      if ((e.target as HTMLElement).closest('.file-grid') || 
-          (e.target as HTMLElement).closest('.column-view') ||
-          (e.target as HTMLElement).closest('.file-item') ||
-          (e.target as HTMLElement).closest('.column-item')) {
+      if (
+        (e.target as HTMLElement).closest('.file-grid') ||
+        (e.target as HTMLElement).closest('.column-view') ||
+        (e.target as HTMLElement).closest('.file-item') ||
+        (e.target as HTMLElement).closest('.column-item')
+      ) {
         return;
       }
-      
+
       e.preventDefault();
       e.stopPropagation();
-      
+
       if (!currentPath) {
         e.dataTransfer!.dropEffect = 'none';
         return;
       }
-      
+
       e.dataTransfer!.dropEffect = e.ctrlKey ? 'copy' : 'move';
       fileView.classList.add('drag-over');
     });
-    
+
     fileView.addEventListener('dragleave', (e) => {
       e.preventDefault();
       const rect = fileView.getBoundingClientRect();
-      if (e.clientX < rect.left || e.clientX >= rect.right ||
-          e.clientY < rect.top || e.clientY >= rect.bottom) {
+      if (
+        e.clientX < rect.left ||
+        e.clientX >= rect.right ||
+        e.clientY < rect.top ||
+        e.clientY >= rect.bottom
+      ) {
         fileView.classList.remove('drag-over');
       }
     });
-    
+
     fileView.addEventListener('drop', async (e) => {
-      if ((e.target as HTMLElement).closest('.file-grid') || 
-          (e.target as HTMLElement).closest('.column-view') ||
-          (e.target as HTMLElement).closest('.file-item') ||
-          (e.target as HTMLElement).closest('.column-item')) {
+      if (
+        (e.target as HTMLElement).closest('.file-grid') ||
+        (e.target as HTMLElement).closest('.column-view') ||
+        (e.target as HTMLElement).closest('.file-item') ||
+        (e.target as HTMLElement).closest('.column-item')
+      ) {
         return;
       }
-      
+
       e.preventDefault();
       e.stopPropagation();
-      
+
       fileView.classList.remove('drag-over');
-      
+
       let draggedPaths: string[] = [];
-      
+
       try {
         const textData = e.dataTransfer!.getData('text/plain');
         if (textData) {
           draggedPaths = JSON.parse(textData);
         }
-      } catch {
-      }
-      
+      } catch {}
+
       if (draggedPaths.length === 0 && e.dataTransfer!.files.length > 0) {
-        draggedPaths = Array.from(e.dataTransfer!.files).map(f => (f as File & { path: string }).path);
+        draggedPaths = Array.from(e.dataTransfer!.files).map(
+          (f) => (f as File & { path: string }).path
+        );
       }
-      
+
       if (draggedPaths.length === 0) {
         const sharedData = await window.electronAPI.getDragData();
         if (sharedData) {
           draggedPaths = sharedData.paths;
         }
       }
-      
+
       if (draggedPaths.length === 0 || !currentPath) {
         return;
       }
-      
+
       const alreadyInCurrentDir = draggedPaths.some((dragPath: string) => {
         const parentDir = path.dirname(dragPath);
         return parentDir === currentPath || dragPath === currentPath;
       });
-      
+
       if (alreadyInCurrentDir) {
         showToast('Items are already in this directory', 'Info', 'info');
         return;
       }
-      
+
       const operation = e.ctrlKey ? 'copy' : 'move';
       await handleDrop(draggedPaths, currentPath, operation);
     });
   }
-  
+
   document.addEventListener('contextmenu', (e) => {
     if (!(e.target as HTMLElement).closest('.file-item')) {
       e.preventDefault();
       const target = e.target as HTMLElement;
-      const clickedOnFileView = target.closest('#file-view') || 
-                                 target.id === 'file-view' || 
-                                 target.closest('.file-grid') || 
-                                 target.id === 'file-grid' ||
-                                 target.closest('.empty-state') ||
-                                 target.id === 'empty-state';
+      const clickedOnFileView =
+        target.closest('#file-view') ||
+        target.id === 'file-view' ||
+        target.closest('.file-grid') ||
+        target.id === 'file-grid' ||
+        target.closest('.empty-state') ||
+        target.id === 'empty-state';
       if (clickedOnFileView && currentPath) {
         showEmptySpaceContextMenu(e.pageX, e.pageY);
       } else {
@@ -3610,7 +3802,7 @@ function addToSearchHistory(query: string) {
   if (!currentSettings.searchHistory) {
     currentSettings.searchHistory = [];
   }
-  currentSettings.searchHistory = currentSettings.searchHistory.filter(item => item !== query);
+  currentSettings.searchHistory = currentSettings.searchHistory.filter((item) => item !== query);
   currentSettings.searchHistory.unshift(query);
   currentSettings.searchHistory = currentSettings.searchHistory.slice(0, SEARCH_HISTORY_MAX);
   debouncedSaveSettings();
@@ -3621,43 +3813,58 @@ function addToDirectoryHistory(dirPath: string) {
   if (!currentSettings.directoryHistory) {
     currentSettings.directoryHistory = [];
   }
-  currentSettings.directoryHistory = currentSettings.directoryHistory.filter(item => item !== dirPath);
+  currentSettings.directoryHistory = currentSettings.directoryHistory.filter(
+    (item) => item !== dirPath
+  );
   currentSettings.directoryHistory.unshift(dirPath);
-  currentSettings.directoryHistory = currentSettings.directoryHistory.slice(0, DIRECTORY_HISTORY_MAX);
+  currentSettings.directoryHistory = currentSettings.directoryHistory.slice(
+    0,
+    DIRECTORY_HISTORY_MAX
+  );
   debouncedSaveSettings();
 }
 
 function showSearchHistoryDropdown() {
   const dropdown = document.getElementById('search-history-dropdown');
   if (!dropdown || !currentSettings.enableSearchHistory) return;
-  
+
   const history = currentSettings.searchHistory || [];
-  
+
   if (history.length === 0) {
     dropdown.innerHTML = '<div class="history-empty">No recent searches</div>';
   } else {
-    dropdown.innerHTML = history.map(item => 
-      `<div class="history-item" data-query="${escapeHtml(item)}">${twemojiImg(String.fromCodePoint(0x1F50D), 'twemoji')} ${escapeHtml(item)}</div>`
-    ).join('') + `<div class="history-clear" data-action="clear-search">${twemojiImg(String.fromCodePoint(0x1F5D1), 'twemoji')} Clear Search History</div>`;
+    dropdown.innerHTML =
+      history
+        .map(
+          (item) =>
+            `<div class="history-item" data-query="${escapeHtml(item)}">${twemojiImg(String.fromCodePoint(0x1f50d), 'twemoji')} ${escapeHtml(item)}</div>`
+        )
+        .join('') +
+      `<div class="history-clear" data-action="clear-search">${twemojiImg(String.fromCodePoint(0x1f5d1), 'twemoji')} Clear Search History</div>`;
   }
-  
+
   dropdown.style.display = 'block';
 }
 
 function showDirectoryHistoryDropdown() {
   const dropdown = document.getElementById('directory-history-dropdown');
   if (!dropdown || !currentSettings.enableSearchHistory) return;
-  
+
   const history = currentSettings.directoryHistory || [];
-  
+
   if (history.length === 0) {
     dropdown.innerHTML = '<div class="history-empty">No recent directories</div>';
   } else {
-    dropdown.innerHTML = history.map(item => 
-      `<div class="history-item" data-path="${escapeHtml(item)}">${twemojiImg(String.fromCodePoint(0x1F4C1), 'twemoji')} ${escapeHtml(item)}</div>`
-    ).join('') + `<div class="history-clear" data-action="clear-directory">${twemojiImg(String.fromCodePoint(0x1F5D1), 'twemoji')} Clear Directory History</div>`;
+    dropdown.innerHTML =
+      history
+        .map(
+          (item) =>
+            `<div class="history-item" data-path="${escapeHtml(item)}">${twemojiImg(String.fromCodePoint(0x1f4c1), 'twemoji')} ${escapeHtml(item)}</div>`
+        )
+        .join('') +
+      `<div class="history-clear" data-action="clear-directory">${twemojiImg(String.fromCodePoint(0x1f5d1), 'twemoji')} Clear Directory History</div>`;
   }
-  
+
   dropdown.style.display = 'block';
 }
 
@@ -3706,7 +3913,11 @@ async function navigateTo(path: string, skipHistoryUpdate = false) {
     requestId = request.requestId;
     operationId = request.operationId;
 
-    const result = await window.electronAPI.getDirectoryContents(path, operationId, currentSettings.showHiddenFiles);
+    const result = await window.electronAPI.getDirectoryContents(
+      path,
+      operationId,
+      currentSettings.showHiddenFiles
+    );
     if (requestId !== directoryRequestId) return;
 
     if (result.success) {
@@ -3748,7 +3959,7 @@ async function navigateTo(path: string, skipHistoryUpdate = false) {
 }
 
 let renderFilesToken = 0;
-let filePathMap: Map<string, FileItem> = new Map();
+const filePathMap: Map<string, FileItem> = new Map();
 
 function renderFiles(items: FileItem[], searchQuery?: string) {
   if (!fileGrid) return;
@@ -3774,7 +3985,7 @@ function renderFiles(items: FileItem[], searchQuery?: string) {
 
   const visibleItems = currentSettings.showHiddenFiles
     ? items
-    : items.filter(item => !item.isHidden);
+    : items.filter((item) => !item.isHidden);
 
   if (visibleItems.length === 0) {
     if (emptyState) emptyState.style.display = 'flex';
@@ -3788,15 +3999,16 @@ function renderFiles(items: FileItem[], searchQuery?: string) {
   const modifiedCache = sortBy === 'date' ? new Map<FileItem, number>() : null;
 
   if (sortBy === 'type') {
-    visibleItems.forEach(item => {
+    visibleItems.forEach((item) => {
       if (!item.isDirectory) {
         const ext = item.name.split('.').pop()?.toLowerCase() || '';
         extCache?.set(item, ext);
       }
     });
   } else if (sortBy === 'date') {
-    visibleItems.forEach(item => {
-      const time = item.modified instanceof Date ? item.modified.getTime() : new Date(item.modified).getTime();
+    visibleItems.forEach((item) => {
+      const time =
+        item.modified instanceof Date ? item.modified.getTime() : new Date(item.modified).getTime();
       modifiedCache?.set(item, time);
     });
   }
@@ -3833,7 +4045,7 @@ function renderFiles(items: FileItem[], searchQuery?: string) {
 
   const batchSize = RENDER_BATCH_SIZE;
   let currentBatch = 0;
-  
+
   const renderBatch = () => {
     if (renderToken !== renderFilesToken) return;
     const start = currentBatch * batchSize;
@@ -3843,7 +4055,7 @@ function renderFiles(items: FileItem[], searchQuery?: string) {
       const fileItem = createFileItem(sortedItems[i], searchQuery);
       fragment.appendChild(fileItem);
     }
-    
+
     fileGrid.appendChild(fragment);
     currentBatch++;
 
@@ -3857,7 +4069,7 @@ function renderFiles(items: FileItem[], searchQuery?: string) {
       lazyLoadThumbnails();
     }
   };
-  
+
   renderBatch();
 }
 
@@ -3867,29 +4079,32 @@ function lazyLoadThumbnails() {
   if (thumbnailObserver) {
     thumbnailObserver.disconnect();
   }
-    
+
   const scrollContainer = document.getElementById('file-view');
 
-  thumbnailObserver = new IntersectionObserver((entries) => {
-    entries.forEach(entry => {
-      if (entry.isIntersecting) {
-        const fileItem = entry.target as HTMLElement;
-        const path = fileItem.dataset.path;
-        const item = path ? filePathMap.get(path) : undefined;
-        
-        if (item && fileItem.classList.contains('has-thumbnail')) {
-          loadThumbnail(fileItem, item);
-          thumbnailObserver?.unobserve(fileItem);
-        }
-      }
-    });
-  }, {
-    root: scrollContainer,
-    rootMargin: THUMBNAIL_ROOT_MARGIN,
-    threshold: 0.01
-  });
+  thumbnailObserver = new IntersectionObserver(
+    (entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          const fileItem = entry.target as HTMLElement;
+          const path = fileItem.dataset.path;
+          const item = path ? filePathMap.get(path) : undefined;
 
-  document.querySelectorAll('.file-item.has-thumbnail').forEach(item => {
+          if (item && fileItem.classList.contains('has-thumbnail')) {
+            loadThumbnail(fileItem, item);
+            thumbnailObserver?.unobserve(fileItem);
+          }
+        }
+      });
+    },
+    {
+      root: scrollContainer,
+      rootMargin: THUMBNAIL_ROOT_MARGIN,
+      threshold: 0.01,
+    }
+  );
+
+  document.querySelectorAll('.file-item.has-thumbnail').forEach((item) => {
     thumbnailObserver?.observe(item);
   });
 }
@@ -3917,7 +4132,7 @@ function createFileItem(item: FileItem, searchQuery?: string): HTMLElement {
   const dateDisplay = new Date(item.modified).toLocaleDateString(undefined, {
     year: 'numeric',
     month: 'short',
-    day: 'numeric'
+    day: 'numeric',
   });
 
   const contentResult = item as ContentSearchResult;
@@ -3926,8 +4141,13 @@ function createFileItem(item: FileItem, searchQuery?: string): HTMLElement {
     const escapedContext = escapeHtml(contentResult.matchContext);
     const escapedQuery = escapeHtml(searchQuery);
     const regex = new RegExp(`(${escapedQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
-    const highlightedContext = escapedContext.replace(regex, '<span class="match-highlight">$1</span>');
-    const lineInfo = contentResult.matchLineNumber ? `<span class="match-line-number">Line ${contentResult.matchLineNumber}</span>` : '';
+    const highlightedContext = escapedContext.replace(
+      regex,
+      '<span class="match-highlight">$1</span>'
+    );
+    const lineInfo = contentResult.matchLineNumber
+      ? `<span class="match-line-number">Line ${contentResult.matchLineNumber}</span>`
+      : '';
     matchContextHtml = `<div class="match-context">${highlightedContext}${lineInfo}</div>`;
   }
 
@@ -3940,7 +4160,7 @@ function createFileItem(item: FileItem, searchQuery?: string): HTMLElement {
       <span class="file-modified">${dateDisplay}</span>
     </div>
   `;
-  
+
   fileItem.addEventListener('dblclick', () => {
     if (item.isDirectory) {
       navigateTo(item.path);
@@ -3964,7 +4184,7 @@ function createFileItem(item: FileItem, searchQuery?: string): HTMLElement {
     }
     toggleSelection(fileItem);
   });
-  
+
   fileItem.addEventListener('contextmenu', (e) => {
     e.preventDefault();
     if (!fileItem.classList.contains('selected')) {
@@ -3973,9 +4193,9 @@ function createFileItem(item: FileItem, searchQuery?: string): HTMLElement {
     }
     showContextMenu(e.pageX, e.pageY, item);
   });
-  
+
   fileItem.draggable = true;
-  
+
   fileItem.addEventListener('dragstart', (e) => {
     e.stopPropagation();
 
@@ -3983,7 +4203,7 @@ function createFileItem(item: FileItem, searchQuery?: string): HTMLElement {
       clearSelection();
       toggleSelection(fileItem);
     }
-    
+
     const selectedPaths = Array.from(selectedItems);
 
     if (!e.dataTransfer) return;
@@ -4006,14 +4226,14 @@ function createFileItem(item: FileItem, searchQuery?: string): HTMLElement {
       setTimeout(() => dragImage.remove(), 0);
     }
   });
-  
+
   fileItem.addEventListener('dragend', (e) => {
     fileItem.classList.remove('dragging');
-    document.querySelectorAll('.file-item.drag-over').forEach(el => {
+    document.querySelectorAll('.file-item.drag-over').forEach((el) => {
       el.classList.remove('drag-over');
     });
     document.getElementById('file-grid')?.classList.remove('drag-over');
-    
+
     // Clear drag data main
     window.electronAPI.clearDragData();
   });
@@ -4033,24 +4253,28 @@ function createFileItem(item: FileItem, searchQuery?: string): HTMLElement {
       e.dataTransfer.dropEffect = e.ctrlKey ? 'copy' : 'move';
       fileItem.classList.add('drag-over');
     });
-    
+
     fileItem.addEventListener('dragleave', (e) => {
       e.preventDefault();
       e.stopPropagation();
 
       const rect = fileItem.getBoundingClientRect();
-      if (e.clientX < rect.left || e.clientX >= rect.right ||
-          e.clientY < rect.top || e.clientY >= rect.bottom) {
+      if (
+        e.clientX < rect.left ||
+        e.clientX >= rect.right ||
+        e.clientY < rect.top ||
+        e.clientY >= rect.bottom
+      ) {
         fileItem.classList.remove('drag-over');
       }
     });
-    
+
     fileItem.addEventListener('drop', async (e) => {
       e.preventDefault();
       e.stopPropagation();
-      
+
       fileItem.classList.remove('drag-over');
-      
+
       let draggedPaths: string[] = [];
 
       if (!e.dataTransfer) return;
@@ -4060,11 +4284,12 @@ function createFileItem(item: FileItem, searchQuery?: string): HTMLElement {
         if (textData) {
           draggedPaths = JSON.parse(textData);
         }
-      } catch {
-      }
+      } catch {}
 
       if (draggedPaths.length === 0 && e.dataTransfer.files.length > 0) {
-        draggedPaths = Array.from(e.dataTransfer.files).map(f => (f as File & { path: string }).path);
+        draggedPaths = Array.from(e.dataTransfer.files).map(
+          (f) => (f as File & { path: string }).path
+        );
       }
 
       if (draggedPaths.length === 0) {
@@ -4073,16 +4298,16 @@ function createFileItem(item: FileItem, searchQuery?: string): HTMLElement {
           draggedPaths = sharedData.paths;
         }
       }
-      
+
       if (draggedPaths.length === 0 || draggedPaths.includes(item.path)) {
         return;
       }
-      
+
       const operation = e.ctrlKey ? 'copy' : 'move';
       await handleDrop(draggedPaths, item.path, operation);
     });
   }
-  
+
   return fileItem;
 }
 
@@ -4168,30 +4393,159 @@ function loadThumbnail(fileItem: HTMLElement, item: FileItem) {
 }
 
 const FILE_ICON_MAP: Record<string, string> = {
-  'jpg': '1f5bc', 'jpeg': '1f5bc', 'png': '1f5bc', 'gif': '1f5bc', 'svg': '1f5bc', 'bmp': '1f5bc',
-  'webp': '1f5bc', 'ico': '1f5bc', 'tiff': '1f5bc', 'tif': '1f5bc', 'avif': '1f5bc', 'jfif': '1f5bc',
-  'mp4': '1f3ac', 'avi': '1f3ac', 'mov': '1f3ac', 'mkv': '1f3ac', 'webm': '1f3ac',
-  'mp3': '1f3b5', 'wav': '1f3b5', 'flac': '1f3b5', 'ogg': '1f3b5', 'm4a': '1f3b5',
-  'pdf': '1f4c4', 'doc': '1f4dd', 'docx': '1f4dd', 'txt': '1f4dd', 'rtf': '1f4dd',
-  'xls': '1f4ca', 'xlsx': '1f4ca', 'csv': '1f4ca',
-  'ppt': '1f4ca', 'pptx': '1f4ca',
-  'js': '1f4dc', 'ts': '1f4dc', 'jsx': '1f4dc', 'tsx': '1f4dc',
-  'html': '1f310', 'css': '1f3a8', 'json': '2699', 'xml': '2699',
-  'py': '1f40d', 'java': '2615', 'c': 'a9', 'cpp': 'a9', 'cs': 'a9',
-  'php': '1f418', 'rb': '1f48e', 'go': '1f439', 'rs': '1f980',
-  'zip': '1f5dc', 'rar': '1f5dc', '7z': '1f5dc', 'tar': '1f5dc', 'gz': '1f5dc',
-  'exe': '2699', 'app': '2699', 'msi': '2699', 'dmg': '2699'
+  jpg: '1f5bc',
+  jpeg: '1f5bc',
+  png: '1f5bc',
+  gif: '1f5bc',
+  svg: '1f5bc',
+  bmp: '1f5bc',
+  webp: '1f5bc',
+  ico: '1f5bc',
+  tiff: '1f5bc',
+  tif: '1f5bc',
+  avif: '1f5bc',
+  jfif: '1f5bc',
+  mp4: '1f3ac',
+  avi: '1f3ac',
+  mov: '1f3ac',
+  mkv: '1f3ac',
+  webm: '1f3ac',
+  mp3: '1f3b5',
+  wav: '1f3b5',
+  flac: '1f3b5',
+  ogg: '1f3b5',
+  m4a: '1f3b5',
+  pdf: '1f4c4',
+  doc: '1f4dd',
+  docx: '1f4dd',
+  txt: '1f4dd',
+  rtf: '1f4dd',
+  xls: '1f4ca',
+  xlsx: '1f4ca',
+  csv: '1f4ca',
+  ppt: '1f4ca',
+  pptx: '1f4ca',
+  js: '1f4dc',
+  ts: '1f4dc',
+  jsx: '1f4dc',
+  tsx: '1f4dc',
+  html: '1f310',
+  css: '1f3a8',
+  json: '2699',
+  xml: '2699',
+  py: '1f40d',
+  java: '2615',
+  c: 'a9',
+  cpp: 'a9',
+  cs: 'a9',
+  php: '1f418',
+  rb: '1f48e',
+  go: '1f439',
+  rs: '1f980',
+  zip: '1f5dc',
+  rar: '1f5dc',
+  '7z': '1f5dc',
+  tar: '1f5dc',
+  gz: '1f5dc',
+  exe: '2699',
+  app: '2699',
+  msi: '2699',
+  dmg: '2699',
 };
 
-const IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'ico', 'tiff', 'tif', 'avif', 'jfif', 'svg']);
+const IMAGE_EXTENSIONS = new Set([
+  'jpg',
+  'jpeg',
+  'png',
+  'gif',
+  'webp',
+  'bmp',
+  'ico',
+  'tiff',
+  'tif',
+  'avif',
+  'jfif',
+  'svg',
+]);
 const VIDEO_EXTENSIONS = new Set(['mp4', 'webm', 'ogg', 'mov', 'mkv', 'avi', 'm4v']);
 const AUDIO_EXTENSIONS = new Set(['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac', 'wma', 'opus']);
 const PDF_EXTENSIONS = new Set(['pdf']);
 const TEXT_EXTENSIONS = new Set([
-  'txt', 'text', 'md', 'markdown', 'log', 'readme', 'html', 'htm', 'css', 'scss', 'sass', 'less', 'js', 'jsx', 'ts', 'tsx', 'vue', 'svelte', 'py', 'pyc', 'pyw', 'java', 'c', 'cpp', 'cc', 'cxx', 'h', 'hpp', 'cs', 'php', 'rb', 'go', 'rs', 'swift', 'kt', 'kts', 'scala', 'r', 'lua', 'perl', 'pl', 'sh', 'bash', 'zsh', 'fish', 'ps1', 'bat', 'cmd',
-  'json', 'xml', 'yml', 'yaml', 'toml', 'csv', 'tsv', 'sql',
-  'ini', 'conf', 'config', 'cfg', 'env', 'properties', 'gitignore', 'gitattributes', 'editorconfig', 'dockerfile', 'dockerignore',
-  'rst', 'tex', 'adoc', 'asciidoc', 'makefile', 'cmake', 'gradle', 'maven'
+  'txt',
+  'text',
+  'md',
+  'markdown',
+  'log',
+  'readme',
+  'html',
+  'htm',
+  'css',
+  'scss',
+  'sass',
+  'less',
+  'js',
+  'jsx',
+  'ts',
+  'tsx',
+  'vue',
+  'svelte',
+  'py',
+  'pyc',
+  'pyw',
+  'java',
+  'c',
+  'cpp',
+  'cc',
+  'cxx',
+  'h',
+  'hpp',
+  'cs',
+  'php',
+  'rb',
+  'go',
+  'rs',
+  'swift',
+  'kt',
+  'kts',
+  'scala',
+  'r',
+  'lua',
+  'perl',
+  'pl',
+  'sh',
+  'bash',
+  'zsh',
+  'fish',
+  'ps1',
+  'bat',
+  'cmd',
+  'json',
+  'xml',
+  'yml',
+  'yaml',
+  'toml',
+  'csv',
+  'tsv',
+  'sql',
+  'ini',
+  'conf',
+  'config',
+  'cfg',
+  'env',
+  'properties',
+  'gitignore',
+  'gitattributes',
+  'editorconfig',
+  'dockerfile',
+  'dockerignore',
+  'rst',
+  'tex',
+  'adoc',
+  'asciidoc',
+  'makefile',
+  'cmake',
+  'gradle',
+  'maven',
 ]);
 const VIDEO_MIME_TYPES: Record<string, string> = {
   mp4: 'video/mp4',
@@ -4200,7 +4554,7 @@ const VIDEO_MIME_TYPES: Record<string, string> = {
   mov: 'video/quicktime',
   mkv: 'video/x-matroska',
   avi: 'video/x-msvideo',
-  m4v: 'video/x-m4v'
+  m4v: 'video/x-m4v',
 };
 const AUDIO_MIME_TYPES: Record<string, string> = {
   mp3: 'audio/mpeg',
@@ -4210,9 +4564,9 @@ const AUDIO_MIME_TYPES: Record<string, string> = {
   aac: 'audio/aac',
   m4a: 'audio/mp4',
   wma: 'audio/x-ms-wma',
-  opus: 'audio/ogg'
+  opus: 'audio/ogg',
 };
-const FOLDER_ICON = twemojiImg(String.fromCodePoint(0x1F4C1), 'twemoji file-icon');
+const FOLDER_ICON = twemojiImg(String.fromCodePoint(0x1f4c1), 'twemoji file-icon');
 const IMAGE_ICON = twemojiImg(String.fromCodePoint(parseInt('1f5bc', 16)), 'twemoji');
 const DEFAULT_FILE_ICON = twemojiImg(String.fromCodePoint(parseInt('1f4c4', 16)), 'twemoji');
 
@@ -4238,20 +4592,29 @@ function getFileIcon(filename: string): string {
   return icon;
 }
 
-async function handleDrop(sourcePaths: string[], destPath: string, operation: 'copy' | 'move'): Promise<void> {
+async function handleDrop(
+  sourcePaths: string[],
+  destPath: string,
+  operation: 'copy' | 'move'
+): Promise<void> {
   try {
-    const result = operation === 'copy' 
-      ? await window.electronAPI.copyItems(sourcePaths, destPath)
-      : await window.electronAPI.moveItems(sourcePaths, destPath);
-    
+    const result =
+      operation === 'copy'
+        ? await window.electronAPI.copyItems(sourcePaths, destPath)
+        : await window.electronAPI.moveItems(sourcePaths, destPath);
+
     if (result.success) {
-      showToast(`${operation === 'copy' ? 'Copied' : 'Moved'} ${sourcePaths.length} item(s)`, 'Success', 'success');
+      showToast(
+        `${operation === 'copy' ? 'Copied' : 'Moved'} ${sourcePaths.length} item(s)`,
+        'Success',
+        'success'
+      );
       await window.electronAPI.clearDragData();
-      
+
       if (operation === 'move') {
         await updateUndoRedoState();
       }
-      
+
       await navigateTo(currentPath);
       clearSelection();
     } else {
@@ -4274,12 +4637,12 @@ function toggleSelection(fileItem: HTMLElement) {
     selectedItems.delete(itemPath);
   }
   updateStatusBar();
-  
+
   if (isPreviewPanelVisible && selectedItems.size === 1) {
     const selectedPath = Array.from(selectedItems)[0];
     const file = filePathMap.get(selectedPath);
     if (file && file.isFile) {
-           updatePreview(file);
+      updatePreview(file);
     } else {
       previewRequestId++;
       showEmptyPreview();
@@ -4291,12 +4654,12 @@ function toggleSelection(fileItem: HTMLElement) {
 }
 
 function clearSelection() {
-  document.querySelectorAll('.file-item.selected').forEach(item => {
+  document.querySelectorAll('.file-item.selected').forEach((item) => {
     item.classList.remove('selected');
   });
   selectedItems.clear();
   updateStatusBar();
-  
+
   if (isPreviewPanelVisible) {
     previewRequestId++;
     showEmptyPreview();
@@ -4304,7 +4667,7 @@ function clearSelection() {
 }
 
 function selectAll() {
-  document.querySelectorAll('.file-item').forEach(item => {
+  document.querySelectorAll('.file-item').forEach((item) => {
     item.classList.add('selected');
     const itemPath = item.getAttribute('data-path');
     if (itemPath) {
@@ -4349,7 +4712,7 @@ function navigateFileGrid(key: string, shiftKey: boolean) {
   let currentIndex = lastSelectedIndex;
   if (currentIndex === -1 || currentIndex >= fileItems.length) {
     const selectedPath = Array.from(selectedItems)[selectedItems.size - 1];
-    currentIndex = fileItems.findIndex(item => item.getAttribute('data-path') === selectedPath);
+    currentIndex = fileItems.findIndex((item) => item.getAttribute('data-path') === selectedPath);
   }
   if (currentIndex === -1) currentIndex = 0;
 
@@ -4398,7 +4761,12 @@ function selectLastItem(shiftKey: boolean) {
   }
 }
 
-function selectItemAtIndex(fileItems: HTMLElement[], index: number, shiftKey: boolean, anchorIndex: number) {
+function selectItemAtIndex(
+  fileItems: HTMLElement[],
+  index: number,
+  shiftKey: boolean,
+  anchorIndex: number
+) {
   if (index < 0 || index >= fileItems.length) return;
 
   if (shiftKey && anchorIndex !== -1) {
@@ -4453,23 +4821,27 @@ async function renameSelected() {
 
 async function deleteSelected() {
   if (selectedItems.size === 0) return;
-  
+
   const count = selectedItems.size;
   const confirmed = await showConfirm(
     `Move ${count} item${count > 1 ? 's' : ''} to ${platformOS === 'win32' ? 'Recycle Bin' : 'Trash'}?`,
     'Move to Trash',
     'warning'
   );
-  
+
   if (confirmed) {
     let successCount = 0;
     for (const itemPath of selectedItems) {
       const result = await window.electronAPI.trashItem(itemPath);
       if (result.success) successCount++;
     }
-    
+
     if (successCount > 0) {
-      showToast(`${successCount} item${successCount > 1 ? 's' : ''} moved to ${platformOS === 'win32' ? 'Recycle Bin' : 'Trash'}`, 'Success', 'success');
+      showToast(
+        `${successCount} item${successCount > 1 ? 's' : ''} moved to ${platformOS === 'win32' ? 'Recycle Bin' : 'Trash'}`,
+        'Success',
+        'success'
+      );
       await updateUndoRedoState();
       refresh();
     }
@@ -4478,23 +4850,27 @@ async function deleteSelected() {
 
 async function permanentlyDeleteSelected() {
   if (selectedItems.size === 0) return;
-  
+
   const count = selectedItems.size;
   const confirmed = await showConfirm(
-    `${twemojiImg(String.fromCodePoint(0x26A0), 'twemoji')} PERMANENTLY delete ${count} item${count > 1 ? 's' : ''}? This CANNOT be undone!`,
+    `${twemojiImg(String.fromCodePoint(0x26a0), 'twemoji')} PERMANENTLY delete ${count} item${count > 1 ? 's' : ''}? This CANNOT be undone!`,
     'Permanent Delete',
     'error'
   );
-  
+
   if (confirmed) {
     let successCount = 0;
     for (const itemPath of selectedItems) {
       const result = await window.electronAPI.deleteItem(itemPath);
       if (result.success) successCount++;
     }
-    
+
     if (successCount > 0) {
-      showToast(`${successCount} item${successCount > 1 ? 's' : ''} permanently deleted`, 'Success', 'success');
+      showToast(
+        `${successCount} item${successCount > 1 ? 's' : ''} permanently deleted`,
+        'Success',
+        'success'
+      );
       refresh();
     }
   }
@@ -4504,7 +4880,7 @@ async function updateUndoRedoState() {
   const state = await window.electronAPI.getUndoRedoState();
   canUndo = state.canUndo;
   canRedo = state.canRedo;
-  
+
   const undoBtn = document.getElementById('undo-btn') as HTMLButtonElement;
   const redoBtn = document.getElementById('redo-btn') as HTMLButtonElement;
   if (undoBtn) undoBtn.disabled = !canUndo;
@@ -4534,7 +4910,6 @@ async function performRedo() {
     await updateUndoRedoState();
   }
 }
-
 
 function goBack() {
   if (historyIndex > 0) {
@@ -4596,7 +4971,7 @@ function toggleView() {
   }
   applyViewMode();
   updateViewToggleButton();
-  
+
   // Save view mode
   currentSettings.viewMode = viewMode;
   window.electronAPI.saveSettings(currentSettings);
@@ -4622,7 +4997,11 @@ async function applyViewMode() {
         const request = startDirectoryRequest(currentPath);
         requestId = request.requestId;
         operationId = request.operationId;
-        const result = await window.electronAPI.getDirectoryContents(currentPath, operationId, currentSettings.showHiddenFiles);
+        const result = await window.electronAPI.getDirectoryContents(
+          currentPath,
+          operationId,
+          currentSettings.showHiddenFiles
+        );
         if (requestId !== directoryRequestId) return;
         if (result.success) {
           renderFiles(result.contents || []);
@@ -4653,7 +5032,7 @@ async function renderColumnView() {
 
   const currentRenderId = ++columnViewRenderId;
   while (isRenderingColumnView) {
-    await new Promise(resolve => setTimeout(resolve, 10));
+    await new Promise((resolve) => setTimeout(resolve, 10));
     if (currentRenderId !== columnViewRenderId) return;
   }
 
@@ -4758,7 +5137,7 @@ async function renderDriveColumn() {
 
   try {
     const drives = await window.electronAPI.getDrives();
-    drives.forEach(drive => {
+    drives.forEach((drive) => {
       const item = document.createElement('div');
       item.className = 'column-item is-directory';
       item.dataset.path = drive;
@@ -4778,7 +5157,11 @@ async function renderDriveColumn() {
   columnView.appendChild(pane);
 }
 
-async function renderColumn(columnPath: string, columnIndex: number, renderId?: number): Promise<HTMLDivElement | null> {
+async function renderColumn(
+  columnPath: string,
+  columnIndex: number,
+  renderId?: number
+): Promise<HTMLDivElement | null> {
   if (renderId !== undefined && renderId !== columnViewRenderId) {
     return null;
   }
@@ -4794,58 +5177,63 @@ async function renderColumn(columnPath: string, columnIndex: number, renderId?: 
     }
     e.preventDefault();
     e.stopPropagation();
-    
+
     if (!e.dataTransfer!.types.includes('text/plain') && e.dataTransfer!.files.length === 0) {
       e.dataTransfer!.dropEffect = 'none';
       return;
     }
-    
+
     e.dataTransfer!.dropEffect = e.ctrlKey ? 'copy' : 'move';
     pane.classList.add('drag-over');
   });
-  
+
   pane.addEventListener('dragleave', (e) => {
     if ((e.target as HTMLElement).closest('.column-item')) {
       return;
     }
     e.preventDefault();
     const rect = pane.getBoundingClientRect();
-    if (e.clientX < rect.left || e.clientX >= rect.right ||
-        e.clientY < rect.top || e.clientY >= rect.bottom) {
+    if (
+      e.clientX < rect.left ||
+      e.clientX >= rect.right ||
+      e.clientY < rect.top ||
+      e.clientY >= rect.bottom
+    ) {
       pane.classList.remove('drag-over');
     }
   });
-  
+
   pane.addEventListener('drop', async (e) => {
     if ((e.target as HTMLElement).closest('.column-item')) {
       return;
     }
     e.preventDefault();
     e.stopPropagation();
-    
+
     pane.classList.remove('drag-over');
-    
+
     let draggedPaths: string[] = [];
-    
+
     try {
       const textData = e.dataTransfer!.getData('text/plain');
       if (textData) {
         draggedPaths = JSON.parse(textData);
       }
-    } catch {
-    }
-    
+    } catch {}
+
     if (draggedPaths.length === 0 && e.dataTransfer!.files.length > 0) {
-      draggedPaths = Array.from(e.dataTransfer!.files).map(f => (f as File & { path: string }).path);
+      draggedPaths = Array.from(e.dataTransfer!.files).map(
+        (f) => (f as File & { path: string }).path
+      );
     }
-    
+
     if (draggedPaths.length === 0) {
       const sharedData = await window.electronAPI.getDragData();
       if (sharedData) {
         draggedPaths = sharedData.paths;
       }
     }
-    
+
     if (draggedPaths.length === 0) {
       return;
     }
@@ -4863,13 +5251,17 @@ async function renderColumn(columnPath: string, columnIndex: number, renderId?: 
     const operation = e.ctrlKey ? 'copy' : 'move';
     await handleDrop(draggedPaths, columnPath, operation);
   });
-  
+
   try {
     const operationId = createDirectoryOperationId('column');
     activeColumnOperationIds.add(operationId);
     let result: { success: boolean; contents?: FileItem[]; error?: string };
     try {
-      result = await window.electronAPI.getDirectoryContents(columnPath, operationId, currentSettings.showHiddenFiles);
+      result = await window.electronAPI.getDirectoryContents(
+        columnPath,
+        operationId,
+        currentSettings.showHiddenFiles
+      );
     } finally {
       activeColumnOperationIds.delete(operationId);
     }
@@ -4887,14 +5279,15 @@ async function renderColumn(columnPath: string, columnIndex: number, renderId?: 
       return NAME_COLLATOR.compare(a.name, b.name);
     });
 
-    const visibleItems = currentSettings.showHiddenFiles 
-      ? sortedItems 
-      : sortedItems.filter(item => !item.isHidden);
-    
+    const visibleItems = currentSettings.showHiddenFiles
+      ? sortedItems
+      : sortedItems.filter((item) => !item.isHidden);
+
     if (visibleItems.length === 0) {
-      pane.innerHTML = '<div class="column-item" style="opacity: 0.5; font-style: italic;">Empty folder</div>';
+      pane.innerHTML =
+        '<div class="column-item" style="opacity: 0.5; font-style: italic;">Empty folder</div>';
     } else {
-      visibleItems.forEach(fileItem => {
+      visibleItems.forEach((fileItem) => {
         const item = document.createElement('div');
         item.className = 'column-item';
         if (fileItem.isDirectory) item.classList.add('is-directory');
@@ -4904,18 +5297,20 @@ async function renderColumn(columnPath: string, columnIndex: number, renderId?: 
         if (nextColPath && fileItem.path === nextColPath) {
           item.classList.add('expanded');
         }
-        
-        const icon = fileItem.isDirectory 
+
+        const icon = fileItem.isDirectory
           ? '<img src="assets/twemoji/1f4c1.svg" class="twemoji" alt="📁" draggable="false" />'
           : getFileIcon(fileItem.name);
-        
+
         item.innerHTML = `
           <span class="column-item-icon">${icon}</span>
           <span class="column-item-name">${escapeHtml(fileItem.name)}</span>
           ${fileItem.isDirectory ? '<span class="column-item-arrow">▸</span>' : ''}
         `;
-        
-        item.addEventListener('click', () => handleColumnItemClick(item, fileItem.path, fileItem.isDirectory, columnIndex));
+
+        item.addEventListener('click', () =>
+          handleColumnItemClick(item, fileItem.path, fileItem.isDirectory, columnIndex)
+        );
         item.addEventListener('dblclick', () => {
           if (!fileItem.isDirectory) {
             window.electronAPI.openFile(fileItem.path);
@@ -4927,7 +5322,7 @@ async function renderColumn(columnPath: string, columnIndex: number, renderId?: 
           e.preventDefault();
           e.stopPropagation();
 
-          pane.querySelectorAll('.column-item').forEach(i => {
+          pane.querySelectorAll('.column-item').forEach((i) => {
             i.classList.remove('selected');
           });
           item.classList.add('selected');
@@ -4946,29 +5341,29 @@ async function renderColumn(columnPath: string, columnIndex: number, renderId?: 
         });
 
         item.draggable = true;
-        
+
         item.addEventListener('dragstart', (e) => {
           e.stopPropagation();
 
           if (!item.classList.contains('selected')) {
-            pane.querySelectorAll('.column-item').forEach(i => i.classList.remove('selected'));
+            pane.querySelectorAll('.column-item').forEach((i) => i.classList.remove('selected'));
             item.classList.add('selected');
             clearSelection();
             selectedItems.add(fileItem.path);
           }
-          
+
           const selectedPaths = Array.from(selectedItems);
           e.dataTransfer!.effectAllowed = 'copyMove';
           e.dataTransfer!.setData('text/plain', JSON.stringify(selectedPaths));
 
           window.electronAPI.setDragData(selectedPaths);
-          
+
           item.classList.add('dragging');
         });
-        
+
         item.addEventListener('dragend', () => {
           item.classList.remove('dragging');
-          document.querySelectorAll('.column-item.drag-over').forEach(el => {
+          document.querySelectorAll('.column-item.drag-over').forEach((el) => {
             el.classList.remove('drag-over');
           });
           window.electronAPI.clearDragData();
@@ -4978,62 +5373,70 @@ async function renderColumn(columnPath: string, columnIndex: number, renderId?: 
           item.addEventListener('dragover', (e) => {
             e.preventDefault();
             e.stopPropagation();
-            
-            if (!e.dataTransfer!.types.includes('text/plain') && e.dataTransfer!.files.length === 0) {
+
+            if (
+              !e.dataTransfer!.types.includes('text/plain') &&
+              e.dataTransfer!.files.length === 0
+            ) {
               e.dataTransfer!.dropEffect = 'none';
               return;
             }
-            
+
             e.dataTransfer!.dropEffect = e.ctrlKey ? 'copy' : 'move';
             item.classList.add('drag-over');
           });
-          
+
           item.addEventListener('dragleave', (e) => {
             e.preventDefault();
             e.stopPropagation();
             const rect = item.getBoundingClientRect();
-            if (e.clientX < rect.left || e.clientX >= rect.right ||
-                e.clientY < rect.top || e.clientY >= rect.bottom) {
+            if (
+              e.clientX < rect.left ||
+              e.clientX >= rect.right ||
+              e.clientY < rect.top ||
+              e.clientY >= rect.bottom
+            ) {
               item.classList.remove('drag-over');
             }
           });
-          
+
           item.addEventListener('drop', async (e) => {
             e.preventDefault();
             e.stopPropagation();
-            
+
             item.classList.remove('drag-over');
-            
+
             let draggedPaths: string[] = [];
-            
+
             try {
               const textData = e.dataTransfer!.getData('text/plain');
               if (textData) {
                 draggedPaths = JSON.parse(textData);
               }
-            } catch {
-            }
-            
+            } catch {}
+
             if (draggedPaths.length === 0 && e.dataTransfer!.files.length > 0) {
-              draggedPaths = Array.from(e.dataTransfer!.files).map(f => (f as File & { path: string }).path);
+              draggedPaths = Array.from(e.dataTransfer!.files).map(
+                (f) => (f as File & { path: string }).path
+              );
             }
-            
+
             if (draggedPaths.length === 0) {
               const sharedData = await window.electronAPI.getDragData();
               if (sharedData) {
                 draggedPaths = sharedData.paths;
               }
             }
-            
+
             if (draggedPaths.length === 0 || draggedPaths.includes(fileItem.path)) {
               return;
             }
-            
+
             const operation = e.ctrlKey ? 'copy' : 'move';
             await handleDrop(draggedPaths, fileItem.path, operation);
           });
         }
-        
+
         pane.appendChild(item);
       });
     }
@@ -5045,7 +5448,12 @@ async function renderColumn(columnPath: string, columnIndex: number, renderId?: 
   return pane;
 }
 
-async function handleColumnItemClick(element: HTMLElement, path: string, isDirectory: boolean, columnIndex: number) {
+async function handleColumnItemClick(
+  element: HTMLElement,
+  path: string,
+  isDirectory: boolean,
+  columnIndex: number
+) {
   const currentPane = element.closest('.column-pane');
   if (!currentPane) return;
 
@@ -5053,16 +5461,16 @@ async function handleColumnItemClick(element: HTMLElement, path: string, isDirec
   const clickRenderId = ++columnViewRenderId;
   const allPanes = Array.from(columnView.querySelectorAll('.column-pane'));
   const currentPaneIndex = allPanes.indexOf(currentPane as Element);
-  
+
   for (let i = allPanes.length - 1; i > currentPaneIndex; i--) {
     allPanes[i].remove();
   }
   columnPaths = columnPaths.slice(0, currentPaneIndex + 1);
 
-  currentPane.querySelectorAll('.column-item').forEach(item => {
+  currentPane.querySelectorAll('.column-item').forEach((item) => {
     item.classList.remove('expanded', 'selected');
   });
-  
+
   if (isDirectory) {
     element.classList.add('expanded');
     columnPaths.push(path);
@@ -5070,7 +5478,7 @@ async function handleColumnItemClick(element: HTMLElement, path: string, isDirec
     currentPath = path;
     addressInput.value = path;
     updateBreadcrumb(path);
-    
+
     const newPane = await renderColumn(path, currentPaneIndex + 1, clickRenderId);
 
     if (clickRenderId === columnViewRenderId && newPane) {
@@ -5095,7 +5503,6 @@ async function handleColumnItemClick(element: HTMLElement, path: string, isDirec
 
     const previewPanel = document.getElementById('preview-panel');
     if (previewPanel && previewPanel.style.display !== 'none') {
-
       let file = filePathMap.get(path);
       if (!file) {
         const fileName = path.split(/[\\/]/).pop() || '';
@@ -5106,7 +5513,7 @@ async function handleColumnItemClick(element: HTMLElement, path: string, isDirec
           isFile: true,
           size: 0,
           modified: new Date(),
-          isHidden: fileName.startsWith('.')
+          isHidden: fileName.startsWith('.'),
         };
       }
       updatePreview(file);
@@ -5155,17 +5562,17 @@ async function createNewFolder() {
 }
 
 async function createNewFileWithInlineRename() {
-  let fileName = 'File';
+  const fileName = 'File';
   let counter = 1;
   let finalFileName = fileName;
 
-  const existingNames = new Set(allFiles.map(f => f.name));
+  const existingNames = new Set(allFiles.map((f) => f.name));
 
   while (existingNames.has(finalFileName)) {
     finalFileName = `${fileName} (${counter})`;
     counter++;
   }
-  
+
   const result = await window.electronAPI.createFile(currentPath, finalFileName);
   if (result.success && result.path) {
     const createdFilePath = result.path;
@@ -5187,17 +5594,17 @@ async function createNewFileWithInlineRename() {
 }
 
 async function createNewFolderWithInlineRename() {
-  let folderName = 'New Folder';
+  const folderName = 'New Folder';
   let counter = 1;
   let finalFolderName = folderName;
 
-  const existingNames = new Set(allFiles.map(f => f.name));
+  const existingNames = new Set(allFiles.map((f) => f.name));
 
   while (existingNames.has(finalFolderName)) {
     finalFolderName = `${folderName} (${counter})`;
     counter++;
   }
-  
+
   const result = await window.electronAPI.createFolder(currentPath, finalFolderName);
   if (result.success && result.path) {
     const createdFolderPath = result.path;
@@ -5221,26 +5628,26 @@ async function createNewFolderWithInlineRename() {
 function startInlineRename(fileItem: HTMLElement, currentName: string, itemPath: string) {
   const nameElement = fileItem.querySelector('.file-name') as HTMLElement | null;
   if (!nameElement) return;
-  
+
   nameElement.style.display = 'none';
-  
+
   const input = document.createElement('input');
   input.type = 'text';
   input.className = 'file-name-input';
   input.value = currentName;
   fileItem.appendChild(input);
-  
+
   fileItem.classList.add('renaming');
-  
+
   input.focus();
-  
+
   const lastDotIndex = currentName.lastIndexOf('.');
   if (lastDotIndex > 0) {
     input.setSelectionRange(0, lastDotIndex);
   } else {
     input.select();
   }
-  
+
   let renameHandled = false;
 
   const finishRename = async () => {
@@ -5254,7 +5661,7 @@ function startInlineRename(fileItem: HTMLElement, currentName: string, itemPath:
     input.removeEventListener('keydown', handleKeyDown);
 
     const newName = input.value.trim();
-    
+
     if (newName && newName !== currentName) {
       const result = await window.electronAPI.renameItem(itemPath, newName);
       if (result.success) {
@@ -5289,7 +5696,7 @@ function startInlineRename(fileItem: HTMLElement, currentName: string, itemPath:
       fileItem.classList.remove('renaming');
     }
   };
-  
+
   input.addEventListener('blur', finishRename);
   input.addEventListener('keypress', handleKeyPress);
   input.addEventListener('keydown', handleKeyDown);
@@ -5325,7 +5732,7 @@ function showContextMenu(x: number, y: number, item: FileItem) {
       changeFolderIconItem.style.display = 'none';
     }
   }
-  
+
   if (copyPathItem) {
     if (!item.isDirectory) {
       copyPathItem.style.display = 'flex';
@@ -5333,7 +5740,7 @@ function showContextMenu(x: number, y: number, item: FileItem) {
       copyPathItem.style.display = 'none';
     }
   }
-  
+
   if (openTerminalItem) {
     if (item.isDirectory) {
       openTerminalItem.style.display = 'flex';
@@ -5348,48 +5755,49 @@ function showContextMenu(x: number, y: number, item: FileItem) {
 
   if (extractItem) {
     const fileName = item.name.toLowerCase();
-    const isArchive = fileName.endsWith('.zip') || 
-                      fileName.endsWith('.tar.gz') || 
-                      fileName.endsWith('.tgz') ||
-                      fileName.endsWith('.7z') ||
-                      fileName.endsWith('.rar') ||
-                      fileName.endsWith('.tar') ||
-                      fileName.endsWith('.gz') ||
-                      fileName.endsWith('.bz2') ||
-                      fileName.endsWith('.xz') ||
-                      fileName.endsWith('.iso') ||
-                      fileName.endsWith('.cab') ||
-                      fileName.endsWith('.arj') ||
-                      fileName.endsWith('.lzh') ||
-                      fileName.endsWith('.wim');
-    
+    const isArchive =
+      fileName.endsWith('.zip') ||
+      fileName.endsWith('.tar.gz') ||
+      fileName.endsWith('.tgz') ||
+      fileName.endsWith('.7z') ||
+      fileName.endsWith('.rar') ||
+      fileName.endsWith('.tar') ||
+      fileName.endsWith('.gz') ||
+      fileName.endsWith('.bz2') ||
+      fileName.endsWith('.xz') ||
+      fileName.endsWith('.iso') ||
+      fileName.endsWith('.cab') ||
+      fileName.endsWith('.arj') ||
+      fileName.endsWith('.lzh') ||
+      fileName.endsWith('.wim');
+
     if (isArchive && !item.isDirectory) {
       extractItem.style.display = 'flex';
     } else {
       extractItem.style.display = 'none';
     }
   }
-  
+
   contextMenu.style.display = 'block';
-  
+
   const menuRect = contextMenu.getBoundingClientRect();
   const viewportWidth = window.innerWidth;
   const viewportHeight = window.innerHeight;
-  
+
   let left = x;
   let top = y;
-  
+
   if (left + menuRect.width > viewportWidth) {
     left = viewportWidth - menuRect.width - 10;
   }
-  
+
   if (top + menuRect.height > viewportHeight) {
     top = viewportHeight - menuRect.height - 10;
   }
-  
+
   if (left < 10) left = 10;
   if (top < 10) top = 10;
-  
+
   contextMenu.style.left = left + 'px';
   contextMenu.style.top = top + 'px';
 
@@ -5398,7 +5806,7 @@ function showContextMenu(x: number, y: number, item: FileItem) {
     submenu.classList.remove('flip-left');
     const menuRight = left + menuRect.width;
     const submenuWidth = 160;
-    
+
     if (menuRight + submenuWidth > viewportWidth - 10) {
       submenu.classList.add('flip-left');
     }
@@ -5419,14 +5827,14 @@ function hideContextMenu() {
 }
 
 function clearContextMenuFocus(menu: HTMLElement) {
-  menu.querySelectorAll('.context-menu-item.focused').forEach(item => {
+  menu.querySelectorAll('.context-menu-item.focused').forEach((item) => {
     item.classList.remove('focused');
   });
 }
 
 function getVisibleMenuItems(menu: HTMLElement): HTMLElement[] {
   const items = menu.querySelectorAll('.context-menu-item');
-  return Array.from(items).filter(item => {
+  return Array.from(items).filter((item) => {
     const el = item as HTMLElement;
     const parent = el.parentElement;
     if (parent?.classList.contains('context-submenu')) return false;
@@ -5434,7 +5842,11 @@ function getVisibleMenuItems(menu: HTMLElement): HTMLElement[] {
   }) as HTMLElement[];
 }
 
-function navigateContextMenu(menu: HTMLElement, direction: 'up' | 'down', focusIndex: number): number {
+function navigateContextMenu(
+  menu: HTMLElement,
+  direction: 'up' | 'down',
+  focusIndex: number
+): number {
   const items = getVisibleMenuItems(menu);
   if (items.length === 0) return -1;
 
@@ -5461,7 +5873,9 @@ function activateContextMenuItem(menu: HTMLElement, focusIndex: number): boolean
     const submenu = item.querySelector('.context-submenu') as HTMLElement;
     if (submenu) {
       submenu.style.display = 'block';
-      const submenuItems = submenu.querySelectorAll('.context-menu-item') as NodeListOf<HTMLElement>;
+      const submenuItems = submenu.querySelectorAll(
+        '.context-menu-item'
+      ) as NodeListOf<HTMLElement>;
       if (submenuItems.length > 0) {
         submenuItems[0].classList.add('focused');
       }
@@ -5476,29 +5890,29 @@ function activateContextMenuItem(menu: HTMLElement, focusIndex: number): boolean
 function showEmptySpaceContextMenu(x: number, y: number) {
   const emptySpaceContextMenu = document.getElementById('empty-space-context-menu');
   if (!emptySpaceContextMenu) return;
-  
+
   hideContextMenu();
-  
+
   emptySpaceContextMenu.style.display = 'block';
-  
+
   const menuRect = emptySpaceContextMenu.getBoundingClientRect();
   const viewportWidth = window.innerWidth;
   const viewportHeight = window.innerHeight;
-  
+
   let left = x;
   let top = y;
-  
+
   if (left + menuRect.width > viewportWidth) {
     left = viewportWidth - menuRect.width - 10;
   }
-  
+
   if (top + menuRect.height > viewportHeight) {
     top = viewportHeight - menuRect.height - 10;
   }
-  
+
   if (left < 10) left = 10;
   if (top < 10) top = 10;
-  
+
   emptySpaceContextMenu.style.left = left + 'px';
   emptySpaceContextMenu.style.top = top + 'px';
 }
@@ -5517,19 +5931,19 @@ async function handleEmptySpaceContextMenuAction(action: string | undefined) {
     case 'new-folder':
       await createNewFolderWithInlineRename();
       break;
-      
+
     case 'new-file':
       await createNewFileWithInlineRename();
       break;
-      
+
     case 'paste':
       await pasteFromClipboard();
       break;
-      
+
     case 'refresh':
       await navigateTo(currentPath);
       break;
-      
+
     case 'open-terminal':
       const terminalResult = await window.electronAPI.openTerminal(currentPath);
       if (!terminalResult.success) {
@@ -5537,11 +5951,15 @@ async function handleEmptySpaceContextMenuAction(action: string | undefined) {
       }
       break;
   }
-  
+
   hideEmptySpaceContextMenu();
 }
 
-async function handleContextMenuAction(action: string | undefined, item: FileItem, format?: string) {
+async function handleContextMenuAction(
+  action: string | undefined,
+  item: FileItem,
+  format?: string
+) {
   switch (action) {
     case 'open':
       if (item.isDirectory) {
@@ -5551,7 +5969,7 @@ async function handleContextMenuAction(action: string | undefined, item: FileIte
         addToRecentFiles(item.path);
       }
       break;
-      
+
     case 'rename':
       const fileItems = document.querySelectorAll('.file-item');
       for (const fileItem of Array.from(fileItems)) {
@@ -5561,15 +5979,15 @@ async function handleContextMenuAction(action: string | undefined, item: FileIte
         }
       }
       break;
-      
+
     case 'copy':
       copyToClipboard();
       break;
-      
+
     case 'cut':
       cutToClipboard();
       break;
-      
+
     case 'copy-path':
       try {
         await navigator.clipboard.writeText(item.path);
@@ -5578,7 +5996,7 @@ async function handleContextMenuAction(action: string | undefined, item: FileIte
         showToast('Failed to copy file path', 'Error', 'error');
       }
       break;
-      
+
     case 'add-to-bookmarks':
       if (item.isDirectory) {
         await addBookmarkByPath(item.path);
@@ -5598,7 +6016,7 @@ async function handleContextMenuAction(action: string | undefined, item: FileIte
         showToast(terminalResult.error || 'Failed to open terminal', 'Error', 'error');
       }
       break;
-      
+
     case 'properties':
       const propsResult = await window.electronAPI.getItemProperties(item.path);
       if (propsResult.success && propsResult.properties) {
@@ -5607,15 +6025,15 @@ async function handleContextMenuAction(action: string | undefined, item: FileIte
         showToast(propsResult.error || 'Unknown error', 'Error Getting Properties', 'error');
       }
       break;
-      
+
     case 'delete':
       await deleteSelected();
       break;
-      
+
     case 'compress':
       await handleCompress(format || 'zip');
       break;
-      
+
     case 'extract':
       await handleExtract(item);
       break;
@@ -5624,19 +6042,19 @@ async function handleContextMenuAction(action: string | undefined, item: FileIte
 
 async function handleCompress(format: string = 'zip') {
   const selectedPaths = Array.from(selectedItems);
-  
+
   if (selectedPaths.length === 0) {
     showToast('No items selected', 'Error', 'error');
     return;
   }
 
   const extensionMap: Record<string, string> = {
-    'zip': '.zip',
+    zip: '.zip',
     '7z': '.7z',
-    'tar': '.tar',
-    'tar.gz': '.tar.gz'
+    tar: '.tar',
+    'tar.gz': '.tar.gz',
   };
-  
+
   const extension = extensionMap[format] || '.zip';
 
   let archiveName: string;
@@ -5648,13 +6066,18 @@ async function handleCompress(format: string = 'zip') {
     const folderName = path.basename(currentPath);
     archiveName = `${folderName}_${selectedPaths.length}_items${extension}`;
   }
-  
+
   const outputPath = path.join(currentPath, archiveName);
   const operationId = generateOperationId();
 
   addOperation(operationId, 'compress', archiveName);
 
-  const progressHandler = (progress: {operationId?: string; current: number; total: number; name: string}) => {
+  const progressHandler = (progress: {
+    operationId?: string;
+    current: number;
+    total: number;
+    name: string;
+  }) => {
     if (progress.operationId === operationId) {
       const operation = activeOperations.get(operationId);
       if (operation && !operation.aborted) {
@@ -5662,10 +6085,10 @@ async function handleCompress(format: string = 'zip') {
       }
     }
   };
-  
+
   // Store cleanup function to prevent memory leaks
   const cleanupProgressHandler = window.electronAPI.onCompressProgress(progressHandler);
-  
+
   try {
     const operation = activeOperations.get(operationId);
     if (operation?.aborted) {
@@ -5673,12 +6096,17 @@ async function handleCompress(format: string = 'zip') {
       removeOperation(operationId);
       return;
     }
-    
-    const result = await window.electronAPI.compressFiles(selectedPaths, outputPath, format, operationId);
+
+    const result = await window.electronAPI.compressFiles(
+      selectedPaths,
+      outputPath,
+      format,
+      operationId
+    );
 
     cleanupProgressHandler();
     removeOperation(operationId);
-    
+
     if (result.success) {
       showToast(`Created ${archiveName}`, 'Compressed Successfully', 'success');
       await navigateTo(currentPath);
@@ -5694,12 +6122,30 @@ async function handleCompress(format: string = 'zip') {
 
 async function handleExtract(item: FileItem) {
   const ext = path.extname(item.path).toLowerCase();
-  const supportedFormats = ['.zip', '.tar.gz', '.7z', '.rar', '.tar', '.gz', '.bz2', '.xz', '.iso', '.cab', '.arj', '.lzh', '.wim'];
+  const supportedFormats = [
+    '.zip',
+    '.tar.gz',
+    '.7z',
+    '.rar',
+    '.tar',
+    '.gz',
+    '.bz2',
+    '.xz',
+    '.iso',
+    '.cab',
+    '.arj',
+    '.lzh',
+    '.wim',
+  ];
 
-  const isSupported = supportedFormats.some(format => item.path.toLowerCase().endsWith(format));
-  
+  const isSupported = supportedFormats.some((format) => item.path.toLowerCase().endsWith(format));
+
   if (!isSupported) {
-    showToast('Unsupported archive format. Supported: .zip, .7z, .rar, .tar.gz, and more', 'Error', 'error');
+    showToast(
+      'Unsupported archive format. Supported: .zip, .7z, .rar, .tar.gz, and more',
+      'Error',
+      'error'
+    );
     return;
   }
 
@@ -5714,7 +6160,12 @@ async function handleExtract(item: FileItem) {
 
   addOperation(operationId, 'extract', baseName);
 
-  const progressHandler = (progress: {operationId?: string; current: number; total: number; name: string}) => {
+  const progressHandler = (progress: {
+    operationId?: string;
+    current: number;
+    total: number;
+    name: string;
+  }) => {
     if (progress.operationId === operationId) {
       const operation = activeOperations.get(operationId);
       if (operation && !operation.aborted) {
@@ -5724,7 +6175,7 @@ async function handleExtract(item: FileItem) {
   };
 
   const cleanupProgressHandler = window.electronAPI.onExtractProgress(progressHandler);
-  
+
   try {
     const operation = activeOperations.get(operationId);
     if (operation?.aborted) {
@@ -5732,12 +6183,12 @@ async function handleExtract(item: FileItem) {
       removeOperation(operationId);
       return;
     }
-    
+
     const result = await window.electronAPI.extractArchive(item.path, destPath, operationId);
 
     cleanupProgressHandler();
     removeOperation(operationId);
-    
+
     if (result.success) {
       showToast(`Extracted to ${baseName}`, 'Extraction Complete', 'success');
       await navigateTo(currentPath);
@@ -5754,9 +6205,9 @@ async function handleExtract(item: FileItem) {
 function showPropertiesDialog(props: ItemProperties) {
   const modal = document.getElementById('properties-modal');
   const content = document.getElementById('properties-content');
-  
+
   if (!modal || !content) return;
-  
+
   // unique op IDs
   const folderSizeOperationId = `foldersize_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
   const checksumOperationId = `checksum_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
@@ -5765,7 +6216,7 @@ function showPropertiesDialog(props: ItemProperties) {
   let checksumActive = false;
   let folderSizeProgressCleanup: (() => void) | null = null;
   let checksumProgressCleanup: (() => void) | null = null;
-  
+
   const formatSize = (bytes: number): string => {
     if (bytes === 0) return '0 bytes';
     const units = ['bytes', 'KB', 'MB', 'GB', 'TB'];
@@ -5773,7 +6224,7 @@ function showPropertiesDialog(props: ItemProperties) {
     const size = (bytes / Math.pow(1024, i)).toFixed(2);
     return `${bytes.toLocaleString()} bytes (${size} ${units[i]})`;
   };
-  
+
   const sizeDisplay = formatSize(props.size);
 
   let html = `
@@ -5796,7 +6247,7 @@ function showPropertiesDialog(props: ItemProperties) {
       <div class="property-label">Contents:</div>
       <div class="property-value">
         <span id="folder-size-info">Not calculated</span>
-        <button class="property-btn" id="calculate-folder-size-btn">${twemojiImg(String.fromCodePoint(0x1F4CA), 'twemoji')} Calculate Size</button>
+        <button class="property-btn" id="calculate-folder-size-btn">${twemojiImg(String.fromCodePoint(0x1f4ca), 'twemoji')} Calculate Size</button>
       </div>
     </div>
     <div class="property-row" id="folder-size-progress-row" style="display: none;">
@@ -5806,7 +6257,7 @@ function showPropertiesDialog(props: ItemProperties) {
           <div class="property-progress-bar" id="folder-size-progress-bar"></div>
         </div>
         <div class="property-progress-text" id="folder-size-progress-text">Calculating...</div>
-        <button class="property-btn property-btn-cancel" id="cancel-folder-size-btn">${twemojiImg(String.fromCodePoint(0x274C), 'twemoji')} Cancel</button>
+        <button class="property-btn property-btn-cancel" id="cancel-folder-size-btn">${twemojiImg(String.fromCodePoint(0x274c), 'twemoji')} Cancel</button>
       </div>
     </div>
     <div class="property-row" id="folder-stats-row" style="display: none;">
@@ -5816,7 +6267,7 @@ function showPropertiesDialog(props: ItemProperties) {
       </div>
     </div>`;
   }
-  
+
   html += `
     <div class="property-row">
       <div class="property-label">Location:</div>
@@ -5841,7 +6292,7 @@ function showPropertiesDialog(props: ItemProperties) {
     <div class="property-row property-checksum-header">
       <div class="property-label">Checksums:</div>
       <div class="property-value">
-        <button class="property-btn" id="calculate-checksum-btn">${twemojiImg(String.fromCodePoint(0x1F510), 'twemoji')} Calculate Checksums</button>
+        <button class="property-btn" id="calculate-checksum-btn">${twemojiImg(String.fromCodePoint(0x1f510), 'twemoji')} Calculate Checksums</button>
       </div>
     </div>
     <div class="property-row" id="checksum-progress-row" style="display: none;">
@@ -5851,25 +6302,25 @@ function showPropertiesDialog(props: ItemProperties) {
           <div class="property-progress-bar" id="checksum-progress-bar"></div>
         </div>
         <div class="property-progress-text" id="checksum-progress-text">Calculating...</div>
-        <button class="property-btn property-btn-cancel" id="cancel-checksum-btn">${twemojiImg(String.fromCodePoint(0x274C), 'twemoji')} Cancel</button>
+        <button class="property-btn property-btn-cancel" id="cancel-checksum-btn">${twemojiImg(String.fromCodePoint(0x274c), 'twemoji')} Cancel</button>
       </div>
     </div>
     <div class="property-row" id="checksum-md5-row" style="display: none;">
       <div class="property-label">MD5:</div>
       <div class="property-value property-checksum">
         <code id="checksum-md5-value"></code>
-        <button class="property-btn-copy" id="copy-md5-btn" title="Copy MD5">${twemojiImg(String.fromCodePoint(0x1F4CB), 'twemoji')}</button>
+        <button class="property-btn-copy" id="copy-md5-btn" title="Copy MD5">${twemojiImg(String.fromCodePoint(0x1f4cb), 'twemoji')}</button>
       </div>
     </div>
     <div class="property-row" id="checksum-sha256-row" style="display: none;">
       <div class="property-label">SHA-256:</div>
       <div class="property-value property-checksum">
         <code id="checksum-sha256-value"></code>
-        <button class="property-btn-copy" id="copy-sha256-btn" title="Copy SHA-256">${twemojiImg(String.fromCodePoint(0x1F4CB), 'twemoji')}</button>
+        <button class="property-btn-copy" id="copy-sha256-btn" title="Copy SHA-256">${twemojiImg(String.fromCodePoint(0x1f4cb), 'twemoji')}</button>
       </div>
     </div>`;
   }
-  
+
   content.innerHTML = html;
   modal.style.display = 'flex';
 
@@ -5891,7 +6342,7 @@ function showPropertiesDialog(props: ItemProperties) {
       checksumProgressCleanup = null;
     }
   };
-  
+
   const closeModal = () => {
     cleanup();
     modal.style.display = 'none';
@@ -5904,13 +6355,13 @@ function showPropertiesDialog(props: ItemProperties) {
     const progressBar = document.getElementById('folder-size-progress-bar');
     const progressText = document.getElementById('folder-size-progress-text');
     const sizeInfo = document.getElementById('folder-size-info');
-    
+
     if (calculateBtn) {
       calculateBtn.addEventListener('click', async () => {
         calculateBtn.style.display = 'none';
         if (progressRow) progressRow.style.display = 'flex';
         folderSizeActive = true;
-        
+
         // progress listener
         folderSizeProgressCleanup = window.electronAPI.onFolderSizeProgress((progress) => {
           if (progress.operationId === folderSizeOperationId && progressBar && progressText) {
@@ -5920,10 +6371,13 @@ function showPropertiesDialog(props: ItemProperties) {
             progressBar.classList.add('indeterminate');
           }
         });
-        
+
         try {
-          const result = await window.electronAPI.calculateFolderSize(props.path, folderSizeOperationId);
-          
+          const result = await window.electronAPI.calculateFolderSize(
+            props.path,
+            folderSizeOperationId
+          );
+
           if (result.success && result.result) {
             const totalSize = formatSize(result.result.totalSize);
             if (sizeInfo) {
@@ -5945,15 +6399,20 @@ function showPropertiesDialog(props: ItemProperties) {
                   const i = Math.floor(Math.log(bytes) / Math.log(1024));
                   return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${units[i]}`;
                 };
-                statsContent.innerHTML = result.result.fileTypes.map(ft => {
-                  const pct = result.result!.totalSize > 0 ? (ft.size / result.result!.totalSize * 100).toFixed(1) : '0';
-                  return `<div class="file-type-stat">
+                statsContent.innerHTML = result.result.fileTypes
+                  .map((ft) => {
+                    const pct =
+                      result.result!.totalSize > 0
+                        ? ((ft.size / result.result!.totalSize) * 100).toFixed(1)
+                        : '0';
+                    return `<div class="file-type-stat">
                     <span class="file-type-ext">${escapeHtml(ft.extension)}</span>
                     <span class="file-type-count">${ft.count} files</span>
                     <span class="file-type-size">${formatBytes(ft.size)} (${pct}%)</span>
                     <div class="file-type-bar" style="width: ${pct}%"></div>
                   </div>`;
-                }).join('');
+                  })
+                  .join('');
               }
             }
           } else if (result.error !== 'Calculation cancelled') {
@@ -5975,7 +6434,7 @@ function showPropertiesDialog(props: ItemProperties) {
         }
       });
     }
-    
+
     if (cancelBtn) {
       cancelBtn.addEventListener('click', () => {
         if (folderSizeActive) {
@@ -5992,7 +6451,7 @@ function showPropertiesDialog(props: ItemProperties) {
       });
     }
   }
-  
+
   // checksum calculation
   if (props.isFile) {
     const calculateBtn = document.getElementById('calculate-checksum-btn');
@@ -6006,7 +6465,7 @@ function showPropertiesDialog(props: ItemProperties) {
     const sha256Value = document.getElementById('checksum-sha256-value');
     const copyMd5Btn = document.getElementById('copy-md5-btn');
     const copySha256Btn = document.getElementById('copy-sha256-btn');
-    
+
     if (calculateBtn) {
       calculateBtn.addEventListener('click', async () => {
         calculateBtn.style.display = 'none';
@@ -6019,10 +6478,14 @@ function showPropertiesDialog(props: ItemProperties) {
             progressText.textContent = `Calculating ${progress.algorithm.toUpperCase()}... ${progress.percent.toFixed(1)}%`;
           }
         });
-        
+
         try {
-          const result = await window.electronAPI.calculateChecksum(props.path, checksumOperationId, ['md5', 'sha256']);
-          
+          const result = await window.electronAPI.calculateChecksum(
+            props.path,
+            checksumOperationId,
+            ['md5', 'sha256']
+          );
+
           if (result.success && result.result) {
             if (result.result.md5 && md5Row && md5Value) {
               md5Value.textContent = result.result.md5;
@@ -6048,7 +6511,7 @@ function showPropertiesDialog(props: ItemProperties) {
         }
       });
     }
-    
+
     if (cancelBtn) {
       cancelBtn.addEventListener('click', () => {
         if (checksumActive) {
@@ -6070,7 +6533,7 @@ function showPropertiesDialog(props: ItemProperties) {
         showToast('MD5 copied to clipboard', 'Copied', 'success');
       });
     }
-    
+
     if (copySha256Btn && sha256Value) {
       copySha256Btn.addEventListener('click', () => {
         navigator.clipboard.writeText(sha256Value.textContent || '');
@@ -6078,7 +6541,7 @@ function showPropertiesDialog(props: ItemProperties) {
       });
     }
   }
-  
+
   const propsCloseBtn = document.getElementById('properties-close');
   const propsOkBtn = document.getElementById('properties-ok');
   if (propsCloseBtn) propsCloseBtn.onclick = closeModal;
@@ -6095,18 +6558,27 @@ async function restartAsAdmin() {
     'warning',
     true
   );
-  
+
   if (confirmed) {
     const result = await window.electronAPI.restartAsAdmin();
     if (!result.success) {
-      showToast(result.error || 'Failed to restart with admin privileges', 'Restart Failed', 'error');
+      showToast(
+        result.error || 'Failed to restart with admin privileges',
+        'Restart Failed',
+        'error'
+      );
     }
   }
 }
 
 function stripHtmlTags(html: string): string {
   let text = html.replace(/<[^>]*>/g, '');
-  text = text.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+  text = text
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
   text = text.replace(/!\[.*?\]\(.*?\)/g, '');
   text = text.replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1');
   text = text.replace(/\n\s*\n\s*\n/g, '\n\n').trim();
@@ -6116,14 +6588,14 @@ function stripHtmlTags(html: string): string {
 async function checkForUpdates() {
   const btn = document.getElementById('check-updates-btn') as HTMLButtonElement;
   if (!btn) return;
-  
+
   const originalHTML = btn.innerHTML;
-  btn.innerHTML = `${twemojiImg(String.fromCodePoint(0x1F504), 'twemoji')} Checking...`;
+  btn.innerHTML = `${twemojiImg(String.fromCodePoint(0x1f504), 'twemoji')} Checking...`;
   btn.disabled = true;
-  
+
   try {
     const result = await window.electronAPI.checkForUpdates();
-    
+
     if (result.success) {
       if (result.isFlatpak) {
         showDialog(
@@ -6175,17 +6647,12 @@ async function checkForUpdates() {
 
       if (result.hasUpdate) {
         const updateTitle = result.isBeta ? 'Beta Update Available' : 'Update Available';
-        const updateMessage = result.isBeta 
+        const updateMessage = result.isBeta
           ? `[BETA CHANNEL] A new beta build is available!\n\nCurrent Version: ${result.currentVersion}\nNew Version: ${result.latestVersion}\n\nWould you like to download and install the update?`
           : `A new version is available!\n\nCurrent Version: ${result.currentVersion}\nNew Version: ${result.latestVersion}\n\nWould you like to download and install the update?`;
-        
-        const confirmed = await showDialog(
-          updateTitle,
-          updateMessage,
-          'success',
-          true
-        );
-        
+
+        const confirmed = await showDialog(updateTitle, updateMessage, 'success', true);
+
         if (confirmed) {
           await downloadAndInstallUpdate();
         }
@@ -6234,7 +6701,7 @@ async function downloadAndInstallUpdate() {
   const dialogIcon = document.getElementById('dialog-icon') as HTMLElement;
   const dialogOk = document.getElementById('dialog-ok') as HTMLButtonElement;
   const dialogCancel = document.getElementById('dialog-cancel') as HTMLButtonElement;
-  
+
   dialogIcon.textContent = '⬇️';
   dialogTitle.textContent = 'Downloading Update';
   dialogContent.textContent = 'Preparing download... 0%';
@@ -6268,35 +6735,36 @@ async function downloadAndInstallUpdate() {
 
     dialogIcon.innerHTML = twemojiImg(String.fromCodePoint(0x2705), 'twemoji-large');
     dialogTitle.textContent = 'Update Downloaded';
-    dialogContent.textContent = 'The update has been downloaded successfully.\n\nThe application will restart to install the update.';
+    dialogContent.textContent =
+      'The update has been downloaded successfully.\n\nThe application will restart to install the update.';
     dialogOk.style.display = 'block';
     dialogOk.textContent = 'Install & Restart';
     dialogCancel.style.display = 'block';
     dialogCancel.textContent = 'Later';
-    
+
     const installPromise = new Promise<boolean>((resolve) => {
       const handleOk = () => {
         cleanup();
         resolve(true);
       };
-      
+
       const handleCancel = () => {
         cleanup();
         resolve(false);
       };
-      
+
       const cleanup = () => {
         dialogOk.removeEventListener('click', handleOk);
         dialogCancel.removeEventListener('click', handleCancel);
       };
-      
+
       dialogOk.addEventListener('click', handleOk);
       dialogCancel.addEventListener('click', handleCancel);
     });
-    
+
     const shouldInstall = await installPromise;
     dialogModal.style.display = 'none';
-    
+
     if (shouldInstall) {
       await window.electronAPI.installUpdate();
     }
@@ -6316,16 +6784,16 @@ function initSettingsTabs() {
   const tabs = document.querySelectorAll('.settings-tab');
   const sections = document.querySelectorAll('.settings-section');
 
-  tabs.forEach(tab => {
+  tabs.forEach((tab) => {
     tab.addEventListener('click', () => {
       // Remove active class from all tabs
-      tabs.forEach(t => t.classList.remove('active'));
+      tabs.forEach((t) => t.classList.remove('active'));
       // Add active class to clicked tab
       tab.classList.add('active');
 
       // Hide all sections
-      sections.forEach(section => section.classList.remove('active'));
-      
+      sections.forEach((section) => section.classList.remove('active'));
+
       // Show target section
       const targetId = `tab-${tab.getAttribute('data-tab')}`;
       const targetSection = document.getElementById(targetId);
@@ -6380,26 +6848,27 @@ document.getElementById('settings-search')?.addEventListener('input', (e) => {
   const searchTerm = (e.target as HTMLInputElement).value.toLowerCase().trim();
   const settingItems = document.querySelectorAll('.setting-item, .setting-item-toggle');
   const sections = document.querySelectorAll('.settings-section-card');
-  
+
   if (!searchTerm) {
-    settingItems.forEach(item => {
+    settingItems.forEach((item) => {
       (item as HTMLElement).style.display = '';
       item.classList.remove('search-highlight');
     });
-    sections.forEach(section => {
+    sections.forEach((section) => {
       (section as HTMLElement).style.display = '';
     });
     return;
   }
-  
-  sections.forEach(section => {
+
+  sections.forEach((section) => {
     let hasVisibleItem = false;
     const items = section.querySelectorAll('.setting-item, .setting-item-toggle');
-    
-    items.forEach(item => {
+
+    items.forEach((item) => {
       const label = item.querySelector('.setting-label, span')?.textContent?.toLowerCase() || '';
-      const description = item.querySelector('.setting-description')?.textContent?.toLowerCase() || '';
-      
+      const description =
+        item.querySelector('.setting-description')?.textContent?.toLowerCase() || '';
+
       if (label.includes(searchTerm) || description.includes(searchTerm)) {
         (item as HTMLElement).style.display = '';
         item.classList.add('search-highlight');
@@ -6438,29 +6907,37 @@ function validateImportedSettings(imported: any): Partial<Settings> {
   const validated: Partial<Settings> = {};
 
   if (typeof imported.transparency === 'boolean') validated.transparency = imported.transparency;
-  if (typeof imported.showDangerousOptions === 'boolean') validated.showDangerousOptions = imported.showDangerousOptions;
-  if (typeof imported.showHiddenFiles === 'boolean') validated.showHiddenFiles = imported.showHiddenFiles;
-  if (typeof imported.enableGitStatus === 'boolean') validated.enableGitStatus = imported.enableGitStatus;
-  if (typeof imported.enableSearchHistory === 'boolean') validated.enableSearchHistory = imported.enableSearchHistory;
+  if (typeof imported.showDangerousOptions === 'boolean')
+    validated.showDangerousOptions = imported.showDangerousOptions;
+  if (typeof imported.showHiddenFiles === 'boolean')
+    validated.showHiddenFiles = imported.showHiddenFiles;
+  if (typeof imported.enableGitStatus === 'boolean')
+    validated.enableGitStatus = imported.enableGitStatus;
+  if (typeof imported.enableSearchHistory === 'boolean')
+    validated.enableSearchHistory = imported.enableSearchHistory;
   if (typeof imported.enableIndexer === 'boolean') validated.enableIndexer = imported.enableIndexer;
-  if (typeof imported.minimizeToTray === 'boolean') validated.minimizeToTray = imported.minimizeToTray;
+  if (typeof imported.minimizeToTray === 'boolean')
+    validated.minimizeToTray = imported.minimizeToTray;
   if (typeof imported.startOnLogin === 'boolean') validated.startOnLogin = imported.startOnLogin;
-  if (typeof imported.autoCheckUpdates === 'boolean') validated.autoCheckUpdates = imported.autoCheckUpdates;
-  if (typeof imported.showRecentFiles === 'boolean') validated.showRecentFiles = imported.showRecentFiles;
+  if (typeof imported.autoCheckUpdates === 'boolean')
+    validated.autoCheckUpdates = imported.autoCheckUpdates;
+  if (typeof imported.showRecentFiles === 'boolean')
+    validated.showRecentFiles = imported.showRecentFiles;
   if (typeof imported.enableTabs === 'boolean') validated.enableTabs = imported.enableTabs;
-  if (typeof imported.globalContentSearch === 'boolean') validated.globalContentSearch = imported.globalContentSearch;
+  if (typeof imported.globalContentSearch === 'boolean')
+    validated.globalContentSearch = imported.globalContentSearch;
 
   if (typeof imported.startupPath === 'string') validated.startupPath = imported.startupPath;
 
   const validThemes = ['dark', 'light', 'default', 'custom'];
   if (validThemes.includes(imported.theme)) validated.theme = imported.theme;
-  
+
   const validSortBy = ['name', 'date', 'size', 'type'];
   if (validSortBy.includes(imported.sortBy)) validated.sortBy = imported.sortBy;
-  
+
   const validSortOrder = ['asc', 'desc'];
   if (validSortOrder.includes(imported.sortOrder)) validated.sortOrder = imported.sortOrder;
-  
+
   const validViewModes = ['grid', 'list', 'column'];
   if (validViewModes.includes(imported.viewMode)) validated.viewMode = imported.viewMode;
 
@@ -6468,23 +6945,33 @@ function validateImportedSettings(imported: any): Partial<Settings> {
     validated.bookmarks = imported.bookmarks.filter((b: any) => typeof b === 'string');
   }
   if (Array.isArray(imported.searchHistory)) {
-    validated.searchHistory = imported.searchHistory.filter((s: any) => typeof s === 'string').slice(0, 100);
+    validated.searchHistory = imported.searchHistory
+      .filter((s: any) => typeof s === 'string')
+      .slice(0, 100);
   }
   if (Array.isArray(imported.directoryHistory)) {
-    validated.directoryHistory = imported.directoryHistory.filter((d: any) => typeof d === 'string').slice(0, 100);
+    validated.directoryHistory = imported.directoryHistory
+      .filter((d: any) => typeof d === 'string')
+      .slice(0, 100);
   }
 
   if (imported.customTheme && typeof imported.customTheme === 'object') {
     const ct = imported.customTheme;
     const isValidHex = (s: any) => typeof s === 'string' && /^#[0-9a-fA-F]{6}$/.test(s);
-    if (typeof ct.name === 'string' && 
-        isValidHex(ct.accentColor) && isValidHex(ct.bgPrimary) && 
-        isValidHex(ct.bgSecondary) && isValidHex(ct.textPrimary) && 
-        isValidHex(ct.textSecondary) && isValidHex(ct.glassBg) && isValidHex(ct.glassBorder)) {
+    if (
+      typeof ct.name === 'string' &&
+      isValidHex(ct.accentColor) &&
+      isValidHex(ct.bgPrimary) &&
+      isValidHex(ct.bgSecondary) &&
+      isValidHex(ct.textPrimary) &&
+      isValidHex(ct.textSecondary) &&
+      isValidHex(ct.glassBg) &&
+      isValidHex(ct.glassBorder)
+    ) {
       validated.customTheme = ct;
     }
   }
-  
+
   return validated;
 }
 
@@ -6496,13 +6983,13 @@ document.getElementById('import-settings-btn')?.addEventListener('click', () => 
   input.onchange = async (e) => {
     const file = (e.target as HTMLInputElement).files?.[0];
     if (!file) return;
-    
+
     try {
       const text = await file.text();
       const parsed = JSON.parse(text);
 
       const validatedSettings = validateImportedSettings(parsed);
-      
+
       if (Object.keys(validatedSettings).length === 0) {
         showToast('No valid settings found in file', 'Import', 'warning');
         return;
@@ -6513,7 +7000,11 @@ document.getElementById('import-settings-btn')?.addEventListener('click', () => 
 
       hideSettingsModal();
       showSettingsModal();
-      showToast(`Imported ${Object.keys(validatedSettings).length} settings successfully`, 'Import', 'success');
+      showToast(
+        `Imported ${Object.keys(validatedSettings).length} settings successfully`,
+        'Import',
+        'success'
+      );
     } catch (error) {
       showToast('Failed to import settings: Invalid file format', 'Import', 'error');
     }
@@ -6591,7 +7082,7 @@ function initSettingsChangeTracking() {
   const settingsModal = document.getElementById('settings-modal');
   if (!settingsModal) return;
 
-  settingsModal.querySelectorAll('input, select').forEach(input => {
+  settingsModal.querySelectorAll('input, select').forEach((input) => {
     input.addEventListener('change', markSettingsChanged);
     if (input.tagName === 'INPUT' && (input as HTMLInputElement).type === 'text') {
       input.addEventListener('input', markSettingsChanged);
@@ -6702,7 +7193,7 @@ function showEmptyPreview() {
   if (!previewContent) return;
   previewContent.innerHTML = `
     <div class="preview-empty">
-      <div class="preview-empty-icon">${twemojiImg(String.fromCodePoint(0x1F441), 'twemoji-xlarge')}</div>
+      <div class="preview-empty-icon">${twemojiImg(String.fromCodePoint(0x1f441), 'twemoji-xlarge')}</div>
       <p>Select a file to preview</p>
       <small>Press Space for quick look</small>
     </div>
@@ -6758,7 +7249,7 @@ async function showImagePreview(file: FileItem, requestId: number) {
       <p>Loading image...</p>
     </div>
   `;
-  
+
   if (file.size > THUMBNAIL_MAX_SIZE) {
     if (requestId !== previewRequestId) return;
     previewContent.innerHTML = `
@@ -6775,12 +7266,12 @@ async function showImagePreview(file: FileItem, requestId: number) {
   const info = props.success && props.properties ? props.properties : null;
   const fileUrl = encodeFileUrl(file.path);
   const altText = escapeHtml(file.name);
-  
+
   previewContent.innerHTML = `
     <img src="${fileUrl}" class="preview-image" alt="${altText}">
     ${generateFileInfo(file, info)}
   `;
-  
+
   const img = previewContent.querySelector('.preview-image') as HTMLImageElement | null;
   if (img) {
     img.addEventListener('error', () => {
@@ -6799,17 +7290,59 @@ let hljs: any = null;
 let hljsLoading: Promise<any> | null = null;
 
 const EXT_TO_LANG: Record<string, string> = {
-  js: 'javascript', jsx: 'javascript', ts: 'typescript', tsx: 'typescript',
-  py: 'python', pyc: 'python', pyw: 'python', rb: 'ruby', go: 'go', rs: 'rust',
-  java: 'java', kt: 'kotlin', kts: 'kotlin', scala: 'scala', swift: 'swift',
-  c: 'c', cpp: 'cpp', cc: 'cpp', cxx: 'cpp', h: 'c', hpp: 'cpp', cs: 'csharp',
-  php: 'php', r: 'r', lua: 'lua', perl: 'perl', pl: 'perl',
-  sh: 'bash', bash: 'bash', zsh: 'bash', fish: 'bash', ps1: 'powershell',
-  html: 'xml', htm: 'xml', xml: 'xml', svg: 'xml', vue: 'xml', svelte: 'xml',
-  css: 'css', scss: 'scss', sass: 'scss', less: 'less',
-  json: 'json', yml: 'yaml', yaml: 'yaml', toml: 'ini', ini: 'ini',
-  sql: 'sql', md: 'markdown', markdown: 'markdown',
-  dockerfile: 'dockerfile', makefile: 'makefile', cmake: 'cmake'
+  js: 'javascript',
+  jsx: 'javascript',
+  ts: 'typescript',
+  tsx: 'typescript',
+  py: 'python',
+  pyc: 'python',
+  pyw: 'python',
+  rb: 'ruby',
+  go: 'go',
+  rs: 'rust',
+  java: 'java',
+  kt: 'kotlin',
+  kts: 'kotlin',
+  scala: 'scala',
+  swift: 'swift',
+  c: 'c',
+  cpp: 'cpp',
+  cc: 'cpp',
+  cxx: 'cpp',
+  h: 'c',
+  hpp: 'cpp',
+  cs: 'csharp',
+  php: 'php',
+  r: 'r',
+  lua: 'lua',
+  perl: 'perl',
+  pl: 'perl',
+  sh: 'bash',
+  bash: 'bash',
+  zsh: 'bash',
+  fish: 'bash',
+  ps1: 'powershell',
+  html: 'xml',
+  htm: 'xml',
+  xml: 'xml',
+  svg: 'xml',
+  vue: 'xml',
+  svelte: 'xml',
+  css: 'css',
+  scss: 'scss',
+  sass: 'scss',
+  less: 'less',
+  json: 'json',
+  yml: 'yaml',
+  yaml: 'yaml',
+  toml: 'ini',
+  ini: 'ini',
+  sql: 'sql',
+  md: 'markdown',
+  markdown: 'markdown',
+  dockerfile: 'dockerfile',
+  makefile: 'makefile',
+  cmake: 'cmake',
 };
 
 async function loadHighlightJs(): Promise<any> {
@@ -6826,7 +7359,9 @@ async function loadHighlightJs(): Promise<any> {
       document.head.appendChild(link);
     }
 
-    const existingScript = document.querySelector('script[data-highlightjs="core"]') as HTMLScriptElement | null;
+    const existingScript = document.querySelector(
+      'script[data-highlightjs="core"]'
+    ) as HTMLScriptElement | null;
     if (existingScript) {
       existingScript.addEventListener('load', () => {
         hljs = (window as any).hljs || null;
@@ -6879,13 +7414,13 @@ async function showTextPreview(file: FileItem, requestId: number) {
     const lang = getLanguageForExt(ext);
 
     previewContent.innerHTML = `
-      ${result.isTruncated ? `<div class="preview-truncated">${twemojiImg(String.fromCodePoint(0x26A0), 'twemoji')} File truncated to first 50KB</div>` : ''}
+      ${result.isTruncated ? `<div class="preview-truncated">${twemojiImg(String.fromCodePoint(0x26a0), 'twemoji')} File truncated to first 50KB</div>` : ''}
       <pre class="preview-text"><code class="${lang ? `language-${lang}` : ''}">${escapeHtml(result.content)}</code></pre>
       ${generateFileInfo(file, info)}
     `;
 
     if (lang && currentSettings.enableSyntaxHighlighting) {
-      loadHighlightJs().then(hl => {
+      loadHighlightJs().then((hl) => {
         if (requestId !== previewRequestId || !hl) return;
         const codeBlock = previewContent?.querySelector('code');
         if (codeBlock) hl.highlightElement(codeBlock);
@@ -6903,13 +7438,13 @@ async function showTextPreview(file: FileItem, requestId: number) {
 
 async function showVideoPreview(file: FileItem, requestId: number) {
   if (!previewContent || requestId !== previewRequestId) return;
-  
+
   const props = await window.electronAPI.getItemProperties(file.path);
   if (requestId !== previewRequestId) return;
   const info = props.success && props.properties ? props.properties : null;
-  
+
   const fileUrl = encodeFileUrl(file.path);
-  
+
   previewContent.innerHTML = `
     <video src="${fileUrl}" class="preview-video" controls controlsList="nodownload">
       Your browser does not support the video tag.
@@ -6920,16 +7455,16 @@ async function showVideoPreview(file: FileItem, requestId: number) {
 
 async function showAudioPreview(file: FileItem, requestId: number) {
   if (!previewContent || requestId !== previewRequestId) return;
-  
+
   const props = await window.electronAPI.getItemProperties(file.path);
   if (requestId !== previewRequestId) return;
   const info = props.success && props.properties ? props.properties : null;
-  
+
   const fileUrl = encodeFileUrl(file.path);
-  
+
   previewContent.innerHTML = `
     <div class="preview-audio-container">
-      <div class="preview-audio-icon">${twemojiImg(String.fromCodePoint(0x1F3B5), 'twemoji-xlarge')}</div>
+      <div class="preview-audio-icon">${twemojiImg(String.fromCodePoint(0x1f3b5), 'twemoji-xlarge')}</div>
       <audio src="${fileUrl}" class="preview-audio" controls controlsList="nodownload">
         Your browser does not support the audio tag.
       </audio>
@@ -6940,13 +7475,13 @@ async function showAudioPreview(file: FileItem, requestId: number) {
 
 async function showPdfPreview(file: FileItem, requestId: number) {
   if (!previewContent || requestId !== previewRequestId) return;
-  
+
   const props = await window.electronAPI.getItemProperties(file.path);
   if (requestId !== previewRequestId) return;
   const info = props.success && props.properties ? props.properties : null;
-  
+
   const fileUrl = encodeFileUrl(file.path);
-  
+
   previewContent.innerHTML = `
     <iframe src="${fileUrl}" class="preview-pdf" frameborder="0"></iframe>
     ${generateFileInfo(file, info)}
@@ -6958,7 +7493,7 @@ async function showFileInfo(file: FileItem, requestId: number) {
   const props = await window.electronAPI.getItemProperties(file.path);
   if (requestId !== previewRequestId) return;
   const info = props.success && props.properties ? props.properties : null;
-  
+
   previewContent.innerHTML = `
     <div class="preview-unsupported">
       <div class="preview-unsupported-icon">${getFileIcon(file.name)}</div>
@@ -6975,7 +7510,7 @@ function generateFileInfo(file: FileItem, props: ItemProperties | null): string 
   const size = props ? props.size : file.size;
   const sizeDisplay = formatFileSize(size);
   const modified = props ? new Date(props.modified) : new Date(file.modified);
-  
+
   return `
     <div class="preview-info">
       <div class="preview-info-item">
@@ -6994,20 +7529,28 @@ function generateFileInfo(file: FileItem, props: ItemProperties | null): string 
         <span class="preview-info-label">Location</span>
         <span class="preview-info-value">${escapeHtml(file.path)}</span>
       </div>
-      ${props && props.created ? `
+      ${
+        props && props.created
+          ? `
       <div class="preview-info-item">
         <span class="preview-info-label">Created</span>
         <span class="preview-info-value">${new Date(props.created).toLocaleString()}</span>
-      </div>` : ''}
+      </div>`
+          : ''
+      }
       <div class="preview-info-item">
         <span class="preview-info-label">Modified</span>
         <span class="preview-info-value">${modified.toLocaleDateString()} ${modified.toLocaleTimeString()}</span>
       </div>
-      ${props && props.accessed ? `
+      ${
+        props && props.accessed
+          ? `
       <div class="preview-info-item">
         <span class="preview-info-label">Accessed</span>
         <span class="preview-info-value">${new Date(props.accessed).toLocaleString()}</span>
-      </div>` : ''}
+      </div>`
+          : ''
+      }
     </div>
   `;
 }
@@ -7037,7 +7580,7 @@ async function showQuickLook() {
   currentQuicklookFile = file;
   quicklookTitle.textContent = file.name;
   quicklookModal.style.display = 'flex';
-  
+
   const ext = file.name.split('.').pop()?.toLowerCase() || '';
 
   quicklookContent.innerHTML = `
@@ -7046,7 +7589,7 @@ async function showQuickLook() {
       <p>Loading preview...</p>
     </div>
   `;
-  
+
   if (IMAGE_EXTENSIONS.has(ext)) {
     if (file.size > THUMBNAIL_MAX_SIZE) {
       quicklookContent.innerHTML = `<div class="preview-error">Image too large to preview</div>`;
@@ -7087,7 +7630,7 @@ async function showQuickLook() {
     container.className = 'preview-audio-container';
     const icon = document.createElement('div');
     icon.className = 'preview-audio-icon';
-    icon.innerHTML = twemojiImg(String.fromCodePoint(0x1F3B5), 'twemoji-large');
+    icon.innerHTML = twemojiImg(String.fromCodePoint(0x1f3b5), 'twemoji-large');
     const audio = document.createElement('audio');
     audio.controls = true;
     audio.autoplay = true;
@@ -7118,13 +7661,14 @@ async function showQuickLook() {
     if (result.success && typeof result.content === 'string') {
       const lang = getLanguageForExt(ext);
       quicklookContent.innerHTML = `
-        ${result.isTruncated ? `<div class="preview-truncated">${twemojiImg(String.fromCodePoint(0x26A0), 'twemoji')} File truncated to first 100KB</div>` : ''}
+        ${result.isTruncated ? `<div class="preview-truncated">${twemojiImg(String.fromCodePoint(0x26a0), 'twemoji')} File truncated to first 100KB</div>` : ''}
         <pre class="preview-text"><code class="${lang ? `language-${lang}` : ''}">${escapeHtml(result.content)}</code></pre>
       `;
       quicklookInfo.textContent = `${formatFileSize(file.size)} • ${new Date(file.modified).toLocaleDateString()}`;
       if (lang && currentSettings.enableSyntaxHighlighting) {
-        loadHighlightJs().then(hl => {
-          if (requestId !== quicklookRequestId || currentQuicklookFile?.path !== file.path || !hl) return;
+        loadHighlightJs().then((hl) => {
+          if (requestId !== quicklookRequestId || currentQuicklookFile?.path !== file.path || !hl)
+            return;
           const codeBlock = quicklookContent?.querySelector('code');
           if (codeBlock) hl.highlightElement(codeBlock);
         });
@@ -7186,7 +7730,10 @@ if (quicklookModal) {
 document.addEventListener('keydown', (e) => {
   if (e.code === 'Space' && !e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey) {
     const activeElement = document.activeElement;
-    if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
+    if (
+      activeElement &&
+      (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')
+    ) {
       return;
     }
 
@@ -7194,14 +7741,16 @@ document.addEventListener('keydown', (e) => {
     const shortcutsModal = document.getElementById('shortcuts-modal');
     const dialogModal = document.getElementById('dialog-modal');
     const licensesModal = document.getElementById('licenses-modal');
-    
-    if ((settingsModal && settingsModal.style.display === 'flex') ||
-        (shortcutsModal && shortcutsModal.style.display === 'flex') ||
-        (dialogModal && dialogModal.style.display === 'flex') ||
-        (licensesModal && licensesModal.style.display === 'flex')) {
+
+    if (
+      (settingsModal && settingsModal.style.display === 'flex') ||
+      (shortcutsModal && shortcutsModal.style.display === 'flex') ||
+      (dialogModal && dialogModal.style.display === 'flex') ||
+      (licensesModal && licensesModal.style.display === 'flex')
+    ) {
       return;
     }
-    
+
     e.preventDefault();
     if (quicklookModal && quicklookModal.style.display === 'flex') {
       closeQuickLook();
@@ -7209,7 +7758,7 @@ document.addEventListener('keydown', (e) => {
       showQuickLook();
     }
   }
-  
+
   if (e.key === 'Escape' && quicklookModal && quicklookModal.style.display === 'flex') {
     closeQuickLook();
   }
@@ -7220,7 +7769,7 @@ if (searchInput) {
       showSearchHistoryDropdown();
     }
   });
-  
+
   searchInput.addEventListener('blur', (e) => {
     setTimeout(() => {
       const searchDropdown = document.getElementById('search-history-dropdown');
@@ -7237,7 +7786,7 @@ if (addressInput) {
       showDirectoryHistoryDropdown();
     }
   });
-  
+
   addressInput.addEventListener('blur', (e) => {
     setTimeout(() => {
       const directoryDropdown = document.getElementById('directory-history-dropdown');
@@ -7283,7 +7832,6 @@ document.addEventListener('mousedown', (e) => {
     return;
   }
 });
-
 
 (async () => {
   try {

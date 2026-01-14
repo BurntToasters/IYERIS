@@ -35,6 +35,6 @@ export function createDefaultSettings(): Settings {
     boldText: false,
     visibleFocus: false,
     reduceTransparency: false,
-    updateChannel: 'auto'
+    updateChannel: 'auto',
   };
 }

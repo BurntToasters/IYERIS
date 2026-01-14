@@ -23,7 +23,9 @@ describe('escapeHtml', () => {
   });
 
   it('escapes multiple special characters', () => {
-    expect(escapeHtml('<div class="test">&</div>')).toBe('&lt;div class=&quot;test&quot;&gt;&amp;&lt;/div&gt;');
+    expect(escapeHtml('<div class="test">&</div>')).toBe(
+      '&lt;div class=&quot;test&quot;&gt;&amp;&lt;/div&gt;'
+    );
   });
 
   it('handles null input', () => {

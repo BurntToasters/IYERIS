@@ -1,9 +1,11 @@
 import { app } from 'electron';
 import { exec } from 'child_process';
 import * as fsSync from 'fs';
+import { logger } from './utils/logger';
 
 let autoUpdaterModule: typeof import('electron-updater') | null = null;
 let sevenBinModule: { path7za: string } | null = null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let sevenZipModule: any = null;
 
 export function getAutoUpdater() {
@@ -30,8 +32,7 @@ export function get7zipModule() {
 let isInFlatpak: boolean | null = null;
 export function isRunningInFlatpak(): boolean {
   if (isInFlatpak === null) {
-    isInFlatpak = process.env.FLATPAK_ID !== undefined ||
-                  fsSync.existsSync('/.flatpak-info');
+    isInFlatpak = process.env.FLATPAK_ID !== undefined || fsSync.existsSync('/.flatpak-info');
   }
   return isInFlatpak;
 }
@@ -75,7 +76,7 @@ export function get7zipPath(): string {
     sevenZipPath = sevenZipPath.replace('app.asar', 'app.asar.unpacked');
   }
 
-  console.log('[7zip] Using path:', sevenZipPath);
+  logger.debug('[7zip] Using path:', sevenZipPath);
   cached7zipPath = sevenZipPath;
   return sevenZipPath;
 }

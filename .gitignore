@@ -8,6 +8,7 @@ lerna-debug.log*
 
 **/.*/
 !.github/
+!.husky/
 
 .flatpak-builder/
 build-dir/

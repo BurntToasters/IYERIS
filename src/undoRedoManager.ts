@@ -3,6 +3,7 @@ import { promises as fs } from 'fs';
 import * as path from 'path';
 import type { UndoAction, ApiResponse } from './types';
 import { MAX_UNDO_STACK_SIZE } from './appState';
+import { logger } from './utils/logger';
 
 const undoStack: UndoAction[] = [];
 const redoStack: UndoAction[] = [];
@@ -13,7 +14,7 @@ export function pushUndoAction(action: UndoAction): void {
     undoStack.shift();
   }
   redoStack.length = 0;
-  console.log('[Undo] Action pushed:', action.type, 'Stack size:', undoStack.length);
+  logger.debug('[Undo] Action pushed:', action.type, 'Stack size:', undoStack.length);
 }
 
 export function pushRedoAction(action: UndoAction): void {
@@ -21,7 +22,7 @@ export function pushRedoAction(action: UndoAction): void {
   if (redoStack.length > MAX_UNDO_STACK_SIZE) {
     redoStack.shift();
   }
-  console.log('[Redo] Action pushed:', action.type, 'Stack size:', redoStack.length);
+  logger.debug('[Redo] Action pushed:', action.type, 'Stack size:', redoStack.length);
 }
 
 export function getUndoStack(): readonly UndoAction[] {
@@ -52,7 +53,10 @@ export function clearUndoStackForPath(itemPath: string): void {
     let shouldRemove = false;
 
     if (action.type === 'rename') {
-      if (pathsToRemove.includes(action.data.oldPath) || pathsToRemove.includes(action.data.newPath)) {
+      if (
+        pathsToRemove.includes(action.data.oldPath) ||
+        pathsToRemove.includes(action.data.newPath)
+      ) {
         shouldRemove = true;
       }
     } else if (action.type === 'create') {
@@ -67,7 +71,7 @@ export function clearUndoStackForPath(itemPath: string): void {
 
     if (shouldRemove) {
       undoStack.splice(i, 1);
-      console.log('[Trash] Removed related undo action:', action.type);
+      logger.debug('[Trash] Removed related undo action:', action.type);
     }
   }
 }
@@ -79,7 +83,7 @@ export function setupUndoRedoHandlers(): void {
     }
 
     const action = undoStack.pop()!;
-    console.log('[Undo] Undoing action:', action.type);
+    logger.debug('[Undo] Undoing action:', action.type);
 
     try {
       switch (action.type) {
@@ -87,19 +91,25 @@ export function setupUndoRedoHandlers(): void {
           try {
             await fs.access(action.data.newPath);
           } catch {
-            console.log('[Undo] File no longer exists:', action.data.newPath);
-            return { success: false, error: 'Cannot undo: File no longer exists (may have been moved or deleted)' };
+            logger.debug('[Undo] File no longer exists:', action.data.newPath);
+            return {
+              success: false,
+              error: 'Cannot undo: File no longer exists (may have been moved or deleted)',
+            };
           }
 
           try {
             await fs.access(action.data.oldPath);
-            console.log('[Undo] Old path already exists:', action.data.oldPath);
-            return { success: false, error: 'Cannot undo: A file already exists at the original location' };
+            logger.debug('[Undo] Old path already exists:', action.data.oldPath);
+            return {
+              success: false,
+              error: 'Cannot undo: A file already exists at the original location',
+            };
           } catch {}
 
           await fs.rename(action.data.newPath, action.data.oldPath);
           pushRedoAction(action);
-          console.log('[Undo] Renamed back:', action.data.newPath, '->', action.data.oldPath);
+          logger.debug('[Undo] Renamed back:', action.data.newPath, '->', action.data.oldPath);
           return { success: true };
 
         case 'move':
@@ -112,7 +122,7 @@ export function setupUndoRedoHandlers(): void {
               try {
                 await fs.access(movedPath);
               } catch {
-                console.log('[Undo] File no longer exists:', movedPath);
+                logger.debug('[Undo] File no longer exists:', movedPath);
                 return { success: false, error: 'Cannot undo: One or more files no longer exist' };
               }
             }
@@ -120,8 +130,11 @@ export function setupUndoRedoHandlers(): void {
             for (const originalPath of originalPaths) {
               try {
                 await fs.access(originalPath);
-                console.log('[Undo] Original path already exists:', originalPath);
-                return { success: false, error: 'Cannot undo: A file already exists at the original location' };
+                logger.debug('[Undo] Original path already exists:', originalPath);
+                return {
+                  success: false,
+                  error: 'Cannot undo: A file already exists at the original location',
+                };
               } catch {}
             }
 
@@ -137,7 +150,7 @@ export function setupUndoRedoHandlers(): void {
               try {
                 await fs.access(source);
               } catch {
-                console.log('[Undo] File no longer exists:', source);
+                logger.debug('[Undo] File no longer exists:', source);
                 return { success: false, error: 'Cannot undo: One or more files no longer exist' };
               }
             }
@@ -149,7 +162,7 @@ export function setupUndoRedoHandlers(): void {
             }
           }
           pushRedoAction(action);
-          console.log('[Undo] Moved back to original location');
+          logger.debug('[Undo] Moved back to original location');
           return { success: true };
 
         case 'create':
@@ -158,7 +171,7 @@ export function setupUndoRedoHandlers(): void {
           try {
             await fs.access(itemPath);
           } catch {
-            console.log('[Undo] Created item no longer exists:', itemPath);
+            logger.debug('[Undo] Created item no longer exists:', itemPath);
             return { success: false, error: 'Cannot undo: File no longer exists' };
           }
 
@@ -169,7 +182,7 @@ export function setupUndoRedoHandlers(): void {
             await fs.unlink(itemPath);
           }
           pushRedoAction(action);
-          console.log('[Undo] Deleted created item:', itemPath);
+          logger.debug('[Undo] Deleted created item:', itemPath);
           return { success: true };
 
         default:
@@ -189,7 +202,7 @@ export function setupUndoRedoHandlers(): void {
     }
 
     const action = redoStack.pop()!;
-    console.log('[Redo] Redoing action:', action.type);
+    logger.debug('[Redo] Redoing action:', action.type);
 
     try {
       switch (action.type) {
@@ -197,19 +210,22 @@ export function setupUndoRedoHandlers(): void {
           try {
             await fs.access(action.data.oldPath);
           } catch {
-            console.log('[Redo] Source file no longer exists:', action.data.oldPath);
+            logger.debug('[Redo] Source file no longer exists:', action.data.oldPath);
             return { success: false, error: 'Cannot redo: Source file no longer exists' };
           }
 
           try {
             await fs.access(action.data.newPath);
-            console.log('[Redo] Target path already exists:', action.data.newPath);
-            return { success: false, error: 'Cannot redo: A file already exists at the target location' };
+            logger.debug('[Redo] Target path already exists:', action.data.newPath);
+            return {
+              success: false,
+              error: 'Cannot redo: A file already exists at the target location',
+            };
           } catch {}
 
           await fs.rename(action.data.oldPath, action.data.newPath);
           undoStack.push(action);
-          console.log('[Redo] Renamed:', action.data.oldPath, '->', action.data.newPath);
+          logger.debug('[Redo] Renamed:', action.data.oldPath, '->', action.data.newPath);
           return { success: true };
 
         case 'move':
@@ -224,13 +240,19 @@ export function setupUndoRedoHandlers(): void {
               try {
                 await fs.access(originalPath);
               } catch {
-                console.log('[Redo] File not found at expected location:', originalPath);
-                return { success: false, error: 'Cannot redo: File not found at original location' };
+                logger.debug('[Redo] File not found at expected location:', originalPath);
+                return {
+                  success: false,
+                  error: 'Cannot redo: File not found at original location',
+                };
               }
               try {
                 await fs.access(newPath);
-                console.log('[Redo] Target path already exists:', newPath);
-                return { success: false, error: 'Cannot redo: A file already exists at the target location' };
+                logger.debug('[Redo] Target path already exists:', newPath);
+                return {
+                  success: false,
+                  error: 'Cannot redo: A file already exists at the target location',
+                };
               } catch {}
               await fs.rename(originalPath, newPath);
               newMovedPaths.push(newPath);
@@ -250,13 +272,19 @@ export function setupUndoRedoHandlers(): void {
               try {
                 await fs.access(currentPath);
               } catch {
-                console.log('[Redo] File not found at expected location:', currentPath);
-                return { success: false, error: 'Cannot redo: File not found at original location' };
+                logger.debug('[Redo] File not found at expected location:', currentPath);
+                return {
+                  success: false,
+                  error: 'Cannot redo: File not found at original location',
+                };
               }
               try {
                 await fs.access(newPath);
-                console.log('[Redo] Target path already exists:', newPath);
-                return { success: false, error: 'Cannot redo: A file already exists at the target location' };
+                logger.debug('[Redo] Target path already exists:', newPath);
+                return {
+                  success: false,
+                  error: 'Cannot redo: A file already exists at the target location',
+                };
               } catch {}
               await fs.rename(currentPath, newPath);
               newMovedPaths.push(newPath);
@@ -264,7 +292,7 @@ export function setupUndoRedoHandlers(): void {
           }
           action.data.sourcePaths = newMovedPaths;
           undoStack.push(action);
-          console.log('[Redo] Moved to destination');
+          logger.debug('[Redo] Moved to destination');
           return { success: true };
 
         case 'create':
@@ -272,8 +300,11 @@ export function setupUndoRedoHandlers(): void {
 
           try {
             await fs.access(itemPath);
-            console.log('[Redo] Item already exists at path:', itemPath);
-            return { success: false, error: 'Cannot redo: A file or folder already exists at this location' };
+            logger.debug('[Redo] Item already exists at path:', itemPath);
+            return {
+              success: false,
+              error: 'Cannot redo: A file or folder already exists at this location',
+            };
           } catch {}
 
           if (action.data.isDirectory) {
@@ -282,7 +313,7 @@ export function setupUndoRedoHandlers(): void {
             await fs.writeFile(itemPath, '');
           }
           undoStack.push(action);
-          console.log('[Redo] Recreated item:', itemPath);
+          logger.debug('[Redo] Recreated item:', itemPath);
           return { success: true };
 
         default:
@@ -296,10 +327,13 @@ export function setupUndoRedoHandlers(): void {
     }
   });
 
-  ipcMain.handle('get-undo-redo-state', async (): Promise<{ canUndo: boolean; canRedo: boolean }> => {
-    return {
-      canUndo: undoStack.length > 0,
-      canRedo: redoStack.length > 0
-    };
-  });
+  ipcMain.handle(
+    'get-undo-redo-state',
+    async (): Promise<{ canUndo: boolean; canRedo: boolean }> => {
+      return {
+        canUndo: undoStack.length > 0,
+        canRedo: redoStack.length > 0,
+      };
+    }
+  );
 }

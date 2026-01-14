@@ -35,12 +35,16 @@ async function assertArchiveEntriesSafe(archivePath: string, destPath: string): 
 
     const normalized = entry.replace(/\\/g, '/').replace(/^\.\/+/, '');
     if (!normalized) continue;
-    if (normalized.startsWith('/') || normalized.startsWith('//') || /^[a-zA-Z]:/.test(normalized)) {
+    if (
+      normalized.startsWith('/') ||
+      normalized.startsWith('//') ||
+      /^[a-zA-Z]:/.test(normalized)
+    ) {
       invalidEntries.push(entry);
       continue;
     }
     const parts = normalized.split('/');
-    if (parts.some(part => part === '..')) {
+    if (parts.some((part) => part === '..')) {
       invalidEntries.push(entry);
       continue;
     }
@@ -53,7 +57,9 @@ async function assertArchiveEntriesSafe(archivePath: string, destPath: string): 
 
   if (invalidEntries.length > 0) {
     const preview = invalidEntries.slice(0, 5).join(', ');
-    throw new Error(`Archive contains unsafe paths: ${preview}${invalidEntries.length > 5 ? '...' : ''}`);
+    throw new Error(
+      `Archive contains unsafe paths: ${preview}${invalidEntries.length > 5 ? '...' : ''}`
+    );
   }
 }
 
@@ -117,125 +123,169 @@ async function assertExtractedPathsSafe(destPath: string): Promise<void> {
 
   if (unsafe.length > 0) {
     const preview = unsafe.slice(0, 5).join(', ');
-    throw new Error(`Archive extraction created unsafe paths: ${preview}${unsafe.length > 5 ? '...' : ''}`);
+    throw new Error(
+      `Archive extraction created unsafe paths: ${preview}${unsafe.length > 5 ? '...' : ''}`
+    );
   }
 }
 
 export function setupArchiveHandlers(): void {
-  ipcMain.handle('compress-files', async (
-    _event: IpcMainInvokeEvent,
-    sourcePaths: string[],
-    outputPath: string,
-    format: string = 'zip',
-    operationId?: string
-  ): Promise<ApiResponse> => {
-    try {
-      if (!isPathSafe(outputPath)) {
-        console.warn('[Security] Invalid output path rejected:', outputPath);
-        return { success: false, error: 'Invalid output path' };
-      }
-
-      for (const sourcePath of sourcePaths) {
-        if (!isPathSafe(sourcePath)) {
-          console.warn('[Security] Invalid source path rejected:', sourcePath);
-          return { success: false, error: 'Invalid source path' };
-        }
-      }
-
-      const allowedFormats = ['zip', '7z', 'tar', 'tar.gz', 'gz'];
-      if (!allowedFormats.includes(format)) {
-        console.warn('[Security] Invalid archive format rejected:', format);
-        return { success: false, error: 'Invalid archive format' };
-      }
-
-      console.log('[Compress] Starting compression:', sourcePaths, 'to', outputPath, 'format:', format);
-
+  ipcMain.handle(
+    'compress-files',
+    async (
+      _event: IpcMainInvokeEvent,
+      sourcePaths: string[],
+      outputPath: string,
+      format: string = 'zip',
+      operationId?: string
+    ): Promise<ApiResponse> => {
       try {
-        await fs.access(outputPath);
-        console.log('[Compress] Removing existing file:', outputPath);
-        await fs.unlink(outputPath);
-      } catch (err) {}
+        if (!isPathSafe(outputPath)) {
+          console.warn('[Security] Invalid output path rejected:', outputPath);
+          return { success: false, error: 'Invalid output path' };
+        }
 
-      const mainWindow = getMainWindow();
-
-      if (format === 'tar.gz') {
-        return new Promise(async (resolve, reject) => {
-          const Seven = get7zipModule();
-          const sevenZipPath = get7zipPath();
-          console.log('[Compress] Using 7zip at:', sevenZipPath);
-          const tarPath = outputPath.replace(/\.gz$/, '');
-          console.log('[Compress] Creating tar file:', tarPath);
-
-          const tarOptions: any = {
-            $bin: sevenZipPath,
-            recursive: true,
-            $raw: ['-xr!My Music', '-xr!My Pictures', '-xr!My Videos']
-          };
-
-          const tarProcess = Seven.add(tarPath, sourcePaths, tarOptions);
-
-          if (operationId) {
-            activeArchiveProcesses.set(operationId, tarProcess);
+        for (const sourcePath of sourcePaths) {
+          if (!isPathSafe(sourcePath)) {
+            console.warn('[Security] Invalid source path rejected:', sourcePath);
+            return { success: false, error: 'Invalid source path' };
           }
+        }
 
-          let fileCount = 0;
+        const allowedFormats = ['zip', '7z', 'tar', 'tar.gz', 'gz'];
+        if (!allowedFormats.includes(format)) {
+          console.warn('[Security] Invalid archive format rejected:', format);
+          return { success: false, error: 'Invalid archive format' };
+        }
 
-          tarProcess.on('progress', (progress: { file?: string }) => {
-            fileCount++;
-            if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
-              mainWindow.webContents.send('compress-progress', {
-                operationId,
-                current: fileCount,
-                total: fileCount + 20,
-                name: progress.file || 'Creating tar...'
-              });
-            }
-          });
+        console.log(
+          '[Compress] Starting compression:',
+          sourcePaths,
+          'to',
+          outputPath,
+          'format:',
+          format
+        );
 
-          tarProcess.on('end', async () => {
-            console.log('[Compress] Tar created, now compressing with gzip...');
-            const gzipProcess = Seven.add(outputPath, [tarPath], {
-              $bin: sevenZipPath
-            });
+        try {
+          await fs.access(outputPath);
+          console.log('[Compress] Removing existing file:', outputPath);
+          await fs.unlink(outputPath);
+        } catch (err) {}
+
+        const mainWindow = getMainWindow();
+
+        if (format === 'tar.gz') {
+          return new Promise(async (resolve, reject) => {
+            const Seven = get7zipModule();
+            const sevenZipPath = get7zipPath();
+            console.log('[Compress] Using 7zip at:', sevenZipPath);
+            const tarPath = outputPath.replace(/\.gz$/, '');
+            console.log('[Compress] Creating tar file:', tarPath);
+
+            const tarOptions: any = {
+              $bin: sevenZipPath,
+              recursive: true,
+              $raw: ['-xr!My Music', '-xr!My Pictures', '-xr!My Videos'],
+            };
+
+            const tarProcess = Seven.add(tarPath, sourcePaths, tarOptions);
 
             if (operationId) {
-              activeArchiveProcesses.set(operationId, gzipProcess);
+              activeArchiveProcesses.set(operationId, tarProcess);
             }
 
-            gzipProcess.on('progress', () => {
-              if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
+            let fileCount = 0;
+
+            tarProcess.on('progress', (progress: { file?: string }) => {
+              fileCount++;
+              if (
+                mainWindow &&
+                !mainWindow.isDestroyed() &&
+                mainWindow.webContents &&
+                !mainWindow.webContents.isDestroyed()
+              ) {
                 mainWindow.webContents.send('compress-progress', {
                   operationId,
-                  current: fileCount + 10,
+                  current: fileCount,
                   total: fileCount + 20,
-                  name: 'Compressing with gzip...'
+                  name: progress.file || 'Creating tar...',
                 });
               }
             });
 
-            gzipProcess.on('end', async () => {
-              console.log('[Compress] tar.gz compression completed');
-
-              try {
-                await fs.unlink(tarPath);
-              } catch (err) {
-                console.error('[Compress] Failed to delete intermediate tar:', err);
-              }
+            tarProcess.on('end', async () => {
+              console.log('[Compress] Tar created, now compressing with gzip...');
+              const gzipProcess = Seven.add(outputPath, [tarPath], {
+                $bin: sevenZipPath,
+              });
 
               if (operationId) {
-                activeArchiveProcesses.delete(operationId);
+                activeArchiveProcesses.set(operationId, gzipProcess);
               }
-              resolve({ success: true });
+
+              gzipProcess.on('progress', () => {
+                if (
+                  mainWindow &&
+                  !mainWindow.isDestroyed() &&
+                  mainWindow.webContents &&
+                  !mainWindow.webContents.isDestroyed()
+                ) {
+                  mainWindow.webContents.send('compress-progress', {
+                    operationId,
+                    current: fileCount + 10,
+                    total: fileCount + 20,
+                    name: 'Compressing with gzip...',
+                  });
+                }
+              });
+
+              gzipProcess.on('end', async () => {
+                console.log('[Compress] tar.gz compression completed');
+
+                try {
+                  await fs.unlink(tarPath);
+                } catch (err) {
+                  console.error('[Compress] Failed to delete intermediate tar:', err);
+                }
+
+                if (operationId) {
+                  activeArchiveProcesses.delete(operationId);
+                }
+                resolve({ success: true });
+              });
+
+              gzipProcess.on('error', async (error: { message?: string; level?: string }) => {
+                console.error('[Compress] Gzip error:', error);
+
+                try {
+                  await fs.unlink(tarPath);
+                } catch {}
+                try {
+                  await fs.unlink(outputPath);
+                } catch {}
+
+                if (operationId) {
+                  activeArchiveProcesses.delete(operationId);
+                }
+
+                const errorMsg = error.message || '';
+                if (error.level === 'WARNING' && errorMsg.includes('Access is denied')) {
+                  console.log(
+                    '[Compress] Warning about access denied, but gzip compression may have succeeded'
+                  );
+                  resolve({ success: true });
+                } else {
+                  reject({ success: false, error: errorMsg || 'Gzip compression failed' });
+                }
+              });
             });
 
-            gzipProcess.on('error', async (error: { message?: string; level?: string }) => {
-              console.error('[Compress] Gzip error:', error);
+            tarProcess.on('error', async (error: { message?: string; level?: string }) => {
+              console.error('[Compress] Tar error:', error);
 
               try {
                 await fs.unlink(tarPath);
-              } catch {}
-              try {
-                await fs.unlink(outputPath);
               } catch {}
 
               if (operationId) {
@@ -244,237 +294,237 @@ export function setupArchiveHandlers(): void {
 
               const errorMsg = error.message || '';
               if (error.level === 'WARNING' && errorMsg.includes('Access is denied')) {
-                console.log('[Compress] Warning about access denied, but gzip compression may have succeeded');
-                resolve({ success: true });
+                console.log(
+                  '[Compress] Warning about access denied, but tar creation may have succeeded'
+                );
+                const gzipProcess = Seven.add(outputPath, [tarPath], {
+                  $bin: sevenZipPath,
+                });
+
+                if (operationId) {
+                  activeArchiveProcesses.set(operationId, gzipProcess);
+                }
+
+                gzipProcess.on('end', async () => {
+                  try {
+                    await fs.unlink(tarPath);
+                  } catch {}
+                  if (operationId) {
+                    activeArchiveProcesses.delete(operationId);
+                  }
+                  resolve({ success: true });
+                });
+
+                gzipProcess.on('error', async (gzipError: { message?: string }) => {
+                  try {
+                    await fs.unlink(tarPath);
+                    await fs.unlink(outputPath);
+                  } catch {}
+                  if (operationId) {
+                    activeArchiveProcesses.delete(operationId);
+                  }
+                  reject({ success: false, error: gzipError.message || 'Gzip compression failed' });
+                });
               } else {
-                reject({ success: false, error: errorMsg || 'Gzip compression failed' });
+                reject({ success: false, error: errorMsg || 'Tar creation failed' });
               }
             });
           });
+        }
 
-          tarProcess.on('error', async (error: { message?: string; level?: string }) => {
-            console.error('[Compress] Tar error:', error);
+        return new Promise((resolve, reject) => {
+          const Seven = get7zipModule();
+          const sevenZipPath = get7zipPath();
+          console.log('[Compress] Using 7zip at:', sevenZipPath);
 
-            try {
-              await fs.unlink(tarPath);
-            } catch {}
+          const options: any = {
+            $bin: sevenZipPath,
+            recursive: true,
+            $raw: ['-xr!My Music', '-xr!My Pictures', '-xr!My Videos'],
+          };
 
+          const seven = Seven.add(outputPath, sourcePaths, options);
+
+          if (operationId) {
+            activeArchiveProcesses.set(operationId, seven);
+          }
+
+          let fileCount = 0;
+
+          seven.on('progress', (progress: { file?: string }) => {
+            fileCount++;
+            if (
+              mainWindow &&
+              !mainWindow.isDestroyed() &&
+              mainWindow.webContents &&
+              !mainWindow.webContents.isDestroyed()
+            ) {
+              mainWindow.webContents.send('compress-progress', {
+                operationId,
+                current: fileCount,
+                total: fileCount + 10,
+                name: progress.file || 'Compressing...',
+              });
+            }
+          });
+
+          seven.on('end', () => {
+            console.log('[Compress] 7zip compression completed for format:', format);
             if (operationId) {
               activeArchiveProcesses.delete(operationId);
             }
+            resolve({ success: true });
+          });
+
+          seven.on('error', (error: { message?: string; level?: string }) => {
+            console.error('[Compress] 7zip error:', error);
+            if (operationId) {
+              activeArchiveProcesses.delete(operationId);
+            }
+            fs.unlink(outputPath).catch(() => {});
 
             const errorMsg = error.message || '';
             if (error.level === 'WARNING' && errorMsg.includes('Access is denied')) {
-              console.log('[Compress] Warning about access denied, but tar creation may have succeeded');
-              const gzipProcess = Seven.add(outputPath, [tarPath], {
-                $bin: sevenZipPath
-              });
-
-              if (operationId) {
-                activeArchiveProcesses.set(operationId, gzipProcess);
-              }
-
-              gzipProcess.on('end', async () => {
-                try {
-                  await fs.unlink(tarPath);
-                } catch {}
-                if (operationId) {
-                  activeArchiveProcesses.delete(operationId);
-                }
-                resolve({ success: true });
-              });
-
-              gzipProcess.on('error', async (gzipError: { message?: string }) => {
-                try {
-                  await fs.unlink(tarPath);
-                  await fs.unlink(outputPath);
-                } catch {}
-                if (operationId) {
-                  activeArchiveProcesses.delete(operationId);
-                }
-                reject({ success: false, error: gzipError.message || 'Gzip compression failed' });
-              });
+              console.log(
+                '[Compress] Warning about access denied, but compression may have succeeded'
+              );
+              resolve({ success: true });
             } else {
-              reject({ success: false, error: errorMsg || 'Tar creation failed' });
+              reject({ success: false, error: errorMsg || 'Compression failed' });
             }
           });
         });
-      }
-
-      return new Promise((resolve, reject) => {
-        const Seven = get7zipModule();
-        const sevenZipPath = get7zipPath();
-        console.log('[Compress] Using 7zip at:', sevenZipPath);
-
-        const options: any = {
-          $bin: sevenZipPath,
-          recursive: true,
-          $raw: ['-xr!My Music', '-xr!My Pictures', '-xr!My Videos']
-        };
-
-        const seven = Seven.add(outputPath, sourcePaths, options);
-
-        if (operationId) {
-          activeArchiveProcesses.set(operationId, seven);
-        }
-
-        let fileCount = 0;
-
-        seven.on('progress', (progress: { file?: string }) => {
-          fileCount++;
-          if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
-            mainWindow.webContents.send('compress-progress', {
-              operationId,
-              current: fileCount,
-              total: fileCount + 10,
-              name: progress.file || 'Compressing...'
-            });
-          }
-        });
-
-        seven.on('end', () => {
-          console.log('[Compress] 7zip compression completed for format:', format);
-          if (operationId) {
-            activeArchiveProcesses.delete(operationId);
-          }
-          resolve({ success: true });
-        });
-
-        seven.on('error', (error: { message?: string; level?: string }) => {
-          console.error('[Compress] 7zip error:', error);
-          if (operationId) {
-            activeArchiveProcesses.delete(operationId);
-          }
-          fs.unlink(outputPath).catch(() => {});
-
-          const errorMsg = error.message || '';
-          if (error.level === 'WARNING' && errorMsg.includes('Access is denied')) {
-            console.log('[Compress] Warning about access denied, but compression may have succeeded');
-            resolve({ success: true });
-          } else {
-            reject({ success: false, error: errorMsg || 'Compression failed' });
-          }
-        });
-      });
-    } catch (error) {
-      console.error('[Compress] Error:', error);
-      return { success: false, error: getErrorMessage(error) };
-    }
-  });
-
-  ipcMain.handle('extract-archive', async (
-    _event: IpcMainInvokeEvent,
-    archivePath: string,
-    destPath: string,
-    operationId?: string
-  ): Promise<ApiResponse> => {
-    try {
-      if (!isPathSafe(archivePath)) {
-        console.warn('[Security] Invalid archive path rejected:', archivePath);
-        return { success: false, error: 'Invalid archive path' };
-      }
-      if (!isPathSafe(destPath)) {
-        console.warn('[Security] Invalid destination path rejected:', destPath);
-        return { success: false, error: 'Invalid destination path' };
-      }
-
-      console.log('[Extract] Starting extraction:', archivePath, 'to', destPath);
-
-      await fs.mkdir(destPath, { recursive: true });
-      try {
-        await assertArchiveEntriesSafe(archivePath, destPath);
       } catch (error) {
-        console.error('[Extract] Unsafe archive:', error);
-        return { success: false, error: 'Archive contains unsafe paths' };
+        console.error('[Compress] Error:', error);
+        return { success: false, error: getErrorMessage(error) };
       }
+    }
+  );
 
-      const mainWindow = getMainWindow();
-
-      return new Promise((resolve, reject) => {
-        const Seven = get7zipModule();
-        const sevenZipPath = get7zipPath();
-        console.log('[Extract] Using 7zip at:', sevenZipPath);
-
-        const seven = Seven.extractFull(archivePath, destPath, {
-          $bin: sevenZipPath,
-          recursive: true
-        });
-
-        if (operationId) {
-          activeArchiveProcesses.set(operationId, seven);
+  ipcMain.handle(
+    'extract-archive',
+    async (
+      _event: IpcMainInvokeEvent,
+      archivePath: string,
+      destPath: string,
+      operationId?: string
+    ): Promise<ApiResponse> => {
+      try {
+        if (!isPathSafe(archivePath)) {
+          console.warn('[Security] Invalid archive path rejected:', archivePath);
+          return { success: false, error: 'Invalid archive path' };
+        }
+        if (!isPathSafe(destPath)) {
+          console.warn('[Security] Invalid destination path rejected:', destPath);
+          return { success: false, error: 'Invalid destination path' };
         }
 
-        let fileCount = 0;
+        console.log('[Extract] Starting extraction:', archivePath, 'to', destPath);
 
-        seven.on('progress', (progress: { file?: string }) => {
-          fileCount++;
-          if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
-            mainWindow.webContents.send('extract-progress', {
-              operationId,
-              current: fileCount,
-              total: fileCount + 10,
-              name: progress.file || 'Extracting...'
-            });
-          }
-        });
-
-        seven.on('end', async () => {
-          console.log('[Extract] 7zip extraction completed for:', archivePath);
-          try {
-            await assertExtractedPathsSafe(destPath);
-            if (operationId) {
-              activeArchiveProcesses.delete(operationId);
-            }
-            resolve({ success: true });
-          } catch (error) {
-            console.error('[Extract] Unsafe extracted paths:', error);
-            if (operationId) {
-              activeArchiveProcesses.delete(operationId);
-            }
-            reject({ success: false, error: getErrorMessage(error) });
-          }
-        });
-
-        seven.on('error', (error: { message?: string }) => {
-          console.error('[Extract] 7zip error:', error);
-          if (operationId) {
-            activeArchiveProcesses.delete(operationId);
-          }
-          reject({ success: false, error: error.message || 'Extraction failed' });
-        });
-      });
-    } catch (error) {
-      console.error('[Extract] Error:', error);
-      return { success: false, error: getErrorMessage(error) };
-    }
-  });
-
-  ipcMain.handle('cancel-archive-operation', async (_event: IpcMainInvokeEvent, operationId: string): Promise<ApiResponse> => {
-    try {
-      const process = activeArchiveProcesses.get(operationId);
-      if (!process) {
-        console.log('[Archive] Operation not found for cancellation:', operationId);
-        return { success: false, error: 'Operation not found' };
-      }
-
-      console.log('[Archive] Cancelling operation:', operationId);
-      if (process._childProcess) {
+        await fs.mkdir(destPath, { recursive: true });
         try {
-          process._childProcess.kill('SIGTERM');
-        } catch (killError) {
-          console.log('[Archive] Process already terminated:', killError);
+          await assertArchiveEntriesSafe(archivePath, destPath);
+        } catch (error) {
+          console.error('[Extract] Unsafe archive:', error);
+          return { success: false, error: 'Archive contains unsafe paths' };
         }
-      } else if (typeof process.cancel === 'function') {
-        process.cancel();
-      }
 
-      activeArchiveProcesses.delete(operationId);
-      return { success: true };
-    } catch (error) {
-      console.error('[Archive] Cancel error:', error);
-      return { success: false, error: getErrorMessage(error) };
+        const mainWindow = getMainWindow();
+
+        return new Promise((resolve, reject) => {
+          const Seven = get7zipModule();
+          const sevenZipPath = get7zipPath();
+          console.log('[Extract] Using 7zip at:', sevenZipPath);
+
+          const seven = Seven.extractFull(archivePath, destPath, {
+            $bin: sevenZipPath,
+            recursive: true,
+          });
+
+          if (operationId) {
+            activeArchiveProcesses.set(operationId, seven);
+          }
+
+          let fileCount = 0;
+
+          seven.on('progress', (progress: { file?: string }) => {
+            fileCount++;
+            if (
+              mainWindow &&
+              !mainWindow.isDestroyed() &&
+              mainWindow.webContents &&
+              !mainWindow.webContents.isDestroyed()
+            ) {
+              mainWindow.webContents.send('extract-progress', {
+                operationId,
+                current: fileCount,
+                total: fileCount + 10,
+                name: progress.file || 'Extracting...',
+              });
+            }
+          });
+
+          seven.on('end', async () => {
+            console.log('[Extract] 7zip extraction completed for:', archivePath);
+            try {
+              await assertExtractedPathsSafe(destPath);
+              if (operationId) {
+                activeArchiveProcesses.delete(operationId);
+              }
+              resolve({ success: true });
+            } catch (error) {
+              console.error('[Extract] Unsafe extracted paths:', error);
+              if (operationId) {
+                activeArchiveProcesses.delete(operationId);
+              }
+              reject({ success: false, error: getErrorMessage(error) });
+            }
+          });
+
+          seven.on('error', (error: { message?: string }) => {
+            console.error('[Extract] 7zip error:', error);
+            if (operationId) {
+              activeArchiveProcesses.delete(operationId);
+            }
+            reject({ success: false, error: error.message || 'Extraction failed' });
+          });
+        });
+      } catch (error) {
+        console.error('[Extract] Error:', error);
+        return { success: false, error: getErrorMessage(error) };
+      }
     }
-  });
+  );
+
+  ipcMain.handle(
+    'cancel-archive-operation',
+    async (_event: IpcMainInvokeEvent, operationId: string): Promise<ApiResponse> => {
+      try {
+        const process = activeArchiveProcesses.get(operationId);
+        if (!process) {
+          console.log('[Archive] Operation not found for cancellation:', operationId);
+          return { success: false, error: 'Operation not found' };
+        }
+
+        console.log('[Archive] Cancelling operation:', operationId);
+        if (process._childProcess) {
+          try {
+            process._childProcess.kill('SIGTERM');
+          } catch (killError) {
+            console.log('[Archive] Process already terminated:', killError);
+          }
+        } else if (typeof process.cancel === 'function') {
+          process.cancel();
+        }
+
+        activeArchiveProcesses.delete(operationId);
+        return { success: true };
+      } catch (error) {
+        console.error('[Archive] Cancel error:', error);
+        return { success: false, error: getErrorMessage(error) };
+      }
+    }
+  );
 }
 
 export function cleanupArchiveOperations(): void {

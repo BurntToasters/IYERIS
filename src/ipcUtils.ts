@@ -4,7 +4,11 @@ import { getMainWindow, getFileTasks } from './appState';
 
 const directoryOperationTargets = new Map<string, WebContents>();
 
-export function safeSendToWindow(win: BrowserWindow | null, channel: string, ...args: any[]): boolean {
+export function safeSendToWindow(
+  win: BrowserWindow | null,
+  channel: string,
+  ...args: any[]
+): boolean {
   try {
     if (win && !win.isDestroyed() && win.webContents && !win.webContents.isDestroyed()) {
       win.webContents.send(channel, ...args);
@@ -16,7 +20,11 @@ export function safeSendToWindow(win: BrowserWindow | null, channel: string, ...
   return false;
 }
 
-export function safeSendToContents(contents: WebContents | null, channel: string, ...args: any[]): boolean {
+export function safeSendToContents(
+  contents: WebContents | null,
+  channel: string,
+  ...args: any[]
+): boolean {
   try {
     if (contents && !contents.isDestroyed()) {
       contents.send(channel, ...args);
@@ -53,7 +61,7 @@ export function setupFileTasksProgressHandler(
       if (activeFolderSizeCalculations.has(message.operationId)) {
         safeSendToWindow(mainWindow, 'folder-size-progress', {
           operationId: message.operationId,
-          ...message.data
+          ...message.data,
         });
       }
       return;
@@ -62,7 +70,7 @@ export function setupFileTasksProgressHandler(
       if (activeChecksumCalculations.has(message.operationId)) {
         safeSendToWindow(mainWindow, 'checksum-progress', {
           operationId: message.operationId,
-          ...message.data
+          ...message.data,
         });
       }
       return;
@@ -71,7 +79,7 @@ export function setupFileTasksProgressHandler(
       const target = directoryOperationTargets.get(message.operationId) || null;
       const sent = safeSendToContents(target, 'directory-contents-progress', {
         operationId: message.operationId,
-        ...message.data
+        ...message.data,
       });
       if (!sent) {
         directoryOperationTargets.delete(message.operationId);

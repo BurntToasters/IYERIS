@@ -2,11 +2,15 @@ import { app, BrowserWindow, powerMonitor } from 'electron';
 import * as os from 'os';
 
 import {
-  getMainWindow, setMainWindow,
-  getFileIndexer, setFileIndexer,
-  getTray, setIsQuitting,
+  getMainWindow,
+  setMainWindow,
+  getFileIndexer,
+  setFileIndexer,
+  getTray,
+  setIsQuitting,
   setShouldStartHidden,
-  getFileTasks, getIndexerTasks
+  getFileTasks,
+  getIndexerTasks,
 } from './appState';
 import { checkMsiInstallation } from './platformUtils';
 import { setupFileTasksProgressHandler } from './ipcUtils';
@@ -14,24 +18,45 @@ import { warmupDrivesCache } from './utils';
 import { FileIndexer } from './indexer';
 
 import { setupZoomHandlers } from './zoomHandlers';
-import { setupFileAnalysisHandlers, cleanupFileAnalysis, getActiveFolderSizeCalculations, getActiveChecksumCalculations } from './fileAnalysis';
-import { setupSystemHandlers, checkFullDiskAccess, showFullDiskAccessDialog } from './systemHandlers';
-import { setupSettingsHandlers, loadSettings, saveSettings, applyLoginItemSettings } from './settingsManager';
+import {
+  setupFileAnalysisHandlers,
+  cleanupFileAnalysis,
+  getActiveFolderSizeCalculations,
+  getActiveChecksumCalculations,
+} from './fileAnalysis';
+import {
+  setupSystemHandlers,
+  checkFullDiskAccess,
+  showFullDiskAccessDialog,
+} from './systemHandlers';
+import {
+  setupSettingsHandlers,
+  loadSettings,
+  saveSettings,
+  applyLoginItemSettings,
+} from './settingsManager';
 import { setupUndoRedoHandlers, clearUndoRedoStacks } from './undoRedoManager';
-import { createWindow, createTray, createTrayForHiddenStart, setupApplicationMenu, setupWindowHandlers } from './windowManager';
+import {
+  createWindow,
+  createTray,
+  createTrayForHiddenStart,
+  setupApplicationMenu,
+  setupWindowHandlers,
+} from './windowManager';
 import { setupFileOperationHandlers, stopHiddenFileCacheCleanup } from './fileOperations';
 import { setupSearchHandlers } from './searchHandlers';
 import { setupArchiveHandlers, cleanupArchiveOperations } from './archiveManager';
 import { setupUpdateHandlers, initializeAutoUpdater } from './updateManager';
 
-const TOTAL_MEM_GB = os.totalmem() / (1024 ** 3);
+const TOTAL_MEM_GB = os.totalmem() / 1024 ** 3;
 
 if (process.argv.includes('--disable-hardware-acceleration')) {
   console.log('[Performance] Hardware acceleration disabled via command line flag');
   app.disableHardwareAcceleration();
 }
 
-const MAX_OLD_SPACE_MB = TOTAL_MEM_GB < 6 ? 512 : TOTAL_MEM_GB < 12 ? 1024 : TOTAL_MEM_GB < 24 ? 2048 : 3072;
+const MAX_OLD_SPACE_MB =
+  TOTAL_MEM_GB < 6 ? 512 : TOTAL_MEM_GB < 12 ? 1024 : TOTAL_MEM_GB < 24 ? 2048 : 3072;
 const jsFlags: string[] = [`--max-old-space-size=${MAX_OLD_SPACE_MB}`];
 if (TOTAL_MEM_GB < 12) {
   jsFlags.push('--optimize-for-size', '--gc-interval=100');
@@ -140,9 +165,9 @@ app.whenReady().then(async () => {
           const fileIndexer = new FileIndexer(indexerTasks ?? undefined);
           setFileIndexer(fileIndexer);
           setTimeout(() => {
-            fileIndexer.initialize(startupSettings.enableIndexer).catch(err =>
-              console.error('[Indexer] Background initialization failed:', err)
-            );
+            fileIndexer
+              .initialize(startupSettings.enableIndexer)
+              .catch((err) => console.error('[Indexer] Background initialization failed:', err));
           }, indexerDelay);
         }
 
@@ -222,7 +247,11 @@ app.whenReady().then(async () => {
       const mainWindow = getMainWindow();
       if (mainWindow && !mainWindow.isDestroyed()) {
         try {
-          if (mainWindow.isVisible() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
+          if (
+            mainWindow.isVisible() &&
+            mainWindow.webContents &&
+            !mainWindow.webContents.isDestroyed()
+          ) {
             mainWindow.webContents.send('system-resumed');
           }
         } catch (error) {

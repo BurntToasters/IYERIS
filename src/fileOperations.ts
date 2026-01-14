@@ -4,8 +4,19 @@ import { promises as fs } from 'fs';
 import * as fsSync from 'fs';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import type { FileItem, ApiResponse, DirectoryResponse, PathResponse, PropertiesResponse } from './types';
-import { getMainWindow, getFileTasks, HIDDEN_FILE_CACHE_TTL, HIDDEN_FILE_CACHE_MAX } from './appState';
+import type {
+  FileItem,
+  ApiResponse,
+  DirectoryResponse,
+  PathResponse,
+  PropertiesResponse,
+} from './types';
+import {
+  getMainWindow,
+  getFileTasks,
+  HIDDEN_FILE_CACHE_TTL,
+  HIDDEN_FILE_CACHE_MAX,
+} from './appState';
 import { isPathSafe, isUrlSafe, getErrorMessage } from './security';
 import { getDrives } from './utils';
 import { pushUndoAction, getUndoStack, clearUndoStackForPath } from './undoRedoManager';
@@ -26,10 +37,10 @@ async function isFileHidden(filePath: string, fileName: string): Promise<boolean
 
       const { stdout } = await execFilePromise('attrib', [filePath], {
         timeout: 500,
-        windowsHide: true
+        windowsHide: true,
       });
 
-      const line = stdout.split(/\r?\n/).find(item => item.trim().length > 0);
+      const line = stdout.split(/\r?\n/).find((item) => item.trim().length > 0);
       if (!line) return false;
       const match = line.match(/^\s*([A-Za-z ]+)\s+.+$/);
       if (!match) return false;
@@ -58,8 +69,9 @@ function cleanupHiddenFileCache(): void {
     }
 
     if (hiddenFileCache.size > HIDDEN_FILE_CACHE_MAX) {
-      const entries = Array.from(hiddenFileCache.entries())
-        .sort((a, b) => a[1].timestamp - b[1].timestamp);
+      const entries = Array.from(hiddenFileCache.entries()).sort(
+        (a, b) => a[1].timestamp - b[1].timestamp
+      );
       const toRemove = entries.slice(0, hiddenFileCache.size - HIDDEN_FILE_CACHE_MAX);
       for (const [key] of toRemove) {
         hiddenFileCache.delete(key);
@@ -68,7 +80,9 @@ function cleanupHiddenFileCache(): void {
     }
 
     if (entriesRemoved > 0) {
-      console.log(`[Cache] Cleaned up ${entriesRemoved} hidden file cache entries, ${hiddenFileCache.size} remaining`);
+      console.log(
+        `[Cache] Cleaned up ${entriesRemoved} hidden file cache entries, ${hiddenFileCache.size} remaining`
+      );
     }
   } finally {
     isCleaningCache = false;
@@ -85,7 +99,7 @@ export async function isFileHiddenCached(filePath: string, fileName: string): Pr
   }
 
   const cached = hiddenFileCache.get(filePath);
-  if (cached && (Date.now() - cached.timestamp) < HIDDEN_FILE_CACHE_TTL) {
+  if (cached && Date.now() - cached.timestamp < HIDDEN_FILE_CACHE_TTL) {
     return cached.isHidden;
   }
 
@@ -119,55 +133,62 @@ export function setupFileOperationHandlers(): void {
 
   startHiddenFileCacheCleanup();
 
-  ipcMain.handle('get-directory-contents', async (
-    event: IpcMainInvokeEvent,
-    dirPath: string,
-    requestOperationId?: string,
-    includeHidden?: boolean
-  ): Promise<DirectoryResponse> => {
-    if (!isPathSafe(dirPath)) {
-      console.warn('[Security] Invalid path rejected:', dirPath);
-      return { success: false, error: 'Invalid path' };
-    }
-
-    const operationId = requestOperationId || `list-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    const sender = event.sender;
-    const handleDestroyed = () => {
-      unregisterDirectoryOperationTarget(operationId);
-      fileTasks.cancelOperation(operationId);
-    };
-
-    sender.once('destroyed', handleDestroyed);
-    registerDirectoryOperationTarget(operationId, sender);
-
-    try {
-      const result = await fileTasks.runTask<{ contents: FileItem[] }>(
-        'list-directory',
-        { dirPath, batchSize: 100, includeHidden: Boolean(includeHidden) },
-        operationId
-      );
-
-      return { success: true, contents: result.contents };
-    } catch (error) {
-      return { success: false, error: getErrorMessage(error) };
-    } finally {
-      unregisterDirectoryOperationTarget(operationId);
-      sender.removeListener('destroyed', handleDestroyed);
-    }
-  });
-
-  ipcMain.handle('cancel-directory-contents', async (_event: IpcMainInvokeEvent, operationId: string): Promise<ApiResponse> => {
-    try {
-      if (!operationId) {
-        return { success: false, error: 'Missing operationId' };
+  ipcMain.handle(
+    'get-directory-contents',
+    async (
+      event: IpcMainInvokeEvent,
+      dirPath: string,
+      requestOperationId?: string,
+      includeHidden?: boolean
+    ): Promise<DirectoryResponse> => {
+      if (!isPathSafe(dirPath)) {
+        console.warn('[Security] Invalid path rejected:', dirPath);
+        return { success: false, error: 'Invalid path' };
       }
-      unregisterDirectoryOperationTarget(operationId);
-      fileTasks.cancelOperation(operationId);
-      return { success: true };
-    } catch (error) {
-      return { success: false, error: getErrorMessage(error) };
+
+      const operationId =
+        requestOperationId || `list-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const sender = event.sender;
+      const handleDestroyed = () => {
+        unregisterDirectoryOperationTarget(operationId);
+        fileTasks.cancelOperation(operationId);
+      };
+
+      sender.once('destroyed', handleDestroyed);
+      registerDirectoryOperationTarget(operationId, sender);
+
+      try {
+        const result = await fileTasks.runTask<{ contents: FileItem[] }>(
+          'list-directory',
+          { dirPath, batchSize: 100, includeHidden: Boolean(includeHidden) },
+          operationId
+        );
+
+        return { success: true, contents: result.contents };
+      } catch (error) {
+        return { success: false, error: getErrorMessage(error) };
+      } finally {
+        unregisterDirectoryOperationTarget(operationId);
+        sender.removeListener('destroyed', handleDestroyed);
+      }
     }
-  });
+  );
+
+  ipcMain.handle(
+    'cancel-directory-contents',
+    async (_event: IpcMainInvokeEvent, operationId: string): Promise<ApiResponse> => {
+      try {
+        if (!operationId) {
+          return { success: false, error: 'Missing operationId' };
+        }
+        unregisterDirectoryOperationTarget(operationId);
+        fileTasks.cancelOperation(operationId);
+        return { success: true };
+      } catch (error) {
+        return { success: false, error: getErrorMessage(error) };
+      }
+    }
+  );
 
   ipcMain.handle('get-drives', async (): Promise<string[]> => {
     return getDrives();
@@ -177,29 +198,32 @@ export function setupFileOperationHandlers(): void {
     return app.getPath('home');
   });
 
-  ipcMain.handle('open-file', async (_event: IpcMainInvokeEvent, filePath: string): Promise<ApiResponse> => {
-    try {
-      if (filePath.startsWith('http://') || filePath.startsWith('https://')) {
-        if (!isUrlSafe(filePath)) {
-          console.warn('[Security] Unsafe URL rejected:', filePath);
-          return { success: false, error: 'Invalid or unsafe URL' };
+  ipcMain.handle(
+    'open-file',
+    async (_event: IpcMainInvokeEvent, filePath: string): Promise<ApiResponse> => {
+      try {
+        if (filePath.startsWith('http://') || filePath.startsWith('https://')) {
+          if (!isUrlSafe(filePath)) {
+            console.warn('[Security] Unsafe URL rejected:', filePath);
+            return { success: false, error: 'Invalid or unsafe URL' };
+          }
+          await shell.openExternal(filePath);
+        } else {
+          if (!isPathSafe(filePath)) {
+            console.warn('[Security] Invalid path rejected:', filePath);
+            return { success: false, error: 'Invalid path' };
+          }
+          const openResult = await shell.openPath(filePath);
+          if (openResult) {
+            return { success: false, error: openResult };
+          }
         }
-        await shell.openExternal(filePath);
-      } else {
-        if (!isPathSafe(filePath)) {
-          console.warn('[Security] Invalid path rejected:', filePath);
-          return { success: false, error: 'Invalid path' };
-        }
-        const openResult = await shell.openPath(filePath);
-        if (openResult) {
-          return { success: false, error: openResult };
-        }
+        return { success: true };
+      } catch (error) {
+        return { success: false, error: getErrorMessage(error) };
       }
-      return { success: true };
-    } catch (error) {
-      return { success: false, error: getErrorMessage(error) };
     }
-  });
+  );
 
   ipcMain.handle('select-folder', async (): Promise<PathResponse> => {
     const mainWindow = getMainWindow();
@@ -208,7 +232,7 @@ export function setupFileOperationHandlers(): void {
     }
 
     const result = await dialog.showOpenDialog(mainWindow, {
-      properties: ['openDirectory']
+      properties: ['openDirectory'],
     });
 
     if (!result.canceled && result.filePaths.length > 0) {
@@ -217,54 +241,75 @@ export function setupFileOperationHandlers(): void {
     return { success: false };
   });
 
-  ipcMain.handle('create-folder', async (_event: IpcMainInvokeEvent, parentPath: string, folderName: string): Promise<PathResponse> => {
-    try {
-      if (!isPathSafe(parentPath)) {
-        console.warn('[Security] Invalid parent path rejected:', parentPath);
-        return { success: false, error: 'Invalid path' };
-      }
-      if (!folderName || folderName === '.' || folderName === '..' || folderName.includes('/') || folderName.includes('\\')) {
-        console.warn('[Security] Invalid folder name rejected:', folderName);
-        return { success: false, error: 'Invalid folder name' };
-      }
-
-      const newPath = path.join(parentPath, folderName);
-
-      await fs.mkdir(newPath);
-
-      pushUndoAction({
-        type: 'create',
-        data: {
-          path: newPath,
-          isDirectory: true
+  ipcMain.handle(
+    'create-folder',
+    async (
+      _event: IpcMainInvokeEvent,
+      parentPath: string,
+      folderName: string
+    ): Promise<PathResponse> => {
+      try {
+        if (!isPathSafe(parentPath)) {
+          console.warn('[Security] Invalid parent path rejected:', parentPath);
+          return { success: false, error: 'Invalid path' };
         }
-      });
+        if (
+          !folderName ||
+          folderName === '.' ||
+          folderName === '..' ||
+          folderName.includes('/') ||
+          folderName.includes('\\')
+        ) {
+          console.warn('[Security] Invalid folder name rejected:', folderName);
+          return { success: false, error: 'Invalid folder name' };
+        }
 
-      console.log('[Create] Folder created:', newPath);
-      return { success: true, path: newPath };
-    } catch (error) {
-      return { success: false, error: getErrorMessage(error) };
-    }
-  });
+        const newPath = path.join(parentPath, folderName);
 
-  ipcMain.handle('trash-item', async (_event: IpcMainInvokeEvent, itemPath: string): Promise<ApiResponse> => {
-    try {
-      if (!isPathSafe(itemPath)) {
-        console.warn('[Security] Invalid path rejected:', itemPath);
-        return { success: false, error: 'Invalid path' };
+        await fs.mkdir(newPath);
+
+        pushUndoAction({
+          type: 'create',
+          data: {
+            path: newPath,
+            isDirectory: true,
+          },
+        });
+
+        console.log('[Create] Folder created:', newPath);
+        return { success: true, path: newPath };
+      } catch (error) {
+        return { success: false, error: getErrorMessage(error) };
       }
-
-      await shell.trashItem(itemPath);
-
-      clearUndoStackForPath(itemPath);
-
-      console.log('[Trash] Item moved to trash:', itemPath, '- Undo stack size:', getUndoStack().length);
-      return { success: true };
-    } catch (error) {
-      console.error('[Trash] Error:', error);
-      return { success: false, error: getErrorMessage(error) };
     }
-  });
+  );
+
+  ipcMain.handle(
+    'trash-item',
+    async (_event: IpcMainInvokeEvent, itemPath: string): Promise<ApiResponse> => {
+      try {
+        if (!isPathSafe(itemPath)) {
+          console.warn('[Security] Invalid path rejected:', itemPath);
+          return { success: false, error: 'Invalid path' };
+        }
+
+        await shell.trashItem(itemPath);
+
+        clearUndoStackForPath(itemPath);
+
+        console.log(
+          '[Trash] Item moved to trash:',
+          itemPath,
+          '- Undo stack size:',
+          getUndoStack().length
+        );
+        return { success: true };
+      } catch (error) {
+        console.error('[Trash] Error:', error);
+        return { success: false, error: getErrorMessage(error) };
+      }
+    }
+  );
 
   ipcMain.handle('open-trash', async (): Promise<ApiResponse> => {
     try {
@@ -288,294 +333,361 @@ export function setupFileOperationHandlers(): void {
     }
   });
 
-  ipcMain.handle('delete-item', async (_event: IpcMainInvokeEvent, itemPath: string): Promise<ApiResponse> => {
-    try {
-      if (!isPathSafe(itemPath)) {
-        console.warn('[Security] Invalid path rejected:', itemPath);
+  ipcMain.handle(
+    'delete-item',
+    async (_event: IpcMainInvokeEvent, itemPath: string): Promise<ApiResponse> => {
+      try {
+        if (!isPathSafe(itemPath)) {
+          console.warn('[Security] Invalid path rejected:', itemPath);
+          return { success: false, error: 'Invalid path' };
+        }
+
+        const stats = await fs.stat(itemPath);
+        if (stats.isDirectory()) {
+          await fs.rm(itemPath, { recursive: true, force: true });
+        } else {
+          await fs.unlink(itemPath);
+        }
+        console.log('[Delete] Item permanently deleted:', itemPath);
+        return { success: true };
+      } catch (error) {
+        console.error('[Delete] Error:', error);
+        return { success: false, error: getErrorMessage(error) };
+      }
+    }
+  );
+
+  ipcMain.handle(
+    'rename-item',
+    async (_event: IpcMainInvokeEvent, oldPath: string, newName: string): Promise<PathResponse> => {
+      if (!isPathSafe(oldPath)) {
+        console.warn('[Security] Invalid path rejected:', oldPath);
         return { success: false, error: 'Invalid path' };
       }
-
-      const stats = await fs.stat(itemPath);
-      if (stats.isDirectory()) {
-        await fs.rm(itemPath, { recursive: true, force: true });
-      } else {
-        await fs.unlink(itemPath);
-      }
-      console.log('[Delete] Item permanently deleted:', itemPath);
-      return { success: true };
-    } catch (error) {
-      console.error('[Delete] Error:', error);
-      return { success: false, error: getErrorMessage(error) };
-    }
-  });
-
-  ipcMain.handle('rename-item', async (_event: IpcMainInvokeEvent, oldPath: string, newName: string): Promise<PathResponse> => {
-    if (!isPathSafe(oldPath)) {
-      console.warn('[Security] Invalid path rejected:', oldPath);
-      return { success: false, error: 'Invalid path' };
-    }
-    if (!newName || newName === '.' || newName === '..' || newName.includes('/') || newName.includes('\\')) {
-      console.warn('[Security] Invalid new name rejected:', newName);
-      return { success: false, error: 'Invalid file name' };
-    }
-
-    const oldName = path.basename(oldPath);
-    const newPath = path.join(path.dirname(oldPath), newName);
-    try {
-      await fs.rename(oldPath, newPath);
-
-      pushUndoAction({
-        type: 'rename',
-        data: {
-          oldPath: oldPath,
-          newPath: newPath,
-          oldName: oldName,
-          newName: newName
-        }
-      });
-
-      console.log('[Rename] Item renamed:', oldPath, '->', newPath);
-      return { success: true, path: newPath };
-    } catch (error) {
-      const err = error as NodeJS.ErrnoException;
-      if (err.code === 'ENOENT') {
-        const newExists = await fs.stat(newPath).then(() => true).catch(() => false);
-        if (newExists) {
-          return { success: true, path: newPath };
-        }
-      }
-      return { success: false, error: getErrorMessage(error) };
-    }
-  });
-
-  ipcMain.handle('create-file', async (_event: IpcMainInvokeEvent, parentPath: string, fileName: string): Promise<PathResponse> => {
-    try {
-      if (!isPathSafe(parentPath)) {
-        console.warn('[Security] Invalid parent path rejected:', parentPath);
-        return { success: false, error: 'Invalid path' };
-      }
-      if (!fileName || fileName === '.' || fileName === '..' || fileName.includes('/') || fileName.includes('\\')) {
-        console.warn('[Security] Invalid file name rejected:', fileName);
+      if (
+        !newName ||
+        newName === '.' ||
+        newName === '..' ||
+        newName.includes('/') ||
+        newName.includes('\\')
+      ) {
+        console.warn('[Security] Invalid new name rejected:', newName);
         return { success: false, error: 'Invalid file name' };
       }
 
-      const newPath = path.join(parentPath, fileName);
-      await fs.writeFile(newPath, '');
-
-      pushUndoAction({
-        type: 'create',
-        data: {
-          path: newPath,
-          isDirectory: false
-        }
-      });
-
-      console.log('[Create] File created:', newPath);
-      return { success: true, path: newPath };
-    } catch (error) {
-      return { success: false, error: getErrorMessage(error) };
-    }
-  });
-
-  ipcMain.handle('get-item-properties', async (_event: IpcMainInvokeEvent, itemPath: string): Promise<PropertiesResponse> => {
-    if (!isPathSafe(itemPath)) {
-      return { success: false, error: 'Invalid path' };
-    }
-    try {
-      const stats = await fs.stat(itemPath);
-      return {
-        success: true,
-        properties: {
-          path: itemPath,
-          name: path.basename(itemPath),
-          size: stats.size,
-          isDirectory: stats.isDirectory(),
-          isFile: stats.isFile(),
-          created: stats.birthtime,
-          modified: stats.mtime,
-          accessed: stats.atime
-        }
-      };
-    } catch (error) {
-      return { success: false, error: getErrorMessage(error) };
-    }
-  });
-
-  ipcMain.handle('copy-items', async (_event: IpcMainInvokeEvent, sourcePaths: string[], destPath: string): Promise<ApiResponse> => {
-    try {
-      if (!isPathSafe(destPath)) {
-        console.warn('[Security] Invalid destination path rejected:', destPath);
-        return { success: false, error: 'Invalid destination path' };
-      }
-
-      const planned: Array<{ sourcePath: string; destItemPath: string; itemName: string; isDirectory: boolean }> = [];
-      const destKeys = new Set<string>();
-
-      for (const sourcePath of sourcePaths) {
-        if (!isPathSafe(sourcePath)) {
-          console.warn('[Security] Invalid source path rejected:', sourcePath);
-          return { success: false, error: 'Invalid source path' };
-        }
-
-        const itemName = path.basename(sourcePath);
-        const destItemPath = path.join(destPath, itemName);
-        const destKey = process.platform === 'win32' ? destItemPath.toLowerCase() : destItemPath;
-        if (destKeys.has(destKey)) {
-          return { success: false, error: `Multiple items share the same name: "${itemName}"` };
-        }
-        destKeys.add(destKey);
-
-        let stats: fsSync.Stats;
-        try {
-          stats = await fs.stat(sourcePath);
-        } catch {
-          console.log('[Copy] Source file not found:', sourcePath);
-          return { success: false, error: `Source file not found: ${itemName}` };
-        }
-
-        const destExists = await fs.stat(destItemPath).then(() => true).catch(() => false);
-        if (destExists) {
-          console.log('[Copy] Destination already exists:', destItemPath);
-          return { success: false, error: `A file named "${itemName}" already exists in the destination` };
-        }
-
-        planned.push({ sourcePath, destItemPath, itemName, isDirectory: stats.isDirectory() });
-      }
-
-      const copiedPaths: string[] = [];
+      const oldName = path.basename(oldPath);
+      const newPath = path.join(path.dirname(oldPath), newName);
       try {
-        for (const item of planned) {
-          if (item.isDirectory) {
-            await fs.cp(item.sourcePath, item.destItemPath, { recursive: true });
-          } else {
-            await fs.copyFile(item.sourcePath, item.destItemPath);
-          }
-          copiedPaths.push(item.destItemPath);
-        }
+        await fs.rename(oldPath, newPath);
+
+        pushUndoAction({
+          type: 'rename',
+          data: {
+            oldPath: oldPath,
+            newPath: newPath,
+            oldName: oldName,
+            newName: newName,
+          },
+        });
+
+        console.log('[Rename] Item renamed:', oldPath, '->', newPath);
+        return { success: true, path: newPath };
       } catch (error) {
-        for (const copied of copiedPaths.reverse()) {
-          try {
-            await fs.rm(copied, { recursive: true, force: true });
-          } catch {}
+        const err = error as NodeJS.ErrnoException;
+        if (err.code === 'ENOENT') {
+          const newExists = await fs
+            .stat(newPath)
+            .then(() => true)
+            .catch(() => false);
+          if (newExists) {
+            return { success: true, path: newPath };
+          }
         }
         return { success: false, error: getErrorMessage(error) };
       }
-
-      return { success: true };
-    } catch (error) {
-      return { success: false, error: getErrorMessage(error) };
     }
-  });
+  );
 
-  ipcMain.handle('move-items', async (_event: IpcMainInvokeEvent, sourcePaths: string[], destPath: string): Promise<ApiResponse> => {
-    try {
-      if (!isPathSafe(destPath)) {
-        console.warn('[Security] Invalid destination path rejected:', destPath);
-        return { success: false, error: 'Invalid destination path' };
-      }
-
-      for (const sourcePath of sourcePaths) {
-        if (!isPathSafe(sourcePath)) {
-          console.warn('[Security] Invalid source path rejected:', sourcePath);
-          return { success: false, error: 'Invalid source path' };
-        }
-      }
-
-      const planned: Array<{ sourcePath: string; newPath: string; fileName: string; isDirectory: boolean }> = [];
-      const destKeys = new Set<string>();
-
-      for (const sourcePath of sourcePaths) {
-        const fileName = path.basename(sourcePath);
-        const newPath = path.join(destPath, fileName);
-        const destKey = process.platform === 'win32' ? newPath.toLowerCase() : newPath;
-        if (destKeys.has(destKey)) {
-          return { success: false, error: `Multiple items share the same name: "${fileName}"` };
-        }
-        destKeys.add(destKey);
-
-        let stats: fsSync.Stats;
-        try {
-          stats = await fs.stat(sourcePath);
-        } catch {
-          console.log('[Move] Source file not found:', sourcePath);
-          return { success: false, error: `Source file not found: ${fileName}` };
-        }
-
-        const destExists = await fs.stat(newPath).then(() => true).catch(() => false);
-        if (destExists) {
-          console.log('[Move] Destination already exists:', newPath);
-          return { success: false, error: `A file named "${fileName}" already exists in the destination` };
-        }
-
-        planned.push({ sourcePath, newPath, fileName, isDirectory: stats.isDirectory() });
-      }
-
-      const originalParent = path.dirname(sourcePaths[0]);
-      const movedPaths: string[] = [];
-      const originalPaths: string[] = [];
-      const completed: Array<{ sourcePath: string; newPath: string }> = [];
-
+  ipcMain.handle(
+    'create-file',
+    async (
+      _event: IpcMainInvokeEvent,
+      parentPath: string,
+      fileName: string
+    ): Promise<PathResponse> => {
       try {
-        for (const item of planned) {
-          try {
-            await fs.rename(item.sourcePath, item.newPath);
-          } catch (renameError) {
-            const err = renameError as NodeJS.ErrnoException;
-            if (err.code === 'EXDEV') {
-              console.log('[Move] Cross-device move, using copy+delete:', item.sourcePath);
-              if (item.isDirectory) {
-                await fs.cp(item.sourcePath, item.newPath, { recursive: true });
-              } else {
-                await fs.copyFile(item.sourcePath, item.newPath);
-              }
-              await fs.rm(item.sourcePath, { recursive: true, force: true });
-            } else {
-              throw renameError;
-            }
+        if (!isPathSafe(parentPath)) {
+          console.warn('[Security] Invalid parent path rejected:', parentPath);
+          return { success: false, error: 'Invalid path' };
+        }
+        if (
+          !fileName ||
+          fileName === '.' ||
+          fileName === '..' ||
+          fileName.includes('/') ||
+          fileName.includes('\\')
+        ) {
+          console.warn('[Security] Invalid file name rejected:', fileName);
+          return { success: false, error: 'Invalid file name' };
+        }
+
+        const newPath = path.join(parentPath, fileName);
+        await fs.writeFile(newPath, '');
+
+        pushUndoAction({
+          type: 'create',
+          data: {
+            path: newPath,
+            isDirectory: false,
+          },
+        });
+
+        console.log('[Create] File created:', newPath);
+        return { success: true, path: newPath };
+      } catch (error) {
+        return { success: false, error: getErrorMessage(error) };
+      }
+    }
+  );
+
+  ipcMain.handle(
+    'get-item-properties',
+    async (_event: IpcMainInvokeEvent, itemPath: string): Promise<PropertiesResponse> => {
+      if (!isPathSafe(itemPath)) {
+        return { success: false, error: 'Invalid path' };
+      }
+      try {
+        const stats = await fs.stat(itemPath);
+        return {
+          success: true,
+          properties: {
+            path: itemPath,
+            name: path.basename(itemPath),
+            size: stats.size,
+            isDirectory: stats.isDirectory(),
+            isFile: stats.isFile(),
+            created: stats.birthtime,
+            modified: stats.mtime,
+            accessed: stats.atime,
+          },
+        };
+      } catch (error) {
+        return { success: false, error: getErrorMessage(error) };
+      }
+    }
+  );
+
+  ipcMain.handle(
+    'copy-items',
+    async (
+      _event: IpcMainInvokeEvent,
+      sourcePaths: string[],
+      destPath: string
+    ): Promise<ApiResponse> => {
+      try {
+        if (!isPathSafe(destPath)) {
+          console.warn('[Security] Invalid destination path rejected:', destPath);
+          return { success: false, error: 'Invalid destination path' };
+        }
+
+        const planned: Array<{
+          sourcePath: string;
+          destItemPath: string;
+          itemName: string;
+          isDirectory: boolean;
+        }> = [];
+        const destKeys = new Set<string>();
+
+        for (const sourcePath of sourcePaths) {
+          if (!isPathSafe(sourcePath)) {
+            console.warn('[Security] Invalid source path rejected:', sourcePath);
+            return { success: false, error: 'Invalid source path' };
           }
 
-          originalPaths.push(item.sourcePath);
-          movedPaths.push(item.newPath);
-          completed.push({ sourcePath: item.sourcePath, newPath: item.newPath });
-        }
-      } catch (error) {
-        for (const item of completed.reverse()) {
+          const itemName = path.basename(sourcePath);
+          const destItemPath = path.join(destPath, itemName);
+          const destKey = process.platform === 'win32' ? destItemPath.toLowerCase() : destItemPath;
+          if (destKeys.has(destKey)) {
+            return { success: false, error: `Multiple items share the same name: "${itemName}"` };
+          }
+          destKeys.add(destKey);
+
+          let stats: fsSync.Stats;
           try {
-            await fs.rename(item.newPath, item.sourcePath);
-          } catch (restoreError) {
-            const err = restoreError as NodeJS.ErrnoException;
-            if (err.code === 'EXDEV') {
-              try {
-                const stats = await fs.stat(item.newPath);
-                if (stats.isDirectory()) {
-                  await fs.cp(item.newPath, item.sourcePath, { recursive: true });
-                } else {
-                  await fs.copyFile(item.newPath, item.sourcePath);
-                }
-                await fs.rm(item.newPath, { recursive: true, force: true });
-              } catch {}
+            stats = await fs.stat(sourcePath);
+          } catch {
+            console.log('[Copy] Source file not found:', sourcePath);
+            return { success: false, error: `Source file not found: ${itemName}` };
+          }
+
+          const destExists = await fs
+            .stat(destItemPath)
+            .then(() => true)
+            .catch(() => false);
+          if (destExists) {
+            console.log('[Copy] Destination already exists:', destItemPath);
+            return {
+              success: false,
+              error: `A file named "${itemName}" already exists in the destination`,
+            };
+          }
+
+          planned.push({ sourcePath, destItemPath, itemName, isDirectory: stats.isDirectory() });
+        }
+
+        const copiedPaths: string[] = [];
+        try {
+          for (const item of planned) {
+            if (item.isDirectory) {
+              await fs.cp(item.sourcePath, item.destItemPath, { recursive: true });
+            } else {
+              await fs.copyFile(item.sourcePath, item.destItemPath);
             }
+            copiedPaths.push(item.destItemPath);
+          }
+        } catch (error) {
+          for (const copied of copiedPaths.reverse()) {
+            try {
+              await fs.rm(copied, { recursive: true, force: true });
+            } catch {}
+          }
+          return { success: false, error: getErrorMessage(error) };
+        }
+
+        return { success: true };
+      } catch (error) {
+        return { success: false, error: getErrorMessage(error) };
+      }
+    }
+  );
+
+  ipcMain.handle(
+    'move-items',
+    async (
+      _event: IpcMainInvokeEvent,
+      sourcePaths: string[],
+      destPath: string
+    ): Promise<ApiResponse> => {
+      try {
+        if (!isPathSafe(destPath)) {
+          console.warn('[Security] Invalid destination path rejected:', destPath);
+          return { success: false, error: 'Invalid destination path' };
+        }
+
+        for (const sourcePath of sourcePaths) {
+          if (!isPathSafe(sourcePath)) {
+            console.warn('[Security] Invalid source path rejected:', sourcePath);
+            return { success: false, error: 'Invalid source path' };
           }
         }
+
+        const planned: Array<{
+          sourcePath: string;
+          newPath: string;
+          fileName: string;
+          isDirectory: boolean;
+        }> = [];
+        const destKeys = new Set<string>();
+
+        for (const sourcePath of sourcePaths) {
+          const fileName = path.basename(sourcePath);
+          const newPath = path.join(destPath, fileName);
+          const destKey = process.platform === 'win32' ? newPath.toLowerCase() : newPath;
+          if (destKeys.has(destKey)) {
+            return { success: false, error: `Multiple items share the same name: "${fileName}"` };
+          }
+          destKeys.add(destKey);
+
+          let stats: fsSync.Stats;
+          try {
+            stats = await fs.stat(sourcePath);
+          } catch {
+            console.log('[Move] Source file not found:', sourcePath);
+            return { success: false, error: `Source file not found: ${fileName}` };
+          }
+
+          const destExists = await fs
+            .stat(newPath)
+            .then(() => true)
+            .catch(() => false);
+          if (destExists) {
+            console.log('[Move] Destination already exists:', newPath);
+            return {
+              success: false,
+              error: `A file named "${fileName}" already exists in the destination`,
+            };
+          }
+
+          planned.push({ sourcePath, newPath, fileName, isDirectory: stats.isDirectory() });
+        }
+
+        const originalParent = path.dirname(sourcePaths[0]);
+        const movedPaths: string[] = [];
+        const originalPaths: string[] = [];
+        const completed: Array<{ sourcePath: string; newPath: string }> = [];
+
+        try {
+          for (const item of planned) {
+            try {
+              await fs.rename(item.sourcePath, item.newPath);
+            } catch (renameError) {
+              const err = renameError as NodeJS.ErrnoException;
+              if (err.code === 'EXDEV') {
+                console.log('[Move] Cross-device move, using copy+delete:', item.sourcePath);
+                if (item.isDirectory) {
+                  await fs.cp(item.sourcePath, item.newPath, { recursive: true });
+                } else {
+                  await fs.copyFile(item.sourcePath, item.newPath);
+                }
+                await fs.rm(item.sourcePath, { recursive: true, force: true });
+              } else {
+                throw renameError;
+              }
+            }
+
+            originalPaths.push(item.sourcePath);
+            movedPaths.push(item.newPath);
+            completed.push({ sourcePath: item.sourcePath, newPath: item.newPath });
+          }
+        } catch (error) {
+          for (const item of completed.reverse()) {
+            try {
+              await fs.rename(item.newPath, item.sourcePath);
+            } catch (restoreError) {
+              const err = restoreError as NodeJS.ErrnoException;
+              if (err.code === 'EXDEV') {
+                try {
+                  const stats = await fs.stat(item.newPath);
+                  if (stats.isDirectory()) {
+                    await fs.cp(item.newPath, item.sourcePath, { recursive: true });
+                  } else {
+                    await fs.copyFile(item.newPath, item.sourcePath);
+                  }
+                  await fs.rm(item.newPath, { recursive: true, force: true });
+                } catch {}
+              }
+            }
+          }
+          const message = error instanceof Error ? error.message : String(error);
+          return { success: false, error: message };
+        }
+
+        pushUndoAction({
+          type: 'move',
+          data: {
+            sourcePaths: movedPaths,
+            originalPaths: originalPaths,
+            destPath: destPath,
+            originalParent: originalParent,
+          },
+        });
+
+        console.log('[Move] Items moved:', sourcePaths.length);
+        return { success: true };
+      } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         return { success: false, error: message };
       }
-
-      pushUndoAction({
-        type: 'move',
-        data: {
-          sourcePaths: movedPaths,
-          originalPaths: originalPaths,
-          destPath: destPath,
-          originalParent: originalParent
-        }
-      });
-
-      console.log('[Move] Items moved:', sourcePaths.length);
-      return { success: true };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      return { success: false, error: message };
     }
-  });
+  );
 }

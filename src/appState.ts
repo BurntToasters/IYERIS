@@ -14,7 +14,7 @@ export const MAX_TEXT_PREVIEW_BYTES = 1024 * 1024;
 export const MAX_DATA_URL_BYTES = 10 * 1024 * 1024;
 
 const CPU_COUNT = Math.max(1, os.cpus().length);
-const TOTAL_MEM_GB = os.totalmem() / (1024 ** 3);
+const TOTAL_MEM_GB = os.totalmem() / 1024 ** 3;
 const MAX_WORKERS = TOTAL_MEM_GB < 6 ? 2 : TOTAL_MEM_GB < 12 ? 4 : TOTAL_MEM_GB < 24 ? 6 : 8;
 const BASE_WORKER_COUNT = Math.max(1, Math.min(CPU_COUNT, MAX_WORKERS));
 const INDEXER_WORKER_COUNT = 1;
@@ -110,7 +110,9 @@ export function getSharedClipboard(): { operation: 'copy' | 'cut'; paths: string
   return sharedClipboard;
 }
 
-export function setSharedClipboard(clipboard: { operation: 'copy' | 'cut'; paths: string[] } | null): void {
+export function setSharedClipboard(
+  clipboard: { operation: 'copy' | 'cut'; paths: string[] } | null
+): void {
   sharedClipboard = clipboard;
 }
 

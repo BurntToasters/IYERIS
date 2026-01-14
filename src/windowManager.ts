@@ -1,13 +1,30 @@
-import { app, BrowserWindow, ipcMain, Menu, Tray, nativeImage, shell, IpcMainInvokeEvent } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  ipcMain,
+  Menu,
+  Tray,
+  nativeImage,
+  shell,
+  IpcMainInvokeEvent,
+} from 'electron';
 import * as path from 'path';
 import { pathToFileURL } from 'url';
 import * as fsSync from 'fs';
 import {
-  getMainWindow, setMainWindow, getActiveWindow,
-  getTray, setTray, getIsQuitting, setIsQuitting,
-  getCurrentTrayState, setCurrentTrayState,
-  getTrayAssetsPath, setTrayAssetsPath,
-  getShouldStartHidden, getIsDev
+  getMainWindow,
+  setMainWindow,
+  getActiveWindow,
+  getTray,
+  setTray,
+  getIsQuitting,
+  setIsQuitting,
+  getCurrentTrayState,
+  setCurrentTrayState,
+  getTrayAssetsPath,
+  setTrayAssetsPath,
+  getShouldStartHidden,
+  getIsDev,
 } from './appState';
 import { loadSettings } from './settingsManager';
 
@@ -53,9 +70,17 @@ export function setTrayState(state: 'idle' | 'active' | 'notification'): void {
   setCurrentTrayState(state);
 
   const iconFiles: Record<string, Record<string, string>> = {
-    darwin: { idle: 'icon-tray-Template.png', active: 'icon-tray-Template.png', notification: 'icon-tray-Template.png' },
+    darwin: {
+      idle: 'icon-tray-Template.png',
+      active: 'icon-tray-Template.png',
+      notification: 'icon-tray-Template.png',
+    },
     win32: { idle: 'icon-square.ico', active: 'icon-square.ico', notification: 'icon-square.ico' },
-    linux: { idle: 'icon_32x32@1x.png', active: 'icon_32x32@1x.png', notification: 'icon_32x32@1x.png' }
+    linux: {
+      idle: 'icon_32x32@1x.png',
+      active: 'icon_32x32@1x.png',
+      notification: 'icon_32x32@1x.png',
+    },
   };
 
   const platform = process.platform as 'darwin' | 'win32' | 'linux';
@@ -66,7 +91,9 @@ export function setTrayState(state: 'idle' | 'active' | 'notification'): void {
     iconPath = path.join(trayAssetsPath, iconFile);
     if (!fsSync.existsSync(iconPath)) {
       const fallbackPath = path.join(trayAssetsPath, 'iyeris.iconset', 'icon_32x32@1x.png');
-      iconPath = fsSync.existsSync(fallbackPath) ? fallbackPath : path.join(trayAssetsPath, 'icon.png');
+      iconPath = fsSync.existsSync(fallbackPath)
+        ? fallbackPath
+        : path.join(trayAssetsPath, 'icon.png');
     }
   } else if (platform === 'linux') {
     iconPath = path.join(trayAssetsPath, 'iyeris.iconset', iconFile);
@@ -83,7 +110,7 @@ export function setTrayState(state: 'idle' | 'active' | 'notification'): void {
   const sizes: Record<string, { width: number; height: number }> = {
     darwin: { width: 22, height: 22 },
     win32: { width: 16, height: 16 },
-    linux: { width: 24, height: 24 }
+    linux: { width: 24, height: 24 },
   };
 
   let newIcon = nativeImage.createFromPath(iconPath);
@@ -125,9 +152,9 @@ export function createWindow(isInitialWindow: boolean = false): BrowserWindow {
       webgl: false,
       images: true,
       autoplayPolicy: 'user-gesture-required',
-      defaultEncoding: 'UTF-8'
+      defaultEncoding: 'UTF-8',
     },
-    icon: path.join(__dirname, '..', 'assets', 'icon.png')
+    icon: path.join(__dirname, '..', 'assets', 'icon.png'),
   });
 
   newWindow.loadFile(path.join(__dirname, '..', 'index.html'));
@@ -136,8 +163,12 @@ export function createWindow(isInitialWindow: boolean = false): BrowserWindow {
   const openExternalIfAllowed = (url: string): boolean => {
     try {
       const parsed = new URL(url);
-      if (parsed.protocol === 'http:' || parsed.protocol === 'https:' || parsed.protocol === 'mailto:') {
-        shell.openExternal(url).catch(error => {
+      if (
+        parsed.protocol === 'http:' ||
+        parsed.protocol === 'https:' ||
+        parsed.protocol === 'mailto:'
+      ) {
+        shell.openExternal(url).catch((error) => {
           console.error('[Security] Failed to open external URL:', error);
         });
         return true;
@@ -177,7 +208,14 @@ export function createWindow(isInitialWindow: boolean = false): BrowserWindow {
   });
 
   const startHidden = isInitialWindow && shouldStartHidden;
-  console.log('[Window] Creating window, isInitial:', isInitialWindow, 'startHidden:', startHidden, 'shouldStartHidden:', shouldStartHidden);
+  console.log(
+    '[Window] Creating window, isInitial:',
+    isInitialWindow,
+    'startHidden:',
+    startHidden,
+    'shouldStartHidden:',
+    shouldStartHidden
+  );
 
   newWindow.once('ready-to-show', async () => {
     if (startHidden) {
@@ -204,7 +242,7 @@ export function createWindow(isInitialWindow: boolean = false): BrowserWindow {
         newWindow.hide();
         if (process.platform === 'darwin') {
           const allWindows = BrowserWindow.getAllWindows();
-          const visibleWindows = allWindows.filter(w => w.isVisible());
+          const visibleWindows = allWindows.filter((w) => w.isVisible());
           if (visibleWindows.length === 0) {
             app.dock?.hide();
           }
@@ -223,7 +261,7 @@ export function createWindow(isInitialWindow: boolean = false): BrowserWindow {
         setImmediate(() => {
           newWindow.hide();
           const allWindows = BrowserWindow.getAllWindows();
-          const visibleWindows = allWindows.filter(w => w.isVisible());
+          const visibleWindows = allWindows.filter((w) => w.isVisible());
           if (visibleWindows.length === 0) {
             app.dock?.hide();
           }
@@ -391,8 +429,8 @@ export function setupApplicationMenu(): void {
           { role: 'hideOthers' },
           { role: 'unhide' },
           { type: 'separator' },
-          { role: 'quit' }
-        ]
+          { role: 'quit' },
+        ],
       },
       {
         label: 'Edit',
@@ -403,8 +441,8 @@ export function setupApplicationMenu(): void {
           { role: 'cut' },
           { role: 'copy' },
           { role: 'paste' },
-          { role: 'selectAll' }
-        ]
+          { role: 'selectAll' },
+        ],
       },
       {
         label: 'View',
@@ -417,18 +455,13 @@ export function setupApplicationMenu(): void {
           { role: 'zoomIn' },
           { role: 'zoomOut' },
           { type: 'separator' },
-          { role: 'togglefullscreen' }
-        ]
+          { role: 'togglefullscreen' },
+        ],
       },
       {
         label: 'Window',
-        submenu: [
-          { role: 'minimize' },
-          { role: 'zoom' },
-          { type: 'separator' },
-          { role: 'front' }
-        ]
-      }
+        submenu: [{ role: 'minimize' }, { role: 'zoom' }, { type: 'separator' }, { role: 'front' }],
+      },
     ];
 
     const menu = Menu.buildFromTemplate(template);
