@@ -8,6 +8,27 @@ import { logger } from './utils/logger';
 const undoStack: UndoAction[] = [];
 const redoStack: UndoAction[] = [];
 
+async function movePath(source: string, dest: string): Promise<void> {
+  try {
+    await fs.rename(source, dest);
+    return;
+  } catch (error) {
+    const err = error as NodeJS.ErrnoException;
+    if (err.code !== 'EXDEV') {
+      throw error;
+    }
+  }
+
+  const stats = await fs.stat(source);
+  if (stats.isDirectory()) {
+    await fs.cp(source, dest, { recursive: true });
+    await fs.rm(source, { recursive: true, force: true });
+  } else {
+    await fs.copyFile(source, dest);
+    await fs.unlink(source);
+  }
+}
+
 export function pushUndoAction(action: UndoAction): void {
   undoStack.push(action);
   if (undoStack.length > MAX_UNDO_STACK_SIZE) {
@@ -139,7 +160,7 @@ export function setupUndoRedoHandlers(): void {
             }
 
             for (let i = 0; i < movedPaths.length; i++) {
-              await fs.rename(movedPaths[i], originalPaths[i]);
+              await movePath(movedPaths[i], originalPaths[i]);
             }
           } else {
             if (!originalParent) {
@@ -158,7 +179,7 @@ export function setupUndoRedoHandlers(): void {
             for (const source of movedPaths) {
               const fileName = path.basename(source);
               const originalPath = path.join(originalParent, fileName);
-              await fs.rename(source, originalPath);
+              await movePath(source, originalPath);
             }
           }
           pushRedoAction(action);
@@ -254,7 +275,7 @@ export function setupUndoRedoHandlers(): void {
                   error: 'Cannot redo: A file already exists at the target location',
                 };
               } catch {}
-              await fs.rename(originalPath, newPath);
+              await movePath(originalPath, newPath);
               newMovedPaths.push(newPath);
             }
           } else {
@@ -286,7 +307,7 @@ export function setupUndoRedoHandlers(): void {
                   error: 'Cannot redo: A file already exists at the target location',
                 };
               } catch {}
-              await fs.rename(currentPath, newPath);
+              await movePath(currentPath, newPath);
               newMovedPaths.push(newPath);
             }
           }

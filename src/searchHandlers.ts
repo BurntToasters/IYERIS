@@ -377,7 +377,7 @@ export function setupSearchHandlers(): void {
       }
 
       console.log('[Indexer] Rebuild requested');
-      fileIndexer.rebuildIndex();
+      await fileIndexer.rebuildIndex();
       return { success: true };
     } catch (error) {
       console.error('[Indexer] Rebuild error:', error);

@@ -20,16 +20,39 @@ async function assertArchiveEntriesSafe(archivePath: string, destPath: string): 
   const Seven = get7zipModule();
   const sevenZipPath = get7zipPath();
 
-  const entries = await new Promise<string[]>((resolve, reject) => {
+  const entries = await new Promise<
+    Array<{
+      name: string;
+      attributes?: string;
+      type?: string;
+      link?: string;
+      symlink?: string;
+      symbolicLink?: string;
+    }>
+  >((resolve, reject) => {
     const list = Seven.list(archivePath, { $bin: sevenZipPath });
-    const names: string[] = [];
+    const items: Array<{
+      name: string;
+      attributes?: string;
+      type?: string;
+      link?: string;
+      symlink?: string;
+      symbolicLink?: string;
+    }> = [];
 
-    list.on('data', (data: { file?: string }) => {
+    list.on('data', (data: { file?: string; attributes?: string; type?: string }) => {
       if (data && data.file) {
-        names.push(String(data.file));
+        items.push({
+          name: String(data.file),
+          attributes: data.attributes ?? (data as any).attr,
+          type: data.type,
+          link: (data as any).link,
+          symlink: (data as any).symlink,
+          symbolicLink: (data as any).symbolicLink,
+        });
       }
     });
-    list.on('end', () => resolve(names));
+    list.on('end', () => resolve(items));
     list.on('error', (err: Error) => reject(err));
   });
 
@@ -38,27 +61,40 @@ async function assertArchiveEntriesSafe(archivePath: string, destPath: string): 
   const invalidEntries: string[] = [];
 
   for (const entry of entries) {
-    if (!entry) continue;
+    if (!entry || !entry.name) continue;
 
-    const normalized = entry.replace(/\\/g, '/').replace(/^\.\/+/, '');
+    const attr = (entry.attributes || '').toUpperCase();
+    const type = (entry.type || '').toLowerCase();
+    const isLink =
+      attr.includes('L') ||
+      type.includes('link') ||
+      Boolean(entry.link) ||
+      Boolean(entry.symlink) ||
+      Boolean(entry.symbolicLink);
+    if (isLink) {
+      invalidEntries.push(entry.name);
+      continue;
+    }
+
+    const normalized = entry.name.replace(/\\/g, '/').replace(/^\.\/+/, '');
     if (!normalized) continue;
     if (
       normalized.startsWith('/') ||
       normalized.startsWith('//') ||
       /^[a-zA-Z]:/.test(normalized)
     ) {
-      invalidEntries.push(entry);
+      invalidEntries.push(entry.name);
       continue;
     }
     const parts = normalized.split('/');
     if (parts.some((part) => part === '..')) {
-      invalidEntries.push(entry);
+      invalidEntries.push(entry.name);
       continue;
     }
 
     const targetPath = path.resolve(destRoot, normalized);
     if (targetPath !== destRoot && !targetPath.startsWith(destRootWithSep)) {
-      invalidEntries.push(entry);
+      invalidEntries.push(entry.name);
     }
   }
 
@@ -99,6 +135,14 @@ async function assertExtractedPathsSafe(destPath: string): Promise<void> {
         unsafe.push(fullPath);
         try {
           await fs.unlink(fullPath);
+        } catch {}
+        continue;
+      }
+
+      if (stat.isFile() && stat.nlink > 1) {
+        unsafe.push(fullPath);
+        try {
+          await fs.rm(fullPath, { force: true });
         } catch {}
         continue;
       }
@@ -164,6 +208,13 @@ export function setupArchiveHandlers(): void {
           logger.warn('[Security] Invalid archive format rejected:', format);
           return { success: false, error: 'Invalid archive format' };
         }
+        if (format === 'tar.gz') {
+          const lowerOutput = outputPath.toLowerCase();
+          if (!lowerOutput.endsWith('.tar.gz') && !lowerOutput.endsWith('.tgz')) {
+            logger.warn('[Security] Invalid tar.gz output path:', outputPath);
+            return { success: false, error: 'Output file must end with .tar.gz' };
+          }
+        }
 
         logger.info(
           '[Compress] Starting compression:',
@@ -187,7 +238,10 @@ export function setupArchiveHandlers(): void {
             const Seven = get7zipModule();
             const sevenZipPath = get7zipPath();
             logger.info('[Compress] Using 7zip at:', sevenZipPath);
-            const tarPath = outputPath.replace(/\.gz$/, '');
+            const lowerOutputPath = outputPath.toLowerCase();
+            const tarPath = lowerOutputPath.endsWith('.tgz')
+              ? `${outputPath.slice(0, -4)}.tar`
+              : outputPath.replace(/\.gz$/i, '');
             logger.info('[Compress] Creating tar file:', tarPath);
 
             const tarOptions: any = {
@@ -548,6 +602,51 @@ export function setupArchiveHandlers(): void {
         return { success: true };
       } catch (error) {
         logger.error('[Archive] Cancel error:', error);
+        return { success: false, error: getErrorMessage(error) };
+      }
+    }
+  );
+
+  ipcMain.handle(
+    'list-archive-contents',
+    async (
+      _event: IpcMainInvokeEvent,
+      archivePath: string
+    ): Promise<{
+      success: boolean;
+      entries?: Array<{ name: string; size: number; isDirectory: boolean }>;
+      error?: string;
+    }> => {
+      try {
+        if (!isPathSafe(archivePath)) {
+          return { success: false, error: 'Invalid archive path' };
+        }
+
+        const Seven = get7zipModule();
+        const sevenZipPath = get7zipPath();
+
+        const entries = await new Promise<
+          Array<{ name: string; size: number; isDirectory: boolean }>
+        >((resolve, reject) => {
+          const list = Seven.list(archivePath, { $bin: sevenZipPath });
+          const items: Array<{ name: string; size: number; isDirectory: boolean }> = [];
+
+          list.on('data', (data: { file?: string; size?: number; attributes?: string }) => {
+            if (data && data.file) {
+              items.push({
+                name: String(data.file),
+                size: data.size || 0,
+                isDirectory: data.attributes?.includes('D') || data.file.endsWith('/') || false,
+              });
+            }
+          });
+          list.on('end', () => resolve(items));
+          list.on('error', (err: Error) => reject(err));
+        });
+
+        return { success: true, entries };
+      } catch (error) {
+        logger.error('[Archive] List contents error:', error);
         return { success: false, error: getErrorMessage(error) };
       }
     }

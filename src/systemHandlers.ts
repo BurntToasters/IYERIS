@@ -407,6 +407,9 @@ export function setupSystemHandlers(
         const requestedMaxSize = Number.isFinite(maxSize) ? maxSize : MAX_TEXT_PREVIEW_BYTES;
         const safeMaxSize = Math.min(Math.max(1, requestedMaxSize), MAX_TEXT_PREVIEW_BYTES);
         const stats = await fs.stat(filePath);
+        if (!stats.isFile()) {
+          return { success: false, error: 'Not a regular file' };
+        }
 
         if (stats.size > safeMaxSize) {
           const buffer = Buffer.alloc(safeMaxSize);
@@ -445,6 +448,9 @@ export function setupSystemHandlers(
         const requestedMaxSize = Number.isFinite(maxSize) ? maxSize : MAX_DATA_URL_BYTES;
         const safeMaxSize = Math.min(Math.max(1, requestedMaxSize), MAX_DATA_URL_BYTES);
         const stats = await fs.stat(filePath);
+        if (!stats.isFile()) {
+          return { success: false, error: 'Not a regular file' };
+        }
 
         if (stats.size > safeMaxSize) {
           return { success: false, error: 'File too large to preview' };
@@ -599,6 +605,50 @@ export function setupSystemHandlers(
       } catch (error) {
         console.error('[Git Status] Error:', error);
         return { success: true, isGitRepo: false, statuses: [] };
+      }
+    }
+  );
+
+  ipcMain.handle(
+    'get-git-branch',
+    async (
+      _event: IpcMainInvokeEvent,
+      dirPath: string
+    ): Promise<{
+      success: boolean;
+      branch?: string;
+      error?: string;
+    }> => {
+      try {
+        if (!isPathSafe(dirPath)) {
+          return { success: false, error: 'Invalid directory path' };
+        }
+
+        const execPromise = promisify(exec);
+
+        try {
+          await execPromise('git rev-parse --git-dir', { cwd: dirPath });
+        } catch {
+          return { success: true, branch: undefined };
+        }
+
+        const { stdout } = await execPromise('git branch --show-current', {
+          cwd: dirPath,
+        });
+
+        const branch = stdout.trim();
+
+        if (!branch) {
+          const { stdout: refStdout } = await execPromise('git rev-parse --short HEAD', {
+            cwd: dirPath,
+          });
+          return { success: true, branch: `HEAD:${refStdout.trim()}` };
+        }
+
+        return { success: true, branch };
+      } catch (error) {
+        console.error('[Git Branch] Error:', error);
+        return { success: true, branch: undefined };
       }
     }
   );

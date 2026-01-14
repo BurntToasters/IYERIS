@@ -807,6 +807,7 @@ const fileGrid = document.getElementById('file-grid') as HTMLElement;
 const fileView = document.getElementById('file-view') as HTMLElement;
 const columnView = document.getElementById('column-view') as HTMLElement;
 const loading = document.getElementById('loading') as HTMLElement;
+const loadingText = document.getElementById('loading-text') as HTMLElement;
 const emptyState = document.getElementById('empty-state') as HTMLElement;
 const backBtn = document.getElementById('back-btn') as HTMLButtonElement;
 const forwardBtn = document.getElementById('forward-btn') as HTMLButtonElement;
@@ -845,7 +846,6 @@ const bookmarkAddBtn = document.getElementById('bookmark-add-btn') as HTMLButton
 const undoBtn = document.getElementById('undo-btn') as HTMLButtonElement;
 const redoBtn = document.getElementById('redo-btn') as HTMLButtonElement;
 
-const loadingText = loading ? (loading.querySelector('p') as HTMLElement | null) : null;
 let activeDirectoryProgressPath: string | null = null;
 let activeDirectoryProgressOperationId: string | null = null;
 let activeDirectoryOperationId: string | null = null;
@@ -897,6 +897,17 @@ function finishDirectoryRequest(requestId: number): void {
   if (loadingText) loadingText.textContent = 'Loading...';
 }
 
+function showLoading(context?: string): void {
+  if (loading) loading.style.display = 'flex';
+  if (loadingText) loadingText.textContent = context || 'Loading...';
+  if (emptyState) emptyState.style.display = 'none';
+}
+
+function hideLoading(): void {
+  if (loading) loading.style.display = 'none';
+  if (loadingText) loadingText.textContent = 'Loading...';
+}
+
 function cancelDirectoryRequest(): void {
   if (activeDirectoryOperationId) {
     window.electronAPI.cancelDirectoryContents(activeDirectoryOperationId).catch(() => {});
@@ -907,6 +918,7 @@ function cancelDirectoryRequest(): void {
 
 const currentGitStatuses: Map<string, string> = new Map();
 let gitStatusRequestId = 0;
+let currentGitBranch: string | null = null;
 
 function clearGitIndicators(): void {
   currentGitStatuses.clear();
@@ -942,6 +954,34 @@ async function fetchGitStatusAsync(dirPath: string) {
     }
   } catch (error) {
     console.error('[Git Status] Failed to fetch:', error);
+  }
+}
+
+async function updateGitBranch(dirPath: string) {
+  const statusGitBranch = document.getElementById('status-git-branch');
+  const statusGitBranchName = document.getElementById('status-git-branch-name');
+
+  if (!statusGitBranch || !statusGitBranchName) return;
+
+  if (!currentSettings.enableGitStatus) {
+    statusGitBranch.style.display = 'none';
+    currentGitBranch = null;
+    return;
+  }
+
+  try {
+    const result = await window.electronAPI.getGitBranch(dirPath);
+    if (result.success && result.branch && dirPath === currentPath) {
+      currentGitBranch = result.branch;
+      statusGitBranchName.textContent = result.branch;
+      statusGitBranch.style.display = 'inline-flex';
+    } else {
+      statusGitBranch.style.display = 'none';
+      currentGitBranch = null;
+    }
+  } catch (error) {
+    statusGitBranch.style.display = 'none';
+    currentGitBranch = null;
   }
 }
 
@@ -1196,9 +1236,13 @@ function applySettings(settings: Settings) {
   if (settings.enableGitStatus) {
     if (currentPath) {
       fetchGitStatusAsync(currentPath);
+      updateGitBranch(currentPath);
     }
   } else {
     clearGitIndicators();
+    const statusGitBranch = document.getElementById('status-git-branch');
+    if (statusGitBranch) statusGitBranch.style.display = 'none';
+    currentGitBranch = null;
   }
 
   loadBookmarks();
@@ -2444,9 +2488,29 @@ function closeSearch() {
   searchFiltersPanel.style.display = 'none';
   searchFilterToggle.classList.remove('active');
   currentSearchFilters = {};
+  updateFilterBadge();
 
   if (currentPath) {
     navigateTo(currentPath);
+  }
+}
+
+function updateFilterBadge() {
+  const badge = document.getElementById('filter-badge');
+  if (!badge) return;
+
+  let count = 0;
+  if (currentSearchFilters.fileType) count++;
+  if (currentSearchFilters.minSize !== undefined) count++;
+  if (currentSearchFilters.maxSize !== undefined) count++;
+  if (currentSearchFilters.dateFrom) count++;
+  if (currentSearchFilters.dateTo) count++;
+
+  if (count > 0) {
+    badge.textContent = String(count);
+    badge.style.display = 'flex';
+  } else {
+    badge.style.display = 'none';
   }
 }
 
@@ -2518,8 +2582,7 @@ async function performSearch() {
 
   addToSearchHistory(query);
 
-  loading.style.display = 'flex';
-  emptyState.style.display = 'none';
+  showLoading('Searching...');
   fileGrid.innerHTML = '';
 
   let result;
@@ -2616,9 +2679,25 @@ async function performSearch() {
   }
 
   if (currentRequestId !== searchRequestId) return;
-  loading.style.display = 'none';
+  hideLoading();
   updateStatusBar();
   activeSearchOperationId = null;
+}
+
+function updateClipboardIndicator() {
+  const indicator = document.getElementById('clipboard-indicator');
+  const indicatorText = document.getElementById('clipboard-text');
+  if (!indicator || !indicatorText) return;
+
+  if (clipboard && clipboard.paths.length > 0) {
+    const count = clipboard.paths.length;
+    const operation = clipboard.operation === 'cut' ? 'cut' : 'copied';
+    indicatorText.textContent = `${count} ${operation}`;
+    indicator.classList.toggle('cut-mode', clipboard.operation === 'cut');
+    indicator.style.display = 'inline-flex';
+  } else {
+    indicator.style.display = 'none';
+  }
 }
 
 function copyToClipboard() {
@@ -2627,9 +2706,9 @@ function copyToClipboard() {
     operation: 'copy',
     paths: Array.from(selectedItems),
   };
-  // Sync main process
   window.electronAPI.setClipboard(clipboard);
   updateCutVisuals();
+  updateClipboardIndicator();
   showToast(`${selectedItems.size} item(s) copied`, 'Clipboard', 'success');
 }
 
@@ -2641,6 +2720,7 @@ function cutToClipboard() {
   };
   window.electronAPI.setClipboard(clipboard);
   updateCutVisuals();
+  updateClipboardIndicator();
   showToast(`${selectedItems.size} item(s) cut`, 'Clipboard', 'success');
 }
 
@@ -2663,6 +2743,7 @@ async function pasteFromClipboard() {
       await updateUndoRedoState();
       clipboard = null;
       window.electronAPI.setClipboard(null);
+      updateClipboardIndicator();
     }
 
     updateCutVisuals();
@@ -2760,6 +2841,8 @@ async function changeSortMode(sortBy: string) {
 function updateStatusBar() {
   const statusItems = document.getElementById('status-items');
   const statusSelected = document.getElementById('status-selected');
+  const statusSearch = document.getElementById('status-search');
+  const statusSearchText = document.getElementById('status-search-text');
 
   if (statusItems) {
     statusItems.textContent = `${allFiles.length} item${allFiles.length !== 1 ? 's' : ''}`;
@@ -2776,6 +2859,35 @@ function updateStatusBar() {
       statusSelected.style.display = 'inline';
     } else {
       statusSelected.style.display = 'none';
+    }
+  }
+
+  if (statusSearch && statusSearchText) {
+    if (isSearchMode) {
+      const searchInput = document.getElementById('search-input') as HTMLInputElement | null;
+      const searchQuery = searchInput?.value || '';
+      let searchText = isGlobalSearch ? 'Global' : 'Search';
+
+      if (searchQuery) {
+        const truncated = searchQuery.length > 20 ? searchQuery.slice(0, 20) + '...' : searchQuery;
+        searchText += `: "${truncated}"`;
+      }
+
+      const hasFilters =
+        currentSearchFilters.fileType ||
+        currentSearchFilters.minSize !== undefined ||
+        currentSearchFilters.maxSize !== undefined ||
+        currentSearchFilters.dateFrom ||
+        currentSearchFilters.dateTo;
+
+      if (hasFilters) {
+        searchText += ' (filtered)';
+      }
+
+      statusSearchText.textContent = searchText;
+      statusSearch.style.display = 'inline-flex';
+    } else {
+      statusSearch.style.display = 'none';
     }
   }
 }
@@ -3153,6 +3265,7 @@ function setupEventListeners() {
     if (hasActiveFilters) {
       searchFilterToggle.classList.add('active');
     }
+    updateFilterBadge();
 
     searchFiltersPanel.style.display = 'none';
 
@@ -3171,6 +3284,7 @@ function setupEventListeners() {
     searchFilterDateTo.value = '';
     currentSearchFilters = {};
     searchFilterToggle.classList.remove('active');
+    updateFilterBadge();
 
     if (searchInput.value.trim()) {
       performSearch();
@@ -3906,8 +4020,7 @@ async function navigateTo(path: string, skipHistoryUpdate = false) {
       thumbnailObserver.disconnect();
     }
 
-    if (loading) loading.style.display = 'flex';
-    if (emptyState) emptyState.style.display = 'none';
+    showLoading('Loading folder...');
     if (fileGrid) fileGrid.innerHTML = '';
     const request = startDirectoryRequest(path);
     requestId = request.requestId;
@@ -3943,6 +4056,7 @@ async function navigateTo(path: string, skipHistoryUpdate = false) {
       updateDiskSpace();
       if (currentSettings.enableGitStatus) {
         fetchGitStatusAsync(path);
+        updateGitBranch(path);
       }
     } else {
       console.error('Error loading directory:', result.error);
@@ -3954,7 +4068,7 @@ async function navigateTo(path: string, skipHistoryUpdate = false) {
   } finally {
     const isCurrentRequest = requestId !== 0 && requestId === directoryRequestId;
     finishDirectoryRequest(requestId);
-    if (isCurrentRequest && loading) loading.style.display = 'none';
+    if (isCurrentRequest) hideLoading();
   }
 }
 
@@ -4470,6 +4584,21 @@ const IMAGE_EXTENSIONS = new Set([
 const VIDEO_EXTENSIONS = new Set(['mp4', 'webm', 'ogg', 'mov', 'mkv', 'avi', 'm4v']);
 const AUDIO_EXTENSIONS = new Set(['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac', 'wma', 'opus']);
 const PDF_EXTENSIONS = new Set(['pdf']);
+const ARCHIVE_EXTENSIONS = new Set([
+  'zip',
+  '7z',
+  'rar',
+  'tar',
+  'gz',
+  'bz2',
+  'xz',
+  'iso',
+  'cab',
+  'arj',
+  'lzh',
+  'wim',
+  'tgz',
+]);
 const TEXT_EXTENSIONS = new Set([
   'txt',
   'text',
@@ -4980,7 +5109,7 @@ function toggleView() {
 async function applyViewMode() {
   if (viewMode === 'column') {
     cancelDirectoryRequest();
-    if (loading) loading.style.display = 'none';
+    hideLoading();
     fileGrid.style.display = 'none';
     columnView.style.display = 'flex';
     await renderColumnView();
@@ -7236,8 +7365,83 @@ function updatePreview(file: FileItem) {
     showAudioPreview(file, requestId);
   } else if (PDF_EXTENSIONS.has(ext)) {
     showPdfPreview(file, requestId);
+  } else if (ARCHIVE_EXTENSIONS.has(ext)) {
+    showArchivePreview(file, requestId);
   } else {
     showFileInfo(file, requestId);
+  }
+}
+
+async function showArchivePreview(file: FileItem, requestId: number) {
+  if (!previewContent || requestId !== previewRequestId) return;
+  previewContent.innerHTML = `
+    <div class="preview-loading">
+      <div class="spinner"></div>
+      <p>Loading archive contents...</p>
+    </div>
+  `;
+
+  try {
+    const result = await window.electronAPI.listArchiveContents(file.path);
+    if (requestId !== previewRequestId) return;
+
+    if (result.success && result.entries) {
+      const entries = result.entries;
+      const fileCount = entries.filter((e) => !e.isDirectory).length;
+      const folderCount = entries.filter((e) => e.isDirectory).length;
+      const totalSize = entries.reduce((sum, e) => sum + e.size, 0);
+
+      let html = `
+        <div class="preview-section">
+          <h3>Archive Contents</h3>
+          <div class="archive-info">
+            <p>${fileCount} file${fileCount !== 1 ? 's' : ''}, ${folderCount} folder${folderCount !== 1 ? 's' : ''}</p>
+            <p>Total size: ${formatFileSize(totalSize)}</p>
+          </div>
+          <div class="archive-list">
+      `;
+
+      const maxEntries = 100;
+      const displayEntries = entries.slice(0, maxEntries);
+
+      for (const entry of displayEntries) {
+        const icon = entry.isDirectory ? '📁' : '📄';
+        html += `
+          <div class="archive-entry">
+            <span class="archive-icon">${icon}</span>
+            <span class="archive-name">${escapeHtml(entry.name)}</span>
+            <span class="archive-size">${entry.isDirectory ? '' : formatFileSize(entry.size)}</span>
+          </div>
+        `;
+      }
+
+      if (entries.length > maxEntries) {
+        html += `<p class="archive-more">... and ${entries.length - maxEntries} more</p>`;
+      }
+
+      html += `
+          </div>
+        </div>
+        ${generateFileInfo(file, null)}
+      `;
+
+      previewContent.innerHTML = html;
+    } else {
+      previewContent.innerHTML = `
+        <div class="preview-error">
+          Failed to list archive contents: ${escapeHtml(result.error || 'Unknown error')}
+        </div>
+        ${generateFileInfo(file, null)}
+      `;
+    }
+  } catch (error) {
+    if (requestId !== previewRequestId) return;
+    previewContent.innerHTML = `
+      <div class="preview-error">
+        Failed to list archive contents: ${escapeHtml(getErrorMessage(error))}
+      </div>
+      ${generateFileInfo(file, null)}
+    `;
   }
 }
 

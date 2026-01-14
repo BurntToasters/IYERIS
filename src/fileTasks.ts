@@ -101,6 +101,13 @@ export class FileTaskManager extends EventEmitter {
 
   async shutdown(): Promise<void> {
     this.shuttingDown = true;
+    const shutdownError = new Error('File task manager shutting down');
+    for (const pending of this.pending.values()) {
+      pending.reject(shutdownError);
+    }
+    this.pending.clear();
+    this.queue = [];
+    this.operationToWorker.clear();
     await Promise.all(
       this.workers.map((workerState) => workerState.worker.terminate().catch(() => {}))
     );

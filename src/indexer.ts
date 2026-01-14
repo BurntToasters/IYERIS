@@ -227,6 +227,18 @@ export class FileIndexer {
     };
   }
 
+  private parseIndexTime(value: unknown): Date | null {
+    if (value instanceof Date) {
+      const time = value.getTime();
+      return Number.isNaN(time) ? null : value;
+    }
+    if (typeof value !== 'number' && typeof value !== 'string') {
+      return null;
+    }
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
   private loadIndexEntries(entries: unknown[]): void {
     this.index.clear();
     for (const entry of entries) {
@@ -394,16 +406,17 @@ export class FileIndexer {
   async saveIndex(): Promise<void> {
     try {
       const entries = Array.from(this.index.entries());
+      const lastIndexTime = this.lastIndexTime ? this.lastIndexTime.getTime() : null;
       if (this.fileTasks) {
         await this.fileTasks.runTask(
           'save-index',
-          { indexPath: this.indexPath, entries, lastIndexTime: this.lastIndexTime },
+          { indexPath: this.indexPath, entries, lastIndexTime },
           `save-index-${Date.now()}`
         );
       } else {
         const data = {
           index: entries,
-          lastIndexTime: this.lastIndexTime,
+          lastIndexTime,
           version: 1,
         };
 
@@ -421,20 +434,20 @@ export class FileIndexer {
         const result = await this.fileTasks.runTask<{
           exists: boolean;
           index?: Array<unknown>;
-          lastIndexTime?: string | null;
+          lastIndexTime?: string | number | null;
         }>('load-index', { indexPath: this.indexPath }, `load-index-${Date.now()}`);
         if (!result.exists) {
           console.log('[Indexer] No existing index found, will build on first search');
           return;
         }
         this.loadIndexEntries(result.index || []);
-        this.lastIndexTime = result.lastIndexTime ? new Date(result.lastIndexTime) : null;
+        this.lastIndexTime = this.parseIndexTime(result.lastIndexTime);
       } else {
         const data = await fs.readFile(this.indexPath, 'utf-8');
         const parsed = JSON.parse(data);
 
         this.loadIndexEntries(Array.isArray(parsed.index) ? parsed.index : []);
-        this.lastIndexTime = parsed.lastIndexTime ? new Date(parsed.lastIndexTime) : null;
+        this.lastIndexTime = this.parseIndexTime(parsed.lastIndexTime);
       }
       console.log(`[Indexer] Index loaded: ${this.indexedFiles} files`);
     } catch (error) {

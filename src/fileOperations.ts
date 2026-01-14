@@ -27,6 +27,17 @@ const hiddenFileCache = new Map<string, { isHidden: boolean; timestamp: number }
 let isCleaningCache = false;
 let hiddenFileCacheCleanupInterval: NodeJS.Timeout | null = null;
 
+function normalizeCaseKey(targetPath: string): string {
+  if (process.platform === 'win32' || process.platform === 'darwin') {
+    return targetPath.toLowerCase();
+  }
+  return targetPath;
+}
+
+function normalizePathForComparison(targetPath: string): string {
+  return normalizeCaseKey(path.resolve(targetPath));
+}
+
 async function isFileHidden(filePath: string, fileName: string): Promise<boolean> {
   if (fileName.startsWith('.')) {
     return true;
@@ -208,7 +219,13 @@ export function setupFileOperationHandlers(): void {
           (/^[A-Za-z]:[\\/]/.test(filePath) || filePath.startsWith('\\\\'));
         let parsed: URL | null = null;
 
-        if (!looksLikeWindowsPath && /^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(filePath)) {
+        const looksLikeUrl =
+          !looksLikeWindowsPath &&
+          (/^(https?|file):/i.test(filePath) ||
+            /^mailto:/i.test(filePath) ||
+            /^[a-zA-Z][a-zA-Z\d+\-.]*:\/\//.test(filePath));
+
+        if (looksLikeUrl) {
           try {
             parsed = new URL(filePath);
           } catch {}
@@ -421,13 +438,7 @@ export function setupFileOperationHandlers(): void {
       } catch (error) {
         const err = error as NodeJS.ErrnoException;
         if (err.code === 'ENOENT') {
-          const newExists = await fs
-            .stat(newPath)
-            .then(() => true)
-            .catch(() => false);
-          if (newExists) {
-            return { success: true, path: newPath };
-          }
+          return { success: false, error: 'Item not found' };
         }
         return { success: false, error: getErrorMessage(error) };
       }
@@ -516,6 +527,7 @@ export function setupFileOperationHandlers(): void {
           return { success: false, error: 'Invalid destination path' };
         }
 
+        const normalizedDestPath = normalizePathForComparison(destPath);
         const planned: Array<{
           sourcePath: string;
           destItemPath: string;
@@ -532,7 +544,7 @@ export function setupFileOperationHandlers(): void {
 
           const itemName = path.basename(sourcePath);
           const destItemPath = path.join(destPath, itemName);
-          const destKey = process.platform === 'win32' ? destItemPath.toLowerCase() : destItemPath;
+          const destKey = normalizeCaseKey(destItemPath);
           if (destKeys.has(destKey)) {
             return { success: false, error: `Multiple items share the same name: "${itemName}"` };
           }
@@ -544,6 +556,19 @@ export function setupFileOperationHandlers(): void {
           } catch {
             console.log('[Copy] Source file not found:', sourcePath);
             return { success: false, error: `Source file not found: ${itemName}` };
+          }
+
+          if (stats.isDirectory()) {
+            const normalizedSourcePath = normalizePathForComparison(sourcePath);
+            if (
+              normalizedDestPath === normalizedSourcePath ||
+              normalizedDestPath.startsWith(normalizedSourcePath + path.sep)
+            ) {
+              return {
+                success: false,
+                error: `Cannot copy "${itemName}" into itself or a subfolder`,
+              };
+            }
           }
 
           const destExists = await fs
@@ -600,6 +625,7 @@ export function setupFileOperationHandlers(): void {
           return { success: false, error: 'Invalid destination path' };
         }
 
+        const normalizedDestPath = normalizePathForComparison(destPath);
         for (const sourcePath of sourcePaths) {
           if (!isPathSafe(sourcePath)) {
             console.warn('[Security] Invalid source path rejected:', sourcePath);
@@ -618,7 +644,7 @@ export function setupFileOperationHandlers(): void {
         for (const sourcePath of sourcePaths) {
           const fileName = path.basename(sourcePath);
           const newPath = path.join(destPath, fileName);
-          const destKey = process.platform === 'win32' ? newPath.toLowerCase() : newPath;
+          const destKey = normalizeCaseKey(newPath);
           if (destKeys.has(destKey)) {
             return { success: false, error: `Multiple items share the same name: "${fileName}"` };
           }
@@ -630,6 +656,19 @@ export function setupFileOperationHandlers(): void {
           } catch {
             console.log('[Move] Source file not found:', sourcePath);
             return { success: false, error: `Source file not found: ${fileName}` };
+          }
+
+          if (stats.isDirectory()) {
+            const normalizedSourcePath = normalizePathForComparison(sourcePath);
+            if (
+              normalizedDestPath === normalizedSourcePath ||
+              normalizedDestPath.startsWith(normalizedSourcePath + path.sep)
+            ) {
+              return {
+                success: false,
+                error: `Cannot move "${fileName}" into itself or a subfolder`,
+              };
+            }
           }
 
           const destExists = await fs

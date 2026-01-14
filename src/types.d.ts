@@ -251,6 +251,20 @@ export interface GitStatusResponse extends ApiResponse {
   statuses?: GitFileStatus[];
 }
 
+export interface GitBranchResponse extends ApiResponse {
+  branch?: string;
+}
+
+export interface ArchiveEntry {
+  name: string;
+  size: number;
+  isDirectory: boolean;
+}
+
+export interface ArchiveListResponse extends ApiResponse {
+  entries?: ArchiveEntry[];
+}
+
 export interface UpdateDownloadProgress {
   percent: number;
   bytesPerSecond: number;
@@ -403,6 +417,8 @@ export interface ElectronAPI {
     callback: (progress: { operationId: string; percent: number; algorithm: string }) => void
   ) => () => void;
   getGitStatus: (dirPath: string) => Promise<GitStatusResponse>;
+  getGitBranch: (dirPath: string) => Promise<GitBranchResponse>;
+  listArchiveContents: (archivePath: string) => Promise<ArchiveListResponse>;
 }
 
 declare global {

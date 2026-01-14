@@ -37,19 +37,45 @@ export async function loadSettings(): Promise<Settings> {
   try {
     const settingsPath = getSettingsPath();
     logger.debug('[Settings] Loading from:', settingsPath);
-    const data = await fs.readFile(settingsPath, 'utf8');
-    const settings = { ...createDefaultSettings(), ...JSON.parse(data) };
-    logger.debug('[Settings] Loaded:', JSON.stringify(settings, null, 2));
-    cachedSettings = settings;
-    settingsCacheTime = now;
-    return settings;
+    let data: string;
+    try {
+      data = await fs.readFile(settingsPath, 'utf8');
+    } catch (error) {
+      logger.debug('[Settings] File not found, using defaults');
+      const settings = createDefaultSettings();
+      cachedSettings = settings;
+      settingsCacheTime = now;
+      return settings;
+    }
+
+    try {
+      const settings = { ...createDefaultSettings(), ...JSON.parse(data) };
+      logger.debug('[Settings] Loaded:', JSON.stringify(settings, null, 2));
+      cachedSettings = settings;
+      settingsCacheTime = now;
+      return settings;
+    } catch (error) {
+      logger.error('[Settings] Failed to parse settings file:', getErrorMessage(error));
+      const backupPath = `${settingsPath}.corrupt-${Date.now()}`;
+      try {
+        await fs.rename(settingsPath, backupPath);
+      } catch {}
+      const settings = createDefaultSettings();
+      cachedSettings = settings;
+      settingsCacheTime = now;
+      return settings;
+    }
   } catch (error) {
-    logger.debug('[Settings] File not found, using defaults');
+    logger.error('[Settings] Failed to load settings:', getErrorMessage(error));
     const settings = createDefaultSettings();
     cachedSettings = settings;
     settingsCacheTime = now;
     return settings;
   }
+}
+
+export function getCachedSettings(): Settings | null {
+  return cachedSettings;
 }
 
 export function applyLoginItemSettings(settings: Settings): void {
@@ -97,7 +123,18 @@ export async function saveSettings(settings: Settings): Promise<ApiResponse> {
     const settingsPath = getSettingsPath();
     logger.debug('[Settings] Saving to:', settingsPath);
     logger.debug('[Settings] Data:', JSON.stringify(settings, null, 2));
-    await fs.writeFile(settingsPath, JSON.stringify(settings, null, 2), 'utf8');
+    const tmpPath = `${settingsPath}.tmp`;
+    const data = JSON.stringify(settings, null, 2);
+    await fs.writeFile(tmpPath, data, 'utf8');
+    try {
+      await fs.rename(tmpPath, settingsPath);
+    } catch (error) {
+      try {
+        await fs.copyFile(tmpPath, settingsPath);
+      } finally {
+        await fs.unlink(tmpPath).catch(() => {});
+      }
+    }
     logger.debug('[Settings] Saved successfully');
 
     cachedSettings = settings;

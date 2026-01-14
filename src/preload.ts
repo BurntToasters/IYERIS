@@ -198,6 +198,9 @@ const electronAPI: ElectronAPI = {
     return () => ipcRenderer.removeListener('checksum-progress', handler);
   },
   getGitStatus: (dirPath: string) => ipcRenderer.invoke('get-git-status', dirPath),
+  getGitBranch: (dirPath: string) => ipcRenderer.invoke('get-git-branch', dirPath),
+  listArchiveContents: (archivePath: string) =>
+    ipcRenderer.invoke('list-archive-contents', archivePath),
 };
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);

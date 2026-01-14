@@ -57,6 +57,18 @@ interface BuildIndexPayload {
   maxIndexSize?: number;
 }
 
+type IndexEntry = [
+  string,
+  {
+    name: string;
+    path: string;
+    isDirectory: boolean;
+    isFile: boolean;
+    size: number;
+    modified: number;
+  },
+];
+
 interface LoadIndexPayload {
   indexPath: string;
 }
@@ -118,7 +130,17 @@ interface TaskRequest {
 }
 
 const execFileAsync = promisify(execFile);
-const cancelled = new Set<string>();
+const cancelled = new Map<string, number>();
+const CANCEL_TTL_MS = 10 * 60 * 1000;
+
+function pruneCancelled(): void {
+  const now = Date.now();
+  for (const [id, timestamp] of cancelled) {
+    if (now - timestamp > CANCEL_TTL_MS) {
+      cancelled.delete(id);
+    }
+  }
+}
 
 const TEXT_FILE_EXTENSIONS = new Set([
   'txt',
@@ -210,8 +232,39 @@ function getErrorMessage(error: unknown): string {
   return String(error);
 }
 
+function normalizeIndexTimestamp(value: unknown): number | null {
+  if (value instanceof Date) {
+    const time = value.getTime();
+    return Number.isNaN(time) ? null : time;
+  }
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null;
+  }
+  if (typeof value === 'string') {
+    const numeric = Number(value);
+    if (Number.isFinite(numeric)) {
+      return numeric;
+    }
+    const parsed = Date.parse(value);
+    return Number.isNaN(parsed) ? null : parsed;
+  }
+  return null;
+}
+
+function normalizePathForCompare(filePath: string): string {
+  const resolved = path.resolve(filePath);
+  return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+}
+
 function isCancelled(operationId?: string): boolean {
-  return Boolean(operationId && cancelled.has(operationId));
+  if (!operationId) return false;
+  const timestamp = cancelled.get(operationId);
+  if (!timestamp) return false;
+  if (Date.now() - timestamp > CANCEL_TTL_MS) {
+    cancelled.delete(operationId);
+    return false;
+  }
+  return true;
 }
 
 function sendProgress(task: TaskType, operationId: string, data: ProgressData): void {
@@ -930,22 +983,24 @@ async function buildIndex(
   operationId?: string
 ): Promise<{
   indexedFiles: number;
-  entries?: Array<
-    [
-      string,
-      {
-        name: string;
-        path: string;
-        isDirectory: boolean;
-        isFile: boolean;
-        size: number;
-        modified: number;
-      },
-    ]
-  >;
+  entries?: IndexEntry[];
 }> {
   const locations: string[] = payload.locations || [];
   const maxIndexSize: number = payload.maxIndexSize || 200000;
+  const skipDirs = Array.isArray(payload.skipDirs) ? payload.skipDirs : [];
+  const skipDirSegments = new Set<string>();
+  const skipDirPaths = new Set<string>();
+
+  for (const skipDir of skipDirs) {
+    if (typeof skipDir !== 'string') continue;
+    const trimmed = skipDir.trim();
+    if (!trimmed) continue;
+    if (path.isAbsolute(trimmed)) {
+      skipDirPaths.add(normalizePathForCompare(trimmed));
+    } else {
+      skipDirSegments.add(trimmed.toLowerCase());
+    }
+  }
 
   const excludeSegments = new Set([
     'node_modules',
@@ -996,10 +1051,19 @@ async function buildIndex(
     const parts = filePath.split(/[/\\]/);
     const filename = parts[parts.length - 1].toLowerCase();
     if (excludeFiles.has(filename)) return true;
-    return parts.some((part) => excludeSegments.has(part.toLowerCase()));
+    const normalizedPath = normalizePathForCompare(filePath);
+    for (const skipPath of skipDirPaths) {
+      if (normalizedPath === skipPath || normalizedPath.startsWith(skipPath + path.sep)) {
+        return true;
+      }
+    }
+    return parts.some((part) => {
+      const segment = part.toLowerCase();
+      return excludeSegments.has(segment) || skipDirSegments.has(segment);
+    });
   };
 
-  const entries: Array<[string, { size: number; modified: number }]> = [];
+  const entries: IndexEntry[] = [];
   const stack: string[] = [...locations];
 
   while (stack.length && entries.length < maxIndexSize) {
@@ -1050,15 +1114,16 @@ async function loadIndexFile(payload: LoadIndexPayload): Promise<{
   indexDate: number;
   exists: boolean;
   index?: Array<unknown>;
-  lastIndexTime?: string | null;
+  lastIndexTime?: number | null;
 }> {
   const { indexPath } = payload;
   try {
     const data = await fs.readFile(indexPath, 'utf-8');
     const parsed = JSON.parse(data);
-    const indexEntries = Array.isArray(parsed.index) ? parsed.index : [];
+    const indexEntries: unknown[] = Array.isArray(parsed.index) ? parsed.index : [];
+    const normalizedLastIndexTime = normalizeIndexTimestamp(parsed.lastIndexTime);
     const sample = indexEntries.slice(0, 20);
-    const isLegacy = sample.some((entry) => {
+    const isLegacy = sample.some((entry: unknown) => {
       if (Array.isArray(entry)) {
         if (entry.length < 2) return true;
         const entryPath = entry[0];
@@ -1092,9 +1157,9 @@ async function loadIndexFile(payload: LoadIndexPayload): Promise<{
     return {
       exists: true,
       indexedFiles: indexEntries.length,
-      indexDate: parsed.lastIndexTime || Date.now(),
+      indexDate: normalizedLastIndexTime ?? Date.now(),
       index: indexEntries,
-      lastIndexTime: parsed.lastIndexTime || null,
+      lastIndexTime: normalizedLastIndexTime,
     };
   } catch (error) {
     const err = error as NodeJS.ErrnoException;
@@ -1107,9 +1172,10 @@ async function loadIndexFile(payload: LoadIndexPayload): Promise<{
 
 async function saveIndexFile(payload: any): Promise<any> {
   const { indexPath, entries, lastIndexTime } = payload;
+  const normalizedLastIndexTime = normalizeIndexTimestamp(lastIndexTime);
   const data = {
     index: entries || [],
-    lastIndexTime: lastIndexTime || null,
+    lastIndexTime: normalizedLastIndexTime,
     version: 1,
   };
   await fs.writeFile(indexPath, JSON.stringify(data), 'utf-8');
@@ -1231,7 +1297,8 @@ if (!parentPort) {
 
 parentPort.on('message', async (message: any) => {
   if (message?.type === 'cancel' && message.operationId) {
-    cancelled.add(message.operationId);
+    cancelled.set(message.operationId, Date.now());
+    pruneCancelled();
     return;
   }
 
