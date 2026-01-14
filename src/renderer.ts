@@ -1180,7 +1180,17 @@ function applySettings(settings: Settings) {
     document.body.classList.remove('no-transparency');
   }
 
-  document.body.classList.remove('theme-dark', 'theme-light', 'theme-default', 'theme-custom');
+  document.body.classList.remove(
+    'theme-dark',
+    'theme-light',
+    'theme-default',
+    'theme-custom',
+    'theme-nord',
+    'theme-catppuccin',
+    'theme-dracula',
+    'theme-solarized',
+    'theme-github'
+  );
   if (settings.theme && settings.theme !== 'default') {
     document.body.classList.add(`theme-${settings.theme}`);
   }
@@ -1627,6 +1637,7 @@ async function showSettingsModal() {
   if (sections.length > 0) sections[0].classList.add('active');
 
   const transparencyToggle = document.getElementById('transparency-toggle') as HTMLInputElement;
+  const systemThemeToggle = document.getElementById('system-theme-toggle') as HTMLInputElement;
   const sortBySelect = document.getElementById('sort-by-select') as HTMLSelectElement;
   const sortOrderSelect = document.getElementById('sort-order-select') as HTMLSelectElement;
   const showHiddenFilesToggle = document.getElementById(
@@ -1673,6 +1684,9 @@ async function showSettingsModal() {
 
   if (transparencyToggle) {
     transparencyToggle.checked = currentSettings.transparency;
+  }
+  if (systemThemeToggle) {
+    systemThemeToggle.checked = currentSettings.useSystemTheme || false;
   }
   if (enableSyntaxHighlightingToggle) {
     enableSyntaxHighlightingToggle.checked = currentSettings.enableSyntaxHighlighting !== false;
@@ -2148,6 +2162,7 @@ function copyLicensesText() {
 async function saveSettings() {
   const previousTabsEnabled = tabsEnabled;
   const transparencyToggle = document.getElementById('transparency-toggle') as HTMLInputElement;
+  const systemThemeToggle = document.getElementById('system-theme-toggle') as HTMLInputElement;
   const themeSelect = document.getElementById('theme-select') as HTMLSelectElement;
   const sortBySelect = document.getElementById('sort-by-select') as HTMLSelectElement;
   const sortOrderSelect = document.getElementById('sort-order-select') as HTMLSelectElement;
@@ -2194,6 +2209,9 @@ async function saveSettings() {
 
   if (transparencyToggle) {
     currentSettings.transparency = transparencyToggle.checked;
+  }
+  if (systemThemeToggle) {
+    currentSettings.useSystemTheme = systemThemeToggle.checked;
   }
   if (enableSyntaxHighlightingToggle) {
     currentSettings.enableSyntaxHighlighting = enableSyntaxHighlightingToggle.checked;
@@ -3039,6 +3057,23 @@ async function init() {
   ]);
 
   platformOS = platform;
+  document.body.classList.add(`platform-${platformOS}`);
+
+  window.electronAPI.getSystemAccentColor().then(({ accentColor, isDarkMode }) => {
+    const rgb = hexToRgb(accentColor);
+    document.documentElement.style.setProperty('--system-accent-color', accentColor);
+    document.documentElement.style.setProperty('--system-accent-rgb', rgb);
+    if (isDarkMode) {
+      document.body.classList.add('system-dark-mode');
+    }
+    if (currentSettings.useSystemTheme) {
+      const systemTheme = isDarkMode ? 'default' : 'light';
+      if (currentSettings.theme !== systemTheme) {
+        currentSettings.theme = systemTheme;
+        applySettings(currentSettings);
+      }
+    }
+  });
 
   const startupPath =
     currentSettings.startupPath && currentSettings.startupPath.trim() !== ''
@@ -3145,6 +3180,16 @@ async function init() {
       loadDrives();
     });
     ipcCleanupFunctions.push(cleanupSystemResumed);
+
+    const cleanupSystemThemeChanged = window.electronAPI.onSystemThemeChanged(({ isDarkMode }) => {
+      if (currentSettings.useSystemTheme) {
+        console.log('[Renderer] System theme changed, isDarkMode:', isDarkMode);
+        const newTheme = isDarkMode ? 'default' : 'light';
+        currentSettings.theme = newTheme;
+        applySettings(currentSettings);
+      }
+    });
+    ipcCleanupFunctions.push(cleanupSystemThemeChanged);
   }, 0);
 
   console.log('Init: Complete');
@@ -3300,6 +3345,12 @@ function setupEventListeners() {
 
   sortBtn?.addEventListener('click', showSortMenu);
   bookmarkAddBtn?.addEventListener('click', addBookmark);
+
+  const sidebarToggle = document.getElementById('sidebar-toggle');
+  const sidebar = document.querySelector('.sidebar');
+  sidebarToggle?.addEventListener('click', () => {
+    sidebar?.classList.toggle('collapsed');
+  });
 
   searchInput?.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') {
@@ -3555,6 +3606,10 @@ function setupEventListeners() {
             : (currentIndex + 1) % tabs.length;
           switchToTab(tabs[nextIndex].id);
         }
+      } else if (e.key === 'b' || e.key === 'B') {
+        e.preventDefault();
+        const sidebar = document.querySelector('.sidebar');
+        sidebar?.classList.toggle('collapsed');
       }
     } else if (e.key === ' ' && selectedItems.size === 1) {
       const activeElement = document.activeElement;
@@ -4226,6 +4281,7 @@ function lazyLoadThumbnails() {
 function createFileItem(item: FileItem, searchQuery?: string): HTMLElement {
   const fileItem = document.createElement('div');
   fileItem.className = 'file-item';
+  fileItem.tabIndex = 0;
   fileItem.dataset.path = item.path;
   fileItem.dataset.isDirectory = String(item.isDirectory);
 
@@ -5269,6 +5325,7 @@ async function renderDriveColumn() {
     drives.forEach((drive) => {
       const item = document.createElement('div');
       item.className = 'column-item is-directory';
+      item.tabIndex = 0;
       item.dataset.path = drive;
       item.innerHTML = `
         <span class="column-item-icon"><img src="assets/twemoji/1f4bf.svg" class="twemoji" alt="💿" draggable="false" /></span>
@@ -5419,6 +5476,7 @@ async function renderColumn(
       visibleItems.forEach((fileItem) => {
         const item = document.createElement('div');
         item.className = 'column-item';
+        item.tabIndex = 0;
         if (fileItem.isDirectory) item.classList.add('is-directory');
         item.dataset.path = fileItem.path;
 

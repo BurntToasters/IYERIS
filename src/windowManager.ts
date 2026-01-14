@@ -207,12 +207,16 @@ export function createWindow(isInitialWindow: boolean = false): BrowserWindow {
   const isDev = getIsDev();
   const shouldStartHidden = getShouldStartHidden();
 
+  const isMac = process.platform === 'darwin';
+
   const newWindow = new BrowserWindow({
     width: 1400,
     height: 900,
     minWidth: 1000,
     minHeight: 700,
     frame: false,
+    titleBarStyle: isMac ? 'hiddenInset' : 'default',
+    trafficLightPosition: isMac ? { x: 12, y: 10 } : undefined,
     resizable: true,
     backgroundColor: '#1e1e1e',
     show: false,

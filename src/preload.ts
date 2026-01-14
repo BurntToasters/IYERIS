@@ -89,6 +89,11 @@ const electronAPI: ElectronAPI = {
     ipcRenderer.invoke('get-file-data-url', filePath, maxSize),
   getLicenses: () => ipcRenderer.invoke('get-licenses'),
   getPlatform: () => ipcRenderer.invoke('get-platform'),
+  getSystemAccentColor: () =>
+    ipcRenderer.invoke('get-system-accent-color') as Promise<{
+      accentColor: string;
+      isDarkMode: boolean;
+    }>,
   isMas: () => ipcRenderer.invoke('is-mas'),
   isFlatpak: () => ipcRenderer.invoke('is-flatpak'),
   isMsStore: () => ipcRenderer.invoke('is-ms-store'),
@@ -160,6 +165,12 @@ const electronAPI: ElectronAPI = {
     const handler = () => callback();
     ipcRenderer.on('system-resumed', handler);
     return () => ipcRenderer.removeListener('system-resumed', handler);
+  },
+  onSystemThemeChanged: (callback: (data: { isDarkMode: boolean }) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, data: { isDarkMode: boolean }) =>
+      callback(data);
+    ipcRenderer.on('system-theme-changed', handler);
+    return () => ipcRenderer.removeListener('system-theme-changed', handler);
   },
   setZoomLevel: (zoomLevel: number) => ipcRenderer.invoke('set-zoom-level', zoomLevel),
   getZoomLevel: () => ipcRenderer.invoke('get-zoom-level'),

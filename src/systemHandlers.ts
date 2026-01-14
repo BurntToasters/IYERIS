@@ -1,4 +1,13 @@
-import { ipcMain, app, dialog, shell, IpcMainInvokeEvent } from 'electron';
+import {
+  ipcMain,
+  app,
+  dialog,
+  shell,
+  IpcMainInvokeEvent,
+  systemPreferences,
+  nativeTheme,
+  BrowserWindow,
+} from 'electron';
 import * as path from 'path';
 import { promises as fs } from 'fs';
 import { exec, execFile, spawn } from 'child_process';
@@ -499,6 +508,29 @@ export function setupSystemHandlers(
     return process.platform;
   });
 
+  ipcMain.handle('get-system-accent-color', (): { accentColor: string; isDarkMode: boolean } => {
+    let accentColor = '#0078d4';
+    if (process.platform === 'win32') {
+      try {
+        const color = systemPreferences.getAccentColor();
+        if (color && color.length >= 6) {
+          accentColor = `#${color.substring(0, 6)}`;
+        }
+      } catch {}
+    } else if (process.platform === 'darwin') {
+      try {
+        const color = systemPreferences.getAccentColor();
+        if (color && color.length >= 6) {
+          accentColor = `#${color.substring(0, 6)}`;
+        }
+      } catch {}
+    }
+    return {
+      accentColor,
+      isDarkMode: nativeTheme.shouldUseDarkColors,
+    };
+  });
+
   ipcMain.handle('is-mas', (): boolean => {
     return process.mas === true;
   });
@@ -652,4 +684,11 @@ export function setupSystemHandlers(
       }
     }
   );
+
+  nativeTheme.on('updated', () => {
+    const isDarkMode = nativeTheme.shouldUseDarkColors;
+    BrowserWindow.getAllWindows().forEach((win) => {
+      win.webContents.send('system-theme-changed', { isDarkMode });
+    });
+  });
 }

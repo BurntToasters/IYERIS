@@ -79,6 +79,11 @@
         </div>
         <div id="bookmarks-list"></div>
       </div>
+      <button class="sidebar-toggle" id="sidebar-toggle" title="Toggle Sidebar (Ctrl+B)">
+        <svg width="16" height="16" viewBox="0 0 16 16">
+          <path d="M10 2 L4 8 L10 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
     </div>
 
     <div class="main-content">
@@ -426,7 +431,17 @@
                   <span class="toggle-slider"></span>
                 </label>
               </div>
-              <div class="setting-item" data-searchable="theme color scheme charcoal cobalt light dark custom">
+              <div class="setting-item" data-searchable="system theme appearance auto dark light mode">
+                <div class="setting-info">
+                  <label>Match System Appearance</label>
+                  <p class="setting-description">Automatically switch between light and dark themes</p>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="system-theme-toggle">
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+              <div class="setting-item" data-searchable="theme color scheme charcoal cobalt light dark custom nord catppuccin dracula solarized github">
                 <div class="setting-info">
                   <label for="theme-select">Color Theme</label>
                   <p class="setting-description">Choose your preferred color scheme</p>
@@ -435,6 +450,11 @@
                   <option value="default">Charcoal</option>
                   <option value="dark">Cobalt</option>
                   <option value="light">Light</option>
+                  <option value="nord">Nord</option>
+                  <option value="catppuccin">Catppuccin</option>
+                  <option value="dracula">Dracula</option>
+                  <option value="solarized">Solarized</option>
+                  <option value="github">GitHub Dark</option>
                 </select>
               </div>
               <div class="setting-item" data-searchable="theme color scheme custom customize editor">

@@ -4,6 +4,7 @@ export function createDefaultSettings(): Settings {
   return {
     transparency: true,
     theme: 'default',
+    useSystemTheme: false,
     sortBy: 'name',
     sortOrder: 'asc',
     bookmarks: [],

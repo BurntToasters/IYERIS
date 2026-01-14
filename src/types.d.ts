@@ -26,7 +26,17 @@ export interface TabState {
 
 export interface Settings {
   transparency: boolean;
-  theme: 'dark' | 'light' | 'default' | 'custom';
+  theme:
+    | 'dark'
+    | 'light'
+    | 'default'
+    | 'custom'
+    | 'nord'
+    | 'catppuccin'
+    | 'dracula'
+    | 'solarized'
+    | 'github';
+  useSystemTheme: boolean;
   sortBy: 'name' | 'date' | 'size' | 'type';
   sortOrder: 'asc' | 'desc';
   bookmarks: string[];
@@ -348,6 +358,7 @@ export interface ElectronAPI {
   ) => Promise<{ success: boolean; dataUrl?: string; error?: string }>;
   getLicenses: () => Promise<{ success: boolean; licenses?: any; error?: string }>;
   getPlatform: () => Promise<string>;
+  getSystemAccentColor: () => Promise<{ accentColor: string; isDarkMode: boolean }>;
   isMas: () => Promise<boolean>;
   isFlatpak: () => Promise<boolean>;
   isMsStore: () => Promise<boolean>;
@@ -394,6 +405,7 @@ export interface ElectronAPI {
     }) => void
   ) => () => void;
   onSystemResumed: (callback: () => void) => () => void;
+  onSystemThemeChanged: (callback: (data: { isDarkMode: boolean }) => void) => () => void;
   setZoomLevel: (zoomLevel: number) => Promise<ApiResponse>;
   getZoomLevel: () => Promise<{ success: boolean; zoomLevel?: number; error?: string }>;
   calculateFolderSize: (
