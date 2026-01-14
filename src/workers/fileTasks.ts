@@ -794,7 +794,15 @@ async function searchIndexFile(payload: any, operationId?: string): Promise<any[
 async function calculateFolderSize(
   payload: FolderSizePayload,
   operationId?: string
-): Promise<{ size: number; files: number; dirs: number; totalSize?: number; fileCount?: number }> {
+): Promise<{
+  size: number;
+  files: number;
+  dirs: number;
+  totalSize: number;
+  fileCount: number;
+  folderCount: number;
+  fileTypes: { extension: string; count: number; size: number }[];
+}> {
   const { folderPath } = payload;
   let totalSize = 0;
   let fileCount = 0;
@@ -850,7 +858,15 @@ async function calculateFolderSize(
     .sort((a, b) => b.size - a.size)
     .slice(0, 10);
 
-  return { size: totalSize, files: fileCount, dirs: folderCount, totalSize, fileCount };
+  return {
+    size: totalSize,
+    files: fileCount,
+    dirs: folderCount,
+    totalSize,
+    fileCount,
+    folderCount,
+    fileTypes,
+  };
 }
 
 async function calculateChecksum(
@@ -914,7 +930,19 @@ async function buildIndex(
   operationId?: string
 ): Promise<{
   indexedFiles: number;
-  entries?: Array<[string, { size: number; modified: number }]>;
+  entries?: Array<
+    [
+      string,
+      {
+        name: string;
+        path: string;
+        isDirectory: boolean;
+        isFile: boolean;
+        size: number;
+        modified: number;
+      },
+    ]
+  >;
 }> {
   const locations: string[] = payload.locations || [];
   const maxIndexSize: number = payload.maxIndexSize || 200000;
@@ -998,6 +1026,10 @@ async function buildIndex(
         entries.push([
           fullPath,
           {
+            name: entry.name,
+            path: fullPath,
+            isDirectory: entry.isDirectory(),
+            isFile: entry.isFile(),
             size: stats.size,
             modified: stats.mtime.getTime(),
           },
@@ -1013,17 +1045,56 @@ async function buildIndex(
   return { indexedFiles: entries.length, entries };
 }
 
-async function loadIndexFile(
-  payload: LoadIndexPayload
-): Promise<{ indexedFiles: number; indexDate: number; exists?: boolean }> {
+async function loadIndexFile(payload: LoadIndexPayload): Promise<{
+  indexedFiles: number;
+  indexDate: number;
+  exists: boolean;
+  index?: Array<unknown>;
+  lastIndexTime?: string | null;
+}> {
   const { indexPath } = payload;
   try {
     const data = await fs.readFile(indexPath, 'utf-8');
     const parsed = JSON.parse(data);
+    const indexEntries = Array.isArray(parsed.index) ? parsed.index : [];
+    const sample = indexEntries.slice(0, 20);
+    const isLegacy = sample.some((entry) => {
+      if (Array.isArray(entry)) {
+        if (entry.length < 2) return true;
+        const entryPath = entry[0];
+        const item = entry[1];
+        if (typeof entryPath !== 'string' || !item || typeof item !== 'object') return true;
+        return (
+          typeof item.name !== 'string' ||
+          typeof item.isFile !== 'boolean' ||
+          typeof item.isDirectory !== 'boolean'
+        );
+      }
+      if (entry && typeof entry === 'object') {
+        const item = entry as { [key: string]: unknown };
+        return (
+          typeof item.path !== 'string' ||
+          typeof item.name !== 'string' ||
+          typeof item.isFile !== 'boolean' ||
+          typeof item.isDirectory !== 'boolean'
+        );
+      }
+      return true;
+    });
+
+    if (isLegacy && indexEntries.length > 0) {
+      try {
+        await fs.unlink(indexPath);
+      } catch {}
+      return { exists: false, indexedFiles: 0, indexDate: 0 };
+    }
+
     return {
       exists: true,
-      indexedFiles: Array.isArray(parsed.index) ? parsed.index.length : 0,
+      indexedFiles: indexEntries.length,
       indexDate: parsed.lastIndexTime || Date.now(),
+      index: indexEntries,
+      lastIndexTime: parsed.lastIndexTime || null,
     };
   } catch (error) {
     const err = error as NodeJS.ErrnoException;

@@ -8,6 +8,9 @@ import type { FileTaskManager } from './fileTasks';
 import { getDrives } from './utils';
 
 const execAsync = promisify(exec);
+type IndexEntryPayload = Partial<Omit<IndexEntry, 'modified'>> & {
+  modified?: Date | number | string;
+};
 
 export class FileIndexer {
   private index: Map<string, IndexEntry> = new Map();
@@ -198,6 +201,59 @@ export class FileIndexer {
     }
     return estimate;
   }
+
+  private normalizeIndexEntry(entryPath: string, entry: IndexEntryPayload): IndexEntry | null {
+    if (!entryPath || typeof entryPath !== 'string') {
+      return null;
+    }
+    const name = typeof entry.name === 'string' ? entry.name : path.basename(entryPath);
+    const isDirectory = typeof entry.isDirectory === 'boolean' ? entry.isDirectory : false;
+    const isFile = typeof entry.isFile === 'boolean' ? entry.isFile : !isDirectory;
+    const size = typeof entry.size === 'number' ? entry.size : 0;
+    const modifiedValue = entry.modified ?? 0;
+    let modified =
+      modifiedValue instanceof Date ? modifiedValue : new Date(modifiedValue as string | number);
+    if (Number.isNaN(modified.getTime())) {
+      modified = new Date(0);
+    }
+
+    return {
+      name,
+      path: entryPath,
+      isDirectory,
+      isFile,
+      size,
+      modified,
+    };
+  }
+
+  private loadIndexEntries(entries: unknown[]): void {
+    this.index.clear();
+    for (const entry of entries) {
+      let entryPath: string | null = null;
+      let item: IndexEntryPayload | null = null;
+
+      if (Array.isArray(entry)) {
+        entryPath = typeof entry[0] === 'string' ? entry[0] : null;
+        item = (entry[1] as IndexEntryPayload) || null;
+      } else if (entry && typeof entry === 'object') {
+        const obj = entry as IndexEntryPayload & { path?: string };
+        entryPath = typeof obj.path === 'string' ? obj.path : null;
+        item = obj;
+      }
+
+      if (!entryPath || !item) {
+        continue;
+      }
+
+      const normalized = this.normalizeIndexEntry(entryPath, item);
+      if (normalized) {
+        this.index.set(entryPath, normalized);
+      }
+    }
+
+    this.indexedFiles = this.index.size;
+  }
   async buildIndex(): Promise<void> {
     if (this.isIndexing) {
       console.log('[Indexer] Already indexing, skipping...');
@@ -223,14 +279,20 @@ export class FileIndexer {
 
       if (this.fileTasks) {
         this.buildOperationId = `index-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-        const result = await this.fileTasks.runTask<{ entries: IndexEntry[] }>(
+        const result = await this.fileTasks.runTask<{
+          entries: Array<[string, IndexEntryPayload]>;
+        }>(
           'build-index',
           { locations, maxIndexSize: FileIndexer.MAX_INDEX_SIZE },
           this.buildOperationId
         );
-        for (const entry of result.entries) {
+        const entries = Array.isArray(result.entries) ? result.entries : [];
+        for (const [entryPath, entry] of entries) {
           if (this.index.size >= FileIndexer.MAX_INDEX_SIZE) break;
-          this.index.set(entry.path, entry);
+          const normalized = this.normalizeIndexEntry(entryPath, entry);
+          if (normalized) {
+            this.index.set(entryPath, normalized);
+          }
         }
         this.indexedFiles = this.index.size;
         console.log(`[Indexer] Worker scan complete. Indexed ${this.indexedFiles} files.`);
@@ -358,23 +420,21 @@ export class FileIndexer {
       if (this.fileTasks) {
         const result = await this.fileTasks.runTask<{
           exists: boolean;
-          index?: Array<[string, IndexEntry]>;
+          index?: Array<unknown>;
           lastIndexTime?: string | null;
         }>('load-index', { indexPath: this.indexPath }, `load-index-${Date.now()}`);
         if (!result.exists) {
           console.log('[Indexer] No existing index found, will build on first search');
           return;
         }
-        this.index = new Map(result.index || []);
+        this.loadIndexEntries(result.index || []);
         this.lastIndexTime = result.lastIndexTime ? new Date(result.lastIndexTime) : null;
-        this.indexedFiles = this.index.size;
       } else {
         const data = await fs.readFile(this.indexPath, 'utf-8');
         const parsed = JSON.parse(data);
 
-        this.index = new Map(parsed.index);
+        this.loadIndexEntries(Array.isArray(parsed.index) ? parsed.index : []);
         this.lastIndexTime = parsed.lastIndexTime ? new Date(parsed.lastIndexTime) : null;
-        this.indexedFiles = this.index.size;
       }
       console.log(`[Indexer] Index loaded: ${this.indexedFiles} files`);
     } catch (error) {
