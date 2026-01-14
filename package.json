@@ -1,6 +1,6 @@
 {
   "name": "iyeris",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "description": "A beautiful cross-platform file explorer built with Electron, featuring a stunning liquid-glass interface with smooth animations and modern design.",
   "main": "dist/main.js",
   "dependencies": {
@@ -116,7 +116,8 @@
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
       "notarize": false,
-      "artifactName": "${productName}-MacOS-universal.${ext}"
+      "artifactName": "${productName}-MacOS-universal.${ext}",
+      "x64ArchFiles": "**/7zip-bin/mac/**"
     },
     "mas": {
       "type": "distribution",
