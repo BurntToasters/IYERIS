@@ -27,6 +27,7 @@ import {
   getIsDev,
 } from './appState';
 import { loadSettings } from './settingsManager';
+import { logger } from './utils/logger';
 
 export function showAppWindow(): void {
   const targetWindow = getActiveWindow();
@@ -169,7 +170,7 @@ export function createWindow(isInitialWindow: boolean = false): BrowserWindow {
         parsed.protocol === 'mailto:'
       ) {
         shell.openExternal(url).catch((error) => {
-          console.error('[Security] Failed to open external URL:', error);
+          logger.error('[Security] Failed to open external URL:', error);
         });
         return true;
       }
@@ -181,7 +182,7 @@ export function createWindow(isInitialWindow: boolean = false): BrowserWindow {
     if (openExternalIfAllowed(url)) {
       return { action: 'deny' };
     }
-    console.warn('[Security] Blocked window.open to:', url);
+    logger.warn('[Security] Blocked window.open to:', url);
     return { action: 'deny' };
   });
 
@@ -470,18 +471,17 @@ export function setupApplicationMenu(): void {
 }
 
 export function setupWindowHandlers(): void {
-  const mainWindow = getMainWindow();
-
-  ipcMain.handle('minimize-window', (): void => {
-    mainWindow?.minimize();
+  ipcMain.handle('minimize-window', (event: IpcMainInvokeEvent): void => {
+    const win = BrowserWindow.fromWebContents(event.sender) ?? getMainWindow();
+    win?.minimize();
   });
 
-  ipcMain.handle('maximize-window', (): void => {
-    const mainWindow = getMainWindow();
-    if (mainWindow?.isMaximized()) {
-      mainWindow.unmaximize();
+  ipcMain.handle('maximize-window', (event: IpcMainInvokeEvent): void => {
+    const win = BrowserWindow.fromWebContents(event.sender) ?? getMainWindow();
+    if (win?.isMaximized()) {
+      win.unmaximize();
     } else {
-      mainWindow?.maximize();
+      win?.maximize();
     }
   });
 

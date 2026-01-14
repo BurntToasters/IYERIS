@@ -550,20 +550,26 @@ export function setupSystemHandlers(
           return { success: true, isGitRepo: false, statuses: [] };
         }
 
-        const { stdout } = await execPromise('git status --porcelain -uall', {
+        const { stdout } = await execPromise('git status --porcelain -uall -z', {
           cwd: dirPath,
           maxBuffer: 10 * 1024 * 1024,
         });
 
         const statuses: { path: string; status: string }[] = [];
-        const lines = stdout.split('\n').filter((line) => line.trim());
+        const entries = stdout.split('\0').filter((entry) => entry);
 
-        for (const line of lines) {
-          const statusCode = line.substring(0, 2);
-          let filePath = line.substring(3);
+        for (let i = 0; i < entries.length; i++) {
+          const entry = entries[i];
+          if (entry.length < 3) continue;
+          const statusCode = entry.substring(0, 2);
+          let filePath = entry.substring(3);
 
-          if (filePath.includes(' -> ')) {
-            filePath = filePath.split(' -> ')[1];
+          if (statusCode.includes('R') || statusCode.includes('C')) {
+            const nextPath = entries[i + 1];
+            if (nextPath) {
+              filePath = nextPath;
+              i += 1;
+            }
           }
 
           let status: string;

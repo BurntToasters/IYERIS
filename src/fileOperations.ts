@@ -2,6 +2,7 @@ import { ipcMain, app, dialog, shell, IpcMainInvokeEvent } from 'electron';
 import * as path from 'path';
 import { promises as fs } from 'fs';
 import * as fsSync from 'fs';
+import { fileURLToPath } from 'url';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import type {
@@ -202,21 +203,46 @@ export function setupFileOperationHandlers(): void {
     'open-file',
     async (_event: IpcMainInvokeEvent, filePath: string): Promise<ApiResponse> => {
       try {
-        if (filePath.startsWith('http://') || filePath.startsWith('https://')) {
+        const looksLikeWindowsPath =
+          process.platform === 'win32' &&
+          (/^[A-Za-z]:[\\/]/.test(filePath) || filePath.startsWith('\\\\'));
+        let parsed: URL | null = null;
+
+        if (!looksLikeWindowsPath && /^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(filePath)) {
+          try {
+            parsed = new URL(filePath);
+          } catch {}
+        }
+
+        if (parsed) {
           if (!isUrlSafe(filePath)) {
             console.warn('[Security] Unsafe URL rejected:', filePath);
             return { success: false, error: 'Invalid or unsafe URL' };
           }
+          if (parsed.protocol === 'file:') {
+            const targetPath = fileURLToPath(parsed);
+            if (!isPathSafe(targetPath)) {
+              console.warn('[Security] Invalid path rejected:', targetPath);
+              return { success: false, error: 'Invalid path' };
+            }
+            const openResult = await shell.openPath(targetPath);
+            if (openResult) {
+              return { success: false, error: openResult };
+            }
+            return { success: true };
+          }
+
           await shell.openExternal(filePath);
-        } else {
-          if (!isPathSafe(filePath)) {
-            console.warn('[Security] Invalid path rejected:', filePath);
-            return { success: false, error: 'Invalid path' };
-          }
-          const openResult = await shell.openPath(filePath);
-          if (openResult) {
-            return { success: false, error: openResult };
-          }
+          return { success: true };
+        }
+
+        if (!isPathSafe(filePath)) {
+          console.warn('[Security] Invalid path rejected:', filePath);
+          return { success: false, error: 'Invalid path' };
+        }
+        const openResult = await shell.openPath(filePath);
+        if (openResult) {
+          return { success: false, error: openResult };
         }
         return { success: true };
       } catch (error) {

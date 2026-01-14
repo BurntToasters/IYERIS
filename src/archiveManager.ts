@@ -6,8 +6,15 @@ import type { ApiResponse } from './types';
 import { getMainWindow } from './appState';
 import { isPathSafe, getErrorMessage } from './security';
 import { get7zipModule, get7zipPath } from './platformUtils';
+import { logger } from './utils/logger';
 
-const activeArchiveProcesses = new Map<string, any>();
+interface ArchiveProcess {
+  operationId: string;
+  process: any;
+  startTime: number;
+}
+
+const activeArchiveProcesses = new Map<string, ArchiveProcess>();
 
 async function assertArchiveEntriesSafe(archivePath: string, destPath: string): Promise<void> {
   const Seven = get7zipModule();
@@ -141,24 +148,24 @@ export function setupArchiveHandlers(): void {
     ): Promise<ApiResponse> => {
       try {
         if (!isPathSafe(outputPath)) {
-          console.warn('[Security] Invalid output path rejected:', outputPath);
+          logger.warn('[Security] Invalid output path rejected:', outputPath);
           return { success: false, error: 'Invalid output path' };
         }
 
         for (const sourcePath of sourcePaths) {
           if (!isPathSafe(sourcePath)) {
-            console.warn('[Security] Invalid source path rejected:', sourcePath);
+            logger.warn('[Security] Invalid source path rejected:', sourcePath);
             return { success: false, error: 'Invalid source path' };
           }
         }
 
         const allowedFormats = ['zip', '7z', 'tar', 'tar.gz', 'gz'];
         if (!allowedFormats.includes(format)) {
-          console.warn('[Security] Invalid archive format rejected:', format);
+          logger.warn('[Security] Invalid archive format rejected:', format);
           return { success: false, error: 'Invalid archive format' };
         }
 
-        console.log(
+        logger.info(
           '[Compress] Starting compression:',
           sourcePaths,
           'to',
@@ -169,7 +176,7 @@ export function setupArchiveHandlers(): void {
 
         try {
           await fs.access(outputPath);
-          console.log('[Compress] Removing existing file:', outputPath);
+          logger.info('[Compress] Removing existing file:', outputPath);
           await fs.unlink(outputPath);
         } catch (err) {}
 
@@ -179,9 +186,9 @@ export function setupArchiveHandlers(): void {
           return new Promise(async (resolve, reject) => {
             const Seven = get7zipModule();
             const sevenZipPath = get7zipPath();
-            console.log('[Compress] Using 7zip at:', sevenZipPath);
+            logger.info('[Compress] Using 7zip at:', sevenZipPath);
             const tarPath = outputPath.replace(/\.gz$/, '');
-            console.log('[Compress] Creating tar file:', tarPath);
+            logger.info('[Compress] Creating tar file:', tarPath);
 
             const tarOptions: any = {
               $bin: sevenZipPath,
@@ -192,7 +199,11 @@ export function setupArchiveHandlers(): void {
             const tarProcess = Seven.add(tarPath, sourcePaths, tarOptions);
 
             if (operationId) {
-              activeArchiveProcesses.set(operationId, tarProcess);
+              activeArchiveProcesses.set(operationId, {
+                operationId,
+                process: tarProcess,
+                startTime: Date.now(),
+              });
             }
 
             let fileCount = 0;
@@ -215,13 +226,17 @@ export function setupArchiveHandlers(): void {
             });
 
             tarProcess.on('end', async () => {
-              console.log('[Compress] Tar created, now compressing with gzip...');
+              logger.info('[Compress] Tar created, now compressing with gzip...');
               const gzipProcess = Seven.add(outputPath, [tarPath], {
                 $bin: sevenZipPath,
               });
 
               if (operationId) {
-                activeArchiveProcesses.set(operationId, gzipProcess);
+                activeArchiveProcesses.set(operationId, {
+                  operationId,
+                  process: gzipProcess,
+                  startTime: Date.now(),
+                });
               }
 
               gzipProcess.on('progress', () => {
@@ -241,12 +256,12 @@ export function setupArchiveHandlers(): void {
               });
 
               gzipProcess.on('end', async () => {
-                console.log('[Compress] tar.gz compression completed');
+                logger.info('[Compress] tar.gz compression completed');
 
                 try {
                   await fs.unlink(tarPath);
                 } catch (err) {
-                  console.error('[Compress] Failed to delete intermediate tar:', err);
+                  logger.error('[Compress] Failed to delete intermediate tar:', err);
                 }
 
                 if (operationId) {
@@ -256,7 +271,7 @@ export function setupArchiveHandlers(): void {
               });
 
               gzipProcess.on('error', async (error: { message?: string; level?: string }) => {
-                console.error('[Compress] Gzip error:', error);
+                logger.error('[Compress] Gzip error:', error);
 
                 try {
                   await fs.unlink(tarPath);
@@ -271,7 +286,7 @@ export function setupArchiveHandlers(): void {
 
                 const errorMsg = error.message || '';
                 if (error.level === 'WARNING' && errorMsg.includes('Access is denied')) {
-                  console.log(
+                  logger.info(
                     '[Compress] Warning about access denied, but gzip compression may have succeeded'
                   );
                   resolve({ success: true });
@@ -282,7 +297,7 @@ export function setupArchiveHandlers(): void {
             });
 
             tarProcess.on('error', async (error: { message?: string; level?: string }) => {
-              console.error('[Compress] Tar error:', error);
+              logger.error('[Compress] Tar error:', error);
 
               try {
                 await fs.unlink(tarPath);
@@ -294,7 +309,7 @@ export function setupArchiveHandlers(): void {
 
               const errorMsg = error.message || '';
               if (error.level === 'WARNING' && errorMsg.includes('Access is denied')) {
-                console.log(
+                logger.info(
                   '[Compress] Warning about access denied, but tar creation may have succeeded'
                 );
                 const gzipProcess = Seven.add(outputPath, [tarPath], {
@@ -302,7 +317,11 @@ export function setupArchiveHandlers(): void {
                 });
 
                 if (operationId) {
-                  activeArchiveProcesses.set(operationId, gzipProcess);
+                  activeArchiveProcesses.set(operationId, {
+                    operationId,
+                    process: gzipProcess,
+                    startTime: Date.now(),
+                  });
                 }
 
                 gzipProcess.on('end', async () => {
@@ -335,7 +354,7 @@ export function setupArchiveHandlers(): void {
         return new Promise((resolve, reject) => {
           const Seven = get7zipModule();
           const sevenZipPath = get7zipPath();
-          console.log('[Compress] Using 7zip at:', sevenZipPath);
+          logger.info('[Compress] Using 7zip at:', sevenZipPath);
 
           const options: any = {
             $bin: sevenZipPath,
@@ -346,7 +365,11 @@ export function setupArchiveHandlers(): void {
           const seven = Seven.add(outputPath, sourcePaths, options);
 
           if (operationId) {
-            activeArchiveProcesses.set(operationId, seven);
+            activeArchiveProcesses.set(operationId, {
+              operationId,
+              process: seven,
+              startTime: Date.now(),
+            });
           }
 
           let fileCount = 0;
@@ -369,7 +392,7 @@ export function setupArchiveHandlers(): void {
           });
 
           seven.on('end', () => {
-            console.log('[Compress] 7zip compression completed for format:', format);
+            logger.info('[Compress] 7zip compression completed for format:', format);
             if (operationId) {
               activeArchiveProcesses.delete(operationId);
             }
@@ -377,7 +400,7 @@ export function setupArchiveHandlers(): void {
           });
 
           seven.on('error', (error: { message?: string; level?: string }) => {
-            console.error('[Compress] 7zip error:', error);
+            logger.error('[Compress] 7zip error:', error);
             if (operationId) {
               activeArchiveProcesses.delete(operationId);
             }
@@ -385,7 +408,7 @@ export function setupArchiveHandlers(): void {
 
             const errorMsg = error.message || '';
             if (error.level === 'WARNING' && errorMsg.includes('Access is denied')) {
-              console.log(
+              logger.info(
                 '[Compress] Warning about access denied, but compression may have succeeded'
               );
               resolve({ success: true });
@@ -395,7 +418,7 @@ export function setupArchiveHandlers(): void {
           });
         });
       } catch (error) {
-        console.error('[Compress] Error:', error);
+        logger.error('[Compress] Error:', error);
         return { success: false, error: getErrorMessage(error) };
       }
     }
@@ -411,21 +434,21 @@ export function setupArchiveHandlers(): void {
     ): Promise<ApiResponse> => {
       try {
         if (!isPathSafe(archivePath)) {
-          console.warn('[Security] Invalid archive path rejected:', archivePath);
+          logger.warn('[Security] Invalid archive path rejected:', archivePath);
           return { success: false, error: 'Invalid archive path' };
         }
         if (!isPathSafe(destPath)) {
-          console.warn('[Security] Invalid destination path rejected:', destPath);
+          logger.warn('[Security] Invalid destination path rejected:', destPath);
           return { success: false, error: 'Invalid destination path' };
         }
 
-        console.log('[Extract] Starting extraction:', archivePath, 'to', destPath);
+        logger.info('[Extract] Starting extraction:', archivePath, 'to', destPath);
 
         await fs.mkdir(destPath, { recursive: true });
         try {
           await assertArchiveEntriesSafe(archivePath, destPath);
         } catch (error) {
-          console.error('[Extract] Unsafe archive:', error);
+          logger.error('[Extract] Unsafe archive:', error);
           return { success: false, error: 'Archive contains unsafe paths' };
         }
 
@@ -434,7 +457,7 @@ export function setupArchiveHandlers(): void {
         return new Promise((resolve, reject) => {
           const Seven = get7zipModule();
           const sevenZipPath = get7zipPath();
-          console.log('[Extract] Using 7zip at:', sevenZipPath);
+          logger.info('[Extract] Using 7zip at:', sevenZipPath);
 
           const seven = Seven.extractFull(archivePath, destPath, {
             $bin: sevenZipPath,
@@ -442,7 +465,11 @@ export function setupArchiveHandlers(): void {
           });
 
           if (operationId) {
-            activeArchiveProcesses.set(operationId, seven);
+            activeArchiveProcesses.set(operationId, {
+              operationId,
+              process: seven,
+              startTime: Date.now(),
+            });
           }
 
           let fileCount = 0;
@@ -473,7 +500,7 @@ export function setupArchiveHandlers(): void {
               }
               resolve({ success: true });
             } catch (error) {
-              console.error('[Extract] Unsafe extracted paths:', error);
+              logger.error('[Extract] Post-extraction safety check failed:', error);
               if (operationId) {
                 activeArchiveProcesses.delete(operationId);
               }
@@ -482,7 +509,7 @@ export function setupArchiveHandlers(): void {
           });
 
           seven.on('error', (error: { message?: string }) => {
-            console.error('[Extract] 7zip error:', error);
+            logger.error('[Extract] 7zip extraction error:', error);
             if (operationId) {
               activeArchiveProcesses.delete(operationId);
             }
@@ -490,7 +517,7 @@ export function setupArchiveHandlers(): void {
           });
         });
       } catch (error) {
-        console.error('[Extract] Error:', error);
+        logger.error('[Extract] Error:', error);
         return { success: false, error: getErrorMessage(error) };
       }
     }
@@ -502,42 +529,49 @@ export function setupArchiveHandlers(): void {
       try {
         const process = activeArchiveProcesses.get(operationId);
         if (!process) {
-          console.log('[Archive] Operation not found for cancellation:', operationId);
+          logger.warn('[Archive] Operation not found for cancellation:', operationId);
           return { success: false, error: 'Operation not found' };
         }
 
-        console.log('[Archive] Cancelling operation:', operationId);
-        if (process._childProcess) {
+        logger.info('[Archive] Cancelling operation:', operationId);
+        if (process.process?._childProcess) {
           try {
-            process._childProcess.kill('SIGTERM');
+            process.process._childProcess.kill('SIGTERM');
           } catch (killError) {
-            console.log('[Archive] Process already terminated:', killError);
+            logger.debug('[Archive] Process already terminated:', killError);
           }
-        } else if (typeof process.cancel === 'function') {
-          process.cancel();
+        } else if (typeof process.process?.cancel === 'function') {
+          process.process.cancel();
         }
 
         activeArchiveProcesses.delete(operationId);
         return { success: true };
       } catch (error) {
-        console.error('[Archive] Cancel error:', error);
+        logger.error('[Archive] Cancel error:', error);
         return { success: false, error: getErrorMessage(error) };
       }
     }
   );
 }
 
+const ARCHIVE_OPERATION_TIMEOUT = 30 * 60 * 1000;
+
 export function cleanupArchiveOperations(): void {
-  for (const [operationId, process] of activeArchiveProcesses) {
-    console.log('[Cleanup] Aborting archive operation:', operationId);
+  const now = Date.now();
+  for (const [operationId, archiveProcess] of activeArchiveProcesses) {
     try {
-      if (process._childProcess) {
-        process._childProcess.kill('SIGTERM');
-      } else if (typeof process.cancel === 'function') {
-        process.cancel();
+      if (now - archiveProcess.startTime > ARCHIVE_OPERATION_TIMEOUT) {
+        logger.warn('[Cleanup] Cleaning up stale archive operation:', operationId);
+      } else {
+        logger.info('[Cleanup] Aborting archive operation:', operationId);
+      }
+      if (archiveProcess.process?._childProcess) {
+        archiveProcess.process._childProcess.kill('SIGTERM');
+      } else if (typeof archiveProcess.process?.cancel === 'function') {
+        archiveProcess.process.cancel();
       }
     } catch (error) {
-      console.error('[Cleanup] Error aborting archive operation:', error);
+      logger.error('[Cleanup] Error aborting archive operation:', error);
     }
   }
   activeArchiveProcesses.clear();
