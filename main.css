@@ -573,6 +573,7 @@ body.tabs-enabled.tabs-single .toolbar-new-tab-btn {
   -webkit-backdrop-filter: none;
   isolation: isolate;
   transition: width var(--animation-duration) var(--animation-easing);
+  position: relative;
 }
 
 .sidebar.collapsed {
@@ -602,9 +603,6 @@ body.tabs-enabled.tabs-single .toolbar-new-tab-btn {
 }
 
 .sidebar-toggle {
-  position: absolute;
-  bottom: var(--sidebar-toggle-bottom);
-  left: 6px;
   width: var(--icon-size-sidebar-toggle);
   height: var(--icon-size-sidebar-toggle);
   background: transparent;
@@ -617,6 +615,9 @@ body.tabs-enabled.tabs-single .toolbar-new-tab-btn {
   color: var(--text-tertiary);
   transition: all var(--animation-duration) var(--animation-easing);
   z-index: 50;
+  margin-top: auto;
+  margin-left: 6px;
+  flex-shrink: 0;
 }
 
 .sidebar-toggle:hover {
