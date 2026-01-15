@@ -1,7 +1,10 @@
 import * as path from 'path';
 export { escapeHtml, getErrorMessage } from './shared';
 
-export function isPathSafe(inputPath: string, platform: NodeJS.Platform = process.platform): boolean {
+export function isPathSafe(
+  inputPath: string,
+  platform: NodeJS.Platform = process.platform
+): boolean {
   if (!inputPath || typeof inputPath !== 'string') {
     return false;
   }
@@ -18,13 +21,12 @@ export function isPathSafe(inputPath: string, platform: NodeJS.Platform = proces
   }
 
   const segments = inputPath.split(/[/\\]+/).filter(Boolean);
-  if (segments.some(segment => segment === '..')) {
+  if (segments.some((segment) => segment === '..')) {
     return false;
   }
 
-  const normalized = platform === 'win32'
-    ? path.win32.normalize(inputPath)
-    : path.normalize(inputPath);
+  const normalized =
+    platform === 'win32' ? path.win32.normalize(inputPath) : path.normalize(inputPath);
 
   if (platform === 'win32') {
     const normalizedPath = normalized.replace(/\//g, '\\');
@@ -46,11 +48,30 @@ export function isPathSafe(inputPath: string, platform: NodeJS.Platform = proces
     }
 
     const reservedNames = new Set([
-      'con', 'prn', 'aux', 'nul',
-      'com1', 'com2', 'com3', 'com4', 'com5', 'com6', 'com7', 'com8', 'com9',
-      'lpt1', 'lpt2', 'lpt3', 'lpt4', 'lpt5', 'lpt6', 'lpt7', 'lpt8', 'lpt9'
+      'con',
+      'prn',
+      'aux',
+      'nul',
+      'com1',
+      'com2',
+      'com3',
+      'com4',
+      'com5',
+      'com6',
+      'com7',
+      'com8',
+      'com9',
+      'lpt1',
+      'lpt2',
+      'lpt3',
+      'lpt4',
+      'lpt5',
+      'lpt6',
+      'lpt7',
+      'lpt8',
+      'lpt9',
     ]);
-    const startIndex = isUnc ? 2 : (parts[0]?.includes(':') ? 1 : 0);
+    const startIndex = isUnc ? 2 : parts[0]?.includes(':') ? 1 : 0;
     for (let i = startIndex; i < parts.length; i++) {
       const part = parts[i];
       const trimmed = part.replace(/[ .]+$/g, '');
@@ -69,7 +90,7 @@ export function isPathSafe(inputPath: string, platform: NodeJS.Platform = proces
     const restrictedPaths = [
       'c:\\windows\\system32\\config\\sam',
       'c:\\windows\\system32\\config\\system',
-      'c:\\windows\\system32\\config\\security'
+      'c:\\windows\\system32\\config\\security',
     ];
 
     for (const restricted of restrictedPaths) {

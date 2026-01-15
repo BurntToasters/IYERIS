@@ -2,36 +2,62 @@ import { app, BrowserWindow, powerMonitor } from 'electron';
 import * as os from 'os';
 
 import {
-  getMainWindow, setMainWindow,
-  getFileIndexer, setFileIndexer,
-  getTray, setIsQuitting,
+  getMainWindow,
+  setMainWindow,
+  getFileIndexer,
+  setFileIndexer,
+  getTray,
+  setIsQuitting,
   setShouldStartHidden,
-  getFileTasks, getIndexerTasks
+  getFileTasks,
+  getIndexerTasks,
 } from './appState';
 import { checkMsiInstallation } from './platformUtils';
 import { setupFileTasksProgressHandler } from './ipcUtils';
 import { warmupDrivesCache } from './utils';
 import { FileIndexer } from './indexer';
+import { logger } from './utils/logger';
 
 import { setupZoomHandlers } from './zoomHandlers';
-import { setupFileAnalysisHandlers, cleanupFileAnalysis, getActiveFolderSizeCalculations, getActiveChecksumCalculations } from './fileAnalysis';
-import { setupSystemHandlers, checkFullDiskAccess, showFullDiskAccessDialog } from './systemHandlers';
-import { setupSettingsHandlers, loadSettings, saveSettings, applyLoginItemSettings } from './settingsManager';
+import {
+  setupFileAnalysisHandlers,
+  cleanupFileAnalysis,
+  getActiveFolderSizeCalculations,
+  getActiveChecksumCalculations,
+} from './fileAnalysis';
+import {
+  setupSystemHandlers,
+  checkFullDiskAccess,
+  showFullDiskAccessDialog,
+} from './systemHandlers';
+import {
+  setupSettingsHandlers,
+  loadSettings,
+  saveSettings,
+  applyLoginItemSettings,
+} from './settingsManager';
 import { setupUndoRedoHandlers, clearUndoRedoStacks } from './undoRedoManager';
-import { createWindow, createTray, createTrayForHiddenStart, setupApplicationMenu, setupWindowHandlers } from './windowManager';
+import {
+  createWindow,
+  createTray,
+  createTrayForHiddenStart,
+  setupApplicationMenu,
+  setupWindowHandlers,
+} from './windowManager';
 import { setupFileOperationHandlers, stopHiddenFileCacheCleanup } from './fileOperations';
 import { setupSearchHandlers } from './searchHandlers';
 import { setupArchiveHandlers, cleanupArchiveOperations } from './archiveManager';
 import { setupUpdateHandlers, initializeAutoUpdater } from './updateManager';
 
-const TOTAL_MEM_GB = os.totalmem() / (1024 ** 3);
+const TOTAL_MEM_GB = os.totalmem() / 1024 ** 3;
 
 if (process.argv.includes('--disable-hardware-acceleration')) {
-  console.log('[Performance] Hardware acceleration disabled via command line flag');
+  logger.info('[Performance] Hardware acceleration disabled via command line flag');
   app.disableHardwareAcceleration();
 }
 
-const MAX_OLD_SPACE_MB = TOTAL_MEM_GB < 6 ? 512 : TOTAL_MEM_GB < 12 ? 1024 : TOTAL_MEM_GB < 24 ? 2048 : 3072;
+const MAX_OLD_SPACE_MB =
+  TOTAL_MEM_GB < 6 ? 512 : TOTAL_MEM_GB < 12 ? 1024 : TOTAL_MEM_GB < 24 ? 2048 : 3072;
 const jsFlags: string[] = [`--max-old-space-size=${MAX_OLD_SPACE_MB}`];
 if (TOTAL_MEM_GB < 12) {
   jsFlags.push('--optimize-for-size', '--gc-interval=100');
@@ -39,19 +65,17 @@ if (TOTAL_MEM_GB < 12) {
 app.commandLine.appendSwitch('js-flags', jsFlags.join(' '));
 app.commandLine.appendSwitch('enable-features', 'ReducedReferrerGranularity,V8VmFuture');
 app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion,MediaRouter');
-app.commandLine.appendSwitch('disable-renderer-backgrounding');
-app.commandLine.appendSwitch('disable-background-timer-throttling');
 app.commandLine.appendSwitch('wm-window-animations-disabled');
 app.commandLine.appendSwitch('force-color-profile', 'srgb');
 
 const gotTheLock = app.requestSingleInstanceLock();
 
 if (!gotTheLock) {
-  console.log('[SingleInstance] Another instance is already running, quitting...');
+  logger.info('[SingleInstance] Another instance is already running, quitting...');
   app.quit();
 } else {
   app.on('second-instance', () => {
-    console.log('[SingleInstance] Second instance attempted to start');
+    logger.info('[SingleInstance] Second instance attempted to start');
     const mainWindow = getMainWindow();
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
@@ -90,35 +114,35 @@ app.whenReady().then(async () => {
   if (!shouldStartHidden && process.windowsStore) {
     try {
       const loginItemSettings = app.getLoginItemSettings();
-      console.log('[Startup] MS Store login item settings:', JSON.stringify(loginItemSettings));
+      logger.info('[Startup] MS Store login item settings:', JSON.stringify(loginItemSettings));
       if (loginItemSettings.wasOpenedAtLogin && startupSettings.startOnLogin) {
         shouldStartHidden = true;
         setShouldStartHidden(shouldStartHidden);
-        console.log('[Startup] MS Store: Detected wasOpenedAtLogin, will start hidden');
+        logger.info('[Startup] MS Store: Detected wasOpenedAtLogin, will start hidden');
       }
     } catch (error) {
-      console.error('[Startup] Error checking MS Store login settings:', error);
+      logger.error('[Startup] Error checking MS Store login settings:', error);
     }
   }
 
   if (!shouldStartHidden && process.platform === 'darwin') {
     try {
       const loginItemSettings = app.getLoginItemSettings();
-      console.log('[Startup] macOS login item settings:', JSON.stringify(loginItemSettings));
+      logger.info('[Startup] macOS login item settings:', JSON.stringify(loginItemSettings));
       if (loginItemSettings.wasOpenedAtLogin && startupSettings.startOnLogin) {
         shouldStartHidden = true;
         setShouldStartHidden(shouldStartHidden);
-        console.log('[Startup] macOS: Detected wasOpenedAtLogin, will start hidden');
+        logger.info('[Startup] macOS: Detected wasOpenedAtLogin, will start hidden');
       }
     } catch (error) {
-      console.error('[Startup] Error checking login item settings:', error);
+      logger.error('[Startup] Error checking login item settings:', error);
     }
   }
 
-  console.log('[Startup] Starting with hidden mode:', shouldStartHidden);
+  logger.info('[Startup] Starting with hidden mode:', shouldStartHidden);
 
   if (shouldStartHidden && (startupSettings.minimizeToTray || startupSettings.startOnLogin)) {
-    console.log('[Startup] Creating tray before window for hidden start');
+    logger.info('[Startup] Creating tray before window for hidden start');
     createTrayForHiddenStart();
   }
 
@@ -136,13 +160,14 @@ app.whenReady().then(async () => {
 
         if (startupSettings.enableIndexer) {
           const indexerTasks = getIndexerTasks();
-          const indexerDelay = process.platform === 'win32' ? 2000 : 500;
+          const baseIndexerDelay = process.platform === 'win32' ? 5000 : 1500;
+          const indexerDelay = shouldStartHidden ? baseIndexerDelay + 1000 : baseIndexerDelay;
           const fileIndexer = new FileIndexer(indexerTasks ?? undefined);
           setFileIndexer(fileIndexer);
           setTimeout(() => {
-            fileIndexer.initialize(startupSettings.enableIndexer).catch(err =>
-              console.error('[Indexer] Background initialization failed:', err)
-            );
+            fileIndexer
+              .initialize(startupSettings.enableIndexer)
+              .catch((err) => logger.error('[Indexer] Background initialization failed:', err));
           }, indexerDelay);
         }
 
@@ -152,11 +177,11 @@ app.whenReady().then(async () => {
 
         if (process.platform === 'darwin') {
           setTimeout(async () => {
-            console.log('[FDA] Running Full Disk Access check');
+            logger.info('[FDA] Running Full Disk Access check');
             const hasAccess = await checkFullDiskAccess();
 
             if (hasAccess) {
-              console.log('[FDA] Full Disk Access already granted');
+              logger.info('[FDA] Full Disk Access already granted');
               const settings = await loadSettings();
               if (settings.skipFullDiskAccessPrompt) {
                 delete settings.skipFullDiskAccessPrompt;
@@ -172,7 +197,7 @@ app.whenReady().then(async () => {
           }, 5000);
         }
       } catch (error) {
-        console.error('[Startup] Background initialization error:', error);
+        logger.error('[Startup] Background initialization error:', error);
       }
     }, 100);
   });
@@ -191,38 +216,42 @@ app.whenReady().then(async () => {
   });
 
   powerMonitor.on('suspend', () => {
-    console.log('[PowerMonitor] System is going to sleep');
+    logger.info('[PowerMonitor] System is going to sleep');
     try {
       const fileIndexer = getFileIndexer();
       if (fileIndexer) {
-        console.log('[PowerMonitor] Pausing indexer before sleep');
+        logger.info('[PowerMonitor] Pausing indexer before sleep');
         fileIndexer.setEnabled(false);
       }
     } catch (error) {
-      console.error('[PowerMonitor] Error pausing indexer:', error);
+      logger.error('[PowerMonitor] Error pausing indexer:', error);
     }
   });
 
   powerMonitor.on('resume', async () => {
-    console.log('[PowerMonitor] System resumed from sleep');
+    logger.info('[PowerMonitor] System resumed from sleep');
     setTimeout(async () => {
-      console.log('[PowerMonitor] Post-resume initialization');
+      logger.info('[PowerMonitor] Post-resume initialization');
 
       try {
         const settings = await loadSettings();
         const fileIndexer = getFileIndexer();
         if (fileIndexer && settings.enableIndexer) {
-          console.log('[PowerMonitor] Re-enabling indexer after resume');
+          logger.info('[PowerMonitor] Re-enabling indexer after resume');
           fileIndexer.setEnabled(true);
         }
       } catch (error) {
-        console.error('[PowerMonitor] Error re-enabling indexer:', error);
+        logger.error('[PowerMonitor] Error re-enabling indexer:', error);
       }
 
       const mainWindow = getMainWindow();
       if (mainWindow && !mainWindow.isDestroyed()) {
         try {
-          if (mainWindow.isVisible() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
+          if (
+            mainWindow.isVisible() &&
+            mainWindow.webContents &&
+            !mainWindow.webContents.isDestroyed()
+          ) {
             mainWindow.webContents.send('system-resumed');
           }
         } catch (error) {
@@ -233,11 +262,11 @@ app.whenReady().then(async () => {
   });
 
   powerMonitor.on('lock-screen', () => {
-    console.log('[PowerMonitor] Screen locked');
+    logger.info('[PowerMonitor] Screen locked');
   });
 
   powerMonitor.on('unlock-screen', () => {
-    console.log('[PowerMonitor] Screen unlocked');
+    logger.info('[PowerMonitor] Screen unlocked');
   });
 });
 

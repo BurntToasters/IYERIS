@@ -1,11 +1,21 @@
 import { ipcMain, app } from 'electron';
 import type { Settings, ApiResponse, UpdateCheckResponse } from './types';
 import { getMainWindow, getIsDev } from './appState';
-import { getAutoUpdater, isRunningInFlatpak, checkMsiInstallation, isInstalledViaMsi } from './platformUtils';
+import {
+  getAutoUpdater,
+  isRunningInFlatpak,
+  checkMsiInstallation,
+  isInstalledViaMsi,
+} from './platformUtils';
 import { safeSendToWindow } from './ipcUtils';
 import { getErrorMessage } from './security';
 
-function parseVersion(v: string): { major: number; minor: number; patch: number; prerelease: string[] } {
+function parseVersion(v: string): {
+  major: number;
+  minor: number;
+  patch: number;
+  prerelease: string[];
+} {
   const cleaned = v.split('+')[0];
   const match = cleaned.match(/^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/);
   if (!match) return { major: 0, minor: 0, patch: 0, prerelease: [] };
@@ -13,7 +23,7 @@ function parseVersion(v: string): { major: number; minor: number; patch: number;
     major: parseInt(match[1], 10),
     minor: parseInt(match[2], 10),
     patch: parseInt(match[3], 10),
-    prerelease: match[4] ? match[4].split('.') : []
+    prerelease: match[4] ? match[4].split('.') : [],
   };
 }
 
@@ -89,11 +99,18 @@ export function initializeAutoUpdater(settings: Settings): void {
       autoUpdater.allowPrerelease = false;
       console.log('[AutoUpdater] Stable channel enabled');
     }
-    console.log('[AutoUpdater] Current version:', currentVersion, '| Channel setting:', updateChannel);
+    console.log(
+      '[AutoUpdater] Current version:',
+      currentVersion,
+      '| Channel setting:',
+      updateChannel
+    );
 
     if (isRunningInFlatpak()) {
       console.log('[AutoUpdater] Running in Flatpak - auto-updater disabled');
-      console.log('[AutoUpdater] Updates should be installed via: flatpak update com.burnttoasters.iyeris');
+      console.log(
+        '[AutoUpdater] Updates should be installed via: flatpak update com.burnttoasters.iyeris'
+      );
     } else if (process.mas) {
       console.log('[AutoUpdater] Running in Mac App Store - auto-updater disabled');
     } else if (process.windowsStore) {
@@ -127,7 +144,9 @@ export function initializeAutoUpdater(settings: Settings): void {
 
       const comparison = compareVersions(info.version, currentVersion);
       if (comparison <= 0) {
-        console.log(`[AutoUpdater] Ignoring update ${info.version} - current version ${currentVersion} is newer or equal`);
+        console.log(
+          `[AutoUpdater] Ignoring update ${info.version} - current version ${currentVersion} is newer or equal`
+        );
         safeSendToWindow(mainWindow, 'update-not-available', { version: currentVersion });
         return;
       }
@@ -145,22 +164,37 @@ export function initializeAutoUpdater(settings: Settings): void {
       safeSendToWindow(getMainWindow(), 'update-error', err.message);
     });
 
-    autoUpdater.on('download-progress', (progressObj: { percent: number; bytesPerSecond: number; transferred: number; total: number }) => {
-      console.log(`[AutoUpdater] Download progress: ${progressObj.percent.toFixed(2)}%`);
-      safeSendToWindow(getMainWindow(), 'update-download-progress', {
-        percent: progressObj.percent,
-        bytesPerSecond: progressObj.bytesPerSecond,
-        transferred: progressObj.transferred,
-        total: progressObj.total
-      });
-    });
+    autoUpdater.on(
+      'download-progress',
+      (progressObj: {
+        percent: number;
+        bytesPerSecond: number;
+        transferred: number;
+        total: number;
+      }) => {
+        console.log(`[AutoUpdater] Download progress: ${progressObj.percent.toFixed(2)}%`);
+        safeSendToWindow(getMainWindow(), 'update-download-progress', {
+          percent: progressObj.percent,
+          bytesPerSecond: progressObj.bytesPerSecond,
+          transferred: progressObj.transferred,
+          total: progressObj.total,
+        });
+      }
+    );
 
     autoUpdater.on('update-downloaded', (info: { version: string }) => {
       console.log('[AutoUpdater] Update downloaded:', info.version);
       safeSendToWindow(getMainWindow(), 'update-downloaded', info);
     });
 
-    if (!isRunningInFlatpak() && !process.mas && !process.windowsStore && !isInstalledViaMsi() && !isDev && settings.autoCheckUpdates !== false) {
+    if (
+      !isRunningInFlatpak() &&
+      !process.mas &&
+      !process.windowsStore &&
+      !isInstalledViaMsi() &&
+      !isDev &&
+      settings.autoCheckUpdates !== false
+    ) {
       console.log('[AutoUpdater] Checking for updates on startup...');
       autoUpdater.checkForUpdates().catch((err: Error) => {
         console.error('[AutoUpdater] Startup check failed:', err);
@@ -184,7 +218,8 @@ export function setupUpdateHandlers(loadSettings: () => Promise<Settings>): void
         currentVersion: `v${currentVersion}`,
         latestVersion: `v${currentVersion}`,
         isFlatpak: true,
-        flatpakMessage: 'Updates are managed by Flatpak. Run: flatpak update com.burnttoasters.iyeris'
+        flatpakMessage:
+          'Updates are managed by Flatpak. Run: flatpak update com.burnttoasters.iyeris',
       };
     }
 
@@ -197,7 +232,7 @@ export function setupUpdateHandlers(loadSettings: () => Promise<Settings>): void
         currentVersion: `v${currentVersion}`,
         latestVersion: `v${currentVersion}`,
         isMas: true,
-        masMessage: 'Updates are managed by the Mac App Store.'
+        masMessage: 'Updates are managed by the Mac App Store.',
       };
     }
 
@@ -210,7 +245,7 @@ export function setupUpdateHandlers(loadSettings: () => Promise<Settings>): void
         currentVersion: `v${currentVersion}`,
         latestVersion: `v${currentVersion}`,
         isMsStore: true,
-        msStoreMessage: 'Updates are managed by the Microsoft Store.'
+        msStoreMessage: 'Updates are managed by the Microsoft Store.',
       };
     }
 
@@ -223,7 +258,8 @@ export function setupUpdateHandlers(loadSettings: () => Promise<Settings>): void
         currentVersion: `v${currentVersion}`,
         latestVersion: `v${currentVersion}`,
         isMsi: true,
-        msiMessage: 'This is an enterprise installation. Updates are managed by your IT administrator. To enable auto-updates, uninstall the MSI version and install the regular version from the website.'
+        msiMessage:
+          'This is an enterprise installation. Updates are managed by your IT administrator. To enable auto-updates, uninstall the MSI version and install the regular version from the website.',
       };
     }
 
@@ -232,7 +268,12 @@ export function setupUpdateHandlers(loadSettings: () => Promise<Settings>): void
       const currentVersion = app.getVersion();
       const settings = await loadSettings();
       const updateChannel = settings.updateChannel || 'auto';
-      console.log('[AutoUpdater] Manually checking for updates. Current version:', currentVersion, '| Channel:', updateChannel);
+      console.log(
+        '[AutoUpdater] Manually checking for updates. Current version:',
+        currentVersion,
+        '| Channel:',
+        updateChannel
+      );
 
       const isBetaVersion = /-(beta|alpha|rc)/i.test(currentVersion);
       let preferBeta = false;
@@ -269,7 +310,7 @@ export function setupUpdateHandlers(loadSettings: () => Promise<Settings>): void
           hasUpdate: false,
           isBeta: true,
           currentVersion: `v${currentVersion}`,
-          latestVersion: `v${currentVersion}`
+          latestVersion: `v${currentVersion}`,
         };
       }
 
@@ -280,7 +321,7 @@ export function setupUpdateHandlers(loadSettings: () => Promise<Settings>): void
           hasUpdate: false,
           isBeta: false,
           currentVersion: `v${currentVersion}`,
-          latestVersion: `v${currentVersion}`
+          latestVersion: `v${currentVersion}`,
         };
       }
 
@@ -292,7 +333,7 @@ export function setupUpdateHandlers(loadSettings: () => Promise<Settings>): void
         currentVersion,
         latestVersion,
         preferBeta,
-        updateIsBeta
+        updateIsBeta,
       });
 
       return {
@@ -302,11 +343,11 @@ export function setupUpdateHandlers(loadSettings: () => Promise<Settings>): void
         updateInfo: {
           version: updateInfo.version,
           releaseDate: updateInfo.releaseDate,
-          releaseNotes: updateInfo.releaseNotes as string | undefined
+          releaseNotes: updateInfo.releaseNotes as string | undefined,
         },
         currentVersion: `v${currentVersion}`,
         latestVersion: `v${latestVersion}`,
-        releaseUrl: `https://github.com/BurntToasters/IYERIS/releases/tag/v${latestVersion}`
+        releaseUrl: `https://github.com/BurntToasters/IYERIS/releases/tag/v${latestVersion}`,
       };
     } catch (error) {
       console.error('[AutoUpdater] Check for updates failed:', error);

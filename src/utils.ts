@@ -10,17 +10,19 @@ let drivesCacheTime: number = 0;
 const DRIVES_CACHE_TTL = 30000;
 
 export function getCachedDrives(): string[] | null {
-  if (cachedDrives && (Date.now() - drivesCacheTime) < DRIVES_CACHE_TTL) {
+  if (cachedDrives && Date.now() - drivesCacheTime < DRIVES_CACHE_TTL) {
     return cachedDrives;
   }
   return null;
 }
 
 export function warmupDrivesCache(): void {
-  getDrives().then(drives => {
-    cachedDrives = drives;
-    drivesCacheTime = Date.now();
-  }).catch(() => {});
+  getDrives()
+    .then((drives) => {
+      cachedDrives = drives;
+      drivesCacheTime = Date.now();
+    })
+    .catch(() => {});
 }
 
 export async function getDrives(): Promise<string[]> {
@@ -35,10 +37,13 @@ export async function getDrives(): Promise<string[]> {
     const drives: Set<string> = new Set();
 
     try {
-      const { stdout } = await execAsync('powershell -NoProfile -Command "Get-PSDrive -PSProvider FileSystem | Select-Object -ExpandProperty Name"', { timeout: 5000 });
+      const { stdout } = await execAsync(
+        'powershell -NoProfile -Command "Get-PSDrive -PSProvider FileSystem | Select-Object -ExpandProperty Name"',
+        { timeout: 5000 }
+      );
       const lines = stdout.split(/[\r\n]+/);
       for (const line of lines) {
-        let drive = line.trim();
+        const drive = line.trim();
         if (/^[A-Z]$/i.test(drive)) {
           drives.add(drive.toUpperCase() + ':\\');
         }
@@ -80,7 +85,7 @@ export async function getDrives(): Promise<string[]> {
         try {
           await Promise.race([
             fs.access(drive),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 200))
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 200)),
           ]);
           return drive;
         } catch {
@@ -89,10 +94,10 @@ export async function getDrives(): Promise<string[]> {
       };
 
       const results = await Promise.all(driveLetters.map(checkDrive));
-      results.forEach(d => {
+      results.forEach((d) => {
         if (d) drives.add(d);
       });
-      
+
       if (drives.size > 0) {
         console.log('[Drives] Direct check detected drives:', Array.from(drives).join(', '));
       }
@@ -124,11 +129,9 @@ export async function getDrives(): Promise<string[]> {
             if (stats.isDirectory()) {
               detected.push(fullPath);
             }
-          } catch {
-          }
+          } catch {}
         }
-      } catch {
-      }
+      } catch {}
     }
     cachedDrives = detected;
     drivesCacheTime = Date.now();

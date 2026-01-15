@@ -4,6 +4,7 @@ export function createDefaultSettings(): Settings {
   return {
     transparency: true,
     theme: 'default',
+    useSystemTheme: false,
     sortBy: 'name',
     sortOrder: 'asc',
     bookmarks: [],
@@ -35,6 +36,7 @@ export function createDefaultSettings(): Settings {
     boldText: false,
     visibleFocus: false,
     reduceTransparency: false,
-    updateChannel: 'auto'
+    uiDensity: 'default',
+    updateChannel: 'auto',
   };
 }

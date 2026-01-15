@@ -1,15 +1,161 @@
-import { app, BrowserWindow, ipcMain, Menu, Tray, nativeImage, shell, IpcMainInvokeEvent } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  ipcMain,
+  Menu,
+  Tray,
+  nativeImage,
+  shell,
+  IpcMainInvokeEvent,
+} from 'electron';
 import * as path from 'path';
 import { pathToFileURL } from 'url';
 import * as fsSync from 'fs';
 import {
-  getMainWindow, setMainWindow, getActiveWindow,
-  getTray, setTray, getIsQuitting, setIsQuitting,
-  getCurrentTrayState, setCurrentTrayState,
-  getTrayAssetsPath, setTrayAssetsPath,
-  getShouldStartHidden, getIsDev
+  getMainWindow,
+  setMainWindow,
+  getActiveWindow,
+  getTray,
+  setTray,
+  getIsQuitting,
+  setIsQuitting,
+  getCurrentTrayState,
+  setCurrentTrayState,
+  getTrayAssetsPath,
+  setTrayAssetsPath,
+  getShouldStartHidden,
+  getIsDev,
 } from './appState';
-import { loadSettings } from './settingsManager';
+import { loadSettings, getCachedSettings } from './settingsManager';
+import { logger } from './utils/logger';
+
+type TrayState = 'idle' | 'active' | 'notification';
+type TrayPlatform = 'darwin' | 'win32' | 'linux';
+
+const allowCloseWindows = new WeakSet<BrowserWindow>();
+const windowVisibility = new WeakMap<BrowserWindow, boolean>();
+let visibleWindowCount = 0;
+
+const TRAY_ICON_FILES: Record<TrayPlatform, Record<TrayState, string>> = {
+  darwin: {
+    idle: 'icon-tray-Template.png',
+    active: 'icon-tray-Template.png',
+    notification: 'icon-tray-Template.png',
+  },
+  win32: { idle: 'icon-square.ico', active: 'icon-square.ico', notification: 'icon-square.ico' },
+  linux: {
+    idle: 'icon_32x32@1x.png',
+    active: 'icon_32x32@1x.png',
+    notification: 'icon_32x32@1x.png',
+  },
+};
+
+const TRAY_ICON_SIZES: Record<TrayPlatform, { width: number; height: number }> = {
+  darwin: { width: 22, height: 22 },
+  win32: { width: 16, height: 16 },
+  linux: { width: 24, height: 24 },
+};
+
+const TRAY_ASSETS_PATH = path.join(__dirname, '..', 'assets');
+const INDEX_PATH = path.join(__dirname, '..', 'index.html');
+const INDEX_URL = pathToFileURL(INDEX_PATH).toString();
+const INDEX_URL_OBJ = new URL(INDEX_URL);
+const trayIconCache = new Map<string, { path: string; icon: Electron.NativeImage }>();
+
+function getTrayPlatform(): TrayPlatform {
+  if (
+    process.platform === 'darwin' ||
+    process.platform === 'win32' ||
+    process.platform === 'linux'
+  ) {
+    return process.platform;
+  }
+  return 'linux';
+}
+
+function resolveTrayIconPath(
+  trayAssetsPath: string,
+  platform: TrayPlatform,
+  state: TrayState
+): string {
+  const iconFile = TRAY_ICON_FILES[platform][state];
+
+  if (platform === 'darwin') {
+    const iconPath = path.join(trayAssetsPath, iconFile);
+    if (fsSync.existsSync(iconPath)) {
+      return iconPath;
+    }
+    const fallbackPath = path.join(trayAssetsPath, 'iyeris.iconset', 'icon_32x32@1x.png');
+    if (fsSync.existsSync(fallbackPath)) {
+      return fallbackPath;
+    }
+    return path.join(trayAssetsPath, 'icon.png');
+  }
+
+  if (platform === 'linux') {
+    const iconPath = path.join(trayAssetsPath, 'iyeris.iconset', iconFile);
+    if (fsSync.existsSync(iconPath)) {
+      return iconPath;
+    }
+    return path.join(trayAssetsPath, 'icon.png');
+  }
+
+  const iconPath = path.join(trayAssetsPath, iconFile);
+  if (fsSync.existsSync(iconPath)) {
+    return iconPath;
+  }
+  return path.join(trayAssetsPath, 'icon.png');
+}
+
+function getTrayIcon(
+  trayAssetsPath: string,
+  platform: TrayPlatform,
+  state: TrayState
+): { path: string; icon: Electron.NativeImage } {
+  const cacheKey = `${trayAssetsPath}:${platform}:${state}`;
+  const cached = trayIconCache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  const iconPath = resolveTrayIconPath(trayAssetsPath, platform, state);
+  let icon = nativeImage.createFromPath(iconPath);
+  if (platform !== 'win32' || !iconPath.endsWith('.ico')) {
+    icon = icon.resize(TRAY_ICON_SIZES[platform] || TRAY_ICON_SIZES.linux);
+  }
+  if (platform === 'darwin') {
+    icon.setTemplateImage(true);
+  }
+
+  const result = { path: iconPath, icon };
+  if (!icon.isEmpty()) {
+    trayIconCache.set(cacheKey, result);
+  }
+  return result;
+}
+
+function setWindowVisibility(win: BrowserWindow, isVisible: boolean): void {
+  const prevVisible = windowVisibility.get(win) ?? false;
+  if (prevVisible === isVisible) {
+    return;
+  }
+  windowVisibility.set(win, isVisible);
+  visibleWindowCount += isVisible ? 1 : -1;
+  if (visibleWindowCount < 0) {
+    visibleWindowCount = 0;
+  }
+}
+
+function trackWindowVisibility(win: BrowserWindow): void {
+  setWindowVisibility(win, win.isVisible());
+  win.on('show', () => setWindowVisibility(win, true));
+  win.on('hide', () => setWindowVisibility(win, false));
+  win.on('closed', () => setWindowVisibility(win, false));
+}
+
+function getVisibleWindowCount(): number {
+  return visibleWindowCount;
+}
 
 export function showAppWindow(): void {
   const targetWindow = getActiveWindow();
@@ -46,61 +192,22 @@ export function updateTrayMenu(status?: string): void {
   tray.setContextMenu(Menu.buildFromTemplate(menuItems));
 }
 
-export function setTrayState(state: 'idle' | 'active' | 'notification'): void {
+export function setTrayState(state: TrayState): void {
   const tray = getTray();
   const trayAssetsPath = getTrayAssetsPath();
   if (!tray || !trayAssetsPath || getCurrentTrayState() === state) return;
   setCurrentTrayState(state);
 
-  const iconFiles: Record<string, Record<string, string>> = {
-    darwin: { idle: 'icon-tray-Template.png', active: 'icon-tray-Template.png', notification: 'icon-tray-Template.png' },
-    win32: { idle: 'icon-square.ico', active: 'icon-square.ico', notification: 'icon-square.ico' },
-    linux: { idle: 'icon_32x32@1x.png', active: 'icon_32x32@1x.png', notification: 'icon_32x32@1x.png' }
-  };
-
-  const platform = process.platform as 'darwin' | 'win32' | 'linux';
-  const iconFile = iconFiles[platform]?.[state] || iconFiles[platform]?.idle;
-
-  let iconPath: string;
-  if (platform === 'darwin') {
-    iconPath = path.join(trayAssetsPath, iconFile);
-    if (!fsSync.existsSync(iconPath)) {
-      const fallbackPath = path.join(trayAssetsPath, 'iyeris.iconset', 'icon_32x32@1x.png');
-      iconPath = fsSync.existsSync(fallbackPath) ? fallbackPath : path.join(trayAssetsPath, 'icon.png');
-    }
-  } else if (platform === 'linux') {
-    iconPath = path.join(trayAssetsPath, 'iyeris.iconset', iconFile);
-    if (!fsSync.existsSync(iconPath)) {
-      iconPath = path.join(trayAssetsPath, 'icon.png');
-    }
-  } else {
-    iconPath = path.join(trayAssetsPath, iconFile);
-    if (!fsSync.existsSync(iconPath)) {
-      iconPath = path.join(trayAssetsPath, 'icon.png');
-    }
-  }
-
-  const sizes: Record<string, { width: number; height: number }> = {
-    darwin: { width: 22, height: 22 },
-    win32: { width: 16, height: 16 },
-    linux: { width: 24, height: 24 }
-  };
-
-  let newIcon = nativeImage.createFromPath(iconPath);
-  if (platform !== 'win32' || !iconPath.endsWith('.ico')) {
-    newIcon = newIcon.resize(sizes[platform] || sizes.linux);
-  }
-
-  if (platform === 'darwin') {
-    newIcon.setTemplateImage(true);
-  }
-
-  tray.setImage(newIcon);
+  const platform = getTrayPlatform();
+  const trayIcon = getTrayIcon(trayAssetsPath, platform, state);
+  tray.setImage(trayIcon.icon);
 }
 
 export function createWindow(isInitialWindow: boolean = false): BrowserWindow {
   const isDev = getIsDev();
   const shouldStartHidden = getShouldStartHidden();
+
+  const isMac = process.platform === 'darwin';
 
   const newWindow = new BrowserWindow({
     width: 1400,
@@ -108,6 +215,8 @@ export function createWindow(isInitialWindow: boolean = false): BrowserWindow {
     minWidth: 1000,
     minHeight: 700,
     frame: false,
+    titleBarStyle: isMac ? 'hiddenInset' : 'default',
+    trafficLightPosition: isMac ? { x: 12, y: 10 } : undefined,
     resizable: true,
     backgroundColor: '#1e1e1e',
     show: false,
@@ -117,7 +226,7 @@ export function createWindow(isInitialWindow: boolean = false): BrowserWindow {
       sandbox: true,
       preload: path.join(__dirname, 'preload.js'),
       devTools: isDev,
-      backgroundThrottling: false,
+      backgroundThrottling: true,
       spellcheck: false,
       v8CacheOptions: 'code',
       enableWebSQL: false,
@@ -125,20 +234,42 @@ export function createWindow(isInitialWindow: boolean = false): BrowserWindow {
       webgl: false,
       images: true,
       autoplayPolicy: 'user-gesture-required',
-      defaultEncoding: 'UTF-8'
+      defaultEncoding: 'UTF-8',
     },
-    icon: path.join(__dirname, '..', 'assets', 'icon.png')
+    icon: (() => {
+      const version = app.getVersion();
+      const isBeta = /-(beta|alpha|rc)/i.test(version);
+      const iconName = isBeta ? 'icon-beta.png' : 'icon.png';
+      const iconPath = path.join(__dirname, '..', 'assets', iconName);
+      console.log(`[Window] Version: ${version}, isBeta: ${isBeta}, icon: ${iconName}`);
+      console.log(`[Window] Icon path: ${iconPath}`);
+      return iconPath;
+    })(),
   });
 
-  newWindow.loadFile(path.join(__dirname, '..', 'index.html'));
-  const indexUrl = pathToFileURL(path.join(__dirname, '..', 'index.html')).toString();
+  trackWindowVisibility(newWindow);
+
+  newWindow.loadFile(INDEX_PATH);
+
+  const isMainPageUrl = (url: string): boolean => {
+    try {
+      const parsed = new URL(url);
+      return parsed.origin === INDEX_URL_OBJ.origin && parsed.pathname === INDEX_URL_OBJ.pathname;
+    } catch {
+      return false;
+    }
+  };
 
   const openExternalIfAllowed = (url: string): boolean => {
     try {
       const parsed = new URL(url);
-      if (parsed.protocol === 'http:' || parsed.protocol === 'https:' || parsed.protocol === 'mailto:') {
-        shell.openExternal(url).catch(error => {
-          console.error('[Security] Failed to open external URL:', error);
+      if (
+        parsed.protocol === 'http:' ||
+        parsed.protocol === 'https:' ||
+        parsed.protocol === 'mailto:'
+      ) {
+        shell.openExternal(url).catch((error) => {
+          logger.error('[Security] Failed to open external URL:', error);
         });
         return true;
       }
@@ -150,12 +281,12 @@ export function createWindow(isInitialWindow: boolean = false): BrowserWindow {
     if (openExternalIfAllowed(url)) {
       return { action: 'deny' };
     }
-    console.warn('[Security] Blocked window.open to:', url);
+    logger.warn('[Security] Blocked window.open to:', url);
     return { action: 'deny' };
   });
 
   newWindow.webContents.on('will-navigate', (event, url) => {
-    if (url !== indexUrl) {
+    if (!isMainPageUrl(url)) {
       if (openExternalIfAllowed(url)) {
         event.preventDefault();
         return;
@@ -166,7 +297,7 @@ export function createWindow(isInitialWindow: boolean = false): BrowserWindow {
   });
 
   newWindow.webContents.on('will-redirect', (event, url) => {
-    if (url !== indexUrl) {
+    if (!isMainPageUrl(url)) {
       if (openExternalIfAllowed(url)) {
         event.preventDefault();
         return;
@@ -177,7 +308,14 @@ export function createWindow(isInitialWindow: boolean = false): BrowserWindow {
   });
 
   const startHidden = isInitialWindow && shouldStartHidden;
-  console.log('[Window] Creating window, isInitial:', isInitialWindow, 'startHidden:', startHidden, 'shouldStartHidden:', shouldStartHidden);
+  console.log(
+    '[Window] Creating window, isInitial:',
+    isInitialWindow,
+    'startHidden:',
+    startHidden,
+    'shouldStartHidden:',
+    shouldStartHidden
+  );
 
   newWindow.once('ready-to-show', async () => {
     if (startHidden) {
@@ -187,44 +325,51 @@ export function createWindow(isInitialWindow: boolean = false): BrowserWindow {
         await createTray();
       }
       newWindow.hide();
+      setWindowVisibility(newWindow, false);
       if (process.platform === 'darwin') {
         app.dock?.hide();
       }
     } else {
       newWindow.show();
+      setWindowVisibility(newWindow, true);
     }
   });
 
-  newWindow.on('close', async (event) => {
-    if (!getIsQuitting()) {
-      const settings = await loadSettings();
+  newWindow.on('close', (event) => {
+    if (getIsQuitting() || allowCloseWindows.has(newWindow)) {
+      return;
+    }
+
+    event.preventDefault();
+
+    void (async () => {
+      const settings = getCachedSettings() ?? (await loadSettings());
       const tray = getTray();
       if (settings.minimizeToTray && tray) {
-        event.preventDefault();
         newWindow.hide();
+        setWindowVisibility(newWindow, false);
         if (process.platform === 'darwin') {
-          const allWindows = BrowserWindow.getAllWindows();
-          const visibleWindows = allWindows.filter(w => w.isVisible());
-          if (visibleWindows.length === 0) {
+          if (getVisibleWindowCount() === 0) {
             app.dock?.hide();
           }
         }
         return;
       }
-    }
-    return;
+
+      allowCloseWindows.add(newWindow);
+      newWindow.close();
+    })();
   });
 
   newWindow.on('minimize', async () => {
-    const settings = await loadSettings();
+    const settings = getCachedSettings() ?? (await loadSettings());
     const tray = getTray();
     if (settings.minimizeToTray && tray) {
       if (process.platform === 'darwin') {
         setImmediate(() => {
           newWindow.hide();
-          const allWindows = BrowserWindow.getAllWindows();
-          const visibleWindows = allWindows.filter(w => w.isVisible());
-          if (visibleWindows.length === 0) {
+          setWindowVisibility(newWindow, false);
+          if (getVisibleWindowCount() === 0) {
             app.dock?.hide();
           }
         });
@@ -265,7 +410,7 @@ export async function createTray(forHiddenStart: boolean = false): Promise<void>
       return;
     }
   } else {
-    const settings = await loadSettings();
+    const settings = getCachedSettings() ?? (await loadSettings());
     if (!settings.minimizeToTray) {
       console.log(`${logPrefix} Tray disabled in settings`);
       return;
@@ -278,52 +423,18 @@ export async function createTray(forHiddenStart: boolean = false): Promise<void>
     }
   }
 
-  let iconPath: string;
-  let trayIcon: Electron.NativeImage;
-
-  const trayAssetsPath = path.join(__dirname, '..', 'assets');
+  const trayAssetsPath = TRAY_ASSETS_PATH;
   setTrayAssetsPath(trayAssetsPath);
 
-  if (process.platform === 'darwin') {
-    const templatePath = path.join(trayAssetsPath, 'icon-tray-Template.png');
-    const icon32Path = path.join(trayAssetsPath, 'iyeris.iconset', 'icon_32x32@1x.png');
-    const iconFallback = path.join(trayAssetsPath, 'icon.png');
-
-    if (fsSync.existsSync(templatePath)) {
-      iconPath = templatePath;
-      trayIcon = nativeImage.createFromPath(iconPath).resize({ width: 22, height: 22 });
-    } else if (fsSync.existsSync(icon32Path)) {
-      iconPath = icon32Path;
-      trayIcon = nativeImage.createFromPath(iconPath).resize({ width: 22, height: 22 });
-    } else {
-      iconPath = iconFallback;
-      trayIcon = nativeImage.createFromPath(iconPath).resize({ width: 22, height: 22 });
-    }
-    trayIcon.setTemplateImage(true);
+  const platform = getTrayPlatform();
+  const trayIconData = getTrayIcon(trayAssetsPath, platform, 'idle');
+  const iconPath = trayIconData.path;
+  const trayIcon = trayIconData.icon;
+  if (platform === 'darwin') {
     console.log(`${logPrefix} macOS: Using template icon from:`, iconPath);
-  } else if (process.platform === 'win32') {
-    const icoPath = path.join(trayAssetsPath, 'icon-square.ico');
-    const pngPath = path.join(trayAssetsPath, 'icon.png');
-
-    if (fsSync.existsSync(icoPath)) {
-      iconPath = icoPath;
-      trayIcon = nativeImage.createFromPath(iconPath);
-    } else {
-      iconPath = pngPath;
-      trayIcon = nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 });
-    }
+  } else if (platform === 'win32') {
     console.log(`${logPrefix} Windows: Using icon from:`, iconPath);
   } else {
-    const icon32Path = path.join(trayAssetsPath, 'iyeris.iconset', 'icon_32x32@1x.png');
-    const iconFallback = path.join(trayAssetsPath, 'icon.png');
-
-    if (fsSync.existsSync(icon32Path)) {
-      iconPath = icon32Path;
-      trayIcon = nativeImage.createFromPath(iconPath).resize({ width: 24, height: 24 });
-    } else {
-      iconPath = iconFallback;
-      trayIcon = nativeImage.createFromPath(iconPath).resize({ width: 24, height: 24 });
-    }
     console.log(`${logPrefix} Linux: Using icon from:`, iconPath);
   }
 
@@ -391,8 +502,8 @@ export function setupApplicationMenu(): void {
           { role: 'hideOthers' },
           { role: 'unhide' },
           { type: 'separator' },
-          { role: 'quit' }
-        ]
+          { role: 'quit' },
+        ],
       },
       {
         label: 'Edit',
@@ -403,8 +514,8 @@ export function setupApplicationMenu(): void {
           { role: 'cut' },
           { role: 'copy' },
           { role: 'paste' },
-          { role: 'selectAll' }
-        ]
+          { role: 'selectAll' },
+        ],
       },
       {
         label: 'View',
@@ -417,18 +528,13 @@ export function setupApplicationMenu(): void {
           { role: 'zoomIn' },
           { role: 'zoomOut' },
           { type: 'separator' },
-          { role: 'togglefullscreen' }
-        ]
+          { role: 'togglefullscreen' },
+        ],
       },
       {
         label: 'Window',
-        submenu: [
-          { role: 'minimize' },
-          { role: 'zoom' },
-          { type: 'separator' },
-          { role: 'front' }
-        ]
-      }
+        submenu: [{ role: 'minimize' }, { role: 'zoom' }, { type: 'separator' }, { role: 'front' }],
+      },
     ];
 
     const menu = Menu.buildFromTemplate(template);
@@ -437,18 +543,17 @@ export function setupApplicationMenu(): void {
 }
 
 export function setupWindowHandlers(): void {
-  const mainWindow = getMainWindow();
-
-  ipcMain.handle('minimize-window', (): void => {
-    mainWindow?.minimize();
+  ipcMain.handle('minimize-window', (event: IpcMainInvokeEvent): void => {
+    const win = BrowserWindow.fromWebContents(event.sender) ?? getMainWindow();
+    win?.minimize();
   });
 
-  ipcMain.handle('maximize-window', (): void => {
-    const mainWindow = getMainWindow();
-    if (mainWindow?.isMaximized()) {
-      mainWindow.unmaximize();
+  ipcMain.handle('maximize-window', (event: IpcMainInvokeEvent): void => {
+    const win = BrowserWindow.fromWebContents(event.sender) ?? getMainWindow();
+    if (win?.isMaximized()) {
+      win.unmaximize();
     } else {
-      mainWindow?.maximize();
+      win?.maximize();
     }
   });
 

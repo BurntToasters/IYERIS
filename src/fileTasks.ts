@@ -3,7 +3,18 @@ import * as os from 'os';
 import * as path from 'path';
 import { EventEmitter } from 'events';
 
-type TaskType = 'build-index' | 'search-files' | 'search-content' | 'search-content-list' | 'search-content-index' | 'search-index' | 'folder-size' | 'checksum' | 'load-index' | 'save-index' | 'list-directory';
+type TaskType =
+  | 'build-index'
+  | 'search-files'
+  | 'search-content'
+  | 'search-content-list'
+  | 'search-content-index'
+  | 'search-index'
+  | 'folder-size'
+  | 'checksum'
+  | 'load-index'
+  | 'save-index'
+  | 'list-directory';
 
 interface TaskRequest {
   id: string;
@@ -90,7 +101,16 @@ export class FileTaskManager extends EventEmitter {
 
   async shutdown(): Promise<void> {
     this.shuttingDown = true;
-    await Promise.all(this.workers.map(workerState => workerState.worker.terminate().catch(() => {})));
+    const shutdownError = new Error('File task manager shutting down');
+    for (const pending of this.pending.values()) {
+      pending.reject(shutdownError);
+    }
+    this.pending.clear();
+    this.queue = [];
+    this.operationToWorker.clear();
+    await Promise.all(
+      this.workers.map((workerState) => workerState.worker.terminate().catch(() => {}))
+    );
   }
 
   private drain(): void {
@@ -158,7 +178,7 @@ export class FileTaskManager extends EventEmitter {
 
   private static getDefaultWorkerCount(): number {
     const cpuCount = Math.max(1, os.cpus().length);
-    const totalMemGb = os.totalmem() / (1024 ** 3);
+    const totalMemGb = os.totalmem() / 1024 ** 3;
     const maxWorkers = totalMemGb < 6 ? 2 : totalMemGb < 12 ? 4 : totalMemGb < 24 ? 6 : 8;
     return Math.max(1, Math.min(cpuCount, maxWorkers));
   }

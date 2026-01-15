@@ -12,7 +12,7 @@
   <div class="titlebar">
     <div class="titlebar-drag-region">
       <div class="titlebar-icon">
-        <img src="assets/folder-beta.png" alt="IYERIS" />
+        <img id="titlebar-icon" src="assets/folder.png" alt="IYERIS" />
       </div>
       <div class="titlebar-title">IYERIS</div>
     </div>
@@ -79,6 +79,11 @@
         </div>
         <div id="bookmarks-list"></div>
       </div>
+      <button class="sidebar-toggle" id="sidebar-toggle" title="Toggle Sidebar (Ctrl+B)">
+        <svg width="16" height="16" viewBox="0 0 16 16">
+          <path d="M10 2 L4 8 L10 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
     </div>
 
     <div class="main-content">
@@ -110,6 +115,13 @@
               <path d="M13 7 L13 3 L9 3 M13 3 Q13 3 10 6 Q7 9 4 9 Q2 9 2 11 Q2 13 4 13 L8 13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
           </button>
+          <span id="clipboard-indicator" class="clipboard-indicator" style="display: none;">
+            <svg class="clipboard-icon" width="12" height="12" viewBox="0 0 16 16">
+              <path fill="currentColor" d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1v-1z"/>
+              <path fill="currentColor" d="M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3zm-3-1A1.5 1.5 0 0 0 5 1.5v1A1.5 1.5 0 0 0 6.5 4h3A1.5 1.5 0 0 0 11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3z"/>
+            </svg>
+            <span id="clipboard-text"></span>
+          </span>
         </div>
         
         <div class="toolbar-center">
@@ -130,6 +142,7 @@
                 <svg width="14" height="14" viewBox="0 0 16 16">
                   <path d="M1 2 L6 8 L6 14 L10 12 L10 8 L15 2 Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
                 </svg>
+                <span id="filter-badge" class="filter-badge" style="display: none;"></span>
               </button>
               <button class="search-scope-toggle" id="search-scope-toggle" title="Toggle Global Search">
                 <img src="assets/twemoji/1f4c1.svg" class="twemoji" alt="📁" draggable="false" />
@@ -257,7 +270,7 @@
         <div class="file-view glass-panel" id="file-view">
           <div class="loading-spinner" id="loading">
             <div class="spinner"></div>
-            <p>Loading...</p>
+            <p id="loading-text">Loading...</p>
           </div>
           <div class="empty-state" id="empty-state" style="display: none;">
             <div class="empty-icon"><img src="assets/twemoji/1f4c2.svg" class="twemoji-xlarge" alt="📂" draggable="false" /></div>
@@ -418,7 +431,17 @@
                   <span class="toggle-slider"></span>
                 </label>
               </div>
-              <div class="setting-item" data-searchable="theme color scheme charcoal cobalt light dark custom">
+              <div class="setting-item" data-searchable="system theme appearance auto dark light mode">
+                <div class="setting-info">
+                  <label>Match System Appearance</label>
+                  <p class="setting-description">Automatically switch between light and dark themes</p>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="system-theme-toggle">
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+              <div class="setting-item" data-searchable="theme color scheme charcoal cobalt light dark custom nord catppuccin dracula solarized github">
                 <div class="setting-info">
                   <label for="theme-select">Color Theme</label>
                   <p class="setting-description">Choose your preferred color scheme</p>
@@ -427,6 +450,11 @@
                   <option value="default">Charcoal</option>
                   <option value="dark">Cobalt</option>
                   <option value="light">Light</option>
+                  <option value="nord">Nord</option>
+                  <option value="catppuccin">Catppuccin</option>
+                  <option value="dracula">Dracula</option>
+                  <option value="solarized">Solarized</option>
+                  <option value="github">GitHub Dark</option>
                 </select>
               </div>
               <div class="setting-item" data-searchable="theme color scheme custom customize editor">
@@ -629,6 +657,16 @@
                   <span class="toggle-slider"></span>
                 </label>
               </div>
+              <div class="setting-item" data-searchable="ui density size elements compact larger spacing">
+                <div class="setting-info">
+                  <label for="ui-density-select">UI Density</label>
+                  <p class="setting-description">Adjust the overall size of UI elements</p>
+                </div>
+                <select id="ui-density-select" class="settings-select">
+                  <option value="default">Default</option>
+                  <option value="larger">Larger</option>
+                </select>
+              </div>
               <div class="setting-item" data-searchable="bold text font weight thicker">
                 <div class="setting-info">
                   <label for="bold-text-toggle">Bold Text</label>
@@ -811,7 +849,7 @@
               </div>
               <div class="about-info">
                 <h2 class="about-title">IYERIS</h2>
-                <p class="about-version" id="about-version-display">Version 0.9.1</p>
+                <p class="about-version" id="about-version-display">Version 0.9.2</p>
                 <p class="about-tagline">A modern, cross-platform file explorer</p>
               </div>
             </div>
@@ -1062,11 +1100,21 @@
     <div class="status-left">
       <span id="status-items">0 items</span>
       <span id="status-selected" style="display: none;"></span>
+      <span id="status-search" class="status-search" style="display: none;">
+        <img src="assets/twemoji/1f50d.svg" class="twemoji" alt="🔍" draggable="false" />
+        <span id="status-search-text"></span>
+      </span>
     </div>
     <div class="status-right">
+      <span id="status-git-branch" class="status-git-branch" style="display: none;">
+        <svg class="git-branch-icon" width="12" height="12" viewBox="0 0 16 16">
+          <path fill="currentColor" d="M11.75 2.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5zm-2.25.75a2.25 2.25 0 1 1 3 2.122V6A2.5 2.5 0 0 1 10 8.5H6a1 1 0 0 0-1 1v1.128a2.251 2.251 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.5 0v1.836A2.49 2.49 0 0 1 6 7h4a1 1 0 0 0 1-1v-.628A2.25 2.25 0 0 1 9.5 3.25zM4.25 12a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5zM3.5 3.25a.75.75 0 1 1 1.5 0 .75.75 0 0 1-1.5 0z"/>
+        </svg>
+        <span id="status-git-branch-name"></span>
+      </span>
       <span id="status-disk-space"></span>
       <span class="status-separator"></span>
-      <span class="status-version" id="status-version" title="Version 0.9.1">v0.9.1</span>
+      <span class="status-version" id="status-version" title="Version 0.9.2">v0.9.2</span>
       <span class="status-separator"></span>
       <button class="status-support-btn" id="heart-button" title="Support this project!">
         <img src="assets/twemoji/2764.svg" class="twemoji" alt="❤️" draggable="false" />
@@ -1274,6 +1322,6 @@
     </div>
   </div>
 
-  <script type="module" src="dist/renderer.js"></script>
+  <script type="module" src="dist/renderer/renderer.js"></script>
 </body>
 </html>

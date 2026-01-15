@@ -7,25 +7,217 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import * as readline from 'readline';
 
-type TaskType = 'build-index' | 'search-files' | 'search-content' | 'search-content-list' | 'search-content-index' | 'search-index' | 'folder-size' | 'checksum' | 'load-index' | 'save-index' | 'list-directory';
+interface SearchFilters {
+  fileType?: string;
+  minSize?: number;
+  maxSize?: number;
+  dateFrom?: string;
+  dateTo?: string;
+}
+
+interface SearchPayload {
+  dirPath: string;
+  query: string;
+  filters?: SearchFilters;
+  maxDepth: number;
+  maxResults: number;
+}
+
+interface ContentSearchPayload {
+  dirPath: string;
+  query: string;
+  filters?: SearchFilters;
+  maxDepth: number;
+  maxResults: number;
+}
+
+interface ContentListSearchPayload {
+  files: Array<{ path: string; size: number }>;
+  query: string;
+  filters?: SearchFilters;
+}
+
+interface IndexSearchPayload {
+  indexPath: string;
+  query: string;
+}
+
+interface FolderSizePayload {
+  folderPath: string;
+}
+
+interface ChecksumPayload {
+  filePath: string;
+  algorithms: string[];
+}
+
+interface BuildIndexPayload {
+  locations: string[];
+  skipDirs: string[];
+  maxIndexSize?: number;
+}
+
+type IndexEntry = [
+  string,
+  {
+    name: string;
+    path: string;
+    isDirectory: boolean;
+    isFile: boolean;
+    size: number;
+    modified: number;
+  },
+];
+
+interface LoadIndexPayload {
+  indexPath: string;
+}
+
+interface SaveIndexPayload {
+  indexPath: string;
+  indexData: string;
+}
+
+interface SearchResult {
+  name: string;
+  path: string;
+  isDirectory: boolean;
+  isFile: boolean;
+  size: number;
+  modified: Date;
+  isHidden: boolean;
+}
+
+interface ContentSearchResult extends SearchResult {
+  matchContext?: string;
+  matchLineNumber?: number;
+}
+
+interface ProgressData {
+  operationId?: string;
+  current?: number;
+  total?: number;
+  name?: string;
+  percent?: number;
+  algorithm?: string;
+  size?: number;
+  files?: number;
+  dirs?: number;
+  scannedFiles?: number;
+  totalFiles?: number;
+  currentFile?: string;
+  [key: string]: unknown;
+}
+
+type TaskType =
+  | 'build-index'
+  | 'search-files'
+  | 'search-content'
+  | 'search-content-list'
+  | 'search-content-index'
+  | 'search-index'
+  | 'folder-size'
+  | 'checksum'
+  | 'load-index'
+  | 'save-index'
+  | 'list-directory';
 
 interface TaskRequest {
   id: string;
   type: TaskType;
-  payload: any;
+  payload: unknown;
   operationId?: string;
 }
 
 const execFileAsync = promisify(execFile);
-const cancelled = new Set<string>();
+const cancelled = new Map<string, number>();
+const CANCEL_TTL_MS = 10 * 60 * 1000;
+
+function pruneCancelled(): void {
+  const now = Date.now();
+  for (const [id, timestamp] of cancelled) {
+    if (now - timestamp > CANCEL_TTL_MS) {
+      cancelled.delete(id);
+    }
+  }
+}
 
 const TEXT_FILE_EXTENSIONS = new Set([
-  'txt', 'md', 'markdown', 'js', 'jsx', 'ts', 'tsx', 'json',
-  'xml', 'html', 'htm', 'css', 'scss', 'less', 'py', 'rb',
-  'java', 'c', 'cpp', 'h', 'hpp', 'cs', 'go', 'rs', 'swift',
-  'yaml', 'yml', 'toml', 'ini', 'cfg', 'conf', 'sh', 'bash',
-  'ps1', 'bat', 'cmd', 'sql', 'log', 'csv', 'env', 'gitignore',
-  'vue', 'svelte', 'php', 'pl', 'r', 'lua', 'kt', 'kts', 'scala'
+  'txt',
+  'text',
+  'md',
+  'markdown',
+  'log',
+  'readme',
+  'js',
+  'jsx',
+  'ts',
+  'tsx',
+  'json',
+  'xml',
+  'html',
+  'htm',
+  'css',
+  'scss',
+  'sass',
+  'less',
+  'py',
+  'pyc',
+  'pyw',
+  'rb',
+  'java',
+  'c',
+  'cpp',
+  'cc',
+  'cxx',
+  'h',
+  'hpp',
+  'cs',
+  'go',
+  'rs',
+  'swift',
+  'kt',
+  'kts',
+  'scala',
+  'r',
+  'lua',
+  'perl',
+  'yaml',
+  'yml',
+  'toml',
+  'ini',
+  'cfg',
+  'config',
+  'conf',
+  'sh',
+  'bash',
+  'zsh',
+  'fish',
+  'ps1',
+  'bat',
+  'cmd',
+  'sql',
+  'csv',
+  'tsv',
+  'env',
+  'properties',
+  'gitignore',
+  'gitattributes',
+  'editorconfig',
+  'dockerfile',
+  'dockerignore',
+  'rst',
+  'tex',
+  'adoc',
+  'asciidoc',
+  'makefile',
+  'cmake',
+  'gradle',
+  'maven',
+  'vue',
+  'svelte',
+  'php',
+  'pl',
 ]);
 
 const CONTENT_SEARCH_MAX_FILE_SIZE = 1024 * 1024;
@@ -40,12 +232,51 @@ function getErrorMessage(error: unknown): string {
   return String(error);
 }
 
-function isCancelled(operationId?: string): boolean {
-  return Boolean(operationId && cancelled.has(operationId));
+function normalizeIndexTimestamp(value: unknown): number | null {
+  if (value instanceof Date) {
+    const time = value.getTime();
+    return Number.isNaN(time) ? null : time;
+  }
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null;
+  }
+  if (typeof value === 'string') {
+    const numeric = Number(value);
+    if (Number.isFinite(numeric)) {
+      return numeric;
+    }
+    const parsed = Date.parse(value);
+    return Number.isNaN(parsed) ? null : parsed;
+  }
+  return null;
 }
 
-function sendProgress(task: TaskType, operationId: string, data: any): void {
+function normalizePathForCompare(filePath: string): string {
+  const resolved = path.resolve(filePath);
+  return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+}
+
+function isCancelled(operationId?: string): boolean {
+  if (!operationId) return false;
+  const timestamp = cancelled.get(operationId);
+  if (!timestamp) return false;
+  if (Date.now() - timestamp > CANCEL_TTL_MS) {
+    cancelled.delete(operationId);
+    return false;
+  }
+  return true;
+}
+
+function sendProgress(task: TaskType, operationId: string, data: ProgressData): void {
   parentPort?.postMessage({ type: 'progress', task, operationId, data });
+}
+
+function getTextExtensionKey(filePath: string): string {
+  const ext = path.extname(filePath).slice(1).toLowerCase();
+  if (ext) return ext;
+  const base = path.basename(filePath).toLowerCase();
+  if (!base) return '';
+  return base.startsWith('.') ? base.slice(1) : base;
 }
 
 function getHiddenCache(filePath: string): boolean | null {
@@ -72,8 +303,11 @@ async function isHidden(filePath: string, fileName: string): Promise<boolean> {
   if (fileName.startsWith('.')) return true;
   if (process.platform !== 'win32') return false;
   try {
-    const { stdout } = await execFileAsync('attrib', [filePath], { timeout: 500, windowsHide: true });
-    const line = stdout.split(/\r?\n/).find(item => item.trim().length > 0);
+    const { stdout } = await execFileAsync('attrib', [filePath], {
+      timeout: 500,
+      windowsHide: true,
+    });
+    const line = stdout.split(/\r?\n/).find((item) => item.trim().length > 0);
     if (!line) return false;
     const match = line.match(/^\s*([A-Za-z ]+)\s+.+$/);
     if (!match) return false;
@@ -83,7 +317,10 @@ async function isHidden(filePath: string, fileName: string): Promise<boolean> {
   }
 }
 
-async function batchCheckHidden(dirPath: string, fileNames: string[]): Promise<Map<string, boolean>> {
+async function batchCheckHidden(
+  dirPath: string,
+  fileNames: string[]
+): Promise<Map<string, boolean>> {
   const results = new Map<string, boolean>();
 
   if (process.platform !== 'win32') {
@@ -118,14 +355,14 @@ async function batchCheckHidden(dirPath: string, fileNames: string[]): Promise<M
   }
 
   try {
-    const filePaths = pending.map(fileName => path.join(dirPath, fileName));
+    const filePaths = pending.map((fileName) => path.join(dirPath, fileName));
     const { stdout } = await execFileAsync('attrib', filePaths, {
       timeout: 2000,
       windowsHide: true,
-      maxBuffer: 1024 * 1024
+      maxBuffer: 1024 * 1024,
     });
 
-    const lines = stdout.split(/\r?\n/).filter(line => line.trim().length > 0);
+    const lines = stdout.split(/\r?\n/).filter((line) => line.trim().length > 0);
     for (const line of lines) {
       const match = line.match(/^\s*([A-Za-z ]+)\s+(.+)$/);
       if (!match) continue;
@@ -156,7 +393,12 @@ async function batchCheckHidden(dirPath: string, fileNames: string[]): Promise<M
   return results;
 }
 
-function matchesFilters(itemName: string, isDir: boolean, stats: { size: number; mtime: Date }, filters?: any): boolean {
+function matchesFilters(
+  itemName: string,
+  isDir: boolean,
+  stats: { size: number; mtime: Date },
+  filters?: SearchFilters
+): boolean {
   const fileTypeFilter = filters?.fileType?.toLowerCase();
   if (fileTypeFilter && fileTypeFilter !== 'all') {
     if (fileTypeFilter === 'folder') {
@@ -164,11 +406,31 @@ function matchesFilters(itemName: string, isDir: boolean, stats: { size: number;
     } else {
       if (isDir) return false;
       const ext = path.extname(itemName).toLowerCase().slice(1);
-      if (fileTypeFilter === 'image' && !['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg', 'ico'].includes(ext)) return false;
-      if (fileTypeFilter === 'video' && !['mp4', 'mkv', 'avi', 'mov', 'wmv', 'webm', 'flv'].includes(ext)) return false;
-      if (fileTypeFilter === 'audio' && !['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a', 'wma'].includes(ext)) return false;
-      if (fileTypeFilter === 'document' && !['pdf', 'doc', 'docx', 'txt', 'rtf', 'odt', 'xls', 'xlsx', 'ppt', 'pptx'].includes(ext)) return false;
-      if (fileTypeFilter === 'archive' && !['zip', '7z', 'rar', 'tar', 'gz', 'bz2', 'xz'].includes(ext)) return false;
+      if (
+        fileTypeFilter === 'image' &&
+        !['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg', 'ico'].includes(ext)
+      )
+        return false;
+      if (
+        fileTypeFilter === 'video' &&
+        !['mp4', 'mkv', 'avi', 'mov', 'wmv', 'webm', 'flv'].includes(ext)
+      )
+        return false;
+      if (
+        fileTypeFilter === 'audio' &&
+        !['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a', 'wma'].includes(ext)
+      )
+        return false;
+      if (
+        fileTypeFilter === 'document' &&
+        !['pdf', 'doc', 'docx', 'txt', 'rtf', 'odt', 'xls', 'xlsx', 'ppt', 'pptx'].includes(ext)
+      )
+        return false;
+      if (
+        fileTypeFilter === 'archive' &&
+        !['zip', '7z', 'rar', 'tar', 'gz', 'bz2', 'xz'].includes(ext)
+      )
+        return false;
     }
   }
 
@@ -189,7 +451,10 @@ function matchesFilters(itemName: string, isDir: boolean, stats: { size: number;
   return true;
 }
 
-function matchesContentFilters(stats: { size: number; mtime: Date }, filters?: any): boolean {
+function matchesContentFilters(
+  stats: { size: number; mtime: Date },
+  filters?: SearchFilters
+): boolean {
   const minSize = filters?.minSize;
   const maxSize = filters?.maxSize;
   if (minSize !== undefined && stats.size < minSize) return false;
@@ -205,9 +470,14 @@ function matchesContentFilters(stats: { size: number; mtime: Date }, filters?: a
   return true;
 }
 
-async function searchFileContent(filePath: string, searchQuery: string, operationId?: string, sizeHint?: number): Promise<{ found: boolean; context?: string; lineNumber?: number }> {
-  const ext = path.extname(filePath).slice(1).toLowerCase();
-  if (!TEXT_FILE_EXTENSIONS.has(ext)) {
+async function searchFileContent(
+  filePath: string,
+  searchQuery: string,
+  operationId?: string,
+  sizeHint?: number
+): Promise<{ found: boolean; context?: string; lineNumber?: number }> {
+  const key = getTextExtensionKey(filePath);
+  if (!key || !TEXT_FILE_EXTENSIONS.has(key)) {
     return { found: false };
   }
 
@@ -235,7 +505,10 @@ async function searchFileContent(filePath: string, searchQuery: string, operatio
         const matchIndex = lowerLine.indexOf(searchQuery);
         if (matchIndex !== -1) {
           const start = Math.max(0, matchIndex - CONTENT_CONTEXT_CHARS);
-          const end = Math.min(line.length, matchIndex + searchQuery.length + CONTENT_CONTEXT_CHARS);
+          const end = Math.min(
+            line.length,
+            matchIndex + searchQuery.length + CONTENT_CONTEXT_CHARS
+          );
           let context = line.substring(start, end).trim();
           if (start > 0) context = '...' + context;
           if (end < line.length) context = context + '...';
@@ -256,9 +529,12 @@ async function searchFileContent(filePath: string, searchQuery: string, operatio
   return { found: false };
 }
 
-async function searchDirectoryFiles(payload: any, operationId?: string): Promise<any[]> {
+async function searchDirectoryFiles(
+  payload: SearchPayload,
+  operationId?: string
+): Promise<SearchResult[]> {
   const { dirPath, query, filters, maxDepth, maxResults } = payload;
-  const results: any[] = [];
+  const results: SearchResult[] = [];
   const searchQuery = String(query || '').toLowerCase();
 
   const stack: Array<{ dir: string; depth: number }> = [{ dir: dirPath, depth: 0 }];
@@ -293,11 +569,10 @@ async function searchDirectoryFiles(payload: any, operationId?: string): Promise
               isFile: item.isFile(),
               size: stats.size,
               modified: stats.mtime,
-              isHidden: await isHidden(fullPath, item.name)
+              isHidden: await isHidden(fullPath, item.name),
             });
           }
-        } catch {
-        }
+        } catch {}
       }
 
       if (item.isDirectory()) {
@@ -309,9 +584,12 @@ async function searchDirectoryFiles(payload: any, operationId?: string): Promise
   return results;
 }
 
-async function searchDirectoryContent(payload: any, operationId?: string): Promise<any[]> {
+async function searchDirectoryContent(
+  payload: ContentSearchPayload,
+  operationId?: string
+): Promise<ContentSearchResult[]> {
   const { dirPath, query, filters, maxDepth, maxResults } = payload;
-  const results: any[] = [];
+  const results: ContentSearchResult[] = [];
   const searchQuery = String(query || '').toLowerCase();
 
   const stack: Array<{ dir: string; depth: number }> = [{ dir: dirPath, depth: 0 }];
@@ -339,7 +617,12 @@ async function searchDirectoryContent(payload: any, operationId?: string): Promi
           if (!matchesContentFilters(stats, filters)) {
             continue;
           }
-          const contentResult = await searchFileContent(fullPath, searchQuery, operationId, stats.size);
+          const contentResult = await searchFileContent(
+            fullPath,
+            searchQuery,
+            operationId,
+            stats.size
+          );
           if (contentResult.found) {
             results.push({
               name: item.name,
@@ -350,11 +633,10 @@ async function searchDirectoryContent(payload: any, operationId?: string): Promi
               modified: stats.mtime,
               isHidden: await isHidden(fullPath, item.name),
               matchContext: contentResult.context,
-              matchLineNumber: contentResult.lineNumber
+              matchLineNumber: contentResult.lineNumber,
             });
           }
-        } catch {
-        }
+        } catch {}
       }
 
       if (item.isDirectory()) {
@@ -377,8 +659,8 @@ async function searchContentList(payload: any, operationId?: string): Promise<an
 
     const filePath = item.path;
     const fileName = item.name || path.basename(filePath);
-    const ext = path.extname(fileName).slice(1).toLowerCase();
-    if (!TEXT_FILE_EXTENSIONS.has(ext)) continue;
+    const key = getTextExtensionKey(fileName);
+    if (!TEXT_FILE_EXTENSIONS.has(key)) continue;
 
     if (filters?.minSize !== undefined && item.size < filters.minSize) continue;
     if (filters?.maxSize !== undefined && item.size > filters.maxSize) continue;
@@ -400,7 +682,7 @@ async function searchContentList(payload: any, operationId?: string): Promise<an
         modified,
         isHidden: await isHidden(filePath, fileName),
         matchContext: contentResult.context,
-        matchLineNumber: contentResult.lineNumber
+        matchLineNumber: contentResult.lineNumber,
       });
     }
   }
@@ -456,8 +738,8 @@ async function searchContentIndex(payload: any, operationId?: string): Promise<a
     if (!item || !item.isFile || !filePath) continue;
 
     const fileName = item.name || path.basename(filePath);
-    const ext = path.extname(fileName).slice(1).toLowerCase();
-    if (!TEXT_FILE_EXTENSIONS.has(ext)) continue;
+    const key = getTextExtensionKey(fileName);
+    if (!TEXT_FILE_EXTENSIONS.has(key)) continue;
 
     const modified = item.modified ? new Date(item.modified) : new Date(0);
     const sizeValue = typeof item.size === 'number' ? item.size : Number(item.size);
@@ -475,7 +757,7 @@ async function searchContentIndex(payload: any, operationId?: string): Promise<a
         modified,
         isHidden: await isHidden(filePath, fileName),
         matchContext: contentResult.context,
-        matchLineNumber: contentResult.lineNumber
+        matchLineNumber: contentResult.lineNumber,
       });
     }
   }
@@ -546,7 +828,7 @@ async function searchIndexFile(payload: any, operationId?: string): Promise<any[
       isDirectory: Boolean(item.isDirectory),
       isFile: Boolean(item.isFile),
       size,
-      modified
+      modified,
     });
   }
 
@@ -562,7 +844,18 @@ async function searchIndexFile(payload: any, operationId?: string): Promise<any[
   return results;
 }
 
-async function calculateFolderSize(payload: any, operationId?: string): Promise<any> {
+async function calculateFolderSize(
+  payload: FolderSizePayload,
+  operationId?: string
+): Promise<{
+  size: number;
+  files: number;
+  dirs: number;
+  totalSize: number;
+  fileCount: number;
+  folderCount: number;
+  fileTypes: { extension: string; count: number; size: number }[];
+}> {
   const { folderPath } = payload;
   let totalSize = 0;
   let fileCount = 0;
@@ -606,11 +899,10 @@ async function calculateFolderSize(payload: any, operationId?: string): Promise<
             calculatedSize: totalSize,
             fileCount,
             folderCount,
-            currentPath: fullPath
+            currentPath: fullPath,
           });
         }
-      } catch {
-      }
+      } catch {}
     }
   }
 
@@ -619,16 +911,29 @@ async function calculateFolderSize(payload: any, operationId?: string): Promise<
     .sort((a, b) => b.size - a.size)
     .slice(0, 10);
 
-  return { totalSize, fileCount, folderCount, fileTypes };
+  return {
+    size: totalSize,
+    files: fileCount,
+    dirs: folderCount,
+    totalSize,
+    fileCount,
+    folderCount,
+    fileTypes,
+  };
 }
 
-async function calculateChecksum(payload: any, operationId?: string): Promise<any> {
+async function calculateChecksum(
+  payload: ChecksumPayload,
+  operationId?: string
+): Promise<Record<string, string>> {
   const { filePath, algorithms } = payload;
   const stats = await fs.stat(filePath);
   const fileSize = stats.size;
 
   const rawAlgorithms = Array.isArray(algorithms) ? algorithms : [];
-  const uniqueAlgorithms = Array.from(new Set(rawAlgorithms.map((algo) => String(algo)).filter(Boolean)));
+  const uniqueAlgorithms = Array.from(
+    new Set(rawAlgorithms.map((algo) => String(algo)).filter(Boolean))
+  );
   const hashes = new Map<string, ReturnType<typeof createHash>>();
   for (const algorithm of uniqueAlgorithms) {
     hashes.set(algorithm, createHash(algorithm));
@@ -654,7 +959,8 @@ async function calculateChecksum(payload: any, operationId?: string): Promise<an
       if (operationId && now - lastProgressUpdate > 100) {
         lastProgressUpdate = now;
         const percent = fileSize > 0 ? (bytesRead / fileSize) * 100 : 0;
-        const label = uniqueAlgorithms.length > 1 ? uniqueAlgorithms.join('+') : (uniqueAlgorithms[0] || '');
+        const label =
+          uniqueAlgorithms.length > 1 ? uniqueAlgorithms.join('+') : uniqueAlgorithms[0] || '';
         sendProgress('checksum', operationId, { percent, algorithm: label });
       }
     });
@@ -672,9 +978,29 @@ async function calculateChecksum(payload: any, operationId?: string): Promise<an
   return result;
 }
 
-async function buildIndex(payload: any, operationId?: string): Promise<any> {
+async function buildIndex(
+  payload: BuildIndexPayload,
+  operationId?: string
+): Promise<{
+  indexedFiles: number;
+  entries?: IndexEntry[];
+}> {
   const locations: string[] = payload.locations || [];
   const maxIndexSize: number = payload.maxIndexSize || 200000;
+  const skipDirs = Array.isArray(payload.skipDirs) ? payload.skipDirs : [];
+  const skipDirSegments = new Set<string>();
+  const skipDirPaths = new Set<string>();
+
+  for (const skipDir of skipDirs) {
+    if (typeof skipDir !== 'string') continue;
+    const trimmed = skipDir.trim();
+    if (!trimmed) continue;
+    if (path.isAbsolute(trimmed)) {
+      skipDirPaths.add(normalizePathForCompare(trimmed));
+    } else {
+      skipDirSegments.add(trimmed.toLowerCase());
+    }
+  }
 
   const excludeSegments = new Set([
     'node_modules',
@@ -703,7 +1029,7 @@ async function buildIndex(payload: any, operationId?: string): Promise<any> {
     'msocache',
     'intel',
     'nvidia',
-    'amd'
+    'amd',
   ]);
 
   const excludeFiles = new Set([
@@ -718,17 +1044,26 @@ async function buildIndex(payload: any, operationId?: string): Promise<any> {
     'ntuser.dat',
     'ntuser.dat.log',
     'ntuser.dat.log1',
-    'ntuser.dat.log2'
+    'ntuser.dat.log2',
   ]);
 
   const shouldExclude = (filePath: string): boolean => {
     const parts = filePath.split(/[/\\]/);
     const filename = parts[parts.length - 1].toLowerCase();
     if (excludeFiles.has(filename)) return true;
-    return parts.some(part => excludeSegments.has(part.toLowerCase()));
+    const normalizedPath = normalizePathForCompare(filePath);
+    for (const skipPath of skipDirPaths) {
+      if (normalizedPath === skipPath || normalizedPath.startsWith(skipPath + path.sep)) {
+        return true;
+      }
+    }
+    return parts.some((part) => {
+      const segment = part.toLowerCase();
+      return excludeSegments.has(segment) || skipDirSegments.has(segment);
+    });
   };
 
-  const entries: any[] = [];
+  const entries: IndexEntry[] = [];
   const stack: string[] = [...locations];
 
   while (stack.length && entries.length < maxIndexSize) {
@@ -752,40 +1087,84 @@ async function buildIndex(payload: any, operationId?: string): Promise<any> {
 
       try {
         const stats = await fs.stat(fullPath);
-        entries.push({
-          name: entry.name,
-          path: fullPath,
-          isDirectory: entry.isDirectory(),
-          isFile: entry.isFile(),
-          size: stats.size,
-          modified: stats.mtime
-        });
+        entries.push([
+          fullPath,
+          {
+            name: entry.name,
+            path: fullPath,
+            isDirectory: entry.isDirectory(),
+            isFile: entry.isFile(),
+            size: stats.size,
+            modified: stats.mtime.getTime(),
+          },
+        ]);
 
         if (entry.isDirectory() && entries.length < maxIndexSize) {
           stack.push(fullPath);
         }
-      } catch {
-      }
+      } catch {}
     }
   }
 
-  return { entries };
+  return { indexedFiles: entries.length, entries };
 }
 
-async function loadIndexFile(payload: any): Promise<any> {
+async function loadIndexFile(payload: LoadIndexPayload): Promise<{
+  indexedFiles: number;
+  indexDate: number;
+  exists: boolean;
+  index?: Array<unknown>;
+  lastIndexTime?: number | null;
+}> {
   const { indexPath } = payload;
   try {
     const data = await fs.readFile(indexPath, 'utf-8');
     const parsed = JSON.parse(data);
+    const indexEntries: unknown[] = Array.isArray(parsed.index) ? parsed.index : [];
+    const normalizedLastIndexTime = normalizeIndexTimestamp(parsed.lastIndexTime);
+    const sample = indexEntries.slice(0, 20);
+    const isLegacy = sample.some((entry: unknown) => {
+      if (Array.isArray(entry)) {
+        if (entry.length < 2) return true;
+        const entryPath = entry[0];
+        const item = entry[1];
+        if (typeof entryPath !== 'string' || !item || typeof item !== 'object') return true;
+        return (
+          typeof item.name !== 'string' ||
+          typeof item.isFile !== 'boolean' ||
+          typeof item.isDirectory !== 'boolean'
+        );
+      }
+      if (entry && typeof entry === 'object') {
+        const item = entry as { [key: string]: unknown };
+        return (
+          typeof item.path !== 'string' ||
+          typeof item.name !== 'string' ||
+          typeof item.isFile !== 'boolean' ||
+          typeof item.isDirectory !== 'boolean'
+        );
+      }
+      return true;
+    });
+
+    if (isLegacy && indexEntries.length > 0) {
+      try {
+        await fs.unlink(indexPath);
+      } catch {}
+      return { exists: false, indexedFiles: 0, indexDate: 0 };
+    }
+
     return {
       exists: true,
-      index: parsed.index || [],
-      lastIndexTime: parsed.lastIndexTime || null
+      indexedFiles: indexEntries.length,
+      indexDate: normalizedLastIndexTime ?? Date.now(),
+      index: indexEntries,
+      lastIndexTime: normalizedLastIndexTime,
     };
   } catch (error) {
     const err = error as NodeJS.ErrnoException;
     if (err && err.code === 'ENOENT') {
-      return { exists: false };
+      return { exists: false, indexedFiles: 0, indexDate: 0 };
     }
     throw error;
   }
@@ -793,10 +1172,11 @@ async function loadIndexFile(payload: any): Promise<any> {
 
 async function saveIndexFile(payload: any): Promise<any> {
   const { indexPath, entries, lastIndexTime } = payload;
+  const normalizedLastIndexTime = normalizeIndexTimestamp(lastIndexTime);
   const data = {
     index: entries || [],
-    lastIndexTime: lastIndexTime || null,
-    version: 1
+    lastIndexTime: normalizedLastIndexTime,
+    version: 1,
   };
   await fs.writeFile(indexPath, JSON.stringify(data), 'utf-8');
   return { success: true };
@@ -814,8 +1194,10 @@ async function listDirectory(payload: any, operationId?: string): Promise<any> {
     if (batch.length === 0) return;
     if (isCancelled(operationId)) throw new Error('Calculation cancelled');
 
-    const names = batch.map(entry => entry.name);
-    const hiddenMap = shouldCheckHidden ? await batchCheckHidden(dirPath, names) : new Map<string, boolean>();
+    const names = batch.map((entry) => entry.name);
+    const hiddenMap = shouldCheckHidden
+      ? await batchCheckHidden(dirPath, names)
+      : new Map<string, boolean>();
     const items = await Promise.all(
       batch.map(async (entry) => {
         const fullPath = path.join(dirPath, entry.name);
@@ -831,7 +1213,7 @@ async function listDirectory(payload: any, operationId?: string): Promise<any> {
             isFile: entry.isFile(),
             size: stats.size,
             modified: stats.mtime,
-            isHidden: isHiddenFlag
+            isHidden: isHiddenFlag,
           };
         } catch {
           return {
@@ -841,7 +1223,7 @@ async function listDirectory(payload: any, operationId?: string): Promise<any> {
             isFile: entry.isFile(),
             size: 0,
             modified: new Date(),
-            isHidden: isHiddenFlag
+            isHidden: isHiddenFlag,
           };
         }
       })
@@ -850,7 +1232,7 @@ async function listDirectory(payload: any, operationId?: string): Promise<any> {
     results.push(...items);
     loaded += items.length;
     if (operationId) {
-      sendProgress('list-directory', operationId, { dirPath, loaded });
+      sendProgress('list-directory', operationId, { dirPath, loaded, items });
     }
     batch.length = 0;
   };
@@ -868,33 +1250,38 @@ async function listDirectory(payload: any, operationId?: string): Promise<any> {
   } finally {
     try {
       await dir?.close();
-    } catch {
-    }
+    } catch {}
   }
 
   return { contents: results };
 }
 
-async function handleTask(message: TaskRequest): Promise<any> {
+async function handleTask(message: TaskRequest): Promise<unknown> {
   switch (message.type) {
     case 'search-files':
-      return await searchDirectoryFiles(message.payload, message.operationId);
+      return await searchDirectoryFiles(message.payload as SearchPayload, message.operationId);
     case 'search-content':
-      return await searchDirectoryContent(message.payload, message.operationId);
+      return await searchDirectoryContent(
+        message.payload as ContentSearchPayload,
+        message.operationId
+      );
     case 'search-content-list':
-      return await searchContentList(message.payload, message.operationId);
+      return await searchContentList(
+        message.payload as ContentListSearchPayload,
+        message.operationId
+      );
     case 'search-content-index':
-      return await searchContentIndex(message.payload, message.operationId);
+      return await searchContentIndex(message.payload as IndexSearchPayload, message.operationId);
     case 'search-index':
-      return await searchIndexFile(message.payload, message.operationId);
+      return await searchIndexFile(message.payload as IndexSearchPayload, message.operationId);
     case 'folder-size':
-      return await calculateFolderSize(message.payload, message.operationId);
+      return await calculateFolderSize(message.payload as FolderSizePayload, message.operationId);
     case 'checksum':
-      return await calculateChecksum(message.payload, message.operationId);
+      return await calculateChecksum(message.payload as ChecksumPayload, message.operationId);
     case 'build-index':
-      return await buildIndex(message.payload, message.operationId);
+      return await buildIndex(message.payload as BuildIndexPayload, message.operationId);
     case 'load-index':
-      return await loadIndexFile(message.payload);
+      return await loadIndexFile(message.payload as LoadIndexPayload);
     case 'save-index':
       return await saveIndexFile(message.payload);
     case 'list-directory':
@@ -910,7 +1297,8 @@ if (!parentPort) {
 
 parentPort.on('message', async (message: any) => {
   if (message?.type === 'cancel' && message.operationId) {
-    cancelled.add(message.operationId);
+    cancelled.set(message.operationId, Date.now());
+    pruneCancelled();
     return;
   }
 
@@ -919,7 +1307,12 @@ parentPort.on('message', async (message: any) => {
     const data = await handleTask(task);
     parentPort?.postMessage({ type: 'result', id: task.id, success: true, data });
   } catch (error) {
-    parentPort?.postMessage({ type: 'result', id: task.id, success: false, error: getErrorMessage(error) });
+    parentPort?.postMessage({
+      type: 'result',
+      id: task.id,
+      success: false,
+      error: getErrorMessage(error),
+    });
   } finally {
     if (task.operationId) {
       cancelled.delete(task.operationId);

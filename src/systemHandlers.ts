@@ -1,4 +1,13 @@
-import { ipcMain, app, dialog, shell, IpcMainInvokeEvent } from 'electron';
+import {
+  ipcMain,
+  app,
+  dialog,
+  shell,
+  IpcMainInvokeEvent,
+  systemPreferences,
+  nativeTheme,
+  BrowserWindow,
+} from 'electron';
 import * as path from 'path';
 import { promises as fs } from 'fs';
 import { exec, execFile, spawn } from 'child_process';
@@ -41,7 +50,13 @@ export async function checkFullDiskAccess(): Promise<boolean> {
   console.log('[FDA] Process path:', process.execPath);
 
   try {
-    const tccPath = path.join(app.getPath('home'), 'Library', 'Application Support', 'com.apple.TCC', 'TCC.db');
+    const tccPath = path.join(
+      app.getPath('home'),
+      'Library',
+      'Application Support',
+      'com.apple.TCC',
+      'TCC.db'
+    );
     console.log('[FDA] Testing TCC.db at:', tccPath);
 
     const fileHandle = await fs.open(tccPath, 'r');
@@ -57,7 +72,7 @@ export async function checkFullDiskAccess(): Promise<boolean> {
   const testPaths = [
     path.join(app.getPath('home'), 'Library', 'Safari'),
     path.join(app.getPath('home'), 'Library', 'Mail'),
-    path.join(app.getPath('home'), 'Library', 'Messages')
+    path.join(app.getPath('home'), 'Library', 'Messages'),
   ];
 
   for (const testPath of testPaths) {
@@ -79,7 +94,10 @@ export async function checkFullDiskAccess(): Promise<boolean> {
   return false;
 }
 
-export async function showFullDiskAccessDialog(loadSettings: () => Promise<any>, saveSettings: (settings: any) => Promise<any>): Promise<void> {
+export async function showFullDiskAccessDialog(
+  loadSettings: () => Promise<any>,
+  saveSettings: (settings: any) => Promise<any>
+): Promise<void> {
   const mainWindow = getMainWindow();
   if (!mainWindow || mainWindow.isDestroyed()) {
     console.log('[FDA] Cannot show dialog - no valid window');
@@ -90,17 +108,18 @@ export async function showFullDiskAccessDialog(loadSettings: () => Promise<any>,
     type: 'warning',
     title: 'Full Disk Access Required',
     message: 'IYERIS needs Full Disk Access for full functionality',
-    detail: 'To browse all files and folders on your Mac without repeated permission prompts, IYERIS needs Full Disk Access.\n\n' +
-            'How to grant access:\n' +
-            '1. Click "Open Settings" below\n' +
-            '2. Click the + button to add an app\n' +
-            '3. Navigate to Applications and select IYERIS\n' +
-            '4. Make sure the toggle next to IYERIS is ON\n' +
-            '5. Restart IYERIS\n\n' +
-            'Without this, you\'ll see permission prompts for each folder.',
-    buttons: ['Open Settings', 'Remind Me Later', 'Don\'t Ask Again'],
+    detail:
+      'To browse all files and folders on your Mac without repeated permission prompts, IYERIS needs Full Disk Access.\n\n' +
+      'How to grant access:\n' +
+      '1. Click "Open Settings" below\n' +
+      '2. Click the + button to add an app\n' +
+      '3. Navigate to Applications and select IYERIS\n' +
+      '4. Make sure the toggle next to IYERIS is ON\n' +
+      '5. Restart IYERIS\n\n' +
+      "Without this, you'll see permission prompts for each folder.",
+    buttons: ['Open Settings', 'Remind Me Later', "Don't Ask Again"],
     defaultId: 0,
-    cancelId: 1
+    cancelId: 1,
   });
 
   console.log('[FDA] User selected option:', result.response);
@@ -115,128 +134,136 @@ export async function showFullDiskAccessDialog(loadSettings: () => Promise<any>,
   }
 }
 
-export function setupSystemHandlers(loadSettings: () => Promise<any>, saveSettings: (settings: any) => Promise<any>): void {
-  ipcMain.handle('get-disk-space', async (
-    _event: IpcMainInvokeEvent,
-    drivePath: string
-  ): Promise<{ success: boolean; total?: number; free?: number; error?: string }> => {
-    console.log('[Main] get-disk-space called with path:', drivePath, 'Platform:', process.platform);
-    try {
-      if (process.platform === 'win32') {
-        return new Promise((resolve) => {
-          const driveLetter = drivePath.substring(0, 2);
-          const driveChar = driveLetter.charAt(0).toUpperCase();
+export function setupSystemHandlers(
+  loadSettings: () => Promise<any>,
+  saveSettings: (settings: any) => Promise<any>
+): void {
+  ipcMain.handle(
+    'get-disk-space',
+    async (
+      _event: IpcMainInvokeEvent,
+      drivePath: string
+    ): Promise<{ success: boolean; total?: number; free?: number; error?: string }> => {
+      console.log(
+        '[Main] get-disk-space called with path:',
+        drivePath,
+        'Platform:',
+        process.platform
+      );
+      try {
+        if (process.platform === 'win32') {
+          return new Promise((resolve) => {
+            const driveLetter = drivePath.substring(0, 2);
+            const driveChar = driveLetter.charAt(0).toUpperCase();
 
-          if (!/^[A-Z]$/.test(driveChar)) {
-            console.error('[Main] Invalid drive letter:', driveChar);
-            resolve({ success: false, error: 'Invalid drive letter' });
-            return;
-          }
-
-          console.log('[Main] Getting disk space for drive:', driveChar);
-          const psCommand = `Get-PSDrive -Name ${driveChar} | Select-Object @{Name='Free';Expression={$_.Free}}, @{Name='Used';Expression={$_.Used}} | ConvertTo-Json`;
-
-          const { child: psProcess, timedOut } = spawnWithTimeout(
-            'powershell',
-            ['-Command', psCommand],
-            5000,
-            { shell: false }
-          );
-          let stdout = '';
-          let stderr = '';
-
-          if (psProcess.stdout) {
-            psProcess.stdout.on('data', (data: Buffer) => {
-              stdout += data.toString();
-            });
-          }
-
-          if (psProcess.stderr) {
-            psProcess.stderr.on('data', (data: Buffer) => {
-              stderr += data.toString();
-            });
-          }
-
-          psProcess.on('close', (code) => {
-            if (timedOut()) {
-              resolve({ success: false, error: 'Disk space query timed out' });
+            if (!/^[A-Z]$/.test(driveChar)) {
+              console.error('[Main] Invalid drive letter:', driveChar);
+              resolve({ success: false, error: 'Invalid drive letter' });
               return;
             }
-            if (code !== 0) {
-              console.error('[Main] PowerShell error:', stderr);
-              resolve({ success: false, error: 'PowerShell command failed' });
-              return;
+
+            console.log('[Main] Getting disk space for drive:', driveChar);
+            const psCommand = `Get-PSDrive -Name ${driveChar} | Select-Object @{Name='Free';Expression={$_.Free}}, @{Name='Used';Expression={$_.Used}} | ConvertTo-Json`;
+
+            const { child: psProcess, timedOut } = spawnWithTimeout(
+              'powershell',
+              ['-Command', psCommand],
+              5000,
+              { shell: false }
+            );
+            let stdout = '';
+            let stderr = '';
+
+            if (psProcess.stdout) {
+              psProcess.stdout.on('data', (data: Buffer) => {
+                stdout += data.toString();
+              });
             }
-            console.log('[Main] PowerShell output:', stdout);
-            try {
-              const data = JSON.parse(stdout.trim());
-              const free = parseInt(data.Free);
-              const used = parseInt(data.Used);
-              const total = free + used;
-              console.log('[Main] Success - Free:', free, 'Used:', used, 'Total:', total);
-              resolve({ success: true, free, total });
-            } catch (parseError) {
-              console.error('[Main] JSON parse error:', parseError);
-              resolve({ success: false, error: 'Could not parse disk info' });
+
+            if (psProcess.stderr) {
+              psProcess.stderr.on('data', (data: Buffer) => {
+                stderr += data.toString();
+              });
             }
+
+            psProcess.on('close', (code) => {
+              if (timedOut()) {
+                resolve({ success: false, error: 'Disk space query timed out' });
+                return;
+              }
+              if (code !== 0) {
+                console.error('[Main] PowerShell error:', stderr);
+                resolve({ success: false, error: 'PowerShell command failed' });
+                return;
+              }
+              console.log('[Main] PowerShell output:', stdout);
+              try {
+                const data = JSON.parse(stdout.trim());
+                const free = parseInt(data.Free);
+                const used = parseInt(data.Used);
+                const total = free + used;
+                console.log('[Main] Success - Free:', free, 'Used:', used, 'Total:', total);
+                resolve({ success: true, free, total });
+              } catch (parseError) {
+                console.error('[Main] JSON parse error:', parseError);
+                resolve({ success: false, error: 'Could not parse disk info' });
+              }
+            });
           });
-        });
-      } else if (process.platform === 'darwin' || process.platform === 'linux') {
-        return new Promise((resolve) => {
-          const { child: dfProcess, timedOut } = spawnWithTimeout(
-            'df',
-            ['-k', drivePath],
-            5000,
-            { shell: false }
-          );
-          let stdout = '';
-          let stderr = '';
-
-          if (dfProcess.stdout) {
-            dfProcess.stdout.on('data', (data: Buffer) => {
-              stdout += data.toString();
+        } else if (process.platform === 'darwin' || process.platform === 'linux') {
+          return new Promise((resolve) => {
+            const { child: dfProcess, timedOut } = spawnWithTimeout('df', ['-k', drivePath], 5000, {
+              shell: false,
             });
-          }
+            let stdout = '';
+            let stderr = '';
 
-          if (dfProcess.stderr) {
-            dfProcess.stderr.on('data', (data: Buffer) => {
-              stderr += data.toString();
+            if (dfProcess.stdout) {
+              dfProcess.stdout.on('data', (data: Buffer) => {
+                stdout += data.toString();
+              });
+            }
+
+            if (dfProcess.stderr) {
+              dfProcess.stderr.on('data', (data: Buffer) => {
+                stderr += data.toString();
+              });
+            }
+
+            dfProcess.on('close', (code) => {
+              if (timedOut()) {
+                resolve({ success: false, error: 'Disk space query timed out' });
+                return;
+              }
+              if (code !== 0) {
+                console.error('[Main] df error:', stderr);
+                resolve({ success: false, error: 'df command failed' });
+                return;
+              }
+              const lines = stdout.trim().split('\n');
+              if (lines.length < 2) {
+                resolve({ success: false, error: 'Could not parse disk info' });
+                return;
+              }
+
+              const parts = lines[1].trim().split(/\s+/);
+              if (parts.length >= 4) {
+                const total = parseInt(parts[1]) * 1024;
+                const available = parseInt(parts[3]) * 1024;
+                resolve({ success: true, total, free: available });
+              } else {
+                resolve({ success: false, error: 'Invalid disk info format' });
+              }
             });
-          }
-
-          dfProcess.on('close', (code) => {
-            if (timedOut()) {
-              resolve({ success: false, error: 'Disk space query timed out' });
-              return;
-            }
-            if (code !== 0) {
-              console.error('[Main] df error:', stderr);
-              resolve({ success: false, error: 'df command failed' });
-              return;
-            }
-            const lines = stdout.trim().split('\n');
-            if (lines.length < 2) {
-              resolve({ success: false, error: 'Could not parse disk info' });
-              return;
-            }
-
-            const parts = lines[1].trim().split(/\s+/);
-            if (parts.length >= 4) {
-              const total = parseInt(parts[1]) * 1024;
-              const available = parseInt(parts[3]) * 1024;
-              resolve({ success: true, total, free: available });
-            } else {
-              resolve({ success: false, error: 'Invalid disk info format' });
-            }
           });
-        });
-      } else {
-        return { success: false, error: 'Disk space info not available on this platform' };
+        } else {
+          return { success: false, error: 'Disk space info not available on this platform' };
+        }
+      } catch (error) {
+        return { success: false, error: getErrorMessage(error) };
       }
-    } catch (error) {
-      return { success: false, error: getErrorMessage(error) };
     }
-  });
+  );
 
   ipcMain.handle('restart-as-admin', async (): Promise<ApiResponse> => {
     try {
@@ -250,25 +277,34 @@ export function setupSystemHandlers(loadSettings: () => Promise<any>, saveSettin
             '-NoProfile',
             '-Command',
             'Start-Process',
-            '-FilePath', appPath,
-            '-Verb', 'RunAs'
+            '-FilePath',
+            appPath,
+            '-Verb',
+            'RunAs',
           ]);
           app.quit();
           return { success: true };
         } catch (error) {
           console.log('[Admin] Failed to restart as admin:', getErrorMessage(error));
-          return { success: false, error: 'Failed to restart with admin privileges. The request may have been cancelled.' };
+          return {
+            success: false,
+            error: 'Failed to restart with admin privileges. The request may have been cancelled.',
+          };
         }
       } else if (platform === 'darwin') {
         try {
           await execFilePromise('osascript', [
-            '-e', `do shell script quoted form of "${appPath}" with administrator privileges`
+            '-e',
+            `do shell script quoted form of "${appPath}" with administrator privileges`,
           ]);
           app.quit();
           return { success: true };
         } catch (error) {
           console.log('[Admin] Failed to restart as admin:', getErrorMessage(error));
-          return { success: false, error: 'Failed to restart with admin privileges. The request may have been cancelled.' };
+          return {
+            success: false,
+            error: 'Failed to restart with admin privileges. The request may have been cancelled.',
+          };
         }
       } else if (platform === 'linux') {
         try {
@@ -277,7 +313,10 @@ export function setupSystemHandlers(loadSettings: () => Promise<any>, saveSettin
           return { success: true };
         } catch (error) {
           console.log('[Admin] Failed to restart as admin:', getErrorMessage(error));
-          return { success: false, error: 'Failed to restart with admin privileges. The request may have been cancelled.' };
+          return {
+            success: false,
+            error: 'Failed to restart with admin privileges. The request may have been cancelled.',
+          };
         }
       } else {
         return { success: false, error: 'Unsupported platform' };
@@ -287,152 +326,213 @@ export function setupSystemHandlers(loadSettings: () => Promise<any>, saveSettin
     }
   });
 
-  ipcMain.handle('open-terminal', async (_event: IpcMainInvokeEvent, dirPath: string): Promise<ApiResponse> => {
-    try {
-      if (!isPathSafe(dirPath)) {
-        return { success: false, error: 'Invalid directory path' };
-      }
-      const platform = process.platform;
+  ipcMain.handle(
+    'open-terminal',
+    async (_event: IpcMainInvokeEvent, dirPath: string): Promise<ApiResponse> => {
+      try {
+        if (!isPathSafe(dirPath)) {
+          return { success: false, error: 'Invalid directory path' };
+        }
+        const platform = process.platform;
 
-      if (platform === 'win32') {
-        const hasWT = await new Promise<boolean>((resolve) => {
-          exec('where wt', (error) => resolve(!error));
-        });
+        if (platform === 'win32') {
+          const hasWT = await new Promise<boolean>((resolve) => {
+            exec('where wt', (error) => resolve(!error));
+          });
 
-        if (hasWT) {
-          const child = spawn('wt', ['-d', dirPath], { shell: false, detached: true, stdio: 'ignore' });
+          if (hasWT) {
+            const child = spawn('wt', ['-d', dirPath], {
+              shell: false,
+              detached: true,
+              stdio: 'ignore',
+            });
+            child.unref();
+          } else {
+            const quotedPath = `"${dirPath.replace(/"/g, '""')}"`;
+            const child = spawn('cmd', ['/K', 'cd', '/d', quotedPath], {
+              shell: false,
+              detached: true,
+              stdio: 'ignore',
+            });
+            child.unref();
+          }
+        } else if (platform === 'darwin') {
+          const child = spawn('open', ['-a', 'Terminal', dirPath], {
+            shell: false,
+            detached: true,
+            stdio: 'ignore',
+          });
           child.unref();
         } else {
-          const quotedPath = `"${dirPath.replace(/"/g, '""')}"`;
-          const child = spawn('cmd', ['/K', 'cd', '/d', quotedPath], { shell: false, detached: true, stdio: 'ignore' });
-          child.unref();
-        }
-      } else if (platform === 'darwin') {
-        const child = spawn('open', ['-a', 'Terminal', dirPath], { shell: false, detached: true, stdio: 'ignore' });
-        child.unref();
-      } else {
-        const terminals = [
-          { cmd: 'x-terminal-emulator', args: ['--working-directory', dirPath] },
-          { cmd: 'gnome-terminal', args: ['--working-directory=' + dirPath] },
-          { cmd: 'xterm', args: ['-e', 'bash'] }
-        ];
+          const terminals = [
+            { cmd: 'x-terminal-emulator', args: ['--working-directory', dirPath] },
+            { cmd: 'gnome-terminal', args: ['--working-directory=' + dirPath] },
+            { cmd: 'xterm', args: ['-e', 'bash'] },
+          ];
 
-        let launched = false;
-        for (const term of terminals) {
-          const success = await new Promise<boolean>((resolve) => {
-            const child = spawn(term.cmd, term.args, { shell: false, detached: true, cwd: dirPath });
-            child.once('spawn', () => {
-              child.unref();
-              resolve(true);
+          let launched = false;
+          for (const term of terminals) {
+            const success = await new Promise<boolean>((resolve) => {
+              const child = spawn(term.cmd, term.args, {
+                shell: false,
+                detached: true,
+                cwd: dirPath,
+              });
+              child.once('spawn', () => {
+                child.unref();
+                resolve(true);
+              });
+              child.once('error', () => resolve(false));
             });
-            child.once('error', () => resolve(false));
-          });
-          if (success) {
-            launched = true;
-            break;
+            if (success) {
+              launched = true;
+              break;
+            }
+          }
+
+          if (!launched) {
+            console.error('No suitable terminal emulator found');
           }
         }
 
-        if (!launched) {
-          console.error('No suitable terminal emulator found');
+        return { success: true };
+      } catch (error) {
+        return { success: false, error: getErrorMessage(error) };
+      }
+    }
+  );
+
+  ipcMain.handle(
+    'read-file-content',
+    async (
+      _event: IpcMainInvokeEvent,
+      filePath: string,
+      maxSize: number = 1024 * 1024
+    ): Promise<{ success: boolean; content?: string; error?: string; isTruncated?: boolean }> => {
+      try {
+        if (!isPathSafe(filePath)) {
+          return { success: false, error: 'Invalid file path' };
         }
-      }
-
-      return { success: true };
-    } catch (error) {
-      return { success: false, error: getErrorMessage(error) };
-    }
-  });
-
-  ipcMain.handle('read-file-content', async (
-    _event: IpcMainInvokeEvent,
-    filePath: string,
-    maxSize: number = 1024 * 1024
-  ): Promise<{ success: boolean; content?: string; error?: string; isTruncated?: boolean }> => {
-    try {
-      if (!isPathSafe(filePath)) {
-        return { success: false, error: 'Invalid file path' };
-      }
-      const requestedMaxSize = Number.isFinite(maxSize) ? maxSize : MAX_TEXT_PREVIEW_BYTES;
-      const safeMaxSize = Math.min(Math.max(1, requestedMaxSize), MAX_TEXT_PREVIEW_BYTES);
-      const stats = await fs.stat(filePath);
-
-      if (stats.size > safeMaxSize) {
-        const buffer = Buffer.alloc(safeMaxSize);
-        const fileHandle = await fs.open(filePath, 'r');
-        try {
-          await fileHandle.read(buffer, 0, safeMaxSize, 0);
-          return {
-            success: true,
-            content: buffer.toString('utf8'),
-            isTruncated: true
-          };
-        } finally {
-          await fileHandle.close();
+        const requestedMaxSize = Number.isFinite(maxSize) ? maxSize : MAX_TEXT_PREVIEW_BYTES;
+        const safeMaxSize = Math.min(Math.max(1, requestedMaxSize), MAX_TEXT_PREVIEW_BYTES);
+        const stats = await fs.stat(filePath);
+        if (!stats.isFile()) {
+          return { success: false, error: 'Not a regular file' };
         }
+
+        if (stats.size > safeMaxSize) {
+          const buffer = Buffer.alloc(safeMaxSize);
+          const fileHandle = await fs.open(filePath, 'r');
+          try {
+            await fileHandle.read(buffer, 0, safeMaxSize, 0);
+            return {
+              success: true,
+              content: buffer.toString('utf8'),
+              isTruncated: true,
+            };
+          } finally {
+            await fileHandle.close();
+          }
+        }
+
+        const content = await fs.readFile(filePath, 'utf8');
+        return { success: true, content, isTruncated: false };
+      } catch (error) {
+        return { success: false, error: getErrorMessage(error) };
       }
-
-      const content = await fs.readFile(filePath, 'utf8');
-      return { success: true, content, isTruncated: false };
-    } catch (error) {
-      return { success: false, error: getErrorMessage(error) };
     }
-  });
+  );
 
-  ipcMain.handle('get-file-data-url', async (
-    _event: IpcMainInvokeEvent,
-    filePath: string,
-    maxSize: number = 10 * 1024 * 1024
-  ): Promise<{ success: boolean; dataUrl?: string; error?: string }> => {
-    try {
-      if (!isPathSafe(filePath)) {
-        return { success: false, error: 'Invalid file path' };
+  ipcMain.handle(
+    'get-file-data-url',
+    async (
+      _event: IpcMainInvokeEvent,
+      filePath: string,
+      maxSize: number = 10 * 1024 * 1024
+    ): Promise<{ success: boolean; dataUrl?: string; error?: string }> => {
+      try {
+        if (!isPathSafe(filePath)) {
+          return { success: false, error: 'Invalid file path' };
+        }
+        const requestedMaxSize = Number.isFinite(maxSize) ? maxSize : MAX_DATA_URL_BYTES;
+        const safeMaxSize = Math.min(Math.max(1, requestedMaxSize), MAX_DATA_URL_BYTES);
+        const stats = await fs.stat(filePath);
+        if (!stats.isFile()) {
+          return { success: false, error: 'Not a regular file' };
+        }
+
+        if (stats.size > safeMaxSize) {
+          return { success: false, error: 'File too large to preview' };
+        }
+
+        const buffer = await fs.readFile(filePath);
+        const ext = path.extname(filePath).toLowerCase();
+
+        const mimeTypes: Record<string, string> = {
+          '.jpg': 'image/jpeg',
+          '.jpeg': 'image/jpeg',
+          '.png': 'image/png',
+          '.gif': 'image/gif',
+          '.webp': 'image/webp',
+          '.svg': 'image/svg+xml',
+          '.bmp': 'image/bmp',
+          '.ico': 'image/x-icon',
+        };
+
+        const mimeType = mimeTypes[ext] || 'application/octet-stream';
+        const base64 = buffer.toString('base64');
+        const dataUrl = `data:${mimeType};base64,${base64}`;
+
+        return { success: true, dataUrl };
+      } catch (error) {
+        return { success: false, error: getErrorMessage(error) };
       }
-      const requestedMaxSize = Number.isFinite(maxSize) ? maxSize : MAX_DATA_URL_BYTES;
-      const safeMaxSize = Math.min(Math.max(1, requestedMaxSize), MAX_DATA_URL_BYTES);
-      const stats = await fs.stat(filePath);
+    }
+  );
 
-      if (stats.size > safeMaxSize) {
-        return { success: false, error: 'File too large to preview' };
+  ipcMain.handle(
+    'get-licenses',
+    async (): Promise<{ success: boolean; licenses?: any; error?: string }> => {
+      try {
+        const licensesPath = path.join(__dirname, '..', 'licenses.json');
+        const data = await fs.readFile(licensesPath, 'utf-8');
+        const licenses = JSON.parse(data);
+        return { success: true, licenses };
+      } catch (error) {
+        return { success: false, error: getErrorMessage(error) };
       }
-
-      const buffer = await fs.readFile(filePath);
-      const ext = path.extname(filePath).toLowerCase();
-
-      const mimeTypes: Record<string, string> = {
-        '.jpg': 'image/jpeg',
-        '.jpeg': 'image/jpeg',
-        '.png': 'image/png',
-        '.gif': 'image/gif',
-        '.webp': 'image/webp',
-        '.svg': 'image/svg+xml',
-        '.bmp': 'image/bmp',
-        '.ico': 'image/x-icon'
-      };
-
-      const mimeType = mimeTypes[ext] || 'application/octet-stream';
-      const base64 = buffer.toString('base64');
-      const dataUrl = `data:${mimeType};base64,${base64}`;
-
-      return { success: true, dataUrl };
-    } catch (error) {
-      return { success: false, error: getErrorMessage(error) };
     }
-  });
-
-  ipcMain.handle('get-licenses', async (): Promise<{ success: boolean; licenses?: any; error?: string }> => {
-    try {
-      const licensesPath = path.join(__dirname, '..', 'licenses.json');
-      const data = await fs.readFile(licensesPath, 'utf-8');
-      const licenses = JSON.parse(data);
-      return { success: true, licenses };
-    } catch (error) {
-      return { success: false, error: getErrorMessage(error) };
-    }
-  });
+  );
 
   ipcMain.handle('get-platform', (): string => {
     return process.platform;
+  });
+
+  ipcMain.handle('get-app-version', (): string => {
+    return app.getVersion();
+  });
+
+  ipcMain.handle('get-system-accent-color', (): { accentColor: string; isDarkMode: boolean } => {
+    let accentColor = '#0078d4';
+    if (process.platform === 'win32') {
+      try {
+        const color = systemPreferences.getAccentColor();
+        if (color && color.length >= 6) {
+          accentColor = `#${color.substring(0, 6)}`;
+        }
+      } catch {}
+    } else if (process.platform === 'darwin') {
+      try {
+        const color = systemPreferences.getAccentColor();
+        if (color && color.length >= 6) {
+          accentColor = `#${color.substring(0, 6)}`;
+        }
+      } catch {}
+    }
+    return {
+      accentColor,
+      isDarkMode: nativeTheme.shouldUseDarkColors,
+    };
   });
 
   ipcMain.handle('is-mas', (): boolean => {
@@ -447,10 +547,13 @@ export function setupSystemHandlers(loadSettings: () => Promise<any>, saveSettin
     return process.windowsStore === true;
   });
 
-  ipcMain.handle('check-full-disk-access', async (): Promise<{ success: boolean; hasAccess: boolean }> => {
-    const hasAccess = await checkFullDiskAccess();
-    return { success: true, hasAccess };
-  });
+  ipcMain.handle(
+    'check-full-disk-access',
+    async (): Promise<{ success: boolean; hasAccess: boolean }> => {
+      const hasAccess = await checkFullDiskAccess();
+      return { success: true, hasAccess };
+    }
+  );
 
   ipcMain.handle('request-full-disk-access', async (): Promise<ApiResponse> => {
     try {
@@ -465,63 +568,131 @@ export function setupSystemHandlers(loadSettings: () => Promise<any>, saveSettin
     }
   });
 
-  ipcMain.handle('get-git-status', async (
-    _event: IpcMainInvokeEvent,
-    dirPath: string
-  ): Promise<{ success: boolean; isGitRepo?: boolean; statuses?: { path: string; status: string }[]; error?: string }> => {
-    try {
-      if (!isPathSafe(dirPath)) {
-        return { success: false, error: 'Invalid directory path' };
-      }
-
-      const execPromise = promisify(exec);
-
+  ipcMain.handle(
+    'get-git-status',
+    async (
+      _event: IpcMainInvokeEvent,
+      dirPath: string
+    ): Promise<{
+      success: boolean;
+      isGitRepo?: boolean;
+      statuses?: { path: string; status: string }[];
+      error?: string;
+    }> => {
       try {
-        await execPromise('git rev-parse --git-dir', { cwd: dirPath });
-      } catch {
+        if (!isPathSafe(dirPath)) {
+          return { success: false, error: 'Invalid directory path' };
+        }
+
+        const execPromise = promisify(exec);
+
+        try {
+          await execPromise('git rev-parse --git-dir', { cwd: dirPath });
+        } catch {
+          return { success: true, isGitRepo: false, statuses: [] };
+        }
+
+        const { stdout } = await execPromise('git status --porcelain -uall -z', {
+          cwd: dirPath,
+          maxBuffer: 10 * 1024 * 1024,
+        });
+
+        const statuses: { path: string; status: string }[] = [];
+        const entries = stdout.split('\0').filter((entry) => entry);
+
+        for (let i = 0; i < entries.length; i++) {
+          const entry = entries[i];
+          if (entry.length < 3) continue;
+          const statusCode = entry.substring(0, 2);
+          let filePath = entry.substring(3);
+
+          if (statusCode.includes('R') || statusCode.includes('C')) {
+            const nextPath = entries[i + 1];
+            if (nextPath) {
+              filePath = nextPath;
+              i += 1;
+            }
+          }
+
+          let status: string;
+          if (statusCode === '??') {
+            status = 'untracked';
+          } else if (statusCode === '!!') {
+            status = 'ignored';
+          } else if (statusCode.includes('U') || statusCode === 'AA' || statusCode === 'DD') {
+            status = 'conflict';
+          } else if (statusCode.includes('A') || statusCode.includes('C')) {
+            status = 'added';
+          } else if (statusCode.includes('D')) {
+            status = 'deleted';
+          } else if (statusCode.includes('R')) {
+            status = 'renamed';
+          } else if (statusCode.includes('M') || statusCode.includes('T')) {
+            status = 'modified';
+          } else {
+            status = 'modified';
+          }
+
+          const fullPath = path.join(dirPath, filePath);
+          statuses.push({ path: fullPath, status });
+        }
+
+        return { success: true, isGitRepo: true, statuses };
+      } catch (error) {
+        console.error('[Git Status] Error:', error);
         return { success: true, isGitRepo: false, statuses: [] };
       }
-
-      const { stdout } = await execPromise('git status --porcelain -uall', { cwd: dirPath, maxBuffer: 10 * 1024 * 1024 });
-
-      const statuses: { path: string; status: string }[] = [];
-      const lines = stdout.split('\n').filter(line => line.trim());
-
-      for (const line of lines) {
-        const statusCode = line.substring(0, 2);
-        let filePath = line.substring(3);
-
-        if (filePath.includes(' -> ')) {
-          filePath = filePath.split(' -> ')[1];
-        }
-
-        let status: string;
-        if (statusCode === '??') {
-          status = 'untracked';
-        } else if (statusCode === '!!') {
-          status = 'ignored';
-        } else if (statusCode.includes('U') || statusCode === 'AA' || statusCode === 'DD') {
-          status = 'conflict';
-        } else if (statusCode.includes('A') || statusCode.includes('C')) {
-          status = 'added';
-        } else if (statusCode.includes('D')) {
-          status = 'deleted';
-        } else if (statusCode.includes('R')) {
-          status = 'renamed';
-        } else if (statusCode.includes('M') || statusCode.includes('T')) {
-          status = 'modified';
-        } else {
-          status = 'modified';
-        }
-
-        const fullPath = path.join(dirPath, filePath);
-        statuses.push({ path: fullPath, status });
-      }
-
-      return { success: true, isGitRepo: true, statuses };
-    } catch (error) {
-      console.error('[Git Status] Error:', error);
-      return { success: true, isGitRepo: false, statuses: [] };
     }
+  );
+
+  ipcMain.handle(
+    'get-git-branch',
+    async (
+      _event: IpcMainInvokeEvent,
+      dirPath: string
+    ): Promise<{
+      success: boolean;
+      branch?: string;
+      error?: string;
+    }> => {
+      try {
+        if (!isPathSafe(dirPath)) {
+          return { success: false, error: 'Invalid directory path' };
+        }
+
+        const execPromise = promisify(exec);
+
+        try {
+          await execPromise('git rev-parse --git-dir', { cwd: dirPath });
+        } catch {
+          return { success: true, branch: undefined };
+        }
+
+        const { stdout } = await execPromise('git branch --show-current', {
+          cwd: dirPath,
+        });
+
+        const branch = stdout.trim();
+
+        if (!branch) {
+          const { stdout: refStdout } = await execPromise('git rev-parse --short HEAD', {
+            cwd: dirPath,
+          });
+          return { success: true, branch: `HEAD:${refStdout.trim()}` };
+        }
+
+        return { success: true, branch };
+      } catch (error) {
+        console.error('[Git Branch] Error:', error);
+        return { success: true, branch: undefined };
+      }
+    }
+  );
+
+  nativeTheme.on('updated', () => {
+    const isDarkMode = nativeTheme.shouldUseDarkColors;
+    BrowserWindow.getAllWindows().forEach((win) => {
+      win.webContents.send('system-theme-changed', { isDarkMode });
+    });
   });
 }
