@@ -65,6 +65,10 @@ if (TOTAL_MEM_GB < 12) {
 app.commandLine.appendSwitch('js-flags', jsFlags.join(' '));
 app.commandLine.appendSwitch('enable-features', 'ReducedReferrerGranularity,V8VmFuture');
 app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion,MediaRouter');
+if (process.platform === 'win32') {
+  app.commandLine.appendSwitch('disable-renderer-backgrounding');
+  app.commandLine.appendSwitch('disable-background-timer-throttling');
+}
 app.commandLine.appendSwitch('wm-window-animations-disabled');
 app.commandLine.appendSwitch('force-color-profile', 'srgb');
 
