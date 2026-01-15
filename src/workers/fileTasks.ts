@@ -1232,7 +1232,7 @@ async function listDirectory(payload: any, operationId?: string): Promise<any> {
     results.push(...items);
     loaded += items.length;
     if (operationId) {
-      sendProgress('list-directory', operationId, { dirPath, loaded });
+      sendProgress('list-directory', operationId, { dirPath, loaded, items });
     }
     batch.length = 0;
   };

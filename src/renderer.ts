@@ -1,4 +1,12 @@
-import type { Settings, FileItem, ItemProperties, CustomTheme, ContentSearchResult } from './types';
+import type {
+  Settings,
+  FileItem,
+  ItemProperties,
+  CustomTheme,
+  ContentSearchResult,
+  GitStatusResponse,
+  GitFileStatus,
+} from './types';
 import { escapeHtml, getErrorMessage } from './shared.js';
 import { createDefaultSettings } from './settings.js';
 
@@ -9,14 +17,32 @@ const TOAST_DURATION_MS = 3000;
 const SEARCH_HISTORY_MAX = 5;
 const DIRECTORY_HISTORY_MAX = 5;
 const RENDER_BATCH_SIZE = 50;
+const VIRTUALIZE_THRESHOLD = 2000;
+const VIRTUALIZE_BATCH_SIZE = 200;
 const THUMBNAIL_ROOT_MARGIN = '100px';
 const THUMBNAIL_CACHE_MAX = 100;
 const THUMBNAIL_CONCURRENT_LOADS = 4;
 const NAME_COLLATOR = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+const DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
+  year: 'numeric',
+  month: 'short',
+  day: 'numeric',
+});
+const DISK_SPACE_CACHE_TTL_MS = 60000;
+const GIT_STATUS_CACHE_TTL_MS = 3000;
 
 const thumbnailCache = new Map<string, string>();
 let activeThumbnailLoads = 0;
 const pendingThumbnailLoads: Array<() => void> = [];
+const fileElementMap: Map<string, HTMLElement> = new Map();
+let cutPaths = new Set<string>();
+const gitIndicatorPaths = new Set<string>();
+const diskSpaceCache = new Map<string, { timestamp: number; total: number; free: number }>();
+const gitStatusCache = new Map<
+  string,
+  { timestamp: number; isGitRepo: boolean; statuses: GitFileStatus[] }
+>();
+const gitStatusInFlight = new Map<string, Promise<GitStatusResponse>>();
 
 function enqueueThumbnailLoad(loadFn: () => Promise<void>): void {
   const execute = async () => {
@@ -852,6 +878,11 @@ let activeDirectoryOperationId: string | null = null;
 let directoryRequestId = 0;
 let directoryProgressCount = 0;
 let lastDirectoryProgressUpdate = 0;
+let streamingDirectoryOperationId: string | null = null;
+let streamingDirectoryToken = 0;
+let streamingPendingItems: FileItem[] = [];
+let streamingRenderScheduled = false;
+let hasStreamedDirectoryRender = false;
 
 window.electronAPI.onDirectoryContentsProgress((progress) => {
   if (activeDirectoryProgressOperationId) {
@@ -860,6 +891,9 @@ window.electronAPI.onDirectoryContentsProgress((progress) => {
     return;
   }
   directoryProgressCount = progress.loaded;
+  if (progress.items && progress.items.length > 0 && viewMode !== 'column') {
+    queueStreamedDirectoryItems(progress.items, progress.operationId || null);
+  }
   const now = Date.now();
   if (now - lastDirectoryProgressUpdate < 100) return;
   lastDirectoryProgressUpdate = now;
@@ -867,6 +901,43 @@ window.electronAPI.onDirectoryContentsProgress((progress) => {
     loadingText.textContent = `Loading... (${directoryProgressCount.toLocaleString()} items)`;
   }
 });
+
+function resetStreamedDirectoryState(operationId: string | null): void {
+  streamingDirectoryOperationId = operationId;
+  streamingDirectoryToken += 1;
+  streamingPendingItems = [];
+  streamingRenderScheduled = false;
+  hasStreamedDirectoryRender = false;
+}
+
+function queueStreamedDirectoryItems(items: FileItem[], operationId: string | null): void {
+  if (!operationId || operationId !== streamingDirectoryOperationId) {
+    return;
+  }
+  streamingPendingItems.push(...items);
+  if (streamingRenderScheduled) {
+    return;
+  }
+  streamingRenderScheduled = true;
+  const token = streamingDirectoryToken;
+  requestAnimationFrame(() => flushStreamedDirectoryItems(token));
+}
+
+function flushStreamedDirectoryItems(token: number): void {
+  if (token !== streamingDirectoryToken) {
+    return;
+  }
+  streamingRenderScheduled = false;
+  if (streamingPendingItems.length === 0) {
+    return;
+  }
+  const batch = streamingPendingItems.splice(0);
+  appendStreamedDirectoryItems(batch);
+  if (streamingPendingItems.length > 0) {
+    streamingRenderScheduled = true;
+    requestAnimationFrame(() => flushStreamedDirectoryItems(token));
+  }
+}
 
 function createDirectoryOperationId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -883,6 +954,7 @@ function startDirectoryRequest(path: string): { requestId: number; operationId: 
   activeDirectoryProgressPath = path;
   directoryProgressCount = 0;
   lastDirectoryProgressUpdate = 0;
+  resetStreamedDirectoryState(operationId);
   if (loadingText) loadingText.textContent = 'Loading...';
   return { requestId, operationId };
 }
@@ -894,6 +966,7 @@ function finishDirectoryRequest(requestId: number): void {
   activeDirectoryProgressPath = null;
   directoryProgressCount = 0;
   lastDirectoryProgressUpdate = 0;
+  resetStreamedDirectoryState(null);
   if (loadingText) loadingText.textContent = 'Loading...';
 }
 
@@ -922,7 +995,10 @@ let currentGitBranch: string | null = null;
 
 function clearGitIndicators(): void {
   currentGitStatuses.clear();
-  document.querySelectorAll('.git-indicator').forEach((indicator) => indicator.remove());
+  for (const itemPath of gitIndicatorPaths) {
+    fileElementMap.get(itemPath)?.querySelector('.git-indicator')?.remove();
+  }
+  gitIndicatorPaths.clear();
 }
 
 async function fetchGitStatusAsync(dirPath: string) {
@@ -933,7 +1009,7 @@ async function fetchGitStatusAsync(dirPath: string) {
   const requestId = ++gitStatusRequestId;
 
   try {
-    const result = await window.electronAPI.getGitStatus(dirPath);
+    const result = await getGitStatusCached(dirPath);
     if (
       requestId !== gitStatusRequestId ||
       dirPath !== currentPath ||
@@ -955,6 +1031,37 @@ async function fetchGitStatusAsync(dirPath: string) {
   } catch (error) {
     console.error('[Git Status] Failed to fetch:', error);
   }
+}
+
+async function getGitStatusCached(dirPath: string): Promise<GitStatusResponse> {
+  const cached = gitStatusCache.get(dirPath);
+  if (cached && Date.now() - cached.timestamp < GIT_STATUS_CACHE_TTL_MS) {
+    return { success: true, isGitRepo: cached.isGitRepo, statuses: cached.statuses };
+  }
+
+  const inFlight = gitStatusInFlight.get(dirPath);
+  if (inFlight) {
+    return inFlight;
+  }
+
+  const request = window.electronAPI
+    .getGitStatus(dirPath)
+    .then((result) => {
+      if (result.success) {
+        gitStatusCache.set(dirPath, {
+          timestamp: Date.now(),
+          isGitRepo: result.isGitRepo === true,
+          statuses: result.statuses || [],
+        });
+      }
+      return result;
+    })
+    .finally(() => {
+      gitStatusInFlight.delete(dirPath);
+    });
+
+  gitStatusInFlight.set(dirPath, request);
+  return request;
 }
 
 async function updateGitBranch(dirPath: string) {
@@ -991,21 +1098,32 @@ function updateGitIndicators() {
     return;
   }
 
-  document.querySelectorAll('.file-item').forEach((item) => {
-    const itemPath = item.getAttribute('data-path');
-    if (!itemPath) return;
+  for (const itemPath of Array.from(gitIndicatorPaths)) {
+    if (!currentGitStatuses.has(itemPath)) {
+      fileElementMap.get(itemPath)?.querySelector('.git-indicator')?.remove();
+      gitIndicatorPaths.delete(itemPath);
+    }
+  }
 
-    const existingIndicator = item.querySelector('.git-indicator');
-    if (existingIndicator) existingIndicator.remove();
+  applyGitIndicatorsToPaths(Array.from(currentGitStatuses.keys()));
+}
 
+function applyGitIndicatorsToPaths(paths: string[]): void {
+  for (const itemPath of paths) {
     const status = currentGitStatuses.get(itemPath);
-    if (status) {
-      const indicator = document.createElement('span');
-      indicator.className = `git-indicator ${status}`;
-      indicator.title = status.charAt(0).toUpperCase() + status.slice(1);
+    if (!status) continue;
+    const item = fileElementMap.get(itemPath);
+    if (!item) continue;
+
+    let indicator = item.querySelector('.git-indicator') as HTMLElement | null;
+    if (!indicator) {
+      indicator = document.createElement('span');
       item.appendChild(indicator);
     }
-  });
+    indicator.className = `git-indicator ${status}`;
+    indicator.title = status.charAt(0).toUpperCase() + status.slice(1);
+    gitIndicatorPaths.add(itemPath);
+  }
 }
 
 function showDialog(
@@ -1256,6 +1374,8 @@ function applySettings(settings: Settings) {
     }
   } else {
     clearGitIndicators();
+    gitStatusCache.clear();
+    gitStatusInFlight.clear();
     const statusGitBranch = document.getElementById('status-git-branch');
     if (statusGitBranch) statusGitBranch.style.display = 'none';
     currentGitBranch = null;
@@ -2788,19 +2908,22 @@ async function pasteFromClipboard() {
 }
 
 function updateCutVisuals() {
-  document.querySelectorAll('.file-item').forEach((item) => {
-    const itemPath = item.getAttribute('data-path');
-    if (
-      itemPath &&
-      clipboard &&
-      clipboard.operation === 'cut' &&
-      clipboard.paths.includes(itemPath)
-    ) {
-      item.classList.add('cut');
-    } else {
-      item.classList.remove('cut');
+  const nextCutPaths = new Set(clipboard && clipboard.operation === 'cut' ? clipboard.paths : []);
+
+  for (const itemPath of cutPaths) {
+    if (!nextCutPaths.has(itemPath)) {
+      fileElementMap.get(itemPath)?.classList.remove('cut');
     }
-  });
+  }
+
+  for (const itemPath of nextCutPaths) {
+    const element = fileElementMap.get(itemPath);
+    if (element) {
+      element.classList.add('cut');
+    }
+  }
+
+  cutPaths = nextCutPaths;
 }
 
 function showSortMenu(e: MouseEvent) {
@@ -2969,6 +3092,12 @@ async function updateDiskSpace() {
 
   lastDiskSpacePath = drivePath;
 
+  const cached = getCachedDiskSpace(drivePath);
+  if (cached) {
+    renderDiskSpace(statusDiskSpace, cached.total, cached.free);
+    return;
+  }
+
   diskSpaceDebounceTimer = setTimeout(async () => {
     const result = await window.electronAPI.getDiskSpace(drivePath);
     if (
@@ -2979,32 +3108,47 @@ async function updateDiskSpace() {
     ) {
       const total = result.total;
       const free = result.free;
-      const freeStr = formatFileSize(free);
-      const totalStr = formatFileSize(total);
-      const usedBytes = total - free;
-      const usedPercent = ((usedBytes / total) * 100).toFixed(1);
-      let usageColor = '#107c10';
-      if (parseFloat(usedPercent) > 80) {
-        usageColor = '#ff8c00';
-      }
-      if (parseFloat(usedPercent) > 90) {
-        usageColor = '#e81123';
-      }
-
-      statusDiskSpace.innerHTML = `
-        <span style="display: inline-flex; align-items: center; gap: 6px;">
-          ${twemojiImg(String.fromCodePoint(0x1f4be), 'twemoji')} ${freeStr} free of ${totalStr}
-          <span style="display: inline-block; width: 60px; height: 8px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden; position: relative;">
-            <span style="position: absolute; left: 0; top: 0; height: 100%; width: ${usedPercent}%; background: ${usageColor}; transition: width 0.3s ease;"></span>
-          </span>
-          <span style="opacity: 0.7;">(${usedPercent}% used)</span>
-        </span>
-      `;
+      diskSpaceCache.set(drivePath, { timestamp: Date.now(), total, free });
+      renderDiskSpace(statusDiskSpace, total, free);
     } else {
       statusDiskSpace.textContent = '';
     }
     diskSpaceDebounceTimer = null;
   }, 300);
+}
+
+function getCachedDiskSpace(drivePath: string): { total: number; free: number } | null {
+  const cached = diskSpaceCache.get(drivePath);
+  if (!cached) return null;
+  if (Date.now() - cached.timestamp > DISK_SPACE_CACHE_TTL_MS) {
+    diskSpaceCache.delete(drivePath);
+    return null;
+  }
+  return { total: cached.total, free: cached.free };
+}
+
+function renderDiskSpace(element: HTMLElement, total: number, free: number): void {
+  const freeStr = formatFileSize(free);
+  const totalStr = formatFileSize(total);
+  const usedBytes = total - free;
+  const usedPercent = ((usedBytes / total) * 100).toFixed(1);
+  let usageColor = '#107c10';
+  if (parseFloat(usedPercent) > 80) {
+    usageColor = '#ff8c00';
+  }
+  if (parseFloat(usedPercent) > 90) {
+    usageColor = '#e81123';
+  }
+
+  element.innerHTML = `
+    <span style="display: inline-flex; align-items: center; gap: 6px;">
+      ${twemojiImg(String.fromCodePoint(0x1f4be), 'twemoji')} ${freeStr} free of ${totalStr}
+      <span style="display: inline-block; width: 60px; height: 8px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden; position: relative;">
+        <span style="position: absolute; left: 0; top: 0; height: 100%; width: ${usedPercent}%; background: ${usageColor}; transition: width 0.3s ease;"></span>
+      </span>
+      <span style="opacity: 0.7;">(${usedPercent}% used)</span>
+    </span>
+  `;
 }
 
 function formatFileSize(bytes: number): string {
@@ -3186,6 +3330,7 @@ async function init() {
     const cleanupSystemResumed = window.electronAPI.onSystemResumed(() => {
       console.log('[Renderer] System resumed from sleep, refreshing view...');
       lastDiskSpacePath = '';
+      diskSpaceCache.clear();
       if (diskSpaceDebounceTimer) {
         clearTimeout(diskSpaceDebounceTimer);
         diskSpaceDebounceTimer = null;
@@ -3231,6 +3376,7 @@ async function loadDrives() {
 
 function setupEventListeners() {
   initSettingsTabs();
+  setupFileGridEventDelegation();
 
   const cleanupClipboard = window.electronAPI.onClipboardChanged((newClipboard) => {
     clipboard = newClipboard;
@@ -4145,16 +4291,163 @@ async function navigateTo(path: string, skipHistoryUpdate = false) {
 
 let renderFilesToken = 0;
 const filePathMap: Map<string, FileItem> = new Map();
+let virtualizedRenderToken = 0;
+let virtualizedItems: FileItem[] = [];
+let virtualizedRenderIndex = 0;
+let virtualizedSearchQuery: string | undefined;
+let virtualizedObserver: IntersectionObserver | null = null;
+let virtualizedSentinel: HTMLElement | null = null;
+
+function resetVirtualizedRender(): void {
+  if (virtualizedObserver) {
+    virtualizedObserver.disconnect();
+    virtualizedObserver = null;
+  }
+  virtualizedItems = [];
+  virtualizedRenderIndex = 0;
+  virtualizedSearchQuery = undefined;
+  if (virtualizedSentinel && virtualizedSentinel.parentElement) {
+    virtualizedSentinel.parentElement.removeChild(virtualizedSentinel);
+  }
+  virtualizedSentinel = null;
+}
+
+function getVirtualizedObserver(): IntersectionObserver | null {
+  const root = document.getElementById('file-view');
+  if (!root) return null;
+  if (virtualizedObserver) return virtualizedObserver;
+
+  virtualizedObserver = new IntersectionObserver(
+    (entries) => {
+      const entry = entries.find((item) => item.isIntersecting);
+      if (entry && entry.target) {
+        virtualizedObserver?.unobserve(entry.target);
+        appendNextVirtualizedBatch();
+      }
+    },
+    {
+      root,
+      rootMargin: '200px',
+      threshold: 0.01,
+    }
+  );
+  return virtualizedObserver;
+}
+
+function ensureVirtualizedSentinel(): void {
+  if (!fileGrid) return;
+  const observer = getVirtualizedObserver();
+  if (!observer) return;
+
+  if (!virtualizedSentinel) {
+    virtualizedSentinel = document.createElement('div');
+    virtualizedSentinel.style.width = '100%';
+    virtualizedSentinel.style.height = '1px';
+    virtualizedSentinel.style.pointerEvents = 'none';
+  }
+
+  if (virtualizedSentinel.parentElement !== fileGrid) {
+    fileGrid.appendChild(virtualizedSentinel);
+  } else {
+    fileGrid.appendChild(virtualizedSentinel);
+  }
+
+  observer.observe(virtualizedSentinel);
+}
+
+function appendNextVirtualizedBatch(): void {
+  if (!fileGrid) return;
+  if (virtualizedRenderToken !== renderFilesToken) return;
+
+  const start = virtualizedRenderIndex;
+  const end = Math.min(start + VIRTUALIZE_BATCH_SIZE, virtualizedItems.length);
+  if (start >= end) {
+    if (virtualizedSentinel) {
+      virtualizedSentinel.remove();
+    }
+    return;
+  }
+
+  const batch = virtualizedItems.slice(start, end);
+  virtualizedRenderIndex = end;
+  const paths = appendFileItems(batch, virtualizedSearchQuery);
+  applyGitIndicatorsToPaths(paths);
+  updateCutVisuals();
+  updateStatusBar();
+
+  if (virtualizedRenderIndex < virtualizedItems.length) {
+    ensureVirtualizedSentinel();
+  } else if (virtualizedSentinel) {
+    virtualizedSentinel.remove();
+  }
+}
+
+function appendFileItems(items: FileItem[], searchQuery?: string): string[] {
+  if (!fileGrid) return [];
+  const fragment = document.createDocumentFragment();
+  const paths: string[] = [];
+
+  for (const item of items) {
+    const fileItem = createFileItem(item, searchQuery);
+    fileElementMap.set(item.path, fileItem);
+    fragment.appendChild(fileItem);
+    paths.push(item.path);
+  }
+
+  fileGrid.appendChild(fragment);
+  return paths;
+}
+
+function appendStreamedDirectoryItems(items: FileItem[]): void {
+  if (!fileGrid) return;
+
+  if (!hasStreamedDirectoryRender) {
+    resetVirtualizedRender();
+    resetThumbnailObserver();
+    fileGrid.innerHTML = '';
+    clearSelection();
+    filePathMap.clear();
+    fileElementMap.clear();
+    gitIndicatorPaths.clear();
+    cutPaths.clear();
+    allFiles = [];
+    if (emptyState) emptyState.style.display = 'none';
+    hasStreamedDirectoryRender = true;
+  }
+
+  for (const item of items) {
+    filePathMap.set(item.path, item);
+  }
+
+  allFiles.push(...items);
+
+  const visibleItems = currentSettings.showHiddenFiles
+    ? items
+    : items.filter((item) => !item.isHidden);
+
+  if (visibleItems.length > 0) {
+    const paths = appendFileItems(visibleItems);
+    applyGitIndicatorsToPaths(paths);
+  }
+
+  updateCutVisuals();
+  updateStatusBar();
+}
 
 function renderFiles(items: FileItem[], searchQuery?: string) {
   if (!fileGrid) return;
 
   const renderToken = ++renderFilesToken;
+  resetVirtualizedRender();
+  resetThumbnailObserver();
   fileGrid.innerHTML = '';
   clearSelection();
   allFiles = items;
 
   filePathMap.clear();
+  fileElementMap.clear();
+  gitIndicatorPaths.clear();
+  cutPaths.clear();
   for (const item of items) {
     filePathMap.set(item.path, item);
   }
@@ -4177,6 +4470,8 @@ function renderFiles(items: FileItem[], searchQuery?: string) {
     updateStatusBar();
     return;
   }
+
+  if (emptyState) emptyState.style.display = 'none';
 
   const sortBy = currentSettings.sortBy || 'name';
   const sortOrder = currentSettings.sortOrder || 'asc';
@@ -4226,7 +4521,14 @@ function renderFiles(items: FileItem[], searchQuery?: string) {
     return sortOrder === 'asc' ? comparison : -comparison;
   });
 
-  const fragment = document.createDocumentFragment();
+  if (sortedItems.length >= VIRTUALIZE_THRESHOLD) {
+    virtualizedRenderToken = renderToken;
+    virtualizedItems = sortedItems;
+    virtualizedRenderIndex = 0;
+    virtualizedSearchQuery = searchQuery;
+    appendNextVirtualizedBatch();
+    return;
+  }
 
   const batchSize = RENDER_BATCH_SIZE;
   let currentBatch = 0;
@@ -4235,13 +4537,9 @@ function renderFiles(items: FileItem[], searchQuery?: string) {
     if (renderToken !== renderFilesToken) return;
     const start = currentBatch * batchSize;
     const end = Math.min(start + batchSize, sortedItems.length);
-
-    for (let i = start; i < end; i++) {
-      const fileItem = createFileItem(sortedItems[i], searchQuery);
-      fragment.appendChild(fileItem);
-    }
-
-    fileGrid.appendChild(fragment);
+    const batch = sortedItems.slice(start, end);
+    const paths = appendFileItems(batch, searchQuery);
+    applyGitIndicatorsToPaths(paths);
     currentBatch++;
 
     if (renderToken !== renderFilesToken) return;
@@ -4250,8 +4548,6 @@ function renderFiles(items: FileItem[], searchQuery?: string) {
     } else {
       updateCutVisuals();
       updateStatusBar();
-
-      lazyLoadThumbnails();
     }
   };
 
@@ -4259,14 +4555,26 @@ function renderFiles(items: FileItem[], searchQuery?: string) {
 }
 
 let thumbnailObserver: IntersectionObserver | null = null;
+let thumbnailObserverRoot: HTMLElement | null = null;
 
-function lazyLoadThumbnails() {
+function resetThumbnailObserver(): void {
+  if (thumbnailObserver) {
+    thumbnailObserver.disconnect();
+    thumbnailObserver = null;
+  }
+  thumbnailObserverRoot = null;
+}
+
+function getThumbnailObserver(): IntersectionObserver | null {
+  const scrollContainer = document.getElementById('file-view');
+  if (!scrollContainer) return null;
+  if (thumbnailObserver && thumbnailObserverRoot === scrollContainer) return thumbnailObserver;
+
   if (thumbnailObserver) {
     thumbnailObserver.disconnect();
   }
 
-  const scrollContainer = document.getElementById('file-view');
-
+  thumbnailObserverRoot = scrollContainer;
   thumbnailObserver = new IntersectionObserver(
     (entries) => {
       entries.forEach((entry) => {
@@ -4288,10 +4596,14 @@ function lazyLoadThumbnails() {
       threshold: 0.01,
     }
   );
+  return thumbnailObserver;
+}
 
-  document.querySelectorAll('.file-item.has-thumbnail').forEach((item) => {
-    thumbnailObserver?.observe(item);
-  });
+function observeThumbnailItem(fileItem: HTMLElement): void {
+  const observer = getThumbnailObserver();
+  if (observer) {
+    observer.observe(fileItem);
+  }
 }
 
 function createFileItem(item: FileItem, searchQuery?: string): HTMLElement {
@@ -4309,17 +4621,14 @@ function createFileItem(item: FileItem, searchQuery?: string): HTMLElement {
     if (IMAGE_EXTENSIONS.has(ext)) {
       fileItem.classList.add('has-thumbnail');
       icon = IMAGE_ICON;
+      observeThumbnailItem(fileItem);
     } else {
       icon = getFileIcon(item.name);
     }
   }
 
   const sizeDisplay = item.isDirectory ? '--' : formatFileSize(item.size);
-  const dateDisplay = new Date(item.modified).toLocaleDateString(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  });
+  const dateDisplay = DATE_FORMATTER.format(new Date(item.modified));
 
   const contentResult = item as ContentSearchResult;
   let matchContextHtml = '';
@@ -4346,8 +4655,43 @@ function createFileItem(item: FileItem, searchQuery?: string): HTMLElement {
       <span class="file-modified">${dateDisplay}</span>
     </div>
   `;
+  fileItem.draggable = true;
 
-  fileItem.addEventListener('dblclick', () => {
+  return fileItem;
+}
+
+let fileGridDelegationReady = false;
+
+function getFileItemElement(target: EventTarget | null): HTMLElement | null {
+  if (!(target instanceof Element)) return null;
+  const fileItem = target.closest('.file-item');
+  return fileItem instanceof HTMLElement ? fileItem : null;
+}
+
+function getFileItemData(fileItem: HTMLElement): FileItem | null {
+  const itemPath = fileItem.dataset.path;
+  if (!itemPath) return null;
+  return filePathMap.get(itemPath) ?? null;
+}
+
+function setupFileGridEventDelegation(): void {
+  if (!fileGrid || fileGridDelegationReady) return;
+  fileGridDelegationReady = true;
+
+  fileGrid.addEventListener('click', (e) => {
+    const fileItem = getFileItemElement(e.target);
+    if (!fileItem) return;
+    if (!e.ctrlKey && !e.metaKey) {
+      clearSelection();
+    }
+    toggleSelection(fileItem);
+  });
+
+  fileGrid.addEventListener('dblclick', (e) => {
+    const fileItem = getFileItemElement(e.target);
+    if (!fileItem) return;
+    const item = getFileItemData(fileItem);
+    if (!item) return;
     if (item.isDirectory) {
       navigateTo(item.path);
     } else {
@@ -4356,22 +4700,21 @@ function createFileItem(item: FileItem, searchQuery?: string): HTMLElement {
     }
   });
 
-  fileItem.addEventListener('auxclick', (e) => {
-    if (e.button === 1 && item.isDirectory && tabsEnabled) {
-      e.preventDefault();
-      addNewTab(item.path);
-    }
+  fileGrid.addEventListener('auxclick', (e) => {
+    if (e.button !== 1) return;
+    const fileItem = getFileItemElement(e.target);
+    if (!fileItem) return;
+    const item = getFileItemData(fileItem);
+    if (!item || !item.isDirectory || !tabsEnabled) return;
+    e.preventDefault();
+    addNewTab(item.path);
   });
 
-  fileItem.addEventListener('click', (e) => {
-    e.stopPropagation();
-    if (!e.ctrlKey && !e.metaKey) {
-      clearSelection();
-    }
-    toggleSelection(fileItem);
-  });
-
-  fileItem.addEventListener('contextmenu', (e) => {
+  fileGrid.addEventListener('contextmenu', (e) => {
+    const fileItem = getFileItemElement(e.target);
+    if (!fileItem) return;
+    const item = getFileItemData(fileItem);
+    if (!item) return;
     e.preventDefault();
     if (!fileItem.classList.contains('selected')) {
       clearSelection();
@@ -4380,9 +4723,9 @@ function createFileItem(item: FileItem, searchQuery?: string): HTMLElement {
     showContextMenu(e.pageX, e.pageY, item);
   });
 
-  fileItem.draggable = true;
-
-  fileItem.addEventListener('dragstart', (e) => {
+  fileGrid.addEventListener('dragstart', (e) => {
+    const fileItem = getFileItemElement(e.target);
+    if (!fileItem) return;
     e.stopPropagation();
 
     if (!fileItem.classList.contains('selected')) {
@@ -4391,14 +4734,11 @@ function createFileItem(item: FileItem, searchQuery?: string): HTMLElement {
     }
 
     const selectedPaths = Array.from(selectedItems);
-
     if (!e.dataTransfer) return;
 
     e.dataTransfer.effectAllowed = 'copyMove';
     e.dataTransfer.setData('text/plain', JSON.stringify(selectedPaths));
-
     window.electronAPI.setDragData(selectedPaths);
-
     fileItem.classList.add('dragging');
 
     if (selectedPaths.length > 1) {
@@ -4413,88 +4753,94 @@ function createFileItem(item: FileItem, searchQuery?: string): HTMLElement {
     }
   });
 
-  fileItem.addEventListener('dragend', (e) => {
+  fileGrid.addEventListener('dragend', (e) => {
+    const fileItem = getFileItemElement(e.target);
+    if (!fileItem) return;
     fileItem.classList.remove('dragging');
     document.querySelectorAll('.file-item.drag-over').forEach((el) => {
       el.classList.remove('drag-over');
     });
     document.getElementById('file-grid')?.classList.remove('drag-over');
-
-    // Clear drag data main
     window.electronAPI.clearDragData();
   });
 
-  if (item.isDirectory) {
-    fileItem.addEventListener('dragover', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
+  fileGrid.addEventListener('dragover', (e) => {
+    const fileItem = getFileItemElement(e.target);
+    if (!fileItem) return;
+    if (fileItem.dataset.isDirectory !== 'true') return;
 
-      if (!e.dataTransfer) return;
+    e.preventDefault();
+    e.stopPropagation();
 
-      if (!e.dataTransfer.types.includes('text/plain')) {
-        e.dataTransfer.dropEffect = 'none';
-        return;
-      }
+    if (!e.dataTransfer) return;
+    if (!e.dataTransfer.types.includes('text/plain')) {
+      e.dataTransfer.dropEffect = 'none';
+      return;
+    }
+    e.dataTransfer.dropEffect = e.ctrlKey ? 'copy' : 'move';
+    fileItem.classList.add('drag-over');
+  });
 
-      e.dataTransfer.dropEffect = e.ctrlKey ? 'copy' : 'move';
-      fileItem.classList.add('drag-over');
-    });
+  fileGrid.addEventListener('dragleave', (e) => {
+    const fileItem = getFileItemElement(e.target);
+    if (!fileItem) return;
+    if (fileItem.dataset.isDirectory !== 'true') return;
 
-    fileItem.addEventListener('dragleave', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
+    e.preventDefault();
+    e.stopPropagation();
 
-      const rect = fileItem.getBoundingClientRect();
-      if (
-        e.clientX < rect.left ||
-        e.clientX >= rect.right ||
-        e.clientY < rect.top ||
-        e.clientY >= rect.bottom
-      ) {
-        fileItem.classList.remove('drag-over');
-      }
-    });
-
-    fileItem.addEventListener('drop', async (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-
+    const rect = fileItem.getBoundingClientRect();
+    if (
+      e.clientX < rect.left ||
+      e.clientX >= rect.right ||
+      e.clientY < rect.top ||
+      e.clientY >= rect.bottom
+    ) {
       fileItem.classList.remove('drag-over');
+    }
+  });
 
-      let draggedPaths: string[] = [];
+  fileGrid.addEventListener('drop', async (e) => {
+    const fileItem = getFileItemElement(e.target);
+    if (!fileItem) return;
+    if (fileItem.dataset.isDirectory !== 'true') return;
 
-      if (!e.dataTransfer) return;
+    e.preventDefault();
+    e.stopPropagation();
 
-      try {
-        const textData = e.dataTransfer.getData('text/plain');
-        if (textData) {
-          draggedPaths = JSON.parse(textData);
-        }
-      } catch {}
+    fileItem.classList.remove('drag-over');
 
-      if (draggedPaths.length === 0 && e.dataTransfer.files.length > 0) {
-        draggedPaths = Array.from(e.dataTransfer.files).map(
-          (f) => (f as File & { path: string }).path
-        );
+    let draggedPaths: string[] = [];
+    if (!e.dataTransfer) return;
+
+    try {
+      const textData = e.dataTransfer.getData('text/plain');
+      if (textData) {
+        draggedPaths = JSON.parse(textData);
       }
+    } catch {}
 
-      if (draggedPaths.length === 0) {
-        const sharedData = await window.electronAPI.getDragData();
-        if (sharedData) {
-          draggedPaths = sharedData.paths;
-        }
+    if (draggedPaths.length === 0 && e.dataTransfer.files.length > 0) {
+      draggedPaths = Array.from(e.dataTransfer.files).map(
+        (f) => (f as File & { path: string }).path
+      );
+    }
+
+    if (draggedPaths.length === 0) {
+      const sharedData = await window.electronAPI.getDragData();
+      if (sharedData) {
+        draggedPaths = sharedData.paths;
       }
+    }
 
-      if (draggedPaths.length === 0 || draggedPaths.includes(item.path)) {
-        return;
-      }
+    const item = getFileItemData(fileItem);
+    if (!item || draggedPaths.length === 0 || draggedPaths.includes(item.path)) {
+      return;
+    }
 
-      const operation = e.ctrlKey ? 'copy' : 'move';
-      await handleDrop(draggedPaths, item.path, operation);
-    });
-  }
-
-  return fileItem;
+    const operation = e.ctrlKey ? 'copy' : 'move';
+    await handleDrop(draggedPaths, item.path, operation);
+  });
 }
 
 function loadThumbnail(fileItem: HTMLElement, item: FileItem) {
@@ -8129,6 +8475,10 @@ window.addEventListener('beforeunload', () => {
     thumbnailObserver.disconnect();
     thumbnailObserver = null;
   }
+  if (virtualizedObserver) {
+    virtualizedObserver.disconnect();
+    virtualizedObserver = null;
+  }
 
   if (diskSpaceDebounceTimer) {
     clearTimeout(diskSpaceDebounceTimer);
@@ -8152,6 +8502,12 @@ window.addEventListener('beforeunload', () => {
   }
 
   filePathMap.clear();
+  fileElementMap.clear();
+  gitIndicatorPaths.clear();
+  cutPaths.clear();
+  diskSpaceCache.clear();
+  gitStatusCache.clear();
+  gitStatusInFlight.clear();
   thumbnailCache.clear();
   pendingThumbnailLoads.length = 0;
 

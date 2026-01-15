@@ -226,7 +226,7 @@ export function createWindow(isInitialWindow: boolean = false): BrowserWindow {
       sandbox: true,
       preload: path.join(__dirname, 'preload.js'),
       devTools: isDev,
-      backgroundThrottling: false,
+      backgroundThrottling: true,
       spellcheck: false,
       v8CacheOptions: 'code',
       enableWebSQL: false,

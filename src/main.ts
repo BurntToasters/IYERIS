@@ -65,8 +65,6 @@ if (TOTAL_MEM_GB < 12) {
 app.commandLine.appendSwitch('js-flags', jsFlags.join(' '));
 app.commandLine.appendSwitch('enable-features', 'ReducedReferrerGranularity,V8VmFuture');
 app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion,MediaRouter');
-app.commandLine.appendSwitch('disable-renderer-backgrounding');
-app.commandLine.appendSwitch('disable-background-timer-throttling');
 app.commandLine.appendSwitch('wm-window-animations-disabled');
 app.commandLine.appendSwitch('force-color-profile', 'srgb');
 
@@ -162,7 +160,8 @@ app.whenReady().then(async () => {
 
         if (startupSettings.enableIndexer) {
           const indexerTasks = getIndexerTasks();
-          const indexerDelay = process.platform === 'win32' ? 2000 : 500;
+          const baseIndexerDelay = process.platform === 'win32' ? 5000 : 1500;
+          const indexerDelay = shouldStartHidden ? baseIndexerDelay + 1000 : baseIndexerDelay;
           const fileIndexer = new FileIndexer(indexerTasks ?? undefined);
           setFileIndexer(fileIndexer);
           setTimeout(() => {

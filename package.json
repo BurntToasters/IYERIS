@@ -105,6 +105,7 @@
     },
     "files": [
       "dist/**/*",
+      "!**/*.map",
       "index.html",
       "main.css",
       "assets/**/*",
