@@ -208,6 +208,7 @@ export function createWindow(isInitialWindow: boolean = false): BrowserWindow {
   const shouldStartHidden = getShouldStartHidden();
 
   const isMac = process.platform === 'darwin';
+  const backgroundThrottling = process.platform !== 'win32';
 
   const newWindow = new BrowserWindow({
     width: 1400,
@@ -226,7 +227,7 @@ export function createWindow(isInitialWindow: boolean = false): BrowserWindow {
       sandbox: true,
       preload: path.join(__dirname, 'preload.js'),
       devTools: isDev,
-      backgroundThrottling: true,
+      backgroundThrottling,
       spellcheck: false,
       v8CacheOptions: 'code',
       enableWebSQL: false,
