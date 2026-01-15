@@ -1,6 +1,6 @@
 import { ipcMain, app } from 'electron';
 import type { Settings, ApiResponse, UpdateCheckResponse } from './types';
-import { getMainWindow, getIsDev } from './appState';
+import { getMainWindow, getIsDev, setIsQuitting } from './appState';
 import {
   getAutoUpdater,
   isRunningInFlatpak,
@@ -187,6 +187,10 @@ export function initializeAutoUpdater(settings: Settings): void {
       safeSendToWindow(getMainWindow(), 'update-downloaded', info);
     });
 
+    (autoUpdater as any).on('before-quit-for-update', () => {
+      setIsQuitting(true);
+    });
+
     if (
       !isRunningInFlatpak() &&
       !process.mas &&
@@ -371,9 +375,18 @@ export function setupUpdateHandlers(loadSettings: () => Promise<Settings>): void
     try {
       const autoUpdater = getAutoUpdater();
       console.log('[AutoUpdater] Installing update and restarting...');
-      autoUpdater.quitAndInstall(false, true);
+      setIsQuitting(true);
+
+      app.releaseSingleInstanceLock();
+      console.log('[AutoUpdater] Released single instance lock');
+
+      setTimeout(() => {
+        autoUpdater.quitAndInstall(false, true);
+      }, 100);
+
       return { success: true };
     } catch (error) {
+      setIsQuitting(false);
       console.error('[AutoUpdater] Install failed:', error);
       return { success: false, error: getErrorMessage(error) };
     }

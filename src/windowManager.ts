@@ -161,7 +161,11 @@ export function showAppWindow(): void {
   const targetWindow = getActiveWindow();
   if (targetWindow) {
     targetWindow.show();
+    setWindowVisibility(targetWindow, true);
     targetWindow.focus();
+    if (process.platform === 'win32') {
+      targetWindow.webContents.invalidate();
+    }
   } else {
     createWindow(false);
   }
@@ -375,8 +379,17 @@ export function createWindow(isInitialWindow: boolean = false): BrowserWindow {
           }
         });
       } else {
-        newWindow.restore();
-        newWindow.hide();
+        setImmediate(() => {
+          if (!newWindow.isDestroyed()) {
+            newWindow.restore();
+            setImmediate(() => {
+              if (!newWindow.isDestroyed()) {
+                newWindow.hide();
+                setWindowVisibility(newWindow, false);
+              }
+            });
+          }
+        });
       }
     }
   });
@@ -458,9 +471,14 @@ export async function createTray(forHiddenStart: boolean = false): Promise<void>
         if (targetWindow) {
           if (targetWindow.isVisible()) {
             targetWindow.hide();
+            setWindowVisibility(targetWindow, false);
           } else {
             targetWindow.show();
+            setWindowVisibility(targetWindow, true);
             targetWindow.focus();
+            if (process.platform === 'win32') {
+              targetWindow.webContents.invalidate();
+            }
           }
         } else {
           createWindow(false);
