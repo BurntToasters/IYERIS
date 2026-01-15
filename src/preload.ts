@@ -212,6 +212,7 @@ const electronAPI: ElectronAPI = {
   getGitBranch: (dirPath: string) => ipcRenderer.invoke('get-git-branch', dirPath),
   listArchiveContents: (archivePath: string) =>
     ipcRenderer.invoke('list-archive-contents', archivePath),
+  getAppVersion: () => ipcRenderer.invoke('get-app-version'),
 };
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);

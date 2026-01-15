@@ -359,6 +359,7 @@ export interface ElectronAPI {
   ) => Promise<{ success: boolean; dataUrl?: string; error?: string }>;
   getLicenses: () => Promise<{ success: boolean; licenses?: any; error?: string }>;
   getPlatform: () => Promise<string>;
+  getAppVersion: () => Promise<string>;
   getSystemAccentColor: () => Promise<{ accentColor: string; isDarkMode: boolean }>;
   isMas: () => Promise<boolean>;
   isFlatpak: () => Promise<boolean>;

@@ -236,12 +236,15 @@ export function createWindow(isInitialWindow: boolean = false): BrowserWindow {
       autoplayPolicy: 'user-gesture-required',
       defaultEncoding: 'UTF-8',
     },
-    icon: path.join(
-      __dirname,
-      '..',
-      'assets',
-      /-(beta|alpha|rc)/i.test(app.getVersion()) ? 'icon-beta.png' : 'icon.png'
-    ),
+    icon: (() => {
+      const version = app.getVersion();
+      const isBeta = /-(beta|alpha|rc)/i.test(version);
+      const iconName = isBeta ? 'icon-beta.png' : 'icon.png';
+      const iconPath = path.join(__dirname, '..', 'assets', iconName);
+      console.log(`[Window] Version: ${version}, isBeta: ${isBeta}, icon: ${iconName}`);
+      console.log(`[Window] Icon path: ${iconPath}`);
+      return iconPath;
+    })(),
   });
 
   trackWindowVisibility(newWindow);

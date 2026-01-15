@@ -3208,16 +3208,26 @@ async function init() {
 
   const homeDirectoryPromise = window.electronAPI.getHomeDirectory();
 
-  const [platform, mas, flatpak, msStore] = await Promise.all([
+  const [platform, mas, flatpak, msStore, appVersion] = await Promise.all([
     window.electronAPI.getPlatform(),
     window.electronAPI.isMas(),
     window.electronAPI.isFlatpak(),
     window.electronAPI.isMsStore(),
-    loadSettings(),
+    window.electronAPI.getAppVersion(),
   ]);
+
+  await loadSettings();
 
   platformOS = platform;
   document.body.classList.add(`platform-${platformOS}`);
+
+  const titlebarIcon = document.getElementById('titlebar-icon') as HTMLImageElement;
+  if (titlebarIcon) {
+    const isBeta = /-(beta|alpha|rc)/i.test(appVersion);
+    const iconSrc = isBeta ? 'assets/folder-beta.png' : 'assets/folder.png';
+    titlebarIcon.src = iconSrc;
+    console.log(`[Init] Version: ${appVersion}, isBeta: ${isBeta}, titlebar icon: ${iconSrc}`);
+  }
 
   window.electronAPI.getSystemAccentColor().then(({ accentColor, isDarkMode }) => {
     const rgb = hexToRgb(accentColor);

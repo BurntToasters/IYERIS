@@ -508,6 +508,10 @@ export function setupSystemHandlers(
     return process.platform;
   });
 
+  ipcMain.handle('get-app-version', (): string => {
+    return app.getVersion();
+  });
+
   ipcMain.handle('get-system-accent-color', (): { accentColor: string; isDarkMode: boolean } => {
     let accentColor = '#0078d4';
     if (process.platform === 'win32') {
