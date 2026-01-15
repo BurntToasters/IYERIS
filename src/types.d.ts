@@ -70,6 +70,7 @@ export interface Settings {
   boldText: boolean;
   visibleFocus: boolean;
   reduceTransparency: boolean;
+  uiDensity: 'default' | 'larger';
   updateChannel: 'auto' | 'beta' | 'stable';
 }
 

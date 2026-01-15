@@ -1225,6 +1225,12 @@ function applySettings(settings: Settings) {
     document.body.classList.remove('large-text');
   }
 
+  if (settings.uiDensity === 'larger') {
+    document.body.classList.add('large-ui');
+  } else {
+    document.body.classList.remove('large-ui');
+  }
+
   if (settings.boldText) {
     document.body.classList.add('bold-text');
   } else {
@@ -1675,6 +1681,7 @@ async function showSettingsModal() {
   const reduceMotionToggle = document.getElementById('reduce-motion-toggle') as HTMLInputElement;
   const highContrastToggle = document.getElementById('high-contrast-toggle') as HTMLInputElement;
   const largeTextToggle = document.getElementById('large-text-toggle') as HTMLInputElement;
+  const uiDensitySelect = document.getElementById('ui-density-select') as HTMLSelectElement;
   const boldTextToggle = document.getElementById('bold-text-toggle') as HTMLInputElement;
   const visibleFocusToggle = document.getElementById('visible-focus-toggle') as HTMLInputElement;
   const reduceTransparencyToggle = document.getElementById(
@@ -1772,6 +1779,10 @@ async function showSettingsModal() {
 
   if (largeTextToggle) {
     largeTextToggle.checked = currentSettings.largeText || false;
+  }
+
+  if (uiDensitySelect) {
+    uiDensitySelect.value = currentSettings.uiDensity || 'default';
   }
 
   if (boldTextToggle) {
@@ -2201,6 +2212,7 @@ async function saveSettings() {
   const reduceMotionToggle = document.getElementById('reduce-motion-toggle') as HTMLInputElement;
   const highContrastToggle = document.getElementById('high-contrast-toggle') as HTMLInputElement;
   const largeTextToggle = document.getElementById('large-text-toggle') as HTMLInputElement;
+  const uiDensitySelect = document.getElementById('ui-density-select') as HTMLSelectElement;
   const boldTextToggle = document.getElementById('bold-text-toggle') as HTMLInputElement;
   const visibleFocusToggle = document.getElementById('visible-focus-toggle') as HTMLInputElement;
   const reduceTransparencyToggle = document.getElementById(
@@ -2297,6 +2309,10 @@ async function saveSettings() {
 
   if (largeTextToggle) {
     currentSettings.largeText = largeTextToggle.checked;
+  }
+
+  if (uiDensitySelect) {
+    currentSettings.uiDensity = uiDensitySelect.value as 'default' | 'larger';
   }
 
   if (boldTextToggle) {

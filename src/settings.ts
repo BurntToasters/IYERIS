@@ -36,6 +36,7 @@ export function createDefaultSettings(): Settings {
     boldText: false,
     visibleFocus: false,
     reduceTransparency: false,
+    uiDensity: 'default',
     updateChannel: 'auto',
   };
 }
