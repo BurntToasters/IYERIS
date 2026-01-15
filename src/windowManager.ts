@@ -236,7 +236,12 @@ export function createWindow(isInitialWindow: boolean = false): BrowserWindow {
       autoplayPolicy: 'user-gesture-required',
       defaultEncoding: 'UTF-8',
     },
-    icon: path.join(__dirname, '..', 'assets', 'icon.png'),
+    icon: path.join(
+      __dirname,
+      '..',
+      'assets',
+      /-(beta|alpha|rc)/i.test(app.getVersion()) ? 'icon-beta.png' : 'icon.png'
+    ),
   });
 
   trackWindowVisibility(newWindow);
