@@ -873,6 +873,61 @@ body.platform-win32 .toolbar-button:active:not(:disabled) {
   opacity: 0.9;
 }
 
+.selection-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  margin-left: 8px;
+  background: rgba(var(--accent-rgb), 0.1);
+  border-radius: 4px;
+  font-size: 11px;
+  color: var(--text-primary);
+}
+
+.selection-count {
+  font-weight: 600;
+  color: var(--accent-color);
+  min-width: 14px;
+  text-align: center;
+}
+
+.selection-text {
+  color: var(--text-secondary);
+}
+
+.selection-action {
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  border-radius: 3px;
+  padding: 2px 6px;
+  font-size: 10px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.selection-action:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: var(--text-primary);
+}
+
+.selection-action:active {
+  transform: scale(0.95);
+}
+
+body.theme-light .selection-indicator {
+  background: rgba(var(--accent-rgb), 0.1);
+}
+
+body.theme-light .selection-action {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+body.theme-light .selection-action:hover {
+  background: rgba(0, 0, 0, 0.1);
+}
+
 .notification-badge {
   position: absolute;
   top: -2px;
@@ -1372,6 +1427,24 @@ body.platform-darwin .file-view::-webkit-scrollbar-thumb {
   background-clip: padding-box;
 }
 
+.selection-rect {
+  position: absolute;
+  border: 1px solid var(--accent-color);
+  background: rgba(var(--accent-rgb), 0.15);
+  pointer-events: none;
+  z-index: 100;
+  display: none;
+  border-radius: 2px;
+}
+
+.selection-rect.active {
+  display: block;
+}
+
+body.reduce-motion .selection-rect {
+  transition: none;
+}
+
 body.platform-darwin .file-view:not(:hover)::-webkit-scrollbar-thumb {
   background: transparent;
 }
@@ -1563,6 +1636,28 @@ body.platform-win32 .file-view::-webkit-scrollbar-thumb:hover {
   position: relative;
 }
 
+.file-item.animate-in {
+  animation: fileItemFadeIn 0.25s ease forwards;
+  opacity: 0;
+}
+
+@keyframes fileItemFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+body.reduce-motion .file-item.animate-in {
+  animation: none;
+  opacity: 1;
+  transform: none;
+}
+
 .file-item:hover {
   background: rgba(255, 255, 255, 0.06);
   box-shadow:
@@ -1665,6 +1760,30 @@ body.platform-win32 .file-item.drag-over {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
+.file-item.spring-loading {
+  animation: spring-load-pulse 0.4s ease-in-out infinite;
+}
+
+@keyframes spring-load-pulse {
+  0%, 100% {
+    box-shadow:
+      0 0 0 2px rgba(var(--system-accent-rgb, var(--accent-rgb)), 0.4),
+      0 8px 16px rgba(0, 0, 0, 0.2);
+  }
+  50% {
+    box-shadow:
+      0 0 0 4px rgba(var(--system-accent-rgb, var(--accent-rgb)), 0.6),
+      0 12px 24px rgba(0, 0, 0, 0.3);
+  }
+}
+
+body.reduce-motion .file-item.spring-loading {
+  animation: none;
+  box-shadow:
+    0 0 0 3px rgba(var(--system-accent-rgb, var(--accent-rgb)), 0.5),
+    0 8px 16px rgba(0, 0, 0, 0.2);
+}
+
 .git-indicator {
   position: absolute;
   top: 6px;
@@ -1692,6 +1811,85 @@ body.platform-win32 .file-item.drag-over {
   position: static;
   flex-shrink: 0;
   margin-left: 8px;
+}
+
+.file-checkbox {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s ease, background 0.15s ease, transform 0.15s ease;
+  z-index: 5;
+  cursor: pointer;
+}
+
+.file-checkbox .checkbox-mark {
+  color: white;
+  font-size: 11px;
+  font-weight: bold;
+  opacity: 0;
+  transform: scale(0.5);
+  transition: opacity 0.1s ease, transform 0.1s ease;
+}
+
+.file-item:hover .file-checkbox {
+  opacity: 1;
+}
+
+.file-item.selected .file-checkbox {
+  opacity: 1;
+  background: var(--accent-color);
+  border-color: var(--accent-color);
+}
+
+.file-item.selected .file-checkbox .checkbox-mark {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.file-checkbox:hover {
+  transform: scale(1.1);
+  background: rgba(var(--accent-rgb), 0.3);
+}
+
+.file-item.selected .file-checkbox:hover {
+  background: var(--accent-color);
+  filter: brightness(1.1);
+}
+
+.file-grid.list-view .file-checkbox {
+  position: static;
+  margin-right: 8px;
+  flex-shrink: 0;
+  opacity: 0;
+}
+
+.file-grid.list-view .file-item:hover .file-checkbox,
+.file-grid.list-view .file-item.selected .file-checkbox {
+  opacity: 1;
+}
+
+body.theme-light .file-checkbox {
+  background: rgba(0, 0, 0, 0.05);
+  border-color: rgba(0, 0, 0, 0.15);
+}
+
+body.theme-light .file-item.selected .file-checkbox {
+  background: var(--accent-color);
+  border-color: var(--accent-color);
+}
+
+body.reduce-motion .file-checkbox,
+body.reduce-motion .file-checkbox .checkbox-mark {
+  transition: none;
 }
 
 .file-icon {
@@ -3012,6 +3210,21 @@ body.no-transparency .file-view::before {
   cursor: pointer;
 }
 
+.status-hidden {
+  color: var(--text-secondary);
+  opacity: 0.7;
+  font-size: var(--font-size-status);
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+}
+
+.status-hidden:hover {
+  background: var(--hover-color);
+  opacity: 1;
+}
+
 .status-item .twemoji {
   width: 10px;
   height: 10px;
@@ -3376,6 +3589,93 @@ body.no-transparency .file-view::before {
 
 .toast.warning {
   border-left: 3px solid #fbbf24;
+}
+
+.file-hover-card {
+  position: fixed;
+  z-index: 9999;
+  background: rgba(28, 28, 28, 0.96);
+  backdrop-filter: blur(16px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-medium);
+  padding: 12px;
+  min-width: 220px;
+  max-width: 280px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5),
+              inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  display: none;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
+.file-hover-card.visible {
+  display: block;
+  opacity: 1;
+}
+
+body.reduce-motion .file-hover-card {
+  transition: none;
+}
+
+.hover-card-thumbnail {
+  width: 100%;
+  height: 80px;
+  margin-bottom: 10px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.05);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.hover-card-thumbnail img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.hover-card-thumbnail .hover-icon {
+  font-size: 32px;
+}
+
+.hover-card-name {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+  word-break: break-word;
+  line-height: 1.3;
+}
+
+.hover-card-details {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.hover-card-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  gap: 12px;
+}
+
+.hover-card-label {
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.hover-card-row span:last-child {
+  color: var(--text-primary);
+  text-align: right;
+}
+
+body.theme-light .file-hover-card {
+  background: rgba(255, 255, 255, 0.96);
+  border-color: rgba(0, 0, 0, 0.1);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
 }
 
 .bookmark-add-btn {

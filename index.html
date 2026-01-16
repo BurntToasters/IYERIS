@@ -122,6 +122,12 @@
             </svg>
             <span id="clipboard-text"></span>
           </span>
+          <span id="selection-indicator" class="selection-indicator" style="display: none;">
+            <span class="selection-count" id="selection-count">0</span>
+            <span class="selection-text">selected</span>
+            <button class="selection-action" id="select-all-btn" title="Select All">All</button>
+            <button class="selection-action" id="deselect-all-btn" title="Deselect All">None</button>
+          </span>
         </div>
         
         <div class="toolbar-center">
@@ -289,6 +295,7 @@
           </div>
           <div class="file-grid" id="file-grid"></div>
           <div class="column-view" id="column-view" style="display: none;"></div>
+          <div class="selection-rect" id="selection-rect"></div>
         </div>
 
         <div class="preview-panel glass-panel" id="preview-panel" style="display: none;">
@@ -1099,6 +1106,7 @@
   <div class="status-bar glass-panel">
     <div class="status-left">
       <span id="status-items">0 items</span>
+      <span id="status-hidden" class="status-hidden" style="display: none;"></span>
       <span id="status-selected" style="display: none;"></span>
       <span id="status-search" class="status-search" style="display: none;">
         <img src="assets/twemoji/1f50d.svg" class="twemoji" alt="🔍" draggable="false" />
@@ -1124,6 +1132,31 @@
   </div>
 
   <div id="toast-container"></div>
+
+  <div class="file-hover-card" id="file-hover-card">
+    <div class="hover-card-thumbnail" id="hover-card-thumbnail"></div>
+    <div class="hover-card-info">
+      <div class="hover-card-name" id="hover-card-name"></div>
+      <div class="hover-card-details">
+        <div class="hover-card-row">
+          <span class="hover-card-label">Size:</span>
+          <span id="hover-card-size"></span>
+        </div>
+        <div class="hover-card-row">
+          <span class="hover-card-label">Type:</span>
+          <span id="hover-card-type"></span>
+        </div>
+        <div class="hover-card-row">
+          <span class="hover-card-label">Modified:</span>
+          <span id="hover-card-date"></span>
+        </div>
+        <div class="hover-card-row hover-card-extra" id="hover-card-extra-row" style="display: none;">
+          <span class="hover-card-label" id="hover-card-extra-label"></span>
+          <span id="hover-card-extra-value"></span>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <div class="modal-overlay" id="quicklook-modal" style="display: none;">
     <div class="modal quicklook-modal glass-panel">
