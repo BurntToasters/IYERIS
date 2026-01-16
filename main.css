@@ -1892,6 +1892,10 @@ body.reduce-motion .file-checkbox .checkbox-mark {
   transition: none;
 }
 
+body:not(.show-file-checkboxes) .file-checkbox {
+  display: none;
+}
+
 .file-icon {
   font-size: var(--icon-size-grid);
   margin-bottom: var(--file-icon-margin-bottom);

@@ -1378,6 +1378,12 @@ function applySettings(settings: Settings) {
     document.body.classList.remove('reduce-transparency');
   }
 
+  if (settings.showFileCheckboxes) {
+    document.body.classList.add('show-file-checkboxes');
+  } else {
+    document.body.classList.remove('show-file-checkboxes');
+  }
+
   if (settings.enableGitStatus) {
     if (currentPath) {
       fetchGitStatusAsync(currentPath);
@@ -1831,6 +1837,21 @@ async function showSettingsModal() {
   }
   if (enableGitStatusToggle) {
     enableGitStatusToggle.checked = currentSettings.enableGitStatus === true;
+  }
+
+  const showFileHoverCardToggle = document.getElementById(
+    'show-file-hover-card-toggle'
+  ) as HTMLInputElement;
+  const showFileCheckboxesToggle = document.getElementById(
+    'show-file-checkboxes-toggle'
+  ) as HTMLInputElement;
+
+  if (showFileHoverCardToggle) {
+    showFileHoverCardToggle.checked = currentSettings.showFileHoverCard !== false;
+  }
+
+  if (showFileCheckboxesToggle) {
+    showFileCheckboxesToggle.checked = currentSettings.showFileCheckboxes === true;
   }
 
   updateCustomThemeUI();
@@ -2314,6 +2335,12 @@ async function saveSettings() {
   const enableGitStatusToggle = document.getElementById(
     'enable-git-status-toggle'
   ) as HTMLInputElement;
+  const showFileHoverCardToggle = document.getElementById(
+    'show-file-hover-card-toggle'
+  ) as HTMLInputElement;
+  const showFileCheckboxesToggle = document.getElementById(
+    'show-file-checkboxes-toggle'
+  ) as HTMLInputElement;
   const minimizeToTrayToggle = document.getElementById(
     'minimize-to-tray-toggle'
   ) as HTMLInputElement;
@@ -2383,6 +2410,14 @@ async function saveSettings() {
   }
   if (enableGitStatusToggle) {
     currentSettings.enableGitStatus = enableGitStatusToggle.checked;
+  }
+
+  if (showFileHoverCardToggle) {
+    currentSettings.showFileHoverCard = showFileHoverCardToggle.checked;
+  }
+
+  if (showFileCheckboxesToggle) {
+    currentSettings.showFileCheckboxes = showFileCheckboxesToggle.checked;
   }
 
   if (minimizeToTrayToggle) {
@@ -3525,7 +3560,7 @@ function setupHoverCard(): void {
         const rect = fileItem.getBoundingClientRect();
         showHoverCard(fileItem, rect.right, rect.top);
       }
-    }, 500);
+    }, 1000);
   });
 
   document.addEventListener('mouseout', (e) => {
@@ -3637,7 +3672,9 @@ function setupEventListeners() {
   initSettingsTabs();
   setupFileGridEventDelegation();
   setupRubberBandSelection();
-  setupHoverCard();
+  if (currentSettings.showFileHoverCard !== false) {
+    setupHoverCard();
+  }
 
   const cleanupClipboard = window.electronAPI.onClipboardChanged((newClipboard) => {
     clipboard = newClipboard;

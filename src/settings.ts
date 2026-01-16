@@ -29,6 +29,8 @@ export function createDefaultSettings(): Settings {
     globalContentSearch: false,
     enableSyntaxHighlighting: true,
     enableGitStatus: false,
+    showFileHoverCard: true,
+    showFileCheckboxes: false,
 
     reduceMotion: false,
     highContrast: false,
