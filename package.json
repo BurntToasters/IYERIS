@@ -19,7 +19,7 @@
     "dotenv": "^17.2.3",
     "dotenv-cli": "^10.0.0",
     "electron": "^39.0.0",
-    "electron-builder": "^26.0.12",
+    "electron-builder": "^26.4.0",
     "eslint": "^9.27.0",
     "husky": "^9.1.7",
     "lint-staged": "^16.1.0",
@@ -27,6 +27,9 @@
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.53.0",
     "vitest": "^4.0.16"
+  },
+  "overrides": {
+    "tar": "^7.5.3"
   },
   "scripts": {
     "test": "vitest run",
@@ -44,13 +47,13 @@
     "watch": "tsc --watch",
     "start": "npm run build && electron .",
     "dev": "npm run build && electron . --enable-logging",
-    "build:win": "npm run build && electron-builder --win --x64 --arm64",
+    "build:win": "npm run build && electron-builder --win --arm64 --x64",
     "build:win:x64": "npm run build && electron-builder --win --x64 --publish never",
     "build:win:arm64": "npm run build && electron-builder --win --arm64 --publish never",
-    "build:win:msi": "npm run build && electron-builder --win msi --x64 --arm64",
+    "build:win:msi": "npm run build && electron-builder --win msi --arm64 --x64",
     "build:win:msi:x64": "npm run build && electron-builder --win msi --x64 --publish never",
     "build:win:msi:arm64": "npm run build && electron-builder --win msi --arm64 --publish never",
-    "build:win:all": "npm run build && electron-builder --win nsis msi --x64 --arm64",
+    "build:win:all": "npm run build && electron-builder --win nsis msi --arm64 --x64",
     "build:mac:universal": "npm run build && dotenv -e .env -- electron-builder --mac --universal",
     "build:mac:mas": "npm run build && dotenv -e .env -- electron-builder --mac mas --universal",
     "build:mac:universal:dev": "npm run build && electron-builder --mac --universal",
@@ -68,20 +71,20 @@
     "flatpak:beta:bundle": "flatpak-builder --repo=repo --force-clean build-dir com.burnttoasters.iyeris.beta.yml && flatpak build-bundle repo release/IYERIS-Linux-beta.flatpak com.burnttoasters.iyeris",
     "patch:beta": "node build/patch-beta.js",
     "restore:release": "node build/restore-release.js",
-    "build:beta:win": "npm run patch:beta && cross-env IS_BETA=true npm run build && electron-builder --win --x64 --arm64 -c.win.icon=assets/icon-square-beta.ico && npm run restore:release",
+    "build:beta:win": "npm run patch:beta && cross-env IS_BETA=true npm run build && electron-builder --win --arm64 --x64 -c.win.icon=assets/icon-square-beta.ico && npm run restore:release",
     "build:beta:win:x64": "npm run patch:beta && cross-env IS_BETA=true npm run build && electron-builder --win --x64 --publish never -c.win.icon=assets/icon-square-beta.ico && npm run restore:release",
     "build:beta:mac": "npm run patch:beta && cross-env IS_BETA=true npm run build && dotenv -e .env -- electron-builder --mac --universal -c.mac.icon=assets/iyeris-beta.icns && npm run restore:release",
     "build:beta:linux": "npm run patch:beta && cross-env IS_BETA=true npm run build && electron-builder --linux AppImage deb rpm --x64 --arm64 -c.linux.icon=assets/icon-beta.png && npm run flatpak:clean && npm run flatpak:beta:bundle && npm run restore:release",
     "build:beta:linux:native": "npm run patch:beta && cross-env IS_BETA=true npm run build && USE_SYSTEM_FPM=true electron-builder --linux AppImage deb rpm --x64 --arm64 -c.linux.icon=assets/icon-beta.png && npm run flatpak:clean && npm run flatpak:beta:bundle && npm run restore:release",
     "release:mac": "npm run build && dotenv -e .env -- electron-builder --mac --universal --publish always && npm run sign:gpg",
-    "release:win": "npm run build && dotenv -e .env -- electron-builder --win nsis msi --x64 --arm64 --publish always && npm run sign:gpg",
-    "release:win:nsis": "npm run build && dotenv -e .env -- electron-builder --win nsis --x64 --arm64 --publish always && npm run sign:gpg",
-    "release:win:msi": "npm run build && dotenv -e .env -- electron-builder --win msi --x64 --arm64 --publish always && npm run sign:gpg",
+    "release:win": "npm run build && dotenv -e .env -- electron-builder --win nsis msi --arm64 --x64 --publish always && npm run sign:gpg",
+    "release:win:nsis": "npm run build && dotenv -e .env -- electron-builder --win nsis --arm64 --x64 --publish always && npm run sign:gpg",
+    "release:win:msi": "npm run build && dotenv -e .env -- electron-builder --win msi --arm64 --x64 --publish always && npm run sign:gpg",
     "release:linux": "npm run build && dotenv -e .env -- electron-builder --linux AppImage deb rpm --x64 --arm64 --publish always && npm run flatpak:clean && npm run flatpak:bundle && npm run sign:gpg",
     "release:linux:native": "npm run build && cross-env USE_SYSTEM_FPM=true dotenv -e .env -- electron-builder --linux AppImage deb rpm --x64 --arm64 --publish always && npm run flatpak:clean && npm run flatpak:bundle && npm run sign:gpg",
     "release:all": "npm run release:mac && npm run release:win && npm run release:linux",
     "release:beta:mac": "npm run patch:beta && cross-env IS_BETA=true npm run build && dotenv -e .env -- electron-builder --mac --universal -c.mac.icon=assets/iyeris-beta.icns --publish always && npm run restore:release && npm run sign:gpg",
-    "release:beta:win": "npm run patch:beta && cross-env IS_BETA=true npm run build && dotenv -e .env -- electron-builder --win nsis --x64 --arm64 -c.win.icon=assets/icon-square-beta.ico --publish always && npm run restore:release && npm run sign:gpg",
+    "release:beta:win": "npm run patch:beta && cross-env IS_BETA=true npm run build && dotenv -e .env -- electron-builder --win nsis --arm64 --x64 -c.win.icon=assets/icon-square-beta.ico --publish always && npm run restore:release && npm run sign:gpg",
     "release:beta:linux": "npm run patch:beta && cross-env IS_BETA=true npm run build && dotenv -e .env -- electron-builder --linux AppImage deb rpm --x64 --arm64 -c.linux.icon=assets/icon-beta.png --publish always && npm run flatpak:clean && npm run flatpak:beta:bundle && npm run restore:release && npm run sign:gpg",
     "release:beta:linux:native": "npm run patch:beta && cross-env IS_BETA=true npm run build && cross-env USE_SYSTEM_FPM=true dotenv -e .env -- electron-builder --linux AppImage deb rpm --x64 --arm64 -c.linux.icon=assets/icon-beta.png --publish always && npm run flatpak:clean && npm run flatpak:beta:bundle && npm run restore:release && npm run sign:gpg",
     "release:beta:all": "npm run release:beta:mac && npm run release:beta:win && npm run release:beta:linux",
@@ -146,8 +149,8 @@
         {
           "target": "nsis",
           "arch": [
-            "x64",
-            "arm64"
+            "arm64",
+            "x64"
           ]
         }
       ],
