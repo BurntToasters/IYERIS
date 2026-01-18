@@ -525,6 +525,7 @@ let viewMode: ViewMode = 'grid';
 let contextMenuData: FileItem | null = null;
 let clipboard: { operation: 'copy' | 'cut'; paths: string[] } | null = null;
 let allFiles: FileItem[] = [];
+let hiddenFilesCount = 0;
 let isSearchMode: boolean = false;
 let isGlobalSearch: boolean = false;
 let searchInContents: boolean = false;
@@ -544,6 +545,8 @@ let rubberBandInitialSelection: Set<string> = new Set();
 
 let hoverCardTimeout: NodeJS.Timeout | null = null;
 let currentHoverItem: HTMLElement | null = null;
+let hoverCardEnabled = true;
+let hoverCardInitialized = false;
 
 let springLoadedTimeout: NodeJS.Timeout | null = null;
 let springLoadedFolder: HTMLElement | null = null;
@@ -1382,6 +1385,11 @@ function applySettings(settings: Settings) {
     document.body.classList.add('show-file-checkboxes');
   } else {
     document.body.classList.remove('show-file-checkboxes');
+  }
+
+  setHoverCardEnabled(settings.showFileHoverCard !== false);
+  if (hoverCardEnabled) {
+    setupHoverCard();
   }
 
   if (settings.enableGitStatus) {
@@ -3079,7 +3087,7 @@ function updateStatusBar() {
   const statusHidden = document.getElementById('status-hidden');
   if (statusHidden) {
     if (!currentSettings.showHiddenFiles) {
-      const hiddenCount = allFiles.filter((item) => item.isHidden).length;
+      const hiddenCount = hiddenFilesCount;
       if (hiddenCount > 0) {
         statusHidden.textContent = `(+${hiddenCount} hidden)`;
         statusHidden.style.display = 'inline';
@@ -3476,7 +3484,24 @@ function getFileTypeFromName(filename: string): string {
   return ext.toUpperCase() + ' File';
 }
 
+function setHoverCardEnabled(enabled: boolean): void {
+  hoverCardEnabled = enabled;
+  if (!enabled) {
+    const hoverCard = document.getElementById('file-hover-card');
+    if (hoverCard) {
+      hoverCard.classList.remove('visible');
+    }
+    if (hoverCardTimeout) {
+      clearTimeout(hoverCardTimeout);
+      hoverCardTimeout = null;
+    }
+    currentHoverItem = null;
+  }
+}
+
 function setupHoverCard(): void {
+  if (hoverCardInitialized) return;
+
   const hoverCard = document.getElementById('file-hover-card');
   const hoverThumbnail = document.getElementById('hover-card-thumbnail');
   const hoverName = document.getElementById('hover-card-name');
@@ -3489,6 +3514,8 @@ function setupHoverCard(): void {
 
   if (!hoverCard || !hoverThumbnail || !hoverName || !hoverSize || !hoverType || !hoverDate) return;
 
+  hoverCardInitialized = true;
+
   const showHoverCard = (fileItem: HTMLElement, x: number, y: number) => {
     const item = getFileItemData(fileItem);
     if (!item) return;
@@ -3499,10 +3526,17 @@ function setupHoverCard(): void {
     hoverDate.textContent = new Date(item.modified).toLocaleString();
 
     const cached = thumbnailCache.get(item.path);
+    hoverThumbnail.innerHTML = '';
     if (cached) {
-      hoverThumbnail.innerHTML = `<img src="${cached}" alt="${item.name}">`;
+      const img = document.createElement('img');
+      img.src = cached;
+      img.alt = item.name;
+      hoverThumbnail.appendChild(img);
     } else {
-      hoverThumbnail.innerHTML = `<span class="hover-icon">${getFileIcon(item.name)}</span>`;
+      const icon = document.createElement('span');
+      icon.className = 'hover-icon';
+      icon.innerHTML = getFileIcon(item.name);
+      hoverThumbnail.appendChild(icon);
     }
 
     if (hoverExtraRow && hoverExtraLabel && hoverExtraValue) {
@@ -3540,6 +3574,8 @@ function setupHoverCard(): void {
   };
 
   document.addEventListener('mouseover', (e) => {
+    if (!hoverCardEnabled) return;
+
     const target = e.target as HTMLElement;
     const fileItem = target.closest('.file-item') as HTMLElement;
 
@@ -4539,6 +4575,11 @@ function clearDirectoryHistory() {
   showToast('Directory history cleared', 'History', 'success');
 }
 
+function updateHiddenFilesCount(items: FileItem[], append = false): void {
+  const count = items.reduce((acc, item) => acc + (item.isHidden ? 1 : 0), 0);
+  hiddenFilesCount = append ? hiddenFilesCount + count : count;
+}
+
 async function navigateTo(path: string, skipHistoryUpdate = false) {
   if (!path) return;
   let requestId = 0;
@@ -4742,6 +4783,7 @@ function appendStreamedDirectoryItems(items: FileItem[]): void {
     gitIndicatorPaths.clear();
     cutPaths.clear();
     allFiles = [];
+    hiddenFilesCount = 0;
     if (emptyState) emptyState.style.display = 'none';
     hasStreamedDirectoryRender = true;
   }
@@ -4751,6 +4793,7 @@ function appendStreamedDirectoryItems(items: FileItem[]): void {
   }
 
   allFiles.push(...items);
+  updateHiddenFilesCount(items, true);
 
   const visibleItems = currentSettings.showHiddenFiles
     ? items
@@ -4775,6 +4818,7 @@ function renderFiles(items: FileItem[], searchQuery?: string) {
   renderItemIndex = 0;
   clearSelection();
   allFiles = items;
+  updateHiddenFilesCount(items);
 
   filePathMap.clear();
   fileElementMap.clear();
@@ -7917,6 +7961,10 @@ function validateImportedSettings(imported: any): Partial<Settings> {
     validated.showHiddenFiles = imported.showHiddenFiles;
   if (typeof imported.enableGitStatus === 'boolean')
     validated.enableGitStatus = imported.enableGitStatus;
+  if (typeof imported.showFileHoverCard === 'boolean')
+    validated.showFileHoverCard = imported.showFileHoverCard;
+  if (typeof imported.showFileCheckboxes === 'boolean')
+    validated.showFileCheckboxes = imported.showFileCheckboxes;
   if (typeof imported.enableSearchHistory === 'boolean')
     validated.enableSearchHistory = imported.enableSearchHistory;
   if (typeof imported.enableIndexer === 'boolean') validated.enableIndexer = imported.enableIndexer;
