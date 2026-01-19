@@ -28,6 +28,9 @@
   --dropdown-bg: rgba(34, 34, 34, 0.98);
   --separator: rgba(255, 255, 255, 0.08);
   
+  --titlebar-height: 32px;
+  --tab-bar-height: 32px;
+
   --radius-small: 6px;
   --radius-medium: 10px;
   --radius-large: 14px;
@@ -49,55 +52,58 @@
 
   --font-size-base: 12px;
   --font-size-file-name: 11px;
-  --font-size-nav: 11.5px;
+  --font-size-nav: 11px;
   --font-size-section-title: 9.5px;
   --font-size-status: 10.5px;
   --font-size-breadcrumb: 11.5px;
 
-  --icon-size-grid: 32px;
-  --icon-size-list: 16px;
-  --icon-size-toolbar: 28px;
-  --icon-size-nav: 15px;
-  --icon-size-sidebar-toggle: 26px;
-  --icon-size-spinner: 36px;
+  --icon-size-grid: 30px;
+  --icon-size-list: 14px;
+  --icon-size-toolbar: 26px;
+  --icon-size-nav: 14px;
+  --icon-size-sidebar-toggle: 24px;
+  --icon-size-spinner: 32px;
 
-  --toolbar-height: 40px;
-  --toolbar-padding-v: 7px;
-  --toolbar-padding-h: 11px;
-  --status-bar-height: 22px;
-  --address-bar-height: 26px;
-  --sidebar-width: 150px;
-  --sidebar-width-collapsed: 48px;
-  --sidebar-toggle-bottom: 30px;
+  --toolbar-height: 36px;
+  --toolbar-padding-v: 5px;
+  --toolbar-padding-h: 8px;
+  --status-bar-height: 20px;
+  --address-bar-height: 24px;
+  --sidebar-width: 140px;
+  --sidebar-width-collapsed: 44px;
+  --sidebar-toggle-bottom: 26px;
 
-  --file-grid-gap-row: 14px;
-  --file-grid-gap-col: 16px;
-  --file-item-padding-v: 8px;
-  --file-item-padding-h: 6px;
-  --list-item-padding-v: 5px;
-  --list-item-padding-h: 11px;
-  --list-item-gap: 10px;
-  --list-item-min-height: 28px;
-  --nav-item-padding-v: 4px;
-  --nav-item-padding-h: 7px;
-  --nav-item-gap: 7px;
-  --sidebar-section-gap: 16px;
-  --sidebar-padding-v: 7px;
-  --sidebar-padding-h: 6px;
-  --container-gap: 11px;
-  --grid-min-column: 80px;
-  --file-icon-margin-bottom: 6px;
-  --toolbar-gap: 7px;
-  --toolbar-left-right-gap: 5px;
-  --toolbar-separator-height: 18px;
+  --file-grid-gap-row: 10px;
+  --file-grid-gap-col: 12px;
+  --file-item-padding-v: 6px;
+  --file-item-padding-h: 4px;
+  --list-item-padding-v: 4px;
+  --list-item-padding-h: 9px;
+  --list-item-gap: 8px;
+  --list-item-min-height: 24px;
+  --nav-item-padding-v: 3px;
+  --nav-item-padding-h: 6px;
+  --nav-item-gap: 6px;
+  --sidebar-section-gap: 12px;
+  --sidebar-padding-v: 6px;
+  --sidebar-padding-h: 5px;
+  --container-gap: 10px;
+  --container-edge-padding: 6px;
+  --container-edge-padding-top: 6px;
+  --container-edge-padding-bottom: 4px;
+  --grid-min-column: 74px;
+  --file-icon-margin-bottom: 4px;
+  --toolbar-gap: 6px;
+  --toolbar-left-right-gap: 4px;
+  --toolbar-separator-height: 16px;
   --toolbar-separator-margin-v: 0;
-  --toolbar-separator-margin-h: 5px;
-  --breadcrumb-gap: 4px;
-  --breadcrumb-padding-v: 2px;
-  --breadcrumb-padding-h: 6px;
-  --status-bar-padding-h: 14px;
-  --list-info-gap: 22px;
-  --section-title-margin-bottom: 4px;
+  --toolbar-separator-margin-h: 4px;
+  --breadcrumb-gap: 3px;
+  --breadcrumb-padding-v: 1px;
+  --breadcrumb-padding-h: 5px;
+  --status-bar-padding-h: 10px;
+  --list-info-gap: 18px;
+  --section-title-margin-bottom: 3px;
 }
 
 body.platform-darwin {
@@ -109,6 +115,7 @@ body.platform-darwin {
   --scrollbar-show-always: 0;
   --radius-small: 8px;
   --radius-medium: 12px;
+  --titlebar-height: 38px;
 }
 
 body.platform-win32 {
@@ -120,6 +127,7 @@ body.platform-win32 {
   --scrollbar-show-always: 1;
   --radius-small: 4px;
   --radius-medium: 8px;
+  --titlebar-height: 36px;
 }
 
 body.platform-linux {
@@ -154,6 +162,7 @@ body.large-ui {
   --sidebar-width: 160px;
   --sidebar-width-collapsed: 52px;
   --sidebar-toggle-bottom: 32px;
+  --tab-bar-height: 36px;
 
   --file-grid-gap-row: 8px;
   --file-grid-gap-col: 10px;
@@ -170,6 +179,9 @@ body.large-ui {
   --sidebar-padding-v: 8px;
   --sidebar-padding-h: 6px;
   --container-gap: 12px;
+  --container-edge-padding: 8px;
+  --container-edge-padding-top: 8px;
+  --container-edge-padding-bottom: 6px;
   --grid-min-column: 90px;
   --file-icon-margin-bottom: 8px;
   --toolbar-gap: 8px;
@@ -286,7 +298,7 @@ body.platform-win32 .glass-input:focus {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  height: 32px;
+  height: var(--titlebar-height);
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--separator);
   -webkit-app-region: drag;
@@ -363,7 +375,6 @@ body.platform-win32 .glass-input:focus {
 }
 
 body.platform-darwin .titlebar {
-  height: 38px;
   padding-left: 78px;
   justify-content: center;
 }
@@ -384,7 +395,7 @@ body.platform-darwin .titlebar-title {
 }
 
 body.platform-win32 .titlebar {
-  height: 36px;
+  height: var(--titlebar-height);
 }
 
 body.platform-win32 .titlebar-button {
@@ -399,8 +410,8 @@ body.platform-win32 .titlebar-title {
 .tab-bar {
   display: flex;
   align-items: center;
-  height: 36px;
-  padding: 0 8px;
+  height: var(--tab-bar-height);
+  padding: 0 6px;
   gap: 4px;
   border-radius: 0;
   border-left: none;
@@ -427,13 +438,13 @@ body.platform-win32 .titlebar-title {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 12px;
+  padding: 4px 10px;
   background: transparent;
   border: 1px solid transparent;
   border-radius: var(--radius-small);
   cursor: pointer;
-  min-width: 120px;
-  max-width: 200px;
+  min-width: 100px;
+  max-width: 180px;
   transition: all 0.15s ease;
   position: relative;
 }
@@ -461,7 +472,7 @@ body.platform-win32 .titlebar-title {
 
 .tab-item .tab-title {
   flex: 1;
-  font-size: 12px;
+  font-size: var(--font-size-nav);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -469,8 +480,8 @@ body.platform-win32 .titlebar-title {
 }
 
 .tab-item .tab-close {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   border: none;
   background: transparent;
   color: var(--text-secondary);
@@ -501,8 +512,8 @@ body.platform-win32 .titlebar-title {
 }
 
 .tab-new-btn {
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   border: none;
   background: transparent;
   color: var(--text-secondary);
@@ -526,7 +537,7 @@ body.platform-win32 .titlebar-title {
 }
 
 body.tabs-enabled .container {
-  height: calc(100vh - 32px - 36px - 12px);
+  height: calc(100vh - var(--titlebar-height) - var(--tab-bar-height) - var(--status-bar-height) - var(--container-edge-padding-top) - var(--container-edge-padding-bottom));
 }
 
 body.tabs-enabled .tab-bar {
@@ -534,7 +545,7 @@ body.tabs-enabled .tab-bar {
 }
 
 body.tabs-enabled.tabs-single .container {
-  height: calc(100vh - 32px - 12px);
+  height: calc(100vh - var(--titlebar-height) - var(--status-bar-height) - var(--container-edge-padding-top) - var(--container-edge-padding-bottom));
 }
 
 body.tabs-enabled.tabs-single .tab-bar {
@@ -551,8 +562,8 @@ body.tabs-enabled.tabs-single .toolbar-new-tab-btn {
 
 .container {
   display: flex;
-  height: calc(100vh - 32px - var(--container-gap));
-  padding: 0 var(--container-gap) var(--container-gap) var(--container-gap);
+  height: calc(100vh - var(--titlebar-height) - var(--status-bar-height) - var(--container-edge-padding-top) - var(--container-edge-padding-bottom));
+  padding: var(--container-edge-padding-top) var(--container-edge-padding) var(--container-edge-padding-bottom);
   gap: var(--container-gap);
   position: relative;
   z-index: 2;
@@ -947,7 +958,7 @@ body.theme-light .selection-action:hover {
 .address-bar {
   display: flex;
   align-items: center;
-  padding: 0 8px;
+  padding: 0 6px;
   gap: 6px;
   height: var(--address-bar-height);
   width: 100%;
@@ -1367,7 +1378,7 @@ body.theme-light .selection-action:hover {
 
 .file-view {
   flex: 1;
-  padding: 12px;
+  padding: 8px;
   overflow-y: auto;
   position: relative;
 }
@@ -3007,10 +3018,10 @@ body.no-transparency .file-view::before {
 .search-bar {
   display: flex;
   align-items: center;
-  padding: 0 12px;
+  padding: 0 8px;
   gap: 8px;
   width: 100%;
-  height: 30px;
+  height: var(--address-bar-height);
 }
 
 .search-bar input {
@@ -4667,13 +4678,13 @@ body.theme-github .glass-panel {
 
 .content-wrapper {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   flex: 1;
   overflow: hidden;
 }
 
 .preview-panel {
-  width: 300px;
+  width: 260px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -5053,7 +5064,7 @@ pre.preview-text code.hljs {
 
 @media (max-width: 1200px) {
   .preview-panel {
-    width: 300px;
+    width: 260px;
   }
 }
 
