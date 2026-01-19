@@ -90,7 +90,7 @@
   --container-gap: 10px;
   --container-edge-padding: 6px;
   --container-edge-padding-top: 6px;
-  --container-edge-padding-bottom: 4px;
+  --container-edge-padding-bottom: 0px;
   --grid-min-column: 74px;
   --file-icon-margin-bottom: 4px;
   --toolbar-gap: 6px;
@@ -181,7 +181,7 @@ body.large-ui {
   --container-gap: 12px;
   --container-edge-padding: 8px;
   --container-edge-padding-top: 8px;
-  --container-edge-padding-bottom: 6px;
+  --container-edge-padding-bottom: 0px;
   --grid-min-column: 90px;
   --file-icon-margin-bottom: 8px;
   --toolbar-gap: 8px;

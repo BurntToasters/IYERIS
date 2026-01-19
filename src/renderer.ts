@@ -4748,16 +4748,15 @@ function appendFileItems(items: FileItem[], searchQuery?: string): string[] {
 
   for (const item of items) {
     const fileItem = createFileItem(item, searchQuery);
-    if (renderItemIndex < 20 && !document.body.classList.contains('reduce-motion')) {
+    if (!document.body.classList.contains('reduce-motion')) {
+      const delayIndex = renderItemIndex % 20;
+      const delayMs = delayIndex * 20;
       fileItem.classList.add('animate-in');
-      fileItem.style.animationDelay = `${renderItemIndex * 0.02}s`;
-      setTimeout(
-        () => {
-          fileItem.classList.remove('animate-in');
-          fileItem.style.animationDelay = '';
-        },
-        300 + renderItemIndex * 20
-      );
+      fileItem.style.animationDelay = `${delayMs / 1000}s`;
+      setTimeout(() => {
+        fileItem.classList.remove('animate-in');
+        fileItem.style.animationDelay = '';
+      }, 300 + delayMs);
     }
     renderItemIndex++;
     fileElementMap.set(item.path, fileItem);
