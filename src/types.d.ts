@@ -63,6 +63,8 @@ export interface Settings {
   tabState?: TabState;
   enableSyntaxHighlighting: boolean;
   enableGitStatus: boolean;
+  showFileHoverCard: boolean;
+  showFileCheckboxes: boolean;
 
   reduceMotion: boolean;
   highContrast: boolean;

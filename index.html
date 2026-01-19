@@ -122,6 +122,12 @@
             </svg>
             <span id="clipboard-text"></span>
           </span>
+          <span id="selection-indicator" class="selection-indicator" style="display: none;">
+            <span class="selection-count" id="selection-count">0</span>
+            <span class="selection-text">selected</span>
+            <button class="selection-action" id="select-all-btn" title="Select All">All</button>
+            <button class="selection-action" id="deselect-all-btn" title="Deselect All">None</button>
+          </span>
         </div>
         
         <div class="toolbar-center">
@@ -289,6 +295,7 @@
           </div>
           <div class="file-grid" id="file-grid"></div>
           <div class="column-view" id="column-view" style="display: none;"></div>
+          <div class="selection-rect" id="selection-rect"></div>
         </div>
 
         <div class="preview-panel glass-panel" id="preview-panel" style="display: none;">
@@ -510,6 +517,26 @@
                 </div>
                 <label class="toggle-switch">
                   <input type="checkbox" id="enable-git-status-toggle">
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+              <div class="setting-item" data-searchable="hover card preview details tooltip">
+                <div class="setting-info">
+                  <label for="show-file-hover-card-toggle">File Hover Details</label>
+                  <p class="setting-description">Show file information card when hovering over items</p>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="show-file-hover-card-toggle">
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+              <div class="setting-item" data-searchable="checkbox selection multiple files">
+                <div class="setting-info">
+                  <label for="show-file-checkboxes-toggle">File Checkboxes</label>
+                  <p class="setting-description">Show checkboxes on file items for selection</p>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="show-file-checkboxes-toggle">
                   <span class="toggle-slider"></span>
                 </label>
               </div>
@@ -849,7 +876,7 @@
               </div>
               <div class="about-info">
                 <h2 class="about-title">IYERIS</h2>
-                <p class="about-version" id="about-version-display">Version 0.9.4</p>
+                <p class="about-version" id="about-version-display">Version 0.9.5</p>
                 <p class="about-tagline">A modern, cross-platform file explorer</p>
               </div>
             </div>
@@ -1099,6 +1126,7 @@
   <div class="status-bar glass-panel">
     <div class="status-left">
       <span id="status-items">0 items</span>
+      <span id="status-hidden" class="status-hidden" style="display: none;"></span>
       <span id="status-selected" style="display: none;"></span>
       <span id="status-search" class="status-search" style="display: none;">
         <img src="assets/twemoji/1f50d.svg" class="twemoji" alt="🔍" draggable="false" />
@@ -1114,7 +1142,7 @@
       </span>
       <span id="status-disk-space"></span>
       <span class="status-separator"></span>
-      <span class="status-version" id="status-version" title="Version 0.9.4">v0.9.4</span>
+      <span class="status-version" id="status-version" title="Version 0.9.5">v0.9.5</span>
       <span class="status-separator"></span>
       <button class="status-support-btn" id="heart-button" title="Support this project!">
         <img src="assets/twemoji/2764.svg" class="twemoji" alt="❤️" draggable="false" />
@@ -1124,6 +1152,31 @@
   </div>
 
   <div id="toast-container"></div>
+
+  <div class="file-hover-card" id="file-hover-card">
+    <div class="hover-card-thumbnail" id="hover-card-thumbnail"></div>
+    <div class="hover-card-info">
+      <div class="hover-card-name" id="hover-card-name"></div>
+      <div class="hover-card-details">
+        <div class="hover-card-row">
+          <span class="hover-card-label">Size:</span>
+          <span id="hover-card-size"></span>
+        </div>
+        <div class="hover-card-row">
+          <span class="hover-card-label">Type:</span>
+          <span id="hover-card-type"></span>
+        </div>
+        <div class="hover-card-row">
+          <span class="hover-card-label">Modified:</span>
+          <span id="hover-card-date"></span>
+        </div>
+        <div class="hover-card-row hover-card-extra" id="hover-card-extra-row" style="display: none;">
+          <span class="hover-card-label" id="hover-card-extra-label"></span>
+          <span id="hover-card-extra-value"></span>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <div class="modal-overlay" id="quicklook-modal" style="display: none;">
     <div class="modal quicklook-modal glass-panel">
