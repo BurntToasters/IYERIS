@@ -4510,6 +4510,7 @@ body.theme-dark {
       #1a2332 100%);
   --bg-primary: #1f2d41;
   --bg-primary-rgb: 31, 45, 65;
+  --bg-secondary: #263548;
   --dropdown-bg: #263548;
   --text-primary: #e8eef7;
   --text-secondary: #c5d1e3;
