@@ -33,6 +33,7 @@
     "tar": "^7.5.3"
   },
   "scripts": {
+    "licenses": "npx npm-license-crawler --production --json licenses.json",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:all": "node build/test-all.js",
