@@ -38,6 +38,39 @@ function normalizePathForComparison(targetPath: string): string {
   return normalizeCaseKey(path.resolve(targetPath));
 }
 
+function splitFileName(fileName: string): { base: string; ext: string } {
+  const lastDot = fileName.lastIndexOf('.');
+  if (lastDot <= 0) {
+    return { base: fileName, ext: '' };
+  }
+  return { base: fileName.slice(0, lastDot), ext: fileName.slice(lastDot) };
+}
+
+async function createUniqueFile(
+  parentPath: string,
+  fileName: string
+): Promise<{ name: string; path: string }> {
+  const { base, ext } = splitFileName(fileName);
+  let counter = 1;
+
+  while (true) {
+    const candidateName = counter === 1 ? fileName : `${base} (${counter})${ext}`;
+    const candidatePath = path.join(parentPath, candidateName);
+    try {
+      const handle = await fs.open(candidatePath, 'wx');
+      await handle.close();
+      return { name: candidateName, path: candidatePath };
+    } catch (error) {
+      const err = error as NodeJS.ErrnoException;
+      if (err.code === 'EEXIST') {
+        counter += 1;
+        continue;
+      }
+      throw error;
+    }
+  }
+}
+
 async function isFileHidden(filePath: string, fileName: string): Promise<boolean> {
   if (fileName.startsWith('.')) {
     return true;
@@ -468,19 +501,18 @@ export function setupFileOperationHandlers(): void {
           return { success: false, error: 'Invalid file name' };
         }
 
-        const newPath = path.join(parentPath, fileName);
-        await fs.writeFile(newPath, '');
+        const created = await createUniqueFile(parentPath, fileName);
 
         pushUndoAction({
           type: 'create',
           data: {
-            path: newPath,
+            path: created.path,
             isDirectory: false,
           },
         });
 
-        console.log('[Create] File created:', newPath);
-        return { success: true, path: newPath };
+        console.log('[Create] File created:', created.path);
+        return { success: true, path: created.path };
       } catch (error) {
         return { success: false, error: getErrorMessage(error) };
       }

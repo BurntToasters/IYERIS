@@ -36,7 +36,7 @@
     "licenses": "npx npm-license-crawler --production --json licenses.json",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:all": "node build/test-all.js",
+    "test:all": "npm run build && node build/test-all.js",
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
     "format": "prettier --write src/",
