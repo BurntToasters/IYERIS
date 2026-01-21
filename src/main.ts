@@ -284,8 +284,12 @@ app.on('before-quit', () => {
 
   const fileTasks = getFileTasks();
   const indexerTasks = getIndexerTasks();
-  fileTasks.shutdown().catch(() => {});
-  indexerTasks?.shutdown().catch(() => {});
+  fileTasks.shutdown().catch((error) => {
+    logger.error('[Main] Failed to shutdown file tasks:', error);
+  });
+  indexerTasks?.shutdown().catch((error) => {
+    logger.error('[Main] Failed to shutdown indexer tasks:', error);
+  });
 
   const tray = getTray();
   if (tray) {

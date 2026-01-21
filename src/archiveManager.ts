@@ -40,18 +40,27 @@ async function assertArchiveEntriesSafe(archivePath: string, destPath: string): 
       symbolicLink?: string;
     }> = [];
 
-    list.on('data', (data: { file?: string; attributes?: string; type?: string }) => {
-      if (data && data.file) {
-        items.push({
-          name: String(data.file),
-          attributes: data.attributes ?? (data as any).attr,
-          type: data.type,
-          link: (data as any).link,
-          symlink: (data as any).symlink,
-          symbolicLink: (data as any).symbolicLink,
-        });
+    list.on(
+      'data',
+      (data: { file?: string; attributes?: string; type?: string; [key: string]: unknown }) => {
+        if (data && data.file) {
+          const attr = data.attributes ?? (typeof data.attr === 'string' ? data.attr : undefined);
+          const link = typeof data.link === 'string' ? data.link : undefined;
+          const symlink = typeof data.symlink === 'string' ? data.symlink : undefined;
+          const symbolicLink =
+            typeof data.symbolicLink === 'string' ? data.symbolicLink : undefined;
+
+          items.push({
+            name: String(data.file),
+            attributes: attr,
+            type: data.type,
+            link,
+            symlink,
+            symbolicLink,
+          });
+        }
       }
-    });
+    );
     list.on('end', () => resolve(items));
     list.on('error', (err: Error) => reject(err));
   });
@@ -135,7 +144,9 @@ async function assertExtractedPathsSafe(destPath: string): Promise<void> {
         unsafe.push(fullPath);
         try {
           await fs.unlink(fullPath);
-        } catch {}
+        } catch (error) {
+          logger.error('[Archive] Failed to remove symlink:', fullPath, error);
+        }
         continue;
       }
 
@@ -143,18 +154,23 @@ async function assertExtractedPathsSafe(destPath: string): Promise<void> {
         unsafe.push(fullPath);
         try {
           await fs.rm(fullPath, { force: true });
-        } catch {}
+        } catch (error) {
+          logger.error('[Archive] Failed to remove hardlinked file:', fullPath, error);
+        }
         continue;
       }
 
       let realPath: string;
       try {
         realPath = await fs.realpath(fullPath);
-      } catch {
+      } catch (error) {
         unsafe.push(fullPath);
+        logger.error('[Archive] Failed to resolve realpath for:', fullPath, error);
         try {
           await fs.rm(fullPath, { recursive: true, force: true });
-        } catch {}
+        } catch (rmError) {
+          logger.error('[Archive] Failed to remove unsafe path:', fullPath, rmError);
+        }
         continue;
       }
 
@@ -162,7 +178,9 @@ async function assertExtractedPathsSafe(destPath: string): Promise<void> {
         unsafe.push(fullPath);
         try {
           await fs.rm(fullPath, { recursive: true, force: true });
-        } catch {}
+        } catch (error) {
+          logger.error('[Archive] Failed to remove path outside destination:', fullPath, error);
+        }
         continue;
       }
 
@@ -562,8 +580,13 @@ export function setupArchiveHandlers(): void {
             }
           });
 
-          seven.on('error', (error: { message?: string }) => {
+          seven.on('error', async (error: { message?: string }) => {
             logger.error('[Extract] 7zip extraction error:', error);
+            try {
+              await assertExtractedPathsSafe(destPath);
+            } catch (cleanupError) {
+              logger.error('[Extract] Cleanup after error failed:', cleanupError);
+            }
             if (operationId) {
               activeArchiveProcesses.delete(operationId);
             }
@@ -588,14 +611,28 @@ export function setupArchiveHandlers(): void {
         }
 
         logger.info('[Archive] Cancelling operation:', operationId);
+        let cancelled = false;
+
         if (process.process?._childProcess) {
           try {
             process.process._childProcess.kill('SIGTERM');
+            cancelled = true;
           } catch (killError) {
             logger.debug('[Archive] Process already terminated:', killError);
           }
-        } else if (typeof process.process?.cancel === 'function') {
-          process.process.cancel();
+        }
+
+        if (!cancelled && typeof process.process?.cancel === 'function') {
+          try {
+            process.process.cancel();
+            cancelled = true;
+          } catch (cancelError) {
+            logger.error('[Archive] Failed to cancel process:', cancelError);
+          }
+        }
+
+        if (!cancelled) {
+          logger.warn('[Archive] Unable to cancel process, no cancellation method available');
         }
 
         activeArchiveProcesses.delete(operationId);

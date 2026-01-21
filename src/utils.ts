@@ -2,6 +2,7 @@ import { promises as fs } from 'fs';
 import * as path from 'path';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { logger } from './utils/logger';
 
 const execAsync = promisify(exec);
 
@@ -22,7 +23,9 @@ export function warmupDrivesCache(): void {
       cachedDrives = drives;
       drivesCacheTime = Date.now();
     })
-    .catch(() => {});
+    .catch((error) => {
+      logger.error('[Utils] Failed to warm up drives cache:', error);
+    });
 }
 
 export async function getDrives(): Promise<string[]> {
