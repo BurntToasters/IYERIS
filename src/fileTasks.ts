@@ -2,6 +2,7 @@ import { Worker } from 'worker_threads';
 import * as os from 'os';
 import * as path from 'path';
 import { EventEmitter } from 'events';
+import { logger } from './utils/logger';
 
 type TaskType =
   | 'build-index'
@@ -109,7 +110,11 @@ export class FileTaskManager extends EventEmitter {
     this.queue = [];
     this.operationToWorker.clear();
     await Promise.all(
-      this.workers.map((workerState) => workerState.worker.terminate().catch(() => {}))
+      this.workers.map((workerState) =>
+        workerState.worker.terminate().catch((error) => {
+          logger.error('[FileTasks] Failed to terminate worker during shutdown:', error);
+        })
+      )
     );
   }
 
@@ -205,7 +210,9 @@ export class FileTaskManager extends EventEmitter {
     workerState.currentTaskId = undefined;
     workerState.currentOperationId = undefined;
     workerState.worker.removeAllListeners();
-    workerState.worker.terminate().catch(() => {});
+    workerState.worker.terminate().catch((error) => {
+      logger.error('[FileTasks] Failed to terminate worker during replacement:', error);
+    });
 
     const index = this.workers.indexOf(workerState);
     const replacement = this.createWorker();

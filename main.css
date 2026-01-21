@@ -367,7 +367,7 @@ body.platform-win32 .glass-input:focus {
 
 .titlebar-button.close:hover {
   background: var(--danger-color);
-  color: #ffffff;
+  color: var(--text-primary);
 }
 
 .titlebar-button.close:active {
@@ -867,7 +867,7 @@ body.platform-win32 .toolbar-button:active:not(:disabled) {
 
 .clipboard-indicator.cut-mode {
   background: rgba(255, 140, 0, 0.1);
-  color: #ff8c00;
+  color: var(--warning-color);
 }
 
 .clipboard-indicator .clipboard-icon {
@@ -1017,7 +1017,7 @@ body.theme-light .selection-action:hover {
 
 #address-input::selection {
   background: var(--accent-color);
-  color: #ffffff;
+  color: var(--text-primary);
 }
 
 .search-bar-wrapper {
@@ -1136,7 +1136,7 @@ body.theme-light .selection-action:hover {
   height: 14px;
   padding: 0 4px;
   background: var(--accent-color);
-  color: #fff;
+  color: var(--text-primary);
   font-size: 9px;
   font-weight: 600;
   border-radius: 7px;
@@ -1152,7 +1152,7 @@ body.theme-light .selection-action:hover {
 
 .search-filter-toggle.active {
   background: var(--accent-color);
-  color: #fff;
+  color: var(--text-primary);
 }
 
 .search-filters-panel {
@@ -1259,7 +1259,7 @@ body.theme-light .selection-action:hover {
 
 .search-filter-btn.primary {
   background: var(--accent-color);
-  color: #fff;
+  color: var(--text-primary);
 }
 
 .search-filter-btn.primary:hover {
@@ -2592,7 +2592,7 @@ body.platform-win32 .context-menu-separator {
 .modal-button.primary {
   background: var(--accent-color);
   border-color: var(--accent-color);
-  color: #ffffff;
+  color: var(--text-primary);
   box-shadow: none;
 }
 
@@ -3041,7 +3041,7 @@ body.no-transparency .file-view::before {
 
 .search-bar input::selection {
   background: var(--accent-color);
-  color: #ffffff;
+  color: var(--text-primary);
 }
 
 .search-icon {
@@ -4084,7 +4084,7 @@ body.theme-light .empty-action-btn {
 body.theme-light .empty-action-btn:hover {
   background: var(--accent-color);
   border-color: var(--accent-color);
-  color: #fff;
+  color: var(--text-primary);
 }
 
 body.theme-light .context-menu {
@@ -4490,10 +4490,10 @@ body.theme-light .shortcuts-modal-content {
 }
 
 body.theme-dark {
-  background: 
+  background:
     radial-gradient(ellipse 120% 120% at 50% 50%, rgba(50, 100, 180, 0.015) 0%, transparent 50%),
-    linear-gradient(135deg, 
-      #1a2332 0%, 
+    linear-gradient(135deg,
+      #1a2332 0%,
       #1b2535 8%,
       #1c2738 16%,
       #1d293b 24%,
@@ -4511,6 +4511,11 @@ body.theme-dark {
   --bg-primary: #1f2d41;
   --bg-primary-rgb: 31, 45, 65;
   --dropdown-bg: #263548;
+  --text-primary: #e8eef7;
+  --text-secondary: #c5d1e3;
+  --text-tertiary: #93a5be;
+  --glass-bg: rgba(31, 45, 65, 0.8);
+  --glass-border: rgba(232, 238, 247, 0.1);
 }
 
 body.theme-dark::before {
@@ -4544,6 +4549,11 @@ body.theme-dark .status-bar {
 body.theme-dark .status-left span,
 body.theme-dark .status-right span {
   color: rgba(255, 255, 255, 0.95);
+}
+
+body.theme-dark code.hljs {
+  color: var(--text-primary);
+  background: transparent;
 }
 
 body.theme-nord {
@@ -5659,7 +5669,7 @@ pre.preview-text code.hljs {
 
 .theme-editor-preview .preview-sidebar-item.active {
   background: var(--custom-accent-color, var(--accent-color));
-  color: #fff;
+  color: var(--custom-text-primary, var(--text-primary));
 }
 
 .theme-editor-preview .preview-content {
