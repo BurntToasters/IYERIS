@@ -2753,6 +2753,7 @@ function loadBookmarks() {
   bookmarksList.innerHTML = '';
 
   if (!currentSettings.bookmarks || currentSettings.bookmarks.length === 0) {
+    bookmarksList.innerHTML = '<div class="sidebar-empty">No bookmarks yet</div>';
     return;
   }
 
@@ -2971,7 +2972,8 @@ function loadRecentFiles() {
   }
 
   if (!currentSettings.recentFiles || currentSettings.recentFiles.length === 0) {
-    recentSection.style.display = 'none';
+    recentSection.style.display = 'block';
+    recentList.innerHTML = '<div class="sidebar-empty">No recent files yet</div>';
     return;
   }
 
