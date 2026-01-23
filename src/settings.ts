@@ -25,6 +25,7 @@ export function createDefaultSettings(): Settings {
     recentFiles: [],
     folderIcons: {},
     showRecentFiles: true,
+    showFolderTree: true,
     enableTabs: true,
     globalContentSearch: false,
     enableSyntaxHighlighting: true,

@@ -72,6 +72,11 @@
         <div id="drives-list"></div>
       </div>
 
+      <div class="sidebar-section" id="folder-tree-section">
+        <div class="section-title">Folders</div>
+        <div id="folder-tree" class="folder-tree"></div>
+      </div>
+
       <div class="sidebar-section">
         <div class="section-title">
           Bookmarks
@@ -83,6 +88,7 @@
           <path d="M10 2 L4 8 L10 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
       </button>
+      <div class="sidebar-resize-handle" id="sidebar-resize-handle"></div>
     </div>
 
     <div class="main-content">
@@ -126,6 +132,11 @@
             <span class="selection-text">selected</span>
             <button class="selection-action" id="select-all-btn" title="Select All">All</button>
             <button class="selection-action" id="deselect-all-btn" title="Deselect All">None</button>
+            <button class="selection-action" id="selection-copy-btn" title="Copy">Copy</button>
+            <button class="selection-action" id="selection-cut-btn" title="Cut">Cut</button>
+            <button class="selection-action" id="selection-move-btn" title="Move To...">Move</button>
+            <button class="selection-action" id="selection-rename-btn" title="Rename">Rename</button>
+            <button class="selection-action" id="selection-delete-btn" title="Delete">Delete</button>
           </span>
         </div>
         
@@ -136,6 +147,7 @@
               <div class="breadcrumb" id="breadcrumb-container"></div>
               <input type="text" id="address-input" placeholder="Enter path...">
             </div>
+            <div class="breadcrumb-menu" id="breadcrumb-menu" style="display: none;"></div>
             <div class="history-dropdown" id="directory-history-dropdown" style="display: none;"></div>
           </div>
 
@@ -213,61 +225,90 @@
         </div>
         
         <div class="toolbar-right">
-          <button class="toolbar-button toolbar-new-tab-btn" id="toolbar-new-tab-btn" title="New Tab (Ctrl+T)">
-            <svg width="16" height="16" viewBox="0 0 14 14">
-              <path d="M7 1 L7 13 M1 7 L13 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-            </svg>
-          </button>
-          <button class="toolbar-button" id="search-btn" title="Search (Ctrl+F)">
-            <svg width="16" height="16" viewBox="0 0 16 16">
-              <circle cx="6.5" cy="6.5" r="4" fill="none" stroke="currentColor" stroke-width="1.5"/>
-              <path d="M9.5 9.5 L13 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-            </svg>
-          </button>
-          <button class="toolbar-button" id="sort-btn" title="Sort Options">
-            <svg width="16" height="16" viewBox="0 0 16 16">
-              <path d="M3 4 L13 4 M3 8 L10 8 M3 12 L7 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-            </svg>
-          </button>
-          <button class="toolbar-button" id="refresh-btn" title="Refresh (F5)">
-            <svg width="16" height="16" viewBox="0 0 512 512">
-              <g transform="translate(0 -540.36)">
-                <g transform="matrix(.93969 .34202 -.34202 .93969 288.96 -29.281)">
-                  <path transform="matrix(1.6441 -2.7919 -2.8197 -1.5958 278.45 1529)" d="m254.1 122.62c0 32.669-26.483 59.152-59.152 59.152s-59.152-26.483-59.152-59.152 26.483-59.152 59.152-59.152c3.4435 0 6.8804 0.30069 10.272 0.89865" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="20"/>
-                  <path transform="matrix(2.4143 -4.39 3.3006 1.9982 -1050.7 900.01)" d="m169.74 286.71 43.096-0.19189-21.382 37.418z" fill="currentColor" stroke-width="0"/>
+          <div class="toolbar-group toolbar-actions">
+            <button class="toolbar-button toolbar-new-tab-btn" id="toolbar-new-tab-btn" title="New Tab (Ctrl+T)">
+              <svg width="16" height="16" viewBox="0 0 14 14">
+                <path d="M7 1 L7 13 M1 7 L13 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+              </svg>
+            </button>
+            <button class="toolbar-button" id="search-btn" title="Search (Ctrl+F)">
+              <svg width="16" height="16" viewBox="0 0 16 16">
+                <circle cx="6.5" cy="6.5" r="4" fill="none" stroke="currentColor" stroke-width="1.5"/>
+                <path d="M9.5 9.5 L13 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+              </svg>
+            </button>
+            <button class="toolbar-button" id="sort-btn" title="Sort Options">
+              <svg width="16" height="16" viewBox="0 0 16 16">
+                <path d="M3 4 L13 4 M3 8 L10 8 M3 12 L7 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+              </svg>
+            </button>
+            <button class="toolbar-button" id="refresh-btn" title="Refresh (F5)">
+              <svg width="16" height="16" viewBox="0 0 512 512">
+                <g transform="translate(0 -540.36)">
+                  <g transform="matrix(.93969 .34202 -.34202 .93969 288.96 -29.281)">
+                    <path transform="matrix(1.6441 -2.7919 -2.8197 -1.5958 278.45 1529)" d="m254.1 122.62c0 32.669-26.483 59.152-59.152 59.152s-59.152-26.483-59.152-59.152 26.483-59.152 59.152-59.152c3.4435 0 6.8804 0.30069 10.272 0.89865" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="20"/>
+                    <path transform="matrix(2.4143 -4.39 3.3006 1.9982 -1050.7 900.01)" d="m169.74 286.71 43.096-0.19189-21.382 37.418z" fill="currentColor" stroke-width="0"/>
+                  </g>
                 </g>
-              </g>
-            </svg>
-          </button>
-          <button class="toolbar-button" id="new-file-btn" title="New File">
-            <svg width="16" height="16" viewBox="0 0 16 16">
-              <path d="M3 2 L3 14 L13 14 L13 6 L9 2 Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
-              <path d="M9 2 L9 6 L13 6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
-              <path d="M8 8 L8 11 M6.5 9.5 L9.5 9.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-            </svg>
-          </button>
-          <button class="toolbar-button" id="new-folder-btn" title="New Folder">
-            <svg width="16" height="16" viewBox="0 0 16 16">
-              <path d="M2 4 L2 13 L14 13 L14 6 L8 6 L6 4 Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
-              <path d="M8 8 L8 11 M6.5 9.5 L9.5 9.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-            </svg>
-          </button>
-          <button class="toolbar-button" id="view-toggle-btn" title="Toggle View">
-            <svg width="16" height="16" viewBox="0 0 16 16">
-              <rect x="2" y="2" width="5" height="5" fill="currentColor" rx="1"/>
-              <rect x="9" y="2" width="5" height="5" fill="currentColor" rx="1"/>
-              <rect x="2" y="9" width="5" height="5" fill="currentColor" rx="1"/>
-              <rect x="9" y="9" width="5" height="5" fill="currentColor" rx="1"/>
-            </svg>
-          </button>
-          <button class="toolbar-button" id="preview-toggle-btn" title="Toggle Preview Panel">
-            <svg width="16" height="16" viewBox="0 0 16 16">
-              <rect x="1" y="2" width="7" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-              <rect x="10" y="2" width="5" height="12" fill="currentColor" stroke="currentColor" stroke-width="1.5" rx="1"/>
-            </svg>
-          </button>
-          <button class="toolbar-button" id="settings-btn" title="Settings"><img src="assets/twemoji/2699.svg" class="twemoji" alt="⚙️" draggable="false" />
-          </button>
+              </svg>
+            </button>
+            <button class="toolbar-button" id="new-file-btn" title="New File">
+              <svg width="16" height="16" viewBox="0 0 16 16">
+                <path d="M3 2 L3 14 L13 14 L13 6 L9 2 Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+                <path d="M9 2 L9 6 L13 6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+                <path d="M8 8 L8 11 M6.5 9.5 L9.5 9.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+              </svg>
+            </button>
+            <button class="toolbar-button" id="new-folder-btn" title="New Folder">
+              <svg width="16" height="16" viewBox="0 0 16 16">
+                <path d="M2 4 L2 13 L14 13 L14 6 L8 6 L6 4 Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+                <path d="M8 8 L8 11 M6.5 9.5 L9.5 9.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+              </svg>
+            </button>
+          </div>
+          <div class="toolbar-divider"></div>
+          <div class="toolbar-group toolbar-view">
+            <div class="view-options" id="view-options">
+              <button class="view-option" data-view="grid" title="Grid View">
+                <svg width="16" height="16" viewBox="0 0 16 16">
+                  <rect x="2" y="2" width="5" height="5" fill="currentColor" rx="1"/>
+                  <rect x="9" y="2" width="5" height="5" fill="currentColor" rx="1"/>
+                  <rect x="2" y="9" width="5" height="5" fill="currentColor" rx="1"/>
+                  <rect x="9" y="9" width="5" height="5" fill="currentColor" rx="1"/>
+                </svg>
+              </button>
+              <button class="view-option" data-view="list" title="List View">
+                <svg width="16" height="16" viewBox="0 0 16 16">
+                  <rect x="2" y="3" width="12" height="2" fill="currentColor" rx="1"/>
+                  <rect x="2" y="7" width="12" height="2" fill="currentColor" rx="1"/>
+                  <rect x="2" y="11" width="12" height="2" fill="currentColor" rx="1"/>
+                </svg>
+              </button>
+              <button class="view-option" data-view="column" title="Column View">
+                <svg width="16" height="16" viewBox="0 0 16 16">
+                  <rect x="1" y="2" width="4" height="12" fill="currentColor" rx="1"/>
+                  <rect x="6" y="2" width="4" height="12" fill="currentColor" rx="1"/>
+                  <rect x="11" y="2" width="4" height="12" fill="currentColor" rx="1"/>
+                </svg>
+              </button>
+            </div>
+            <button class="toolbar-button" id="view-toggle-btn" title="Toggle View">
+              <svg width="16" height="16" viewBox="0 0 16 16">
+                <rect x="2" y="2" width="5" height="5" fill="currentColor" rx="1"/>
+                <rect x="9" y="2" width="5" height="5" fill="currentColor" rx="1"/>
+                <rect x="2" y="9" width="5" height="5" fill="currentColor" rx="1"/>
+                <rect x="9" y="9" width="5" height="5" fill="currentColor" rx="1"/>
+              </svg>
+            </button>
+            <button class="toolbar-button" id="preview-toggle-btn" title="Toggle Preview Panel">
+              <svg width="16" height="16" viewBox="0 0 16 16">
+                <rect x="1" y="2" width="7" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
+                <rect x="10" y="2" width="5" height="12" fill="currentColor" stroke="currentColor" stroke-width="1.5" rx="1"/>
+              </svg>
+            </button>
+            <button class="toolbar-button" id="settings-btn" title="Settings"><img src="assets/twemoji/2699.svg" class="twemoji" alt="⚙️" draggable="false" />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -292,12 +333,35 @@
             </div>
             <p class="empty-hint">or drop files here</p>
           </div>
+          <div class="list-header" id="list-header" style="display: none;">
+            <div class="list-header-cell list-header-name" data-sort="name">
+              <span class="list-header-title">Name</span>
+              <span class="list-header-sort" id="list-sort-name"></span>
+              <div class="list-header-resize" data-resize="name"></div>
+            </div>
+            <div class="list-header-cell list-header-type" data-sort="type">
+              <span class="list-header-title">Kind</span>
+              <span class="list-header-sort" id="list-sort-type"></span>
+              <div class="list-header-resize" data-resize="type"></div>
+            </div>
+            <div class="list-header-cell list-header-size" data-sort="size">
+              <span class="list-header-title">Size</span>
+              <span class="list-header-sort" id="list-sort-size"></span>
+              <div class="list-header-resize" data-resize="size"></div>
+            </div>
+            <div class="list-header-cell list-header-modified" data-sort="date">
+              <span class="list-header-title">Date Modified</span>
+              <span class="list-header-sort" id="list-sort-date"></span>
+              <div class="list-header-resize" data-resize="modified"></div>
+            </div>
+          </div>
           <div class="file-grid" id="file-grid"></div>
           <div class="column-view" id="column-view" style="display: none;"></div>
           <div class="selection-rect" id="selection-rect"></div>
         </div>
 
         <div class="preview-panel glass-panel" id="preview-panel" style="display: none;">
+          <div class="preview-resize-handle" id="preview-resize-handle"></div>
           <div class="preview-header">
             <h3>Preview</h3>
             <button class="preview-close" id="preview-close" title="Close Preview">✕</button>
@@ -354,6 +418,13 @@
     <div class="context-menu-separator"></div>
     <div class="context-menu-item" data-action="open-terminal"><img src="assets/twemoji/1f5a5.svg" class="twemoji" alt="🖥️" draggable="false" /> Open folder in Terminal</div>
   </div>
+
+  <div id="drop-indicator" class="drop-indicator" style="display: none;">
+    <span class="drop-indicator-action" id="drop-indicator-action"></span>
+    <span class="drop-indicator-path" id="drop-indicator-path"></span>
+  </div>
+
+  <div id="typeahead-indicator" class="typeahead-indicator" style="display: none;"></div>
 
   <div class="modal-overlay" id="properties-modal" style="display: none;">
     <div class="modal glass-panel">
@@ -586,6 +657,16 @@
                 </div>
                 <label class="toggle-switch">
                   <input type="checkbox" id="show-recent-files-toggle" checked>
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+              <div class="setting-item" data-searchable="folder tree sidebar directory hierarchy">
+                <div class="setting-info">
+                  <label for="show-folder-tree-toggle">Show Folder Tree</label>
+                  <p class="setting-description">Display the folder directory tree in the sidebar</p>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="show-folder-tree-toggle" checked>
                   <span class="toggle-slider"></span>
                 </label>
               </div>

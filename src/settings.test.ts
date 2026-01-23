@@ -71,6 +71,7 @@ describe('createDefaultSettings', () => {
     expect(settings.enableSyntaxHighlighting).toBe(true);
     expect(settings.enableGitStatus).toBe(false);
     expect(settings.showRecentFiles).toBe(true);
+    expect(settings.showFolderTree).toBe(true);
   });
 
   it('has correct default update channel', () => {
