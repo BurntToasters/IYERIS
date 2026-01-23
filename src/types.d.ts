@@ -61,6 +61,8 @@ export interface Settings {
   customTheme?: CustomTheme;
   launchCount?: number;
   supportPopupDismissed?: boolean;
+  tourPromptDismissed?: boolean;
+  tourCompleted?: boolean;
   skipFullDiskAccessPrompt?: boolean;
   recentFiles?: string[];
   folderIcons?: { [path: string]: string };

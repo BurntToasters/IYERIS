@@ -1004,6 +1004,17 @@
                 <button class="modal-button" id="about-shortcuts-btn"><img src="assets/twemoji/2328.svg" class="twemoji" alt="⌨️" draggable="false" /> View Shortcuts</button>
               </div>
             </div>
+
+            <div class="settings-card">
+              <div class="settings-card-header">Guided Tour</div>
+              <div class="setting-item" data-searchable="tour onboarding walkthrough tutorial help">
+                <div class="setting-info">
+                  <label>Start Tour</label>
+                  <p class="setting-description">Replay the guided tour of IYERIS.</p>
+                </div>
+                <button class="modal-button" id="start-tour-btn"><img src="assets/twemoji/1f9ed.svg" class="twemoji" alt="🧭" draggable="false" /> Start Tour</button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -1451,6 +1462,47 @@
         <button class="modal-button primary" id="support-popup-yes">
           <img src="assets/twemoji/2764.svg" class="twemoji" alt="❤️" draggable="false" /> Support
         </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="tour-prompt-modal" style="display: none;">
+    <div class="modal glass-panel tour-prompt-modal">
+      <div class="modal-header">
+        <h3><img src="assets/twemoji/1f9ed.svg" class="twemoji" alt="🧭" draggable="false" /> Take a Quick Tour</h3>
+      </div>
+      <div class="modal-body tour-prompt-body">
+        <div class="tour-prompt-icon">
+          <img src="assets/twemoji/1f680.svg" class="twemoji-xlarge" alt="🚀" draggable="false" />
+        </div>
+        <p class="tour-prompt-message">Welcome to IYERIS!</p>
+        <p class="tour-prompt-submessage">Want a quick walkthrough of the app's key areas?</p>
+        <p class="tour-prompt-note">This message will only appear once (unless you reset IYERIS's settings).</p>
+      </div>
+      <div class="modal-footer tour-prompt-footer">
+        <button class="modal-button secondary" id="tour-prompt-skip">Skip</button>
+        <button class="modal-button primary" id="tour-prompt-yes">
+          <img src="assets/twemoji/1f44b.svg" class="twemoji" alt="👋" draggable="false" /> Yes Please!
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div id="tour-overlay" class="tour-overlay" style="display: none;">
+    <div id="tour-highlight" class="tour-highlight"></div>
+    <div id="tour-tooltip" class="tour-tooltip" role="dialog" aria-modal="true" aria-live="polite">
+      <div class="tour-tooltip-header">
+        <span id="tour-step-count" class="tour-step-count">Step 1 of 1</span>
+        <button class="tour-close" id="tour-close" title="End tour">✕</button>
+      </div>
+      <h3 id="tour-title">Tour</h3>
+      <p id="tour-description">Let's take a quick look around.</p>
+      <div class="tour-actions">
+        <div class="tour-actions-left">
+          <button class="modal-button compact" id="tour-back">Back</button>
+          <button class="modal-button compact secondary" id="tour-skip">Skip</button>
+        </div>
+        <button class="modal-button primary" id="tour-next">Next</button>
       </div>
     </div>
   </div>

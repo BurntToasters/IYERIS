@@ -21,6 +21,8 @@ export function createDefaultSettings(): Settings {
     autoCheckUpdates: true,
     launchCount: 0,
     supportPopupDismissed: false,
+    tourPromptDismissed: false,
+    tourCompleted: false,
     skipFullDiskAccessPrompt: false,
     recentFiles: [],
     folderIcons: {},

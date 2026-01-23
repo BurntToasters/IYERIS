@@ -10,6 +10,7 @@ import type {
 import { createFolderTreeManager } from './folderDir.js';
 import { escapeHtml, getErrorMessage } from './shared.js';
 import { createDefaultSettings } from './settings.js';
+import { createTourController, type TourController } from './tour.js';
 
 const THUMBNAIL_MAX_SIZE = 10 * 1024 * 1024;
 const SEARCH_DEBOUNCE_MS = 300;
@@ -1416,6 +1417,10 @@ async function showConfirm(
 }
 
 let currentSettings: Settings = createDefaultSettings();
+const tourController: TourController = createTourController({
+  getSettings: () => currentSettings,
+  saveSettings: (settings) => window.electronAPI.saveSettings(settings),
+});
 
 function showToast(
   message: string,
@@ -1478,6 +1483,8 @@ async function loadSettings(): Promise<void> {
     if (newLaunchCount === 2 && !currentSettings.supportPopupDismissed) {
       setTimeout(() => showSupportPopup(), 1500);
     }
+
+    tourController.handleLaunch(newLaunchCount);
   }
 
   if (sharedClipboard) {
@@ -8546,6 +8553,10 @@ document.getElementById('settings-btn')?.addEventListener('click', showSettingsM
 document.getElementById('settings-close')?.addEventListener('click', hideSettingsModal);
 document.getElementById('save-settings-btn')?.addEventListener('click', saveSettings);
 document.getElementById('reset-settings-btn')?.addEventListener('click', resetSettings);
+document.getElementById('start-tour-btn')?.addEventListener('click', () => {
+  hideSettingsModal();
+  tourController.startTour();
+});
 document.getElementById('dangerous-options-toggle')?.addEventListener('change', (e) => {
   const target = e.target as HTMLInputElement;
   updateDangerousOptionsVisibility(target.checked);
@@ -8584,41 +8595,70 @@ document.getElementById('version-indicator')?.addEventListener('click', () => {
 
 document.getElementById('settings-search')?.addEventListener('input', (e) => {
   const searchTerm = (e.target as HTMLInputElement).value.toLowerCase().trim();
-  const settingItems = document.querySelectorAll('.setting-item, .setting-item-toggle');
-  const sections = document.querySelectorAll('.settings-section-card');
+  const sections = document.querySelectorAll('.settings-section');
 
   if (!searchTerm) {
-    settingItems.forEach((item) => {
-      (item as HTMLElement).style.display = '';
-      item.classList.remove('search-highlight');
-    });
     sections.forEach((section) => {
       (section as HTMLElement).style.display = '';
+      section.classList.remove('search-no-results');
+      section.querySelectorAll('.settings-card').forEach((card) => {
+        card.classList.remove('search-hidden');
+      });
+      section.querySelectorAll('.setting-item, .setting-item-toggle').forEach((item) => {
+        item.classList.remove('search-hidden', 'search-highlight');
+      });
     });
     return;
   }
 
+  let anyMatch = false;
+
   sections.forEach((section) => {
-    let hasVisibleItem = false;
-    const items = section.querySelectorAll('.setting-item, .setting-item-toggle');
+    section.classList.remove('search-no-results');
+    let sectionHasMatch = false;
+    const cards = section.querySelectorAll('.settings-card');
 
-    items.forEach((item) => {
-      const label = item.querySelector('.setting-label, span')?.textContent?.toLowerCase() || '';
-      const description =
-        item.querySelector('.setting-description')?.textContent?.toLowerCase() || '';
+    cards.forEach((card) => {
+      const items = card.querySelectorAll('.setting-item, .setting-item-toggle');
+      let cardHasMatch = false;
 
-      if (label.includes(searchTerm) || description.includes(searchTerm)) {
-        (item as HTMLElement).style.display = '';
-        item.classList.add('search-highlight');
-        hasVisibleItem = true;
+      if (items.length === 0) {
+        const cardText = (card.textContent || '').toLowerCase();
+        cardHasMatch = cardText.includes(searchTerm);
       } else {
-        (item as HTMLElement).style.display = 'none';
-        item.classList.remove('search-highlight');
+        items.forEach((item) => {
+          const searchable = item.getAttribute('data-searchable') || '';
+          const text = item.textContent || '';
+          const haystack = `${searchable} ${text}`.toLowerCase();
+          const matches = haystack.includes(searchTerm);
+          item.classList.toggle('search-hidden', !matches);
+          item.classList.toggle('search-highlight', matches);
+          if (matches) cardHasMatch = true;
+        });
+      }
+
+      card.classList.toggle('search-hidden', !cardHasMatch);
+      if (cardHasMatch) {
+        sectionHasMatch = true;
       }
     });
 
-    (section as HTMLElement).style.display = hasVisibleItem ? '' : 'none';
+    if (sectionHasMatch) {
+      (section as HTMLElement).style.display = 'block';
+      anyMatch = true;
+    } else {
+      (section as HTMLElement).style.display = 'none';
+    }
   });
+
+  if (!anyMatch) {
+    const activeSection = document.querySelector('.settings-section.active') as HTMLElement | null;
+    sections.forEach((section) => {
+      const isActive = section === activeSection;
+      (section as HTMLElement).style.display = isActive ? 'block' : 'none';
+      section.classList.toggle('search-no-results', isActive);
+    });
+  }
 });
 
 // Export
