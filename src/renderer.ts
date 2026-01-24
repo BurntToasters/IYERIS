@@ -8620,6 +8620,9 @@ document.getElementById('settings-search')?.addEventListener('input', (e) => {
 
     cards.forEach((card) => {
       const items = card.querySelectorAll('.setting-item, .setting-item-toggle');
+      const cardHeaderText = (
+        card.querySelector('.settings-card-header')?.textContent || ''
+      ).toLowerCase();
       let cardHasMatch = false;
 
       if (items.length === 0) {
@@ -8629,7 +8632,7 @@ document.getElementById('settings-search')?.addEventListener('input', (e) => {
         items.forEach((item) => {
           const searchable = item.getAttribute('data-searchable') || '';
           const text = item.textContent || '';
-          const haystack = `${searchable} ${text}`.toLowerCase();
+          const haystack = `${searchable} ${text} ${cardHeaderText}`.toLowerCase();
           const matches = haystack.includes(searchTerm);
           item.classList.toggle('search-hidden', !matches);
           item.classList.toggle('search-highlight', matches);

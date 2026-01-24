@@ -118,6 +118,13 @@ export function createTourController(options: TourControllerOptions): TourContro
   let tourUpdateRaf: number | null = null;
   let launchTimeout: number | null = null;
 
+  const clearLaunchTimeout = (): void => {
+    if (launchTimeout !== null) {
+      window.clearTimeout(launchTimeout);
+      launchTimeout = null;
+    }
+  };
+
   const saveSettings = async (): Promise<void> => {
     try {
       await options.saveSettings(options.getSettings());
@@ -141,6 +148,8 @@ export function createTourController(options: TourControllerOptions): TourContro
 
   const showPrompt = (): void => {
     if (tourActive) return;
+    const settings = options.getSettings();
+    if (settings.tourPromptDismissed || settings.tourCompleted) return;
     promptModal.style.display = 'flex';
   };
 
@@ -323,6 +332,7 @@ export function createTourController(options: TourControllerOptions): TourContro
     if (tourActive || steps.length === 0) return;
     tourActive = true;
     tourStepIndex = 0;
+    clearLaunchTimeout();
     hidePrompt();
     showOverlay();
     updateStepUI(true);
@@ -333,6 +343,7 @@ export function createTourController(options: TourControllerOptions): TourContro
   const endTour = (completed: boolean = false): void => {
     if (!tourActive) return;
     tourActive = false;
+    clearLaunchTimeout();
     hideOverlay();
     detachListeners();
     setTourCompleted(completed);
@@ -364,9 +375,7 @@ export function createTourController(options: TourControllerOptions): TourContro
     const settings = options.getSettings();
     if (launchCount !== 1) return;
     if (settings.tourPromptDismissed || settings.tourCompleted) return;
-    if (launchTimeout !== null) {
-      window.clearTimeout(launchTimeout);
-    }
+    clearLaunchTimeout();
     launchTimeout = window.setTimeout(showPrompt, promptDelayMs);
   };
 
