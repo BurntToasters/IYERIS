@@ -1,6 +1,6 @@
 {
   "name": "iyeris",
-  "version": "0.9.6",
+  "version": "0.9.7",
   "description": "A beautiful cross-platform file explorer built with Electron, featuring a stunning liquid-glass interface with smooth animations and modern design.",
   "main": "dist/main.js",
   "dependencies": {
@@ -36,7 +36,7 @@
     "licenses": "npx npm-license-crawler --production --json licenses.json",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:all": "node build/test-all.js",
+    "test:all": "npm run build && node build/test-all.js",
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
     "format": "prettier --write src/",

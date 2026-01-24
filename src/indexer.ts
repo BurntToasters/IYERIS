@@ -12,6 +12,37 @@ type IndexEntryPayload = Partial<Omit<IndexEntry, 'modified'>> & {
   modified?: Date | number | string;
 };
 
+async function writeFileAtomic(targetPath: string, data: string): Promise<void> {
+  const dir = path.dirname(targetPath);
+  const base = path.basename(targetPath);
+  const tmpPath = path.join(
+    dir,
+    `${base}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`
+  );
+
+  await fs.writeFile(tmpPath, data, 'utf-8');
+
+  try {
+    await fs.rename(tmpPath, targetPath);
+  } catch (error) {
+    const err = error as NodeJS.ErrnoException;
+    if (err.code === 'EEXIST' || err.code === 'EPERM' || err.code === 'EACCES') {
+      try {
+        await fs.unlink(targetPath);
+      } catch {}
+      try {
+        await fs.rename(tmpPath, targetPath);
+        return;
+      } catch {}
+    }
+    try {
+      await fs.copyFile(tmpPath, targetPath);
+    } finally {
+      await fs.unlink(tmpPath).catch(() => {});
+    }
+  }
+}
+
 export class FileIndexer {
   private index: Map<string, IndexEntry> = new Map();
   private isIndexing: boolean = false;
@@ -420,7 +451,7 @@ export class FileIndexer {
           version: 1,
         };
 
-        await fs.writeFile(this.indexPath, JSON.stringify(data), 'utf-8');
+        await writeFileAtomic(this.indexPath, JSON.stringify(data));
       }
       console.log(`[Indexer] Index saved to ${this.indexPath}`);
     } catch (error) {

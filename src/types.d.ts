@@ -9,6 +9,13 @@ export interface CustomTheme {
   glassBorder: string;
 }
 
+export interface ListColumnWidths {
+  name?: number;
+  type?: number;
+  size?: number;
+  modified?: number;
+}
+
 export interface Tab {
   id: string;
   path: string;
@@ -54,10 +61,13 @@ export interface Settings {
   customTheme?: CustomTheme;
   launchCount?: number;
   supportPopupDismissed?: boolean;
+  tourPromptDismissed?: boolean;
+  tourCompleted?: boolean;
   skipFullDiskAccessPrompt?: boolean;
   recentFiles?: string[];
   folderIcons?: { [path: string]: string };
   showRecentFiles: boolean;
+  showFolderTree: boolean;
   enableTabs: boolean;
   globalContentSearch: boolean;
   tabState?: TabState;
@@ -65,6 +75,9 @@ export interface Settings {
   enableGitStatus: boolean;
   showFileHoverCard: boolean;
   showFileCheckboxes: boolean;
+  listColumnWidths?: ListColumnWidths;
+  sidebarWidth?: number;
+  previewPanelWidth?: number;
 
   reduceMotion: boolean;
   highContrast: boolean;

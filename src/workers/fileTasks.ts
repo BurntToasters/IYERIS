@@ -226,6 +226,9 @@ const HIDDEN_ATTR_CACHE_TTL_MS = 5 * 60 * 1000;
 const HIDDEN_ATTR_CACHE_MAX = 5000;
 
 const hiddenAttrCache = new Map<string, { isHidden: boolean; timestamp: number }>();
+let cachedIndexPath: string | null = null;
+let cachedIndexMtimeMs: number | null = null;
+let cachedIndexData: any | null = null;
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
@@ -297,6 +300,71 @@ function setHiddenCache(filePath: string, isHidden: boolean): void {
     }
   }
   hiddenAttrCache.set(filePath, { isHidden, timestamp: Date.now() });
+}
+
+async function readIndexData(indexPath: string, emptyMessage: string): Promise<any> {
+  try {
+    const stats = await fs.stat(indexPath);
+    if (cachedIndexPath === indexPath && cachedIndexMtimeMs === stats.mtimeMs && cachedIndexData) {
+      return cachedIndexData;
+    }
+
+    const rawData = await fs.readFile(indexPath, 'utf-8');
+    let parsed: any;
+    try {
+      parsed = JSON.parse(rawData);
+    } catch {
+      cachedIndexPath = null;
+      cachedIndexMtimeMs = null;
+      cachedIndexData = null;
+      throw new Error('Index file is corrupted');
+    }
+
+    cachedIndexPath = indexPath;
+    cachedIndexMtimeMs = stats.mtimeMs;
+    cachedIndexData = parsed;
+    return parsed;
+  } catch (error) {
+    const err = error as NodeJS.ErrnoException;
+    if (err?.code === 'ENOENT') {
+      cachedIndexPath = null;
+      cachedIndexMtimeMs = null;
+      cachedIndexData = null;
+      throw new Error(emptyMessage);
+    }
+    throw error;
+  }
+}
+
+async function writeFileAtomic(targetPath: string, data: string): Promise<void> {
+  const dir = path.dirname(targetPath);
+  const base = path.basename(targetPath);
+  const tmpPath = path.join(
+    dir,
+    `${base}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`
+  );
+
+  await fs.writeFile(tmpPath, data, 'utf-8');
+
+  try {
+    await fs.rename(tmpPath, targetPath);
+  } catch (error) {
+    const err = error as NodeJS.ErrnoException;
+    if (err.code === 'EEXIST' || err.code === 'EPERM' || err.code === 'EACCES') {
+      try {
+        await fs.unlink(targetPath);
+      } catch {}
+      try {
+        await fs.rename(tmpPath, targetPath);
+        return;
+      } catch {}
+    }
+    try {
+      await fs.copyFile(tmpPath, targetPath);
+    } finally {
+      await fs.unlink(tmpPath).catch(() => {});
+    }
+  }
 }
 
 async function isHidden(filePath: string, fileName: string): Promise<boolean> {
@@ -695,23 +763,10 @@ async function searchContentIndex(payload: any, operationId?: string): Promise<a
   const searchQuery = String(query || '').toLowerCase();
   const limit = Number.isFinite(maxResults) ? Math.max(1, maxResults) : 100;
 
-  let rawData: string;
-  try {
-    rawData = await fs.readFile(indexPath, 'utf-8');
-  } catch (error) {
-    const err = error as NodeJS.ErrnoException;
-    if (err?.code === 'ENOENT') {
-      throw new Error('Index is empty. Rebuild the index to enable global content search.');
-    }
-    throw error;
-  }
-
-  let parsed: any;
-  try {
-    parsed = JSON.parse(rawData);
-  } catch {
-    throw new Error('Index file is corrupted');
-  }
+  const parsed = await readIndexData(
+    indexPath,
+    'Index is empty. Rebuild the index to enable global content search.'
+  );
 
   const indexEntries = parsed?.index;
   if (!Array.isArray(indexEntries) || indexEntries.length === 0) {
@@ -774,23 +829,10 @@ async function searchIndexFile(payload: any, operationId?: string): Promise<any[
     return [];
   }
 
-  let rawData: string;
-  try {
-    rawData = await fs.readFile(indexPath, 'utf-8');
-  } catch (error) {
-    const err = error as NodeJS.ErrnoException;
-    if (err?.code === 'ENOENT') {
-      throw new Error('Index is empty. Rebuild the index to enable global search.');
-    }
-    throw error;
-  }
-
-  let parsed: any;
-  try {
-    parsed = JSON.parse(rawData);
-  } catch {
-    throw new Error('Index file is corrupted');
-  }
+  const parsed = await readIndexData(
+    indexPath,
+    'Index is empty. Rebuild the index to enable global search.'
+  );
 
   const indexEntries = parsed?.index;
   if (!Array.isArray(indexEntries) || indexEntries.length === 0) {
@@ -1178,17 +1220,17 @@ async function saveIndexFile(payload: any): Promise<any> {
     lastIndexTime: normalizedLastIndexTime,
     version: 1,
   };
-  await fs.writeFile(indexPath, JSON.stringify(data), 'utf-8');
+  await writeFileAtomic(indexPath, JSON.stringify(data));
   return { success: true };
 }
 
 async function listDirectory(payload: any, operationId?: string): Promise<any> {
-  const { dirPath, batchSize = 100, includeHidden = false } = payload;
+  const { dirPath, batchSize = 100 } = payload;
   const results: any[] = [];
   const batch: fsSync.Dirent[] = [];
   let loaded = 0;
   let dir: fsSync.Dir | null = null;
-  const shouldCheckHidden = !includeHidden;
+  const shouldCheckHidden = process.platform === 'win32';
 
   const flushBatch = async (): Promise<void> => {
     if (batch.length === 0) return;

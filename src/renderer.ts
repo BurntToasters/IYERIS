@@ -7,8 +7,10 @@ import type {
   GitStatusResponse,
   GitFileStatus,
 } from './types';
+import { createFolderTreeManager } from './folderDir.js';
 import { escapeHtml, getErrorMessage } from './shared.js';
 import { createDefaultSettings } from './settings.js';
+import { createTourController, type TourController } from './tour.js';
 
 const THUMBNAIL_MAX_SIZE = 10 * 1024 * 1024;
 const SEARCH_DEBOUNCE_MS = 300;
@@ -30,6 +32,18 @@ const DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
 });
 const DISK_SPACE_CACHE_TTL_MS = 60000;
 const GIT_STATUS_CACHE_TTL_MS = 3000;
+const LIST_COLUMN_MIN_WIDTHS: Record<string, number> = {
+  name: 180,
+  type: 120,
+  size: 80,
+  modified: 140,
+};
+const LIST_COLUMN_MAX_WIDTHS: Record<string, number> = {
+  name: 640,
+  type: 320,
+  size: 200,
+  modified: 320,
+};
 
 const thumbnailCache = new Map<string, string>();
 let activeThumbnailLoads = 0;
@@ -411,6 +425,8 @@ function updateBreadcrumb(currentPath: string): void {
 
   if (!breadcrumbContainer || !addressInput) return;
 
+  hideBreadcrumbMenu();
+
   if (!isBreadcrumbMode || !currentPath) {
     breadcrumbContainer.style.display = 'none';
     addressInput.style.display = 'block';
@@ -436,13 +452,70 @@ function updateBreadcrumb(currentPath: string): void {
   segments.forEach((segment, index) => {
     const item = document.createElement('span');
     item.className = 'breadcrumb-item';
-    item.textContent = segment;
-    item.title = buildPathFromSegments(segments, index, isWindows, isUnc);
+    const targetPath = buildPathFromSegments(segments, index, isWindows, isUnc);
+    item.title = targetPath;
+    item.dataset.path = targetPath;
+
+    const label = document.createElement('span');
+    label.textContent = segment;
+
+    const caret = document.createElement('span');
+    caret.className = 'breadcrumb-caret';
+    caret.textContent = '▾';
+
+    item.appendChild(label);
+    item.appendChild(caret);
 
     item.addEventListener('click', (e) => {
       e.stopPropagation();
-      const targetPath = buildPathFromSegments(segments, index, isWindows, isUnc);
+      const target = e.target as HTMLElement;
+      if (target.classList.contains('breadcrumb-caret')) {
+        showBreadcrumbMenu(targetPath, item);
+        return;
+      }
       navigateTo(targetPath);
+    });
+
+    item.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const operation = getDragOperation(e);
+      e.dataTransfer!.dropEffect = operation;
+      item.classList.add('drag-over');
+      showDropIndicator(operation, targetPath, e.clientX, e.clientY);
+    });
+
+    item.addEventListener('dragleave', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const rect = item.getBoundingClientRect();
+      if (
+        e.clientX < rect.left ||
+        e.clientX >= rect.right ||
+        e.clientY < rect.top ||
+        e.clientY >= rect.bottom
+      ) {
+        item.classList.remove('drag-over');
+        hideDropIndicator();
+      }
+    });
+
+    item.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      item.classList.remove('drag-over');
+      const draggedPaths = await getDraggedPaths(e);
+      if (draggedPaths.length === 0) {
+        hideDropIndicator();
+        return;
+      }
+      if (draggedPaths.includes(targetPath)) {
+        hideDropIndicator();
+        return;
+      }
+      const operation = getDragOperation(e);
+      await handleDrop(draggedPaths, targetPath, operation);
+      hideDropIndicator();
     });
 
     container.appendChild(item);
@@ -515,6 +588,74 @@ function setupBreadcrumbListeners(): void {
   }
 }
 
+async function showBreadcrumbMenu(targetPath: string, anchor: HTMLElement): Promise<void> {
+  if (!breadcrumbMenu) return;
+
+  if (breadcrumbMenuPath === targetPath && breadcrumbMenu.style.display === 'block') {
+    hideBreadcrumbMenu();
+    return;
+  }
+
+  breadcrumbMenuPath = targetPath;
+  breadcrumbMenu.innerHTML =
+    '<div class="breadcrumb-menu-item" style="opacity: 0.6;">Loading...</div>';
+  breadcrumbMenu.style.display = 'block';
+
+  const wrapper = anchor.closest('.address-bar-wrapper') as HTMLElement | null;
+  if (wrapper) {
+    const rect = anchor.getBoundingClientRect();
+    const wrapperRect = wrapper.getBoundingClientRect();
+    breadcrumbMenu.style.left = `${Math.max(0, rect.left - wrapperRect.left)}px`;
+    breadcrumbMenu.style.top = `${rect.bottom - wrapperRect.top + 4}px`;
+  }
+
+  const operationId = createDirectoryOperationId('breadcrumb');
+  const result = await window.electronAPI.getDirectoryContents(
+    targetPath,
+    operationId,
+    currentSettings.showHiddenFiles
+  );
+
+  if (!result.success) {
+    breadcrumbMenu.innerHTML =
+      '<div class="breadcrumb-menu-item" style="opacity: 0.6;">Failed to load</div>';
+    return;
+  }
+
+  const entries = (result.contents || []).filter(
+    (entry) => entry.isDirectory && (currentSettings.showHiddenFiles || !entry.isHidden)
+  );
+  entries.sort((a, b) => NAME_COLLATOR.compare(a.name, b.name));
+
+  if (entries.length === 0) {
+    breadcrumbMenu.innerHTML =
+      '<div class="breadcrumb-menu-item" style="opacity: 0.6;">No subfolders</div>';
+    return;
+  }
+
+  breadcrumbMenu.innerHTML = '';
+  entries.forEach((entry) => {
+    const item = document.createElement('div');
+    item.className = 'breadcrumb-menu-item';
+    item.innerHTML = `
+      <span class="nav-icon">${getFolderIcon(entry.path)}</span>
+      <span>${escapeHtml(entry.name)}</span>
+    `;
+    item.addEventListener('click', () => {
+      hideBreadcrumbMenu();
+      navigateTo(entry.path);
+    });
+    breadcrumbMenu.appendChild(item);
+  });
+}
+
+function hideBreadcrumbMenu(): void {
+  if (!breadcrumbMenu) return;
+  breadcrumbMenu.style.display = 'none';
+  breadcrumbMenu.innerHTML = '';
+  breadcrumbMenuPath = null;
+}
+
 type DialogType = 'info' | 'warning' | 'error' | 'success' | 'question';
 
 let currentPath: string = '';
@@ -535,6 +676,7 @@ let currentQuicklookFile: FileItem | null = null;
 let platformOS: string = '';
 let canUndo: boolean = false;
 let canRedo: boolean = false;
+let folderTreeEnabled: boolean = true;
 let currentZoomLevel: number = 1.0;
 let zoomPopupTimeout: NodeJS.Timeout | null = null;
 let indexStatusInterval: NodeJS.Timeout | null = null;
@@ -551,6 +693,14 @@ let hoverCardInitialized = false;
 let springLoadedTimeout: NodeJS.Timeout | null = null;
 let springLoadedFolder: HTMLElement | null = null;
 const SPRING_LOAD_DELAY = 800;
+let activeListResizeColumn: string | null = null;
+let listResizeStartX = 0;
+let listResizeStartWidth = 0;
+let listResizeCurrentWidth = 0;
+let typeaheadBuffer = '';
+let typeaheadTimeout: NodeJS.Timeout | null = null;
+let breadcrumbMenuPath: string | null = null;
+let bookmarksDropReady = false;
 
 interface TabData {
   id: string;
@@ -856,6 +1006,11 @@ const refreshBtn = document.getElementById('refresh-btn') as HTMLButtonElement;
 const newFileBtn = document.getElementById('new-file-btn') as HTMLButtonElement;
 const newFolderBtn = document.getElementById('new-folder-btn') as HTMLButtonElement;
 const viewToggleBtn = document.getElementById('view-toggle-btn') as HTMLButtonElement;
+const viewOptions = document.getElementById('view-options') as HTMLElement;
+const listHeader = document.getElementById('list-header') as HTMLElement;
+const breadcrumbMenu = document.getElementById('breadcrumb-menu') as HTMLElement;
+const folderTree = document.getElementById('folder-tree') as HTMLElement;
+const sidebarResizeHandle = document.getElementById('sidebar-resize-handle') as HTMLElement;
 const drivesList = document.getElementById('drives-list') as HTMLElement;
 const searchBtn = document.getElementById('search-btn') as HTMLButtonElement;
 const searchInput = document.getElementById('search-input') as HTMLInputElement;
@@ -885,6 +1040,38 @@ const bookmarksList = document.getElementById('bookmarks-list') as HTMLElement;
 const bookmarkAddBtn = document.getElementById('bookmark-add-btn') as HTMLButtonElement;
 const undoBtn = document.getElementById('undo-btn') as HTMLButtonElement;
 const redoBtn = document.getElementById('redo-btn') as HTMLButtonElement;
+const dropIndicator = document.getElementById('drop-indicator') as HTMLElement;
+const dropIndicatorAction = document.getElementById('drop-indicator-action') as HTMLElement;
+const dropIndicatorPath = document.getElementById('drop-indicator-path') as HTMLElement;
+const previewResizeHandle = document.getElementById('preview-resize-handle') as HTMLElement;
+const typeaheadIndicator = document.getElementById('typeahead-indicator') as HTMLElement;
+const selectionCopyBtn = document.getElementById('selection-copy-btn') as HTMLButtonElement;
+const selectionCutBtn = document.getElementById('selection-cut-btn') as HTMLButtonElement;
+const selectionMoveBtn = document.getElementById('selection-move-btn') as HTMLButtonElement;
+const selectionRenameBtn = document.getElementById('selection-rename-btn') as HTMLButtonElement;
+const selectionDeleteBtn = document.getElementById('selection-delete-btn') as HTMLButtonElement;
+
+const folderTreeManager = createFolderTreeManager({
+  folderTree,
+  nameCollator: NAME_COLLATOR,
+  getFolderIcon,
+  getBasename: (value) => path.basename(value),
+  navigateTo: (value) => navigateTo(value),
+  handleDrop,
+  getDraggedPaths,
+  getDragOperation,
+  scheduleSpringLoad,
+  clearSpringLoad,
+  showDropIndicator,
+  hideDropIndicator,
+  createDirectoryOperationId,
+  getDirectoryContents: (dirPath, operationId, showHidden) =>
+    window.electronAPI.getDirectoryContents(dirPath, operationId, showHidden),
+  parsePath,
+  buildPathFromSegments,
+  getCurrentPath: () => currentPath,
+  shouldShowHidden: () => currentSettings.showHiddenFiles,
+});
 
 let activeDirectoryProgressPath: string | null = null;
 let activeDirectoryProgressOperationId: string | null = null;
@@ -1230,6 +1417,10 @@ async function showConfirm(
 }
 
 let currentSettings: Settings = createDefaultSettings();
+const tourController: TourController = createTourController({
+  getSettings: () => currentSettings,
+  saveSettings: (settings) => window.electronAPI.saveSettings(settings),
+});
 
 function showToast(
   message: string,
@@ -1292,6 +1483,8 @@ async function loadSettings(): Promise<void> {
     if (newLaunchCount === 2 && !currentSettings.supportPopupDismissed) {
       setTimeout(() => showSupportPopup(), 1500);
     }
+
+    tourController.handleLaunch(newLaunchCount);
   }
 
   if (sharedClipboard) {
@@ -1336,8 +1529,12 @@ function applySettings(settings: Settings) {
   if (settings.viewMode) {
     viewMode = settings.viewMode;
     applyViewMode();
-    updateViewToggleButton();
   }
+
+  applyListColumnWidths();
+  applySidebarWidth();
+  applyPreviewPanelWidth();
+  updateSortIndicators();
 
   if (settings.reduceMotion) {
     document.body.classList.add('reduce-motion');
@@ -1405,6 +1602,13 @@ function applySettings(settings: Settings) {
     if (statusGitBranch) statusGitBranch.style.display = 'none';
     currentGitBranch = null;
   }
+
+  const nextFolderTreeEnabled = settings.showFolderTree !== false;
+  setFolderTreeVisibility(nextFolderTreeEnabled);
+  if (nextFolderTreeEnabled && !folderTreeEnabled) {
+    loadDrives();
+  }
+  folderTreeEnabled = nextFolderTreeEnabled;
 
   loadBookmarks();
   loadRecentFiles();
@@ -1816,6 +2020,9 @@ async function showSettingsModal() {
   const showRecentFilesToggle = document.getElementById(
     'show-recent-files-toggle'
   ) as HTMLInputElement;
+  const showFolderTreeToggle = document.getElementById(
+    'show-folder-tree-toggle'
+  ) as HTMLInputElement;
   const enableTabsToggle = document.getElementById('enable-tabs-toggle') as HTMLInputElement;
   const globalContentSearchToggle = document.getElementById(
     'global-content-search-toggle'
@@ -1919,6 +2126,10 @@ async function showSettingsModal() {
 
   if (showRecentFilesToggle) {
     showRecentFilesToggle.checked = currentSettings.showRecentFiles !== false;
+  }
+
+  if (showFolderTreeToggle) {
+    showFolderTreeToggle.checked = currentSettings.showFolderTree !== false;
   }
 
   if (enableTabsToggle) {
@@ -2368,6 +2579,9 @@ async function saveSettings() {
   const showRecentFilesToggle = document.getElementById(
     'show-recent-files-toggle'
   ) as HTMLInputElement;
+  const showFolderTreeToggle = document.getElementById(
+    'show-folder-tree-toggle'
+  ) as HTMLInputElement;
   const enableTabsToggle = document.getElementById('enable-tabs-toggle') as HTMLInputElement;
   const globalContentSearchToggle = document.getElementById(
     'global-content-search-toggle'
@@ -2465,6 +2679,10 @@ async function saveSettings() {
     currentSettings.showRecentFiles = showRecentFilesToggle.checked;
   }
 
+  if (showFolderTreeToggle) {
+    currentSettings.showFolderTree = showFolderTreeToggle.checked;
+  }
+
   if (enableTabsToggle) {
     currentSettings.enableTabs = enableTabsToggle.checked;
   }
@@ -2542,12 +2760,14 @@ function loadBookmarks() {
   bookmarksList.innerHTML = '';
 
   if (!currentSettings.bookmarks || currentSettings.bookmarks.length === 0) {
+    bookmarksList.innerHTML = '<div class="sidebar-empty">No bookmarks yet</div>';
     return;
   }
 
   currentSettings.bookmarks.forEach((bookmarkPath) => {
     const bookmarkItem = document.createElement('div');
     bookmarkItem.className = 'bookmark-item';
+    bookmarkItem.dataset.path = bookmarkPath;
     const pathParts = bookmarkPath.split(/[/\\]/);
     const name = pathParts[pathParts.length - 1] || bookmarkPath;
 
@@ -2571,8 +2791,137 @@ function loadBookmarks() {
       });
     }
 
+    bookmarkItem.draggable = true;
+    bookmarkItem.addEventListener('dragstart', (e) => {
+      e.stopPropagation();
+      bookmarkItem.classList.add('dragging');
+      if (!e.dataTransfer) return;
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/iyeris-bookmark', bookmarkPath);
+    });
+
+    bookmarkItem.addEventListener('dragend', () => {
+      bookmarkItem.classList.remove('dragging');
+      bookmarkItem.classList.remove('drag-over');
+      hideDropIndicator();
+    });
+
+    bookmarkItem.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!e.dataTransfer) return;
+      const isBookmarkDrag = e.dataTransfer.types.includes('text/iyeris-bookmark');
+      const operation = getDragOperation(e);
+      e.dataTransfer.dropEffect = isBookmarkDrag ? 'move' : operation;
+      bookmarkItem.classList.add('drag-over');
+      if (!isBookmarkDrag) {
+        showDropIndicator(operation, bookmarkPath, e.clientX, e.clientY);
+      }
+    });
+
+    bookmarkItem.addEventListener('dragleave', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const rect = bookmarkItem.getBoundingClientRect();
+      if (
+        e.clientX < rect.left ||
+        e.clientX >= rect.right ||
+        e.clientY < rect.top ||
+        e.clientY >= rect.bottom
+      ) {
+        bookmarkItem.classList.remove('drag-over');
+        hideDropIndicator();
+      }
+    });
+
+    bookmarkItem.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      bookmarkItem.classList.remove('drag-over');
+
+      if (e.dataTransfer?.types.includes('text/iyeris-bookmark')) {
+        const draggedPath = e.dataTransfer.getData('text/iyeris-bookmark');
+        if (!draggedPath || draggedPath === bookmarkPath) return;
+        if (!currentSettings.bookmarks) return;
+        const fromIndex = currentSettings.bookmarks.indexOf(draggedPath);
+        const toIndex = currentSettings.bookmarks.indexOf(bookmarkPath);
+        if (fromIndex === -1 || toIndex === -1 || fromIndex === toIndex) return;
+        const updated = [...currentSettings.bookmarks];
+        updated.splice(fromIndex, 1);
+        updated.splice(toIndex, 0, draggedPath);
+        currentSettings.bookmarks = updated;
+        const saveResult = await window.electronAPI.saveSettings(currentSettings);
+        if (saveResult.success) {
+          loadBookmarks();
+        } else {
+          showToast('Failed to reorder bookmarks', 'Bookmarks', 'error');
+        }
+        hideDropIndicator();
+        return;
+      }
+
+      const draggedPaths = await getDraggedPaths(e);
+      if (draggedPaths.length === 0) return;
+      const operation = getDragOperation(e);
+      await handleDrop(draggedPaths, bookmarkPath, operation);
+      hideDropIndicator();
+    });
+
     bookmarksList.appendChild(bookmarkItem);
   });
+
+  if (!bookmarksDropReady && bookmarksList) {
+    bookmarksList.addEventListener('dragover', (e) => {
+      if (!e.dataTransfer) return;
+      if (e.dataTransfer.types.includes('text/iyeris-bookmark')) return;
+      e.preventDefault();
+      e.stopPropagation();
+      bookmarksList.classList.add('drag-over');
+      e.dataTransfer.dropEffect = 'copy';
+      showDropIndicator('add', 'Bookmarks', e.clientX, e.clientY);
+    });
+
+    bookmarksList.addEventListener('dragleave', (e) => {
+      const rect = bookmarksList.getBoundingClientRect();
+      if (
+        e.clientX < rect.left ||
+        e.clientX >= rect.right ||
+        e.clientY < rect.top ||
+        e.clientY >= rect.bottom
+      ) {
+        bookmarksList.classList.remove('drag-over');
+        hideDropIndicator();
+      }
+    });
+
+    bookmarksList.addEventListener('drop', async (e) => {
+      if (!e.dataTransfer) return;
+      if (e.dataTransfer.types.includes('text/iyeris-bookmark')) {
+        hideDropIndicator();
+        return;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      bookmarksList.classList.remove('drag-over');
+      hideDropIndicator();
+
+      const draggedPaths = await getDraggedPaths(e);
+      if (draggedPaths.length === 0) return;
+      const targetPath = draggedPaths[0];
+      try {
+        const propsResult = await window.electronAPI.getItemProperties(targetPath);
+        if (propsResult.success && propsResult.properties?.isDirectory) {
+          await addBookmarkByPath(targetPath);
+        } else {
+          showToast('Only folders can be bookmarked', 'Bookmarks', 'info');
+        }
+      } catch {
+        showToast('Failed to add bookmark', 'Bookmarks', 'error');
+      }
+    });
+
+    bookmarksDropReady = true;
+  }
 }
 
 async function addBookmark() {
@@ -2630,7 +2979,8 @@ function loadRecentFiles() {
   }
 
   if (!currentSettings.recentFiles || currentSettings.recentFiles.length === 0) {
-    recentSection.style.display = 'none';
+    recentSection.style.display = 'block';
+    recentList.innerHTML = '<div class="sidebar-empty">No recent files yet</div>';
     return;
   }
 
@@ -2932,6 +3282,26 @@ function cutToClipboard() {
   showToast(`${selectedItems.size} item(s) cut`, 'Clipboard', 'success');
 }
 
+async function moveSelectedToFolder(): Promise<void> {
+  if (selectedItems.size === 0) return;
+  const result = await window.electronAPI.selectFolder();
+  if (!result.success || !result.path) return;
+
+  const destPath = result.path;
+  const sourcePaths = Array.from(selectedItems);
+  const alreadyInDest = sourcePaths.some((sourcePath) => {
+    const parentDir = path.dirname(sourcePath);
+    return parentDir === destPath || sourcePath === destPath;
+  });
+
+  if (alreadyInDest) {
+    showToast('Items are already in this directory', 'Info', 'info');
+    return;
+  }
+
+  await handleDrop(sourcePaths, destPath, 'move');
+}
+
 async function pasteFromClipboard() {
   if (!clipboard || !currentPath) return;
 
@@ -3030,6 +3400,14 @@ function updateSortIndicators() {
         indicator.textContent = '';
       }
     }
+    const listIndicator = document.getElementById(`list-sort-${sortType}`);
+    if (listIndicator) {
+      if (currentSettings.sortBy === sortType) {
+        listIndicator.textContent = currentSettings.sortOrder === 'asc' ? '▲' : '▼';
+      } else {
+        listIndicator.textContent = '';
+      }
+    }
   });
 }
 
@@ -3043,10 +3421,190 @@ async function changeSortMode(sortBy: string) {
 
   await window.electronAPI.saveSettings(currentSettings);
   hideSortMenu();
+  updateSortIndicators();
 
   if (allFiles.length > 0) {
     renderFiles(allFiles);
   }
+}
+
+type ListColumnKey = 'name' | 'type' | 'size' | 'modified';
+
+function setListColumnWidth(key: ListColumnKey, width: number, persist: boolean = true): void {
+  const min = LIST_COLUMN_MIN_WIDTHS[key] ?? 120;
+  const max = LIST_COLUMN_MAX_WIDTHS[key] ?? 480;
+  const clamped = Math.max(min, Math.min(max, Math.round(width)));
+  const varName = key === 'modified' ? '--list-col-modified' : `--list-col-${key}`;
+  const value = key === 'name' ? `minmax(${clamped}px, 1fr)` : `${clamped}px`;
+
+  document.documentElement.style.setProperty(varName, value);
+
+  if (persist) {
+    currentSettings.listColumnWidths = {
+      ...(currentSettings.listColumnWidths || {}),
+      [key]: clamped,
+    };
+    debouncedSaveSettings();
+  }
+}
+
+function applyListColumnWidths(): void {
+  const widths = currentSettings.listColumnWidths;
+  if (!widths) return;
+  (['name', 'type', 'size', 'modified'] as ListColumnKey[]).forEach((key) => {
+    const value = widths[key];
+    if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+      setListColumnWidth(key, value, false);
+    }
+  });
+}
+
+function setSidebarWidth(width: number, persist: boolean = true): void {
+  const clamped = Math.max(140, Math.min(360, Math.round(width)));
+  document.documentElement.style.setProperty('--sidebar-width-current', `${clamped}px`);
+  if (persist) {
+    currentSettings.sidebarWidth = clamped;
+    debouncedSaveSettings();
+  }
+}
+
+function applySidebarWidth(): void {
+  if (typeof currentSettings.sidebarWidth === 'number') {
+    setSidebarWidth(currentSettings.sidebarWidth, false);
+  }
+}
+
+function setPreviewPanelWidth(width: number, persist: boolean = true): void {
+  const clamped = Math.max(200, Math.min(520, Math.round(width)));
+  document.documentElement.style.setProperty('--preview-panel-width', `${clamped}px`);
+  if (persist) {
+    currentSettings.previewPanelWidth = clamped;
+    debouncedSaveSettings();
+  }
+}
+
+function applyPreviewPanelWidth(): void {
+  if (typeof currentSettings.previewPanelWidth === 'number') {
+    setPreviewPanelWidth(currentSettings.previewPanelWidth, false);
+  }
+}
+
+function setupSidebarResize(): void {
+  if (!sidebarResizeHandle) return;
+  const sidebar = document.querySelector('.sidebar') as HTMLElement | null;
+  if (!sidebar) return;
+  let startX = 0;
+  let startWidth = 0;
+
+  const onMouseMove = (e: MouseEvent) => {
+    const delta = e.clientX - startX;
+    setSidebarWidth(startWidth + delta, false);
+  };
+
+  const onMouseUp = () => {
+    sidebarResizeHandle.classList.remove('resizing');
+    document.removeEventListener('mousemove', onMouseMove);
+    document.removeEventListener('mouseup', onMouseUp);
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    const currentWidth = sidebar.getBoundingClientRect().width;
+    setSidebarWidth(currentWidth, true);
+  };
+
+  sidebarResizeHandle.addEventListener('mousedown', (e) => {
+    if (sidebar.classList.contains('collapsed')) return;
+    e.preventDefault();
+    startX = e.clientX;
+    startWidth = sidebar.getBoundingClientRect().width;
+    sidebarResizeHandle.classList.add('resizing');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+  });
+}
+
+function setupPreviewResize(): void {
+  if (!previewResizeHandle) return;
+  const previewPanel = document.getElementById('preview-panel') as HTMLElement | null;
+  if (!previewPanel) return;
+  let startX = 0;
+  let startWidth = 0;
+
+  const onMouseMove = (e: MouseEvent) => {
+    const delta = startX - e.clientX;
+    setPreviewPanelWidth(startWidth + delta, false);
+  };
+
+  const onMouseUp = () => {
+    previewResizeHandle.classList.remove('resizing');
+    document.removeEventListener('mousemove', onMouseMove);
+    document.removeEventListener('mouseup', onMouseUp);
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    const currentWidth = previewPanel.getBoundingClientRect().width;
+    setPreviewPanelWidth(currentWidth, true);
+  };
+
+  previewResizeHandle.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    startX = e.clientX;
+    startWidth = previewPanel.getBoundingClientRect().width;
+    previewResizeHandle.classList.add('resizing');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+  });
+}
+
+function setupListHeader(): void {
+  if (!listHeader) return;
+
+  listHeader.addEventListener('click', (e) => {
+    const target = e.target as HTMLElement;
+    if (target.closest('.list-header-resize')) return;
+    const cell = target.closest('.list-header-cell') as HTMLElement | null;
+    if (!cell) return;
+    const sortType = cell.dataset.sort;
+    if (sortType) {
+      changeSortMode(sortType);
+    }
+  });
+
+  listHeader.querySelectorAll('.list-header-resize').forEach((handle) => {
+    const resizeHandle = handle as HTMLElement;
+    resizeHandle.addEventListener('mousedown', (e) => {
+      const mouseEvent = e as MouseEvent;
+      mouseEvent.preventDefault();
+      mouseEvent.stopPropagation();
+      const resizeKey = resizeHandle.dataset.resize as ListColumnKey | undefined;
+      if (!resizeKey) return;
+      activeListResizeColumn = resizeKey;
+      const cell = resizeHandle.closest('.list-header-cell') as HTMLElement | null;
+      if (!cell) return;
+      listResizeStartX = mouseEvent.clientX;
+      listResizeStartWidth = cell.getBoundingClientRect().width;
+      listResizeCurrentWidth = listResizeStartWidth;
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+    });
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!activeListResizeColumn) return;
+    const delta = e.clientX - listResizeStartX;
+    listResizeCurrentWidth = listResizeStartWidth + delta;
+    setListColumnWidth(activeListResizeColumn as ListColumnKey, listResizeCurrentWidth, false);
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (!activeListResizeColumn) return;
+    setListColumnWidth(activeListResizeColumn as ListColumnKey, listResizeCurrentWidth, true);
+    activeListResizeColumn = null;
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  });
 }
 
 function updateStatusBar() {
@@ -3447,6 +4005,16 @@ async function init() {
   console.log('Init: Complete');
 }
 
+function setFolderTreeVisibility(enabled: boolean): void {
+  const section = document.getElementById('folder-tree-section');
+  if (section) {
+    section.style.display = enabled ? '' : 'none';
+  }
+  if (!enabled && folderTree) {
+    folderTree.innerHTML = '';
+  }
+}
+
 async function loadDrives() {
   if (!drivesList) return;
 
@@ -3463,6 +4031,12 @@ async function loadDrives() {
     driveItem.addEventListener('click', () => navigateTo(drive));
     drivesList.appendChild(driveItem);
   });
+
+  if (currentSettings.showFolderTree !== false) {
+    folderTreeManager.render(drives);
+  } else if (folderTree) {
+    folderTree.innerHTML = '';
+  }
 }
 
 function getFileTypeFromName(filename: string): string {
@@ -3708,6 +4282,10 @@ function setupEventListeners() {
   initSettingsTabs();
   setupFileGridEventDelegation();
   setupRubberBandSelection();
+  setupListHeader();
+  setupViewOptions();
+  setupSidebarResize();
+  setupPreviewResize();
   if (currentSettings.showFileHoverCard !== false) {
     setupHoverCard();
   }
@@ -3757,6 +4335,11 @@ function setupEventListeners() {
   const deselectAllBtn = document.getElementById('deselect-all-btn');
   selectAllBtn?.addEventListener('click', selectAll);
   deselectAllBtn?.addEventListener('click', clearSelection);
+  selectionCopyBtn?.addEventListener('click', copyToClipboard);
+  selectionCutBtn?.addEventListener('click', cutToClipboard);
+  selectionMoveBtn?.addEventListener('click', moveSelectedToFolder);
+  selectionRenameBtn?.addEventListener('click', renameSelected);
+  selectionDeleteBtn?.addEventListener('click', deleteSelected);
 
   const statusHiddenBtn = document.getElementById('status-hidden');
   statusHiddenBtn?.addEventListener('click', () => {
@@ -4201,6 +4784,22 @@ function setupEventListeners() {
       }
       e.preventDefault();
       selectLastItem(e.shiftKey);
+    } else if (
+      !e.ctrlKey &&
+      !e.metaKey &&
+      !e.altKey &&
+      e.key.length === 1 &&
+      !isSearchMode &&
+      viewMode !== 'column'
+    ) {
+      const activeElement = document.activeElement;
+      if (
+        activeElement &&
+        (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')
+      ) {
+        return;
+      }
+      handleTypeaheadInput(e.key);
     }
   });
 
@@ -4274,6 +4873,15 @@ function setupEventListeners() {
     ) {
       hideSortMenu();
     }
+
+    if (
+      breadcrumbMenu &&
+      breadcrumbMenu.style.display === 'block' &&
+      !breadcrumbMenu.contains(target) &&
+      !target.closest('.breadcrumb-item')
+    ) {
+      hideBreadcrumbMenu();
+    }
   });
 
   if (fileGrid) {
@@ -4284,6 +4892,9 @@ function setupEventListeners() {
     });
 
     fileGrid.addEventListener('dragover', (e) => {
+      if ((e.target as HTMLElement).closest('.file-item')) {
+        return;
+      }
       e.preventDefault();
       e.stopPropagation();
 
@@ -4294,8 +4905,10 @@ function setupEventListeners() {
         return;
       }
 
-      e.dataTransfer.dropEffect = e.ctrlKey ? 'copy' : 'move';
+      const operation = getDragOperation(e);
+      e.dataTransfer.dropEffect = operation;
       fileGrid.classList.add('drag-over');
+      showDropIndicator(operation, currentPath, e.clientX, e.clientY);
     });
 
     fileGrid.addEventListener('dragleave', (e) => {
@@ -4310,6 +4923,7 @@ function setupEventListeners() {
         e.clientY >= rect.bottom
       ) {
         fileGrid.classList.remove('drag-over');
+        hideDropIndicator();
       }
     });
 
@@ -4323,32 +4937,10 @@ function setupEventListeners() {
         return;
       }
 
-      let draggedPaths: string[] = [];
-
-      if (!e.dataTransfer) return;
-
-      try {
-        const textData = e.dataTransfer.getData('text/plain');
-        if (textData) {
-          draggedPaths = JSON.parse(textData);
-        }
-      } catch {}
-
-      if (draggedPaths.length === 0 && e.dataTransfer.files.length > 0) {
-        draggedPaths = Array.from(e.dataTransfer.files).map(
-          (f) => (f as File & { path: string }).path
-        );
-      }
-
-      // If still empty, check shared drag data from main process (cross-window)
-      if (draggedPaths.length === 0) {
-        const sharedData = await window.electronAPI.getDragData();
-        if (sharedData) {
-          draggedPaths = sharedData.paths;
-        }
-      }
+      const draggedPaths = await getDraggedPaths(e);
 
       if (draggedPaths.length === 0 || !currentPath) {
+        hideDropIndicator();
         return;
       }
 
@@ -4359,11 +4951,13 @@ function setupEventListeners() {
 
       if (alreadyInCurrentDir) {
         showToast('Items are already in this directory', 'Info', 'info');
+        hideDropIndicator();
         return;
       }
 
-      const operation = e.ctrlKey ? 'copy' : 'move';
+      const operation = getDragOperation(e);
       await handleDrop(draggedPaths, currentPath, operation);
+      hideDropIndicator();
     });
   }
 
@@ -4386,8 +4980,10 @@ function setupEventListeners() {
         return;
       }
 
-      e.dataTransfer!.dropEffect = e.ctrlKey ? 'copy' : 'move';
+      const operation = getDragOperation(e);
+      e.dataTransfer!.dropEffect = operation;
       fileView.classList.add('drag-over');
+      showDropIndicator(operation, currentPath, e.clientX, e.clientY);
     });
 
     fileView.addEventListener('dragleave', (e) => {
@@ -4400,6 +4996,7 @@ function setupEventListeners() {
         e.clientY >= rect.bottom
       ) {
         fileView.classList.remove('drag-over');
+        hideDropIndicator();
       }
     });
 
@@ -4418,29 +5015,10 @@ function setupEventListeners() {
 
       fileView.classList.remove('drag-over');
 
-      let draggedPaths: string[] = [];
-
-      try {
-        const textData = e.dataTransfer!.getData('text/plain');
-        if (textData) {
-          draggedPaths = JSON.parse(textData);
-        }
-      } catch {}
-
-      if (draggedPaths.length === 0 && e.dataTransfer!.files.length > 0) {
-        draggedPaths = Array.from(e.dataTransfer!.files).map(
-          (f) => (f as File & { path: string }).path
-        );
-      }
-
-      if (draggedPaths.length === 0) {
-        const sharedData = await window.electronAPI.getDragData();
-        if (sharedData) {
-          draggedPaths = sharedData.paths;
-        }
-      }
+      const draggedPaths = await getDraggedPaths(e);
 
       if (draggedPaths.length === 0 || !currentPath) {
+        hideDropIndicator();
         return;
       }
 
@@ -4451,11 +5029,13 @@ function setupEventListeners() {
 
       if (alreadyInCurrentDir) {
         showToast('Items are already in this directory', 'Info', 'info');
+        hideDropIndicator();
         return;
       }
 
-      const operation = e.ctrlKey ? 'copy' : 'move';
+      const operation = getDragOperation(e);
       await handleDrop(draggedPaths, currentPath, operation);
+      hideDropIndicator();
     });
   }
 
@@ -4586,6 +5166,13 @@ async function navigateTo(path: string, skipHistoryUpdate = false) {
   let operationId = '';
 
   try {
+    if (typeaheadTimeout) {
+      clearTimeout(typeaheadTimeout);
+      typeaheadTimeout = null;
+    }
+    typeaheadBuffer = '';
+    hideTypeaheadIndicator();
+
     if (isSearchMode) {
       closeSearch();
     }
@@ -4612,6 +5199,7 @@ async function navigateTo(path: string, skipHistoryUpdate = false) {
       updateCurrentTabPath(path);
       if (addressInput) addressInput.value = path;
       updateBreadcrumb(path);
+      folderTreeManager.ensurePathVisible(path);
       addToDirectoryHistory(path);
 
       if (!skipHistoryUpdate && (historyIndex === -1 || history[historyIndex] !== path)) {
@@ -5010,6 +5598,7 @@ function createFileItem(item: FileItem, searchQuery?: string): HTMLElement {
 
   const sizeDisplay = item.isDirectory ? '--' : formatFileSize(item.size);
   const dateDisplay = DATE_FORMATTER.format(new Date(item.modified));
+  const typeDisplay = item.isDirectory ? 'Folder' : getFileTypeFromName(item.name);
 
   const contentResult = item as ContentSearchResult;
   let matchContextHtml = '';
@@ -5028,11 +5617,16 @@ function createFileItem(item: FileItem, searchQuery?: string): HTMLElement {
   }
 
   fileItem.innerHTML = `
-    <div class="file-checkbox"><span class="checkbox-mark">✓</span></div>
-    <div class="file-icon">${icon}</div>
-    <div class="file-name">${escapeHtml(item.name)}</div>
-    ${matchContextHtml}
+    <div class="file-main">
+      <div class="file-checkbox"><span class="checkbox-mark">✓</span></div>
+      <div class="file-icon">${icon}</div>
+      <div class="file-text">
+        <div class="file-name">${escapeHtml(item.name)}</div>
+        ${matchContextHtml}
+      </div>
+    </div>
     <div class="file-info">
+      <span class="file-type">${escapeHtml(typeDisplay)}</span>
       <span class="file-size" data-path="${escapeHtml(item.path)}">${sizeDisplay}</span>
       <span class="file-modified">${dateDisplay}</span>
     </div>
@@ -5054,6 +5648,138 @@ function getFileItemData(fileItem: HTMLElement): FileItem | null {
   const itemPath = fileItem.dataset.path;
   if (!itemPath) return null;
   return filePathMap.get(itemPath) ?? null;
+}
+
+function getDragOperation(event: DragEvent): 'copy' | 'move' {
+  return event.ctrlKey || event.altKey ? 'copy' : 'move';
+}
+
+async function getDraggedPaths(event: DragEvent): Promise<string[]> {
+  let draggedPaths: string[] = [];
+  if (!event.dataTransfer) return draggedPaths;
+
+  try {
+    const textData = event.dataTransfer.getData('text/plain');
+    if (textData) {
+      draggedPaths = JSON.parse(textData);
+    }
+  } catch {}
+
+  if (draggedPaths.length === 0 && event.dataTransfer.files.length > 0) {
+    draggedPaths = Array.from(event.dataTransfer.files).map(
+      (f) => (f as File & { path: string }).path
+    );
+  }
+
+  if (draggedPaths.length === 0) {
+    const sharedData = await window.electronAPI.getDragData();
+    if (sharedData) {
+      draggedPaths = sharedData.paths;
+    }
+  }
+
+  return draggedPaths;
+}
+
+function showDropIndicator(
+  action: 'copy' | 'move' | 'add',
+  destPath: string,
+  x: number,
+  y: number
+): void {
+  if (!dropIndicator || !dropIndicatorAction || !dropIndicatorPath) return;
+  const label = path.basename(destPath) || destPath;
+  dropIndicatorAction.textContent = action === 'copy' ? 'Copy' : action === 'add' ? 'Add' : 'Move';
+  dropIndicatorPath.textContent = label;
+  dropIndicatorPath.title = destPath;
+  dropIndicator.style.display = 'inline-flex';
+  dropIndicator.style.left = `${x + 12}px`;
+  dropIndicator.style.top = `${y + 12}px`;
+}
+
+function hideDropIndicator(): void {
+  if (!dropIndicator) return;
+  dropIndicator.style.display = 'none';
+}
+
+function showTypeaheadIndicator(text: string): void {
+  if (!typeaheadIndicator) return;
+  typeaheadIndicator.textContent = text;
+  typeaheadIndicator.style.display = 'block';
+}
+
+function hideTypeaheadIndicator(): void {
+  if (!typeaheadIndicator) return;
+  typeaheadIndicator.style.display = 'none';
+  typeaheadIndicator.textContent = '';
+}
+
+function handleTypeaheadInput(char: string): void {
+  typeaheadBuffer += char;
+  showTypeaheadIndicator(typeaheadBuffer);
+
+  if (typeaheadTimeout) {
+    clearTimeout(typeaheadTimeout);
+  }
+  typeaheadTimeout = setTimeout(() => {
+    typeaheadBuffer = '';
+    hideTypeaheadIndicator();
+    typeaheadTimeout = null;
+  }, 800);
+
+  const needle = typeaheadBuffer.toLowerCase();
+  const items = getFileItemsArray();
+  const match = items.find((item) => {
+    const nameEl = item.querySelector('.file-name');
+    const text = nameEl?.textContent?.toLowerCase() || '';
+    return text.startsWith(needle);
+  });
+
+  if (match) {
+    clearSelection();
+    match.classList.add('selected');
+    const itemPath = match.getAttribute('data-path');
+    if (itemPath) {
+      selectedItems.add(itemPath);
+    }
+    match.scrollIntoView({ block: 'nearest' });
+    updateStatusBar();
+  }
+}
+
+function scheduleSpringLoad(target: HTMLElement, action: () => void): void {
+  if (springLoadedFolder !== target) {
+    if (springLoadedTimeout) {
+      clearTimeout(springLoadedTimeout);
+      springLoadedTimeout = null;
+    }
+    springLoadedFolder?.classList.remove('spring-loading');
+    springLoadedFolder = target;
+    springLoadedTimeout = setTimeout(() => {
+      if (springLoadedFolder === target) {
+        target.classList.remove('spring-loading');
+        action();
+      }
+      springLoadedFolder = null;
+      springLoadedTimeout = null;
+    }, SPRING_LOAD_DELAY);
+    setTimeout(() => {
+      if (springLoadedFolder === target) {
+        target.classList.add('spring-loading');
+      }
+    }, SPRING_LOAD_DELAY / 2);
+  }
+}
+
+function clearSpringLoad(target?: HTMLElement): void {
+  if (!target || springLoadedFolder === target) {
+    if (springLoadedTimeout) {
+      clearTimeout(springLoadedTimeout);
+      springLoadedTimeout = null;
+    }
+    springLoadedFolder?.classList.remove('spring-loading');
+    springLoadedFolder = null;
+  }
 }
 
 function setupFileGridEventDelegation(): void {
@@ -5144,11 +5870,8 @@ function setupFileGridEventDelegation(): void {
     });
     document.getElementById('file-grid')?.classList.remove('drag-over');
     window.electronAPI.clearDragData();
-    if (springLoadedTimeout) {
-      clearTimeout(springLoadedTimeout);
-      springLoadedTimeout = null;
-    }
-    springLoadedFolder = null;
+    clearSpringLoad();
+    hideDropIndicator();
   });
 
   fileGrid.addEventListener('dragover', (e) => {
@@ -5160,35 +5883,21 @@ function setupFileGridEventDelegation(): void {
     e.stopPropagation();
 
     if (!e.dataTransfer) return;
-    if (!e.dataTransfer.types.includes('text/plain')) {
+    if (!e.dataTransfer.types.includes('text/plain') && e.dataTransfer.files.length === 0) {
       e.dataTransfer.dropEffect = 'none';
       return;
     }
-    e.dataTransfer.dropEffect = e.ctrlKey ? 'copy' : 'move';
+    const operation = getDragOperation(e);
+    e.dataTransfer.dropEffect = operation;
     fileItem.classList.add('drag-over');
 
-    if (springLoadedFolder !== fileItem) {
-      if (springLoadedTimeout) {
-        clearTimeout(springLoadedTimeout);
-        springLoadedFolder?.classList.remove('spring-loading');
-      }
-      springLoadedFolder = fileItem;
-      springLoadedTimeout = setTimeout(() => {
-        if (springLoadedFolder === fileItem) {
-          const item = getFileItemData(fileItem);
-          if (item && item.isDirectory) {
-            fileItem.classList.remove('drag-over', 'spring-loading');
-            navigateTo(item.path);
-          }
-        }
-        springLoadedFolder = null;
-        springLoadedTimeout = null;
-      }, SPRING_LOAD_DELAY);
-      setTimeout(() => {
-        if (springLoadedFolder === fileItem) {
-          fileItem.classList.add('spring-loading');
-        }
-      }, SPRING_LOAD_DELAY / 2);
+    const item = getFileItemData(fileItem);
+    if (item && item.isDirectory) {
+      showDropIndicator(operation, item.path, e.clientX, e.clientY);
+      scheduleSpringLoad(fileItem, () => {
+        fileItem.classList.remove('drag-over', 'spring-loading');
+        navigateTo(item.path);
+      });
     }
   });
 
@@ -5208,13 +5917,8 @@ function setupFileGridEventDelegation(): void {
       e.clientY >= rect.bottom
     ) {
       fileItem.classList.remove('drag-over', 'spring-loading');
-      if (springLoadedFolder === fileItem) {
-        if (springLoadedTimeout) {
-          clearTimeout(springLoadedTimeout);
-          springLoadedTimeout = null;
-        }
-        springLoadedFolder = null;
-      }
+      clearSpringLoad(fileItem);
+      hideDropIndicator();
     }
   });
 
@@ -5227,37 +5931,19 @@ function setupFileGridEventDelegation(): void {
     e.stopPropagation();
 
     fileItem.classList.remove('drag-over');
+    clearSpringLoad(fileItem);
 
-    let draggedPaths: string[] = [];
-    if (!e.dataTransfer) return;
-
-    try {
-      const textData = e.dataTransfer.getData('text/plain');
-      if (textData) {
-        draggedPaths = JSON.parse(textData);
-      }
-    } catch {}
-
-    if (draggedPaths.length === 0 && e.dataTransfer.files.length > 0) {
-      draggedPaths = Array.from(e.dataTransfer.files).map(
-        (f) => (f as File & { path: string }).path
-      );
-    }
-
-    if (draggedPaths.length === 0) {
-      const sharedData = await window.electronAPI.getDragData();
-      if (sharedData) {
-        draggedPaths = sharedData.paths;
-      }
-    }
+    const draggedPaths = await getDraggedPaths(e);
 
     const item = getFileItemData(fileItem);
     if (!item || draggedPaths.length === 0 || draggedPaths.includes(item.path)) {
+      hideDropIndicator();
       return;
     }
 
-    const operation = e.ctrlKey ? 'copy' : 'move';
+    const operation = getDragOperation(e);
     await handleDrop(draggedPaths, item.path, operation);
+    hideDropIndicator();
   });
 }
 
@@ -6005,21 +6691,24 @@ function updateNavigationButtons() {
   upBtn.disabled = !currentPath || isRootPath(currentPath);
 }
 
-function toggleView() {
-  // Cycle through: grid → list → column → grid
-  if (viewMode === 'grid') {
-    viewMode = 'list';
-  } else if (viewMode === 'list') {
-    viewMode = 'column';
-  } else {
-    viewMode = 'grid';
-  }
-  applyViewMode();
-  updateViewToggleButton();
+async function setViewMode(nextMode: 'grid' | 'list' | 'column') {
+  if (viewMode === nextMode) return;
+  viewMode = nextMode;
+  await applyViewMode();
 
-  // Save view mode
   currentSettings.viewMode = viewMode;
   window.electronAPI.saveSettings(currentSettings);
+}
+
+async function toggleView() {
+  // Cycle through: grid → list → column → grid
+  if (viewMode === 'grid') {
+    await setViewMode('list');
+  } else if (viewMode === 'list') {
+    await setViewMode('column');
+  } else {
+    await setViewMode('grid');
+  }
 }
 
 async function applyViewMode() {
@@ -6056,6 +6745,8 @@ async function applyViewMode() {
       }
     }
   }
+
+  updateViewModeControls();
 }
 
 let columnPaths: string[] = [];
@@ -6229,8 +6920,10 @@ async function renderColumn(
       return;
     }
 
-    e.dataTransfer!.dropEffect = e.ctrlKey ? 'copy' : 'move';
+    const operation = getDragOperation(e);
+    e.dataTransfer!.dropEffect = operation;
     pane.classList.add('drag-over');
+    showDropIndicator(operation, columnPath, e.clientX, e.clientY);
   });
 
   pane.addEventListener('dragleave', (e) => {
@@ -6246,6 +6939,7 @@ async function renderColumn(
       e.clientY >= rect.bottom
     ) {
       pane.classList.remove('drag-over');
+      hideDropIndicator();
     }
   });
 
@@ -6258,29 +6952,10 @@ async function renderColumn(
 
     pane.classList.remove('drag-over');
 
-    let draggedPaths: string[] = [];
-
-    try {
-      const textData = e.dataTransfer!.getData('text/plain');
-      if (textData) {
-        draggedPaths = JSON.parse(textData);
-      }
-    } catch {}
-
-    if (draggedPaths.length === 0 && e.dataTransfer!.files.length > 0) {
-      draggedPaths = Array.from(e.dataTransfer!.files).map(
-        (f) => (f as File & { path: string }).path
-      );
-    }
+    const draggedPaths = await getDraggedPaths(e);
 
     if (draggedPaths.length === 0) {
-      const sharedData = await window.electronAPI.getDragData();
-      if (sharedData) {
-        draggedPaths = sharedData.paths;
-      }
-    }
-
-    if (draggedPaths.length === 0) {
+      hideDropIndicator();
       return;
     }
 
@@ -6291,11 +6966,13 @@ async function renderColumn(
 
     if (alreadyInCurrentDir) {
       showToast('Items are already in this directory', 'Info', 'info');
+      hideDropIndicator();
       return;
     }
 
-    const operation = e.ctrlKey ? 'copy' : 'move';
+    const operation = getDragOperation(e);
     await handleDrop(draggedPaths, columnPath, operation);
+    hideDropIndicator();
   });
 
   try {
@@ -6414,6 +7091,8 @@ async function renderColumn(
             el.classList.remove('drag-over');
           });
           window.electronAPI.clearDragData();
+          clearSpringLoad();
+          hideDropIndicator();
         });
 
         if (fileItem.isDirectory) {
@@ -6429,8 +7108,14 @@ async function renderColumn(
               return;
             }
 
-            e.dataTransfer!.dropEffect = e.ctrlKey ? 'copy' : 'move';
+            const operation = getDragOperation(e);
+            e.dataTransfer!.dropEffect = operation;
             item.classList.add('drag-over');
+            showDropIndicator(operation, fileItem.path, e.clientX, e.clientY);
+            scheduleSpringLoad(item, () => {
+              item.classList.remove('drag-over', 'spring-loading');
+              handleColumnItemClick(item, fileItem.path, true, columnIndex);
+            });
           });
 
           item.addEventListener('dragleave', (e) => {
@@ -6444,6 +7129,8 @@ async function renderColumn(
               e.clientY >= rect.bottom
             ) {
               item.classList.remove('drag-over');
+              clearSpringLoad(item);
+              hideDropIndicator();
             }
           });
 
@@ -6452,35 +7139,18 @@ async function renderColumn(
             e.stopPropagation();
 
             item.classList.remove('drag-over');
+            clearSpringLoad(item);
 
-            let draggedPaths: string[] = [];
-
-            try {
-              const textData = e.dataTransfer!.getData('text/plain');
-              if (textData) {
-                draggedPaths = JSON.parse(textData);
-              }
-            } catch {}
-
-            if (draggedPaths.length === 0 && e.dataTransfer!.files.length > 0) {
-              draggedPaths = Array.from(e.dataTransfer!.files).map(
-                (f) => (f as File & { path: string }).path
-              );
-            }
-
-            if (draggedPaths.length === 0) {
-              const sharedData = await window.electronAPI.getDragData();
-              if (sharedData) {
-                draggedPaths = sharedData.paths;
-              }
-            }
+            const draggedPaths = await getDraggedPaths(e);
 
             if (draggedPaths.length === 0 || draggedPaths.includes(fileItem.path)) {
+              hideDropIndicator();
               return;
             }
 
-            const operation = e.ctrlKey ? 'copy' : 'move';
+            const operation = getDragOperation(e);
             await handleDrop(draggedPaths, fileItem.path, operation);
+            hideDropIndicator();
           });
         }
 
@@ -6525,6 +7195,7 @@ async function handleColumnItemClick(
     currentPath = path;
     addressInput.value = path;
     updateBreadcrumb(path);
+    folderTreeManager.ensurePathVisible(path);
 
     const newPane = await renderColumn(path, currentPaneIndex + 1, clickRenderId);
 
@@ -6546,6 +7217,7 @@ async function handleColumnItemClick(
       currentPath = parentPath;
       addressInput.value = parentPath;
       updateBreadcrumb(parentPath);
+      folderTreeManager.ensurePathVisible(parentPath);
     }
 
     const previewPanel = document.getElementById('preview-panel');
@@ -6598,6 +7270,31 @@ function updateViewToggleButton() {
     `;
     viewToggleBtn.title = 'Switch to List View';
   }
+}
+
+function updateViewModeControls() {
+  updateViewToggleButton();
+  if (viewOptions) {
+    viewOptions.querySelectorAll('.view-option').forEach((btn) => {
+      const view = (btn as HTMLElement).dataset.view;
+      btn.classList.toggle('active', view === viewMode);
+    });
+  }
+  if (listHeader) {
+    listHeader.style.display = viewMode === 'list' ? 'grid' : 'none';
+  }
+}
+
+function setupViewOptions(): void {
+  if (!viewOptions) return;
+  viewOptions.querySelectorAll('.view-option').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const view = (btn as HTMLElement).dataset.view as 'grid' | 'list' | 'column' | undefined;
+      if (!view) return;
+      await setViewMode(view);
+    });
+  });
+  updateViewModeControls();
 }
 
 async function createNewFile() {
@@ -6682,7 +7379,8 @@ function startInlineRename(fileItem: HTMLElement, currentName: string, itemPath:
   input.type = 'text';
   input.className = 'file-name-input';
   input.value = currentName;
-  fileItem.appendChild(input);
+  const nameContainer = fileItem.querySelector('.file-text') as HTMLElement | null;
+  (nameContainer || fileItem).appendChild(input);
 
   fileItem.classList.add('renaming');
 
@@ -7855,6 +8553,10 @@ document.getElementById('settings-btn')?.addEventListener('click', showSettingsM
 document.getElementById('settings-close')?.addEventListener('click', hideSettingsModal);
 document.getElementById('save-settings-btn')?.addEventListener('click', saveSettings);
 document.getElementById('reset-settings-btn')?.addEventListener('click', resetSettings);
+document.getElementById('start-tour-btn')?.addEventListener('click', () => {
+  hideSettingsModal();
+  tourController.startTour();
+});
 document.getElementById('dangerous-options-toggle')?.addEventListener('change', (e) => {
   const target = e.target as HTMLInputElement;
   updateDangerousOptionsVisibility(target.checked);
@@ -7893,41 +8595,73 @@ document.getElementById('version-indicator')?.addEventListener('click', () => {
 
 document.getElementById('settings-search')?.addEventListener('input', (e) => {
   const searchTerm = (e.target as HTMLInputElement).value.toLowerCase().trim();
-  const settingItems = document.querySelectorAll('.setting-item, .setting-item-toggle');
-  const sections = document.querySelectorAll('.settings-section-card');
+  const sections = document.querySelectorAll('.settings-section');
 
   if (!searchTerm) {
-    settingItems.forEach((item) => {
-      (item as HTMLElement).style.display = '';
-      item.classList.remove('search-highlight');
-    });
     sections.forEach((section) => {
       (section as HTMLElement).style.display = '';
+      section.classList.remove('search-no-results');
+      section.querySelectorAll('.settings-card').forEach((card) => {
+        card.classList.remove('search-hidden');
+      });
+      section.querySelectorAll('.setting-item, .setting-item-toggle').forEach((item) => {
+        item.classList.remove('search-hidden', 'search-highlight');
+      });
     });
     return;
   }
 
+  let anyMatch = false;
+
   sections.forEach((section) => {
-    let hasVisibleItem = false;
-    const items = section.querySelectorAll('.setting-item, .setting-item-toggle');
+    section.classList.remove('search-no-results');
+    let sectionHasMatch = false;
+    const cards = section.querySelectorAll('.settings-card');
 
-    items.forEach((item) => {
-      const label = item.querySelector('.setting-label, span')?.textContent?.toLowerCase() || '';
-      const description =
-        item.querySelector('.setting-description')?.textContent?.toLowerCase() || '';
+    cards.forEach((card) => {
+      const items = card.querySelectorAll('.setting-item, .setting-item-toggle');
+      const cardHeaderText = (
+        card.querySelector('.settings-card-header')?.textContent || ''
+      ).toLowerCase();
+      let cardHasMatch = false;
 
-      if (label.includes(searchTerm) || description.includes(searchTerm)) {
-        (item as HTMLElement).style.display = '';
-        item.classList.add('search-highlight');
-        hasVisibleItem = true;
+      if (items.length === 0) {
+        const cardText = (card.textContent || '').toLowerCase();
+        cardHasMatch = cardText.includes(searchTerm);
       } else {
-        (item as HTMLElement).style.display = 'none';
-        item.classList.remove('search-highlight');
+        items.forEach((item) => {
+          const searchable = item.getAttribute('data-searchable') || '';
+          const text = item.textContent || '';
+          const haystack = `${searchable} ${text} ${cardHeaderText}`.toLowerCase();
+          const matches = haystack.includes(searchTerm);
+          item.classList.toggle('search-hidden', !matches);
+          item.classList.toggle('search-highlight', matches);
+          if (matches) cardHasMatch = true;
+        });
+      }
+
+      card.classList.toggle('search-hidden', !cardHasMatch);
+      if (cardHasMatch) {
+        sectionHasMatch = true;
       }
     });
 
-    (section as HTMLElement).style.display = hasVisibleItem ? '' : 'none';
+    if (sectionHasMatch) {
+      (section as HTMLElement).style.display = 'block';
+      anyMatch = true;
+    } else {
+      (section as HTMLElement).style.display = 'none';
+    }
   });
+
+  if (!anyMatch) {
+    const activeSection = document.querySelector('.settings-section.active') as HTMLElement | null;
+    sections.forEach((section) => {
+      const isActive = section === activeSection;
+      (section as HTMLElement).style.display = isActive ? 'block' : 'none';
+      section.classList.toggle('search-no-results', isActive);
+    });
+  }
 });
 
 // Export
@@ -7974,6 +8708,8 @@ function validateImportedSettings(imported: any): Partial<Settings> {
     validated.autoCheckUpdates = imported.autoCheckUpdates;
   if (typeof imported.showRecentFiles === 'boolean')
     validated.showRecentFiles = imported.showRecentFiles;
+  if (typeof imported.showFolderTree === 'boolean')
+    validated.showFolderTree = imported.showFolderTree;
   if (typeof imported.enableTabs === 'boolean') validated.enableTabs = imported.enableTabs;
   if (typeof imported.globalContentSearch === 'boolean')
     validated.globalContentSearch = imported.globalContentSearch;
@@ -8004,6 +8740,31 @@ function validateImportedSettings(imported: any): Partial<Settings> {
     validated.directoryHistory = imported.directoryHistory
       .filter((d: any) => typeof d === 'string')
       .slice(0, 100);
+  }
+
+  if (imported.listColumnWidths && typeof imported.listColumnWidths === 'object') {
+    const widths = imported.listColumnWidths;
+    const parsed: Record<string, number> = {};
+    ['name', 'type', 'size', 'modified'].forEach((key) => {
+      const value = widths[key];
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        parsed[key] = value;
+      }
+    });
+    if (Object.keys(parsed).length > 0) {
+      validated.listColumnWidths = parsed as any;
+    }
+  }
+
+  if (typeof imported.sidebarWidth === 'number' && Number.isFinite(imported.sidebarWidth)) {
+    validated.sidebarWidth = imported.sidebarWidth;
+  }
+
+  if (
+    typeof imported.previewPanelWidth === 'number' &&
+    Number.isFinite(imported.previewPanelWidth)
+  ) {
+    validated.previewPanelWidth = imported.previewPanelWidth;
   }
 
   if (imported.customTheme && typeof imported.customTheme === 'object') {

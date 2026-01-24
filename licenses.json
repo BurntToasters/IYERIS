@@ -213,13 +213,13 @@
         "licenseUrl": "https://github.com/pkgjs/parseargs/raw/master/LICENSE",
         "parents": "iyeris"
     },
-    "@rollup/rollup-win32-x64-gnu@4.55.2": {
+    "@rollup/rollup-win32-x64-gnu@4.56.0": {
         "licenses": "MIT",
         "repository": "https://github.com/rollup/rollup",
         "licenseUrl": "https://github.com/rollup/rollup",
         "parents": "iyeris"
     },
-    "@rollup/rollup-win32-x64-msvc@4.55.2": {
+    "@rollup/rollup-win32-x64-msvc@4.56.0": {
         "licenses": "MIT",
         "repository": "https://github.com/rollup/rollup",
         "licenseUrl": "https://github.com/rollup/rollup",
@@ -309,7 +309,7 @@
         "licenseUrl": "https://github.com/DefinitelyTyped/DefinitelyTyped/raw/master/LICENSE",
         "parents": "electron:iyeris"
     },
-    "@types/node@25.0.9": {
+    "@types/node@25.0.10": {
         "licenses": "MIT",
         "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped",
         "licenseUrl": "https://github.com/DefinitelyTyped/DefinitelyTyped/raw/master/LICENSE",
@@ -387,43 +387,43 @@
         "licenseUrl": "https://github.com/typescript-eslint/typescript-eslint/raw/master/LICENSE",
         "parents": "iyeris"
     },
-    "@vitest/expect@4.0.17": {
+    "@vitest/expect@4.0.18": {
         "licenses": "MIT",
         "repository": "https://github.com/vitest-dev/vitest",
         "licenseUrl": "https://github.com/vitest-dev/vitest/raw/master/LICENSE",
         "parents": "iyeris"
     },
-    "@vitest/mocker@4.0.17": {
+    "@vitest/mocker@4.0.18": {
         "licenses": "MIT",
         "repository": "https://github.com/vitest-dev/vitest",
         "licenseUrl": "https://github.com/vitest-dev/vitest/raw/master/LICENSE",
         "parents": "iyeris"
     },
-    "@vitest/pretty-format@4.0.17": {
+    "@vitest/pretty-format@4.0.18": {
         "licenses": "MIT",
         "repository": "https://github.com/vitest-dev/vitest",
         "licenseUrl": "https://github.com/vitest-dev/vitest/raw/master/LICENSE",
         "parents": "iyeris"
     },
-    "@vitest/runner@4.0.17": {
+    "@vitest/runner@4.0.18": {
         "licenses": "MIT",
         "repository": "https://github.com/vitest-dev/vitest",
         "licenseUrl": "https://github.com/vitest-dev/vitest/raw/master/LICENSE",
         "parents": "iyeris"
     },
-    "@vitest/snapshot@4.0.17": {
+    "@vitest/snapshot@4.0.18": {
         "licenses": "MIT",
         "repository": "https://github.com/vitest-dev/vitest",
         "licenseUrl": "https://github.com/vitest-dev/vitest/raw/master/LICENSE",
         "parents": "iyeris"
     },
-    "@vitest/spy@4.0.17": {
+    "@vitest/spy@4.0.18": {
         "licenses": "MIT",
         "repository": "https://github.com/vitest-dev/vitest",
         "licenseUrl": "https://github.com/vitest-dev/vitest/raw/master/LICENSE",
         "parents": "iyeris"
     },
-    "@vitest/utils@4.0.17": {
+    "@vitest/utils@4.0.18": {
         "licenses": "MIT",
         "repository": "https://github.com/vitest-dev/vitest",
         "licenseUrl": "https://github.com/vitest-dev/vitest/raw/master/LICENSE",
@@ -1575,7 +1575,7 @@
         "licenseUrl": "https://github.com/isaacs/isexe/raw/master/LICENSE",
         "parents": "node-gyp:iyeris"
     },
-    "iyeris@0.9.6": {
+    "iyeris@0.9.7": {
         "licenses": "MPL-2.0",
         "repository": "https://github.com/BurntToasters/IYERIS",
         "licenseUrl": "https://github.com/BurntToasters/IYERIS/raw/master/LICENSE",
@@ -1749,7 +1749,7 @@
         "licenseUrl": "https://github.com/lodash/lodash/raw/master/LICENSE",
         "parents": "iyeris"
     },
-    "lodash@4.17.21": {
+    "lodash@4.17.23": {
         "licenses": "MIT",
         "repository": "https://github.com/lodash/lodash",
         "licenseUrl": "https://github.com/lodash/lodash/raw/master/LICENSE",
@@ -2191,7 +2191,7 @@
         "licenseUrl": "https://github.com/gkz/prelude-ls/raw/master/LICENSE",
         "parents": "iyeris"
     },
-    "prettier@3.8.0": {
+    "prettier@3.8.1": {
         "licenses": "MIT",
         "repository": "https://github.com/prettier/prettier",
         "licenseUrl": "https://github.com/prettier/prettier/raw/master/LICENSE",
@@ -2311,7 +2311,7 @@
         "licenseUrl": "https://github.com/gajus/roarr/raw/master/LICENSE",
         "parents": "iyeris"
     },
-    "rollup@4.55.2": {
+    "rollup@4.56.0": {
         "licenses": "MIT",
         "repository": "https://github.com/rollup/rollup",
         "licenseUrl": "https://github.com/rollup/rollup/raw/master/LICENSE.md",
@@ -2557,7 +2557,7 @@
         "licenseUrl": "https://github.com/chalk/supports-color/raw/master/license",
         "parents": "iyeris"
     },
-    "tar@7.5.4": {
+    "tar@7.5.6": {
         "licenses": "BlueOak-1.0.0",
         "repository": "https://github.com/isaacs/node-tar",
         "licenseUrl": "https://github.com/isaacs/node-tar/raw/master/LICENSE.md",
@@ -2719,7 +2719,7 @@
         "licenseUrl": "https://github.com/vitejs/vite/raw/master/LICENSE.md",
         "parents": "iyeris"
     },
-    "vitest@4.0.17": {
+    "vitest@4.0.18": {
         "licenses": "MIT",
         "repository": "https://github.com/vitest-dev/vitest",
         "licenseUrl": "https://github.com/vitest-dev/vitest/raw/master/LICENSE.md",
