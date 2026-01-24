@@ -603,6 +603,7 @@ body.tabs-enabled.tabs-single .toolbar-new-tab-btn {
   width: var(--sidebar-width-current, var(--sidebar-width));
   padding: var(--sidebar-padding-v) var(--sidebar-padding-h);
   overflow-y: auto;
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
   gap: var(--sidebar-section-gap);

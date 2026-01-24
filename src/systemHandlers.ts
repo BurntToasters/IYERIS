@@ -587,7 +587,10 @@ export function setupSystemHandlers(
         const execPromise = promisify(exec);
 
         try {
-          await execPromise('git rev-parse --git-dir', { cwd: dirPath });
+          await execPromise('git rev-parse --git-dir', {
+            cwd: dirPath,
+            timeout: 5000,
+          });
         } catch {
           return { success: true, isGitRepo: false, statuses: [] };
         }
@@ -595,6 +598,7 @@ export function setupSystemHandlers(
         const { stdout } = await execPromise('git status --porcelain -uall -z', {
           cwd: dirPath,
           maxBuffer: 10 * 1024 * 1024,
+          timeout: 30000,
         });
 
         const statuses: { path: string; status: string }[] = [];
@@ -663,13 +667,17 @@ export function setupSystemHandlers(
         const execPromise = promisify(exec);
 
         try {
-          await execPromise('git rev-parse --git-dir', { cwd: dirPath });
+          await execPromise('git rev-parse --git-dir', {
+            cwd: dirPath,
+            timeout: 5000,
+          });
         } catch {
           return { success: true, branch: undefined };
         }
 
         const { stdout } = await execPromise('git branch --show-current', {
           cwd: dirPath,
+          timeout: 10000,
         });
 
         const branch = stdout.trim();
@@ -677,6 +685,7 @@ export function setupSystemHandlers(
         if (!branch) {
           const { stdout: refStdout } = await execPromise('git rev-parse --short HEAD', {
             cwd: dirPath,
+            timeout: 10000,
           });
           return { success: true, branch: `HEAD:${refStdout.trim()}` };
         }

@@ -51,9 +51,10 @@ async function createUniqueFile(
   fileName: string
 ): Promise<{ name: string; path: string }> {
   const { base, ext } = splitFileName(fileName);
+  const MAX_ATTEMPTS = 9999;
   let counter = 1;
 
-  while (true) {
+  while (counter <= MAX_ATTEMPTS) {
     const candidateName = counter === 1 ? fileName : `${base} (${counter})${ext}`;
     const candidatePath = path.join(parentPath, candidateName);
     try {
@@ -69,6 +70,8 @@ async function createUniqueFile(
       throw error;
     }
   }
+
+  throw new Error(`Unable to create unique file after ${MAX_ATTEMPTS} attempts`);
 }
 
 async function isFileHidden(filePath: string, fileName: string): Promise<boolean> {
