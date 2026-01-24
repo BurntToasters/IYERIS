@@ -1427,12 +1427,35 @@ function showToast(
   title: string = '',
   type: 'success' | 'error' | 'info' | 'warning' = 'info'
 ): void {
+  showToastQueued(message, title, type);
+}
+
+const MAX_VISIBLE_TOASTS = 3;
+const toastQueue: Array<{
+  message: string;
+  title: string;
+  type: 'success' | 'error' | 'info' | 'warning';
+}> = [];
+let visibleToastCount = 0;
+
+function showToastQueued(
+  message: string,
+  title: string = '',
+  type: 'success' | 'error' | 'info' | 'warning' = 'info'
+): void {
+  if (visibleToastCount >= MAX_VISIBLE_TOASTS) {
+    toastQueue.push({ message, title, type });
+    return;
+  }
+
+  visibleToastCount++;
   const container = document.getElementById('toast-container');
   if (!container) return;
 
   const toast = document.createElement('div');
   toast.className = `toast ${type}`;
   toast.style.cursor = 'pointer';
+  toast.setAttribute('role', type === 'error' || type === 'warning' ? 'alert' : 'status');
 
   const icons: Record<string, string> = {
     success: '2705',
@@ -1442,7 +1465,7 @@ function showToast(
   };
 
   toast.innerHTML = `
-    <span class="toast-icon">${twemojiImg(String.fromCodePoint(parseInt(icons[type], 16)), 'twemoji')}</span>
+    <span class="toast-icon" aria-hidden="true">${twemojiImg(String.fromCodePoint(parseInt(icons[type], 16)), 'twemoji')}</span>
     <div class="toast-content">
       ${title ? `<div class="toast-title">${escapeHtml(title)}</div>` : ''}
       <div class="toast-message">${escapeHtml(message)}</div>
@@ -1456,13 +1479,670 @@ function showToast(
     setTimeout(() => {
       if (container.contains(toast)) {
         container.removeChild(toast);
+        visibleToastCount--;
+        processToastQueue();
       }
     }, 300);
   };
 
   toast.addEventListener('click', removeToast);
-
   setTimeout(removeToast, TOAST_DURATION_MS);
+}
+
+function processToastQueue(): void {
+  if (toastQueue.length > 0 && visibleToastCount < MAX_VISIBLE_TOASTS) {
+    const next = toastQueue.shift();
+    if (next) {
+      showToastQueued(next.message, next.title, next.type);
+    }
+  }
+}
+
+let tooltipElement: HTMLElement | null = null;
+let tooltipTimeout: NodeJS.Timeout | null = null;
+const TOOLTIP_DELAY = 500;
+
+function initTooltipSystem(): void {
+  tooltipElement = document.getElementById('ui-tooltip');
+  if (!tooltipElement) return;
+
+  document.addEventListener('mouseover', (e) => {
+    const target = e.target as HTMLElement;
+    const titleAttr =
+      target.getAttribute('title') || target.closest('[title]')?.getAttribute('title');
+
+    if (
+      titleAttr &&
+      !target.closest('.tour-tooltip') &&
+      !target.closest('.command-palette-modal')
+    ) {
+      const actualTarget = target.hasAttribute('title')
+        ? target
+        : (target.closest('[title]') as HTMLElement);
+      if (actualTarget) {
+        actualTarget.dataset.originalTitle = titleAttr;
+        actualTarget.removeAttribute('title');
+      }
+
+      tooltipTimeout = setTimeout(() => {
+        showTooltip(titleAttr, actualTarget || target);
+      }, TOOLTIP_DELAY);
+    }
+  });
+
+  document.addEventListener('mouseout', (e) => {
+    const target = e.target as HTMLElement;
+    const actualTarget = target.hasAttribute('data-original-title')
+      ? target
+      : (target.closest('[data-original-title]') as HTMLElement);
+
+    if (tooltipTimeout) {
+      clearTimeout(tooltipTimeout);
+      tooltipTimeout = null;
+    }
+
+    if (actualTarget && actualTarget.dataset.originalTitle) {
+      actualTarget.setAttribute('title', actualTarget.dataset.originalTitle);
+      delete actualTarget.dataset.originalTitle;
+    }
+
+    hideTooltip();
+  });
+}
+
+function showTooltip(text: string, anchor: HTMLElement): void {
+  if (!tooltipElement) return;
+
+  const content = tooltipElement.querySelector('.ui-tooltip-content');
+  if (content) {
+    content.textContent = text;
+  }
+
+  tooltipElement.style.display = 'block';
+
+  const anchorRect = anchor.getBoundingClientRect();
+  const tooltipRect = tooltipElement.getBoundingClientRect();
+
+  let top = anchorRect.bottom + 8;
+  let left = anchorRect.left + anchorRect.width / 2 - tooltipRect.width / 2;
+
+  tooltipElement.className = 'ui-tooltip bottom';
+
+  if (top + tooltipRect.height > window.innerHeight) {
+    top = anchorRect.top - tooltipRect.height - 8;
+    tooltipElement.className = 'ui-tooltip top';
+  }
+
+  if (left < 8) left = 8;
+  if (left + tooltipRect.width > window.innerWidth - 8) {
+    left = window.innerWidth - tooltipRect.width - 8;
+  }
+
+  tooltipElement.style.left = `${left}px`;
+  tooltipElement.style.top = `${top}px`;
+
+  requestAnimationFrame(() => {
+    tooltipElement?.classList.add('visible');
+  });
+}
+
+function hideTooltip(): void {
+  if (tooltipElement) {
+    tooltipElement.classList.remove('visible');
+    setTimeout(() => {
+      if (tooltipElement) tooltipElement.style.display = 'none';
+    }, 150);
+  }
+}
+
+interface Command {
+  id: string;
+  title: string;
+  description?: string;
+  icon?: string;
+  shortcut?: string[];
+  action: () => void;
+  category?: string;
+}
+
+const commands: Command[] = [];
+let commandPaletteModal: HTMLElement | null = null;
+let commandPaletteInput: HTMLInputElement | null = null;
+let commandPaletteResults: HTMLElement | null = null;
+let commandPaletteEmpty: HTMLElement | null = null;
+let commandPaletteFocusedIndex = -1;
+let commandPalettePreviousFocus: HTMLElement | null = null;
+
+function initCommandPalette(): void {
+  commandPaletteModal = document.getElementById('command-palette-modal');
+  commandPaletteInput = document.getElementById('command-palette-input') as HTMLInputElement;
+  commandPaletteResults = document.getElementById('command-palette-results');
+  commandPaletteEmpty = document.getElementById('command-palette-empty');
+
+  if (!commandPaletteModal || !commandPaletteInput || !commandPaletteResults) return;
+
+  registerCommands();
+
+  commandPaletteInput.addEventListener('input', handleCommandPaletteSearch);
+  commandPaletteInput.addEventListener('keydown', handleCommandPaletteKeydown);
+
+  commandPaletteModal.addEventListener('click', (e) => {
+    if (e.target === commandPaletteModal) {
+      hideCommandPalette();
+    }
+  });
+}
+
+function registerCommands(): void {
+  commands.push(
+    {
+      id: 'new-folder',
+      title: 'New Folder',
+      description: 'Create a new folder',
+      icon: '📁',
+      shortcut: ['Ctrl', 'Shift', 'N'],
+      action: () => {
+        hideCommandPalette();
+        createNewFolder();
+      },
+    },
+    {
+      id: 'new-file',
+      title: 'New File',
+      description: 'Create a new file',
+      icon: '📄',
+      shortcut: ['Ctrl', 'N'],
+      action: () => {
+        hideCommandPalette();
+        createNewFile();
+      },
+    },
+    {
+      id: 'search',
+      title: 'Search',
+      description: 'Search files in current folder',
+      icon: '🔍',
+      shortcut: ['Ctrl', 'F'],
+      action: () => {
+        hideCommandPalette();
+        document.getElementById('search-btn')?.click();
+      },
+    },
+    {
+      id: 'refresh',
+      title: 'Refresh',
+      description: 'Reload current folder',
+      icon: '🔄',
+      shortcut: ['F5'],
+      action: () => {
+        hideCommandPalette();
+        refresh();
+      },
+    },
+    {
+      id: 'go-back',
+      title: 'Go Back',
+      description: 'Navigate to previous folder',
+      icon: '⬅️',
+      shortcut: ['Alt', '←'],
+      action: () => {
+        hideCommandPalette();
+        goBack();
+      },
+    },
+    {
+      id: 'go-forward',
+      title: 'Go Forward',
+      description: 'Navigate to next folder',
+      icon: '➡️',
+      shortcut: ['Alt', '→'],
+      action: () => {
+        hideCommandPalette();
+        goForward();
+      },
+    },
+    {
+      id: 'go-up',
+      title: 'Go Up',
+      description: 'Navigate to parent folder',
+      icon: '⬆️',
+      shortcut: ['Alt', '↑'],
+      action: () => {
+        hideCommandPalette();
+        goUp();
+      },
+    },
+    {
+      id: 'settings',
+      title: 'Settings',
+      description: 'Open settings',
+      icon: '⚙️',
+      shortcut: ['Ctrl', ','],
+      action: () => {
+        hideCommandPalette();
+        showSettingsModal();
+      },
+    },
+    {
+      id: 'shortcuts',
+      title: 'Keyboard Shortcuts',
+      description: 'View all keyboard shortcuts',
+      icon: '⌨️',
+      shortcut: ['Ctrl', '?'],
+      action: () => {
+        hideCommandPalette();
+        showShortcutsModal();
+      },
+    },
+    {
+      id: 'select-all',
+      title: 'Select All',
+      description: 'Select all items',
+      icon: '☑️',
+      shortcut: ['Ctrl', 'A'],
+      action: () => {
+        hideCommandPalette();
+        selectAll();
+      },
+    },
+    {
+      id: 'copy',
+      title: 'Copy',
+      description: 'Copy selected items',
+      icon: '📋',
+      shortcut: ['Ctrl', 'C'],
+      action: () => {
+        hideCommandPalette();
+        copyToClipboard();
+      },
+    },
+    {
+      id: 'cut',
+      title: 'Cut',
+      description: 'Cut selected items',
+      icon: '✂️',
+      shortcut: ['Ctrl', 'X'],
+      action: () => {
+        hideCommandPalette();
+        cutToClipboard();
+      },
+    },
+    {
+      id: 'paste',
+      title: 'Paste',
+      description: 'Paste items',
+      icon: '📎',
+      shortcut: ['Ctrl', 'V'],
+      action: () => {
+        hideCommandPalette();
+        pasteFromClipboard();
+      },
+    },
+    {
+      id: 'delete',
+      title: 'Delete',
+      description: 'Delete selected items',
+      icon: '🗑️',
+      shortcut: ['Del'],
+      action: () => {
+        hideCommandPalette();
+        deleteSelected();
+      },
+    },
+    {
+      id: 'rename',
+      title: 'Rename',
+      description: 'Rename selected item',
+      icon: '✍️',
+      shortcut: ['F2'],
+      action: () => {
+        hideCommandPalette();
+        renameSelected();
+      },
+    },
+    {
+      id: 'grid-view',
+      title: 'Grid View',
+      description: 'Switch to grid view',
+      icon: '▦',
+      action: () => {
+        hideCommandPalette();
+        setViewMode('grid');
+      },
+    },
+    {
+      id: 'list-view',
+      title: 'List View',
+      description: 'Switch to list view',
+      icon: '☰',
+      action: () => {
+        hideCommandPalette();
+        setViewMode('list');
+      },
+    },
+    {
+      id: 'column-view',
+      title: 'Column View',
+      description: 'Switch to column view',
+      icon: '|||',
+      action: () => {
+        hideCommandPalette();
+        setViewMode('column');
+      },
+    },
+    {
+      id: 'toggle-preview',
+      title: 'Toggle Preview Panel',
+      description: 'Show or hide preview panel',
+      icon: '👁️',
+      action: () => {
+        hideCommandPalette();
+        document.getElementById('preview-toggle-btn')?.click();
+      },
+    },
+    {
+      id: 'toggle-sidebar',
+      title: 'Toggle Sidebar',
+      description: 'Show or hide sidebar',
+      icon: '📂',
+      shortcut: ['Ctrl', 'B'],
+      action: () => {
+        hideCommandPalette();
+        document.getElementById('sidebar-toggle')?.click();
+      },
+    },
+    {
+      id: 'new-tab',
+      title: 'New Tab',
+      description: 'Open new tab',
+      icon: '➕',
+      shortcut: ['Ctrl', 'T'],
+      action: () => {
+        hideCommandPalette();
+        if (tabsEnabled) addNewTab();
+      },
+    }
+  );
+}
+
+function showCommandPalette(): void {
+  if (!commandPaletteModal || !commandPaletteInput || !commandPaletteResults) return;
+
+  commandPalettePreviousFocus = document.activeElement as HTMLElement;
+
+  commandPaletteModal.style.display = 'flex';
+  commandPaletteInput.value = '';
+  commandPaletteFocusedIndex = -1;
+  renderCommandPaletteResults(commands);
+
+  setTimeout(() => {
+    commandPaletteInput?.focus();
+  }, 50);
+}
+
+function hideCommandPalette(): void {
+  if (commandPaletteModal) {
+    commandPaletteModal.style.display = 'none';
+  }
+
+  if (commandPalettePreviousFocus && typeof commandPalettePreviousFocus.focus === 'function') {
+    commandPalettePreviousFocus.focus();
+    commandPalettePreviousFocus = null;
+  }
+}
+
+function handleCommandPaletteSearch(): void {
+  if (!commandPaletteInput) return;
+
+  const query = commandPaletteInput.value.toLowerCase().trim();
+
+  if (!query) {
+    renderCommandPaletteResults(commands);
+    return;
+  }
+
+  const filtered = commands.filter(
+    (cmd) =>
+      cmd.title.toLowerCase().includes(query) ||
+      cmd.description?.toLowerCase().includes(query) ||
+      cmd.id.toLowerCase().includes(query)
+  );
+
+  renderCommandPaletteResults(filtered);
+}
+
+function renderCommandPaletteResults(cmds: Command[]): void {
+  if (!commandPaletteResults || !commandPaletteEmpty) return;
+
+  const resultsContainer = commandPaletteResults;
+  const emptyContainer = commandPaletteEmpty;
+
+  resultsContainer.innerHTML = '';
+  commandPaletteFocusedIndex = -1;
+
+  if (cmds.length === 0) {
+    resultsContainer.style.display = 'none';
+    emptyContainer.style.display = 'flex';
+    return;
+  }
+
+  resultsContainer.style.display = 'flex';
+  emptyContainer.style.display = 'none';
+
+  cmds.forEach((cmd, index) => {
+    const item = document.createElement('div');
+    item.className = 'command-palette-item';
+    item.dataset.index = String(index);
+
+    let shortcutHtml = '';
+    if (cmd.shortcut) {
+      shortcutHtml = `
+        <div class="command-palette-item-shortcut">
+          ${cmd.shortcut.map((key) => `<kbd class="command-palette-key">${key}</kbd>`).join('')}
+        </div>
+      `;
+    }
+
+    item.innerHTML = `
+      <div class="command-palette-item-left">
+        ${cmd.icon ? `<span class="command-palette-item-icon">${cmd.icon}</span>` : ''}
+        <div class="command-palette-item-text">
+          <div class="command-palette-item-title">${escapeHtml(cmd.title)}</div>
+          ${cmd.description ? `<div class="command-palette-item-description">${escapeHtml(cmd.description)}</div>` : ''}
+        </div>
+      </div>
+      ${shortcutHtml}
+    `;
+
+    item.addEventListener('click', () => {
+      try {
+        cmd.action();
+      } catch (error) {
+        console.error(`Command palette error executing "${cmd.id}":`, error);
+        showToast(`Failed to execute command: ${cmd.title}`, 'Command Error', 'error');
+      }
+    });
+
+    item.addEventListener('mouseenter', () => {
+      setCommandPaletteFocus(index);
+    });
+
+    resultsContainer.appendChild(item);
+  });
+}
+
+function setCommandPaletteFocus(index: number): void {
+  if (!commandPaletteResults) return;
+
+  const items = commandPaletteResults.querySelectorAll('.command-palette-item');
+  items.forEach((item, i) => {
+    if (i === index) {
+      item.classList.add('focused');
+      commandPaletteFocusedIndex = index;
+    } else {
+      item.classList.remove('focused');
+    }
+  });
+}
+
+function handleCommandPaletteKeydown(e: KeyboardEvent): void {
+  if (!commandPaletteResults) return;
+
+  const items = commandPaletteResults.querySelectorAll('.command-palette-item');
+
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    hideCommandPalette();
+  } else if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    const nextIndex = commandPaletteFocusedIndex + 1;
+    if (nextIndex < items.length) {
+      setCommandPaletteFocus(nextIndex);
+      if (commandPaletteResults) {
+        items[nextIndex].scrollIntoView({ block: 'nearest' });
+      }
+    }
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    const prevIndex = commandPaletteFocusedIndex - 1;
+    if (prevIndex >= 0) {
+      setCommandPaletteFocus(prevIndex);
+      if (commandPaletteResults) {
+        items[prevIndex].scrollIntoView({ block: 'nearest' });
+      }
+    }
+  } else if (e.key === 'Enter') {
+    e.preventDefault();
+    if (commandPaletteFocusedIndex >= 0 && commandPaletteFocusedIndex < items.length) {
+      (items[commandPaletteFocusedIndex] as HTMLElement).click();
+    } else if (items.length > 0) {
+      (items[0] as HTMLElement).click();
+    }
+  }
+}
+
+interface ProgressOperation {
+  id: string;
+  title: string;
+  status: string;
+  progress: number;
+  completed: boolean;
+  error: boolean;
+}
+
+const progressOperations = new Map<string, ProgressOperation>();
+let progressPanel: HTMLElement | null = null;
+let progressPanelContent: HTMLElement | null = null;
+
+function initProgressPanel(): void {
+  progressPanel = document.getElementById('progress-panel');
+  progressPanelContent = document.getElementById('progress-panel-content');
+
+  const closeBtn = document.getElementById('progress-panel-close');
+  if (closeBtn) {
+    closeBtn.addEventListener('click', hideProgressPanel);
+  }
+}
+
+function showProgressPanel(): void {
+  if (progressPanel) {
+    progressPanel.style.display = 'flex';
+  }
+}
+
+function hideProgressPanel(): void {
+  if (progressPanel) {
+    progressPanel.style.display = 'none';
+  }
+}
+
+function addProgressOperation(id: string, title: string, status: string = 'Starting...'): void {
+  progressOperations.set(id, {
+    id,
+    title,
+    status,
+    progress: 0,
+    completed: false,
+    error: false,
+  });
+
+  renderProgressOperations();
+  showProgressPanel();
+}
+
+function updateProgressOperation(id: string, updates: Partial<ProgressOperation>): void {
+  const op = progressOperations.get(id);
+  if (op) {
+    Object.assign(op, updates);
+    renderProgressOperations();
+  }
+}
+
+function completeProgressOperation(id: string, error: boolean = false): void {
+  const op = progressOperations.get(id);
+  if (op) {
+    op.completed = true;
+    op.error = error;
+    op.progress = 100;
+    renderProgressOperations();
+
+    setTimeout(() => {
+      progressOperations.delete(id);
+      renderProgressOperations();
+      if (progressOperations.size === 0) {
+        hideProgressPanel();
+      }
+    }, 3000);
+  }
+}
+
+function renderProgressOperations(): void {
+  if (!progressPanelContent) return;
+
+  const contentContainer = progressPanelContent;
+
+  if (progressOperations.size === 0) {
+    contentContainer.innerHTML = `
+      <div style="padding: var(--spacing-massive); text-align: center; color: var(--text-secondary);">
+        <p>No active operations</p>
+      </div>
+    `;
+    return;
+  }
+
+  contentContainer.innerHTML = '';
+
+  progressOperations.forEach((op) => {
+    const item = document.createElement('div');
+    item.className = `progress-item ${op.completed ? 'completed' : ''} ${op.error ? 'error' : ''}`;
+
+    const spinnerOrIcon = op.completed
+      ? op.error
+        ? '❌'
+        : '✅'
+      : '<span class="progress-item-spinner">⟳</span>';
+
+    item.innerHTML = `
+      <div class="progress-item-header">
+        <div class="progress-item-title">
+          ${spinnerOrIcon}
+          ${escapeHtml(op.title)}
+        </div>
+        <div class="progress-item-status">${escapeHtml(op.status)}</div>
+      </div>
+      ${
+        !op.completed
+          ? `
+        <div class="progress-item-bar-container">
+          <div class="progress-item-bar" style="width: ${op.progress}%"></div>
+        </div>
+      `
+          : ''
+      }
+    `;
+
+    contentContainer.appendChild(item);
+  });
 }
 
 async function loadSettings(): Promise<void> {
@@ -3857,6 +4537,10 @@ async function init() {
 
   await loadSettings();
 
+  initTooltipSystem();
+  initCommandPalette();
+  initProgressPanel();
+
   platformOS = platform;
   document.body.classList.add(`platform-${platformOS}`);
 
@@ -4593,7 +5277,10 @@ function setupEventListeners() {
     };
 
     if (e.ctrlKey || e.metaKey) {
-      if (e.key === ',') {
+      if (e.key === 'k' || e.key === 'K') {
+        e.preventDefault();
+        showCommandPalette();
+      } else if (e.key === ',') {
         e.preventDefault();
         showSettingsModal();
       } else if (e.key === '?' || e.key === '/') {
