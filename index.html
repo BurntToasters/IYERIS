@@ -46,42 +46,73 @@
 
   <div class="container">
     <div class="sidebar glass-panel" role="navigation" aria-label="Main navigation">
-      <div class="sidebar-section">
-        <div class="section-title">Quick Access</div>
-        <div class="nav-item" data-action="home" role="button" tabindex="0" aria-label="Navigate to home folder">
-          <span class="nav-icon" aria-hidden="true"><img src="assets/twemoji/1f3e0.svg" class="twemoji" alt="🏠" draggable="false" /></span>
-          <span class="nav-label">Home</span>
+      <div class="sidebar-section quick-actions">
+        <div class="section-header">
+          <div class="section-title">Quick Access</div>
         </div>
-        <div class="nav-item" data-action="browse" role="button" tabindex="0" aria-label="Browse for folder">
-          <span class="nav-icon" aria-hidden="true"><img src="assets/twemoji/1f4c2.svg" class="twemoji" alt="📂" draggable="false" /></span>
-          <span class="nav-label">Browse...</span>
-        </div>
-        <div class="nav-item" data-action="trash" role="button" tabindex="0" aria-label="Show trash folder">
-          <span class="nav-icon" aria-hidden="true"><img src="assets/twemoji/1f5d1.svg" class="twemoji" alt="🗑️" draggable="false" /></span>
-          <span class="nav-label">Show Trash</span>
+        <div class="quick-actions-grid">
+          <div class="nav-item quick-action" data-action="home" role="button" tabindex="0" aria-label="Navigate to home folder">
+            <span class="nav-icon" aria-hidden="true"><img src="assets/twemoji/1f3e0.svg" class="twemoji" alt="🏠" draggable="false" /></span>
+            <span class="nav-label">Home</span>
+          </div>
+          <div class="nav-item quick-action" data-action="browse" role="button" tabindex="0" aria-label="Browse for folder">
+            <span class="nav-icon" aria-hidden="true"><img src="assets/twemoji/1f4c2.svg" class="twemoji" alt="📂" draggable="false" /></span>
+            <span class="nav-label">Browse</span>
+          </div>
+          <div class="nav-item quick-action" data-action="trash" role="button" tabindex="0" aria-label="Show trash folder">
+            <span class="nav-icon" aria-hidden="true"><img src="assets/twemoji/1f5d1.svg" class="twemoji" alt="🗑️" draggable="false" /></span>
+            <span class="nav-label">Trash</span>
+          </div>
         </div>
       </div>
 
-      <div class="sidebar-section primary" id="bookmarks-section">
-        <div class="section-title">
-          Bookmarks
+      <div class="sidebar-section primary" id="bookmarks-section" data-collapsible="true">
+        <div class="section-header">
+          <button class="section-toggle" type="button" aria-expanded="true">
+            <span class="section-title">Bookmarks</span>
+            <span class="section-caret" aria-hidden="true">▾</span>
+          </button>
+          <button class="section-action bookmark-add-btn" id="bookmark-add-btn" title="Add bookmark" aria-label="Add bookmark">+</button>
         </div>
-        <div id="bookmarks-list" role="list" aria-label="Bookmarked folders"></div>
+        <div class="section-body">
+          <div id="bookmarks-list" role="list" aria-label="Bookmarked folders"></div>
+        </div>
       </div>
 
-      <div class="sidebar-section" id="recent-section">
-        <div class="section-title">Recent</div>
-        <div id="recent-list" role="list" aria-label="Recent files"></div>
+      <div class="sidebar-section collapsed" id="recent-section" data-collapsible="true">
+        <div class="section-header">
+          <button class="section-toggle" type="button" aria-expanded="false">
+            <span class="section-title">Recent</span>
+            <span class="section-caret" aria-hidden="true">▾</span>
+          </button>
+        </div>
+        <div class="section-body">
+          <div id="recent-list" role="list" aria-label="Recent files"></div>
+        </div>
       </div>
 
-      <div class="sidebar-section" id="folder-tree-section">
-        <div class="section-title">Folders</div>
-        <div id="folder-tree" class="folder-tree" role="tree" aria-label="Folder tree"></div>
+      <div class="sidebar-section" id="folder-tree-section" data-collapsible="true">
+        <div class="section-header">
+          <button class="section-toggle" type="button" aria-expanded="true">
+            <span class="section-title">Folders</span>
+            <span class="section-caret" aria-hidden="true">▾</span>
+          </button>
+        </div>
+        <div class="section-body">
+          <div id="folder-tree" class="folder-tree" role="tree" aria-label="Folder tree"></div>
+        </div>
       </div>
 
-      <div class="sidebar-section">
-        <div class="section-title">Drives</div>
-        <div id="drives-list" role="list" aria-label="Available drives"></div>
+      <div class="sidebar-section collapsed" id="drives-section" data-collapsible="true">
+        <div class="section-header">
+          <button class="section-toggle" type="button" aria-expanded="false">
+            <span class="section-title">Drives</span>
+            <span class="section-caret" aria-hidden="true">▾</span>
+          </button>
+        </div>
+        <div class="section-body">
+          <div id="drives-list" role="list" aria-label="Available drives"></div>
+        </div>
       </div>
       <button class="sidebar-toggle" id="sidebar-toggle" title="Toggle Sidebar (Ctrl+B)" aria-label="Toggle sidebar" aria-expanded="true">
         <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">

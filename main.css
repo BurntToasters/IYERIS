@@ -645,6 +645,22 @@ body.tabs-enabled.tabs-single .toolbar-new-tab-btn {
   display: none;
 }
 
+.sidebar.collapsed .section-header {
+  display: none;
+}
+
+.sidebar.collapsed .section-body {
+  display: none;
+}
+
+.sidebar.collapsed .sidebar-section:not(.quick-actions) {
+  display: none;
+}
+
+.sidebar.collapsed .sidebar-section.quick-actions {
+  padding-top: 2px;
+}
+
 .sidebar.collapsed .sidebar-resize-handle {
   display: none;
 }
@@ -719,12 +735,12 @@ body.tabs-enabled.tabs-single .toolbar-new-tab-btn {
 .sidebar-section {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 4px;
 }
 
 .sidebar-section + .sidebar-section {
   padding-top: 6px;
-  margin-top: 4px;
+  margin-top: 6px;
   border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
 
@@ -732,24 +748,145 @@ body.tabs-enabled.tabs-single .toolbar-new-tab-btn {
   background: rgba(255, 255, 255, 0.035);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: var(--radius-medium);
-  padding: 6px 4px;
+  padding: 6px 4px 4px;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 2px;
+}
+
+.section-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  width: 100%;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-small);
+  cursor: pointer;
+  padding: 2px 4px;
+  color: var(--text-tertiary);
+  font-size: var(--font-size-section-title);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  transition: background var(--animation-duration) var(--animation-easing), color var(--animation-duration) var(--animation-easing);
+}
+
+.section-toggle:hover {
+  background: var(--hover-color);
+  color: var(--text-secondary);
+}
+
+.section-toggle:active {
+  background: var(--active-color);
+  color: var(--text-primary);
 }
 
 .section-title {
   font-size: var(--font-size-section-title);
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.6px;
   color: var(--text-tertiary);
-  margin-bottom: var(--section-title-margin-bottom);
-  padding: 0 5px;
-  opacity: 0.7;
+  opacity: 0.75;
   text-shadow: none;
+  margin: 0;
+  padding: 0;
+}
+
+.section-caret {
+  font-size: 11px;
+  opacity: 0.6;
+  transition: transform var(--animation-duration) var(--animation-easing), opacity var(--animation-duration) var(--animation-easing);
+}
+
+.section-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.section-action {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-small);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: background var(--animation-duration) var(--animation-easing), color var(--animation-duration) var(--animation-easing);
+}
+
+.section-action:hover {
+  background: var(--hover-color);
+  color: var(--text-primary);
+}
+
+.section-action:active {
+  background: var(--active-color);
+}
+
+.sidebar-section.collapsed .section-body {
+  display: none;
+}
+
+.sidebar-section.collapsed .section-caret {
+  transform: rotate(-90deg);
+  opacity: 0.45;
 }
 
 .sidebar-section.primary .section-title {
   color: rgba(var(--accent-rgb), 0.9);
   opacity: 0.9;
+}
+
+.quick-actions-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  padding: 0 2px;
+}
+
+.nav-item.quick-action {
+  flex-direction: column;
+  justify-content: center;
+  text-align: center;
+  padding: 8px 6px;
+  gap: 4px;
+  font-size: 10px;
+  margin-bottom: 0;
+}
+
+.nav-item.quick-action .nav-icon {
+  width: 18px;
+  height: 18px;
+  opacity: 0.9;
+}
+
+.nav-item.quick-action .nav-icon .twemoji {
+  margin: 0;
+}
+
+.nav-item.quick-action .nav-label {
+  flex: 0;
+  line-height: 1.1;
+}
+
+.sidebar.collapsed .quick-actions-grid {
+  grid-template-columns: 1fr;
+}
+
+.sidebar.collapsed .nav-item.quick-action {
+  padding: 6px;
 }
 
 .sidebar-empty {
@@ -4632,20 +4769,8 @@ body.theme-light .file-hover-card {
 }
 
 .bookmark-add-btn {
-  background: none;
-  border: none;
-  color: var(--text-secondary);
-  cursor: pointer;
-  font-size: 16px;
-  padding: 0 4px;
-  margin-left: 4px;
-  border-radius: 3px;
-  transition: all 0.2s ease;
-}
-
-.bookmark-add-btn:hover {
-  background: var(--hover-color);
-  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 1;
 }
 
 .bookmark-item {

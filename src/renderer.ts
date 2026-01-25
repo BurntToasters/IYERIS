@@ -4204,6 +4204,25 @@ function setupSidebarResize(): void {
   });
 }
 
+function setupSidebarSections(): void {
+  const sections = document.querySelectorAll<HTMLElement>(
+    '.sidebar-section[data-collapsible="true"]'
+  );
+  sections.forEach((section) => {
+    const toggle = section.querySelector<HTMLButtonElement>('.section-toggle');
+    if (!toggle) return;
+    const syncAria = () => {
+      const isCollapsed = section.classList.contains('collapsed');
+      toggle.setAttribute('aria-expanded', String(!isCollapsed));
+    };
+    syncAria();
+    toggle.addEventListener('click', () => {
+      section.classList.toggle('collapsed');
+      syncAria();
+    });
+  });
+}
+
 function setupPreviewResize(): void {
   if (!previewResizeHandle) return;
   const previewPanel = document.getElementById('preview-panel') as HTMLElement | null;
@@ -4969,6 +4988,7 @@ function setupEventListeners() {
   setupListHeader();
   setupViewOptions();
   setupSidebarResize();
+  setupSidebarSections();
   setupPreviewResize();
   if (currentSettings.showFileHoverCard !== false) {
     setupHoverCard();
