@@ -9,12 +9,14 @@
   --glass-border: rgba(255, 255, 255, 0.1);
   --glass-shadow: 0 1px 2px rgba(0, 0, 0, 0.24);
   --text-primary: #ffffff;
-  --text-secondary: rgba(255, 255, 255, 0.7);
-  --text-tertiary: rgba(255, 255, 255, 0.60);
+  --text-secondary: rgba(255, 255, 255, 0.8);
+  --text-tertiary: rgba(255, 255, 255, 0.7);
   --accent-color: #0078d4;
   --accent-rgb: 0, 120, 212;
   --accent-hover: #106ebe;
   --accent-active: #005a9e;
+  --accent-light: #4da6ff;
+  --accent-gradient: linear-gradient(135deg, var(--accent-color) 0%, var(--accent-hover) 100%);
   --hover-color: rgba(255, 255, 255, 0.06);
   --active-color: rgba(255, 255, 255, 0.1);
   --danger-color: #e81123;
@@ -55,7 +57,7 @@
   --font-size-base: 12px;
   --font-size-file-name: 11px;
   --font-size-nav: 11px;
-  --font-size-section-title: 9.5px;
+  --font-size-section-title: 10.5px;
   --font-size-status: 10.5px;
   --font-size-breadcrumb: 11.5px;
 
@@ -80,10 +82,10 @@
   --file-grid-gap-col: 12px;
   --file-item-padding-v: 6px;
   --file-item-padding-h: 4px;
-  --list-item-padding-v: 4px;
+  --list-item-padding-v: 6px;
   --list-item-padding-h: 9px;
   --list-item-gap: 8px;
-  --list-item-min-height: 24px;
+  --list-item-min-height: 28px;
   --list-col-name: minmax(220px, 1fr);
   --list-col-type: 140px;
   --list-col-size: 90px;
@@ -99,7 +101,7 @@
   --container-edge-padding: 6px;
   --container-edge-padding-top: 6px;
   --container-edge-padding-bottom: 0px;
-  --grid-min-column: 74px;
+  --grid-min-column: 82px;
   --file-icon-margin-bottom: 4px;
   --toolbar-gap: 6px;
   --toolbar-left-right-gap: 4px;
@@ -107,15 +109,15 @@
   --toolbar-separator-margin-v: 0;
   --toolbar-separator-margin-h: 4px;
   --breadcrumb-gap: 3px;
-  --breadcrumb-padding-v: 1px;
-  --breadcrumb-padding-h: 5px;
+  --breadcrumb-padding-v: 4px;
+  --breadcrumb-padding-h: 8px;
   --status-bar-padding-h: 10px;
   --list-info-gap: 18px;
   --section-title-margin-bottom: 3px;
 
   --modal-max-width: 600px;
   --modal-padding: 24px;
-  --settings-modal-width: 800px;
+  --settings-modal-width: 850px;
   --settings-modal-height: 600px;
   --dialog-modal-max-width: 450px;
 
@@ -167,7 +169,7 @@ body.large-ui {
   --font-size-base: 13px;
   --font-size-file-name: 11.5px;
   --font-size-nav: 12px;
-  --font-size-section-title: 10px;
+  --font-size-section-title: 11px;
   --font-size-status: 11.5px;
   --font-size-breadcrumb: 12px;
 
@@ -193,10 +195,10 @@ body.large-ui {
   --file-grid-gap-col: 10px;
   --file-item-padding-v: 10px;
   --file-item-padding-h: 8px;
-  --list-item-padding-v: 4px;
+  --list-item-padding-v: 8px;
   --list-item-padding-h: 12px;
   --list-item-gap: 12px;
-  --list-item-min-height: 32px;
+  --list-item-min-height: 36px;
   --list-col-name: minmax(260px, 1fr);
   --list-col-type: 170px;
   --list-col-size: 110px;
@@ -212,7 +214,7 @@ body.large-ui {
   --container-edge-padding: 8px;
   --container-edge-padding-top: 8px;
   --container-edge-padding-bottom: 0px;
-  --grid-min-column: 90px;
+  --grid-min-column: 98px;
   --file-icon-margin-bottom: 8px;
   --toolbar-gap: 8px;
   --toolbar-left-right-gap: 6px;
@@ -220,8 +222,8 @@ body.large-ui {
   --toolbar-separator-margin-v: 0;
   --toolbar-separator-margin-h: 6px;
   --breadcrumb-gap: 4px;
-  --breadcrumb-padding-v: 2px;
-  --breadcrumb-padding-h: 6px;
+  --breadcrumb-padding-v: 5px;
+  --breadcrumb-padding-h: 10px;
   --status-bar-padding-h: 16px;
   --list-info-gap: 24px;
   --section-title-margin-bottom: 4px;
@@ -1174,7 +1176,7 @@ body.tabs-enabled.tabs-single .toolbar-new-tab-btn {
 .toolbar-separator {
   width: 1px;
   height: var(--toolbar-separator-height);
-  background: var(--separator);
+  background: rgba(255, 255, 255, 0.12);
   margin: var(--toolbar-separator-margin-v) var(--toolbar-separator-margin-h);
 }
 
@@ -2241,8 +2243,8 @@ select:focus-visible {
 .nav-item:focus-visible,
 .context-menu-item:focus-visible {
   background: rgba(var(--accent-rgb), 0.16);
-  outline: 2px solid rgba(var(--accent-rgb), 0.5);
-  outline-offset: -2px;
+  outline: 3px solid rgba(var(--accent-rgb), 0.6);
+  outline-offset: 2px;
 }
 
 /* Drag and drop visual feedback */
@@ -2624,12 +2626,13 @@ body:not(.show-file-checkboxes) .file-checkbox {
 }
 
 .empty-icon {
-  opacity: 0.4;
+  opacity: 0.6;
+  filter: drop-shadow(0 0 20px rgba(0, 120, 212, 0.15));
 }
 
 .empty-icon .twemoji-xlarge {
-  width: 72px;
-  height: 72px;
+  width: 80px;
+  height: 80px;
 }
 
 .empty-state p {
@@ -3505,7 +3508,7 @@ body.platform-win32 .context-menu-separator {
   border: 1px solid var(--separator);
   border-radius: var(--radius-medium);
   padding: 0;
-  margin-bottom: 16px;
+  margin-bottom: 20px;
   overflow: hidden;
 }
 
@@ -3514,18 +3517,18 @@ body.platform-win32 .context-menu-separator {
 }
 
 .settings-card-header {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
   color: var(--text-tertiary);
-  padding: 12px 16px;
+  padding: 14px 18px;
   background: var(--bg-primary);
   border-bottom: 1px solid var(--separator);
 }
 
 .settings-card .setting-item {
-  padding: 14px 16px;
+  padding: 16px 18px;
   margin-bottom: 0;
   border-bottom: 1px solid var(--separator);
 }
@@ -3559,10 +3562,10 @@ body.platform-win32 .context-menu-separator {
 }
 
 .setting-description {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text-secondary);
   margin: 0;
-  line-height: 1.4;
+  line-height: 1.5;
 }
 
 .toggle-switch {
@@ -7011,26 +7014,36 @@ pre.preview-text code.hljs {
 }
 
 .preset-btn {
-  width: 40px;
-  height: 40px;
+  padding: 8px 12px;
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-small);
   background: var(--glass-bg);
   cursor: pointer;
-  font-size: 18px;
+  font-size: 11px;
   display: flex;
   align-items: center;
-  justify-content: center;
+  gap: 6px;
   transition: all 0.15s ease;
+  color: var(--text-secondary);
+}
+
+.preset-btn .twemoji {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.preset-btn span {
+  white-space: nowrap;
 }
 
 .preset-btn:hover {
   background: var(--hover-color);
-  transform: scale(1.05);
+  color: var(--text-primary);
 }
 
 .preset-btn:active {
-  transform: scale(0.95);
+  background: var(--active-color);
 }
 
 body.theme-custom {

@@ -2302,6 +2302,17 @@ function hexToRgb(hex: string): string {
   return '0, 120, 212';
 }
 
+function hexToRgba(hex: string, alpha: number): string {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  if (result) {
+    const r = parseInt(result[1], 16);
+    const g = parseInt(result[2], 16);
+    const b = parseInt(result[3], 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  }
+  return `rgba(255, 255, 255, ${alpha})`;
+}
+
 function applyCustomThemeColors(theme: CustomTheme) {
   const root = document.documentElement;
   root.style.setProperty('--custom-accent-color', theme.accentColor);
@@ -2311,8 +2322,8 @@ function applyCustomThemeColors(theme: CustomTheme) {
   root.style.setProperty('--custom-bg-secondary', theme.bgSecondary);
   root.style.setProperty('--custom-text-primary', theme.textPrimary);
   root.style.setProperty('--custom-text-secondary', theme.textSecondary);
-  root.style.setProperty('--custom-glass-bg', `${theme.glassBg}08`);
-  root.style.setProperty('--custom-glass-border', `${theme.glassBorder}14`);
+  root.style.setProperty('--custom-glass-bg', hexToRgba(theme.glassBg, 0.03));
+  root.style.setProperty('--custom-glass-border', hexToRgba(theme.glassBorder, 0.08));
   document.body.style.backgroundColor = theme.bgPrimary;
 }
 
@@ -2408,9 +2419,13 @@ let tempCustomTheme: CustomTheme = {
   glassBorder: '#ffffff',
 };
 
+let themeEditorHasUnsavedChanges = false;
+
 function showThemeEditor() {
   const modal = document.getElementById('theme-editor-modal');
   if (!modal) return;
+
+  themeEditorHasUnsavedChanges = false;
 
   if (currentSettings.customTheme) {
     tempCustomTheme = { ...currentSettings.customTheme };
@@ -2426,6 +2441,7 @@ function showThemeEditor() {
       text: tempCustomTheme.textSecondary,
     },
     'theme-glass-bg': { color: tempCustomTheme.glassBg, text: tempCustomTheme.glassBg },
+    'theme-glass-border': { color: tempCustomTheme.glassBorder, text: tempCustomTheme.glassBorder },
   };
 
   for (const [id, values] of Object.entries(inputs)) {
@@ -2442,9 +2458,18 @@ function showThemeEditor() {
   modal.style.display = 'flex';
 }
 
-function hideThemeEditor() {
+async function hideThemeEditor(skipConfirmation = false) {
+  if (!skipConfirmation && themeEditorHasUnsavedChanges) {
+    const confirmed = await showConfirm(
+      'You have unsaved changes. Are you sure you want to close the theme editor?',
+      'Unsaved Changes',
+      'warning'
+    );
+    if (!confirmed) return;
+  }
   const modal = document.getElementById('theme-editor-modal');
   if (modal) modal.style.display = 'none';
+  themeEditorHasUnsavedChanges = false;
 }
 
 function updateThemePreview() {
@@ -2457,8 +2482,8 @@ function updateThemePreview() {
   preview.style.setProperty('--custom-bg-secondary', tempCustomTheme.bgSecondary);
   preview.style.setProperty('--custom-text-primary', tempCustomTheme.textPrimary);
   preview.style.setProperty('--custom-text-secondary', tempCustomTheme.textSecondary);
-  preview.style.setProperty('--custom-glass-bg', `${tempCustomTheme.glassBg}08`);
-  preview.style.setProperty('--custom-glass-border', `${tempCustomTheme.glassBorder}20`);
+  preview.style.setProperty('--custom-glass-bg', hexToRgba(tempCustomTheme.glassBg, 0.03));
+  preview.style.setProperty('--custom-glass-border', hexToRgba(tempCustomTheme.glassBorder, 0.08));
   preview.style.backgroundColor = tempCustomTheme.bgPrimary;
 }
 
@@ -2476,14 +2501,13 @@ function syncColorInputs(colorId: string, value: string) {
     'theme-text-primary': 'textPrimary',
     'theme-text-secondary': 'textSecondary',
     'theme-glass-bg': 'glassBg',
+    'theme-glass-border': 'glassBorder',
   };
 
   const key = mapping[colorId];
   if (key) {
     (tempCustomTheme as any)[key] = value;
-    if (key === 'glassBg') {
-      tempCustomTheme.glassBorder = value;
-    }
+    themeEditorHasUnsavedChanges = true;
   }
 
   updateThemePreview();
@@ -2504,6 +2528,7 @@ function applyThemePreset(presetName: string) {
   syncColorInputs('theme-text-primary', preset.textPrimary);
   syncColorInputs('theme-text-secondary', preset.textSecondary);
   syncColorInputs('theme-glass-bg', preset.glassBg);
+  syncColorInputs('theme-glass-border', preset.glassBorder);
 }
 
 async function saveCustomTheme() {
@@ -2519,7 +2544,8 @@ async function saveCustomTheme() {
 
   const result = await window.electronAPI.saveSettings(currentSettings);
   if (result.success) {
-    hideThemeEditor();
+    themeEditorHasUnsavedChanges = false;
+    hideThemeEditor(true);
     updateCustomThemeUI();
     showToast('Custom theme saved!', 'Theme', 'success');
   } else {
@@ -2528,8 +2554,10 @@ async function saveCustomTheme() {
 }
 
 function setupThemeEditorListeners() {
-  document.getElementById('theme-editor-close')?.addEventListener('click', hideThemeEditor);
-  document.getElementById('theme-editor-cancel')?.addEventListener('click', hideThemeEditor);
+  document.getElementById('theme-editor-close')?.addEventListener('click', () => hideThemeEditor());
+  document
+    .getElementById('theme-editor-cancel')
+    ?.addEventListener('click', () => hideThemeEditor());
   document.getElementById('theme-editor-save')?.addEventListener('click', saveCustomTheme);
 
   // Color inputs
@@ -2540,6 +2568,7 @@ function setupThemeEditorListeners() {
     'theme-text-primary',
     'theme-text-secondary',
     'theme-glass-bg',
+    'theme-glass-border',
   ];
 
   colorIds.forEach((id) => {
@@ -2585,6 +2614,7 @@ function setupThemeEditorListeners() {
 
   document.getElementById('theme-name-input')?.addEventListener('input', (e) => {
     tempCustomTheme.name = (e.target as HTMLInputElement).value || 'My Custom Theme';
+    themeEditorHasUnsavedChanges = true;
   });
 
   document.querySelectorAll('.preset-btn').forEach((btn) => {
@@ -9476,7 +9506,14 @@ function validateImportedSettings(imported: any): Partial<Settings> {
 
   if (imported.customTheme && typeof imported.customTheme === 'object') {
     const ct = imported.customTheme;
-    const isValidHex = (s: any) => typeof s === 'string' && /^#[0-9a-fA-F]{6}$/.test(s);
+    const isValidHex = (s: any) =>
+      typeof s === 'string' && (/^#[0-9a-fA-F]{6}$/.test(s) || /^#[0-9a-fA-F]{3}$/.test(s));
+    const expandHex = (s: string) => {
+      if (/^#[0-9a-fA-F]{3}$/.test(s)) {
+        return '#' + s[1] + s[1] + s[2] + s[2] + s[3] + s[3];
+      }
+      return s;
+    };
     if (
       typeof ct.name === 'string' &&
       isValidHex(ct.accentColor) &&
@@ -9487,7 +9524,16 @@ function validateImportedSettings(imported: any): Partial<Settings> {
       isValidHex(ct.glassBg) &&
       isValidHex(ct.glassBorder)
     ) {
-      validated.customTheme = ct;
+      validated.customTheme = {
+        name: ct.name,
+        accentColor: expandHex(ct.accentColor),
+        bgPrimary: expandHex(ct.bgPrimary),
+        bgSecondary: expandHex(ct.bgSecondary),
+        textPrimary: expandHex(ct.textPrimary),
+        textSecondary: expandHex(ct.textSecondary),
+        glassBg: expandHex(ct.glassBg),
+        glassBorder: expandHex(ct.glassBorder),
+      };
     }
   }
 
