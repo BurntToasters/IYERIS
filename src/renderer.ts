@@ -4489,13 +4489,25 @@ function getUnixDrivePath(pathValue: string): string {
   return '/';
 }
 
+function getWindowsDrivePath(pathValue: string): string {
+  const normalized = pathValue.replace(/\//g, '\\');
+  if (normalized.startsWith('\\\\')) {
+    const parts = normalized.split('\\').filter(Boolean);
+    if (parts.length >= 2) {
+      return `\\\\${parts[0]}\\${parts[1]}\\`;
+    }
+    return normalized;
+  }
+  return normalized.substring(0, 3);
+}
+
 async function updateDiskSpace() {
   const statusDiskSpace = document.getElementById('status-disk-space');
   if (!statusDiskSpace || !currentPath) return;
 
   let drivePath = currentPath;
   if (platformOS === 'win32') {
-    drivePath = currentPath.substring(0, 3);
+    drivePath = getWindowsDrivePath(currentPath);
   } else {
     drivePath = getUnixDrivePath(currentPath);
   }
@@ -4529,7 +4541,9 @@ async function updateDiskSpace() {
       diskSpaceCache.set(drivePath, { timestamp: Date.now(), total, free });
       renderDiskSpace(statusDiskSpace, total, free);
     } else {
-      statusDiskSpace.textContent = '';
+      const isUnc = platformOS === 'win32' && drivePath.startsWith('\\\\');
+      const message = isUnc ? 'Disk space unavailable for network share' : 'Disk space unavailable';
+      renderDiskSpaceUnavailable(statusDiskSpace, message);
     }
     diskSpaceDebounceTimer = null;
   }, 300);
@@ -4565,6 +4579,14 @@ function renderDiskSpace(element: HTMLElement, total: number, free: number): voi
         <span style="position: absolute; left: 0; top: 0; height: 100%; width: ${usedPercent}%; background: ${usageColor}; transition: width 0.3s ease;"></span>
       </span>
       <span style="opacity: 0.7;">(${usedPercent}% used)</span>
+    </span>
+  `;
+}
+
+function renderDiskSpaceUnavailable(element: HTMLElement, message: string): void {
+  element.innerHTML = `
+    <span style="display: inline-flex; align-items: center; gap: 6px; opacity: 0.7;">
+      ${twemojiImg(String.fromCodePoint(0x26a0), 'twemoji')} ${escapeHtml(message)}
     </span>
   `;
 }

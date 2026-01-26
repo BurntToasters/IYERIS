@@ -153,17 +153,29 @@ export function setupSystemHandlers(
       try {
         if (process.platform === 'win32') {
           return new Promise((resolve) => {
-            const driveLetter = drivePath.substring(0, 2);
-            const driveChar = driveLetter.charAt(0).toUpperCase();
+            const normalized = drivePath.replace(/\//g, '\\');
+            const isUnc = normalized.startsWith('\\\\');
 
-            if (!/^[A-Z]$/.test(driveChar)) {
-              console.error('[Main] Invalid drive letter:', driveChar);
-              resolve({ success: false, error: 'Invalid drive letter' });
-              return;
+            let psCommand = '';
+
+            if (isUnc) {
+              const uncRoot = normalized.endsWith('\\') ? normalized : normalized + '\\';
+              const escapedRoot = uncRoot.replace(/'/g, "''");
+              console.log('[Main] Getting disk space for UNC path:', uncRoot);
+              psCommand = `Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Root -eq '${escapedRoot}' } | Select-Object @{Name='Free';Expression={$_.Free}}, @{Name='Used';Expression={$_.Used}} | ConvertTo-Json`;
+            } else {
+              const driveLetter = normalized.substring(0, 2);
+              const driveChar = driveLetter.charAt(0).toUpperCase();
+
+              if (!/^[A-Z]$/.test(driveChar)) {
+                console.error('[Main] Invalid drive letter:', driveChar);
+                resolve({ success: false, error: 'Invalid drive letter' });
+                return;
+              }
+
+              console.log('[Main] Getting disk space for drive:', driveChar);
+              psCommand = `Get-PSDrive -Name ${driveChar} | Select-Object @{Name='Free';Expression={$_.Free}}, @{Name='Used';Expression={$_.Used}} | ConvertTo-Json`;
             }
-
-            console.log('[Main] Getting disk space for drive:', driveChar);
-            const psCommand = `Get-PSDrive -Name ${driveChar} | Select-Object @{Name='Free';Expression={$_.Free}}, @{Name='Used';Expression={$_.Used}} | ConvertTo-Json`;
 
             const { child: psProcess, timedOut } = spawnWithTimeout(
               'powershell',
@@ -198,9 +210,19 @@ export function setupSystemHandlers(
               }
               console.log('[Main] PowerShell output:', stdout);
               try {
-                const data = JSON.parse(stdout.trim());
-                const free = parseInt(data.Free);
-                const used = parseInt(data.Used);
+                const trimmed = stdout.trim();
+                if (!trimmed) {
+                  resolve({ success: false, error: 'Disk space not available for path' });
+                  return;
+                }
+                const data = JSON.parse(trimmed);
+                const entry = Array.isArray(data) ? data[0] : data;
+                if (!entry) {
+                  resolve({ success: false, error: 'Disk space not available for path' });
+                  return;
+                }
+                const free = parseInt(entry.Free);
+                const used = parseInt(entry.Used);
                 const total = free + used;
                 console.log('[Main] Success - Free:', free, 'Used:', used, 'Total:', total);
                 resolve({ success: true, free, total });

@@ -363,7 +363,7 @@ export function setupArchiveHandlers(): void {
                   );
                   resolve({ success: true });
                 } else {
-                  reject({ success: false, error: errorMsg || 'Gzip compression failed' });
+                  resolve({ success: false, error: errorMsg || 'Gzip compression failed' });
                 }
               });
             });
@@ -414,10 +414,13 @@ export function setupArchiveHandlers(): void {
                   if (operationId) {
                     activeArchiveProcesses.delete(operationId);
                   }
-                  reject({ success: false, error: gzipError.message || 'Gzip compression failed' });
+                  resolve({
+                    success: false,
+                    error: gzipError.message || 'Gzip compression failed',
+                  });
                 });
               } else {
-                reject({ success: false, error: errorMsg || 'Tar creation failed' });
+                resolve({ success: false, error: errorMsg || 'Tar creation failed' });
               }
             });
           });
@@ -485,7 +488,7 @@ export function setupArchiveHandlers(): void {
               );
               resolve({ success: true });
             } else {
-              reject({ success: false, error: errorMsg || 'Compression failed' });
+              resolve({ success: false, error: errorMsg || 'Compression failed' });
             }
           });
         });
@@ -576,7 +579,7 @@ export function setupArchiveHandlers(): void {
               if (operationId) {
                 activeArchiveProcesses.delete(operationId);
               }
-              reject({ success: false, error: getErrorMessage(error) });
+              resolve({ success: false, error: getErrorMessage(error) });
             }
           });
 
@@ -590,7 +593,7 @@ export function setupArchiveHandlers(): void {
             if (operationId) {
               activeArchiveProcesses.delete(operationId);
             }
-            reject({ success: false, error: error.message || 'Extraction failed' });
+            resolve({ success: false, error: error.message || 'Extraction failed' });
           });
         });
       } catch (error) {

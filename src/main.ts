@@ -143,6 +143,12 @@ app.whenReady().then(async () => {
     }
   }
 
+  if (shouldStartHidden && !(startupSettings.minimizeToTray || startupSettings.startOnLogin)) {
+    logger.info('[Startup] --hidden ignored (tray/login startup disabled)');
+    shouldStartHidden = false;
+    setShouldStartHidden(false);
+  }
+
   logger.info('[Startup] Starting with hidden mode:', shouldStartHidden);
 
   if (shouldStartHidden && (startupSettings.minimizeToTray || startupSettings.startOnLogin)) {
@@ -176,7 +182,7 @@ app.whenReady().then(async () => {
         }
 
         setTimeout(() => {
-          initializeAutoUpdater(startupSettings);
+          void initializeAutoUpdater(startupSettings);
         }, 1000);
 
         if (process.platform === 'darwin') {

@@ -68,8 +68,9 @@ export function compareVersions(a: string, b: string): number {
   return comparePrerelease(vA.prerelease, vB.prerelease);
 }
 
-export function initializeAutoUpdater(settings: Settings): void {
+export async function initializeAutoUpdater(settings: Settings): Promise<void> {
   const isDev = getIsDev();
+  const isMsiInstall = await checkMsiInstallation().catch(() => false);
 
   try {
     const autoUpdater = getAutoUpdater();
@@ -116,7 +117,7 @@ export function initializeAutoUpdater(settings: Settings): void {
     } else if (process.windowsStore) {
       console.log('[AutoUpdater] Running in Microsoft Store - auto-updater disabled');
       console.log('[AutoUpdater] Updates are handled by the Microsoft Store');
-    } else if (isInstalledViaMsi()) {
+    } else if (isMsiInstall || isInstalledViaMsi()) {
       console.log('[AutoUpdater] Installed via MSI (enterprise) - auto-updater disabled');
       console.log('[AutoUpdater] Updates should be managed by your IT administrator');
     }
@@ -195,7 +196,7 @@ export function initializeAutoUpdater(settings: Settings): void {
       !isRunningInFlatpak() &&
       !process.mas &&
       !process.windowsStore &&
-      !isInstalledViaMsi() &&
+      !isMsiInstall &&
       !isDev &&
       settings.autoCheckUpdates !== false
     ) {

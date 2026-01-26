@@ -421,6 +421,8 @@ export function setupFileOperationHandlers(): void {
           return { success: false, error: 'Invalid path' };
         }
 
+        clearUndoStackForPath(itemPath);
+
         const stats = await fs.stat(itemPath);
         if (stats.isDirectory()) {
           await fs.rm(itemPath, { recursive: true, force: true });
