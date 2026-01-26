@@ -71,7 +71,7 @@
   --toolbar-padding-h: 8px;
   --status-bar-height: 20px;
   --address-bar-height: 24px;
-  --sidebar-width: 160px;
+  --sidebar-width: 180px;
   --sidebar-width-collapsed: 44px;
   --sidebar-toggle-bottom: 26px;
   --preview-panel-width: 260px;
@@ -89,12 +89,12 @@
   --list-col-size: 90px;
   --list-col-modified: 160px;
   --list-header-height: 28px;
-  --nav-item-padding-v: 3px;
-  --nav-item-padding-h: 6px;
-  --nav-item-gap: 6px;
-  --sidebar-section-gap: 10px;
-  --sidebar-padding-v: 6px;
-  --sidebar-padding-h: 5px;
+  --nav-item-padding-v: 5px;
+  --nav-item-padding-h: 8px;
+  --nav-item-gap: 8px;
+  --sidebar-section-gap: 16px;
+  --sidebar-padding-v: 10px;
+  --sidebar-padding-h: 8px;
   --container-gap: 10px;
   --container-edge-padding: 6px;
   --container-edge-padding-top: 6px;
@@ -183,7 +183,7 @@ body.large-ui {
   --toolbar-padding-h: 12px;
   --status-bar-height: 24px;
   --address-bar-height: 28px;
-  --sidebar-width: 160px;
+  --sidebar-width: 200px;
   --sidebar-width-collapsed: 52px;
   --sidebar-toggle-bottom: 32px;
   --tab-bar-height: 36px;
@@ -202,12 +202,12 @@ body.large-ui {
   --list-col-size: 110px;
   --list-col-modified: 190px;
   --list-header-height: 34px;
-  --nav-item-padding-v: 5px;
-  --nav-item-padding-h: 8px;
-  --nav-item-gap: 8px;
-  --sidebar-section-gap: 12px;
-  --sidebar-padding-v: 8px;
-  --sidebar-padding-h: 6px;
+  --nav-item-padding-v: 6px;
+  --nav-item-padding-h: 10px;
+  --nav-item-gap: 10px;
+  --sidebar-section-gap: 20px;
+  --sidebar-padding-v: 12px;
+  --sidebar-padding-h: 10px;
   --container-gap: 12px;
   --container-edge-padding: 8px;
   --container-edge-padding-top: 8px;
@@ -763,13 +763,13 @@ body.tabs-enabled.tabs-single .toolbar-new-tab-btn {
 .sidebar-section {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
 }
 
 .sidebar-section + .sidebar-section {
-  padding-top: 8px;
-  margin-top: 8px;
-  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  padding-top: 0;
+  margin-top: 4px;
+  border-top: none;
 }
 
 .sidebar-section.primary {
@@ -783,7 +783,8 @@ body.tabs-enabled.tabs-single .toolbar-new-tab-btn {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 0 4px;
+  padding: 2px 4px;
+  margin-bottom: 2px;
 }
 
 .section-header .sidebar-toggle {
@@ -821,11 +822,11 @@ body.tabs-enabled.tabs-single .toolbar-new-tab-btn {
 
 .section-title {
   font-size: var(--font-size-section-title);
-  font-weight: 600;
-  text-transform: none;
-  letter-spacing: 0;
-  color: var(--text-secondary);
-  opacity: 0.9;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-tertiary);
+  opacity: 0.8;
   text-shadow: none;
   margin: 0;
   padding: 0;
@@ -840,7 +841,7 @@ body.tabs-enabled.tabs-single .toolbar-new-tab-btn {
 .section-body {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 2px;
 }
 
 .section-action {
@@ -877,25 +878,24 @@ body.tabs-enabled.tabs-single .toolbar-new-tab-btn {
 }
 
 .sidebar-section.primary .section-title {
-  color: var(--text-secondary);
-  opacity: 0.9;
+  color: var(--text-tertiary);
+  opacity: 0.8;
 }
 
 .quick-actions-grid {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 0 2px;
+  gap: 4px;
+  padding: 0;
 }
 
 .nav-item.quick-action {
   flex-direction: row;
   justify-content: flex-start;
   text-align: left;
-  padding: 4px 6px;
-  gap: 8px;
+  padding: var(--nav-item-padding-v) var(--nav-item-padding-h);
+  gap: var(--nav-item-gap);
   font-size: var(--font-size-nav);
-  margin-bottom: 0;
 }
 
 .nav-item.quick-action .nav-icon {
@@ -940,7 +940,6 @@ body.tabs-enabled.tabs-single .toolbar-new-tab-btn {
   font-weight: 500;
   color: var(--text-secondary);
   position: relative;
-  margin-bottom: 1px;
 }
 
 .nav-item:hover {
@@ -968,14 +967,14 @@ body.tabs-enabled.tabs-single .toolbar-new-tab-btn {
 .folder-tree {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 2px;
 }
 
 .tree-item {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 3px 6px;
+  gap: var(--nav-item-gap);
+  padding: var(--nav-item-padding-v) var(--nav-item-padding-h);
   border-radius: var(--radius-small);
   cursor: pointer;
   font-size: var(--font-size-nav);
