@@ -808,8 +808,13 @@ function renderTabs() {
 
   tabs.forEach((tab) => {
     const tabElement = document.createElement('div');
-    tabElement.className = `tab-item${tab.id === activeTabId ? ' active' : ''}`;
+    const isActive = tab.id === activeTabId;
+    tabElement.className = `tab-item${isActive ? ' active' : ''}`;
     tabElement.dataset.tabId = tab.id;
+    tabElement.setAttribute('role', 'tab');
+    tabElement.setAttribute('aria-selected', String(isActive));
+    tabElement.setAttribute('aria-controls', 'file-view');
+    tabElement.tabIndex = isActive ? 0 : -1;
 
     const pathParts = tab.path.split(/[/\\]/);
     const folderName = pathParts[pathParts.length - 1] || tab.path || 'New Tab';
@@ -828,6 +833,32 @@ function renderTabs() {
         closeTab(tab.id);
       } else {
         switchToTab(tab.id);
+      }
+    });
+
+    tabElement.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        switchToTab(tab.id);
+        return;
+      }
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'Home' || e.key === 'End') {
+        e.preventDefault();
+        const tabItems = Array.from(tabList.querySelectorAll<HTMLElement>('.tab-item'));
+        if (tabItems.length === 0) return;
+        const currentIndex = tabItems.indexOf(tabElement);
+        if (currentIndex === -1) return;
+        let nextIndex = currentIndex;
+        if (e.key === 'ArrowLeft') {
+          nextIndex = (currentIndex - 1 + tabItems.length) % tabItems.length;
+        } else if (e.key === 'ArrowRight') {
+          nextIndex = (currentIndex + 1) % tabItems.length;
+        } else if (e.key === 'Home') {
+          nextIndex = 0;
+        } else if (e.key === 'End') {
+          nextIndex = tabItems.length - 1;
+        }
+        tabItems[nextIndex]?.focus();
       }
     });
 
@@ -4199,6 +4230,25 @@ function applyPreviewPanelWidth(): void {
   }
 }
 
+function setSidebarCollapsed(collapsed?: boolean): void {
+  const sidebar = document.querySelector('.sidebar') as HTMLElement | null;
+  const toggle = document.getElementById('sidebar-toggle');
+  if (!sidebar) return;
+  const shouldCollapse =
+    typeof collapsed === 'boolean' ? collapsed : !sidebar.classList.contains('collapsed');
+  sidebar.classList.toggle('collapsed', shouldCollapse);
+  if (toggle) {
+    toggle.setAttribute('aria-expanded', String(!shouldCollapse));
+  }
+}
+
+function syncSidebarToggleState(): void {
+  const sidebar = document.querySelector('.sidebar') as HTMLElement | null;
+  const toggle = document.getElementById('sidebar-toggle');
+  if (!sidebar || !toggle) return;
+  toggle.setAttribute('aria-expanded', String(!sidebar.classList.contains('collapsed')));
+}
+
 function setupSidebarResize(): void {
   if (!sidebarResizeHandle) return;
   const sidebar = document.querySelector('.sidebar') as HTMLElement | null;
@@ -5178,10 +5228,10 @@ function setupEventListeners() {
   bookmarkAddBtn?.addEventListener('click', addBookmark);
 
   const sidebarToggle = document.getElementById('sidebar-toggle');
-  const sidebar = document.querySelector('.sidebar');
   sidebarToggle?.addEventListener('click', () => {
-    sidebar?.classList.toggle('collapsed');
+    setSidebarCollapsed();
   });
+  syncSidebarToggleState();
 
   searchInput?.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') {
@@ -5442,8 +5492,7 @@ function setupEventListeners() {
         }
       } else if (e.key === 'b' || e.key === 'B') {
         e.preventDefault();
-        const sidebar = document.querySelector('.sidebar');
-        sidebar?.classList.toggle('collapsed');
+        setSidebarCollapsed();
       }
     } else if (e.key === ' ' && selectedItems.size === 1) {
       const activeElement = document.activeElement;
@@ -5542,7 +5591,7 @@ function setupEventListeners() {
 
   document.querySelectorAll('.nav-item[data-action]').forEach((element) => {
     const item = element as HTMLElement;
-    item.addEventListener('click', async () => {
+    const handleAction = async () => {
       const action = item.dataset.action;
       if (action === 'home') {
         const homeDir = await window.electronAPI.getHomeDirectory();
@@ -5559,6 +5608,13 @@ function setupEventListeners() {
         } else {
           showToast('Failed to open trash folder', 'Error', 'error');
         }
+      }
+    };
+    item.addEventListener('click', handleAction);
+    item.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        handleAction();
       }
     });
   });

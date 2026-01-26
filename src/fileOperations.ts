@@ -659,6 +659,9 @@ export function setupFileOperationHandlers(): void {
           console.warn('[Security] Invalid destination path rejected:', destPath);
           return { success: false, error: 'Invalid destination path' };
         }
+        if (!Array.isArray(sourcePaths) || sourcePaths.length === 0) {
+          return { success: false, error: 'No source items provided' };
+        }
 
         const normalizedDestPath = normalizePathForComparison(destPath);
         for (const sourcePath of sourcePaths) {

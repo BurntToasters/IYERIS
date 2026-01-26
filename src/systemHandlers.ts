@@ -212,9 +212,14 @@ export function setupSystemHandlers(
           });
         } else if (process.platform === 'darwin' || process.platform === 'linux') {
           return new Promise((resolve) => {
-            const { child: dfProcess, timedOut } = spawnWithTimeout('df', ['-k', drivePath], 5000, {
-              shell: false,
-            });
+            const { child: dfProcess, timedOut } = spawnWithTimeout(
+              'df',
+              ['-k', '--', drivePath],
+              5000,
+              {
+                shell: false,
+              }
+            );
             let stdout = '';
             let stderr = '';
 
