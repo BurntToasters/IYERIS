@@ -46,6 +46,18 @@ const SPECIAL_DIRECTORY_ACTIONS: Record<string, { key: SpecialDirectory; label: 
   music: { key: 'music', label: 'Music' },
   videos: { key: 'videos', label: 'Videos' },
 };
+const HOME_VIEW_PATH = 'iyeris://home';
+const HOME_VIEW_LABEL = 'Home';
+const HOME_QUICK_ACCESS_ITEMS: Array<{ action: string; label: string; icon: number }> = [
+  { action: 'home', label: 'Home', icon: 0x1f3e0 },
+  { action: 'desktop', label: 'Desktop', icon: 0x1f5a5 },
+  { action: 'documents', label: 'Documents', icon: 0x1f4c4 },
+  { action: 'downloads', label: 'Downloads', icon: 0x1f4e5 },
+  { action: 'music', label: 'Music', icon: 0x1f3b5 },
+  { action: 'videos', label: 'Videos', icon: 0x1f3ac },
+  { action: 'browse', label: 'Browse', icon: 0x1f4c2 },
+  { action: 'trash', label: 'Trash', icon: 0x1f5d1 },
+];
 const LIST_COLUMN_MAX_WIDTHS: Record<string, number> = {
   name: 640,
   type: 320,
@@ -65,6 +77,14 @@ const gitStatusCache = new Map<
   { timestamp: number; isGitRepo: boolean; statuses: GitFileStatus[] }
 >();
 const gitStatusInFlight = new Map<string, Promise<GitStatusResponse>>();
+
+function isHomeViewPath(pathValue?: string | null): boolean {
+  return pathValue === HOME_VIEW_PATH;
+}
+
+function getPathDisplayValue(pathValue: string): string {
+  return isHomeViewPath(pathValue) ? HOME_VIEW_LABEL : pathValue;
+}
 
 function enqueueThumbnailLoad(loadFn: () => Promise<void>): void {
   const execute = async () => {
@@ -435,10 +455,24 @@ function updateBreadcrumb(currentPath: string): void {
 
   hideBreadcrumbMenu();
 
+  const displayPath = currentPath ? getPathDisplayValue(currentPath) : '';
+
   if (!isBreadcrumbMode || !currentPath) {
     breadcrumbContainer.style.display = 'none';
     addressInput.style.display = 'block';
-    addressInput.value = currentPath || '';
+    addressInput.value = displayPath;
+    return;
+  }
+
+  if (isHomeViewPath(currentPath)) {
+    breadcrumbContainer.style.display = 'inline-flex';
+    addressInput.style.display = 'none';
+    breadcrumbContainer.innerHTML = '';
+    const item = document.createElement('span');
+    item.className = 'breadcrumb-item';
+    item.textContent = HOME_VIEW_LABEL;
+    item.addEventListener('click', () => navigateTo(HOME_VIEW_PATH));
+    breadcrumbContainer.appendChild(item);
     return;
   }
 
@@ -447,7 +481,7 @@ function updateBreadcrumb(currentPath: string): void {
   if (segments.length === 0) {
     breadcrumbContainer.style.display = 'none';
     addressInput.style.display = 'block';
-    addressInput.value = currentPath;
+    addressInput.value = displayPath;
     return;
   }
 
@@ -550,7 +584,7 @@ function toggleBreadcrumbMode(): void {
     if (breadcrumbContainer) breadcrumbContainer.style.display = 'none';
     if (addressInput) {
       addressInput.style.display = 'block';
-      addressInput.value = currentPath;
+      addressInput.value = getPathDisplayValue(currentPath);
       addressInput.focus();
       addressInput.select();
     }
@@ -824,14 +858,21 @@ function renderTabs() {
     tabElement.setAttribute('aria-controls', 'file-view');
     tabElement.tabIndex = isActive ? 0 : -1;
 
+    const isHomeTab = isHomeViewPath(tab.path);
     const pathParts = tab.path.split(/[/\\]/);
-    const folderName = pathParts[pathParts.length - 1] || tab.path || 'New Tab';
+    const folderName = isHomeTab
+      ? HOME_VIEW_LABEL
+      : pathParts[pathParts.length - 1] || tab.path || 'New Tab';
+    const tabTitle = isHomeTab ? HOME_VIEW_LABEL : tab.path;
+    const tabIcon = isHomeTab
+      ? twemojiImg(String.fromCodePoint(0x1f3e0), 'twemoji')
+      : '<img src="assets/twemoji/1f4c2.svg" class="twemoji" alt="📂" draggable="false" />';
 
     tabElement.innerHTML = `
       <span class="tab-icon">
-        <img src="assets/twemoji/1f4c2.svg" class="twemoji" alt="📂" draggable="false" />
+        ${tabIcon}
       </span>
-      <span class="tab-title" title="${escapeHtml(tab.path)}">${escapeHtml(folderName)}</span>
+      <span class="tab-title" title="${escapeHtml(tabTitle)}">${escapeHtml(folderName)}</span>
       <button class="tab-close" title="Close Tab">&times;</button>
     `;
 
@@ -920,9 +961,16 @@ function switchToTab(tabId: string) {
 
 function restoreTabView(tab: TabData) {
   currentPath = tab.path;
-  if (addressInput) addressInput.value = tab.path;
+  if (addressInput) addressInput.value = getPathDisplayValue(tab.path);
   updateBreadcrumb(tab.path);
   updateNavigationButtons();
+
+  if (isHomeViewPath(tab.path)) {
+    setHomeViewActive(true);
+    return;
+  }
+
+  setHomeViewActive(false);
 
   if (viewMode === 'column') {
     renderColumnView();
@@ -956,7 +1004,10 @@ async function addNewTab(path?: string) {
 
   let tabPath = path;
   if (!tabPath) {
-    tabPath = await window.electronAPI.getHomeDirectory();
+    tabPath =
+      currentSettings.startupPath && currentSettings.startupPath.trim() !== ''
+        ? currentSettings.startupPath
+        : HOME_VIEW_PATH;
   }
 
   const newTab = createNewTabData(tabPath);
@@ -1035,6 +1086,10 @@ const addressInput = document.getElementById('address-input') as HTMLInputElemen
 const fileGrid = document.getElementById('file-grid') as HTMLElement;
 const fileView = document.getElementById('file-view') as HTMLElement;
 const columnView = document.getElementById('column-view') as HTMLElement;
+const homeView = document.getElementById('home-view') as HTMLElement;
+const homeQuickAccess = document.getElementById('home-quick-access') as HTMLElement;
+const homeBookmarks = document.getElementById('home-bookmarks') as HTMLElement;
+const homeDrives = document.getElementById('home-drives') as HTMLElement;
 const loading = document.getElementById('loading') as HTMLElement;
 const loadingText = document.getElementById('loading-text') as HTMLElement;
 const emptyState = document.getElementById('empty-state') as HTMLElement;
@@ -3510,6 +3565,7 @@ function loadBookmarks() {
 
   if (!currentSettings.bookmarks || currentSettings.bookmarks.length === 0) {
     bookmarksList.innerHTML = '<div class="sidebar-empty">No bookmarks yet</div>';
+    renderHomeBookmarks();
     return;
   }
 
@@ -3671,10 +3727,238 @@ function loadBookmarks() {
 
     bookmarksDropReady = true;
   }
+
+  renderHomeBookmarks();
+}
+
+function createHomeItem(options: {
+  label: string;
+  icon: string;
+  subtitle?: string;
+  ariaLabel?: string;
+  title?: string;
+  onActivate: () => void;
+}): HTMLElement {
+  const item = document.createElement('div');
+  item.className = 'home-item';
+  item.setAttribute('role', 'button');
+  item.tabIndex = 0;
+  item.setAttribute('aria-label', options.ariaLabel || options.label);
+  if (options.title) {
+    item.title = options.title;
+  }
+
+  item.innerHTML = `
+    <span class="home-item-icon">${options.icon}</span>
+    <span class="home-item-text">
+      <span class="home-item-label">${escapeHtml(options.label)}</span>
+      ${
+        options.subtitle
+          ? `<span class="home-item-subtitle">${escapeHtml(options.subtitle)}</span>`
+          : ''
+      }
+    </span>
+  `;
+
+  item.addEventListener('click', () => options.onActivate());
+  item.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      options.onActivate();
+    }
+  });
+
+  return item;
+}
+
+function renderHomeQuickAccess(): void {
+  if (!homeQuickAccess) return;
+  homeQuickAccess.innerHTML = '';
+
+  HOME_QUICK_ACCESS_ITEMS.forEach((item) => {
+    const icon = twemojiImg(String.fromCodePoint(item.icon), 'twemoji');
+    const homeItem = createHomeItem({
+      label: item.label,
+      icon,
+      ariaLabel: `Open ${item.label}`,
+      onActivate: () => {
+        handleQuickAction(item.action);
+      },
+    });
+    homeQuickAccess.appendChild(homeItem);
+  });
+}
+
+function renderHomeBookmarks(): void {
+  if (!homeBookmarks) return;
+  homeBookmarks.innerHTML = '';
+
+  if (!currentSettings.bookmarks || currentSettings.bookmarks.length === 0) {
+    homeBookmarks.innerHTML = '<div class="home-empty">No bookmarks yet</div>';
+    return;
+  }
+
+  currentSettings.bookmarks.forEach((bookmarkPath) => {
+    const pathParts = bookmarkPath.split(/[/\\]/);
+    const name = pathParts[pathParts.length - 1] || bookmarkPath;
+    const icon = twemojiImg(String.fromCodePoint(0x2b50), 'twemoji');
+    const bookmarkItem = createHomeItem({
+      label: name,
+      subtitle: bookmarkPath,
+      icon,
+      ariaLabel: `Open bookmark ${name}`,
+      title: bookmarkPath,
+      onActivate: () => {
+        navigateTo(bookmarkPath);
+      },
+    });
+    homeBookmarks.appendChild(bookmarkItem);
+  });
+}
+
+async function renderHomeDrives(drives?: string[]): Promise<void> {
+  if (!homeDrives) return;
+
+  if (!drives) {
+    homeDrives.innerHTML = '<div class="home-empty">Loading drives...</div>';
+  } else {
+    homeDrives.innerHTML = '';
+  }
+
+  let driveList: string[] = drives || [];
+
+  if (!drives) {
+    try {
+      driveList = await window.electronAPI.getDrives();
+    } catch {
+      driveList = [];
+    }
+  }
+
+  if (!driveList || driveList.length === 0) {
+    homeDrives.innerHTML = '<div class="home-empty">No drives found</div>';
+    return;
+  }
+
+  homeDrives.innerHTML = '';
+
+  driveList.forEach((drive) => {
+    const icon = twemojiImg(String.fromCodePoint(0x1f4be), 'twemoji');
+    const driveItem = createHomeItem({
+      label: drive,
+      icon,
+      ariaLabel: `Open drive ${drive}`,
+      title: drive,
+      onActivate: () => {
+        navigateTo(drive);
+      },
+    });
+    homeDrives.appendChild(driveItem);
+  });
+}
+
+function renderHomeView(): void {
+  renderHomeQuickAccess();
+  renderHomeBookmarks();
+  void renderHomeDrives();
+}
+
+function setHomeViewActive(active: boolean): void {
+  if (!homeView) return;
+  homeView.style.display = active ? 'flex' : 'none';
+
+  if (active) {
+    cancelDirectoryRequest();
+    cancelColumnOperations();
+    hideLoading();
+    if (fileGrid) fileGrid.style.display = 'none';
+    if (columnView) columnView.style.display = 'none';
+    if (listHeader) listHeader.style.display = 'none';
+    if (emptyState) emptyState.style.display = 'none';
+    resetVirtualizedRender();
+    allFiles = [];
+    filePathMap.clear();
+    selectedItems.clear();
+    updateStatusBar();
+    const statusDiskSpace = document.getElementById('status-disk-space');
+    if (statusDiskSpace) statusDiskSpace.textContent = '';
+    const statusGitBranch = document.getElementById('status-git-branch');
+    if (statusGitBranch) statusGitBranch.style.display = 'none';
+    renderHomeView();
+  } else {
+    if (viewMode === 'column') {
+      if (fileGrid) fileGrid.style.display = 'none';
+      if (columnView) columnView.style.display = 'flex';
+    } else {
+      if (columnView) columnView.style.display = 'none';
+      if (fileGrid) {
+        fileGrid.style.display = '';
+        fileGrid.className = viewMode === 'list' ? 'file-grid list-view' : 'file-grid';
+      }
+    }
+    if (listHeader) {
+      listHeader.style.display = viewMode === 'list' ? 'grid' : 'none';
+    }
+  }
+
+  const disableFileActions = active;
+  if (newFileBtn) newFileBtn.disabled = disableFileActions;
+  if (newFolderBtn) newFolderBtn.disabled = disableFileActions;
+  if (sortBtn) sortBtn.disabled = disableFileActions;
+  if (viewToggleBtn) viewToggleBtn.disabled = disableFileActions;
+  if (viewOptions) {
+    viewOptions
+      .querySelectorAll('button')
+      .forEach((button) => ((button as HTMLButtonElement).disabled = disableFileActions));
+  }
+}
+
+async function handleQuickAction(action?: string | null): Promise<void> {
+  if (!action) return;
+
+  if (action === 'home') {
+    navigateTo(HOME_VIEW_PATH);
+    return;
+  }
+
+  const specialAction = SPECIAL_DIRECTORY_ACTIONS[action];
+  if (specialAction) {
+    const result = await window.electronAPI.getSpecialDirectory(specialAction.key);
+    if (result.success && result.path) {
+      navigateTo(result.path);
+    } else {
+      showToast(
+        result.error || `Failed to open ${specialAction.label} folder`,
+        'Quick Access',
+        'error'
+      );
+    }
+    return;
+  }
+
+  if (action === 'browse') {
+    const result = await window.electronAPI.selectFolder();
+    if (result.success && result.path) {
+      navigateTo(result.path);
+    }
+    return;
+  }
+
+  if (action === 'trash') {
+    const result = await window.electronAPI.openTrash();
+    if (result.success) {
+      showToast('Opening system trash folder', 'Info', 'info');
+    } else {
+      showToast('Failed to open trash folder', 'Error', 'error');
+    }
+  }
 }
 
 async function addBookmark() {
-  if (!currentPath) return;
+  if (!currentPath || isHomeViewPath(currentPath)) {
+    showToast('Open a folder to add a bookmark', 'Bookmarks', 'info');
+    return;
+  }
   await addBookmarkByPath(currentPath);
 }
 
@@ -3775,6 +4059,9 @@ function toggleSearch() {
     searchBarWrapper.style.display = 'block';
     searchInput.focus();
     isSearchMode = true;
+    if (isHomeViewPath(currentPath) && !isGlobalSearch) {
+      toggleSearchScope();
+    }
     updateSearchPlaceholder();
   } else {
     closeSearch();
@@ -3877,6 +4164,11 @@ async function performSearch() {
   if (!query) {
     searchRequestId += 1;
     cancelActiveSearch();
+    return;
+  }
+
+  if (!isGlobalSearch && isHomeViewPath(currentPath)) {
+    showToast('Open a folder or use global search', 'Search', 'info');
     return;
   }
 
@@ -4511,7 +4803,7 @@ function getWindowsDrivePath(pathValue: string): string {
 
 async function updateDiskSpace() {
   const statusDiskSpace = document.getElementById('status-disk-space');
-  if (!statusDiskSpace || !currentPath) return;
+  if (!statusDiskSpace || !currentPath || isHomeViewPath(currentPath)) return;
 
   let drivePath = currentPath;
   if (platformOS === 'win32') {
@@ -4654,8 +4946,6 @@ async function zoomReset() {
 async function init() {
   console.log('Init: Getting platform, store info, and settings...');
 
-  const homeDirectoryPromise = window.electronAPI.getHomeDirectory();
-
   const [platform, mas, flatpak, msStore, appVersion] = await Promise.all([
     window.electronAPI.getPlatform(),
     window.electronAPI.isMas(),
@@ -4700,7 +4990,7 @@ async function init() {
   const startupPath =
     currentSettings.startupPath && currentSettings.startupPath.trim() !== ''
       ? currentSettings.startupPath
-      : await homeDirectoryPromise;
+      : HOME_VIEW_PATH;
 
   setupEventListeners();
   loadDrives();
@@ -4844,6 +5134,8 @@ async function loadDrives() {
     driveItem.addEventListener('click', () => navigateTo(drive));
     drivesList.appendChild(driveItem);
   });
+
+  renderHomeDrives(drives);
 
   if (currentSettings.showFolderTree !== false) {
     folderTreeManager.render(drives);
@@ -5280,7 +5572,12 @@ function setupEventListeners() {
 
   addressInput?.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') {
-      navigateTo(addressInput.value);
+      const value = addressInput.value.trim();
+      if (value === HOME_VIEW_LABEL) {
+        navigateTo(HOME_VIEW_PATH);
+      } else {
+        navigateTo(value);
+      }
     }
   });
 
@@ -5465,13 +5762,23 @@ function setupEventListeners() {
             searchBarWrapper.style.display = 'block';
             isSearchMode = true;
           }
-          isGlobalSearch = false;
-          searchScopeToggle.classList.remove('global');
-          searchScopeToggle.title = 'Local Search (Current Folder)';
+          const useGlobalSearch = isHomeViewPath(currentPath);
+          isGlobalSearch = useGlobalSearch;
           const img = searchScopeToggle.querySelector('img');
-          if (img) {
-            img.src = 'assets/twemoji/1f4c1.svg';
-            img.alt = '📁';
+          if (useGlobalSearch) {
+            searchScopeToggle.classList.add('global');
+            searchScopeToggle.title = 'Global Search (All Indexed Files)';
+            if (img) {
+              img.src = 'assets/twemoji/1f30d.svg';
+              img.alt = '🌍';
+            }
+          } else {
+            searchScopeToggle.classList.remove('global');
+            searchScopeToggle.title = 'Local Search (Current Folder)';
+            if (img) {
+              img.src = 'assets/twemoji/1f4c1.svg';
+              img.alt = '📁';
+            }
           }
           updateSearchPlaceholder();
           searchInput.focus();
@@ -5621,39 +5928,7 @@ function setupEventListeners() {
 
   document.querySelectorAll('.nav-item[data-action]').forEach((element) => {
     const item = element as HTMLElement;
-    const handleAction = async () => {
-      const action = item.dataset.action;
-      const specialAction = action ? SPECIAL_DIRECTORY_ACTIONS[action] : undefined;
-      if (specialAction) {
-        const result = await window.electronAPI.getSpecialDirectory(specialAction.key);
-        if (result.success && result.path) {
-          navigateTo(result.path);
-        } else {
-          showToast(
-            result.error || `Failed to open ${specialAction.label} folder`,
-            'Quick Access',
-            'error'
-          );
-        }
-        return;
-      }
-      if (action === 'home') {
-        const homeDir = await window.electronAPI.getHomeDirectory();
-        navigateTo(homeDir);
-      } else if (action === 'browse') {
-        const result = await window.electronAPI.selectFolder();
-        if (result.success && result.path) {
-          navigateTo(result.path);
-        }
-      } else if (action === 'trash') {
-        const result = await window.electronAPI.openTrash();
-        if (result.success) {
-          showToast('Opening system trash folder', 'Info', 'info');
-        } else {
-          showToast('Failed to open trash folder', 'Error', 'error');
-        }
-      }
-    };
+    const handleAction = () => handleQuickAction(item.dataset.action);
     item.addEventListener('click', handleAction);
     item.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' || e.key === ' ') {
@@ -5910,6 +6185,7 @@ function addToSearchHistory(query: string) {
 
 function addToDirectoryHistory(dirPath: string) {
   if (!currentSettings.enableSearchHistory || !dirPath.trim()) return;
+  if (isHomeViewPath(dirPath)) return;
   if (!currentSettings.directoryHistory) {
     currentSettings.directoryHistory = [];
   }
@@ -5999,6 +6275,46 @@ function updateHiddenFilesCount(items: FileItem[], append = false): void {
 
 async function navigateTo(path: string, skipHistoryUpdate = false) {
   if (!path) return;
+  const trimmedPath = path.trim();
+  if (trimmedPath === HOME_VIEW_LABEL) {
+    path = HOME_VIEW_PATH;
+  }
+
+  if (isHomeViewPath(path)) {
+    if (typeaheadTimeout) {
+      clearTimeout(typeaheadTimeout);
+      typeaheadTimeout = null;
+    }
+    typeaheadBuffer = '';
+    hideTypeaheadIndicator();
+
+    if (isSearchMode) {
+      closeSearch();
+    }
+
+    if (thumbnailObserver) {
+      thumbnailObserver.disconnect();
+    }
+
+    hideLoading();
+
+    currentPath = HOME_VIEW_PATH;
+    updateCurrentTabPath(path);
+    if (addressInput) addressInput.value = HOME_VIEW_LABEL;
+    updateBreadcrumb(path);
+
+    if (!skipHistoryUpdate && (historyIndex === -1 || history[historyIndex] !== path)) {
+      history = history.slice(0, historyIndex + 1);
+      history.push(path);
+      historyIndex = history.length - 1;
+    }
+
+    updateNavigationButtons();
+    setHomeViewActive(true);
+    return;
+  }
+
+  setHomeViewActive(false);
   let requestId = 0;
   let operationId = '';
 
@@ -7496,7 +7812,7 @@ function goForward() {
 }
 
 function isRootPath(pathValue: string): boolean {
-  if (!pathValue) return true;
+  if (!pathValue || isHomeViewPath(pathValue)) return true;
   if (!isWindowsPath(pathValue)) {
     return pathValue === '/';
   }
@@ -7549,6 +7865,11 @@ async function toggleView() {
 }
 
 async function applyViewMode() {
+  if (isHomeViewPath(currentPath)) {
+    setHomeViewActive(true);
+    return;
+  }
+
   if (viewMode === 'column') {
     cancelDirectoryRequest();
     hideLoading();
@@ -7602,6 +7923,10 @@ async function renderColumnView() {
   if (!columnView) return;
 
   cancelColumnOperations();
+  if (isHomeViewPath(currentPath)) {
+    columnView.innerHTML = '';
+    return;
+  }
 
   const currentRenderId = ++columnViewRenderId;
   while (isRenderingColumnView) {
@@ -8118,7 +8443,8 @@ function updateViewModeControls() {
     });
   }
   if (listHeader) {
-    listHeader.style.display = viewMode === 'list' ? 'grid' : 'none';
+    listHeader.style.display =
+      viewMode === 'list' && !isHomeViewPath(currentPath) ? 'grid' : 'none';
   }
 }
 
@@ -8143,6 +8469,10 @@ async function createNewFolder() {
 }
 
 async function createNewFileWithInlineRename() {
+  if (!currentPath || isHomeViewPath(currentPath)) {
+    showToast('Open a folder to create a file', 'Create', 'info');
+    return;
+  }
   const fileName = 'File';
   let counter = 1;
   let finalFileName = fileName;
@@ -8175,6 +8505,10 @@ async function createNewFileWithInlineRename() {
 }
 
 async function createNewFolderWithInlineRename() {
+  if (!currentPath || isHomeViewPath(currentPath)) {
+    showToast('Open a folder to create a folder', 'Create', 'info');
+    return;
+  }
   const folderName = 'New Folder';
   let counter = 1;
   let finalFolderName = folderName;

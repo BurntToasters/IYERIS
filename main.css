@@ -1892,6 +1892,108 @@ body.platform-win32 .file-view::-webkit-scrollbar-thumb:hover {
   padding: 8px;
 }
 
+.home-view {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 12px;
+}
+
+.home-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.home-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.home-section-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-tertiary);
+}
+
+.home-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 8px;
+}
+
+.home-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.home-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-small);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background var(--animation-duration) var(--animation-easing),
+    color var(--animation-duration) var(--animation-easing),
+    transform var(--animation-duration) var(--animation-easing);
+}
+
+.home-item:hover {
+  background: var(--hover-color);
+  color: var(--text-primary);
+}
+
+.home-item:active {
+  background: var(--active-color);
+}
+
+.home-item:focus-visible {
+  background: rgba(var(--accent-rgb), 0.16);
+  outline: 3px solid rgba(var(--accent-rgb), 0.6);
+  outline-offset: 2px;
+}
+
+.home-item-icon {
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.9;
+}
+
+.home-item-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.home-item-label {
+  font-weight: 600;
+  color: inherit;
+}
+
+.home-item-subtitle {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.home-empty {
+  padding: 6px 8px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
 .list-header {
   display: grid;
   grid-template-columns: var(--list-col-name) var(--list-col-type) var(--list-col-size) var(--list-col-modified);
@@ -1902,8 +2004,8 @@ body.platform-win32 .file-view::-webkit-scrollbar-thumb:hover {
   position: sticky;
   top: 0;
   z-index: 5;
-  background: linear-gradient(180deg, rgba(24, 24, 24, 0.98), rgba(24, 24, 24, 0.92));
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(180deg, rgba(var(--bg-primary-rgb), 0.98), rgba(var(--bg-primary-rgb), 0.92));
+  border-bottom: 1px solid var(--separator);
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -1952,7 +2054,7 @@ body.platform-win32 .file-view::-webkit-scrollbar-thumb:hover {
   bottom: 0;
   width: 2px;
   border-radius: 2px;
-  background: rgba(255, 255, 255, 0.15);
+  background: var(--separator);
 }
 
 .file-grid.list-view {
@@ -2270,8 +2372,8 @@ select:focus-visible {
   pointer-events: none;
   padding: 6px 10px;
   border-radius: 999px;
-  background: rgba(24, 24, 24, 0.92);
-  border: 1px solid rgba(var(--accent-rgb), 0.4);
+  background: var(--glass-modal-bg);
+  border: 1px solid var(--glass-modal-border);
   color: var(--text-primary);
   font-size: 11px;
   display: inline-flex;
@@ -2306,8 +2408,8 @@ select:focus-visible {
   transform: translateX(-50%);
   padding: 6px 12px;
   border-radius: 999px;
-  background: rgba(24, 24, 24, 0.9);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: var(--glass-modal-bg);
+  border: 1px solid var(--glass-modal-border);
   color: var(--text-primary);
   font-size: 12px;
   letter-spacing: 0.04em;
@@ -5886,6 +5988,19 @@ body.theme-github {
 body.theme-github .glass-panel {
   background: rgba(22, 27, 34, 0.75);
   border-color: rgba(201, 209, 217, 0.08);
+}
+
+body.theme-dark,
+body.theme-nord,
+body.theme-catppuccin,
+body.theme-dracula,
+body.theme-solarized,
+body.theme-github {
+  --hover-color: color-mix(in srgb, var(--text-primary) 6%, transparent);
+  --active-color: color-mix(in srgb, var(--text-primary) 10%, transparent);
+  --separator: color-mix(in srgb, var(--text-primary) 12%, transparent);
+  --glass-modal-bg: rgba(var(--bg-primary-rgb), 0.98);
+  --glass-modal-border: color-mix(in srgb, var(--text-primary) 12%, transparent);
 }
 
 .file-item.cut {

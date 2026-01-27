@@ -408,6 +408,26 @@
               <div class="list-header-resize" data-resize="modified" aria-hidden="true"></div>
             </div>
           </div>
+          <div class="home-view" id="home-view" style="display: none;" role="region" aria-label="Home">
+            <div class="home-section">
+              <div class="home-section-header">
+                <span class="home-section-title">Quick Access</span>
+              </div>
+              <div class="home-grid" id="home-quick-access"></div>
+            </div>
+            <div class="home-section">
+              <div class="home-section-header">
+                <span class="home-section-title">Bookmarks</span>
+              </div>
+              <div class="home-list" id="home-bookmarks"></div>
+            </div>
+            <div class="home-section">
+              <div class="home-section-header">
+                <span class="home-section-title">Drives</span>
+              </div>
+              <div class="home-grid" id="home-drives"></div>
+            </div>
+          </div>
           <div class="file-grid" id="file-grid" role="grid" aria-label="Files and folders"></div>
           <div class="column-view" id="column-view" style="display: none;" role="grid" aria-label="Column view"></div>
           <div class="selection-rect" id="selection-rect" aria-hidden="true"></div>
@@ -768,10 +788,10 @@
               <div class="setting-item" data-searchable="startup folder path directory home default">
                 <div class="setting-info">
                   <label for="startup-path-input">Custom Startup Folder</label>
-                  <p class="setting-description">Set a custom folder to open when IYERIS starts. Leave empty to use your home folder.</p>
+                  <p class="setting-description">Set a custom folder to open when IYERIS starts. Leave empty to use the Home view.</p>
                 </div>
                 <div class="setting-input-group">
-                  <input type="text" id="startup-path-input" class="settings-input" placeholder="Leave empty for default (Home folder)">
+                  <input type="text" id="startup-path-input" class="settings-input" placeholder="Leave empty for default (Home view)">
                   <button class="modal-button compact" id="browse-startup-path-btn" title="Browse for folder"><img src="assets/twemoji/1f4c1.svg" class="twemoji" alt="📁" draggable="false" /></button>
                 </div>
               </div>
