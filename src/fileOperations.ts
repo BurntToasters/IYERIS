@@ -26,6 +26,7 @@ import { registerDirectoryOperationTarget, unregisterDirectoryOperationTarget } 
 const hiddenFileCache = new Map<string, { isHidden: boolean; timestamp: number }>();
 let isCleaningCache = false;
 let hiddenFileCacheCleanupInterval: NodeJS.Timeout | null = null;
+type AppPathName = Parameters<typeof app.getPath>[0];
 
 function normalizeCaseKey(targetPath: string): string {
   if (process.platform === 'win32' || process.platform === 'darwin') {
@@ -245,6 +246,29 @@ export function setupFileOperationHandlers(): void {
   ipcMain.handle('get-home-directory', (): string => {
     return app.getPath('home');
   });
+
+  const specialDirectoryMap: Record<string, AppPathName> = {
+    desktop: 'desktop',
+    documents: 'documents',
+    downloads: 'downloads',
+    music: 'music',
+    videos: 'videos',
+  };
+
+  ipcMain.handle(
+    'get-special-directory',
+    (_event: IpcMainInvokeEvent, directory: string): PathResponse => {
+      const mappedPath = specialDirectoryMap[directory];
+      if (!mappedPath) {
+        return { success: false, error: 'Unsupported directory' };
+      }
+      try {
+        return { success: true, path: app.getPath(mappedPath) };
+      } catch (error) {
+        return { success: false, error: getErrorMessage(error) };
+      }
+    }
+  );
 
   ipcMain.handle(
     'open-file',

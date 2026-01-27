@@ -298,6 +298,8 @@ export interface UpdateDownloadProgress {
   total: number;
 }
 
+export type SpecialDirectory = 'desktop' | 'documents' | 'downloads' | 'music' | 'videos';
+
 export interface ElectronAPI {
   getDirectoryContents: (
     dirPath: string,
@@ -307,6 +309,7 @@ export interface ElectronAPI {
   cancelDirectoryContents: (operationId: string) => Promise<ApiResponse>;
   getDrives: () => Promise<string[]>;
   getHomeDirectory: () => Promise<string>;
+  getSpecialDirectory: (directory: SpecialDirectory) => Promise<PathResponse>;
   openFile: (filePath: string) => Promise<ApiResponse>;
   selectFolder: () => Promise<PathResponse>;
   minimizeWindow: () => Promise<void>;

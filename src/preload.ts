@@ -8,6 +8,7 @@ import type {
   ChecksumResult,
   SearchFilters,
   DirectoryContentsProgress,
+  SpecialDirectory,
 } from './types';
 
 const electronAPI: ElectronAPI = {
@@ -17,6 +18,8 @@ const electronAPI: ElectronAPI = {
     ipcRenderer.invoke('cancel-directory-contents', operationId),
   getDrives: () => ipcRenderer.invoke('get-drives'),
   getHomeDirectory: () => ipcRenderer.invoke('get-home-directory'),
+  getSpecialDirectory: (directory: SpecialDirectory) =>
+    ipcRenderer.invoke('get-special-directory', directory),
   openFile: (filePath: string) => ipcRenderer.invoke('open-file', filePath),
   selectFolder: () => ipcRenderer.invoke('select-folder'),
   minimizeWindow: () => ipcRenderer.invoke('minimize-window'),

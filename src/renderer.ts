@@ -6,6 +6,7 @@ import type {
   ContentSearchResult,
   GitStatusResponse,
   GitFileStatus,
+  SpecialDirectory,
 } from './types';
 import { createFolderTreeManager } from './folderDir.js';
 import { escapeHtml, getErrorMessage } from './shared.js';
@@ -37,6 +38,13 @@ const LIST_COLUMN_MIN_WIDTHS: Record<string, number> = {
   type: 120,
   size: 80,
   modified: 140,
+};
+const SPECIAL_DIRECTORY_ACTIONS: Record<string, { key: SpecialDirectory; label: string }> = {
+  desktop: { key: 'desktop', label: 'Desktop' },
+  documents: { key: 'documents', label: 'Documents' },
+  downloads: { key: 'downloads', label: 'Downloads' },
+  music: { key: 'music', label: 'Music' },
+  videos: { key: 'videos', label: 'Videos' },
 };
 const LIST_COLUMN_MAX_WIDTHS: Record<string, number> = {
   name: 640,
@@ -5615,6 +5623,20 @@ function setupEventListeners() {
     const item = element as HTMLElement;
     const handleAction = async () => {
       const action = item.dataset.action;
+      const specialAction = action ? SPECIAL_DIRECTORY_ACTIONS[action] : undefined;
+      if (specialAction) {
+        const result = await window.electronAPI.getSpecialDirectory(specialAction.key);
+        if (result.success && result.path) {
+          navigateTo(result.path);
+        } else {
+          showToast(
+            result.error || `Failed to open ${specialAction.label} folder`,
+            'Quick Access',
+            'error'
+          );
+        }
+        return;
+      }
       if (action === 'home') {
         const homeDir = await window.electronAPI.getHomeDirectory();
         navigateTo(homeDir);
