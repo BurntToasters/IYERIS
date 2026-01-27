@@ -89,6 +89,19 @@ export interface Settings {
   updateChannel: 'auto' | 'beta' | 'stable';
 }
 
+export interface HomeSettings {
+  showQuickAccess: boolean;
+  showRecents: boolean;
+  showBookmarks: boolean;
+  showDrives: boolean;
+  showDiskUsage: boolean;
+  hiddenQuickAccessItems: string[];
+  quickAccessOrder: string[];
+  sectionOrder: string[];
+  pinnedRecents: string[];
+  compactCards: boolean;
+}
+
 export interface FileItem {
   name: string;
   path: string;
@@ -177,6 +190,10 @@ export interface PropertiesResponse extends ApiResponse {
 
 export interface SettingsResponse extends ApiResponse {
   settings?: Settings;
+}
+
+export interface HomeSettingsResponse extends ApiResponse {
+  settings?: HomeSettings;
 }
 
 export interface PathResponse extends ApiResponse {
@@ -328,6 +345,10 @@ export interface ElectronAPI {
   resetSettings: () => Promise<ApiResponse>;
   relaunchApp: () => Promise<void>;
   getSettingsPath: () => Promise<string>;
+  getHomeSettings: () => Promise<HomeSettingsResponse>;
+  saveHomeSettings: (settings: HomeSettings) => Promise<ApiResponse>;
+  resetHomeSettings: () => Promise<ApiResponse>;
+  getHomeSettingsPath: () => Promise<string>;
 
   setClipboard: (
     clipboardData: { operation: 'copy' | 'cut'; paths: string[] } | null
@@ -342,6 +363,7 @@ export interface ElectronAPI {
   clearDragData: () => Promise<void>;
 
   onSettingsChanged: (callback: (settings: Settings) => void) => () => void;
+  onHomeSettingsChanged: (callback: (settings: HomeSettings) => void) => () => void;
 
   copyItems: (sourcePaths: string[], destPath: string) => Promise<ApiResponse>;
   moveItems: (sourcePaths: string[], destPath: string) => Promise<ApiResponse>;

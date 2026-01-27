@@ -36,6 +36,7 @@ import {
   saveSettings,
   applyLoginItemSettings,
 } from './settingsManager';
+import { setupHomeSettingsHandlers } from './homeSettingsManager';
 import { setupUndoRedoHandlers, clearUndoRedoStacks } from './undoRedoManager';
 import {
   createWindow,
@@ -95,6 +96,7 @@ setupZoomHandlers();
 setupFileAnalysisHandlers();
 setupSystemHandlers(loadSettings, saveSettings);
 setupSettingsHandlers(createTray);
+setupHomeSettingsHandlers();
 setupUndoRedoHandlers();
 setupWindowHandlers();
 setupFileOperationHandlers();

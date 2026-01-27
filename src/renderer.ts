@@ -11,6 +11,13 @@ import type {
 import { createFolderTreeManager } from './folderDir.js';
 import { escapeHtml, getErrorMessage } from './shared.js';
 import { createDefaultSettings } from './settings.js';
+import {
+  createHomeController,
+  getPathDisplayValue,
+  HOME_VIEW_LABEL,
+  HOME_VIEW_PATH,
+  isHomeViewPath,
+} from './home.js';
 import { createTourController, type TourController } from './tour.js';
 
 const THUMBNAIL_MAX_SIZE = 10 * 1024 * 1024;
@@ -46,18 +53,6 @@ const SPECIAL_DIRECTORY_ACTIONS: Record<string, { key: SpecialDirectory; label: 
   music: { key: 'music', label: 'Music' },
   videos: { key: 'videos', label: 'Videos' },
 };
-const HOME_VIEW_PATH = 'iyeris://home';
-const HOME_VIEW_LABEL = 'Home';
-const HOME_QUICK_ACCESS_ITEMS: Array<{ action: string; label: string; icon: number }> = [
-  { action: 'home', label: 'Home', icon: 0x1f3e0 },
-  { action: 'desktop', label: 'Desktop', icon: 0x1f5a5 },
-  { action: 'documents', label: 'Documents', icon: 0x1f4c4 },
-  { action: 'downloads', label: 'Downloads', icon: 0x1f4e5 },
-  { action: 'music', label: 'Music', icon: 0x1f3b5 },
-  { action: 'videos', label: 'Videos', icon: 0x1f3ac },
-  { action: 'browse', label: 'Browse', icon: 0x1f4c2 },
-  { action: 'trash', label: 'Trash', icon: 0x1f5d1 },
-];
 const LIST_COLUMN_MAX_WIDTHS: Record<string, number> = {
   name: 640,
   type: 320,
@@ -77,14 +72,6 @@ const gitStatusCache = new Map<
   { timestamp: number; isGitRepo: boolean; statuses: GitFileStatus[] }
 >();
 const gitStatusInFlight = new Map<string, Promise<GitStatusResponse>>();
-
-function isHomeViewPath(pathValue?: string | null): boolean {
-  return pathValue === HOME_VIEW_PATH;
-}
-
-function getPathDisplayValue(pathValue: string): string {
-  return isHomeViewPath(pathValue) ? HOME_VIEW_LABEL : pathValue;
-}
 
 function enqueueThumbnailLoad(loadFn: () => Promise<void>): void {
   const execute = async () => {
@@ -1087,9 +1074,6 @@ const fileGrid = document.getElementById('file-grid') as HTMLElement;
 const fileView = document.getElementById('file-view') as HTMLElement;
 const columnView = document.getElementById('column-view') as HTMLElement;
 const homeView = document.getElementById('home-view') as HTMLElement;
-const homeQuickAccess = document.getElementById('home-quick-access') as HTMLElement;
-const homeBookmarks = document.getElementById('home-bookmarks') as HTMLElement;
-const homeDrives = document.getElementById('home-drives') as HTMLElement;
 const loading = document.getElementById('loading') as HTMLElement;
 const loadingText = document.getElementById('loading-text') as HTMLElement;
 const emptyState = document.getElementById('empty-state') as HTMLElement;
@@ -1523,6 +1507,21 @@ function showToast(
 ): void {
   showToastQueued(message, title, type);
 }
+
+const homeController = createHomeController({
+  twemojiImg,
+  showToast,
+  showConfirm,
+  navigateTo: (path) => {
+    void navigateTo(path);
+  },
+  handleQuickAction: (action) => {
+    void handleQuickAction(action);
+  },
+  getFileIcon,
+  formatFileSize,
+  getSettings: () => currentSettings,
+});
 
 const MAX_VISIBLE_TOASTS = 3;
 const toastQueue: Array<{
@@ -3565,7 +3564,7 @@ function loadBookmarks() {
 
   if (!currentSettings.bookmarks || currentSettings.bookmarks.length === 0) {
     bookmarksList.innerHTML = '<div class="sidebar-empty">No bookmarks yet</div>';
-    renderHomeBookmarks();
+    homeController.renderHomeBookmarks();
     return;
   }
 
@@ -3728,139 +3727,7 @@ function loadBookmarks() {
     bookmarksDropReady = true;
   }
 
-  renderHomeBookmarks();
-}
-
-function createHomeItem(options: {
-  label: string;
-  icon: string;
-  subtitle?: string;
-  ariaLabel?: string;
-  title?: string;
-  onActivate: () => void;
-}): HTMLElement {
-  const item = document.createElement('div');
-  item.className = 'home-item';
-  item.setAttribute('role', 'button');
-  item.tabIndex = 0;
-  item.setAttribute('aria-label', options.ariaLabel || options.label);
-  if (options.title) {
-    item.title = options.title;
-  }
-
-  item.innerHTML = `
-    <span class="home-item-icon">${options.icon}</span>
-    <span class="home-item-text">
-      <span class="home-item-label">${escapeHtml(options.label)}</span>
-      ${
-        options.subtitle
-          ? `<span class="home-item-subtitle">${escapeHtml(options.subtitle)}</span>`
-          : ''
-      }
-    </span>
-  `;
-
-  item.addEventListener('click', () => options.onActivate());
-  item.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      options.onActivate();
-    }
-  });
-
-  return item;
-}
-
-function renderHomeQuickAccess(): void {
-  if (!homeQuickAccess) return;
-  homeQuickAccess.innerHTML = '';
-
-  HOME_QUICK_ACCESS_ITEMS.forEach((item) => {
-    const icon = twemojiImg(String.fromCodePoint(item.icon), 'twemoji');
-    const homeItem = createHomeItem({
-      label: item.label,
-      icon,
-      ariaLabel: `Open ${item.label}`,
-      onActivate: () => {
-        handleQuickAction(item.action);
-      },
-    });
-    homeQuickAccess.appendChild(homeItem);
-  });
-}
-
-function renderHomeBookmarks(): void {
-  if (!homeBookmarks) return;
-  homeBookmarks.innerHTML = '';
-
-  if (!currentSettings.bookmarks || currentSettings.bookmarks.length === 0) {
-    homeBookmarks.innerHTML = '<div class="home-empty">No bookmarks yet</div>';
-    return;
-  }
-
-  currentSettings.bookmarks.forEach((bookmarkPath) => {
-    const pathParts = bookmarkPath.split(/[/\\]/);
-    const name = pathParts[pathParts.length - 1] || bookmarkPath;
-    const icon = twemojiImg(String.fromCodePoint(0x2b50), 'twemoji');
-    const bookmarkItem = createHomeItem({
-      label: name,
-      subtitle: bookmarkPath,
-      icon,
-      ariaLabel: `Open bookmark ${name}`,
-      title: bookmarkPath,
-      onActivate: () => {
-        navigateTo(bookmarkPath);
-      },
-    });
-    homeBookmarks.appendChild(bookmarkItem);
-  });
-}
-
-async function renderHomeDrives(drives?: string[]): Promise<void> {
-  if (!homeDrives) return;
-
-  if (!drives) {
-    homeDrives.innerHTML = '<div class="home-empty">Loading drives...</div>';
-  } else {
-    homeDrives.innerHTML = '';
-  }
-
-  let driveList: string[] = drives || [];
-
-  if (!drives) {
-    try {
-      driveList = await window.electronAPI.getDrives();
-    } catch {
-      driveList = [];
-    }
-  }
-
-  if (!driveList || driveList.length === 0) {
-    homeDrives.innerHTML = '<div class="home-empty">No drives found</div>';
-    return;
-  }
-
-  homeDrives.innerHTML = '';
-
-  driveList.forEach((drive) => {
-    const icon = twemojiImg(String.fromCodePoint(0x1f4be), 'twemoji');
-    const driveItem = createHomeItem({
-      label: drive,
-      icon,
-      ariaLabel: `Open drive ${drive}`,
-      title: drive,
-      onActivate: () => {
-        navigateTo(drive);
-      },
-    });
-    homeDrives.appendChild(driveItem);
-  });
-}
-
-function renderHomeView(): void {
-  renderHomeQuickAccess();
-  renderHomeBookmarks();
-  void renderHomeDrives();
+  homeController.renderHomeBookmarks();
 }
 
 function setHomeViewActive(active: boolean): void {
@@ -3884,7 +3751,7 @@ function setHomeViewActive(active: boolean): void {
     if (statusDiskSpace) statusDiskSpace.textContent = '';
     const statusGitBranch = document.getElementById('status-git-branch');
     if (statusGitBranch) statusGitBranch.style.display = 'none';
-    renderHomeView();
+    homeController.renderHomeView();
   } else {
     if (viewMode === 'column') {
       if (fileGrid) fileGrid.style.display = 'none';
@@ -4052,6 +3919,7 @@ async function addToRecentFiles(filePath: string) {
 
   debouncedSaveSettings();
   loadRecentFiles();
+  homeController.renderHomeRecents();
 }
 
 function toggleSearch() {
@@ -4955,6 +4823,7 @@ async function init() {
   ]);
 
   await loadSettings();
+  await homeController.loadHomeSettings();
 
   initTooltipSystem();
   initCommandPalette();
@@ -5001,6 +4870,7 @@ async function init() {
   queueMicrotask(() => {
     setupBreadcrumbListeners();
     setupThemeEditorListeners();
+    homeController.setupHomeSettingsListeners();
     loadBookmarks();
   });
 
@@ -5135,7 +5005,7 @@ async function loadDrives() {
     drivesList.appendChild(driveItem);
   });
 
-  renderHomeDrives(drives);
+  void homeController.renderHomeDrives(drives);
 
   if (currentSettings.showFolderTree !== false) {
     folderTreeManager.render(drives);

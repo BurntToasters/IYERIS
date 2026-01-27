@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type {
   ElectronAPI,
   Settings,
+  HomeSettings,
   UpdateDownloadProgress,
   UpdateInfo,
   FolderSizeProgress,
@@ -41,6 +42,10 @@ const electronAPI: ElectronAPI = {
   resetSettings: () => ipcRenderer.invoke('reset-settings'),
   relaunchApp: () => ipcRenderer.invoke('relaunch-app'),
   getSettingsPath: () => ipcRenderer.invoke('get-settings-path'),
+  getHomeSettings: () => ipcRenderer.invoke('get-home-settings'),
+  saveHomeSettings: (settings: HomeSettings) => ipcRenderer.invoke('save-home-settings', settings),
+  resetHomeSettings: () => ipcRenderer.invoke('reset-home-settings'),
+  getHomeSettingsPath: () => ipcRenderer.invoke('get-home-settings-path'),
 
   // Shared clipboard
   setClipboard: (clipboardData: { operation: 'copy' | 'cut'; paths: string[] } | null) =>
@@ -67,6 +72,12 @@ const electronAPI: ElectronAPI = {
     const handler = (_event: Electron.IpcRendererEvent, settings: Settings) => callback(settings);
     ipcRenderer.on('settings-changed', handler);
     return () => ipcRenderer.removeListener('settings-changed', handler);
+  },
+  onHomeSettingsChanged: (callback: (settings: HomeSettings) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, settings: HomeSettings) =>
+      callback(settings);
+    ipcRenderer.on('home-settings-changed', handler);
+    return () => ipcRenderer.removeListener('home-settings-changed', handler);
   },
 
   copyItems: (sourcePaths: string[], destPath: string) =>

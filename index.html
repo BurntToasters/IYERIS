@@ -409,24 +409,33 @@
             </div>
           </div>
           <div class="home-view" id="home-view" style="display: none;" role="region" aria-label="Home">
-            <div class="home-section">
+            <div class="home-section" id="home-section-quick-access">
               <div class="home-section-header">
                 <span class="home-section-title">Quick Access</span>
               </div>
               <div class="home-grid" id="home-quick-access"></div>
             </div>
-            <div class="home-section">
+            <div class="home-section" id="home-section-recents">
+              <div class="home-section-header">
+                <span class="home-section-title">Recents</span>
+              </div>
+              <div class="home-list" id="home-recents"></div>
+            </div>
+            <div class="home-section" id="home-section-bookmarks">
               <div class="home-section-header">
                 <span class="home-section-title">Bookmarks</span>
               </div>
               <div class="home-list" id="home-bookmarks"></div>
             </div>
-            <div class="home-section">
+            <div class="home-section" id="home-section-drives">
               <div class="home-section-header">
                 <span class="home-section-title">Drives</span>
               </div>
               <div class="home-grid" id="home-drives"></div>
             </div>
+            <button class="home-customize-btn" id="home-customize-btn" title="Customize Home" aria-label="Customize Home">
+              <span class="home-customize-icon" aria-hidden="true"></span>
+            </button>
           </div>
           <div class="file-grid" id="file-grid" role="grid" aria-label="Files and folders"></div>
           <div class="column-view" id="column-view" style="display: none;" role="grid" aria-label="Column view"></div>
@@ -1514,6 +1523,99 @@
       <div class="modal-footer">
         <button class="modal-button secondary" id="theme-editor-cancel">Cancel</button>
         <button class="modal-button primary" id="theme-editor-save">Save Theme</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="home-settings-modal" style="display: none;">
+    <div class="modal glass-panel home-settings-modal" role="dialog" aria-label="Customize Home">
+      <div class="modal-header">
+        <h3><img src="assets/twemoji/270f.svg" class="twemoji" alt="✏️" draggable="false" /> Customize Home</h3>
+        <button class="close-button" id="home-settings-close">✕</button>
+      </div>
+      <div class="modal-body home-settings-body">
+          <div class="settings-card">
+            <div class="settings-card-header">Sections</div>
+            <div class="setting-item">
+              <div class="setting-info">
+                <label for="home-toggle-quick-access">Quick Access</label>
+                <p class="setting-description">Show shortcuts to common locations</p>
+              </div>
+              <label class="toggle-switch">
+                <input type="checkbox" id="home-toggle-quick-access">
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+            <div class="setting-item">
+              <div class="setting-info">
+                <label for="home-toggle-recents">Recents</label>
+                <p class="setting-description">Show your recently opened files and folders</p>
+              </div>
+              <label class="toggle-switch">
+                <input type="checkbox" id="home-toggle-recents">
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+            <div class="setting-item">
+              <div class="setting-info">
+                <label for="home-toggle-bookmarks">Bookmarks</label>
+                <p class="setting-description">Show your saved folders</p>
+              </div>
+              <label class="toggle-switch">
+                <input type="checkbox" id="home-toggle-bookmarks">
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+            <div class="setting-item">
+              <div class="setting-info">
+                <label for="home-toggle-drives">Drives</label>
+                <p class="setting-description">Show available drives</p>
+              </div>
+              <label class="toggle-switch">
+                <input type="checkbox" id="home-toggle-drives">
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+            <div class="setting-item">
+              <div class="setting-info">
+                <label for="home-toggle-disk-usage">Disk usage cards</label>
+                <p class="setting-description">Show free space bars for each drive</p>
+              </div>
+              <label class="toggle-switch">
+                <input type="checkbox" id="home-toggle-disk-usage">
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="settings-card">
+            <div class="settings-card-header">Section Order</div>
+            <div class="home-section-order" id="home-section-order"></div>
+          </div>
+
+          <div class="settings-card">
+            <div class="settings-card-header">Quick Access Shortcuts</div>
+            <div class="home-options-grid" id="home-quick-access-options"></div>
+          </div>
+
+        <div class="settings-card">
+          <div class="settings-card-header">Density</div>
+          <div class="setting-item">
+            <div class="setting-info">
+              <label for="home-toggle-compact">Compact cards</label>
+              <p class="setting-description">Reduce padding in the Home grid</p>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="home-toggle-compact">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer home-settings-footer">
+        <button class="modal-button secondary" id="home-settings-reset">Reset</button>
+        <button class="modal-button secondary" id="home-settings-cancel">Cancel</button>
+        <button class="modal-button primary" id="home-settings-save">Save</button>
       </div>
     </div>
   </div>
