@@ -59,6 +59,7 @@ export type HomeController = {
   renderHomeDrives: (drives?: DriveInfo[]) => Promise<void>;
   getHomeSettings: () => HomeSettings;
   getVisibleSidebarQuickAccessItems: () => Array<{ action: string; label: string; icon: number }>;
+  closeHomeSettingsModal: (skipConfirmation?: boolean) => Promise<void>;
 };
 
 export function createHomeController(options: HomeControllerOptions): HomeController {
@@ -911,5 +912,6 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
     renderHomeDrives,
     getHomeSettings: () => currentHomeSettings,
     getVisibleSidebarQuickAccessItems,
+    closeHomeSettingsModal,
   };
 }

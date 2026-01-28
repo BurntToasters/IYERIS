@@ -40,7 +40,7 @@ export async function loadSettings(): Promise<Settings> {
     let data: string;
     try {
       data = await fs.readFile(settingsPath, 'utf8');
-    } catch (error) {
+    } catch {
       logger.debug('[Settings] File not found, using defaults');
       const settings = createDefaultSettings();
       cachedSettings = settings;
@@ -133,7 +133,7 @@ export async function saveSettings(settings: Settings): Promise<ApiResponse> {
     await fs.writeFile(tmpPath, data, 'utf8');
     try {
       await fs.rename(tmpPath, settingsPath);
-    } catch (error) {
+    } catch {
       try {
         await fs.copyFile(tmpPath, settingsPath);
       } finally {

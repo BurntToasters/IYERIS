@@ -599,8 +599,9 @@ function setupBreadcrumbListeners(): void {
 
   const addressBar = document.querySelector('.address-bar');
   if (addressBar) {
-    addressBar.addEventListener('dblclick', (e) => {
+    addressBar.addEventListener('click', (e) => {
       const target = e.target as HTMLElement;
+      // Only toggle if clicking on the bar itself, not on breadcrumb arrows/menus
       if (
         target.classList.contains('address-bar') ||
         target.classList.contains('breadcrumb') ||
@@ -1243,13 +1244,6 @@ function flushStreamedDirectoryItems(token: number): void {
   }
 }
 
-function sortStreamedDirectoryItems(): void {
-  if (allFiles.length === 0 && emptyState) {
-    emptyState.style.display = 'flex';
-  }
-  updateStatusBar();
-}
-
 function createDirectoryOperationId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
@@ -1302,7 +1296,6 @@ function cancelDirectoryRequest(): void {
 
 const currentGitStatuses: Map<string, string> = new Map();
 let gitStatusRequestId = 0;
-let currentGitBranch: string | null = null;
 
 function clearGitIndicators(): void {
   currentGitStatuses.clear();
@@ -1387,23 +1380,19 @@ async function updateGitBranch(dirPath: string) {
 
   if (!currentSettings.enableGitStatus) {
     statusGitBranch.style.display = 'none';
-    currentGitBranch = null;
     return;
   }
 
   try {
     const result = await window.electronAPI.getGitBranch(dirPath);
     if (result.success && result.branch && dirPath === currentPath) {
-      currentGitBranch = result.branch;
       statusGitBranchName.textContent = result.branch;
       statusGitBranch.style.display = 'inline-flex';
     } else {
       statusGitBranch.style.display = 'none';
-      currentGitBranch = null;
     }
-  } catch (error) {
+  } catch {
     statusGitBranch.style.display = 'none';
-    currentGitBranch = null;
   }
 }
 
@@ -2173,105 +2162,10 @@ function initProgressPanel(): void {
   }
 }
 
-function showProgressPanel(): void {
-  if (progressPanel) {
-    progressPanel.style.display = 'flex';
-  }
-}
-
 function hideProgressPanel(): void {
   if (progressPanel) {
     progressPanel.style.display = 'none';
   }
-}
-
-function addProgressOperation(id: string, title: string, status: string = 'Starting...'): void {
-  progressOperations.set(id, {
-    id,
-    title,
-    status,
-    progress: 0,
-    completed: false,
-    error: false,
-  });
-
-  renderProgressOperations();
-  showProgressPanel();
-}
-
-function updateProgressOperation(id: string, updates: Partial<ProgressOperation>): void {
-  const op = progressOperations.get(id);
-  if (op) {
-    Object.assign(op, updates);
-    renderProgressOperations();
-  }
-}
-
-function completeProgressOperation(id: string, error: boolean = false): void {
-  const op = progressOperations.get(id);
-  if (op) {
-    op.completed = true;
-    op.error = error;
-    op.progress = 100;
-    renderProgressOperations();
-
-    setTimeout(() => {
-      progressOperations.delete(id);
-      renderProgressOperations();
-      if (progressOperations.size === 0) {
-        hideProgressPanel();
-      }
-    }, 3000);
-  }
-}
-
-function renderProgressOperations(): void {
-  if (!progressPanelContent) return;
-
-  const contentContainer = progressPanelContent;
-
-  if (progressOperations.size === 0) {
-    contentContainer.innerHTML = `
-      <div style="padding: var(--spacing-massive); text-align: center; color: var(--text-secondary);">
-        <p>No active operations</p>
-      </div>
-    `;
-    return;
-  }
-
-  contentContainer.innerHTML = '';
-
-  progressOperations.forEach((op) => {
-    const item = document.createElement('div');
-    item.className = `progress-item ${op.completed ? 'completed' : ''} ${op.error ? 'error' : ''}`;
-
-    const spinnerOrIcon = op.completed
-      ? op.error
-        ? '❌'
-        : '✅'
-      : '<span class="progress-item-spinner">⟳</span>';
-
-    item.innerHTML = `
-      <div class="progress-item-header">
-        <div class="progress-item-title">
-          ${spinnerOrIcon}
-          ${escapeHtml(op.title)}
-        </div>
-        <div class="progress-item-status">${escapeHtml(op.status)}</div>
-      </div>
-      ${
-        !op.completed
-          ? `
-        <div class="progress-item-bar-container">
-          <div class="progress-item-bar" style="width: ${op.progress}%"></div>
-        </div>
-      `
-          : ''
-      }
-    `;
-
-    contentContainer.appendChild(item);
-  });
 }
 
 async function loadSettings(): Promise<void> {
@@ -2439,7 +2333,6 @@ function applySettings(settings: Settings) {
     gitStatusInFlight.clear();
     const statusGitBranch = document.getElementById('status-git-branch');
     if (statusGitBranch) statusGitBranch.style.display = 'none';
-    currentGitBranch = null;
   }
 
   const nextFolderTreeEnabled = settings.showFolderTree !== false;
@@ -3143,7 +3036,7 @@ async function rebuildIndex() {
     } else {
       showToast('Failed to rebuild index: ' + result.error, 'Error', 'error');
     }
-  } catch (error) {
+  } catch {
     showToast('Error rebuilding index', 'Error', 'error');
   } finally {
     rebuildBtn.disabled = false;
@@ -5619,13 +5512,15 @@ function setupEventListeners() {
     const dialogModal = document.getElementById('dialog-modal');
     const licensesModal = document.getElementById('licenses-modal');
     const quicklookModal = document.getElementById('quicklook-modal');
+    const homeSettingsModal = document.getElementById('home-settings-modal');
 
     return !!(
       (settingsModal && settingsModal.style.display === 'flex') ||
       (shortcutsModal && shortcutsModal.style.display === 'flex') ||
       (dialogModal && dialogModal.style.display === 'flex') ||
       (licensesModal && licensesModal.style.display === 'flex') ||
-      (quicklookModal && quicklookModal.style.display === 'flex')
+      (quicklookModal && quicklookModal.style.display === 'flex') ||
+      (homeSettingsModal && homeSettingsModal.style.display === 'flex')
     );
   }
 
@@ -5640,6 +5535,18 @@ function setupEventListeners() {
       const shortcutsModal = document.getElementById('shortcuts-modal');
       if (shortcutsModal && shortcutsModal.style.display === 'flex') {
         hideShortcutsModal();
+        return;
+      }
+
+      const licensesModal = document.getElementById('licenses-modal');
+      if (licensesModal && licensesModal.style.display === 'flex') {
+        hideLicensesModal();
+        return;
+      }
+
+      const homeSettingsModal = document.getElementById('home-settings-modal');
+      if (homeSettingsModal && homeSettingsModal.style.display === 'flex') {
+        homeController.closeHomeSettingsModal();
         return;
       }
 
@@ -5772,13 +5679,13 @@ function setupEventListeners() {
         pasteFromClipboard();
       } else if (e.key === 'f' || e.key === 'F') {
         e.preventDefault();
+        if (!isSearchMode) {
+          searchBarWrapper.style.display = 'block';
+          isSearchMode = true;
+        }
+
         if (e.shiftKey) {
           // Ctrl+Shift+F - Open search in global mode
-          if (!isSearchMode) {
-            searchBarWrapper.style.display = 'block';
-            isSearchMode = true;
-          }
-          // Always set to global search mode
           isGlobalSearch = true;
           searchScopeToggle.classList.add('global');
           searchScopeToggle.title = 'Global Search (All Indexed Files)';
@@ -5787,34 +5694,19 @@ function setupEventListeners() {
             img.src = '../assets/twemoji/1f30d.svg';
             img.alt = '🌍';
           }
-          updateSearchPlaceholder();
-          searchInput.focus();
         } else {
-          if (!isSearchMode) {
-            searchBarWrapper.style.display = 'block';
-            isSearchMode = true;
-          }
-          const useGlobalSearch = isHomeViewPath(currentPath);
-          isGlobalSearch = useGlobalSearch;
+          // Ctrl+F - Open search in local/directory mode
+          isGlobalSearch = false;
+          searchScopeToggle.classList.remove('global');
+          searchScopeToggle.title = 'Local Search (Current Folder)';
           const img = searchScopeToggle.querySelector('img');
-          if (useGlobalSearch) {
-            searchScopeToggle.classList.add('global');
-            searchScopeToggle.title = 'Global Search (All Indexed Files)';
-            if (img) {
-              img.src = '../assets/twemoji/1f30d.svg';
-              img.alt = '🌍';
-            }
-          } else {
-            searchScopeToggle.classList.remove('global');
-            searchScopeToggle.title = 'Local Search (Current Folder)';
-            if (img) {
-              img.src = '../assets/twemoji/1f4c1.svg';
-              img.alt = '📁';
-            }
+          if (img) {
+            img.src = '../assets/twemoji/1f4c1.svg';
+            img.alt = '📁';
           }
-          updateSearchPlaceholder();
-          searchInput.focus();
         }
+        updateSearchPlaceholder();
+        searchInput.focus();
       } else if (e.key === 'a') {
         const activeElement = document.activeElement;
         if (
@@ -5885,16 +5777,6 @@ function setupEventListeners() {
       }
       e.preventDefault();
       goUp();
-    } else if (e.key === ' ' && selectedItems.size === 1) {
-      const activeElement = document.activeElement;
-      if (
-        activeElement &&
-        (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')
-      ) {
-        return;
-      }
-      e.preventDefault();
-      showQuickLook();
     } else if (e.key === 'F5') {
       e.preventDefault();
       refresh();
@@ -6708,11 +6590,12 @@ function renderFiles(items: FileItem[], searchQuery?: string) {
       case 'size':
         comparison = a.size - b.size;
         break;
-      case 'type':
+      case 'type': {
         const extA = extCache?.get(a) || '';
         const extB = extCache?.get(b) || '';
         comparison = NAME_COLLATOR.compare(extA, extB);
         break;
+      }
       default:
         comparison = NAME_COLLATOR.compare(a.name, b.name);
     }
@@ -7440,7 +7323,7 @@ function loadThumbnail(fileItem: HTMLElement, item: FileItem) {
           window.electronAPI.saveCachedThumbnail(item.path, thumbnailUrl).catch(() => {});
         }
       }
-    } catch (error) {
+    } catch {
       if (!document.body.contains(fileItem)) {
         return;
       }
@@ -8625,7 +8508,7 @@ async function handleColumnItemClick(
   element: HTMLElement,
   path: string,
   isDirectory: boolean,
-  columnIndex: number
+  _columnIndex: number
 ) {
   const currentPane = element.closest('.column-pane');
   if (!currentPane) return;
@@ -8930,6 +8813,7 @@ function showContextMenu(x: number, y: number, item: FileItem) {
   hideEmptySpaceContextMenu();
 
   contextMenuData = item;
+  contextMenuFocusedIndex = -1;
 
   if (addToBookmarksItem) {
     if (item.isDirectory) {
@@ -9107,6 +8991,7 @@ function showEmptySpaceContextMenu(x: number, y: number) {
 
   hideContextMenu();
 
+  emptySpaceMenuFocusedIndex = -1;
   emptySpaceContextMenu.style.display = 'block';
 
   const menuRect = emptySpaceContextMenu.getBoundingClientRect();
@@ -9158,12 +9043,13 @@ async function handleEmptySpaceContextMenuAction(action: string | undefined) {
       await navigateTo(currentPath);
       break;
 
-    case 'open-terminal':
+    case 'open-terminal': {
       const terminalResult = await window.electronAPI.openTerminal(currentPath);
       if (!terminalResult.success) {
         showToast(terminalResult.error || 'Failed to open terminal', 'Error', 'error');
       }
       break;
+    }
   }
 
   hideEmptySpaceContextMenu();
@@ -9184,7 +9070,7 @@ async function handleContextMenuAction(
       }
       break;
 
-    case 'rename':
+    case 'rename': {
       const fileItems = document.querySelectorAll('.file-item');
       for (const fileItem of Array.from(fileItems)) {
         if ((fileItem as HTMLElement).dataset.path === item.path) {
@@ -9193,6 +9079,7 @@ async function handleContextMenuAction(
         }
       }
       break;
+    }
 
     case 'copy':
       copyToClipboard();
@@ -9206,7 +9093,7 @@ async function handleContextMenuAction(
       try {
         await navigator.clipboard.writeText(item.path);
         showToast('File path copied to clipboard', 'Success', 'success');
-      } catch (error) {
+      } catch {
         showToast('Failed to copy file path', 'Error', 'error');
       }
       break;
@@ -9223,15 +9110,16 @@ async function handleContextMenuAction(
       }
       break;
 
-    case 'open-terminal':
+    case 'open-terminal': {
       const terminalPath = item.isDirectory ? item.path : path.dirname(item.path);
       const terminalResult = await window.electronAPI.openTerminal(terminalPath);
       if (!terminalResult.success) {
         showToast(terminalResult.error || 'Failed to open terminal', 'Error', 'error');
       }
       break;
+    }
 
-    case 'properties':
+    case 'properties': {
       const propsResult = await window.electronAPI.getItemProperties(item.path);
       if (propsResult.success && propsResult.properties) {
         showPropertiesDialog(propsResult.properties);
@@ -9239,6 +9127,7 @@ async function handleContextMenuAction(
         showToast(propsResult.error || 'Unknown error', 'Error Getting Properties', 'error');
       }
       break;
+    }
 
     case 'delete':
       await deleteSelected();
@@ -9785,20 +9674,6 @@ async function restartAsAdmin() {
   }
 }
 
-function stripHtmlTags(html: string): string {
-  let text = html.replace(/<[^>]*>/g, '');
-  text = text
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&amp;/g, '&')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'");
-  text = text.replace(/!\[.*?\]\(.*?\)/g, '');
-  text = text.replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1');
-  text = text.replace(/\n\s*\n\s*\n/g, '\n\n').trim();
-  return text;
-}
-
 async function checkForUpdates() {
   const btn = document.getElementById('check-updates-btn') as HTMLButtonElement;
   if (!btn) return;
@@ -10147,7 +10022,7 @@ document.getElementById('export-settings-btn')?.addEventListener('click', async 
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
     showToast('Settings exported successfully', 'Export', 'success');
-  } catch (error) {
+  } catch {
     showToast('Failed to export settings', 'Export', 'error');
   }
 });
@@ -10302,7 +10177,7 @@ document.getElementById('import-settings-btn')?.addEventListener('click', () => 
         'Import',
         'success'
       );
-    } catch (error) {
+    } catch {
       showToast('Failed to import settings: Invalid file format', 'Import', 'error');
     }
   };
@@ -10375,12 +10250,9 @@ document.getElementById('about-twemoji-link')?.addEventListener('click', (e) => 
   window.electronAPI.openFile('https://github.com/jdecked/twemoji');
 });
 
-// Unsaved changes
-let hasUnsavedChanges = false;
 let themeDropdownChanged = false;
 
 function markSettingsChanged() {
-  hasUnsavedChanges = true;
   const indicator = document.querySelector('.settings-unsaved-indicator');
   if (indicator) {
     indicator.classList.add('visible');
@@ -10388,7 +10260,6 @@ function markSettingsChanged() {
 }
 
 function clearSettingsChanged() {
-  hasUnsavedChanges = false;
   themeDropdownChanged = false;
   const indicator = document.querySelector('.settings-unsaved-indicator');
   if (indicator) {
@@ -11175,12 +11046,14 @@ document.addEventListener('keydown', (e) => {
     const shortcutsModal = document.getElementById('shortcuts-modal');
     const dialogModal = document.getElementById('dialog-modal');
     const licensesModal = document.getElementById('licenses-modal');
+    const homeSettingsModal = document.getElementById('home-settings-modal');
 
     if (
       (settingsModal && settingsModal.style.display === 'flex') ||
       (shortcutsModal && shortcutsModal.style.display === 'flex') ||
       (dialogModal && dialogModal.style.display === 'flex') ||
-      (licensesModal && licensesModal.style.display === 'flex')
+      (licensesModal && licensesModal.style.display === 'flex') ||
+      (homeSettingsModal && homeSettingsModal.style.display === 'flex')
     ) {
       return;
     }
@@ -11203,15 +11076,6 @@ if (searchInput) {
       showSearchHistoryDropdown();
     }
   });
-
-  searchInput.addEventListener('blur', (e) => {
-    setTimeout(() => {
-      const searchDropdown = document.getElementById('search-history-dropdown');
-      if (searchDropdown && !searchDropdown.matches(':hover')) {
-        hideSearchHistoryDropdown();
-      }
-    }, 150);
-  });
 }
 
 if (addressInput) {
@@ -11220,19 +11084,26 @@ if (addressInput) {
       showDirectoryHistoryDropdown();
     }
   });
-
-  addressInput.addEventListener('blur', (e) => {
-    setTimeout(() => {
-      const directoryDropdown = document.getElementById('directory-history-dropdown');
-      if (directoryDropdown && !directoryDropdown.matches(':hover')) {
-        hideDirectoryHistoryDropdown();
-      }
-    }, 150);
-  });
 }
 
 document.addEventListener('mousedown', (e) => {
   const target = e.target as HTMLElement;
+
+  // Close dropdowns when clicking outside of them and their inputs
+  const searchDropdown = document.getElementById('search-history-dropdown');
+  const directoryDropdown = document.getElementById('directory-history-dropdown');
+
+  const isClickInsideSearchDropdown = searchDropdown?.contains(target);
+  const isClickInsideDirectoryDropdown = directoryDropdown?.contains(target);
+  const isClickOnSearchInput = searchInput?.contains(target);
+  const isClickOnAddressInput = addressInput?.contains(target);
+
+  if (!isClickInsideSearchDropdown && !isClickOnSearchInput) {
+    hideSearchHistoryDropdown();
+  }
+  if (!isClickInsideDirectoryDropdown && !isClickOnAddressInput) {
+    hideDirectoryHistoryDropdown();
+  }
 
   if (target.classList.contains('history-item') && target.dataset.query) {
     e.preventDefault();

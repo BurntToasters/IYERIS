@@ -3,7 +3,6 @@ import * as os from 'os';
 
 import {
   getMainWindow,
-  setMainWindow,
   getFileIndexer,
   setFileIndexer,
   getTray,

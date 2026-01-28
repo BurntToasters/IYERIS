@@ -6,7 +6,6 @@ import type {
   UpdateDownloadProgress,
   UpdateInfo,
   FolderSizeProgress,
-  ChecksumResult,
   SearchFilters,
   DirectoryContentsProgress,
   SpecialDirectory,

@@ -73,11 +73,6 @@ interface LoadIndexPayload {
   indexPath: string;
 }
 
-interface SaveIndexPayload {
-  indexPath: string;
-  indexData: string;
-}
-
 interface SearchResult {
   name: string;
   path: string;

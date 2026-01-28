@@ -180,7 +180,7 @@ async function isFileHidden(filePath: string, fileName: string): Promise<boolean
       const match = line.match(/^\s*([A-Za-z ]+)\s+.+$/);
       if (!match) return false;
       return match[1].toUpperCase().includes('H');
-    } catch (error) {
+    } catch {
       return false;
     }
   }

@@ -284,12 +284,12 @@ export function setupArchiveHandlers(): void {
           await fs.access(outputPath);
           logger.info('[Compress] Removing existing file:', outputPath);
           await fs.unlink(outputPath);
-        } catch (err) {}
+        } catch {}
 
         const mainWindow = getMainWindow();
 
         if (format === 'tar.gz') {
-          return new Promise(async (resolve, reject) => {
+          return new Promise(async (resolve, _reject) => {
             const Seven = get7zipModule();
             const sevenZipPath = get7zipPath();
             logger.info('[Compress] Using 7zip at:', sevenZipPath);
@@ -463,7 +463,7 @@ export function setupArchiveHandlers(): void {
           });
         }
 
-        return new Promise((resolve, reject) => {
+        return new Promise((resolve, _reject) => {
           const Seven = get7zipModule();
           const sevenZipPath = get7zipPath();
           logger.info('[Compress] Using 7zip at:', sevenZipPath);
@@ -566,7 +566,7 @@ export function setupArchiveHandlers(): void {
 
         const mainWindow = getMainWindow();
 
-        return new Promise((resolve, reject) => {
+        return new Promise((resolve, _reject) => {
           const Seven = get7zipModule();
           const sevenZipPath = get7zipPath();
           logger.info('[Extract] Using 7zip at:', sevenZipPath);

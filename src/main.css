@@ -2134,8 +2134,8 @@ body.platform-win32 .file-view::-webkit-scrollbar-thumb:hover {
   height: 14px;
   display: block;
   background-color: currentColor;
-  mask: url("assets/twemoji/1f4cc.svg") center / contain no-repeat;
-  -webkit-mask: url("assets/twemoji/1f4cc.svg") center / contain no-repeat;
+  mask: url("../assets/twemoji/1f4cc.svg") center / contain no-repeat;
+  -webkit-mask: url("../assets/twemoji/1f4cc.svg") center / contain no-repeat;
 }
 
 .home-drive-card {
@@ -2213,8 +2213,8 @@ body.platform-win32 .file-view::-webkit-scrollbar-thumb:hover {
   height: 16px;
   display: block;
   background-color: currentColor;
-  mask: url("assets/twemoji/270f.svg") center / contain no-repeat;
-  -webkit-mask: url("assets/twemoji/270f.svg") center / contain no-repeat;
+  mask: url("../assets/twemoji/270f.svg") center / contain no-repeat;
+  -webkit-mask: url("../assets/twemoji/270f.svg") center / contain no-repeat;
 }
 
 .home-customize-btn:hover {
