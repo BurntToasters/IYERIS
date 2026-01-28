@@ -133,3 +133,13 @@ button .twemoji {
   vertical-align: middle;
   margin: 0;
 }
+
+body.themed-icons .twemoji {
+  filter: grayscale(1) brightness(0.9) sepia(1) saturate(3)
+    hue-rotate(var(--themed-icon-hue, 200deg));
+  opacity: 0.85;
+}
+
+body.themed-icons .twemoji:hover {
+  opacity: 1;
+}

@@ -87,6 +87,7 @@ export interface Settings {
   reduceTransparency: boolean;
   uiDensity: 'default' | 'larger';
   updateChannel: 'auto' | 'beta' | 'stable';
+  themedIcons: boolean;
 }
 
 export interface HomeSettings {

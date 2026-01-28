@@ -2378,6 +2378,12 @@ function applySettings(settings: Settings) {
     document.body.classList.remove('reduce-transparency');
   }
 
+  if (settings.themedIcons) {
+    document.body.classList.add('themed-icons');
+  } else {
+    document.body.classList.remove('themed-icons');
+  }
+
   if (settings.showFileCheckboxes) {
     document.body.classList.add('show-file-checkboxes');
   } else {
@@ -2869,6 +2875,7 @@ async function showSettingsModal() {
   const reduceTransparencyToggle = document.getElementById(
     'reduce-transparency-toggle'
   ) as HTMLInputElement;
+  const themedIconsToggle = document.getElementById('themed-icons-toggle') as HTMLInputElement;
   const settingsPath = document.getElementById('settings-path');
 
   if (transparencyToggle) {
@@ -2996,6 +3003,10 @@ async function showSettingsModal() {
 
   if (reduceTransparencyToggle) {
     reduceTransparencyToggle.checked = currentSettings.reduceTransparency || false;
+  }
+
+  if (themedIconsToggle) {
+    themedIconsToggle.checked = currentSettings.themedIcons || false;
   }
 
   await updateIndexStatus();
@@ -3428,6 +3439,7 @@ async function saveSettings() {
   const reduceTransparencyToggle = document.getElementById(
     'reduce-transparency-toggle'
   ) as HTMLInputElement;
+  const themedIconsToggle = document.getElementById('themed-icons-toggle') as HTMLInputElement;
 
   if (transparencyToggle) {
     currentSettings.transparency = transparencyToggle.checked;
@@ -3547,6 +3559,10 @@ async function saveSettings() {
 
   if (reduceTransparencyToggle) {
     currentSettings.reduceTransparency = reduceTransparencyToggle.checked;
+  }
+
+  if (themedIconsToggle) {
+    currentSettings.themedIcons = themedIconsToggle.checked;
   }
 
   currentSettings.viewMode = viewMode;

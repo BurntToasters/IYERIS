@@ -43,5 +43,6 @@ export function createDefaultSettings(): Settings {
     reduceTransparency: false,
     uiDensity: 'default',
     updateChannel: 'auto',
+    themedIcons: false,
   };
 }
