@@ -4,8 +4,8 @@ directories:
   output: release
 files:
   - dist/**/*
-  - index.html
-  - main.css
+  - src/index.html
+  - src/main.css
   - assets/**/*
   - licenses.json
 asar: true

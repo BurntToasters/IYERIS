@@ -57,7 +57,7 @@ const TRAY_ICON_SIZES: Record<TrayPlatform, { width: number; height: number }> =
 };
 
 const TRAY_ASSETS_PATH = path.join(__dirname, '..', 'assets');
-const INDEX_PATH = path.join(__dirname, '..', 'index.html');
+const INDEX_PATH = path.join(__dirname, '..', 'src', 'index.html');
 const INDEX_URL = pathToFileURL(INDEX_PATH).toString();
 const INDEX_URL_OBJ = new URL(INDEX_URL);
 const trayIconCache = new Map<string, { path: string; icon: Electron.NativeImage }>();

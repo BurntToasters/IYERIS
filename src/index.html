@@ -6,13 +6,13 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: file:; media-src 'self' file:; font-src 'self' data:; frame-src 'self' file:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
   <title>IYERIS - File Explorer</title>
   <link rel="stylesheet" href="main.css">
-  <link rel="stylesheet" href="dist/twemoji.css">
+  <link rel="stylesheet" href="../dist/twemoji.css">
 </head>
 <body>
   <div class="titlebar" role="banner">
     <div class="titlebar-drag-region">
       <div class="titlebar-icon">
-        <img id="titlebar-icon" src="assets/folder.png" alt="IYERIS" />
+        <img id="titlebar-icon" src="../assets/folder.png" alt="IYERIS" />
       </div>
       <div class="titlebar-title">IYERIS</div>
     </div>
@@ -164,7 +164,7 @@
         <div class="toolbar-center">
           <div class="address-bar-wrapper">
             <div class="address-bar glass-input">
-              <span class="address-icon"><img src="assets/twemoji/1f4cd.svg" class="twemoji" alt="📍" draggable="false" /></span>
+              <span class="address-icon"><img src="../assets/twemoji/1f4cd.svg" class="twemoji" alt="📍" draggable="false" /></span>
               <div class="breadcrumb" id="breadcrumb-container"></div>
               <input type="text" id="address-input" placeholder="Enter path...">
             </div>
@@ -174,7 +174,7 @@
 
           <div class="search-bar-wrapper" style="display: none;">
             <div class="search-bar glass-input">
-              <span class="search-icon"><img src="assets/twemoji/1f50d.svg" class="twemoji" alt="🔍" draggable="false" /></span>
+              <span class="search-icon"><img src="../assets/twemoji/1f50d.svg" class="twemoji" alt="🔍" draggable="false" /></span>
               <input type="text" id="search-input" placeholder="Search files...">
               <button class="search-filter-toggle" id="search-filter-toggle" title="Search Filters">
                 <svg width="14" height="14" viewBox="0 0 16 16">
@@ -183,7 +183,7 @@
                 <span id="filter-badge" class="filter-badge" style="display: none;"></span>
               </button>
               <button class="search-scope-toggle" id="search-scope-toggle" title="Toggle Global Search">
-                <img src="assets/twemoji/1f4c1.svg" class="twemoji" alt="📁" draggable="false" />
+                <img src="../assets/twemoji/1f4c1.svg" class="twemoji" alt="📁" draggable="false" />
               </button>
               <button class="search-close" id="search-close">✕</button>
             </div>
@@ -327,7 +327,7 @@
                 <rect x="10" y="2" width="5" height="12" fill="currentColor" stroke="currentColor" stroke-width="1.5" rx="1"/>
               </svg>
             </button>
-            <button class="toolbar-button" id="settings-btn" title="Settings" aria-label="Open settings"><img src="assets/twemoji/2699.svg" class="twemoji" alt="⚙️" draggable="false" />
+            <button class="toolbar-button" id="settings-btn" title="Settings" aria-label="Open settings"><img src="../assets/twemoji/2699.svg" class="twemoji" alt="⚙️" draggable="false" />
             </button>
           </div>
         </div>
@@ -340,15 +340,15 @@
             <p id="loading-text">Loading...</p>
           </div>
           <div class="empty-state" id="empty-state" style="display: none;" role="status">
-            <div class="empty-icon" aria-hidden="true"><img src="assets/twemoji/1f4c2.svg" class="twemoji-xlarge" alt="📂" draggable="false" /></div>
+            <div class="empty-icon" aria-hidden="true"><img src="../assets/twemoji/1f4c2.svg" class="twemoji-xlarge" alt="📂" draggable="false" /></div>
             <p>This folder is empty</p>
             <div class="empty-actions">
               <button class="empty-action-btn" id="empty-new-folder-btn" aria-label="Create new folder">
-                <img src="assets/twemoji/1f4c1.svg" class="twemoji" alt="📁" draggable="false" aria-hidden="true" />
+                <img src="../assets/twemoji/1f4c1.svg" class="twemoji" alt="📁" draggable="false" aria-hidden="true" />
                 <span>New Folder</span>
               </button>
               <button class="empty-action-btn" id="empty-new-file-btn" aria-label="Create new file">
-                <img src="assets/twemoji/1f5c3.svg" class="twemoji" alt="🗃️" draggable="false" aria-hidden="true" />
+                <img src="../assets/twemoji/1f5c3.svg" class="twemoji" alt="🗃️" draggable="false" aria-hidden="true" />
                 <span>New File</span>
               </button>
             </div>
@@ -418,7 +418,7 @@
           </div>
           <div class="preview-content" id="preview-content">
             <div class="preview-empty">
-              <div class="preview-empty-icon"><img src="assets/twemoji/1f441.svg" class="twemoji-xlarge" alt="👁️" draggable="false" /></div>
+              <div class="preview-empty-icon"><img src="../assets/twemoji/1f441.svg" class="twemoji-xlarge" alt="👁️" draggable="false" /></div>
               <p>Select a file to preview</p>
               <small>Press Space for quick look</small>
             </div>
@@ -429,44 +429,44 @@
   </div>
 
   <div id="context-menu" class="context-menu" role="menu" aria-label="File context menu" style="display: none;">
-    <div class="context-menu-item" data-action="open" role="menuitem" tabindex="0"><img src="assets/twemoji/1f4c2.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" /> Open <span class="context-menu-shortcut">Enter</span></div>
+    <div class="context-menu-item" data-action="open" role="menuitem" tabindex="0"><img src="../assets/twemoji/1f4c2.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" /> Open <span class="context-menu-shortcut">Enter</span></div>
     <div class="context-menu-separator" role="separator"></div>
-    <div class="context-menu-item" data-action="cut" role="menuitem" tabindex="0"><img src="assets/twemoji/2702.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" /> Cut <span class="context-menu-shortcut">Ctrl+X</span></div>
-    <div class="context-menu-item" data-action="copy" role="menuitem" tabindex="0"><img src="assets/twemoji/1f4c4.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" /> Copy <span class="context-menu-shortcut">Ctrl+C</span></div>
-    <div class="context-menu-item" data-action="copy-path" id="copy-path-item" role="menuitem" tabindex="0"><img src="assets/twemoji/1f4cb.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" /> Copy file path</div>
+    <div class="context-menu-item" data-action="cut" role="menuitem" tabindex="0"><img src="../assets/twemoji/2702.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" /> Cut <span class="context-menu-shortcut">Ctrl+X</span></div>
+    <div class="context-menu-item" data-action="copy" role="menuitem" tabindex="0"><img src="../assets/twemoji/1f4c4.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" /> Copy <span class="context-menu-shortcut">Ctrl+C</span></div>
+    <div class="context-menu-item" data-action="copy-path" id="copy-path-item" role="menuitem" tabindex="0"><img src="../assets/twemoji/1f4cb.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" /> Copy file path</div>
     <div class="context-menu-separator" role="separator"></div>
     <div class="context-menu-item has-submenu" id="compress-item" role="menuitem" tabindex="0" aria-haspopup="true" aria-expanded="false">
-      <img src="assets/twemoji/1f5dc.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" /> Compress To...
+      <img src="../assets/twemoji/1f5dc.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" /> Compress To...
       <span class="submenu-arrow" aria-hidden="true">▸</span>
       <div class="context-submenu" role="menu" aria-label="Compress formats">
-        <div class="context-menu-item" data-action="compress" data-format="zip" role="menuitem" tabindex="0"><img src="assets/twemoji/1f5dc.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" /> ZIP</div>
-        <div class="context-menu-item" data-action="compress" data-format="7z" role="menuitem" tabindex="0"><img src="assets/twemoji/1f5dc.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" /> 7Z</div>
-        <div class="context-menu-item" data-action="compress" data-format="tar" role="menuitem" tabindex="0"><img src="assets/twemoji/1f5dc.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" /> TAR</div>
-        <div class="context-menu-item" data-action="compress" data-format="tar.gz" role="menuitem" tabindex="0"><img src="assets/twemoji/1f5dc.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" /> TAR.GZ</div>
+        <div class="context-menu-item" data-action="compress" data-format="zip" role="menuitem" tabindex="0"><img src="../assets/twemoji/1f5dc.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" /> ZIP</div>
+        <div class="context-menu-item" data-action="compress" data-format="7z" role="menuitem" tabindex="0"><img src="../assets/twemoji/1f5dc.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" /> 7Z</div>
+        <div class="context-menu-item" data-action="compress" data-format="tar" role="menuitem" tabindex="0"><img src="../assets/twemoji/1f5dc.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" /> TAR</div>
+        <div class="context-menu-item" data-action="compress" data-format="tar.gz" role="menuitem" tabindex="0"><img src="../assets/twemoji/1f5dc.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" /> TAR.GZ</div>
       </div>
     </div>
-    <div class="context-menu-item" data-action="extract" id="extract-item" role="menuitem" tabindex="0" style="display: none;"><img src="assets/twemoji/1f4e6.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" /> Extract Here</div>
+    <div class="context-menu-item" data-action="extract" id="extract-item" role="menuitem" tabindex="0" style="display: none;"><img src="../assets/twemoji/1f4e6.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" /> Extract Here</div>
     <div class="context-menu-separator" role="separator"></div>
-    <div class="context-menu-item" data-action="rename" role="menuitem" tabindex="0"><img src="assets/twemoji/270d.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" /> Rename <span class="context-menu-shortcut">F2</span></div>
-    <div class="context-menu-item" data-action="refresh" role="menuitem" tabindex="0"><img src="assets/twemoji/1f504.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" /> Refresh <span class="context-menu-shortcut">F5</span></div>
-    <div class="context-menu-item" data-action="delete" role="menuitem" tabindex="0"><img src="assets/twemoji/1f5d1.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" /> Delete <span class="context-menu-shortcut">Del</span></div>
+    <div class="context-menu-item" data-action="rename" role="menuitem" tabindex="0"><img src="../assets/twemoji/270d.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" /> Rename <span class="context-menu-shortcut">F2</span></div>
+    <div class="context-menu-item" data-action="refresh" role="menuitem" tabindex="0"><img src="../assets/twemoji/1f504.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" /> Refresh <span class="context-menu-shortcut">F5</span></div>
+    <div class="context-menu-item" data-action="delete" role="menuitem" tabindex="0"><img src="../assets/twemoji/1f5d1.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" /> Delete <span class="context-menu-shortcut">Del</span></div>
     <div class="context-menu-separator" role="separator"></div>
-    <div class="context-menu-item" data-action="add-to-bookmarks" id="add-to-bookmarks-item" role="menuitem" tabindex="0" style="display: none;"><img src="assets/twemoji/2b50.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" /> Add to Bookmarks</div>
-    <div class="context-menu-item" data-action="change-folder-icon" id="change-folder-icon-item" role="menuitem" tabindex="0" style="display: none;"><img src="assets/twemoji/1f3a8.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" /> Change Folder Icon</div>
-    <div class="context-menu-item" data-action="open-terminal" id="open-terminal-item" role="menuitem" tabindex="0"><img src="assets/twemoji/1f5a5.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" /> Open folder in Terminal</div>
+    <div class="context-menu-item" data-action="add-to-bookmarks" id="add-to-bookmarks-item" role="menuitem" tabindex="0" style="display: none;"><img src="../assets/twemoji/2b50.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" /> Add to Bookmarks</div>
+    <div class="context-menu-item" data-action="change-folder-icon" id="change-folder-icon-item" role="menuitem" tabindex="0" style="display: none;"><img src="../assets/twemoji/1f3a8.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" /> Change Folder Icon</div>
+    <div class="context-menu-item" data-action="open-terminal" id="open-terminal-item" role="menuitem" tabindex="0"><img src="../assets/twemoji/1f5a5.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" /> Open folder in Terminal</div>
     <div class="context-menu-separator" role="separator"></div>
-    <div class="context-menu-item" data-action="properties" role="menuitem" tabindex="0"><img src="assets/twemoji/2139.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" /> Properties</div>
+    <div class="context-menu-item" data-action="properties" role="menuitem" tabindex="0"><img src="../assets/twemoji/2139.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" /> Properties</div>
   </div>
 
   <div id="empty-space-context-menu" class="context-menu" role="menu" aria-label="Folder context menu" style="display: none;">
-    <div class="context-menu-item" data-action="new-folder" role="menuitem" tabindex="0"><img src="assets/twemoji/1f4c1.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" /> New Folder <span class="context-menu-shortcut">Ctrl+Shift+N</span></div>
-    <div class="context-menu-item" data-action="new-file" role="menuitem" tabindex="0"><img src="assets/twemoji/1f5c3.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" /> New File <span class="context-menu-shortcut">Ctrl+N</span></div>
+    <div class="context-menu-item" data-action="new-folder" role="menuitem" tabindex="0"><img src="../assets/twemoji/1f4c1.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" /> New Folder <span class="context-menu-shortcut">Ctrl+Shift+N</span></div>
+    <div class="context-menu-item" data-action="new-file" role="menuitem" tabindex="0"><img src="../assets/twemoji/1f5c3.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" /> New File <span class="context-menu-shortcut">Ctrl+N</span></div>
     <div class="context-menu-separator" role="separator"></div>
-    <div class="context-menu-item" data-action="paste" role="menuitem" tabindex="0"><img src="assets/twemoji/1f4dc.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" /> Paste <span class="context-menu-shortcut">Ctrl+V</span></div>
+    <div class="context-menu-item" data-action="paste" role="menuitem" tabindex="0"><img src="../assets/twemoji/1f4dc.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" /> Paste <span class="context-menu-shortcut">Ctrl+V</span></div>
     <div class="context-menu-separator" role="separator"></div>
-    <div class="context-menu-item" data-action="refresh" role="menuitem" tabindex="0"><img src="assets/twemoji/1f504.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" /> Refresh <span class="context-menu-shortcut">F5</span></div>
+    <div class="context-menu-item" data-action="refresh" role="menuitem" tabindex="0"><img src="../assets/twemoji/1f504.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" /> Refresh <span class="context-menu-shortcut">F5</span></div>
     <div class="context-menu-separator" role="separator"></div>
-    <div class="context-menu-item" data-action="open-terminal" role="menuitem" tabindex="0"><img src="assets/twemoji/1f5a5.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" /> Open folder in Terminal</div>
+    <div class="context-menu-item" data-action="open-terminal" role="menuitem" tabindex="0"><img src="../assets/twemoji/1f5a5.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" /> Open folder in Terminal</div>
   </div>
 
   <div id="drop-indicator" class="drop-indicator" style="display: none;">
@@ -492,7 +492,7 @@
 
   <div class="archive-operations-panel" id="archive-operations-panel" style="display: none;">
     <div class="archive-operations-header">
-      <span><img src="assets/twemoji/1f5c4.svg" class="twemoji" alt="�️" draggable="false" /> Active Operations</span>
+      <span><img src="../assets/twemoji/1f5c4.svg" class="twemoji" alt="�️" draggable="false" /> Active Operations</span>
     </div>
     <div class="archive-operations-list" id="archive-operations-list">
     </div>
@@ -516,35 +516,35 @@
   <div class="modal-overlay" id="settings-modal" style="display: none;">
     <div class="modal settings-modal glass-panel">
       <div class="modal-header">
-        <h3><img src="assets/twemoji/2699.svg" class="twemoji" alt="⚙️" draggable="false" /> Settings</h3>
+        <h3><img src="../assets/twemoji/2699.svg" class="twemoji" alt="⚙️" draggable="false" /> Settings</h3>
         <div class="settings-search-wrapper">
           <input type="text" id="settings-search" class="settings-search-input" placeholder="Search settings...">
-          <span class="settings-search-icon"><img src="assets/twemoji/1f50d.svg" class="twemoji-small" alt="🔍" draggable="false" /></span>
+          <span class="settings-search-icon"><img src="../assets/twemoji/1f50d.svg" class="twemoji-small" alt="🔍" draggable="false" /></span>
         </div>
         <button class="modal-close" id="settings-close">✕</button>
       </div>
       <div class="modal-content settings-content" id="settings-content">
         <div class="settings-sidebar">
           <div class="settings-sidebar-section">
-            <button class="settings-tab active" data-tab="appearance"><img src="assets/twemoji/1f3a8.svg" class="twemoji" alt="🎨" draggable="false" /> Appearance</button>
-            <button class="settings-tab" data-tab="view"><img src="assets/twemoji/1f441.svg" class="twemoji" alt="👁️" draggable="false" /> View</button>
-            <button class="settings-tab" data-tab="accessibility"><img src="assets/twemoji/267f.svg" class="twemoji" alt="♿" draggable="false" /> Accessibility</button>
-            <button class="settings-tab" data-tab="startup"><img src="assets/twemoji/1f680.svg" class="twemoji" alt="🚀" draggable="false" /> Startup</button>
+            <button class="settings-tab active" data-tab="appearance"><img src="../assets/twemoji/1f3a8.svg" class="twemoji" alt="🎨" draggable="false" /> Appearance</button>
+            <button class="settings-tab" data-tab="view"><img src="../assets/twemoji/1f441.svg" class="twemoji" alt="👁️" draggable="false" /> View</button>
+            <button class="settings-tab" data-tab="accessibility"><img src="../assets/twemoji/267f.svg" class="twemoji" alt="♿" draggable="false" /> Accessibility</button>
+            <button class="settings-tab" data-tab="startup"><img src="../assets/twemoji/1f680.svg" class="twemoji" alt="🚀" draggable="false" /> Startup</button>
           </div>
           <div class="settings-sidebar-section">
             <span class="settings-sidebar-label">System</span>
-            <button class="settings-tab" data-tab="data"><img src="assets/twemoji/1f4be.svg" class="twemoji" alt="💾" draggable="false" /> Data</button>
-            <button class="settings-tab" data-tab="indexing"><img src="assets/twemoji/1f50d.svg" class="twemoji" alt="🔍" draggable="false" /> File Indexing</button>
-            <button class="settings-tab" data-tab="advanced"><img src="assets/twemoji/2699.svg" class="twemoji" alt="⚙️" draggable="false" /> Advanced</button>
+            <button class="settings-tab" data-tab="data"><img src="../assets/twemoji/1f4be.svg" class="twemoji" alt="💾" draggable="false" /> Data</button>
+            <button class="settings-tab" data-tab="indexing"><img src="../assets/twemoji/1f50d.svg" class="twemoji" alt="🔍" draggable="false" /> File Indexing</button>
+            <button class="settings-tab" data-tab="advanced"><img src="../assets/twemoji/2699.svg" class="twemoji" alt="⚙️" draggable="false" /> Advanced</button>
           </div>
           <div class="settings-sidebar-spacer"></div>
           <div class="settings-sidebar-section">
-            <button class="settings-tab" data-tab="about"><img src="assets/twemoji/2139.svg" class="twemoji" alt="ℹ️" draggable="false" /> About</button>
+            <button class="settings-tab" data-tab="about"><img src="../assets/twemoji/2139.svg" class="twemoji" alt="ℹ️" draggable="false" /> About</button>
           </div>
         </div>
         <div class="settings-pages">
           <div class="settings-section active" id="tab-appearance">
-            <h4><img src="assets/twemoji/1f3a8.svg" class="twemoji" alt="🎨" draggable="false" /> Appearance</h4>
+            <h4><img src="../assets/twemoji/1f3a8.svg" class="twemoji" alt="🎨" draggable="false" /> Appearance</h4>
             
             <div class="settings-card">
               <div class="settings-card-header">Theme</div>
@@ -591,10 +591,10 @@
                 </div>
                 <div style="display: flex; gap: 8px;">
                   <button class="modal-button" id="open-theme-editor-btn" style="min-width: 120px;">
-                    <img src="assets/twemoji/1f3a8.svg" class="twemoji" alt="🎨" draggable="false" /> Customize
+                    <img src="../assets/twemoji/1f3a8.svg" class="twemoji" alt="🎨" draggable="false" /> Customize
                   </button>
                   <button class="modal-button secondary" id="use-custom-theme-btn" style="min-width: 100px; display: none;">
-                    <img src="assets/twemoji/2714.svg" class="twemoji" alt="✔️" draggable="false" /> Use Custom
+                    <img src="../assets/twemoji/2714.svg" class="twemoji" alt="✔️" draggable="false" /> Use Custom
                   </button>
                 </div>
               </div>
@@ -612,7 +612,7 @@
           </div>
 
           <div class="settings-section" id="tab-view">
-            <h4><img src="assets/twemoji/1f441.svg" class="twemoji" alt="👁️" draggable="false" /> View</h4>
+            <h4><img src="../assets/twemoji/1f441.svg" class="twemoji" alt="👁️" draggable="false" /> View</h4>
             
             <div class="settings-card">
               <div class="settings-card-header">Window Behavior</div>
@@ -758,7 +758,7 @@
           </div>
 
           <div class="settings-section" id="tab-startup">
-            <h4><img src="assets/twemoji/1f680.svg" class="twemoji" alt="🚀" draggable="false" /> Startup</h4>
+            <h4><img src="../assets/twemoji/1f680.svg" class="twemoji" alt="🚀" draggable="false" /> Startup</h4>
             
             <div class="settings-card">
               <div class="settings-card-header">Launch Options</div>
@@ -779,14 +779,14 @@
                 </div>
                 <div class="setting-input-group">
                   <input type="text" id="startup-path-input" class="settings-input" placeholder="Leave empty for default (Home view)">
-                  <button class="modal-button compact" id="browse-startup-path-btn" title="Browse for folder"><img src="assets/twemoji/1f4c1.svg" class="twemoji" alt="📁" draggable="false" /></button>
+                  <button class="modal-button compact" id="browse-startup-path-btn" title="Browse for folder"><img src="../assets/twemoji/1f4c1.svg" class="twemoji" alt="📁" draggable="false" /></button>
                 </div>
               </div>
             </div>
           </div>
 
           <div class="settings-section" id="tab-accessibility">
-            <h4><img src="assets/twemoji/267f.svg" class="twemoji" alt="♿" draggable="false" /> Accessibility</h4>
+            <h4><img src="../assets/twemoji/267f.svg" class="twemoji" alt="♿" draggable="false" /> Accessibility</h4>
 
             <div class="settings-card">
               <div class="settings-card-header">Motion</div>
@@ -883,7 +883,7 @@
           </div>
 
           <div class="settings-section" id="tab-data">
-            <h4><img src="assets/twemoji/1f4be.svg" class="twemoji" alt="💾" draggable="false" /> Data</h4>
+            <h4><img src="../assets/twemoji/1f4be.svg" class="twemoji" alt="💾" draggable="false" /> Data</h4>
             
             <div class="settings-card">
               <div class="settings-card-header">Storage</div>
@@ -892,7 +892,7 @@
                   <label>Settings File Location</label>
                   <p class="setting-description" id="settings-path">Loading...</p>
                 </div>
-                <button class="modal-button compact" id="open-settings-folder-btn" title="Open folder"><img src="assets/twemoji/1f4c2.svg" class="twemoji" alt="📂" draggable="false" /></button>
+                <button class="modal-button compact" id="open-settings-folder-btn" title="Open folder"><img src="../assets/twemoji/1f4c2.svg" class="twemoji" alt="📂" draggable="false" /></button>
               </div>
             </div>
             
@@ -903,14 +903,14 @@
                   <label>Export Settings</label>
                   <p class="setting-description">Save your current settings to a file for backup</p>
                 </div>
-                <button class="modal-button" id="export-settings-btn"><img src="assets/twemoji/1f4e4.svg" class="twemoji" alt="📤" draggable="false" /> Export</button>
+                <button class="modal-button" id="export-settings-btn"><img src="../assets/twemoji/1f4e4.svg" class="twemoji" alt="📤" draggable="false" /> Export</button>
               </div>
               <div class="setting-item" data-searchable="import settings restore load">
                 <div class="setting-info">
                   <label>Import Settings</label>
                   <p class="setting-description">Load settings from a previously exported file</p>
                 </div>
-                <button class="modal-button" id="import-settings-btn"><img src="assets/twemoji/1f4e5.svg" class="twemoji" alt="📥" draggable="false" /> Import</button>
+                <button class="modal-button" id="import-settings-btn"><img src="../assets/twemoji/1f4e5.svg" class="twemoji" alt="📥" draggable="false" /> Import</button>
               </div>
             </div>
             
@@ -921,27 +921,27 @@
                   <label>Clear Search History</label>
                   <p class="setting-description">Remove all saved search and navigation history</p>
                 </div>
-                <button class="modal-button" id="clear-search-history-btn"><img src="assets/twemoji/1f5d1.svg" class="twemoji" alt="🗑️" draggable="false" /> Clear</button>
+                <button class="modal-button" id="clear-search-history-btn"><img src="../assets/twemoji/1f5d1.svg" class="twemoji" alt="🗑️" draggable="false" /> Clear</button>
               </div>
               <div class="setting-item" data-searchable="clear bookmarks favorites delete remove">
                 <div class="setting-info">
                   <label>Clear Bookmarks</label>
                   <p class="setting-description">Remove all saved folder bookmarks</p>
                 </div>
-                <button class="modal-button" id="clear-bookmarks-btn"><img src="assets/twemoji/1f5d1.svg" class="twemoji" alt="🗑️" draggable="false" /> Clear</button>
+                <button class="modal-button" id="clear-bookmarks-btn"><img src="../assets/twemoji/1f5d1.svg" class="twemoji" alt="🗑️" draggable="false" /> Clear</button>
               </div>
               <div class="setting-item" data-searchable="clear thumbnail cache image preview delete">
                 <div class="setting-info">
                   <label>Clear Thumbnail Cache</label>
                   <p class="setting-description">Remove cached image and video thumbnails. <span id="thumbnail-cache-size"></span></p>
                 </div>
-                <button class="modal-button" id="clear-thumbnail-cache-btn"><img src="assets/twemoji/1f5d1.svg" class="twemoji" alt="🗑️" draggable="false" /> Clear</button>
+                <button class="modal-button" id="clear-thumbnail-cache-btn"><img src="../assets/twemoji/1f5d1.svg" class="twemoji" alt="🗑️" draggable="false" /> Clear</button>
               </div>
             </div>
           </div>
           
           <div class="settings-section" id="tab-indexing">
-            <h4><img src="assets/twemoji/1f50d.svg" class="twemoji" alt="🔍" draggable="false" /> File Indexing</h4>
+            <h4><img src="../assets/twemoji/1f50d.svg" class="twemoji" alt="🔍" draggable="false" /> File Indexing</h4>
             
             <div class="settings-card">
               <div class="settings-card-header">Search Index</div>
@@ -960,7 +960,7 @@
                   <label>Rebuild Index</label>
                   <p class="setting-description">Clear and rebuild the file index. <span id="index-status" class="index-status-badge">Status: Unknown</span></p>
                 </div>
-                <button class="modal-button" id="rebuild-index-btn"><img src="assets/twemoji/1f504.svg" class="twemoji" alt="🔄" draggable="false" /> Rebuild</button>
+                <button class="modal-button" id="rebuild-index-btn"><img src="../assets/twemoji/1f504.svg" class="twemoji" alt="🔄" draggable="false" /> Rebuild</button>
               </div>
               <div class="setting-item" data-searchable="global content search file inside text">
                 <div class="setting-info">
@@ -976,7 +976,7 @@
           </div>
 
           <div class="settings-section" id="tab-advanced">
-            <h4><img src="assets/twemoji/2699.svg" class="twemoji" alt="⚙️" draggable="false" /> Advanced</h4>
+            <h4><img src="../assets/twemoji/2699.svg" class="twemoji" alt="⚙️" draggable="false" /> Advanced</h4>
             
             <div class="settings-card">
               <div class="settings-card-header">Updates</div>
@@ -1021,7 +1021,7 @@
               <div class="settings-card-header">Developer Options</div>
               <div class="setting-item" data-searchable="developer mode debug hidden dangerous options">
                 <div class="setting-info">
-                  <label for="dangerous-options-toggle"><img src="assets/twemoji/1f6e0.svg" class="twemoji" alt="🛠️" draggable="false" /> Enable Developer Mode</label>
+                  <label for="dangerous-options-toggle"><img src="../assets/twemoji/1f6e0.svg" class="twemoji" alt="🛠️" draggable="false" /> Enable Developer Mode</label>
                   <p class="setting-description">Show advanced developer options (use with caution)</p>
                 </div>
                 <label class="toggle-switch">
@@ -1031,20 +1031,20 @@
               </div>
               <div class="setting-item dangerous-option" id="restart-admin-setting" style="display: none;" data-searchable="restart admin administrator sudo privileges elevated">
                 <div class="setting-info">
-                  <label><img src="assets/twemoji/26a0.svg" class="twemoji" alt="⚠️" draggable="false" /> Restart with Administrator Privileges</label>
+                  <label><img src="../assets/twemoji/26a0.svg" class="twemoji" alt="⚠️" draggable="false" /> Restart with Administrator Privileges</label>
                   <p class="setting-description">Restart IYERIS with elevated permissions. Use with caution!</p>
                 </div>
-                <button class="modal-button warning" id="restart-admin-btn"><img src="assets/twemoji/26a0.svg" class="twemoji" alt="⚠️" draggable="false" /> Restart as Admin</button>
+                <button class="modal-button warning" id="restart-admin-btn"><img src="../assets/twemoji/26a0.svg" class="twemoji" alt="⚠️" draggable="false" /> Restart as Admin</button>
               </div>
             </div>
           </div>
           
           <div class="settings-section" id="tab-about">
-            <h4><img src="assets/twemoji/2139.svg" class="twemoji" alt="ℹ️" draggable="false" /> About IYERIS</h4>
+            <h4><img src="../assets/twemoji/2139.svg" class="twemoji" alt="ℹ️" draggable="false" /> About IYERIS</h4>
             
             <div class="about-hero">
               <div class="about-logo">
-                <img src="assets/folder.png" alt="IYERIS" class="about-logo-img" />
+                <img src="../assets/folder.png" alt="IYERIS" class="about-logo-img" />
               </div>
               <div class="about-info">
                 <h2 class="about-title">IYERIS</h2>
@@ -1075,15 +1075,15 @@
                   GitHub
                 </button>
                 <button class="about-link-btn" id="about-help-btn">
-                  <img src="assets/twemoji/2753.svg" class="twemoji" alt="❓" draggable="false" />
+                  <img src="../assets/twemoji/2753.svg" class="twemoji" alt="❓" draggable="false" />
                   Help & FAQ
                 </button>
                 <button class="about-link-btn" id="about-licenses-btn">
-                  <img src="assets/twemoji/1f4dc.svg" class="twemoji" alt="📜" draggable="false" />
+                  <img src="../assets/twemoji/1f4dc.svg" class="twemoji" alt="📜" draggable="false" />
                   Licenses
                 </button>
                 <button class="about-link-btn" id="about-support-btn">
-                  <img src="assets/twemoji/2764.svg" class="twemoji" alt="❤️" draggable="false" />
+                  <img src="../assets/twemoji/2764.svg" class="twemoji" alt="❤️" draggable="false" />
                   Support
                 </button>
               </div>
@@ -1093,7 +1093,7 @@
               <div class="settings-card-header">Keyboard Shortcuts</div>
               <div class="about-shortcuts-hint">
                 <p>Press <kbd>Ctrl</kbd> + <kbd>.</kbd> to view all keyboard shortcuts</p>
-                <button class="modal-button" id="about-shortcuts-btn"><img src="assets/twemoji/2328.svg" class="twemoji" alt="⌨️" draggable="false" /> View Shortcuts</button>
+                <button class="modal-button" id="about-shortcuts-btn"><img src="../assets/twemoji/2328.svg" class="twemoji" alt="⌨️" draggable="false" /> View Shortcuts</button>
               </div>
             </div>
 
@@ -1104,7 +1104,7 @@
                   <label>Start Tour</label>
                   <p class="setting-description">Replay the guided tour of IYERIS.</p>
                 </div>
-                <button class="modal-button" id="start-tour-btn"><img src="assets/twemoji/1f9ed.svg" class="twemoji" alt="🧭" draggable="false" /> Start Tour</button>
+                <button class="modal-button" id="start-tour-btn"><img src="../assets/twemoji/1f9ed.svg" class="twemoji" alt="🧭" draggable="false" /> Start Tour</button>
               </div>
             </div>
           </div>
@@ -1113,11 +1113,11 @@
       <div class="modal-footer settings-footer">
         <div class="settings-footer-left">
           <span class="unsaved-indicator" id="unsaved-indicator" style="display: none;">
-            <img src="assets/twemoji/1f534.svg" class="twemoji-small" alt="🔴" draggable="false" /> Unsaved changes
+            <img src="../assets/twemoji/1f534.svg" class="twemoji-small" alt="🔴" draggable="false" /> Unsaved changes
           </span>
         </div>
         <div class="settings-footer-right">
-          <button class="modal-button" id="check-updates-btn"><img src="assets/twemoji/1f503.svg" class="twemoji" alt="🔃" draggable="false" /> Check for Updates</button>
+          <button class="modal-button" id="check-updates-btn"><img src="../assets/twemoji/1f503.svg" class="twemoji" alt="🔃" draggable="false" /> Check for Updates</button>
           <button class="modal-button" id="reset-settings-btn">Reset to Default</button>
           <button class="modal-button primary" id="save-settings-btn">Save</button>
         </div>
@@ -1154,7 +1154,7 @@
   <div id="shortcuts-modal" class="modal-overlay" style="display: none;">
     <div class="modal-content shortcuts-modal-content">
       <div class="modal-header">
-        <h2><img src="assets/twemoji/2328.svg" class="twemoji" alt="⌨️" draggable="false" /> Keyboard Shortcuts</h2>
+        <h2><img src="../assets/twemoji/2328.svg" class="twemoji" alt="⌨️" draggable="false" /> Keyboard Shortcuts</h2>
         <button class="close-button" id="shortcuts-close" aria-label="Close">×</button>
       </div>
       <div class="modal-body shortcuts-modal-body">
@@ -1336,7 +1336,7 @@
       <span id="status-hidden" class="status-hidden" style="display: none;"></span>
       <span id="status-selected" style="display: none;"></span>
       <span id="status-search" class="status-search" style="display: none;">
-        <img src="assets/twemoji/1f50d.svg" class="twemoji" alt="🔍" draggable="false" aria-hidden="true" />
+        <img src="../assets/twemoji/1f50d.svg" class="twemoji" alt="🔍" draggable="false" aria-hidden="true" />
         <span id="status-search-text"></span>
       </span>
       <span id="status-operation" class="status-operation" style="display: none;">
@@ -1344,7 +1344,7 @@
         <span id="status-operation-text"></span>
       </span>
       <span id="status-clipboard" class="status-clipboard" style="display: none;" title="Clipboard contents">
-        <img src="assets/twemoji/1f4cb.svg" class="twemoji" alt="📋" draggable="false" aria-hidden="true" />
+        <img src="../assets/twemoji/1f4cb.svg" class="twemoji" alt="📋" draggable="false" aria-hidden="true" />
         <span id="status-clipboard-text"></span>
       </span>
     </div>
@@ -1363,7 +1363,7 @@
       <span class="status-version" id="status-version" title="Version 0.9.9">v0.9.9</span>
       <span class="status-separator"></span>
       <button class="status-support-btn" id="heart-button" title="Support this project!">
-        <img src="assets/twemoji/2764.svg" class="twemoji" alt="❤️" draggable="false" />
+        <img src="../assets/twemoji/2764.svg" class="twemoji" alt="❤️" draggable="false" />
         <span>Support</span>
       </button>
     </div>
@@ -1417,34 +1417,34 @@
 
   <div class="sort-menu glass-panel" id="sort-menu" style="display: none;">
     <div class="context-menu-item" data-sort="name">
-      <span><img src="assets/twemoji/1f4dd.svg" class="twemoji" alt="📝" draggable="false" /> Name</span>
+      <span><img src="../assets/twemoji/1f4dd.svg" class="twemoji" alt="📝" draggable="false" /> Name</span>
       <span class="sort-indicator" id="sort-name"></span>
     </div>
     <div class="context-menu-item" data-sort="date">
-      <span><img src="assets/twemoji/1f4c5.svg" class="twemoji" alt="📅" draggable="false" /> Date Modified</span>
+      <span><img src="../assets/twemoji/1f4c5.svg" class="twemoji" alt="📅" draggable="false" /> Date Modified</span>
       <span class="sort-indicator" id="sort-date"></span>
     </div>
     <div class="context-menu-item" data-sort="size">
-      <span><img src="assets/twemoji/1f4ca.svg" class="twemoji" alt="📊" draggable="false" /> Size</span>
+      <span><img src="../assets/twemoji/1f4ca.svg" class="twemoji" alt="📊" draggable="false" /> Size</span>
       <span class="sort-indicator" id="sort-size"></span>
     </div>
     <div class="context-menu-item" data-sort="type">
-      <span><img src="assets/twemoji/1f4cb.svg" class="twemoji" alt="📋" draggable="false" /> Type</span>
+      <span><img src="../assets/twemoji/1f4cb.svg" class="twemoji" alt="📋" draggable="false" /> Type</span>
       <span class="sort-indicator" id="sort-type"></span>
     </div>
   </div>
 
   <div class="zoom-popup" id="zoom-popup" style="display: none;">
     <button class="zoom-btn" id="zoom-out-btn" title="Zoom Out (Ctrl/Cmd + -)">
-      <img src="assets/twemoji/2796.svg" class="twemoji" alt="➖" draggable="false" />
+      <img src="../assets/twemoji/2796.svg" class="twemoji" alt="➖" draggable="false" />
     </button>
     <div class="zoom-level" id="zoom-level-display">100%</div>
     <button class="zoom-btn" id="zoom-in-btn" title="Zoom In (Ctrl/Cmd + +)">
-      <img src="assets/twemoji/2795.svg" class="twemoji" alt="➕" draggable="false" />
+      <img src="../assets/twemoji/2795.svg" class="twemoji" alt="➕" draggable="false" />
     </button>
     <div class="zoom-divider"></div>
     <button class="zoom-btn" id="zoom-reset-btn" title="Reset to 100%">
-      <img src="assets/twemoji/1f504.svg" class="twemoji-small" alt="🔄" draggable="false" />
+      <img src="../assets/twemoji/1f504.svg" class="twemoji-small" alt="🔄" draggable="false" />
     </button>
   </div>
 
@@ -1452,7 +1452,7 @@
   <div class="modal-overlay" id="theme-editor-modal" style="display: none;">
     <div class="modal glass-panel theme-editor-modal">
       <div class="modal-header">
-        <h3><img src="assets/twemoji/1f3a8.svg" class="twemoji" alt="🎨" draggable="false" /> Custom Theme Editor</h3>
+        <h3><img src="../assets/twemoji/1f3a8.svg" class="twemoji" alt="🎨" draggable="false" /> Custom Theme Editor</h3>
         <button class="close-button" id="theme-editor-close">&times;</button>
       </div>
       <div class="modal-body theme-editor-body">
@@ -1544,12 +1544,12 @@
           <div class="theme-presets">
             <label>Presets</label>
             <div class="preset-buttons">
-              <button class="preset-btn" data-preset="midnight" title="Midnight Blue"><img src="assets/twemoji/1f319.svg" class="twemoji" alt="🌙" draggable="false" /><span>Midnight</span></button>
-              <button class="preset-btn" data-preset="forest" title="Forest Green"><img src="assets/twemoji/1f332.svg" class="twemoji" alt="🌲" draggable="false" /><span>Forest</span></button>
-              <button class="preset-btn" data-preset="sunset" title="Sunset Orange"><img src="assets/twemoji/1f305.svg" class="twemoji" alt="🌅" draggable="false" /><span>Sunset</span></button>
-              <button class="preset-btn" data-preset="lavender" title="Lavender Purple"><img src="assets/twemoji/1f49c.svg" class="twemoji" alt="💜" draggable="false" /><span>Lavender</span></button>
-              <button class="preset-btn" data-preset="rose" title="Rose Pink"><img src="assets/twemoji/1f338.svg" class="twemoji" alt="🌸" draggable="false" /><span>Rose</span></button>
-              <button class="preset-btn" data-preset="ocean" title="Ocean Teal"><img src="assets/twemoji/1f30a.svg" class="twemoji" alt="🌊" draggable="false" /><span>Ocean</span></button>
+              <button class="preset-btn" data-preset="midnight" title="Midnight Blue"><img src="../assets/twemoji/1f319.svg" class="twemoji" alt="🌙" draggable="false" /><span>Midnight</span></button>
+              <button class="preset-btn" data-preset="forest" title="Forest Green"><img src="../assets/twemoji/1f332.svg" class="twemoji" alt="🌲" draggable="false" /><span>Forest</span></button>
+              <button class="preset-btn" data-preset="sunset" title="Sunset Orange"><img src="../assets/twemoji/1f305.svg" class="twemoji" alt="🌅" draggable="false" /><span>Sunset</span></button>
+              <button class="preset-btn" data-preset="lavender" title="Lavender Purple"><img src="../assets/twemoji/1f49c.svg" class="twemoji" alt="💜" draggable="false" /><span>Lavender</span></button>
+              <button class="preset-btn" data-preset="rose" title="Rose Pink"><img src="../assets/twemoji/1f338.svg" class="twemoji" alt="🌸" draggable="false" /><span>Rose</span></button>
+              <button class="preset-btn" data-preset="ocean" title="Ocean Teal"><img src="../assets/twemoji/1f30a.svg" class="twemoji" alt="🌊" draggable="false" /><span>Ocean</span></button>
             </div>
           </div>
         </div>
@@ -1564,7 +1564,7 @@
   <div class="modal-overlay" id="home-settings-modal" style="display: none;">
     <div class="modal glass-panel home-settings-modal" role="dialog" aria-label="Customize Quick Access">
       <div class="modal-header">
-        <h3><img src="assets/twemoji/270f.svg" class="twemoji" alt="✏️" draggable="false" /> Customize Quick Access</h3>
+        <h3><img src="../assets/twemoji/270f.svg" class="twemoji" alt="✏️" draggable="false" /> Customize Quick Access</h3>
         <button class="close-button" id="home-settings-close">✕</button>
       </div>
       <div class="modal-body home-settings-body">
@@ -1626,7 +1626,7 @@
   <div class="modal-overlay" id="folder-icon-modal" style="display: none;">
     <div class="modal glass-panel folder-icon-modal">
       <div class="modal-header">
-        <h3><img src="assets/twemoji/1f3a8.svg" class="twemoji" alt="🎨" draggable="false" /> Change Folder Icon</h3>
+        <h3><img src="../assets/twemoji/1f3a8.svg" class="twemoji" alt="🎨" draggable="false" /> Change Folder Icon</h3>
         <button class="modal-close" id="folder-icon-close">✕</button>
       </div>
       <div class="modal-body folder-icon-body">
@@ -1643,11 +1643,11 @@
   <div class="modal-overlay" id="support-popup-modal" style="display: none;">
     <div class="modal glass-panel support-popup-modal">
       <div class="modal-header">
-        <h3><img src="assets/twemoji/2764.svg" class="twemoji" alt="❤️" draggable="false" /> Support IYERIS</h3>
+        <h3><img src="../assets/twemoji/2764.svg" class="twemoji" alt="❤️" draggable="false" /> Support IYERIS</h3>
       </div>
       <div class="modal-body support-popup-body">
         <div class="support-popup-icon">
-          <img src="assets/twemoji/1f31f.svg" class="twemoji-xlarge" alt="🌟" draggable="false" />
+          <img src="../assets/twemoji/1f31f.svg" class="twemoji-xlarge" alt="🌟" draggable="false" />
         </div>
         <p class="support-popup-message">Thanks for using IYERIS!</p>
         <p class="support-popup-submessage">If you're enjoying the app, consider supporting its development. Your support helps keep this project alive and growing!</p>
@@ -1656,7 +1656,7 @@
       <div class="modal-footer support-popup-footer">
         <button class="modal-button secondary" id="support-popup-dismiss">No thanks</button>
         <button class="modal-button primary" id="support-popup-yes">
-          <img src="assets/twemoji/2764.svg" class="twemoji" alt="❤️" draggable="false" /> Support
+          <img src="../assets/twemoji/2764.svg" class="twemoji" alt="❤️" draggable="false" /> Support
         </button>
       </div>
     </div>
@@ -1665,11 +1665,11 @@
   <div class="modal-overlay" id="tour-prompt-modal" style="display: none;">
     <div class="modal glass-panel tour-prompt-modal">
       <div class="modal-header">
-        <h3><img src="assets/twemoji/1f9ed.svg" class="twemoji" alt="🧭" draggable="false" /> Take a Quick Tour</h3>
+        <h3><img src="../assets/twemoji/1f9ed.svg" class="twemoji" alt="🧭" draggable="false" /> Take a Quick Tour</h3>
       </div>
       <div class="modal-body tour-prompt-body">
         <div class="tour-prompt-icon">
-          <img src="assets/twemoji/1f680.svg" class="twemoji-xlarge" alt="🚀" draggable="false" />
+          <img src="../assets/twemoji/1f680.svg" class="twemoji-xlarge" alt="🚀" draggable="false" />
         </div>
         <p class="tour-prompt-message">Welcome to IYERIS!</p>
         <p class="tour-prompt-submessage">Want a quick walkthrough of the app's key areas?</p>
@@ -1678,7 +1678,7 @@
       <div class="modal-footer tour-prompt-footer">
         <button class="modal-button secondary" id="tour-prompt-skip">Skip</button>
         <button class="modal-button primary" id="tour-prompt-yes">
-          <img src="assets/twemoji/1f44b.svg" class="twemoji" alt="👋" draggable="false" /> Yes Please!
+          <img src="../assets/twemoji/1f44b.svg" class="twemoji" alt="👋" draggable="false" /> Yes Please!
         </button>
       </div>
     </div>
@@ -1726,7 +1726,7 @@
           <div id="command-palette-results" class="command-palette-results"></div>
         </div>
         <div class="command-palette-empty" id="command-palette-empty" style="display: none;">
-          <img src="assets/twemoji/1f50d.svg" class="twemoji-large" alt="🔍" draggable="false" aria-hidden="true" />
+          <img src="../assets/twemoji/1f50d.svg" class="twemoji-large" alt="🔍" draggable="false" aria-hidden="true" />
           <p>No commands found</p>
           <small>Try a different search term</small>
         </div>
@@ -1749,6 +1749,6 @@
     </div>
   </div>
 
-  <script type="module" src="dist/renderer/renderer.js"></script>
+  <script type="module" src="../dist/renderer/renderer.js"></script>
 </body>
 </html>

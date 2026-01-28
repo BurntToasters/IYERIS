@@ -211,7 +211,7 @@ function emojiToCodepoint(emoji: string): string {
 
 function twemojiImg(emoji: string, className: string = 'twemoji', alt?: string): string {
   const codepoint = emojiToCodepoint(emoji);
-  const src = `assets/twemoji/${codepoint}.svg`;
+  const src = `../assets/twemoji/${codepoint}.svg`;
   const altText = escapeHtml(alt || emoji);
   return `<img src="${src}" class="${className}" alt="${altText}" draggable="false" />`;
 }
@@ -392,7 +392,7 @@ function renderOperations() {
     item.innerHTML = `
       <div class="archive-operation-header">
         <div class="archive-operation-title">
-          <img src="assets/twemoji/${icon}.svg" class="twemoji" alt="${iconEmoji}" draggable="false" />
+          <img src="../assets/twemoji/${icon}.svg" class="twemoji" alt="${iconEmoji}" draggable="false" />
           <span class="archive-operation-name" title="${escapeHtml(operation.name)}">${title}: ${escapeHtml(operation.name)}</span>
         </div>
         ${!operation.aborted ? `<button class="archive-operation-cancel" data-id="${escapeHtml(id)}">Cancel</button>` : ''}
@@ -869,7 +869,7 @@ function renderTabs() {
     const tabTitle = isHomeTab ? HOME_VIEW_LABEL : tab.path;
     const tabIcon = isHomeTab
       ? twemojiImg(String.fromCodePoint(0x1f3e0), 'twemoji')
-      : '<img src="assets/twemoji/1f4c2.svg" class="twemoji" alt="📂" draggable="false" />';
+      : '<img src="../assets/twemoji/1f4c2.svg" class="twemoji" alt="📂" draggable="false" />';
 
     tabElement.innerHTML = `
       <span class="tab-icon">
@@ -4136,7 +4136,7 @@ function toggleSearchScope() {
     searchScopeToggle.title = 'Global Search (All Indexed Files)';
     const img = searchScopeToggle.querySelector('img');
     if (img) {
-      img.src = 'assets/twemoji/1f30d.svg';
+      img.src = '../assets/twemoji/1f30d.svg';
       img.alt = '🌍';
     }
   } else {
@@ -4144,7 +4144,7 @@ function toggleSearchScope() {
     searchScopeToggle.title = 'Local Search (Current Folder)';
     const img = searchScopeToggle.querySelector('img');
     if (img) {
-      img.src = 'assets/twemoji/1f4c1.svg';
+      img.src = '../assets/twemoji/1f4c1.svg';
       img.alt = '📁';
     }
   }
@@ -4984,7 +4984,7 @@ async function init() {
   const titlebarIcon = document.getElementById('titlebar-icon') as HTMLImageElement;
   if (titlebarIcon) {
     const isBeta = /-(beta|alpha|rc)/i.test(appVersion);
-    const iconSrc = isBeta ? 'assets/folder-beta.png' : 'assets/folder.png';
+    const iconSrc = isBeta ? '../assets/folder-beta.png' : '../assets/folder.png';
     titlebarIcon.src = iconSrc;
     console.log(`[Init] Version: ${appVersion}, isBeta: ${isBeta}, titlebar icon: ${iconSrc}`);
   }
@@ -5784,7 +5784,7 @@ function setupEventListeners() {
           searchScopeToggle.title = 'Global Search (All Indexed Files)';
           const img = searchScopeToggle.querySelector('img');
           if (img) {
-            img.src = 'assets/twemoji/1f30d.svg';
+            img.src = '../assets/twemoji/1f30d.svg';
             img.alt = '🌍';
           }
           updateSearchPlaceholder();
@@ -5801,14 +5801,14 @@ function setupEventListeners() {
             searchScopeToggle.classList.add('global');
             searchScopeToggle.title = 'Global Search (All Indexed Files)';
             if (img) {
-              img.src = 'assets/twemoji/1f30d.svg';
+              img.src = '../assets/twemoji/1f30d.svg';
               img.alt = '🌍';
             }
           } else {
             searchScopeToggle.classList.remove('global');
             searchScopeToggle.title = 'Local Search (Current Folder)';
             if (img) {
-              img.src = 'assets/twemoji/1f4c1.svg';
+              img.src = '../assets/twemoji/1f4c1.svg';
               img.alt = '📁';
             }
           }
@@ -8335,7 +8335,7 @@ async function renderDriveColumn() {
       item.dataset.path = drive.path;
       item.title = drive.path;
       item.innerHTML = `
-        <span class="column-item-icon"><img src="assets/twemoji/1f4bf.svg" class="twemoji" alt="💿" draggable="false" /></span>
+        <span class="column-item-icon"><img src="../assets/twemoji/1f4bf.svg" class="twemoji" alt="💿" draggable="false" /></span>
         <span class="column-item-name">${escapeHtml(drive.label || drive.path)}</span>
         <span class="column-item-arrow">▸</span>
       `;
@@ -8479,7 +8479,7 @@ async function renderColumn(
         }
 
         const icon = fileItem.isDirectory
-          ? '<img src="assets/twemoji/1f4c1.svg" class="twemoji" alt="📁" draggable="false" />'
+          ? '<img src="../assets/twemoji/1f4c1.svg" class="twemoji" alt="📁" draggable="false" />'
           : getFileIcon(fileItem.name);
 
         item.innerHTML = `
@@ -10788,7 +10788,7 @@ async function loadHighlightJs(): Promise<any> {
     if (!existingLink) {
       const link = document.createElement('link');
       link.rel = 'stylesheet';
-      link.href = 'dist/vendor/highlight.css';
+      link.href = '../dist/vendor/highlight.css';
       link.dataset.highlightjs = 'theme';
       document.head.appendChild(link);
     }
@@ -10811,7 +10811,7 @@ async function loadHighlightJs(): Promise<any> {
     }
 
     const script = document.createElement('script');
-    script.src = 'dist/vendor/highlight.js';
+    script.src = '../dist/vendor/highlight.js';
     script.dataset.highlightjs = 'core';
     script.onload = () => {
       hljs = (window as any).hljs || null;

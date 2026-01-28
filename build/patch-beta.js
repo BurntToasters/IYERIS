@@ -2,7 +2,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const indexPath = path.join(__dirname, '..', 'index.html');
+const indexPath = path.join(__dirname, '..', 'src', 'index.html');
 const backupPath = path.join(__dirname, 'index.html.bak');
 
 fs.copyFileSync(indexPath, backupPath);
