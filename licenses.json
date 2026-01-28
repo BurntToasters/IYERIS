@@ -309,7 +309,7 @@
         "licenseUrl": "https://github.com/DefinitelyTyped/DefinitelyTyped/raw/master/LICENSE",
         "parents": "electron:iyeris"
     },
-    "@types/node@25.0.10": {
+    "@types/node@25.1.0": {
         "licenses": "MIT",
         "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped",
         "licenseUrl": "https://github.com/DefinitelyTyped/DefinitelyTyped/raw/master/LICENSE",
@@ -1513,7 +1513,7 @@
         "licenses": "MIT",
         "repository": "https://github.com/sindresorhus/is-fullwidth-code-point",
         "licenseUrl": "https://github.com/sindresorhus/is-fullwidth-code-point/raw/master/license",
-        "parents": "listr2:iyeris"
+        "parents": "log-update:iyeris"
     },
     "is-glob@4.0.3": {
         "licenses": "MIT",
@@ -1575,7 +1575,7 @@
         "licenseUrl": "https://github.com/isaacs/isexe/raw/master/LICENSE",
         "parents": "node-gyp:iyeris"
     },
-    "iyeris@0.9.8": {
+    "iyeris@0.9.9-beta.2": {
         "licenses": "MPL-2.0",
         "repository": "https://github.com/BurntToasters/IYERIS",
         "licenseUrl": "https://github.com/BurntToasters/IYERIS/raw/master/LICENSE",
@@ -2423,7 +2423,7 @@
         "licenses": "MIT",
         "repository": "https://github.com/chalk/slice-ansi",
         "licenseUrl": "https://github.com/chalk/slice-ansi/raw/master/license",
-        "parents": "listr2:iyeris"
+        "parents": "log-update:iyeris"
     },
     "smart-buffer@4.2.0": {
         "licenses": "MIT",
