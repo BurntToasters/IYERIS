@@ -234,6 +234,12 @@ const electronAPI: ElectronAPI = {
   listArchiveContents: (archivePath: string) =>
     ipcRenderer.invoke('list-archive-contents', archivePath),
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
+
+  getCachedThumbnail: (filePath: string) => ipcRenderer.invoke('get-cached-thumbnail', filePath),
+  saveCachedThumbnail: (filePath: string, dataUrl: string) =>
+    ipcRenderer.invoke('save-cached-thumbnail', filePath, dataUrl),
+  clearThumbnailCache: () => ipcRenderer.invoke('clear-thumbnail-cache'),
+  getThumbnailCacheSize: () => ipcRenderer.invoke('get-thumbnail-cache-size'),
 };
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);

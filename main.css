@@ -6545,6 +6545,39 @@ pre.preview-text code.hljs {
   opacity: 0.3;
 }
 
+.preview-raw-info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 15px;
+  padding: 30px;
+  text-align: center;
+  background: linear-gradient(135deg, rgba(40, 40, 50, 0.6) 0%, rgba(30, 30, 40, 0.8) 100%);
+  border-radius: 12px;
+  margin-bottom: 15px;
+}
+
+.preview-raw-icon {
+  font-size: 64px;
+}
+
+.preview-raw-details {
+  color: var(--text-secondary);
+}
+
+.preview-raw-details strong {
+  display: block;
+  font-size: 18px;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+.preview-raw-note {
+  font-size: 12px;
+  opacity: 0.7;
+  margin-top: 10px;
+}
+
 .quicklook-modal {
   min-width: 600px;
   max-width: 90vw;
@@ -6651,6 +6684,22 @@ pre.preview-text code.hljs {
 
 .file-grid.list-view .file-item.has-thumbnail .file-thumbnail {
   border-radius: 4px;
+}
+
+.file-thumbnail[data-animated="true"] {
+  transition: transform 0.15s ease;
+}
+
+.file-thumbnail[data-animated="true"]:hover {
+  transform: scale(1.02);
+}
+
+.file-item.has-thumbnail[data-thumbnail-type="audio"] .file-icon {
+  background: linear-gradient(135deg, rgba(30, 30, 40, 0.9) 0%, rgba(40, 40, 55, 0.9) 100%);
+}
+
+.file-item.has-thumbnail[data-thumbnail-type="audio"] .file-thumbnail {
+  object-fit: contain;
 }
 
 @media (max-width: 1200px) {

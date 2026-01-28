@@ -486,6 +486,21 @@ export interface ElectronAPI {
   getGitStatus: (dirPath: string) => Promise<GitStatusResponse>;
   getGitBranch: (dirPath: string) => Promise<GitBranchResponse>;
   listArchiveContents: (archivePath: string) => Promise<ArchiveListResponse>;
+
+  getCachedThumbnail: (
+    filePath: string
+  ) => Promise<{ success: boolean; dataUrl?: string; error?: string }>;
+  saveCachedThumbnail: (
+    filePath: string,
+    dataUrl: string
+  ) => Promise<{ success: boolean; error?: string }>;
+  clearThumbnailCache: () => Promise<{ success: boolean; error?: string }>;
+  getThumbnailCacheSize: () => Promise<{
+    success: boolean;
+    sizeBytes?: number;
+    fileCount?: number;
+    error?: string;
+  }>;
 }
 
 declare global {

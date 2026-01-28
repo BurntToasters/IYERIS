@@ -49,6 +49,7 @@ import { setupFileOperationHandlers, stopHiddenFileCacheCleanup } from './fileOp
 import { setupSearchHandlers } from './searchHandlers';
 import { setupArchiveHandlers, cleanupArchiveOperations } from './archiveManager';
 import { setupUpdateHandlers, initializeAutoUpdater } from './updateManager';
+import { setupThumbnailCacheHandlers } from './thumbnailCache';
 
 const TOTAL_MEM_GB = os.totalmem() / 1024 ** 3;
 
@@ -116,6 +117,7 @@ setupFileOperationHandlers();
 setupSearchHandlers();
 setupArchiveHandlers();
 setupUpdateHandlers(loadSettings);
+setupThumbnailCacheHandlers();
 
 app.whenReady().then(async () => {
   setupApplicationMenu();

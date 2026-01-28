@@ -3057,6 +3057,7 @@ async function showSettingsModal() {
   }
 
   await updateIndexStatus();
+  updateThumbnailCacheSize();
 
   const path = await window.electronAPI.getSettingsPath();
   if (settingsPath) {
@@ -6817,14 +6818,19 @@ function createFileItem(item: FileItem, searchQuery?: string): HTMLElement {
     icon = getFolderIcon(item.path);
   } else {
     const ext = item.name.split('.').pop()?.toLowerCase() || '';
-    if (IMAGE_EXTENSIONS.has(ext)) {
+    if (IMAGE_EXTENSIONS.has(ext) || RAW_EXTENSIONS.has(ext)) {
       fileItem.classList.add('has-thumbnail');
-      fileItem.dataset.thumbnailType = 'image';
+      fileItem.dataset.thumbnailType = RAW_EXTENSIONS.has(ext) ? 'raw' : 'image';
       icon = IMAGE_ICON;
       observeThumbnailItem(fileItem);
     } else if (VIDEO_EXTENSIONS.has(ext)) {
       fileItem.classList.add('has-thumbnail');
       fileItem.dataset.thumbnailType = 'video';
+      icon = getFileIcon(item.name);
+      observeThumbnailItem(fileItem);
+    } else if (AUDIO_EXTENSIONS.has(ext)) {
+      fileItem.classList.add('has-thumbnail');
+      fileItem.dataset.thumbnailType = 'audio';
       icon = getFileIcon(item.name);
       observeThumbnailItem(fileItem);
     } else {
@@ -7027,6 +7033,34 @@ function clearSpringLoad(target?: HTMLElement): void {
 function setupFileGridEventDelegation(): void {
   if (!fileGrid || fileGridDelegationReady) return;
   fileGridDelegationReady = true;
+
+  fileGrid.addEventListener(
+    'mouseenter',
+    (e) => {
+      const target = e.target;
+      if (!(target instanceof HTMLImageElement)) return;
+      if (target.dataset.animated !== 'true') return;
+      const animatedSrc = target.dataset.animatedSrc;
+      if (animatedSrc && target.src !== animatedSrc) {
+        target.src = animatedSrc;
+      }
+    },
+    true
+  );
+
+  fileGrid.addEventListener(
+    'mouseleave',
+    (e) => {
+      const target = e.target;
+      if (!(target instanceof HTMLImageElement)) return;
+      if (target.dataset.animated !== 'true') return;
+      const staticSrc = target.dataset.staticSrc;
+      if (staticSrc && target.src !== staticSrc) {
+        target.src = staticSrc;
+      }
+    },
+    true
+  );
 
   fileGrid.addEventListener('click', (e) => {
     const fileItem = getFileItemElement(e.target);
@@ -7249,24 +7283,82 @@ function generateVideoThumbnail(videoUrl: string): Promise<string> {
   });
 }
 
+async function generateAudioWaveform(audioUrl: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 160;
+    canvas.height = 160;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      reject(new Error('Cannot get canvas context'));
+      return;
+    }
+
+    const audioContext = new AudioContext();
+
+    fetch(audioUrl)
+      .then((response) => response.arrayBuffer())
+      .then((arrayBuffer) => audioContext.decodeAudioData(arrayBuffer))
+      .then((audioBuffer) => {
+        const rawData = audioBuffer.getChannelData(0);
+        const samples = 80;
+        const blockSize = Math.floor(rawData.length / samples);
+        const filteredData: number[] = [];
+
+        for (let i = 0; i < samples; i++) {
+          const blockStart = blockSize * i;
+          let sum = 0;
+          for (let j = 0; j < blockSize; j++) {
+            sum += Math.abs(rawData[blockStart + j]);
+          }
+          filteredData.push(sum / blockSize);
+        }
+
+        const maxVal = Math.max(...filteredData);
+        const normalizedData = filteredData.map((d) => d / maxVal);
+
+        ctx.fillStyle = 'rgba(30, 30, 40, 0.8)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        const barWidth = canvas.width / samples;
+        const centerY = canvas.height / 2;
+
+        ctx.fillStyle = 'rgba(99, 179, 237, 0.8)';
+        normalizedData.forEach((value, index) => {
+          const barHeight = value * (canvas.height * 0.4);
+          const x = index * barWidth;
+          ctx.fillRect(x, centerY - barHeight, barWidth - 1, barHeight * 2);
+        });
+
+        ctx.fillStyle = 'rgba(99, 179, 237, 0.4)';
+        ctx.beginPath();
+        ctx.arc(canvas.width / 2, canvas.height / 2, 25, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+        ctx.beginPath();
+        ctx.moveTo(canvas.width / 2 - 8, canvas.height / 2 - 12);
+        ctx.lineTo(canvas.width / 2 + 12, canvas.height / 2);
+        ctx.lineTo(canvas.width / 2 - 8, canvas.height / 2 + 12);
+        ctx.closePath();
+        ctx.fill();
+
+        audioContext.close();
+        resolve(canvas.toDataURL('image/jpeg', 0.8));
+      })
+      .catch((error) => {
+        audioContext.close();
+        reject(error);
+      });
+  });
+}
+
 function loadThumbnail(fileItem: HTMLElement, item: FileItem) {
   const cached = thumbnailCache.get(item.path);
   if (cached) {
     const iconDiv = fileItem.querySelector('.file-icon');
     if (iconDiv) {
-      iconDiv.innerHTML = '';
-      const img = document.createElement('img');
-      img.src = cached;
-      img.className = 'file-thumbnail';
-      img.alt = item.name;
-      img.addEventListener('error', () => {
-        if (!document.body.contains(fileItem)) {
-          return;
-        }
-        iconDiv.innerHTML = getFileIcon(item.name);
-        fileItem.classList.remove('has-thumbnail');
-      });
-      iconDiv.appendChild(img);
+      renderThumbnailImage(iconDiv as HTMLElement, cached, item, fileItem);
     }
     return;
   }
@@ -7285,11 +7377,21 @@ function loadThumbnail(fileItem: HTMLElement, item: FileItem) {
         iconDiv.innerHTML = `<div class="spinner" style="width: 30px; height: 30px; border-width: 2px;"></div>`;
       }
 
-      if (item.size > THUMBNAIL_MAX_SIZE) {
+      if (thumbnailType !== 'audio' && item.size > THUMBNAIL_MAX_SIZE) {
         if (iconDiv) {
           iconDiv.innerHTML = getFileIcon(item.name);
         }
         fileItem.classList.remove('has-thumbnail');
+        return;
+      }
+
+      const diskCacheResult = await window.electronAPI.getCachedThumbnail(item.path);
+      if (diskCacheResult.success && diskCacheResult.dataUrl) {
+        if (!document.body.contains(fileItem)) return;
+        cacheThumbnail(item.path, diskCacheResult.dataUrl);
+        if (iconDiv) {
+          renderThumbnailImage(iconDiv as HTMLElement, diskCacheResult.dataUrl, item, fileItem);
+        }
         return;
       }
 
@@ -7300,10 +7402,23 @@ function loadThumbnail(fileItem: HTMLElement, item: FileItem) {
       }
 
       let thumbnailUrl = fileUrl;
+      let shouldCacheToDisk = false;
 
       if (thumbnailType === 'video') {
         try {
           thumbnailUrl = await generateVideoThumbnail(fileUrl);
+          shouldCacheToDisk = true;
+        } catch {
+          if (iconDiv) {
+            iconDiv.innerHTML = getFileIcon(item.name);
+          }
+          fileItem.classList.remove('has-thumbnail');
+          return;
+        }
+      } else if (thumbnailType === 'audio') {
+        try {
+          thumbnailUrl = await generateAudioWaveform(fileUrl);
+          shouldCacheToDisk = true;
         } catch {
           if (iconDiv) {
             iconDiv.innerHTML = getFileIcon(item.name);
@@ -7318,24 +7433,12 @@ function loadThumbnail(fileItem: HTMLElement, item: FileItem) {
       }
 
       if (iconDiv) {
-        if (thumbnailCache.size >= THUMBNAIL_CACHE_MAX) {
-          const firstKey = thumbnailCache.keys().next().value;
-          if (firstKey) thumbnailCache.delete(firstKey);
+        cacheThumbnail(item.path, thumbnailUrl);
+        renderThumbnailImage(iconDiv as HTMLElement, thumbnailUrl, item, fileItem);
+
+        if (shouldCacheToDisk && thumbnailUrl.startsWith('data:')) {
+          window.electronAPI.saveCachedThumbnail(item.path, thumbnailUrl).catch(() => {});
         }
-        thumbnailCache.set(item.path, thumbnailUrl);
-        iconDiv.innerHTML = '';
-        const img = document.createElement('img');
-        img.src = thumbnailUrl;
-        img.className = 'file-thumbnail';
-        img.alt = item.name;
-        img.addEventListener('error', () => {
-          if (!document.body.contains(fileItem)) {
-            return;
-          }
-          iconDiv.innerHTML = getFileIcon(item.name);
-          fileItem.classList.remove('has-thumbnail');
-        });
-        iconDiv.appendChild(img);
       }
     } catch (error) {
       if (!document.body.contains(fileItem)) {
@@ -7348,6 +7451,43 @@ function loadThumbnail(fileItem: HTMLElement, item: FileItem) {
       fileItem.classList.remove('has-thumbnail');
     }
   });
+}
+
+function cacheThumbnail(path: string, url: string): void {
+  if (thumbnailCache.size >= THUMBNAIL_CACHE_MAX) {
+    const firstKey = thumbnailCache.keys().next().value;
+    if (firstKey) thumbnailCache.delete(firstKey);
+  }
+  thumbnailCache.set(path, url);
+}
+
+function renderThumbnailImage(
+  iconDiv: HTMLElement,
+  thumbnailUrl: string,
+  item: FileItem,
+  fileItem: HTMLElement
+): void {
+  iconDiv.innerHTML = '';
+  const img = document.createElement('img');
+  img.src = thumbnailUrl;
+  img.className = 'file-thumbnail';
+  img.alt = item.name;
+
+  const ext = item.name.split('.').pop()?.toLowerCase() || '';
+  if (ANIMATED_IMAGE_EXTENSIONS.has(ext)) {
+    img.dataset.animated = 'true';
+    img.dataset.staticSrc = thumbnailUrl;
+    img.dataset.animatedSrc = encodeFileUrl(item.path);
+  }
+
+  img.addEventListener('error', () => {
+    if (!document.body.contains(fileItem)) {
+      return;
+    }
+    iconDiv.innerHTML = getFileIcon(item.name);
+    fileItem.classList.remove('has-thumbnail');
+  });
+  iconDiv.appendChild(img);
 }
 
 const FILE_ICON_MAP: Record<string, string> = {
@@ -7409,6 +7549,16 @@ const FILE_ICON_MAP: Record<string, string> = {
   app: '2699',
   msi: '2699',
   dmg: '2699',
+  cr2: '1f4f7',
+  cr3: '1f4f7',
+  nef: '1f4f7',
+  arw: '1f4f7',
+  dng: '1f4f7',
+  orf: '1f4f7',
+  rw2: '1f4f7',
+  pef: '1f4f7',
+  srw: '1f4f7',
+  raf: '1f4f7',
 };
 
 const IMAGE_EXTENSIONS = new Set([
@@ -7425,6 +7575,19 @@ const IMAGE_EXTENSIONS = new Set([
   'jfif',
   'svg',
 ]);
+const RAW_EXTENSIONS = new Set([
+  'cr2',
+  'cr3',
+  'nef',
+  'arw',
+  'dng',
+  'orf',
+  'rw2',
+  'pef',
+  'srw',
+  'raf',
+]);
+const ANIMATED_IMAGE_EXTENSIONS = new Set(['gif', 'webp', 'apng']);
 const VIDEO_EXTENSIONS = new Set(['mp4', 'webm', 'ogg', 'mov', 'mkv', 'avi', 'm4v']);
 const AUDIO_EXTENSIONS = new Set(['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac', 'wma', 'opus']);
 const PDF_EXTENSIONS = new Set(['pdf']);
@@ -10163,6 +10326,31 @@ document.getElementById('clear-bookmarks-btn')?.addEventListener('click', async 
   }
 });
 
+document.getElementById('clear-thumbnail-cache-btn')?.addEventListener('click', async () => {
+  if (confirm('Are you sure you want to clear the thumbnail cache?')) {
+    const result = await window.electronAPI.clearThumbnailCache();
+    if (result.success) {
+      thumbnailCache.clear();
+      showToast('Thumbnail cache cleared', 'Data', 'success');
+      updateThumbnailCacheSize();
+    } else {
+      showToast('Failed to clear cache', 'Error', 'error');
+    }
+  }
+});
+
+async function updateThumbnailCacheSize(): Promise<void> {
+  const sizeElement = document.getElementById('thumbnail-cache-size');
+  if (!sizeElement) return;
+
+  const result = await window.electronAPI.getThumbnailCacheSize();
+  if (result.success && typeof result.sizeBytes === 'number') {
+    sizeElement.textContent = `(${formatFileSize(result.sizeBytes)}, ${result.fileCount} files)`;
+  } else {
+    sizeElement.textContent = '';
+  }
+}
+
 document.getElementById('about-github-btn')?.addEventListener('click', () => {
   window.electronAPI.openFile('https://github.com/BurntToasters/IYERIS');
 });
@@ -10362,6 +10550,8 @@ function updatePreview(file: FileItem) {
 
   if (IMAGE_EXTENSIONS.has(ext)) {
     showImagePreview(file, requestId);
+  } else if (RAW_EXTENSIONS.has(ext)) {
+    showRawImagePreview(file, requestId);
   } else if (TEXT_EXTENSIONS.has(ext)) {
     showTextPreview(file, requestId);
   } else if (VIDEO_EXTENSIONS.has(ext)) {
@@ -10493,6 +10683,41 @@ async function showImagePreview(file: FileItem, requestId: number) {
       `;
     });
   }
+}
+
+async function showRawImagePreview(file: FileItem, requestId: number) {
+  if (!previewContent || requestId !== previewRequestId) return;
+
+  const props = await window.electronAPI.getItemProperties(file.path);
+  if (requestId !== previewRequestId) return;
+  const info = props.success && props.properties ? props.properties : null;
+
+  const ext = file.name.split('.').pop()?.toUpperCase() || 'RAW';
+  const cameraFormats: Record<string, string> = {
+    CR2: 'Canon',
+    CR3: 'Canon',
+    NEF: 'Nikon',
+    ARW: 'Sony',
+    DNG: 'Adobe DNG',
+    ORF: 'Olympus',
+    RW2: 'Panasonic',
+    PEF: 'Pentax',
+    SRW: 'Samsung',
+    RAF: 'Fujifilm',
+  };
+  const brand = cameraFormats[ext] || 'Camera';
+
+  previewContent.innerHTML = `
+    <div class="preview-raw-info">
+      <div class="preview-raw-icon">${twemojiImg(String.fromCodePoint(0x1f4f7), 'twemoji-xlarge')}</div>
+      <div class="preview-raw-details">
+        <strong>${ext} RAW Image</strong>
+        <p>${brand} RAW format</p>
+        <p class="preview-raw-note">RAW preview not available in browser.<br>Use a photo editor to view this file.</p>
+      </div>
+    </div>
+    ${generateFileInfo(file, info)}
+  `;
 }
 
 let hljs: any = null;
