@@ -39,6 +39,7 @@ interface ArchiveProcess {
 
 const activeArchiveProcesses = new Map<string, ArchiveProcess>();
 
+// prevent path traversal in archive
 async function assertArchiveEntriesSafe(archivePath: string, destPath: string): Promise<void> {
   const Seven = get7zipModule();
   const sevenZipPath = get7zipPath();
@@ -95,6 +96,7 @@ async function assertArchiveEntriesSafe(archivePath: string, destPath: string): 
   for (const entry of entries) {
     if (!entry || !entry.name) continue;
 
+    // block symlinks for safety
     const attr = (entry.attributes || '').toUpperCase();
     const type = (entry.type || '').toLowerCase();
     const isLink =
@@ -138,6 +140,7 @@ async function assertArchiveEntriesSafe(archivePath: string, destPath: string): 
   }
 }
 
+// verify extracted paths stayed in bounds
 async function assertExtractedPathsSafe(destPath: string): Promise<void> {
   const destRoot = await fs.realpath(destPath);
   const destRootWithSep = destRoot.endsWith(path.sep) ? destRoot : destRoot + path.sep;
@@ -154,7 +157,6 @@ async function assertExtractedPathsSafe(destPath: string): Promise<void> {
       continue;
     }
 
-    // Process entries in parallel batches for better multi-core utilization
     const BATCH_SIZE = 20;
     for (let i = 0; i < entries.length; i += BATCH_SIZE) {
       const batch = entries.slice(i, i + BATCH_SIZE);

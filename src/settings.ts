@@ -30,6 +30,7 @@ export function createDefaultSettings(): Settings {
     showFolderTree: true,
     enableTabs: true,
     globalContentSearch: false,
+    globalClipboard: true,
     enableSyntaxHighlighting: true,
     enableGitStatus: false,
     showFileHoverCard: true,
@@ -46,5 +47,19 @@ export function createDefaultSettings(): Settings {
     themedIcons: false,
     disableHardwareAcceleration: false,
     useSystemFontSize: false,
+
+    confirmFileOperations: false,
+    fileConflictBehavior: 'ask',
+    skipElevationConfirmation: false,
+    maxThumbnailSizeMB: 10,
+    thumbnailQuality: 'medium',
+    autoPlayVideos: false,
+    previewPanelPosition: 'right',
+    maxPreviewSizeMB: 50,
+    gridColumns: 'auto',
+    iconSize: 64,
+    compactFileInfo: false,
+    showFileExtensions: true,
+    maxSearchHistoryItems: 5,
   };
 }

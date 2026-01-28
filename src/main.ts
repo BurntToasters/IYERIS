@@ -49,14 +49,15 @@ import { setupSearchHandlers } from './searchHandlers';
 import { setupArchiveHandlers, cleanupArchiveOperations } from './archiveManager';
 import { setupUpdateHandlers, initializeAutoUpdater } from './updateManager';
 import { setupThumbnailCacheHandlers } from './thumbnailCache';
+import { setupElevatedOperationHandlers } from './elevatedOperations';
 
 const TOTAL_MEM_GB = os.totalmem() / 1024 ** 3;
 
+// hw accel override
 if (process.argv.includes('--disable-hardware-acceleration')) {
   logger.info('[Performance] Hardware acceleration disabled via command line flag');
   app.disableHardwareAcceleration();
 } else {
-  // Check settings for hardware acceleration preference
   (async () => {
     try {
       const settings = await loadSettings();
@@ -70,6 +71,7 @@ if (process.argv.includes('--disable-hardware-acceleration')) {
   })();
 }
 
+// mem limits by system ram
 const MAX_OLD_SPACE_MB =
   TOTAL_MEM_GB < 6 ? 512 : TOTAL_MEM_GB < 12 ? 1024 : TOTAL_MEM_GB < 24 ? 2048 : 3072;
 const jsFlags: string[] = [`--max-old-space-size=${MAX_OLD_SPACE_MB}`];
@@ -86,12 +88,14 @@ if (process.platform === 'win32') {
 app.commandLine.appendSwitch('wm-window-animations-disabled');
 app.commandLine.appendSwitch('force-color-profile', 'srgb');
 
+// single instance enforcement
 const gotTheLock = app.requestSingleInstanceLock();
 
 if (!gotTheLock) {
   logger.info('[SingleInstance] Another instance is already running, quitting...');
   app.quit();
 } else {
+  // restore on second launch attempt
   app.on('second-instance', () => {
     logger.info('[SingleInstance] Second instance attempted to start');
     const mainWindow = getMainWindow();
@@ -113,6 +117,7 @@ setupHomeSettingsHandlers();
 setupUndoRedoHandlers();
 setupWindowHandlers();
 setupFileOperationHandlers();
+setupElevatedOperationHandlers();
 setupSearchHandlers();
 setupArchiveHandlers();
 setupUpdateHandlers(loadSettings);
@@ -126,11 +131,13 @@ app.whenReady().then(async () => {
 
   const settingsPromise = loadSettings();
 
+  // detect startup mode
   let shouldStartHidden = process.argv.includes('--hidden');
   setShouldStartHidden(shouldStartHidden);
 
   const startupSettings = await settingsPromise;
 
+  // ms store auto-start detection
   if (!shouldStartHidden && process.windowsStore) {
     try {
       const loginItemSettings = app.getLoginItemSettings();
@@ -184,6 +191,7 @@ app.whenReady().then(async () => {
       try {
         applyLoginItemSettings(startupSettings);
 
+        // indexer delayed start
         if (startupSettings.enableIndexer) {
           const indexerTasks = getIndexerTasks();
           const baseIndexerDelay = process.platform === 'win32' ? 5000 : 1500;

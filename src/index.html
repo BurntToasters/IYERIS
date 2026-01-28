@@ -1534,6 +1534,22 @@
                     <span class="toggle-slider"></span>
                   </label>
                 </div>
+                <div class="setting-item" data-searchable="max search history items limit count">
+                  <div class="setting-info">
+                    <label for="max-search-history-input">Max Search History Items</label>
+                    <p class="setting-description">
+                      Number of recent searches to remember (1-20)
+                    </p>
+                  </div>
+                  <input
+                    type="number"
+                    id="max-search-history-input"
+                    class="settings-input"
+                    min="1"
+                    max="20"
+                    value="5"
+                  />
+                </div>
               </div>
 
               <div class="settings-card">
@@ -1587,6 +1603,166 @@
                     <input type="checkbox" id="enable-syntax-highlighting-toggle" />
                     <span class="toggle-slider"></span>
                   </label>
+                </div>
+                <div class="setting-item" data-searchable="auto play video preview automatic">
+                  <div class="setting-info">
+                    <label for="auto-play-videos-toggle">Auto-Play Videos</label>
+                    <p class="setting-description">
+                      Automatically play videos when opened in preview
+                    </p>
+                  </div>
+                  <label class="toggle-switch">
+                    <input type="checkbox" id="auto-play-videos-toggle" />
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+                <div class="setting-item" data-searchable="preview panel position layout right bottom">
+                  <div class="setting-info">
+                    <label for="preview-panel-position-select">Preview Panel Position</label>
+                    <p class="setting-description">Choose where the preview panel appears</p>
+                  </div>
+                  <select id="preview-panel-position-select" class="settings-select">
+                    <option value="right">Right</option>
+                    <option value="bottom">Bottom</option>
+                  </select>
+                </div>
+                <div class="setting-item" data-searchable="max preview size limit file">
+                  <div class="setting-info">
+                    <label for="max-preview-size-input">Max Preview File Size (MB)</label>
+                    <p class="setting-description">
+                      Maximum file size to load in preview (1-500 MB)
+                    </p>
+                  </div>
+                  <input
+                    type="number"
+                    id="max-preview-size-input"
+                    class="settings-input"
+                    min="1"
+                    max="500"
+                    value="50"
+                  />
+                </div>
+              </div>
+
+              <div class="settings-card">
+                <div class="settings-card-header">Display</div>
+                <div class="setting-item" data-searchable="grid columns layout view mode">
+                  <div class="setting-info">
+                    <label for="grid-columns-select">Grid Columns</label>
+                    <p class="setting-description">Number of columns in grid view</p>
+                  </div>
+                  <select id="grid-columns-select" class="settings-select">
+                    <option value="auto">Auto</option>
+                    <option value="2">2 Columns</option>
+                    <option value="3">3 Columns</option>
+                    <option value="4">4 Columns</option>
+                    <option value="5">5 Columns</option>
+                    <option value="6">6 Columns</option>
+                  </select>
+                </div>
+                <div class="setting-item" data-searchable="icon size thumbnail scale bigger">
+                  <div class="setting-info">
+                    <label for="icon-size-slider">Icon Size</label>
+                    <p class="setting-description">
+                      Adjust file icon size (32-128px): <span id="icon-size-value">64</span>px
+                    </p>
+                  </div>
+                  <input
+                    type="range"
+                    id="icon-size-slider"
+                    class="settings-slider"
+                    min="32"
+                    max="128"
+                    step="8"
+                    value="64"
+                  />
+                </div>
+                <div class="setting-item" data-searchable="compact file info details small dense">
+                  <div class="setting-info">
+                    <label for="compact-file-info-toggle">Compact File Info</label>
+                    <p class="setting-description">
+                      Show less file information for a more compact view
+                    </p>
+                  </div>
+                  <label class="toggle-switch">
+                    <input type="checkbox" id="compact-file-info-toggle" />
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+                <div class="setting-item" data-searchable="show file extensions suffix type">
+                  <div class="setting-info">
+                    <label for="show-file-extensions-toggle">Show File Extensions</label>
+                    <p class="setting-description">
+                      Display file extensions (.txt, .jpg, etc.)
+                    </p>
+                  </div>
+                  <label class="toggle-switch">
+                    <input type="checkbox" id="show-file-extensions-toggle" checked />
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+              </div>
+
+              <div class="settings-card">
+                <div class="settings-card-header">File Operations</div>
+                <div class="setting-item" data-searchable="confirm operations delete move rename safety">
+                  <div class="setting-info">
+                    <label for="confirm-file-operations-toggle">Confirm File Operations</label>
+                    <p class="setting-description">
+                      Show confirmation dialogs for delete, move, and rename operations
+                    </p>
+                  </div>
+                  <label class="toggle-switch">
+                    <input type="checkbox" id="confirm-file-operations-toggle" />
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+                <div class="setting-item" data-searchable="file conflict behavior overwrite rename skip">
+                  <div class="setting-info">
+                    <label for="file-conflict-behavior-select">File Conflict Behavior</label>
+                    <p class="setting-description">
+                      How to handle file conflicts during copy/move operations
+                    </p>
+                  </div>
+                  <select id="file-conflict-behavior-select" class="settings-select">
+                    <option value="ask">Ask Each Time</option>
+                    <option value="rename">Auto-Rename</option>
+                    <option value="skip">Skip</option>
+                    <option value="overwrite">Overwrite</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="settings-card">
+                <div class="settings-card-header">Thumbnails</div>
+                <div class="setting-item" data-searchable="max thumbnail size limit mb">
+                  <div class="setting-info">
+                    <label for="max-thumbnail-size-input">Max Thumbnail Size (MB)</label>
+                    <p class="setting-description">
+                      Maximum file size to generate thumbnails (1-100 MB)
+                    </p>
+                  </div>
+                  <input
+                    type="number"
+                    id="max-thumbnail-size-input"
+                    class="settings-input"
+                    min="1"
+                    max="100"
+                    value="10"
+                  />
+                </div>
+                <div class="setting-item" data-searchable="thumbnail quality compression jpeg">
+                  <div class="setting-info">
+                    <label for="thumbnail-quality-select">Thumbnail Quality</label>
+                    <p class="setting-description">
+                      JPEG quality for cached thumbnails (affects disk space)
+                    </p>
+                  </div>
+                  <select id="thumbnail-quality-select" class="settings-select">
+                    <option value="low">Low (Faster, Smaller)</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High (Slower, Larger)</option>
+                  </select>
                 </div>
               </div>
             </div>
@@ -1877,27 +2053,6 @@
                     Clear
                   </button>
                 </div>
-                <div
-                  class="setting-item"
-                  data-searchable="clear thumbnail cache image preview delete"
-                >
-                  <div class="setting-info">
-                    <label>Clear Thumbnail Cache</label>
-                    <p class="setting-description">
-                      Remove cached image and video thumbnails.
-                      <span id="thumbnail-cache-size"></span>
-                    </p>
-                  </div>
-                  <button class="modal-button" id="clear-thumbnail-cache-btn">
-                    <img
-                      src="../assets/twemoji/1f5d1.svg"
-                      class="twemoji"
-                      alt="🗑️"
-                      draggable="false"
-                    />
-                    Clear
-                  </button>
-                </div>
               </div>
             </div>
 
@@ -1950,6 +2105,18 @@
                   </div>
                   <label class="toggle-switch">
                     <input type="checkbox" id="global-content-search-toggle" />
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+                <div class="setting-item" data-searchable="global clipboard system paste external">
+                  <div class="setting-info">
+                    <label for="global-clipboard-toggle">Global Clipboard</label>
+                    <p class="setting-description">
+                      Allow pasting files copied from system file managers (Finder, File Explorer)
+                    </p>
+                  </div>
+                  <label class="toggle-switch">
+                    <input type="checkbox" id="global-clipboard-toggle" />
                     <span class="toggle-slider"></span>
                   </label>
                 </div>
@@ -2015,6 +2182,31 @@
                     <input type="checkbox" id="disable-hw-accel-toggle" />
                     <span class="toggle-slider"></span>
                   </label>
+                </div>
+              </div>
+
+              <div class="settings-card">
+                <div class="settings-card-header">Cache</div>
+                <div
+                  class="setting-item"
+                  data-searchable="clear thumbnail cache image preview delete dump"
+                >
+                  <div class="setting-info">
+                    <label>Dump thumbnail cache</label>
+                    <p class="setting-description">
+                      Remove cached image and video thumbnails.
+                      <span id="thumbnail-cache-size"></span>
+                    </p>
+                  </div>
+                  <button class="modal-button" id="clear-thumbnail-cache-btn">
+                    <img
+                      src="../assets/twemoji/1f5d1.svg"
+                      class="twemoji"
+                      alt="🗑️"
+                      draggable="false"
+                    />
+                    Clear
+                  </button>
                 </div>
               </div>
 

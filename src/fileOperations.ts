@@ -12,6 +12,7 @@ import type {
   PathResponse,
   PropertiesResponse,
 } from './types';
+import { tryWithElevation } from './elevatedOperations';
 import {
   getMainWindow,
   getFileTasks,
@@ -44,14 +45,36 @@ interface PlannedFileOperation {
   destPath: string;
   itemName: string;
   isDirectory: boolean;
+  overwrite?: boolean;
 }
 
 type FileOperationType = 'copy' | 'move';
+type ConflictBehavior = 'ask' | 'rename' | 'skip' | 'overwrite' | 'cancel';
+
+async function generateUniqueName(destPath: string, fileName: string): Promise<string> {
+  const { base, ext } = splitFileName(fileName);
+  let counter = 2;
+  let candidatePath = path.join(destPath, fileName);
+  while (
+    await fs
+      .stat(candidatePath)
+      .then(() => true)
+      .catch(() => false)
+  ) {
+    const candidateName = `${base} (${counter})${ext}`;
+    candidatePath = path.join(destPath, candidateName);
+    counter++;
+    if (counter > 9999) throw new Error('Unable to generate unique name');
+  }
+  return candidatePath;
+}
 
 async function validateFileOperation(
   sourcePaths: string[],
   destPath: string,
-  operationType: FileOperationType
+  operationType: FileOperationType,
+  conflictBehavior: ConflictBehavior = 'ask',
+  resolveConflict?: (fileName: string) => Promise<'rename' | 'skip' | 'overwrite' | 'cancel'>
 ): Promise<{ success: true; planned: PlannedFileOperation[] } | { success: false; error: string }> {
   if (!isPathSafe(destPath)) {
     console.warn(`[Security] Invalid destination path rejected:`, destPath);
@@ -90,6 +113,7 @@ async function validateFileOperation(
     }
 
     if (stats.isDirectory()) {
+      // prevent copying dir into itself
       const normalizedSourcePath = normalizePathForComparison(sourcePath);
       if (
         normalizedDestPath === normalizedSourcePath ||
@@ -107,7 +131,34 @@ async function validateFileOperation(
       .then(() => true)
       .catch(() => false);
     if (destExists) {
-      console.log(`[${operationType}] Destination already exists:`, itemDestPath);
+      let behavior = conflictBehavior;
+      if (behavior === 'ask' && resolveConflict) {
+        behavior = await resolveConflict(itemName);
+        if (behavior === 'cancel') {
+          return { success: false, error: 'Operation cancelled' };
+        }
+      }
+      if (behavior === 'skip') {
+        continue;
+      } else if (behavior === 'rename') {
+        const newDestPath = await generateUniqueName(destPath, itemName);
+        planned.push({
+          sourcePath,
+          destPath: newDestPath,
+          itemName: path.basename(newDestPath),
+          isDirectory: stats.isDirectory(),
+        });
+        continue;
+      } else if (behavior === 'overwrite') {
+        planned.push({
+          sourcePath,
+          destPath: itemDestPath,
+          itemName,
+          isDirectory: stats.isDirectory(),
+          overwrite: true,
+        });
+        continue;
+      }
       return {
         success: false,
         error: `A file named "${itemName}" already exists in the destination`,
@@ -141,6 +192,7 @@ async function createUniqueFile(
   const MAX_ATTEMPTS = 9999;
   let counter = 1;
 
+  // find available name with (n) suffix
   while (counter <= MAX_ATTEMPTS) {
     const candidateName = counter === 1 ? fileName : `${base} (${counter})${ext}`;
     const candidatePath = path.join(parentPath, candidateName);
@@ -166,6 +218,7 @@ async function isFileHidden(filePath: string, fileName: string): Promise<boolean
     return true;
   }
 
+  // win hidden attr check
   if (process.platform === 'win32') {
     try {
       const execFilePromise = promisify(execFile);
@@ -196,6 +249,7 @@ function cleanupHiddenFileCache(): void {
     const now = Date.now();
     let entriesRemoved = 0;
 
+    // expire old entries
     for (const [key, value] of hiddenFileCache) {
       if (now - value.timestamp > HIDDEN_FILE_CACHE_TTL) {
         hiddenFileCache.delete(key);
@@ -543,13 +597,30 @@ export function setupFileOperationHandlers(): void {
 
         clearUndoStackForPath(itemPath);
 
-        const stats = await fs.stat(itemPath);
-        if (stats.isDirectory()) {
-          await fs.rm(itemPath, { recursive: true, force: true });
-        } else {
-          await fs.unlink(itemPath);
+        const deleteOp = async () => {
+          const stats = await fs.stat(itemPath);
+          if (stats.isDirectory()) {
+            await fs.rm(itemPath, { recursive: true, force: true });
+          } else {
+            await fs.unlink(itemPath);
+          }
+        };
+
+        const result = await tryWithElevation(
+          deleteOp,
+          { type: 'delete', sourcePath: itemPath },
+          'delete'
+        );
+
+        if (result.error) {
+          return { success: false, error: result.error };
         }
-        console.log('[Delete] Item permanently deleted:', itemPath);
+
+        console.log(
+          '[Delete] Item permanently deleted:',
+          itemPath,
+          result.elevated ? '(elevated)' : ''
+        );
         return { success: true };
       } catch (error) {
         console.error('[Delete] Error:', error);
@@ -579,7 +650,19 @@ export function setupFileOperationHandlers(): void {
       const oldName = path.basename(oldPath);
       const newPath = path.join(path.dirname(oldPath), newName);
       try {
-        await fs.rename(oldPath, newPath);
+        const renameOp = async () => {
+          await fs.rename(oldPath, newPath);
+        };
+
+        const result = await tryWithElevation(
+          renameOp,
+          { type: 'rename', sourcePath: oldPath, newName },
+          'rename'
+        );
+
+        if (result.error) {
+          return { success: false, error: result.error };
+        }
 
         pushUndoAction({
           type: 'rename',
@@ -591,7 +674,13 @@ export function setupFileOperationHandlers(): void {
           },
         });
 
-        console.log('[Rename] Item renamed:', oldPath, '->', newPath);
+        console.log(
+          '[Rename] Item renamed:',
+          oldPath,
+          '->',
+          newPath,
+          result.elevated ? '(elevated)' : ''
+        );
         return { success: true, path: newPath };
       } catch (error) {
         const err = error as NodeJS.ErrnoException;
@@ -676,10 +765,35 @@ export function setupFileOperationHandlers(): void {
     async (
       _event: IpcMainInvokeEvent,
       sourcePaths: string[],
-      destPath: string
+      destPath: string,
+      conflictBehavior?: ConflictBehavior
     ): Promise<ApiResponse> => {
       try {
-        const validation = await validateFileOperation(sourcePaths, destPath, 'copy');
+        const behavior = conflictBehavior || 'ask';
+        const resolveConflict =
+          behavior === 'ask'
+            ? async (fileName: string) => {
+                const mainWindow = getMainWindow();
+                if (!mainWindow) return 'skip' as const;
+                const { response } = await dialog.showMessageBox(mainWindow, {
+                  type: 'question',
+                  buttons: ['Replace', 'Keep Both', 'Skip', 'Cancel'],
+                  defaultId: 2,
+                  cancelId: 3,
+                  title: 'File Conflict',
+                  message: `"${fileName}" already exists in this location.`,
+                  detail: 'What would you like to do?',
+                });
+                return (['overwrite', 'rename', 'skip', 'cancel'] as const)[response];
+              }
+            : undefined;
+        const validation = await validateFileOperation(
+          sourcePaths,
+          destPath,
+          'copy',
+          behavior,
+          resolveConflict
+        );
         if (!validation.success) {
           return validation;
         }
@@ -691,6 +805,9 @@ export function setupFileOperationHandlers(): void {
             const batch = validation.planned.slice(i, i + PARALLEL_BATCH_SIZE);
             await Promise.all(
               batch.map(async (item) => {
+                if (item.overwrite) {
+                  await fs.rm(item.destPath, { recursive: true, force: true });
+                }
                 if (item.isDirectory) {
                   await fs.cp(item.sourcePath, item.destPath, { recursive: true });
                 } else {
@@ -721,10 +838,35 @@ export function setupFileOperationHandlers(): void {
     async (
       _event: IpcMainInvokeEvent,
       sourcePaths: string[],
-      destPath: string
+      destPath: string,
+      conflictBehavior?: ConflictBehavior
     ): Promise<ApiResponse> => {
       try {
-        const validation = await validateFileOperation(sourcePaths, destPath, 'move');
+        const behavior = conflictBehavior || 'ask';
+        const resolveConflict =
+          behavior === 'ask'
+            ? async (fileName: string) => {
+                const mainWindow = getMainWindow();
+                if (!mainWindow) return 'skip' as const;
+                const { response } = await dialog.showMessageBox(mainWindow, {
+                  type: 'question',
+                  buttons: ['Replace', 'Keep Both', 'Skip', 'Cancel'],
+                  defaultId: 2,
+                  cancelId: 3,
+                  title: 'File Conflict',
+                  message: `"${fileName}" already exists in this location.`,
+                  detail: 'What would you like to do?',
+                });
+                return (['overwrite', 'rename', 'skip', 'cancel'] as const)[response];
+              }
+            : undefined;
+        const validation = await validateFileOperation(
+          sourcePaths,
+          destPath,
+          'move',
+          behavior,
+          resolveConflict
+        );
         if (!validation.success) {
           return validation;
         }
@@ -740,12 +882,14 @@ export function setupFileOperationHandlers(): void {
             const batch = validation.planned.slice(i, i + PARALLEL_BATCH_SIZE);
             await Promise.all(
               batch.map(async (item) => {
+                if (item.overwrite) {
+                  await fs.rm(item.destPath, { recursive: true, force: true });
+                }
                 try {
                   await fs.rename(item.sourcePath, item.destPath);
                 } catch (renameError) {
                   const err = renameError as NodeJS.ErrnoException;
                   if (err.code === 'EXDEV') {
-                    console.log('[Move] Cross-device move, using copy+delete:', item.sourcePath);
                     if (item.isDirectory) {
                       await fs.cp(item.sourcePath, item.destPath, { recursive: true });
                     } else {

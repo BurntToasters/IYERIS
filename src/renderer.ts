@@ -89,6 +89,7 @@ function cacheDriveInfo(drives: DriveInfo[]): void {
   });
 }
 
+// throttle concurrent thumbnail loads
 function enqueueThumbnailLoad(loadFn: () => Promise<void>): void {
   const execute = async () => {
     activeThumbnailLoads++;
@@ -216,7 +217,6 @@ function twemojiImg(emoji: string, className: string = 'twemoji', alt?: string):
   return `<img src="${src}" class="${className}" alt="${altText}" draggable="false" />`;
 }
 
-// Debounced settings save for non-critical updates (history, recent files, etc.)
 let settingsSaveTimeout: ReturnType<typeof setTimeout> | null = null;
 function debouncedSaveSettings(delay: number = SETTINGS_SAVE_DEBOUNCE_MS) {
   if (settingsSaveTimeout) {
@@ -511,6 +511,7 @@ function updateBreadcrumb(currentPath: string): void {
     item.appendChild(label);
     item.appendChild(caret);
 
+    // breadcrumb nav or dropdown menu
     item.addEventListener('click', (e) => {
       e.stopPropagation();
       const target = e.target as HTMLElement;
@@ -521,6 +522,7 @@ function updateBreadcrumb(currentPath: string): void {
       navigateTo(targetPath);
     });
 
+    // drag/drop to breadcrumb
     item.addEventListener('dragover', (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -601,7 +603,6 @@ function setupBreadcrumbListeners(): void {
   if (addressBar) {
     addressBar.addEventListener('click', (e) => {
       const target = e.target as HTMLElement;
-      // Only toggle if clicking on the bar itself, not on breadcrumb arrows/menus
       if (
         target.classList.contains('address-bar') ||
         target.classList.contains('breadcrumb') ||
@@ -2199,14 +2200,15 @@ async function loadSettings(): Promise<void> {
       'items'
     );
   }
+
+  window.addEventListener('focus', () => {
+    updateClipboardIndicator();
+  });
 }
 
 async function applySystemFontSize(): Promise<void> {
   try {
     const scaleFactor = await window.electronAPI.getSystemTextScale();
-    // Convert DPI scale to font size adjustment
-    // Scale factor of 1.0 = 100% (no change)
-    // Scale factor of 1.25 = 125% scaling
     const fontScale = 1 + (scaleFactor - 1) * 0.5;
     document.documentElement.style.setProperty('--system-font-scale', fontScale.toString());
     document.body.classList.add('use-system-font-size');
@@ -2315,6 +2317,42 @@ function applySettings(settings: Settings) {
     document.body.classList.add('show-file-checkboxes');
   } else {
     document.body.classList.remove('show-file-checkboxes');
+  }
+
+  // Compact file info
+  if (settings.compactFileInfo) {
+    document.body.classList.add('compact-file-info');
+  } else {
+    document.body.classList.remove('compact-file-info');
+  }
+
+  // Show file extensions
+  if (settings.showFileExtensions === false) {
+    document.body.classList.add('hide-file-extensions');
+  } else {
+    document.body.classList.remove('hide-file-extensions');
+  }
+
+  // Grid columns
+  if (settings.gridColumns && settings.gridColumns !== 'auto') {
+    document.documentElement.style.setProperty('--grid-columns', settings.gridColumns);
+  } else {
+    document.documentElement.style.removeProperty('--grid-columns');
+  }
+
+  // Icon size
+  if (settings.iconSize && settings.iconSize > 0) {
+    document.documentElement.style.setProperty('--icon-size-grid', `${settings.iconSize}px`);
+  } else {
+    document.documentElement.style.removeProperty('--icon-size-grid');
+  }
+
+  // Preview panel position
+  document.body.classList.remove('preview-right', 'preview-bottom');
+  if (settings.previewPanelPosition === 'bottom') {
+    document.body.classList.add('preview-bottom');
+  } else {
+    document.body.classList.add('preview-right');
   }
 
   setHoverCardEnabled(settings.showFileHoverCard !== false);
@@ -2473,6 +2511,7 @@ let tempCustomTheme: CustomTheme = {
 
 let themeEditorHasUnsavedChanges = false;
 
+// show theme customizer modal
 function showThemeEditor() {
   const modal = document.getElementById('theme-editor-modal');
   if (!modal) return;
@@ -2650,9 +2689,7 @@ function setupThemeEditorListeners() {
     textInput?.addEventListener('blur', (e) => {
       let value = (e.target as HTMLInputElement).value.trim();
       if (!value.startsWith('#')) value = '#' + value;
-      // Validate and reset
       if (!/^#[0-9A-Fa-f]{3}$/.test(value) && !/^#[0-9A-Fa-f]{6}$/.test(value)) {
-        // Reset to current color picker value
         const colorInput = document.getElementById(id) as HTMLInputElement;
         if (colorInput && textInput) {
           textInput.value = colorInput.value.toUpperCase();
@@ -2789,6 +2826,9 @@ async function showSettingsModal() {
   const globalContentSearchToggle = document.getElementById(
     'global-content-search-toggle'
   ) as HTMLInputElement;
+  const globalClipboardToggle = document.getElementById(
+    'global-clipboard-toggle'
+  ) as HTMLInputElement;
   const enableSyntaxHighlightingToggle = document.getElementById(
     'enable-syntax-highlighting-toggle'
   ) as HTMLInputElement;
@@ -2807,6 +2847,37 @@ async function showSettingsModal() {
   const themedIconsToggle = document.getElementById('themed-icons-toggle') as HTMLInputElement;
   const disableHwAccelToggle = document.getElementById(
     'disable-hw-accel-toggle'
+  ) as HTMLInputElement;
+  const confirmFileOperationsToggle = document.getElementById(
+    'confirm-file-operations-toggle'
+  ) as HTMLInputElement;
+  const fileConflictBehaviorSelect = document.getElementById(
+    'file-conflict-behavior-select'
+  ) as HTMLSelectElement;
+  const maxThumbnailSizeInput = document.getElementById(
+    'max-thumbnail-size-input'
+  ) as HTMLInputElement;
+  const thumbnailQualitySelect = document.getElementById(
+    'thumbnail-quality-select'
+  ) as HTMLSelectElement;
+  const autoPlayVideosToggle = document.getElementById(
+    'auto-play-videos-toggle'
+  ) as HTMLInputElement;
+  const previewPanelPositionSelect = document.getElementById(
+    'preview-panel-position-select'
+  ) as HTMLSelectElement;
+  const maxPreviewSizeInput = document.getElementById('max-preview-size-input') as HTMLInputElement;
+  const gridColumnsSelect = document.getElementById('grid-columns-select') as HTMLSelectElement;
+  const iconSizeSlider = document.getElementById('icon-size-slider') as HTMLInputElement;
+  const iconSizeValue = document.getElementById('icon-size-value');
+  const compactFileInfoToggle = document.getElementById(
+    'compact-file-info-toggle'
+  ) as HTMLInputElement;
+  const showFileExtensionsToggle = document.getElementById(
+    'show-file-extensions-toggle'
+  ) as HTMLInputElement;
+  const maxSearchHistoryInput = document.getElementById(
+    'max-search-history-input'
   ) as HTMLInputElement;
   const settingsPath = document.getElementById('settings-path');
 
@@ -2909,6 +2980,10 @@ async function showSettingsModal() {
     globalContentSearchToggle.checked = currentSettings.globalContentSearch || false;
   }
 
+  if (globalClipboardToggle) {
+    globalClipboardToggle.checked = currentSettings.globalClipboard !== false;
+  }
+
   if (reduceMotionToggle) {
     reduceMotionToggle.checked = currentSettings.reduceMotion || false;
   }
@@ -2947,6 +3022,57 @@ async function showSettingsModal() {
 
   if (disableHwAccelToggle) {
     disableHwAccelToggle.checked = currentSettings.disableHardwareAcceleration || false;
+  }
+
+  if (confirmFileOperationsToggle) {
+    confirmFileOperationsToggle.checked = currentSettings.confirmFileOperations || false;
+  }
+
+  if (fileConflictBehaviorSelect) {
+    fileConflictBehaviorSelect.value = currentSettings.fileConflictBehavior || 'ask';
+  }
+
+  if (maxThumbnailSizeInput) {
+    maxThumbnailSizeInput.value = String(currentSettings.maxThumbnailSizeMB || 10);
+  }
+
+  if (thumbnailQualitySelect) {
+    thumbnailQualitySelect.value = currentSettings.thumbnailQuality || 'medium';
+  }
+
+  if (autoPlayVideosToggle) {
+    autoPlayVideosToggle.checked = currentSettings.autoPlayVideos || false;
+  }
+
+  if (previewPanelPositionSelect) {
+    previewPanelPositionSelect.value = currentSettings.previewPanelPosition || 'right';
+  }
+
+  if (maxPreviewSizeInput) {
+    maxPreviewSizeInput.value = String(currentSettings.maxPreviewSizeMB || 50);
+  }
+
+  if (gridColumnsSelect) {
+    gridColumnsSelect.value = currentSettings.gridColumns || 'auto';
+  }
+
+  if (iconSizeSlider) {
+    iconSizeSlider.value = String(currentSettings.iconSize || 64);
+    if (iconSizeValue) {
+      iconSizeValue.textContent = String(currentSettings.iconSize || 64);
+    }
+  }
+
+  if (compactFileInfoToggle) {
+    compactFileInfoToggle.checked = currentSettings.compactFileInfo || false;
+  }
+
+  if (showFileExtensionsToggle) {
+    showFileExtensionsToggle.checked = currentSettings.showFileExtensions !== false;
+  }
+
+  if (maxSearchHistoryInput) {
+    maxSearchHistoryInput.value = String(currentSettings.maxSearchHistoryItems || 5);
   }
 
   await updateIndexStatus();
@@ -3368,6 +3494,9 @@ async function saveSettings() {
   const globalContentSearchToggle = document.getElementById(
     'global-content-search-toggle'
   ) as HTMLInputElement;
+  const globalClipboardToggle = document.getElementById(
+    'global-clipboard-toggle'
+  ) as HTMLInputElement;
   const enableSyntaxHighlightingToggle = document.getElementById(
     'enable-syntax-highlighting-toggle'
   ) as HTMLInputElement;
@@ -3386,6 +3515,36 @@ async function saveSettings() {
   const themedIconsToggle = document.getElementById('themed-icons-toggle') as HTMLInputElement;
   const disableHwAccelToggle = document.getElementById(
     'disable-hw-accel-toggle'
+  ) as HTMLInputElement;
+  const confirmFileOperationsToggle = document.getElementById(
+    'confirm-file-operations-toggle'
+  ) as HTMLInputElement;
+  const fileConflictBehaviorSelect = document.getElementById(
+    'file-conflict-behavior-select'
+  ) as HTMLSelectElement;
+  const maxThumbnailSizeInput = document.getElementById(
+    'max-thumbnail-size-input'
+  ) as HTMLInputElement;
+  const thumbnailQualitySelect = document.getElementById(
+    'thumbnail-quality-select'
+  ) as HTMLSelectElement;
+  const autoPlayVideosToggle = document.getElementById(
+    'auto-play-videos-toggle'
+  ) as HTMLInputElement;
+  const previewPanelPositionSelect = document.getElementById(
+    'preview-panel-position-select'
+  ) as HTMLSelectElement;
+  const maxPreviewSizeInput = document.getElementById('max-preview-size-input') as HTMLInputElement;
+  const gridColumnsSelect = document.getElementById('grid-columns-select') as HTMLSelectElement;
+  const iconSizeSlider = document.getElementById('icon-size-slider') as HTMLInputElement;
+  const compactFileInfoToggle = document.getElementById(
+    'compact-file-info-toggle'
+  ) as HTMLInputElement;
+  const showFileExtensionsToggle = document.getElementById(
+    'show-file-extensions-toggle'
+  ) as HTMLInputElement;
+  const maxSearchHistoryInput = document.getElementById(
+    'max-search-history-input'
   ) as HTMLInputElement;
 
   if (transparencyToggle) {
@@ -3480,6 +3639,10 @@ async function saveSettings() {
     currentSettings.globalContentSearch = globalContentSearchToggle.checked;
   }
 
+  if (globalClipboardToggle) {
+    currentSettings.globalClipboard = globalClipboardToggle.checked;
+  }
+
   if (reduceMotionToggle) {
     currentSettings.reduceMotion = reduceMotionToggle.checked;
   }
@@ -3518,6 +3681,63 @@ async function saveSettings() {
 
   if (disableHwAccelToggle) {
     currentSettings.disableHardwareAcceleration = disableHwAccelToggle.checked;
+  }
+
+  if (confirmFileOperationsToggle) {
+    currentSettings.confirmFileOperations = confirmFileOperationsToggle.checked;
+  }
+
+  if (fileConflictBehaviorSelect) {
+    currentSettings.fileConflictBehavior = fileConflictBehaviorSelect.value as any;
+  }
+
+  if (maxThumbnailSizeInput) {
+    const val = parseInt(maxThumbnailSizeInput.value, 10);
+    if (val >= 1 && val <= 100) {
+      currentSettings.maxThumbnailSizeMB = val;
+    }
+  }
+
+  if (thumbnailQualitySelect) {
+    currentSettings.thumbnailQuality = thumbnailQualitySelect.value as any;
+  }
+
+  if (autoPlayVideosToggle) {
+    currentSettings.autoPlayVideos = autoPlayVideosToggle.checked;
+  }
+
+  if (previewPanelPositionSelect) {
+    currentSettings.previewPanelPosition = previewPanelPositionSelect.value as any;
+  }
+
+  if (maxPreviewSizeInput) {
+    const val = parseInt(maxPreviewSizeInput.value, 10);
+    if (val >= 1 && val <= 500) {
+      currentSettings.maxPreviewSizeMB = val;
+    }
+  }
+
+  if (gridColumnsSelect) {
+    currentSettings.gridColumns = gridColumnsSelect.value as any;
+  }
+
+  if (iconSizeSlider) {
+    currentSettings.iconSize = parseInt(iconSizeSlider.value, 10);
+  }
+
+  if (compactFileInfoToggle) {
+    currentSettings.compactFileInfo = compactFileInfoToggle.checked;
+  }
+
+  if (showFileExtensionsToggle) {
+    currentSettings.showFileExtensions = showFileExtensionsToggle.checked;
+  }
+
+  if (maxSearchHistoryInput) {
+    const val = parseInt(maxSearchHistoryInput.value, 10);
+    if (val >= 1 && val <= 20) {
+      currentSettings.maxSearchHistoryItems = val;
+    }
   }
 
   currentSettings.viewMode = viewMode;
@@ -4197,7 +4417,7 @@ async function performSearch() {
   activeSearchOperationId = null;
 }
 
-function updateClipboardIndicator() {
+async function updateClipboardIndicator() {
   const indicator = document.getElementById('clipboard-indicator');
   const indicatorText = document.getElementById('clipboard-text');
   if (!indicator || !indicatorText) return;
@@ -4209,6 +4429,16 @@ function updateClipboardIndicator() {
     indicator.classList.toggle('cut-mode', clipboard.operation === 'cut');
     indicator.style.display = 'inline-flex';
   } else {
+    // check system clipboard
+    if (currentSettings.globalClipboard !== false) {
+      const systemFiles = await window.electronAPI.getSystemClipboardFiles();
+      if (systemFiles && systemFiles.length > 0) {
+        indicatorText.textContent = `${systemFiles.length} from system`;
+        indicator.classList.remove('cut-mode');
+        indicator.style.display = 'inline-flex';
+        return;
+      }
+    }
     indicator.style.display = 'none';
   }
 }
@@ -4258,12 +4488,39 @@ async function moveSelectedToFolder(): Promise<void> {
 }
 
 async function pasteFromClipboard() {
-  if (!clipboard || !currentPath) return;
+  if (!currentPath) return;
+
+  // fallback to system clipboard
+  if (!clipboard || clipboard.paths.length === 0) {
+    if (currentSettings.globalClipboard !== false) {
+      const systemFiles = await window.electronAPI.getSystemClipboardFiles();
+      if (systemFiles && systemFiles.length > 0) {
+        const result = await window.electronAPI.copyItems(
+          systemFiles,
+          currentPath,
+          currentSettings.fileConflictBehavior || 'ask'
+        );
+        if (result.success) {
+          showToast(
+            `${systemFiles.length} item(s) pasted from system clipboard`,
+            'Success',
+            'success'
+          );
+          refresh();
+        } else {
+          showToast(result.error || 'Paste failed', 'Error', 'error');
+        }
+        return;
+      }
+    }
+    return;
+  }
 
   const isCopy = clipboard.operation === 'copy';
+  const conflictBehavior = currentSettings.fileConflictBehavior || 'ask';
   const result = isCopy
-    ? await window.electronAPI.copyItems(clipboard.paths, currentPath)
-    : await window.electronAPI.moveItems(clipboard.paths, currentPath);
+    ? await window.electronAPI.copyItems(clipboard.paths, currentPath, conflictBehavior)
+    : await window.electronAPI.moveItems(clipboard.paths, currentPath, conflictBehavior);
 
   if (result.success) {
     showToast(
@@ -6123,7 +6380,10 @@ function addToSearchHistory(query: string) {
   }
   currentSettings.searchHistory = currentSettings.searchHistory.filter((item) => item !== query);
   currentSettings.searchHistory.unshift(query);
-  currentSettings.searchHistory = currentSettings.searchHistory.slice(0, SEARCH_HISTORY_MAX);
+  currentSettings.searchHistory = currentSettings.searchHistory.slice(
+    0,
+    currentSettings.maxSearchHistoryItems || 5
+  );
   debouncedSaveSettings();
 }
 
@@ -6747,12 +7007,21 @@ function createFileItem(item: FileItem, searchQuery?: string): HTMLElement {
     matchContextHtml = `<div class="match-context">${highlightedContext}${lineInfo}</div>`;
   }
 
+  // Handle file extension display
+  let displayName = item.name;
+  if (currentSettings.showFileExtensions === false && !item.isDirectory) {
+    const lastDot = item.name.lastIndexOf('.');
+    if (lastDot > 0) {
+      displayName = item.name.substring(0, lastDot);
+    }
+  }
+
   fileItem.innerHTML = `
     <div class="file-main">
       <div class="file-checkbox"><span class="checkbox-mark">✓</span></div>
       <div class="file-icon">${icon}</div>
       <div class="file-text">
-        <div class="file-name">${escapeHtml(item.name)}</div>
+        <div class="file-name">${escapeHtml(displayName)}</div>
         ${matchContextHtml}
       </div>
     </div>
@@ -7139,7 +7408,13 @@ function generateVideoThumbnail(videoUrl: string): Promise<string> {
         const ctx = canvas.getContext('2d');
         if (ctx) {
           ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-          const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+          const quality =
+            currentSettings.thumbnailQuality === 'low'
+              ? 0.5
+              : currentSettings.thumbnailQuality === 'high'
+                ? 0.9
+                : 0.7;
+          const dataUrl = canvas.toDataURL('image/jpeg', quality);
           cleanup();
           resolve(dataUrl);
         } else {
@@ -7227,7 +7502,13 @@ async function generateAudioWaveform(audioUrl: string): Promise<string> {
         ctx.fill();
 
         audioContext.close();
-        resolve(canvas.toDataURL('image/jpeg', 0.8));
+        const quality =
+          currentSettings.thumbnailQuality === 'low'
+            ? 0.5
+            : currentSettings.thumbnailQuality === 'high'
+              ? 0.9
+              : 0.7;
+        resolve(canvas.toDataURL('image/jpeg', quality));
       })
       .catch((error) => {
         audioContext.close();
@@ -7260,7 +7541,10 @@ function loadThumbnail(fileItem: HTMLElement, item: FileItem) {
         iconDiv.innerHTML = `<div class="spinner" style="width: 30px; height: 30px; border-width: 2px;"></div>`;
       }
 
-      if (thumbnailType !== 'audio' && item.size > THUMBNAIL_MAX_SIZE) {
+      if (
+        thumbnailType !== 'audio' &&
+        item.size > (currentSettings.maxThumbnailSizeMB || 10) * 1024 * 1024
+      ) {
         if (iconDiv) {
           iconDiv.innerHTML = getFileIcon(item.name);
         }
@@ -7617,10 +7901,11 @@ async function handleDrop(
   operation: 'copy' | 'move'
 ): Promise<void> {
   try {
+    const conflictBehavior = currentSettings.fileConflictBehavior || 'ask';
     const result =
       operation === 'copy'
-        ? await window.electronAPI.copyItems(sourcePaths, destPath)
-        : await window.electronAPI.moveItems(sourcePaths, destPath);
+        ? await window.electronAPI.copyItems(sourcePaths, destPath, conflictBehavior)
+        : await window.electronAPI.moveItems(sourcePaths, destPath, conflictBehavior);
 
     if (result.success) {
       showToast(
@@ -7787,7 +8072,6 @@ function navigateByPage(direction: 'up' | 'down', shiftKey: boolean) {
   const fileGrid = document.getElementById('file-grid');
   if (!fileGrid) return;
 
-  // Calculate how many items fit in a "page" based on grid height
   const columns = getGridColumns();
   const gridRect = fileGrid.getBoundingClientRect();
   const firstItem = fileItems[0];
@@ -7879,34 +8163,37 @@ async function deleteSelected() {
   if (selectedItems.size === 0) return;
 
   const count = selectedItems.size;
-  const confirmed = await showConfirm(
-    `Move ${count} item${count > 1 ? 's' : ''} to ${platformOS === 'win32' ? 'Recycle Bin' : 'Trash'}?`,
-    'Move to Trash',
-    'warning'
-  );
 
-  if (confirmed) {
-    let successCount = 0;
-    for (const itemPath of selectedItems) {
-      const result = await window.electronAPI.trashItem(itemPath);
-      if (result.success) successCount++;
-    }
+  if (currentSettings.confirmFileOperations !== false) {
+    const confirmed = await showConfirm(
+      `Move ${count} item${count > 1 ? 's' : ''} to ${platformOS === 'win32' ? 'Recycle Bin' : 'Trash'}?`,
+      'Move to Trash',
+      'warning'
+    );
+    if (!confirmed) return;
+  }
 
-    if (successCount > 0) {
-      showToast(
-        `${successCount} item${successCount > 1 ? 's' : ''} moved to ${platformOS === 'win32' ? 'Recycle Bin' : 'Trash'}`,
-        'Success',
-        'success'
-      );
-      await updateUndoRedoState();
-      refresh();
-    }
+  let successCount = 0;
+  for (const itemPath of selectedItems) {
+    const result = await window.electronAPI.trashItem(itemPath);
+    if (result.success) successCount++;
+  }
+
+  if (successCount > 0) {
+    showToast(
+      `${successCount} item${successCount > 1 ? 's' : ''} moved to ${platformOS === 'win32' ? 'Recycle Bin' : 'Trash'}`,
+      'Success',
+      'success'
+    );
+    await updateUndoRedoState();
+    refresh();
   }
 }
 
 async function permanentlyDeleteSelected() {
   if (selectedItems.size === 0) return;
 
+  // warn about permanent delete
   const count = selectedItems.size;
   const confirmed = await showConfirm(
     `${twemojiImg(String.fromCodePoint(0x26a0), 'twemoji')} PERMANENTLY delete ${count} item${count > 1 ? 's' : ''}? This CANNOT be undone!`,
@@ -9427,6 +9714,7 @@ function showPropertiesDialog(props: ItemProperties) {
   content.innerHTML = html;
   modal.style.display = 'flex';
 
+  // cancel active calculations on close
   const cleanup = () => {
     if (folderSizeActive) {
       window.electronAPI.cancelFolderSizeCalculation(folderSizeOperationId);
@@ -10008,6 +10296,14 @@ document.getElementById('settings-search')?.addEventListener('input', (e) => {
   }
 });
 
+document.getElementById('icon-size-slider')?.addEventListener('input', (e) => {
+  const value = (e.target as HTMLInputElement).value;
+  const valueDisplay = document.getElementById('icon-size-value');
+  if (valueDisplay) {
+    valueDisplay.textContent = value;
+  }
+});
+
 // Export
 document.getElementById('export-settings-btn')?.addEventListener('click', async () => {
   try {
@@ -10520,7 +10816,7 @@ async function showImagePreview(file: FileItem, requestId: number) {
     </div>
   `;
 
-  if (file.size > THUMBNAIL_MAX_SIZE) {
+  if (file.size > (currentSettings.maxPreviewSizeMB || 50) * 1024 * 1024) {
     if (requestId !== previewRequestId) return;
     previewContent.innerHTML = `
       <div class="preview-error">
@@ -10744,6 +11040,17 @@ async function showTextPreview(file: FileItem, requestId: number) {
 async function showVideoPreview(file: FileItem, requestId: number) {
   if (!previewContent || requestId !== previewRequestId) return;
 
+  const maxSizeMB = currentSettings.maxPreviewSizeMB || 50;
+  if (file.size > maxSizeMB * 1024 * 1024) {
+    previewContent.innerHTML = `
+      <div class="preview-error">
+        Video file too large to preview (>${maxSizeMB}MB)
+      </div>
+      ${generateFileInfo(file, null)}
+    `;
+    return;
+  }
+
   const props = await window.electronAPI.getItemProperties(file.path);
   if (requestId !== previewRequestId) return;
   const info = props.success && props.properties ? props.properties : null;
@@ -10751,7 +11058,7 @@ async function showVideoPreview(file: FileItem, requestId: number) {
   const fileUrl = encodeFileUrl(file.path);
 
   previewContent.innerHTML = `
-    <video src="${fileUrl}" class="preview-video" controls controlsList="nodownload">
+    <video src="${fileUrl}" class="preview-video" controls controlsList="nodownload" ${currentSettings.autoPlayVideos ? 'autoplay' : ''}>
       Your browser does not support the video tag.
     </video>
     ${generateFileInfo(file, info)}
@@ -10780,6 +11087,17 @@ async function showAudioPreview(file: FileItem, requestId: number) {
 
 async function showPdfPreview(file: FileItem, requestId: number) {
   if (!previewContent || requestId !== previewRequestId) return;
+
+  const maxSizeMB = currentSettings.maxPreviewSizeMB || 50;
+  if (file.size > maxSizeMB * 1024 * 1024) {
+    previewContent.innerHTML = `
+      <div class="preview-error">
+        PDF file too large to preview (>${maxSizeMB}MB)
+      </div>
+      ${generateFileInfo(file, null)}
+    `;
+    return;
+  }
 
   const props = await window.electronAPI.getItemProperties(file.path);
   if (requestId !== previewRequestId) return;
@@ -10896,7 +11214,7 @@ async function showQuickLook() {
   `;
 
   if (IMAGE_EXTENSIONS.has(ext)) {
-    if (file.size > THUMBNAIL_MAX_SIZE) {
+    if (file.size > (currentSettings.maxThumbnailSizeMB || 10) * 1024 * 1024) {
       quicklookContent.innerHTML = `<div class="preview-error">Image too large to preview</div>`;
       quicklookInfo.textContent = `${formatFileSize(file.size)} • ${new Date(file.modified).toLocaleDateString()}`;
     } else {
@@ -10919,7 +11237,7 @@ async function showQuickLook() {
     quicklookContent.innerHTML = '';
     const video = document.createElement('video');
     video.controls = true;
-    video.autoplay = true;
+    video.autoplay = currentSettings.autoPlayVideos || false;
     video.className = 'preview-video';
     const source = document.createElement('source');
     source.src = fileUrl;
@@ -10938,7 +11256,7 @@ async function showQuickLook() {
     icon.innerHTML = twemojiImg(String.fromCodePoint(0x1f3b5), 'twemoji-large');
     const audio = document.createElement('audio');
     audio.controls = true;
-    audio.autoplay = true;
+    audio.autoplay = currentSettings.autoPlayVideos || false;
     audio.className = 'preview-audio';
     const source = document.createElement('source');
     source.src = fileUrl;

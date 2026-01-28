@@ -8,7 +8,6 @@ describe('Path utilities', () => {
     });
 
     it('extracts filename from Windows path', () => {
-      // Use path.win32 explicitly to test Windows paths on any OS
       expect(path.win32.basename('C:\\Users\\test\\file.txt')).toBe('file.txt');
     });
 
@@ -34,7 +33,6 @@ describe('Path utilities', () => {
     });
 
     it('extracts directory from Windows path', () => {
-      // Use path.win32 explicitly to test Windows paths on any OS
       const result = path.win32.dirname('C:\\Users\\test\\file.txt');
       expect(result).toBe('C:\\Users\\test');
     });
