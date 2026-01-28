@@ -17,6 +17,7 @@ import {
   getPathDisplayValue,
   HOME_VIEW_LABEL,
   HOME_VIEW_PATH,
+  HOME_QUICK_ACCESS_ITEMS,
   isHomeViewPath,
 } from './home.js';
 import { createTourController, type TourController } from './tour.js';
@@ -3661,6 +3662,44 @@ async function resetSettings() {
   }
 }
 
+function renderSidebarQuickAccess() {
+  const grid = document.getElementById('sidebar-quick-access-grid');
+  if (!grid) return;
+
+  grid.innerHTML = '';
+
+  const visibleItems = homeController.getVisibleSidebarQuickAccessItems();
+  const itemsByAction = new Map(HOME_QUICK_ACCESS_ITEMS.map((item) => [item.action, item]));
+
+  visibleItems.forEach((item) => {
+    const itemData = itemsByAction.get(item.action);
+    if (!itemData) return;
+
+    const div = document.createElement('div');
+    div.className = 'nav-item quick-action';
+    div.dataset.action = item.action;
+    div.setAttribute('role', 'button');
+    div.tabIndex = 0;
+    div.setAttribute('aria-label', `Navigate to ${item.label}`);
+
+    const icon = twemojiImg(String.fromCodePoint(item.icon), 'twemoji');
+    div.innerHTML = `
+      <span class="nav-icon" aria-hidden="true">${icon}</span>
+      <span class="nav-label">${escapeHtml(item.label)}</span>
+    `;
+
+    div.addEventListener('click', () => handleQuickAction(item.action));
+    div.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        handleQuickAction(item.action);
+      }
+    });
+
+    grid.appendChild(div);
+  });
+}
+
 function loadBookmarks() {
   if (!bookmarksList) return;
   bookmarksList.innerHTML = '';
@@ -3888,6 +3927,16 @@ async function handleQuickAction(action?: string | null): Promise<void> {
 
   if (action === 'home') {
     navigateTo(HOME_VIEW_PATH);
+    return;
+  }
+
+  if (action === 'userhome') {
+    const homePath = await window.electronAPI.getHomeDirectory();
+    if (homePath) {
+      navigateTo(homePath);
+    } else {
+      showToast('Failed to open Home Folder', 'Quick Access', 'error');
+    }
     return;
   }
 
@@ -4922,6 +4971,7 @@ async function init() {
 
   await loadSettings();
   await homeController.loadHomeSettings();
+  renderSidebarQuickAccess();
 
   initTooltipSystem();
   initCommandPalette();
@@ -4970,6 +5020,10 @@ async function init() {
     setupThemeEditorListeners();
     homeController.setupHomeSettingsListeners();
     loadBookmarks();
+
+    window.electronAPI.onHomeSettingsChanged(() => {
+      renderSidebarQuickAccess();
+    });
   });
 
   const isStoreVersion = mas || flatpak || msStore;
@@ -5943,18 +5997,6 @@ function setupEventListeners() {
       }
       handleTypeaheadInput(e.key);
     }
-  });
-
-  document.querySelectorAll('.nav-item[data-action]').forEach((element) => {
-    const item = element as HTMLElement;
-    const handleAction = () => handleQuickAction(item.dataset.action);
-    item.addEventListener('click', handleAction);
-    item.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        handleAction();
-      }
-    });
   });
 
   document.addEventListener('click', (e) => {

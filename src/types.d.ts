@@ -103,6 +103,8 @@ export interface HomeSettings {
   sectionOrder: string[];
   pinnedRecents: string[];
   compactCards: boolean;
+  sidebarQuickAccessOrder: string[];
+  hiddenSidebarQuickAccessItems: string[];
 }
 
 export interface FileItem {

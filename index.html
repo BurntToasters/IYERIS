@@ -57,39 +57,7 @@
           </button>
           <div class="section-title">Quick Access</div>
         </div>
-        <div class="quick-actions-grid">
-          <div class="nav-item quick-action" data-action="home" role="button" tabindex="0" aria-label="Navigate to home folder">
-            <span class="nav-icon" aria-hidden="true"><img src="assets/twemoji/1f3e0.svg" class="twemoji" alt="🏠" draggable="false" /></span>
-            <span class="nav-label">Home</span>
-          </div>
-          <div class="nav-item quick-action" data-action="browse" role="button" tabindex="0" aria-label="Browse for folder">
-            <span class="nav-icon" aria-hidden="true"><img src="assets/twemoji/1f4c2.svg" class="twemoji" alt="📂" draggable="false" /></span>
-            <span class="nav-label">Browse</span>
-          </div>
-          <div class="nav-item quick-action" data-action="desktop" role="button" tabindex="0" aria-label="Navigate to Desktop folder">
-            <span class="nav-icon" aria-hidden="true"><img src="assets/twemoji/1f5a5.svg" class="twemoji" alt="🖥️" draggable="false" /></span>
-            <span class="nav-label">Desktop</span>
-          </div>
-          <div class="nav-item quick-action" data-action="documents" role="button" tabindex="0" aria-label="Navigate to Documents folder">
-            <span class="nav-icon" aria-hidden="true"><img src="assets/twemoji/1f4c4.svg" class="twemoji" alt="📄" draggable="false" /></span>
-            <span class="nav-label">Documents</span>
-          </div>
-          <div class="nav-item quick-action" data-action="downloads" role="button" tabindex="0" aria-label="Navigate to Downloads folder">
-            <span class="nav-icon" aria-hidden="true"><img src="assets/twemoji/1f4e5.svg" class="twemoji" alt="📥" draggable="false" /></span>
-            <span class="nav-label">Downloads</span>
-          </div>
-          <div class="nav-item quick-action" data-action="music" role="button" tabindex="0" aria-label="Navigate to Music folder">
-            <span class="nav-icon" aria-hidden="true"><img src="assets/twemoji/1f3b5.svg" class="twemoji" alt="🎵" draggable="false" /></span>
-            <span class="nav-label">Music</span>
-          </div>
-          <div class="nav-item quick-action" data-action="videos" role="button" tabindex="0" aria-label="Navigate to Videos folder">
-            <span class="nav-icon" aria-hidden="true"><img src="assets/twemoji/1f3ac.svg" class="twemoji" alt="🎬" draggable="false" /></span>
-            <span class="nav-label">Videos</span>
-          </div>
-          <div class="nav-item quick-action" data-action="trash" role="button" tabindex="0" aria-label="Show trash folder">
-            <span class="nav-icon" aria-hidden="true"><img src="assets/twemoji/1f5d1.svg" class="twemoji" alt="🗑️" draggable="false" /></span>
-            <span class="nav-label">Trash</span>
-          </div>
+        <div class="quick-actions-grid" id="sidebar-quick-access-grid">
         </div>
       </div>
 
@@ -1073,7 +1041,7 @@
               </div>
               <div class="about-info">
                 <h2 class="about-title">IYERIS</h2>
-                <p class="about-version" id="about-version-display">Version 0.9.8</p>
+                <p class="about-version" id="about-version-display">Version 0.9.9</p>
                 <p class="about-tagline">A modern, cross-platform file explorer</p>
               </div>
             </div>
@@ -1385,7 +1353,7 @@
       </span>
       <span id="status-disk-space"></span>
       <span class="status-separator"></span>
-      <span class="status-version" id="status-version" title="Version 0.9.8">v0.9.8</span>
+      <span class="status-version" id="status-version" title="Version 0.9.9">v0.9.9</span>
       <span class="status-separator"></span>
       <button class="status-support-btn" id="heart-button" title="Support this project!">
         <img src="assets/twemoji/2764.svg" class="twemoji" alt="❤️" draggable="false" />
@@ -1587,9 +1555,9 @@
   </div>
 
   <div class="modal-overlay" id="home-settings-modal" style="display: none;">
-    <div class="modal glass-panel home-settings-modal" role="dialog" aria-label="Customize Home">
+    <div class="modal glass-panel home-settings-modal" role="dialog" aria-label="Customize Quick Access">
       <div class="modal-header">
-        <h3><img src="assets/twemoji/270f.svg" class="twemoji" alt="✏️" draggable="false" /> Customize Home</h3>
+        <h3><img src="assets/twemoji/270f.svg" class="twemoji" alt="✏️" draggable="false" /> Customize Quick Access</h3>
         <button class="close-button" id="home-settings-close">✕</button>
       </div>
       <div class="modal-body home-settings-body">
@@ -1631,8 +1599,13 @@
         </div>
 
         <div class="settings-card">
-          <div class="settings-card-header">Quick Access Shortcuts</div>
+          <div class="settings-card-header">Home Quick Access</div>
           <div class="home-options-grid" id="home-quick-access-options"></div>
+        </div>
+
+        <div class="settings-card">
+          <div class="settings-card-header">Sidebar Quick Access</div>
+          <div class="home-options-grid" id="sidebar-quick-access-options"></div>
         </div>
       </div>
       <div class="modal-footer home-settings-footer">
