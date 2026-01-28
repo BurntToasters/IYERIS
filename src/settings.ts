@@ -43,5 +43,8 @@ export function createDefaultSettings(): Settings {
     reduceTransparency: false,
     uiDensity: 'default',
     updateChannel: 'auto',
+    themedIcons: false,
+    disableHardwareAcceleration: false,
+    useSystemFontSize: false,
   };
 }

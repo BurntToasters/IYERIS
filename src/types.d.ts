@@ -85,8 +85,24 @@ export interface Settings {
   boldText: boolean;
   visibleFocus: boolean;
   reduceTransparency: boolean;
-  uiDensity: 'default' | 'larger';
+  uiDensity: 'compact' | 'default' | 'larger';
   updateChannel: 'auto' | 'beta' | 'stable';
+  themedIcons: boolean;
+  disableHardwareAcceleration: boolean;
+  useSystemFontSize: boolean;
+}
+
+export interface HomeSettings {
+  showQuickAccess: boolean;
+  showRecents: boolean;
+  showBookmarks: boolean;
+  showDrives: boolean;
+  showDiskUsage: boolean;
+  hiddenQuickAccessItems: string[];
+  quickAccessOrder: string[];
+  sectionOrder: string[];
+  pinnedRecents: string[];
+  compactCards: boolean;
 }
 
 export interface FileItem {
@@ -97,6 +113,11 @@ export interface FileItem {
   size: number;
   modified: Date;
   isHidden: boolean;
+}
+
+export interface DriveInfo {
+  path: string;
+  label: string;
 }
 
 export interface DirectoryContentsProgress {
@@ -177,6 +198,10 @@ export interface PropertiesResponse extends ApiResponse {
 
 export interface SettingsResponse extends ApiResponse {
   settings?: Settings;
+}
+
+export interface HomeSettingsResponse extends ApiResponse {
+  settings?: HomeSettings;
 }
 
 export interface PathResponse extends ApiResponse {
@@ -298,15 +323,20 @@ export interface UpdateDownloadProgress {
   total: number;
 }
 
+export type SpecialDirectory = 'desktop' | 'documents' | 'downloads' | 'music' | 'videos';
+
 export interface ElectronAPI {
   getDirectoryContents: (
     dirPath: string,
     operationId?: string,
-    includeHidden?: boolean
+    includeHidden?: boolean,
+    streamOnly?: boolean
   ) => Promise<DirectoryResponse>;
   cancelDirectoryContents: (operationId: string) => Promise<ApiResponse>;
   getDrives: () => Promise<string[]>;
+  getDriveInfo: () => Promise<DriveInfo[]>;
   getHomeDirectory: () => Promise<string>;
+  getSpecialDirectory: (directory: SpecialDirectory) => Promise<PathResponse>;
   openFile: (filePath: string) => Promise<ApiResponse>;
   selectFolder: () => Promise<PathResponse>;
   minimizeWindow: () => Promise<void>;
@@ -325,6 +355,10 @@ export interface ElectronAPI {
   resetSettings: () => Promise<ApiResponse>;
   relaunchApp: () => Promise<void>;
   getSettingsPath: () => Promise<string>;
+  getHomeSettings: () => Promise<HomeSettingsResponse>;
+  saveHomeSettings: (settings: HomeSettings) => Promise<ApiResponse>;
+  resetHomeSettings: () => Promise<ApiResponse>;
+  getHomeSettingsPath: () => Promise<string>;
 
   setClipboard: (
     clipboardData: { operation: 'copy' | 'cut'; paths: string[] } | null
@@ -339,6 +373,7 @@ export interface ElectronAPI {
   clearDragData: () => Promise<void>;
 
   onSettingsChanged: (callback: (settings: Settings) => void) => () => void;
+  onHomeSettingsChanged: (callback: (settings: HomeSettings) => void) => () => void;
 
   copyItems: (sourcePaths: string[], destPath: string) => Promise<ApiResponse>;
   moveItems: (sourcePaths: string[], destPath: string) => Promise<ApiResponse>;
@@ -379,6 +414,7 @@ export interface ElectronAPI {
   isMas: () => Promise<boolean>;
   isFlatpak: () => Promise<boolean>;
   isMsStore: () => Promise<boolean>;
+  getSystemTextScale: () => Promise<number>;
   checkFullDiskAccess: () => Promise<{ success: boolean; hasAccess: boolean }>;
   requestFullDiskAccess: () => Promise<ApiResponse>;
   checkForUpdates: () => Promise<UpdateCheckResponse>;

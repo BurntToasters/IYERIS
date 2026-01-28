@@ -60,41 +60,61 @@ export function clearUndoRedoStacks(): void {
 }
 
 export function clearUndoStackForPath(itemPath: string): void {
-  const pathsToRemove = [itemPath];
+  const pathsToRemove: string[] = [itemPath];
 
-  for (let i = undoStack.length - 1; i >= 0; i--) {
-    const action = undoStack[i];
-    if (action.type === 'rename' && action.data.newPath === itemPath) {
-      pathsToRemove.push(action.data.oldPath);
-    }
-  }
-
-  for (let i = undoStack.length - 1; i >= 0; i--) {
-    const action = undoStack[i];
-    let shouldRemove = false;
-
-    if (action.type === 'rename') {
-      if (
-        pathsToRemove.includes(action.data.oldPath) ||
-        pathsToRemove.includes(action.data.newPath)
-      ) {
-        shouldRemove = true;
-      }
-    } else if (action.type === 'create') {
-      if (pathsToRemove.includes(action.data.path)) {
-        shouldRemove = true;
-      }
-    } else if (action.type === 'move') {
-      if (action.data.sourcePaths.some((p: string) => pathsToRemove.includes(p))) {
-        shouldRemove = true;
+  const expandPaths = (stack: UndoAction[]) => {
+    for (let i = stack.length - 1; i >= 0; i--) {
+      const action = stack[i];
+      if (action.type === 'rename') {
+        if (
+          pathsToRemove.includes(action.data.newPath) ||
+          pathsToRemove.includes(action.data.oldPath)
+        ) {
+          if (!pathsToRemove.includes(action.data.oldPath)) {
+            pathsToRemove.push(action.data.oldPath);
+          }
+          if (!pathsToRemove.includes(action.data.newPath)) {
+            pathsToRemove.push(action.data.newPath);
+          }
+        }
       }
     }
+  };
 
-    if (shouldRemove) {
-      undoStack.splice(i, 1);
-      logger.debug('[Trash] Removed related undo action:', action.type);
+  expandPaths(undoStack);
+  expandPaths(redoStack);
+
+  const pruneStack = (stack: UndoAction[]) => {
+    for (let i = stack.length - 1; i >= 0; i--) {
+      const action = stack[i];
+      let shouldRemove = false;
+
+      if (action.type === 'rename') {
+        if (
+          pathsToRemove.includes(action.data.oldPath) ||
+          pathsToRemove.includes(action.data.newPath)
+        ) {
+          shouldRemove = true;
+        }
+      } else if (action.type === 'create') {
+        if (pathsToRemove.includes(action.data.path)) {
+          shouldRemove = true;
+        }
+      } else if (action.type === 'move') {
+        if (action.data.sourcePaths.some((p: string) => pathsToRemove.includes(p))) {
+          shouldRemove = true;
+        }
+      }
+
+      if (shouldRemove) {
+        stack.splice(i, 1);
+        logger.debug('[Trash] Removed related undo action:', action.type);
+      }
     }
-  }
+  };
+
+  pruneStack(undoStack);
+  pruneStack(redoStack);
 }
 
 export function setupUndoRedoHandlers(): void {

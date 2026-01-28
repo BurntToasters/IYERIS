@@ -31,39 +31,52 @@ const TOUR_VIEWPORT_PADDING = 16;
 
 const defaultSteps: TourStep[] = [
   {
+    target: '#home-view',
+    title: 'Welcome to Home',
+    description:
+      'Your central hub for Quick Access, Recent Files, Bookmarks, and Drives. Click the Home button in the sidebar anytime to return here.',
+    prefer: 'top',
+  },
+  {
     target: '.sidebar',
-    title: 'Quick Access',
-    description: 'Jump to Home, Bookmarks, Recent, and Drives from the sidebar.',
+    title: 'Sidebar Navigation',
+    description:
+      'Quickly jump between Home, Bookmarks, Recent Files, and your Drives. Toggle the sidebar with Ctrl+B.',
     prefer: 'right',
   },
   {
-    target: '.toolbar-left',
-    title: 'Navigation',
-    description: 'Use Back, Forward, and Up to move around your folders.',
-    prefer: 'bottom',
-  },
-  {
     target: '.address-bar',
-    title: 'Address Bar',
-    description: 'Click breadcrumbs or type a path to jump anywhere.',
+    title: 'Smart Address Bar',
+    description:
+      'Click breadcrumbs to jump to parent folders, or type a path directly to navigate anywhere instantly.',
     prefer: 'bottom',
   },
   {
     target: '#search-btn',
-    title: 'Search',
-    description: 'Find files fast with Search (Ctrl+F) and filters.',
+    title: 'Powerful Search',
+    description:
+      'Search files and folders with advanced filters. Press Ctrl+F to search the current folder, or Shift+Ctrl+F for global search.',
     prefer: 'bottom',
   },
   {
-    target: '#file-view',
-    title: 'Files and Folders',
-    description: 'Browse, select, and manage your files right here.',
-    prefer: 'top',
+    target: '#command-palette-btn',
+    title: 'Command Palette',
+    description:
+      'Access any action quickly with Ctrl+K. Type to search commands, navigate, or change settings.',
+    prefer: 'bottom',
+  },
+  {
+    target: '#view-mode-switcher',
+    title: 'View Modes',
+    description:
+      'Switch between Grid, List, and Column views to browse your files the way you prefer.',
+    prefer: 'bottom',
   },
   {
     target: '#settings-btn',
-    title: 'Settings',
-    description: 'Customize themes, view options, and more.',
+    title: 'Customize Everything',
+    description:
+      'Change themes, adjust accessibility options, configure keyboard shortcuts, and much more in Settings.',
     prefer: 'left',
   },
 ];

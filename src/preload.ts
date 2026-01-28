@@ -2,21 +2,31 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type {
   ElectronAPI,
   Settings,
+  HomeSettings,
   UpdateDownloadProgress,
   UpdateInfo,
   FolderSizeProgress,
   ChecksumResult,
   SearchFilters,
   DirectoryContentsProgress,
+  SpecialDirectory,
 } from './types';
 
 const electronAPI: ElectronAPI = {
-  getDirectoryContents: (dirPath: string, operationId?: string, includeHidden?: boolean) =>
-    ipcRenderer.invoke('get-directory-contents', dirPath, operationId, includeHidden),
+  getDirectoryContents: (
+    dirPath: string,
+    operationId?: string,
+    includeHidden?: boolean,
+    streamOnly?: boolean
+  ) =>
+    ipcRenderer.invoke('get-directory-contents', dirPath, operationId, includeHidden, streamOnly),
   cancelDirectoryContents: (operationId: string) =>
     ipcRenderer.invoke('cancel-directory-contents', operationId),
   getDrives: () => ipcRenderer.invoke('get-drives'),
+  getDriveInfo: () => ipcRenderer.invoke('get-drive-info'),
   getHomeDirectory: () => ipcRenderer.invoke('get-home-directory'),
+  getSpecialDirectory: (directory: SpecialDirectory) =>
+    ipcRenderer.invoke('get-special-directory', directory),
   openFile: (filePath: string) => ipcRenderer.invoke('open-file', filePath),
   selectFolder: () => ipcRenderer.invoke('select-folder'),
   minimizeWindow: () => ipcRenderer.invoke('minimize-window'),
@@ -38,6 +48,10 @@ const electronAPI: ElectronAPI = {
   resetSettings: () => ipcRenderer.invoke('reset-settings'),
   relaunchApp: () => ipcRenderer.invoke('relaunch-app'),
   getSettingsPath: () => ipcRenderer.invoke('get-settings-path'),
+  getHomeSettings: () => ipcRenderer.invoke('get-home-settings'),
+  saveHomeSettings: (settings: HomeSettings) => ipcRenderer.invoke('save-home-settings', settings),
+  resetHomeSettings: () => ipcRenderer.invoke('reset-home-settings'),
+  getHomeSettingsPath: () => ipcRenderer.invoke('get-home-settings-path'),
 
   // Shared clipboard
   setClipboard: (clipboardData: { operation: 'copy' | 'cut'; paths: string[] } | null) =>
@@ -64,6 +78,12 @@ const electronAPI: ElectronAPI = {
     const handler = (_event: Electron.IpcRendererEvent, settings: Settings) => callback(settings);
     ipcRenderer.on('settings-changed', handler);
     return () => ipcRenderer.removeListener('settings-changed', handler);
+  },
+  onHomeSettingsChanged: (callback: (settings: HomeSettings) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, settings: HomeSettings) =>
+      callback(settings);
+    ipcRenderer.on('home-settings-changed', handler);
+    return () => ipcRenderer.removeListener('home-settings-changed', handler);
   },
 
   copyItems: (sourcePaths: string[], destPath: string) =>
@@ -97,6 +117,7 @@ const electronAPI: ElectronAPI = {
   isMas: () => ipcRenderer.invoke('is-mas'),
   isFlatpak: () => ipcRenderer.invoke('is-flatpak'),
   isMsStore: () => ipcRenderer.invoke('is-ms-store'),
+  getSystemTextScale: () => ipcRenderer.invoke('get-system-text-scale') as Promise<number>,
   checkFullDiskAccess: () => ipcRenderer.invoke('check-full-disk-access'),
   requestFullDiskAccess: () => ipcRenderer.invoke('request-full-disk-access'),
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),

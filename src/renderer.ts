@@ -6,10 +6,19 @@ import type {
   ContentSearchResult,
   GitStatusResponse,
   GitFileStatus,
+  SpecialDirectory,
+  DriveInfo,
 } from './types';
 import { createFolderTreeManager } from './folderDir.js';
 import { escapeHtml, getErrorMessage } from './shared.js';
 import { createDefaultSettings } from './settings.js';
+import {
+  createHomeController,
+  getPathDisplayValue,
+  HOME_VIEW_LABEL,
+  HOME_VIEW_PATH,
+  isHomeViewPath,
+} from './home.js';
 import { createTourController, type TourController } from './tour.js';
 
 const THUMBNAIL_MAX_SIZE = 10 * 1024 * 1024;
@@ -38,6 +47,13 @@ const LIST_COLUMN_MIN_WIDTHS: Record<string, number> = {
   size: 80,
   modified: 140,
 };
+const SPECIAL_DIRECTORY_ACTIONS: Record<string, { key: SpecialDirectory; label: string }> = {
+  desktop: { key: 'desktop', label: 'Desktop' },
+  documents: { key: 'documents', label: 'Documents' },
+  downloads: { key: 'downloads', label: 'Downloads' },
+  music: { key: 'music', label: 'Music' },
+  videos: { key: 'videos', label: 'Videos' },
+};
 const LIST_COLUMN_MAX_WIDTHS: Record<string, number> = {
   name: 640,
   type: 320,
@@ -51,12 +67,26 @@ const pendingThumbnailLoads: Array<() => void> = [];
 const fileElementMap: Map<string, HTMLElement> = new Map();
 let cutPaths = new Set<string>();
 const gitIndicatorPaths = new Set<string>();
+const driveLabelByPath = new Map<string, string>();
+let cachedDriveInfo: DriveInfo[] = [];
 const diskSpaceCache = new Map<string, { timestamp: number; total: number; free: number }>();
+const DISK_SPACE_CACHE_MAX = 50;
 const gitStatusCache = new Map<
   string,
   { timestamp: number; isGitRepo: boolean; statuses: GitFileStatus[] }
 >();
+const GIT_STATUS_CACHE_MAX = 100;
 const gitStatusInFlight = new Map<string, Promise<GitStatusResponse>>();
+
+function cacheDriveInfo(drives: DriveInfo[]): void {
+  cachedDriveInfo = drives;
+  driveLabelByPath.clear();
+  drives.forEach((drive) => {
+    if (drive?.path) {
+      driveLabelByPath.set(drive.path, drive.label || drive.path);
+    }
+  });
+}
 
 function enqueueThumbnailLoad(loadFn: () => Promise<void>): void {
   const execute = async () => {
@@ -427,10 +457,24 @@ function updateBreadcrumb(currentPath: string): void {
 
   hideBreadcrumbMenu();
 
+  const displayPath = currentPath ? getPathDisplayValue(currentPath) : '';
+
   if (!isBreadcrumbMode || !currentPath) {
     breadcrumbContainer.style.display = 'none';
     addressInput.style.display = 'block';
-    addressInput.value = currentPath || '';
+    addressInput.value = displayPath;
+    return;
+  }
+
+  if (isHomeViewPath(currentPath)) {
+    breadcrumbContainer.style.display = 'inline-flex';
+    addressInput.style.display = 'none';
+    breadcrumbContainer.innerHTML = '';
+    const item = document.createElement('span');
+    item.className = 'breadcrumb-item';
+    item.textContent = HOME_VIEW_LABEL;
+    item.addEventListener('click', () => navigateTo(HOME_VIEW_PATH));
+    breadcrumbContainer.appendChild(item);
     return;
   }
 
@@ -439,7 +483,7 @@ function updateBreadcrumb(currentPath: string): void {
   if (segments.length === 0) {
     breadcrumbContainer.style.display = 'none';
     addressInput.style.display = 'block';
-    addressInput.value = currentPath;
+    addressInput.value = displayPath;
     return;
   }
 
@@ -542,7 +586,7 @@ function toggleBreadcrumbMode(): void {
     if (breadcrumbContainer) breadcrumbContainer.style.display = 'none';
     if (addressInput) {
       addressInput.style.display = 'block';
-      addressInput.value = currentPath;
+      addressInput.value = getPathDisplayValue(currentPath);
       addressInput.focus();
       addressInput.select();
     }
@@ -808,17 +852,29 @@ function renderTabs() {
 
   tabs.forEach((tab) => {
     const tabElement = document.createElement('div');
-    tabElement.className = `tab-item${tab.id === activeTabId ? ' active' : ''}`;
+    const isActive = tab.id === activeTabId;
+    tabElement.className = `tab-item${isActive ? ' active' : ''}`;
     tabElement.dataset.tabId = tab.id;
+    tabElement.setAttribute('role', 'tab');
+    tabElement.setAttribute('aria-selected', String(isActive));
+    tabElement.setAttribute('aria-controls', 'file-view');
+    tabElement.tabIndex = isActive ? 0 : -1;
 
+    const isHomeTab = isHomeViewPath(tab.path);
     const pathParts = tab.path.split(/[/\\]/);
-    const folderName = pathParts[pathParts.length - 1] || tab.path || 'New Tab';
+    const folderName = isHomeTab
+      ? HOME_VIEW_LABEL
+      : pathParts[pathParts.length - 1] || tab.path || 'New Tab';
+    const tabTitle = isHomeTab ? HOME_VIEW_LABEL : tab.path;
+    const tabIcon = isHomeTab
+      ? twemojiImg(String.fromCodePoint(0x1f3e0), 'twemoji')
+      : '<img src="assets/twemoji/1f4c2.svg" class="twemoji" alt="📂" draggable="false" />';
 
     tabElement.innerHTML = `
       <span class="tab-icon">
-        <img src="assets/twemoji/1f4c2.svg" class="twemoji" alt="📂" draggable="false" />
+        ${tabIcon}
       </span>
-      <span class="tab-title" title="${escapeHtml(tab.path)}">${escapeHtml(folderName)}</span>
+      <span class="tab-title" title="${escapeHtml(tabTitle)}">${escapeHtml(folderName)}</span>
       <button class="tab-close" title="Close Tab">&times;</button>
     `;
 
@@ -828,6 +884,32 @@ function renderTabs() {
         closeTab(tab.id);
       } else {
         switchToTab(tab.id);
+      }
+    });
+
+    tabElement.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        switchToTab(tab.id);
+        return;
+      }
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'Home' || e.key === 'End') {
+        e.preventDefault();
+        const tabItems = Array.from(tabList.querySelectorAll<HTMLElement>('.tab-item'));
+        if (tabItems.length === 0) return;
+        const currentIndex = tabItems.indexOf(tabElement);
+        if (currentIndex === -1) return;
+        let nextIndex = currentIndex;
+        if (e.key === 'ArrowLeft') {
+          nextIndex = (currentIndex - 1 + tabItems.length) % tabItems.length;
+        } else if (e.key === 'ArrowRight') {
+          nextIndex = (currentIndex + 1) % tabItems.length;
+        } else if (e.key === 'Home') {
+          nextIndex = 0;
+        } else if (e.key === 'End') {
+          nextIndex = tabItems.length - 1;
+        }
+        tabItems[nextIndex]?.focus();
       }
     });
 
@@ -881,9 +963,16 @@ function switchToTab(tabId: string) {
 
 function restoreTabView(tab: TabData) {
   currentPath = tab.path;
-  if (addressInput) addressInput.value = tab.path;
+  if (addressInput) addressInput.value = getPathDisplayValue(tab.path);
   updateBreadcrumb(tab.path);
   updateNavigationButtons();
+
+  if (isHomeViewPath(tab.path)) {
+    setHomeViewActive(true);
+    return;
+  }
+
+  setHomeViewActive(false);
 
   if (viewMode === 'column') {
     renderColumnView();
@@ -917,7 +1006,10 @@ async function addNewTab(path?: string) {
 
   let tabPath = path;
   if (!tabPath) {
-    tabPath = await window.electronAPI.getHomeDirectory();
+    tabPath =
+      currentSettings.startupPath && currentSettings.startupPath.trim() !== ''
+        ? currentSettings.startupPath
+        : HOME_VIEW_PATH;
   }
 
   const newTab = createNewTabData(tabPath);
@@ -994,8 +1086,11 @@ function updateCurrentTabPath(newPath: string) {
 
 const addressInput = document.getElementById('address-input') as HTMLInputElement;
 const fileGrid = document.getElementById('file-grid') as HTMLElement;
+fileGrid?.setAttribute('role', 'listbox');
+fileGrid?.setAttribute('aria-label', 'File list');
 const fileView = document.getElementById('file-view') as HTMLElement;
 const columnView = document.getElementById('column-view') as HTMLElement;
+const homeView = document.getElementById('home-view') as HTMLElement;
 const loading = document.getElementById('loading') as HTMLElement;
 const loadingText = document.getElementById('loading-text') as HTMLElement;
 const emptyState = document.getElementById('empty-state') as HTMLElement;
@@ -1050,12 +1145,19 @@ const selectionCutBtn = document.getElementById('selection-cut-btn') as HTMLButt
 const selectionMoveBtn = document.getElementById('selection-move-btn') as HTMLButtonElement;
 const selectionRenameBtn = document.getElementById('selection-rename-btn') as HTMLButtonElement;
 const selectionDeleteBtn = document.getElementById('selection-delete-btn') as HTMLButtonElement;
+const statusItems = document.getElementById('status-items') as HTMLElement;
+const statusSelected = document.getElementById('status-selected') as HTMLElement;
+const statusSearch = document.getElementById('status-search') as HTMLElement;
+const statusSearchText = document.getElementById('status-search-text') as HTMLElement;
+const selectionIndicator = document.getElementById('selection-indicator') as HTMLElement;
+const selectionCount = document.getElementById('selection-count') as HTMLElement;
+const statusHidden = document.getElementById('status-hidden') as HTMLElement;
 
 const folderTreeManager = createFolderTreeManager({
   folderTree,
   nameCollator: NAME_COLLATOR,
   getFolderIcon,
-  getBasename: (value) => path.basename(value),
+  getBasename: (value) => driveLabelByPath.get(value) ?? path.basename(value),
   navigateTo: (value) => navigateTo(value),
   handleDrop,
   getDraggedPaths,
@@ -1138,6 +1240,13 @@ function flushStreamedDirectoryItems(token: number): void {
     streamingRenderScheduled = true;
     requestAnimationFrame(() => flushStreamedDirectoryItems(token));
   }
+}
+
+function sortStreamedDirectoryItems(): void {
+  if (allFiles.length === 0 && emptyState) {
+    emptyState.style.display = 'flex';
+  }
+  updateStatusBar();
 }
 
 function createDirectoryOperationId(prefix: string): string {
@@ -1249,6 +1358,10 @@ async function getGitStatusCached(dirPath: string): Promise<GitStatusResponse> {
     .getGitStatus(dirPath)
     .then((result) => {
       if (result.success) {
+        if (gitStatusCache.size >= GIT_STATUS_CACHE_MAX) {
+          const firstKey = gitStatusCache.keys().next().value;
+          if (firstKey) gitStatusCache.delete(firstKey);
+        }
         gitStatusCache.set(dirPath, {
           timestamp: Date.now(),
           isGitRepo: result.isGitRepo === true,
@@ -1427,12 +1540,50 @@ function showToast(
   title: string = '',
   type: 'success' | 'error' | 'info' | 'warning' = 'info'
 ): void {
+  showToastQueued(message, title, type);
+}
+
+const homeController = createHomeController({
+  twemojiImg,
+  showToast,
+  showConfirm,
+  navigateTo: (path) => {
+    void navigateTo(path);
+  },
+  handleQuickAction: (action) => {
+    void handleQuickAction(action);
+  },
+  getFileIcon,
+  formatFileSize,
+  getSettings: () => currentSettings,
+});
+
+const MAX_VISIBLE_TOASTS = 3;
+const toastQueue: Array<{
+  message: string;
+  title: string;
+  type: 'success' | 'error' | 'info' | 'warning';
+}> = [];
+let visibleToastCount = 0;
+
+function showToastQueued(
+  message: string,
+  title: string = '',
+  type: 'success' | 'error' | 'info' | 'warning' = 'info'
+): void {
+  if (visibleToastCount >= MAX_VISIBLE_TOASTS) {
+    toastQueue.push({ message, title, type });
+    return;
+  }
+
+  visibleToastCount++;
   const container = document.getElementById('toast-container');
   if (!container) return;
 
   const toast = document.createElement('div');
   toast.className = `toast ${type}`;
   toast.style.cursor = 'pointer';
+  toast.setAttribute('role', type === 'error' || type === 'warning' ? 'alert' : 'status');
 
   const icons: Record<string, string> = {
     success: '2705',
@@ -1442,7 +1593,7 @@ function showToast(
   };
 
   toast.innerHTML = `
-    <span class="toast-icon">${twemojiImg(String.fromCodePoint(parseInt(icons[type], 16)), 'twemoji')}</span>
+    <span class="toast-icon" aria-hidden="true">${twemojiImg(String.fromCodePoint(parseInt(icons[type], 16)), 'twemoji')}</span>
     <div class="toast-content">
       ${title ? `<div class="toast-title">${escapeHtml(title)}</div>` : ''}
       <div class="toast-message">${escapeHtml(message)}</div>
@@ -1456,13 +1607,670 @@ function showToast(
     setTimeout(() => {
       if (container.contains(toast)) {
         container.removeChild(toast);
+        visibleToastCount--;
+        processToastQueue();
       }
     }, 300);
   };
 
   toast.addEventListener('click', removeToast);
-
   setTimeout(removeToast, TOAST_DURATION_MS);
+}
+
+function processToastQueue(): void {
+  if (toastQueue.length > 0 && visibleToastCount < MAX_VISIBLE_TOASTS) {
+    const next = toastQueue.shift();
+    if (next) {
+      showToastQueued(next.message, next.title, next.type);
+    }
+  }
+}
+
+let tooltipElement: HTMLElement | null = null;
+let tooltipTimeout: NodeJS.Timeout | null = null;
+const TOOLTIP_DELAY = 500;
+
+function initTooltipSystem(): void {
+  tooltipElement = document.getElementById('ui-tooltip');
+  if (!tooltipElement) return;
+
+  document.addEventListener('mouseover', (e) => {
+    const target = e.target as HTMLElement;
+    const titleAttr =
+      target.getAttribute('title') || target.closest('[title]')?.getAttribute('title');
+
+    if (
+      titleAttr &&
+      !target.closest('.tour-tooltip') &&
+      !target.closest('.command-palette-modal')
+    ) {
+      const actualTarget = target.hasAttribute('title')
+        ? target
+        : (target.closest('[title]') as HTMLElement);
+      if (actualTarget) {
+        actualTarget.dataset.originalTitle = titleAttr;
+        actualTarget.removeAttribute('title');
+      }
+
+      tooltipTimeout = setTimeout(() => {
+        showTooltip(titleAttr, actualTarget || target);
+      }, TOOLTIP_DELAY);
+    }
+  });
+
+  document.addEventListener('mouseout', (e) => {
+    const target = e.target as HTMLElement;
+    const actualTarget = target.hasAttribute('data-original-title')
+      ? target
+      : (target.closest('[data-original-title]') as HTMLElement);
+
+    if (tooltipTimeout) {
+      clearTimeout(tooltipTimeout);
+      tooltipTimeout = null;
+    }
+
+    if (actualTarget && actualTarget.dataset.originalTitle) {
+      actualTarget.setAttribute('title', actualTarget.dataset.originalTitle);
+      delete actualTarget.dataset.originalTitle;
+    }
+
+    hideTooltip();
+  });
+}
+
+function showTooltip(text: string, anchor: HTMLElement): void {
+  if (!tooltipElement) return;
+
+  const content = tooltipElement.querySelector('.ui-tooltip-content');
+  if (content) {
+    content.textContent = text;
+  }
+
+  tooltipElement.style.display = 'block';
+
+  const anchorRect = anchor.getBoundingClientRect();
+  const tooltipRect = tooltipElement.getBoundingClientRect();
+
+  let top = anchorRect.bottom + 8;
+  let left = anchorRect.left + anchorRect.width / 2 - tooltipRect.width / 2;
+
+  tooltipElement.className = 'ui-tooltip bottom';
+
+  if (top + tooltipRect.height > window.innerHeight) {
+    top = anchorRect.top - tooltipRect.height - 8;
+    tooltipElement.className = 'ui-tooltip top';
+  }
+
+  if (left < 8) left = 8;
+  if (left + tooltipRect.width > window.innerWidth - 8) {
+    left = window.innerWidth - tooltipRect.width - 8;
+  }
+
+  tooltipElement.style.left = `${left}px`;
+  tooltipElement.style.top = `${top}px`;
+
+  requestAnimationFrame(() => {
+    tooltipElement?.classList.add('visible');
+  });
+}
+
+function hideTooltip(): void {
+  if (tooltipElement) {
+    tooltipElement.classList.remove('visible');
+    setTimeout(() => {
+      if (tooltipElement) tooltipElement.style.display = 'none';
+    }, 150);
+  }
+}
+
+interface Command {
+  id: string;
+  title: string;
+  description?: string;
+  icon?: string;
+  shortcut?: string[];
+  action: () => void;
+  category?: string;
+}
+
+const commands: Command[] = [];
+let commandPaletteModal: HTMLElement | null = null;
+let commandPaletteInput: HTMLInputElement | null = null;
+let commandPaletteResults: HTMLElement | null = null;
+let commandPaletteEmpty: HTMLElement | null = null;
+let commandPaletteFocusedIndex = -1;
+let commandPalettePreviousFocus: HTMLElement | null = null;
+
+function initCommandPalette(): void {
+  commandPaletteModal = document.getElementById('command-palette-modal');
+  commandPaletteInput = document.getElementById('command-palette-input') as HTMLInputElement;
+  commandPaletteResults = document.getElementById('command-palette-results');
+  commandPaletteEmpty = document.getElementById('command-palette-empty');
+
+  if (!commandPaletteModal || !commandPaletteInput || !commandPaletteResults) return;
+
+  registerCommands();
+
+  commandPaletteInput.addEventListener('input', handleCommandPaletteSearch);
+  commandPaletteInput.addEventListener('keydown', handleCommandPaletteKeydown);
+
+  commandPaletteModal.addEventListener('click', (e) => {
+    if (e.target === commandPaletteModal) {
+      hideCommandPalette();
+    }
+  });
+}
+
+function registerCommands(): void {
+  commands.push(
+    {
+      id: 'new-folder',
+      title: 'New Folder',
+      description: 'Create a new folder',
+      icon: '📁',
+      shortcut: ['Ctrl', 'Shift', 'N'],
+      action: () => {
+        hideCommandPalette();
+        createNewFolder();
+      },
+    },
+    {
+      id: 'new-file',
+      title: 'New File',
+      description: 'Create a new file',
+      icon: '📄',
+      shortcut: ['Ctrl', 'N'],
+      action: () => {
+        hideCommandPalette();
+        createNewFile();
+      },
+    },
+    {
+      id: 'search',
+      title: 'Search',
+      description: 'Search files in current folder',
+      icon: '🔍',
+      shortcut: ['Ctrl', 'F'],
+      action: () => {
+        hideCommandPalette();
+        document.getElementById('search-btn')?.click();
+      },
+    },
+    {
+      id: 'refresh',
+      title: 'Refresh',
+      description: 'Reload current folder',
+      icon: '🔄',
+      shortcut: ['F5'],
+      action: () => {
+        hideCommandPalette();
+        refresh();
+      },
+    },
+    {
+      id: 'go-back',
+      title: 'Go Back',
+      description: 'Navigate to previous folder',
+      icon: '⬅️',
+      shortcut: ['Alt', '←'],
+      action: () => {
+        hideCommandPalette();
+        goBack();
+      },
+    },
+    {
+      id: 'go-forward',
+      title: 'Go Forward',
+      description: 'Navigate to next folder',
+      icon: '➡️',
+      shortcut: ['Alt', '→'],
+      action: () => {
+        hideCommandPalette();
+        goForward();
+      },
+    },
+    {
+      id: 'go-up',
+      title: 'Go Up',
+      description: 'Navigate to parent folder',
+      icon: '⬆️',
+      shortcut: ['Alt', '↑'],
+      action: () => {
+        hideCommandPalette();
+        goUp();
+      },
+    },
+    {
+      id: 'settings',
+      title: 'Settings',
+      description: 'Open settings',
+      icon: '⚙️',
+      shortcut: ['Ctrl', ','],
+      action: () => {
+        hideCommandPalette();
+        showSettingsModal();
+      },
+    },
+    {
+      id: 'shortcuts',
+      title: 'Keyboard Shortcuts',
+      description: 'View all keyboard shortcuts',
+      icon: '⌨️',
+      shortcut: ['Ctrl', '?'],
+      action: () => {
+        hideCommandPalette();
+        showShortcutsModal();
+      },
+    },
+    {
+      id: 'select-all',
+      title: 'Select All',
+      description: 'Select all items',
+      icon: '☑️',
+      shortcut: ['Ctrl', 'A'],
+      action: () => {
+        hideCommandPalette();
+        selectAll();
+      },
+    },
+    {
+      id: 'copy',
+      title: 'Copy',
+      description: 'Copy selected items',
+      icon: '📋',
+      shortcut: ['Ctrl', 'C'],
+      action: () => {
+        hideCommandPalette();
+        copyToClipboard();
+      },
+    },
+    {
+      id: 'cut',
+      title: 'Cut',
+      description: 'Cut selected items',
+      icon: '✂️',
+      shortcut: ['Ctrl', 'X'],
+      action: () => {
+        hideCommandPalette();
+        cutToClipboard();
+      },
+    },
+    {
+      id: 'paste',
+      title: 'Paste',
+      description: 'Paste items',
+      icon: '📎',
+      shortcut: ['Ctrl', 'V'],
+      action: () => {
+        hideCommandPalette();
+        pasteFromClipboard();
+      },
+    },
+    {
+      id: 'delete',
+      title: 'Delete',
+      description: 'Delete selected items',
+      icon: '🗑️',
+      shortcut: ['Del'],
+      action: () => {
+        hideCommandPalette();
+        deleteSelected();
+      },
+    },
+    {
+      id: 'rename',
+      title: 'Rename',
+      description: 'Rename selected item',
+      icon: '✍️',
+      shortcut: ['F2'],
+      action: () => {
+        hideCommandPalette();
+        renameSelected();
+      },
+    },
+    {
+      id: 'grid-view',
+      title: 'Grid View',
+      description: 'Switch to grid view',
+      icon: '▦',
+      action: () => {
+        hideCommandPalette();
+        setViewMode('grid');
+      },
+    },
+    {
+      id: 'list-view',
+      title: 'List View',
+      description: 'Switch to list view',
+      icon: '☰',
+      action: () => {
+        hideCommandPalette();
+        setViewMode('list');
+      },
+    },
+    {
+      id: 'column-view',
+      title: 'Column View',
+      description: 'Switch to column view',
+      icon: '|||',
+      action: () => {
+        hideCommandPalette();
+        setViewMode('column');
+      },
+    },
+    {
+      id: 'toggle-preview',
+      title: 'Toggle Preview Panel',
+      description: 'Show or hide preview panel',
+      icon: '👁️',
+      action: () => {
+        hideCommandPalette();
+        document.getElementById('preview-toggle-btn')?.click();
+      },
+    },
+    {
+      id: 'toggle-sidebar',
+      title: 'Toggle Sidebar',
+      description: 'Show or hide sidebar',
+      icon: '📂',
+      shortcut: ['Ctrl', 'B'],
+      action: () => {
+        hideCommandPalette();
+        document.getElementById('sidebar-toggle')?.click();
+      },
+    },
+    {
+      id: 'new-tab',
+      title: 'New Tab',
+      description: 'Open new tab',
+      icon: '➕',
+      shortcut: ['Ctrl', 'T'],
+      action: () => {
+        hideCommandPalette();
+        if (tabsEnabled) addNewTab();
+      },
+    }
+  );
+}
+
+function showCommandPalette(): void {
+  if (!commandPaletteModal || !commandPaletteInput || !commandPaletteResults) return;
+
+  commandPalettePreviousFocus = document.activeElement as HTMLElement;
+
+  commandPaletteModal.style.display = 'flex';
+  commandPaletteInput.value = '';
+  commandPaletteFocusedIndex = -1;
+  renderCommandPaletteResults(commands);
+
+  setTimeout(() => {
+    commandPaletteInput?.focus();
+  }, 50);
+}
+
+function hideCommandPalette(): void {
+  if (commandPaletteModal) {
+    commandPaletteModal.style.display = 'none';
+  }
+
+  if (commandPalettePreviousFocus && typeof commandPalettePreviousFocus.focus === 'function') {
+    commandPalettePreviousFocus.focus();
+    commandPalettePreviousFocus = null;
+  }
+}
+
+function handleCommandPaletteSearch(): void {
+  if (!commandPaletteInput) return;
+
+  const query = commandPaletteInput.value.toLowerCase().trim();
+
+  if (!query) {
+    renderCommandPaletteResults(commands);
+    return;
+  }
+
+  const filtered = commands.filter(
+    (cmd) =>
+      cmd.title.toLowerCase().includes(query) ||
+      cmd.description?.toLowerCase().includes(query) ||
+      cmd.id.toLowerCase().includes(query)
+  );
+
+  renderCommandPaletteResults(filtered);
+}
+
+function renderCommandPaletteResults(cmds: Command[]): void {
+  if (!commandPaletteResults || !commandPaletteEmpty) return;
+
+  const resultsContainer = commandPaletteResults;
+  const emptyContainer = commandPaletteEmpty;
+
+  resultsContainer.innerHTML = '';
+  commandPaletteFocusedIndex = -1;
+
+  if (cmds.length === 0) {
+    resultsContainer.style.display = 'none';
+    emptyContainer.style.display = 'flex';
+    return;
+  }
+
+  resultsContainer.style.display = 'flex';
+  emptyContainer.style.display = 'none';
+
+  cmds.forEach((cmd, index) => {
+    const item = document.createElement('div');
+    item.className = 'command-palette-item';
+    item.dataset.index = String(index);
+
+    let shortcutHtml = '';
+    if (cmd.shortcut) {
+      shortcutHtml = `
+        <div class="command-palette-item-shortcut">
+          ${cmd.shortcut.map((key) => `<kbd class="command-palette-key">${key}</kbd>`).join('')}
+        </div>
+      `;
+    }
+
+    item.innerHTML = `
+      <div class="command-palette-item-left">
+        ${cmd.icon ? `<span class="command-palette-item-icon">${cmd.icon}</span>` : ''}
+        <div class="command-palette-item-text">
+          <div class="command-palette-item-title">${escapeHtml(cmd.title)}</div>
+          ${cmd.description ? `<div class="command-palette-item-description">${escapeHtml(cmd.description)}</div>` : ''}
+        </div>
+      </div>
+      ${shortcutHtml}
+    `;
+
+    item.addEventListener('click', () => {
+      try {
+        cmd.action();
+      } catch (error) {
+        console.error(`Command palette error executing "${cmd.id}":`, error);
+        showToast(`Failed to execute command: ${cmd.title}`, 'Command Error', 'error');
+      }
+    });
+
+    item.addEventListener('mouseenter', () => {
+      setCommandPaletteFocus(index);
+    });
+
+    resultsContainer.appendChild(item);
+  });
+}
+
+function setCommandPaletteFocus(index: number): void {
+  if (!commandPaletteResults) return;
+
+  const items = commandPaletteResults.querySelectorAll('.command-palette-item');
+  items.forEach((item, i) => {
+    if (i === index) {
+      item.classList.add('focused');
+      commandPaletteFocusedIndex = index;
+    } else {
+      item.classList.remove('focused');
+    }
+  });
+}
+
+function handleCommandPaletteKeydown(e: KeyboardEvent): void {
+  if (!commandPaletteResults) return;
+
+  const items = commandPaletteResults.querySelectorAll('.command-palette-item');
+
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    hideCommandPalette();
+  } else if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    const nextIndex = commandPaletteFocusedIndex + 1;
+    if (nextIndex < items.length) {
+      setCommandPaletteFocus(nextIndex);
+      if (commandPaletteResults) {
+        items[nextIndex].scrollIntoView({ block: 'nearest' });
+      }
+    }
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    const prevIndex = commandPaletteFocusedIndex - 1;
+    if (prevIndex >= 0) {
+      setCommandPaletteFocus(prevIndex);
+      if (commandPaletteResults) {
+        items[prevIndex].scrollIntoView({ block: 'nearest' });
+      }
+    }
+  } else if (e.key === 'Enter') {
+    e.preventDefault();
+    if (commandPaletteFocusedIndex >= 0 && commandPaletteFocusedIndex < items.length) {
+      (items[commandPaletteFocusedIndex] as HTMLElement).click();
+    } else if (items.length > 0) {
+      (items[0] as HTMLElement).click();
+    }
+  }
+}
+
+interface ProgressOperation {
+  id: string;
+  title: string;
+  status: string;
+  progress: number;
+  completed: boolean;
+  error: boolean;
+}
+
+const progressOperations = new Map<string, ProgressOperation>();
+let progressPanel: HTMLElement | null = null;
+let progressPanelContent: HTMLElement | null = null;
+
+function initProgressPanel(): void {
+  progressPanel = document.getElementById('progress-panel');
+  progressPanelContent = document.getElementById('progress-panel-content');
+
+  const closeBtn = document.getElementById('progress-panel-close');
+  if (closeBtn) {
+    closeBtn.addEventListener('click', hideProgressPanel);
+  }
+}
+
+function showProgressPanel(): void {
+  if (progressPanel) {
+    progressPanel.style.display = 'flex';
+  }
+}
+
+function hideProgressPanel(): void {
+  if (progressPanel) {
+    progressPanel.style.display = 'none';
+  }
+}
+
+function addProgressOperation(id: string, title: string, status: string = 'Starting...'): void {
+  progressOperations.set(id, {
+    id,
+    title,
+    status,
+    progress: 0,
+    completed: false,
+    error: false,
+  });
+
+  renderProgressOperations();
+  showProgressPanel();
+}
+
+function updateProgressOperation(id: string, updates: Partial<ProgressOperation>): void {
+  const op = progressOperations.get(id);
+  if (op) {
+    Object.assign(op, updates);
+    renderProgressOperations();
+  }
+}
+
+function completeProgressOperation(id: string, error: boolean = false): void {
+  const op = progressOperations.get(id);
+  if (op) {
+    op.completed = true;
+    op.error = error;
+    op.progress = 100;
+    renderProgressOperations();
+
+    setTimeout(() => {
+      progressOperations.delete(id);
+      renderProgressOperations();
+      if (progressOperations.size === 0) {
+        hideProgressPanel();
+      }
+    }, 3000);
+  }
+}
+
+function renderProgressOperations(): void {
+  if (!progressPanelContent) return;
+
+  const contentContainer = progressPanelContent;
+
+  if (progressOperations.size === 0) {
+    contentContainer.innerHTML = `
+      <div style="padding: var(--spacing-massive); text-align: center; color: var(--text-secondary);">
+        <p>No active operations</p>
+      </div>
+    `;
+    return;
+  }
+
+  contentContainer.innerHTML = '';
+
+  progressOperations.forEach((op) => {
+    const item = document.createElement('div');
+    item.className = `progress-item ${op.completed ? 'completed' : ''} ${op.error ? 'error' : ''}`;
+
+    const spinnerOrIcon = op.completed
+      ? op.error
+        ? '❌'
+        : '✅'
+      : '<span class="progress-item-spinner">⟳</span>';
+
+    item.innerHTML = `
+      <div class="progress-item-header">
+        <div class="progress-item-title">
+          ${spinnerOrIcon}
+          ${escapeHtml(op.title)}
+        </div>
+        <div class="progress-item-status">${escapeHtml(op.status)}</div>
+      </div>
+      ${
+        !op.completed
+          ? `
+        <div class="progress-item-bar-container">
+          <div class="progress-item-bar" style="width: ${op.progress}%"></div>
+        </div>
+      `
+          : ''
+      }
+    `;
+
+    contentContainer.appendChild(item);
+  });
 }
 
 async function loadSettings(): Promise<void> {
@@ -1495,6 +2303,20 @@ async function loadSettings(): Promise<void> {
       clipboard.paths.length,
       'items'
     );
+  }
+}
+
+async function applySystemFontSize(): Promise<void> {
+  try {
+    const scaleFactor = await window.electronAPI.getSystemTextScale();
+    // Convert DPI scale to font size adjustment
+    // Scale factor of 1.0 = 100% (no change)
+    // Scale factor of 1.25 = 125% scaling
+    const fontScale = 1 + (scaleFactor - 1) * 0.5;
+    document.documentElement.style.setProperty('--system-font-scale', fontScale.toString());
+    document.body.classList.add('use-system-font-size');
+  } catch (error) {
+    console.error('[Settings] Failed to get system text scale:', error);
   }
 }
 
@@ -1554,10 +2376,20 @@ function applySettings(settings: Settings) {
     document.body.classList.remove('large-text');
   }
 
-  if (settings.uiDensity === 'larger') {
-    document.body.classList.add('large-ui');
+  // Apply system font size scaling
+  if (settings.useSystemFontSize) {
+    applySystemFontSize();
   } else {
-    document.body.classList.remove('large-ui');
+    document.documentElement.style.removeProperty('--system-font-scale');
+    document.body.classList.remove('use-system-font-size');
+  }
+
+  // Apply UI density
+  document.body.classList.remove('compact-ui', 'large-ui');
+  if (settings.uiDensity === 'compact') {
+    document.body.classList.add('compact-ui');
+  } else if (settings.uiDensity === 'larger') {
+    document.body.classList.add('large-ui');
   }
 
   if (settings.boldText) {
@@ -1576,6 +2408,12 @@ function applySettings(settings: Settings) {
     document.body.classList.add('reduce-transparency');
   } else {
     document.body.classList.remove('reduce-transparency');
+  }
+
+  if (settings.themedIcons) {
+    document.body.classList.add('themed-icons');
+  } else {
+    document.body.classList.remove('themed-icons');
   }
 
   if (settings.showFileCheckboxes) {
@@ -1622,6 +2460,17 @@ function hexToRgb(hex: string): string {
   return '0, 120, 212';
 }
 
+function hexToRgba(hex: string, alpha: number): string {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  if (result) {
+    const r = parseInt(result[1], 16);
+    const g = parseInt(result[2], 16);
+    const b = parseInt(result[3], 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  }
+  return `rgba(255, 255, 255, ${alpha})`;
+}
+
 function applyCustomThemeColors(theme: CustomTheme) {
   const root = document.documentElement;
   root.style.setProperty('--custom-accent-color', theme.accentColor);
@@ -1631,8 +2480,8 @@ function applyCustomThemeColors(theme: CustomTheme) {
   root.style.setProperty('--custom-bg-secondary', theme.bgSecondary);
   root.style.setProperty('--custom-text-primary', theme.textPrimary);
   root.style.setProperty('--custom-text-secondary', theme.textSecondary);
-  root.style.setProperty('--custom-glass-bg', `${theme.glassBg}08`);
-  root.style.setProperty('--custom-glass-border', `${theme.glassBorder}14`);
+  root.style.setProperty('--custom-glass-bg', hexToRgba(theme.glassBg, 0.03));
+  root.style.setProperty('--custom-glass-border', hexToRgba(theme.glassBorder, 0.08));
   document.body.style.backgroundColor = theme.bgPrimary;
 }
 
@@ -1728,9 +2577,13 @@ let tempCustomTheme: CustomTheme = {
   glassBorder: '#ffffff',
 };
 
+let themeEditorHasUnsavedChanges = false;
+
 function showThemeEditor() {
   const modal = document.getElementById('theme-editor-modal');
   if (!modal) return;
+
+  themeEditorHasUnsavedChanges = false;
 
   if (currentSettings.customTheme) {
     tempCustomTheme = { ...currentSettings.customTheme };
@@ -1746,6 +2599,7 @@ function showThemeEditor() {
       text: tempCustomTheme.textSecondary,
     },
     'theme-glass-bg': { color: tempCustomTheme.glassBg, text: tempCustomTheme.glassBg },
+    'theme-glass-border': { color: tempCustomTheme.glassBorder, text: tempCustomTheme.glassBorder },
   };
 
   for (const [id, values] of Object.entries(inputs)) {
@@ -1762,9 +2616,18 @@ function showThemeEditor() {
   modal.style.display = 'flex';
 }
 
-function hideThemeEditor() {
+async function hideThemeEditor(skipConfirmation = false) {
+  if (!skipConfirmation && themeEditorHasUnsavedChanges) {
+    const confirmed = await showConfirm(
+      'You have unsaved changes. Are you sure you want to close the theme editor?',
+      'Unsaved Changes',
+      'warning'
+    );
+    if (!confirmed) return;
+  }
   const modal = document.getElementById('theme-editor-modal');
   if (modal) modal.style.display = 'none';
+  themeEditorHasUnsavedChanges = false;
 }
 
 function updateThemePreview() {
@@ -1777,8 +2640,8 @@ function updateThemePreview() {
   preview.style.setProperty('--custom-bg-secondary', tempCustomTheme.bgSecondary);
   preview.style.setProperty('--custom-text-primary', tempCustomTheme.textPrimary);
   preview.style.setProperty('--custom-text-secondary', tempCustomTheme.textSecondary);
-  preview.style.setProperty('--custom-glass-bg', `${tempCustomTheme.glassBg}08`);
-  preview.style.setProperty('--custom-glass-border', `${tempCustomTheme.glassBorder}20`);
+  preview.style.setProperty('--custom-glass-bg', hexToRgba(tempCustomTheme.glassBg, 0.03));
+  preview.style.setProperty('--custom-glass-border', hexToRgba(tempCustomTheme.glassBorder, 0.08));
   preview.style.backgroundColor = tempCustomTheme.bgPrimary;
 }
 
@@ -1796,14 +2659,13 @@ function syncColorInputs(colorId: string, value: string) {
     'theme-text-primary': 'textPrimary',
     'theme-text-secondary': 'textSecondary',
     'theme-glass-bg': 'glassBg',
+    'theme-glass-border': 'glassBorder',
   };
 
   const key = mapping[colorId];
   if (key) {
     (tempCustomTheme as any)[key] = value;
-    if (key === 'glassBg') {
-      tempCustomTheme.glassBorder = value;
-    }
+    themeEditorHasUnsavedChanges = true;
   }
 
   updateThemePreview();
@@ -1824,6 +2686,7 @@ function applyThemePreset(presetName: string) {
   syncColorInputs('theme-text-primary', preset.textPrimary);
   syncColorInputs('theme-text-secondary', preset.textSecondary);
   syncColorInputs('theme-glass-bg', preset.glassBg);
+  syncColorInputs('theme-glass-border', preset.glassBorder);
 }
 
 async function saveCustomTheme() {
@@ -1839,7 +2702,8 @@ async function saveCustomTheme() {
 
   const result = await window.electronAPI.saveSettings(currentSettings);
   if (result.success) {
-    hideThemeEditor();
+    themeEditorHasUnsavedChanges = false;
+    hideThemeEditor(true);
     updateCustomThemeUI();
     showToast('Custom theme saved!', 'Theme', 'success');
   } else {
@@ -1848,8 +2712,10 @@ async function saveCustomTheme() {
 }
 
 function setupThemeEditorListeners() {
-  document.getElementById('theme-editor-close')?.addEventListener('click', hideThemeEditor);
-  document.getElementById('theme-editor-cancel')?.addEventListener('click', hideThemeEditor);
+  document.getElementById('theme-editor-close')?.addEventListener('click', () => hideThemeEditor());
+  document
+    .getElementById('theme-editor-cancel')
+    ?.addEventListener('click', () => hideThemeEditor());
   document.getElementById('theme-editor-save')?.addEventListener('click', saveCustomTheme);
 
   // Color inputs
@@ -1860,6 +2726,7 @@ function setupThemeEditorListeners() {
     'theme-text-primary',
     'theme-text-secondary',
     'theme-glass-bg',
+    'theme-glass-border',
   ];
 
   colorIds.forEach((id) => {
@@ -1905,6 +2772,7 @@ function setupThemeEditorListeners() {
 
   document.getElementById('theme-name-input')?.addEventListener('input', (e) => {
     tempCustomTheme.name = (e.target as HTMLInputElement).value || 'My Custom Theme';
+    themeEditorHasUnsavedChanges = true;
   });
 
   document.querySelectorAll('.preset-btn').forEach((btn) => {
@@ -2033,11 +2901,18 @@ async function showSettingsModal() {
   const reduceMotionToggle = document.getElementById('reduce-motion-toggle') as HTMLInputElement;
   const highContrastToggle = document.getElementById('high-contrast-toggle') as HTMLInputElement;
   const largeTextToggle = document.getElementById('large-text-toggle') as HTMLInputElement;
+  const useSystemFontSizeToggle = document.getElementById(
+    'use-system-font-size-toggle'
+  ) as HTMLInputElement;
   const uiDensitySelect = document.getElementById('ui-density-select') as HTMLSelectElement;
   const boldTextToggle = document.getElementById('bold-text-toggle') as HTMLInputElement;
   const visibleFocusToggle = document.getElementById('visible-focus-toggle') as HTMLInputElement;
   const reduceTransparencyToggle = document.getElementById(
     'reduce-transparency-toggle'
+  ) as HTMLInputElement;
+  const themedIconsToggle = document.getElementById('themed-icons-toggle') as HTMLInputElement;
+  const disableHwAccelToggle = document.getElementById(
+    'disable-hw-accel-toggle'
   ) as HTMLInputElement;
   const settingsPath = document.getElementById('settings-path');
 
@@ -2152,6 +3027,10 @@ async function showSettingsModal() {
     largeTextToggle.checked = currentSettings.largeText || false;
   }
 
+  if (useSystemFontSizeToggle) {
+    useSystemFontSizeToggle.checked = currentSettings.useSystemFontSize || false;
+  }
+
   if (uiDensitySelect) {
     uiDensitySelect.value = currentSettings.uiDensity || 'default';
   }
@@ -2166,6 +3045,14 @@ async function showSettingsModal() {
 
   if (reduceTransparencyToggle) {
     reduceTransparencyToggle.checked = currentSettings.reduceTransparency || false;
+  }
+
+  if (themedIconsToggle) {
+    themedIconsToggle.checked = currentSettings.themedIcons || false;
+  }
+
+  if (disableHwAccelToggle) {
+    disableHwAccelToggle.checked = currentSettings.disableHardwareAcceleration || false;
   }
 
   await updateIndexStatus();
@@ -2592,11 +3479,18 @@ async function saveSettings() {
   const reduceMotionToggle = document.getElementById('reduce-motion-toggle') as HTMLInputElement;
   const highContrastToggle = document.getElementById('high-contrast-toggle') as HTMLInputElement;
   const largeTextToggle = document.getElementById('large-text-toggle') as HTMLInputElement;
+  const useSystemFontSizeToggle = document.getElementById(
+    'use-system-font-size-toggle'
+  ) as HTMLInputElement;
   const uiDensitySelect = document.getElementById('ui-density-select') as HTMLSelectElement;
   const boldTextToggle = document.getElementById('bold-text-toggle') as HTMLInputElement;
   const visibleFocusToggle = document.getElementById('visible-focus-toggle') as HTMLInputElement;
   const reduceTransparencyToggle = document.getElementById(
     'reduce-transparency-toggle'
+  ) as HTMLInputElement;
+  const themedIconsToggle = document.getElementById('themed-icons-toggle') as HTMLInputElement;
+  const disableHwAccelToggle = document.getElementById(
+    'disable-hw-accel-toggle'
   ) as HTMLInputElement;
 
   if (transparencyToggle) {
@@ -2703,6 +3597,10 @@ async function saveSettings() {
     currentSettings.largeText = largeTextToggle.checked;
   }
 
+  if (useSystemFontSizeToggle) {
+    currentSettings.useSystemFontSize = useSystemFontSizeToggle.checked;
+  }
+
   if (uiDensitySelect) {
     currentSettings.uiDensity = uiDensitySelect.value as 'default' | 'larger';
   }
@@ -2717,6 +3615,14 @@ async function saveSettings() {
 
   if (reduceTransparencyToggle) {
     currentSettings.reduceTransparency = reduceTransparencyToggle.checked;
+  }
+
+  if (themedIconsToggle) {
+    currentSettings.themedIcons = themedIconsToggle.checked;
+  }
+
+  if (disableHwAccelToggle) {
+    currentSettings.disableHardwareAcceleration = disableHwAccelToggle.checked;
   }
 
   currentSettings.viewMode = viewMode;
@@ -2761,6 +3667,7 @@ function loadBookmarks() {
 
   if (!currentSettings.bookmarks || currentSettings.bookmarks.length === 0) {
     bookmarksList.innerHTML = '<div class="sidebar-empty">No bookmarks yet</div>';
+    homeController.renderHomeBookmarks();
     return;
   }
 
@@ -2922,10 +3829,106 @@ function loadBookmarks() {
 
     bookmarksDropReady = true;
   }
+
+  homeController.renderHomeBookmarks();
+}
+
+function setHomeViewActive(active: boolean): void {
+  if (!homeView) return;
+  homeView.style.display = active ? 'flex' : 'none';
+
+  if (active) {
+    cancelDirectoryRequest();
+    cancelColumnOperations();
+    hideLoading();
+    if (fileGrid) fileGrid.style.display = 'none';
+    if (columnView) columnView.style.display = 'none';
+    if (listHeader) listHeader.style.display = 'none';
+    if (emptyState) emptyState.style.display = 'none';
+    resetVirtualizedRender();
+    allFiles = [];
+    filePathMap.clear();
+    selectedItems.clear();
+    updateStatusBar();
+    const statusDiskSpace = document.getElementById('status-disk-space');
+    if (statusDiskSpace) statusDiskSpace.textContent = '';
+    const statusGitBranch = document.getElementById('status-git-branch');
+    if (statusGitBranch) statusGitBranch.style.display = 'none';
+    homeController.renderHomeView();
+  } else {
+    if (viewMode === 'column') {
+      if (fileGrid) fileGrid.style.display = 'none';
+      if (columnView) columnView.style.display = 'flex';
+    } else {
+      if (columnView) columnView.style.display = 'none';
+      if (fileGrid) {
+        fileGrid.style.display = '';
+        fileGrid.className = viewMode === 'list' ? 'file-grid list-view' : 'file-grid';
+      }
+    }
+    if (listHeader) {
+      listHeader.style.display = viewMode === 'list' ? 'grid' : 'none';
+    }
+  }
+
+  const disableFileActions = active;
+  if (newFileBtn) newFileBtn.disabled = disableFileActions;
+  if (newFolderBtn) newFolderBtn.disabled = disableFileActions;
+  if (sortBtn) sortBtn.disabled = disableFileActions;
+  if (viewToggleBtn) viewToggleBtn.disabled = disableFileActions;
+  if (viewOptions) {
+    viewOptions
+      .querySelectorAll('button')
+      .forEach((button) => ((button as HTMLButtonElement).disabled = disableFileActions));
+  }
+}
+
+async function handleQuickAction(action?: string | null): Promise<void> {
+  if (!action) return;
+
+  if (action === 'home') {
+    navigateTo(HOME_VIEW_PATH);
+    return;
+  }
+
+  const specialAction = SPECIAL_DIRECTORY_ACTIONS[action];
+  if (specialAction) {
+    const result = await window.electronAPI.getSpecialDirectory(specialAction.key);
+    if (result.success && result.path) {
+      navigateTo(result.path);
+    } else {
+      showToast(
+        result.error || `Failed to open ${specialAction.label} folder`,
+        'Quick Access',
+        'error'
+      );
+    }
+    return;
+  }
+
+  if (action === 'browse') {
+    const result = await window.electronAPI.selectFolder();
+    if (result.success && result.path) {
+      navigateTo(result.path);
+    }
+    return;
+  }
+
+  if (action === 'trash') {
+    const result = await window.electronAPI.openTrash();
+    if (result.success) {
+      showToast('Opening system trash folder', 'Info', 'info');
+    } else {
+      showToast('Failed to open trash folder', 'Error', 'error');
+    }
+  }
 }
 
 async function addBookmark() {
-  if (!currentPath) return;
+  if (!currentPath || isHomeViewPath(currentPath)) {
+    showToast('Open a folder to add a bookmark', 'Bookmarks', 'info');
+    return;
+  }
   await addBookmarkByPath(currentPath);
 }
 
@@ -3019,6 +4022,7 @@ async function addToRecentFiles(filePath: string) {
 
   debouncedSaveSettings();
   loadRecentFiles();
+  homeController.renderHomeRecents();
 }
 
 function toggleSearch() {
@@ -3026,6 +4030,9 @@ function toggleSearch() {
     searchBarWrapper.style.display = 'block';
     searchInput.focus();
     isSearchMode = true;
+    if (isHomeViewPath(currentPath) && !isGlobalSearch) {
+      toggleSearchScope();
+    }
     updateSearchPlaceholder();
   } else {
     closeSearch();
@@ -3128,6 +4135,11 @@ async function performSearch() {
   if (!query) {
     searchRequestId += 1;
     cancelActiveSearch();
+    return;
+  }
+
+  if (!isGlobalSearch && isHomeViewPath(currentPath)) {
+    showToast('Open a folder or use global search', 'Search', 'info');
     return;
   }
 
@@ -3489,6 +4501,25 @@ function applyPreviewPanelWidth(): void {
   }
 }
 
+function setSidebarCollapsed(collapsed?: boolean): void {
+  const sidebar = document.querySelector('.sidebar') as HTMLElement | null;
+  const toggle = document.getElementById('sidebar-toggle');
+  if (!sidebar) return;
+  const shouldCollapse =
+    typeof collapsed === 'boolean' ? collapsed : !sidebar.classList.contains('collapsed');
+  sidebar.classList.toggle('collapsed', shouldCollapse);
+  if (toggle) {
+    toggle.setAttribute('aria-expanded', String(!shouldCollapse));
+  }
+}
+
+function syncSidebarToggleState(): void {
+  const sidebar = document.querySelector('.sidebar') as HTMLElement | null;
+  const toggle = document.getElementById('sidebar-toggle');
+  if (!sidebar || !toggle) return;
+  toggle.setAttribute('aria-expanded', String(!sidebar.classList.contains('collapsed')));
+}
+
 function setupSidebarResize(): void {
   if (!sidebarResizeHandle) return;
   const sidebar = document.querySelector('.sidebar') as HTMLElement | null;
@@ -3521,6 +4552,25 @@ function setupSidebarResize(): void {
     document.body.style.userSelect = 'none';
     document.addEventListener('mousemove', onMouseMove);
     document.addEventListener('mouseup', onMouseUp);
+  });
+}
+
+function setupSidebarSections(): void {
+  const sections = document.querySelectorAll<HTMLElement>(
+    '.sidebar-section[data-collapsible="true"]'
+  );
+  sections.forEach((section) => {
+    const toggle = section.querySelector<HTMLButtonElement>('.section-toggle');
+    if (!toggle) return;
+    const syncAria = () => {
+      const isCollapsed = section.classList.contains('collapsed');
+      toggle.setAttribute('aria-expanded', String(!isCollapsed));
+    };
+    syncAria();
+    toggle.addEventListener('click', () => {
+      section.classList.toggle('collapsed');
+      syncAria();
+    });
   });
 }
 
@@ -3608,19 +4658,14 @@ function setupListHeader(): void {
 }
 
 function updateStatusBar() {
-  const statusItems = document.getElementById('status-items');
-  const statusSelected = document.getElementById('status-selected');
-  const statusSearch = document.getElementById('status-search');
-  const statusSearchText = document.getElementById('status-search-text');
-
   if (statusItems) {
     statusItems.textContent = `${allFiles.length} item${allFiles.length !== 1 ? 's' : ''}`;
   }
 
   if (statusSelected) {
     if (selectedItems.size > 0) {
-      const totalSize = Array.from(selectedItems).reduce((acc, path) => {
-        const item = filePathMap.get(path);
+      const totalSize = Array.from(selectedItems).reduce((acc, itemPath) => {
+        const item = filePathMap.get(itemPath);
         return acc + (item ? item.size : 0);
       }, 0);
       const sizeStr = formatFileSize(totalSize);
@@ -3631,8 +4676,6 @@ function updateStatusBar() {
     }
   }
 
-  const selectionIndicator = document.getElementById('selection-indicator');
-  const selectionCount = document.getElementById('selection-count');
   if (selectionIndicator && selectionCount) {
     if (selectedItems.size > 0) {
       selectionCount.textContent = String(selectedItems.size);
@@ -3642,7 +4685,6 @@ function updateStatusBar() {
     }
   }
 
-  const statusHidden = document.getElementById('status-hidden');
   if (statusHidden) {
     if (!currentSettings.showHiddenFiles) {
       const hiddenCount = hiddenFilesCount;
@@ -3660,7 +4702,6 @@ function updateStatusBar() {
 
   if (statusSearch && statusSearchText) {
     if (isSearchMode) {
-      const searchInput = document.getElementById('search-input') as HTMLInputElement | null;
       const searchQuery = searchInput?.value || '';
       let searchText = isGlobalSearch ? 'Global' : 'Search';
 
@@ -3710,13 +4751,25 @@ function getUnixDrivePath(pathValue: string): string {
   return '/';
 }
 
+function getWindowsDrivePath(pathValue: string): string {
+  const normalized = pathValue.replace(/\//g, '\\');
+  if (normalized.startsWith('\\\\')) {
+    const parts = normalized.split('\\').filter(Boolean);
+    if (parts.length >= 2) {
+      return `\\\\${parts[0]}\\${parts[1]}\\`;
+    }
+    return normalized;
+  }
+  return normalized.substring(0, 3);
+}
+
 async function updateDiskSpace() {
   const statusDiskSpace = document.getElementById('status-disk-space');
-  if (!statusDiskSpace || !currentPath) return;
+  if (!statusDiskSpace || !currentPath || isHomeViewPath(currentPath)) return;
 
   let drivePath = currentPath;
   if (platformOS === 'win32') {
-    drivePath = currentPath.substring(0, 3);
+    drivePath = getWindowsDrivePath(currentPath);
   } else {
     drivePath = getUnixDrivePath(currentPath);
   }
@@ -3747,10 +4800,16 @@ async function updateDiskSpace() {
     ) {
       const total = result.total;
       const free = result.free;
+      if (diskSpaceCache.size >= DISK_SPACE_CACHE_MAX) {
+        const firstKey = diskSpaceCache.keys().next().value;
+        if (firstKey) diskSpaceCache.delete(firstKey);
+      }
       diskSpaceCache.set(drivePath, { timestamp: Date.now(), total, free });
       renderDiskSpace(statusDiskSpace, total, free);
     } else {
-      statusDiskSpace.textContent = '';
+      const isUnc = platformOS === 'win32' && drivePath.startsWith('\\\\');
+      const message = isUnc ? 'Disk space unavailable for network share' : 'Disk space unavailable';
+      renderDiskSpaceUnavailable(statusDiskSpace, message);
     }
     diskSpaceDebounceTimer = null;
   }, 300);
@@ -3786,6 +4845,14 @@ function renderDiskSpace(element: HTMLElement, total: number, free: number): voi
         <span style="position: absolute; left: 0; top: 0; height: 100%; width: ${usedPercent}%; background: ${usageColor}; transition: width 0.3s ease;"></span>
       </span>
       <span style="opacity: 0.7;">(${usedPercent}% used)</span>
+    </span>
+  `;
+}
+
+function renderDiskSpaceUnavailable(element: HTMLElement, message: string): void {
+  element.innerHTML = `
+    <span style="display: inline-flex; align-items: center; gap: 6px; opacity: 0.7;">
+      ${twemojiImg(String.fromCodePoint(0x26a0), 'twemoji')} ${escapeHtml(message)}
     </span>
   `;
 }
@@ -3845,8 +4912,6 @@ async function zoomReset() {
 async function init() {
   console.log('Init: Getting platform, store info, and settings...');
 
-  const homeDirectoryPromise = window.electronAPI.getHomeDirectory();
-
   const [platform, mas, flatpak, msStore, appVersion] = await Promise.all([
     window.electronAPI.getPlatform(),
     window.electronAPI.isMas(),
@@ -3856,6 +4921,11 @@ async function init() {
   ]);
 
   await loadSettings();
+  await homeController.loadHomeSettings();
+
+  initTooltipSystem();
+  initCommandPalette();
+  initProgressPanel();
 
   platformOS = platform;
   document.body.classList.add(`platform-${platformOS}`);
@@ -3887,7 +4957,7 @@ async function init() {
   const startupPath =
     currentSettings.startupPath && currentSettings.startupPath.trim() !== ''
       ? currentSettings.startupPath
-      : await homeDirectoryPromise;
+      : HOME_VIEW_PATH;
 
   setupEventListeners();
   loadDrives();
@@ -3898,6 +4968,7 @@ async function init() {
   queueMicrotask(() => {
     setupBreadcrumbListeners();
     setupThemeEditorListeners();
+    homeController.setupHomeSettingsListeners();
     loadBookmarks();
   });
 
@@ -4013,27 +5084,38 @@ function setFolderTreeVisibility(enabled: boolean): void {
   if (!enabled && folderTree) {
     folderTree.innerHTML = '';
   }
+
+  const drivesSection = document.getElementById('drives-section');
+  if (drivesSection) {
+    drivesSection.style.display = enabled ? 'none' : '';
+  }
 }
 
 async function loadDrives() {
   if (!drivesList) return;
 
-  const drives = await window.electronAPI.getDrives();
+  const drives = await window.electronAPI.getDriveInfo();
+  cacheDriveInfo(drives);
   drivesList.innerHTML = '';
 
   drives.forEach((drive) => {
+    const driveLabel = drive.label || drive.path;
     const driveItem = document.createElement('div');
     driveItem.className = 'nav-item';
+    driveItem.title = drive.path;
     driveItem.innerHTML = `
       <span class="nav-icon">${twemojiImg(String.fromCodePoint(0x1f4be), 'twemoji')}</span>
-      <span class="nav-label">${escapeHtml(drive)}</span>
+      <span class="nav-label">${escapeHtml(driveLabel)}</span>
     `;
-    driveItem.addEventListener('click', () => navigateTo(drive));
+    driveItem.addEventListener('click', () => navigateTo(drive.path));
     drivesList.appendChild(driveItem);
   });
 
+  const drivePaths = drives.map((drive) => drive.path);
+  void homeController.renderHomeDrives(drives);
+
   if (currentSettings.showFolderTree !== false) {
-    folderTreeManager.render(drives);
+    folderTreeManager.render(drivePaths);
   } else if (folderTree) {
     folderTree.innerHTML = '';
   }
@@ -4285,6 +5367,7 @@ function setupEventListeners() {
   setupListHeader();
   setupViewOptions();
   setupSidebarResize();
+  setupSidebarSections();
   setupPreviewResize();
   if (currentSettings.showFileHoverCard !== false) {
     setupHoverCard();
@@ -4444,10 +5527,10 @@ function setupEventListeners() {
   bookmarkAddBtn?.addEventListener('click', addBookmark);
 
   const sidebarToggle = document.getElementById('sidebar-toggle');
-  const sidebar = document.querySelector('.sidebar');
   sidebarToggle?.addEventListener('click', () => {
-    sidebar?.classList.toggle('collapsed');
+    setSidebarCollapsed();
   });
+  syncSidebarToggleState();
 
   searchInput?.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') {
@@ -4466,7 +5549,12 @@ function setupEventListeners() {
 
   addressInput?.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') {
-      navigateTo(addressInput.value);
+      const value = addressInput.value.trim();
+      if (value === HOME_VIEW_LABEL) {
+        navigateTo(HOME_VIEW_PATH);
+      } else {
+        navigateTo(value);
+      }
     }
   });
 
@@ -4593,7 +5681,10 @@ function setupEventListeners() {
     };
 
     if (e.ctrlKey || e.metaKey) {
-      if (e.key === ',') {
+      if (e.key === 'k' || e.key === 'K') {
+        e.preventDefault();
+        showCommandPalette();
+      } else if (e.key === ',') {
         e.preventDefault();
         showSettingsModal();
       } else if (e.key === '?' || e.key === '/') {
@@ -4648,13 +5739,23 @@ function setupEventListeners() {
             searchBarWrapper.style.display = 'block';
             isSearchMode = true;
           }
-          isGlobalSearch = false;
-          searchScopeToggle.classList.remove('global');
-          searchScopeToggle.title = 'Local Search (Current Folder)';
+          const useGlobalSearch = isHomeViewPath(currentPath);
+          isGlobalSearch = useGlobalSearch;
           const img = searchScopeToggle.querySelector('img');
-          if (img) {
-            img.src = 'assets/twemoji/1f4c1.svg';
-            img.alt = '📁';
+          if (useGlobalSearch) {
+            searchScopeToggle.classList.add('global');
+            searchScopeToggle.title = 'Global Search (All Indexed Files)';
+            if (img) {
+              img.src = 'assets/twemoji/1f30d.svg';
+              img.alt = '🌍';
+            }
+          } else {
+            searchScopeToggle.classList.remove('global');
+            searchScopeToggle.title = 'Local Search (Current Folder)';
+            if (img) {
+              img.src = 'assets/twemoji/1f4c1.svg';
+              img.alt = '📁';
+            }
           }
           updateSearchPlaceholder();
           searchInput.focus();
@@ -4705,9 +5806,30 @@ function setupEventListeners() {
         }
       } else if (e.key === 'b' || e.key === 'B') {
         e.preventDefault();
-        const sidebar = document.querySelector('.sidebar');
-        sidebar?.classList.toggle('collapsed');
+        setSidebarCollapsed();
       }
+    } else if (e.altKey && !e.ctrlKey && !e.metaKey) {
+      // Alt+Arrow navigation (like Windows Explorer)
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        goBack();
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        goForward();
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        goUp();
+      }
+    } else if (e.key === 'Backspace') {
+      const activeElement = document.activeElement;
+      if (
+        activeElement &&
+        (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')
+      ) {
+        return;
+      }
+      e.preventDefault();
+      goUp();
     } else if (e.key === ' ' && selectedItems.size === 1) {
       const activeElement = document.activeElement;
       if (
@@ -4784,6 +5906,26 @@ function setupEventListeners() {
       }
       e.preventDefault();
       selectLastItem(e.shiftKey);
+    } else if (e.key === 'PageUp') {
+      const activeElement = document.activeElement;
+      if (
+        activeElement &&
+        (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')
+      ) {
+        return;
+      }
+      e.preventDefault();
+      navigateByPage('up', e.shiftKey);
+    } else if (e.key === 'PageDown') {
+      const activeElement = document.activeElement;
+      if (
+        activeElement &&
+        (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')
+      ) {
+        return;
+      }
+      e.preventDefault();
+      navigateByPage('down', e.shiftKey);
     } else if (
       !e.ctrlKey &&
       !e.metaKey &&
@@ -4805,23 +5947,12 @@ function setupEventListeners() {
 
   document.querySelectorAll('.nav-item[data-action]').forEach((element) => {
     const item = element as HTMLElement;
-    item.addEventListener('click', async () => {
-      const action = item.dataset.action;
-      if (action === 'home') {
-        const homeDir = await window.electronAPI.getHomeDirectory();
-        navigateTo(homeDir);
-      } else if (action === 'browse') {
-        const result = await window.electronAPI.selectFolder();
-        if (result.success && result.path) {
-          navigateTo(result.path);
-        }
-      } else if (action === 'trash') {
-        const result = await window.electronAPI.openTrash();
-        if (result.success) {
-          showToast('Opening system trash folder', 'Info', 'info');
-        } else {
-          showToast('Failed to open trash folder', 'Error', 'error');
-        }
+    const handleAction = () => handleQuickAction(item.dataset.action);
+    item.addEventListener('click', handleAction);
+    item.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        handleAction();
       }
     });
   });
@@ -5073,6 +6204,7 @@ function addToSearchHistory(query: string) {
 
 function addToDirectoryHistory(dirPath: string) {
   if (!currentSettings.enableSearchHistory || !dirPath.trim()) return;
+  if (isHomeViewPath(dirPath)) return;
   if (!currentSettings.directoryHistory) {
     currentSettings.directoryHistory = [];
   }
@@ -5162,6 +6294,46 @@ function updateHiddenFilesCount(items: FileItem[], append = false): void {
 
 async function navigateTo(path: string, skipHistoryUpdate = false) {
   if (!path) return;
+  const trimmedPath = path.trim();
+  if (trimmedPath === HOME_VIEW_LABEL) {
+    path = HOME_VIEW_PATH;
+  }
+
+  if (isHomeViewPath(path)) {
+    if (typeaheadTimeout) {
+      clearTimeout(typeaheadTimeout);
+      typeaheadTimeout = null;
+    }
+    typeaheadBuffer = '';
+    hideTypeaheadIndicator();
+
+    if (isSearchMode) {
+      closeSearch();
+    }
+
+    if (thumbnailObserver) {
+      thumbnailObserver.disconnect();
+    }
+
+    hideLoading();
+
+    currentPath = HOME_VIEW_PATH;
+    updateCurrentTabPath(path);
+    if (addressInput) addressInput.value = HOME_VIEW_LABEL;
+    updateBreadcrumb(path);
+
+    if (!skipHistoryUpdate && (historyIndex === -1 || history[historyIndex] !== path)) {
+      history = history.slice(0, historyIndex + 1);
+      history.push(path);
+      historyIndex = history.length - 1;
+    }
+
+    updateNavigationButtons();
+    setHomeViewActive(true);
+    return;
+  }
+
+  setHomeViewActive(false);
   let requestId = 0;
   let operationId = '';
 
@@ -5190,7 +6362,8 @@ async function navigateTo(path: string, skipHistoryUpdate = false) {
     const result = await window.electronAPI.getDirectoryContents(
       path,
       operationId,
-      currentSettings.showHiddenFiles
+      currentSettings.showHiddenFiles,
+      false
     );
     if (requestId !== directoryRequestId) return;
 
@@ -5199,7 +6372,9 @@ async function navigateTo(path: string, skipHistoryUpdate = false) {
       updateCurrentTabPath(path);
       if (addressInput) addressInput.value = path;
       updateBreadcrumb(path);
-      folderTreeManager.ensurePathVisible(path);
+      try {
+        folderTreeManager.ensurePathVisible(path);
+      } catch {}
       addToDirectoryHistory(path);
 
       if (!skipHistoryUpdate && (historyIndex === -1 || history[historyIndex] !== path)) {
@@ -5328,23 +6503,38 @@ function appendNextVirtualizedBatch(): void {
 }
 
 let renderItemIndex = 0;
+const animationCleanupItems: HTMLElement[] = [];
+let animationCleanupTimer: ReturnType<typeof setTimeout> | null = null;
+
+function scheduleAnimationCleanup(): void {
+  if (animationCleanupTimer) return;
+  animationCleanupTimer = setTimeout(() => {
+    animationCleanupTimer = null;
+    const batch = animationCleanupItems.splice(0);
+    for (const el of batch) {
+      el.classList.remove('animate-in');
+      el.style.animationDelay = '';
+    }
+    if (animationCleanupItems.length > 0) {
+      scheduleAnimationCleanup();
+    }
+  }, 400);
+}
 
 function appendFileItems(items: FileItem[], searchQuery?: string): string[] {
   if (!fileGrid) return [];
   const fragment = document.createDocumentFragment();
   const paths: string[] = [];
+  const shouldAnimate = !document.body.classList.contains('reduce-motion');
 
   for (const item of items) {
     const fileItem = createFileItem(item, searchQuery);
-    if (!document.body.classList.contains('reduce-motion')) {
+    if (shouldAnimate) {
       const delayIndex = renderItemIndex % 20;
       const delayMs = delayIndex * 20;
       fileItem.classList.add('animate-in');
       fileItem.style.animationDelay = `${delayMs / 1000}s`;
-      setTimeout(() => {
-        fileItem.classList.remove('animate-in');
-        fileItem.style.animationDelay = '';
-      }, 300 + delayMs);
+      animationCleanupItems.push(fileItem);
     }
     renderItemIndex++;
     fileElementMap.set(item.path, fileItem);
@@ -5353,6 +6543,9 @@ function appendFileItems(items: FileItem[], searchQuery?: string): string[] {
   }
 
   fileGrid.appendChild(fragment);
+  if (shouldAnimate && animationCleanupItems.length > 0) {
+    scheduleAnimationCleanup();
+  }
   return paths;
 }
 
@@ -5575,6 +6768,7 @@ function createFileItem(item: FileItem, searchQuery?: string): HTMLElement {
   fileItem.tabIndex = 0;
   fileItem.dataset.path = item.path;
   fileItem.dataset.isDirectory = String(item.isDirectory);
+  fileItem.setAttribute('role', 'option');
 
   let icon: string;
   if (item.isDirectory) {
@@ -5599,6 +6793,12 @@ function createFileItem(item: FileItem, searchQuery?: string): HTMLElement {
   const sizeDisplay = item.isDirectory ? '--' : formatFileSize(item.size);
   const dateDisplay = DATE_FORMATTER.format(new Date(item.modified));
   const typeDisplay = item.isDirectory ? 'Folder' : getFileTypeFromName(item.name);
+
+  const ariaDescription = item.isDirectory
+    ? `${typeDisplay}, modified ${dateDisplay}`
+    : `${typeDisplay}, ${sizeDisplay}, modified ${dateDisplay}`;
+  fileItem.setAttribute('aria-label', item.name);
+  fileItem.setAttribute('aria-description', ariaDescription);
 
   const contentResult = item as ContentSearchResult;
   let matchContextHtml = '';
@@ -6492,6 +7692,43 @@ function selectLastItem(shiftKey: boolean) {
   }
 }
 
+function navigateByPage(direction: 'up' | 'down', shiftKey: boolean) {
+  const fileItems = getFileItemsArray();
+  if (fileItems.length === 0) return;
+
+  const fileGrid = document.getElementById('file-grid');
+  if (!fileGrid) return;
+
+  // Calculate how many items fit in a "page" based on grid height
+  const columns = getGridColumns();
+  const gridRect = fileGrid.getBoundingClientRect();
+  const firstItem = fileItems[0];
+  if (!firstItem) return;
+
+  const itemRect = firstItem.getBoundingClientRect();
+  const itemHeight = itemRect.height + 8; // Include gap
+  const visibleRows = Math.max(1, Math.floor(gridRect.height / itemHeight));
+  const pageSize = visibleRows * columns;
+
+  let currentIndex = lastSelectedIndex;
+  if (currentIndex === -1 || currentIndex >= fileItems.length) {
+    const selectedPath = Array.from(selectedItems)[selectedItems.size - 1];
+    currentIndex = fileItems.findIndex((item) => item.getAttribute('data-path') === selectedPath);
+  }
+  if (currentIndex === -1) currentIndex = 0;
+
+  let newIndex: number;
+  if (direction === 'up') {
+    newIndex = Math.max(0, currentIndex - pageSize);
+  } else {
+    newIndex = Math.min(fileItems.length - 1, currentIndex + pageSize);
+  }
+
+  if (newIndex !== currentIndex || selectedItems.size === 0) {
+    selectItemAtIndex(fileItems, newIndex, shiftKey, currentIndex);
+  }
+}
+
 function selectItemAtIndex(
   fileItems: HTMLElement[],
   index: number,
@@ -6659,7 +7896,7 @@ function goForward() {
 }
 
 function isRootPath(pathValue: string): boolean {
-  if (!pathValue) return true;
+  if (!pathValue || isHomeViewPath(pathValue)) return true;
   if (!isWindowsPath(pathValue)) {
     return pathValue === '/';
   }
@@ -6712,6 +7949,11 @@ async function toggleView() {
 }
 
 async function applyViewMode() {
+  if (isHomeViewPath(currentPath)) {
+    setHomeViewActive(true);
+    return;
+  }
+
   if (viewMode === 'column') {
     cancelDirectoryRequest();
     hideLoading();
@@ -6765,6 +8007,10 @@ async function renderColumnView() {
   if (!columnView) return;
 
   cancelColumnOperations();
+  if (isHomeViewPath(currentPath)) {
+    columnView.innerHTML = '';
+    return;
+  }
 
   const currentRenderId = ++columnViewRenderId;
   while (isRenderingColumnView) {
@@ -6872,18 +8118,23 @@ async function renderDriveColumn() {
   pane.className = 'column-pane';
 
   try {
-    const drives = await window.electronAPI.getDrives();
+    const drives =
+      cachedDriveInfo.length > 0 ? cachedDriveInfo : await window.electronAPI.getDriveInfo();
+    if (cachedDriveInfo.length === 0) {
+      cacheDriveInfo(drives);
+    }
     drives.forEach((drive) => {
       const item = document.createElement('div');
       item.className = 'column-item is-directory';
       item.tabIndex = 0;
-      item.dataset.path = drive;
+      item.dataset.path = drive.path;
+      item.title = drive.path;
       item.innerHTML = `
         <span class="column-item-icon"><img src="assets/twemoji/1f4bf.svg" class="twemoji" alt="💿" draggable="false" /></span>
-        <span class="column-item-name">${escapeHtml(drive)}</span>
+        <span class="column-item-name">${escapeHtml(drive.label || drive.path)}</span>
         <span class="column-item-arrow">▸</span>
       `;
-      item.addEventListener('click', () => handleColumnItemClick(item, drive, true, 0));
+      item.addEventListener('click', () => handleColumnItemClick(item, drive.path, true, 0));
       pane.appendChild(item);
     });
   } catch {
@@ -7195,7 +8446,9 @@ async function handleColumnItemClick(
     currentPath = path;
     addressInput.value = path;
     updateBreadcrumb(path);
-    folderTreeManager.ensurePathVisible(path);
+    try {
+      folderTreeManager.ensurePathVisible(path);
+    } catch {}
 
     const newPane = await renderColumn(path, currentPaneIndex + 1, clickRenderId);
 
@@ -7217,7 +8470,9 @@ async function handleColumnItemClick(
       currentPath = parentPath;
       addressInput.value = parentPath;
       updateBreadcrumb(parentPath);
-      folderTreeManager.ensurePathVisible(parentPath);
+      try {
+        folderTreeManager.ensurePathVisible(parentPath);
+      } catch {}
     }
 
     const previewPanel = document.getElementById('preview-panel');
@@ -7281,7 +8536,8 @@ function updateViewModeControls() {
     });
   }
   if (listHeader) {
-    listHeader.style.display = viewMode === 'list' ? 'grid' : 'none';
+    listHeader.style.display =
+      viewMode === 'list' && !isHomeViewPath(currentPath) ? 'grid' : 'none';
   }
 }
 
@@ -7306,6 +8562,10 @@ async function createNewFolder() {
 }
 
 async function createNewFileWithInlineRename() {
+  if (!currentPath || isHomeViewPath(currentPath)) {
+    showToast('Open a folder to create a file', 'Create', 'info');
+    return;
+  }
   const fileName = 'File';
   let counter = 1;
   let finalFileName = fileName;
@@ -7338,6 +8598,10 @@ async function createNewFileWithInlineRename() {
 }
 
 async function createNewFolderWithInlineRename() {
+  if (!currentPath || isHomeViewPath(currentPath)) {
+    showToast('Open a folder to create a folder', 'Create', 'info');
+    return;
+  }
   const folderName = 'New Folder';
   let counter = 1;
   let finalFolderName = folderName;
@@ -8769,7 +10033,14 @@ function validateImportedSettings(imported: any): Partial<Settings> {
 
   if (imported.customTheme && typeof imported.customTheme === 'object') {
     const ct = imported.customTheme;
-    const isValidHex = (s: any) => typeof s === 'string' && /^#[0-9a-fA-F]{6}$/.test(s);
+    const isValidHex = (s: any) =>
+      typeof s === 'string' && (/^#[0-9a-fA-F]{6}$/.test(s) || /^#[0-9a-fA-F]{3}$/.test(s));
+    const expandHex = (s: string) => {
+      if (/^#[0-9a-fA-F]{3}$/.test(s)) {
+        return '#' + s[1] + s[1] + s[2] + s[2] + s[3] + s[3];
+      }
+      return s;
+    };
     if (
       typeof ct.name === 'string' &&
       isValidHex(ct.accentColor) &&
@@ -8780,7 +10051,16 @@ function validateImportedSettings(imported: any): Partial<Settings> {
       isValidHex(ct.glassBg) &&
       isValidHex(ct.glassBorder)
     ) {
-      validated.customTheme = ct;
+      validated.customTheme = {
+        name: ct.name,
+        accentColor: expandHex(ct.accentColor),
+        bgPrimary: expandHex(ct.bgPrimary),
+        bgSecondary: expandHex(ct.bgSecondary),
+        textPrimary: expandHex(ct.textPrimary),
+        textSecondary: expandHex(ct.textSecondary),
+        glassBg: expandHex(ct.glassBg),
+        glassBorder: expandHex(ct.glassBorder),
+      };
     }
   }
 

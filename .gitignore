@@ -150,3 +150,8 @@ vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .DS_Store
 .env.example
+
+# Mac App Store provisioning profiles (user-specific, regenerate from Apple Developer account)
+*.provisionprofile
+*.mobileprovision
+build/embedded.provisionprofile

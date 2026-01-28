@@ -36,6 +36,7 @@ import {
   saveSettings,
   applyLoginItemSettings,
 } from './settingsManager';
+import { setupHomeSettingsHandlers } from './homeSettingsManager';
 import { setupUndoRedoHandlers, clearUndoRedoStacks } from './undoRedoManager';
 import {
   createWindow,
@@ -54,6 +55,19 @@ const TOTAL_MEM_GB = os.totalmem() / 1024 ** 3;
 if (process.argv.includes('--disable-hardware-acceleration')) {
   logger.info('[Performance] Hardware acceleration disabled via command line flag');
   app.disableHardwareAcceleration();
+} else {
+  // Check settings for hardware acceleration preference
+  (async () => {
+    try {
+      const settings = await loadSettings();
+      if (settings.disableHardwareAcceleration) {
+        logger.info('[Performance] Hardware acceleration disabled via settings');
+        app.disableHardwareAcceleration();
+      }
+    } catch (error) {
+      logger.warn('[Performance] Could not check hardware acceleration setting:', error);
+    }
+  })();
 }
 
 const MAX_OLD_SPACE_MB =
@@ -95,6 +109,7 @@ setupZoomHandlers();
 setupFileAnalysisHandlers();
 setupSystemHandlers(loadSettings, saveSettings);
 setupSettingsHandlers(createTray);
+setupHomeSettingsHandlers();
 setupUndoRedoHandlers();
 setupWindowHandlers();
 setupFileOperationHandlers();
@@ -143,6 +158,12 @@ app.whenReady().then(async () => {
     }
   }
 
+  if (shouldStartHidden && !(startupSettings.minimizeToTray || startupSettings.startOnLogin)) {
+    logger.info('[Startup] --hidden ignored (tray/login startup disabled)');
+    shouldStartHidden = false;
+    setShouldStartHidden(false);
+  }
+
   logger.info('[Startup] Starting with hidden mode:', shouldStartHidden);
 
   if (shouldStartHidden && (startupSettings.minimizeToTray || startupSettings.startOnLogin)) {
@@ -176,7 +197,7 @@ app.whenReady().then(async () => {
         }
 
         setTimeout(() => {
-          initializeAutoUpdater(startupSettings);
+          void initializeAutoUpdater(startupSettings);
         }, 1000);
 
         if (process.platform === 'darwin') {

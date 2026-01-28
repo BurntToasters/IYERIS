@@ -82,6 +82,11 @@ export function applyLoginItemSettings(settings: Settings): void {
   try {
     logger.debug('[LoginItem] Applying settings:', settings.startOnLogin);
 
+    if (!app.isPackaged) {
+      logger.debug('[LoginItem] Skipping login item setup (app is not packaged)');
+      return;
+    }
+
     if (process.platform === 'win32') {
       if (process.windowsStore) {
         logger.debug('[LoginItem] MS Store app - using StartupTask');

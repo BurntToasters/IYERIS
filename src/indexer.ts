@@ -12,6 +12,51 @@ type IndexEntryPayload = Partial<Omit<IndexEntry, 'modified'>> & {
   modified?: Date | number | string;
 };
 
+const EXCLUDE_SEGMENTS = new Set([
+  'node_modules',
+  '.git',
+  '.cache',
+  'cache',
+  'caches',
+  '.trash',
+  'trash',
+  '$recycle.bin',
+  'system volume information',
+  '.npm',
+  '.docker',
+  'appdata',
+  'programdata',
+  'windows',
+  'program files',
+  'program files (x86)',
+  '$windows.~bt',
+  '$windows.~ws',
+  'recovery',
+  'perflogs',
+  'library',
+  '$winreagent',
+  'config.msi',
+  'msocache',
+  'intel',
+  'nvidia',
+  'amd',
+]);
+
+const EXCLUDE_FILES = new Set([
+  'pagefile.sys',
+  'hiberfil.sys',
+  'swapfile.sys',
+  'dumpstack.log.tmp',
+  'dumpstack.log',
+  '.ds_store',
+  'thumbs.db',
+  'desktop.ini',
+  'ntuser.dat',
+  'ntuser.dat.log',
+  'ntuser.dat.log1',
+  'ntuser.dat.log2',
+]);
+
 async function writeFileAtomic(targetPath: string, data: string): Promise<void> {
   const dir = path.dirname(targetPath);
   const base = path.basename(targetPath);
@@ -120,57 +165,23 @@ export class FileIndexer {
     return locations;
   }
   private shouldExclude(filePath: string): boolean {
-    const excludeSegments = new Set([
-      'node_modules',
-      '.git',
-      '.cache',
-      'cache',
-      'caches',
-      '.trash',
-      'trash',
-      '$recycle.bin',
-      'system volume information',
-      '.npm',
-      '.docker',
-      'appdata',
-      'programdata',
-      'windows',
-      'program files',
-      'program files (x86)',
-      '$windows.~bt',
-      '$windows.~ws',
-      'recovery',
-      'perflogs',
-      'library',
-      '$winreagent',
-      'config.msi',
-      'msocache',
-      'intel',
-      'nvidia',
-      'amd',
-    ]);
+    const lastSep = Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\'));
+    const filename = (lastSep >= 0 ? filePath.slice(lastSep + 1) : filePath).toLowerCase();
 
-    const excludeFiles = new Set([
-      'pagefile.sys',
-      'hiberfil.sys',
-      'swapfile.sys',
-      'dumpstack.log.tmp',
-      'dumpstack.log',
-      '.ds_store',
-      'thumbs.db',
-      'desktop.ini',
-      'ntuser.dat',
-      'ntuser.dat.log',
-      'ntuser.dat.log1',
-      'ntuser.dat.log2',
-    ]);
+    if (EXCLUDE_FILES.has(filename)) return true;
 
-    const parts = filePath.split(/[/\\]/);
-    const filename = parts[parts.length - 1].toLowerCase();
-
-    if (excludeFiles.has(filename)) return true;
-
-    return parts.some((part) => excludeSegments.has(part.toLowerCase()));
+    const lowerPath = filePath.toLowerCase();
+    for (const segment of EXCLUDE_SEGMENTS) {
+      const idx = lowerPath.indexOf(segment);
+      if (idx === -1) continue;
+      const before = idx === 0 || lowerPath[idx - 1] === '/' || lowerPath[idx - 1] === '\\';
+      const after =
+        idx + segment.length === lowerPath.length ||
+        lowerPath[idx + segment.length] === '/' ||
+        lowerPath[idx + segment.length] === '\\';
+      if (before && after) return true;
+    }
+    return false;
   }
 
   private async scanDirectory(dirPath: string, signal?: AbortSignal): Promise<void> {
@@ -181,42 +192,67 @@ export class FileIndexer {
     try {
       const entries = await fs.readdir(dirPath, { withFileTypes: true });
 
-      for (const entry of entries) {
-        if (signal?.aborted) {
+      // Process entries in parallel batches for better multi-core utilization
+      const BATCH_SIZE = 50;
+      const subdirs: string[] = [];
+
+      for (let i = 0; i < entries.length; i += BATCH_SIZE) {
+        if (signal?.aborted || this.index.size >= FileIndexer.MAX_INDEX_SIZE) {
           return;
         }
 
-        const fullPath = path.join(dirPath, entry.name);
+        const batch = entries.slice(i, i + BATCH_SIZE);
+        const results = await Promise.allSettled(
+          batch.map(async (entry) => {
+            const fullPath = path.join(dirPath, entry.name);
 
-        if (this.shouldExclude(fullPath)) {
-          continue;
-        }
+            if (this.shouldExclude(fullPath)) {
+              return null;
+            }
 
-        if (this.index.size >= FileIndexer.MAX_INDEX_SIZE) {
-          return;
-        }
+            const stats = await fs.stat(fullPath);
+            return {
+              entry,
+              fullPath,
+              stats,
+              isDirectory: entry.isDirectory(),
+            };
+          })
+        );
 
-        try {
-          const stats = await fs.stat(fullPath);
-
-          const indexEntry: IndexEntry = {
-            name: entry.name,
-            path: fullPath,
-            isDirectory: entry.isDirectory(),
-            isFile: entry.isFile(),
-            size: stats.size,
-            modified: stats.mtime,
-          };
-
-          this.index.set(fullPath, indexEntry);
-          this.indexedFiles++;
-
-          if (entry.isDirectory() && this.index.size < FileIndexer.MAX_INDEX_SIZE) {
-            await this.scanDirectory(fullPath, signal);
+        for (const result of results) {
+          if (signal?.aborted || this.index.size >= FileIndexer.MAX_INDEX_SIZE) {
+            return;
           }
-        } catch (error) {
-          console.log(`[Indexer] Skipping ${fullPath}:`, (error as Error).message);
+
+          if (result.status === 'fulfilled' && result.value) {
+            const { entry, fullPath, stats, isDirectory } = result.value;
+
+            const indexEntry: IndexEntry = {
+              name: entry.name,
+              path: fullPath,
+              isDirectory,
+              isFile: entry.isFile(),
+              size: stats.size,
+              modified: stats.mtime,
+            };
+
+            this.index.set(fullPath, indexEntry);
+            this.indexedFiles++;
+
+            if (isDirectory && this.index.size < FileIndexer.MAX_INDEX_SIZE) {
+              subdirs.push(fullPath);
+            }
+          }
         }
+      }
+
+      // Process subdirectories recursively
+      for (const subdir of subdirs) {
+        if (signal?.aborted || this.index.size >= FileIndexer.MAX_INDEX_SIZE) {
+          return;
+        }
+        await this.scanDirectory(subdir, signal);
       }
     } catch (error) {
       console.log(`[Indexer] Cannot access ${dirPath}:`, (error as Error).message);

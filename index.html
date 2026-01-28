@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="dist/twemoji.css">
 </head>
 <body>
-  <div class="titlebar">
+  <div class="titlebar" role="banner">
     <div class="titlebar-drag-region">
       <div class="titlebar-icon">
         <img id="titlebar-icon" src="assets/folder.png" alt="IYERIS" />
@@ -17,106 +17,159 @@
       <div class="titlebar-title">IYERIS</div>
     </div>
     <div class="titlebar-controls">
-      <button class="titlebar-button" id="minimize-btn" title="Minimize">
-        <svg width="12" height="12" viewBox="0 0 12 12">
+      <button class="titlebar-button" id="minimize-btn" title="Minimize" aria-label="Minimize window">
+        <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
           <rect x="0" y="5" width="12" height="2" fill="currentColor"/>
         </svg>
       </button>
-      <button class="titlebar-button" id="maximize-btn" title="Maximize">
-        <svg width="12" height="12" viewBox="0 0 12 12">
+      <button class="titlebar-button" id="maximize-btn" title="Maximize" aria-label="Maximize window">
+        <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
           <rect x="1" y="1" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.5"/>
         </svg>
       </button>
-      <button class="titlebar-button close" id="close-btn" title="Close">
-        <svg width="12" height="12" viewBox="0 0 12 12">
+      <button class="titlebar-button close" id="close-btn" title="Close" aria-label="Close window">
+        <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
           <path d="M1 1 L11 11 M11 1 L1 11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
         </svg>
       </button>
     </div>
   </div>
 
-  <div class="tab-bar glass-panel" id="tab-bar" style="display: none;">
+  <div class="tab-bar glass-panel" id="tab-bar" style="display: none;" role="tablist" aria-label="File browser tabs">
     <div class="tab-list" id="tab-list"></div>
-    <button class="tab-new-btn" id="new-tab-btn" title="New Tab (Ctrl+T)">
-      <svg width="14" height="14" viewBox="0 0 14 14">
+    <button class="tab-new-btn" id="new-tab-btn" title="New Tab (Ctrl+T)" aria-label="New tab">
+      <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
         <path d="M7 1 L7 13 M1 7 L13 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
       </svg>
     </button>
   </div>
 
   <div class="container">
-    <div class="sidebar glass-panel">
-      <div class="sidebar-section">
-        <div class="section-title">Quick Access</div>
-        <div class="nav-item" data-action="home">
-          <span class="nav-icon"><img src="assets/twemoji/1f3e0.svg" class="twemoji" alt="🏠" draggable="false" /></span>
-          <span class="nav-label">Home</span>
+    <div class="sidebar glass-panel" role="navigation" aria-label="Main navigation">
+      <div class="sidebar-section quick-actions">
+        <div class="section-header">
+          <button class="sidebar-toggle" id="sidebar-toggle" title="Toggle Sidebar (Ctrl+B)" aria-label="Toggle sidebar" aria-expanded="true">
+            <span class="sidebar-toggle-icon" aria-hidden="true">
+              <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M10 2 L4 8 L10 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </span>
+          </button>
+          <div class="section-title">Quick Access</div>
         </div>
-        <div class="nav-item" data-action="browse">
-          <span class="nav-icon"><img src="assets/twemoji/1f4c2.svg" class="twemoji" alt="📂" draggable="false" /></span>
-          <span class="nav-label">Browse...</span>
+        <div class="quick-actions-grid">
+          <div class="nav-item quick-action" data-action="home" role="button" tabindex="0" aria-label="Navigate to home folder">
+            <span class="nav-icon" aria-hidden="true"><img src="assets/twemoji/1f3e0.svg" class="twemoji" alt="🏠" draggable="false" /></span>
+            <span class="nav-label">Home</span>
+          </div>
+          <div class="nav-item quick-action" data-action="browse" role="button" tabindex="0" aria-label="Browse for folder">
+            <span class="nav-icon" aria-hidden="true"><img src="assets/twemoji/1f4c2.svg" class="twemoji" alt="📂" draggable="false" /></span>
+            <span class="nav-label">Browse</span>
+          </div>
+          <div class="nav-item quick-action" data-action="desktop" role="button" tabindex="0" aria-label="Navigate to Desktop folder">
+            <span class="nav-icon" aria-hidden="true"><img src="assets/twemoji/1f5a5.svg" class="twemoji" alt="🖥️" draggable="false" /></span>
+            <span class="nav-label">Desktop</span>
+          </div>
+          <div class="nav-item quick-action" data-action="documents" role="button" tabindex="0" aria-label="Navigate to Documents folder">
+            <span class="nav-icon" aria-hidden="true"><img src="assets/twemoji/1f4c4.svg" class="twemoji" alt="📄" draggable="false" /></span>
+            <span class="nav-label">Documents</span>
+          </div>
+          <div class="nav-item quick-action" data-action="downloads" role="button" tabindex="0" aria-label="Navigate to Downloads folder">
+            <span class="nav-icon" aria-hidden="true"><img src="assets/twemoji/1f4e5.svg" class="twemoji" alt="📥" draggable="false" /></span>
+            <span class="nav-label">Downloads</span>
+          </div>
+          <div class="nav-item quick-action" data-action="music" role="button" tabindex="0" aria-label="Navigate to Music folder">
+            <span class="nav-icon" aria-hidden="true"><img src="assets/twemoji/1f3b5.svg" class="twemoji" alt="🎵" draggable="false" /></span>
+            <span class="nav-label">Music</span>
+          </div>
+          <div class="nav-item quick-action" data-action="videos" role="button" tabindex="0" aria-label="Navigate to Videos folder">
+            <span class="nav-icon" aria-hidden="true"><img src="assets/twemoji/1f3ac.svg" class="twemoji" alt="🎬" draggable="false" /></span>
+            <span class="nav-label">Videos</span>
+          </div>
+          <div class="nav-item quick-action" data-action="trash" role="button" tabindex="0" aria-label="Show trash folder">
+            <span class="nav-icon" aria-hidden="true"><img src="assets/twemoji/1f5d1.svg" class="twemoji" alt="🗑️" draggable="false" /></span>
+            <span class="nav-label">Trash</span>
+          </div>
         </div>
-        <div class="nav-item" data-action="trash">
-          <span class="nav-icon"><img src="assets/twemoji/1f5d1.svg" class="twemoji" alt="🗑️" draggable="false" /></span>
-          <span class="nav-label">Show Trash</span>
-        </div>
-      </div>
-      
-      <div class="sidebar-section primary" id="bookmarks-section">
-        <div class="section-title">
-          Bookmarks
-        </div>
-        <div id="bookmarks-list"></div>
       </div>
 
-      <div class="sidebar-section" id="recent-section">
-        <div class="section-title">Recent</div>
-        <div id="recent-list"></div>
+      <div class="sidebar-section primary" id="bookmarks-section" data-collapsible="true">
+        <div class="section-header">
+          <button class="section-toggle" type="button" aria-expanded="true">
+            <span class="section-title">Bookmarks</span>
+            <span class="section-caret" aria-hidden="true">▾</span>
+          </button>
+          <button class="section-action bookmark-add-btn" id="bookmark-add-btn" title="Add bookmark" aria-label="Add bookmark">+</button>
+        </div>
+        <div class="section-body">
+          <div id="bookmarks-list" role="list" aria-label="Bookmarked folders"></div>
+        </div>
       </div>
 
-      <div class="sidebar-section" id="folder-tree-section">
-        <div class="section-title">Folders</div>
-        <div id="folder-tree" class="folder-tree"></div>
+      <div class="sidebar-section collapsed" id="recent-section" data-collapsible="true">
+        <div class="section-header">
+          <button class="section-toggle" type="button" aria-expanded="false">
+            <span class="section-title">Recent</span>
+            <span class="section-caret" aria-hidden="true">▾</span>
+          </button>
+        </div>
+        <div class="section-body">
+          <div id="recent-list" role="list" aria-label="Recent files"></div>
+        </div>
       </div>
 
-      <div class="sidebar-section">
-        <div class="section-title">Drives</div>
-        <div id="drives-list"></div>
+      <div class="sidebar-section" id="folder-tree-section" data-collapsible="true">
+        <div class="section-header">
+          <button class="section-toggle" type="button" aria-expanded="true">
+            <span class="section-title">Folders</span>
+            <span class="section-caret" aria-hidden="true">▾</span>
+          </button>
+        </div>
+        <div class="section-body">
+          <div id="folder-tree" class="folder-tree" role="tree" aria-label="Folder tree"></div>
+        </div>
       </div>
-      <button class="sidebar-toggle" id="sidebar-toggle" title="Toggle Sidebar (Ctrl+B)">
-        <svg width="16" height="16" viewBox="0 0 16 16">
-          <path d="M10 2 L4 8 L10 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-      </button>
-      <div class="sidebar-resize-handle" id="sidebar-resize-handle"></div>
+
+      <div class="sidebar-section collapsed" id="drives-section" data-collapsible="true">
+        <div class="section-header">
+          <button class="section-toggle" type="button" aria-expanded="false">
+            <span class="section-title">Drives</span>
+            <span class="section-caret" aria-hidden="true">▾</span>
+          </button>
+        </div>
+        <div class="section-body">
+          <div id="drives-list" role="list" aria-label="Available drives"></div>
+        </div>
+      </div>
+      <div class="sidebar-resize-handle" id="sidebar-resize-handle" aria-hidden="true"></div>
     </div>
 
     <div class="main-content">
-      <div class="toolbar glass-panel">
+      <div class="toolbar glass-panel" role="toolbar" aria-label="Main toolbar">
         <div class="toolbar-left">
-          <button class="toolbar-button" id="back-btn" title="Back" disabled>
-            <svg width="16" height="16" viewBox="0 0 16 16">
+          <button class="toolbar-button" id="back-btn" title="Back" aria-label="Go back" disabled>
+            <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
               <path d="M10 2 L4 8 L10 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
           </button>
-          <button class="toolbar-button" id="forward-btn" title="Forward" disabled>
-            <svg width="16" height="16" viewBox="0 0 16 16">
+          <button class="toolbar-button" id="forward-btn" title="Forward" aria-label="Go forward" disabled>
+            <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
               <path d="M6 2 L12 8 L6 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
           </button>
-          <button class="toolbar-button" id="up-btn" title="Up" disabled>
-            <svg width="16" height="16" viewBox="0 0 16 16">
+          <button class="toolbar-button" id="up-btn" title="Up" aria-label="Go to parent folder" disabled>
+            <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
               <path d="M2 10 L8 4 L14 10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
           </button>
-          <div class="toolbar-separator"></div>
-          <button class="toolbar-button" id="undo-btn" title="Undo (Ctrl+Z)" disabled>
-            <svg width="16" height="16" viewBox="0 0 16 16">
+          <div class="toolbar-separator" aria-hidden="true"></div>
+          <button class="toolbar-button" id="undo-btn" title="Undo (Ctrl+Z)" aria-label="Undo" disabled>
+            <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
               <path d="M3 7 L3 3 L7 3 M3 3 Q3 3 6 6 Q9 9 12 9 Q14 9 14 11 Q14 13 12 13 L8 13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
           </button>
-          <button class="toolbar-button" id="redo-btn" title="Redo (Ctrl+Y)" disabled>
-            <svg width="16" height="16" viewBox="0 0 16 16">
+          <button class="toolbar-button" id="redo-btn" title="Redo (Ctrl+Y)" aria-label="Redo" disabled>
+            <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
               <path d="M13 7 L13 3 L9 3 M13 3 Q13 3 10 6 Q7 9 4 9 Q2 9 2 11 Q2 13 4 13 L8 13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
           </button>
@@ -226,24 +279,24 @@
         
         <div class="toolbar-right">
           <div class="toolbar-group toolbar-actions">
-            <button class="toolbar-button toolbar-new-tab-btn" id="toolbar-new-tab-btn" title="New Tab (Ctrl+T)">
-              <svg width="16" height="16" viewBox="0 0 14 14">
+            <button class="toolbar-button toolbar-new-tab-btn" id="toolbar-new-tab-btn" title="New Tab (Ctrl+T)" aria-label="New tab">
+              <svg width="16" height="16" viewBox="0 0 14 14" aria-hidden="true">
                 <path d="M7 1 L7 13 M1 7 L13 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
               </svg>
             </button>
-            <button class="toolbar-button" id="search-btn" title="Search (Ctrl+F)">
-              <svg width="16" height="16" viewBox="0 0 16 16">
+            <button class="toolbar-button" id="search-btn" title="Search (Ctrl+F)" aria-label="Search files">
+              <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
                 <circle cx="6.5" cy="6.5" r="4" fill="none" stroke="currentColor" stroke-width="1.5"/>
                 <path d="M9.5 9.5 L13 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
               </svg>
             </button>
-            <button class="toolbar-button" id="sort-btn" title="Sort Options">
-              <svg width="16" height="16" viewBox="0 0 16 16">
+            <button class="toolbar-button" id="sort-btn" title="Sort Options" aria-label="Sort options" aria-haspopup="true">
+              <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
                 <path d="M3 4 L13 4 M3 8 L10 8 M3 12 L7 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
               </svg>
             </button>
-            <button class="toolbar-button" id="refresh-btn" title="Refresh (F5)">
-              <svg width="16" height="16" viewBox="0 0 512 512">
+            <button class="toolbar-button" id="refresh-btn" title="Refresh (F5)" aria-label="Refresh current folder">
+              <svg width="16" height="16" viewBox="0 0 512 512" aria-hidden="true">
                 <g transform="translate(0 -540.36)">
                   <g transform="matrix(.93969 .34202 -.34202 .93969 288.96 -29.281)">
                     <path transform="matrix(1.6441 -2.7919 -2.8197 -1.5958 278.45 1529)" d="m254.1 122.62c0 32.669-26.483 59.152-59.152 59.152s-59.152-26.483-59.152-59.152 26.483-59.152 59.152-59.152c3.4435 0 6.8804 0.30069 10.272 0.89865" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="20"/>
@@ -252,112 +305,141 @@
                 </g>
               </svg>
             </button>
-            <button class="toolbar-button" id="new-file-btn" title="New File">
-              <svg width="16" height="16" viewBox="0 0 16 16">
+            <button class="toolbar-button" id="new-file-btn" title="New File" aria-label="Create new file">
+              <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
                 <path d="M3 2 L3 14 L13 14 L13 6 L9 2 Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
                 <path d="M9 2 L9 6 L13 6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
                 <path d="M8 8 L8 11 M6.5 9.5 L9.5 9.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
               </svg>
             </button>
-            <button class="toolbar-button" id="new-folder-btn" title="New Folder">
-              <svg width="16" height="16" viewBox="0 0 16 16">
+            <button class="toolbar-button" id="new-folder-btn" title="New Folder" aria-label="Create new folder">
+              <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
                 <path d="M2 4 L2 13 L14 13 L14 6 L8 6 L6 4 Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
                 <path d="M8 8 L8 11 M6.5 9.5 L9.5 9.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
               </svg>
             </button>
           </div>
-          <div class="toolbar-divider"></div>
+          <div class="toolbar-divider" aria-hidden="true"></div>
           <div class="toolbar-group toolbar-view">
-            <div class="view-options" id="view-options">
-              <button class="view-option" data-view="grid" title="Grid View">
-                <svg width="16" height="16" viewBox="0 0 16 16">
+            <div class="view-options" id="view-options" role="radiogroup" aria-label="View mode">
+              <button class="view-option" data-view="grid" title="Grid View" role="radio" aria-label="Grid view" aria-checked="true">
+                <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
                   <rect x="2" y="2" width="5" height="5" fill="currentColor" rx="1"/>
                   <rect x="9" y="2" width="5" height="5" fill="currentColor" rx="1"/>
                   <rect x="2" y="9" width="5" height="5" fill="currentColor" rx="1"/>
                   <rect x="9" y="9" width="5" height="5" fill="currentColor" rx="1"/>
                 </svg>
               </button>
-              <button class="view-option" data-view="list" title="List View">
-                <svg width="16" height="16" viewBox="0 0 16 16">
+              <button class="view-option" data-view="list" title="List View" role="radio" aria-label="List view" aria-checked="false">
+                <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
                   <rect x="2" y="3" width="12" height="2" fill="currentColor" rx="1"/>
                   <rect x="2" y="7" width="12" height="2" fill="currentColor" rx="1"/>
                   <rect x="2" y="11" width="12" height="2" fill="currentColor" rx="1"/>
                 </svg>
               </button>
-              <button class="view-option" data-view="column" title="Column View">
-                <svg width="16" height="16" viewBox="0 0 16 16">
+              <button class="view-option" data-view="column" title="Column View" role="radio" aria-label="Column view" aria-checked="false">
+                <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
                   <rect x="1" y="2" width="4" height="12" fill="currentColor" rx="1"/>
                   <rect x="6" y="2" width="4" height="12" fill="currentColor" rx="1"/>
                   <rect x="11" y="2" width="4" height="12" fill="currentColor" rx="1"/>
                 </svg>
               </button>
             </div>
-            <button class="toolbar-button" id="view-toggle-btn" title="Toggle View">
-              <svg width="16" height="16" viewBox="0 0 16 16">
+            <button class="toolbar-button" id="view-toggle-btn" title="Toggle View" aria-label="Toggle view mode">
+              <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
                 <rect x="2" y="2" width="5" height="5" fill="currentColor" rx="1"/>
                 <rect x="9" y="2" width="5" height="5" fill="currentColor" rx="1"/>
                 <rect x="2" y="9" width="5" height="5" fill="currentColor" rx="1"/>
                 <rect x="9" y="9" width="5" height="5" fill="currentColor" rx="1"/>
               </svg>
             </button>
-            <button class="toolbar-button" id="preview-toggle-btn" title="Toggle Preview Panel">
-              <svg width="16" height="16" viewBox="0 0 16 16">
+            <button class="toolbar-button" id="preview-toggle-btn" title="Toggle Preview Panel" aria-label="Toggle preview panel" aria-pressed="false">
+              <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
                 <rect x="1" y="2" width="7" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
                 <rect x="10" y="2" width="5" height="12" fill="currentColor" stroke="currentColor" stroke-width="1.5" rx="1"/>
               </svg>
             </button>
-            <button class="toolbar-button" id="settings-btn" title="Settings"><img src="assets/twemoji/2699.svg" class="twemoji" alt="⚙️" draggable="false" />
+            <button class="toolbar-button" id="settings-btn" title="Settings" aria-label="Open settings"><img src="assets/twemoji/2699.svg" class="twemoji" alt="⚙️" draggable="false" />
             </button>
           </div>
         </div>
       </div>
 
       <div class="content-wrapper">
-        <div class="file-view glass-panel" id="file-view">
-          <div class="loading-spinner" id="loading">
-            <div class="spinner"></div>
+        <div class="file-view glass-panel" id="file-view" role="main" aria-label="File browser">
+          <div class="loading-spinner" id="loading" role="status" aria-live="polite">
+            <div class="spinner" aria-hidden="true"></div>
             <p id="loading-text">Loading...</p>
           </div>
-          <div class="empty-state" id="empty-state" style="display: none;">
-            <div class="empty-icon"><img src="assets/twemoji/1f4c2.svg" class="twemoji-xlarge" alt="📂" draggable="false" /></div>
+          <div class="empty-state" id="empty-state" style="display: none;" role="status">
+            <div class="empty-icon" aria-hidden="true"><img src="assets/twemoji/1f4c2.svg" class="twemoji-xlarge" alt="📂" draggable="false" /></div>
             <p>This folder is empty</p>
             <div class="empty-actions">
-              <button class="empty-action-btn" id="empty-new-folder-btn">
-                <img src="assets/twemoji/1f4c1.svg" class="twemoji" alt="📁" draggable="false" />
+              <button class="empty-action-btn" id="empty-new-folder-btn" aria-label="Create new folder">
+                <img src="assets/twemoji/1f4c1.svg" class="twemoji" alt="📁" draggable="false" aria-hidden="true" />
                 <span>New Folder</span>
               </button>
-              <button class="empty-action-btn" id="empty-new-file-btn">
-                <img src="assets/twemoji/1f5c3.svg" class="twemoji" alt="🗃️" draggable="false" />
+              <button class="empty-action-btn" id="empty-new-file-btn" aria-label="Create new file">
+                <img src="assets/twemoji/1f5c3.svg" class="twemoji" alt="🗃️" draggable="false" aria-hidden="true" />
                 <span>New File</span>
               </button>
             </div>
-            <p class="empty-hint">or drop files here</p>
+            <p class="empty-hint">Drop files here or use keyboard shortcuts: Ctrl+N (new file), Ctrl+Shift+N (new folder)</p>
           </div>
-          <div class="list-header" id="list-header" style="display: none;">
-            <div class="list-header-cell list-header-name" data-sort="name">
+          <div class="list-header" id="list-header" style="display: none;" role="row">
+            <div class="list-header-cell list-header-name" data-sort="name" role="columnheader" aria-sort="none">
               <span class="list-header-title">Name</span>
-              <span class="list-header-sort" id="list-sort-name"></span>
-              <div class="list-header-resize" data-resize="name"></div>
+              <span class="list-header-sort" id="list-sort-name" aria-hidden="true"></span>
+              <div class="list-header-resize" data-resize="name" aria-hidden="true"></div>
             </div>
-            <div class="list-header-cell list-header-type" data-sort="type">
+            <div class="list-header-cell list-header-type" data-sort="type" role="columnheader" aria-sort="none">
               <span class="list-header-title">Kind</span>
-              <span class="list-header-sort" id="list-sort-type"></span>
-              <div class="list-header-resize" data-resize="type"></div>
+              <span class="list-header-sort" id="list-sort-type" aria-hidden="true"></span>
+              <div class="list-header-resize" data-resize="type" aria-hidden="true"></div>
             </div>
-            <div class="list-header-cell list-header-size" data-sort="size">
+            <div class="list-header-cell list-header-size" data-sort="size" role="columnheader" aria-sort="none">
               <span class="list-header-title">Size</span>
-              <span class="list-header-sort" id="list-sort-size"></span>
-              <div class="list-header-resize" data-resize="size"></div>
+              <span class="list-header-sort" id="list-sort-size" aria-hidden="true"></span>
+              <div class="list-header-resize" data-resize="size" aria-hidden="true"></div>
             </div>
-            <div class="list-header-cell list-header-modified" data-sort="date">
+            <div class="list-header-cell list-header-modified" data-sort="date" role="columnheader" aria-sort="none">
               <span class="list-header-title">Date Modified</span>
-              <span class="list-header-sort" id="list-sort-date"></span>
-              <div class="list-header-resize" data-resize="modified"></div>
+              <span class="list-header-sort" id="list-sort-date" aria-hidden="true"></span>
+              <div class="list-header-resize" data-resize="modified" aria-hidden="true"></div>
             </div>
           </div>
-          <div class="file-grid" id="file-grid"></div>
-          <div class="column-view" id="column-view" style="display: none;"></div>
-          <div class="selection-rect" id="selection-rect"></div>
+          <div class="home-view" id="home-view" style="display: none;" role="region" aria-label="Home">
+            <div class="home-section" id="home-section-quick-access">
+              <div class="home-section-header">
+                <span class="home-section-title">Quick Access</span>
+              </div>
+              <div class="home-grid" id="home-quick-access"></div>
+            </div>
+            <div class="home-section" id="home-section-recents">
+              <div class="home-section-header">
+                <span class="home-section-title">Recents</span>
+              </div>
+              <div class="home-list" id="home-recents"></div>
+            </div>
+            <div class="home-section" id="home-section-bookmarks">
+              <div class="home-section-header">
+                <span class="home-section-title">Bookmarks</span>
+              </div>
+              <div class="home-list" id="home-bookmarks"></div>
+            </div>
+            <div class="home-section" id="home-section-drives">
+              <div class="home-section-header">
+                <span class="home-section-title">Drives</span>
+              </div>
+              <div class="home-grid" id="home-drives"></div>
+            </div>
+            <button class="home-customize-btn" id="home-customize-btn" title="Customize Home" aria-label="Customize Home">
+              <span class="home-customize-icon" aria-hidden="true"></span>
+            </button>
+          </div>
+          <div class="file-grid" id="file-grid" role="grid" aria-label="Files and folders"></div>
+          <div class="column-view" id="column-view" style="display: none;" role="grid" aria-label="Column view"></div>
+          <div class="selection-rect" id="selection-rect" aria-hidden="true"></div>
         </div>
 
         <div class="preview-panel glass-panel" id="preview-panel" style="display: none;">
@@ -378,45 +460,45 @@
     </div>
   </div>
 
-  <div id="context-menu" class="context-menu" style="display: none;">
-    <div class="context-menu-item" data-action="open"><img src="assets/twemoji/1f4c2.svg" class="twemoji" alt="📂" draggable="false" /> Open</div>
-    <div class="context-menu-separator"></div>
-    <div class="context-menu-item" data-action="cut"><img src="assets/twemoji/2702.svg" class="twemoji" alt="✂️" draggable="false" /> Cut</div>
-    <div class="context-menu-item" data-action="copy"><img src="assets/twemoji/1f4c4.svg" class="twemoji" alt="📄" draggable="false" /> Copy</div>
-    <div class="context-menu-item" data-action="copy-path" id="copy-path-item"><img src="assets/twemoji/1f4cb.svg" class="twemoji" alt="📋" draggable="false" /> Copy file path</div>
-    <div class="context-menu-separator"></div>
-    <div class="context-menu-item has-submenu" id="compress-item">
-      <img src="assets/twemoji/1f5dc.svg" class="twemoji" alt="🗜️" draggable="false" /> Compress To...
-      <span class="submenu-arrow">▸</span>
-      <div class="context-submenu">
-        <div class="context-menu-item" data-action="compress" data-format="zip"><img src="assets/twemoji/1f5dc.svg" class="twemoji" alt="🗜️" draggable="false" /> ZIP</div>
-        <div class="context-menu-item" data-action="compress" data-format="7z"><img src="assets/twemoji/1f5dc.svg" class="twemoji" alt="🗜️" draggable="false" /> 7Z</div>
-        <div class="context-menu-item" data-action="compress" data-format="tar"><img src="assets/twemoji/1f5dc.svg" class="twemoji" alt="🗜️" draggable="false" /> TAR</div>
-        <div class="context-menu-item" data-action="compress" data-format="tar.gz"><img src="assets/twemoji/1f5dc.svg" class="twemoji" alt="🗜️" draggable="false" /> TAR.GZ</div>
+  <div id="context-menu" class="context-menu" role="menu" aria-label="File context menu" style="display: none;">
+    <div class="context-menu-item" data-action="open" role="menuitem" tabindex="0"><img src="assets/twemoji/1f4c2.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" /> Open <span class="context-menu-shortcut">Enter</span></div>
+    <div class="context-menu-separator" role="separator"></div>
+    <div class="context-menu-item" data-action="cut" role="menuitem" tabindex="0"><img src="assets/twemoji/2702.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" /> Cut <span class="context-menu-shortcut">Ctrl+X</span></div>
+    <div class="context-menu-item" data-action="copy" role="menuitem" tabindex="0"><img src="assets/twemoji/1f4c4.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" /> Copy <span class="context-menu-shortcut">Ctrl+C</span></div>
+    <div class="context-menu-item" data-action="copy-path" id="copy-path-item" role="menuitem" tabindex="0"><img src="assets/twemoji/1f4cb.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" /> Copy file path</div>
+    <div class="context-menu-separator" role="separator"></div>
+    <div class="context-menu-item has-submenu" id="compress-item" role="menuitem" tabindex="0" aria-haspopup="true" aria-expanded="false">
+      <img src="assets/twemoji/1f5dc.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" /> Compress To...
+      <span class="submenu-arrow" aria-hidden="true">▸</span>
+      <div class="context-submenu" role="menu" aria-label="Compress formats">
+        <div class="context-menu-item" data-action="compress" data-format="zip" role="menuitem" tabindex="0"><img src="assets/twemoji/1f5dc.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" /> ZIP</div>
+        <div class="context-menu-item" data-action="compress" data-format="7z" role="menuitem" tabindex="0"><img src="assets/twemoji/1f5dc.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" /> 7Z</div>
+        <div class="context-menu-item" data-action="compress" data-format="tar" role="menuitem" tabindex="0"><img src="assets/twemoji/1f5dc.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" /> TAR</div>
+        <div class="context-menu-item" data-action="compress" data-format="tar.gz" role="menuitem" tabindex="0"><img src="assets/twemoji/1f5dc.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" /> TAR.GZ</div>
       </div>
     </div>
-    <div class="context-menu-item" data-action="extract" id="extract-item" style="display: none;"><img src="assets/twemoji/1f4e6.svg" class="twemoji" alt="📦" draggable="false" /> Extract Here</div>
-    <div class="context-menu-separator"></div>
-    <div class="context-menu-item" data-action="rename"><img src="assets/twemoji/270d.svg" class="twemoji" alt="✍️" draggable="false" /> Rename</div>
-    <div class="context-menu-item" data-action="refresh"><img src="assets/twemoji/1f504.svg" class="twemoji" alt="🔄" draggable="false" /> Refresh</div>
-    <div class="context-menu-item" data-action="delete"><img src="assets/twemoji/1f5d1.svg" class="twemoji" alt="🗑️" draggable="false" /> Delete</div>
-    <div class="context-menu-separator"></div>
-    <div class="context-menu-item" data-action="add-to-bookmarks" id="add-to-bookmarks-item" style="display: none;"><img src="assets/twemoji/2b50.svg" class="twemoji" alt="⭐" draggable="false" /> Add to Bookmarks</div>
-    <div class="context-menu-item" data-action="change-folder-icon" id="change-folder-icon-item" style="display: none;"><img src="assets/twemoji/1f3a8.svg" class="twemoji" alt="🎨" draggable="false" /> Change Folder Icon</div>
-    <div class="context-menu-item" data-action="open-terminal" id="open-terminal-item"><img src="assets/twemoji/1f5a5.svg" class="twemoji" alt="🖥️" draggable="false" /> Open folder in Terminal</div>
-    <div class="context-menu-separator"></div>
-    <div class="context-menu-item" data-action="properties"><img src="assets/twemoji/2139.svg" class="twemoji" alt="ℹ️" draggable="false" /> Properties</div>
+    <div class="context-menu-item" data-action="extract" id="extract-item" role="menuitem" tabindex="0" style="display: none;"><img src="assets/twemoji/1f4e6.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" /> Extract Here</div>
+    <div class="context-menu-separator" role="separator"></div>
+    <div class="context-menu-item" data-action="rename" role="menuitem" tabindex="0"><img src="assets/twemoji/270d.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" /> Rename <span class="context-menu-shortcut">F2</span></div>
+    <div class="context-menu-item" data-action="refresh" role="menuitem" tabindex="0"><img src="assets/twemoji/1f504.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" /> Refresh <span class="context-menu-shortcut">F5</span></div>
+    <div class="context-menu-item" data-action="delete" role="menuitem" tabindex="0"><img src="assets/twemoji/1f5d1.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" /> Delete <span class="context-menu-shortcut">Del</span></div>
+    <div class="context-menu-separator" role="separator"></div>
+    <div class="context-menu-item" data-action="add-to-bookmarks" id="add-to-bookmarks-item" role="menuitem" tabindex="0" style="display: none;"><img src="assets/twemoji/2b50.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" /> Add to Bookmarks</div>
+    <div class="context-menu-item" data-action="change-folder-icon" id="change-folder-icon-item" role="menuitem" tabindex="0" style="display: none;"><img src="assets/twemoji/1f3a8.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" /> Change Folder Icon</div>
+    <div class="context-menu-item" data-action="open-terminal" id="open-terminal-item" role="menuitem" tabindex="0"><img src="assets/twemoji/1f5a5.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" /> Open folder in Terminal</div>
+    <div class="context-menu-separator" role="separator"></div>
+    <div class="context-menu-item" data-action="properties" role="menuitem" tabindex="0"><img src="assets/twemoji/2139.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" /> Properties</div>
   </div>
 
-  <div id="empty-space-context-menu" class="context-menu" style="display: none;">
-    <div class="context-menu-item" data-action="new-folder"><img src="assets/twemoji/1f4c1.svg" class="twemoji" alt="📁" draggable="false" /> New Folder</div>
-    <div class="context-menu-item" data-action="new-file"><img src="assets/twemoji/1f5c3.svg" class="twemoji" alt="🗃️" draggable="false" /> New File</div>
-    <div class="context-menu-separator"></div>
-    <div class="context-menu-item" data-action="paste"><img src="assets/twemoji/1f4dc.svg" class="twemoji" alt="📜" draggable="false" /> Paste</div>
-    <div class="context-menu-separator"></div>
-    <div class="context-menu-item" data-action="refresh"><img src="assets/twemoji/1f504.svg" class="twemoji" alt="🔄" draggable="false" /> Refresh</div>
-    <div class="context-menu-separator"></div>
-    <div class="context-menu-item" data-action="open-terminal"><img src="assets/twemoji/1f5a5.svg" class="twemoji" alt="🖥️" draggable="false" /> Open folder in Terminal</div>
+  <div id="empty-space-context-menu" class="context-menu" role="menu" aria-label="Folder context menu" style="display: none;">
+    <div class="context-menu-item" data-action="new-folder" role="menuitem" tabindex="0"><img src="assets/twemoji/1f4c1.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" /> New Folder <span class="context-menu-shortcut">Ctrl+Shift+N</span></div>
+    <div class="context-menu-item" data-action="new-file" role="menuitem" tabindex="0"><img src="assets/twemoji/1f5c3.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" /> New File <span class="context-menu-shortcut">Ctrl+N</span></div>
+    <div class="context-menu-separator" role="separator"></div>
+    <div class="context-menu-item" data-action="paste" role="menuitem" tabindex="0"><img src="assets/twemoji/1f4dc.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" /> Paste <span class="context-menu-shortcut">Ctrl+V</span></div>
+    <div class="context-menu-separator" role="separator"></div>
+    <div class="context-menu-item" data-action="refresh" role="menuitem" tabindex="0"><img src="assets/twemoji/1f504.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" /> Refresh <span class="context-menu-shortcut">F5</span></div>
+    <div class="context-menu-separator" role="separator"></div>
+    <div class="context-menu-item" data-action="open-terminal" role="menuitem" tabindex="0"><img src="assets/twemoji/1f5a5.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" /> Open folder in Terminal</div>
   </div>
 
   <div id="drop-indicator" class="drop-indicator" style="display: none;">
@@ -547,6 +629,16 @@
                     <img src="assets/twemoji/2714.svg" class="twemoji" alt="✔️" draggable="false" /> Use Custom
                   </button>
                 </div>
+              </div>
+              <div class="setting-item" data-searchable="icons theme color tint accent monochrome">
+                <div class="setting-info">
+                  <label for="themed-icons-toggle">Icons follow theme</label>
+                  <p class="setting-description">Make icons follow your theme's accent color</p>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="themed-icons-toggle">
+                  <span class="toggle-slider"></span>
+                </label>
               </div>
             </div>
           </div>
@@ -715,10 +807,10 @@
               <div class="setting-item" data-searchable="startup folder path directory home default">
                 <div class="setting-info">
                   <label for="startup-path-input">Custom Startup Folder</label>
-                  <p class="setting-description">Set a custom folder to open when IYERIS starts. Leave empty to use your home folder.</p>
+                  <p class="setting-description">Set a custom folder to open when IYERIS starts. Leave empty to use the Home view.</p>
                 </div>
                 <div class="setting-input-group">
-                  <input type="text" id="startup-path-input" class="settings-input" placeholder="Leave empty for default (Home folder)">
+                  <input type="text" id="startup-path-input" class="settings-input" placeholder="Leave empty for default (Home view)">
                   <button class="modal-button compact" id="browse-startup-path-btn" title="Browse for folder"><img src="assets/twemoji/1f4c1.svg" class="twemoji" alt="📁" draggable="false" /></button>
                 </div>
               </div>
@@ -754,6 +846,16 @@
                   <span class="toggle-slider"></span>
                 </label>
               </div>
+              <div class="setting-item" data-searchable="system font size os scale accessibility text">
+                <div class="setting-info">
+                  <label for="use-system-font-size-toggle">Use System Font Size</label>
+                  <p class="setting-description">Follow your operating system's text size settings</p>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="use-system-font-size-toggle">
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
               <div class="setting-item" data-searchable="large text font size bigger reading">
                 <div class="setting-info">
                   <label for="large-text-toggle">Large Text</label>
@@ -770,6 +872,7 @@
                   <p class="setting-description">Adjust the overall size of UI elements</p>
                 </div>
                 <select id="ui-density-select" class="settings-select">
+                  <option value="compact">Compact</option>
                   <option value="default">Default</option>
                   <option value="larger">Larger</option>
                 </select>
@@ -926,6 +1029,20 @@
             </div>
 
             <div class="settings-card">
+              <div class="settings-card-header">Performance</div>
+              <div class="setting-item" data-searchable="hardware acceleration gpu graphics performance disable">
+                <div class="setting-info">
+                  <label for="disable-hw-accel-toggle">Disable Hardware Acceleration</label>
+                  <p class="setting-description">Turn off GPU acceleration if you experience graphics issues. <strong>Requires restart.</strong></p>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="disable-hw-accel-toggle">
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+            </div>
+
+            <div class="settings-card">
               <div class="settings-card-header">Developer Options</div>
               <div class="setting-item" data-searchable="developer mode debug hidden dangerous options">
                 <div class="setting-info">
@@ -956,7 +1073,7 @@
               </div>
               <div class="about-info">
                 <h2 class="about-title">IYERIS</h2>
-                <p class="about-version" id="about-version-display">Version 0.9.7</p>
+                <p class="about-version" id="about-version-display">Version 0.9.8</p>
                 <p class="about-tagline">A modern, cross-platform file explorer</p>
               </div>
             </div>
@@ -1069,6 +1186,10 @@
         <div class="shortcuts-section">
           <h3>General</h3>
           <div class="shortcut-item">
+            <span class="shortcut-description">Command Palette</span>
+            <span class="shortcut-keys"><kbd>Ctrl</kbd> + <kbd>K</kbd></span>
+          </div>
+          <div class="shortcut-item">
             <span class="shortcut-description">Open Settings</span>
             <span class="shortcut-keys"><kbd>Ctrl</kbd> + <kbd>,</kbd></span>
           </div>
@@ -1092,6 +1213,10 @@
             <span class="shortcut-description">Close Search</span>
             <span class="shortcut-keys"><kbd>Esc</kbd></span>
           </div>
+          <div class="shortcut-item">
+            <span class="shortcut-description">Toggle Sidebar</span>
+            <span class="shortcut-keys"><kbd>Ctrl</kbd> + <kbd>B</kbd></span>
+          </div>
         </div>
         
         <div class="shortcuts-section">
@@ -1107,6 +1232,22 @@
           <div class="shortcut-item">
             <span class="shortcut-description">First / Last File</span>
             <span class="shortcut-keys"><kbd>Home</kbd> / <kbd>End</kbd></span>
+          </div>
+          <div class="shortcut-item">
+            <span class="shortcut-description">Page Up / Page Down</span>
+            <span class="shortcut-keys"><kbd>Page Up</kbd> / <kbd>Page Down</kbd></span>
+          </div>
+          <div class="shortcut-item">
+            <span class="shortcut-description">Go Back</span>
+            <span class="shortcut-keys"><kbd>Alt</kbd> + <kbd>←</kbd></span>
+          </div>
+          <div class="shortcut-item">
+            <span class="shortcut-description">Go Forward</span>
+            <span class="shortcut-keys"><kbd>Alt</kbd> + <kbd>→</kbd></span>
+          </div>
+          <div class="shortcut-item">
+            <span class="shortcut-description">Go to Parent</span>
+            <span class="shortcut-keys"><kbd>Alt</kbd> + <kbd>↑</kbd> or <kbd>Backspace</kbd></span>
           </div>
           <div class="shortcut-item">
             <span class="shortcut-description">New Tab</span>
@@ -1214,26 +1355,37 @@
     </div>
   </div>
 
-  <div class="status-bar glass-panel">
+  <div class="status-bar glass-panel" role="status" aria-live="polite">
     <div class="status-left">
       <span id="status-items">0 items</span>
       <span id="status-hidden" class="status-hidden" style="display: none;"></span>
       <span id="status-selected" style="display: none;"></span>
       <span id="status-search" class="status-search" style="display: none;">
-        <img src="assets/twemoji/1f50d.svg" class="twemoji" alt="🔍" draggable="false" />
+        <img src="assets/twemoji/1f50d.svg" class="twemoji" alt="🔍" draggable="false" aria-hidden="true" />
         <span id="status-search-text"></span>
+      </span>
+      <span id="status-operation" class="status-operation" style="display: none;">
+        <span class="status-operation-spinner" aria-hidden="true">⟳</span>
+        <span id="status-operation-text"></span>
+      </span>
+      <span id="status-clipboard" class="status-clipboard" style="display: none;" title="Clipboard contents">
+        <img src="assets/twemoji/1f4cb.svg" class="twemoji" alt="📋" draggable="false" aria-hidden="true" />
+        <span id="status-clipboard-text"></span>
       </span>
     </div>
     <div class="status-right">
+      <span id="status-view-mode" class="status-view-mode" style="display: none;" title="Current view and sort">
+        <span id="status-view-mode-text"></span>
+      </span>
       <span id="status-git-branch" class="status-git-branch" style="display: none;">
-        <svg class="git-branch-icon" width="12" height="12" viewBox="0 0 16 16">
+        <svg class="git-branch-icon" width="12" height="12" viewBox="0 0 16 16" aria-hidden="true">
           <path fill="currentColor" d="M11.75 2.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5zm-2.25.75a2.25 2.25 0 1 1 3 2.122V6A2.5 2.5 0 0 1 10 8.5H6a1 1 0 0 0-1 1v1.128a2.251 2.251 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.5 0v1.836A2.49 2.49 0 0 1 6 7h4a1 1 0 0 0 1-1v-.628A2.25 2.25 0 0 1 9.5 3.25zM4.25 12a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5zM3.5 3.25a.75.75 0 1 1 1.5 0 .75.75 0 0 1-1.5 0z"/>
         </svg>
         <span id="status-git-branch-name"></span>
       </span>
       <span id="status-disk-space"></span>
       <span class="status-separator"></span>
-      <span class="status-version" id="status-version" title="Version 0.9.7">v0.9.7</span>
+      <span class="status-version" id="status-version" title="Version 0.9.8">v0.9.8</span>
       <span class="status-separator"></span>
       <button class="status-support-btn" id="heart-button" title="Support this project!">
         <img src="assets/twemoji/2764.svg" class="twemoji" alt="❤️" draggable="false" />
@@ -1242,7 +1394,7 @@
     </div>
   </div>
 
-  <div id="toast-container"></div>
+  <div id="toast-container" role="status" aria-live="polite" aria-atomic="false"></div>
 
   <div class="file-hover-card" id="file-hover-card">
     <div class="hover-card-thumbnail" id="hover-card-thumbnail"></div>
@@ -1321,7 +1473,7 @@
     </button>
   </div>
 
-  <!-- Theme Editor Modal -->
+  <!-- Theme Editor -->
   <div class="modal-overlay" id="theme-editor-modal" style="display: none;">
     <div class="modal glass-panel theme-editor-modal">
       <div class="modal-header">
@@ -1405,17 +1557,24 @@
                 <input type="text" id="theme-glass-bg-text" class="glass-input color-text" value="#ffffff" maxlength="7">
               </div>
             </div>
+            <div class="theme-color-group">
+              <label>Glass Border</label>
+              <div class="color-input-wrapper">
+                <input type="color" id="theme-glass-border" value="#ffffff">
+                <input type="text" id="theme-glass-border-text" class="glass-input color-text" value="#ffffff" maxlength="7">
+              </div>
+            </div>
           </div>
-          
+
           <div class="theme-presets">
             <label>Presets</label>
             <div class="preset-buttons">
-              <button class="preset-btn" data-preset="midnight" title="Midnight Blue"><img src="assets/twemoji/1f319.svg" class="twemoji" alt="🌙" draggable="false" /></button>
-              <button class="preset-btn" data-preset="forest" title="Forest Green"><img src="assets/twemoji/1f332.svg" class="twemoji" alt="🌲" draggable="false" /></button>
-              <button class="preset-btn" data-preset="sunset" title="Sunset Orange"><img src="assets/twemoji/1f305.svg" class="twemoji" alt="🌅" draggable="false" /></button>
-              <button class="preset-btn" data-preset="lavender" title="Lavender Purple"><img src="assets/twemoji/1f49c.svg" class="twemoji" alt="💜" draggable="false" /></button>
-              <button class="preset-btn" data-preset="rose" title="Rose Pink"><img src="assets/twemoji/1f338.svg" class="twemoji" alt="🌸" draggable="false" /></button>
-              <button class="preset-btn" data-preset="ocean" title="Ocean Teal"><img src="assets/twemoji/1f30a.svg" class="twemoji" alt="🌊" draggable="false" /></button>
+              <button class="preset-btn" data-preset="midnight" title="Midnight Blue"><img src="assets/twemoji/1f319.svg" class="twemoji" alt="🌙" draggable="false" /><span>Midnight</span></button>
+              <button class="preset-btn" data-preset="forest" title="Forest Green"><img src="assets/twemoji/1f332.svg" class="twemoji" alt="🌲" draggable="false" /><span>Forest</span></button>
+              <button class="preset-btn" data-preset="sunset" title="Sunset Orange"><img src="assets/twemoji/1f305.svg" class="twemoji" alt="🌅" draggable="false" /><span>Sunset</span></button>
+              <button class="preset-btn" data-preset="lavender" title="Lavender Purple"><img src="assets/twemoji/1f49c.svg" class="twemoji" alt="💜" draggable="false" /><span>Lavender</span></button>
+              <button class="preset-btn" data-preset="rose" title="Rose Pink"><img src="assets/twemoji/1f338.svg" class="twemoji" alt="🌸" draggable="false" /><span>Rose</span></button>
+              <button class="preset-btn" data-preset="ocean" title="Ocean Teal"><img src="assets/twemoji/1f30a.svg" class="twemoji" alt="🌊" draggable="false" /><span>Ocean</span></button>
             </div>
           </div>
         </div>
@@ -1423,6 +1582,63 @@
       <div class="modal-footer">
         <button class="modal-button secondary" id="theme-editor-cancel">Cancel</button>
         <button class="modal-button primary" id="theme-editor-save">Save Theme</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="home-settings-modal" style="display: none;">
+    <div class="modal glass-panel home-settings-modal" role="dialog" aria-label="Customize Home">
+      <div class="modal-header">
+        <h3><img src="assets/twemoji/270f.svg" class="twemoji" alt="✏️" draggable="false" /> Customize Home</h3>
+        <button class="close-button" id="home-settings-close">✕</button>
+      </div>
+      <div class="modal-body home-settings-body">
+        <div class="home-settings-row">
+          <div class="settings-card home-settings-card-sections">
+            <div class="settings-card-header">Sections</div>
+            <div class="home-toggle-grid">
+              <label class="home-toggle-item">
+                <input type="checkbox" id="home-toggle-quick-access">
+                <span>Quick Access</span>
+              </label>
+              <label class="home-toggle-item">
+                <input type="checkbox" id="home-toggle-recents">
+                <span>Recents</span>
+              </label>
+              <label class="home-toggle-item">
+                <input type="checkbox" id="home-toggle-bookmarks">
+                <span>Bookmarks</span>
+              </label>
+              <label class="home-toggle-item">
+                <input type="checkbox" id="home-toggle-drives">
+                <span>Drives</span>
+              </label>
+              <label class="home-toggle-item">
+                <input type="checkbox" id="home-toggle-disk-usage">
+                <span>Disk usage</span>
+              </label>
+              <label class="home-toggle-item">
+                <input type="checkbox" id="home-toggle-compact">
+                <span>Compact Mode</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="settings-card home-settings-card-order">
+            <div class="settings-card-header">Section Order</div>
+            <div class="home-section-order" id="home-section-order"></div>
+          </div>
+        </div>
+
+        <div class="settings-card">
+          <div class="settings-card-header">Quick Access Shortcuts</div>
+          <div class="home-options-grid" id="home-quick-access-options"></div>
+        </div>
+      </div>
+      <div class="modal-footer home-settings-footer">
+        <button class="modal-button secondary" id="home-settings-reset">Reset</button>
+        <button class="modal-button secondary" id="home-settings-cancel">Cancel</button>
+        <button class="modal-button primary" id="home-settings-save">Save</button>
       </div>
     </div>
   </div>
@@ -1504,6 +1720,52 @@
         </div>
         <button class="modal-button primary" id="tour-next">Next</button>
       </div>
+    </div>
+  </div>
+
+  <div id="ui-tooltip" class="ui-tooltip" role="tooltip" style="display: none;">
+    <div class="ui-tooltip-content"></div>
+    <div class="ui-tooltip-arrow"></div>
+  </div>
+
+  <div class="modal-overlay" id="command-palette-modal" style="display: none;">
+    <div class="modal command-palette-modal glass-panel" role="dialog" aria-label="Command Palette">
+      <div class="command-palette-header">
+        <div class="command-palette-search">
+          <svg class="command-palette-search-icon" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+            <circle cx="6.5" cy="6.5" r="4" fill="none" stroke="currentColor" stroke-width="1.5"/>
+            <path d="M9.5 9.5 L13 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+          <input type="text" id="command-palette-input" class="command-palette-input" placeholder="Type a command or search..." autocomplete="off" spellcheck="false">
+          <kbd class="command-palette-hint">ESC to close</kbd>
+        </div>
+      </div>
+      <div class="command-palette-content" id="command-palette-content">
+        <div class="command-palette-section">
+          <div class="command-palette-section-title">Commands</div>
+          <div id="command-palette-results" class="command-palette-results"></div>
+        </div>
+        <div class="command-palette-empty" id="command-palette-empty" style="display: none;">
+          <img src="assets/twemoji/1f50d.svg" class="twemoji-large" alt="🔍" draggable="false" aria-hidden="true" />
+          <p>No commands found</p>
+          <small>Try a different search term</small>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="progress-panel" class="progress-panel glass-panel" role="region" aria-label="Background Operations" aria-live="polite" style="display: none;">
+    <div class="progress-panel-header">
+      <span class="progress-panel-title">
+        <svg class="progress-panel-icon" width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M8 2 L8 8 L12 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.5"/>
+        </svg>
+        Operations
+      </span>
+      <button class="progress-panel-close" id="progress-panel-close" aria-label="Close progress panel">✕</button>
+    </div>
+    <div class="progress-panel-content" id="progress-panel-content">
     </div>
   </div>
 

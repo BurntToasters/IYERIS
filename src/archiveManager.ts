@@ -8,9 +8,32 @@ import { isPathSafe, getErrorMessage } from './security';
 import { get7zipModule, get7zipPath } from './platformUtils';
 import { logger } from './utils/logger';
 
+interface SevenZipOptions {
+  $bin: string;
+  recursive?: boolean;
+  $raw?: string[];
+}
+
+interface SevenZipProgress {
+  file?: string;
+}
+
+interface SevenZipError {
+  message?: string;
+  level?: string;
+}
+
+interface SevenZipProcess {
+  on(event: 'progress', callback: (progress: SevenZipProgress) => void): void;
+  on(event: 'end', callback: () => void): void;
+  on(event: 'error', callback: (error: SevenZipError) => void): void;
+  _childProcess?: { kill: (signal: string) => void };
+  cancel?: () => void;
+}
+
 interface ArchiveProcess {
   operationId: string;
-  process: any;
+  process: SevenZipProcess;
   startTime: number;
 }
 
@@ -131,61 +154,75 @@ async function assertExtractedPathsSafe(destPath: string): Promise<void> {
       continue;
     }
 
-    for (const entry of entries) {
-      const fullPath = path.join(current, entry.name);
-      let stat: fsSync.Stats;
-      try {
-        stat = await fs.lstat(fullPath);
-      } catch {
-        continue;
-      }
+    // Process entries in parallel batches for better multi-core utilization
+    const BATCH_SIZE = 20;
+    for (let i = 0; i < entries.length; i += BATCH_SIZE) {
+      const batch = entries.slice(i, i + BATCH_SIZE);
+      const results = await Promise.allSettled(
+        batch.map(async (entry) => {
+          const fullPath = path.join(current, entry.name);
+          let stat: fsSync.Stats;
+          try {
+            stat = await fs.lstat(fullPath);
+          } catch {
+            return null;
+          }
 
-      if (stat.isSymbolicLink()) {
-        unsafe.push(fullPath);
-        try {
-          await fs.unlink(fullPath);
-        } catch (error) {
-          logger.error('[Archive] Failed to remove symlink:', fullPath, error);
+          if (stat.isSymbolicLink()) {
+            unsafe.push(fullPath);
+            try {
+              await fs.unlink(fullPath);
+            } catch (error) {
+              logger.error('[Archive] Failed to remove symlink:', fullPath, error);
+            }
+            return null;
+          }
+
+          if (stat.isFile() && stat.nlink > 1) {
+            unsafe.push(fullPath);
+            try {
+              await fs.rm(fullPath, { force: true });
+            } catch (error) {
+              logger.error('[Archive] Failed to remove hardlinked file:', fullPath, error);
+            }
+            return null;
+          }
+
+          let realPath: string;
+          try {
+            realPath = await fs.realpath(fullPath);
+          } catch (error) {
+            unsafe.push(fullPath);
+            logger.error('[Archive] Failed to resolve realpath for:', fullPath, error);
+            try {
+              await fs.rm(fullPath, { recursive: true, force: true });
+            } catch (rmError) {
+              logger.error('[Archive] Failed to remove unsafe path:', fullPath, rmError);
+            }
+            return null;
+          }
+
+          if (realPath !== destRoot && !realPath.startsWith(destRootWithSep)) {
+            unsafe.push(fullPath);
+            try {
+              await fs.rm(fullPath, { recursive: true, force: true });
+            } catch (error) {
+              logger.error('[Archive] Failed to remove path outside destination:', fullPath, error);
+            }
+            return null;
+          }
+
+          if (stat.isDirectory()) {
+            return fullPath;
+          }
+          return null;
+        })
+      );
+
+      for (const result of results) {
+        if (result.status === 'fulfilled' && result.value) {
+          stack.push(result.value);
         }
-        continue;
-      }
-
-      if (stat.isFile() && stat.nlink > 1) {
-        unsafe.push(fullPath);
-        try {
-          await fs.rm(fullPath, { force: true });
-        } catch (error) {
-          logger.error('[Archive] Failed to remove hardlinked file:', fullPath, error);
-        }
-        continue;
-      }
-
-      let realPath: string;
-      try {
-        realPath = await fs.realpath(fullPath);
-      } catch (error) {
-        unsafe.push(fullPath);
-        logger.error('[Archive] Failed to resolve realpath for:', fullPath, error);
-        try {
-          await fs.rm(fullPath, { recursive: true, force: true });
-        } catch (rmError) {
-          logger.error('[Archive] Failed to remove unsafe path:', fullPath, rmError);
-        }
-        continue;
-      }
-
-      if (realPath !== destRoot && !realPath.startsWith(destRootWithSep)) {
-        unsafe.push(fullPath);
-        try {
-          await fs.rm(fullPath, { recursive: true, force: true });
-        } catch (error) {
-          logger.error('[Archive] Failed to remove path outside destination:', fullPath, error);
-        }
-        continue;
-      }
-
-      if (stat.isDirectory()) {
-        stack.push(fullPath);
       }
     }
   }
@@ -262,7 +299,7 @@ export function setupArchiveHandlers(): void {
               : outputPath.replace(/\.gz$/i, '');
             logger.info('[Compress] Creating tar file:', tarPath);
 
-            const tarOptions: any = {
+            const tarOptions: SevenZipOptions = {
               $bin: sevenZipPath,
               recursive: true,
               $raw: ['-xr!My Music', '-xr!My Pictures', '-xr!My Videos'],
@@ -363,7 +400,7 @@ export function setupArchiveHandlers(): void {
                   );
                   resolve({ success: true });
                 } else {
-                  reject({ success: false, error: errorMsg || 'Gzip compression failed' });
+                  resolve({ success: false, error: errorMsg || 'Gzip compression failed' });
                 }
               });
             });
@@ -414,10 +451,13 @@ export function setupArchiveHandlers(): void {
                   if (operationId) {
                     activeArchiveProcesses.delete(operationId);
                   }
-                  reject({ success: false, error: gzipError.message || 'Gzip compression failed' });
+                  resolve({
+                    success: false,
+                    error: gzipError.message || 'Gzip compression failed',
+                  });
                 });
               } else {
-                reject({ success: false, error: errorMsg || 'Tar creation failed' });
+                resolve({ success: false, error: errorMsg || 'Tar creation failed' });
               }
             });
           });
@@ -428,7 +468,7 @@ export function setupArchiveHandlers(): void {
           const sevenZipPath = get7zipPath();
           logger.info('[Compress] Using 7zip at:', sevenZipPath);
 
-          const options: any = {
+          const options: SevenZipOptions = {
             $bin: sevenZipPath,
             recursive: true,
             $raw: ['-xr!My Music', '-xr!My Pictures', '-xr!My Videos'],
@@ -485,7 +525,7 @@ export function setupArchiveHandlers(): void {
               );
               resolve({ success: true });
             } else {
-              reject({ success: false, error: errorMsg || 'Compression failed' });
+              resolve({ success: false, error: errorMsg || 'Compression failed' });
             }
           });
         });
@@ -576,7 +616,7 @@ export function setupArchiveHandlers(): void {
               if (operationId) {
                 activeArchiveProcesses.delete(operationId);
               }
-              reject({ success: false, error: getErrorMessage(error) });
+              resolve({ success: false, error: getErrorMessage(error) });
             }
           });
 
@@ -590,7 +630,7 @@ export function setupArchiveHandlers(): void {
             if (operationId) {
               activeArchiveProcesses.delete(operationId);
             }
-            reject({ success: false, error: error.message || 'Extraction failed' });
+            resolve({ success: false, error: error.message || 'Extraction failed' });
           });
         });
       } catch (error) {

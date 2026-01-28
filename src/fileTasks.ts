@@ -184,7 +184,7 @@ export class FileTaskManager extends EventEmitter {
   private static getDefaultWorkerCount(): number {
     const cpuCount = Math.max(1, os.cpus().length);
     const totalMemGb = os.totalmem() / 1024 ** 3;
-    const maxWorkers = totalMemGb < 6 ? 2 : totalMemGb < 12 ? 4 : totalMemGb < 24 ? 6 : 8;
+    const maxWorkers = totalMemGb < 6 ? 2 : totalMemGb < 12 ? 6 : totalMemGb < 24 ? 12 : 16;
     return Math.max(1, Math.min(cpuCount, maxWorkers));
   }
 
