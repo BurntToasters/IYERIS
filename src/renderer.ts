@@ -7,6 +7,7 @@ import type {
   GitStatusResponse,
   GitFileStatus,
   SpecialDirectory,
+  DriveInfo,
 } from './types';
 import { createFolderTreeManager } from './folderDir.js';
 import { escapeHtml, getErrorMessage } from './shared.js';
@@ -66,12 +67,24 @@ const pendingThumbnailLoads: Array<() => void> = [];
 const fileElementMap: Map<string, HTMLElement> = new Map();
 let cutPaths = new Set<string>();
 const gitIndicatorPaths = new Set<string>();
+const driveLabelByPath = new Map<string, string>();
+let cachedDriveInfo: DriveInfo[] = [];
 const diskSpaceCache = new Map<string, { timestamp: number; total: number; free: number }>();
 const gitStatusCache = new Map<
   string,
   { timestamp: number; isGitRepo: boolean; statuses: GitFileStatus[] }
 >();
 const gitStatusInFlight = new Map<string, Promise<GitStatusResponse>>();
+
+function cacheDriveInfo(drives: DriveInfo[]): void {
+  cachedDriveInfo = drives;
+  driveLabelByPath.clear();
+  drives.forEach((drive) => {
+    if (drive?.path) {
+      driveLabelByPath.set(drive.path, drive.label || drive.path);
+    }
+  });
+}
 
 function enqueueThumbnailLoad(loadFn: () => Promise<void>): void {
   const execute = async () => {
@@ -1128,12 +1141,19 @@ const selectionCutBtn = document.getElementById('selection-cut-btn') as HTMLButt
 const selectionMoveBtn = document.getElementById('selection-move-btn') as HTMLButtonElement;
 const selectionRenameBtn = document.getElementById('selection-rename-btn') as HTMLButtonElement;
 const selectionDeleteBtn = document.getElementById('selection-delete-btn') as HTMLButtonElement;
+const statusItems = document.getElementById('status-items') as HTMLElement;
+const statusSelected = document.getElementById('status-selected') as HTMLElement;
+const statusSearch = document.getElementById('status-search') as HTMLElement;
+const statusSearchText = document.getElementById('status-search-text') as HTMLElement;
+const selectionIndicator = document.getElementById('selection-indicator') as HTMLElement;
+const selectionCount = document.getElementById('selection-count') as HTMLElement;
+const statusHidden = document.getElementById('status-hidden') as HTMLElement;
 
 const folderTreeManager = createFolderTreeManager({
   folderTree,
   nameCollator: NAME_COLLATOR,
   getFolderIcon,
-  getBasename: (value) => path.basename(value),
+  getBasename: (value) => driveLabelByPath.get(value) ?? path.basename(value),
   navigateTo: (value) => navigateTo(value),
   handleDrop,
   getDraggedPaths,
@@ -1216,6 +1236,13 @@ function flushStreamedDirectoryItems(token: number): void {
     streamingRenderScheduled = true;
     requestAnimationFrame(() => flushStreamedDirectoryItems(token));
   }
+}
+
+function sortStreamedDirectoryItems(): void {
+  if (allFiles.length === 0 && emptyState) {
+    emptyState.style.display = 'flex';
+  }
+  updateStatusBar();
 }
 
 function createDirectoryOperationId(prefix: string): string {
@@ -4555,19 +4582,14 @@ function setupListHeader(): void {
 }
 
 function updateStatusBar() {
-  const statusItems = document.getElementById('status-items');
-  const statusSelected = document.getElementById('status-selected');
-  const statusSearch = document.getElementById('status-search');
-  const statusSearchText = document.getElementById('status-search-text');
-
   if (statusItems) {
     statusItems.textContent = `${allFiles.length} item${allFiles.length !== 1 ? 's' : ''}`;
   }
 
   if (statusSelected) {
     if (selectedItems.size > 0) {
-      const totalSize = Array.from(selectedItems).reduce((acc, path) => {
-        const item = filePathMap.get(path);
+      const totalSize = Array.from(selectedItems).reduce((acc, itemPath) => {
+        const item = filePathMap.get(itemPath);
         return acc + (item ? item.size : 0);
       }, 0);
       const sizeStr = formatFileSize(totalSize);
@@ -4578,8 +4600,6 @@ function updateStatusBar() {
     }
   }
 
-  const selectionIndicator = document.getElementById('selection-indicator');
-  const selectionCount = document.getElementById('selection-count');
   if (selectionIndicator && selectionCount) {
     if (selectedItems.size > 0) {
       selectionCount.textContent = String(selectedItems.size);
@@ -4589,7 +4609,6 @@ function updateStatusBar() {
     }
   }
 
-  const statusHidden = document.getElementById('status-hidden');
   if (statusHidden) {
     if (!currentSettings.showHiddenFiles) {
       const hiddenCount = hiddenFilesCount;
@@ -4607,7 +4626,6 @@ function updateStatusBar() {
 
   if (statusSearch && statusSearchText) {
     if (isSearchMode) {
-      const searchInput = document.getElementById('search-input') as HTMLInputElement | null;
       const searchQuery = searchInput?.value || '';
       let searchText = isGlobalSearch ? 'Global' : 'Search';
 
@@ -4991,24 +5009,28 @@ function setFolderTreeVisibility(enabled: boolean): void {
 async function loadDrives() {
   if (!drivesList) return;
 
-  const drives = await window.electronAPI.getDrives();
+  const drives = await window.electronAPI.getDriveInfo();
+  cacheDriveInfo(drives);
   drivesList.innerHTML = '';
 
   drives.forEach((drive) => {
+    const driveLabel = drive.label || drive.path;
     const driveItem = document.createElement('div');
     driveItem.className = 'nav-item';
+    driveItem.title = drive.path;
     driveItem.innerHTML = `
       <span class="nav-icon">${twemojiImg(String.fromCodePoint(0x1f4be), 'twemoji')}</span>
-      <span class="nav-label">${escapeHtml(drive)}</span>
+      <span class="nav-label">${escapeHtml(driveLabel)}</span>
     `;
-    driveItem.addEventListener('click', () => navigateTo(drive));
+    driveItem.addEventListener('click', () => navigateTo(drive.path));
     drivesList.appendChild(driveItem);
   });
 
+  const drivePaths = drives.map((drive) => drive.path);
   void homeController.renderHomeDrives(drives);
 
   if (currentSettings.showFolderTree !== false) {
-    folderTreeManager.render(drives);
+    folderTreeManager.render(drivePaths);
   } else if (folderTree) {
     folderTree.innerHTML = '';
   }
@@ -6213,7 +6235,8 @@ async function navigateTo(path: string, skipHistoryUpdate = false) {
     const result = await window.electronAPI.getDirectoryContents(
       path,
       operationId,
-      currentSettings.showHiddenFiles
+      currentSettings.showHiddenFiles,
+      false
     );
     if (requestId !== directoryRequestId) return;
 
@@ -6351,23 +6374,38 @@ function appendNextVirtualizedBatch(): void {
 }
 
 let renderItemIndex = 0;
+const animationCleanupItems: HTMLElement[] = [];
+let animationCleanupTimer: ReturnType<typeof setTimeout> | null = null;
+
+function scheduleAnimationCleanup(): void {
+  if (animationCleanupTimer) return;
+  animationCleanupTimer = setTimeout(() => {
+    animationCleanupTimer = null;
+    const batch = animationCleanupItems.splice(0);
+    for (const el of batch) {
+      el.classList.remove('animate-in');
+      el.style.animationDelay = '';
+    }
+    if (animationCleanupItems.length > 0) {
+      scheduleAnimationCleanup();
+    }
+  }, 400);
+}
 
 function appendFileItems(items: FileItem[], searchQuery?: string): string[] {
   if (!fileGrid) return [];
   const fragment = document.createDocumentFragment();
   const paths: string[] = [];
+  const shouldAnimate = !document.body.classList.contains('reduce-motion');
 
   for (const item of items) {
     const fileItem = createFileItem(item, searchQuery);
-    if (!document.body.classList.contains('reduce-motion')) {
+    if (shouldAnimate) {
       const delayIndex = renderItemIndex % 20;
       const delayMs = delayIndex * 20;
       fileItem.classList.add('animate-in');
       fileItem.style.animationDelay = `${delayMs / 1000}s`;
-      setTimeout(() => {
-        fileItem.classList.remove('animate-in');
-        fileItem.style.animationDelay = '';
-      }, 300 + delayMs);
+      animationCleanupItems.push(fileItem);
     }
     renderItemIndex++;
     fileElementMap.set(item.path, fileItem);
@@ -6376,6 +6414,9 @@ function appendFileItems(items: FileItem[], searchQuery?: string): string[] {
   }
 
   fileGrid.appendChild(fragment);
+  if (shouldAnimate && animationCleanupItems.length > 0) {
+    scheduleAnimationCleanup();
+  }
   return paths;
 }
 
@@ -7904,18 +7945,23 @@ async function renderDriveColumn() {
   pane.className = 'column-pane';
 
   try {
-    const drives = await window.electronAPI.getDrives();
+    const drives =
+      cachedDriveInfo.length > 0 ? cachedDriveInfo : await window.electronAPI.getDriveInfo();
+    if (cachedDriveInfo.length === 0) {
+      cacheDriveInfo(drives);
+    }
     drives.forEach((drive) => {
       const item = document.createElement('div');
       item.className = 'column-item is-directory';
       item.tabIndex = 0;
-      item.dataset.path = drive;
+      item.dataset.path = drive.path;
+      item.title = drive.path;
       item.innerHTML = `
         <span class="column-item-icon"><img src="assets/twemoji/1f4bf.svg" class="twemoji" alt="💿" draggable="false" /></span>
-        <span class="column-item-name">${escapeHtml(drive)}</span>
+        <span class="column-item-name">${escapeHtml(drive.label || drive.path)}</span>
         <span class="column-item-arrow">▸</span>
       `;
-      item.addEventListener('click', () => handleColumnItemClick(item, drive, true, 0));
+      item.addEventListener('click', () => handleColumnItemClick(item, drive.path, true, 0));
       pane.appendChild(item);
     });
   } catch {

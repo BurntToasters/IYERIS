@@ -1,4 +1,4 @@
-import type { HomeSettings, Settings } from './types';
+import type { DriveInfo, HomeSettings, Settings } from './types';
 import { createDefaultHomeSettings } from './homeSettings.js';
 import { escapeHtml } from './shared.js';
 
@@ -55,7 +55,7 @@ export type HomeController = {
   renderHomeRecents: () => void;
   renderHomeBookmarks: () => void;
   renderHomeQuickAccess: () => void;
-  renderHomeDrives: (drives?: string[]) => Promise<void>;
+  renderHomeDrives: (drives?: DriveInfo[]) => Promise<void>;
 };
 
 export function createHomeController(options: HomeControllerOptions): HomeController {
@@ -446,7 +446,7 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
     return { total: result.total, free: result.free };
   }
 
-  async function renderHomeDrives(drives?: string[]): Promise<void> {
+  async function renderHomeDrives(drives?: DriveInfo[]): Promise<void> {
     if (!homeDrives) return;
 
     if (!currentHomeSettings.showDrives) {
@@ -460,11 +460,11 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
       homeDrives.innerHTML = '';
     }
 
-    let driveList: string[] = drives || [];
+    let driveList: DriveInfo[] = drives || [];
 
     if (!drives) {
       try {
-        driveList = await window.electronAPI.getDrives();
+        driveList = await window.electronAPI.getDriveInfo();
       } catch {
         driveList = [];
       }
@@ -478,16 +478,17 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
     homeDrives.innerHTML = '';
 
     driveList.forEach((drive) => {
+      const driveLabel = drive.label || drive.path;
       const icon = twemojiImg(String.fromCodePoint(0x1f4be), 'twemoji');
 
       if (!currentHomeSettings.showDiskUsage) {
         const driveItem = createHomeItem({
-          label: drive,
+          label: driveLabel,
           icon,
-          ariaLabel: `Open drive ${drive}`,
-          title: drive,
+          ariaLabel: `Open drive ${driveLabel}`,
+          title: drive.path,
           onActivate: () => {
-            navigateTo(drive);
+            navigateTo(drive.path);
           },
         });
         homeDrives.appendChild(driveItem);
@@ -496,24 +497,25 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
 
       const card = document.createElement('div');
       card.className = 'home-drive-card';
+      card.title = drive.path;
       card.innerHTML = `
         <div class="home-drive-header">
           <span class="home-item-icon">${icon}</span>
-          <span>${escapeHtml(drive)}</span>
+          <span>${escapeHtml(driveLabel)}</span>
         </div>
         <div class="home-drive-meta">Loading usage...</div>
         <div class="home-drive-bar"><span style="width: 0%"></span></div>
       `;
 
       card.addEventListener('click', () => {
-        navigateTo(drive);
+        navigateTo(drive.path);
       });
 
       const meta = card.querySelector('.home-drive-meta') as HTMLElement | null;
       const bar = card.querySelector('.home-drive-bar span') as HTMLElement | null;
 
       void (async () => {
-        const usage = await getDriveUsage(drive);
+        const usage = await getDriveUsage(drive.path);
         if (!usage || !meta || !bar) {
           if (meta) meta.textContent = 'Usage unavailable';
           if (bar) bar.style.width = '0%';

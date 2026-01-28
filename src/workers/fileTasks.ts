@@ -370,17 +370,30 @@ async function writeFileAtomic(targetPath: string, data: string): Promise<void> 
 async function isHidden(filePath: string, fileName: string): Promise<boolean> {
   if (fileName.startsWith('.')) return true;
   if (process.platform !== 'win32') return false;
+
+  const cached = getHiddenCache(filePath);
+  if (cached !== null) return cached;
+
   try {
     const { stdout } = await execFileAsync('attrib', [filePath], {
       timeout: 500,
       windowsHide: true,
     });
     const line = stdout.split(/\r?\n/).find((item) => item.trim().length > 0);
-    if (!line) return false;
+    if (!line) {
+      setHiddenCache(filePath, false);
+      return false;
+    }
     const match = line.match(/^\s*([A-Za-z ]+)\s+.+$/);
-    if (!match) return false;
-    return match[1].toUpperCase().includes('H');
+    if (!match) {
+      setHiddenCache(filePath, false);
+      return false;
+    }
+    const hidden = match[1].toUpperCase().includes('H');
+    setHiddenCache(filePath, hidden);
+    return hidden;
   } catch {
+    setHiddenCache(filePath, false);
     return false;
   }
 }
@@ -422,39 +435,49 @@ async function batchCheckHidden(
     return results;
   }
 
-  try {
-    const filePaths = pending.map((fileName) => path.join(dirPath, fileName));
-    const { stdout } = await execFileAsync('attrib', filePaths, {
-      timeout: 2000,
-      windowsHide: true,
-      maxBuffer: 1024 * 1024,
-    });
+  const ATTRIB_BATCH_SIZE = 200;
+  const promises: Promise<void>[] = [];
 
-    const lines = stdout.split(/\r?\n/).filter((line) => line.trim().length > 0);
-    for (const line of lines) {
-      const match = line.match(/^\s*([A-Za-z ]+)\s+(.+)$/);
-      if (!match) continue;
-      const attrs = match[1].toUpperCase();
-      const filePath = match[2].trim();
-      const name = path.basename(filePath);
-      const isHiddenAttr = attrs.includes('H');
-      results.set(name, isHiddenAttr);
-      setHiddenCache(path.join(dirPath, name), isHiddenAttr);
-    }
+  for (let i = 0; i < pending.length; i += ATTRIB_BATCH_SIZE) {
+    const batch = pending.slice(i, i + ATTRIB_BATCH_SIZE);
 
-    for (const fileName of pending) {
-      if (!results.has(fileName)) {
-        results.set(fileName, false);
-        setHiddenCache(path.join(dirPath, fileName), false);
-      }
-    }
-  } catch {
-    for (const fileName of pending) {
-      if (results.has(fileName)) continue;
-      const filePath = path.join(dirPath, fileName);
-      const hidden = await isHidden(filePath, fileName);
-      results.set(fileName, hidden);
-      setHiddenCache(filePath, hidden);
+    promises.push(
+      (async () => {
+        try {
+          const { stdout } = await execFileAsync('attrib', batch, {
+            cwd: dirPath,
+            timeout: 2000,
+            windowsHide: true,
+            maxBuffer: 1024 * 1024,
+          });
+
+          const lines = stdout.split(/\r?\n/).filter((line) => line.trim().length > 0);
+          for (const line of lines) {
+            const match = line.match(/^\s*([A-Za-z ]+)\s+(.+)$/);
+            if (!match) continue;
+            const attrs = match[1].toUpperCase();
+            const filePath = match[2].trim();
+            const name = path.basename(filePath);
+            const isHiddenAttr = attrs.includes('H');
+            results.set(name, isHiddenAttr);
+            setHiddenCache(path.join(dirPath, name), isHiddenAttr);
+          }
+        } catch {
+          for (const fileName of batch) {
+            results.set(fileName, false);
+            setHiddenCache(path.join(dirPath, fileName), false);
+          }
+        }
+      })()
+    );
+  }
+
+  await Promise.all(promises);
+
+  for (const fileName of pending) {
+    if (!results.has(fileName)) {
+      results.set(fileName, false);
+      setHiddenCache(path.join(dirPath, fileName), false);
     }
   }
 
@@ -1225,8 +1248,8 @@ async function saveIndexFile(payload: any): Promise<any> {
 }
 
 async function listDirectory(payload: any, operationId?: string): Promise<any> {
-  const { dirPath, batchSize = 100 } = payload;
-  const results: any[] = [];
+  const { dirPath, batchSize = 100, streamOnly = false } = payload;
+  const results: any[] = streamOnly ? [] : [];
   const batch: fsSync.Dirent[] = [];
   let loaded = 0;
   let dir: fsSync.Dir | null = null;
@@ -1271,7 +1294,9 @@ async function listDirectory(payload: any, operationId?: string): Promise<any> {
       })
     );
 
-    results.push(...items);
+    if (!streamOnly) {
+      results.push(...items);
+    }
     loaded += items.length;
     if (operationId) {
       sendProgress('list-directory', operationId, { dirPath, loaded, items });
@@ -1295,7 +1320,7 @@ async function listDirectory(payload: any, operationId?: string): Promise<any> {
     } catch {}
   }
 
-  return { contents: results };
+  return { contents: streamOnly ? [] : results };
 }
 
 async function handleTask(message: TaskRequest): Promise<unknown> {

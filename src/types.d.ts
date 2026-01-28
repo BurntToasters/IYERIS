@@ -112,6 +112,11 @@ export interface FileItem {
   isHidden: boolean;
 }
 
+export interface DriveInfo {
+  path: string;
+  label: string;
+}
+
 export interface DirectoryContentsProgress {
   dirPath: string;
   items?: FileItem[];
@@ -321,10 +326,12 @@ export interface ElectronAPI {
   getDirectoryContents: (
     dirPath: string,
     operationId?: string,
-    includeHidden?: boolean
+    includeHidden?: boolean,
+    streamOnly?: boolean
   ) => Promise<DirectoryResponse>;
   cancelDirectoryContents: (operationId: string) => Promise<ApiResponse>;
   getDrives: () => Promise<string[]>;
+  getDriveInfo: () => Promise<DriveInfo[]>;
   getHomeDirectory: () => Promise<string>;
   getSpecialDirectory: (directory: SpecialDirectory) => Promise<PathResponse>;
   openFile: (filePath: string) => Promise<ApiResponse>;

@@ -1534,82 +1534,46 @@
         <button class="close-button" id="home-settings-close">✕</button>
       </div>
       <div class="modal-body home-settings-body">
-          <div class="settings-card">
+        <div class="home-settings-row">
+          <div class="settings-card home-settings-card-sections">
             <div class="settings-card-header">Sections</div>
-            <div class="setting-item">
-              <div class="setting-info">
-                <label for="home-toggle-quick-access">Quick Access</label>
-                <p class="setting-description">Show shortcuts to common locations</p>
-              </div>
-              <label class="toggle-switch">
+            <div class="home-toggle-grid">
+              <label class="home-toggle-item">
                 <input type="checkbox" id="home-toggle-quick-access">
-                <span class="toggle-slider"></span>
+                <span>Quick Access</span>
               </label>
-            </div>
-            <div class="setting-item">
-              <div class="setting-info">
-                <label for="home-toggle-recents">Recents</label>
-                <p class="setting-description">Show your recently opened files and folders</p>
-              </div>
-              <label class="toggle-switch">
+              <label class="home-toggle-item">
                 <input type="checkbox" id="home-toggle-recents">
-                <span class="toggle-slider"></span>
+                <span>Recents</span>
               </label>
-            </div>
-            <div class="setting-item">
-              <div class="setting-info">
-                <label for="home-toggle-bookmarks">Bookmarks</label>
-                <p class="setting-description">Show your saved folders</p>
-              </div>
-              <label class="toggle-switch">
+              <label class="home-toggle-item">
                 <input type="checkbox" id="home-toggle-bookmarks">
-                <span class="toggle-slider"></span>
+                <span>Bookmarks</span>
               </label>
-            </div>
-            <div class="setting-item">
-              <div class="setting-info">
-                <label for="home-toggle-drives">Drives</label>
-                <p class="setting-description">Show available drives</p>
-              </div>
-              <label class="toggle-switch">
+              <label class="home-toggle-item">
                 <input type="checkbox" id="home-toggle-drives">
-                <span class="toggle-slider"></span>
+                <span>Drives</span>
               </label>
-            </div>
-            <div class="setting-item">
-              <div class="setting-info">
-                <label for="home-toggle-disk-usage">Disk usage cards</label>
-                <p class="setting-description">Show free space bars for each drive</p>
-              </div>
-              <label class="toggle-switch">
+              <label class="home-toggle-item">
                 <input type="checkbox" id="home-toggle-disk-usage">
-                <span class="toggle-slider"></span>
+                <span>Disk usage</span>
+              </label>
+              <label class="home-toggle-item">
+                <input type="checkbox" id="home-toggle-compact">
+                <span>Compact Mode</span>
               </label>
             </div>
           </div>
 
-          <div class="settings-card">
+          <div class="settings-card home-settings-card-order">
             <div class="settings-card-header">Section Order</div>
             <div class="home-section-order" id="home-section-order"></div>
           </div>
-
-          <div class="settings-card">
-            <div class="settings-card-header">Quick Access Shortcuts</div>
-            <div class="home-options-grid" id="home-quick-access-options"></div>
-          </div>
+        </div>
 
         <div class="settings-card">
-          <div class="settings-card-header">Density</div>
-          <div class="setting-item">
-            <div class="setting-info">
-              <label for="home-toggle-compact">Compact cards</label>
-              <p class="setting-description">Reduce padding in the Home grid</p>
-            </div>
-            <label class="toggle-switch">
-              <input type="checkbox" id="home-toggle-compact">
-              <span class="toggle-slider"></span>
-            </label>
-          </div>
+          <div class="settings-card-header">Quick Access Shortcuts</div>
+          <div class="home-options-grid" id="home-quick-access-options"></div>
         </div>
       </div>
       <div class="modal-footer home-settings-footer">

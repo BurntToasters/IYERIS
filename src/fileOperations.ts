@@ -19,7 +19,7 @@ import {
   HIDDEN_FILE_CACHE_MAX,
 } from './appState';
 import { isPathSafe, isUrlSafe, getErrorMessage } from './security';
-import { getDrives } from './utils';
+import { getDriveInfo, getDrives } from './utils';
 import { pushUndoAction, getUndoStack, clearUndoStackForPath } from './undoRedoManager';
 import { registerDirectoryOperationTarget, unregisterDirectoryOperationTarget } from './ipcUtils';
 
@@ -188,7 +188,8 @@ export function setupFileOperationHandlers(): void {
       event: IpcMainInvokeEvent,
       dirPath: string,
       requestOperationId?: string,
-      includeHidden?: boolean
+      includeHidden?: boolean,
+      streamOnly?: boolean
     ): Promise<DirectoryResponse> => {
       if (!isPathSafe(dirPath)) {
         console.warn('[Security] Invalid path rejected:', dirPath);
@@ -209,11 +210,16 @@ export function setupFileOperationHandlers(): void {
       try {
         const result = await fileTasks.runTask<{ contents: FileItem[] }>(
           'list-directory',
-          { dirPath, batchSize: 100, includeHidden: Boolean(includeHidden) },
+          {
+            dirPath,
+            batchSize: 500,
+            includeHidden: Boolean(includeHidden),
+            streamOnly: Boolean(streamOnly),
+          },
           operationId
         );
 
-        return { success: true, contents: result.contents };
+        return { success: true, contents: streamOnly ? undefined : result.contents };
       } catch (error) {
         return { success: false, error: getErrorMessage(error) };
       } finally {
@@ -241,6 +247,10 @@ export function setupFileOperationHandlers(): void {
 
   ipcMain.handle('get-drives', async (): Promise<string[]> => {
     return getDrives();
+  });
+
+  ipcMain.handle('get-drive-info', async () => {
+    return getDriveInfo();
   });
 
   ipcMain.handle('get-home-directory', (): string => {

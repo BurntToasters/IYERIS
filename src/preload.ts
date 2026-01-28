@@ -13,11 +13,17 @@ import type {
 } from './types';
 
 const electronAPI: ElectronAPI = {
-  getDirectoryContents: (dirPath: string, operationId?: string, includeHidden?: boolean) =>
-    ipcRenderer.invoke('get-directory-contents', dirPath, operationId, includeHidden),
+  getDirectoryContents: (
+    dirPath: string,
+    operationId?: string,
+    includeHidden?: boolean,
+    streamOnly?: boolean
+  ) =>
+    ipcRenderer.invoke('get-directory-contents', dirPath, operationId, includeHidden, streamOnly),
   cancelDirectoryContents: (operationId: string) =>
     ipcRenderer.invoke('cancel-directory-contents', operationId),
   getDrives: () => ipcRenderer.invoke('get-drives'),
+  getDriveInfo: () => ipcRenderer.invoke('get-drive-info'),
   getHomeDirectory: () => ipcRenderer.invoke('get-home-directory'),
   getSpecialDirectory: (directory: SpecialDirectory) =>
     ipcRenderer.invoke('get-special-directory', directory),
