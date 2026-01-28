@@ -168,6 +168,56 @@ body.platform-linux {
   --scrollbar-show-always: 1;
 }
 
+body.compact-ui {
+  --font-size-base: 11px;
+  --font-size-file-name: 10px;
+  --font-size-nav: 10px;
+  --font-size-section-title: 9.5px;
+  --font-size-status: 9.5px;
+  --font-size-breadcrumb: 10.5px;
+
+  --icon-size-grid: 22px;
+  --icon-size-list: 11px;
+  --icon-size-toolbar: 22px;
+  --icon-size-nav: 12px;
+  --icon-size-sidebar-toggle: 20px;
+  --icon-size-spinner: 28px;
+
+  --toolbar-height: 32px;
+  --toolbar-padding-v: 4px;
+  --toolbar-padding-h: 6px;
+  --status-bar-height: 18px;
+  --address-bar-height: 22px;
+  --sidebar-width: 160px;
+  --sidebar-width-collapsed: 38px;
+  --sidebar-toggle-bottom: 22px;
+  --tab-bar-height: 28px;
+  --preview-panel-width: 220px;
+
+  --file-grid-gap-row: 6px;
+  --file-grid-gap-col: 8px;
+  --file-item-padding-v: 4px;
+  --file-item-padding-h: 3px;
+  --list-item-padding-v: 4px;
+  --list-item-padding-h: 7px;
+  --list-item-gap: 6px;
+  --list-item-min-height: 24px;
+  --list-header-height: 24px;
+  --nav-item-padding-v: 3px;
+  --nav-item-padding-h: 6px;
+  --nav-item-gap: 6px;
+  --sidebar-section-gap: 12px;
+  --sidebar-padding-v: 6px;
+  --sidebar-padding-h: 6px;
+  --container-gap: 6px;
+  --grid-min-column: 70px;
+  --file-icon-margin-bottom: 3px;
+  --toolbar-gap: 4px;
+  --breadcrumb-gap: 2px;
+  --breadcrumb-padding-v: 3px;
+  --breadcrumb-padding-h: 6px;
+}
+
 body.large-ui {
   --font-size-base: 13px;
   --font-size-file-name: 11.5px;
@@ -7594,6 +7644,37 @@ body.high-contrast .filter-hint {
 body.high-contrast .glass-panel {
   border-width: 2px !important;
   border-color: var(--glass-border) !important;
+}
+
+:root {
+  --system-font-scale: 1;
+}
+
+body.use-system-font-size {
+  font-size: calc(13px * var(--system-font-scale)) !important;
+}
+
+body.use-system-font-size .file-item-name,
+body.use-system-font-size .nav-label,
+body.use-system-font-size .section-title,
+body.use-system-font-size .setting-description,
+body.use-system-font-size .settings-tab,
+body.use-system-font-size .context-menu-item,
+body.use-system-font-size .breadcrumb-item,
+body.use-system-font-size .tab-title,
+body.use-system-font-size .status-bar,
+body.use-system-font-size .modal-button,
+body.use-system-font-size input,
+body.use-system-font-size select,
+body.use-system-font-size button {
+  font-size: calc(12px * var(--system-font-scale)) !important;
+}
+
+body.use-system-font-size .setting-info label,
+body.use-system-font-size .settings-card-header,
+body.use-system-font-size .modal-header h3,
+body.use-system-font-size h4 {
+  font-size: calc(14px * var(--system-font-scale)) !important;
 }
 
 body.large-text {

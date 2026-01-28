@@ -12,6 +12,51 @@ type IndexEntryPayload = Partial<Omit<IndexEntry, 'modified'>> & {
   modified?: Date | number | string;
 };
 
+const EXCLUDE_SEGMENTS = new Set([
+  'node_modules',
+  '.git',
+  '.cache',
+  'cache',
+  'caches',
+  '.trash',
+  'trash',
+  '$recycle.bin',
+  'system volume information',
+  '.npm',
+  '.docker',
+  'appdata',
+  'programdata',
+  'windows',
+  'program files',
+  'program files (x86)',
+  '$windows.~bt',
+  '$windows.~ws',
+  'recovery',
+  'perflogs',
+  'library',
+  '$winreagent',
+  'config.msi',
+  'msocache',
+  'intel',
+  'nvidia',
+  'amd',
+]);
+
+const EXCLUDE_FILES = new Set([
+  'pagefile.sys',
+  'hiberfil.sys',
+  'swapfile.sys',
+  'dumpstack.log.tmp',
+  'dumpstack.log',
+  '.ds_store',
+  'thumbs.db',
+  'desktop.ini',
+  'ntuser.dat',
+  'ntuser.dat.log',
+  'ntuser.dat.log1',
+  'ntuser.dat.log2',
+]);
+
 async function writeFileAtomic(targetPath: string, data: string): Promise<void> {
   const dir = path.dirname(targetPath);
   const base = path.basename(targetPath);
@@ -120,57 +165,23 @@ export class FileIndexer {
     return locations;
   }
   private shouldExclude(filePath: string): boolean {
-    const excludeSegments = new Set([
-      'node_modules',
-      '.git',
-      '.cache',
-      'cache',
-      'caches',
-      '.trash',
-      'trash',
-      '$recycle.bin',
-      'system volume information',
-      '.npm',
-      '.docker',
-      'appdata',
-      'programdata',
-      'windows',
-      'program files',
-      'program files (x86)',
-      '$windows.~bt',
-      '$windows.~ws',
-      'recovery',
-      'perflogs',
-      'library',
-      '$winreagent',
-      'config.msi',
-      'msocache',
-      'intel',
-      'nvidia',
-      'amd',
-    ]);
+    const lastSep = Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\'));
+    const filename = (lastSep >= 0 ? filePath.slice(lastSep + 1) : filePath).toLowerCase();
 
-    const excludeFiles = new Set([
-      'pagefile.sys',
-      'hiberfil.sys',
-      'swapfile.sys',
-      'dumpstack.log.tmp',
-      'dumpstack.log',
-      '.ds_store',
-      'thumbs.db',
-      'desktop.ini',
-      'ntuser.dat',
-      'ntuser.dat.log',
-      'ntuser.dat.log1',
-      'ntuser.dat.log2',
-    ]);
+    if (EXCLUDE_FILES.has(filename)) return true;
 
-    const parts = filePath.split(/[/\\]/);
-    const filename = parts[parts.length - 1].toLowerCase();
-
-    if (excludeFiles.has(filename)) return true;
-
-    return parts.some((part) => excludeSegments.has(part.toLowerCase()));
+    const lowerPath = filePath.toLowerCase();
+    for (const segment of EXCLUDE_SEGMENTS) {
+      const idx = lowerPath.indexOf(segment);
+      if (idx === -1) continue;
+      const before = idx === 0 || lowerPath[idx - 1] === '/' || lowerPath[idx - 1] === '\\';
+      const after =
+        idx + segment.length === lowerPath.length ||
+        lowerPath[idx + segment.length] === '/' ||
+        lowerPath[idx + segment.length] === '\\';
+      if (before && after) return true;
+    }
+    return false;
   }
 
   private async scanDirectory(dirPath: string, signal?: AbortSignal): Promise<void> {

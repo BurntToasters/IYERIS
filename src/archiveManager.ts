@@ -8,9 +8,32 @@ import { isPathSafe, getErrorMessage } from './security';
 import { get7zipModule, get7zipPath } from './platformUtils';
 import { logger } from './utils/logger';
 
+interface SevenZipOptions {
+  $bin: string;
+  recursive?: boolean;
+  $raw?: string[];
+}
+
+interface SevenZipProgress {
+  file?: string;
+}
+
+interface SevenZipError {
+  message?: string;
+  level?: string;
+}
+
+interface SevenZipProcess {
+  on(event: 'progress', callback: (progress: SevenZipProgress) => void): void;
+  on(event: 'end', callback: () => void): void;
+  on(event: 'error', callback: (error: SevenZipError) => void): void;
+  _childProcess?: { kill: (signal: string) => void };
+  cancel?: () => void;
+}
+
 interface ArchiveProcess {
   operationId: string;
-  process: any;
+  process: SevenZipProcess;
   startTime: number;
 }
 
@@ -276,7 +299,7 @@ export function setupArchiveHandlers(): void {
               : outputPath.replace(/\.gz$/i, '');
             logger.info('[Compress] Creating tar file:', tarPath);
 
-            const tarOptions: any = {
+            const tarOptions: SevenZipOptions = {
               $bin: sevenZipPath,
               recursive: true,
               $raw: ['-xr!My Music', '-xr!My Pictures', '-xr!My Videos'],
@@ -445,7 +468,7 @@ export function setupArchiveHandlers(): void {
           const sevenZipPath = get7zipPath();
           logger.info('[Compress] Using 7zip at:', sevenZipPath);
 
-          const options: any = {
+          const options: SevenZipOptions = {
             $bin: sevenZipPath,
             recursive: true,
             $raw: ['-xr!My Music', '-xr!My Pictures', '-xr!My Videos'],

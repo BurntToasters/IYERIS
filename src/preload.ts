@@ -117,6 +117,7 @@ const electronAPI: ElectronAPI = {
   isMas: () => ipcRenderer.invoke('is-mas'),
   isFlatpak: () => ipcRenderer.invoke('is-flatpak'),
   isMsStore: () => ipcRenderer.invoke('is-ms-store'),
+  getSystemTextScale: () => ipcRenderer.invoke('get-system-text-scale') as Promise<number>,
   checkFullDiskAccess: () => ipcRenderer.invoke('check-full-disk-access'),
   requestFullDiskAccess: () => ipcRenderer.invoke('request-full-disk-access'),
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),

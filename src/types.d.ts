@@ -85,10 +85,11 @@ export interface Settings {
   boldText: boolean;
   visibleFocus: boolean;
   reduceTransparency: boolean;
-  uiDensity: 'default' | 'larger';
+  uiDensity: 'compact' | 'default' | 'larger';
   updateChannel: 'auto' | 'beta' | 'stable';
   themedIcons: boolean;
   disableHardwareAcceleration: boolean;
+  useSystemFontSize: boolean;
 }
 
 export interface HomeSettings {
@@ -413,6 +414,7 @@ export interface ElectronAPI {
   isMas: () => Promise<boolean>;
   isFlatpak: () => Promise<boolean>;
   isMsStore: () => Promise<boolean>;
+  getSystemTextScale: () => Promise<number>;
   checkFullDiskAccess: () => Promise<{ success: boolean; hasAccess: boolean }>;
   requestFullDiskAccess: () => Promise<ApiResponse>;
   checkForUpdates: () => Promise<UpdateCheckResponse>;

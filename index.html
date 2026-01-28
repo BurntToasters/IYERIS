@@ -846,6 +846,16 @@
                   <span class="toggle-slider"></span>
                 </label>
               </div>
+              <div class="setting-item" data-searchable="system font size os scale accessibility text">
+                <div class="setting-info">
+                  <label for="use-system-font-size-toggle">Use System Font Size</label>
+                  <p class="setting-description">Follow your operating system's text size settings</p>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="use-system-font-size-toggle">
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
               <div class="setting-item" data-searchable="large text font size bigger reading">
                 <div class="setting-info">
                   <label for="large-text-toggle">Large Text</label>
@@ -862,6 +872,7 @@
                   <p class="setting-description">Adjust the overall size of UI elements</p>
                 </div>
                 <select id="ui-density-select" class="settings-select">
+                  <option value="compact">Compact</option>
                   <option value="default">Default</option>
                   <option value="larger">Larger</option>
                 </select>
@@ -1223,6 +1234,22 @@
             <span class="shortcut-keys"><kbd>Home</kbd> / <kbd>End</kbd></span>
           </div>
           <div class="shortcut-item">
+            <span class="shortcut-description">Page Up / Page Down</span>
+            <span class="shortcut-keys"><kbd>Page Up</kbd> / <kbd>Page Down</kbd></span>
+          </div>
+          <div class="shortcut-item">
+            <span class="shortcut-description">Go Back</span>
+            <span class="shortcut-keys"><kbd>Alt</kbd> + <kbd>←</kbd></span>
+          </div>
+          <div class="shortcut-item">
+            <span class="shortcut-description">Go Forward</span>
+            <span class="shortcut-keys"><kbd>Alt</kbd> + <kbd>→</kbd></span>
+          </div>
+          <div class="shortcut-item">
+            <span class="shortcut-description">Go to Parent</span>
+            <span class="shortcut-keys"><kbd>Alt</kbd> + <kbd>↑</kbd> or <kbd>Backspace</kbd></span>
+          </div>
+          <div class="shortcut-item">
             <span class="shortcut-description">New Tab</span>
             <span class="shortcut-keys"><kbd>Ctrl</kbd> + <kbd>T</kbd></span>
           </div>
@@ -1446,7 +1473,7 @@
     </button>
   </div>
 
-  <!-- Theme Editor Modal -->
+  <!-- Theme Editor -->
   <div class="modal-overlay" id="theme-editor-modal" style="display: none;">
     <div class="modal glass-panel theme-editor-modal">
       <div class="modal-header">

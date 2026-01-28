@@ -45,5 +45,6 @@ export function createDefaultSettings(): Settings {
     updateChannel: 'auto',
     themedIcons: false,
     disableHardwareAcceleration: false,
+    useSystemFontSize: false,
   };
 }

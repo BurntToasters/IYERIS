@@ -70,10 +70,12 @@ const gitIndicatorPaths = new Set<string>();
 const driveLabelByPath = new Map<string, string>();
 let cachedDriveInfo: DriveInfo[] = [];
 const diskSpaceCache = new Map<string, { timestamp: number; total: number; free: number }>();
+const DISK_SPACE_CACHE_MAX = 50;
 const gitStatusCache = new Map<
   string,
   { timestamp: number; isGitRepo: boolean; statuses: GitFileStatus[] }
 >();
+const GIT_STATUS_CACHE_MAX = 100;
 const gitStatusInFlight = new Map<string, Promise<GitStatusResponse>>();
 
 function cacheDriveInfo(drives: DriveInfo[]): void {
@@ -1084,6 +1086,8 @@ function updateCurrentTabPath(newPath: string) {
 
 const addressInput = document.getElementById('address-input') as HTMLInputElement;
 const fileGrid = document.getElementById('file-grid') as HTMLElement;
+fileGrid?.setAttribute('role', 'listbox');
+fileGrid?.setAttribute('aria-label', 'File list');
 const fileView = document.getElementById('file-view') as HTMLElement;
 const columnView = document.getElementById('column-view') as HTMLElement;
 const homeView = document.getElementById('home-view') as HTMLElement;
@@ -1354,6 +1358,10 @@ async function getGitStatusCached(dirPath: string): Promise<GitStatusResponse> {
     .getGitStatus(dirPath)
     .then((result) => {
       if (result.success) {
+        if (gitStatusCache.size >= GIT_STATUS_CACHE_MAX) {
+          const firstKey = gitStatusCache.keys().next().value;
+          if (firstKey) gitStatusCache.delete(firstKey);
+        }
         gitStatusCache.set(dirPath, {
           timestamp: Date.now(),
           isGitRepo: result.isGitRepo === true,
@@ -2298,6 +2306,20 @@ async function loadSettings(): Promise<void> {
   }
 }
 
+async function applySystemFontSize(): Promise<void> {
+  try {
+    const scaleFactor = await window.electronAPI.getSystemTextScale();
+    // Convert DPI scale to font size adjustment
+    // Scale factor of 1.0 = 100% (no change)
+    // Scale factor of 1.25 = 125% scaling
+    const fontScale = 1 + (scaleFactor - 1) * 0.5;
+    document.documentElement.style.setProperty('--system-font-scale', fontScale.toString());
+    document.body.classList.add('use-system-font-size');
+  } catch (error) {
+    console.error('[Settings] Failed to get system text scale:', error);
+  }
+}
+
 function applySettings(settings: Settings) {
   if (settings.transparency === false) {
     document.body.classList.add('no-transparency');
@@ -2354,10 +2376,20 @@ function applySettings(settings: Settings) {
     document.body.classList.remove('large-text');
   }
 
-  if (settings.uiDensity === 'larger') {
-    document.body.classList.add('large-ui');
+  // Apply system font size scaling
+  if (settings.useSystemFontSize) {
+    applySystemFontSize();
   } else {
-    document.body.classList.remove('large-ui');
+    document.documentElement.style.removeProperty('--system-font-scale');
+    document.body.classList.remove('use-system-font-size');
+  }
+
+  // Apply UI density
+  document.body.classList.remove('compact-ui', 'large-ui');
+  if (settings.uiDensity === 'compact') {
+    document.body.classList.add('compact-ui');
+  } else if (settings.uiDensity === 'larger') {
+    document.body.classList.add('large-ui');
   }
 
   if (settings.boldText) {
@@ -2869,6 +2901,9 @@ async function showSettingsModal() {
   const reduceMotionToggle = document.getElementById('reduce-motion-toggle') as HTMLInputElement;
   const highContrastToggle = document.getElementById('high-contrast-toggle') as HTMLInputElement;
   const largeTextToggle = document.getElementById('large-text-toggle') as HTMLInputElement;
+  const useSystemFontSizeToggle = document.getElementById(
+    'use-system-font-size-toggle'
+  ) as HTMLInputElement;
   const uiDensitySelect = document.getElementById('ui-density-select') as HTMLSelectElement;
   const boldTextToggle = document.getElementById('bold-text-toggle') as HTMLInputElement;
   const visibleFocusToggle = document.getElementById('visible-focus-toggle') as HTMLInputElement;
@@ -2990,6 +3025,10 @@ async function showSettingsModal() {
 
   if (largeTextToggle) {
     largeTextToggle.checked = currentSettings.largeText || false;
+  }
+
+  if (useSystemFontSizeToggle) {
+    useSystemFontSizeToggle.checked = currentSettings.useSystemFontSize || false;
   }
 
   if (uiDensitySelect) {
@@ -3440,6 +3479,9 @@ async function saveSettings() {
   const reduceMotionToggle = document.getElementById('reduce-motion-toggle') as HTMLInputElement;
   const highContrastToggle = document.getElementById('high-contrast-toggle') as HTMLInputElement;
   const largeTextToggle = document.getElementById('large-text-toggle') as HTMLInputElement;
+  const useSystemFontSizeToggle = document.getElementById(
+    'use-system-font-size-toggle'
+  ) as HTMLInputElement;
   const uiDensitySelect = document.getElementById('ui-density-select') as HTMLSelectElement;
   const boldTextToggle = document.getElementById('bold-text-toggle') as HTMLInputElement;
   const visibleFocusToggle = document.getElementById('visible-focus-toggle') as HTMLInputElement;
@@ -3553,6 +3595,10 @@ async function saveSettings() {
 
   if (largeTextToggle) {
     currentSettings.largeText = largeTextToggle.checked;
+  }
+
+  if (useSystemFontSizeToggle) {
+    currentSettings.useSystemFontSize = useSystemFontSizeToggle.checked;
   }
 
   if (uiDensitySelect) {
@@ -4754,6 +4800,10 @@ async function updateDiskSpace() {
     ) {
       const total = result.total;
       const free = result.free;
+      if (diskSpaceCache.size >= DISK_SPACE_CACHE_MAX) {
+        const firstKey = diskSpaceCache.keys().next().value;
+        if (firstKey) diskSpaceCache.delete(firstKey);
+      }
       diskSpaceCache.set(drivePath, { timestamp: Date.now(), total, free });
       renderDiskSpace(statusDiskSpace, total, free);
     } else {
@@ -5758,6 +5808,28 @@ function setupEventListeners() {
         e.preventDefault();
         setSidebarCollapsed();
       }
+    } else if (e.altKey && !e.ctrlKey && !e.metaKey) {
+      // Alt+Arrow navigation (like Windows Explorer)
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        goBack();
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        goForward();
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        goUp();
+      }
+    } else if (e.key === 'Backspace') {
+      const activeElement = document.activeElement;
+      if (
+        activeElement &&
+        (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')
+      ) {
+        return;
+      }
+      e.preventDefault();
+      goUp();
     } else if (e.key === ' ' && selectedItems.size === 1) {
       const activeElement = document.activeElement;
       if (
@@ -5834,6 +5906,26 @@ function setupEventListeners() {
       }
       e.preventDefault();
       selectLastItem(e.shiftKey);
+    } else if (e.key === 'PageUp') {
+      const activeElement = document.activeElement;
+      if (
+        activeElement &&
+        (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')
+      ) {
+        return;
+      }
+      e.preventDefault();
+      navigateByPage('up', e.shiftKey);
+    } else if (e.key === 'PageDown') {
+      const activeElement = document.activeElement;
+      if (
+        activeElement &&
+        (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')
+      ) {
+        return;
+      }
+      e.preventDefault();
+      navigateByPage('down', e.shiftKey);
     } else if (
       !e.ctrlKey &&
       !e.metaKey &&
@@ -6280,7 +6372,9 @@ async function navigateTo(path: string, skipHistoryUpdate = false) {
       updateCurrentTabPath(path);
       if (addressInput) addressInput.value = path;
       updateBreadcrumb(path);
-      folderTreeManager.ensurePathVisible(path);
+      try {
+        folderTreeManager.ensurePathVisible(path);
+      } catch {}
       addToDirectoryHistory(path);
 
       if (!skipHistoryUpdate && (historyIndex === -1 || history[historyIndex] !== path)) {
@@ -6674,6 +6768,7 @@ function createFileItem(item: FileItem, searchQuery?: string): HTMLElement {
   fileItem.tabIndex = 0;
   fileItem.dataset.path = item.path;
   fileItem.dataset.isDirectory = String(item.isDirectory);
+  fileItem.setAttribute('role', 'option');
 
   let icon: string;
   if (item.isDirectory) {
@@ -6698,6 +6793,12 @@ function createFileItem(item: FileItem, searchQuery?: string): HTMLElement {
   const sizeDisplay = item.isDirectory ? '--' : formatFileSize(item.size);
   const dateDisplay = DATE_FORMATTER.format(new Date(item.modified));
   const typeDisplay = item.isDirectory ? 'Folder' : getFileTypeFromName(item.name);
+
+  const ariaDescription = item.isDirectory
+    ? `${typeDisplay}, modified ${dateDisplay}`
+    : `${typeDisplay}, ${sizeDisplay}, modified ${dateDisplay}`;
+  fileItem.setAttribute('aria-label', item.name);
+  fileItem.setAttribute('aria-description', ariaDescription);
 
   const contentResult = item as ContentSearchResult;
   let matchContextHtml = '';
@@ -7591,6 +7692,43 @@ function selectLastItem(shiftKey: boolean) {
   }
 }
 
+function navigateByPage(direction: 'up' | 'down', shiftKey: boolean) {
+  const fileItems = getFileItemsArray();
+  if (fileItems.length === 0) return;
+
+  const fileGrid = document.getElementById('file-grid');
+  if (!fileGrid) return;
+
+  // Calculate how many items fit in a "page" based on grid height
+  const columns = getGridColumns();
+  const gridRect = fileGrid.getBoundingClientRect();
+  const firstItem = fileItems[0];
+  if (!firstItem) return;
+
+  const itemRect = firstItem.getBoundingClientRect();
+  const itemHeight = itemRect.height + 8; // Include gap
+  const visibleRows = Math.max(1, Math.floor(gridRect.height / itemHeight));
+  const pageSize = visibleRows * columns;
+
+  let currentIndex = lastSelectedIndex;
+  if (currentIndex === -1 || currentIndex >= fileItems.length) {
+    const selectedPath = Array.from(selectedItems)[selectedItems.size - 1];
+    currentIndex = fileItems.findIndex((item) => item.getAttribute('data-path') === selectedPath);
+  }
+  if (currentIndex === -1) currentIndex = 0;
+
+  let newIndex: number;
+  if (direction === 'up') {
+    newIndex = Math.max(0, currentIndex - pageSize);
+  } else {
+    newIndex = Math.min(fileItems.length - 1, currentIndex + pageSize);
+  }
+
+  if (newIndex !== currentIndex || selectedItems.size === 0) {
+    selectItemAtIndex(fileItems, newIndex, shiftKey, currentIndex);
+  }
+}
+
 function selectItemAtIndex(
   fileItems: HTMLElement[],
   index: number,
@@ -8308,7 +8446,9 @@ async function handleColumnItemClick(
     currentPath = path;
     addressInput.value = path;
     updateBreadcrumb(path);
-    folderTreeManager.ensurePathVisible(path);
+    try {
+      folderTreeManager.ensurePathVisible(path);
+    } catch {}
 
     const newPane = await renderColumn(path, currentPaneIndex + 1, clickRenderId);
 
@@ -8330,7 +8470,9 @@ async function handleColumnItemClick(
       currentPath = parentPath;
       addressInput.value = parentPath;
       updateBreadcrumb(parentPath);
-      folderTreeManager.ensurePathVisible(parentPath);
+      try {
+        folderTreeManager.ensurePathVisible(parentPath);
+      } catch {}
     }
 
     const previewPanel = document.getElementById('preview-panel');

@@ -39,6 +39,92 @@ function normalizePathForComparison(targetPath: string): string {
   return normalizeCaseKey(path.resolve(targetPath));
 }
 
+interface PlannedFileOperation {
+  sourcePath: string;
+  destPath: string;
+  itemName: string;
+  isDirectory: boolean;
+}
+
+type FileOperationType = 'copy' | 'move';
+
+async function validateFileOperation(
+  sourcePaths: string[],
+  destPath: string,
+  operationType: FileOperationType
+): Promise<{ success: true; planned: PlannedFileOperation[] } | { success: false; error: string }> {
+  if (!isPathSafe(destPath)) {
+    console.warn(`[Security] Invalid destination path rejected:`, destPath);
+    return { success: false, error: 'Invalid destination path' };
+  }
+
+  if (!Array.isArray(sourcePaths) || sourcePaths.length === 0) {
+    return { success: false, error: 'No source items provided' };
+  }
+
+  const normalizedDestPath = normalizePathForComparison(destPath);
+  const planned: PlannedFileOperation[] = [];
+  const destKeys = new Set<string>();
+
+  for (const sourcePath of sourcePaths) {
+    if (!isPathSafe(sourcePath)) {
+      console.warn(`[Security] Invalid source path rejected:`, sourcePath);
+      return { success: false, error: 'Invalid source path' };
+    }
+
+    const itemName = path.basename(sourcePath);
+    const itemDestPath = path.join(destPath, itemName);
+    const destKey = normalizeCaseKey(itemDestPath);
+
+    if (destKeys.has(destKey)) {
+      return { success: false, error: `Multiple items share the same name: "${itemName}"` };
+    }
+    destKeys.add(destKey);
+
+    let stats: fsSync.Stats;
+    try {
+      stats = await fs.stat(sourcePath);
+    } catch {
+      console.log(`[${operationType}] Source file not found:`, sourcePath);
+      return { success: false, error: `Source file not found: ${itemName}` };
+    }
+
+    if (stats.isDirectory()) {
+      const normalizedSourcePath = normalizePathForComparison(sourcePath);
+      if (
+        normalizedDestPath === normalizedSourcePath ||
+        normalizedDestPath.startsWith(normalizedSourcePath + path.sep)
+      ) {
+        return {
+          success: false,
+          error: `Cannot ${operationType} "${itemName}" into itself or a subfolder`,
+        };
+      }
+    }
+
+    const destExists = await fs
+      .stat(itemDestPath)
+      .then(() => true)
+      .catch(() => false);
+    if (destExists) {
+      console.log(`[${operationType}] Destination already exists:`, itemDestPath);
+      return {
+        success: false,
+        error: `A file named "${itemName}" already exists in the destination`,
+      };
+    }
+
+    planned.push({
+      sourcePath,
+      destPath: itemDestPath,
+      itemName,
+      isDirectory: stats.isDirectory(),
+    });
+  }
+
+  return { success: true, planned };
+}
+
 function splitFileName(fileName: string): { base: string; ext: string } {
   const lastDot = fileName.lastIndexOf('.');
   if (lastDot <= 0) {
@@ -593,84 +679,24 @@ export function setupFileOperationHandlers(): void {
       destPath: string
     ): Promise<ApiResponse> => {
       try {
-        if (!isPathSafe(destPath)) {
-          console.warn('[Security] Invalid destination path rejected:', destPath);
-          return { success: false, error: 'Invalid destination path' };
-        }
-
-        const normalizedDestPath = normalizePathForComparison(destPath);
-        const planned: Array<{
-          sourcePath: string;
-          destItemPath: string;
-          itemName: string;
-          isDirectory: boolean;
-        }> = [];
-        const destKeys = new Set<string>();
-
-        for (const sourcePath of sourcePaths) {
-          if (!isPathSafe(sourcePath)) {
-            console.warn('[Security] Invalid source path rejected:', sourcePath);
-            return { success: false, error: 'Invalid source path' };
-          }
-
-          const itemName = path.basename(sourcePath);
-          const destItemPath = path.join(destPath, itemName);
-          const destKey = normalizeCaseKey(destItemPath);
-          if (destKeys.has(destKey)) {
-            return { success: false, error: `Multiple items share the same name: "${itemName}"` };
-          }
-          destKeys.add(destKey);
-
-          let stats: fsSync.Stats;
-          try {
-            stats = await fs.stat(sourcePath);
-          } catch {
-            console.log('[Copy] Source file not found:', sourcePath);
-            return { success: false, error: `Source file not found: ${itemName}` };
-          }
-
-          if (stats.isDirectory()) {
-            const normalizedSourcePath = normalizePathForComparison(sourcePath);
-            if (
-              normalizedDestPath === normalizedSourcePath ||
-              normalizedDestPath.startsWith(normalizedSourcePath + path.sep)
-            ) {
-              return {
-                success: false,
-                error: `Cannot copy "${itemName}" into itself or a subfolder`,
-              };
-            }
-          }
-
-          const destExists = await fs
-            .stat(destItemPath)
-            .then(() => true)
-            .catch(() => false);
-          if (destExists) {
-            console.log('[Copy] Destination already exists:', destItemPath);
-            return {
-              success: false,
-              error: `A file named "${itemName}" already exists in the destination`,
-            };
-          }
-
-          planned.push({ sourcePath, destItemPath, itemName, isDirectory: stats.isDirectory() });
+        const validation = await validateFileOperation(sourcePaths, destPath, 'copy');
+        if (!validation.success) {
+          return validation;
         }
 
         const copiedPaths: string[] = [];
         try {
-          // Process files in parallel batches for better multi-core utilization
           const PARALLEL_BATCH_SIZE = 4;
-          for (let i = 0; i < planned.length; i += PARALLEL_BATCH_SIZE) {
-            const batch = planned.slice(i, i + PARALLEL_BATCH_SIZE);
+          for (let i = 0; i < validation.planned.length; i += PARALLEL_BATCH_SIZE) {
+            const batch = validation.planned.slice(i, i + PARALLEL_BATCH_SIZE);
             await Promise.all(
               batch.map(async (item) => {
                 if (item.isDirectory) {
-                  await fs.cp(item.sourcePath, item.destItemPath, { recursive: true });
+                  await fs.cp(item.sourcePath, item.destPath, { recursive: true });
                 } else {
-                  await fs.copyFile(item.sourcePath, item.destItemPath);
+                  await fs.copyFile(item.sourcePath, item.destPath);
                 }
-                copiedPaths.push(item.destItemPath);
+                copiedPaths.push(item.destPath);
               })
             );
           }
@@ -698,73 +724,9 @@ export function setupFileOperationHandlers(): void {
       destPath: string
     ): Promise<ApiResponse> => {
       try {
-        if (!isPathSafe(destPath)) {
-          console.warn('[Security] Invalid destination path rejected:', destPath);
-          return { success: false, error: 'Invalid destination path' };
-        }
-        if (!Array.isArray(sourcePaths) || sourcePaths.length === 0) {
-          return { success: false, error: 'No source items provided' };
-        }
-
-        const normalizedDestPath = normalizePathForComparison(destPath);
-        for (const sourcePath of sourcePaths) {
-          if (!isPathSafe(sourcePath)) {
-            console.warn('[Security] Invalid source path rejected:', sourcePath);
-            return { success: false, error: 'Invalid source path' };
-          }
-        }
-
-        const planned: Array<{
-          sourcePath: string;
-          newPath: string;
-          fileName: string;
-          isDirectory: boolean;
-        }> = [];
-        const destKeys = new Set<string>();
-
-        for (const sourcePath of sourcePaths) {
-          const fileName = path.basename(sourcePath);
-          const newPath = path.join(destPath, fileName);
-          const destKey = normalizeCaseKey(newPath);
-          if (destKeys.has(destKey)) {
-            return { success: false, error: `Multiple items share the same name: "${fileName}"` };
-          }
-          destKeys.add(destKey);
-
-          let stats: fsSync.Stats;
-          try {
-            stats = await fs.stat(sourcePath);
-          } catch {
-            console.log('[Move] Source file not found:', sourcePath);
-            return { success: false, error: `Source file not found: ${fileName}` };
-          }
-
-          if (stats.isDirectory()) {
-            const normalizedSourcePath = normalizePathForComparison(sourcePath);
-            if (
-              normalizedDestPath === normalizedSourcePath ||
-              normalizedDestPath.startsWith(normalizedSourcePath + path.sep)
-            ) {
-              return {
-                success: false,
-                error: `Cannot move "${fileName}" into itself or a subfolder`,
-              };
-            }
-          }
-
-          const destExists = await fs
-            .stat(newPath)
-            .then(() => true)
-            .catch(() => false);
-          if (destExists) {
-            console.log('[Move] Destination already exists:', newPath);
-            return {
-              success: false,
-              error: `A file named "${fileName}" already exists in the destination`,
-            };
-          }
-
-          planned.push({ sourcePath, newPath, fileName, isDirectory: stats.isDirectory() });
+        const validation = await validateFileOperation(sourcePaths, destPath, 'move');
+        if (!validation.success) {
+          return validation;
         }
 
         const originalParent = path.dirname(sourcePaths[0]);
@@ -773,22 +735,21 @@ export function setupFileOperationHandlers(): void {
         const completed: Array<{ sourcePath: string; newPath: string }> = [];
 
         try {
-          // Process files in parallel batches for better multi-core utilization
           const PARALLEL_BATCH_SIZE = 4;
-          for (let i = 0; i < planned.length; i += PARALLEL_BATCH_SIZE) {
-            const batch = planned.slice(i, i + PARALLEL_BATCH_SIZE);
+          for (let i = 0; i < validation.planned.length; i += PARALLEL_BATCH_SIZE) {
+            const batch = validation.planned.slice(i, i + PARALLEL_BATCH_SIZE);
             await Promise.all(
               batch.map(async (item) => {
                 try {
-                  await fs.rename(item.sourcePath, item.newPath);
+                  await fs.rename(item.sourcePath, item.destPath);
                 } catch (renameError) {
                   const err = renameError as NodeJS.ErrnoException;
                   if (err.code === 'EXDEV') {
                     console.log('[Move] Cross-device move, using copy+delete:', item.sourcePath);
                     if (item.isDirectory) {
-                      await fs.cp(item.sourcePath, item.newPath, { recursive: true });
+                      await fs.cp(item.sourcePath, item.destPath, { recursive: true });
                     } else {
-                      await fs.copyFile(item.sourcePath, item.newPath);
+                      await fs.copyFile(item.sourcePath, item.destPath);
                     }
                     await fs.rm(item.sourcePath, { recursive: true, force: true });
                   } else {
@@ -796,8 +757,8 @@ export function setupFileOperationHandlers(): void {
                   }
                 }
                 originalPaths.push(item.sourcePath);
-                movedPaths.push(item.newPath);
-                completed.push({ sourcePath: item.sourcePath, newPath: item.newPath });
+                movedPaths.push(item.destPath);
+                completed.push({ sourcePath: item.sourcePath, newPath: item.destPath });
               })
             );
           }

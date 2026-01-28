@@ -7,6 +7,7 @@ import {
   systemPreferences,
   nativeTheme,
   BrowserWindow,
+  screen,
 } from 'electron';
 import * as path from 'path';
 import { promises as fs } from 'fs';
@@ -572,6 +573,11 @@ export function setupSystemHandlers(
 
   ipcMain.handle('is-ms-store', (): boolean => {
     return process.windowsStore === true;
+  });
+
+  ipcMain.handle('get-system-text-scale', (): number => {
+    const primaryDisplay = screen.getPrimaryDisplay();
+    return primaryDisplay.scaleFactor;
   });
 
   ipcMain.handle(
