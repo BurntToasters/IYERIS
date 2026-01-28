@@ -1018,6 +1018,20 @@
             </div>
 
             <div class="settings-card">
+              <div class="settings-card-header">Performance</div>
+              <div class="setting-item" data-searchable="hardware acceleration gpu graphics performance disable">
+                <div class="setting-info">
+                  <label for="disable-hw-accel-toggle">Disable Hardware Acceleration</label>
+                  <p class="setting-description">Turn off GPU acceleration if you experience graphics issues. <strong>Requires restart.</strong></p>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="disable-hw-accel-toggle">
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+            </div>
+
+            <div class="settings-card">
               <div class="settings-card-header">Developer Options</div>
               <div class="setting-item" data-searchable="developer mode debug hidden dangerous options">
                 <div class="setting-info">
@@ -1161,6 +1175,10 @@
         <div class="shortcuts-section">
           <h3>General</h3>
           <div class="shortcut-item">
+            <span class="shortcut-description">Command Palette</span>
+            <span class="shortcut-keys"><kbd>Ctrl</kbd> + <kbd>K</kbd></span>
+          </div>
+          <div class="shortcut-item">
             <span class="shortcut-description">Open Settings</span>
             <span class="shortcut-keys"><kbd>Ctrl</kbd> + <kbd>,</kbd></span>
           </div>
@@ -1183,6 +1201,10 @@
           <div class="shortcut-item">
             <span class="shortcut-description">Close Search</span>
             <span class="shortcut-keys"><kbd>Esc</kbd></span>
+          </div>
+          <div class="shortcut-item">
+            <span class="shortcut-description">Toggle Sidebar</span>
+            <span class="shortcut-keys"><kbd>Ctrl</kbd> + <kbd>B</kbd></span>
           </div>
         </div>
         

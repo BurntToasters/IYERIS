@@ -1248,7 +1248,7 @@ async function saveIndexFile(payload: any): Promise<any> {
 }
 
 async function listDirectory(payload: any, operationId?: string): Promise<any> {
-  const { dirPath, batchSize = 100, streamOnly = false } = payload;
+  const { dirPath, batchSize = 500, streamOnly = false } = payload;
   const results: any[] = streamOnly ? [] : [];
   const batch: fsSync.Dirent[] = [];
   let loaded = 0;

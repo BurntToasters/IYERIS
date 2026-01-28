@@ -88,6 +88,7 @@ export interface Settings {
   uiDensity: 'default' | 'larger';
   updateChannel: 'auto' | 'beta' | 'stable';
   themedIcons: boolean;
+  disableHardwareAcceleration: boolean;
 }
 
 export interface HomeSettings {

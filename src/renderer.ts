@@ -2876,6 +2876,9 @@ async function showSettingsModal() {
     'reduce-transparency-toggle'
   ) as HTMLInputElement;
   const themedIconsToggle = document.getElementById('themed-icons-toggle') as HTMLInputElement;
+  const disableHwAccelToggle = document.getElementById(
+    'disable-hw-accel-toggle'
+  ) as HTMLInputElement;
   const settingsPath = document.getElementById('settings-path');
 
   if (transparencyToggle) {
@@ -3007,6 +3010,10 @@ async function showSettingsModal() {
 
   if (themedIconsToggle) {
     themedIconsToggle.checked = currentSettings.themedIcons || false;
+  }
+
+  if (disableHwAccelToggle) {
+    disableHwAccelToggle.checked = currentSettings.disableHardwareAcceleration || false;
   }
 
   await updateIndexStatus();
@@ -3440,6 +3447,9 @@ async function saveSettings() {
     'reduce-transparency-toggle'
   ) as HTMLInputElement;
   const themedIconsToggle = document.getElementById('themed-icons-toggle') as HTMLInputElement;
+  const disableHwAccelToggle = document.getElementById(
+    'disable-hw-accel-toggle'
+  ) as HTMLInputElement;
 
   if (transparencyToggle) {
     currentSettings.transparency = transparencyToggle.checked;
@@ -3563,6 +3573,10 @@ async function saveSettings() {
 
   if (themedIconsToggle) {
     currentSettings.themedIcons = themedIconsToggle.checked;
+  }
+
+  if (disableHwAccelToggle) {
+    currentSettings.disableHardwareAcceleration = disableHwAccelToggle.checked;
   }
 
   currentSettings.viewMode = viewMode;
@@ -5019,6 +5033,11 @@ function setFolderTreeVisibility(enabled: boolean): void {
   }
   if (!enabled && folderTree) {
     folderTree.innerHTML = '';
+  }
+
+  const drivesSection = document.getElementById('drives-section');
+  if (drivesSection) {
+    drivesSection.style.display = enabled ? 'none' : '';
   }
 }
 

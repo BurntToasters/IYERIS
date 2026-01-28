@@ -131,61 +131,75 @@ async function assertExtractedPathsSafe(destPath: string): Promise<void> {
       continue;
     }
 
-    for (const entry of entries) {
-      const fullPath = path.join(current, entry.name);
-      let stat: fsSync.Stats;
-      try {
-        stat = await fs.lstat(fullPath);
-      } catch {
-        continue;
-      }
+    // Process entries in parallel batches for better multi-core utilization
+    const BATCH_SIZE = 20;
+    for (let i = 0; i < entries.length; i += BATCH_SIZE) {
+      const batch = entries.slice(i, i + BATCH_SIZE);
+      const results = await Promise.allSettled(
+        batch.map(async (entry) => {
+          const fullPath = path.join(current, entry.name);
+          let stat: fsSync.Stats;
+          try {
+            stat = await fs.lstat(fullPath);
+          } catch {
+            return null;
+          }
 
-      if (stat.isSymbolicLink()) {
-        unsafe.push(fullPath);
-        try {
-          await fs.unlink(fullPath);
-        } catch (error) {
-          logger.error('[Archive] Failed to remove symlink:', fullPath, error);
+          if (stat.isSymbolicLink()) {
+            unsafe.push(fullPath);
+            try {
+              await fs.unlink(fullPath);
+            } catch (error) {
+              logger.error('[Archive] Failed to remove symlink:', fullPath, error);
+            }
+            return null;
+          }
+
+          if (stat.isFile() && stat.nlink > 1) {
+            unsafe.push(fullPath);
+            try {
+              await fs.rm(fullPath, { force: true });
+            } catch (error) {
+              logger.error('[Archive] Failed to remove hardlinked file:', fullPath, error);
+            }
+            return null;
+          }
+
+          let realPath: string;
+          try {
+            realPath = await fs.realpath(fullPath);
+          } catch (error) {
+            unsafe.push(fullPath);
+            logger.error('[Archive] Failed to resolve realpath for:', fullPath, error);
+            try {
+              await fs.rm(fullPath, { recursive: true, force: true });
+            } catch (rmError) {
+              logger.error('[Archive] Failed to remove unsafe path:', fullPath, rmError);
+            }
+            return null;
+          }
+
+          if (realPath !== destRoot && !realPath.startsWith(destRootWithSep)) {
+            unsafe.push(fullPath);
+            try {
+              await fs.rm(fullPath, { recursive: true, force: true });
+            } catch (error) {
+              logger.error('[Archive] Failed to remove path outside destination:', fullPath, error);
+            }
+            return null;
+          }
+
+          if (stat.isDirectory()) {
+            return fullPath;
+          }
+          return null;
+        })
+      );
+
+      for (const result of results) {
+        if (result.status === 'fulfilled' && result.value) {
+          stack.push(result.value);
         }
-        continue;
-      }
-
-      if (stat.isFile() && stat.nlink > 1) {
-        unsafe.push(fullPath);
-        try {
-          await fs.rm(fullPath, { force: true });
-        } catch (error) {
-          logger.error('[Archive] Failed to remove hardlinked file:', fullPath, error);
-        }
-        continue;
-      }
-
-      let realPath: string;
-      try {
-        realPath = await fs.realpath(fullPath);
-      } catch (error) {
-        unsafe.push(fullPath);
-        logger.error('[Archive] Failed to resolve realpath for:', fullPath, error);
-        try {
-          await fs.rm(fullPath, { recursive: true, force: true });
-        } catch (rmError) {
-          logger.error('[Archive] Failed to remove unsafe path:', fullPath, rmError);
-        }
-        continue;
-      }
-
-      if (realPath !== destRoot && !realPath.startsWith(destRootWithSep)) {
-        unsafe.push(fullPath);
-        try {
-          await fs.rm(fullPath, { recursive: true, force: true });
-        } catch (error) {
-          logger.error('[Archive] Failed to remove path outside destination:', fullPath, error);
-        }
-        continue;
-      }
-
-      if (stat.isDirectory()) {
-        stack.push(fullPath);
       }
     }
   }

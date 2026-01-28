@@ -659,13 +659,20 @@ export function setupFileOperationHandlers(): void {
 
         const copiedPaths: string[] = [];
         try {
-          for (const item of planned) {
-            if (item.isDirectory) {
-              await fs.cp(item.sourcePath, item.destItemPath, { recursive: true });
-            } else {
-              await fs.copyFile(item.sourcePath, item.destItemPath);
-            }
-            copiedPaths.push(item.destItemPath);
+          // Process files in parallel batches for better multi-core utilization
+          const PARALLEL_BATCH_SIZE = 4;
+          for (let i = 0; i < planned.length; i += PARALLEL_BATCH_SIZE) {
+            const batch = planned.slice(i, i + PARALLEL_BATCH_SIZE);
+            await Promise.all(
+              batch.map(async (item) => {
+                if (item.isDirectory) {
+                  await fs.cp(item.sourcePath, item.destItemPath, { recursive: true });
+                } else {
+                  await fs.copyFile(item.sourcePath, item.destItemPath);
+                }
+                copiedPaths.push(item.destItemPath);
+              })
+            );
           }
         } catch (error) {
           for (const copied of copiedPaths.reverse()) {
@@ -766,27 +773,33 @@ export function setupFileOperationHandlers(): void {
         const completed: Array<{ sourcePath: string; newPath: string }> = [];
 
         try {
-          for (const item of planned) {
-            try {
-              await fs.rename(item.sourcePath, item.newPath);
-            } catch (renameError) {
-              const err = renameError as NodeJS.ErrnoException;
-              if (err.code === 'EXDEV') {
-                console.log('[Move] Cross-device move, using copy+delete:', item.sourcePath);
-                if (item.isDirectory) {
-                  await fs.cp(item.sourcePath, item.newPath, { recursive: true });
-                } else {
-                  await fs.copyFile(item.sourcePath, item.newPath);
+          // Process files in parallel batches for better multi-core utilization
+          const PARALLEL_BATCH_SIZE = 4;
+          for (let i = 0; i < planned.length; i += PARALLEL_BATCH_SIZE) {
+            const batch = planned.slice(i, i + PARALLEL_BATCH_SIZE);
+            await Promise.all(
+              batch.map(async (item) => {
+                try {
+                  await fs.rename(item.sourcePath, item.newPath);
+                } catch (renameError) {
+                  const err = renameError as NodeJS.ErrnoException;
+                  if (err.code === 'EXDEV') {
+                    console.log('[Move] Cross-device move, using copy+delete:', item.sourcePath);
+                    if (item.isDirectory) {
+                      await fs.cp(item.sourcePath, item.newPath, { recursive: true });
+                    } else {
+                      await fs.copyFile(item.sourcePath, item.newPath);
+                    }
+                    await fs.rm(item.sourcePath, { recursive: true, force: true });
+                  } else {
+                    throw renameError;
+                  }
                 }
-                await fs.rm(item.sourcePath, { recursive: true, force: true });
-              } else {
-                throw renameError;
-              }
-            }
-
-            originalPaths.push(item.sourcePath);
-            movedPaths.push(item.newPath);
-            completed.push({ sourcePath: item.sourcePath, newPath: item.newPath });
+                originalPaths.push(item.sourcePath);
+                movedPaths.push(item.newPath);
+                completed.push({ sourcePath: item.sourcePath, newPath: item.newPath });
+              })
+            );
           }
         } catch (error) {
           for (const item of completed.reverse()) {

@@ -44,5 +44,6 @@ export function createDefaultSettings(): Settings {
     uiDensity: 'default',
     updateChannel: 'auto',
     themedIcons: false,
+    disableHardwareAcceleration: false,
   };
 }

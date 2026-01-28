@@ -181,42 +181,67 @@ export class FileIndexer {
     try {
       const entries = await fs.readdir(dirPath, { withFileTypes: true });
 
-      for (const entry of entries) {
-        if (signal?.aborted) {
+      // Process entries in parallel batches for better multi-core utilization
+      const BATCH_SIZE = 50;
+      const subdirs: string[] = [];
+
+      for (let i = 0; i < entries.length; i += BATCH_SIZE) {
+        if (signal?.aborted || this.index.size >= FileIndexer.MAX_INDEX_SIZE) {
           return;
         }
 
-        const fullPath = path.join(dirPath, entry.name);
+        const batch = entries.slice(i, i + BATCH_SIZE);
+        const results = await Promise.allSettled(
+          batch.map(async (entry) => {
+            const fullPath = path.join(dirPath, entry.name);
 
-        if (this.shouldExclude(fullPath)) {
-          continue;
-        }
+            if (this.shouldExclude(fullPath)) {
+              return null;
+            }
 
-        if (this.index.size >= FileIndexer.MAX_INDEX_SIZE) {
-          return;
-        }
+            const stats = await fs.stat(fullPath);
+            return {
+              entry,
+              fullPath,
+              stats,
+              isDirectory: entry.isDirectory(),
+            };
+          })
+        );
 
-        try {
-          const stats = await fs.stat(fullPath);
-
-          const indexEntry: IndexEntry = {
-            name: entry.name,
-            path: fullPath,
-            isDirectory: entry.isDirectory(),
-            isFile: entry.isFile(),
-            size: stats.size,
-            modified: stats.mtime,
-          };
-
-          this.index.set(fullPath, indexEntry);
-          this.indexedFiles++;
-
-          if (entry.isDirectory() && this.index.size < FileIndexer.MAX_INDEX_SIZE) {
-            await this.scanDirectory(fullPath, signal);
+        for (const result of results) {
+          if (signal?.aborted || this.index.size >= FileIndexer.MAX_INDEX_SIZE) {
+            return;
           }
-        } catch (error) {
-          console.log(`[Indexer] Skipping ${fullPath}:`, (error as Error).message);
+
+          if (result.status === 'fulfilled' && result.value) {
+            const { entry, fullPath, stats, isDirectory } = result.value;
+
+            const indexEntry: IndexEntry = {
+              name: entry.name,
+              path: fullPath,
+              isDirectory,
+              isFile: entry.isFile(),
+              size: stats.size,
+              modified: stats.mtime,
+            };
+
+            this.index.set(fullPath, indexEntry);
+            this.indexedFiles++;
+
+            if (isDirectory && this.index.size < FileIndexer.MAX_INDEX_SIZE) {
+              subdirs.push(fullPath);
+            }
+          }
         }
+      }
+
+      // Process subdirectories recursively
+      for (const subdir of subdirs) {
+        if (signal?.aborted || this.index.size >= FileIndexer.MAX_INDEX_SIZE) {
+          return;
+        }
+        await this.scanDirectory(subdir, signal);
       }
     } catch (error) {
       console.log(`[Indexer] Cannot access ${dirPath}:`, (error as Error).message);
