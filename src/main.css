@@ -2600,7 +2600,6 @@ body.platform-win32 .file-item.selected {
   background: rgba(var(--system-accent-rgb, var(--accent-rgb)), 0.24);
 }
 
-/* Focus styles for keyboard navigation */
 .file-item:focus {
   outline: none;
   box-shadow: 0 0 0 2px rgba(var(--system-accent-rgb, var(--accent-rgb)), 0.5);
@@ -2628,7 +2627,6 @@ select:focus-visible {
   outline-offset: 2px;
 }
 
-/* Drag and drop visual feedback */
 .file-item.drag-over {
   background: rgba(var(--system-accent-rgb, var(--accent-rgb)), 0.2);
   border-color: rgba(var(--system-accent-rgb, var(--accent-rgb)), 0.5);
@@ -2698,12 +2696,10 @@ select:focus-visible {
   pointer-events: none;
 }
 
-/* Multi-select drag badge */
 .file-item.dragging {
   opacity: 0.6;
 }
 
-/* Platform-specific drag-over styles */
 body.platform-darwin .file-item.drag-over {
   transform: none;
   box-shadow: 0 0 0 2px rgba(var(--system-accent-rgb, var(--accent-rgb)), 0.35);

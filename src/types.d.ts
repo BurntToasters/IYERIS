@@ -533,6 +533,10 @@ export interface ElectronAPI {
     fileCount?: number;
     error?: string;
   }>;
+
+  getLogsPath: () => Promise<string>;
+  openLogsFolder: () => Promise<ApiResponse>;
+  getLogFileContent: () => Promise<{ success: boolean; content?: string; error?: string }>;
 }
 
 declare global {

@@ -15,7 +15,7 @@ import { checkMsiInstallation } from './platformUtils';
 import { setupFileTasksProgressHandler } from './ipcUtils';
 import { warmupDrivesCache } from './utils';
 import { FileIndexer } from './indexer';
-import { logger } from './utils/logger';
+import { logger, initializeLogger } from './utils/logger';
 
 import { setupZoomHandlers } from './zoomHandlers';
 import {
@@ -124,6 +124,7 @@ setupUpdateHandlers(loadSettings);
 setupThumbnailCacheHandlers();
 
 app.whenReady().then(async () => {
+  initializeLogger();
   setupApplicationMenu();
 
   checkMsiInstallation();

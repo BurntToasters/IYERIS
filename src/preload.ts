@@ -249,6 +249,10 @@ const electronAPI: ElectronAPI = {
     ipcRenderer.invoke('save-cached-thumbnail', filePath, dataUrl),
   clearThumbnailCache: () => ipcRenderer.invoke('clear-thumbnail-cache'),
   getThumbnailCacheSize: () => ipcRenderer.invoke('get-thumbnail-cache-size'),
+
+  getLogsPath: () => ipcRenderer.invoke('get-logs-path'),
+  openLogsFolder: () => ipcRenderer.invoke('open-logs-folder'),
+  getLogFileContent: () => ipcRenderer.invoke('get-log-file-content'),
 };
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);

@@ -17,6 +17,7 @@ import type { ApiResponse } from './types';
 import { getMainWindow, MAX_TEXT_PREVIEW_BYTES, MAX_DATA_URL_BYTES } from './appState';
 import { isPathSafe, getErrorMessage } from './security';
 import { isRunningInFlatpak } from './platformUtils';
+import { logger } from './utils/logger';
 
 function spawnWithTimeout(
   command: string,
@@ -727,6 +728,33 @@ export function setupSystemHandlers(
       } catch (error) {
         console.error('[Git Branch] Error:', error);
         return { success: true, branch: undefined };
+      }
+    }
+  );
+
+  ipcMain.handle('get-logs-path', (): string => {
+    return logger.getLogsDirectory();
+  });
+
+  ipcMain.handle('open-logs-folder', async (): Promise<ApiResponse> => {
+    try {
+      const logsDir = logger.getLogsDirectory();
+      await shell.openPath(logsDir);
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: getErrorMessage(error) };
+    }
+  });
+
+  ipcMain.handle(
+    'get-log-file-content',
+    async (): Promise<{ success: boolean; content?: string; error?: string }> => {
+      try {
+        const logPath = logger.getLogPath();
+        const content = await fs.readFile(logPath, 'utf-8');
+        return { success: true, content };
+      } catch (error) {
+        return { success: false, error: getErrorMessage(error) };
       }
     }
   );

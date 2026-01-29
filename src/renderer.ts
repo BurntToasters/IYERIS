@@ -10510,6 +10510,13 @@ document.getElementById('clear-thumbnail-cache-btn')?.addEventListener('click', 
   }
 });
 
+document.getElementById('open-logs-btn')?.addEventListener('click', async () => {
+  const result = await window.electronAPI.openLogsFolder();
+  if (!result.success) {
+    showToast(result.error || 'Failed to open logs folder', 'Error', 'error');
+  }
+});
+
 async function updateThumbnailCacheSize(): Promise<void> {
   const sizeElement = document.getElementById('thumbnail-cache-size');
   if (!sizeElement) return;
