@@ -945,6 +945,12 @@
         "licenseUrl": "https://github.com/electron-userland/electron-builder/raw/master/LICENSE",
         "parents": "iyeris"
     },
+    "electron-log@5.4.3": {
+        "licenses": "MIT",
+        "repository": "https://github.com/megahertz/electron-log",
+        "licenseUrl": "https://github.com/megahertz/electron-log/raw/master/LICENSE",
+        "parents": "iyeris"
+    },
     "electron-publish@26.3.4": {
         "licenses": "MIT",
         "repository": "https://github.com/electron-userland/electron-builder",
@@ -963,7 +969,7 @@
         "licenseUrl": "https://github.com/electron/windows-installer/raw/master/LICENSE",
         "parents": "iyeris"
     },
-    "electron@40.0.0": {
+    "electron@40.1.0": {
         "licenses": "MIT",
         "repository": "https://github.com/electron/electron",
         "licenseUrl": "https://github.com/electron/electron/raw/master/LICENSE",
@@ -1513,7 +1519,7 @@
         "licenses": "MIT",
         "repository": "https://github.com/sindresorhus/is-fullwidth-code-point",
         "licenseUrl": "https://github.com/sindresorhus/is-fullwidth-code-point/raw/master/license",
-        "parents": "log-update:iyeris"
+        "parents": "listr2:iyeris"
     },
     "is-glob@4.0.3": {
         "licenses": "MIT",
@@ -1575,7 +1581,7 @@
         "licenseUrl": "https://github.com/isaacs/isexe/raw/master/LICENSE",
         "parents": "node-gyp:iyeris"
     },
-    "iyeris@0.9.9-beta.2": {
+    "iyeris@0.9.9-beta.3": {
         "licenses": "MPL-2.0",
         "repository": "https://github.com/BurntToasters/IYERIS",
         "licenseUrl": "https://github.com/BurntToasters/IYERIS/raw/master/LICENSE",
@@ -2423,7 +2429,7 @@
         "licenses": "MIT",
         "repository": "https://github.com/chalk/slice-ansi",
         "licenseUrl": "https://github.com/chalk/slice-ansi/raw/master/license",
-        "parents": "log-update:iyeris"
+        "parents": "listr2:iyeris"
     },
     "smart-buffer@4.2.0": {
         "licenses": "MIT",
