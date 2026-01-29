@@ -59,14 +59,14 @@ const defaultSteps: TourStep[] = [
     prefer: 'bottom',
   },
   {
-    target: '#command-palette-btn',
+    target: '.command-palette-modal',
     title: 'Command Palette',
     description:
       'Access any action quickly with Ctrl+K. Type to search commands, navigate, or change settings.',
     prefer: 'bottom',
   },
   {
-    target: '#view-mode-switcher',
+    target: '#view-options',
     title: 'View Modes',
     description:
       'Switch between Grid, List, and Column views to browse your files the way you prefer.',
@@ -130,6 +130,7 @@ export function createTourController(options: TourControllerOptions): TourContro
   let tourStepIndex = 0;
   let tourUpdateRaf: number | null = null;
   let launchTimeout: number | null = null;
+  let allowPaletteShortcut = false;
 
   const clearLaunchTimeout = (): void => {
     if (launchTimeout !== null) {
@@ -308,6 +309,23 @@ export function createTourController(options: TourControllerOptions): TourContro
       next.textContent = tourStepIndex === steps.length - 1 ? 'Finish' : 'Next';
     }
 
+    if (step.target === '.command-palette-modal') {
+      const paletteModal = document.getElementById('command-palette-modal');
+      if (!paletteModal || paletteModal.style.display !== 'flex') {
+        allowPaletteShortcut = true;
+        document.dispatchEvent(
+          new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true })
+        );
+        window.requestAnimationFrame(() => {
+          allowPaletteShortcut = false;
+          if (tourActive && steps[tourStepIndex]?.target === '.command-palette-modal') {
+            updateStepUI(false);
+          }
+        });
+        return;
+      }
+    }
+
     const targetRect = getTargetRect(step.target);
     applyHighlight(targetRect);
     positionTooltip(targetRect, step.prefer);
@@ -324,21 +342,28 @@ export function createTourController(options: TourControllerOptions): TourContro
   };
 
   const goToStep = (index: number): void => {
+    const prevStep = steps[tourStepIndex];
     const boundedIndex = Math.max(0, Math.min(index, steps.length - 1));
     tourStepIndex = boundedIndex;
+    if (prevStep?.target === '.command-palette-modal') {
+      const paletteModal = document.getElementById('command-palette-modal');
+      if (paletteModal && paletteModal.style.display === 'flex') {
+        paletteModal.style.display = 'none';
+      }
+    }
     updateStepUI(true);
   };
 
   const attachListeners = (): void => {
     window.addEventListener('resize', scheduleTourUpdate, { passive: true });
     window.addEventListener('scroll', scheduleTourUpdate, true);
-    document.addEventListener('keydown', handleKeydown);
+    document.addEventListener('keydown', handleKeydown, true);
   };
 
   const detachListeners = (): void => {
     window.removeEventListener('resize', scheduleTourUpdate);
     window.removeEventListener('scroll', scheduleTourUpdate, true);
-    document.removeEventListener('keydown', handleKeydown);
+    document.removeEventListener('keydown', handleKeydown, true);
   };
 
   const startTour = (): void => {
@@ -348,6 +373,7 @@ export function createTourController(options: TourControllerOptions): TourContro
     clearLaunchTimeout();
     hidePrompt();
     showOverlay();
+    document.body.classList.add('tour-active');
     updateStepUI(true);
     attachListeners();
     next.focus();
@@ -359,28 +385,54 @@ export function createTourController(options: TourControllerOptions): TourContro
     clearLaunchTimeout();
     hideOverlay();
     detachListeners();
+    document.body.classList.remove('tour-active');
+    const paletteModal = document.getElementById('command-palette-modal');
+    if (paletteModal && paletteModal.style.display === 'flex') {
+      paletteModal.style.display = 'none';
+    }
     setTourCompleted(completed);
   };
 
   const handleKeydown = (event: KeyboardEvent): void => {
     if (!tourActive) return;
+    const isPaletteStep = steps[tourStepIndex]?.target === '.command-palette-modal';
+    const isPaletteShortcut =
+      (event.ctrlKey || event.metaKey) && (event.key === 'k' || event.key === 'K');
+    if (isPaletteStep && isPaletteShortcut) {
+      if (allowPaletteShortcut) {
+        allowPaletteShortcut = false;
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
     if (event.key === 'Escape') {
       event.preventDefault();
+      event.stopPropagation();
       endTour(false);
       return;
     }
     if (event.key === 'ArrowLeft') {
       event.preventDefault();
+      event.stopPropagation();
       if (tourStepIndex > 0) goToStep(tourStepIndex - 1);
       return;
     }
     if (event.key === 'ArrowRight' || event.key === 'Enter') {
       event.preventDefault();
+      event.stopPropagation();
       if (tourStepIndex === steps.length - 1) {
         endTour(true);
       } else {
         goToStep(tourStepIndex + 1);
       }
+      return;
+    }
+
+    if (isPaletteStep) {
+      event.preventDefault();
+      event.stopPropagation();
     }
   };
 
