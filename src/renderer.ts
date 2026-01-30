@@ -217,13 +217,18 @@ function twemojiImg(emoji: string, className: string = 'twemoji', alt?: string):
   return `<img src="${src}" class="${className}" alt="${altText}" draggable="false" />`;
 }
 
+async function saveSettingsWithTimestamp(settings: Settings) {
+  settings._timestamp = Date.now();
+  return window.electronAPI.saveSettings(settings);
+}
+
 let settingsSaveTimeout: ReturnType<typeof setTimeout> | null = null;
 function debouncedSaveSettings(delay: number = SETTINGS_SAVE_DEBOUNCE_MS) {
   if (settingsSaveTimeout) {
     clearTimeout(settingsSaveTimeout);
   }
-  settingsSaveTimeout = setTimeout(() => {
-    window.electronAPI.saveSettings(currentSettings);
+  settingsSaveTimeout = setTimeout(async () => {
+    await saveSettingsWithTimestamp(currentSettings);
     settingsSaveTimeout = null;
   }, delay);
 }
@@ -764,8 +769,31 @@ let activeTabId: string = '';
 let tabsEnabled: boolean = false;
 let tabNewButtonListenerAttached: boolean = false;
 
+const MAX_CACHED_TABS = 5;
+const MAX_CACHED_FILES_PER_TAB = 10000;
+let tabCacheAccessOrder: string[] = [];
+
 function generateTabId(): string {
   return `tab-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+}
+
+function evictOldestTabCache() {
+  if (tabCacheAccessOrder.length <= MAX_CACHED_TABS) return;
+
+  const tabsToEvict = tabCacheAccessOrder.slice(0, tabCacheAccessOrder.length - MAX_CACHED_TABS);
+  for (const tabId of tabsToEvict) {
+    const tab = tabs.find((t) => t.id === tabId);
+    if (tab && tab.cachedFiles) {
+      delete tab.cachedFiles;
+    }
+  }
+  tabCacheAccessOrder = tabCacheAccessOrder.slice(-MAX_CACHED_TABS);
+}
+
+function updateTabCacheAccess(tabId: string) {
+  tabCacheAccessOrder = tabCacheAccessOrder.filter((id) => id !== tabId);
+  tabCacheAccessOrder.push(tabId);
+  evictOldestTabCache();
 }
 
 function initializeTabs() {
@@ -937,7 +965,10 @@ function switchToTab(tabId: string) {
     currentTab.historyIndex = historyIndex;
     currentTab.selectedItems = new Set(selectedItems);
     currentTab.scrollPosition = fileView?.scrollTop || 0;
-    currentTab.cachedFiles = [...allFiles];
+    if (allFiles.length <= MAX_CACHED_FILES_PER_TAB) {
+      currentTab.cachedFiles = [...allFiles];
+      updateTabCacheAccess(currentTab.id);
+    }
   }
 
   activeTabId = tabId;
@@ -950,6 +981,7 @@ function switchToTab(tabId: string) {
     if (newTab.path) {
       if (newTab.cachedFiles !== undefined) {
         restoreTabView(newTab);
+        updateTabCacheAccess(newTab.id);
       } else {
         navigateTo(newTab.path, true);
       }
@@ -1004,7 +1036,10 @@ async function addNewTab(path?: string) {
     currentTab.historyIndex = historyIndex;
     currentTab.selectedItems = new Set(selectedItems);
     currentTab.scrollPosition = fileView?.scrollTop || 0;
-    currentTab.cachedFiles = [...allFiles];
+    if (allFiles.length <= MAX_CACHED_FILES_PER_TAB) {
+      currentTab.cachedFiles = [...allFiles];
+      updateTabCacheAccess(currentTab.id);
+    }
   }
 
   let tabPath = path;
@@ -1523,7 +1558,7 @@ async function showConfirm(
 let currentSettings: Settings = createDefaultSettings();
 const tourController: TourController = createTourController({
   getSettings: () => currentSettings,
-  saveSettings: (settings) => window.electronAPI.saveSettings(settings),
+  saveSettings: (settings) => saveSettingsWithTimestamp(settings),
 });
 
 function showToast(
@@ -2633,7 +2668,7 @@ async function saveCustomTheme() {
 
   applySettings(currentSettings);
 
-  const result = await window.electronAPI.saveSettings(currentSettings);
+  const result = await saveSettingsWithTimestamp(currentSettings);
   if (result.success) {
     themeEditorHasUnsavedChanges = false;
     hideThemeEditor(true);
@@ -2726,7 +2761,7 @@ function setupThemeEditorListeners() {
       if (currentSettings.customTheme) {
         currentSettings.theme = 'custom';
         applySettings(currentSettings);
-        await window.electronAPI.saveSettings(currentSettings);
+        await saveSettingsWithTimestamp(currentSettings);
         updateCustomThemeUI();
       }
     });
@@ -3742,7 +3777,7 @@ async function saveSettings() {
 
   currentSettings.viewMode = viewMode;
 
-  const result = await window.electronAPI.saveSettings(currentSettings);
+  const result = await saveSettingsWithTimestamp(currentSettings);
   if (result.success) {
     if (previousTabsEnabled !== currentSettings.enableTabs) {
       initializeTabs();
@@ -3910,7 +3945,7 @@ function loadBookmarks() {
         updated.splice(fromIndex, 1);
         updated.splice(toIndex, 0, draggedPath);
         currentSettings.bookmarks = updated;
-        const saveResult = await window.electronAPI.saveSettings(currentSettings);
+        const saveResult = await saveSettingsWithTimestamp(currentSettings);
         if (saveResult.success) {
           loadBookmarks();
         } else {
@@ -4106,7 +4141,7 @@ async function addBookmarkByPath(path: string) {
   }
 
   currentSettings.bookmarks.push(path);
-  const result = await window.electronAPI.saveSettings(currentSettings);
+  const result = await saveSettingsWithTimestamp(currentSettings);
 
   if (result.success) {
     loadBookmarks();
@@ -4120,7 +4155,7 @@ async function removeBookmark(path: string) {
   if (!currentSettings.bookmarks) return;
 
   currentSettings.bookmarks = currentSettings.bookmarks.filter((b) => b !== path);
-  const result = await window.electronAPI.saveSettings(currentSettings);
+  const result = await saveSettingsWithTimestamp(currentSettings);
 
   if (result.success) {
     loadBookmarks();
@@ -4631,7 +4666,7 @@ async function changeSortMode(sortBy: string) {
     currentSettings.sortOrder = 'asc';
   }
 
-  await window.electronAPI.saveSettings(currentSettings);
+  await saveSettingsWithTimestamp(currentSettings);
   hideSortMenu();
   updateSortIndicators();
 
@@ -5586,6 +5621,15 @@ function setupEventListeners() {
   ipcCleanupFunctions.push(cleanupClipboard);
 
   const cleanupSettings = window.electronAPI.onSettingsChanged((newSettings) => {
+    const currentTimestamp =
+      typeof currentSettings._timestamp === 'number' ? currentSettings._timestamp : 0;
+    const newTimestamp = typeof newSettings._timestamp === 'number' ? newSettings._timestamp : 0;
+
+    if (newTimestamp < currentTimestamp) {
+      console.log('[Sync] Ignoring stale settings from another window');
+      return;
+    }
+
     console.log('[Sync] Settings updated from another window');
     currentSettings = newSettings;
     applySettings(newSettings);
@@ -6460,14 +6504,14 @@ function hideDirectoryHistoryDropdown() {
 
 function clearSearchHistory() {
   currentSettings.searchHistory = [];
-  window.electronAPI.saveSettings(currentSettings);
+  saveSettingsWithTimestamp(currentSettings);
   hideSearchHistoryDropdown();
   showToast('Search history cleared', 'History', 'success');
 }
 
 function clearDirectoryHistory() {
   currentSettings.directoryHistory = [];
-  window.electronAPI.saveSettings(currentSettings);
+  saveSettingsWithTimestamp(currentSettings);
   hideDirectoryHistoryDropdown();
   showToast('Directory history cleared', 'History', 'success');
 }
@@ -8309,7 +8353,7 @@ async function setViewMode(nextMode: 'grid' | 'list' | 'column') {
   await applyViewMode();
 
   currentSettings.viewMode = viewMode;
-  window.electronAPI.saveSettings(currentSettings);
+  saveSettingsWithTimestamp(currentSettings);
 }
 
 async function toggleView() {
@@ -10464,7 +10508,7 @@ document.getElementById('import-settings-btn')?.addEventListener('click', () => 
       }
 
       currentSettings = { ...currentSettings, ...validatedSettings };
-      await window.electronAPI.saveSettings(currentSettings);
+      await saveSettingsWithTimestamp(currentSettings);
 
       hideSettingsModal();
       showSettingsModal();
@@ -10483,7 +10527,7 @@ document.getElementById('import-settings-btn')?.addEventListener('click', () => 
 document.getElementById('clear-search-history-btn')?.addEventListener('click', async () => {
   if (confirm('Are you sure you want to clear your search history?')) {
     currentSettings.searchHistory = [];
-    await window.electronAPI.saveSettings(currentSettings);
+    await saveSettingsWithTimestamp(currentSettings);
     showToast('Search history cleared', 'Data', 'success');
   }
 });
@@ -10491,7 +10535,7 @@ document.getElementById('clear-search-history-btn')?.addEventListener('click', a
 document.getElementById('clear-bookmarks-btn')?.addEventListener('click', async () => {
   if (confirm('Are you sure you want to clear all bookmarks?')) {
     currentSettings.bookmarks = [];
-    await window.electronAPI.saveSettings(currentSettings);
+    await saveSettingsWithTimestamp(currentSettings);
     loadBookmarks();
     showToast('Bookmarks cleared', 'Data', 'success');
   }
@@ -10605,7 +10649,7 @@ function hideSupportPopup() {
 
 document.getElementById('support-popup-dismiss')?.addEventListener('click', async () => {
   currentSettings.supportPopupDismissed = true;
-  await window.electronAPI.saveSettings(currentSettings);
+  await saveSettingsWithTimestamp(currentSettings);
   hideSupportPopup();
 });
 
@@ -11498,6 +11542,34 @@ window.addEventListener('beforeunload', () => {
     clearTimeout(settingsSaveTimeout);
     settingsSaveTimeout = null;
   }
+  if (saveTabStateTimeout) {
+    clearTimeout(saveTabStateTimeout);
+    saveTabStateTimeout = null;
+  }
+
+  if (tabsEnabled && tabs.length > 0) {
+    const currentTab = tabs.find((t) => t.id === activeTabId);
+    if (currentTab) {
+      currentTab.path = currentPath;
+      currentTab.history = [...history];
+      currentTab.historyIndex = historyIndex;
+      currentTab.selectedItems = new Set(selectedItems);
+      currentTab.scrollPosition = fileView?.scrollTop || 0;
+    }
+    currentSettings.tabState = {
+      tabs: tabs.map((t) => ({
+        id: t.id,
+        path: t.path,
+        history: t.history,
+        historyIndex: t.historyIndex,
+        selectedItems: Array.from(t.selectedItems),
+        scrollPosition: t.scrollPosition,
+      })),
+      activeTabId,
+    };
+  }
+
+  saveSettingsWithTimestamp(currentSettings);
   if (searchDebounceTimeout) {
     clearTimeout(searchDebounceTimeout);
     searchDebounceTimeout = null;

@@ -31,7 +31,7 @@ let trayAssetsPath: string = '';
 let shouldStartHidden = false;
 
 let sharedClipboard: { operation: 'copy' | 'cut'; paths: string[] } | null = null;
-let sharedDragData: { paths: string[] } | null = null;
+const windowDragData = new WeakMap<Electron.WebContents, { paths: string[] }>();
 
 const isDev = process.argv.includes('--dev');
 
@@ -115,12 +115,23 @@ export function setSharedClipboard(
   sharedClipboard = clipboard;
 }
 
-export function getSharedDragData(): { paths: string[] } | null {
-  return sharedDragData;
+export function getWindowDragData(webContents: Electron.WebContents): { paths: string[] } | null {
+  return windowDragData.get(webContents) || null;
 }
 
-export function setSharedDragData(data: { paths: string[] } | null): void {
-  sharedDragData = data;
+export function setWindowDragData(
+  webContents: Electron.WebContents,
+  data: { paths: string[] } | null
+): void {
+  if (data === null) {
+    windowDragData.delete(webContents);
+  } else {
+    windowDragData.set(webContents, data);
+  }
+}
+
+export function clearWindowDragData(webContents: Electron.WebContents): void {
+  windowDragData.delete(webContents);
 }
 
 export function getIsDev(): boolean {
@@ -131,7 +142,11 @@ export function broadcastToAllWindows(channel: string, data?: any): void {
   const allWindows = BrowserWindow.getAllWindows();
   for (const win of allWindows) {
     if (!win.isDestroyed()) {
-      win.webContents.send(channel, data);
+      try {
+        win.webContents.send(channel, data);
+      } catch (error) {
+        console.warn(`[Broadcast] Failed to send to window:`, error);
+      }
     }
   }
 }

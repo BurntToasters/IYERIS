@@ -32,6 +32,7 @@ export interface TabState {
 }
 
 export interface Settings {
+  _timestamp?: number;
   transparency: boolean;
   theme:
     | 'dark'
