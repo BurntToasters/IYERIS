@@ -3853,11 +3853,8 @@ body.platform-win32 .context-menu-separator {
 
 .settings-sidebar {
   width: calc(210px * var(--settings-scale));
-  background: linear-gradient(
-      180deg,
-      rgba(255, 255, 255, 0.03) 0%,
-      rgba(255, 255, 255, 0) 30%
-    ),
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0) 30%),
     var(--bg-secondary);
   border-right: 1px solid var(--separator);
   padding: calc(12px * var(--settings-scale)) calc(10px * var(--settings-scale));
