@@ -211,15 +211,18 @@ export function setupSettingsHandlers(createTray: () => Promise<void>): void {
           logger.debug('[Tray] Tray destroyed (setting disabled)');
         }
 
-        const senderWindow = BrowserWindow.fromWebContents(event.sender);
-        const allWindows = BrowserWindow.getAllWindows();
-        const savedSettings = cachedSettings || settings;
-        for (const win of allWindows) {
-          if (!win.isDestroyed() && win !== senderWindow) {
-            try {
-              win.webContents.send('settings-changed', savedSettings);
-            } catch (error) {
-              logger.warn('[Settings] Failed to broadcast to window:', error);
+        // Guard against destroyed webContents during app shutdown
+        if (!event.sender.isDestroyed()) {
+          const senderWindow = BrowserWindow.fromWebContents(event.sender);
+          const allWindows = BrowserWindow.getAllWindows();
+          const savedSettings = cachedSettings || settings;
+          for (const win of allWindows) {
+            if (!win.isDestroyed() && win !== senderWindow) {
+              try {
+                win.webContents.send('settings-changed', savedSettings);
+              } catch (error) {
+                logger.warn('[Settings] Failed to broadcast to window:', error);
+              }
             }
           }
         }

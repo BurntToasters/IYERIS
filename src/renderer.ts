@@ -2117,6 +2117,13 @@ function getShortcutActionIdFromEvent(e: KeyboardEvent): string | null {
   return shortcutLookup.get(serializeShortcut(binding)) ?? null;
 }
 
+function areBindingsEqual(a: ShortcutBinding, b: ShortcutBinding): boolean {
+  return (
+    serializeShortcut(normalizeShortcutBinding(a)) ===
+    serializeShortcut(normalizeShortcutBinding(b))
+  );
+}
+
 function formatModifierLabel(key: string): string {
   if (!isMacPlatform()) return key;
   if (key === 'Meta') return '⌘ Cmd';
@@ -2195,7 +2202,9 @@ function renderShortcutsModal(): void {
     section.innerHTML = `<h3>${escapeHtml(category)}</h3>`;
 
     for (const def of remappable) {
-      const binding = shortcutBindings[def.id] || defaults[def.id];
+      const defaultBinding = defaults[def.id] || [];
+      const binding = shortcutBindings[def.id] ?? defaultBinding;
+      const isDefault = areBindingsEqual(binding, defaultBinding);
       const keyMarkup =
         binding.length > 0
           ? renderShortcutTokens([{ keys: binding }])
@@ -2210,6 +2219,7 @@ function renderShortcutsModal(): void {
         <div class=\"shortcut-controls\">
           ${keyMarkup}
           <button class=\"modal-button secondary\" data-shortcut-action=\"edit\">Change</button>
+          <button class=\"modal-button secondary compact\" data-shortcut-action=\"reset\" ${isDefault ? 'disabled' : ''}>Reset</button>
         </div>
       `;
       section.appendChild(item);
@@ -2239,13 +2249,19 @@ function initShortcutsModal(): void {
 
   container.addEventListener('click', (e) => {
     const target = e.target as HTMLElement;
-    const button = target.closest(
-      'button[data-shortcut-action=\"edit\"]'
-    ) as HTMLButtonElement | null;
+    const button = target.closest('button[data-shortcut-action]') as HTMLButtonElement | null;
     if (!button) return;
+    if (button.disabled) return;
     const item = button.closest('[data-shortcut-id]') as HTMLElement | null;
     if (!item || !item.dataset.shortcutId) return;
-    startShortcutCapture(item.dataset.shortcutId, button, item);
+    const action = button.dataset.shortcutAction;
+    if (action === 'edit') {
+      startShortcutCapture(item.dataset.shortcutId, button, item);
+      return;
+    }
+    if (action === 'reset') {
+      resetShortcutBinding(item.dataset.shortcutId);
+    }
   });
 }
 
@@ -2328,6 +2344,11 @@ function setShortcutBinding(id: string, binding: ShortcutBinding): void {
   syncCommandShortcuts();
   renderShortcutsModal();
   debouncedSaveSettings(100);
+}
+
+function resetShortcutBinding(id: string): void {
+  const defaults = getDefaultShortcuts();
+  setShortcutBinding(id, defaults[id] || []);
 }
 
 function syncCommandShortcuts(): void {
