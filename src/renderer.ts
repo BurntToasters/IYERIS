@@ -12,6 +12,8 @@ import type {
 import { createFolderTreeManager } from './folderDir.js';
 import { escapeHtml, getErrorMessage } from './shared.js';
 import { createDefaultSettings } from './settings.js';
+import { SHORTCUT_DEFINITIONS, getDefaultShortcuts } from './shortcuts.js';
+import type { ShortcutBinding, ShortcutDefinition } from './shortcuts.js';
 import {
   createHomeController,
   getPathDisplayValue,
@@ -1766,6 +1768,584 @@ let commandPaletteResults: HTMLElement | null = null;
 let commandPaletteEmpty: HTMLElement | null = null;
 let commandPaletteFocusedIndex = -1;
 let commandPalettePreviousFocus: HTMLElement | null = null;
+type ShortcutToken = { keys: string[] } | { text: string };
+
+interface FixedShortcutItem {
+  title: string;
+  tokens: ShortcutToken[];
+}
+
+interface ReservedShortcut {
+  label: string;
+  actionId?: string;
+}
+
+function getFixedShortcutsByCategory(): Map<string, FixedShortcutItem[]> {
+  const refreshModifier = isMacPlatform() ? 'Meta' : 'Ctrl';
+  const entries: [string, FixedShortcutItem[]][] = [
+    [
+      'General',
+      [
+        {
+          title: 'Refresh',
+          tokens: [{ keys: ['F5'] }, { text: 'or' }, { keys: [refreshModifier, 'R'] }],
+        },
+        {
+          title: 'Close Search',
+          tokens: [{ keys: ['Escape'] }],
+        },
+      ],
+    ],
+    [
+      'Navigation',
+      [
+        {
+          title: 'Navigate Files',
+          tokens: [
+            { keys: ['ArrowUp'] },
+            { keys: ['ArrowDown'] },
+            { keys: ['ArrowLeft'] },
+            { keys: ['ArrowRight'] },
+          ],
+        },
+        {
+          title: 'Open Selected',
+          tokens: [{ keys: ['Enter'] }],
+        },
+        {
+          title: 'First / Last File',
+          tokens: [{ keys: ['Home'] }, { text: '/' }, { keys: ['End'] }],
+        },
+        {
+          title: 'Page Up / Page Down',
+          tokens: [{ keys: ['PageUp'] }, { text: '/' }, { keys: ['PageDown'] }],
+        },
+        {
+          title: 'Go to Parent (Backspace)',
+          tokens: [{ keys: ['Backspace'] }],
+        },
+      ],
+    ],
+    [
+      'File Operations',
+      [
+        {
+          title: 'Rename',
+          tokens: [{ keys: ['F2'] }],
+        },
+        {
+          title: 'Delete (Trash)',
+          tokens: [{ keys: ['Delete'] }],
+        },
+        {
+          title: 'Permanent Delete',
+          tokens: [{ keys: ['Shift', 'Delete'] }],
+        },
+      ],
+    ],
+    [
+      'Selection',
+      [
+        {
+          title: 'Multi-select',
+          tokens: [{ keys: ['Ctrl'] }, { text: '+' }, { text: 'Click' }],
+        },
+        {
+          title: 'Extend Selection',
+          tokens: [
+            { keys: ['Shift'] },
+            { text: '+' },
+            { keys: ['ArrowUp'] },
+            { keys: ['ArrowDown'] },
+            { keys: ['ArrowLeft'] },
+            { keys: ['ArrowRight'] },
+          ],
+        },
+      ],
+    ],
+  ];
+  const undoRedoItems: FixedShortcutItem[] = [];
+  if (!isMacPlatform()) {
+    undoRedoItems.push({
+      title: 'Redo (Alternate)',
+      tokens: [{ keys: ['Ctrl', 'Shift', 'Z'] }],
+    });
+  }
+
+  if (undoRedoItems.length > 0) {
+    entries.push(['Undo/Redo', undoRedoItems]);
+  }
+
+  entries.push([
+    'View',
+    [
+      {
+        title: 'Quick Look',
+        tokens: [{ keys: ['Space'] }],
+      },
+    ],
+  ]);
+
+  return new Map<string, FixedShortcutItem[]>(entries);
+}
+
+const MODIFIER_ORDER = ['Ctrl', 'Shift', 'Alt', 'Meta'];
+const MODIFIER_SET = new Set(MODIFIER_ORDER);
+const shortcutLookup = new Map<string, string>();
+const fixedShortcutLookup = new Map<string, string>();
+const reservedShortcutLookup = new Map<string, ReservedShortcut>();
+const COMMAND_PALETTE_FIXED_SHORTCUTS: Record<string, ShortcutBinding> = {
+  refresh: ['F5'],
+  delete: ['Delete'],
+  rename: ['F2'],
+};
+let shortcutBindings: Record<string, ShortcutBinding> = {};
+let isShortcutCaptureActive = false;
+let activeShortcutCapture: {
+  id: string;
+  button: HTMLButtonElement;
+  item: HTMLElement;
+} | null = null;
+let shortcutCaptureCleanup: (() => void) | null = null;
+
+const shortcutDefinitionById = new Map<string, ShortcutDefinition>(
+  SHORTCUT_DEFINITIONS.map((def) => [def.id, def])
+);
+
+function isMacPlatform(): boolean {
+  if (platformOS) return platformOS === 'darwin';
+  return typeof process !== 'undefined' && process.platform === 'darwin';
+}
+
+function normalizeModifierKey(key: string): string | null {
+  const lower = key.toLowerCase();
+  if (lower === 'control' || lower === 'ctrl') return 'Ctrl';
+  if (lower === 'shift') return 'Shift';
+  if (lower === 'alt' || lower === 'option') return 'Alt';
+  if (lower === 'meta' || lower === 'cmd' || lower === 'command') return 'Meta';
+  return null;
+}
+
+function normalizeKeyLabel(key: string): string | null {
+  if (!key || key === 'Dead') return null;
+  const modifier = normalizeModifierKey(key);
+  if (modifier) return modifier;
+  if (key === ' ') return 'Space';
+  if (key === 'Esc') return 'Escape';
+  if (key === 'Del') return 'Delete';
+  if (key === '?') return '/';
+  if (key === '+') return '=';
+  if (key === '_') return '-';
+  if (key.length === 1) return key.toUpperCase();
+  return key;
+}
+
+function normalizeShortcutBinding(binding: string[]): ShortcutBinding {
+  const modifiers = new Set<string>();
+  let mainKey: string | null = null;
+  for (const part of binding) {
+    const normalized = normalizeKeyLabel(part);
+    if (!normalized) continue;
+    if (MODIFIER_SET.has(normalized)) {
+      modifiers.add(normalized);
+    } else if (!mainKey) {
+      mainKey = normalized;
+    }
+  }
+  const orderedModifiers = MODIFIER_ORDER.filter((mod) => modifiers.has(mod));
+  return mainKey ? [...orderedModifiers, mainKey] : orderedModifiers;
+}
+
+function serializeShortcut(binding: ShortcutBinding): string {
+  return binding.join('::');
+}
+
+function hasModifier(binding: ShortcutBinding): boolean {
+  return binding.some((key) => MODIFIER_SET.has(key));
+}
+
+function eventToBinding(e: KeyboardEvent): ShortcutBinding | null {
+  const key = normalizeKeyLabel(e.key);
+  if (!key || MODIFIER_SET.has(key)) return null;
+  const modifiers: string[] = [];
+  const ignoreShift = e.shiftKey && (e.key === '?' || e.key === '+' || e.key === '_');
+  if (e.ctrlKey) modifiers.push('Ctrl');
+  if (e.shiftKey && !ignoreShift) modifiers.push('Shift');
+  if (e.altKey) modifiers.push('Alt');
+  if (e.metaKey) modifiers.push('Meta');
+  return normalizeShortcutBinding([...modifiers, key]);
+}
+
+function rebuildShortcutLookup(): void {
+  shortcutLookup.clear();
+  for (const [id, binding] of Object.entries(shortcutBindings)) {
+    if (binding.length === 0) continue;
+    shortcutLookup.set(serializeShortcut(binding), id);
+  }
+}
+
+function registerFixedShortcut(binding: ShortcutBinding, actionId: string): void {
+  const normalized = normalizeShortcutBinding(binding);
+  if (normalized.length === 0) return;
+  fixedShortcutLookup.set(serializeShortcut(normalized), actionId);
+}
+
+function registerReservedShortcut(
+  binding: ShortcutBinding,
+  actionId: string | null,
+  label: string
+): void {
+  const normalized = normalizeShortcutBinding(binding);
+  if (normalized.length === 0) return;
+  reservedShortcutLookup.set(serializeShortcut(normalized), {
+    label,
+    actionId: actionId ?? undefined,
+  });
+}
+
+function rebuildFixedShortcuts(): void {
+  fixedShortcutLookup.clear();
+  registerFixedShortcut(['F5'], 'refresh');
+  registerFixedShortcut(['Ctrl', 'R'], 'refresh');
+  registerFixedShortcut(['Meta', 'R'], 'refresh');
+  if (!isMacPlatform()) {
+    registerFixedShortcut(['Ctrl', 'Shift', 'Z'], 'redo');
+  } else {
+    registerFixedShortcut(['Meta', 'Z'], 'undo');
+    registerFixedShortcut(['Meta', 'Shift', 'Z'], 'redo');
+  }
+}
+
+function rebuildReservedShortcuts(): void {
+  reservedShortcutLookup.clear();
+  registerReservedShortcut(['F5'], 'refresh', 'Refresh');
+  registerReservedShortcut(['Ctrl', 'R'], 'refresh', 'Refresh');
+  registerReservedShortcut(['Meta', 'R'], 'refresh', 'Refresh');
+  registerReservedShortcut(['Shift', 'Delete'], null, 'Permanent Delete');
+  registerReservedShortcut(['Shift', 'ArrowUp'], null, 'Extend Selection');
+  registerReservedShortcut(['Shift', 'ArrowDown'], null, 'Extend Selection');
+  registerReservedShortcut(['Shift', 'ArrowLeft'], null, 'Extend Selection');
+  registerReservedShortcut(['Shift', 'ArrowRight'], null, 'Extend Selection');
+  if (!isMacPlatform()) {
+    registerReservedShortcut(['Ctrl', 'Shift', 'Z'], 'redo', 'Redo');
+  } else {
+    registerReservedShortcut(['Meta', 'Z'], 'undo', 'Undo');
+    registerReservedShortcut(['Meta', 'Shift', 'Z'], 'redo', 'Redo');
+  }
+}
+
+function getFixedShortcutActionIdFromEvent(e: KeyboardEvent): string | null {
+  const binding = eventToBinding(e);
+  if (!binding) return null;
+  return fixedShortcutLookup.get(serializeShortcut(binding)) ?? null;
+}
+
+function syncShortcutBindingsFromSettings(
+  settings: Settings,
+  options: { save?: boolean; render?: boolean } = {}
+): void {
+  rebuildFixedShortcuts();
+  rebuildReservedShortcuts();
+  const defaults = getDefaultShortcuts();
+  const normalized: Record<string, ShortcutBinding> = {};
+  const used = new Set<string>();
+  let changed = false;
+
+  for (const def of SHORTCUT_DEFINITIONS) {
+    const raw = settings.shortcuts?.[def.id] || defaults[def.id];
+    let binding = normalizeShortcutBinding(raw);
+    if (binding.length > 0 && (!hasModifier(binding) || binding.length < 2)) {
+      binding = normalizeShortcutBinding(defaults[def.id]);
+      changed = true;
+    }
+    if (binding.length > 0) {
+      let serialized = serializeShortcut(binding);
+      const reservedEntry = reservedShortcutLookup.get(serialized);
+      if (reservedEntry && reservedEntry.actionId !== def.id) {
+        const fallback = normalizeShortcutBinding(defaults[def.id]);
+        const fallbackSerialized = serializeShortcut(fallback);
+        if (serialized !== fallbackSerialized) {
+          binding = fallback;
+          serialized = fallbackSerialized;
+          changed = true;
+        }
+      }
+      if (binding.length > 0 && used.has(serialized)) {
+        const fallback = normalizeShortcutBinding(defaults[def.id]);
+        const fallbackSerialized = serializeShortcut(fallback);
+        if (!used.has(fallbackSerialized)) {
+          binding = fallback;
+        } else {
+          binding = [];
+        }
+        changed = true;
+        serialized = serializeShortcut(binding);
+      }
+      if (binding.length > 0) {
+        used.add(serialized);
+      }
+    }
+    normalized[def.id] = binding;
+  }
+
+  if (!settings.shortcuts) {
+    settings.shortcuts = normalized;
+    changed = true;
+  } else if (changed) {
+    settings.shortcuts = normalized;
+  }
+
+  shortcutBindings = normalized;
+  rebuildShortcutLookup();
+  syncCommandShortcuts();
+  if (options.render) {
+    renderShortcutsModal();
+  }
+  if (options.save && changed) {
+    debouncedSaveSettings(100);
+  }
+}
+
+function getShortcutBinding(id: string): ShortcutBinding | undefined {
+  const binding = shortcutBindings[id];
+  return binding && binding.length > 0 ? binding : undefined;
+}
+
+function getShortcutActionIdFromEvent(e: KeyboardEvent): string | null {
+  const binding = eventToBinding(e);
+  if (!binding || !hasModifier(binding)) return null;
+  return shortcutLookup.get(serializeShortcut(binding)) ?? null;
+}
+
+function formatModifierLabel(key: string): string {
+  if (!isMacPlatform()) return key;
+  if (key === 'Meta') return '⌘ Cmd';
+  if (key === 'Ctrl') return '⌃ Ctrl';
+  if (key === 'Alt') return '⌥ Option';
+  if (key === 'Shift') return '⇧ Shift';
+  return key;
+}
+
+function formatShortcutKeyLabel(key: string): string {
+  if (MODIFIER_SET.has(key)) {
+    return formatModifierLabel(key);
+  }
+  const labels: Record<string, string> = {
+    ArrowLeft: '←',
+    ArrowRight: '→',
+    ArrowUp: '↑',
+    ArrowDown: '↓',
+    Escape: 'Esc',
+    PageUp: 'Page Up',
+    PageDown: 'Page Down',
+    '/': '?',
+  };
+  return labels[key] || (key.length === 1 ? key.toUpperCase() : key);
+}
+
+function renderShortcutTokens(tokens: ShortcutToken[]): string {
+  const tokenHtml = tokens
+    .map((token) => {
+      if ('text' in token) {
+        return `<span class=\"shortcut-text\">${escapeHtml(token.text)}</span>`;
+      }
+      const keyHtml = token.keys
+        .map((key, index) => {
+          const label = escapeHtml(formatShortcutKeyLabel(key));
+          const plus =
+            index < token.keys.length - 1 ? '<span class=\"shortcut-plus\">+</span>' : '';
+          return `<kbd>${label}</kbd>${plus}`;
+        })
+        .join('');
+      return `<span class=\"shortcut-token\">${keyHtml}</span>`;
+    })
+    .join('');
+  return `<span class=\"shortcut-keys\">${tokenHtml}</span>`;
+}
+
+function renderShortcutsModal(): void {
+  const container = document.getElementById('shortcuts-modal-sections');
+  if (!container) return;
+
+  container.innerHTML = '';
+  const defaults = getDefaultShortcuts();
+  const fixedShortcutsByCategory = getFixedShortcutsByCategory();
+
+  const categories = new Map<string, ShortcutDefinition[]>();
+  for (const def of SHORTCUT_DEFINITIONS) {
+    const list = categories.get(def.category) || [];
+    list.push(def);
+    categories.set(def.category, list);
+  }
+
+  const orderedCategories = Array.from(categories.keys());
+  for (const category of fixedShortcutsByCategory.keys()) {
+    if (!categories.has(category)) {
+      orderedCategories.push(category);
+    }
+  }
+
+  for (const category of orderedCategories) {
+    const remappable = categories.get(category) || [];
+    const fixed = fixedShortcutsByCategory.get(category) || [];
+    if (remappable.length === 0 && fixed.length === 0) continue;
+
+    const section = document.createElement('div');
+    section.className = 'shortcuts-section';
+    section.innerHTML = `<h3>${escapeHtml(category)}</h3>`;
+
+    for (const def of remappable) {
+      const binding = shortcutBindings[def.id] || defaults[def.id];
+      const keyMarkup =
+        binding.length > 0
+          ? renderShortcutTokens([{ keys: binding }])
+          : '<span class="shortcut-keys"><span class="shortcut-text">Unassigned</span></span>';
+      const item = document.createElement('div');
+      item.className = 'shortcut-item';
+      item.dataset.shortcutId = def.id;
+      item.innerHTML = `
+        <div class=\"shortcut-info\">
+          <span class=\"shortcut-description\">${escapeHtml(def.title)}</span>
+        </div>
+        <div class=\"shortcut-controls\">
+          ${keyMarkup}
+          <button class=\"modal-button secondary\" data-shortcut-action=\"edit\">Change</button>
+        </div>
+      `;
+      section.appendChild(item);
+    }
+
+    for (const fixedItem of fixed) {
+      const item = document.createElement('div');
+      item.className = 'shortcut-item fixed';
+      item.innerHTML = `
+        <div class=\"shortcut-info\">
+          <span class=\"shortcut-description\">${escapeHtml(fixedItem.title)}</span>
+        </div>
+        <div class=\"shortcut-controls\">
+          ${renderShortcutTokens(fixedItem.tokens)}
+        </div>
+      `;
+      section.appendChild(item);
+    }
+
+    container.appendChild(section);
+  }
+}
+
+function initShortcutsModal(): void {
+  const container = document.getElementById('shortcuts-modal-sections');
+  if (!container) return;
+
+  container.addEventListener('click', (e) => {
+    const target = e.target as HTMLElement;
+    const button = target.closest(
+      'button[data-shortcut-action=\"edit\"]'
+    ) as HTMLButtonElement | null;
+    if (!button) return;
+    const item = button.closest('[data-shortcut-id]') as HTMLElement | null;
+    if (!item || !item.dataset.shortcutId) return;
+    startShortcutCapture(item.dataset.shortcutId, button, item);
+  });
+}
+
+function startShortcutCapture(id: string, button: HTMLButtonElement, item: HTMLElement): void {
+  stopShortcutCapture();
+
+  activeShortcutCapture = { id, button, item };
+  isShortcutCaptureActive = true;
+  item.classList.add('is-recording');
+  button.textContent = 'Press keys...';
+
+  const handleKeydown = (e: KeyboardEvent): void => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (e.key === 'Escape') {
+      stopShortcutCapture();
+      return;
+    }
+
+    const binding = eventToBinding(e);
+    if (!binding) {
+      return;
+    }
+
+    if (!hasModifier(binding)) {
+      showToast('Shortcuts must include a modifier key', 'Shortcut Required', 'warning');
+      return;
+    }
+
+    const serialized = serializeShortcut(binding);
+    const reservedEntry = reservedShortcutLookup.get(serialized);
+    if (reservedEntry && reservedEntry.actionId !== id) {
+      showToast(`Reserved for ${reservedEntry.label}`, 'Shortcut Reserved', 'warning');
+      return;
+    }
+    const conflictId = shortcutLookup.get(serialized);
+    if (conflictId && conflictId !== id) {
+      const conflictTitle = shortcutDefinitionById.get(conflictId)?.title || conflictId;
+      showToast(`Already used by \"${conflictTitle}\"`, 'Shortcut In Use', 'warning');
+      return;
+    }
+
+    stopShortcutCapture();
+    setShortcutBinding(id, binding);
+  };
+
+  window.addEventListener('keydown', handleKeydown, true);
+  shortcutCaptureCleanup = () => {
+    window.removeEventListener('keydown', handleKeydown, true);
+  };
+}
+
+function stopShortcutCapture(): void {
+  if (shortcutCaptureCleanup) {
+    shortcutCaptureCleanup();
+    shortcutCaptureCleanup = null;
+  }
+
+  if (activeShortcutCapture) {
+    activeShortcutCapture.item.classList.remove('is-recording');
+    activeShortcutCapture.button.textContent = 'Change';
+  }
+
+  activeShortcutCapture = null;
+  isShortcutCaptureActive = false;
+}
+
+function setShortcutBinding(id: string, binding: ShortcutBinding): void {
+  const normalized = normalizeShortcutBinding(binding);
+  currentSettings.shortcuts = {
+    ...currentSettings.shortcuts,
+    [id]: normalized,
+  };
+  shortcutBindings = {
+    ...shortcutBindings,
+    [id]: normalized,
+  };
+  rebuildShortcutLookup();
+  syncCommandShortcuts();
+  renderShortcutsModal();
+  debouncedSaveSettings(100);
+}
+
+function syncCommandShortcuts(): void {
+  const remappableIds = new Set(SHORTCUT_DEFINITIONS.map((def) => def.id));
+  for (const cmd of commands) {
+    if (remappableIds.has(cmd.id)) {
+      cmd.shortcut = getShortcutBinding(cmd.id);
+    } else if (COMMAND_PALETTE_FIXED_SHORTCUTS[cmd.id]) {
+      cmd.shortcut = COMMAND_PALETTE_FIXED_SHORTCUTS[cmd.id];
+    } else {
+      delete cmd.shortcut;
+    }
+  }
+
+  if (commandPaletteModal && commandPaletteModal.style.display === 'flex') {
+    renderCommandPaletteResults(commands);
+  }
+}
 
 function initCommandPalette(): void {
   commandPaletteModal = document.getElementById('command-palette-modal');
@@ -1776,6 +2356,7 @@ function initCommandPalette(): void {
   if (!commandPaletteModal || !commandPaletteInput || !commandPaletteResults) return;
 
   registerCommands();
+  syncCommandShortcuts();
 
   commandPaletteInput.addEventListener('input', handleCommandPaletteSearch);
   commandPaletteInput.addEventListener('keydown', handleCommandPaletteKeydown);
@@ -1794,7 +2375,7 @@ function registerCommands(): void {
       title: 'New Folder',
       description: 'Create a new folder',
       icon: '📁',
-      shortcut: ['Ctrl', 'Shift', 'N'],
+      shortcut: getShortcutBinding('new-folder'),
       action: () => {
         hideCommandPalette();
         createNewFolder();
@@ -1805,7 +2386,7 @@ function registerCommands(): void {
       title: 'New File',
       description: 'Create a new file',
       icon: '📄',
-      shortcut: ['Ctrl', 'N'],
+      shortcut: getShortcutBinding('new-file'),
       action: () => {
         hideCommandPalette();
         createNewFile();
@@ -1816,7 +2397,7 @@ function registerCommands(): void {
       title: 'Search',
       description: 'Search files in current folder',
       icon: '🔍',
-      shortcut: ['Ctrl', 'F'],
+      shortcut: getShortcutBinding('search'),
       action: () => {
         hideCommandPalette();
         document.getElementById('search-btn')?.click();
@@ -1827,7 +2408,7 @@ function registerCommands(): void {
       title: 'Refresh',
       description: 'Reload current folder',
       icon: '🔄',
-      shortcut: ['F5'],
+      shortcut: COMMAND_PALETTE_FIXED_SHORTCUTS.refresh,
       action: () => {
         hideCommandPalette();
         refresh();
@@ -1838,7 +2419,7 @@ function registerCommands(): void {
       title: 'Go Back',
       description: 'Navigate to previous folder',
       icon: '⬅️',
-      shortcut: ['Alt', '←'],
+      shortcut: getShortcutBinding('go-back'),
       action: () => {
         hideCommandPalette();
         goBack();
@@ -1849,7 +2430,7 @@ function registerCommands(): void {
       title: 'Go Forward',
       description: 'Navigate to next folder',
       icon: '➡️',
-      shortcut: ['Alt', '→'],
+      shortcut: getShortcutBinding('go-forward'),
       action: () => {
         hideCommandPalette();
         goForward();
@@ -1860,7 +2441,7 @@ function registerCommands(): void {
       title: 'Go Up',
       description: 'Navigate to parent folder',
       icon: '⬆️',
-      shortcut: ['Alt', '↑'],
+      shortcut: getShortcutBinding('go-up'),
       action: () => {
         hideCommandPalette();
         goUp();
@@ -1871,7 +2452,7 @@ function registerCommands(): void {
       title: 'Settings',
       description: 'Open settings',
       icon: '⚙️',
-      shortcut: ['Ctrl', ','],
+      shortcut: getShortcutBinding('settings'),
       action: () => {
         hideCommandPalette();
         showSettingsModal();
@@ -1882,7 +2463,7 @@ function registerCommands(): void {
       title: 'Keyboard Shortcuts',
       description: 'View all keyboard shortcuts',
       icon: '⌨️',
-      shortcut: ['Ctrl', '?'],
+      shortcut: getShortcutBinding('shortcuts'),
       action: () => {
         hideCommandPalette();
         showShortcutsModal();
@@ -1893,7 +2474,7 @@ function registerCommands(): void {
       title: 'Select All',
       description: 'Select all items',
       icon: '☑️',
-      shortcut: ['Ctrl', 'A'],
+      shortcut: getShortcutBinding('select-all'),
       action: () => {
         hideCommandPalette();
         selectAll();
@@ -1904,7 +2485,7 @@ function registerCommands(): void {
       title: 'Copy',
       description: 'Copy selected items',
       icon: '📋',
-      shortcut: ['Ctrl', 'C'],
+      shortcut: getShortcutBinding('copy'),
       action: () => {
         hideCommandPalette();
         copyToClipboard();
@@ -1915,7 +2496,7 @@ function registerCommands(): void {
       title: 'Cut',
       description: 'Cut selected items',
       icon: '✂️',
-      shortcut: ['Ctrl', 'X'],
+      shortcut: getShortcutBinding('cut'),
       action: () => {
         hideCommandPalette();
         cutToClipboard();
@@ -1926,7 +2507,7 @@ function registerCommands(): void {
       title: 'Paste',
       description: 'Paste items',
       icon: '📎',
-      shortcut: ['Ctrl', 'V'],
+      shortcut: getShortcutBinding('paste'),
       action: () => {
         hideCommandPalette();
         pasteFromClipboard();
@@ -1937,7 +2518,7 @@ function registerCommands(): void {
       title: 'Delete',
       description: 'Delete selected items',
       icon: '🗑️',
-      shortcut: ['Del'],
+      shortcut: COMMAND_PALETTE_FIXED_SHORTCUTS.delete,
       action: () => {
         hideCommandPalette();
         deleteSelected();
@@ -1948,7 +2529,7 @@ function registerCommands(): void {
       title: 'Rename',
       description: 'Rename selected item',
       icon: '✍️',
-      shortcut: ['F2'],
+      shortcut: COMMAND_PALETTE_FIXED_SHORTCUTS.rename,
       action: () => {
         hideCommandPalette();
         renameSelected();
@@ -1999,7 +2580,7 @@ function registerCommands(): void {
       title: 'Toggle Sidebar',
       description: 'Show or hide sidebar',
       icon: '📂',
-      shortcut: ['Ctrl', 'B'],
+      shortcut: getShortcutBinding('toggle-sidebar'),
       action: () => {
         hideCommandPalette();
         document.getElementById('sidebar-toggle')?.click();
@@ -2010,7 +2591,7 @@ function registerCommands(): void {
       title: 'New Tab',
       description: 'Open new tab',
       icon: '➕',
-      shortcut: ['Ctrl', 'T'],
+      shortcut: getShortcutBinding('new-tab'),
       action: () => {
         hideCommandPalette();
         if (tabsEnabled) addNewTab();
@@ -2092,7 +2673,12 @@ function renderCommandPaletteResults(cmds: Command[]): void {
     if (cmd.shortcut) {
       shortcutHtml = `
         <div class="command-palette-item-shortcut">
-          ${cmd.shortcut.map((key) => `<kbd class="command-palette-key">${key}</kbd>`).join('')}
+          ${cmd.shortcut
+            .map(
+              (key) =>
+                `<kbd class="command-palette-key">${escapeHtml(formatShortcutKeyLabel(key))}</kbd>`
+            )
+            .join('')}
         </div>
       `;
     }
@@ -2214,6 +2800,7 @@ async function loadSettings(): Promise<void> {
     const defaults = createDefaultSettings();
     currentSettings = { ...defaults, ...result.settings };
     currentSettings.enableSyntaxHighlighting = currentSettings.enableSyntaxHighlighting !== false;
+    syncShortcutBindingsFromSettings(currentSettings, { save: true });
     applySettings(currentSettings);
     const newLaunchCount = (currentSettings.launchCount || 0) + 1;
     currentSettings.launchCount = newLaunchCount;
@@ -3350,21 +3937,12 @@ function showShortcutsModal() {
   const shortcutsModal = document.getElementById('shortcuts-modal');
   if (shortcutsModal) {
     shortcutsModal.style.display = 'flex';
-
-    if (platformOS === 'darwin') {
-      const allKbdElements = shortcutsModal.querySelectorAll('kbd');
-      allKbdElements.forEach((kbd) => {
-        if (kbd.textContent === 'Ctrl') {
-          kbd.textContent = '⌘ Cmd';
-        } else if (kbd.textContent === 'Alt') {
-          kbd.textContent = '⌥ Option';
-        }
-      });
-    }
+    renderShortcutsModal();
   }
 }
 
 function hideShortcutsModal() {
+  stopShortcutCapture();
   const shortcutsModal = document.getElementById('shortcuts-modal');
   if (shortcutsModal) {
     shortcutsModal.style.display = 'none';
@@ -5602,6 +6180,7 @@ function setupRubberBandSelection(): void {
 
 function setupEventListeners() {
   initSettingsTabs();
+  initShortcutsModal();
   setupFileGridEventDelegation();
   setupRubberBandSelection();
   setupListHeader();
@@ -5633,6 +6212,10 @@ function setupEventListeners() {
     console.log('[Sync] Settings updated from another window');
     currentSettings = newSettings;
     applySettings(newSettings);
+    const shortcutsModal = document.getElementById('shortcuts-modal');
+    syncShortcutBindingsFromSettings(newSettings, {
+      render: shortcutsModal ? shortcutsModal.style.display === 'flex' : false,
+    });
   });
   ipcCleanupFunctions.push(cleanupSettings);
 
@@ -5825,7 +6408,189 @@ function setupEventListeners() {
     );
   }
 
+  function hasTextSelection(): boolean {
+    const selection = window.getSelection();
+    return selection !== null && selection.toString().length > 0;
+  }
+
+  function isEditableElementActive(): boolean {
+    const activeElement = document.activeElement as HTMLElement | null;
+    if (!activeElement) return false;
+    return (
+      activeElement.tagName === 'INPUT' ||
+      activeElement.tagName === 'TEXTAREA' ||
+      activeElement.isContentEditable
+    );
+  }
+
+  function openSearch(isGlobal: boolean): void {
+    if (!searchBarWrapper || !searchScopeToggle || !searchInput) return;
+
+    if (!isSearchMode) {
+      searchBarWrapper.style.display = 'block';
+      isSearchMode = true;
+    }
+
+    isGlobalSearch = isGlobal;
+    if (isGlobalSearch) {
+      searchScopeToggle.classList.add('global');
+      searchScopeToggle.title = 'Global Search (All Indexed Files)';
+      const img = searchScopeToggle.querySelector('img');
+      if (img) {
+        img.src = '../assets/twemoji/1f30d.svg';
+        img.alt = '🌍';
+      }
+    } else {
+      searchScopeToggle.classList.remove('global');
+      searchScopeToggle.title = 'Local Search (Current Folder)';
+      const img = searchScopeToggle.querySelector('img');
+      if (img) {
+        img.src = '../assets/twemoji/1f4c1.svg';
+        img.alt = '📁';
+      }
+    }
+    updateSearchPlaceholder();
+    searchInput.focus();
+  }
+
+  function runShortcutAction(actionId: string, e: KeyboardEvent): boolean {
+    switch (actionId) {
+      case 'command-palette':
+        e.preventDefault();
+        showCommandPalette();
+        return true;
+      case 'settings':
+        e.preventDefault();
+        showSettingsModal();
+        return true;
+      case 'shortcuts':
+        e.preventDefault();
+        showShortcutsModal();
+        return true;
+      case 'refresh':
+        e.preventDefault();
+        refresh();
+        return true;
+      case 'search':
+        e.preventDefault();
+        openSearch(false);
+        return true;
+      case 'global-search':
+        e.preventDefault();
+        openSearch(true);
+        return true;
+      case 'toggle-sidebar':
+        e.preventDefault();
+        setSidebarCollapsed();
+        return true;
+      case 'new-window':
+        e.preventDefault();
+        openNewWindow();
+        return true;
+      case 'new-file':
+        e.preventDefault();
+        createNewFile();
+        return true;
+      case 'new-folder':
+        e.preventDefault();
+        createNewFolder();
+        return true;
+      case 'go-back':
+        e.preventDefault();
+        goBack();
+        return true;
+      case 'go-forward':
+        e.preventDefault();
+        goForward();
+        return true;
+      case 'go-up':
+        e.preventDefault();
+        goUp();
+        return true;
+      case 'new-tab':
+        e.preventDefault();
+        if (tabsEnabled) {
+          addNewTab();
+        }
+        return true;
+      case 'close-tab':
+        e.preventDefault();
+        if (tabsEnabled && tabs.length > 1) {
+          closeTab(activeTabId);
+        }
+        return true;
+      case 'next-tab':
+      case 'prev-tab': {
+        e.preventDefault();
+        if (tabsEnabled && tabs.length > 1) {
+          const currentIndex = tabs.findIndex((t) => t.id === activeTabId);
+          if (currentIndex !== -1) {
+            const nextIndex =
+              actionId === 'next-tab'
+                ? (currentIndex + 1) % tabs.length
+                : (currentIndex - 1 + tabs.length) % tabs.length;
+            switchToTab(tabs[nextIndex].id);
+          }
+        }
+        return true;
+      }
+      case 'copy':
+        if (hasTextSelection()) {
+          return false;
+        }
+        e.preventDefault();
+        copyToClipboard();
+        return true;
+      case 'cut':
+        if (hasTextSelection()) {
+          return false;
+        }
+        e.preventDefault();
+        cutToClipboard();
+        return true;
+      case 'paste':
+        if (isEditableElementActive()) {
+          return false;
+        }
+        e.preventDefault();
+        pasteFromClipboard();
+        return true;
+      case 'select-all':
+        if (isEditableElementActive()) {
+          return false;
+        }
+        e.preventDefault();
+        selectAll();
+        return true;
+      case 'undo':
+        e.preventDefault();
+        performUndo();
+        return true;
+      case 'redo':
+        e.preventDefault();
+        performRedo();
+        return true;
+      case 'zoom-in':
+        e.preventDefault();
+        zoomIn();
+        return true;
+      case 'zoom-out':
+        e.preventDefault();
+        zoomOut();
+        return true;
+      case 'zoom-reset':
+        e.preventDefault();
+        zoomReset();
+        return true;
+      default:
+        return false;
+    }
+  }
+
   document.addEventListener('keydown', (e) => {
+    if (isShortcutCaptureActive) {
+      return;
+    }
     if (e.key === 'Escape') {
       const settingsModal = document.getElementById('settings-modal');
       if (settingsModal && settingsModal.style.display === 'flex') {
@@ -5938,137 +6703,23 @@ function setupEventListeners() {
       return;
     }
 
-    const hasTextSelection = (): boolean => {
-      const selection = window.getSelection();
-      return selection !== null && selection.toString().length > 0;
-    };
-
-    if (e.ctrlKey || e.metaKey) {
-      if (e.key === 'k' || e.key === 'K') {
-        e.preventDefault();
-        showCommandPalette();
-      } else if (e.key === ',') {
-        e.preventDefault();
-        showSettingsModal();
-      } else if (e.key === '?' || e.key === '/') {
-        e.preventDefault();
-        showShortcutsModal();
-      } else if (e.key === 'n' && !e.shiftKey) {
-        e.preventDefault();
-        openNewWindow();
-      } else if (e.key === 'c') {
-        if (hasTextSelection()) {
-          return;
-        }
-        e.preventDefault();
-        copyToClipboard();
-      } else if (e.key === 'x') {
-        if (hasTextSelection()) {
-          return;
-        }
-        e.preventDefault();
-        cutToClipboard();
-      } else if (e.key === 'v') {
-        const activeElement = document.activeElement;
-        if (
-          activeElement &&
-          (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')
-        ) {
-          return;
-        }
-        e.preventDefault();
-        pasteFromClipboard();
-      } else if (e.key === 'f' || e.key === 'F') {
-        e.preventDefault();
-        if (!isSearchMode) {
-          searchBarWrapper.style.display = 'block';
-          isSearchMode = true;
-        }
-
-        if (e.shiftKey) {
-          // Ctrl+Shift+F - Open search in global mode
-          isGlobalSearch = true;
-          searchScopeToggle.classList.add('global');
-          searchScopeToggle.title = 'Global Search (All Indexed Files)';
-          const img = searchScopeToggle.querySelector('img');
-          if (img) {
-            img.src = '../assets/twemoji/1f30d.svg';
-            img.alt = '🌍';
-          }
-        } else {
-          // Ctrl+F - Open search in local/directory mode
-          isGlobalSearch = false;
-          searchScopeToggle.classList.remove('global');
-          searchScopeToggle.title = 'Local Search (Current Folder)';
-          const img = searchScopeToggle.querySelector('img');
-          if (img) {
-            img.src = '../assets/twemoji/1f4c1.svg';
-            img.alt = '📁';
-          }
-        }
-        updateSearchPlaceholder();
-        searchInput.focus();
-      } else if (e.key === 'a') {
-        const activeElement = document.activeElement;
-        if (
-          activeElement &&
-          (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')
-        ) {
-          return;
-        }
-        e.preventDefault();
-        selectAll();
-      } else if (e.key === 'z' && !e.shiftKey) {
-        e.preventDefault();
-        performUndo();
-      } else if (e.key === 'y' || (e.key === 'z' && e.shiftKey)) {
-        e.preventDefault();
-        performRedo();
-      } else if (e.key === '=' || e.key === '+') {
-        e.preventDefault();
-        zoomIn();
-      } else if (e.key === '-' || e.key === '_') {
-        e.preventDefault();
-        zoomOut();
-      } else if (e.key === '0') {
-        e.preventDefault();
-        zoomReset();
-      } else if (e.key === 't' || e.key === 'T') {
-        e.preventDefault();
-        if (tabsEnabled) {
-          addNewTab();
-        }
-      } else if (e.key === 'w' || e.key === 'W') {
-        e.preventDefault();
-        if (tabsEnabled && tabs.length > 1) {
-          closeTab(activeTabId);
-        }
-      } else if (e.key === 'Tab') {
-        e.preventDefault();
-        if (tabsEnabled && tabs.length > 1) {
-          const currentIndex = tabs.findIndex((t) => t.id === activeTabId);
-          const nextIndex = e.shiftKey
-            ? (currentIndex - 1 + tabs.length) % tabs.length
-            : (currentIndex + 1) % tabs.length;
-          switchToTab(tabs[nextIndex].id);
-        }
-      } else if (e.key === 'b' || e.key === 'B') {
-        e.preventDefault();
-        setSidebarCollapsed();
+    const fixedActionId = getFixedShortcutActionIdFromEvent(e);
+    if (fixedActionId) {
+      const handled = runShortcutAction(fixedActionId, e);
+      if (handled) {
+        return;
       }
-    } else if (e.altKey && !e.ctrlKey && !e.metaKey) {
-      // Alt+Arrow navigation (like Windows Explorer)
-      if (e.key === 'ArrowLeft') {
-        e.preventDefault();
-        goBack();
-      } else if (e.key === 'ArrowRight') {
-        e.preventDefault();
-        goForward();
-      } else if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        goUp();
+    }
+
+    const shortcutActionId = getShortcutActionIdFromEvent(e);
+    if (shortcutActionId) {
+      const handled = runShortcutAction(shortcutActionId, e);
+      if (handled) {
+        return;
       }
-    } else if (e.key === 'Backspace') {
+    }
+
+    if (e.key === 'Backspace') {
       const activeElement = document.activeElement;
       if (
         activeElement &&
@@ -6078,9 +6729,6 @@ function setupEventListeners() {
       }
       e.preventDefault();
       goUp();
-    } else if (e.key === 'F5') {
-      e.preventDefault();
-      refresh();
     } else if (e.key === 'F2') {
       e.preventDefault();
       renameSelected();

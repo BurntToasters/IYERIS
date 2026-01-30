@@ -7225,6 +7225,12 @@ pre.preview-text code.hljs {
   gap: 24px;
 }
 
+.shortcuts-modal-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
 .shortcuts-section {
   background: rgba(255, 255, 255, 0.02);
   padding: 20px;
@@ -7258,12 +7264,41 @@ pre.preview-text code.hljs {
   font-size: 14px;
 }
 
+.shortcut-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.shortcut-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .shortcut-keys {
   display: flex;
   gap: 6px;
   align-items: center;
   font-size: 13px;
   color: var(--text-secondary);
+  flex-wrap: wrap;
+}
+
+.shortcut-token {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.shortcut-plus {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.shortcut-text {
+  color: var(--text-secondary);
+  font-size: 12px;
 }
 
 .shortcut-keys kbd {
@@ -7279,6 +7314,15 @@ pre.preview-text code.hljs {
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
   min-width: 24px;
   text-align: center;
+}
+
+.shortcut-item.is-recording .shortcut-keys kbd {
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 1px rgba(var(--accent-rgb), 0.35);
+}
+
+.shortcut-item.is-recording .shortcut-controls .modal-button {
+  border-color: var(--accent-color);
 }
 
 .shortcuts-note {

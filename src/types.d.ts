@@ -33,6 +33,7 @@ export interface TabState {
 
 export interface Settings {
   _timestamp?: number;
+  shortcuts: { [actionId: string]: string[] };
   transparency: boolean;
   theme:
     | 'dark'
