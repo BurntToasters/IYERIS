@@ -70,6 +70,7 @@ export interface Settings {
   showFolderTree: boolean;
   enableTabs: boolean;
   globalContentSearch: boolean;
+  globalClipboard: boolean;
   tabState?: TabState;
   enableSyntaxHighlighting: boolean;
   enableGitStatus: boolean;
@@ -90,6 +91,20 @@ export interface Settings {
   themedIcons: boolean;
   disableHardwareAcceleration: boolean;
   useSystemFontSize: boolean;
+
+  confirmFileOperations: boolean;
+  fileConflictBehavior: 'ask' | 'rename' | 'skip' | 'overwrite';
+  skipElevationConfirmation: boolean;
+  maxThumbnailSizeMB: number;
+  thumbnailQuality: 'low' | 'medium' | 'high';
+  autoPlayVideos: boolean;
+  previewPanelPosition: 'right' | 'bottom';
+  maxPreviewSizeMB: number;
+  gridColumns: 'auto' | '2' | '3' | '4' | '5' | '6';
+  iconSize: number;
+  compactFileInfo: boolean;
+  showFileExtensions: boolean;
+  maxSearchHistoryItems: number;
 }
 
 export interface HomeSettings {
@@ -103,6 +118,8 @@ export interface HomeSettings {
   sectionOrder: string[];
   pinnedRecents: string[];
   compactCards: boolean;
+  sidebarQuickAccessOrder: string[];
+  hiddenSidebarQuickAccessItems: string[];
 }
 
 export interface FileItem {
@@ -364,6 +381,7 @@ export interface ElectronAPI {
     clipboardData: { operation: 'copy' | 'cut'; paths: string[] } | null
   ) => Promise<void>;
   getClipboard: () => Promise<{ operation: 'copy' | 'cut'; paths: string[] } | null>;
+  getSystemClipboardFiles: () => Promise<string[]>;
   onClipboardChanged: (
     callback: (clipboardData: { operation: 'copy' | 'cut'; paths: string[] } | null) => void
   ) => () => void;
@@ -375,8 +393,20 @@ export interface ElectronAPI {
   onSettingsChanged: (callback: (settings: Settings) => void) => () => void;
   onHomeSettingsChanged: (callback: (settings: HomeSettings) => void) => () => void;
 
-  copyItems: (sourcePaths: string[], destPath: string) => Promise<ApiResponse>;
-  moveItems: (sourcePaths: string[], destPath: string) => Promise<ApiResponse>;
+  copyItems: (
+    sourcePaths: string[],
+    destPath: string,
+    conflictBehavior?: 'ask' | 'rename' | 'skip' | 'overwrite'
+  ) => Promise<ApiResponse>;
+  moveItems: (
+    sourcePaths: string[],
+    destPath: string,
+    conflictBehavior?: 'ask' | 'rename' | 'skip' | 'overwrite'
+  ) => Promise<ApiResponse>;
+  showConflictDialog: (
+    fileName: string,
+    operation: 'copy' | 'move'
+  ) => Promise<'rename' | 'skip' | 'overwrite' | 'cancel'>;
   searchFiles: (
     dirPath: string,
     query: string,
@@ -399,6 +429,10 @@ export interface ElectronAPI {
   ) => Promise<{ success: boolean; total?: number; free?: number; error?: string }>;
   restartAsAdmin: () => Promise<ApiResponse>;
   openTerminal: (dirPath: string) => Promise<ApiResponse>;
+  elevatedCopy: (sourcePath: string, destPath: string) => Promise<ApiResponse>;
+  elevatedMove: (sourcePath: string, destPath: string) => Promise<ApiResponse>;
+  elevatedDelete: (itemPath: string) => Promise<ApiResponse>;
+  elevatedRename: (itemPath: string, newName: string) => Promise<ApiResponse>;
   readFileContent: (
     filePath: string,
     maxSize?: number
@@ -484,6 +518,25 @@ export interface ElectronAPI {
   getGitStatus: (dirPath: string) => Promise<GitStatusResponse>;
   getGitBranch: (dirPath: string) => Promise<GitBranchResponse>;
   listArchiveContents: (archivePath: string) => Promise<ArchiveListResponse>;
+
+  getCachedThumbnail: (
+    filePath: string
+  ) => Promise<{ success: boolean; dataUrl?: string; error?: string }>;
+  saveCachedThumbnail: (
+    filePath: string,
+    dataUrl: string
+  ) => Promise<{ success: boolean; error?: string }>;
+  clearThumbnailCache: () => Promise<{ success: boolean; error?: string }>;
+  getThumbnailCacheSize: () => Promise<{
+    success: boolean;
+    sizeBytes?: number;
+    fileCount?: number;
+    error?: string;
+  }>;
+
+  getLogsPath: () => Promise<string>;
+  openLogsFolder: () => Promise<ApiResponse>;
+  getLogFileContent: () => Promise<{ success: boolean; content?: string; error?: string }>;
 }
 
 declare global {

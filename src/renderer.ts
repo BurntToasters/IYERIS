@@ -17,6 +17,7 @@ import {
   getPathDisplayValue,
   HOME_VIEW_LABEL,
   HOME_VIEW_PATH,
+  HOME_QUICK_ACCESS_ITEMS,
   isHomeViewPath,
 } from './home.js';
 import { createTourController, type TourController } from './tour.js';
@@ -88,6 +89,7 @@ function cacheDriveInfo(drives: DriveInfo[]): void {
   });
 }
 
+// throttle concurrent thumbnail loads
 function enqueueThumbnailLoad(loadFn: () => Promise<void>): void {
   const execute = async () => {
     activeThumbnailLoads++;
@@ -210,12 +212,11 @@ function emojiToCodepoint(emoji: string): string {
 
 function twemojiImg(emoji: string, className: string = 'twemoji', alt?: string): string {
   const codepoint = emojiToCodepoint(emoji);
-  const src = `assets/twemoji/${codepoint}.svg`;
+  const src = `../assets/twemoji/${codepoint}.svg`;
   const altText = escapeHtml(alt || emoji);
   return `<img src="${src}" class="${className}" alt="${altText}" draggable="false" />`;
 }
 
-// Debounced settings save for non-critical updates (history, recent files, etc.)
 let settingsSaveTimeout: ReturnType<typeof setTimeout> | null = null;
 function debouncedSaveSettings(delay: number = SETTINGS_SAVE_DEBOUNCE_MS) {
   if (settingsSaveTimeout) {
@@ -391,7 +392,7 @@ function renderOperations() {
     item.innerHTML = `
       <div class="archive-operation-header">
         <div class="archive-operation-title">
-          <img src="assets/twemoji/${icon}.svg" class="twemoji" alt="${iconEmoji}" draggable="false" />
+          <img src="../assets/twemoji/${icon}.svg" class="twemoji" alt="${iconEmoji}" draggable="false" />
           <span class="archive-operation-name" title="${escapeHtml(operation.name)}">${title}: ${escapeHtml(operation.name)}</span>
         </div>
         ${!operation.aborted ? `<button class="archive-operation-cancel" data-id="${escapeHtml(id)}">Cancel</button>` : ''}
@@ -510,6 +511,7 @@ function updateBreadcrumb(currentPath: string): void {
     item.appendChild(label);
     item.appendChild(caret);
 
+    // breadcrumb nav or dropdown menu
     item.addEventListener('click', (e) => {
       e.stopPropagation();
       const target = e.target as HTMLElement;
@@ -520,6 +522,7 @@ function updateBreadcrumb(currentPath: string): void {
       navigateTo(targetPath);
     });
 
+    // drag/drop to breadcrumb
     item.addEventListener('dragover', (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -598,7 +601,7 @@ function setupBreadcrumbListeners(): void {
 
   const addressBar = document.querySelector('.address-bar');
   if (addressBar) {
-    addressBar.addEventListener('dblclick', (e) => {
+    addressBar.addEventListener('click', (e) => {
       const target = e.target as HTMLElement;
       if (
         target.classList.contains('address-bar') ||
@@ -868,7 +871,7 @@ function renderTabs() {
     const tabTitle = isHomeTab ? HOME_VIEW_LABEL : tab.path;
     const tabIcon = isHomeTab
       ? twemojiImg(String.fromCodePoint(0x1f3e0), 'twemoji')
-      : '<img src="assets/twemoji/1f4c2.svg" class="twemoji" alt="📂" draggable="false" />';
+      : '<img src="../assets/twemoji/1f4c2.svg" class="twemoji" alt="📂" draggable="false" />';
 
     tabElement.innerHTML = `
       <span class="tab-icon">
@@ -1242,13 +1245,6 @@ function flushStreamedDirectoryItems(token: number): void {
   }
 }
 
-function sortStreamedDirectoryItems(): void {
-  if (allFiles.length === 0 && emptyState) {
-    emptyState.style.display = 'flex';
-  }
-  updateStatusBar();
-}
-
 function createDirectoryOperationId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
@@ -1301,7 +1297,6 @@ function cancelDirectoryRequest(): void {
 
 const currentGitStatuses: Map<string, string> = new Map();
 let gitStatusRequestId = 0;
-let currentGitBranch: string | null = null;
 
 function clearGitIndicators(): void {
   currentGitStatuses.clear();
@@ -1386,23 +1381,19 @@ async function updateGitBranch(dirPath: string) {
 
   if (!currentSettings.enableGitStatus) {
     statusGitBranch.style.display = 'none';
-    currentGitBranch = null;
     return;
   }
 
   try {
     const result = await window.electronAPI.getGitBranch(dirPath);
     if (result.success && result.branch && dirPath === currentPath) {
-      currentGitBranch = result.branch;
       statusGitBranchName.textContent = result.branch;
       statusGitBranch.style.display = 'inline-flex';
     } else {
       statusGitBranch.style.display = 'none';
-      currentGitBranch = null;
     }
-  } catch (error) {
+  } catch {
     statusGitBranch.style.display = 'none';
-    currentGitBranch = null;
   }
 }
 
@@ -2172,105 +2163,10 @@ function initProgressPanel(): void {
   }
 }
 
-function showProgressPanel(): void {
-  if (progressPanel) {
-    progressPanel.style.display = 'flex';
-  }
-}
-
 function hideProgressPanel(): void {
   if (progressPanel) {
     progressPanel.style.display = 'none';
   }
-}
-
-function addProgressOperation(id: string, title: string, status: string = 'Starting...'): void {
-  progressOperations.set(id, {
-    id,
-    title,
-    status,
-    progress: 0,
-    completed: false,
-    error: false,
-  });
-
-  renderProgressOperations();
-  showProgressPanel();
-}
-
-function updateProgressOperation(id: string, updates: Partial<ProgressOperation>): void {
-  const op = progressOperations.get(id);
-  if (op) {
-    Object.assign(op, updates);
-    renderProgressOperations();
-  }
-}
-
-function completeProgressOperation(id: string, error: boolean = false): void {
-  const op = progressOperations.get(id);
-  if (op) {
-    op.completed = true;
-    op.error = error;
-    op.progress = 100;
-    renderProgressOperations();
-
-    setTimeout(() => {
-      progressOperations.delete(id);
-      renderProgressOperations();
-      if (progressOperations.size === 0) {
-        hideProgressPanel();
-      }
-    }, 3000);
-  }
-}
-
-function renderProgressOperations(): void {
-  if (!progressPanelContent) return;
-
-  const contentContainer = progressPanelContent;
-
-  if (progressOperations.size === 0) {
-    contentContainer.innerHTML = `
-      <div style="padding: var(--spacing-massive); text-align: center; color: var(--text-secondary);">
-        <p>No active operations</p>
-      </div>
-    `;
-    return;
-  }
-
-  contentContainer.innerHTML = '';
-
-  progressOperations.forEach((op) => {
-    const item = document.createElement('div');
-    item.className = `progress-item ${op.completed ? 'completed' : ''} ${op.error ? 'error' : ''}`;
-
-    const spinnerOrIcon = op.completed
-      ? op.error
-        ? '❌'
-        : '✅'
-      : '<span class="progress-item-spinner">⟳</span>';
-
-    item.innerHTML = `
-      <div class="progress-item-header">
-        <div class="progress-item-title">
-          ${spinnerOrIcon}
-          ${escapeHtml(op.title)}
-        </div>
-        <div class="progress-item-status">${escapeHtml(op.status)}</div>
-      </div>
-      ${
-        !op.completed
-          ? `
-        <div class="progress-item-bar-container">
-          <div class="progress-item-bar" style="width: ${op.progress}%"></div>
-        </div>
-      `
-          : ''
-      }
-    `;
-
-    contentContainer.appendChild(item);
-  });
 }
 
 async function loadSettings(): Promise<void> {
@@ -2304,14 +2200,15 @@ async function loadSettings(): Promise<void> {
       'items'
     );
   }
+
+  window.addEventListener('focus', () => {
+    updateClipboardIndicator();
+  });
 }
 
 async function applySystemFontSize(): Promise<void> {
   try {
     const scaleFactor = await window.electronAPI.getSystemTextScale();
-    // Convert DPI scale to font size adjustment
-    // Scale factor of 1.0 = 100% (no change)
-    // Scale factor of 1.25 = 125% scaling
     const fontScale = 1 + (scaleFactor - 1) * 0.5;
     document.documentElement.style.setProperty('--system-font-scale', fontScale.toString());
     document.body.classList.add('use-system-font-size');
@@ -2422,6 +2319,42 @@ function applySettings(settings: Settings) {
     document.body.classList.remove('show-file-checkboxes');
   }
 
+  // Compact file info
+  if (settings.compactFileInfo) {
+    document.body.classList.add('compact-file-info');
+  } else {
+    document.body.classList.remove('compact-file-info');
+  }
+
+  // Show file extensions
+  if (settings.showFileExtensions === false) {
+    document.body.classList.add('hide-file-extensions');
+  } else {
+    document.body.classList.remove('hide-file-extensions');
+  }
+
+  // Grid columns
+  if (settings.gridColumns && settings.gridColumns !== 'auto') {
+    document.documentElement.style.setProperty('--grid-columns', settings.gridColumns);
+  } else {
+    document.documentElement.style.removeProperty('--grid-columns');
+  }
+
+  // Icon size
+  if (settings.iconSize && settings.iconSize > 0) {
+    document.documentElement.style.setProperty('--icon-size-grid', `${settings.iconSize}px`);
+  } else {
+    document.documentElement.style.removeProperty('--icon-size-grid');
+  }
+
+  // Preview panel position
+  document.body.classList.remove('preview-right', 'preview-bottom');
+  if (settings.previewPanelPosition === 'bottom') {
+    document.body.classList.add('preview-bottom');
+  } else {
+    document.body.classList.add('preview-right');
+  }
+
   setHoverCardEnabled(settings.showFileHoverCard !== false);
   if (hoverCardEnabled) {
     setupHoverCard();
@@ -2438,7 +2371,6 @@ function applySettings(settings: Settings) {
     gitStatusInFlight.clear();
     const statusGitBranch = document.getElementById('status-git-branch');
     if (statusGitBranch) statusGitBranch.style.display = 'none';
-    currentGitBranch = null;
   }
 
   const nextFolderTreeEnabled = settings.showFolderTree !== false;
@@ -2579,6 +2511,7 @@ let tempCustomTheme: CustomTheme = {
 
 let themeEditorHasUnsavedChanges = false;
 
+// show theme customizer modal
 function showThemeEditor() {
   const modal = document.getElementById('theme-editor-modal');
   if (!modal) return;
@@ -2756,9 +2689,7 @@ function setupThemeEditorListeners() {
     textInput?.addEventListener('blur', (e) => {
       let value = (e.target as HTMLInputElement).value.trim();
       if (!value.startsWith('#')) value = '#' + value;
-      // Validate and reset
       if (!/^#[0-9A-Fa-f]{3}$/.test(value) && !/^#[0-9A-Fa-f]{6}$/.test(value)) {
-        // Reset to current color picker value
         const colorInput = document.getElementById(id) as HTMLInputElement;
         if (colorInput && textInput) {
           textInput.value = colorInput.value.toUpperCase();
@@ -2895,6 +2826,9 @@ async function showSettingsModal() {
   const globalContentSearchToggle = document.getElementById(
     'global-content-search-toggle'
   ) as HTMLInputElement;
+  const globalClipboardToggle = document.getElementById(
+    'global-clipboard-toggle'
+  ) as HTMLInputElement;
   const enableSyntaxHighlightingToggle = document.getElementById(
     'enable-syntax-highlighting-toggle'
   ) as HTMLInputElement;
@@ -2913,6 +2847,37 @@ async function showSettingsModal() {
   const themedIconsToggle = document.getElementById('themed-icons-toggle') as HTMLInputElement;
   const disableHwAccelToggle = document.getElementById(
     'disable-hw-accel-toggle'
+  ) as HTMLInputElement;
+  const confirmFileOperationsToggle = document.getElementById(
+    'confirm-file-operations-toggle'
+  ) as HTMLInputElement;
+  const fileConflictBehaviorSelect = document.getElementById(
+    'file-conflict-behavior-select'
+  ) as HTMLSelectElement;
+  const maxThumbnailSizeInput = document.getElementById(
+    'max-thumbnail-size-input'
+  ) as HTMLInputElement;
+  const thumbnailQualitySelect = document.getElementById(
+    'thumbnail-quality-select'
+  ) as HTMLSelectElement;
+  const autoPlayVideosToggle = document.getElementById(
+    'auto-play-videos-toggle'
+  ) as HTMLInputElement;
+  const previewPanelPositionSelect = document.getElementById(
+    'preview-panel-position-select'
+  ) as HTMLSelectElement;
+  const maxPreviewSizeInput = document.getElementById('max-preview-size-input') as HTMLInputElement;
+  const gridColumnsSelect = document.getElementById('grid-columns-select') as HTMLSelectElement;
+  const iconSizeSlider = document.getElementById('icon-size-slider') as HTMLInputElement;
+  const iconSizeValue = document.getElementById('icon-size-value');
+  const compactFileInfoToggle = document.getElementById(
+    'compact-file-info-toggle'
+  ) as HTMLInputElement;
+  const showFileExtensionsToggle = document.getElementById(
+    'show-file-extensions-toggle'
+  ) as HTMLInputElement;
+  const maxSearchHistoryInput = document.getElementById(
+    'max-search-history-input'
   ) as HTMLInputElement;
   const settingsPath = document.getElementById('settings-path');
 
@@ -3015,6 +2980,10 @@ async function showSettingsModal() {
     globalContentSearchToggle.checked = currentSettings.globalContentSearch || false;
   }
 
+  if (globalClipboardToggle) {
+    globalClipboardToggle.checked = currentSettings.globalClipboard !== false;
+  }
+
   if (reduceMotionToggle) {
     reduceMotionToggle.checked = currentSettings.reduceMotion || false;
   }
@@ -3055,7 +3024,59 @@ async function showSettingsModal() {
     disableHwAccelToggle.checked = currentSettings.disableHardwareAcceleration || false;
   }
 
+  if (confirmFileOperationsToggle) {
+    confirmFileOperationsToggle.checked = currentSettings.confirmFileOperations || false;
+  }
+
+  if (fileConflictBehaviorSelect) {
+    fileConflictBehaviorSelect.value = currentSettings.fileConflictBehavior || 'ask';
+  }
+
+  if (maxThumbnailSizeInput) {
+    maxThumbnailSizeInput.value = String(currentSettings.maxThumbnailSizeMB || 10);
+  }
+
+  if (thumbnailQualitySelect) {
+    thumbnailQualitySelect.value = currentSettings.thumbnailQuality || 'medium';
+  }
+
+  if (autoPlayVideosToggle) {
+    autoPlayVideosToggle.checked = currentSettings.autoPlayVideos || false;
+  }
+
+  if (previewPanelPositionSelect) {
+    previewPanelPositionSelect.value = currentSettings.previewPanelPosition || 'right';
+  }
+
+  if (maxPreviewSizeInput) {
+    maxPreviewSizeInput.value = String(currentSettings.maxPreviewSizeMB || 50);
+  }
+
+  if (gridColumnsSelect) {
+    gridColumnsSelect.value = currentSettings.gridColumns || 'auto';
+  }
+
+  if (iconSizeSlider) {
+    iconSizeSlider.value = String(currentSettings.iconSize || 64);
+    if (iconSizeValue) {
+      iconSizeValue.textContent = String(currentSettings.iconSize || 64);
+    }
+  }
+
+  if (compactFileInfoToggle) {
+    compactFileInfoToggle.checked = currentSettings.compactFileInfo || false;
+  }
+
+  if (showFileExtensionsToggle) {
+    showFileExtensionsToggle.checked = currentSettings.showFileExtensions !== false;
+  }
+
+  if (maxSearchHistoryInput) {
+    maxSearchHistoryInput.value = String(currentSettings.maxSearchHistoryItems || 5);
+  }
+
   await updateIndexStatus();
+  updateThumbnailCacheSize();
 
   const path = await window.electronAPI.getSettingsPath();
   if (settingsPath) {
@@ -3141,7 +3162,7 @@ async function rebuildIndex() {
     } else {
       showToast('Failed to rebuild index: ' + result.error, 'Error', 'error');
     }
-  } catch (error) {
+  } catch {
     showToast('Error rebuilding index', 'Error', 'error');
   } finally {
     rebuildBtn.disabled = false;
@@ -3473,6 +3494,9 @@ async function saveSettings() {
   const globalContentSearchToggle = document.getElementById(
     'global-content-search-toggle'
   ) as HTMLInputElement;
+  const globalClipboardToggle = document.getElementById(
+    'global-clipboard-toggle'
+  ) as HTMLInputElement;
   const enableSyntaxHighlightingToggle = document.getElementById(
     'enable-syntax-highlighting-toggle'
   ) as HTMLInputElement;
@@ -3491,6 +3515,36 @@ async function saveSettings() {
   const themedIconsToggle = document.getElementById('themed-icons-toggle') as HTMLInputElement;
   const disableHwAccelToggle = document.getElementById(
     'disable-hw-accel-toggle'
+  ) as HTMLInputElement;
+  const confirmFileOperationsToggle = document.getElementById(
+    'confirm-file-operations-toggle'
+  ) as HTMLInputElement;
+  const fileConflictBehaviorSelect = document.getElementById(
+    'file-conflict-behavior-select'
+  ) as HTMLSelectElement;
+  const maxThumbnailSizeInput = document.getElementById(
+    'max-thumbnail-size-input'
+  ) as HTMLInputElement;
+  const thumbnailQualitySelect = document.getElementById(
+    'thumbnail-quality-select'
+  ) as HTMLSelectElement;
+  const autoPlayVideosToggle = document.getElementById(
+    'auto-play-videos-toggle'
+  ) as HTMLInputElement;
+  const previewPanelPositionSelect = document.getElementById(
+    'preview-panel-position-select'
+  ) as HTMLSelectElement;
+  const maxPreviewSizeInput = document.getElementById('max-preview-size-input') as HTMLInputElement;
+  const gridColumnsSelect = document.getElementById('grid-columns-select') as HTMLSelectElement;
+  const iconSizeSlider = document.getElementById('icon-size-slider') as HTMLInputElement;
+  const compactFileInfoToggle = document.getElementById(
+    'compact-file-info-toggle'
+  ) as HTMLInputElement;
+  const showFileExtensionsToggle = document.getElementById(
+    'show-file-extensions-toggle'
+  ) as HTMLInputElement;
+  const maxSearchHistoryInput = document.getElementById(
+    'max-search-history-input'
   ) as HTMLInputElement;
 
   if (transparencyToggle) {
@@ -3585,6 +3639,10 @@ async function saveSettings() {
     currentSettings.globalContentSearch = globalContentSearchToggle.checked;
   }
 
+  if (globalClipboardToggle) {
+    currentSettings.globalClipboard = globalClipboardToggle.checked;
+  }
+
   if (reduceMotionToggle) {
     currentSettings.reduceMotion = reduceMotionToggle.checked;
   }
@@ -3625,6 +3683,63 @@ async function saveSettings() {
     currentSettings.disableHardwareAcceleration = disableHwAccelToggle.checked;
   }
 
+  if (confirmFileOperationsToggle) {
+    currentSettings.confirmFileOperations = confirmFileOperationsToggle.checked;
+  }
+
+  if (fileConflictBehaviorSelect) {
+    currentSettings.fileConflictBehavior = fileConflictBehaviorSelect.value as any;
+  }
+
+  if (maxThumbnailSizeInput) {
+    const val = parseInt(maxThumbnailSizeInput.value, 10);
+    if (val >= 1 && val <= 100) {
+      currentSettings.maxThumbnailSizeMB = val;
+    }
+  }
+
+  if (thumbnailQualitySelect) {
+    currentSettings.thumbnailQuality = thumbnailQualitySelect.value as any;
+  }
+
+  if (autoPlayVideosToggle) {
+    currentSettings.autoPlayVideos = autoPlayVideosToggle.checked;
+  }
+
+  if (previewPanelPositionSelect) {
+    currentSettings.previewPanelPosition = previewPanelPositionSelect.value as any;
+  }
+
+  if (maxPreviewSizeInput) {
+    const val = parseInt(maxPreviewSizeInput.value, 10);
+    if (val >= 1 && val <= 500) {
+      currentSettings.maxPreviewSizeMB = val;
+    }
+  }
+
+  if (gridColumnsSelect) {
+    currentSettings.gridColumns = gridColumnsSelect.value as any;
+  }
+
+  if (iconSizeSlider) {
+    currentSettings.iconSize = parseInt(iconSizeSlider.value, 10);
+  }
+
+  if (compactFileInfoToggle) {
+    currentSettings.compactFileInfo = compactFileInfoToggle.checked;
+  }
+
+  if (showFileExtensionsToggle) {
+    currentSettings.showFileExtensions = showFileExtensionsToggle.checked;
+  }
+
+  if (maxSearchHistoryInput) {
+    const val = parseInt(maxSearchHistoryInput.value, 10);
+    if (val >= 1 && val <= 20) {
+      currentSettings.maxSearchHistoryItems = val;
+    }
+  }
+
   currentSettings.viewMode = viewMode;
 
   const result = await window.electronAPI.saveSettings(currentSettings);
@@ -3659,6 +3774,44 @@ async function resetSettings() {
       showToast('Failed to reset settings: ' + result.error, 'Error', 'error');
     }
   }
+}
+
+function renderSidebarQuickAccess() {
+  const grid = document.getElementById('sidebar-quick-access-grid');
+  if (!grid) return;
+
+  grid.innerHTML = '';
+
+  const visibleItems = homeController.getVisibleSidebarQuickAccessItems();
+  const itemsByAction = new Map(HOME_QUICK_ACCESS_ITEMS.map((item) => [item.action, item]));
+
+  visibleItems.forEach((item) => {
+    const itemData = itemsByAction.get(item.action);
+    if (!itemData) return;
+
+    const div = document.createElement('div');
+    div.className = 'nav-item quick-action';
+    div.dataset.action = item.action;
+    div.setAttribute('role', 'button');
+    div.tabIndex = 0;
+    div.setAttribute('aria-label', `Navigate to ${item.label}`);
+
+    const icon = twemojiImg(String.fromCodePoint(item.icon), 'twemoji');
+    div.innerHTML = `
+      <span class="nav-icon" aria-hidden="true">${icon}</span>
+      <span class="nav-label">${escapeHtml(item.label)}</span>
+    `;
+
+    div.addEventListener('click', () => handleQuickAction(item.action));
+    div.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        handleQuickAction(item.action);
+      }
+    });
+
+    grid.appendChild(div);
+  });
 }
 
 function loadBookmarks() {
@@ -3891,6 +4044,16 @@ async function handleQuickAction(action?: string | null): Promise<void> {
     return;
   }
 
+  if (action === 'userhome') {
+    const homePath = await window.electronAPI.getHomeDirectory();
+    if (homePath) {
+      navigateTo(homePath);
+    } else {
+      showToast('Failed to open Home Folder', 'Quick Access', 'error');
+    }
+    return;
+  }
+
   const specialAction = SPECIAL_DIRECTORY_ACTIONS[action];
   if (specialAction) {
     const result = await window.electronAPI.getSpecialDirectory(specialAction.key);
@@ -4086,7 +4249,7 @@ function toggleSearchScope() {
     searchScopeToggle.title = 'Global Search (All Indexed Files)';
     const img = searchScopeToggle.querySelector('img');
     if (img) {
-      img.src = 'assets/twemoji/1f30d.svg';
+      img.src = '../assets/twemoji/1f30d.svg';
       img.alt = '🌍';
     }
   } else {
@@ -4094,7 +4257,7 @@ function toggleSearchScope() {
     searchScopeToggle.title = 'Local Search (Current Folder)';
     const img = searchScopeToggle.querySelector('img');
     if (img) {
-      img.src = 'assets/twemoji/1f4c1.svg';
+      img.src = '../assets/twemoji/1f4c1.svg';
       img.alt = '📁';
     }
   }
@@ -4254,7 +4417,7 @@ async function performSearch() {
   activeSearchOperationId = null;
 }
 
-function updateClipboardIndicator() {
+async function updateClipboardIndicator() {
   const indicator = document.getElementById('clipboard-indicator');
   const indicatorText = document.getElementById('clipboard-text');
   if (!indicator || !indicatorText) return;
@@ -4266,6 +4429,16 @@ function updateClipboardIndicator() {
     indicator.classList.toggle('cut-mode', clipboard.operation === 'cut');
     indicator.style.display = 'inline-flex';
   } else {
+    // check system clipboard
+    if (currentSettings.globalClipboard !== false) {
+      const systemFiles = await window.electronAPI.getSystemClipboardFiles();
+      if (systemFiles && systemFiles.length > 0) {
+        indicatorText.textContent = `${systemFiles.length} from system`;
+        indicator.classList.remove('cut-mode');
+        indicator.style.display = 'inline-flex';
+        return;
+      }
+    }
     indicator.style.display = 'none';
   }
 }
@@ -4315,12 +4488,39 @@ async function moveSelectedToFolder(): Promise<void> {
 }
 
 async function pasteFromClipboard() {
-  if (!clipboard || !currentPath) return;
+  if (!currentPath) return;
+
+  // fallback to system clipboard
+  if (!clipboard || clipboard.paths.length === 0) {
+    if (currentSettings.globalClipboard !== false) {
+      const systemFiles = await window.electronAPI.getSystemClipboardFiles();
+      if (systemFiles && systemFiles.length > 0) {
+        const result = await window.electronAPI.copyItems(
+          systemFiles,
+          currentPath,
+          currentSettings.fileConflictBehavior || 'ask'
+        );
+        if (result.success) {
+          showToast(
+            `${systemFiles.length} item(s) pasted from system clipboard`,
+            'Success',
+            'success'
+          );
+          refresh();
+        } else {
+          showToast(result.error || 'Paste failed', 'Error', 'error');
+        }
+        return;
+      }
+    }
+    return;
+  }
 
   const isCopy = clipboard.operation === 'copy';
+  const conflictBehavior = currentSettings.fileConflictBehavior || 'ask';
   const result = isCopy
-    ? await window.electronAPI.copyItems(clipboard.paths, currentPath)
-    : await window.electronAPI.moveItems(clipboard.paths, currentPath);
+    ? await window.electronAPI.copyItems(clipboard.paths, currentPath, conflictBehavior)
+    : await window.electronAPI.moveItems(clipboard.paths, currentPath, conflictBehavior);
 
   if (result.success) {
     showToast(
@@ -4922,6 +5122,7 @@ async function init() {
 
   await loadSettings();
   await homeController.loadHomeSettings();
+  renderSidebarQuickAccess();
 
   initTooltipSystem();
   initCommandPalette();
@@ -4933,7 +5134,7 @@ async function init() {
   const titlebarIcon = document.getElementById('titlebar-icon') as HTMLImageElement;
   if (titlebarIcon) {
     const isBeta = /-(beta|alpha|rc)/i.test(appVersion);
-    const iconSrc = isBeta ? 'assets/folder-beta.png' : 'assets/folder.png';
+    const iconSrc = isBeta ? '../assets/folder-beta.png' : '../assets/folder.png';
     titlebarIcon.src = iconSrc;
     console.log(`[Init] Version: ${appVersion}, isBeta: ${isBeta}, titlebar icon: ${iconSrc}`);
   }
@@ -4970,6 +5171,10 @@ async function init() {
     setupThemeEditorListeners();
     homeController.setupHomeSettingsListeners();
     loadBookmarks();
+
+    window.electronAPI.onHomeSettingsChanged(() => {
+      renderSidebarQuickAccess();
+    });
   });
 
   const isStoreVersion = mas || flatpak || msStore;
@@ -5564,13 +5769,15 @@ function setupEventListeners() {
     const dialogModal = document.getElementById('dialog-modal');
     const licensesModal = document.getElementById('licenses-modal');
     const quicklookModal = document.getElementById('quicklook-modal');
+    const homeSettingsModal = document.getElementById('home-settings-modal');
 
     return !!(
       (settingsModal && settingsModal.style.display === 'flex') ||
       (shortcutsModal && shortcutsModal.style.display === 'flex') ||
       (dialogModal && dialogModal.style.display === 'flex') ||
       (licensesModal && licensesModal.style.display === 'flex') ||
-      (quicklookModal && quicklookModal.style.display === 'flex')
+      (quicklookModal && quicklookModal.style.display === 'flex') ||
+      (homeSettingsModal && homeSettingsModal.style.display === 'flex')
     );
   }
 
@@ -5585,6 +5792,18 @@ function setupEventListeners() {
       const shortcutsModal = document.getElementById('shortcuts-modal');
       if (shortcutsModal && shortcutsModal.style.display === 'flex') {
         hideShortcutsModal();
+        return;
+      }
+
+      const licensesModal = document.getElementById('licenses-modal');
+      if (licensesModal && licensesModal.style.display === 'flex') {
+        hideLicensesModal();
+        return;
+      }
+
+      const homeSettingsModal = document.getElementById('home-settings-modal');
+      if (homeSettingsModal && homeSettingsModal.style.display === 'flex') {
+        homeController.closeHomeSettingsModal();
         return;
       }
 
@@ -5717,49 +5936,34 @@ function setupEventListeners() {
         pasteFromClipboard();
       } else if (e.key === 'f' || e.key === 'F') {
         e.preventDefault();
+        if (!isSearchMode) {
+          searchBarWrapper.style.display = 'block';
+          isSearchMode = true;
+        }
+
         if (e.shiftKey) {
           // Ctrl+Shift+F - Open search in global mode
-          if (!isSearchMode) {
-            searchBarWrapper.style.display = 'block';
-            isSearchMode = true;
-          }
-          // Always set to global search mode
           isGlobalSearch = true;
           searchScopeToggle.classList.add('global');
           searchScopeToggle.title = 'Global Search (All Indexed Files)';
           const img = searchScopeToggle.querySelector('img');
           if (img) {
-            img.src = 'assets/twemoji/1f30d.svg';
+            img.src = '../assets/twemoji/1f30d.svg';
             img.alt = '🌍';
           }
-          updateSearchPlaceholder();
-          searchInput.focus();
         } else {
-          if (!isSearchMode) {
-            searchBarWrapper.style.display = 'block';
-            isSearchMode = true;
-          }
-          const useGlobalSearch = isHomeViewPath(currentPath);
-          isGlobalSearch = useGlobalSearch;
+          // Ctrl+F - Open search in local/directory mode
+          isGlobalSearch = false;
+          searchScopeToggle.classList.remove('global');
+          searchScopeToggle.title = 'Local Search (Current Folder)';
           const img = searchScopeToggle.querySelector('img');
-          if (useGlobalSearch) {
-            searchScopeToggle.classList.add('global');
-            searchScopeToggle.title = 'Global Search (All Indexed Files)';
-            if (img) {
-              img.src = 'assets/twemoji/1f30d.svg';
-              img.alt = '🌍';
-            }
-          } else {
-            searchScopeToggle.classList.remove('global');
-            searchScopeToggle.title = 'Local Search (Current Folder)';
-            if (img) {
-              img.src = 'assets/twemoji/1f4c1.svg';
-              img.alt = '📁';
-            }
+          if (img) {
+            img.src = '../assets/twemoji/1f4c1.svg';
+            img.alt = '📁';
           }
-          updateSearchPlaceholder();
-          searchInput.focus();
         }
+        updateSearchPlaceholder();
+        searchInput.focus();
       } else if (e.key === 'a') {
         const activeElement = document.activeElement;
         if (
@@ -5830,16 +6034,6 @@ function setupEventListeners() {
       }
       e.preventDefault();
       goUp();
-    } else if (e.key === ' ' && selectedItems.size === 1) {
-      const activeElement = document.activeElement;
-      if (
-        activeElement &&
-        (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')
-      ) {
-        return;
-      }
-      e.preventDefault();
-      showQuickLook();
     } else if (e.key === 'F5') {
       e.preventDefault();
       refresh();
@@ -5943,18 +6137,6 @@ function setupEventListeners() {
       }
       handleTypeaheadInput(e.key);
     }
-  });
-
-  document.querySelectorAll('.nav-item[data-action]').forEach((element) => {
-    const item = element as HTMLElement;
-    const handleAction = () => handleQuickAction(item.dataset.action);
-    item.addEventListener('click', handleAction);
-    item.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        handleAction();
-      }
-    });
   });
 
   document.addEventListener('click', (e) => {
@@ -6198,7 +6380,10 @@ function addToSearchHistory(query: string) {
   }
   currentSettings.searchHistory = currentSettings.searchHistory.filter((item) => item !== query);
   currentSettings.searchHistory.unshift(query);
-  currentSettings.searchHistory = currentSettings.searchHistory.slice(0, SEARCH_HISTORY_MAX);
+  currentSettings.searchHistory = currentSettings.searchHistory.slice(
+    0,
+    currentSettings.maxSearchHistoryItems || 5
+  );
   debouncedSaveSettings();
 }
 
@@ -6665,11 +6850,12 @@ function renderFiles(items: FileItem[], searchQuery?: string) {
       case 'size':
         comparison = a.size - b.size;
         break;
-      case 'type':
+      case 'type': {
         const extA = extCache?.get(a) || '';
         const extB = extCache?.get(b) || '';
         comparison = NAME_COLLATOR.compare(extA, extB);
         break;
+      }
       default:
         comparison = NAME_COLLATOR.compare(a.name, b.name);
     }
@@ -6775,14 +6961,19 @@ function createFileItem(item: FileItem, searchQuery?: string): HTMLElement {
     icon = getFolderIcon(item.path);
   } else {
     const ext = item.name.split('.').pop()?.toLowerCase() || '';
-    if (IMAGE_EXTENSIONS.has(ext)) {
+    if (IMAGE_EXTENSIONS.has(ext) || RAW_EXTENSIONS.has(ext)) {
       fileItem.classList.add('has-thumbnail');
-      fileItem.dataset.thumbnailType = 'image';
+      fileItem.dataset.thumbnailType = RAW_EXTENSIONS.has(ext) ? 'raw' : 'image';
       icon = IMAGE_ICON;
       observeThumbnailItem(fileItem);
     } else if (VIDEO_EXTENSIONS.has(ext)) {
       fileItem.classList.add('has-thumbnail');
       fileItem.dataset.thumbnailType = 'video';
+      icon = getFileIcon(item.name);
+      observeThumbnailItem(fileItem);
+    } else if (AUDIO_EXTENSIONS.has(ext)) {
+      fileItem.classList.add('has-thumbnail');
+      fileItem.dataset.thumbnailType = 'audio';
       icon = getFileIcon(item.name);
       observeThumbnailItem(fileItem);
     } else {
@@ -6816,12 +7007,21 @@ function createFileItem(item: FileItem, searchQuery?: string): HTMLElement {
     matchContextHtml = `<div class="match-context">${highlightedContext}${lineInfo}</div>`;
   }
 
+  // Handle file extension display
+  let displayName = item.name;
+  if (currentSettings.showFileExtensions === false && !item.isDirectory) {
+    const lastDot = item.name.lastIndexOf('.');
+    if (lastDot > 0) {
+      displayName = item.name.substring(0, lastDot);
+    }
+  }
+
   fileItem.innerHTML = `
     <div class="file-main">
       <div class="file-checkbox"><span class="checkbox-mark">✓</span></div>
       <div class="file-icon">${icon}</div>
       <div class="file-text">
-        <div class="file-name">${escapeHtml(item.name)}</div>
+        <div class="file-name">${escapeHtml(displayName)}</div>
         ${matchContextHtml}
       </div>
     </div>
@@ -6985,6 +7185,34 @@ function clearSpringLoad(target?: HTMLElement): void {
 function setupFileGridEventDelegation(): void {
   if (!fileGrid || fileGridDelegationReady) return;
   fileGridDelegationReady = true;
+
+  fileGrid.addEventListener(
+    'mouseenter',
+    (e) => {
+      const target = e.target;
+      if (!(target instanceof HTMLImageElement)) return;
+      if (target.dataset.animated !== 'true') return;
+      const animatedSrc = target.dataset.animatedSrc;
+      if (animatedSrc && target.src !== animatedSrc) {
+        target.src = animatedSrc;
+      }
+    },
+    true
+  );
+
+  fileGrid.addEventListener(
+    'mouseleave',
+    (e) => {
+      const target = e.target;
+      if (!(target instanceof HTMLImageElement)) return;
+      if (target.dataset.animated !== 'true') return;
+      const staticSrc = target.dataset.staticSrc;
+      if (staticSrc && target.src !== staticSrc) {
+        target.src = staticSrc;
+      }
+    },
+    true
+  );
 
   fileGrid.addEventListener('click', (e) => {
     const fileItem = getFileItemElement(e.target);
@@ -7180,7 +7408,13 @@ function generateVideoThumbnail(videoUrl: string): Promise<string> {
         const ctx = canvas.getContext('2d');
         if (ctx) {
           ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-          const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+          const quality =
+            currentSettings.thumbnailQuality === 'low'
+              ? 0.5
+              : currentSettings.thumbnailQuality === 'high'
+                ? 0.9
+                : 0.7;
+          const dataUrl = canvas.toDataURL('image/jpeg', quality);
           cleanup();
           resolve(dataUrl);
         } else {
@@ -7207,24 +7441,88 @@ function generateVideoThumbnail(videoUrl: string): Promise<string> {
   });
 }
 
+async function generateAudioWaveform(audioUrl: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 160;
+    canvas.height = 160;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      reject(new Error('Cannot get canvas context'));
+      return;
+    }
+
+    const audioContext = new AudioContext();
+
+    fetch(audioUrl)
+      .then((response) => response.arrayBuffer())
+      .then((arrayBuffer) => audioContext.decodeAudioData(arrayBuffer))
+      .then((audioBuffer) => {
+        const rawData = audioBuffer.getChannelData(0);
+        const samples = 80;
+        const blockSize = Math.floor(rawData.length / samples);
+        const filteredData: number[] = [];
+
+        for (let i = 0; i < samples; i++) {
+          const blockStart = blockSize * i;
+          let sum = 0;
+          for (let j = 0; j < blockSize; j++) {
+            sum += Math.abs(rawData[blockStart + j]);
+          }
+          filteredData.push(sum / blockSize);
+        }
+
+        const maxVal = Math.max(...filteredData);
+        const normalizedData = filteredData.map((d) => d / maxVal);
+
+        ctx.fillStyle = 'rgba(30, 30, 40, 0.8)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        const barWidth = canvas.width / samples;
+        const centerY = canvas.height / 2;
+
+        ctx.fillStyle = 'rgba(99, 179, 237, 0.8)';
+        normalizedData.forEach((value, index) => {
+          const barHeight = value * (canvas.height * 0.4);
+          const x = index * barWidth;
+          ctx.fillRect(x, centerY - barHeight, barWidth - 1, barHeight * 2);
+        });
+
+        ctx.fillStyle = 'rgba(99, 179, 237, 0.4)';
+        ctx.beginPath();
+        ctx.arc(canvas.width / 2, canvas.height / 2, 25, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+        ctx.beginPath();
+        ctx.moveTo(canvas.width / 2 - 8, canvas.height / 2 - 12);
+        ctx.lineTo(canvas.width / 2 + 12, canvas.height / 2);
+        ctx.lineTo(canvas.width / 2 - 8, canvas.height / 2 + 12);
+        ctx.closePath();
+        ctx.fill();
+
+        audioContext.close();
+        const quality =
+          currentSettings.thumbnailQuality === 'low'
+            ? 0.5
+            : currentSettings.thumbnailQuality === 'high'
+              ? 0.9
+              : 0.7;
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      })
+      .catch((error) => {
+        audioContext.close();
+        reject(error);
+      });
+  });
+}
+
 function loadThumbnail(fileItem: HTMLElement, item: FileItem) {
   const cached = thumbnailCache.get(item.path);
   if (cached) {
     const iconDiv = fileItem.querySelector('.file-icon');
     if (iconDiv) {
-      iconDiv.innerHTML = '';
-      const img = document.createElement('img');
-      img.src = cached;
-      img.className = 'file-thumbnail';
-      img.alt = item.name;
-      img.addEventListener('error', () => {
-        if (!document.body.contains(fileItem)) {
-          return;
-        }
-        iconDiv.innerHTML = getFileIcon(item.name);
-        fileItem.classList.remove('has-thumbnail');
-      });
-      iconDiv.appendChild(img);
+      renderThumbnailImage(iconDiv as HTMLElement, cached, item, fileItem);
     }
     return;
   }
@@ -7243,11 +7541,24 @@ function loadThumbnail(fileItem: HTMLElement, item: FileItem) {
         iconDiv.innerHTML = `<div class="spinner" style="width: 30px; height: 30px; border-width: 2px;"></div>`;
       }
 
-      if (item.size > THUMBNAIL_MAX_SIZE) {
+      if (
+        thumbnailType !== 'audio' &&
+        item.size > (currentSettings.maxThumbnailSizeMB || 10) * 1024 * 1024
+      ) {
         if (iconDiv) {
           iconDiv.innerHTML = getFileIcon(item.name);
         }
         fileItem.classList.remove('has-thumbnail');
+        return;
+      }
+
+      const diskCacheResult = await window.electronAPI.getCachedThumbnail(item.path);
+      if (diskCacheResult.success && diskCacheResult.dataUrl) {
+        if (!document.body.contains(fileItem)) return;
+        cacheThumbnail(item.path, diskCacheResult.dataUrl);
+        if (iconDiv) {
+          renderThumbnailImage(iconDiv as HTMLElement, diskCacheResult.dataUrl, item, fileItem);
+        }
         return;
       }
 
@@ -7258,10 +7569,23 @@ function loadThumbnail(fileItem: HTMLElement, item: FileItem) {
       }
 
       let thumbnailUrl = fileUrl;
+      let shouldCacheToDisk = false;
 
       if (thumbnailType === 'video') {
         try {
           thumbnailUrl = await generateVideoThumbnail(fileUrl);
+          shouldCacheToDisk = true;
+        } catch {
+          if (iconDiv) {
+            iconDiv.innerHTML = getFileIcon(item.name);
+          }
+          fileItem.classList.remove('has-thumbnail');
+          return;
+        }
+      } else if (thumbnailType === 'audio') {
+        try {
+          thumbnailUrl = await generateAudioWaveform(fileUrl);
+          shouldCacheToDisk = true;
         } catch {
           if (iconDiv) {
             iconDiv.innerHTML = getFileIcon(item.name);
@@ -7276,26 +7600,14 @@ function loadThumbnail(fileItem: HTMLElement, item: FileItem) {
       }
 
       if (iconDiv) {
-        if (thumbnailCache.size >= THUMBNAIL_CACHE_MAX) {
-          const firstKey = thumbnailCache.keys().next().value;
-          if (firstKey) thumbnailCache.delete(firstKey);
+        cacheThumbnail(item.path, thumbnailUrl);
+        renderThumbnailImage(iconDiv as HTMLElement, thumbnailUrl, item, fileItem);
+
+        if (shouldCacheToDisk && thumbnailUrl.startsWith('data:')) {
+          window.electronAPI.saveCachedThumbnail(item.path, thumbnailUrl).catch(() => {});
         }
-        thumbnailCache.set(item.path, thumbnailUrl);
-        iconDiv.innerHTML = '';
-        const img = document.createElement('img');
-        img.src = thumbnailUrl;
-        img.className = 'file-thumbnail';
-        img.alt = item.name;
-        img.addEventListener('error', () => {
-          if (!document.body.contains(fileItem)) {
-            return;
-          }
-          iconDiv.innerHTML = getFileIcon(item.name);
-          fileItem.classList.remove('has-thumbnail');
-        });
-        iconDiv.appendChild(img);
       }
-    } catch (error) {
+    } catch {
       if (!document.body.contains(fileItem)) {
         return;
       }
@@ -7306,6 +7618,43 @@ function loadThumbnail(fileItem: HTMLElement, item: FileItem) {
       fileItem.classList.remove('has-thumbnail');
     }
   });
+}
+
+function cacheThumbnail(path: string, url: string): void {
+  if (thumbnailCache.size >= THUMBNAIL_CACHE_MAX) {
+    const firstKey = thumbnailCache.keys().next().value;
+    if (firstKey) thumbnailCache.delete(firstKey);
+  }
+  thumbnailCache.set(path, url);
+}
+
+function renderThumbnailImage(
+  iconDiv: HTMLElement,
+  thumbnailUrl: string,
+  item: FileItem,
+  fileItem: HTMLElement
+): void {
+  iconDiv.innerHTML = '';
+  const img = document.createElement('img');
+  img.src = thumbnailUrl;
+  img.className = 'file-thumbnail';
+  img.alt = item.name;
+
+  const ext = item.name.split('.').pop()?.toLowerCase() || '';
+  if (ANIMATED_IMAGE_EXTENSIONS.has(ext)) {
+    img.dataset.animated = 'true';
+    img.dataset.staticSrc = thumbnailUrl;
+    img.dataset.animatedSrc = encodeFileUrl(item.path);
+  }
+
+  img.addEventListener('error', () => {
+    if (!document.body.contains(fileItem)) {
+      return;
+    }
+    iconDiv.innerHTML = getFileIcon(item.name);
+    fileItem.classList.remove('has-thumbnail');
+  });
+  iconDiv.appendChild(img);
 }
 
 const FILE_ICON_MAP: Record<string, string> = {
@@ -7367,6 +7716,16 @@ const FILE_ICON_MAP: Record<string, string> = {
   app: '2699',
   msi: '2699',
   dmg: '2699',
+  cr2: '1f4f7',
+  cr3: '1f4f7',
+  nef: '1f4f7',
+  arw: '1f4f7',
+  dng: '1f4f7',
+  orf: '1f4f7',
+  rw2: '1f4f7',
+  pef: '1f4f7',
+  srw: '1f4f7',
+  raf: '1f4f7',
 };
 
 const IMAGE_EXTENSIONS = new Set([
@@ -7383,6 +7742,19 @@ const IMAGE_EXTENSIONS = new Set([
   'jfif',
   'svg',
 ]);
+const RAW_EXTENSIONS = new Set([
+  'cr2',
+  'cr3',
+  'nef',
+  'arw',
+  'dng',
+  'orf',
+  'rw2',
+  'pef',
+  'srw',
+  'raf',
+]);
+const ANIMATED_IMAGE_EXTENSIONS = new Set(['gif', 'webp', 'apng']);
 const VIDEO_EXTENSIONS = new Set(['mp4', 'webm', 'ogg', 'mov', 'mkv', 'avi', 'm4v']);
 const AUDIO_EXTENSIONS = new Set(['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac', 'wma', 'opus']);
 const PDF_EXTENSIONS = new Set(['pdf']);
@@ -7529,10 +7901,11 @@ async function handleDrop(
   operation: 'copy' | 'move'
 ): Promise<void> {
   try {
+    const conflictBehavior = currentSettings.fileConflictBehavior || 'ask';
     const result =
       operation === 'copy'
-        ? await window.electronAPI.copyItems(sourcePaths, destPath)
-        : await window.electronAPI.moveItems(sourcePaths, destPath);
+        ? await window.electronAPI.copyItems(sourcePaths, destPath, conflictBehavior)
+        : await window.electronAPI.moveItems(sourcePaths, destPath, conflictBehavior);
 
     if (result.success) {
       showToast(
@@ -7699,7 +8072,6 @@ function navigateByPage(direction: 'up' | 'down', shiftKey: boolean) {
   const fileGrid = document.getElementById('file-grid');
   if (!fileGrid) return;
 
-  // Calculate how many items fit in a "page" based on grid height
   const columns = getGridColumns();
   const gridRect = fileGrid.getBoundingClientRect();
   const firstItem = fileItems[0];
@@ -7791,34 +8163,37 @@ async function deleteSelected() {
   if (selectedItems.size === 0) return;
 
   const count = selectedItems.size;
-  const confirmed = await showConfirm(
-    `Move ${count} item${count > 1 ? 's' : ''} to ${platformOS === 'win32' ? 'Recycle Bin' : 'Trash'}?`,
-    'Move to Trash',
-    'warning'
-  );
 
-  if (confirmed) {
-    let successCount = 0;
-    for (const itemPath of selectedItems) {
-      const result = await window.electronAPI.trashItem(itemPath);
-      if (result.success) successCount++;
-    }
+  if (currentSettings.confirmFileOperations !== false) {
+    const confirmed = await showConfirm(
+      `Move ${count} item${count > 1 ? 's' : ''} to ${platformOS === 'win32' ? 'Recycle Bin' : 'Trash'}?`,
+      'Move to Trash',
+      'warning'
+    );
+    if (!confirmed) return;
+  }
 
-    if (successCount > 0) {
-      showToast(
-        `${successCount} item${successCount > 1 ? 's' : ''} moved to ${platformOS === 'win32' ? 'Recycle Bin' : 'Trash'}`,
-        'Success',
-        'success'
-      );
-      await updateUndoRedoState();
-      refresh();
-    }
+  let successCount = 0;
+  for (const itemPath of selectedItems) {
+    const result = await window.electronAPI.trashItem(itemPath);
+    if (result.success) successCount++;
+  }
+
+  if (successCount > 0) {
+    showToast(
+      `${successCount} item${successCount > 1 ? 's' : ''} moved to ${platformOS === 'win32' ? 'Recycle Bin' : 'Trash'}`,
+      'Success',
+      'success'
+    );
+    await updateUndoRedoState();
+    refresh();
   }
 }
 
 async function permanentlyDeleteSelected() {
   if (selectedItems.size === 0) return;
 
+  // warn about permanent delete
   const count = selectedItems.size;
   const confirmed = await showConfirm(
     `${twemojiImg(String.fromCodePoint(0x26a0), 'twemoji')} PERMANENTLY delete ${count} item${count > 1 ? 's' : ''}? This CANNOT be undone!`,
@@ -8130,7 +8505,7 @@ async function renderDriveColumn() {
       item.dataset.path = drive.path;
       item.title = drive.path;
       item.innerHTML = `
-        <span class="column-item-icon"><img src="assets/twemoji/1f4bf.svg" class="twemoji" alt="💿" draggable="false" /></span>
+        <span class="column-item-icon"><img src="../assets/twemoji/1f4bf.svg" class="twemoji" alt="💿" draggable="false" /></span>
         <span class="column-item-name">${escapeHtml(drive.label || drive.path)}</span>
         <span class="column-item-arrow">▸</span>
       `;
@@ -8274,7 +8649,7 @@ async function renderColumn(
         }
 
         const icon = fileItem.isDirectory
-          ? '<img src="assets/twemoji/1f4c1.svg" class="twemoji" alt="📁" draggable="false" />'
+          ? '<img src="../assets/twemoji/1f4c1.svg" class="twemoji" alt="📁" draggable="false" />'
           : getFileIcon(fileItem.name);
 
         item.innerHTML = `
@@ -8420,7 +8795,7 @@ async function handleColumnItemClick(
   element: HTMLElement,
   path: string,
   isDirectory: boolean,
-  columnIndex: number
+  _columnIndex: number
 ) {
   const currentPane = element.closest('.column-pane');
   if (!currentPane) return;
@@ -8725,6 +9100,7 @@ function showContextMenu(x: number, y: number, item: FileItem) {
   hideEmptySpaceContextMenu();
 
   contextMenuData = item;
+  contextMenuFocusedIndex = -1;
 
   if (addToBookmarksItem) {
     if (item.isDirectory) {
@@ -8902,6 +9278,7 @@ function showEmptySpaceContextMenu(x: number, y: number) {
 
   hideContextMenu();
 
+  emptySpaceMenuFocusedIndex = -1;
   emptySpaceContextMenu.style.display = 'block';
 
   const menuRect = emptySpaceContextMenu.getBoundingClientRect();
@@ -8953,12 +9330,13 @@ async function handleEmptySpaceContextMenuAction(action: string | undefined) {
       await navigateTo(currentPath);
       break;
 
-    case 'open-terminal':
+    case 'open-terminal': {
       const terminalResult = await window.electronAPI.openTerminal(currentPath);
       if (!terminalResult.success) {
         showToast(terminalResult.error || 'Failed to open terminal', 'Error', 'error');
       }
       break;
+    }
   }
 
   hideEmptySpaceContextMenu();
@@ -8979,7 +9357,7 @@ async function handleContextMenuAction(
       }
       break;
 
-    case 'rename':
+    case 'rename': {
       const fileItems = document.querySelectorAll('.file-item');
       for (const fileItem of Array.from(fileItems)) {
         if ((fileItem as HTMLElement).dataset.path === item.path) {
@@ -8988,6 +9366,7 @@ async function handleContextMenuAction(
         }
       }
       break;
+    }
 
     case 'copy':
       copyToClipboard();
@@ -9001,7 +9380,7 @@ async function handleContextMenuAction(
       try {
         await navigator.clipboard.writeText(item.path);
         showToast('File path copied to clipboard', 'Success', 'success');
-      } catch (error) {
+      } catch {
         showToast('Failed to copy file path', 'Error', 'error');
       }
       break;
@@ -9018,15 +9397,16 @@ async function handleContextMenuAction(
       }
       break;
 
-    case 'open-terminal':
+    case 'open-terminal': {
       const terminalPath = item.isDirectory ? item.path : path.dirname(item.path);
       const terminalResult = await window.electronAPI.openTerminal(terminalPath);
       if (!terminalResult.success) {
         showToast(terminalResult.error || 'Failed to open terminal', 'Error', 'error');
       }
       break;
+    }
 
-    case 'properties':
+    case 'properties': {
       const propsResult = await window.electronAPI.getItemProperties(item.path);
       if (propsResult.success && propsResult.properties) {
         showPropertiesDialog(propsResult.properties);
@@ -9034,6 +9414,7 @@ async function handleContextMenuAction(
         showToast(propsResult.error || 'Unknown error', 'Error Getting Properties', 'error');
       }
       break;
+    }
 
     case 'delete':
       await deleteSelected();
@@ -9333,6 +9714,7 @@ function showPropertiesDialog(props: ItemProperties) {
   content.innerHTML = html;
   modal.style.display = 'flex';
 
+  // cancel active calculations on close
   const cleanup = () => {
     if (folderSizeActive) {
       window.electronAPI.cancelFolderSizeCalculation(folderSizeOperationId);
@@ -9578,20 +9960,6 @@ async function restartAsAdmin() {
       );
     }
   }
-}
-
-function stripHtmlTags(html: string): string {
-  let text = html.replace(/<[^>]*>/g, '');
-  text = text
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&amp;/g, '&')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'");
-  text = text.replace(/!\[.*?\]\(.*?\)/g, '');
-  text = text.replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1');
-  text = text.replace(/\n\s*\n\s*\n/g, '\n\n').trim();
-  return text;
 }
 
 async function checkForUpdates() {
@@ -9928,6 +10296,14 @@ document.getElementById('settings-search')?.addEventListener('input', (e) => {
   }
 });
 
+document.getElementById('icon-size-slider')?.addEventListener('input', (e) => {
+  const value = (e.target as HTMLInputElement).value;
+  const valueDisplay = document.getElementById('icon-size-value');
+  if (valueDisplay) {
+    valueDisplay.textContent = value;
+  }
+});
+
 // Export
 document.getElementById('export-settings-btn')?.addEventListener('click', async () => {
   try {
@@ -9942,7 +10318,7 @@ document.getElementById('export-settings-btn')?.addEventListener('click', async 
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
     showToast('Settings exported successfully', 'Export', 'success');
-  } catch (error) {
+  } catch {
     showToast('Failed to export settings', 'Export', 'error');
   }
 });
@@ -10097,7 +10473,7 @@ document.getElementById('import-settings-btn')?.addEventListener('click', () => 
         'Import',
         'success'
       );
-    } catch (error) {
+    } catch {
       showToast('Failed to import settings: Invalid file format', 'Import', 'error');
     }
   };
@@ -10120,6 +10496,38 @@ document.getElementById('clear-bookmarks-btn')?.addEventListener('click', async 
     showToast('Bookmarks cleared', 'Data', 'success');
   }
 });
+
+document.getElementById('clear-thumbnail-cache-btn')?.addEventListener('click', async () => {
+  if (confirm('Are you sure you want to clear the thumbnail cache?')) {
+    const result = await window.electronAPI.clearThumbnailCache();
+    if (result.success) {
+      thumbnailCache.clear();
+      showToast('Thumbnail cache cleared', 'Data', 'success');
+      updateThumbnailCacheSize();
+    } else {
+      showToast('Failed to clear cache', 'Error', 'error');
+    }
+  }
+});
+
+document.getElementById('open-logs-btn')?.addEventListener('click', async () => {
+  const result = await window.electronAPI.openLogsFolder();
+  if (!result.success) {
+    showToast(result.error || 'Failed to open logs folder', 'Error', 'error');
+  }
+});
+
+async function updateThumbnailCacheSize(): Promise<void> {
+  const sizeElement = document.getElementById('thumbnail-cache-size');
+  if (!sizeElement) return;
+
+  const result = await window.electronAPI.getThumbnailCacheSize();
+  if (result.success && typeof result.sizeBytes === 'number') {
+    sizeElement.textContent = `(${formatFileSize(result.sizeBytes)}, ${result.fileCount} files)`;
+  } else {
+    sizeElement.textContent = '';
+  }
+}
 
 document.getElementById('about-github-btn')?.addEventListener('click', () => {
   window.electronAPI.openFile('https://github.com/BurntToasters/IYERIS');
@@ -10145,12 +10553,9 @@ document.getElementById('about-twemoji-link')?.addEventListener('click', (e) => 
   window.electronAPI.openFile('https://github.com/jdecked/twemoji');
 });
 
-// Unsaved changes
-let hasUnsavedChanges = false;
 let themeDropdownChanged = false;
 
 function markSettingsChanged() {
-  hasUnsavedChanges = true;
   const indicator = document.querySelector('.settings-unsaved-indicator');
   if (indicator) {
     indicator.classList.add('visible');
@@ -10158,7 +10563,6 @@ function markSettingsChanged() {
 }
 
 function clearSettingsChanged() {
-  hasUnsavedChanges = false;
   themeDropdownChanged = false;
   const indicator = document.querySelector('.settings-unsaved-indicator');
   if (indicator) {
@@ -10320,6 +10724,8 @@ function updatePreview(file: FileItem) {
 
   if (IMAGE_EXTENSIONS.has(ext)) {
     showImagePreview(file, requestId);
+  } else if (RAW_EXTENSIONS.has(ext)) {
+    showRawImagePreview(file, requestId);
   } else if (TEXT_EXTENSIONS.has(ext)) {
     showTextPreview(file, requestId);
   } else if (VIDEO_EXTENSIONS.has(ext)) {
@@ -10417,7 +10823,7 @@ async function showImagePreview(file: FileItem, requestId: number) {
     </div>
   `;
 
-  if (file.size > THUMBNAIL_MAX_SIZE) {
+  if (file.size > (currentSettings.maxPreviewSizeMB || 50) * 1024 * 1024) {
     if (requestId !== previewRequestId) return;
     previewContent.innerHTML = `
       <div class="preview-error">
@@ -10451,6 +10857,41 @@ async function showImagePreview(file: FileItem, requestId: number) {
       `;
     });
   }
+}
+
+async function showRawImagePreview(file: FileItem, requestId: number) {
+  if (!previewContent || requestId !== previewRequestId) return;
+
+  const props = await window.electronAPI.getItemProperties(file.path);
+  if (requestId !== previewRequestId) return;
+  const info = props.success && props.properties ? props.properties : null;
+
+  const ext = file.name.split('.').pop()?.toUpperCase() || 'RAW';
+  const cameraFormats: Record<string, string> = {
+    CR2: 'Canon',
+    CR3: 'Canon',
+    NEF: 'Nikon',
+    ARW: 'Sony',
+    DNG: 'Adobe DNG',
+    ORF: 'Olympus',
+    RW2: 'Panasonic',
+    PEF: 'Pentax',
+    SRW: 'Samsung',
+    RAF: 'Fujifilm',
+  };
+  const brand = cameraFormats[ext] || 'Camera';
+
+  previewContent.innerHTML = `
+    <div class="preview-raw-info">
+      <div class="preview-raw-icon">${twemojiImg(String.fromCodePoint(0x1f4f7), 'twemoji-xlarge')}</div>
+      <div class="preview-raw-details">
+        <strong>${ext} RAW Image</strong>
+        <p>${brand} RAW format</p>
+        <p class="preview-raw-note">RAW preview not available in browser.<br>Use a photo editor to view this file.</p>
+      </div>
+    </div>
+    ${generateFileInfo(file, info)}
+  `;
 }
 
 let hljs: any = null;
@@ -10521,7 +10962,7 @@ async function loadHighlightJs(): Promise<any> {
     if (!existingLink) {
       const link = document.createElement('link');
       link.rel = 'stylesheet';
-      link.href = 'dist/vendor/highlight.css';
+      link.href = '../dist/vendor/highlight.css';
       link.dataset.highlightjs = 'theme';
       document.head.appendChild(link);
     }
@@ -10544,7 +10985,7 @@ async function loadHighlightJs(): Promise<any> {
     }
 
     const script = document.createElement('script');
-    script.src = 'dist/vendor/highlight.js';
+    script.src = '../dist/vendor/highlight.js';
     script.dataset.highlightjs = 'core';
     script.onload = () => {
       hljs = (window as any).hljs || null;
@@ -10606,6 +11047,17 @@ async function showTextPreview(file: FileItem, requestId: number) {
 async function showVideoPreview(file: FileItem, requestId: number) {
   if (!previewContent || requestId !== previewRequestId) return;
 
+  const maxSizeMB = currentSettings.maxPreviewSizeMB || 50;
+  if (file.size > maxSizeMB * 1024 * 1024) {
+    previewContent.innerHTML = `
+      <div class="preview-error">
+        Video file too large to preview (>${maxSizeMB}MB)
+      </div>
+      ${generateFileInfo(file, null)}
+    `;
+    return;
+  }
+
   const props = await window.electronAPI.getItemProperties(file.path);
   if (requestId !== previewRequestId) return;
   const info = props.success && props.properties ? props.properties : null;
@@ -10613,7 +11065,7 @@ async function showVideoPreview(file: FileItem, requestId: number) {
   const fileUrl = encodeFileUrl(file.path);
 
   previewContent.innerHTML = `
-    <video src="${fileUrl}" class="preview-video" controls controlsList="nodownload">
+    <video src="${fileUrl}" class="preview-video" controls controlsList="nodownload" ${currentSettings.autoPlayVideos ? 'autoplay' : ''}>
       Your browser does not support the video tag.
     </video>
     ${generateFileInfo(file, info)}
@@ -10642,6 +11094,17 @@ async function showAudioPreview(file: FileItem, requestId: number) {
 
 async function showPdfPreview(file: FileItem, requestId: number) {
   if (!previewContent || requestId !== previewRequestId) return;
+
+  const maxSizeMB = currentSettings.maxPreviewSizeMB || 50;
+  if (file.size > maxSizeMB * 1024 * 1024) {
+    previewContent.innerHTML = `
+      <div class="preview-error">
+        PDF file too large to preview (>${maxSizeMB}MB)
+      </div>
+      ${generateFileInfo(file, null)}
+    `;
+    return;
+  }
 
   const props = await window.electronAPI.getItemProperties(file.path);
   if (requestId !== previewRequestId) return;
@@ -10758,7 +11221,7 @@ async function showQuickLook() {
   `;
 
   if (IMAGE_EXTENSIONS.has(ext)) {
-    if (file.size > THUMBNAIL_MAX_SIZE) {
+    if (file.size > (currentSettings.maxThumbnailSizeMB || 10) * 1024 * 1024) {
       quicklookContent.innerHTML = `<div class="preview-error">Image too large to preview</div>`;
       quicklookInfo.textContent = `${formatFileSize(file.size)} • ${new Date(file.modified).toLocaleDateString()}`;
     } else {
@@ -10781,7 +11244,7 @@ async function showQuickLook() {
     quicklookContent.innerHTML = '';
     const video = document.createElement('video');
     video.controls = true;
-    video.autoplay = true;
+    video.autoplay = currentSettings.autoPlayVideos || false;
     video.className = 'preview-video';
     const source = document.createElement('source');
     source.src = fileUrl;
@@ -10800,7 +11263,7 @@ async function showQuickLook() {
     icon.innerHTML = twemojiImg(String.fromCodePoint(0x1f3b5), 'twemoji-large');
     const audio = document.createElement('audio');
     audio.controls = true;
-    audio.autoplay = true;
+    audio.autoplay = currentSettings.autoPlayVideos || false;
     audio.className = 'preview-audio';
     const source = document.createElement('source');
     source.src = fileUrl;
@@ -10908,12 +11371,14 @@ document.addEventListener('keydown', (e) => {
     const shortcutsModal = document.getElementById('shortcuts-modal');
     const dialogModal = document.getElementById('dialog-modal');
     const licensesModal = document.getElementById('licenses-modal');
+    const homeSettingsModal = document.getElementById('home-settings-modal');
 
     if (
       (settingsModal && settingsModal.style.display === 'flex') ||
       (shortcutsModal && shortcutsModal.style.display === 'flex') ||
       (dialogModal && dialogModal.style.display === 'flex') ||
-      (licensesModal && licensesModal.style.display === 'flex')
+      (licensesModal && licensesModal.style.display === 'flex') ||
+      (homeSettingsModal && homeSettingsModal.style.display === 'flex')
     ) {
       return;
     }
@@ -10936,15 +11401,6 @@ if (searchInput) {
       showSearchHistoryDropdown();
     }
   });
-
-  searchInput.addEventListener('blur', (e) => {
-    setTimeout(() => {
-      const searchDropdown = document.getElementById('search-history-dropdown');
-      if (searchDropdown && !searchDropdown.matches(':hover')) {
-        hideSearchHistoryDropdown();
-      }
-    }, 150);
-  });
 }
 
 if (addressInput) {
@@ -10953,19 +11409,26 @@ if (addressInput) {
       showDirectoryHistoryDropdown();
     }
   });
-
-  addressInput.addEventListener('blur', (e) => {
-    setTimeout(() => {
-      const directoryDropdown = document.getElementById('directory-history-dropdown');
-      if (directoryDropdown && !directoryDropdown.matches(':hover')) {
-        hideDirectoryHistoryDropdown();
-      }
-    }, 150);
-  });
 }
 
 document.addEventListener('mousedown', (e) => {
   const target = e.target as HTMLElement;
+
+  // Close dropdowns when clicking outside of them and their inputs
+  const searchDropdown = document.getElementById('search-history-dropdown');
+  const directoryDropdown = document.getElementById('directory-history-dropdown');
+
+  const isClickInsideSearchDropdown = searchDropdown?.contains(target);
+  const isClickInsideDirectoryDropdown = directoryDropdown?.contains(target);
+  const isClickOnSearchInput = searchInput?.contains(target);
+  const isClickOnAddressInput = addressInput?.contains(target);
+
+  if (!isClickInsideSearchDropdown && !isClickOnSearchInput) {
+    hideSearchHistoryDropdown();
+  }
+  if (!isClickInsideDirectoryDropdown && !isClickOnAddressInput) {
+    hideDirectoryHistoryDropdown();
+  }
 
   if (target.classList.contains('history-item') && target.dataset.query) {
     e.preventDefault();

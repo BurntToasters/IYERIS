@@ -6,7 +6,6 @@ import type {
   UpdateDownloadProgress,
   UpdateInfo,
   FolderSizeProgress,
-  ChecksumResult,
   SearchFilters,
   DirectoryContentsProgress,
   SpecialDirectory,
@@ -57,6 +56,7 @@ const electronAPI: ElectronAPI = {
   setClipboard: (clipboardData: { operation: 'copy' | 'cut'; paths: string[] } | null) =>
     ipcRenderer.invoke('set-clipboard', clipboardData),
   getClipboard: () => ipcRenderer.invoke('get-clipboard'),
+  getSystemClipboardFiles: () => ipcRenderer.invoke('get-system-clipboard-files'),
   onClipboardChanged: (
     callback: (clipboardData: { operation: 'copy' | 'cut'; paths: string[] } | null) => void
   ) => {
@@ -86,10 +86,12 @@ const electronAPI: ElectronAPI = {
     return () => ipcRenderer.removeListener('home-settings-changed', handler);
   },
 
-  copyItems: (sourcePaths: string[], destPath: string) =>
-    ipcRenderer.invoke('copy-items', sourcePaths, destPath),
-  moveItems: (sourcePaths: string[], destPath: string) =>
-    ipcRenderer.invoke('move-items', sourcePaths, destPath),
+  copyItems: (sourcePaths: string[], destPath: string, conflictBehavior?: string) =>
+    ipcRenderer.invoke('copy-items', sourcePaths, destPath, conflictBehavior),
+  moveItems: (sourcePaths: string[], destPath: string, conflictBehavior?: string) =>
+    ipcRenderer.invoke('move-items', sourcePaths, destPath, conflictBehavior),
+  showConflictDialog: (fileName: string, operation: 'copy' | 'move') =>
+    ipcRenderer.invoke('show-conflict-dialog', fileName, operation),
   searchFiles: (dirPath: string, query: string, filters?: SearchFilters, operationId?: string) =>
     ipcRenderer.invoke('search-files', dirPath, query, filters, operationId),
   searchFilesWithContent: (
@@ -103,6 +105,13 @@ const electronAPI: ElectronAPI = {
   openTerminal: (dirPath: string) => ipcRenderer.invoke('open-terminal', dirPath),
   getDiskSpace: (drivePath: string) => ipcRenderer.invoke('get-disk-space', drivePath),
   restartAsAdmin: () => ipcRenderer.invoke('restart-as-admin'),
+  elevatedCopy: (sourcePath: string, destPath: string) =>
+    ipcRenderer.invoke('elevated-copy', sourcePath, destPath),
+  elevatedMove: (sourcePath: string, destPath: string) =>
+    ipcRenderer.invoke('elevated-move', sourcePath, destPath),
+  elevatedDelete: (itemPath: string) => ipcRenderer.invoke('elevated-delete', itemPath),
+  elevatedRename: (itemPath: string, newName: string) =>
+    ipcRenderer.invoke('elevated-rename', itemPath, newName),
   readFileContent: (filePath: string, maxSize?: number) =>
     ipcRenderer.invoke('read-file-content', filePath, maxSize),
   getFileDataUrl: (filePath: string, maxSize?: number) =>
@@ -234,6 +243,16 @@ const electronAPI: ElectronAPI = {
   listArchiveContents: (archivePath: string) =>
     ipcRenderer.invoke('list-archive-contents', archivePath),
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
+
+  getCachedThumbnail: (filePath: string) => ipcRenderer.invoke('get-cached-thumbnail', filePath),
+  saveCachedThumbnail: (filePath: string, dataUrl: string) =>
+    ipcRenderer.invoke('save-cached-thumbnail', filePath, dataUrl),
+  clearThumbnailCache: () => ipcRenderer.invoke('clear-thumbnail-cache'),
+  getThumbnailCacheSize: () => ipcRenderer.invoke('get-thumbnail-cache-size'),
+
+  getLogsPath: () => ipcRenderer.invoke('get-logs-path'),
+  openLogsFolder: () => ipcRenderer.invoke('open-logs-folder'),
+  getLogFileContent: () => ipcRenderer.invoke('get-log-file-content'),
 };
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);

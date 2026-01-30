@@ -1,4 +1,4 @@
-import { ipcMain, app, BrowserWindow, IpcMainInvokeEvent } from 'electron';
+import { ipcMain, app, BrowserWindow, IpcMainInvokeEvent, clipboard } from 'electron';
 import * as path from 'path';
 import { promises as fs } from 'fs';
 import type { Settings, ApiResponse, SettingsResponse } from './types';
@@ -29,6 +29,7 @@ export function getSettingsPath(): string {
 
 export async function loadSettings(): Promise<Settings> {
   const now = Date.now();
+  // check cache
   if (cachedSettings && now - settingsCacheTime < SETTINGS_CACHE_TTL_MS) {
     logger.debug('[Settings] Using cached settings');
     return cachedSettings;
@@ -38,9 +39,10 @@ export async function loadSettings(): Promise<Settings> {
     const settingsPath = getSettingsPath();
     logger.debug('[Settings] Loading from:', settingsPath);
     let data: string;
+    // load from disk
     try {
       data = await fs.readFile(settingsPath, 'utf8');
-    } catch (error) {
+    } catch {
       logger.debug('[Settings] File not found, using defaults');
       const settings = createDefaultSettings();
       cachedSettings = settings;
@@ -56,6 +58,7 @@ export async function loadSettings(): Promise<Settings> {
       return settings;
     } catch (error) {
       logger.error('[Settings] Failed to parse settings file:', getErrorMessage(error));
+      // backup corrupt file
       const backupPath = `${settingsPath}.corrupt-${Date.now()}`;
       try {
         await fs.rename(settingsPath, backupPath);
@@ -128,12 +131,13 @@ export async function saveSettings(settings: Settings): Promise<ApiResponse> {
     const settingsPath = getSettingsPath();
     logger.debug('[Settings] Saving to:', settingsPath);
     logger.debug('[Settings] Data:', JSON.stringify(settings, null, 2));
+    // atomic write via tmp file
     const tmpPath = `${settingsPath}.tmp`;
     const data = JSON.stringify(settings, null, 2);
     await fs.writeFile(tmpPath, data, 'utf8');
     try {
       await fs.rename(tmpPath, settingsPath);
-    } catch (error) {
+    } catch {
       try {
         await fs.copyFile(tmpPath, settingsPath);
       } finally {
@@ -175,6 +179,7 @@ export function setupSettingsHandlers(createTray: () => Promise<void>): void {
       const result = await saveSettings(settings);
 
       if (result.success) {
+        // toggle indexer on/off
         const indexerTasks = getIndexerTasks();
         if (settings.enableIndexer) {
           let fileIndexer = getFileIndexer();
@@ -245,6 +250,62 @@ export function setupSettingsHandlers(createTray: () => Promise<void>): void {
 
   ipcMain.handle('get-clipboard', (): { operation: 'copy' | 'cut'; paths: string[] } | null => {
     return getSharedClipboard();
+  });
+
+  ipcMain.handle('get-system-clipboard-files', (): string[] => {
+    try {
+      // win format (ucs-2)
+      const files = clipboard.readBuffer('FileNameW');
+      if (files && files.length > 0) {
+        const paths: string[] = [];
+        const fileList = files.toString('ucs2').split('\0').filter(Boolean);
+        for (const filePath of fileList) {
+          if (filePath.trim()) {
+            paths.push(filePath);
+          }
+        }
+        if (paths.length > 0) {
+          logger.debug('[System Clipboard] Found files (Windows format):', paths.length, 'items');
+          return paths;
+        }
+      }
+
+      // macos/linux format
+      const filePaths = clipboard.read('public.file-url');
+      if (filePaths) {
+        const paths: string[] = [];
+        const lines = filePaths.split('\n').filter(Boolean);
+        for (const line of lines) {
+          let filePath = line.trim();
+          if (filePath.startsWith('file://')) {
+            filePath = decodeURIComponent(filePath.substring(7));
+            if (
+              process.platform === 'win32' &&
+              filePath.startsWith('/') &&
+              filePath.charAt(2) === ':'
+            ) {
+              filePath = filePath.substring(1);
+            }
+          }
+          if (filePath) {
+            paths.push(filePath);
+          }
+        }
+        if (paths.length > 0) {
+          logger.debug(
+            '[System Clipboard] Found files (macOS/Linux format):',
+            paths.length,
+            'items'
+          );
+          return paths;
+        }
+      }
+
+      return [];
+    } catch (error) {
+      logger.error('[System Clipboard] Error reading files from clipboard:', error);
+      return [];
+    }
   });
 
   ipcMain.handle('set-drag-data', (_event: IpcMainInvokeEvent, paths: string[]): void => {

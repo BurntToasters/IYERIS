@@ -1,5 +1,4 @@
 import { BrowserWindow, Tray } from 'electron';
-import type { WebContents } from 'electron';
 import * as os from 'os';
 import { FileIndexer } from './indexer';
 import { FileTaskManager } from './fileTasks';

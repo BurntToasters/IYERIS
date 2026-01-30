@@ -57,7 +57,7 @@ const TRAY_ICON_SIZES: Record<TrayPlatform, { width: number; height: number }> =
 };
 
 const TRAY_ASSETS_PATH = path.join(__dirname, '..', 'assets');
-const INDEX_PATH = path.join(__dirname, '..', 'index.html');
+const INDEX_PATH = path.join(__dirname, '..', 'src', 'index.html');
 const INDEX_URL = pathToFileURL(INDEX_PATH).toString();
 const INDEX_URL_OBJ = new URL(INDEX_URL);
 const trayIconCache = new Map<string, { path: string; icon: Electron.NativeImage }>();
@@ -465,7 +465,30 @@ export async function createTray(forHiddenStart: boolean = false): Promise<void>
     setCurrentTrayState('idle');
     updateTrayMenu();
 
-    if (process.platform !== 'darwin') {
+    if (process.platform === 'darwin') {
+      newTray.on('click', (event) => {
+        if (event.altKey || event.shiftKey || event.ctrlKey || event.metaKey) {
+          return;
+        }
+        const targetWindow = getActiveWindow();
+        if (targetWindow) {
+          if (targetWindow.isVisible()) {
+            targetWindow.hide();
+            setWindowVisibility(targetWindow, false);
+          } else {
+            targetWindow.show();
+            setWindowVisibility(targetWindow, true);
+            targetWindow.focus();
+          }
+        } else {
+          createWindow(false);
+        }
+      });
+
+      newTray.on('right-click', () => {
+        newTray.popUpContextMenu();
+      });
+    } else {
       newTray.on('click', () => {
         const targetWindow = getActiveWindow();
         if (targetWindow) {
@@ -483,12 +506,6 @@ export async function createTray(forHiddenStart: boolean = false): Promise<void>
         } else {
           createWindow(false);
         }
-      });
-    }
-
-    if (process.platform === 'darwin') {
-      newTray.on('double-click', () => {
-        showAppWindow();
       });
     }
 

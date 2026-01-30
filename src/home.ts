@@ -6,6 +6,7 @@ export const HOME_VIEW_PATH = 'iyeris://home';
 export const HOME_VIEW_LABEL = 'Home';
 export const HOME_QUICK_ACCESS_ITEMS: Array<{ action: string; label: string; icon: number }> = [
   { action: 'home', label: 'Home', icon: 0x1f3e0 },
+  { action: 'userhome', label: 'Home Folder', icon: 0x1f532 },
   { action: 'desktop', label: 'Desktop', icon: 0x1f5a5 },
   { action: 'documents', label: 'Documents', icon: 0x1f4c4 },
   { action: 'downloads', label: 'Downloads', icon: 0x1f4e5 },
@@ -56,6 +57,9 @@ export type HomeController = {
   renderHomeBookmarks: () => void;
   renderHomeQuickAccess: () => void;
   renderHomeDrives: (drives?: DriveInfo[]) => Promise<void>;
+  getHomeSettings: () => HomeSettings;
+  getVisibleSidebarQuickAccessItems: () => Array<{ action: string; label: string; icon: number }>;
+  closeHomeSettingsModal: (skipConfirmation?: boolean) => Promise<void>;
 };
 
 export function createHomeController(options: HomeControllerOptions): HomeController {
@@ -99,6 +103,9 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
     'home-quick-access-options'
   ) as HTMLElement;
   const homeSectionOrder = document.getElementById('home-section-order') as HTMLElement;
+  const sidebarQuickAccessOptions = document.getElementById(
+    'sidebar-quick-access-options'
+  ) as HTMLElement;
 
   let currentHomeSettings: HomeSettings = createDefaultHomeSettings();
   let tempHomeSettings: HomeSettings = createDefaultHomeSettings();
@@ -106,6 +113,7 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
   const driveUsageCache = new Map<string, { timestamp: number; total: number; free: number }>();
   let draggedSectionId: string | null = null;
   let draggedQuickAction: string | null = null;
+  let draggedSidebarQuickAction: string | null = null;
 
   function normalizeHomeSettings(settings?: Partial<HomeSettings> | null): HomeSettings {
     const defaults = createDefaultHomeSettings();
@@ -131,6 +139,19 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
       ),
     ];
 
+    const sidebarQARaw = Array.isArray(merged.sidebarQuickAccessOrder)
+      ? merged.sidebarQuickAccessOrder
+      : [];
+    const sidebarQuickAccessOrder = Array.from(
+      new Set(sidebarQARaw.filter((action) => HOME_QUICK_ACCESS_ACTIONS.has(action)))
+    );
+    const sidebarQAWithMissing = [
+      ...sidebarQuickAccessOrder,
+      ...HOME_QUICK_ACCESS_ITEMS.map((item) => item.action).filter(
+        (action) => !sidebarQuickAccessOrder.includes(action)
+      ),
+    ];
+
     const pinnedRaw = Array.isArray(merged.pinnedRecents) ? merged.pinnedRecents : [];
     const pinnedRecents = Array.from(
       new Set(pinnedRaw.filter((value) => typeof value === 'string'))
@@ -143,8 +164,16 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
         )
       )
     );
+    merged.hiddenSidebarQuickAccessItems = Array.from(
+      new Set(
+        (merged.hiddenSidebarQuickAccessItems || []).filter((action) =>
+          HOME_QUICK_ACCESS_ACTIONS.has(action)
+        )
+      )
+    );
     merged.sectionOrder = sectionOrderWithMissing;
     merged.quickAccessOrder = quickAccessWithMissing;
+    merged.sidebarQuickAccessOrder = sidebarQAWithMissing;
     merged.pinnedRecents = pinnedRecents;
     return merged;
   }
@@ -258,6 +287,21 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
     const hiddenSet = new Set(currentHomeSettings.hiddenQuickAccessItems || []);
     const itemsByAction = new Map(HOME_QUICK_ACCESS_ITEMS.map((item) => [item.action, item]));
     const ordered = (currentHomeSettings.quickAccessOrder || []).map((action) =>
+      itemsByAction.get(action)
+    );
+    return ordered.filter((item): item is { action: string; label: string; icon: number } => {
+      return !!item && !hiddenSet.has(item.action);
+    });
+  }
+
+  function getVisibleSidebarQuickAccessItems(): Array<{
+    action: string;
+    label: string;
+    icon: number;
+  }> {
+    const hiddenSet = new Set(currentHomeSettings.hiddenSidebarQuickAccessItems || []);
+    const itemsByAction = new Map(HOME_QUICK_ACCESS_ITEMS.map((item) => [item.action, item]));
+    const ordered = (currentHomeSettings.sidebarQuickAccessOrder || []).map((action) =>
       itemsByAction.get(action)
     );
     return ordered.filter((item): item is { action: string; label: string; icon: number } => {
@@ -677,6 +721,82 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
     });
   }
 
+  function renderSidebarQuickAccessOptions(): void {
+    if (!sidebarQuickAccessOptions) return;
+    sidebarQuickAccessOptions.innerHTML = '';
+
+    const hiddenSet = new Set(tempHomeSettings.hiddenSidebarQuickAccessItems);
+    const itemsByAction = new Map(HOME_QUICK_ACCESS_ITEMS.map((item) => [item.action, item]));
+    const orderedActions = tempHomeSettings.sidebarQuickAccessOrder || [];
+    const orderedItems = orderedActions
+      .map((action) => itemsByAction.get(action))
+      .filter((item): item is { action: string; label: string; icon: number } => !!item);
+
+    orderedItems.forEach((item) => {
+      const option = document.createElement('label');
+      option.className = 'home-option';
+      option.draggable = true;
+      option.innerHTML = `
+        <input type="checkbox" data-action="${item.action}" ${
+          hiddenSet.has(item.action) ? '' : 'checked'
+        }>
+        <span class="home-option-icon">${twemojiImg(
+          String.fromCodePoint(item.icon),
+          'twemoji'
+        )}</span>
+        <span class="home-option-label">${escapeHtml(item.label)}</span>
+      `;
+
+      option.addEventListener('dragstart', (e) => {
+        draggedSidebarQuickAction = item.action;
+        option.classList.add('dragging');
+        if (e.dataTransfer) {
+          e.dataTransfer.effectAllowed = 'move';
+          e.dataTransfer.setData('text/plain', item.action);
+        }
+      });
+
+      option.addEventListener('dragend', () => {
+        draggedSidebarQuickAction = null;
+        option.classList.remove('dragging');
+      });
+
+      option.addEventListener('dragover', (e) => {
+        e.preventDefault();
+      });
+
+      option.addEventListener('drop', (e) => {
+        e.preventDefault();
+        const fromAction = draggedSidebarQuickAction || e.dataTransfer?.getData('text/plain');
+        if (!fromAction || fromAction === item.action) return;
+        tempHomeSettings.sidebarQuickAccessOrder = reorderList(
+          tempHomeSettings.sidebarQuickAccessOrder,
+          fromAction,
+          item.action
+        );
+        homeSettingsHasUnsavedChanges = true;
+        renderSidebarQuickAccessOptions();
+      });
+
+      const checkbox = option.querySelector('input') as HTMLInputElement | null;
+      if (checkbox) {
+        checkbox.addEventListener('change', () => {
+          const action = checkbox.dataset.action || '';
+          const updatedHidden = new Set(tempHomeSettings.hiddenSidebarQuickAccessItems);
+          if (checkbox.checked) {
+            updatedHidden.delete(action);
+          } else {
+            updatedHidden.add(action);
+          }
+          tempHomeSettings.hiddenSidebarQuickAccessItems = Array.from(updatedHidden);
+          homeSettingsHasUnsavedChanges = true;
+        });
+      }
+
+      sidebarQuickAccessOptions.appendChild(option);
+    });
+  }
+
   function syncHomeSettingsModal(): void {
     if (homeToggleQuickAccess) homeToggleQuickAccess.checked = tempHomeSettings.showQuickAccess;
     if (homeToggleRecents) homeToggleRecents.checked = tempHomeSettings.showRecents;
@@ -686,6 +806,7 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
     if (homeToggleCompact) homeToggleCompact.checked = tempHomeSettings.compactCards;
     renderSectionOrderList();
     renderHomeQuickAccessOptions();
+    renderSidebarQuickAccessOptions();
   }
 
   function openHomeSettingsModal(): void {
@@ -789,5 +910,8 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
     renderHomeBookmarks,
     renderHomeQuickAccess,
     renderHomeDrives,
+    getHomeSettings: () => currentHomeSettings,
+    getVisibleSidebarQuickAccessItems,
+    closeHomeSettingsModal,
   };
 }

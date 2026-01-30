@@ -9,7 +9,7 @@ export function createDefaultHomeSettings(): HomeSettings {
     showDiskUsage: true,
     hiddenQuickAccessItems: [],
     quickAccessOrder: [
-      'home',
+      'userhome',
       'desktop',
       'documents',
       'downloads',
@@ -21,5 +21,17 @@ export function createDefaultHomeSettings(): HomeSettings {
     sectionOrder: ['quick-access', 'recents', 'bookmarks', 'drives'],
     pinnedRecents: [],
     compactCards: false,
+    sidebarQuickAccessOrder: [
+      'home',
+      'userhome',
+      'browse',
+      'desktop',
+      'documents',
+      'downloads',
+      'music',
+      'videos',
+      'trash',
+    ],
+    hiddenSidebarQuickAccessItems: [],
   };
 }

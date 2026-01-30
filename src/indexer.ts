@@ -101,6 +101,7 @@ export class FileIndexer {
   private fileTasks: FileTaskManager | null = null;
   private buildOperationId: string | null = null;
 
+  // prevent unbounded mem growth
   private static readonly MAX_INDEX_SIZE = 200000;
 
   constructor(fileTasks?: FileTaskManager) {
@@ -109,6 +110,7 @@ export class FileIndexer {
     this.fileTasks = fileTasks ?? null;
   }
 
+  // platform-specific important dirs
   private async getCommonLocations(): Promise<string[]> {
     const platform = process.platform;
     const homeDir = app.getPath('home');
@@ -184,6 +186,7 @@ export class FileIndexer {
     return false;
   }
 
+  // recursive scan with batching
   private async scanDirectory(dirPath: string, signal?: AbortSignal): Promise<void> {
     if (signal?.aborted || this.shouldExclude(dirPath)) {
       return;
@@ -192,7 +195,6 @@ export class FileIndexer {
     try {
       const entries = await fs.readdir(dirPath, { withFileTypes: true });
 
-      // Process entries in parallel batches for better multi-core utilization
       const BATCH_SIZE = 50;
       const subdirs: string[] = [];
 
@@ -247,7 +249,6 @@ export class FileIndexer {
         }
       }
 
-      // Process subdirectories recursively
       for (const subdir of subdirs) {
         if (signal?.aborted || this.index.size >= FileIndexer.MAX_INDEX_SIZE) {
           return;

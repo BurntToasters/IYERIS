@@ -309,7 +309,7 @@
         "licenseUrl": "https://github.com/DefinitelyTyped/DefinitelyTyped/raw/master/LICENSE",
         "parents": "electron:iyeris"
     },
-    "@types/node@25.0.10": {
+    "@types/node@25.1.0": {
         "licenses": "MIT",
         "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped",
         "licenseUrl": "https://github.com/DefinitelyTyped/DefinitelyTyped/raw/master/LICENSE",
@@ -945,6 +945,12 @@
         "licenseUrl": "https://github.com/electron-userland/electron-builder/raw/master/LICENSE",
         "parents": "iyeris"
     },
+    "electron-log@5.4.3": {
+        "licenses": "MIT",
+        "repository": "https://github.com/megahertz/electron-log",
+        "licenseUrl": "https://github.com/megahertz/electron-log/raw/master/LICENSE",
+        "parents": "iyeris"
+    },
     "electron-publish@26.3.4": {
         "licenses": "MIT",
         "repository": "https://github.com/electron-userland/electron-builder",
@@ -963,7 +969,7 @@
         "licenseUrl": "https://github.com/electron/windows-installer/raw/master/LICENSE",
         "parents": "iyeris"
     },
-    "electron@40.0.0": {
+    "electron@40.1.0": {
         "licenses": "MIT",
         "repository": "https://github.com/electron/electron",
         "licenseUrl": "https://github.com/electron/electron/raw/master/LICENSE",
@@ -1575,7 +1581,7 @@
         "licenseUrl": "https://github.com/isaacs/isexe/raw/master/LICENSE",
         "parents": "node-gyp:iyeris"
     },
-    "iyeris@0.9.8": {
+    "iyeris@0.9.9-beta.3": {
         "licenses": "MPL-2.0",
         "repository": "https://github.com/BurntToasters/IYERIS",
         "licenseUrl": "https://github.com/BurntToasters/IYERIS/raw/master/LICENSE",

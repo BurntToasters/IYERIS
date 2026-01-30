@@ -153,7 +153,7 @@ export function setupUndoRedoHandlers(): void {
           logger.debug('[Undo] Renamed back:', action.data.newPath, '->', action.data.oldPath);
           return { success: true };
 
-        case 'move':
+        case 'move': {
           const movedPaths = action.data.sourcePaths;
           const originalPaths = action.data.originalPaths;
           const originalParent = action.data.originalParent;
@@ -205,8 +205,9 @@ export function setupUndoRedoHandlers(): void {
           pushRedoAction(action);
           logger.debug('[Undo] Moved back to original location');
           return { success: true };
+        }
 
-        case 'create':
+        case 'create': {
           const itemPath = action.data.path;
 
           try {
@@ -225,6 +226,7 @@ export function setupUndoRedoHandlers(): void {
           pushRedoAction(action);
           logger.debug('[Undo] Deleted created item:', itemPath);
           return { success: true };
+        }
 
         default:
           return { success: false, error: 'Unknown action type' };
@@ -269,7 +271,7 @@ export function setupUndoRedoHandlers(): void {
           logger.debug('[Redo] Renamed:', action.data.oldPath, '->', action.data.newPath);
           return { success: true };
 
-        case 'move':
+        case 'move': {
           const redoDestPath = action.data.destPath;
           const newMovedPaths: string[] = [];
           const originalPaths = action.data.originalPaths;
@@ -335,8 +337,9 @@ export function setupUndoRedoHandlers(): void {
           undoStack.push(action);
           logger.debug('[Redo] Moved to destination');
           return { success: true };
+        }
 
-        case 'create':
+        case 'create': {
           const itemPath = action.data.path;
 
           try {
@@ -356,6 +359,7 @@ export function setupUndoRedoHandlers(): void {
           undoStack.push(action);
           logger.debug('[Redo] Recreated item:', itemPath);
           return { success: true };
+        }
 
         default:
           return { success: false, error: 'Unknown action type' };

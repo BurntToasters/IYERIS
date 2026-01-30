@@ -32,6 +32,7 @@ export function warmupDrivesCache(): void {
 }
 
 export async function getDrives(): Promise<string[]> {
+  // return cached if fresh
   const cached = getCachedDrives();
   if (cached) {
     return cached;
@@ -42,6 +43,7 @@ export async function getDrives(): Promise<string[]> {
   if (platform === 'win32') {
     const drives: Set<string> = new Set();
 
+    // try powershell first
     try {
       const { stdout } = await execAsync(
         'powershell -NoProfile -Command "Get-PSDrive -PSProvider FileSystem | Select-Object -ExpandProperty Name"',
@@ -61,6 +63,7 @@ export async function getDrives(): Promise<string[]> {
       console.log('[Drives] PowerShell drive detection failed:', (e as Error).message);
     }
 
+    // fallback to wmic
     if (drives.size === 0) {
       try {
         const { stdout } = await execAsync('wmic logicaldisk get name', { timeout: 3000 });
@@ -79,7 +82,7 @@ export async function getDrives(): Promise<string[]> {
       }
     }
 
-    // Last resort - not great option; probably will remove later
+    // direct fs check fallback
     if (drives.size === 0) {
       console.log('[Drives] Falling back to direct drive letter check...');
       const driveLetters: string[] = [];
@@ -121,6 +124,7 @@ export async function getDrives(): Promise<string[]> {
     drivesCacheTime = Date.now();
     return result;
   } else {
+    // scan mount points
     const commonRoots = platform === 'darwin' ? ['/Volumes'] : ['/media', '/mnt', '/run/media'];
     const detected: string[] = ['/'];
 
@@ -158,6 +162,7 @@ function getWindowsDriveDisplayName(drivePath: string, volumeLabel?: string): st
 async function getWindowsDriveLabels(): Promise<Map<string, string>> {
   const labels = new Map<string, string>();
 
+  // try powershell get-volume
   try {
     const { stdout } = await execAsync(
       'powershell -NoProfile -Command "Get-Volume | Select-Object DriveLetter, FileSystemLabel | ConvertTo-Json"',
@@ -183,6 +188,7 @@ async function getWindowsDriveLabels(): Promise<Map<string, string>> {
     console.log('[Drives] Get-Volume label detection failed:', (e as Error).message);
   }
 
+  // fallback to wmic (this only works on W10)
   try {
     const { stdout } = await execAsync('wmic logicaldisk get name, volumename', {
       timeout: 3000,

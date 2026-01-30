@@ -28,7 +28,7 @@ export async function loadHomeSettings(): Promise<HomeSettings> {
     let data: string;
     try {
       data = await fs.readFile(settingsPath, 'utf8');
-    } catch (error) {
+    } catch {
       logger.debug('[HomeSettings] File not found, using defaults');
       const settings = createDefaultHomeSettings();
       cachedHomeSettings = settings;
@@ -72,7 +72,7 @@ export async function saveHomeSettings(settings: HomeSettings): Promise<ApiRespo
     await fs.writeFile(tmpPath, data, 'utf8');
     try {
       await fs.rename(tmpPath, settingsPath);
-    } catch (error) {
+    } catch {
       try {
         await fs.copyFile(tmpPath, settingsPath);
       } finally {

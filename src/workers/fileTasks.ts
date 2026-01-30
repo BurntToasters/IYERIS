@@ -73,11 +73,6 @@ interface LoadIndexPayload {
   indexPath: string;
 }
 
-interface SaveIndexPayload {
-  indexPath: string;
-  indexData: string;
-}
-
 interface SearchResult {
   name: string;
   path: string;
@@ -995,10 +990,20 @@ async function calculateChecksum(
   const stats = await fs.stat(filePath);
   const fileSize = stats.size;
 
+  const ALLOWED_ALGORITHMS = new Set(['md5', 'sha256']);
   const rawAlgorithms = Array.isArray(algorithms) ? algorithms : [];
   const uniqueAlgorithms = Array.from(
-    new Set(rawAlgorithms.map((algo) => String(algo)).filter(Boolean))
+    new Set(
+      rawAlgorithms
+        .map((algo) => String(algo).toLowerCase())
+        .filter((a) => ALLOWED_ALGORITHMS.has(a))
+    )
   );
+
+  if (uniqueAlgorithms.length === 0) {
+    throw new Error('No valid algorithms specified');
+  }
+
   const hashes = new Map<string, ReturnType<typeof createHash>>();
   for (const algorithm of uniqueAlgorithms) {
     hashes.set(algorithm, createHash(algorithm));
