@@ -5960,23 +5960,27 @@ async function loadDrives() {
   }
 }
 
+function getFileExtension(filename: string): string {
+  return filename.split('.').pop()?.toLowerCase() || '';
+}
+
 function getFileTypeFromName(filename: string): string {
-  const ext = filename.split('.').pop()?.toLowerCase() || '';
+  const ext = getFileExtension(filename);
   if (!ext) return 'File';
   if (IMAGE_EXTENSIONS.has(ext)) return 'Image';
+  if (RAW_EXTENSIONS.has(ext)) return 'RAW Image';
   if (VIDEO_EXTENSIONS.has(ext)) return 'Video';
   if (AUDIO_EXTENSIONS.has(ext)) return 'Audio';
-  if (['pdf'].includes(ext)) return 'PDF Document';
-  if (['doc', 'docx'].includes(ext)) return 'Word Document';
-  if (['xls', 'xlsx'].includes(ext)) return 'Spreadsheet';
-  if (['ppt', 'pptx'].includes(ext)) return 'Presentation';
-  if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) return 'Archive';
-  if (['js', 'ts', 'py', 'java', 'cpp', 'c', 'h', 'cs', 'go', 'rs', 'rb', 'php'].includes(ext))
-    return 'Source Code';
-  if (['html', 'css', 'scss', 'less'].includes(ext)) return 'Web File';
-  if (['json', 'xml', 'yaml', 'yml'].includes(ext)) return 'Data File';
-  if (['txt', 'md', 'rtf'].includes(ext)) return 'Text File';
-  return ext.toUpperCase() + ' File';
+  if (PDF_EXTENSIONS.has(ext)) return 'PDF Document';
+  if (WORD_EXTENSIONS.has(ext)) return 'Word Document';
+  if (SPREADSHEET_EXTENSIONS.has(ext)) return 'Spreadsheet';
+  if (PRESENTATION_EXTENSIONS.has(ext)) return 'Presentation';
+  if (ARCHIVE_EXTENSIONS.has(ext)) return 'Archive';
+  if (SOURCE_CODE_EXTENSIONS.has(ext)) return 'Source Code';
+  if (WEB_EXTENSIONS.has(ext)) return 'Web File';
+  if (DATA_EXTENSIONS.has(ext)) return 'Data File';
+  if (TEXT_EXTENSIONS.has(ext)) return 'Text File';
+  return `${ext.toUpperCase()} File`;
 }
 
 function setHoverCardEnabled(enabled: boolean): void {
@@ -7535,7 +7539,7 @@ function renderFiles(items: FileItem[], searchQuery?: string) {
   if (sortBy === 'type') {
     visibleItems.forEach((item) => {
       if (!item.isDirectory) {
-        const ext = item.name.split('.').pop()?.toLowerCase() || '';
+        const ext = getFileExtension(item.name);
         extCache?.set(item, ext);
       }
     });
@@ -7673,7 +7677,7 @@ function createFileItem(item: FileItem, searchQuery?: string): HTMLElement {
   if (item.isDirectory) {
     icon = getFolderIcon(item.path);
   } else {
-    const ext = item.name.split('.').pop()?.toLowerCase() || '';
+    const ext = getFileExtension(item.name);
     if (IMAGE_EXTENSIONS.has(ext) || RAW_EXTENSIONS.has(ext)) {
       fileItem.classList.add('has-thumbnail');
       fileItem.dataset.thumbnailType = RAW_EXTENSIONS.has(ext) ? 'raw' : 'image';
@@ -8353,7 +8357,7 @@ function renderThumbnailImage(
   img.className = 'file-thumbnail';
   img.alt = item.name;
 
-  const ext = item.name.split('.').pop()?.toLowerCase() || '';
+  const ext = getFileExtension(item.name);
   if (ANIMATED_IMAGE_EXTENSIONS.has(ext)) {
     img.dataset.animated = 'true';
     img.dataset.staticSrc = thumbnailUrl;
@@ -8454,22 +8458,101 @@ const IMAGE_EXTENSIONS = new Set([
   'avif',
   'jfif',
   'svg',
+  'apng',
+  'heic',
+  'heif',
+  'jxl',
+  'jp2',
+  'j2k',
+  'jpf',
+  'jpx',
+  'jpm',
+  'mj2',
+  'tga',
+  'dds',
+  'psd',
+  'psb',
+  'icns',
 ]);
 const RAW_EXTENSIONS = new Set([
   'cr2',
   'cr3',
+  'crw',
   'nef',
+  'nrw',
   'arw',
+  'sr2',
+  'srf',
+  'srw',
   'dng',
   'orf',
   'rw2',
+  'rw1',
+  'rwl',
   'pef',
-  'srw',
   'raf',
+  'dcr',
+  'kdc',
+  'erf',
+  'mrw',
+  'x3f',
+  '3fr',
+  'iiq',
+  'mef',
+  'mos',
 ]);
-const ANIMATED_IMAGE_EXTENSIONS = new Set(['gif', 'webp', 'apng']);
-const VIDEO_EXTENSIONS = new Set(['mp4', 'webm', 'ogg', 'mov', 'mkv', 'avi', 'm4v']);
-const AUDIO_EXTENSIONS = new Set(['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac', 'wma', 'opus']);
+const ANIMATED_IMAGE_EXTENSIONS = new Set(['gif', 'webp', 'apng', 'avif']);
+const VIDEO_EXTENSIONS = new Set([
+  'mp4',
+  'm4v',
+  'mov',
+  'webm',
+  'mkv',
+  'avi',
+  'ogv',
+  'ogm',
+  'mpg',
+  'mpeg',
+  'mpe',
+  'm1v',
+  'm2v',
+  '3gp',
+  '3g2',
+  'ts',
+  'm2ts',
+  'mts',
+  'flv',
+  'f4v',
+  'wmv',
+  'asf',
+  'vob',
+]);
+const AUDIO_EXTENSIONS = new Set([
+  'mp3',
+  'mp2',
+  'mpa',
+  'wav',
+  'flac',
+  'ogg',
+  'oga',
+  'opus',
+  'm4a',
+  'm4b',
+  'm4r',
+  'alac',
+  'aac',
+  'wma',
+  'aiff',
+  'aif',
+  'aifc',
+  'mka',
+  'amr',
+  'ac3',
+  'eac3',
+  'mid',
+  'midi',
+  'caf',
+]);
 const PDF_EXTENSIONS = new Set(['pdf']);
 const ARCHIVE_EXTENSIONS = new Set([
   'zip',
@@ -8563,32 +8646,136 @@ const TEXT_EXTENSIONS = new Set([
   'gradle',
   'maven',
 ]);
+const WORD_EXTENSIONS = new Set(['doc', 'docx', 'docm', 'dot', 'dotx', 'dotm', 'rtf', 'odt']);
+const SPREADSHEET_EXTENSIONS = new Set([
+  'xls',
+  'xlsx',
+  'xlsm',
+  'xlt',
+  'xltx',
+  'xltm',
+  'ods',
+  'csv',
+  'tsv',
+]);
+const PRESENTATION_EXTENSIONS = new Set(['ppt', 'pptx', 'pptm', 'pps', 'ppsx', 'odp', 'key']);
+const SOURCE_CODE_EXTENSIONS = new Set([
+  'js',
+  'jsx',
+  'ts',
+  'tsx',
+  'py',
+  'pyc',
+  'pyw',
+  'java',
+  'kt',
+  'kts',
+  'scala',
+  'c',
+  'cpp',
+  'cc',
+  'cxx',
+  'h',
+  'hpp',
+  'cs',
+  'php',
+  'rb',
+  'go',
+  'rs',
+  'swift',
+  'r',
+  'lua',
+  'perl',
+  'pl',
+  'sh',
+  'bash',
+  'zsh',
+  'fish',
+  'ps1',
+  'bat',
+  'cmd',
+]);
+const WEB_EXTENSIONS = new Set(['html', 'htm', 'css', 'scss', 'sass', 'less', 'vue', 'svelte']);
+const DATA_EXTENSIONS = new Set([
+  'json',
+  'xml',
+  'yml',
+  'yaml',
+  'toml',
+  'csv',
+  'tsv',
+  'ini',
+  'conf',
+  'config',
+  'cfg',
+  'env',
+  'properties',
+  'sql',
+]);
 const VIDEO_MIME_TYPES: Record<string, string> = {
   mp4: 'video/mp4',
-  webm: 'video/webm',
-  ogg: 'video/ogg',
+  m4v: 'video/x-m4v',
   mov: 'video/quicktime',
+  webm: 'video/webm',
   mkv: 'video/x-matroska',
   avi: 'video/x-msvideo',
-  m4v: 'video/x-m4v',
+  ogv: 'video/ogg',
+  ogm: 'video/ogg',
+  mpg: 'video/mpeg',
+  mpeg: 'video/mpeg',
+  mpe: 'video/mpeg',
+  m1v: 'video/mpeg',
+  m2v: 'video/mpeg',
+  '3gp': 'video/3gpp',
+  '3g2': 'video/3gpp2',
+  ts: 'video/mp2t',
+  m2ts: 'video/mp2t',
+  mts: 'video/mp2t',
+  flv: 'video/x-flv',
+  f4v: 'video/x-f4v',
+  wmv: 'video/x-ms-wmv',
+  asf: 'video/x-ms-asf',
+  vob: 'video/dvd',
 };
 const AUDIO_MIME_TYPES: Record<string, string> = {
   mp3: 'audio/mpeg',
+  mp2: 'audio/mpeg',
+  mpa: 'audio/mpeg',
   wav: 'audio/wav',
-  ogg: 'audio/ogg',
   flac: 'audio/flac',
+  ogg: 'audio/ogg',
+  oga: 'audio/ogg',
+  opus: 'audio/ogg',
   aac: 'audio/aac',
   m4a: 'audio/mp4',
+  m4b: 'audio/mp4',
+  m4r: 'audio/mp4',
+  alac: 'audio/mp4',
   wma: 'audio/x-ms-wma',
-  opus: 'audio/ogg',
+  aiff: 'audio/aiff',
+  aif: 'audio/aiff',
+  aifc: 'audio/aiff',
+  mka: 'audio/x-matroska',
+  amr: 'audio/amr',
+  ac3: 'audio/ac3',
+  eac3: 'audio/eac3',
+  mid: 'audio/midi',
+  midi: 'audio/midi',
+  caf: 'audio/x-caf',
 };
 const FOLDER_ICON = twemojiImg(String.fromCodePoint(0x1f4c1), 'twemoji file-icon');
 const IMAGE_ICON = twemojiImg(String.fromCodePoint(parseInt('1f5bc', 16)), 'twemoji');
+const RAW_ICON = twemojiImg(String.fromCodePoint(0x1f4f7), 'twemoji');
+const VIDEO_ICON = twemojiImg(String.fromCodePoint(0x1f3ac), 'twemoji');
+const AUDIO_ICON = twemojiImg(String.fromCodePoint(0x1f3b5), 'twemoji');
+const WORD_ICON = twemojiImg(String.fromCodePoint(0x1f4dd), 'twemoji');
+const SPREADSHEET_ICON = twemojiImg(String.fromCodePoint(0x1f4ca), 'twemoji');
+const ARCHIVE_ICON = twemojiImg(String.fromCodePoint(0x1f5dc), 'twemoji');
 const DEFAULT_FILE_ICON = twemojiImg(String.fromCodePoint(parseInt('1f4c4', 16)), 'twemoji');
 
 const fileIconCache = new Map<string, string>();
 function getFileIcon(filename: string): string {
-  const ext = filename.split('.').pop()?.toLowerCase() || '';
+  const ext = getFileExtension(filename);
 
   const cached = fileIconCache.get(ext);
   if (cached) return cached;
@@ -8597,7 +8784,23 @@ function getFileIcon(filename: string): string {
   let icon: string;
 
   if (!codepoint) {
-    icon = DEFAULT_FILE_ICON;
+    if (RAW_EXTENSIONS.has(ext)) {
+      icon = RAW_ICON;
+    } else if (IMAGE_EXTENSIONS.has(ext)) {
+      icon = IMAGE_ICON;
+    } else if (VIDEO_EXTENSIONS.has(ext)) {
+      icon = VIDEO_ICON;
+    } else if (AUDIO_EXTENSIONS.has(ext)) {
+      icon = AUDIO_ICON;
+    } else if (WORD_EXTENSIONS.has(ext)) {
+      icon = WORD_ICON;
+    } else if (SPREADSHEET_EXTENSIONS.has(ext) || PRESENTATION_EXTENSIONS.has(ext)) {
+      icon = SPREADSHEET_ICON;
+    } else if (ARCHIVE_EXTENSIONS.has(ext)) {
+      icon = ARCHIVE_ICON;
+    } else {
+      icon = DEFAULT_FILE_ICON;
+    }
   } else if (codepoint === '1f5bc') {
     icon = IMAGE_ICON;
   } else {
@@ -11433,7 +11636,7 @@ function updatePreview(file: FileItem) {
     return;
   }
 
-  const ext = file.name.split('.').pop()?.toLowerCase() || '';
+  const ext = getFileExtension(file.name);
 
   if (IMAGE_EXTENSIONS.has(ext)) {
     showImagePreview(file, requestId);
@@ -11579,18 +11782,33 @@ async function showRawImagePreview(file: FileItem, requestId: number) {
   if (requestId !== previewRequestId) return;
   const info = props.success && props.properties ? props.properties : null;
 
-  const ext = file.name.split('.').pop()?.toUpperCase() || 'RAW';
+  const ext = getFileExtension(file.name).toUpperCase() || 'RAW';
   const cameraFormats: Record<string, string> = {
     CR2: 'Canon',
     CR3: 'Canon',
+    CRW: 'Canon',
     NEF: 'Nikon',
+    NRW: 'Nikon',
     ARW: 'Sony',
+    SR2: 'Sony',
+    SRF: 'Sony',
     DNG: 'Adobe DNG',
     ORF: 'Olympus',
     RW2: 'Panasonic',
+    RW1: 'Leica',
+    RWL: 'Leica',
     PEF: 'Pentax',
     SRW: 'Samsung',
     RAF: 'Fujifilm',
+    DCR: 'Kodak',
+    KDC: 'Kodak',
+    ERF: 'Epson',
+    MRW: 'Minolta',
+    X3F: 'Sigma',
+    '3FR': 'Hasselblad',
+    IIQ: 'Phase One',
+    MEF: 'Mamiya',
+    MOS: 'Leaf',
   };
   const brand = cameraFormats[ext] || 'Camera';
 
@@ -11731,7 +11949,7 @@ async function showTextPreview(file: FileItem, requestId: number) {
     const props = await window.electronAPI.getItemProperties(file.path);
     if (requestId !== previewRequestId) return;
     const info = props.success && props.properties ? props.properties : null;
-    const ext = file.name.split('.').pop()?.toLowerCase() || '';
+    const ext = getFileExtension(file.name);
     const lang = getLanguageForExt(ext);
 
     previewContent.innerHTML = `
@@ -11924,7 +12142,7 @@ async function showQuickLook() {
   quicklookTitle.textContent = file.name;
   quicklookModal.style.display = 'flex';
 
-  const ext = file.name.split('.').pop()?.toLowerCase() || '';
+  const ext = getFileExtension(file.name);
 
   quicklookContent.innerHTML = `
     <div class="preview-loading">

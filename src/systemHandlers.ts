@@ -500,12 +500,21 @@ export function setupSystemHandlers(
         const mimeTypes: Record<string, string> = {
           '.jpg': 'image/jpeg',
           '.jpeg': 'image/jpeg',
+          '.jfif': 'image/jpeg',
           '.png': 'image/png',
+          '.apng': 'image/apng',
           '.gif': 'image/gif',
           '.webp': 'image/webp',
+          '.avif': 'image/avif',
           '.svg': 'image/svg+xml',
           '.bmp': 'image/bmp',
           '.ico': 'image/x-icon',
+          '.tif': 'image/tiff',
+          '.tiff': 'image/tiff',
+          '.heic': 'image/heic',
+          '.heif': 'image/heif',
+          '.jxl': 'image/jxl',
+          '.jp2': 'image/jp2',
         };
 
         const mimeType = mimeTypes[ext] || 'application/octet-stream';
