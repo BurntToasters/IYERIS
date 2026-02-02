@@ -138,7 +138,7 @@ export function getIsDev(): boolean {
   return isDev;
 }
 
-export function broadcastToAllWindows(channel: string, data?: any): void {
+export function broadcastToAllWindows(channel: string, data?: unknown): void {
   const allWindows = BrowserWindow.getAllWindows();
   for (const win of allWindows) {
     if (!win.isDestroyed()) {

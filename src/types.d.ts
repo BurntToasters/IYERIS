@@ -9,6 +9,17 @@ export interface CustomTheme {
   glassBorder: string;
 }
 
+export interface LicenseInfo {
+  licenses?: string | string[];
+  repository?: string | { url?: string; type?: string } | null;
+  licenseText?: string;
+  licenseFile?: string;
+  publisher?: string;
+  [key: string]: unknown;
+}
+
+export type LicensesData = Record<string, LicenseInfo>;
+
 export interface ListColumnWidths {
   name?: number;
   type?: number;
@@ -443,7 +454,7 @@ export interface ElectronAPI {
     filePath: string,
     maxSize?: number
   ) => Promise<{ success: boolean; dataUrl?: string; error?: string }>;
-  getLicenses: () => Promise<{ success: boolean; licenses?: any; error?: string }>;
+  getLicenses: () => Promise<{ success: boolean; licenses?: LicensesData; error?: string }>;
   getPlatform: () => Promise<string>;
   getAppVersion: () => Promise<string>;
   getSystemAccentColor: () => Promise<{ accentColor: string; isDarkMode: boolean }>;

@@ -18,6 +18,9 @@ export const HOME_QUICK_ACCESS_ITEMS: Array<{ action: string; label: string; ico
 
 const HOME_QUICK_ACCESS_ACTIONS = new Set(HOME_QUICK_ACCESS_ITEMS.map((item) => item.action));
 const HOME_SECTION_IDS = ['quick-access', 'recents', 'bookmarks', 'drives'] as const;
+type HomeSectionId = (typeof HOME_SECTION_IDS)[number];
+const isHomeSectionId = (value: string): value is HomeSectionId =>
+  HOME_SECTION_IDS.includes(value as HomeSectionId);
 const HOME_SECTION_LABELS: Record<(typeof HOME_SECTION_IDS)[number], string> = {
   'quick-access': 'Quick Access',
   recents: 'Recents',
@@ -121,10 +124,10 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
     const defaults = createDefaultHomeSettings();
     const merged = { ...defaults, ...(settings || {}) };
 
-    const sectionOrderRaw = Array.isArray(merged.sectionOrder) ? merged.sectionOrder : [];
-    const sectionOrder = Array.from(
-      new Set(sectionOrderRaw.filter((id) => HOME_SECTION_IDS.includes(id as any)))
-    );
+    const sectionOrderRaw = Array.isArray(merged.sectionOrder)
+      ? merged.sectionOrder.filter((id): id is string => typeof id === 'string')
+      : [];
+    const sectionOrder = Array.from(new Set(sectionOrderRaw.filter(isHomeSectionId)));
     const sectionOrderWithMissing = [
       ...sectionOrder,
       ...HOME_SECTION_IDS.filter((id) => !sectionOrder.includes(id)),
@@ -605,7 +608,8 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
 
     const ordered = tempHomeSettings.sectionOrder || [];
     ordered.forEach((sectionId) => {
-      const label = HOME_SECTION_LABELS[sectionId as (typeof HOME_SECTION_IDS)[number]];
+      if (!isHomeSectionId(sectionId)) return;
+      const label = HOME_SECTION_LABELS[sectionId];
       if (!label) return;
 
       const row = document.createElement('div');

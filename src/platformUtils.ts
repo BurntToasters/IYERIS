@@ -5,8 +5,47 @@ import { logger } from './utils/logger';
 
 let autoUpdaterModule: typeof import('electron-updater') | null = null;
 let sevenBinModule: { path7za: string } | null = null;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let sevenZipModule: any = null;
+
+type SevenZipListData = {
+  file?: string;
+  size?: number;
+  attributes?: string;
+  attr?: string;
+  type?: string;
+  link?: string;
+  symlink?: string;
+  symbolicLink?: string;
+  [key: string]: unknown;
+};
+
+type SevenZipListProcess = {
+  on(event: 'data', callback: (data: SevenZipListData) => void): void;
+  on(event: 'end', callback: () => void): void;
+  on(event: 'error', callback: (error: Error) => void): void;
+};
+
+type SevenZipArchiveProcess = {
+  on(event: 'progress', callback: (progress: { file?: string }) => void): void;
+  on(event: 'end', callback: () => void): void;
+  on(event: 'error', callback: (error: { message?: string; level?: string }) => void): void;
+  _childProcess?: { kill: (signal: string) => void };
+  cancel?: () => void;
+};
+
+type SevenZipModule = {
+  list: (archivePath: string, options: { $bin: string }) => SevenZipListProcess;
+  add: (
+    archivePath: string,
+    sourcePaths: string[] | string,
+    options: { $bin: string; recursive?: boolean; $raw?: string[] }
+  ) => SevenZipArchiveProcess;
+  extractFull: (
+    archivePath: string,
+    destPath: string,
+    options: { $bin: string; recursive?: boolean }
+  ) => SevenZipArchiveProcess;
+};
+let sevenZipModule: SevenZipModule | null = null;
 
 export function getAutoUpdater() {
   if (!autoUpdaterModule) {
@@ -22,9 +61,9 @@ export function get7zipBin(): { path7za: string } {
   return sevenBinModule!;
 }
 
-export function get7zipModule() {
+export function get7zipModule(): SevenZipModule {
   if (!sevenZipModule) {
-    sevenZipModule = require('node-7z');
+    sevenZipModule = require('node-7z') as SevenZipModule;
   }
   return sevenZipModule;
 }

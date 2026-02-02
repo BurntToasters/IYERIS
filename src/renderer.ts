@@ -8,9 +8,10 @@ import type {
   GitFileStatus,
   SpecialDirectory,
   DriveInfo,
+  ListColumnWidths,
 } from './types';
 import { createFolderTreeManager } from './folderDir.js';
-import { escapeHtml, getErrorMessage } from './shared.js';
+import { escapeHtml, getErrorMessage, isRecord } from './shared.js';
 import { createDefaultSettings } from './settings.js';
 import { SHORTCUT_DEFINITIONS, getDefaultShortcuts } from './shortcuts.js';
 import type { ShortcutBinding, ShortcutDefinition } from './shortcuts.js';
@@ -38,6 +39,29 @@ const THUMBNAIL_CACHE_MAX = 100;
 const THUMBNAIL_CONCURRENT_LOADS = 4;
 const THUMBNAIL_QUEUE_MAX = 100;
 const NAME_COLLATOR = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+
+const THEME_VALUES = [
+  'dark',
+  'light',
+  'default',
+  'custom',
+  'nord',
+  'catppuccin',
+  'dracula',
+  'solarized',
+  'github',
+] as const;
+const SORT_BY_VALUES = ['name', 'date', 'size', 'type'] as const;
+const SORT_ORDER_VALUES = ['asc', 'desc'] as const;
+const FILE_CONFLICT_VALUES = ['ask', 'rename', 'skip', 'overwrite'] as const;
+const THUMBNAIL_QUALITY_VALUES = ['low', 'medium', 'high'] as const;
+const PREVIEW_POSITION_VALUES = ['right', 'bottom'] as const;
+const GRID_COLUMNS_VALUES = ['auto', '2', '3', '4', '5', '6'] as const;
+const VIEW_MODE_VALUES = ['grid', 'list', 'column'] as const;
+
+function isOneOf<T extends readonly string[]>(value: string, options: T): value is T[number] {
+  return (options as readonly string[]).includes(value);
+}
 const DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
   year: 'numeric',
   month: 'short',
@@ -3247,7 +3271,7 @@ function syncColorInputs(colorId: string, value: string) {
 
   const key = mapping[colorId];
   if (key) {
-    (tempCustomTheme as any)[key] = value;
+    tempCustomTheme[key] = value;
     themeEditorHasUnsavedChanges = true;
   }
 
@@ -3917,7 +3941,7 @@ async function showLicensesModal() {
       let html = '';
 
       for (const [packageName, packageInfo] of Object.entries(licenses)) {
-        const info = packageInfo as any;
+        const info = packageInfo;
         html += '<div class="license-package">';
         html += `<div class="license-package-name">${escapeHtml(packageName)}</div>`;
         html += '<div class="license-package-info">';
@@ -4199,21 +4223,30 @@ async function saveSettings() {
   }
 
   if (themeSelect) {
-    if (currentSettings.theme === 'custom') {
-      if (themeDropdownChanged) {
-        currentSettings.theme = themeSelect.value as any;
+    const selectedTheme = themeSelect.value;
+    if (isOneOf(selectedTheme, THEME_VALUES)) {
+      if (currentSettings.theme === 'custom') {
+        if (themeDropdownChanged) {
+          currentSettings.theme = selectedTheme;
+        }
+      } else {
+        currentSettings.theme = selectedTheme;
       }
-    } else {
-      currentSettings.theme = themeSelect.value as any;
     }
   }
 
   if (sortBySelect) {
-    currentSettings.sortBy = sortBySelect.value as any;
+    const sortByValue = sortBySelect.value;
+    if (isOneOf(sortByValue, SORT_BY_VALUES)) {
+      currentSettings.sortBy = sortByValue;
+    }
   }
 
   if (sortOrderSelect) {
-    currentSettings.sortOrder = sortOrderSelect.value as any;
+    const sortOrderValue = sortOrderSelect.value;
+    if (isOneOf(sortOrderValue, SORT_ORDER_VALUES)) {
+      currentSettings.sortOrder = sortOrderValue;
+    }
   }
 
   if (showHiddenFilesToggle) {
@@ -4329,7 +4362,10 @@ async function saveSettings() {
   }
 
   if (fileConflictBehaviorSelect) {
-    currentSettings.fileConflictBehavior = fileConflictBehaviorSelect.value as any;
+    const conflictValue = fileConflictBehaviorSelect.value;
+    if (isOneOf(conflictValue, FILE_CONFLICT_VALUES)) {
+      currentSettings.fileConflictBehavior = conflictValue;
+    }
   }
 
   if (maxThumbnailSizeInput) {
@@ -4340,7 +4376,10 @@ async function saveSettings() {
   }
 
   if (thumbnailQualitySelect) {
-    currentSettings.thumbnailQuality = thumbnailQualitySelect.value as any;
+    const qualityValue = thumbnailQualitySelect.value;
+    if (isOneOf(qualityValue, THUMBNAIL_QUALITY_VALUES)) {
+      currentSettings.thumbnailQuality = qualityValue;
+    }
   }
 
   if (autoPlayVideosToggle) {
@@ -4348,7 +4387,10 @@ async function saveSettings() {
   }
 
   if (previewPanelPositionSelect) {
-    currentSettings.previewPanelPosition = previewPanelPositionSelect.value as any;
+    const positionValue = previewPanelPositionSelect.value;
+    if (isOneOf(positionValue, PREVIEW_POSITION_VALUES)) {
+      currentSettings.previewPanelPosition = positionValue;
+    }
   }
 
   if (maxPreviewSizeInput) {
@@ -4359,7 +4401,10 @@ async function saveSettings() {
   }
 
   if (gridColumnsSelect) {
-    currentSettings.gridColumns = gridColumnsSelect.value as any;
+    const gridValue = gridColumnsSelect.value;
+    if (isOneOf(gridValue, GRID_COLUMNS_VALUES)) {
+      currentSettings.gridColumns = gridValue;
+    }
   }
 
   if (iconSizeSlider) {
@@ -5265,10 +5310,13 @@ function updateSortIndicators() {
 }
 
 async function changeSortMode(sortBy: string) {
+  if (!isOneOf(sortBy, SORT_BY_VALUES)) {
+    return;
+  }
   if (currentSettings.sortBy === sortBy) {
     currentSettings.sortOrder = currentSettings.sortOrder === 'asc' ? 'desc' : 'asc';
   } else {
-    currentSettings.sortBy = sortBy as any;
+    currentSettings.sortBy = sortBy;
     currentSettings.sortOrder = 'asc';
   }
 
@@ -6874,7 +6922,7 @@ function setupEventListeners() {
       if (sortMenu && sortMenu.style.display === 'block') {
         const sortType = menuItem.getAttribute('data-sort');
         if (sortType) {
-          changeSortMode(sortType as any);
+          changeSortMode(sortType);
         }
         return;
       }
@@ -11402,93 +11450,90 @@ document.getElementById('export-settings-btn')?.addEventListener('click', async 
   }
 });
 
-// Settings validation
-function validateImportedSettings(imported: any): Partial<Settings> {
+function validateImportedSettings(imported: unknown): Partial<Settings> {
   const validated: Partial<Settings> = {};
+  if (!isRecord(imported)) return validated;
+  const data = imported as Record<string, unknown>;
 
-  if (typeof imported.transparency === 'boolean') validated.transparency = imported.transparency;
-  if (typeof imported.showDangerousOptions === 'boolean')
-    validated.showDangerousOptions = imported.showDangerousOptions;
-  if (typeof imported.showHiddenFiles === 'boolean')
-    validated.showHiddenFiles = imported.showHiddenFiles;
-  if (typeof imported.enableGitStatus === 'boolean')
-    validated.enableGitStatus = imported.enableGitStatus;
-  if (typeof imported.showFileHoverCard === 'boolean')
-    validated.showFileHoverCard = imported.showFileHoverCard;
-  if (typeof imported.showFileCheckboxes === 'boolean')
-    validated.showFileCheckboxes = imported.showFileCheckboxes;
-  if (typeof imported.enableSearchHistory === 'boolean')
-    validated.enableSearchHistory = imported.enableSearchHistory;
-  if (typeof imported.enableIndexer === 'boolean') validated.enableIndexer = imported.enableIndexer;
-  if (typeof imported.minimizeToTray === 'boolean')
-    validated.minimizeToTray = imported.minimizeToTray;
-  if (typeof imported.startOnLogin === 'boolean') validated.startOnLogin = imported.startOnLogin;
-  if (typeof imported.autoCheckUpdates === 'boolean')
-    validated.autoCheckUpdates = imported.autoCheckUpdates;
-  if (typeof imported.showRecentFiles === 'boolean')
-    validated.showRecentFiles = imported.showRecentFiles;
-  if (typeof imported.showFolderTree === 'boolean')
-    validated.showFolderTree = imported.showFolderTree;
-  if (typeof imported.enableTabs === 'boolean') validated.enableTabs = imported.enableTabs;
-  if (typeof imported.globalContentSearch === 'boolean')
-    validated.globalContentSearch = imported.globalContentSearch;
+  if (typeof data.transparency === 'boolean') validated.transparency = data.transparency;
+  if (typeof data.showDangerousOptions === 'boolean')
+    validated.showDangerousOptions = data.showDangerousOptions;
+  if (typeof data.showHiddenFiles === 'boolean') validated.showHiddenFiles = data.showHiddenFiles;
+  if (typeof data.enableGitStatus === 'boolean') validated.enableGitStatus = data.enableGitStatus;
+  if (typeof data.showFileHoverCard === 'boolean')
+    validated.showFileHoverCard = data.showFileHoverCard;
+  if (typeof data.showFileCheckboxes === 'boolean')
+    validated.showFileCheckboxes = data.showFileCheckboxes;
+  if (typeof data.enableSearchHistory === 'boolean')
+    validated.enableSearchHistory = data.enableSearchHistory;
+  if (typeof data.enableIndexer === 'boolean') validated.enableIndexer = data.enableIndexer;
+  if (typeof data.minimizeToTray === 'boolean') validated.minimizeToTray = data.minimizeToTray;
+  if (typeof data.startOnLogin === 'boolean') validated.startOnLogin = data.startOnLogin;
+  if (typeof data.autoCheckUpdates === 'boolean')
+    validated.autoCheckUpdates = data.autoCheckUpdates;
+  if (typeof data.showRecentFiles === 'boolean') validated.showRecentFiles = data.showRecentFiles;
+  if (typeof data.showFolderTree === 'boolean') validated.showFolderTree = data.showFolderTree;
+  if (typeof data.enableTabs === 'boolean') validated.enableTabs = data.enableTabs;
+  if (typeof data.globalContentSearch === 'boolean')
+    validated.globalContentSearch = data.globalContentSearch;
 
-  if (typeof imported.startupPath === 'string') validated.startupPath = imported.startupPath;
+  if (typeof data.startupPath === 'string') validated.startupPath = data.startupPath;
 
-  const validThemes = ['dark', 'light', 'default', 'custom'];
-  if (validThemes.includes(imported.theme)) validated.theme = imported.theme;
-
-  const validSortBy = ['name', 'date', 'size', 'type'];
-  if (validSortBy.includes(imported.sortBy)) validated.sortBy = imported.sortBy;
-
-  const validSortOrder = ['asc', 'desc'];
-  if (validSortOrder.includes(imported.sortOrder)) validated.sortOrder = imported.sortOrder;
-
-  const validViewModes = ['grid', 'list', 'column'];
-  if (validViewModes.includes(imported.viewMode)) validated.viewMode = imported.viewMode;
-
-  if (Array.isArray(imported.bookmarks)) {
-    validated.bookmarks = imported.bookmarks.filter((b: any) => typeof b === 'string');
+  if (typeof data.theme === 'string' && isOneOf(data.theme, THEME_VALUES)) {
+    validated.theme = data.theme;
   }
-  if (Array.isArray(imported.searchHistory)) {
-    validated.searchHistory = imported.searchHistory
-      .filter((s: any) => typeof s === 'string')
+
+  if (typeof data.sortBy === 'string' && isOneOf(data.sortBy, SORT_BY_VALUES)) {
+    validated.sortBy = data.sortBy;
+  }
+
+  if (typeof data.sortOrder === 'string' && isOneOf(data.sortOrder, SORT_ORDER_VALUES)) {
+    validated.sortOrder = data.sortOrder;
+  }
+
+  if (typeof data.viewMode === 'string' && isOneOf(data.viewMode, VIEW_MODE_VALUES)) {
+    validated.viewMode = data.viewMode;
+  }
+
+  if (Array.isArray(data.bookmarks)) {
+    validated.bookmarks = data.bookmarks.filter((b): b is string => typeof b === 'string');
+  }
+  if (Array.isArray(data.searchHistory)) {
+    validated.searchHistory = data.searchHistory
+      .filter((s): s is string => typeof s === 'string')
       .slice(0, 100);
   }
-  if (Array.isArray(imported.directoryHistory)) {
-    validated.directoryHistory = imported.directoryHistory
-      .filter((d: any) => typeof d === 'string')
+  if (Array.isArray(data.directoryHistory)) {
+    validated.directoryHistory = data.directoryHistory
+      .filter((d): d is string => typeof d === 'string')
       .slice(0, 100);
   }
 
-  if (imported.listColumnWidths && typeof imported.listColumnWidths === 'object') {
-    const widths = imported.listColumnWidths;
-    const parsed: Record<string, number> = {};
-    ['name', 'type', 'size', 'modified'].forEach((key) => {
+  if (isRecord(data.listColumnWidths)) {
+    const widths = data.listColumnWidths;
+    const parsed: ListColumnWidths = {};
+    (['name', 'type', 'size', 'modified'] as const).forEach((key) => {
       const value = widths[key];
       if (typeof value === 'number' && Number.isFinite(value)) {
         parsed[key] = value;
       }
     });
     if (Object.keys(parsed).length > 0) {
-      validated.listColumnWidths = parsed as any;
+      validated.listColumnWidths = parsed;
     }
   }
 
-  if (typeof imported.sidebarWidth === 'number' && Number.isFinite(imported.sidebarWidth)) {
-    validated.sidebarWidth = imported.sidebarWidth;
+  if (typeof data.sidebarWidth === 'number' && Number.isFinite(data.sidebarWidth)) {
+    validated.sidebarWidth = data.sidebarWidth;
   }
 
-  if (
-    typeof imported.previewPanelWidth === 'number' &&
-    Number.isFinite(imported.previewPanelWidth)
-  ) {
-    validated.previewPanelWidth = imported.previewPanelWidth;
+  if (typeof data.previewPanelWidth === 'number' && Number.isFinite(data.previewPanelWidth)) {
+    validated.previewPanelWidth = data.previewPanelWidth;
   }
 
-  if (imported.customTheme && typeof imported.customTheme === 'object') {
-    const ct = imported.customTheme;
-    const isValidHex = (s: any) =>
+  if (isRecord(data.customTheme)) {
+    const ct = data.customTheme;
+    const isValidHex = (s: unknown): s is string =>
       typeof s === 'string' && (/^#[0-9a-fA-F]{6}$/.test(s) || /^#[0-9a-fA-F]{3}$/.test(s));
     const expandHex = (s: string) => {
       if (/^#[0-9a-fA-F]{3}$/.test(s)) {
@@ -11988,8 +12033,12 @@ async function showRawImagePreview(file: FileItem, requestId: number) {
   `;
 }
 
-let hljs: any = null;
-let hljsLoading: Promise<any> | null = null;
+type HighlightJs = {
+  highlightElement?: (element: Element) => void;
+};
+
+let hljs: HighlightJs | null = null;
+let hljsLoading: Promise<HighlightJs | null> | null = null;
 
 const EXT_TO_LANG: Record<string, string> = {
   js: 'javascript',
@@ -12047,7 +12096,7 @@ const EXT_TO_LANG: Record<string, string> = {
   cmake: 'cmake',
 };
 
-async function loadHighlightJs(): Promise<any> {
+async function loadHighlightJs(): Promise<HighlightJs | null> {
   if (hljs) return hljs;
   if (hljsLoading) return hljsLoading;
 
@@ -12066,11 +12115,12 @@ async function loadHighlightJs(): Promise<any> {
     ) as HTMLScriptElement | null;
     if (existingScript) {
       existingScript.addEventListener('load', () => {
-        hljs = (window as any).hljs || null;
+        const globalHljs = (window as Window & { hljs?: HighlightJs }).hljs || null;
+        hljs = globalHljs;
         resolve(hljs);
       });
       existingScript.addEventListener('error', () => resolve(null));
-      const existingGlobal = (window as any).hljs;
+      const existingGlobal = (window as Window & { hljs?: HighlightJs }).hljs;
       if (existingGlobal) {
         hljs = existingGlobal;
         resolve(hljs);
@@ -12082,7 +12132,8 @@ async function loadHighlightJs(): Promise<any> {
     script.src = '../dist/vendor/highlight.js';
     script.dataset.highlightjs = 'core';
     script.onload = () => {
-      hljs = (window as any).hljs || null;
+      const globalHljs = (window as Window & { hljs?: HighlightJs }).hljs || null;
+      hljs = globalHljs;
       resolve(hljs);
     };
     script.onerror = () => resolve(null);
@@ -12125,7 +12176,7 @@ async function showTextPreview(file: FileItem, requestId: number) {
       loadHighlightJs().then((hl) => {
         if (requestId !== previewRequestId || !hl) return;
         const codeBlock = previewContent?.querySelector('code');
-        if (codeBlock) hl.highlightElement(codeBlock);
+        if (codeBlock) hl.highlightElement?.(codeBlock);
       });
     }
   } else {
@@ -12394,7 +12445,7 @@ async function showQuickLook() {
           if (requestId !== quicklookRequestId || currentQuicklookFile?.path !== file.path || !hl)
             return;
           const codeBlock = quicklookContent?.querySelector('code');
-          if (codeBlock) hl.highlightElement(codeBlock);
+          if (codeBlock) hl.highlightElement?.(codeBlock);
         });
       }
     } else {

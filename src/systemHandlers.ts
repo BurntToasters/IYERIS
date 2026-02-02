@@ -13,7 +13,7 @@ import * as path from 'path';
 import { promises as fs } from 'fs';
 import { exec, execFile, spawn } from 'child_process';
 import { promisify } from 'util';
-import type { ApiResponse } from './types';
+import type { ApiResponse, LicensesData, Settings } from './types';
 import { getMainWindow, MAX_TEXT_PREVIEW_BYTES, MAX_DATA_URL_BYTES } from './appState';
 import { isPathSafe, getErrorMessage } from './security';
 import { isRunningInFlatpak } from './platformUtils';
@@ -67,7 +67,7 @@ export async function checkFullDiskAccess(): Promise<boolean> {
     console.log('[FDA] Can read TCC.db');
     return true;
   } catch (error) {
-    const err = error as any;
+    const err = error as { code?: string; message?: string };
     console.log('[FDA] Cannot read TCC.db:', err.code || 'ERROR', '-', err.message);
   }
 
@@ -87,7 +87,7 @@ export async function checkFullDiskAccess(): Promise<boolean> {
         return true;
       }
     } catch (error) {
-      const err = error as any;
+      const err = error as { code?: string; message?: string };
       console.log('[FDA] Failed:', testPath, '-', err.code || err.message);
     }
   }
@@ -97,8 +97,8 @@ export async function checkFullDiskAccess(): Promise<boolean> {
 }
 
 export async function showFullDiskAccessDialog(
-  loadSettings: () => Promise<any>,
-  saveSettings: (settings: any) => Promise<any>
+  loadSettings: () => Promise<Settings>,
+  saveSettings: (settings: Settings) => Promise<ApiResponse>
 ): Promise<void> {
   const mainWindow = getMainWindow();
   if (!mainWindow || mainWindow.isDestroyed()) {
@@ -137,8 +137,8 @@ export async function showFullDiskAccessDialog(
 }
 
 export function setupSystemHandlers(
-  loadSettings: () => Promise<any>,
-  saveSettings: (settings: any) => Promise<any>
+  loadSettings: () => Promise<Settings>,
+  saveSettings: (settings: Settings) => Promise<ApiResponse>
 ): void {
   ipcMain.handle(
     'get-disk-space',
@@ -530,7 +530,7 @@ export function setupSystemHandlers(
 
   ipcMain.handle(
     'get-licenses',
-    async (): Promise<{ success: boolean; licenses?: any; error?: string }> => {
+    async (): Promise<{ success: boolean; licenses?: LicensesData; error?: string }> => {
       try {
         const licensesPath = path.join(__dirname, '..', 'licenses.json');
         const data = await fs.readFile(licensesPath, 'utf-8');
