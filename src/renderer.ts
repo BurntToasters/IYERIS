@@ -10082,16 +10082,25 @@ function showContextMenu(x: number, y: number, item: FileItem) {
   let left = x;
   let top = y;
 
-  if (left + menuRect.width > viewportWidth) {
+  if (y + menuRect.height > viewportHeight - 10) {
+    top = y - menuRect.height;
+  }
+
+  if (left + menuRect.width > viewportWidth - 10) {
     left = viewportWidth - menuRect.width - 10;
   }
 
-  if (top + menuRect.height > viewportHeight) {
-    top = viewportHeight - menuRect.height - 10;
+  if (top < 10) {
+    top = 10;
   }
 
-  if (left < 10) left = 10;
-  if (top < 10) top = 10;
+  if (left < 10) {
+    left = 10;
+  }
+
+  if (top + menuRect.height > viewportHeight - 10) {
+    top = viewportHeight - menuRect.height - 10;
+  }
 
   contextMenu.style.left = left + 'px';
   contextMenu.style.top = top + 'px';
@@ -10198,16 +10207,25 @@ function showEmptySpaceContextMenu(x: number, y: number) {
   let left = x;
   let top = y;
 
-  if (left + menuRect.width > viewportWidth) {
+  if (y + menuRect.height > viewportHeight - 10) {
+    top = y - menuRect.height;
+  }
+
+  if (left + menuRect.width > viewportWidth - 10) {
     left = viewportWidth - menuRect.width - 10;
   }
 
-  if (top + menuRect.height > viewportHeight) {
-    top = viewportHeight - menuRect.height - 10;
+  if (top < 10) {
+    top = 10;
   }
 
-  if (left < 10) left = 10;
-  if (top < 10) top = 10;
+  if (left < 10) {
+    left = 10;
+  }
+
+  if (top + menuRect.height > viewportHeight - 10) {
+    top = viewportHeight - menuRect.height - 10;
+  }
 
   emptySpaceContextMenu.style.left = left + 'px';
   emptySpaceContextMenu.style.top = top + 'px';
