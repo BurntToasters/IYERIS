@@ -757,9 +757,33 @@ export function setupSystemHandlers(
 
   ipcMain.handle(
     'get-log-file-content',
-    async (): Promise<{ success: boolean; content?: string; error?: string }> => {
+    async (): Promise<{
+      success: boolean;
+      content?: string;
+      error?: string;
+      isTruncated?: boolean;
+    }> => {
       try {
         const logPath = logger.getLogPath();
+        const stats = await fs.stat(logPath);
+        const maxBytes = MAX_TEXT_PREVIEW_BYTES;
+        if (stats.size > maxBytes) {
+          const fileHandle = await fs.open(logPath, 'r');
+          try {
+            const start = Math.max(0, stats.size - maxBytes);
+            const length = Math.min(maxBytes, stats.size);
+            const buffer = Buffer.alloc(length);
+            await fileHandle.read(buffer, 0, length, start);
+            const content = buffer.toString('utf8');
+            return {
+              success: true,
+              content: `... (truncated, showing last ${length} bytes)\n${content}`,
+              isTruncated: true,
+            };
+          } finally {
+            await fileHandle.close();
+          }
+        }
         const content = await fs.readFile(logPath, 'utf-8');
         return { success: true, content };
       } catch (error) {

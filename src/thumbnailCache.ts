@@ -1,6 +1,7 @@
 import { ipcMain, app } from 'electron';
 import * as path from 'path';
 import { promises as fs } from 'fs';
+import * as fsSync from 'fs';
 import * as crypto from 'crypto';
 import { isPathSafe, getErrorMessage } from './security';
 
@@ -26,6 +27,48 @@ async function ensureCacheDir(): Promise<string> {
   }
 
   return cacheDir;
+}
+
+async function enforceCacheSize(): Promise<void> {
+  const dir = await ensureCacheDir();
+  const limitBytes = MAX_CACHE_SIZE_MB * 1024 * 1024;
+  let totalSize = 0;
+  const entries: Array<{ path: string; size: number; atimeMs: number }> = [];
+
+  async function walk(dirPath: string): Promise<void> {
+    let list: fsSync.Dirent[];
+    try {
+      list = await fs.readdir(dirPath, { withFileTypes: true });
+    } catch {
+      return;
+    }
+
+    for (const entry of list) {
+      const fullPath = path.join(dirPath, entry.name);
+      if (entry.isDirectory()) {
+        await walk(fullPath);
+        continue;
+      }
+      try {
+        const stats = await fs.stat(fullPath);
+        totalSize += stats.size;
+        entries.push({ path: fullPath, size: stats.size, atimeMs: stats.atimeMs });
+      } catch {}
+    }
+  }
+
+  await walk(dir);
+
+  if (totalSize <= limitBytes) return;
+
+  entries.sort((a, b) => a.atimeMs - b.atimeMs);
+  for (const entry of entries) {
+    if (totalSize <= limitBytes) break;
+    try {
+      await fs.unlink(entry.path);
+      totalSize -= entry.size;
+    } catch {}
+  }
 }
 
 function generateCacheKey(filePath: string, mtime: number): string {
@@ -91,6 +134,8 @@ export async function saveThumbnailToCache(
 
     const buffer = Buffer.from(base64Match[1], 'base64');
     await fs.writeFile(cachePath, buffer);
+
+    await enforceCacheSize();
 
     return { success: true };
   } catch (error) {
@@ -179,6 +224,7 @@ export async function cleanupOldThumbnails(): Promise<void> {
     }
 
     await cleanDir(dir);
+    await enforceCacheSize();
   } catch (error) {
     console.error('[ThumbnailCache] Cleanup error:', error);
   }

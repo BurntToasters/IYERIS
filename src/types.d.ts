@@ -538,7 +538,12 @@ export interface ElectronAPI {
 
   getLogsPath: () => Promise<string>;
   openLogsFolder: () => Promise<ApiResponse>;
-  getLogFileContent: () => Promise<{ success: boolean; content?: string; error?: string }>;
+  getLogFileContent: () => Promise<{
+    success: boolean;
+    content?: string;
+    error?: string;
+    isTruncated?: boolean;
+  }>;
 }
 
 declare global {

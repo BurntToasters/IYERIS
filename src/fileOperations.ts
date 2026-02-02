@@ -5,6 +5,7 @@ import * as fsSync from 'fs';
 import { fileURLToPath } from 'url';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
+import * as crypto from 'crypto';
 import type {
   FileItem,
   ApiResponse,
@@ -182,6 +183,127 @@ function splitFileName(fileName: string): { base: string; ext: string } {
     return { base: fileName, ext: '' };
   }
   return { base: fileName.slice(0, lastDot), ext: fileName.slice(lastDot) };
+}
+
+async function createBackupPath(destPath: string): Promise<string> {
+  const dir = path.dirname(destPath);
+  const base = path.basename(destPath);
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const suffix = `.iyeris-backup-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const candidate = path.join(dir, `.${base}${suffix}`);
+    const exists = await fs
+      .stat(candidate)
+      .then(() => true)
+      .catch(() => false);
+    if (!exists) return candidate;
+  }
+  throw new Error('Unable to create backup path');
+}
+
+async function getBackupRoot(): Promise<string> {
+  const root = path.join(app.getPath('userData'), 'overwrite-backups');
+  await fs.mkdir(root, { recursive: true });
+  return root;
+}
+
+async function stashBackup(backupPath: string, destPath: string): Promise<string> {
+  const root = await getBackupRoot();
+  const base = path.basename(destPath);
+  const hash = crypto.createHash('sha256').update(destPath).digest('hex').slice(0, 8);
+  const ext = path.extname(base);
+  const baseName = ext ? base.slice(0, -ext.length) : base;
+
+  let counter = 0;
+  while (counter < 1000) {
+    const suffix = counter === 0 ? `${hash}` : `${hash}-${counter}`;
+    const candidate = path.join(root, `${baseName}.${suffix}${ext || ''}.bak`);
+    const exists = await fs
+      .stat(candidate)
+      .then(() => true)
+      .catch(() => false);
+    if (!exists) {
+      try {
+        await fs.rename(backupPath, candidate);
+        return candidate;
+      } catch (error) {
+        const err = error as NodeJS.ErrnoException;
+        if (err.code === 'EXDEV') {
+          const stats = await fs.stat(backupPath);
+          if (stats.isDirectory()) {
+            await fs.cp(backupPath, candidate, { recursive: true });
+          } else {
+            await fs.copyFile(backupPath, candidate);
+          }
+          await fs.rm(backupPath, { recursive: true, force: true });
+          return candidate;
+        }
+        throw error;
+      }
+    }
+    counter++;
+  }
+
+  throw new Error('Unable to stash backup');
+}
+
+async function stashRemainingBackups(backups: Map<string, string>): Promise<string[]> {
+  const stashed: string[] = [];
+  for (const [destPath, backupPath] of backups) {
+    const exists = await fs
+      .stat(backupPath)
+      .then(() => true)
+      .catch(() => false);
+    if (!exists) continue;
+    try {
+      const newPath = await stashBackup(backupPath, destPath);
+      stashed.push(newPath);
+    } catch {}
+  }
+  return stashed;
+}
+
+async function backupExistingPath(destPath: string): Promise<string> {
+  const backupPath = await createBackupPath(destPath);
+  try {
+    await fs.rename(destPath, backupPath);
+    return backupPath;
+  } catch (error) {
+    const err = error as NodeJS.ErrnoException;
+    if (err.code === 'EXDEV') {
+      const stats = await fs.stat(destPath);
+      if (stats.isDirectory()) {
+        await fs.cp(destPath, backupPath, { recursive: true });
+      } else {
+        await fs.copyFile(destPath, backupPath);
+      }
+      await fs.rm(destPath, { recursive: true, force: true });
+      return backupPath;
+    }
+    throw error;
+  }
+}
+
+async function restoreBackup(backupPath: string, destPath: string): Promise<void> {
+  try {
+    await fs.rm(destPath, { recursive: true, force: true });
+  } catch {}
+
+  try {
+    await fs.rename(backupPath, destPath);
+  } catch (error) {
+    const err = error as NodeJS.ErrnoException;
+    if (err.code === 'EXDEV') {
+      const stats = await fs.stat(backupPath);
+      if (stats.isDirectory()) {
+        await fs.cp(backupPath, destPath, { recursive: true });
+      } else {
+        await fs.copyFile(backupPath, destPath);
+      }
+      await fs.rm(backupPath, { recursive: true, force: true });
+      return;
+    }
+    throw error;
+  }
 }
 
 async function createUniqueFile(
@@ -799,6 +921,7 @@ export function setupFileOperationHandlers(): void {
         }
 
         const copiedPaths: string[] = [];
+        const backups = new Map<string, string>();
         try {
           const PARALLEL_BATCH_SIZE = 4;
           for (let i = 0; i < validation.planned.length; i += PARALLEL_BATCH_SIZE) {
@@ -806,7 +929,10 @@ export function setupFileOperationHandlers(): void {
             await Promise.all(
               batch.map(async (item) => {
                 if (item.overwrite) {
-                  await fs.rm(item.destPath, { recursive: true, force: true });
+                  if (!backups.has(item.destPath)) {
+                    const backupPath = await backupExistingPath(item.destPath);
+                    backups.set(item.destPath, backupPath);
+                  }
                 }
                 if (item.isDirectory) {
                   await fs.cp(item.sourcePath, item.destPath, { recursive: true });
@@ -823,7 +949,24 @@ export function setupFileOperationHandlers(): void {
               await fs.rm(copied, { recursive: true, force: true });
             } catch {}
           }
-          return { success: false, error: getErrorMessage(error) };
+          for (const [destPath, backupPath] of backups) {
+            try {
+              await restoreBackup(backupPath, destPath);
+            } catch {}
+          }
+          const stashed = await stashRemainingBackups(backups);
+          const baseError = getErrorMessage(error);
+          const errorMessage =
+            stashed.length > 0
+              ? `${baseError}. Backups saved in: ${path.dirname(stashed[0])}`
+              : baseError;
+          return { success: false, error: errorMessage };
+        }
+
+        for (const backupPath of backups.values()) {
+          try {
+            await fs.rm(backupPath, { recursive: true, force: true });
+          } catch {}
         }
 
         return { success: true };
@@ -875,6 +1018,7 @@ export function setupFileOperationHandlers(): void {
         const movedPaths: string[] = [];
         const originalPaths: string[] = [];
         const completed: Array<{ sourcePath: string; newPath: string }> = [];
+        const backups = new Map<string, string>();
 
         try {
           const PARALLEL_BATCH_SIZE = 4;
@@ -883,7 +1027,10 @@ export function setupFileOperationHandlers(): void {
             await Promise.all(
               batch.map(async (item) => {
                 if (item.overwrite) {
-                  await fs.rm(item.destPath, { recursive: true, force: true });
+                  if (!backups.has(item.destPath)) {
+                    const backupPath = await backupExistingPath(item.destPath);
+                    backups.set(item.destPath, backupPath);
+                  }
                 }
                 try {
                   await fs.rename(item.sourcePath, item.destPath);
@@ -925,8 +1072,31 @@ export function setupFileOperationHandlers(): void {
               }
             }
           }
-          const message = error instanceof Error ? error.message : String(error);
-          return { success: false, error: message };
+          for (const [destPath, backupPath] of backups) {
+            const exists = await fs
+              .stat(destPath)
+              .then(() => true)
+              .catch(() => false);
+            if (exists) {
+              continue;
+            }
+            try {
+              await restoreBackup(backupPath, destPath);
+            } catch {}
+          }
+          const stashed = await stashRemainingBackups(backups);
+          const baseMessage = error instanceof Error ? error.message : String(error);
+          const errorMessage =
+            stashed.length > 0
+              ? `${baseMessage}. Backups saved in: ${path.dirname(stashed[0])}`
+              : baseMessage;
+          return { success: false, error: errorMessage };
+        }
+
+        for (const backupPath of backups.values()) {
+          try {
+            await fs.rm(backupPath, { recursive: true, force: true });
+          } catch {}
         }
 
         pushUndoAction({
