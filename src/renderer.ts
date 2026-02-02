@@ -36,6 +36,7 @@ const VIRTUALIZE_BATCH_SIZE = 200;
 const THUMBNAIL_ROOT_MARGIN = '100px';
 const THUMBNAIL_CACHE_MAX = 100;
 const THUMBNAIL_CONCURRENT_LOADS = 4;
+const THUMBNAIL_QUEUE_MAX = 100;
 const NAME_COLLATOR = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
 const DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
   year: 'numeric',
@@ -108,7 +109,7 @@ function enqueueThumbnailLoad(loadFn: () => Promise<void>): void {
 
   if (activeThumbnailLoads < THUMBNAIL_CONCURRENT_LOADS) {
     execute();
-  } else {
+  } else if (pendingThumbnailLoads.length < THUMBNAIL_QUEUE_MAX) {
     pendingThumbnailLoads.push(execute);
   }
 }
@@ -1584,6 +1585,7 @@ const homeController = createHomeController({
   getFileIcon,
   formatFileSize,
   getSettings: () => currentSettings,
+  openPath: (filePath) => openPathWithArchivePrompt(filePath, undefined, false),
 });
 
 const MAX_VISIBLE_TOASTS = 3;
@@ -1915,6 +1917,11 @@ const shortcutDefinitionById = new Map<string, ShortcutDefinition>(
 function isMacPlatform(): boolean {
   if (platformOS) return platformOS === 'darwin';
   return typeof process !== 'undefined' && process.platform === 'darwin';
+}
+
+function isWindowsPlatform(): boolean {
+  if (platformOS) return platformOS === 'win32';
+  return typeof process !== 'undefined' && process.platform === 'win32';
 }
 
 function normalizeModifierKey(key: string): string | null {
@@ -4799,7 +4806,7 @@ function loadRecentFiles() {
     `;
 
     recentItem.addEventListener('click', () => {
-      window.electronAPI.openFile(filePath);
+      void openPathWithArchivePrompt(filePath, name, false);
     });
 
     recentList.appendChild(recentItem);
@@ -7710,7 +7717,7 @@ function createFileItem(item: FileItem, searchQuery?: string): HTMLElement {
 
   const contentResult = item as ContentSearchResult;
   let matchContextHtml = '';
-  if (contentResult.matchContext && searchQuery) {
+  if (contentResult.matchContext && searchQuery && searchQuery.length <= 500) {
     const escapedContext = escapeHtml(contentResult.matchContext);
     const escapedQuery = escapeHtml(searchQuery);
     const regex = new RegExp(`(${escapedQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
@@ -7780,7 +7787,9 @@ async function getDraggedPaths(event: DragEvent): Promise<string[]> {
     if (textData) {
       draggedPaths = JSON.parse(textData);
     }
-  } catch {}
+  } catch (error) {
+    console.debug('[Drag] Failed to parse drag data, trying fallback methods:', error);
+  }
 
   if (draggedPaths.length === 0 && event.dataTransfer.files.length > 0) {
     draggedPaths = Array.from(event.dataTransfer.files).map(
@@ -7945,12 +7954,7 @@ function setupFileGridEventDelegation(): void {
     if (!fileItem) return;
     const item = getFileItemData(fileItem);
     if (!item) return;
-    if (item.isDirectory) {
-      navigateTo(item.path);
-    } else {
-      window.electronAPI.openFile(item.path);
-      addToRecentFiles(item.path);
-    }
+    void openFileEntry(item);
   });
 
   fileGrid.addEventListener('auxclick', (e) => {
@@ -8569,6 +8573,22 @@ const ARCHIVE_EXTENSIONS = new Set([
   'wim',
   'tgz',
 ]);
+const ARCHIVE_SUFFIXES = [
+  '.zip',
+  '.7z',
+  '.rar',
+  '.tar',
+  '.gz',
+  '.bz2',
+  '.xz',
+  '.iso',
+  '.cab',
+  '.arj',
+  '.lzh',
+  '.wim',
+  '.tgz',
+  '.tar.gz',
+];
 const TEXT_EXTENSIONS = new Set([
   'txt',
   'text',
@@ -8904,12 +8924,7 @@ function openSelectedItem() {
   const itemPath = Array.from(selectedItems)[0];
   const item = filePathMap.get(itemPath);
   if (item) {
-    if (item.isDirectory) {
-      navigateTo(item.path);
-    } else {
-      window.electronAPI.openFile(item.path);
-      addToRecentFiles(item.path);
-    }
+    void openFileEntry(item);
   }
 }
 
@@ -9579,8 +9594,7 @@ async function renderColumn(
         );
         item.addEventListener('dblclick', () => {
           if (!fileItem.isDirectory) {
-            window.electronAPI.openFile(fileItem.path);
-            addToRecentFiles(fileItem.path);
+            void openFileEntry(fileItem);
           }
         });
 
@@ -10055,28 +10069,8 @@ function showContextMenu(x: number, y: number, item: FileItem) {
   }
 
   if (extractItem) {
-    const fileName = item.name.toLowerCase();
-    const isArchive =
-      fileName.endsWith('.zip') ||
-      fileName.endsWith('.tar.gz') ||
-      fileName.endsWith('.tgz') ||
-      fileName.endsWith('.7z') ||
-      fileName.endsWith('.rar') ||
-      fileName.endsWith('.tar') ||
-      fileName.endsWith('.gz') ||
-      fileName.endsWith('.bz2') ||
-      fileName.endsWith('.xz') ||
-      fileName.endsWith('.iso') ||
-      fileName.endsWith('.cab') ||
-      fileName.endsWith('.arj') ||
-      fileName.endsWith('.lzh') ||
-      fileName.endsWith('.wim');
-
-    if (isArchive && !item.isDirectory) {
-      extractItem.style.display = 'flex';
-    } else {
-      extractItem.style.display = 'none';
-    }
+    const isArchive = !item.isDirectory && isArchivePath(item.path);
+    extractItem.style.display = isArchive ? 'flex' : 'none';
   }
 
   contextMenu.style.display = 'block';
@@ -10265,12 +10259,7 @@ async function handleContextMenuAction(
 ) {
   switch (action) {
     case 'open':
-      if (item.isDirectory) {
-        navigateTo(item.path);
-      } else {
-        window.electronAPI.openFile(item.path);
-        addToRecentFiles(item.path);
-      }
+      await openFileEntry(item);
       break;
 
     case 'rename': {
@@ -10341,7 +10330,7 @@ async function handleContextMenuAction(
       break;
 
     case 'extract':
-      await handleExtract(item);
+      showExtractModal(item.path, item.name);
       break;
   }
 }
@@ -10426,27 +10415,145 @@ async function handleCompress(format: string = 'zip') {
   }
 }
 
-async function handleExtract(item: FileItem) {
-  const ext = path.extname(item.path).toLowerCase();
-  const supportedFormats = [
-    '.zip',
-    '.tar.gz',
-    '.7z',
-    '.rar',
-    '.tar',
-    '.gz',
-    '.bz2',
-    '.xz',
-    '.iso',
-    '.cab',
-    '.arj',
-    '.lzh',
-    '.wim',
-  ];
+function isArchivePath(filePath: string): boolean {
+  const lower = filePath.toLowerCase();
+  return ARCHIVE_SUFFIXES.some((suffix) => lower.endsWith(suffix));
+}
 
-  const isSupported = supportedFormats.some((format) => item.path.toLowerCase().endsWith(format));
+function getArchiveBaseName(filePath: string): string {
+  const lower = filePath.toLowerCase();
+  const fileName = path.basename(filePath);
+  if (lower.endsWith('.tar.gz')) {
+    return fileName.replace(/\.tar\.gz$/i, '');
+  }
+  return path.basename(filePath, path.extname(filePath));
+}
 
-  if (!isSupported) {
+function joinFilePath(baseFolder: string, ...segments: string[]): string {
+  if (!isWindowsPlatform()) {
+    const normalizedBase = baseFolder.replace(/\\/g, '/');
+    const normalizedSegments = segments.map((segment) => segment.replace(/\\/g, '/'));
+    return path.join(normalizedBase, ...normalizedSegments);
+  }
+
+  const normalizedBase = normalizeWindowsPath(baseFolder);
+  let combined = normalizedBase;
+  for (const segment of segments) {
+    const cleaned = segment
+      .replace(/[\\/]+/g, '\\')
+      .replace(/^\\+/, '')
+      .replace(/\\+$/, '');
+    if (!cleaned) continue;
+    if (!combined.endsWith('\\')) {
+      combined += '\\';
+    }
+    combined += cleaned;
+  }
+  return combined;
+}
+
+function buildArchiveExtractPath(baseFolder: string, archivePath: string): string {
+  return joinFilePath(baseFolder, getArchiveBaseName(archivePath));
+}
+
+let extractModalArchivePath: string | null = null;
+let extractModalTrackRecent = true;
+
+function updateExtractPreview(baseFolder: string): void {
+  const preview = document.getElementById('extract-preview-path');
+  if (!preview || !extractModalArchivePath) return;
+  if (!baseFolder) {
+    preview.textContent = '';
+    return;
+  }
+  preview.textContent = buildArchiveExtractPath(baseFolder, extractModalArchivePath);
+}
+
+function showExtractModal(
+  archivePath: string,
+  archiveName?: string,
+  trackRecent: boolean = true
+): void {
+  const modal = document.getElementById('extract-modal') as HTMLElement | null;
+  const message = document.getElementById('extract-modal-message') as HTMLElement | null;
+  const input = document.getElementById('extract-destination-input') as HTMLInputElement | null;
+
+  if (!modal || !message || !input) return;
+
+  const name = archiveName || path.basename(archivePath);
+  extractModalArchivePath = archivePath;
+  extractModalTrackRecent = trackRecent;
+
+  const baseFolder = path.dirname(archivePath);
+  input.value = baseFolder;
+  message.textContent = `Extract ${name}?`;
+  updateExtractPreview(baseFolder);
+
+  modal.style.display = 'flex';
+  input.focus();
+  input.select();
+}
+
+function hideExtractModal(): void {
+  const modal = document.getElementById('extract-modal') as HTMLElement | null;
+  if (modal) {
+    modal.style.display = 'none';
+  }
+  extractModalArchivePath = null;
+  extractModalTrackRecent = true;
+}
+
+async function openPathWithArchivePrompt(
+  filePath: string,
+  fileName?: string,
+  trackRecent: boolean = true
+): Promise<void> {
+  if (!filePath) return;
+  if (isArchivePath(filePath)) {
+    showExtractModal(filePath, fileName, trackRecent);
+    return;
+  }
+  await window.electronAPI.openFile(filePath);
+  if (trackRecent) {
+    addToRecentFiles(filePath);
+  }
+}
+
+async function openFileEntry(item: FileItem): Promise<void> {
+  if (item.isDirectory) {
+    navigateTo(item.path);
+    return;
+  }
+  await openPathWithArchivePrompt(item.path, item.name);
+}
+
+async function confirmExtractModal(): Promise<void> {
+  const input = document.getElementById('extract-destination-input') as HTMLInputElement | null;
+  if (!input || !extractModalArchivePath) return;
+  const baseFolder = input.value.trim();
+  if (!baseFolder) {
+    showToast('Choose a destination folder', 'Missing Destination', 'warning');
+    input.focus();
+    return;
+  }
+  const archivePath = extractModalArchivePath;
+  const trackRecent = extractModalTrackRecent;
+  hideExtractModal();
+  await handleExtract(archivePath, baseFolder, trackRecent);
+}
+
+async function handleExtract(
+  archivePath: string,
+  destBaseFolder: string,
+  trackRecent: boolean = true
+) {
+  const baseFolder = destBaseFolder.trim();
+  if (!baseFolder) {
+    showToast('Choose a destination folder', 'Missing Destination', 'warning');
+    return;
+  }
+
+  if (!isArchivePath(archivePath)) {
     showToast(
       'Unsupported archive format. Supported: .zip, .7z, .rar, .tar.gz, and more',
       'Error',
@@ -10455,13 +10562,8 @@ async function handleExtract(item: FileItem) {
     return;
   }
 
-  let baseName = path.basename(item.path);
-  if (item.path.toLowerCase().endsWith('.tar.gz')) {
-    baseName = baseName.replace(/\.tar\.gz$/i, '');
-  } else {
-    baseName = path.basename(item.path, ext);
-  }
-  const destPath = path.join(currentPath, baseName);
+  const baseName = getArchiveBaseName(archivePath);
+  const destPath = buildArchiveExtractPath(baseFolder, archivePath);
   const operationId = generateOperationId();
 
   addOperation(operationId, 'extract', baseName);
@@ -10490,14 +10592,19 @@ async function handleExtract(item: FileItem) {
       return;
     }
 
-    const result = await window.electronAPI.extractArchive(item.path, destPath, operationId);
+    const result = await window.electronAPI.extractArchive(archivePath, destPath, operationId);
 
     cleanupProgressHandler();
     removeOperation(operationId);
 
     if (result.success) {
-      showToast(`Extracted to ${baseName}`, 'Extraction Complete', 'success');
-      await navigateTo(currentPath);
+      showToast(`Extracted to ${destPath}`, 'Extraction Complete', 'success');
+      if (trackRecent) {
+        addToRecentFiles(archivePath);
+      }
+      if (currentPath === baseFolder) {
+        await navigateTo(currentPath);
+      }
     } else {
       showToast(result.error || 'Extraction failed', 'Error', 'error');
     }
@@ -11116,6 +11223,44 @@ document.getElementById('browse-startup-path-btn')?.addEventListener('click', as
     if (startupPathInput) {
       startupPathInput.value = result.path;
     }
+  }
+});
+const extractModal = document.getElementById('extract-modal') as HTMLElement | null;
+const extractClose = document.getElementById('extract-close');
+const extractCancel = document.getElementById('extract-cancel');
+const extractConfirm = document.getElementById('extract-confirm');
+const extractBrowseBtn = document.getElementById('extract-browse-btn');
+const extractDestinationInput = document.getElementById(
+  'extract-destination-input'
+) as HTMLInputElement | null;
+
+extractClose?.addEventListener('click', hideExtractModal);
+extractCancel?.addEventListener('click', hideExtractModal);
+extractConfirm?.addEventListener('click', () => {
+  void confirmExtractModal();
+});
+extractBrowseBtn?.addEventListener('click', async () => {
+  const result = await window.electronAPI.selectFolder();
+  if (result.success && result.path && extractDestinationInput) {
+    extractDestinationInput.value = result.path;
+    updateExtractPreview(result.path);
+  }
+});
+extractDestinationInput?.addEventListener('input', () => {
+  updateExtractPreview(extractDestinationInput.value);
+});
+extractDestinationInput?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    void confirmExtractModal();
+  } else if (e.key === 'Escape') {
+    e.preventDefault();
+    hideExtractModal();
+  }
+});
+extractModal?.addEventListener('click', (e) => {
+  if (e.target === extractModal) {
+    hideExtractModal();
   }
 });
 document.getElementById('rebuild-index-btn')?.addEventListener('click', rebuildIndex);
@@ -12273,9 +12418,9 @@ if (quicklookClose) {
 if (quicklookOpen) {
   quicklookOpen.addEventListener('click', () => {
     if (currentQuicklookFile) {
-      window.electronAPI.openFile(currentQuicklookFile.path);
-      addToRecentFiles(currentQuicklookFile.path);
+      const file = currentQuicklookFile;
       closeQuickLook();
+      void openFileEntry(file);
     }
   });
 }
@@ -12303,13 +12448,15 @@ document.addEventListener('keydown', (e) => {
     const dialogModal = document.getElementById('dialog-modal');
     const licensesModal = document.getElementById('licenses-modal');
     const homeSettingsModal = document.getElementById('home-settings-modal');
+    const extractModal = document.getElementById('extract-modal');
 
     if (
       (settingsModal && settingsModal.style.display === 'flex') ||
       (shortcutsModal && shortcutsModal.style.display === 'flex') ||
       (dialogModal && dialogModal.style.display === 'flex') ||
       (licensesModal && licensesModal.style.display === 'flex') ||
-      (homeSettingsModal && homeSettingsModal.style.display === 'flex')
+      (homeSettingsModal && homeSettingsModal.style.display === 'flex') ||
+      (extractModal && extractModal.style.display === 'flex')
     ) {
       return;
     }
@@ -12322,8 +12469,16 @@ document.addEventListener('keydown', (e) => {
     }
   }
 
-  if (e.key === 'Escape' && quicklookModal && quicklookModal.style.display === 'flex') {
-    closeQuickLook();
+  if (e.key === 'Escape') {
+    const extractModal = document.getElementById('extract-modal');
+    if (extractModal && extractModal.style.display === 'flex') {
+      e.preventDefault();
+      hideExtractModal();
+      return;
+    }
+    if (quicklookModal && quicklookModal.style.display === 'flex') {
+      closeQuickLook();
+    }
   }
 });
 if (searchInput) {

@@ -47,6 +47,7 @@ type HomeControllerOptions = {
   getFileIcon: (filename: string) => string;
   formatFileSize: (bytes: number) => string;
   getSettings: () => Settings;
+  openPath?: (path: string) => void | Promise<void>;
 };
 
 export type HomeController = {
@@ -72,6 +73,7 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
     getFileIcon,
     formatFileSize,
     getSettings,
+    openPath,
   } = options;
 
   const homeView = document.getElementById('home-view') as HTMLElement;
@@ -367,6 +369,11 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
         return;
       }
     } catch {}
+
+    if (openPath) {
+      await Promise.resolve(openPath(filePath));
+      return;
+    }
 
     await window.electronAPI.openFile(filePath);
   }

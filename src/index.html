@@ -366,7 +366,12 @@
                     alt="🔍"
                     draggable="false"
                 /></span>
-                <input type="text" id="search-input" placeholder="Search files..." />
+                <input
+                  type="text"
+                  id="search-input"
+                  placeholder="Search files..."
+                  maxlength="500"
+                />
                 <button
                   class="search-filter-toggle"
                   id="search-filter-toggle"
@@ -1231,6 +1236,48 @@
         <div class="modal-footer">
           <button class="modal-button" id="dialog-cancel" style="display: none">Cancel</button>
           <button class="modal-button primary" id="dialog-ok">OK</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-overlay" id="extract-modal" style="display: none">
+      <div class="modal glass-panel extract-modal">
+        <div class="modal-header">
+          <h3>Extract Archive</h3>
+          <button class="modal-close" id="extract-close">✕</button>
+        </div>
+        <div class="modal-content extract-modal-content">
+          <p class="extract-modal-message" id="extract-modal-message"></p>
+          <div class="extract-modal-field">
+            <label class="extract-modal-label" for="extract-destination-input">Parent folder</label>
+            <div class="setting-input-group">
+              <input
+                type="text"
+                id="extract-destination-input"
+                class="settings-input"
+                placeholder="Choose a parent folder"
+              />
+              <button
+                class="modal-button compact"
+                id="extract-browse-btn"
+                title="Browse for folder"
+              >
+                <img
+                  src="../assets/twemoji/1f4c1.svg"
+                  class="twemoji"
+                  alt="📁"
+                  draggable="false"
+                />
+              </button>
+            </div>
+            <p class="extract-modal-preview">
+              Extracts to: <span id="extract-preview-path"></span>
+            </p>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="modal-button" id="extract-cancel">Cancel</button>
+          <button class="modal-button primary" id="extract-confirm">Extract</button>
         </div>
       </div>
     </div>
