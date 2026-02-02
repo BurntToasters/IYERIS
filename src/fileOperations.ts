@@ -5,6 +5,7 @@ import * as fsSync from 'fs';
 import { fileURLToPath } from 'url';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
+import * as os from 'os';
 import * as crypto from 'crypto';
 import type {
   FileItem,
@@ -39,6 +40,14 @@ function normalizeCaseKey(targetPath: string): string {
 
 function normalizePathForComparison(targetPath: string): string {
   return normalizeCaseKey(path.resolve(targetPath));
+}
+
+function getParallelBatchSize(): number {
+  const totalMemGb = os.totalmem() / 1024 ** 3;
+  if (totalMemGb < 6) return 4;
+  if (totalMemGb < 12) return 8;
+  if (totalMemGb < 24) return 12;
+  return 16;
 }
 
 interface PlannedFileOperation {
@@ -923,7 +932,7 @@ export function setupFileOperationHandlers(): void {
         const copiedPaths: string[] = [];
         const backups = new Map<string, string>();
         try {
-          const PARALLEL_BATCH_SIZE = 4;
+          const PARALLEL_BATCH_SIZE = getParallelBatchSize();
           for (let i = 0; i < validation.planned.length; i += PARALLEL_BATCH_SIZE) {
             const batch = validation.planned.slice(i, i + PARALLEL_BATCH_SIZE);
             await Promise.all(
@@ -1021,7 +1030,7 @@ export function setupFileOperationHandlers(): void {
         const backups = new Map<string, string>();
 
         try {
-          const PARALLEL_BATCH_SIZE = 4;
+          const PARALLEL_BATCH_SIZE = getParallelBatchSize();
           for (let i = 0; i < validation.planned.length; i += PARALLEL_BATCH_SIZE) {
             const batch = validation.planned.slice(i, i + PARALLEL_BATCH_SIZE);
             await Promise.all(

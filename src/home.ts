@@ -250,7 +250,7 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
     subtitle?: string;
     ariaLabel?: string;
     title?: string;
-    onActivate: () => void;
+    dataAttr?: { name: string; value: string };
   }): HTMLElement {
     const item = document.createElement('div');
     item.className = 'home-item';
@@ -259,6 +259,9 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
     item.setAttribute('aria-label', options.ariaLabel || options.label);
     if (options.title) {
       item.title = options.title;
+    }
+    if (options.dataAttr) {
+      item.dataset[options.dataAttr.name] = options.dataAttr.value;
     }
 
     item.innerHTML = `
@@ -273,15 +276,71 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
       </span>
     `;
 
-    item.addEventListener('click', () => options.onActivate());
-    item.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        options.onActivate();
-      }
-    });
-
     return item;
+  }
+
+  function handleHomeItemActivation(target: HTMLElement): void {
+    if (target.dataset.quickAction) {
+      handleQuickAction(target.dataset.quickAction);
+    } else if (target.dataset.bookmarkPath) {
+      navigateTo(target.dataset.bookmarkPath);
+    } else if (target.dataset.drivePath) {
+      navigateTo(target.dataset.drivePath);
+    }
+  }
+
+  function setupHomeDelegatedListeners(): void {
+    const handleClick = (container: HTMLElement | null, handler: (target: HTMLElement) => void) => {
+      if (!container) return;
+      container.addEventListener('click', (e) => {
+        const target = (e.target as HTMLElement).closest(
+          '.home-item, .home-drive-card'
+        ) as HTMLElement | null;
+        if (target) handler(target);
+      });
+      container.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        const target = (e.target as HTMLElement).closest(
+          '.home-item, .home-drive-card'
+        ) as HTMLElement | null;
+        if (target) {
+          e.preventDefault();
+          handler(target);
+        }
+      });
+    };
+
+    handleClick(homeQuickAccess, handleHomeItemActivation);
+    handleClick(homeBookmarks, handleHomeItemActivation);
+    handleClick(homeDrives, handleHomeItemActivation);
+
+    if (homeRecents) {
+      homeRecents.addEventListener('click', (e) => {
+        const pinBtn = (e.target as HTMLElement).closest('.home-recent-pin') as HTMLElement | null;
+        if (pinBtn) {
+          e.stopPropagation();
+          const item = pinBtn.closest('.home-recent-item') as HTMLElement | null;
+          if (item?.dataset.recentPath) {
+            void togglePinnedRecent(item.dataset.recentPath);
+          }
+          return;
+        }
+        const item = (e.target as HTMLElement).closest('.home-recent-item') as HTMLElement | null;
+        if (item?.dataset.recentPath) {
+          void openRecentPath(item.dataset.recentPath);
+        }
+      });
+      homeRecents.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        const pinBtn = (e.target as HTMLElement).closest('.home-recent-pin') as HTMLElement | null;
+        if (pinBtn) return;
+        const item = (e.target as HTMLElement).closest('.home-recent-item') as HTMLElement | null;
+        if (item?.dataset.recentPath) {
+          e.preventDefault();
+          void openRecentPath(item.dataset.recentPath);
+        }
+      });
+    }
   }
 
   function getVisibleHomeQuickAccessItems(): Array<{
@@ -332,9 +391,7 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
         label: item.label,
         icon,
         ariaLabel: `Open ${item.label}`,
-        onActivate: () => {
-          handleQuickAction(item.action);
-        },
+        dataAttr: { name: 'quickAction', value: item.action },
       });
       homeQuickAccess.appendChild(homeItem);
     });
@@ -426,6 +483,9 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
 
       const item = document.createElement('div');
       item.className = 'home-recent-item';
+      item.setAttribute('role', 'button');
+      item.tabIndex = 0;
+      item.dataset.recentPath = filePath;
       item.innerHTML = `
         <div class="home-recent-main">
           <span class="home-item-icon">${icon}</span>
@@ -440,16 +500,6 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
           <span class="home-recent-pin-icon" aria-hidden="true"></span>
         </button>
       `;
-
-      item.addEventListener('click', () => {
-        void openRecentPath(filePath);
-      });
-
-      const pinButton = item.querySelector('.home-recent-pin') as HTMLButtonElement | null;
-      pinButton?.addEventListener('click', (e) => {
-        e.stopPropagation();
-        void togglePinnedRecent(filePath);
-      });
 
       homeRecents.appendChild(item);
     });
@@ -477,9 +527,7 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
         icon,
         ariaLabel: `Open bookmark ${name}`,
         title: bookmarkPath,
-        onActivate: () => {
-          navigateTo(bookmarkPath);
-        },
+        dataAttr: { name: 'bookmarkPath', value: bookmarkPath },
       });
       homeBookmarks.appendChild(bookmarkItem);
     });
@@ -541,9 +589,7 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
           icon,
           ariaLabel: `Open drive ${driveLabel}`,
           title: drive.path,
-          onActivate: () => {
-            navigateTo(drive.path);
-          },
+          dataAttr: { name: 'drivePath', value: drive.path },
         });
         homeDrives.appendChild(driveItem);
         return;
@@ -551,7 +597,10 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
 
       const card = document.createElement('div');
       card.className = 'home-drive-card';
+      card.setAttribute('role', 'button');
+      card.tabIndex = 0;
       card.title = drive.path;
+      card.dataset.drivePath = drive.path;
       card.innerHTML = `
         <div class="home-drive-header">
           <span class="home-item-icon">${icon}</span>
@@ -560,10 +609,6 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
         <div class="home-drive-meta">Loading usage...</div>
         <div class="home-drive-bar"><span style="width: 0%"></span></div>
       `;
-
-      card.addEventListener('click', () => {
-        navigateTo(drive.path);
-      });
 
       const meta = card.querySelector('.home-drive-meta') as HTMLElement | null;
       const bar = card.querySelector('.home-drive-bar span') as HTMLElement | null;
@@ -856,6 +901,7 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
   }
 
   function setupHomeSettingsListeners(): void {
+    setupHomeDelegatedListeners();
     homeCustomizeBtn?.addEventListener('click', () => openHomeSettingsModal());
     homeSettingsClose?.addEventListener('click', () => closeHomeSettingsModal());
     homeSettingsCancel?.addEventListener('click', () => closeHomeSettingsModal());

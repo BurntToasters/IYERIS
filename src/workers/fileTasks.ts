@@ -186,11 +186,10 @@ const cancelled = new Map<string, number>();
 const CANCEL_TTL_MS = 10 * 60 * 1000;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function isTaskRequest(value: unknown): value is TaskRequest {
-  if (!isRecord(value)) return false;
   if (!isRecord(value)) return false;
   return (
     typeof value.id === 'string' &&
@@ -356,14 +355,17 @@ function getHiddenCache(filePath: string): boolean | null {
     hiddenAttrCache.delete(filePath);
     return null;
   }
+  hiddenAttrCache.delete(filePath);
+  hiddenAttrCache.set(filePath, cached);
   return cached.isHidden;
 }
 
 function setHiddenCache(filePath: string, isHidden: boolean): void {
+  hiddenAttrCache.delete(filePath);
   if (hiddenAttrCache.size >= HIDDEN_ATTR_CACHE_MAX) {
-    const oldestKey = hiddenAttrCache.keys().next().value;
-    if (oldestKey) {
-      hiddenAttrCache.delete(oldestKey);
+    const lruKey = hiddenAttrCache.keys().next().value;
+    if (lruKey) {
+      hiddenAttrCache.delete(lruKey);
     }
   }
   hiddenAttrCache.set(filePath, { isHidden, timestamp: Date.now() });
@@ -708,6 +710,7 @@ async function searchDirectoryFiles(
   const { dirPath, query, filters, maxDepth, maxResults } = payload;
   const results: SearchResult[] = [];
   const searchQuery = String(query || '').toLowerCase();
+  const STAT_BATCH_SIZE = 50;
 
   const stack: Array<{ dir: string; depth: number }> = [{ dir: dirPath, depth: 0 }];
   while (stack.length && results.length < maxResults) {
@@ -723,32 +726,60 @@ async function searchDirectoryFiles(
       continue;
     }
 
+    const matchingItems: Array<{ item: fsSync.Dirent; fullPath: string }> = [];
+
     for (const item of items) {
-      if (results.length >= maxResults) break;
       if (isCancelled(operationId)) throw new Error('Calculation cancelled');
       const fullPath = path.join(current.dir, item.name);
       const matches = item.name.toLowerCase().includes(searchQuery);
 
       if (matches) {
-        try {
-          const stats = await fs.stat(fullPath);
-          const isDir = item.isDirectory();
-          if (matchesFilters(item.name, isDir, stats, filters)) {
-            results.push({
-              name: item.name,
-              path: fullPath,
-              isDirectory: isDir,
-              isFile: item.isFile(),
-              size: stats.size,
-              modified: stats.mtime,
-              isHidden: await isHidden(fullPath, item.name),
-            });
-          }
-        } catch {}
+        matchingItems.push({ item, fullPath });
       }
 
       if (item.isDirectory()) {
         stack.push({ dir: fullPath, depth: current.depth + 1 });
+      }
+    }
+
+    for (let i = 0; i < matchingItems.length && results.length < maxResults; i += STAT_BATCH_SIZE) {
+      if (isCancelled(operationId)) throw new Error('Calculation cancelled');
+      const batch = matchingItems.slice(i, i + STAT_BATCH_SIZE);
+      const statResults = await Promise.allSettled(batch.map(({ fullPath }) => fs.stat(fullPath)));
+
+      const filteredItems: Array<{ item: fsSync.Dirent; fullPath: string; stats: fsSync.Stats }> =
+        [];
+
+      for (let j = 0; j < statResults.length; j++) {
+        if (results.length >= maxResults) break;
+        const result = statResults[j];
+        if (result.status === 'fulfilled') {
+          const { item, fullPath } = batch[j];
+          const isDir = item.isDirectory();
+          if (matchesFilters(item.name, isDir, result.value, filters)) {
+            filteredItems.push({ item, fullPath, stats: result.value });
+          }
+        }
+      }
+
+      if (filteredItems.length === 0) continue;
+
+      const hiddenMap = await batchCheckHidden(
+        current.dir,
+        filteredItems.map(({ item }) => item.name)
+      );
+
+      for (const { item, fullPath, stats } of filteredItems) {
+        if (results.length >= maxResults) break;
+        results.push({
+          name: item.name,
+          path: fullPath,
+          isDirectory: item.isDirectory(),
+          isFile: item.isFile(),
+          size: stats.size,
+          modified: stats.mtime,
+          isHidden: hiddenMap.get(item.name) || false,
+        });
       }
     }
   }
@@ -763,6 +794,8 @@ async function searchDirectoryContent(
   const { dirPath, query, filters, maxDepth, maxResults } = payload;
   const results: ContentSearchResult[] = [];
   const searchQuery = String(query || '').toLowerCase();
+  const STAT_BATCH_SIZE = 50;
+  const CONTENT_SEARCH_BATCH_SIZE = 8;
 
   const stack: Array<{ dir: string; depth: number }> = [{ dir: dirPath, depth: 0 }];
   while (stack.length && results.length < maxResults) {
@@ -778,24 +811,82 @@ async function searchDirectoryContent(
       continue;
     }
 
+    const fileItems: Array<{ item: fsSync.Dirent; fullPath: string }> = [];
+
     for (const item of items) {
-      if (results.length >= maxResults) break;
       if (isCancelled(operationId)) throw new Error('Calculation cancelled');
       const fullPath = path.join(current.dir, item.name);
 
       if (item.isFile()) {
-        try {
-          const stats = await fs.stat(fullPath);
-          if (!matchesContentFilters(stats, filters)) {
-            continue;
+        fileItems.push({ item, fullPath });
+      }
+
+      if (item.isDirectory()) {
+        stack.push({ dir: fullPath, depth: current.depth + 1 });
+      }
+    }
+
+    for (let i = 0; i < fileItems.length && results.length < maxResults; i += STAT_BATCH_SIZE) {
+      if (isCancelled(operationId)) throw new Error('Calculation cancelled');
+
+      const statBatch = fileItems.slice(i, i + STAT_BATCH_SIZE);
+      const statResults = await Promise.allSettled(
+        statBatch.map(({ fullPath }) => fs.stat(fullPath))
+      );
+
+      const contentBatch: Array<{ item: fsSync.Dirent; fullPath: string; stats: fsSync.Stats }> =
+        [];
+
+      for (let j = 0; j < statResults.length; j++) {
+        if (results.length >= maxResults) break;
+        const result = statResults[j];
+        if (result.status === 'fulfilled') {
+          const { item, fullPath } = statBatch[j];
+          if (matchesContentFilters(result.value, filters)) {
+            contentBatch.push({ item, fullPath, stats: result.value });
           }
-          const contentResult = await searchFileContent(
-            fullPath,
-            searchQuery,
-            operationId,
-            stats.size
+        }
+      }
+
+      for (
+        let k = 0;
+        k < contentBatch.length && results.length < maxResults;
+        k += CONTENT_SEARCH_BATCH_SIZE
+      ) {
+        if (isCancelled(operationId)) throw new Error('Calculation cancelled');
+
+        const batch = contentBatch.slice(
+          k,
+          Math.min(k + CONTENT_SEARCH_BATCH_SIZE, contentBatch.length)
+        );
+        const contentResults = await Promise.allSettled(
+          batch.map(({ fullPath, stats }) =>
+            searchFileContent(fullPath, searchQuery, operationId, stats.size)
+          )
+        );
+
+        const foundItems: Array<{
+          item: fsSync.Dirent;
+          fullPath: string;
+          stats: fsSync.Stats;
+          contentResult: { found: boolean; context?: string; lineNumber?: number };
+        }> = [];
+
+        for (let j = 0; j < contentResults.length; j++) {
+          const result = contentResults[j];
+          if (result.status === 'fulfilled' && result.value.found) {
+            foundItems.push({ ...batch[j], contentResult: result.value });
+          }
+        }
+
+        if (foundItems.length > 0) {
+          const hiddenMap = await batchCheckHidden(
+            current.dir,
+            foundItems.map(({ item }) => item.name)
           );
-          if (contentResult.found) {
+
+          for (const { item, fullPath, stats, contentResult } of foundItems) {
+            if (results.length >= maxResults) break;
             results.push({
               name: item.name,
               path: fullPath,
@@ -803,16 +894,12 @@ async function searchDirectoryContent(
               isFile: true,
               size: stats.size,
               modified: stats.mtime,
-              isHidden: await isHidden(fullPath, item.name),
+              isHidden: hiddenMap.get(item.name) || false,
               matchContext: contentResult.context,
               matchLineNumber: contentResult.lineNumber,
             });
           }
-        } catch {}
-      }
-
-      if (item.isDirectory()) {
-        stack.push({ dir: fullPath, depth: current.depth + 1 });
+        }
       }
     }
   }
@@ -827,6 +914,14 @@ async function searchContentList(
   const { files, query, maxResults, filters } = payload;
   const results: ContentSearchResult[] = [];
   const searchQuery = String(query || '').toLowerCase();
+
+  const CONTENT_SEARCH_BATCH_SIZE = 8;
+  const batch: Array<{
+    item: { path: string; size: number; name?: string; modified?: number | string | Date };
+    filePath: string;
+    fileName: string;
+    modified: Date;
+  }> = [];
 
   for (const item of files || []) {
     if (results.length >= maxResults) break;
@@ -852,19 +947,62 @@ async function searchContentList(
     if (dateFrom && modified < dateFrom) continue;
     if (dateTo && modified > dateTo) continue;
 
-    const contentResult = await searchFileContent(filePath, searchQuery, operationId, item.size);
-    if (contentResult.found) {
-      results.push({
-        name: fileName,
-        path: filePath,
-        isDirectory: false,
-        isFile: true,
-        size: item.size,
-        modified,
-        isHidden: await isHidden(filePath, fileName),
-        matchContext: contentResult.context,
-        matchLineNumber: contentResult.lineNumber,
-      });
+    batch.push({ item, filePath, fileName, modified });
+
+    if (batch.length >= CONTENT_SEARCH_BATCH_SIZE) {
+      const searchResults = await Promise.allSettled(
+        batch.map(({ item, filePath }) =>
+          searchFileContent(filePath, searchQuery, operationId, item.size)
+        )
+      );
+
+      for (let i = 0; i < searchResults.length; i++) {
+        if (results.length >= maxResults) break;
+        const result = searchResults[i];
+        if (result.status === 'fulfilled' && result.value.found) {
+          const { item, filePath, fileName, modified } = batch[i];
+          results.push({
+            name: fileName,
+            path: filePath,
+            isDirectory: false,
+            isFile: true,
+            size: item.size,
+            modified,
+            isHidden: await isHidden(filePath, fileName),
+            matchContext: result.value.context,
+            matchLineNumber: result.value.lineNumber,
+          });
+        }
+      }
+
+      batch.length = 0;
+    }
+  }
+
+  if (batch.length > 0 && results.length < maxResults) {
+    const searchResults = await Promise.allSettled(
+      batch.map(({ item, filePath }) =>
+        searchFileContent(filePath, searchQuery, operationId, item.size)
+      )
+    );
+
+    for (let i = 0; i < searchResults.length; i++) {
+      if (results.length >= maxResults) break;
+      const result = searchResults[i];
+      if (result.status === 'fulfilled' && result.value.found) {
+        const { item, filePath, fileName, modified } = batch[i];
+        results.push({
+          name: fileName,
+          path: filePath,
+          isDirectory: false,
+          isFile: true,
+          size: item.size,
+          modified,
+          isHidden: await isHidden(filePath, fileName),
+          matchContext: result.value.context,
+          matchLineNumber: result.value.lineNumber,
+        });
+      }
     }
   }
 
@@ -890,6 +1028,8 @@ async function searchContentIndex(
   }
 
   const results: ContentSearchResult[] = [];
+  const CONTENT_SEARCH_BATCH_SIZE = 8;
+  const batch: Array<{ filePath: string; fileName: string; size: number; modified: Date }> = [];
 
   for (const entry of indexEntries) {
     if (results.length >= limit) break;
@@ -912,19 +1052,60 @@ async function searchContentIndex(
     const size = Number.isFinite(sizeValue) ? sizeValue : 0;
     if (!matchesContentFilters({ size, mtime: modified }, filters)) continue;
 
-    const contentResult = await searchFileContent(filePath, searchQuery, operationId, size);
-    if (contentResult.found) {
-      results.push({
-        name: fileName,
-        path: filePath,
-        isDirectory: false,
-        isFile: true,
-        size,
-        modified,
-        isHidden: await isHidden(filePath, fileName),
-        matchContext: contentResult.context,
-        matchLineNumber: contentResult.lineNumber,
-      });
+    batch.push({ filePath, fileName, size, modified });
+
+    if (batch.length >= CONTENT_SEARCH_BATCH_SIZE) {
+      const searchResults = await Promise.allSettled(
+        batch.map(({ filePath, size }) =>
+          searchFileContent(filePath, searchQuery, operationId, size)
+        )
+      );
+
+      for (let i = 0; i < searchResults.length; i++) {
+        if (results.length >= limit) break;
+        const result = searchResults[i];
+        if (result.status === 'fulfilled' && result.value.found) {
+          const { filePath, fileName, size, modified } = batch[i];
+          results.push({
+            name: fileName,
+            path: filePath,
+            isDirectory: false,
+            isFile: true,
+            size,
+            modified,
+            isHidden: await isHidden(filePath, fileName),
+            matchContext: result.value.context,
+            matchLineNumber: result.value.lineNumber,
+          });
+        }
+      }
+
+      batch.length = 0;
+    }
+  }
+
+  if (batch.length > 0 && results.length < limit) {
+    const searchResults = await Promise.allSettled(
+      batch.map(({ filePath, size }) => searchFileContent(filePath, searchQuery, operationId, size))
+    );
+
+    for (let i = 0; i < searchResults.length; i++) {
+      if (results.length >= limit) break;
+      const result = searchResults[i];
+      if (result.status === 'fulfilled' && result.value.found) {
+        const { filePath, fileName, size, modified } = batch[i];
+        results.push({
+          name: fileName,
+          path: filePath,
+          isDirectory: false,
+          isFile: true,
+          size,
+          modified,
+          isHidden: await isHidden(filePath, fileName),
+          matchContext: result.value.context,
+          matchLineNumber: result.value.lineNumber,
+        });
+      }
     }
   }
 
@@ -1015,7 +1196,9 @@ async function calculateFolderSize(
   let lastProgressUpdate = Date.now();
   const fileTypeMap = new Map<string, { count: number; size: number }>();
 
+  const STAT_BATCH_SIZE = 50;
   const stack: string[] = [folderPath];
+
   while (stack.length) {
     if (isCancelled(operationId)) throw new Error('Calculation cancelled');
     const currentPath = stack.pop();
@@ -1028,33 +1211,69 @@ async function calculateFolderSize(
       continue;
     }
 
+    const fileBatch: Array<{ fullPath: string; name: string }> = [];
+
     for (const entry of entries) {
       if (isCancelled(operationId)) throw new Error('Calculation cancelled');
       const fullPath = path.join(currentPath, entry.name);
-      try {
-        if (entry.isDirectory()) {
-          folderCount++;
-          stack.push(fullPath);
-        } else if (entry.isFile()) {
-          const stats = await fs.stat(fullPath);
-          totalSize += stats.size;
-          fileCount++;
-          const ext = path.extname(entry.name).toLowerCase() || '(no extension)';
-          const existing = fileTypeMap.get(ext) || { count: 0, size: 0 };
-          fileTypeMap.set(ext, { count: existing.count + 1, size: existing.size + stats.size });
-        }
 
-        const now = Date.now();
-        if (operationId && now - lastProgressUpdate > 100) {
-          lastProgressUpdate = now;
-          sendProgress('folder-size', operationId, {
-            calculatedSize: totalSize,
-            fileCount,
-            folderCount,
-            currentPath: fullPath,
+      if (entry.isDirectory()) {
+        folderCount++;
+        stack.push(fullPath);
+      } else if (entry.isFile()) {
+        fileBatch.push({ fullPath, name: entry.name });
+
+        if (fileBatch.length >= STAT_BATCH_SIZE) {
+          const results = await Promise.allSettled(
+            fileBatch.map(({ fullPath }) => fs.stat(fullPath))
+          );
+
+          for (let i = 0; i < results.length; i++) {
+            const result = results[i];
+            if (result.status === 'fulfilled') {
+              totalSize += result.value.size;
+              fileCount++;
+              const ext = path.extname(fileBatch[i].name).toLowerCase() || '(no extension)';
+              const existing = fileTypeMap.get(ext) || { count: 0, size: 0 };
+              fileTypeMap.set(ext, {
+                count: existing.count + 1,
+                size: existing.size + result.value.size,
+              });
+            }
+          }
+
+          fileBatch.length = 0;
+        }
+      }
+
+      const now = Date.now();
+      if (operationId && now - lastProgressUpdate > 100) {
+        lastProgressUpdate = now;
+        sendProgress('folder-size', operationId, {
+          calculatedSize: totalSize,
+          fileCount,
+          folderCount,
+          currentPath,
+        });
+      }
+    }
+
+    if (fileBatch.length > 0) {
+      const results = await Promise.allSettled(fileBatch.map(({ fullPath }) => fs.stat(fullPath)));
+
+      for (let i = 0; i < results.length; i++) {
+        const result = results[i];
+        if (result.status === 'fulfilled') {
+          totalSize += result.value.size;
+          fileCount++;
+          const ext = path.extname(fileBatch[i].name).toLowerCase() || '(no extension)';
+          const existing = fileTypeMap.get(ext) || { count: 0, size: 0 };
+          fileTypeMap.set(ext, {
+            count: existing.count + 1,
+            size: existing.size + result.value.size,
           });
         }
-      } catch {}
+      }
     }
   }
 

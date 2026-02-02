@@ -48,7 +48,7 @@ import { setupFileOperationHandlers, stopHiddenFileCacheCleanup } from './fileOp
 import { setupSearchHandlers } from './searchHandlers';
 import { setupArchiveHandlers, cleanupArchiveOperations } from './archiveManager';
 import { setupUpdateHandlers, initializeAutoUpdater } from './updateManager';
-import { setupThumbnailCacheHandlers } from './thumbnailCache';
+import { setupThumbnailCacheHandlers, stopThumbnailCacheCleanup } from './thumbnailCache';
 import { setupElevatedOperationHandlers } from './elevatedOperations';
 
 const TOTAL_MEM_GB = os.totalmem() / 1024 ** 3;
@@ -310,6 +310,7 @@ app.on('before-quit', () => {
 
   clearUndoRedoStacks();
   stopHiddenFileCacheCleanup();
+  stopThumbnailCacheCleanup();
   cleanupArchiveOperations();
   cleanupFileAnalysis();
 

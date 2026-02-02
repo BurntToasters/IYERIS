@@ -12,6 +12,8 @@ const MAX_CACHE_AGE_DAYS = 30;
 
 let cacheDir: string | null = null;
 let cacheInitialized = false;
+let cleanupInterval: NodeJS.Timeout | null = null;
+const CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
 
 async function ensureCacheDir(): Promise<string> {
   if (cacheDir && cacheInitialized) return cacheDir;
@@ -250,4 +252,15 @@ export function setupThumbnailCacheHandlers(): void {
   setTimeout(() => {
     cleanupOldThumbnails();
   }, 30000);
+
+  cleanupInterval = setInterval(() => {
+    cleanupOldThumbnails();
+  }, CLEANUP_INTERVAL_MS);
+}
+
+export function stopThumbnailCacheCleanup(): void {
+  if (cleanupInterval) {
+    clearInterval(cleanupInterval);
+    cleanupInterval = null;
+  }
 }

@@ -6,7 +6,7 @@ import { FileTaskManager } from './fileTasks';
 export const MAX_UNDO_STACK_SIZE = 50;
 export const HIDDEN_FILE_CACHE_TTL = 300000;
 export const HIDDEN_FILE_CACHE_MAX = 5000;
-export const SETTINGS_CACHE_TTL_MS = 5000;
+export const SETTINGS_CACHE_TTL_MS = 30000;
 export const ZOOM_MIN = 0.5;
 export const ZOOM_MAX = 2.0;
 export const MAX_TEXT_PREVIEW_BYTES = 1024 * 1024;
