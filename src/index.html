@@ -705,6 +705,7 @@
                 <img src="../assets/twemoji/2699.svg" class="twemoji" alt="⚙️" draggable="false" />
               </button>
             </div>
+
           </div>
         </div>
 
@@ -876,6 +877,23 @@
                 </div>
                 <p>Select a file to preview</p>
                 <small>Press Space for quick look</small>
+              </div>
+            </div>
+            <div class="settings-unsaved-bar" id="settings-unsaved-bar" hidden>
+              <div class="settings-unsaved-text">
+                <span class="settings-unsaved-dot"></span>
+                Unsaved changes
+              </div>
+              <div class="settings-unsaved-actions">
+                <button class="modal-button secondary" id="settings-undo-btn" type="button">
+                  Undo
+                </button>
+                <button class="modal-button secondary" id="settings-redo-btn" type="button">
+                  Redo
+                </button>
+                <button class="modal-button primary" id="settings-save-inline-btn" type="button">
+                  Save
+                </button>
               </div>
             </div>
           </div>
@@ -1298,6 +1316,22 @@
                 alt="🔍"
                 draggable="false"
             /></span>
+            <button
+              class="settings-search-count"
+              id="settings-search-count"
+              type="button"
+              aria-label="Jump to first search result"
+            >
+              0
+            </button>
+            <button
+              class="settings-search-clear"
+              id="settings-search-clear"
+              type="button"
+              aria-label="Clear search"
+            >
+              ✕
+            </button>
           </div>
           <button class="modal-close" id="settings-close">✕</button>
         </div>
@@ -1345,14 +1379,112 @@
             </div>
           </div>
           <div class="settings-pages">
+            <div class="settings-quick-actions" id="settings-quick-actions">
+              <div class="settings-quick-header">
+                <span>Quick toggles</span>
+                <span class="settings-quick-hint"
+                  >Tip: <kbd>Space</kbd>/<kbd>Enter</kbd> toggles • <kbd>Ctrl</kbd>/<kbd>⌘</kbd> +
+                  <kbd>F</kbd> focuses search • <kbd>Enter</kbd> jumps to a match</span
+                >
+              </div>
+              <div class="settings-quick-grid">
+                <div class="settings-quick-item">
+                  <span>Transparency</span>
+                  <label class="toggle-switch">
+                    <input
+                      type="checkbox"
+                      id="quick-transparency-toggle"
+                      data-sync-target="transparency-toggle"
+                    />
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+                <div class="settings-quick-item">
+                  <span>Match System Theme</span>
+                  <label class="toggle-switch">
+                    <input
+                      type="checkbox"
+                      id="quick-system-theme-toggle"
+                      data-sync-target="system-theme-toggle"
+                    />
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+                <div class="settings-quick-item">
+                  <span>Show Hidden Files</span>
+                  <label class="toggle-switch">
+                    <input
+                      type="checkbox"
+                      id="quick-hidden-files-toggle"
+                      data-sync-target="show-hidden-files-toggle"
+                    />
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+                <div class="settings-quick-item">
+                  <span>Enable Indexer</span>
+                  <label class="toggle-switch">
+                    <input
+                      type="checkbox"
+                      id="quick-indexer-toggle"
+                      data-sync-target="enable-indexer-toggle"
+                    />
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+              </div>
+            </div>
             <div class="settings-section active" id="tab-appearance">
               <h4>
-                <img src="../assets/twemoji/1f3a8.svg" class="twemoji" alt="🎨" draggable="false" />
-                Appearance
+                <span class="settings-section-title">
+                  <img
+                    src="../assets/twemoji/1f3a8.svg"
+                    class="twemoji"
+                    alt="🎨"
+                    draggable="false"
+                  />
+                  Appearance
+                </span>
+                <button class="settings-section-reset" data-section="appearance" type="button">
+                  Reset Appearance
+                </button>
               </h4>
 
+              <div class="settings-preview-panel" id="settings-preview-panel" hidden>
+                <div class="settings-preview-header">
+                  <span>Live Preview</span>
+                  <button class="settings-chip" id="settings-preview-close" type="button">
+                    Close
+                  </button>
+                </div>
+                <div class="settings-preview-body">
+                  <div class="settings-preview-swatch"></div>
+                  <div class="settings-preview-copy">
+                    <div class="settings-preview-title">IYERIS Preview</div>
+                    <div class="settings-preview-subtitle">
+                      Accent colors, text, and surfaces update live.
+                    </div>
+                  </div>
+                  <div class="settings-preview-actions">
+                    <button class="settings-preview-btn primary" type="button">Primary</button>
+                    <button class="settings-preview-btn" type="button">Secondary</button>
+                    <div class="settings-preview-toggle">
+                      <span>Toggle</span>
+                      <span class="settings-preview-switch">
+                        <span class="settings-preview-knob"></span>
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <div class="settings-card">
-                <div class="settings-card-header">Theme</div>
+                <div class="settings-card-header">
+                  <span class="settings-card-title">Theme</span>
+                  <button class="settings-chip" id="theme-preview-toggle" type="button">
+                    Preview
+                  </button>
+                </div>
                 <div
                   class="setting-item"
                   data-searchable="transparency glassmorphism effects window"
@@ -1459,8 +1591,18 @@
 
             <div class="settings-section" id="tab-view">
               <h4>
-                <img src="../assets/twemoji/1f441.svg" class="twemoji" alt="👁️" draggable="false" />
-                View
+                <span class="settings-section-title">
+                  <img
+                    src="../assets/twemoji/1f441.svg"
+                    class="twemoji"
+                    alt="👁️"
+                    draggable="false"
+                  />
+                  View
+                </span>
+                <button class="settings-section-reset" data-section="view" type="button">
+                  Reset View
+                </button>
               </h4>
 
               <div class="settings-card">
@@ -1815,8 +1957,18 @@
 
             <div class="settings-section" id="tab-startup">
               <h4>
-                <img src="../assets/twemoji/1f680.svg" class="twemoji" alt="🚀" draggable="false" />
-                Startup
+                <span class="settings-section-title">
+                  <img
+                    src="../assets/twemoji/1f680.svg"
+                    class="twemoji"
+                    alt="🚀"
+                    draggable="false"
+                  />
+                  Startup
+                </span>
+                <button class="settings-section-reset" data-section="startup" type="button">
+                  Reset Startup
+                </button>
               </h4>
 
               <div class="settings-card">
@@ -1873,8 +2025,18 @@
 
             <div class="settings-section" id="tab-accessibility">
               <h4>
-                <img src="../assets/twemoji/267f.svg" class="twemoji" alt="♿" draggable="false" />
-                Accessibility
+                <span class="settings-section-title">
+                  <img
+                    src="../assets/twemoji/267f.svg"
+                    class="twemoji"
+                    alt="♿"
+                    draggable="false"
+                  />
+                  Accessibility
+                </span>
+                <button class="settings-section-reset" data-section="accessibility" type="button">
+                  Reset Accessibility
+                </button>
               </h4>
 
               <div class="settings-card">
@@ -2000,8 +2162,18 @@
 
             <div class="settings-section" id="tab-data">
               <h4>
-                <img src="../assets/twemoji/1f4be.svg" class="twemoji" alt="💾" draggable="false" />
-                Data
+                <span class="settings-section-title">
+                  <img
+                    src="../assets/twemoji/1f4be.svg"
+                    class="twemoji"
+                    alt="💾"
+                    draggable="false"
+                  />
+                  Data
+                </span>
+                <button class="settings-section-reset" data-section="data" type="button">
+                  Reset Data
+                </button>
               </h4>
 
               <div class="settings-card">
@@ -2104,8 +2276,18 @@
 
             <div class="settings-section" id="tab-indexing">
               <h4>
-                <img src="../assets/twemoji/1f50d.svg" class="twemoji" alt="🔍" draggable="false" />
-                File Indexing
+                <span class="settings-section-title">
+                  <img
+                    src="../assets/twemoji/1f50d.svg"
+                    class="twemoji"
+                    alt="🔍"
+                    draggable="false"
+                  />
+                  File Indexing
+                </span>
+                <button class="settings-section-reset" data-section="indexing" type="button">
+                  Reset Indexing
+                </button>
               </h4>
 
               <div class="settings-card">
@@ -2117,6 +2299,30 @@
                       Index files and folders for faster searching. Indexes common locations in the
                       background.
                     </p>
+                    <p class="setting-warning">
+                      <img
+                        src="../assets/twemoji/26a0.svg"
+                        class="twemoji-small"
+                        alt="⚠️"
+                        draggable="false"
+                      />
+                      Indexing can increase CPU and disk usage on large drives.
+                    </p>
+                    <div class="setting-meta">
+                      <button
+                        class="setting-why-toggle"
+                        type="button"
+                        data-why-target="why-indexer"
+                      >
+                        Why?
+                      </button>
+                      <button class="settings-inline-link" type="button" data-learn-more="indexer">
+                        Learn more
+                      </button>
+                    </div>
+                    <div class="setting-why" id="why-indexer" hidden>
+                      We build a local index so searches complete quickly without rescanning disks.
+                    </div>
                   </div>
                   <label class="toggle-switch">
                     <input type="checkbox" id="enable-indexer-toggle" checked />
@@ -2148,6 +2354,15 @@
                       Allow searching inside file contents during global search (may be slow on
                       large indexes)
                     </p>
+                    <p class="setting-warning">
+                      <img
+                        src="../assets/twemoji/26a0.svg"
+                        class="twemoji-small"
+                        alt="⚠️"
+                        draggable="false"
+                      />
+                      Content search reads files on demand and can slow searches on older drives.
+                    </p>
                   </div>
                   <label class="toggle-switch">
                     <input type="checkbox" id="global-content-search-toggle" />
@@ -2160,6 +2375,34 @@
                     <p class="setting-description">
                       Allow pasting files copied from system file managers (Finder, File Explorer)
                     </p>
+                    <p class="setting-warning">
+                      <img
+                        src="../assets/twemoji/26a0.svg"
+                        class="twemoji-small"
+                        alt="⚠️"
+                        draggable="false"
+                      />
+                      Uses system clipboard metadata to read file paths.
+                    </p>
+                    <div class="setting-meta">
+                      <button
+                        class="setting-why-toggle"
+                        type="button"
+                        data-why-target="why-clipboard"
+                      >
+                        Why?
+                      </button>
+                      <button
+                        class="settings-inline-link"
+                        type="button"
+                        data-learn-more="clipboard"
+                      >
+                        Learn more
+                      </button>
+                    </div>
+                    <div class="setting-why" id="why-clipboard" hidden>
+                      Enables cross-app copy/paste by listening to system clipboard file entries.
+                    </div>
                   </div>
                   <label class="toggle-switch">
                     <input type="checkbox" id="global-clipboard-toggle" />
@@ -2171,8 +2414,18 @@
 
             <div class="settings-section" id="tab-advanced">
               <h4>
-                <img src="../assets/twemoji/2699.svg" class="twemoji" alt="⚙️" draggable="false" />
-                Advanced
+                <span class="settings-section-title">
+                  <img
+                    src="../assets/twemoji/2699.svg"
+                    class="twemoji"
+                    alt="⚙️"
+                    draggable="false"
+                  />
+                  Advanced
+                </span>
+                <button class="settings-section-reset" data-section="advanced" type="button">
+                  Reset Advanced
+                </button>
               </h4>
 
               <div class="settings-card">
@@ -2223,6 +2476,20 @@
                       Turn off GPU acceleration if you experience graphics issues.
                       <strong>Requires restart.</strong>
                     </p>
+                    <p class="setting-warning">
+                      <img
+                        src="../assets/twemoji/26a0.svg"
+                        class="twemoji-small"
+                        alt="⚠️"
+                        draggable="false"
+                      />
+                      Disabling GPU acceleration can reduce animation smoothness.
+                    </p>
+                    <div class="setting-meta">
+                      <button class="settings-inline-link" type="button" data-learn-more="graphics">
+                        Learn more
+                      </button>
+                    </div>
                   </div>
                   <label class="toggle-switch">
                     <input type="checkbox" id="disable-hw-accel-toggle" />
@@ -2292,6 +2559,15 @@
                     <p class="setting-description">
                       Show advanced developer options (use with caution)
                     </p>
+                    <p class="setting-warning">
+                      <img
+                        src="../assets/twemoji/26a0.svg"
+                        class="twemoji-small"
+                        alt="⚠️"
+                        draggable="false"
+                      />
+                      Developer options can change system behavior in ways that are hard to undo.
+                    </p>
                   </div>
                   <label class="toggle-switch">
                     <input type="checkbox" id="dangerous-options-toggle" />
@@ -2333,8 +2609,15 @@
 
             <div class="settings-section" id="tab-about">
               <h4>
-                <img src="../assets/twemoji/2139.svg" class="twemoji" alt="ℹ️" draggable="false" />
-                About IYERIS
+                <span class="settings-section-title">
+                  <img
+                    src="../assets/twemoji/2139.svg"
+                    class="twemoji"
+                    alt="ℹ️"
+                    draggable="false"
+                  />
+                  About IYERIS
+                </span>
               </h4>
 
               <div class="about-hero">
@@ -2448,17 +2731,7 @@
           </div>
         </div>
         <div class="modal-footer settings-footer">
-          <div class="settings-footer-left">
-            <span class="unsaved-indicator" id="unsaved-indicator" style="display: none">
-              <img
-                src="../assets/twemoji/1f534.svg"
-                class="twemoji-small"
-                alt="🔴"
-                draggable="false"
-              />
-              Unsaved changes
-            </span>
-          </div>
+          <div class="settings-footer-left"></div>
           <div class="settings-footer-right">
             <button class="modal-button" id="check-updates-btn">
               <img src="../assets/twemoji/1f503.svg" class="twemoji" alt="🔃" draggable="false" />
@@ -2589,7 +2862,9 @@
         </span>
         <span id="status-disk-space"></span>
         <span class="status-separator"></span>
-        <span class="status-version" id="status-version" title="Version 0.9.10-beta.3">v0.9.10-beta.3</span>
+        <span class="status-version" id="status-version" title="Version 0.9.10-beta.3"
+          >v0.9.10-beta.3</span
+        >
         <span class="status-separator"></span>
         <button class="status-support-btn" id="heart-button" title="Support this project!">
           <img src="../assets/twemoji/2764.svg" class="twemoji" alt="❤️" draggable="false" />
