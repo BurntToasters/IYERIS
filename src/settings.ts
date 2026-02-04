@@ -1,7 +1,9 @@
 import type { Settings } from './types';
+import { getDefaultShortcuts } from './shortcuts.js';
 
 export function createDefaultSettings(): Settings {
   return {
+    shortcuts: getDefaultShortcuts(),
     transparency: true,
     theme: 'default',
     useSystemTheme: false,

@@ -3,12 +3,17 @@ import { promises as fs } from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 
-const handlers = new Map<string, (...args: any[]) => any>();
+type Handler = (...args: unknown[]) => unknown;
+const handlers = new Map<string, Handler>();
+type DeleteHandler = (
+  event: unknown,
+  itemPath: string
+) => Promise<{ success: boolean; error?: string }>;
 const clearUndoStackForPath = vi.fn();
 
 vi.mock('electron', () => ({
   ipcMain: {
-    handle: vi.fn((channel: string, handler: (...args: any[]) => any) => {
+    handle: vi.fn((channel: string, handler: Handler) => {
       handlers.set(channel, handler);
     }),
   },
@@ -40,7 +45,7 @@ vi.mock('./ipcUtils', () => ({
 }));
 
 vi.mock('./undoRedoManager', () => ({
-  clearUndoStackForPath: (...args: any[]) => clearUndoStackForPath(...args),
+  clearUndoStackForPath: (...args: unknown[]) => clearUndoStackForPath(...args),
   getUndoStack: () => [],
   pushUndoAction: vi.fn(),
 }));
@@ -63,10 +68,10 @@ describe('delete-item handler', () => {
     const filePath = path.join(tempDir, 'to-delete.txt');
     try {
       await fs.writeFile(filePath, 'data');
-      const handler = handlers.get('delete-item');
+      const handler = handlers.get('delete-item') as DeleteHandler | undefined;
       if (!handler) throw new Error('delete-item handler not registered');
 
-      const result = await handler({} as any, filePath);
+      const result = await handler({} as unknown, filePath);
       expect(result.success).toBe(true);
       expect(clearUndoStackForPath).toHaveBeenCalledWith(filePath);
       await expect(fs.stat(filePath)).rejects.toBeTruthy();
@@ -81,10 +86,10 @@ describe('delete-item handler', () => {
     try {
       await fs.mkdir(dirPath);
       await fs.writeFile(path.join(dirPath, 'child.txt'), 'data');
-      const handler = handlers.get('delete-item');
+      const handler = handlers.get('delete-item') as DeleteHandler | undefined;
       if (!handler) throw new Error('delete-item handler not registered');
 
-      const result = await handler({} as any, dirPath);
+      const result = await handler({} as unknown, dirPath);
       expect(result.success).toBe(true);
       expect(clearUndoStackForPath).toHaveBeenCalledWith(dirPath);
       await expect(fs.stat(dirPath)).rejects.toBeTruthy();

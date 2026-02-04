@@ -20,7 +20,7 @@ type TaskType =
 interface TaskRequest {
   id: string;
   type: TaskType;
-  payload: any;
+  payload: unknown;
   operationId?: string;
 }
 
@@ -28,7 +28,7 @@ interface TaskResult {
   type: 'result';
   id: string;
   success: boolean;
-  data?: any;
+  data?: unknown;
   error?: string;
 }
 
@@ -36,7 +36,7 @@ interface TaskProgress {
   type: 'progress';
   task: TaskType;
   operationId: string;
-  data: any;
+  data: unknown;
 }
 
 interface WorkerState {
@@ -47,7 +47,7 @@ interface WorkerState {
 }
 
 interface PendingTask {
-  resolve: (value: any) => void;
+  resolve: (value: unknown) => void;
   reject: (error: Error) => void;
   operationId?: string;
 }
@@ -68,12 +68,12 @@ export class FileTaskManager extends EventEmitter {
     }
   }
 
-  async runTask<T>(type: TaskType, payload: any, operationId?: string): Promise<T> {
+  async runTask<T>(type: TaskType, payload: unknown, operationId?: string): Promise<T> {
     const id = `${Date.now()}-${this.nextId++}`;
     const task: TaskRequest = { id, type, payload, operationId };
 
     return new Promise<T>((resolve, reject) => {
-      this.pending.set(id, { resolve, reject, operationId });
+      this.pending.set(id, { resolve: resolve as (value: unknown) => void, reject, operationId });
       this.queue.push(task);
       this.drain();
     });

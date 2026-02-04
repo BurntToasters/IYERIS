@@ -188,9 +188,14 @@ export async function initializeAutoUpdater(settings: Settings): Promise<void> {
       safeSendToWindow(getMainWindow(), 'update-downloaded', info);
     });
 
-    (autoUpdater as any).on('before-quit-for-update', () => {
-      setIsQuitting(true);
-    });
+    const updaterWithBeforeQuit = autoUpdater as unknown as {
+      on?: (event: string, listener: () => void) => void;
+    };
+    if (typeof updaterWithBeforeQuit.on === 'function') {
+      updaterWithBeforeQuit.on('before-quit-for-update', () => {
+        setIsQuitting(true);
+      });
+    }
 
     if (
       !isRunningInFlatpak() &&

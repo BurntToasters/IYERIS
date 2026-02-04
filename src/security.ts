@@ -13,6 +13,13 @@ export function isPathSafe(
     return false;
   }
 
+  const absCandidate = platform === 'win32' ? inputPath.replace(/\//g, '\\') : inputPath;
+  const isAbsolute =
+    platform === 'win32' ? path.win32.isAbsolute(absCandidate) : path.isAbsolute(absCandidate);
+  if (!isAbsolute) {
+    return false;
+  }
+
   if (platform === 'win32') {
     const suspiciousChars = /[<>"|*?]/;
     if (suspiciousChars.test(inputPath)) {

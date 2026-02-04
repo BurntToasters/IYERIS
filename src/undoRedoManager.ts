@@ -60,22 +60,15 @@ export function clearUndoRedoStacks(): void {
 }
 
 export function clearUndoStackForPath(itemPath: string): void {
-  const pathsToRemove: string[] = [itemPath];
+  const pathsToRemove = new Set<string>([itemPath]);
 
   const expandPaths = (stack: UndoAction[]) => {
     for (let i = stack.length - 1; i >= 0; i--) {
       const action = stack[i];
       if (action.type === 'rename') {
-        if (
-          pathsToRemove.includes(action.data.newPath) ||
-          pathsToRemove.includes(action.data.oldPath)
-        ) {
-          if (!pathsToRemove.includes(action.data.oldPath)) {
-            pathsToRemove.push(action.data.oldPath);
-          }
-          if (!pathsToRemove.includes(action.data.newPath)) {
-            pathsToRemove.push(action.data.newPath);
-          }
+        if (pathsToRemove.has(action.data.newPath) || pathsToRemove.has(action.data.oldPath)) {
+          pathsToRemove.add(action.data.oldPath);
+          pathsToRemove.add(action.data.newPath);
         }
       }
     }
@@ -90,18 +83,15 @@ export function clearUndoStackForPath(itemPath: string): void {
       let shouldRemove = false;
 
       if (action.type === 'rename') {
-        if (
-          pathsToRemove.includes(action.data.oldPath) ||
-          pathsToRemove.includes(action.data.newPath)
-        ) {
+        if (pathsToRemove.has(action.data.oldPath) || pathsToRemove.has(action.data.newPath)) {
           shouldRemove = true;
         }
       } else if (action.type === 'create') {
-        if (pathsToRemove.includes(action.data.path)) {
+        if (pathsToRemove.has(action.data.path)) {
           shouldRemove = true;
         }
       } else if (action.type === 'move') {
-        if (action.data.sourcePaths.some((p: string) => pathsToRemove.includes(p))) {
+        if (action.data.sourcePaths.some((p: string) => pathsToRemove.has(p))) {
           shouldRemove = true;
         }
       }

@@ -1,13 +1,14 @@
 import { BrowserWindow } from 'electron';
 import type { WebContents } from 'electron';
 import { getMainWindow, getFileTasks } from './appState';
+import { isRecord } from './shared';
 
 const directoryOperationTargets = new Map<string, WebContents>();
 
 export function safeSendToWindow(
   win: BrowserWindow | null,
   channel: string,
-  ...args: any[]
+  ...args: unknown[]
 ): boolean {
   try {
     if (win && !win.isDestroyed() && win.webContents && !win.webContents.isDestroyed()) {
@@ -23,7 +24,7 @@ export function safeSendToWindow(
 export function safeSendToContents(
   contents: WebContents | null,
   channel: string,
-  ...args: any[]
+  ...args: unknown[]
 ): boolean {
   try {
     if (contents && !contents.isDestroyed()) {
@@ -54,14 +55,15 @@ export function setupFileTasksProgressHandler(
 ): void {
   const fileTasks = getFileTasks();
 
-  fileTasks.on('progress', (message: { task: string; operationId: string; data: any }) => {
+  fileTasks.on('progress', (message: { task: string; operationId: string; data: unknown }) => {
     const mainWindow = getMainWindow();
+    const data = isRecord(message.data) ? message.data : {};
 
     if (message.task === 'folder-size') {
       if (activeFolderSizeCalculations.has(message.operationId)) {
         safeSendToWindow(mainWindow, 'folder-size-progress', {
           operationId: message.operationId,
-          ...message.data,
+          ...data,
         });
       }
       return;
@@ -70,7 +72,7 @@ export function setupFileTasksProgressHandler(
       if (activeChecksumCalculations.has(message.operationId)) {
         safeSendToWindow(mainWindow, 'checksum-progress', {
           operationId: message.operationId,
-          ...message.data,
+          ...data,
         });
       }
       return;
@@ -79,7 +81,7 @@ export function setupFileTasksProgressHandler(
       const target = directoryOperationTargets.get(message.operationId) || null;
       const sent = safeSendToContents(target, 'directory-contents-progress', {
         operationId: message.operationId,
-        ...message.data,
+        ...data,
       });
       if (!sent) {
         directoryOperationTargets.delete(message.operationId);

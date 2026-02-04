@@ -1,6 +1,6 @@
 import { ipcMain, app, IpcMainInvokeEvent } from 'electron';
 import * as path from 'path';
-import type { FileItem, ApiResponse, IndexSearchResponse, IndexEntry } from './types';
+import type { FileItem, ApiResponse, IndexSearchResponse, IndexEntry, IndexStatus } from './types';
 import { getFileTasks, getIndexerTasks, getFileIndexer } from './appState';
 import { isPathSafe, getErrorMessage } from './security';
 
@@ -205,7 +205,7 @@ export function setupSearchHandlers(): void {
 
   ipcMain.handle(
     'get-index-status',
-    async (): Promise<{ success: boolean; status?: any; error?: string }> => {
+    async (): Promise<{ success: boolean; status?: IndexStatus; error?: string }> => {
       try {
         const fileIndexer = getFileIndexer();
         if (!fileIndexer) {

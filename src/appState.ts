@@ -6,7 +6,7 @@ import { FileTaskManager } from './fileTasks';
 export const MAX_UNDO_STACK_SIZE = 50;
 export const HIDDEN_FILE_CACHE_TTL = 300000;
 export const HIDDEN_FILE_CACHE_MAX = 5000;
-export const SETTINGS_CACHE_TTL_MS = 5000;
+export const SETTINGS_CACHE_TTL_MS = 30000;
 export const ZOOM_MIN = 0.5;
 export const ZOOM_MAX = 2.0;
 export const MAX_TEXT_PREVIEW_BYTES = 1024 * 1024;
@@ -31,7 +31,7 @@ let trayAssetsPath: string = '';
 let shouldStartHidden = false;
 
 let sharedClipboard: { operation: 'copy' | 'cut'; paths: string[] } | null = null;
-let sharedDragData: { paths: string[] } | null = null;
+const windowDragData = new WeakMap<Electron.WebContents, { paths: string[] }>();
 
 const isDev = process.argv.includes('--dev');
 
@@ -115,23 +115,38 @@ export function setSharedClipboard(
   sharedClipboard = clipboard;
 }
 
-export function getSharedDragData(): { paths: string[] } | null {
-  return sharedDragData;
+export function getWindowDragData(webContents: Electron.WebContents): { paths: string[] } | null {
+  return windowDragData.get(webContents) || null;
 }
 
-export function setSharedDragData(data: { paths: string[] } | null): void {
-  sharedDragData = data;
+export function setWindowDragData(
+  webContents: Electron.WebContents,
+  data: { paths: string[] } | null
+): void {
+  if (data === null) {
+    windowDragData.delete(webContents);
+  } else {
+    windowDragData.set(webContents, data);
+  }
+}
+
+export function clearWindowDragData(webContents: Electron.WebContents): void {
+  windowDragData.delete(webContents);
 }
 
 export function getIsDev(): boolean {
   return isDev;
 }
 
-export function broadcastToAllWindows(channel: string, data?: any): void {
+export function broadcastToAllWindows(channel: string, data?: unknown): void {
   const allWindows = BrowserWindow.getAllWindows();
   for (const win of allWindows) {
     if (!win.isDestroyed()) {
-      win.webContents.send(channel, data);
+      try {
+        win.webContents.send(channel, data);
+      } catch (error) {
+        console.warn(`[Broadcast] Failed to send to window:`, error);
+      }
     }
   }
 }

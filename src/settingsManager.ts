@@ -6,8 +6,9 @@ import {
   SETTINGS_CACHE_TTL_MS,
   getSharedClipboard,
   setSharedClipboard,
-  getSharedDragData,
-  setSharedDragData,
+  getWindowDragData,
+  setWindowDragData,
+  clearWindowDragData,
   getTray,
   setTray,
   getFileIndexer,
@@ -130,10 +131,12 @@ export async function saveSettings(settings: Settings): Promise<ApiResponse> {
   try {
     const settingsPath = getSettingsPath();
     logger.debug('[Settings] Saving to:', settingsPath);
-    logger.debug('[Settings] Data:', JSON.stringify(settings, null, 2));
-    // atomic write via tmp file
+
+    const settingsWithTimestamp = { ...settings, _timestamp: Date.now() };
+    logger.debug('[Settings] Data:', JSON.stringify(settingsWithTimestamp, null, 2));
+
     const tmpPath = `${settingsPath}.tmp`;
-    const data = JSON.stringify(settings, null, 2);
+    const data = JSON.stringify(settingsWithTimestamp, null, 2);
     await fs.writeFile(tmpPath, data, 'utf8');
     try {
       await fs.rename(tmpPath, settingsPath);
@@ -146,10 +149,10 @@ export async function saveSettings(settings: Settings): Promise<ApiResponse> {
     }
     logger.debug('[Settings] Saved successfully');
 
-    cachedSettings = settings;
+    cachedSettings = settingsWithTimestamp;
     settingsCacheTime = Date.now();
 
-    applyLoginItemSettings(settings);
+    applyLoginItemSettings(settingsWithTimestamp);
 
     return { success: true };
   } catch (error) {
@@ -179,7 +182,6 @@ export function setupSettingsHandlers(createTray: () => Promise<void>): void {
       const result = await saveSettings(settings);
 
       if (result.success) {
-        // toggle indexer on/off
         const indexerTasks = getIndexerTasks();
         if (settings.enableIndexer) {
           let fileIndexer = getFileIndexer();
@@ -209,11 +211,19 @@ export function setupSettingsHandlers(createTray: () => Promise<void>): void {
           logger.debug('[Tray] Tray destroyed (setting disabled)');
         }
 
-        const senderWindow = BrowserWindow.fromWebContents(event.sender);
-        const allWindows = BrowserWindow.getAllWindows();
-        for (const win of allWindows) {
-          if (!win.isDestroyed() && win !== senderWindow) {
-            win.webContents.send('settings-changed', settings);
+        // Guard against destroyed webContents during app shutdown
+        if (!event.sender.isDestroyed()) {
+          const senderWindow = BrowserWindow.fromWebContents(event.sender);
+          const allWindows = BrowserWindow.getAllWindows();
+          const savedSettings = cachedSettings || settings;
+          for (const win of allWindows) {
+            if (!win.isDestroyed() && win !== senderWindow) {
+              try {
+                win.webContents.send('settings-changed', savedSettings);
+              } catch (error) {
+                logger.warn('[Settings] Failed to broadcast to window:', error);
+              }
+            }
           }
         }
       }
@@ -308,20 +318,18 @@ export function setupSettingsHandlers(createTray: () => Promise<void>): void {
     }
   });
 
-  ipcMain.handle('set-drag-data', (_event: IpcMainInvokeEvent, paths: string[]): void => {
-    setSharedDragData(paths.length > 0 ? { paths } : null);
-    logger.debug(
-      '[Drag] Set drag data:',
-      getSharedDragData() ? `${paths.length} items` : 'cleared'
-    );
+  ipcMain.handle('set-drag-data', (event: IpcMainInvokeEvent, paths: string[]): void => {
+    const data = paths.length > 0 ? { paths } : null;
+    setWindowDragData(event.sender, data);
+    logger.debug('[Drag] Set drag data:', data ? `${paths.length} items` : 'cleared');
   });
 
-  ipcMain.handle('get-drag-data', (): { paths: string[] } | null => {
-    return getSharedDragData();
+  ipcMain.handle('get-drag-data', (event: IpcMainInvokeEvent): { paths: string[] } | null => {
+    return getWindowDragData(event.sender);
   });
 
-  ipcMain.handle('clear-drag-data', (): void => {
-    setSharedDragData(null);
+  ipcMain.handle('clear-drag-data', (event: IpcMainInvokeEvent): void => {
+    clearWindowDragData(event.sender);
   });
 
   ipcMain.handle('relaunch-app', (): void => {

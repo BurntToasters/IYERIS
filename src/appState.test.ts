@@ -43,11 +43,11 @@ describe('appState constants', () => {
   describe('SETTINGS_CACHE_TTL_MS', () => {
     it('is a reasonable cache duration', () => {
       expect(SETTINGS_CACHE_TTL_MS).toBeGreaterThan(0);
-      expect(SETTINGS_CACHE_TTL_MS).toBe(5000);
+      expect(SETTINGS_CACHE_TTL_MS).toBe(30000);
     });
 
-    it('is 5 seconds in milliseconds', () => {
-      expect(SETTINGS_CACHE_TTL_MS).toBe(5 * 1000);
+    it('is 30 seconds in milliseconds', () => {
+      expect(SETTINGS_CACHE_TTL_MS).toBe(30 * 1000);
     });
   });
 

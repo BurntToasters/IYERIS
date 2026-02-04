@@ -8,10 +8,13 @@ import type {
   GitFileStatus,
   SpecialDirectory,
   DriveInfo,
+  ListColumnWidths,
 } from './types';
 import { createFolderTreeManager } from './folderDir.js';
-import { escapeHtml, getErrorMessage } from './shared.js';
+import { escapeHtml, getErrorMessage, isRecord } from './shared.js';
 import { createDefaultSettings } from './settings.js';
+import { SHORTCUT_DEFINITIONS, getDefaultShortcuts } from './shortcuts.js';
+import type { ShortcutBinding, ShortcutDefinition } from './shortcuts.js';
 import {
   createHomeController,
   getPathDisplayValue,
@@ -34,7 +37,31 @@ const VIRTUALIZE_BATCH_SIZE = 200;
 const THUMBNAIL_ROOT_MARGIN = '100px';
 const THUMBNAIL_CACHE_MAX = 100;
 const THUMBNAIL_CONCURRENT_LOADS = 4;
+const THUMBNAIL_QUEUE_MAX = 100;
 const NAME_COLLATOR = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+
+const THEME_VALUES = [
+  'dark',
+  'light',
+  'default',
+  'custom',
+  'nord',
+  'catppuccin',
+  'dracula',
+  'solarized',
+  'github',
+] as const;
+const SORT_BY_VALUES = ['name', 'date', 'size', 'type'] as const;
+const SORT_ORDER_VALUES = ['asc', 'desc'] as const;
+const FILE_CONFLICT_VALUES = ['ask', 'rename', 'skip', 'overwrite'] as const;
+const THUMBNAIL_QUALITY_VALUES = ['low', 'medium', 'high'] as const;
+const PREVIEW_POSITION_VALUES = ['right', 'bottom'] as const;
+const GRID_COLUMNS_VALUES = ['auto', '2', '3', '4', '5', '6'] as const;
+const VIEW_MODE_VALUES = ['grid', 'list', 'column'] as const;
+
+function isOneOf<T extends readonly string[]>(value: string, options: T): value is T[number] {
+  return (options as readonly string[]).includes(value);
+}
 const DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
   year: 'numeric',
   month: 'short',
@@ -106,7 +133,7 @@ function enqueueThumbnailLoad(loadFn: () => Promise<void>): void {
 
   if (activeThumbnailLoads < THUMBNAIL_CONCURRENT_LOADS) {
     execute();
-  } else {
+  } else if (pendingThumbnailLoads.length < THUMBNAIL_QUEUE_MAX) {
     pendingThumbnailLoads.push(execute);
   }
 }
@@ -217,13 +244,18 @@ function twemojiImg(emoji: string, className: string = 'twemoji', alt?: string):
   return `<img src="${src}" class="${className}" alt="${altText}" draggable="false" />`;
 }
 
+async function saveSettingsWithTimestamp(settings: Settings) {
+  settings._timestamp = Date.now();
+  return window.electronAPI.saveSettings(settings);
+}
+
 let settingsSaveTimeout: ReturnType<typeof setTimeout> | null = null;
 function debouncedSaveSettings(delay: number = SETTINGS_SAVE_DEBOUNCE_MS) {
   if (settingsSaveTimeout) {
     clearTimeout(settingsSaveTimeout);
   }
-  settingsSaveTimeout = setTimeout(() => {
-    window.electronAPI.saveSettings(currentSettings);
+  settingsSaveTimeout = setTimeout(async () => {
+    await saveSettingsWithTimestamp(currentSettings);
     settingsSaveTimeout = null;
   }, delay);
 }
@@ -764,8 +796,31 @@ let activeTabId: string = '';
 let tabsEnabled: boolean = false;
 let tabNewButtonListenerAttached: boolean = false;
 
+const MAX_CACHED_TABS = 5;
+const MAX_CACHED_FILES_PER_TAB = 10000;
+let tabCacheAccessOrder: string[] = [];
+
 function generateTabId(): string {
   return `tab-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+}
+
+function evictOldestTabCache() {
+  if (tabCacheAccessOrder.length <= MAX_CACHED_TABS) return;
+
+  const tabsToEvict = tabCacheAccessOrder.slice(0, tabCacheAccessOrder.length - MAX_CACHED_TABS);
+  for (const tabId of tabsToEvict) {
+    const tab = tabs.find((t) => t.id === tabId);
+    if (tab && tab.cachedFiles) {
+      delete tab.cachedFiles;
+    }
+  }
+  tabCacheAccessOrder = tabCacheAccessOrder.slice(-MAX_CACHED_TABS);
+}
+
+function updateTabCacheAccess(tabId: string) {
+  tabCacheAccessOrder = tabCacheAccessOrder.filter((id) => id !== tabId);
+  tabCacheAccessOrder.push(tabId);
+  evictOldestTabCache();
 }
 
 function initializeTabs() {
@@ -937,7 +992,10 @@ function switchToTab(tabId: string) {
     currentTab.historyIndex = historyIndex;
     currentTab.selectedItems = new Set(selectedItems);
     currentTab.scrollPosition = fileView?.scrollTop || 0;
-    currentTab.cachedFiles = [...allFiles];
+    if (allFiles.length <= MAX_CACHED_FILES_PER_TAB) {
+      currentTab.cachedFiles = [...allFiles];
+      updateTabCacheAccess(currentTab.id);
+    }
   }
 
   activeTabId = tabId;
@@ -950,6 +1008,7 @@ function switchToTab(tabId: string) {
     if (newTab.path) {
       if (newTab.cachedFiles !== undefined) {
         restoreTabView(newTab);
+        updateTabCacheAccess(newTab.id);
       } else {
         navigateTo(newTab.path, true);
       }
@@ -1004,7 +1063,10 @@ async function addNewTab(path?: string) {
     currentTab.historyIndex = historyIndex;
     currentTab.selectedItems = new Set(selectedItems);
     currentTab.scrollPosition = fileView?.scrollTop || 0;
-    currentTab.cachedFiles = [...allFiles];
+    if (allFiles.length <= MAX_CACHED_FILES_PER_TAB) {
+      currentTab.cachedFiles = [...allFiles];
+      updateTabCacheAccess(currentTab.id);
+    }
   }
 
   let tabPath = path;
@@ -1523,7 +1585,7 @@ async function showConfirm(
 let currentSettings: Settings = createDefaultSettings();
 const tourController: TourController = createTourController({
   getSettings: () => currentSettings,
-  saveSettings: (settings) => window.electronAPI.saveSettings(settings),
+  saveSettings: (settings) => saveSettingsWithTimestamp(settings),
 });
 
 function showToast(
@@ -1547,6 +1609,7 @@ const homeController = createHomeController({
   getFileIcon,
   formatFileSize,
   getSettings: () => currentSettings,
+  openPath: (filePath) => openPathWithArchivePrompt(filePath, undefined, false),
 });
 
 const MAX_VISIBLE_TOASTS = 3;
@@ -1731,6 +1794,610 @@ let commandPaletteResults: HTMLElement | null = null;
 let commandPaletteEmpty: HTMLElement | null = null;
 let commandPaletteFocusedIndex = -1;
 let commandPalettePreviousFocus: HTMLElement | null = null;
+type ShortcutToken = { keys: string[] } | { text: string };
+
+interface FixedShortcutItem {
+  title: string;
+  tokens: ShortcutToken[];
+}
+
+interface ReservedShortcut {
+  label: string;
+  actionId?: string;
+}
+
+function getFixedShortcutsByCategory(): Map<string, FixedShortcutItem[]> {
+  const refreshModifier = isMacPlatform() ? 'Meta' : 'Ctrl';
+  const entries: [string, FixedShortcutItem[]][] = [
+    [
+      'General',
+      [
+        {
+          title: 'Refresh',
+          tokens: [{ keys: ['F5'] }, { text: 'or' }, { keys: [refreshModifier, 'R'] }],
+        },
+        {
+          title: 'Close Search',
+          tokens: [{ keys: ['Escape'] }],
+        },
+      ],
+    ],
+    [
+      'Navigation',
+      [
+        {
+          title: 'Navigate Files',
+          tokens: [
+            { keys: ['ArrowUp'] },
+            { keys: ['ArrowDown'] },
+            { keys: ['ArrowLeft'] },
+            { keys: ['ArrowRight'] },
+          ],
+        },
+        {
+          title: 'Open Selected',
+          tokens: [{ keys: ['Enter'] }],
+        },
+        {
+          title: 'First / Last File',
+          tokens: [{ keys: ['Home'] }, { text: '/' }, { keys: ['End'] }],
+        },
+        {
+          title: 'Page Up / Page Down',
+          tokens: [{ keys: ['PageUp'] }, { text: '/' }, { keys: ['PageDown'] }],
+        },
+        {
+          title: 'Go to Parent (Backspace)',
+          tokens: [{ keys: ['Backspace'] }],
+        },
+      ],
+    ],
+    [
+      'File Operations',
+      [
+        {
+          title: 'Rename',
+          tokens: [{ keys: ['F2'] }],
+        },
+        {
+          title: 'Delete (Trash)',
+          tokens: [{ keys: ['Delete'] }],
+        },
+        {
+          title: 'Permanent Delete',
+          tokens: [{ keys: ['Shift', 'Delete'] }],
+        },
+      ],
+    ],
+    [
+      'Selection',
+      [
+        {
+          title: 'Multi-select',
+          tokens: [{ keys: ['Ctrl'] }, { text: '+' }, { text: 'Click' }],
+        },
+        {
+          title: 'Extend Selection',
+          tokens: [
+            { keys: ['Shift'] },
+            { text: '+' },
+            { keys: ['ArrowUp'] },
+            { keys: ['ArrowDown'] },
+            { keys: ['ArrowLeft'] },
+            { keys: ['ArrowRight'] },
+          ],
+        },
+      ],
+    ],
+  ];
+  const undoRedoItems: FixedShortcutItem[] = [];
+  if (!isMacPlatform()) {
+    undoRedoItems.push({
+      title: 'Redo (Alternate)',
+      tokens: [{ keys: ['Ctrl', 'Shift', 'Z'] }],
+    });
+  }
+
+  if (undoRedoItems.length > 0) {
+    entries.push(['Undo/Redo', undoRedoItems]);
+  }
+
+  entries.push([
+    'View',
+    [
+      {
+        title: 'Quick Look',
+        tokens: [{ keys: ['Space'] }],
+      },
+    ],
+  ]);
+
+  return new Map<string, FixedShortcutItem[]>(entries);
+}
+
+const MODIFIER_ORDER = ['Ctrl', 'Shift', 'Alt', 'Meta'];
+const MODIFIER_SET = new Set(MODIFIER_ORDER);
+const shortcutLookup = new Map<string, string>();
+const fixedShortcutLookup = new Map<string, string>();
+const reservedShortcutLookup = new Map<string, ReservedShortcut>();
+const COMMAND_PALETTE_FIXED_SHORTCUTS: Record<string, ShortcutBinding> = {
+  refresh: ['F5'],
+  delete: ['Delete'],
+  rename: ['F2'],
+};
+let shortcutBindings: Record<string, ShortcutBinding> = {};
+let isShortcutCaptureActive = false;
+let activeShortcutCapture: {
+  id: string;
+  button: HTMLButtonElement;
+  item: HTMLElement;
+} | null = null;
+let shortcutCaptureCleanup: (() => void) | null = null;
+
+const shortcutDefinitionById = new Map<string, ShortcutDefinition>(
+  SHORTCUT_DEFINITIONS.map((def) => [def.id, def])
+);
+
+function isMacPlatform(): boolean {
+  if (platformOS) return platformOS === 'darwin';
+  return typeof process !== 'undefined' && process.platform === 'darwin';
+}
+
+function isWindowsPlatform(): boolean {
+  if (platformOS) return platformOS === 'win32';
+  return typeof process !== 'undefined' && process.platform === 'win32';
+}
+
+function normalizeModifierKey(key: string): string | null {
+  const lower = key.toLowerCase();
+  if (lower === 'control' || lower === 'ctrl') return 'Ctrl';
+  if (lower === 'shift') return 'Shift';
+  if (lower === 'alt' || lower === 'option') return 'Alt';
+  if (lower === 'meta' || lower === 'cmd' || lower === 'command') return 'Meta';
+  return null;
+}
+
+function normalizeKeyLabel(key: string): string | null {
+  if (!key || key === 'Dead') return null;
+  const modifier = normalizeModifierKey(key);
+  if (modifier) return modifier;
+  if (key === ' ') return 'Space';
+  if (key === 'Esc') return 'Escape';
+  if (key === 'Del') return 'Delete';
+  if (key === '?') return '/';
+  if (key === '+') return '=';
+  if (key === '_') return '-';
+  if (key.length === 1) return key.toUpperCase();
+  return key;
+}
+
+function normalizeShortcutBinding(binding: string[]): ShortcutBinding {
+  const modifiers = new Set<string>();
+  let mainKey: string | null = null;
+  for (const part of binding) {
+    const normalized = normalizeKeyLabel(part);
+    if (!normalized) continue;
+    if (MODIFIER_SET.has(normalized)) {
+      modifiers.add(normalized);
+    } else if (!mainKey) {
+      mainKey = normalized;
+    }
+  }
+  const orderedModifiers = MODIFIER_ORDER.filter((mod) => modifiers.has(mod));
+  return mainKey ? [...orderedModifiers, mainKey] : orderedModifiers;
+}
+
+function serializeShortcut(binding: ShortcutBinding): string {
+  return binding.join('::');
+}
+
+function hasModifier(binding: ShortcutBinding): boolean {
+  return binding.some((key) => MODIFIER_SET.has(key));
+}
+
+function eventToBinding(e: KeyboardEvent): ShortcutBinding | null {
+  const key = normalizeKeyLabel(e.key);
+  if (!key || MODIFIER_SET.has(key)) return null;
+  const modifiers: string[] = [];
+  const ignoreShift = e.shiftKey && (e.key === '?' || e.key === '+' || e.key === '_');
+  if (e.ctrlKey) modifiers.push('Ctrl');
+  if (e.shiftKey && !ignoreShift) modifiers.push('Shift');
+  if (e.altKey) modifiers.push('Alt');
+  if (e.metaKey) modifiers.push('Meta');
+  return normalizeShortcutBinding([...modifiers, key]);
+}
+
+function rebuildShortcutLookup(): void {
+  shortcutLookup.clear();
+  for (const [id, binding] of Object.entries(shortcutBindings)) {
+    if (binding.length === 0) continue;
+    shortcutLookup.set(serializeShortcut(binding), id);
+  }
+}
+
+function registerFixedShortcut(binding: ShortcutBinding, actionId: string): void {
+  const normalized = normalizeShortcutBinding(binding);
+  if (normalized.length === 0) return;
+  fixedShortcutLookup.set(serializeShortcut(normalized), actionId);
+}
+
+function registerReservedShortcut(
+  binding: ShortcutBinding,
+  actionId: string | null,
+  label: string
+): void {
+  const normalized = normalizeShortcutBinding(binding);
+  if (normalized.length === 0) return;
+  reservedShortcutLookup.set(serializeShortcut(normalized), {
+    label,
+    actionId: actionId ?? undefined,
+  });
+}
+
+function rebuildFixedShortcuts(): void {
+  fixedShortcutLookup.clear();
+  registerFixedShortcut(['F5'], 'refresh');
+  registerFixedShortcut(['Ctrl', 'R'], 'refresh');
+  registerFixedShortcut(['Meta', 'R'], 'refresh');
+  if (!isMacPlatform()) {
+    registerFixedShortcut(['Ctrl', 'Shift', 'Z'], 'redo');
+  } else {
+    registerFixedShortcut(['Meta', 'Z'], 'undo');
+    registerFixedShortcut(['Meta', 'Shift', 'Z'], 'redo');
+  }
+}
+
+function rebuildReservedShortcuts(): void {
+  reservedShortcutLookup.clear();
+  registerReservedShortcut(['F5'], 'refresh', 'Refresh');
+  registerReservedShortcut(['Ctrl', 'R'], 'refresh', 'Refresh');
+  registerReservedShortcut(['Meta', 'R'], 'refresh', 'Refresh');
+  registerReservedShortcut(['Shift', 'Delete'], null, 'Permanent Delete');
+  registerReservedShortcut(['Shift', 'ArrowUp'], null, 'Extend Selection');
+  registerReservedShortcut(['Shift', 'ArrowDown'], null, 'Extend Selection');
+  registerReservedShortcut(['Shift', 'ArrowLeft'], null, 'Extend Selection');
+  registerReservedShortcut(['Shift', 'ArrowRight'], null, 'Extend Selection');
+  if (!isMacPlatform()) {
+    registerReservedShortcut(['Ctrl', 'Shift', 'Z'], 'redo', 'Redo');
+  } else {
+    registerReservedShortcut(['Meta', 'Z'], 'undo', 'Undo');
+    registerReservedShortcut(['Meta', 'Shift', 'Z'], 'redo', 'Redo');
+  }
+}
+
+function getFixedShortcutActionIdFromEvent(e: KeyboardEvent): string | null {
+  const binding = eventToBinding(e);
+  if (!binding) return null;
+  return fixedShortcutLookup.get(serializeShortcut(binding)) ?? null;
+}
+
+function syncShortcutBindingsFromSettings(
+  settings: Settings,
+  options: { save?: boolean; render?: boolean } = {}
+): void {
+  rebuildFixedShortcuts();
+  rebuildReservedShortcuts();
+  const defaults = getDefaultShortcuts();
+  const normalized: Record<string, ShortcutBinding> = {};
+  const used = new Set<string>();
+  let changed = false;
+
+  for (const def of SHORTCUT_DEFINITIONS) {
+    const raw = settings.shortcuts?.[def.id] || defaults[def.id];
+    let binding = normalizeShortcutBinding(raw);
+    if (binding.length > 0 && (!hasModifier(binding) || binding.length < 2)) {
+      binding = normalizeShortcutBinding(defaults[def.id]);
+      changed = true;
+    }
+    if (binding.length > 0) {
+      let serialized = serializeShortcut(binding);
+      const reservedEntry = reservedShortcutLookup.get(serialized);
+      if (reservedEntry && reservedEntry.actionId !== def.id) {
+        const fallback = normalizeShortcutBinding(defaults[def.id]);
+        const fallbackSerialized = serializeShortcut(fallback);
+        if (serialized !== fallbackSerialized) {
+          binding = fallback;
+          serialized = fallbackSerialized;
+          changed = true;
+        }
+      }
+      if (binding.length > 0 && used.has(serialized)) {
+        const fallback = normalizeShortcutBinding(defaults[def.id]);
+        const fallbackSerialized = serializeShortcut(fallback);
+        if (!used.has(fallbackSerialized)) {
+          binding = fallback;
+        } else {
+          binding = [];
+        }
+        changed = true;
+        serialized = serializeShortcut(binding);
+      }
+      if (binding.length > 0) {
+        used.add(serialized);
+      }
+    }
+    normalized[def.id] = binding;
+  }
+
+  if (!settings.shortcuts) {
+    settings.shortcuts = normalized;
+    changed = true;
+  } else if (changed) {
+    settings.shortcuts = normalized;
+  }
+
+  shortcutBindings = normalized;
+  rebuildShortcutLookup();
+  syncCommandShortcuts();
+  if (options.render) {
+    renderShortcutsModal();
+  }
+  if (options.save && changed) {
+    debouncedSaveSettings(100);
+  }
+}
+
+function getShortcutBinding(id: string): ShortcutBinding | undefined {
+  const binding = shortcutBindings[id];
+  return binding && binding.length > 0 ? binding : undefined;
+}
+
+function getShortcutActionIdFromEvent(e: KeyboardEvent): string | null {
+  const binding = eventToBinding(e);
+  if (!binding || !hasModifier(binding)) return null;
+  return shortcutLookup.get(serializeShortcut(binding)) ?? null;
+}
+
+function areBindingsEqual(a: ShortcutBinding, b: ShortcutBinding): boolean {
+  return (
+    serializeShortcut(normalizeShortcutBinding(a)) ===
+    serializeShortcut(normalizeShortcutBinding(b))
+  );
+}
+
+function formatModifierLabel(key: string): string {
+  if (!isMacPlatform()) return key;
+  if (key === 'Meta') return '⌘ Cmd';
+  if (key === 'Ctrl') return '⌃ Ctrl';
+  if (key === 'Alt') return '⌥ Option';
+  if (key === 'Shift') return '⇧ Shift';
+  return key;
+}
+
+function formatShortcutKeyLabel(key: string): string {
+  if (MODIFIER_SET.has(key)) {
+    return formatModifierLabel(key);
+  }
+  const labels: Record<string, string> = {
+    ArrowLeft: '←',
+    ArrowRight: '→',
+    ArrowUp: '↑',
+    ArrowDown: '↓',
+    Escape: 'Esc',
+    PageUp: 'Page Up',
+    PageDown: 'Page Down',
+    '/': '?',
+  };
+  return labels[key] || (key.length === 1 ? key.toUpperCase() : key);
+}
+
+function renderShortcutTokens(tokens: ShortcutToken[]): string {
+  const tokenHtml = tokens
+    .map((token) => {
+      if ('text' in token) {
+        return `<span class=\"shortcut-text\">${escapeHtml(token.text)}</span>`;
+      }
+      const keyHtml = token.keys
+        .map((key, index) => {
+          const label = escapeHtml(formatShortcutKeyLabel(key));
+          const plus =
+            index < token.keys.length - 1 ? '<span class=\"shortcut-plus\">+</span>' : '';
+          return `<kbd>${label}</kbd>${plus}`;
+        })
+        .join('');
+      return `<span class=\"shortcut-token\">${keyHtml}</span>`;
+    })
+    .join('');
+  return `<span class=\"shortcut-keys\">${tokenHtml}</span>`;
+}
+
+function renderShortcutsModal(): void {
+  const container = document.getElementById('shortcuts-modal-sections');
+  if (!container) return;
+
+  container.innerHTML = '';
+  const defaults = getDefaultShortcuts();
+  const fixedShortcutsByCategory = getFixedShortcutsByCategory();
+
+  const categories = new Map<string, ShortcutDefinition[]>();
+  for (const def of SHORTCUT_DEFINITIONS) {
+    const list = categories.get(def.category) || [];
+    list.push(def);
+    categories.set(def.category, list);
+  }
+
+  const orderedCategories = Array.from(categories.keys());
+  for (const category of fixedShortcutsByCategory.keys()) {
+    if (!categories.has(category)) {
+      orderedCategories.push(category);
+    }
+  }
+
+  for (const category of orderedCategories) {
+    const remappable = categories.get(category) || [];
+    const fixed = fixedShortcutsByCategory.get(category) || [];
+    if (remappable.length === 0 && fixed.length === 0) continue;
+
+    const section = document.createElement('div');
+    section.className = 'shortcuts-section';
+    section.innerHTML = `<h3>${escapeHtml(category)}</h3>`;
+
+    for (const def of remappable) {
+      const defaultBinding = defaults[def.id] || [];
+      const binding = shortcutBindings[def.id] ?? defaultBinding;
+      const isDefault = areBindingsEqual(binding, defaultBinding);
+      const keyMarkup =
+        binding.length > 0
+          ? renderShortcutTokens([{ keys: binding }])
+          : '<span class="shortcut-keys"><span class="shortcut-text">Unassigned</span></span>';
+      const item = document.createElement('div');
+      item.className = 'shortcut-item';
+      item.dataset.shortcutId = def.id;
+      item.innerHTML = `
+        <div class=\"shortcut-info\">
+          <span class=\"shortcut-description\">${escapeHtml(def.title)}</span>
+        </div>
+        <div class=\"shortcut-controls\">
+          ${keyMarkup}
+          <button class=\"modal-button secondary\" data-shortcut-action=\"edit\">Change</button>
+          <button class=\"modal-button secondary compact\" data-shortcut-action=\"reset\" ${isDefault ? 'disabled' : ''}>Reset</button>
+        </div>
+      `;
+      section.appendChild(item);
+    }
+
+    for (const fixedItem of fixed) {
+      const item = document.createElement('div');
+      item.className = 'shortcut-item fixed';
+      item.innerHTML = `
+        <div class=\"shortcut-info\">
+          <span class=\"shortcut-description\">${escapeHtml(fixedItem.title)}</span>
+        </div>
+        <div class=\"shortcut-controls\">
+          ${renderShortcutTokens(fixedItem.tokens)}
+        </div>
+      `;
+      section.appendChild(item);
+    }
+
+    container.appendChild(section);
+  }
+}
+
+function initShortcutsModal(): void {
+  const container = document.getElementById('shortcuts-modal-sections');
+  if (!container) return;
+
+  container.addEventListener('click', (e) => {
+    const target = e.target as HTMLElement;
+    const button = target.closest('button[data-shortcut-action]') as HTMLButtonElement | null;
+    if (!button) return;
+    if (button.disabled) return;
+    const item = button.closest('[data-shortcut-id]') as HTMLElement | null;
+    if (!item || !item.dataset.shortcutId) return;
+    const action = button.dataset.shortcutAction;
+    if (action === 'edit') {
+      startShortcutCapture(item.dataset.shortcutId, button, item);
+      return;
+    }
+    if (action === 'reset') {
+      resetShortcutBinding(item.dataset.shortcutId);
+    }
+  });
+}
+
+function startShortcutCapture(id: string, button: HTMLButtonElement, item: HTMLElement): void {
+  stopShortcutCapture();
+
+  activeShortcutCapture = { id, button, item };
+  isShortcutCaptureActive = true;
+  item.classList.add('is-recording');
+  button.textContent = 'Press keys...';
+
+  const handleKeydown = (e: KeyboardEvent): void => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (e.key === 'Escape') {
+      stopShortcutCapture();
+      return;
+    }
+
+    const binding = eventToBinding(e);
+    if (!binding) {
+      return;
+    }
+
+    if (!hasModifier(binding)) {
+      showToast('Shortcuts must include a modifier key', 'Shortcut Required', 'warning');
+      return;
+    }
+
+    const serialized = serializeShortcut(binding);
+    const reservedEntry = reservedShortcutLookup.get(serialized);
+    if (reservedEntry && reservedEntry.actionId !== id) {
+      showToast(`Reserved for ${reservedEntry.label}`, 'Shortcut Reserved', 'warning');
+      return;
+    }
+    const conflictId = shortcutLookup.get(serialized);
+    if (conflictId && conflictId !== id) {
+      const conflictTitle = shortcutDefinitionById.get(conflictId)?.title || conflictId;
+      showToast(`Already used by \"${conflictTitle}\"`, 'Shortcut In Use', 'warning');
+      return;
+    }
+
+    stopShortcutCapture();
+    setShortcutBinding(id, binding);
+  };
+
+  window.addEventListener('keydown', handleKeydown, true);
+  shortcutCaptureCleanup = () => {
+    window.removeEventListener('keydown', handleKeydown, true);
+  };
+}
+
+function stopShortcutCapture(): void {
+  if (shortcutCaptureCleanup) {
+    shortcutCaptureCleanup();
+    shortcutCaptureCleanup = null;
+  }
+
+  if (activeShortcutCapture) {
+    activeShortcutCapture.item.classList.remove('is-recording');
+    activeShortcutCapture.button.textContent = 'Change';
+  }
+
+  activeShortcutCapture = null;
+  isShortcutCaptureActive = false;
+}
+
+function setShortcutBinding(id: string, binding: ShortcutBinding): void {
+  const normalized = normalizeShortcutBinding(binding);
+  currentSettings.shortcuts = {
+    ...currentSettings.shortcuts,
+    [id]: normalized,
+  };
+  shortcutBindings = {
+    ...shortcutBindings,
+    [id]: normalized,
+  };
+  rebuildShortcutLookup();
+  syncCommandShortcuts();
+  renderShortcutsModal();
+  debouncedSaveSettings(100);
+}
+
+function resetShortcutBinding(id: string): void {
+  const defaults = getDefaultShortcuts();
+  setShortcutBinding(id, defaults[id] || []);
+}
+
+function syncCommandShortcuts(): void {
+  const remappableIds = new Set(SHORTCUT_DEFINITIONS.map((def) => def.id));
+  for (const cmd of commands) {
+    if (remappableIds.has(cmd.id)) {
+      cmd.shortcut = getShortcutBinding(cmd.id);
+    } else if (COMMAND_PALETTE_FIXED_SHORTCUTS[cmd.id]) {
+      cmd.shortcut = COMMAND_PALETTE_FIXED_SHORTCUTS[cmd.id];
+    } else {
+      delete cmd.shortcut;
+    }
+  }
+
+  if (commandPaletteModal && commandPaletteModal.style.display === 'flex') {
+    renderCommandPaletteResults(commands);
+  }
+}
 
 function initCommandPalette(): void {
   commandPaletteModal = document.getElementById('command-palette-modal');
@@ -1741,6 +2408,7 @@ function initCommandPalette(): void {
   if (!commandPaletteModal || !commandPaletteInput || !commandPaletteResults) return;
 
   registerCommands();
+  syncCommandShortcuts();
 
   commandPaletteInput.addEventListener('input', handleCommandPaletteSearch);
   commandPaletteInput.addEventListener('keydown', handleCommandPaletteKeydown);
@@ -1759,7 +2427,7 @@ function registerCommands(): void {
       title: 'New Folder',
       description: 'Create a new folder',
       icon: '📁',
-      shortcut: ['Ctrl', 'Shift', 'N'],
+      shortcut: getShortcutBinding('new-folder'),
       action: () => {
         hideCommandPalette();
         createNewFolder();
@@ -1770,7 +2438,7 @@ function registerCommands(): void {
       title: 'New File',
       description: 'Create a new file',
       icon: '📄',
-      shortcut: ['Ctrl', 'N'],
+      shortcut: getShortcutBinding('new-file'),
       action: () => {
         hideCommandPalette();
         createNewFile();
@@ -1781,7 +2449,7 @@ function registerCommands(): void {
       title: 'Search',
       description: 'Search files in current folder',
       icon: '🔍',
-      shortcut: ['Ctrl', 'F'],
+      shortcut: getShortcutBinding('search'),
       action: () => {
         hideCommandPalette();
         document.getElementById('search-btn')?.click();
@@ -1792,7 +2460,7 @@ function registerCommands(): void {
       title: 'Refresh',
       description: 'Reload current folder',
       icon: '🔄',
-      shortcut: ['F5'],
+      shortcut: COMMAND_PALETTE_FIXED_SHORTCUTS.refresh,
       action: () => {
         hideCommandPalette();
         refresh();
@@ -1803,7 +2471,7 @@ function registerCommands(): void {
       title: 'Go Back',
       description: 'Navigate to previous folder',
       icon: '⬅️',
-      shortcut: ['Alt', '←'],
+      shortcut: getShortcutBinding('go-back'),
       action: () => {
         hideCommandPalette();
         goBack();
@@ -1814,7 +2482,7 @@ function registerCommands(): void {
       title: 'Go Forward',
       description: 'Navigate to next folder',
       icon: '➡️',
-      shortcut: ['Alt', '→'],
+      shortcut: getShortcutBinding('go-forward'),
       action: () => {
         hideCommandPalette();
         goForward();
@@ -1825,7 +2493,7 @@ function registerCommands(): void {
       title: 'Go Up',
       description: 'Navigate to parent folder',
       icon: '⬆️',
-      shortcut: ['Alt', '↑'],
+      shortcut: getShortcutBinding('go-up'),
       action: () => {
         hideCommandPalette();
         goUp();
@@ -1836,7 +2504,7 @@ function registerCommands(): void {
       title: 'Settings',
       description: 'Open settings',
       icon: '⚙️',
-      shortcut: ['Ctrl', ','],
+      shortcut: getShortcutBinding('settings'),
       action: () => {
         hideCommandPalette();
         showSettingsModal();
@@ -1847,7 +2515,7 @@ function registerCommands(): void {
       title: 'Keyboard Shortcuts',
       description: 'View all keyboard shortcuts',
       icon: '⌨️',
-      shortcut: ['Ctrl', '?'],
+      shortcut: getShortcutBinding('shortcuts'),
       action: () => {
         hideCommandPalette();
         showShortcutsModal();
@@ -1858,7 +2526,7 @@ function registerCommands(): void {
       title: 'Select All',
       description: 'Select all items',
       icon: '☑️',
-      shortcut: ['Ctrl', 'A'],
+      shortcut: getShortcutBinding('select-all'),
       action: () => {
         hideCommandPalette();
         selectAll();
@@ -1869,7 +2537,7 @@ function registerCommands(): void {
       title: 'Copy',
       description: 'Copy selected items',
       icon: '📋',
-      shortcut: ['Ctrl', 'C'],
+      shortcut: getShortcutBinding('copy'),
       action: () => {
         hideCommandPalette();
         copyToClipboard();
@@ -1880,7 +2548,7 @@ function registerCommands(): void {
       title: 'Cut',
       description: 'Cut selected items',
       icon: '✂️',
-      shortcut: ['Ctrl', 'X'],
+      shortcut: getShortcutBinding('cut'),
       action: () => {
         hideCommandPalette();
         cutToClipboard();
@@ -1891,7 +2559,7 @@ function registerCommands(): void {
       title: 'Paste',
       description: 'Paste items',
       icon: '📎',
-      shortcut: ['Ctrl', 'V'],
+      shortcut: getShortcutBinding('paste'),
       action: () => {
         hideCommandPalette();
         pasteFromClipboard();
@@ -1902,7 +2570,7 @@ function registerCommands(): void {
       title: 'Delete',
       description: 'Delete selected items',
       icon: '🗑️',
-      shortcut: ['Del'],
+      shortcut: COMMAND_PALETTE_FIXED_SHORTCUTS.delete,
       action: () => {
         hideCommandPalette();
         deleteSelected();
@@ -1913,7 +2581,7 @@ function registerCommands(): void {
       title: 'Rename',
       description: 'Rename selected item',
       icon: '✍️',
-      shortcut: ['F2'],
+      shortcut: COMMAND_PALETTE_FIXED_SHORTCUTS.rename,
       action: () => {
         hideCommandPalette();
         renameSelected();
@@ -1964,7 +2632,7 @@ function registerCommands(): void {
       title: 'Toggle Sidebar',
       description: 'Show or hide sidebar',
       icon: '📂',
-      shortcut: ['Ctrl', 'B'],
+      shortcut: getShortcutBinding('toggle-sidebar'),
       action: () => {
         hideCommandPalette();
         document.getElementById('sidebar-toggle')?.click();
@@ -1975,7 +2643,7 @@ function registerCommands(): void {
       title: 'New Tab',
       description: 'Open new tab',
       icon: '➕',
-      shortcut: ['Ctrl', 'T'],
+      shortcut: getShortcutBinding('new-tab'),
       action: () => {
         hideCommandPalette();
         if (tabsEnabled) addNewTab();
@@ -2057,7 +2725,12 @@ function renderCommandPaletteResults(cmds: Command[]): void {
     if (cmd.shortcut) {
       shortcutHtml = `
         <div class="command-palette-item-shortcut">
-          ${cmd.shortcut.map((key) => `<kbd class="command-palette-key">${key}</kbd>`).join('')}
+          ${cmd.shortcut
+            .map(
+              (key) =>
+                `<kbd class="command-palette-key">${escapeHtml(formatShortcutKeyLabel(key))}</kbd>`
+            )
+            .join('')}
         </div>
       `;
     }
@@ -2179,6 +2852,7 @@ async function loadSettings(): Promise<void> {
     const defaults = createDefaultSettings();
     currentSettings = { ...defaults, ...result.settings };
     currentSettings.enableSyntaxHighlighting = currentSettings.enableSyntaxHighlighting !== false;
+    syncShortcutBindingsFromSettings(currentSettings, { save: true });
     applySettings(currentSettings);
     const newLaunchCount = (currentSettings.launchCount || 0) + 1;
     currentSettings.launchCount = newLaunchCount;
@@ -2597,7 +3271,7 @@ function syncColorInputs(colorId: string, value: string) {
 
   const key = mapping[colorId];
   if (key) {
-    (tempCustomTheme as any)[key] = value;
+    tempCustomTheme[key] = value;
     themeEditorHasUnsavedChanges = true;
   }
 
@@ -2633,7 +3307,7 @@ async function saveCustomTheme() {
 
   applySettings(currentSettings);
 
-  const result = await window.electronAPI.saveSettings(currentSettings);
+  const result = await saveSettingsWithTimestamp(currentSettings);
   if (result.success) {
     themeEditorHasUnsavedChanges = false;
     hideThemeEditor(true);
@@ -2726,7 +3400,7 @@ function setupThemeEditorListeners() {
       if (currentSettings.customTheme) {
         currentSettings.theme = 'custom';
         applySettings(currentSettings);
-        await window.electronAPI.saveSettings(currentSettings);
+        await saveSettingsWithTimestamp(currentSettings);
         updateCustomThemeUI();
       }
     });
@@ -2779,6 +3453,7 @@ async function showSettingsModal() {
   }
 
   const settingsModal = document.getElementById('settings-modal');
+  suppressSettingsTracking = true;
 
   // Reset tabs
   const tabs = document.querySelectorAll('.settings-tab');
@@ -2787,8 +3462,17 @@ async function showSettingsModal() {
   tabs.forEach((t) => t.classList.remove('active'));
   sections.forEach((s) => s.classList.remove('active'));
 
-  if (tabs.length > 0) tabs[0].classList.add('active');
-  if (sections.length > 0) sections[0].classList.add('active');
+  if (tabs.length > 0) {
+    const firstId = tabs[0].getAttribute('data-tab');
+    if (firstId) {
+      activateSettingsTab(firstId, true);
+    } else {
+      tabs[0].classList.add('active');
+      if (sections.length > 0) sections[0].classList.add('active');
+    }
+  } else if (sections.length > 0) {
+    sections[0].classList.add('active');
+  }
 
   const transparencyToggle = document.getElementById('transparency-toggle') as HTMLInputElement;
   const systemThemeToggle = document.getElementById('system-theme-toggle') as HTMLInputElement;
@@ -3084,7 +3768,15 @@ async function showSettingsModal() {
   }
 
   if (settingsModal) {
+    const searchInput = document.getElementById('settings-search') as HTMLInputElement | null;
+    if (searchInput) {
+      searchInput.value = '';
+    }
+    syncQuickActionsFromMain();
+    updateSettingsCardSummaries();
+    applySettingsSearch('');
     settingsModal.style.display = 'flex';
+    suppressSettingsTracking = false;
     clearSettingsChanged();
     initSettingsChangeTracking();
   }
@@ -3267,7 +3959,7 @@ async function showLicensesModal() {
       let html = '';
 
       for (const [packageName, packageInfo] of Object.entries(licenses)) {
-        const info = packageInfo as any;
+        const info = packageInfo;
         html += '<div class="license-package">';
         html += `<div class="license-package-name">${escapeHtml(packageName)}</div>`;
         html += '<div class="license-package-info">';
@@ -3315,21 +4007,12 @@ function showShortcutsModal() {
   const shortcutsModal = document.getElementById('shortcuts-modal');
   if (shortcutsModal) {
     shortcutsModal.style.display = 'flex';
-
-    if (platformOS === 'darwin') {
-      const allKbdElements = shortcutsModal.querySelectorAll('kbd');
-      allKbdElements.forEach((kbd) => {
-        if (kbd.textContent === 'Ctrl') {
-          kbd.textContent = '⌘ Cmd';
-        } else if (kbd.textContent === 'Alt') {
-          kbd.textContent = '⌥ Option';
-        }
-      });
-    }
+    renderShortcutsModal();
   }
 }
 
 function hideShortcutsModal() {
+  stopShortcutCapture();
   const shortcutsModal = document.getElementById('shortcuts-modal');
   if (shortcutsModal) {
     shortcutsModal.style.display = 'none';
@@ -3558,21 +4241,30 @@ async function saveSettings() {
   }
 
   if (themeSelect) {
-    if (currentSettings.theme === 'custom') {
-      if (themeDropdownChanged) {
-        currentSettings.theme = themeSelect.value as any;
+    const selectedTheme = themeSelect.value;
+    if (isOneOf(selectedTheme, THEME_VALUES)) {
+      if (currentSettings.theme === 'custom') {
+        if (themeDropdownChanged) {
+          currentSettings.theme = selectedTheme;
+        }
+      } else {
+        currentSettings.theme = selectedTheme;
       }
-    } else {
-      currentSettings.theme = themeSelect.value as any;
     }
   }
 
   if (sortBySelect) {
-    currentSettings.sortBy = sortBySelect.value as any;
+    const sortByValue = sortBySelect.value;
+    if (isOneOf(sortByValue, SORT_BY_VALUES)) {
+      currentSettings.sortBy = sortByValue;
+    }
   }
 
   if (sortOrderSelect) {
-    currentSettings.sortOrder = sortOrderSelect.value as any;
+    const sortOrderValue = sortOrderSelect.value;
+    if (isOneOf(sortOrderValue, SORT_ORDER_VALUES)) {
+      currentSettings.sortOrder = sortOrderValue;
+    }
   }
 
   if (showHiddenFilesToggle) {
@@ -3688,7 +4380,10 @@ async function saveSettings() {
   }
 
   if (fileConflictBehaviorSelect) {
-    currentSettings.fileConflictBehavior = fileConflictBehaviorSelect.value as any;
+    const conflictValue = fileConflictBehaviorSelect.value;
+    if (isOneOf(conflictValue, FILE_CONFLICT_VALUES)) {
+      currentSettings.fileConflictBehavior = conflictValue;
+    }
   }
 
   if (maxThumbnailSizeInput) {
@@ -3699,7 +4394,10 @@ async function saveSettings() {
   }
 
   if (thumbnailQualitySelect) {
-    currentSettings.thumbnailQuality = thumbnailQualitySelect.value as any;
+    const qualityValue = thumbnailQualitySelect.value;
+    if (isOneOf(qualityValue, THUMBNAIL_QUALITY_VALUES)) {
+      currentSettings.thumbnailQuality = qualityValue;
+    }
   }
 
   if (autoPlayVideosToggle) {
@@ -3707,7 +4405,10 @@ async function saveSettings() {
   }
 
   if (previewPanelPositionSelect) {
-    currentSettings.previewPanelPosition = previewPanelPositionSelect.value as any;
+    const positionValue = previewPanelPositionSelect.value;
+    if (isOneOf(positionValue, PREVIEW_POSITION_VALUES)) {
+      currentSettings.previewPanelPosition = positionValue;
+    }
   }
 
   if (maxPreviewSizeInput) {
@@ -3718,7 +4419,10 @@ async function saveSettings() {
   }
 
   if (gridColumnsSelect) {
-    currentSettings.gridColumns = gridColumnsSelect.value as any;
+    const gridValue = gridColumnsSelect.value;
+    if (isOneOf(gridValue, GRID_COLUMNS_VALUES)) {
+      currentSettings.gridColumns = gridValue;
+    }
   }
 
   if (iconSizeSlider) {
@@ -3742,7 +4446,7 @@ async function saveSettings() {
 
   currentSettings.viewMode = viewMode;
 
-  const result = await window.electronAPI.saveSettings(currentSettings);
+  const result = await saveSettingsWithTimestamp(currentSettings);
   if (result.success) {
     if (previousTabsEnabled !== currentSettings.enableTabs) {
       initializeTabs();
@@ -3910,7 +4614,7 @@ function loadBookmarks() {
         updated.splice(fromIndex, 1);
         updated.splice(toIndex, 0, draggedPath);
         currentSettings.bookmarks = updated;
-        const saveResult = await window.electronAPI.saveSettings(currentSettings);
+        const saveResult = await saveSettingsWithTimestamp(currentSettings);
         if (saveResult.success) {
           loadBookmarks();
         } else {
@@ -4106,7 +4810,7 @@ async function addBookmarkByPath(path: string) {
   }
 
   currentSettings.bookmarks.push(path);
-  const result = await window.electronAPI.saveSettings(currentSettings);
+  const result = await saveSettingsWithTimestamp(currentSettings);
 
   if (result.success) {
     loadBookmarks();
@@ -4120,7 +4824,7 @@ async function removeBookmark(path: string) {
   if (!currentSettings.bookmarks) return;
 
   currentSettings.bookmarks = currentSettings.bookmarks.filter((b) => b !== path);
-  const result = await window.electronAPI.saveSettings(currentSettings);
+  const result = await saveSettingsWithTimestamp(currentSettings);
 
   if (result.success) {
     loadBookmarks();
@@ -4165,7 +4869,7 @@ function loadRecentFiles() {
     `;
 
     recentItem.addEventListener('click', () => {
-      window.electronAPI.openFile(filePath);
+      void openPathWithArchivePrompt(filePath, name, false);
     });
 
     recentList.appendChild(recentItem);
@@ -4624,14 +5328,17 @@ function updateSortIndicators() {
 }
 
 async function changeSortMode(sortBy: string) {
+  if (!isOneOf(sortBy, SORT_BY_VALUES)) {
+    return;
+  }
   if (currentSettings.sortBy === sortBy) {
     currentSettings.sortOrder = currentSettings.sortOrder === 'asc' ? 'desc' : 'asc';
   } else {
-    currentSettings.sortBy = sortBy as any;
+    currentSettings.sortBy = sortBy;
     currentSettings.sortOrder = 'asc';
   }
 
-  await window.electronAPI.saveSettings(currentSettings);
+  await saveSettingsWithTimestamp(currentSettings);
   hideSortMenu();
   updateSortIndicators();
 
@@ -5326,23 +6033,27 @@ async function loadDrives() {
   }
 }
 
+function getFileExtension(filename: string): string {
+  return filename.split('.').pop()?.toLowerCase() || '';
+}
+
 function getFileTypeFromName(filename: string): string {
-  const ext = filename.split('.').pop()?.toLowerCase() || '';
+  const ext = getFileExtension(filename);
   if (!ext) return 'File';
   if (IMAGE_EXTENSIONS.has(ext)) return 'Image';
+  if (RAW_EXTENSIONS.has(ext)) return 'RAW Image';
   if (VIDEO_EXTENSIONS.has(ext)) return 'Video';
   if (AUDIO_EXTENSIONS.has(ext)) return 'Audio';
-  if (['pdf'].includes(ext)) return 'PDF Document';
-  if (['doc', 'docx'].includes(ext)) return 'Word Document';
-  if (['xls', 'xlsx'].includes(ext)) return 'Spreadsheet';
-  if (['ppt', 'pptx'].includes(ext)) return 'Presentation';
-  if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) return 'Archive';
-  if (['js', 'ts', 'py', 'java', 'cpp', 'c', 'h', 'cs', 'go', 'rs', 'rb', 'php'].includes(ext))
-    return 'Source Code';
-  if (['html', 'css', 'scss', 'less'].includes(ext)) return 'Web File';
-  if (['json', 'xml', 'yaml', 'yml'].includes(ext)) return 'Data File';
-  if (['txt', 'md', 'rtf'].includes(ext)) return 'Text File';
-  return ext.toUpperCase() + ' File';
+  if (PDF_EXTENSIONS.has(ext)) return 'PDF Document';
+  if (WORD_EXTENSIONS.has(ext)) return 'Word Document';
+  if (SPREADSHEET_EXTENSIONS.has(ext)) return 'Spreadsheet';
+  if (PRESENTATION_EXTENSIONS.has(ext)) return 'Presentation';
+  if (ARCHIVE_EXTENSIONS.has(ext)) return 'Archive';
+  if (SOURCE_CODE_EXTENSIONS.has(ext)) return 'Source Code';
+  if (WEB_EXTENSIONS.has(ext)) return 'Web File';
+  if (DATA_EXTENSIONS.has(ext)) return 'Data File';
+  if (TEXT_EXTENSIONS.has(ext)) return 'Text File';
+  return `${ext.toUpperCase()} File`;
 }
 
 function setHoverCardEnabled(enabled: boolean): void {
@@ -5567,6 +6278,8 @@ function setupRubberBandSelection(): void {
 
 function setupEventListeners() {
   initSettingsTabs();
+  initSettingsUi();
+  initShortcutsModal();
   setupFileGridEventDelegation();
   setupRubberBandSelection();
   setupListHeader();
@@ -5586,9 +6299,22 @@ function setupEventListeners() {
   ipcCleanupFunctions.push(cleanupClipboard);
 
   const cleanupSettings = window.electronAPI.onSettingsChanged((newSettings) => {
+    const currentTimestamp =
+      typeof currentSettings._timestamp === 'number' ? currentSettings._timestamp : 0;
+    const newTimestamp = typeof newSettings._timestamp === 'number' ? newSettings._timestamp : 0;
+
+    if (newTimestamp < currentTimestamp) {
+      console.log('[Sync] Ignoring stale settings from another window');
+      return;
+    }
+
     console.log('[Sync] Settings updated from another window');
     currentSettings = newSettings;
     applySettings(newSettings);
+    const shortcutsModal = document.getElementById('shortcuts-modal');
+    syncShortcutBindingsFromSettings(newSettings, {
+      render: shortcutsModal ? shortcutsModal.style.display === 'flex' : false,
+    });
   });
   ipcCleanupFunctions.push(cleanupSettings);
 
@@ -5781,7 +6507,189 @@ function setupEventListeners() {
     );
   }
 
+  function hasTextSelection(): boolean {
+    const selection = window.getSelection();
+    return selection !== null && selection.toString().length > 0;
+  }
+
+  function isEditableElementActive(): boolean {
+    const activeElement = document.activeElement as HTMLElement | null;
+    if (!activeElement) return false;
+    return (
+      activeElement.tagName === 'INPUT' ||
+      activeElement.tagName === 'TEXTAREA' ||
+      activeElement.isContentEditable
+    );
+  }
+
+  function openSearch(isGlobal: boolean): void {
+    if (!searchBarWrapper || !searchScopeToggle || !searchInput) return;
+
+    if (!isSearchMode) {
+      searchBarWrapper.style.display = 'block';
+      isSearchMode = true;
+    }
+
+    isGlobalSearch = isGlobal;
+    if (isGlobalSearch) {
+      searchScopeToggle.classList.add('global');
+      searchScopeToggle.title = 'Global Search (All Indexed Files)';
+      const img = searchScopeToggle.querySelector('img');
+      if (img) {
+        img.src = '../assets/twemoji/1f30d.svg';
+        img.alt = '🌍';
+      }
+    } else {
+      searchScopeToggle.classList.remove('global');
+      searchScopeToggle.title = 'Local Search (Current Folder)';
+      const img = searchScopeToggle.querySelector('img');
+      if (img) {
+        img.src = '../assets/twemoji/1f4c1.svg';
+        img.alt = '📁';
+      }
+    }
+    updateSearchPlaceholder();
+    searchInput.focus();
+  }
+
+  function runShortcutAction(actionId: string, e: KeyboardEvent): boolean {
+    switch (actionId) {
+      case 'command-palette':
+        e.preventDefault();
+        showCommandPalette();
+        return true;
+      case 'settings':
+        e.preventDefault();
+        showSettingsModal();
+        return true;
+      case 'shortcuts':
+        e.preventDefault();
+        showShortcutsModal();
+        return true;
+      case 'refresh':
+        e.preventDefault();
+        refresh();
+        return true;
+      case 'search':
+        e.preventDefault();
+        openSearch(false);
+        return true;
+      case 'global-search':
+        e.preventDefault();
+        openSearch(true);
+        return true;
+      case 'toggle-sidebar':
+        e.preventDefault();
+        setSidebarCollapsed();
+        return true;
+      case 'new-window':
+        e.preventDefault();
+        openNewWindow();
+        return true;
+      case 'new-file':
+        e.preventDefault();
+        createNewFile();
+        return true;
+      case 'new-folder':
+        e.preventDefault();
+        createNewFolder();
+        return true;
+      case 'go-back':
+        e.preventDefault();
+        goBack();
+        return true;
+      case 'go-forward':
+        e.preventDefault();
+        goForward();
+        return true;
+      case 'go-up':
+        e.preventDefault();
+        goUp();
+        return true;
+      case 'new-tab':
+        e.preventDefault();
+        if (tabsEnabled) {
+          addNewTab();
+        }
+        return true;
+      case 'close-tab':
+        e.preventDefault();
+        if (tabsEnabled && tabs.length > 1) {
+          closeTab(activeTabId);
+        }
+        return true;
+      case 'next-tab':
+      case 'prev-tab': {
+        e.preventDefault();
+        if (tabsEnabled && tabs.length > 1) {
+          const currentIndex = tabs.findIndex((t) => t.id === activeTabId);
+          if (currentIndex !== -1) {
+            const nextIndex =
+              actionId === 'next-tab'
+                ? (currentIndex + 1) % tabs.length
+                : (currentIndex - 1 + tabs.length) % tabs.length;
+            switchToTab(tabs[nextIndex].id);
+          }
+        }
+        return true;
+      }
+      case 'copy':
+        if (hasTextSelection()) {
+          return false;
+        }
+        e.preventDefault();
+        copyToClipboard();
+        return true;
+      case 'cut':
+        if (hasTextSelection()) {
+          return false;
+        }
+        e.preventDefault();
+        cutToClipboard();
+        return true;
+      case 'paste':
+        if (isEditableElementActive()) {
+          return false;
+        }
+        e.preventDefault();
+        pasteFromClipboard();
+        return true;
+      case 'select-all':
+        if (isEditableElementActive()) {
+          return false;
+        }
+        e.preventDefault();
+        selectAll();
+        return true;
+      case 'undo':
+        e.preventDefault();
+        performUndo();
+        return true;
+      case 'redo':
+        e.preventDefault();
+        performRedo();
+        return true;
+      case 'zoom-in':
+        e.preventDefault();
+        zoomIn();
+        return true;
+      case 'zoom-out':
+        e.preventDefault();
+        zoomOut();
+        return true;
+      case 'zoom-reset':
+        e.preventDefault();
+        zoomReset();
+        return true;
+      default:
+        return false;
+    }
+  }
+
   document.addEventListener('keydown', (e) => {
+    if (isShortcutCaptureActive) {
+      return;
+    }
     if (e.key === 'Escape') {
       const settingsModal = document.getElementById('settings-modal');
       if (settingsModal && settingsModal.style.display === 'flex') {
@@ -5894,137 +6802,23 @@ function setupEventListeners() {
       return;
     }
 
-    const hasTextSelection = (): boolean => {
-      const selection = window.getSelection();
-      return selection !== null && selection.toString().length > 0;
-    };
-
-    if (e.ctrlKey || e.metaKey) {
-      if (e.key === 'k' || e.key === 'K') {
-        e.preventDefault();
-        showCommandPalette();
-      } else if (e.key === ',') {
-        e.preventDefault();
-        showSettingsModal();
-      } else if (e.key === '?' || e.key === '/') {
-        e.preventDefault();
-        showShortcutsModal();
-      } else if (e.key === 'n' && !e.shiftKey) {
-        e.preventDefault();
-        openNewWindow();
-      } else if (e.key === 'c') {
-        if (hasTextSelection()) {
-          return;
-        }
-        e.preventDefault();
-        copyToClipboard();
-      } else if (e.key === 'x') {
-        if (hasTextSelection()) {
-          return;
-        }
-        e.preventDefault();
-        cutToClipboard();
-      } else if (e.key === 'v') {
-        const activeElement = document.activeElement;
-        if (
-          activeElement &&
-          (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')
-        ) {
-          return;
-        }
-        e.preventDefault();
-        pasteFromClipboard();
-      } else if (e.key === 'f' || e.key === 'F') {
-        e.preventDefault();
-        if (!isSearchMode) {
-          searchBarWrapper.style.display = 'block';
-          isSearchMode = true;
-        }
-
-        if (e.shiftKey) {
-          // Ctrl+Shift+F - Open search in global mode
-          isGlobalSearch = true;
-          searchScopeToggle.classList.add('global');
-          searchScopeToggle.title = 'Global Search (All Indexed Files)';
-          const img = searchScopeToggle.querySelector('img');
-          if (img) {
-            img.src = '../assets/twemoji/1f30d.svg';
-            img.alt = '🌍';
-          }
-        } else {
-          // Ctrl+F - Open search in local/directory mode
-          isGlobalSearch = false;
-          searchScopeToggle.classList.remove('global');
-          searchScopeToggle.title = 'Local Search (Current Folder)';
-          const img = searchScopeToggle.querySelector('img');
-          if (img) {
-            img.src = '../assets/twemoji/1f4c1.svg';
-            img.alt = '📁';
-          }
-        }
-        updateSearchPlaceholder();
-        searchInput.focus();
-      } else if (e.key === 'a') {
-        const activeElement = document.activeElement;
-        if (
-          activeElement &&
-          (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')
-        ) {
-          return;
-        }
-        e.preventDefault();
-        selectAll();
-      } else if (e.key === 'z' && !e.shiftKey) {
-        e.preventDefault();
-        performUndo();
-      } else if (e.key === 'y' || (e.key === 'z' && e.shiftKey)) {
-        e.preventDefault();
-        performRedo();
-      } else if (e.key === '=' || e.key === '+') {
-        e.preventDefault();
-        zoomIn();
-      } else if (e.key === '-' || e.key === '_') {
-        e.preventDefault();
-        zoomOut();
-      } else if (e.key === '0') {
-        e.preventDefault();
-        zoomReset();
-      } else if (e.key === 't' || e.key === 'T') {
-        e.preventDefault();
-        if (tabsEnabled) {
-          addNewTab();
-        }
-      } else if (e.key === 'w' || e.key === 'W') {
-        e.preventDefault();
-        if (tabsEnabled && tabs.length > 1) {
-          closeTab(activeTabId);
-        }
-      } else if (e.key === 'Tab') {
-        e.preventDefault();
-        if (tabsEnabled && tabs.length > 1) {
-          const currentIndex = tabs.findIndex((t) => t.id === activeTabId);
-          const nextIndex = e.shiftKey
-            ? (currentIndex - 1 + tabs.length) % tabs.length
-            : (currentIndex + 1) % tabs.length;
-          switchToTab(tabs[nextIndex].id);
-        }
-      } else if (e.key === 'b' || e.key === 'B') {
-        e.preventDefault();
-        setSidebarCollapsed();
+    const fixedActionId = getFixedShortcutActionIdFromEvent(e);
+    if (fixedActionId) {
+      const handled = runShortcutAction(fixedActionId, e);
+      if (handled) {
+        return;
       }
-    } else if (e.altKey && !e.ctrlKey && !e.metaKey) {
-      // Alt+Arrow navigation (like Windows Explorer)
-      if (e.key === 'ArrowLeft') {
-        e.preventDefault();
-        goBack();
-      } else if (e.key === 'ArrowRight') {
-        e.preventDefault();
-        goForward();
-      } else if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        goUp();
+    }
+
+    const shortcutActionId = getShortcutActionIdFromEvent(e);
+    if (shortcutActionId) {
+      const handled = runShortcutAction(shortcutActionId, e);
+      if (handled) {
+        return;
       }
-    } else if (e.key === 'Backspace') {
+    }
+
+    if (e.key === 'Backspace') {
       const activeElement = document.activeElement;
       if (
         activeElement &&
@@ -6034,9 +6828,6 @@ function setupEventListeners() {
       }
       e.preventDefault();
       goUp();
-    } else if (e.key === 'F5') {
-      e.preventDefault();
-      refresh();
     } else if (e.key === 'F2') {
       e.preventDefault();
       renameSelected();
@@ -6150,7 +6941,7 @@ function setupEventListeners() {
       if (sortMenu && sortMenu.style.display === 'block') {
         const sortType = menuItem.getAttribute('data-sort');
         if (sortType) {
-          changeSortMode(sortType as any);
+          changeSortMode(sortType);
         }
         return;
       }
@@ -6460,14 +7251,14 @@ function hideDirectoryHistoryDropdown() {
 
 function clearSearchHistory() {
   currentSettings.searchHistory = [];
-  window.electronAPI.saveSettings(currentSettings);
+  saveSettingsWithTimestamp(currentSettings);
   hideSearchHistoryDropdown();
   showToast('Search history cleared', 'History', 'success');
 }
 
 function clearDirectoryHistory() {
   currentSettings.directoryHistory = [];
-  window.electronAPI.saveSettings(currentSettings);
+  saveSettingsWithTimestamp(currentSettings);
   hideDirectoryHistoryDropdown();
   showToast('Directory history cleared', 'History', 'success');
 }
@@ -6822,7 +7613,7 @@ function renderFiles(items: FileItem[], searchQuery?: string) {
   if (sortBy === 'type') {
     visibleItems.forEach((item) => {
       if (!item.isDirectory) {
-        const ext = item.name.split('.').pop()?.toLowerCase() || '';
+        const ext = getFileExtension(item.name);
         extCache?.set(item, ext);
       }
     });
@@ -6960,7 +7751,7 @@ function createFileItem(item: FileItem, searchQuery?: string): HTMLElement {
   if (item.isDirectory) {
     icon = getFolderIcon(item.path);
   } else {
-    const ext = item.name.split('.').pop()?.toLowerCase() || '';
+    const ext = getFileExtension(item.name);
     if (IMAGE_EXTENSIONS.has(ext) || RAW_EXTENSIONS.has(ext)) {
       fileItem.classList.add('has-thumbnail');
       fileItem.dataset.thumbnailType = RAW_EXTENSIONS.has(ext) ? 'raw' : 'image';
@@ -6993,7 +7784,7 @@ function createFileItem(item: FileItem, searchQuery?: string): HTMLElement {
 
   const contentResult = item as ContentSearchResult;
   let matchContextHtml = '';
-  if (contentResult.matchContext && searchQuery) {
+  if (contentResult.matchContext && searchQuery && searchQuery.length <= 500) {
     const escapedContext = escapeHtml(contentResult.matchContext);
     const escapedQuery = escapeHtml(searchQuery);
     const regex = new RegExp(`(${escapedQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
@@ -7063,7 +7854,9 @@ async function getDraggedPaths(event: DragEvent): Promise<string[]> {
     if (textData) {
       draggedPaths = JSON.parse(textData);
     }
-  } catch {}
+  } catch (error) {
+    console.debug('[Drag] Failed to parse drag data, trying fallback methods:', error);
+  }
 
   if (draggedPaths.length === 0 && event.dataTransfer.files.length > 0) {
     draggedPaths = Array.from(event.dataTransfer.files).map(
@@ -7228,12 +8021,7 @@ function setupFileGridEventDelegation(): void {
     if (!fileItem) return;
     const item = getFileItemData(fileItem);
     if (!item) return;
-    if (item.isDirectory) {
-      navigateTo(item.path);
-    } else {
-      window.electronAPI.openFile(item.path);
-      addToRecentFiles(item.path);
-    }
+    void openFileEntry(item);
   });
 
   fileGrid.addEventListener('auxclick', (e) => {
@@ -7640,7 +8428,7 @@ function renderThumbnailImage(
   img.className = 'file-thumbnail';
   img.alt = item.name;
 
-  const ext = item.name.split('.').pop()?.toLowerCase() || '';
+  const ext = getFileExtension(item.name);
   if (ANIMATED_IMAGE_EXTENSIONS.has(ext)) {
     img.dataset.animated = 'true';
     img.dataset.staticSrc = thumbnailUrl;
@@ -7741,22 +8529,101 @@ const IMAGE_EXTENSIONS = new Set([
   'avif',
   'jfif',
   'svg',
+  'apng',
+  'heic',
+  'heif',
+  'jxl',
+  'jp2',
+  'j2k',
+  'jpf',
+  'jpx',
+  'jpm',
+  'mj2',
+  'tga',
+  'dds',
+  'psd',
+  'psb',
+  'icns',
 ]);
 const RAW_EXTENSIONS = new Set([
   'cr2',
   'cr3',
+  'crw',
   'nef',
+  'nrw',
   'arw',
+  'sr2',
+  'srf',
+  'srw',
   'dng',
   'orf',
   'rw2',
+  'rw1',
+  'rwl',
   'pef',
-  'srw',
   'raf',
+  'dcr',
+  'kdc',
+  'erf',
+  'mrw',
+  'x3f',
+  '3fr',
+  'iiq',
+  'mef',
+  'mos',
 ]);
-const ANIMATED_IMAGE_EXTENSIONS = new Set(['gif', 'webp', 'apng']);
-const VIDEO_EXTENSIONS = new Set(['mp4', 'webm', 'ogg', 'mov', 'mkv', 'avi', 'm4v']);
-const AUDIO_EXTENSIONS = new Set(['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac', 'wma', 'opus']);
+const ANIMATED_IMAGE_EXTENSIONS = new Set(['gif', 'webp', 'apng', 'avif']);
+const VIDEO_EXTENSIONS = new Set([
+  'mp4',
+  'm4v',
+  'mov',
+  'webm',
+  'mkv',
+  'avi',
+  'ogv',
+  'ogm',
+  'mpg',
+  'mpeg',
+  'mpe',
+  'm1v',
+  'm2v',
+  '3gp',
+  '3g2',
+  'ts',
+  'm2ts',
+  'mts',
+  'flv',
+  'f4v',
+  'wmv',
+  'asf',
+  'vob',
+]);
+const AUDIO_EXTENSIONS = new Set([
+  'mp3',
+  'mp2',
+  'mpa',
+  'wav',
+  'flac',
+  'ogg',
+  'oga',
+  'opus',
+  'm4a',
+  'm4b',
+  'm4r',
+  'alac',
+  'aac',
+  'wma',
+  'aiff',
+  'aif',
+  'aifc',
+  'mka',
+  'amr',
+  'ac3',
+  'eac3',
+  'mid',
+  'midi',
+  'caf',
+]);
 const PDF_EXTENSIONS = new Set(['pdf']);
 const ARCHIVE_EXTENSIONS = new Set([
   'zip',
@@ -7773,6 +8640,22 @@ const ARCHIVE_EXTENSIONS = new Set([
   'wim',
   'tgz',
 ]);
+const ARCHIVE_SUFFIXES = [
+  '.zip',
+  '.7z',
+  '.rar',
+  '.tar',
+  '.gz',
+  '.bz2',
+  '.xz',
+  '.iso',
+  '.cab',
+  '.arj',
+  '.lzh',
+  '.wim',
+  '.tgz',
+  '.tar.gz',
+];
 const TEXT_EXTENSIONS = new Set([
   'txt',
   'text',
@@ -7850,32 +8733,136 @@ const TEXT_EXTENSIONS = new Set([
   'gradle',
   'maven',
 ]);
+const WORD_EXTENSIONS = new Set(['doc', 'docx', 'docm', 'dot', 'dotx', 'dotm', 'rtf', 'odt']);
+const SPREADSHEET_EXTENSIONS = new Set([
+  'xls',
+  'xlsx',
+  'xlsm',
+  'xlt',
+  'xltx',
+  'xltm',
+  'ods',
+  'csv',
+  'tsv',
+]);
+const PRESENTATION_EXTENSIONS = new Set(['ppt', 'pptx', 'pptm', 'pps', 'ppsx', 'odp', 'key']);
+const SOURCE_CODE_EXTENSIONS = new Set([
+  'js',
+  'jsx',
+  'ts',
+  'tsx',
+  'py',
+  'pyc',
+  'pyw',
+  'java',
+  'kt',
+  'kts',
+  'scala',
+  'c',
+  'cpp',
+  'cc',
+  'cxx',
+  'h',
+  'hpp',
+  'cs',
+  'php',
+  'rb',
+  'go',
+  'rs',
+  'swift',
+  'r',
+  'lua',
+  'perl',
+  'pl',
+  'sh',
+  'bash',
+  'zsh',
+  'fish',
+  'ps1',
+  'bat',
+  'cmd',
+]);
+const WEB_EXTENSIONS = new Set(['html', 'htm', 'css', 'scss', 'sass', 'less', 'vue', 'svelte']);
+const DATA_EXTENSIONS = new Set([
+  'json',
+  'xml',
+  'yml',
+  'yaml',
+  'toml',
+  'csv',
+  'tsv',
+  'ini',
+  'conf',
+  'config',
+  'cfg',
+  'env',
+  'properties',
+  'sql',
+]);
 const VIDEO_MIME_TYPES: Record<string, string> = {
   mp4: 'video/mp4',
-  webm: 'video/webm',
-  ogg: 'video/ogg',
+  m4v: 'video/x-m4v',
   mov: 'video/quicktime',
+  webm: 'video/webm',
   mkv: 'video/x-matroska',
   avi: 'video/x-msvideo',
-  m4v: 'video/x-m4v',
+  ogv: 'video/ogg',
+  ogm: 'video/ogg',
+  mpg: 'video/mpeg',
+  mpeg: 'video/mpeg',
+  mpe: 'video/mpeg',
+  m1v: 'video/mpeg',
+  m2v: 'video/mpeg',
+  '3gp': 'video/3gpp',
+  '3g2': 'video/3gpp2',
+  ts: 'video/mp2t',
+  m2ts: 'video/mp2t',
+  mts: 'video/mp2t',
+  flv: 'video/x-flv',
+  f4v: 'video/x-f4v',
+  wmv: 'video/x-ms-wmv',
+  asf: 'video/x-ms-asf',
+  vob: 'video/dvd',
 };
 const AUDIO_MIME_TYPES: Record<string, string> = {
   mp3: 'audio/mpeg',
+  mp2: 'audio/mpeg',
+  mpa: 'audio/mpeg',
   wav: 'audio/wav',
-  ogg: 'audio/ogg',
   flac: 'audio/flac',
+  ogg: 'audio/ogg',
+  oga: 'audio/ogg',
+  opus: 'audio/ogg',
   aac: 'audio/aac',
   m4a: 'audio/mp4',
+  m4b: 'audio/mp4',
+  m4r: 'audio/mp4',
+  alac: 'audio/mp4',
   wma: 'audio/x-ms-wma',
-  opus: 'audio/ogg',
+  aiff: 'audio/aiff',
+  aif: 'audio/aiff',
+  aifc: 'audio/aiff',
+  mka: 'audio/x-matroska',
+  amr: 'audio/amr',
+  ac3: 'audio/ac3',
+  eac3: 'audio/eac3',
+  mid: 'audio/midi',
+  midi: 'audio/midi',
+  caf: 'audio/x-caf',
 };
 const FOLDER_ICON = twemojiImg(String.fromCodePoint(0x1f4c1), 'twemoji file-icon');
 const IMAGE_ICON = twemojiImg(String.fromCodePoint(parseInt('1f5bc', 16)), 'twemoji');
+const RAW_ICON = twemojiImg(String.fromCodePoint(0x1f4f7), 'twemoji');
+const VIDEO_ICON = twemojiImg(String.fromCodePoint(0x1f3ac), 'twemoji');
+const AUDIO_ICON = twemojiImg(String.fromCodePoint(0x1f3b5), 'twemoji');
+const WORD_ICON = twemojiImg(String.fromCodePoint(0x1f4dd), 'twemoji');
+const SPREADSHEET_ICON = twemojiImg(String.fromCodePoint(0x1f4ca), 'twemoji');
+const ARCHIVE_ICON = twemojiImg(String.fromCodePoint(0x1f5dc), 'twemoji');
 const DEFAULT_FILE_ICON = twemojiImg(String.fromCodePoint(parseInt('1f4c4', 16)), 'twemoji');
 
 const fileIconCache = new Map<string, string>();
 function getFileIcon(filename: string): string {
-  const ext = filename.split('.').pop()?.toLowerCase() || '';
+  const ext = getFileExtension(filename);
 
   const cached = fileIconCache.get(ext);
   if (cached) return cached;
@@ -7884,7 +8871,23 @@ function getFileIcon(filename: string): string {
   let icon: string;
 
   if (!codepoint) {
-    icon = DEFAULT_FILE_ICON;
+    if (RAW_EXTENSIONS.has(ext)) {
+      icon = RAW_ICON;
+    } else if (IMAGE_EXTENSIONS.has(ext)) {
+      icon = IMAGE_ICON;
+    } else if (VIDEO_EXTENSIONS.has(ext)) {
+      icon = VIDEO_ICON;
+    } else if (AUDIO_EXTENSIONS.has(ext)) {
+      icon = AUDIO_ICON;
+    } else if (WORD_EXTENSIONS.has(ext)) {
+      icon = WORD_ICON;
+    } else if (SPREADSHEET_EXTENSIONS.has(ext) || PRESENTATION_EXTENSIONS.has(ext)) {
+      icon = SPREADSHEET_ICON;
+    } else if (ARCHIVE_EXTENSIONS.has(ext)) {
+      icon = ARCHIVE_ICON;
+    } else {
+      icon = DEFAULT_FILE_ICON;
+    }
   } else if (codepoint === '1f5bc') {
     icon = IMAGE_ICON;
   } else {
@@ -7988,12 +8991,7 @@ function openSelectedItem() {
   const itemPath = Array.from(selectedItems)[0];
   const item = filePathMap.get(itemPath);
   if (item) {
-    if (item.isDirectory) {
-      navigateTo(item.path);
-    } else {
-      window.electronAPI.openFile(item.path);
-      addToRecentFiles(item.path);
-    }
+    void openFileEntry(item);
   }
 }
 
@@ -8309,7 +9307,7 @@ async function setViewMode(nextMode: 'grid' | 'list' | 'column') {
   await applyViewMode();
 
   currentSettings.viewMode = viewMode;
-  window.electronAPI.saveSettings(currentSettings);
+  saveSettingsWithTimestamp(currentSettings);
 }
 
 async function toggleView() {
@@ -8663,8 +9661,7 @@ async function renderColumn(
         );
         item.addEventListener('dblclick', () => {
           if (!fileItem.isDirectory) {
-            window.electronAPI.openFile(fileItem.path);
-            addToRecentFiles(fileItem.path);
+            void openFileEntry(fileItem);
           }
         });
 
@@ -9139,28 +10136,8 @@ function showContextMenu(x: number, y: number, item: FileItem) {
   }
 
   if (extractItem) {
-    const fileName = item.name.toLowerCase();
-    const isArchive =
-      fileName.endsWith('.zip') ||
-      fileName.endsWith('.tar.gz') ||
-      fileName.endsWith('.tgz') ||
-      fileName.endsWith('.7z') ||
-      fileName.endsWith('.rar') ||
-      fileName.endsWith('.tar') ||
-      fileName.endsWith('.gz') ||
-      fileName.endsWith('.bz2') ||
-      fileName.endsWith('.xz') ||
-      fileName.endsWith('.iso') ||
-      fileName.endsWith('.cab') ||
-      fileName.endsWith('.arj') ||
-      fileName.endsWith('.lzh') ||
-      fileName.endsWith('.wim');
-
-    if (isArchive && !item.isDirectory) {
-      extractItem.style.display = 'flex';
-    } else {
-      extractItem.style.display = 'none';
-    }
+    const isArchive = !item.isDirectory && isArchivePath(item.path);
+    extractItem.style.display = isArchive ? 'flex' : 'none';
   }
 
   contextMenu.style.display = 'block';
@@ -9172,16 +10149,25 @@ function showContextMenu(x: number, y: number, item: FileItem) {
   let left = x;
   let top = y;
 
-  if (left + menuRect.width > viewportWidth) {
+  if (y + menuRect.height > viewportHeight - 10) {
+    top = y - menuRect.height;
+  }
+
+  if (left + menuRect.width > viewportWidth - 10) {
     left = viewportWidth - menuRect.width - 10;
   }
 
-  if (top + menuRect.height > viewportHeight) {
-    top = viewportHeight - menuRect.height - 10;
+  if (top < 10) {
+    top = 10;
   }
 
-  if (left < 10) left = 10;
-  if (top < 10) top = 10;
+  if (left < 10) {
+    left = 10;
+  }
+
+  if (top + menuRect.height > viewportHeight - 10) {
+    top = viewportHeight - menuRect.height - 10;
+  }
 
   contextMenu.style.left = left + 'px';
   contextMenu.style.top = top + 'px';
@@ -9288,16 +10274,25 @@ function showEmptySpaceContextMenu(x: number, y: number) {
   let left = x;
   let top = y;
 
-  if (left + menuRect.width > viewportWidth) {
+  if (y + menuRect.height > viewportHeight - 10) {
+    top = y - menuRect.height;
+  }
+
+  if (left + menuRect.width > viewportWidth - 10) {
     left = viewportWidth - menuRect.width - 10;
   }
 
-  if (top + menuRect.height > viewportHeight) {
-    top = viewportHeight - menuRect.height - 10;
+  if (top < 10) {
+    top = 10;
   }
 
-  if (left < 10) left = 10;
-  if (top < 10) top = 10;
+  if (left < 10) {
+    left = 10;
+  }
+
+  if (top + menuRect.height > viewportHeight - 10) {
+    top = viewportHeight - menuRect.height - 10;
+  }
 
   emptySpaceContextMenu.style.left = left + 'px';
   emptySpaceContextMenu.style.top = top + 'px';
@@ -9349,12 +10344,7 @@ async function handleContextMenuAction(
 ) {
   switch (action) {
     case 'open':
-      if (item.isDirectory) {
-        navigateTo(item.path);
-      } else {
-        window.electronAPI.openFile(item.path);
-        addToRecentFiles(item.path);
-      }
+      await openFileEntry(item);
       break;
 
     case 'rename': {
@@ -9425,7 +10415,7 @@ async function handleContextMenuAction(
       break;
 
     case 'extract':
-      await handleExtract(item);
+      showExtractModal(item.path, item.name);
       break;
   }
 }
@@ -9510,27 +10500,145 @@ async function handleCompress(format: string = 'zip') {
   }
 }
 
-async function handleExtract(item: FileItem) {
-  const ext = path.extname(item.path).toLowerCase();
-  const supportedFormats = [
-    '.zip',
-    '.tar.gz',
-    '.7z',
-    '.rar',
-    '.tar',
-    '.gz',
-    '.bz2',
-    '.xz',
-    '.iso',
-    '.cab',
-    '.arj',
-    '.lzh',
-    '.wim',
-  ];
+function isArchivePath(filePath: string): boolean {
+  const lower = filePath.toLowerCase();
+  return ARCHIVE_SUFFIXES.some((suffix) => lower.endsWith(suffix));
+}
 
-  const isSupported = supportedFormats.some((format) => item.path.toLowerCase().endsWith(format));
+function getArchiveBaseName(filePath: string): string {
+  const lower = filePath.toLowerCase();
+  const fileName = path.basename(filePath);
+  if (lower.endsWith('.tar.gz')) {
+    return fileName.replace(/\.tar\.gz$/i, '');
+  }
+  return path.basename(filePath, path.extname(filePath));
+}
 
-  if (!isSupported) {
+function joinFilePath(baseFolder: string, ...segments: string[]): string {
+  if (!isWindowsPlatform()) {
+    const normalizedBase = baseFolder.replace(/\\/g, '/');
+    const normalizedSegments = segments.map((segment) => segment.replace(/\\/g, '/'));
+    return path.join(normalizedBase, ...normalizedSegments);
+  }
+
+  const normalizedBase = normalizeWindowsPath(baseFolder);
+  let combined = normalizedBase;
+  for (const segment of segments) {
+    const cleaned = segment
+      .replace(/[\\/]+/g, '\\')
+      .replace(/^\\+/, '')
+      .replace(/\\+$/, '');
+    if (!cleaned) continue;
+    if (!combined.endsWith('\\')) {
+      combined += '\\';
+    }
+    combined += cleaned;
+  }
+  return combined;
+}
+
+function buildArchiveExtractPath(baseFolder: string, archivePath: string): string {
+  return joinFilePath(baseFolder, getArchiveBaseName(archivePath));
+}
+
+let extractModalArchivePath: string | null = null;
+let extractModalTrackRecent = true;
+
+function updateExtractPreview(baseFolder: string): void {
+  const preview = document.getElementById('extract-preview-path');
+  if (!preview || !extractModalArchivePath) return;
+  if (!baseFolder) {
+    preview.textContent = '';
+    return;
+  }
+  preview.textContent = buildArchiveExtractPath(baseFolder, extractModalArchivePath);
+}
+
+function showExtractModal(
+  archivePath: string,
+  archiveName?: string,
+  trackRecent: boolean = true
+): void {
+  const modal = document.getElementById('extract-modal') as HTMLElement | null;
+  const message = document.getElementById('extract-modal-message') as HTMLElement | null;
+  const input = document.getElementById('extract-destination-input') as HTMLInputElement | null;
+
+  if (!modal || !message || !input) return;
+
+  const name = archiveName || path.basename(archivePath);
+  extractModalArchivePath = archivePath;
+  extractModalTrackRecent = trackRecent;
+
+  const baseFolder = path.dirname(archivePath);
+  input.value = baseFolder;
+  message.textContent = `Extract ${name}?`;
+  updateExtractPreview(baseFolder);
+
+  modal.style.display = 'flex';
+  input.focus();
+  input.select();
+}
+
+function hideExtractModal(): void {
+  const modal = document.getElementById('extract-modal') as HTMLElement | null;
+  if (modal) {
+    modal.style.display = 'none';
+  }
+  extractModalArchivePath = null;
+  extractModalTrackRecent = true;
+}
+
+async function openPathWithArchivePrompt(
+  filePath: string,
+  fileName?: string,
+  trackRecent: boolean = true
+): Promise<void> {
+  if (!filePath) return;
+  if (isArchivePath(filePath)) {
+    showExtractModal(filePath, fileName, trackRecent);
+    return;
+  }
+  await window.electronAPI.openFile(filePath);
+  if (trackRecent) {
+    addToRecentFiles(filePath);
+  }
+}
+
+async function openFileEntry(item: FileItem): Promise<void> {
+  if (item.isDirectory) {
+    navigateTo(item.path);
+    return;
+  }
+  await openPathWithArchivePrompt(item.path, item.name);
+}
+
+async function confirmExtractModal(): Promise<void> {
+  const input = document.getElementById('extract-destination-input') as HTMLInputElement | null;
+  if (!input || !extractModalArchivePath) return;
+  const baseFolder = input.value.trim();
+  if (!baseFolder) {
+    showToast('Choose a destination folder', 'Missing Destination', 'warning');
+    input.focus();
+    return;
+  }
+  const archivePath = extractModalArchivePath;
+  const trackRecent = extractModalTrackRecent;
+  hideExtractModal();
+  await handleExtract(archivePath, baseFolder, trackRecent);
+}
+
+async function handleExtract(
+  archivePath: string,
+  destBaseFolder: string,
+  trackRecent: boolean = true
+) {
+  const baseFolder = destBaseFolder.trim();
+  if (!baseFolder) {
+    showToast('Choose a destination folder', 'Missing Destination', 'warning');
+    return;
+  }
+
+  if (!isArchivePath(archivePath)) {
     showToast(
       'Unsupported archive format. Supported: .zip, .7z, .rar, .tar.gz, and more',
       'Error',
@@ -9539,13 +10647,8 @@ async function handleExtract(item: FileItem) {
     return;
   }
 
-  let baseName = path.basename(item.path);
-  if (item.path.toLowerCase().endsWith('.tar.gz')) {
-    baseName = baseName.replace(/\.tar\.gz$/i, '');
-  } else {
-    baseName = path.basename(item.path, ext);
-  }
-  const destPath = path.join(currentPath, baseName);
+  const baseName = getArchiveBaseName(archivePath);
+  const destPath = buildArchiveExtractPath(baseFolder, archivePath);
   const operationId = generateOperationId();
 
   addOperation(operationId, 'extract', baseName);
@@ -9574,14 +10677,19 @@ async function handleExtract(item: FileItem) {
       return;
     }
 
-    const result = await window.electronAPI.extractArchive(item.path, destPath, operationId);
+    const result = await window.electronAPI.extractArchive(archivePath, destPath, operationId);
 
     cleanupProgressHandler();
     removeOperation(operationId);
 
     if (result.success) {
-      showToast(`Extracted to ${baseName}`, 'Extraction Complete', 'success');
-      await navigateTo(currentPath);
+      showToast(`Extracted to ${destPath}`, 'Extraction Complete', 'success');
+      if (trackRecent) {
+        addToRecentFiles(archivePath);
+      }
+      if (currentPath === baseFolder) {
+        await navigateTo(currentPath);
+      }
     } else {
       showToast(result.error || 'Extraction failed', 'Error', 'error');
     }
@@ -10159,23 +11267,12 @@ async function downloadAndInstallUpdate() {
 
 function initSettingsTabs() {
   const tabs = document.querySelectorAll('.settings-tab');
-  const sections = document.querySelectorAll('.settings-section');
-
+  ensureSettingsTabDecorations();
   tabs.forEach((tab) => {
     tab.addEventListener('click', () => {
-      // Remove active class from all tabs
-      tabs.forEach((t) => t.classList.remove('active'));
-      // Add active class to clicked tab
-      tab.classList.add('active');
-
-      // Hide all sections
-      sections.forEach((section) => section.classList.remove('active'));
-
-      // Show target section
-      const targetId = `tab-${tab.getAttribute('data-tab')}`;
-      const targetSection = document.getElementById(targetId);
-      if (targetSection) {
-        targetSection.classList.add('active');
+      const tabId = tab.getAttribute('data-tab');
+      if (tabId) {
+        activateSettingsTab(tabId);
       }
     });
   });
@@ -10202,6 +11299,44 @@ document.getElementById('browse-startup-path-btn')?.addEventListener('click', as
     }
   }
 });
+const extractModal = document.getElementById('extract-modal') as HTMLElement | null;
+const extractClose = document.getElementById('extract-close');
+const extractCancel = document.getElementById('extract-cancel');
+const extractConfirm = document.getElementById('extract-confirm');
+const extractBrowseBtn = document.getElementById('extract-browse-btn');
+const extractDestinationInput = document.getElementById(
+  'extract-destination-input'
+) as HTMLInputElement | null;
+
+extractClose?.addEventListener('click', hideExtractModal);
+extractCancel?.addEventListener('click', hideExtractModal);
+extractConfirm?.addEventListener('click', () => {
+  void confirmExtractModal();
+});
+extractBrowseBtn?.addEventListener('click', async () => {
+  const result = await window.electronAPI.selectFolder();
+  if (result.success && result.path && extractDestinationInput) {
+    extractDestinationInput.value = result.path;
+    updateExtractPreview(result.path);
+  }
+});
+extractDestinationInput?.addEventListener('input', () => {
+  updateExtractPreview(extractDestinationInput.value);
+});
+extractDestinationInput?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    void confirmExtractModal();
+  } else if (e.key === 'Escape') {
+    e.preventDefault();
+    hideExtractModal();
+  }
+});
+extractModal?.addEventListener('click', (e) => {
+  if (e.target === extractModal) {
+    hideExtractModal();
+  }
+});
 document.getElementById('rebuild-index-btn')?.addEventListener('click', rebuildIndex);
 document.getElementById('restart-admin-btn')?.addEventListener('click', restartAsAdmin);
 document.getElementById('check-updates-btn')?.addEventListener('click', checkForUpdates);
@@ -10223,77 +11358,6 @@ document.getElementById('heart-button')?.addEventListener('click', () => {
 document.getElementById('version-indicator')?.addEventListener('click', () => {
   const version = document.getElementById('version-indicator')?.textContent || 'v0.1.0';
   window.electronAPI.openFile(`https://github.com/BurntToasters/IYERIS/releases/tag/${version}`);
-});
-
-document.getElementById('settings-search')?.addEventListener('input', (e) => {
-  const searchTerm = (e.target as HTMLInputElement).value.toLowerCase().trim();
-  const sections = document.querySelectorAll('.settings-section');
-
-  if (!searchTerm) {
-    sections.forEach((section) => {
-      (section as HTMLElement).style.display = '';
-      section.classList.remove('search-no-results');
-      section.querySelectorAll('.settings-card').forEach((card) => {
-        card.classList.remove('search-hidden');
-      });
-      section.querySelectorAll('.setting-item, .setting-item-toggle').forEach((item) => {
-        item.classList.remove('search-hidden', 'search-highlight');
-      });
-    });
-    return;
-  }
-
-  let anyMatch = false;
-
-  sections.forEach((section) => {
-    section.classList.remove('search-no-results');
-    let sectionHasMatch = false;
-    const cards = section.querySelectorAll('.settings-card');
-
-    cards.forEach((card) => {
-      const items = card.querySelectorAll('.setting-item, .setting-item-toggle');
-      const cardHeaderText = (
-        card.querySelector('.settings-card-header')?.textContent || ''
-      ).toLowerCase();
-      let cardHasMatch = false;
-
-      if (items.length === 0) {
-        const cardText = (card.textContent || '').toLowerCase();
-        cardHasMatch = cardText.includes(searchTerm);
-      } else {
-        items.forEach((item) => {
-          const searchable = item.getAttribute('data-searchable') || '';
-          const text = item.textContent || '';
-          const haystack = `${searchable} ${text} ${cardHeaderText}`.toLowerCase();
-          const matches = haystack.includes(searchTerm);
-          item.classList.toggle('search-hidden', !matches);
-          item.classList.toggle('search-highlight', matches);
-          if (matches) cardHasMatch = true;
-        });
-      }
-
-      card.classList.toggle('search-hidden', !cardHasMatch);
-      if (cardHasMatch) {
-        sectionHasMatch = true;
-      }
-    });
-
-    if (sectionHasMatch) {
-      (section as HTMLElement).style.display = 'block';
-      anyMatch = true;
-    } else {
-      (section as HTMLElement).style.display = 'none';
-    }
-  });
-
-  if (!anyMatch) {
-    const activeSection = document.querySelector('.settings-section.active') as HTMLElement | null;
-    sections.forEach((section) => {
-      const isActive = section === activeSection;
-      (section as HTMLElement).style.display = isActive ? 'block' : 'none';
-      section.classList.toggle('search-no-results', isActive);
-    });
-  }
 });
 
 document.getElementById('icon-size-slider')?.addEventListener('input', (e) => {
@@ -10323,93 +11387,90 @@ document.getElementById('export-settings-btn')?.addEventListener('click', async 
   }
 });
 
-// Settings validation
-function validateImportedSettings(imported: any): Partial<Settings> {
+function validateImportedSettings(imported: unknown): Partial<Settings> {
   const validated: Partial<Settings> = {};
+  if (!isRecord(imported)) return validated;
+  const data = imported as Record<string, unknown>;
 
-  if (typeof imported.transparency === 'boolean') validated.transparency = imported.transparency;
-  if (typeof imported.showDangerousOptions === 'boolean')
-    validated.showDangerousOptions = imported.showDangerousOptions;
-  if (typeof imported.showHiddenFiles === 'boolean')
-    validated.showHiddenFiles = imported.showHiddenFiles;
-  if (typeof imported.enableGitStatus === 'boolean')
-    validated.enableGitStatus = imported.enableGitStatus;
-  if (typeof imported.showFileHoverCard === 'boolean')
-    validated.showFileHoverCard = imported.showFileHoverCard;
-  if (typeof imported.showFileCheckboxes === 'boolean')
-    validated.showFileCheckboxes = imported.showFileCheckboxes;
-  if (typeof imported.enableSearchHistory === 'boolean')
-    validated.enableSearchHistory = imported.enableSearchHistory;
-  if (typeof imported.enableIndexer === 'boolean') validated.enableIndexer = imported.enableIndexer;
-  if (typeof imported.minimizeToTray === 'boolean')
-    validated.minimizeToTray = imported.minimizeToTray;
-  if (typeof imported.startOnLogin === 'boolean') validated.startOnLogin = imported.startOnLogin;
-  if (typeof imported.autoCheckUpdates === 'boolean')
-    validated.autoCheckUpdates = imported.autoCheckUpdates;
-  if (typeof imported.showRecentFiles === 'boolean')
-    validated.showRecentFiles = imported.showRecentFiles;
-  if (typeof imported.showFolderTree === 'boolean')
-    validated.showFolderTree = imported.showFolderTree;
-  if (typeof imported.enableTabs === 'boolean') validated.enableTabs = imported.enableTabs;
-  if (typeof imported.globalContentSearch === 'boolean')
-    validated.globalContentSearch = imported.globalContentSearch;
+  if (typeof data.transparency === 'boolean') validated.transparency = data.transparency;
+  if (typeof data.showDangerousOptions === 'boolean')
+    validated.showDangerousOptions = data.showDangerousOptions;
+  if (typeof data.showHiddenFiles === 'boolean') validated.showHiddenFiles = data.showHiddenFiles;
+  if (typeof data.enableGitStatus === 'boolean') validated.enableGitStatus = data.enableGitStatus;
+  if (typeof data.showFileHoverCard === 'boolean')
+    validated.showFileHoverCard = data.showFileHoverCard;
+  if (typeof data.showFileCheckboxes === 'boolean')
+    validated.showFileCheckboxes = data.showFileCheckboxes;
+  if (typeof data.enableSearchHistory === 'boolean')
+    validated.enableSearchHistory = data.enableSearchHistory;
+  if (typeof data.enableIndexer === 'boolean') validated.enableIndexer = data.enableIndexer;
+  if (typeof data.minimizeToTray === 'boolean') validated.minimizeToTray = data.minimizeToTray;
+  if (typeof data.startOnLogin === 'boolean') validated.startOnLogin = data.startOnLogin;
+  if (typeof data.autoCheckUpdates === 'boolean')
+    validated.autoCheckUpdates = data.autoCheckUpdates;
+  if (typeof data.showRecentFiles === 'boolean') validated.showRecentFiles = data.showRecentFiles;
+  if (typeof data.showFolderTree === 'boolean') validated.showFolderTree = data.showFolderTree;
+  if (typeof data.enableTabs === 'boolean') validated.enableTabs = data.enableTabs;
+  if (typeof data.globalContentSearch === 'boolean')
+    validated.globalContentSearch = data.globalContentSearch;
 
-  if (typeof imported.startupPath === 'string') validated.startupPath = imported.startupPath;
+  if (typeof data.startupPath === 'string') validated.startupPath = data.startupPath;
 
-  const validThemes = ['dark', 'light', 'default', 'custom'];
-  if (validThemes.includes(imported.theme)) validated.theme = imported.theme;
-
-  const validSortBy = ['name', 'date', 'size', 'type'];
-  if (validSortBy.includes(imported.sortBy)) validated.sortBy = imported.sortBy;
-
-  const validSortOrder = ['asc', 'desc'];
-  if (validSortOrder.includes(imported.sortOrder)) validated.sortOrder = imported.sortOrder;
-
-  const validViewModes = ['grid', 'list', 'column'];
-  if (validViewModes.includes(imported.viewMode)) validated.viewMode = imported.viewMode;
-
-  if (Array.isArray(imported.bookmarks)) {
-    validated.bookmarks = imported.bookmarks.filter((b: any) => typeof b === 'string');
+  if (typeof data.theme === 'string' && isOneOf(data.theme, THEME_VALUES)) {
+    validated.theme = data.theme;
   }
-  if (Array.isArray(imported.searchHistory)) {
-    validated.searchHistory = imported.searchHistory
-      .filter((s: any) => typeof s === 'string')
+
+  if (typeof data.sortBy === 'string' && isOneOf(data.sortBy, SORT_BY_VALUES)) {
+    validated.sortBy = data.sortBy;
+  }
+
+  if (typeof data.sortOrder === 'string' && isOneOf(data.sortOrder, SORT_ORDER_VALUES)) {
+    validated.sortOrder = data.sortOrder;
+  }
+
+  if (typeof data.viewMode === 'string' && isOneOf(data.viewMode, VIEW_MODE_VALUES)) {
+    validated.viewMode = data.viewMode;
+  }
+
+  if (Array.isArray(data.bookmarks)) {
+    validated.bookmarks = data.bookmarks.filter((b): b is string => typeof b === 'string');
+  }
+  if (Array.isArray(data.searchHistory)) {
+    validated.searchHistory = data.searchHistory
+      .filter((s): s is string => typeof s === 'string')
       .slice(0, 100);
   }
-  if (Array.isArray(imported.directoryHistory)) {
-    validated.directoryHistory = imported.directoryHistory
-      .filter((d: any) => typeof d === 'string')
+  if (Array.isArray(data.directoryHistory)) {
+    validated.directoryHistory = data.directoryHistory
+      .filter((d): d is string => typeof d === 'string')
       .slice(0, 100);
   }
 
-  if (imported.listColumnWidths && typeof imported.listColumnWidths === 'object') {
-    const widths = imported.listColumnWidths;
-    const parsed: Record<string, number> = {};
-    ['name', 'type', 'size', 'modified'].forEach((key) => {
+  if (isRecord(data.listColumnWidths)) {
+    const widths = data.listColumnWidths;
+    const parsed: ListColumnWidths = {};
+    (['name', 'type', 'size', 'modified'] as const).forEach((key) => {
       const value = widths[key];
       if (typeof value === 'number' && Number.isFinite(value)) {
         parsed[key] = value;
       }
     });
     if (Object.keys(parsed).length > 0) {
-      validated.listColumnWidths = parsed as any;
+      validated.listColumnWidths = parsed;
     }
   }
 
-  if (typeof imported.sidebarWidth === 'number' && Number.isFinite(imported.sidebarWidth)) {
-    validated.sidebarWidth = imported.sidebarWidth;
+  if (typeof data.sidebarWidth === 'number' && Number.isFinite(data.sidebarWidth)) {
+    validated.sidebarWidth = data.sidebarWidth;
   }
 
-  if (
-    typeof imported.previewPanelWidth === 'number' &&
-    Number.isFinite(imported.previewPanelWidth)
-  ) {
-    validated.previewPanelWidth = imported.previewPanelWidth;
+  if (typeof data.previewPanelWidth === 'number' && Number.isFinite(data.previewPanelWidth)) {
+    validated.previewPanelWidth = data.previewPanelWidth;
   }
 
-  if (imported.customTheme && typeof imported.customTheme === 'object') {
-    const ct = imported.customTheme;
-    const isValidHex = (s: any) =>
+  if (isRecord(data.customTheme)) {
+    const ct = data.customTheme;
+    const isValidHex = (s: unknown): s is string =>
       typeof s === 'string' && (/^#[0-9a-fA-F]{6}$/.test(s) || /^#[0-9a-fA-F]{3}$/.test(s));
     const expandHex = (s: string) => {
       if (/^#[0-9a-fA-F]{3}$/.test(s)) {
@@ -10464,7 +11525,7 @@ document.getElementById('import-settings-btn')?.addEventListener('click', () => 
       }
 
       currentSettings = { ...currentSettings, ...validatedSettings };
-      await window.electronAPI.saveSettings(currentSettings);
+      await saveSettingsWithTimestamp(currentSettings);
 
       hideSettingsModal();
       showSettingsModal();
@@ -10483,7 +11544,7 @@ document.getElementById('import-settings-btn')?.addEventListener('click', () => 
 document.getElementById('clear-search-history-btn')?.addEventListener('click', async () => {
   if (confirm('Are you sure you want to clear your search history?')) {
     currentSettings.searchHistory = [];
-    await window.electronAPI.saveSettings(currentSettings);
+    await saveSettingsWithTimestamp(currentSettings);
     showToast('Search history cleared', 'Data', 'success');
   }
 });
@@ -10491,7 +11552,7 @@ document.getElementById('clear-search-history-btn')?.addEventListener('click', a
 document.getElementById('clear-bookmarks-btn')?.addEventListener('click', async () => {
   if (confirm('Are you sure you want to clear all bookmarks?')) {
     currentSettings.bookmarks = [];
-    await window.electronAPI.saveSettings(currentSettings);
+    await saveSettingsWithTimestamp(currentSettings);
     loadBookmarks();
     showToast('Bookmarks cleared', 'Data', 'success');
   }
@@ -10554,20 +11615,172 @@ document.getElementById('about-twemoji-link')?.addEventListener('click', (e) => 
 });
 
 let themeDropdownChanged = false;
+type SettingsFormState = Record<string, string | boolean>;
+let settingsSavedState: SettingsFormState | null = null;
+let settingsRedoState: SettingsFormState | null = null;
+let suppressSettingsTracking = false;
+let settingsSearchTerm = '';
+let settingsUiInitialized = false;
+
+const SETTINGS_INPUT_KEYS: Record<string, keyof Settings> = {
+  'transparency-toggle': 'transparency',
+  'system-theme-toggle': 'useSystemTheme',
+  'theme-select': 'theme',
+  'themed-icons-toggle': 'themedIcons',
+  'minimize-to-tray-toggle': 'minimizeToTray',
+  'show-hidden-files-toggle': 'showHiddenFiles',
+  'enable-git-status-toggle': 'enableGitStatus',
+  'show-file-hover-card-toggle': 'showFileHoverCard',
+  'show-file-checkboxes-toggle': 'showFileCheckboxes',
+  'sort-by-select': 'sortBy',
+  'sort-order-select': 'sortOrder',
+  'enable-search-history-toggle': 'enableSearchHistory',
+  'max-search-history-input': 'maxSearchHistoryItems',
+  'show-recent-files-toggle': 'showRecentFiles',
+  'show-folder-tree-toggle': 'showFolderTree',
+  'enable-tabs-toggle': 'enableTabs',
+  'enable-syntax-highlighting-toggle': 'enableSyntaxHighlighting',
+  'auto-play-videos-toggle': 'autoPlayVideos',
+  'preview-panel-position-select': 'previewPanelPosition',
+  'max-preview-size-input': 'maxPreviewSizeMB',
+  'grid-columns-select': 'gridColumns',
+  'icon-size-slider': 'iconSize',
+  'compact-file-info-toggle': 'compactFileInfo',
+  'show-file-extensions-toggle': 'showFileExtensions',
+  'reduce-motion-toggle': 'reduceMotion',
+  'high-contrast-toggle': 'highContrast',
+  'large-text-toggle': 'largeText',
+  'use-system-font-size-toggle': 'useSystemFontSize',
+  'ui-density-select': 'uiDensity',
+  'bold-text-toggle': 'boldText',
+  'visible-focus-toggle': 'visibleFocus',
+  'reduce-transparency-toggle': 'reduceTransparency',
+  'start-on-login-toggle': 'startOnLogin',
+  'startup-path-input': 'startupPath',
+  'enable-indexer-toggle': 'enableIndexer',
+  'global-content-search-toggle': 'globalContentSearch',
+  'global-clipboard-toggle': 'globalClipboard',
+  'auto-check-updates-toggle': 'autoCheckUpdates',
+  'update-channel-select': 'updateChannel',
+  'disable-hw-accel-toggle': 'disableHardwareAcceleration',
+  'confirm-file-operations-toggle': 'confirmFileOperations',
+  'file-conflict-behavior-select': 'fileConflictBehavior',
+  'max-thumbnail-size-input': 'maxThumbnailSizeMB',
+  'thumbnail-quality-select': 'thumbnailQuality',
+  'dangerous-options-toggle': 'showDangerousOptions',
+};
+
+function captureSettingsFormState(): SettingsFormState {
+  const state: SettingsFormState = {};
+  const settingsModal = document.getElementById('settings-modal');
+  if (!settingsModal) return state;
+
+  settingsModal.querySelectorAll('input, select, textarea').forEach((element) => {
+    const input = element as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
+    if (!input.id) return;
+    if (input.id === 'settings-search') return;
+    if (input.id.startsWith('quick-') || input.dataset.syncTarget) return;
+    if (input.closest('.settings-quick-actions')) return;
+    if (input instanceof HTMLInputElement && input.type === 'checkbox') {
+      state[input.id] = input.checked;
+    } else {
+      state[input.id] = input.value;
+    }
+  });
+
+  return state;
+}
+
+function applySettingsFormState(state: SettingsFormState): void {
+  const settingsModal = document.getElementById('settings-modal');
+  if (!settingsModal) return;
+
+  suppressSettingsTracking = true;
+  settingsModal.querySelectorAll('input, select, textarea').forEach((element) => {
+    const input = element as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
+    if (!input.id || !(input.id in state)) return;
+    if (input.id === 'settings-search') return;
+    if (input.id.startsWith('quick-') || input.dataset.syncTarget) return;
+    if (input.closest('.settings-quick-actions')) return;
+    const value = state[input.id];
+    if (input instanceof HTMLInputElement && input.type === 'checkbox') {
+      input.checked = Boolean(value);
+    } else {
+      input.value = String(value ?? '');
+    }
+  });
+
+  const iconSizeSlider = document.getElementById('icon-size-slider') as HTMLInputElement | null;
+  const iconSizeValue = document.getElementById('icon-size-value');
+  if (iconSizeSlider && iconSizeValue) {
+    iconSizeValue.textContent = iconSizeSlider.value;
+  }
+
+  const dangerousOptionsToggle = document.getElementById(
+    'dangerous-options-toggle'
+  ) as HTMLInputElement | null;
+  if (dangerousOptionsToggle) {
+    updateDangerousOptionsVisibility(dangerousOptionsToggle.checked);
+  }
+
+  syncQuickActionsFromMain();
+  updateSettingsCardSummaries();
+  suppressSettingsTracking = false;
+  updateSettingsDirtyState();
+}
+
+function statesEqual(a: SettingsFormState, b: SettingsFormState): boolean {
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  for (const key of keys) {
+    if (a[key] !== b[key]) return false;
+  }
+  return true;
+}
+
+function updateSettingsDirtyState(): void {
+  if (!settingsSavedState) return;
+  const current = captureSettingsFormState();
+  const isDirty = !statesEqual(current, settingsSavedState);
+
+  const unsavedBar = document.getElementById('settings-unsaved-bar') as HTMLElement | null;
+  if (unsavedBar) {
+    unsavedBar.hidden = !isDirty;
+  }
+
+  const undoBtn = document.getElementById('settings-undo-btn') as HTMLButtonElement | null;
+  const redoBtn = document.getElementById('settings-redo-btn') as HTMLButtonElement | null;
+  if (undoBtn) undoBtn.disabled = !isDirty;
+  if (redoBtn) redoBtn.disabled = !settingsRedoState;
+
+  document.querySelectorAll('.settings-section').forEach((section) => {
+    if (section.id === 'tab-about') return;
+    const inputs = section.querySelectorAll('input, select, textarea');
+    let sectionDirty = false;
+    inputs.forEach((element) => {
+      const input = element as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
+      if (!input.id) return;
+      if (current[input.id] !== settingsSavedState?.[input.id]) {
+        sectionDirty = true;
+      }
+    });
+    const tabId = section.id.replace('tab-', '');
+    const tab = document.querySelector(`.settings-tab[data-tab="${tabId}"]`);
+    tab?.classList.toggle('dirty', sectionDirty);
+  });
+}
 
 function markSettingsChanged() {
-  const indicator = document.querySelector('.settings-unsaved-indicator');
-  if (indicator) {
-    indicator.classList.add('visible');
-  }
+  if (suppressSettingsTracking) return;
+  settingsRedoState = null;
+  updateSettingsDirtyState();
+  updateSettingsCardSummaries();
 }
 
 function clearSettingsChanged() {
   themeDropdownChanged = false;
-  const indicator = document.querySelector('.settings-unsaved-indicator');
-  if (indicator) {
-    indicator.classList.remove('visible');
-  }
+  settingsSavedState = captureSettingsFormState();
+  settingsRedoState = null;
+  updateSettingsDirtyState();
 }
 
 let settingsChangeTrackingInitialized = false;
@@ -10588,6 +11801,501 @@ function initSettingsChangeTracking() {
   settingsChangeTrackingInitialized = true;
 }
 
+function ensureSettingsTabDecorations(): void {
+  document.querySelectorAll('.settings-tab').forEach((tab) => {
+    if (!tab.querySelector('.settings-tab-label')) {
+      const label = document.createElement('span');
+      label.className = 'settings-tab-label';
+      const textNodes = Array.from(tab.childNodes).filter(
+        (node) => node.nodeType === Node.TEXT_NODE
+      );
+      textNodes.forEach((node) => label.appendChild(node));
+      label.textContent = label.textContent?.trim() || '';
+      const icon = tab.querySelector('img, svg');
+      if (icon && icon.nextSibling) {
+        tab.insertBefore(label, icon.nextSibling);
+      } else {
+        tab.appendChild(label);
+      }
+    }
+
+    if (!tab.querySelector('.settings-tab-count')) {
+      const count = document.createElement('span');
+      count.className = 'settings-tab-count';
+      count.textContent = '0';
+      tab.appendChild(count);
+    }
+
+    if (!tab.querySelector('.settings-tab-dot')) {
+      const dot = document.createElement('span');
+      dot.className = 'settings-tab-dot';
+      tab.appendChild(dot);
+    }
+  });
+}
+
+function activateSettingsTab(tabId: string, skipSearchUpdate = false): void {
+  const tabs = document.querySelectorAll('.settings-tab');
+  const sections = document.querySelectorAll('.settings-section');
+
+  tabs.forEach((t) => t.classList.remove('active'));
+  sections.forEach((s) => s.classList.remove('active'));
+
+  const tab = document.querySelector(`.settings-tab[data-tab="${tabId}"]`);
+  const section = document.getElementById(`tab-${tabId}`);
+  tab?.classList.add('active');
+  section?.classList.add('active');
+
+  if (!settingsSearchTerm) {
+    sections.forEach((s) => {
+      (s as HTMLElement).style.display = s === section ? 'block' : 'none';
+    });
+  }
+
+  if (!skipSearchUpdate && settingsSearchTerm) {
+    applySettingsSearch(settingsSearchTerm);
+  }
+}
+
+function updateSettingsCardSummaries(): void {
+  document.querySelectorAll('.settings-card').forEach((card) => {
+    const summary = card.querySelector('.settings-card-summary') as HTMLElement | null;
+    if (!summary) return;
+
+    const parts: string[] = [];
+    const items = card.querySelectorAll('.setting-item, .setting-item-toggle');
+    items.forEach((item) => {
+      if (parts.length >= 2) return;
+      const label = item.querySelector('label')?.textContent?.trim();
+      if (!label) return;
+      const input = item.querySelector('input, select') as
+        | HTMLInputElement
+        | HTMLSelectElement
+        | null;
+      if (!input) return;
+      let value = '';
+      if (input instanceof HTMLInputElement && input.type === 'checkbox') {
+        value = input.checked ? 'On' : 'Off';
+      } else if (input instanceof HTMLSelectElement) {
+        value = input.selectedOptions[0]?.textContent?.trim() || input.value;
+      } else {
+        value = input.value ? input.value : 'Not set';
+      }
+      parts.push(`${label}: ${value}`);
+    });
+
+    summary.textContent = parts.join(' • ');
+    if (parts.length === 0) {
+      summary.textContent = '';
+    }
+  });
+}
+
+function initSettingsCardUI(): void {
+  document.querySelectorAll('.settings-section:not(#tab-about) .settings-card').forEach((card) => {
+    if (card.querySelector('.settings-card-body')) return;
+
+    const header = card.querySelector('.settings-card-header') as HTMLElement | null;
+    if (!header) return;
+
+    if (!header.querySelector('.settings-card-title')) {
+      const title = document.createElement('span');
+      title.className = 'settings-card-title';
+      const textNodes = Array.from(header.childNodes).filter(
+        (node) => node.nodeType === Node.TEXT_NODE
+      );
+      textNodes.forEach((node) => title.appendChild(node));
+      title.textContent = title.textContent?.trim() || '';
+      if (title.textContent) {
+        header.insertBefore(title, header.firstChild);
+      }
+    }
+
+    const summary = document.createElement('span');
+    summary.className = 'settings-card-summary';
+
+    const toggle = document.createElement('button');
+    toggle.className = 'settings-card-toggle';
+    toggle.type = 'button';
+    toggle.setAttribute('aria-expanded', 'true');
+    toggle.innerHTML = '<span>▾</span>';
+    toggle.addEventListener('click', () => {
+      card.classList.toggle('collapsed');
+      toggle.setAttribute('aria-expanded', String(!card.classList.contains('collapsed')));
+    });
+
+    const actions = document.createElement('div');
+    actions.className = 'settings-card-actions';
+    actions.appendChild(summary);
+    actions.appendChild(toggle);
+    header.appendChild(actions);
+
+    const body = document.createElement('div');
+    body.className = 'settings-card-body';
+    let node = header.nextSibling;
+    while (node) {
+      const next = node.nextSibling;
+      body.appendChild(node);
+      node = next;
+    }
+    card.appendChild(body);
+  });
+
+  updateSettingsCardSummaries();
+}
+
+function applySettingsSearch(term: string): void {
+  settingsSearchTerm = term.toLowerCase().trim();
+  const wrapper = document.querySelector('.settings-search-wrapper') as HTMLElement | null;
+  wrapper?.classList.toggle('has-value', settingsSearchTerm.length > 0);
+
+  const sections = document.querySelectorAll('.settings-section');
+  const tabMatchCount = new Map<string, number>();
+  let totalMatches = 0;
+
+  sections.forEach((section) => {
+    section.classList.remove('search-no-results');
+    const cards = section.querySelectorAll('.settings-card');
+    let sectionMatches = 0;
+
+    cards.forEach((card) => {
+      const items = card.querySelectorAll('.setting-item, .setting-item-toggle');
+      const cardHeaderText = (
+        card.querySelector('.settings-card-header')?.textContent || ''
+      ).toLowerCase();
+      let cardHasMatch = false;
+
+      if (!settingsSearchTerm) {
+        items.forEach((item) => {
+          item.classList.remove('search-hidden', 'search-highlight');
+        });
+        card.classList.remove('search-hidden');
+        return;
+      }
+
+      if (items.length === 0) {
+        const cardText = (card.textContent || '').toLowerCase();
+        cardHasMatch = cardText.includes(settingsSearchTerm);
+        if (cardHasMatch) {
+          sectionMatches += 1;
+          totalMatches += 1;
+        }
+      } else {
+        items.forEach((item) => {
+          const searchable = item.getAttribute('data-searchable') || '';
+          const text = item.textContent || '';
+          const haystack = `${searchable} ${text} ${cardHeaderText}`.toLowerCase();
+          const matches = haystack.includes(settingsSearchTerm);
+          item.classList.toggle('search-hidden', !matches);
+          item.classList.toggle('search-highlight', matches);
+          if (matches) {
+            cardHasMatch = true;
+            sectionMatches += 1;
+            totalMatches += 1;
+          }
+        });
+      }
+
+      card.classList.toggle('search-hidden', !cardHasMatch);
+      if (settingsSearchTerm && cardHasMatch) {
+        if (card.classList.contains('collapsed')) {
+          card.classList.remove('collapsed');
+          const toggle = card.querySelector('.settings-card-toggle');
+          toggle?.setAttribute('aria-expanded', 'true');
+        }
+      }
+    });
+
+    const sectionId = section.id.replace('tab-', '');
+    tabMatchCount.set(sectionId, sectionMatches);
+
+    if (!settingsSearchTerm) {
+      const isActive = section.classList.contains('active');
+      (section as HTMLElement).style.display = isActive ? 'block' : 'none';
+    } else {
+      (section as HTMLElement).style.display = sectionMatches > 0 ? 'block' : 'none';
+    }
+  });
+
+  const countButton = document.getElementById('settings-search-count') as HTMLButtonElement | null;
+  if (countButton) {
+    countButton.textContent = String(totalMatches);
+    countButton.disabled = totalMatches === 0;
+  }
+
+  document.querySelectorAll('.settings-tab').forEach((tab) => {
+    const tabId = tab.getAttribute('data-tab') || '';
+    const count = tabMatchCount.get(tabId) || 0;
+    const countEl = tab.querySelector('.settings-tab-count');
+    if (countEl) countEl.textContent = String(count);
+    tab.classList.toggle('has-matches', settingsSearchTerm.length > 0 && count > 0);
+    tab.classList.toggle('search-hidden', settingsSearchTerm.length > 0 && count === 0);
+  });
+
+  if (settingsSearchTerm && totalMatches === 0) {
+    const activeSection = document.querySelector('.settings-section.active') as HTMLElement | null;
+    sections.forEach((section) => {
+      const isActive = section === activeSection;
+      (section as HTMLElement).style.display = isActive ? 'block' : 'none';
+      section.classList.toggle('search-no-results', isActive);
+    });
+  }
+
+  if (settingsSearchTerm && totalMatches > 0) {
+    const activeTab = document.querySelector('.settings-tab.active');
+    if (activeTab?.classList.contains('search-hidden')) {
+      const firstTab = document.querySelector('.settings-tab:not(.search-hidden)');
+      const firstId = firstTab?.getAttribute('data-tab');
+      if (firstId) activateSettingsTab(firstId, true);
+    }
+  }
+}
+
+function jumpToFirstSettingMatch(): void {
+  const firstMatch = document.querySelector(
+    '.setting-item.search-highlight:not(.search-hidden)'
+  ) as HTMLElement | null;
+  if (!firstMatch) return;
+
+  const section = firstMatch.closest('.settings-section') as HTMLElement | null;
+  if (section) {
+    const sectionId = section.id.replace('tab-', '');
+    activateSettingsTab(sectionId, true);
+  }
+
+  const card = firstMatch.closest('.settings-card') as HTMLElement | null;
+  if (card && card.classList.contains('collapsed')) {
+    card.classList.remove('collapsed');
+    const toggle = card.querySelector('.settings-card-toggle');
+    toggle?.setAttribute('aria-expanded', 'true');
+  }
+
+  firstMatch.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  firstMatch.classList.add('search-jump');
+  setTimeout(() => firstMatch.classList.remove('search-jump'), 1200);
+}
+
+function initSettingsSearch(): void {
+  const searchInput = document.getElementById('settings-search') as HTMLInputElement | null;
+  const clearBtn = document.getElementById('settings-search-clear') as HTMLButtonElement | null;
+  const countBtn = document.getElementById('settings-search-count') as HTMLButtonElement | null;
+  if (!searchInput) return;
+
+  searchInput.addEventListener('input', () => {
+    applySettingsSearch(searchInput.value);
+  });
+
+  searchInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      jumpToFirstSettingMatch();
+    } else if (e.key === 'Escape') {
+      searchInput.value = '';
+      applySettingsSearch('');
+    }
+  });
+
+  clearBtn?.addEventListener('click', () => {
+    searchInput.value = '';
+    applySettingsSearch('');
+    searchInput.focus();
+  });
+
+  countBtn?.addEventListener('click', () => {
+    if (settingsSearchTerm) {
+      jumpToFirstSettingMatch();
+    }
+  });
+
+  window.addEventListener('keydown', (e) => {
+    const isSearchShortcut = (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f' && !e.shiftKey;
+    if (!isSearchShortcut) return;
+    const settingsModal = document.getElementById('settings-modal') as HTMLElement | null;
+    if (settingsModal?.style.display === 'flex') {
+      e.preventDefault();
+      searchInput.focus();
+      searchInput.select();
+    }
+  });
+}
+
+function syncQuickActionsFromMain(): void {
+  document.querySelectorAll<HTMLInputElement>('[data-sync-target]').forEach((quickToggle) => {
+    const targetId = quickToggle.dataset.syncTarget;
+    if (!targetId) return;
+    const target = document.getElementById(targetId) as HTMLInputElement | null;
+    if (target && target.type === 'checkbox') {
+      quickToggle.checked = target.checked;
+    }
+  });
+}
+
+function initSettingsQuickActions(): void {
+  document.querySelectorAll<HTMLInputElement>('[data-sync-target]').forEach((quickToggle) => {
+    const targetId = quickToggle.dataset.syncTarget;
+    if (!targetId) return;
+    const target = document.getElementById(targetId) as HTMLInputElement | null;
+    if (!target) return;
+
+    quickToggle.addEventListener('change', () => {
+      if (target.type === 'checkbox') {
+        target.checked = quickToggle.checked;
+        target.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    });
+
+    target.addEventListener('change', () => {
+      if (target.type === 'checkbox') {
+        quickToggle.checked = target.checked;
+      }
+    });
+  });
+
+  syncQuickActionsFromMain();
+}
+
+function resetSettingsSection(sectionId: string): void {
+  const section = document.getElementById(`tab-${sectionId}`);
+  if (!section) return;
+  const defaults = createDefaultSettings();
+
+  section.querySelectorAll('input, select, textarea').forEach((element) => {
+    const input = element as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
+    if (!input.id) return;
+    const key = SETTINGS_INPUT_KEYS[input.id];
+    if (!key) return;
+    const value = defaults[key];
+    if (input instanceof HTMLInputElement && input.type === 'checkbox') {
+      input.checked = Boolean(value);
+    } else {
+      input.value = String(value ?? '');
+    }
+  });
+
+  const iconSizeSlider = document.getElementById('icon-size-slider') as HTMLInputElement | null;
+  const iconSizeValue = document.getElementById('icon-size-value');
+  if (iconSizeSlider && iconSizeValue) {
+    iconSizeValue.textContent = iconSizeSlider.value;
+  }
+
+  const dangerousOptionsToggle = document.getElementById(
+    'dangerous-options-toggle'
+  ) as HTMLInputElement | null;
+  if (dangerousOptionsToggle) {
+    updateDangerousOptionsVisibility(dangerousOptionsToggle.checked);
+  }
+
+  syncQuickActionsFromMain();
+  markSettingsChanged();
+}
+
+function initSettingsSectionResets(): void {
+  document.querySelectorAll<HTMLButtonElement>('.settings-section-reset').forEach((button) => {
+    button.addEventListener('click', () => {
+      const sectionId = button.dataset.section;
+      if (sectionId) resetSettingsSection(sectionId);
+    });
+
+    const sectionId = button.dataset.section;
+    if (sectionId) {
+      const section = document.getElementById(`tab-${sectionId}`);
+      const hasInputs = Array.from(section?.querySelectorAll('input, select, textarea') || []).some(
+        (element) => {
+          const input = element as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
+          return Boolean(SETTINGS_INPUT_KEYS[input.id]);
+        }
+      );
+      if (!hasInputs) {
+        button.style.display = 'none';
+      }
+    }
+  });
+}
+
+function initSettingsWhyToggles(): void {
+  document.querySelectorAll<HTMLButtonElement>('.setting-why-toggle').forEach((button) => {
+    button.addEventListener('click', () => {
+      const targetId = button.dataset.whyTarget;
+      if (!targetId) return;
+      const target = document.getElementById(targetId);
+      if (!target) return;
+      const willShow = target.hasAttribute('hidden');
+      if (willShow) {
+        target.removeAttribute('hidden');
+      } else {
+        target.setAttribute('hidden', 'true');
+      }
+      button.setAttribute('aria-expanded', String(willShow));
+    });
+  });
+
+  document.querySelectorAll<HTMLButtonElement>('[data-learn-more]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const topic = button.dataset.learnMore;
+      if (!topic) return;
+      const urlMap: Record<string, string> = {
+        indexer: 'https://help.rosie.run/iyeris/en-us/faq',
+        clipboard: 'https://help.rosie.run/iyeris/en-us/faq',
+        graphics: 'https://help.rosie.run/iyeris/en-us/faq',
+      };
+      const url = urlMap[topic] || 'https://help.rosie.run/iyeris/en-us/faq';
+      window.electronAPI.openFile(url);
+    });
+  });
+}
+
+function initSettingsPreview(): void {
+  const previewToggle = document.getElementById('theme-preview-toggle');
+  const previewPanel = document.getElementById('settings-preview-panel');
+  const previewClose = document.getElementById('settings-preview-close');
+  if (!previewPanel) return;
+
+  const togglePreview = () => {
+    if (previewPanel.hasAttribute('hidden')) {
+      previewPanel.removeAttribute('hidden');
+    } else {
+      previewPanel.setAttribute('hidden', 'true');
+    }
+  };
+
+  previewToggle?.addEventListener('click', togglePreview);
+  previewClose?.addEventListener('click', () => previewPanel.setAttribute('hidden', 'true'));
+}
+
+function initSettingsUndoRedo(): void {
+  document.getElementById('settings-save-inline-btn')?.addEventListener('click', () => {
+    void saveSettings();
+  });
+
+  document.getElementById('settings-undo-btn')?.addEventListener('click', () => {
+    if (!settingsSavedState) return;
+    const current = captureSettingsFormState();
+    if (statesEqual(current, settingsSavedState)) return;
+    settingsRedoState = current;
+    applySettingsFormState(settingsSavedState);
+  });
+
+  document.getElementById('settings-redo-btn')?.addEventListener('click', () => {
+    if (!settingsRedoState) return;
+    const redoState = settingsRedoState;
+    settingsRedoState = null;
+    applySettingsFormState(redoState);
+  });
+}
+
+function initSettingsUi(): void {
+  if (settingsUiInitialized) return;
+  settingsUiInitialized = true;
+  ensureSettingsTabDecorations();
+  initSettingsCardUI();
+  initSettingsSearch();
+  initSettingsQuickActions();
+  initSettingsSectionResets();
+  initSettingsWhyToggles();
+  initSettingsPreview();
+  initSettingsUndoRedo();
+}
+
 // Support Window
 function showSupportPopup() {
   const modal = document.getElementById('support-popup-modal');
@@ -10605,7 +12313,7 @@ function hideSupportPopup() {
 
 document.getElementById('support-popup-dismiss')?.addEventListener('click', async () => {
   currentSettings.supportPopupDismissed = true;
-  await window.electronAPI.saveSettings(currentSettings);
+  await saveSettingsWithTimestamp(currentSettings);
   hideSupportPopup();
 });
 
@@ -10720,7 +12428,7 @@ function updatePreview(file: FileItem) {
     return;
   }
 
-  const ext = file.name.split('.').pop()?.toLowerCase() || '';
+  const ext = getFileExtension(file.name);
 
   if (IMAGE_EXTENSIONS.has(ext)) {
     showImagePreview(file, requestId);
@@ -10866,18 +12574,33 @@ async function showRawImagePreview(file: FileItem, requestId: number) {
   if (requestId !== previewRequestId) return;
   const info = props.success && props.properties ? props.properties : null;
 
-  const ext = file.name.split('.').pop()?.toUpperCase() || 'RAW';
+  const ext = getFileExtension(file.name).toUpperCase() || 'RAW';
   const cameraFormats: Record<string, string> = {
     CR2: 'Canon',
     CR3: 'Canon',
+    CRW: 'Canon',
     NEF: 'Nikon',
+    NRW: 'Nikon',
     ARW: 'Sony',
+    SR2: 'Sony',
+    SRF: 'Sony',
     DNG: 'Adobe DNG',
     ORF: 'Olympus',
     RW2: 'Panasonic',
+    RW1: 'Leica',
+    RWL: 'Leica',
     PEF: 'Pentax',
     SRW: 'Samsung',
     RAF: 'Fujifilm',
+    DCR: 'Kodak',
+    KDC: 'Kodak',
+    ERF: 'Epson',
+    MRW: 'Minolta',
+    X3F: 'Sigma',
+    '3FR': 'Hasselblad',
+    IIQ: 'Phase One',
+    MEF: 'Mamiya',
+    MOS: 'Leaf',
   };
   const brand = cameraFormats[ext] || 'Camera';
 
@@ -10894,8 +12617,12 @@ async function showRawImagePreview(file: FileItem, requestId: number) {
   `;
 }
 
-let hljs: any = null;
-let hljsLoading: Promise<any> | null = null;
+type HighlightJs = {
+  highlightElement?: (element: Element) => void;
+};
+
+let hljs: HighlightJs | null = null;
+let hljsLoading: Promise<HighlightJs | null> | null = null;
 
 const EXT_TO_LANG: Record<string, string> = {
   js: 'javascript',
@@ -10953,7 +12680,7 @@ const EXT_TO_LANG: Record<string, string> = {
   cmake: 'cmake',
 };
 
-async function loadHighlightJs(): Promise<any> {
+async function loadHighlightJs(): Promise<HighlightJs | null> {
   if (hljs) return hljs;
   if (hljsLoading) return hljsLoading;
 
@@ -10972,11 +12699,12 @@ async function loadHighlightJs(): Promise<any> {
     ) as HTMLScriptElement | null;
     if (existingScript) {
       existingScript.addEventListener('load', () => {
-        hljs = (window as any).hljs || null;
+        const globalHljs = (window as Window & { hljs?: HighlightJs }).hljs || null;
+        hljs = globalHljs;
         resolve(hljs);
       });
       existingScript.addEventListener('error', () => resolve(null));
-      const existingGlobal = (window as any).hljs;
+      const existingGlobal = (window as Window & { hljs?: HighlightJs }).hljs;
       if (existingGlobal) {
         hljs = existingGlobal;
         resolve(hljs);
@@ -10988,7 +12716,8 @@ async function loadHighlightJs(): Promise<any> {
     script.src = '../dist/vendor/highlight.js';
     script.dataset.highlightjs = 'core';
     script.onload = () => {
-      hljs = (window as any).hljs || null;
+      const globalHljs = (window as Window & { hljs?: HighlightJs }).hljs || null;
+      hljs = globalHljs;
       resolve(hljs);
     };
     script.onerror = () => resolve(null);
@@ -11018,7 +12747,7 @@ async function showTextPreview(file: FileItem, requestId: number) {
     const props = await window.electronAPI.getItemProperties(file.path);
     if (requestId !== previewRequestId) return;
     const info = props.success && props.properties ? props.properties : null;
-    const ext = file.name.split('.').pop()?.toLowerCase() || '';
+    const ext = getFileExtension(file.name);
     const lang = getLanguageForExt(ext);
 
     previewContent.innerHTML = `
@@ -11031,7 +12760,7 @@ async function showTextPreview(file: FileItem, requestId: number) {
       loadHighlightJs().then((hl) => {
         if (requestId !== previewRequestId || !hl) return;
         const codeBlock = previewContent?.querySelector('code');
-        if (codeBlock) hl.highlightElement(codeBlock);
+        if (codeBlock) hl.highlightElement?.(codeBlock);
       });
     }
   } else {
@@ -11211,7 +12940,7 @@ async function showQuickLook() {
   quicklookTitle.textContent = file.name;
   quicklookModal.style.display = 'flex';
 
-  const ext = file.name.split('.').pop()?.toLowerCase() || '';
+  const ext = getFileExtension(file.name);
 
   quicklookContent.innerHTML = `
     <div class="preview-loading">
@@ -11300,7 +13029,7 @@ async function showQuickLook() {
           if (requestId !== quicklookRequestId || currentQuicklookFile?.path !== file.path || !hl)
             return;
           const codeBlock = quicklookContent?.querySelector('code');
-          if (codeBlock) hl.highlightElement(codeBlock);
+          if (codeBlock) hl.highlightElement?.(codeBlock);
         });
       }
     } else {
@@ -11342,9 +13071,9 @@ if (quicklookClose) {
 if (quicklookOpen) {
   quicklookOpen.addEventListener('click', () => {
     if (currentQuicklookFile) {
-      window.electronAPI.openFile(currentQuicklookFile.path);
-      addToRecentFiles(currentQuicklookFile.path);
+      const file = currentQuicklookFile;
       closeQuickLook();
+      void openFileEntry(file);
     }
   });
 }
@@ -11372,13 +13101,15 @@ document.addEventListener('keydown', (e) => {
     const dialogModal = document.getElementById('dialog-modal');
     const licensesModal = document.getElementById('licenses-modal');
     const homeSettingsModal = document.getElementById('home-settings-modal');
+    const extractModal = document.getElementById('extract-modal');
 
     if (
       (settingsModal && settingsModal.style.display === 'flex') ||
       (shortcutsModal && shortcutsModal.style.display === 'flex') ||
       (dialogModal && dialogModal.style.display === 'flex') ||
       (licensesModal && licensesModal.style.display === 'flex') ||
-      (homeSettingsModal && homeSettingsModal.style.display === 'flex')
+      (homeSettingsModal && homeSettingsModal.style.display === 'flex') ||
+      (extractModal && extractModal.style.display === 'flex')
     ) {
       return;
     }
@@ -11391,8 +13122,16 @@ document.addEventListener('keydown', (e) => {
     }
   }
 
-  if (e.key === 'Escape' && quicklookModal && quicklookModal.style.display === 'flex') {
-    closeQuickLook();
+  if (e.key === 'Escape') {
+    const extractModal = document.getElementById('extract-modal');
+    if (extractModal && extractModal.style.display === 'flex') {
+      e.preventDefault();
+      hideExtractModal();
+      return;
+    }
+    if (quicklookModal && quicklookModal.style.display === 'flex') {
+      closeQuickLook();
+    }
   }
 });
 if (searchInput) {
@@ -11498,6 +13237,34 @@ window.addEventListener('beforeunload', () => {
     clearTimeout(settingsSaveTimeout);
     settingsSaveTimeout = null;
   }
+  if (saveTabStateTimeout) {
+    clearTimeout(saveTabStateTimeout);
+    saveTabStateTimeout = null;
+  }
+
+  if (tabsEnabled && tabs.length > 0) {
+    const currentTab = tabs.find((t) => t.id === activeTabId);
+    if (currentTab) {
+      currentTab.path = currentPath;
+      currentTab.history = [...history];
+      currentTab.historyIndex = historyIndex;
+      currentTab.selectedItems = new Set(selectedItems);
+      currentTab.scrollPosition = fileView?.scrollTop || 0;
+    }
+    currentSettings.tabState = {
+      tabs: tabs.map((t) => ({
+        id: t.id,
+        path: t.path,
+        history: t.history,
+        historyIndex: t.historyIndex,
+        selectedItems: Array.from(t.selectedItems),
+        scrollPosition: t.scrollPosition,
+      })),
+      activeTabId,
+    };
+  }
+
+  saveSettingsWithTimestamp(currentSettings);
   if (searchDebounceTimeout) {
     clearTimeout(searchDebounceTimeout);
     searchDebounceTimeout = null;
