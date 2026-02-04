@@ -3398,18 +3398,6 @@ function setupThemeEditorListeners() {
     });
   }
 
-  const useCustomThemeBtn = document.getElementById('use-custom-theme-btn');
-  if (useCustomThemeBtn) {
-    useCustomThemeBtn.addEventListener('click', async () => {
-      if (currentSettings.customTheme) {
-        currentSettings.theme = 'custom';
-        applySettings(currentSettings);
-        await saveSettingsWithTimestamp(currentSettings);
-        updateCustomThemeUI();
-      }
-    });
-  }
-
   document.getElementById('theme-editor-modal')?.addEventListener('click', (e) => {
     if ((e.target as HTMLElement).classList.contains('modal-overlay')) {
       hideThemeEditor();
@@ -3418,35 +3406,25 @@ function setupThemeEditorListeners() {
 }
 
 function updateCustomThemeUI() {
-  const useCustomThemeBtn = document.getElementById('use-custom-theme-btn');
   const customThemeDescription = document.getElementById('custom-theme-description');
   const themeSelect = document.getElementById('theme-select') as HTMLSelectElement;
 
   if (currentSettings.customTheme) {
-    if (useCustomThemeBtn) {
-      useCustomThemeBtn.style.display = 'block';
-    }
     if (customThemeDescription) {
       const themeName = currentSettings.customTheme.name || 'Custom Theme';
       if (currentSettings.theme === 'custom') {
         customThemeDescription.textContent = `Currently using: ${themeName}`;
       } else {
-        customThemeDescription.textContent = `Edit or use your custom theme: ${themeName}`;
+        customThemeDescription.textContent = `Custom theme ready: ${themeName}`;
       }
     }
-    if (themeSelect && currentSettings.theme === 'custom') {
-      themeSelect.value = 'default';
-    }
   } else {
-    if (useCustomThemeBtn) {
-      useCustomThemeBtn.style.display = 'none';
-    }
     if (customThemeDescription) {
       customThemeDescription.textContent = 'Create your own color scheme';
     }
   }
 
-  if (themeSelect && currentSettings.theme !== 'custom') {
+  if (themeSelect) {
     themeSelect.value = currentSettings.theme || 'default';
   }
 }
@@ -3598,14 +3576,6 @@ async function showSettingsModal() {
   }
 
   updateCustomThemeUI();
-
-  const themeSelectForTracking = document.getElementById('theme-select') as HTMLSelectElement;
-  if (themeSelectForTracking) {
-    themeSelectForTracking.onchange = () => {
-      themeDropdownChanged = true;
-      markSettingsChanged();
-    };
-  }
 
   if (sortBySelect) {
     sortBySelect.value = currentSettings.sortBy || 'name';
@@ -4262,13 +4232,7 @@ async function saveSettings() {
   if (themeSelect) {
     const selectedTheme = themeSelect.value;
     if (isOneOf(selectedTheme, THEME_VALUES)) {
-      if (currentSettings.theme === 'custom') {
-        if (themeDropdownChanged) {
-          currentSettings.theme = selectedTheme;
-        }
-      } else {
-        currentSettings.theme = selectedTheme;
-      }
+      currentSettings.theme = selectedTheme;
     }
   }
 
@@ -11678,7 +11642,6 @@ document.getElementById('about-twemoji-link')?.addEventListener('click', (e) => 
   window.electronAPI.openFile('https://github.com/jdecked/twemoji');
 });
 
-let themeDropdownChanged = false;
 type SettingsFormState = Record<string, string | boolean>;
 let settingsSavedState: SettingsFormState | null = null;
 let settingsRedoState: SettingsFormState | null = null;
@@ -11860,7 +11823,6 @@ function markSettingsChanged() {
 }
 
 function clearSettingsChanged() {
-  themeDropdownChanged = false;
   settingsSavedState = captureSettingsFormState();
   settingsRedoState = null;
   updateSettingsDirtyState();
@@ -12266,11 +12228,6 @@ function resetSettingsSection(sectionId: string): void {
   ) as HTMLInputElement | null;
   if (dangerousOptionsToggle) {
     updateDangerousOptionsVisibility(dangerousOptionsToggle.checked);
-  }
-
-  const themeSelect = section.querySelector('#theme-select') as HTMLSelectElement | null;
-  if (themeSelect) {
-    themeDropdownChanged = true;
   }
 
   syncQuickActionsFromMain();
