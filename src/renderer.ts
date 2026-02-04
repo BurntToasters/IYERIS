@@ -4272,6 +4272,16 @@ async function saveSettings() {
     }
   }
 
+  if (currentSettings.useSystemTheme) {
+    try {
+      const { isDarkMode } = await window.electronAPI.getSystemAccentColor();
+      const systemTheme = isDarkMode ? 'default' : 'light';
+      currentSettings.theme = systemTheme;
+    } catch (error) {
+      console.error('[Settings] Failed to apply system theme:', error);
+    }
+  }
+
   if (sortBySelect) {
     const sortByValue = sortBySelect.value;
     if (isOneOf(sortByValue, SORT_BY_VALUES)) {
@@ -4484,7 +4494,7 @@ async function saveSettings() {
 
 async function resetSettings() {
   const confirmed = await showConfirm(
-    'Are you sure you want to reset all settings to default? The app will restart. This cannot be undone.',
+    'Are you sure you want to reset all settings (including Home view) to default? The app will restart. This cannot be undone.',
     'Reset Settings',
     'warning'
   );
@@ -4495,12 +4505,22 @@ async function resetSettings() {
       clearTimeout(settingsSaveTimeout);
       settingsSaveTimeout = null;
     }
-    const result = await window.electronAPI.resetSettings();
-    if (result.success) {
+    const [settingsResult, homeResult] = await Promise.all([
+      window.electronAPI.resetSettings(),
+      window.electronAPI.resetHomeSettings(),
+    ]);
+    if (settingsResult.success && homeResult.success) {
       await window.electronAPI.relaunchApp();
     } else {
       isResettingSettings = false;
-      showToast('Failed to reset settings: ' + result.error, 'Error', 'error');
+      const errors: string[] = [];
+      if (!settingsResult.success) {
+        errors.push(settingsResult.error || 'Failed to reset settings');
+      }
+      if (!homeResult.success) {
+        errors.push(homeResult.error || 'Failed to reset Home settings');
+      }
+      showToast(`Failed to reset settings: ${errors.join(' | ')}`, 'Error', 'error');
     }
   }
 }
@@ -6336,6 +6356,25 @@ function setupEventListeners() {
     console.log('[Sync] Settings updated from another window');
     currentSettings = newSettings;
     applySettings(newSettings);
+    const settingsModal = document.getElementById('settings-modal') as HTMLElement | null;
+    if (settingsModal && settingsModal.style.display === 'flex') {
+      const previousSavedState = settingsSavedState;
+      const currentFormState = captureSettingsFormState();
+      const nextSavedState = buildSettingsFormStateFromSettings(newSettings);
+      const mergedState: SettingsFormState = { ...nextSavedState };
+
+      if (previousSavedState) {
+        Object.keys(currentFormState).forEach((key) => {
+          if (currentFormState[key] !== previousSavedState[key]) {
+            mergedState[key] = currentFormState[key];
+          }
+        });
+      }
+
+      settingsSavedState = nextSavedState;
+      settingsRedoState = null;
+      applySettingsFormState(mergedState);
+    }
     const shortcutsModal = document.getElementById('shortcuts-modal');
     syncShortcutBindingsFromSettings(newSettings, {
       render: shortcutsModal ? shortcutsModal.style.display === 'flex' : false,
@@ -11754,6 +11793,25 @@ function applySettingsFormState(state: SettingsFormState): void {
   updateSettingsDirtyState();
 }
 
+function buildSettingsFormStateFromSettings(settings: Settings): SettingsFormState {
+  const state: SettingsFormState = {};
+  Object.entries(SETTINGS_INPUT_KEYS).forEach(([inputId, key]) => {
+    const input = document.getElementById(inputId) as
+      | HTMLInputElement
+      | HTMLSelectElement
+      | HTMLTextAreaElement
+      | null;
+    if (!input) return;
+    const value = settings[key];
+    if (input instanceof HTMLInputElement && input.type === 'checkbox') {
+      state[inputId] = Boolean(value);
+    } else {
+      state[inputId] = String(value ?? '');
+    }
+  });
+  return state;
+}
+
 function statesEqual(a: SettingsFormState, b: SettingsFormState): boolean {
   const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
   for (const key of keys) {
@@ -12208,6 +12266,11 @@ function resetSettingsSection(sectionId: string): void {
   ) as HTMLInputElement | null;
   if (dangerousOptionsToggle) {
     updateDangerousOptionsVisibility(dangerousOptionsToggle.checked);
+  }
+
+  const themeSelect = section.querySelector('#theme-select') as HTMLSelectElement | null;
+  if (themeSelect) {
+    themeDropdownChanged = true;
   }
 
   syncQuickActionsFromMain();
