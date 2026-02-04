@@ -3405,14 +3405,15 @@ function setupThemeEditorListeners() {
   });
 }
 
-function updateCustomThemeUI() {
+function updateCustomThemeUI(options?: { syncSelect?: boolean; selectedTheme?: string }) {
   const customThemeDescription = document.getElementById('custom-theme-description');
   const themeSelect = document.getElementById('theme-select') as HTMLSelectElement;
+  const selectedTheme = options?.selectedTheme ?? currentSettings.theme ?? 'default';
 
   if (currentSettings.customTheme) {
     if (customThemeDescription) {
       const themeName = currentSettings.customTheme.name || 'Custom Theme';
-      if (currentSettings.theme === 'custom') {
+      if (selectedTheme === 'custom') {
         customThemeDescription.textContent = `Currently using: ${themeName}`;
       } else {
         customThemeDescription.textContent = `Custom theme ready: ${themeName}`;
@@ -3424,7 +3425,7 @@ function updateCustomThemeUI() {
     }
   }
 
-  if (themeSelect) {
+  if (themeSelect && options?.syncSelect !== false) {
     themeSelect.value = currentSettings.theme || 'default';
   }
 }
@@ -6338,6 +6339,13 @@ function setupEventListeners() {
       settingsSavedState = nextSavedState;
       settingsRedoState = null;
       applySettingsFormState(mergedState);
+      const themeSelect = document.getElementById('theme-select') as HTMLSelectElement | null;
+      updateCustomThemeUI({
+        syncSelect: false,
+        selectedTheme: themeSelect?.value,
+      });
+    } else {
+      updateCustomThemeUI();
     }
     const shortcutsModal = document.getElementById('shortcuts-modal');
     syncShortcutBindingsFromSettings(newSettings, {
@@ -12307,6 +12315,32 @@ function initSettingsPreview(): void {
   previewClose?.addEventListener('click', () => previewPanel.setAttribute('hidden', 'true'));
 }
 
+function initThemeSelectionBehavior(): void {
+  const themeSelect = document.getElementById('theme-select') as HTMLSelectElement | null;
+  const systemThemeToggle = document.getElementById(
+    'system-theme-toggle'
+  ) as HTMLInputElement | null;
+  if (!themeSelect || !systemThemeToggle) return;
+
+  themeSelect.addEventListener('change', () => {
+    if (systemThemeToggle.checked) {
+      systemThemeToggle.checked = false;
+      systemThemeToggle.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+  });
+
+  systemThemeToggle.addEventListener('change', async () => {
+    if (!systemThemeToggle.checked) return;
+    try {
+      const { isDarkMode } = await window.electronAPI.getSystemAccentColor();
+      const systemTheme = isDarkMode ? 'default' : 'light';
+      themeSelect.value = systemTheme;
+    } catch (error) {
+      console.error('[Settings] Failed to read system theme:', error);
+    }
+  });
+}
+
 function initSettingsUndoRedo(): void {
   document.getElementById('settings-save-inline-btn')?.addEventListener('click', () => {
     void saveSettings();
@@ -12338,6 +12372,7 @@ function initSettingsUi(): void {
   initSettingsSectionResets();
   initSettingsWhyToggles();
   initSettingsPreview();
+  initThemeSelectionBehavior();
   initSettingsUndoRedo();
 }
 
