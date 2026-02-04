@@ -245,6 +245,9 @@ function twemojiImg(emoji: string, className: string = 'twemoji', alt?: string):
 }
 
 async function saveSettingsWithTimestamp(settings: Settings) {
+  if (isResettingSettings) {
+    return { success: true };
+  }
   settings._timestamp = Date.now();
   return window.electronAPI.saveSettings(settings);
 }
@@ -1583,6 +1586,7 @@ async function showConfirm(
 }
 
 let currentSettings: Settings = createDefaultSettings();
+let isResettingSettings = false;
 const tourController: TourController = createTourController({
   getSettings: () => currentSettings,
   saveSettings: (settings) => saveSettingsWithTimestamp(settings),
@@ -4486,10 +4490,16 @@ async function resetSettings() {
   );
 
   if (confirmed) {
+    isResettingSettings = true;
+    if (settingsSaveTimeout) {
+      clearTimeout(settingsSaveTimeout);
+      settingsSaveTimeout = null;
+    }
     const result = await window.electronAPI.resetSettings();
     if (result.success) {
       await window.electronAPI.relaunchApp();
     } else {
+      isResettingSettings = false;
       showToast('Failed to reset settings: ' + result.error, 'Error', 'error');
     }
   }
@@ -13260,29 +13270,31 @@ window.addEventListener('beforeunload', () => {
     saveTabStateTimeout = null;
   }
 
-  if (tabsEnabled && tabs.length > 0) {
-    const currentTab = tabs.find((t) => t.id === activeTabId);
-    if (currentTab) {
-      currentTab.path = currentPath;
-      currentTab.history = [...history];
-      currentTab.historyIndex = historyIndex;
-      currentTab.selectedItems = new Set(selectedItems);
-      currentTab.scrollPosition = fileView?.scrollTop || 0;
+  if (!isResettingSettings) {
+    if (tabsEnabled && tabs.length > 0) {
+      const currentTab = tabs.find((t) => t.id === activeTabId);
+      if (currentTab) {
+        currentTab.path = currentPath;
+        currentTab.history = [...history];
+        currentTab.historyIndex = historyIndex;
+        currentTab.selectedItems = new Set(selectedItems);
+        currentTab.scrollPosition = fileView?.scrollTop || 0;
+      }
+      currentSettings.tabState = {
+        tabs: tabs.map((t) => ({
+          id: t.id,
+          path: t.path,
+          history: t.history,
+          historyIndex: t.historyIndex,
+          selectedItems: Array.from(t.selectedItems),
+          scrollPosition: t.scrollPosition,
+        })),
+        activeTabId,
+      };
     }
-    currentSettings.tabState = {
-      tabs: tabs.map((t) => ({
-        id: t.id,
-        path: t.path,
-        history: t.history,
-        historyIndex: t.historyIndex,
-        selectedItems: Array.from(t.selectedItems),
-        scrollPosition: t.scrollPosition,
-      })),
-      activeTabId,
-    };
-  }
 
-  saveSettingsWithTimestamp(currentSettings);
+    saveSettingsWithTimestamp(currentSettings);
+  }
   if (searchDebounceTimeout) {
     clearTimeout(searchDebounceTimeout);
     searchDebounceTimeout = null;
