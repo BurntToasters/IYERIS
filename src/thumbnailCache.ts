@@ -9,6 +9,7 @@ const CACHE_DIR_NAME = 'thumbnail-cache';
 const CACHE_VERSION = 1;
 const MAX_CACHE_SIZE_MB = 500;
 const MAX_CACHE_AGE_DAYS = 30;
+const MAX_THUMBNAIL_BYTES = 5 * 1024 * 1024;
 
 let cacheDir: string | null = null;
 let cacheInitialized = false;
@@ -134,7 +135,16 @@ export async function saveThumbnailToCache(
       return { success: false, error: 'Invalid data URL format' };
     }
 
-    const buffer = Buffer.from(base64Match[1], 'base64');
+    const base64Payload = base64Match[1];
+    const estimatedBytes = Math.floor((base64Payload.length * 3) / 4);
+    if (estimatedBytes > MAX_THUMBNAIL_BYTES) {
+      return { success: false, error: 'Thumbnail too large' };
+    }
+
+    const buffer = Buffer.from(base64Payload, 'base64');
+    if (buffer.length > MAX_THUMBNAIL_BYTES) {
+      return { success: false, error: 'Thumbnail too large' };
+    }
     await fs.writeFile(cachePath, buffer);
 
     await enforceCacheSize();

@@ -3927,6 +3927,21 @@ function normalizeRepositoryUrl(repository: unknown): string | null {
   return null;
 }
 
+function sanitizeExternalUrl(url: string | null): string | null {
+  if (!url) return null;
+  try {
+    const parsed = new URL(url);
+    if (
+      parsed.protocol === 'http:' ||
+      parsed.protocol === 'https:' ||
+      parsed.protocol === 'mailto:'
+    ) {
+      return parsed.toString();
+    }
+  } catch {}
+  return null;
+}
+
 async function showLicensesModal() {
   if (document.activeElement instanceof HTMLElement) {
     document.activeElement.blur();
@@ -3964,7 +3979,7 @@ async function showLicensesModal() {
         html += `<div class="license-package-name">${escapeHtml(packageName)}</div>`;
         html += '<div class="license-package-info">';
         html += `<span class="license-package-license">${escapeHtml(info.licenses || 'Unknown')}</span>`;
-        const repositoryUrl = normalizeRepositoryUrl(info.repository);
+        const repositoryUrl = sanitizeExternalUrl(normalizeRepositoryUrl(info.repository));
         const repositoryText = getRepositoryText(info.repository);
         if (repositoryUrl) {
           html += `<span>Repository: <a class="license-link" href="${escapeHtml(repositoryUrl)}" data-url="${escapeHtml(repositoryUrl)}" rel="noopener noreferrer">${escapeHtml(repositoryUrl)}</a></span>`;
@@ -12338,10 +12353,11 @@ if (licensesContent) {
     if (!link) return;
 
     const url = link.dataset.url || link.getAttribute('href');
-    if (!url) return;
+    const safeUrl = sanitizeExternalUrl(url);
+    if (!safeUrl) return;
 
     event.preventDefault();
-    window.electronAPI.openFile(url);
+    window.electronAPI.openFile(safeUrl);
   });
 }
 
@@ -12842,7 +12858,7 @@ async function showPdfPreview(file: FileItem, requestId: number) {
   const fileUrl = encodeFileUrl(file.path);
 
   previewContent.innerHTML = `
-    <iframe src="${fileUrl}" class="preview-pdf" frameborder="0"></iframe>
+    <iframe src="${fileUrl}" class="preview-pdf" frameborder="0" sandbox="allow-scripts allow-same-origin" referrerpolicy="no-referrer"></iframe>
     ${generateFileInfo(file, info)}
   `;
 }
@@ -13009,6 +13025,8 @@ async function showQuickLook() {
     const iframe = document.createElement('iframe');
     iframe.src = fileUrl;
     iframe.className = 'preview-pdf';
+    iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin');
+    iframe.setAttribute('referrerpolicy', 'no-referrer');
     iframe.setAttribute('frameborder', '0');
     quicklookContent.appendChild(iframe);
     quicklookInfo.textContent = `${formatFileSize(file.size)} • ${new Date(file.modified).toLocaleDateString()}`;
