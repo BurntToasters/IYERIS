@@ -96,6 +96,10 @@ async function validateFileOperation(
   }
 
   const normalizedDestPath = normalizePathForComparison(destPath);
+  let normalizedDestRealPath = normalizedDestPath;
+  try {
+    normalizedDestRealPath = normalizePathForComparison(await fs.realpath(destPath));
+  } catch {}
   const planned: PlannedFileOperation[] = [];
   const destKeys = new Set<string>();
 
@@ -124,10 +128,16 @@ async function validateFileOperation(
 
     if (stats.isDirectory()) {
       // prevent copying dir into itself
-      const normalizedSourcePath = normalizePathForComparison(sourcePath);
+      let normalizedSourcePath = normalizePathForComparison(sourcePath);
+      try {
+        normalizedSourcePath = normalizePathForComparison(await fs.realpath(sourcePath));
+      } catch {}
+      const sourcePrefix = normalizedSourcePath.endsWith(path.sep)
+        ? normalizedSourcePath
+        : normalizedSourcePath + path.sep;
       if (
-        normalizedDestPath === normalizedSourcePath ||
-        normalizedDestPath.startsWith(normalizedSourcePath + path.sep)
+        normalizedDestRealPath === normalizedSourcePath ||
+        normalizedDestRealPath.startsWith(sourcePrefix)
       ) {
         return {
           success: false,

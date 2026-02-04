@@ -58,6 +58,7 @@ const THUMBNAIL_QUALITY_VALUES = ['low', 'medium', 'high'] as const;
 const PREVIEW_POSITION_VALUES = ['right', 'bottom'] as const;
 const GRID_COLUMNS_VALUES = ['auto', '2', '3', '4', '5', '6'] as const;
 const VIEW_MODE_VALUES = ['grid', 'list', 'column'] as const;
+const UPDATE_CHANNEL_VALUES = ['auto', 'beta', 'stable'] as const;
 
 function isOneOf<T extends readonly string[]>(value: string, options: T): value is T[number] {
   return (options as readonly string[]).includes(value);
@@ -242,6 +243,20 @@ function twemojiImg(emoji: string, className: string = 'twemoji', alt?: string):
   const src = `../assets/twemoji/${codepoint}.svg`;
   const altText = escapeHtml(alt || emoji);
   return `<img src="${src}" class="${className}" alt="${altText}" draggable="false" />`;
+}
+
+function updateVersionDisplays(appVersion: string): void {
+  const rawVersion = appVersion.trim();
+  const versionTag = rawVersion.startsWith('v') ? rawVersion : `v${rawVersion}`;
+  const statusVersion = document.getElementById('status-version');
+  if (statusVersion) {
+    statusVersion.textContent = versionTag;
+    statusVersion.setAttribute('title', `Version ${rawVersion}`);
+  }
+  const aboutVersion = document.getElementById('about-version-display');
+  if (aboutVersion) {
+    aboutVersion.textContent = `Version ${rawVersion}`;
+  }
 }
 
 async function saveSettingsWithTimestamp(settings: Settings) {
@@ -1124,7 +1139,7 @@ function closeTab(tabId: string) {
   debouncedSaveTabState();
 }
 
-function saveTabState() {
+function saveTabState(immediate = false) {
   if (!tabsEnabled) return;
 
   currentSettings.tabState = {
@@ -1138,7 +1153,11 @@ function saveTabState() {
     })),
     activeTabId,
   };
-  debouncedSaveSettings();
+  if (immediate) {
+    void saveSettingsWithTimestamp(currentSettings);
+  } else {
+    debouncedSaveSettings();
+  }
 }
 
 function updateCurrentTabPath(newPath: string) {
@@ -4289,7 +4308,10 @@ async function saveSettings() {
   }
 
   if (updateChannelSelect) {
-    currentSettings.updateChannel = updateChannelSelect.value as 'auto' | 'beta' | 'stable';
+    const channelValue = updateChannelSelect.value;
+    if (isOneOf(channelValue, UPDATE_CHANNEL_VALUES)) {
+      currentSettings.updateChannel = channelValue;
+    }
   }
 
   if (enableSearchHistoryToggle) {
@@ -5847,6 +5869,7 @@ async function init() {
 
   platformOS = platform;
   document.body.classList.add(`platform-${platformOS}`);
+  updateVersionDisplays(appVersion);
 
   const titlebarIcon = document.getElementById('titlebar-icon') as HTMLImageElement;
   if (titlebarIcon) {
@@ -11391,8 +11414,8 @@ document.getElementById('help-link')?.addEventListener('click', () => {
 document.getElementById('heart-button')?.addEventListener('click', () => {
   window.electronAPI.openFile('https://rosie.run/support');
 });
-document.getElementById('version-indicator')?.addEventListener('click', () => {
-  const version = document.getElementById('version-indicator')?.textContent || 'v0.1.0';
+document.getElementById('status-version')?.addEventListener('click', () => {
+  const version = document.getElementById('status-version')?.textContent || 'v0.1.0';
   window.electronAPI.openFile(`https://github.com/BurntToasters/IYERIS/releases/tag/${version}`);
 });
 
@@ -13316,15 +13339,6 @@ window.addEventListener('beforeunload', () => {
     clearTimeout(zoomPopupTimeout);
     zoomPopupTimeout = null;
   }
-  if (settingsSaveTimeout) {
-    clearTimeout(settingsSaveTimeout);
-    settingsSaveTimeout = null;
-  }
-  if (saveTabStateTimeout) {
-    clearTimeout(saveTabStateTimeout);
-    saveTabStateTimeout = null;
-  }
-
   if (!isResettingSettings) {
     if (tabsEnabled && tabs.length > 0) {
       const currentTab = tabs.find((t) => t.id === activeTabId);
@@ -13347,8 +13361,19 @@ window.addEventListener('beforeunload', () => {
         activeTabId,
       };
     }
-
-    saveSettingsWithTimestamp(currentSettings);
+    if (tabsEnabled) {
+      saveTabState(true);
+    } else {
+      saveSettingsWithTimestamp(currentSettings);
+    }
+  }
+  if (settingsSaveTimeout) {
+    clearTimeout(settingsSaveTimeout);
+    settingsSaveTimeout = null;
+  }
+  if (saveTabStateTimeout) {
+    clearTimeout(saveTabStateTimeout);
+    saveTabStateTimeout = null;
   }
   if (searchDebounceTimeout) {
     clearTimeout(searchDebounceTimeout);
