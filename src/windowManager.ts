@@ -61,6 +61,7 @@ const INDEX_PATH = path.join(__dirname, '..', 'src', 'index.html');
 const INDEX_URL = pathToFileURL(INDEX_PATH).toString();
 const INDEX_URL_OBJ = new URL(INDEX_URL);
 const trayIconCache = new Map<string, { path: string; icon: Electron.NativeImage }>();
+let trayContextMenu: Menu | null = null;
 
 function getTrayPlatform(): TrayPlatform {
   if (
@@ -193,7 +194,13 @@ export function updateTrayMenu(status?: string): void {
   menuItems.push({ type: 'separator' });
   menuItems.push({ label: 'Quit', click: quitApp });
 
-  tray.setContextMenu(Menu.buildFromTemplate(menuItems));
+  const menu = Menu.buildFromTemplate(menuItems);
+  trayContextMenu = menu;
+  if (process.platform === 'darwin') {
+    tray.setContextMenu(null);
+  } else {
+    tray.setContextMenu(menu);
+  }
 }
 
 export function setTrayState(state: TrayState): void {
@@ -486,7 +493,7 @@ export async function createTray(forHiddenStart: boolean = false): Promise<void>
       });
 
       newTray.on('right-click', () => {
-        newTray.popUpContextMenu();
+        newTray.popUpContextMenu(trayContextMenu ?? undefined);
       });
     } else {
       newTray.on('click', () => {

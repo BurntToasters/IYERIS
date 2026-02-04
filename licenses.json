@@ -477,7 +477,7 @@
         "licenseUrl": "https://github.com/ajv-validator/ajv/raw/master/LICENSE",
         "parents": "iyeris"
     },
-    "ansi-escapes@7.2.0": {
+    "ansi-escapes@7.3.0": {
         "licenses": "MIT",
         "repository": "https://github.com/sindresorhus/ansi-escapes",
         "licenseUrl": "https://github.com/sindresorhus/ansi-escapes/raw/master/license",
@@ -1545,7 +1545,7 @@
         "licenseUrl": "https://github.com/isaacs/isexe/raw/master/LICENSE",
         "parents": "node-gyp:iyeris"
     },
-    "iyeris@0.9.10": {
+    "iyeris@0.9.11": {
         "licenses": "MPL-2.0",
         "repository": "https://github.com/BurntToasters/IYERIS",
         "licenseUrl": "https://github.com/BurntToasters/IYERIS/raw/master/LICENSE",

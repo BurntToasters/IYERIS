@@ -386,7 +386,7 @@ export function setupSystemHandlers(
             child.unref();
           }
         } else if (platform === 'darwin') {
-          const child = spawn('open', ['-a', 'Terminal', dirPath], {
+          const child = spawn('open', ['-a', 'Terminal', '--', dirPath], {
             shell: false,
             detached: true,
             stdio: 'ignore',
