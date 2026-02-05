@@ -2915,12 +2915,6 @@ async function applySystemFontSize(): Promise<void> {
 }
 
 function applySettings(settings: Settings) {
-  if (settings.transparency === false) {
-    document.body.classList.add('no-transparency');
-  } else {
-    document.body.classList.remove('no-transparency');
-  }
-
   document.body.classList.remove(
     'theme-dark',
     'theme-light',
@@ -3002,6 +2996,12 @@ function applySettings(settings: Settings) {
     document.body.classList.add('reduce-transparency');
   } else {
     document.body.classList.remove('reduce-transparency');
+  }
+
+  if (settings.liquidGlassMode) {
+    document.body.classList.add('liquid-glass');
+  } else {
+    document.body.classList.remove('liquid-glass');
   }
 
   if (settings.themedIcons) {
@@ -3476,7 +3476,6 @@ async function showSettingsModal() {
     sections[0].classList.add('active');
   }
 
-  const transparencyToggle = document.getElementById('transparency-toggle') as HTMLInputElement;
   const systemThemeToggle = document.getElementById('system-theme-toggle') as HTMLInputElement;
   const sortBySelect = document.getElementById('sort-by-select') as HTMLSelectElement;
   const sortOrderSelect = document.getElementById('sort-order-select') as HTMLSelectElement;
@@ -3530,6 +3529,7 @@ async function showSettingsModal() {
   const reduceTransparencyToggle = document.getElementById(
     'reduce-transparency-toggle'
   ) as HTMLInputElement;
+  const liquidGlassToggle = document.getElementById('liquid-glass-toggle') as HTMLInputElement;
   const themedIconsToggle = document.getElementById('themed-icons-toggle') as HTMLInputElement;
   const disableHwAccelToggle = document.getElementById(
     'disable-hw-accel-toggle'
@@ -3567,9 +3567,6 @@ async function showSettingsModal() {
   ) as HTMLInputElement;
   const settingsPath = document.getElementById('settings-path');
 
-  if (transparencyToggle) {
-    transparencyToggle.checked = currentSettings.transparency;
-  }
   if (systemThemeToggle) {
     systemThemeToggle.checked = currentSettings.useSystemTheme || false;
   }
@@ -3692,6 +3689,10 @@ async function showSettingsModal() {
 
   if (reduceTransparencyToggle) {
     reduceTransparencyToggle.checked = currentSettings.reduceTransparency || false;
+  }
+
+  if (liquidGlassToggle) {
+    liquidGlassToggle.checked = currentSettings.liquidGlassMode || false;
   }
 
   if (themedIconsToggle) {
@@ -4143,7 +4144,6 @@ function copyLicensesText() {
 
 async function saveSettings() {
   const previousTabsEnabled = tabsEnabled;
-  const transparencyToggle = document.getElementById('transparency-toggle') as HTMLInputElement;
   const systemThemeToggle = document.getElementById('system-theme-toggle') as HTMLInputElement;
   const themeSelect = document.getElementById('theme-select') as HTMLSelectElement;
   const sortBySelect = document.getElementById('sort-by-select') as HTMLSelectElement;
@@ -4204,6 +4204,7 @@ async function saveSettings() {
   const reduceTransparencyToggle = document.getElementById(
     'reduce-transparency-toggle'
   ) as HTMLInputElement;
+  const liquidGlassToggle = document.getElementById('liquid-glass-toggle') as HTMLInputElement;
   const themedIconsToggle = document.getElementById('themed-icons-toggle') as HTMLInputElement;
   const disableHwAccelToggle = document.getElementById(
     'disable-hw-accel-toggle'
@@ -4239,9 +4240,6 @@ async function saveSettings() {
     'max-search-history-input'
   ) as HTMLInputElement;
 
-  if (transparencyToggle) {
-    currentSettings.transparency = transparencyToggle.checked;
-  }
   if (systemThemeToggle) {
     currentSettings.useSystemTheme = systemThemeToggle.checked;
   }
@@ -4381,6 +4379,10 @@ async function saveSettings() {
 
   if (reduceTransparencyToggle) {
     currentSettings.reduceTransparency = reduceTransparencyToggle.checked;
+  }
+
+  if (liquidGlassToggle) {
+    currentSettings.liquidGlassMode = liquidGlassToggle.checked;
   }
 
   if (themedIconsToggle) {
@@ -11451,7 +11453,8 @@ function validateImportedSettings(imported: unknown): Partial<Settings> {
   if (!isRecord(imported)) return validated;
   const data = imported as Record<string, unknown>;
 
-  if (typeof data.transparency === 'boolean') validated.transparency = data.transparency;
+  if (typeof data.reduceTransparency === 'boolean')
+    validated.reduceTransparency = data.reduceTransparency;
   if (typeof data.showDangerousOptions === 'boolean')
     validated.showDangerousOptions = data.showDangerousOptions;
   if (typeof data.showHiddenFiles === 'boolean') validated.showHiddenFiles = data.showHiddenFiles;
@@ -11681,7 +11684,6 @@ let settingsSearchTerm = '';
 let settingsUiInitialized = false;
 
 const SETTINGS_INPUT_KEYS: Record<string, keyof Settings> = {
-  'transparency-toggle': 'transparency',
   'system-theme-toggle': 'useSystemTheme',
   'theme-select': 'theme',
   'themed-icons-toggle': 'themedIcons',
@@ -11713,6 +11715,7 @@ const SETTINGS_INPUT_KEYS: Record<string, keyof Settings> = {
   'bold-text-toggle': 'boldText',
   'visible-focus-toggle': 'visibleFocus',
   'reduce-transparency-toggle': 'reduceTransparency',
+  'liquid-glass-toggle': 'liquidGlassMode',
   'start-on-login-toggle': 'startOnLogin',
   'startup-path-input': 'startupPath',
   'enable-indexer-toggle': 'enableIndexer',

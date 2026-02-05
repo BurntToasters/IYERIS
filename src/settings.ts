@@ -4,7 +4,6 @@ import { getDefaultShortcuts } from './shortcuts.js';
 export function createDefaultSettings(): Settings {
   return {
     shortcuts: getDefaultShortcuts(),
-    transparency: true,
     theme: 'default',
     useSystemTheme: false,
     sortBy: 'name',
@@ -44,6 +43,7 @@ export function createDefaultSettings(): Settings {
     boldText: false,
     visibleFocus: false,
     reduceTransparency: false,
+    liquidGlassMode: false,
     uiDensity: 'default',
     updateChannel: 'auto',
     themedIcons: false,

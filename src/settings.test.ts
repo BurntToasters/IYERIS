@@ -10,7 +10,6 @@ describe('createDefaultSettings', () => {
 
   it('has correct default appearance settings', () => {
     const settings = createDefaultSettings();
-    expect(settings.transparency).toBe(true);
     expect(settings.theme).toBe('default');
     expect(settings.viewMode).toBe('grid');
   });
