@@ -24,6 +24,26 @@ import {
   isHomeViewPath,
 } from './home.js';
 import { createTourController, type TourController } from './tour.js';
+import {
+  FILE_ICON_MAP,
+  IMAGE_EXTENSIONS,
+  RAW_EXTENSIONS,
+  ANIMATED_IMAGE_EXTENSIONS,
+  VIDEO_EXTENSIONS,
+  AUDIO_EXTENSIONS,
+  PDF_EXTENSIONS,
+  ARCHIVE_EXTENSIONS,
+  ARCHIVE_SUFFIXES,
+  TEXT_EXTENSIONS,
+  WORD_EXTENSIONS,
+  SPREADSHEET_EXTENSIONS,
+  PRESENTATION_EXTENSIONS,
+  SOURCE_CODE_EXTENSIONS,
+  WEB_EXTENSIONS,
+  DATA_EXTENSIONS,
+  VIDEO_MIME_TYPES,
+  AUDIO_MIME_TYPES,
+} from './fileTypes.js';
 
 const THUMBNAIL_MAX_SIZE = 10 * 1024 * 1024;
 const SEARCH_DEBOUNCE_MS = 300;
@@ -6311,7 +6331,7 @@ function setupRubberBandSelection(): void {
   });
 }
 
-function setupEventListeners() {
+function initCoreUiInteractions(): void {
   initSettingsTabs();
   initSettingsUi();
   initShortcutsModal();
@@ -6325,7 +6345,9 @@ function setupEventListeners() {
   if (currentSettings.showFileHoverCard !== false) {
     setupHoverCard();
   }
+}
 
+function initSyncEventListeners(): void {
   const cleanupClipboard = window.electronAPI.onClipboardChanged((newClipboard) => {
     clipboard = newClipboard;
     updateCutVisuals();
@@ -6378,7 +6400,9 @@ function setupEventListeners() {
     });
   });
   ipcCleanupFunctions.push(cleanupSettings);
+}
 
+function initWindowControlListeners(): void {
   document.getElementById('minimize-btn')?.addEventListener('click', () => {
     window.electronAPI.minimizeWindow();
   });
@@ -6390,7 +6414,9 @@ function setupEventListeners() {
   document.getElementById('close-btn')?.addEventListener('click', () => {
     window.electronAPI.closeWindow();
   });
+}
 
+function initActionButtonListeners(): void {
   backBtn?.addEventListener('click', goBack);
   forwardBtn?.addEventListener('click', goForward);
   upBtn?.addEventListener('click', goUp);
@@ -6438,7 +6464,9 @@ function setupEventListeners() {
       goForward();
     }
   });
+}
 
+function initSearchListeners(): void {
   searchBtn?.addEventListener('click', toggleSearch);
   searchClose?.addEventListener('click', closeSearch);
   searchScopeToggle?.addEventListener('click', toggleSearchScope);
@@ -6515,15 +6543,6 @@ function setupEventListeners() {
     }
   });
 
-  sortBtn?.addEventListener('click', showSortMenu);
-  bookmarkAddBtn?.addEventListener('click', addBookmark);
-
-  const sidebarToggle = document.getElementById('sidebar-toggle');
-  sidebarToggle?.addEventListener('click', () => {
-    setSidebarCollapsed();
-  });
-  syncSidebarToggleState();
-
   searchInput?.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') {
       hideSearchHistoryDropdown();
@@ -6538,6 +6557,17 @@ function setupEventListeners() {
       debouncedSearch();
     }
   });
+}
+
+function initNavigationListeners(): void {
+  sortBtn?.addEventListener('click', showSortMenu);
+  bookmarkAddBtn?.addEventListener('click', addBookmark);
+
+  const sidebarToggle = document.getElementById('sidebar-toggle');
+  sidebarToggle?.addEventListener('click', () => {
+    setSidebarCollapsed();
+  });
+  syncSidebarToggleState();
 
   addressInput?.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') {
@@ -6549,204 +6579,206 @@ function setupEventListeners() {
       }
     }
   });
+}
 
-  function isModalOpen(): boolean {
-    const settingsModal = document.getElementById('settings-modal');
-    const shortcutsModal = document.getElementById('shortcuts-modal');
-    const dialogModal = document.getElementById('dialog-modal');
-    const licensesModal = document.getElementById('licenses-modal');
-    const quicklookModal = document.getElementById('quicklook-modal');
-    const homeSettingsModal = document.getElementById('home-settings-modal');
+function isModalOpen(): boolean {
+  const settingsModal = document.getElementById('settings-modal');
+  const shortcutsModal = document.getElementById('shortcuts-modal');
+  const dialogModal = document.getElementById('dialog-modal');
+  const licensesModal = document.getElementById('licenses-modal');
+  const quicklookModal = document.getElementById('quicklook-modal');
+  const homeSettingsModal = document.getElementById('home-settings-modal');
 
-    return !!(
-      (settingsModal && settingsModal.style.display === 'flex') ||
-      (shortcutsModal && shortcutsModal.style.display === 'flex') ||
-      (dialogModal && dialogModal.style.display === 'flex') ||
-      (licensesModal && licensesModal.style.display === 'flex') ||
-      (quicklookModal && quicklookModal.style.display === 'flex') ||
-      (homeSettingsModal && homeSettingsModal.style.display === 'flex')
-    );
+  return !!(
+    (settingsModal && settingsModal.style.display === 'flex') ||
+    (shortcutsModal && shortcutsModal.style.display === 'flex') ||
+    (dialogModal && dialogModal.style.display === 'flex') ||
+    (licensesModal && licensesModal.style.display === 'flex') ||
+    (quicklookModal && quicklookModal.style.display === 'flex') ||
+    (homeSettingsModal && homeSettingsModal.style.display === 'flex')
+  );
+}
+
+function hasTextSelection(): boolean {
+  const selection = window.getSelection();
+  return selection !== null && selection.toString().length > 0;
+}
+
+function isEditableElementActive(): boolean {
+  const activeElement = document.activeElement as HTMLElement | null;
+  if (!activeElement) return false;
+  return (
+    activeElement.tagName === 'INPUT' ||
+    activeElement.tagName === 'TEXTAREA' ||
+    activeElement.isContentEditable
+  );
+}
+
+function openSearch(isGlobal: boolean): void {
+  if (!searchBarWrapper || !searchScopeToggle || !searchInput) return;
+
+  if (!isSearchMode) {
+    searchBarWrapper.style.display = 'block';
+    isSearchMode = true;
   }
 
-  function hasTextSelection(): boolean {
-    const selection = window.getSelection();
-    return selection !== null && selection.toString().length > 0;
-  }
-
-  function isEditableElementActive(): boolean {
-    const activeElement = document.activeElement as HTMLElement | null;
-    if (!activeElement) return false;
-    return (
-      activeElement.tagName === 'INPUT' ||
-      activeElement.tagName === 'TEXTAREA' ||
-      activeElement.isContentEditable
-    );
-  }
-
-  function openSearch(isGlobal: boolean): void {
-    if (!searchBarWrapper || !searchScopeToggle || !searchInput) return;
-
-    if (!isSearchMode) {
-      searchBarWrapper.style.display = 'block';
-      isSearchMode = true;
+  isGlobalSearch = isGlobal;
+  if (isGlobalSearch) {
+    searchScopeToggle.classList.add('global');
+    searchScopeToggle.title = 'Global Search (All Indexed Files)';
+    const img = searchScopeToggle.querySelector('img');
+    if (img) {
+      img.src = '../assets/twemoji/1f30d.svg';
+      img.alt = '🌍';
     }
-
-    isGlobalSearch = isGlobal;
-    if (isGlobalSearch) {
-      searchScopeToggle.classList.add('global');
-      searchScopeToggle.title = 'Global Search (All Indexed Files)';
-      const img = searchScopeToggle.querySelector('img');
-      if (img) {
-        img.src = '../assets/twemoji/1f30d.svg';
-        img.alt = '🌍';
-      }
-    } else {
-      searchScopeToggle.classList.remove('global');
-      searchScopeToggle.title = 'Local Search (Current Folder)';
-      const img = searchScopeToggle.querySelector('img');
-      if (img) {
-        img.src = '../assets/twemoji/1f4c1.svg';
-        img.alt = '📁';
-      }
+  } else {
+    searchScopeToggle.classList.remove('global');
+    searchScopeToggle.title = 'Local Search (Current Folder)';
+    const img = searchScopeToggle.querySelector('img');
+    if (img) {
+      img.src = '../assets/twemoji/1f4c1.svg';
+      img.alt = '📁';
     }
-    updateSearchPlaceholder();
-    searchInput.focus();
   }
+  updateSearchPlaceholder();
+  searchInput.focus();
+}
 
-  function runShortcutAction(actionId: string, e: KeyboardEvent): boolean {
-    switch (actionId) {
-      case 'command-palette':
-        e.preventDefault();
-        showCommandPalette();
-        return true;
-      case 'settings':
-        e.preventDefault();
-        showSettingsModal();
-        return true;
-      case 'shortcuts':
-        e.preventDefault();
-        showShortcutsModal();
-        return true;
-      case 'refresh':
-        e.preventDefault();
-        refresh();
-        return true;
-      case 'search':
-        e.preventDefault();
-        openSearch(false);
-        return true;
-      case 'global-search':
-        e.preventDefault();
-        openSearch(true);
-        return true;
-      case 'toggle-sidebar':
-        e.preventDefault();
-        setSidebarCollapsed();
-        return true;
-      case 'new-window':
-        e.preventDefault();
-        openNewWindow();
-        return true;
-      case 'new-file':
-        e.preventDefault();
-        createNewFile();
-        return true;
-      case 'new-folder':
-        e.preventDefault();
-        createNewFolder();
-        return true;
-      case 'go-back':
-        e.preventDefault();
-        goBack();
-        return true;
-      case 'go-forward':
-        e.preventDefault();
-        goForward();
-        return true;
-      case 'go-up':
-        e.preventDefault();
-        goUp();
-        return true;
-      case 'new-tab':
-        e.preventDefault();
-        if (tabsEnabled) {
-          addNewTab();
-        }
-        return true;
-      case 'close-tab':
-        e.preventDefault();
-        if (tabsEnabled && tabs.length > 1) {
-          closeTab(activeTabId);
-        }
-        return true;
-      case 'next-tab':
-      case 'prev-tab': {
-        e.preventDefault();
-        if (tabsEnabled && tabs.length > 1) {
-          const currentIndex = tabs.findIndex((t) => t.id === activeTabId);
-          if (currentIndex !== -1) {
-            const nextIndex =
-              actionId === 'next-tab'
-                ? (currentIndex + 1) % tabs.length
-                : (currentIndex - 1 + tabs.length) % tabs.length;
-            switchToTab(tabs[nextIndex].id);
-          }
-        }
-        return true;
+function runShortcutAction(actionId: string, e: KeyboardEvent): boolean {
+  switch (actionId) {
+    case 'command-palette':
+      e.preventDefault();
+      showCommandPalette();
+      return true;
+    case 'settings':
+      e.preventDefault();
+      showSettingsModal();
+      return true;
+    case 'shortcuts':
+      e.preventDefault();
+      showShortcutsModal();
+      return true;
+    case 'refresh':
+      e.preventDefault();
+      refresh();
+      return true;
+    case 'search':
+      e.preventDefault();
+      openSearch(false);
+      return true;
+    case 'global-search':
+      e.preventDefault();
+      openSearch(true);
+      return true;
+    case 'toggle-sidebar':
+      e.preventDefault();
+      setSidebarCollapsed();
+      return true;
+    case 'new-window':
+      e.preventDefault();
+      openNewWindow();
+      return true;
+    case 'new-file':
+      e.preventDefault();
+      createNewFile();
+      return true;
+    case 'new-folder':
+      e.preventDefault();
+      createNewFolder();
+      return true;
+    case 'go-back':
+      e.preventDefault();
+      goBack();
+      return true;
+    case 'go-forward':
+      e.preventDefault();
+      goForward();
+      return true;
+    case 'go-up':
+      e.preventDefault();
+      goUp();
+      return true;
+    case 'new-tab':
+      e.preventDefault();
+      if (tabsEnabled) {
+        addNewTab();
       }
-      case 'copy':
-        if (hasTextSelection()) {
-          return false;
+      return true;
+    case 'close-tab':
+      e.preventDefault();
+      if (tabsEnabled && tabs.length > 1) {
+        closeTab(activeTabId);
+      }
+      return true;
+    case 'next-tab':
+    case 'prev-tab': {
+      e.preventDefault();
+      if (tabsEnabled && tabs.length > 1) {
+        const currentIndex = tabs.findIndex((t) => t.id === activeTabId);
+        if (currentIndex !== -1) {
+          const nextIndex =
+            actionId === 'next-tab'
+              ? (currentIndex + 1) % tabs.length
+              : (currentIndex - 1 + tabs.length) % tabs.length;
+          switchToTab(tabs[nextIndex].id);
         }
-        e.preventDefault();
-        copyToClipboard();
-        return true;
-      case 'cut':
-        if (hasTextSelection()) {
-          return false;
-        }
-        e.preventDefault();
-        cutToClipboard();
-        return true;
-      case 'paste':
-        if (isEditableElementActive()) {
-          return false;
-        }
-        e.preventDefault();
-        pasteFromClipboard();
-        return true;
-      case 'select-all':
-        if (isEditableElementActive()) {
-          return false;
-        }
-        e.preventDefault();
-        selectAll();
-        return true;
-      case 'undo':
-        e.preventDefault();
-        performUndo();
-        return true;
-      case 'redo':
-        e.preventDefault();
-        performRedo();
-        return true;
-      case 'zoom-in':
-        e.preventDefault();
-        zoomIn();
-        return true;
-      case 'zoom-out':
-        e.preventDefault();
-        zoomOut();
-        return true;
-      case 'zoom-reset':
-        e.preventDefault();
-        zoomReset();
-        return true;
-      default:
+      }
+      return true;
+    }
+    case 'copy':
+      if (hasTextSelection()) {
         return false;
-    }
+      }
+      e.preventDefault();
+      copyToClipboard();
+      return true;
+    case 'cut':
+      if (hasTextSelection()) {
+        return false;
+      }
+      e.preventDefault();
+      cutToClipboard();
+      return true;
+    case 'paste':
+      if (isEditableElementActive()) {
+        return false;
+      }
+      e.preventDefault();
+      pasteFromClipboard();
+      return true;
+    case 'select-all':
+      if (isEditableElementActive()) {
+        return false;
+      }
+      e.preventDefault();
+      selectAll();
+      return true;
+    case 'undo':
+      e.preventDefault();
+      performUndo();
+      return true;
+    case 'redo':
+      e.preventDefault();
+      performRedo();
+      return true;
+    case 'zoom-in':
+      e.preventDefault();
+      zoomIn();
+      return true;
+    case 'zoom-out':
+      e.preventDefault();
+      zoomOut();
+      return true;
+    case 'zoom-reset':
+      e.preventDefault();
+      zoomReset();
+      return true;
+    default:
+      return false;
   }
+}
 
+function initKeyboardListeners(): void {
   document.addEventListener('keydown', (e) => {
     if (isShortcutCaptureActive) {
       return;
@@ -6990,7 +7022,9 @@ function setupEventListeners() {
       handleTypeaheadInput(e.key);
     }
   });
+}
 
+function initGlobalClickListeners(): void {
   document.addEventListener('click', (e) => {
     const target = e.target as HTMLElement;
     const contextMenu = document.getElementById('context-menu');
@@ -7048,162 +7082,175 @@ function setupEventListeners() {
       hideBreadcrumbMenu();
     }
   });
+}
 
-  if (fileGrid) {
-    fileGrid.addEventListener('click', (e) => {
-      if (e.target === fileGrid) {
-        clearSelection();
-      }
-    });
+function isDropTargetFileItem(target: EventTarget | null): boolean {
+  return !!(target as HTMLElement | null)?.closest('.file-item');
+}
 
-    fileGrid.addEventListener('dragover', (e) => {
-      if ((e.target as HTMLElement).closest('.file-item')) {
-        return;
-      }
-      e.preventDefault();
-      e.stopPropagation();
+function isDropTargetContentItem(target: EventTarget | null): boolean {
+  const element = target as HTMLElement | null;
+  if (!element) return false;
+  return !!(
+    element.closest('.file-grid') ||
+    element.closest('.column-view') ||
+    element.closest('.file-item') ||
+    element.closest('.column-item')
+  );
+}
 
-      if (!e.dataTransfer) return;
+function isDropIntoCurrentDirectory(draggedPaths: string[], destinationPath: string): boolean {
+  return draggedPaths.some((dragPath: string) => {
+    const parentDir = path.dirname(dragPath);
+    return parentDir === destinationPath || dragPath === destinationPath;
+  });
+}
 
-      if (!currentPath) {
-        e.dataTransfer.dropEffect = 'none';
-        return;
-      }
+function initFileGridDragAndDrop(): void {
+  if (!fileGrid) return;
 
-      const operation = getDragOperation(e);
-      e.dataTransfer.dropEffect = operation;
-      fileGrid.classList.add('drag-over');
-      showDropIndicator(operation, currentPath, e.clientX, e.clientY);
-    });
+  fileGrid.addEventListener('click', (e) => {
+    if (e.target === fileGrid) {
+      clearSelection();
+    }
+  });
 
-    fileGrid.addEventListener('dragleave', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
+  fileGrid.addEventListener('dragover', (e) => {
+    if (isDropTargetFileItem(e.target)) {
+      return;
+    }
+    e.preventDefault();
+    e.stopPropagation();
 
-      const rect = fileGrid.getBoundingClientRect();
-      if (
-        e.clientX < rect.left ||
-        e.clientX >= rect.right ||
-        e.clientY < rect.top ||
-        e.clientY >= rect.bottom
-      ) {
-        fileGrid.classList.remove('drag-over');
-        hideDropIndicator();
-      }
-    });
+    if (!e.dataTransfer) return;
 
-    fileGrid.addEventListener('drop', async (e) => {
-      e.preventDefault();
-      e.stopPropagation();
+    if (!currentPath) {
+      e.dataTransfer.dropEffect = 'none';
+      return;
+    }
 
+    const operation = getDragOperation(e);
+    e.dataTransfer.dropEffect = operation;
+    fileGrid.classList.add('drag-over');
+    showDropIndicator(operation, currentPath, e.clientX, e.clientY);
+  });
+
+  fileGrid.addEventListener('dragleave', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const rect = fileGrid.getBoundingClientRect();
+    if (
+      e.clientX < rect.left ||
+      e.clientX >= rect.right ||
+      e.clientY < rect.top ||
+      e.clientY >= rect.bottom
+    ) {
       fileGrid.classList.remove('drag-over');
-
-      if ((e.target as HTMLElement).closest('.file-item')) {
-        return;
-      }
-
-      const draggedPaths = await getDraggedPaths(e);
-
-      if (draggedPaths.length === 0 || !currentPath) {
-        hideDropIndicator();
-        return;
-      }
-
-      const alreadyInCurrentDir = draggedPaths.some((dragPath: string) => {
-        const parentDir = path.dirname(dragPath);
-        return parentDir === currentPath || dragPath === currentPath;
-      });
-
-      if (alreadyInCurrentDir) {
-        showToast('Items are already in this directory', 'Info', 'info');
-        hideDropIndicator();
-        return;
-      }
-
-      const operation = getDragOperation(e);
-      await handleDrop(draggedPaths, currentPath, operation);
       hideDropIndicator();
-    });
-  }
+    }
+  });
 
-  if (fileView) {
-    fileView.addEventListener('dragover', (e) => {
-      if (
-        (e.target as HTMLElement).closest('.file-grid') ||
-        (e.target as HTMLElement).closest('.column-view') ||
-        (e.target as HTMLElement).closest('.file-item') ||
-        (e.target as HTMLElement).closest('.column-item')
-      ) {
-        return;
-      }
+  fileGrid.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
 
-      e.preventDefault();
-      e.stopPropagation();
+    fileGrid.classList.remove('drag-over');
 
-      if (!currentPath) {
-        e.dataTransfer!.dropEffect = 'none';
-        return;
-      }
+    if (isDropTargetFileItem(e.target)) {
+      return;
+    }
 
-      const operation = getDragOperation(e);
-      e.dataTransfer!.dropEffect = operation;
-      fileView.classList.add('drag-over');
-      showDropIndicator(operation, currentPath, e.clientX, e.clientY);
-    });
+    const draggedPaths = await getDraggedPaths(e);
 
-    fileView.addEventListener('dragleave', (e) => {
-      e.preventDefault();
-      const rect = fileView.getBoundingClientRect();
-      if (
-        e.clientX < rect.left ||
-        e.clientX >= rect.right ||
-        e.clientY < rect.top ||
-        e.clientY >= rect.bottom
-      ) {
-        fileView.classList.remove('drag-over');
-        hideDropIndicator();
-      }
-    });
+    if (draggedPaths.length === 0 || !currentPath) {
+      hideDropIndicator();
+      return;
+    }
 
-    fileView.addEventListener('drop', async (e) => {
-      if (
-        (e.target as HTMLElement).closest('.file-grid') ||
-        (e.target as HTMLElement).closest('.column-view') ||
-        (e.target as HTMLElement).closest('.file-item') ||
-        (e.target as HTMLElement).closest('.column-item')
-      ) {
-        return;
-      }
+    if (isDropIntoCurrentDirectory(draggedPaths, currentPath)) {
+      showToast('Items are already in this directory', 'Info', 'info');
+      hideDropIndicator();
+      return;
+    }
 
-      e.preventDefault();
-      e.stopPropagation();
+    const operation = getDragOperation(e);
+    await handleDrop(draggedPaths, currentPath, operation);
+    hideDropIndicator();
+  });
+}
 
+function initFileViewDragAndDrop(): void {
+  if (!fileView) return;
+
+  fileView.addEventListener('dragover', (e) => {
+    if (isDropTargetContentItem(e.target)) {
+      return;
+    }
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (!currentPath) {
+      e.dataTransfer!.dropEffect = 'none';
+      return;
+    }
+
+    const operation = getDragOperation(e);
+    e.dataTransfer!.dropEffect = operation;
+    fileView.classList.add('drag-over');
+    showDropIndicator(operation, currentPath, e.clientX, e.clientY);
+  });
+
+  fileView.addEventListener('dragleave', (e) => {
+    e.preventDefault();
+    const rect = fileView.getBoundingClientRect();
+    if (
+      e.clientX < rect.left ||
+      e.clientX >= rect.right ||
+      e.clientY < rect.top ||
+      e.clientY >= rect.bottom
+    ) {
       fileView.classList.remove('drag-over');
-
-      const draggedPaths = await getDraggedPaths(e);
-
-      if (draggedPaths.length === 0 || !currentPath) {
-        hideDropIndicator();
-        return;
-      }
-
-      const alreadyInCurrentDir = draggedPaths.some((dragPath: string) => {
-        const parentDir = path.dirname(dragPath);
-        return parentDir === currentPath || dragPath === currentPath;
-      });
-
-      if (alreadyInCurrentDir) {
-        showToast('Items are already in this directory', 'Info', 'info');
-        hideDropIndicator();
-        return;
-      }
-
-      const operation = getDragOperation(e);
-      await handleDrop(draggedPaths, currentPath, operation);
       hideDropIndicator();
-    });
-  }
+    }
+  });
 
+  fileView.addEventListener('drop', async (e) => {
+    if (isDropTargetContentItem(e.target)) {
+      return;
+    }
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    fileView.classList.remove('drag-over');
+
+    const draggedPaths = await getDraggedPaths(e);
+
+    if (draggedPaths.length === 0 || !currentPath) {
+      hideDropIndicator();
+      return;
+    }
+
+    if (isDropIntoCurrentDirectory(draggedPaths, currentPath)) {
+      showToast('Items are already in this directory', 'Info', 'info');
+      hideDropIndicator();
+      return;
+    }
+
+    const operation = getDragOperation(e);
+    await handleDrop(draggedPaths, currentPath, operation);
+    hideDropIndicator();
+  });
+}
+
+function initDragAndDropListeners(): void {
+  initFileGridDragAndDrop();
+  initFileViewDragAndDrop();
+}
+
+function initContextMenuListeners(): void {
   document.addEventListener('contextmenu', (e) => {
     if (!(e.target as HTMLElement).closest('.file-item')) {
       e.preventDefault();
@@ -7225,6 +7272,18 @@ function setupEventListeners() {
   });
 }
 
+function setupEventListeners() {
+  initCoreUiInteractions();
+  initSyncEventListeners();
+  initWindowControlListeners();
+  initActionButtonListeners();
+  initSearchListeners();
+  initNavigationListeners();
+  initKeyboardListeners();
+  initGlobalClickListeners();
+  initDragAndDropListeners();
+  initContextMenuListeners();
+}
 function addToSearchHistory(query: string) {
   if (!currentSettings.enableSearchHistory || !query.trim()) return;
   if (!currentSettings.searchHistory) {
@@ -8506,411 +8565,6 @@ function renderThumbnailImage(
   iconDiv.appendChild(img);
 }
 
-const FILE_ICON_MAP: Record<string, string> = {
-  jpg: '1f5bc',
-  jpeg: '1f5bc',
-  png: '1f5bc',
-  gif: '1f5bc',
-  svg: '1f5bc',
-  bmp: '1f5bc',
-  webp: '1f5bc',
-  ico: '1f5bc',
-  tiff: '1f5bc',
-  tif: '1f5bc',
-  avif: '1f5bc',
-  jfif: '1f5bc',
-  mp4: '1f3ac',
-  avi: '1f3ac',
-  mov: '1f3ac',
-  mkv: '1f3ac',
-  webm: '1f3ac',
-  mp3: '1f3b5',
-  wav: '1f3b5',
-  flac: '1f3b5',
-  ogg: '1f3b5',
-  m4a: '1f3b5',
-  pdf: '1f4c4',
-  doc: '1f4dd',
-  docx: '1f4dd',
-  txt: '1f4dd',
-  rtf: '1f4dd',
-  xls: '1f4ca',
-  xlsx: '1f4ca',
-  csv: '1f4ca',
-  ppt: '1f4ca',
-  pptx: '1f4ca',
-  js: '1f4dc',
-  ts: '1f4dc',
-  jsx: '1f4dc',
-  tsx: '1f4dc',
-  html: '1f310',
-  css: '1f3a8',
-  json: '2699',
-  xml: '2699',
-  py: '1f40d',
-  java: '2615',
-  c: 'a9',
-  cpp: 'a9',
-  cs: 'a9',
-  php: '1f418',
-  rb: '1f48e',
-  go: '1f439',
-  rs: '1f980',
-  zip: '1f5dc',
-  rar: '1f5dc',
-  '7z': '1f5dc',
-  tar: '1f5dc',
-  gz: '1f5dc',
-  exe: '2699',
-  app: '2699',
-  msi: '2699',
-  dmg: '2699',
-  cr2: '1f4f7',
-  cr3: '1f4f7',
-  nef: '1f4f7',
-  arw: '1f4f7',
-  dng: '1f4f7',
-  orf: '1f4f7',
-  rw2: '1f4f7',
-  pef: '1f4f7',
-  srw: '1f4f7',
-  raf: '1f4f7',
-};
-
-const IMAGE_EXTENSIONS = new Set([
-  'jpg',
-  'jpeg',
-  'png',
-  'gif',
-  'webp',
-  'bmp',
-  'ico',
-  'tiff',
-  'tif',
-  'avif',
-  'jfif',
-  'svg',
-  'apng',
-  'heic',
-  'heif',
-  'jxl',
-  'jp2',
-  'j2k',
-  'jpf',
-  'jpx',
-  'jpm',
-  'mj2',
-  'tga',
-  'dds',
-  'psd',
-  'psb',
-  'icns',
-]);
-const RAW_EXTENSIONS = new Set([
-  'cr2',
-  'cr3',
-  'crw',
-  'nef',
-  'nrw',
-  'arw',
-  'sr2',
-  'srf',
-  'srw',
-  'dng',
-  'orf',
-  'rw2',
-  'rw1',
-  'rwl',
-  'pef',
-  'raf',
-  'dcr',
-  'kdc',
-  'erf',
-  'mrw',
-  'x3f',
-  '3fr',
-  'iiq',
-  'mef',
-  'mos',
-]);
-const ANIMATED_IMAGE_EXTENSIONS = new Set(['gif', 'webp', 'apng', 'avif']);
-const VIDEO_EXTENSIONS = new Set([
-  'mp4',
-  'm4v',
-  'mov',
-  'webm',
-  'mkv',
-  'avi',
-  'ogv',
-  'ogm',
-  'mpg',
-  'mpeg',
-  'mpe',
-  'm1v',
-  'm2v',
-  '3gp',
-  '3g2',
-  'ts',
-  'm2ts',
-  'mts',
-  'flv',
-  'f4v',
-  'wmv',
-  'asf',
-  'vob',
-]);
-const AUDIO_EXTENSIONS = new Set([
-  'mp3',
-  'mp2',
-  'mpa',
-  'wav',
-  'flac',
-  'ogg',
-  'oga',
-  'opus',
-  'm4a',
-  'm4b',
-  'm4r',
-  'alac',
-  'aac',
-  'wma',
-  'aiff',
-  'aif',
-  'aifc',
-  'mka',
-  'amr',
-  'ac3',
-  'eac3',
-  'mid',
-  'midi',
-  'caf',
-]);
-const PDF_EXTENSIONS = new Set(['pdf']);
-const ARCHIVE_EXTENSIONS = new Set([
-  'zip',
-  '7z',
-  'rar',
-  'tar',
-  'gz',
-  'bz2',
-  'xz',
-  'iso',
-  'cab',
-  'arj',
-  'lzh',
-  'wim',
-  'tgz',
-]);
-const ARCHIVE_SUFFIXES = [
-  '.zip',
-  '.7z',
-  '.rar',
-  '.tar',
-  '.gz',
-  '.bz2',
-  '.xz',
-  '.iso',
-  '.cab',
-  '.arj',
-  '.lzh',
-  '.wim',
-  '.tgz',
-  '.tar.gz',
-];
-const TEXT_EXTENSIONS = new Set([
-  'txt',
-  'text',
-  'md',
-  'markdown',
-  'log',
-  'readme',
-  'html',
-  'htm',
-  'css',
-  'scss',
-  'sass',
-  'less',
-  'js',
-  'jsx',
-  'ts',
-  'tsx',
-  'vue',
-  'svelte',
-  'py',
-  'pyc',
-  'pyw',
-  'java',
-  'c',
-  'cpp',
-  'cc',
-  'cxx',
-  'h',
-  'hpp',
-  'cs',
-  'php',
-  'rb',
-  'go',
-  'rs',
-  'swift',
-  'kt',
-  'kts',
-  'scala',
-  'r',
-  'lua',
-  'perl',
-  'pl',
-  'sh',
-  'bash',
-  'zsh',
-  'fish',
-  'ps1',
-  'bat',
-  'cmd',
-  'json',
-  'xml',
-  'yml',
-  'yaml',
-  'toml',
-  'csv',
-  'tsv',
-  'sql',
-  'ini',
-  'conf',
-  'config',
-  'cfg',
-  'env',
-  'properties',
-  'gitignore',
-  'gitattributes',
-  'editorconfig',
-  'dockerfile',
-  'dockerignore',
-  'rst',
-  'tex',
-  'adoc',
-  'asciidoc',
-  'makefile',
-  'cmake',
-  'gradle',
-  'maven',
-]);
-const WORD_EXTENSIONS = new Set(['doc', 'docx', 'docm', 'dot', 'dotx', 'dotm', 'rtf', 'odt']);
-const SPREADSHEET_EXTENSIONS = new Set([
-  'xls',
-  'xlsx',
-  'xlsm',
-  'xlt',
-  'xltx',
-  'xltm',
-  'ods',
-  'csv',
-  'tsv',
-]);
-const PRESENTATION_EXTENSIONS = new Set(['ppt', 'pptx', 'pptm', 'pps', 'ppsx', 'odp', 'key']);
-const SOURCE_CODE_EXTENSIONS = new Set([
-  'js',
-  'jsx',
-  'ts',
-  'tsx',
-  'py',
-  'pyc',
-  'pyw',
-  'java',
-  'kt',
-  'kts',
-  'scala',
-  'c',
-  'cpp',
-  'cc',
-  'cxx',
-  'h',
-  'hpp',
-  'cs',
-  'php',
-  'rb',
-  'go',
-  'rs',
-  'swift',
-  'r',
-  'lua',
-  'perl',
-  'pl',
-  'sh',
-  'bash',
-  'zsh',
-  'fish',
-  'ps1',
-  'bat',
-  'cmd',
-]);
-const WEB_EXTENSIONS = new Set(['html', 'htm', 'css', 'scss', 'sass', 'less', 'vue', 'svelte']);
-const DATA_EXTENSIONS = new Set([
-  'json',
-  'xml',
-  'yml',
-  'yaml',
-  'toml',
-  'csv',
-  'tsv',
-  'ini',
-  'conf',
-  'config',
-  'cfg',
-  'env',
-  'properties',
-  'sql',
-]);
-const VIDEO_MIME_TYPES: Record<string, string> = {
-  mp4: 'video/mp4',
-  m4v: 'video/x-m4v',
-  mov: 'video/quicktime',
-  webm: 'video/webm',
-  mkv: 'video/x-matroska',
-  avi: 'video/x-msvideo',
-  ogv: 'video/ogg',
-  ogm: 'video/ogg',
-  mpg: 'video/mpeg',
-  mpeg: 'video/mpeg',
-  mpe: 'video/mpeg',
-  m1v: 'video/mpeg',
-  m2v: 'video/mpeg',
-  '3gp': 'video/3gpp',
-  '3g2': 'video/3gpp2',
-  ts: 'video/mp2t',
-  m2ts: 'video/mp2t',
-  mts: 'video/mp2t',
-  flv: 'video/x-flv',
-  f4v: 'video/x-f4v',
-  wmv: 'video/x-ms-wmv',
-  asf: 'video/x-ms-asf',
-  vob: 'video/dvd',
-};
-const AUDIO_MIME_TYPES: Record<string, string> = {
-  mp3: 'audio/mpeg',
-  mp2: 'audio/mpeg',
-  mpa: 'audio/mpeg',
-  wav: 'audio/wav',
-  flac: 'audio/flac',
-  ogg: 'audio/ogg',
-  oga: 'audio/ogg',
-  opus: 'audio/ogg',
-  aac: 'audio/aac',
-  m4a: 'audio/mp4',
-  m4b: 'audio/mp4',
-  m4r: 'audio/mp4',
-  alac: 'audio/mp4',
-  wma: 'audio/x-ms-wma',
-  aiff: 'audio/aiff',
-  aif: 'audio/aiff',
-  aifc: 'audio/aiff',
-  mka: 'audio/x-matroska',
-  amr: 'audio/amr',
-  ac3: 'audio/ac3',
-  eac3: 'audio/eac3',
-  mid: 'audio/midi',
-  midi: 'audio/midi',
-  caf: 'audio/x-caf',
-};
 const FOLDER_ICON = twemojiImg(String.fromCodePoint(0x1f4c1), 'twemoji file-icon');
 const IMAGE_ICON = twemojiImg(String.fromCodePoint(parseInt('1f5bc', 16)), 'twemoji');
 const RAW_ICON = twemojiImg(String.fromCodePoint(0x1f4f7), 'twemoji');

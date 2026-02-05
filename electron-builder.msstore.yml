@@ -5,7 +5,7 @@ directories:
 files:
   - dist/**/*
   - src/index.html
-  - src/main.css
+  - src/css/*.css
   - assets/**/*
   - licenses.json
 asar: true

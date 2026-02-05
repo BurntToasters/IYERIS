@@ -1545,7 +1545,7 @@
         "licenseUrl": "https://github.com/isaacs/isexe/raw/master/LICENSE",
         "parents": "node-gyp:iyeris"
     },
-    "iyeris@0.9.11": {
+    "iyeris@0.9.12-beta.3": {
         "licenses": "MPL-2.0",
         "repository": "https://github.com/BurntToasters/IYERIS",
         "licenseUrl": "https://github.com/BurntToasters/IYERIS/raw/master/LICENSE",
