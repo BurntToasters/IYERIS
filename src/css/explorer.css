@@ -367,7 +367,13 @@ body::before {
 
 body.platform-darwin .glass-input {
   border-radius: 8px;
-  transition: background-color var(--animation-duration) var(--animation-easing), border-color var(--animation-duration) var(--animation-easing), color var(--animation-duration) var(--animation-easing), box-shadow var(--animation-duration) var(--animation-easing), transform var(--animation-duration) var(--animation-easing), opacity var(--animation-duration) var(--animation-easing);
+  transition:
+    background-color var(--animation-duration) var(--animation-easing),
+    border-color var(--animation-duration) var(--animation-easing),
+    color var(--animation-duration) var(--animation-easing),
+    box-shadow var(--animation-duration) var(--animation-easing),
+    transform var(--animation-duration) var(--animation-easing),
+    opacity var(--animation-duration) var(--animation-easing);
 }
 
 body.platform-darwin .glass-input:focus {
@@ -379,7 +385,13 @@ body.platform-darwin .glass-input:focus {
 
 body.platform-win32 .glass-input {
   border-radius: 4px;
-  transition: background-color var(--animation-duration) var(--animation-easing), border-color var(--animation-duration) var(--animation-easing), color var(--animation-duration) var(--animation-easing), box-shadow var(--animation-duration) var(--animation-easing), transform var(--animation-duration) var(--animation-easing), opacity var(--animation-duration) var(--animation-easing);
+  transition:
+    background-color var(--animation-duration) var(--animation-easing),
+    border-color var(--animation-duration) var(--animation-easing),
+    color var(--animation-duration) var(--animation-easing),
+    box-shadow var(--animation-duration) var(--animation-easing),
+    transform var(--animation-duration) var(--animation-easing),
+    opacity var(--animation-duration) var(--animation-easing);
 }
 
 body.platform-win32 .glass-input:focus {
@@ -539,7 +551,13 @@ body.platform-win32 .titlebar-title {
   cursor: pointer;
   min-width: 100px;
   max-width: 180px;
-  transition: background-color var(--animation-duration) var(--animation-easing), border-color var(--animation-duration) var(--animation-easing), color var(--animation-duration) var(--animation-easing), box-shadow var(--animation-duration) var(--animation-easing), transform var(--animation-duration) var(--animation-easing), opacity var(--animation-duration) var(--animation-easing);
+  transition:
+    background-color var(--animation-duration) var(--animation-easing),
+    border-color var(--animation-duration) var(--animation-easing),
+    color var(--animation-duration) var(--animation-easing),
+    box-shadow var(--animation-duration) var(--animation-easing),
+    transform var(--animation-duration) var(--animation-easing),
+    opacity var(--animation-duration) var(--animation-easing);
   position: relative;
 }
 
@@ -618,7 +636,13 @@ body.platform-win32 .titlebar-title {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background-color var(--animation-duration) var(--animation-easing), border-color var(--animation-duration) var(--animation-easing), color var(--animation-duration) var(--animation-easing), box-shadow var(--animation-duration) var(--animation-easing), transform var(--animation-duration) var(--animation-easing), opacity var(--animation-duration) var(--animation-easing);
+  transition:
+    background-color var(--animation-duration) var(--animation-easing),
+    border-color var(--animation-duration) var(--animation-easing),
+    color var(--animation-duration) var(--animation-easing),
+    box-shadow var(--animation-duration) var(--animation-easing),
+    transform var(--animation-duration) var(--animation-easing),
+    opacity var(--animation-duration) var(--animation-easing);
   flex-shrink: 0;
 }
 
@@ -759,7 +783,13 @@ body.tabs-enabled.tabs-single .toolbar-new-tab-btn {
   border-radius: var(--radius-small);
   cursor: pointer;
   color: var(--text-primary);
-  transition: background-color var(--animation-duration) var(--animation-easing), border-color var(--animation-duration) var(--animation-easing), color var(--animation-duration) var(--animation-easing), box-shadow var(--animation-duration) var(--animation-easing), transform var(--animation-duration) var(--animation-easing), opacity var(--animation-duration) var(--animation-easing);
+  transition:
+    background-color var(--animation-duration) var(--animation-easing),
+    border-color var(--animation-duration) var(--animation-easing),
+    color var(--animation-duration) var(--animation-easing),
+    box-shadow var(--animation-duration) var(--animation-easing),
+    transform var(--animation-duration) var(--animation-easing),
+    opacity var(--animation-duration) var(--animation-easing);
   z-index: 50;
   flex-shrink: 0;
 }
@@ -1009,7 +1039,13 @@ body.tabs-enabled.tabs-single .toolbar-new-tab-btn {
   padding: var(--nav-item-padding-v) var(--nav-item-padding-h);
   border-radius: var(--radius-small);
   cursor: pointer;
-  transition: background-color var(--animation-duration) var(--animation-easing), border-color var(--animation-duration) var(--animation-easing), color var(--animation-duration) var(--animation-easing), box-shadow var(--animation-duration) var(--animation-easing), transform var(--animation-duration) var(--animation-easing), opacity var(--animation-duration) var(--animation-easing);
+  transition:
+    background-color var(--animation-duration) var(--animation-easing),
+    border-color var(--animation-duration) var(--animation-easing),
+    color var(--animation-duration) var(--animation-easing),
+    box-shadow var(--animation-duration) var(--animation-easing),
+    transform var(--animation-duration) var(--animation-easing),
+    opacity var(--animation-duration) var(--animation-easing);
   font-size: var(--font-size-nav);
   font-weight: 500;
   color: var(--text-secondary);
@@ -1220,7 +1256,13 @@ body.tabs-enabled.tabs-single .toolbar-new-tab-btn {
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: background-color var(--animation-duration) var(--animation-easing), border-color var(--animation-duration) var(--animation-easing), color var(--animation-duration) var(--animation-easing), box-shadow var(--animation-duration) var(--animation-easing), transform var(--animation-duration) var(--animation-easing), opacity var(--animation-duration) var(--animation-easing);
+  transition:
+    background-color var(--animation-duration) var(--animation-easing),
+    border-color var(--animation-duration) var(--animation-easing),
+    color var(--animation-duration) var(--animation-easing),
+    box-shadow var(--animation-duration) var(--animation-easing),
+    transform var(--animation-duration) var(--animation-easing),
+    opacity var(--animation-duration) var(--animation-easing);
 }
 
 .view-option:hover {
@@ -1261,7 +1303,13 @@ body.tabs-enabled.tabs-single .toolbar-new-tab-btn {
   color: var(--text-primary);
   border-radius: var(--radius-small);
   cursor: pointer;
-  transition: background-color var(--animation-duration) var(--animation-easing), border-color var(--animation-duration) var(--animation-easing), color var(--animation-duration) var(--animation-easing), box-shadow var(--animation-duration) var(--animation-easing), transform var(--animation-duration) var(--animation-easing), opacity var(--animation-duration) var(--animation-easing);
+  transition:
+    background-color var(--animation-duration) var(--animation-easing),
+    border-color var(--animation-duration) var(--animation-easing),
+    color var(--animation-duration) var(--animation-easing),
+    box-shadow var(--animation-duration) var(--animation-easing),
+    transform var(--animation-duration) var(--animation-easing),
+    opacity var(--animation-duration) var(--animation-easing);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1287,7 +1335,13 @@ body.tabs-enabled.tabs-single .toolbar-new-tab-btn {
 
 body.platform-darwin .toolbar-button {
   border-radius: 8px;
-  transition: background-color var(--animation-duration) var(--animation-easing-spring), border-color var(--animation-duration) var(--animation-easing-spring), color var(--animation-duration) var(--animation-easing-spring), box-shadow var(--animation-duration) var(--animation-easing-spring), transform var(--animation-duration) var(--animation-easing-spring), opacity var(--animation-duration) var(--animation-easing-spring);
+  transition:
+    background-color var(--animation-duration) var(--animation-easing-spring),
+    border-color var(--animation-duration) var(--animation-easing-spring),
+    color var(--animation-duration) var(--animation-easing-spring),
+    box-shadow var(--animation-duration) var(--animation-easing-spring),
+    transform var(--animation-duration) var(--animation-easing-spring),
+    opacity var(--animation-duration) var(--animation-easing-spring);
 }
 
 body.platform-darwin .toolbar-button:hover:not(:disabled) {
@@ -1301,7 +1355,13 @@ body.platform-darwin .toolbar-button:active:not(:disabled) {
 
 body.platform-win32 .toolbar-button {
   border-radius: 4px;
-  transition: background-color var(--animation-duration) var(--animation-easing), border-color var(--animation-duration) var(--animation-easing), color var(--animation-duration) var(--animation-easing), box-shadow var(--animation-duration) var(--animation-easing), transform var(--animation-duration) var(--animation-easing), opacity var(--animation-duration) var(--animation-easing);
+  transition:
+    background-color var(--animation-duration) var(--animation-easing),
+    border-color var(--animation-duration) var(--animation-easing),
+    color var(--animation-duration) var(--animation-easing),
+    box-shadow var(--animation-duration) var(--animation-easing),
+    transform var(--animation-duration) var(--animation-easing),
+    opacity var(--animation-duration) var(--animation-easing);
 }
 
 body.platform-win32 .toolbar-button:hover:not(:disabled) {
@@ -1322,7 +1382,13 @@ body.platform-win32 .toolbar-button:active:not(:disabled) {
   border-radius: var(--radius-small);
   font-size: 11px;
   color: var(--accent-color);
-  transition: background-color var(--animation-duration) var(--animation-easing), border-color var(--animation-duration) var(--animation-easing), color var(--animation-duration) var(--animation-easing), box-shadow var(--animation-duration) var(--animation-easing), transform var(--animation-duration) var(--animation-easing), opacity var(--animation-duration) var(--animation-easing);
+  transition:
+    background-color var(--animation-duration) var(--animation-easing),
+    border-color var(--animation-duration) var(--animation-easing),
+    color var(--animation-duration) var(--animation-easing),
+    box-shadow var(--animation-duration) var(--animation-easing),
+    transform var(--animation-duration) var(--animation-easing),
+    opacity var(--animation-duration) var(--animation-easing);
 }
 
 .clipboard-indicator.cut-mode {
@@ -1346,7 +1412,13 @@ body.platform-win32 .toolbar-button:active:not(:disabled) {
   border-radius: var(--radius-small);
   font-size: 11px;
   color: var(--text-primary);
-  transition: background-color var(--animation-duration) var(--animation-easing), border-color var(--animation-duration) var(--animation-easing), color var(--animation-duration) var(--animation-easing), box-shadow var(--animation-duration) var(--animation-easing), transform var(--animation-duration) var(--animation-easing), opacity var(--animation-duration) var(--animation-easing);
+  transition:
+    background-color var(--animation-duration) var(--animation-easing),
+    border-color var(--animation-duration) var(--animation-easing),
+    color var(--animation-duration) var(--animation-easing),
+    box-shadow var(--animation-duration) var(--animation-easing),
+    transform var(--animation-duration) var(--animation-easing),
+    opacity var(--animation-duration) var(--animation-easing);
 }
 
 .selection-count {
@@ -1369,7 +1441,13 @@ body.platform-win32 .toolbar-button:active:not(:disabled) {
   font-weight: 500;
   color: var(--text-secondary);
   cursor: pointer;
-  transition: background-color var(--animation-duration) var(--animation-easing), border-color var(--animation-duration) var(--animation-easing), color var(--animation-duration) var(--animation-easing), box-shadow var(--animation-duration) var(--animation-easing), transform var(--animation-duration) var(--animation-easing), opacity var(--animation-duration) var(--animation-easing);
+  transition:
+    background-color var(--animation-duration) var(--animation-easing),
+    border-color var(--animation-duration) var(--animation-easing),
+    color var(--animation-duration) var(--animation-easing),
+    box-shadow var(--animation-duration) var(--animation-easing),
+    transform var(--animation-duration) var(--animation-easing),
+    opacity var(--animation-duration) var(--animation-easing);
 }
 
 .selection-action:hover {
@@ -1449,7 +1527,13 @@ body.theme-light .selection-action:hover {
   padding: var(--breadcrumb-padding-v) var(--breadcrumb-padding-h);
   border-radius: var(--radius-small);
   cursor: pointer;
-  transition: background-color var(--animation-duration) var(--animation-easing), border-color var(--animation-duration) var(--animation-easing), color var(--animation-duration) var(--animation-easing), box-shadow var(--animation-duration) var(--animation-easing), transform var(--animation-duration) var(--animation-easing), opacity var(--animation-duration) var(--animation-easing);
+  transition:
+    background-color var(--animation-duration) var(--animation-easing),
+    border-color var(--animation-duration) var(--animation-easing),
+    color var(--animation-duration) var(--animation-easing),
+    box-shadow var(--animation-duration) var(--animation-easing),
+    transform var(--animation-duration) var(--animation-easing),
+    opacity var(--animation-duration) var(--animation-easing);
   white-space: nowrap;
 }
 
@@ -1551,7 +1635,13 @@ body.theme-light .selection-action:hover {
   padding: 12px 14px;
   color: var(--danger-hover);
   cursor: pointer;
-  transition: background-color var(--animation-duration) var(--animation-easing), border-color var(--animation-duration) var(--animation-easing), color var(--animation-duration) var(--animation-easing), box-shadow var(--animation-duration) var(--animation-easing), transform var(--animation-duration) var(--animation-easing), opacity var(--animation-duration) var(--animation-easing);
+  transition:
+    background-color var(--animation-duration) var(--animation-easing),
+    border-color var(--animation-duration) var(--animation-easing),
+    color var(--animation-duration) var(--animation-easing),
+    box-shadow var(--animation-duration) var(--animation-easing),
+    transform var(--animation-duration) var(--animation-easing),
+    opacity var(--animation-duration) var(--animation-easing);
   font-size: 13px;
   text-align: center;
   font-weight: 500;
@@ -1576,7 +1666,13 @@ body.theme-light .selection-action:hover {
   cursor: pointer;
   padding: 4px 6px;
   border-radius: var(--radius-small);
-  transition: background-color var(--animation-duration) var(--animation-easing), border-color var(--animation-duration) var(--animation-easing), color var(--animation-duration) var(--animation-easing), box-shadow var(--animation-duration) var(--animation-easing), transform var(--animation-duration) var(--animation-easing), opacity var(--animation-duration) var(--animation-easing);
+  transition:
+    background-color var(--animation-duration) var(--animation-easing),
+    border-color var(--animation-duration) var(--animation-easing),
+    color var(--animation-duration) var(--animation-easing),
+    box-shadow var(--animation-duration) var(--animation-easing),
+    transform var(--animation-duration) var(--animation-easing),
+    opacity var(--animation-duration) var(--animation-easing);
   position: relative;
 }
 
@@ -1649,7 +1745,13 @@ body.theme-light .selection-action:hover {
   padding: 8px 10px;
   font-size: 13px;
   outline: none;
-  transition: background-color var(--animation-duration) var(--animation-easing), border-color var(--animation-duration) var(--animation-easing), color var(--animation-duration) var(--animation-easing), box-shadow var(--animation-duration) var(--animation-easing), transform var(--animation-duration) var(--animation-easing), opacity var(--animation-duration) var(--animation-easing);
+  transition:
+    background-color var(--animation-duration) var(--animation-easing),
+    border-color var(--animation-duration) var(--animation-easing),
+    color var(--animation-duration) var(--animation-easing),
+    box-shadow var(--animation-duration) var(--animation-easing),
+    transform var(--animation-duration) var(--animation-easing),
+    opacity var(--animation-duration) var(--animation-easing);
 }
 
 .search-filter-group select:focus,
@@ -1706,7 +1808,13 @@ body.theme-light .selection-action:hover {
   font-weight: 500;
   cursor: pointer;
   border: none;
-  transition: background-color var(--animation-duration) var(--animation-easing), border-color var(--animation-duration) var(--animation-easing), color var(--animation-duration) var(--animation-easing), box-shadow var(--animation-duration) var(--animation-easing), transform var(--animation-duration) var(--animation-easing), opacity var(--animation-duration) var(--animation-easing);
+  transition:
+    background-color var(--animation-duration) var(--animation-easing),
+    border-color var(--animation-duration) var(--animation-easing),
+    color var(--animation-duration) var(--animation-easing),
+    box-shadow var(--animation-duration) var(--animation-easing),
+    transform var(--animation-duration) var(--animation-easing),
+    opacity var(--animation-duration) var(--animation-easing);
 }
 
 .search-filter-btn.primary {
@@ -2366,7 +2474,13 @@ body.platform-win32 .file-view::-webkit-scrollbar-thumb:hover {
   gap: 8px;
   padding: 6px 12px;
   cursor: pointer;
-  transition: background-color var(--animation-duration) var(--animation-easing), border-color var(--animation-duration) var(--animation-easing), color var(--animation-duration) var(--animation-easing), box-shadow var(--animation-duration) var(--animation-easing), transform var(--animation-duration) var(--animation-easing), opacity var(--animation-duration) var(--animation-easing);
+  transition:
+    background-color var(--animation-duration) var(--animation-easing),
+    border-color var(--animation-duration) var(--animation-easing),
+    color var(--animation-duration) var(--animation-easing),
+    box-shadow var(--animation-duration) var(--animation-easing),
+    transform var(--animation-duration) var(--animation-easing),
+    opacity var(--animation-duration) var(--animation-easing);
   border-left: 3px solid transparent;
   font-size: 12px;
 }
@@ -2447,7 +2561,13 @@ body.reduce-motion .column-item.spring-loading {
   padding: var(--file-item-padding-v) var(--file-item-padding-h);
   border-radius: var(--radius-small);
   cursor: pointer;
-  transition: background-color var(--animation-duration) var(--animation-easing), border-color var(--animation-duration) var(--animation-easing), color var(--animation-duration) var(--animation-easing), box-shadow var(--animation-duration) var(--animation-easing), transform var(--animation-duration) var(--animation-easing), opacity var(--animation-duration) var(--animation-easing);
+  transition:
+    background-color var(--animation-duration) var(--animation-easing),
+    border-color var(--animation-duration) var(--animation-easing),
+    color var(--animation-duration) var(--animation-easing),
+    box-shadow var(--animation-duration) var(--animation-easing),
+    transform var(--animation-duration) var(--animation-easing),
+    opacity var(--animation-duration) var(--animation-easing);
   border: 1px solid transparent;
   user-select: none;
   position: relative;
@@ -3032,7 +3152,13 @@ body:not(.show-file-checkboxes) .file-checkbox {
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  transition: background-color var(--animation-duration) var(--animation-easing), border-color var(--animation-duration) var(--animation-easing), color var(--animation-duration) var(--animation-easing), box-shadow var(--animation-duration) var(--animation-easing), transform var(--animation-duration) var(--animation-easing), opacity var(--animation-duration) var(--animation-easing);
+  transition:
+    background-color var(--animation-duration) var(--animation-easing),
+    border-color var(--animation-duration) var(--animation-easing),
+    color var(--animation-duration) var(--animation-easing),
+    box-shadow var(--animation-duration) var(--animation-easing),
+    transform var(--animation-duration) var(--animation-easing),
+    opacity var(--animation-duration) var(--animation-easing);
 }
 
 .empty-action-btn:hover {
@@ -3090,17 +3216,6 @@ body:not(.show-file-checkboxes) .file-checkbox {
 
   .file-grid {
     grid-template-columns: repeat(auto-fill, minmax(calc(var(--grid-min-column) + 8px), 1fr));
-  }
-}
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    backdrop-filter: blur(0px);
-  }
-  to {
-    opacity: 1;
-    backdrop-filter: blur(6px);
   }
 }
 
@@ -3361,26 +3476,15 @@ body:not(.show-file-checkboxes) .file-checkbox {
   right: 0;
   bottom: 0;
   background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
-  animation: shimmer 1.5s infinite;
+  animation: progress-shimmer 1.5s infinite;
 }
 
-@keyframes shimmer {
+@keyframes progress-shimmer {
   0% {
     transform: translateX(-100%);
   }
   100% {
     transform: translateX(100%);
-  }
-}
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(5px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
   }
 }
 
@@ -3490,7 +3594,13 @@ body:not(.show-file-checkboxes) .file-checkbox {
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-small);
-  transition: background-color 0.12s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.12s cubic-bezier(0.4, 0, 0.2, 1), color 0.12s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.12s cubic-bezier(0.4, 0, 0.2, 1), transform 0.12s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.12s cubic-bezier(0.4, 0, 0.2, 1);
+  transition:
+    background-color 0.12s cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 0.12s cubic-bezier(0.4, 0, 0.2, 1),
+    color 0.12s cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 0.12s cubic-bezier(0.4, 0, 0.2, 1),
+    transform 0.12s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 0.12s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .search-close:hover {
@@ -3514,7 +3624,13 @@ body:not(.show-file-checkboxes) .file-checkbox {
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-small);
-  transition: background-color 0.12s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.12s cubic-bezier(0.4, 0, 0.2, 1), color 0.12s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.12s cubic-bezier(0.4, 0, 0.2, 1), transform 0.12s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.12s cubic-bezier(0.4, 0, 0.2, 1);
+  transition:
+    background-color 0.12s cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 0.12s cubic-bezier(0.4, 0, 0.2, 1),
+    color 0.12s cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 0.12s cubic-bezier(0.4, 0, 0.2, 1),
+    transform 0.12s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 0.12s cubic-bezier(0.4, 0, 0.2, 1);
   opacity: 0.6;
   margin-right: 4px;
 }
@@ -3592,7 +3708,13 @@ body:not(.show-file-checkboxes) .file-checkbox {
   cursor: pointer;
   padding: 2px 6px;
   border-radius: 4px;
-  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease, opacity 0.15s ease;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.15s ease,
+    opacity 0.15s ease;
 }
 
 .status-hidden:hover {
@@ -3621,7 +3743,13 @@ body:not(.show-file-checkboxes) .file-checkbox {
   padding: 2px 6px;
   background: rgba(255, 255, 255, 0.05);
   border-radius: 4px;
-  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease, opacity 0.2s ease;
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.2s ease,
+    opacity 0.2s ease;
 }
 
 .status-version:hover {
@@ -3684,7 +3812,13 @@ body:not(.show-file-checkboxes) .file-checkbox {
   font-size: 10.5px;
   font-family: inherit;
   cursor: pointer;
-  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease, opacity 0.2s ease;
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.2s ease,
+    opacity 0.2s ease;
 }
 
 .status-support-btn:hover {
@@ -3764,7 +3898,13 @@ body:not(.show-file-checkboxes) .file-checkbox {
   justify-content: center;
   border-radius: var(--radius-small);
   cursor: pointer;
-  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease, opacity 0.15s ease;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.15s ease,
+    opacity 0.15s ease;
   border: 2px solid transparent;
   background: rgba(255, 255, 255, 0.05);
 }
@@ -3859,7 +3999,13 @@ body:not(.show-file-checkboxes) .file-checkbox {
   font-size: 16px;
   padding: var(--spacing-sm);
   border-radius: var(--radius-small);
-  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease, opacity 0.15s ease;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.15s ease,
+    opacity 0.15s ease;
   line-height: 1;
 }
 
@@ -3973,7 +4119,13 @@ body.theme-light .file-hover-card {
   padding: 4px 6px;
   border-radius: var(--radius-small);
   cursor: pointer;
-  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease, opacity 0.2s ease;
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.2s ease,
+    opacity 0.2s ease;
   position: relative;
   gap: 6px;
   color: var(--text-secondary);
@@ -4023,7 +4175,13 @@ body.theme-light .file-hover-card {
   font-size: 12px;
   padding: 2px 6px;
   border-radius: 3px;
-  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease, opacity 0.2s ease;
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.2s ease,
+    opacity 0.2s ease;
 }
 
 .bookmark-item:hover .bookmark-remove {
@@ -4203,7 +4361,13 @@ body.theme-light .file-hover-card {
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease, opacity 0.2s ease;
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.2s ease,
+    opacity 0.2s ease;
 }
 
 .about-link-btn:hover {
@@ -4843,7 +5007,13 @@ body.theme-github {
   cursor: pointer;
   padding: 5px;
   border-radius: 6px;
-  transition: background-color 0.2s, border-color 0.2s, color 0.2s, box-shadow 0.2s, transform 0.2s, opacity 0.2s;
+  transition:
+    background-color 0.2s,
+    border-color 0.2s,
+    color 0.2s,
+    box-shadow 0.2s,
+    transform 0.2s,
+    opacity 0.2s;
   width: 30px;
   height: 30px;
   display: flex;
@@ -5325,7 +5495,13 @@ pre.preview-text code.hljs {
   border: 1px solid var(--separator);
   border-radius: 8px;
   cursor: pointer;
-  transition: background-color 0.15s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.15s cubic-bezier(0.4, 0, 0.2, 1), color 0.15s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.15s cubic-bezier(0.4, 0, 0.2, 1), transform 0.15s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  transition:
+    background-color 0.15s cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 0.15s cubic-bezier(0.4, 0, 0.2, 1),
+    color 0.15s cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 0.15s cubic-bezier(0.4, 0, 0.2, 1),
+    transform 0.15s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 0.15s cubic-bezier(0.4, 0, 0.2, 1);
   padding: 0;
 }
 
@@ -5439,11 +5615,11 @@ pre.preview-text code.hljs {
   border-radius: var(--radius-medium);
   padding: 12px;
   margin-bottom: 8px;
-  animation: fadeIn 0.2s cubic-bezier(0.33, 1, 0.68, 1);
+  animation: archive-operation-fade-in 0.2s cubic-bezier(0.33, 1, 0.68, 1);
   box-shadow: none;
 }
 
-@keyframes fadeIn {
+@keyframes archive-operation-fade-in {
   from {
     opacity: 0;
     transform: translateY(-5px);
@@ -5497,7 +5673,13 @@ pre.preview-text code.hljs {
   font-weight: 600;
   color: #ff6b6b;
   cursor: pointer;
-  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease, opacity 0.15s ease;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.15s ease,
+    opacity 0.15s ease;
   flex-shrink: 0;
 }
 
@@ -5555,16 +5737,7 @@ pre.preview-text code.hljs {
   right: 0;
   bottom: 0;
   background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
-  animation: shimmer 1.5s infinite;
-}
-
-@keyframes shimmer {
-  0% {
-    transform: translateX(-100%);
-  }
-  100% {
-    transform: translateX(100%);
-  }
+  animation: progress-shimmer 1.5s infinite;
 }
 
 .preview-video {
@@ -5695,7 +5868,13 @@ pre.preview-text code.hljs {
   display: flex;
   align-items: center;
   gap: 6px;
-  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease, opacity 0.15s ease;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.15s ease,
+    opacity 0.15s ease;
   color: var(--text-secondary);
 }
 
@@ -5963,12 +6142,14 @@ body.liquid-glass {
   --liquid-glass-modal-border-color: rgba(255, 255, 255, 0.18);
   --liquid-glass-modal-radius: 18px;
   --liquid-glass-modal-filter: blur(32px) saturate(200%);
-  --liquid-glass-modal-shadow: 0 24px 48px rgba(0, 0, 0, 0.35), 0 8px 16px rgba(0, 0, 0, 0.2),
+  --liquid-glass-modal-shadow:
+    0 24px 48px rgba(0, 0, 0, 0.35), 0 8px 16px rgba(0, 0, 0, 0.2),
     inset 0 1px 0 rgba(255, 255, 255, 0.1);
   --liquid-glass-menu-bg: rgba(34, 34, 34, 0.75);
   --liquid-glass-menu-border-color: rgba(255, 255, 255, var(--liquid-glass-border-opacity));
   --liquid-glass-menu-radius: 14px;
-  --liquid-glass-menu-filter: blur(var(--liquid-glass-blur)) saturate(var(--liquid-glass-saturation));
+  --liquid-glass-menu-filter: blur(var(--liquid-glass-blur))
+    saturate(var(--liquid-glass-saturation));
   --liquid-glass-menu-shadow: var(--liquid-glass-shadow);
   --liquid-glass-sidebar-bg: rgba(28, 28, 28, 0.68);
   --liquid-glass-sidebar-filter: blur(20px) saturate(160%);
@@ -5993,7 +6174,8 @@ body.liquid-glass {
   --liquid-glass-dropdown-bg: rgba(34, 34, 34, 0.78);
   --liquid-glass-dropdown-border-color: rgba(255, 255, 255, var(--liquid-glass-border-opacity));
   --liquid-glass-dropdown-radius: 14px;
-  --liquid-glass-dropdown-filter: blur(var(--liquid-glass-blur)) saturate(var(--liquid-glass-saturation));
+  --liquid-glass-dropdown-filter: blur(var(--liquid-glass-blur))
+    saturate(var(--liquid-glass-saturation));
   --liquid-glass-dropdown-shadow: var(--liquid-glass-shadow);
   --liquid-glass-card-bg: rgba(34, 34, 34, 0.8);
   --liquid-glass-card-filter: blur(20px) saturate(180%);
@@ -6004,7 +6186,8 @@ body.liquid-glass {
   --liquid-glass-toast-border-color: rgba(255, 255, 255, 0.1);
   --liquid-glass-toast-radius: 14px;
   --liquid-glass-popup-bg: rgba(34, 34, 34, 0.8);
-  --liquid-glass-popup-filter: blur(var(--liquid-glass-blur)) saturate(var(--liquid-glass-saturation));
+  --liquid-glass-popup-filter: blur(var(--liquid-glass-blur))
+    saturate(var(--liquid-glass-saturation));
   --liquid-glass-popup-hover-bg: rgba(30, 30, 30, 0.8);
   --liquid-glass-popup-hover-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
   --liquid-glass-archive-hover-bg: rgba(30, 30, 30, 0.8);
@@ -6059,7 +6242,8 @@ body.theme-custom.liquid-glass {
   --liquid-glass-toast-border-color: color-mix(in srgb, var(--text-primary) 10%, transparent);
   --liquid-glass-popup-hover-bg: color-mix(in srgb, var(--bg-secondary) 80%, transparent);
   --liquid-glass-archive-hover-bg: color-mix(in srgb, var(--bg-secondary) 80%, transparent);
-  --liquid-glass-card-hover-shadow: 0 12px 40px color-mix(in srgb, var(--bg-primary) 40%, transparent);
+  --liquid-glass-card-hover-shadow: 0 12px 40px
+    color-mix(in srgb, var(--bg-primary) 40%, transparent);
 }
 
 body.theme-nord.liquid-glass {

@@ -1288,11 +1288,6 @@ let activeDirectoryOperationId: string | null = null;
 let directoryRequestId = 0;
 let directoryProgressCount = 0;
 let lastDirectoryProgressUpdate = 0;
-let streamingDirectoryOperationId: string | null = null;
-let streamingDirectoryToken = 0;
-let streamingPendingItems: FileItem[] = [];
-let streamingRenderScheduled = false;
-let hasStreamedDirectoryRender = false;
 
 window.electronAPI.onDirectoryContentsProgress((progress) => {
   if (activeDirectoryProgressOperationId) {
@@ -1301,9 +1296,6 @@ window.electronAPI.onDirectoryContentsProgress((progress) => {
     return;
   }
   directoryProgressCount = progress.loaded;
-  if (progress.items && progress.items.length > 0 && viewMode !== 'column') {
-    queueStreamedDirectoryItems(progress.items, progress.operationId || null);
-  }
   const now = Date.now();
   if (now - lastDirectoryProgressUpdate < 100) return;
   lastDirectoryProgressUpdate = now;
@@ -1311,43 +1303,6 @@ window.electronAPI.onDirectoryContentsProgress((progress) => {
     loadingText.textContent = `Loading... (${directoryProgressCount.toLocaleString()} items)`;
   }
 });
-
-function resetStreamedDirectoryState(operationId: string | null): void {
-  streamingDirectoryOperationId = operationId;
-  streamingDirectoryToken += 1;
-  streamingPendingItems = [];
-  streamingRenderScheduled = false;
-  hasStreamedDirectoryRender = false;
-}
-
-function queueStreamedDirectoryItems(items: FileItem[], operationId: string | null): void {
-  if (!operationId || operationId !== streamingDirectoryOperationId) {
-    return;
-  }
-  streamingPendingItems.push(...items);
-  if (streamingRenderScheduled) {
-    return;
-  }
-  streamingRenderScheduled = true;
-  const token = streamingDirectoryToken;
-  requestAnimationFrame(() => flushStreamedDirectoryItems(token));
-}
-
-function flushStreamedDirectoryItems(token: number): void {
-  if (token !== streamingDirectoryToken) {
-    return;
-  }
-  streamingRenderScheduled = false;
-  if (streamingPendingItems.length === 0) {
-    return;
-  }
-  const batch = streamingPendingItems.splice(0);
-  appendStreamedDirectoryItems(batch);
-  if (streamingPendingItems.length > 0) {
-    streamingRenderScheduled = true;
-    requestAnimationFrame(() => flushStreamedDirectoryItems(token));
-  }
-}
 
 function createDirectoryOperationId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -1364,7 +1319,6 @@ function startDirectoryRequest(path: string): { requestId: number; operationId: 
   activeDirectoryProgressPath = path;
   directoryProgressCount = 0;
   lastDirectoryProgressUpdate = 0;
-  resetStreamedDirectoryState(operationId);
   if (loadingText) loadingText.textContent = 'Loading...';
   return { requestId, operationId };
 }
@@ -1376,7 +1330,6 @@ function finishDirectoryRequest(requestId: number): void {
   activeDirectoryProgressPath = null;
   directoryProgressCount = 0;
   lastDirectoryProgressUpdate = 0;
-  resetStreamedDirectoryState(null);
   if (loadingText) loadingText.textContent = 'Loading...';
 }
 
@@ -1416,9 +1369,10 @@ async function fetchGitStatusAsync(dirPath: string) {
   }
 
   const requestId = ++gitStatusRequestId;
+  const includeUntracked = currentSettings.gitIncludeUntracked !== false;
 
   try {
-    const result = await getGitStatusCached(dirPath);
+    const result = await getGitStatusCached(dirPath, includeUntracked);
     if (
       requestId !== gitStatusRequestId ||
       dirPath !== currentPath ||
@@ -1442,26 +1396,30 @@ async function fetchGitStatusAsync(dirPath: string) {
   }
 }
 
-async function getGitStatusCached(dirPath: string): Promise<GitStatusResponse> {
-  const cached = gitStatusCache.get(dirPath);
+async function getGitStatusCached(
+  dirPath: string,
+  includeUntracked: boolean
+): Promise<GitStatusResponse> {
+  const cacheKey = `${dirPath}|${includeUntracked ? 'all' : 'tracked'}`;
+  const cached = gitStatusCache.get(cacheKey);
   if (cached && Date.now() - cached.timestamp < GIT_STATUS_CACHE_TTL_MS) {
     return { success: true, isGitRepo: cached.isGitRepo, statuses: cached.statuses };
   }
 
-  const inFlight = gitStatusInFlight.get(dirPath);
+  const inFlight = gitStatusInFlight.get(cacheKey);
   if (inFlight) {
     return inFlight;
   }
 
   const request = window.electronAPI
-    .getGitStatus(dirPath)
+    .getGitStatus(dirPath, includeUntracked)
     .then((result) => {
       if (result.success) {
         if (gitStatusCache.size >= GIT_STATUS_CACHE_MAX) {
           const firstKey = gitStatusCache.keys().next().value;
           if (firstKey) gitStatusCache.delete(firstKey);
         }
-        gitStatusCache.set(dirPath, {
+        gitStatusCache.set(cacheKey, {
           timestamp: Date.now(),
           isGitRepo: result.isGitRepo === true,
           statuses: result.statuses || [],
@@ -1470,10 +1428,10 @@ async function getGitStatusCached(dirPath: string): Promise<GitStatusResponse> {
       return result;
     })
     .finally(() => {
-      gitStatusInFlight.delete(dirPath);
+      gitStatusInFlight.delete(cacheKey);
     });
 
-  gitStatusInFlight.set(dirPath, request);
+  gitStatusInFlight.set(cacheKey, request);
   return request;
 }
 
@@ -3505,6 +3463,9 @@ async function showSettingsModal() {
   const enableGitStatusToggle = document.getElementById(
     'enable-git-status-toggle'
   ) as HTMLInputElement;
+  const gitIncludeUntrackedToggle = document.getElementById(
+    'git-include-untracked-toggle'
+  ) as HTMLInputElement;
   const minimizeToTrayToggle = document.getElementById(
     'minimize-to-tray-toggle'
   ) as HTMLInputElement;
@@ -3585,6 +3546,9 @@ async function showSettingsModal() {
   const maxSearchHistoryInput = document.getElementById(
     'max-search-history-input'
   ) as HTMLInputElement;
+  const maxDirectoryHistoryInput = document.getElementById(
+    'max-directory-history-input'
+  ) as HTMLInputElement;
   const settingsPath = document.getElementById('settings-path');
 
   if (systemThemeToggle) {
@@ -3595,6 +3559,9 @@ async function showSettingsModal() {
   }
   if (enableGitStatusToggle) {
     enableGitStatusToggle.checked = currentSettings.enableGitStatus === true;
+  }
+  if (gitIncludeUntrackedToggle) {
+    gitIncludeUntrackedToggle.checked = currentSettings.gitIncludeUntracked !== false;
   }
 
   const showFileHoverCardToggle = document.getElementById(
@@ -3772,6 +3739,9 @@ async function showSettingsModal() {
 
   if (maxSearchHistoryInput) {
     maxSearchHistoryInput.value = String(currentSettings.maxSearchHistoryItems || 5);
+  }
+  if (maxDirectoryHistoryInput) {
+    maxDirectoryHistoryInput.value = String(currentSettings.maxDirectoryHistoryItems || 5);
   }
 
   await updateIndexStatus();
@@ -4174,6 +4144,9 @@ async function saveSettings() {
   const enableGitStatusToggle = document.getElementById(
     'enable-git-status-toggle'
   ) as HTMLInputElement;
+  const gitIncludeUntrackedToggle = document.getElementById(
+    'git-include-untracked-toggle'
+  ) as HTMLInputElement;
   const showFileHoverCardToggle = document.getElementById(
     'show-file-hover-card-toggle'
   ) as HTMLInputElement;
@@ -4259,6 +4232,9 @@ async function saveSettings() {
   const maxSearchHistoryInput = document.getElementById(
     'max-search-history-input'
   ) as HTMLInputElement;
+  const maxDirectoryHistoryInput = document.getElementById(
+    'max-directory-history-input'
+  ) as HTMLInputElement;
 
   if (systemThemeToggle) {
     currentSettings.useSystemTheme = systemThemeToggle.checked;
@@ -4303,6 +4279,9 @@ async function saveSettings() {
   }
   if (enableGitStatusToggle) {
     currentSettings.enableGitStatus = enableGitStatusToggle.checked;
+  }
+  if (gitIncludeUntrackedToggle) {
+    currentSettings.gitIncludeUntracked = gitIncludeUntrackedToggle.checked;
   }
 
   if (showFileHoverCardToggle) {
@@ -4480,6 +4459,29 @@ async function saveSettings() {
     if (val >= 1 && val <= 20) {
       currentSettings.maxSearchHistoryItems = val;
     }
+  }
+  if (maxDirectoryHistoryInput) {
+    const val = parseInt(maxDirectoryHistoryInput.value, 10);
+    if (val >= 1 && val <= 20) {
+      currentSettings.maxDirectoryHistoryItems = val;
+    }
+  }
+  if (Array.isArray(currentSettings.searchHistory)) {
+    const maxSearchHistoryItems = Math.max(
+      1,
+      Math.min(20, currentSettings.maxSearchHistoryItems || SEARCH_HISTORY_MAX)
+    );
+    currentSettings.searchHistory = currentSettings.searchHistory.slice(0, maxSearchHistoryItems);
+  }
+  if (Array.isArray(currentSettings.directoryHistory)) {
+    const maxDirectoryHistoryItems = Math.max(
+      1,
+      Math.min(20, currentSettings.maxDirectoryHistoryItems || DIRECTORY_HISTORY_MAX)
+    );
+    currentSettings.directoryHistory = currentSettings.directoryHistory.slice(
+      0,
+      maxDirectoryHistoryItems
+    );
   }
 
   currentSettings.viewMode = viewMode;
@@ -7289,12 +7291,13 @@ function addToSearchHistory(query: string) {
   if (!currentSettings.searchHistory) {
     currentSettings.searchHistory = [];
   }
+  const maxSearchHistoryItems = Math.max(
+    1,
+    Math.min(20, currentSettings.maxSearchHistoryItems || SEARCH_HISTORY_MAX)
+  );
   currentSettings.searchHistory = currentSettings.searchHistory.filter((item) => item !== query);
   currentSettings.searchHistory.unshift(query);
-  currentSettings.searchHistory = currentSettings.searchHistory.slice(
-    0,
-    currentSettings.maxSearchHistoryItems || 5
-  );
+  currentSettings.searchHistory = currentSettings.searchHistory.slice(0, maxSearchHistoryItems);
   debouncedSaveSettings();
 }
 
@@ -7304,13 +7307,17 @@ function addToDirectoryHistory(dirPath: string) {
   if (!currentSettings.directoryHistory) {
     currentSettings.directoryHistory = [];
   }
+  const maxDirectoryHistoryItems = Math.max(
+    1,
+    Math.min(20, currentSettings.maxDirectoryHistoryItems || DIRECTORY_HISTORY_MAX)
+  );
   currentSettings.directoryHistory = currentSettings.directoryHistory.filter(
     (item) => item !== dirPath
   );
   currentSettings.directoryHistory.unshift(dirPath);
   currentSettings.directoryHistory = currentSettings.directoryHistory.slice(
     0,
-    DIRECTORY_HISTORY_MAX
+    maxDirectoryHistoryItems
   );
   debouncedSaveSettings();
 }
@@ -7643,45 +7650,6 @@ function appendFileItems(items: FileItem[], searchQuery?: string): string[] {
     scheduleAnimationCleanup();
   }
   return paths;
-}
-
-function appendStreamedDirectoryItems(items: FileItem[]): void {
-  if (!fileGrid) return;
-
-  if (!hasStreamedDirectoryRender) {
-    resetVirtualizedRender();
-    resetThumbnailObserver();
-    fileGrid.innerHTML = '';
-    renderItemIndex = 0;
-    clearSelection();
-    filePathMap.clear();
-    fileElementMap.clear();
-    gitIndicatorPaths.clear();
-    cutPaths.clear();
-    allFiles = [];
-    hiddenFilesCount = 0;
-    if (emptyState) emptyState.style.display = 'none';
-    hasStreamedDirectoryRender = true;
-  }
-
-  for (const item of items) {
-    filePathMap.set(item.path, item);
-  }
-
-  allFiles.push(...items);
-  updateHiddenFilesCount(items, true);
-
-  const visibleItems = currentSettings.showHiddenFiles
-    ? items
-    : items.filter((item) => !item.isHidden);
-
-  if (visibleItems.length > 0) {
-    const paths = appendFileItems(visibleItems);
-    applyGitIndicatorsToPaths(paths);
-  }
-
-  updateCutVisuals();
-  updateStatusBar();
 }
 
 function renderFiles(items: FileItem[], searchQuery?: string) {
@@ -11113,6 +11081,8 @@ function validateImportedSettings(imported: unknown): Partial<Settings> {
     validated.showDangerousOptions = data.showDangerousOptions;
   if (typeof data.showHiddenFiles === 'boolean') validated.showHiddenFiles = data.showHiddenFiles;
   if (typeof data.enableGitStatus === 'boolean') validated.enableGitStatus = data.enableGitStatus;
+  if (typeof data.gitIncludeUntracked === 'boolean')
+    validated.gitIncludeUntracked = data.gitIncludeUntracked;
   if (typeof data.showFileHoverCard === 'boolean')
     validated.showFileHoverCard = data.showFileHoverCard;
   if (typeof data.showFileCheckboxes === 'boolean')
@@ -11131,6 +11101,20 @@ function validateImportedSettings(imported: unknown): Partial<Settings> {
     validated.globalContentSearch = data.globalContentSearch;
 
   if (typeof data.startupPath === 'string') validated.startupPath = data.startupPath;
+  if (typeof data.maxSearchHistoryItems === 'number' && Number.isFinite(data.maxSearchHistoryItems))
+    validated.maxSearchHistoryItems = Math.max(
+      1,
+      Math.min(20, Math.floor(data.maxSearchHistoryItems))
+    );
+  if (
+    typeof data.maxDirectoryHistoryItems === 'number' &&
+    Number.isFinite(data.maxDirectoryHistoryItems)
+  ) {
+    validated.maxDirectoryHistoryItems = Math.max(
+      1,
+      Math.min(20, Math.floor(data.maxDirectoryHistoryItems))
+    );
+  }
 
   if (typeof data.theme === 'string' && isOneOf(data.theme, THEME_VALUES)) {
     validated.theme = data.theme;
@@ -11294,6 +11278,20 @@ document.getElementById('open-logs-btn')?.addEventListener('click', async () => 
   }
 });
 
+document.getElementById('export-diagnostics-btn')?.addEventListener('click', async () => {
+  const result = await window.electronAPI.exportDiagnostics();
+  if (result.success) {
+    const exportPath = result.path ? `\n${result.path}` : '';
+    showToast(`Diagnostics exported${exportPath}`, 'Diagnostics', 'success');
+    return;
+  }
+  if (result.error === 'Export cancelled') {
+    showToast('Diagnostics export cancelled', 'Diagnostics', 'info');
+    return;
+  }
+  showToast(result.error || 'Failed to export diagnostics', 'Diagnostics', 'error');
+});
+
 async function updateThumbnailCacheSize(): Promise<void> {
   const sizeElement = document.getElementById('thumbnail-cache-size');
   if (!sizeElement) return;
@@ -11344,12 +11342,14 @@ const SETTINGS_INPUT_KEYS: Record<string, keyof Settings> = {
   'minimize-to-tray-toggle': 'minimizeToTray',
   'show-hidden-files-toggle': 'showHiddenFiles',
   'enable-git-status-toggle': 'enableGitStatus',
+  'git-include-untracked-toggle': 'gitIncludeUntracked',
   'show-file-hover-card-toggle': 'showFileHoverCard',
   'show-file-checkboxes-toggle': 'showFileCheckboxes',
   'sort-by-select': 'sortBy',
   'sort-order-select': 'sortOrder',
   'enable-search-history-toggle': 'enableSearchHistory',
   'max-search-history-input': 'maxSearchHistoryItems',
+  'max-directory-history-input': 'maxDirectoryHistoryItems',
   'show-recent-files-toggle': 'showRecentFiles',
   'show-folder-tree-toggle': 'showFolderTree',
   'enable-tabs-toggle': 'enableTabs',

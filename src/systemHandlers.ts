@@ -8,11 +8,13 @@ import {
   nativeTheme,
   BrowserWindow,
   screen,
+  type SaveDialogOptions,
 } from 'electron';
 import * as path from 'path';
 import { promises as fs } from 'fs';
 import { exec, execFile, spawn } from 'child_process';
 import { promisify } from 'util';
+import * as os from 'os';
 import type { ApiResponse, LicensesData, Settings } from './types';
 import { getMainWindow, MAX_TEXT_PREVIEW_BYTES, MAX_DATA_URL_BYTES } from './appState';
 import { isPathSafe, getErrorMessage } from './security';
@@ -39,6 +41,156 @@ function spawnWithTimeout(
   child.on('error', clear);
 
   return { child, timedOut: () => didTimeout };
+}
+
+async function readTailTextFile(
+  filePath: string,
+  maxBytes: number
+): Promise<{ content: string; sizeBytes: number; isTruncated: boolean }> {
+  const stats = await fs.stat(filePath);
+  if (stats.size > maxBytes) {
+    const fileHandle = await fs.open(filePath, 'r');
+    try {
+      const start = Math.max(0, stats.size - maxBytes);
+      const length = Math.min(maxBytes, stats.size);
+      const buffer = Buffer.alloc(length);
+      await fileHandle.read(buffer, 0, length, start);
+      const content = buffer.toString('utf8');
+      return {
+        content: `... (truncated, showing last ${length} bytes)\n${content}`,
+        sizeBytes: stats.size,
+        isTruncated: true,
+      };
+    } finally {
+      await fileHandle.close();
+    }
+  }
+
+  const content = await fs.readFile(filePath, 'utf-8');
+  return {
+    content,
+    sizeBytes: stats.size,
+    isTruncated: false,
+  };
+}
+
+type DiagnosticsRedaction = { token: string; value: string };
+type AppPathName = Parameters<typeof app.getPath>[0];
+
+function getAppPathSafe(name: AppPathName): string | null {
+  try {
+    const value = app.getPath(name);
+    return typeof value === 'string' && value.trim() ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function createDiagnosticsRedactions(): DiagnosticsRedaction[] {
+  const sourceEntries: Array<{ token: string; value: string | null }> = [
+    { token: '<HOME>', value: getAppPathSafe('home') },
+    { token: '<USER_DATA>', value: getAppPathSafe('userData') },
+    { token: '<TEMP>', value: getAppPathSafe('temp') },
+    { token: '<DESKTOP>', value: getAppPathSafe('desktop') },
+    { token: '<DOCUMENTS>', value: getAppPathSafe('documents') },
+    { token: '<DOWNLOADS>', value: getAppPathSafe('downloads') },
+  ];
+  const redactions: DiagnosticsRedaction[] = [];
+  const seen = new Set<string>();
+
+  for (const entry of sourceEntries) {
+    if (!entry.value) continue;
+    const variants = new Set([
+      entry.value,
+      entry.value.replace(/\\/g, '/'),
+      entry.value.replace(/\//g, '\\'),
+    ]);
+    for (const variant of variants) {
+      const normalized = variant.trim();
+      if (!normalized || normalized.length <= 1 || seen.has(normalized)) continue;
+      seen.add(normalized);
+      redactions.push({ token: entry.token, value: normalized });
+    }
+  }
+
+  redactions.sort((a, b) => b.value.length - a.value.length);
+  return redactions;
+}
+
+function redactDiagnosticsText(input: string, redactions: DiagnosticsRedaction[]): string {
+  let output = input;
+  for (const redaction of redactions) {
+    output = output.replace(new RegExp(escapeRegex(redaction.value), 'gi'), redaction.token);
+  }
+  return output;
+}
+
+function createSettingsDiagnosticsSnapshot(settings: Settings): Record<string, unknown> {
+  return {
+    theme: settings.theme,
+    useSystemTheme: settings.useSystemTheme,
+    sortBy: settings.sortBy,
+    sortOrder: settings.sortOrder,
+    viewMode: settings.viewMode,
+    showDangerousOptions: settings.showDangerousOptions,
+    showHiddenFiles: settings.showHiddenFiles,
+    enableSearchHistory: settings.enableSearchHistory,
+    enableIndexer: settings.enableIndexer,
+    minimizeToTray: settings.minimizeToTray,
+    startOnLogin: settings.startOnLogin,
+    autoCheckUpdates: settings.autoCheckUpdates,
+    showRecentFiles: settings.showRecentFiles,
+    showFolderTree: settings.showFolderTree,
+    enableTabs: settings.enableTabs,
+    globalContentSearch: settings.globalContentSearch,
+    globalClipboard: settings.globalClipboard,
+    enableSyntaxHighlighting: settings.enableSyntaxHighlighting,
+    enableGitStatus: settings.enableGitStatus,
+    gitIncludeUntracked: settings.gitIncludeUntracked,
+    showFileHoverCard: settings.showFileHoverCard,
+    showFileCheckboxes: settings.showFileCheckboxes,
+    reduceMotion: settings.reduceMotion,
+    highContrast: settings.highContrast,
+    largeText: settings.largeText,
+    boldText: settings.boldText,
+    visibleFocus: settings.visibleFocus,
+    reduceTransparency: settings.reduceTransparency,
+    liquidGlassMode: settings.liquidGlassMode,
+    uiDensity: settings.uiDensity,
+    updateChannel: settings.updateChannel,
+    themedIcons: settings.themedIcons,
+    disableHardwareAcceleration: settings.disableHardwareAcceleration,
+    useSystemFontSize: settings.useSystemFontSize,
+    confirmFileOperations: settings.confirmFileOperations,
+    fileConflictBehavior: settings.fileConflictBehavior,
+    skipElevationConfirmation: settings.skipElevationConfirmation,
+    maxThumbnailSizeMB: settings.maxThumbnailSizeMB,
+    thumbnailQuality: settings.thumbnailQuality,
+    autoPlayVideos: settings.autoPlayVideos,
+    previewPanelPosition: settings.previewPanelPosition,
+    maxPreviewSizeMB: settings.maxPreviewSizeMB,
+    gridColumns: settings.gridColumns,
+    iconSize: settings.iconSize,
+    compactFileInfo: settings.compactFileInfo,
+    showFileExtensions: settings.showFileExtensions,
+    maxSearchHistoryItems: settings.maxSearchHistoryItems,
+    maxDirectoryHistoryItems: settings.maxDirectoryHistoryItems,
+    startupPathConfigured: Boolean(settings.startupPath && settings.startupPath.trim()),
+    customThemeName: settings.customTheme?.name ?? null,
+    counts: {
+      bookmarks: settings.bookmarks.length,
+      searchHistory: settings.searchHistory.length,
+      directoryHistory: settings.directoryHistory.length,
+      recentFiles: settings.recentFiles?.length ?? 0,
+      folderIcons: settings.folderIcons ? Object.keys(settings.folderIcons).length : 0,
+      shortcuts: settings.shortcuts ? Object.keys(settings.shortcuts).length : 0,
+      tabs: settings.tabState?.tabs.length ?? 0,
+    },
+  };
 }
 
 export async function checkFullDiskAccess(): Promise<boolean> {
@@ -615,7 +767,8 @@ export function setupSystemHandlers(
     'get-git-status',
     async (
       _event: IpcMainInvokeEvent,
-      dirPath: string
+      dirPath: string,
+      includeUntracked: boolean = true
     ): Promise<{
       success: boolean;
       isGitRepo?: boolean;
@@ -638,7 +791,8 @@ export function setupSystemHandlers(
           return { success: true, isGitRepo: false, statuses: [] };
         }
 
-        const { stdout } = await execPromise('git status --porcelain -uall -z', {
+        const statusArgs = includeUntracked ? '-uall' : '-uno';
+        const { stdout } = await execPromise(`git status --porcelain ${statusArgs} -z`, {
           cwd: dirPath,
           maxBuffer: 10 * 1024 * 1024,
           timeout: 30000,
@@ -756,6 +910,113 @@ export function setupSystemHandlers(
   });
 
   ipcMain.handle(
+    'export-diagnostics',
+    async (): Promise<{ success: boolean; path?: string; error?: string }> => {
+      try {
+        const mainWindow = getMainWindow();
+        const defaultPath = path.join(
+          app.getPath('desktop'),
+          `iyeris-diagnostics-${new Date().toISOString().replace(/[:]/g, '-')}.json`
+        );
+        const dialogOptions: SaveDialogOptions = {
+          title: 'Export Diagnostics',
+          defaultPath,
+          buttonLabel: 'Export',
+          filters: [{ name: 'JSON Files', extensions: ['json'] }],
+          properties: ['showOverwriteConfirmation'],
+        };
+        const saveDialogResult =
+          mainWindow && !mainWindow.isDestroyed()
+            ? await dialog.showSaveDialog(mainWindow, dialogOptions)
+            : await dialog.showSaveDialog(dialogOptions);
+
+        if (saveDialogResult.canceled || !saveDialogResult.filePath) {
+          return { success: false, error: 'Export cancelled' };
+        }
+
+        const settings = await loadSettings();
+        const settingsSnapshot = createSettingsDiagnosticsSnapshot(settings);
+        const redactions = createDiagnosticsRedactions();
+        const redact = (value: string) => redactDiagnosticsText(value, redactions);
+        const logPath = logger.getLogPath();
+        let logContent = '';
+        let logError: string | undefined;
+        let logSizeBytes = 0;
+        let logIsTruncated = false;
+        try {
+          const logData = await readTailTextFile(logPath, MAX_TEXT_PREVIEW_BYTES);
+          logContent = redact(logData.content);
+          logSizeBytes = logData.sizeBytes;
+          logIsTruncated = logData.isTruncated;
+        } catch (error) {
+          logError = redact(getErrorMessage(error));
+        }
+
+        const diagnostics = {
+          generatedAt: new Date().toISOString(),
+          app: {
+            name: app.getName(),
+            version: app.getVersion(),
+            isPackaged: app.isPackaged,
+            platform: process.platform,
+            arch: process.arch,
+            versions: {
+              electron: process.versions.electron,
+              chrome: process.versions.chrome,
+              node: process.versions.node,
+              v8: process.versions.v8,
+            },
+            distribution: {
+              isMas: process.mas === true,
+              isFlatpak: isRunningInFlatpak(),
+              isMsStore: process.windowsStore === true,
+            },
+          },
+          system: {
+            osType: os.type(),
+            osRelease: os.release(),
+            osArch: os.arch(),
+            cpuCount: os.cpus().length,
+            totalMemoryBytes: os.totalmem(),
+            freeMemoryBytes: os.freemem(),
+            uptimeSeconds: os.uptime(),
+            locale: app.getLocale(),
+            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          },
+          window:
+            mainWindow && !mainWindow.isDestroyed()
+              ? {
+                  bounds: mainWindow.getBounds(),
+                  isVisible: mainWindow.isVisible(),
+                  isMaximized: mainWindow.isMaximized(),
+                  isMinimized: mainWindow.isMinimized(),
+                  isFullScreen: mainWindow.isFullScreen(),
+                }
+              : null,
+          privacy: {
+            diagnosticsRedactionsApplied: true,
+            fullSettingsIncluded: false,
+            fullLogPathIncluded: false,
+          },
+          settings: settingsSnapshot,
+          logs: {
+            path: redact(logPath),
+            sizeBytes: logSizeBytes,
+            isTruncated: logIsTruncated,
+            error: logError,
+            content: logContent,
+          },
+        };
+
+        await fs.writeFile(saveDialogResult.filePath, JSON.stringify(diagnostics, null, 2), 'utf8');
+        return { success: true, path: saveDialogResult.filePath };
+      } catch (error) {
+        return { success: false, error: getErrorMessage(error) };
+      }
+    }
+  );
+
+  ipcMain.handle(
     'get-log-file-content',
     async (): Promise<{
       success: boolean;
@@ -765,27 +1026,12 @@ export function setupSystemHandlers(
     }> => {
       try {
         const logPath = logger.getLogPath();
-        const stats = await fs.stat(logPath);
-        const maxBytes = MAX_TEXT_PREVIEW_BYTES;
-        if (stats.size > maxBytes) {
-          const fileHandle = await fs.open(logPath, 'r');
-          try {
-            const start = Math.max(0, stats.size - maxBytes);
-            const length = Math.min(maxBytes, stats.size);
-            const buffer = Buffer.alloc(length);
-            await fileHandle.read(buffer, 0, length, start);
-            const content = buffer.toString('utf8');
-            return {
-              success: true,
-              content: `... (truncated, showing last ${length} bytes)\n${content}`,
-              isTruncated: true,
-            };
-          } finally {
-            await fileHandle.close();
-          }
-        }
-        const content = await fs.readFile(logPath, 'utf-8');
-        return { success: true, content };
+        const logData = await readTailTextFile(logPath, MAX_TEXT_PREVIEW_BYTES);
+        return {
+          success: true,
+          content: logData.content,
+          isTruncated: logData.isTruncated,
+        };
       } catch (error) {
         return { success: false, error: getErrorMessage(error) };
       }

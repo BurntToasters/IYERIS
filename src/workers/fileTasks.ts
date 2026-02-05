@@ -90,6 +90,7 @@ interface ListDirectoryPayload {
   dirPath: string;
   batchSize?: number;
   streamOnly?: boolean;
+  includeHidden?: boolean;
 }
 
 interface SearchResult {
@@ -1567,7 +1568,7 @@ async function listDirectory(
   payload: ListDirectoryPayload,
   operationId?: string
 ): Promise<{ contents: SearchResult[] }> {
-  const { dirPath, batchSize = 500, streamOnly = false } = payload;
+  const { dirPath, batchSize = 500, streamOnly = false, includeHidden = false } = payload;
   const results: SearchResult[] = [];
   const batch: fsSync.Dirent[] = [];
   let loaded = 0;
@@ -1582,7 +1583,7 @@ async function listDirectory(
     const hiddenMap = shouldCheckHidden
       ? await batchCheckHidden(dirPath, names)
       : new Map<string, boolean>();
-    const items = await Promise.all(
+    let items = await Promise.all(
       batch.map(async (entry) => {
         const fullPath = path.join(dirPath, entry.name);
         const isHiddenFlag = shouldCheckHidden
@@ -1612,6 +1613,10 @@ async function listDirectory(
         }
       })
     );
+
+    if (!includeHidden) {
+      items = items.filter((item) => !item.isHidden);
+    }
 
     if (!streamOnly) {
       results.push(...items);

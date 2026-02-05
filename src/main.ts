@@ -52,6 +52,18 @@ import { setupThumbnailCacheHandlers, stopThumbnailCacheCleanup } from './thumbn
 import { setupElevatedOperationHandlers } from './elevatedOperations';
 
 const TOTAL_MEM_GB = os.totalmem() / 1024 ** 3;
+const rendererRecoveryAttempts = new Map<number, number>();
+const RENDERER_RELAUNCH_ARG_PREFIX = '--renderer-relaunch-count=';
+const rendererRelaunchCountArg = process.argv.find((arg) =>
+  arg.startsWith(RENDERER_RELAUNCH_ARG_PREFIX)
+);
+const parsedRendererRelaunchCount = rendererRelaunchCountArg
+  ? Number.parseInt(rendererRelaunchCountArg.slice(RENDERER_RELAUNCH_ARG_PREFIX.length), 10)
+  : 0;
+const rendererRelaunchCount =
+  Number.isFinite(parsedRendererRelaunchCount) && parsedRendererRelaunchCount > 0
+    ? parsedRendererRelaunchCount
+    : 0;
 
 // hw accel override
 if (process.argv.includes('--disable-hardware-acceleration')) {
@@ -87,6 +99,60 @@ if (process.platform === 'win32') {
 }
 app.commandLine.appendSwitch('wm-window-animations-disabled');
 app.commandLine.appendSwitch('force-color-profile', 'srgb');
+
+process.on('uncaughtException', (error) => {
+  logger.error('[CrashGuard] Uncaught exception:', error);
+});
+
+process.on('unhandledRejection', (reason) => {
+  logger.error('[CrashGuard] Unhandled rejection:', reason);
+});
+
+app.on('web-contents-created', (_event, webContents) => {
+  webContents.on('did-finish-load', () => {
+    rendererRecoveryAttempts.delete(webContents.id);
+  });
+});
+
+app.on('render-process-gone', (_event, webContents, details) => {
+  logger.error('[CrashGuard] Renderer process gone:', details);
+
+  if (details.reason === 'clean-exit') {
+    return;
+  }
+
+  const mainWindow = BrowserWindow.fromWebContents(webContents);
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return;
+  }
+
+  const attempts = rendererRecoveryAttempts.get(webContents.id) ?? 0;
+  if (attempts >= 1) {
+    if (rendererRelaunchCount >= 1) {
+      logger.error('[CrashGuard] Renderer crashed repeatedly, relaunch skipped to avoid loop');
+      return;
+    }
+    const relaunchArgs = process.argv
+      .slice(1)
+      .filter((arg) => !arg.startsWith(RENDERER_RELAUNCH_ARG_PREFIX));
+    relaunchArgs.push(`${RENDERER_RELAUNCH_ARG_PREFIX}${rendererRelaunchCount + 1}`);
+    logger.error('[CrashGuard] Renderer crashed repeatedly, relaunching app once');
+    app.relaunch({ args: relaunchArgs });
+    app.exit(1);
+    return;
+  }
+
+  rendererRecoveryAttempts.set(webContents.id, attempts + 1);
+  try {
+    mainWindow.webContents.reloadIgnoringCache();
+  } catch (error) {
+    logger.error('[CrashGuard] Failed to reload crashed renderer:', error);
+  }
+});
+
+app.on('child-process-gone', (_event, details) => {
+  logger.error('[CrashGuard] Child process gone:', details);
+});
 
 // single instance enforcement
 const gotTheLock = app.requestSingleInstanceLock();

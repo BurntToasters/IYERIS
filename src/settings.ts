@@ -34,6 +34,7 @@ export function createDefaultSettings(): Settings {
     globalClipboard: true,
     enableSyntaxHighlighting: true,
     enableGitStatus: false,
+    gitIncludeUntracked: true,
     showFileHoverCard: true,
     showFileCheckboxes: false,
 
@@ -63,5 +64,6 @@ export function createDefaultSettings(): Settings {
     compactFileInfo: false,
     showFileExtensions: true,
     maxSearchHistoryItems: 5,
+    maxDirectoryHistoryItems: 5,
   };
 }

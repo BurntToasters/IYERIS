@@ -12,7 +12,13 @@
   font-size: 13px;
   border-radius: 8px;
   box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.12);
-  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease, opacity 0.2s ease;
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.2s ease,
+    opacity 0.2s ease;
 }
 
 .extract-modal-content .settings-input:hover {
@@ -808,10 +814,11 @@
   font-size: 12.5px;
   outline: none;
   cursor: pointer;
-  transition: border-color var(--animation-duration) var(--animation-easing),
-              background var(--animation-duration) var(--animation-easing),
-              transform var(--animation-duration) var(--animation-easing),
-              box-shadow var(--animation-duration) var(--animation-easing);
+  transition:
+    border-color var(--animation-duration) var(--animation-easing),
+    background var(--animation-duration) var(--animation-easing),
+    transform var(--animation-duration) var(--animation-easing),
+    box-shadow var(--animation-duration) var(--animation-easing);
 }
 
 .settings-select:hover {
@@ -838,10 +845,11 @@
   color: var(--text-primary);
   font-size: 12.5px;
   outline: none;
-  transition: border-color var(--animation-duration) var(--animation-easing),
-              background var(--animation-duration) var(--animation-easing),
-              transform var(--animation-duration) var(--animation-easing),
-              box-shadow var(--animation-duration) var(--animation-easing);
+  transition:
+    border-color var(--animation-duration) var(--animation-easing),
+    background var(--animation-duration) var(--animation-easing),
+    transform var(--animation-duration) var(--animation-easing),
+    box-shadow var(--animation-duration) var(--animation-easing);
 }
 
 .settings-input:hover {
@@ -1566,4 +1574,3 @@ body.reduce-motion .settings-tab {
 .settings-slider::-moz-range-thumb:active {
   transform: scale(0.95);
 }
-

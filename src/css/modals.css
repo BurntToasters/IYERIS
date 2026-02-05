@@ -86,7 +86,13 @@
   padding: 8px 12px;
   border-radius: var(--radius-small);
   cursor: pointer;
-  transition: background-color var(--animation-duration) var(--animation-easing), border-color var(--animation-duration) var(--animation-easing), color var(--animation-duration) var(--animation-easing), box-shadow var(--animation-duration) var(--animation-easing), transform var(--animation-duration) var(--animation-easing), opacity var(--animation-duration) var(--animation-easing);
+  transition:
+    background-color var(--animation-duration) var(--animation-easing),
+    border-color var(--animation-duration) var(--animation-easing),
+    color var(--animation-duration) var(--animation-easing),
+    box-shadow var(--animation-duration) var(--animation-easing),
+    transform var(--animation-duration) var(--animation-easing),
+    opacity var(--animation-duration) var(--animation-easing);
   font-size: 13px;
   font-weight: 400;
   display: flex;
@@ -146,7 +152,13 @@
   border-radius: var(--radius-small);
   cursor: pointer;
   font-size: 13px;
-  transition: background-color var(--animation-duration) var(--animation-easing), border-color var(--animation-duration) var(--animation-easing), color var(--animation-duration) var(--animation-easing), box-shadow var(--animation-duration) var(--animation-easing), transform var(--animation-duration) var(--animation-easing), opacity var(--animation-duration) var(--animation-easing);
+  transition:
+    background-color var(--animation-duration) var(--animation-easing),
+    border-color var(--animation-duration) var(--animation-easing),
+    color var(--animation-duration) var(--animation-easing),
+    box-shadow var(--animation-duration) var(--animation-easing),
+    transform var(--animation-duration) var(--animation-easing),
+    opacity var(--animation-duration) var(--animation-easing);
   color: var(--text-primary);
 }
 
@@ -354,7 +366,13 @@ body.platform-win32 .context-menu-separator {
 .extract-modal-content .modal-button.compact {
   padding: 10px 14px;
   border-radius: 8px;
-  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease, opacity 0.2s ease;
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.2s ease,
+    opacity 0.2s ease;
 }
 
 .extract-modal-preview {
@@ -391,7 +409,13 @@ body.platform-win32 .context-menu-separator {
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  transition: background-color var(--animation-duration) var(--animation-easing), border-color var(--animation-duration) var(--animation-easing), color var(--animation-duration) var(--animation-easing), box-shadow var(--animation-duration) var(--animation-easing), transform var(--animation-duration) var(--animation-easing), opacity var(--animation-duration) var(--animation-easing);
+  transition:
+    background-color var(--animation-duration) var(--animation-easing),
+    border-color var(--animation-duration) var(--animation-easing),
+    color var(--animation-duration) var(--animation-easing),
+    box-shadow var(--animation-duration) var(--animation-easing),
+    transform var(--animation-duration) var(--animation-easing),
+    opacity var(--animation-duration) var(--animation-easing);
   font-family: var(--font-family);
 }
 
@@ -653,7 +677,13 @@ body.tour-active #command-palette-modal {
   animation: toastSlideIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   color: var(--text-primary);
   cursor: pointer;
-  transition: background-color 0.2s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.2s cubic-bezier(0.4, 0, 0.2, 1), color 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1), transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition:
+    background-color 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+    color 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+    transform 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .toast:hover {
@@ -896,7 +926,13 @@ body.tour-active #command-palette-modal {
   padding: var(--spacing-lg) var(--spacing-xxl);
   border-radius: var(--radius-small);
   cursor: pointer;
-  transition: background-color 0.15s var(--animation-easing), border-color 0.15s var(--animation-easing), color 0.15s var(--animation-easing), box-shadow 0.15s var(--animation-easing), transform 0.15s var(--animation-easing), opacity 0.15s var(--animation-easing);
+  transition:
+    background-color 0.15s var(--animation-easing),
+    border-color 0.15s var(--animation-easing),
+    color 0.15s var(--animation-easing),
+    box-shadow 0.15s var(--animation-easing),
+    transform 0.15s var(--animation-easing),
+    opacity 0.15s var(--animation-easing);
   background: transparent;
 }
 
@@ -1256,4 +1292,3 @@ body.reduce-transparency.liquid-glass .archive-operations-panel {
 body.reduce-motion .modal-overlay.visible {
   animation: none;
 }
-
