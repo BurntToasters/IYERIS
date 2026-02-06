@@ -5,6 +5,7 @@ import * as fsSync from 'fs';
 import type { ApiResponse } from './types';
 import { getMainWindow } from './appState';
 import { isPathSafe, getErrorMessage } from './security';
+import { ignoreError } from './shared';
 import { get7zipModule, get7zipPath } from './platformUtils';
 import { logger } from './utils/logger';
 import { isTrustedIpcEvent } from './ipcUtils';
@@ -290,7 +291,9 @@ export function setupArchiveHandlers(): void {
           await fs.access(outputPath);
           logger.info('[Compress] Removing existing file:', outputPath);
           await fs.unlink(outputPath);
-        } catch {}
+        } catch (error) {
+          ignoreError(error);
+        }
 
         const mainWindow = getMainWindow();
 
@@ -390,10 +393,14 @@ export function setupArchiveHandlers(): void {
 
                 try {
                   await fs.unlink(tarPath);
-                } catch {}
+                } catch (error) {
+                  ignoreError(error);
+                }
                 try {
                   await fs.unlink(outputPath);
-                } catch {}
+                } catch (error) {
+                  ignoreError(error);
+                }
 
                 if (operationId) {
                   activeArchiveProcesses.delete(operationId);
@@ -416,7 +423,9 @@ export function setupArchiveHandlers(): void {
 
               try {
                 await fs.unlink(tarPath);
-              } catch {}
+              } catch (error) {
+                ignoreError(error);
+              }
 
               if (operationId) {
                 activeArchiveProcesses.delete(operationId);
@@ -442,7 +451,9 @@ export function setupArchiveHandlers(): void {
                 gzipProcess.on('end', async () => {
                   try {
                     await fs.unlink(tarPath);
-                  } catch {}
+                  } catch (error) {
+                    ignoreError(error);
+                  }
                   if (operationId) {
                     activeArchiveProcesses.delete(operationId);
                   }
@@ -453,7 +464,9 @@ export function setupArchiveHandlers(): void {
                   try {
                     await fs.unlink(tarPath);
                     await fs.unlink(outputPath);
-                  } catch {}
+                  } catch (error) {
+                    ignoreError(error);
+                  }
                   if (operationId) {
                     activeArchiveProcesses.delete(operationId);
                   }

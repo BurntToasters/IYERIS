@@ -22,6 +22,7 @@ import {
   HIDDEN_FILE_CACHE_MAX,
 } from './appState';
 import { isPathSafe, isUrlSafe, getErrorMessage } from './security';
+import { ignoreError } from './shared';
 import { getDriveInfo, getDrives } from './utils';
 import { pushUndoAction, getUndoStack, clearUndoStackForPath } from './undoRedoManager';
 import {
@@ -105,7 +106,9 @@ async function validateFileOperation(
   let normalizedDestRealPath = normalizedDestPath;
   try {
     normalizedDestRealPath = normalizePathForComparison(await fs.realpath(destPath));
-  } catch {}
+  } catch (error) {
+    ignoreError(error);
+  }
   const planned: PlannedFileOperation[] = [];
   const destKeys = new Set<string>();
 
@@ -137,7 +140,9 @@ async function validateFileOperation(
       let normalizedSourcePath = normalizePathForComparison(sourcePath);
       try {
         normalizedSourcePath = normalizePathForComparison(await fs.realpath(sourcePath));
-      } catch {}
+      } catch (error) {
+        ignoreError(error);
+      }
       const sourcePrefix = normalizedSourcePath.endsWith(path.sep)
         ? normalizedSourcePath
         : normalizedSourcePath + path.sep;
@@ -249,7 +254,9 @@ async function cleanupStashedBackups(root: string): Promise<void> {
       } else {
         retained.push({ path: backupPath, mtimeMs: stats.mtimeMs });
       }
-    } catch {}
+    } catch (error) {
+      ignoreError(error);
+    }
   }
 
   if (retained.length <= OVERWRITE_BACKUP_MAX_FILES) {
@@ -261,7 +268,9 @@ async function cleanupStashedBackups(root: string): Promise<void> {
   for (let i = 0; i < toRemove; i++) {
     try {
       await fs.rm(retained[i].path, { force: true });
-    } catch {}
+    } catch (error) {
+      ignoreError(error);
+    }
   }
 }
 
@@ -320,13 +329,17 @@ async function stashRemainingBackups(backups: Map<string, string>): Promise<stri
     try {
       const newPath = await stashBackup(backupPath, destPath);
       stashed.push(newPath);
-    } catch {}
+    } catch (error) {
+      ignoreError(error);
+    }
   }
   if (stashed.length > 0) {
     try {
       const root = await getBackupRoot();
       await cleanupStashedBackups(root);
-    } catch {}
+    } catch (error) {
+      ignoreError(error);
+    }
   }
   return stashed;
 }
@@ -355,7 +368,9 @@ async function backupExistingPath(destPath: string): Promise<string> {
 async function restoreBackup(backupPath: string, destPath: string): Promise<void> {
   try {
     await fs.rm(destPath, { recursive: true, force: true });
-  } catch {}
+  } catch (error) {
+    ignoreError(error);
+  }
 
   try {
     await fs.rename(backupPath, destPath);
@@ -650,7 +665,9 @@ export function setupFileOperationHandlers(): void {
         if (looksLikeUrl) {
           try {
             parsed = new URL(filePath);
-          } catch {}
+          } catch (error) {
+            ignoreError(error);
+          }
         }
 
         if (parsed) {
@@ -1064,12 +1081,16 @@ export function setupFileOperationHandlers(): void {
           for (const copied of copiedPaths.reverse()) {
             try {
               await fs.rm(copied, { recursive: true, force: true });
-            } catch {}
+            } catch (error) {
+              ignoreError(error);
+            }
           }
           for (const [destPath, backupPath] of backups) {
             try {
               await restoreBackup(backupPath, destPath);
-            } catch {}
+            } catch (error) {
+              ignoreError(error);
+            }
           }
           const stashed = await stashRemainingBackups(backups);
           const baseError = getErrorMessage(error);
@@ -1083,7 +1104,9 @@ export function setupFileOperationHandlers(): void {
         for (const backupPath of backups.values()) {
           try {
             await fs.rm(backupPath, { recursive: true, force: true });
-          } catch {}
+          } catch (error) {
+            ignoreError(error);
+          }
         }
 
         return { success: true };
@@ -1188,7 +1211,9 @@ export function setupFileOperationHandlers(): void {
                     await fs.copyFile(item.newPath, item.sourcePath);
                   }
                   await fs.rm(item.newPath, { recursive: true, force: true });
-                } catch {}
+                } catch (error) {
+                  ignoreError(error);
+                }
               }
             }
           }
@@ -1202,7 +1227,9 @@ export function setupFileOperationHandlers(): void {
             }
             try {
               await restoreBackup(backupPath, destPath);
-            } catch {}
+            } catch (error) {
+              ignoreError(error);
+            }
           }
           const stashed = await stashRemainingBackups(backups);
           const baseMessage = error instanceof Error ? error.message : String(error);
@@ -1216,7 +1243,9 @@ export function setupFileOperationHandlers(): void {
         for (const backupPath of backups.values()) {
           try {
             await fs.rm(backupPath, { recursive: true, force: true });
-          } catch {}
+          } catch (error) {
+            ignoreError(error);
+          }
         }
 
         pushUndoAction({

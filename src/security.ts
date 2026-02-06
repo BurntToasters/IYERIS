@@ -1,5 +1,6 @@
 import * as path from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
+import { ignoreError } from './shared';
 export { escapeHtml, getErrorMessage } from './shared';
 
 export function isPathSafe(
@@ -151,6 +152,8 @@ export function isTrustedIpcSender(event: {
       const filePath = normalizeRendererPath(fileURLToPath(parsed));
       return ALLOWED_RENDERER_PATHS.has(filePath);
     }
-  } catch {}
+  } catch (error) {
+    ignoreError(error);
+  }
   return false;
 }

@@ -18,6 +18,7 @@ import * as os from 'os';
 import type { ApiResponse, LicensesData, Settings } from './types';
 import { getMainWindow, MAX_TEXT_PREVIEW_BYTES, MAX_DATA_URL_BYTES } from './appState';
 import { isPathSafe, getErrorMessage } from './security';
+import { ignoreError } from './shared';
 import { isRunningInFlatpak } from './platformUtils';
 import { logger } from './utils/logger';
 import { isTrustedIpcEvent } from './ipcUtils';
@@ -34,7 +35,9 @@ function spawnWithTimeout(
     didTimeout = true;
     try {
       child.kill();
-    } catch {}
+    } catch (error) {
+      ignoreError(error);
+    }
   }, timeoutMs);
 
   const clear = () => clearTimeout(timeout);
@@ -744,14 +747,18 @@ export function setupSystemHandlers(
           if (color && color.length >= 6) {
             accentColor = `#${color.substring(0, 6)}`;
           }
-        } catch {}
+        } catch (error) {
+          ignoreError(error);
+        }
       } else if (process.platform === 'darwin') {
         try {
           const color = systemPreferences.getAccentColor();
           if (color && color.length >= 6) {
             accentColor = `#${color.substring(0, 6)}`;
           }
-        } catch {}
+        } catch (error) {
+          ignoreError(error);
+        }
       }
       return {
         accentColor,
@@ -869,7 +876,9 @@ export function setupSystemHandlers(
               truncated = true;
               try {
                 gitProcess.kill();
-              } catch {}
+              } catch (error) {
+                ignoreError(error);
+              }
               return;
             }
             stdoutBytes += data.length;

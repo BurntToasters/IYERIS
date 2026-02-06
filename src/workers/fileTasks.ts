@@ -6,6 +6,7 @@ import { createHash } from 'crypto';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import * as readline from 'readline';
+import { ignoreError } from '../shared';
 
 interface SearchFilters {
   fileType?: string;
@@ -437,11 +438,15 @@ async function writeFileAtomic(targetPath: string, data: string): Promise<void> 
     if (err.code === 'EEXIST' || err.code === 'EPERM' || err.code === 'EACCES') {
       try {
         await fs.unlink(targetPath);
-      } catch {}
+      } catch (error) {
+        ignoreError(error);
+      }
       try {
         await fs.rename(tmpPath, targetPath);
         return;
-      } catch {}
+      } catch (error) {
+        ignoreError(error);
+      }
     }
     try {
       await fs.copyFile(tmpPath, targetPath);
@@ -1484,7 +1489,9 @@ async function buildIndex(
         if (entry.isDirectory() && entries.length < maxIndexSize) {
           stack.push(fullPath);
         }
-      } catch {}
+      } catch (error) {
+        ignoreError(error);
+      }
     }
   }
 
@@ -1532,7 +1539,9 @@ async function loadIndexFile(payload: LoadIndexPayload): Promise<{
     if (isLegacy && indexEntries.length > 0) {
       try {
         await fs.unlink(indexPath);
-      } catch {}
+      } catch (error) {
+        ignoreError(error);
+      }
       return { exists: false, indexedFiles: 0, indexDate: 0 };
     }
 
@@ -1641,7 +1650,9 @@ async function listDirectory(
   } finally {
     try {
       await dir?.close();
-    } catch {}
+    } catch (error) {
+      ignoreError(error);
+    }
   }
 
   return { contents: streamOnly ? [] : results };

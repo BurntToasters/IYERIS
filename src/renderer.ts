@@ -11,7 +11,16 @@ import type {
   ListColumnWidths,
 } from './types';
 import { createFolderTreeManager } from './folderDir.js';
-import { escapeHtml, getErrorMessage, isRecord } from './shared.js';
+import { escapeHtml, getErrorMessage, ignoreError, isRecord } from './shared.js';
+import { clearHtml, getById, setHtml } from './rendererDom.js';
+import { createToastManager } from './rendererToasts.js';
+import {
+  encodeFileUrl,
+  isWindowsPath,
+  normalizeWindowsPath,
+  rendererPath as path,
+  twemojiImg,
+} from './rendererUtils.js';
 import { createDefaultSettings } from './settings.js';
 import { SHORTCUT_DEFINITIONS, getDefaultShortcuts } from './shortcuts.js';
 import type { ShortcutBinding, ShortcutDefinition } from './shortcuts.js';
@@ -159,121 +168,15 @@ function enqueueThumbnailLoad(loadFn: () => Promise<void>): void {
   }
 }
 
-function isWindowsPath(value: string): boolean {
-  return /^[A-Za-z]:[\\/]/.test(value) || value.startsWith('\\\\');
-}
-
-function normalizeWindowsPath(value: string): string {
-  return value.replace(/\//g, '\\');
-}
-
-const path = {
-  basename: (filePath: string, ext?: string): string => {
-    const name = filePath.split(/[\\/]/).pop() || '';
-    if (ext && name.endsWith(ext)) {
-      return name.slice(0, -ext.length);
-    }
-    return name;
-  },
-  dirname: (filePath: string): string => {
-    if (!isWindowsPath(filePath)) {
-      const normalized = filePath.replace(/\\/g, '/');
-      const trimmed = normalized.length > 1 ? normalized.replace(/\/+$/, '') : normalized;
-      if (!trimmed || trimmed === '/') return '/';
-      const idx = trimmed.lastIndexOf('/');
-      return idx <= 0 ? '/' : trimmed.slice(0, idx);
-    }
-
-    const normalized = normalizeWindowsPath(filePath);
-    const trimmed = normalized.length > 3 ? normalized.replace(/\\+$/, '') : normalized;
-
-    if (trimmed.startsWith('\\\\')) {
-      const parts = trimmed.split('\\').filter(Boolean);
-      if (parts.length <= 2) {
-        return `\\\\${parts.join('\\')}\\`;
-      }
-      return `\\\\${parts.slice(0, -1).join('\\')}`;
-    }
-
-    const driveMatch = trimmed.match(/^([A-Za-z]:)(\\.*)?$/);
-    if (!driveMatch) return trimmed;
-    const drive = driveMatch[1];
-    const rest = (driveMatch[2] || '').replace(/\\+$/, '');
-    if (!rest) return `${drive}\\`;
-    const lastSep = rest.lastIndexOf('\\');
-    if (lastSep <= 0) return `${drive}\\`;
-    return `${drive}${rest.slice(0, lastSep)}`;
-  },
-  extname: (filePath: string): string => {
-    const name = filePath.split(/[\\/]/).pop() || '';
-    const dotIndex = name.lastIndexOf('.');
-    return dotIndex === -1 ? '' : name.slice(dotIndex);
-  },
-  join: (...parts: string[]): string => {
-    return parts.join('/').replace(/\/+/g, '/');
-  },
-};
-
-function encodeFileUrl(filePath: string): string {
-  const normalizedPath = filePath.replace(/\\/g, '/');
-  if (/^[A-Za-z]:/.test(normalizedPath)) {
-    const drive = normalizedPath.slice(0, 2);
-    const rest = normalizedPath.slice(2);
-    const encodedRest = rest
-      .split('/')
-      .map((segment) => encodeURIComponent(segment))
-      .join('/');
-    const normalizedRest = encodedRest.startsWith('/') ? encodedRest : `/${encodedRest}`;
-    return `file:///${drive}${normalizedRest}`;
-  }
-  if (normalizedPath.startsWith('//')) {
-    const uncPath = normalizedPath.slice(2);
-    const encoded = uncPath
-      .split('/')
-      .map((segment) => encodeURIComponent(segment))
-      .join('/');
-    return `file://${encoded}`;
-  }
-  const encoded = normalizedPath
-    .split('/')
-    .map((segment) => encodeURIComponent(segment))
-    .join('/');
-  return `file:///${encoded}`;
-}
-
-function emojiToCodepoint(emoji: string): string {
-  const codePoints: number[] = [];
-  let i = 0;
-  while (i < emoji.length) {
-    const code = emoji.codePointAt(i);
-    if (code !== undefined) {
-      if (code !== 0xfe0f) {
-        codePoints.push(code);
-      }
-      i += code > 0xffff ? 2 : 1;
-    } else {
-      i++;
-    }
-  }
-  return codePoints.map((cp) => cp.toString(16)).join('-');
-}
-
-function twemojiImg(emoji: string, className: string = 'twemoji', alt?: string): string {
-  const codepoint = emojiToCodepoint(emoji);
-  const src = `../assets/twemoji/${codepoint}.svg`;
-  const altText = escapeHtml(alt || emoji);
-  return `<img src="${src}" class="${className}" alt="${altText}" draggable="false" />`;
-}
-
 function updateVersionDisplays(appVersion: string): void {
   const rawVersion = appVersion.trim();
   const versionTag = rawVersion.startsWith('v') ? rawVersion : `v${rawVersion}`;
-  const statusVersion = document.getElementById('status-version');
+  const statusVersion = getById('status-version');
   if (statusVersion) {
     statusVersion.textContent = versionTag;
     statusVersion.setAttribute('title', `Version ${rawVersion}`);
   }
-  const aboutVersion = document.getElementById('about-version-display');
+  const aboutVersion = getById('about-version-display');
   if (aboutVersion) {
     aboutVersion.textContent = `Version ${rawVersion}`;
   }
@@ -441,12 +344,12 @@ function abortOperation(id: string) {
 }
 
 function renderOperations() {
-  const list = document.getElementById('archive-operations-list');
+  const list = getById('archive-operations-list');
   if (!list) return;
 
   initArchiveOperationsPanelListener();
 
-  list.innerHTML = '';
+  clearHtml(list);
 
   for (const [id, operation] of activeOperations) {
     const item = document.createElement('div');
@@ -734,8 +637,10 @@ async function showBreadcrumbMenu(targetPath: string, anchor: HTMLElement): Prom
   );
 
   if (!result.success) {
-    breadcrumbMenu.innerHTML =
-      '<div class="breadcrumb-menu-item" style="opacity: 0.6;">Failed to load</div>';
+    setHtml(
+      breadcrumbMenu,
+      '<div class="breadcrumb-menu-item" style="opacity: 0.6;">Failed to load</div>'
+    );
     return;
   }
 
@@ -745,12 +650,14 @@ async function showBreadcrumbMenu(targetPath: string, anchor: HTMLElement): Prom
   entries.sort((a, b) => NAME_COLLATOR.compare(a.name, b.name));
 
   if (entries.length === 0) {
-    breadcrumbMenu.innerHTML =
-      '<div class="breadcrumb-menu-item" style="opacity: 0.6;">No subfolders</div>';
+    setHtml(
+      breadcrumbMenu,
+      '<div class="breadcrumb-menu-item" style="opacity: 0.6;">No subfolders</div>'
+    );
     return;
   }
 
-  breadcrumbMenu.innerHTML = '';
+  clearHtml(breadcrumbMenu);
   entries.forEach((entry) => {
     const item = document.createElement('div');
     item.className = 'breadcrumb-menu-item';
@@ -769,7 +676,7 @@ async function showBreadcrumbMenu(targetPath: string, anchor: HTMLElement): Prom
 function hideBreadcrumbMenu(): void {
   if (!breadcrumbMenu) return;
   breadcrumbMenu.style.display = 'none';
-  breadcrumbMenu.innerHTML = '';
+  clearHtml(breadcrumbMenu);
   breadcrumbMenuPath = null;
 }
 
@@ -944,7 +851,7 @@ function renderTabs() {
 
   if (!tabList) return;
 
-  tabList.innerHTML = '';
+  clearHtml(tabList);
 
   tabs.forEach((tab) => {
     const tabElement = document.createElement('div');
@@ -1589,13 +1496,13 @@ const tourController: TourController = createTourController({
   saveSettings: (settings) => saveSettingsWithTimestamp(settings),
 });
 
-function showToast(
-  message: string,
-  title: string = '',
-  type: 'success' | 'error' | 'info' | 'warning' = 'info'
-): void {
-  showToastQueued(message, title, type);
-}
+const toastManager = createToastManager({
+  durationMs: TOAST_DURATION_MS,
+  maxVisible: 3,
+  getContainer: () => getById('toast-container'),
+  twemojiImg,
+});
+const showToast = toastManager.showToast;
 
 const homeController = createHomeController({
   twemojiImg,
@@ -1613,80 +1520,12 @@ const homeController = createHomeController({
   openPath: (filePath) => openPathWithArchivePrompt(filePath, undefined, false),
 });
 
-const MAX_VISIBLE_TOASTS = 3;
-const toastQueue: Array<{
-  message: string;
-  title: string;
-  type: 'success' | 'error' | 'info' | 'warning';
-}> = [];
-let visibleToastCount = 0;
-
-function showToastQueued(
-  message: string,
-  title: string = '',
-  type: 'success' | 'error' | 'info' | 'warning' = 'info'
-): void {
-  if (visibleToastCount >= MAX_VISIBLE_TOASTS) {
-    toastQueue.push({ message, title, type });
-    return;
-  }
-
-  visibleToastCount++;
-  const container = document.getElementById('toast-container');
-  if (!container) return;
-
-  const toast = document.createElement('div');
-  toast.className = `toast ${type}`;
-  toast.style.cursor = 'pointer';
-  toast.setAttribute('role', type === 'error' || type === 'warning' ? 'alert' : 'status');
-
-  const icons: Record<string, string> = {
-    success: '2705',
-    error: '274c',
-    info: '2139',
-    warning: '26a0',
-  };
-
-  toast.innerHTML = `
-    <span class="toast-icon" aria-hidden="true">${twemojiImg(String.fromCodePoint(parseInt(icons[type], 16)), 'twemoji')}</span>
-    <div class="toast-content">
-      ${title ? `<div class="toast-title">${escapeHtml(title)}</div>` : ''}
-      <div class="toast-message">${escapeHtml(message)}</div>
-    </div>
-  `;
-
-  container.appendChild(toast);
-
-  const removeToast = () => {
-    toast.classList.add('removing');
-    setTimeout(() => {
-      if (container.contains(toast)) {
-        container.removeChild(toast);
-        visibleToastCount--;
-        processToastQueue();
-      }
-    }, 300);
-  };
-
-  toast.addEventListener('click', removeToast);
-  setTimeout(removeToast, TOAST_DURATION_MS);
-}
-
-function processToastQueue(): void {
-  if (toastQueue.length > 0 && visibleToastCount < MAX_VISIBLE_TOASTS) {
-    const next = toastQueue.shift();
-    if (next) {
-      showToastQueued(next.message, next.title, next.type);
-    }
-  }
-}
-
 let tooltipElement: HTMLElement | null = null;
 let tooltipTimeout: NodeJS.Timeout | null = null;
 const TOOLTIP_DELAY = 500;
 
 function initTooltipSystem(): void {
-  tooltipElement = document.getElementById('ui-tooltip');
+  tooltipElement = getById('ui-tooltip');
   if (!tooltipElement) return;
 
   document.addEventListener('mouseover', (e) => {
@@ -2705,7 +2544,7 @@ function renderCommandPaletteResults(cmds: Command[]): void {
   const resultsContainer = commandPaletteResults;
   const emptyContainer = commandPaletteEmpty;
 
-  resultsContainer.innerHTML = '';
+  clearHtml(resultsContainer);
   commandPaletteFocusedIndex = -1;
 
   if (cmds.length === 0) {
@@ -3923,7 +3762,9 @@ function sanitizeExternalUrl(url: string | null): string | null {
     ) {
       return parsed.toString();
     }
-  } catch {}
+  } catch (error) {
+    ignoreError(error);
+  }
   return null;
 }
 
@@ -6046,15 +5887,15 @@ async function init() {
 }
 
 function setFolderTreeVisibility(enabled: boolean): void {
-  const section = document.getElementById('folder-tree-section');
+  const section = getById('folder-tree-section');
   if (section) {
     section.style.display = enabled ? '' : 'none';
   }
   if (!enabled && folderTree) {
-    folderTree.innerHTML = '';
+    clearHtml(folderTree);
   }
 
-  const drivesSection = document.getElementById('drives-section');
+  const drivesSection = getById('drives-section');
   if (drivesSection) {
     drivesSection.style.display = enabled ? 'none' : '';
   }
@@ -6065,7 +5906,7 @@ async function loadDrives() {
 
   const drives = await window.electronAPI.getDriveInfo();
   cacheDriveInfo(drives);
-  drivesList.innerHTML = '';
+  clearHtml(drivesList);
 
   drives.forEach((drive) => {
     const driveLabel = drive.label || drive.path;
@@ -6086,7 +5927,7 @@ async function loadDrives() {
   if (currentSettings.showFolderTree !== false) {
     folderTreeManager.render(drivePaths);
   } else if (folderTree) {
-    folderTree.innerHTML = '';
+    clearHtml(folderTree);
   }
 }
 
@@ -6131,15 +5972,15 @@ function setHoverCardEnabled(enabled: boolean): void {
 function setupHoverCard(): void {
   if (hoverCardInitialized) return;
 
-  const hoverCard = document.getElementById('file-hover-card');
-  const hoverThumbnail = document.getElementById('hover-card-thumbnail');
-  const hoverName = document.getElementById('hover-card-name');
-  const hoverSize = document.getElementById('hover-card-size');
-  const hoverType = document.getElementById('hover-card-type');
-  const hoverDate = document.getElementById('hover-card-date');
-  const hoverExtraRow = document.getElementById('hover-card-extra-row');
-  const hoverExtraLabel = document.getElementById('hover-card-extra-label');
-  const hoverExtraValue = document.getElementById('hover-card-extra-value');
+  const hoverCard = getById('file-hover-card');
+  const hoverThumbnail = getById('hover-card-thumbnail');
+  const hoverName = getById('hover-card-name');
+  const hoverSize = getById('hover-card-size');
+  const hoverType = getById('hover-card-type');
+  const hoverDate = getById('hover-card-date');
+  const hoverExtraRow = getById('hover-card-extra-row');
+  const hoverExtraLabel = getById('hover-card-extra-label');
+  const hoverExtraValue = getById('hover-card-extra-value');
 
   if (!hoverCard || !hoverThumbnail || !hoverName || !hoverSize || !hoverType || !hoverDate) return;
 
@@ -6155,7 +5996,7 @@ function setupHoverCard(): void {
     hoverDate.textContent = new Date(item.modified).toLocaleString();
 
     const cached = thumbnailCache.get(item.path);
-    hoverThumbnail.innerHTML = '';
+    clearHtml(hoverThumbnail);
     if (cached) {
       const img = document.createElement('img');
       img.src = cached;
@@ -7477,7 +7318,9 @@ async function navigateTo(path: string, skipHistoryUpdate = false) {
       updateBreadcrumb(path);
       try {
         folderTreeManager.ensurePathVisible(path);
-      } catch {}
+      } catch (error) {
+        ignoreError(error);
+      }
       addToDirectoryHistory(path);
 
       if (!skipHistoryUpdate && (historyIndex === -1 || history[historyIndex] !== path)) {
@@ -9503,7 +9346,9 @@ async function handleColumnItemClick(
     updateBreadcrumb(path);
     try {
       folderTreeManager.ensurePathVisible(path);
-    } catch {}
+    } catch (error) {
+      ignoreError(error);
+    }
 
     const newPane = await renderColumn(path, currentPaneIndex + 1, clickRenderId);
 
@@ -9527,7 +9372,9 @@ async function handleColumnItemClick(
       updateBreadcrumb(parentPath);
       try {
         folderTreeManager.ensurePathVisible(parentPath);
-      } catch {}
+      } catch (error) {
+        ignoreError(error);
+      }
     }
 
     const previewPanel = document.getElementById('preview-panel');

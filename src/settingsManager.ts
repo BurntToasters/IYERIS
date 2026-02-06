@@ -16,6 +16,7 @@ import {
   getIndexerTasks,
 } from './appState';
 import { getErrorMessage } from './security';
+import { ignoreError } from './shared';
 import { createDefaultSettings, sanitizeSettings } from './settings';
 import { FileIndexer } from './indexer';
 import { logger } from './utils/logger';
@@ -66,7 +67,9 @@ export async function loadSettings(): Promise<Settings> {
       const backupPath = `${settingsPath}.corrupt-${Date.now()}`;
       try {
         await fs.rename(settingsPath, backupPath);
-      } catch {}
+      } catch (error) {
+        ignoreError(error);
+      }
       const settings = createDefaultSettings();
       cachedSettings = settings;
       settingsCacheTime = now;

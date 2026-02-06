@@ -4,6 +4,7 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import { logger } from './utils/logger';
 import type { DriveInfo } from './types';
+import { ignoreError } from './shared';
 
 const execAsync = promisify(exec);
 
@@ -139,9 +140,13 @@ export async function getDrives(): Promise<string[]> {
             if (stats.isDirectory()) {
               detected.push(fullPath);
             }
-          } catch {}
+          } catch (error) {
+            ignoreError(error);
+          }
         }
-      } catch {}
+      } catch (error) {
+        ignoreError(error);
+      }
     }
     cachedDrives = detected;
     drivesCacheTime = Date.now();

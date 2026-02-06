@@ -6,6 +6,7 @@ import * as fs from 'fs/promises';
 import * as crypto from 'crypto';
 import { getMainWindow } from './appState';
 import { isPathSafe, getErrorMessage } from './security';
+import { ignoreError } from './shared';
 import { loadSettings } from './settingsManager';
 import type { ApiResponse } from './types';
 import { isTrustedIpcEvent } from './ipcUtils';
@@ -37,7 +38,9 @@ async function promptForElevation(operation: string, itemPath: string): Promise<
     if (settings.skipElevationConfirmation) {
       return true;
     }
-  } catch {}
+  } catch (error) {
+    ignoreError(error);
+  }
 
   const mainWindow = getMainWindow();
   if (!mainWindow) return false;
@@ -59,7 +62,9 @@ function killElevatedProcess(): void {
   for (const proc of activeElevatedProcesses) {
     try {
       proc.kill('SIGKILL');
-    } catch {}
+    } catch (error) {
+      ignoreError(error);
+    }
   }
   activeElevatedProcesses.clear();
 }
@@ -103,7 +108,9 @@ async function executeElevatedWindows(operation: ElevatedOperation): Promise<Ele
   } finally {
     try {
       await fs.unlink(scriptPath);
-    } catch {}
+    } catch (error) {
+      ignoreError(error);
+    }
   }
 }
 
@@ -159,7 +166,9 @@ async function executeElevatedMac(operation: ElevatedOperation): Promise<Elevate
   } finally {
     try {
       await fs.unlink(scriptPath);
-    } catch {}
+    } catch (error) {
+      ignoreError(error);
+    }
   }
 }
 
@@ -190,7 +199,9 @@ async function executeElevatedLinux(operation: ElevatedOperation): Promise<Eleva
           resolved = true;
           try {
             child.kill('SIGKILL');
-          } catch {}
+          } catch (error) {
+            ignoreError(error);
+          }
           activeElevatedProcesses.delete(child);
           fs.unlink(scriptPath).catch(() => {});
           resolve({ success: false, error: 'Operation timed out' });
@@ -208,7 +219,9 @@ async function executeElevatedLinux(operation: ElevatedOperation): Promise<Eleva
         activeElevatedProcesses.delete(child);
         try {
           await fs.unlink(scriptPath);
-        } catch {}
+        } catch (error) {
+          ignoreError(error);
+        }
 
         if (code === 0) {
           resolve({ success: true });
@@ -224,7 +237,9 @@ async function executeElevatedLinux(operation: ElevatedOperation): Promise<Eleva
         activeElevatedProcesses.delete(child);
         try {
           await fs.unlink(scriptPath);
-        } catch {}
+        } catch (error) {
+          ignoreError(error);
+        }
         resolve({ success: false, error: getErrorMessage(err) });
       });
     });

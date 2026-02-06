@@ -4,6 +4,7 @@ import { promises as fs } from 'fs';
 import type { HomeSettings, ApiResponse, HomeSettingsResponse } from './types';
 import { SETTINGS_CACHE_TTL_MS } from './appState';
 import { getErrorMessage } from './security';
+import { ignoreError } from './shared';
 import { createDefaultHomeSettings, sanitizeHomeSettings } from './homeSettings';
 import { logger } from './utils/logger';
 import { isTrustedIpcEvent } from './ipcUtils';
@@ -50,7 +51,9 @@ export async function loadHomeSettings(): Promise<HomeSettings> {
       const backupPath = `${settingsPath}.corrupt-${Date.now()}`;
       try {
         await fs.rename(settingsPath, backupPath);
-      } catch {}
+      } catch (error) {
+        ignoreError(error);
+      }
       const settings = createDefaultHomeSettings();
       cachedHomeSettings = settings;
       homeSettingsCacheTime = now;

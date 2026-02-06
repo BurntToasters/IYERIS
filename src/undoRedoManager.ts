@@ -4,6 +4,7 @@ import * as path from 'path';
 import type { UndoAction, ApiResponse } from './types';
 import { MAX_UNDO_STACK_SIZE } from './appState';
 import { logger } from './utils/logger';
+import { ignoreError } from './shared';
 import { isTrustedIpcEvent } from './ipcUtils';
 
 const undoStack: UndoAction[] = [];
@@ -140,7 +141,9 @@ export function setupUndoRedoHandlers(): void {
               success: false,
               error: 'Cannot undo: A file already exists at the original location',
             };
-          } catch {}
+          } catch (error) {
+            ignoreError(error);
+          }
 
           await fs.rename(action.data.newPath, action.data.oldPath);
           pushRedoAction(action);
@@ -170,7 +173,9 @@ export function setupUndoRedoHandlers(): void {
                   success: false,
                   error: 'Cannot undo: A file already exists at the original location',
                 };
-              } catch {}
+              } catch (error) {
+                ignoreError(error);
+              }
             }
 
             for (let i = 0; i < movedPaths.length; i++) {
@@ -261,7 +266,9 @@ export function setupUndoRedoHandlers(): void {
               success: false,
               error: 'Cannot redo: A file already exists at the target location',
             };
-          } catch {}
+          } catch (error) {
+            ignoreError(error);
+          }
 
           await fs.rename(action.data.oldPath, action.data.newPath);
           undoStack.push(action);
@@ -293,7 +300,9 @@ export function setupUndoRedoHandlers(): void {
                   success: false,
                   error: 'Cannot redo: A file already exists at the target location',
                 };
-              } catch {}
+              } catch (error) {
+                ignoreError(error);
+              }
               await movePath(originalPath, newPath);
               newMovedPaths.push(newPath);
             }
@@ -325,7 +334,9 @@ export function setupUndoRedoHandlers(): void {
                   success: false,
                   error: 'Cannot redo: A file already exists at the target location',
                 };
-              } catch {}
+              } catch (error) {
+                ignoreError(error);
+              }
               await movePath(currentPath, newPath);
               newMovedPaths.push(newPath);
             }
@@ -346,7 +357,9 @@ export function setupUndoRedoHandlers(): void {
               success: false,
               error: 'Cannot redo: A file or folder already exists at this location',
             };
-          } catch {}
+          } catch (error) {
+            ignoreError(error);
+          }
 
           if (action.data.isDirectory) {
             await fs.mkdir(itemPath);

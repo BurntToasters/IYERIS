@@ -28,6 +28,7 @@ import {
 } from './appState';
 import { loadSettings, getCachedSettings } from './settingsManager';
 import { logger } from './utils/logger';
+import { ignoreError } from './shared';
 import { isTrustedIpcEvent } from './ipcUtils';
 
 type TrayState = 'idle' | 'active' | 'notification';
@@ -286,7 +287,9 @@ export function createWindow(isInitialWindow: boolean = false): BrowserWindow {
         });
         return true;
       }
-    } catch {}
+    } catch (error) {
+      ignoreError(error);
+    }
     return false;
   };
 

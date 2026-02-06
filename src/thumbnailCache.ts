@@ -4,6 +4,7 @@ import { promises as fs } from 'fs';
 import * as fsSync from 'fs';
 import * as crypto from 'crypto';
 import { isPathSafe, getErrorMessage } from './security';
+import { ignoreError } from './shared';
 import { isTrustedIpcEvent } from './ipcUtils';
 
 const CACHE_DIR_NAME = 'thumbnail-cache';
@@ -57,7 +58,9 @@ async function enforceCacheSize(): Promise<void> {
         const stats = await fs.stat(fullPath);
         totalSize += stats.size;
         entries.push({ path: fullPath, size: stats.size, atimeMs: stats.atimeMs });
-      } catch {}
+      } catch (error) {
+        ignoreError(error);
+      }
     }
   }
 
@@ -71,7 +74,9 @@ async function enforceCacheSize(): Promise<void> {
     try {
       await fs.unlink(entry.path);
       totalSize -= entry.size;
-    } catch {}
+    } catch (error) {
+      ignoreError(error);
+    }
   }
 }
 
@@ -89,7 +94,9 @@ async function getCachePath(filePath: string, mtime: number): Promise<string> {
 
   try {
     await fs.mkdir(cacheSubDir, { recursive: true });
-  } catch {}
+  } catch (error) {
+    ignoreError(error);
+  }
 
   return path.join(cacheSubDir, `${key}.jpg`);
 }
@@ -224,14 +231,18 @@ export async function cleanupOldThumbnails(): Promise<void> {
             if (remaining.length === 0) {
               await fs.rmdir(fullPath);
             }
-          } catch {}
+          } catch (error) {
+            ignoreError(error);
+          }
         } else {
           try {
             const stats = await fs.stat(fullPath);
             if (now - stats.atimeMs > maxAge) {
               await fs.unlink(fullPath);
             }
-          } catch {}
+          } catch (error) {
+            ignoreError(error);
+          }
         }
       }
     }

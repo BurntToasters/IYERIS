@@ -6,6 +6,7 @@ import { promisify } from 'util';
 import type { IndexEntry, IndexStatus } from './types';
 import type { FileTaskManager } from './fileTasks';
 import { getDrives } from './utils';
+import { ignoreError } from './shared';
 
 const execAsync = promisify(exec);
 type IndexEntryPayload = Partial<Omit<IndexEntry, 'modified'>> & {
@@ -74,11 +75,15 @@ async function writeFileAtomic(targetPath: string, data: string): Promise<void> 
     if (err.code === 'EEXIST' || err.code === 'EPERM' || err.code === 'EACCES') {
       try {
         await fs.unlink(targetPath);
-      } catch {}
+      } catch (error) {
+        ignoreError(error);
+      }
       try {
         await fs.rename(tmpPath, targetPath);
         return;
-      } catch {}
+      } catch (error) {
+        ignoreError(error);
+      }
     }
     try {
       await fs.copyFile(tmpPath, targetPath);
@@ -265,7 +270,9 @@ export class FileIndexer {
       try {
         await fs.access(location);
         estimate += 1000;
-      } catch {}
+      } catch (error) {
+        ignoreError(error);
+      }
     }
     return estimate;
   }
