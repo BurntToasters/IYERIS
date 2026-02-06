@@ -7,6 +7,7 @@ import { getMainWindow } from './appState';
 import { isPathSafe, getErrorMessage } from './security';
 import { get7zipModule, get7zipPath } from './platformUtils';
 import { logger } from './utils/logger';
+import { isTrustedIpcEvent } from './ipcUtils';
 
 interface SevenZipOptions {
   $bin: string;
@@ -241,13 +242,16 @@ export function setupArchiveHandlers(): void {
   ipcMain.handle(
     'compress-files',
     async (
-      _event: IpcMainInvokeEvent,
+      event: IpcMainInvokeEvent,
       sourcePaths: string[],
       outputPath: string,
       format: string = 'zip',
       operationId?: string
     ): Promise<ApiResponse> => {
       try {
+        if (!isTrustedIpcEvent(event, 'compress-files')) {
+          return { success: false, error: 'Untrusted IPC sender' };
+        }
         if (!isPathSafe(outputPath)) {
           logger.warn('[Security] Invalid output path rejected:', outputPath);
           return { success: false, error: 'Invalid output path' };
@@ -541,12 +545,15 @@ export function setupArchiveHandlers(): void {
   ipcMain.handle(
     'extract-archive',
     async (
-      _event: IpcMainInvokeEvent,
+      event: IpcMainInvokeEvent,
       archivePath: string,
       destPath: string,
       operationId?: string
     ): Promise<ApiResponse> => {
       try {
+        if (!isTrustedIpcEvent(event, 'extract-archive')) {
+          return { success: false, error: 'Untrusted IPC sender' };
+        }
         if (!isPathSafe(archivePath)) {
           logger.warn('[Security] Invalid archive path rejected:', archivePath);
           return { success: false, error: 'Invalid archive path' };
@@ -644,8 +651,11 @@ export function setupArchiveHandlers(): void {
 
   ipcMain.handle(
     'cancel-archive-operation',
-    async (_event: IpcMainInvokeEvent, operationId: string): Promise<ApiResponse> => {
+    async (event: IpcMainInvokeEvent, operationId: string): Promise<ApiResponse> => {
       try {
+        if (!isTrustedIpcEvent(event, 'cancel-archive-operation')) {
+          return { success: false, error: 'Untrusted IPC sender' };
+        }
         const process = activeArchiveProcesses.get(operationId);
         if (!process) {
           logger.warn('[Archive] Operation not found for cancellation:', operationId);
@@ -689,7 +699,7 @@ export function setupArchiveHandlers(): void {
   ipcMain.handle(
     'list-archive-contents',
     async (
-      _event: IpcMainInvokeEvent,
+      event: IpcMainInvokeEvent,
       archivePath: string
     ): Promise<{
       success: boolean;
@@ -697,6 +707,9 @@ export function setupArchiveHandlers(): void {
       error?: string;
     }> => {
       try {
+        if (!isTrustedIpcEvent(event, 'list-archive-contents')) {
+          return { success: false, error: 'Untrusted IPC sender' };
+        }
         if (!isPathSafe(archivePath)) {
           return { success: false, error: 'Invalid archive path' };
         }

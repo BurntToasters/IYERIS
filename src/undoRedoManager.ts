@@ -4,6 +4,7 @@ import * as path from 'path';
 import type { UndoAction, ApiResponse } from './types';
 import { MAX_UNDO_STACK_SIZE } from './appState';
 import { logger } from './utils/logger';
+import { isTrustedIpcEvent } from './ipcUtils';
 
 const undoStack: UndoAction[] = [];
 const redoStack: UndoAction[] = [];
@@ -109,6 +110,9 @@ export function clearUndoStackForPath(itemPath: string): void {
 
 export function setupUndoRedoHandlers(): void {
   ipcMain.handle('undo-action', async (_event: IpcMainInvokeEvent): Promise<ApiResponse> => {
+    if (!isTrustedIpcEvent(_event, 'undo-action')) {
+      return { success: false, error: 'Untrusted IPC sender' };
+    }
     if (undoStack.length === 0) {
       return { success: false, error: 'Nothing to undo' };
     }
@@ -230,6 +234,9 @@ export function setupUndoRedoHandlers(): void {
   });
 
   ipcMain.handle('redo-action', async (_event: IpcMainInvokeEvent): Promise<ApiResponse> => {
+    if (!isTrustedIpcEvent(_event, 'redo-action')) {
+      return { success: false, error: 'Untrusted IPC sender' };
+    }
     if (redoStack.length === 0) {
       return { success: false, error: 'Nothing to redo' };
     }
@@ -364,7 +371,10 @@ export function setupUndoRedoHandlers(): void {
 
   ipcMain.handle(
     'get-undo-redo-state',
-    async (): Promise<{ canUndo: boolean; canRedo: boolean }> => {
+    async (event: IpcMainInvokeEvent): Promise<{ canUndo: boolean; canRedo: boolean }> => {
+      if (!isTrustedIpcEvent(event, 'get-undo-redo-state')) {
+        return { canUndo: false, canRedo: false };
+      }
       return {
         canUndo: undoStack.length > 0,
         canRedo: redoStack.length > 0,

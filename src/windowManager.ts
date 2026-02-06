@@ -28,6 +28,7 @@ import {
 } from './appState';
 import { loadSettings, getCachedSettings } from './settingsManager';
 import { logger } from './utils/logger';
+import { isTrustedIpcEvent } from './ipcUtils';
 
 type TrayState = 'idle' | 'active' | 'notification';
 type TrayPlatform = 'darwin' | 'win32' | 'linux';
@@ -587,11 +588,13 @@ export function setupApplicationMenu(): void {
 
 export function setupWindowHandlers(): void {
   ipcMain.handle('minimize-window', (event: IpcMainInvokeEvent): void => {
+    if (!isTrustedIpcEvent(event, 'minimize-window')) return;
     const win = BrowserWindow.fromWebContents(event.sender) ?? getMainWindow();
     win?.minimize();
   });
 
   ipcMain.handle('maximize-window', (event: IpcMainInvokeEvent): void => {
+    if (!isTrustedIpcEvent(event, 'maximize-window')) return;
     const win = BrowserWindow.fromWebContents(event.sender) ?? getMainWindow();
     if (win?.isMaximized()) {
       win.unmaximize();
@@ -601,13 +604,15 @@ export function setupWindowHandlers(): void {
   });
 
   ipcMain.handle('close-window', (event: IpcMainInvokeEvent): void => {
+    if (!isTrustedIpcEvent(event, 'close-window')) return;
     const win = BrowserWindow.fromWebContents(event.sender);
     if (win && !win.isDestroyed()) {
       win.close();
     }
   });
 
-  ipcMain.handle('open-new-window', (): void => {
+  ipcMain.handle('open-new-window', (event: IpcMainInvokeEvent): void => {
+    if (!isTrustedIpcEvent(event, 'open-new-window')) return;
     createWindow(false);
   });
 }

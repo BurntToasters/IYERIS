@@ -1,4 +1,5 @@
 import * as path from 'path';
+import { fileURLToPath, pathToFileURL } from 'url';
 export { escapeHtml, getErrorMessage } from './shared';
 
 export function isPathSafe(
@@ -119,4 +120,37 @@ export function isUrlSafe(url: string): boolean {
   } catch {
     return false;
   }
+}
+
+const normalizeRendererPath = (value: string): string => {
+  const normalized = path.normalize(value);
+  return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
+};
+
+const ALLOWED_RENDERER_PATHS = new Set(
+  [
+    path.resolve(__dirname, '..', 'src', 'index.html'),
+    path.resolve(__dirname, '..', 'dist', 'index.html'),
+  ].map((p) => normalizeRendererPath(p))
+);
+
+const ALLOWED_RENDERER_URLS = new Set(
+  Array.from(ALLOWED_RENDERER_PATHS).map((p) => pathToFileURL(p).toString())
+);
+
+export function isTrustedIpcSender(event: {
+  senderFrame?: { url?: string };
+  sender?: { getURL?: () => string };
+}): boolean {
+  const url = event.senderFrame?.url || event.sender?.getURL?.() || '';
+  if (!url) return false;
+  if (ALLOWED_RENDERER_URLS.has(url)) return true;
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol === 'file:') {
+      const filePath = normalizeRendererPath(fileURLToPath(parsed));
+      return ALLOWED_RENDERER_PATHS.has(filePath);
+    }
+  } catch {}
+  return false;
 }

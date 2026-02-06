@@ -24,7 +24,11 @@ import {
 import { isPathSafe, isUrlSafe, getErrorMessage } from './security';
 import { getDriveInfo, getDrives } from './utils';
 import { pushUndoAction, getUndoStack, clearUndoStackForPath } from './undoRedoManager';
-import { registerDirectoryOperationTarget, unregisterDirectoryOperationTarget } from './ipcUtils';
+import {
+  registerDirectoryOperationTarget,
+  unregisterDirectoryOperationTarget,
+  isTrustedIpcEvent,
+} from './ipcUtils';
 
 const hiddenFileCache = new Map<string, { isHidden: boolean; timestamp: number }>();
 let isCleaningCache = false;
@@ -518,6 +522,9 @@ export function setupFileOperationHandlers(): void {
       includeHidden?: boolean,
       streamOnly?: boolean
     ): Promise<DirectoryResponse> => {
+      if (!isTrustedIpcEvent(event, 'get-directory-contents')) {
+        return { success: false, error: 'Untrusted IPC sender' };
+      }
       if (!isPathSafe(dirPath)) {
         console.warn('[Security] Invalid path rejected:', dirPath);
         return { success: false, error: 'Invalid path' };
@@ -558,8 +565,11 @@ export function setupFileOperationHandlers(): void {
 
   ipcMain.handle(
     'cancel-directory-contents',
-    async (_event: IpcMainInvokeEvent, operationId: string): Promise<ApiResponse> => {
+    async (event: IpcMainInvokeEvent, operationId: string): Promise<ApiResponse> => {
       try {
+        if (!isTrustedIpcEvent(event, 'cancel-directory-contents')) {
+          return { success: false, error: 'Untrusted IPC sender' };
+        }
         if (!operationId) {
           return { success: false, error: 'Missing operationId' };
         }
@@ -572,15 +582,24 @@ export function setupFileOperationHandlers(): void {
     }
   );
 
-  ipcMain.handle('get-drives', async (): Promise<string[]> => {
+  ipcMain.handle('get-drives', async (event: IpcMainInvokeEvent): Promise<string[]> => {
+    if (!isTrustedIpcEvent(event, 'get-drives')) {
+      return [];
+    }
     return getDrives();
   });
 
-  ipcMain.handle('get-drive-info', async () => {
+  ipcMain.handle('get-drive-info', async (event: IpcMainInvokeEvent) => {
+    if (!isTrustedIpcEvent(event, 'get-drive-info')) {
+      return [];
+    }
     return getDriveInfo();
   });
 
-  ipcMain.handle('get-home-directory', (): string => {
+  ipcMain.handle('get-home-directory', (event: IpcMainInvokeEvent): string => {
+    if (!isTrustedIpcEvent(event, 'get-home-directory')) {
+      return '';
+    }
     return app.getPath('home');
   });
 
@@ -594,7 +613,10 @@ export function setupFileOperationHandlers(): void {
 
   ipcMain.handle(
     'get-special-directory',
-    (_event: IpcMainInvokeEvent, directory: string): PathResponse => {
+    (event: IpcMainInvokeEvent, directory: string): PathResponse => {
+      if (!isTrustedIpcEvent(event, 'get-special-directory')) {
+        return { success: false, error: 'Untrusted IPC sender' };
+      }
       const mappedPath = specialDirectoryMap[directory];
       if (!mappedPath) {
         return { success: false, error: 'Unsupported directory' };
@@ -609,8 +631,11 @@ export function setupFileOperationHandlers(): void {
 
   ipcMain.handle(
     'open-file',
-    async (_event: IpcMainInvokeEvent, filePath: string): Promise<ApiResponse> => {
+    async (event: IpcMainInvokeEvent, filePath: string): Promise<ApiResponse> => {
       try {
+        if (!isTrustedIpcEvent(event, 'open-file')) {
+          return { success: false, error: 'Untrusted IPC sender' };
+        }
         const looksLikeWindowsPath =
           process.platform === 'win32' &&
           (/^[A-Za-z]:[\\/]/.test(filePath) || filePath.startsWith('\\\\'));
@@ -665,7 +690,10 @@ export function setupFileOperationHandlers(): void {
     }
   );
 
-  ipcMain.handle('select-folder', async (): Promise<PathResponse> => {
+  ipcMain.handle('select-folder', async (event: IpcMainInvokeEvent): Promise<PathResponse> => {
+    if (!isTrustedIpcEvent(event, 'select-folder')) {
+      return { success: false, error: 'Untrusted IPC sender' };
+    }
     const mainWindow = getMainWindow();
     if (!mainWindow) {
       return { success: false, error: 'No main window available' };
@@ -684,11 +712,14 @@ export function setupFileOperationHandlers(): void {
   ipcMain.handle(
     'create-folder',
     async (
-      _event: IpcMainInvokeEvent,
+      event: IpcMainInvokeEvent,
       parentPath: string,
       folderName: string
     ): Promise<PathResponse> => {
       try {
+        if (!isTrustedIpcEvent(event, 'create-folder')) {
+          return { success: false, error: 'Untrusted IPC sender' };
+        }
         if (!isPathSafe(parentPath)) {
           console.warn('[Security] Invalid parent path rejected:', parentPath);
           return { success: false, error: 'Invalid path' };
@@ -726,8 +757,11 @@ export function setupFileOperationHandlers(): void {
 
   ipcMain.handle(
     'trash-item',
-    async (_event: IpcMainInvokeEvent, itemPath: string): Promise<ApiResponse> => {
+    async (event: IpcMainInvokeEvent, itemPath: string): Promise<ApiResponse> => {
       try {
+        if (!isTrustedIpcEvent(event, 'trash-item')) {
+          return { success: false, error: 'Untrusted IPC sender' };
+        }
         if (!isPathSafe(itemPath)) {
           console.warn('[Security] Invalid path rejected:', itemPath);
           return { success: false, error: 'Invalid path' };
@@ -751,8 +785,11 @@ export function setupFileOperationHandlers(): void {
     }
   );
 
-  ipcMain.handle('open-trash', async (): Promise<ApiResponse> => {
+  ipcMain.handle('open-trash', async (event: IpcMainInvokeEvent): Promise<ApiResponse> => {
     try {
+      if (!isTrustedIpcEvent(event, 'open-trash')) {
+        return { success: false, error: 'Untrusted IPC sender' };
+      }
       const platform = process.platform;
 
       if (platform === 'darwin') {
@@ -775,8 +812,11 @@ export function setupFileOperationHandlers(): void {
 
   ipcMain.handle(
     'delete-item',
-    async (_event: IpcMainInvokeEvent, itemPath: string): Promise<ApiResponse> => {
+    async (event: IpcMainInvokeEvent, itemPath: string): Promise<ApiResponse> => {
       try {
+        if (!isTrustedIpcEvent(event, 'delete-item')) {
+          return { success: false, error: 'Untrusted IPC sender' };
+        }
         if (!isPathSafe(itemPath)) {
           console.warn('[Security] Invalid path rejected:', itemPath);
           return { success: false, error: 'Invalid path' };
@@ -818,7 +858,10 @@ export function setupFileOperationHandlers(): void {
 
   ipcMain.handle(
     'rename-item',
-    async (_event: IpcMainInvokeEvent, oldPath: string, newName: string): Promise<PathResponse> => {
+    async (event: IpcMainInvokeEvent, oldPath: string, newName: string): Promise<PathResponse> => {
+      if (!isTrustedIpcEvent(event, 'rename-item')) {
+        return { success: false, error: 'Untrusted IPC sender' };
+      }
       if (!isPathSafe(oldPath)) {
         console.warn('[Security] Invalid path rejected:', oldPath);
         return { success: false, error: 'Invalid path' };
@@ -882,11 +925,14 @@ export function setupFileOperationHandlers(): void {
   ipcMain.handle(
     'create-file',
     async (
-      _event: IpcMainInvokeEvent,
+      event: IpcMainInvokeEvent,
       parentPath: string,
       fileName: string
     ): Promise<PathResponse> => {
       try {
+        if (!isTrustedIpcEvent(event, 'create-file')) {
+          return { success: false, error: 'Untrusted IPC sender' };
+        }
         if (!isPathSafe(parentPath)) {
           console.warn('[Security] Invalid parent path rejected:', parentPath);
           return { success: false, error: 'Invalid path' };
@@ -922,7 +968,10 @@ export function setupFileOperationHandlers(): void {
 
   ipcMain.handle(
     'get-item-properties',
-    async (_event: IpcMainInvokeEvent, itemPath: string): Promise<PropertiesResponse> => {
+    async (event: IpcMainInvokeEvent, itemPath: string): Promise<PropertiesResponse> => {
+      if (!isTrustedIpcEvent(event, 'get-item-properties')) {
+        return { success: false, error: 'Untrusted IPC sender' };
+      }
       if (!isPathSafe(itemPath)) {
         return { success: false, error: 'Invalid path' };
       }
@@ -950,12 +999,15 @@ export function setupFileOperationHandlers(): void {
   ipcMain.handle(
     'copy-items',
     async (
-      _event: IpcMainInvokeEvent,
+      event: IpcMainInvokeEvent,
       sourcePaths: string[],
       destPath: string,
       conflictBehavior?: ConflictBehavior
     ): Promise<ApiResponse> => {
       try {
+        if (!isTrustedIpcEvent(event, 'copy-items')) {
+          return { success: false, error: 'Untrusted IPC sender' };
+        }
         const behavior = conflictBehavior || 'ask';
         const resolveConflict =
           behavior === 'ask'
@@ -1044,12 +1096,15 @@ export function setupFileOperationHandlers(): void {
   ipcMain.handle(
     'move-items',
     async (
-      _event: IpcMainInvokeEvent,
+      event: IpcMainInvokeEvent,
       sourcePaths: string[],
       destPath: string,
       conflictBehavior?: ConflictBehavior
     ): Promise<ApiResponse> => {
       try {
+        if (!isTrustedIpcEvent(event, 'move-items')) {
+          return { success: false, error: 'Untrusted IPC sender' };
+        }
         const behavior = conflictBehavior || 'ask';
         const resolveConflict =
           behavior === 'ask'

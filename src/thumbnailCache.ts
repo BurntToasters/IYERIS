@@ -1,9 +1,10 @@
-import { ipcMain, app } from 'electron';
+import { ipcMain, app, IpcMainInvokeEvent } from 'electron';
 import * as path from 'path';
 import { promises as fs } from 'fs';
 import * as fsSync from 'fs';
 import * as crypto from 'crypto';
 import { isPathSafe, getErrorMessage } from './security';
+import { isTrustedIpcEvent } from './ipcUtils';
 
 const CACHE_DIR_NAME = 'thumbnail-cache';
 const CACHE_VERSION = 1;
@@ -243,19 +244,34 @@ export async function cleanupOldThumbnails(): Promise<void> {
 }
 
 export function setupThumbnailCacheHandlers(): void {
-  ipcMain.handle('get-cached-thumbnail', async (_event, filePath: string) => {
+  ipcMain.handle('get-cached-thumbnail', async (event: IpcMainInvokeEvent, filePath: string) => {
+    if (!isTrustedIpcEvent(event, 'get-cached-thumbnail')) {
+      return { success: false, error: 'Untrusted IPC sender' };
+    }
     return getThumbnailFromCache(filePath);
   });
 
-  ipcMain.handle('save-cached-thumbnail', async (_event, filePath: string, dataUrl: string) => {
-    return saveThumbnailToCache(filePath, dataUrl);
-  });
+  ipcMain.handle(
+    'save-cached-thumbnail',
+    async (event: IpcMainInvokeEvent, filePath: string, dataUrl: string) => {
+      if (!isTrustedIpcEvent(event, 'save-cached-thumbnail')) {
+        return { success: false, error: 'Untrusted IPC sender' };
+      }
+      return saveThumbnailToCache(filePath, dataUrl);
+    }
+  );
 
-  ipcMain.handle('clear-thumbnail-cache', async () => {
+  ipcMain.handle('clear-thumbnail-cache', async (event: IpcMainInvokeEvent) => {
+    if (!isTrustedIpcEvent(event, 'clear-thumbnail-cache')) {
+      return { success: false, error: 'Untrusted IPC sender' };
+    }
     return clearThumbnailCache();
   });
 
-  ipcMain.handle('get-thumbnail-cache-size', async () => {
+  ipcMain.handle('get-thumbnail-cache-size', async (event: IpcMainInvokeEvent) => {
+    if (!isTrustedIpcEvent(event, 'get-thumbnail-cache-size')) {
+      return { success: false, error: 'Untrusted IPC sender' };
+    }
     return getThumbnailCacheSize();
   });
 

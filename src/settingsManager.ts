@@ -16,9 +16,10 @@ import {
   getIndexerTasks,
 } from './appState';
 import { getErrorMessage } from './security';
-import { createDefaultSettings } from './settings';
+import { createDefaultSettings, sanitizeSettings } from './settings';
 import { FileIndexer } from './indexer';
 import { logger } from './utils/logger';
+import { isTrustedIpcEvent } from './ipcUtils';
 
 let cachedSettings: Settings | null = null;
 let settingsCacheTime: number = 0;
@@ -52,7 +53,9 @@ export async function loadSettings(): Promise<Settings> {
     }
 
     try {
-      const settings = { ...createDefaultSettings(), ...JSON.parse(data) };
+      const defaults = createDefaultSettings();
+      const parsed = JSON.parse(data);
+      const settings = sanitizeSettings(parsed, defaults);
       logger.debug('[Settings] Loaded:', JSON.stringify(settings, null, 2));
       cachedSettings = settings;
       settingsCacheTime = now;
@@ -132,7 +135,9 @@ export async function saveSettings(settings: Settings): Promise<ApiResponse> {
     const settingsPath = getSettingsPath();
     logger.debug('[Settings] Saving to:', settingsPath);
 
-    const settingsWithTimestamp = { ...settings, _timestamp: Date.now() };
+    const defaults = createDefaultSettings();
+    const sanitized = sanitizeSettings(settings, defaults);
+    const settingsWithTimestamp = { ...sanitized, _timestamp: Date.now() };
     logger.debug('[Settings] Data:', JSON.stringify(settingsWithTimestamp, null, 2));
 
     const tmpPath = `${settingsPath}.tmp`;
@@ -167,8 +172,11 @@ export function invalidateSettingsCache(): void {
 }
 
 export function setupSettingsHandlers(createTray: () => Promise<void>): void {
-  ipcMain.handle('get-settings', async (): Promise<SettingsResponse> => {
+  ipcMain.handle('get-settings', async (event: IpcMainInvokeEvent): Promise<SettingsResponse> => {
     try {
+      if (!isTrustedIpcEvent(event, 'get-settings')) {
+        return { success: false, error: 'Untrusted IPC sender' };
+      }
       const settings = await loadSettings();
       return { success: true, settings };
     } catch (error) {
@@ -179,11 +187,15 @@ export function setupSettingsHandlers(createTray: () => Promise<void>): void {
   ipcMain.handle(
     'save-settings',
     async (event: IpcMainInvokeEvent, settings: Settings): Promise<ApiResponse> => {
+      if (!isTrustedIpcEvent(event, 'save-settings')) {
+        return { success: false, error: 'Untrusted IPC sender' };
+      }
       const result = await saveSettings(settings);
+      const savedSettings = cachedSettings || settings;
 
       if (result.success) {
         const indexerTasks = getIndexerTasks();
-        if (settings.enableIndexer) {
+        if (savedSettings.enableIndexer) {
           let fileIndexer = getFileIndexer();
           if (!fileIndexer) {
             fileIndexer = new FileIndexer(indexerTasks ?? undefined);
@@ -203,9 +215,9 @@ export function setupSettingsHandlers(createTray: () => Promise<void>): void {
 
       if (result.success) {
         const tray = getTray();
-        if (settings.minimizeToTray && !tray) {
+        if (savedSettings.minimizeToTray && !tray) {
           await createTray();
-        } else if (!settings.minimizeToTray && tray) {
+        } else if (!savedSettings.minimizeToTray && tray) {
           tray.destroy();
           setTray(null);
           logger.debug('[Tray] Tray destroyed (setting disabled)');
@@ -215,7 +227,6 @@ export function setupSettingsHandlers(createTray: () => Promise<void>): void {
         if (!event.sender.isDestroyed()) {
           const senderWindow = BrowserWindow.fromWebContents(event.sender);
           const allWindows = BrowserWindow.getAllWindows();
-          const savedSettings = cachedSettings || settings;
           for (const win of allWindows) {
             if (!win.isDestroyed() && win !== senderWindow) {
               try {
@@ -232,7 +243,10 @@ export function setupSettingsHandlers(createTray: () => Promise<void>): void {
     }
   );
 
-  ipcMain.handle('reset-settings', async (): Promise<ApiResponse> => {
+  ipcMain.handle('reset-settings', async (event: IpcMainInvokeEvent): Promise<ApiResponse> => {
+    if (!isTrustedIpcEvent(event, 'reset-settings')) {
+      return { success: false, error: 'Untrusted IPC sender' };
+    }
     return await saveSettings(createDefaultSettings());
   });
 
@@ -242,6 +256,9 @@ export function setupSettingsHandlers(createTray: () => Promise<void>): void {
       event: IpcMainInvokeEvent,
       clipboardData: { operation: 'copy' | 'cut'; paths: string[] } | null
     ): void => {
+      if (!isTrustedIpcEvent(event, 'set-clipboard')) {
+        return;
+      }
       setSharedClipboard(clipboardData);
       logger.debug(
         '[Clipboard] Updated:',
@@ -258,11 +275,20 @@ export function setupSettingsHandlers(createTray: () => Promise<void>): void {
     }
   );
 
-  ipcMain.handle('get-clipboard', (): { operation: 'copy' | 'cut'; paths: string[] } | null => {
-    return getSharedClipboard();
-  });
+  ipcMain.handle(
+    'get-clipboard',
+    (event: IpcMainInvokeEvent): { operation: 'copy' | 'cut'; paths: string[] } | null => {
+      if (!isTrustedIpcEvent(event, 'get-clipboard')) {
+        return null;
+      }
+      return getSharedClipboard();
+    }
+  );
 
-  ipcMain.handle('get-system-clipboard-files', (): string[] => {
+  ipcMain.handle('get-system-clipboard-files', (event: IpcMainInvokeEvent): string[] => {
+    if (!isTrustedIpcEvent(event, 'get-system-clipboard-files')) {
+      return [];
+    }
     try {
       // win format (ucs-2)
       const files = clipboard.readBuffer('FileNameW');
@@ -319,25 +345,40 @@ export function setupSettingsHandlers(createTray: () => Promise<void>): void {
   });
 
   ipcMain.handle('set-drag-data', (event: IpcMainInvokeEvent, paths: string[]): void => {
+    if (!isTrustedIpcEvent(event, 'set-drag-data')) {
+      return;
+    }
     const data = paths.length > 0 ? { paths } : null;
     setWindowDragData(event.sender, data);
     logger.debug('[Drag] Set drag data:', data ? `${paths.length} items` : 'cleared');
   });
 
   ipcMain.handle('get-drag-data', (event: IpcMainInvokeEvent): { paths: string[] } | null => {
+    if (!isTrustedIpcEvent(event, 'get-drag-data')) {
+      return null;
+    }
     return getWindowDragData(event.sender);
   });
 
   ipcMain.handle('clear-drag-data', (event: IpcMainInvokeEvent): void => {
+    if (!isTrustedIpcEvent(event, 'clear-drag-data')) {
+      return;
+    }
     clearWindowDragData(event.sender);
   });
 
-  ipcMain.handle('relaunch-app', (): void => {
+  ipcMain.handle('relaunch-app', (event: IpcMainInvokeEvent): void => {
+    if (!isTrustedIpcEvent(event, 'relaunch-app')) {
+      return;
+    }
     app.relaunch();
     app.quit();
   });
 
-  ipcMain.handle('get-settings-path', (): string => {
+  ipcMain.handle('get-settings-path', (event: IpcMainInvokeEvent): string => {
+    if (!isTrustedIpcEvent(event, 'get-settings-path')) {
+      return '';
+    }
     return getSettingsPath();
   });
 }
