@@ -56,9 +56,9 @@ export class FileTaskManager extends EventEmitter {
   private workers: WorkerState[] = [];
   private queue: TaskRequest[] = [];
   private pending = new Map<string, PendingTask>();
-  private operationToWorker = new Map<string, WorkerState>();
   private nextId = 0;
   private shuttingDown = false;
+  private static readonly MAX_QUEUE_SIZE = 1000;
 
   constructor(workerCount: number = FileTaskManager.getDefaultWorkerCount()) {
     super();
@@ -73,6 +73,10 @@ export class FileTaskManager extends EventEmitter {
     const task: TaskRequest = { id, type, payload, operationId };
 
     return new Promise<T>((resolve, reject) => {
+      if (this.queue.length + this.pending.size >= FileTaskManager.MAX_QUEUE_SIZE) {
+        reject(new Error('Task queue is full'));
+        return;
+      }
       this.pending.set(id, { resolve: resolve as (value: unknown) => void, reject, operationId });
       this.queue.push(task);
       this.drain();
@@ -80,9 +84,8 @@ export class FileTaskManager extends EventEmitter {
   }
 
   cancelOperation(operationId: string): void {
-    const worker = this.operationToWorker.get(operationId);
-    if (worker) {
-      worker.worker.postMessage({ type: 'cancel', operationId });
+    for (const workerState of this.workers) {
+      workerState.worker.postMessage({ type: 'cancel', operationId });
     }
 
     const remaining: TaskRequest[] = [];
@@ -108,7 +111,6 @@ export class FileTaskManager extends EventEmitter {
     }
     this.pending.clear();
     this.queue = [];
-    this.operationToWorker.clear();
     await Promise.all(
       this.workers.map((workerState) =>
         workerState.worker.terminate().catch((error) => {
@@ -131,9 +133,6 @@ export class FileTaskManager extends EventEmitter {
     workerState.busy = true;
     workerState.currentTaskId = task.id;
     workerState.currentOperationId = task.operationId;
-    if (task.operationId) {
-      this.operationToWorker.set(task.operationId, workerState);
-    }
     workerState.worker.postMessage(task);
   }
 
@@ -155,9 +154,6 @@ export class FileTaskManager extends EventEmitter {
           return;
         }
         this.pending.delete(message.id);
-        if (pending.operationId) {
-          this.operationToWorker.delete(pending.operationId);
-        }
         this.finishWorkerTask(workerState);
         if (message.success) {
           pending.resolve(message.data);
@@ -197,14 +193,7 @@ export class FileTaskManager extends EventEmitter {
       if (pending) {
         pending.reject(error);
         this.pending.delete(taskId);
-        if (pending.operationId) {
-          this.operationToWorker.delete(pending.operationId);
-        }
       }
-    }
-
-    if (workerState.currentOperationId) {
-      this.operationToWorker.delete(workerState.currentOperationId);
     }
     workerState.busy = true;
     workerState.currentTaskId = undefined;

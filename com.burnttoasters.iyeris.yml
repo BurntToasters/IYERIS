@@ -56,11 +56,12 @@ modules:
       
       # Copy application files to /app
       - mkdir -p /app/iyeris/src
+      - mkdir -p /app/iyeris/src/css
       - cp -r dist /app/iyeris/
       - cp -r assets /app/iyeris/
       - cp -r node_modules /app/iyeris/
       - cp src/index.html /app/iyeris/src/
-      - cp src/main.css /app/iyeris/src/
+      - cp src/css/*.css /app/iyeris/src/css/
       - cp package.json /app/iyeris/
       - cp licenses.json /app/iyeris/
       

@@ -363,7 +363,11 @@ export class FileIndexer {
           entries: Array<[string, IndexEntryPayload]>;
         }>(
           'build-index',
-          { locations, maxIndexSize: FileIndexer.MAX_INDEX_SIZE },
+          {
+            locations,
+            skipDirs: Array.from(EXCLUDE_SEGMENTS),
+            maxIndexSize: FileIndexer.MAX_INDEX_SIZE,
+          },
           this.buildOperationId
         );
         const entries = Array.isArray(result.entries) ? result.entries : [];

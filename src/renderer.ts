@@ -24,6 +24,26 @@ import {
   isHomeViewPath,
 } from './home.js';
 import { createTourController, type TourController } from './tour.js';
+import {
+  FILE_ICON_MAP,
+  IMAGE_EXTENSIONS,
+  RAW_EXTENSIONS,
+  ANIMATED_IMAGE_EXTENSIONS,
+  VIDEO_EXTENSIONS,
+  AUDIO_EXTENSIONS,
+  PDF_EXTENSIONS,
+  ARCHIVE_EXTENSIONS,
+  ARCHIVE_SUFFIXES,
+  TEXT_EXTENSIONS,
+  WORD_EXTENSIONS,
+  SPREADSHEET_EXTENSIONS,
+  PRESENTATION_EXTENSIONS,
+  SOURCE_CODE_EXTENSIONS,
+  WEB_EXTENSIONS,
+  DATA_EXTENSIONS,
+  VIDEO_MIME_TYPES,
+  AUDIO_MIME_TYPES,
+} from './fileTypes.js';
 
 const THUMBNAIL_MAX_SIZE = 10 * 1024 * 1024;
 const SEARCH_DEBOUNCE_MS = 300;
@@ -58,6 +78,7 @@ const THUMBNAIL_QUALITY_VALUES = ['low', 'medium', 'high'] as const;
 const PREVIEW_POSITION_VALUES = ['right', 'bottom'] as const;
 const GRID_COLUMNS_VALUES = ['auto', '2', '3', '4', '5', '6'] as const;
 const VIEW_MODE_VALUES = ['grid', 'list', 'column'] as const;
+const UPDATE_CHANNEL_VALUES = ['auto', 'beta', 'stable'] as const;
 
 function isOneOf<T extends readonly string[]>(value: string, options: T): value is T[number] {
   return (options as readonly string[]).includes(value);
@@ -242,6 +263,20 @@ function twemojiImg(emoji: string, className: string = 'twemoji', alt?: string):
   const src = `../assets/twemoji/${codepoint}.svg`;
   const altText = escapeHtml(alt || emoji);
   return `<img src="${src}" class="${className}" alt="${altText}" draggable="false" />`;
+}
+
+function updateVersionDisplays(appVersion: string): void {
+  const rawVersion = appVersion.trim();
+  const versionTag = rawVersion.startsWith('v') ? rawVersion : `v${rawVersion}`;
+  const statusVersion = document.getElementById('status-version');
+  if (statusVersion) {
+    statusVersion.textContent = versionTag;
+    statusVersion.setAttribute('title', `Version ${rawVersion}`);
+  }
+  const aboutVersion = document.getElementById('about-version-display');
+  if (aboutVersion) {
+    aboutVersion.textContent = `Version ${rawVersion}`;
+  }
 }
 
 async function saveSettingsWithTimestamp(settings: Settings) {
@@ -1124,7 +1159,7 @@ function closeTab(tabId: string) {
   debouncedSaveTabState();
 }
 
-function saveTabState() {
+function saveTabState(immediate = false) {
   if (!tabsEnabled) return;
 
   currentSettings.tabState = {
@@ -1138,7 +1173,11 @@ function saveTabState() {
     })),
     activeTabId,
   };
-  debouncedSaveSettings();
+  if (immediate) {
+    void saveSettingsWithTimestamp(currentSettings);
+  } else {
+    debouncedSaveSettings();
+  }
 }
 
 function updateCurrentTabPath(newPath: string) {
@@ -1249,11 +1288,6 @@ let activeDirectoryOperationId: string | null = null;
 let directoryRequestId = 0;
 let directoryProgressCount = 0;
 let lastDirectoryProgressUpdate = 0;
-let streamingDirectoryOperationId: string | null = null;
-let streamingDirectoryToken = 0;
-let streamingPendingItems: FileItem[] = [];
-let streamingRenderScheduled = false;
-let hasStreamedDirectoryRender = false;
 
 window.electronAPI.onDirectoryContentsProgress((progress) => {
   if (activeDirectoryProgressOperationId) {
@@ -1262,9 +1296,6 @@ window.electronAPI.onDirectoryContentsProgress((progress) => {
     return;
   }
   directoryProgressCount = progress.loaded;
-  if (progress.items && progress.items.length > 0 && viewMode !== 'column') {
-    queueStreamedDirectoryItems(progress.items, progress.operationId || null);
-  }
   const now = Date.now();
   if (now - lastDirectoryProgressUpdate < 100) return;
   lastDirectoryProgressUpdate = now;
@@ -1272,43 +1303,6 @@ window.electronAPI.onDirectoryContentsProgress((progress) => {
     loadingText.textContent = `Loading... (${directoryProgressCount.toLocaleString()} items)`;
   }
 });
-
-function resetStreamedDirectoryState(operationId: string | null): void {
-  streamingDirectoryOperationId = operationId;
-  streamingDirectoryToken += 1;
-  streamingPendingItems = [];
-  streamingRenderScheduled = false;
-  hasStreamedDirectoryRender = false;
-}
-
-function queueStreamedDirectoryItems(items: FileItem[], operationId: string | null): void {
-  if (!operationId || operationId !== streamingDirectoryOperationId) {
-    return;
-  }
-  streamingPendingItems.push(...items);
-  if (streamingRenderScheduled) {
-    return;
-  }
-  streamingRenderScheduled = true;
-  const token = streamingDirectoryToken;
-  requestAnimationFrame(() => flushStreamedDirectoryItems(token));
-}
-
-function flushStreamedDirectoryItems(token: number): void {
-  if (token !== streamingDirectoryToken) {
-    return;
-  }
-  streamingRenderScheduled = false;
-  if (streamingPendingItems.length === 0) {
-    return;
-  }
-  const batch = streamingPendingItems.splice(0);
-  appendStreamedDirectoryItems(batch);
-  if (streamingPendingItems.length > 0) {
-    streamingRenderScheduled = true;
-    requestAnimationFrame(() => flushStreamedDirectoryItems(token));
-  }
-}
 
 function createDirectoryOperationId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -1325,7 +1319,6 @@ function startDirectoryRequest(path: string): { requestId: number; operationId: 
   activeDirectoryProgressPath = path;
   directoryProgressCount = 0;
   lastDirectoryProgressUpdate = 0;
-  resetStreamedDirectoryState(operationId);
   if (loadingText) loadingText.textContent = 'Loading...';
   return { requestId, operationId };
 }
@@ -1337,7 +1330,6 @@ function finishDirectoryRequest(requestId: number): void {
   activeDirectoryProgressPath = null;
   directoryProgressCount = 0;
   lastDirectoryProgressUpdate = 0;
-  resetStreamedDirectoryState(null);
   if (loadingText) loadingText.textContent = 'Loading...';
 }
 
@@ -1377,9 +1369,10 @@ async function fetchGitStatusAsync(dirPath: string) {
   }
 
   const requestId = ++gitStatusRequestId;
+  const includeUntracked = currentSettings.gitIncludeUntracked !== false;
 
   try {
-    const result = await getGitStatusCached(dirPath);
+    const result = await getGitStatusCached(dirPath, includeUntracked);
     if (
       requestId !== gitStatusRequestId ||
       dirPath !== currentPath ||
@@ -1403,26 +1396,30 @@ async function fetchGitStatusAsync(dirPath: string) {
   }
 }
 
-async function getGitStatusCached(dirPath: string): Promise<GitStatusResponse> {
-  const cached = gitStatusCache.get(dirPath);
+async function getGitStatusCached(
+  dirPath: string,
+  includeUntracked: boolean
+): Promise<GitStatusResponse> {
+  const cacheKey = `${dirPath}|${includeUntracked ? 'all' : 'tracked'}`;
+  const cached = gitStatusCache.get(cacheKey);
   if (cached && Date.now() - cached.timestamp < GIT_STATUS_CACHE_TTL_MS) {
     return { success: true, isGitRepo: cached.isGitRepo, statuses: cached.statuses };
   }
 
-  const inFlight = gitStatusInFlight.get(dirPath);
+  const inFlight = gitStatusInFlight.get(cacheKey);
   if (inFlight) {
     return inFlight;
   }
 
   const request = window.electronAPI
-    .getGitStatus(dirPath)
+    .getGitStatus(dirPath, includeUntracked)
     .then((result) => {
       if (result.success) {
         if (gitStatusCache.size >= GIT_STATUS_CACHE_MAX) {
           const firstKey = gitStatusCache.keys().next().value;
           if (firstKey) gitStatusCache.delete(firstKey);
         }
-        gitStatusCache.set(dirPath, {
+        gitStatusCache.set(cacheKey, {
           timestamp: Date.now(),
           isGitRepo: result.isGitRepo === true,
           statuses: result.statuses || [],
@@ -1431,10 +1428,10 @@ async function getGitStatusCached(dirPath: string): Promise<GitStatusResponse> {
       return result;
     })
     .finally(() => {
-      gitStatusInFlight.delete(dirPath);
+      gitStatusInFlight.delete(cacheKey);
     });
 
-  gitStatusInFlight.set(dirPath, request);
+  gitStatusInFlight.set(cacheKey, request);
   return request;
 }
 
@@ -2896,12 +2893,6 @@ async function applySystemFontSize(): Promise<void> {
 }
 
 function applySettings(settings: Settings) {
-  if (settings.transparency === false) {
-    document.body.classList.add('no-transparency');
-  } else {
-    document.body.classList.remove('no-transparency');
-  }
-
   document.body.classList.remove(
     'theme-dark',
     'theme-light',
@@ -2983,6 +2974,12 @@ function applySettings(settings: Settings) {
     document.body.classList.add('reduce-transparency');
   } else {
     document.body.classList.remove('reduce-transparency');
+  }
+
+  if (settings.liquidGlassMode) {
+    document.body.classList.add('liquid-glass');
+  } else {
+    document.body.classList.remove('liquid-glass');
   }
 
   if (settings.themedIcons) {
@@ -3398,18 +3395,6 @@ function setupThemeEditorListeners() {
     });
   }
 
-  const useCustomThemeBtn = document.getElementById('use-custom-theme-btn');
-  if (useCustomThemeBtn) {
-    useCustomThemeBtn.addEventListener('click', async () => {
-      if (currentSettings.customTheme) {
-        currentSettings.theme = 'custom';
-        applySettings(currentSettings);
-        await saveSettingsWithTimestamp(currentSettings);
-        updateCustomThemeUI();
-      }
-    });
-  }
-
   document.getElementById('theme-editor-modal')?.addEventListener('click', (e) => {
     if ((e.target as HTMLElement).classList.contains('modal-overlay')) {
       hideThemeEditor();
@@ -3417,36 +3402,27 @@ function setupThemeEditorListeners() {
   });
 }
 
-function updateCustomThemeUI() {
-  const useCustomThemeBtn = document.getElementById('use-custom-theme-btn');
+function updateCustomThemeUI(options?: { syncSelect?: boolean; selectedTheme?: string }) {
   const customThemeDescription = document.getElementById('custom-theme-description');
   const themeSelect = document.getElementById('theme-select') as HTMLSelectElement;
+  const selectedTheme = options?.selectedTheme ?? currentSettings.theme ?? 'default';
 
   if (currentSettings.customTheme) {
-    if (useCustomThemeBtn) {
-      useCustomThemeBtn.style.display = 'block';
-    }
     if (customThemeDescription) {
       const themeName = currentSettings.customTheme.name || 'Custom Theme';
-      if (currentSettings.theme === 'custom') {
+      if (selectedTheme === 'custom') {
         customThemeDescription.textContent = `Currently using: ${themeName}`;
       } else {
-        customThemeDescription.textContent = `Edit or use your custom theme: ${themeName}`;
+        customThemeDescription.textContent = `Custom theme ready: ${themeName}`;
       }
     }
-    if (themeSelect && currentSettings.theme === 'custom') {
-      themeSelect.value = 'default';
-    }
   } else {
-    if (useCustomThemeBtn) {
-      useCustomThemeBtn.style.display = 'none';
-    }
     if (customThemeDescription) {
       customThemeDescription.textContent = 'Create your own color scheme';
     }
   }
 
-  if (themeSelect && currentSettings.theme !== 'custom') {
+  if (themeSelect && options?.syncSelect !== false) {
     themeSelect.value = currentSettings.theme || 'default';
   }
 }
@@ -3478,7 +3454,6 @@ async function showSettingsModal() {
     sections[0].classList.add('active');
   }
 
-  const transparencyToggle = document.getElementById('transparency-toggle') as HTMLInputElement;
   const systemThemeToggle = document.getElementById('system-theme-toggle') as HTMLInputElement;
   const sortBySelect = document.getElementById('sort-by-select') as HTMLSelectElement;
   const sortOrderSelect = document.getElementById('sort-order-select') as HTMLSelectElement;
@@ -3487,6 +3462,9 @@ async function showSettingsModal() {
   ) as HTMLInputElement;
   const enableGitStatusToggle = document.getElementById(
     'enable-git-status-toggle'
+  ) as HTMLInputElement;
+  const gitIncludeUntrackedToggle = document.getElementById(
+    'git-include-untracked-toggle'
   ) as HTMLInputElement;
   const minimizeToTrayToggle = document.getElementById(
     'minimize-to-tray-toggle'
@@ -3532,6 +3510,7 @@ async function showSettingsModal() {
   const reduceTransparencyToggle = document.getElementById(
     'reduce-transparency-toggle'
   ) as HTMLInputElement;
+  const liquidGlassToggle = document.getElementById('liquid-glass-toggle') as HTMLInputElement;
   const themedIconsToggle = document.getElementById('themed-icons-toggle') as HTMLInputElement;
   const disableHwAccelToggle = document.getElementById(
     'disable-hw-accel-toggle'
@@ -3567,11 +3546,11 @@ async function showSettingsModal() {
   const maxSearchHistoryInput = document.getElementById(
     'max-search-history-input'
   ) as HTMLInputElement;
+  const maxDirectoryHistoryInput = document.getElementById(
+    'max-directory-history-input'
+  ) as HTMLInputElement;
   const settingsPath = document.getElementById('settings-path');
 
-  if (transparencyToggle) {
-    transparencyToggle.checked = currentSettings.transparency;
-  }
   if (systemThemeToggle) {
     systemThemeToggle.checked = currentSettings.useSystemTheme || false;
   }
@@ -3580,6 +3559,9 @@ async function showSettingsModal() {
   }
   if (enableGitStatusToggle) {
     enableGitStatusToggle.checked = currentSettings.enableGitStatus === true;
+  }
+  if (gitIncludeUntrackedToggle) {
+    gitIncludeUntrackedToggle.checked = currentSettings.gitIncludeUntracked !== false;
   }
 
   const showFileHoverCardToggle = document.getElementById(
@@ -3598,14 +3580,6 @@ async function showSettingsModal() {
   }
 
   updateCustomThemeUI();
-
-  const themeSelectForTracking = document.getElementById('theme-select') as HTMLSelectElement;
-  if (themeSelectForTracking) {
-    themeSelectForTracking.onchange = () => {
-      themeDropdownChanged = true;
-      markSettingsChanged();
-    };
-  }
 
   if (sortBySelect) {
     sortBySelect.value = currentSettings.sortBy || 'name';
@@ -3704,6 +3678,10 @@ async function showSettingsModal() {
     reduceTransparencyToggle.checked = currentSettings.reduceTransparency || false;
   }
 
+  if (liquidGlassToggle) {
+    liquidGlassToggle.checked = currentSettings.liquidGlassMode || false;
+  }
+
   if (themedIconsToggle) {
     themedIconsToggle.checked = currentSettings.themedIcons || false;
   }
@@ -3761,6 +3739,9 @@ async function showSettingsModal() {
 
   if (maxSearchHistoryInput) {
     maxSearchHistoryInput.value = String(currentSettings.maxSearchHistoryItems || 5);
+  }
+  if (maxDirectoryHistoryInput) {
+    maxDirectoryHistoryInput.value = String(currentSettings.maxDirectoryHistoryItems || 5);
   }
 
   await updateIndexStatus();
@@ -4153,7 +4134,6 @@ function copyLicensesText() {
 
 async function saveSettings() {
   const previousTabsEnabled = tabsEnabled;
-  const transparencyToggle = document.getElementById('transparency-toggle') as HTMLInputElement;
   const systemThemeToggle = document.getElementById('system-theme-toggle') as HTMLInputElement;
   const themeSelect = document.getElementById('theme-select') as HTMLSelectElement;
   const sortBySelect = document.getElementById('sort-by-select') as HTMLSelectElement;
@@ -4163,6 +4143,9 @@ async function saveSettings() {
   ) as HTMLInputElement;
   const enableGitStatusToggle = document.getElementById(
     'enable-git-status-toggle'
+  ) as HTMLInputElement;
+  const gitIncludeUntrackedToggle = document.getElementById(
+    'git-include-untracked-toggle'
   ) as HTMLInputElement;
   const showFileHoverCardToggle = document.getElementById(
     'show-file-hover-card-toggle'
@@ -4214,6 +4197,7 @@ async function saveSettings() {
   const reduceTransparencyToggle = document.getElementById(
     'reduce-transparency-toggle'
   ) as HTMLInputElement;
+  const liquidGlassToggle = document.getElementById('liquid-glass-toggle') as HTMLInputElement;
   const themedIconsToggle = document.getElementById('themed-icons-toggle') as HTMLInputElement;
   const disableHwAccelToggle = document.getElementById(
     'disable-hw-accel-toggle'
@@ -4248,10 +4232,10 @@ async function saveSettings() {
   const maxSearchHistoryInput = document.getElementById(
     'max-search-history-input'
   ) as HTMLInputElement;
+  const maxDirectoryHistoryInput = document.getElementById(
+    'max-directory-history-input'
+  ) as HTMLInputElement;
 
-  if (transparencyToggle) {
-    currentSettings.transparency = transparencyToggle.checked;
-  }
   if (systemThemeToggle) {
     currentSettings.useSystemTheme = systemThemeToggle.checked;
   }
@@ -4262,13 +4246,17 @@ async function saveSettings() {
   if (themeSelect) {
     const selectedTheme = themeSelect.value;
     if (isOneOf(selectedTheme, THEME_VALUES)) {
-      if (currentSettings.theme === 'custom') {
-        if (themeDropdownChanged) {
-          currentSettings.theme = selectedTheme;
-        }
-      } else {
-        currentSettings.theme = selectedTheme;
-      }
+      currentSettings.theme = selectedTheme;
+    }
+  }
+
+  if (currentSettings.useSystemTheme) {
+    try {
+      const { isDarkMode } = await window.electronAPI.getSystemAccentColor();
+      const systemTheme = isDarkMode ? 'default' : 'light';
+      currentSettings.theme = systemTheme;
+    } catch (error) {
+      console.error('[Settings] Failed to apply system theme:', error);
     }
   }
 
@@ -4292,6 +4280,9 @@ async function saveSettings() {
   if (enableGitStatusToggle) {
     currentSettings.enableGitStatus = enableGitStatusToggle.checked;
   }
+  if (gitIncludeUntrackedToggle) {
+    currentSettings.gitIncludeUntracked = gitIncludeUntrackedToggle.checked;
+  }
 
   if (showFileHoverCardToggle) {
     currentSettings.showFileHoverCard = showFileHoverCardToggle.checked;
@@ -4314,7 +4305,10 @@ async function saveSettings() {
   }
 
   if (updateChannelSelect) {
-    currentSettings.updateChannel = updateChannelSelect.value as 'auto' | 'beta' | 'stable';
+    const channelValue = updateChannelSelect.value;
+    if (isOneOf(channelValue, UPDATE_CHANNEL_VALUES)) {
+      currentSettings.updateChannel = channelValue;
+    }
   }
 
   if (enableSearchHistoryToggle) {
@@ -4384,6 +4378,10 @@ async function saveSettings() {
 
   if (reduceTransparencyToggle) {
     currentSettings.reduceTransparency = reduceTransparencyToggle.checked;
+  }
+
+  if (liquidGlassToggle) {
+    currentSettings.liquidGlassMode = liquidGlassToggle.checked;
   }
 
   if (themedIconsToggle) {
@@ -4462,6 +4460,29 @@ async function saveSettings() {
       currentSettings.maxSearchHistoryItems = val;
     }
   }
+  if (maxDirectoryHistoryInput) {
+    const val = parseInt(maxDirectoryHistoryInput.value, 10);
+    if (val >= 1 && val <= 20) {
+      currentSettings.maxDirectoryHistoryItems = val;
+    }
+  }
+  if (Array.isArray(currentSettings.searchHistory)) {
+    const maxSearchHistoryItems = Math.max(
+      1,
+      Math.min(20, currentSettings.maxSearchHistoryItems || SEARCH_HISTORY_MAX)
+    );
+    currentSettings.searchHistory = currentSettings.searchHistory.slice(0, maxSearchHistoryItems);
+  }
+  if (Array.isArray(currentSettings.directoryHistory)) {
+    const maxDirectoryHistoryItems = Math.max(
+      1,
+      Math.min(20, currentSettings.maxDirectoryHistoryItems || DIRECTORY_HISTORY_MAX)
+    );
+    currentSettings.directoryHistory = currentSettings.directoryHistory.slice(
+      0,
+      maxDirectoryHistoryItems
+    );
+  }
 
   currentSettings.viewMode = viewMode;
 
@@ -4484,7 +4505,7 @@ async function saveSettings() {
 
 async function resetSettings() {
   const confirmed = await showConfirm(
-    'Are you sure you want to reset all settings to default? The app will restart. This cannot be undone.',
+    'Are you sure you want to reset all settings (including Home view) to default? The app will restart. This cannot be undone.',
     'Reset Settings',
     'warning'
   );
@@ -4495,12 +4516,22 @@ async function resetSettings() {
       clearTimeout(settingsSaveTimeout);
       settingsSaveTimeout = null;
     }
-    const result = await window.electronAPI.resetSettings();
-    if (result.success) {
+    const [settingsResult, homeResult] = await Promise.all([
+      window.electronAPI.resetSettings(),
+      window.electronAPI.resetHomeSettings(),
+    ]);
+    if (settingsResult.success && homeResult.success) {
       await window.electronAPI.relaunchApp();
     } else {
       isResettingSettings = false;
-      showToast('Failed to reset settings: ' + result.error, 'Error', 'error');
+      const errors: string[] = [];
+      if (!settingsResult.success) {
+        errors.push(settingsResult.error || 'Failed to reset settings');
+      }
+      if (!homeResult.success) {
+        errors.push(homeResult.error || 'Failed to reset Home settings');
+      }
+      showToast(`Failed to reset settings: ${errors.join(' | ')}`, 'Error', 'error');
     }
   }
 }
@@ -5862,6 +5893,7 @@ async function init() {
 
   platformOS = platform;
   document.body.classList.add(`platform-${platformOS}`);
+  updateVersionDisplays(appVersion);
 
   const titlebarIcon = document.getElementById('titlebar-icon') as HTMLImageElement;
   if (titlebarIcon) {
@@ -6301,7 +6333,7 @@ function setupRubberBandSelection(): void {
   });
 }
 
-function setupEventListeners() {
+function initCoreUiInteractions(): void {
   initSettingsTabs();
   initSettingsUi();
   initShortcutsModal();
@@ -6315,7 +6347,9 @@ function setupEventListeners() {
   if (currentSettings.showFileHoverCard !== false) {
     setupHoverCard();
   }
+}
 
+function initSyncEventListeners(): void {
   const cleanupClipboard = window.electronAPI.onClipboardChanged((newClipboard) => {
     clipboard = newClipboard;
     updateCutVisuals();
@@ -6336,13 +6370,41 @@ function setupEventListeners() {
     console.log('[Sync] Settings updated from another window');
     currentSettings = newSettings;
     applySettings(newSettings);
+    const settingsModal = document.getElementById('settings-modal') as HTMLElement | null;
+    if (settingsModal && settingsModal.style.display === 'flex') {
+      const previousSavedState = settingsSavedState;
+      const currentFormState = captureSettingsFormState();
+      const nextSavedState = buildSettingsFormStateFromSettings(newSettings);
+      const mergedState: SettingsFormState = { ...nextSavedState };
+
+      if (previousSavedState) {
+        Object.keys(currentFormState).forEach((key) => {
+          if (currentFormState[key] !== previousSavedState[key]) {
+            mergedState[key] = currentFormState[key];
+          }
+        });
+      }
+
+      settingsSavedState = nextSavedState;
+      settingsRedoState = null;
+      applySettingsFormState(mergedState);
+      const themeSelect = document.getElementById('theme-select') as HTMLSelectElement | null;
+      updateCustomThemeUI({
+        syncSelect: false,
+        selectedTheme: themeSelect?.value,
+      });
+    } else {
+      updateCustomThemeUI();
+    }
     const shortcutsModal = document.getElementById('shortcuts-modal');
     syncShortcutBindingsFromSettings(newSettings, {
       render: shortcutsModal ? shortcutsModal.style.display === 'flex' : false,
     });
   });
   ipcCleanupFunctions.push(cleanupSettings);
+}
 
+function initWindowControlListeners(): void {
   document.getElementById('minimize-btn')?.addEventListener('click', () => {
     window.electronAPI.minimizeWindow();
   });
@@ -6354,7 +6416,9 @@ function setupEventListeners() {
   document.getElementById('close-btn')?.addEventListener('click', () => {
     window.electronAPI.closeWindow();
   });
+}
 
+function initActionButtonListeners(): void {
   backBtn?.addEventListener('click', goBack);
   forwardBtn?.addEventListener('click', goForward);
   upBtn?.addEventListener('click', goUp);
@@ -6402,7 +6466,9 @@ function setupEventListeners() {
       goForward();
     }
   });
+}
 
+function initSearchListeners(): void {
   searchBtn?.addEventListener('click', toggleSearch);
   searchClose?.addEventListener('click', closeSearch);
   searchScopeToggle?.addEventListener('click', toggleSearchScope);
@@ -6479,15 +6545,6 @@ function setupEventListeners() {
     }
   });
 
-  sortBtn?.addEventListener('click', showSortMenu);
-  bookmarkAddBtn?.addEventListener('click', addBookmark);
-
-  const sidebarToggle = document.getElementById('sidebar-toggle');
-  sidebarToggle?.addEventListener('click', () => {
-    setSidebarCollapsed();
-  });
-  syncSidebarToggleState();
-
   searchInput?.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') {
       hideSearchHistoryDropdown();
@@ -6502,6 +6559,17 @@ function setupEventListeners() {
       debouncedSearch();
     }
   });
+}
+
+function initNavigationListeners(): void {
+  sortBtn?.addEventListener('click', showSortMenu);
+  bookmarkAddBtn?.addEventListener('click', addBookmark);
+
+  const sidebarToggle = document.getElementById('sidebar-toggle');
+  sidebarToggle?.addEventListener('click', () => {
+    setSidebarCollapsed();
+  });
+  syncSidebarToggleState();
 
   addressInput?.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') {
@@ -6513,204 +6581,206 @@ function setupEventListeners() {
       }
     }
   });
+}
 
-  function isModalOpen(): boolean {
-    const settingsModal = document.getElementById('settings-modal');
-    const shortcutsModal = document.getElementById('shortcuts-modal');
-    const dialogModal = document.getElementById('dialog-modal');
-    const licensesModal = document.getElementById('licenses-modal');
-    const quicklookModal = document.getElementById('quicklook-modal');
-    const homeSettingsModal = document.getElementById('home-settings-modal');
+function isModalOpen(): boolean {
+  const settingsModal = document.getElementById('settings-modal');
+  const shortcutsModal = document.getElementById('shortcuts-modal');
+  const dialogModal = document.getElementById('dialog-modal');
+  const licensesModal = document.getElementById('licenses-modal');
+  const quicklookModal = document.getElementById('quicklook-modal');
+  const homeSettingsModal = document.getElementById('home-settings-modal');
 
-    return !!(
-      (settingsModal && settingsModal.style.display === 'flex') ||
-      (shortcutsModal && shortcutsModal.style.display === 'flex') ||
-      (dialogModal && dialogModal.style.display === 'flex') ||
-      (licensesModal && licensesModal.style.display === 'flex') ||
-      (quicklookModal && quicklookModal.style.display === 'flex') ||
-      (homeSettingsModal && homeSettingsModal.style.display === 'flex')
-    );
+  return !!(
+    (settingsModal && settingsModal.style.display === 'flex') ||
+    (shortcutsModal && shortcutsModal.style.display === 'flex') ||
+    (dialogModal && dialogModal.style.display === 'flex') ||
+    (licensesModal && licensesModal.style.display === 'flex') ||
+    (quicklookModal && quicklookModal.style.display === 'flex') ||
+    (homeSettingsModal && homeSettingsModal.style.display === 'flex')
+  );
+}
+
+function hasTextSelection(): boolean {
+  const selection = window.getSelection();
+  return selection !== null && selection.toString().length > 0;
+}
+
+function isEditableElementActive(): boolean {
+  const activeElement = document.activeElement as HTMLElement | null;
+  if (!activeElement) return false;
+  return (
+    activeElement.tagName === 'INPUT' ||
+    activeElement.tagName === 'TEXTAREA' ||
+    activeElement.isContentEditable
+  );
+}
+
+function openSearch(isGlobal: boolean): void {
+  if (!searchBarWrapper || !searchScopeToggle || !searchInput) return;
+
+  if (!isSearchMode) {
+    searchBarWrapper.style.display = 'block';
+    isSearchMode = true;
   }
 
-  function hasTextSelection(): boolean {
-    const selection = window.getSelection();
-    return selection !== null && selection.toString().length > 0;
-  }
-
-  function isEditableElementActive(): boolean {
-    const activeElement = document.activeElement as HTMLElement | null;
-    if (!activeElement) return false;
-    return (
-      activeElement.tagName === 'INPUT' ||
-      activeElement.tagName === 'TEXTAREA' ||
-      activeElement.isContentEditable
-    );
-  }
-
-  function openSearch(isGlobal: boolean): void {
-    if (!searchBarWrapper || !searchScopeToggle || !searchInput) return;
-
-    if (!isSearchMode) {
-      searchBarWrapper.style.display = 'block';
-      isSearchMode = true;
+  isGlobalSearch = isGlobal;
+  if (isGlobalSearch) {
+    searchScopeToggle.classList.add('global');
+    searchScopeToggle.title = 'Global Search (All Indexed Files)';
+    const img = searchScopeToggle.querySelector('img');
+    if (img) {
+      img.src = '../assets/twemoji/1f30d.svg';
+      img.alt = '🌍';
     }
-
-    isGlobalSearch = isGlobal;
-    if (isGlobalSearch) {
-      searchScopeToggle.classList.add('global');
-      searchScopeToggle.title = 'Global Search (All Indexed Files)';
-      const img = searchScopeToggle.querySelector('img');
-      if (img) {
-        img.src = '../assets/twemoji/1f30d.svg';
-        img.alt = '🌍';
-      }
-    } else {
-      searchScopeToggle.classList.remove('global');
-      searchScopeToggle.title = 'Local Search (Current Folder)';
-      const img = searchScopeToggle.querySelector('img');
-      if (img) {
-        img.src = '../assets/twemoji/1f4c1.svg';
-        img.alt = '📁';
-      }
+  } else {
+    searchScopeToggle.classList.remove('global');
+    searchScopeToggle.title = 'Local Search (Current Folder)';
+    const img = searchScopeToggle.querySelector('img');
+    if (img) {
+      img.src = '../assets/twemoji/1f4c1.svg';
+      img.alt = '📁';
     }
-    updateSearchPlaceholder();
-    searchInput.focus();
   }
+  updateSearchPlaceholder();
+  searchInput.focus();
+}
 
-  function runShortcutAction(actionId: string, e: KeyboardEvent): boolean {
-    switch (actionId) {
-      case 'command-palette':
-        e.preventDefault();
-        showCommandPalette();
-        return true;
-      case 'settings':
-        e.preventDefault();
-        showSettingsModal();
-        return true;
-      case 'shortcuts':
-        e.preventDefault();
-        showShortcutsModal();
-        return true;
-      case 'refresh':
-        e.preventDefault();
-        refresh();
-        return true;
-      case 'search':
-        e.preventDefault();
-        openSearch(false);
-        return true;
-      case 'global-search':
-        e.preventDefault();
-        openSearch(true);
-        return true;
-      case 'toggle-sidebar':
-        e.preventDefault();
-        setSidebarCollapsed();
-        return true;
-      case 'new-window':
-        e.preventDefault();
-        openNewWindow();
-        return true;
-      case 'new-file':
-        e.preventDefault();
-        createNewFile();
-        return true;
-      case 'new-folder':
-        e.preventDefault();
-        createNewFolder();
-        return true;
-      case 'go-back':
-        e.preventDefault();
-        goBack();
-        return true;
-      case 'go-forward':
-        e.preventDefault();
-        goForward();
-        return true;
-      case 'go-up':
-        e.preventDefault();
-        goUp();
-        return true;
-      case 'new-tab':
-        e.preventDefault();
-        if (tabsEnabled) {
-          addNewTab();
-        }
-        return true;
-      case 'close-tab':
-        e.preventDefault();
-        if (tabsEnabled && tabs.length > 1) {
-          closeTab(activeTabId);
-        }
-        return true;
-      case 'next-tab':
-      case 'prev-tab': {
-        e.preventDefault();
-        if (tabsEnabled && tabs.length > 1) {
-          const currentIndex = tabs.findIndex((t) => t.id === activeTabId);
-          if (currentIndex !== -1) {
-            const nextIndex =
-              actionId === 'next-tab'
-                ? (currentIndex + 1) % tabs.length
-                : (currentIndex - 1 + tabs.length) % tabs.length;
-            switchToTab(tabs[nextIndex].id);
-          }
-        }
-        return true;
+function runShortcutAction(actionId: string, e: KeyboardEvent): boolean {
+  switch (actionId) {
+    case 'command-palette':
+      e.preventDefault();
+      showCommandPalette();
+      return true;
+    case 'settings':
+      e.preventDefault();
+      showSettingsModal();
+      return true;
+    case 'shortcuts':
+      e.preventDefault();
+      showShortcutsModal();
+      return true;
+    case 'refresh':
+      e.preventDefault();
+      refresh();
+      return true;
+    case 'search':
+      e.preventDefault();
+      openSearch(false);
+      return true;
+    case 'global-search':
+      e.preventDefault();
+      openSearch(true);
+      return true;
+    case 'toggle-sidebar':
+      e.preventDefault();
+      setSidebarCollapsed();
+      return true;
+    case 'new-window':
+      e.preventDefault();
+      openNewWindow();
+      return true;
+    case 'new-file':
+      e.preventDefault();
+      createNewFile();
+      return true;
+    case 'new-folder':
+      e.preventDefault();
+      createNewFolder();
+      return true;
+    case 'go-back':
+      e.preventDefault();
+      goBack();
+      return true;
+    case 'go-forward':
+      e.preventDefault();
+      goForward();
+      return true;
+    case 'go-up':
+      e.preventDefault();
+      goUp();
+      return true;
+    case 'new-tab':
+      e.preventDefault();
+      if (tabsEnabled) {
+        addNewTab();
       }
-      case 'copy':
-        if (hasTextSelection()) {
-          return false;
+      return true;
+    case 'close-tab':
+      e.preventDefault();
+      if (tabsEnabled && tabs.length > 1) {
+        closeTab(activeTabId);
+      }
+      return true;
+    case 'next-tab':
+    case 'prev-tab': {
+      e.preventDefault();
+      if (tabsEnabled && tabs.length > 1) {
+        const currentIndex = tabs.findIndex((t) => t.id === activeTabId);
+        if (currentIndex !== -1) {
+          const nextIndex =
+            actionId === 'next-tab'
+              ? (currentIndex + 1) % tabs.length
+              : (currentIndex - 1 + tabs.length) % tabs.length;
+          switchToTab(tabs[nextIndex].id);
         }
-        e.preventDefault();
-        copyToClipboard();
-        return true;
-      case 'cut':
-        if (hasTextSelection()) {
-          return false;
-        }
-        e.preventDefault();
-        cutToClipboard();
-        return true;
-      case 'paste':
-        if (isEditableElementActive()) {
-          return false;
-        }
-        e.preventDefault();
-        pasteFromClipboard();
-        return true;
-      case 'select-all':
-        if (isEditableElementActive()) {
-          return false;
-        }
-        e.preventDefault();
-        selectAll();
-        return true;
-      case 'undo':
-        e.preventDefault();
-        performUndo();
-        return true;
-      case 'redo':
-        e.preventDefault();
-        performRedo();
-        return true;
-      case 'zoom-in':
-        e.preventDefault();
-        zoomIn();
-        return true;
-      case 'zoom-out':
-        e.preventDefault();
-        zoomOut();
-        return true;
-      case 'zoom-reset':
-        e.preventDefault();
-        zoomReset();
-        return true;
-      default:
+      }
+      return true;
+    }
+    case 'copy':
+      if (hasTextSelection()) {
         return false;
-    }
+      }
+      e.preventDefault();
+      copyToClipboard();
+      return true;
+    case 'cut':
+      if (hasTextSelection()) {
+        return false;
+      }
+      e.preventDefault();
+      cutToClipboard();
+      return true;
+    case 'paste':
+      if (isEditableElementActive()) {
+        return false;
+      }
+      e.preventDefault();
+      pasteFromClipboard();
+      return true;
+    case 'select-all':
+      if (isEditableElementActive()) {
+        return false;
+      }
+      e.preventDefault();
+      selectAll();
+      return true;
+    case 'undo':
+      e.preventDefault();
+      performUndo();
+      return true;
+    case 'redo':
+      e.preventDefault();
+      performRedo();
+      return true;
+    case 'zoom-in':
+      e.preventDefault();
+      zoomIn();
+      return true;
+    case 'zoom-out':
+      e.preventDefault();
+      zoomOut();
+      return true;
+    case 'zoom-reset':
+      e.preventDefault();
+      zoomReset();
+      return true;
+    default:
+      return false;
   }
+}
 
+function initKeyboardListeners(): void {
   document.addEventListener('keydown', (e) => {
     if (isShortcutCaptureActive) {
       return;
@@ -6954,7 +7024,9 @@ function setupEventListeners() {
       handleTypeaheadInput(e.key);
     }
   });
+}
 
+function initGlobalClickListeners(): void {
   document.addEventListener('click', (e) => {
     const target = e.target as HTMLElement;
     const contextMenu = document.getElementById('context-menu');
@@ -7012,162 +7084,175 @@ function setupEventListeners() {
       hideBreadcrumbMenu();
     }
   });
+}
 
-  if (fileGrid) {
-    fileGrid.addEventListener('click', (e) => {
-      if (e.target === fileGrid) {
-        clearSelection();
-      }
-    });
+function isDropTargetFileItem(target: EventTarget | null): boolean {
+  return !!(target as HTMLElement | null)?.closest('.file-item');
+}
 
-    fileGrid.addEventListener('dragover', (e) => {
-      if ((e.target as HTMLElement).closest('.file-item')) {
-        return;
-      }
-      e.preventDefault();
-      e.stopPropagation();
+function isDropTargetContentItem(target: EventTarget | null): boolean {
+  const element = target as HTMLElement | null;
+  if (!element) return false;
+  return !!(
+    element.closest('.file-grid') ||
+    element.closest('.column-view') ||
+    element.closest('.file-item') ||
+    element.closest('.column-item')
+  );
+}
 
-      if (!e.dataTransfer) return;
+function isDropIntoCurrentDirectory(draggedPaths: string[], destinationPath: string): boolean {
+  return draggedPaths.some((dragPath: string) => {
+    const parentDir = path.dirname(dragPath);
+    return parentDir === destinationPath || dragPath === destinationPath;
+  });
+}
 
-      if (!currentPath) {
-        e.dataTransfer.dropEffect = 'none';
-        return;
-      }
+function initFileGridDragAndDrop(): void {
+  if (!fileGrid) return;
 
-      const operation = getDragOperation(e);
-      e.dataTransfer.dropEffect = operation;
-      fileGrid.classList.add('drag-over');
-      showDropIndicator(operation, currentPath, e.clientX, e.clientY);
-    });
+  fileGrid.addEventListener('click', (e) => {
+    if (e.target === fileGrid) {
+      clearSelection();
+    }
+  });
 
-    fileGrid.addEventListener('dragleave', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
+  fileGrid.addEventListener('dragover', (e) => {
+    if (isDropTargetFileItem(e.target)) {
+      return;
+    }
+    e.preventDefault();
+    e.stopPropagation();
 
-      const rect = fileGrid.getBoundingClientRect();
-      if (
-        e.clientX < rect.left ||
-        e.clientX >= rect.right ||
-        e.clientY < rect.top ||
-        e.clientY >= rect.bottom
-      ) {
-        fileGrid.classList.remove('drag-over');
-        hideDropIndicator();
-      }
-    });
+    if (!e.dataTransfer) return;
 
-    fileGrid.addEventListener('drop', async (e) => {
-      e.preventDefault();
-      e.stopPropagation();
+    if (!currentPath) {
+      e.dataTransfer.dropEffect = 'none';
+      return;
+    }
 
+    const operation = getDragOperation(e);
+    e.dataTransfer.dropEffect = operation;
+    fileGrid.classList.add('drag-over');
+    showDropIndicator(operation, currentPath, e.clientX, e.clientY);
+  });
+
+  fileGrid.addEventListener('dragleave', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const rect = fileGrid.getBoundingClientRect();
+    if (
+      e.clientX < rect.left ||
+      e.clientX >= rect.right ||
+      e.clientY < rect.top ||
+      e.clientY >= rect.bottom
+    ) {
       fileGrid.classList.remove('drag-over');
-
-      if ((e.target as HTMLElement).closest('.file-item')) {
-        return;
-      }
-
-      const draggedPaths = await getDraggedPaths(e);
-
-      if (draggedPaths.length === 0 || !currentPath) {
-        hideDropIndicator();
-        return;
-      }
-
-      const alreadyInCurrentDir = draggedPaths.some((dragPath: string) => {
-        const parentDir = path.dirname(dragPath);
-        return parentDir === currentPath || dragPath === currentPath;
-      });
-
-      if (alreadyInCurrentDir) {
-        showToast('Items are already in this directory', 'Info', 'info');
-        hideDropIndicator();
-        return;
-      }
-
-      const operation = getDragOperation(e);
-      await handleDrop(draggedPaths, currentPath, operation);
       hideDropIndicator();
-    });
-  }
+    }
+  });
 
-  if (fileView) {
-    fileView.addEventListener('dragover', (e) => {
-      if (
-        (e.target as HTMLElement).closest('.file-grid') ||
-        (e.target as HTMLElement).closest('.column-view') ||
-        (e.target as HTMLElement).closest('.file-item') ||
-        (e.target as HTMLElement).closest('.column-item')
-      ) {
-        return;
-      }
+  fileGrid.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
 
-      e.preventDefault();
-      e.stopPropagation();
+    fileGrid.classList.remove('drag-over');
 
-      if (!currentPath) {
-        e.dataTransfer!.dropEffect = 'none';
-        return;
-      }
+    if (isDropTargetFileItem(e.target)) {
+      return;
+    }
 
-      const operation = getDragOperation(e);
-      e.dataTransfer!.dropEffect = operation;
-      fileView.classList.add('drag-over');
-      showDropIndicator(operation, currentPath, e.clientX, e.clientY);
-    });
+    const draggedPaths = await getDraggedPaths(e);
 
-    fileView.addEventListener('dragleave', (e) => {
-      e.preventDefault();
-      const rect = fileView.getBoundingClientRect();
-      if (
-        e.clientX < rect.left ||
-        e.clientX >= rect.right ||
-        e.clientY < rect.top ||
-        e.clientY >= rect.bottom
-      ) {
-        fileView.classList.remove('drag-over');
-        hideDropIndicator();
-      }
-    });
+    if (draggedPaths.length === 0 || !currentPath) {
+      hideDropIndicator();
+      return;
+    }
 
-    fileView.addEventListener('drop', async (e) => {
-      if (
-        (e.target as HTMLElement).closest('.file-grid') ||
-        (e.target as HTMLElement).closest('.column-view') ||
-        (e.target as HTMLElement).closest('.file-item') ||
-        (e.target as HTMLElement).closest('.column-item')
-      ) {
-        return;
-      }
+    if (isDropIntoCurrentDirectory(draggedPaths, currentPath)) {
+      showToast('Items are already in this directory', 'Info', 'info');
+      hideDropIndicator();
+      return;
+    }
 
-      e.preventDefault();
-      e.stopPropagation();
+    const operation = getDragOperation(e);
+    await handleDrop(draggedPaths, currentPath, operation);
+    hideDropIndicator();
+  });
+}
 
+function initFileViewDragAndDrop(): void {
+  if (!fileView) return;
+
+  fileView.addEventListener('dragover', (e) => {
+    if (isDropTargetContentItem(e.target)) {
+      return;
+    }
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (!currentPath) {
+      e.dataTransfer!.dropEffect = 'none';
+      return;
+    }
+
+    const operation = getDragOperation(e);
+    e.dataTransfer!.dropEffect = operation;
+    fileView.classList.add('drag-over');
+    showDropIndicator(operation, currentPath, e.clientX, e.clientY);
+  });
+
+  fileView.addEventListener('dragleave', (e) => {
+    e.preventDefault();
+    const rect = fileView.getBoundingClientRect();
+    if (
+      e.clientX < rect.left ||
+      e.clientX >= rect.right ||
+      e.clientY < rect.top ||
+      e.clientY >= rect.bottom
+    ) {
       fileView.classList.remove('drag-over');
-
-      const draggedPaths = await getDraggedPaths(e);
-
-      if (draggedPaths.length === 0 || !currentPath) {
-        hideDropIndicator();
-        return;
-      }
-
-      const alreadyInCurrentDir = draggedPaths.some((dragPath: string) => {
-        const parentDir = path.dirname(dragPath);
-        return parentDir === currentPath || dragPath === currentPath;
-      });
-
-      if (alreadyInCurrentDir) {
-        showToast('Items are already in this directory', 'Info', 'info');
-        hideDropIndicator();
-        return;
-      }
-
-      const operation = getDragOperation(e);
-      await handleDrop(draggedPaths, currentPath, operation);
       hideDropIndicator();
-    });
-  }
+    }
+  });
 
+  fileView.addEventListener('drop', async (e) => {
+    if (isDropTargetContentItem(e.target)) {
+      return;
+    }
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    fileView.classList.remove('drag-over');
+
+    const draggedPaths = await getDraggedPaths(e);
+
+    if (draggedPaths.length === 0 || !currentPath) {
+      hideDropIndicator();
+      return;
+    }
+
+    if (isDropIntoCurrentDirectory(draggedPaths, currentPath)) {
+      showToast('Items are already in this directory', 'Info', 'info');
+      hideDropIndicator();
+      return;
+    }
+
+    const operation = getDragOperation(e);
+    await handleDrop(draggedPaths, currentPath, operation);
+    hideDropIndicator();
+  });
+}
+
+function initDragAndDropListeners(): void {
+  initFileGridDragAndDrop();
+  initFileViewDragAndDrop();
+}
+
+function initContextMenuListeners(): void {
   document.addEventListener('contextmenu', (e) => {
     if (!(e.target as HTMLElement).closest('.file-item')) {
       e.preventDefault();
@@ -7189,17 +7274,30 @@ function setupEventListeners() {
   });
 }
 
+function setupEventListeners() {
+  initCoreUiInteractions();
+  initSyncEventListeners();
+  initWindowControlListeners();
+  initActionButtonListeners();
+  initSearchListeners();
+  initNavigationListeners();
+  initKeyboardListeners();
+  initGlobalClickListeners();
+  initDragAndDropListeners();
+  initContextMenuListeners();
+}
 function addToSearchHistory(query: string) {
   if (!currentSettings.enableSearchHistory || !query.trim()) return;
   if (!currentSettings.searchHistory) {
     currentSettings.searchHistory = [];
   }
+  const maxSearchHistoryItems = Math.max(
+    1,
+    Math.min(20, currentSettings.maxSearchHistoryItems || SEARCH_HISTORY_MAX)
+  );
   currentSettings.searchHistory = currentSettings.searchHistory.filter((item) => item !== query);
   currentSettings.searchHistory.unshift(query);
-  currentSettings.searchHistory = currentSettings.searchHistory.slice(
-    0,
-    currentSettings.maxSearchHistoryItems || 5
-  );
+  currentSettings.searchHistory = currentSettings.searchHistory.slice(0, maxSearchHistoryItems);
   debouncedSaveSettings();
 }
 
@@ -7209,13 +7307,17 @@ function addToDirectoryHistory(dirPath: string) {
   if (!currentSettings.directoryHistory) {
     currentSettings.directoryHistory = [];
   }
+  const maxDirectoryHistoryItems = Math.max(
+    1,
+    Math.min(20, currentSettings.maxDirectoryHistoryItems || DIRECTORY_HISTORY_MAX)
+  );
   currentSettings.directoryHistory = currentSettings.directoryHistory.filter(
     (item) => item !== dirPath
   );
   currentSettings.directoryHistory.unshift(dirPath);
   currentSettings.directoryHistory = currentSettings.directoryHistory.slice(
     0,
-    DIRECTORY_HISTORY_MAX
+    maxDirectoryHistoryItems
   );
   debouncedSaveSettings();
 }
@@ -7548,45 +7650,6 @@ function appendFileItems(items: FileItem[], searchQuery?: string): string[] {
     scheduleAnimationCleanup();
   }
   return paths;
-}
-
-function appendStreamedDirectoryItems(items: FileItem[]): void {
-  if (!fileGrid) return;
-
-  if (!hasStreamedDirectoryRender) {
-    resetVirtualizedRender();
-    resetThumbnailObserver();
-    fileGrid.innerHTML = '';
-    renderItemIndex = 0;
-    clearSelection();
-    filePathMap.clear();
-    fileElementMap.clear();
-    gitIndicatorPaths.clear();
-    cutPaths.clear();
-    allFiles = [];
-    hiddenFilesCount = 0;
-    if (emptyState) emptyState.style.display = 'none';
-    hasStreamedDirectoryRender = true;
-  }
-
-  for (const item of items) {
-    filePathMap.set(item.path, item);
-  }
-
-  allFiles.push(...items);
-  updateHiddenFilesCount(items, true);
-
-  const visibleItems = currentSettings.showHiddenFiles
-    ? items
-    : items.filter((item) => !item.isHidden);
-
-  if (visibleItems.length > 0) {
-    const paths = appendFileItems(visibleItems);
-    applyGitIndicatorsToPaths(paths);
-  }
-
-  updateCutVisuals();
-  updateStatusBar();
 }
 
 function renderFiles(items: FileItem[], searchQuery?: string) {
@@ -8470,411 +8533,6 @@ function renderThumbnailImage(
   iconDiv.appendChild(img);
 }
 
-const FILE_ICON_MAP: Record<string, string> = {
-  jpg: '1f5bc',
-  jpeg: '1f5bc',
-  png: '1f5bc',
-  gif: '1f5bc',
-  svg: '1f5bc',
-  bmp: '1f5bc',
-  webp: '1f5bc',
-  ico: '1f5bc',
-  tiff: '1f5bc',
-  tif: '1f5bc',
-  avif: '1f5bc',
-  jfif: '1f5bc',
-  mp4: '1f3ac',
-  avi: '1f3ac',
-  mov: '1f3ac',
-  mkv: '1f3ac',
-  webm: '1f3ac',
-  mp3: '1f3b5',
-  wav: '1f3b5',
-  flac: '1f3b5',
-  ogg: '1f3b5',
-  m4a: '1f3b5',
-  pdf: '1f4c4',
-  doc: '1f4dd',
-  docx: '1f4dd',
-  txt: '1f4dd',
-  rtf: '1f4dd',
-  xls: '1f4ca',
-  xlsx: '1f4ca',
-  csv: '1f4ca',
-  ppt: '1f4ca',
-  pptx: '1f4ca',
-  js: '1f4dc',
-  ts: '1f4dc',
-  jsx: '1f4dc',
-  tsx: '1f4dc',
-  html: '1f310',
-  css: '1f3a8',
-  json: '2699',
-  xml: '2699',
-  py: '1f40d',
-  java: '2615',
-  c: 'a9',
-  cpp: 'a9',
-  cs: 'a9',
-  php: '1f418',
-  rb: '1f48e',
-  go: '1f439',
-  rs: '1f980',
-  zip: '1f5dc',
-  rar: '1f5dc',
-  '7z': '1f5dc',
-  tar: '1f5dc',
-  gz: '1f5dc',
-  exe: '2699',
-  app: '2699',
-  msi: '2699',
-  dmg: '2699',
-  cr2: '1f4f7',
-  cr3: '1f4f7',
-  nef: '1f4f7',
-  arw: '1f4f7',
-  dng: '1f4f7',
-  orf: '1f4f7',
-  rw2: '1f4f7',
-  pef: '1f4f7',
-  srw: '1f4f7',
-  raf: '1f4f7',
-};
-
-const IMAGE_EXTENSIONS = new Set([
-  'jpg',
-  'jpeg',
-  'png',
-  'gif',
-  'webp',
-  'bmp',
-  'ico',
-  'tiff',
-  'tif',
-  'avif',
-  'jfif',
-  'svg',
-  'apng',
-  'heic',
-  'heif',
-  'jxl',
-  'jp2',
-  'j2k',
-  'jpf',
-  'jpx',
-  'jpm',
-  'mj2',
-  'tga',
-  'dds',
-  'psd',
-  'psb',
-  'icns',
-]);
-const RAW_EXTENSIONS = new Set([
-  'cr2',
-  'cr3',
-  'crw',
-  'nef',
-  'nrw',
-  'arw',
-  'sr2',
-  'srf',
-  'srw',
-  'dng',
-  'orf',
-  'rw2',
-  'rw1',
-  'rwl',
-  'pef',
-  'raf',
-  'dcr',
-  'kdc',
-  'erf',
-  'mrw',
-  'x3f',
-  '3fr',
-  'iiq',
-  'mef',
-  'mos',
-]);
-const ANIMATED_IMAGE_EXTENSIONS = new Set(['gif', 'webp', 'apng', 'avif']);
-const VIDEO_EXTENSIONS = new Set([
-  'mp4',
-  'm4v',
-  'mov',
-  'webm',
-  'mkv',
-  'avi',
-  'ogv',
-  'ogm',
-  'mpg',
-  'mpeg',
-  'mpe',
-  'm1v',
-  'm2v',
-  '3gp',
-  '3g2',
-  'ts',
-  'm2ts',
-  'mts',
-  'flv',
-  'f4v',
-  'wmv',
-  'asf',
-  'vob',
-]);
-const AUDIO_EXTENSIONS = new Set([
-  'mp3',
-  'mp2',
-  'mpa',
-  'wav',
-  'flac',
-  'ogg',
-  'oga',
-  'opus',
-  'm4a',
-  'm4b',
-  'm4r',
-  'alac',
-  'aac',
-  'wma',
-  'aiff',
-  'aif',
-  'aifc',
-  'mka',
-  'amr',
-  'ac3',
-  'eac3',
-  'mid',
-  'midi',
-  'caf',
-]);
-const PDF_EXTENSIONS = new Set(['pdf']);
-const ARCHIVE_EXTENSIONS = new Set([
-  'zip',
-  '7z',
-  'rar',
-  'tar',
-  'gz',
-  'bz2',
-  'xz',
-  'iso',
-  'cab',
-  'arj',
-  'lzh',
-  'wim',
-  'tgz',
-]);
-const ARCHIVE_SUFFIXES = [
-  '.zip',
-  '.7z',
-  '.rar',
-  '.tar',
-  '.gz',
-  '.bz2',
-  '.xz',
-  '.iso',
-  '.cab',
-  '.arj',
-  '.lzh',
-  '.wim',
-  '.tgz',
-  '.tar.gz',
-];
-const TEXT_EXTENSIONS = new Set([
-  'txt',
-  'text',
-  'md',
-  'markdown',
-  'log',
-  'readme',
-  'html',
-  'htm',
-  'css',
-  'scss',
-  'sass',
-  'less',
-  'js',
-  'jsx',
-  'ts',
-  'tsx',
-  'vue',
-  'svelte',
-  'py',
-  'pyc',
-  'pyw',
-  'java',
-  'c',
-  'cpp',
-  'cc',
-  'cxx',
-  'h',
-  'hpp',
-  'cs',
-  'php',
-  'rb',
-  'go',
-  'rs',
-  'swift',
-  'kt',
-  'kts',
-  'scala',
-  'r',
-  'lua',
-  'perl',
-  'pl',
-  'sh',
-  'bash',
-  'zsh',
-  'fish',
-  'ps1',
-  'bat',
-  'cmd',
-  'json',
-  'xml',
-  'yml',
-  'yaml',
-  'toml',
-  'csv',
-  'tsv',
-  'sql',
-  'ini',
-  'conf',
-  'config',
-  'cfg',
-  'env',
-  'properties',
-  'gitignore',
-  'gitattributes',
-  'editorconfig',
-  'dockerfile',
-  'dockerignore',
-  'rst',
-  'tex',
-  'adoc',
-  'asciidoc',
-  'makefile',
-  'cmake',
-  'gradle',
-  'maven',
-]);
-const WORD_EXTENSIONS = new Set(['doc', 'docx', 'docm', 'dot', 'dotx', 'dotm', 'rtf', 'odt']);
-const SPREADSHEET_EXTENSIONS = new Set([
-  'xls',
-  'xlsx',
-  'xlsm',
-  'xlt',
-  'xltx',
-  'xltm',
-  'ods',
-  'csv',
-  'tsv',
-]);
-const PRESENTATION_EXTENSIONS = new Set(['ppt', 'pptx', 'pptm', 'pps', 'ppsx', 'odp', 'key']);
-const SOURCE_CODE_EXTENSIONS = new Set([
-  'js',
-  'jsx',
-  'ts',
-  'tsx',
-  'py',
-  'pyc',
-  'pyw',
-  'java',
-  'kt',
-  'kts',
-  'scala',
-  'c',
-  'cpp',
-  'cc',
-  'cxx',
-  'h',
-  'hpp',
-  'cs',
-  'php',
-  'rb',
-  'go',
-  'rs',
-  'swift',
-  'r',
-  'lua',
-  'perl',
-  'pl',
-  'sh',
-  'bash',
-  'zsh',
-  'fish',
-  'ps1',
-  'bat',
-  'cmd',
-]);
-const WEB_EXTENSIONS = new Set(['html', 'htm', 'css', 'scss', 'sass', 'less', 'vue', 'svelte']);
-const DATA_EXTENSIONS = new Set([
-  'json',
-  'xml',
-  'yml',
-  'yaml',
-  'toml',
-  'csv',
-  'tsv',
-  'ini',
-  'conf',
-  'config',
-  'cfg',
-  'env',
-  'properties',
-  'sql',
-]);
-const VIDEO_MIME_TYPES: Record<string, string> = {
-  mp4: 'video/mp4',
-  m4v: 'video/x-m4v',
-  mov: 'video/quicktime',
-  webm: 'video/webm',
-  mkv: 'video/x-matroska',
-  avi: 'video/x-msvideo',
-  ogv: 'video/ogg',
-  ogm: 'video/ogg',
-  mpg: 'video/mpeg',
-  mpeg: 'video/mpeg',
-  mpe: 'video/mpeg',
-  m1v: 'video/mpeg',
-  m2v: 'video/mpeg',
-  '3gp': 'video/3gpp',
-  '3g2': 'video/3gpp2',
-  ts: 'video/mp2t',
-  m2ts: 'video/mp2t',
-  mts: 'video/mp2t',
-  flv: 'video/x-flv',
-  f4v: 'video/x-f4v',
-  wmv: 'video/x-ms-wmv',
-  asf: 'video/x-ms-asf',
-  vob: 'video/dvd',
-};
-const AUDIO_MIME_TYPES: Record<string, string> = {
-  mp3: 'audio/mpeg',
-  mp2: 'audio/mpeg',
-  mpa: 'audio/mpeg',
-  wav: 'audio/wav',
-  flac: 'audio/flac',
-  ogg: 'audio/ogg',
-  oga: 'audio/ogg',
-  opus: 'audio/ogg',
-  aac: 'audio/aac',
-  m4a: 'audio/mp4',
-  m4b: 'audio/mp4',
-  m4r: 'audio/mp4',
-  alac: 'audio/mp4',
-  wma: 'audio/x-ms-wma',
-  aiff: 'audio/aiff',
-  aif: 'audio/aiff',
-  aifc: 'audio/aiff',
-  mka: 'audio/x-matroska',
-  amr: 'audio/amr',
-  ac3: 'audio/ac3',
-  eac3: 'audio/eac3',
-  mid: 'audio/midi',
-  midi: 'audio/midi',
-  caf: 'audio/x-caf',
-};
 const FOLDER_ICON = twemojiImg(String.fromCodePoint(0x1f4c1), 'twemoji file-icon');
 const IMAGE_ICON = twemojiImg(String.fromCodePoint(parseInt('1f5bc', 16)), 'twemoji');
 const RAW_ICON = twemojiImg(String.fromCodePoint(0x1f4f7), 'twemoji');
@@ -11380,8 +11038,8 @@ document.getElementById('help-link')?.addEventListener('click', () => {
 document.getElementById('heart-button')?.addEventListener('click', () => {
   window.electronAPI.openFile('https://rosie.run/support');
 });
-document.getElementById('version-indicator')?.addEventListener('click', () => {
-  const version = document.getElementById('version-indicator')?.textContent || 'v0.1.0';
+document.getElementById('status-version')?.addEventListener('click', () => {
+  const version = document.getElementById('status-version')?.textContent || 'v0.1.0';
   window.electronAPI.openFile(`https://github.com/BurntToasters/IYERIS/releases/tag/${version}`);
 });
 
@@ -11417,11 +11075,14 @@ function validateImportedSettings(imported: unknown): Partial<Settings> {
   if (!isRecord(imported)) return validated;
   const data = imported as Record<string, unknown>;
 
-  if (typeof data.transparency === 'boolean') validated.transparency = data.transparency;
+  if (typeof data.reduceTransparency === 'boolean')
+    validated.reduceTransparency = data.reduceTransparency;
   if (typeof data.showDangerousOptions === 'boolean')
     validated.showDangerousOptions = data.showDangerousOptions;
   if (typeof data.showHiddenFiles === 'boolean') validated.showHiddenFiles = data.showHiddenFiles;
   if (typeof data.enableGitStatus === 'boolean') validated.enableGitStatus = data.enableGitStatus;
+  if (typeof data.gitIncludeUntracked === 'boolean')
+    validated.gitIncludeUntracked = data.gitIncludeUntracked;
   if (typeof data.showFileHoverCard === 'boolean')
     validated.showFileHoverCard = data.showFileHoverCard;
   if (typeof data.showFileCheckboxes === 'boolean')
@@ -11440,6 +11101,20 @@ function validateImportedSettings(imported: unknown): Partial<Settings> {
     validated.globalContentSearch = data.globalContentSearch;
 
   if (typeof data.startupPath === 'string') validated.startupPath = data.startupPath;
+  if (typeof data.maxSearchHistoryItems === 'number' && Number.isFinite(data.maxSearchHistoryItems))
+    validated.maxSearchHistoryItems = Math.max(
+      1,
+      Math.min(20, Math.floor(data.maxSearchHistoryItems))
+    );
+  if (
+    typeof data.maxDirectoryHistoryItems === 'number' &&
+    Number.isFinite(data.maxDirectoryHistoryItems)
+  ) {
+    validated.maxDirectoryHistoryItems = Math.max(
+      1,
+      Math.min(20, Math.floor(data.maxDirectoryHistoryItems))
+    );
+  }
 
   if (typeof data.theme === 'string' && isOneOf(data.theme, THEME_VALUES)) {
     validated.theme = data.theme;
@@ -11603,6 +11278,20 @@ document.getElementById('open-logs-btn')?.addEventListener('click', async () => 
   }
 });
 
+document.getElementById('export-diagnostics-btn')?.addEventListener('click', async () => {
+  const result = await window.electronAPI.exportDiagnostics();
+  if (result.success) {
+    const exportPath = result.path ? `\n${result.path}` : '';
+    showToast(`Diagnostics exported${exportPath}`, 'Diagnostics', 'success');
+    return;
+  }
+  if (result.error === 'Export cancelled') {
+    showToast('Diagnostics export cancelled', 'Diagnostics', 'info');
+    return;
+  }
+  showToast(result.error || 'Failed to export diagnostics', 'Diagnostics', 'error');
+});
+
 async function updateThumbnailCacheSize(): Promise<void> {
   const sizeElement = document.getElementById('thumbnail-cache-size');
   if (!sizeElement) return;
@@ -11639,7 +11328,6 @@ document.getElementById('about-twemoji-link')?.addEventListener('click', (e) => 
   window.electronAPI.openFile('https://github.com/jdecked/twemoji');
 });
 
-let themeDropdownChanged = false;
 type SettingsFormState = Record<string, string | boolean>;
 let settingsSavedState: SettingsFormState | null = null;
 let settingsRedoState: SettingsFormState | null = null;
@@ -11648,19 +11336,20 @@ let settingsSearchTerm = '';
 let settingsUiInitialized = false;
 
 const SETTINGS_INPUT_KEYS: Record<string, keyof Settings> = {
-  'transparency-toggle': 'transparency',
   'system-theme-toggle': 'useSystemTheme',
   'theme-select': 'theme',
   'themed-icons-toggle': 'themedIcons',
   'minimize-to-tray-toggle': 'minimizeToTray',
   'show-hidden-files-toggle': 'showHiddenFiles',
   'enable-git-status-toggle': 'enableGitStatus',
+  'git-include-untracked-toggle': 'gitIncludeUntracked',
   'show-file-hover-card-toggle': 'showFileHoverCard',
   'show-file-checkboxes-toggle': 'showFileCheckboxes',
   'sort-by-select': 'sortBy',
   'sort-order-select': 'sortOrder',
   'enable-search-history-toggle': 'enableSearchHistory',
   'max-search-history-input': 'maxSearchHistoryItems',
+  'max-directory-history-input': 'maxDirectoryHistoryItems',
   'show-recent-files-toggle': 'showRecentFiles',
   'show-folder-tree-toggle': 'showFolderTree',
   'enable-tabs-toggle': 'enableTabs',
@@ -11680,6 +11369,7 @@ const SETTINGS_INPUT_KEYS: Record<string, keyof Settings> = {
   'bold-text-toggle': 'boldText',
   'visible-focus-toggle': 'visibleFocus',
   'reduce-transparency-toggle': 'reduceTransparency',
+  'liquid-glass-toggle': 'liquidGlassMode',
   'start-on-login-toggle': 'startOnLogin',
   'startup-path-input': 'startupPath',
   'enable-indexer-toggle': 'enableIndexer',
@@ -11754,6 +11444,25 @@ function applySettingsFormState(state: SettingsFormState): void {
   updateSettingsDirtyState();
 }
 
+function buildSettingsFormStateFromSettings(settings: Settings): SettingsFormState {
+  const state: SettingsFormState = {};
+  Object.entries(SETTINGS_INPUT_KEYS).forEach(([inputId, key]) => {
+    const input = document.getElementById(inputId) as
+      | HTMLInputElement
+      | HTMLSelectElement
+      | HTMLTextAreaElement
+      | null;
+    if (!input) return;
+    const value = settings[key];
+    if (input instanceof HTMLInputElement && input.type === 'checkbox') {
+      state[inputId] = Boolean(value);
+    } else {
+      state[inputId] = String(value ?? '');
+    }
+  });
+  return state;
+}
+
 function statesEqual(a: SettingsFormState, b: SettingsFormState): boolean {
   const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
   for (const key of keys) {
@@ -11802,7 +11511,6 @@ function markSettingsChanged() {
 }
 
 function clearSettingsChanged() {
-  themeDropdownChanged = false;
   settingsSavedState = captureSettingsFormState();
   settingsRedoState = null;
   updateSettingsDirtyState();
@@ -12287,6 +11995,32 @@ function initSettingsPreview(): void {
   previewClose?.addEventListener('click', () => previewPanel.setAttribute('hidden', 'true'));
 }
 
+function initThemeSelectionBehavior(): void {
+  const themeSelect = document.getElementById('theme-select') as HTMLSelectElement | null;
+  const systemThemeToggle = document.getElementById(
+    'system-theme-toggle'
+  ) as HTMLInputElement | null;
+  if (!themeSelect || !systemThemeToggle) return;
+
+  themeSelect.addEventListener('change', () => {
+    if (systemThemeToggle.checked) {
+      systemThemeToggle.checked = false;
+      systemThemeToggle.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+  });
+
+  systemThemeToggle.addEventListener('change', async () => {
+    if (!systemThemeToggle.checked) return;
+    try {
+      const { isDarkMode } = await window.electronAPI.getSystemAccentColor();
+      const systemTheme = isDarkMode ? 'default' : 'light';
+      themeSelect.value = systemTheme;
+    } catch (error) {
+      console.error('[Settings] Failed to read system theme:', error);
+    }
+  });
+}
+
 function initSettingsUndoRedo(): void {
   document.getElementById('settings-save-inline-btn')?.addEventListener('click', () => {
     void saveSettings();
@@ -12318,6 +12052,7 @@ function initSettingsUi(): void {
   initSettingsSectionResets();
   initSettingsWhyToggles();
   initSettingsPreview();
+  initThemeSelectionBehavior();
   initSettingsUndoRedo();
 }
 
@@ -13261,15 +12996,6 @@ window.addEventListener('beforeunload', () => {
     clearTimeout(zoomPopupTimeout);
     zoomPopupTimeout = null;
   }
-  if (settingsSaveTimeout) {
-    clearTimeout(settingsSaveTimeout);
-    settingsSaveTimeout = null;
-  }
-  if (saveTabStateTimeout) {
-    clearTimeout(saveTabStateTimeout);
-    saveTabStateTimeout = null;
-  }
-
   if (!isResettingSettings) {
     if (tabsEnabled && tabs.length > 0) {
       const currentTab = tabs.find((t) => t.id === activeTabId);
@@ -13292,8 +13018,19 @@ window.addEventListener('beforeunload', () => {
         activeTabId,
       };
     }
-
-    saveSettingsWithTimestamp(currentSettings);
+    if (tabsEnabled) {
+      saveTabState(true);
+    } else {
+      saveSettingsWithTimestamp(currentSettings);
+    }
+  }
+  if (settingsSaveTimeout) {
+    clearTimeout(settingsSaveTimeout);
+    settingsSaveTimeout = null;
+  }
+  if (saveTabStateTimeout) {
+    clearTimeout(saveTabStateTimeout);
+    saveTabStateTimeout = null;
   }
   if (searchDebounceTimeout) {
     clearTimeout(searchDebounceTimeout);

@@ -238,7 +238,8 @@ const electronAPI: ElectronAPI = {
     ipcRenderer.on('checksum-progress', handler);
     return () => ipcRenderer.removeListener('checksum-progress', handler);
   },
-  getGitStatus: (dirPath: string) => ipcRenderer.invoke('get-git-status', dirPath),
+  getGitStatus: (dirPath: string, includeUntracked?: boolean) =>
+    ipcRenderer.invoke('get-git-status', dirPath, includeUntracked),
   getGitBranch: (dirPath: string) => ipcRenderer.invoke('get-git-branch', dirPath),
   listArchiveContents: (archivePath: string) =>
     ipcRenderer.invoke('list-archive-contents', archivePath),
@@ -252,6 +253,7 @@ const electronAPI: ElectronAPI = {
 
   getLogsPath: () => ipcRenderer.invoke('get-logs-path'),
   openLogsFolder: () => ipcRenderer.invoke('open-logs-folder'),
+  exportDiagnostics: () => ipcRenderer.invoke('export-diagnostics'),
   getLogFileContent: () => ipcRenderer.invoke('get-log-file-content'),
 };
 

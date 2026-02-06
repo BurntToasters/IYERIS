@@ -4,7 +4,6 @@ import { getDefaultShortcuts } from './shortcuts.js';
 export function createDefaultSettings(): Settings {
   return {
     shortcuts: getDefaultShortcuts(),
-    transparency: true,
     theme: 'default',
     useSystemTheme: false,
     sortBy: 'name',
@@ -35,6 +34,7 @@ export function createDefaultSettings(): Settings {
     globalClipboard: true,
     enableSyntaxHighlighting: true,
     enableGitStatus: false,
+    gitIncludeUntracked: true,
     showFileHoverCard: true,
     showFileCheckboxes: false,
 
@@ -44,6 +44,7 @@ export function createDefaultSettings(): Settings {
     boldText: false,
     visibleFocus: false,
     reduceTransparency: false,
+    liquidGlassMode: false,
     uiDensity: 'default',
     updateChannel: 'auto',
     themedIcons: false,
@@ -63,5 +64,6 @@ export function createDefaultSettings(): Settings {
     compactFileInfo: false,
     showFileExtensions: true,
     maxSearchHistoryItems: 5,
+    maxDirectoryHistoryItems: 5,
   };
 }

@@ -8,8 +8,8 @@
       content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: file:; media-src 'self' file:; font-src 'self' data:; frame-src 'self' file:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'"
     />
     <title>IYERIS - File Explorer</title>
-    <link rel="stylesheet" href="main.css" />
-    <link rel="stylesheet" href="../dist/twemoji.css" />
+    <link rel="stylesheet" href="css/main.css" />
+    <link rel="stylesheet" href="../dist/css/twemoji.css" />
   </head>
   <body>
     <div class="titlebar" role="banner">
@@ -878,7 +878,13 @@
                 <small>Press Space for quick look</small>
               </div>
             </div>
-            <div class="settings-unsaved-bar" id="settings-unsaved-bar" hidden>
+            <div
+              class="settings-unsaved-bar"
+              id="settings-unsaved-bar"
+              hidden
+              role="alert"
+              aria-live="polite"
+            >
               <div class="settings-unsaved-text">
                 <span class="settings-unsaved-dot"></span>
                 Unsaved changes
@@ -1388,17 +1394,6 @@
               </div>
               <div class="settings-quick-grid">
                 <div class="settings-quick-item">
-                  <span>Transparency</span>
-                  <label class="toggle-switch">
-                    <input
-                      type="checkbox"
-                      id="quick-transparency-toggle"
-                      data-sync-target="transparency-toggle"
-                    />
-                    <span class="toggle-slider"></span>
-                  </label>
-                </div>
-                <div class="settings-quick-item">
                   <span>Match System Theme</span>
                   <label class="toggle-switch">
                     <input
@@ -1486,16 +1481,16 @@
                 </div>
                 <div
                   class="setting-item"
-                  data-searchable="transparency glassmorphism effects window"
+                  data-searchable="liquid glass mode macos frosted blur translucent vibrancy"
                 >
                   <div class="setting-info">
-                    <label for="transparency-toggle">Enable Transparency</label>
+                    <label for="liquid-glass-toggle">Liquid Glass Mode</label>
                     <p class="setting-description">
-                      Enable glassmorphism effects and window transparency
+                      Enhanced translucency with stronger blur effects inspired by macOS
                     </p>
                   </div>
                   <label class="toggle-switch">
-                    <input type="checkbox" id="transparency-toggle" checked />
+                    <input type="checkbox" id="liquid-glass-toggle" />
                     <span class="toggle-slider"></span>
                   </label>
                 </div>
@@ -1531,6 +1526,7 @@
                     <option value="dracula">Dracula</option>
                     <option value="solarized">Solarized</option>
                     <option value="github">GitHub Dark</option>
+                    <option value="custom">Custom</option>
                   </select>
                 </div>
                 <div
@@ -1556,19 +1552,6 @@
                         draggable="false"
                       />
                       Customize
-                    </button>
-                    <button
-                      class="modal-button secondary"
-                      id="use-custom-theme-btn"
-                      style="min-width: 100px; display: none"
-                    >
-                      <img
-                        src="../assets/twemoji/2714.svg"
-                        class="twemoji"
-                        alt="✔️"
-                        draggable="false"
-                      />
-                      Use Custom
                     </button>
                   </div>
                 </div>
@@ -1653,6 +1636,22 @@
                     <span class="toggle-slider"></span>
                   </label>
                 </div>
+                <div
+                  class="setting-item"
+                  data-searchable="git untracked files status performance fast mode"
+                >
+                  <div class="setting-info">
+                    <label for="git-include-untracked-toggle">Include Untracked Git Files</label>
+                    <p class="setting-description">
+                      Include untracked files in Git status indicators (slower in large
+                      repositories)
+                    </p>
+                  </div>
+                  <label class="toggle-switch">
+                    <input type="checkbox" id="git-include-untracked-toggle" checked />
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
                 <div class="setting-item" data-searchable="hover card preview details tooltip">
                   <div class="setting-info">
                     <label for="show-file-hover-card-toggle">File Hover Details</label>
@@ -1724,6 +1723,22 @@
                   <input
                     type="number"
                     id="max-search-history-input"
+                    class="settings-input"
+                    min="1"
+                    max="20"
+                    value="5"
+                  />
+                </div>
+                <div class="setting-item" data-searchable="max directory history items limit count">
+                  <div class="setting-info">
+                    <label for="max-directory-history-input">Max Directory History Items</label>
+                    <p class="setting-description">
+                      Number of recent directories to remember (1-20)
+                    </p>
+                  </div>
+                  <input
+                    type="number"
+                    id="max-directory-history-input"
                     class="settings-input"
                     min="1"
                     max="20"
@@ -2537,6 +2552,23 @@
                     Open Logs Folder
                   </button>
                 </div>
+                <div class="setting-item" data-searchable="diagnostics export support report">
+                  <div class="setting-info">
+                    <label>Export diagnostics</label>
+                    <p class="setting-description">
+                      Save a diagnostics report with logs, settings, and runtime information
+                    </p>
+                  </div>
+                  <button class="modal-button" id="export-diagnostics-btn">
+                    <img
+                      src="../assets/twemoji/1f4be.svg"
+                      class="twemoji"
+                      alt="💾"
+                      draggable="false"
+                    />
+                    Export Diagnostics
+                  </button>
+                </div>
               </div>
 
               <div class="settings-card">
@@ -2625,7 +2657,7 @@
                 </div>
                 <div class="about-info">
                   <h2 class="about-title">IYERIS</h2>
-                  <p class="about-version" id="about-version-display">Version 0.9.11</p>
+                  <p class="about-version" id="about-version-display">Version</p>
                   <p class="about-tagline">A modern, cross-platform file explorer</p>
                 </div>
               </div>
@@ -2861,7 +2893,7 @@
         </span>
         <span id="status-disk-space"></span>
         <span class="status-separator"></span>
-        <span class="status-version" id="status-version" title="Version 0.9.11">v0.9.11</span>
+        <span class="status-version" id="status-version" title="Version">v0.0.0</span>
         <span class="status-separator"></span>
         <button class="status-support-btn" id="heart-button" title="Support this project!">
           <img src="../assets/twemoji/2764.svg" class="twemoji" alt="❤️" draggable="false" />

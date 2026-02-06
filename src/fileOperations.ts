@@ -60,6 +60,8 @@ interface PlannedFileOperation {
 
 type FileOperationType = 'copy' | 'move';
 type ConflictBehavior = 'ask' | 'rename' | 'skip' | 'overwrite' | 'cancel';
+const OVERWRITE_BACKUP_RETENTION_MS = 14 * 24 * 60 * 60 * 1000;
+const OVERWRITE_BACKUP_MAX_FILES = 200;
 
 async function generateUniqueName(destPath: string, fileName: string): Promise<string> {
   const { base, ext } = splitFileName(fileName);
@@ -96,6 +98,10 @@ async function validateFileOperation(
   }
 
   const normalizedDestPath = normalizePathForComparison(destPath);
+  let normalizedDestRealPath = normalizedDestPath;
+  try {
+    normalizedDestRealPath = normalizePathForComparison(await fs.realpath(destPath));
+  } catch {}
   const planned: PlannedFileOperation[] = [];
   const destKeys = new Set<string>();
 
@@ -124,10 +130,16 @@ async function validateFileOperation(
 
     if (stats.isDirectory()) {
       // prevent copying dir into itself
-      const normalizedSourcePath = normalizePathForComparison(sourcePath);
+      let normalizedSourcePath = normalizePathForComparison(sourcePath);
+      try {
+        normalizedSourcePath = normalizePathForComparison(await fs.realpath(sourcePath));
+      } catch {}
+      const sourcePrefix = normalizedSourcePath.endsWith(path.sep)
+        ? normalizedSourcePath
+        : normalizedSourcePath + path.sep;
       if (
-        normalizedDestPath === normalizedSourcePath ||
-        normalizedDestPath.startsWith(normalizedSourcePath + path.sep)
+        normalizedDestRealPath === normalizedSourcePath ||
+        normalizedDestRealPath.startsWith(sourcePrefix)
       ) {
         return {
           success: false,
@@ -215,6 +227,44 @@ async function getBackupRoot(): Promise<string> {
   return root;
 }
 
+async function cleanupStashedBackups(root: string): Promise<void> {
+  const now = Date.now();
+  const entries = await fs.readdir(root, { withFileTypes: true });
+  const retained: Array<{ path: string; mtimeMs: number }> = [];
+
+  for (const entry of entries) {
+    if (!entry.isFile() || !entry.name.endsWith('.bak')) {
+      continue;
+    }
+
+    const backupPath = path.join(root, entry.name);
+    try {
+      const stats = await fs.stat(backupPath);
+      if (now - stats.mtimeMs > OVERWRITE_BACKUP_RETENTION_MS) {
+        await fs.rm(backupPath, { force: true });
+      } else {
+        retained.push({ path: backupPath, mtimeMs: stats.mtimeMs });
+      }
+    } catch {}
+  }
+
+  if (retained.length <= OVERWRITE_BACKUP_MAX_FILES) {
+    return;
+  }
+
+  retained.sort((a, b) => a.mtimeMs - b.mtimeMs);
+  const toRemove = retained.length - OVERWRITE_BACKUP_MAX_FILES;
+  for (let i = 0; i < toRemove; i++) {
+    try {
+      await fs.rm(retained[i].path, { force: true });
+    } catch {}
+  }
+}
+
+export async function cleanupStashedBackupsForTests(root: string): Promise<void> {
+  await cleanupStashedBackups(root);
+}
+
 async function stashBackup(backupPath: string, destPath: string): Promise<string> {
   const root = await getBackupRoot();
   const base = path.basename(destPath);
@@ -266,6 +316,12 @@ async function stashRemainingBackups(backups: Map<string, string>): Promise<stri
     try {
       const newPath = await stashBackup(backupPath, destPath);
       stashed.push(newPath);
+    } catch {}
+  }
+  if (stashed.length > 0) {
+    try {
+      const root = await getBackupRoot();
+      await cleanupStashedBackups(root);
     } catch {}
   }
   return stashed;

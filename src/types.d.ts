@@ -45,7 +45,6 @@ export interface TabState {
 export interface Settings {
   _timestamp?: number;
   shortcuts: { [actionId: string]: string[] };
-  transparency: boolean;
   theme:
     | 'dark'
     | 'light'
@@ -87,6 +86,7 @@ export interface Settings {
   tabState?: TabState;
   enableSyntaxHighlighting: boolean;
   enableGitStatus: boolean;
+  gitIncludeUntracked: boolean;
   showFileHoverCard: boolean;
   showFileCheckboxes: boolean;
   listColumnWidths?: ListColumnWidths;
@@ -99,6 +99,7 @@ export interface Settings {
   boldText: boolean;
   visibleFocus: boolean;
   reduceTransparency: boolean;
+  liquidGlassMode: boolean;
   uiDensity: 'compact' | 'default' | 'larger';
   updateChannel: 'auto' | 'beta' | 'stable';
   themedIcons: boolean;
@@ -118,6 +119,7 @@ export interface Settings {
   compactFileInfo: boolean;
   showFileExtensions: boolean;
   maxSearchHistoryItems: number;
+  maxDirectoryHistoryItems: number;
 }
 
 export interface HomeSettings {
@@ -528,7 +530,7 @@ export interface ElectronAPI {
   onChecksumProgress: (
     callback: (progress: { operationId: string; percent: number; algorithm: string }) => void
   ) => () => void;
-  getGitStatus: (dirPath: string) => Promise<GitStatusResponse>;
+  getGitStatus: (dirPath: string, includeUntracked?: boolean) => Promise<GitStatusResponse>;
   getGitBranch: (dirPath: string) => Promise<GitBranchResponse>;
   listArchiveContents: (archivePath: string) => Promise<ArchiveListResponse>;
 
@@ -549,6 +551,7 @@ export interface ElectronAPI {
 
   getLogsPath: () => Promise<string>;
   openLogsFolder: () => Promise<ApiResponse>;
+  exportDiagnostics: () => Promise<{ success: boolean; path?: string; error?: string }>;
   getLogFileContent: () => Promise<{
     success: boolean;
     content?: string;
