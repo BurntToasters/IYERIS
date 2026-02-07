@@ -84,7 +84,7 @@ export async function saveHomeSettings(settings: HomeSettings): Promise<ApiRespo
       try {
         await fs.copyFile(tmpPath, settingsPath);
       } finally {
-        await fs.unlink(tmpPath).catch(() => {});
+        await fs.unlink(tmpPath).catch(ignoreError);
       }
     }
     logger.debug('[HomeSettings] Saved successfully');

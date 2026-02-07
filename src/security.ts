@@ -140,8 +140,8 @@ const ALLOWED_RENDERER_URLS = new Set(
 );
 
 export function isTrustedIpcSender(event: {
-  senderFrame?: { url?: string };
-  sender?: { getURL?: () => string };
+  senderFrame?: { url?: string } | null;
+  sender?: { getURL?: () => string } | null;
 }): boolean {
   const url = event.senderFrame?.url || event.sender?.getURL?.() || '';
   if (!url) return false;

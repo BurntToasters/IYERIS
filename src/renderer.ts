@@ -12,8 +12,18 @@ import type {
 } from './types';
 import { createFolderTreeManager } from './folderDir.js';
 import { escapeHtml, getErrorMessage, ignoreError, isRecord } from './shared.js';
-import { clearHtml, getById, setHtml } from './rendererDom.js';
+import { clearHtml, getById } from './rendererDom.js';
+import {
+  buildPathFromSegments,
+  createNavigationController,
+  parsePath,
+} from './rendererNavigation.js';
+import { createPreviewController } from './rendererPreviews.js';
+import { createSearchController } from './rendererSearch.js';
+import { createSelectionController } from './rendererSelection.js';
 import { createToastManager } from './rendererToasts.js';
+import { createHoverCardController } from './rendererHoverCard.js';
+import { createTypeaheadController } from './rendererTypeahead.js';
 import {
   encodeFileUrl,
   isWindowsPath,
@@ -201,40 +211,7 @@ function debouncedSaveSettings(delay: number = SETTINGS_SAVE_DEBOUNCE_MS) {
   }, delay);
 }
 
-let searchDebounceTimeout: ReturnType<typeof setTimeout> | null = null;
-let searchRequestId = 0;
-function debouncedSearch(delay: number = SEARCH_DEBOUNCE_MS) {
-  if (searchDebounceTimeout) {
-    clearTimeout(searchDebounceTimeout);
-  }
-  searchDebounceTimeout = setTimeout(() => {
-    performSearch();
-    searchDebounceTimeout = null;
-  }, delay);
-}
-
-interface SearchFilters {
-  fileType?: string;
-  minSize?: number;
-  maxSize?: number;
-  dateFrom?: string;
-  dateTo?: string;
-}
-
-let currentSearchFilters: SearchFilters = {};
-let activeSearchOperationId: string | null = null;
-
-function cancelActiveSearch(): void {
-  if (!activeSearchOperationId) return;
-  window.electronAPI.cancelSearch(activeSearchOperationId).catch(() => {});
-  activeSearchOperationId = null;
-}
-
 type ViewMode = 'grid' | 'list' | 'column';
-
-// Breadcrumb state
-let isBreadcrumbMode = true;
-let breadcrumbContainer: HTMLElement | null = null;
 
 interface ArchiveOperation {
   id: string;
@@ -381,305 +358,6 @@ function renderOperations() {
   }
 }
 
-// Breadcrumb nav
-function parsePath(filePath: string): { segments: string[]; isWindows: boolean; isUnc: boolean } {
-  const isUnc = filePath.startsWith('\\\\');
-  const isWindows = isUnc || /^[A-Za-z]:/.test(filePath);
-  const normalizedPath = filePath.replace(/\\/g, '/');
-  const segments = normalizedPath.split('/').filter((s) => s.length > 0);
-  if (isWindows && !isUnc && segments.length > 0) {
-    if (!segments[0].includes(':')) {
-      segments[0] = segments[0] + ':';
-    }
-  }
-
-  return { segments, isWindows, isUnc };
-}
-
-function buildPathFromSegments(
-  segments: string[],
-  index: number,
-  isWindows: boolean,
-  isUnc: boolean
-): string {
-  if (index < 0) return '';
-
-  const pathSegments = segments.slice(0, index + 1);
-
-  if (isWindows) {
-    if (isUnc) {
-      if (pathSegments.length <= 2) {
-        return `\\\\${pathSegments.join('\\')}\\`;
-      }
-      return `\\\\${pathSegments.join('\\')}`;
-    }
-    if (pathSegments.length === 1) {
-      return pathSegments[0] + '\\';
-    }
-    return pathSegments.join('\\');
-  } else {
-    return '/' + pathSegments.join('/');
-  }
-}
-
-function updateBreadcrumb(currentPath: string): void {
-  if (!breadcrumbContainer) {
-    breadcrumbContainer = document.getElementById('breadcrumb-container');
-  }
-
-  if (!breadcrumbContainer || !addressInput) return;
-
-  hideBreadcrumbMenu();
-
-  const displayPath = currentPath ? getPathDisplayValue(currentPath) : '';
-
-  if (!isBreadcrumbMode || !currentPath) {
-    breadcrumbContainer.style.display = 'none';
-    addressInput.style.display = 'block';
-    addressInput.value = displayPath;
-    return;
-  }
-
-  if (isHomeViewPath(currentPath)) {
-    breadcrumbContainer.style.display = 'inline-flex';
-    addressInput.style.display = 'none';
-    breadcrumbContainer.innerHTML = '';
-    const item = document.createElement('span');
-    item.className = 'breadcrumb-item';
-    item.textContent = HOME_VIEW_LABEL;
-    item.addEventListener('click', () => navigateTo(HOME_VIEW_PATH));
-    breadcrumbContainer.appendChild(item);
-    return;
-  }
-
-  const { segments, isWindows, isUnc } = parsePath(currentPath);
-
-  if (segments.length === 0) {
-    breadcrumbContainer.style.display = 'none';
-    addressInput.style.display = 'block';
-    addressInput.value = displayPath;
-    return;
-  }
-
-  breadcrumbContainer.style.display = 'inline-flex';
-  addressInput.style.display = 'none';
-  breadcrumbContainer.innerHTML = '';
-
-  const container = breadcrumbContainer;
-
-  segments.forEach((segment, index) => {
-    const item = document.createElement('span');
-    item.className = 'breadcrumb-item';
-    const targetPath = buildPathFromSegments(segments, index, isWindows, isUnc);
-    item.title = targetPath;
-    item.dataset.path = targetPath;
-
-    const label = document.createElement('span');
-    label.textContent = segment;
-
-    const caret = document.createElement('span');
-    caret.className = 'breadcrumb-caret';
-    caret.textContent = '▾';
-
-    item.appendChild(label);
-    item.appendChild(caret);
-
-    // breadcrumb nav or dropdown menu
-    item.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const target = e.target as HTMLElement;
-      if (target.classList.contains('breadcrumb-caret')) {
-        showBreadcrumbMenu(targetPath, item);
-        return;
-      }
-      navigateTo(targetPath);
-    });
-
-    // drag/drop to breadcrumb
-    item.addEventListener('dragover', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const operation = getDragOperation(e);
-      e.dataTransfer!.dropEffect = operation;
-      item.classList.add('drag-over');
-      showDropIndicator(operation, targetPath, e.clientX, e.clientY);
-    });
-
-    item.addEventListener('dragleave', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const rect = item.getBoundingClientRect();
-      if (
-        e.clientX < rect.left ||
-        e.clientX >= rect.right ||
-        e.clientY < rect.top ||
-        e.clientY >= rect.bottom
-      ) {
-        item.classList.remove('drag-over');
-        hideDropIndicator();
-      }
-    });
-
-    item.addEventListener('drop', async (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      item.classList.remove('drag-over');
-      const draggedPaths = await getDraggedPaths(e);
-      if (draggedPaths.length === 0) {
-        hideDropIndicator();
-        return;
-      }
-      if (draggedPaths.includes(targetPath)) {
-        hideDropIndicator();
-        return;
-      }
-      const operation = getDragOperation(e);
-      await handleDrop(draggedPaths, targetPath, operation);
-      hideDropIndicator();
-    });
-
-    container.appendChild(item);
-
-    if (index < segments.length - 1) {
-      const separator = document.createElement('span');
-      separator.className = 'breadcrumb-separator';
-      separator.textContent = isWindows ? '›' : '/';
-      container.appendChild(separator);
-    }
-  });
-}
-
-function toggleBreadcrumbMode(): void {
-  isBreadcrumbMode = !isBreadcrumbMode;
-
-  if (!breadcrumbContainer) {
-    breadcrumbContainer = document.getElementById('breadcrumb-container');
-  }
-
-  if (isBreadcrumbMode) {
-    updateBreadcrumb(currentPath);
-  } else {
-    if (breadcrumbContainer) breadcrumbContainer.style.display = 'none';
-    if (addressInput) {
-      addressInput.style.display = 'block';
-      addressInput.value = getPathDisplayValue(currentPath);
-      addressInput.focus();
-      addressInput.select();
-    }
-  }
-}
-
-function setupBreadcrumbListeners(): void {
-  breadcrumbContainer = document.getElementById('breadcrumb-container');
-
-  const addressBar = document.querySelector('.address-bar');
-  if (addressBar) {
-    addressBar.addEventListener('click', (e) => {
-      const target = e.target as HTMLElement;
-      if (
-        target.classList.contains('address-bar') ||
-        target.classList.contains('breadcrumb') ||
-        target.id === 'breadcrumb-container'
-      ) {
-        if (isBreadcrumbMode) {
-          toggleBreadcrumbMode();
-        }
-      }
-    });
-  }
-
-  if (addressInput) {
-    addressInput.addEventListener('blur', () => {
-      setTimeout(() => {
-        if (!isBreadcrumbMode && currentPath) {
-          isBreadcrumbMode = true;
-          updateBreadcrumb(currentPath);
-        }
-      }, 150);
-    });
-
-    addressInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') {
-        isBreadcrumbMode = true;
-        updateBreadcrumb(currentPath);
-        addressInput.blur();
-      }
-    });
-  }
-}
-
-async function showBreadcrumbMenu(targetPath: string, anchor: HTMLElement): Promise<void> {
-  if (!breadcrumbMenu) return;
-
-  if (breadcrumbMenuPath === targetPath && breadcrumbMenu.style.display === 'block') {
-    hideBreadcrumbMenu();
-    return;
-  }
-
-  breadcrumbMenuPath = targetPath;
-  breadcrumbMenu.innerHTML =
-    '<div class="breadcrumb-menu-item" style="opacity: 0.6;">Loading...</div>';
-  breadcrumbMenu.style.display = 'block';
-
-  const wrapper = anchor.closest('.address-bar-wrapper') as HTMLElement | null;
-  if (wrapper) {
-    const rect = anchor.getBoundingClientRect();
-    const wrapperRect = wrapper.getBoundingClientRect();
-    breadcrumbMenu.style.left = `${Math.max(0, rect.left - wrapperRect.left)}px`;
-    breadcrumbMenu.style.top = `${rect.bottom - wrapperRect.top + 4}px`;
-  }
-
-  const operationId = createDirectoryOperationId('breadcrumb');
-  const result = await window.electronAPI.getDirectoryContents(
-    targetPath,
-    operationId,
-    currentSettings.showHiddenFiles
-  );
-
-  if (!result.success) {
-    setHtml(
-      breadcrumbMenu,
-      '<div class="breadcrumb-menu-item" style="opacity: 0.6;">Failed to load</div>'
-    );
-    return;
-  }
-
-  const entries = (result.contents || []).filter(
-    (entry) => entry.isDirectory && (currentSettings.showHiddenFiles || !entry.isHidden)
-  );
-  entries.sort((a, b) => NAME_COLLATOR.compare(a.name, b.name));
-
-  if (entries.length === 0) {
-    setHtml(
-      breadcrumbMenu,
-      '<div class="breadcrumb-menu-item" style="opacity: 0.6;">No subfolders</div>'
-    );
-    return;
-  }
-
-  clearHtml(breadcrumbMenu);
-  entries.forEach((entry) => {
-    const item = document.createElement('div');
-    item.className = 'breadcrumb-menu-item';
-    item.innerHTML = `
-      <span class="nav-icon">${getFolderIcon(entry.path)}</span>
-      <span>${escapeHtml(entry.name)}</span>
-    `;
-    item.addEventListener('click', () => {
-      hideBreadcrumbMenu();
-      navigateTo(entry.path);
-    });
-    breadcrumbMenu.appendChild(item);
-  });
-}
-
-function hideBreadcrumbMenu(): void {
-  if (!breadcrumbMenu) return;
-  breadcrumbMenu.style.display = 'none';
-  clearHtml(breadcrumbMenu);
-  breadcrumbMenuPath = null;
-}
-
 type DialogType = 'info' | 'warning' | 'error' | 'success' | 'question';
 
 let currentPath: string = '';
@@ -691,12 +369,6 @@ let contextMenuData: FileItem | null = null;
 let clipboard: { operation: 'copy' | 'cut'; paths: string[] } | null = null;
 let allFiles: FileItem[] = [];
 let hiddenFilesCount = 0;
-let isSearchMode: boolean = false;
-let isGlobalSearch: boolean = false;
-let searchInContents: boolean = false;
-let isPreviewPanelVisible: boolean = false;
-let previewRequestId = 0;
-let currentQuicklookFile: FileItem | null = null;
 let platformOS: string = '';
 let canUndo: boolean = false;
 let canRedo: boolean = false;
@@ -705,15 +377,6 @@ let currentZoomLevel: number = 1.0;
 let zoomPopupTimeout: NodeJS.Timeout | null = null;
 let indexStatusInterval: NodeJS.Timeout | null = null;
 
-let isRubberBandActive: boolean = false;
-let rubberBandStart: { x: number; y: number } | null = null;
-let rubberBandInitialSelection: Set<string> = new Set();
-
-let hoverCardTimeout: NodeJS.Timeout | null = null;
-let currentHoverItem: HTMLElement | null = null;
-let hoverCardEnabled = true;
-let hoverCardInitialized = false;
-
 let springLoadedTimeout: NodeJS.Timeout | null = null;
 let springLoadedFolder: HTMLElement | null = null;
 const SPRING_LOAD_DELAY = 800;
@@ -721,10 +384,11 @@ let activeListResizeColumn: string | null = null;
 let listResizeStartX = 0;
 let listResizeStartWidth = 0;
 let listResizeCurrentWidth = 0;
-let typeaheadBuffer = '';
-let typeaheadTimeout: NodeJS.Timeout | null = null;
-let breadcrumbMenuPath: string | null = null;
 let bookmarksDropReady = false;
+
+function getFileItemsArray(): HTMLElement[] {
+  return Array.from(document.querySelectorAll('.file-item')) as HTMLElement[];
+}
 
 interface TabData {
   id: string;
@@ -1117,33 +781,9 @@ const newFolderBtn = document.getElementById('new-folder-btn') as HTMLButtonElem
 const viewToggleBtn = document.getElementById('view-toggle-btn') as HTMLButtonElement;
 const viewOptions = document.getElementById('view-options') as HTMLElement;
 const listHeader = document.getElementById('list-header') as HTMLElement;
-const breadcrumbMenu = document.getElementById('breadcrumb-menu') as HTMLElement;
 const folderTree = document.getElementById('folder-tree') as HTMLElement;
 const sidebarResizeHandle = document.getElementById('sidebar-resize-handle') as HTMLElement;
 const drivesList = document.getElementById('drives-list') as HTMLElement;
-const searchBtn = document.getElementById('search-btn') as HTMLButtonElement;
-const searchInput = document.getElementById('search-input') as HTMLInputElement;
-const searchBarWrapper = document.querySelector('.search-bar-wrapper') as HTMLElement;
-const searchClose = document.getElementById('search-close') as HTMLButtonElement;
-const searchScopeToggle = document.getElementById('search-scope-toggle') as HTMLButtonElement;
-const searchFilterToggle = document.getElementById('search-filter-toggle') as HTMLButtonElement;
-const searchFiltersPanel = document.getElementById('search-filters-panel') as HTMLElement;
-const searchFilterType = document.getElementById('search-filter-type') as HTMLSelectElement;
-const searchFilterMinSize = document.getElementById('search-filter-min-size') as HTMLInputElement;
-const searchFilterMaxSize = document.getElementById('search-filter-max-size') as HTMLInputElement;
-const searchFilterSizeUnitMin = document.getElementById(
-  'search-filter-size-unit-min'
-) as HTMLSelectElement;
-const searchFilterSizeUnitMax = document.getElementById(
-  'search-filter-size-unit-max'
-) as HTMLSelectElement;
-const searchFilterDateFrom = document.getElementById('search-filter-date-from') as HTMLInputElement;
-const searchFilterDateTo = document.getElementById('search-filter-date-to') as HTMLInputElement;
-const searchFilterClear = document.getElementById('search-filter-clear') as HTMLButtonElement;
-const searchFilterApply = document.getElementById('search-filter-apply') as HTMLButtonElement;
-const searchInContentsToggle = document.getElementById(
-  'search-in-contents-toggle'
-) as HTMLInputElement;
 const sortBtn = document.getElementById('sort-btn') as HTMLButtonElement;
 const bookmarksList = document.getElementById('bookmarks-list') as HTMLElement;
 const bookmarkAddBtn = document.getElementById('bookmark-add-btn') as HTMLButtonElement;
@@ -1153,7 +793,6 @@ const dropIndicator = document.getElementById('drop-indicator') as HTMLElement;
 const dropIndicatorAction = document.getElementById('drop-indicator-action') as HTMLElement;
 const dropIndicatorPath = document.getElementById('drop-indicator-path') as HTMLElement;
 const previewResizeHandle = document.getElementById('preview-resize-handle') as HTMLElement;
-const typeaheadIndicator = document.getElementById('typeahead-indicator') as HTMLElement;
 const selectionCopyBtn = document.getElementById('selection-copy-btn') as HTMLButtonElement;
 const selectionCutBtn = document.getElementById('selection-cut-btn') as HTMLButtonElement;
 const selectionMoveBtn = document.getElementById('selection-move-btn') as HTMLButtonElement;
@@ -1218,7 +857,7 @@ function createDirectoryOperationId(prefix: string): string {
 function startDirectoryRequest(path: string): { requestId: number; operationId: string } {
   const requestId = ++directoryRequestId;
   if (activeDirectoryOperationId) {
-    window.electronAPI.cancelDirectoryContents(activeDirectoryOperationId).catch(() => {});
+    window.electronAPI.cancelDirectoryContents(activeDirectoryOperationId).catch(ignoreError);
   }
   const operationId = createDirectoryOperationId('dir');
   activeDirectoryOperationId = operationId;
@@ -1253,7 +892,7 @@ function hideLoading(): void {
 
 function cancelDirectoryRequest(): void {
   if (activeDirectoryOperationId) {
-    window.electronAPI.cancelDirectoryContents(activeDirectoryOperationId).catch(() => {});
+    window.electronAPI.cancelDirectoryContents(activeDirectoryOperationId).catch(ignoreError);
   }
   directoryRequestId += 1;
   finishDirectoryRequest(directoryRequestId);
@@ -1519,6 +1158,144 @@ const homeController = createHomeController({
   getSettings: () => currentSettings,
   openPath: (filePath) => openPathWithArchivePrompt(filePath, undefined, false),
 });
+
+const navigationController = createNavigationController({
+  getCurrentPath: () => currentPath,
+  getCurrentSettings: () => currentSettings,
+  getBreadcrumbContainer: () => getById('breadcrumb-container'),
+  getBreadcrumbMenu: () => getById('breadcrumb-menu'),
+  getAddressInput: () => getById('address-input') as HTMLInputElement | null,
+  getPathDisplayValue,
+  isHomeViewPath,
+  homeViewLabel: HOME_VIEW_LABEL,
+  homeViewPath: HOME_VIEW_PATH,
+  navigateTo: (path) => {
+    void navigateTo(path);
+  },
+  createDirectoryOperationId,
+  nameCollator: NAME_COLLATOR,
+  getFolderIcon,
+  getDragOperation,
+  showDropIndicator,
+  hideDropIndicator,
+  getDraggedPaths,
+  handleDrop,
+  debouncedSaveSettings,
+  saveSettingsWithTimestamp,
+  showToast,
+  directoryHistoryMax: DIRECTORY_HISTORY_MAX,
+});
+
+const searchController = createSearchController({
+  getCurrentPath: () => currentPath,
+  getCurrentSettings: () => currentSettings,
+  setAllFiles: (files) => {
+    allFiles = files;
+  },
+  renderFiles: (files, highlight) => renderFiles(files, highlight),
+  showLoading,
+  hideLoading,
+  updateStatusBar,
+  showToast,
+  createDirectoryOperationId,
+  navigateTo: (path) => {
+    void navigateTo(path);
+  },
+  debouncedSaveSettings,
+  saveSettingsWithTimestamp,
+  getFileGrid: () => fileGrid,
+  searchDebounceMs: SEARCH_DEBOUNCE_MS,
+  searchHistoryMax: SEARCH_HISTORY_MAX,
+});
+
+const previewController = createPreviewController({
+  getSelectedItems: () => selectedItems,
+  getFileByPath: (path) => filePathMap.get(path),
+  getCurrentSettings: () => currentSettings,
+  formatFileSize,
+  getFileExtension,
+  getFileIcon,
+  openFileEntry,
+});
+
+const selectionController = createSelectionController({
+  getSelectedItems: () => selectedItems,
+  setSelectedItems: (items) => {
+    selectedItems = items;
+  },
+  updateStatusBar,
+  isPreviewVisible: () => previewController.isPreviewVisible(),
+  updatePreview: (file) => previewController.updatePreview(file),
+  clearPreview: () => previewController.clearPreview(),
+  getFileByPath: (path) => filePathMap.get(path),
+  getViewMode: () => viewMode,
+  getFileGrid: () => fileGrid,
+  openFileEntry,
+});
+
+const {
+  updateBreadcrumb,
+  setupBreadcrumbListeners,
+  hideBreadcrumbMenu,
+  addToDirectoryHistory,
+  showDirectoryHistoryDropdown,
+  hideDirectoryHistoryDropdown,
+  clearDirectoryHistory,
+  getBreadcrumbMenuElement,
+  isBreadcrumbMenuOpen,
+} = navigationController;
+
+const {
+  initListeners: initSearchListeners,
+  closeSearch,
+  openSearch,
+  performSearch,
+  cancelActiveSearch,
+  showSearchHistoryDropdown,
+  hideSearchHistoryDropdown,
+  clearSearchHistory,
+  getStatusText: getSearchStatusText,
+  isSearchMode: isSearchModeActive,
+  getSearchInputElement,
+  setQuery: setSearchQuery,
+  focusInput: focusSearchInput,
+} = searchController;
+
+const {
+  toggleSelection,
+  clearSelection,
+  selectAll,
+  openSelectedItem,
+  navigateFileGrid,
+  selectFirstItem,
+  selectLastItem,
+  navigateByPage,
+  setupRubberBandSelection,
+  isRubberBandActive,
+} = selectionController;
+
+const hoverCardController = createHoverCardController({
+  getFileItemData,
+  formatFileSize,
+  getFileTypeFromName,
+  getFileIcon,
+  getThumbnailForPath: (path) => thumbnailCache.get(path),
+  isRubberBandActive,
+});
+
+const { setEnabled: setHoverCardEnabled, setup: setupHoverCard } = hoverCardController;
+
+const typeaheadController = createTypeaheadController({
+  getFileItems: () => getFileItemsArray(),
+  clearSelection,
+  getSelectedItems: () => selectedItems,
+  updateStatusBar,
+});
+
+const { handleInput: handleTypeaheadInput, reset: resetTypeahead } = typeaheadController;
+
+const { initPreviewUi, updatePreview, showQuickLook, closeQuickLook, isQuickLookOpen } =
+  previewController;
 
 let tooltipElement: HTMLElement | null = null;
 let tooltipTimeout: NodeJS.Timeout | null = null;
@@ -2870,7 +2647,7 @@ function applySettings(settings: Settings) {
   }
 
   setHoverCardEnabled(settings.showFileHoverCard !== false);
-  if (hoverCardEnabled) {
+  if (settings.showFileHoverCard !== false) {
     setupHoverCard();
   }
 
@@ -4789,235 +4566,6 @@ async function addToRecentFiles(filePath: string) {
   homeController.renderHomeRecents();
 }
 
-function toggleSearch() {
-  if (searchBarWrapper.style.display === 'none' || !searchBarWrapper.style.display) {
-    searchBarWrapper.style.display = 'block';
-    searchInput.focus();
-    isSearchMode = true;
-    if (isHomeViewPath(currentPath) && !isGlobalSearch) {
-      toggleSearchScope();
-    }
-    updateSearchPlaceholder();
-  } else {
-    closeSearch();
-  }
-}
-
-function closeSearch() {
-  searchRequestId += 1;
-  cancelActiveSearch();
-  searchBarWrapper.style.display = 'none';
-  searchInput.value = '';
-  isSearchMode = false;
-  isGlobalSearch = false;
-  searchScopeToggle.classList.remove('global');
-  hideSearchHistoryDropdown();
-  updateSearchPlaceholder();
-
-  searchFiltersPanel.style.display = 'none';
-  searchFilterToggle.classList.remove('active');
-  currentSearchFilters = {};
-  updateFilterBadge();
-
-  if (currentPath) {
-    navigateTo(currentPath);
-  }
-}
-
-function updateFilterBadge() {
-  const badge = document.getElementById('filter-badge');
-  if (!badge) return;
-
-  let count = 0;
-  if (currentSearchFilters.fileType) count++;
-  if (currentSearchFilters.minSize !== undefined) count++;
-  if (currentSearchFilters.maxSize !== undefined) count++;
-  if (currentSearchFilters.dateFrom) count++;
-  if (currentSearchFilters.dateTo) count++;
-
-  if (count > 0) {
-    badge.textContent = String(count);
-    badge.style.display = 'flex';
-  } else {
-    badge.style.display = 'none';
-  }
-}
-
-function toggleSearchScope() {
-  isGlobalSearch = !isGlobalSearch;
-  if (isGlobalSearch) {
-    searchScopeToggle.classList.add('global');
-    searchScopeToggle.title = 'Global Search (All Indexed Files)';
-    const img = searchScopeToggle.querySelector('img');
-    if (img) {
-      img.src = '../assets/twemoji/1f30d.svg';
-      img.alt = '🌍';
-    }
-  } else {
-    searchScopeToggle.classList.remove('global');
-    searchScopeToggle.title = 'Local Search (Current Folder)';
-    const img = searchScopeToggle.querySelector('img');
-    if (img) {
-      img.src = '../assets/twemoji/1f4c1.svg';
-      img.alt = '📁';
-    }
-  }
-  updateSearchPlaceholder();
-  updateContentSearchToggle();
-
-  if (searchInput.value.trim()) {
-    performSearch();
-  }
-}
-
-function updateContentSearchToggle() {
-  if (!searchInContentsToggle) return;
-
-  if (isGlobalSearch && !currentSettings.globalContentSearch) {
-    searchInContentsToggle.disabled = true;
-    searchInContentsToggle.checked = false;
-    searchInContents = false;
-    searchInContentsToggle.parentElement?.classList.add('disabled');
-    searchInContentsToggle.title = 'Enable "Global Content Search" in settings to use this feature';
-  } else {
-    searchInContentsToggle.disabled = false;
-    searchInContentsToggle.parentElement?.classList.remove('disabled');
-    searchInContentsToggle.title = '';
-  }
-}
-
-function updateSearchPlaceholder() {
-  if (isGlobalSearch) {
-    searchInput.placeholder = 'Search all files...';
-  } else {
-    searchInput.placeholder = 'Search files...';
-  }
-}
-
-async function performSearch() {
-  const query = searchInput.value.trim();
-  if (!query) {
-    searchRequestId += 1;
-    cancelActiveSearch();
-    return;
-  }
-
-  if (!isGlobalSearch && isHomeViewPath(currentPath)) {
-    showToast('Open a folder or use global search', 'Search', 'info');
-    return;
-  }
-
-  if (!isGlobalSearch && !currentPath) return;
-
-  const currentRequestId = ++searchRequestId;
-  cancelActiveSearch();
-  const operationId = createDirectoryOperationId('search');
-  activeSearchOperationId = operationId;
-
-  addToSearchHistory(query);
-
-  showLoading('Searching...');
-  fileGrid.innerHTML = '';
-
-  let result;
-  const hasFilters =
-    currentSearchFilters.fileType ||
-    currentSearchFilters.minSize !== undefined ||
-    currentSearchFilters.maxSize !== undefined ||
-    currentSearchFilters.dateFrom ||
-    currentSearchFilters.dateTo ||
-    searchInContents;
-
-  if (isGlobalSearch) {
-    if (searchInContents) {
-      result = await window.electronAPI.searchFilesWithContentGlobal(
-        query,
-        hasFilters ? currentSearchFilters : undefined,
-        operationId
-      );
-      if (currentRequestId !== searchRequestId) return;
-
-      if (result.success && result.results) {
-        allFiles = result.results;
-        renderFiles(result.results, query);
-      } else if (result.error !== 'Calculation cancelled') {
-        if (result.error === 'Indexer is disabled') {
-          showToast(
-            'File indexer is disabled. Enable it in settings to use global search.',
-            'Index Disabled',
-            'warning'
-          );
-        } else {
-          showToast(result.error || 'Global content search failed', 'Search Error', 'error');
-        }
-      }
-    } else {
-      result = await window.electronAPI.searchIndex(query, operationId);
-      if (currentRequestId !== searchRequestId) return;
-
-      if (result.success && result.results) {
-        const fileItems: FileItem[] = [];
-
-        for (const entry of result.results) {
-          const isHidden = entry.name.startsWith('.');
-
-          fileItems.push({
-            name: entry.name,
-            path: entry.path,
-            isDirectory: entry.isDirectory,
-            isFile: entry.isFile,
-            size: entry.size,
-            modified: entry.modified,
-            isHidden,
-          });
-        }
-
-        allFiles = fileItems;
-        renderFiles(fileItems);
-      } else if (result.error !== 'Calculation cancelled') {
-        if (result.error === 'Indexer is disabled') {
-          showToast(
-            'File indexer is disabled. Enable it in settings to use global search.',
-            'Index Disabled',
-            'warning'
-          );
-        } else {
-          showToast(result.error || 'Global search failed', 'Search Error', 'error');
-        }
-      }
-    }
-  } else {
-    if (searchInContents) {
-      result = await window.electronAPI.searchFilesWithContent(
-        currentPath,
-        query,
-        hasFilters ? currentSearchFilters : undefined,
-        operationId
-      );
-    } else {
-      result = await window.electronAPI.searchFiles(
-        currentPath,
-        query,
-        hasFilters ? currentSearchFilters : undefined,
-        operationId
-      );
-    }
-    if (currentRequestId !== searchRequestId) return;
-
-    if (result.success && result.results) {
-      allFiles = result.results;
-      renderFiles(result.results, searchInContents ? query : undefined);
-    } else if (result.error !== 'Calculation cancelled') {
-      showToast(result.error || 'Search failed', 'Search Error', 'error');
-    }
-  }
-
-  if (currentRequestId !== searchRequestId) return;
-  hideLoading();
-  updateStatusBar();
-  activeSearchOperationId = null;
-}
-
 async function updateClipboardIndicator() {
   const indicator = document.getElementById('clipboard-indicator');
   const indicatorText = document.getElementById('clipboard-text');
@@ -5505,27 +5053,9 @@ function updateStatusBar() {
   }
 
   if (statusSearch && statusSearchText) {
-    if (isSearchMode) {
-      const searchQuery = searchInput?.value || '';
-      let searchText = isGlobalSearch ? 'Global' : 'Search';
-
-      if (searchQuery) {
-        const truncated = searchQuery.length > 20 ? searchQuery.slice(0, 20) + '...' : searchQuery;
-        searchText += `: "${truncated}"`;
-      }
-
-      const hasFilters =
-        currentSearchFilters.fileType ||
-        currentSearchFilters.minSize !== undefined ||
-        currentSearchFilters.maxSize !== undefined ||
-        currentSearchFilters.dateFrom ||
-        currentSearchFilters.dateTo;
-
-      if (hasFilters) {
-        searchText += ' (filtered)';
-      }
-
-      statusSearchText.textContent = searchText;
+    const searchStatus = getSearchStatusText();
+    if (searchStatus.active) {
+      statusSearchText.textContent = searchStatus.text;
       statusSearch.style.display = 'inline-flex';
     } else {
       statusSearch.style.display = 'none';
@@ -5954,226 +5484,6 @@ function getFileTypeFromName(filename: string): string {
   return `${ext.toUpperCase()} File`;
 }
 
-function setHoverCardEnabled(enabled: boolean): void {
-  hoverCardEnabled = enabled;
-  if (!enabled) {
-    const hoverCard = document.getElementById('file-hover-card');
-    if (hoverCard) {
-      hoverCard.classList.remove('visible');
-    }
-    if (hoverCardTimeout) {
-      clearTimeout(hoverCardTimeout);
-      hoverCardTimeout = null;
-    }
-    currentHoverItem = null;
-  }
-}
-
-function setupHoverCard(): void {
-  if (hoverCardInitialized) return;
-
-  const hoverCard = getById('file-hover-card');
-  const hoverThumbnail = getById('hover-card-thumbnail');
-  const hoverName = getById('hover-card-name');
-  const hoverSize = getById('hover-card-size');
-  const hoverType = getById('hover-card-type');
-  const hoverDate = getById('hover-card-date');
-  const hoverExtraRow = getById('hover-card-extra-row');
-  const hoverExtraLabel = getById('hover-card-extra-label');
-  const hoverExtraValue = getById('hover-card-extra-value');
-
-  if (!hoverCard || !hoverThumbnail || !hoverName || !hoverSize || !hoverType || !hoverDate) return;
-
-  hoverCardInitialized = true;
-
-  const showHoverCard = (fileItem: HTMLElement, x: number, y: number) => {
-    const item = getFileItemData(fileItem);
-    if (!item) return;
-
-    hoverName.textContent = item.name;
-    hoverSize.textContent = item.isDirectory ? '--' : formatFileSize(item.size);
-    hoverType.textContent = item.isDirectory ? 'Folder' : getFileTypeFromName(item.name);
-    hoverDate.textContent = new Date(item.modified).toLocaleString();
-
-    const cached = thumbnailCache.get(item.path);
-    clearHtml(hoverThumbnail);
-    if (cached) {
-      const img = document.createElement('img');
-      img.src = cached;
-      img.alt = item.name;
-      hoverThumbnail.appendChild(img);
-    } else {
-      const icon = document.createElement('span');
-      icon.className = 'hover-icon';
-      icon.innerHTML = getFileIcon(item.name);
-      hoverThumbnail.appendChild(icon);
-    }
-
-    if (hoverExtraRow && hoverExtraLabel && hoverExtraValue) {
-      hoverExtraRow.style.display = 'none';
-    }
-
-    const padding = 16;
-    const cardWidth = 260;
-    const cardHeight = 180;
-
-    let posX = x + padding;
-    let posY = y + padding;
-
-    if (posX + cardWidth > window.innerWidth) {
-      posX = x - cardWidth - padding;
-    }
-    if (posY + cardHeight > window.innerHeight) {
-      posY = y - cardHeight - padding;
-    }
-    if (posX < 0) posX = padding;
-    if (posY < 0) posY = padding;
-
-    hoverCard.style.left = `${posX}px`;
-    hoverCard.style.top = `${posY}px`;
-    hoverCard.classList.add('visible');
-  };
-
-  const hideHoverCard = () => {
-    hoverCard.classList.remove('visible');
-    if (hoverCardTimeout) {
-      clearTimeout(hoverCardTimeout);
-      hoverCardTimeout = null;
-    }
-    currentHoverItem = null;
-  };
-
-  document.addEventListener('mouseover', (e) => {
-    if (!hoverCardEnabled) return;
-
-    const target = e.target as HTMLElement;
-    const fileItem = target.closest('.file-item') as HTMLElement;
-
-    if (!fileItem || isRubberBandActive) {
-      if (currentHoverItem && !fileItem) {
-        hideHoverCard();
-      }
-      return;
-    }
-
-    if (fileItem === currentHoverItem) return;
-
-    hideHoverCard();
-    currentHoverItem = fileItem;
-
-    hoverCardTimeout = setTimeout(() => {
-      if (currentHoverItem === fileItem && document.body.contains(fileItem)) {
-        const rect = fileItem.getBoundingClientRect();
-        showHoverCard(fileItem, rect.right, rect.top);
-      }
-    }, 1000);
-  });
-
-  document.addEventListener('mouseout', (e) => {
-    const target = e.target as HTMLElement;
-    const relatedTarget = e.relatedTarget as HTMLElement;
-    const fileItem = target.closest('.file-item');
-    const toFileItem = relatedTarget?.closest('.file-item');
-    const toHoverCard = relatedTarget?.closest('.file-hover-card');
-
-    if (fileItem && !toFileItem && !toHoverCard) {
-      hideHoverCard();
-    }
-  });
-
-  document.addEventListener('scroll', hideHoverCard, true);
-  document.addEventListener('mousedown', hideHoverCard);
-}
-
-function setupRubberBandSelection(): void {
-  const fileView = document.getElementById('file-view');
-  const selectionRect = document.getElementById('selection-rect');
-  if (!fileView || !selectionRect) return;
-
-  fileView.addEventListener('mousedown', (e) => {
-    const target = e.target as HTMLElement;
-    if (target.closest('.file-item') || target.closest('.empty-state') || e.button !== 0) {
-      return;
-    }
-
-    const fileViewRect = fileView.getBoundingClientRect();
-    rubberBandStart = {
-      x: e.clientX - fileViewRect.left + fileView.scrollLeft,
-      y: e.clientY - fileViewRect.top + fileView.scrollTop,
-    };
-
-    if (e.shiftKey) {
-      rubberBandInitialSelection = new Set(selectedItems);
-    } else {
-      rubberBandInitialSelection.clear();
-      clearSelection();
-    }
-
-    isRubberBandActive = true;
-    selectionRect.style.left = `${rubberBandStart.x}px`;
-    selectionRect.style.top = `${rubberBandStart.y}px`;
-    selectionRect.style.width = '0';
-    selectionRect.style.height = '0';
-    selectionRect.classList.add('active');
-    e.preventDefault();
-  });
-
-  document.addEventListener('mousemove', (e) => {
-    if (!isRubberBandActive || !rubberBandStart) return;
-
-    const fileViewRect = fileView.getBoundingClientRect();
-    const currentX = e.clientX - fileViewRect.left + fileView.scrollLeft;
-    const currentY = e.clientY - fileViewRect.top + fileView.scrollTop;
-
-    const left = Math.min(rubberBandStart.x, currentX);
-    const top = Math.min(rubberBandStart.y, currentY);
-    const width = Math.abs(currentX - rubberBandStart.x);
-    const height = Math.abs(currentY - rubberBandStart.y);
-
-    selectionRect.style.left = `${left}px`;
-    selectionRect.style.top = `${top}px`;
-    selectionRect.style.width = `${width}px`;
-    selectionRect.style.height = `${height}px`;
-
-    const selRect = { left, top, right: left + width, bottom: top + height };
-    const fileItems = document.querySelectorAll('.file-item');
-
-    selectedItems = new Set(rubberBandInitialSelection);
-
-    fileItems.forEach((item) => {
-      const itemEl = item as HTMLElement;
-      const itemRect = itemEl.getBoundingClientRect();
-      const itemLeft = itemRect.left - fileViewRect.left + fileView.scrollLeft;
-      const itemTop = itemRect.top - fileViewRect.top + fileView.scrollTop;
-      const itemRight = itemLeft + itemRect.width;
-      const itemBottom = itemTop + itemRect.height;
-
-      const intersects =
-        selRect.left < itemRight &&
-        selRect.right > itemLeft &&
-        selRect.top < itemBottom &&
-        selRect.bottom > itemTop;
-
-      const itemPath = itemEl.dataset.path;
-      if (intersects && itemPath) {
-        itemEl.classList.add('selected');
-        selectedItems.add(itemPath);
-      } else if (!rubberBandInitialSelection.has(itemPath || '')) {
-        itemEl.classList.remove('selected');
-      }
-    });
-
-    updateStatusBar();
-  });
-
-  document.addEventListener('mouseup', () => {
-    if (!isRubberBandActive) return;
-    isRubberBandActive = false;
-    rubberBandStart = null;
-    selectionRect.classList.remove('active');
-  });
-}
-
 function initCoreUiInteractions(): void {
   initSettingsTabs();
   initSettingsUi();
@@ -6185,6 +5495,7 @@ function initCoreUiInteractions(): void {
   setupSidebarResize();
   setupSidebarSections();
   setupPreviewResize();
+  initPreviewUi();
   if (currentSettings.showFileHoverCard !== false) {
     setupHoverCard();
   }
@@ -6309,99 +5620,6 @@ function initActionButtonListeners(): void {
   });
 }
 
-function initSearchListeners(): void {
-  searchBtn?.addEventListener('click', toggleSearch);
-  searchClose?.addEventListener('click', closeSearch);
-  searchScopeToggle?.addEventListener('click', toggleSearchScope);
-
-  searchFilterToggle?.addEventListener('click', () => {
-    if (searchFiltersPanel.style.display === 'none' || !searchFiltersPanel.style.display) {
-      searchFiltersPanel.style.display = 'block';
-      searchFilterToggle.classList.add('active');
-    } else {
-      searchFiltersPanel.style.display = 'none';
-      searchFilterToggle.classList.remove('active');
-    }
-  });
-
-  searchFilterApply?.addEventListener('click', () => {
-    const fileType = searchFilterType.value;
-    const minSizeValue = searchFilterMinSize.value
-      ? parseFloat(searchFilterMinSize.value)
-      : undefined;
-    const maxSizeValue = searchFilterMaxSize.value
-      ? parseFloat(searchFilterMaxSize.value)
-      : undefined;
-    const minSizeUnit = parseFloat(searchFilterSizeUnitMin.value);
-    const maxSizeUnit = parseFloat(searchFilterSizeUnitMax.value);
-
-    currentSearchFilters = {
-      fileType: fileType !== 'all' ? fileType : undefined,
-      minSize: minSizeValue !== undefined ? minSizeValue * minSizeUnit : undefined,
-      maxSize: maxSizeValue !== undefined ? maxSizeValue * maxSizeUnit : undefined,
-      dateFrom: searchFilterDateFrom.value || undefined,
-      dateTo: searchFilterDateTo.value || undefined,
-    };
-
-    const hasActiveFilters =
-      currentSearchFilters.fileType ||
-      currentSearchFilters.minSize !== undefined ||
-      currentSearchFilters.maxSize !== undefined ||
-      currentSearchFilters.dateFrom ||
-      currentSearchFilters.dateTo;
-
-    if (hasActiveFilters) {
-      searchFilterToggle.classList.add('active');
-    }
-    updateFilterBadge();
-
-    searchFiltersPanel.style.display = 'none';
-
-    if (searchInput.value.trim()) {
-      performSearch();
-    }
-  });
-
-  searchFilterClear?.addEventListener('click', () => {
-    searchFilterType.value = 'all';
-    searchFilterMinSize.value = '';
-    searchFilterMaxSize.value = '';
-    searchFilterSizeUnitMin.value = '1024';
-    searchFilterSizeUnitMax.value = '1048576';
-    searchFilterDateFrom.value = '';
-    searchFilterDateTo.value = '';
-    currentSearchFilters = {};
-    searchFilterToggle.classList.remove('active');
-    updateFilterBadge();
-
-    if (searchInput.value.trim()) {
-      performSearch();
-    }
-  });
-
-  searchInContentsToggle?.addEventListener('change', () => {
-    searchInContents = searchInContentsToggle.checked;
-    if (searchInput.value.trim()) {
-      performSearch();
-    }
-  });
-
-  searchInput?.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') {
-      hideSearchHistoryDropdown();
-      performSearch();
-    }
-  });
-
-  searchInput?.addEventListener('input', () => {
-    if (searchInput.value.length === 0) {
-      closeSearch();
-    } else if (searchInput.value.length >= 2) {
-      debouncedSearch();
-    }
-  });
-}
-
 function initNavigationListeners(): void {
   sortBtn?.addEventListener('click', showSortMenu);
   bookmarkAddBtn?.addEventListener('click', addBookmark);
@@ -6429,7 +5647,6 @@ function isModalOpen(): boolean {
   const shortcutsModal = document.getElementById('shortcuts-modal');
   const dialogModal = document.getElementById('dialog-modal');
   const licensesModal = document.getElementById('licenses-modal');
-  const quicklookModal = document.getElementById('quicklook-modal');
   const homeSettingsModal = document.getElementById('home-settings-modal');
 
   return !!(
@@ -6437,7 +5654,7 @@ function isModalOpen(): boolean {
     (shortcutsModal && shortcutsModal.style.display === 'flex') ||
     (dialogModal && dialogModal.style.display === 'flex') ||
     (licensesModal && licensesModal.style.display === 'flex') ||
-    (quicklookModal && quicklookModal.style.display === 'flex') ||
+    isQuickLookOpen() ||
     (homeSettingsModal && homeSettingsModal.style.display === 'flex')
   );
 }
@@ -6455,36 +5672,6 @@ function isEditableElementActive(): boolean {
     activeElement.tagName === 'TEXTAREA' ||
     activeElement.isContentEditable
   );
-}
-
-function openSearch(isGlobal: boolean): void {
-  if (!searchBarWrapper || !searchScopeToggle || !searchInput) return;
-
-  if (!isSearchMode) {
-    searchBarWrapper.style.display = 'block';
-    isSearchMode = true;
-  }
-
-  isGlobalSearch = isGlobal;
-  if (isGlobalSearch) {
-    searchScopeToggle.classList.add('global');
-    searchScopeToggle.title = 'Global Search (All Indexed Files)';
-    const img = searchScopeToggle.querySelector('img');
-    if (img) {
-      img.src = '../assets/twemoji/1f30d.svg';
-      img.alt = '🌍';
-    }
-  } else {
-    searchScopeToggle.classList.remove('global');
-    searchScopeToggle.title = 'Local Search (Current Folder)';
-    const img = searchScopeToggle.querySelector('img');
-    if (img) {
-      img.src = '../assets/twemoji/1f4c1.svg';
-      img.alt = '📁';
-    }
-  }
-  updateSearchPlaceholder();
-  searchInput.focus();
 }
 
 function runShortcutAction(actionId: string, e: KeyboardEvent): boolean {
@@ -6663,7 +5850,7 @@ function initKeyboardListeners(): void {
         return;
       }
 
-      if (isSearchMode) {
+      if (isSearchModeActive()) {
         closeSearch();
       }
       return;
@@ -6852,7 +6039,7 @@ function initKeyboardListeners(): void {
       !e.metaKey &&
       !e.altKey &&
       e.key.length === 1 &&
-      !isSearchMode &&
+      !isSearchModeActive() &&
       viewMode !== 'column'
     ) {
       const activeElement = document.activeElement;
@@ -6916,9 +6103,10 @@ function initGlobalClickListeners(): void {
       hideSortMenu();
     }
 
+    const breadcrumbMenu = getBreadcrumbMenuElement();
     if (
       breadcrumbMenu &&
-      breadcrumbMenu.style.display === 'block' &&
+      isBreadcrumbMenuOpen() &&
       !breadcrumbMenu.contains(target) &&
       !target.closest('.breadcrumb-item')
     ) {
@@ -7127,110 +6315,6 @@ function setupEventListeners() {
   initDragAndDropListeners();
   initContextMenuListeners();
 }
-function addToSearchHistory(query: string) {
-  if (!currentSettings.enableSearchHistory || !query.trim()) return;
-  if (!currentSettings.searchHistory) {
-    currentSettings.searchHistory = [];
-  }
-  const maxSearchHistoryItems = Math.max(
-    1,
-    Math.min(20, currentSettings.maxSearchHistoryItems || SEARCH_HISTORY_MAX)
-  );
-  currentSettings.searchHistory = currentSettings.searchHistory.filter((item) => item !== query);
-  currentSettings.searchHistory.unshift(query);
-  currentSettings.searchHistory = currentSettings.searchHistory.slice(0, maxSearchHistoryItems);
-  debouncedSaveSettings();
-}
-
-function addToDirectoryHistory(dirPath: string) {
-  if (!currentSettings.enableSearchHistory || !dirPath.trim()) return;
-  if (isHomeViewPath(dirPath)) return;
-  if (!currentSettings.directoryHistory) {
-    currentSettings.directoryHistory = [];
-  }
-  const maxDirectoryHistoryItems = Math.max(
-    1,
-    Math.min(20, currentSettings.maxDirectoryHistoryItems || DIRECTORY_HISTORY_MAX)
-  );
-  currentSettings.directoryHistory = currentSettings.directoryHistory.filter(
-    (item) => item !== dirPath
-  );
-  currentSettings.directoryHistory.unshift(dirPath);
-  currentSettings.directoryHistory = currentSettings.directoryHistory.slice(
-    0,
-    maxDirectoryHistoryItems
-  );
-  debouncedSaveSettings();
-}
-
-function showSearchHistoryDropdown() {
-  const dropdown = document.getElementById('search-history-dropdown');
-  if (!dropdown || !currentSettings.enableSearchHistory) return;
-
-  const history = currentSettings.searchHistory || [];
-
-  if (history.length === 0) {
-    dropdown.innerHTML = '<div class="history-empty">No recent searches</div>';
-  } else {
-    dropdown.innerHTML =
-      history
-        .map(
-          (item) =>
-            `<div class="history-item" data-query="${escapeHtml(item)}">${twemojiImg(String.fromCodePoint(0x1f50d), 'twemoji')} ${escapeHtml(item)}</div>`
-        )
-        .join('') +
-      `<div class="history-clear" data-action="clear-search">${twemojiImg(String.fromCodePoint(0x1f5d1), 'twemoji')} Clear Search History</div>`;
-  }
-
-  dropdown.style.display = 'block';
-}
-
-function showDirectoryHistoryDropdown() {
-  const dropdown = document.getElementById('directory-history-dropdown');
-  if (!dropdown || !currentSettings.enableSearchHistory) return;
-
-  const history = currentSettings.directoryHistory || [];
-
-  if (history.length === 0) {
-    dropdown.innerHTML = '<div class="history-empty">No recent directories</div>';
-  } else {
-    dropdown.innerHTML =
-      history
-        .map(
-          (item) =>
-            `<div class="history-item" data-path="${escapeHtml(item)}">${twemojiImg(String.fromCodePoint(0x1f4c1), 'twemoji')} ${escapeHtml(item)}</div>`
-        )
-        .join('') +
-      `<div class="history-clear" data-action="clear-directory">${twemojiImg(String.fromCodePoint(0x1f5d1), 'twemoji')} Clear Directory History</div>`;
-  }
-
-  dropdown.style.display = 'block';
-}
-
-function hideSearchHistoryDropdown() {
-  const dropdown = document.getElementById('search-history-dropdown');
-  if (dropdown) dropdown.style.display = 'none';
-}
-
-function hideDirectoryHistoryDropdown() {
-  const dropdown = document.getElementById('directory-history-dropdown');
-  if (dropdown) dropdown.style.display = 'none';
-}
-
-function clearSearchHistory() {
-  currentSettings.searchHistory = [];
-  saveSettingsWithTimestamp(currentSettings);
-  hideSearchHistoryDropdown();
-  showToast('Search history cleared', 'History', 'success');
-}
-
-function clearDirectoryHistory() {
-  currentSettings.directoryHistory = [];
-  saveSettingsWithTimestamp(currentSettings);
-  hideDirectoryHistoryDropdown();
-  showToast('Directory history cleared', 'History', 'success');
-}
-
 function updateHiddenFilesCount(items: FileItem[], append = false): void {
   const count = items.reduce((acc, item) => acc + (item.isHidden ? 1 : 0), 0);
   hiddenFilesCount = append ? hiddenFilesCount + count : count;
@@ -7244,14 +6328,9 @@ async function navigateTo(path: string, skipHistoryUpdate = false) {
   }
 
   if (isHomeViewPath(path)) {
-    if (typeaheadTimeout) {
-      clearTimeout(typeaheadTimeout);
-      typeaheadTimeout = null;
-    }
-    typeaheadBuffer = '';
-    hideTypeaheadIndicator();
+    resetTypeahead();
 
-    if (isSearchMode) {
+    if (isSearchModeActive()) {
       closeSearch();
     }
 
@@ -7282,14 +6361,9 @@ async function navigateTo(path: string, skipHistoryUpdate = false) {
   let operationId = '';
 
   try {
-    if (typeaheadTimeout) {
-      clearTimeout(typeaheadTimeout);
-      typeaheadTimeout = null;
-    }
-    typeaheadBuffer = '';
-    hideTypeaheadIndicator();
+    resetTypeahead();
 
-    if (isSearchMode) {
+    if (isSearchModeActive()) {
       closeSearch();
     }
 
@@ -7826,51 +6900,6 @@ function hideDropIndicator(): void {
   dropIndicator.style.display = 'none';
 }
 
-function showTypeaheadIndicator(text: string): void {
-  if (!typeaheadIndicator) return;
-  typeaheadIndicator.textContent = text;
-  typeaheadIndicator.style.display = 'block';
-}
-
-function hideTypeaheadIndicator(): void {
-  if (!typeaheadIndicator) return;
-  typeaheadIndicator.style.display = 'none';
-  typeaheadIndicator.textContent = '';
-}
-
-function handleTypeaheadInput(char: string): void {
-  typeaheadBuffer += char;
-  showTypeaheadIndicator(typeaheadBuffer);
-
-  if (typeaheadTimeout) {
-    clearTimeout(typeaheadTimeout);
-  }
-  typeaheadTimeout = setTimeout(() => {
-    typeaheadBuffer = '';
-    hideTypeaheadIndicator();
-    typeaheadTimeout = null;
-  }, 800);
-
-  const needle = typeaheadBuffer.toLowerCase();
-  const items = getFileItemsArray();
-  const match = items.find((item) => {
-    const nameEl = item.querySelector('.file-name');
-    const text = nameEl?.textContent?.toLowerCase() || '';
-    return text.startsWith(needle);
-  });
-
-  if (match) {
-    clearSelection();
-    match.classList.add('selected');
-    const itemPath = match.getAttribute('data-path');
-    if (itemPath) {
-      selectedItems.add(itemPath);
-    }
-    match.scrollIntoView({ block: 'nearest' });
-    updateStatusBar();
-  }
-}
-
 function scheduleSpringLoad(target: HTMLElement, action: () => void): void {
   if (springLoadedFolder !== target) {
     if (springLoadedTimeout) {
@@ -8323,7 +7352,7 @@ function loadThumbnail(fileItem: HTMLElement, item: FileItem) {
         renderThumbnailImage(iconDiv as HTMLElement, thumbnailUrl, item, fileItem);
 
         if (shouldCacheToDisk && thumbnailUrl.startsWith('data:')) {
-          window.electronAPI.saveCachedThumbnail(item.path, thumbnailUrl).catch(() => {});
+          window.electronAPI.saveCachedThumbnail(item.path, thumbnailUrl).catch(ignoreError);
         }
       }
     } catch {
@@ -8456,215 +7485,6 @@ async function handleDrop(
   } catch (error) {
     console.error(`Error during ${operation}:`, error);
     showToast(`Failed to ${operation} items`, 'Error', 'error');
-  }
-}
-
-function toggleSelection(fileItem: HTMLElement) {
-  const itemPath = fileItem.dataset.path;
-  if (!itemPath) return;
-
-  fileItem.classList.toggle('selected');
-  if (fileItem.classList.contains('selected')) {
-    selectedItems.add(itemPath);
-  } else {
-    selectedItems.delete(itemPath);
-  }
-  updateStatusBar();
-
-  if (isPreviewPanelVisible && selectedItems.size === 1) {
-    const selectedPath = Array.from(selectedItems)[0];
-    const file = filePathMap.get(selectedPath);
-    if (file && file.isFile) {
-      updatePreview(file);
-    } else {
-      previewRequestId++;
-      showEmptyPreview();
-    }
-  } else if (isPreviewPanelVisible && selectedItems.size !== 1) {
-    previewRequestId++;
-    showEmptyPreview();
-  }
-}
-
-function clearSelection() {
-  document.querySelectorAll('.file-item.selected').forEach((item) => {
-    item.classList.remove('selected');
-  });
-  selectedItems.clear();
-  updateStatusBar();
-
-  if (isPreviewPanelVisible) {
-    previewRequestId++;
-    showEmptyPreview();
-  }
-}
-
-function selectAll() {
-  document.querySelectorAll('.file-item').forEach((item) => {
-    item.classList.add('selected');
-    const itemPath = item.getAttribute('data-path');
-    if (itemPath) {
-      selectedItems.add(itemPath);
-    }
-  });
-  updateStatusBar();
-}
-
-let lastSelectedIndex = -1;
-
-function openSelectedItem() {
-  if (selectedItems.size !== 1) return;
-  const itemPath = Array.from(selectedItems)[0];
-  const item = filePathMap.get(itemPath);
-  if (item) {
-    void openFileEntry(item);
-  }
-}
-
-function getFileItemsArray(): HTMLElement[] {
-  return Array.from(document.querySelectorAll('.file-item')) as HTMLElement[];
-}
-
-function getGridColumns(): number {
-  const fileGrid = document.getElementById('file-grid');
-  if (!fileGrid || viewMode === 'list') return 1;
-  const gridStyle = window.getComputedStyle(fileGrid);
-  const columns = gridStyle.getPropertyValue('grid-template-columns').split(' ').length;
-  return columns || 1;
-}
-
-function navigateFileGrid(key: string, shiftKey: boolean) {
-  const fileItems = getFileItemsArray();
-  if (fileItems.length === 0) return;
-
-  let currentIndex = lastSelectedIndex;
-  if (currentIndex === -1 || currentIndex >= fileItems.length) {
-    const selectedPath = Array.from(selectedItems)[selectedItems.size - 1];
-    currentIndex = fileItems.findIndex((item) => item.getAttribute('data-path') === selectedPath);
-  }
-  if (currentIndex === -1) currentIndex = 0;
-
-  const columns = getGridColumns();
-  let newIndex = currentIndex;
-
-  switch (key) {
-    case 'ArrowUp':
-      newIndex = Math.max(0, currentIndex - columns);
-      break;
-    case 'ArrowDown':
-      newIndex = Math.min(fileItems.length - 1, currentIndex + columns);
-      break;
-    case 'ArrowLeft':
-      newIndex = Math.max(0, currentIndex - 1);
-      break;
-    case 'ArrowRight':
-      newIndex = Math.min(fileItems.length - 1, currentIndex + 1);
-      break;
-  }
-
-  if (newIndex !== currentIndex || selectedItems.size === 0) {
-    selectItemAtIndex(fileItems, newIndex, shiftKey, currentIndex);
-  }
-}
-
-function selectFirstItem(shiftKey: boolean) {
-  const fileItems = getFileItemsArray();
-  if (fileItems.length === 0) return;
-
-  if (shiftKey && lastSelectedIndex !== -1) {
-    selectItemAtIndex(fileItems, 0, true, lastSelectedIndex);
-  } else {
-    selectItemAtIndex(fileItems, 0, false, -1);
-  }
-}
-
-function selectLastItem(shiftKey: boolean) {
-  const fileItems = getFileItemsArray();
-  if (fileItems.length === 0) return;
-
-  if (shiftKey && lastSelectedIndex !== -1) {
-    selectItemAtIndex(fileItems, fileItems.length - 1, true, lastSelectedIndex);
-  } else {
-    selectItemAtIndex(fileItems, fileItems.length - 1, false, -1);
-  }
-}
-
-function navigateByPage(direction: 'up' | 'down', shiftKey: boolean) {
-  const fileItems = getFileItemsArray();
-  if (fileItems.length === 0) return;
-
-  const fileGrid = document.getElementById('file-grid');
-  if (!fileGrid) return;
-
-  const columns = getGridColumns();
-  const gridRect = fileGrid.getBoundingClientRect();
-  const firstItem = fileItems[0];
-  if (!firstItem) return;
-
-  const itemRect = firstItem.getBoundingClientRect();
-  const itemHeight = itemRect.height + 8; // Include gap
-  const visibleRows = Math.max(1, Math.floor(gridRect.height / itemHeight));
-  const pageSize = visibleRows * columns;
-
-  let currentIndex = lastSelectedIndex;
-  if (currentIndex === -1 || currentIndex >= fileItems.length) {
-    const selectedPath = Array.from(selectedItems)[selectedItems.size - 1];
-    currentIndex = fileItems.findIndex((item) => item.getAttribute('data-path') === selectedPath);
-  }
-  if (currentIndex === -1) currentIndex = 0;
-
-  let newIndex: number;
-  if (direction === 'up') {
-    newIndex = Math.max(0, currentIndex - pageSize);
-  } else {
-    newIndex = Math.min(fileItems.length - 1, currentIndex + pageSize);
-  }
-
-  if (newIndex !== currentIndex || selectedItems.size === 0) {
-    selectItemAtIndex(fileItems, newIndex, shiftKey, currentIndex);
-  }
-}
-
-function selectItemAtIndex(
-  fileItems: HTMLElement[],
-  index: number,
-  shiftKey: boolean,
-  anchorIndex: number
-) {
-  if (index < 0 || index >= fileItems.length) return;
-
-  if (shiftKey && anchorIndex !== -1) {
-    const start = Math.min(anchorIndex, index);
-    const end = Math.max(anchorIndex, index);
-    clearSelection();
-    for (let i = start; i <= end; i++) {
-      const item = fileItems[i];
-      item.classList.add('selected');
-      const itemPath = item.getAttribute('data-path');
-      if (itemPath) {
-        selectedItems.add(itemPath);
-      }
-    }
-  } else {
-    clearSelection();
-    const item = fileItems[index];
-    item.classList.add('selected');
-    const itemPath = item.getAttribute('data-path');
-    if (itemPath) {
-      selectedItems.add(itemPath);
-    }
-    lastSelectedIndex = index;
-  }
-
-  fileItems[index].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-  updateStatusBar();
-
-  if (isPreviewPanelVisible && selectedItems.size === 1) {
-    const itemPath = Array.from(selectedItems)[0];
-    const fileItem = filePathMap.get(itemPath);
-    if (fileItem) {
-      updatePreview(fileItem);
-    }
   }
 }
 
@@ -8897,7 +7717,7 @@ const activeColumnOperationIds = new Set<string>();
 
 function cancelColumnOperations(): void {
   for (const operationId of activeColumnOperationIds) {
-    window.electronAPI.cancelDirectoryContents(operationId).catch(() => {});
+    window.electronAPI.cancelDirectoryContents(operationId).catch(ignoreError);
   }
   activeColumnOperationIds.clear();
 }
@@ -11996,706 +10816,6 @@ if (shortcutsModal) {
   });
 }
 
-const previewPanel = document.getElementById('preview-panel') as HTMLElement;
-const previewContent = document.getElementById('preview-content') as HTMLElement;
-const previewToggleBtn = document.getElementById('preview-toggle-btn') as HTMLButtonElement;
-const previewCloseBtn = document.getElementById('preview-close') as HTMLButtonElement;
-
-function showEmptyPreview() {
-  if (!previewContent) return;
-  previewContent.innerHTML = `
-    <div class="preview-empty">
-      <div class="preview-empty-icon">${twemojiImg(String.fromCodePoint(0x1f441), 'twemoji-xlarge')}</div>
-      <p>Select a file to preview</p>
-      <small>Press Space for quick look</small>
-    </div>
-  `;
-}
-
-function togglePreviewPanel() {
-  isPreviewPanelVisible = !isPreviewPanelVisible;
-  if (isPreviewPanelVisible) {
-    previewPanel.style.display = 'flex';
-    if (selectedItems.size === 1) {
-      const selectedPath = Array.from(selectedItems)[0];
-      const file = filePathMap.get(selectedPath);
-      if (file && file.isFile) {
-        updatePreview(file);
-      }
-    }
-  } else {
-    previewPanel.style.display = 'none';
-    previewRequestId++;
-  }
-}
-
-function updatePreview(file: FileItem) {
-  const requestId = ++previewRequestId;
-  if (!file || file.isDirectory) {
-    showEmptyPreview();
-    return;
-  }
-
-  const ext = getFileExtension(file.name);
-
-  if (IMAGE_EXTENSIONS.has(ext)) {
-    showImagePreview(file, requestId);
-  } else if (RAW_EXTENSIONS.has(ext)) {
-    showRawImagePreview(file, requestId);
-  } else if (TEXT_EXTENSIONS.has(ext)) {
-    showTextPreview(file, requestId);
-  } else if (VIDEO_EXTENSIONS.has(ext)) {
-    showVideoPreview(file, requestId);
-  } else if (AUDIO_EXTENSIONS.has(ext)) {
-    showAudioPreview(file, requestId);
-  } else if (PDF_EXTENSIONS.has(ext)) {
-    showPdfPreview(file, requestId);
-  } else if (ARCHIVE_EXTENSIONS.has(ext)) {
-    showArchivePreview(file, requestId);
-  } else {
-    showFileInfo(file, requestId);
-  }
-}
-
-async function showArchivePreview(file: FileItem, requestId: number) {
-  if (!previewContent || requestId !== previewRequestId) return;
-  previewContent.innerHTML = `
-    <div class="preview-loading">
-      <div class="spinner"></div>
-      <p>Loading archive contents...</p>
-    </div>
-  `;
-
-  try {
-    const result = await window.electronAPI.listArchiveContents(file.path);
-    if (requestId !== previewRequestId) return;
-
-    if (result.success && result.entries) {
-      const entries = result.entries;
-      const fileCount = entries.filter((e) => !e.isDirectory).length;
-      const folderCount = entries.filter((e) => e.isDirectory).length;
-      const totalSize = entries.reduce((sum, e) => sum + e.size, 0);
-
-      let html = `
-        <div class="preview-section">
-          <h3>Archive Contents</h3>
-          <div class="archive-info">
-            <p>${fileCount} file${fileCount !== 1 ? 's' : ''}, ${folderCount} folder${folderCount !== 1 ? 's' : ''}</p>
-            <p>Total size: ${formatFileSize(totalSize)}</p>
-          </div>
-          <div class="archive-list">
-      `;
-
-      const maxEntries = 100;
-      const displayEntries = entries.slice(0, maxEntries);
-
-      for (const entry of displayEntries) {
-        const icon = entry.isDirectory ? '📁' : '📄';
-        html += `
-          <div class="archive-entry">
-            <span class="archive-icon">${icon}</span>
-            <span class="archive-name">${escapeHtml(entry.name)}</span>
-            <span class="archive-size">${entry.isDirectory ? '' : formatFileSize(entry.size)}</span>
-          </div>
-        `;
-      }
-
-      if (entries.length > maxEntries) {
-        html += `<p class="archive-more">... and ${entries.length - maxEntries} more</p>`;
-      }
-
-      html += `
-          </div>
-        </div>
-        ${generateFileInfo(file, null)}
-      `;
-
-      previewContent.innerHTML = html;
-    } else {
-      previewContent.innerHTML = `
-        <div class="preview-error">
-          Failed to list archive contents: ${escapeHtml(result.error || 'Unknown error')}
-        </div>
-        ${generateFileInfo(file, null)}
-      `;
-    }
-  } catch (error) {
-    if (requestId !== previewRequestId) return;
-    previewContent.innerHTML = `
-      <div class="preview-error">
-        Failed to list archive contents: ${escapeHtml(getErrorMessage(error))}
-      </div>
-      ${generateFileInfo(file, null)}
-    `;
-  }
-}
-
-async function showImagePreview(file: FileItem, requestId: number) {
-  if (!previewContent || requestId !== previewRequestId) return;
-  previewContent.innerHTML = `
-    <div class="preview-loading">
-      <div class="spinner"></div>
-      <p>Loading image...</p>
-    </div>
-  `;
-
-  if (file.size > (currentSettings.maxPreviewSizeMB || 50) * 1024 * 1024) {
-    if (requestId !== previewRequestId) return;
-    previewContent.innerHTML = `
-      <div class="preview-error">
-        Failed to load image: ${escapeHtml('File too large to preview')}
-      </div>
-      ${generateFileInfo(file, null)}
-    `;
-    return;
-  }
-
-  const props = await window.electronAPI.getItemProperties(file.path);
-  if (requestId !== previewRequestId) return;
-  const info = props.success && props.properties ? props.properties : null;
-  const fileUrl = encodeFileUrl(file.path);
-  const altText = escapeHtml(file.name);
-
-  previewContent.innerHTML = `
-    <img src="${fileUrl}" class="preview-image" alt="${altText}">
-    ${generateFileInfo(file, info)}
-  `;
-
-  const img = previewContent.querySelector('.preview-image') as HTMLImageElement | null;
-  if (img) {
-    img.addEventListener('error', () => {
-      if (requestId !== previewRequestId) return;
-      previewContent.innerHTML = `
-        <div class="preview-error">
-          Failed to load image
-        </div>
-        ${generateFileInfo(file, info)}
-      `;
-    });
-  }
-}
-
-async function showRawImagePreview(file: FileItem, requestId: number) {
-  if (!previewContent || requestId !== previewRequestId) return;
-
-  const props = await window.electronAPI.getItemProperties(file.path);
-  if (requestId !== previewRequestId) return;
-  const info = props.success && props.properties ? props.properties : null;
-
-  const ext = getFileExtension(file.name).toUpperCase() || 'RAW';
-  const cameraFormats: Record<string, string> = {
-    CR2: 'Canon',
-    CR3: 'Canon',
-    CRW: 'Canon',
-    NEF: 'Nikon',
-    NRW: 'Nikon',
-    ARW: 'Sony',
-    SR2: 'Sony',
-    SRF: 'Sony',
-    DNG: 'Adobe DNG',
-    ORF: 'Olympus',
-    RW2: 'Panasonic',
-    RW1: 'Leica',
-    RWL: 'Leica',
-    PEF: 'Pentax',
-    SRW: 'Samsung',
-    RAF: 'Fujifilm',
-    DCR: 'Kodak',
-    KDC: 'Kodak',
-    ERF: 'Epson',
-    MRW: 'Minolta',
-    X3F: 'Sigma',
-    '3FR': 'Hasselblad',
-    IIQ: 'Phase One',
-    MEF: 'Mamiya',
-    MOS: 'Leaf',
-  };
-  const brand = cameraFormats[ext] || 'Camera';
-
-  previewContent.innerHTML = `
-    <div class="preview-raw-info">
-      <div class="preview-raw-icon">${twemojiImg(String.fromCodePoint(0x1f4f7), 'twemoji-xlarge')}</div>
-      <div class="preview-raw-details">
-        <strong>${ext} RAW Image</strong>
-        <p>${brand} RAW format</p>
-        <p class="preview-raw-note">RAW preview not available in browser.<br>Use a photo editor to view this file.</p>
-      </div>
-    </div>
-    ${generateFileInfo(file, info)}
-  `;
-}
-
-type HighlightJs = {
-  highlightElement?: (element: Element) => void;
-};
-
-let hljs: HighlightJs | null = null;
-let hljsLoading: Promise<HighlightJs | null> | null = null;
-
-const EXT_TO_LANG: Record<string, string> = {
-  js: 'javascript',
-  jsx: 'javascript',
-  ts: 'typescript',
-  tsx: 'typescript',
-  py: 'python',
-  pyc: 'python',
-  pyw: 'python',
-  rb: 'ruby',
-  go: 'go',
-  rs: 'rust',
-  java: 'java',
-  kt: 'kotlin',
-  kts: 'kotlin',
-  scala: 'scala',
-  swift: 'swift',
-  c: 'c',
-  cpp: 'cpp',
-  cc: 'cpp',
-  cxx: 'cpp',
-  h: 'c',
-  hpp: 'cpp',
-  cs: 'csharp',
-  php: 'php',
-  r: 'r',
-  lua: 'lua',
-  perl: 'perl',
-  pl: 'perl',
-  sh: 'bash',
-  bash: 'bash',
-  zsh: 'bash',
-  fish: 'bash',
-  ps1: 'powershell',
-  html: 'xml',
-  htm: 'xml',
-  xml: 'xml',
-  svg: 'xml',
-  vue: 'xml',
-  svelte: 'xml',
-  css: 'css',
-  scss: 'scss',
-  sass: 'scss',
-  less: 'less',
-  json: 'json',
-  yml: 'yaml',
-  yaml: 'yaml',
-  toml: 'ini',
-  ini: 'ini',
-  sql: 'sql',
-  md: 'markdown',
-  markdown: 'markdown',
-  dockerfile: 'dockerfile',
-  makefile: 'makefile',
-  cmake: 'cmake',
-};
-
-async function loadHighlightJs(): Promise<HighlightJs | null> {
-  if (hljs) return hljs;
-  if (hljsLoading) return hljsLoading;
-
-  hljsLoading = new Promise((resolve) => {
-    const existingLink = document.querySelector('link[data-highlightjs="theme"]');
-    if (!existingLink) {
-      const link = document.createElement('link');
-      link.rel = 'stylesheet';
-      link.href = '../dist/vendor/highlight.css';
-      link.dataset.highlightjs = 'theme';
-      document.head.appendChild(link);
-    }
-
-    const existingScript = document.querySelector(
-      'script[data-highlightjs="core"]'
-    ) as HTMLScriptElement | null;
-    if (existingScript) {
-      existingScript.addEventListener('load', () => {
-        const globalHljs = (window as Window & { hljs?: HighlightJs }).hljs || null;
-        hljs = globalHljs;
-        resolve(hljs);
-      });
-      existingScript.addEventListener('error', () => resolve(null));
-      const existingGlobal = (window as Window & { hljs?: HighlightJs }).hljs;
-      if (existingGlobal) {
-        hljs = existingGlobal;
-        resolve(hljs);
-      }
-      return;
-    }
-
-    const script = document.createElement('script');
-    script.src = '../dist/vendor/highlight.js';
-    script.dataset.highlightjs = 'core';
-    script.onload = () => {
-      const globalHljs = (window as Window & { hljs?: HighlightJs }).hljs || null;
-      hljs = globalHljs;
-      resolve(hljs);
-    };
-    script.onerror = () => resolve(null);
-    document.head.appendChild(script);
-  });
-
-  return hljsLoading;
-}
-
-function getLanguageForExt(ext: string): string | null {
-  return EXT_TO_LANG[ext.toLowerCase()] || null;
-}
-
-async function showTextPreview(file: FileItem, requestId: number) {
-  if (!previewContent || requestId !== previewRequestId) return;
-  previewContent.innerHTML = `
-    <div class="preview-loading">
-      <div class="spinner"></div>
-      <p>Loading text...</p>
-    </div>
-  `;
-
-  const result = await window.electronAPI.readFileContent(file.path, 50 * 1024);
-  if (requestId !== previewRequestId) return;
-
-  if (result.success && typeof result.content === 'string') {
-    const props = await window.electronAPI.getItemProperties(file.path);
-    if (requestId !== previewRequestId) return;
-    const info = props.success && props.properties ? props.properties : null;
-    const ext = getFileExtension(file.name);
-    const lang = getLanguageForExt(ext);
-
-    previewContent.innerHTML = `
-      ${result.isTruncated ? `<div class="preview-truncated">${twemojiImg(String.fromCodePoint(0x26a0), 'twemoji')} File truncated to first 50KB</div>` : ''}
-      <pre class="preview-text"><code class="${lang ? `language-${lang}` : ''}">${escapeHtml(result.content)}</code></pre>
-      ${generateFileInfo(file, info)}
-    `;
-
-    if (lang && currentSettings.enableSyntaxHighlighting) {
-      loadHighlightJs().then((hl) => {
-        if (requestId !== previewRequestId || !hl) return;
-        const codeBlock = previewContent?.querySelector('code');
-        if (codeBlock) hl.highlightElement?.(codeBlock);
-      });
-    }
-  } else {
-    previewContent.innerHTML = `
-      <div class="preview-error">
-        Failed to load text: ${escapeHtml(result.error || 'Unknown error')}
-      </div>
-      ${generateFileInfo(file, null)}
-    `;
-  }
-}
-
-async function showVideoPreview(file: FileItem, requestId: number) {
-  if (!previewContent || requestId !== previewRequestId) return;
-
-  const maxSizeMB = currentSettings.maxPreviewSizeMB || 50;
-  if (file.size > maxSizeMB * 1024 * 1024) {
-    previewContent.innerHTML = `
-      <div class="preview-error">
-        Video file too large to preview (>${maxSizeMB}MB)
-      </div>
-      ${generateFileInfo(file, null)}
-    `;
-    return;
-  }
-
-  const props = await window.electronAPI.getItemProperties(file.path);
-  if (requestId !== previewRequestId) return;
-  const info = props.success && props.properties ? props.properties : null;
-
-  const fileUrl = encodeFileUrl(file.path);
-
-  previewContent.innerHTML = `
-    <video src="${fileUrl}" class="preview-video" controls controlsList="nodownload" ${currentSettings.autoPlayVideos ? 'autoplay' : ''}>
-      Your browser does not support the video tag.
-    </video>
-    ${generateFileInfo(file, info)}
-  `;
-}
-
-async function showAudioPreview(file: FileItem, requestId: number) {
-  if (!previewContent || requestId !== previewRequestId) return;
-
-  const props = await window.electronAPI.getItemProperties(file.path);
-  if (requestId !== previewRequestId) return;
-  const info = props.success && props.properties ? props.properties : null;
-
-  const fileUrl = encodeFileUrl(file.path);
-
-  previewContent.innerHTML = `
-    <div class="preview-audio-container">
-      <div class="preview-audio-icon">${twemojiImg(String.fromCodePoint(0x1f3b5), 'twemoji-xlarge')}</div>
-      <audio src="${fileUrl}" class="preview-audio" controls controlsList="nodownload">
-        Your browser does not support the audio tag.
-      </audio>
-    </div>
-    ${generateFileInfo(file, info)}
-  `;
-}
-
-async function showPdfPreview(file: FileItem, requestId: number) {
-  if (!previewContent || requestId !== previewRequestId) return;
-
-  const maxSizeMB = currentSettings.maxPreviewSizeMB || 50;
-  if (file.size > maxSizeMB * 1024 * 1024) {
-    previewContent.innerHTML = `
-      <div class="preview-error">
-        PDF file too large to preview (>${maxSizeMB}MB)
-      </div>
-      ${generateFileInfo(file, null)}
-    `;
-    return;
-  }
-
-  const props = await window.electronAPI.getItemProperties(file.path);
-  if (requestId !== previewRequestId) return;
-  const info = props.success && props.properties ? props.properties : null;
-
-  const fileUrl = encodeFileUrl(file.path);
-
-  previewContent.innerHTML = `
-    <iframe src="${fileUrl}" class="preview-pdf" frameborder="0" sandbox="allow-scripts allow-same-origin" referrerpolicy="no-referrer"></iframe>
-    ${generateFileInfo(file, info)}
-  `;
-}
-
-async function showFileInfo(file: FileItem, requestId: number) {
-  if (!previewContent || requestId !== previewRequestId) return;
-  const props = await window.electronAPI.getItemProperties(file.path);
-  if (requestId !== previewRequestId) return;
-  const info = props.success && props.properties ? props.properties : null;
-
-  previewContent.innerHTML = `
-    <div class="preview-unsupported">
-      <div class="preview-unsupported-icon">${getFileIcon(file.name)}</div>
-      <div>
-        <strong>${escapeHtml(file.name)}</strong>
-        <p>Preview not available for this file type</p>
-      </div>
-    </div>
-    ${generateFileInfo(file, info)}
-  `;
-}
-
-function generateFileInfo(file: FileItem, props: ItemProperties | null): string {
-  const size = props ? props.size : file.size;
-  const sizeDisplay = formatFileSize(size);
-  const modified = props ? new Date(props.modified) : new Date(file.modified);
-
-  return `
-    <div class="preview-info">
-      <div class="preview-info-item">
-        <span class="preview-info-label">Name</span>
-        <span class="preview-info-value">${escapeHtml(file.name)}</span>
-      </div>
-      <div class="preview-info-item">
-        <span class="preview-info-label">Type</span>
-        <span class="preview-info-value">${file.isDirectory ? 'Folder' : 'File'}</span>
-      </div>
-      <div class="preview-info-item">
-        <span class="preview-info-label">Size</span>
-        <span class="preview-info-value">${sizeDisplay}</span>
-      </div>
-      <div class="preview-info-item">
-        <span class="preview-info-label">Location</span>
-        <span class="preview-info-value">${escapeHtml(file.path)}</span>
-      </div>
-      ${
-        props && props.created
-          ? `
-      <div class="preview-info-item">
-        <span class="preview-info-label">Created</span>
-        <span class="preview-info-value">${new Date(props.created).toLocaleString()}</span>
-      </div>`
-          : ''
-      }
-      <div class="preview-info-item">
-        <span class="preview-info-label">Modified</span>
-        <span class="preview-info-value">${modified.toLocaleDateString()} ${modified.toLocaleTimeString()}</span>
-      </div>
-      ${
-        props && props.accessed
-          ? `
-      <div class="preview-info-item">
-        <span class="preview-info-label">Accessed</span>
-        <span class="preview-info-value">${new Date(props.accessed).toLocaleString()}</span>
-      </div>`
-          : ''
-      }
-    </div>
-  `;
-}
-
-const quicklookModal = document.getElementById('quicklook-modal') as HTMLElement;
-const quicklookContent = document.getElementById('quicklook-content') as HTMLElement;
-const quicklookTitle = document.getElementById('quicklook-title') as HTMLElement;
-const quicklookInfo = document.getElementById('quicklook-info') as HTMLElement;
-const quicklookClose = document.getElementById('quicklook-close') as HTMLButtonElement;
-const quicklookOpen = document.getElementById('quicklook-open') as HTMLButtonElement;
-let quicklookRequestId = 0;
-
-async function showQuickLook() {
-  if (selectedItems.size !== 1) return;
-  if (!quicklookModal || !quicklookTitle || !quicklookContent || !quicklookInfo) return;
-
-  if (document.activeElement instanceof HTMLElement) {
-    document.activeElement.blur();
-  }
-
-  const selectedPath = Array.from(selectedItems)[0];
-  const file = filePathMap.get(selectedPath);
-
-  if (!file || file.isDirectory) return;
-
-  const requestId = ++quicklookRequestId;
-  currentQuicklookFile = file;
-  quicklookTitle.textContent = file.name;
-  quicklookModal.style.display = 'flex';
-
-  const ext = getFileExtension(file.name);
-
-  quicklookContent.innerHTML = `
-    <div class="preview-loading">
-      <div class="spinner"></div>
-      <p>Loading preview...</p>
-    </div>
-  `;
-
-  if (IMAGE_EXTENSIONS.has(ext)) {
-    if (file.size > (currentSettings.maxThumbnailSizeMB || 10) * 1024 * 1024) {
-      quicklookContent.innerHTML = `<div class="preview-error">Image too large to preview</div>`;
-      quicklookInfo.textContent = `${formatFileSize(file.size)} • ${new Date(file.modified).toLocaleDateString()}`;
-    } else {
-      const fileUrl = encodeFileUrl(file.path);
-      quicklookContent.innerHTML = '';
-      const img = document.createElement('img');
-      img.src = fileUrl;
-      img.alt = file.name;
-      img.addEventListener('error', () => {
-        if (requestId !== quicklookRequestId || currentQuicklookFile?.path !== file.path) {
-          return;
-        }
-        quicklookContent.innerHTML = `<div class="preview-error">Failed to load image</div>`;
-      });
-      quicklookContent.appendChild(img);
-      quicklookInfo.textContent = `${formatFileSize(file.size)} • ${new Date(file.modified).toLocaleDateString()}`;
-    }
-  } else if (VIDEO_EXTENSIONS.has(ext)) {
-    const fileUrl = encodeFileUrl(file.path);
-    quicklookContent.innerHTML = '';
-    const video = document.createElement('video');
-    video.controls = true;
-    video.autoplay = currentSettings.autoPlayVideos || false;
-    video.className = 'preview-video';
-    const source = document.createElement('source');
-    source.src = fileUrl;
-    source.type = VIDEO_MIME_TYPES[ext] || 'video/*';
-    video.appendChild(source);
-    video.appendChild(document.createTextNode('Your browser does not support the video tag.'));
-    quicklookContent.appendChild(video);
-    quicklookInfo.textContent = `${formatFileSize(file.size)} • ${new Date(file.modified).toLocaleDateString()}`;
-  } else if (AUDIO_EXTENSIONS.has(ext)) {
-    const fileUrl = encodeFileUrl(file.path);
-    quicklookContent.innerHTML = '';
-    const container = document.createElement('div');
-    container.className = 'preview-audio-container';
-    const icon = document.createElement('div');
-    icon.className = 'preview-audio-icon';
-    icon.innerHTML = twemojiImg(String.fromCodePoint(0x1f3b5), 'twemoji-large');
-    const audio = document.createElement('audio');
-    audio.controls = true;
-    audio.autoplay = currentSettings.autoPlayVideos || false;
-    audio.className = 'preview-audio';
-    const source = document.createElement('source');
-    source.src = fileUrl;
-    source.type = AUDIO_MIME_TYPES[ext] || 'audio/*';
-    audio.appendChild(source);
-    audio.appendChild(document.createTextNode('Your browser does not support the audio tag.'));
-    container.appendChild(icon);
-    container.appendChild(audio);
-    quicklookContent.appendChild(container);
-    quicklookInfo.textContent = `${formatFileSize(file.size)} • ${new Date(file.modified).toLocaleDateString()}`;
-  } else if (PDF_EXTENSIONS.has(ext)) {
-    const fileUrl = encodeFileUrl(file.path);
-    quicklookContent.innerHTML = '';
-    const iframe = document.createElement('iframe');
-    iframe.src = fileUrl;
-    iframe.className = 'preview-pdf';
-    iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin');
-    iframe.setAttribute('referrerpolicy', 'no-referrer');
-    iframe.setAttribute('frameborder', '0');
-    quicklookContent.appendChild(iframe);
-    quicklookInfo.textContent = `${formatFileSize(file.size)} • ${new Date(file.modified).toLocaleDateString()}`;
-  } else if (TEXT_EXTENSIONS.has(ext)) {
-    const result = await window.electronAPI.readFileContent(file.path, 100 * 1024);
-    if (requestId !== quicklookRequestId || currentQuicklookFile?.path !== file.path) {
-      return;
-    }
-    if (result.success && typeof result.content === 'string') {
-      const lang = getLanguageForExt(ext);
-      quicklookContent.innerHTML = `
-        ${result.isTruncated ? `<div class="preview-truncated">${twemojiImg(String.fromCodePoint(0x26a0), 'twemoji')} File truncated to first 100KB</div>` : ''}
-        <pre class="preview-text"><code class="${lang ? `language-${lang}` : ''}">${escapeHtml(result.content)}</code></pre>
-      `;
-      quicklookInfo.textContent = `${formatFileSize(file.size)} • ${new Date(file.modified).toLocaleDateString()}`;
-      if (lang && currentSettings.enableSyntaxHighlighting) {
-        loadHighlightJs().then((hl) => {
-          if (requestId !== quicklookRequestId || currentQuicklookFile?.path !== file.path || !hl)
-            return;
-          const codeBlock = quicklookContent?.querySelector('code');
-          if (codeBlock) hl.highlightElement?.(codeBlock);
-        });
-      }
-    } else {
-      quicklookContent.innerHTML = `<div class="preview-error">Failed to load text</div>`;
-    }
-  } else {
-    quicklookContent.innerHTML = `
-      <div class="preview-unsupported">
-        <div class="preview-unsupported-icon">${getFileIcon(file.name)}</div>
-        <p>Preview not available for this file type</p>
-      </div>
-    `;
-    quicklookInfo.textContent = `${formatFileSize(file.size)} • ${new Date(file.modified).toLocaleDateString()}`;
-  }
-}
-
-function closeQuickLook() {
-  if (quicklookModal) quicklookModal.style.display = 'none';
-  currentQuicklookFile = null;
-  quicklookRequestId++;
-}
-
-if (previewToggleBtn) {
-  previewToggleBtn.addEventListener('click', togglePreviewPanel);
-}
-
-if (previewCloseBtn) {
-  previewCloseBtn.addEventListener('click', () => {
-    isPreviewPanelVisible = false;
-    if (previewPanel) previewPanel.style.display = 'none';
-    previewRequestId++;
-  });
-}
-
-if (quicklookClose) {
-  quicklookClose.addEventListener('click', closeQuickLook);
-}
-
-if (quicklookOpen) {
-  quicklookOpen.addEventListener('click', () => {
-    if (currentQuicklookFile) {
-      const file = currentQuicklookFile;
-      closeQuickLook();
-      void openFileEntry(file);
-    }
-  });
-}
-
-if (quicklookModal) {
-  quicklookModal.addEventListener('click', (e) => {
-    if (e.target === quicklookModal) {
-      closeQuickLook();
-    }
-  });
-}
-
 document.addEventListener('keydown', (e) => {
   if (e.code === 'Space' && !e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey) {
     const activeElement = document.activeElement;
@@ -12725,7 +10845,7 @@ document.addEventListener('keydown', (e) => {
     }
 
     e.preventDefault();
-    if (quicklookModal && quicklookModal.style.display === 'flex') {
+    if (isQuickLookOpen()) {
       closeQuickLook();
     } else {
       showQuickLook();
@@ -12739,13 +10859,14 @@ document.addEventListener('keydown', (e) => {
       hideExtractModal();
       return;
     }
-    if (quicklookModal && quicklookModal.style.display === 'flex') {
+    if (isQuickLookOpen()) {
       closeQuickLook();
     }
   }
 });
-if (searchInput) {
-  searchInput.addEventListener('focus', () => {
+const searchInputElement = getSearchInputElement();
+if (searchInputElement) {
+  searchInputElement.addEventListener('focus', () => {
     if (currentSettings.enableSearchHistory) {
       showSearchHistoryDropdown();
     }
@@ -12769,7 +10890,7 @@ document.addEventListener('mousedown', (e) => {
 
   const isClickInsideSearchDropdown = searchDropdown?.contains(target);
   const isClickInsideDirectoryDropdown = directoryDropdown?.contains(target);
-  const isClickOnSearchInput = searchInput?.contains(target);
+  const isClickOnSearchInput = searchInputElement?.contains(target);
   const isClickOnAddressInput = addressInput?.contains(target);
 
   if (!isClickInsideSearchDropdown && !isClickOnSearchInput) {
@@ -12782,10 +10903,8 @@ document.addEventListener('mousedown', (e) => {
   if (target.classList.contains('history-item') && target.dataset.query) {
     e.preventDefault();
     const query = target.dataset.query;
-    if (searchInput) {
-      searchInput.value = query;
-      setTimeout(() => searchInput.focus(), 0);
-    }
+    setSearchQuery(query);
+    setTimeout(() => focusSearchInput(), 0);
     hideSearchHistoryDropdown();
     performSearch();
     return;
@@ -12878,10 +10997,6 @@ window.addEventListener('beforeunload', () => {
   if (saveTabStateTimeout) {
     clearTimeout(saveTabStateTimeout);
     saveTabStateTimeout = null;
-  }
-  if (searchDebounceTimeout) {
-    clearTimeout(searchDebounceTimeout);
-    searchDebounceTimeout = null;
   }
   if (renderOperationsTimeout) {
     clearTimeout(renderOperationsTimeout);

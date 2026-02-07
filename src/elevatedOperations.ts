@@ -203,7 +203,7 @@ async function executeElevatedLinux(operation: ElevatedOperation): Promise<Eleva
             ignoreError(error);
           }
           activeElevatedProcesses.delete(child);
-          fs.unlink(scriptPath).catch(() => {});
+          fs.unlink(scriptPath).catch(ignoreError);
           resolve({ success: false, error: 'Operation timed out' });
         }
       }, OPERATION_TIMEOUT);

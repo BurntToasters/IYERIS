@@ -94,7 +94,7 @@ export function sanitizeHomeSettings(
 
   for (const key of Object.keys(clean)) {
     if (RESERVED_KEYS.has(key)) {
-      delete (clean as UnknownRecord)[key];
+      delete (clean as unknown as UnknownRecord)[key];
     }
   }
 

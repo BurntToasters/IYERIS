@@ -88,7 +88,7 @@ async function writeFileAtomic(targetPath: string, data: string): Promise<void> 
     try {
       await fs.copyFile(tmpPath, targetPath);
     } finally {
-      await fs.unlink(tmpPath).catch(() => {});
+      await fs.unlink(tmpPath).catch(ignoreError);
     }
   }
 }

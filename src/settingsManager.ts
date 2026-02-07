@@ -152,7 +152,7 @@ export async function saveSettings(settings: Settings): Promise<ApiResponse> {
       try {
         await fs.copyFile(tmpPath, settingsPath);
       } finally {
-        await fs.unlink(tmpPath).catch(() => {});
+        await fs.unlink(tmpPath).catch(ignoreError);
       }
     }
     logger.debug('[Settings] Saved successfully');

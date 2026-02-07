@@ -535,7 +535,7 @@ export function setupArchiveHandlers(): void {
             if (operationId) {
               activeArchiveProcesses.delete(operationId);
             }
-            fs.unlink(outputPath).catch(() => {});
+            fs.unlink(outputPath).catch(ignoreError);
 
             const errorMsg = error.message || '';
             if (error.level === 'WARNING' && errorMsg.includes('Access is denied')) {
