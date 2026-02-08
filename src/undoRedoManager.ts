@@ -4,6 +4,8 @@ import * as path from 'path';
 import type { UndoAction, ApiResponse } from './types';
 import { MAX_UNDO_STACK_SIZE } from './appState';
 import { logger } from './utils/logger';
+import { ignoreError } from './shared';
+import { isTrustedIpcEvent } from './ipcUtils';
 
 const undoStack: UndoAction[] = [];
 const redoStack: UndoAction[] = [];
@@ -109,6 +111,9 @@ export function clearUndoStackForPath(itemPath: string): void {
 
 export function setupUndoRedoHandlers(): void {
   ipcMain.handle('undo-action', async (_event: IpcMainInvokeEvent): Promise<ApiResponse> => {
+    if (!isTrustedIpcEvent(_event, 'undo-action')) {
+      return { success: false, error: 'Untrusted IPC sender' };
+    }
     if (undoStack.length === 0) {
       return { success: false, error: 'Nothing to undo' };
     }
@@ -136,7 +141,9 @@ export function setupUndoRedoHandlers(): void {
               success: false,
               error: 'Cannot undo: A file already exists at the original location',
             };
-          } catch {}
+          } catch (error) {
+            ignoreError(error);
+          }
 
           await fs.rename(action.data.newPath, action.data.oldPath);
           pushRedoAction(action);
@@ -166,7 +173,9 @@ export function setupUndoRedoHandlers(): void {
                   success: false,
                   error: 'Cannot undo: A file already exists at the original location',
                 };
-              } catch {}
+              } catch (error) {
+                ignoreError(error);
+              }
             }
 
             for (let i = 0; i < movedPaths.length; i++) {
@@ -230,6 +239,9 @@ export function setupUndoRedoHandlers(): void {
   });
 
   ipcMain.handle('redo-action', async (_event: IpcMainInvokeEvent): Promise<ApiResponse> => {
+    if (!isTrustedIpcEvent(_event, 'redo-action')) {
+      return { success: false, error: 'Untrusted IPC sender' };
+    }
     if (redoStack.length === 0) {
       return { success: false, error: 'Nothing to redo' };
     }
@@ -254,7 +266,9 @@ export function setupUndoRedoHandlers(): void {
               success: false,
               error: 'Cannot redo: A file already exists at the target location',
             };
-          } catch {}
+          } catch (error) {
+            ignoreError(error);
+          }
 
           await fs.rename(action.data.oldPath, action.data.newPath);
           undoStack.push(action);
@@ -286,7 +300,9 @@ export function setupUndoRedoHandlers(): void {
                   success: false,
                   error: 'Cannot redo: A file already exists at the target location',
                 };
-              } catch {}
+              } catch (error) {
+                ignoreError(error);
+              }
               await movePath(originalPath, newPath);
               newMovedPaths.push(newPath);
             }
@@ -318,7 +334,9 @@ export function setupUndoRedoHandlers(): void {
                   success: false,
                   error: 'Cannot redo: A file already exists at the target location',
                 };
-              } catch {}
+              } catch (error) {
+                ignoreError(error);
+              }
               await movePath(currentPath, newPath);
               newMovedPaths.push(newPath);
             }
@@ -339,7 +357,9 @@ export function setupUndoRedoHandlers(): void {
               success: false,
               error: 'Cannot redo: A file or folder already exists at this location',
             };
-          } catch {}
+          } catch (error) {
+            ignoreError(error);
+          }
 
           if (action.data.isDirectory) {
             await fs.mkdir(itemPath);
@@ -364,7 +384,10 @@ export function setupUndoRedoHandlers(): void {
 
   ipcMain.handle(
     'get-undo-redo-state',
-    async (): Promise<{ canUndo: boolean; canRedo: boolean }> => {
+    async (event: IpcMainInvokeEvent): Promise<{ canUndo: boolean; canRedo: boolean }> => {
+      if (!isTrustedIpcEvent(event, 'get-undo-redo-state')) {
+        return { canUndo: false, canRedo: false };
+      }
       return {
         canUndo: undoStack.length > 0,
         canRedo: redoStack.length > 0,

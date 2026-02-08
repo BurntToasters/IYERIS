@@ -3,6 +3,7 @@
   "exclude": [
     "node_modules",
     "dist",
-    "src/renderer.ts"
+    "src/renderer.ts",
+    "src/renderer*.ts"
   ]
 }

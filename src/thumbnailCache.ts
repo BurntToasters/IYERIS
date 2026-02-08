@@ -1,9 +1,11 @@
-import { ipcMain, app } from 'electron';
+import { ipcMain, app, IpcMainInvokeEvent } from 'electron';
 import * as path from 'path';
 import { promises as fs } from 'fs';
 import * as fsSync from 'fs';
 import * as crypto from 'crypto';
 import { isPathSafe, getErrorMessage } from './security';
+import { ignoreError } from './shared';
+import { isTrustedIpcEvent } from './ipcUtils';
 
 const CACHE_DIR_NAME = 'thumbnail-cache';
 const CACHE_VERSION = 1;
@@ -56,7 +58,9 @@ async function enforceCacheSize(): Promise<void> {
         const stats = await fs.stat(fullPath);
         totalSize += stats.size;
         entries.push({ path: fullPath, size: stats.size, atimeMs: stats.atimeMs });
-      } catch {}
+      } catch (error) {
+        ignoreError(error);
+      }
     }
   }
 
@@ -70,7 +74,9 @@ async function enforceCacheSize(): Promise<void> {
     try {
       await fs.unlink(entry.path);
       totalSize -= entry.size;
-    } catch {}
+    } catch (error) {
+      ignoreError(error);
+    }
   }
 }
 
@@ -88,7 +94,9 @@ async function getCachePath(filePath: string, mtime: number): Promise<string> {
 
   try {
     await fs.mkdir(cacheSubDir, { recursive: true });
-  } catch {}
+  } catch (error) {
+    ignoreError(error);
+  }
 
   return path.join(cacheSubDir, `${key}.jpg`);
 }
@@ -223,14 +231,18 @@ export async function cleanupOldThumbnails(): Promise<void> {
             if (remaining.length === 0) {
               await fs.rmdir(fullPath);
             }
-          } catch {}
+          } catch (error) {
+            ignoreError(error);
+          }
         } else {
           try {
             const stats = await fs.stat(fullPath);
             if (now - stats.atimeMs > maxAge) {
               await fs.unlink(fullPath);
             }
-          } catch {}
+          } catch (error) {
+            ignoreError(error);
+          }
         }
       }
     }
@@ -243,19 +255,34 @@ export async function cleanupOldThumbnails(): Promise<void> {
 }
 
 export function setupThumbnailCacheHandlers(): void {
-  ipcMain.handle('get-cached-thumbnail', async (_event, filePath: string) => {
+  ipcMain.handle('get-cached-thumbnail', async (event: IpcMainInvokeEvent, filePath: string) => {
+    if (!isTrustedIpcEvent(event, 'get-cached-thumbnail')) {
+      return { success: false, error: 'Untrusted IPC sender' };
+    }
     return getThumbnailFromCache(filePath);
   });
 
-  ipcMain.handle('save-cached-thumbnail', async (_event, filePath: string, dataUrl: string) => {
-    return saveThumbnailToCache(filePath, dataUrl);
-  });
+  ipcMain.handle(
+    'save-cached-thumbnail',
+    async (event: IpcMainInvokeEvent, filePath: string, dataUrl: string) => {
+      if (!isTrustedIpcEvent(event, 'save-cached-thumbnail')) {
+        return { success: false, error: 'Untrusted IPC sender' };
+      }
+      return saveThumbnailToCache(filePath, dataUrl);
+    }
+  );
 
-  ipcMain.handle('clear-thumbnail-cache', async () => {
+  ipcMain.handle('clear-thumbnail-cache', async (event: IpcMainInvokeEvent) => {
+    if (!isTrustedIpcEvent(event, 'clear-thumbnail-cache')) {
+      return { success: false, error: 'Untrusted IPC sender' };
+    }
     return clearThumbnailCache();
   });
 
-  ipcMain.handle('get-thumbnail-cache-size', async () => {
+  ipcMain.handle('get-thumbnail-cache-size', async (event: IpcMainInvokeEvent) => {
+    if (!isTrustedIpcEvent(event, 'get-thumbnail-cache-size')) {
+      return { success: false, error: 'Untrusted IPC sender' };
+    }
     return getThumbnailCacheSize();
   });
 

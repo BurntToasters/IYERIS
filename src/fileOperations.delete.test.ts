@@ -42,6 +42,7 @@ vi.mock('./appState', () => ({
 vi.mock('./ipcUtils', () => ({
   registerDirectoryOperationTarget: vi.fn(),
   unregisterDirectoryOperationTarget: vi.fn(),
+  isTrustedIpcEvent: vi.fn(() => true),
 }));
 
 vi.mock('./undoRedoManager', () => ({

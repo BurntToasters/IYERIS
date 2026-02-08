@@ -3,6 +3,7 @@ import * as path from 'path';
 import type { FileItem, ApiResponse, IndexSearchResponse, IndexEntry, IndexStatus } from './types';
 import { getFileTasks, getIndexerTasks, getFileIndexer } from './appState';
 import { isPathSafe, getErrorMessage } from './security';
+import { isTrustedIpcEvent } from './ipcUtils';
 
 interface SearchFilters {
   fileType?: string;
@@ -31,13 +32,16 @@ export function setupSearchHandlers(): void {
   ipcMain.handle(
     'search-files',
     async (
-      _event: IpcMainInvokeEvent,
+      event: IpcMainInvokeEvent,
       dirPath: string,
       query: string,
       filters?: SearchFilters,
       operationId?: string
     ): Promise<{ success: boolean; results?: FileItem[]; error?: string }> => {
       try {
+        if (!isTrustedIpcEvent(event, 'search-files')) {
+          return { success: false, error: 'Untrusted IPC sender' };
+        }
         if (!isPathSafe(dirPath)) {
           return { success: false, error: 'Invalid directory path' };
         }
@@ -63,13 +67,16 @@ export function setupSearchHandlers(): void {
   ipcMain.handle(
     'search-files-content',
     async (
-      _event: IpcMainInvokeEvent,
+      event: IpcMainInvokeEvent,
       dirPath: string,
       query: string,
       filters?: SearchFilters,
       operationId?: string
     ): Promise<{ success: boolean; results?: ContentSearchResult[]; error?: string }> => {
       try {
+        if (!isTrustedIpcEvent(event, 'search-files-content')) {
+          return { success: false, error: 'Untrusted IPC sender' };
+        }
         if (!isPathSafe(dirPath)) {
           return { success: false, error: 'Invalid directory path' };
         }
@@ -96,12 +103,15 @@ export function setupSearchHandlers(): void {
   ipcMain.handle(
     'search-files-content-global',
     async (
-      _event: IpcMainInvokeEvent,
+      event: IpcMainInvokeEvent,
       query: string,
       filters?: SearchFilters,
       operationId?: string
     ): Promise<{ success: boolean; results?: ContentSearchResult[]; error?: string }> => {
       try {
+        if (!isTrustedIpcEvent(event, 'search-files-content-global')) {
+          return { success: false, error: 'Untrusted IPC sender' };
+        }
         const fileIndexer = getFileIndexer();
         if (!fileIndexer) {
           return { success: false, error: 'Indexer not initialized' };
@@ -134,8 +144,11 @@ export function setupSearchHandlers(): void {
 
   ipcMain.handle(
     'cancel-search',
-    async (_event: IpcMainInvokeEvent, operationId: string): Promise<ApiResponse> => {
+    async (event: IpcMainInvokeEvent, operationId: string): Promise<ApiResponse> => {
       try {
+        if (!isTrustedIpcEvent(event, 'cancel-search')) {
+          return { success: false, error: 'Untrusted IPC sender' };
+        }
         if (!operationId) {
           return { success: false, error: 'Missing operationId' };
         }
@@ -151,11 +164,14 @@ export function setupSearchHandlers(): void {
   ipcMain.handle(
     'search-index',
     async (
-      _event: IpcMainInvokeEvent,
+      event: IpcMainInvokeEvent,
       query: string,
       operationId?: string
     ): Promise<IndexSearchResponse> => {
       try {
+        if (!isTrustedIpcEvent(event, 'search-index')) {
+          return { success: false, error: 'Untrusted IPC sender' };
+        }
         const fileIndexer = getFileIndexer();
         if (!fileIndexer) {
           return { success: false, error: 'Indexer not initialized' };
@@ -187,8 +203,11 @@ export function setupSearchHandlers(): void {
     }
   );
 
-  ipcMain.handle('rebuild-index', async (): Promise<ApiResponse> => {
+  ipcMain.handle('rebuild-index', async (event: IpcMainInvokeEvent): Promise<ApiResponse> => {
     try {
+      if (!isTrustedIpcEvent(event, 'rebuild-index')) {
+        return { success: false, error: 'Untrusted IPC sender' };
+      }
       const fileIndexer = getFileIndexer();
       if (!fileIndexer) {
         return { success: false, error: 'Indexer not initialized' };
@@ -205,8 +224,13 @@ export function setupSearchHandlers(): void {
 
   ipcMain.handle(
     'get-index-status',
-    async (): Promise<{ success: boolean; status?: IndexStatus; error?: string }> => {
+    async (
+      event: IpcMainInvokeEvent
+    ): Promise<{ success: boolean; status?: IndexStatus; error?: string }> => {
       try {
+        if (!isTrustedIpcEvent(event, 'get-index-status')) {
+          return { success: false, error: 'Untrusted IPC sender' };
+        }
         const fileIndexer = getFileIndexer();
         if (!fileIndexer) {
           return { success: false, error: 'Indexer not initialized' };

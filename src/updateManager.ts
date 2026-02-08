@@ -1,4 +1,4 @@
-import { ipcMain, app } from 'electron';
+import { ipcMain, app, IpcMainInvokeEvent } from 'electron';
 import type { Settings, ApiResponse, UpdateCheckResponse } from './types';
 import { getMainWindow, getIsDev, setIsQuitting } from './appState';
 import {
@@ -7,7 +7,7 @@ import {
   checkMsiInstallation,
   isInstalledViaMsi,
 } from './platformUtils';
-import { safeSendToWindow } from './ipcUtils';
+import { safeSendToWindow, isTrustedIpcEvent } from './ipcUtils';
 import { getErrorMessage } from './security';
 
 function parseVersion(v: string): {
@@ -16,13 +16,16 @@ function parseVersion(v: string): {
   patch: number;
   prerelease: string[];
 } {
-  const cleaned = v.split('+')[0];
-  const match = cleaned.match(/^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/);
+  const cleaned = v.trim().replace(/^v/i, '').split('+')[0];
+  const match = cleaned.match(/^(\d+)(?:\.(\d+))?(?:\.(\d+))?(?:-([0-9A-Za-z.-]+))?/);
   if (!match) return { major: 0, minor: 0, patch: 0, prerelease: [] };
+  const major = parseInt(match[1], 10);
+  const minor = match[2] ? parseInt(match[2], 10) : 0;
+  const patch = match[3] ? parseInt(match[3], 10) : 0;
   return {
-    major: parseInt(match[1], 10),
-    minor: parseInt(match[2], 10),
-    patch: parseInt(match[3], 10),
+    major: Number.isFinite(major) ? major : 0,
+    minor: Number.isFinite(minor) ? minor : 0,
+    patch: Number.isFinite(patch) ? patch : 0,
     prerelease: match[4] ? match[4].split('.') : [],
   };
 }
@@ -218,155 +221,165 @@ export async function initializeAutoUpdater(settings: Settings): Promise<void> {
 }
 
 export function setupUpdateHandlers(loadSettings: () => Promise<Settings>): void {
-  ipcMain.handle('check-for-updates', async (): Promise<UpdateCheckResponse> => {
-    if (isRunningInFlatpak()) {
-      const currentVersion = app.getVersion();
-      console.log('[AutoUpdater] Flatpak detected - redirecting to Flatpak update mechanism');
-      return {
-        success: true,
-        hasUpdate: false,
-        currentVersion: `v${currentVersion}`,
-        latestVersion: `v${currentVersion}`,
-        isFlatpak: true,
-        flatpakMessage:
-          'Updates are managed by Flatpak. Run: flatpak update com.burnttoasters.iyeris',
-      };
-    }
-
-    if (process.mas) {
-      const currentVersion = app.getVersion();
-      console.log('[AutoUpdater] MAS detected - updates managed by App Store');
-      return {
-        success: true,
-        hasUpdate: false,
-        currentVersion: `v${currentVersion}`,
-        latestVersion: `v${currentVersion}`,
-        isMas: true,
-        masMessage: 'Updates are managed by the Mac App Store.',
-      };
-    }
-
-    if (process.windowsStore) {
-      const currentVersion = app.getVersion();
-      console.log('[AutoUpdater] Microsoft Store detected - updates managed by Microsoft Store');
-      return {
-        success: true,
-        hasUpdate: false,
-        currentVersion: `v${currentVersion}`,
-        latestVersion: `v${currentVersion}`,
-        isMsStore: true,
-        msStoreMessage: 'Updates are managed by the Microsoft Store.',
-      };
-    }
-
-    if (await checkMsiInstallation()) {
-      const currentVersion = app.getVersion();
-      console.log('[AutoUpdater] MSI installation detected - auto-updates disabled');
-      return {
-        success: true,
-        hasUpdate: false,
-        currentVersion: `v${currentVersion}`,
-        latestVersion: `v${currentVersion}`,
-        isMsi: true,
-        msiMessage:
-          'This is an enterprise installation. Updates are managed by your IT administrator. To enable auto-updates, uninstall the MSI version and install the regular version from the website.',
-      };
-    }
-
-    try {
-      const autoUpdater = getAutoUpdater();
-      const currentVersion = app.getVersion();
-      const settings = await loadSettings();
-      const updateChannel = settings.updateChannel || 'auto';
-      console.log(
-        '[AutoUpdater] Manually checking for updates. Current version:',
-        currentVersion,
-        '| Channel:',
-        updateChannel
-      );
-
-      const isBetaVersion = /-(beta|alpha|rc)/i.test(currentVersion);
-      let preferBeta = false;
-      if (updateChannel === 'beta') {
-        preferBeta = true;
-      } else if (updateChannel === 'stable') {
-        preferBeta = false;
-      } else {
-        preferBeta = isBetaVersion;
+  ipcMain.handle(
+    'check-for-updates',
+    async (event: IpcMainInvokeEvent): Promise<UpdateCheckResponse> => {
+      if (!isTrustedIpcEvent(event, 'check-for-updates')) {
+        return { success: false, error: 'Untrusted IPC sender' };
       }
 
-      if (preferBeta) {
-        autoUpdater.channel = 'beta';
-        autoUpdater.allowPrerelease = true;
-      } else {
-        autoUpdater.channel = 'latest';
-        autoUpdater.allowPrerelease = false;
-      }
-
-      const updateCheckResult = await autoUpdater.checkForUpdates();
-
-      if (!updateCheckResult) {
-        return { success: false, error: 'Update check returned no result' };
-      }
-
-      const updateInfo = updateCheckResult.updateInfo;
-      const latestVersion = updateInfo.version;
-      const updateIsBeta = /-(beta|alpha|rc)/i.test(latestVersion);
-
-      if (preferBeta && !updateIsBeta) {
-        console.log(`[AutoUpdater] Beta channel ignoring stable release ${latestVersion}`);
+      if (isRunningInFlatpak()) {
+        const currentVersion = app.getVersion();
+        console.log('[AutoUpdater] Flatpak detected - redirecting to Flatpak update mechanism');
         return {
           success: true,
           hasUpdate: false,
-          isBeta: true,
           currentVersion: `v${currentVersion}`,
           latestVersion: `v${currentVersion}`,
+          isFlatpak: true,
+          flatpakMessage:
+            'Updates are managed by Flatpak. Run: flatpak update com.burnttoasters.iyeris',
         };
       }
 
-      if (!preferBeta && updateIsBeta) {
-        console.log(`[AutoUpdater] Stable channel ignoring beta release ${latestVersion}`);
+      if (process.mas) {
+        const currentVersion = app.getVersion();
+        console.log('[AutoUpdater] MAS detected - updates managed by App Store');
         return {
           success: true,
           hasUpdate: false,
-          isBeta: false,
           currentVersion: `v${currentVersion}`,
           latestVersion: `v${currentVersion}`,
+          isMas: true,
+          masMessage: 'Updates are managed by the Mac App Store.',
         };
       }
 
-      const comparison = compareVersions(latestVersion, currentVersion);
-      const hasUpdate = comparison > 0;
+      if (process.windowsStore) {
+        const currentVersion = app.getVersion();
+        console.log('[AutoUpdater] Microsoft Store detected - updates managed by Microsoft Store');
+        return {
+          success: true,
+          hasUpdate: false,
+          currentVersion: `v${currentVersion}`,
+          latestVersion: `v${currentVersion}`,
+          isMsStore: true,
+          msStoreMessage: 'Updates are managed by the Microsoft Store.',
+        };
+      }
 
-      console.log('[AutoUpdater] Update check result:', {
-        hasUpdate,
-        currentVersion,
-        latestVersion,
-        preferBeta,
-        updateIsBeta,
-      });
+      if (await checkMsiInstallation()) {
+        const currentVersion = app.getVersion();
+        console.log('[AutoUpdater] MSI installation detected - auto-updates disabled');
+        return {
+          success: true,
+          hasUpdate: false,
+          currentVersion: `v${currentVersion}`,
+          latestVersion: `v${currentVersion}`,
+          isMsi: true,
+          msiMessage:
+            'This is an enterprise installation. Updates are managed by your IT administrator. To enable auto-updates, uninstall the MSI version and install the regular version from the website.',
+        };
+      }
 
-      return {
-        success: true,
-        hasUpdate,
-        isBeta: preferBeta,
-        updateInfo: {
-          version: updateInfo.version,
-          releaseDate: updateInfo.releaseDate,
-          releaseNotes: updateInfo.releaseNotes as string | undefined,
-        },
-        currentVersion: `v${currentVersion}`,
-        latestVersion: `v${latestVersion}`,
-        releaseUrl: `https://github.com/BurntToasters/IYERIS/releases/tag/v${latestVersion}`,
-      };
-    } catch (error) {
-      console.error('[AutoUpdater] Check for updates failed:', error);
-      return { success: false, error: getErrorMessage(error) };
+      try {
+        const autoUpdater = getAutoUpdater();
+        const currentVersion = app.getVersion();
+        const settings = await loadSettings();
+        const updateChannel = settings.updateChannel || 'auto';
+        console.log(
+          '[AutoUpdater] Manually checking for updates. Current version:',
+          currentVersion,
+          '| Channel:',
+          updateChannel
+        );
+
+        const isBetaVersion = /-(beta|alpha|rc)/i.test(currentVersion);
+        let preferBeta = false;
+        if (updateChannel === 'beta') {
+          preferBeta = true;
+        } else if (updateChannel === 'stable') {
+          preferBeta = false;
+        } else {
+          preferBeta = isBetaVersion;
+        }
+
+        if (preferBeta) {
+          autoUpdater.channel = 'beta';
+          autoUpdater.allowPrerelease = true;
+        } else {
+          autoUpdater.channel = 'latest';
+          autoUpdater.allowPrerelease = false;
+        }
+
+        const updateCheckResult = await autoUpdater.checkForUpdates();
+
+        if (!updateCheckResult) {
+          return { success: false, error: 'Update check returned no result' };
+        }
+
+        const updateInfo = updateCheckResult.updateInfo;
+        const latestVersion = updateInfo.version;
+        const updateIsBeta = /-(beta|alpha|rc)/i.test(latestVersion);
+
+        if (preferBeta && !updateIsBeta) {
+          console.log(`[AutoUpdater] Beta channel ignoring stable release ${latestVersion}`);
+          return {
+            success: true,
+            hasUpdate: false,
+            isBeta: true,
+            currentVersion: `v${currentVersion}`,
+            latestVersion: `v${currentVersion}`,
+          };
+        }
+
+        if (!preferBeta && updateIsBeta) {
+          console.log(`[AutoUpdater] Stable channel ignoring beta release ${latestVersion}`);
+          return {
+            success: true,
+            hasUpdate: false,
+            isBeta: false,
+            currentVersion: `v${currentVersion}`,
+            latestVersion: `v${currentVersion}`,
+          };
+        }
+
+        const comparison = compareVersions(latestVersion, currentVersion);
+        const hasUpdate = comparison > 0;
+
+        console.log('[AutoUpdater] Update check result:', {
+          hasUpdate,
+          currentVersion,
+          latestVersion,
+          preferBeta,
+          updateIsBeta,
+        });
+
+        return {
+          success: true,
+          hasUpdate,
+          isBeta: preferBeta,
+          updateInfo: {
+            version: updateInfo.version,
+            releaseDate: updateInfo.releaseDate,
+            releaseNotes: updateInfo.releaseNotes as string | undefined,
+          },
+          currentVersion: `v${currentVersion}`,
+          latestVersion: `v${latestVersion}`,
+          releaseUrl: `https://github.com/BurntToasters/IYERIS/releases/tag/v${latestVersion}`,
+        };
+      } catch (error) {
+        console.error('[AutoUpdater] Check for updates failed:', error);
+        return { success: false, error: getErrorMessage(error) };
+      }
     }
-  });
+  );
 
-  ipcMain.handle('download-update', async (): Promise<ApiResponse> => {
+  ipcMain.handle('download-update', async (event: IpcMainInvokeEvent): Promise<ApiResponse> => {
     try {
+      if (!isTrustedIpcEvent(event, 'download-update')) {
+        return { success: false, error: 'Untrusted IPC sender' };
+      }
       const autoUpdater = getAutoUpdater();
       console.log('[AutoUpdater] Starting update download...');
       await autoUpdater.downloadUpdate();
@@ -377,8 +390,11 @@ export function setupUpdateHandlers(loadSettings: () => Promise<Settings>): void
     }
   });
 
-  ipcMain.handle('install-update', async (): Promise<ApiResponse> => {
+  ipcMain.handle('install-update', async (event: IpcMainInvokeEvent): Promise<ApiResponse> => {
     try {
+      if (!isTrustedIpcEvent(event, 'install-update')) {
+        return { success: false, error: 'Untrusted IPC sender' };
+      }
       const autoUpdater = getAutoUpdater();
       console.log('[AutoUpdater] Installing update and restarting...');
       setIsQuitting(true);

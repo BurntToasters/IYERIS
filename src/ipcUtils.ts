@@ -1,7 +1,8 @@
-import { BrowserWindow } from 'electron';
+import { BrowserWindow, IpcMainInvokeEvent } from 'electron';
 import type { WebContents } from 'electron';
 import { getMainWindow, getFileTasks } from './appState';
 import { isRecord } from './shared';
+import { isTrustedIpcSender } from './security';
 
 const directoryOperationTargets = new Map<string, WebContents>();
 
@@ -88,4 +89,17 @@ export function setupFileTasksProgressHandler(
       }
     }
   });
+}
+
+export function isTrustedIpcEvent(event: IpcMainInvokeEvent, channel?: string): boolean {
+  if (isTrustedIpcSender(event)) {
+    return true;
+  }
+  const url = event.senderFrame?.url || event.sender?.getURL?.() || '';
+  if (channel) {
+    console.warn(`[Security] Blocked IPC ${channel} from:`, url);
+  } else {
+    console.warn('[Security] Blocked IPC from:', url);
+  }
+  return false;
 }

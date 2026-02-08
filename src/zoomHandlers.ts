@@ -3,12 +3,16 @@ import type { ApiResponse } from './types';
 import { ZOOM_MIN, ZOOM_MAX } from './appState';
 import { getErrorMessage } from './security';
 import { logger } from './utils/logger';
+import { isTrustedIpcEvent } from './ipcUtils';
 
 export function setupZoomHandlers(): void {
   ipcMain.handle(
     'set-zoom-level',
     async (event: IpcMainInvokeEvent, zoomLevel: number): Promise<ApiResponse> => {
       try {
+        if (!isTrustedIpcEvent(event, 'set-zoom-level')) {
+          return { success: false, error: 'Untrusted IPC sender' };
+        }
         const win = BrowserWindow.fromWebContents(event.sender);
         if (!win || win.isDestroyed()) {
           return { success: false, error: 'Window not available' };
@@ -32,6 +36,9 @@ export function setupZoomHandlers(): void {
       event: IpcMainInvokeEvent
     ): Promise<{ success: boolean; zoomLevel?: number; error?: string }> => {
       try {
+        if (!isTrustedIpcEvent(event, 'get-zoom-level')) {
+          return { success: false, error: 'Untrusted IPC sender' };
+        }
         const win = BrowserWindow.fromWebContents(event.sender);
         if (!win || win.isDestroyed()) {
           return { success: false, error: 'Window not available' };

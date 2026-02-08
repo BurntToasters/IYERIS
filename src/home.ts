@@ -1,6 +1,6 @@
 import type { DriveInfo, HomeSettings, Settings } from './types';
 import { createDefaultHomeSettings } from './homeSettings.js';
-import { escapeHtml } from './shared.js';
+import { escapeHtml, ignoreError } from './shared.js';
 
 export const HOME_VIEW_PATH = 'iyeris://home';
 export const HOME_VIEW_LABEL = 'Home';
@@ -428,7 +428,9 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
         await Promise.resolve(navigateTo(filePath));
         return;
       }
-    } catch {}
+    } catch (error) {
+      ignoreError(error);
+    }
 
     if (openPath) {
       await Promise.resolve(openPath(filePath));

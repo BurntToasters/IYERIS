@@ -6,8 +6,10 @@ import * as fs from 'fs/promises';
 import * as crypto from 'crypto';
 import { getMainWindow } from './appState';
 import { isPathSafe, getErrorMessage } from './security';
+import { ignoreError } from './shared';
 import { loadSettings } from './settingsManager';
 import type { ApiResponse } from './types';
+import { isTrustedIpcEvent } from './ipcUtils';
 
 const execFilePromise = promisify(execFile);
 
@@ -36,7 +38,9 @@ async function promptForElevation(operation: string, itemPath: string): Promise<
     if (settings.skipElevationConfirmation) {
       return true;
     }
-  } catch {}
+  } catch (error) {
+    ignoreError(error);
+  }
 
   const mainWindow = getMainWindow();
   if (!mainWindow) return false;
@@ -58,7 +62,9 @@ function killElevatedProcess(): void {
   for (const proc of activeElevatedProcesses) {
     try {
       proc.kill('SIGKILL');
-    } catch {}
+    } catch (error) {
+      ignoreError(error);
+    }
   }
   activeElevatedProcesses.clear();
 }
@@ -102,7 +108,9 @@ async function executeElevatedWindows(operation: ElevatedOperation): Promise<Ele
   } finally {
     try {
       await fs.unlink(scriptPath);
-    } catch {}
+    } catch (error) {
+      ignoreError(error);
+    }
   }
 }
 
@@ -158,7 +166,9 @@ async function executeElevatedMac(operation: ElevatedOperation): Promise<Elevate
   } finally {
     try {
       await fs.unlink(scriptPath);
-    } catch {}
+    } catch (error) {
+      ignoreError(error);
+    }
   }
 }
 
@@ -189,9 +199,11 @@ async function executeElevatedLinux(operation: ElevatedOperation): Promise<Eleva
           resolved = true;
           try {
             child.kill('SIGKILL');
-          } catch {}
+          } catch (error) {
+            ignoreError(error);
+          }
           activeElevatedProcesses.delete(child);
-          fs.unlink(scriptPath).catch(() => {});
+          fs.unlink(scriptPath).catch(ignoreError);
           resolve({ success: false, error: 'Operation timed out' });
         }
       }, OPERATION_TIMEOUT);
@@ -207,7 +219,9 @@ async function executeElevatedLinux(operation: ElevatedOperation): Promise<Eleva
         activeElevatedProcesses.delete(child);
         try {
           await fs.unlink(scriptPath);
-        } catch {}
+        } catch (error) {
+          ignoreError(error);
+        }
 
         if (code === 0) {
           resolve({ success: true });
@@ -223,7 +237,9 @@ async function executeElevatedLinux(operation: ElevatedOperation): Promise<Eleva
         activeElevatedProcesses.delete(child);
         try {
           await fs.unlink(scriptPath);
-        } catch {}
+        } catch (error) {
+          ignoreError(error);
+        }
         resolve({ success: false, error: getErrorMessage(err) });
       });
     });
@@ -343,10 +359,13 @@ export function setupElevatedOperationHandlers(): void {
   ipcMain.handle(
     'elevated-copy',
     async (
-      _event: IpcMainInvokeEvent,
+      event: IpcMainInvokeEvent,
       sourcePath: string,
       destPath: string
     ): Promise<ApiResponse> => {
+      if (!isTrustedIpcEvent(event, 'elevated-copy')) {
+        return { success: false, error: 'Untrusted IPC sender' };
+      }
       if (!isPathSafe(sourcePath) || !isPathSafe(destPath)) {
         return { success: false, error: 'Invalid path' };
       }
@@ -364,10 +383,13 @@ export function setupElevatedOperationHandlers(): void {
   ipcMain.handle(
     'elevated-move',
     async (
-      _event: IpcMainInvokeEvent,
+      event: IpcMainInvokeEvent,
       sourcePath: string,
       destPath: string
     ): Promise<ApiResponse> => {
+      if (!isTrustedIpcEvent(event, 'elevated-move')) {
+        return { success: false, error: 'Untrusted IPC sender' };
+      }
       if (!isPathSafe(sourcePath) || !isPathSafe(destPath)) {
         return { success: false, error: 'Invalid path' };
       }
@@ -384,7 +406,10 @@ export function setupElevatedOperationHandlers(): void {
 
   ipcMain.handle(
     'elevated-delete',
-    async (_event: IpcMainInvokeEvent, itemPath: string): Promise<ApiResponse> => {
+    async (event: IpcMainInvokeEvent, itemPath: string): Promise<ApiResponse> => {
+      if (!isTrustedIpcEvent(event, 'elevated-delete')) {
+        return { success: false, error: 'Untrusted IPC sender' };
+      }
       if (!isPathSafe(itemPath)) {
         return { success: false, error: 'Invalid path' };
       }
@@ -400,7 +425,10 @@ export function setupElevatedOperationHandlers(): void {
 
   ipcMain.handle(
     'elevated-rename',
-    async (_event: IpcMainInvokeEvent, itemPath: string, newName: string): Promise<ApiResponse> => {
+    async (event: IpcMainInvokeEvent, itemPath: string, newName: string): Promise<ApiResponse> => {
+      if (!isTrustedIpcEvent(event, 'elevated-rename')) {
+        return { success: false, error: 'Untrusted IPC sender' };
+      }
       if (!isPathSafe(itemPath)) {
         return { success: false, error: 'Invalid path' };
       }

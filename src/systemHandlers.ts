@@ -18,8 +18,10 @@ import * as os from 'os';
 import type { ApiResponse, LicensesData, Settings } from './types';
 import { getMainWindow, MAX_TEXT_PREVIEW_BYTES, MAX_DATA_URL_BYTES } from './appState';
 import { isPathSafe, getErrorMessage } from './security';
+import { ignoreError } from './shared';
 import { isRunningInFlatpak } from './platformUtils';
 import { logger } from './utils/logger';
+import { isTrustedIpcEvent } from './ipcUtils';
 
 function spawnWithTimeout(
   command: string,
@@ -33,7 +35,9 @@ function spawnWithTimeout(
     didTimeout = true;
     try {
       child.kill();
-    } catch {}
+    } catch (error) {
+      ignoreError(error);
+    }
   }, timeoutMs);
 
   const clear = () => clearTimeout(timeout);
@@ -42,6 +46,8 @@ function spawnWithTimeout(
 
   return { child, timedOut: () => didTimeout };
 }
+
+const MAX_GIT_STATUS_BYTES = 20 * 1024 * 1024;
 
 async function readTailTextFile(
   filePath: string,
@@ -295,9 +301,12 @@ export function setupSystemHandlers(
   ipcMain.handle(
     'get-disk-space',
     async (
-      _event: IpcMainInvokeEvent,
+      event: IpcMainInvokeEvent,
       drivePath: string
     ): Promise<{ success: boolean; total?: number; free?: number; error?: string }> => {
+      if (!isTrustedIpcEvent(event, 'get-disk-space')) {
+        return { success: false, error: 'Untrusted IPC sender' };
+      }
       console.log(
         '[Main] get-disk-space called with path:',
         drivePath,
@@ -446,8 +455,11 @@ export function setupSystemHandlers(
     }
   );
 
-  ipcMain.handle('restart-as-admin', async (): Promise<ApiResponse> => {
+  ipcMain.handle('restart-as-admin', async (event: IpcMainInvokeEvent): Promise<ApiResponse> => {
     try {
+      if (!isTrustedIpcEvent(event, 'restart-as-admin')) {
+        return { success: false, error: 'Untrusted IPC sender' };
+      }
       const platform = process.platform;
       const appPath = app.getPath('exe');
       const execFilePromise = promisify(execFile);
@@ -509,8 +521,11 @@ export function setupSystemHandlers(
 
   ipcMain.handle(
     'open-terminal',
-    async (_event: IpcMainInvokeEvent, dirPath: string): Promise<ApiResponse> => {
+    async (event: IpcMainInvokeEvent, dirPath: string): Promise<ApiResponse> => {
       try {
+        if (!isTrustedIpcEvent(event, 'open-terminal')) {
+          return { success: false, error: 'Untrusted IPC sender' };
+        }
         if (!isPathSafe(dirPath)) {
           return { success: false, error: 'Invalid directory path' };
         }
@@ -586,11 +601,14 @@ export function setupSystemHandlers(
   ipcMain.handle(
     'read-file-content',
     async (
-      _event: IpcMainInvokeEvent,
+      event: IpcMainInvokeEvent,
       filePath: string,
       maxSize: number = 1024 * 1024
     ): Promise<{ success: boolean; content?: string; error?: string; isTruncated?: boolean }> => {
       try {
+        if (!isTrustedIpcEvent(event, 'read-file-content')) {
+          return { success: false, error: 'Untrusted IPC sender' };
+        }
         if (!isPathSafe(filePath)) {
           return { success: false, error: 'Invalid file path' };
         }
@@ -627,11 +645,14 @@ export function setupSystemHandlers(
   ipcMain.handle(
     'get-file-data-url',
     async (
-      _event: IpcMainInvokeEvent,
+      event: IpcMainInvokeEvent,
       filePath: string,
       maxSize: number = 10 * 1024 * 1024
     ): Promise<{ success: boolean; dataUrl?: string; error?: string }> => {
       try {
+        if (!isTrustedIpcEvent(event, 'get-file-data-url')) {
+          return { success: false, error: 'Untrusted IPC sender' };
+        }
         if (!isPathSafe(filePath)) {
           return { success: false, error: 'Invalid file path' };
         }
@@ -682,8 +703,13 @@ export function setupSystemHandlers(
 
   ipcMain.handle(
     'get-licenses',
-    async (): Promise<{ success: boolean; licenses?: LicensesData; error?: string }> => {
+    async (
+      event: IpcMainInvokeEvent
+    ): Promise<{ success: boolean; licenses?: LicensesData; error?: string }> => {
       try {
+        if (!isTrustedIpcEvent(event, 'get-licenses')) {
+          return { success: false, error: 'Untrusted IPC sender' };
+        }
         const licensesPath = path.join(__dirname, '..', 'licenses.json');
         const data = await fs.readFile(licensesPath, 'utf-8');
         const licenses = JSON.parse(data);
@@ -694,79 +720,116 @@ export function setupSystemHandlers(
     }
   );
 
-  ipcMain.handle('get-platform', (): string => {
+  ipcMain.handle('get-platform', (event: IpcMainInvokeEvent): string => {
+    if (!isTrustedIpcEvent(event, 'get-platform')) {
+      return '';
+    }
     return process.platform;
   });
 
-  ipcMain.handle('get-app-version', (): string => {
+  ipcMain.handle('get-app-version', (event: IpcMainInvokeEvent): string => {
+    if (!isTrustedIpcEvent(event, 'get-app-version')) {
+      return '';
+    }
     return app.getVersion();
   });
 
-  ipcMain.handle('get-system-accent-color', (): { accentColor: string; isDarkMode: boolean } => {
-    let accentColor = '#0078d4';
-    if (process.platform === 'win32') {
-      try {
-        const color = systemPreferences.getAccentColor();
-        if (color && color.length >= 6) {
-          accentColor = `#${color.substring(0, 6)}`;
+  ipcMain.handle(
+    'get-system-accent-color',
+    (event: IpcMainInvokeEvent): { accentColor: string; isDarkMode: boolean } => {
+      if (!isTrustedIpcEvent(event, 'get-system-accent-color')) {
+        return { accentColor: '#0078d4', isDarkMode: false };
+      }
+      let accentColor = '#0078d4';
+      if (process.platform === 'win32') {
+        try {
+          const color = systemPreferences.getAccentColor();
+          if (color && color.length >= 6) {
+            accentColor = `#${color.substring(0, 6)}`;
+          }
+        } catch (error) {
+          ignoreError(error);
         }
-      } catch {}
-    } else if (process.platform === 'darwin') {
-      try {
-        const color = systemPreferences.getAccentColor();
-        if (color && color.length >= 6) {
-          accentColor = `#${color.substring(0, 6)}`;
+      } else if (process.platform === 'darwin') {
+        try {
+          const color = systemPreferences.getAccentColor();
+          if (color && color.length >= 6) {
+            accentColor = `#${color.substring(0, 6)}`;
+          }
+        } catch (error) {
+          ignoreError(error);
         }
-      } catch {}
+      }
+      return {
+        accentColor,
+        isDarkMode: nativeTheme.shouldUseDarkColors,
+      };
     }
-    return {
-      accentColor,
-      isDarkMode: nativeTheme.shouldUseDarkColors,
-    };
-  });
+  );
 
-  ipcMain.handle('is-mas', (): boolean => {
+  ipcMain.handle('is-mas', (event: IpcMainInvokeEvent): boolean => {
+    if (!isTrustedIpcEvent(event, 'is-mas')) {
+      return false;
+    }
     return process.mas === true;
   });
 
-  ipcMain.handle('is-flatpak', (): boolean => {
+  ipcMain.handle('is-flatpak', (event: IpcMainInvokeEvent): boolean => {
+    if (!isTrustedIpcEvent(event, 'is-flatpak')) {
+      return false;
+    }
     return isRunningInFlatpak();
   });
 
-  ipcMain.handle('is-ms-store', (): boolean => {
+  ipcMain.handle('is-ms-store', (event: IpcMainInvokeEvent): boolean => {
+    if (!isTrustedIpcEvent(event, 'is-ms-store')) {
+      return false;
+    }
     return process.windowsStore === true;
   });
 
-  ipcMain.handle('get-system-text-scale', (): number => {
+  ipcMain.handle('get-system-text-scale', (event: IpcMainInvokeEvent): number => {
+    if (!isTrustedIpcEvent(event, 'get-system-text-scale')) {
+      return 1;
+    }
     const primaryDisplay = screen.getPrimaryDisplay();
     return primaryDisplay.scaleFactor;
   });
 
   ipcMain.handle(
     'check-full-disk-access',
-    async (): Promise<{ success: boolean; hasAccess: boolean }> => {
+    async (event: IpcMainInvokeEvent): Promise<{ success: boolean; hasAccess: boolean }> => {
+      if (!isTrustedIpcEvent(event, 'check-full-disk-access')) {
+        return { success: false, hasAccess: false };
+      }
       const hasAccess = await checkFullDiskAccess();
       return { success: true, hasAccess };
     }
   );
 
-  ipcMain.handle('request-full-disk-access', async (): Promise<ApiResponse> => {
-    try {
-      if (process.platform !== 'darwin') {
-        return { success: false, error: 'Full Disk Access is only applicable on macOS' };
-      }
+  ipcMain.handle(
+    'request-full-disk-access',
+    async (event: IpcMainInvokeEvent): Promise<ApiResponse> => {
+      try {
+        if (!isTrustedIpcEvent(event, 'request-full-disk-access')) {
+          return { success: false, error: 'Untrusted IPC sender' };
+        }
+        if (process.platform !== 'darwin') {
+          return { success: false, error: 'Full Disk Access is only applicable on macOS' };
+        }
 
-      await showFullDiskAccessDialog(loadSettings, saveSettings);
-      return { success: true };
-    } catch (error) {
-      return { success: false, error: getErrorMessage(error) };
+        await showFullDiskAccessDialog(loadSettings, saveSettings);
+        return { success: true };
+      } catch (error) {
+        return { success: false, error: getErrorMessage(error) };
+      }
     }
-  });
+  );
 
   ipcMain.handle(
     'get-git-status',
     async (
-      _event: IpcMainInvokeEvent,
+      event: IpcMainInvokeEvent,
       dirPath: string,
       includeUntracked: boolean = true
     ): Promise<{
@@ -776,6 +839,9 @@ export function setupSystemHandlers(
       error?: string;
     }> => {
       try {
+        if (!isTrustedIpcEvent(event, 'get-git-status')) {
+          return { success: false, error: 'Untrusted IPC sender' };
+        }
         if (!isPathSafe(dirPath)) {
           return { success: false, error: 'Invalid directory path' };
         }
@@ -791,11 +857,58 @@ export function setupSystemHandlers(
           return { success: true, isGitRepo: false, statuses: [] };
         }
 
-        const statusArgs = includeUntracked ? '-uall' : '-uno';
-        const { stdout } = await execPromise(`git status --porcelain ${statusArgs} -z`, {
-          cwd: dirPath,
-          maxBuffer: 10 * 1024 * 1024,
-          timeout: 30000,
+        const statusArgs = includeUntracked ? ['-uall'] : ['-uno'];
+        const { child: gitProcess, timedOut } = spawnWithTimeout(
+          'git',
+          ['status', '--porcelain', '-z', ...statusArgs],
+          30000,
+          { cwd: dirPath, windowsHide: true, shell: false }
+        );
+
+        const stdoutChunks: Buffer[] = [];
+        let stdoutBytes = 0;
+        let stderr = '';
+        let truncated = false;
+
+        if (gitProcess.stdout) {
+          gitProcess.stdout.on('data', (data: Buffer) => {
+            if (stdoutBytes + data.length > MAX_GIT_STATUS_BYTES) {
+              truncated = true;
+              try {
+                gitProcess.kill();
+              } catch (error) {
+                ignoreError(error);
+              }
+              return;
+            }
+            stdoutBytes += data.length;
+            stdoutChunks.push(data);
+          });
+        }
+
+        if (gitProcess.stderr) {
+          gitProcess.stderr.on('data', (data: Buffer) => {
+            stderr += data.toString();
+          });
+        }
+
+        const stdout = await new Promise<string>((resolve, reject) => {
+          gitProcess.on('error', reject);
+          gitProcess.on('close', (code) => {
+            if (timedOut()) {
+              reject(new Error('Git status timed out'));
+              return;
+            }
+            if (truncated) {
+              reject(new Error('Git status output too large'));
+              return;
+            }
+            if (code !== 0) {
+              reject(new Error(stderr || 'Git status failed'));
+              return;
+            }
+            resolve(Buffer.concat(stdoutChunks).toString('utf8'));
+          });
         });
 
         const statuses: { path: string; status: string }[] = [];
@@ -841,7 +954,7 @@ export function setupSystemHandlers(
         return { success: true, isGitRepo: true, statuses };
       } catch (error) {
         console.error('[Git Status] Error:', error);
-        return { success: true, isGitRepo: false, statuses: [] };
+        return { success: true, isGitRepo: true, statuses: [] };
       }
     }
   );
@@ -849,7 +962,7 @@ export function setupSystemHandlers(
   ipcMain.handle(
     'get-git-branch',
     async (
-      _event: IpcMainInvokeEvent,
+      event: IpcMainInvokeEvent,
       dirPath: string
     ): Promise<{
       success: boolean;
@@ -857,6 +970,9 @@ export function setupSystemHandlers(
       error?: string;
     }> => {
       try {
+        if (!isTrustedIpcEvent(event, 'get-git-branch')) {
+          return { success: false, error: 'Untrusted IPC sender' };
+        }
         if (!isPathSafe(dirPath)) {
           return { success: false, error: 'Invalid directory path' };
         }
@@ -895,12 +1011,18 @@ export function setupSystemHandlers(
     }
   );
 
-  ipcMain.handle('get-logs-path', (): string => {
+  ipcMain.handle('get-logs-path', (event: IpcMainInvokeEvent): string => {
+    if (!isTrustedIpcEvent(event, 'get-logs-path')) {
+      return '';
+    }
     return logger.getLogsDirectory();
   });
 
-  ipcMain.handle('open-logs-folder', async (): Promise<ApiResponse> => {
+  ipcMain.handle('open-logs-folder', async (event: IpcMainInvokeEvent): Promise<ApiResponse> => {
     try {
+      if (!isTrustedIpcEvent(event, 'open-logs-folder')) {
+        return { success: false, error: 'Untrusted IPC sender' };
+      }
       const logsDir = logger.getLogsDirectory();
       await shell.openPath(logsDir);
       return { success: true };
@@ -911,8 +1033,13 @@ export function setupSystemHandlers(
 
   ipcMain.handle(
     'export-diagnostics',
-    async (): Promise<{ success: boolean; path?: string; error?: string }> => {
+    async (
+      event: IpcMainInvokeEvent
+    ): Promise<{ success: boolean; path?: string; error?: string }> => {
       try {
+        if (!isTrustedIpcEvent(event, 'export-diagnostics')) {
+          return { success: false, error: 'Untrusted IPC sender' };
+        }
         const mainWindow = getMainWindow();
         const defaultPath = path.join(
           app.getPath('desktop'),
@@ -1018,13 +1145,18 @@ export function setupSystemHandlers(
 
   ipcMain.handle(
     'get-log-file-content',
-    async (): Promise<{
+    async (
+      event: IpcMainInvokeEvent
+    ): Promise<{
       success: boolean;
       content?: string;
       error?: string;
       isTruncated?: boolean;
     }> => {
       try {
+        if (!isTrustedIpcEvent(event, 'get-log-file-content')) {
+          return { success: false, error: 'Untrusted IPC sender' };
+        }
         const logPath = logger.getLogPath();
         const logData = await readTailTextFile(logPath, MAX_TEXT_PREVIEW_BYTES);
         return {

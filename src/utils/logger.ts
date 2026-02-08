@@ -1,6 +1,7 @@
 import log from 'electron-log';
 import * as path from 'path';
 import * as os from 'os';
+import { ignoreError } from '../shared';
 
 const isDebugEnabled = process.argv.includes('--enable-logging') || process.env.DEBUG === 'true';
 
@@ -64,7 +65,9 @@ log.transports.file.archiveLogFn = (oldLogFile) => {
   const newPath = path.join(info.dir, `${info.name}.${timestamp}${info.ext}`);
   try {
     oldLogFile.toString = () => newPath;
-  } catch {}
+  } catch (error) {
+    ignoreError(error);
+  }
 };
 
 export const logger = {

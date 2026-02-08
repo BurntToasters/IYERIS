@@ -11,6 +11,7 @@ lerna-debug.log*
 !.husky/
 
 .flatpak-builder/
+licenses.json
 build-dir/
 repo/
 *.flatpak
