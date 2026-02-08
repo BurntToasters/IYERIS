@@ -88,9 +88,9 @@
     "release:beta:linux": "npm run licenses && npm run patch:beta && cross-env IS_BETA=true npm run build && dotenv -e .env -- electron-builder --linux AppImage deb rpm --x64 --arm64 -c.linux.icon=assets/icon-beta.png --publish always && npm run restore:release && npm run sign:gpg",
     "release:beta:linux:native": "npm run licenses && npm run patch:beta && cross-env IS_BETA=true npm run build && cross-env USE_SYSTEM_FPM=true dotenv -e .env -- electron-builder --linux AppImage deb rpm --x64 --arm64 -c.linux.icon=assets/icon-beta.png --publish always && npm run restore:release && npm run sign:gpg",
     "release:beta:all": "npm run licenses && npm run release:beta:mac && npm run release:beta:win && npm run release:beta:linux",
-    "build:msstore:x64": "npm run licenses && npm run build && electron-builder --win --x64 -c electron-builder.msstore.yml --publish never",
-    "build:msstore:arm64": "npm run licenses && npm run build && electron-builder --win --arm64 -c electron-builder.msstore.yml --publish never",
-    "build:msstore": "npm run licenses && npm run build:msstore:x64 && npm run build:msstore:arm64",
+    "build:msstore:x64": "npm run licenses && npm run licenses && npm run build && electron-builder --win --x64 -c electron-builder.msstore.yml --publish never",
+    "build:msstore:arm64": "npm run licenses && npm run licenses && npm run build && electron-builder --win --arm64 -c electron-builder.msstore.yml --publish never",
+    "build:msstore": "npm run licenses && npm run licenses && npm run build:msstore:x64 && npm run build:msstore:arm64",
     "sign:gpg": "node build/gpg-sign.js"
   },
   "build": {
