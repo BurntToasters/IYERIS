@@ -309,13 +309,13 @@
         "licenseUrl": "https://github.com/DefinitelyTyped/DefinitelyTyped/raw/master/LICENSE",
         "parents": "iyeris"
     },
-    "@types/node@24.10.11": {
+    "@types/node@24.10.12": {
         "licenses": "MIT",
         "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped",
         "licenseUrl": "https://github.com/DefinitelyTyped/DefinitelyTyped/raw/master/LICENSE",
         "parents": "electron:iyeris"
     },
-    "@types/node@25.2.1": {
+    "@types/node@25.2.2": {
         "licenses": "MIT",
         "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped",
         "licenseUrl": "https://github.com/DefinitelyTyped/DefinitelyTyped/raw/master/LICENSE",
@@ -1539,7 +1539,7 @@
         "licenseUrl": "https://github.com/isaacs/isexe/raw/master/LICENSE",
         "parents": "iyeris"
     },
-    "isexe@3.1.2": {
+    "isexe@3.1.3": {
         "licenses": "BlueOak-1.0.0",
         "repository": "https://github.com/isaacs/isexe",
         "licenseUrl": "https://github.com/isaacs/isexe/raw/master/LICENSE.md",
