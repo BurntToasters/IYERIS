@@ -542,7 +542,7 @@ function renderTabs() {
         ${tabIcon}
       </span>
       <span class="tab-title" title="${escapeHtml(tabTitle)}">${escapeHtml(folderName)}</span>
-      <button class="tab-close" title="Close Tab">&times;</button>
+      <button class="tab-close" title="Close Tab" aria-label="Close tab">&times;</button>
     `;
 
     tabElement.addEventListener('click', (e) => {
@@ -1039,6 +1039,68 @@ function applyGitIndicatorsToPaths(paths: string[]): void {
   }
 }
 
+const MODAL_FOCUS_SELECTORS =
+  'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+let activeModal: HTMLElement | null = null;
+let modalRestoreFocusEl: HTMLElement | null = null;
+
+function getFocusableElements(modal: HTMLElement): HTMLElement[] {
+  return Array.from(modal.querySelectorAll<HTMLElement>(MODAL_FOCUS_SELECTORS)).filter(
+    (el) => !el.hasAttribute('disabled') && el.offsetParent !== null
+  );
+}
+
+function trapModalFocus(e: KeyboardEvent): void {
+  if (!activeModal || e.key !== 'Tab') return;
+  const focusable = getFocusableElements(activeModal);
+  if (focusable.length === 0) {
+    e.preventDefault();
+    activeModal.focus({ preventScroll: true });
+    return;
+  }
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  const active = document.activeElement as HTMLElement | null;
+  if (e.shiftKey && active === first) {
+    e.preventDefault();
+    last.focus({ preventScroll: true });
+  } else if (!e.shiftKey && active === last) {
+    e.preventDefault();
+    first.focus({ preventScroll: true });
+  }
+}
+
+function activateModal(modal: HTMLElement, options?: { restoreFocus?: boolean }) {
+  if (activeModal && activeModal !== modal) {
+    deactivateModal(activeModal, { restoreFocus: false });
+  }
+  activeModal = modal;
+  if (options?.restoreFocus !== false) {
+    modalRestoreFocusEl = document.activeElement as HTMLElement | null;
+  }
+  if (!modal.hasAttribute('tabindex')) {
+    modal.tabIndex = -1;
+  }
+  document.addEventListener('keydown', trapModalFocus, true);
+  const focusable = getFocusableElements(modal);
+  if (focusable.length > 0) {
+    focusable[0].focus({ preventScroll: true });
+  } else {
+    modal.focus({ preventScroll: true });
+  }
+}
+
+function deactivateModal(modal?: HTMLElement, options?: { restoreFocus?: boolean }) {
+  if (modal && activeModal !== modal) return;
+  document.removeEventListener('keydown', trapModalFocus, true);
+  activeModal = null;
+  const shouldRestore = options?.restoreFocus !== false;
+  if (shouldRestore && modalRestoreFocusEl && document.contains(modalRestoreFocusEl)) {
+    modalRestoreFocusEl.focus({ preventScroll: true });
+  }
+  modalRestoreFocusEl = null;
+}
+
 function showDialog(
   title: string,
   message: string,
@@ -1079,15 +1141,19 @@ function showDialog(
     }
 
     dialogModal.style.display = 'flex';
+    activateModal(dialogModal);
+    dialogOk.focus();
 
     const handleOk = (): void => {
       dialogModal.style.display = 'none';
+      deactivateModal(dialogModal);
       cleanup();
       resolve(true);
     };
 
     const handleCancel = (): void => {
       dialogModal.style.display = 'none';
+      deactivateModal(dialogModal);
       cleanup();
       resolve(false);
     };
@@ -1095,6 +1161,7 @@ function showDialog(
     const handleEscape = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') {
         dialogModal.style.display = 'none';
+        deactivateModal(dialogModal);
         cleanup();
         resolve(false);
       }
@@ -1133,6 +1200,8 @@ let isResettingSettings = false;
 const tourController: TourController = createTourController({
   getSettings: () => currentSettings,
   saveSettings: (settings) => saveSettingsWithTimestamp(settings),
+  onModalOpen: activateModal,
+  onModalClose: deactivateModal,
 });
 
 const toastManager = createToastManager({
@@ -1157,6 +1226,8 @@ const homeController = createHomeController({
   formatFileSize,
   getSettings: () => currentSettings,
   openPath: (filePath) => openPathWithArchivePrompt(filePath, undefined, false),
+  onModalOpen: activateModal,
+  onModalClose: deactivateModal,
 });
 
 const navigationController = createNavigationController({
@@ -1216,6 +1287,8 @@ const previewController = createPreviewController({
   getFileExtension,
   getFileIcon,
   openFileEntry,
+  onModalOpen: activateModal,
+  onModalClose: deactivateModal,
 });
 
 const selectionController = createSelectionController({
@@ -1272,6 +1345,7 @@ const {
   navigateByPage,
   setupRubberBandSelection,
   isRubberBandActive,
+  ensureActiveItem,
 } = selectionController;
 
 const hoverCardController = createHoverCardController({
@@ -2275,6 +2349,7 @@ function showCommandPalette(): void {
   commandPalettePreviousFocus = document.activeElement as HTMLElement;
 
   commandPaletteModal.style.display = 'flex';
+  activateModal(commandPaletteModal, { restoreFocus: false });
   commandPaletteInput.value = '';
   commandPaletteFocusedIndex = -1;
   renderCommandPaletteResults(commands);
@@ -2287,6 +2362,7 @@ function showCommandPalette(): void {
 function hideCommandPalette(): void {
   if (commandPaletteModal) {
     commandPaletteModal.style.display = 'none';
+    deactivateModal(commandPaletteModal, { restoreFocus: false });
   }
 
   if (commandPalettePreviousFocus && typeof commandPalettePreviousFocus.focus === 'function') {
@@ -2838,6 +2914,7 @@ function showThemeEditor() {
 
   updateThemePreview();
   modal.style.display = 'flex';
+  activateModal(modal);
 }
 
 async function hideThemeEditor(skipConfirmation = false) {
@@ -2850,7 +2927,10 @@ async function hideThemeEditor(skipConfirmation = false) {
     if (!confirmed) return;
   }
   const modal = document.getElementById('theme-editor-modal');
-  if (modal) modal.style.display = 'none';
+  if (modal) {
+    modal.style.display = 'none';
+    deactivateModal(modal);
+  }
   themeEditorHasUnsavedChanges = false;
 }
 
@@ -3377,6 +3457,7 @@ async function showSettingsModal() {
     updateSettingsCardSummaries();
     applySettingsSearch('');
     settingsModal.style.display = 'flex';
+    activateModal(settingsModal);
     suppressSettingsTracking = false;
     clearSettingsChanged();
     initSettingsChangeTracking();
@@ -3387,6 +3468,7 @@ function hideSettingsModal() {
   const settingsModal = document.getElementById('settings-modal');
   if (settingsModal) {
     settingsModal.style.display = 'none';
+    deactivateModal(settingsModal);
   }
   stopIndexStatusPolling();
 }
@@ -3554,6 +3636,7 @@ async function showLicensesModal() {
   if (!licensesModal) return;
 
   licensesModal.style.display = 'flex';
+  activateModal(licensesModal);
 
   const licensesContent = document.getElementById('licenses-content');
   const totalDeps = document.getElementById('total-deps');
@@ -3614,6 +3697,7 @@ function hideLicensesModal() {
   const licensesModal = document.getElementById('licenses-modal');
   if (licensesModal) {
     licensesModal.style.display = 'none';
+    deactivateModal(licensesModal);
   }
 }
 
@@ -3625,6 +3709,7 @@ function showShortcutsModal() {
   const shortcutsModal = document.getElementById('shortcuts-modal');
   if (shortcutsModal) {
     shortcutsModal.style.display = 'flex';
+    activateModal(shortcutsModal);
     renderShortcutsModal();
   }
 }
@@ -3634,6 +3719,7 @@ function hideShortcutsModal() {
   const shortcutsModal = document.getElementById('shortcuts-modal');
   if (shortcutsModal) {
     shortcutsModal.style.display = 'none';
+    deactivateModal(shortcutsModal);
   }
 }
 
@@ -3682,12 +3768,14 @@ function showFolderIconPicker(folderPath: string) {
   });
 
   modal.style.display = 'flex';
+  activateModal(modal);
 }
 
 function hideFolderIconPicker() {
   const modal = document.getElementById('folder-icon-modal');
   if (modal) {
     modal.style.display = 'none';
+    deactivateModal(modal);
   }
   folderIconPickerPath = null;
 }
@@ -4208,15 +4296,25 @@ function loadBookmarks() {
     bookmarkItem.dataset.path = bookmarkPath;
     const pathParts = bookmarkPath.split(/[/\\]/);
     const name = pathParts[pathParts.length - 1] || bookmarkPath;
+    bookmarkItem.setAttribute('role', 'button');
+    bookmarkItem.tabIndex = 0;
+    bookmarkItem.setAttribute('aria-label', `Open bookmark ${name}`);
 
     bookmarkItem.innerHTML = `
       <span class="bookmark-icon">${twemojiImg(String.fromCodePoint(0x2b50), 'twemoji')}</span>
       <span class="bookmark-label">${escapeHtml(name)}</span>
-      <button class="bookmark-remove" title="Remove bookmark">${twemojiImg(String.fromCodePoint(0x274c), 'twemoji')}</button>
+      <button class="bookmark-remove" type="button" title="Remove bookmark" aria-label="Remove bookmark">${twemojiImg(String.fromCodePoint(0x274c), 'twemoji')}</button>
     `;
 
     bookmarkItem.addEventListener('click', (e) => {
       if (!(e.target as HTMLElement).classList.contains('bookmark-remove')) {
+        navigateTo(bookmarkPath);
+      }
+    });
+
+    bookmarkItem.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
         navigateTo(bookmarkPath);
       }
     });
@@ -4770,6 +4868,18 @@ function updateSortIndicators() {
       }
     }
   });
+
+  document.querySelectorAll<HTMLElement>('.list-header-cell').forEach((cell) => {
+    const sortType = cell.dataset.sort;
+    if (!sortType) return;
+    const ariaSort =
+      currentSettings.sortBy === sortType
+        ? currentSettings.sortOrder === 'asc'
+          ? 'ascending'
+          : 'descending'
+        : 'none';
+    cell.setAttribute('aria-sort', ariaSort);
+  });
 }
 
 async function changeSortMode(sortBy: string) {
@@ -4972,6 +5082,19 @@ function setupListHeader(): void {
     if (sortType) {
       changeSortMode(sortType);
     }
+  });
+
+  listHeader.querySelectorAll<HTMLElement>('.list-header-cell').forEach((cell) => {
+    cell.tabIndex = 0;
+    cell.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        const sortType = cell.dataset.sort;
+        if (sortType) {
+          changeSortMode(sortType);
+        }
+      }
+    });
   });
 
   listHeader.querySelectorAll('.list-header-resize').forEach((handle) => {
@@ -5648,6 +5771,13 @@ function isModalOpen(): boolean {
   const dialogModal = document.getElementById('dialog-modal');
   const licensesModal = document.getElementById('licenses-modal');
   const homeSettingsModal = document.getElementById('home-settings-modal');
+  const propertiesModal = document.getElementById('properties-modal');
+  const extractModal = document.getElementById('extract-modal');
+  const themeEditorModal = document.getElementById('theme-editor-modal');
+  const folderIconModal = document.getElementById('folder-icon-modal');
+  const supportPopupModal = document.getElementById('support-popup-modal');
+  const tourPromptModal = document.getElementById('tour-prompt-modal');
+  const commandPaletteModal = document.getElementById('command-palette-modal');
 
   return !!(
     (settingsModal && settingsModal.style.display === 'flex') ||
@@ -5655,7 +5785,14 @@ function isModalOpen(): boolean {
     (dialogModal && dialogModal.style.display === 'flex') ||
     (licensesModal && licensesModal.style.display === 'flex') ||
     isQuickLookOpen() ||
-    (homeSettingsModal && homeSettingsModal.style.display === 'flex')
+    (homeSettingsModal && homeSettingsModal.style.display === 'flex') ||
+    (propertiesModal && propertiesModal.style.display === 'flex') ||
+    (extractModal && extractModal.style.display === 'flex') ||
+    (themeEditorModal && themeEditorModal.style.display === 'flex') ||
+    (folderIconModal && folderIconModal.style.display === 'flex') ||
+    (supportPopupModal && supportPopupModal.style.display === 'flex') ||
+    (tourPromptModal && tourPromptModal.style.display === 'flex') ||
+    (commandPaletteModal && commandPaletteModal.style.display === 'flex')
   );
 }
 
@@ -6514,6 +6651,7 @@ function appendNextVirtualizedBatch(): void {
   applyGitIndicatorsToPaths(paths);
   updateCutVisuals();
   updateStatusBar();
+  ensureActiveItem();
 
   if (virtualizedRenderIndex < virtualizedItems.length) {
     ensureVirtualizedSentinel();
@@ -6686,6 +6824,7 @@ function renderFiles(items: FileItem[], searchQuery?: string) {
     } else {
       updateCutVisuals();
       updateStatusBar();
+      ensureActiveItem();
     }
   };
 
@@ -6747,10 +6886,11 @@ function observeThumbnailItem(fileItem: HTMLElement): void {
 function createFileItem(item: FileItem, searchQuery?: string): HTMLElement {
   const fileItem = document.createElement('div');
   fileItem.className = 'file-item';
-  fileItem.tabIndex = 0;
+  fileItem.tabIndex = -1;
   fileItem.dataset.path = item.path;
   fileItem.dataset.isDirectory = String(item.isDirectory);
   fileItem.setAttribute('role', 'option');
+  fileItem.setAttribute('aria-selected', 'false');
 
   let icon: string;
   if (item.isDirectory) {
@@ -7846,6 +7986,8 @@ async function renderDriveColumn() {
       const item = document.createElement('div');
       item.className = 'column-item is-directory';
       item.tabIndex = 0;
+      item.setAttribute('role', 'option');
+      item.setAttribute('aria-selected', 'false');
       item.dataset.path = drive.path;
       item.title = drive.path;
       item.innerHTML = `
@@ -7984,12 +8126,15 @@ async function renderColumn(
         const item = document.createElement('div');
         item.className = 'column-item';
         item.tabIndex = 0;
+        item.setAttribute('role', 'option');
+        item.setAttribute('aria-selected', 'false');
         if (fileItem.isDirectory) item.classList.add('is-directory');
         item.dataset.path = fileItem.path;
 
         const nextColPath = columnPaths[columnIndex + 1];
         if (nextColPath && fileItem.path === nextColPath) {
           item.classList.add('expanded');
+          item.setAttribute('aria-selected', 'true');
         }
 
         const icon = fileItem.isDirectory
@@ -8017,8 +8162,10 @@ async function renderColumn(
 
           pane.querySelectorAll('.column-item').forEach((i) => {
             i.classList.remove('selected');
+            i.setAttribute('aria-selected', 'false');
           });
           item.classList.add('selected');
+          item.setAttribute('aria-selected', 'true');
 
           clearSelection();
           selectedItems.add(fileItem.path);
@@ -8039,8 +8186,12 @@ async function renderColumn(
           e.stopPropagation();
 
           if (!item.classList.contains('selected')) {
-            pane.querySelectorAll('.column-item').forEach((i) => i.classList.remove('selected'));
+            pane.querySelectorAll('.column-item').forEach((i) => {
+              i.classList.remove('selected');
+              i.setAttribute('aria-selected', 'false');
+            });
             item.classList.add('selected');
+            item.setAttribute('aria-selected', 'true');
             clearSelection();
             selectedItems.add(fileItem.path);
           }
@@ -8155,10 +8306,12 @@ async function handleColumnItemClick(
 
   currentPane.querySelectorAll('.column-item').forEach((item) => {
     item.classList.remove('expanded', 'selected');
+    item.setAttribute('aria-selected', 'false');
   });
 
   if (isDirectory) {
     element.classList.add('expanded');
+    element.setAttribute('aria-selected', 'true');
     columnPaths.push(path);
 
     currentPath = path;
@@ -8182,6 +8335,7 @@ async function handleColumnItemClick(
     }, 50);
   } else {
     element.classList.add('selected');
+    element.setAttribute('aria-selected', 'true');
     clearSelection();
     selectedItems.add(path);
 
@@ -8532,6 +8686,8 @@ function showContextMenu(x: number, y: number, item: FileItem) {
       submenu.classList.add('flip-left');
     }
   }
+
+  contextMenuFocusedIndex = navigateContextMenu(contextMenu, 'down', contextMenuFocusedIndex);
 }
 
 let contextMenuFocusedIndex = -1;
@@ -8582,6 +8738,7 @@ function navigateContextMenu(
 
   items[newIndex].classList.add('focused');
   items[newIndex].scrollIntoView({ block: 'nearest' });
+  items[newIndex].focus({ preventScroll: true });
   return newIndex;
 }
 
@@ -8599,6 +8756,7 @@ function activateContextMenuItem(menu: HTMLElement, focusIndex: number): boolean
       ) as NodeListOf<HTMLElement>;
       if (submenuItems.length > 0) {
         submenuItems[0].classList.add('focused');
+        submenuItems[0].focus({ preventScroll: true });
       }
     }
     return false;
@@ -8646,6 +8804,11 @@ function showEmptySpaceContextMenu(x: number, y: number) {
 
   emptySpaceContextMenu.style.left = left + 'px';
   emptySpaceContextMenu.style.top = top + 'px';
+  emptySpaceMenuFocusedIndex = navigateContextMenu(
+    emptySpaceContextMenu,
+    'down',
+    emptySpaceMenuFocusedIndex
+  );
 }
 
 function hideEmptySpaceContextMenu() {
@@ -8925,6 +9088,7 @@ function showExtractModal(
   updateExtractPreview(baseFolder);
 
   modal.style.display = 'flex';
+  activateModal(modal);
   input.focus();
   input.select();
 }
@@ -8933,6 +9097,7 @@ function hideExtractModal(): void {
   const modal = document.getElementById('extract-modal') as HTMLElement | null;
   if (modal) {
     modal.style.display = 'none';
+    deactivateModal(modal);
   }
   extractModalArchivePath = null;
   extractModalTrackRecent = true;
@@ -9195,6 +9360,7 @@ function showPropertiesDialog(props: ItemProperties) {
   const closeModal = () => {
     cleanup();
     modal.style.display = 'none';
+    deactivateModal(modal);
   };
 
   if (props.isDirectory) {
@@ -9543,6 +9709,7 @@ async function downloadAndInstallUpdate() {
   dialogOk.style.display = 'none';
   dialogCancel.style.display = 'none';
   dialogModal.style.display = 'flex';
+  activateModal(dialogModal);
 
   const cleanupProgress = window.electronAPI.onUpdateDownloadProgress((progress) => {
     const percent = progress.percent.toFixed(1);
@@ -9559,6 +9726,7 @@ async function downloadAndInstallUpdate() {
 
     if (!downloadResult.success) {
       dialogModal.style.display = 'none';
+      deactivateModal(dialogModal);
       showDialog(
         'Download Failed',
         `Failed to download update: ${downloadResult.error}`,
@@ -9599,6 +9767,7 @@ async function downloadAndInstallUpdate() {
 
     const shouldInstall = await installPromise;
     dialogModal.style.display = 'none';
+    deactivateModal(dialogModal);
 
     if (shouldInstall) {
       await window.electronAPI.installUpdate();
@@ -9606,6 +9775,7 @@ async function downloadAndInstallUpdate() {
   } catch (error) {
     cleanupProgress();
     dialogModal.style.display = 'none';
+    deactivateModal(dialogModal);
     showDialog(
       'Update Error',
       `An error occurred during the update process: ${getErrorMessage(error)}`,
@@ -10728,6 +10898,7 @@ function showSupportPopup() {
   const modal = document.getElementById('support-popup-modal');
   if (modal) {
     modal.style.display = 'flex';
+    activateModal(modal);
   }
 }
 
@@ -10735,6 +10906,7 @@ function hideSupportPopup() {
   const modal = document.getElementById('support-popup-modal');
   if (modal) {
     modal.style.display = 'none';
+    deactivateModal(modal);
   }
 }
 

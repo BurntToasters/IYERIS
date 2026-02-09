@@ -347,9 +347,20 @@
                     draggable="false"
                 /></span>
                 <div class="breadcrumb" id="breadcrumb-container"></div>
-                <input type="text" id="address-input" placeholder="Enter path..." />
+                <input
+                  type="text"
+                  id="address-input"
+                  placeholder="Enter path..."
+                  aria-label="Address"
+                />
               </div>
-              <div class="breadcrumb-menu" id="breadcrumb-menu" style="display: none"></div>
+              <div
+                class="breadcrumb-menu"
+                id="breadcrumb-menu"
+                role="menu"
+                aria-label="Breadcrumb menu"
+                style="display: none"
+              ></div>
               <div
                 class="history-dropdown"
                 id="directory-history-dropdown"
@@ -371,12 +382,15 @@
                   id="search-input"
                   placeholder="Search files..."
                   maxlength="500"
+                  aria-label="Search files"
                 />
                 <button
                   class="search-filter-toggle"
                   id="search-filter-toggle"
                   title="Search Filters"
                   aria-label="Toggle search filters"
+                  aria-expanded="false"
+                  aria-controls="search-filters-panel"
                 >
                   <svg width="14" height="14" viewBox="0 0 16 16">
                     <path
@@ -394,6 +408,7 @@
                   id="search-scope-toggle"
                   title="Toggle Global Search"
                   aria-label="Toggle between local and global search"
+                  aria-pressed="false"
                 >
                   <img
                     src="../assets/twemoji/1f4c1.svg"
@@ -840,13 +855,20 @@
                 <span class="home-customize-icon" aria-hidden="true"></span>
               </button>
             </div>
-            <div class="file-grid" id="file-grid" role="grid" aria-label="Files and folders"></div>
+            <div
+              class="file-grid"
+              id="file-grid"
+              role="listbox"
+              aria-label="Files and folders"
+              aria-multiselectable="true"
+            ></div>
             <div
               class="column-view"
               id="column-view"
               style="display: none"
-              role="grid"
+              role="listbox"
               aria-label="Column view"
+              aria-multiselectable="false"
             ></div>
             <div class="selection-rect" id="selection-rect" aria-hidden="true"></div>
           </div>
@@ -1227,10 +1249,15 @@
     <div id="typeahead-indicator" class="typeahead-indicator" style="display: none"></div>
 
     <div class="modal-overlay" id="properties-modal" style="display: none">
-      <div class="modal glass-panel">
+      <div
+        class="modal glass-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="properties-title"
+      >
         <div class="modal-header">
-          <h3>Properties</h3>
-          <button class="modal-close" id="properties-close">✕</button>
+          <h3 id="properties-title">Properties</h3>
+          <button class="modal-close" id="properties-close" aria-label="Close">✕</button>
         </div>
         <div class="modal-content" id="properties-content"></div>
         <div class="modal-footer">
@@ -1250,7 +1277,12 @@
     </div>
 
     <div class="modal-overlay" id="dialog-modal" style="display: none">
-      <div class="modal dialog-modal glass-panel">
+      <div
+        class="modal dialog-modal glass-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="dialog-title"
+      >
         <div class="modal-header">
           <span class="dialog-icon" id="dialog-icon"></span>
           <h3 id="dialog-title">Message</h3>
@@ -1264,10 +1296,15 @@
     </div>
 
     <div class="modal-overlay" id="extract-modal" style="display: none">
-      <div class="modal glass-panel extract-modal">
+      <div
+        class="modal glass-panel extract-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="extract-title"
+      >
         <div class="modal-header">
-          <h3>Extract Archive</h3>
-          <button class="modal-close" id="extract-close">✕</button>
+          <h3 id="extract-title">Extract Archive</h3>
+          <button class="modal-close" id="extract-close" aria-label="Close">✕</button>
         </div>
         <div class="modal-content extract-modal-content">
           <p class="extract-modal-message" id="extract-modal-message"></p>
@@ -1301,11 +1338,16 @@
     </div>
 
     <div class="modal-overlay" id="settings-modal" style="display: none">
-      <div class="modal settings-modal glass-panel">
+      <div
+        class="modal settings-modal glass-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="settings-title"
+      >
         <div class="modal-header">
           <h3>
             <img src="../assets/twemoji/2699.svg" class="twemoji" alt="⚙️" draggable="false" />
-            Settings
+            <span id="settings-title">Settings</span>
           </h3>
           <div class="settings-search-wrapper">
             <input
@@ -1313,6 +1355,7 @@
               id="settings-search"
               class="settings-search-input"
               placeholder="Search settings..."
+              aria-label="Search settings"
             />
             <span class="settings-search-icon"
               ><img
@@ -1338,7 +1381,7 @@
               ✕
             </button>
           </div>
-          <button class="modal-close" id="settings-close">✕</button>
+          <button class="modal-close" id="settings-close" aria-label="Close">✕</button>
         </div>
         <div class="modal-content settings-content" id="settings-content">
           <div class="settings-sidebar">
@@ -2776,9 +2819,14 @@
     </div>
 
     <div id="licenses-modal" class="modal-overlay" style="display: none">
-      <div class="modal-content licenses-modal-content">
+      <div
+        class="modal-content licenses-modal-content"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="licenses-title"
+      >
         <div class="modal-header">
-          <h2>Third-Party Licenses</h2>
+          <h2 id="licenses-title">Third-Party Licenses</h2>
           <button class="close-button" id="licenses-close" aria-label="Close">×</button>
         </div>
         <div class="modal-body licenses-modal-body">
@@ -2807,9 +2855,14 @@
     </div>
 
     <div id="shortcuts-modal" class="modal-overlay" style="display: none">
-      <div class="modal-content shortcuts-modal-content">
+      <div
+        class="modal-content shortcuts-modal-content"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="shortcuts-title"
+      >
         <div class="modal-header">
-          <h2>
+          <h2 id="shortcuts-title">
             <img src="../assets/twemoji/2328.svg" class="twemoji" alt="⌨️" draggable="false" />
             Keyboard Shortcuts
           </h2>
@@ -2934,10 +2987,15 @@
     </div>
 
     <div class="modal-overlay" id="quicklook-modal" style="display: none">
-      <div class="modal quicklook-modal glass-panel">
+      <div
+        class="modal quicklook-modal glass-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="quicklook-title"
+      >
         <div class="modal-header">
           <h3 id="quicklook-title">Quick Look</h3>
-          <button class="modal-close" id="quicklook-close">✕</button>
+          <button class="modal-close" id="quicklook-close" aria-label="Close">✕</button>
         </div>
         <div class="modal-content quicklook-content" id="quicklook-content">
           <div class="preview-loading">
@@ -3009,13 +3067,18 @@
 
     <!-- Theme Editor -->
     <div class="modal-overlay" id="theme-editor-modal" style="display: none">
-      <div class="modal glass-panel theme-editor-modal">
+      <div
+        class="modal glass-panel theme-editor-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="theme-editor-title"
+      >
         <div class="modal-header">
-          <h3>
+          <h3 id="theme-editor-title">
             <img src="../assets/twemoji/1f3a8.svg" class="twemoji" alt="🎨" draggable="false" />
             Custom Theme Editor
           </h3>
-          <button class="close-button" id="theme-editor-close">&times;</button>
+          <button class="close-button" id="theme-editor-close" aria-label="Close">&times;</button>
         </div>
         <div class="modal-body theme-editor-body">
           <div class="theme-editor-preview" id="theme-preview">
@@ -3217,6 +3280,7 @@
       <div
         class="modal glass-panel home-settings-modal"
         role="dialog"
+        aria-modal="true"
         aria-label="Customize Quick Access"
       >
         <div class="modal-header">
@@ -3224,7 +3288,7 @@
             <img src="../assets/twemoji/270f.svg" class="twemoji" alt="✏️" draggable="false" />
             Customize Quick Access
           </h3>
-          <button class="close-button" id="home-settings-close">✕</button>
+          <button class="close-button" id="home-settings-close" aria-label="Close">✕</button>
         </div>
         <div class="modal-body home-settings-body">
           <div class="home-settings-row">
@@ -3283,13 +3347,18 @@
     </div>
 
     <div class="modal-overlay" id="folder-icon-modal" style="display: none">
-      <div class="modal glass-panel folder-icon-modal">
+      <div
+        class="modal glass-panel folder-icon-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="folder-icon-title"
+      >
         <div class="modal-header">
-          <h3>
+          <h3 id="folder-icon-title">
             <img src="../assets/twemoji/1f3a8.svg" class="twemoji" alt="🎨" draggable="false" />
             Change Folder Icon
           </h3>
-          <button class="modal-close" id="folder-icon-close">✕</button>
+          <button class="modal-close" id="folder-icon-close" aria-label="Close">✕</button>
         </div>
         <div class="modal-body folder-icon-body">
           <p class="folder-icon-path" id="folder-icon-path"></p>
@@ -3303,9 +3372,14 @@
     </div>
 
     <div class="modal-overlay" id="support-popup-modal" style="display: none">
-      <div class="modal glass-panel support-popup-modal">
+      <div
+        class="modal glass-panel support-popup-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="support-popup-title"
+      >
         <div class="modal-header">
-          <h3>
+          <h3 id="support-popup-title">
             <img src="../assets/twemoji/2764.svg" class="twemoji" alt="❤️" draggable="false" />
             Support IYERIS
           </h3>
@@ -3340,9 +3414,14 @@
     </div>
 
     <div class="modal-overlay" id="tour-prompt-modal" style="display: none">
-      <div class="modal glass-panel tour-prompt-modal">
+      <div
+        class="modal glass-panel tour-prompt-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="tour-prompt-title"
+      >
         <div class="modal-header">
-          <h3>
+          <h3 id="tour-prompt-title">
             <img src="../assets/twemoji/1f9ed.svg" class="twemoji" alt="🧭" draggable="false" />
             Take a Quick Tour
           </h3>
@@ -3406,6 +3485,7 @@
       <div
         class="modal command-palette-modal glass-panel"
         role="dialog"
+        aria-modal="true"
         aria-label="Command Palette"
       >
         <div class="command-palette-header">

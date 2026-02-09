@@ -82,6 +82,8 @@ export function createNavigationController(deps: NavigationDeps) {
   let breadcrumbMenu: HTMLElement | null = null;
   let addressInput: HTMLInputElement | null = null;
   let breadcrumbMenuPath: string | null = null;
+  let breadcrumbMenuAnchor: HTMLElement | null = null;
+  let breadcrumbMenuFocusIndex = -1;
 
   const ensureElements = () => {
     if (!breadcrumbContainer) breadcrumbContainer = deps.getBreadcrumbContainer();
@@ -108,10 +110,20 @@ export function createNavigationController(deps: NavigationDeps) {
       breadcrumbContainer.style.display = 'inline-flex';
       addressInput.style.display = 'none';
       clearHtml(breadcrumbContainer);
-      const item = document.createElement('span');
+      const item = document.createElement('div');
       item.className = 'breadcrumb-item';
-      item.textContent = deps.homeViewLabel;
-      item.addEventListener('click', () => deps.navigateTo(deps.homeViewPath));
+      const labelButton = document.createElement('button');
+      labelButton.type = 'button';
+      labelButton.className = 'breadcrumb-label';
+      labelButton.textContent = deps.homeViewLabel;
+      labelButton.addEventListener('click', () => deps.navigateTo(deps.homeViewPath));
+      labelButton.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          deps.navigateTo(deps.homeViewPath);
+        }
+      });
+      item.appendChild(labelButton);
       breadcrumbContainer.appendChild(item);
       return;
     }
@@ -132,30 +144,57 @@ export function createNavigationController(deps: NavigationDeps) {
     const container = breadcrumbContainer;
 
     segments.forEach((segment, index) => {
-      const item = document.createElement('span');
+      const item = document.createElement('div');
       item.className = 'breadcrumb-item';
       const targetPath = buildPathFromSegments(segments, index, isWindows, isUnc);
       item.title = targetPath;
       item.dataset.path = targetPath;
 
-      const label = document.createElement('span');
+      const label = document.createElement('button');
+      label.type = 'button';
+      label.className = 'breadcrumb-label';
       label.textContent = segment;
 
-      const caret = document.createElement('span');
+      const caret = document.createElement('button');
+      caret.type = 'button';
       caret.className = 'breadcrumb-caret';
       caret.textContent = '▾';
+      caret.setAttribute('aria-haspopup', 'menu');
+      caret.setAttribute('aria-expanded', 'false');
+      caret.setAttribute('aria-controls', 'breadcrumb-menu');
+      caret.setAttribute('aria-label', `Open folder menu for ${segment}`);
 
       item.appendChild(label);
       item.appendChild(caret);
 
-      item.addEventListener('click', (e) => {
+      label.addEventListener('click', (e) => {
         e.stopPropagation();
-        const target = e.target as HTMLElement;
-        if (target.classList.contains('breadcrumb-caret')) {
-          showBreadcrumbMenu(targetPath, item);
-          return;
-        }
         deps.navigateTo(targetPath);
+      });
+
+      label.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          deps.navigateTo(targetPath);
+        } else if (e.key === 'ArrowDown' || e.key === 'F4') {
+          e.preventDefault();
+          void showBreadcrumbMenu(targetPath, caret);
+        }
+      });
+
+      caret.addEventListener('click', (e) => {
+        e.stopPropagation();
+        void showBreadcrumbMenu(targetPath, caret);
+      });
+
+      caret.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown' || e.key === 'F4') {
+          e.preventDefault();
+          void showBreadcrumbMenu(targetPath, caret);
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          hideBreadcrumbMenu();
+        }
       });
 
       item.addEventListener('dragover', (e) => {
@@ -265,6 +304,68 @@ export function createNavigationController(deps: NavigationDeps) {
         }
       });
     }
+
+    if (breadcrumbMenu) {
+      breadcrumbMenu.addEventListener('keydown', (e) => {
+        if (!breadcrumbMenu || breadcrumbMenu.style.display !== 'block') return;
+        const items = getBreadcrumbMenuItems();
+        if (items.length === 0) return;
+
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          hideBreadcrumbMenu();
+          return;
+        }
+
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          focusBreadcrumbMenuItem(
+            breadcrumbMenuFocusIndex < items.length - 1 ? breadcrumbMenuFocusIndex + 1 : 0
+          );
+          return;
+        }
+
+        if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          focusBreadcrumbMenuItem(
+            breadcrumbMenuFocusIndex > 0 ? breadcrumbMenuFocusIndex - 1 : items.length - 1
+          );
+          return;
+        }
+
+        if (e.key === 'Home') {
+          e.preventDefault();
+          focusBreadcrumbMenuItem(0);
+          return;
+        }
+
+        if (e.key === 'End') {
+          e.preventDefault();
+          focusBreadcrumbMenuItem(items.length - 1);
+        }
+      });
+    }
+  }
+
+  function getBreadcrumbMenuItems(): HTMLElement[] {
+    if (!breadcrumbMenu) return [];
+    return Array.from(
+      breadcrumbMenu.querySelectorAll<HTMLElement>(
+        '.breadcrumb-menu-item[role="menuitem"]:not([aria-disabled="true"])'
+      )
+    );
+  }
+
+  function focusBreadcrumbMenuItem(index: number): void {
+    if (!breadcrumbMenu) return;
+    const items = getBreadcrumbMenuItems();
+    if (items.length === 0) return;
+    const safeIndex = Math.max(0, Math.min(items.length - 1, index));
+    items.forEach((item, itemIndex) => {
+      item.tabIndex = itemIndex === safeIndex ? 0 : -1;
+    });
+    breadcrumbMenuFocusIndex = safeIndex;
+    items[safeIndex].focus({ preventScroll: true });
   }
 
   async function showBreadcrumbMenu(targetPath: string, anchor: HTMLElement): Promise<void> {
@@ -277,11 +378,15 @@ export function createNavigationController(deps: NavigationDeps) {
     }
 
     breadcrumbMenuPath = targetPath;
+    breadcrumbMenuAnchor = anchor;
+    breadcrumbMenuAnchor.setAttribute('aria-expanded', 'true');
+    breadcrumbMenu.setAttribute('aria-busy', 'true');
     setHtml(
       breadcrumbMenu,
-      '<div class="breadcrumb-menu-item" style="opacity: 0.6;">Loading...</div>'
+      '<div class="breadcrumb-menu-message" role="menuitem" aria-disabled="true" tabindex="-1">Loading...</div>'
     );
     breadcrumbMenu.style.display = 'block';
+    breadcrumbMenuFocusIndex = -1;
 
     const wrapper = anchor.closest('.address-bar-wrapper') as HTMLElement | null;
     if (wrapper) {
@@ -301,8 +406,9 @@ export function createNavigationController(deps: NavigationDeps) {
     if (!result.success) {
       setHtml(
         breadcrumbMenu,
-        '<div class="breadcrumb-menu-item" style="opacity: 0.6;">Failed to load</div>'
+        '<div class="breadcrumb-menu-message" role="menuitem" aria-disabled="true" tabindex="-1">Failed to load</div>'
       );
+      breadcrumbMenu.setAttribute('aria-busy', 'false');
       return;
     }
 
@@ -315,8 +421,9 @@ export function createNavigationController(deps: NavigationDeps) {
     if (entries.length === 0) {
       setHtml(
         breadcrumbMenu,
-        '<div class="breadcrumb-menu-item" style="opacity: 0.6;">No subfolders</div>'
+        '<div class="breadcrumb-menu-message" role="menuitem" aria-disabled="true" tabindex="-1">No subfolders</div>'
       );
+      breadcrumbMenu.setAttribute('aria-busy', 'false');
       return;
     }
 
@@ -324,8 +431,11 @@ export function createNavigationController(deps: NavigationDeps) {
     if (!menu) return;
     clearHtml(menu);
     entries.forEach((entry) => {
-      const item = document.createElement('div');
+      const item = document.createElement('button');
       item.className = 'breadcrumb-menu-item';
+      item.type = 'button';
+      item.setAttribute('role', 'menuitem');
+      item.tabIndex = -1;
       item.innerHTML = `
       <span class="nav-icon">${deps.getFolderIcon(entry.path)}</span>
       <span>${escapeHtml(entry.name)}</span>
@@ -334,8 +444,18 @@ export function createNavigationController(deps: NavigationDeps) {
         hideBreadcrumbMenu();
         deps.navigateTo(entry.path);
       });
+      item.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          hideBreadcrumbMenu();
+          deps.navigateTo(entry.path);
+        }
+      });
       menu.appendChild(item);
     });
+
+    breadcrumbMenu.setAttribute('aria-busy', 'false');
+    focusBreadcrumbMenuItem(0);
   }
 
   function hideBreadcrumbMenu(): void {
@@ -344,6 +464,13 @@ export function createNavigationController(deps: NavigationDeps) {
     breadcrumbMenu.style.display = 'none';
     clearHtml(breadcrumbMenu);
     breadcrumbMenuPath = null;
+    breadcrumbMenuFocusIndex = -1;
+    breadcrumbMenu.removeAttribute('aria-busy');
+    if (breadcrumbMenuAnchor) {
+      breadcrumbMenuAnchor.setAttribute('aria-expanded', 'false');
+      breadcrumbMenuAnchor.focus({ preventScroll: true });
+      breadcrumbMenuAnchor = null;
+    }
   }
 
   function addToDirectoryHistory(dirPath: string) {

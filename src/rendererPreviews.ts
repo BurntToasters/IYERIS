@@ -22,6 +22,8 @@ type PreviewDeps = {
   getFileExtension: (name: string) => string;
   getFileIcon: (name: string) => string;
   openFileEntry: (file: FileItem) => void;
+  onModalOpen?: (modal: HTMLElement) => void;
+  onModalClose?: (modal: HTMLElement) => void;
 };
 
 type HighlightJs = {
@@ -77,6 +79,18 @@ export function createPreviewController(deps: PreviewDeps) {
     showEmptyPreview();
   }
 
+  function syncPreviewToggleState() {
+    ensureElements();
+    if (previewToggleBtn) {
+      previewToggleBtn.setAttribute('aria-pressed', String(isPreviewPanelVisible));
+      previewToggleBtn.setAttribute('aria-expanded', String(isPreviewPanelVisible));
+      previewToggleBtn.setAttribute('aria-controls', 'preview-panel');
+    }
+    if (previewPanel) {
+      previewPanel.setAttribute('aria-hidden', String(!isPreviewPanelVisible));
+    }
+  }
+
   function togglePreviewPanel() {
     ensureElements();
     if (!previewPanel) return;
@@ -95,6 +109,7 @@ export function createPreviewController(deps: PreviewDeps) {
       previewPanel.style.display = 'none';
       previewRequestId++;
     }
+    syncPreviewToggleState();
   }
 
   function updatePreview(file: FileItem) {
@@ -617,6 +632,7 @@ export function createPreviewController(deps: PreviewDeps) {
     currentQuicklookFile = file;
     quicklookTitle.textContent = file.name;
     quicklookModal.style.display = 'flex';
+    deps.onModalOpen?.(quicklookModal);
 
     const ext = deps.getFileExtension(file.name);
 
@@ -731,6 +747,9 @@ export function createPreviewController(deps: PreviewDeps) {
   function closeQuickLook() {
     ensureElements();
     if (quicklookModal) quicklookModal.style.display = 'none';
+    if (quicklookModal) {
+      deps.onModalClose?.(quicklookModal);
+    }
     currentQuicklookFile = null;
     quicklookRequestId++;
   }
@@ -746,6 +765,7 @@ export function createPreviewController(deps: PreviewDeps) {
         isPreviewPanelVisible = false;
         if (previewPanel) previewPanel.style.display = 'none';
         previewRequestId++;
+        syncPreviewToggleState();
       });
     }
 
@@ -770,6 +790,8 @@ export function createPreviewController(deps: PreviewDeps) {
         }
       });
     }
+
+    syncPreviewToggleState();
   }
 
   function isPreviewVisible(): boolean {

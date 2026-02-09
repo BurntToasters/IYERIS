@@ -14,6 +14,8 @@ export interface TourControllerOptions {
   saveSettings: (settings: Settings) => Promise<unknown>;
   steps?: TourStep[];
   promptDelayMs?: number;
+  onModalOpen?: (modal: HTMLElement) => void;
+  onModalClose?: (modal: HTMLElement) => void;
 }
 
 export interface TourController {
@@ -165,10 +167,12 @@ export function createTourController(options: TourControllerOptions): TourContro
     const settings = options.getSettings();
     if (settings.tourPromptDismissed || settings.tourCompleted) return;
     promptModal.style.display = 'flex';
+    options.onModalOpen?.(promptModal);
   };
 
   const hidePrompt = (): void => {
     promptModal.style.display = 'none';
+    options.onModalClose?.(promptModal);
   };
 
   const showOverlay = (): void => {
