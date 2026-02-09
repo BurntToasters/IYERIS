@@ -24,6 +24,15 @@ import { createSelectionController } from './rendererSelection.js';
 import { createToastManager } from './rendererToasts.js';
 import { createHoverCardController } from './rendererHoverCard.js';
 import { createTypeaheadController } from './rendererTypeahead.js';
+import { createArchiveOperationsController } from './rendererArchiveOperations.js';
+import {
+  activateModal,
+  deactivateModal,
+  showAlert,
+  showConfirm,
+  showDialog,
+} from './rendererModals.js';
+import { initTooltipSystem } from './rendererTooltips.js';
 import {
   encodeFileUrl,
   isWindowsPath,
@@ -213,152 +222,19 @@ function debouncedSaveSettings(delay: number = SETTINGS_SAVE_DEBOUNCE_MS) {
 
 type ViewMode = 'grid' | 'list' | 'column';
 
-interface ArchiveOperation {
-  id: string;
-  type: 'compress' | 'extract';
-  name: string;
-  current: number;
-  total: number;
-  currentFile: string;
-  aborted: boolean;
-}
-
-const activeOperations = new Map<string, ArchiveOperation>();
-
 const ipcCleanupFunctions: (() => void)[] = [];
 
-let archiveOperationsPanelListenerInitialized = false;
-function initArchiveOperationsPanelListener(): void {
-  if (archiveOperationsPanelListenerInitialized) return;
+const archiveOperationsController = createArchiveOperationsController({
+  cancelArchiveOperation: (operationId) => window.electronAPI.cancelArchiveOperation(operationId),
+});
 
-  const list = document.getElementById('archive-operations-list');
-  if (list) {
-    list.addEventListener('click', (e) => {
-      const target = e.target as HTMLElement;
-      if (target.classList.contains('archive-operation-cancel')) {
-        const operationId = target.getAttribute('data-id');
-        if (operationId) {
-          abortOperation(operationId);
-        }
-      }
-    });
-    archiveOperationsPanelListenerInitialized = true;
-  }
-}
-
-function generateOperationId(): string {
-  return `op_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
-}
-
-function showOperationsPanel() {
-  const panel = document.getElementById('archive-operations-panel');
-  if (panel && activeOperations.size > 0) {
-    panel.style.display = 'block';
-  }
-}
-
-function hideOperationsPanel() {
-  const panel = document.getElementById('archive-operations-panel');
-  if (panel && activeOperations.size === 0) {
-    panel.style.display = 'none';
-  }
-}
-
-function addOperation(id: string, type: 'compress' | 'extract', name: string) {
-  const operation: ArchiveOperation = {
-    id,
-    type,
-    name,
-    current: 0,
-    total: 0,
-    currentFile: 'Preparing...',
-    aborted: false,
-  };
-
-  activeOperations.set(id, operation);
-  renderOperations();
-  showOperationsPanel();
-}
-
-let renderOperationsTimeout: ReturnType<typeof setTimeout> | null = null;
-
-function updateOperation(id: string, current: number, total: number, currentFile: string) {
-  const operation = activeOperations.get(id);
-  if (operation && !operation.aborted) {
-    operation.current = current;
-    operation.total = total;
-    operation.currentFile = currentFile;
-    if (renderOperationsTimeout) clearTimeout(renderOperationsTimeout);
-    renderOperationsTimeout = setTimeout(renderOperations, 50);
-  }
-}
-
-function removeOperation(id: string) {
-  activeOperations.delete(id);
-  renderOperations();
-  hideOperationsPanel();
-}
-
-function abortOperation(id: string) {
-  const operation = activeOperations.get(id);
-  if (operation) {
-    operation.aborted = true;
-    operation.currentFile = 'Cancelling...';
-    renderOperations();
-
-    window.electronAPI.cancelArchiveOperation(id).then((result) => {
-      if (result.success) {
-        console.log('[Archive] Operation cancelled:', id);
-      } else {
-        console.error('[Archive] Failed to cancel:', result.error);
-      }
-    });
-
-    setTimeout(() => {
-      removeOperation(id);
-    }, 1500);
-  }
-}
-
-function renderOperations() {
-  const list = getById('archive-operations-list');
-  if (!list) return;
-
-  initArchiveOperationsPanelListener();
-
-  clearHtml(list);
-
-  for (const [id, operation] of activeOperations) {
-    const item = document.createElement('div');
-    item.className = 'archive-operation-item';
-
-    const icon = operation.type === 'compress' ? '1f5dc' : '1f4e6';
-    const iconEmoji = operation.type === 'compress' ? '🗜️' : '📦';
-    const title = operation.type === 'compress' ? 'Compressing' : 'Extracting';
-
-    const percent =
-      operation.total > 0 ? Math.round((operation.current / operation.total) * 100) : 0;
-
-    item.innerHTML = `
-      <div class="archive-operation-header">
-        <div class="archive-operation-title">
-          <img src="../assets/twemoji/${icon}.svg" class="twemoji" alt="${iconEmoji}" draggable="false" />
-          <span class="archive-operation-name" title="${escapeHtml(operation.name)}">${title}: ${escapeHtml(operation.name)}</span>
-        </div>
-        ${!operation.aborted ? `<button class="archive-operation-cancel" data-id="${escapeHtml(id)}">Cancel</button>` : ''}
-      </div>
-      <div class="archive-operation-file">${escapeHtml(operation.currentFile)}</div>
-      <div class="archive-operation-stats">${operation.current} / ${operation.total} files</div>
-      <div class="archive-progress-bar-container">
-        <div class="archive-progress-bar" style="width: ${percent}%"></div>
-      </div>
-    `;
-
-    list.appendChild(item);
-  }
-}
-
-type DialogType = 'info' | 'warning' | 'error' | 'success' | 'question';
+const {
+  generateOperationId,
+  addOperation,
+  updateOperation,
+  removeOperation,
+  cleanup: cleanupArchiveOperations,
+} = archiveOperationsController;
 
 let currentPath: string = '';
 let history: string[] = [];
@@ -1039,162 +915,6 @@ function applyGitIndicatorsToPaths(paths: string[]): void {
   }
 }
 
-const MODAL_FOCUS_SELECTORS =
-  'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
-let activeModal: HTMLElement | null = null;
-let modalRestoreFocusEl: HTMLElement | null = null;
-
-function getFocusableElements(modal: HTMLElement): HTMLElement[] {
-  return Array.from(modal.querySelectorAll<HTMLElement>(MODAL_FOCUS_SELECTORS)).filter(
-    (el) => !el.hasAttribute('disabled') && el.offsetParent !== null
-  );
-}
-
-function trapModalFocus(e: KeyboardEvent): void {
-  if (!activeModal || e.key !== 'Tab') return;
-  const focusable = getFocusableElements(activeModal);
-  if (focusable.length === 0) {
-    e.preventDefault();
-    activeModal.focus({ preventScroll: true });
-    return;
-  }
-  const first = focusable[0];
-  const last = focusable[focusable.length - 1];
-  const active = document.activeElement as HTMLElement | null;
-  if (e.shiftKey && active === first) {
-    e.preventDefault();
-    last.focus({ preventScroll: true });
-  } else if (!e.shiftKey && active === last) {
-    e.preventDefault();
-    first.focus({ preventScroll: true });
-  }
-}
-
-function activateModal(modal: HTMLElement, options?: { restoreFocus?: boolean }) {
-  if (activeModal && activeModal !== modal) {
-    deactivateModal(activeModal, { restoreFocus: false });
-  }
-  activeModal = modal;
-  if (options?.restoreFocus !== false) {
-    modalRestoreFocusEl = document.activeElement as HTMLElement | null;
-  }
-  if (!modal.hasAttribute('tabindex')) {
-    modal.tabIndex = -1;
-  }
-  document.addEventListener('keydown', trapModalFocus, true);
-  const focusable = getFocusableElements(modal);
-  if (focusable.length > 0) {
-    focusable[0].focus({ preventScroll: true });
-  } else {
-    modal.focus({ preventScroll: true });
-  }
-}
-
-function deactivateModal(modal?: HTMLElement, options?: { restoreFocus?: boolean }) {
-  if (modal && activeModal !== modal) return;
-  document.removeEventListener('keydown', trapModalFocus, true);
-  activeModal = null;
-  const shouldRestore = options?.restoreFocus !== false;
-  if (shouldRestore && modalRestoreFocusEl && document.contains(modalRestoreFocusEl)) {
-    modalRestoreFocusEl.focus({ preventScroll: true });
-  }
-  modalRestoreFocusEl = null;
-}
-
-function showDialog(
-  title: string,
-  message: string,
-  type: DialogType = 'info',
-  showCancel: boolean = false
-): Promise<boolean> {
-  return new Promise((resolve) => {
-    if (document.activeElement instanceof HTMLElement) {
-      document.activeElement.blur();
-    }
-
-    const dialogModal = document.getElementById('dialog-modal') as HTMLElement;
-    const dialogTitle = document.getElementById('dialog-title') as HTMLElement;
-    const dialogContent = document.getElementById('dialog-content') as HTMLElement;
-    const dialogIcon = document.getElementById('dialog-icon') as HTMLElement;
-    const dialogOk = document.getElementById('dialog-ok') as HTMLButtonElement;
-    const dialogCancel = document.getElementById('dialog-cancel') as HTMLButtonElement;
-
-    const icons: Record<DialogType, string> = {
-      info: '2139',
-      warning: '26a0',
-      error: '274c',
-      success: '2705',
-      question: '2753',
-    };
-
-    dialogIcon.innerHTML = twemojiImg(
-      String.fromCodePoint(parseInt(icons[type] || icons.info, 16)),
-      'twemoji'
-    );
-    dialogTitle.textContent = title;
-    dialogContent.textContent = message;
-
-    if (showCancel) {
-      dialogCancel.style.display = 'block';
-    } else {
-      dialogCancel.style.display = 'none';
-    }
-
-    dialogModal.style.display = 'flex';
-    activateModal(dialogModal);
-    dialogOk.focus();
-
-    const handleOk = (): void => {
-      dialogModal.style.display = 'none';
-      deactivateModal(dialogModal);
-      cleanup();
-      resolve(true);
-    };
-
-    const handleCancel = (): void => {
-      dialogModal.style.display = 'none';
-      deactivateModal(dialogModal);
-      cleanup();
-      resolve(false);
-    };
-
-    const handleEscape = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') {
-        dialogModal.style.display = 'none';
-        deactivateModal(dialogModal);
-        cleanup();
-        resolve(false);
-      }
-    };
-
-    const cleanup = (): void => {
-      dialogOk.removeEventListener('click', handleOk);
-      dialogCancel.removeEventListener('click', handleCancel);
-      document.removeEventListener('keydown', handleEscape);
-    };
-
-    dialogOk.addEventListener('click', handleOk);
-    dialogCancel.addEventListener('click', handleCancel);
-    document.addEventListener('keydown', handleEscape);
-  });
-}
-
-async function showAlert(
-  message: string,
-  title: string = 'IYERIS',
-  type: DialogType = 'info'
-): Promise<void> {
-  await showDialog(title, message, type, false);
-}
-
-async function showConfirm(
-  message: string,
-  title: string = 'Confirm',
-  type: DialogType = 'question'
-): Promise<boolean> {
-  return await showDialog(title, message, type, true);
-}
-
 let currentSettings: Settings = createDefaultSettings();
 let isResettingSettings = false;
 const tourController: TourController = createTourController({
@@ -1370,103 +1090,6 @@ const { handleInput: handleTypeaheadInput, reset: resetTypeahead } = typeaheadCo
 
 const { initPreviewUi, updatePreview, showQuickLook, closeQuickLook, isQuickLookOpen } =
   previewController;
-
-let tooltipElement: HTMLElement | null = null;
-let tooltipTimeout: NodeJS.Timeout | null = null;
-const TOOLTIP_DELAY = 500;
-
-function initTooltipSystem(): void {
-  tooltipElement = getById('ui-tooltip');
-  if (!tooltipElement) return;
-
-  document.addEventListener('mouseover', (e) => {
-    const target = e.target as HTMLElement;
-    const titleAttr =
-      target.getAttribute('title') || target.closest('[title]')?.getAttribute('title');
-
-    if (
-      titleAttr &&
-      !target.closest('.tour-tooltip') &&
-      !target.closest('.command-palette-modal')
-    ) {
-      const actualTarget = target.hasAttribute('title')
-        ? target
-        : (target.closest('[title]') as HTMLElement);
-      if (actualTarget) {
-        actualTarget.dataset.originalTitle = titleAttr;
-        actualTarget.removeAttribute('title');
-      }
-
-      tooltipTimeout = setTimeout(() => {
-        showTooltip(titleAttr, actualTarget || target);
-      }, TOOLTIP_DELAY);
-    }
-  });
-
-  document.addEventListener('mouseout', (e) => {
-    const target = e.target as HTMLElement;
-    const actualTarget = target.hasAttribute('data-original-title')
-      ? target
-      : (target.closest('[data-original-title]') as HTMLElement);
-
-    if (tooltipTimeout) {
-      clearTimeout(tooltipTimeout);
-      tooltipTimeout = null;
-    }
-
-    if (actualTarget && actualTarget.dataset.originalTitle) {
-      actualTarget.setAttribute('title', actualTarget.dataset.originalTitle);
-      delete actualTarget.dataset.originalTitle;
-    }
-
-    hideTooltip();
-  });
-}
-
-function showTooltip(text: string, anchor: HTMLElement): void {
-  if (!tooltipElement) return;
-
-  const content = tooltipElement.querySelector('.ui-tooltip-content');
-  if (content) {
-    content.textContent = text;
-  }
-
-  tooltipElement.style.display = 'block';
-
-  const anchorRect = anchor.getBoundingClientRect();
-  const tooltipRect = tooltipElement.getBoundingClientRect();
-
-  let top = anchorRect.bottom + 8;
-  let left = anchorRect.left + anchorRect.width / 2 - tooltipRect.width / 2;
-
-  tooltipElement.className = 'ui-tooltip bottom';
-
-  if (top + tooltipRect.height > window.innerHeight) {
-    top = anchorRect.top - tooltipRect.height - 8;
-    tooltipElement.className = 'ui-tooltip top';
-  }
-
-  if (left < 8) left = 8;
-  if (left + tooltipRect.width > window.innerWidth - 8) {
-    left = window.innerWidth - tooltipRect.width - 8;
-  }
-
-  tooltipElement.style.left = `${left}px`;
-  tooltipElement.style.top = `${top}px`;
-
-  requestAnimationFrame(() => {
-    tooltipElement?.classList.add('visible');
-  });
-}
-
-function hideTooltip(): void {
-  if (tooltipElement) {
-    tooltipElement.classList.remove('visible');
-    setTimeout(() => {
-      if (tooltipElement) tooltipElement.style.display = 'none';
-    }, 150);
-  }
-}
 
 interface Command {
   id: string;
@@ -11170,10 +10793,7 @@ window.addEventListener('beforeunload', () => {
     clearTimeout(saveTabStateTimeout);
     saveTabStateTimeout = null;
   }
-  if (renderOperationsTimeout) {
-    clearTimeout(renderOperationsTimeout);
-    renderOperationsTimeout = null;
-  }
+  cleanupArchiveOperations();
 
   filePathMap.clear();
   fileElementMap.clear();
