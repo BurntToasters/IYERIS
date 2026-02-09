@@ -91,6 +91,10 @@ export function createArchiveOperationsController(deps: ArchiveOperationsDeps) {
     hideOperationsPanel();
   }
 
+  function getOperation(id: string) {
+    return activeOperations.get(id);
+  }
+
   function abortOperation(id: string) {
     const operation = activeOperations.get(id);
     if (operation) {
@@ -162,6 +166,7 @@ export function createArchiveOperationsController(deps: ArchiveOperationsDeps) {
     addOperation,
     updateOperation,
     removeOperation,
+    getOperation,
     abortOperation,
     cleanup,
   };
