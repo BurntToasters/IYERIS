@@ -2076,7 +2076,18 @@ function getFolderIcon(folderPath: string): string {
 }
 
 function openNewWindow() {
-  window.electronAPI.openNewWindow();
+  void (async () => {
+    if (tabsEnabled) {
+      try {
+        await saveTabState(true);
+      } catch (error) {
+        console.error('[Tabs] Failed to persist tab state before opening new window:', error);
+      }
+    }
+    await window.electronAPI.openNewWindow();
+  })().catch((error) => {
+    console.error('[Window] Failed to open new window:', error);
+  });
 }
 
 async function saveSettings() {

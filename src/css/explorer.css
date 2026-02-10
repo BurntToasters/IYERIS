@@ -1880,6 +1880,7 @@ body.theme-light .selection-action:hover {
 }
 
 .toggle-slider-small {
+  display: inline-block;
   width: 36px;
   height: 20px;
   background: rgba(255, 255, 255, 0.1);

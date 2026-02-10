@@ -411,7 +411,7 @@ export function createTabsController(deps: TabsDeps) {
     debouncedSaveTabState();
   }
 
-  function saveTabState(immediate = false) {
+  function saveTabState(immediate = false): Promise<unknown> | void {
     if (!deps.getTabsEnabled()) return;
     const settings = deps.getCurrentSettings();
     const tabs = deps.getTabs();
@@ -428,10 +428,9 @@ export function createTabsController(deps: TabsDeps) {
       activeTabId: deps.getActiveTabId(),
     };
     if (immediate) {
-      void deps.saveSettingsWithTimestamp(settings);
-    } else {
-      deps.debouncedSaveSettings();
+      return deps.saveSettingsWithTimestamp(settings);
     }
+    deps.debouncedSaveSettings();
   }
 
   function updateCurrentTabPath(newPath: string) {
