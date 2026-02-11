@@ -14,6 +14,28 @@
   width: 100%;
 }
 
+.pdfjs-viewer:focus {
+  outline: none;
+}
+
+.pdfjs-page-viewport {
+  overflow: auto;
+  display: flex;
+  justify-content: center;
+  border-radius: 6px;
+}
+
+.pdfjs-page-wrapper {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+  transition: opacity 0.15s ease;
+}
+
+.pdfjs-page-wrapper.pdfjs-transitioning {
+  opacity: 0;
+}
+
 .pdfjs-canvas {
   display: block;
   border-radius: 6px;
@@ -67,6 +89,47 @@
   user-select: none;
 }
 
+.pdfjs-controls-separator {
+  width: 1px;
+  height: 18px;
+  background: rgba(255, 255, 255, 0.12);
+  margin: 0 4px;
+}
+
+.pdfjs-zoom-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+  font-size: 16px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  line-height: 1;
+}
+
+.pdfjs-zoom-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.pdfjs-zoom-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.pdfjs-zoom-indicator {
+  font-size: 11px;
+  color: var(--text-secondary);
+  min-width: 40px;
+  text-align: center;
+  user-select: none;
+}
+
 .preview-pdf-container .preview-pdf-loading {
   position: absolute;
   inset: 0;
@@ -90,10 +153,8 @@
   width: 100%;
 }
 
-.preview-pdf-container.quicklook-pdf .pdfjs-canvas {
+.preview-pdf-container.quicklook-pdf .pdfjs-page-viewport {
   max-height: 65vh;
-  width: auto;
-  max-width: 100%;
 }
 
 .preview-pdf-actions {
@@ -129,4 +190,25 @@
 
 .quicklook-content .preview-pdf-container {
   margin-bottom: 0;
+}
+
+.textLayer {
+  position: absolute;
+  inset: 0;
+  overflow: clip;
+  line-height: 1;
+  text-size-adjust: none;
+  transform-origin: 0 0;
+  z-index: 1;
+}
+
+.textLayer :is(span, br) {
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  transform-origin: 0% 0%;
+}
+
+.textLayer ::selection {
+  background: rgba(0, 100, 255, 0.3);
 }
