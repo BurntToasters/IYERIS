@@ -54,9 +54,10 @@
   justify-content: flex-start;
 }
 
-.settings-content {
+.modal-content.settings-content {
   padding: 0;
   flex: 1;
+  min-height: 0;
   display: flex;
   overflow: hidden;
   max-height: none;
