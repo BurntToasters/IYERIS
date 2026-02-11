@@ -43,6 +43,11 @@ vi.mock('./ipcUtils', () => ({
   registerDirectoryOperationTarget: vi.fn(),
   unregisterDirectoryOperationTarget: vi.fn(),
   isTrustedIpcEvent: vi.fn(() => true),
+  withTrustedApiHandler: vi.fn(
+    (_channel: string, handler: (...args: unknown[]) => unknown) =>
+      (...args: unknown[]) =>
+        handler(...args)
+  ),
   withTrustedIpcEvent: vi.fn(
     (_channel: string, _untrustedResponse: unknown, handler: (...args: unknown[]) => unknown) =>
       (...args: unknown[]) =>

@@ -116,3 +116,25 @@ export function withTrustedIpcEvent<TArgs extends unknown[], TResult>(
     return handler(event, ...args);
   };
 }
+
+export type IpcOperationResult = { success: boolean; error?: string };
+
+export function withTrustedApiHandler<TArgs extends unknown[], TResult extends IpcOperationResult>(
+  channel: string,
+  handler: (event: IpcMainInvokeEvent, ...args: TArgs) => Promise<TResult> | TResult,
+  untrustedResponse: TResult = { success: false, error: 'Untrusted IPC sender' } as TResult
+): (event: IpcMainInvokeEvent, ...args: TArgs) => Promise<TResult> {
+  return async (event: IpcMainInvokeEvent, ...args: TArgs): Promise<TResult> => {
+    if (!isTrustedIpcEvent(event, channel)) {
+      return untrustedResponse;
+    }
+    try {
+      return await handler(event, ...args);
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+      } as TResult;
+    }
+  };
+}

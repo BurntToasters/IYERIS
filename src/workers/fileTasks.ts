@@ -149,20 +149,7 @@ interface ProgressData {
   [key: string]: unknown;
 }
 
-type TaskType =
-  | 'build-index'
-  | 'search-files'
-  | 'search-content'
-  | 'search-content-list'
-  | 'search-content-index'
-  | 'search-index'
-  | 'folder-size'
-  | 'checksum'
-  | 'load-index'
-  | 'save-index'
-  | 'list-directory';
-
-const TASK_TYPE_SET = new Set<TaskType>([
+const TASK_TYPES = [
   'build-index',
   'search-files',
   'search-content',
@@ -174,7 +161,10 @@ const TASK_TYPE_SET = new Set<TaskType>([
   'load-index',
   'save-index',
   'list-directory',
-]);
+] as const;
+
+type TaskType = (typeof TASK_TYPES)[number];
+const TASK_TYPE_SET = new Set<TaskType>(TASK_TYPES);
 
 interface TaskRequest {
   id: string;
@@ -292,6 +282,13 @@ const CONTENT_SEARCH_MAX_FILE_SIZE = 1024 * 1024;
 const CONTENT_CONTEXT_CHARS = 60;
 const HIDDEN_ATTR_CACHE_TTL_MS = 5 * 60 * 1000;
 const HIDDEN_ATTR_CACHE_MAX = 5000;
+const FILE_TYPE_EXTENSIONS: Record<string, ReadonlySet<string>> = {
+  image: new Set(['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg', 'ico']),
+  video: new Set(['mp4', 'mkv', 'avi', 'mov', 'wmv', 'webm', 'flv']),
+  audio: new Set(['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a', 'wma']),
+  document: new Set(['pdf', 'doc', 'docx', 'txt', 'rtf', 'odt', 'xls', 'xlsx', 'ppt', 'pptx']),
+  archive: new Set(['zip', '7z', 'rar', 'tar', 'gz', 'bz2', 'xz']),
+};
 
 const hiddenAttrCache = new Map<string, { isHidden: boolean; timestamp: number }>();
 let cachedIndexPath: string | null = null;
@@ -601,7 +598,8 @@ function matchesFilters(
   itemName: string,
   isDir: boolean,
   stats: { size: number; mtime: Date },
-  filters?: SearchFilters
+  filters?: SearchFilters,
+  dateRange: DateRangeFilter = parseDateRange(filters)
 ): boolean {
   const fileTypeFilter = filters?.fileType?.toLowerCase();
   if (fileTypeFilter && fileTypeFilter !== 'all') {
@@ -610,31 +608,8 @@ function matchesFilters(
     } else {
       if (isDir) return false;
       const ext = path.extname(itemName).toLowerCase().slice(1);
-      if (
-        fileTypeFilter === 'image' &&
-        !['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg', 'ico'].includes(ext)
-      )
-        return false;
-      if (
-        fileTypeFilter === 'video' &&
-        !['mp4', 'mkv', 'avi', 'mov', 'wmv', 'webm', 'flv'].includes(ext)
-      )
-        return false;
-      if (
-        fileTypeFilter === 'audio' &&
-        !['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a', 'wma'].includes(ext)
-      )
-        return false;
-      if (
-        fileTypeFilter === 'document' &&
-        !['pdf', 'doc', 'docx', 'txt', 'rtf', 'odt', 'xls', 'xlsx', 'ppt', 'pptx'].includes(ext)
-      )
-        return false;
-      if (
-        fileTypeFilter === 'archive' &&
-        !['zip', '7z', 'rar', 'tar', 'gz', 'bz2', 'xz'].includes(ext)
-      )
-        return false;
+      const allowedExtensions = FILE_TYPE_EXTENSIONS[fileTypeFilter];
+      if (allowedExtensions && !allowedExtensions.has(ext)) return false;
     }
   }
 
@@ -644,27 +619,20 @@ function matchesFilters(
     if (minSize !== undefined && stats.size < minSize) return false;
     if (maxSize !== undefined && stats.size > maxSize) return false;
   }
-
-  const dateFrom = filters?.dateFrom ? new Date(filters.dateFrom) : null;
-  const dateTo = filters?.dateTo ? new Date(filters.dateTo) : null;
-  if (dateTo) dateTo.setHours(23, 59, 59, 999);
-
-  if (dateFrom && stats.mtime < dateFrom) return false;
-  if (dateTo && stats.mtime > dateTo) return false;
-
-  return true;
+  return matchesDateRange(stats.mtime, dateRange);
 }
 
 function matchesContentFilters(
   stats: { size: number; mtime: Date },
-  filters?: SearchFilters
+  filters?: SearchFilters,
+  dateRange: DateRangeFilter = parseDateRange(filters)
 ): boolean {
   const minSize = filters?.minSize;
   const maxSize = filters?.maxSize;
   if (minSize !== undefined && stats.size < minSize) return false;
   if (maxSize !== undefined && stats.size > maxSize) return false;
 
-  return matchesDateRange(stats.mtime, parseDateRange(filters));
+  return matchesDateRange(stats.mtime, dateRange);
 }
 
 interface PendingContentSearchItem {
@@ -794,6 +762,7 @@ async function searchDirectoryFiles(
   const { dirPath, query, filters, maxDepth, maxResults } = payload;
   const results: SearchResult[] = [];
   const searchQuery = String(query || '').toLowerCase();
+  const dateRange = parseDateRange(filters);
   const STAT_BATCH_SIZE = 50;
 
   const stack: Array<{ dir: string; depth: number }> = [{ dir: dirPath, depth: 0 }];
@@ -840,7 +809,7 @@ async function searchDirectoryFiles(
         if (result.status === 'fulfilled') {
           const { item, fullPath } = batch[j];
           const isDir = item.isDirectory();
-          if (matchesFilters(item.name, isDir, result.value, filters)) {
+          if (matchesFilters(item.name, isDir, result.value, filters, dateRange)) {
             filteredItems.push({ item, fullPath, stats: result.value });
           }
         }
@@ -878,6 +847,7 @@ async function searchDirectoryContent(
   const { dirPath, query, filters, maxDepth, maxResults } = payload;
   const results: ContentSearchResult[] = [];
   const searchQuery = String(query || '').toLowerCase();
+  const dateRange = parseDateRange(filters);
   const STAT_BATCH_SIZE = 50;
   const CONTENT_SEARCH_BATCH_SIZE = 8;
 
@@ -926,7 +896,7 @@ async function searchDirectoryContent(
         const result = statResults[j];
         if (result.status === 'fulfilled') {
           const { item, fullPath } = statBatch[j];
-          if (matchesContentFilters(result.value, filters)) {
+          if (matchesContentFilters(result.value, filters, dateRange)) {
             contentBatch.push({ item, fullPath, stats: result.value });
           }
         }
@@ -1121,12 +1091,7 @@ async function searchIndexFile(
 
     const sizeValue = typeof item.size === 'number' ? item.size : Number(item.size);
     const size = Number.isFinite(sizeValue) ? sizeValue : 0;
-    const modified =
-      item.modified instanceof Date
-        ? item.modified
-        : item.modified !== undefined
-          ? new Date(item.modified)
-          : new Date(0);
+    const modified = normalizeModifiedDate(item.modified);
 
     results.push({
       name,
@@ -1148,6 +1113,31 @@ async function searchIndexFile(
   });
 
   return results;
+}
+
+function accumulateFolderSizeBatch(
+  statResults: PromiseSettledResult<fsSync.Stats>[],
+  fileBatch: Array<{ name: string }>,
+  fileTypeMap: Map<string, { count: number; size: number }>
+): { totalSize: number; fileCount: number } {
+  let totalSize = 0;
+  let fileCount = 0;
+  for (let i = 0; i < statResults.length; i++) {
+    const result = statResults[i];
+    if (result.status !== 'fulfilled') {
+      continue;
+    }
+    const size = result.value.size;
+    totalSize += size;
+    fileCount++;
+    const ext = path.extname(fileBatch[i].name).toLowerCase() || '(no extension)';
+    const existing = fileTypeMap.get(ext) || { count: 0, size: 0 };
+    fileTypeMap.set(ext, {
+      count: existing.count + 1,
+      size: existing.size + size,
+    });
+  }
+  return { totalSize, fileCount };
 }
 
 async function calculateFolderSize(
@@ -1197,23 +1187,12 @@ async function calculateFolderSize(
         fileBatch.push({ fullPath, name: entry.name });
 
         if (fileBatch.length >= STAT_BATCH_SIZE) {
-          const results = await Promise.allSettled(
+          const statResults = await Promise.allSettled(
             fileBatch.map(({ fullPath }) => fs.stat(fullPath))
           );
-
-          for (let i = 0; i < results.length; i++) {
-            const result = results[i];
-            if (result.status === 'fulfilled') {
-              totalSize += result.value.size;
-              fileCount++;
-              const ext = path.extname(fileBatch[i].name).toLowerCase() || '(no extension)';
-              const existing = fileTypeMap.get(ext) || { count: 0, size: 0 };
-              fileTypeMap.set(ext, {
-                count: existing.count + 1,
-                size: existing.size + result.value.size,
-              });
-            }
-          }
+          const delta = accumulateFolderSizeBatch(statResults, fileBatch, fileTypeMap);
+          totalSize += delta.totalSize;
+          fileCount += delta.fileCount;
 
           fileBatch.length = 0;
         }
@@ -1232,21 +1211,12 @@ async function calculateFolderSize(
     }
 
     if (fileBatch.length > 0) {
-      const results = await Promise.allSettled(fileBatch.map(({ fullPath }) => fs.stat(fullPath)));
-
-      for (let i = 0; i < results.length; i++) {
-        const result = results[i];
-        if (result.status === 'fulfilled') {
-          totalSize += result.value.size;
-          fileCount++;
-          const ext = path.extname(fileBatch[i].name).toLowerCase() || '(no extension)';
-          const existing = fileTypeMap.get(ext) || { count: 0, size: 0 };
-          fileTypeMap.set(ext, {
-            count: existing.count + 1,
-            size: existing.size + result.value.size,
-          });
-        }
-      }
+      const statResults = await Promise.allSettled(
+        fileBatch.map(({ fullPath }) => fs.stat(fullPath))
+      );
+      const delta = accumulateFolderSizeBatch(statResults, fileBatch, fileTypeMap);
+      totalSize += delta.totalSize;
+      fileCount += delta.fileCount;
     }
   }
 
@@ -1625,42 +1595,30 @@ async function listDirectory(
   return { contents: streamOnly ? [] : results };
 }
 
+const taskHandlers: Record<TaskType, (payload: unknown, operationId?: string) => Promise<unknown>> =
+  {
+    'search-files': (payload, operationId) =>
+      searchDirectoryFiles(payload as SearchPayload, operationId),
+    'search-content': (payload, operationId) =>
+      searchDirectoryContent(payload as ContentSearchPayload, operationId),
+    'search-content-list': (payload, operationId) =>
+      searchContentList(payload as ContentListSearchPayload, operationId),
+    'search-content-index': (payload, operationId) =>
+      searchContentIndex(payload as ContentIndexSearchPayload, operationId),
+    'search-index': (payload, operationId) =>
+      searchIndexFile(payload as IndexSearchPayload, operationId),
+    'folder-size': (payload, operationId) =>
+      calculateFolderSize(payload as FolderSizePayload, operationId),
+    checksum: (payload, operationId) => calculateChecksum(payload as ChecksumPayload, operationId),
+    'build-index': (payload, operationId) => buildIndex(payload as BuildIndexPayload, operationId),
+    'load-index': (payload) => loadIndexFile(payload as LoadIndexPayload),
+    'save-index': (payload) => saveIndexFile(payload as SaveIndexPayload),
+    'list-directory': (payload, operationId) =>
+      listDirectory(payload as ListDirectoryPayload, operationId),
+  };
+
 async function handleTask(message: TaskRequest): Promise<unknown> {
-  switch (message.type) {
-    case 'search-files':
-      return await searchDirectoryFiles(message.payload as SearchPayload, message.operationId);
-    case 'search-content':
-      return await searchDirectoryContent(
-        message.payload as ContentSearchPayload,
-        message.operationId
-      );
-    case 'search-content-list':
-      return await searchContentList(
-        message.payload as ContentListSearchPayload,
-        message.operationId
-      );
-    case 'search-content-index':
-      return await searchContentIndex(
-        message.payload as ContentIndexSearchPayload,
-        message.operationId
-      );
-    case 'search-index':
-      return await searchIndexFile(message.payload as IndexSearchPayload, message.operationId);
-    case 'folder-size':
-      return await calculateFolderSize(message.payload as FolderSizePayload, message.operationId);
-    case 'checksum':
-      return await calculateChecksum(message.payload as ChecksumPayload, message.operationId);
-    case 'build-index':
-      return await buildIndex(message.payload as BuildIndexPayload, message.operationId);
-    case 'load-index':
-      return await loadIndexFile(message.payload as LoadIndexPayload);
-    case 'save-index':
-      return await saveIndexFile(message.payload as SaveIndexPayload);
-    case 'list-directory':
-      return await listDirectory(message.payload as ListDirectoryPayload, message.operationId);
-    default:
-      throw new Error('Unknown task');
-  }
+  return taskHandlers[message.type](message.payload, message.operationId);
 }
 
 if (!parentPort) {

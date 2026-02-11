@@ -1603,6 +1603,17 @@ const themePresets: Record<string, CustomTheme> = {
   },
 };
 
+const THEME_COLOR_FIELDS: ReadonlyArray<readonly [string, keyof CustomTheme]> = [
+  ['theme-accent-color', 'accentColor'],
+  ['theme-bg-primary', 'bgPrimary'],
+  ['theme-bg-secondary', 'bgSecondary'],
+  ['theme-text-primary', 'textPrimary'],
+  ['theme-text-secondary', 'textSecondary'],
+  ['theme-glass-bg', 'glassBg'],
+  ['theme-glass-border', 'glassBorder'],
+];
+const THEME_COLOR_KEY_BY_INPUT_ID = new Map<string, keyof CustomTheme>(THEME_COLOR_FIELDS);
+
 let tempCustomTheme: CustomTheme = {
   name: 'My Custom Theme',
   accentColor: '#0078d4',
@@ -1627,24 +1638,12 @@ function showThemeEditor() {
     tempCustomTheme = { ...currentSettings.customTheme };
   }
 
-  const inputs: Record<string, { color: string; text: string }> = {
-    'theme-accent-color': { color: tempCustomTheme.accentColor, text: tempCustomTheme.accentColor },
-    'theme-bg-primary': { color: tempCustomTheme.bgPrimary, text: tempCustomTheme.bgPrimary },
-    'theme-bg-secondary': { color: tempCustomTheme.bgSecondary, text: tempCustomTheme.bgSecondary },
-    'theme-text-primary': { color: tempCustomTheme.textPrimary, text: tempCustomTheme.textPrimary },
-    'theme-text-secondary': {
-      color: tempCustomTheme.textSecondary,
-      text: tempCustomTheme.textSecondary,
-    },
-    'theme-glass-bg': { color: tempCustomTheme.glassBg, text: tempCustomTheme.glassBg },
-    'theme-glass-border': { color: tempCustomTheme.glassBorder, text: tempCustomTheme.glassBorder },
-  };
-
-  for (const [id, values] of Object.entries(inputs)) {
-    const colorInput = document.getElementById(id) as HTMLInputElement;
-    const textInput = document.getElementById(`${id}-text`) as HTMLInputElement;
-    if (colorInput) colorInput.value = values.color;
-    if (textInput) textInput.value = values.text;
+  for (const [inputId, key] of THEME_COLOR_FIELDS) {
+    const colorInput = document.getElementById(inputId) as HTMLInputElement | null;
+    const textInput = document.getElementById(`${inputId}-text`) as HTMLInputElement | null;
+    const value = tempCustomTheme[key];
+    if (colorInput) colorInput.value = value;
+    if (textInput) textInput.value = value;
   }
 
   const nameInput = document.getElementById('theme-name-input') as HTMLInputElement;
@@ -1679,24 +1678,36 @@ function updateThemePreview() {
   preview.style.backgroundColor = tempCustomTheme.bgPrimary;
 }
 
+function normalizeHexColorValue(value: string): string {
+  const trimmed = value.trim();
+  return trimmed.startsWith('#') ? trimmed : `#${trimmed}`;
+}
+
+function parseHexColorValue(value: string): string | null {
+  const normalized = normalizeHexColorValue(value);
+  if (/^#[0-9A-Fa-f]{6}$/.test(normalized)) return normalized;
+  if (/^#[0-9A-Fa-f]{3}$/.test(normalized)) {
+    return (
+      '#' +
+      normalized[1] +
+      normalized[1] +
+      normalized[2] +
+      normalized[2] +
+      normalized[3] +
+      normalized[3]
+    );
+  }
+  return null;
+}
+
 function syncColorInputs(colorId: string, value: string) {
-  const colorInput = document.getElementById(colorId) as HTMLInputElement;
-  const textInput = document.getElementById(`${colorId}-text`) as HTMLInputElement;
+  const colorInput = document.getElementById(colorId) as HTMLInputElement | null;
+  const textInput = document.getElementById(`${colorId}-text`) as HTMLInputElement | null;
 
   if (colorInput) colorInput.value = value;
   if (textInput) textInput.value = value.toUpperCase();
 
-  const mapping: Record<string, keyof CustomTheme> = {
-    'theme-accent-color': 'accentColor',
-    'theme-bg-primary': 'bgPrimary',
-    'theme-bg-secondary': 'bgSecondary',
-    'theme-text-primary': 'textPrimary',
-    'theme-text-secondary': 'textSecondary',
-    'theme-glass-bg': 'glassBg',
-    'theme-glass-border': 'glassBorder',
-  };
-
-  const key = mapping[colorId];
+  const key = THEME_COLOR_KEY_BY_INPUT_ID.get(colorId);
   if (key) {
     tempCustomTheme[key] = value;
     themeEditorHasUnsavedChanges = true;
@@ -1714,13 +1725,9 @@ function applyThemePreset(presetName: string) {
   const nameInput = document.getElementById('theme-name-input') as HTMLInputElement;
   if (nameInput) nameInput.value = preset.name;
 
-  syncColorInputs('theme-accent-color', preset.accentColor);
-  syncColorInputs('theme-bg-primary', preset.bgPrimary);
-  syncColorInputs('theme-bg-secondary', preset.bgSecondary);
-  syncColorInputs('theme-text-primary', preset.textPrimary);
-  syncColorInputs('theme-text-secondary', preset.textSecondary);
-  syncColorInputs('theme-glass-bg', preset.glassBg);
-  syncColorInputs('theme-glass-border', preset.glassBorder);
+  THEME_COLOR_FIELDS.forEach(([inputId, key]) => {
+    syncColorInputs(inputId, preset[key]);
+  });
 }
 
 async function saveCustomTheme() {
@@ -1746,26 +1753,14 @@ async function saveCustomTheme() {
 }
 
 function setupThemeEditorListeners() {
-  document.getElementById('theme-editor-close')?.addEventListener('click', () => hideThemeEditor());
-  document
-    .getElementById('theme-editor-cancel')
-    ?.addEventListener('click', () => hideThemeEditor());
+  ['theme-editor-close', 'theme-editor-cancel'].forEach((id) => {
+    document.getElementById(id)?.addEventListener('click', () => hideThemeEditor());
+  });
   document.getElementById('theme-editor-save')?.addEventListener('click', saveCustomTheme);
 
-  // Color inputs
-  const colorIds = [
-    'theme-accent-color',
-    'theme-bg-primary',
-    'theme-bg-secondary',
-    'theme-text-primary',
-    'theme-text-secondary',
-    'theme-glass-bg',
-    'theme-glass-border',
-  ];
-
-  colorIds.forEach((id) => {
-    const colorInput = document.getElementById(id) as HTMLInputElement;
-    const textInput = document.getElementById(`${id}-text`) as HTMLInputElement;
+  THEME_COLOR_FIELDS.forEach(([id]) => {
+    const colorInput = document.getElementById(id) as HTMLInputElement | null;
+    const textInput = document.getElementById(`${id}-text`) as HTMLInputElement | null;
 
     colorInput?.addEventListener('input', (e) => {
       const value = (e.target as HTMLInputElement).value;
@@ -1773,32 +1768,25 @@ function setupThemeEditorListeners() {
     });
 
     textInput?.addEventListener('input', (e) => {
-      let value = (e.target as HTMLInputElement).value.trim();
-      if (!value.startsWith('#')) value = '#' + value;
-      if (/^#[0-9A-Fa-f]{6}$/.test(value)) {
-        syncColorInputs(id, value);
+      const rawValue = (e.target as HTMLInputElement).value;
+      const parsed = parseHexColorValue(rawValue);
+      if (parsed) {
+        syncColorInputs(id, parsed);
         textInput.classList.remove('invalid');
-      } else if (/^#[0-9A-Fa-f]{3}$/.test(value)) {
-        const expanded = '#' + value[1] + value[1] + value[2] + value[2] + value[3] + value[3];
-        syncColorInputs(id, expanded);
-        textInput.classList.remove('invalid');
-      } else if (value.length > 1) {
+      } else if (normalizeHexColorValue(rawValue).length > 1) {
         textInput.classList.add('invalid');
       }
     });
 
     textInput?.addEventListener('blur', (e) => {
-      let value = (e.target as HTMLInputElement).value.trim();
-      if (!value.startsWith('#')) value = '#' + value;
-      if (!/^#[0-9A-Fa-f]{3}$/.test(value) && !/^#[0-9A-Fa-f]{6}$/.test(value)) {
-        const colorInput = document.getElementById(id) as HTMLInputElement;
-        if (colorInput && textInput) {
-          textInput.value = colorInput.value.toUpperCase();
-          textInput.classList.remove('invalid');
-        }
-      } else {
+      if (parseHexColorValue((e.target as HTMLInputElement).value)) {
         textInput.classList.remove('invalid');
+        return;
       }
+      if (colorInput) {
+        textInput.value = colorInput.value.toUpperCase();
+      }
+      textInput.classList.remove('invalid');
     });
   });
 
@@ -1814,12 +1802,7 @@ function setupThemeEditorListeners() {
     });
   });
 
-  const openThemeEditorBtn = document.getElementById('open-theme-editor-btn');
-  if (openThemeEditorBtn) {
-    openThemeEditorBtn.addEventListener('click', () => {
-      showThemeEditor();
-    });
-  }
+  document.getElementById('open-theme-editor-btn')?.addEventListener('click', showThemeEditor);
 
   document.getElementById('theme-editor-modal')?.addEventListener('click', (e) => {
     if ((e.target as HTMLElement).classList.contains('modal-overlay')) {
@@ -2682,28 +2665,28 @@ async function updateClipboardIndicator() {
   }
 }
 
-function copyToClipboard() {
+function setClipboardSelection(operation: 'copy' | 'cut'): void {
   if (selectedItems.size === 0) return;
   clipboard = {
-    operation: 'copy',
+    operation,
     paths: Array.from(selectedItems),
   };
   window.electronAPI.setClipboard(clipboard);
   updateCutVisuals();
   updateClipboardIndicator();
-  showToast(`${selectedItems.size} item(s) copied`, 'Clipboard', 'success');
+  showToast(
+    `${selectedItems.size} item(s) ${operation === 'cut' ? 'cut' : 'copied'}`,
+    'Clipboard',
+    'success'
+  );
+}
+
+function copyToClipboard() {
+  setClipboardSelection('copy');
 }
 
 function cutToClipboard() {
-  if (selectedItems.size === 0) return;
-  clipboard = {
-    operation: 'cut',
-    paths: Array.from(selectedItems),
-  };
-  window.electronAPI.setClipboard(clipboard);
-  updateCutVisuals();
-  updateClipboardIndicator();
-  showToast(`${selectedItems.size} item(s) cut`, 'Clipboard', 'success');
+  setClipboardSelection('cut');
 }
 
 async function moveSelectedToFolder(): Promise<void> {
@@ -3676,44 +3659,38 @@ function initSyncEventListeners(): void {
 }
 
 function initWindowControlListeners(): void {
-  document.getElementById('minimize-btn')?.addEventListener('click', () => {
-    window.electronAPI.minimizeWindow();
-  });
-
-  document.getElementById('maximize-btn')?.addEventListener('click', () => {
-    window.electronAPI.maximizeWindow();
-  });
-
-  document.getElementById('close-btn')?.addEventListener('click', () => {
-    window.electronAPI.closeWindow();
+  const windowControls: Array<[string, () => void]> = [
+    ['minimize-btn', () => window.electronAPI.minimizeWindow()],
+    ['maximize-btn', () => window.electronAPI.maximizeWindow()],
+    ['close-btn', () => window.electronAPI.closeWindow()],
+  ];
+  windowControls.forEach(([id, action]) => {
+    document.getElementById(id)?.addEventListener('click', action);
   });
 }
 
 function initActionButtonListeners(): void {
-  backBtn?.addEventListener('click', goBack);
-  forwardBtn?.addEventListener('click', goForward);
-  upBtn?.addEventListener('click', goUp);
-  undoBtn?.addEventListener('click', performUndo);
-  redoBtn?.addEventListener('click', performRedo);
-  refreshBtn?.addEventListener('click', refresh);
-  newFileBtn?.addEventListener('click', createNewFile);
-  newFolderBtn?.addEventListener('click', createNewFolder);
-  viewToggleBtn?.addEventListener('click', toggleView);
-
-  const emptyNewFolderBtn = document.getElementById('empty-new-folder-btn');
-  const emptyNewFileBtn = document.getElementById('empty-new-file-btn');
-  emptyNewFolderBtn?.addEventListener('click', createNewFolder);
-  emptyNewFileBtn?.addEventListener('click', createNewFile);
-
-  const selectAllBtn = document.getElementById('select-all-btn');
-  const deselectAllBtn = document.getElementById('deselect-all-btn');
-  selectAllBtn?.addEventListener('click', selectAll);
-  deselectAllBtn?.addEventListener('click', clearSelection);
-  selectionCopyBtn?.addEventListener('click', copyToClipboard);
-  selectionCutBtn?.addEventListener('click', cutToClipboard);
-  selectionMoveBtn?.addEventListener('click', moveSelectedToFolder);
-  selectionRenameBtn?.addEventListener('click', renameSelected);
-  selectionDeleteBtn?.addEventListener('click', () => deleteSelected());
+  const clickBindings: Array<[Element | null | undefined, () => void]> = [
+    [backBtn, goBack],
+    [forwardBtn, goForward],
+    [upBtn, goUp],
+    [undoBtn, performUndo],
+    [redoBtn, performRedo],
+    [refreshBtn, refresh],
+    [newFileBtn, createNewFile],
+    [newFolderBtn, createNewFolder],
+    [viewToggleBtn, toggleView],
+    [document.getElementById('empty-new-folder-btn'), createNewFolder],
+    [document.getElementById('empty-new-file-btn'), createNewFile],
+    [document.getElementById('select-all-btn'), selectAll],
+    [document.getElementById('deselect-all-btn'), clearSelection],
+    [selectionCopyBtn, copyToClipboard],
+    [selectionCutBtn, cutToClipboard],
+    [selectionMoveBtn, moveSelectedToFolder],
+    [selectionRenameBtn, renameSelected],
+    [selectionDeleteBtn, () => deleteSelected()],
+  ];
+  clickBindings.forEach(([element, handler]) => element?.addEventListener('click', handler));
 
   const statusHiddenBtn = document.getElementById('status-hidden');
   statusHiddenBtn?.addEventListener('click', () => {
@@ -3742,11 +3719,7 @@ function initActionButtonListeners(): void {
 function initNavigationListeners(): void {
   sortBtn?.addEventListener('click', showSortMenu);
   bookmarkAddBtn?.addEventListener('click', addBookmark);
-
-  const sidebarToggle = document.getElementById('sidebar-toggle');
-  sidebarToggle?.addEventListener('click', () => {
-    setSidebarCollapsed();
-  });
+  document.getElementById('sidebar-toggle')?.addEventListener('click', () => setSidebarCollapsed());
   syncSidebarToggleState();
 
   addressInput?.addEventListener('keypress', (e) => {
@@ -5632,20 +5605,19 @@ function performRedo() {
   return performUndoRedo(false);
 }
 
+function navigateHistory(delta: -1 | 1): void {
+  const nextIndex = historyIndex + delta;
+  if (nextIndex < 0 || nextIndex >= history.length) return;
+  historyIndex = nextIndex;
+  navigateTo(history[historyIndex], true);
+}
+
 function goBack() {
-  if (historyIndex > 0) {
-    historyIndex--;
-    const path = history[historyIndex];
-    navigateTo(path, true);
-  }
+  navigateHistory(-1);
 }
 
 function goForward() {
-  if (historyIndex < history.length - 1) {
-    historyIndex++;
-    const path = history[historyIndex];
-    navigateTo(path, true);
-  }
+  navigateHistory(1);
 }
 
 function isRootPath(pathValue: string): boolean {
@@ -5691,14 +5663,9 @@ async function setViewMode(nextMode: 'grid' | 'list' | 'column') {
 }
 
 async function toggleView() {
-  // Cycle through: grid → list → column → grid
-  if (viewMode === 'grid') {
-    await setViewMode('list');
-  } else if (viewMode === 'list') {
-    await setViewMode('column');
-  } else {
-    await setViewMode('grid');
-  }
+  const viewModeCycle: ViewMode[] = ['grid', 'list', 'column'];
+  const nextIndex = (viewModeCycle.indexOf(viewMode) + 1) % viewModeCycle.length;
+  await setViewMode(viewModeCycle[nextIndex]);
 }
 
 async function applyViewMode() {
@@ -7388,10 +7355,17 @@ async function handleExtract(
   }
 }
 
-document.getElementById('settings-btn')?.addEventListener('click', showSettingsModal);
-document.getElementById('settings-close')?.addEventListener('click', hideSettingsModal);
-document.getElementById('save-settings-btn')?.addEventListener('click', saveSettings);
-document.getElementById('reset-settings-btn')?.addEventListener('click', resetSettings);
+function bindClickById(id: string, handler: () => void): void {
+  document.getElementById(id)?.addEventListener('click', handler);
+}
+
+const globalClickBindings: Array<[string, () => void]> = [
+  ['settings-btn', showSettingsModal],
+  ['settings-close', hideSettingsModal],
+  ['save-settings-btn', saveSettings],
+  ['reset-settings-btn', resetSettings],
+];
+globalClickBindings.forEach(([id, handler]) => bindClickById(id, handler));
 document.getElementById('start-tour-btn')?.addEventListener('click', () => {
   hideSettingsModal();
   tourController.startTour();
@@ -7450,9 +7424,12 @@ extractModal?.addEventListener('click', (e) => {
 
 setupCompressOptionsModal();
 
-document.getElementById('rebuild-index-btn')?.addEventListener('click', rebuildIndex);
-document.getElementById('restart-admin-btn')?.addEventListener('click', restartAsAdmin);
-document.getElementById('check-updates-btn')?.addEventListener('click', checkForUpdates);
+const maintenanceClickBindings: Array<[string, () => void]> = [
+  ['rebuild-index-btn', rebuildIndex],
+  ['restart-admin-btn', restartAsAdmin],
+  ['check-updates-btn', checkForUpdates],
+];
+maintenanceClickBindings.forEach(([id, handler]) => bindClickById(id, handler));
 
 document.getElementById('icon-size-slider')?.addEventListener('input', (e) => {
   const value = (e.target as HTMLInputElement).value;
@@ -7479,16 +7456,17 @@ async function updateThumbnailCacheSize(): Promise<void> {
   }
 }
 
-document.getElementById('zoom-in-btn')?.addEventListener('click', zoomIn);
-document.getElementById('zoom-out-btn')?.addEventListener('click', zoomOut);
-document.getElementById('zoom-reset-btn')?.addEventListener('click', zoomReset);
-
-document.getElementById('shortcuts-close')?.addEventListener('click', hideShortcutsModal);
-document.getElementById('close-shortcuts-btn')?.addEventListener('click', hideShortcutsModal);
-
-document.getElementById('folder-icon-close')?.addEventListener('click', hideFolderIconPicker);
-document.getElementById('folder-icon-cancel')?.addEventListener('click', hideFolderIconPicker);
-document.getElementById('folder-icon-reset')?.addEventListener('click', resetFolderIcon);
+const utilityClickBindings: Array<[string, () => void]> = [
+  ['zoom-in-btn', zoomIn],
+  ['zoom-out-btn', zoomOut],
+  ['zoom-reset-btn', zoomReset],
+  ['shortcuts-close', hideShortcutsModal],
+  ['close-shortcuts-btn', hideShortcutsModal],
+  ['folder-icon-close', hideFolderIconPicker],
+  ['folder-icon-cancel', hideFolderIconPicker],
+  ['folder-icon-reset', resetFolderIcon],
+];
+utilityClickBindings.forEach(([id, handler]) => bindClickById(id, handler));
 
 for (const [id, handler] of [
   ['folder-icon-modal', hideFolderIconPicker],

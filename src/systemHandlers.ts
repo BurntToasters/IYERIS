@@ -21,7 +21,10 @@ import { isPathSafe, getErrorMessage } from './security';
 import { ignoreError } from './shared';
 import { isRunningInFlatpak } from './platformUtils';
 import { logger } from './utils/logger';
-import { isTrustedIpcEvent, withTrustedIpcEvent } from './ipcUtils';
+import { withTrustedApiHandler, withTrustedIpcEvent } from './ipcUtils';
+
+const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 function spawnWithTimeout(
   command: string,
@@ -48,6 +51,118 @@ function spawnWithTimeout(
 }
 
 const MAX_GIT_STATUS_BYTES = 20 * 1024 * 1024;
+const FILE_DATA_URL_MIME_TYPES: Record<string, string> = {
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.jfif': 'image/jpeg',
+  '.png': 'image/png',
+  '.apng': 'image/apng',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.avif': 'image/avif',
+  '.svg': 'image/svg+xml',
+  '.bmp': 'image/bmp',
+  '.ico': 'image/x-icon',
+  '.tif': 'image/tiff',
+  '.tiff': 'image/tiff',
+  '.heic': 'image/heic',
+  '.heif': 'image/heif',
+  '.jxl': 'image/jxl',
+  '.jp2': 'image/jp2',
+};
+
+type SpawnCaptureResult = {
+  code: number | null;
+  stdout: string;
+  stderr: string;
+  timedOut: boolean;
+};
+
+async function captureSpawnOutput(
+  command: string,
+  args: string[],
+  timeoutMs: number,
+  options: Parameters<typeof spawn>[2]
+): Promise<SpawnCaptureResult> {
+  const { child, timedOut } = spawnWithTimeout(command, args, timeoutMs, options);
+  let stdout = '';
+  let stderr = '';
+
+  child.stdout?.on('data', (data: Buffer) => {
+    stdout += data.toString();
+  });
+  child.stderr?.on('data', (data: Buffer) => {
+    stderr += data.toString();
+  });
+
+  const code = await new Promise<number | null>((resolve, reject) => {
+    child.on('error', reject);
+    child.on('close', resolve);
+  });
+
+  return { code, stdout, stderr, timedOut: timedOut() };
+}
+
+function launchDetached(
+  command: string,
+  args: string[],
+  options: Parameters<typeof spawn>[2] = {}
+): void {
+  const child = spawn(command, args, {
+    ...options,
+    shell: options.shell ?? false,
+    detached: true,
+    stdio: 'ignore',
+  });
+  child.unref();
+}
+
+function getRestartAsAdminCommand(
+  platform: NodeJS.Platform,
+  appPath: string
+): { command: string; args: string[] } | null {
+  if (platform === 'win32') {
+    return {
+      command: 'powershell',
+      args: ['-NoProfile', '-Command', 'Start-Process', '-FilePath', appPath, '-Verb', 'RunAs'],
+    };
+  }
+  if (platform === 'darwin') {
+    return {
+      command: 'osascript',
+      args: ['-e', `do shell script quoted form of "${appPath}" with administrator privileges`],
+    };
+  }
+  if (platform === 'linux') {
+    return {
+      command: 'pkexec',
+      args: [appPath],
+    };
+  }
+  return null;
+}
+
+function mapGitStatusCode(statusCode: string): string {
+  if (statusCode === '??') return 'untracked';
+  if (statusCode === '!!') return 'ignored';
+  if (statusCode.includes('U') || statusCode === 'AA' || statusCode === 'DD') return 'conflict';
+  if (statusCode.includes('A') || statusCode.includes('C')) return 'added';
+  if (statusCode.includes('D')) return 'deleted';
+  if (statusCode.includes('R')) return 'renamed';
+  return 'modified';
+}
+
+async function isGitRepository(dirPath: string): Promise<boolean> {
+  try {
+    await execAsync('git rev-parse --git-dir', {
+      cwd: dirPath,
+      timeout: 5000,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 async function readTailTextFile(
   filePath: string,
@@ -301,15 +416,31 @@ export function setupSystemHandlers(
   loadSettings: () => Promise<Settings>,
   saveSettings: (settings: Settings) => Promise<ApiResponse>
 ): void {
-  ipcMain.handle(
+  const handleTrustedApi = <
+    TArgs extends unknown[],
+    TResult extends { success: boolean; error?: string },
+  >(
+    channel: string,
+    handler: (event: IpcMainInvokeEvent, ...args: TArgs) => Promise<TResult> | TResult,
+    untrustedResponse?: TResult
+  ): void => {
+    ipcMain.handle(channel, withTrustedApiHandler(channel, handler, untrustedResponse));
+  };
+
+  const handleTrustedEvent = <TArgs extends unknown[], TResult>(
+    channel: string,
+    untrustedResponse: TResult,
+    handler: (event: IpcMainInvokeEvent, ...args: TArgs) => Promise<TResult> | TResult
+  ): void => {
+    ipcMain.handle(channel, withTrustedIpcEvent(channel, untrustedResponse, handler));
+  };
+
+  handleTrustedApi(
     'get-disk-space',
     async (
-      event: IpcMainInvokeEvent,
+      _event: IpcMainInvokeEvent,
       drivePath: string
     ): Promise<{ success: boolean; total?: number; free?: number; error?: string }> => {
-      if (!isTrustedIpcEvent(event, 'get-disk-space')) {
-        return { success: false, error: 'Untrusted IPC sender' };
-      }
       console.log(
         '[Main] get-disk-space called with path:',
         drivePath,
@@ -318,137 +449,85 @@ export function setupSystemHandlers(
       );
       try {
         if (process.platform === 'win32') {
-          return new Promise((resolve) => {
-            const normalized = drivePath.replace(/\//g, '\\');
-            const isUnc = normalized.startsWith('\\\\');
+          const normalized = drivePath.replace(/\//g, '\\');
+          const isUnc = normalized.startsWith('\\\\');
 
-            let psCommand = '';
-
-            if (isUnc) {
-              const uncRoot = normalized.endsWith('\\') ? normalized : normalized + '\\';
-              const escapedRoot = uncRoot.replace(/'/g, "''");
-              console.log('[Main] Getting disk space for UNC path:', uncRoot);
-              psCommand = `Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Root -eq '${escapedRoot}' } | Select-Object @{Name='Free';Expression={$_.Free}}, @{Name='Used';Expression={$_.Used}} | ConvertTo-Json`;
-            } else {
-              const driveLetter = normalized.substring(0, 2);
-              const driveChar = driveLetter.charAt(0).toUpperCase();
-
-              if (!/^[A-Z]$/.test(driveChar)) {
-                console.error('[Main] Invalid drive letter:', driveChar);
-                resolve({ success: false, error: 'Invalid drive letter' });
-                return;
-              }
-
-              console.log('[Main] Getting disk space for drive:', driveChar);
-              psCommand = `Get-PSDrive -Name ${driveChar} | Select-Object @{Name='Free';Expression={$_.Free}}, @{Name='Used';Expression={$_.Used}} | ConvertTo-Json`;
+          let psCommand = '';
+          if (isUnc) {
+            const uncRoot = normalized.endsWith('\\') ? normalized : normalized + '\\';
+            const escapedRoot = uncRoot.replace(/'/g, "''");
+            console.log('[Main] Getting disk space for UNC path:', uncRoot);
+            psCommand = `Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Root -eq '${escapedRoot}' } | Select-Object @{Name='Free';Expression={$_.Free}}, @{Name='Used';Expression={$_.Used}} | ConvertTo-Json`;
+          } else {
+            const driveLetter = normalized.substring(0, 2);
+            const driveChar = driveLetter.charAt(0).toUpperCase();
+            if (!/^[A-Z]$/.test(driveChar)) {
+              console.error('[Main] Invalid drive letter:', driveChar);
+              return { success: false, error: 'Invalid drive letter' };
             }
+            console.log('[Main] Getting disk space for drive:', driveChar);
+            psCommand = `Get-PSDrive -Name ${driveChar} | Select-Object @{Name='Free';Expression={$_.Free}}, @{Name='Used';Expression={$_.Used}} | ConvertTo-Json`;
+          }
 
-            const { child: psProcess, timedOut } = spawnWithTimeout(
-              'powershell',
-              ['-Command', psCommand],
-              5000,
-              { shell: false }
-            );
-            let stdout = '';
-            let stderr = '';
-
-            if (psProcess.stdout) {
-              psProcess.stdout.on('data', (data: Buffer) => {
-                stdout += data.toString();
-              });
+          const { code, stdout, stderr, timedOut } = await captureSpawnOutput(
+            'powershell',
+            ['-Command', psCommand],
+            5000,
+            { shell: false }
+          );
+          if (timedOut) {
+            return { success: false, error: 'Disk space query timed out' };
+          }
+          if (code !== 0) {
+            console.error('[Main] PowerShell error:', stderr);
+            return { success: false, error: 'PowerShell command failed' };
+          }
+          console.log('[Main] PowerShell output:', stdout);
+          try {
+            const trimmed = stdout.trim();
+            if (!trimmed) {
+              return { success: false, error: 'Disk space not available for path' };
             }
-
-            if (psProcess.stderr) {
-              psProcess.stderr.on('data', (data: Buffer) => {
-                stderr += data.toString();
-              });
+            const data = JSON.parse(trimmed);
+            const entry = Array.isArray(data) ? data[0] : data;
+            if (!entry) {
+              return { success: false, error: 'Disk space not available for path' };
             }
-
-            psProcess.on('close', (code) => {
-              if (timedOut()) {
-                resolve({ success: false, error: 'Disk space query timed out' });
-                return;
-              }
-              if (code !== 0) {
-                console.error('[Main] PowerShell error:', stderr);
-                resolve({ success: false, error: 'PowerShell command failed' });
-                return;
-              }
-              console.log('[Main] PowerShell output:', stdout);
-              try {
-                const trimmed = stdout.trim();
-                if (!trimmed) {
-                  resolve({ success: false, error: 'Disk space not available for path' });
-                  return;
-                }
-                const data = JSON.parse(trimmed);
-                const entry = Array.isArray(data) ? data[0] : data;
-                if (!entry) {
-                  resolve({ success: false, error: 'Disk space not available for path' });
-                  return;
-                }
-                const free = parseInt(entry.Free);
-                const used = parseInt(entry.Used);
-                const total = free + used;
-                console.log('[Main] Success - Free:', free, 'Used:', used, 'Total:', total);
-                resolve({ success: true, free, total });
-              } catch (parseError) {
-                console.error('[Main] JSON parse error:', parseError);
-                resolve({ success: false, error: 'Could not parse disk info' });
-              }
-            });
-          });
+            const free = parseInt(entry.Free);
+            const used = parseInt(entry.Used);
+            const total = free + used;
+            console.log('[Main] Success - Free:', free, 'Used:', used, 'Total:', total);
+            return { success: true, free, total };
+          } catch (parseError) {
+            console.error('[Main] JSON parse error:', parseError);
+            return { success: false, error: 'Could not parse disk info' };
+          }
         } else if (process.platform === 'darwin' || process.platform === 'linux') {
-          return new Promise((resolve) => {
-            const { child: dfProcess, timedOut } = spawnWithTimeout(
-              'df',
-              ['-k', '--', drivePath],
-              5000,
-              {
-                shell: false,
-              }
-            );
-            let stdout = '';
-            let stderr = '';
+          const { code, stdout, stderr, timedOut } = await captureSpawnOutput(
+            'df',
+            ['-k', '--', drivePath],
+            5000,
+            { shell: false }
+          );
+          if (timedOut) {
+            return { success: false, error: 'Disk space query timed out' };
+          }
+          if (code !== 0) {
+            console.error('[Main] df error:', stderr);
+            return { success: false, error: 'df command failed' };
+          }
+          const lines = stdout.trim().split('\n');
+          if (lines.length < 2) {
+            return { success: false, error: 'Could not parse disk info' };
+          }
 
-            if (dfProcess.stdout) {
-              dfProcess.stdout.on('data', (data: Buffer) => {
-                stdout += data.toString();
-              });
-            }
-
-            if (dfProcess.stderr) {
-              dfProcess.stderr.on('data', (data: Buffer) => {
-                stderr += data.toString();
-              });
-            }
-
-            dfProcess.on('close', (code) => {
-              if (timedOut()) {
-                resolve({ success: false, error: 'Disk space query timed out' });
-                return;
-              }
-              if (code !== 0) {
-                console.error('[Main] df error:', stderr);
-                resolve({ success: false, error: 'df command failed' });
-                return;
-              }
-              const lines = stdout.trim().split('\n');
-              if (lines.length < 2) {
-                resolve({ success: false, error: 'Could not parse disk info' });
-                return;
-              }
-
-              const parts = lines[1].trim().split(/\s+/);
-              if (parts.length >= 4) {
-                const total = parseInt(parts[1]) * 1024;
-                const available = parseInt(parts[3]) * 1024;
-                resolve({ success: true, total, free: available });
-              } else {
-                resolve({ success: false, error: 'Invalid disk info format' });
-              }
-            });
-          });
+          const parts = lines[1].trim().split(/\s+/);
+          if (parts.length >= 4) {
+            const total = parseInt(parts[1]) * 1024;
+            const available = parseInt(parts[3]) * 1024;
+            return { success: true, total, free: available };
+          }
+          return { success: false, error: 'Invalid disk info format' };
         } else {
           return { success: false, error: 'Disk space info not available on this platform' };
         }
@@ -458,363 +537,218 @@ export function setupSystemHandlers(
     }
   );
 
-  ipcMain.handle('restart-as-admin', async (event: IpcMainInvokeEvent): Promise<ApiResponse> => {
+  handleTrustedApi('restart-as-admin', async (): Promise<ApiResponse> => {
+    const appPath = app.getPath('exe');
+    const command = getRestartAsAdminCommand(process.platform, appPath);
+    if (!command) {
+      return { success: false, error: 'Unsupported platform' };
+    }
     try {
-      if (!isTrustedIpcEvent(event, 'restart-as-admin')) {
-        return { success: false, error: 'Untrusted IPC sender' };
-      }
-      const platform = process.platform;
-      const appPath = app.getPath('exe');
-      const execFilePromise = promisify(execFile);
-
-      if (platform === 'win32') {
-        try {
-          await execFilePromise('powershell', [
-            '-NoProfile',
-            '-Command',
-            'Start-Process',
-            '-FilePath',
-            appPath,
-            '-Verb',
-            'RunAs',
-          ]);
-          app.quit();
-          return { success: true };
-        } catch (error) {
-          console.log('[Admin] Failed to restart as admin:', getErrorMessage(error));
-          return {
-            success: false,
-            error: 'Failed to restart with admin privileges. The request may have been cancelled.',
-          };
-        }
-      } else if (platform === 'darwin') {
-        try {
-          await execFilePromise('osascript', [
-            '-e',
-            `do shell script quoted form of "${appPath}" with administrator privileges`,
-          ]);
-          app.quit();
-          return { success: true };
-        } catch (error) {
-          console.log('[Admin] Failed to restart as admin:', getErrorMessage(error));
-          return {
-            success: false,
-            error: 'Failed to restart with admin privileges. The request may have been cancelled.',
-          };
-        }
-      } else if (platform === 'linux') {
-        try {
-          await execFilePromise('pkexec', [appPath]);
-          app.quit();
-          return { success: true };
-        } catch (error) {
-          console.log('[Admin] Failed to restart as admin:', getErrorMessage(error));
-          return {
-            success: false,
-            error: 'Failed to restart with admin privileges. The request may have been cancelled.',
-          };
-        }
-      } else {
-        return { success: false, error: 'Unsupported platform' };
-      }
+      await execFileAsync(command.command, command.args);
+      app.quit();
+      return { success: true };
     } catch (error) {
-      return { success: false, error: getErrorMessage(error) };
+      console.log('[Admin] Failed to restart as admin:', getErrorMessage(error));
+      return {
+        success: false,
+        error: 'Failed to restart with admin privileges. The request may have been cancelled.',
+      };
     }
   });
 
-  ipcMain.handle(
+  handleTrustedApi(
     'open-terminal',
-    async (event: IpcMainInvokeEvent, dirPath: string): Promise<ApiResponse> => {
-      try {
-        if (!isTrustedIpcEvent(event, 'open-terminal')) {
-          return { success: false, error: 'Untrusted IPC sender' };
-        }
-        if (!isPathSafe(dirPath)) {
-          return { success: false, error: 'Invalid directory path' };
-        }
-        const platform = process.platform;
-
-        if (platform === 'win32') {
-          const hasWT = await new Promise<boolean>((resolve) => {
-            exec('where wt', (error) => resolve(!error));
-          });
-
-          if (hasWT) {
-            const child = spawn('wt', ['-d', dirPath], {
-              shell: false,
-              detached: true,
-              stdio: 'ignore',
-            });
-            child.unref();
-          } else {
-            const quotedPath = `"${dirPath.replace(/"/g, '""')}"`;
-            const child = spawn('cmd', ['/K', 'cd', '/d', quotedPath], {
-              shell: false,
-              detached: true,
-              stdio: 'ignore',
-            });
-            child.unref();
-          }
-        } else if (platform === 'darwin') {
-          const child = spawn('open', ['-a', 'Terminal', '--', dirPath], {
-            shell: false,
-            detached: true,
-            stdio: 'ignore',
-          });
-          child.unref();
-        } else {
-          const terminals = [
-            { cmd: 'x-terminal-emulator', args: ['--working-directory', dirPath] },
-            { cmd: 'gnome-terminal', args: ['--working-directory=' + dirPath] },
-            { cmd: 'xterm', args: ['-e', 'bash'] },
-          ];
-
-          let launched = false;
-          for (const term of terminals) {
-            const success = await new Promise<boolean>((resolve) => {
-              const child = spawn(term.cmd, term.args, {
-                shell: false,
-                detached: true,
-                cwd: dirPath,
-              });
-              child.once('spawn', () => {
-                child.unref();
-                resolve(true);
-              });
-              child.once('error', () => resolve(false));
-            });
-            if (success) {
-              launched = true;
-              break;
-            }
-          }
-
-          if (!launched) {
-            console.error('No suitable terminal emulator found');
-          }
-        }
-
-        return { success: true };
-      } catch (error) {
-        return { success: false, error: getErrorMessage(error) };
+    async (_event: IpcMainInvokeEvent, dirPath: string): Promise<ApiResponse> => {
+      if (!isPathSafe(dirPath)) {
+        return { success: false, error: 'Invalid directory path' };
       }
+      const platform = process.platform;
+
+      if (platform === 'win32') {
+        const hasWT = await new Promise<boolean>((resolve) => {
+          exec('where wt', (error) => resolve(!error));
+        });
+
+        if (hasWT) {
+          launchDetached('wt', ['-d', dirPath]);
+        } else {
+          const quotedPath = `"${dirPath.replace(/"/g, '""')}"`;
+          launchDetached('cmd', ['/K', 'cd', '/d', quotedPath]);
+        }
+      } else if (platform === 'darwin') {
+        launchDetached('open', ['-a', 'Terminal', '--', dirPath]);
+      } else {
+        const terminals = [
+          { cmd: 'x-terminal-emulator', args: ['--working-directory', dirPath] },
+          { cmd: 'gnome-terminal', args: ['--working-directory=' + dirPath] },
+          { cmd: 'xterm', args: ['-e', 'bash'] },
+        ];
+
+        let launched = false;
+        for (const term of terminals) {
+          const success = await new Promise<boolean>((resolve) => {
+            const child = spawn(term.cmd, term.args, {
+              shell: false,
+              detached: true,
+              cwd: dirPath,
+            });
+            child.once('spawn', () => {
+              child.unref();
+              resolve(true);
+            });
+            child.once('error', () => resolve(false));
+          });
+          if (success) {
+            launched = true;
+            break;
+          }
+        }
+
+        if (!launched) {
+          console.error('No suitable terminal emulator found');
+        }
+      }
+
+      return { success: true };
     }
   );
 
-  ipcMain.handle(
+  handleTrustedApi(
     'read-file-content',
     async (
-      event: IpcMainInvokeEvent,
+      _event: IpcMainInvokeEvent,
       filePath: string,
       maxSize: number = 1024 * 1024
     ): Promise<{ success: boolean; content?: string; error?: string; isTruncated?: boolean }> => {
-      try {
-        if (!isTrustedIpcEvent(event, 'read-file-content')) {
-          return { success: false, error: 'Untrusted IPC sender' };
-        }
-        if (!isPathSafe(filePath)) {
-          return { success: false, error: 'Invalid file path' };
-        }
-        const requestedMaxSize = Number.isFinite(maxSize) ? maxSize : MAX_TEXT_PREVIEW_BYTES;
-        const safeMaxSize = Math.min(Math.max(1, requestedMaxSize), MAX_TEXT_PREVIEW_BYTES);
-        const stats = await fs.stat(filePath);
-        if (!stats.isFile()) {
-          return { success: false, error: 'Not a regular file' };
-        }
-
-        if (stats.size > safeMaxSize) {
-          const buffer = Buffer.alloc(safeMaxSize);
-          const fileHandle = await fs.open(filePath, 'r');
-          try {
-            await fileHandle.read(buffer, 0, safeMaxSize, 0);
-            return {
-              success: true,
-              content: buffer.toString('utf8'),
-              isTruncated: true,
-            };
-          } finally {
-            await fileHandle.close();
-          }
-        }
-
-        const content = await fs.readFile(filePath, 'utf8');
-        return { success: true, content, isTruncated: false };
-      } catch (error) {
-        return { success: false, error: getErrorMessage(error) };
+      if (!isPathSafe(filePath)) {
+        return { success: false, error: 'Invalid file path' };
       }
+      const requestedMaxSize = Number.isFinite(maxSize) ? maxSize : MAX_TEXT_PREVIEW_BYTES;
+      const safeMaxSize = Math.min(Math.max(1, requestedMaxSize), MAX_TEXT_PREVIEW_BYTES);
+      const stats = await fs.stat(filePath);
+      if (!stats.isFile()) {
+        return { success: false, error: 'Not a regular file' };
+      }
+
+      if (stats.size > safeMaxSize) {
+        const buffer = Buffer.alloc(safeMaxSize);
+        const fileHandle = await fs.open(filePath, 'r');
+        try {
+          await fileHandle.read(buffer, 0, safeMaxSize, 0);
+          return {
+            success: true,
+            content: buffer.toString('utf8'),
+            isTruncated: true,
+          };
+        } finally {
+          await fileHandle.close();
+        }
+      }
+
+      const content = await fs.readFile(filePath, 'utf8');
+      return { success: true, content, isTruncated: false };
     }
   );
 
-  ipcMain.handle(
+  handleTrustedApi(
     'get-file-data-url',
     async (
-      event: IpcMainInvokeEvent,
+      _event: IpcMainInvokeEvent,
       filePath: string,
       maxSize: number = 10 * 1024 * 1024
     ): Promise<{ success: boolean; dataUrl?: string; error?: string }> => {
-      try {
-        if (!isTrustedIpcEvent(event, 'get-file-data-url')) {
-          return { success: false, error: 'Untrusted IPC sender' };
-        }
-        if (!isPathSafe(filePath)) {
-          return { success: false, error: 'Invalid file path' };
-        }
-        const requestedMaxSize = Number.isFinite(maxSize) ? maxSize : MAX_DATA_URL_BYTES;
-        const safeMaxSize = Math.min(Math.max(1, requestedMaxSize), MAX_DATA_URL_BYTES);
-        const stats = await fs.stat(filePath);
-        if (!stats.isFile()) {
-          return { success: false, error: 'Not a regular file' };
-        }
-
-        if (stats.size > safeMaxSize) {
-          return { success: false, error: 'File too large to preview' };
-        }
-
-        const buffer = await fs.readFile(filePath);
-        const ext = path.extname(filePath).toLowerCase();
-
-        const mimeTypes: Record<string, string> = {
-          '.jpg': 'image/jpeg',
-          '.jpeg': 'image/jpeg',
-          '.jfif': 'image/jpeg',
-          '.png': 'image/png',
-          '.apng': 'image/apng',
-          '.gif': 'image/gif',
-          '.webp': 'image/webp',
-          '.avif': 'image/avif',
-          '.svg': 'image/svg+xml',
-          '.bmp': 'image/bmp',
-          '.ico': 'image/x-icon',
-          '.tif': 'image/tiff',
-          '.tiff': 'image/tiff',
-          '.heic': 'image/heic',
-          '.heif': 'image/heif',
-          '.jxl': 'image/jxl',
-          '.jp2': 'image/jp2',
-        };
-
-        const mimeType = mimeTypes[ext] || 'application/octet-stream';
-        const base64 = buffer.toString('base64');
-        const dataUrl = `data:${mimeType};base64,${base64}`;
-
-        return { success: true, dataUrl };
-      } catch (error) {
-        return { success: false, error: getErrorMessage(error) };
+      if (!isPathSafe(filePath)) {
+        return { success: false, error: 'Invalid file path' };
       }
+      const requestedMaxSize = Number.isFinite(maxSize) ? maxSize : MAX_DATA_URL_BYTES;
+      const safeMaxSize = Math.min(Math.max(1, requestedMaxSize), MAX_DATA_URL_BYTES);
+      const stats = await fs.stat(filePath);
+      if (!stats.isFile()) {
+        return { success: false, error: 'Not a regular file' };
+      }
+
+      if (stats.size > safeMaxSize) {
+        return { success: false, error: 'File too large to preview' };
+      }
+
+      const buffer = await fs.readFile(filePath);
+      const ext = path.extname(filePath).toLowerCase();
+      const mimeType = FILE_DATA_URL_MIME_TYPES[ext] || 'application/octet-stream';
+      const base64 = buffer.toString('base64');
+      const dataUrl = `data:${mimeType};base64,${base64}`;
+
+      return { success: true, dataUrl };
     }
   );
 
-  ipcMain.handle(
+  handleTrustedApi(
     'get-licenses',
-    async (
-      event: IpcMainInvokeEvent
-    ): Promise<{ success: boolean; licenses?: LicensesData; error?: string }> => {
-      try {
-        if (!isTrustedIpcEvent(event, 'get-licenses')) {
-          return { success: false, error: 'Untrusted IPC sender' };
-        }
-        const licensesPath = path.join(__dirname, '..', 'licenses.json');
-        const data = await fs.readFile(licensesPath, 'utf-8');
-        const licenses = JSON.parse(data);
-        return { success: true, licenses };
-      } catch (error) {
-        return { success: false, error: getErrorMessage(error) };
-      }
+    async (): Promise<{ success: boolean; licenses?: LicensesData; error?: string }> => {
+      const licensesPath = path.join(__dirname, '..', 'licenses.json');
+      const data = await fs.readFile(licensesPath, 'utf-8');
+      const licenses = JSON.parse(data);
+      return { success: true, licenses };
     }
   );
 
-  ipcMain.handle(
-    'get-platform',
-    withTrustedIpcEvent('get-platform', '', (): string => process.platform)
-  );
+  handleTrustedEvent('get-platform', '', (): string => process.platform);
 
-  ipcMain.handle(
-    'get-app-version',
-    withTrustedIpcEvent('get-app-version', '', (): string => app.getVersion())
-  );
+  handleTrustedEvent('get-app-version', '', (): string => app.getVersion());
 
-  ipcMain.handle(
+  handleTrustedEvent(
     'get-system-accent-color',
-    withTrustedIpcEvent(
-      'get-system-accent-color',
-      { accentColor: '#0078d4', isDarkMode: false },
-      (): { accentColor: string; isDarkMode: boolean } => {
-        let accentColor = '#0078d4';
-        if (process.platform === 'win32' || process.platform === 'darwin') {
-          try {
-            const color = systemPreferences.getAccentColor();
-            if (color && color.length >= 6) accentColor = `#${color.substring(0, 6)}`;
-          } catch (error) {
-            ignoreError(error);
-          }
+    { accentColor: '#0078d4', isDarkMode: false },
+    (): { accentColor: string; isDarkMode: boolean } => {
+      let accentColor = '#0078d4';
+      if (process.platform === 'win32' || process.platform === 'darwin') {
+        try {
+          const color = systemPreferences.getAccentColor();
+          if (color && color.length >= 6) accentColor = `#${color.substring(0, 6)}`;
+        } catch (error) {
+          ignoreError(error);
         }
-        return {
-          accentColor,
-          isDarkMode: nativeTheme.shouldUseDarkColors,
-        };
       }
-    )
-  );
-
-  ipcMain.handle(
-    'is-mas',
-    withTrustedIpcEvent('is-mas', false, (): boolean => process.mas === true)
-  );
-
-  ipcMain.handle(
-    'is-flatpak',
-    withTrustedIpcEvent('is-flatpak', false, (): boolean => isRunningInFlatpak())
-  );
-
-  ipcMain.handle(
-    'is-ms-store',
-    withTrustedIpcEvent('is-ms-store', false, (): boolean => process.windowsStore === true)
-  );
-
-  ipcMain.handle(
-    'get-system-text-scale',
-    withTrustedIpcEvent(
-      'get-system-text-scale',
-      1,
-      (): number => screen.getPrimaryDisplay().scaleFactor
-    )
-  );
-
-  ipcMain.handle(
-    'check-full-disk-access',
-    withTrustedIpcEvent(
-      'check-full-disk-access',
-      { success: false, hasAccess: false },
-      async (): Promise<{ success: boolean; hasAccess: boolean }> => {
-        const hasAccess = await checkFullDiskAccess();
-        return { success: true, hasAccess };
-      }
-    )
-  );
-
-  ipcMain.handle(
-    'request-full-disk-access',
-    async (event: IpcMainInvokeEvent): Promise<ApiResponse> => {
-      try {
-        if (!isTrustedIpcEvent(event, 'request-full-disk-access')) {
-          return { success: false, error: 'Untrusted IPC sender' };
-        }
-        if (process.platform !== 'darwin') {
-          return { success: false, error: 'Full Disk Access is only applicable on macOS' };
-        }
-
-        await showFullDiskAccessDialog(loadSettings, saveSettings);
-        return { success: true };
-      } catch (error) {
-        return { success: false, error: getErrorMessage(error) };
-      }
+      return {
+        accentColor,
+        isDarkMode: nativeTheme.shouldUseDarkColors,
+      };
     }
   );
 
-  ipcMain.handle(
+  handleTrustedEvent('is-mas', false, (): boolean => process.mas === true);
+
+  handleTrustedEvent('is-flatpak', false, (): boolean => isRunningInFlatpak());
+
+  handleTrustedEvent('is-ms-store', false, (): boolean => process.windowsStore === true);
+
+  handleTrustedEvent(
+    'get-system-text-scale',
+    1,
+    (): number => screen.getPrimaryDisplay().scaleFactor
+  );
+
+  handleTrustedEvent(
+    'check-full-disk-access',
+    { success: false, hasAccess: false },
+    async (): Promise<{ success: boolean; hasAccess: boolean }> => {
+      const hasAccess = await checkFullDiskAccess();
+      return { success: true, hasAccess };
+    }
+  );
+
+  handleTrustedApi('request-full-disk-access', async (): Promise<ApiResponse> => {
+    if (process.platform !== 'darwin') {
+      return { success: false, error: 'Full Disk Access is only applicable on macOS' };
+    }
+
+    await showFullDiskAccessDialog(loadSettings, saveSettings);
+    return { success: true };
+  });
+
+  handleTrustedApi(
     'get-git-status',
     async (
-      event: IpcMainInvokeEvent,
+      _event: IpcMainInvokeEvent,
       dirPath: string,
       includeUntracked: boolean = true
     ): Promise<{
@@ -824,21 +758,11 @@ export function setupSystemHandlers(
       error?: string;
     }> => {
       try {
-        if (!isTrustedIpcEvent(event, 'get-git-status')) {
-          return { success: false, error: 'Untrusted IPC sender' };
-        }
         if (!isPathSafe(dirPath)) {
           return { success: false, error: 'Invalid directory path' };
         }
 
-        const execPromise = promisify(exec);
-
-        try {
-          await execPromise('git rev-parse --git-dir', {
-            cwd: dirPath,
-            timeout: 5000,
-          });
-        } catch {
+        if (!(await isGitRepository(dirPath))) {
           return { success: true, isGitRepo: false, statuses: [] };
         }
 
@@ -913,27 +837,8 @@ export function setupSystemHandlers(
             }
           }
 
-          let status: string;
-          if (statusCode === '??') {
-            status = 'untracked';
-          } else if (statusCode === '!!') {
-            status = 'ignored';
-          } else if (statusCode.includes('U') || statusCode === 'AA' || statusCode === 'DD') {
-            status = 'conflict';
-          } else if (statusCode.includes('A') || statusCode.includes('C')) {
-            status = 'added';
-          } else if (statusCode.includes('D')) {
-            status = 'deleted';
-          } else if (statusCode.includes('R')) {
-            status = 'renamed';
-          } else if (statusCode.includes('M') || statusCode.includes('T')) {
-            status = 'modified';
-          } else {
-            status = 'modified';
-          }
-
           const fullPath = path.join(dirPath, filePath);
-          statuses.push({ path: fullPath, status });
+          statuses.push({ path: fullPath, status: mapGitStatusCode(statusCode) });
         }
 
         return { success: true, isGitRepo: true, statuses };
@@ -944,10 +849,10 @@ export function setupSystemHandlers(
     }
   );
 
-  ipcMain.handle(
+  handleTrustedApi(
     'get-git-branch',
     async (
-      event: IpcMainInvokeEvent,
+      _event: IpcMainInvokeEvent,
       dirPath: string
     ): Promise<{
       success: boolean;
@@ -955,25 +860,15 @@ export function setupSystemHandlers(
       error?: string;
     }> => {
       try {
-        if (!isTrustedIpcEvent(event, 'get-git-branch')) {
-          return { success: false, error: 'Untrusted IPC sender' };
-        }
         if (!isPathSafe(dirPath)) {
           return { success: false, error: 'Invalid directory path' };
         }
 
-        const execPromise = promisify(exec);
-
-        try {
-          await execPromise('git rev-parse --git-dir', {
-            cwd: dirPath,
-            timeout: 5000,
-          });
-        } catch {
+        if (!(await isGitRepository(dirPath))) {
           return { success: true, branch: undefined };
         }
 
-        const { stdout } = await execPromise('git branch --show-current', {
+        const { stdout } = await execAsync('git branch --show-current', {
           cwd: dirPath,
           timeout: 10000,
         });
@@ -981,7 +876,7 @@ export function setupSystemHandlers(
         const branch = stdout.trim();
 
         if (!branch) {
-          const { stdout: refStdout } = await execPromise('git rev-parse --short HEAD', {
+          const { stdout: refStdout } = await execAsync('git rev-parse --short HEAD', {
             cwd: dirPath,
             timeout: 10000,
           });
@@ -996,160 +891,132 @@ export function setupSystemHandlers(
     }
   );
 
-  ipcMain.handle(
-    'get-logs-path',
-    withTrustedIpcEvent('get-logs-path', '', (): string => logger.getLogsDirectory())
-  );
+  handleTrustedEvent('get-logs-path', '', (): string => logger.getLogsDirectory());
 
-  ipcMain.handle('open-logs-folder', async (event: IpcMainInvokeEvent): Promise<ApiResponse> => {
-    try {
-      if (!isTrustedIpcEvent(event, 'open-logs-folder')) {
-        return { success: false, error: 'Untrusted IPC sender' };
-      }
-      const logsDir = logger.getLogsDirectory();
-      await shell.openPath(logsDir);
-      return { success: true };
-    } catch (error) {
-      return { success: false, error: getErrorMessage(error) };
-    }
+  handleTrustedApi('open-logs-folder', async (): Promise<ApiResponse> => {
+    const logsDir = logger.getLogsDirectory();
+    await shell.openPath(logsDir);
+    return { success: true };
   });
 
-  ipcMain.handle(
+  handleTrustedApi(
     'export-diagnostics',
-    async (
-      event: IpcMainInvokeEvent
-    ): Promise<{ success: boolean; path?: string; error?: string }> => {
-      try {
-        if (!isTrustedIpcEvent(event, 'export-diagnostics')) {
-          return { success: false, error: 'Untrusted IPC sender' };
-        }
-        const mainWindow = getMainWindow();
-        const defaultPath = path.join(
-          app.getPath('desktop'),
-          `iyeris-diagnostics-${new Date().toISOString().replace(/[:]/g, '-')}.json`
-        );
-        const dialogOptions: SaveDialogOptions = {
-          title: 'Export Diagnostics',
-          defaultPath,
-          buttonLabel: 'Export',
-          filters: [{ name: 'JSON Files', extensions: ['json'] }],
-          properties: ['showOverwriteConfirmation'],
-        };
-        const saveDialogResult =
-          mainWindow && !mainWindow.isDestroyed()
-            ? await dialog.showSaveDialog(mainWindow, dialogOptions)
-            : await dialog.showSaveDialog(dialogOptions);
+    async (): Promise<{ success: boolean; path?: string; error?: string }> => {
+      const mainWindow = getMainWindow();
+      const defaultPath = path.join(
+        app.getPath('desktop'),
+        `iyeris-diagnostics-${new Date().toISOString().replace(/[:]/g, '-')}.json`
+      );
+      const dialogOptions: SaveDialogOptions = {
+        title: 'Export Diagnostics',
+        defaultPath,
+        buttonLabel: 'Export',
+        filters: [{ name: 'JSON Files', extensions: ['json'] }],
+        properties: ['showOverwriteConfirmation'],
+      };
+      const saveDialogResult =
+        mainWindow && !mainWindow.isDestroyed()
+          ? await dialog.showSaveDialog(mainWindow, dialogOptions)
+          : await dialog.showSaveDialog(dialogOptions);
 
-        if (saveDialogResult.canceled || !saveDialogResult.filePath) {
-          return { success: false, error: 'Export cancelled' };
-        }
-
-        const settings = await loadSettings();
-        const settingsSnapshot = createSettingsDiagnosticsSnapshot(settings);
-        const redactions = createDiagnosticsRedactions();
-        const redact = (value: string) => redactDiagnosticsText(value, redactions);
-        const logPath = logger.getLogPath();
-        let logContent = '';
-        let logError: string | undefined;
-        let logSizeBytes = 0;
-        let logIsTruncated = false;
-        try {
-          const logData = await readTailTextFile(logPath, MAX_TEXT_PREVIEW_BYTES);
-          logContent = redact(logData.content);
-          logSizeBytes = logData.sizeBytes;
-          logIsTruncated = logData.isTruncated;
-        } catch (error) {
-          logError = redact(getErrorMessage(error));
-        }
-
-        const diagnostics = {
-          generatedAt: new Date().toISOString(),
-          app: {
-            name: app.getName(),
-            version: app.getVersion(),
-            isPackaged: app.isPackaged,
-            platform: process.platform,
-            arch: process.arch,
-            versions: {
-              electron: process.versions.electron,
-              chrome: process.versions.chrome,
-              node: process.versions.node,
-              v8: process.versions.v8,
-            },
-            distribution: {
-              isMas: process.mas === true,
-              isFlatpak: isRunningInFlatpak(),
-              isMsStore: process.windowsStore === true,
-            },
-          },
-          system: {
-            osType: os.type(),
-            osRelease: os.release(),
-            osArch: os.arch(),
-            cpuCount: os.cpus().length,
-            totalMemoryBytes: os.totalmem(),
-            freeMemoryBytes: os.freemem(),
-            uptimeSeconds: os.uptime(),
-            locale: app.getLocale(),
-            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-          },
-          window:
-            mainWindow && !mainWindow.isDestroyed()
-              ? {
-                  bounds: mainWindow.getBounds(),
-                  isVisible: mainWindow.isVisible(),
-                  isMaximized: mainWindow.isMaximized(),
-                  isMinimized: mainWindow.isMinimized(),
-                  isFullScreen: mainWindow.isFullScreen(),
-                }
-              : null,
-          privacy: {
-            diagnosticsRedactionsApplied: true,
-            fullSettingsIncluded: false,
-            fullLogPathIncluded: false,
-          },
-          settings: settingsSnapshot,
-          logs: {
-            path: redact(logPath),
-            sizeBytes: logSizeBytes,
-            isTruncated: logIsTruncated,
-            error: logError,
-            content: logContent,
-          },
-        };
-
-        await fs.writeFile(saveDialogResult.filePath, JSON.stringify(diagnostics, null, 2), 'utf8');
-        return { success: true, path: saveDialogResult.filePath };
-      } catch (error) {
-        return { success: false, error: getErrorMessage(error) };
+      if (saveDialogResult.canceled || !saveDialogResult.filePath) {
+        return { success: false, error: 'Export cancelled' };
       }
+
+      const settings = await loadSettings();
+      const settingsSnapshot = createSettingsDiagnosticsSnapshot(settings);
+      const redactions = createDiagnosticsRedactions();
+      const redact = (value: string) => redactDiagnosticsText(value, redactions);
+      const logPath = logger.getLogPath();
+      let logContent = '';
+      let logError: string | undefined;
+      let logSizeBytes = 0;
+      let logIsTruncated = false;
+      try {
+        const logData = await readTailTextFile(logPath, MAX_TEXT_PREVIEW_BYTES);
+        logContent = redact(logData.content);
+        logSizeBytes = logData.sizeBytes;
+        logIsTruncated = logData.isTruncated;
+      } catch (error) {
+        logError = redact(getErrorMessage(error));
+      }
+
+      const diagnostics = {
+        generatedAt: new Date().toISOString(),
+        app: {
+          name: app.getName(),
+          version: app.getVersion(),
+          isPackaged: app.isPackaged,
+          platform: process.platform,
+          arch: process.arch,
+          versions: {
+            electron: process.versions.electron,
+            chrome: process.versions.chrome,
+            node: process.versions.node,
+            v8: process.versions.v8,
+          },
+          distribution: {
+            isMas: process.mas === true,
+            isFlatpak: isRunningInFlatpak(),
+            isMsStore: process.windowsStore === true,
+          },
+        },
+        system: {
+          osType: os.type(),
+          osRelease: os.release(),
+          osArch: os.arch(),
+          cpuCount: os.cpus().length,
+          totalMemoryBytes: os.totalmem(),
+          freeMemoryBytes: os.freemem(),
+          uptimeSeconds: os.uptime(),
+          locale: app.getLocale(),
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        },
+        window:
+          mainWindow && !mainWindow.isDestroyed()
+            ? {
+                bounds: mainWindow.getBounds(),
+                isVisible: mainWindow.isVisible(),
+                isMaximized: mainWindow.isMaximized(),
+                isMinimized: mainWindow.isMinimized(),
+                isFullScreen: mainWindow.isFullScreen(),
+              }
+            : null,
+        privacy: {
+          diagnosticsRedactionsApplied: true,
+          fullSettingsIncluded: false,
+          fullLogPathIncluded: false,
+        },
+        settings: settingsSnapshot,
+        logs: {
+          path: redact(logPath),
+          sizeBytes: logSizeBytes,
+          isTruncated: logIsTruncated,
+          error: logError,
+          content: logContent,
+        },
+      };
+
+      await fs.writeFile(saveDialogResult.filePath, JSON.stringify(diagnostics, null, 2), 'utf8');
+      return { success: true, path: saveDialogResult.filePath };
     }
   );
 
-  ipcMain.handle(
+  handleTrustedApi(
     'get-log-file-content',
-    async (
-      event: IpcMainInvokeEvent
-    ): Promise<{
+    async (): Promise<{
       success: boolean;
       content?: string;
       error?: string;
       isTruncated?: boolean;
     }> => {
-      try {
-        if (!isTrustedIpcEvent(event, 'get-log-file-content')) {
-          return { success: false, error: 'Untrusted IPC sender' };
-        }
-        const logPath = logger.getLogPath();
-        const logData = await readTailTextFile(logPath, MAX_TEXT_PREVIEW_BYTES);
-        return {
-          success: true,
-          content: logData.content,
-          isTruncated: logData.isTruncated,
-        };
-      } catch (error) {
-        return { success: false, error: getErrorMessage(error) };
-      }
+      const logPath = logger.getLogPath();
+      const logData = await readTailTextFile(logPath, MAX_TEXT_PREVIEW_BYTES);
+      return {
+        success: true,
+        content: logData.content,
+        isTruncated: logData.isTruncated,
+      };
     }
   );
 

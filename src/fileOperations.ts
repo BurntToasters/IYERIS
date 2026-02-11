@@ -28,7 +28,7 @@ import { pushUndoAction, getUndoStack, clearUndoStackForPath } from './undoRedoM
 import {
   registerDirectoryOperationTarget,
   unregisterDirectoryOperationTarget,
-  isTrustedIpcEvent,
+  withTrustedApiHandler,
   withTrustedIpcEvent,
 } from './ipcUtils';
 
@@ -68,12 +68,17 @@ type FileOperationType = 'copy' | 'move';
 type ConflictBehavior = 'ask' | 'rename' | 'skip' | 'overwrite' | 'cancel';
 const OVERWRITE_BACKUP_RETENTION_MS = 14 * 24 * 60 * 60 * 1000;
 const OVERWRITE_BACKUP_MAX_FILES = 200;
+const INVALID_CHILD_NAMES = new Set(['', '.', '..']);
 
 function pathExists(p: string): Promise<boolean> {
   return fs.stat(p).then(
     () => true,
     () => false
   );
+}
+
+function isValidChildName(name: string): boolean {
+  return !INVALID_CHILD_NAMES.has(name) && !name.includes('/') && !name.includes('\\');
 }
 
 async function generateUniqueName(destPath: string, fileName: string): Promise<string> {
@@ -215,6 +220,83 @@ function splitFileName(fileName: string): { base: string; ext: string } {
   return { base: fileName.slice(0, lastDot), ext: fileName.slice(lastDot) };
 }
 
+async function copyPathByType(
+  sourcePath: string,
+  destPath: string,
+  isDirectory: boolean
+): Promise<void> {
+  if (isDirectory) {
+    await fs.cp(sourcePath, destPath, { recursive: true });
+  } else {
+    await fs.copyFile(sourcePath, destPath);
+  }
+}
+
+async function renameWithExdevFallback(
+  sourcePath: string,
+  destPath: string,
+  isDirectory?: boolean
+): Promise<void> {
+  try {
+    await fs.rename(sourcePath, destPath);
+  } catch (error) {
+    const err = error as NodeJS.ErrnoException;
+    if (err.code !== 'EXDEV') {
+      throw error;
+    }
+    const stats = typeof isDirectory === 'boolean' ? null : await fs.stat(sourcePath);
+    await copyPathByType(sourcePath, destPath, isDirectory ?? stats?.isDirectory() ?? false);
+    await fs.rm(sourcePath, { recursive: true, force: true });
+  }
+}
+
+async function removePaths(paths: string[]): Promise<void> {
+  for (const targetPath of paths) {
+    try {
+      await fs.rm(targetPath, { recursive: true, force: true });
+    } catch (error) {
+      ignoreError(error);
+    }
+  }
+}
+
+async function cleanupBackups(backupPaths: Iterable<string>): Promise<void> {
+  for (const backupPath of backupPaths) {
+    try {
+      await fs.rm(backupPath, { recursive: true, force: true });
+    } catch (error) {
+      ignoreError(error);
+    }
+  }
+}
+
+async function restoreOverwriteBackups(
+  backups: Map<string, string>,
+  skipIfDestinationExists = false
+): Promise<void> {
+  for (const [destPath, backupPath] of backups) {
+    if (skipIfDestinationExists && (await pathExists(destPath))) {
+      continue;
+    }
+    try {
+      await restoreBackup(backupPath, destPath);
+    } catch (error) {
+      ignoreError(error);
+    }
+  }
+}
+
+async function ensureOverwriteBackup(
+  backups: Map<string, string>,
+  operation: PlannedFileOperation
+): Promise<void> {
+  if (!operation.overwrite || backups.has(operation.destPath)) {
+    return;
+  }
+  const backupPath = await backupExistingPath(operation.destPath);
+  backups.set(operation.destPath, backupPath);
+}
+
 async function createBackupPath(destPath: string): Promise<string> {
   const dir = path.dirname(destPath);
   const base = path.basename(destPath);
@@ -286,23 +368,8 @@ async function stashBackup(backupPath: string, destPath: string): Promise<string
     const suffix = counter === 0 ? `${hash}` : `${hash}-${counter}`;
     const candidate = path.join(root, `${baseName}.${suffix}${ext || ''}.bak`);
     if (!(await pathExists(candidate))) {
-      try {
-        await fs.rename(backupPath, candidate);
-        return candidate;
-      } catch (error) {
-        const err = error as NodeJS.ErrnoException;
-        if (err.code === 'EXDEV') {
-          const stats = await fs.stat(backupPath);
-          if (stats.isDirectory()) {
-            await fs.cp(backupPath, candidate, { recursive: true });
-          } else {
-            await fs.copyFile(backupPath, candidate);
-          }
-          await fs.rm(backupPath, { recursive: true, force: true });
-          return candidate;
-        }
-        throw error;
-      }
+      await renameWithExdevFallback(backupPath, candidate);
+      return candidate;
     }
     counter++;
   }
@@ -334,23 +401,8 @@ async function stashRemainingBackups(backups: Map<string, string>): Promise<stri
 
 async function backupExistingPath(destPath: string): Promise<string> {
   const backupPath = await createBackupPath(destPath);
-  try {
-    await fs.rename(destPath, backupPath);
-    return backupPath;
-  } catch (error) {
-    const err = error as NodeJS.ErrnoException;
-    if (err.code === 'EXDEV') {
-      const stats = await fs.stat(destPath);
-      if (stats.isDirectory()) {
-        await fs.cp(destPath, backupPath, { recursive: true });
-      } else {
-        await fs.copyFile(destPath, backupPath);
-      }
-      await fs.rm(destPath, { recursive: true, force: true });
-      return backupPath;
-    }
-    throw error;
-  }
+  await renameWithExdevFallback(destPath, backupPath);
+  return backupPath;
 }
 
 async function restoreBackup(backupPath: string, destPath: string): Promise<void> {
@@ -360,22 +412,7 @@ async function restoreBackup(backupPath: string, destPath: string): Promise<void
     ignoreError(error);
   }
 
-  try {
-    await fs.rename(backupPath, destPath);
-  } catch (error) {
-    const err = error as NodeJS.ErrnoException;
-    if (err.code === 'EXDEV') {
-      const stats = await fs.stat(backupPath);
-      if (stats.isDirectory()) {
-        await fs.cp(backupPath, destPath, { recursive: true });
-      } else {
-        await fs.copyFile(backupPath, destPath);
-      }
-      await fs.rm(backupPath, { recursive: true, force: true });
-      return;
-    }
-    throw error;
-  }
+  await renameWithExdevFallback(backupPath, destPath);
 }
 
 async function createUniqueFile(
@@ -516,7 +553,26 @@ export function setupFileOperationHandlers(): void {
 
   startHiddenFileCacheCleanup();
 
-  ipcMain.handle(
+  const handleTrustedApi = <
+    TArgs extends unknown[],
+    TResult extends { success: boolean; error?: string },
+  >(
+    channel: string,
+    handler: (event: IpcMainInvokeEvent, ...args: TArgs) => Promise<TResult> | TResult,
+    untrustedResponse?: TResult
+  ): void => {
+    ipcMain.handle(channel, withTrustedApiHandler(channel, handler, untrustedResponse));
+  };
+
+  const handleTrustedEvent = <TArgs extends unknown[], TResult>(
+    channel: string,
+    untrustedResponse: TResult,
+    handler: (event: IpcMainInvokeEvent, ...args: TArgs) => Promise<TResult> | TResult
+  ): void => {
+    ipcMain.handle(channel, withTrustedIpcEvent(channel, untrustedResponse, handler));
+  };
+
+  handleTrustedApi(
     'get-directory-contents',
     async (
       event: IpcMainInvokeEvent,
@@ -525,9 +581,6 @@ export function setupFileOperationHandlers(): void {
       includeHidden?: boolean,
       streamOnly?: boolean
     ): Promise<DirectoryResponse> => {
-      if (!isTrustedIpcEvent(event, 'get-directory-contents')) {
-        return { success: false, error: 'Untrusted IPC sender' };
-      }
       if (!isPathSafe(dirPath)) {
         console.warn('[Security] Invalid path rejected:', dirPath);
         return { success: false, error: 'Invalid path' };
@@ -566,39 +619,23 @@ export function setupFileOperationHandlers(): void {
     }
   );
 
-  ipcMain.handle(
+  handleTrustedApi(
     'cancel-directory-contents',
-    async (event: IpcMainInvokeEvent, operationId: string): Promise<ApiResponse> => {
-      try {
-        if (!isTrustedIpcEvent(event, 'cancel-directory-contents')) {
-          return { success: false, error: 'Untrusted IPC sender' };
-        }
-        if (!operationId) {
-          return { success: false, error: 'Missing operationId' };
-        }
-        unregisterDirectoryOperationTarget(operationId);
-        fileTasks.cancelOperation(operationId);
-        return { success: true };
-      } catch (error) {
-        return { success: false, error: getErrorMessage(error) };
+    async (_event: IpcMainInvokeEvent, operationId: string): Promise<ApiResponse> => {
+      if (!operationId) {
+        return { success: false, error: 'Missing operationId' };
       }
+      unregisterDirectoryOperationTarget(operationId);
+      fileTasks.cancelOperation(operationId);
+      return { success: true };
     }
   );
 
-  ipcMain.handle(
-    'get-drives',
-    withTrustedIpcEvent('get-drives', [] as string[], async (): Promise<string[]> => getDrives())
-  );
+  handleTrustedEvent('get-drives', [] as string[], async (): Promise<string[]> => getDrives());
 
-  ipcMain.handle(
-    'get-drive-info',
-    withTrustedIpcEvent('get-drive-info', [], async () => getDriveInfo())
-  );
+  handleTrustedEvent('get-drive-info', [], async () => getDriveInfo());
 
-  ipcMain.handle(
-    'get-home-directory',
-    withTrustedIpcEvent('get-home-directory', '', (): string => app.getPath('home'))
-  );
+  handleTrustedEvent('get-home-directory', '', (): string => app.getPath('home'));
 
   const specialDirectoryMap: Record<string, AppPathName> = {
     desktop: 'desktop',
@@ -608,164 +645,135 @@ export function setupFileOperationHandlers(): void {
     videos: 'videos',
   };
 
-  ipcMain.handle(
+  handleTrustedEvent(
     'get-special-directory',
-    withTrustedIpcEvent(
-      'get-special-directory',
-      { success: false, error: 'Untrusted IPC sender' } as PathResponse,
-      (_event: IpcMainInvokeEvent, directory: string): PathResponse => {
-        const mappedPath = specialDirectoryMap[directory];
-        if (!mappedPath) {
-          return { success: false, error: 'Unsupported directory' };
-        }
-        try {
-          return { success: true, path: app.getPath(mappedPath) };
-        } catch (error) {
-          return { success: false, error: getErrorMessage(error) };
-        }
+    { success: false, error: 'Untrusted IPC sender' } as PathResponse,
+    (_event: IpcMainInvokeEvent, directory: string): PathResponse => {
+      const mappedPath = specialDirectoryMap[directory];
+      if (!mappedPath) {
+        return { success: false, error: 'Unsupported directory' };
       }
-    )
+      try {
+        return { success: true, path: app.getPath(mappedPath) };
+      } catch (error) {
+        return { success: false, error: getErrorMessage(error) };
+      }
+    }
   );
 
-  ipcMain.handle(
+  handleTrustedApi(
     'open-file',
-    async (event: IpcMainInvokeEvent, filePath: string): Promise<ApiResponse> => {
-      try {
-        if (!isTrustedIpcEvent(event, 'open-file')) {
-          return { success: false, error: 'Untrusted IPC sender' };
+    async (_event: IpcMainInvokeEvent, filePath: string): Promise<ApiResponse> => {
+      const looksLikeWindowsPath =
+        process.platform === 'win32' &&
+        (/^[A-Za-z]:[\\/]/.test(filePath) || filePath.startsWith('\\\\'));
+      let parsed: URL | null = null;
+
+      const looksLikeUrl =
+        !looksLikeWindowsPath &&
+        (/^(https?|file):/i.test(filePath) ||
+          /^mailto:/i.test(filePath) ||
+          /^[a-zA-Z][a-zA-Z\d+\-.]*:\/\//.test(filePath));
+
+      if (looksLikeUrl) {
+        try {
+          parsed = new URL(filePath);
+        } catch (error) {
+          ignoreError(error);
         }
-        const looksLikeWindowsPath =
-          process.platform === 'win32' &&
-          (/^[A-Za-z]:[\\/]/.test(filePath) || filePath.startsWith('\\\\'));
-        let parsed: URL | null = null;
+      }
 
-        const looksLikeUrl =
-          !looksLikeWindowsPath &&
-          (/^(https?|file):/i.test(filePath) ||
-            /^mailto:/i.test(filePath) ||
-            /^[a-zA-Z][a-zA-Z\d+\-.]*:\/\//.test(filePath));
-
-        if (looksLikeUrl) {
-          try {
-            parsed = new URL(filePath);
-          } catch (error) {
-            ignoreError(error);
-          }
+      if (parsed) {
+        if (!isUrlSafe(filePath)) {
+          console.warn('[Security] Unsafe URL rejected:', filePath);
+          return { success: false, error: 'Invalid or unsafe URL' };
         }
-
-        if (parsed) {
-          if (!isUrlSafe(filePath)) {
-            console.warn('[Security] Unsafe URL rejected:', filePath);
-            return { success: false, error: 'Invalid or unsafe URL' };
+        if (parsed.protocol === 'file:') {
+          const targetPath = fileURLToPath(parsed);
+          if (!isPathSafe(targetPath)) {
+            console.warn('[Security] Invalid path rejected:', targetPath);
+            return { success: false, error: 'Invalid path' };
           }
-          if (parsed.protocol === 'file:') {
-            const targetPath = fileURLToPath(parsed);
-            if (!isPathSafe(targetPath)) {
-              console.warn('[Security] Invalid path rejected:', targetPath);
-              return { success: false, error: 'Invalid path' };
-            }
-            const openResult = await shell.openPath(targetPath);
-            if (openResult) {
-              return { success: false, error: openResult };
-            }
-            return { success: true };
+          const openResult = await shell.openPath(targetPath);
+          if (openResult) {
+            return { success: false, error: openResult };
           }
-
-          await shell.openExternal(filePath);
           return { success: true };
         }
 
-        if (!isPathSafe(filePath)) {
-          console.warn('[Security] Invalid path rejected:', filePath);
-          return { success: false, error: 'Invalid path' };
-        }
-        const openResult = await shell.openPath(filePath);
-        if (openResult) {
-          return { success: false, error: openResult };
-        }
+        await shell.openExternal(filePath);
         return { success: true };
-      } catch (error) {
-        return { success: false, error: getErrorMessage(error) };
       }
+
+      if (!isPathSafe(filePath)) {
+        console.warn('[Security] Invalid path rejected:', filePath);
+        return { success: false, error: 'Invalid path' };
+      }
+      const openResult = await shell.openPath(filePath);
+      if (openResult) {
+        return { success: false, error: openResult };
+      }
+      return { success: true };
     }
   );
 
-  ipcMain.handle(
+  handleTrustedEvent(
     'select-folder',
-    withTrustedIpcEvent(
-      'select-folder',
-      { success: false, error: 'Untrusted IPC sender' } as PathResponse,
-      async (): Promise<PathResponse> => {
-        const mainWindow = getMainWindow();
-        if (!mainWindow) {
-          return { success: false, error: 'No main window available' };
-        }
-
-        const result = await dialog.showOpenDialog(mainWindow, {
-          properties: ['openDirectory'],
-        });
-
-        if (!result.canceled && result.filePaths.length > 0) {
-          return { success: true, path: result.filePaths[0] };
-        }
-        return { success: false };
+    { success: false, error: 'Untrusted IPC sender' } as PathResponse,
+    async (): Promise<PathResponse> => {
+      const mainWindow = getMainWindow();
+      if (!mainWindow) {
+        return { success: false, error: 'No main window available' };
       }
-    )
+
+      const result = await dialog.showOpenDialog(mainWindow, {
+        properties: ['openDirectory'],
+      });
+
+      if (!result.canceled && result.filePaths.length > 0) {
+        return { success: true, path: result.filePaths[0] };
+      }
+      return { success: false };
+    }
   );
 
-  ipcMain.handle(
+  handleTrustedApi(
     'create-folder',
     async (
-      event: IpcMainInvokeEvent,
+      _event: IpcMainInvokeEvent,
       parentPath: string,
       folderName: string
     ): Promise<PathResponse> => {
-      try {
-        if (!isTrustedIpcEvent(event, 'create-folder')) {
-          return { success: false, error: 'Untrusted IPC sender' };
-        }
-        if (!isPathSafe(parentPath)) {
-          console.warn('[Security] Invalid parent path rejected:', parentPath);
-          return { success: false, error: 'Invalid path' };
-        }
-        if (
-          !folderName ||
-          folderName === '.' ||
-          folderName === '..' ||
-          folderName.includes('/') ||
-          folderName.includes('\\')
-        ) {
-          console.warn('[Security] Invalid folder name rejected:', folderName);
-          return { success: false, error: 'Invalid folder name' };
-        }
-
-        const newPath = path.join(parentPath, folderName);
-
-        await fs.mkdir(newPath);
-
-        pushUndoAction({
-          type: 'create',
-          data: {
-            path: newPath,
-            isDirectory: true,
-          },
-        });
-
-        console.log('[Create] Folder created:', newPath);
-        return { success: true, path: newPath };
-      } catch (error) {
-        return { success: false, error: getErrorMessage(error) };
+      if (!isPathSafe(parentPath)) {
+        console.warn('[Security] Invalid parent path rejected:', parentPath);
+        return { success: false, error: 'Invalid path' };
       }
+      if (!isValidChildName(folderName)) {
+        console.warn('[Security] Invalid folder name rejected:', folderName);
+        return { success: false, error: 'Invalid folder name' };
+      }
+
+      const newPath = path.join(parentPath, folderName);
+
+      await fs.mkdir(newPath);
+
+      pushUndoAction({
+        type: 'create',
+        data: {
+          path: newPath,
+          isDirectory: true,
+        },
+      });
+
+      console.log('[Create] Folder created:', newPath);
+      return { success: true, path: newPath };
     }
   );
 
-  ipcMain.handle(
+  handleTrustedApi(
     'trash-item',
-    async (event: IpcMainInvokeEvent, itemPath: string): Promise<ApiResponse> => {
+    async (_event: IpcMainInvokeEvent, itemPath: string): Promise<ApiResponse> => {
       try {
-        if (!isTrustedIpcEvent(event, 'trash-item')) {
-          return { success: false, error: 'Untrusted IPC sender' };
-        }
         if (!isPathSafe(itemPath)) {
           console.warn('[Security] Invalid path rejected:', itemPath);
           return { success: false, error: 'Invalid path' };
@@ -789,11 +797,8 @@ export function setupFileOperationHandlers(): void {
     }
   );
 
-  ipcMain.handle('open-trash', async (event: IpcMainInvokeEvent): Promise<ApiResponse> => {
+  handleTrustedApi('open-trash', async (): Promise<ApiResponse> => {
     try {
-      if (!isTrustedIpcEvent(event, 'open-trash')) {
-        return { success: false, error: 'Untrusted IPC sender' };
-      }
       const platform = process.platform;
 
       if (platform === 'darwin') {
@@ -814,13 +819,10 @@ export function setupFileOperationHandlers(): void {
     }
   });
 
-  ipcMain.handle(
+  handleTrustedApi(
     'delete-item',
-    async (event: IpcMainInvokeEvent, itemPath: string): Promise<ApiResponse> => {
+    async (_event: IpcMainInvokeEvent, itemPath: string): Promise<ApiResponse> => {
       try {
-        if (!isTrustedIpcEvent(event, 'delete-item')) {
-          return { success: false, error: 'Untrusted IPC sender' };
-        }
         if (!isPathSafe(itemPath)) {
           console.warn('[Security] Invalid path rejected:', itemPath);
           return { success: false, error: 'Invalid path' };
@@ -860,23 +862,14 @@ export function setupFileOperationHandlers(): void {
     }
   );
 
-  ipcMain.handle(
+  handleTrustedApi(
     'rename-item',
-    async (event: IpcMainInvokeEvent, oldPath: string, newName: string): Promise<PathResponse> => {
-      if (!isTrustedIpcEvent(event, 'rename-item')) {
-        return { success: false, error: 'Untrusted IPC sender' };
-      }
+    async (_event: IpcMainInvokeEvent, oldPath: string, newName: string): Promise<PathResponse> => {
       if (!isPathSafe(oldPath)) {
         console.warn('[Security] Invalid path rejected:', oldPath);
         return { success: false, error: 'Invalid path' };
       }
-      if (
-        !newName ||
-        newName === '.' ||
-        newName === '..' ||
-        newName.includes('/') ||
-        newName.includes('\\')
-      ) {
+      if (!isValidChildName(newName)) {
         console.warn('[Security] Invalid new name rejected:', newName);
         return { success: false, error: 'Invalid file name' };
       }
@@ -926,77 +919,57 @@ export function setupFileOperationHandlers(): void {
     }
   );
 
-  ipcMain.handle(
+  handleTrustedApi(
     'create-file',
     async (
-      event: IpcMainInvokeEvent,
+      _event: IpcMainInvokeEvent,
       parentPath: string,
       fileName: string
     ): Promise<PathResponse> => {
-      try {
-        if (!isTrustedIpcEvent(event, 'create-file')) {
-          return { success: false, error: 'Untrusted IPC sender' };
-        }
-        if (!isPathSafe(parentPath)) {
-          console.warn('[Security] Invalid parent path rejected:', parentPath);
-          return { success: false, error: 'Invalid path' };
-        }
-        if (
-          !fileName ||
-          fileName === '.' ||
-          fileName === '..' ||
-          fileName.includes('/') ||
-          fileName.includes('\\')
-        ) {
-          console.warn('[Security] Invalid file name rejected:', fileName);
-          return { success: false, error: 'Invalid file name' };
-        }
-
-        const created = await createUniqueFile(parentPath, fileName);
-
-        pushUndoAction({
-          type: 'create',
-          data: {
-            path: created.path,
-            isDirectory: false,
-          },
-        });
-
-        console.log('[Create] File created:', created.path);
-        return { success: true, path: created.path };
-      } catch (error) {
-        return { success: false, error: getErrorMessage(error) };
+      if (!isPathSafe(parentPath)) {
+        console.warn('[Security] Invalid parent path rejected:', parentPath);
+        return { success: false, error: 'Invalid path' };
       }
+      if (!isValidChildName(fileName)) {
+        console.warn('[Security] Invalid file name rejected:', fileName);
+        return { success: false, error: 'Invalid file name' };
+      }
+
+      const created = await createUniqueFile(parentPath, fileName);
+
+      pushUndoAction({
+        type: 'create',
+        data: {
+          path: created.path,
+          isDirectory: false,
+        },
+      });
+
+      console.log('[Create] File created:', created.path);
+      return { success: true, path: created.path };
     }
   );
 
-  ipcMain.handle(
+  handleTrustedApi(
     'get-item-properties',
-    async (event: IpcMainInvokeEvent, itemPath: string): Promise<PropertiesResponse> => {
-      if (!isTrustedIpcEvent(event, 'get-item-properties')) {
-        return { success: false, error: 'Untrusted IPC sender' };
-      }
+    async (_event: IpcMainInvokeEvent, itemPath: string): Promise<PropertiesResponse> => {
       if (!isPathSafe(itemPath)) {
         return { success: false, error: 'Invalid path' };
       }
-      try {
-        const stats = await fs.stat(itemPath);
-        return {
-          success: true,
-          properties: {
-            path: itemPath,
-            name: path.basename(itemPath),
-            size: stats.size,
-            isDirectory: stats.isDirectory(),
-            isFile: stats.isFile(),
-            created: stats.birthtime,
-            modified: stats.mtime,
-            accessed: stats.atime,
-          },
-        };
-      } catch (error) {
-        return { success: false, error: getErrorMessage(error) };
-      }
+      const stats = await fs.stat(itemPath);
+      return {
+        success: true,
+        properties: {
+          path: itemPath,
+          name: path.basename(itemPath),
+          size: stats.size,
+          isDirectory: stats.isDirectory(),
+          isFile: stats.isFile(),
+          created: stats.birthtime,
+          modified: stats.mtime,
+          accessed: stats.atime,
+        },
+      };
     }
   );
 
@@ -1018,18 +991,15 @@ export function setupFileOperationHandlers(): void {
     };
   }
 
-  ipcMain.handle(
+  handleTrustedApi(
     'copy-items',
     async (
-      event: IpcMainInvokeEvent,
+      _event: IpcMainInvokeEvent,
       sourcePaths: string[],
       destPath: string,
       conflictBehavior?: ConflictBehavior
     ): Promise<ApiResponse> => {
       try {
-        if (!isTrustedIpcEvent(event, 'copy-items')) {
-          return { success: false, error: 'Untrusted IPC sender' };
-        }
         const behavior = conflictBehavior || 'ask';
         const resolveConflict = createConflictResolver(behavior);
         const validation = await validateFileOperation(
@@ -1051,36 +1021,15 @@ export function setupFileOperationHandlers(): void {
             const batch = validation.planned.slice(i, i + PARALLEL_BATCH_SIZE);
             await Promise.all(
               batch.map(async (item) => {
-                if (item.overwrite) {
-                  if (!backups.has(item.destPath)) {
-                    const backupPath = await backupExistingPath(item.destPath);
-                    backups.set(item.destPath, backupPath);
-                  }
-                }
-                if (item.isDirectory) {
-                  await fs.cp(item.sourcePath, item.destPath, { recursive: true });
-                } else {
-                  await fs.copyFile(item.sourcePath, item.destPath);
-                }
+                await ensureOverwriteBackup(backups, item);
+                await copyPathByType(item.sourcePath, item.destPath, item.isDirectory);
                 copiedPaths.push(item.destPath);
               })
             );
           }
         } catch (error) {
-          for (const copied of copiedPaths.reverse()) {
-            try {
-              await fs.rm(copied, { recursive: true, force: true });
-            } catch (error) {
-              ignoreError(error);
-            }
-          }
-          for (const [destPath, backupPath] of backups) {
-            try {
-              await restoreBackup(backupPath, destPath);
-            } catch (error) {
-              ignoreError(error);
-            }
-          }
+          await removePaths([...copiedPaths].reverse());
+          await restoreOverwriteBackups(backups);
           const stashed = await stashRemainingBackups(backups);
           const baseError = getErrorMessage(error);
           const errorMessage =
@@ -1090,13 +1039,7 @@ export function setupFileOperationHandlers(): void {
           return { success: false, error: errorMessage };
         }
 
-        for (const backupPath of backups.values()) {
-          try {
-            await fs.rm(backupPath, { recursive: true, force: true });
-          } catch (error) {
-            ignoreError(error);
-          }
-        }
+        await cleanupBackups(backups.values());
 
         return { success: true };
       } catch (error) {
@@ -1105,18 +1048,15 @@ export function setupFileOperationHandlers(): void {
     }
   );
 
-  ipcMain.handle(
+  handleTrustedApi(
     'move-items',
     async (
-      event: IpcMainInvokeEvent,
+      _event: IpcMainInvokeEvent,
       sourcePaths: string[],
       destPath: string,
       conflictBehavior?: ConflictBehavior
     ): Promise<ApiResponse> => {
       try {
-        if (!isTrustedIpcEvent(event, 'move-items')) {
-          return { success: false, error: 'Untrusted IPC sender' };
-        }
         const behavior = conflictBehavior || 'ask';
         const resolveConflict = createConflictResolver(behavior);
         const validation = await validateFileOperation(
@@ -1133,7 +1073,7 @@ export function setupFileOperationHandlers(): void {
         const originalParent = path.dirname(sourcePaths[0]);
         const movedPaths: string[] = [];
         const originalPaths: string[] = [];
-        const completed: Array<{ sourcePath: string; newPath: string }> = [];
+        const completed: Array<{ sourcePath: string; newPath: string; isDirectory: boolean }> = [];
         const backups = new Map<string, string>();
 
         try {
@@ -1142,64 +1082,27 @@ export function setupFileOperationHandlers(): void {
             const batch = validation.planned.slice(i, i + PARALLEL_BATCH_SIZE);
             await Promise.all(
               batch.map(async (item) => {
-                if (item.overwrite) {
-                  if (!backups.has(item.destPath)) {
-                    const backupPath = await backupExistingPath(item.destPath);
-                    backups.set(item.destPath, backupPath);
-                  }
-                }
-                try {
-                  await fs.rename(item.sourcePath, item.destPath);
-                } catch (renameError) {
-                  const err = renameError as NodeJS.ErrnoException;
-                  if (err.code === 'EXDEV') {
-                    if (item.isDirectory) {
-                      await fs.cp(item.sourcePath, item.destPath, { recursive: true });
-                    } else {
-                      await fs.copyFile(item.sourcePath, item.destPath);
-                    }
-                    await fs.rm(item.sourcePath, { recursive: true, force: true });
-                  } else {
-                    throw renameError;
-                  }
-                }
+                await ensureOverwriteBackup(backups, item);
+                await renameWithExdevFallback(item.sourcePath, item.destPath, item.isDirectory);
                 originalPaths.push(item.sourcePath);
                 movedPaths.push(item.destPath);
-                completed.push({ sourcePath: item.sourcePath, newPath: item.destPath });
+                completed.push({
+                  sourcePath: item.sourcePath,
+                  newPath: item.destPath,
+                  isDirectory: item.isDirectory,
+                });
               })
             );
           }
         } catch (error) {
           for (const item of completed.reverse()) {
             try {
-              await fs.rename(item.newPath, item.sourcePath);
+              await renameWithExdevFallback(item.newPath, item.sourcePath, item.isDirectory);
             } catch (restoreError) {
-              const err = restoreError as NodeJS.ErrnoException;
-              if (err.code === 'EXDEV') {
-                try {
-                  const stats = await fs.stat(item.newPath);
-                  if (stats.isDirectory()) {
-                    await fs.cp(item.newPath, item.sourcePath, { recursive: true });
-                  } else {
-                    await fs.copyFile(item.newPath, item.sourcePath);
-                  }
-                  await fs.rm(item.newPath, { recursive: true, force: true });
-                } catch (error) {
-                  ignoreError(error);
-                }
-              }
+              ignoreError(restoreError);
             }
           }
-          for (const [destPath, backupPath] of backups) {
-            if (await pathExists(destPath)) {
-              continue;
-            }
-            try {
-              await restoreBackup(backupPath, destPath);
-            } catch (error) {
-              ignoreError(error);
-            }
-          }
+          await restoreOverwriteBackups(backups, true);
           const stashed = await stashRemainingBackups(backups);
           const baseMessage = error instanceof Error ? error.message : String(error);
           const errorMessage =
@@ -1209,13 +1112,7 @@ export function setupFileOperationHandlers(): void {
           return { success: false, error: errorMessage };
         }
 
-        for (const backupPath of backups.values()) {
-          try {
-            await fs.rm(backupPath, { recursive: true, force: true });
-          } catch (error) {
-            ignoreError(error);
-          }
-        }
+        await cleanupBackups(backups.values());
 
         pushUndoAction({
           type: 'move',
