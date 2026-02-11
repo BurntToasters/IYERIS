@@ -1,6 +1,6 @@
 {
   "name": "iyeris",
-  "version": "0.9.15",
+  "version": "0.10.0",
   "description": "A beautiful cross-platform file explorer built with Electron, featuring a stunning liquid-glass interface with smooth animations and modern design.",
   "main": "dist/main.js",
   "dependencies": {
@@ -8,7 +8,8 @@
     "7zip-bin": "^5.2.0",
     "electron-log": "^5.4.3",
     "electron-updater": "^6.6.2",
-    "node-7z": "^3.0.0"
+    "node-7z": "^3.0.0",
+    "pdfjs-dist": "^5.4.624"
   },
   "devDependencies": {
     "@electron/notarize": "^3.1.1",
@@ -44,8 +45,9 @@
     "prepare": "husky",
     "copy:css": "node -e \"const fs=require('fs');fs.mkdirSync('dist/css',{recursive:true});fs.copyFileSync('src/css/twemoji.css', 'dist/css/twemoji.css')\"",
     "copy:highlight": "node -e \"const fs=require('fs');const path=require('path');const base=path.dirname(require.resolve('@highlightjs/cdn-assets/package.json'));const jsSrc=path.join(base,'highlight.min.js');const cssSrc=path.join(base,'styles','atom-one-dark.min.css');const dest=path.join('dist','vendor');fs.mkdirSync(dest,{recursive:true});fs.copyFileSync(jsSrc,path.join(dest,'highlight.js'));fs.copyFileSync(cssSrc,path.join(dest,'highlight.css'));\"",
+    "copy:pdfjs": "node -e \"const fs=require('fs');const path=require('path');const base=path.dirname(require.resolve('pdfjs-dist/package.json'));const dest=path.join('dist','vendor','pdfjs');fs.mkdirSync(dest,{recursive:true});fs.copyFileSync(path.join(base,'build','pdf.min.mjs'),path.join(dest,'pdf.min.mjs'));fs.copyFileSync(path.join(base,'build','pdf.worker.min.mjs'),path.join(dest,'pdf.worker.min.mjs'));\"",
     "build:cleanup": "node -e \"const fs=require('fs');['release','dist'].forEach(d=>{try{fs.rmSync(d,{recursive:true,force:true})}catch(e){}})\"",
-    "build": "npm run build:cleanup && tsc --project tsconfig.main.json && tsc --project tsconfig.renderer.json && npm run copy:css && npm run copy:highlight",
+    "build": "npm run build:cleanup && tsc --project tsconfig.main.json && tsc --project tsconfig.renderer.json && npm run copy:css && npm run copy:highlight && npm run copy:pdfjs",
     "watch": "node build/watch.js",
     "start": "npm run build && electron .",
     "dev": "npm run build && electron . --enable-logging",

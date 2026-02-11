@@ -33,6 +33,7 @@ import { createSettingsModalController } from './rendererSettingsModal.js';
 import { createSettingsActionsController } from './rendererSettingsActions.js';
 import { createSupportUiController } from './rendererSupportUi.js';
 import { createExternalLinksController } from './rendererExternalLinks.js';
+import { generatePdfThumbnailPdfJs } from './rendererPdfViewer.js';
 import {
   activateModal,
   deactivateModal,
@@ -734,8 +735,14 @@ const typeaheadController = createTypeaheadController({
 
 const { handleInput: handleTypeaheadInput, reset: resetTypeahead } = typeaheadController;
 
-const { initPreviewUi, updatePreview, showQuickLook, closeQuickLook, isQuickLookOpen } =
-  previewController;
+const {
+  initPreviewUi,
+  updatePreview,
+  showQuickLook,
+  showQuickLookForFile,
+  closeQuickLook,
+  isQuickLookOpen,
+} = previewController;
 
 const tabsController = createTabsController({
   getTabs: () => tabs,
@@ -5167,6 +5174,11 @@ function createFileItem(item: FileItem, searchQuery?: string): HTMLElement {
       fileItem.dataset.thumbnailType = 'audio';
       icon = getFileIcon(item.name);
       observeThumbnailItem(fileItem);
+    } else if (PDF_EXTENSIONS.has(ext)) {
+      fileItem.classList.add('has-thumbnail');
+      fileItem.dataset.thumbnailType = 'pdf';
+      icon = getFileIcon(item.name);
+      observeThumbnailItem(fileItem);
     } else {
       icon = getFileIcon(item.name);
     }
@@ -5537,19 +5549,22 @@ function generateVideoThumbnail(videoUrl: string): Promise<string> {
     video.onseeked = () => {
       try {
         const canvas = document.createElement('canvas');
-        const size = 128;
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        const size = 160 * dpr;
         const aspectRatio = video.videoWidth / video.videoHeight;
 
         if (aspectRatio > 1) {
           canvas.width = size;
-          canvas.height = size / aspectRatio;
+          canvas.height = Math.round(size / aspectRatio);
         } else {
-          canvas.width = size * aspectRatio;
+          canvas.width = Math.round(size * aspectRatio);
           canvas.height = size;
         }
 
         const ctx = canvas.getContext('2d');
         if (ctx) {
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
           ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
           const quality =
             currentSettings.thumbnailQuality === 'low'
@@ -5586,14 +5601,16 @@ function generateVideoThumbnail(videoUrl: string): Promise<string> {
 
 async function generateAudioWaveform(audioUrl: string): Promise<string> {
   return new Promise((resolve, reject) => {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
     const canvas = document.createElement('canvas');
-    canvas.width = 160;
-    canvas.height = 160;
+    canvas.width = Math.round(160 * dpr);
+    canvas.height = Math.round(160 * dpr);
     const ctx = canvas.getContext('2d');
     if (!ctx) {
       reject(new Error('Cannot get canvas context'));
       return;
     }
+    ctx.scale(dpr, dpr);
 
     const audioContext = new AudioContext();
 
@@ -5618,29 +5635,32 @@ async function generateAudioWaveform(audioUrl: string): Promise<string> {
         const maxVal = Math.max(...filteredData);
         const normalizedData = filteredData.map((d) => d / maxVal);
 
-        ctx.fillStyle = 'rgba(30, 30, 40, 0.8)';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        const logicalW = 160;
+        const logicalH = 160;
 
-        const barWidth = canvas.width / samples;
-        const centerY = canvas.height / 2;
+        ctx.fillStyle = 'rgba(30, 30, 40, 0.8)';
+        ctx.fillRect(0, 0, logicalW, logicalH);
+
+        const barWidth = logicalW / samples;
+        const centerY = logicalH / 2;
 
         ctx.fillStyle = 'rgba(99, 179, 237, 0.8)';
         normalizedData.forEach((value, index) => {
-          const barHeight = value * (canvas.height * 0.4);
+          const barHeight = value * (logicalH * 0.4);
           const x = index * barWidth;
           ctx.fillRect(x, centerY - barHeight, barWidth - 1, barHeight * 2);
         });
 
         ctx.fillStyle = 'rgba(99, 179, 237, 0.4)';
         ctx.beginPath();
-        ctx.arc(canvas.width / 2, canvas.height / 2, 25, 0, Math.PI * 2);
+        ctx.arc(logicalW / 2, logicalH / 2, 25, 0, Math.PI * 2);
         ctx.fill();
 
         ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
         ctx.beginPath();
-        ctx.moveTo(canvas.width / 2 - 8, canvas.height / 2 - 12);
-        ctx.lineTo(canvas.width / 2 + 12, canvas.height / 2);
-        ctx.lineTo(canvas.width / 2 - 8, canvas.height / 2 + 12);
+        ctx.moveTo(logicalW / 2 - 8, logicalH / 2 - 12);
+        ctx.lineTo(logicalW / 2 + 12, logicalH / 2);
+        ctx.lineTo(logicalW / 2 - 8, logicalH / 2 + 12);
         ctx.closePath();
         ctx.fill();
 
@@ -5658,6 +5678,16 @@ async function generateAudioWaveform(audioUrl: string): Promise<string> {
         reject(error);
       });
   });
+}
+
+function generatePdfThumbnail(pdfUrl: string): Promise<string> {
+  const quality =
+    currentSettings.thumbnailQuality === 'low'
+      ? 'low'
+      : currentSettings.thumbnailQuality === 'high'
+        ? 'high'
+        : 'medium';
+  return generatePdfThumbnailPdfJs(pdfUrl, quality);
 }
 
 function loadThumbnail(fileItem: HTMLElement, item: FileItem) {
@@ -5686,7 +5716,19 @@ function loadThumbnail(fileItem: HTMLElement, item: FileItem) {
 
       if (
         thumbnailType !== 'audio' &&
+        thumbnailType !== 'pdf' &&
         item.size > (currentSettings.maxThumbnailSizeMB || 10) * 1024 * 1024
+      ) {
+        if (iconDiv) {
+          iconDiv.innerHTML = getFileIcon(item.name);
+        }
+        fileItem.classList.remove('has-thumbnail');
+        return;
+      }
+
+      if (
+        thumbnailType === 'pdf' &&
+        item.size > (currentSettings.maxPreviewSizeMB || 50) * 1024 * 1024
       ) {
         if (iconDiv) {
           iconDiv.innerHTML = getFileIcon(item.name);
@@ -5728,6 +5770,17 @@ function loadThumbnail(fileItem: HTMLElement, item: FileItem) {
       } else if (thumbnailType === 'audio') {
         try {
           thumbnailUrl = await generateAudioWaveform(fileUrl);
+          shouldCacheToDisk = true;
+        } catch {
+          if (iconDiv) {
+            iconDiv.innerHTML = getFileIcon(item.name);
+          }
+          fileItem.classList.remove('has-thumbnail');
+          return;
+        }
+      } else if (thumbnailType === 'pdf') {
+        try {
+          thumbnailUrl = await generatePdfThumbnail(fileUrl);
           shouldCacheToDisk = true;
         } catch {
           if (iconDiv) {
@@ -5782,6 +5835,18 @@ function renderThumbnailImage(
   img.src = thumbnailUrl;
   img.className = 'file-thumbnail';
   img.alt = item.name;
+  img.style.opacity = '0';
+  img.loading = 'lazy';
+  img.decoding = 'async';
+
+  img.addEventListener(
+    'load',
+    () => {
+      img.style.transition = 'opacity 0.2s ease';
+      img.style.opacity = '1';
+    },
+    { once: true }
+  );
 
   const ext = getFileExtension(item.name);
   if (ANIMATED_IMAGE_EXTENSIONS.has(ext)) {
@@ -6852,6 +6917,7 @@ function showContextMenu(x: number, y: number, item: FileItem) {
   const openTerminalItem = document.getElementById('open-terminal-item');
   const compressItem = document.getElementById('compress-item');
   const extractItem = document.getElementById('extract-item');
+  const previewPdfItem = document.getElementById('preview-pdf-item');
 
   if (!contextMenu) return;
 
@@ -6899,6 +6965,11 @@ function showContextMenu(x: number, y: number, item: FileItem) {
   if (extractItem) {
     const isArchive = !item.isDirectory && isArchivePath(item.path);
     extractItem.style.display = isArchive ? 'flex' : 'none';
+  }
+
+  if (previewPdfItem) {
+    const ext = getFileExtension(item.name);
+    previewPdfItem.style.display = !item.isDirectory && PDF_EXTENSIONS.has(ext) ? 'flex' : 'none';
   }
 
   contextMenu.style.display = 'block';
@@ -7115,6 +7186,10 @@ async function handleContextMenuAction(
   switch (action) {
     case 'open':
       await openFileEntry(item);
+      break;
+
+    case 'preview-pdf':
+      await showQuickLookForFile(item);
       break;
 
     case 'rename': {

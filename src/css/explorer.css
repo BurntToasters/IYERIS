@@ -5348,11 +5348,19 @@ pre.preview-text code.hljs {
   max-width: 400px;
 }
 
-.preview-pdf {
-  width: 100%;
-  height: 60vh;
-  border: none;
-  border-radius: 8px;
+.preview-image-wrapper {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.preview-image-dimensions {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--text-tertiary);
+  letter-spacing: 0.3px;
 }
 
 .preview-loading {
@@ -5408,6 +5416,14 @@ pre.preview-text code.hljs {
 }
 
 .file-item.has-thumbnail[data-thumbnail-type='audio'] .file-thumbnail {
+  object-fit: contain;
+}
+
+.file-item.has-thumbnail[data-thumbnail-type='pdf'] .file-icon {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.file-item.has-thumbnail[data-thumbnail-type='pdf'] .file-thumbnail {
   object-fit: contain;
 }
 

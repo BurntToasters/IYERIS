@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: file:; media-src 'self' file:; font-src 'self' data:; frame-src 'self' file:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: file:; media-src 'self' file:; font-src 'self' data:; frame-src 'none'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'"
     />
     <title>IYERIS - File Explorer</title>
     <link rel="stylesheet" href="css/main.css" />
@@ -944,6 +944,23 @@
           aria-hidden="true"
         />
         Open <span class="context-menu-shortcut">Enter</span>
+      </div>
+      <div
+        class="context-menu-item"
+        data-action="preview-pdf"
+        id="preview-pdf-item"
+        role="menuitem"
+        tabindex="0"
+        style="display: none"
+      >
+        <img
+          src="../assets/twemoji/1f50d.svg"
+          class="twemoji"
+          alt=""
+          draggable="false"
+          aria-hidden="true"
+        />
+        Preview PDF
       </div>
       <div class="context-menu-separator" role="separator"></div>
       <div class="context-menu-item" data-action="cut" role="menuitem" tabindex="0">

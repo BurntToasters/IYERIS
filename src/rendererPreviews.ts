@@ -2,6 +2,7 @@ import type { FileItem, ItemProperties, Settings } from './types';
 import { escapeHtml, getErrorMessage } from './shared.js';
 import { getById } from './rendererDom.js';
 import { encodeFileUrl, twemojiImg } from './rendererUtils.js';
+import { createPdfViewer, type PdfViewerHandle } from './rendererPdfViewer.js';
 import {
   IMAGE_EXTENSIONS,
   RAW_EXTENSIONS,
@@ -35,6 +36,8 @@ export function createPreviewController(deps: PreviewDeps) {
   let previewRequestId = 0;
   let currentQuicklookFile: FileItem | null = null;
   let quicklookRequestId = 0;
+
+  let activePdfViewer: PdfViewerHandle | null = null;
 
   let previewPanel: HTMLElement | null = null;
   let previewContent: HTMLElement | null = null;
@@ -76,6 +79,10 @@ export function createPreviewController(deps: PreviewDeps) {
 
   function clearPreview() {
     previewRequestId++;
+    if (activePdfViewer) {
+      activePdfViewer.destroy();
+      activePdfViewer = null;
+    }
     showEmptyPreview();
   }
 
@@ -243,12 +250,24 @@ export function createPreviewController(deps: PreviewDeps) {
     const altText = escapeHtml(file.name);
 
     previewContent.innerHTML = `
-    <img src="${fileUrl}" class="preview-image" alt="${altText}">
+    <div class="preview-image-wrapper">
+      <img src="${fileUrl}" class="preview-image" alt="${altText}">
+      <div class="preview-image-dimensions" id="preview-image-dimensions"></div>
+    </div>
     ${generateFileInfo(file, info)}
   `;
 
     const img = previewContent.querySelector('.preview-image') as HTMLImageElement | null;
+    const dimensionsEl = previewContent.querySelector(
+      '#preview-image-dimensions'
+    ) as HTMLElement | null;
     if (img) {
+      img.addEventListener('load', () => {
+        if (requestId !== previewRequestId) return;
+        if (dimensionsEl && img.naturalWidth && img.naturalHeight) {
+          dimensionsEl.textContent = `${img.naturalWidth} × ${img.naturalHeight}`;
+        }
+      });
       img.addEventListener('error', () => {
         if (requestId !== previewRequestId) return;
         previewContent!.innerHTML = `
@@ -521,17 +540,45 @@ export function createPreviewController(deps: PreviewDeps) {
     ensureElements();
     if (!previewContent || requestId !== previewRequestId) return;
 
+    if (activePdfViewer) {
+      activePdfViewer.destroy();
+      activePdfViewer = null;
+    }
+
     const settings = deps.getCurrentSettings();
     const maxSizeMB = settings.maxPreviewSizeMB || 50;
     if (file.size > maxSizeMB * 1024 * 1024) {
       previewContent.innerHTML = `
       <div class="preview-error">
-        PDF file too large to preview (>${maxSizeMB}MB)
+        ${twemojiImg(String.fromCodePoint(0x26a0), 'twemoji')} PDF file too large to preview (>${maxSizeMB}MB)
       </div>
       ${generateFileInfo(file, null)}
     `;
       return;
     }
+
+    const headerResult = await window.electronAPI.readFileContent(file.path, 16);
+    if (requestId !== previewRequestId) return;
+    if (
+      !headerResult.success ||
+      typeof headerResult.content !== 'string' ||
+      !headerResult.content.startsWith('%PDF-')
+    ) {
+      previewContent.innerHTML = `
+      <div class="preview-error">
+        ${twemojiImg(String.fromCodePoint(0x26a0), 'twemoji')} File does not appear to be a valid PDF
+      </div>
+      ${generateFileInfo(file, null)}
+    `;
+      return;
+    }
+
+    previewContent.innerHTML = `
+    <div class="preview-loading">
+      <div class="spinner"></div>
+      <p>Loading PDF...</p>
+    </div>
+  `;
 
     const props = await window.electronAPI.getItemProperties(file.path);
     if (requestId !== previewRequestId) return;
@@ -539,10 +586,63 @@ export function createPreviewController(deps: PreviewDeps) {
 
     const fileUrl = encodeFileUrl(file.path);
 
-    previewContent.innerHTML = `
-    <iframe src="${fileUrl}" class="preview-pdf" frameborder="0" sandbox="allow-scripts allow-same-origin" referrerpolicy="no-referrer"></iframe>
-    ${generateFileInfo(file, info)}
-  `;
+    try {
+      const viewer = await createPdfViewer(fileUrl, {
+        maxWidth: 600,
+        containerClass: 'preview-panel-pdf',
+        showPageControls: true,
+        onError: (msg) => console.error('[Preview] PDF error:', msg),
+      });
+
+      if (requestId !== previewRequestId) {
+        viewer.destroy();
+        return;
+      }
+
+      activePdfViewer = viewer;
+      previewContent.innerHTML = '';
+
+      const wrapper = document.createElement('div');
+      wrapper.className = 'preview-pdf-container';
+      wrapper.appendChild(viewer.element);
+      previewContent.appendChild(wrapper);
+
+      const actionsDiv = document.createElement('div');
+      actionsDiv.className = 'preview-pdf-actions';
+      const openBtn = document.createElement('button');
+      openBtn.className = 'preview-pdf-open-btn';
+      openBtn.title = 'Open in default application';
+      openBtn.innerHTML = `${twemojiImg(String.fromCodePoint(0x1f4c4), 'twemoji-small')} Open in Default App`;
+      openBtn.addEventListener('click', () => void window.electronAPI.openFile(file.path));
+      actionsDiv.appendChild(openBtn);
+      previewContent.appendChild(actionsDiv);
+
+      const infoHtml = generateFileInfo(file, info);
+      const infoWrapper = document.createElement('div');
+      infoWrapper.innerHTML = infoHtml;
+      while (infoWrapper.firstChild) {
+        previewContent.appendChild(infoWrapper.firstChild);
+      }
+    } catch {
+      if (requestId !== previewRequestId) return;
+      previewContent.innerHTML = `
+      <div class="preview-error">
+        Failed to render PDF
+      </div>
+      <div class="preview-pdf-actions">
+        <button class="preview-pdf-open-btn" title="Open in default application">
+          ${twemojiImg(String.fromCodePoint(0x1f4c4), 'twemoji-small')} Open in Default App
+        </button>
+      </div>
+      ${generateFileInfo(file, info)}
+    `;
+      const fallbackBtn = previewContent.querySelector(
+        '.preview-pdf-open-btn'
+      ) as HTMLButtonElement | null;
+      if (fallbackBtn) {
+        fallbackBtn.addEventListener('click', () => void window.electronAPI.openFile(file.path));
+      }
+    }
   }
 
   async function showFileInfo(file: FileItem, requestId: number) {
@@ -613,20 +713,15 @@ export function createPreviewController(deps: PreviewDeps) {
   `;
   }
 
-  async function showQuickLook() {
+  async function showQuickLookForFile(file: FileItem) {
     ensureElements();
-    const selectedItems = deps.getSelectedItems();
-    if (selectedItems.size !== 1) return;
     if (!quicklookModal || !quicklookTitle || !quicklookContent || !quicklookInfo) return;
 
     if (document.activeElement instanceof HTMLElement) {
       document.activeElement.blur();
     }
 
-    const selectedPath = Array.from(selectedItems)[0];
-    const file = deps.getFileByPath(selectedPath);
-
-    if (!file || file.isDirectory) return;
+    if (file.isDirectory) return;
 
     const requestId = ++quicklookRequestId;
     currentQuicklookFile = file;
@@ -651,16 +746,44 @@ export function createPreviewController(deps: PreviewDeps) {
       } else {
         const fileUrl = encodeFileUrl(file.path);
         quicklookContent.innerHTML = '';
+
+        const wrapper = document.createElement('div');
+        wrapper.className = 'quicklook-image-wrapper';
+
         const img = document.createElement('img');
         img.src = fileUrl;
         img.alt = file.name;
+        img.className = 'quicklook-zoomable';
+
+        let isZoomed = false;
+        img.addEventListener('click', () => {
+          isZoomed = !isZoomed;
+          img.classList.toggle('zoomed', isZoomed);
+          if (isZoomed) {
+            img.style.maxHeight = 'none';
+            img.style.cursor = 'zoom-out';
+          } else {
+            img.style.maxHeight = '';
+            img.style.cursor = 'zoom-in';
+          }
+        });
+
+        img.addEventListener('load', () => {
+          if (requestId !== quicklookRequestId || currentQuicklookFile?.path !== file.path) return;
+          const dims =
+            img.naturalWidth && img.naturalHeight
+              ? `${img.naturalWidth} × ${img.naturalHeight} • `
+              : '';
+          quicklookInfo!.textContent = `${dims}${deps.formatFileSize(file.size)} • ${new Date(file.modified).toLocaleDateString()}`;
+        });
         img.addEventListener('error', () => {
           if (requestId !== quicklookRequestId || currentQuicklookFile?.path !== file.path) {
             return;
           }
           quicklookContent!.innerHTML = `<div class="preview-error">Failed to load image</div>`;
         });
-        quicklookContent.appendChild(img);
+        wrapper.appendChild(img);
+        quicklookContent.appendChild(wrapper);
         quicklookInfo.textContent = `${deps.formatFileSize(file.size)} • ${new Date(file.modified).toLocaleDateString()}`;
       }
     } else if (VIDEO_EXTENSIONS.has(ext)) {
@@ -699,16 +822,45 @@ export function createPreviewController(deps: PreviewDeps) {
       quicklookContent.appendChild(container);
       quicklookInfo.textContent = `${deps.formatFileSize(file.size)} • ${new Date(file.modified).toLocaleDateString()}`;
     } else if (PDF_EXTENSIONS.has(ext)) {
+      const headerResult = await window.electronAPI.readFileContent(file.path, 16);
+      if (requestId !== quicklookRequestId || currentQuicklookFile?.path !== file.path) return;
+      if (
+        !headerResult.success ||
+        typeof headerResult.content !== 'string' ||
+        !headerResult.content.startsWith('%PDF-')
+      ) {
+        quicklookContent.innerHTML = `<div class="preview-error">${twemojiImg(String.fromCodePoint(0x26a0), 'twemoji')} File does not appear to be a valid PDF</div>`;
+        quicklookInfo.textContent = `${deps.formatFileSize(file.size)} • ${new Date(file.modified).toLocaleDateString()}`;
+        return;
+      }
+
       const fileUrl = encodeFileUrl(file.path);
       quicklookContent.innerHTML = '';
-      const iframe = document.createElement('iframe');
-      iframe.src = fileUrl;
-      iframe.className = 'preview-pdf';
-      iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin');
-      iframe.setAttribute('referrerpolicy', 'no-referrer');
-      iframe.setAttribute('frameborder', '0');
-      quicklookContent.appendChild(iframe);
-      quicklookInfo.textContent = `${deps.formatFileSize(file.size)} • ${new Date(file.modified).toLocaleDateString()}`;
+
+      try {
+        const viewer = await createPdfViewer(fileUrl, {
+          maxWidth: 900,
+          containerClass: 'quicklook-pdf',
+          showPageControls: true,
+          onError: (msg) => console.error('[QuickLook] PDF error:', msg),
+        });
+
+        if (requestId !== quicklookRequestId || currentQuicklookFile?.path !== file.path) {
+          viewer.destroy();
+          return;
+        }
+
+        (quicklookModal as any).__pdfViewer = viewer;
+
+        const container = document.createElement('div');
+        container.className = 'preview-pdf-container quicklook-pdf';
+        container.appendChild(viewer.element);
+        quicklookContent.appendChild(container);
+      } catch {
+        if (requestId !== quicklookRequestId || currentQuicklookFile?.path !== file.path) return;
+        quicklookContent.innerHTML = `<div class="preview-error">Failed to render PDF</div>`;
+      }
+      quicklookInfo.textContent = `PDF • ${deps.formatFileSize(file.size)} • ${new Date(file.modified).toLocaleDateString()}`;
     } else if (TEXT_EXTENSIONS.has(ext)) {
       const result = await window.electronAPI.readFileContent(file.path, 100 * 1024);
       if (requestId !== quicklookRequestId || currentQuicklookFile?.path !== file.path) {
@@ -744,8 +896,21 @@ export function createPreviewController(deps: PreviewDeps) {
     }
   }
 
+  async function showQuickLook() {
+    const selectedItems = deps.getSelectedItems();
+    if (selectedItems.size !== 1) return;
+    const selectedPath = Array.from(selectedItems)[0];
+    const file = deps.getFileByPath(selectedPath);
+    if (!file) return;
+    await showQuickLookForFile(file);
+  }
+
   function closeQuickLook() {
     ensureElements();
+    if (quicklookModal && (quicklookModal as any).__pdfViewer) {
+      (quicklookModal as any).__pdfViewer.destroy();
+      (quicklookModal as any).__pdfViewer = null;
+    }
     if (quicklookModal) quicklookModal.style.display = 'none';
     if (quicklookModal) {
       deps.onModalClose?.(quicklookModal);
@@ -811,6 +976,7 @@ export function createPreviewController(deps: PreviewDeps) {
     togglePreviewPanel,
     isPreviewVisible,
     showQuickLook,
+    showQuickLookForFile,
     closeQuickLook,
     isQuickLookOpen,
   };

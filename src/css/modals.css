@@ -1201,6 +1201,23 @@ body.theme-light .licenses-modal-content {
   max-height: 60vh;
   object-fit: contain;
   border-radius: 8px;
+  transition: max-height 0.3s ease;
+}
+
+.quicklook-image-wrapper {
+  display: flex;
+  justify-content: center;
+  overflow: auto;
+}
+
+.quicklook-zoomable {
+  cursor: zoom-in;
+}
+
+.quicklook-zoomable.zoomed {
+  max-width: none;
+  max-height: none !important;
+  cursor: zoom-out;
 }
 
 .quicklook-content .preview-text {
