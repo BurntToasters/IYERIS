@@ -713,6 +713,7 @@ const {
   setupRubberBandSelection,
   isRubberBandActive,
   ensureActiveItem,
+  invalidateGridColumnsCache,
 } = selectionController;
 
 const hoverCardController = createHoverCardController({
@@ -1391,19 +1392,9 @@ function applySettings(settings: Settings) {
     document.body.classList.remove('reduce-motion');
   }
 
-  if (settings.highContrast) {
-    document.body.classList.add('high-contrast');
-  } else {
-    document.body.classList.remove('high-contrast');
-  }
+  document.body.classList.toggle('high-contrast', !!settings.highContrast);
+  document.body.classList.toggle('large-text', !!settings.largeText);
 
-  if (settings.largeText) {
-    document.body.classList.add('large-text');
-  } else {
-    document.body.classList.remove('large-text');
-  }
-
-  // Apply system font size scaling
   if (settings.useSystemFontSize) {
     applySystemFontSize();
   } else {
@@ -1411,7 +1402,6 @@ function applySettings(settings: Settings) {
     document.body.classList.remove('use-system-font-size');
   }
 
-  // Apply UI density
   document.body.classList.remove('compact-ui', 'large-ui');
   if (settings.uiDensity === 'compact') {
     document.body.classList.add('compact-ui');
@@ -1419,55 +1409,14 @@ function applySettings(settings: Settings) {
     document.body.classList.add('large-ui');
   }
 
-  if (settings.boldText) {
-    document.body.classList.add('bold-text');
-  } else {
-    document.body.classList.remove('bold-text');
-  }
-
-  if (settings.visibleFocus) {
-    document.body.classList.add('visible-focus');
-  } else {
-    document.body.classList.remove('visible-focus');
-  }
-
-  if (settings.reduceTransparency) {
-    document.body.classList.add('reduce-transparency');
-  } else {
-    document.body.classList.remove('reduce-transparency');
-  }
-
-  if (settings.liquidGlassMode) {
-    document.body.classList.add('liquid-glass');
-  } else {
-    document.body.classList.remove('liquid-glass');
-  }
-
-  if (settings.themedIcons) {
-    document.body.classList.add('themed-icons');
-  } else {
-    document.body.classList.remove('themed-icons');
-  }
-
-  if (settings.showFileCheckboxes) {
-    document.body.classList.add('show-file-checkboxes');
-  } else {
-    document.body.classList.remove('show-file-checkboxes');
-  }
-
-  // Compact file info
-  if (settings.compactFileInfo) {
-    document.body.classList.add('compact-file-info');
-  } else {
-    document.body.classList.remove('compact-file-info');
-  }
-
-  // Show file extensions
-  if (settings.showFileExtensions === false) {
-    document.body.classList.add('hide-file-extensions');
-  } else {
-    document.body.classList.remove('hide-file-extensions');
-  }
+  document.body.classList.toggle('bold-text', !!settings.boldText);
+  document.body.classList.toggle('visible-focus', !!settings.visibleFocus);
+  document.body.classList.toggle('reduce-transparency', !!settings.reduceTransparency);
+  document.body.classList.toggle('liquid-glass', !!settings.liquidGlassMode);
+  document.body.classList.toggle('themed-icons', !!settings.themedIcons);
+  document.body.classList.toggle('show-file-checkboxes', !!settings.showFileCheckboxes);
+  document.body.classList.toggle('compact-file-info', !!settings.compactFileInfo);
+  document.body.classList.toggle('hide-file-extensions', settings.showFileExtensions === false);
 
   // Grid columns
   if (settings.gridColumns && settings.gridColumns !== 'auto') {
@@ -3401,10 +3350,14 @@ function updateStatusBar() {
 
   if (statusSelected) {
     if (selectedItems.size > 0) {
-      const totalSize = Array.from(selectedItems).reduce((acc, itemPath) => {
-        const item = filePathMap.get(itemPath);
-        return acc + (item ? item.size : 0);
-      }, 0);
+      const totalSize = (() => {
+        let sum = 0;
+        for (const itemPath of selectedItems) {
+          const item = filePathMap.get(itemPath);
+          if (item) sum += item.size;
+        }
+        return sum;
+      })();
       const sizeStr = formatFileSize(totalSize);
       statusSelected.textContent = `${selectedItems.size} selected (${sizeStr})`;
       statusSelected.style.display = 'inline';
@@ -4028,34 +3981,27 @@ function initNavigationListeners(): void {
 }
 
 function isModalOpen(): boolean {
-  const settingsModal = document.getElementById('settings-modal');
-  const shortcutsModal = document.getElementById('shortcuts-modal');
-  const dialogModal = document.getElementById('dialog-modal');
-  const licensesModal = document.getElementById('licenses-modal');
-  const homeSettingsModal = document.getElementById('home-settings-modal');
-  const propertiesModal = document.getElementById('properties-modal');
-  const extractModal = document.getElementById('extract-modal');
-  const themeEditorModal = document.getElementById('theme-editor-modal');
-  const folderIconModal = document.getElementById('folder-icon-modal');
-  const supportPopupModal = document.getElementById('support-popup-modal');
-  const tourPromptModal = document.getElementById('tour-prompt-modal');
-  const commandPaletteModal = document.getElementById('command-palette-modal');
-
-  return !!(
-    (settingsModal && settingsModal.style.display === 'flex') ||
-    (shortcutsModal && shortcutsModal.style.display === 'flex') ||
-    (dialogModal && dialogModal.style.display === 'flex') ||
-    (licensesModal && licensesModal.style.display === 'flex') ||
-    isQuickLookOpen() ||
-    (homeSettingsModal && homeSettingsModal.style.display === 'flex') ||
-    (propertiesModal && propertiesModal.style.display === 'flex') ||
-    (extractModal && extractModal.style.display === 'flex') ||
-    (themeEditorModal && themeEditorModal.style.display === 'flex') ||
-    (folderIconModal && folderIconModal.style.display === 'flex') ||
-    (supportPopupModal && supportPopupModal.style.display === 'flex') ||
-    (tourPromptModal && tourPromptModal.style.display === 'flex') ||
-    (commandPaletteModal && commandPaletteModal.style.display === 'flex')
-  );
+  const modalIds = [
+    'settings-modal',
+    'shortcuts-modal',
+    'dialog-modal',
+    'licenses-modal',
+    'home-settings-modal',
+    'properties-modal',
+    'extract-modal',
+    'compress-options-modal',
+    'theme-editor-modal',
+    'folder-icon-modal',
+    'support-popup-modal',
+    'tour-prompt-modal',
+    'command-palette-modal',
+  ];
+  if (isQuickLookOpen()) return true;
+  for (const id of modalIds) {
+    const el = document.getElementById(id);
+    if (el && el.style.display === 'flex') return true;
+  }
+  return false;
 }
 
 function hasTextSelection(): boolean {
@@ -4213,6 +4159,20 @@ function initKeyboardListeners(): void {
       return;
     }
     if (e.key === 'Escape') {
+      const extractModal = document.getElementById('extract-modal');
+      if (extractModal && extractModal.style.display === 'flex') {
+        e.preventDefault();
+        hideExtractModal();
+        return;
+      }
+
+      const compressOptionsModal = document.getElementById('compress-options-modal');
+      if (compressOptionsModal && compressOptionsModal.style.display === 'flex') {
+        e.preventDefault();
+        hideCompressOptionsModal();
+        return;
+      }
+
       const settingsModal = document.getElementById('settings-modal');
       if (settingsModal && settingsModal.style.display === 'flex') {
         hideSettingsModal();
@@ -4251,6 +4211,9 @@ function initKeyboardListeners(): void {
 
       if (isSearchModeActive()) {
         closeSearch();
+      }
+      if (isQuickLookOpen()) {
+        closeQuickLook();
       }
       return;
     }
@@ -4321,6 +4284,23 @@ function initKeyboardListeners(): void {
     }
 
     if (isModalOpen()) {
+      return;
+    }
+
+    if (e.code === 'Space' && !e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey) {
+      const activeElement = document.activeElement;
+      if (
+        activeElement &&
+        (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')
+      ) {
+        return;
+      }
+      e.preventDefault();
+      if (isQuickLookOpen()) {
+        closeQuickLook();
+      } else {
+        showQuickLook();
+      }
       return;
     }
 
@@ -5440,7 +5420,7 @@ function setupFileGridEventDelegation(): void {
       dragImage.style.top = '-1000px';
       document.body.appendChild(dragImage);
       e.dataTransfer.setDragImage(dragImage, 0, 0);
-      setTimeout(() => dragImage.remove(), 0);
+      requestAnimationFrame(() => dragImage.remove());
     }
   });
 
@@ -5951,14 +5931,11 @@ async function handleDrop(
 async function renameSelected() {
   if (selectedItems.size !== 1) return;
   const itemPath = Array.from(selectedItems)[0];
-  const fileItems = document.querySelectorAll('.file-item');
-  for (const fileItem of Array.from(fileItems)) {
-    if (fileItem.getAttribute('data-path') === itemPath) {
-      const item = filePathMap.get(itemPath);
-      if (item) {
-        startInlineRename(fileItem as HTMLElement, item.name, item.path);
-      }
-      break;
+  const fileItem = fileElementMap.get(itemPath);
+  if (fileItem) {
+    const item = filePathMap.get(itemPath);
+    if (item) {
+      startInlineRename(fileItem, item.name, item.path);
     }
   }
 }
@@ -5977,11 +5954,11 @@ async function deleteSelected() {
     if (!confirmed) return;
   }
 
-  let successCount = 0;
-  for (const itemPath of selectedItems) {
-    const result = await window.electronAPI.trashItem(itemPath);
-    if (result.success) successCount++;
-  }
+  const itemsSnapshot = Array.from(selectedItems);
+  const results = await Promise.allSettled(
+    itemsSnapshot.map((itemPath) => window.electronAPI.trashItem(itemPath))
+  );
+  const successCount = results.filter((r) => r.status === 'fulfilled' && r.value.success).length;
 
   if (successCount > 0) {
     showToast(
@@ -6006,11 +5983,11 @@ async function permanentlyDeleteSelected() {
   );
 
   if (confirmed) {
-    let successCount = 0;
-    for (const itemPath of selectedItems) {
-      const result = await window.electronAPI.deleteItem(itemPath);
-      if (result.success) successCount++;
-    }
+    const itemsSnapshot = Array.from(selectedItems);
+    const results = await Promise.allSettled(
+      itemsSnapshot.map((itemPath) => window.electronAPI.deleteItem(itemPath))
+    );
+    const successCount = results.filter((r) => r.status === 'fulfilled' && r.value.success).length;
 
     if (successCount > 0) {
       showToast(
@@ -6028,9 +6005,8 @@ async function updateUndoRedoState() {
   canUndo = state.canUndo;
   canRedo = state.canRedo;
 
-  const undoBtn = document.getElementById('undo-btn') as HTMLButtonElement;
-  const redoBtn = document.getElementById('redo-btn') as HTMLButtonElement;
   if (undoBtn) undoBtn.disabled = !canUndo;
+  if (redoBtn) redoBtn.disabled = !canRedo;
   if (redoBtn) redoBtn.disabled = !canRedo;
 }
 
@@ -6128,6 +6104,7 @@ async function toggleView() {
 }
 
 async function applyViewMode() {
+  invalidateGridColumnsCache();
   if (isHomeViewPath(currentPath)) {
     setHomeViewActive(true);
     return;
@@ -6192,8 +6169,17 @@ async function renderColumnView() {
   }
 
   const currentRenderId = ++columnViewRenderId;
-  while (isRenderingColumnView) {
-    await new Promise((resolve) => setTimeout(resolve, 10));
+  if (isRenderingColumnView) {
+    await new Promise<void>((resolve) => {
+      const check = () => {
+        if (!isRenderingColumnView || currentRenderId !== columnViewRenderId) {
+          resolve();
+        } else {
+          requestAnimationFrame(check);
+        }
+      };
+      requestAnimationFrame(check);
+    });
     if (currentRenderId !== columnViewRenderId) return;
   }
 
@@ -7193,12 +7179,9 @@ async function handleContextMenuAction(
       break;
 
     case 'rename': {
-      const fileItems = document.querySelectorAll('.file-item');
-      for (const fileItem of Array.from(fileItems)) {
-        if ((fileItem as HTMLElement).dataset.path === item.path) {
-          startInlineRename(fileItem as HTMLElement, item.name, item.path);
-          break;
-        }
+      const fileItem = fileElementMap.get(item.path);
+      if (fileItem) {
+        startInlineRename(fileItem, item.name, item.path);
       }
       break;
     }
@@ -7259,13 +7242,21 @@ async function handleContextMenuAction(
       await handleCompress(format || 'zip');
       break;
 
+    case 'compress-advanced':
+      showCompressOptionsModal();
+      break;
+
     case 'extract':
       showExtractModal(item.path, item.name);
       break;
   }
 }
 
-async function handleCompress(format: string = 'zip') {
+async function handleCompress(
+  format: string = 'zip',
+  customName?: string,
+  advancedOptions?: Record<string, unknown> | undefined
+) {
   const selectedPaths = Array.from(selectedItems);
 
   if (selectedPaths.length === 0) {
@@ -7283,7 +7274,9 @@ async function handleCompress(format: string = 'zip') {
   const extension = extensionMap[format] || '.zip';
 
   let archiveName: string;
-  if (selectedPaths.length === 1) {
+  if (customName) {
+    archiveName = customName;
+  } else if (selectedPaths.length === 1) {
     const itemName = path.basename(selectedPaths[0]);
     const nameWithoutExt = itemName.replace(/\.[^/.]+$/, '');
     archiveName = `${nameWithoutExt}${extension}`;
@@ -7326,7 +7319,8 @@ async function handleCompress(format: string = 'zip') {
       selectedPaths,
       outputPath,
       format,
-      operationId
+      operationId,
+      advancedOptions
     );
 
     cleanupProgressHandler();
@@ -7343,6 +7337,358 @@ async function handleCompress(format: string = 'zip') {
     removeOperation(operationId);
     showToast(getErrorMessage(error), 'Compression Error', 'error');
   }
+}
+
+// ── Advanced Compress Options Modal ──────────────────────────────────────
+
+function getCompressOptionsElements() {
+  return {
+    modal: document.getElementById('compress-options-modal') as HTMLElement | null,
+    nameInput: document.getElementById('compress-archive-name') as HTMLInputElement | null,
+    formatSelect: document.getElementById('compress-format') as HTMLSelectElement | null,
+    levelSelect: document.getElementById('compress-level') as HTMLSelectElement | null,
+    methodSelect: document.getElementById('compress-method') as HTMLSelectElement | null,
+    methodField: document.getElementById('compress-method-field') as HTMLElement | null,
+    dictionarySelect: document.getElementById('compress-dictionary') as HTMLSelectElement | null,
+    dictionaryField: document.getElementById('compress-dictionary-field') as HTMLElement | null,
+    solidSelect: document.getElementById('compress-solid') as HTMLSelectElement | null,
+    solidField: document.getElementById('compress-solid-field') as HTMLElement | null,
+    threadsSelect: document.getElementById('compress-threads') as HTMLSelectElement | null,
+    threadsField: document.getElementById('compress-threads-field') as HTMLElement | null,
+    passwordInput: document.getElementById('compress-password') as HTMLInputElement | null,
+    passwordConfirm: document.getElementById(
+      'compress-password-confirm'
+    ) as HTMLInputElement | null,
+    passwordToggle: document.getElementById('compress-password-toggle') as HTMLElement | null,
+    encryptionFieldset: document.getElementById(
+      'compress-encryption-fieldset'
+    ) as HTMLElement | null,
+    encryptionMethodSelect: document.getElementById(
+      'compress-encryption-method'
+    ) as HTMLSelectElement | null,
+    encryptionMethodField: document.getElementById(
+      'compress-encryption-method-field'
+    ) as HTMLElement | null,
+    encryptNamesCheck: document.getElementById('compress-encrypt-names') as HTMLInputElement | null,
+    encryptNamesField: document.getElementById(
+      'compress-encrypt-names-field'
+    ) as HTMLElement | null,
+    splitSelect: document.getElementById('compress-split') as HTMLSelectElement | null,
+    splitField: document.getElementById('compress-split-field') as HTMLElement | null,
+    previewPath: document.getElementById('compress-preview-path') as HTMLElement | null,
+    confirmBtn: document.getElementById('compress-options-confirm') as HTMLElement | null,
+    cancelBtn: document.getElementById('compress-options-cancel') as HTMLElement | null,
+    closeBtn: document.getElementById('compress-options-close') as HTMLElement | null,
+  };
+}
+
+function updateCompressOptionsVisibility() {
+  const els = getCompressOptionsElements();
+  if (!els.formatSelect) return;
+
+  const fmt = els.formatSelect.value;
+  const is7z = fmt === '7z';
+  const isZip = fmt === 'zip';
+  const isTar = fmt === 'tar' || fmt === 'tar.gz';
+  const supportsAdvanced = is7z || isZip;
+
+  // Method/dictionary: 7z and zip only
+  if (els.methodField) els.methodField.hidden = !supportsAdvanced;
+
+  // 7z-only fields
+  if (els.solidField) els.solidField.hidden = !is7z;
+  if (els.threadsField) els.threadsField.hidden = isTar;
+
+  // Encryption: 7z and zip only
+  if (els.encryptionFieldset) els.encryptionFieldset.hidden = !supportsAdvanced;
+
+  // Encrypt file names: 7z only
+  if (els.encryptNamesField) els.encryptNamesField.hidden = !is7z;
+
+  // Encryption method: zip only (7z always uses AES-256)
+  if (els.encryptionMethodField) els.encryptionMethodField.hidden = !isZip;
+
+  // Split volumes: 7z and zip
+  if (els.splitField) els.splitField.hidden = isTar;
+
+  // Level: tar doesn't support compression levels
+  if (els.levelSelect) {
+    els.levelSelect.disabled = isTar;
+    if (isTar) {
+      els.levelSelect.value = '0';
+    } else if (els.levelSelect.value === '0' && !els.levelSelect.dataset.userChoseStore) {
+      els.levelSelect.value = '5';
+    }
+  }
+
+  // Method options depend on format
+  if (els.methodSelect) {
+    const currentMethod = els.methodSelect.value;
+    els.methodSelect.innerHTML = '';
+
+    if (is7z) {
+      for (const m of ['LZMA2', 'LZMA', 'PPMd', 'BZip2', 'Deflate']) {
+        const opt = document.createElement('option');
+        opt.value = m;
+        opt.textContent = m;
+        els.methodSelect.appendChild(opt);
+      }
+    } else if (isZip) {
+      for (const m of ['Deflate', 'Deflate64', 'BZip2', 'LZMA']) {
+        const opt = document.createElement('option');
+        opt.value = m;
+        opt.textContent = m;
+        els.methodSelect.appendChild(opt);
+      }
+    }
+
+    // Try to preserve the previous selection
+    const options = Array.from(els.methodSelect.options);
+    const match = options.find((o) => o.value === currentMethod);
+    if (match) {
+      els.methodSelect.value = currentMethod;
+    } else if (options.length > 0) {
+      els.methodSelect.value = options[0].value;
+    }
+  }
+
+  const selectedMethod = els.methodSelect?.value || '';
+  const dictionarySupported = is7z || (isZip && selectedMethod === 'LZMA');
+  if (els.dictionaryField) els.dictionaryField.hidden = !supportsAdvanced || !dictionarySupported;
+  if (!dictionarySupported && els.dictionarySelect) {
+    els.dictionarySelect.value = '';
+  }
+
+  updateCompressPreviewPath();
+}
+
+function updateCompressPreviewPath() {
+  const els = getCompressOptionsElements();
+  if (!els.previewPath || !els.nameInput) return;
+  let name = els.nameInput.value.trim().replace(/[/\\]/g, '_');
+  if (!name) {
+    const extMap: Record<string, string> = {
+      zip: '.zip',
+      '7z': '.7z',
+      tar: '.tar',
+      'tar.gz': '.tar.gz',
+    };
+    const ext = extMap[els.formatSelect?.value || '7z'] || '.7z';
+    name = `Archive${ext}`;
+  }
+  els.previewPath.textContent = path.join(currentPath, name);
+}
+
+function showCompressOptionsModal() {
+  const els = getCompressOptionsElements();
+  if (!els.modal || !els.nameInput || !els.formatSelect) return;
+
+  const selectedPaths = Array.from(selectedItems);
+  if (selectedPaths.length === 0) {
+    showToast('No items selected', 'Error', 'error');
+    return;
+  }
+
+  // Default archive name
+  let baseName: string;
+  if (selectedPaths.length === 1) {
+    const itemName = path.basename(selectedPaths[0]);
+    baseName = itemName.replace(/\.(tar\.gz|tgz|tar\.bz2|tar\.xz|[^/.]+)$/i, '');
+  } else {
+    baseName = `${path.basename(currentPath)}_${selectedPaths.length}_items`;
+  }
+
+  // Reset form to defaults
+  els.formatSelect.value = '7z';
+  els.nameInput.value = `${baseName}.7z`;
+  if (els.levelSelect) els.levelSelect.value = '5';
+  if (els.levelSelect) delete els.levelSelect.dataset.userChoseStore;
+  if (els.methodSelect) els.methodSelect.value = 'LZMA2';
+  if (els.dictionarySelect) els.dictionarySelect.value = '';
+  if (els.solidSelect) els.solidSelect.value = '';
+  if (els.threadsSelect) els.threadsSelect.value = '';
+  if (els.passwordInput) els.passwordInput.value = '';
+  if (els.passwordConfirm) els.passwordConfirm.value = '';
+  if (els.passwordInput) els.passwordInput.type = 'password';
+  if (els.passwordConfirm) els.passwordConfirm.type = 'password';
+  if (els.encryptionMethodSelect) els.encryptionMethodSelect.value = 'AES256';
+  if (els.encryptNamesCheck) els.encryptNamesCheck.checked = false;
+  if (els.splitSelect) els.splitSelect.value = '';
+
+  updateCompressOptionsVisibility();
+
+  els.modal.style.display = 'flex';
+  activateModal(els.modal);
+  els.nameInput.focus();
+  els.nameInput.select();
+}
+
+function hideCompressOptionsModal() {
+  const els = getCompressOptionsElements();
+  if (els.modal) {
+    els.modal.style.display = 'none';
+    deactivateModal(els.modal);
+  }
+}
+
+async function confirmCompressOptions() {
+  const els = getCompressOptionsElements();
+  if (!els.nameInput || !els.formatSelect) return;
+
+  let archiveName = els.nameInput.value.trim().replace(/[/\\]/g, '_');
+  if (!archiveName) {
+    showToast('Enter an archive name', 'Missing Name', 'warning');
+    els.nameInput.focus();
+    return;
+  }
+
+  const format = els.formatSelect.value;
+  const isTarFormat = format === 'tar' || format === 'tar.gz';
+
+  // Ensure archive name ends with correct extension for the selected format
+  const extMap: Record<string, string> = {
+    zip: '.zip',
+    '7z': '.7z',
+    tar: '.tar',
+    'tar.gz': '.tar.gz',
+  };
+  const expectedExt = extMap[format] || '.7z';
+  if (!archiveName.toLowerCase().endsWith(expectedExt)) {
+    // Strip any known archive extension then add the correct one
+    archiveName = archiveName.replace(/\.(zip|7z|tar\.gz|tgz|tar)$/i, '') + expectedExt;
+  }
+
+  const password = (!isTarFormat && els.passwordInput?.value) || '';
+  const passwordConfirm = (!isTarFormat && els.passwordConfirm?.value) || '';
+
+  if (password && password !== passwordConfirm) {
+    showToast('Passwords do not match', 'Password Mismatch', 'warning');
+    els.passwordConfirm?.focus();
+    return;
+  }
+
+  const advancedOptions: Record<string, unknown> = {};
+
+  if (!isTarFormat) {
+    const level = els.levelSelect?.value;
+    if (level != null && level !== '5') {
+      advancedOptions.compressionLevel = parseInt(level, 10);
+    }
+
+    const defaultMethodForFormat: Record<string, string> = { '7z': 'LZMA2', zip: 'Deflate' };
+    const method = els.methodSelect?.value || defaultMethodForFormat[format] || '';
+    if (method && method !== defaultMethodForFormat[format]) {
+      advancedOptions.method = method;
+    }
+
+    const dict = els.dictionarySelect?.value;
+    const dictionarySupported = format === '7z' || (format === 'zip' && method === 'LZMA');
+    if (dict && dictionarySupported) advancedOptions.dictionarySize = dict;
+
+    if (format === '7z') {
+      const solid = els.solidSelect?.value;
+      if (solid) advancedOptions.solidBlockSize = solid;
+    }
+
+    const threads = els.threadsSelect?.value;
+    if (threads) advancedOptions.cpuThreads = threads;
+  }
+
+  if (password) {
+    advancedOptions.password = password;
+    if (format === '7z' && els.encryptNamesCheck?.checked) {
+      advancedOptions.encryptFileNames = true;
+    }
+    if (format === 'zip') {
+      advancedOptions.encryptionMethod = els.encryptionMethodSelect?.value || 'AES256';
+    }
+  }
+
+  if (!isTarFormat) {
+    const split = els.splitSelect?.value;
+    if (split) advancedOptions.splitVolume = split;
+  }
+
+  hideCompressOptionsModal();
+  await handleCompress(
+    format,
+    archiveName,
+    Object.keys(advancedOptions).length > 0 ? advancedOptions : undefined
+  );
+}
+
+function setupCompressOptionsModal() {
+  const els = getCompressOptionsElements();
+  if (!els.modal) return;
+
+  els.confirmBtn?.addEventListener('click', () => {
+    void confirmCompressOptions();
+  });
+
+  els.cancelBtn?.addEventListener('click', hideCompressOptionsModal);
+  els.closeBtn?.addEventListener('click', hideCompressOptionsModal);
+
+  // Close on overlay click
+  els.modal.addEventListener('click', (e) => {
+    if (e.target === els.modal) hideCompressOptionsModal();
+  });
+
+  // Format change updates extension in name and visibility
+  els.formatSelect?.addEventListener('change', () => {
+    const extMap: Record<string, string> = {
+      zip: '.zip',
+      '7z': '.7z',
+      tar: '.tar',
+      'tar.gz': '.tar.gz',
+    };
+    const ext = extMap[els.formatSelect!.value] || '.7z';
+    if (els.nameInput) {
+      const current = els.nameInput.value;
+      const withoutExt = current.replace(/\.(zip|7z|tar\.gz|tgz|tar)$/i, '');
+      els.nameInput.value = `${withoutExt}${ext}`;
+    }
+    // Clear userChoseStore so it doesn't leak across format switches
+    if (els.levelSelect) delete els.levelSelect.dataset.userChoseStore;
+    updateCompressOptionsVisibility();
+  });
+
+  els.nameInput?.addEventListener('input', updateCompressPreviewPath);
+  els.methodSelect?.addEventListener('change', updateCompressOptionsVisibility);
+
+  // Track user intentionally choosing Store level
+  els.levelSelect?.addEventListener('change', () => {
+    if (els.levelSelect) {
+      els.levelSelect.dataset.userChoseStore = els.levelSelect.value === '0' ? '1' : '';
+    }
+  });
+
+  // Password show/hide toggle
+  els.passwordToggle?.addEventListener('click', () => {
+    if (els.passwordInput) {
+      const show = els.passwordInput.type === 'password';
+      els.passwordInput.type = show ? 'text' : 'password';
+      if (els.passwordConfirm) {
+        els.passwordConfirm.type = show ? 'text' : 'password';
+      }
+      if (els.passwordToggle) {
+        els.passwordToggle.title = show ? 'Hide password' : 'Show password';
+      }
+    }
+  });
+
+  // Keyboard: Enter to confirm, Escape to cancel
+  els.modal.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      e.stopPropagation();
+      hideCompressOptionsModal();
+    } else if (e.key === 'Enter' && !e.shiftKey) {
+      const target = e.target as HTMLElement;
+      if (target.tagName !== 'SELECT') {
+        e.preventDefault();
+        void confirmCompressOptions();
+      }
+    }
+  });
 }
 
 function isArchivePath(filePath: string): boolean {
@@ -8183,6 +8529,9 @@ extractModal?.addEventListener('click', (e) => {
     hideExtractModal();
   }
 });
+
+setupCompressOptionsModal();
+
 document.getElementById('rebuild-index-btn')?.addEventListener('click', rebuildIndex);
 document.getElementById('restart-admin-btn')?.addEventListener('click', restartAsAdmin);
 document.getElementById('check-updates-btn')?.addEventListener('click', checkForUpdates);
@@ -8250,40 +8599,6 @@ if (shortcutsModal) {
   });
 }
 
-document.addEventListener('keydown', (e) => {
-  if (e.code === 'Space' && !e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey) {
-    const activeElement = document.activeElement;
-    if (
-      activeElement &&
-      (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')
-    ) {
-      return;
-    }
-
-    if (isModalOpen()) {
-      return;
-    }
-
-    e.preventDefault();
-    if (isQuickLookOpen()) {
-      closeQuickLook();
-    } else {
-      showQuickLook();
-    }
-  }
-
-  if (e.key === 'Escape') {
-    const extractModal = document.getElementById('extract-modal');
-    if (extractModal && extractModal.style.display === 'flex') {
-      e.preventDefault();
-      hideExtractModal();
-      return;
-    }
-    if (isQuickLookOpen()) {
-      closeQuickLook();
-    }
-  }
-});
 const searchInputElement = getSearchInputElement();
 if (searchInputElement) {
   searchInputElement.addEventListener('focus', () => {

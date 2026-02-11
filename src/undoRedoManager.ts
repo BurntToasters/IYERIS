@@ -386,7 +386,7 @@ export function setupUndoRedoHandlers(): void {
             }
           }
           action.data.sourcePaths = newMovedPaths;
-          undoStack.push(action);
+          undoStack.push({ ...action, data: { ...action.data, sourcePaths: newMovedPaths } });
           logger.debug('[Redo] Moved to destination');
           return { success: true };
         }

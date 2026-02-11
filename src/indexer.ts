@@ -177,16 +177,9 @@ export class FileIndexer {
 
     if (EXCLUDE_FILES.has(filename)) return true;
 
-    const lowerPath = filePath.toLowerCase();
-    for (const segment of EXCLUDE_SEGMENTS) {
-      const idx = lowerPath.indexOf(segment);
-      if (idx === -1) continue;
-      const before = idx === 0 || lowerPath[idx - 1] === '/' || lowerPath[idx - 1] === '\\';
-      const after =
-        idx + segment.length === lowerPath.length ||
-        lowerPath[idx + segment.length] === '/' ||
-        lowerPath[idx + segment.length] === '\\';
-      if (before && after) return true;
+    const segments = filePath.toLowerCase().split(/[/\\]/);
+    for (const seg of segments) {
+      if (EXCLUDE_SEGMENTS.has(seg)) return true;
     }
     return false;
   }

@@ -271,7 +271,18 @@ export function setupSettingsHandlers(createTray: () => Promise<void>): void {
       const sanitized = sanitizeSettings(settings, defaults);
       const settingsWithTimestamp = { ...sanitized, _timestamp: Date.now() };
       const data = JSON.stringify(settingsWithTimestamp, null, 2);
-      fsSync.writeFileSync(settingsPath, data, 'utf8');
+      const tmpPath = `${settingsPath}.sync-tmp`;
+      fsSync.writeFileSync(tmpPath, data, 'utf8');
+      try {
+        fsSync.renameSync(tmpPath, settingsPath);
+      } catch {
+        fsSync.copyFileSync(tmpPath, settingsPath);
+        try {
+          fsSync.unlinkSync(tmpPath);
+        } catch {
+          /* ignore */
+        }
+      }
       cachedSettings = settingsWithTimestamp;
       settingsCacheTime = Date.now();
       event.returnValue = { success: true };

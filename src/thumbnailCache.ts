@@ -60,20 +60,27 @@ async function enforceCacheSize(): Promise<void> {
     } catch {
       return;
     }
-
+    const files: string[] = [];
+    const dirs: string[] = [];
     for (const entry of list) {
       const fullPath = path.join(dirPath, entry.name);
       if (entry.isDirectory()) {
-        await walk(fullPath);
-        continue;
+        dirs.push(fullPath);
+      } else {
+        files.push(fullPath);
       }
-      try {
-        const stats = await fs.stat(fullPath);
-        totalSize += stats.size;
-        entries.push({ path: fullPath, size: stats.size, atimeMs: stats.atimeMs });
-      } catch (error) {
-        ignoreError(error);
+    }
+    const statResults = await Promise.allSettled(
+      files.map((f) => fs.stat(f).then((s) => ({ path: f, size: s.size, atimeMs: s.atimeMs })))
+    );
+    for (const result of statResults) {
+      if (result.status === 'fulfilled') {
+        totalSize += result.value.size;
+        entries.push(result.value);
       }
+    }
+    for (const d of dirs) {
+      await walk(d);
     }
   }
 
@@ -207,15 +214,25 @@ export async function getThumbnailCacheSize(): Promise<{
 
     async function walkDir(dirPath: string): Promise<void> {
       const entries = await fs.readdir(dirPath, { withFileTypes: true });
+      const files: string[] = [];
+      const dirs: string[] = [];
       for (const entry of entries) {
         const fullPath = path.join(dirPath, entry.name);
         if (entry.isDirectory()) {
-          await walkDir(fullPath);
+          dirs.push(fullPath);
         } else {
-          const stats = await fs.stat(fullPath);
-          totalSize += stats.size;
+          files.push(fullPath);
+        }
+      }
+      const statResults = await Promise.allSettled(files.map((f) => fs.stat(f)));
+      for (const result of statResults) {
+        if (result.status === 'fulfilled') {
+          totalSize += result.value.size;
           fileCount++;
         }
+      }
+      for (const d of dirs) {
+        await walkDir(d);
       }
     }
 

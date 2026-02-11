@@ -20,6 +20,6 @@ export function setHtml(element: Element | null, html: string): void {
 
 export function clearHtml(element: Element | null): void {
   if (element) {
-    element.innerHTML = '';
+    element.replaceChildren();
   }
 }

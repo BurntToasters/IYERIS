@@ -1082,6 +1082,22 @@
             />
             TAR.GZ
           </div>
+          <div class="context-menu-separator" role="separator"></div>
+          <div
+            class="context-menu-item"
+            data-action="compress-advanced"
+            role="menuitem"
+            tabindex="0"
+          >
+            <img
+              src="../assets/twemoji/2699.svg"
+              class="twemoji"
+              alt=""
+              draggable="false"
+              aria-hidden="true"
+            />
+            Other...
+          </div>
         </div>
       </div>
       <div
@@ -1308,6 +1324,174 @@
         <div class="modal-footer">
           <button class="modal-button" id="dialog-cancel" style="display: none">Cancel</button>
           <button class="modal-button primary" id="dialog-ok">OK</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-overlay" id="compress-options-modal" style="display: none">
+      <div
+        class="modal glass-panel compress-options-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="compress-options-title"
+      >
+        <div class="modal-header">
+          <h3 id="compress-options-title">
+            <img src="../assets/twemoji/1f5dc.svg" class="twemoji" alt="" draggable="false" />
+            Advanced Compression
+          </h3>
+          <button class="modal-close" id="compress-options-close" aria-label="Close">✕</button>
+        </div>
+        <div class="modal-content compress-options-content">
+          <div class="compress-options-grid">
+            <div class="compress-options-left">
+              <div class="compress-option-field">
+                <label class="compress-option-label" for="compress-archive-name">Archive name</label>
+                <input
+                  type="text"
+                  id="compress-archive-name"
+                  class="settings-input"
+                  placeholder="MyArchive.7z"
+                />
+              </div>
+              <div class="compress-option-field">
+                <label class="compress-option-label" for="compress-format">Archive format</label>
+                <select id="compress-format" class="settings-select">
+                  <option value="7z">7z</option>
+                  <option value="zip">zip</option>
+                  <option value="tar">tar</option>
+                  <option value="tar.gz">tar.gz</option>
+                </select>
+              </div>
+              <div class="compress-option-field">
+                <label class="compress-option-label" for="compress-level">Compression level</label>
+                <select id="compress-level" class="settings-select">
+                  <option value="0">Store (no compression)</option>
+                  <option value="1">Fastest</option>
+                  <option value="3">Fast</option>
+                  <option value="5" selected>Normal</option>
+                  <option value="7">Maximum</option>
+                  <option value="9">Ultra</option>
+                </select>
+              </div>
+              <div class="compress-option-field" id="compress-method-field">
+                <label class="compress-option-label" for="compress-method">Compression method</label>
+                <select id="compress-method" class="settings-select">
+                  <option value="LZMA2" selected>LZMA2</option>
+                  <option value="LZMA">LZMA</option>
+                  <option value="PPMd">PPMd</option>
+                  <option value="BZip2">BZip2</option>
+                  <option value="Deflate">Deflate</option>
+                  <option value="Deflate64">Deflate64</option>
+                </select>
+              </div>
+              <div class="compress-option-field" id="compress-dictionary-field">
+                <label class="compress-option-label" for="compress-dictionary">Dictionary size</label>
+                <select id="compress-dictionary" class="settings-select">
+                  <option value="">Default</option>
+                  <option value="64k">64 KB</option>
+                  <option value="256k">256 KB</option>
+                  <option value="1m">1 MB</option>
+                  <option value="4m">4 MB</option>
+                  <option value="8m">8 MB</option>
+                  <option value="16m">16 MB</option>
+                  <option value="32m">32 MB</option>
+                  <option value="64m">64 MB</option>
+                  <option value="128m">128 MB</option>
+                </select>
+              </div>
+              <div class="compress-option-field" id="compress-solid-field">
+                <label class="compress-option-label" for="compress-solid">Solid block size</label>
+                <select id="compress-solid" class="settings-select">
+                  <option value="" selected>Default</option>
+                  <option value="off">Non-solid</option>
+                  <option value="1m">1 MB</option>
+                  <option value="16m">16 MB</option>
+                  <option value="128m">128 MB</option>
+                  <option value="1g">1 GB</option>
+                  <option value="on">Solid</option>
+                </select>
+              </div>
+              <div class="compress-option-field" id="compress-threads-field">
+                <label class="compress-option-label" for="compress-threads">CPU threads</label>
+                <select id="compress-threads" class="settings-select">
+                  <option value="" selected>Auto</option>
+                  <option value="1">1</option>
+                  <option value="2">2</option>
+                  <option value="4">4</option>
+                  <option value="8">8</option>
+                  <option value="16">16</option>
+                </select>
+              </div>
+            </div>
+            <div class="compress-options-right">
+              <fieldset class="compress-option-fieldset" id="compress-encryption-fieldset">
+                <legend>Encryption</legend>
+                <div class="compress-option-field">
+                  <label class="compress-option-label" for="compress-password">Password</label>
+                  <div class="setting-input-group">
+                    <input
+                      type="password"
+                      id="compress-password"
+                      class="settings-input"
+                      placeholder="Enter password"
+                      autocomplete="off"
+                    />
+                    <button
+                      class="modal-button compact"
+                      id="compress-password-toggle"
+                      title="Show password"
+                      type="button"
+                    >
+                      <img src="../assets/twemoji/1f441.svg" class="twemoji" alt="👁" draggable="false" />
+                    </button>
+                  </div>
+                </div>
+                <div class="compress-option-field">
+                  <label class="compress-option-label" for="compress-password-confirm">Confirm password</label>
+                  <input
+                    type="password"
+                    id="compress-password-confirm"
+                    class="settings-input"
+                    placeholder="Re-enter password"
+                    autocomplete="off"
+                  />
+                </div>
+                <div class="compress-option-field" id="compress-encryption-method-field">
+                  <label class="compress-option-label" for="compress-encryption-method">Encryption method</label>
+                  <select id="compress-encryption-method" class="settings-select">
+                    <option value="AES256" selected>AES-256</option>
+                    <option value="ZipCrypto">ZipCrypto</option>
+                  </select>
+                </div>
+                <div class="compress-option-check" id="compress-encrypt-names-field">
+                  <label>
+                    <input type="checkbox" id="compress-encrypt-names" />
+                    <span>Encrypt file names</span>
+                  </label>
+                </div>
+              </fieldset>
+              <div class="compress-option-field" id="compress-split-field">
+                <label class="compress-option-label" for="compress-split">Split to volumes</label>
+                <select id="compress-split" class="settings-select">
+                  <option value="" selected>No splitting</option>
+                  <option value="10m">10 MB</option>
+                  <option value="100m">100 MB</option>
+                  <option value="700m">700 MB (CD)</option>
+                  <option value="4092m">4092 MB (FAT32)</option>
+                  <option value="4480m">4480 MB (DVD)</option>
+                </select>
+              </div>
+              <div class="compress-option-preview" id="compress-option-preview">
+                <span class="compress-option-preview-label">Output:</span>
+                <span class="compress-option-preview-path" id="compress-preview-path"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="modal-button" id="compress-options-cancel">Cancel</button>
+          <button class="modal-button primary" id="compress-options-confirm">Compress</button>
         </div>
       </div>
     </div>

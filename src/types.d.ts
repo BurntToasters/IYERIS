@@ -258,6 +258,18 @@ export interface IndexEntry {
   modified: Date;
 }
 
+export interface AdvancedCompressOptions {
+  compressionLevel?: number;
+  method?: string;
+  dictionarySize?: string;
+  solidBlockSize?: string;
+  cpuThreads?: string;
+  password?: string;
+  encryptionMethod?: string;
+  encryptFileNames?: boolean;
+  splitVolume?: string;
+}
+
 export interface IndexStatus {
   isIndexing: boolean;
   totalFiles: number;
@@ -483,7 +495,8 @@ export interface ElectronAPI {
     sourcePaths: string[],
     outputPath: string,
     format?: string,
-    operationId?: string
+    operationId?: string,
+    advancedOptions?: AdvancedCompressOptions
   ) => Promise<ApiResponse>;
   extractArchive: (
     archivePath: string,

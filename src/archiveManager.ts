@@ -2,7 +2,7 @@ import { ipcMain, IpcMainInvokeEvent } from 'electron';
 import * as path from 'path';
 import { promises as fs } from 'fs';
 import * as fsSync from 'fs';
-import type { ApiResponse } from './types';
+import type { ApiResponse, AdvancedCompressOptions } from './types';
 import { getMainWindow } from './appState';
 import { isPathSafe, getErrorMessage } from './security';
 import { ignoreError } from './shared';
@@ -40,6 +40,82 @@ interface ArchiveProcess {
 }
 
 const activeArchiveProcesses = new Map<string, ArchiveProcess>();
+
+const SAFE_METHOD_VALUES = new Set([
+  'LZMA',
+  'LZMA2',
+  'PPMd',
+  'BZip2',
+  'Deflate',
+  'Deflate64',
+  'Copy',
+]);
+const ZIP_METHODS_WITH_DICTIONARY = new Set(['LZMA', 'PPMd']);
+const SAFE_SIZE_RE = /^\d{1,5}[kmg]?$/i;
+const SAFE_THREADS_RE = /^[1-9]\d{0,1}$/;
+const SAFE_ENCRYPTION_METHODS = new Set(['AES256', 'ZipCrypto']);
+
+export function buildAdvancedRawFlags(
+  opts: AdvancedCompressOptions | undefined,
+  format: string
+): string[] {
+  const flags: string[] = [];
+  if (!opts) return flags;
+
+  if (typeof opts.compressionLevel === 'number' && Number.isFinite(opts.compressionLevel)) {
+    const level = Math.max(0, Math.min(9, Math.round(opts.compressionLevel)));
+    flags.push(`-mx=${level}`);
+  }
+
+  const safeMethod =
+    typeof opts.method === 'string' && SAFE_METHOD_VALUES.has(opts.method) ? opts.method : null;
+
+  if (safeMethod) {
+    flags.push(format === 'zip' ? `-mm=${safeMethod}` : `-m0=${safeMethod}`);
+  }
+
+  if (opts.dictionarySize && SAFE_SIZE_RE.test(opts.dictionarySize)) {
+    if (format === 'zip') {
+      if (safeMethod && ZIP_METHODS_WITH_DICTIONARY.has(safeMethod)) {
+        flags.push(`-md=${opts.dictionarySize}`);
+      }
+    } else {
+      flags.push(`-md=${opts.dictionarySize}`);
+    }
+  }
+
+  if (format === '7z') {
+    if (opts.solidBlockSize === 'on' || opts.solidBlockSize === 'off') {
+      flags.push(`-ms=${opts.solidBlockSize}`);
+    } else if (opts.solidBlockSize && SAFE_SIZE_RE.test(opts.solidBlockSize)) {
+      flags.push(`-ms=${opts.solidBlockSize}`);
+    }
+  }
+
+  if (opts.cpuThreads && SAFE_THREADS_RE.test(opts.cpuThreads)) {
+    flags.push(`-mmt=${opts.cpuThreads}`);
+  }
+
+  if (opts.password && opts.password.length > 0) {
+    flags.push(`-p${opts.password}`);
+    if (format === '7z' && opts.encryptFileNames) {
+      flags.push('-mhe=on');
+    }
+    if (format === 'zip') {
+      const safeEncryptionMethod =
+        opts.encryptionMethod && SAFE_ENCRYPTION_METHODS.has(opts.encryptionMethod)
+          ? opts.encryptionMethod
+          : 'AES256';
+      flags.push(`-mem=${safeEncryptionMethod}`);
+    }
+  }
+
+  if (opts.splitVolume && SAFE_SIZE_RE.test(opts.splitVolume)) {
+    flags.push(`-v${opts.splitVolume}`);
+  }
+
+  return flags;
+}
 
 // prevent path traversal in archive
 async function assertArchiveEntriesSafe(archivePath: string, destPath: string): Promise<void> {
@@ -247,7 +323,8 @@ export function setupArchiveHandlers(): void {
       sourcePaths: string[],
       outputPath: string,
       format: string = 'zip',
-      operationId?: string
+      operationId?: string,
+      advancedOptions?: AdvancedCompressOptions
     ): Promise<ApiResponse> => {
       try {
         if (!isTrustedIpcEvent(event, 'compress-files')) {
@@ -468,7 +545,12 @@ export function setupArchiveHandlers(): void {
           const options: SevenZipOptions = {
             $bin: sevenZipPath,
             recursive: true,
-            $raw: ['-xr!My Music', '-xr!My Pictures', '-xr!My Videos'],
+            $raw: [
+              '-xr!My Music',
+              '-xr!My Pictures',
+              '-xr!My Videos',
+              ...buildAdvancedRawFlags(advancedOptions, format),
+            ],
           };
 
           const seven = Seven.add(outputPath, sourcePaths, options);

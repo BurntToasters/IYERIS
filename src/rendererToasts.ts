@@ -62,9 +62,9 @@ export function createToastManager(options: ToastOptions) {
       setTimeout(() => {
         if (container.contains(toast)) {
           container.removeChild(toast);
-          visibleToastCount--;
-          processToastQueue();
         }
+        visibleToastCount--;
+        processToastQueue();
       }, 300);
     };
 

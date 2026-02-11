@@ -231,18 +231,31 @@ export async function createPdfViewer(
     if (zoomInBtn) zoomInBtn.disabled = zoomIndex >= ZOOM_LEVELS.length - 1;
   }
 
+  let pendingRender: { animate: boolean } | null = null;
+
   async function renderCurrentPage(animate: boolean): Promise<void> {
-    if (!doc || destroyed || rendering) return;
+    if (!doc || destroyed) return;
+    if (rendering) {
+      pendingRender = { animate };
+      return;
+    }
     rendering = true;
 
     try {
       if (animate) {
         pageWrapper.classList.add('pdfjs-transitioning');
-        await new Promise((r) => setTimeout(r, 150));
+        await new Promise<void>((resolve) => {
+          const onEnd = () => {
+            pageWrapper.removeEventListener('transitionend', onEnd);
+            resolve();
+          };
+          pageWrapper.addEventListener('transitionend', onEnd);
+          setTimeout(onEnd, 200);
+        });
       }
 
       await renderPage(
-        doc,
+        doc!,
         currentPage,
         canvas,
         textLayerEl,
@@ -259,6 +272,11 @@ export async function createPdfViewer(
       if (animate) pageWrapper.classList.remove('pdfjs-transitioning');
     } finally {
       rendering = false;
+      if (pendingRender) {
+        const next = pendingRender;
+        pendingRender = null;
+        void renderCurrentPage(next.animate);
+      }
     }
   }
 

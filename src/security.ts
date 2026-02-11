@@ -3,6 +3,37 @@ import { fileURLToPath, pathToFileURL } from 'url';
 import { ignoreError } from './shared';
 export { escapeHtml, getErrorMessage } from './shared';
 
+const WINDOWS_RESERVED_NAMES = new Set([
+  'con',
+  'prn',
+  'aux',
+  'nul',
+  'com1',
+  'com2',
+  'com3',
+  'com4',
+  'com5',
+  'com6',
+  'com7',
+  'com8',
+  'com9',
+  'lpt1',
+  'lpt2',
+  'lpt3',
+  'lpt4',
+  'lpt5',
+  'lpt6',
+  'lpt7',
+  'lpt8',
+  'lpt9',
+]);
+
+const WINDOWS_RESTRICTED_PATHS = [
+  'c:\\windows\\system32\\config\\sam',
+  'c:\\windows\\system32\\config\\system',
+  'c:\\windows\\system32\\config\\security',
+];
+
 export function isPathSafe(
   inputPath: string,
   platform: NodeJS.Platform = process.platform
@@ -56,30 +87,6 @@ export function isPathSafe(
       return false;
     }
 
-    const reservedNames = new Set([
-      'con',
-      'prn',
-      'aux',
-      'nul',
-      'com1',
-      'com2',
-      'com3',
-      'com4',
-      'com5',
-      'com6',
-      'com7',
-      'com8',
-      'com9',
-      'lpt1',
-      'lpt2',
-      'lpt3',
-      'lpt4',
-      'lpt5',
-      'lpt6',
-      'lpt7',
-      'lpt8',
-      'lpt9',
-    ]);
     const startIndex = isUnc ? 2 : parts[0]?.includes(':') ? 1 : 0;
     for (let i = startIndex; i < parts.length; i++) {
       const part = parts[i];
@@ -88,7 +95,7 @@ export function isPathSafe(
         return false;
       }
       const base = trimmed.split('.')[0].toLowerCase();
-      if (reservedNames.has(base)) {
+      if (WINDOWS_RESERVED_NAMES.has(base)) {
         return false;
       }
       if (part.endsWith(' ') || part.endsWith('.')) {
@@ -96,13 +103,7 @@ export function isPathSafe(
       }
     }
 
-    const restrictedPaths = [
-      'c:\\windows\\system32\\config\\sam',
-      'c:\\windows\\system32\\config\\system',
-      'c:\\windows\\system32\\config\\security',
-    ];
-
-    for (const restricted of restrictedPaths) {
+    for (const restricted of WINDOWS_RESTRICTED_PATHS) {
       if (lowerPath === restricted || lowerPath.startsWith(restricted + '\\')) {
         return false;
       }

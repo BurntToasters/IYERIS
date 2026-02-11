@@ -9,6 +9,7 @@ import type {
   SearchFilters,
   DirectoryContentsProgress,
   SpecialDirectory,
+  AdvancedCompressOptions,
 } from './types';
 
 const electronAPI: ElectronAPI = {
@@ -156,8 +157,17 @@ const electronAPI: ElectronAPI = {
     sourcePaths: string[],
     outputPath: string,
     format?: string,
-    operationId?: string
-  ) => ipcRenderer.invoke('compress-files', sourcePaths, outputPath, format, operationId),
+    operationId?: string,
+    advancedOptions?: AdvancedCompressOptions
+  ) =>
+    ipcRenderer.invoke(
+      'compress-files',
+      sourcePaths,
+      outputPath,
+      format,
+      operationId,
+      advancedOptions
+    ),
   extractArchive: (archivePath: string, destPath: string, operationId?: string) =>
     ipcRenderer.invoke('extract-archive', archivePath, destPath, operationId),
   cancelArchiveOperation: (operationId: string) =>
