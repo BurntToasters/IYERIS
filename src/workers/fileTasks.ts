@@ -373,6 +373,30 @@ function setHiddenCache(filePath: string, isHidden: boolean): void {
   hiddenAttrCache.set(filePath, { isHidden, timestamp: Date.now() });
 }
 
+type DateRangeFilter = {
+  dateFrom: Date | null;
+  dateTo: Date | null;
+};
+
+function parseDateRange(filters?: SearchFilters): DateRangeFilter {
+  const dateFrom = filters?.dateFrom ? new Date(filters.dateFrom) : null;
+  const dateTo = filters?.dateTo ? new Date(filters.dateTo) : null;
+  if (dateTo) dateTo.setHours(23, 59, 59, 999);
+  return { dateFrom, dateTo };
+}
+
+function matchesDateRange(value: Date, range: DateRangeFilter): boolean {
+  if (range.dateFrom && value < range.dateFrom) return false;
+  if (range.dateTo && value > range.dateTo) return false;
+  return true;
+}
+
+function normalizeModifiedDate(value: number | string | Date | undefined): Date {
+  if (value instanceof Date) return value;
+  if (value !== undefined) return new Date(value);
+  return new Date(0);
+}
+
 async function readIndexData(indexPath: string, emptyMessage: string): Promise<IndexFileData> {
   try {
     const stats = await fs.stat(indexPath);
@@ -640,14 +664,68 @@ function matchesContentFilters(
   if (minSize !== undefined && stats.size < minSize) return false;
   if (maxSize !== undefined && stats.size > maxSize) return false;
 
-  const dateFrom = filters?.dateFrom ? new Date(filters.dateFrom) : null;
-  const dateTo = filters?.dateTo ? new Date(filters.dateTo) : null;
-  if (dateTo) dateTo.setHours(23, 59, 59, 999);
+  return matchesDateRange(stats.mtime, parseDateRange(filters));
+}
 
-  if (dateFrom && stats.mtime < dateFrom) return false;
-  if (dateTo && stats.mtime > dateTo) return false;
+interface PendingContentSearchItem {
+  filePath: string;
+  fileName: string;
+  size: number;
+  modified: Date;
+}
 
-  return true;
+async function flushContentSearchBatch(
+  batch: PendingContentSearchItem[],
+  searchQuery: string,
+  results: ContentSearchResult[],
+  maxResults: number,
+  operationId?: string
+): Promise<void> {
+  if (batch.length === 0 || results.length >= maxResults) {
+    batch.length = 0;
+    return;
+  }
+
+  const searchResults = await Promise.allSettled(
+    batch.map(({ filePath, size }) => searchFileContent(filePath, searchQuery, operationId, size))
+  );
+  const foundItems: Array<PendingContentSearchItem & { context?: string; lineNumber?: number }> =
+    [];
+
+  for (let i = 0; i < searchResults.length; i++) {
+    if (results.length + foundItems.length >= maxResults) break;
+    const result = searchResults[i];
+    if (result.status === 'fulfilled' && result.value.found) {
+      foundItems.push({
+        ...batch[i],
+        context: result.value.context,
+        lineNumber: result.value.lineNumber,
+      });
+    }
+  }
+
+  if (foundItems.length > 0) {
+    const hiddenStates = await Promise.all(
+      foundItems.map(({ filePath, fileName }) => isHidden(filePath, fileName))
+    );
+    for (let i = 0; i < foundItems.length; i++) {
+      if (results.length >= maxResults) break;
+      const item = foundItems[i];
+      results.push({
+        name: item.fileName,
+        path: item.filePath,
+        isDirectory: false,
+        isFile: true,
+        size: item.size,
+        modified: item.modified,
+        isHidden: hiddenStates[i],
+        matchContext: item.context,
+        matchLineNumber: item.lineNumber,
+      });
+    }
+  }
+
+  batch.length = 0;
 }
 
 async function searchFileContent(
@@ -920,14 +998,9 @@ async function searchContentList(
   const { files, query, maxResults, filters } = payload;
   const results: ContentSearchResult[] = [];
   const searchQuery = String(query || '').toLowerCase();
-
+  const dateRange = parseDateRange(filters);
   const CONTENT_SEARCH_BATCH_SIZE = 8;
-  const batch: Array<{
-    item: { path: string; size: number; name?: string; modified?: number | string | Date };
-    filePath: string;
-    fileName: string;
-    modified: Date;
-  }> = [];
+  const batch: PendingContentSearchItem[] = [];
 
   for (const item of files || []) {
     if (results.length >= maxResults) break;
@@ -940,76 +1013,18 @@ async function searchContentList(
 
     if (filters?.minSize !== undefined && item.size < filters.minSize) continue;
     if (filters?.maxSize !== undefined && item.size > filters.maxSize) continue;
-    const modifiedValue = item.modified;
-    const modified =
-      modifiedValue instanceof Date
-        ? modifiedValue
-        : modifiedValue !== undefined
-          ? new Date(modifiedValue)
-          : new Date(0);
-    const dateFrom = filters?.dateFrom ? new Date(filters.dateFrom) : null;
-    const dateTo = filters?.dateTo ? new Date(filters.dateTo) : null;
-    if (dateTo) dateTo.setHours(23, 59, 59, 999);
-    if (dateFrom && modified < dateFrom) continue;
-    if (dateTo && modified > dateTo) continue;
+    const modified = normalizeModifiedDate(item.modified);
+    if (!matchesDateRange(modified, dateRange)) continue;
 
-    batch.push({ item, filePath, fileName, modified });
+    batch.push({ filePath, fileName, size: item.size, modified });
 
     if (batch.length >= CONTENT_SEARCH_BATCH_SIZE) {
-      const searchResults = await Promise.allSettled(
-        batch.map(({ item, filePath }) =>
-          searchFileContent(filePath, searchQuery, operationId, item.size)
-        )
-      );
-
-      for (let i = 0; i < searchResults.length; i++) {
-        if (results.length >= maxResults) break;
-        const result = searchResults[i];
-        if (result.status === 'fulfilled' && result.value.found) {
-          const { item, filePath, fileName, modified } = batch[i];
-          results.push({
-            name: fileName,
-            path: filePath,
-            isDirectory: false,
-            isFile: true,
-            size: item.size,
-            modified,
-            isHidden: await isHidden(filePath, fileName),
-            matchContext: result.value.context,
-            matchLineNumber: result.value.lineNumber,
-          });
-        }
-      }
-
-      batch.length = 0;
+      await flushContentSearchBatch(batch, searchQuery, results, maxResults, operationId);
     }
   }
 
   if (batch.length > 0 && results.length < maxResults) {
-    const searchResults = await Promise.allSettled(
-      batch.map(({ item, filePath }) =>
-        searchFileContent(filePath, searchQuery, operationId, item.size)
-      )
-    );
-
-    for (let i = 0; i < searchResults.length; i++) {
-      if (results.length >= maxResults) break;
-      const result = searchResults[i];
-      if (result.status === 'fulfilled' && result.value.found) {
-        const { item, filePath, fileName, modified } = batch[i];
-        results.push({
-          name: fileName,
-          path: filePath,
-          isDirectory: false,
-          isFile: true,
-          size: item.size,
-          modified,
-          isHidden: await isHidden(filePath, fileName),
-          matchContext: result.value.context,
-          matchLineNumber: result.value.lineNumber,
-        });
-      }
-    }
+    await flushContentSearchBatch(batch, searchQuery, results, maxResults, operationId);
   }
 
   return results;
@@ -1022,6 +1037,7 @@ async function searchContentIndex(
   const { indexPath, query, maxResults, filters } = payload;
   const searchQuery = String(query || '').toLowerCase();
   const limit = Number.isFinite(maxResults) ? Math.max(1, maxResults) : 100;
+  const dateRange = parseDateRange(filters);
 
   const parsed = await readIndexData(
     indexPath,
@@ -1035,7 +1051,7 @@ async function searchContentIndex(
 
   const results: ContentSearchResult[] = [];
   const CONTENT_SEARCH_BATCH_SIZE = 8;
-  const batch: Array<{ filePath: string; fileName: string; size: number; modified: Date }> = [];
+  const batch: PendingContentSearchItem[] = [];
 
   for (const entry of indexEntries) {
     if (results.length >= limit) break;
@@ -1048,71 +1064,22 @@ async function searchContentIndex(
     const key = getTextExtensionKey(fileName);
     if (!TEXT_FILE_EXTENSIONS.has(key)) continue;
 
-    const modified =
-      item.modified instanceof Date
-        ? item.modified
-        : item.modified !== undefined
-          ? new Date(item.modified)
-          : new Date(0);
+    const modified = normalizeModifiedDate(item.modified);
     const sizeValue = typeof item.size === 'number' ? item.size : Number(item.size);
     const size = Number.isFinite(sizeValue) ? sizeValue : 0;
-    if (!matchesContentFilters({ size, mtime: modified }, filters)) continue;
+    if (filters?.minSize !== undefined && size < filters.minSize) continue;
+    if (filters?.maxSize !== undefined && size > filters.maxSize) continue;
+    if (!matchesDateRange(modified, dateRange)) continue;
 
     batch.push({ filePath, fileName, size, modified });
 
     if (batch.length >= CONTENT_SEARCH_BATCH_SIZE) {
-      const searchResults = await Promise.allSettled(
-        batch.map(({ filePath, size }) =>
-          searchFileContent(filePath, searchQuery, operationId, size)
-        )
-      );
-
-      for (let i = 0; i < searchResults.length; i++) {
-        if (results.length >= limit) break;
-        const result = searchResults[i];
-        if (result.status === 'fulfilled' && result.value.found) {
-          const { filePath, fileName, size, modified } = batch[i];
-          results.push({
-            name: fileName,
-            path: filePath,
-            isDirectory: false,
-            isFile: true,
-            size,
-            modified,
-            isHidden: await isHidden(filePath, fileName),
-            matchContext: result.value.context,
-            matchLineNumber: result.value.lineNumber,
-          });
-        }
-      }
-
-      batch.length = 0;
+      await flushContentSearchBatch(batch, searchQuery, results, limit, operationId);
     }
   }
 
   if (batch.length > 0 && results.length < limit) {
-    const searchResults = await Promise.allSettled(
-      batch.map(({ filePath, size }) => searchFileContent(filePath, searchQuery, operationId, size))
-    );
-
-    for (let i = 0; i < searchResults.length; i++) {
-      if (results.length >= limit) break;
-      const result = searchResults[i];
-      if (result.status === 'fulfilled' && result.value.found) {
-        const { filePath, fileName, size, modified } = batch[i];
-        results.push({
-          name: fileName,
-          path: filePath,
-          isDirectory: false,
-          isFile: true,
-          size,
-          modified,
-          isHidden: await isHidden(filePath, fileName),
-          matchContext: result.value.context,
-          matchLineNumber: result.value.lineNumber,
-        });
-      }
-    }
+    await flushContentSearchBatch(batch, searchQuery, results, limit, operationId);
   }
 
   return results;

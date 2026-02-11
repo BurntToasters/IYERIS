@@ -29,6 +29,7 @@ import {
   registerDirectoryOperationTarget,
   unregisterDirectoryOperationTarget,
   isTrustedIpcEvent,
+  withTrustedIpcEvent,
 } from './ipcUtils';
 
 const hiddenFileCache = new Map<string, { isHidden: boolean; timestamp: number }>();
@@ -584,26 +585,20 @@ export function setupFileOperationHandlers(): void {
     }
   );
 
-  ipcMain.handle('get-drives', async (event: IpcMainInvokeEvent): Promise<string[]> => {
-    if (!isTrustedIpcEvent(event, 'get-drives')) {
-      return [];
-    }
-    return getDrives();
-  });
+  ipcMain.handle(
+    'get-drives',
+    withTrustedIpcEvent('get-drives', [] as string[], async (): Promise<string[]> => getDrives())
+  );
 
-  ipcMain.handle('get-drive-info', async (event: IpcMainInvokeEvent) => {
-    if (!isTrustedIpcEvent(event, 'get-drive-info')) {
-      return [];
-    }
-    return getDriveInfo();
-  });
+  ipcMain.handle(
+    'get-drive-info',
+    withTrustedIpcEvent('get-drive-info', [], async () => getDriveInfo())
+  );
 
-  ipcMain.handle('get-home-directory', (event: IpcMainInvokeEvent): string => {
-    if (!isTrustedIpcEvent(event, 'get-home-directory')) {
-      return '';
-    }
-    return app.getPath('home');
-  });
+  ipcMain.handle(
+    'get-home-directory',
+    withTrustedIpcEvent('get-home-directory', '', (): string => app.getPath('home'))
+  );
 
   const specialDirectoryMap: Record<string, AppPathName> = {
     desktop: 'desktop',
@@ -615,20 +610,21 @@ export function setupFileOperationHandlers(): void {
 
   ipcMain.handle(
     'get-special-directory',
-    (event: IpcMainInvokeEvent, directory: string): PathResponse => {
-      if (!isTrustedIpcEvent(event, 'get-special-directory')) {
-        return { success: false, error: 'Untrusted IPC sender' };
+    withTrustedIpcEvent(
+      'get-special-directory',
+      { success: false, error: 'Untrusted IPC sender' } as PathResponse,
+      (_event: IpcMainInvokeEvent, directory: string): PathResponse => {
+        const mappedPath = specialDirectoryMap[directory];
+        if (!mappedPath) {
+          return { success: false, error: 'Unsupported directory' };
+        }
+        try {
+          return { success: true, path: app.getPath(mappedPath) };
+        } catch (error) {
+          return { success: false, error: getErrorMessage(error) };
+        }
       }
-      const mappedPath = specialDirectoryMap[directory];
-      if (!mappedPath) {
-        return { success: false, error: 'Unsupported directory' };
-      }
-      try {
-        return { success: true, path: app.getPath(mappedPath) };
-      } catch (error) {
-        return { success: false, error: getErrorMessage(error) };
-      }
-    }
+    )
   );
 
   ipcMain.handle(
@@ -694,24 +690,28 @@ export function setupFileOperationHandlers(): void {
     }
   );
 
-  ipcMain.handle('select-folder', async (event: IpcMainInvokeEvent): Promise<PathResponse> => {
-    if (!isTrustedIpcEvent(event, 'select-folder')) {
-      return { success: false, error: 'Untrusted IPC sender' };
-    }
-    const mainWindow = getMainWindow();
-    if (!mainWindow) {
-      return { success: false, error: 'No main window available' };
-    }
+  ipcMain.handle(
+    'select-folder',
+    withTrustedIpcEvent(
+      'select-folder',
+      { success: false, error: 'Untrusted IPC sender' } as PathResponse,
+      async (): Promise<PathResponse> => {
+        const mainWindow = getMainWindow();
+        if (!mainWindow) {
+          return { success: false, error: 'No main window available' };
+        }
 
-    const result = await dialog.showOpenDialog(mainWindow, {
-      properties: ['openDirectory'],
-    });
+        const result = await dialog.showOpenDialog(mainWindow, {
+          properties: ['openDirectory'],
+        });
 
-    if (!result.canceled && result.filePaths.length > 0) {
-      return { success: true, path: result.filePaths[0] };
-    }
-    return { success: false };
-  });
+        if (!result.canceled && result.filePaths.length > 0) {
+          return { success: true, path: result.filePaths[0] };
+        }
+        return { success: false };
+      }
+    )
+  );
 
   ipcMain.handle(
     'create-folder',

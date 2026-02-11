@@ -39,6 +39,11 @@ vi.mock('./ipcUtils', () => ({
   registerDirectoryOperationTarget: vi.fn(),
   unregisterDirectoryOperationTarget: vi.fn(),
   isTrustedIpcEvent: vi.fn(() => true),
+  withTrustedIpcEvent: vi.fn(
+    (_channel: string, _untrustedResponse: unknown, handler: (...args: unknown[]) => unknown) =>
+      (...args: unknown[]) =>
+        handler(...args)
+  ),
 }));
 
 import { setupFileOperationHandlers, stopHiddenFileCacheCleanup } from './fileOperations';

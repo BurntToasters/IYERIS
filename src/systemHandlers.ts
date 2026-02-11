@@ -21,7 +21,7 @@ import { isPathSafe, getErrorMessage } from './security';
 import { ignoreError } from './shared';
 import { isRunningInFlatpak } from './platformUtils';
 import { logger } from './utils/logger';
-import { isTrustedIpcEvent } from './ipcUtils';
+import { isTrustedIpcEvent, withTrustedIpcEvent } from './ipcUtils';
 
 function spawnWithTimeout(
   command: string,
@@ -723,67 +723,73 @@ export function setupSystemHandlers(
     }
   );
 
-  ipcMain.handle('get-platform', (event: IpcMainInvokeEvent): string => {
-    if (!isTrustedIpcEvent(event, 'get-platform')) return '';
-    return process.platform;
-  });
+  ipcMain.handle(
+    'get-platform',
+    withTrustedIpcEvent('get-platform', '', (): string => process.platform)
+  );
 
-  ipcMain.handle('get-app-version', (event: IpcMainInvokeEvent): string => {
-    if (!isTrustedIpcEvent(event, 'get-app-version')) return '';
-    return app.getVersion();
-  });
+  ipcMain.handle(
+    'get-app-version',
+    withTrustedIpcEvent('get-app-version', '', (): string => app.getVersion())
+  );
 
   ipcMain.handle(
     'get-system-accent-color',
-    (event: IpcMainInvokeEvent): { accentColor: string; isDarkMode: boolean } => {
-      if (!isTrustedIpcEvent(event, 'get-system-accent-color')) {
-        return { accentColor: '#0078d4', isDarkMode: false };
-      }
-      let accentColor = '#0078d4';
-      if (process.platform === 'win32' || process.platform === 'darwin') {
-        try {
-          const color = systemPreferences.getAccentColor();
-          if (color && color.length >= 6) accentColor = `#${color.substring(0, 6)}`;
-        } catch (error) {
-          ignoreError(error);
+    withTrustedIpcEvent(
+      'get-system-accent-color',
+      { accentColor: '#0078d4', isDarkMode: false },
+      (): { accentColor: string; isDarkMode: boolean } => {
+        let accentColor = '#0078d4';
+        if (process.platform === 'win32' || process.platform === 'darwin') {
+          try {
+            const color = systemPreferences.getAccentColor();
+            if (color && color.length >= 6) accentColor = `#${color.substring(0, 6)}`;
+          } catch (error) {
+            ignoreError(error);
+          }
         }
+        return {
+          accentColor,
+          isDarkMode: nativeTheme.shouldUseDarkColors,
+        };
       }
-      return {
-        accentColor,
-        isDarkMode: nativeTheme.shouldUseDarkColors,
-      };
-    }
+    )
   );
 
-  ipcMain.handle('is-mas', (event: IpcMainInvokeEvent): boolean => {
-    if (!isTrustedIpcEvent(event, 'is-mas')) return false;
-    return process.mas === true;
-  });
+  ipcMain.handle(
+    'is-mas',
+    withTrustedIpcEvent('is-mas', false, (): boolean => process.mas === true)
+  );
 
-  ipcMain.handle('is-flatpak', (event: IpcMainInvokeEvent): boolean => {
-    if (!isTrustedIpcEvent(event, 'is-flatpak')) return false;
-    return isRunningInFlatpak();
-  });
+  ipcMain.handle(
+    'is-flatpak',
+    withTrustedIpcEvent('is-flatpak', false, (): boolean => isRunningInFlatpak())
+  );
 
-  ipcMain.handle('is-ms-store', (event: IpcMainInvokeEvent): boolean => {
-    if (!isTrustedIpcEvent(event, 'is-ms-store')) return false;
-    return process.windowsStore === true;
-  });
+  ipcMain.handle(
+    'is-ms-store',
+    withTrustedIpcEvent('is-ms-store', false, (): boolean => process.windowsStore === true)
+  );
 
-  ipcMain.handle('get-system-text-scale', (event: IpcMainInvokeEvent): number => {
-    if (!isTrustedIpcEvent(event, 'get-system-text-scale')) return 1;
-    return screen.getPrimaryDisplay().scaleFactor;
-  });
+  ipcMain.handle(
+    'get-system-text-scale',
+    withTrustedIpcEvent(
+      'get-system-text-scale',
+      1,
+      (): number => screen.getPrimaryDisplay().scaleFactor
+    )
+  );
 
   ipcMain.handle(
     'check-full-disk-access',
-    async (event: IpcMainInvokeEvent): Promise<{ success: boolean; hasAccess: boolean }> => {
-      if (!isTrustedIpcEvent(event, 'check-full-disk-access')) {
-        return { success: false, hasAccess: false };
+    withTrustedIpcEvent(
+      'check-full-disk-access',
+      { success: false, hasAccess: false },
+      async (): Promise<{ success: boolean; hasAccess: boolean }> => {
+        const hasAccess = await checkFullDiskAccess();
+        return { success: true, hasAccess };
       }
-      const hasAccess = await checkFullDiskAccess();
-      return { success: true, hasAccess };
-    }
+    )
   );
 
   ipcMain.handle(
@@ -990,12 +996,10 @@ export function setupSystemHandlers(
     }
   );
 
-  ipcMain.handle('get-logs-path', (event: IpcMainInvokeEvent): string => {
-    if (!isTrustedIpcEvent(event, 'get-logs-path')) {
-      return '';
-    }
-    return logger.getLogsDirectory();
-  });
+  ipcMain.handle(
+    'get-logs-path',
+    withTrustedIpcEvent('get-logs-path', '', (): string => logger.getLogsDirectory())
+  );
 
   ipcMain.handle('open-logs-folder', async (event: IpcMainInvokeEvent): Promise<ApiResponse> => {
     try {

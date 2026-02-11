@@ -103,3 +103,16 @@ export function isTrustedIpcEvent(event: IpcMainInvokeEvent, channel?: string): 
   }
   return false;
 }
+
+export function withTrustedIpcEvent<TArgs extends unknown[], TResult>(
+  channel: string,
+  untrustedResponse: TResult,
+  handler: (event: IpcMainInvokeEvent, ...args: TArgs) => TResult | Promise<TResult>
+): (event: IpcMainInvokeEvent, ...args: TArgs) => Promise<TResult> {
+  return async (event: IpcMainInvokeEvent, ...args: TArgs): Promise<TResult> => {
+    if (!isTrustedIpcEvent(event, channel)) {
+      return untrustedResponse;
+    }
+    return handler(event, ...args);
+  };
+}
