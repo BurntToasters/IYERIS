@@ -1386,14 +1386,21 @@ function applySettings(settings: Settings) {
   applyPreviewPanelWidth();
   updateSortIndicators();
 
-  if (settings.reduceMotion) {
-    document.body.classList.add('reduce-motion');
-  } else {
-    document.body.classList.remove('reduce-motion');
-  }
-
-  document.body.classList.toggle('high-contrast', !!settings.highContrast);
-  document.body.classList.toggle('large-text', !!settings.largeText);
+  // Body class toggles
+  const classToggles: [string, boolean][] = [
+    ['reduce-motion', !!settings.reduceMotion],
+    ['high-contrast', !!settings.highContrast],
+    ['large-text', !!settings.largeText],
+    ['bold-text', !!settings.boldText],
+    ['visible-focus', !!settings.visibleFocus],
+    ['reduce-transparency', !!settings.reduceTransparency],
+    ['liquid-glass', !!settings.liquidGlassMode],
+    ['themed-icons', !!settings.themedIcons],
+    ['show-file-checkboxes', !!settings.showFileCheckboxes],
+    ['compact-file-info', !!settings.compactFileInfo],
+    ['hide-file-extensions', settings.showFileExtensions === false],
+  ];
+  for (const [cls, val] of classToggles) document.body.classList.toggle(cls, val);
 
   if (settings.useSystemFontSize) {
     applySystemFontSize();
@@ -1408,15 +1415,6 @@ function applySettings(settings: Settings) {
   } else if (settings.uiDensity === 'larger') {
     document.body.classList.add('large-ui');
   }
-
-  document.body.classList.toggle('bold-text', !!settings.boldText);
-  document.body.classList.toggle('visible-focus', !!settings.visibleFocus);
-  document.body.classList.toggle('reduce-transparency', !!settings.reduceTransparency);
-  document.body.classList.toggle('liquid-glass', !!settings.liquidGlassMode);
-  document.body.classList.toggle('themed-icons', !!settings.themedIcons);
-  document.body.classList.toggle('show-file-checkboxes', !!settings.showFileCheckboxes);
-  document.body.classList.toggle('compact-file-info', !!settings.compactFileInfo);
-  document.body.classList.toggle('hide-file-extensions', settings.showFileExtensions === false);
 
   // Grid columns
   if (settings.gridColumns && settings.gridColumns !== 'auto') {
@@ -1488,17 +1486,20 @@ function hexToRgba(hex: string, alpha: number): string {
   return `rgba(255, 255, 255, ${alpha})`;
 }
 
+function setThemeCustomProperties(el: HTMLElement, theme: CustomTheme) {
+  el.style.setProperty('--custom-accent-color', theme.accentColor);
+  el.style.setProperty('--custom-accent-rgb', hexToRgb(theme.accentColor));
+  el.style.setProperty('--custom-bg-primary', theme.bgPrimary);
+  el.style.setProperty('--custom-bg-primary-rgb', hexToRgb(theme.bgPrimary));
+  el.style.setProperty('--custom-bg-secondary', theme.bgSecondary);
+  el.style.setProperty('--custom-text-primary', theme.textPrimary);
+  el.style.setProperty('--custom-text-secondary', theme.textSecondary);
+  el.style.setProperty('--custom-glass-bg', hexToRgba(theme.glassBg, 0.03));
+  el.style.setProperty('--custom-glass-border', hexToRgba(theme.glassBorder, 0.08));
+}
+
 function applyCustomThemeColors(theme: CustomTheme) {
-  const root = document.documentElement;
-  root.style.setProperty('--custom-accent-color', theme.accentColor);
-  root.style.setProperty('--custom-accent-rgb', hexToRgb(theme.accentColor));
-  root.style.setProperty('--custom-bg-primary', theme.bgPrimary);
-  root.style.setProperty('--custom-bg-primary-rgb', hexToRgb(theme.bgPrimary));
-  root.style.setProperty('--custom-bg-secondary', theme.bgSecondary);
-  root.style.setProperty('--custom-text-primary', theme.textPrimary);
-  root.style.setProperty('--custom-text-secondary', theme.textSecondary);
-  root.style.setProperty('--custom-glass-bg', hexToRgba(theme.glassBg, 0.03));
-  root.style.setProperty('--custom-glass-border', hexToRgba(theme.glassBorder, 0.08));
+  setThemeCustomProperties(document.documentElement, theme);
   document.body.style.backgroundColor = theme.bgPrimary;
 }
 
@@ -1655,15 +1656,7 @@ async function hideThemeEditor(skipConfirmation = false) {
 function updateThemePreview() {
   const preview = document.getElementById('theme-preview');
   if (!preview) return;
-
-  preview.style.setProperty('--custom-accent-color', tempCustomTheme.accentColor);
-  preview.style.setProperty('--custom-accent-rgb', hexToRgb(tempCustomTheme.accentColor));
-  preview.style.setProperty('--custom-bg-primary', tempCustomTheme.bgPrimary);
-  preview.style.setProperty('--custom-bg-secondary', tempCustomTheme.bgSecondary);
-  preview.style.setProperty('--custom-text-primary', tempCustomTheme.textPrimary);
-  preview.style.setProperty('--custom-text-secondary', tempCustomTheme.textSecondary);
-  preview.style.setProperty('--custom-glass-bg', hexToRgba(tempCustomTheme.glassBg, 0.03));
-  preview.style.setProperty('--custom-glass-border', hexToRgba(tempCustomTheme.glassBorder, 0.08));
+  setThemeCustomProperties(preview, tempCustomTheme);
   preview.style.backgroundColor = tempCustomTheme.bgPrimary;
 }
 
@@ -2048,122 +2041,99 @@ function openNewWindow() {
 
 async function saveSettings() {
   const previousTabsEnabled = tabsEnabled;
-  const systemThemeToggle = document.getElementById('system-theme-toggle') as HTMLInputElement;
-  const themeSelect = document.getElementById('theme-select') as HTMLSelectElement;
-  const sortBySelect = document.getElementById('sort-by-select') as HTMLSelectElement;
-  const sortOrderSelect = document.getElementById('sort-order-select') as HTMLSelectElement;
-  const showHiddenFilesToggle = document.getElementById(
-    'show-hidden-files-toggle'
-  ) as HTMLInputElement;
-  const enableGitStatusToggle = document.getElementById(
-    'enable-git-status-toggle'
-  ) as HTMLInputElement;
-  const gitIncludeUntrackedToggle = document.getElementById(
-    'git-include-untracked-toggle'
-  ) as HTMLInputElement;
-  const showFileHoverCardToggle = document.getElementById(
-    'show-file-hover-card-toggle'
-  ) as HTMLInputElement;
-  const showFileCheckboxesToggle = document.getElementById(
-    'show-file-checkboxes-toggle'
-  ) as HTMLInputElement;
-  const minimizeToTrayToggle = document.getElementById(
-    'minimize-to-tray-toggle'
-  ) as HTMLInputElement;
-  const startOnLoginToggle = document.getElementById('start-on-login-toggle') as HTMLInputElement;
-  const autoCheckUpdatesToggle = document.getElementById(
-    'auto-check-updates-toggle'
-  ) as HTMLInputElement;
-  const updateChannelSelect = document.getElementById('update-channel-select') as HTMLSelectElement;
-  const enableSearchHistoryToggle = document.getElementById(
-    'enable-search-history-toggle'
-  ) as HTMLInputElement;
-  const dangerousOptionsToggle = document.getElementById(
-    'dangerous-options-toggle'
-  ) as HTMLInputElement;
-  const startupPathInput = document.getElementById('startup-path-input') as HTMLInputElement;
-  const enableIndexerToggle = document.getElementById('enable-indexer-toggle') as HTMLInputElement;
-  const showRecentFilesToggle = document.getElementById(
-    'show-recent-files-toggle'
-  ) as HTMLInputElement;
-  const showFolderTreeToggle = document.getElementById(
-    'show-folder-tree-toggle'
-  ) as HTMLInputElement;
-  const enableTabsToggle = document.getElementById('enable-tabs-toggle') as HTMLInputElement;
-  const globalContentSearchToggle = document.getElementById(
-    'global-content-search-toggle'
-  ) as HTMLInputElement;
-  const globalClipboardToggle = document.getElementById(
-    'global-clipboard-toggle'
-  ) as HTMLInputElement;
-  const enableSyntaxHighlightingToggle = document.getElementById(
-    'enable-syntax-highlighting-toggle'
-  ) as HTMLInputElement;
-  const reduceMotionToggle = document.getElementById('reduce-motion-toggle') as HTMLInputElement;
-  const highContrastToggle = document.getElementById('high-contrast-toggle') as HTMLInputElement;
-  const largeTextToggle = document.getElementById('large-text-toggle') as HTMLInputElement;
-  const useSystemFontSizeToggle = document.getElementById(
-    'use-system-font-size-toggle'
-  ) as HTMLInputElement;
-  const uiDensitySelect = document.getElementById('ui-density-select') as HTMLSelectElement;
-  const boldTextToggle = document.getElementById('bold-text-toggle') as HTMLInputElement;
-  const visibleFocusToggle = document.getElementById('visible-focus-toggle') as HTMLInputElement;
-  const reduceTransparencyToggle = document.getElementById(
-    'reduce-transparency-toggle'
-  ) as HTMLInputElement;
-  const liquidGlassToggle = document.getElementById('liquid-glass-toggle') as HTMLInputElement;
-  const themedIconsToggle = document.getElementById('themed-icons-toggle') as HTMLInputElement;
-  const disableHwAccelToggle = document.getElementById(
-    'disable-hw-accel-toggle'
-  ) as HTMLInputElement;
-  const confirmFileOperationsToggle = document.getElementById(
-    'confirm-file-operations-toggle'
-  ) as HTMLInputElement;
-  const fileConflictBehaviorSelect = document.getElementById(
-    'file-conflict-behavior-select'
-  ) as HTMLSelectElement;
-  const maxThumbnailSizeInput = document.getElementById(
-    'max-thumbnail-size-input'
-  ) as HTMLInputElement;
-  const thumbnailQualitySelect = document.getElementById(
-    'thumbnail-quality-select'
-  ) as HTMLSelectElement;
-  const autoPlayVideosToggle = document.getElementById(
-    'auto-play-videos-toggle'
-  ) as HTMLInputElement;
-  const previewPanelPositionSelect = document.getElementById(
-    'preview-panel-position-select'
-  ) as HTMLSelectElement;
-  const maxPreviewSizeInput = document.getElementById('max-preview-size-input') as HTMLInputElement;
-  const gridColumnsSelect = document.getElementById('grid-columns-select') as HTMLSelectElement;
-  const iconSizeSlider = document.getElementById('icon-size-slider') as HTMLInputElement;
-  const compactFileInfoToggle = document.getElementById(
-    'compact-file-info-toggle'
-  ) as HTMLInputElement;
-  const showFileExtensionsToggle = document.getElementById(
-    'show-file-extensions-toggle'
-  ) as HTMLInputElement;
-  const maxSearchHistoryInput = document.getElementById(
-    'max-search-history-input'
-  ) as HTMLInputElement;
-  const maxDirectoryHistoryInput = document.getElementById(
-    'max-directory-history-input'
-  ) as HTMLInputElement;
 
-  if (systemThemeToggle) {
-    currentSettings.useSystemTheme = systemThemeToggle.checked;
-  }
-  if (enableSyntaxHighlightingToggle) {
-    currentSettings.enableSyntaxHighlighting = enableSyntaxHighlightingToggle.checked;
+  // Data-driven toggle → settings mappings
+  const toggleMappings: [string, keyof Settings][] = [
+    ['system-theme-toggle', 'useSystemTheme'],
+    ['show-hidden-files-toggle', 'showHiddenFiles'],
+    ['enable-git-status-toggle', 'enableGitStatus'],
+    ['git-include-untracked-toggle', 'gitIncludeUntracked'],
+    ['show-file-hover-card-toggle', 'showFileHoverCard'],
+    ['show-file-checkboxes-toggle', 'showFileCheckboxes'],
+    ['minimize-to-tray-toggle', 'minimizeToTray'],
+    ['start-on-login-toggle', 'startOnLogin'],
+    ['auto-check-updates-toggle', 'autoCheckUpdates'],
+    ['enable-search-history-toggle', 'enableSearchHistory'],
+    ['enable-indexer-toggle', 'enableIndexer'],
+    ['show-recent-files-toggle', 'showRecentFiles'],
+    ['show-folder-tree-toggle', 'showFolderTree'],
+    ['enable-tabs-toggle', 'enableTabs'],
+    ['global-content-search-toggle', 'globalContentSearch'],
+    ['global-clipboard-toggle', 'globalClipboard'],
+    ['enable-syntax-highlighting-toggle', 'enableSyntaxHighlighting'],
+    ['reduce-motion-toggle', 'reduceMotion'],
+    ['high-contrast-toggle', 'highContrast'],
+    ['large-text-toggle', 'largeText'],
+    ['use-system-font-size-toggle', 'useSystemFontSize'],
+    ['bold-text-toggle', 'boldText'],
+    ['visible-focus-toggle', 'visibleFocus'],
+    ['reduce-transparency-toggle', 'reduceTransparency'],
+    ['liquid-glass-toggle', 'liquidGlassMode'],
+    ['themed-icons-toggle', 'themedIcons'],
+    ['disable-hw-accel-toggle', 'disableHardwareAcceleration'],
+    ['confirm-file-operations-toggle', 'confirmFileOperations'],
+    ['auto-play-videos-toggle', 'autoPlayVideos'],
+    ['compact-file-info-toggle', 'compactFileInfo'],
+    ['show-file-extensions-toggle', 'showFileExtensions'],
+  ];
+  for (const [id, key] of toggleMappings) {
+    const el = document.getElementById(id) as HTMLInputElement | null;
+    if (el) (currentSettings as unknown as Record<string, unknown>)[key] = el.checked;
   }
 
-  if (themeSelect) {
-    const selectedTheme = themeSelect.value;
-    if (isOneOf(selectedTheme, THEME_VALUES)) {
-      currentSettings.theme = selectedTheme;
+  // Select → enum settings mappings
+  const selectMappings: [string, keyof Settings, readonly string[]][] = [
+    ['theme-select', 'theme', THEME_VALUES],
+    ['sort-by-select', 'sortBy', SORT_BY_VALUES],
+    ['sort-order-select', 'sortOrder', SORT_ORDER_VALUES],
+    ['update-channel-select', 'updateChannel', UPDATE_CHANNEL_VALUES],
+    ['ui-density-select', 'uiDensity', ['default', 'compact', 'larger']],
+    ['file-conflict-behavior-select', 'fileConflictBehavior', FILE_CONFLICT_VALUES],
+    ['thumbnail-quality-select', 'thumbnailQuality', THUMBNAIL_QUALITY_VALUES],
+    ['preview-panel-position-select', 'previewPanelPosition', PREVIEW_POSITION_VALUES],
+    ['grid-columns-select', 'gridColumns', GRID_COLUMNS_VALUES],
+  ];
+  for (const [id, key, validValues] of selectMappings) {
+    const el = document.getElementById(id) as HTMLSelectElement | null;
+    if (el && isOneOf(el.value, validValues)) {
+      (currentSettings as unknown as Record<string, unknown>)[key] = el.value;
     }
   }
 
+  // Integer range inputs
+  const intMappings: [string, keyof Settings, number, number][] = [
+    ['max-thumbnail-size-input', 'maxThumbnailSizeMB', 1, 100],
+    ['max-preview-size-input', 'maxPreviewSizeMB', 1, 500],
+    ['max-search-history-input', 'maxSearchHistoryItems', 1, 20],
+    ['max-directory-history-input', 'maxDirectoryHistoryItems', 1, 20],
+  ];
+  for (const [id, key, min, max] of intMappings) {
+    const el = document.getElementById(id) as HTMLInputElement | null;
+    if (el) {
+      const val = parseInt(el.value, 10);
+      if (val >= min && val <= max)
+        (currentSettings as unknown as Record<string, unknown>)[key] = val;
+    }
+  }
+
+  // Special handling for dangerous options toggle
+  const dangerousOptionsToggle = document.getElementById(
+    'dangerous-options-toggle'
+  ) as HTMLInputElement | null;
+  if (dangerousOptionsToggle) {
+    currentSettings.showDangerousOptions = dangerousOptionsToggle.checked;
+    updateDangerousOptionsVisibility(currentSettings.showDangerousOptions);
+  }
+
+  // Startup path
+  const startupPathInput = document.getElementById('startup-path-input') as HTMLInputElement | null;
+  if (startupPathInput) currentSettings.startupPath = startupPathInput.value;
+
+  // Icon size slider
+  const iconSizeSlider = document.getElementById('icon-size-slider') as HTMLInputElement | null;
+  if (iconSizeSlider) currentSettings.iconSize = parseInt(iconSizeSlider.value, 10);
+
+  // System theme override
   if (currentSettings.useSystemTheme) {
     try {
       const { isDarkMode } = await window.electronAPI.getSystemAccentColor();
@@ -2174,215 +2144,7 @@ async function saveSettings() {
     }
   }
 
-  if (sortBySelect) {
-    const sortByValue = sortBySelect.value;
-    if (isOneOf(sortByValue, SORT_BY_VALUES)) {
-      currentSettings.sortBy = sortByValue;
-    }
-  }
-
-  if (sortOrderSelect) {
-    const sortOrderValue = sortOrderSelect.value;
-    if (isOneOf(sortOrderValue, SORT_ORDER_VALUES)) {
-      currentSettings.sortOrder = sortOrderValue;
-    }
-  }
-
-  if (showHiddenFilesToggle) {
-    currentSettings.showHiddenFiles = showHiddenFilesToggle.checked;
-  }
-  if (enableGitStatusToggle) {
-    currentSettings.enableGitStatus = enableGitStatusToggle.checked;
-  }
-  if (gitIncludeUntrackedToggle) {
-    currentSettings.gitIncludeUntracked = gitIncludeUntrackedToggle.checked;
-  }
-
-  if (showFileHoverCardToggle) {
-    currentSettings.showFileHoverCard = showFileHoverCardToggle.checked;
-  }
-
-  if (showFileCheckboxesToggle) {
-    currentSettings.showFileCheckboxes = showFileCheckboxesToggle.checked;
-  }
-
-  if (minimizeToTrayToggle) {
-    currentSettings.minimizeToTray = minimizeToTrayToggle.checked;
-  }
-
-  if (startOnLoginToggle) {
-    currentSettings.startOnLogin = startOnLoginToggle.checked;
-  }
-
-  if (autoCheckUpdatesToggle) {
-    currentSettings.autoCheckUpdates = autoCheckUpdatesToggle.checked;
-  }
-
-  if (updateChannelSelect) {
-    const channelValue = updateChannelSelect.value;
-    if (isOneOf(channelValue, UPDATE_CHANNEL_VALUES)) {
-      currentSettings.updateChannel = channelValue;
-    }
-  }
-
-  if (enableSearchHistoryToggle) {
-    currentSettings.enableSearchHistory = enableSearchHistoryToggle.checked;
-  }
-
-  if (dangerousOptionsToggle) {
-    currentSettings.showDangerousOptions = dangerousOptionsToggle.checked;
-    updateDangerousOptionsVisibility(currentSettings.showDangerousOptions);
-  }
-
-  if (startupPathInput) {
-    currentSettings.startupPath = startupPathInput.value;
-  }
-
-  if (enableIndexerToggle) {
-    currentSettings.enableIndexer = enableIndexerToggle.checked;
-  }
-
-  if (showRecentFilesToggle) {
-    currentSettings.showRecentFiles = showRecentFilesToggle.checked;
-  }
-
-  if (showFolderTreeToggle) {
-    currentSettings.showFolderTree = showFolderTreeToggle.checked;
-  }
-
-  if (enableTabsToggle) {
-    currentSettings.enableTabs = enableTabsToggle.checked;
-  }
-
-  if (globalContentSearchToggle) {
-    currentSettings.globalContentSearch = globalContentSearchToggle.checked;
-  }
-
-  if (globalClipboardToggle) {
-    currentSettings.globalClipboard = globalClipboardToggle.checked;
-  }
-
-  if (reduceMotionToggle) {
-    currentSettings.reduceMotion = reduceMotionToggle.checked;
-  }
-
-  if (highContrastToggle) {
-    currentSettings.highContrast = highContrastToggle.checked;
-  }
-
-  if (largeTextToggle) {
-    currentSettings.largeText = largeTextToggle.checked;
-  }
-
-  if (useSystemFontSizeToggle) {
-    currentSettings.useSystemFontSize = useSystemFontSizeToggle.checked;
-  }
-
-  if (uiDensitySelect) {
-    const densityValue = uiDensitySelect.value;
-    if (densityValue === 'default' || densityValue === 'compact' || densityValue === 'larger') {
-      currentSettings.uiDensity = densityValue;
-    }
-  }
-
-  if (boldTextToggle) {
-    currentSettings.boldText = boldTextToggle.checked;
-  }
-
-  if (visibleFocusToggle) {
-    currentSettings.visibleFocus = visibleFocusToggle.checked;
-  }
-
-  if (reduceTransparencyToggle) {
-    currentSettings.reduceTransparency = reduceTransparencyToggle.checked;
-  }
-
-  if (liquidGlassToggle) {
-    currentSettings.liquidGlassMode = liquidGlassToggle.checked;
-  }
-
-  if (themedIconsToggle) {
-    currentSettings.themedIcons = themedIconsToggle.checked;
-  }
-
-  if (disableHwAccelToggle) {
-    currentSettings.disableHardwareAcceleration = disableHwAccelToggle.checked;
-  }
-
-  if (confirmFileOperationsToggle) {
-    currentSettings.confirmFileOperations = confirmFileOperationsToggle.checked;
-  }
-
-  if (fileConflictBehaviorSelect) {
-    const conflictValue = fileConflictBehaviorSelect.value;
-    if (isOneOf(conflictValue, FILE_CONFLICT_VALUES)) {
-      currentSettings.fileConflictBehavior = conflictValue;
-    }
-  }
-
-  if (maxThumbnailSizeInput) {
-    const val = parseInt(maxThumbnailSizeInput.value, 10);
-    if (val >= 1 && val <= 100) {
-      currentSettings.maxThumbnailSizeMB = val;
-    }
-  }
-
-  if (thumbnailQualitySelect) {
-    const qualityValue = thumbnailQualitySelect.value;
-    if (isOneOf(qualityValue, THUMBNAIL_QUALITY_VALUES)) {
-      currentSettings.thumbnailQuality = qualityValue;
-    }
-  }
-
-  if (autoPlayVideosToggle) {
-    currentSettings.autoPlayVideos = autoPlayVideosToggle.checked;
-  }
-
-  if (previewPanelPositionSelect) {
-    const positionValue = previewPanelPositionSelect.value;
-    if (isOneOf(positionValue, PREVIEW_POSITION_VALUES)) {
-      currentSettings.previewPanelPosition = positionValue;
-    }
-  }
-
-  if (maxPreviewSizeInput) {
-    const val = parseInt(maxPreviewSizeInput.value, 10);
-    if (val >= 1 && val <= 500) {
-      currentSettings.maxPreviewSizeMB = val;
-    }
-  }
-
-  if (gridColumnsSelect) {
-    const gridValue = gridColumnsSelect.value;
-    if (isOneOf(gridValue, GRID_COLUMNS_VALUES)) {
-      currentSettings.gridColumns = gridValue;
-    }
-  }
-
-  if (iconSizeSlider) {
-    currentSettings.iconSize = parseInt(iconSizeSlider.value, 10);
-  }
-
-  if (compactFileInfoToggle) {
-    currentSettings.compactFileInfo = compactFileInfoToggle.checked;
-  }
-
-  if (showFileExtensionsToggle) {
-    currentSettings.showFileExtensions = showFileExtensionsToggle.checked;
-  }
-
-  if (maxSearchHistoryInput) {
-    const val = parseInt(maxSearchHistoryInput.value, 10);
-    if (val >= 1 && val <= 20) {
-      currentSettings.maxSearchHistoryItems = val;
-    }
-  }
-  if (maxDirectoryHistoryInput) {
-    const val = parseInt(maxDirectoryHistoryInput.value, 10);
-    if (val >= 1 && val <= 20) {
-      currentSettings.maxDirectoryHistoryItems = val;
-    }
-  }
+  // Truncate histories to their configured max
   if (Array.isArray(currentSettings.searchHistory)) {
     const maxSearchHistoryItems = Math.max(
       1,
@@ -3932,7 +3694,7 @@ function initActionButtonListeners(): void {
   selectionCutBtn?.addEventListener('click', cutToClipboard);
   selectionMoveBtn?.addEventListener('click', moveSelectedToFolder);
   selectionRenameBtn?.addEventListener('click', renameSelected);
-  selectionDeleteBtn?.addEventListener('click', deleteSelected);
+  selectionDeleteBtn?.addEventListener('click', () => deleteSelected());
 
   const statusHiddenBtn = document.getElementById('status-hidden');
   statusHiddenBtn?.addEventListener('click', () => {
@@ -4020,137 +3782,67 @@ function isEditableElementActive(): boolean {
 }
 
 function runShortcutAction(actionId: string, e: KeyboardEvent): boolean {
-  switch (actionId) {
-    case 'command-palette':
-      e.preventDefault();
-      showCommandPalette();
-      return true;
-    case 'settings':
-      e.preventDefault();
-      showSettingsModal();
-      return true;
-    case 'shortcuts':
-      e.preventDefault();
-      showShortcutsModal();
-      return true;
-    case 'refresh':
-      e.preventDefault();
-      refresh();
-      return true;
-    case 'search':
-      e.preventDefault();
-      openSearch(false);
-      return true;
-    case 'global-search':
-      e.preventDefault();
-      openSearch(true);
-      return true;
-    case 'toggle-sidebar':
-      e.preventDefault();
-      setSidebarCollapsed();
-      return true;
-    case 'new-window':
-      e.preventDefault();
-      openNewWindow();
-      return true;
-    case 'new-file':
-      e.preventDefault();
-      createNewFile();
-      return true;
-    case 'new-folder':
-      e.preventDefault();
-      createNewFolder();
-      return true;
-    case 'go-back':
-      e.preventDefault();
-      goBack();
-      return true;
-    case 'go-forward':
-      e.preventDefault();
-      goForward();
-      return true;
-    case 'go-up':
-      e.preventDefault();
-      goUp();
-      return true;
-    case 'new-tab':
-      e.preventDefault();
-      if (tabsEnabled) {
-        addNewTab();
+  // Actions that need special pre-checks
+  if (actionId === 'copy' && hasTextSelection()) return false;
+  if (actionId === 'cut' && hasTextSelection()) return false;
+  if ((actionId === 'paste' || actionId === 'select-all') && isEditableElementActive())
+    return false;
+
+  // Simple action map
+  const actions: Record<string, () => void> = {
+    'command-palette': () => showCommandPalette(),
+    settings: () => showSettingsModal(),
+    shortcuts: () => showShortcutsModal(),
+    refresh: () => refresh(),
+    search: () => openSearch(false),
+    'global-search': () => openSearch(true),
+    'toggle-sidebar': () => setSidebarCollapsed(),
+    'new-window': () => openNewWindow(),
+    'new-file': () => createNewFile(),
+    'new-folder': () => createNewFolder(),
+    'go-back': () => goBack(),
+    'go-forward': () => goForward(),
+    'go-up': () => goUp(),
+    'new-tab': () => {
+      if (tabsEnabled) addNewTab();
+    },
+    'close-tab': () => {
+      if (tabsEnabled && tabs.length > 1) closeTab(activeTabId);
+    },
+    copy: () => copyToClipboard(),
+    cut: () => cutToClipboard(),
+    paste: () => pasteFromClipboard(),
+    'select-all': () => selectAll(),
+    undo: () => performUndo(),
+    redo: () => performRedo(),
+    'zoom-in': () => zoomIn(),
+    'zoom-out': () => zoomOut(),
+    'zoom-reset': () => zoomReset(),
+  };
+
+  // Tab cycling needs special logic
+  if (actionId === 'next-tab' || actionId === 'prev-tab') {
+    e.preventDefault();
+    if (tabsEnabled && tabs.length > 1) {
+      const currentIndex = tabs.findIndex((t) => t.id === activeTabId);
+      if (currentIndex !== -1) {
+        const nextIndex =
+          actionId === 'next-tab'
+            ? (currentIndex + 1) % tabs.length
+            : (currentIndex - 1 + tabs.length) % tabs.length;
+        switchToTab(tabs[nextIndex].id);
       }
-      return true;
-    case 'close-tab':
-      e.preventDefault();
-      if (tabsEnabled && tabs.length > 1) {
-        closeTab(activeTabId);
-      }
-      return true;
-    case 'next-tab':
-    case 'prev-tab': {
-      e.preventDefault();
-      if (tabsEnabled && tabs.length > 1) {
-        const currentIndex = tabs.findIndex((t) => t.id === activeTabId);
-        if (currentIndex !== -1) {
-          const nextIndex =
-            actionId === 'next-tab'
-              ? (currentIndex + 1) % tabs.length
-              : (currentIndex - 1 + tabs.length) % tabs.length;
-          switchToTab(tabs[nextIndex].id);
-        }
-      }
-      return true;
     }
-    case 'copy':
-      if (hasTextSelection()) {
-        return false;
-      }
-      e.preventDefault();
-      copyToClipboard();
-      return true;
-    case 'cut':
-      if (hasTextSelection()) {
-        return false;
-      }
-      e.preventDefault();
-      cutToClipboard();
-      return true;
-    case 'paste':
-      if (isEditableElementActive()) {
-        return false;
-      }
-      e.preventDefault();
-      pasteFromClipboard();
-      return true;
-    case 'select-all':
-      if (isEditableElementActive()) {
-        return false;
-      }
-      e.preventDefault();
-      selectAll();
-      return true;
-    case 'undo':
-      e.preventDefault();
-      performUndo();
-      return true;
-    case 'redo':
-      e.preventDefault();
-      performRedo();
-      return true;
-    case 'zoom-in':
-      e.preventDefault();
-      zoomIn();
-      return true;
-    case 'zoom-out':
-      e.preventDefault();
-      zoomOut();
-      return true;
-    case 'zoom-reset':
-      e.preventDefault();
-      zoomReset();
-      return true;
-    default:
-      return false;
+    return true;
   }
+
+  const handler = actions[actionId];
+  if (handler) {
+    e.preventDefault();
+    handler();
+    return true;
+  }
+  return false;
 }
 
 function initKeyboardListeners(): void {
@@ -4159,62 +3851,28 @@ function initKeyboardListeners(): void {
       return;
     }
     if (e.key === 'Escape') {
-      const extractModal = document.getElementById('extract-modal');
-      if (extractModal && extractModal.style.display === 'flex') {
-        e.preventDefault();
-        hideExtractModal();
-        return;
+      // Dismiss modals in priority order
+      const modalDismissals: [string, string, () => void][] = [
+        ['extract-modal', 'flex', hideExtractModal],
+        ['compress-options-modal', 'flex', hideCompressOptionsModal],
+        ['settings-modal', 'flex', hideSettingsModal],
+        ['shortcuts-modal', 'flex', hideShortcutsModal],
+        ['licenses-modal', 'flex', hideLicensesModal],
+        ['home-settings-modal', 'flex', () => homeController.closeHomeSettingsModal()],
+        ['context-menu', 'block', hideContextMenu],
+        ['empty-space-context-menu', 'block', hideEmptySpaceContextMenu],
+      ];
+      for (const [id, display, handler] of modalDismissals) {
+        const el = document.getElementById(id);
+        if (el?.style.display === display) {
+          e.preventDefault();
+          handler();
+          return;
+        }
       }
 
-      const compressOptionsModal = document.getElementById('compress-options-modal');
-      if (compressOptionsModal && compressOptionsModal.style.display === 'flex') {
-        e.preventDefault();
-        hideCompressOptionsModal();
-        return;
-      }
-
-      const settingsModal = document.getElementById('settings-modal');
-      if (settingsModal && settingsModal.style.display === 'flex') {
-        hideSettingsModal();
-        return;
-      }
-
-      const shortcutsModal = document.getElementById('shortcuts-modal');
-      if (shortcutsModal && shortcutsModal.style.display === 'flex') {
-        hideShortcutsModal();
-        return;
-      }
-
-      const licensesModal = document.getElementById('licenses-modal');
-      if (licensesModal && licensesModal.style.display === 'flex') {
-        hideLicensesModal();
-        return;
-      }
-
-      const homeSettingsModal = document.getElementById('home-settings-modal');
-      if (homeSettingsModal && homeSettingsModal.style.display === 'flex') {
-        homeController.closeHomeSettingsModal();
-        return;
-      }
-
-      const contextMenu = document.getElementById('context-menu');
-      if (contextMenu && contextMenu.style.display === 'block') {
-        hideContextMenu();
-        return;
-      }
-
-      const emptySpaceContextMenu = document.getElementById('empty-space-context-menu');
-      if (emptySpaceContextMenu && emptySpaceContextMenu.style.display === 'block') {
-        hideEmptySpaceContextMenu();
-        return;
-      }
-
-      if (isSearchModeActive()) {
-        closeSearch();
-      }
-      if (isQuickLookOpen()) {
-        closeQuickLook();
-      }
+      if (isSearchModeActive()) closeSearch();
+      if (isQuickLookOpen()) closeQuickLook();
       return;
     }
 
@@ -4288,13 +3946,7 @@ function initKeyboardListeners(): void {
     }
 
     if (e.code === 'Space' && !e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey) {
-      const activeElement = document.activeElement;
-      if (
-        activeElement &&
-        (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')
-      ) {
-        return;
-      }
+      if (isEditableElementActive()) return;
       e.preventDefault();
       if (isQuickLookOpen()) {
         closeQuickLook();
@@ -4321,13 +3973,7 @@ function initKeyboardListeners(): void {
     }
 
     if (e.key === 'Backspace') {
-      const activeElement = document.activeElement;
-      if (
-        activeElement &&
-        (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')
-      ) {
-        return;
-      }
+      if (isEditableElementActive()) return;
       e.preventDefault();
       goUp();
     } else if (e.key === 'F2') {
@@ -4344,18 +3990,12 @@ function initKeyboardListeners(): void {
           );
           return;
         }
-        permanentlyDeleteSelected();
+        deleteSelected(true);
       } else {
         deleteSelected();
       }
     } else if (e.key === 'Enter') {
-      const activeElement = document.activeElement;
-      if (
-        activeElement &&
-        (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')
-      ) {
-        return;
-      }
+      if (isEditableElementActive()) return;
       e.preventDefault();
       openSelectedItem();
     } else if (
@@ -4364,53 +4004,23 @@ function initKeyboardListeners(): void {
       e.key === 'ArrowLeft' ||
       e.key === 'ArrowRight'
     ) {
-      const activeElement = document.activeElement;
-      if (
-        activeElement &&
-        (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')
-      ) {
-        return;
-      }
+      if (isEditableElementActive()) return;
       e.preventDefault();
       navigateFileGrid(e.key, e.shiftKey);
     } else if (e.key === 'Home') {
-      const activeElement = document.activeElement;
-      if (
-        activeElement &&
-        (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')
-      ) {
-        return;
-      }
+      if (isEditableElementActive()) return;
       e.preventDefault();
       selectFirstItem(e.shiftKey);
     } else if (e.key === 'End') {
-      const activeElement = document.activeElement;
-      if (
-        activeElement &&
-        (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')
-      ) {
-        return;
-      }
+      if (isEditableElementActive()) return;
       e.preventDefault();
       selectLastItem(e.shiftKey);
     } else if (e.key === 'PageUp') {
-      const activeElement = document.activeElement;
-      if (
-        activeElement &&
-        (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')
-      ) {
-        return;
-      }
+      if (isEditableElementActive()) return;
       e.preventDefault();
       navigateByPage('up', e.shiftKey);
     } else if (e.key === 'PageDown') {
-      const activeElement = document.activeElement;
-      if (
-        activeElement &&
-        (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')
-      ) {
-        return;
-      }
+      if (isEditableElementActive()) return;
       e.preventDefault();
       navigateByPage('down', e.shiftKey);
     } else if (
@@ -4421,13 +4031,7 @@ function initKeyboardListeners(): void {
       !isSearchModeActive() &&
       viewMode !== 'column'
     ) {
-      const activeElement = document.activeElement;
-      if (
-        activeElement &&
-        (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')
-      ) {
-        return;
-      }
+      if (isEditableElementActive()) return;
       handleTypeaheadInput(e.key);
     }
   });
@@ -5940,14 +5544,22 @@ async function renameSelected() {
   }
 }
 
-async function deleteSelected() {
+async function deleteSelected(permanent = false) {
   if (selectedItems.size === 0) return;
-
   const count = selectedItems.size;
+  const plural = count > 1 ? 's' : '';
 
-  if (currentSettings.confirmFileOperations !== false) {
+  if (permanent) {
     const confirmed = await showConfirm(
-      `Move ${count} item${count > 1 ? 's' : ''} to ${platformOS === 'win32' ? 'Recycle Bin' : 'Trash'}?`,
+      `${twemojiImg(String.fromCodePoint(0x26a0), 'twemoji')} PERMANENTLY delete ${count} item${plural}? This CANNOT be undone!`,
+      'Permanent Delete',
+      'error'
+    );
+    if (!confirmed) return;
+  } else if (currentSettings.confirmFileOperations !== false) {
+    const trashName = platformOS === 'win32' ? 'Recycle Bin' : 'Trash';
+    const confirmed = await showConfirm(
+      `Move ${count} item${plural} to ${trashName}?`,
       'Move to Trash',
       'warning'
     );
@@ -5956,47 +5568,18 @@ async function deleteSelected() {
 
   const itemsSnapshot = Array.from(selectedItems);
   const results = await Promise.allSettled(
-    itemsSnapshot.map((itemPath) => window.electronAPI.trashItem(itemPath))
+    itemsSnapshot.map((p) =>
+      permanent ? window.electronAPI.deleteItem(p) : window.electronAPI.trashItem(p)
+    )
   );
   const successCount = results.filter((r) => r.status === 'fulfilled' && r.value.success).length;
-
   if (successCount > 0) {
-    showToast(
-      `${successCount} item${successCount > 1 ? 's' : ''} moved to ${platformOS === 'win32' ? 'Recycle Bin' : 'Trash'}`,
-      'Success',
-      'success'
-    );
-    await updateUndoRedoState();
+    const msg = permanent
+      ? `${successCount} item${successCount > 1 ? 's' : ''} permanently deleted`
+      : `${successCount} item${successCount > 1 ? 's' : ''} moved to ${platformOS === 'win32' ? 'Recycle Bin' : 'Trash'}`;
+    showToast(msg, 'Success', 'success');
+    if (!permanent) await updateUndoRedoState();
     refresh();
-  }
-}
-
-async function permanentlyDeleteSelected() {
-  if (selectedItems.size === 0) return;
-
-  // warn about permanent delete
-  const count = selectedItems.size;
-  const confirmed = await showConfirm(
-    `${twemojiImg(String.fromCodePoint(0x26a0), 'twemoji')} PERMANENTLY delete ${count} item${count > 1 ? 's' : ''}? This CANNOT be undone!`,
-    'Permanent Delete',
-    'error'
-  );
-
-  if (confirmed) {
-    const itemsSnapshot = Array.from(selectedItems);
-    const results = await Promise.allSettled(
-      itemsSnapshot.map((itemPath) => window.electronAPI.deleteItem(itemPath))
-    );
-    const successCount = results.filter((r) => r.status === 'fulfilled' && r.value.success).length;
-
-    if (successCount > 0) {
-      showToast(
-        `${successCount} item${successCount > 1 ? 's' : ''} permanently deleted`,
-        'Success',
-        'success'
-      );
-      refresh();
-    }
   }
 }
 
@@ -6007,31 +5590,27 @@ async function updateUndoRedoState() {
 
   if (undoBtn) undoBtn.disabled = !canUndo;
   if (redoBtn) redoBtn.disabled = !canRedo;
-  if (redoBtn) redoBtn.disabled = !canRedo;
 }
 
-async function performUndo() {
-  const result = await window.electronAPI.undoAction();
+async function performUndoRedo(isUndo: boolean) {
+  const result = isUndo
+    ? await window.electronAPI.undoAction()
+    : await window.electronAPI.redoAction();
+  const label = isUndo ? 'Undo' : 'Redo';
   if (result.success) {
-    showToast('Action undone', 'Undo', 'success');
+    showToast(`Action ${isUndo ? 'undone' : 'redone'}`, label, 'success');
     await updateUndoRedoState();
     refresh();
   } else {
-    showToast(result.error || 'Cannot undo', 'Undo Failed', 'warning');
+    showToast(result.error || `Cannot ${label.toLowerCase()}`, `${label} Failed`, 'warning');
     await updateUndoRedoState();
   }
 }
-
-async function performRedo() {
-  const result = await window.electronAPI.redoAction();
-  if (result.success) {
-    showToast('Action redone', 'Redo', 'success');
-    await updateUndoRedoState();
-    refresh();
-  } else {
-    showToast(result.error || 'Cannot redo', 'Redo Failed', 'warning');
-    await updateUndoRedoState();
-  }
+function performUndo() {
+  return performUndoRedo(true);
+}
+function performRedo() {
+  return performUndoRedo(false);
 }
 
 function goBack() {
@@ -6743,76 +6322,51 @@ async function createNewFolder() {
   await createNewFolderWithInlineRename();
 }
 
-async function createNewFileWithInlineRename() {
+async function createNewItemWithInlineRename(type: 'file' | 'folder') {
   if (!currentPath || isHomeViewPath(currentPath)) {
-    showToast('Open a folder to create a file', 'Create', 'info');
+    showToast(`Open a folder to create a ${type}`, 'Create', 'info');
     return;
   }
-  const fileName = 'File';
+  const baseName = type === 'file' ? 'File' : 'New Folder';
+  let finalName = baseName;
   let counter = 1;
-  let finalFileName = fileName;
-
   const existingNames = new Set(allFiles.map((f) => f.name));
-
-  while (existingNames.has(finalFileName)) {
-    finalFileName = `${fileName} (${counter})`;
-    counter++;
+  while (existingNames.has(finalName)) {
+    finalName = `${baseName} (${counter++})`;
   }
 
-  const result = await window.electronAPI.createFile(currentPath, finalFileName);
-  if (result.success && result.path) {
-    const createdFilePath = result.path;
-    await navigateTo(currentPath);
+  const result =
+    type === 'file'
+      ? await window.electronAPI.createFile(currentPath, finalName)
+      : await window.electronAPI.createFolder(currentPath, finalName);
 
+  if (result.success && result.path) {
+    const createdPath = result.path;
+    await navigateTo(currentPath);
     setTimeout(() => {
       const fileItems = document.querySelectorAll('.file-item');
       for (const item of Array.from(fileItems)) {
-        const nameElement = item.querySelector('.file-name');
-        if (nameElement && nameElement.textContent === finalFileName) {
-          startInlineRename(item as HTMLElement, finalFileName, createdFilePath);
+        const nameEl = item.querySelector('.file-name');
+        if (nameEl?.textContent === finalName) {
+          startInlineRename(item as HTMLElement, finalName, createdPath);
           break;
         }
       }
     }, 100);
   } else {
-    await showAlert(result.error || 'Unknown error', 'Error Creating File', 'error');
+    await showAlert(
+      result.error || 'Unknown error',
+      `Error Creating ${type === 'file' ? 'File' : 'Folder'}`,
+      'error'
+    );
   }
 }
 
+async function createNewFileWithInlineRename() {
+  return createNewItemWithInlineRename('file');
+}
 async function createNewFolderWithInlineRename() {
-  if (!currentPath || isHomeViewPath(currentPath)) {
-    showToast('Open a folder to create a folder', 'Create', 'info');
-    return;
-  }
-  const folderName = 'New Folder';
-  let counter = 1;
-  let finalFolderName = folderName;
-
-  const existingNames = new Set(allFiles.map((f) => f.name));
-
-  while (existingNames.has(finalFolderName)) {
-    finalFolderName = `${folderName} (${counter})`;
-    counter++;
-  }
-
-  const result = await window.electronAPI.createFolder(currentPath, finalFolderName);
-  if (result.success && result.path) {
-    const createdFolderPath = result.path;
-    await navigateTo(currentPath);
-
-    setTimeout(() => {
-      const fileItems = document.querySelectorAll('.file-item');
-      for (const item of Array.from(fileItems)) {
-        const nameElement = item.querySelector('.file-name');
-        if (nameElement && nameElement.textContent === finalFolderName) {
-          startInlineRename(item as HTMLElement, finalFolderName, createdFolderPath);
-          break;
-        }
-      }
-    }, 100);
-  } else {
-    await showAlert(result.error || 'Unknown error', 'Error Creating Folder', 'error');
-  }
+  return createNewItemWithInlineRename('folder');
 }
 
 function startInlineRename(fileItem: HTMLElement, currentName: string, itemPath: string) {
@@ -6895,6 +6449,21 @@ function startInlineRename(fileItem: HTMLElement, currentName: string, itemPath:
   input.addEventListener('keydown', handleKeyDown);
 }
 
+function positionMenuInViewport(menu: HTMLElement, x: number, y: number) {
+  const rect = menu.getBoundingClientRect();
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  let left = x;
+  let top = y;
+  if (y + rect.height > vh - 10) top = y - rect.height;
+  if (left + rect.width > vw - 10) left = vw - rect.width - 10;
+  if (top < 10) top = 10;
+  if (left < 10) left = 10;
+  if (top + rect.height > vh - 10) top = vh - rect.height - 10;
+  menu.style.left = left + 'px';
+  menu.style.top = top + 'px';
+}
+
 function showContextMenu(x: number, y: number, item: FileItem) {
   const contextMenu = document.getElementById('context-menu');
   const addToBookmarksItem = document.getElementById('add-to-bookmarks-item');
@@ -6912,91 +6481,27 @@ function showContextMenu(x: number, y: number, item: FileItem) {
   contextMenuData = item;
   contextMenuFocusedIndex = -1;
 
-  if (addToBookmarksItem) {
-    if (item.isDirectory) {
-      addToBookmarksItem.style.display = 'flex';
-    } else {
-      addToBookmarksItem.style.display = 'none';
-    }
-  }
-
-  if (changeFolderIconItem) {
-    if (item.isDirectory) {
-      changeFolderIconItem.style.display = 'flex';
-    } else {
-      changeFolderIconItem.style.display = 'none';
-    }
-  }
-
-  if (copyPathItem) {
-    if (!item.isDirectory) {
-      copyPathItem.style.display = 'flex';
-    } else {
-      copyPathItem.style.display = 'none';
-    }
-  }
-
-  if (openTerminalItem) {
-    if (item.isDirectory) {
-      openTerminalItem.style.display = 'flex';
-    } else {
-      openTerminalItem.style.display = 'none';
-    }
-  }
-
-  if (compressItem) {
-    compressItem.style.display = 'flex';
-  }
-
-  if (extractItem) {
-    const isArchive = !item.isDirectory && isArchivePath(item.path);
-    extractItem.style.display = isArchive ? 'flex' : 'none';
-  }
-
-  if (previewPdfItem) {
-    const ext = getFileExtension(item.name);
-    previewPdfItem.style.display = !item.isDirectory && PDF_EXTENSIONS.has(ext) ? 'flex' : 'none';
-  }
+  // Visibility based on item type
+  const showIf = (el: HTMLElement | null, condition: boolean) => {
+    if (el) el.style.display = condition ? 'flex' : 'none';
+  };
+  showIf(addToBookmarksItem, item.isDirectory);
+  showIf(changeFolderIconItem, item.isDirectory);
+  showIf(copyPathItem, !item.isDirectory);
+  showIf(openTerminalItem, item.isDirectory);
+  showIf(compressItem, true);
+  showIf(extractItem, !item.isDirectory && isArchivePath(item.path));
+  showIf(previewPdfItem, !item.isDirectory && PDF_EXTENSIONS.has(getFileExtension(item.name)));
 
   contextMenu.style.display = 'block';
-
-  const menuRect = contextMenu.getBoundingClientRect();
-  const viewportWidth = window.innerWidth;
-  const viewportHeight = window.innerHeight;
-
-  let left = x;
-  let top = y;
-
-  if (y + menuRect.height > viewportHeight - 10) {
-    top = y - menuRect.height;
-  }
-
-  if (left + menuRect.width > viewportWidth - 10) {
-    left = viewportWidth - menuRect.width - 10;
-  }
-
-  if (top < 10) {
-    top = 10;
-  }
-
-  if (left < 10) {
-    left = 10;
-  }
-
-  if (top + menuRect.height > viewportHeight - 10) {
-    top = viewportHeight - menuRect.height - 10;
-  }
-
-  contextMenu.style.left = left + 'px';
-  contextMenu.style.top = top + 'px';
+  positionMenuInViewport(contextMenu, x, y);
 
   const submenu = contextMenu.querySelector('.context-submenu') as HTMLElement;
   if (submenu) {
     submenu.classList.remove('flip-left');
-    const menuRight = left + menuRect.width;
-    const submenuWidth = 160;
-
-    if (menuRight + submenuWidth > viewportWidth - 10) {
+    const menuRight =
+      parseFloat(contextMenu.style.left) + contextMenu.getBoundingClientRect().width;
+    if (menuRight + 160 > window.innerWidth - 10) {
       submenu.classList.add('flip-left');
     }
   }
@@ -7088,36 +6593,7 @@ function showEmptySpaceContextMenu(x: number, y: number) {
 
   emptySpaceMenuFocusedIndex = -1;
   emptySpaceContextMenu.style.display = 'block';
-
-  const menuRect = emptySpaceContextMenu.getBoundingClientRect();
-  const viewportWidth = window.innerWidth;
-  const viewportHeight = window.innerHeight;
-
-  let left = x;
-  let top = y;
-
-  if (y + menuRect.height > viewportHeight - 10) {
-    top = y - menuRect.height;
-  }
-
-  if (left + menuRect.width > viewportWidth - 10) {
-    left = viewportWidth - menuRect.width - 10;
-  }
-
-  if (top < 10) {
-    top = 10;
-  }
-
-  if (left < 10) {
-    left = 10;
-  }
-
-  if (top + menuRect.height > viewportHeight - 10) {
-    top = viewportHeight - menuRect.height - 10;
-  }
-
-  emptySpaceContextMenu.style.left = left + 'px';
-  emptySpaceContextMenu.style.top = top + 'px';
+  positionMenuInViewport(emptySpaceContextMenu, x, y);
   emptySpaceMenuFocusedIndex = navigateContextMenu(
     emptySpaceContextMenu,
     'down',
@@ -8286,51 +7762,29 @@ async function checkForUpdates() {
     const result = await window.electronAPI.checkForUpdates();
 
     if (result.success) {
-      if (result.isFlatpak) {
+      // Check store-managed installs
+      const storeChecks: { flag?: boolean; title: string; msg?: string }[] = [
+        {
+          flag: result.isFlatpak,
+          title: 'Updates via Flatpak',
+          msg: `${result.flatpakMessage}\n\nOr use your system's software center to check for updates.`,
+        },
+        { flag: result.isMas, title: 'Updates via App Store', msg: result.masMessage },
+        {
+          flag: result.isMsStore,
+          title: 'Updates via Microsoft Store',
+          msg: result.msStoreMessage,
+        },
+        { flag: result.isMsi, title: 'Enterprise Installation', msg: result.msiMessage },
+      ];
+      const storeMatch = storeChecks.find((s) => s.flag);
+      if (storeMatch) {
         showDialog(
-          'Updates via Flatpak',
-          `You're running IYERIS as a Flatpak (${result.currentVersion}).\n\n${result.flatpakMessage}\n\nOr use your system's software center to check for updates.`,
+          storeMatch.title,
+          `You're running IYERIS (${result.currentVersion}).\n\n${storeMatch.msg}`,
           'info',
           false
         );
-        btn.innerHTML = originalHTML;
-        btn.disabled = false;
-        return;
-      }
-
-      if (result.isMas) {
-        showDialog(
-          'Updates via App Store',
-          `You're running IYERIS from the Mac App Store (${result.currentVersion}).\n\n${result.masMessage}`,
-          'info',
-          false
-        );
-        btn.innerHTML = originalHTML;
-        btn.disabled = false;
-        return;
-      }
-
-      if (result.isMsStore) {
-        showDialog(
-          'Updates via Microsoft Store',
-          `You're running IYERIS from the Microsoft Store (${result.currentVersion}).\n\n${result.msStoreMessage}`,
-          'info',
-          false
-        );
-        btn.innerHTML = originalHTML;
-        btn.disabled = false;
-        return;
-      }
-
-      if (result.isMsi) {
-        showDialog(
-          'Enterprise Installation',
-          `You're running IYERIS as an enterprise installation (${result.currentVersion}).\n\n${result.msiMessage}`,
-          'info',
-          false
-        );
-        btn.innerHTML = originalHTML;
-        btn.disabled = false;
         return;
       }
 
@@ -8572,30 +8026,14 @@ document.getElementById('folder-icon-close')?.addEventListener('click', hideFold
 document.getElementById('folder-icon-cancel')?.addEventListener('click', hideFolderIconPicker);
 document.getElementById('folder-icon-reset')?.addEventListener('click', resetFolderIcon);
 
-const folderIconModal = document.getElementById('folder-icon-modal');
-if (folderIconModal) {
-  folderIconModal.addEventListener('click', (e) => {
-    if ((e.target as HTMLElement).id === 'folder-icon-modal') {
-      hideFolderIconPicker();
-    }
-  });
-}
-
-const settingsModal = document.getElementById('settings-modal');
-if (settingsModal) {
-  settingsModal.addEventListener('click', (e) => {
-    if ((e.target as HTMLElement).id === 'settings-modal') {
-      hideSettingsModal();
-    }
-  });
-}
-
-const shortcutsModal = document.getElementById('shortcuts-modal');
-if (shortcutsModal) {
-  shortcutsModal.addEventListener('click', (e) => {
-    if ((e.target as HTMLElement).id === 'shortcuts-modal') {
-      hideShortcutsModal();
-    }
+for (const [id, handler] of [
+  ['folder-icon-modal', hideFolderIconPicker],
+  ['settings-modal', hideSettingsModal],
+  ['shortcuts-modal', hideShortcutsModal],
+] as const) {
+  const el = document.getElementById(id);
+  el?.addEventListener('click', (e) => {
+    if ((e.target as HTMLElement).id === id) handler();
   });
 }
 

@@ -41,6 +41,18 @@ interface ArchiveProcess {
 
 const activeArchiveProcesses = new Map<string, ArchiveProcess>();
 
+function safeSend(channel: string, data: unknown): void {
+  const mainWindow = getMainWindow();
+  if (
+    mainWindow &&
+    !mainWindow.isDestroyed() &&
+    mainWindow.webContents &&
+    !mainWindow.webContents.isDestroyed()
+  ) {
+    mainWindow.webContents.send(channel, data);
+  }
+}
+
 const SAFE_METHOD_VALUES = new Set([
   'LZMA',
   'LZMA2',
@@ -405,19 +417,12 @@ export function setupArchiveHandlers(): void {
 
             tarProcess.on('progress', (progress: { file?: string }) => {
               fileCount++;
-              if (
-                mainWindow &&
-                !mainWindow.isDestroyed() &&
-                mainWindow.webContents &&
-                !mainWindow.webContents.isDestroyed()
-              ) {
-                mainWindow.webContents.send('compress-progress', {
-                  operationId,
-                  current: fileCount,
-                  total: fileCount + 20,
-                  name: progress.file || 'Creating tar...',
-                });
-              }
+              safeSend('compress-progress', {
+                operationId,
+                current: fileCount,
+                total: fileCount + 20,
+                name: progress.file || 'Creating tar...',
+              });
             });
 
             tarProcess.on('end', () => {
@@ -435,19 +440,12 @@ export function setupArchiveHandlers(): void {
               }
 
               gzipProcess.on('progress', () => {
-                if (
-                  mainWindow &&
-                  !mainWindow.isDestroyed() &&
-                  mainWindow.webContents &&
-                  !mainWindow.webContents.isDestroyed()
-                ) {
-                  mainWindow.webContents.send('compress-progress', {
-                    operationId,
-                    current: fileCount + 10,
-                    total: fileCount + 20,
-                    name: 'Compressing with gzip...',
-                  });
-                }
+                safeSend('compress-progress', {
+                  operationId,
+                  current: fileCount + 10,
+                  total: fileCount + 20,
+                  name: 'Compressing with gzip...',
+                });
               });
 
               gzipProcess.on('end', () => {
@@ -567,19 +565,12 @@ export function setupArchiveHandlers(): void {
 
           seven.on('progress', (progress: { file?: string }) => {
             fileCount++;
-            if (
-              mainWindow &&
-              !mainWindow.isDestroyed() &&
-              mainWindow.webContents &&
-              !mainWindow.webContents.isDestroyed()
-            ) {
-              mainWindow.webContents.send('compress-progress', {
-                operationId,
-                current: fileCount,
-                total: fileCount + 10,
-                name: progress.file || 'Compressing...',
-              });
-            }
+            safeSend('compress-progress', {
+              operationId,
+              current: fileCount,
+              total: fileCount + 10,
+              name: progress.file || 'Compressing...',
+            });
           });
 
           seven.on('end', () => {
@@ -670,19 +661,12 @@ export function setupArchiveHandlers(): void {
 
           seven.on('progress', (progress: { file?: string }) => {
             fileCount++;
-            if (
-              mainWindow &&
-              !mainWindow.isDestroyed() &&
-              mainWindow.webContents &&
-              !mainWindow.webContents.isDestroyed()
-            ) {
-              mainWindow.webContents.send('extract-progress', {
-                operationId,
-                current: fileCount,
-                total: fileCount + 10,
-                name: progress.file || 'Extracting...',
-              });
-            }
+            safeSend('extract-progress', {
+              operationId,
+              current: fileCount,
+              total: fileCount + 10,
+              name: progress.file || 'Extracting...',
+            });
           });
 
           seven.on('end', async () => {

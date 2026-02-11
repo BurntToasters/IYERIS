@@ -136,67 +136,70 @@ function redactDiagnosticsText(input: string, redactions: DiagnosticsRedaction[]
 }
 
 function createSettingsDiagnosticsSnapshot(settings: Settings): Record<string, unknown> {
-  return {
-    theme: settings.theme,
-    useSystemTheme: settings.useSystemTheme,
-    sortBy: settings.sortBy,
-    sortOrder: settings.sortOrder,
-    viewMode: settings.viewMode,
-    showDangerousOptions: settings.showDangerousOptions,
-    showHiddenFiles: settings.showHiddenFiles,
-    enableSearchHistory: settings.enableSearchHistory,
-    enableIndexer: settings.enableIndexer,
-    minimizeToTray: settings.minimizeToTray,
-    startOnLogin: settings.startOnLogin,
-    autoCheckUpdates: settings.autoCheckUpdates,
-    showRecentFiles: settings.showRecentFiles,
-    showFolderTree: settings.showFolderTree,
-    enableTabs: settings.enableTabs,
-    globalContentSearch: settings.globalContentSearch,
-    globalClipboard: settings.globalClipboard,
-    enableSyntaxHighlighting: settings.enableSyntaxHighlighting,
-    enableGitStatus: settings.enableGitStatus,
-    gitIncludeUntracked: settings.gitIncludeUntracked,
-    showFileHoverCard: settings.showFileHoverCard,
-    showFileCheckboxes: settings.showFileCheckboxes,
-    reduceMotion: settings.reduceMotion,
-    highContrast: settings.highContrast,
-    largeText: settings.largeText,
-    boldText: settings.boldText,
-    visibleFocus: settings.visibleFocus,
-    reduceTransparency: settings.reduceTransparency,
-    liquidGlassMode: settings.liquidGlassMode,
-    uiDensity: settings.uiDensity,
-    updateChannel: settings.updateChannel,
-    themedIcons: settings.themedIcons,
-    disableHardwareAcceleration: settings.disableHardwareAcceleration,
-    useSystemFontSize: settings.useSystemFontSize,
-    confirmFileOperations: settings.confirmFileOperations,
-    fileConflictBehavior: settings.fileConflictBehavior,
-    skipElevationConfirmation: settings.skipElevationConfirmation,
-    maxThumbnailSizeMB: settings.maxThumbnailSizeMB,
-    thumbnailQuality: settings.thumbnailQuality,
-    autoPlayVideos: settings.autoPlayVideos,
-    previewPanelPosition: settings.previewPanelPosition,
-    maxPreviewSizeMB: settings.maxPreviewSizeMB,
-    gridColumns: settings.gridColumns,
-    iconSize: settings.iconSize,
-    compactFileInfo: settings.compactFileInfo,
-    showFileExtensions: settings.showFileExtensions,
-    maxSearchHistoryItems: settings.maxSearchHistoryItems,
-    maxDirectoryHistoryItems: settings.maxDirectoryHistoryItems,
-    startupPathConfigured: Boolean(settings.startupPath && settings.startupPath.trim()),
-    customThemeName: settings.customTheme?.name ?? null,
-    counts: {
-      bookmarks: settings.bookmarks.length,
-      searchHistory: settings.searchHistory.length,
-      directoryHistory: settings.directoryHistory.length,
-      recentFiles: settings.recentFiles?.length ?? 0,
-      folderIcons: settings.folderIcons ? Object.keys(settings.folderIcons).length : 0,
-      shortcuts: settings.shortcuts ? Object.keys(settings.shortcuts).length : 0,
-      tabs: settings.tabState?.tabs.length ?? 0,
-    },
+  const SCALAR_KEYS = [
+    'theme',
+    'useSystemTheme',
+    'sortBy',
+    'sortOrder',
+    'viewMode',
+    'showDangerousOptions',
+    'showHiddenFiles',
+    'enableSearchHistory',
+    'enableIndexer',
+    'minimizeToTray',
+    'startOnLogin',
+    'autoCheckUpdates',
+    'showRecentFiles',
+    'showFolderTree',
+    'enableTabs',
+    'globalContentSearch',
+    'globalClipboard',
+    'enableSyntaxHighlighting',
+    'enableGitStatus',
+    'gitIncludeUntracked',
+    'showFileHoverCard',
+    'showFileCheckboxes',
+    'reduceMotion',
+    'highContrast',
+    'largeText',
+    'boldText',
+    'visibleFocus',
+    'reduceTransparency',
+    'liquidGlassMode',
+    'uiDensity',
+    'updateChannel',
+    'themedIcons',
+    'disableHardwareAcceleration',
+    'useSystemFontSize',
+    'confirmFileOperations',
+    'fileConflictBehavior',
+    'skipElevationConfirmation',
+    'maxThumbnailSizeMB',
+    'thumbnailQuality',
+    'autoPlayVideos',
+    'previewPanelPosition',
+    'maxPreviewSizeMB',
+    'gridColumns',
+    'iconSize',
+    'compactFileInfo',
+    'showFileExtensions',
+    'maxSearchHistoryItems',
+    'maxDirectoryHistoryItems',
+  ] as const;
+  const snapshot: Record<string, unknown> = {};
+  for (const key of SCALAR_KEYS) snapshot[key] = settings[key];
+  snapshot.startupPathConfigured = Boolean(settings.startupPath?.trim());
+  snapshot.customThemeName = settings.customTheme?.name ?? null;
+  snapshot.counts = {
+    bookmarks: settings.bookmarks.length,
+    searchHistory: settings.searchHistory.length,
+    directoryHistory: settings.directoryHistory.length,
+    recentFiles: settings.recentFiles?.length ?? 0,
+    folderIcons: settings.folderIcons ? Object.keys(settings.folderIcons).length : 0,
+    shortcuts: settings.shortcuts ? Object.keys(settings.shortcuts).length : 0,
+    tabs: settings.tabState?.tabs.length ?? 0,
   };
+  return snapshot;
 }
 
 export async function checkFullDiskAccess(): Promise<boolean> {
@@ -721,16 +724,12 @@ export function setupSystemHandlers(
   );
 
   ipcMain.handle('get-platform', (event: IpcMainInvokeEvent): string => {
-    if (!isTrustedIpcEvent(event, 'get-platform')) {
-      return '';
-    }
+    if (!isTrustedIpcEvent(event, 'get-platform')) return '';
     return process.platform;
   });
 
   ipcMain.handle('get-app-version', (event: IpcMainInvokeEvent): string => {
-    if (!isTrustedIpcEvent(event, 'get-app-version')) {
-      return '';
-    }
+    if (!isTrustedIpcEvent(event, 'get-app-version')) return '';
     return app.getVersion();
   });
 
@@ -741,21 +740,10 @@ export function setupSystemHandlers(
         return { accentColor: '#0078d4', isDarkMode: false };
       }
       let accentColor = '#0078d4';
-      if (process.platform === 'win32') {
+      if (process.platform === 'win32' || process.platform === 'darwin') {
         try {
           const color = systemPreferences.getAccentColor();
-          if (color && color.length >= 6) {
-            accentColor = `#${color.substring(0, 6)}`;
-          }
-        } catch (error) {
-          ignoreError(error);
-        }
-      } else if (process.platform === 'darwin') {
-        try {
-          const color = systemPreferences.getAccentColor();
-          if (color && color.length >= 6) {
-            accentColor = `#${color.substring(0, 6)}`;
-          }
+          if (color && color.length >= 6) accentColor = `#${color.substring(0, 6)}`;
         } catch (error) {
           ignoreError(error);
         }
@@ -768,32 +756,23 @@ export function setupSystemHandlers(
   );
 
   ipcMain.handle('is-mas', (event: IpcMainInvokeEvent): boolean => {
-    if (!isTrustedIpcEvent(event, 'is-mas')) {
-      return false;
-    }
+    if (!isTrustedIpcEvent(event, 'is-mas')) return false;
     return process.mas === true;
   });
 
   ipcMain.handle('is-flatpak', (event: IpcMainInvokeEvent): boolean => {
-    if (!isTrustedIpcEvent(event, 'is-flatpak')) {
-      return false;
-    }
+    if (!isTrustedIpcEvent(event, 'is-flatpak')) return false;
     return isRunningInFlatpak();
   });
 
   ipcMain.handle('is-ms-store', (event: IpcMainInvokeEvent): boolean => {
-    if (!isTrustedIpcEvent(event, 'is-ms-store')) {
-      return false;
-    }
+    if (!isTrustedIpcEvent(event, 'is-ms-store')) return false;
     return process.windowsStore === true;
   });
 
   ipcMain.handle('get-system-text-scale', (event: IpcMainInvokeEvent): number => {
-    if (!isTrustedIpcEvent(event, 'get-system-text-scale')) {
-      return 1;
-    }
-    const primaryDisplay = screen.getPrimaryDisplay();
-    return primaryDisplay.scaleFactor;
+    if (!isTrustedIpcEvent(event, 'get-system-text-scale')) return 1;
+    return screen.getPrimaryDisplay().scaleFactor;
   });
 
   ipcMain.handle(

@@ -117,235 +117,90 @@ export function createCommandPaletteController(deps: CommandPaletteDeps) {
       addNewTab,
     } = deps.actions;
 
-    commands.push(
-      {
-        id: 'new-folder',
-        title: 'New Folder',
-        description: 'Create a new folder',
-        icon: '📁',
-        shortcut: deps.getShortcutBinding('new-folder'),
-        action: () => {
-          hideCommandPalette();
-          createNewFolder();
-        },
-      },
-      {
-        id: 'new-file',
-        title: 'New File',
-        description: 'Create a new file',
-        icon: '📄',
-        shortcut: deps.getShortcutBinding('new-file'),
-        action: () => {
-          hideCommandPalette();
-          createNewFile();
-        },
-      },
-      {
-        id: 'search',
-        title: 'Search',
-        description: 'Search files in current folder',
-        icon: '🔍',
-        shortcut: deps.getShortcutBinding('search'),
-        action: () => {
-          hideCommandPalette();
-          document.getElementById('search-btn')?.click();
-        },
-      },
-      {
-        id: 'refresh',
-        title: 'Refresh',
-        description: 'Reload current folder',
-        icon: '🔄',
-        shortcut: deps.fixedShortcuts.refresh,
-        action: () => {
-          hideCommandPalette();
-          refresh();
-        },
-      },
-      {
-        id: 'go-back',
-        title: 'Go Back',
-        description: 'Navigate to previous folder',
-        icon: '⬅️',
-        shortcut: deps.getShortcutBinding('go-back'),
-        action: () => {
-          hideCommandPalette();
-          goBack();
-        },
-      },
-      {
-        id: 'go-forward',
-        title: 'Go Forward',
-        description: 'Navigate to next folder',
-        icon: '➡️',
-        shortcut: deps.getShortcutBinding('go-forward'),
-        action: () => {
-          hideCommandPalette();
-          goForward();
-        },
-      },
-      {
-        id: 'go-up',
-        title: 'Go Up',
-        description: 'Navigate to parent folder',
-        icon: '⬆️',
-        shortcut: deps.getShortcutBinding('go-up'),
-        action: () => {
-          hideCommandPalette();
-          goUp();
-        },
-      },
-      {
-        id: 'settings',
-        title: 'Settings',
-        description: 'Open settings',
-        icon: '⚙️',
-        shortcut: deps.getShortcutBinding('settings'),
-        action: () => {
-          hideCommandPalette();
-          showSettingsModal();
-        },
-      },
-      {
-        id: 'shortcuts',
-        title: 'Keyboard Shortcuts',
-        description: 'View all keyboard shortcuts',
-        icon: '⌨️',
-        shortcut: deps.getShortcutBinding('shortcuts'),
-        action: () => {
-          hideCommandPalette();
-          showShortcutsModal();
-        },
-      },
-      {
-        id: 'select-all',
-        title: 'Select All',
-        description: 'Select all items',
-        icon: '☑️',
-        shortcut: deps.getShortcutBinding('select-all'),
-        action: () => {
-          hideCommandPalette();
-          selectAll();
-        },
-      },
-      {
-        id: 'copy',
-        title: 'Copy',
-        description: 'Copy selected items',
-        icon: '📋',
-        shortcut: deps.getShortcutBinding('copy'),
-        action: () => {
-          hideCommandPalette();
-          copyToClipboard();
-        },
-      },
-      {
-        id: 'cut',
-        title: 'Cut',
-        description: 'Cut selected items',
-        icon: '✂️',
-        shortcut: deps.getShortcutBinding('cut'),
-        action: () => {
-          hideCommandPalette();
-          cutToClipboard();
-        },
-      },
-      {
-        id: 'paste',
-        title: 'Paste',
-        description: 'Paste items',
-        icon: '📎',
-        shortcut: deps.getShortcutBinding('paste'),
-        action: () => {
-          hideCommandPalette();
-          pasteFromClipboard();
-        },
-      },
-      {
-        id: 'delete',
-        title: 'Delete',
-        description: 'Delete selected items',
-        icon: '🗑️',
-        shortcut: deps.fixedShortcuts.delete,
-        action: () => {
-          hideCommandPalette();
-          deleteSelected();
-        },
-      },
-      {
-        id: 'rename',
-        title: 'Rename',
-        description: 'Rename selected item',
-        icon: '✍️',
-        shortcut: deps.fixedShortcuts.rename,
-        action: () => {
-          hideCommandPalette();
-          renameSelected();
-        },
-      },
-      {
-        id: 'grid-view',
-        title: 'Grid View',
-        description: 'Switch to grid view',
-        icon: '▦',
-        action: () => {
-          hideCommandPalette();
-          setViewMode('grid');
-        },
-      },
-      {
-        id: 'list-view',
-        title: 'List View',
-        description: 'Switch to list view',
-        icon: '☰',
-        action: () => {
-          hideCommandPalette();
-          setViewMode('list');
-        },
-      },
-      {
-        id: 'column-view',
-        title: 'Column View',
-        description: 'Switch to column view',
-        icon: '|||',
-        action: () => {
-          hideCommandPalette();
-          setViewMode('column');
-        },
-      },
-      {
-        id: 'toggle-preview',
-        title: 'Toggle Preview Panel',
-        description: 'Show or hide preview panel',
-        icon: '👁️',
-        action: () => {
-          hideCommandPalette();
-          document.getElementById('preview-toggle-btn')?.click();
-        },
-      },
-      {
-        id: 'toggle-sidebar',
-        title: 'Toggle Sidebar',
-        description: 'Show or hide sidebar',
-        icon: '📂',
-        shortcut: deps.getShortcutBinding('toggle-sidebar'),
-        action: () => {
-          hideCommandPalette();
-          document.getElementById('sidebar-toggle')?.click();
-        },
-      },
-      {
-        id: 'new-tab',
-        title: 'New Tab',
-        description: 'Open new tab',
-        icon: '➕',
-        shortcut: deps.getShortcutBinding('new-tab'),
-        action: () => {
-          hideCommandPalette();
+    const clickBtn = (id: string) => () => document.getElementById(id)?.click();
+
+    // [id, title, description, icon, action, shortcutSource]
+    // shortcutSource: 'r' = remappable (getShortcutBinding), 'f' = fixed, undefined = none
+    const defs: [string, string, string, string, () => void, 'r' | 'f' | undefined][] = [
+      ['new-folder', 'New Folder', 'Create a new folder', '📁', createNewFolder, 'r'],
+      ['new-file', 'New File', 'Create a new file', '📄', createNewFile, 'r'],
+      ['search', 'Search', 'Search files in current folder', '🔍', clickBtn('search-btn'), 'r'],
+      ['refresh', 'Refresh', 'Reload current folder', '🔄', refresh, 'f'],
+      ['go-back', 'Go Back', 'Navigate to previous folder', '⬅️', goBack, 'r'],
+      ['go-forward', 'Go Forward', 'Navigate to next folder', '➡️', goForward, 'r'],
+      ['go-up', 'Go Up', 'Navigate to parent folder', '⬆️', goUp, 'r'],
+      ['settings', 'Settings', 'Open settings', '⚙️', showSettingsModal, 'r'],
+      [
+        'shortcuts',
+        'Keyboard Shortcuts',
+        'View all keyboard shortcuts',
+        '⌨️',
+        showShortcutsModal,
+        'r',
+      ],
+      ['select-all', 'Select All', 'Select all items', '☑️', selectAll, 'r'],
+      ['copy', 'Copy', 'Copy selected items', '📋', copyToClipboard, 'r'],
+      ['cut', 'Cut', 'Cut selected items', '✂️', cutToClipboard, 'r'],
+      ['paste', 'Paste', 'Paste items', '📎', pasteFromClipboard, 'r'],
+      ['delete', 'Delete', 'Delete selected items', '🗑️', deleteSelected, 'f'],
+      ['rename', 'Rename', 'Rename selected item', '✍️', renameSelected, 'f'],
+      ['grid-view', 'Grid View', 'Switch to grid view', '▦', () => setViewMode('grid'), undefined],
+      ['list-view', 'List View', 'Switch to list view', '☰', () => setViewMode('list'), undefined],
+      [
+        'column-view',
+        'Column View',
+        'Switch to column view',
+        '|||',
+        () => setViewMode('column'),
+        undefined,
+      ],
+      [
+        'toggle-preview',
+        'Toggle Preview Panel',
+        'Show or hide preview panel',
+        '👁️',
+        clickBtn('preview-toggle-btn'),
+        undefined,
+      ],
+      [
+        'toggle-sidebar',
+        'Toggle Sidebar',
+        'Show or hide sidebar',
+        '📂',
+        clickBtn('sidebar-toggle'),
+        'r',
+      ],
+      [
+        'new-tab',
+        'New Tab',
+        'Open new tab',
+        '➕',
+        () => {
           if (deps.getTabsEnabled()) addNewTab();
         },
-      }
-    );
+        'r',
+      ],
+    ];
+
+    for (const [id, title, description, icon, fn, src] of defs) {
+      const shortcut =
+        src === 'r'
+          ? deps.getShortcutBinding(id)
+          : src === 'f'
+            ? deps.fixedShortcuts[id]
+            : undefined;
+      commands.push({
+        id,
+        title,
+        description,
+        icon,
+        shortcut,
+        action: () => {
+          hideCommandPalette();
+          fn();
+        },
+      });
+    }
   }
 
   function showCommandPalette(): void {

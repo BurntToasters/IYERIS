@@ -39,6 +39,12 @@ export function createPreviewController(deps: PreviewDeps) {
 
   let activePdfViewer: PdfViewerHandle | null = null;
 
+  const loadingHtml = (label: string) =>
+    `<div class="preview-loading"><div class="spinner"></div><p>Loading ${label}...</p></div>`;
+
+  const quickInfo = (file: FileItem, prefix = '') =>
+    `${prefix}${deps.formatFileSize(file.size)} \u2022 ${new Date(file.modified).toLocaleDateString()}`;
+
   let previewPanel: HTMLElement | null = null;
   let previewContent: HTMLElement | null = null;
   let previewToggleBtn: HTMLButtonElement | null = null;
@@ -150,12 +156,7 @@ export function createPreviewController(deps: PreviewDeps) {
   async function showArchivePreview(file: FileItem, requestId: number) {
     ensureElements();
     if (!previewContent || requestId !== previewRequestId) return;
-    previewContent.innerHTML = `
-    <div class="preview-loading">
-      <div class="spinner"></div>
-      <p>Loading archive contents...</p>
-    </div>
-  `;
+    previewContent.innerHTML = loadingHtml('archive contents');
 
     try {
       const result = await window.electronAPI.listArchiveContents(file.path);
@@ -224,12 +225,7 @@ export function createPreviewController(deps: PreviewDeps) {
   async function showImagePreview(file: FileItem, requestId: number) {
     ensureElements();
     if (!previewContent || requestId !== previewRequestId) return;
-    previewContent.innerHTML = `
-    <div class="preview-loading">
-      <div class="spinner"></div>
-      <p>Loading image...</p>
-    </div>
-  `;
+    previewContent.innerHTML = loadingHtml('image');
 
     const settings = deps.getCurrentSettings();
     if (file.size > (settings.maxPreviewSizeMB || 50) * 1024 * 1024) {
@@ -444,12 +440,7 @@ export function createPreviewController(deps: PreviewDeps) {
   async function showTextPreview(file: FileItem, requestId: number) {
     ensureElements();
     if (!previewContent || requestId !== previewRequestId) return;
-    previewContent.innerHTML = `
-    <div class="preview-loading">
-      <div class="spinner"></div>
-      <p>Loading text...</p>
-    </div>
-  `;
+    previewContent.innerHTML = loadingHtml('text');
 
     const result = await window.electronAPI.readFileContent(file.path, 50 * 1024);
     if (requestId !== previewRequestId) return;
@@ -573,12 +564,7 @@ export function createPreviewController(deps: PreviewDeps) {
       return;
     }
 
-    previewContent.innerHTML = `
-    <div class="preview-loading">
-      <div class="spinner"></div>
-      <p>Loading PDF...</p>
-    </div>
-  `;
+    previewContent.innerHTML = loadingHtml('PDF');
 
     const props = await window.electronAPI.getItemProperties(file.path);
     if (requestId !== previewRequestId) return;
@@ -731,18 +717,13 @@ export function createPreviewController(deps: PreviewDeps) {
 
     const ext = deps.getFileExtension(file.name);
 
-    quicklookContent.innerHTML = `
-    <div class="preview-loading">
-      <div class="spinner"></div>
-      <p>Loading preview...</p>
-    </div>
-  `;
+    quicklookContent.innerHTML = loadingHtml('preview');
 
     if (IMAGE_EXTENSIONS.has(ext)) {
       const settings = deps.getCurrentSettings();
       if (file.size > (settings.maxThumbnailSizeMB || 10) * 1024 * 1024) {
         quicklookContent.innerHTML = `<div class="preview-error">Image too large to preview</div>`;
-        quicklookInfo.textContent = `${deps.formatFileSize(file.size)} • ${new Date(file.modified).toLocaleDateString()}`;
+        quicklookInfo.textContent = quickInfo(file);
       } else {
         const fileUrl = encodeFileUrl(file.path);
         quicklookContent.innerHTML = '';
@@ -774,7 +755,7 @@ export function createPreviewController(deps: PreviewDeps) {
             img.naturalWidth && img.naturalHeight
               ? `${img.naturalWidth} × ${img.naturalHeight} • `
               : '';
-          quicklookInfo!.textContent = `${dims}${deps.formatFileSize(file.size)} • ${new Date(file.modified).toLocaleDateString()}`;
+          quicklookInfo!.textContent = quickInfo(file, dims);
         });
         img.addEventListener('error', () => {
           if (requestId !== quicklookRequestId || currentQuicklookFile?.path !== file.path) {
@@ -784,7 +765,7 @@ export function createPreviewController(deps: PreviewDeps) {
         });
         wrapper.appendChild(img);
         quicklookContent.appendChild(wrapper);
-        quicklookInfo.textContent = `${deps.formatFileSize(file.size)} • ${new Date(file.modified).toLocaleDateString()}`;
+        quicklookInfo.textContent = quickInfo(file);
       }
     } else if (VIDEO_EXTENSIONS.has(ext)) {
       const fileUrl = encodeFileUrl(file.path);
@@ -799,7 +780,7 @@ export function createPreviewController(deps: PreviewDeps) {
       video.appendChild(source);
       video.appendChild(document.createTextNode('Your browser does not support the video tag.'));
       quicklookContent.appendChild(video);
-      quicklookInfo.textContent = `${deps.formatFileSize(file.size)} • ${new Date(file.modified).toLocaleDateString()}`;
+      quicklookInfo.textContent = quickInfo(file);
     } else if (AUDIO_EXTENSIONS.has(ext)) {
       const fileUrl = encodeFileUrl(file.path);
       quicklookContent.innerHTML = '';
@@ -820,7 +801,7 @@ export function createPreviewController(deps: PreviewDeps) {
       container.appendChild(icon);
       container.appendChild(audio);
       quicklookContent.appendChild(container);
-      quicklookInfo.textContent = `${deps.formatFileSize(file.size)} • ${new Date(file.modified).toLocaleDateString()}`;
+      quicklookInfo.textContent = quickInfo(file);
     } else if (PDF_EXTENSIONS.has(ext)) {
       const headerResult = await window.electronAPI.readFileContent(file.path, 16);
       if (requestId !== quicklookRequestId || currentQuicklookFile?.path !== file.path) return;
@@ -830,7 +811,7 @@ export function createPreviewController(deps: PreviewDeps) {
         !headerResult.content.startsWith('%PDF-')
       ) {
         quicklookContent.innerHTML = `<div class="preview-error">${twemojiImg(String.fromCodePoint(0x26a0), 'twemoji')} File does not appear to be a valid PDF</div>`;
-        quicklookInfo.textContent = `${deps.formatFileSize(file.size)} • ${new Date(file.modified).toLocaleDateString()}`;
+        quicklookInfo.textContent = quickInfo(file);
         return;
       }
 
@@ -860,7 +841,7 @@ export function createPreviewController(deps: PreviewDeps) {
         if (requestId !== quicklookRequestId || currentQuicklookFile?.path !== file.path) return;
         quicklookContent.innerHTML = `<div class="preview-error">Failed to render PDF</div>`;
       }
-      quicklookInfo.textContent = `PDF • ${deps.formatFileSize(file.size)} • ${new Date(file.modified).toLocaleDateString()}`;
+      quicklookInfo.textContent = quickInfo(file, 'PDF \u2022 ');
     } else if (TEXT_EXTENSIONS.has(ext)) {
       const result = await window.electronAPI.readFileContent(file.path, 100 * 1024);
       if (requestId !== quicklookRequestId || currentQuicklookFile?.path !== file.path) {
@@ -872,7 +853,7 @@ export function createPreviewController(deps: PreviewDeps) {
         ${result.isTruncated ? `<div class="preview-truncated">${twemojiImg(String.fromCodePoint(0x26a0), 'twemoji')} File truncated to first 100KB</div>` : ''}
         <pre class="preview-text"><code class="${lang ? `language-${lang}` : ''}">${escapeHtml(result.content)}</code></pre>
       `;
-        quicklookInfo.textContent = `${deps.formatFileSize(file.size)} • ${new Date(file.modified).toLocaleDateString()}`;
+        quicklookInfo.textContent = quickInfo(file);
         const settings = deps.getCurrentSettings();
         if (lang && settings.enableSyntaxHighlighting) {
           loadHighlightJs().then((hl) => {
@@ -892,7 +873,7 @@ export function createPreviewController(deps: PreviewDeps) {
         <p>Preview not available for this file type</p>
       </div>
     `;
-      quicklookInfo.textContent = `${deps.formatFileSize(file.size)} • ${new Date(file.modified).toLocaleDateString()}`;
+      quicklookInfo.textContent = quickInfo(file);
     }
   }
 

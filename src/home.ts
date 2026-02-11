@@ -121,8 +121,6 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
   let homeSettingsHasUnsavedChanges = false;
   const driveUsageCache = new Map<string, { timestamp: number; total: number; free: number }>();
   let draggedSectionId: string | null = null;
-  let draggedQuickAction: string | null = null;
-  let draggedSidebarQuickAction: string | null = null;
 
   function normalizeHomeSettings(settings?: Partial<HomeSettings> | null): HomeSettings {
     const defaults = createDefaultHomeSettings();
@@ -707,156 +705,93 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
     });
   }
 
-  function renderHomeQuickAccessOptions(): void {
-    if (!homeQuickAccessOptions) return;
-    homeQuickAccessOptions.innerHTML = '';
+  function renderReorderableOptions(
+    container: HTMLElement | null,
+    orderKey: 'quickAccessOrder' | 'sidebarQuickAccessOrder',
+    hiddenKey: 'hiddenQuickAccessItems' | 'hiddenSidebarQuickAccessItems',
+    dragStateRef: { current: string | null },
+    rerender: () => void
+  ): void {
+    if (!container) return;
+    container.innerHTML = '';
 
-    const hiddenSet = new Set(tempHomeSettings.hiddenQuickAccessItems);
+    const hiddenSet = new Set(tempHomeSettings[hiddenKey]);
     const itemsByAction = new Map(HOME_QUICK_ACCESS_ITEMS.map((item) => [item.action, item]));
-    const orderedActions = tempHomeSettings.quickAccessOrder || [];
-    const orderedItems = orderedActions
+    const orderedItems = (tempHomeSettings[orderKey] || [])
       .map((action) => itemsByAction.get(action))
       .filter((item): item is { action: string; label: string; icon: number } => !!item);
 
-    orderedItems.forEach((item) => {
+    for (const item of orderedItems) {
       const option = document.createElement('label');
       option.className = 'home-option';
       option.draggable = true;
       option.innerHTML = `
-        <input type="checkbox" data-action="${item.action}" ${
-          hiddenSet.has(item.action) ? '' : 'checked'
-        }>
-        <span class="home-option-icon">${twemojiImg(
-          String.fromCodePoint(item.icon),
-          'twemoji'
-        )}</span>
+        <input type="checkbox" data-action="${item.action}" ${hiddenSet.has(item.action) ? '' : 'checked'}>
+        <span class="home-option-icon">${twemojiImg(String.fromCodePoint(item.icon), 'twemoji')}</span>
         <span class="home-option-label">${escapeHtml(item.label)}</span>
       `;
 
       option.addEventListener('dragstart', (e) => {
-        draggedQuickAction = item.action;
+        dragStateRef.current = item.action;
         option.classList.add('dragging');
         if (e.dataTransfer) {
           e.dataTransfer.effectAllowed = 'move';
           e.dataTransfer.setData('text/plain', item.action);
         }
       });
-
       option.addEventListener('dragend', () => {
-        draggedQuickAction = null;
+        dragStateRef.current = null;
         option.classList.remove('dragging');
       });
-
-      option.addEventListener('dragover', (e) => {
-        e.preventDefault();
-      });
-
+      option.addEventListener('dragover', (e) => e.preventDefault());
       option.addEventListener('drop', (e) => {
         e.preventDefault();
-        const fromAction = draggedQuickAction || e.dataTransfer?.getData('text/plain');
+        const fromAction = dragStateRef.current || e.dataTransfer?.getData('text/plain');
         if (!fromAction || fromAction === item.action) return;
-        tempHomeSettings.quickAccessOrder = reorderList(
-          tempHomeSettings.quickAccessOrder,
+        tempHomeSettings[orderKey] = reorderList(
+          tempHomeSettings[orderKey],
           fromAction,
           item.action
         );
         homeSettingsHasUnsavedChanges = true;
-        renderHomeQuickAccessOptions();
+        rerender();
       });
 
       const checkbox = option.querySelector('input') as HTMLInputElement | null;
-      if (checkbox) {
-        checkbox.addEventListener('change', () => {
-          const action = checkbox.dataset.action || '';
-          const updatedHidden = new Set(tempHomeSettings.hiddenQuickAccessItems);
-          if (checkbox.checked) {
-            updatedHidden.delete(action);
-          } else {
-            updatedHidden.add(action);
-          }
-          tempHomeSettings.hiddenQuickAccessItems = Array.from(updatedHidden);
-          homeSettingsHasUnsavedChanges = true;
-        });
-      }
+      checkbox?.addEventListener('change', () => {
+        const action = checkbox.dataset.action || '';
+        const updatedHidden = new Set(tempHomeSettings[hiddenKey]);
+        if (checkbox.checked) updatedHidden.delete(action);
+        else updatedHidden.add(action);
+        tempHomeSettings[hiddenKey] = Array.from(updatedHidden);
+        homeSettingsHasUnsavedChanges = true;
+      });
 
-      homeQuickAccessOptions.appendChild(option);
-    });
+      container.appendChild(option);
+    }
+  }
+
+  const quickActionDragState = { current: null as string | null };
+  const sidebarDragState = { current: null as string | null };
+
+  function renderHomeQuickAccessOptions(): void {
+    renderReorderableOptions(
+      homeQuickAccessOptions,
+      'quickAccessOrder',
+      'hiddenQuickAccessItems',
+      quickActionDragState,
+      renderHomeQuickAccessOptions
+    );
   }
 
   function renderSidebarQuickAccessOptions(): void {
-    if (!sidebarQuickAccessOptions) return;
-    sidebarQuickAccessOptions.innerHTML = '';
-
-    const hiddenSet = new Set(tempHomeSettings.hiddenSidebarQuickAccessItems);
-    const itemsByAction = new Map(HOME_QUICK_ACCESS_ITEMS.map((item) => [item.action, item]));
-    const orderedActions = tempHomeSettings.sidebarQuickAccessOrder || [];
-    const orderedItems = orderedActions
-      .map((action) => itemsByAction.get(action))
-      .filter((item): item is { action: string; label: string; icon: number } => !!item);
-
-    orderedItems.forEach((item) => {
-      const option = document.createElement('label');
-      option.className = 'home-option';
-      option.draggable = true;
-      option.innerHTML = `
-        <input type="checkbox" data-action="${item.action}" ${
-          hiddenSet.has(item.action) ? '' : 'checked'
-        }>
-        <span class="home-option-icon">${twemojiImg(
-          String.fromCodePoint(item.icon),
-          'twemoji'
-        )}</span>
-        <span class="home-option-label">${escapeHtml(item.label)}</span>
-      `;
-
-      option.addEventListener('dragstart', (e) => {
-        draggedSidebarQuickAction = item.action;
-        option.classList.add('dragging');
-        if (e.dataTransfer) {
-          e.dataTransfer.effectAllowed = 'move';
-          e.dataTransfer.setData('text/plain', item.action);
-        }
-      });
-
-      option.addEventListener('dragend', () => {
-        draggedSidebarQuickAction = null;
-        option.classList.remove('dragging');
-      });
-
-      option.addEventListener('dragover', (e) => {
-        e.preventDefault();
-      });
-
-      option.addEventListener('drop', (e) => {
-        e.preventDefault();
-        const fromAction = draggedSidebarQuickAction || e.dataTransfer?.getData('text/plain');
-        if (!fromAction || fromAction === item.action) return;
-        tempHomeSettings.sidebarQuickAccessOrder = reorderList(
-          tempHomeSettings.sidebarQuickAccessOrder,
-          fromAction,
-          item.action
-        );
-        homeSettingsHasUnsavedChanges = true;
-        renderSidebarQuickAccessOptions();
-      });
-
-      const checkbox = option.querySelector('input') as HTMLInputElement | null;
-      if (checkbox) {
-        checkbox.addEventListener('change', () => {
-          const action = checkbox.dataset.action || '';
-          const updatedHidden = new Set(tempHomeSettings.hiddenSidebarQuickAccessItems);
-          if (checkbox.checked) {
-            updatedHidden.delete(action);
-          } else {
-            updatedHidden.add(action);
-          }
-          tempHomeSettings.hiddenSidebarQuickAccessItems = Array.from(updatedHidden);
-          homeSettingsHasUnsavedChanges = true;
-        });
-      }
-
-      sidebarQuickAccessOptions.appendChild(option);
-    });
+    renderReorderableOptions(
+      sidebarQuickAccessOptions,
+      'sidebarQuickAccessOrder',
+      'hiddenSidebarQuickAccessItems',
+      sidebarDragState,
+      renderSidebarQuickAccessOptions
+    );
   }
 
   function syncHomeSettingsModal(): void {
@@ -927,35 +862,20 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
       }
     });
 
-    homeToggleQuickAccess?.addEventListener('change', () => {
-      tempHomeSettings.showQuickAccess = homeToggleQuickAccess.checked;
-      homeSettingsHasUnsavedChanges = true;
-    });
-
-    homeToggleRecents?.addEventListener('change', () => {
-      tempHomeSettings.showRecents = homeToggleRecents.checked;
-      homeSettingsHasUnsavedChanges = true;
-    });
-
-    homeToggleBookmarks?.addEventListener('change', () => {
-      tempHomeSettings.showBookmarks = homeToggleBookmarks.checked;
-      homeSettingsHasUnsavedChanges = true;
-    });
-
-    homeToggleDrives?.addEventListener('change', () => {
-      tempHomeSettings.showDrives = homeToggleDrives.checked;
-      homeSettingsHasUnsavedChanges = true;
-    });
-
-    homeToggleDiskUsage?.addEventListener('change', () => {
-      tempHomeSettings.showDiskUsage = homeToggleDiskUsage.checked;
-      homeSettingsHasUnsavedChanges = true;
-    });
-
-    homeToggleCompact?.addEventListener('change', () => {
-      tempHomeSettings.compactCards = homeToggleCompact.checked;
-      homeSettingsHasUnsavedChanges = true;
-    });
+    const toggleBindings: [HTMLInputElement | null, keyof HomeSettings][] = [
+      [homeToggleQuickAccess, 'showQuickAccess'],
+      [homeToggleRecents, 'showRecents'],
+      [homeToggleBookmarks, 'showBookmarks'],
+      [homeToggleDrives, 'showDrives'],
+      [homeToggleDiskUsage, 'showDiskUsage'],
+      [homeToggleCompact, 'compactCards'],
+    ];
+    for (const [el, key] of toggleBindings) {
+      el?.addEventListener('change', () => {
+        (tempHomeSettings as unknown as Record<string, unknown>)[key] = el.checked;
+        homeSettingsHasUnsavedChanges = true;
+      });
+    }
 
     window.electronAPI.onHomeSettingsChanged((settings) => {
       currentHomeSettings = normalizeHomeSettings(settings);

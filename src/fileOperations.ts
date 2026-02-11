@@ -68,16 +68,18 @@ type ConflictBehavior = 'ask' | 'rename' | 'skip' | 'overwrite' | 'cancel';
 const OVERWRITE_BACKUP_RETENTION_MS = 14 * 24 * 60 * 60 * 1000;
 const OVERWRITE_BACKUP_MAX_FILES = 200;
 
+function pathExists(p: string): Promise<boolean> {
+  return fs.stat(p).then(
+    () => true,
+    () => false
+  );
+}
+
 async function generateUniqueName(destPath: string, fileName: string): Promise<string> {
   const { base, ext } = splitFileName(fileName);
   let counter = 2;
   let candidatePath = path.join(destPath, fileName);
-  while (
-    await fs
-      .stat(candidatePath)
-      .then(() => true)
-      .catch(() => false)
-  ) {
+  while (await pathExists(candidatePath)) {
     const candidateName = `${base} (${counter})${ext}`;
     candidatePath = path.join(destPath, candidateName);
     counter++;
@@ -157,10 +159,7 @@ async function validateFileOperation(
       }
     }
 
-    const destExists = await fs
-      .stat(itemDestPath)
-      .then(() => true)
-      .catch(() => false);
+    const destExists = await pathExists(itemDestPath);
     if (destExists) {
       let behavior = conflictBehavior;
       if (behavior === 'ask' && resolveConflict) {
@@ -221,11 +220,7 @@ async function createBackupPath(destPath: string): Promise<string> {
   for (let attempt = 0; attempt < 10; attempt++) {
     const suffix = `.iyeris-backup-${Date.now()}-${Math.random().toString(16).slice(2)}`;
     const candidate = path.join(dir, `.${base}${suffix}`);
-    const exists = await fs
-      .stat(candidate)
-      .then(() => true)
-      .catch(() => false);
-    if (!exists) return candidate;
+    if (!(await pathExists(candidate))) return candidate;
   }
   throw new Error('Unable to create backup path');
 }
@@ -289,11 +284,7 @@ async function stashBackup(backupPath: string, destPath: string): Promise<string
   while (counter < 1000) {
     const suffix = counter === 0 ? `${hash}` : `${hash}-${counter}`;
     const candidate = path.join(root, `${baseName}.${suffix}${ext || ''}.bak`);
-    const exists = await fs
-      .stat(candidate)
-      .then(() => true)
-      .catch(() => false);
-    if (!exists) {
+    if (!(await pathExists(candidate))) {
       try {
         await fs.rename(backupPath, candidate);
         return candidate;
@@ -321,11 +312,7 @@ async function stashBackup(backupPath: string, destPath: string): Promise<string
 async function stashRemainingBackups(backups: Map<string, string>): Promise<string[]> {
   const stashed: string[] = [];
   for (const [destPath, backupPath] of backups) {
-    const exists = await fs
-      .stat(backupPath)
-      .then(() => true)
-      .catch(() => false);
-    if (!exists) continue;
+    if (!(await pathExists(backupPath))) continue;
     try {
       const newPath = await stashBackup(backupPath, destPath);
       stashed.push(newPath);
@@ -1013,6 +1000,24 @@ export function setupFileOperationHandlers(): void {
     }
   );
 
+  function createConflictResolver(behavior: ConflictBehavior) {
+    if (behavior !== 'ask') return undefined;
+    return async (fileName: string) => {
+      const mainWindow = getMainWindow();
+      if (!mainWindow) return 'skip' as const;
+      const { response } = await dialog.showMessageBox(mainWindow, {
+        type: 'question',
+        buttons: ['Replace', 'Keep Both', 'Skip', 'Cancel'],
+        defaultId: 2,
+        cancelId: 3,
+        title: 'File Conflict',
+        message: `"${fileName}" already exists in this location.`,
+        detail: 'What would you like to do?',
+      });
+      return (['overwrite', 'rename', 'skip', 'cancel'] as const)[response];
+    };
+  }
+
   ipcMain.handle(
     'copy-items',
     async (
@@ -1026,23 +1031,7 @@ export function setupFileOperationHandlers(): void {
           return { success: false, error: 'Untrusted IPC sender' };
         }
         const behavior = conflictBehavior || 'ask';
-        const resolveConflict =
-          behavior === 'ask'
-            ? async (fileName: string) => {
-                const mainWindow = getMainWindow();
-                if (!mainWindow) return 'skip' as const;
-                const { response } = await dialog.showMessageBox(mainWindow, {
-                  type: 'question',
-                  buttons: ['Replace', 'Keep Both', 'Skip', 'Cancel'],
-                  defaultId: 2,
-                  cancelId: 3,
-                  title: 'File Conflict',
-                  message: `"${fileName}" already exists in this location.`,
-                  detail: 'What would you like to do?',
-                });
-                return (['overwrite', 'rename', 'skip', 'cancel'] as const)[response];
-              }
-            : undefined;
+        const resolveConflict = createConflictResolver(behavior);
         const validation = await validateFileOperation(
           sourcePaths,
           destPath,
@@ -1129,23 +1118,7 @@ export function setupFileOperationHandlers(): void {
           return { success: false, error: 'Untrusted IPC sender' };
         }
         const behavior = conflictBehavior || 'ask';
-        const resolveConflict =
-          behavior === 'ask'
-            ? async (fileName: string) => {
-                const mainWindow = getMainWindow();
-                if (!mainWindow) return 'skip' as const;
-                const { response } = await dialog.showMessageBox(mainWindow, {
-                  type: 'question',
-                  buttons: ['Replace', 'Keep Both', 'Skip', 'Cancel'],
-                  defaultId: 2,
-                  cancelId: 3,
-                  title: 'File Conflict',
-                  message: `"${fileName}" already exists in this location.`,
-                  detail: 'What would you like to do?',
-                });
-                return (['overwrite', 'rename', 'skip', 'cancel'] as const)[response];
-              }
-            : undefined;
+        const resolveConflict = createConflictResolver(behavior);
         const validation = await validateFileOperation(
           sourcePaths,
           destPath,
@@ -1218,11 +1191,7 @@ export function setupFileOperationHandlers(): void {
             }
           }
           for (const [destPath, backupPath] of backups) {
-            const exists = await fs
-              .stat(destPath)
-              .then(() => true)
-              .catch(() => false);
-            if (exists) {
+            if (await pathExists(destPath)) {
               continue;
             }
             try {

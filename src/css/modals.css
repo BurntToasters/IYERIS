@@ -432,15 +432,9 @@ body.platform-win32 .context-menu-separator {
   --compress-options-control-padding-y: var(--spacing-lg);
   --compress-options-control-padding-x: var(--spacing-xl);
   --compress-options-row-gap: var(--spacing-xxl);
-  width: min(
-    var(--compress-modal-max-width),
-    calc(100vw - (var(--compress-modal-inset) * 2))
-  );
+  width: min(var(--compress-modal-max-width), calc(100vw - (var(--compress-modal-inset) * 2)));
   max-width: var(--compress-modal-max-width);
-  min-width: min(
-    var(--compress-modal-min-width),
-    calc(100vw - (var(--compress-modal-inset) * 2))
-  );
+  min-width: min(var(--compress-modal-min-width), calc(100vw - (var(--compress-modal-inset) * 2)));
 }
 
 .compress-options-content {

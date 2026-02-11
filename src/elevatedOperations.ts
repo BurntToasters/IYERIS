@@ -356,82 +356,40 @@ export async function tryWithElevation<T>(
 }
 
 export function setupElevatedOperationHandlers(): void {
-  ipcMain.handle(
-    'elevated-copy',
-    async (
-      event: IpcMainInvokeEvent,
-      sourcePath: string,
-      destPath: string
-    ): Promise<ApiResponse> => {
-      if (!isTrustedIpcEvent(event, 'elevated-copy')) {
-        return { success: false, error: 'Untrusted IPC sender' };
+  // Two-path operations: copy and move
+  for (const type of ['copy', 'move'] as const) {
+    ipcMain.handle(
+      `elevated-${type}`,
+      async (
+        event: IpcMainInvokeEvent,
+        sourcePath: string,
+        destPath: string
+      ): Promise<ApiResponse> => {
+        if (!isTrustedIpcEvent(event, `elevated-${type}`))
+          return { success: false, error: 'Untrusted IPC sender' };
+        if (!isPathSafe(sourcePath) || !isPathSafe(destPath))
+          return { success: false, error: 'Invalid path' };
+        return executeElevated({ type, sourcePath, destPath });
       }
-      if (!isPathSafe(sourcePath) || !isPathSafe(destPath)) {
-        return { success: false, error: 'Invalid path' };
-      }
-
-      const result = await executeElevated({
-        type: 'copy',
-        sourcePath,
-        destPath,
-      });
-
-      return result;
-    }
-  );
-
-  ipcMain.handle(
-    'elevated-move',
-    async (
-      event: IpcMainInvokeEvent,
-      sourcePath: string,
-      destPath: string
-    ): Promise<ApiResponse> => {
-      if (!isTrustedIpcEvent(event, 'elevated-move')) {
-        return { success: false, error: 'Untrusted IPC sender' };
-      }
-      if (!isPathSafe(sourcePath) || !isPathSafe(destPath)) {
-        return { success: false, error: 'Invalid path' };
-      }
-
-      const result = await executeElevated({
-        type: 'move',
-        sourcePath,
-        destPath,
-      });
-
-      return result;
-    }
-  );
+    );
+  }
 
   ipcMain.handle(
     'elevated-delete',
     async (event: IpcMainInvokeEvent, itemPath: string): Promise<ApiResponse> => {
-      if (!isTrustedIpcEvent(event, 'elevated-delete')) {
+      if (!isTrustedIpcEvent(event, 'elevated-delete'))
         return { success: false, error: 'Untrusted IPC sender' };
-      }
-      if (!isPathSafe(itemPath)) {
-        return { success: false, error: 'Invalid path' };
-      }
-
-      const result = await executeElevated({
-        type: 'delete',
-        sourcePath: itemPath,
-      });
-
-      return result;
+      if (!isPathSafe(itemPath)) return { success: false, error: 'Invalid path' };
+      return executeElevated({ type: 'delete', sourcePath: itemPath });
     }
   );
 
   ipcMain.handle(
     'elevated-rename',
     async (event: IpcMainInvokeEvent, itemPath: string, newName: string): Promise<ApiResponse> => {
-      if (!isTrustedIpcEvent(event, 'elevated-rename')) {
+      if (!isTrustedIpcEvent(event, 'elevated-rename'))
         return { success: false, error: 'Untrusted IPC sender' };
-      }
-      if (!isPathSafe(itemPath)) {
-        return { success: false, error: 'Invalid path' };
-      }
+      if (!isPathSafe(itemPath)) return { success: false, error: 'Invalid path' };
       if (
         !newName ||
         newName.includes('/') ||
@@ -441,14 +399,7 @@ export function setupElevatedOperationHandlers(): void {
       ) {
         return { success: false, error: 'Invalid name' };
       }
-
-      const result = await executeElevated({
-        type: 'rename',
-        sourcePath: itemPath,
-        newName,
-      });
-
-      return result;
+      return executeElevated({ type: 'rename', sourcePath: itemPath, newName });
     }
   );
 
