@@ -138,7 +138,7 @@
       "entitlementsInherit": "build/entitlements.mac.plist",
       "notarize": false,
       "artifactName": "${productName}-MacOS-universal.${ext}",
-      "x64ArchFiles": "**/7zip-bin/mac/**"
+      "x64ArchFiles": "**/7zip-bin/mac/**,**/@napi-rs/canvas-darwin-*/**"
     },
     "mas": {
       "type": "distribution",
