@@ -139,7 +139,10 @@ function buildPowerShellScript(op: ElevatedOperation): string {
   }
 }
 
-async function executeElevatedMac(operation: ElevatedOperation): Promise<ElevatedResult> {
+async function executeElevatedUnix(
+  operation: ElevatedOperation,
+  executor: (scriptPath: string) => Promise<ElevatedResult>
+): Promise<ElevatedResult> {
   let script: string;
   try {
     script = buildBashScript(operation);
@@ -151,18 +154,7 @@ async function executeElevatedMac(operation: ElevatedOperation): Promise<Elevate
 
   try {
     await fs.writeFile(scriptPath, script, { mode: 0o700 });
-
-    const escapedPath = scriptPath.replace(/'/g, "'\\''");
-    const osascript = `do shell script "bash '${escapedPath}'" with administrator privileges`;
-
-    await execFilePromise('osascript', ['-e', osascript], { timeout: OPERATION_TIMEOUT });
-    return { success: true };
-  } catch (error) {
-    const message = getErrorMessage(error);
-    if (message.includes('User canceled') || message.includes('(-128)')) {
-      return { success: false, error: 'Operation cancelled by user' };
-    }
-    return { success: false, error: 'Operation failed' };
+    return await executor(scriptPath);
   } finally {
     try {
       await fs.unlink(scriptPath);
@@ -172,19 +164,25 @@ async function executeElevatedMac(operation: ElevatedOperation): Promise<Elevate
   }
 }
 
+async function executeElevatedMac(operation: ElevatedOperation): Promise<ElevatedResult> {
+  return executeElevatedUnix(operation, async (scriptPath) => {
+    try {
+      const escapedPath = scriptPath.replace(/'/g, "'\\''");
+      const osascript = `do shell script "bash '${escapedPath}'" with administrator privileges`;
+      await execFilePromise('osascript', ['-e', osascript], { timeout: OPERATION_TIMEOUT });
+      return { success: true };
+    } catch (error) {
+      const message = getErrorMessage(error);
+      if (message.includes('User canceled') || message.includes('(-128)')) {
+        return { success: false, error: 'Operation cancelled by user' };
+      }
+      return { success: false, error: 'Operation failed' };
+    }
+  });
+}
+
 async function executeElevatedLinux(operation: ElevatedOperation): Promise<ElevatedResult> {
-  let script: string;
-  try {
-    script = buildBashScript(operation);
-  } catch (error) {
-    return { success: false, error: getErrorMessage(error) };
-  }
-  const token = generateOperationToken();
-  const scriptPath = path.join(app.getPath('temp'), `iyeris-elevated-${token}.sh`);
-
-  try {
-    await fs.writeFile(scriptPath, script, { mode: 0o700 });
-
+  return executeElevatedUnix(operation, (scriptPath) => {
     return new Promise((resolve) => {
       const child = spawn('pkexec', ['bash', scriptPath], {
         stdio: ['ignore', 'pipe', 'pipe'],
@@ -203,7 +201,6 @@ async function executeElevatedLinux(operation: ElevatedOperation): Promise<Eleva
             ignoreError(error);
           }
           activeElevatedProcesses.delete(child);
-          fs.unlink(scriptPath).catch(ignoreError);
           resolve({ success: false, error: 'Operation timed out' });
         }
       }, OPERATION_TIMEOUT);
@@ -212,40 +209,27 @@ async function executeElevatedLinux(operation: ElevatedOperation): Promise<Eleva
         stderr += data.toString();
       });
 
-      child.on('close', async (code) => {
+      child.on('close', (code) => {
         if (resolved) return;
         resolved = true;
         clearTimeout(timeoutId);
         activeElevatedProcesses.delete(child);
-        try {
-          await fs.unlink(scriptPath);
-        } catch (error) {
-          ignoreError(error);
-        }
-
-        if (code === 0) {
-          resolve({ success: true });
-        } else {
-          resolve({ success: false, error: stderr || 'Operation failed or was cancelled' });
-        }
+        resolve(
+          code === 0
+            ? { success: true }
+            : { success: false, error: stderr || 'Operation failed or was cancelled' }
+        );
       });
 
-      child.on('error', async (err) => {
+      child.on('error', (err) => {
         if (resolved) return;
         resolved = true;
         clearTimeout(timeoutId);
         activeElevatedProcesses.delete(child);
-        try {
-          await fs.unlink(scriptPath);
-        } catch (error) {
-          ignoreError(error);
-        }
         resolve({ success: false, error: getErrorMessage(err) });
       });
     });
-  } catch (error) {
-    return { success: false, error: getErrorMessage(error) };
-  }
+  });
 }
 
 function buildBashScript(op: ElevatedOperation): string {
@@ -279,18 +263,26 @@ function buildBashScript(op: ElevatedOperation): string {
 }
 
 async function executeElevated(operation: ElevatedOperation): Promise<ElevatedResult> {
-  if (['copy', 'move'].includes(operation.type) && (!operation.sourcePath || !operation.destPath)) {
-    return { success: false, error: 'Missing required paths' };
+  const REQUIRED_PATHS: Record<string, string[]> = {
+    copy: ['sourcePath', 'destPath'],
+    move: ['sourcePath', 'destPath'],
+    delete: ['sourcePath'],
+    rename: ['sourcePath'],
+    createFolder: ['destPath'],
+    createFile: ['destPath'],
+  };
+  const required = REQUIRED_PATHS[operation.type];
+  if (required) {
+    for (const key of required) {
+      if (!(operation as unknown as Record<string, unknown>)[key])
+        return {
+          success: false,
+          error: `Missing ${key === 'sourcePath' ? 'source' : key === 'destPath' ? 'destination' : 'required'} path`,
+        };
+    }
   }
-  if (['delete', 'rename'].includes(operation.type) && !operation.sourcePath) {
-    return { success: false, error: 'Missing source path' };
-  }
-  if (operation.type === 'rename' && !operation.newName) {
+  if (operation.type === 'rename' && !operation.newName)
     return { success: false, error: 'Missing new name' };
-  }
-  if (['createFolder', 'createFile'].includes(operation.type) && !operation.destPath) {
-    return { success: false, error: 'Missing destination path' };
-  }
 
   const platform = process.platform;
 

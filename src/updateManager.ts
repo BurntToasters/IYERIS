@@ -228,58 +228,58 @@ export function setupUpdateHandlers(loadSettings: () => Promise<Settings>): void
         return { success: false, error: 'Untrusted IPC sender' };
       }
 
-      if (isRunningInFlatpak()) {
-        const currentVersion = app.getVersion();
-        console.log('[AutoUpdater] Flatpak detected - redirecting to Flatpak update mechanism');
-        return {
-          success: true,
-          hasUpdate: false,
-          currentVersion: `v${currentVersion}`,
-          latestVersion: `v${currentVersion}`,
-          isFlatpak: true,
-          flatpakMessage:
-            'Updates are managed by Flatpak. Run: flatpak update com.burnttoasters.iyeris',
-        };
-      }
-
-      if (process.mas) {
-        const currentVersion = app.getVersion();
-        console.log('[AutoUpdater] MAS detected - updates managed by App Store');
-        return {
-          success: true,
-          hasUpdate: false,
-          currentVersion: `v${currentVersion}`,
-          latestVersion: `v${currentVersion}`,
-          isMas: true,
-          masMessage: 'Updates are managed by the Mac App Store.',
-        };
-      }
-
-      if (process.windowsStore) {
-        const currentVersion = app.getVersion();
-        console.log('[AutoUpdater] Microsoft Store detected - updates managed by Microsoft Store');
-        return {
-          success: true,
-          hasUpdate: false,
-          currentVersion: `v${currentVersion}`,
-          latestVersion: `v${currentVersion}`,
-          isMsStore: true,
-          msStoreMessage: 'Updates are managed by the Microsoft Store.',
-        };
-      }
-
-      if (await checkMsiInstallation()) {
-        const currentVersion = app.getVersion();
-        console.log('[AutoUpdater] MSI installation detected - auto-updates disabled');
-        return {
-          success: true,
-          hasUpdate: false,
-          currentVersion: `v${currentVersion}`,
-          latestVersion: `v${currentVersion}`,
-          isMsi: true,
-          msiMessage:
+      const storeChecks: Array<{
+        check: () => boolean | Promise<boolean>;
+        flag: string;
+        messageKey: string;
+        message: string;
+        logMsg: string;
+      }> = [
+        {
+          check: () => isRunningInFlatpak(),
+          flag: 'isFlatpak',
+          messageKey: 'flatpakMessage',
+          message: 'Updates are managed by Flatpak. Run: flatpak update com.burnttoasters.iyeris',
+          logMsg: 'Flatpak detected - redirecting to Flatpak update mechanism',
+        },
+        {
+          check: () => !!process.mas,
+          flag: 'isMas',
+          messageKey: 'masMessage',
+          message: 'Updates are managed by the Mac App Store.',
+          logMsg: 'MAS detected - updates managed by App Store',
+        },
+        {
+          check: () => !!process.windowsStore,
+          flag: 'isMsStore',
+          messageKey: 'msStoreMessage',
+          message: 'Updates are managed by the Microsoft Store.',
+          logMsg: 'Microsoft Store detected - updates managed by Microsoft Store',
+        },
+        {
+          check: () => checkMsiInstallation(),
+          flag: 'isMsi',
+          messageKey: 'msiMessage',
+          message:
             'This is an enterprise installation. Updates are managed by your IT administrator. To enable auto-updates, uninstall the MSI version and install the regular version from the website.',
-        };
+          logMsg: 'MSI installation detected - auto-updates disabled',
+        },
+      ];
+
+      for (const { check, flag, messageKey, message, logMsg } of storeChecks) {
+        const result = await check();
+        if (result) {
+          const currentVersion = app.getVersion();
+          console.log(`[AutoUpdater] ${logMsg}`);
+          return {
+            success: true,
+            hasUpdate: false,
+            currentVersion: `v${currentVersion}`,
+            latestVersion: `v${currentVersion}`,
+            [flag]: true,
+            [messageKey]: message,
+          } as UpdateCheckResponse;
+        }
       }
 
       try {

@@ -122,66 +122,52 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
   const driveUsageCache = new Map<string, { timestamp: number; total: number; free: number }>();
   let draggedSectionId: string | null = null;
 
+  function normalizeOrderedList<T>(raw: T[], isValid: (v: T) => boolean, allDefaults: T[]): T[] {
+    const filtered = Array.from(new Set(raw.filter(isValid)));
+    return [...filtered, ...allDefaults.filter((d) => !filtered.includes(d))];
+  }
+
   function normalizeHomeSettings(settings?: Partial<HomeSettings> | null): HomeSettings {
     const defaults = createDefaultHomeSettings();
     const merged = { ...defaults, ...(settings || {}) };
 
-    const sectionOrderRaw = Array.isArray(merged.sectionOrder)
-      ? merged.sectionOrder.filter((id): id is string => typeof id === 'string')
-      : [];
-    const sectionOrder = Array.from(new Set(sectionOrderRaw.filter(isHomeSectionId)));
-    const sectionOrderWithMissing = [
-      ...sectionOrder,
-      ...HOME_SECTION_IDS.filter((id) => !sectionOrder.includes(id)),
-    ];
-
-    const quickAccessRaw = Array.isArray(merged.quickAccessOrder) ? merged.quickAccessOrder : [];
-    const quickAccessOrder = Array.from(
-      new Set(quickAccessRaw.filter((action) => HOME_QUICK_ACCESS_ACTIONS.has(action)))
+    merged.sectionOrder = normalizeOrderedList(
+      Array.isArray(merged.sectionOrder)
+        ? merged.sectionOrder.filter((id): id is string => typeof id === 'string')
+        : [],
+      isHomeSectionId,
+      HOME_SECTION_IDS as unknown as string[]
     );
-    const quickAccessWithMissing = [
-      ...quickAccessOrder,
-      ...HOME_QUICK_ACCESS_ITEMS.map((item) => item.action).filter(
-        (action) => !quickAccessOrder.includes(action)
-      ),
-    ];
 
-    const sidebarQARaw = Array.isArray(merged.sidebarQuickAccessOrder)
-      ? merged.sidebarQuickAccessOrder
-      : [];
-    const sidebarQuickAccessOrder = Array.from(
-      new Set(sidebarQARaw.filter((action) => HOME_QUICK_ACCESS_ACTIONS.has(action)))
+    const allQAActions = HOME_QUICK_ACCESS_ITEMS.map((item) => item.action);
+    const isValidQA = (action: string) => HOME_QUICK_ACCESS_ACTIONS.has(action);
+
+    merged.quickAccessOrder = normalizeOrderedList(
+      Array.isArray(merged.quickAccessOrder) ? merged.quickAccessOrder : [],
+      isValidQA,
+      allQAActions
     );
-    const sidebarQAWithMissing = [
-      ...sidebarQuickAccessOrder,
-      ...HOME_QUICK_ACCESS_ITEMS.map((item) => item.action).filter(
-        (action) => !sidebarQuickAccessOrder.includes(action)
-      ),
-    ];
 
-    const pinnedRaw = Array.isArray(merged.pinnedRecents) ? merged.pinnedRecents : [];
-    const pinnedRecents = Array.from(
-      new Set(pinnedRaw.filter((value) => typeof value === 'string'))
+    merged.sidebarQuickAccessOrder = normalizeOrderedList(
+      Array.isArray(merged.sidebarQuickAccessOrder) ? merged.sidebarQuickAccessOrder : [],
+      isValidQA,
+      allQAActions
+    );
+
+    merged.pinnedRecents = Array.from(
+      new Set(
+        (Array.isArray(merged.pinnedRecents) ? merged.pinnedRecents : []).filter(
+          (value) => typeof value === 'string'
+        )
+      )
     );
 
     merged.hiddenQuickAccessItems = Array.from(
-      new Set(
-        (merged.hiddenQuickAccessItems || []).filter((action) =>
-          HOME_QUICK_ACCESS_ACTIONS.has(action)
-        )
-      )
+      new Set((merged.hiddenQuickAccessItems || []).filter(isValidQA))
     );
     merged.hiddenSidebarQuickAccessItems = Array.from(
-      new Set(
-        (merged.hiddenSidebarQuickAccessItems || []).filter((action) =>
-          HOME_QUICK_ACCESS_ACTIONS.has(action)
-        )
-      )
+      new Set((merged.hiddenSidebarQuickAccessItems || []).filter(isValidQA))
     );
-    merged.sectionOrder = sectionOrderWithMissing;
-    merged.quickAccessOrder = quickAccessWithMissing;
-    merged.sidebarQuickAccessOrder = sidebarQAWithMissing;
-    merged.pinnedRecents = pinnedRecents;
     return merged;
   }
 
@@ -345,34 +331,26 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
     }
   }
 
-  function getVisibleHomeQuickAccessItems(): Array<{
-    action: string;
-    label: string;
-    icon: number;
-  }> {
-    const hiddenSet = new Set(currentHomeSettings.hiddenQuickAccessItems || []);
+  function getVisibleQuickAccessItems(
+    orderKey: 'quickAccessOrder' | 'sidebarQuickAccessOrder',
+    hiddenKey: 'hiddenQuickAccessItems' | 'hiddenSidebarQuickAccessItems'
+  ): Array<{ action: string; label: string; icon: number }> {
+    const hiddenSet = new Set(currentHomeSettings[hiddenKey] || []);
     const itemsByAction = new Map(HOME_QUICK_ACCESS_ITEMS.map((item) => [item.action, item]));
-    const ordered = (currentHomeSettings.quickAccessOrder || []).map((action) =>
-      itemsByAction.get(action)
-    );
-    return ordered.filter((item): item is { action: string; label: string; icon: number } => {
-      return !!item && !hiddenSet.has(item.action);
-    });
+    return (currentHomeSettings[orderKey] || [])
+      .map((action) => itemsByAction.get(action))
+      .filter(
+        (item): item is { action: string; label: string; icon: number } =>
+          !!item && !hiddenSet.has(item.action)
+      );
   }
 
-  function getVisibleSidebarQuickAccessItems(): Array<{
-    action: string;
-    label: string;
-    icon: number;
-  }> {
-    const hiddenSet = new Set(currentHomeSettings.hiddenSidebarQuickAccessItems || []);
-    const itemsByAction = new Map(HOME_QUICK_ACCESS_ITEMS.map((item) => [item.action, item]));
-    const ordered = (currentHomeSettings.sidebarQuickAccessOrder || []).map((action) =>
-      itemsByAction.get(action)
-    );
-    return ordered.filter((item): item is { action: string; label: string; icon: number } => {
-      return !!item && !hiddenSet.has(item.action);
-    });
+  function getVisibleHomeQuickAccessItems() {
+    return getVisibleQuickAccessItems('quickAccessOrder', 'hiddenQuickAccessItems');
+  }
+
+  function getVisibleSidebarQuickAccessItems() {
+    return getVisibleQuickAccessItems('sidebarQuickAccessOrder', 'hiddenSidebarQuickAccessItems');
   }
 
   function renderHomeQuickAccess(): void {

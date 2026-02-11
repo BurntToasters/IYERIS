@@ -99,34 +99,19 @@ export function applyLoginItemSettings(settings: Settings): void {
       return;
     }
 
-    if (process.platform === 'win32') {
-      if (process.windowsStore) {
-        logger.debug('[LoginItem] MS Store app - using StartupTask');
-        app.setLoginItemSettings({
-          openAtLogin: settings.startOnLogin,
-          name: 'IYERIS',
-        });
-      } else {
-        const exePath = app.getPath('exe');
-        app.setLoginItemSettings({
-          openAtLogin: settings.startOnLogin,
-          path: exePath,
-          args: settings.startOnLogin ? ['--hidden'] : [],
-          name: 'IYERIS',
-        });
-      }
-    } else if (process.platform === 'darwin') {
-      app.setLoginItemSettings({
-        openAtLogin: settings.startOnLogin,
-        args: settings.startOnLogin ? ['--hidden'] : [],
-        name: 'IYERIS',
-      });
+    if (process.platform === 'win32' && process.windowsStore) {
+      logger.debug('[LoginItem] MS Store app - using StartupTask');
+      app.setLoginItemSettings({ openAtLogin: settings.startOnLogin, name: 'IYERIS' });
     } else {
-      app.setLoginItemSettings({
+      const opts: Electron.Settings = {
         openAtLogin: settings.startOnLogin,
         args: settings.startOnLogin ? ['--hidden'] : [],
         name: 'IYERIS',
-      });
+      };
+      if (process.platform === 'win32') {
+        (opts as Record<string, unknown>).path = app.getPath('exe');
+      }
+      app.setLoginItemSettings(opts);
     }
 
     logger.debug('[LoginItem] Login item settings applied successfully');

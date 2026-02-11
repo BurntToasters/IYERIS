@@ -15,159 +15,75 @@ export function getActiveChecksumCalculations(): Map<string, { aborted: boolean 
   return activeChecksumCalculations;
 }
 
-export function setupFileAnalysisHandlers(): void {
+function registerCalculationHandler<T>(
+  channel: string,
+  taskType: 'folder-size' | 'checksum',
+  label: string,
+  activeMap: Map<string, { aborted: boolean }>,
+  buildPayload: (...args: unknown[]) => { path: string; payload: Record<string, unknown> }
+): void {
   const fileTasks = getFileTasks();
 
   ipcMain.handle(
-    'calculate-folder-size',
+    channel,
     async (
       event: IpcMainInvokeEvent,
-      folderPath: string,
-      operationId: string
+      ...args: unknown[]
     ): Promise<{
       success: boolean;
-      result?: {
-        totalSize: number;
-        fileCount: number;
-        folderCount: number;
-        fileTypes?: { extension: string; count: number; size: number }[];
-      };
+      result?: T;
       error?: string;
     }> => {
+      let operationId = '';
       try {
-        if (!isTrustedIpcEvent(event, 'calculate-folder-size')) {
+        if (!isTrustedIpcEvent(event, channel))
           return { success: false, error: 'Untrusted IPC sender' };
-        }
-        if (!isPathSafe(folderPath)) {
-          return { success: false, error: 'Invalid folder path' };
-        }
-        logger.debug(
-          '[FolderSize] Starting calculation for:',
-          folderPath,
-          'operationId:',
-          operationId
-        );
+        const { path: itemPath, payload } = buildPayload(...args);
+        operationId = payload.operationId as string;
+        if (!isPathSafe(itemPath))
+          return { success: false, error: `Invalid ${label.toLowerCase()} path` };
+        logger.debug(`[${label}] Starting calculation for:`, itemPath, 'operationId:', operationId);
 
-        const operation = { aborted: false };
-        activeFolderSizeCalculations.set(operationId, operation);
-
-        const result = await fileTasks.runTask<{
-          totalSize: number;
-          fileCount: number;
-          folderCount: number;
-          fileTypes?: { extension: string; count: number; size: number }[];
-        }>('folder-size', { folderPath, operationId }, operationId);
-
-        activeFolderSizeCalculations.delete(operationId);
-        logger.debug('[FolderSize] Completed:', {
-          totalSize: result.totalSize,
-          fileCount: result.fileCount,
-          folderCount: result.folderCount,
-          fileTypes: result.fileTypes?.length || 0,
-        });
+        activeMap.set(operationId, { aborted: false });
+        const result = await fileTasks.runTask<T>(taskType, payload, operationId);
+        activeMap.delete(operationId);
+        logger.debug(`[${label}] Completed:`, result);
         return { success: true, result };
       } catch (error) {
-        activeFolderSizeCalculations.delete(operationId);
+        if (operationId) activeMap.delete(operationId);
         const errorMessage = getErrorMessage(error);
         if (errorMessage === 'Calculation cancelled') {
-          logger.debug('[FolderSize] Calculation cancelled for operationId:', operationId);
+          logger.debug(`[${label}] Calculation cancelled for operationId:`, operationId);
           return { success: false, error: 'Calculation cancelled' };
         }
-        console.error('[FolderSize] Error:', error);
+        console.error(`[${label}] Error:`, error);
         return { success: false, error: errorMessage };
       }
     }
   );
+}
+
+function registerCancelHandler(
+  channel: string,
+  label: string,
+  activeMap: Map<string, { aborted: boolean }>
+): void {
+  const fileTasks = getFileTasks();
 
   ipcMain.handle(
-    'cancel-folder-size-calculation',
+    channel,
     async (
       event: IpcMainInvokeEvent,
       operationId: string
     ): Promise<{ success: boolean; error?: string }> => {
-      if (!isTrustedIpcEvent(event, 'cancel-folder-size-calculation')) {
+      if (!isTrustedIpcEvent(event, channel))
         return { success: false, error: 'Untrusted IPC sender' };
-      }
-      const operation = activeFolderSizeCalculations.get(operationId);
+      const operation = activeMap.get(operationId);
       if (operation) {
         operation.aborted = true;
         fileTasks.cancelOperation(operationId);
-        activeFolderSizeCalculations.delete(operationId);
-        logger.debug('[FolderSize] Cancellation requested for operationId:', operationId);
-        return { success: true };
-      }
-      return { success: false, error: 'Operation not found' };
-    }
-  );
-
-  ipcMain.handle(
-    'calculate-checksum',
-    async (
-      event: IpcMainInvokeEvent,
-      filePath: string,
-      operationId: string,
-      algorithms: string[]
-    ): Promise<{
-      success: boolean;
-      result?: { md5?: string; sha256?: string };
-      error?: string;
-    }> => {
-      try {
-        if (!isTrustedIpcEvent(event, 'calculate-checksum')) {
-          return { success: false, error: 'Untrusted IPC sender' };
-        }
-        if (!isPathSafe(filePath)) {
-          return { success: false, error: 'Invalid file path' };
-        }
-        logger.debug(
-          '[Checksum] Starting calculation for:',
-          filePath,
-          'algorithms:',
-          algorithms,
-          'operationId:',
-          operationId
-        );
-
-        const operation = { aborted: false };
-        activeChecksumCalculations.set(operationId, operation);
-
-        const result = await fileTasks.runTask<{ md5?: string; sha256?: string }>(
-          'checksum',
-          { filePath, operationId, algorithms },
-          operationId
-        );
-
-        activeChecksumCalculations.delete(operationId);
-        logger.debug('[Checksum] Completed:', result);
-        return { success: true, result };
-      } catch (error) {
-        activeChecksumCalculations.delete(operationId);
-        const errorMessage = getErrorMessage(error);
-        if (errorMessage === 'Calculation cancelled') {
-          logger.debug('[Checksum] Calculation cancelled for operationId:', operationId);
-          return { success: false, error: 'Calculation cancelled' };
-        }
-        console.error('[Checksum] Error:', error);
-        return { success: false, error: errorMessage };
-      }
-    }
-  );
-
-  ipcMain.handle(
-    'cancel-checksum-calculation',
-    async (
-      event: IpcMainInvokeEvent,
-      operationId: string
-    ): Promise<{ success: boolean; error?: string }> => {
-      if (!isTrustedIpcEvent(event, 'cancel-checksum-calculation')) {
-        return { success: false, error: 'Untrusted IPC sender' };
-      }
-      const operation = activeChecksumCalculations.get(operationId);
-      if (operation) {
-        operation.aborted = true;
-        fileTasks.cancelOperation(operationId);
-        activeChecksumCalculations.delete(operationId);
-        logger.debug('[Checksum] Cancellation requested for operationId:', operationId);
+        activeMap.delete(operationId);
+        logger.debug(`[${label}] Cancellation requested for operationId:`, operationId);
         return { success: true };
       }
       return { success: false, error: 'Operation not found' };
@@ -175,20 +91,52 @@ export function setupFileAnalysisHandlers(): void {
   );
 }
 
+export function setupFileAnalysisHandlers(): void {
+  registerCalculationHandler<{
+    totalSize: number;
+    fileCount: number;
+    folderCount: number;
+    fileTypes?: { extension: string; count: number; size: number }[];
+  }>(
+    'calculate-folder-size',
+    'folder-size',
+    'FolderSize',
+    activeFolderSizeCalculations,
+    (folderPath, operationId) => ({
+      path: folderPath as string,
+      payload: { folderPath, operationId },
+    })
+  );
+
+  registerCancelHandler(
+    'cancel-folder-size-calculation',
+    'FolderSize',
+    activeFolderSizeCalculations
+  );
+
+  registerCalculationHandler<{ md5?: string; sha256?: string }>(
+    'calculate-checksum',
+    'checksum',
+    'Checksum',
+    activeChecksumCalculations,
+    (filePath, operationId, algorithms) => ({
+      path: filePath as string,
+      payload: { filePath, operationId, algorithms },
+    })
+  );
+
+  registerCancelHandler('cancel-checksum-calculation', 'Checksum', activeChecksumCalculations);
+}
+
 export function cleanupFileAnalysis(): void {
   const fileTasks = getFileTasks();
-
-  for (const [operationId, operation] of activeFolderSizeCalculations) {
-    logger.debug('[Cleanup] Aborting folder size calculation:', operationId);
-    operation.aborted = true;
-    fileTasks.cancelOperation(operationId);
+  const allMaps = [activeFolderSizeCalculations, activeChecksumCalculations];
+  for (const map of allMaps) {
+    for (const [operationId, operation] of map) {
+      logger.debug('[Cleanup] Aborting calculation:', operationId);
+      operation.aborted = true;
+      fileTasks.cancelOperation(operationId);
+    }
+    map.clear();
   }
-  activeFolderSizeCalculations.clear();
-
-  for (const [operationId, operation] of activeChecksumCalculations) {
-    logger.debug('[Cleanup] Aborting checksum calculation:', operationId);
-    operation.aborted = true;
-    fileTasks.cancelOperation(operationId);
-  }
-  activeChecksumCalculations.clear();
 }

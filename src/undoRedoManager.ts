@@ -1,7 +1,7 @@
 import { ipcMain, IpcMainInvokeEvent } from 'electron';
 import { promises as fs } from 'fs';
 import * as path from 'path';
-import type { UndoAction, ApiResponse } from './types';
+import type { UndoAction, UndoRenameAction, UndoMoveAction, ApiResponse } from './types';
 import { MAX_UNDO_STACK_SIZE } from './appState';
 import { logger } from './utils/logger';
 import { ignoreError } from './shared';
@@ -110,293 +110,226 @@ export function clearUndoStackForPath(itemPath: string): void {
 }
 
 export function setupUndoRedoHandlers(): void {
+  async function executeRenameAction(
+    data: UndoRenameAction['data'],
+    fromKey: 'oldPath' | 'newPath',
+    toKey: 'oldPath' | 'newPath',
+    direction: string
+  ): Promise<ApiResponse> {
+    const fromPath = data[fromKey];
+    const toPath = data[toKey];
+    try {
+      await fs.access(fromPath);
+    } catch {
+      return {
+        success: false,
+        error: `Cannot ${direction}: File no longer exists (may have been moved or deleted)`,
+      };
+    }
+    try {
+      await fs.access(toPath);
+      return {
+        success: false,
+        error: `Cannot ${direction}: A file already exists at the ${direction === 'undo' ? 'original' : 'target'} location`,
+      };
+    } catch (error) {
+      ignoreError(error);
+    }
+    await movePath(fromPath, toPath);
+    return { success: true };
+  }
+
+  async function executeMoveUndo(action: UndoMoveAction): Promise<ApiResponse> {
+    const { sourcePaths: movedPaths, originalPaths, originalParent } = action.data;
+
+    const getTargetPaths = (): string[] | null => {
+      if (Array.isArray(originalPaths) && originalPaths.length === movedPaths.length)
+        return originalPaths;
+      if (originalParent)
+        return movedPaths.map((p: string) => path.join(originalParent, path.basename(p)));
+      return null;
+    };
+
+    const targetPaths = getTargetPaths();
+    if (!targetPaths) {
+      undoStack.push(action);
+      return { success: false, error: 'Cannot undo: Original parent path not available' };
+    }
+
+    const sourcePaths = movedPaths;
+
+    for (const sp of sourcePaths) {
+      try {
+        await fs.access(sp);
+      } catch {
+        undoStack.push(action);
+        return { success: false, error: 'Cannot undo: One or more files no longer exist' };
+      }
+    }
+    for (const tp of targetPaths) {
+      try {
+        await fs.access(tp);
+        undoStack.push(action);
+        return {
+          success: false,
+          error: 'Cannot undo: A file already exists at the original location',
+        };
+      } catch (error) {
+        ignoreError(error);
+      }
+    }
+
+    let movedBackCount = 0;
+    try {
+      for (let i = 0; i < sourcePaths.length; i++) {
+        await movePath(sourcePaths[i], targetPaths[i]);
+        movedBackCount++;
+      }
+    } catch (moveError) {
+      logger.error('[Undo] Partial move undo failed at index', movedBackCount, moveError);
+      if (movedBackCount > 0) {
+        undoStack.push({
+          ...action,
+          data: {
+            ...action.data,
+            sourcePaths: movedPaths.slice(movedBackCount),
+            originalPaths: originalPaths?.slice?.(movedBackCount),
+          },
+        });
+      } else {
+        undoStack.push(action);
+      }
+      const message = moveError instanceof Error ? moveError.message : String(moveError);
+      return { success: false, error: `Partial undo failed: ${message}` };
+    }
+    return { success: true };
+  }
+
+  async function executeMoveRedo(
+    action: UndoMoveAction
+  ): Promise<{ result: ApiResponse; newMovedPaths: string[] }> {
+    const { destPath: redoDestPath, originalPaths, originalParent, sourcePaths } = action.data;
+    const newMovedPaths: string[] = [];
+
+    const sourcesAndTargets: Array<[string, string]> = [];
+    if (Array.isArray(originalPaths) && originalPaths.length > 0) {
+      for (const op of originalPaths) {
+        sourcesAndTargets.push([op, path.join(redoDestPath, path.basename(op))]);
+      }
+    } else {
+      if (!originalParent)
+        return {
+          result: { success: false, error: 'Cannot redo: Original parent path not available' },
+          newMovedPaths,
+        };
+      for (const sp of sourcePaths) {
+        const fileName = path.basename(sp);
+        sourcesAndTargets.push([
+          path.join(originalParent, fileName),
+          path.join(redoDestPath, fileName),
+        ]);
+      }
+    }
+
+    for (const [src, dest] of sourcesAndTargets) {
+      try {
+        await fs.access(src);
+      } catch {
+        return {
+          result: { success: false, error: 'Cannot redo: File not found at original location' },
+          newMovedPaths,
+        };
+      }
+      try {
+        await fs.access(dest);
+        return {
+          result: {
+            success: false,
+            error: 'Cannot redo: A file already exists at the target location',
+          },
+          newMovedPaths,
+        };
+      } catch (error) {
+        ignoreError(error);
+      }
+      await movePath(src, dest);
+      newMovedPaths.push(dest);
+    }
+    return { result: { success: true }, newMovedPaths };
+  }
+
   ipcMain.handle('undo-action', async (_event: IpcMainInvokeEvent): Promise<ApiResponse> => {
-    if (!isTrustedIpcEvent(_event, 'undo-action')) {
+    if (!isTrustedIpcEvent(_event, 'undo-action'))
       return { success: false, error: 'Untrusted IPC sender' };
-    }
-    if (undoStack.length === 0) {
-      return { success: false, error: 'Nothing to undo' };
-    }
+    if (undoStack.length === 0) return { success: false, error: 'Nothing to undo' };
 
     const action = undoStack.pop()!;
     logger.debug('[Undo] Undoing action:', action.type);
 
     try {
       switch (action.type) {
-        case 'rename':
-          try {
-            await fs.access(action.data.newPath);
-          } catch {
-            logger.debug('[Undo] File no longer exists:', action.data.newPath);
-            return {
-              success: false,
-              error: 'Cannot undo: File no longer exists (may have been moved or deleted)',
-            };
-          }
-
-          try {
-            await fs.access(action.data.oldPath);
-            logger.debug('[Undo] Old path already exists:', action.data.oldPath);
-            return {
-              success: false,
-              error: 'Cannot undo: A file already exists at the original location',
-            };
-          } catch (error) {
-            ignoreError(error);
-          }
-
-          await movePath(action.data.newPath, action.data.oldPath);
-          pushRedoAction(action);
-          logger.debug('[Undo] Renamed back:', action.data.newPath, '->', action.data.oldPath);
-          return { success: true };
-
-        case 'move': {
-          const movedPaths = action.data.sourcePaths;
-          const originalPaths = action.data.originalPaths;
-          const originalParent = action.data.originalParent;
-
-          if (Array.isArray(originalPaths) && originalPaths.length === movedPaths.length) {
-            for (const movedPath of movedPaths) {
-              try {
-                await fs.access(movedPath);
-              } catch {
-                logger.debug('[Undo] File no longer exists:', movedPath);
-                return { success: false, error: 'Cannot undo: One or more files no longer exist' };
-              }
-            }
-
-            for (const originalPath of originalPaths) {
-              try {
-                await fs.access(originalPath);
-                logger.debug('[Undo] Original path already exists:', originalPath);
-                return {
-                  success: false,
-                  error: 'Cannot undo: A file already exists at the original location',
-                };
-              } catch (error) {
-                ignoreError(error);
-              }
-            }
-
-            let movedBackCount = 0;
-            try {
-              for (let i = 0; i < movedPaths.length; i++) {
-                await movePath(movedPaths[i], originalPaths[i]);
-                movedBackCount++;
-              }
-            } catch (moveError) {
-              logger.error('[Undo] Partial move undo failed at index', movedBackCount, moveError);
-              if (movedBackCount > 0) {
-                const remainingSourcePaths = movedPaths.slice(movedBackCount);
-                const remainingOriginalPaths = originalPaths.slice(movedBackCount);
-                const partialAction: UndoAction = {
-                  ...action,
-                  data: {
-                    ...action.data,
-                    sourcePaths: remainingSourcePaths,
-                    originalPaths: remainingOriginalPaths,
-                  },
-                };
-                undoStack.push(partialAction);
-              } else {
-                undoStack.push(action);
-              }
-              const message = moveError instanceof Error ? moveError.message : String(moveError);
-              return { success: false, error: `Partial undo failed: ${message}` };
-            }
-          } else {
-            if (!originalParent) {
-              return { success: false, error: 'Cannot undo: Original parent path not available' };
-            }
-
-            for (const source of movedPaths) {
-              try {
-                await fs.access(source);
-              } catch {
-                logger.debug('[Undo] File no longer exists:', source);
-                return { success: false, error: 'Cannot undo: One or more files no longer exist' };
-              }
-            }
-
-            let movedBackCount = 0;
-            try {
-              for (const source of movedPaths) {
-                const fileName = path.basename(source);
-                const originalPath = path.join(originalParent, fileName);
-                await movePath(source, originalPath);
-                movedBackCount++;
-              }
-            } catch (moveError) {
-              logger.error('[Undo] Partial move undo failed at index', movedBackCount, moveError);
-              if (movedBackCount > 0) {
-                const remainingSourcePaths = movedPaths.slice(movedBackCount);
-                const partialAction: UndoAction = {
-                  ...action,
-                  data: {
-                    ...action.data,
-                    sourcePaths: remainingSourcePaths,
-                  },
-                };
-                undoStack.push(partialAction);
-              } else {
-                undoStack.push(action);
-              }
-              const message = moveError instanceof Error ? moveError.message : String(moveError);
-              return { success: false, error: `Partial undo failed: ${message}` };
-            }
-          }
-          pushRedoAction(action);
-          logger.debug('[Undo] Moved back to original location');
-          return { success: true };
+        case 'rename': {
+          const result = await executeRenameAction(action.data, 'newPath', 'oldPath', 'undo');
+          if (result.success) pushRedoAction(action);
+          else undoStack.push(action);
+          return result;
         }
-
+        case 'move': {
+          const result = await executeMoveUndo(action);
+          if (result.success) pushRedoAction(action);
+          return result;
+        }
         case 'create': {
           const itemPath = action.data.path;
-
           try {
             await fs.access(itemPath);
           } catch {
-            logger.debug('[Undo] Created item no longer exists:', itemPath);
             return { success: false, error: 'Cannot undo: File no longer exists' };
           }
-
           const stats = await fs.stat(itemPath);
-          if (stats.isDirectory()) {
-            await fs.rm(itemPath, { recursive: true, force: true });
-          } else {
-            await fs.unlink(itemPath);
-          }
+          if (stats.isDirectory()) await fs.rm(itemPath, { recursive: true, force: true });
+          else await fs.unlink(itemPath);
           pushRedoAction(action);
-          logger.debug('[Undo] Deleted created item:', itemPath);
           return { success: true };
         }
-
         default:
           return { success: false, error: 'Unknown action type' };
       }
     } catch (error) {
       console.error('[Undo] Error:', error);
       undoStack.push(action);
-      const message = error instanceof Error ? error.message : String(error);
-      return { success: false, error: message };
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   });
 
   ipcMain.handle('redo-action', async (_event: IpcMainInvokeEvent): Promise<ApiResponse> => {
-    if (!isTrustedIpcEvent(_event, 'redo-action')) {
+    if (!isTrustedIpcEvent(_event, 'redo-action'))
       return { success: false, error: 'Untrusted IPC sender' };
-    }
-    if (redoStack.length === 0) {
-      return { success: false, error: 'Nothing to redo' };
-    }
+    if (redoStack.length === 0) return { success: false, error: 'Nothing to redo' };
 
     const action = redoStack.pop()!;
     logger.debug('[Redo] Redoing action:', action.type);
 
     try {
       switch (action.type) {
-        case 'rename':
-          try {
-            await fs.access(action.data.oldPath);
-          } catch {
-            logger.debug('[Redo] Source file no longer exists:', action.data.oldPath);
-            return { success: false, error: 'Cannot redo: Source file no longer exists' };
-          }
-
-          try {
-            await fs.access(action.data.newPath);
-            logger.debug('[Redo] Target path already exists:', action.data.newPath);
-            return {
-              success: false,
-              error: 'Cannot redo: A file already exists at the target location',
-            };
-          } catch (error) {
-            ignoreError(error);
-          }
-
-          await movePath(action.data.oldPath, action.data.newPath);
-          undoStack.push(action);
-          logger.debug('[Redo] Renamed:', action.data.oldPath, '->', action.data.newPath);
-          return { success: true };
-
-        case 'move': {
-          const redoDestPath = action.data.destPath;
-          const newMovedPaths: string[] = [];
-          const originalPaths = action.data.originalPaths;
-
-          if (Array.isArray(originalPaths) && originalPaths.length > 0) {
-            for (const originalPath of originalPaths) {
-              const fileName = path.basename(originalPath);
-              const newPath = path.join(redoDestPath, fileName);
-              try {
-                await fs.access(originalPath);
-              } catch {
-                logger.debug('[Redo] File not found at expected location:', originalPath);
-                return {
-                  success: false,
-                  error: 'Cannot redo: File not found at original location',
-                };
-              }
-              try {
-                await fs.access(newPath);
-                logger.debug('[Redo] Target path already exists:', newPath);
-                return {
-                  success: false,
-                  error: 'Cannot redo: A file already exists at the target location',
-                };
-              } catch (error) {
-                ignoreError(error);
-              }
-              await movePath(originalPath, newPath);
-              newMovedPaths.push(newPath);
-            }
-          } else {
-            const redoOriginalParent = action.data.originalParent;
-            const filesToMove = action.data.sourcePaths;
-
-            if (!redoOriginalParent) {
-              return { success: false, error: 'Cannot redo: Original parent path not available' };
-            }
-
-            for (const sourcePath of filesToMove) {
-              const fileName = path.basename(sourcePath);
-              const currentPath = path.join(redoOriginalParent, fileName);
-              const newPath = path.join(redoDestPath, fileName);
-              try {
-                await fs.access(currentPath);
-              } catch {
-                logger.debug('[Redo] File not found at expected location:', currentPath);
-                return {
-                  success: false,
-                  error: 'Cannot redo: File not found at original location',
-                };
-              }
-              try {
-                await fs.access(newPath);
-                logger.debug('[Redo] Target path already exists:', newPath);
-                return {
-                  success: false,
-                  error: 'Cannot redo: A file already exists at the target location',
-                };
-              } catch (error) {
-                ignoreError(error);
-              }
-              await movePath(currentPath, newPath);
-              newMovedPaths.push(newPath);
-            }
-          }
-          action.data.sourcePaths = newMovedPaths;
-          undoStack.push({ ...action, data: { ...action.data, sourcePaths: newMovedPaths } });
-          logger.debug('[Redo] Moved to destination');
-          return { success: true };
+        case 'rename': {
+          const result = await executeRenameAction(action.data, 'oldPath', 'newPath', 'redo');
+          if (result.success) undoStack.push(action);
+          else redoStack.push(action);
+          return result;
         }
-
+        case 'move': {
+          const { result, newMovedPaths } = await executeMoveRedo(action);
+          if (result.success)
+            undoStack.push({ ...action, data: { ...action.data, sourcePaths: newMovedPaths } });
+          else redoStack.push(action);
+          return result;
+        }
         case 'create': {
           const itemPath = action.data.path;
-
           try {
             await fs.access(itemPath);
-            logger.debug('[Redo] Item already exists at path:', itemPath);
+            redoStack.push(action);
             return {
               success: false,
               error: 'Cannot redo: A file or folder already exists at this location',
@@ -404,25 +337,18 @@ export function setupUndoRedoHandlers(): void {
           } catch (error) {
             ignoreError(error);
           }
-
-          if (action.data.isDirectory) {
-            await fs.mkdir(itemPath);
-          } else {
-            await fs.writeFile(itemPath, '');
-          }
+          if (action.data.isDirectory) await fs.mkdir(itemPath);
+          else await fs.writeFile(itemPath, '');
           undoStack.push(action);
-          logger.debug('[Redo] Recreated item:', itemPath);
           return { success: true };
         }
-
         default:
           return { success: false, error: 'Unknown action type' };
       }
     } catch (error) {
       console.error('[Redo] Error:', error);
       redoStack.push(action);
-      const message = error instanceof Error ? error.message : String(error);
-      return { success: false, error: message };
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   });
 

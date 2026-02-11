@@ -1486,23 +1486,19 @@ function applySettings(settings: Settings) {
   loadRecentFiles();
 }
 
+function parseHexRgb(hex: string): [number, number, number] | null {
+  const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return m ? [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)] : null;
+}
+
 function hexToRgb(hex: string): string {
-  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-  if (result) {
-    return `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}`;
-  }
-  return '0, 120, 212';
+  const c = parseHexRgb(hex);
+  return c ? `${c[0]}, ${c[1]}, ${c[2]}` : '0, 120, 212';
 }
 
 function hexToRgba(hex: string, alpha: number): string {
-  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-  if (result) {
-    const r = parseInt(result[1], 16);
-    const g = parseInt(result[2], 16);
-    const b = parseInt(result[3], 16);
-    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-  }
-  return `rgba(255, 255, 255, ${alpha})`;
+  const c = parseHexRgb(hex);
+  return c ? `rgba(${c[0]}, ${c[1]}, ${c[2]}, ${alpha})` : `rgba(255, 255, 255, ${alpha})`;
 }
 
 function setThemeCustomProperties(el: HTMLElement, theme: CustomTheme) {
@@ -2826,21 +2822,11 @@ function hideSortMenu() {
 
 function updateSortIndicators() {
   ['name', 'date', 'size', 'type'].forEach((sortType) => {
-    const indicator = document.getElementById(`sort-${sortType}`);
-    if (indicator) {
-      if (currentSettings.sortBy === sortType) {
-        indicator.textContent = currentSettings.sortOrder === 'asc' ? '▲' : '▼';
-      } else {
-        indicator.textContent = '';
-      }
-    }
-    const listIndicator = document.getElementById(`list-sort-${sortType}`);
-    if (listIndicator) {
-      if (currentSettings.sortBy === sortType) {
-        listIndicator.textContent = currentSettings.sortOrder === 'asc' ? '▲' : '▼';
-      } else {
-        listIndicator.textContent = '';
-      }
+    const text =
+      currentSettings.sortBy === sortType ? (currentSettings.sortOrder === 'asc' ? '▲' : '▼') : '';
+    for (const prefix of ['sort', 'list-sort']) {
+      const el = document.getElementById(`${prefix}-${sortType}`);
+      if (el) el.textContent = text;
     }
   });
 
@@ -3567,22 +3553,28 @@ function getFileExtension(filename: string): string {
   return filename.split('.').pop()?.toLowerCase() || '';
 }
 
+const FILE_TYPE_LABELS: ReadonlyArray<[Set<string>, string]> = [
+  [IMAGE_EXTENSIONS, 'Image'],
+  [RAW_EXTENSIONS, 'RAW Image'],
+  [VIDEO_EXTENSIONS, 'Video'],
+  [AUDIO_EXTENSIONS, 'Audio'],
+  [PDF_EXTENSIONS, 'PDF Document'],
+  [WORD_EXTENSIONS, 'Word Document'],
+  [SPREADSHEET_EXTENSIONS, 'Spreadsheet'],
+  [PRESENTATION_EXTENSIONS, 'Presentation'],
+  [ARCHIVE_EXTENSIONS, 'Archive'],
+  [SOURCE_CODE_EXTENSIONS, 'Source Code'],
+  [WEB_EXTENSIONS, 'Web File'],
+  [DATA_EXTENSIONS, 'Data File'],
+  [TEXT_EXTENSIONS, 'Text File'],
+];
+
 function getFileTypeFromName(filename: string): string {
   const ext = getFileExtension(filename);
   if (!ext) return 'File';
-  if (IMAGE_EXTENSIONS.has(ext)) return 'Image';
-  if (RAW_EXTENSIONS.has(ext)) return 'RAW Image';
-  if (VIDEO_EXTENSIONS.has(ext)) return 'Video';
-  if (AUDIO_EXTENSIONS.has(ext)) return 'Audio';
-  if (PDF_EXTENSIONS.has(ext)) return 'PDF Document';
-  if (WORD_EXTENSIONS.has(ext)) return 'Word Document';
-  if (SPREADSHEET_EXTENSIONS.has(ext)) return 'Spreadsheet';
-  if (PRESENTATION_EXTENSIONS.has(ext)) return 'Presentation';
-  if (ARCHIVE_EXTENSIONS.has(ext)) return 'Archive';
-  if (SOURCE_CODE_EXTENSIONS.has(ext)) return 'Source Code';
-  if (WEB_EXTENSIONS.has(ext)) return 'Web File';
-  if (DATA_EXTENSIONS.has(ext)) return 'Data File';
-  if (TEXT_EXTENSIONS.has(ext)) return 'Text File';
+  for (const [set, label] of FILE_TYPE_LABELS) {
+    if (set.has(ext)) return label;
+  }
   return `${ext.toUpperCase()} File`;
 }
 
@@ -3851,6 +3843,7 @@ function initKeyboardListeners(): void {
         ['shortcuts-modal', 'flex', hideShortcutsModal],
         ['licenses-modal', 'flex', hideLicensesModal],
         ['home-settings-modal', 'flex', () => homeController.closeHomeSettingsModal()],
+        ['sort-menu', 'block', hideSortMenu],
         ['context-menu', 'block', hideContextMenu],
         ['empty-space-context-menu', 'block', hideEmptySpaceContextMenu],
       ];
@@ -3871,67 +3864,68 @@ function initKeyboardListeners(): void {
     const contextMenu = document.getElementById('context-menu');
     const emptySpaceContextMenu = document.getElementById('empty-space-context-menu');
 
-    if (contextMenu && contextMenu.style.display === 'block') {
+    const handleMenuKeyNav = (
+      menu: HTMLElement | null,
+      getFocusIdx: () => number,
+      setFocusIdx: (n: number) => void,
+      hasSubmenu: boolean
+    ): boolean => {
+      if (!menu || menu.style.display !== 'block') return false;
       if (e.key === 'ArrowDown') {
         e.preventDefault();
-        contextMenuFocusedIndex = navigateContextMenu(contextMenu, 'down', contextMenuFocusedIndex);
-        return;
+        setFocusIdx(navigateContextMenu(menu, 'down', getFocusIdx()));
+        return true;
       }
       if (e.key === 'ArrowUp') {
         e.preventDefault();
-        contextMenuFocusedIndex = navigateContextMenu(contextMenu, 'up', contextMenuFocusedIndex);
-        return;
+        setFocusIdx(navigateContextMenu(menu, 'up', getFocusIdx()));
+        return true;
       }
-      if (e.key === 'Enter') {
+      if (e.key === 'Enter' && getFocusIdx() >= 0) {
         e.preventDefault();
-        if (contextMenuFocusedIndex >= 0) {
-          activateContextMenuItem(contextMenu, contextMenuFocusedIndex);
-        }
-        return;
-      }
-      if (e.key === 'ArrowRight') {
-        const items = getVisibleMenuItems(contextMenu);
-        if (
-          contextMenuFocusedIndex >= 0 &&
-          items[contextMenuFocusedIndex]?.classList.contains('has-submenu')
-        ) {
-          e.preventDefault();
-          activateContextMenuItem(contextMenu, contextMenuFocusedIndex);
-        }
-        return;
-      }
-    }
-
-    if (emptySpaceContextMenu && emptySpaceContextMenu.style.display === 'block') {
-      if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        emptySpaceMenuFocusedIndex = navigateContextMenu(
-          emptySpaceContextMenu,
-          'down',
-          emptySpaceMenuFocusedIndex
-        );
-        return;
-      }
-      if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        emptySpaceMenuFocusedIndex = navigateContextMenu(
-          emptySpaceContextMenu,
-          'up',
-          emptySpaceMenuFocusedIndex
-        );
-        return;
-      }
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        if (emptySpaceMenuFocusedIndex >= 0) {
-          const items = getVisibleMenuItems(emptySpaceContextMenu);
-          if (items[emptySpaceMenuFocusedIndex]) {
-            items[emptySpaceMenuFocusedIndex].click();
+        const items = getVisibleMenuItems(menu);
+        if (items[getFocusIdx()]) {
+          if (hasSubmenu) {
+            activateContextMenuItem(menu, getFocusIdx());
+          } else {
+            items[getFocusIdx()].click();
           }
         }
-        return;
+        return true;
       }
-    }
+      if (hasSubmenu && e.key === 'ArrowRight') {
+        const items = getVisibleMenuItems(menu);
+        if (getFocusIdx() >= 0 && items[getFocusIdx()]?.classList.contains('has-submenu')) {
+          e.preventDefault();
+          activateContextMenuItem(menu, getFocusIdx());
+        }
+        return true;
+      }
+      return false;
+    };
+
+    if (
+      handleMenuKeyNav(
+        contextMenu,
+        () => contextMenuFocusedIndex,
+        (v) => {
+          contextMenuFocusedIndex = v;
+        },
+        true
+      )
+    )
+      return;
+    if (
+      handleMenuKeyNav(
+        emptySpaceContextMenu,
+        () => emptySpaceMenuFocusedIndex,
+        (v) => {
+          emptySpaceMenuFocusedIndex = v;
+        },
+        false
+      )
+    )
+      return;
 
     if (isModalOpen()) {
       return;
@@ -3964,14 +3958,22 @@ function initKeyboardListeners(): void {
       }
     }
 
-    if (e.key === 'Backspace') {
-      if (isEditableElementActive()) return;
-      e.preventDefault();
-      goUp();
-    } else if (e.key === 'F2') {
-      e.preventDefault();
-      renameSelected();
-    } else if (e.key === 'Delete') {
+    const EDIT_GUARDED_KEYS = new Set([
+      'Backspace',
+      'Enter',
+      'Home',
+      'End',
+      'PageUp',
+      'PageDown',
+      'ArrowUp',
+      'ArrowDown',
+      'ArrowLeft',
+      'ArrowRight',
+      'Delete',
+    ]);
+    if (EDIT_GUARDED_KEYS.has(e.key) && isEditableElementActive()) return;
+
+    if (e.key === 'Delete') {
       e.preventDefault();
       if (e.shiftKey) {
         if (!currentSettings.showDangerousOptions) {
@@ -3986,35 +3988,30 @@ function initKeyboardListeners(): void {
       } else {
         deleteSelected();
       }
-    } else if (e.key === 'Enter') {
-      if (isEditableElementActive()) return;
+      return;
+    }
+
+    const simpleKeyActions: Record<string, () => void> = {
+      Backspace: () => goUp(),
+      F2: () => renameSelected(),
+      Enter: () => openSelectedItem(),
+      Home: () => selectFirstItem(e.shiftKey),
+      End: () => selectLastItem(e.shiftKey),
+      PageUp: () => navigateByPage('up', e.shiftKey),
+      PageDown: () => navigateByPage('down', e.shiftKey),
+    };
+    const simpleAction = simpleKeyActions[e.key];
+    if (simpleAction) {
       e.preventDefault();
-      openSelectedItem();
+      simpleAction();
     } else if (
       e.key === 'ArrowUp' ||
       e.key === 'ArrowDown' ||
       e.key === 'ArrowLeft' ||
       e.key === 'ArrowRight'
     ) {
-      if (isEditableElementActive()) return;
       e.preventDefault();
       navigateFileGrid(e.key, e.shiftKey);
-    } else if (e.key === 'Home') {
-      if (isEditableElementActive()) return;
-      e.preventDefault();
-      selectFirstItem(e.shiftKey);
-    } else if (e.key === 'End') {
-      if (isEditableElementActive()) return;
-      e.preventDefault();
-      selectLastItem(e.shiftKey);
-    } else if (e.key === 'PageUp') {
-      if (isEditableElementActive()) return;
-      e.preventDefault();
-      navigateByPage('up', e.shiftKey);
-    } else if (e.key === 'PageDown') {
-      if (isEditableElementActive()) return;
-      e.preventDefault();
-      navigateByPage('down', e.shiftKey);
     } else if (
       !e.ctrlKey &&
       !e.metaKey &&
@@ -4735,25 +4732,21 @@ function createFileItem(item: FileItem, searchQuery?: string): HTMLElement {
     icon = getFolderIcon(item.path);
   } else {
     const ext = getFileExtension(item.name);
-    if (IMAGE_EXTENSIONS.has(ext) || RAW_EXTENSIONS.has(ext)) {
+    const thumbType = RAW_EXTENSIONS.has(ext)
+      ? 'raw'
+      : IMAGE_EXTENSIONS.has(ext)
+        ? 'image'
+        : VIDEO_EXTENSIONS.has(ext)
+          ? 'video'
+          : AUDIO_EXTENSIONS.has(ext)
+            ? 'audio'
+            : PDF_EXTENSIONS.has(ext)
+              ? 'pdf'
+              : null;
+    if (thumbType) {
       fileItem.classList.add('has-thumbnail');
-      fileItem.dataset.thumbnailType = RAW_EXTENSIONS.has(ext) ? 'raw' : 'image';
-      icon = IMAGE_ICON;
-      observeThumbnailItem(fileItem);
-    } else if (VIDEO_EXTENSIONS.has(ext)) {
-      fileItem.classList.add('has-thumbnail');
-      fileItem.dataset.thumbnailType = 'video';
-      icon = getFileIcon(item.name);
-      observeThumbnailItem(fileItem);
-    } else if (AUDIO_EXTENSIONS.has(ext)) {
-      fileItem.classList.add('has-thumbnail');
-      fileItem.dataset.thumbnailType = 'audio';
-      icon = getFileIcon(item.name);
-      observeThumbnailItem(fileItem);
-    } else if (PDF_EXTENSIONS.has(ext)) {
-      fileItem.classList.add('has-thumbnail');
-      fileItem.dataset.thumbnailType = 'pdf';
-      icon = getFileIcon(item.name);
+      fileItem.dataset.thumbnailType = thumbType;
+      icon = thumbType === 'image' || thumbType === 'raw' ? IMAGE_ICON : getFileIcon(item.name);
       observeThumbnailItem(fileItem);
     } else {
       icon = getFileIcon(item.name);
@@ -5106,6 +5099,11 @@ function setupFileGridEventDelegation(): void {
   });
 }
 
+const THUMBNAIL_QUALITY_MAP: Record<string, number> = { low: 0.5, medium: 0.7, high: 0.9 };
+function getThumbnailQuality(): number {
+  return THUMBNAIL_QUALITY_MAP[currentSettings.thumbnailQuality || 'medium'] ?? 0.7;
+}
+
 function generateVideoThumbnail(videoUrl: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const video = document.createElement('video');
@@ -5142,13 +5140,7 @@ function generateVideoThumbnail(videoUrl: string): Promise<string> {
           ctx.imageSmoothingEnabled = true;
           ctx.imageSmoothingQuality = 'high';
           ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-          const quality =
-            currentSettings.thumbnailQuality === 'low'
-              ? 0.5
-              : currentSettings.thumbnailQuality === 'high'
-                ? 0.9
-                : 0.7;
-          const dataUrl = canvas.toDataURL('image/jpeg', quality);
+          const dataUrl = canvas.toDataURL('image/jpeg', getThumbnailQuality());
           cleanup();
           resolve(dataUrl);
         } else {
@@ -5241,13 +5233,7 @@ async function generateAudioWaveform(audioUrl: string): Promise<string> {
         ctx.fill();
 
         audioContext.close();
-        const quality =
-          currentSettings.thumbnailQuality === 'low'
-            ? 0.5
-            : currentSettings.thumbnailQuality === 'high'
-              ? 0.9
-              : 0.7;
-        resolve(canvas.toDataURL('image/jpeg', quality));
+        resolve(canvas.toDataURL('image/jpeg', getThumbnailQuality()));
       })
       .catch((error) => {
         audioContext.close();
@@ -5257,12 +5243,8 @@ async function generateAudioWaveform(audioUrl: string): Promise<string> {
 }
 
 function generatePdfThumbnail(pdfUrl: string): Promise<string> {
-  const quality =
-    currentSettings.thumbnailQuality === 'low'
-      ? 'low'
-      : currentSettings.thumbnailQuality === 'high'
-        ? 'high'
-        : 'medium';
+  const q = currentSettings.thumbnailQuality;
+  const quality: 'low' | 'medium' | 'high' = q === 'low' ? 'low' : q === 'high' ? 'high' : 'medium';
   return generatePdfThumbnailPdfJs(pdfUrl, quality);
 }
 
@@ -5332,36 +5314,18 @@ function loadThumbnail(fileItem: HTMLElement, item: FileItem) {
       let thumbnailUrl = fileUrl;
       let shouldCacheToDisk = false;
 
-      if (thumbnailType === 'video') {
+      const thumbnailGenerators: Record<string, (url: string) => Promise<string>> = {
+        video: generateVideoThumbnail,
+        audio: generateAudioWaveform,
+        pdf: generatePdfThumbnail,
+      };
+      const generator = thumbnailGenerators[thumbnailType];
+      if (generator) {
         try {
-          thumbnailUrl = await generateVideoThumbnail(fileUrl);
+          thumbnailUrl = await generator(fileUrl);
           shouldCacheToDisk = true;
         } catch {
-          if (iconDiv) {
-            iconDiv.innerHTML = getFileIcon(item.name);
-          }
-          fileItem.classList.remove('has-thumbnail');
-          return;
-        }
-      } else if (thumbnailType === 'audio') {
-        try {
-          thumbnailUrl = await generateAudioWaveform(fileUrl);
-          shouldCacheToDisk = true;
-        } catch {
-          if (iconDiv) {
-            iconDiv.innerHTML = getFileIcon(item.name);
-          }
-          fileItem.classList.remove('has-thumbnail');
-          return;
-        }
-      } else if (thumbnailType === 'pdf') {
-        try {
-          thumbnailUrl = await generatePdfThumbnail(fileUrl);
-          shouldCacheToDisk = true;
-        } catch {
-          if (iconDiv) {
-            iconDiv.innerHTML = getFileIcon(item.name);
-          }
+          if (iconDiv) iconDiv.innerHTML = getFileIcon(item.name);
           fileItem.classList.remove('has-thumbnail');
           return;
         }
@@ -6242,36 +6206,25 @@ async function handleColumnItemClick(
   }
 }
 
+const VIEW_TOGGLE_CONFIG: Record<string, { svg: string; title: string }> = {
+  list: {
+    svg: `<svg width="16" height="16" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="2" fill="currentColor" rx="1"/><rect x="2" y="7" width="12" height="2" fill="currentColor" rx="1"/><rect x="2" y="11" width="12" height="2" fill="currentColor" rx="1"/></svg>`,
+    title: 'Switch to Column View',
+  },
+  column: {
+    svg: `<svg width="16" height="16" viewBox="0 0 16 16"><rect x="1" y="2" width="4" height="12" fill="currentColor" rx="1"/><rect x="6" y="2" width="4" height="12" fill="currentColor" rx="1"/><rect x="11" y="2" width="4" height="12" fill="currentColor" rx="1"/></svg>`,
+    title: 'Switch to Grid View',
+  },
+  grid: {
+    svg: `<svg width="16" height="16" viewBox="0 0 16 16"><rect x="2" y="2" width="5" height="5" fill="currentColor" rx="1"/><rect x="9" y="2" width="5" height="5" fill="currentColor" rx="1"/><rect x="2" y="9" width="5" height="5" fill="currentColor" rx="1"/><rect x="9" y="9" width="5" height="5" fill="currentColor" rx="1"/></svg>`,
+    title: 'Switch to List View',
+  },
+};
+
 function updateViewToggleButton() {
-  if (viewMode === 'list') {
-    viewToggleBtn.innerHTML = `
-      <svg width="16" height="16" viewBox="0 0 16 16">
-        <rect x="2" y="3" width="12" height="2" fill="currentColor" rx="1"/>
-        <rect x="2" y="7" width="12" height="2" fill="currentColor" rx="1"/>
-        <rect x="2" y="11" width="12" height="2" fill="currentColor" rx="1"/>
-      </svg>
-    `;
-    viewToggleBtn.title = 'Switch to Column View';
-  } else if (viewMode === 'column') {
-    viewToggleBtn.innerHTML = `
-      <svg width="16" height="16" viewBox="0 0 16 16">
-        <rect x="1" y="2" width="4" height="12" fill="currentColor" rx="1"/>
-        <rect x="6" y="2" width="4" height="12" fill="currentColor" rx="1"/>
-        <rect x="11" y="2" width="4" height="12" fill="currentColor" rx="1"/>
-      </svg>
-    `;
-    viewToggleBtn.title = 'Switch to Grid View';
-  } else {
-    viewToggleBtn.innerHTML = `
-      <svg width="16" height="16" viewBox="0 0 16 16">
-        <rect x="2" y="2" width="5" height="5" fill="currentColor" rx="1"/>
-        <rect x="9" y="2" width="5" height="5" fill="currentColor" rx="1"/>
-        <rect x="2" y="9" width="5" height="5" fill="currentColor" rx="1"/>
-        <rect x="9" y="9" width="5" height="5" fill="currentColor" rx="1"/>
-      </svg>
-    `;
-    viewToggleBtn.title = 'Switch to List View';
-  }
+  const cfg = VIEW_TOGGLE_CONFIG[viewMode] ?? VIEW_TOGGLE_CONFIG.grid;
+  viewToggleBtn.innerHTML = cfg.svg;
+  viewToggleBtn.title = cfg.title;
 }
 
 function updateViewModeControls() {

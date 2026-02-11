@@ -47,44 +47,42 @@ async function ensureCacheDir(): Promise<string> {
   return cacheDir;
 }
 
+async function walkCacheDir(
+  dirPath: string,
+  visitor: (fullPath: string, stats: fsSync.Stats) => void
+): Promise<void> {
+  let list: fsSync.Dirent[];
+  try {
+    list = await fs.readdir(dirPath, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  const files: string[] = [];
+  const dirs: string[] = [];
+  for (const entry of list) {
+    const fullPath = path.join(dirPath, entry.name);
+    if (entry.isDirectory()) dirs.push(fullPath);
+    else files.push(fullPath);
+  }
+  const statResults = await Promise.allSettled(
+    files.map((f) => fs.stat(f).then((s) => ({ path: f, stats: s })))
+  );
+  for (const result of statResults) {
+    if (result.status === 'fulfilled') visitor(result.value.path, result.value.stats);
+  }
+  for (const d of dirs) await walkCacheDir(d, visitor);
+}
+
 async function enforceCacheSize(): Promise<void> {
   const dir = await ensureCacheDir();
   const limitBytes = MAX_CACHE_SIZE_MB * 1024 * 1024;
   let totalSize = 0;
   const entries: Array<{ path: string; size: number; atimeMs: number }> = [];
 
-  async function walk(dirPath: string): Promise<void> {
-    let list: fsSync.Dirent[];
-    try {
-      list = await fs.readdir(dirPath, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    const files: string[] = [];
-    const dirs: string[] = [];
-    for (const entry of list) {
-      const fullPath = path.join(dirPath, entry.name);
-      if (entry.isDirectory()) {
-        dirs.push(fullPath);
-      } else {
-        files.push(fullPath);
-      }
-    }
-    const statResults = await Promise.allSettled(
-      files.map((f) => fs.stat(f).then((s) => ({ path: f, size: s.size, atimeMs: s.atimeMs })))
-    );
-    for (const result of statResults) {
-      if (result.status === 'fulfilled') {
-        totalSize += result.value.size;
-        entries.push(result.value);
-      }
-    }
-    for (const d of dirs) {
-      await walk(d);
-    }
-  }
-
-  await walk(dir);
+  await walkCacheDir(dir, (fullPath, stats) => {
+    totalSize += stats.size;
+    entries.push({ path: fullPath, size: stats.size, atimeMs: stats.atimeMs });
+  });
 
   if (totalSize <= limitBytes) return;
 
@@ -212,31 +210,10 @@ export async function getThumbnailCacheSize(): Promise<{
     let totalSize = 0;
     let fileCount = 0;
 
-    async function walkDir(dirPath: string): Promise<void> {
-      const entries = await fs.readdir(dirPath, { withFileTypes: true });
-      const files: string[] = [];
-      const dirs: string[] = [];
-      for (const entry of entries) {
-        const fullPath = path.join(dirPath, entry.name);
-        if (entry.isDirectory()) {
-          dirs.push(fullPath);
-        } else {
-          files.push(fullPath);
-        }
-      }
-      const statResults = await Promise.allSettled(files.map((f) => fs.stat(f)));
-      for (const result of statResults) {
-        if (result.status === 'fulfilled') {
-          totalSize += result.value.size;
-          fileCount++;
-        }
-      }
-      for (const d of dirs) {
-        await walkDir(d);
-      }
-    }
-
-    await walkDir(dir);
+    await walkCacheDir(dir, (_fullPath, stats) => {
+      totalSize += stats.size;
+      fileCount++;
+    });
 
     return { success: true, sizeBytes: totalSize, fileCount };
   } catch (error) {
@@ -249,35 +226,38 @@ export async function cleanupOldThumbnails(): Promise<void> {
     const dir = await ensureCacheDir();
     const now = Date.now();
     const maxAge = MAX_CACHE_AGE_DAYS * 24 * 60 * 60 * 1000;
+    const filesToDelete: string[] = [];
 
-    async function cleanDir(dirPath: string): Promise<void> {
-      const entries = await fs.readdir(dirPath, { withFileTypes: true });
-      for (const entry of entries) {
-        const fullPath = path.join(dirPath, entry.name);
+    await walkCacheDir(dir, (fullPath, stats) => {
+      if (now - stats.atimeMs > maxAge) filesToDelete.push(fullPath);
+    });
+
+    for (const f of filesToDelete) {
+      try {
+        await fs.unlink(f);
+      } catch (error) {
+        ignoreError(error);
+      }
+    }
+
+    // Clean empty subdirectories
+    try {
+      const subdirs = await fs.readdir(dir, { withFileTypes: true });
+      for (const entry of subdirs) {
         if (entry.isDirectory()) {
-          await cleanDir(fullPath);
+          const subPath = path.join(dir, entry.name);
           try {
-            const remaining = await fs.readdir(fullPath);
-            if (remaining.length === 0) {
-              await fs.rmdir(fullPath);
-            }
-          } catch (error) {
-            ignoreError(error);
-          }
-        } else {
-          try {
-            const stats = await fs.stat(fullPath);
-            if (now - stats.atimeMs > maxAge) {
-              await fs.unlink(fullPath);
-            }
+            const remaining = await fs.readdir(subPath);
+            if (remaining.length === 0) await fs.rmdir(subPath);
           } catch (error) {
             ignoreError(error);
           }
         }
       }
+    } catch (error) {
+      ignoreError(error);
     }
 
-    await cleanDir(dir);
     await enforceCacheSize();
   } catch (error) {
     console.error('[ThumbnailCache] Cleanup error:', error);
