@@ -81,6 +81,7 @@ export function createFolderTreeManager(deps: FolderTreeDependencies): FolderTre
 
   const folderTreeNodeMap = new Map<string, TreeNode>();
   const folderTreeExpandedPaths = new Set<string>();
+  let focusedTreePath: string | null = null;
 
   if (!folderTree) {
     return {
@@ -90,6 +91,31 @@ export function createFolderTreeManager(deps: FolderTreeDependencies): FolderTre
     };
   }
 
+  const getVisibleTreeItems = (): HTMLElement[] =>
+    Array.from(folderTree.querySelectorAll<HTMLElement>('.tree-item')).filter(
+      (item) => item.offsetParent !== null
+    );
+
+  const setTreeItemFocus = (item: HTMLElement | null, shouldFocus: boolean) => {
+    if (!item) return;
+    const current = folderTree.querySelector<HTMLElement>('.tree-item[tabindex="0"]');
+    if (current && current !== item) {
+      current.tabIndex = -1;
+    }
+    item.tabIndex = 0;
+    focusedTreePath = item.dataset.path || null;
+    if (shouldFocus) {
+      item.focus({ preventScroll: true });
+      item.scrollIntoView({ block: 'nearest' });
+    }
+  };
+
+  const getParentPath = (nodePath: string): string | null => {
+    const { segments, isWindows, isUnc } = parsePath(nodePath);
+    if (segments.length <= 1) return null;
+    return buildPathFromSegments(segments, segments.length - 2, isWindows, isUnc);
+  };
+
   const createTreeNode = (
     nodePath: string,
     depth: number
@@ -98,6 +124,10 @@ export function createFolderTreeManager(deps: FolderTreeDependencies): FolderTre
     item.className = 'tree-item';
     item.dataset.path = nodePath;
     item.dataset.expanded = 'false';
+    item.setAttribute('role', 'treeitem');
+    item.setAttribute('aria-expanded', 'false');
+    item.setAttribute('aria-level', String(depth + 1));
+    item.tabIndex = -1;
     item.style.paddingLeft = `${6 + depth * 12}px`;
 
     const toggle = document.createElement('span');
@@ -110,7 +140,9 @@ export function createFolderTreeManager(deps: FolderTreeDependencies): FolderTre
 
     const label = document.createElement('span');
     label.className = 'tree-label';
-    label.textContent = getBasename(nodePath) || nodePath;
+    const labelText = getBasename(nodePath) || nodePath;
+    label.textContent = labelText;
+    item.setAttribute('aria-label', labelText);
 
     item.appendChild(toggle);
     item.appendChild(icon);
@@ -118,6 +150,7 @@ export function createFolderTreeManager(deps: FolderTreeDependencies): FolderTre
 
     const children = document.createElement('div');
     children.className = 'tree-children';
+    children.setAttribute('role', 'group');
 
     folderTreeNodeMap.set(nodePath, { item, children, depth });
 
@@ -128,6 +161,67 @@ export function createFolderTreeManager(deps: FolderTreeDependencies): FolderTre
         return;
       }
       void navigateTo(nodePath);
+      setTreeItemFocus(item, true);
+    });
+
+    item.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        void navigateTo(nodePath);
+        return;
+      }
+
+      if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        const node = folderTreeNodeMap.get(nodePath);
+        const isExpanded = node?.item.dataset.expanded === 'true';
+        if (!isExpanded) {
+          void toggleTreeNode(nodePath, true);
+          return;
+        }
+        const items = getVisibleTreeItems();
+        const index = items.indexOf(item);
+        if (index >= 0 && index < items.length - 1) {
+          setTreeItemFocus(items[index + 1], true);
+        }
+        return;
+      }
+
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        const node = folderTreeNodeMap.get(nodePath);
+        const isExpanded = node?.item.dataset.expanded === 'true';
+        if (isExpanded) {
+          void toggleTreeNode(nodePath, false);
+          return;
+        }
+        const parentPath = getParentPath(nodePath);
+        if (parentPath) {
+          const parentNode = folderTreeNodeMap.get(parentPath);
+          if (parentNode) setTreeItemFocus(parentNode.item, true);
+        }
+        return;
+      }
+
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        const items = getVisibleTreeItems();
+        const index = items.indexOf(item);
+        if (index === -1) return;
+        const nextIndex = e.key === 'ArrowDown' ? index + 1 : index - 1;
+        if (nextIndex >= 0 && nextIndex < items.length) {
+          setTreeItemFocus(items[nextIndex], true);
+        }
+        return;
+      }
+
+      if (e.key === 'Home' || e.key === 'End') {
+        e.preventDefault();
+        const items = getVisibleTreeItems();
+        if (items.length === 0) return;
+        const target = e.key === 'Home' ? items[0] : items[items.length - 1];
+        setTreeItemFocus(target, true);
+      }
     });
 
     item.addEventListener('dragover', (e) => {
@@ -190,6 +284,7 @@ export function createFolderTreeManager(deps: FolderTreeDependencies): FolderTre
 
     if (!shouldExpand) {
       node.item.dataset.expanded = 'false';
+      node.item.setAttribute('aria-expanded', 'false');
       const toggle = node.item.querySelector('.tree-toggle');
       if (toggle) toggle.textContent = '\u25B8';
       folderTreeExpandedPaths.delete(nodePath);
@@ -197,6 +292,7 @@ export function createFolderTreeManager(deps: FolderTreeDependencies): FolderTre
     }
 
     node.item.dataset.expanded = 'true';
+    node.item.setAttribute('aria-expanded', 'true');
     const toggle = node.item.querySelector('.tree-toggle');
     if (toggle) toggle.textContent = '\u25BE';
     folderTreeExpandedPaths.add(nodePath);
@@ -256,6 +352,11 @@ export function createFolderTreeManager(deps: FolderTreeDependencies): FolderTre
       folderTree.appendChild(children);
     });
 
+    const firstItem = folderTree.querySelector<HTMLElement>('.tree-item');
+    if (firstItem) {
+      setTreeItemFocus(firstItem, false);
+    }
+
     const currentPath = getCurrentPath();
     if (currentPath) {
       void ensurePathVisible(currentPath);
@@ -266,10 +367,15 @@ export function createFolderTreeManager(deps: FolderTreeDependencies): FolderTre
     if (!currentPath) return;
     folderTree.querySelectorAll('.tree-item.active').forEach((item) => {
       item.classList.remove('active');
+      item.removeAttribute('aria-current');
     });
     const node = folderTreeNodeMap.get(currentPath);
     if (node) {
       node.item.classList.add('active');
+      node.item.setAttribute('aria-current', 'true');
+      if (!focusedTreePath || focusedTreePath === currentPath) {
+        setTreeItemFocus(node.item, false);
+      }
     }
   };
 

@@ -78,25 +78,25 @@
   --scrollbar-thumb-radius: 5px;
   --scrollbar-show-always: 1;
 
-  --font-size-base: 12px;
-  --font-size-file-name: 11px;
-  --font-size-nav: 11px;
-  --font-size-section-title: 10.5px;
-  --font-size-status: 10.5px;
-  --font-size-breadcrumb: 11.5px;
+  --font-size-base: 13px;
+  --font-size-file-name: 12px;
+  --font-size-nav: 12px;
+  --font-size-section-title: 11px;
+  --font-size-status: 11px;
+  --font-size-breadcrumb: 12px;
 
   --icon-size-grid: 26px;
   --icon-size-list: 12px;
-  --icon-size-toolbar: 26px;
-  --icon-size-nav: 14px;
-  --icon-size-sidebar-toggle: 24px;
+  --icon-size-toolbar: 28px;
+  --icon-size-nav: 16px;
+  --icon-size-sidebar-toggle: 26px;
   --icon-size-spinner: 32px;
 
-  --toolbar-height: 36px;
-  --toolbar-padding-v: 5px;
-  --toolbar-padding-h: 8px;
-  --status-bar-height: 20px;
-  --address-bar-height: 24px;
+  --toolbar-height: 38px;
+  --toolbar-padding-v: 6px;
+  --toolbar-padding-h: 9px;
+  --status-bar-height: 22px;
+  --address-bar-height: 26px;
   --sidebar-width: 180px;
   --sidebar-width-collapsed: 44px;
   --sidebar-toggle-bottom: 26px;
@@ -109,12 +109,12 @@
   --list-item-padding-v: 6px;
   --list-item-padding-h: 9px;
   --list-item-gap: 8px;
-  --list-item-min-height: 28px;
+  --list-item-min-height: 30px;
   --list-col-name: minmax(220px, 1fr);
   --list-col-type: 140px;
   --list-col-size: 90px;
   --list-col-modified: 160px;
-  --list-header-height: 28px;
+  --list-header-height: 30px;
   --nav-item-padding-v: 5px;
   --nav-item-padding-h: 8px;
   --nav-item-gap: 8px;
@@ -1265,6 +1265,11 @@ body.tabs-enabled.tabs-single .toolbar-new-tab-btn {
     opacity var(--animation-duration) var(--animation-easing);
 }
 
+.tree-item:focus-visible {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 2px;
+}
+
 .view-option:hover {
   color: var(--text-primary);
   background: var(--hover-color);
@@ -1535,6 +1540,29 @@ body.theme-light .selection-action:hover {
     transform var(--animation-duration) var(--animation-easing),
     opacity var(--animation-duration) var(--animation-easing);
   white-space: nowrap;
+  background: transparent;
+  border: none;
+  color: inherit;
+}
+
+.breadcrumb-item:focus-within {
+  background: var(--hover-color);
+}
+
+.breadcrumb-label,
+.breadcrumb-caret {
+  background: transparent;
+  border: none;
+  color: inherit;
+  font: inherit;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--breadcrumb-gap);
+}
+
+.breadcrumb-label {
+  cursor: pointer;
 }
 
 .breadcrumb-item:hover {
@@ -1550,6 +1578,7 @@ body.theme-light .selection-action:hover {
 .breadcrumb-caret {
   font-size: 10px;
   opacity: 0.6;
+  cursor: pointer;
 }
 
 .breadcrumb-separator {
@@ -1851,6 +1880,7 @@ body.theme-light .selection-action:hover {
 }
 
 .toggle-slider-small {
+  display: inline-block;
   width: 36px;
   height: 20px;
   background: rgba(255, 255, 255, 0.1);
@@ -2216,8 +2246,8 @@ body.platform-win32 .file-view::-webkit-scrollbar-thumb:hover {
   height: 14px;
   display: block;
   background-color: currentColor;
-  mask: url('../assets/twemoji/1f4cc.svg') center / contain no-repeat;
-  -webkit-mask: url('../assets/twemoji/1f4cc.svg') center / contain no-repeat;
+  mask: url('../../assets/twemoji/1f4cc.svg') center / contain no-repeat;
+  -webkit-mask: url('../../assets/twemoji/1f4cc.svg') center / contain no-repeat;
 }
 
 .home-drive-card {
@@ -2297,8 +2327,8 @@ body.platform-win32 .file-view::-webkit-scrollbar-thumb:hover {
   height: 16px;
   display: block;
   background-color: currentColor;
-  mask: url('../assets/twemoji/270f.svg') center / contain no-repeat;
-  -webkit-mask: url('../assets/twemoji/270f.svg') center / contain no-repeat;
+  mask: url('../../assets/twemoji/270f.svg') center / contain no-repeat;
+  -webkit-mask: url('../../assets/twemoji/270f.svg') center / contain no-repeat;
 }
 
 .home-customize-btn:hover {
@@ -2350,6 +2380,12 @@ body.platform-win32 .file-view::-webkit-scrollbar-thumb:hover {
 
 .list-header-cell:hover {
   color: var(--text-secondary);
+}
+
+.list-header-cell:focus-visible {
+  outline: 2px solid var(--accent-color);
+  outline-offset: -2px;
+  border-radius: var(--radius-small);
 }
 
 .list-header-sort {
@@ -2696,7 +2732,9 @@ select:focus-visible {
   outline: none;
 }
 
-.breadcrumb-item:focus-visible {
+.breadcrumb-item:focus-visible,
+.breadcrumb-label:focus-visible,
+.breadcrumb-caret:focus-visible {
   background: var(--accent-light);
   box-shadow: var(--focus-ring);
   outline: none;
@@ -4136,6 +4174,11 @@ body.theme-light .file-hover-card {
   background: var(--hover-color);
   box-shadow: none;
   color: var(--text-primary);
+}
+
+.bookmark-item:focus-visible {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 2px;
 }
 
 #bookmarks-list.drag-over {

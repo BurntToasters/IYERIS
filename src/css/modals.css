@@ -13,20 +13,40 @@
   z-index: 500;
 }
 
-.breadcrumb-menu-item {
+.breadcrumb-menu-item,
+.breadcrumb-menu-message {
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 6px 8px;
   border-radius: var(--radius-small);
-  cursor: pointer;
   font-size: 12px;
   color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  width: 100%;
+  text-align: left;
+}
+
+.breadcrumb-menu-item {
+  cursor: pointer;
+}
+
+.breadcrumb-menu-message {
+  cursor: default;
+  opacity: 0.7;
 }
 
 .breadcrumb-menu-item:hover {
   background: var(--hover-color);
   color: var(--text-primary);
+}
+
+.breadcrumb-menu-item:focus-visible {
+  background: var(--accent-light);
+  color: var(--text-primary);
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .history-dropdown {

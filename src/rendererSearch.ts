@@ -138,11 +138,13 @@ export function createSearchController(deps: SearchDeps) {
     isSearchMode = false;
     isGlobalSearch = false;
     searchScopeToggle.classList.remove('global');
+    syncSearchScopeAria();
     hideSearchHistoryDropdown();
     updateSearchPlaceholder();
 
     searchFiltersPanel.style.display = 'none';
     searchFilterToggle?.classList.remove('active');
+    syncSearchFilterAria();
     currentSearchFilters = {};
     updateFilterBadge();
 
@@ -171,6 +173,18 @@ export function createSearchController(deps: SearchDeps) {
     }
   }
 
+  function syncSearchScopeAria(): void {
+    if (!searchScopeToggle) return;
+    searchScopeToggle.setAttribute('aria-pressed', String(isGlobalSearch));
+  }
+
+  function syncSearchFilterAria(): void {
+    if (!searchFilterToggle || !searchFiltersPanel) return;
+    const isExpanded =
+      searchFiltersPanel.style.display !== 'none' && searchFiltersPanel.style.display !== '';
+    searchFilterToggle.setAttribute('aria-expanded', String(isExpanded));
+  }
+
   function toggleSearchScope() {
     ensureElements();
     if (!searchScopeToggle) return;
@@ -192,6 +206,7 @@ export function createSearchController(deps: SearchDeps) {
         img.alt = '📁';
       }
     }
+    syncSearchScopeAria();
     updateSearchPlaceholder();
     updateContentSearchToggle();
 
@@ -441,6 +456,8 @@ export function createSearchController(deps: SearchDeps) {
 
   function initListeners(): void {
     ensureElements();
+    syncSearchScopeAria();
+    syncSearchFilterAria();
     searchBtn?.addEventListener('click', toggleSearch);
     searchClose?.addEventListener('click', closeSearch);
     searchScopeToggle?.addEventListener('click', toggleSearchScope);
@@ -454,6 +471,7 @@ export function createSearchController(deps: SearchDeps) {
         searchFiltersPanel.style.display = 'none';
         searchFilterToggle.classList.remove('active');
       }
+      syncSearchFilterAria();
     });
 
     searchFilterApply?.addEventListener('click', () => {
@@ -502,6 +520,7 @@ export function createSearchController(deps: SearchDeps) {
       updateFilterBadge();
 
       searchFiltersPanel.style.display = 'none';
+      syncSearchFilterAria();
 
       if (searchInput?.value.trim()) {
         performSearch();
@@ -532,6 +551,7 @@ export function createSearchController(deps: SearchDeps) {
       currentSearchFilters = {};
       searchFilterToggle.classList.remove('active');
       updateFilterBadge();
+      syncSearchFilterAria();
 
       if (searchInput?.value.trim()) {
         performSearch();

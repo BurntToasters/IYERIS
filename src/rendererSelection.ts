@@ -18,19 +18,48 @@ export function createSelectionController(deps: SelectionDeps) {
   let isRubberBandActive = false;
   let rubberBandStart: { x: number; y: number } | null = null;
   let rubberBandInitialSelection: Set<string> = new Set();
+  let activeItem: HTMLElement | null = null;
+
+  function setSelectedState(fileItem: HTMLElement, selected: boolean) {
+    fileItem.classList.toggle('selected', selected);
+    fileItem.setAttribute('aria-selected', selected ? 'true' : 'false');
+  }
+
+  function setActiveItem(fileItem: HTMLElement | null, shouldFocus: boolean) {
+    if (activeItem && activeItem !== fileItem) {
+      activeItem.tabIndex = -1;
+    }
+    activeItem = fileItem;
+    if (activeItem) {
+      activeItem.tabIndex = 0;
+      if (shouldFocus) {
+        activeItem.focus({ preventScroll: true });
+        activeItem.scrollIntoView({ block: 'nearest' });
+      }
+    }
+  }
+
+  function ensureActiveItem(): void {
+    if (activeItem && document.contains(activeItem)) return;
+    const fileItems = getFileItemsArray();
+    if (fileItems.length === 0) return;
+    setActiveItem(fileItems[0], false);
+  }
 
   function toggleSelection(fileItem: HTMLElement) {
     const itemPath = fileItem.dataset.path;
     if (!itemPath) return;
 
-    fileItem.classList.toggle('selected');
+    const willSelect = !fileItem.classList.contains('selected');
+    setSelectedState(fileItem, willSelect);
     const selectedItems = deps.getSelectedItems();
-    if (fileItem.classList.contains('selected')) {
+    if (willSelect) {
       selectedItems.add(itemPath);
     } else {
       selectedItems.delete(itemPath);
     }
     deps.updateStatusBar();
+    setActiveItem(fileItem, true);
 
     if (deps.isPreviewVisible() && selectedItems.size === 1) {
       const selectedPath = Array.from(selectedItems)[0];
@@ -47,11 +76,12 @@ export function createSelectionController(deps: SelectionDeps) {
 
   function clearSelection() {
     document.querySelectorAll('.file-item.selected').forEach((item) => {
-      item.classList.remove('selected');
+      setSelectedState(item as HTMLElement, false);
     });
     const selectedItems = deps.getSelectedItems();
     selectedItems.clear();
     deps.updateStatusBar();
+    ensureActiveItem();
 
     if (deps.isPreviewVisible()) {
       deps.clearPreview();
@@ -61,13 +91,14 @@ export function createSelectionController(deps: SelectionDeps) {
   function selectAll() {
     const selectedItems = deps.getSelectedItems();
     document.querySelectorAll('.file-item').forEach((item) => {
-      item.classList.add('selected');
+      setSelectedState(item as HTMLElement, true);
       const itemPath = item.getAttribute('data-path');
       if (itemPath) {
         selectedItems.add(itemPath);
       }
     });
     deps.updateStatusBar();
+    ensureActiveItem();
   }
 
   function openSelectedItem() {
@@ -203,7 +234,7 @@ export function createSelectionController(deps: SelectionDeps) {
       const selectedItems = deps.getSelectedItems();
       for (let i = start; i <= end; i++) {
         const item = fileItems[i];
-        item.classList.add('selected');
+        setSelectedState(item, true);
         const itemPath = item.getAttribute('data-path');
         if (itemPath) {
           selectedItems.add(itemPath);
@@ -212,7 +243,7 @@ export function createSelectionController(deps: SelectionDeps) {
     } else {
       clearSelection();
       const item = fileItems[index];
-      item.classList.add('selected');
+      setSelectedState(item, true);
       const itemPath = item.getAttribute('data-path');
       if (itemPath) {
         deps.getSelectedItems().add(itemPath);
@@ -220,7 +251,8 @@ export function createSelectionController(deps: SelectionDeps) {
       lastSelectedIndex = index;
     }
 
-    fileItems[index].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    lastSelectedIndex = index;
+    setActiveItem(fileItems[index], true);
     deps.updateStatusBar();
 
     if (deps.isPreviewVisible() && deps.getSelectedItems().size === 1) {
@@ -303,10 +335,10 @@ export function createSelectionController(deps: SelectionDeps) {
 
         const itemPath = itemEl.dataset.path;
         if (intersects && itemPath) {
-          itemEl.classList.add('selected');
+          setSelectedState(itemEl, true);
           nextSelection.add(itemPath);
         } else if (!rubberBandInitialSelection.has(itemPath || '')) {
-          itemEl.classList.remove('selected');
+          setSelectedState(itemEl, false);
         }
       });
 
@@ -333,5 +365,6 @@ export function createSelectionController(deps: SelectionDeps) {
     navigateByPage,
     setupRubberBandSelection,
     isRubberBandActive: () => isRubberBandActive,
+    ensureActiveItem,
   };
 }

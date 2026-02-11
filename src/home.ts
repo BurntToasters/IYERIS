@@ -51,6 +51,8 @@ type HomeControllerOptions = {
   formatFileSize: (bytes: number) => string;
   getSettings: () => Settings;
   openPath?: (path: string) => void | Promise<void>;
+  onModalOpen?: (modal: HTMLElement) => void;
+  onModalClose?: (modal: HTMLElement) => void;
 };
 
 export type HomeController = {
@@ -77,6 +79,8 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
     formatFileSize,
     getSettings,
     openPath,
+    onModalOpen,
+    onModalClose,
   } = options;
 
   const homeView = document.getElementById('home-view') as HTMLElement;
@@ -873,6 +877,7 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
     homeSettingsHasUnsavedChanges = false;
     syncHomeSettingsModal();
     homeSettingsModal.style.display = 'flex';
+    onModalOpen?.(homeSettingsModal);
   }
 
   async function closeHomeSettingsModal(skipConfirmation = false): Promise<void> {
@@ -886,6 +891,7 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
       if (!confirmed) return;
     }
     homeSettingsModal.style.display = 'none';
+    onModalClose?.(homeSettingsModal);
     homeSettingsHasUnsavedChanges = false;
   }
 

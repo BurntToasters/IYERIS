@@ -24,6 +24,23 @@ import { createSelectionController } from './rendererSelection.js';
 import { createToastManager } from './rendererToasts.js';
 import { createHoverCardController } from './rendererHoverCard.js';
 import { createTypeaheadController } from './rendererTypeahead.js';
+import { createArchiveOperationsController } from './rendererArchiveOperations.js';
+import { createTabsController, type TabData } from './rendererTabs.js';
+import { createCommandPaletteController } from './rendererCommandPalette.js';
+import { createShortcutsUiController } from './rendererShortcutsUi.js';
+import { createSettingsUiController } from './rendererSettingsUi.js';
+import { createSettingsModalController } from './rendererSettingsModal.js';
+import { createSettingsActionsController } from './rendererSettingsActions.js';
+import { createSupportUiController } from './rendererSupportUi.js';
+import { createExternalLinksController } from './rendererExternalLinks.js';
+import {
+  activateModal,
+  deactivateModal,
+  showAlert,
+  showConfirm,
+  showDialog,
+} from './rendererModals.js';
+import { initTooltipSystem } from './rendererTooltips.js';
 import {
   encodeFileUrl,
   isWindowsPath,
@@ -213,152 +230,20 @@ function debouncedSaveSettings(delay: number = SETTINGS_SAVE_DEBOUNCE_MS) {
 
 type ViewMode = 'grid' | 'list' | 'column';
 
-interface ArchiveOperation {
-  id: string;
-  type: 'compress' | 'extract';
-  name: string;
-  current: number;
-  total: number;
-  currentFile: string;
-  aborted: boolean;
-}
-
-const activeOperations = new Map<string, ArchiveOperation>();
-
 const ipcCleanupFunctions: (() => void)[] = [];
 
-let archiveOperationsPanelListenerInitialized = false;
-function initArchiveOperationsPanelListener(): void {
-  if (archiveOperationsPanelListenerInitialized) return;
+const archiveOperationsController = createArchiveOperationsController({
+  cancelArchiveOperation: (operationId) => window.electronAPI.cancelArchiveOperation(operationId),
+});
 
-  const list = document.getElementById('archive-operations-list');
-  if (list) {
-    list.addEventListener('click', (e) => {
-      const target = e.target as HTMLElement;
-      if (target.classList.contains('archive-operation-cancel')) {
-        const operationId = target.getAttribute('data-id');
-        if (operationId) {
-          abortOperation(operationId);
-        }
-      }
-    });
-    archiveOperationsPanelListenerInitialized = true;
-  }
-}
-
-function generateOperationId(): string {
-  return `op_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
-}
-
-function showOperationsPanel() {
-  const panel = document.getElementById('archive-operations-panel');
-  if (panel && activeOperations.size > 0) {
-    panel.style.display = 'block';
-  }
-}
-
-function hideOperationsPanel() {
-  const panel = document.getElementById('archive-operations-panel');
-  if (panel && activeOperations.size === 0) {
-    panel.style.display = 'none';
-  }
-}
-
-function addOperation(id: string, type: 'compress' | 'extract', name: string) {
-  const operation: ArchiveOperation = {
-    id,
-    type,
-    name,
-    current: 0,
-    total: 0,
-    currentFile: 'Preparing...',
-    aborted: false,
-  };
-
-  activeOperations.set(id, operation);
-  renderOperations();
-  showOperationsPanel();
-}
-
-let renderOperationsTimeout: ReturnType<typeof setTimeout> | null = null;
-
-function updateOperation(id: string, current: number, total: number, currentFile: string) {
-  const operation = activeOperations.get(id);
-  if (operation && !operation.aborted) {
-    operation.current = current;
-    operation.total = total;
-    operation.currentFile = currentFile;
-    if (renderOperationsTimeout) clearTimeout(renderOperationsTimeout);
-    renderOperationsTimeout = setTimeout(renderOperations, 50);
-  }
-}
-
-function removeOperation(id: string) {
-  activeOperations.delete(id);
-  renderOperations();
-  hideOperationsPanel();
-}
-
-function abortOperation(id: string) {
-  const operation = activeOperations.get(id);
-  if (operation) {
-    operation.aborted = true;
-    operation.currentFile = 'Cancelling...';
-    renderOperations();
-
-    window.electronAPI.cancelArchiveOperation(id).then((result) => {
-      if (result.success) {
-        console.log('[Archive] Operation cancelled:', id);
-      } else {
-        console.error('[Archive] Failed to cancel:', result.error);
-      }
-    });
-
-    setTimeout(() => {
-      removeOperation(id);
-    }, 1500);
-  }
-}
-
-function renderOperations() {
-  const list = getById('archive-operations-list');
-  if (!list) return;
-
-  initArchiveOperationsPanelListener();
-
-  clearHtml(list);
-
-  for (const [id, operation] of activeOperations) {
-    const item = document.createElement('div');
-    item.className = 'archive-operation-item';
-
-    const icon = operation.type === 'compress' ? '1f5dc' : '1f4e6';
-    const iconEmoji = operation.type === 'compress' ? '🗜️' : '📦';
-    const title = operation.type === 'compress' ? 'Compressing' : 'Extracting';
-
-    const percent =
-      operation.total > 0 ? Math.round((operation.current / operation.total) * 100) : 0;
-
-    item.innerHTML = `
-      <div class="archive-operation-header">
-        <div class="archive-operation-title">
-          <img src="../assets/twemoji/${icon}.svg" class="twemoji" alt="${iconEmoji}" draggable="false" />
-          <span class="archive-operation-name" title="${escapeHtml(operation.name)}">${title}: ${escapeHtml(operation.name)}</span>
-        </div>
-        ${!operation.aborted ? `<button class="archive-operation-cancel" data-id="${escapeHtml(id)}">Cancel</button>` : ''}
-      </div>
-      <div class="archive-operation-file">${escapeHtml(operation.currentFile)}</div>
-      <div class="archive-operation-stats">${operation.current} / ${operation.total} files</div>
-      <div class="archive-progress-bar-container">
-        <div class="archive-progress-bar" style="width: ${percent}%"></div>
-      </div>
-    `;
-
-    list.appendChild(item);
-  }
-}
-
-type DialogType = 'info' | 'warning' | 'error' | 'success' | 'question';
+const {
+  generateOperationId,
+  addOperation,
+  updateOperation,
+  removeOperation,
+  getOperation,
+  cleanup: cleanupArchiveOperations,
+} = archiveOperationsController;
 
 let currentPath: string = '';
 let history: string[] = [];
@@ -390,16 +275,6 @@ function getFileItemsArray(): HTMLElement[] {
   return Array.from(document.querySelectorAll('.file-item')) as HTMLElement[];
 }
 
-interface TabData {
-  id: string;
-  path: string;
-  history: string[];
-  historyIndex: number;
-  selectedItems: Set<string>;
-  scrollPosition: number;
-  cachedFiles?: FileItem[];
-}
-
 let tabs: TabData[] = [];
 let activeTabId: string = '';
 let tabsEnabled: boolean = false;
@@ -408,360 +283,7 @@ let tabNewButtonListenerAttached: boolean = false;
 const MAX_CACHED_TABS = 5;
 const MAX_CACHED_FILES_PER_TAB = 10000;
 let tabCacheAccessOrder: string[] = [];
-
-function generateTabId(): string {
-  return `tab-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
-}
-
-function evictOldestTabCache() {
-  if (tabCacheAccessOrder.length <= MAX_CACHED_TABS) return;
-
-  const tabsToEvict = tabCacheAccessOrder.slice(0, tabCacheAccessOrder.length - MAX_CACHED_TABS);
-  for (const tabId of tabsToEvict) {
-    const tab = tabs.find((t) => t.id === tabId);
-    if (tab && tab.cachedFiles) {
-      delete tab.cachedFiles;
-    }
-  }
-  tabCacheAccessOrder = tabCacheAccessOrder.slice(-MAX_CACHED_TABS);
-}
-
-function updateTabCacheAccess(tabId: string) {
-  tabCacheAccessOrder = tabCacheAccessOrder.filter((id) => id !== tabId);
-  tabCacheAccessOrder.push(tabId);
-  evictOldestTabCache();
-}
-
-function initializeTabs() {
-  if (currentSettings.enableTabs === false) {
-    tabsEnabled = false;
-    document.body.classList.remove('tabs-enabled');
-    document.body.classList.remove('tabs-single');
-    const tabBar = document.getElementById('tab-bar');
-    if (tabBar) tabBar.style.display = 'none';
-    return;
-  }
-
-  tabsEnabled = true;
-  document.body.classList.add('tabs-enabled');
-  const tabBar = document.getElementById('tab-bar');
-  if (tabBar) tabBar.style.removeProperty('display');
-
-  if (currentSettings.tabState && currentSettings.tabState.tabs.length > 0) {
-    tabs = currentSettings.tabState.tabs.map((t) => ({
-      ...t,
-      selectedItems: new Set(t.selectedItems || []),
-    }));
-    activeTabId = currentSettings.tabState.activeTabId;
-
-    const activeTab = tabs.find((t) => t.id === activeTabId);
-    if (activeTab) {
-      history = [...activeTab.history];
-      historyIndex = activeTab.historyIndex;
-      selectedItems = new Set(activeTab.selectedItems);
-    }
-  } else {
-    const initialTab = createNewTabData(currentPath || '');
-    tabs = [initialTab];
-    activeTabId = initialTab.id;
-  }
-
-  renderTabs();
-
-  if (!tabNewButtonListenerAttached) {
-    const newTabBtn = document.getElementById('new-tab-btn');
-    if (newTabBtn) {
-      newTabBtn.addEventListener('click', () => {
-        addNewTab();
-      });
-    }
-
-    const toolbarNewTabBtn = document.getElementById('toolbar-new-tab-btn');
-    if (toolbarNewTabBtn) {
-      toolbarNewTabBtn.addEventListener('click', () => {
-        addNewTab();
-      });
-    }
-
-    tabNewButtonListenerAttached = true;
-  }
-}
-
-function createNewTabData(path: string): TabData {
-  return {
-    id: generateTabId(),
-    path: path,
-    history: path ? [path] : [],
-    historyIndex: path ? 0 : -1,
-    selectedItems: new Set(),
-    scrollPosition: 0,
-  };
-}
-
-function updateTabBarVisibility() {
-  if (!tabsEnabled) return;
-  if (tabs.length <= 1) {
-    document.body.classList.add('tabs-single');
-  } else {
-    document.body.classList.remove('tabs-single');
-  }
-}
-
-function renderTabs() {
-  const tabList = document.getElementById('tab-list');
-  if (!tabsEnabled) return;
-
-  updateTabBarVisibility();
-
-  if (!tabList) return;
-
-  clearHtml(tabList);
-
-  tabs.forEach((tab) => {
-    const tabElement = document.createElement('div');
-    const isActive = tab.id === activeTabId;
-    tabElement.className = `tab-item${isActive ? ' active' : ''}`;
-    tabElement.dataset.tabId = tab.id;
-    tabElement.setAttribute('role', 'tab');
-    tabElement.setAttribute('aria-selected', String(isActive));
-    tabElement.setAttribute('aria-controls', 'file-view');
-    tabElement.tabIndex = isActive ? 0 : -1;
-
-    const isHomeTab = isHomeViewPath(tab.path);
-    const pathParts = tab.path.split(/[/\\]/);
-    const folderName = isHomeTab
-      ? HOME_VIEW_LABEL
-      : pathParts[pathParts.length - 1] || tab.path || 'New Tab';
-    const tabTitle = isHomeTab ? HOME_VIEW_LABEL : tab.path;
-    const tabIcon = isHomeTab
-      ? twemojiImg(String.fromCodePoint(0x1f3e0), 'twemoji')
-      : '<img src="../assets/twemoji/1f4c2.svg" class="twemoji" alt="📂" draggable="false" />';
-
-    tabElement.innerHTML = `
-      <span class="tab-icon">
-        ${tabIcon}
-      </span>
-      <span class="tab-title" title="${escapeHtml(tabTitle)}">${escapeHtml(folderName)}</span>
-      <button class="tab-close" title="Close Tab">&times;</button>
-    `;
-
-    tabElement.addEventListener('click', (e) => {
-      if ((e.target as HTMLElement).classList.contains('tab-close')) {
-        e.stopPropagation();
-        closeTab(tab.id);
-      } else {
-        switchToTab(tab.id);
-      }
-    });
-
-    tabElement.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        switchToTab(tab.id);
-        return;
-      }
-      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'Home' || e.key === 'End') {
-        e.preventDefault();
-        const tabItems = Array.from(tabList.querySelectorAll<HTMLElement>('.tab-item'));
-        if (tabItems.length === 0) return;
-        const currentIndex = tabItems.indexOf(tabElement);
-        if (currentIndex === -1) return;
-        let nextIndex = currentIndex;
-        if (e.key === 'ArrowLeft') {
-          nextIndex = (currentIndex - 1 + tabItems.length) % tabItems.length;
-        } else if (e.key === 'ArrowRight') {
-          nextIndex = (currentIndex + 1) % tabItems.length;
-        } else if (e.key === 'Home') {
-          nextIndex = 0;
-        } else if (e.key === 'End') {
-          nextIndex = tabItems.length - 1;
-        }
-        tabItems[nextIndex]?.focus();
-      }
-    });
-
-    tabElement.addEventListener('auxclick', (e) => {
-      if (e.button === 1) {
-        e.preventDefault();
-        closeTab(tab.id);
-      }
-    });
-
-    tabList.appendChild(tabElement);
-  });
-}
-
-function switchToTab(tabId: string) {
-  if (activeTabId === tabId || !tabsEnabled) return;
-
-  const currentTab = tabs.find((t) => t.id === activeTabId);
-  if (currentTab) {
-    currentTab.path = currentPath;
-    currentTab.history = [...history];
-    currentTab.historyIndex = historyIndex;
-    currentTab.selectedItems = new Set(selectedItems);
-    currentTab.scrollPosition = fileView?.scrollTop || 0;
-    if (allFiles.length <= MAX_CACHED_FILES_PER_TAB) {
-      currentTab.cachedFiles = [...allFiles];
-      updateTabCacheAccess(currentTab.id);
-    }
-  }
-
-  activeTabId = tabId;
-  const newTab = tabs.find((t) => t.id === tabId);
-  if (newTab) {
-    history = [...newTab.history];
-    historyIndex = newTab.historyIndex;
-    selectedItems = new Set(newTab.selectedItems);
-
-    if (newTab.path) {
-      if (newTab.cachedFiles !== undefined) {
-        restoreTabView(newTab);
-        updateTabCacheAccess(newTab.id);
-      } else {
-        navigateTo(newTab.path, true);
-      }
-    }
-
-    setTimeout(() => {
-      if (fileView) fileView.scrollTop = newTab.scrollPosition;
-    }, 50);
-  }
-
-  renderTabs();
-  debouncedSaveTabState();
-}
-
-function restoreTabView(tab: TabData) {
-  currentPath = tab.path;
-  if (addressInput) addressInput.value = getPathDisplayValue(tab.path);
-  updateBreadcrumb(tab.path);
-  updateNavigationButtons();
-
-  if (isHomeViewPath(tab.path)) {
-    setHomeViewActive(true);
-    return;
-  }
-
-  setHomeViewActive(false);
-
-  if (viewMode === 'column') {
-    renderColumnView();
-  } else {
-    renderFiles(tab.cachedFiles || []);
-  }
-}
-
 let saveTabStateTimeout: NodeJS.Timeout | null = null;
-function debouncedSaveTabState() {
-  if (saveTabStateTimeout) {
-    clearTimeout(saveTabStateTimeout);
-  }
-  saveTabStateTimeout = setTimeout(() => {
-    saveTabState();
-  }, 500);
-}
-
-async function addNewTab(path?: string) {
-  if (!tabsEnabled) return;
-
-  const currentTab = tabs.find((t) => t.id === activeTabId);
-  if (currentTab) {
-    currentTab.path = currentPath;
-    currentTab.history = [...history];
-    currentTab.historyIndex = historyIndex;
-    currentTab.selectedItems = new Set(selectedItems);
-    currentTab.scrollPosition = fileView?.scrollTop || 0;
-    if (allFiles.length <= MAX_CACHED_FILES_PER_TAB) {
-      currentTab.cachedFiles = [...allFiles];
-      updateTabCacheAccess(currentTab.id);
-    }
-  }
-
-  let tabPath = path;
-  if (!tabPath) {
-    tabPath =
-      currentSettings.startupPath && currentSettings.startupPath.trim() !== ''
-        ? currentSettings.startupPath
-        : HOME_VIEW_PATH;
-  }
-
-  const newTab = createNewTabData(tabPath);
-  tabs.push(newTab);
-  activeTabId = newTab.id;
-
-  history = [tabPath];
-  historyIndex = 0;
-  selectedItems = new Set();
-
-  navigateTo(tabPath, true);
-
-  renderTabs();
-  debouncedSaveTabState();
-}
-
-function closeTab(tabId: string) {
-  if (!tabsEnabled || tabs.length <= 1) return;
-
-  const tabIndex = tabs.findIndex((t) => t.id === tabId);
-  if (tabIndex === -1) return;
-
-  tabs.splice(tabIndex, 1);
-
-  if (activeTabId === tabId) {
-    const newIndex = Math.min(tabIndex, tabs.length - 1);
-    activeTabId = tabs[newIndex].id;
-    const newTab = tabs[newIndex];
-
-    history = [...newTab.history];
-    historyIndex = newTab.historyIndex;
-    selectedItems = new Set(newTab.selectedItems);
-
-    if (newTab.path) {
-      if (newTab.cachedFiles !== undefined) {
-        restoreTabView(newTab);
-      } else {
-        navigateTo(newTab.path, true);
-      }
-    }
-  }
-
-  renderTabs();
-  debouncedSaveTabState();
-}
-
-function saveTabState(immediate = false) {
-  if (!tabsEnabled) return;
-
-  currentSettings.tabState = {
-    tabs: tabs.map((t) => ({
-      id: t.id,
-      path: t.path,
-      history: t.history,
-      historyIndex: t.historyIndex,
-      selectedItems: Array.from(t.selectedItems),
-      scrollPosition: t.scrollPosition,
-    })),
-    activeTabId,
-  };
-  if (immediate) {
-    void saveSettingsWithTimestamp(currentSettings);
-  } else {
-    debouncedSaveSettings();
-  }
-}
-
-function updateCurrentTabPath(newPath: string) {
-  if (!tabsEnabled) return;
-
-  const currentTab = tabs.find((t) => t.id === activeTabId);
-  if (currentTab) {
-    currentTab.path = newPath;
-    renderTabs();
-    saveTabState();
-  }
-}
-
 const addressInput = document.getElementById('address-input') as HTMLInputElement;
 const fileGrid = document.getElementById('file-grid') as HTMLElement;
 fileGrid?.setAttribute('role', 'listbox');
@@ -1039,100 +561,13 @@ function applyGitIndicatorsToPaths(paths: string[]): void {
   }
 }
 
-function showDialog(
-  title: string,
-  message: string,
-  type: DialogType = 'info',
-  showCancel: boolean = false
-): Promise<boolean> {
-  return new Promise((resolve) => {
-    if (document.activeElement instanceof HTMLElement) {
-      document.activeElement.blur();
-    }
-
-    const dialogModal = document.getElementById('dialog-modal') as HTMLElement;
-    const dialogTitle = document.getElementById('dialog-title') as HTMLElement;
-    const dialogContent = document.getElementById('dialog-content') as HTMLElement;
-    const dialogIcon = document.getElementById('dialog-icon') as HTMLElement;
-    const dialogOk = document.getElementById('dialog-ok') as HTMLButtonElement;
-    const dialogCancel = document.getElementById('dialog-cancel') as HTMLButtonElement;
-
-    const icons: Record<DialogType, string> = {
-      info: '2139',
-      warning: '26a0',
-      error: '274c',
-      success: '2705',
-      question: '2753',
-    };
-
-    dialogIcon.innerHTML = twemojiImg(
-      String.fromCodePoint(parseInt(icons[type] || icons.info, 16)),
-      'twemoji'
-    );
-    dialogTitle.textContent = title;
-    dialogContent.textContent = message;
-
-    if (showCancel) {
-      dialogCancel.style.display = 'block';
-    } else {
-      dialogCancel.style.display = 'none';
-    }
-
-    dialogModal.style.display = 'flex';
-
-    const handleOk = (): void => {
-      dialogModal.style.display = 'none';
-      cleanup();
-      resolve(true);
-    };
-
-    const handleCancel = (): void => {
-      dialogModal.style.display = 'none';
-      cleanup();
-      resolve(false);
-    };
-
-    const handleEscape = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') {
-        dialogModal.style.display = 'none';
-        cleanup();
-        resolve(false);
-      }
-    };
-
-    const cleanup = (): void => {
-      dialogOk.removeEventListener('click', handleOk);
-      dialogCancel.removeEventListener('click', handleCancel);
-      document.removeEventListener('keydown', handleEscape);
-    };
-
-    dialogOk.addEventListener('click', handleOk);
-    dialogCancel.addEventListener('click', handleCancel);
-    document.addEventListener('keydown', handleEscape);
-  });
-}
-
-async function showAlert(
-  message: string,
-  title: string = 'IYERIS',
-  type: DialogType = 'info'
-): Promise<void> {
-  await showDialog(title, message, type, false);
-}
-
-async function showConfirm(
-  message: string,
-  title: string = 'Confirm',
-  type: DialogType = 'question'
-): Promise<boolean> {
-  return await showDialog(title, message, type, true);
-}
-
 let currentSettings: Settings = createDefaultSettings();
 let isResettingSettings = false;
 const tourController: TourController = createTourController({
   getSettings: () => currentSettings,
   saveSettings: (settings) => saveSettingsWithTimestamp(settings),
+  onModalOpen: activateModal,
+  onModalClose: deactivateModal,
 });
 
 const toastManager = createToastManager({
@@ -1157,6 +592,8 @@ const homeController = createHomeController({
   formatFileSize,
   getSettings: () => currentSettings,
   openPath: (filePath) => openPathWithArchivePrompt(filePath, undefined, false),
+  onModalOpen: activateModal,
+  onModalClose: deactivateModal,
 });
 
 const navigationController = createNavigationController({
@@ -1216,6 +653,8 @@ const previewController = createPreviewController({
   getFileExtension,
   getFileIcon,
   openFileEntry,
+  onModalOpen: activateModal,
+  onModalClose: deactivateModal,
 });
 
 const selectionController = createSelectionController({
@@ -1272,6 +711,7 @@ const {
   navigateByPage,
   setupRubberBandSelection,
   isRubberBandActive,
+  ensureActiveItem,
 } = selectionController;
 
 const hoverCardController = createHoverCardController({
@@ -1297,239 +737,89 @@ const { handleInput: handleTypeaheadInput, reset: resetTypeahead } = typeaheadCo
 const { initPreviewUi, updatePreview, showQuickLook, closeQuickLook, isQuickLookOpen } =
   previewController;
 
-let tooltipElement: HTMLElement | null = null;
-let tooltipTimeout: NodeJS.Timeout | null = null;
-const TOOLTIP_DELAY = 500;
+const tabsController = createTabsController({
+  getTabs: () => tabs,
+  setTabs: (value) => {
+    tabs = value;
+  },
+  getActiveTabId: () => activeTabId,
+  setActiveTabId: (value) => {
+    activeTabId = value;
+  },
+  getTabsEnabled: () => tabsEnabled,
+  setTabsEnabled: (value) => {
+    tabsEnabled = value;
+  },
+  getTabNewButtonListenerAttached: () => tabNewButtonListenerAttached,
+  setTabNewButtonListenerAttached: (value) => {
+    tabNewButtonListenerAttached = value;
+  },
+  getTabCacheAccessOrder: () => tabCacheAccessOrder,
+  setTabCacheAccessOrder: (value) => {
+    tabCacheAccessOrder = value;
+  },
+  getSaveTabStateTimeout: () => saveTabStateTimeout,
+  setSaveTabStateTimeout: (value) => {
+    saveTabStateTimeout = value;
+  },
+  getCurrentSettings: () => currentSettings,
+  getCurrentPath: () => currentPath,
+  setCurrentPath: (value) => {
+    currentPath = value;
+  },
+  getHistory: () => history,
+  setHistory: (value) => {
+    history = value;
+  },
+  getHistoryIndex: () => historyIndex,
+  setHistoryIndex: (value) => {
+    historyIndex = value;
+  },
+  getSelectedItems: () => selectedItems,
+  setSelectedItems: (value) => {
+    selectedItems = value;
+  },
+  getAllFiles: () => allFiles,
+  setAllFiles: (value) => {
+    allFiles = value;
+  },
+  getFileViewScrollTop: () => fileView?.scrollTop || 0,
+  setFileViewScrollTop: (value) => {
+    if (fileView) fileView.scrollTop = value;
+  },
+  getAddressInput: () => addressInput,
+  getPathDisplayValue,
+  isHomeViewPath,
+  homeViewLabel: HOME_VIEW_LABEL,
+  homeViewPath: HOME_VIEW_PATH,
+  getViewMode: () => viewMode,
+  renderFiles: (files) => renderFiles(files),
+  renderColumnView: () => renderColumnView(),
+  updateBreadcrumb,
+  updateNavigationButtons,
+  setHomeViewActive,
+  navigateTo: (pathValue, force) => {
+    void navigateTo(pathValue, force);
+  },
+  debouncedSaveSettings,
+  saveSettingsWithTimestamp,
+  maxCachedTabs: MAX_CACHED_TABS,
+  maxCachedFilesPerTab: MAX_CACHED_FILES_PER_TAB,
+});
 
-function initTooltipSystem(): void {
-  tooltipElement = getById('ui-tooltip');
-  if (!tooltipElement) return;
-
-  document.addEventListener('mouseover', (e) => {
-    const target = e.target as HTMLElement;
-    const titleAttr =
-      target.getAttribute('title') || target.closest('[title]')?.getAttribute('title');
-
-    if (
-      titleAttr &&
-      !target.closest('.tour-tooltip') &&
-      !target.closest('.command-palette-modal')
-    ) {
-      const actualTarget = target.hasAttribute('title')
-        ? target
-        : (target.closest('[title]') as HTMLElement);
-      if (actualTarget) {
-        actualTarget.dataset.originalTitle = titleAttr;
-        actualTarget.removeAttribute('title');
-      }
-
-      tooltipTimeout = setTimeout(() => {
-        showTooltip(titleAttr, actualTarget || target);
-      }, TOOLTIP_DELAY);
-    }
-  });
-
-  document.addEventListener('mouseout', (e) => {
-    const target = e.target as HTMLElement;
-    const actualTarget = target.hasAttribute('data-original-title')
-      ? target
-      : (target.closest('[data-original-title]') as HTMLElement);
-
-    if (tooltipTimeout) {
-      clearTimeout(tooltipTimeout);
-      tooltipTimeout = null;
-    }
-
-    if (actualTarget && actualTarget.dataset.originalTitle) {
-      actualTarget.setAttribute('title', actualTarget.dataset.originalTitle);
-      delete actualTarget.dataset.originalTitle;
-    }
-
-    hideTooltip();
-  });
-}
-
-function showTooltip(text: string, anchor: HTMLElement): void {
-  if (!tooltipElement) return;
-
-  const content = tooltipElement.querySelector('.ui-tooltip-content');
-  if (content) {
-    content.textContent = text;
-  }
-
-  tooltipElement.style.display = 'block';
-
-  const anchorRect = anchor.getBoundingClientRect();
-  const tooltipRect = tooltipElement.getBoundingClientRect();
-
-  let top = anchorRect.bottom + 8;
-  let left = anchorRect.left + anchorRect.width / 2 - tooltipRect.width / 2;
-
-  tooltipElement.className = 'ui-tooltip bottom';
-
-  if (top + tooltipRect.height > window.innerHeight) {
-    top = anchorRect.top - tooltipRect.height - 8;
-    tooltipElement.className = 'ui-tooltip top';
-  }
-
-  if (left < 8) left = 8;
-  if (left + tooltipRect.width > window.innerWidth - 8) {
-    left = window.innerWidth - tooltipRect.width - 8;
-  }
-
-  tooltipElement.style.left = `${left}px`;
-  tooltipElement.style.top = `${top}px`;
-
-  requestAnimationFrame(() => {
-    tooltipElement?.classList.add('visible');
-  });
-}
-
-function hideTooltip(): void {
-  if (tooltipElement) {
-    tooltipElement.classList.remove('visible');
-    setTimeout(() => {
-      if (tooltipElement) tooltipElement.style.display = 'none';
-    }, 150);
-  }
-}
-
-interface Command {
-  id: string;
-  title: string;
-  description?: string;
-  icon?: string;
-  shortcut?: string[];
-  action: () => void;
-  category?: string;
-}
-
-const commands: Command[] = [];
-let commandPaletteModal: HTMLElement | null = null;
-let commandPaletteInput: HTMLInputElement | null = null;
-let commandPaletteResults: HTMLElement | null = null;
-let commandPaletteEmpty: HTMLElement | null = null;
-let commandPaletteFocusedIndex = -1;
-let commandPalettePreviousFocus: HTMLElement | null = null;
-type ShortcutToken = { keys: string[] } | { text: string };
-
-interface FixedShortcutItem {
-  title: string;
-  tokens: ShortcutToken[];
-}
+const {
+  initializeTabs,
+  addNewTab,
+  closeTab,
+  saveTabState,
+  updateCurrentTabPath,
+  switchToTab,
+  cleanup: cleanupTabs,
+} = tabsController;
 
 interface ReservedShortcut {
   label: string;
   actionId?: string;
-}
-
-function getFixedShortcutsByCategory(): Map<string, FixedShortcutItem[]> {
-  const refreshModifier = isMacPlatform() ? 'Meta' : 'Ctrl';
-  const entries: [string, FixedShortcutItem[]][] = [
-    [
-      'General',
-      [
-        {
-          title: 'Refresh',
-          tokens: [{ keys: ['F5'] }, { text: 'or' }, { keys: [refreshModifier, 'R'] }],
-        },
-        {
-          title: 'Close Search',
-          tokens: [{ keys: ['Escape'] }],
-        },
-      ],
-    ],
-    [
-      'Navigation',
-      [
-        {
-          title: 'Navigate Files',
-          tokens: [
-            { keys: ['ArrowUp'] },
-            { keys: ['ArrowDown'] },
-            { keys: ['ArrowLeft'] },
-            { keys: ['ArrowRight'] },
-          ],
-        },
-        {
-          title: 'Open Selected',
-          tokens: [{ keys: ['Enter'] }],
-        },
-        {
-          title: 'First / Last File',
-          tokens: [{ keys: ['Home'] }, { text: '/' }, { keys: ['End'] }],
-        },
-        {
-          title: 'Page Up / Page Down',
-          tokens: [{ keys: ['PageUp'] }, { text: '/' }, { keys: ['PageDown'] }],
-        },
-        {
-          title: 'Go to Parent (Backspace)',
-          tokens: [{ keys: ['Backspace'] }],
-        },
-      ],
-    ],
-    [
-      'File Operations',
-      [
-        {
-          title: 'Rename',
-          tokens: [{ keys: ['F2'] }],
-        },
-        {
-          title: 'Delete (Trash)',
-          tokens: [{ keys: ['Delete'] }],
-        },
-        {
-          title: 'Permanent Delete',
-          tokens: [{ keys: ['Shift', 'Delete'] }],
-        },
-      ],
-    ],
-    [
-      'Selection',
-      [
-        {
-          title: 'Multi-select',
-          tokens: [{ keys: ['Ctrl'] }, { text: '+' }, { text: 'Click' }],
-        },
-        {
-          title: 'Extend Selection',
-          tokens: [
-            { keys: ['Shift'] },
-            { text: '+' },
-            { keys: ['ArrowUp'] },
-            { keys: ['ArrowDown'] },
-            { keys: ['ArrowLeft'] },
-            { keys: ['ArrowRight'] },
-          ],
-        },
-      ],
-    ],
-  ];
-  const undoRedoItems: FixedShortcutItem[] = [];
-  if (!isMacPlatform()) {
-    undoRedoItems.push({
-      title: 'Redo (Alternate)',
-      tokens: [{ keys: ['Ctrl', 'Shift', 'Z'] }],
-    });
-  }
-
-  if (undoRedoItems.length > 0) {
-    entries.push(['Undo/Redo', undoRedoItems]);
-  }
-
-  entries.push([
-    'View',
-    [
-      {
-        title: 'Quick Look',
-        tokens: [{ keys: ['Space'] }],
-      },
-    ],
-  ]);
-
-  return new Map<string, FixedShortcutItem[]>(entries);
 }
 
 const MODIFIER_ORDER = ['Ctrl', 'Shift', 'Alt', 'Meta'];
@@ -1543,13 +833,6 @@ const COMMAND_PALETTE_FIXED_SHORTCUTS: Record<string, ShortcutBinding> = {
   rename: ['F2'],
 };
 let shortcutBindings: Record<string, ShortcutBinding> = {};
-let isShortcutCaptureActive = false;
-let activeShortcutCapture: {
-  id: string;
-  button: HTMLButtonElement;
-  item: HTMLElement;
-} | null = null;
-let shortcutCaptureCleanup: (() => void) | null = null;
 
 const shortcutDefinitionById = new Map<string, ShortcutDefinition>(
   SHORTCUT_DEFINITIONS.map((def) => [def.id, def])
@@ -1798,637 +1081,192 @@ function formatShortcutKeyLabel(key: string): string {
   return labels[key] || (key.length === 1 ? key.toUpperCase() : key);
 }
 
-function renderShortcutTokens(tokens: ShortcutToken[]): string {
-  const tokenHtml = tokens
-    .map((token) => {
-      if ('text' in token) {
-        return `<span class=\"shortcut-text\">${escapeHtml(token.text)}</span>`;
-      }
-      const keyHtml = token.keys
-        .map((key, index) => {
-          const label = escapeHtml(formatShortcutKeyLabel(key));
-          const plus =
-            index < token.keys.length - 1 ? '<span class=\"shortcut-plus\">+</span>' : '';
-          return `<kbd>${label}</kbd>${plus}`;
-        })
-        .join('');
-      return `<span class=\"shortcut-token\">${keyHtml}</span>`;
-    })
-    .join('');
-  return `<span class=\"shortcut-keys\">${tokenHtml}</span>`;
-}
-
-function renderShortcutsModal(): void {
-  const container = document.getElementById('shortcuts-modal-sections');
-  if (!container) return;
-
-  container.innerHTML = '';
-  const defaults = getDefaultShortcuts();
-  const fixedShortcutsByCategory = getFixedShortcutsByCategory();
-
-  const categories = new Map<string, ShortcutDefinition[]>();
-  for (const def of SHORTCUT_DEFINITIONS) {
-    const list = categories.get(def.category) || [];
-    list.push(def);
-    categories.set(def.category, list);
-  }
-
-  const orderedCategories = Array.from(categories.keys());
-  for (const category of fixedShortcutsByCategory.keys()) {
-    if (!categories.has(category)) {
-      orderedCategories.push(category);
-    }
-  }
-
-  for (const category of orderedCategories) {
-    const remappable = categories.get(category) || [];
-    const fixed = fixedShortcutsByCategory.get(category) || [];
-    if (remappable.length === 0 && fixed.length === 0) continue;
-
-    const section = document.createElement('div');
-    section.className = 'shortcuts-section';
-    section.innerHTML = `<h3>${escapeHtml(category)}</h3>`;
-
-    for (const def of remappable) {
-      const defaultBinding = defaults[def.id] || [];
-      const binding = shortcutBindings[def.id] ?? defaultBinding;
-      const isDefault = areBindingsEqual(binding, defaultBinding);
-      const keyMarkup =
-        binding.length > 0
-          ? renderShortcutTokens([{ keys: binding }])
-          : '<span class="shortcut-keys"><span class="shortcut-text">Unassigned</span></span>';
-      const item = document.createElement('div');
-      item.className = 'shortcut-item';
-      item.dataset.shortcutId = def.id;
-      item.innerHTML = `
-        <div class=\"shortcut-info\">
-          <span class=\"shortcut-description\">${escapeHtml(def.title)}</span>
-        </div>
-        <div class=\"shortcut-controls\">
-          ${keyMarkup}
-          <button class=\"modal-button secondary\" data-shortcut-action=\"edit\">Change</button>
-          <button class=\"modal-button secondary compact\" data-shortcut-action=\"reset\" ${isDefault ? 'disabled' : ''}>Reset</button>
-        </div>
-      `;
-      section.appendChild(item);
-    }
-
-    for (const fixedItem of fixed) {
-      const item = document.createElement('div');
-      item.className = 'shortcut-item fixed';
-      item.innerHTML = `
-        <div class=\"shortcut-info\">
-          <span class=\"shortcut-description\">${escapeHtml(fixedItem.title)}</span>
-        </div>
-        <div class=\"shortcut-controls\">
-          ${renderShortcutTokens(fixedItem.tokens)}
-        </div>
-      `;
-      section.appendChild(item);
-    }
-
-    container.appendChild(section);
-  }
-}
-
-function initShortcutsModal(): void {
-  const container = document.getElementById('shortcuts-modal-sections');
-  if (!container) return;
-
-  container.addEventListener('click', (e) => {
-    const target = e.target as HTMLElement;
-    const button = target.closest('button[data-shortcut-action]') as HTMLButtonElement | null;
-    if (!button) return;
-    if (button.disabled) return;
-    const item = button.closest('[data-shortcut-id]') as HTMLElement | null;
-    if (!item || !item.dataset.shortcutId) return;
-    const action = button.dataset.shortcutAction;
-    if (action === 'edit') {
-      startShortcutCapture(item.dataset.shortcutId, button, item);
-      return;
-    }
-    if (action === 'reset') {
-      resetShortcutBinding(item.dataset.shortcutId);
-    }
-  });
-}
-
-function startShortcutCapture(id: string, button: HTMLButtonElement, item: HTMLElement): void {
-  stopShortcutCapture();
-
-  activeShortcutCapture = { id, button, item };
-  isShortcutCaptureActive = true;
-  item.classList.add('is-recording');
-  button.textContent = 'Press keys...';
-
-  const handleKeydown = (e: KeyboardEvent): void => {
-    e.preventDefault();
-    e.stopPropagation();
-
-    if (e.key === 'Escape') {
-      stopShortcutCapture();
-      return;
-    }
-
-    const binding = eventToBinding(e);
-    if (!binding) {
-      return;
-    }
-
-    if (!hasModifier(binding)) {
-      showToast('Shortcuts must include a modifier key', 'Shortcut Required', 'warning');
-      return;
-    }
-
-    const serialized = serializeShortcut(binding);
-    const reservedEntry = reservedShortcutLookup.get(serialized);
-    if (reservedEntry && reservedEntry.actionId !== id) {
-      showToast(`Reserved for ${reservedEntry.label}`, 'Shortcut Reserved', 'warning');
-      return;
-    }
-    const conflictId = shortcutLookup.get(serialized);
-    if (conflictId && conflictId !== id) {
-      const conflictTitle = shortcutDefinitionById.get(conflictId)?.title || conflictId;
-      showToast(`Already used by \"${conflictTitle}\"`, 'Shortcut In Use', 'warning');
-      return;
-    }
-
-    stopShortcutCapture();
-    setShortcutBinding(id, binding);
-  };
-
-  window.addEventListener('keydown', handleKeydown, true);
-  shortcutCaptureCleanup = () => {
-    window.removeEventListener('keydown', handleKeydown, true);
-  };
-}
-
-function stopShortcutCapture(): void {
-  if (shortcutCaptureCleanup) {
-    shortcutCaptureCleanup();
-    shortcutCaptureCleanup = null;
-  }
-
-  if (activeShortcutCapture) {
-    activeShortcutCapture.item.classList.remove('is-recording');
-    activeShortcutCapture.button.textContent = 'Change';
-  }
-
-  activeShortcutCapture = null;
-  isShortcutCaptureActive = false;
-}
-
-function setShortcutBinding(id: string, binding: ShortcutBinding): void {
-  const normalized = normalizeShortcutBinding(binding);
-  currentSettings.shortcuts = {
-    ...currentSettings.shortcuts,
-    [id]: normalized,
-  };
-  shortcutBindings = {
-    ...shortcutBindings,
-    [id]: normalized,
-  };
-  rebuildShortcutLookup();
-  syncCommandShortcuts();
-  renderShortcutsModal();
-  debouncedSaveSettings(100);
-}
-
-function resetShortcutBinding(id: string): void {
-  const defaults = getDefaultShortcuts();
-  setShortcutBinding(id, defaults[id] || []);
-}
-
-function syncCommandShortcuts(): void {
-  const remappableIds = new Set(SHORTCUT_DEFINITIONS.map((def) => def.id));
-  for (const cmd of commands) {
-    if (remappableIds.has(cmd.id)) {
-      cmd.shortcut = getShortcutBinding(cmd.id);
-    } else if (COMMAND_PALETTE_FIXED_SHORTCUTS[cmd.id]) {
-      cmd.shortcut = COMMAND_PALETTE_FIXED_SHORTCUTS[cmd.id];
-    } else {
-      delete cmd.shortcut;
-    }
-  }
-
-  if (commandPaletteModal && commandPaletteModal.style.display === 'flex') {
-    renderCommandPaletteResults(commands);
-  }
-}
-
-function initCommandPalette(): void {
-  commandPaletteModal = document.getElementById('command-palette-modal');
-  commandPaletteInput = document.getElementById('command-palette-input') as HTMLInputElement;
-  commandPaletteResults = document.getElementById('command-palette-results');
-  commandPaletteEmpty = document.getElementById('command-palette-empty');
-
-  if (!commandPaletteModal || !commandPaletteInput || !commandPaletteResults) return;
-
-  registerCommands();
-  syncCommandShortcuts();
-
-  commandPaletteInput.addEventListener('input', handleCommandPaletteSearch);
-  commandPaletteInput.addEventListener('keydown', handleCommandPaletteKeydown);
-
-  commandPaletteModal.addEventListener('click', (e) => {
-    if (e.target === commandPaletteModal) {
-      hideCommandPalette();
-    }
-  });
-}
-
-function registerCommands(): void {
-  commands.push(
-    {
-      id: 'new-folder',
-      title: 'New Folder',
-      description: 'Create a new folder',
-      icon: '📁',
-      shortcut: getShortcutBinding('new-folder'),
-      action: () => {
-        hideCommandPalette();
-        createNewFolder();
-      },
+const commandPaletteController = createCommandPaletteController({
+  activateModal,
+  deactivateModal,
+  showToast,
+  getShortcutBinding,
+  fixedShortcuts: COMMAND_PALETTE_FIXED_SHORTCUTS,
+  remappableCommandIds: new Set(SHORTCUT_DEFINITIONS.map((def) => def.id)),
+  formatShortcutKeyLabel,
+  getTabsEnabled: () => tabsEnabled,
+  actions: {
+    createNewFolder: () => {
+      void createNewFolder();
     },
-    {
-      id: 'new-file',
-      title: 'New File',
-      description: 'Create a new file',
-      icon: '📄',
-      shortcut: getShortcutBinding('new-file'),
-      action: () => {
-        hideCommandPalette();
-        createNewFile();
-      },
+    createNewFile: () => {
+      void createNewFile();
     },
-    {
-      id: 'search',
-      title: 'Search',
-      description: 'Search files in current folder',
-      icon: '🔍',
-      shortcut: getShortcutBinding('search'),
-      action: () => {
-        hideCommandPalette();
-        document.getElementById('search-btn')?.click();
-      },
+    refresh: () => {
+      refresh();
     },
-    {
-      id: 'refresh',
-      title: 'Refresh',
-      description: 'Reload current folder',
-      icon: '🔄',
-      shortcut: COMMAND_PALETTE_FIXED_SHORTCUTS.refresh,
-      action: () => {
-        hideCommandPalette();
-        refresh();
-      },
+    goBack: () => {
+      goBack();
     },
-    {
-      id: 'go-back',
-      title: 'Go Back',
-      description: 'Navigate to previous folder',
-      icon: '⬅️',
-      shortcut: getShortcutBinding('go-back'),
-      action: () => {
-        hideCommandPalette();
-        goBack();
-      },
+    goForward: () => {
+      goForward();
     },
-    {
-      id: 'go-forward',
-      title: 'Go Forward',
-      description: 'Navigate to next folder',
-      icon: '➡️',
-      shortcut: getShortcutBinding('go-forward'),
-      action: () => {
-        hideCommandPalette();
-        goForward();
-      },
+    goUp: () => {
+      goUp();
     },
-    {
-      id: 'go-up',
-      title: 'Go Up',
-      description: 'Navigate to parent folder',
-      icon: '⬆️',
-      shortcut: getShortcutBinding('go-up'),
-      action: () => {
-        hideCommandPalette();
-        goUp();
-      },
+    showSettingsModal: () => {
+      showSettingsModal();
     },
-    {
-      id: 'settings',
-      title: 'Settings',
-      description: 'Open settings',
-      icon: '⚙️',
-      shortcut: getShortcutBinding('settings'),
-      action: () => {
-        hideCommandPalette();
-        showSettingsModal();
-      },
+    showShortcutsModal: () => {
+      showShortcutsModal();
     },
-    {
-      id: 'shortcuts',
-      title: 'Keyboard Shortcuts',
-      description: 'View all keyboard shortcuts',
-      icon: '⌨️',
-      shortcut: getShortcutBinding('shortcuts'),
-      action: () => {
-        hideCommandPalette();
-        showShortcutsModal();
-      },
+    selectAll: () => {
+      selectAll();
     },
-    {
-      id: 'select-all',
-      title: 'Select All',
-      description: 'Select all items',
-      icon: '☑️',
-      shortcut: getShortcutBinding('select-all'),
-      action: () => {
-        hideCommandPalette();
-        selectAll();
-      },
+    copyToClipboard: () => {
+      copyToClipboard();
     },
-    {
-      id: 'copy',
-      title: 'Copy',
-      description: 'Copy selected items',
-      icon: '📋',
-      shortcut: getShortcutBinding('copy'),
-      action: () => {
-        hideCommandPalette();
-        copyToClipboard();
-      },
+    cutToClipboard: () => {
+      cutToClipboard();
     },
-    {
-      id: 'cut',
-      title: 'Cut',
-      description: 'Cut selected items',
-      icon: '✂️',
-      shortcut: getShortcutBinding('cut'),
-      action: () => {
-        hideCommandPalette();
-        cutToClipboard();
-      },
+    pasteFromClipboard: () => {
+      pasteFromClipboard();
     },
-    {
-      id: 'paste',
-      title: 'Paste',
-      description: 'Paste items',
-      icon: '📎',
-      shortcut: getShortcutBinding('paste'),
-      action: () => {
-        hideCommandPalette();
-        pasteFromClipboard();
-      },
+    deleteSelected: () => {
+      deleteSelected();
     },
-    {
-      id: 'delete',
-      title: 'Delete',
-      description: 'Delete selected items',
-      icon: '🗑️',
-      shortcut: COMMAND_PALETTE_FIXED_SHORTCUTS.delete,
-      action: () => {
-        hideCommandPalette();
-        deleteSelected();
-      },
+    renameSelected: () => {
+      renameSelected();
     },
-    {
-      id: 'rename',
-      title: 'Rename',
-      description: 'Rename selected item',
-      icon: '✍️',
-      shortcut: COMMAND_PALETTE_FIXED_SHORTCUTS.rename,
-      action: () => {
-        hideCommandPalette();
-        renameSelected();
-      },
+    setViewMode: (mode) => {
+      void setViewMode(mode);
     },
-    {
-      id: 'grid-view',
-      title: 'Grid View',
-      description: 'Switch to grid view',
-      icon: '▦',
-      action: () => {
-        hideCommandPalette();
-        setViewMode('grid');
-      },
+    addNewTab: () => {
+      void addNewTab();
     },
-    {
-      id: 'list-view',
-      title: 'List View',
-      description: 'Switch to list view',
-      icon: '☰',
-      action: () => {
-        hideCommandPalette();
-        setViewMode('list');
-      },
-    },
-    {
-      id: 'column-view',
-      title: 'Column View',
-      description: 'Switch to column view',
-      icon: '|||',
-      action: () => {
-        hideCommandPalette();
-        setViewMode('column');
-      },
-    },
-    {
-      id: 'toggle-preview',
-      title: 'Toggle Preview Panel',
-      description: 'Show or hide preview panel',
-      icon: '👁️',
-      action: () => {
-        hideCommandPalette();
-        document.getElementById('preview-toggle-btn')?.click();
-      },
-    },
-    {
-      id: 'toggle-sidebar',
-      title: 'Toggle Sidebar',
-      description: 'Show or hide sidebar',
-      icon: '📂',
-      shortcut: getShortcutBinding('toggle-sidebar'),
-      action: () => {
-        hideCommandPalette();
-        document.getElementById('sidebar-toggle')?.click();
-      },
-    },
-    {
-      id: 'new-tab',
-      title: 'New Tab',
-      description: 'Open new tab',
-      icon: '➕',
-      shortcut: getShortcutBinding('new-tab'),
-      action: () => {
-        hideCommandPalette();
-        if (tabsEnabled) addNewTab();
-      },
-    }
-  );
-}
+  },
+});
 
-function showCommandPalette(): void {
-  if (!commandPaletteModal || !commandPaletteInput || !commandPaletteResults) return;
+const { initCommandPalette, showCommandPalette, syncCommandShortcuts } = commandPaletteController;
 
-  commandPalettePreviousFocus = document.activeElement as HTMLElement;
+const shortcutsUi = createShortcutsUiController({
+  isMacPlatform,
+  formatShortcutKeyLabel,
+  getDefaultShortcuts,
+  shortcutDefinitions: SHORTCUT_DEFINITIONS,
+  getShortcutBindings: () => shortcutBindings,
+  setShortcutBindings: (bindings) => {
+    shortcutBindings = bindings;
+  },
+  normalizeShortcutBinding,
+  areBindingsEqual,
+  getCurrentSettings: () => currentSettings,
+  rebuildShortcutLookup,
+  syncCommandShortcuts,
+  debouncedSaveSettings,
+  eventToBinding,
+  hasModifier,
+  serializeShortcut,
+  reservedShortcutLookup,
+  shortcutLookup,
+  shortcutDefinitionById,
+  showToast,
+});
 
-  commandPaletteModal.style.display = 'flex';
-  commandPaletteInput.value = '';
-  commandPaletteFocusedIndex = -1;
-  renderCommandPaletteResults(commands);
+const { renderShortcutsModal, initShortcutsModal, stopShortcutCapture, isShortcutCaptureActive } =
+  shortcutsUi;
 
-  setTimeout(() => {
-    commandPaletteInput?.focus();
-  }, 50);
-}
+const settingsUi = createSettingsUiController({
+  updateDangerousOptionsVisibility,
+  saveSettings,
+});
 
-function hideCommandPalette(): void {
-  if (commandPaletteModal) {
-    commandPaletteModal.style.display = 'none';
-  }
+const {
+  initSettingsTabs,
+  initSettingsUi,
+  activateSettingsTab,
+  applySettingsSearch,
+  updateSettingsCardSummaries,
+  syncQuickActionsFromMain,
+  captureSettingsFormState,
+  applySettingsFormState,
+  buildSettingsFormStateFromSettings,
+  clearSettingsChanged,
+  initSettingsChangeTracking,
+  setSuppressSettingsTracking,
+  getSavedState,
+  setSavedState,
+  resetRedoState,
+} = settingsUi;
 
-  if (commandPalettePreviousFocus && typeof commandPalettePreviousFocus.focus === 'function') {
-    commandPalettePreviousFocus.focus();
-    commandPalettePreviousFocus = null;
-  }
-}
+const settingsModalController = createSettingsModalController({
+  getCurrentSettings: () => currentSettings,
+  activateModal,
+  deactivateModal,
+  setSuppressSettingsTracking,
+  activateSettingsTab,
+  updateCustomThemeUI,
+  updateDangerousOptionsVisibility,
+  updateIndexStatus,
+  updateThumbnailCacheSize,
+  syncQuickActionsFromMain,
+  updateSettingsCardSummaries,
+  applySettingsSearch,
+  clearSettingsChanged,
+  initSettingsChangeTracking,
+  stopIndexStatusPolling,
+});
 
-function handleCommandPaletteSearch(): void {
-  if (!commandPaletteInput) return;
+const { showSettingsModal, hideSettingsModal } = settingsModalController;
 
-  const query = commandPaletteInput.value.toLowerCase().trim();
+const settingsActionsController = createSettingsActionsController({
+  getCurrentSettings: () => currentSettings,
+  setCurrentSettings: (settings) => {
+    currentSettings = settings;
+  },
+  saveSettingsWithTimestamp,
+  showToast,
+  loadBookmarks,
+  updateThumbnailCacheSize,
+  clearThumbnailCacheLocal: () => {
+    thumbnailCache.clear();
+  },
+  hideSettingsModal,
+  showSettingsModal,
+  isOneOf,
+  themeValues: THEME_VALUES,
+  sortByValues: SORT_BY_VALUES,
+  sortOrderValues: SORT_ORDER_VALUES,
+  viewModeValues: VIEW_MODE_VALUES,
+});
 
-  if (!query) {
-    renderCommandPaletteResults(commands);
-    return;
-  }
+const { initSettingsActions } = settingsActionsController;
 
-  const filtered = commands.filter(
-    (cmd) =>
-      cmd.title.toLowerCase().includes(query) ||
-      cmd.description?.toLowerCase().includes(query) ||
-      cmd.id.toLowerCase().includes(query)
-  );
+const supportUiController = createSupportUiController({
+  activateModal,
+  deactivateModal,
+  escapeHtml,
+  getErrorMessage,
+  getCurrentSettings: () => currentSettings,
+  saveSettingsWithTimestamp,
+  openExternal: (url) => {
+    window.electronAPI.openFile(url);
+  },
+});
 
-  renderCommandPaletteResults(filtered);
-}
+const {
+  showLicensesModal,
+  hideLicensesModal,
+  initLicensesUi,
+  showSupportPopup,
+  hideSupportPopup,
+  initSupportPopup,
+} = supportUiController;
 
-function renderCommandPaletteResults(cmds: Command[]): void {
-  if (!commandPaletteResults || !commandPaletteEmpty) return;
+const externalLinksController = createExternalLinksController({
+  openExternal: (url) => {
+    window.electronAPI.openFile(url);
+  },
+  showLicensesModal,
+  showShortcutsModal,
+});
 
-  const resultsContainer = commandPaletteResults;
-  const emptyContainer = commandPaletteEmpty;
-
-  clearHtml(resultsContainer);
-  commandPaletteFocusedIndex = -1;
-
-  if (cmds.length === 0) {
-    resultsContainer.style.display = 'none';
-    emptyContainer.style.display = 'flex';
-    return;
-  }
-
-  resultsContainer.style.display = 'flex';
-  emptyContainer.style.display = 'none';
-
-  cmds.forEach((cmd, index) => {
-    const item = document.createElement('div');
-    item.className = 'command-palette-item';
-    item.dataset.index = String(index);
-
-    let shortcutHtml = '';
-    if (cmd.shortcut) {
-      shortcutHtml = `
-        <div class="command-palette-item-shortcut">
-          ${cmd.shortcut
-            .map(
-              (key) =>
-                `<kbd class="command-palette-key">${escapeHtml(formatShortcutKeyLabel(key))}</kbd>`
-            )
-            .join('')}
-        </div>
-      `;
-    }
-
-    item.innerHTML = `
-      <div class="command-palette-item-left">
-        ${cmd.icon ? `<span class="command-palette-item-icon">${cmd.icon}</span>` : ''}
-        <div class="command-palette-item-text">
-          <div class="command-palette-item-title">${escapeHtml(cmd.title)}</div>
-          ${cmd.description ? `<div class="command-palette-item-description">${escapeHtml(cmd.description)}</div>` : ''}
-        </div>
-      </div>
-      ${shortcutHtml}
-    `;
-
-    item.addEventListener('click', () => {
-      try {
-        cmd.action();
-      } catch (error) {
-        console.error(`Command palette error executing "${cmd.id}":`, error);
-        showToast(`Failed to execute command: ${cmd.title}`, 'Command Error', 'error');
-      }
-    });
-
-    item.addEventListener('mouseenter', () => {
-      setCommandPaletteFocus(index);
-    });
-
-    resultsContainer.appendChild(item);
-  });
-}
-
-function setCommandPaletteFocus(index: number): void {
-  if (!commandPaletteResults) return;
-
-  const items = commandPaletteResults.querySelectorAll('.command-palette-item');
-  items.forEach((item, i) => {
-    if (i === index) {
-      item.classList.add('focused');
-      commandPaletteFocusedIndex = index;
-    } else {
-      item.classList.remove('focused');
-    }
-  });
-}
-
-function handleCommandPaletteKeydown(e: KeyboardEvent): void {
-  if (!commandPaletteResults) return;
-
-  const items = commandPaletteResults.querySelectorAll('.command-palette-item');
-
-  if (e.key === 'Escape') {
-    e.preventDefault();
-    hideCommandPalette();
-  } else if (e.key === 'ArrowDown') {
-    e.preventDefault();
-    const nextIndex = commandPaletteFocusedIndex + 1;
-    if (nextIndex < items.length) {
-      setCommandPaletteFocus(nextIndex);
-      if (commandPaletteResults) {
-        items[nextIndex].scrollIntoView({ block: 'nearest' });
-      }
-    }
-  } else if (e.key === 'ArrowUp') {
-    e.preventDefault();
-    const prevIndex = commandPaletteFocusedIndex - 1;
-    if (prevIndex >= 0) {
-      setCommandPaletteFocus(prevIndex);
-      if (commandPaletteResults) {
-        items[prevIndex].scrollIntoView({ block: 'nearest' });
-      }
-    }
-  } else if (e.key === 'Enter') {
-    e.preventDefault();
-    if (commandPaletteFocusedIndex >= 0 && commandPaletteFocusedIndex < items.length) {
-      (items[commandPaletteFocusedIndex] as HTMLElement).click();
-    } else if (items.length > 0) {
-      (items[0] as HTMLElement).click();
-    }
-  }
-}
+const { initExternalLinks } = externalLinksController;
 
 interface ProgressOperation {
   id: string;
@@ -2838,6 +1676,7 @@ function showThemeEditor() {
 
   updateThemePreview();
   modal.style.display = 'flex';
+  activateModal(modal);
 }
 
 async function hideThemeEditor(skipConfirmation = false) {
@@ -2850,7 +1689,10 @@ async function hideThemeEditor(skipConfirmation = false) {
     if (!confirmed) return;
   }
   const modal = document.getElementById('theme-editor-modal');
-  if (modal) modal.style.display = 'none';
+  if (modal) {
+    modal.style.display = 'none';
+    deactivateModal(modal);
+  }
   themeEditorHasUnsavedChanges = false;
 }
 
@@ -3043,354 +1885,6 @@ function updateCustomThemeUI(options?: { syncSelect?: boolean; selectedTheme?: s
   }
 }
 
-async function showSettingsModal() {
-  if (document.activeElement instanceof HTMLElement) {
-    document.activeElement.blur();
-  }
-
-  const settingsModal = document.getElementById('settings-modal');
-  suppressSettingsTracking = true;
-
-  // Reset tabs
-  const tabs = document.querySelectorAll('.settings-tab');
-  const sections = document.querySelectorAll('.settings-section');
-
-  tabs.forEach((t) => t.classList.remove('active'));
-  sections.forEach((s) => s.classList.remove('active'));
-
-  if (tabs.length > 0) {
-    const firstId = tabs[0].getAttribute('data-tab');
-    if (firstId) {
-      activateSettingsTab(firstId, true);
-    } else {
-      tabs[0].classList.add('active');
-      if (sections.length > 0) sections[0].classList.add('active');
-    }
-  } else if (sections.length > 0) {
-    sections[0].classList.add('active');
-  }
-
-  const systemThemeToggle = document.getElementById('system-theme-toggle') as HTMLInputElement;
-  const sortBySelect = document.getElementById('sort-by-select') as HTMLSelectElement;
-  const sortOrderSelect = document.getElementById('sort-order-select') as HTMLSelectElement;
-  const showHiddenFilesToggle = document.getElementById(
-    'show-hidden-files-toggle'
-  ) as HTMLInputElement;
-  const enableGitStatusToggle = document.getElementById(
-    'enable-git-status-toggle'
-  ) as HTMLInputElement;
-  const gitIncludeUntrackedToggle = document.getElementById(
-    'git-include-untracked-toggle'
-  ) as HTMLInputElement;
-  const minimizeToTrayToggle = document.getElementById(
-    'minimize-to-tray-toggle'
-  ) as HTMLInputElement;
-  const startOnLoginToggle = document.getElementById('start-on-login-toggle') as HTMLInputElement;
-  const autoCheckUpdatesToggle = document.getElementById(
-    'auto-check-updates-toggle'
-  ) as HTMLInputElement;
-  const updateChannelSelect = document.getElementById('update-channel-select') as HTMLSelectElement;
-  const enableSearchHistoryToggle = document.getElementById(
-    'enable-search-history-toggle'
-  ) as HTMLInputElement;
-  const dangerousOptionsToggle = document.getElementById(
-    'dangerous-options-toggle'
-  ) as HTMLInputElement;
-  const startupPathInput = document.getElementById('startup-path-input') as HTMLInputElement;
-  const enableIndexerToggle = document.getElementById('enable-indexer-toggle') as HTMLInputElement;
-  const showRecentFilesToggle = document.getElementById(
-    'show-recent-files-toggle'
-  ) as HTMLInputElement;
-  const showFolderTreeToggle = document.getElementById(
-    'show-folder-tree-toggle'
-  ) as HTMLInputElement;
-  const enableTabsToggle = document.getElementById('enable-tabs-toggle') as HTMLInputElement;
-  const globalContentSearchToggle = document.getElementById(
-    'global-content-search-toggle'
-  ) as HTMLInputElement;
-  const globalClipboardToggle = document.getElementById(
-    'global-clipboard-toggle'
-  ) as HTMLInputElement;
-  const enableSyntaxHighlightingToggle = document.getElementById(
-    'enable-syntax-highlighting-toggle'
-  ) as HTMLInputElement;
-  const reduceMotionToggle = document.getElementById('reduce-motion-toggle') as HTMLInputElement;
-  const highContrastToggle = document.getElementById('high-contrast-toggle') as HTMLInputElement;
-  const largeTextToggle = document.getElementById('large-text-toggle') as HTMLInputElement;
-  const useSystemFontSizeToggle = document.getElementById(
-    'use-system-font-size-toggle'
-  ) as HTMLInputElement;
-  const uiDensitySelect = document.getElementById('ui-density-select') as HTMLSelectElement;
-  const boldTextToggle = document.getElementById('bold-text-toggle') as HTMLInputElement;
-  const visibleFocusToggle = document.getElementById('visible-focus-toggle') as HTMLInputElement;
-  const reduceTransparencyToggle = document.getElementById(
-    'reduce-transparency-toggle'
-  ) as HTMLInputElement;
-  const liquidGlassToggle = document.getElementById('liquid-glass-toggle') as HTMLInputElement;
-  const themedIconsToggle = document.getElementById('themed-icons-toggle') as HTMLInputElement;
-  const disableHwAccelToggle = document.getElementById(
-    'disable-hw-accel-toggle'
-  ) as HTMLInputElement;
-  const confirmFileOperationsToggle = document.getElementById(
-    'confirm-file-operations-toggle'
-  ) as HTMLInputElement;
-  const fileConflictBehaviorSelect = document.getElementById(
-    'file-conflict-behavior-select'
-  ) as HTMLSelectElement;
-  const maxThumbnailSizeInput = document.getElementById(
-    'max-thumbnail-size-input'
-  ) as HTMLInputElement;
-  const thumbnailQualitySelect = document.getElementById(
-    'thumbnail-quality-select'
-  ) as HTMLSelectElement;
-  const autoPlayVideosToggle = document.getElementById(
-    'auto-play-videos-toggle'
-  ) as HTMLInputElement;
-  const previewPanelPositionSelect = document.getElementById(
-    'preview-panel-position-select'
-  ) as HTMLSelectElement;
-  const maxPreviewSizeInput = document.getElementById('max-preview-size-input') as HTMLInputElement;
-  const gridColumnsSelect = document.getElementById('grid-columns-select') as HTMLSelectElement;
-  const iconSizeSlider = document.getElementById('icon-size-slider') as HTMLInputElement;
-  const iconSizeValue = document.getElementById('icon-size-value');
-  const compactFileInfoToggle = document.getElementById(
-    'compact-file-info-toggle'
-  ) as HTMLInputElement;
-  const showFileExtensionsToggle = document.getElementById(
-    'show-file-extensions-toggle'
-  ) as HTMLInputElement;
-  const maxSearchHistoryInput = document.getElementById(
-    'max-search-history-input'
-  ) as HTMLInputElement;
-  const maxDirectoryHistoryInput = document.getElementById(
-    'max-directory-history-input'
-  ) as HTMLInputElement;
-  const settingsPath = document.getElementById('settings-path');
-
-  if (systemThemeToggle) {
-    systemThemeToggle.checked = currentSettings.useSystemTheme || false;
-  }
-  if (enableSyntaxHighlightingToggle) {
-    enableSyntaxHighlightingToggle.checked = currentSettings.enableSyntaxHighlighting !== false;
-  }
-  if (enableGitStatusToggle) {
-    enableGitStatusToggle.checked = currentSettings.enableGitStatus === true;
-  }
-  if (gitIncludeUntrackedToggle) {
-    gitIncludeUntrackedToggle.checked = currentSettings.gitIncludeUntracked !== false;
-  }
-
-  const showFileHoverCardToggle = document.getElementById(
-    'show-file-hover-card-toggle'
-  ) as HTMLInputElement;
-  const showFileCheckboxesToggle = document.getElementById(
-    'show-file-checkboxes-toggle'
-  ) as HTMLInputElement;
-
-  if (showFileHoverCardToggle) {
-    showFileHoverCardToggle.checked = currentSettings.showFileHoverCard !== false;
-  }
-
-  if (showFileCheckboxesToggle) {
-    showFileCheckboxesToggle.checked = currentSettings.showFileCheckboxes === true;
-  }
-
-  updateCustomThemeUI();
-
-  if (sortBySelect) {
-    sortBySelect.value = currentSettings.sortBy || 'name';
-  }
-
-  if (sortOrderSelect) {
-    sortOrderSelect.value = currentSettings.sortOrder || 'asc';
-  }
-
-  if (showHiddenFilesToggle) {
-    showHiddenFilesToggle.checked = currentSettings.showHiddenFiles || false;
-  }
-
-  if (minimizeToTrayToggle) {
-    minimizeToTrayToggle.checked = currentSettings.minimizeToTray || false;
-  }
-
-  if (startOnLoginToggle) {
-    startOnLoginToggle.checked = currentSettings.startOnLogin || false;
-  }
-
-  if (autoCheckUpdatesToggle) {
-    autoCheckUpdatesToggle.checked = currentSettings.autoCheckUpdates !== false;
-  }
-
-  if (updateChannelSelect) {
-    updateChannelSelect.value = currentSettings.updateChannel || 'auto';
-  }
-
-  if (enableSearchHistoryToggle) {
-    enableSearchHistoryToggle.checked = currentSettings.enableSearchHistory !== false;
-  }
-
-  if (dangerousOptionsToggle) {
-    dangerousOptionsToggle.checked = currentSettings.showDangerousOptions || false;
-    updateDangerousOptionsVisibility(dangerousOptionsToggle.checked);
-  }
-
-  if (startupPathInput) {
-    startupPathInput.value = currentSettings.startupPath || '';
-  }
-
-  if (enableIndexerToggle) {
-    enableIndexerToggle.checked = currentSettings.enableIndexer !== false;
-  }
-
-  if (showRecentFilesToggle) {
-    showRecentFilesToggle.checked = currentSettings.showRecentFiles !== false;
-  }
-
-  if (showFolderTreeToggle) {
-    showFolderTreeToggle.checked = currentSettings.showFolderTree !== false;
-  }
-
-  if (enableTabsToggle) {
-    enableTabsToggle.checked = currentSettings.enableTabs !== false;
-  }
-
-  if (globalContentSearchToggle) {
-    globalContentSearchToggle.checked = currentSettings.globalContentSearch || false;
-  }
-
-  if (globalClipboardToggle) {
-    globalClipboardToggle.checked = currentSettings.globalClipboard !== false;
-  }
-
-  if (reduceMotionToggle) {
-    reduceMotionToggle.checked = currentSettings.reduceMotion || false;
-  }
-
-  if (highContrastToggle) {
-    highContrastToggle.checked = currentSettings.highContrast || false;
-  }
-
-  if (largeTextToggle) {
-    largeTextToggle.checked = currentSettings.largeText || false;
-  }
-
-  if (useSystemFontSizeToggle) {
-    useSystemFontSizeToggle.checked = currentSettings.useSystemFontSize || false;
-  }
-
-  if (uiDensitySelect) {
-    uiDensitySelect.value = currentSettings.uiDensity || 'default';
-  }
-
-  if (boldTextToggle) {
-    boldTextToggle.checked = currentSettings.boldText || false;
-  }
-
-  if (visibleFocusToggle) {
-    visibleFocusToggle.checked = currentSettings.visibleFocus || false;
-  }
-
-  if (reduceTransparencyToggle) {
-    reduceTransparencyToggle.checked = currentSettings.reduceTransparency || false;
-  }
-
-  if (liquidGlassToggle) {
-    liquidGlassToggle.checked = currentSettings.liquidGlassMode || false;
-  }
-
-  if (themedIconsToggle) {
-    themedIconsToggle.checked = currentSettings.themedIcons || false;
-  }
-
-  if (disableHwAccelToggle) {
-    disableHwAccelToggle.checked = currentSettings.disableHardwareAcceleration || false;
-  }
-
-  if (confirmFileOperationsToggle) {
-    confirmFileOperationsToggle.checked = currentSettings.confirmFileOperations || false;
-  }
-
-  if (fileConflictBehaviorSelect) {
-    fileConflictBehaviorSelect.value = currentSettings.fileConflictBehavior || 'ask';
-  }
-
-  if (maxThumbnailSizeInput) {
-    maxThumbnailSizeInput.value = String(currentSettings.maxThumbnailSizeMB || 10);
-  }
-
-  if (thumbnailQualitySelect) {
-    thumbnailQualitySelect.value = currentSettings.thumbnailQuality || 'medium';
-  }
-
-  if (autoPlayVideosToggle) {
-    autoPlayVideosToggle.checked = currentSettings.autoPlayVideos || false;
-  }
-
-  if (previewPanelPositionSelect) {
-    previewPanelPositionSelect.value = currentSettings.previewPanelPosition || 'right';
-  }
-
-  if (maxPreviewSizeInput) {
-    maxPreviewSizeInput.value = String(currentSettings.maxPreviewSizeMB || 50);
-  }
-
-  if (gridColumnsSelect) {
-    gridColumnsSelect.value = currentSettings.gridColumns || 'auto';
-  }
-
-  if (iconSizeSlider) {
-    iconSizeSlider.value = String(currentSettings.iconSize || 64);
-    if (iconSizeValue) {
-      iconSizeValue.textContent = String(currentSettings.iconSize || 64);
-    }
-  }
-
-  if (compactFileInfoToggle) {
-    compactFileInfoToggle.checked = currentSettings.compactFileInfo || false;
-  }
-
-  if (showFileExtensionsToggle) {
-    showFileExtensionsToggle.checked = currentSettings.showFileExtensions !== false;
-  }
-
-  if (maxSearchHistoryInput) {
-    maxSearchHistoryInput.value = String(currentSettings.maxSearchHistoryItems || 5);
-  }
-  if (maxDirectoryHistoryInput) {
-    maxDirectoryHistoryInput.value = String(currentSettings.maxDirectoryHistoryItems || 5);
-  }
-
-  await updateIndexStatus();
-  updateThumbnailCacheSize();
-
-  const path = await window.electronAPI.getSettingsPath();
-  if (settingsPath) {
-    settingsPath.textContent = path;
-  }
-
-  if (settingsModal) {
-    const searchInput = document.getElementById('settings-search') as HTMLInputElement | null;
-    if (searchInput) {
-      searchInput.value = '';
-    }
-    syncQuickActionsFromMain();
-    updateSettingsCardSummaries();
-    applySettingsSearch('');
-    settingsModal.style.display = 'flex';
-    suppressSettingsTracking = false;
-    clearSettingsChanged();
-    initSettingsChangeTracking();
-  }
-}
-
-function hideSettingsModal() {
-  const settingsModal = document.getElementById('settings-modal');
-  if (settingsModal) {
-    settingsModal.style.display = 'none';
-  }
-  stopIndexStatusPolling();
-}
-
 function startIndexStatusPolling() {
   stopIndexStatusPolling();
   indexStatusInterval = setInterval(async () => {
@@ -3470,153 +1964,6 @@ function updateDangerousOptionsVisibility(show: boolean) {
   });
 }
 
-function getRepositoryText(repository: unknown): string | null {
-  if (typeof repository === 'string') {
-    const trimmed = repository.trim();
-    return trimmed.length > 0 ? trimmed : null;
-  }
-
-  if (repository && typeof repository === 'object' && 'url' in repository) {
-    const repoUrl = (repository as { url?: unknown }).url;
-    if (typeof repoUrl === 'string') {
-      const trimmed = repoUrl.trim();
-      return trimmed.length > 0 ? trimmed : null;
-    }
-  }
-
-  return null;
-}
-
-function normalizeRepositoryUrl(repository: unknown): string | null {
-  const raw = getRepositoryText(repository);
-  if (!raw) return null;
-
-  let normalized = raw;
-
-  if (normalized.startsWith('git+')) {
-    normalized = normalized.slice(4);
-  }
-
-  if (normalized.startsWith('git@')) {
-    const match = normalized.match(/^git@([^:]+):(.+)$/);
-    if (match) {
-      normalized = `https://${match[1]}/${match[2]}`;
-    }
-  }
-
-  if (normalized.startsWith('ssh://git@')) {
-    normalized = normalized.replace(/^ssh:\/\/git@/, 'https://');
-  }
-
-  if (normalized.startsWith('git://')) {
-    normalized = normalized.replace(/^git:\/\//, 'https://');
-  }
-
-  if (normalized.endsWith('.git')) {
-    normalized = normalized.slice(0, -4);
-  }
-
-  try {
-    const parsed = new URL(normalized);
-    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
-      return parsed.toString();
-    }
-  } catch {
-    return null;
-  }
-
-  return null;
-}
-
-function sanitizeExternalUrl(url: string | null): string | null {
-  if (!url) return null;
-  try {
-    const parsed = new URL(url);
-    if (
-      parsed.protocol === 'http:' ||
-      parsed.protocol === 'https:' ||
-      parsed.protocol === 'mailto:'
-    ) {
-      return parsed.toString();
-    }
-  } catch (error) {
-    ignoreError(error);
-  }
-  return null;
-}
-
-async function showLicensesModal() {
-  if (document.activeElement instanceof HTMLElement) {
-    document.activeElement.blur();
-  }
-
-  const licensesModal = document.getElementById('licenses-modal');
-  if (!licensesModal) return;
-
-  licensesModal.style.display = 'flex';
-
-  const licensesContent = document.getElementById('licenses-content');
-  const totalDeps = document.getElementById('total-deps');
-
-  if (!licensesContent) return;
-
-  licensesContent.innerHTML =
-    '<p style="text-align: center; color: var(--text-secondary);">Loading licenses...</p>';
-
-  try {
-    const result = await window.electronAPI.getLicenses();
-
-    if (result.success && result.licenses) {
-      const licenses = result.licenses;
-      const packageCount = Object.keys(licenses).length;
-
-      if (totalDeps) {
-        totalDeps.textContent = packageCount.toString();
-      }
-
-      let html = '';
-
-      for (const [packageName, packageInfo] of Object.entries(licenses)) {
-        const info = packageInfo;
-        html += '<div class="license-package">';
-        html += `<div class="license-package-name">${escapeHtml(packageName)}</div>`;
-        html += '<div class="license-package-info">';
-        html += `<span class="license-package-license">${escapeHtml(info.licenses || 'Unknown')}</span>`;
-        const repositoryUrl = sanitizeExternalUrl(normalizeRepositoryUrl(info.repository));
-        const repositoryText = getRepositoryText(info.repository);
-        if (repositoryUrl) {
-          html += `<span>Repository: <a class="license-link" href="${escapeHtml(repositoryUrl)}" data-url="${escapeHtml(repositoryUrl)}" rel="noopener noreferrer">${escapeHtml(repositoryUrl)}</a></span>`;
-        } else if (repositoryText) {
-          html += `<span>Repository: ${escapeHtml(repositoryText)}</span>`;
-        }
-        if (info.publisher) {
-          html += `<span>Publisher: ${escapeHtml(info.publisher)}</span>`;
-        }
-        html += '</div>';
-
-        if (info.licenseFile && info.licenseText) {
-          html += `<div class="license-package-text">${escapeHtml(info.licenseText.substring(0, 1000))}${info.licenseText.length > 1000 ? '...' : ''}</div>`;
-        }
-
-        html += '</div>';
-      }
-
-      licensesContent.innerHTML = html;
-    } else {
-      licensesContent.innerHTML = `<p style="color: var(--error-color); text-align: center;">Error loading licenses: ${escapeHtml(result.error || 'Unknown error')}</p>`;
-    }
-  } catch (error) {
-    licensesContent.innerHTML = `<p style="color: var(--error-color); text-align: center;">Error: ${escapeHtml(getErrorMessage(error))}</p>`;
-  }
-}
-
-function hideLicensesModal() {
-  const licensesModal = document.getElementById('licenses-modal');
-  if (licensesModal) {
-    licensesModal.style.display = 'none';
-  }
-}
-
 function showShortcutsModal() {
   if (document.activeElement instanceof HTMLElement) {
     document.activeElement.blur();
@@ -3625,6 +1972,7 @@ function showShortcutsModal() {
   const shortcutsModal = document.getElementById('shortcuts-modal');
   if (shortcutsModal) {
     shortcutsModal.style.display = 'flex';
+    activateModal(shortcutsModal);
     renderShortcutsModal();
   }
 }
@@ -3634,6 +1982,7 @@ function hideShortcutsModal() {
   const shortcutsModal = document.getElementById('shortcuts-modal');
   if (shortcutsModal) {
     shortcutsModal.style.display = 'none';
+    deactivateModal(shortcutsModal);
   }
 }
 
@@ -3682,12 +2031,14 @@ function showFolderIconPicker(folderPath: string) {
   });
 
   modal.style.display = 'flex';
+  activateModal(modal);
 }
 
 function hideFolderIconPicker() {
   const modal = document.getElementById('folder-icon-modal');
   if (modal) {
     modal.style.display = 'none';
+    deactivateModal(modal);
   }
   folderIconPickerPath = null;
 }
@@ -3725,29 +2076,18 @@ function getFolderIcon(folderPath: string): string {
 }
 
 function openNewWindow() {
-  window.electronAPI.openNewWindow();
-}
-
-function copyLicensesText() {
-  const licensesContent = document.getElementById('licenses-content');
-  if (!licensesContent) return;
-
-  const text = licensesContent.innerText;
-  navigator.clipboard
-    .writeText(text)
-    .then(() => {
-      const btn = document.getElementById('copy-licenses-btn');
-      if (btn) {
-        const originalText = btn.textContent;
-        btn.textContent = 'Copied!';
-        setTimeout(() => {
-          btn.textContent = originalText;
-        }, 2000);
+  void (async () => {
+    if (tabsEnabled) {
+      try {
+        await saveTabState(true);
+      } catch (error) {
+        console.error('[Tabs] Failed to persist tab state before opening new window:', error);
       }
-    })
-    .catch((err) => {
-      console.error('Failed to copy:', err);
-    });
+    }
+    await window.electronAPI.openNewWindow();
+  })().catch((error) => {
+    console.error('[Window] Failed to open new window:', error);
+  });
 }
 
 async function saveSettings() {
@@ -4208,15 +2548,25 @@ function loadBookmarks() {
     bookmarkItem.dataset.path = bookmarkPath;
     const pathParts = bookmarkPath.split(/[/\\]/);
     const name = pathParts[pathParts.length - 1] || bookmarkPath;
+    bookmarkItem.setAttribute('role', 'button');
+    bookmarkItem.tabIndex = 0;
+    bookmarkItem.setAttribute('aria-label', `Open bookmark ${name}`);
 
     bookmarkItem.innerHTML = `
       <span class="bookmark-icon">${twemojiImg(String.fromCodePoint(0x2b50), 'twemoji')}</span>
       <span class="bookmark-label">${escapeHtml(name)}</span>
-      <button class="bookmark-remove" title="Remove bookmark">${twemojiImg(String.fromCodePoint(0x274c), 'twemoji')}</button>
+      <button class="bookmark-remove" type="button" title="Remove bookmark" aria-label="Remove bookmark">${twemojiImg(String.fromCodePoint(0x274c), 'twemoji')}</button>
     `;
 
     bookmarkItem.addEventListener('click', (e) => {
       if (!(e.target as HTMLElement).classList.contains('bookmark-remove')) {
+        navigateTo(bookmarkPath);
+      }
+    });
+
+    bookmarkItem.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
         navigateTo(bookmarkPath);
       }
     });
@@ -4770,6 +3120,18 @@ function updateSortIndicators() {
       }
     }
   });
+
+  document.querySelectorAll<HTMLElement>('.list-header-cell').forEach((cell) => {
+    const sortType = cell.dataset.sort;
+    if (!sortType) return;
+    const ariaSort =
+      currentSettings.sortBy === sortType
+        ? currentSettings.sortOrder === 'asc'
+          ? 'ascending'
+          : 'descending'
+        : 'none';
+    cell.setAttribute('aria-sort', ariaSort);
+  });
 }
 
 async function changeSortMode(sortBy: string) {
@@ -4972,6 +3334,19 @@ function setupListHeader(): void {
     if (sortType) {
       changeSortMode(sortType);
     }
+  });
+
+  listHeader.querySelectorAll<HTMLElement>('.list-header-cell').forEach((cell) => {
+    cell.tabIndex = 0;
+    cell.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        const sortType = cell.dataset.sort;
+        if (sortType) {
+          changeSortMode(sortType);
+        }
+      }
+    });
   });
 
   listHeader.querySelectorAll('.list-header-resize').forEach((handle) => {
@@ -5524,10 +3899,10 @@ function initSyncEventListeners(): void {
     applySettings(newSettings);
     const settingsModal = document.getElementById('settings-modal') as HTMLElement | null;
     if (settingsModal && settingsModal.style.display === 'flex') {
-      const previousSavedState = settingsSavedState;
+      const previousSavedState = getSavedState();
       const currentFormState = captureSettingsFormState();
       const nextSavedState = buildSettingsFormStateFromSettings(newSettings);
-      const mergedState: SettingsFormState = { ...nextSavedState };
+      const mergedState = { ...nextSavedState };
 
       if (previousSavedState) {
         Object.keys(currentFormState).forEach((key) => {
@@ -5537,8 +3912,8 @@ function initSyncEventListeners(): void {
         });
       }
 
-      settingsSavedState = nextSavedState;
-      settingsRedoState = null;
+      setSavedState(nextSavedState);
+      resetRedoState();
       applySettingsFormState(mergedState);
       const themeSelect = document.getElementById('theme-select') as HTMLSelectElement | null;
       updateCustomThemeUI({
@@ -5648,6 +4023,13 @@ function isModalOpen(): boolean {
   const dialogModal = document.getElementById('dialog-modal');
   const licensesModal = document.getElementById('licenses-modal');
   const homeSettingsModal = document.getElementById('home-settings-modal');
+  const propertiesModal = document.getElementById('properties-modal');
+  const extractModal = document.getElementById('extract-modal');
+  const themeEditorModal = document.getElementById('theme-editor-modal');
+  const folderIconModal = document.getElementById('folder-icon-modal');
+  const supportPopupModal = document.getElementById('support-popup-modal');
+  const tourPromptModal = document.getElementById('tour-prompt-modal');
+  const commandPaletteModal = document.getElementById('command-palette-modal');
 
   return !!(
     (settingsModal && settingsModal.style.display === 'flex') ||
@@ -5655,7 +4037,14 @@ function isModalOpen(): boolean {
     (dialogModal && dialogModal.style.display === 'flex') ||
     (licensesModal && licensesModal.style.display === 'flex') ||
     isQuickLookOpen() ||
-    (homeSettingsModal && homeSettingsModal.style.display === 'flex')
+    (homeSettingsModal && homeSettingsModal.style.display === 'flex') ||
+    (propertiesModal && propertiesModal.style.display === 'flex') ||
+    (extractModal && extractModal.style.display === 'flex') ||
+    (themeEditorModal && themeEditorModal.style.display === 'flex') ||
+    (folderIconModal && folderIconModal.style.display === 'flex') ||
+    (supportPopupModal && supportPopupModal.style.display === 'flex') ||
+    (tourPromptModal && tourPromptModal.style.display === 'flex') ||
+    (commandPaletteModal && commandPaletteModal.style.display === 'flex')
   );
 }
 
@@ -5810,7 +4199,7 @@ function runShortcutAction(actionId: string, e: KeyboardEvent): boolean {
 
 function initKeyboardListeners(): void {
   document.addEventListener('keydown', (e) => {
-    if (isShortcutCaptureActive) {
+    if (isShortcutCaptureActive()) {
       return;
     }
     if (e.key === 'Escape') {
@@ -6514,6 +4903,7 @@ function appendNextVirtualizedBatch(): void {
   applyGitIndicatorsToPaths(paths);
   updateCutVisuals();
   updateStatusBar();
+  ensureActiveItem();
 
   if (virtualizedRenderIndex < virtualizedItems.length) {
     ensureVirtualizedSentinel();
@@ -6686,6 +5076,7 @@ function renderFiles(items: FileItem[], searchQuery?: string) {
     } else {
       updateCutVisuals();
       updateStatusBar();
+      ensureActiveItem();
     }
   };
 
@@ -6747,10 +5138,11 @@ function observeThumbnailItem(fileItem: HTMLElement): void {
 function createFileItem(item: FileItem, searchQuery?: string): HTMLElement {
   const fileItem = document.createElement('div');
   fileItem.className = 'file-item';
-  fileItem.tabIndex = 0;
+  fileItem.tabIndex = -1;
   fileItem.dataset.path = item.path;
   fileItem.dataset.isDirectory = String(item.isDirectory);
   fileItem.setAttribute('role', 'option');
+  fileItem.setAttribute('aria-selected', 'false');
 
   let icon: string;
   if (item.isDirectory) {
@@ -7846,6 +6238,8 @@ async function renderDriveColumn() {
       const item = document.createElement('div');
       item.className = 'column-item is-directory';
       item.tabIndex = 0;
+      item.setAttribute('role', 'option');
+      item.setAttribute('aria-selected', 'false');
       item.dataset.path = drive.path;
       item.title = drive.path;
       item.innerHTML = `
@@ -7984,12 +6378,15 @@ async function renderColumn(
         const item = document.createElement('div');
         item.className = 'column-item';
         item.tabIndex = 0;
+        item.setAttribute('role', 'option');
+        item.setAttribute('aria-selected', 'false');
         if (fileItem.isDirectory) item.classList.add('is-directory');
         item.dataset.path = fileItem.path;
 
         const nextColPath = columnPaths[columnIndex + 1];
         if (nextColPath && fileItem.path === nextColPath) {
           item.classList.add('expanded');
+          item.setAttribute('aria-selected', 'true');
         }
 
         const icon = fileItem.isDirectory
@@ -8017,8 +6414,10 @@ async function renderColumn(
 
           pane.querySelectorAll('.column-item').forEach((i) => {
             i.classList.remove('selected');
+            i.setAttribute('aria-selected', 'false');
           });
           item.classList.add('selected');
+          item.setAttribute('aria-selected', 'true');
 
           clearSelection();
           selectedItems.add(fileItem.path);
@@ -8039,8 +6438,12 @@ async function renderColumn(
           e.stopPropagation();
 
           if (!item.classList.contains('selected')) {
-            pane.querySelectorAll('.column-item').forEach((i) => i.classList.remove('selected'));
+            pane.querySelectorAll('.column-item').forEach((i) => {
+              i.classList.remove('selected');
+              i.setAttribute('aria-selected', 'false');
+            });
             item.classList.add('selected');
+            item.setAttribute('aria-selected', 'true');
             clearSelection();
             selectedItems.add(fileItem.path);
           }
@@ -8155,10 +6558,12 @@ async function handleColumnItemClick(
 
   currentPane.querySelectorAll('.column-item').forEach((item) => {
     item.classList.remove('expanded', 'selected');
+    item.setAttribute('aria-selected', 'false');
   });
 
   if (isDirectory) {
     element.classList.add('expanded');
+    element.setAttribute('aria-selected', 'true');
     columnPaths.push(path);
 
     currentPath = path;
@@ -8182,6 +6587,7 @@ async function handleColumnItemClick(
     }, 50);
   } else {
     element.classList.add('selected');
+    element.setAttribute('aria-selected', 'true');
     clearSelection();
     selectedItems.add(path);
 
@@ -8532,6 +6938,8 @@ function showContextMenu(x: number, y: number, item: FileItem) {
       submenu.classList.add('flip-left');
     }
   }
+
+  contextMenuFocusedIndex = navigateContextMenu(contextMenu, 'down', contextMenuFocusedIndex);
 }
 
 let contextMenuFocusedIndex = -1;
@@ -8582,6 +6990,7 @@ function navigateContextMenu(
 
   items[newIndex].classList.add('focused');
   items[newIndex].scrollIntoView({ block: 'nearest' });
+  items[newIndex].focus({ preventScroll: true });
   return newIndex;
 }
 
@@ -8599,6 +7008,7 @@ function activateContextMenuItem(menu: HTMLElement, focusIndex: number): boolean
       ) as NodeListOf<HTMLElement>;
       if (submenuItems.length > 0) {
         submenuItems[0].classList.add('focused');
+        submenuItems[0].focus({ preventScroll: true });
       }
     }
     return false;
@@ -8646,6 +7056,11 @@ function showEmptySpaceContextMenu(x: number, y: number) {
 
   emptySpaceContextMenu.style.left = left + 'px';
   emptySpaceContextMenu.style.top = top + 'px';
+  emptySpaceMenuFocusedIndex = navigateContextMenu(
+    emptySpaceContextMenu,
+    'down',
+    emptySpaceMenuFocusedIndex
+  );
 }
 
 function hideEmptySpaceContextMenu() {
@@ -8809,7 +7224,7 @@ async function handleCompress(format: string = 'zip') {
     name: string;
   }) => {
     if (progress.operationId === operationId) {
-      const operation = activeOperations.get(operationId);
+      const operation = getOperation(operationId);
       if (operation && !operation.aborted) {
         updateOperation(operationId, progress.current, progress.total, progress.name);
       }
@@ -8820,7 +7235,7 @@ async function handleCompress(format: string = 'zip') {
   const cleanupProgressHandler = window.electronAPI.onCompressProgress(progressHandler);
 
   try {
-    const operation = activeOperations.get(operationId);
+    const operation = getOperation(operationId);
     if (operation?.aborted) {
       cleanupProgressHandler();
       removeOperation(operationId);
@@ -8925,6 +7340,7 @@ function showExtractModal(
   updateExtractPreview(baseFolder);
 
   modal.style.display = 'flex';
+  activateModal(modal);
   input.focus();
   input.select();
 }
@@ -8933,6 +7349,7 @@ function hideExtractModal(): void {
   const modal = document.getElementById('extract-modal') as HTMLElement | null;
   if (modal) {
     modal.style.display = 'none';
+    deactivateModal(modal);
   }
   extractModalArchivePath = null;
   extractModalTrackRecent = true;
@@ -9010,7 +7427,7 @@ async function handleExtract(
     name: string;
   }) => {
     if (progress.operationId === operationId) {
-      const operation = activeOperations.get(operationId);
+      const operation = getOperation(operationId);
       if (operation && !operation.aborted) {
         updateOperation(operationId, progress.current, progress.total, progress.name);
       }
@@ -9020,7 +7437,7 @@ async function handleExtract(
   const cleanupProgressHandler = window.electronAPI.onExtractProgress(progressHandler);
 
   try {
-    const operation = activeOperations.get(operationId);
+    const operation = getOperation(operationId);
     if (operation?.aborted) {
       cleanupProgressHandler();
       removeOperation(operationId);
@@ -9195,6 +7612,7 @@ function showPropertiesDialog(props: ItemProperties) {
   const closeModal = () => {
     cleanup();
     modal.style.display = 'none';
+    deactivateModal(modal);
   };
 
   if (props.isDirectory) {
@@ -9543,6 +7961,7 @@ async function downloadAndInstallUpdate() {
   dialogOk.style.display = 'none';
   dialogCancel.style.display = 'none';
   dialogModal.style.display = 'flex';
+  activateModal(dialogModal);
 
   const cleanupProgress = window.electronAPI.onUpdateDownloadProgress((progress) => {
     const percent = progress.percent.toFixed(1);
@@ -9559,6 +7978,7 @@ async function downloadAndInstallUpdate() {
 
     if (!downloadResult.success) {
       dialogModal.style.display = 'none';
+      deactivateModal(dialogModal);
       showDialog(
         'Download Failed',
         `Failed to download update: ${downloadResult.error}`,
@@ -9599,6 +8019,7 @@ async function downloadAndInstallUpdate() {
 
     const shouldInstall = await installPromise;
     dialogModal.style.display = 'none';
+    deactivateModal(dialogModal);
 
     if (shouldInstall) {
       await window.electronAPI.installUpdate();
@@ -9606,6 +8027,7 @@ async function downloadAndInstallUpdate() {
   } catch (error) {
     cleanupProgress();
     dialogModal.style.display = 'none';
+    deactivateModal(dialogModal);
     showDialog(
       'Update Error',
       `An error occurred during the update process: ${getErrorMessage(error)}`,
@@ -9613,19 +8035,6 @@ async function downloadAndInstallUpdate() {
       false
     );
   }
-}
-
-function initSettingsTabs() {
-  const tabs = document.querySelectorAll('.settings-tab');
-  ensureSettingsTabDecorations();
-  tabs.forEach((tab) => {
-    tab.addEventListener('click', () => {
-      const tabId = tab.getAttribute('data-tab');
-      if (tabId) {
-        activateSettingsTab(tabId);
-      }
-    });
-  });
 }
 
 document.getElementById('settings-btn')?.addEventListener('click', showSettingsModal);
@@ -9690,25 +8099,6 @@ extractModal?.addEventListener('click', (e) => {
 document.getElementById('rebuild-index-btn')?.addEventListener('click', rebuildIndex);
 document.getElementById('restart-admin-btn')?.addEventListener('click', restartAsAdmin);
 document.getElementById('check-updates-btn')?.addEventListener('click', checkForUpdates);
-document.getElementById('github-btn')?.addEventListener('click', () => {
-  window.electronAPI.openFile('https://github.com/BurntToasters/IYERIS');
-});
-document.getElementById('rosie-link')?.addEventListener('click', () => {
-  window.electronAPI.openFile('https://rosie.run/support');
-});
-document.getElementById('twemoji-cc-link')?.addEventListener('click', () => {
-  window.electronAPI.openFile('https://github.com/jdecked/twemoji');
-});
-document.getElementById('help-link')?.addEventListener('click', () => {
-  window.electronAPI.openFile('https://help.rosie.run/iyeris/en-us/faq');
-});
-document.getElementById('heart-button')?.addEventListener('click', () => {
-  window.electronAPI.openFile('https://rosie.run/support');
-});
-document.getElementById('status-version')?.addEventListener('click', () => {
-  const version = document.getElementById('status-version')?.textContent || 'v0.1.0';
-  window.electronAPI.openFile(`https://github.com/BurntToasters/IYERIS/releases/tag/${version}`);
-});
 
 document.getElementById('icon-size-slider')?.addEventListener('input', (e) => {
   const value = (e.target as HTMLInputElement).value;
@@ -9718,246 +8108,10 @@ document.getElementById('icon-size-slider')?.addEventListener('input', (e) => {
   }
 });
 
-// Export
-document.getElementById('export-settings-btn')?.addEventListener('click', async () => {
-  try {
-    const settingsJson = JSON.stringify(currentSettings, null, 2);
-    const blob = new Blob([settingsJson], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `iyeris-settings-${new Date().toISOString().split('T')[0]}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    showToast('Settings exported successfully', 'Export', 'success');
-  } catch {
-    showToast('Failed to export settings', 'Export', 'error');
-  }
-});
-
-function validateImportedSettings(imported: unknown): Partial<Settings> {
-  const validated: Partial<Settings> = {};
-  if (!isRecord(imported)) return validated;
-  const data = imported as Record<string, unknown>;
-
-  if (typeof data.reduceTransparency === 'boolean')
-    validated.reduceTransparency = data.reduceTransparency;
-  if (typeof data.showDangerousOptions === 'boolean')
-    validated.showDangerousOptions = data.showDangerousOptions;
-  if (typeof data.showHiddenFiles === 'boolean') validated.showHiddenFiles = data.showHiddenFiles;
-  if (typeof data.enableGitStatus === 'boolean') validated.enableGitStatus = data.enableGitStatus;
-  if (typeof data.gitIncludeUntracked === 'boolean')
-    validated.gitIncludeUntracked = data.gitIncludeUntracked;
-  if (typeof data.showFileHoverCard === 'boolean')
-    validated.showFileHoverCard = data.showFileHoverCard;
-  if (typeof data.showFileCheckboxes === 'boolean')
-    validated.showFileCheckboxes = data.showFileCheckboxes;
-  if (typeof data.enableSearchHistory === 'boolean')
-    validated.enableSearchHistory = data.enableSearchHistory;
-  if (typeof data.enableIndexer === 'boolean') validated.enableIndexer = data.enableIndexer;
-  if (typeof data.minimizeToTray === 'boolean') validated.minimizeToTray = data.minimizeToTray;
-  if (typeof data.startOnLogin === 'boolean') validated.startOnLogin = data.startOnLogin;
-  if (typeof data.autoCheckUpdates === 'boolean')
-    validated.autoCheckUpdates = data.autoCheckUpdates;
-  if (typeof data.showRecentFiles === 'boolean') validated.showRecentFiles = data.showRecentFiles;
-  if (typeof data.showFolderTree === 'boolean') validated.showFolderTree = data.showFolderTree;
-  if (typeof data.enableTabs === 'boolean') validated.enableTabs = data.enableTabs;
-  if (typeof data.globalContentSearch === 'boolean')
-    validated.globalContentSearch = data.globalContentSearch;
-
-  if (typeof data.startupPath === 'string') validated.startupPath = data.startupPath;
-  if (typeof data.maxSearchHistoryItems === 'number' && Number.isFinite(data.maxSearchHistoryItems))
-    validated.maxSearchHistoryItems = Math.max(
-      1,
-      Math.min(20, Math.floor(data.maxSearchHistoryItems))
-    );
-  if (
-    typeof data.maxDirectoryHistoryItems === 'number' &&
-    Number.isFinite(data.maxDirectoryHistoryItems)
-  ) {
-    validated.maxDirectoryHistoryItems = Math.max(
-      1,
-      Math.min(20, Math.floor(data.maxDirectoryHistoryItems))
-    );
-  }
-
-  if (typeof data.theme === 'string' && isOneOf(data.theme, THEME_VALUES)) {
-    validated.theme = data.theme;
-  }
-
-  if (typeof data.sortBy === 'string' && isOneOf(data.sortBy, SORT_BY_VALUES)) {
-    validated.sortBy = data.sortBy;
-  }
-
-  if (typeof data.sortOrder === 'string' && isOneOf(data.sortOrder, SORT_ORDER_VALUES)) {
-    validated.sortOrder = data.sortOrder;
-  }
-
-  if (typeof data.viewMode === 'string' && isOneOf(data.viewMode, VIEW_MODE_VALUES)) {
-    validated.viewMode = data.viewMode;
-  }
-
-  if (Array.isArray(data.bookmarks)) {
-    validated.bookmarks = data.bookmarks.filter((b): b is string => typeof b === 'string');
-  }
-  if (Array.isArray(data.searchHistory)) {
-    validated.searchHistory = data.searchHistory
-      .filter((s): s is string => typeof s === 'string')
-      .slice(0, 100);
-  }
-  if (Array.isArray(data.directoryHistory)) {
-    validated.directoryHistory = data.directoryHistory
-      .filter((d): d is string => typeof d === 'string')
-      .slice(0, 100);
-  }
-
-  if (isRecord(data.listColumnWidths)) {
-    const widths = data.listColumnWidths;
-    const parsed: ListColumnWidths = {};
-    (['name', 'type', 'size', 'modified'] as const).forEach((key) => {
-      const value = widths[key];
-      if (typeof value === 'number' && Number.isFinite(value)) {
-        parsed[key] = value;
-      }
-    });
-    if (Object.keys(parsed).length > 0) {
-      validated.listColumnWidths = parsed;
-    }
-  }
-
-  if (typeof data.sidebarWidth === 'number' && Number.isFinite(data.sidebarWidth)) {
-    validated.sidebarWidth = data.sidebarWidth;
-  }
-
-  if (typeof data.previewPanelWidth === 'number' && Number.isFinite(data.previewPanelWidth)) {
-    validated.previewPanelWidth = data.previewPanelWidth;
-  }
-
-  if (isRecord(data.customTheme)) {
-    const ct = data.customTheme;
-    const isValidHex = (s: unknown): s is string =>
-      typeof s === 'string' && (/^#[0-9a-fA-F]{6}$/.test(s) || /^#[0-9a-fA-F]{3}$/.test(s));
-    const expandHex = (s: string) => {
-      if (/^#[0-9a-fA-F]{3}$/.test(s)) {
-        return '#' + s[1] + s[1] + s[2] + s[2] + s[3] + s[3];
-      }
-      return s;
-    };
-    if (
-      typeof ct.name === 'string' &&
-      isValidHex(ct.accentColor) &&
-      isValidHex(ct.bgPrimary) &&
-      isValidHex(ct.bgSecondary) &&
-      isValidHex(ct.textPrimary) &&
-      isValidHex(ct.textSecondary) &&
-      isValidHex(ct.glassBg) &&
-      isValidHex(ct.glassBorder)
-    ) {
-      validated.customTheme = {
-        name: ct.name,
-        accentColor: expandHex(ct.accentColor),
-        bgPrimary: expandHex(ct.bgPrimary),
-        bgSecondary: expandHex(ct.bgSecondary),
-        textPrimary: expandHex(ct.textPrimary),
-        textSecondary: expandHex(ct.textSecondary),
-        glassBg: expandHex(ct.glassBg),
-        glassBorder: expandHex(ct.glassBorder),
-      };
-    }
-  }
-
-  return validated;
-}
-
-// Import
-document.getElementById('import-settings-btn')?.addEventListener('click', () => {
-  const input = document.createElement('input');
-  input.type = 'file';
-  input.accept = '.json';
-  input.onchange = async (e) => {
-    const file = (e.target as HTMLInputElement).files?.[0];
-    if (!file) return;
-
-    try {
-      const text = await file.text();
-      const parsed = JSON.parse(text);
-
-      const validatedSettings = validateImportedSettings(parsed);
-
-      if (Object.keys(validatedSettings).length === 0) {
-        showToast('No valid settings found in file', 'Import', 'warning');
-        return;
-      }
-
-      currentSettings = { ...currentSettings, ...validatedSettings };
-      await saveSettingsWithTimestamp(currentSettings);
-
-      hideSettingsModal();
-      showSettingsModal();
-      showToast(
-        `Imported ${Object.keys(validatedSettings).length} settings successfully`,
-        'Import',
-        'success'
-      );
-    } catch {
-      showToast('Failed to import settings: Invalid file format', 'Import', 'error');
-    }
-  };
-  input.click();
-});
-
-document.getElementById('clear-search-history-btn')?.addEventListener('click', async () => {
-  if (confirm('Are you sure you want to clear your search history?')) {
-    currentSettings.searchHistory = [];
-    await saveSettingsWithTimestamp(currentSettings);
-    showToast('Search history cleared', 'Data', 'success');
-  }
-});
-
-document.getElementById('clear-bookmarks-btn')?.addEventListener('click', async () => {
-  if (confirm('Are you sure you want to clear all bookmarks?')) {
-    currentSettings.bookmarks = [];
-    await saveSettingsWithTimestamp(currentSettings);
-    loadBookmarks();
-    showToast('Bookmarks cleared', 'Data', 'success');
-  }
-});
-
-document.getElementById('clear-thumbnail-cache-btn')?.addEventListener('click', async () => {
-  if (confirm('Are you sure you want to clear the thumbnail cache?')) {
-    const result = await window.electronAPI.clearThumbnailCache();
-    if (result.success) {
-      thumbnailCache.clear();
-      showToast('Thumbnail cache cleared', 'Data', 'success');
-      updateThumbnailCacheSize();
-    } else {
-      showToast('Failed to clear cache', 'Error', 'error');
-    }
-  }
-});
-
-document.getElementById('open-logs-btn')?.addEventListener('click', async () => {
-  const result = await window.electronAPI.openLogsFolder();
-  if (!result.success) {
-    showToast(result.error || 'Failed to open logs folder', 'Error', 'error');
-  }
-});
-
-document.getElementById('export-diagnostics-btn')?.addEventListener('click', async () => {
-  const result = await window.electronAPI.exportDiagnostics();
-  if (result.success) {
-    const exportPath = result.path ? `\n${result.path}` : '';
-    showToast(`Diagnostics exported${exportPath}`, 'Diagnostics', 'success');
-    return;
-  }
-  if (result.error === 'Export cancelled') {
-    showToast('Diagnostics export cancelled', 'Diagnostics', 'info');
-    return;
-  }
-  showToast(result.error || 'Failed to export diagnostics', 'Diagnostics', 'error');
-});
+initSettingsActions();
+initSupportPopup();
+initLicensesUi();
+initExternalLinks();
 
 async function updateThumbnailCacheSize(): Promise<void> {
   const sizeElement = document.getElementById('thumbnail-cache-size');
@@ -9971,807 +8125,9 @@ async function updateThumbnailCacheSize(): Promise<void> {
   }
 }
 
-document.getElementById('about-github-btn')?.addEventListener('click', () => {
-  window.electronAPI.openFile('https://github.com/BurntToasters/IYERIS');
-});
-document.getElementById('about-support-btn')?.addEventListener('click', () => {
-  window.electronAPI.openFile('https://rosie.run/support');
-});
-document.getElementById('about-help-btn')?.addEventListener('click', () => {
-  window.electronAPI.openFile('https://help.rosie.run/iyeris/en-us/faq');
-});
-document.getElementById('about-licenses-btn')?.addEventListener('click', () => {
-  showLicensesModal();
-});
-document.getElementById('about-shortcuts-btn')?.addEventListener('click', () => {
-  showShortcutsModal();
-});
-document.getElementById('about-rosie-link')?.addEventListener('click', (e) => {
-  e.preventDefault();
-  window.electronAPI.openFile('https://rosie.run');
-});
-document.getElementById('about-twemoji-link')?.addEventListener('click', (e) => {
-  e.preventDefault();
-  window.electronAPI.openFile('https://github.com/jdecked/twemoji');
-});
-
-type SettingsFormState = Record<string, string | boolean>;
-let settingsSavedState: SettingsFormState | null = null;
-let settingsRedoState: SettingsFormState | null = null;
-let suppressSettingsTracking = false;
-let settingsSearchTerm = '';
-let settingsUiInitialized = false;
-
-const SETTINGS_INPUT_KEYS: Record<string, keyof Settings> = {
-  'system-theme-toggle': 'useSystemTheme',
-  'theme-select': 'theme',
-  'themed-icons-toggle': 'themedIcons',
-  'minimize-to-tray-toggle': 'minimizeToTray',
-  'show-hidden-files-toggle': 'showHiddenFiles',
-  'enable-git-status-toggle': 'enableGitStatus',
-  'git-include-untracked-toggle': 'gitIncludeUntracked',
-  'show-file-hover-card-toggle': 'showFileHoverCard',
-  'show-file-checkboxes-toggle': 'showFileCheckboxes',
-  'sort-by-select': 'sortBy',
-  'sort-order-select': 'sortOrder',
-  'enable-search-history-toggle': 'enableSearchHistory',
-  'max-search-history-input': 'maxSearchHistoryItems',
-  'max-directory-history-input': 'maxDirectoryHistoryItems',
-  'show-recent-files-toggle': 'showRecentFiles',
-  'show-folder-tree-toggle': 'showFolderTree',
-  'enable-tabs-toggle': 'enableTabs',
-  'enable-syntax-highlighting-toggle': 'enableSyntaxHighlighting',
-  'auto-play-videos-toggle': 'autoPlayVideos',
-  'preview-panel-position-select': 'previewPanelPosition',
-  'max-preview-size-input': 'maxPreviewSizeMB',
-  'grid-columns-select': 'gridColumns',
-  'icon-size-slider': 'iconSize',
-  'compact-file-info-toggle': 'compactFileInfo',
-  'show-file-extensions-toggle': 'showFileExtensions',
-  'reduce-motion-toggle': 'reduceMotion',
-  'high-contrast-toggle': 'highContrast',
-  'large-text-toggle': 'largeText',
-  'use-system-font-size-toggle': 'useSystemFontSize',
-  'ui-density-select': 'uiDensity',
-  'bold-text-toggle': 'boldText',
-  'visible-focus-toggle': 'visibleFocus',
-  'reduce-transparency-toggle': 'reduceTransparency',
-  'liquid-glass-toggle': 'liquidGlassMode',
-  'start-on-login-toggle': 'startOnLogin',
-  'startup-path-input': 'startupPath',
-  'enable-indexer-toggle': 'enableIndexer',
-  'global-content-search-toggle': 'globalContentSearch',
-  'global-clipboard-toggle': 'globalClipboard',
-  'auto-check-updates-toggle': 'autoCheckUpdates',
-  'update-channel-select': 'updateChannel',
-  'disable-hw-accel-toggle': 'disableHardwareAcceleration',
-  'confirm-file-operations-toggle': 'confirmFileOperations',
-  'file-conflict-behavior-select': 'fileConflictBehavior',
-  'max-thumbnail-size-input': 'maxThumbnailSizeMB',
-  'thumbnail-quality-select': 'thumbnailQuality',
-  'dangerous-options-toggle': 'showDangerousOptions',
-};
-
-function captureSettingsFormState(): SettingsFormState {
-  const state: SettingsFormState = {};
-  const settingsModal = document.getElementById('settings-modal');
-  if (!settingsModal) return state;
-
-  settingsModal.querySelectorAll('input, select, textarea').forEach((element) => {
-    const input = element as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
-    if (!input.id) return;
-    if (input.id === 'settings-search') return;
-    if (input.id.startsWith('quick-') || input.dataset.syncTarget) return;
-    if (input.closest('.settings-quick-actions')) return;
-    if (input instanceof HTMLInputElement && input.type === 'checkbox') {
-      state[input.id] = input.checked;
-    } else {
-      state[input.id] = input.value;
-    }
-  });
-
-  return state;
-}
-
-function applySettingsFormState(state: SettingsFormState): void {
-  const settingsModal = document.getElementById('settings-modal');
-  if (!settingsModal) return;
-
-  suppressSettingsTracking = true;
-  settingsModal.querySelectorAll('input, select, textarea').forEach((element) => {
-    const input = element as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
-    if (!input.id || !(input.id in state)) return;
-    if (input.id === 'settings-search') return;
-    if (input.id.startsWith('quick-') || input.dataset.syncTarget) return;
-    if (input.closest('.settings-quick-actions')) return;
-    const value = state[input.id];
-    if (input instanceof HTMLInputElement && input.type === 'checkbox') {
-      input.checked = Boolean(value);
-    } else {
-      input.value = String(value ?? '');
-    }
-  });
-
-  const iconSizeSlider = document.getElementById('icon-size-slider') as HTMLInputElement | null;
-  const iconSizeValue = document.getElementById('icon-size-value');
-  if (iconSizeSlider && iconSizeValue) {
-    iconSizeValue.textContent = iconSizeSlider.value;
-  }
-
-  const dangerousOptionsToggle = document.getElementById(
-    'dangerous-options-toggle'
-  ) as HTMLInputElement | null;
-  if (dangerousOptionsToggle) {
-    updateDangerousOptionsVisibility(dangerousOptionsToggle.checked);
-  }
-
-  syncQuickActionsFromMain();
-  updateSettingsCardSummaries();
-  suppressSettingsTracking = false;
-  updateSettingsDirtyState();
-}
-
-function buildSettingsFormStateFromSettings(settings: Settings): SettingsFormState {
-  const state: SettingsFormState = {};
-  Object.entries(SETTINGS_INPUT_KEYS).forEach(([inputId, key]) => {
-    const input = document.getElementById(inputId) as
-      | HTMLInputElement
-      | HTMLSelectElement
-      | HTMLTextAreaElement
-      | null;
-    if (!input) return;
-    const value = settings[key];
-    if (input instanceof HTMLInputElement && input.type === 'checkbox') {
-      state[inputId] = Boolean(value);
-    } else {
-      state[inputId] = String(value ?? '');
-    }
-  });
-  return state;
-}
-
-function statesEqual(a: SettingsFormState, b: SettingsFormState): boolean {
-  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
-  for (const key of keys) {
-    if (a[key] !== b[key]) return false;
-  }
-  return true;
-}
-
-function updateSettingsDirtyState(): void {
-  if (!settingsSavedState) return;
-  const current = captureSettingsFormState();
-  const isDirty = !statesEqual(current, settingsSavedState);
-
-  const unsavedBar = document.getElementById('settings-unsaved-bar') as HTMLElement | null;
-  if (unsavedBar) {
-    unsavedBar.hidden = !isDirty;
-  }
-
-  const undoBtn = document.getElementById('settings-undo-btn') as HTMLButtonElement | null;
-  const redoBtn = document.getElementById('settings-redo-btn') as HTMLButtonElement | null;
-  if (undoBtn) undoBtn.disabled = !isDirty;
-  if (redoBtn) redoBtn.disabled = !settingsRedoState;
-
-  document.querySelectorAll('.settings-section').forEach((section) => {
-    if (section.id === 'tab-about') return;
-    const inputs = section.querySelectorAll('input, select, textarea');
-    let sectionDirty = false;
-    inputs.forEach((element) => {
-      const input = element as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
-      if (!input.id) return;
-      if (current[input.id] !== settingsSavedState?.[input.id]) {
-        sectionDirty = true;
-      }
-    });
-    const tabId = section.id.replace('tab-', '');
-    const tab = document.querySelector(`.settings-tab[data-tab="${tabId}"]`);
-    tab?.classList.toggle('dirty', sectionDirty);
-  });
-}
-
-function markSettingsChanged() {
-  if (suppressSettingsTracking) return;
-  settingsRedoState = null;
-  updateSettingsDirtyState();
-  updateSettingsCardSummaries();
-}
-
-function clearSettingsChanged() {
-  settingsSavedState = captureSettingsFormState();
-  settingsRedoState = null;
-  updateSettingsDirtyState();
-}
-
-let settingsChangeTrackingInitialized = false;
-
-function initSettingsChangeTracking() {
-  if (settingsChangeTrackingInitialized) return;
-
-  const settingsModal = document.getElementById('settings-modal');
-  if (!settingsModal) return;
-
-  settingsModal.querySelectorAll('input, select').forEach((input) => {
-    input.addEventListener('change', markSettingsChanged);
-    if (input.tagName === 'INPUT' && (input as HTMLInputElement).type === 'text') {
-      input.addEventListener('input', markSettingsChanged);
-    }
-  });
-
-  settingsChangeTrackingInitialized = true;
-}
-
-function ensureSettingsTabDecorations(): void {
-  document.querySelectorAll('.settings-tab').forEach((tab) => {
-    if (!tab.querySelector('.settings-tab-label')) {
-      const label = document.createElement('span');
-      label.className = 'settings-tab-label';
-      const textNodes = Array.from(tab.childNodes).filter(
-        (node) => node.nodeType === Node.TEXT_NODE
-      );
-      textNodes.forEach((node) => label.appendChild(node));
-      label.textContent = label.textContent?.trim() || '';
-      const icon = tab.querySelector('img, svg');
-      if (icon && icon.nextSibling) {
-        tab.insertBefore(label, icon.nextSibling);
-      } else {
-        tab.appendChild(label);
-      }
-    }
-
-    if (!tab.querySelector('.settings-tab-count')) {
-      const count = document.createElement('span');
-      count.className = 'settings-tab-count';
-      count.textContent = '0';
-      tab.appendChild(count);
-    }
-
-    if (!tab.querySelector('.settings-tab-dot')) {
-      const dot = document.createElement('span');
-      dot.className = 'settings-tab-dot';
-      tab.appendChild(dot);
-    }
-  });
-}
-
-function activateSettingsTab(tabId: string, skipSearchUpdate = false): void {
-  const tabs = document.querySelectorAll('.settings-tab');
-  const sections = document.querySelectorAll('.settings-section');
-
-  tabs.forEach((t) => t.classList.remove('active'));
-  sections.forEach((s) => s.classList.remove('active'));
-
-  const tab = document.querySelector(`.settings-tab[data-tab="${tabId}"]`);
-  const section = document.getElementById(`tab-${tabId}`);
-  tab?.classList.add('active');
-  section?.classList.add('active');
-
-  if (!settingsSearchTerm) {
-    sections.forEach((s) => {
-      (s as HTMLElement).style.display = s === section ? 'block' : 'none';
-    });
-  }
-
-  if (!skipSearchUpdate && settingsSearchTerm) {
-    applySettingsSearch(settingsSearchTerm);
-  }
-}
-
-function updateSettingsCardSummaries(): void {
-  document.querySelectorAll('.settings-card').forEach((card) => {
-    const summary = card.querySelector('.settings-card-summary') as HTMLElement | null;
-    if (!summary) return;
-
-    const parts: string[] = [];
-    const items = card.querySelectorAll('.setting-item, .setting-item-toggle');
-    items.forEach((item) => {
-      if (parts.length >= 2) return;
-      const label = item.querySelector('label')?.textContent?.trim();
-      if (!label) return;
-      const input = item.querySelector('input, select') as
-        | HTMLInputElement
-        | HTMLSelectElement
-        | null;
-      if (!input) return;
-      let value = '';
-      if (input instanceof HTMLInputElement && input.type === 'checkbox') {
-        value = input.checked ? 'On' : 'Off';
-      } else if (input instanceof HTMLSelectElement) {
-        value = input.selectedOptions[0]?.textContent?.trim() || input.value;
-      } else {
-        value = input.value ? input.value : 'Not set';
-      }
-      parts.push(`${label}: ${value}`);
-    });
-
-    summary.textContent = parts.join(' • ');
-    if (parts.length === 0) {
-      summary.textContent = '';
-    }
-  });
-}
-
-function initSettingsCardUI(): void {
-  document.querySelectorAll('.settings-section:not(#tab-about) .settings-card').forEach((card) => {
-    if (card.querySelector('.settings-card-body')) return;
-
-    const header = card.querySelector('.settings-card-header') as HTMLElement | null;
-    if (!header) return;
-
-    if (!header.querySelector('.settings-card-title')) {
-      const title = document.createElement('span');
-      title.className = 'settings-card-title';
-      const textNodes = Array.from(header.childNodes).filter(
-        (node) => node.nodeType === Node.TEXT_NODE
-      );
-      textNodes.forEach((node) => title.appendChild(node));
-      title.textContent = title.textContent?.trim() || '';
-      if (title.textContent) {
-        header.insertBefore(title, header.firstChild);
-      }
-    }
-
-    const summary = document.createElement('span');
-    summary.className = 'settings-card-summary';
-
-    const toggle = document.createElement('button');
-    toggle.className = 'settings-card-toggle';
-    toggle.type = 'button';
-    toggle.setAttribute('aria-expanded', 'true');
-    toggle.innerHTML = '<span>▾</span>';
-    toggle.addEventListener('click', () => {
-      card.classList.toggle('collapsed');
-      toggle.setAttribute('aria-expanded', String(!card.classList.contains('collapsed')));
-    });
-
-    const actions = document.createElement('div');
-    actions.className = 'settings-card-actions';
-    actions.appendChild(summary);
-    actions.appendChild(toggle);
-    header.appendChild(actions);
-
-    const body = document.createElement('div');
-    body.className = 'settings-card-body';
-    let node = header.nextSibling;
-    while (node) {
-      const next = node.nextSibling;
-      body.appendChild(node);
-      node = next;
-    }
-    card.appendChild(body);
-  });
-
-  updateSettingsCardSummaries();
-}
-
-function applySettingsSearch(term: string): void {
-  settingsSearchTerm = term.toLowerCase().trim();
-  const wrapper = document.querySelector('.settings-search-wrapper') as HTMLElement | null;
-  wrapper?.classList.toggle('has-value', settingsSearchTerm.length > 0);
-
-  const sections = document.querySelectorAll('.settings-section');
-  const tabMatchCount = new Map<string, number>();
-  let totalMatches = 0;
-
-  sections.forEach((section) => {
-    section.classList.remove('search-no-results');
-    const cards = section.querySelectorAll('.settings-card');
-    let sectionMatches = 0;
-
-    cards.forEach((card) => {
-      const items = card.querySelectorAll('.setting-item, .setting-item-toggle');
-      const cardHeaderText = (
-        card.querySelector('.settings-card-header')?.textContent || ''
-      ).toLowerCase();
-      let cardHasMatch = false;
-
-      if (!settingsSearchTerm) {
-        items.forEach((item) => {
-          item.classList.remove('search-hidden', 'search-highlight');
-        });
-        card.classList.remove('search-hidden');
-        return;
-      }
-
-      if (items.length === 0) {
-        const cardText = (card.textContent || '').toLowerCase();
-        cardHasMatch = cardText.includes(settingsSearchTerm);
-        if (cardHasMatch) {
-          sectionMatches += 1;
-          totalMatches += 1;
-        }
-      } else {
-        items.forEach((item) => {
-          const searchable = item.getAttribute('data-searchable') || '';
-          const text = item.textContent || '';
-          const haystack = `${searchable} ${text} ${cardHeaderText}`.toLowerCase();
-          const matches = haystack.includes(settingsSearchTerm);
-          item.classList.toggle('search-hidden', !matches);
-          item.classList.toggle('search-highlight', matches);
-          if (matches) {
-            cardHasMatch = true;
-            sectionMatches += 1;
-            totalMatches += 1;
-          }
-        });
-      }
-
-      card.classList.toggle('search-hidden', !cardHasMatch);
-      if (settingsSearchTerm && cardHasMatch) {
-        if (card.classList.contains('collapsed')) {
-          card.classList.remove('collapsed');
-          const toggle = card.querySelector('.settings-card-toggle');
-          toggle?.setAttribute('aria-expanded', 'true');
-        }
-      }
-    });
-
-    const sectionId = section.id.replace('tab-', '');
-    tabMatchCount.set(sectionId, sectionMatches);
-
-    if (!settingsSearchTerm) {
-      const isActive = section.classList.contains('active');
-      (section as HTMLElement).style.display = isActive ? 'block' : 'none';
-    } else {
-      (section as HTMLElement).style.display = sectionMatches > 0 ? 'block' : 'none';
-    }
-  });
-
-  const countButton = document.getElementById('settings-search-count') as HTMLButtonElement | null;
-  if (countButton) {
-    countButton.textContent = String(totalMatches);
-    countButton.disabled = totalMatches === 0;
-  }
-
-  document.querySelectorAll('.settings-tab').forEach((tab) => {
-    const tabId = tab.getAttribute('data-tab') || '';
-    const count = tabMatchCount.get(tabId) || 0;
-    const countEl = tab.querySelector('.settings-tab-count');
-    if (countEl) countEl.textContent = String(count);
-    tab.classList.toggle('has-matches', settingsSearchTerm.length > 0 && count > 0);
-    tab.classList.toggle('search-hidden', settingsSearchTerm.length > 0 && count === 0);
-  });
-
-  if (settingsSearchTerm && totalMatches === 0) {
-    const activeSection = document.querySelector('.settings-section.active') as HTMLElement | null;
-    sections.forEach((section) => {
-      const isActive = section === activeSection;
-      (section as HTMLElement).style.display = isActive ? 'block' : 'none';
-      section.classList.toggle('search-no-results', isActive);
-    });
-  }
-
-  if (settingsSearchTerm && totalMatches > 0) {
-    const activeTab = document.querySelector('.settings-tab.active');
-    if (activeTab?.classList.contains('search-hidden')) {
-      const firstTab = document.querySelector('.settings-tab:not(.search-hidden)');
-      const firstId = firstTab?.getAttribute('data-tab');
-      if (firstId) activateSettingsTab(firstId, true);
-    }
-  }
-}
-
-function jumpToFirstSettingMatch(): void {
-  const firstMatch = document.querySelector(
-    '.setting-item.search-highlight:not(.search-hidden)'
-  ) as HTMLElement | null;
-  if (!firstMatch) return;
-
-  const section = firstMatch.closest('.settings-section') as HTMLElement | null;
-  if (section) {
-    const sectionId = section.id.replace('tab-', '');
-    activateSettingsTab(sectionId, true);
-  }
-
-  const card = firstMatch.closest('.settings-card') as HTMLElement | null;
-  if (card && card.classList.contains('collapsed')) {
-    card.classList.remove('collapsed');
-    const toggle = card.querySelector('.settings-card-toggle');
-    toggle?.setAttribute('aria-expanded', 'true');
-  }
-
-  firstMatch.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  firstMatch.classList.add('search-jump');
-  setTimeout(() => firstMatch.classList.remove('search-jump'), 1200);
-}
-
-function initSettingsSearch(): void {
-  const searchInput = document.getElementById('settings-search') as HTMLInputElement | null;
-  const clearBtn = document.getElementById('settings-search-clear') as HTMLButtonElement | null;
-  const countBtn = document.getElementById('settings-search-count') as HTMLButtonElement | null;
-  if (!searchInput) return;
-
-  searchInput.addEventListener('input', () => {
-    applySettingsSearch(searchInput.value);
-  });
-
-  searchInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      jumpToFirstSettingMatch();
-    } else if (e.key === 'Escape') {
-      searchInput.value = '';
-      applySettingsSearch('');
-    }
-  });
-
-  clearBtn?.addEventListener('click', () => {
-    searchInput.value = '';
-    applySettingsSearch('');
-    searchInput.focus();
-  });
-
-  countBtn?.addEventListener('click', () => {
-    if (settingsSearchTerm) {
-      jumpToFirstSettingMatch();
-    }
-  });
-
-  window.addEventListener('keydown', (e) => {
-    const isSearchShortcut = (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f' && !e.shiftKey;
-    if (!isSearchShortcut) return;
-    const settingsModal = document.getElementById('settings-modal') as HTMLElement | null;
-    if (settingsModal?.style.display === 'flex') {
-      e.preventDefault();
-      searchInput.focus();
-      searchInput.select();
-    }
-  });
-}
-
-function syncQuickActionsFromMain(): void {
-  document.querySelectorAll<HTMLInputElement>('[data-sync-target]').forEach((quickToggle) => {
-    const targetId = quickToggle.dataset.syncTarget;
-    if (!targetId) return;
-    const target = document.getElementById(targetId) as HTMLInputElement | null;
-    if (target && target.type === 'checkbox') {
-      quickToggle.checked = target.checked;
-    }
-  });
-}
-
-function initSettingsQuickActions(): void {
-  document.querySelectorAll<HTMLInputElement>('[data-sync-target]').forEach((quickToggle) => {
-    const targetId = quickToggle.dataset.syncTarget;
-    if (!targetId) return;
-    const target = document.getElementById(targetId) as HTMLInputElement | null;
-    if (!target) return;
-
-    quickToggle.addEventListener('change', () => {
-      if (target.type === 'checkbox') {
-        target.checked = quickToggle.checked;
-        target.dispatchEvent(new Event('change', { bubbles: true }));
-      }
-    });
-
-    target.addEventListener('change', () => {
-      if (target.type === 'checkbox') {
-        quickToggle.checked = target.checked;
-      }
-    });
-  });
-
-  syncQuickActionsFromMain();
-}
-
-function resetSettingsSection(sectionId: string): void {
-  const section = document.getElementById(`tab-${sectionId}`);
-  if (!section) return;
-  const defaults = createDefaultSettings();
-
-  section.querySelectorAll('input, select, textarea').forEach((element) => {
-    const input = element as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
-    if (!input.id) return;
-    const key = SETTINGS_INPUT_KEYS[input.id];
-    if (!key) return;
-    const value = defaults[key];
-    if (input instanceof HTMLInputElement && input.type === 'checkbox') {
-      input.checked = Boolean(value);
-    } else {
-      input.value = String(value ?? '');
-    }
-  });
-
-  const iconSizeSlider = document.getElementById('icon-size-slider') as HTMLInputElement | null;
-  const iconSizeValue = document.getElementById('icon-size-value');
-  if (iconSizeSlider && iconSizeValue) {
-    iconSizeValue.textContent = iconSizeSlider.value;
-  }
-
-  const dangerousOptionsToggle = document.getElementById(
-    'dangerous-options-toggle'
-  ) as HTMLInputElement | null;
-  if (dangerousOptionsToggle) {
-    updateDangerousOptionsVisibility(dangerousOptionsToggle.checked);
-  }
-
-  syncQuickActionsFromMain();
-  markSettingsChanged();
-}
-
-function initSettingsSectionResets(): void {
-  document.querySelectorAll<HTMLButtonElement>('.settings-section-reset').forEach((button) => {
-    button.addEventListener('click', () => {
-      const sectionId = button.dataset.section;
-      if (sectionId) resetSettingsSection(sectionId);
-    });
-
-    const sectionId = button.dataset.section;
-    if (sectionId) {
-      const section = document.getElementById(`tab-${sectionId}`);
-      const hasInputs = Array.from(section?.querySelectorAll('input, select, textarea') || []).some(
-        (element) => {
-          const input = element as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
-          return Boolean(SETTINGS_INPUT_KEYS[input.id]);
-        }
-      );
-      if (!hasInputs) {
-        button.style.display = 'none';
-      }
-    }
-  });
-}
-
-function initSettingsWhyToggles(): void {
-  document.querySelectorAll<HTMLButtonElement>('.setting-why-toggle').forEach((button) => {
-    button.addEventListener('click', () => {
-      const targetId = button.dataset.whyTarget;
-      if (!targetId) return;
-      const target = document.getElementById(targetId);
-      if (!target) return;
-      const willShow = target.hasAttribute('hidden');
-      if (willShow) {
-        target.removeAttribute('hidden');
-      } else {
-        target.setAttribute('hidden', 'true');
-      }
-      button.setAttribute('aria-expanded', String(willShow));
-    });
-  });
-
-  document.querySelectorAll<HTMLButtonElement>('[data-learn-more]').forEach((button) => {
-    button.addEventListener('click', () => {
-      const topic = button.dataset.learnMore;
-      if (!topic) return;
-      const urlMap: Record<string, string> = {
-        indexer: 'https://help.rosie.run/iyeris/en-us/faq',
-        clipboard: 'https://help.rosie.run/iyeris/en-us/faq',
-        graphics: 'https://help.rosie.run/iyeris/en-us/faq',
-      };
-      const url = urlMap[topic] || 'https://help.rosie.run/iyeris/en-us/faq';
-      window.electronAPI.openFile(url);
-    });
-  });
-}
-
-function initSettingsPreview(): void {
-  const previewToggle = document.getElementById('theme-preview-toggle');
-  const previewPanel = document.getElementById('settings-preview-panel');
-  const previewClose = document.getElementById('settings-preview-close');
-  if (!previewPanel) return;
-
-  const togglePreview = () => {
-    if (previewPanel.hasAttribute('hidden')) {
-      previewPanel.removeAttribute('hidden');
-    } else {
-      previewPanel.setAttribute('hidden', 'true');
-    }
-  };
-
-  previewToggle?.addEventListener('click', togglePreview);
-  previewClose?.addEventListener('click', () => previewPanel.setAttribute('hidden', 'true'));
-}
-
-function initThemeSelectionBehavior(): void {
-  const themeSelect = document.getElementById('theme-select') as HTMLSelectElement | null;
-  const systemThemeToggle = document.getElementById(
-    'system-theme-toggle'
-  ) as HTMLInputElement | null;
-  if (!themeSelect || !systemThemeToggle) return;
-
-  themeSelect.addEventListener('change', () => {
-    if (systemThemeToggle.checked) {
-      systemThemeToggle.checked = false;
-      systemThemeToggle.dispatchEvent(new Event('change', { bubbles: true }));
-    }
-  });
-
-  systemThemeToggle.addEventListener('change', async () => {
-    if (!systemThemeToggle.checked) return;
-    try {
-      const { isDarkMode } = await window.electronAPI.getSystemAccentColor();
-      const systemTheme = isDarkMode ? 'default' : 'light';
-      themeSelect.value = systemTheme;
-    } catch (error) {
-      console.error('[Settings] Failed to read system theme:', error);
-    }
-  });
-}
-
-function initSettingsUndoRedo(): void {
-  document.getElementById('settings-save-inline-btn')?.addEventListener('click', () => {
-    void saveSettings();
-  });
-
-  document.getElementById('settings-undo-btn')?.addEventListener('click', () => {
-    if (!settingsSavedState) return;
-    const current = captureSettingsFormState();
-    if (statesEqual(current, settingsSavedState)) return;
-    settingsRedoState = current;
-    applySettingsFormState(settingsSavedState);
-  });
-
-  document.getElementById('settings-redo-btn')?.addEventListener('click', () => {
-    if (!settingsRedoState) return;
-    const redoState = settingsRedoState;
-    settingsRedoState = null;
-    applySettingsFormState(redoState);
-  });
-}
-
-function initSettingsUi(): void {
-  if (settingsUiInitialized) return;
-  settingsUiInitialized = true;
-  ensureSettingsTabDecorations();
-  initSettingsCardUI();
-  initSettingsSearch();
-  initSettingsQuickActions();
-  initSettingsSectionResets();
-  initSettingsWhyToggles();
-  initSettingsPreview();
-  initThemeSelectionBehavior();
-  initSettingsUndoRedo();
-}
-
-// Support Window
-function showSupportPopup() {
-  const modal = document.getElementById('support-popup-modal');
-  if (modal) {
-    modal.style.display = 'flex';
-  }
-}
-
-function hideSupportPopup() {
-  const modal = document.getElementById('support-popup-modal');
-  if (modal) {
-    modal.style.display = 'none';
-  }
-}
-
-document.getElementById('support-popup-dismiss')?.addEventListener('click', async () => {
-  currentSettings.supportPopupDismissed = true;
-  await saveSettingsWithTimestamp(currentSettings);
-  hideSupportPopup();
-});
-
-document.getElementById('support-popup-yes')?.addEventListener('click', () => {
-  window.electronAPI.openFile('https://rosie.run/support');
-  hideSupportPopup();
-});
-
 document.getElementById('zoom-in-btn')?.addEventListener('click', zoomIn);
 document.getElementById('zoom-out-btn')?.addEventListener('click', zoomOut);
 document.getElementById('zoom-reset-btn')?.addEventListener('click', zoomReset);
-
-document.getElementById('licenses-btn')?.addEventListener('click', showLicensesModal);
-document.getElementById('licenses-close')?.addEventListener('click', hideLicensesModal);
-document.getElementById('close-licenses-btn')?.addEventListener('click', hideLicensesModal);
-document.getElementById('copy-licenses-btn')?.addEventListener('click', copyLicensesText);
-const licensesContent = document.getElementById('licenses-content');
-if (licensesContent) {
-  licensesContent.addEventListener('click', (event) => {
-    const target = event.target as HTMLElement | null;
-    const link = target?.closest('a.license-link') as HTMLAnchorElement | null;
-    if (!link) return;
-
-    const url = link.dataset.url || link.getAttribute('href');
-    const safeUrl = sanitizeExternalUrl(url);
-    if (!safeUrl) return;
-
-    event.preventDefault();
-    window.electronAPI.openFile(safeUrl);
-  });
-}
 
 document.getElementById('shortcuts-close')?.addEventListener('click', hideShortcutsModal);
 document.getElementById('close-shortcuts-btn')?.addEventListener('click', hideShortcutsModal);
@@ -10794,15 +8150,6 @@ if (settingsModal) {
   settingsModal.addEventListener('click', (e) => {
     if ((e.target as HTMLElement).id === 'settings-modal') {
       hideSettingsModal();
-    }
-  });
-}
-
-const licensesModal = document.getElementById('licenses-modal');
-if (licensesModal) {
-  licensesModal.addEventListener('click', (e) => {
-    if ((e.target as HTMLElement).id === 'licenses-modal') {
-      hideLicensesModal();
     }
   });
 }
@@ -10994,14 +8341,8 @@ window.addEventListener('beforeunload', () => {
     clearTimeout(settingsSaveTimeout);
     settingsSaveTimeout = null;
   }
-  if (saveTabStateTimeout) {
-    clearTimeout(saveTabStateTimeout);
-    saveTabStateTimeout = null;
-  }
-  if (renderOperationsTimeout) {
-    clearTimeout(renderOperationsTimeout);
-    renderOperationsTimeout = null;
-  }
+  cleanupTabs();
+  cleanupArchiveOperations();
 
   filePathMap.clear();
   fileElementMap.clear();
