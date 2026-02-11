@@ -830,7 +830,6 @@
 .settings-select:focus {
   border-color: var(--accent-color);
   box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.2);
-  transform: translateY(-1px);
 }
 
 .settings-select option {
@@ -862,7 +861,6 @@
   border-color: var(--accent-color);
   background: var(--bg-secondary);
   box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.2);
-  transform: translateY(-1px);
 }
 
 .settings-input::placeholder {

@@ -384,6 +384,7 @@ export interface ElectronAPI {
   getItemProperties: (itemPath: string) => Promise<PropertiesResponse>;
   getSettings: () => Promise<SettingsResponse>;
   saveSettings: (settings: Settings) => Promise<ApiResponse>;
+  saveSettingsSync: (settings: Settings) => ApiResponse;
   resetSettings: () => Promise<ApiResponse>;
   relaunchApp: () => Promise<void>;
   getSettingsPath: () => Promise<string>;

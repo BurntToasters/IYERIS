@@ -75,6 +75,7 @@ function showTooltip(text: string, anchor: HTMLElement): void {
     tooltipElement.className = 'ui-tooltip top';
   }
 
+  if (top < 8) top = 8;
   if (left < 8) left = 8;
   if (left + tooltipRect.width > window.innerWidth - 8) {
     left = window.innerWidth - tooltipRect.width - 8;

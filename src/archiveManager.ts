@@ -298,7 +298,7 @@ export function setupArchiveHandlers(): void {
         const mainWindow = getMainWindow();
 
         if (format === 'tar.gz') {
-          return new Promise(async (resolve, _reject) => {
+          return new Promise((resolve) => {
             const Seven = get7zipModule();
             const sevenZipPath = get7zipPath();
             logger.info('[Compress] Using 7zip at:', sevenZipPath);
@@ -343,7 +343,7 @@ export function setupArchiveHandlers(): void {
               }
             });
 
-            tarProcess.on('end', async () => {
+            tarProcess.on('end', () => {
               logger.info('[Compress] Tar created, now compressing with gzip...');
               const gzipProcess = Seven.add(outputPath, [tarPath], {
                 $bin: sevenZipPath,
@@ -373,14 +373,12 @@ export function setupArchiveHandlers(): void {
                 }
               });
 
-              gzipProcess.on('end', async () => {
+              gzipProcess.on('end', () => {
                 logger.info('[Compress] tar.gz compression completed');
 
-                try {
-                  await fs.unlink(tarPath);
-                } catch (err) {
+                fs.unlink(tarPath).catch((err) => {
                   logger.error('[Compress] Failed to delete intermediate tar:', err);
-                }
+                });
 
                 if (operationId) {
                   activeArchiveProcesses.delete(operationId);
@@ -388,19 +386,11 @@ export function setupArchiveHandlers(): void {
                 resolve({ success: true });
               });
 
-              gzipProcess.on('error', async (error: { message?: string; level?: string }) => {
+              gzipProcess.on('error', (error: { message?: string; level?: string }) => {
                 logger.error('[Compress] Gzip error:', error);
 
-                try {
-                  await fs.unlink(tarPath);
-                } catch (error) {
-                  ignoreError(error);
-                }
-                try {
-                  await fs.unlink(outputPath);
-                } catch (error) {
-                  ignoreError(error);
-                }
+                fs.unlink(tarPath).catch(ignoreError);
+                fs.unlink(outputPath).catch(ignoreError);
 
                 if (operationId) {
                   activeArchiveProcesses.delete(operationId);
@@ -418,14 +408,10 @@ export function setupArchiveHandlers(): void {
               });
             });
 
-            tarProcess.on('error', async (error: { message?: string; level?: string }) => {
+            tarProcess.on('error', (error: { message?: string; level?: string }) => {
               logger.error('[Compress] Tar error:', error);
 
-              try {
-                await fs.unlink(tarPath);
-              } catch (error) {
-                ignoreError(error);
-              }
+              fs.unlink(tarPath).catch(ignoreError);
 
               if (operationId) {
                 activeArchiveProcesses.delete(operationId);
@@ -448,25 +434,17 @@ export function setupArchiveHandlers(): void {
                   });
                 }
 
-                gzipProcess.on('end', async () => {
-                  try {
-                    await fs.unlink(tarPath);
-                  } catch (error) {
-                    ignoreError(error);
-                  }
+                gzipProcess.on('end', () => {
+                  fs.unlink(tarPath).catch(ignoreError);
                   if (operationId) {
                     activeArchiveProcesses.delete(operationId);
                   }
                   resolve({ success: true });
                 });
 
-                gzipProcess.on('error', async (gzipError: { message?: string }) => {
-                  try {
-                    await fs.unlink(tarPath);
-                    await fs.unlink(outputPath);
-                  } catch (error) {
-                    ignoreError(error);
-                  }
+                gzipProcess.on('error', (gzipError: { message?: string }) => {
+                  fs.unlink(tarPath).catch(ignoreError);
+                  fs.unlink(outputPath).catch(ignoreError);
                   if (operationId) {
                     activeArchiveProcesses.delete(operationId);
                   }

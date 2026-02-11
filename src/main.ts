@@ -1,5 +1,7 @@
 import { app, BrowserWindow, powerMonitor } from 'electron';
 import * as os from 'os';
+import * as path from 'path';
+import { readFileSync } from 'fs';
 
 import {
   getMainWindow,
@@ -70,17 +72,18 @@ if (process.argv.includes('--disable-hardware-acceleration')) {
   logger.info('[Performance] Hardware acceleration disabled via command line flag');
   app.disableHardwareAcceleration();
 } else {
-  (async () => {
-    try {
-      const settings = await loadSettings();
-      if (settings.disableHardwareAcceleration) {
-        logger.info('[Performance] Hardware acceleration disabled via settings');
-        app.disableHardwareAcceleration();
-      }
-    } catch (error) {
-      logger.warn('[Performance] Could not check hardware acceleration setting:', error);
+  try {
+    const userDataPath = app.getPath('userData');
+    const settingsFilePath = path.join(userDataPath, 'settings.json');
+    const raw = readFileSync(settingsFilePath, 'utf8');
+    const parsed = JSON.parse(raw);
+    if (parsed && parsed.disableHardwareAcceleration === true) {
+      logger.info('[Performance] Hardware acceleration disabled via settings');
+      app.disableHardwareAcceleration();
     }
-  })();
+  } catch (error) {
+    logger.warn('[Performance] Could not check hardware acceleration setting:', error);
+  }
 }
 
 // mem limits by system ram

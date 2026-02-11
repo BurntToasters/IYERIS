@@ -107,22 +107,11 @@ export function showDialog(
     activateModal(dialogModal);
     dialogOk.focus();
 
-    const handleOk = (): void => {
-      dialogModal.style.display = 'none';
-      deactivateModal(dialogModal);
-      cleanup();
-      resolve(true);
-    };
-
-    const handleCancel = (): void => {
-      dialogModal.style.display = 'none';
-      deactivateModal(dialogModal);
-      cleanup();
-      resolve(false);
-    };
+    let resolved = false;
 
     const handleEscape = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') {
+      if (e.key === 'Escape' && !resolved) {
+        resolved = true;
         dialogModal.style.display = 'none';
         deactivateModal(dialogModal);
         cleanup();
@@ -131,13 +120,29 @@ export function showDialog(
     };
 
     const cleanup = (): void => {
-      dialogOk.removeEventListener('click', handleOk);
-      dialogCancel.removeEventListener('click', handleCancel);
+      dialogOk.onclick = null;
+      dialogCancel.onclick = null;
       document.removeEventListener('keydown', handleEscape);
     };
 
-    dialogOk.addEventListener('click', handleOk);
-    dialogCancel.addEventListener('click', handleCancel);
+    dialogOk.onclick = () => {
+      if (resolved) return;
+      resolved = true;
+      dialogModal.style.display = 'none';
+      deactivateModal(dialogModal);
+      cleanup();
+      resolve(true);
+    };
+
+    dialogCancel.onclick = () => {
+      if (resolved) return;
+      resolved = true;
+      dialogModal.style.display = 'none';
+      deactivateModal(dialogModal);
+      cleanup();
+      resolve(false);
+    };
+
     document.addEventListener('keydown', handleEscape);
   });
 }

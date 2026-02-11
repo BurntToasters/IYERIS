@@ -44,6 +44,7 @@ const electronAPI: ElectronAPI = {
   getItemProperties: (itemPath: string) => ipcRenderer.invoke('get-item-properties', itemPath),
   getSettings: () => ipcRenderer.invoke('get-settings'),
   saveSettings: (settings: Settings) => ipcRenderer.invoke('save-settings', settings),
+  saveSettingsSync: (settings: Settings) => ipcRenderer.sendSync('save-settings-sync', settings),
   resetSettings: () => ipcRenderer.invoke('reset-settings'),
   relaunchApp: () => ipcRenderer.invoke('relaunch-app'),
   getSettingsPath: () => ipcRenderer.invoke('get-settings-path'),

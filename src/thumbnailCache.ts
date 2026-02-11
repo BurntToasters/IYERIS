@@ -18,6 +18,19 @@ let cacheInitialized = false;
 let cleanupInterval: NodeJS.Timeout | null = null;
 const CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
 
+let enforceSizeTimer: ReturnType<typeof setTimeout> | null = null;
+const ENFORCE_SIZE_DEBOUNCE_MS = 30_000;
+
+function debouncedEnforceCacheSize(): void {
+  if (enforceSizeTimer) clearTimeout(enforceSizeTimer);
+  enforceSizeTimer = setTimeout(() => {
+    enforceSizeTimer = null;
+    enforceCacheSize().catch((err) =>
+      console.error('[ThumbnailCache] enforceCacheSize error:', err)
+    );
+  }, ENFORCE_SIZE_DEBOUNCE_MS);
+}
+
 async function ensureCacheDir(): Promise<string> {
   if (cacheDir && cacheInitialized) return cacheDir;
 
@@ -155,7 +168,7 @@ export async function saveThumbnailToCache(
     }
     await fs.writeFile(cachePath, buffer);
 
-    await enforceCacheSize();
+    debouncedEnforceCacheSize();
 
     return { success: true };
   } catch (error) {
@@ -299,5 +312,9 @@ export function stopThumbnailCacheCleanup(): void {
   if (cleanupInterval) {
     clearInterval(cleanupInterval);
     cleanupInterval = null;
+  }
+  if (enforceSizeTimer) {
+    clearTimeout(enforceSizeTimer);
+    enforceSizeTimer = null;
   }
 }

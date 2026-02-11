@@ -5783,42 +5783,6 @@ pre.preview-text code.hljs {
   animation: progress-shimmer 1.5s infinite;
 }
 
-.preview-video {
-  width: 100%;
-  border-radius: 8px;
-  margin-bottom: 15px;
-  max-height: 300px;
-  background: #000;
-}
-
-.preview-audio-container {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  margin-bottom: 15px;
-  padding: 20px;
-  background: rgba(0, 0, 0, 0.2);
-  border-radius: 8px;
-}
-
-.preview-audio-icon {
-  font-size: 48px;
-  margin-bottom: 15px;
-}
-
-.preview-audio {
-  width: 100%;
-}
-
-.preview-pdf {
-  width: 100%;
-  height: 400px;
-  border-radius: 8px;
-  margin-bottom: 15px;
-  border: none;
-  background: #fff;
-}
-
 .theme-color-row {
   display: flex;
   gap: 16px;
@@ -6118,8 +6082,35 @@ body.large-text {
   font-size: 16px !important;
 }
 
-body.bold-text,
-body.bold-text * {
+body.bold-text {
+  font-weight: 500;
+}
+
+body.bold-text .file-item-name,
+body.bold-text .nav-label,
+body.bold-text .breadcrumb-item,
+body.bold-text .tab-label,
+body.bold-text .status-text,
+body.bold-text .toolbar-label,
+body.bold-text .address-bar,
+body.bold-text .search-bar,
+body.bold-text .setting-description,
+body.bold-text .section-title,
+body.bold-text h1,
+body.bold-text h2,
+body.bold-text h3,
+body.bold-text h4,
+body.bold-text p,
+body.bold-text span,
+body.bold-text label,
+body.bold-text button,
+body.bold-text input,
+body.bold-text select,
+body.bold-text textarea,
+body.bold-text li,
+body.bold-text td,
+body.bold-text th,
+body.bold-text a {
   font-weight: 500 !important;
 }
 

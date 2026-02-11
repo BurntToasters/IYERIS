@@ -2323,7 +2323,10 @@ async function saveSettings() {
   }
 
   if (uiDensitySelect) {
-    currentSettings.uiDensity = uiDensitySelect.value as 'default' | 'larger';
+    const densityValue = uiDensitySelect.value;
+    if (densityValue === 'default' || densityValue === 'compact' || densityValue === 'larger') {
+      currentSettings.uiDensity = densityValue;
+    }
   }
 
   if (boldTextToggle) {
@@ -6765,6 +6768,8 @@ function startInlineRename(fileItem: HTMLElement, currentName: string, itemPath:
   const nameElement = fileItem.querySelector('.file-name') as HTMLElement | null;
   if (!nameElement) return;
 
+  if (fileItem.classList.contains('renaming')) return;
+
   nameElement.style.display = 'none';
 
   const input = document.createElement('input');
@@ -7467,7 +7472,14 @@ async function handleExtract(
   }
 }
 
+let activePropertiesCleanup: (() => void) | null = null;
+
 function showPropertiesDialog(props: ItemProperties) {
+  if (activePropertiesCleanup) {
+    activePropertiesCleanup();
+    activePropertiesCleanup = null;
+  }
+
   const modal = document.getElementById('properties-modal');
   const content = document.getElementById('properties-content');
 
@@ -7588,8 +7600,8 @@ function showPropertiesDialog(props: ItemProperties) {
 
   content.innerHTML = html;
   modal.style.display = 'flex';
+  activateModal(modal);
 
-  // cancel active calculations on close
   const cleanup = () => {
     if (folderSizeActive) {
       window.electronAPI.cancelFolderSizeCalculation(folderSizeOperationId);
@@ -7607,7 +7619,10 @@ function showPropertiesDialog(props: ItemProperties) {
       checksumProgressCleanup();
       checksumProgressCleanup = null;
     }
+    activePropertiesCleanup = null;
   };
+
+  activePropertiesCleanup = cleanup;
 
   const closeModal = () => {
     cleanup();
@@ -7998,23 +8013,20 @@ async function downloadAndInstallUpdate() {
     dialogCancel.textContent = 'Later';
 
     const installPromise = new Promise<boolean>((resolve) => {
-      const handleOk = () => {
+      const cleanup = () => {
+        dialogOk.onclick = null;
+        dialogCancel.onclick = null;
+      };
+
+      dialogOk.onclick = () => {
         cleanup();
         resolve(true);
       };
 
-      const handleCancel = () => {
+      dialogCancel.onclick = () => {
         cleanup();
         resolve(false);
       };
-
-      const cleanup = () => {
-        dialogOk.removeEventListener('click', handleOk);
-        dialogCancel.removeEventListener('click', handleCancel);
-      };
-
-      dialogOk.addEventListener('click', handleOk);
-      dialogCancel.addEventListener('click', handleCancel);
     });
 
     const shouldInstall = await installPromise;
@@ -8173,21 +8185,7 @@ document.addEventListener('keydown', (e) => {
       return;
     }
 
-    const settingsModal = document.getElementById('settings-modal');
-    const shortcutsModal = document.getElementById('shortcuts-modal');
-    const dialogModal = document.getElementById('dialog-modal');
-    const licensesModal = document.getElementById('licenses-modal');
-    const homeSettingsModal = document.getElementById('home-settings-modal');
-    const extractModal = document.getElementById('extract-modal');
-
-    if (
-      (settingsModal && settingsModal.style.display === 'flex') ||
-      (shortcutsModal && shortcutsModal.style.display === 'flex') ||
-      (dialogModal && dialogModal.style.display === 'flex') ||
-      (licensesModal && licensesModal.style.display === 'flex') ||
-      (homeSettingsModal && homeSettingsModal.style.display === 'flex') ||
-      (extractModal && extractModal.style.display === 'flex')
-    ) {
+    if (isModalOpen()) {
       return;
     }
 
@@ -8331,11 +8329,8 @@ window.addEventListener('beforeunload', () => {
         activeTabId,
       };
     }
-    if (tabsEnabled) {
-      saveTabState(true);
-    } else {
-      saveSettingsWithTimestamp(currentSettings);
-    }
+    currentSettings._timestamp = Date.now();
+    window.electronAPI.saveSettingsSync(currentSettings);
   }
   if (settingsSaveTimeout) {
     clearTimeout(settingsSaveTimeout);

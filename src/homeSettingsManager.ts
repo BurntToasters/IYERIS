@@ -11,6 +11,7 @@ import { isTrustedIpcEvent } from './ipcUtils';
 
 let cachedHomeSettings: HomeSettings | null = null;
 let homeSettingsCacheTime = 0;
+let homeSaveLock: Promise<void> = Promise.resolve();
 
 export function getHomeSettingsPath(): string {
   const userDataPath = app.getPath('userData');
@@ -69,34 +70,39 @@ export async function loadHomeSettings(): Promise<HomeSettings> {
 }
 
 export async function saveHomeSettings(settings: HomeSettings): Promise<ApiResponse> {
-  try {
-    const settingsPath = getHomeSettingsPath();
-    logger.debug('[HomeSettings] Saving to:', settingsPath);
-    const defaults = createDefaultHomeSettings();
-    const sanitized = sanitizeHomeSettings(settings, defaults);
-    logger.debug('[HomeSettings] Data:', JSON.stringify(sanitized, null, 2));
-    const tmpPath = `${settingsPath}.tmp`;
-    const data = JSON.stringify(sanitized, null, 2);
-    await fs.writeFile(tmpPath, data, 'utf8');
+  const doSave = async (): Promise<ApiResponse> => {
     try {
-      await fs.rename(tmpPath, settingsPath);
-    } catch {
+      const settingsPath = getHomeSettingsPath();
+      logger.debug('[HomeSettings] Saving to:', settingsPath);
+      const defaults = createDefaultHomeSettings();
+      const sanitized = sanitizeHomeSettings(settings, defaults);
+      logger.debug('[HomeSettings] Data:', JSON.stringify(sanitized, null, 2));
+      const tmpPath = `${settingsPath}.tmp`;
+      const data = JSON.stringify(sanitized, null, 2);
+      await fs.writeFile(tmpPath, data, 'utf8');
       try {
-        await fs.copyFile(tmpPath, settingsPath);
-      } finally {
-        await fs.unlink(tmpPath).catch(ignoreError);
+        await fs.rename(tmpPath, settingsPath);
+      } catch {
+        try {
+          await fs.copyFile(tmpPath, settingsPath);
+        } finally {
+          await fs.unlink(tmpPath).catch(ignoreError);
+        }
       }
+      logger.debug('[HomeSettings] Saved successfully');
+
+      cachedHomeSettings = sanitized;
+      homeSettingsCacheTime = Date.now();
+
+      return { success: true };
+    } catch (error) {
+      logger.debug('[HomeSettings] Save failed:', getErrorMessage(error));
+      return { success: false, error: getErrorMessage(error) };
     }
-    logger.debug('[HomeSettings] Saved successfully');
+  };
 
-    cachedHomeSettings = sanitized;
-    homeSettingsCacheTime = Date.now();
-
-    return { success: true };
-  } catch (error) {
-    logger.debug('[HomeSettings] Save failed:', getErrorMessage(error));
-    return { success: false, error: getErrorMessage(error) };
-  }
+  homeSaveLock = homeSaveLock.then(doSave, doSave) as unknown as Promise<void>;
+  return homeSaveLock as unknown as Promise<ApiResponse>;
 }
 
 export function invalidateHomeSettingsCache(): void {

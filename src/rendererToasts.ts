@@ -54,7 +54,10 @@ export function createToastManager(options: ToastOptions) {
 
     container.appendChild(toast);
 
+    let removed = false;
     const removeToast = () => {
+      if (removed) return;
+      removed = true;
       toast.classList.add('removing');
       setTimeout(() => {
         if (container.contains(toast)) {

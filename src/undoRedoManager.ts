@@ -145,7 +145,7 @@ export function setupUndoRedoHandlers(): void {
             ignoreError(error);
           }
 
-          await fs.rename(action.data.newPath, action.data.oldPath);
+          await movePath(action.data.newPath, action.data.oldPath);
           pushRedoAction(action);
           logger.debug('[Undo] Renamed back:', action.data.newPath, '->', action.data.oldPath);
           return { success: true };
@@ -178,8 +178,31 @@ export function setupUndoRedoHandlers(): void {
               }
             }
 
-            for (let i = 0; i < movedPaths.length; i++) {
-              await movePath(movedPaths[i], originalPaths[i]);
+            let movedBackCount = 0;
+            try {
+              for (let i = 0; i < movedPaths.length; i++) {
+                await movePath(movedPaths[i], originalPaths[i]);
+                movedBackCount++;
+              }
+            } catch (moveError) {
+              logger.error('[Undo] Partial move undo failed at index', movedBackCount, moveError);
+              if (movedBackCount > 0) {
+                const remainingSourcePaths = movedPaths.slice(movedBackCount);
+                const remainingOriginalPaths = originalPaths.slice(movedBackCount);
+                const partialAction: UndoAction = {
+                  ...action,
+                  data: {
+                    ...action.data,
+                    sourcePaths: remainingSourcePaths,
+                    originalPaths: remainingOriginalPaths,
+                  },
+                };
+                undoStack.push(partialAction);
+              } else {
+                undoStack.push(action);
+              }
+              const message = moveError instanceof Error ? moveError.message : String(moveError);
+              return { success: false, error: `Partial undo failed: ${message}` };
             }
           } else {
             if (!originalParent) {
@@ -195,10 +218,31 @@ export function setupUndoRedoHandlers(): void {
               }
             }
 
-            for (const source of movedPaths) {
-              const fileName = path.basename(source);
-              const originalPath = path.join(originalParent, fileName);
-              await movePath(source, originalPath);
+            let movedBackCount = 0;
+            try {
+              for (const source of movedPaths) {
+                const fileName = path.basename(source);
+                const originalPath = path.join(originalParent, fileName);
+                await movePath(source, originalPath);
+                movedBackCount++;
+              }
+            } catch (moveError) {
+              logger.error('[Undo] Partial move undo failed at index', movedBackCount, moveError);
+              if (movedBackCount > 0) {
+                const remainingSourcePaths = movedPaths.slice(movedBackCount);
+                const partialAction: UndoAction = {
+                  ...action,
+                  data: {
+                    ...action.data,
+                    sourcePaths: remainingSourcePaths,
+                  },
+                };
+                undoStack.push(partialAction);
+              } else {
+                undoStack.push(action);
+              }
+              const message = moveError instanceof Error ? moveError.message : String(moveError);
+              return { success: false, error: `Partial undo failed: ${message}` };
             }
           }
           pushRedoAction(action);
@@ -270,7 +314,7 @@ export function setupUndoRedoHandlers(): void {
             ignoreError(error);
           }
 
-          await fs.rename(action.data.oldPath, action.data.newPath);
+          await movePath(action.data.oldPath, action.data.newPath);
           undoStack.push(action);
           logger.debug('[Redo] Renamed:', action.data.oldPath, '->', action.data.newPath);
           return { success: true };

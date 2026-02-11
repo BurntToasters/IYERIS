@@ -1,6 +1,7 @@
 import { ipcMain, app, BrowserWindow, IpcMainInvokeEvent, clipboard } from 'electron';
 import * as path from 'path';
 import { promises as fs } from 'fs';
+import * as fsSync from 'fs';
 import type { Settings, ApiResponse, SettingsResponse } from './types';
 import {
   SETTINGS_CACHE_TTL_MS,
@@ -15,7 +16,7 @@ import {
   setFileIndexer,
   getIndexerTasks,
 } from './appState';
-import { getErrorMessage } from './security';
+import { getErrorMessage, isTrustedIpcSender } from './security';
 import { ignoreError } from './shared';
 import { createDefaultSettings, sanitizeSettings } from './settings';
 import { FileIndexer } from './indexer';
@@ -24,6 +25,7 @@ import { isTrustedIpcEvent } from './ipcUtils';
 
 let cachedSettings: Settings | null = null;
 let settingsCacheTime: number = 0;
+let saveLock: Promise<void> = Promise.resolve();
 
 export function getSettingsPath(): string {
   const userDataPath = app.getPath('userData');
@@ -134,39 +136,44 @@ export function applyLoginItemSettings(settings: Settings): void {
 }
 
 export async function saveSettings(settings: Settings): Promise<ApiResponse> {
-  try {
-    const settingsPath = getSettingsPath();
-    logger.debug('[Settings] Saving to:', settingsPath);
-
-    const defaults = createDefaultSettings();
-    const sanitized = sanitizeSettings(settings, defaults);
-    const settingsWithTimestamp = { ...sanitized, _timestamp: Date.now() };
-    logger.debug('[Settings] Data:', JSON.stringify(settingsWithTimestamp, null, 2));
-
-    const tmpPath = `${settingsPath}.tmp`;
-    const data = JSON.stringify(settingsWithTimestamp, null, 2);
-    await fs.writeFile(tmpPath, data, 'utf8');
+  const doSave = async (): Promise<ApiResponse> => {
     try {
-      await fs.rename(tmpPath, settingsPath);
-    } catch {
+      const settingsPath = getSettingsPath();
+      logger.debug('[Settings] Saving to:', settingsPath);
+
+      const defaults = createDefaultSettings();
+      const sanitized = sanitizeSettings(settings, defaults);
+      const settingsWithTimestamp = { ...sanitized, _timestamp: Date.now() };
+      logger.debug('[Settings] Data:', JSON.stringify(settingsWithTimestamp, null, 2));
+
+      const tmpPath = `${settingsPath}.tmp`;
+      const data = JSON.stringify(settingsWithTimestamp, null, 2);
+      await fs.writeFile(tmpPath, data, 'utf8');
       try {
-        await fs.copyFile(tmpPath, settingsPath);
-      } finally {
-        await fs.unlink(tmpPath).catch(ignoreError);
+        await fs.rename(tmpPath, settingsPath);
+      } catch {
+        try {
+          await fs.copyFile(tmpPath, settingsPath);
+        } finally {
+          await fs.unlink(tmpPath).catch(ignoreError);
+        }
       }
+      logger.debug('[Settings] Saved successfully');
+
+      cachedSettings = settingsWithTimestamp;
+      settingsCacheTime = Date.now();
+
+      applyLoginItemSettings(settingsWithTimestamp);
+
+      return { success: true };
+    } catch (error) {
+      logger.debug('[Settings] Save failed:', getErrorMessage(error));
+      return { success: false, error: getErrorMessage(error) };
     }
-    logger.debug('[Settings] Saved successfully');
+  };
 
-    cachedSettings = settingsWithTimestamp;
-    settingsCacheTime = Date.now();
-
-    applyLoginItemSettings(settingsWithTimestamp);
-
-    return { success: true };
-  } catch (error) {
-    logger.debug('[Settings] Save failed:', getErrorMessage(error));
-    return { success: false, error: getErrorMessage(error) };
-  }
+  saveLock = saveLock.then(doSave, doSave) as unknown as Promise<void>;
+  return saveLock as unknown as Promise<ApiResponse>;
 }
 
 export function invalidateSettingsCache(): void {
@@ -251,6 +258,26 @@ export function setupSettingsHandlers(createTray: () => Promise<void>): void {
       return { success: false, error: 'Untrusted IPC sender' };
     }
     return await saveSettings(createDefaultSettings());
+  });
+
+  ipcMain.on('save-settings-sync', (event, settings: Settings) => {
+    if (!isTrustedIpcSender(event)) {
+      event.returnValue = { success: false, error: 'Untrusted IPC sender' };
+      return;
+    }
+    try {
+      const settingsPath = getSettingsPath();
+      const defaults = createDefaultSettings();
+      const sanitized = sanitizeSettings(settings, defaults);
+      const settingsWithTimestamp = { ...sanitized, _timestamp: Date.now() };
+      const data = JSON.stringify(settingsWithTimestamp, null, 2);
+      fsSync.writeFileSync(settingsPath, data, 'utf8');
+      cachedSettings = settingsWithTimestamp;
+      settingsCacheTime = Date.now();
+      event.returnValue = { success: true };
+    } catch (error) {
+      event.returnValue = { success: false, error: getErrorMessage(error) };
+    }
   });
 
   ipcMain.handle(

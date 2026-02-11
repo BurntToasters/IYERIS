@@ -81,6 +81,7 @@ export function createFolderTreeManager(deps: FolderTreeDependencies): FolderTre
 
   const folderTreeNodeMap = new Map<string, TreeNode>();
   const folderTreeExpandedPaths = new Set<string>();
+  const loadingPaths = new Set<string>();
   let focusedTreePath: string | null = null;
 
   if (!folderTree) {
@@ -301,6 +302,9 @@ export function createFolderTreeManager(deps: FolderTreeDependencies): FolderTre
       return;
     }
 
+    if (loadingPaths.has(nodePath)) return;
+    loadingPaths.add(nodePath);
+
     node.children.innerHTML =
       '<div class="tree-item" style="opacity: 0.6; padding-left: 12px;">Loading...</div>';
 
@@ -311,12 +315,14 @@ export function createFolderTreeManager(deps: FolderTreeDependencies): FolderTre
     } catch {
       node.children.innerHTML =
         '<div class="tree-item" style="opacity: 0.6; padding-left: 12px;">Failed to load</div>';
+      loadingPaths.delete(nodePath);
       return;
     }
 
     if (!result.success) {
       node.children.innerHTML =
         '<div class="tree-item" style="opacity: 0.6; padding-left: 12px;">Failed to load</div>';
+      loadingPaths.delete(nodePath);
       return;
     }
 
@@ -339,6 +345,7 @@ export function createFolderTreeManager(deps: FolderTreeDependencies): FolderTre
     }
 
     node.item.dataset.loaded = 'true';
+    loadingPaths.delete(nodePath);
   };
 
   const render = (drives: string[]): void => {
