@@ -128,7 +128,7 @@ export async function saveSettings(settings: Settings): Promise<ApiResponse> {
 
       const defaults = createDefaultSettings();
       const sanitized = sanitizeSettings(settings, defaults);
-      const settingsWithTimestamp = { ...sanitized, _timestamp: Date.now() };
+      const settingsWithTimestamp = { ...sanitized };
       logger.debug('[Settings] Data:', JSON.stringify(settingsWithTimestamp, null, 2));
 
       const tmpPath = `${settingsPath}.tmp`;
@@ -157,8 +157,12 @@ export async function saveSettings(settings: Settings): Promise<ApiResponse> {
     }
   };
 
-  saveLock = saveLock.then(doSave, doSave) as unknown as Promise<void>;
-  return saveLock as unknown as Promise<ApiResponse>;
+  const result = saveLock.then(doSave, doSave);
+  saveLock = result.then(
+    () => undefined,
+    () => undefined
+  );
+  return result;
 }
 
 export function invalidateSettingsCache(): void {
@@ -254,8 +258,7 @@ export function setupSettingsHandlers(createTray: () => Promise<void>): void {
       const settingsPath = getSettingsPath();
       const defaults = createDefaultSettings();
       const sanitized = sanitizeSettings(settings, defaults);
-      const settingsWithTimestamp = { ...sanitized, _timestamp: Date.now() };
-      const data = JSON.stringify(settingsWithTimestamp, null, 2);
+      const data = JSON.stringify(sanitized, null, 2);
       const tmpPath = `${settingsPath}.sync-tmp`;
       fsSync.writeFileSync(tmpPath, data, 'utf8');
       try {
@@ -268,7 +271,7 @@ export function setupSettingsHandlers(createTray: () => Promise<void>): void {
           /* ignore */
         }
       }
-      cachedSettings = settingsWithTimestamp;
+      cachedSettings = sanitized;
       settingsCacheTime = Date.now();
       event.returnValue = { success: true };
     } catch (error) {

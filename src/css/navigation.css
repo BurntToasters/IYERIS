@@ -1,0 +1,119 @@
+.address-bar-wrapper {
+  position: relative;
+  width: 100%;
+  z-index: 200;
+}
+
+.address-bar {
+  display: flex;
+  align-items: center;
+  padding: 0 6px;
+  gap: 6px;
+  height: var(--address-bar-height);
+  width: 100%;
+}
+
+.breadcrumb {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--breadcrumb-gap);
+  font-size: var(--font-size-breadcrumb);
+  flex: 1;
+  overflow: hidden;
+}
+
+.breadcrumb-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--breadcrumb-gap);
+  padding: var(--breadcrumb-padding-v) var(--breadcrumb-padding-h);
+  border-radius: var(--radius-small);
+  cursor: pointer;
+  transition:
+    background-color var(--animation-duration) var(--animation-easing),
+    border-color var(--animation-duration) var(--animation-easing),
+    color var(--animation-duration) var(--animation-easing),
+    box-shadow var(--animation-duration) var(--animation-easing),
+    transform var(--animation-duration) var(--animation-easing),
+    opacity var(--animation-duration) var(--animation-easing);
+  white-space: nowrap;
+  background: transparent;
+  border: none;
+  color: inherit;
+}
+
+.breadcrumb-item:focus-within {
+  background: var(--hover-color);
+}
+
+.breadcrumb-label,
+.breadcrumb-caret {
+  background: transparent;
+  border: none;
+  color: inherit;
+  font: inherit;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--breadcrumb-gap);
+}
+
+.breadcrumb-label {
+  cursor: pointer;
+}
+
+.breadcrumb-item:hover {
+  background: var(--hover-color);
+  box-shadow: none;
+}
+
+.breadcrumb-item.drag-over {
+  background: rgba(var(--accent-rgb), 0.2);
+  box-shadow: 0 0 0 1px rgba(var(--accent-rgb), 0.3);
+}
+
+.breadcrumb-caret {
+  font-size: 10px;
+  opacity: 0.6;
+  cursor: pointer;
+}
+
+.breadcrumb-separator {
+  opacity: 0.4;
+  font-size: 10px;
+  user-select: none;
+  pointer-events: none;
+}
+
+.address-icon {
+  font-size: 14px;
+  opacity: 0.6;
+}
+
+#address-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: var(--font-family);
+  font-weight: 400;
+}
+
+#address-input::placeholder {
+  color: var(--text-tertiary);
+}
+
+#address-input::selection {
+  background: var(--accent-color);
+  color: var(--text-primary);
+}
+
+.breadcrumb-item:focus-visible,
+.breadcrumb-label:focus-visible,
+.breadcrumb-caret:focus-visible {
+  background: var(--accent-light);
+  box-shadow: var(--focus-ring);
+  outline: none;
+}

@@ -1,4 +1,5 @@
 import type { Settings } from './types';
+import { isRecord, RESERVED_KEYS, sanitizeStringArray } from './shared';
 import { getDefaultShortcuts } from './shortcuts.js';
 
 export function createDefaultSettings(): Settings {
@@ -68,9 +69,6 @@ export function createDefaultSettings(): Settings {
   };
 }
 
-type UnknownRecord = Record<string, unknown>;
-
-const RESERVED_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 const THEME_VALUES = new Set<Settings['theme']>([
   'dark',
   'light',
@@ -96,17 +94,6 @@ const FILE_CONFLICT_VALUES = new Set<Settings['fileConflictBehavior']>([
 const THUMBNAIL_QUALITY_VALUES = new Set<Settings['thumbnailQuality']>(['low', 'medium', 'high']);
 const PREVIEW_PANEL_VALUES = new Set<Settings['previewPanelPosition']>(['right', 'bottom']);
 const GRID_COLUMNS_VALUES = new Set<Settings['gridColumns']>(['auto', '2', '3', '4', '5', '6']);
-
-function isRecord(value: unknown): value is UnknownRecord {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
-  const proto = Object.getPrototypeOf(value);
-  return proto === Object.prototype || proto === null;
-}
-
-function sanitizeStringArray(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return value.filter((item) => typeof item === 'string');
-}
 
 function sanitizeEnum<T extends string>(value: unknown, allowed: Set<T>): T | null {
   if (typeof value !== 'string') return null;

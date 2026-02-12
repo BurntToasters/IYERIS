@@ -117,7 +117,12 @@
 
         <div class="sidebar-section primary" id="bookmarks-section" data-collapsible="true">
           <div class="section-header">
-            <button class="section-toggle" type="button" aria-expanded="true">
+            <button
+              class="section-toggle"
+              type="button"
+              aria-expanded="true"
+              aria-label="Toggle Bookmarks section"
+            >
               <span class="section-title">Bookmarks</span>
               <span class="section-caret" aria-hidden="true">▾</span>
             </button>
@@ -137,7 +142,12 @@
 
         <div class="sidebar-section collapsed" id="recent-section" data-collapsible="true">
           <div class="section-header">
-            <button class="section-toggle" type="button" aria-expanded="false">
+            <button
+              class="section-toggle"
+              type="button"
+              aria-expanded="false"
+              aria-label="Toggle Recent section"
+            >
               <span class="section-title">Recent</span>
               <span class="section-caret" aria-hidden="true">▾</span>
             </button>
@@ -149,7 +159,12 @@
 
         <div class="sidebar-section" id="folder-tree-section" data-collapsible="true">
           <div class="section-header">
-            <button class="section-toggle" type="button" aria-expanded="true">
+            <button
+              class="section-toggle"
+              type="button"
+              aria-expanded="true"
+              aria-label="Toggle Folders section"
+            >
               <span class="section-title">Folders</span>
               <span class="section-caret" aria-hidden="true">▾</span>
             </button>
@@ -161,7 +176,12 @@
 
         <div class="sidebar-section collapsed" id="drives-section" data-collapsible="true">
           <div class="section-header">
-            <button class="section-toggle" type="button" aria-expanded="false">
+            <button
+              class="section-toggle"
+              type="button"
+              aria-expanded="false"
+              aria-label="Toggle Drives section"
+            >
               <span class="section-title">Drives</span>
               <span class="section-caret" aria-hidden="true">▾</span>
             </button>
@@ -935,7 +955,13 @@
       aria-label="File context menu"
       style="display: none"
     >
-      <div class="context-menu-item" data-action="open" role="menuitem" tabindex="0">
+      <button
+        type="button"
+        class="context-menu-item"
+        data-action="open"
+        role="menuitem"
+        tabindex="0"
+      >
         <img
           src="../assets/twemoji/1f4c2.svg"
           class="twemoji"
@@ -944,8 +970,9 @@
           aria-hidden="true"
         />
         Open <span class="context-menu-shortcut">Enter</span>
-      </div>
-      <div
+      </button>
+      <button
+        type="button"
         class="context-menu-item"
         data-action="preview-pdf"
         id="preview-pdf-item"
@@ -961,9 +988,15 @@
           aria-hidden="true"
         />
         Preview PDF
-      </div>
+      </button>
       <div class="context-menu-separator" role="separator"></div>
-      <div class="context-menu-item" data-action="cut" role="menuitem" tabindex="0">
+      <button
+        type="button"
+        class="context-menu-item"
+        data-action="cut"
+        role="menuitem"
+        tabindex="0"
+      >
         <img
           src="../assets/twemoji/2702.svg"
           class="twemoji"
@@ -972,8 +1005,14 @@
           aria-hidden="true"
         />
         Cut <span class="context-menu-shortcut">Ctrl+X</span>
-      </div>
-      <div class="context-menu-item" data-action="copy" role="menuitem" tabindex="0">
+      </button>
+      <button
+        type="button"
+        class="context-menu-item"
+        data-action="copy"
+        role="menuitem"
+        tabindex="0"
+      >
         <img
           src="../assets/twemoji/1f4c4.svg"
           class="twemoji"
@@ -982,8 +1021,9 @@
           aria-hidden="true"
         />
         Copy <span class="context-menu-shortcut">Ctrl+C</span>
-      </div>
-      <div
+      </button>
+      <button
+        type="button"
         class="context-menu-item"
         data-action="copy-path"
         id="copy-path-item"
@@ -998,9 +1038,10 @@
           aria-hidden="true"
         />
         Copy file path
-      </div>
+      </button>
       <div class="context-menu-separator" role="separator"></div>
-      <div
+      <button
+        type="button"
         class="context-menu-item has-submenu"
         id="compress-item"
         role="menuitem"
@@ -1018,7 +1059,8 @@
         Compress To...
         <span class="submenu-arrow" aria-hidden="true">▸</span>
         <div class="context-submenu" role="menu" aria-label="Compress formats">
-          <div
+          <button
+            type="button"
             class="context-menu-item"
             data-action="compress"
             data-format="zip"
@@ -1033,8 +1075,9 @@
               aria-hidden="true"
             />
             ZIP
-          </div>
-          <div
+          </button>
+          <button
+            type="button"
             class="context-menu-item"
             data-action="compress"
             data-format="7z"
@@ -1049,8 +1092,9 @@
               aria-hidden="true"
             />
             7Z
-          </div>
-          <div
+          </button>
+          <button
+            type="button"
             class="context-menu-item"
             data-action="compress"
             data-format="tar"
@@ -1065,8 +1109,9 @@
               aria-hidden="true"
             />
             TAR
-          </div>
-          <div
+          </button>
+          <button
+            type="button"
             class="context-menu-item"
             data-action="compress"
             data-format="tar.gz"
@@ -1081,9 +1126,10 @@
               aria-hidden="true"
             />
             TAR.GZ
-          </div>
+          </button>
           <div class="context-menu-separator" role="separator"></div>
-          <div
+          <button
+            type="button"
             class="context-menu-item"
             data-action="compress-advanced"
             role="menuitem"
@@ -1097,10 +1143,11 @@
               aria-hidden="true"
             />
             Other...
-          </div>
+          </button>
         </div>
-      </div>
-      <div
+      </button>
+      <button
+        type="button"
         class="context-menu-item"
         data-action="extract"
         id="extract-item"
@@ -1116,9 +1163,15 @@
           aria-hidden="true"
         />
         Extract Here
-      </div>
+      </button>
       <div class="context-menu-separator" role="separator"></div>
-      <div class="context-menu-item" data-action="rename" role="menuitem" tabindex="0">
+      <button
+        type="button"
+        class="context-menu-item"
+        data-action="rename"
+        role="menuitem"
+        tabindex="0"
+      >
         <img
           src="../assets/twemoji/270d.svg"
           class="twemoji"
@@ -1127,8 +1180,14 @@
           aria-hidden="true"
         />
         Rename <span class="context-menu-shortcut">F2</span>
-      </div>
-      <div class="context-menu-item" data-action="refresh" role="menuitem" tabindex="0">
+      </button>
+      <button
+        type="button"
+        class="context-menu-item"
+        data-action="refresh"
+        role="menuitem"
+        tabindex="0"
+      >
         <img
           src="../assets/twemoji/1f504.svg"
           class="twemoji"
@@ -1137,8 +1196,14 @@
           aria-hidden="true"
         />
         Refresh <span class="context-menu-shortcut">F5</span>
-      </div>
-      <div class="context-menu-item" data-action="delete" role="menuitem" tabindex="0">
+      </button>
+      <button
+        type="button"
+        class="context-menu-item"
+        data-action="delete"
+        role="menuitem"
+        tabindex="0"
+      >
         <img
           src="../assets/twemoji/1f5d1.svg"
           class="twemoji"
@@ -1147,9 +1212,10 @@
           aria-hidden="true"
         />
         Delete <span class="context-menu-shortcut">Del</span>
-      </div>
+      </button>
       <div class="context-menu-separator" role="separator"></div>
-      <div
+      <button
+        type="button"
         class="context-menu-item"
         data-action="add-to-bookmarks"
         id="add-to-bookmarks-item"
@@ -1165,8 +1231,9 @@
           aria-hidden="true"
         />
         Add to Bookmarks
-      </div>
-      <div
+      </button>
+      <button
+        type="button"
         class="context-menu-item"
         data-action="change-folder-icon"
         id="change-folder-icon-item"
@@ -1182,8 +1249,9 @@
           aria-hidden="true"
         />
         Change Folder Icon
-      </div>
-      <div
+      </button>
+      <button
+        type="button"
         class="context-menu-item"
         data-action="open-terminal"
         id="open-terminal-item"
@@ -1198,9 +1266,15 @@
           aria-hidden="true"
         />
         Open folder in Terminal
-      </div>
+      </button>
       <div class="context-menu-separator" role="separator"></div>
-      <div class="context-menu-item" data-action="properties" role="menuitem" tabindex="0">
+      <button
+        type="button"
+        class="context-menu-item"
+        data-action="properties"
+        role="menuitem"
+        tabindex="0"
+      >
         <img
           src="../assets/twemoji/2139.svg"
           class="twemoji"
@@ -1209,7 +1283,7 @@
           aria-hidden="true"
         />
         Properties
-      </div>
+      </button>
     </div>
 
     <div
@@ -1219,7 +1293,13 @@
       aria-label="Folder context menu"
       style="display: none"
     >
-      <div class="context-menu-item" data-action="new-folder" role="menuitem" tabindex="0">
+      <button
+        type="button"
+        class="context-menu-item"
+        data-action="new-folder"
+        role="menuitem"
+        tabindex="0"
+      >
         <img
           src="../assets/twemoji/1f4c1.svg"
           class="twemoji"
@@ -1228,8 +1308,14 @@
           aria-hidden="true"
         />
         New Folder <span class="context-menu-shortcut">Ctrl+Shift+N</span>
-      </div>
-      <div class="context-menu-item" data-action="new-file" role="menuitem" tabindex="0">
+      </button>
+      <button
+        type="button"
+        class="context-menu-item"
+        data-action="new-file"
+        role="menuitem"
+        tabindex="0"
+      >
         <img
           src="../assets/twemoji/1f5c3.svg"
           class="twemoji"
@@ -1238,9 +1324,15 @@
           aria-hidden="true"
         />
         New File
-      </div>
+      </button>
       <div class="context-menu-separator" role="separator"></div>
-      <div class="context-menu-item" data-action="paste" role="menuitem" tabindex="0">
+      <button
+        type="button"
+        class="context-menu-item"
+        data-action="paste"
+        role="menuitem"
+        tabindex="0"
+      >
         <img
           src="../assets/twemoji/1f4dc.svg"
           class="twemoji"
@@ -1249,9 +1341,15 @@
           aria-hidden="true"
         />
         Paste <span class="context-menu-shortcut">Ctrl+V</span>
-      </div>
+      </button>
       <div class="context-menu-separator" role="separator"></div>
-      <div class="context-menu-item" data-action="refresh" role="menuitem" tabindex="0">
+      <button
+        type="button"
+        class="context-menu-item"
+        data-action="refresh"
+        role="menuitem"
+        tabindex="0"
+      >
         <img
           src="../assets/twemoji/1f504.svg"
           class="twemoji"
@@ -1260,9 +1358,15 @@
           aria-hidden="true"
         />
         Refresh <span class="context-menu-shortcut">F5</span>
-      </div>
+      </button>
       <div class="context-menu-separator" role="separator"></div>
-      <div class="context-menu-item" data-action="open-terminal" role="menuitem" tabindex="0">
+      <button
+        type="button"
+        class="context-menu-item"
+        data-action="open-terminal"
+        role="menuitem"
+        tabindex="0"
+      >
         <img
           src="../assets/twemoji/1f5a5.svg"
           class="twemoji"
@@ -1271,7 +1375,7 @@
           aria-hidden="true"
         />
         Open folder in Terminal
-      </div>
+      </button>
     </div>
 
     <div id="drop-indicator" class="drop-indicator" style="display: none">
@@ -1447,6 +1551,7 @@
                       class="modal-button compact"
                       id="compress-password-toggle"
                       title="Show password"
+                      aria-label="Toggle password visibility"
                       type="button"
                     >
                       <img
@@ -3227,34 +3332,34 @@
     </div>
 
     <div class="sort-menu glass-panel" id="sort-menu" style="display: none">
-      <div class="context-menu-item" data-sort="name">
+      <button type="button" class="context-menu-item" data-sort="name">
         <span
           ><img src="../assets/twemoji/1f4dd.svg" class="twemoji" alt="📝" draggable="false" />
           Name</span
         >
         <span class="sort-indicator" id="sort-name"></span>
-      </div>
-      <div class="context-menu-item" data-sort="date">
+      </button>
+      <button type="button" class="context-menu-item" data-sort="date">
         <span
           ><img src="../assets/twemoji/1f4c5.svg" class="twemoji" alt="📅" draggable="false" /> Date
           Modified</span
         >
         <span class="sort-indicator" id="sort-date"></span>
-      </div>
-      <div class="context-menu-item" data-sort="size">
+      </button>
+      <button type="button" class="context-menu-item" data-sort="size">
         <span
           ><img src="../assets/twemoji/1f4ca.svg" class="twemoji" alt="📊" draggable="false" />
           Size</span
         >
         <span class="sort-indicator" id="sort-size"></span>
-      </div>
-      <div class="context-menu-item" data-sort="type">
+      </button>
+      <button type="button" class="context-menu-item" data-sort="type">
         <span
           ><img src="../assets/twemoji/1f4cb.svg" class="twemoji" alt="📋" draggable="false" />
           Type</span
         >
         <span class="sort-indicator" id="sort-type"></span>
-      </div>
+      </button>
     </div>
 
     <div class="zoom-popup" id="zoom-popup" style="display: none">

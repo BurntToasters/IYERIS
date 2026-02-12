@@ -15,7 +15,6 @@ import {
   PRESENTATION_EXTENSIONS,
   SOURCE_CODE_EXTENSIONS,
   WEB_EXTENSIONS,
-  DATA_EXTENSIONS,
   VIDEO_MIME_TYPES,
   AUDIO_MIME_TYPES,
 } from './fileTypes';
@@ -53,7 +52,7 @@ describe('FILE_ICON_MAP', () => {
   });
 
   it('all values are non-empty strings (emoji codepoints)', () => {
-    for (const [ext, codepoint] of Object.entries(FILE_ICON_MAP)) {
+    for (const [, codepoint] of Object.entries(FILE_ICON_MAP)) {
       expect(typeof codepoint).toBe('string');
       expect(codepoint.length).toBeGreaterThan(0);
     }

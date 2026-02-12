@@ -1,0 +1,313 @@
+body.liquid-glass {
+  --liquid-glass-blur: 24px;
+  --liquid-glass-saturation: 180%;
+  --liquid-glass-bg-opacity: 0.72;
+  --liquid-glass-border-opacity: 0.15;
+  --liquid-glass-luminosity: rgba(255, 255, 255, 0.08);
+  --liquid-glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.25), 0 2px 8px rgba(0, 0, 0, 0.15);
+  --liquid-glass-radius: 16px;
+  --liquid-glass-panel-bg: rgba(28, 28, 28, var(--liquid-glass-bg-opacity));
+  --liquid-glass-panel-border-color: rgba(255, 255, 255, var(--liquid-glass-border-opacity));
+  --liquid-glass-panel-shadow: var(--liquid-glass-shadow);
+  --liquid-glass-panel-highlight-edge: var(--liquid-glass-luminosity);
+  --liquid-glass-panel-highlight-center: rgba(255, 255, 255, 0.15);
+  --liquid-glass-overlay-bg: rgba(0, 0, 0, 0.35);
+  --liquid-glass-overlay-filter: blur(12px);
+  --liquid-glass-modal-bg: rgba(28, 28, 28, 0.78);
+  --liquid-glass-modal-border-color: rgba(255, 255, 255, 0.18);
+  --liquid-glass-modal-radius: 18px;
+  --liquid-glass-modal-filter: blur(32px) saturate(200%);
+  --liquid-glass-modal-shadow:
+    0 24px 48px rgba(0, 0, 0, 0.35), 0 8px 16px rgba(0, 0, 0, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  --liquid-glass-menu-bg: rgba(34, 34, 34, 0.75);
+  --liquid-glass-menu-border-color: rgba(255, 255, 255, var(--liquid-glass-border-opacity));
+  --liquid-glass-menu-radius: 14px;
+  --liquid-glass-menu-filter: blur(var(--liquid-glass-blur))
+    saturate(var(--liquid-glass-saturation));
+  --liquid-glass-menu-shadow: var(--liquid-glass-shadow);
+  --liquid-glass-sidebar-bg: rgba(28, 28, 28, 0.68);
+  --liquid-glass-sidebar-filter: blur(20px) saturate(160%);
+  --liquid-glass-sidebar-border-color: rgba(255, 255, 255, 0.08);
+  --liquid-glass-titlebar-bg: rgba(33, 33, 33, 0.85);
+  --liquid-glass-titlebar-filter: blur(16px) saturate(140%);
+  --liquid-glass-tabbar-bg: rgba(28, 28, 28, 0.75);
+  --liquid-glass-tabbar-filter: blur(14px) saturate(130%);
+  --liquid-glass-statusbar-bg: rgba(33, 33, 33, 0.82);
+  --liquid-glass-statusbar-filter: blur(16px) saturate(140%);
+  --liquid-glass-toolbar-bg: rgba(28, 28, 28, 0.7);
+  --liquid-glass-toolbar-filter: blur(18px) saturate(150%);
+  --liquid-glass-input-bg: rgba(255, 255, 255, 0.06);
+  --liquid-glass-input-bg-hover: rgba(255, 255, 255, 0.09);
+  --liquid-glass-input-bg-focus: rgba(255, 255, 255, 0.1);
+  --liquid-glass-input-border-color: rgba(255, 255, 255, 0.12);
+  --liquid-glass-input-border-color-hover: rgba(255, 255, 255, 0.16);
+  --liquid-glass-input-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --liquid-glass-input-focus-ring: 0 0 0 3px rgba(var(--accent-rgb), 0.25);
+  --liquid-glass-address-bg: rgba(255, 255, 255, 0.05);
+  --liquid-glass-address-filter: blur(8px);
+  --liquid-glass-dropdown-bg: rgba(34, 34, 34, 0.78);
+  --liquid-glass-dropdown-border-color: rgba(255, 255, 255, var(--liquid-glass-border-opacity));
+  --liquid-glass-dropdown-radius: 14px;
+  --liquid-glass-dropdown-filter: blur(var(--liquid-glass-blur))
+    saturate(var(--liquid-glass-saturation));
+  --liquid-glass-dropdown-shadow: var(--liquid-glass-shadow);
+  --liquid-glass-card-bg: rgba(34, 34, 34, 0.8);
+  --liquid-glass-card-filter: blur(20px) saturate(180%);
+  --liquid-glass-card-border-color: rgba(255, 255, 255, 0.12);
+  --liquid-glass-card-radius: 14px;
+  --liquid-glass-toast-bg: rgba(34, 34, 34, 0.82);
+  --liquid-glass-toast-filter: blur(20px) saturate(160%);
+  --liquid-glass-toast-border-color: rgba(255, 255, 255, 0.1);
+  --liquid-glass-toast-radius: 14px;
+  --liquid-glass-popup-bg: rgba(34, 34, 34, 0.8);
+  --liquid-glass-popup-filter: blur(var(--liquid-glass-blur))
+    saturate(var(--liquid-glass-saturation));
+  --liquid-glass-popup-hover-bg: rgba(30, 30, 30, 0.8);
+  --liquid-glass-popup-hover-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  --liquid-glass-archive-hover-bg: rgba(30, 30, 30, 0.8);
+  --liquid-glass-archive-hover-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+  --liquid-glass-card-hover-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+}
+
+body.theme-light.liquid-glass {
+  --liquid-glass-bg-opacity: 0.78;
+  --liquid-glass-border-opacity: 0.2;
+  --liquid-glass-luminosity: rgba(255, 255, 255, 0.5);
+  --liquid-glass-panel-bg: rgba(255, 255, 255, var(--liquid-glass-bg-opacity));
+  --liquid-glass-panel-border-color: rgba(0, 0, 0, 0.08);
+  --liquid-glass-panel-highlight-edge: rgba(255, 255, 255, 0.7);
+  --liquid-glass-panel-highlight-center: rgba(255, 255, 255, 0.9);
+  --liquid-glass-modal-bg: rgba(255, 255, 255, 0.85);
+  --liquid-glass-modal-border-color: rgba(0, 0, 0, 0.1);
+  --liquid-glass-menu-bg: rgba(255, 255, 255, 0.82);
+  --liquid-glass-menu-border-color: rgba(0, 0, 0, 0.1);
+  --liquid-glass-sidebar-bg: rgba(246, 246, 246, 0.72);
+  --liquid-glass-sidebar-border-color: rgba(0, 0, 0, 0.06);
+  --liquid-glass-titlebar-bg: rgba(250, 250, 250, 0.88);
+  --liquid-glass-tabbar-bg: rgba(248, 248, 248, 0.8);
+  --liquid-glass-statusbar-bg: rgba(250, 250, 250, 0.85);
+  --liquid-glass-input-bg: rgba(0, 0, 0, 0.04);
+  --liquid-glass-input-border-color: rgba(0, 0, 0, 0.1);
+  --liquid-glass-input-bg-hover: rgba(0, 0, 0, 0.06);
+  --liquid-glass-input-bg-focus: rgba(0, 0, 0, 0.05);
+  --liquid-glass-popup-hover-bg: rgba(255, 255, 255, 0.88);
+  --liquid-glass-archive-hover-bg: rgba(255, 255, 255, 0.88);
+  --liquid-glass-card-hover-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+}
+
+body.theme-custom.liquid-glass {
+  --liquid-glass-panel-bg: color-mix(in srgb, var(--bg-secondary) 72%, transparent);
+  --liquid-glass-panel-border-color: color-mix(in srgb, var(--text-primary) 15%, transparent);
+  --liquid-glass-modal-bg: color-mix(in srgb, var(--bg-secondary) 78%, transparent);
+  --liquid-glass-modal-border-color: color-mix(in srgb, var(--text-primary) 18%, transparent);
+  --liquid-glass-menu-bg: color-mix(in srgb, var(--bg-secondary) 75%, transparent);
+  --liquid-glass-menu-border-color: color-mix(in srgb, var(--text-primary) 15%, transparent);
+  --liquid-glass-sidebar-bg: color-mix(in srgb, var(--bg-secondary) 68%, transparent);
+  --liquid-glass-sidebar-border-color: color-mix(in srgb, var(--text-primary) 8%, transparent);
+  --liquid-glass-titlebar-bg: color-mix(in srgb, var(--bg-secondary) 85%, transparent);
+  --liquid-glass-tabbar-bg: color-mix(in srgb, var(--bg-secondary) 75%, transparent);
+  --liquid-glass-statusbar-bg: color-mix(in srgb, var(--bg-secondary) 82%, transparent);
+  --liquid-glass-toolbar-bg: color-mix(in srgb, var(--bg-secondary) 70%, transparent);
+  --liquid-glass-dropdown-bg: color-mix(in srgb, var(--bg-secondary) 78%, transparent);
+  --liquid-glass-dropdown-border-color: color-mix(in srgb, var(--text-primary) 15%, transparent);
+  --liquid-glass-card-bg: color-mix(in srgb, var(--bg-secondary) 80%, transparent);
+  --liquid-glass-card-border-color: color-mix(in srgb, var(--text-primary) 12%, transparent);
+  --liquid-glass-toast-bg: color-mix(in srgb, var(--bg-secondary) 82%, transparent);
+  --liquid-glass-toast-border-color: color-mix(in srgb, var(--text-primary) 10%, transparent);
+  --liquid-glass-popup-hover-bg: color-mix(in srgb, var(--bg-secondary) 80%, transparent);
+  --liquid-glass-archive-hover-bg: color-mix(in srgb, var(--bg-secondary) 80%, transparent);
+  --liquid-glass-card-hover-shadow: 0 12px 40px
+    color-mix(in srgb, var(--bg-primary) 40%, transparent);
+}
+
+body.theme-nord.liquid-glass {
+  --liquid-glass-panel-bg: rgba(59, 66, 82, 0.72);
+  --liquid-glass-panel-border-color: rgba(236, 239, 244, 0.15);
+  --liquid-glass-modal-bg: rgba(59, 66, 82, 0.78);
+  --liquid-glass-menu-bg: rgba(59, 66, 82, 0.75);
+  --liquid-glass-sidebar-bg: rgba(59, 66, 82, 0.68);
+  --liquid-glass-titlebar-bg: rgba(46, 52, 64, 0.85);
+  --liquid-glass-statusbar-bg: rgba(46, 52, 64, 0.85);
+  --liquid-glass-tabbar-bg: rgba(59, 66, 82, 0.75);
+  --liquid-glass-toolbar-bg: rgba(59, 66, 82, 0.75);
+}
+
+body.theme-catppuccin.liquid-glass {
+  --liquid-glass-panel-bg: rgba(49, 50, 68, 0.72);
+  --liquid-glass-panel-border-color: rgba(205, 214, 244, 0.15);
+  --liquid-glass-modal-bg: rgba(49, 50, 68, 0.78);
+  --liquid-glass-menu-bg: rgba(49, 50, 68, 0.75);
+  --liquid-glass-sidebar-bg: rgba(49, 50, 68, 0.68);
+  --liquid-glass-titlebar-bg: rgba(30, 30, 46, 0.85);
+  --liquid-glass-statusbar-bg: rgba(30, 30, 46, 0.85);
+  --liquid-glass-tabbar-bg: rgba(49, 50, 68, 0.75);
+  --liquid-glass-toolbar-bg: rgba(49, 50, 68, 0.75);
+}
+
+body.theme-dracula.liquid-glass {
+  --liquid-glass-panel-bg: rgba(68, 71, 90, 0.72);
+  --liquid-glass-panel-border-color: rgba(248, 248, 242, 0.15);
+  --liquid-glass-modal-bg: rgba(68, 71, 90, 0.78);
+  --liquid-glass-menu-bg: rgba(68, 71, 90, 0.75);
+  --liquid-glass-sidebar-bg: rgba(68, 71, 90, 0.68);
+  --liquid-glass-titlebar-bg: rgba(40, 42, 54, 0.85);
+  --liquid-glass-statusbar-bg: rgba(40, 42, 54, 0.85);
+  --liquid-glass-tabbar-bg: rgba(68, 71, 90, 0.75);
+  --liquid-glass-toolbar-bg: rgba(68, 71, 90, 0.75);
+}
+
+body.theme-solarized.liquid-glass {
+  --liquid-glass-panel-bg: rgba(7, 54, 66, 0.72);
+  --liquid-glass-panel-border-color: rgba(131, 148, 150, 0.15);
+  --liquid-glass-modal-bg: rgba(7, 54, 66, 0.78);
+  --liquid-glass-menu-bg: rgba(7, 54, 66, 0.75);
+  --liquid-glass-sidebar-bg: rgba(7, 54, 66, 0.68);
+  --liquid-glass-titlebar-bg: rgba(0, 43, 54, 0.85);
+  --liquid-glass-statusbar-bg: rgba(0, 43, 54, 0.85);
+  --liquid-glass-tabbar-bg: rgba(7, 54, 66, 0.75);
+  --liquid-glass-toolbar-bg: rgba(7, 54, 66, 0.75);
+}
+
+body.theme-github.liquid-glass {
+  --liquid-glass-panel-bg: rgba(22, 27, 34, 0.72);
+  --liquid-glass-panel-border-color: rgba(201, 209, 217, 0.15);
+  --liquid-glass-modal-bg: rgba(22, 27, 34, 0.78);
+  --liquid-glass-menu-bg: rgba(22, 27, 34, 0.75);
+  --liquid-glass-sidebar-bg: rgba(22, 27, 34, 0.68);
+  --liquid-glass-titlebar-bg: rgba(13, 17, 23, 0.85);
+  --liquid-glass-statusbar-bg: rgba(13, 17, 23, 0.85);
+  --liquid-glass-tabbar-bg: rgba(22, 27, 34, 0.75);
+  --liquid-glass-toolbar-bg: rgba(22, 27, 34, 0.75);
+}
+
+body.liquid-glass .glass-panel {
+  background: var(--liquid-glass-panel-bg);
+  backdrop-filter: blur(var(--liquid-glass-blur)) saturate(var(--liquid-glass-saturation));
+  -webkit-backdrop-filter: blur(var(--liquid-glass-blur)) saturate(var(--liquid-glass-saturation));
+  border: 1px solid var(--liquid-glass-panel-border-color);
+  border-radius: var(--liquid-glass-radius);
+  box-shadow: var(--liquid-glass-panel-shadow);
+  position: relative;
+}
+
+body.liquid-glass .glass-panel::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--liquid-glass-panel-highlight-edge) 20%,
+    var(--liquid-glass-panel-highlight-center) 50%,
+    var(--liquid-glass-panel-highlight-edge) 80%,
+    transparent 100%
+  );
+  border-radius: var(--liquid-glass-radius) var(--liquid-glass-radius) 0 0;
+  pointer-events: none;
+  z-index: 1;
+}
+
+body.liquid-glass .context-submenu {
+  background: var(--liquid-glass-menu-bg);
+  backdrop-filter: var(--liquid-glass-menu-filter);
+  -webkit-backdrop-filter: var(--liquid-glass-menu-filter);
+  border-radius: var(--liquid-glass-menu-radius);
+}
+
+body.liquid-glass .sidebar {
+  background: var(--liquid-glass-sidebar-bg);
+  backdrop-filter: var(--liquid-glass-sidebar-filter);
+  -webkit-backdrop-filter: var(--liquid-glass-sidebar-filter);
+  border-right: 1px solid var(--liquid-glass-sidebar-border-color);
+}
+
+body.liquid-glass .titlebar {
+  background: var(--liquid-glass-titlebar-bg);
+  backdrop-filter: var(--liquid-glass-titlebar-filter);
+  -webkit-backdrop-filter: var(--liquid-glass-titlebar-filter);
+}
+
+body.liquid-glass .tab-bar {
+  background: var(--liquid-glass-tabbar-bg);
+  backdrop-filter: var(--liquid-glass-tabbar-filter);
+  -webkit-backdrop-filter: var(--liquid-glass-tabbar-filter);
+}
+
+body.liquid-glass .status-bar {
+  background: var(--liquid-glass-statusbar-bg);
+  backdrop-filter: var(--liquid-glass-statusbar-filter);
+  -webkit-backdrop-filter: var(--liquid-glass-statusbar-filter);
+}
+
+body.liquid-glass .toolbar {
+  background: var(--liquid-glass-toolbar-bg);
+  backdrop-filter: var(--liquid-glass-toolbar-filter);
+  -webkit-backdrop-filter: var(--liquid-glass-toolbar-filter);
+}
+
+body.liquid-glass .glass-input {
+  background: var(--liquid-glass-input-bg);
+  border: 1px solid var(--liquid-glass-input-border-color);
+  box-shadow: var(--liquid-glass-input-shadow);
+}
+
+body.liquid-glass .glass-input:hover {
+  background: var(--liquid-glass-input-bg-hover);
+  border-color: var(--liquid-glass-input-border-color-hover);
+}
+
+body.liquid-glass .glass-input:focus {
+  background: var(--liquid-glass-input-bg-focus);
+  border-color: var(--accent-color);
+  box-shadow: var(--liquid-glass-input-focus-ring);
+}
+
+body.liquid-glass .address-bar,
+body.liquid-glass .search-bar {
+  background: var(--liquid-glass-address-bg);
+  backdrop-filter: var(--liquid-glass-address-filter);
+  -webkit-backdrop-filter: var(--liquid-glass-address-filter);
+}
+
+body.liquid-glass .file-hover-card {
+  background: var(--liquid-glass-card-bg);
+  backdrop-filter: var(--liquid-glass-card-filter);
+  -webkit-backdrop-filter: var(--liquid-glass-card-filter);
+  border: 1px solid var(--liquid-glass-card-border-color);
+  border-radius: var(--liquid-glass-card-radius);
+}
+
+body.liquid-glass .zoom-popup {
+  background: var(--liquid-glass-popup-bg);
+  backdrop-filter: var(--liquid-glass-popup-filter);
+  -webkit-backdrop-filter: var(--liquid-glass-popup-filter);
+}
+
+body.reduce-transparency.liquid-glass .glass-panel::before {
+  display: none;
+}
+
+body.liquid-glass .zoom-popup:hover {
+  background: var(--liquid-glass-popup-hover-bg);
+  box-shadow: var(--liquid-glass-popup-hover-shadow);
+}
+
+body.liquid-glass .zoom-popup:focus-visible {
+  background: var(--liquid-glass-popup-hover-bg);
+  outline: 2px solid var(--accent-color);
+  outline-offset: 2px;
+}
+
+body.liquid-glass .archive-operations-panel:hover {
+  background: var(--liquid-glass-archive-hover-bg);
+  box-shadow: var(--liquid-glass-archive-hover-shadow);
+}
+
+body.liquid-glass .file-hover-card:hover {
+  box-shadow: var(--liquid-glass-card-hover-shadow);
+  transform: translateY(-2px);
+}

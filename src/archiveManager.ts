@@ -384,8 +384,6 @@ export function setupArchiveHandlers(): void {
           ignoreError(error);
         }
 
-        const mainWindow = getMainWindow();
-
         if (format === 'tar.gz') {
           return new Promise((resolve) => {
             const Seven = get7zipModule();
@@ -636,8 +634,6 @@ export function setupArchiveHandlers(): void {
           logger.error('[Extract] Unsafe archive:', error);
           return { success: false, error: 'Archive contains unsafe paths' };
         }
-
-        const mainWindow = getMainWindow();
 
         return new Promise((resolve, _reject) => {
           const Seven = get7zipModule();

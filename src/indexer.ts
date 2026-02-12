@@ -1,14 +1,10 @@
 import { promises as fs } from 'fs';
 import * as path from 'path';
 import { app } from 'electron';
-import { exec } from 'child_process';
-import { promisify } from 'util';
 import type { IndexEntry, IndexStatus } from './types';
 import type { FileTaskManager } from './fileTasks';
 import { getDrives } from './utils';
 import { ignoreError } from './shared';
-
-const execAsync = promisify(exec);
 type IndexEntryPayload = Partial<Omit<IndexEntry, 'modified'>> & {
   modified?: Date | number | string;
 };

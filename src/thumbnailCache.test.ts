@@ -1,18 +1,8 @@
 import { describe, it, expect } from 'vitest';
+import { generateCacheKey, MAX_CACHE_SIZE_MB, MAX_CACHE_AGE_DAYS } from './thumbnailCache';
 
 describe('Thumbnail Cache', () => {
   describe('Cache key generation', () => {
-    function generateCacheKey(filePath: string, mtime: number): string {
-      let hash = 0;
-      const str = `v1:${filePath}:${mtime}`;
-      for (let i = 0; i < str.length; i++) {
-        const char = str.charCodeAt(i);
-        hash = (hash << 5) - hash + char;
-        hash = hash & hash;
-      }
-      return Math.abs(hash).toString(16).padStart(8, '0');
-    }
-
     it('generates consistent keys for same inputs', () => {
       const key1 = generateCacheKey('/path/to/file.jpg', 1234567890);
       const key2 = generateCacheKey('/path/to/file.jpg', 1234567890);
@@ -64,9 +54,6 @@ describe('Thumbnail Cache', () => {
   });
 
   describe('Cache size limits', () => {
-    const MAX_CACHE_SIZE_MB = 500;
-    const MAX_CACHE_AGE_DAYS = 30;
-
     it('has reasonable default max cache size', () => {
       expect(MAX_CACHE_SIZE_MB).toBeGreaterThan(0);
       expect(MAX_CACHE_SIZE_MB).toBeLessThanOrEqual(1000);

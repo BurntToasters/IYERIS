@@ -246,13 +246,14 @@ function buildBashScript(op: ElevatedOperation): string {
       return `#!/bin/bash\nset -e\nmv '${escape(op.sourcePath!)}' '${escape(op.destPath!)}'`;
     case 'delete':
       return `#!/bin/bash\nset -e\nrm -rf '${escape(op.sourcePath!)}'`;
-    case 'rename':
+    case 'rename': {
       if (op.newName!.includes('/') || op.newName!.includes('..')) {
         return '#!/bin/bash\nexit 1';
       }
       const dir = path.dirname(op.sourcePath!);
       const newPath = path.join(dir, op.newName!);
       return `#!/bin/bash\nset -e\nmv '${escape(op.sourcePath!)}' '${escape(newPath)}'`;
+    }
     case 'createFolder':
       return `#!/bin/bash\nset -e\nmkdir -p '${escape(op.destPath!)}'`;
     case 'createFile':

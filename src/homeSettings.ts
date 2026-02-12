@@ -1,4 +1,5 @@
 import type { HomeSettings } from './types';
+import { isRecord, RESERVED_KEYS, sanitizeStringArray } from './shared';
 
 export function createDefaultHomeSettings(): HomeSettings {
   return {
@@ -34,20 +35,6 @@ export function createDefaultHomeSettings(): HomeSettings {
     ],
     hiddenSidebarQuickAccessItems: [],
   };
-}
-
-type UnknownRecord = Record<string, unknown>;
-const RESERVED_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
-
-function isRecord(value: unknown): value is UnknownRecord {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
-  const proto = Object.getPrototypeOf(value);
-  return proto === Object.prototype || proto === null;
-}
-
-function sanitizeStringArray(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return value.filter((item) => typeof item === 'string');
 }
 
 export function sanitizeHomeSettings(
@@ -94,7 +81,7 @@ export function sanitizeHomeSettings(
 
   for (const key of Object.keys(clean)) {
     if (RESERVED_KEYS.has(key)) {
-      delete (clean as unknown as UnknownRecord)[key];
+      delete (clean as unknown as Record<string, unknown>)[key];
     }
   }
 

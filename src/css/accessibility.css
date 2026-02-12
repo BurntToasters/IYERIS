@@ -1,0 +1,107 @@
+body.reduce-motion .selection-rect {
+  transition: none;
+}
+
+body.reduce-motion .file-hover-card {
+  transition: none;
+}
+
+body.theme-custom {
+  background-color: var(--custom-bg-primary, #1a1a1a);
+}
+
+:root {
+  --system-font-scale: 1;
+}
+
+body.use-system-font-size {
+  font-size: calc(13px * var(--system-font-scale)) !important;
+}
+
+body.large-text {
+  font-size: 16px !important;
+}
+
+body.bold-text {
+  font-weight: 500;
+}
+
+body.bold-text .file-item-name,
+body.bold-text .nav-label,
+body.bold-text .breadcrumb-item,
+body.bold-text .tab-label,
+body.bold-text .status-text,
+body.bold-text .toolbar-label,
+body.bold-text .address-bar,
+body.bold-text .search-bar,
+body.bold-text .setting-description,
+body.bold-text .section-title,
+body.bold-text h1,
+body.bold-text h2,
+body.bold-text h3,
+body.bold-text h4,
+body.bold-text p,
+body.bold-text span,
+body.bold-text label,
+body.bold-text button,
+body.bold-text input,
+body.bold-text select,
+body.bold-text textarea,
+body.bold-text li,
+body.bold-text td,
+body.bold-text th,
+body.bold-text a {
+  font-weight: 500 !important;
+}
+
+body.visible-focus *:focus {
+  outline: 3px solid var(--accent-color) !important;
+  outline-offset: 2px !important;
+}
+
+body.reduce-transparency .glass-panel {
+  background: var(--bg-secondary) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+body.reduce-transparency .glass-input,
+body.reduce-transparency .address-bar,
+body.reduce-transparency .search-bar {
+  background: var(--bg-primary) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+body.reduce-transparency .toolbar {
+  background: var(--bg-secondary) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+body.reduce-motion *,
+body.reduce-motion *::before,
+body.reduce-motion *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+}
+
+body.reduce-motion .toggle-slider::before {
+  transition: none;
+}
+
+body.reduce-motion .glass-panel {
+  backdrop-filter: none;
+  background: var(--bg-secondary);
+}

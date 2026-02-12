@@ -3,15 +3,13 @@ import type {
   FileItem,
   CustomTheme,
   ContentSearchResult,
-  GitStatusResponse,
-  GitFileStatus,
   SpecialDirectory,
   DriveInfo,
-  ListColumnWidths,
 } from './types';
 import { createFolderTreeManager } from './folderDir.js';
-import { escapeHtml, getErrorMessage, ignoreError, isRecord } from './shared.js';
+import { escapeHtml, getErrorMessage, ignoreError } from './shared.js';
 import { clearHtml, getById } from './rendererDom.js';
+import { createThemeEditorController, hexToRgb } from './rendererThemeEditor.js';
 import {
   buildPathFromSegments,
   createNavigationController,
@@ -27,14 +25,24 @@ import { createArchiveOperationsController } from './rendererArchiveOperations.j
 import { createTabsController, type TabData } from './rendererTabs.js';
 import { createCommandPaletteController } from './rendererCommandPalette.js';
 import { createShortcutsUiController } from './rendererShortcutsUi.js';
+import { createShortcutEngineController } from './rendererShortcutsEngine.js';
 import { createSettingsUiController } from './rendererSettingsUi.js';
 import { createSettingsModalController } from './rendererSettingsModal.js';
+import { createClipboardController } from './rendererClipboard.js';
 import { createSettingsActionsController } from './rendererSettingsActions.js';
 import { createSupportUiController } from './rendererSupportUi.js';
 import { createExternalLinksController } from './rendererExternalLinks.js';
 import { createPropertiesDialogController } from './rendererPropertiesDialog.js';
 import { createUpdateActionsController } from './rendererUpdateActions.js';
-import { generatePdfThumbnailPdfJs } from './rendererPdfViewer.js';
+import { createColumnViewController } from './rendererColumnView.js';
+import { createCompressExtractController } from './rendererCompressExtract.js';
+import { createBookmarksController } from './rendererBookmarks.js';
+import { createContextMenuController } from './rendererContextMenu.js';
+import { createDiskSpaceController } from './rendererDiskSpace.js';
+import { createFolderIconPickerController } from './rendererFolderIconPicker.js';
+import { createInlineRenameController } from './rendererInlineRename.js';
+import { createGitStatusController } from './rendererGitStatus.js';
+import { createThumbnailController, THUMBNAIL_QUALITY_VALUES } from './rendererThumbnails.js';
 import {
   activateModal,
   deactivateModal,
@@ -66,12 +74,10 @@ import {
   FILE_ICON_MAP,
   IMAGE_EXTENSIONS,
   RAW_EXTENSIONS,
-  ANIMATED_IMAGE_EXTENSIONS,
   VIDEO_EXTENSIONS,
   AUDIO_EXTENSIONS,
   PDF_EXTENSIONS,
   ARCHIVE_EXTENSIONS,
-  ARCHIVE_SUFFIXES,
   TEXT_EXTENSIONS,
   WORD_EXTENSIONS,
   SPREADSHEET_EXTENSIONS,
@@ -79,11 +85,8 @@ import {
   SOURCE_CODE_EXTENSIONS,
   WEB_EXTENSIONS,
   DATA_EXTENSIONS,
-  VIDEO_MIME_TYPES,
-  AUDIO_MIME_TYPES,
 } from './fileTypes.js';
 
-const THUMBNAIL_MAX_SIZE = 10 * 1024 * 1024;
 const SEARCH_DEBOUNCE_MS = 300;
 const SETTINGS_SAVE_DEBOUNCE_MS = 1000;
 const TOAST_DURATION_MS = 3000;
@@ -92,11 +95,20 @@ const DIRECTORY_HISTORY_MAX = 5;
 const RENDER_BATCH_SIZE = 50;
 const VIRTUALIZE_THRESHOLD = 2000;
 const VIRTUALIZE_BATCH_SIZE = 200;
-const THUMBNAIL_ROOT_MARGIN = '100px';
-const THUMBNAIL_CACHE_MAX = 100;
-const THUMBNAIL_CONCURRENT_LOADS = 4;
-const THUMBNAIL_QUEUE_MAX = 100;
+const DIRECTORY_PROGRESS_THROTTLE_MS = 100;
+const SUPPORT_POPUP_DELAY_MS = 1500;
+const INDEX_STATUS_POLL_MS = 500;
+const SIDEBAR_MIN_WIDTH = 140;
+const SIDEBAR_MAX_WIDTH = 360;
+const PREVIEW_MIN_WIDTH = 200;
+const PREVIEW_MAX_WIDTH = 520;
+
 const NAME_COLLATOR = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+
+function consumeEvent(e: Event): void {
+  e.preventDefault();
+  e.stopPropagation();
+}
 
 const THEME_VALUES = [
   'dark',
@@ -112,7 +124,6 @@ const THEME_VALUES = [
 const SORT_BY_VALUES = ['name', 'date', 'size', 'type'] as const;
 const SORT_ORDER_VALUES = ['asc', 'desc'] as const;
 const FILE_CONFLICT_VALUES = ['ask', 'rename', 'skip', 'overwrite'] as const;
-const THUMBNAIL_QUALITY_VALUES = ['low', 'medium', 'high'] as const;
 const PREVIEW_POSITION_VALUES = ['right', 'bottom'] as const;
 const GRID_COLUMNS_VALUES = ['auto', '2', '3', '4', '5', '6'] as const;
 const VIEW_MODE_VALUES = ['grid', 'list', 'column'] as const;
@@ -126,8 +137,7 @@ const DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
   month: 'short',
   day: 'numeric',
 });
-const DISK_SPACE_CACHE_TTL_MS = 60000;
-const GIT_STATUS_CACHE_TTL_MS = 3000;
+
 const LIST_COLUMN_MIN_WIDTHS: Record<string, number> = {
   name: 180,
   type: 120,
@@ -148,22 +158,9 @@ const LIST_COLUMN_MAX_WIDTHS: Record<string, number> = {
   modified: 320,
 };
 
-const thumbnailCache = new Map<string, string>();
-let activeThumbnailLoads = 0;
-const pendingThumbnailLoads: Array<() => void> = [];
 const fileElementMap: Map<string, HTMLElement> = new Map();
-let cutPaths = new Set<string>();
-const gitIndicatorPaths = new Set<string>();
 const driveLabelByPath = new Map<string, string>();
 let cachedDriveInfo: DriveInfo[] = [];
-const diskSpaceCache = new Map<string, { timestamp: number; total: number; free: number }>();
-const DISK_SPACE_CACHE_MAX = 50;
-const gitStatusCache = new Map<
-  string,
-  { timestamp: number; isGitRepo: boolean; statuses: GitFileStatus[] }
->();
-const GIT_STATUS_CACHE_MAX = 100;
-const gitStatusInFlight = new Map<string, Promise<GitStatusResponse>>();
 
 function cacheDriveInfo(drives: DriveInfo[]): void {
   cachedDriveInfo = drives;
@@ -173,28 +170,6 @@ function cacheDriveInfo(drives: DriveInfo[]): void {
       driveLabelByPath.set(drive.path, drive.label || drive.path);
     }
   });
-}
-
-// throttle concurrent thumbnail loads
-function enqueueThumbnailLoad(loadFn: () => Promise<void>): void {
-  const execute = async () => {
-    activeThumbnailLoads++;
-    try {
-      await loadFn();
-    } finally {
-      activeThumbnailLoads--;
-      if (pendingThumbnailLoads.length > 0) {
-        const next = pendingThumbnailLoads.shift();
-        if (next) next();
-      }
-    }
-  };
-
-  if (activeThumbnailLoads < THUMBNAIL_CONCURRENT_LOADS) {
-    execute();
-  } else if (pendingThumbnailLoads.length < THUMBNAIL_QUEUE_MAX) {
-    pendingThumbnailLoads.push(execute);
-  }
 }
 
 function updateVersionDisplays(appVersion: string): void {
@@ -215,7 +190,6 @@ async function saveSettingsWithTimestamp(settings: Settings) {
   if (isResettingSettings) {
     return { success: true };
   }
-  settings._timestamp = Date.now();
   return window.electronAPI.saveSettings(settings);
 }
 
@@ -224,9 +198,12 @@ function debouncedSaveSettings(delay: number = SETTINGS_SAVE_DEBOUNCE_MS) {
   if (settingsSaveTimeout) {
     clearTimeout(settingsSaveTimeout);
   }
-  settingsSaveTimeout = setTimeout(async () => {
-    await saveSettingsWithTimestamp(currentSettings);
-    settingsSaveTimeout = null;
+  settingsSaveTimeout = setTimeout(() => {
+    saveSettingsWithTimestamp(currentSettings)
+      .catch(ignoreError)
+      .finally(() => {
+        settingsSaveTimeout = null;
+      });
   }, delay);
 }
 
@@ -252,8 +229,6 @@ let history: string[] = [];
 let historyIndex: number = -1;
 let selectedItems: Set<string> = new Set();
 let viewMode: ViewMode = 'grid';
-let contextMenuData: FileItem | null = null;
-let clipboard: { operation: 'copy' | 'cut'; paths: string[] } | null = null;
 let allFiles: FileItem[] = [];
 let hiddenFilesCount = 0;
 let platformOS: string = '';
@@ -271,7 +246,6 @@ let activeListResizeColumn: string | null = null;
 let listResizeStartX = 0;
 let listResizeStartWidth = 0;
 let listResizeCurrentWidth = 0;
-let bookmarksDropReady = false;
 
 function getFileItemsArray(): HTMLElement[] {
   return Array.from(document.querySelectorAll('.file-item')) as HTMLElement[];
@@ -286,54 +260,61 @@ const MAX_CACHED_TABS = 5;
 const MAX_CACHED_FILES_PER_TAB = 10000;
 let tabCacheAccessOrder: string[] = [];
 let saveTabStateTimeout: NodeJS.Timeout | null = null;
-const addressInput = document.getElementById('address-input') as HTMLInputElement;
-const fileGrid = document.getElementById('file-grid') as HTMLElement;
+
+function requireElement<T extends HTMLElement>(id: string): T {
+  const el = document.getElementById(id);
+  if (!el) throw new Error(`Missing required DOM element: #${id}`);
+  return el as T;
+}
+
+const addressInput = requireElement<HTMLInputElement>('address-input');
+const fileGrid = requireElement<HTMLElement>('file-grid');
 fileGrid?.setAttribute('role', 'listbox');
 fileGrid?.setAttribute('aria-label', 'File list');
-const fileView = document.getElementById('file-view') as HTMLElement;
-const columnView = document.getElementById('column-view') as HTMLElement;
-const homeView = document.getElementById('home-view') as HTMLElement;
-const loading = document.getElementById('loading') as HTMLElement;
-const loadingText = document.getElementById('loading-text') as HTMLElement;
-const emptyState = document.getElementById('empty-state') as HTMLElement;
-const backBtn = document.getElementById('back-btn') as HTMLButtonElement;
-const forwardBtn = document.getElementById('forward-btn') as HTMLButtonElement;
-const upBtn = document.getElementById('up-btn') as HTMLButtonElement;
-const refreshBtn = document.getElementById('refresh-btn') as HTMLButtonElement;
-const newFileBtn = document.getElementById('new-file-btn') as HTMLButtonElement;
-const newFolderBtn = document.getElementById('new-folder-btn') as HTMLButtonElement;
-const viewToggleBtn = document.getElementById('view-toggle-btn') as HTMLButtonElement;
-const viewOptions = document.getElementById('view-options') as HTMLElement;
-const listHeader = document.getElementById('list-header') as HTMLElement;
-const folderTree = document.getElementById('folder-tree') as HTMLElement;
-const sidebarResizeHandle = document.getElementById('sidebar-resize-handle') as HTMLElement;
-const drivesList = document.getElementById('drives-list') as HTMLElement;
-const sortBtn = document.getElementById('sort-btn') as HTMLButtonElement;
-const bookmarksList = document.getElementById('bookmarks-list') as HTMLElement;
-const bookmarkAddBtn = document.getElementById('bookmark-add-btn') as HTMLButtonElement;
-const undoBtn = document.getElementById('undo-btn') as HTMLButtonElement;
-const redoBtn = document.getElementById('redo-btn') as HTMLButtonElement;
-const dropIndicator = document.getElementById('drop-indicator') as HTMLElement;
-const dropIndicatorAction = document.getElementById('drop-indicator-action') as HTMLElement;
-const dropIndicatorPath = document.getElementById('drop-indicator-path') as HTMLElement;
-const previewResizeHandle = document.getElementById('preview-resize-handle') as HTMLElement;
-const selectionCopyBtn = document.getElementById('selection-copy-btn') as HTMLButtonElement;
-const selectionCutBtn = document.getElementById('selection-cut-btn') as HTMLButtonElement;
-const selectionMoveBtn = document.getElementById('selection-move-btn') as HTMLButtonElement;
-const selectionRenameBtn = document.getElementById('selection-rename-btn') as HTMLButtonElement;
-const selectionDeleteBtn = document.getElementById('selection-delete-btn') as HTMLButtonElement;
-const statusItems = document.getElementById('status-items') as HTMLElement;
-const statusSelected = document.getElementById('status-selected') as HTMLElement;
-const statusSearch = document.getElementById('status-search') as HTMLElement;
-const statusSearchText = document.getElementById('status-search-text') as HTMLElement;
-const selectionIndicator = document.getElementById('selection-indicator') as HTMLElement;
-const selectionCount = document.getElementById('selection-count') as HTMLElement;
-const statusHidden = document.getElementById('status-hidden') as HTMLElement;
+const fileView = requireElement<HTMLElement>('file-view');
+const columnView = requireElement<HTMLElement>('column-view');
+const homeView = requireElement<HTMLElement>('home-view');
+const loading = requireElement<HTMLElement>('loading');
+const loadingText = requireElement<HTMLElement>('loading-text');
+const emptyState = requireElement<HTMLElement>('empty-state');
+const backBtn = requireElement<HTMLButtonElement>('back-btn');
+const forwardBtn = requireElement<HTMLButtonElement>('forward-btn');
+const upBtn = requireElement<HTMLButtonElement>('up-btn');
+const refreshBtn = requireElement<HTMLButtonElement>('refresh-btn');
+const newFileBtn = requireElement<HTMLButtonElement>('new-file-btn');
+const newFolderBtn = requireElement<HTMLButtonElement>('new-folder-btn');
+const viewToggleBtn = requireElement<HTMLButtonElement>('view-toggle-btn');
+const viewOptions = requireElement<HTMLElement>('view-options');
+const listHeader = requireElement<HTMLElement>('list-header');
+const folderTree = requireElement<HTMLElement>('folder-tree');
+const sidebarResizeHandle = requireElement<HTMLElement>('sidebar-resize-handle');
+const drivesList = requireElement<HTMLElement>('drives-list');
+const sortBtn = requireElement<HTMLButtonElement>('sort-btn');
+const bookmarksList = requireElement<HTMLElement>('bookmarks-list');
+const bookmarkAddBtn = requireElement<HTMLButtonElement>('bookmark-add-btn');
+const undoBtn = requireElement<HTMLButtonElement>('undo-btn');
+const redoBtn = requireElement<HTMLButtonElement>('redo-btn');
+const dropIndicator = requireElement<HTMLElement>('drop-indicator');
+const dropIndicatorAction = requireElement<HTMLElement>('drop-indicator-action');
+const dropIndicatorPath = requireElement<HTMLElement>('drop-indicator-path');
+const previewResizeHandle = requireElement<HTMLElement>('preview-resize-handle');
+const selectionCopyBtn = requireElement<HTMLButtonElement>('selection-copy-btn');
+const selectionCutBtn = requireElement<HTMLButtonElement>('selection-cut-btn');
+const selectionMoveBtn = requireElement<HTMLButtonElement>('selection-move-btn');
+const selectionRenameBtn = requireElement<HTMLButtonElement>('selection-rename-btn');
+const selectionDeleteBtn = requireElement<HTMLButtonElement>('selection-delete-btn');
+const statusItems = requireElement<HTMLElement>('status-items');
+const statusSelected = requireElement<HTMLElement>('status-selected');
+const statusSearch = requireElement<HTMLElement>('status-search');
+const statusSearchText = requireElement<HTMLElement>('status-search-text');
+const selectionIndicator = requireElement<HTMLElement>('selection-indicator');
+const selectionCount = requireElement<HTMLElement>('selection-count');
+const statusHidden = requireElement<HTMLElement>('status-hidden');
 
 const folderTreeManager = createFolderTreeManager({
   folderTree,
   nameCollator: NAME_COLLATOR,
-  getFolderIcon,
+  getFolderIcon: (p: string) => folderIconPickerController.getFolderIcon(p),
   getBasename: (value) => driveLabelByPath.get(value) ?? path.basename(value),
   navigateTo: (value) => navigateTo(value),
   handleDrop,
@@ -367,7 +348,7 @@ window.electronAPI.onDirectoryContentsProgress((progress) => {
   }
   directoryProgressCount = progress.loaded;
   const now = Date.now();
-  if (now - lastDirectoryProgressUpdate < 100) return;
+  if (now - lastDirectoryProgressUpdate < DIRECTORY_PROGRESS_THROTTLE_MS) return;
   lastDirectoryProgressUpdate = now;
   if (loadingText) {
     loadingText.textContent = `Loading... (${directoryProgressCount.toLocaleString()} items)`;
@@ -422,146 +403,33 @@ function cancelDirectoryRequest(): void {
   finishDirectoryRequest(directoryRequestId);
 }
 
-const currentGitStatuses: Map<string, string> = new Map();
-let gitStatusRequestId = 0;
+const diskSpaceController = createDiskSpaceController({
+  getCurrentPath: () => currentPath,
+  getPlatformOS: () => platformOS,
+  formatFileSize,
+  isHomeViewPath,
+  getDiskSpace: (drivePath) => window.electronAPI.getDiskSpace(drivePath),
+});
+const { updateDiskSpace } = diskSpaceController;
 
-function clearGitIndicators(): void {
-  currentGitStatuses.clear();
-  for (const itemPath of gitIndicatorPaths) {
-    fileElementMap.get(itemPath)?.querySelector('.git-indicator')?.remove();
-  }
-  gitIndicatorPaths.clear();
-}
+const gitStatus = createGitStatusController({
+  getCurrentSettings: () => currentSettings,
+  getCurrentPath: () => currentPath,
+  getFileElement: (p) => fileElementMap.get(p),
+  getGitStatus: (dir, untracked) => window.electronAPI.getGitStatus(dir, untracked),
+  getGitBranch: (dir) => window.electronAPI.getGitBranch(dir),
+});
 
-async function fetchGitStatusAsync(dirPath: string) {
-  if (!currentSettings.enableGitStatus) {
-    return;
-  }
-
-  const requestId = ++gitStatusRequestId;
-  const includeUntracked = currentSettings.gitIncludeUntracked !== false;
-
-  try {
-    const result = await getGitStatusCached(dirPath, includeUntracked);
-    if (
-      requestId !== gitStatusRequestId ||
-      dirPath !== currentPath ||
-      !currentSettings.enableGitStatus
-    ) {
-      return;
-    }
-
-    currentGitStatuses.clear();
-
-    if (result.success && result.isGitRepo && result.statuses) {
-      for (const item of result.statuses) {
-        currentGitStatuses.set(item.path, item.status);
-      }
-      updateGitIndicators();
-    } else {
-      clearGitIndicators();
-    }
-  } catch (error) {
-    console.error('[Git Status] Failed to fetch:', error);
-  }
-}
-
-async function getGitStatusCached(
-  dirPath: string,
-  includeUntracked: boolean
-): Promise<GitStatusResponse> {
-  const cacheKey = `${dirPath}|${includeUntracked ? 'all' : 'tracked'}`;
-  const cached = gitStatusCache.get(cacheKey);
-  if (cached && Date.now() - cached.timestamp < GIT_STATUS_CACHE_TTL_MS) {
-    return { success: true, isGitRepo: cached.isGitRepo, statuses: cached.statuses };
-  }
-
-  const inFlight = gitStatusInFlight.get(cacheKey);
-  if (inFlight) {
-    return inFlight;
-  }
-
-  const request = window.electronAPI
-    .getGitStatus(dirPath, includeUntracked)
-    .then((result) => {
-      if (result.success) {
-        if (gitStatusCache.size >= GIT_STATUS_CACHE_MAX) {
-          const firstKey = gitStatusCache.keys().next().value;
-          if (firstKey) gitStatusCache.delete(firstKey);
-        }
-        gitStatusCache.set(cacheKey, {
-          timestamp: Date.now(),
-          isGitRepo: result.isGitRepo === true,
-          statuses: result.statuses || [],
-        });
-      }
-      return result;
-    })
-    .finally(() => {
-      gitStatusInFlight.delete(cacheKey);
-    });
-
-  gitStatusInFlight.set(cacheKey, request);
-  return request;
-}
-
-async function updateGitBranch(dirPath: string) {
-  const statusGitBranch = document.getElementById('status-git-branch');
-  const statusGitBranchName = document.getElementById('status-git-branch-name');
-
-  if (!statusGitBranch || !statusGitBranchName) return;
-
-  if (!currentSettings.enableGitStatus) {
-    statusGitBranch.style.display = 'none';
-    return;
-  }
-
-  try {
-    const result = await window.electronAPI.getGitBranch(dirPath);
-    if (result.success && result.branch && dirPath === currentPath) {
-      statusGitBranchName.textContent = result.branch;
-      statusGitBranch.style.display = 'inline-flex';
-    } else {
-      statusGitBranch.style.display = 'none';
-    }
-  } catch {
-    statusGitBranch.style.display = 'none';
-  }
-}
-
-function updateGitIndicators() {
-  if (!currentSettings.enableGitStatus) {
-    clearGitIndicators();
-    return;
-  }
-
-  for (const itemPath of Array.from(gitIndicatorPaths)) {
-    if (!currentGitStatuses.has(itemPath)) {
-      fileElementMap.get(itemPath)?.querySelector('.git-indicator')?.remove();
-      gitIndicatorPaths.delete(itemPath);
-    }
-  }
-
-  applyGitIndicatorsToPaths(Array.from(currentGitStatuses.keys()));
-}
-
-function applyGitIndicatorsToPaths(paths: string[]): void {
-  for (const itemPath of paths) {
-    const status = currentGitStatuses.get(itemPath);
-    if (!status) continue;
-    const item = fileElementMap.get(itemPath);
-    if (!item) continue;
-
-    let indicator = item.querySelector('.git-indicator') as HTMLElement | null;
-    if (!indicator) {
-      indicator = document.createElement('span');
-      item.appendChild(indicator);
-    }
-    indicator.className = `git-indicator ${status}`;
-    indicator.title = status.charAt(0).toUpperCase() + status.slice(1);
-    gitIndicatorPaths.add(itemPath);
-  }
-}
+const {
+  clearGitIndicators,
+  fetchGitStatusAsync,
+  updateGitBranch,
+  updateGitIndicators,
+  applyGitIndicatorsToPaths,
+  gitIndicatorPaths,
+  gitStatusCache,
+  gitStatusInFlight,
+} = gitStatus;
 
 let currentSettings: Settings = createDefaultSettings();
 let isResettingSettings = false;
@@ -579,6 +447,54 @@ const toastManager = createToastManager({
   twemojiImg,
 });
 const showToast = toastManager.showToast;
+
+const folderIconPickerController = createFolderIconPickerController({
+  getCurrentSettings: () => currentSettings,
+  getCurrentPath: () => currentPath,
+  navigateTo: (p) => navigateTo(p),
+  showToast,
+  saveSettings: () => saveSettings(),
+  activateModal,
+  deactivateModal,
+  twemojiImg,
+  folderIcon: twemojiImg(String.fromCodePoint(0x1f4c1), 'twemoji file-icon'),
+});
+
+const inlineRenameController = createInlineRenameController({
+  getCurrentPath: () => currentPath,
+  getAllFiles: () => allFiles,
+  navigateTo: (p) => navigateTo(p),
+  showToast,
+  showAlert,
+  isHomeViewPath,
+});
+
+const {
+  handleCompress,
+  showCompressOptionsModal,
+  hideCompressOptionsModal,
+  showExtractModal,
+  hideExtractModal,
+  openPathWithArchivePrompt,
+  openFileEntry,
+  confirmExtractModal,
+  updateExtractPreview,
+  setupCompressOptionsModal,
+} = createCompressExtractController({
+  getCurrentPath: () => currentPath,
+  getSelectedItems: () => selectedItems,
+  showToast,
+  navigateTo: (p) => navigateTo(p),
+  activateModal,
+  deactivateModal,
+  addToRecentFiles,
+  generateOperationId,
+  addOperation,
+  getOperation,
+  updateOperation,
+  removeOperation,
+  isWindowsPlatform,
+});
 
 const homeController = createHomeController({
   twemojiImg,
@@ -613,7 +529,7 @@ const navigationController = createNavigationController({
   },
   createDirectoryOperationId,
   nameCollator: NAME_COLLATOR,
-  getFolderIcon,
+  getFolderIcon: (p: string) => folderIconPickerController.getFolderIcon(p),
   getDragOperation,
   showDropIndicator,
   hideDropIndicator,
@@ -717,12 +633,20 @@ const {
   invalidateGridColumnsCache,
 } = selectionController;
 
+const thumbnails = createThumbnailController({
+  getCurrentSettings: () => currentSettings,
+  getFileIcon,
+  getFileExtension,
+  formatFileSize,
+  getFileByPath: (path) => filePathMap.get(path),
+});
+
 const hoverCardController = createHoverCardController({
   getFileItemData,
   formatFileSize,
   getFileTypeFromName,
   getFileIcon,
-  getThumbnailForPath: (path) => thumbnailCache.get(path),
+  getThumbnailForPath: thumbnails.getThumbnailForPath,
   isRubberBandActive,
 });
 
@@ -745,6 +669,99 @@ const {
   closeQuickLook,
   isQuickLookOpen,
 } = previewController;
+
+const { loadBookmarks, addBookmark, addBookmarkByPath, removeBookmark } = createBookmarksController(
+  {
+    bookmarksList,
+    getCurrentPath: () => currentPath,
+    getCurrentSettings: () => currentSettings,
+    saveSettingsWithTimestamp,
+    showToast,
+    navigateTo: (p) => navigateTo(p),
+    getDraggedPaths,
+    getDragOperation,
+    handleDrop,
+    showDropIndicator,
+    hideDropIndicator,
+    consumeEvent,
+    renderHomeBookmarks: () => homeController.renderHomeBookmarks(),
+  }
+);
+
+const clipboardController = createClipboardController({
+  getSelectedItems: () => selectedItems,
+  getCurrentPath: () => currentPath,
+  getFileElementMap: () => fileElementMap,
+  getCurrentSettings: () => currentSettings,
+  showToast,
+  handleDrop,
+  refresh: () => refresh(),
+  updateUndoRedoState: () => updateUndoRedoState(),
+});
+
+const {
+  showContextMenu,
+  hideContextMenu,
+  showEmptySpaceContextMenu,
+  hideEmptySpaceContextMenu,
+  handleContextMenuAction,
+  handleEmptySpaceContextMenuAction,
+  handleKeyboardNavigation: handleContextMenuKeyNav,
+  getContextMenuData,
+} = createContextMenuController({
+  getFileExtension,
+  getCurrentPath: () => currentPath,
+  getFileElementMap: () => fileElementMap,
+  createNewFolderWithInlineRename: () => inlineRenameController.createNewFolderWithInlineRename(),
+  createNewFileWithInlineRename: () => inlineRenameController.createNewFileWithInlineRename(),
+  pasteFromClipboard: () => clipboardController.pasteFromClipboard(),
+  navigateTo: (p) => navigateTo(p),
+  showToast,
+  openFileEntry: (item) => openFileEntry(item),
+  showQuickLookForFile: (item) => showQuickLookForFile(item),
+  startInlineRename: (el, name, p) => inlineRenameController.startInlineRename(el, name, p),
+  copyToClipboard: () => clipboardController.copyToClipboard(),
+  cutToClipboard: () => clipboardController.cutToClipboard(),
+  addBookmarkByPath: (p) => addBookmarkByPath(p),
+  showFolderIconPicker: (p) => folderIconPickerController.showFolderIconPicker(p),
+  showPropertiesDialog: (props) => showPropertiesDialog(props),
+  deleteSelected: (permanent) => deleteSelected(permanent),
+  handleCompress: (format) => handleCompress(format),
+  showCompressOptionsModal: () => showCompressOptionsModal(),
+  showExtractModal: (archivePath, name) => showExtractModal(archivePath, name),
+});
+
+const { cancelColumnOperations, renderColumnView } = createColumnViewController({
+  columnView,
+  getCurrentPath: () => currentPath,
+  setCurrentPath: (value) => {
+    currentPath = value;
+  },
+  getCurrentSettings: () => currentSettings,
+  getSelectedItems: () => selectedItems,
+  clearSelection,
+  addressInput,
+  updateBreadcrumb,
+  showToast,
+  showContextMenu,
+  getFileIcon,
+  openFileEntry,
+  updatePreview,
+  consumeEvent,
+  getDragOperation,
+  showDropIndicator,
+  hideDropIndicator,
+  getDraggedPaths,
+  handleDrop,
+  scheduleSpringLoad,
+  clearSpringLoad,
+  createDirectoryOperationId,
+  getCachedDriveInfo: () => cachedDriveInfo,
+  cacheDriveInfo,
+  folderTreeManager,
+  getFileByPath: (filePath) => filePathMap.get(filePath),
+  nameCollator: NAME_COLLATOR,
+});
 
 const tabsController = createTabsController({
   getTabs: () => tabs,
@@ -826,269 +843,43 @@ const {
   cleanup: cleanupTabs,
 } = tabsController;
 
-interface ReservedShortcut {
-  label: string;
-  actionId?: string;
-}
-
-const MODIFIER_ORDER = ['Ctrl', 'Shift', 'Alt', 'Meta'];
-const MODIFIER_SET = new Set(MODIFIER_ORDER);
-const shortcutLookup = new Map<string, string>();
-const fixedShortcutLookup = new Map<string, string>();
-const reservedShortcutLookup = new Map<string, ReservedShortcut>();
 const COMMAND_PALETTE_FIXED_SHORTCUTS: Record<string, ShortcutBinding> = {
   refresh: ['F5'],
   delete: ['Delete'],
   rename: ['F2'],
 };
-let shortcutBindings: Record<string, ShortcutBinding> = {};
-
-const shortcutDefinitionById = new Map<string, ShortcutDefinition>(
-  SHORTCUT_DEFINITIONS.map((def) => [def.id, def])
-);
-
-function isMacPlatform(): boolean {
-  if (platformOS) return platformOS === 'darwin';
-  return typeof process !== 'undefined' && process.platform === 'darwin';
-}
 
 function isWindowsPlatform(): boolean {
   if (platformOS) return platformOS === 'win32';
   return typeof process !== 'undefined' && process.platform === 'win32';
 }
 
-function normalizeModifierKey(key: string): string | null {
-  const lower = key.toLowerCase();
-  if (lower === 'control' || lower === 'ctrl') return 'Ctrl';
-  if (lower === 'shift') return 'Shift';
-  if (lower === 'alt' || lower === 'option') return 'Alt';
-  if (lower === 'meta' || lower === 'cmd' || lower === 'command') return 'Meta';
-  return null;
-}
+const shortcutEngine = createShortcutEngineController({
+  getPlatformOS: () => platformOS,
+  syncCommandShortcuts: () => syncCommandShortcuts(),
+  renderShortcutsModal: () => renderShortcutsModal(),
+  debouncedSaveSettings,
+});
 
-function normalizeKeyLabel(key: string): string | null {
-  if (!key || key === 'Dead') return null;
-  const modifier = normalizeModifierKey(key);
-  if (modifier) return modifier;
-  if (key === ' ') return 'Space';
-  if (key === 'Esc') return 'Escape';
-  if (key === 'Del') return 'Delete';
-  if (key === '?') return '/';
-  if (key === '+') return '=';
-  if (key === '_') return '-';
-  if (key.length === 1) return key.toUpperCase();
-  return key;
-}
-
-function normalizeShortcutBinding(binding: string[]): ShortcutBinding {
-  const modifiers = new Set<string>();
-  let mainKey: string | null = null;
-  for (const part of binding) {
-    const normalized = normalizeKeyLabel(part);
-    if (!normalized) continue;
-    if (MODIFIER_SET.has(normalized)) {
-      modifiers.add(normalized);
-    } else if (!mainKey) {
-      mainKey = normalized;
-    }
-  }
-  const orderedModifiers = MODIFIER_ORDER.filter((mod) => modifiers.has(mod));
-  return mainKey ? [...orderedModifiers, mainKey] : orderedModifiers;
-}
-
-function serializeShortcut(binding: ShortcutBinding): string {
-  return binding.join('::');
-}
-
-function hasModifier(binding: ShortcutBinding): boolean {
-  return binding.some((key) => MODIFIER_SET.has(key));
-}
-
-function eventToBinding(e: KeyboardEvent): ShortcutBinding | null {
-  const key = normalizeKeyLabel(e.key);
-  if (!key || MODIFIER_SET.has(key)) return null;
-  const modifiers: string[] = [];
-  const ignoreShift = e.shiftKey && (e.key === '?' || e.key === '+' || e.key === '_');
-  if (e.ctrlKey) modifiers.push('Ctrl');
-  if (e.shiftKey && !ignoreShift) modifiers.push('Shift');
-  if (e.altKey) modifiers.push('Alt');
-  if (e.metaKey) modifiers.push('Meta');
-  return normalizeShortcutBinding([...modifiers, key]);
-}
-
-function rebuildShortcutLookup(): void {
-  shortcutLookup.clear();
-  for (const [id, binding] of Object.entries(shortcutBindings)) {
-    if (binding.length === 0) continue;
-    shortcutLookup.set(serializeShortcut(binding), id);
-  }
-}
-
-function registerFixedShortcut(binding: ShortcutBinding, actionId: string): void {
-  const normalized = normalizeShortcutBinding(binding);
-  if (normalized.length === 0) return;
-  fixedShortcutLookup.set(serializeShortcut(normalized), actionId);
-}
-
-function registerReservedShortcut(
-  binding: ShortcutBinding,
-  actionId: string | null,
-  label: string
-): void {
-  const normalized = normalizeShortcutBinding(binding);
-  if (normalized.length === 0) return;
-  reservedShortcutLookup.set(serializeShortcut(normalized), {
-    label,
-    actionId: actionId ?? undefined,
-  });
-}
-
-function rebuildFixedShortcuts(): void {
-  fixedShortcutLookup.clear();
-  registerFixedShortcut(['F5'], 'refresh');
-  registerFixedShortcut(['Ctrl', 'R'], 'refresh');
-  registerFixedShortcut(['Meta', 'R'], 'refresh');
-  if (!isMacPlatform()) {
-    registerFixedShortcut(['Ctrl', 'Shift', 'Z'], 'redo');
-  } else {
-    registerFixedShortcut(['Meta', 'Z'], 'undo');
-    registerFixedShortcut(['Meta', 'Shift', 'Z'], 'redo');
-  }
-}
-
-function rebuildReservedShortcuts(): void {
-  reservedShortcutLookup.clear();
-  registerReservedShortcut(['F5'], 'refresh', 'Refresh');
-  registerReservedShortcut(['Ctrl', 'R'], 'refresh', 'Refresh');
-  registerReservedShortcut(['Meta', 'R'], 'refresh', 'Refresh');
-  registerReservedShortcut(['Shift', 'Delete'], null, 'Permanent Delete');
-  registerReservedShortcut(['Shift', 'ArrowUp'], null, 'Extend Selection');
-  registerReservedShortcut(['Shift', 'ArrowDown'], null, 'Extend Selection');
-  registerReservedShortcut(['Shift', 'ArrowLeft'], null, 'Extend Selection');
-  registerReservedShortcut(['Shift', 'ArrowRight'], null, 'Extend Selection');
-  if (!isMacPlatform()) {
-    registerReservedShortcut(['Ctrl', 'Shift', 'Z'], 'redo', 'Redo');
-  } else {
-    registerReservedShortcut(['Meta', 'Z'], 'undo', 'Undo');
-    registerReservedShortcut(['Meta', 'Shift', 'Z'], 'redo', 'Redo');
-  }
-}
-
-function getFixedShortcutActionIdFromEvent(e: KeyboardEvent): string | null {
-  const binding = eventToBinding(e);
-  if (!binding) return null;
-  return fixedShortcutLookup.get(serializeShortcut(binding)) ?? null;
-}
-
-function syncShortcutBindingsFromSettings(
-  settings: Settings,
-  options: { save?: boolean; render?: boolean } = {}
-): void {
-  rebuildFixedShortcuts();
-  rebuildReservedShortcuts();
-  const defaults = getDefaultShortcuts();
-  const normalized: Record<string, ShortcutBinding> = {};
-  const used = new Set<string>();
-  let changed = false;
-
-  for (const def of SHORTCUT_DEFINITIONS) {
-    const raw = settings.shortcuts?.[def.id] || defaults[def.id];
-    let binding = normalizeShortcutBinding(raw);
-    if (binding.length > 0 && (!hasModifier(binding) || binding.length < 2)) {
-      binding = normalizeShortcutBinding(defaults[def.id]);
-      changed = true;
-    }
-    if (binding.length > 0) {
-      let serialized = serializeShortcut(binding);
-      const reservedEntry = reservedShortcutLookup.get(serialized);
-      if (reservedEntry && reservedEntry.actionId !== def.id) {
-        const fallback = normalizeShortcutBinding(defaults[def.id]);
-        const fallbackSerialized = serializeShortcut(fallback);
-        if (serialized !== fallbackSerialized) {
-          binding = fallback;
-          serialized = fallbackSerialized;
-          changed = true;
-        }
-      }
-      if (binding.length > 0 && used.has(serialized)) {
-        const fallback = normalizeShortcutBinding(defaults[def.id]);
-        const fallbackSerialized = serializeShortcut(fallback);
-        if (!used.has(fallbackSerialized)) {
-          binding = fallback;
-        } else {
-          binding = [];
-        }
-        changed = true;
-        serialized = serializeShortcut(binding);
-      }
-      if (binding.length > 0) {
-        used.add(serialized);
-      }
-    }
-    normalized[def.id] = binding;
-  }
-
-  if (!settings.shortcuts) {
-    settings.shortcuts = normalized;
-    changed = true;
-  } else if (changed) {
-    settings.shortcuts = normalized;
-  }
-
-  shortcutBindings = normalized;
-  rebuildShortcutLookup();
-  syncCommandShortcuts();
-  if (options.render) {
-    renderShortcutsModal();
-  }
-  if (options.save && changed) {
-    debouncedSaveSettings(100);
-  }
-}
-
-function getShortcutBinding(id: string): ShortcutBinding | undefined {
-  const binding = shortcutBindings[id];
-  return binding && binding.length > 0 ? binding : undefined;
-}
-
-function getShortcutActionIdFromEvent(e: KeyboardEvent): string | null {
-  const binding = eventToBinding(e);
-  if (!binding || !hasModifier(binding)) return null;
-  return shortcutLookup.get(serializeShortcut(binding)) ?? null;
-}
-
-function areBindingsEqual(a: ShortcutBinding, b: ShortcutBinding): boolean {
-  return (
-    serializeShortcut(normalizeShortcutBinding(a)) ===
-    serializeShortcut(normalizeShortcutBinding(b))
-  );
-}
-
-function formatModifierLabel(key: string): string {
-  if (!isMacPlatform()) return key;
-  if (key === 'Meta') return '⌘ Cmd';
-  if (key === 'Ctrl') return '⌃ Ctrl';
-  if (key === 'Alt') return '⌥ Option';
-  if (key === 'Shift') return '⇧ Shift';
-  return key;
-}
-
-function formatShortcutKeyLabel(key: string): string {
-  if (MODIFIER_SET.has(key)) {
-    return formatModifierLabel(key);
-  }
-  const labels: Record<string, string> = {
-    ArrowLeft: '←',
-    ArrowRight: '→',
-    ArrowUp: '↑',
-    ArrowDown: '↓',
-    Escape: 'Esc',
-    PageUp: 'Page Up',
-    PageDown: 'Page Down',
-    '/': '?',
-  };
-  return labels[key] || (key.length === 1 ? key.toUpperCase() : key);
-}
+const {
+  isMacPlatform,
+  normalizeShortcutBinding,
+  serializeShortcut,
+  hasModifier,
+  eventToBinding,
+  rebuildShortcutLookup,
+  getFixedShortcutActionIdFromEvent,
+  syncShortcutBindingsFromSettings,
+  getShortcutBinding,
+  getShortcutActionIdFromEvent,
+  areBindingsEqual,
+  formatShortcutKeyLabel,
+  getShortcutBindings,
+  setShortcutBindings,
+  shortcutLookup,
+  reservedShortcutLookup,
+  shortcutDefinitionById,
+} = shortcutEngine;
 
 const commandPaletteController = createCommandPaletteController({
   activateModal,
@@ -1101,10 +892,10 @@ const commandPaletteController = createCommandPaletteController({
   getTabsEnabled: () => tabsEnabled,
   actions: {
     createNewFolder: () => {
-      void createNewFolder();
+      void inlineRenameController.createNewFolder();
     },
     createNewFile: () => {
-      void createNewFile();
+      void inlineRenameController.createNewFile();
     },
     refresh: () => {
       refresh();
@@ -1128,13 +919,13 @@ const commandPaletteController = createCommandPaletteController({
       selectAll();
     },
     copyToClipboard: () => {
-      copyToClipboard();
+      clipboardController.copyToClipboard();
     },
     cutToClipboard: () => {
-      cutToClipboard();
+      clipboardController.cutToClipboard();
     },
     pasteFromClipboard: () => {
-      pasteFromClipboard();
+      clipboardController.pasteFromClipboard();
     },
     deleteSelected: () => {
       deleteSelected();
@@ -1158,10 +949,8 @@ const shortcutsUi = createShortcutsUiController({
   formatShortcutKeyLabel,
   getDefaultShortcuts,
   shortcutDefinitions: SHORTCUT_DEFINITIONS,
-  getShortcutBindings: () => shortcutBindings,
-  setShortcutBindings: (bindings) => {
-    shortcutBindings = bindings;
-  },
+  getShortcutBindings,
+  setShortcutBindings,
   normalizeShortcutBinding,
   areBindingsEqual,
   getCurrentSettings: () => currentSettings,
@@ -1203,6 +992,29 @@ const {
   resetRedoState,
 } = settingsUi;
 
+const themeEditorController = createThemeEditorController({
+  getCurrentSettings: () => currentSettings,
+  setCurrentSettingsTheme: (theme, customTheme) => {
+    currentSettings.theme = theme;
+    currentSettings.customTheme = customTheme;
+  },
+  applySettings,
+  saveSettingsWithTimestamp,
+  showToast,
+  showConfirm,
+  activateModal,
+  deactivateModal,
+});
+
+const {
+  applyCustomThemeColors,
+  clearCustomThemeColors,
+  showThemeEditor,
+  hideThemeEditor,
+  setupThemeEditorListeners,
+  updateCustomThemeUI,
+} = themeEditorController;
+
 const settingsModalController = createSettingsModalController({
   getCurrentSettings: () => currentSettings,
   activateModal,
@@ -1212,7 +1024,7 @@ const settingsModalController = createSettingsModalController({
   updateCustomThemeUI,
   updateDangerousOptionsVisibility,
   updateIndexStatus,
-  updateThumbnailCacheSize,
+  updateThumbnailCacheSize: thumbnails.updateThumbnailCacheSize,
   syncQuickActionsFromMain,
   updateSettingsCardSummaries,
   applySettingsSearch,
@@ -1231,10 +1043,8 @@ const settingsActionsController = createSettingsActionsController({
   saveSettingsWithTimestamp,
   showToast,
   loadBookmarks,
-  updateThumbnailCacheSize,
-  clearThumbnailCacheLocal: () => {
-    thumbnailCache.clear();
-  },
+  updateThumbnailCacheSize: thumbnails.updateThumbnailCacheSize,
+  clearThumbnailCacheLocal: thumbnails.clearThumbnailCache,
   hideSettingsModal,
   showSettingsModal,
   isOneOf,
@@ -1258,14 +1068,8 @@ const supportUiController = createSupportUiController({
   },
 });
 
-const {
-  showLicensesModal,
-  hideLicensesModal,
-  initLicensesUi,
-  showSupportPopup,
-  hideSupportPopup,
-  initSupportPopup,
-} = supportUiController;
+const { showLicensesModal, hideLicensesModal, initLicensesUi, showSupportPopup, initSupportPopup } =
+  supportUiController;
 
 const externalLinksController = createExternalLinksController({
   openExternal: (url) => {
@@ -1295,35 +1099,6 @@ const updateActionsController = createUpdateActionsController({
 
 const { restartAsAdmin, checkForUpdates } = updateActionsController;
 
-interface ProgressOperation {
-  id: string;
-  title: string;
-  status: string;
-  progress: number;
-  completed: boolean;
-  error: boolean;
-}
-
-const progressOperations = new Map<string, ProgressOperation>();
-let progressPanel: HTMLElement | null = null;
-let progressPanelContent: HTMLElement | null = null;
-
-function initProgressPanel(): void {
-  progressPanel = document.getElementById('progress-panel');
-  progressPanelContent = document.getElementById('progress-panel-content');
-
-  const closeBtn = document.getElementById('progress-panel-close');
-  if (closeBtn) {
-    closeBtn.addEventListener('click', hideProgressPanel);
-  }
-}
-
-function hideProgressPanel(): void {
-  if (progressPanel) {
-    progressPanel.style.display = 'none';
-  }
-}
-
 async function loadSettings(): Promise<void> {
   const [result, sharedClipboard] = await Promise.all([
     window.electronAPI.getSettings(),
@@ -1341,24 +1116,20 @@ async function loadSettings(): Promise<void> {
     debouncedSaveSettings(100);
 
     if (newLaunchCount === 2 && !currentSettings.supportPopupDismissed) {
-      setTimeout(() => showSupportPopup(), 1500);
+      setTimeout(() => showSupportPopup(), SUPPORT_POPUP_DELAY_MS);
     }
 
     tourController.handleLaunch(newLaunchCount);
   }
 
   if (sharedClipboard) {
-    clipboard = sharedClipboard;
-    console.log(
-      '[Init] Loaded shared clipboard:',
-      clipboard.operation,
-      clipboard.paths.length,
-      'items'
-    );
+    clipboardController.setClipboard(sharedClipboard);
+    const cb = clipboardController.getClipboard()!;
+    console.log('[Init] Loaded shared clipboard:', cb.operation, cb.paths.length, 'items');
   }
 
   window.addEventListener('focus', () => {
-    updateClipboardIndicator();
+    clipboardController.updateClipboardIndicator();
   });
 }
 
@@ -1468,9 +1239,8 @@ function applySettings(settings: Settings) {
       updateGitBranch(currentPath);
     }
   } else {
+    gitStatus.clearCache();
     clearGitIndicators();
-    gitStatusCache.clear();
-    gitStatusInFlight.clear();
     const statusGitBranch = document.getElementById('status-git-branch');
     if (statusGitBranch) statusGitBranch.style.display = 'none';
   }
@@ -1486,352 +1256,6 @@ function applySettings(settings: Settings) {
   loadRecentFiles();
 }
 
-function parseHexRgb(hex: string): [number, number, number] | null {
-  const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-  return m ? [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)] : null;
-}
-
-function hexToRgb(hex: string): string {
-  const c = parseHexRgb(hex);
-  return c ? `${c[0]}, ${c[1]}, ${c[2]}` : '0, 120, 212';
-}
-
-function hexToRgba(hex: string, alpha: number): string {
-  const c = parseHexRgb(hex);
-  return c ? `rgba(${c[0]}, ${c[1]}, ${c[2]}, ${alpha})` : `rgba(255, 255, 255, ${alpha})`;
-}
-
-function setThemeCustomProperties(el: HTMLElement, theme: CustomTheme) {
-  el.style.setProperty('--custom-accent-color', theme.accentColor);
-  el.style.setProperty('--custom-accent-rgb', hexToRgb(theme.accentColor));
-  el.style.setProperty('--custom-bg-primary', theme.bgPrimary);
-  el.style.setProperty('--custom-bg-primary-rgb', hexToRgb(theme.bgPrimary));
-  el.style.setProperty('--custom-bg-secondary', theme.bgSecondary);
-  el.style.setProperty('--custom-text-primary', theme.textPrimary);
-  el.style.setProperty('--custom-text-secondary', theme.textSecondary);
-  el.style.setProperty('--custom-glass-bg', hexToRgba(theme.glassBg, 0.03));
-  el.style.setProperty('--custom-glass-border', hexToRgba(theme.glassBorder, 0.08));
-}
-
-function applyCustomThemeColors(theme: CustomTheme) {
-  setThemeCustomProperties(document.documentElement, theme);
-  document.body.style.backgroundColor = theme.bgPrimary;
-}
-
-function clearCustomThemeColors() {
-  const root = document.documentElement;
-  const props = [
-    '--custom-accent-color',
-    '--custom-accent-rgb',
-    '--custom-bg-primary',
-    '--custom-bg-primary-rgb',
-    '--custom-bg-secondary',
-    '--custom-text-primary',
-    '--custom-text-secondary',
-    '--custom-glass-bg',
-    '--custom-glass-border',
-  ];
-  props.forEach((prop) => root.style.removeProperty(prop));
-  document.body.style.backgroundColor = '';
-}
-
-// Theme Editor
-const themePresets: Record<string, CustomTheme> = {
-  midnight: {
-    name: 'Midnight Blue',
-    accentColor: '#4a9eff',
-    bgPrimary: '#0d1b2a',
-    bgSecondary: '#1b263b',
-    textPrimary: '#e0e1dd',
-    textSecondary: '#a0a4a8',
-    glassBg: '#ffffff',
-    glassBorder: '#4a9eff',
-  },
-  forest: {
-    name: 'Forest Green',
-    accentColor: '#2ecc71',
-    bgPrimary: '#1a2f1a',
-    bgSecondary: '#243524',
-    textPrimary: '#e8f5e9',
-    textSecondary: '#a5d6a7',
-    glassBg: '#ffffff',
-    glassBorder: '#2ecc71',
-  },
-  sunset: {
-    name: 'Sunset Orange',
-    accentColor: '#ff7043',
-    bgPrimary: '#1f1410',
-    bgSecondary: '#2d1f1a',
-    textPrimary: '#fff3e0',
-    textSecondary: '#ffab91',
-    glassBg: '#ffffff',
-    glassBorder: '#ff7043',
-  },
-  lavender: {
-    name: 'Lavender Purple',
-    accentColor: '#9c7cf4',
-    bgPrimary: '#1a1625',
-    bgSecondary: '#251f33',
-    textPrimary: '#ede7f6',
-    textSecondary: '#b39ddb',
-    glassBg: '#ffffff',
-    glassBorder: '#9c7cf4',
-  },
-  rose: {
-    name: 'Rose Pink',
-    accentColor: '#f48fb1',
-    bgPrimary: '#1f1418',
-    bgSecondary: '#2d1f24',
-    textPrimary: '#fce4ec',
-    textSecondary: '#f8bbd9',
-    glassBg: '#ffffff',
-    glassBorder: '#f48fb1',
-  },
-  ocean: {
-    name: 'Ocean Teal',
-    accentColor: '#26c6da',
-    bgPrimary: '#0d1f22',
-    bgSecondary: '#1a2f33',
-    textPrimary: '#e0f7fa',
-    textSecondary: '#80deea',
-    glassBg: '#ffffff',
-    glassBorder: '#26c6da',
-  },
-};
-
-const THEME_COLOR_FIELDS: ReadonlyArray<readonly [string, keyof CustomTheme]> = [
-  ['theme-accent-color', 'accentColor'],
-  ['theme-bg-primary', 'bgPrimary'],
-  ['theme-bg-secondary', 'bgSecondary'],
-  ['theme-text-primary', 'textPrimary'],
-  ['theme-text-secondary', 'textSecondary'],
-  ['theme-glass-bg', 'glassBg'],
-  ['theme-glass-border', 'glassBorder'],
-];
-const THEME_COLOR_KEY_BY_INPUT_ID = new Map<string, keyof CustomTheme>(THEME_COLOR_FIELDS);
-
-let tempCustomTheme: CustomTheme = {
-  name: 'My Custom Theme',
-  accentColor: '#0078d4',
-  bgPrimary: '#1a1a1a',
-  bgSecondary: '#252525',
-  textPrimary: '#ffffff',
-  textSecondary: '#b0b0b0',
-  glassBg: '#ffffff',
-  glassBorder: '#ffffff',
-};
-
-let themeEditorHasUnsavedChanges = false;
-
-// show theme customizer modal
-function showThemeEditor() {
-  const modal = document.getElementById('theme-editor-modal');
-  if (!modal) return;
-
-  themeEditorHasUnsavedChanges = false;
-
-  if (currentSettings.customTheme) {
-    tempCustomTheme = { ...currentSettings.customTheme };
-  }
-
-  for (const [inputId, key] of THEME_COLOR_FIELDS) {
-    const colorInput = document.getElementById(inputId) as HTMLInputElement | null;
-    const textInput = document.getElementById(`${inputId}-text`) as HTMLInputElement | null;
-    const value = tempCustomTheme[key];
-    if (colorInput) colorInput.value = value;
-    if (textInput) textInput.value = value;
-  }
-
-  const nameInput = document.getElementById('theme-name-input') as HTMLInputElement;
-  if (nameInput) nameInput.value = tempCustomTheme.name;
-
-  updateThemePreview();
-  modal.style.display = 'flex';
-  activateModal(modal);
-}
-
-async function hideThemeEditor(skipConfirmation = false) {
-  if (!skipConfirmation && themeEditorHasUnsavedChanges) {
-    const confirmed = await showConfirm(
-      'You have unsaved changes. Are you sure you want to close the theme editor?',
-      'Unsaved Changes',
-      'warning'
-    );
-    if (!confirmed) return;
-  }
-  const modal = document.getElementById('theme-editor-modal');
-  if (modal) {
-    modal.style.display = 'none';
-    deactivateModal(modal);
-  }
-  themeEditorHasUnsavedChanges = false;
-}
-
-function updateThemePreview() {
-  const preview = document.getElementById('theme-preview');
-  if (!preview) return;
-  setThemeCustomProperties(preview, tempCustomTheme);
-  preview.style.backgroundColor = tempCustomTheme.bgPrimary;
-}
-
-function normalizeHexColorValue(value: string): string {
-  const trimmed = value.trim();
-  return trimmed.startsWith('#') ? trimmed : `#${trimmed}`;
-}
-
-function parseHexColorValue(value: string): string | null {
-  const normalized = normalizeHexColorValue(value);
-  if (/^#[0-9A-Fa-f]{6}$/.test(normalized)) return normalized;
-  if (/^#[0-9A-Fa-f]{3}$/.test(normalized)) {
-    return (
-      '#' +
-      normalized[1] +
-      normalized[1] +
-      normalized[2] +
-      normalized[2] +
-      normalized[3] +
-      normalized[3]
-    );
-  }
-  return null;
-}
-
-function syncColorInputs(colorId: string, value: string) {
-  const colorInput = document.getElementById(colorId) as HTMLInputElement | null;
-  const textInput = document.getElementById(`${colorId}-text`) as HTMLInputElement | null;
-
-  if (colorInput) colorInput.value = value;
-  if (textInput) textInput.value = value.toUpperCase();
-
-  const key = THEME_COLOR_KEY_BY_INPUT_ID.get(colorId);
-  if (key) {
-    tempCustomTheme[key] = value;
-    themeEditorHasUnsavedChanges = true;
-  }
-
-  updateThemePreview();
-}
-
-function applyThemePreset(presetName: string) {
-  const preset = themePresets[presetName];
-  if (!preset) return;
-
-  tempCustomTheme = { ...preset };
-
-  const nameInput = document.getElementById('theme-name-input') as HTMLInputElement;
-  if (nameInput) nameInput.value = preset.name;
-
-  THEME_COLOR_FIELDS.forEach(([inputId, key]) => {
-    syncColorInputs(inputId, preset[key]);
-  });
-}
-
-async function saveCustomTheme() {
-  const nameInput = document.getElementById('theme-name-input') as HTMLInputElement;
-  if (nameInput && nameInput.value.trim()) {
-    tempCustomTheme.name = nameInput.value.trim();
-  }
-
-  currentSettings.customTheme = { ...tempCustomTheme };
-  currentSettings.theme = 'custom';
-
-  applySettings(currentSettings);
-
-  const result = await saveSettingsWithTimestamp(currentSettings);
-  if (result.success) {
-    themeEditorHasUnsavedChanges = false;
-    hideThemeEditor(true);
-    updateCustomThemeUI();
-    showToast('Custom theme saved!', 'Theme', 'success');
-  } else {
-    showToast('Failed to save theme: ' + result.error, 'Error', 'error');
-  }
-}
-
-function setupThemeEditorListeners() {
-  ['theme-editor-close', 'theme-editor-cancel'].forEach((id) => {
-    document.getElementById(id)?.addEventListener('click', () => hideThemeEditor());
-  });
-  document.getElementById('theme-editor-save')?.addEventListener('click', saveCustomTheme);
-
-  THEME_COLOR_FIELDS.forEach(([id]) => {
-    const colorInput = document.getElementById(id) as HTMLInputElement | null;
-    const textInput = document.getElementById(`${id}-text`) as HTMLInputElement | null;
-
-    colorInput?.addEventListener('input', (e) => {
-      const value = (e.target as HTMLInputElement).value;
-      syncColorInputs(id, value);
-    });
-
-    textInput?.addEventListener('input', (e) => {
-      const rawValue = (e.target as HTMLInputElement).value;
-      const parsed = parseHexColorValue(rawValue);
-      if (parsed) {
-        syncColorInputs(id, parsed);
-        textInput.classList.remove('invalid');
-      } else if (normalizeHexColorValue(rawValue).length > 1) {
-        textInput.classList.add('invalid');
-      }
-    });
-
-    textInput?.addEventListener('blur', (e) => {
-      if (parseHexColorValue((e.target as HTMLInputElement).value)) {
-        textInput.classList.remove('invalid');
-        return;
-      }
-      if (colorInput) {
-        textInput.value = colorInput.value.toUpperCase();
-      }
-      textInput.classList.remove('invalid');
-    });
-  });
-
-  document.getElementById('theme-name-input')?.addEventListener('input', (e) => {
-    tempCustomTheme.name = (e.target as HTMLInputElement).value || 'My Custom Theme';
-    themeEditorHasUnsavedChanges = true;
-  });
-
-  document.querySelectorAll('.preset-btn').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const preset = (btn as HTMLElement).dataset.preset;
-      if (preset) applyThemePreset(preset);
-    });
-  });
-
-  document.getElementById('open-theme-editor-btn')?.addEventListener('click', showThemeEditor);
-
-  document.getElementById('theme-editor-modal')?.addEventListener('click', (e) => {
-    if ((e.target as HTMLElement).classList.contains('modal-overlay')) {
-      hideThemeEditor();
-    }
-  });
-}
-
-function updateCustomThemeUI(options?: { syncSelect?: boolean; selectedTheme?: string }) {
-  const customThemeDescription = document.getElementById('custom-theme-description');
-  const themeSelect = document.getElementById('theme-select') as HTMLSelectElement;
-  const selectedTheme = options?.selectedTheme ?? currentSettings.theme ?? 'default';
-
-  if (currentSettings.customTheme) {
-    if (customThemeDescription) {
-      const themeName = currentSettings.customTheme.name || 'Custom Theme';
-      if (selectedTheme === 'custom') {
-        customThemeDescription.textContent = `Currently using: ${themeName}`;
-      } else {
-        customThemeDescription.textContent = `Custom theme ready: ${themeName}`;
-      }
-    }
-  } else {
-    if (customThemeDescription) {
-      customThemeDescription.textContent = 'Create your own color scheme';
-    }
-  }
-
-  if (themeSelect && options?.syncSelect !== false) {
-    themeSelect.value = currentSettings.theme || 'default';
-  }
-}
-
 function startIndexStatusPolling() {
   stopIndexStatusPolling();
   indexStatusInterval = setInterval(async () => {
@@ -1840,7 +1264,7 @@ function startIndexStatusPolling() {
     if (result.success && result.status && !result.status.isIndexing) {
       stopIndexStatusPolling();
     }
-  }, 500);
+  }, INDEX_STATUS_POLL_MS);
 }
 
 function stopIndexStatusPolling() {
@@ -1931,95 +1355,6 @@ function hideShortcutsModal() {
     shortcutsModal.style.display = 'none';
     deactivateModal(shortcutsModal);
   }
-}
-
-const FOLDER_ICON_OPTIONS = [
-  0x1f4c1, 0x1f4c2, 0x1f4c1, 0x1f5c2, 0x1f5c3, 0x1f4bc, 0x2b50, 0x1f31f, 0x2764, 0x1f499, 0x1f49a,
-  0x1f49b, 0x1f4a1, 0x1f3ae, 0x1f3b5, 0x1f3ac, 0x1f4f7, 0x1f4f9, 0x1f4da, 0x1f4d6, 0x1f4dd, 0x270f,
-  0x1f4bb, 0x1f5a5, 0x1f3e0, 0x1f3e2, 0x1f6e0, 0x2699, 0x1f512, 0x1f513, 0x1f4e6, 0x1f4e5, 0x1f4e4,
-  0x1f5d1, 0x2601, 0x1f310, 0x1f680, 0x2708, 0x1f697, 0x1f6b2, 0x26bd, 0x1f3c0, 0x1f352, 0x1f34e,
-  0x1f33f, 0x1f333, 0x1f308, 0x2600,
-];
-
-let folderIconPickerPath: string | null = null;
-
-function showFolderIconPicker(folderPath: string) {
-  const modal = document.getElementById('folder-icon-modal');
-  const pathDisplay = document.getElementById('folder-icon-path');
-  const grid = document.getElementById('folder-icon-grid');
-
-  if (!modal || !pathDisplay || !grid) return;
-
-  folderIconPickerPath = folderPath;
-
-  const folderName = folderPath.split(/[/\\]/).pop() || folderPath;
-  pathDisplay.textContent = folderName;
-
-  const currentIcon = currentSettings.folderIcons?.[folderPath];
-
-  grid.innerHTML = FOLDER_ICON_OPTIONS.map((code) => {
-    const emoji = String.fromCodePoint(code);
-    const isSelected = currentIcon === emoji;
-    return `
-      <div class="folder-icon-option${isSelected ? ' selected' : ''}" data-icon="${emoji}">
-        ${twemojiImg(emoji, 'twemoji')}
-      </div>
-    `;
-  }).join('');
-
-  grid.querySelectorAll('.folder-icon-option').forEach((option) => {
-    option.addEventListener('click', () => {
-      const icon = (option as HTMLElement).dataset.icon;
-      if (icon && folderIconPickerPath) {
-        setFolderIcon(folderIconPickerPath, icon);
-        hideFolderIconPicker();
-      }
-    });
-  });
-
-  modal.style.display = 'flex';
-  activateModal(modal);
-}
-
-function hideFolderIconPicker() {
-  const modal = document.getElementById('folder-icon-modal');
-  if (modal) {
-    modal.style.display = 'none';
-    deactivateModal(modal);
-  }
-  folderIconPickerPath = null;
-}
-
-async function setFolderIcon(folderPath: string, icon: string) {
-  if (!currentSettings.folderIcons) {
-    currentSettings.folderIcons = {};
-  }
-  currentSettings.folderIcons[folderPath] = icon;
-  await saveSettings();
-  if (currentPath) navigateTo(currentPath);
-  showToast('Folder icon updated', 'Success', 'success');
-}
-
-async function resetFolderIcon() {
-  if (
-    folderIconPickerPath &&
-    currentSettings.folderIcons &&
-    currentSettings.folderIcons[folderIconPickerPath]
-  ) {
-    delete currentSettings.folderIcons[folderIconPickerPath];
-    await saveSettings();
-    if (currentPath) navigateTo(currentPath);
-    showToast('Folder icon reset to default', 'Success', 'success');
-  }
-  hideFolderIconPicker();
-}
-
-function getFolderIcon(folderPath: string): string {
-  const customIcon = currentSettings.folderIcons?.[folderPath];
-  if (customIcon) {
-    return twemojiImg(customIcon, 'twemoji file-icon');
-  }
-  return FOLDER_ICON;
 }
 
 function openNewWindow() {
@@ -2251,188 +1586,6 @@ function renderSidebarQuickAccess() {
   });
 }
 
-function loadBookmarks() {
-  if (!bookmarksList) return;
-  bookmarksList.innerHTML = '';
-
-  if (!currentSettings.bookmarks || currentSettings.bookmarks.length === 0) {
-    bookmarksList.innerHTML = '<div class="sidebar-empty">No bookmarks yet</div>';
-    homeController.renderHomeBookmarks();
-    return;
-  }
-
-  currentSettings.bookmarks.forEach((bookmarkPath) => {
-    const bookmarkItem = document.createElement('div');
-    bookmarkItem.className = 'bookmark-item';
-    bookmarkItem.dataset.path = bookmarkPath;
-    const pathParts = bookmarkPath.split(/[/\\]/);
-    const name = pathParts[pathParts.length - 1] || bookmarkPath;
-    bookmarkItem.setAttribute('role', 'button');
-    bookmarkItem.tabIndex = 0;
-    bookmarkItem.setAttribute('aria-label', `Open bookmark ${name}`);
-
-    bookmarkItem.innerHTML = `
-      <span class="bookmark-icon">${twemojiImg(String.fromCodePoint(0x2b50), 'twemoji')}</span>
-      <span class="bookmark-label">${escapeHtml(name)}</span>
-      <button class="bookmark-remove" type="button" title="Remove bookmark" aria-label="Remove bookmark">${twemojiImg(String.fromCodePoint(0x274c), 'twemoji')}</button>
-    `;
-
-    bookmarkItem.addEventListener('click', (e) => {
-      if (!(e.target as HTMLElement).classList.contains('bookmark-remove')) {
-        navigateTo(bookmarkPath);
-      }
-    });
-
-    bookmarkItem.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        navigateTo(bookmarkPath);
-      }
-    });
-
-    const removeBtn = bookmarkItem.querySelector('.bookmark-remove');
-    if (removeBtn) {
-      removeBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        removeBookmark(bookmarkPath);
-      });
-    }
-
-    bookmarkItem.draggable = true;
-    bookmarkItem.addEventListener('dragstart', (e) => {
-      e.stopPropagation();
-      bookmarkItem.classList.add('dragging');
-      if (!e.dataTransfer) return;
-      e.dataTransfer.effectAllowed = 'move';
-      e.dataTransfer.setData('text/iyeris-bookmark', bookmarkPath);
-    });
-
-    bookmarkItem.addEventListener('dragend', () => {
-      bookmarkItem.classList.remove('dragging');
-      bookmarkItem.classList.remove('drag-over');
-      hideDropIndicator();
-    });
-
-    bookmarkItem.addEventListener('dragover', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      if (!e.dataTransfer) return;
-      const isBookmarkDrag = e.dataTransfer.types.includes('text/iyeris-bookmark');
-      const operation = getDragOperation(e);
-      e.dataTransfer.dropEffect = isBookmarkDrag ? 'move' : operation;
-      bookmarkItem.classList.add('drag-over');
-      if (!isBookmarkDrag) {
-        showDropIndicator(operation, bookmarkPath, e.clientX, e.clientY);
-      }
-    });
-
-    bookmarkItem.addEventListener('dragleave', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const rect = bookmarkItem.getBoundingClientRect();
-      if (
-        e.clientX < rect.left ||
-        e.clientX >= rect.right ||
-        e.clientY < rect.top ||
-        e.clientY >= rect.bottom
-      ) {
-        bookmarkItem.classList.remove('drag-over');
-        hideDropIndicator();
-      }
-    });
-
-    bookmarkItem.addEventListener('drop', async (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      bookmarkItem.classList.remove('drag-over');
-
-      if (e.dataTransfer?.types.includes('text/iyeris-bookmark')) {
-        const draggedPath = e.dataTransfer.getData('text/iyeris-bookmark');
-        if (!draggedPath || draggedPath === bookmarkPath) return;
-        if (!currentSettings.bookmarks) return;
-        const fromIndex = currentSettings.bookmarks.indexOf(draggedPath);
-        const toIndex = currentSettings.bookmarks.indexOf(bookmarkPath);
-        if (fromIndex === -1 || toIndex === -1 || fromIndex === toIndex) return;
-        const updated = [...currentSettings.bookmarks];
-        updated.splice(fromIndex, 1);
-        updated.splice(toIndex, 0, draggedPath);
-        currentSettings.bookmarks = updated;
-        const saveResult = await saveSettingsWithTimestamp(currentSettings);
-        if (saveResult.success) {
-          loadBookmarks();
-        } else {
-          showToast('Failed to reorder bookmarks', 'Bookmarks', 'error');
-        }
-        hideDropIndicator();
-        return;
-      }
-
-      const draggedPaths = await getDraggedPaths(e);
-      if (draggedPaths.length === 0) return;
-      const operation = getDragOperation(e);
-      await handleDrop(draggedPaths, bookmarkPath, operation);
-      hideDropIndicator();
-    });
-
-    bookmarksList.appendChild(bookmarkItem);
-  });
-
-  if (!bookmarksDropReady && bookmarksList) {
-    bookmarksList.addEventListener('dragover', (e) => {
-      if (!e.dataTransfer) return;
-      if (e.dataTransfer.types.includes('text/iyeris-bookmark')) return;
-      e.preventDefault();
-      e.stopPropagation();
-      bookmarksList.classList.add('drag-over');
-      e.dataTransfer.dropEffect = 'copy';
-      showDropIndicator('add', 'Bookmarks', e.clientX, e.clientY);
-    });
-
-    bookmarksList.addEventListener('dragleave', (e) => {
-      const rect = bookmarksList.getBoundingClientRect();
-      if (
-        e.clientX < rect.left ||
-        e.clientX >= rect.right ||
-        e.clientY < rect.top ||
-        e.clientY >= rect.bottom
-      ) {
-        bookmarksList.classList.remove('drag-over');
-        hideDropIndicator();
-      }
-    });
-
-    bookmarksList.addEventListener('drop', async (e) => {
-      if (!e.dataTransfer) return;
-      if (e.dataTransfer.types.includes('text/iyeris-bookmark')) {
-        hideDropIndicator();
-        return;
-      }
-      e.preventDefault();
-      e.stopPropagation();
-      bookmarksList.classList.remove('drag-over');
-      hideDropIndicator();
-
-      const draggedPaths = await getDraggedPaths(e);
-      if (draggedPaths.length === 0) return;
-      const targetPath = draggedPaths[0];
-      try {
-        const propsResult = await window.electronAPI.getItemProperties(targetPath);
-        if (propsResult.success && propsResult.properties?.isDirectory) {
-          await addBookmarkByPath(targetPath);
-        } else {
-          showToast('Only folders can be bookmarked', 'Bookmarks', 'info');
-        }
-      } catch {
-        showToast('Failed to add bookmark', 'Bookmarks', 'error');
-      }
-    });
-
-    bookmarksDropReady = true;
-  }
-
-  homeController.renderHomeBookmarks();
-}
-
 function setHomeViewActive(active: boolean): void {
   if (!homeView) return;
   homeView.style.display = active ? 'flex' : 'none';
@@ -2534,49 +1687,6 @@ async function handleQuickAction(action?: string | null): Promise<void> {
   }
 }
 
-async function addBookmark() {
-  if (!currentPath || isHomeViewPath(currentPath)) {
-    showToast('Open a folder to add a bookmark', 'Bookmarks', 'info');
-    return;
-  }
-  await addBookmarkByPath(currentPath);
-}
-
-async function addBookmarkByPath(path: string) {
-  if (!currentSettings.bookmarks) {
-    currentSettings.bookmarks = [];
-  }
-
-  if (currentSettings.bookmarks.includes(path)) {
-    showToast('This folder is already bookmarked', 'Bookmarks', 'info');
-    return;
-  }
-
-  currentSettings.bookmarks.push(path);
-  const result = await saveSettingsWithTimestamp(currentSettings);
-
-  if (result.success) {
-    loadBookmarks();
-    showToast('Bookmark added', 'Bookmarks', 'success');
-  } else {
-    showToast('Failed to add bookmark', 'Error', 'error');
-  }
-}
-
-async function removeBookmark(path: string) {
-  if (!currentSettings.bookmarks) return;
-
-  currentSettings.bookmarks = currentSettings.bookmarks.filter((b) => b !== path);
-  const result = await saveSettingsWithTimestamp(currentSettings);
-
-  if (result.success) {
-    loadBookmarks();
-    showToast('Bookmark removed', 'Bookmarks', 'success');
-  } else {
-    showToast('Failed to remove bookmark', 'Error', 'error');
-  }
-}
-
 const MAX_RECENT_FILES = 10;
 
 function loadRecentFiles() {
@@ -2633,151 +1743,6 @@ async function addToRecentFiles(filePath: string) {
   debouncedSaveSettings();
   loadRecentFiles();
   homeController.renderHomeRecents();
-}
-
-async function updateClipboardIndicator() {
-  const indicator = document.getElementById('clipboard-indicator');
-  const indicatorText = document.getElementById('clipboard-text');
-  if (!indicator || !indicatorText) return;
-
-  if (clipboard && clipboard.paths.length > 0) {
-    const count = clipboard.paths.length;
-    const operation = clipboard.operation === 'cut' ? 'cut' : 'copied';
-    indicatorText.textContent = `${count} ${operation}`;
-    indicator.classList.toggle('cut-mode', clipboard.operation === 'cut');
-    indicator.style.display = 'inline-flex';
-  } else {
-    // check system clipboard
-    if (currentSettings.globalClipboard !== false) {
-      const systemFiles = await window.electronAPI.getSystemClipboardFiles();
-      if (systemFiles && systemFiles.length > 0) {
-        indicatorText.textContent = `${systemFiles.length} from system`;
-        indicator.classList.remove('cut-mode');
-        indicator.style.display = 'inline-flex';
-        return;
-      }
-    }
-    indicator.style.display = 'none';
-  }
-}
-
-function setClipboardSelection(operation: 'copy' | 'cut'): void {
-  if (selectedItems.size === 0) return;
-  clipboard = {
-    operation,
-    paths: Array.from(selectedItems),
-  };
-  window.electronAPI.setClipboard(clipboard);
-  updateCutVisuals();
-  updateClipboardIndicator();
-  showToast(
-    `${selectedItems.size} item(s) ${operation === 'cut' ? 'cut' : 'copied'}`,
-    'Clipboard',
-    'success'
-  );
-}
-
-function copyToClipboard() {
-  setClipboardSelection('copy');
-}
-
-function cutToClipboard() {
-  setClipboardSelection('cut');
-}
-
-async function moveSelectedToFolder(): Promise<void> {
-  if (selectedItems.size === 0) return;
-  const result = await window.electronAPI.selectFolder();
-  if (!result.success || !result.path) return;
-
-  const destPath = result.path;
-  const sourcePaths = Array.from(selectedItems);
-  const alreadyInDest = sourcePaths.some((sourcePath) => {
-    const parentDir = path.dirname(sourcePath);
-    return parentDir === destPath || sourcePath === destPath;
-  });
-
-  if (alreadyInDest) {
-    showToast('Items are already in this directory', 'Info', 'info');
-    return;
-  }
-
-  await handleDrop(sourcePaths, destPath, 'move');
-}
-
-async function pasteFromClipboard() {
-  if (!currentPath) return;
-
-  // fallback to system clipboard
-  if (!clipboard || clipboard.paths.length === 0) {
-    if (currentSettings.globalClipboard !== false) {
-      const systemFiles = await window.electronAPI.getSystemClipboardFiles();
-      if (systemFiles && systemFiles.length > 0) {
-        const result = await window.electronAPI.copyItems(
-          systemFiles,
-          currentPath,
-          currentSettings.fileConflictBehavior || 'ask'
-        );
-        if (result.success) {
-          showToast(
-            `${systemFiles.length} item(s) pasted from system clipboard`,
-            'Success',
-            'success'
-          );
-          refresh();
-        } else {
-          showToast(result.error || 'Paste failed', 'Error', 'error');
-        }
-        return;
-      }
-    }
-    return;
-  }
-
-  const isCopy = clipboard.operation === 'copy';
-  const conflictBehavior = currentSettings.fileConflictBehavior || 'ask';
-  const result = isCopy
-    ? await window.electronAPI.copyItems(clipboard.paths, currentPath, conflictBehavior)
-    : await window.electronAPI.moveItems(clipboard.paths, currentPath, conflictBehavior);
-
-  if (result.success) {
-    showToast(
-      `${clipboard.paths.length} item(s) ${isCopy ? 'copied' : 'moved'}`,
-      'Success',
-      'success'
-    );
-
-    if (!isCopy) {
-      await updateUndoRedoState();
-      clipboard = null;
-      window.electronAPI.setClipboard(null);
-      updateClipboardIndicator();
-    }
-
-    updateCutVisuals();
-    refresh();
-  } else {
-    showToast(result.error || 'Operation failed', 'Error', 'error');
-  }
-}
-
-function updateCutVisuals() {
-  const nextCutPaths = new Set(clipboard && clipboard.operation === 'cut' ? clipboard.paths : []);
-
-  for (const itemPath of cutPaths) {
-    if (!nextCutPaths.has(itemPath)) {
-      fileElementMap.get(itemPath)?.classList.remove('cut');
-    }
-  }
-
-  for (const itemPath of nextCutPaths) {
-    const element = fileElementMap.get(itemPath);
-    if (element) {
-      element.classList.add('cut');
-    }
-  }
-
-  cutPaths = nextCutPaths;
 }
 
 function showSortMenu(e: MouseEvent) {
@@ -2895,7 +1860,7 @@ function applyListColumnWidths(): void {
 }
 
 function setSidebarWidth(width: number, persist: boolean = true): void {
-  const clamped = Math.max(140, Math.min(360, Math.round(width)));
+  const clamped = Math.max(SIDEBAR_MIN_WIDTH, Math.min(SIDEBAR_MAX_WIDTH, Math.round(width)));
   document.documentElement.style.setProperty('--sidebar-width-current', `${clamped}px`);
   if (persist) {
     currentSettings.sidebarWidth = clamped;
@@ -2910,7 +1875,7 @@ function applySidebarWidth(): void {
 }
 
 function setPreviewPanelWidth(width: number, persist: boolean = true): void {
-  const clamped = Math.max(200, Math.min(520, Math.round(width)));
+  const clamped = Math.max(PREVIEW_MIN_WIDTH, Math.min(PREVIEW_MAX_WIDTH, Math.round(width)));
   document.documentElement.style.setProperty('--preview-panel-width', `${clamped}px`);
   if (persist) {
     currentSettings.previewPanelWidth = clamped;
@@ -3062,8 +2027,7 @@ function setupListHeader(): void {
     const resizeHandle = handle as HTMLElement;
     resizeHandle.addEventListener('mousedown', (e) => {
       const mouseEvent = e as MouseEvent;
-      mouseEvent.preventDefault();
-      mouseEvent.stopPropagation();
+      consumeEvent(mouseEvent);
       const resizeKey = resizeHandle.dataset.resize as ListColumnKey | undefined;
       if (!resizeKey) return;
       activeListResizeColumn = resizeKey;
@@ -3151,134 +2115,6 @@ function updateStatusBar() {
   }
 }
 
-// disk space query timer
-let diskSpaceDebounceTimer: NodeJS.Timeout | null = null;
-let lastDiskSpacePath: string = '';
-
-function getUnixDrivePath(pathValue: string): string {
-  const normalized = pathValue.replace(/\\/g, '/');
-  const roots = ['/Volumes', '/media', '/mnt', '/run/media'];
-  for (const root of roots) {
-    if (normalized === root || normalized.startsWith(root + '/')) {
-      const parts = normalized.split('/').filter(Boolean);
-      const rootParts = root.split('/').filter(Boolean);
-      const extraSegments = root === '/run/media' ? 2 : 1;
-      const needed = rootParts.length + extraSegments;
-      if (parts.length >= needed) {
-        return '/' + parts.slice(0, needed).join('/');
-      }
-      return root;
-    }
-  }
-  return '/';
-}
-
-function getWindowsDrivePath(pathValue: string): string {
-  const normalized = pathValue.replace(/\//g, '\\');
-  if (normalized.startsWith('\\\\')) {
-    const parts = normalized.split('\\').filter(Boolean);
-    if (parts.length >= 2) {
-      return `\\\\${parts[0]}\\${parts[1]}\\`;
-    }
-    return normalized;
-  }
-  return normalized.substring(0, 3);
-}
-
-async function updateDiskSpace() {
-  const statusDiskSpace = document.getElementById('status-disk-space');
-  if (!statusDiskSpace || !currentPath || isHomeViewPath(currentPath)) return;
-
-  let drivePath = currentPath;
-  if (platformOS === 'win32') {
-    drivePath = getWindowsDrivePath(currentPath);
-  } else {
-    drivePath = getUnixDrivePath(currentPath);
-  }
-
-  if (drivePath === lastDiskSpacePath && diskSpaceDebounceTimer) {
-    return;
-  }
-
-  if (diskSpaceDebounceTimer) {
-    clearTimeout(diskSpaceDebounceTimer);
-  }
-
-  lastDiskSpacePath = drivePath;
-
-  const cached = getCachedDiskSpace(drivePath);
-  if (cached) {
-    renderDiskSpace(statusDiskSpace, cached.total, cached.free);
-    return;
-  }
-
-  diskSpaceDebounceTimer = setTimeout(async () => {
-    const result = await window.electronAPI.getDiskSpace(drivePath);
-    if (
-      result.success &&
-      typeof result.total === 'number' &&
-      typeof result.free === 'number' &&
-      result.total > 0
-    ) {
-      const total = result.total;
-      const free = result.free;
-      if (diskSpaceCache.size >= DISK_SPACE_CACHE_MAX) {
-        const firstKey = diskSpaceCache.keys().next().value;
-        if (firstKey) diskSpaceCache.delete(firstKey);
-      }
-      diskSpaceCache.set(drivePath, { timestamp: Date.now(), total, free });
-      renderDiskSpace(statusDiskSpace, total, free);
-    } else {
-      const isUnc = platformOS === 'win32' && drivePath.startsWith('\\\\');
-      const message = isUnc ? 'Disk space unavailable for network share' : 'Disk space unavailable';
-      renderDiskSpaceUnavailable(statusDiskSpace, message);
-    }
-    diskSpaceDebounceTimer = null;
-  }, 300);
-}
-
-function getCachedDiskSpace(drivePath: string): { total: number; free: number } | null {
-  const cached = diskSpaceCache.get(drivePath);
-  if (!cached) return null;
-  if (Date.now() - cached.timestamp > DISK_SPACE_CACHE_TTL_MS) {
-    diskSpaceCache.delete(drivePath);
-    return null;
-  }
-  return { total: cached.total, free: cached.free };
-}
-
-function renderDiskSpace(element: HTMLElement, total: number, free: number): void {
-  const freeStr = formatFileSize(free);
-  const totalStr = formatFileSize(total);
-  const usedBytes = total - free;
-  const usedPercent = ((usedBytes / total) * 100).toFixed(1);
-  let usageColor = '#107c10';
-  if (parseFloat(usedPercent) > 80) {
-    usageColor = '#ff8c00';
-  }
-  if (parseFloat(usedPercent) > 90) {
-    usageColor = '#e81123';
-  }
-
-  element.innerHTML = `
-    <span style="display: inline-flex; align-items: center; gap: 6px;">
-      ${twemojiImg(String.fromCodePoint(0x1f4be), 'twemoji')} ${freeStr} free of ${totalStr}
-      <span style="display: inline-block; width: 60px; height: 8px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden; position: relative;">
-        <span style="position: absolute; left: 0; top: 0; height: 100%; width: ${usedPercent}%; background: ${usageColor}; transition: width 0.3s ease;"></span>
-      </span>
-      <span style="opacity: 0.7;">(${usedPercent}% used)</span>
-    </span>
-  `;
-}
-
-function renderDiskSpaceUnavailable(element: HTMLElement, message: string): void {
-  element.innerHTML = `
-    <span style="display: inline-flex; align-items: center; gap: 6px; opacity: 0.7;">
-      ${twemojiImg(String.fromCodePoint(0x26a0), 'twemoji')} ${escapeHtml(message)}
-    </span>
-  `;
-}
-
 function formatFileSize(bytes: number): string {
   if (bytes === 0) return '0 B';
   const k = 1024;
@@ -3348,7 +2184,6 @@ async function init() {
 
   initTooltipSystem();
   initCommandPalette();
-  initProgressPanel();
 
   platformOS = platform;
   document.body.classList.add(`platform-${platformOS}`);
@@ -3477,12 +2312,7 @@ async function init() {
 
     const cleanupSystemResumed = window.electronAPI.onSystemResumed(() => {
       console.log('[Renderer] System resumed from sleep, refreshing view...');
-      lastDiskSpacePath = '';
-      diskSpaceCache.clear();
-      if (diskSpaceDebounceTimer) {
-        clearTimeout(diskSpaceDebounceTimer);
-        diskSpaceDebounceTimer = null;
-      }
+      diskSpaceController.clearCache();
       if (currentPath) {
         refresh();
       }
@@ -3597,8 +2427,8 @@ function initCoreUiInteractions(): void {
 
 function initSyncEventListeners(): void {
   const cleanupClipboard = window.electronAPI.onClipboardChanged((newClipboard) => {
-    clipboard = newClipboard;
-    updateCutVisuals();
+    clipboardController.setClipboard(newClipboard);
+    clipboardController.updateCutVisuals();
     console.log('[Sync] Clipboard updated from another window');
   });
   ipcCleanupFunctions.push(cleanupClipboard);
@@ -3669,16 +2499,19 @@ function initActionButtonListeners(): void {
     [undoBtn, performUndo],
     [redoBtn, performRedo],
     [refreshBtn, refresh],
-    [newFileBtn, createNewFile],
-    [newFolderBtn, createNewFolder],
+    [newFileBtn, () => inlineRenameController.createNewFile()],
+    [newFolderBtn, () => inlineRenameController.createNewFolder()],
     [viewToggleBtn, toggleView],
-    [document.getElementById('empty-new-folder-btn'), createNewFolder],
-    [document.getElementById('empty-new-file-btn'), createNewFile],
+    [
+      document.getElementById('empty-new-folder-btn'),
+      () => inlineRenameController.createNewFolder(),
+    ],
+    [document.getElementById('empty-new-file-btn'), () => inlineRenameController.createNewFile()],
     [document.getElementById('select-all-btn'), selectAll],
     [document.getElementById('deselect-all-btn'), clearSelection],
-    [selectionCopyBtn, copyToClipboard],
-    [selectionCutBtn, cutToClipboard],
-    [selectionMoveBtn, moveSelectedToFolder],
+    [selectionCopyBtn, clipboardController.copyToClipboard],
+    [selectionCutBtn, clipboardController.cutToClipboard],
+    [selectionMoveBtn, clipboardController.moveSelectedToFolder],
     [selectionRenameBtn, renameSelected],
     [selectionDeleteBtn, () => deleteSelected()],
   ];
@@ -3727,25 +2560,11 @@ function initNavigationListeners(): void {
 }
 
 function isModalOpen(): boolean {
-  const modalIds = [
-    'settings-modal',
-    'shortcuts-modal',
-    'dialog-modal',
-    'licenses-modal',
-    'home-settings-modal',
-    'properties-modal',
-    'extract-modal',
-    'compress-options-modal',
-    'theme-editor-modal',
-    'folder-icon-modal',
-    'support-popup-modal',
-    'tour-prompt-modal',
-    'command-palette-modal',
-  ];
   if (isQuickLookOpen()) return true;
-  for (const id of modalIds) {
-    const el = document.getElementById(id);
-    if (el && el.style.display === 'flex') return true;
+  const modals = document.querySelectorAll('.modal-overlay');
+  for (let i = 0; i < modals.length; i++) {
+    const el = modals[i];
+    if (el instanceof HTMLElement && el.style.display === 'flex') return true;
   }
   return false;
 }
@@ -3782,8 +2601,8 @@ function runShortcutAction(actionId: string, e: KeyboardEvent): boolean {
     'global-search': () => openSearch(true),
     'toggle-sidebar': () => setSidebarCollapsed(),
     'new-window': () => openNewWindow(),
-    'new-file': () => createNewFile(),
-    'new-folder': () => createNewFolder(),
+    'new-file': () => inlineRenameController.createNewFile(),
+    'new-folder': () => inlineRenameController.createNewFolder(),
     'go-back': () => goBack(),
     'go-forward': () => goForward(),
     'go-up': () => goUp(),
@@ -3793,9 +2612,9 @@ function runShortcutAction(actionId: string, e: KeyboardEvent): boolean {
     'close-tab': () => {
       if (tabsEnabled && tabs.length > 1) closeTab(activeTabId);
     },
-    copy: () => copyToClipboard(),
-    cut: () => cutToClipboard(),
-    paste: () => pasteFromClipboard(),
+    copy: () => clipboardController.copyToClipboard(),
+    cut: () => clipboardController.cutToClipboard(),
+    paste: () => clipboardController.pasteFromClipboard(),
     'select-all': () => selectAll(),
     undo: () => performUndo(),
     redo: () => performRedo(),
@@ -3861,71 +2680,7 @@ function initKeyboardListeners(): void {
       return;
     }
 
-    const contextMenu = document.getElementById('context-menu');
-    const emptySpaceContextMenu = document.getElementById('empty-space-context-menu');
-
-    const handleMenuKeyNav = (
-      menu: HTMLElement | null,
-      getFocusIdx: () => number,
-      setFocusIdx: (n: number) => void,
-      hasSubmenu: boolean
-    ): boolean => {
-      if (!menu || menu.style.display !== 'block') return false;
-      if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        setFocusIdx(navigateContextMenu(menu, 'down', getFocusIdx()));
-        return true;
-      }
-      if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        setFocusIdx(navigateContextMenu(menu, 'up', getFocusIdx()));
-        return true;
-      }
-      if (e.key === 'Enter' && getFocusIdx() >= 0) {
-        e.preventDefault();
-        const items = getVisibleMenuItems(menu);
-        if (items[getFocusIdx()]) {
-          if (hasSubmenu) {
-            activateContextMenuItem(menu, getFocusIdx());
-          } else {
-            items[getFocusIdx()].click();
-          }
-        }
-        return true;
-      }
-      if (hasSubmenu && e.key === 'ArrowRight') {
-        const items = getVisibleMenuItems(menu);
-        if (getFocusIdx() >= 0 && items[getFocusIdx()]?.classList.contains('has-submenu')) {
-          e.preventDefault();
-          activateContextMenuItem(menu, getFocusIdx());
-        }
-        return true;
-      }
-      return false;
-    };
-
-    if (
-      handleMenuKeyNav(
-        contextMenu,
-        () => contextMenuFocusedIndex,
-        (v) => {
-          contextMenuFocusedIndex = v;
-        },
-        true
-      )
-    )
-      return;
-    if (
-      handleMenuKeyNav(
-        emptySpaceContextMenu,
-        () => emptySpaceMenuFocusedIndex,
-        (v) => {
-          emptySpaceMenuFocusedIndex = v;
-        },
-        false
-      )
-    )
-      return;
+    if (handleContextMenuKeyNav(e)) return;
 
     if (isModalOpen()) {
       return;
@@ -4049,8 +2804,9 @@ function initGlobalClickListeners(): void {
         return;
       }
 
-      if (contextMenuData) {
-        handleContextMenuAction(menuItem.dataset.action, contextMenuData, menuItem.dataset.format);
+      const ctxData = getContextMenuData();
+      if (ctxData) {
+        handleContextMenuAction(menuItem.dataset.action, ctxData, menuItem.dataset.format);
         hideContextMenu();
         return;
       }
@@ -4122,8 +2878,7 @@ function initFileGridDragAndDrop(): void {
     if (isDropTargetFileItem(e.target)) {
       return;
     }
-    e.preventDefault();
-    e.stopPropagation();
+    consumeEvent(e);
 
     if (!e.dataTransfer) return;
 
@@ -4139,8 +2894,7 @@ function initFileGridDragAndDrop(): void {
   });
 
   fileGrid.addEventListener('dragleave', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
+    consumeEvent(e);
 
     const rect = fileGrid.getBoundingClientRect();
     if (
@@ -4155,8 +2909,7 @@ function initFileGridDragAndDrop(): void {
   });
 
   fileGrid.addEventListener('drop', async (e) => {
-    e.preventDefault();
-    e.stopPropagation();
+    consumeEvent(e);
 
     fileGrid.classList.remove('drag-over');
 
@@ -4191,8 +2944,7 @@ function initFileViewDragAndDrop(): void {
       return;
     }
 
-    e.preventDefault();
-    e.stopPropagation();
+    consumeEvent(e);
 
     if (!currentPath) {
       e.dataTransfer!.dropEffect = 'none';
@@ -4224,8 +2976,7 @@ function initFileViewDragAndDrop(): void {
       return;
     }
 
-    e.preventDefault();
-    e.stopPropagation();
+    consumeEvent(e);
 
     fileView.classList.remove('drag-over');
 
@@ -4306,9 +3057,7 @@ async function navigateTo(path: string, skipHistoryUpdate = false) {
       closeSearch();
     }
 
-    if (thumbnailObserver) {
-      thumbnailObserver.disconnect();
-    }
+    thumbnails.disconnectThumbnailObserver();
 
     hideLoading();
 
@@ -4339,9 +3088,7 @@ async function navigateTo(path: string, skipHistoryUpdate = false) {
       closeSearch();
     }
 
-    if (thumbnailObserver) {
-      thumbnailObserver.disconnect();
-    }
+    thumbnails.disconnectThumbnailObserver();
 
     showLoading('Loading folder...');
     if (fileGrid) fileGrid.innerHTML = '';
@@ -4484,7 +3231,7 @@ function appendNextVirtualizedBatch(): void {
   virtualizedRenderIndex = end;
   const paths = appendFileItems(batch, virtualizedSearchQuery);
   applyGitIndicatorsToPaths(paths);
-  updateCutVisuals();
+  clipboardController.updateCutVisuals();
   updateStatusBar();
   ensureActiveItem();
 
@@ -4547,7 +3294,7 @@ function renderFiles(items: FileItem[], searchQuery?: string) {
 
   const renderToken = ++renderFilesToken;
   resetVirtualizedRender();
-  resetThumbnailObserver();
+  thumbnails.resetThumbnailObserver();
   fileGrid.innerHTML = '';
   renderItemIndex = 0;
   clearSelection();
@@ -4556,8 +3303,8 @@ function renderFiles(items: FileItem[], searchQuery?: string) {
 
   filePathMap.clear();
   fileElementMap.clear();
-  gitIndicatorPaths.clear();
-  cutPaths.clear();
+  gitStatus.clearCache();
+  clipboardController.clearCutPaths();
   for (const item of items) {
     filePathMap.set(item.path, item);
   }
@@ -4657,65 +3404,13 @@ function renderFiles(items: FileItem[], searchQuery?: string) {
     if (end < sortedItems.length) {
       requestAnimationFrame(renderBatch);
     } else {
-      updateCutVisuals();
+      clipboardController.updateCutVisuals();
       updateStatusBar();
       ensureActiveItem();
     }
   };
 
   renderBatch();
-}
-
-let thumbnailObserver: IntersectionObserver | null = null;
-let thumbnailObserverRoot: HTMLElement | null = null;
-
-function resetThumbnailObserver(): void {
-  if (thumbnailObserver) {
-    thumbnailObserver.disconnect();
-    thumbnailObserver = null;
-  }
-  thumbnailObserverRoot = null;
-}
-
-function getThumbnailObserver(): IntersectionObserver | null {
-  const scrollContainer = document.getElementById('file-view');
-  if (!scrollContainer) return null;
-  if (thumbnailObserver && thumbnailObserverRoot === scrollContainer) return thumbnailObserver;
-
-  if (thumbnailObserver) {
-    thumbnailObserver.disconnect();
-  }
-
-  thumbnailObserverRoot = scrollContainer;
-  thumbnailObserver = new IntersectionObserver(
-    (entries) => {
-      entries.forEach((entry) => {
-        if (entry.isIntersecting) {
-          const fileItem = entry.target as HTMLElement;
-          const path = fileItem.dataset.path;
-          const item = path ? filePathMap.get(path) : undefined;
-
-          if (item && fileItem.classList.contains('has-thumbnail')) {
-            loadThumbnail(fileItem, item);
-            thumbnailObserver?.unobserve(fileItem);
-          }
-        }
-      });
-    },
-    {
-      root: scrollContainer,
-      rootMargin: THUMBNAIL_ROOT_MARGIN,
-      threshold: 0.01,
-    }
-  );
-  return thumbnailObserver;
-}
-
-function observeThumbnailItem(fileItem: HTMLElement): void {
-  const observer = getThumbnailObserver();
-  if (observer) {
-    observer.observe(fileItem);
-  }
 }
 
 function createFileItem(item: FileItem, searchQuery?: string): HTMLElement {
@@ -4729,7 +3424,7 @@ function createFileItem(item: FileItem, searchQuery?: string): HTMLElement {
 
   let icon: string;
   if (item.isDirectory) {
-    icon = getFolderIcon(item.path);
+    icon = folderIconPickerController.getFolderIcon(item.path);
   } else {
     const ext = getFileExtension(item.name);
     const thumbType = RAW_EXTENSIONS.has(ext)
@@ -4747,7 +3442,7 @@ function createFileItem(item: FileItem, searchQuery?: string): HTMLElement {
       fileItem.classList.add('has-thumbnail');
       fileItem.dataset.thumbnailType = thumbType;
       icon = thumbType === 'image' || thumbType === 'raw' ? IMAGE_ICON : getFileIcon(item.name);
-      observeThumbnailItem(fileItem);
+      thumbnails.observeThumbnailItem(fileItem);
     } else {
       icon = getFileIcon(item.name);
     }
@@ -5031,8 +3726,7 @@ function setupFileGridEventDelegation(): void {
     if (!fileItem) return;
     if (fileItem.dataset.isDirectory !== 'true') return;
 
-    e.preventDefault();
-    e.stopPropagation();
+    consumeEvent(e);
 
     if (!e.dataTransfer) return;
     if (!e.dataTransfer.types.includes('text/plain') && e.dataTransfer.files.length === 0) {
@@ -5058,8 +3752,7 @@ function setupFileGridEventDelegation(): void {
     if (!fileItem) return;
     if (fileItem.dataset.isDirectory !== 'true') return;
 
-    e.preventDefault();
-    e.stopPropagation();
+    consumeEvent(e);
 
     const rect = fileItem.getBoundingClientRect();
     if (
@@ -5079,8 +3772,7 @@ function setupFileGridEventDelegation(): void {
     if (!fileItem) return;
     if (fileItem.dataset.isDirectory !== 'true') return;
 
-    e.preventDefault();
-    e.stopPropagation();
+    consumeEvent(e);
 
     fileItem.classList.remove('drag-over');
     clearSpringLoad(fileItem);
@@ -5099,313 +3791,6 @@ function setupFileGridEventDelegation(): void {
   });
 }
 
-const THUMBNAIL_QUALITY_MAP: Record<string, number> = { low: 0.5, medium: 0.7, high: 0.9 };
-function getThumbnailQuality(): number {
-  return THUMBNAIL_QUALITY_MAP[currentSettings.thumbnailQuality || 'medium'] ?? 0.7;
-}
-
-function generateVideoThumbnail(videoUrl: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const video = document.createElement('video');
-    video.crossOrigin = 'anonymous';
-    video.muted = true;
-    video.preload = 'metadata';
-
-    const cleanup = () => {
-      video.src = '';
-      video.load();
-    };
-
-    video.onloadedmetadata = () => {
-      video.currentTime = Math.min(1, video.duration * 0.1);
-    };
-
-    video.onseeked = () => {
-      try {
-        const canvas = document.createElement('canvas');
-        const dpr = Math.min(window.devicePixelRatio || 1, 2);
-        const size = 160 * dpr;
-        const aspectRatio = video.videoWidth / video.videoHeight;
-
-        if (aspectRatio > 1) {
-          canvas.width = size;
-          canvas.height = Math.round(size / aspectRatio);
-        } else {
-          canvas.width = Math.round(size * aspectRatio);
-          canvas.height = size;
-        }
-
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.imageSmoothingEnabled = true;
-          ctx.imageSmoothingQuality = 'high';
-          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-          const dataUrl = canvas.toDataURL('image/jpeg', getThumbnailQuality());
-          cleanup();
-          resolve(dataUrl);
-        } else {
-          cleanup();
-          reject(new Error('Could not get canvas context'));
-        }
-      } catch (err) {
-        cleanup();
-        reject(err);
-      }
-    };
-
-    video.onerror = () => {
-      cleanup();
-      reject(new Error('Failed to load video'));
-    };
-
-    setTimeout(() => {
-      cleanup();
-      reject(new Error('Video thumbnail timeout'));
-    }, 5000);
-
-    video.src = videoUrl;
-  });
-}
-
-async function generateAudioWaveform(audioUrl: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const canvas = document.createElement('canvas');
-    canvas.width = Math.round(160 * dpr);
-    canvas.height = Math.round(160 * dpr);
-    const ctx = canvas.getContext('2d');
-    if (!ctx) {
-      reject(new Error('Cannot get canvas context'));
-      return;
-    }
-    ctx.scale(dpr, dpr);
-
-    const audioContext = new AudioContext();
-
-    fetch(audioUrl)
-      .then((response) => response.arrayBuffer())
-      .then((arrayBuffer) => audioContext.decodeAudioData(arrayBuffer))
-      .then((audioBuffer) => {
-        const rawData = audioBuffer.getChannelData(0);
-        const samples = 80;
-        const blockSize = Math.floor(rawData.length / samples);
-        const filteredData: number[] = [];
-
-        for (let i = 0; i < samples; i++) {
-          const blockStart = blockSize * i;
-          let sum = 0;
-          for (let j = 0; j < blockSize; j++) {
-            sum += Math.abs(rawData[blockStart + j]);
-          }
-          filteredData.push(sum / blockSize);
-        }
-
-        const maxVal = Math.max(...filteredData);
-        const normalizedData = filteredData.map((d) => d / maxVal);
-
-        const logicalW = 160;
-        const logicalH = 160;
-
-        ctx.fillStyle = 'rgba(30, 30, 40, 0.8)';
-        ctx.fillRect(0, 0, logicalW, logicalH);
-
-        const barWidth = logicalW / samples;
-        const centerY = logicalH / 2;
-
-        ctx.fillStyle = 'rgba(99, 179, 237, 0.8)';
-        normalizedData.forEach((value, index) => {
-          const barHeight = value * (logicalH * 0.4);
-          const x = index * barWidth;
-          ctx.fillRect(x, centerY - barHeight, barWidth - 1, barHeight * 2);
-        });
-
-        ctx.fillStyle = 'rgba(99, 179, 237, 0.4)';
-        ctx.beginPath();
-        ctx.arc(logicalW / 2, logicalH / 2, 25, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-        ctx.beginPath();
-        ctx.moveTo(logicalW / 2 - 8, logicalH / 2 - 12);
-        ctx.lineTo(logicalW / 2 + 12, logicalH / 2);
-        ctx.lineTo(logicalW / 2 - 8, logicalH / 2 + 12);
-        ctx.closePath();
-        ctx.fill();
-
-        audioContext.close();
-        resolve(canvas.toDataURL('image/jpeg', getThumbnailQuality()));
-      })
-      .catch((error) => {
-        audioContext.close();
-        reject(error);
-      });
-  });
-}
-
-function generatePdfThumbnail(pdfUrl: string): Promise<string> {
-  const q = currentSettings.thumbnailQuality;
-  const quality: 'low' | 'medium' | 'high' = q === 'low' ? 'low' : q === 'high' ? 'high' : 'medium';
-  return generatePdfThumbnailPdfJs(pdfUrl, quality);
-}
-
-function loadThumbnail(fileItem: HTMLElement, item: FileItem) {
-  const cached = thumbnailCache.get(item.path);
-  if (cached) {
-    const iconDiv = fileItem.querySelector('.file-icon');
-    if (iconDiv) {
-      renderThumbnailImage(iconDiv as HTMLElement, cached, item, fileItem);
-    }
-    return;
-  }
-
-  const thumbnailType = fileItem.dataset.thumbnailType || 'image';
-
-  enqueueThumbnailLoad(async () => {
-    try {
-      if (!document.body.contains(fileItem)) {
-        return;
-      }
-
-      const iconDiv = fileItem.querySelector('.file-icon');
-
-      if (iconDiv) {
-        iconDiv.innerHTML = `<div class="spinner" style="width: 30px; height: 30px; border-width: 2px;"></div>`;
-      }
-
-      if (
-        thumbnailType !== 'audio' &&
-        thumbnailType !== 'pdf' &&
-        item.size > (currentSettings.maxThumbnailSizeMB || 10) * 1024 * 1024
-      ) {
-        if (iconDiv) {
-          iconDiv.innerHTML = getFileIcon(item.name);
-        }
-        fileItem.classList.remove('has-thumbnail');
-        return;
-      }
-
-      if (
-        thumbnailType === 'pdf' &&
-        item.size > (currentSettings.maxPreviewSizeMB || 50) * 1024 * 1024
-      ) {
-        if (iconDiv) {
-          iconDiv.innerHTML = getFileIcon(item.name);
-        }
-        fileItem.classList.remove('has-thumbnail');
-        return;
-      }
-
-      const diskCacheResult = await window.electronAPI.getCachedThumbnail(item.path);
-      if (diskCacheResult.success && diskCacheResult.dataUrl) {
-        if (!document.body.contains(fileItem)) return;
-        cacheThumbnail(item.path, diskCacheResult.dataUrl);
-        if (iconDiv) {
-          renderThumbnailImage(iconDiv as HTMLElement, diskCacheResult.dataUrl, item, fileItem);
-        }
-        return;
-      }
-
-      const fileUrl = encodeFileUrl(item.path);
-
-      if (!document.body.contains(fileItem)) {
-        return;
-      }
-
-      let thumbnailUrl = fileUrl;
-      let shouldCacheToDisk = false;
-
-      const thumbnailGenerators: Record<string, (url: string) => Promise<string>> = {
-        video: generateVideoThumbnail,
-        audio: generateAudioWaveform,
-        pdf: generatePdfThumbnail,
-      };
-      const generator = thumbnailGenerators[thumbnailType];
-      if (generator) {
-        try {
-          thumbnailUrl = await generator(fileUrl);
-          shouldCacheToDisk = true;
-        } catch {
-          if (iconDiv) iconDiv.innerHTML = getFileIcon(item.name);
-          fileItem.classList.remove('has-thumbnail');
-          return;
-        }
-      }
-
-      if (!document.body.contains(fileItem)) {
-        return;
-      }
-
-      if (iconDiv) {
-        cacheThumbnail(item.path, thumbnailUrl);
-        renderThumbnailImage(iconDiv as HTMLElement, thumbnailUrl, item, fileItem);
-
-        if (shouldCacheToDisk && thumbnailUrl.startsWith('data:')) {
-          window.electronAPI.saveCachedThumbnail(item.path, thumbnailUrl).catch(ignoreError);
-        }
-      }
-    } catch {
-      if (!document.body.contains(fileItem)) {
-        return;
-      }
-      const iconDiv = fileItem.querySelector('.file-icon');
-      if (iconDiv) {
-        iconDiv.innerHTML = getFileIcon(item.name);
-      }
-      fileItem.classList.remove('has-thumbnail');
-    }
-  });
-}
-
-function cacheThumbnail(path: string, url: string): void {
-  if (thumbnailCache.size >= THUMBNAIL_CACHE_MAX) {
-    const firstKey = thumbnailCache.keys().next().value;
-    if (firstKey) thumbnailCache.delete(firstKey);
-  }
-  thumbnailCache.set(path, url);
-}
-
-function renderThumbnailImage(
-  iconDiv: HTMLElement,
-  thumbnailUrl: string,
-  item: FileItem,
-  fileItem: HTMLElement
-): void {
-  iconDiv.innerHTML = '';
-  const img = document.createElement('img');
-  img.src = thumbnailUrl;
-  img.className = 'file-thumbnail';
-  img.alt = item.name;
-  img.style.opacity = '0';
-  img.loading = 'lazy';
-  img.decoding = 'async';
-
-  img.addEventListener(
-    'load',
-    () => {
-      img.style.transition = 'opacity 0.2s ease';
-      img.style.opacity = '1';
-    },
-    { once: true }
-  );
-
-  const ext = getFileExtension(item.name);
-  if (ANIMATED_IMAGE_EXTENSIONS.has(ext)) {
-    img.dataset.animated = 'true';
-    img.dataset.staticSrc = thumbnailUrl;
-    img.dataset.animatedSrc = encodeFileUrl(item.path);
-  }
-
-  img.addEventListener('error', () => {
-    if (!document.body.contains(fileItem)) {
-      return;
-    }
-    iconDiv.innerHTML = getFileIcon(item.name);
-    fileItem.classList.remove('has-thumbnail');
-  });
-  iconDiv.appendChild(img);
-}
-
-const FOLDER_ICON = twemojiImg(String.fromCodePoint(0x1f4c1), 'twemoji file-icon');
 const IMAGE_ICON = twemojiImg(String.fromCodePoint(parseInt('1f5bc', 16)), 'twemoji');
 const RAW_ICON = twemojiImg(String.fromCodePoint(0x1f4f7), 'twemoji');
 const VIDEO_ICON = twemojiImg(String.fromCodePoint(0x1f3ac), 'twemoji');
@@ -5495,7 +3880,7 @@ async function renameSelected() {
   if (fileItem) {
     const item = filePathMap.get(itemPath);
     if (item) {
-      startInlineRename(fileItem, item.name, item.path);
+      inlineRenameController.startInlineRename(fileItem, item.name, item.path);
     }
   }
 }
@@ -5676,536 +4061,6 @@ async function applyViewMode() {
   updateViewModeControls();
 }
 
-let columnPaths: string[] = [];
-let columnViewRenderId = 0;
-let isRenderingColumnView = false;
-const activeColumnOperationIds = new Set<string>();
-
-function cancelColumnOperations(): void {
-  for (const operationId of activeColumnOperationIds) {
-    window.electronAPI.cancelDirectoryContents(operationId).catch(ignoreError);
-  }
-  activeColumnOperationIds.clear();
-}
-
-async function renderColumnView() {
-  if (!columnView) return;
-
-  cancelColumnOperations();
-  if (isHomeViewPath(currentPath)) {
-    columnView.innerHTML = '';
-    return;
-  }
-
-  const currentRenderId = ++columnViewRenderId;
-  if (isRenderingColumnView) {
-    await new Promise<void>((resolve) => {
-      const check = () => {
-        if (!isRenderingColumnView || currentRenderId !== columnViewRenderId) {
-          resolve();
-        } else {
-          requestAnimationFrame(check);
-        }
-      };
-      requestAnimationFrame(check);
-    });
-    if (currentRenderId !== columnViewRenderId) return;
-  }
-
-  isRenderingColumnView = true;
-  const savedScrollLeft = columnView.scrollLeft;
-
-  try {
-    columnView.innerHTML = '';
-    columnPaths = [];
-
-    if (!currentPath) {
-      await renderDriveColumn();
-      return;
-    }
-
-    const isWindows = isWindowsPath(currentPath);
-
-    if (isWindows) {
-      const parts = currentPath.split('\\').filter(Boolean);
-      for (let i = 0; i < parts.length; i++) {
-        if (i === 0) {
-          columnPaths.push(parts[0] + '\\');
-        } else {
-          columnPaths.push(parts.slice(0, i + 1).join('\\'));
-        }
-      }
-    } else {
-      const parts = currentPath.split('/').filter(Boolean);
-      columnPaths.push('/');
-      for (let i = 0; i < parts.length; i++) {
-        columnPaths.push('/' + parts.slice(0, i + 1).join('/'));
-      }
-    }
-
-    const panePromises = columnPaths.map((colPath, index) =>
-      renderColumn(colPath, index, currentRenderId)
-    );
-
-    const panes = await Promise.all(panePromises);
-
-    if (currentRenderId !== columnViewRenderId) {
-      return;
-    }
-
-    for (const pane of panes) {
-      if (pane) {
-        columnView.appendChild(pane);
-      }
-    }
-
-    setTimeout(() => {
-      if (currentRenderId !== columnViewRenderId) return;
-      if (savedScrollLeft > 0) {
-        columnView.scrollLeft = savedScrollLeft;
-      } else {
-        columnView.scrollLeft = columnView.scrollWidth;
-      }
-    }, 50);
-  } finally {
-    isRenderingColumnView = false;
-  }
-}
-
-function addColumnResizeHandle(pane: HTMLElement) {
-  const handle = document.createElement('div');
-  handle.className = 'column-resize-handle';
-
-  let startX: number;
-  let startWidth: number;
-
-  const onMouseMove = (e: MouseEvent) => {
-    const delta = e.clientX - startX;
-    const newWidth = Math.max(150, Math.min(500, startWidth + delta));
-    pane.style.width = newWidth + 'px';
-  };
-
-  const onMouseUp = () => {
-    handle.classList.remove('resizing');
-    document.removeEventListener('mousemove', onMouseMove);
-    document.removeEventListener('mouseup', onMouseUp);
-    document.body.style.cursor = '';
-    document.body.style.userSelect = '';
-  };
-
-  handle.addEventListener('mousedown', (e) => {
-    e.preventDefault();
-    startX = e.clientX;
-    startWidth = pane.offsetWidth;
-    handle.classList.add('resizing');
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
-    document.addEventListener('mousemove', onMouseMove);
-    document.addEventListener('mouseup', onMouseUp);
-  });
-
-  pane.appendChild(handle);
-}
-
-async function renderDriveColumn() {
-  const pane = document.createElement('div');
-  pane.className = 'column-pane';
-
-  try {
-    const drives =
-      cachedDriveInfo.length > 0 ? cachedDriveInfo : await window.electronAPI.getDriveInfo();
-    if (cachedDriveInfo.length === 0) {
-      cacheDriveInfo(drives);
-    }
-    drives.forEach((drive) => {
-      const item = document.createElement('div');
-      item.className = 'column-item is-directory';
-      item.tabIndex = 0;
-      item.setAttribute('role', 'option');
-      item.setAttribute('aria-selected', 'false');
-      item.dataset.path = drive.path;
-      item.title = drive.path;
-      item.innerHTML = `
-        <span class="column-item-icon"><img src="../assets/twemoji/1f4bf.svg" class="twemoji" alt="💿" draggable="false" /></span>
-        <span class="column-item-name">${escapeHtml(drive.label || drive.path)}</span>
-        <span class="column-item-arrow">▸</span>
-      `;
-      item.addEventListener('click', () => handleColumnItemClick(item, drive.path, true, 0));
-      pane.appendChild(item);
-    });
-  } catch {
-    pane.innerHTML = '<div class="column-item" style="opacity: 0.5;">Error loading drives</div>';
-  }
-
-  addColumnResizeHandle(pane);
-  columnView.appendChild(pane);
-}
-
-async function renderColumn(
-  columnPath: string,
-  columnIndex: number,
-  renderId?: number
-): Promise<HTMLDivElement | null> {
-  if (renderId !== undefined && renderId !== columnViewRenderId) {
-    return null;
-  }
-
-  const pane = document.createElement('div');
-  pane.className = 'column-pane';
-  pane.dataset.columnIndex = String(columnIndex);
-  pane.dataset.path = columnPath;
-
-  pane.addEventListener('dragover', (e) => {
-    if ((e.target as HTMLElement).closest('.column-item')) {
-      return;
-    }
-    e.preventDefault();
-    e.stopPropagation();
-
-    if (!e.dataTransfer!.types.includes('text/plain') && e.dataTransfer!.files.length === 0) {
-      e.dataTransfer!.dropEffect = 'none';
-      return;
-    }
-
-    const operation = getDragOperation(e);
-    e.dataTransfer!.dropEffect = operation;
-    pane.classList.add('drag-over');
-    showDropIndicator(operation, columnPath, e.clientX, e.clientY);
-  });
-
-  pane.addEventListener('dragleave', (e) => {
-    if ((e.target as HTMLElement).closest('.column-item')) {
-      return;
-    }
-    e.preventDefault();
-    const rect = pane.getBoundingClientRect();
-    if (
-      e.clientX < rect.left ||
-      e.clientX >= rect.right ||
-      e.clientY < rect.top ||
-      e.clientY >= rect.bottom
-    ) {
-      pane.classList.remove('drag-over');
-      hideDropIndicator();
-    }
-  });
-
-  pane.addEventListener('drop', async (e) => {
-    if ((e.target as HTMLElement).closest('.column-item')) {
-      return;
-    }
-    e.preventDefault();
-    e.stopPropagation();
-
-    pane.classList.remove('drag-over');
-
-    const draggedPaths = await getDraggedPaths(e);
-
-    if (draggedPaths.length === 0) {
-      hideDropIndicator();
-      return;
-    }
-
-    const alreadyInCurrentDir = draggedPaths.some((filePath: string) => {
-      const parentDir = path.dirname(filePath);
-      return parentDir === columnPath || filePath === columnPath;
-    });
-
-    if (alreadyInCurrentDir) {
-      showToast('Items are already in this directory', 'Info', 'info');
-      hideDropIndicator();
-      return;
-    }
-
-    const operation = getDragOperation(e);
-    await handleDrop(draggedPaths, columnPath, operation);
-    hideDropIndicator();
-  });
-
-  try {
-    const operationId = createDirectoryOperationId('column');
-    activeColumnOperationIds.add(operationId);
-    let result: { success: boolean; contents?: FileItem[]; error?: string };
-    try {
-      result = await window.electronAPI.getDirectoryContents(
-        columnPath,
-        operationId,
-        currentSettings.showHiddenFiles
-      );
-    } finally {
-      activeColumnOperationIds.delete(operationId);
-    }
-    if (renderId !== undefined && renderId !== columnViewRenderId) {
-      return null;
-    }
-    if (!result.success) {
-      throw new Error(result.error || 'Error loading folder');
-    }
-    const items = result.contents || [];
-
-    const sortedItems = [...items].sort((a, b) => {
-      const dirSort = (b.isDirectory ? 1 : 0) - (a.isDirectory ? 1 : 0);
-      if (dirSort !== 0) return dirSort;
-      return NAME_COLLATOR.compare(a.name, b.name);
-    });
-
-    const visibleItems = currentSettings.showHiddenFiles
-      ? sortedItems
-      : sortedItems.filter((item) => !item.isHidden);
-
-    if (visibleItems.length === 0) {
-      pane.innerHTML =
-        '<div class="column-item" style="opacity: 0.5; font-style: italic;">Empty folder</div>';
-    } else {
-      visibleItems.forEach((fileItem) => {
-        const item = document.createElement('div');
-        item.className = 'column-item';
-        item.tabIndex = 0;
-        item.setAttribute('role', 'option');
-        item.setAttribute('aria-selected', 'false');
-        if (fileItem.isDirectory) item.classList.add('is-directory');
-        item.dataset.path = fileItem.path;
-
-        const nextColPath = columnPaths[columnIndex + 1];
-        if (nextColPath && fileItem.path === nextColPath) {
-          item.classList.add('expanded');
-          item.setAttribute('aria-selected', 'true');
-        }
-
-        const icon = fileItem.isDirectory
-          ? '<img src="../assets/twemoji/1f4c1.svg" class="twemoji" alt="📁" draggable="false" />'
-          : getFileIcon(fileItem.name);
-
-        item.innerHTML = `
-          <span class="column-item-icon">${icon}</span>
-          <span class="column-item-name">${escapeHtml(fileItem.name)}</span>
-          ${fileItem.isDirectory ? '<span class="column-item-arrow">▸</span>' : ''}
-        `;
-
-        item.addEventListener('click', () =>
-          handleColumnItemClick(item, fileItem.path, fileItem.isDirectory, columnIndex)
-        );
-        item.addEventListener('dblclick', () => {
-          if (!fileItem.isDirectory) {
-            void openFileEntry(fileItem);
-          }
-        });
-
-        item.addEventListener('contextmenu', (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-
-          pane.querySelectorAll('.column-item').forEach((i) => {
-            i.classList.remove('selected');
-            i.setAttribute('aria-selected', 'false');
-          });
-          item.classList.add('selected');
-          item.setAttribute('aria-selected', 'true');
-
-          clearSelection();
-          selectedItems.add(fileItem.path);
-
-          const colPath = columnPaths[columnIndex];
-          if (colPath && colPath !== currentPath) {
-            currentPath = colPath;
-            addressInput.value = colPath;
-            updateBreadcrumb(colPath);
-          }
-
-          showContextMenu(e.pageX, e.pageY, fileItem);
-        });
-
-        item.draggable = true;
-
-        item.addEventListener('dragstart', (e) => {
-          e.stopPropagation();
-
-          if (!item.classList.contains('selected')) {
-            pane.querySelectorAll('.column-item').forEach((i) => {
-              i.classList.remove('selected');
-              i.setAttribute('aria-selected', 'false');
-            });
-            item.classList.add('selected');
-            item.setAttribute('aria-selected', 'true');
-            clearSelection();
-            selectedItems.add(fileItem.path);
-          }
-
-          const selectedPaths = Array.from(selectedItems);
-          e.dataTransfer!.effectAllowed = 'copyMove';
-          e.dataTransfer!.setData('text/plain', JSON.stringify(selectedPaths));
-
-          window.electronAPI.setDragData(selectedPaths);
-
-          item.classList.add('dragging');
-        });
-
-        item.addEventListener('dragend', () => {
-          item.classList.remove('dragging');
-          document.querySelectorAll('.column-item.drag-over').forEach((el) => {
-            el.classList.remove('drag-over');
-          });
-          window.electronAPI.clearDragData();
-          clearSpringLoad();
-          hideDropIndicator();
-        });
-
-        if (fileItem.isDirectory) {
-          item.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-
-            if (
-              !e.dataTransfer!.types.includes('text/plain') &&
-              e.dataTransfer!.files.length === 0
-            ) {
-              e.dataTransfer!.dropEffect = 'none';
-              return;
-            }
-
-            const operation = getDragOperation(e);
-            e.dataTransfer!.dropEffect = operation;
-            item.classList.add('drag-over');
-            showDropIndicator(operation, fileItem.path, e.clientX, e.clientY);
-            scheduleSpringLoad(item, () => {
-              item.classList.remove('drag-over', 'spring-loading');
-              handleColumnItemClick(item, fileItem.path, true, columnIndex);
-            });
-          });
-
-          item.addEventListener('dragleave', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            const rect = item.getBoundingClientRect();
-            if (
-              e.clientX < rect.left ||
-              e.clientX >= rect.right ||
-              e.clientY < rect.top ||
-              e.clientY >= rect.bottom
-            ) {
-              item.classList.remove('drag-over');
-              clearSpringLoad(item);
-              hideDropIndicator();
-            }
-          });
-
-          item.addEventListener('drop', async (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-
-            item.classList.remove('drag-over');
-            clearSpringLoad(item);
-
-            const draggedPaths = await getDraggedPaths(e);
-
-            if (draggedPaths.length === 0 || draggedPaths.includes(fileItem.path)) {
-              hideDropIndicator();
-              return;
-            }
-
-            const operation = getDragOperation(e);
-            await handleDrop(draggedPaths, fileItem.path, operation);
-            hideDropIndicator();
-          });
-        }
-
-        pane.appendChild(item);
-      });
-    }
-  } catch {
-    pane.innerHTML = '<div class="column-item" style="opacity: 0.5;">Error loading folder</div>';
-  }
-
-  addColumnResizeHandle(pane);
-  return pane;
-}
-
-async function handleColumnItemClick(
-  element: HTMLElement,
-  path: string,
-  isDirectory: boolean,
-  _columnIndex: number
-) {
-  const currentPane = element.closest('.column-pane');
-  if (!currentPane) return;
-
-  cancelColumnOperations();
-  const clickRenderId = ++columnViewRenderId;
-  const allPanes = Array.from(columnView.querySelectorAll('.column-pane'));
-  const currentPaneIndex = allPanes.indexOf(currentPane as Element);
-
-  for (let i = allPanes.length - 1; i > currentPaneIndex; i--) {
-    allPanes[i].remove();
-  }
-  columnPaths = columnPaths.slice(0, currentPaneIndex + 1);
-
-  currentPane.querySelectorAll('.column-item').forEach((item) => {
-    item.classList.remove('expanded', 'selected');
-    item.setAttribute('aria-selected', 'false');
-  });
-
-  if (isDirectory) {
-    element.classList.add('expanded');
-    element.setAttribute('aria-selected', 'true');
-    columnPaths.push(path);
-
-    currentPath = path;
-    addressInput.value = path;
-    updateBreadcrumb(path);
-    try {
-      folderTreeManager.ensurePathVisible(path);
-    } catch (error) {
-      ignoreError(error);
-    }
-
-    const newPane = await renderColumn(path, currentPaneIndex + 1, clickRenderId);
-
-    if (clickRenderId === columnViewRenderId && newPane) {
-      columnView.appendChild(newPane);
-    }
-
-    setTimeout(() => {
-      if (clickRenderId !== columnViewRenderId) return;
-      columnView.scrollLeft = columnView.scrollWidth;
-    }, 50);
-  } else {
-    element.classList.add('selected');
-    element.setAttribute('aria-selected', 'true');
-    clearSelection();
-    selectedItems.add(path);
-
-    const parentPath = columnPaths[currentPaneIndex];
-    if (parentPath && parentPath !== currentPath) {
-      currentPath = parentPath;
-      addressInput.value = parentPath;
-      updateBreadcrumb(parentPath);
-      try {
-        folderTreeManager.ensurePathVisible(parentPath);
-      } catch (error) {
-        ignoreError(error);
-      }
-    }
-
-    const previewPanel = document.getElementById('preview-panel');
-    if (previewPanel && previewPanel.style.display !== 'none') {
-      let file = filePathMap.get(path);
-      if (!file) {
-        const fileName = path.split(/[\\/]/).pop() || '';
-        file = {
-          name: fileName,
-          path: path,
-          isDirectory: false,
-          isFile: true,
-          size: 0,
-          modified: new Date(),
-          isHidden: fileName.startsWith('.'),
-        };
-      }
-      updatePreview(file);
-    }
-  }
-}
-
 const VIEW_TOGGLE_CONFIG: Record<string, { svg: string; title: string }> = {
   list: {
     svg: `<svg width="16" height="16" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="2" fill="currentColor" rx="1"/><rect x="2" y="7" width="12" height="2" fill="currentColor" rx="1"/><rect x="2" y="11" width="12" height="2" fill="currentColor" rx="1"/></svg>`,
@@ -6251,1061 +4106,6 @@ function setupViewOptions(): void {
     });
   });
   updateViewModeControls();
-}
-
-async function createNewFile() {
-  await createNewFileWithInlineRename();
-}
-
-async function createNewFolder() {
-  await createNewFolderWithInlineRename();
-}
-
-async function createNewItemWithInlineRename(type: 'file' | 'folder') {
-  if (!currentPath || isHomeViewPath(currentPath)) {
-    showToast(`Open a folder to create a ${type}`, 'Create', 'info');
-    return;
-  }
-  const baseName = type === 'file' ? 'File' : 'New Folder';
-  let finalName = baseName;
-  let counter = 1;
-  const existingNames = new Set(allFiles.map((f) => f.name));
-  while (existingNames.has(finalName)) {
-    finalName = `${baseName} (${counter++})`;
-  }
-
-  const result =
-    type === 'file'
-      ? await window.electronAPI.createFile(currentPath, finalName)
-      : await window.electronAPI.createFolder(currentPath, finalName);
-
-  if (result.success && result.path) {
-    const createdPath = result.path;
-    await navigateTo(currentPath);
-    setTimeout(() => {
-      const fileItems = document.querySelectorAll('.file-item');
-      for (const item of Array.from(fileItems)) {
-        const nameEl = item.querySelector('.file-name');
-        if (nameEl?.textContent === finalName) {
-          startInlineRename(item as HTMLElement, finalName, createdPath);
-          break;
-        }
-      }
-    }, 100);
-  } else {
-    await showAlert(
-      result.error || 'Unknown error',
-      `Error Creating ${type === 'file' ? 'File' : 'Folder'}`,
-      'error'
-    );
-  }
-}
-
-async function createNewFileWithInlineRename() {
-  return createNewItemWithInlineRename('file');
-}
-async function createNewFolderWithInlineRename() {
-  return createNewItemWithInlineRename('folder');
-}
-
-function startInlineRename(fileItem: HTMLElement, currentName: string, itemPath: string) {
-  const nameElement = fileItem.querySelector('.file-name') as HTMLElement | null;
-  if (!nameElement) return;
-
-  if (fileItem.classList.contains('renaming')) return;
-
-  nameElement.style.display = 'none';
-
-  const input = document.createElement('input');
-  input.type = 'text';
-  input.className = 'file-name-input';
-  input.value = currentName;
-  const nameContainer = fileItem.querySelector('.file-text') as HTMLElement | null;
-  (nameContainer || fileItem).appendChild(input);
-
-  fileItem.classList.add('renaming');
-
-  input.focus();
-
-  const lastDotIndex = currentName.lastIndexOf('.');
-  if (lastDotIndex > 0) {
-    input.setSelectionRange(0, lastDotIndex);
-  } else {
-    input.select();
-  }
-
-  let renameHandled = false;
-
-  const finishRename = async () => {
-    if (renameHandled) {
-      return;
-    }
-    renameHandled = true;
-
-    input.removeEventListener('blur', finishRename);
-    input.removeEventListener('keypress', handleKeyPress);
-    input.removeEventListener('keydown', handleKeyDown);
-
-    const newName = input.value.trim();
-
-    if (newName && newName !== currentName) {
-      const result = await window.electronAPI.renameItem(itemPath, newName);
-      if (result.success) {
-        await navigateTo(currentPath);
-      } else {
-        await showAlert(result.error || 'Unknown error', 'Error Renaming', 'error');
-        nameElement.style.display = '';
-        input.remove();
-        fileItem.classList.remove('renaming');
-      }
-    } else {
-      nameElement.style.display = '';
-      input.remove();
-      fileItem.classList.remove('renaming');
-    }
-  };
-
-  const handleKeyPress = (e: KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      finishRename();
-    }
-  };
-
-  const handleKeyDown = (e: KeyboardEvent) => {
-    if (e.key === 'Escape') {
-      renameHandled = true;
-      input.removeEventListener('blur', finishRename);
-      input.removeEventListener('keypress', handleKeyPress);
-      input.removeEventListener('keydown', handleKeyDown);
-      nameElement.style.display = '';
-      input.remove();
-      fileItem.classList.remove('renaming');
-    }
-  };
-
-  input.addEventListener('blur', finishRename);
-  input.addEventListener('keypress', handleKeyPress);
-  input.addEventListener('keydown', handleKeyDown);
-}
-
-function positionMenuInViewport(menu: HTMLElement, x: number, y: number) {
-  const rect = menu.getBoundingClientRect();
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
-  let left = x;
-  let top = y;
-  if (y + rect.height > vh - 10) top = y - rect.height;
-  if (left + rect.width > vw - 10) left = vw - rect.width - 10;
-  if (top < 10) top = 10;
-  if (left < 10) left = 10;
-  if (top + rect.height > vh - 10) top = vh - rect.height - 10;
-  menu.style.left = left + 'px';
-  menu.style.top = top + 'px';
-}
-
-function showContextMenu(x: number, y: number, item: FileItem) {
-  const contextMenu = document.getElementById('context-menu');
-  const addToBookmarksItem = document.getElementById('add-to-bookmarks-item');
-  const changeFolderIconItem = document.getElementById('change-folder-icon-item');
-  const copyPathItem = document.getElementById('copy-path-item');
-  const openTerminalItem = document.getElementById('open-terminal-item');
-  const compressItem = document.getElementById('compress-item');
-  const extractItem = document.getElementById('extract-item');
-  const previewPdfItem = document.getElementById('preview-pdf-item');
-
-  if (!contextMenu) return;
-
-  hideEmptySpaceContextMenu();
-
-  contextMenuData = item;
-  contextMenuFocusedIndex = -1;
-
-  // Visibility based on item type
-  const showIf = (el: HTMLElement | null, condition: boolean) => {
-    if (el) el.style.display = condition ? 'flex' : 'none';
-  };
-  showIf(addToBookmarksItem, item.isDirectory);
-  showIf(changeFolderIconItem, item.isDirectory);
-  showIf(copyPathItem, !item.isDirectory);
-  showIf(openTerminalItem, item.isDirectory);
-  showIf(compressItem, true);
-  showIf(extractItem, !item.isDirectory && isArchivePath(item.path));
-  showIf(previewPdfItem, !item.isDirectory && PDF_EXTENSIONS.has(getFileExtension(item.name)));
-
-  contextMenu.style.display = 'block';
-  positionMenuInViewport(contextMenu, x, y);
-
-  const submenu = contextMenu.querySelector('.context-submenu') as HTMLElement;
-  if (submenu) {
-    submenu.classList.remove('flip-left');
-    const menuRight =
-      parseFloat(contextMenu.style.left) + contextMenu.getBoundingClientRect().width;
-    if (menuRight + 160 > window.innerWidth - 10) {
-      submenu.classList.add('flip-left');
-    }
-  }
-
-  contextMenuFocusedIndex = navigateContextMenu(contextMenu, 'down', contextMenuFocusedIndex);
-}
-
-let contextMenuFocusedIndex = -1;
-let emptySpaceMenuFocusedIndex = -1;
-
-function hideContextMenu() {
-  const contextMenuElement = document.getElementById('context-menu');
-  if (contextMenuElement) {
-    contextMenuElement.style.display = 'none';
-    contextMenuData = null;
-    clearContextMenuFocus(contextMenuElement);
-    contextMenuFocusedIndex = -1;
-  }
-}
-
-function clearContextMenuFocus(menu: HTMLElement) {
-  menu.querySelectorAll('.context-menu-item.focused').forEach((item) => {
-    item.classList.remove('focused');
-  });
-}
-
-function getVisibleMenuItems(menu: HTMLElement): HTMLElement[] {
-  const items = menu.querySelectorAll('.context-menu-item');
-  return Array.from(items).filter((item) => {
-    const el = item as HTMLElement;
-    const parent = el.parentElement;
-    if (parent?.classList.contains('context-submenu')) return false;
-    return el.style.display !== 'none' && el.offsetParent !== null;
-  }) as HTMLElement[];
-}
-
-function navigateContextMenu(
-  menu: HTMLElement,
-  direction: 'up' | 'down',
-  focusIndex: number
-): number {
-  const items = getVisibleMenuItems(menu);
-  if (items.length === 0) return -1;
-
-  clearContextMenuFocus(menu);
-
-  let newIndex = focusIndex;
-  if (direction === 'down') {
-    newIndex = focusIndex < items.length - 1 ? focusIndex + 1 : 0;
-  } else {
-    newIndex = focusIndex > 0 ? focusIndex - 1 : items.length - 1;
-  }
-
-  items[newIndex].classList.add('focused');
-  items[newIndex].scrollIntoView({ block: 'nearest' });
-  items[newIndex].focus({ preventScroll: true });
-  return newIndex;
-}
-
-function activateContextMenuItem(menu: HTMLElement, focusIndex: number): boolean {
-  const items = getVisibleMenuItems(menu);
-  if (focusIndex < 0 || focusIndex >= items.length) return false;
-
-  const item = items[focusIndex];
-  if (item.classList.contains('has-submenu')) {
-    const submenu = item.querySelector('.context-submenu') as HTMLElement;
-    if (submenu) {
-      submenu.style.display = 'block';
-      const submenuItems = submenu.querySelectorAll(
-        '.context-menu-item'
-      ) as NodeListOf<HTMLElement>;
-      if (submenuItems.length > 0) {
-        submenuItems[0].classList.add('focused');
-        submenuItems[0].focus({ preventScroll: true });
-      }
-    }
-    return false;
-  }
-
-  item.click();
-  return true;
-}
-
-function showEmptySpaceContextMenu(x: number, y: number) {
-  const emptySpaceContextMenu = document.getElementById('empty-space-context-menu');
-  if (!emptySpaceContextMenu) return;
-
-  hideContextMenu();
-
-  emptySpaceMenuFocusedIndex = -1;
-  emptySpaceContextMenu.style.display = 'block';
-  positionMenuInViewport(emptySpaceContextMenu, x, y);
-  emptySpaceMenuFocusedIndex = navigateContextMenu(
-    emptySpaceContextMenu,
-    'down',
-    emptySpaceMenuFocusedIndex
-  );
-}
-
-function hideEmptySpaceContextMenu() {
-  const emptySpaceContextMenu = document.getElementById('empty-space-context-menu');
-  if (emptySpaceContextMenu) {
-    emptySpaceContextMenu.style.display = 'none';
-    clearContextMenuFocus(emptySpaceContextMenu);
-    emptySpaceMenuFocusedIndex = -1;
-  }
-}
-
-async function handleEmptySpaceContextMenuAction(action: string | undefined) {
-  switch (action) {
-    case 'new-folder':
-      await createNewFolderWithInlineRename();
-      break;
-
-    case 'new-file':
-      await createNewFileWithInlineRename();
-      break;
-
-    case 'paste':
-      await pasteFromClipboard();
-      break;
-
-    case 'refresh':
-      await navigateTo(currentPath);
-      break;
-
-    case 'open-terminal': {
-      const terminalResult = await window.electronAPI.openTerminal(currentPath);
-      if (!terminalResult.success) {
-        showToast(terminalResult.error || 'Failed to open terminal', 'Error', 'error');
-      }
-      break;
-    }
-  }
-
-  hideEmptySpaceContextMenu();
-}
-
-async function handleContextMenuAction(
-  action: string | undefined,
-  item: FileItem,
-  format?: string
-) {
-  switch (action) {
-    case 'open':
-      await openFileEntry(item);
-      break;
-
-    case 'preview-pdf':
-      await showQuickLookForFile(item);
-      break;
-
-    case 'rename': {
-      const fileItem = fileElementMap.get(item.path);
-      if (fileItem) {
-        startInlineRename(fileItem, item.name, item.path);
-      }
-      break;
-    }
-
-    case 'copy':
-      copyToClipboard();
-      break;
-
-    case 'cut':
-      cutToClipboard();
-      break;
-
-    case 'copy-path':
-      try {
-        await navigator.clipboard.writeText(item.path);
-        showToast('File path copied to clipboard', 'Success', 'success');
-      } catch {
-        showToast('Failed to copy file path', 'Error', 'error');
-      }
-      break;
-
-    case 'add-to-bookmarks':
-      if (item.isDirectory) {
-        await addBookmarkByPath(item.path);
-      }
-      break;
-
-    case 'change-folder-icon':
-      if (item.isDirectory) {
-        showFolderIconPicker(item.path);
-      }
-      break;
-
-    case 'open-terminal': {
-      const terminalPath = item.isDirectory ? item.path : path.dirname(item.path);
-      const terminalResult = await window.electronAPI.openTerminal(terminalPath);
-      if (!terminalResult.success) {
-        showToast(terminalResult.error || 'Failed to open terminal', 'Error', 'error');
-      }
-      break;
-    }
-
-    case 'properties': {
-      const propsResult = await window.electronAPI.getItemProperties(item.path);
-      if (propsResult.success && propsResult.properties) {
-        showPropertiesDialog(propsResult.properties);
-      } else {
-        showToast(propsResult.error || 'Unknown error', 'Error Getting Properties', 'error');
-      }
-      break;
-    }
-
-    case 'delete':
-      await deleteSelected();
-      break;
-
-    case 'compress':
-      await handleCompress(format || 'zip');
-      break;
-
-    case 'compress-advanced':
-      showCompressOptionsModal();
-      break;
-
-    case 'extract':
-      showExtractModal(item.path, item.name);
-      break;
-  }
-}
-
-async function handleCompress(
-  format: string = 'zip',
-  customName?: string,
-  advancedOptions?: Record<string, unknown> | undefined
-) {
-  const selectedPaths = Array.from(selectedItems);
-
-  if (selectedPaths.length === 0) {
-    showToast('No items selected', 'Error', 'error');
-    return;
-  }
-
-  const extensionMap: Record<string, string> = {
-    zip: '.zip',
-    '7z': '.7z',
-    tar: '.tar',
-    'tar.gz': '.tar.gz',
-  };
-
-  const extension = extensionMap[format] || '.zip';
-
-  let archiveName: string;
-  if (customName) {
-    archiveName = customName;
-  } else if (selectedPaths.length === 1) {
-    const itemName = path.basename(selectedPaths[0]);
-    const nameWithoutExt = itemName.replace(/\.[^/.]+$/, '');
-    archiveName = `${nameWithoutExt}${extension}`;
-  } else {
-    const folderName = path.basename(currentPath);
-    archiveName = `${folderName}_${selectedPaths.length}_items${extension}`;
-  }
-
-  const outputPath = path.join(currentPath, archiveName);
-  const operationId = generateOperationId();
-
-  addOperation(operationId, 'compress', archiveName);
-
-  const progressHandler = (progress: {
-    operationId?: string;
-    current: number;
-    total: number;
-    name: string;
-  }) => {
-    if (progress.operationId === operationId) {
-      const operation = getOperation(operationId);
-      if (operation && !operation.aborted) {
-        updateOperation(operationId, progress.current, progress.total, progress.name);
-      }
-    }
-  };
-
-  // Store cleanup function to prevent memory leaks
-  const cleanupProgressHandler = window.electronAPI.onCompressProgress(progressHandler);
-
-  try {
-    const operation = getOperation(operationId);
-    if (operation?.aborted) {
-      cleanupProgressHandler();
-      removeOperation(operationId);
-      return;
-    }
-
-    const result = await window.electronAPI.compressFiles(
-      selectedPaths,
-      outputPath,
-      format,
-      operationId,
-      advancedOptions
-    );
-
-    cleanupProgressHandler();
-    removeOperation(operationId);
-
-    if (result.success) {
-      showToast(`Created ${archiveName}`, 'Compressed Successfully', 'success');
-      await navigateTo(currentPath);
-    } else {
-      showToast(result.error || 'Compression failed', 'Error', 'error');
-    }
-  } catch (error) {
-    cleanupProgressHandler();
-    removeOperation(operationId);
-    showToast(getErrorMessage(error), 'Compression Error', 'error');
-  }
-}
-
-// ── Advanced Compress Options Modal ──────────────────────────────────────
-
-function getCompressOptionsElements() {
-  return {
-    modal: document.getElementById('compress-options-modal') as HTMLElement | null,
-    nameInput: document.getElementById('compress-archive-name') as HTMLInputElement | null,
-    formatSelect: document.getElementById('compress-format') as HTMLSelectElement | null,
-    levelSelect: document.getElementById('compress-level') as HTMLSelectElement | null,
-    methodSelect: document.getElementById('compress-method') as HTMLSelectElement | null,
-    methodField: document.getElementById('compress-method-field') as HTMLElement | null,
-    dictionarySelect: document.getElementById('compress-dictionary') as HTMLSelectElement | null,
-    dictionaryField: document.getElementById('compress-dictionary-field') as HTMLElement | null,
-    solidSelect: document.getElementById('compress-solid') as HTMLSelectElement | null,
-    solidField: document.getElementById('compress-solid-field') as HTMLElement | null,
-    threadsSelect: document.getElementById('compress-threads') as HTMLSelectElement | null,
-    threadsField: document.getElementById('compress-threads-field') as HTMLElement | null,
-    passwordInput: document.getElementById('compress-password') as HTMLInputElement | null,
-    passwordConfirm: document.getElementById(
-      'compress-password-confirm'
-    ) as HTMLInputElement | null,
-    passwordToggle: document.getElementById('compress-password-toggle') as HTMLElement | null,
-    encryptionFieldset: document.getElementById(
-      'compress-encryption-fieldset'
-    ) as HTMLElement | null,
-    encryptionMethodSelect: document.getElementById(
-      'compress-encryption-method'
-    ) as HTMLSelectElement | null,
-    encryptionMethodField: document.getElementById(
-      'compress-encryption-method-field'
-    ) as HTMLElement | null,
-    encryptNamesCheck: document.getElementById('compress-encrypt-names') as HTMLInputElement | null,
-    encryptNamesField: document.getElementById(
-      'compress-encrypt-names-field'
-    ) as HTMLElement | null,
-    splitSelect: document.getElementById('compress-split') as HTMLSelectElement | null,
-    splitField: document.getElementById('compress-split-field') as HTMLElement | null,
-    previewPath: document.getElementById('compress-preview-path') as HTMLElement | null,
-    confirmBtn: document.getElementById('compress-options-confirm') as HTMLElement | null,
-    cancelBtn: document.getElementById('compress-options-cancel') as HTMLElement | null,
-    closeBtn: document.getElementById('compress-options-close') as HTMLElement | null,
-  };
-}
-
-function updateCompressOptionsVisibility() {
-  const els = getCompressOptionsElements();
-  if (!els.formatSelect) return;
-
-  const fmt = els.formatSelect.value;
-  const is7z = fmt === '7z';
-  const isZip = fmt === 'zip';
-  const isTar = fmt === 'tar' || fmt === 'tar.gz';
-  const supportsAdvanced = is7z || isZip;
-
-  // Method/dictionary: 7z and zip only
-  if (els.methodField) els.methodField.hidden = !supportsAdvanced;
-
-  // 7z-only fields
-  if (els.solidField) els.solidField.hidden = !is7z;
-  if (els.threadsField) els.threadsField.hidden = isTar;
-
-  // Encryption: 7z and zip only
-  if (els.encryptionFieldset) els.encryptionFieldset.hidden = !supportsAdvanced;
-
-  // Encrypt file names: 7z only
-  if (els.encryptNamesField) els.encryptNamesField.hidden = !is7z;
-
-  // Encryption method: zip only (7z always uses AES-256)
-  if (els.encryptionMethodField) els.encryptionMethodField.hidden = !isZip;
-
-  // Split volumes: 7z and zip
-  if (els.splitField) els.splitField.hidden = isTar;
-
-  // Level: tar doesn't support compression levels
-  if (els.levelSelect) {
-    els.levelSelect.disabled = isTar;
-    if (isTar) {
-      els.levelSelect.value = '0';
-    } else if (els.levelSelect.value === '0' && !els.levelSelect.dataset.userChoseStore) {
-      els.levelSelect.value = '5';
-    }
-  }
-
-  // Method options depend on format
-  if (els.methodSelect) {
-    const currentMethod = els.methodSelect.value;
-    els.methodSelect.innerHTML = '';
-
-    if (is7z) {
-      for (const m of ['LZMA2', 'LZMA', 'PPMd', 'BZip2', 'Deflate']) {
-        const opt = document.createElement('option');
-        opt.value = m;
-        opt.textContent = m;
-        els.methodSelect.appendChild(opt);
-      }
-    } else if (isZip) {
-      for (const m of ['Deflate', 'Deflate64', 'BZip2', 'LZMA']) {
-        const opt = document.createElement('option');
-        opt.value = m;
-        opt.textContent = m;
-        els.methodSelect.appendChild(opt);
-      }
-    }
-
-    // Try to preserve the previous selection
-    const options = Array.from(els.methodSelect.options);
-    const match = options.find((o) => o.value === currentMethod);
-    if (match) {
-      els.methodSelect.value = currentMethod;
-    } else if (options.length > 0) {
-      els.methodSelect.value = options[0].value;
-    }
-  }
-
-  const selectedMethod = els.methodSelect?.value || '';
-  const dictionarySupported = is7z || (isZip && selectedMethod === 'LZMA');
-  if (els.dictionaryField) els.dictionaryField.hidden = !supportsAdvanced || !dictionarySupported;
-  if (!dictionarySupported && els.dictionarySelect) {
-    els.dictionarySelect.value = '';
-  }
-
-  updateCompressPreviewPath();
-}
-
-function updateCompressPreviewPath() {
-  const els = getCompressOptionsElements();
-  if (!els.previewPath || !els.nameInput) return;
-  let name = els.nameInput.value.trim().replace(/[/\\]/g, '_');
-  if (!name) {
-    const extMap: Record<string, string> = {
-      zip: '.zip',
-      '7z': '.7z',
-      tar: '.tar',
-      'tar.gz': '.tar.gz',
-    };
-    const ext = extMap[els.formatSelect?.value || '7z'] || '.7z';
-    name = `Archive${ext}`;
-  }
-  els.previewPath.textContent = path.join(currentPath, name);
-}
-
-function showCompressOptionsModal() {
-  const els = getCompressOptionsElements();
-  if (!els.modal || !els.nameInput || !els.formatSelect) return;
-
-  const selectedPaths = Array.from(selectedItems);
-  if (selectedPaths.length === 0) {
-    showToast('No items selected', 'Error', 'error');
-    return;
-  }
-
-  // Default archive name
-  let baseName: string;
-  if (selectedPaths.length === 1) {
-    const itemName = path.basename(selectedPaths[0]);
-    baseName = itemName.replace(/\.(tar\.gz|tgz|tar\.bz2|tar\.xz|[^/.]+)$/i, '');
-  } else {
-    baseName = `${path.basename(currentPath)}_${selectedPaths.length}_items`;
-  }
-
-  // Reset form to defaults
-  els.formatSelect.value = '7z';
-  els.nameInput.value = `${baseName}.7z`;
-  if (els.levelSelect) els.levelSelect.value = '5';
-  if (els.levelSelect) delete els.levelSelect.dataset.userChoseStore;
-  if (els.methodSelect) els.methodSelect.value = 'LZMA2';
-  if (els.dictionarySelect) els.dictionarySelect.value = '';
-  if (els.solidSelect) els.solidSelect.value = '';
-  if (els.threadsSelect) els.threadsSelect.value = '';
-  if (els.passwordInput) els.passwordInput.value = '';
-  if (els.passwordConfirm) els.passwordConfirm.value = '';
-  if (els.passwordInput) els.passwordInput.type = 'password';
-  if (els.passwordConfirm) els.passwordConfirm.type = 'password';
-  if (els.encryptionMethodSelect) els.encryptionMethodSelect.value = 'AES256';
-  if (els.encryptNamesCheck) els.encryptNamesCheck.checked = false;
-  if (els.splitSelect) els.splitSelect.value = '';
-
-  updateCompressOptionsVisibility();
-
-  els.modal.style.display = 'flex';
-  activateModal(els.modal);
-  els.nameInput.focus();
-  els.nameInput.select();
-}
-
-function hideCompressOptionsModal() {
-  const els = getCompressOptionsElements();
-  if (els.modal) {
-    els.modal.style.display = 'none';
-    deactivateModal(els.modal);
-  }
-}
-
-async function confirmCompressOptions() {
-  const els = getCompressOptionsElements();
-  if (!els.nameInput || !els.formatSelect) return;
-
-  let archiveName = els.nameInput.value.trim().replace(/[/\\]/g, '_');
-  if (!archiveName) {
-    showToast('Enter an archive name', 'Missing Name', 'warning');
-    els.nameInput.focus();
-    return;
-  }
-
-  const format = els.formatSelect.value;
-  const isTarFormat = format === 'tar' || format === 'tar.gz';
-
-  // Ensure archive name ends with correct extension for the selected format
-  const extMap: Record<string, string> = {
-    zip: '.zip',
-    '7z': '.7z',
-    tar: '.tar',
-    'tar.gz': '.tar.gz',
-  };
-  const expectedExt = extMap[format] || '.7z';
-  if (!archiveName.toLowerCase().endsWith(expectedExt)) {
-    // Strip any known archive extension then add the correct one
-    archiveName = archiveName.replace(/\.(zip|7z|tar\.gz|tgz|tar)$/i, '') + expectedExt;
-  }
-
-  const password = (!isTarFormat && els.passwordInput?.value) || '';
-  const passwordConfirm = (!isTarFormat && els.passwordConfirm?.value) || '';
-
-  if (password && password !== passwordConfirm) {
-    showToast('Passwords do not match', 'Password Mismatch', 'warning');
-    els.passwordConfirm?.focus();
-    return;
-  }
-
-  const advancedOptions: Record<string, unknown> = {};
-
-  if (!isTarFormat) {
-    const level = els.levelSelect?.value;
-    if (level != null && level !== '5') {
-      advancedOptions.compressionLevel = parseInt(level, 10);
-    }
-
-    const defaultMethodForFormat: Record<string, string> = { '7z': 'LZMA2', zip: 'Deflate' };
-    const method = els.methodSelect?.value || defaultMethodForFormat[format] || '';
-    if (method && method !== defaultMethodForFormat[format]) {
-      advancedOptions.method = method;
-    }
-
-    const dict = els.dictionarySelect?.value;
-    const dictionarySupported = format === '7z' || (format === 'zip' && method === 'LZMA');
-    if (dict && dictionarySupported) advancedOptions.dictionarySize = dict;
-
-    if (format === '7z') {
-      const solid = els.solidSelect?.value;
-      if (solid) advancedOptions.solidBlockSize = solid;
-    }
-
-    const threads = els.threadsSelect?.value;
-    if (threads) advancedOptions.cpuThreads = threads;
-  }
-
-  if (password) {
-    advancedOptions.password = password;
-    if (format === '7z' && els.encryptNamesCheck?.checked) {
-      advancedOptions.encryptFileNames = true;
-    }
-    if (format === 'zip') {
-      advancedOptions.encryptionMethod = els.encryptionMethodSelect?.value || 'AES256';
-    }
-  }
-
-  if (!isTarFormat) {
-    const split = els.splitSelect?.value;
-    if (split) advancedOptions.splitVolume = split;
-  }
-
-  hideCompressOptionsModal();
-  await handleCompress(
-    format,
-    archiveName,
-    Object.keys(advancedOptions).length > 0 ? advancedOptions : undefined
-  );
-}
-
-function setupCompressOptionsModal() {
-  const els = getCompressOptionsElements();
-  if (!els.modal) return;
-
-  els.confirmBtn?.addEventListener('click', () => {
-    void confirmCompressOptions();
-  });
-
-  els.cancelBtn?.addEventListener('click', hideCompressOptionsModal);
-  els.closeBtn?.addEventListener('click', hideCompressOptionsModal);
-
-  // Close on overlay click
-  els.modal.addEventListener('click', (e) => {
-    if (e.target === els.modal) hideCompressOptionsModal();
-  });
-
-  // Format change updates extension in name and visibility
-  els.formatSelect?.addEventListener('change', () => {
-    const extMap: Record<string, string> = {
-      zip: '.zip',
-      '7z': '.7z',
-      tar: '.tar',
-      'tar.gz': '.tar.gz',
-    };
-    const ext = extMap[els.formatSelect!.value] || '.7z';
-    if (els.nameInput) {
-      const current = els.nameInput.value;
-      const withoutExt = current.replace(/\.(zip|7z|tar\.gz|tgz|tar)$/i, '');
-      els.nameInput.value = `${withoutExt}${ext}`;
-    }
-    // Clear userChoseStore so it doesn't leak across format switches
-    if (els.levelSelect) delete els.levelSelect.dataset.userChoseStore;
-    updateCompressOptionsVisibility();
-  });
-
-  els.nameInput?.addEventListener('input', updateCompressPreviewPath);
-  els.methodSelect?.addEventListener('change', updateCompressOptionsVisibility);
-
-  // Track user intentionally choosing Store level
-  els.levelSelect?.addEventListener('change', () => {
-    if (els.levelSelect) {
-      els.levelSelect.dataset.userChoseStore = els.levelSelect.value === '0' ? '1' : '';
-    }
-  });
-
-  // Password show/hide toggle
-  els.passwordToggle?.addEventListener('click', () => {
-    if (els.passwordInput) {
-      const show = els.passwordInput.type === 'password';
-      els.passwordInput.type = show ? 'text' : 'password';
-      if (els.passwordConfirm) {
-        els.passwordConfirm.type = show ? 'text' : 'password';
-      }
-      if (els.passwordToggle) {
-        els.passwordToggle.title = show ? 'Hide password' : 'Show password';
-      }
-    }
-  });
-
-  // Keyboard: Enter to confirm, Escape to cancel
-  els.modal.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-      e.stopPropagation();
-      hideCompressOptionsModal();
-    } else if (e.key === 'Enter' && !e.shiftKey) {
-      const target = e.target as HTMLElement;
-      if (target.tagName !== 'SELECT') {
-        e.preventDefault();
-        void confirmCompressOptions();
-      }
-    }
-  });
-}
-
-function isArchivePath(filePath: string): boolean {
-  const lower = filePath.toLowerCase();
-  return ARCHIVE_SUFFIXES.some((suffix) => lower.endsWith(suffix));
-}
-
-function getArchiveBaseName(filePath: string): string {
-  const lower = filePath.toLowerCase();
-  const fileName = path.basename(filePath);
-  if (lower.endsWith('.tar.gz')) {
-    return fileName.replace(/\.tar\.gz$/i, '');
-  }
-  return path.basename(filePath, path.extname(filePath));
-}
-
-function joinFilePath(baseFolder: string, ...segments: string[]): string {
-  if (!isWindowsPlatform()) {
-    const normalizedBase = baseFolder.replace(/\\/g, '/');
-    const normalizedSegments = segments.map((segment) => segment.replace(/\\/g, '/'));
-    return path.join(normalizedBase, ...normalizedSegments);
-  }
-
-  const normalizedBase = normalizeWindowsPath(baseFolder);
-  let combined = normalizedBase;
-  for (const segment of segments) {
-    const cleaned = segment
-      .replace(/[\\/]+/g, '\\')
-      .replace(/^\\+/, '')
-      .replace(/\\+$/, '');
-    if (!cleaned) continue;
-    if (!combined.endsWith('\\')) {
-      combined += '\\';
-    }
-    combined += cleaned;
-  }
-  return combined;
-}
-
-function buildArchiveExtractPath(baseFolder: string, archivePath: string): string {
-  return joinFilePath(baseFolder, getArchiveBaseName(archivePath));
-}
-
-let extractModalArchivePath: string | null = null;
-let extractModalTrackRecent = true;
-
-function updateExtractPreview(baseFolder: string): void {
-  const preview = document.getElementById('extract-preview-path');
-  if (!preview || !extractModalArchivePath) return;
-  if (!baseFolder) {
-    preview.textContent = '';
-    return;
-  }
-  preview.textContent = buildArchiveExtractPath(baseFolder, extractModalArchivePath);
-}
-
-function showExtractModal(
-  archivePath: string,
-  archiveName?: string,
-  trackRecent: boolean = true
-): void {
-  const modal = document.getElementById('extract-modal') as HTMLElement | null;
-  const message = document.getElementById('extract-modal-message') as HTMLElement | null;
-  const input = document.getElementById('extract-destination-input') as HTMLInputElement | null;
-
-  if (!modal || !message || !input) return;
-
-  const name = archiveName || path.basename(archivePath);
-  extractModalArchivePath = archivePath;
-  extractModalTrackRecent = trackRecent;
-
-  const baseFolder = path.dirname(archivePath);
-  input.value = baseFolder;
-  message.textContent = `Extract ${name}?`;
-  updateExtractPreview(baseFolder);
-
-  modal.style.display = 'flex';
-  activateModal(modal);
-  input.focus();
-  input.select();
-}
-
-function hideExtractModal(): void {
-  const modal = document.getElementById('extract-modal') as HTMLElement | null;
-  if (modal) {
-    modal.style.display = 'none';
-    deactivateModal(modal);
-  }
-  extractModalArchivePath = null;
-  extractModalTrackRecent = true;
-}
-
-async function openPathWithArchivePrompt(
-  filePath: string,
-  fileName?: string,
-  trackRecent: boolean = true
-): Promise<void> {
-  if (!filePath) return;
-  if (isArchivePath(filePath)) {
-    showExtractModal(filePath, fileName, trackRecent);
-    return;
-  }
-  await window.electronAPI.openFile(filePath);
-  if (trackRecent) {
-    addToRecentFiles(filePath);
-  }
-}
-
-async function openFileEntry(item: FileItem): Promise<void> {
-  if (item.isDirectory) {
-    navigateTo(item.path);
-    return;
-  }
-  await openPathWithArchivePrompt(item.path, item.name);
-}
-
-async function confirmExtractModal(): Promise<void> {
-  const input = document.getElementById('extract-destination-input') as HTMLInputElement | null;
-  if (!input || !extractModalArchivePath) return;
-  const baseFolder = input.value.trim();
-  if (!baseFolder) {
-    showToast('Choose a destination folder', 'Missing Destination', 'warning');
-    input.focus();
-    return;
-  }
-  const archivePath = extractModalArchivePath;
-  const trackRecent = extractModalTrackRecent;
-  hideExtractModal();
-  await handleExtract(archivePath, baseFolder, trackRecent);
-}
-
-async function handleExtract(
-  archivePath: string,
-  destBaseFolder: string,
-  trackRecent: boolean = true
-) {
-  const baseFolder = destBaseFolder.trim();
-  if (!baseFolder) {
-    showToast('Choose a destination folder', 'Missing Destination', 'warning');
-    return;
-  }
-
-  if (!isArchivePath(archivePath)) {
-    showToast(
-      'Unsupported archive format. Supported: .zip, .7z, .rar, .tar.gz, and more',
-      'Error',
-      'error'
-    );
-    return;
-  }
-
-  const baseName = getArchiveBaseName(archivePath);
-  const destPath = buildArchiveExtractPath(baseFolder, archivePath);
-  const operationId = generateOperationId();
-
-  addOperation(operationId, 'extract', baseName);
-
-  const progressHandler = (progress: {
-    operationId?: string;
-    current: number;
-    total: number;
-    name: string;
-  }) => {
-    if (progress.operationId === operationId) {
-      const operation = getOperation(operationId);
-      if (operation && !operation.aborted) {
-        updateOperation(operationId, progress.current, progress.total, progress.name);
-      }
-    }
-  };
-
-  const cleanupProgressHandler = window.electronAPI.onExtractProgress(progressHandler);
-
-  try {
-    const operation = getOperation(operationId);
-    if (operation?.aborted) {
-      cleanupProgressHandler();
-      removeOperation(operationId);
-      return;
-    }
-
-    const result = await window.electronAPI.extractArchive(archivePath, destPath, operationId);
-
-    cleanupProgressHandler();
-    removeOperation(operationId);
-
-    if (result.success) {
-      showToast(`Extracted to ${destPath}`, 'Extraction Complete', 'success');
-      if (trackRecent) {
-        addToRecentFiles(archivePath);
-      }
-      if (currentPath === baseFolder) {
-        await navigateTo(currentPath);
-      }
-    } else {
-      showToast(result.error || 'Extraction failed', 'Error', 'error');
-    }
-  } catch (error) {
-    cleanupProgressHandler();
-    removeOperation(operationId);
-    showToast(getErrorMessage(error), 'Extraction Error', 'error');
-  }
 }
 
 function bindClickById(id: string, handler: () => void): void {
@@ -7406,31 +4206,19 @@ initSupportPopup();
 initLicensesUi();
 initExternalLinks();
 
-async function updateThumbnailCacheSize(): Promise<void> {
-  const sizeElement = document.getElementById('thumbnail-cache-size');
-  if (!sizeElement) return;
-
-  const result = await window.electronAPI.getThumbnailCacheSize();
-  if (result.success && typeof result.sizeBytes === 'number') {
-    sizeElement.textContent = `(${formatFileSize(result.sizeBytes)}, ${result.fileCount} files)`;
-  } else {
-    sizeElement.textContent = '';
-  }
-}
-
 bindClickBindings([
   ['zoom-in-btn', zoomIn],
   ['zoom-out-btn', zoomOut],
   ['zoom-reset-btn', zoomReset],
   ['shortcuts-close', hideShortcutsModal],
   ['close-shortcuts-btn', hideShortcutsModal],
-  ['folder-icon-close', hideFolderIconPicker],
-  ['folder-icon-cancel', hideFolderIconPicker],
-  ['folder-icon-reset', resetFolderIcon],
+  ['folder-icon-close', () => folderIconPickerController.hideFolderIconPicker()],
+  ['folder-icon-cancel', () => folderIconPickerController.hideFolderIconPicker()],
+  ['folder-icon-reset', () => folderIconPickerController.resetFolderIcon()],
 ]);
 
 for (const [id, handler] of [
-  ['folder-icon-modal', hideFolderIconPicker],
+  ['folder-icon-modal', () => folderIconPickerController.hideFolderIconPicker()],
   ['settings-modal', hideSettingsModal],
   ['shortcuts-modal', hideShortcutsModal],
 ] as const) {
@@ -7528,9 +4316,9 @@ window.addEventListener('beforeunload', () => {
   stopIndexStatusPolling();
   cancelActiveSearch();
   cleanupPropertiesDialog();
-  thumbnailObserver = disconnectAndResetObserver(thumbnailObserver);
+  thumbnails.resetThumbnailObserver();
   virtualizedObserver = disconnectAndResetObserver(virtualizedObserver);
-  diskSpaceDebounceTimer = clearAndResetTimeout(diskSpaceDebounceTimer);
+  diskSpaceController.clearCache();
   zoomPopupTimeout = clearAndResetTimeout(zoomPopupTimeout);
   if (!isResettingSettings) {
     if (tabsEnabled && tabs.length > 0) {
@@ -7561,17 +4349,12 @@ window.addEventListener('beforeunload', () => {
   cleanupTabs();
   cleanupArchiveOperations();
 
-  [
-    filePathMap,
-    fileElementMap,
-    gitIndicatorPaths,
-    cutPaths,
-    diskSpaceCache,
-    gitStatusCache,
-    gitStatusInFlight,
-    thumbnailCache,
-  ].forEach((cache) => cache.clear());
-  pendingThumbnailLoads.length = 0;
+  [filePathMap, fileElementMap].forEach((cache) => cache.clear());
+  diskSpaceController.clearCache();
+  clipboardController.clearCutPaths();
+  gitStatus.clearCache();
+  thumbnails.clearThumbnailCache();
+  thumbnails.clearPendingThumbnailLoads();
 
   for (const cleanup of ipcCleanupFunctions) {
     try {

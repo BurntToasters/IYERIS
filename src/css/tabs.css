@@ -1,0 +1,298 @@
+.titlebar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  height: var(--titlebar-height);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--separator);
+  -webkit-app-region: drag;
+  padding: 0 0 0 12px;
+  position: relative;
+  z-index: 10;
+}
+
+.titlebar-drag-region {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  gap: 8px;
+}
+
+.titlebar-icon {
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.85;
+}
+
+.titlebar-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: none;
+}
+
+.titlebar-title {
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  opacity: 0.85;
+}
+
+.titlebar-controls {
+  display: flex;
+  -webkit-app-region: no-drag;
+  gap: 0;
+}
+
+.titlebar-button {
+  width: 40px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background-color var(--animation-duration) var(--animation-easing);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+}
+
+.titlebar-button:hover {
+  background: var(--hover-color);
+}
+
+.titlebar-button:active {
+  background: var(--active-color);
+}
+
+.titlebar-button.close:hover {
+  background: var(--danger-color);
+  color: var(--text-primary);
+}
+
+.titlebar-button.close:active {
+  background: var(--danger-active);
+}
+
+body.platform-darwin .titlebar {
+  padding-left: 78px;
+  justify-content: center;
+}
+
+body.platform-darwin .titlebar-drag-region {
+  justify-content: center;
+  gap: 6px;
+}
+
+body.platform-darwin .titlebar-controls {
+  display: none;
+}
+
+body.platform-darwin .titlebar-title {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+body.platform-win32 .titlebar {
+  height: var(--titlebar-height);
+}
+
+body.platform-win32 .titlebar-button {
+  width: 46px;
+  height: 36px;
+}
+
+body.platform-win32 .titlebar-title {
+  font-family: 'Segoe UI Variable', 'Segoe UI', system-ui, sans-serif;
+}
+
+.tab-bar {
+  display: flex;
+  align-items: center;
+  height: var(--tab-bar-height);
+  padding: 0 6px;
+  gap: 4px;
+  border-radius: 0;
+  border-left: none;
+  border-right: none;
+  border-top: none;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--separator);
+}
+
+.tab-list {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  overflow-x: auto;
+  flex: 1;
+  scrollbar-width: none;
+}
+
+.tab-list::-webkit-scrollbar {
+  display: none;
+}
+
+.tab-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-small);
+  cursor: pointer;
+  min-width: 100px;
+  max-width: 180px;
+  transition:
+    background-color var(--animation-duration) var(--animation-easing),
+    border-color var(--animation-duration) var(--animation-easing),
+    color var(--animation-duration) var(--animation-easing),
+    box-shadow var(--animation-duration) var(--animation-easing),
+    transform var(--animation-duration) var(--animation-easing),
+    opacity var(--animation-duration) var(--animation-easing);
+  position: relative;
+}
+
+.tab-item:hover {
+  background: var(--hover-color);
+}
+
+.tab-item.active {
+  background: var(--accent-light);
+  border-color: var(--accent-strong);
+}
+
+.tab-item .tab-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.tab-item .tab-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.tab-item .tab-title {
+  flex: 1;
+  font-size: var(--font-size-nav);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-primary);
+}
+
+.tab-item .tab-close {
+  width: 16px;
+  height: 16px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  border-radius: var(--radius-small);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition:
+    opacity var(--animation-duration) var(--animation-easing),
+    background var(--animation-duration) var(--animation-easing);
+  flex-shrink: 0;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.tab-item:hover .tab-close,
+.tab-item.active .tab-close {
+  opacity: 1;
+}
+
+.tab-item .tab-close:hover {
+  background: var(--hover-color);
+  color: var(--text-primary);
+}
+
+.tab-item .tab-close:active {
+  background: var(--active-color);
+}
+
+.tab-new-btn {
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  border-radius: var(--radius-small);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    background-color var(--animation-duration) var(--animation-easing),
+    border-color var(--animation-duration) var(--animation-easing),
+    color var(--animation-duration) var(--animation-easing),
+    box-shadow var(--animation-duration) var(--animation-easing),
+    transform var(--animation-duration) var(--animation-easing),
+    opacity var(--animation-duration) var(--animation-easing);
+  flex-shrink: 0;
+}
+
+.tab-new-btn:hover {
+  background: var(--hover-color);
+  color: var(--text-primary);
+}
+
+.tab-new-btn:active {
+  background: var(--active-color);
+  transform: none;
+}
+
+body.tabs-enabled .container {
+  height: calc(
+    100vh - var(--titlebar-height) - var(--tab-bar-height) - var(--status-bar-height) -
+      var(--container-edge-padding-top) - var(--container-edge-padding-bottom)
+  );
+}
+
+body.tabs-enabled .tab-bar {
+  display: flex;
+}
+
+body.tabs-enabled.tabs-single .container {
+  height: calc(
+    100vh - var(--titlebar-height) - var(--status-bar-height) - var(--container-edge-padding-top) -
+      var(--container-edge-padding-bottom)
+  );
+}
+
+body.tabs-enabled.tabs-single .tab-bar {
+  display: none;
+}
+
+.toolbar-new-tab-btn {
+  display: none;
+}
+
+body.tabs-enabled.tabs-single .toolbar-new-tab-btn {
+  display: flex;
+}
+
+.tab-item:focus-visible {
+  box-shadow: inset 0 0 0 2px rgba(var(--accent-rgb), 0.5);
+  outline: none;
+}
+
+body.reduce-transparency .titlebar {
+  background: var(--bg-secondary) !important;
+}
+
+body.reduce-transparency .tab-bar {
+  background: var(--bg-secondary) !important;
+}

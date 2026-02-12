@@ -8,9 +8,9 @@ import { ignoreError } from './shared';
 import { isTrustedIpcEvent } from './ipcUtils';
 
 const CACHE_DIR_NAME = 'thumbnail-cache';
-const CACHE_VERSION = 1;
-const MAX_CACHE_SIZE_MB = 500;
-const MAX_CACHE_AGE_DAYS = 30;
+export const CACHE_VERSION = 1;
+export const MAX_CACHE_SIZE_MB = 500;
+export const MAX_CACHE_AGE_DAYS = 30;
 const MAX_THUMBNAIL_BYTES = 5 * 1024 * 1024;
 
 let cacheDir: string | null = null;
@@ -98,7 +98,7 @@ async function enforceCacheSize(): Promise<void> {
   }
 }
 
-function generateCacheKey(filePath: string, mtime: number): string {
+export function generateCacheKey(filePath: string, mtime: number): string {
   const hash = crypto.createHash('md5');
   hash.update(`v${CACHE_VERSION}:${filePath}:${mtime}`);
   return hash.digest('hex');

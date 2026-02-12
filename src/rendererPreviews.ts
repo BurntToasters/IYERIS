@@ -15,6 +15,10 @@ import {
   AUDIO_MIME_TYPES,
 } from './fileTypes.js';
 
+interface PdfViewerElement extends HTMLElement {
+  __pdfViewer?: PdfViewerHandle | null;
+}
+
 type PreviewDeps = {
   getSelectedItems: () => Set<string>;
   getFileByPath: (path: string) => FileItem | undefined;
@@ -132,24 +136,31 @@ export function createPreviewController(deps: PreviewDeps) {
       return;
     }
 
-    const ext = deps.getFileExtension(file.name);
+    try {
+      const ext = deps.getFileExtension(file.name);
 
-    if (IMAGE_EXTENSIONS.has(ext)) {
-      showImagePreview(file, requestId);
-    } else if (RAW_EXTENSIONS.has(ext)) {
-      showRawImagePreview(file, requestId);
-    } else if (TEXT_EXTENSIONS.has(ext)) {
-      showTextPreview(file, requestId);
-    } else if (VIDEO_EXTENSIONS.has(ext)) {
-      showVideoPreview(file, requestId);
-    } else if (AUDIO_EXTENSIONS.has(ext)) {
-      showAudioPreview(file, requestId);
-    } else if (PDF_EXTENSIONS.has(ext)) {
-      showPdfPreview(file, requestId);
-    } else if (ARCHIVE_EXTENSIONS.has(ext)) {
-      showArchivePreview(file, requestId);
-    } else {
-      showFileInfo(file, requestId);
+      if (IMAGE_EXTENSIONS.has(ext)) {
+        showImagePreview(file, requestId);
+      } else if (RAW_EXTENSIONS.has(ext)) {
+        showRawImagePreview(file, requestId);
+      } else if (TEXT_EXTENSIONS.has(ext)) {
+        showTextPreview(file, requestId);
+      } else if (VIDEO_EXTENSIONS.has(ext)) {
+        showVideoPreview(file, requestId);
+      } else if (AUDIO_EXTENSIONS.has(ext)) {
+        showAudioPreview(file, requestId);
+      } else if (PDF_EXTENSIONS.has(ext)) {
+        showPdfPreview(file, requestId);
+      } else if (ARCHIVE_EXTENSIONS.has(ext)) {
+        showArchivePreview(file, requestId);
+      } else {
+        showFileInfo(file, requestId);
+      }
+    } catch (error) {
+      ensureElements();
+      if (previewContent) {
+        previewContent.innerHTML = `<div class="preview-error">Preview failed: ${escapeHtml(getErrorMessage(error))}</div>`;
+      }
     }
   }
 
@@ -831,7 +842,7 @@ export function createPreviewController(deps: PreviewDeps) {
           return;
         }
 
-        (quicklookModal as any).__pdfViewer = viewer;
+        (quicklookModal as PdfViewerElement).__pdfViewer = viewer;
 
         const container = document.createElement('div');
         container.className = 'preview-pdf-container quicklook-pdf';
@@ -888,9 +899,9 @@ export function createPreviewController(deps: PreviewDeps) {
 
   function closeQuickLook() {
     ensureElements();
-    if (quicklookModal && (quicklookModal as any).__pdfViewer) {
-      (quicklookModal as any).__pdfViewer.destroy();
-      (quicklookModal as any).__pdfViewer = null;
+    if (quicklookModal && (quicklookModal as PdfViewerElement).__pdfViewer) {
+      (quicklookModal as PdfViewerElement).__pdfViewer!.destroy();
+      (quicklookModal as PdfViewerElement).__pdfViewer = null;
     }
     if (quicklookModal) quicklookModal.style.display = 'none';
     if (quicklookModal) {
