@@ -1,5 +1,8 @@
 @import './variables.css';
 @import './explorer.css';
+@import './controls.css';
+@import './progress-panel.css';
+@import './zoom.css';
 @import './tabs.css';
 @import './toolbar.css';
 @import './navigation.css';
@@ -19,5 +22,11 @@
 @import './liquid-glass.css';
 @import './accessibility.css';
 @import './settings.css';
+@import './shortcuts.css';
 @import './modals.css';
+@import './context-menu.css';
+@import './command-palette.css';
+@import './toasts.css';
+@import './tooltips.css';
+@import './tour.css';
 @import './pdfUI.css';

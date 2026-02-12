@@ -3,10 +3,7 @@ import * as path from 'path';
 import { promises as fs } from 'fs';
 import * as fsSync from 'fs';
 import { fileURLToPath } from 'url';
-import { execFile } from 'child_process';
-import { promisify } from 'util';
 import * as os from 'os';
-import * as crypto from 'crypto';
 import type {
   FileItem,
   ApiResponse,
@@ -15,14 +12,23 @@ import type {
   PropertiesResponse,
 } from './types';
 import { tryWithElevation } from './elevatedOperations';
-import {
-  getMainWindow,
-  getFileTasks,
-  HIDDEN_FILE_CACHE_TTL,
-  HIDDEN_FILE_CACHE_MAX,
-} from './appState';
+import { getMainWindow, getFileTasks } from './appState';
 import { isPathSafe, isUrlSafe, getErrorMessage } from './security';
 import { ignoreError } from './shared';
+import {
+  isFileHiddenCached,
+  startHiddenFileCacheCleanup,
+  stopHiddenFileCacheCleanup,
+} from './hiddenFileCache';
+import {
+  cleanupBackups,
+  restoreOverwriteBackups,
+  ensureOverwriteBackup,
+  stashRemainingBackups,
+  backupExistingPath,
+  restoreBackup,
+  cleanupStashedBackupsForTests,
+} from './backupManager';
 import { getDriveInfo, getDrives } from './utils';
 import { pushUndoAction, getUndoStack, clearUndoStackForPath } from './undoRedoManager';
 import {
@@ -32,9 +38,6 @@ import {
   withTrustedIpcEvent,
 } from './ipcUtils';
 
-const hiddenFileCache = new Map<string, { isHidden: boolean; timestamp: number }>();
-let isCleaningCache = false;
-let hiddenFileCacheCleanupInterval: NodeJS.Timeout | null = null;
 type AppPathName = Parameters<typeof app.getPath>[0];
 
 function normalizeCaseKey(targetPath: string): string {
@@ -56,7 +59,7 @@ function getParallelBatchSize(): number {
   return 16;
 }
 
-interface PlannedFileOperation {
+export interface PlannedFileOperation {
   sourcePath: string;
   destPath: string;
   itemName: string;
@@ -66,11 +69,9 @@ interface PlannedFileOperation {
 
 type FileOperationType = 'copy' | 'move';
 type ConflictBehavior = 'ask' | 'rename' | 'skip' | 'overwrite' | 'cancel';
-const OVERWRITE_BACKUP_RETENTION_MS = 14 * 24 * 60 * 60 * 1000;
-const OVERWRITE_BACKUP_MAX_FILES = 200;
 const INVALID_CHILD_NAMES = new Set(['', '.', '..']);
 
-function pathExists(p: string): Promise<boolean> {
+export function pathExists(p: string): Promise<boolean> {
   return fs.stat(p).then(
     () => true,
     () => false
@@ -232,7 +233,7 @@ async function copyPathByType(
   }
 }
 
-async function renameWithExdevFallback(
+export async function renameWithExdevFallback(
   sourcePath: string,
   destPath: string,
   isDirectory?: boolean
@@ -260,160 +261,7 @@ async function removePaths(paths: string[]): Promise<void> {
   }
 }
 
-async function cleanupBackups(backupPaths: Iterable<string>): Promise<void> {
-  for (const backupPath of backupPaths) {
-    try {
-      await fs.rm(backupPath, { recursive: true, force: true });
-    } catch (error) {
-      ignoreError(error);
-    }
-  }
-}
-
-async function restoreOverwriteBackups(
-  backups: Map<string, string>,
-  skipIfDestinationExists = false
-): Promise<void> {
-  for (const [destPath, backupPath] of backups) {
-    if (skipIfDestinationExists && (await pathExists(destPath))) {
-      continue;
-    }
-    try {
-      await restoreBackup(backupPath, destPath);
-    } catch (error) {
-      ignoreError(error);
-    }
-  }
-}
-
-async function ensureOverwriteBackup(
-  backups: Map<string, string>,
-  operation: PlannedFileOperation
-): Promise<void> {
-  if (!operation.overwrite || backups.has(operation.destPath)) {
-    return;
-  }
-  const backupPath = await backupExistingPath(operation.destPath);
-  backups.set(operation.destPath, backupPath);
-}
-
-async function createBackupPath(destPath: string): Promise<string> {
-  const dir = path.dirname(destPath);
-  const base = path.basename(destPath);
-  for (let attempt = 0; attempt < 10; attempt++) {
-    const suffix = `.iyeris-backup-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    const candidate = path.join(dir, `.${base}${suffix}`);
-    if (!(await pathExists(candidate))) return candidate;
-  }
-  throw new Error('Unable to create backup path');
-}
-
-async function getBackupRoot(): Promise<string> {
-  const root = path.join(app.getPath('userData'), 'overwrite-backups');
-  await fs.mkdir(root, { recursive: true });
-  return root;
-}
-
-async function cleanupStashedBackups(root: string): Promise<void> {
-  const now = Date.now();
-  const entries = await fs.readdir(root, { withFileTypes: true });
-  const retained: Array<{ path: string; mtimeMs: number }> = [];
-
-  for (const entry of entries) {
-    if (!entry.isFile() || !entry.name.endsWith('.bak')) {
-      continue;
-    }
-
-    const backupPath = path.join(root, entry.name);
-    try {
-      const stats = await fs.stat(backupPath);
-      if (now - stats.mtimeMs > OVERWRITE_BACKUP_RETENTION_MS) {
-        await fs.rm(backupPath, { force: true });
-      } else {
-        retained.push({ path: backupPath, mtimeMs: stats.mtimeMs });
-      }
-    } catch (error) {
-      ignoreError(error);
-    }
-  }
-
-  if (retained.length <= OVERWRITE_BACKUP_MAX_FILES) {
-    return;
-  }
-
-  retained.sort((a, b) => a.mtimeMs - b.mtimeMs);
-  const toRemove = retained.length - OVERWRITE_BACKUP_MAX_FILES;
-  for (let i = 0; i < toRemove; i++) {
-    try {
-      await fs.rm(retained[i].path, { force: true });
-    } catch (error) {
-      ignoreError(error);
-    }
-  }
-}
-
-export async function cleanupStashedBackupsForTests(root: string): Promise<void> {
-  await cleanupStashedBackups(root);
-}
-
-async function stashBackup(backupPath: string, destPath: string): Promise<string> {
-  const root = await getBackupRoot();
-  const base = path.basename(destPath);
-  const hash = crypto.createHash('sha256').update(destPath).digest('hex').slice(0, 8);
-  const ext = path.extname(base);
-  const baseName = ext ? base.slice(0, -ext.length) : base;
-
-  let counter = 0;
-  while (counter < 1000) {
-    const suffix = counter === 0 ? `${hash}` : `${hash}-${counter}`;
-    const candidate = path.join(root, `${baseName}.${suffix}${ext || ''}.bak`);
-    if (!(await pathExists(candidate))) {
-      await renameWithExdevFallback(backupPath, candidate);
-      return candidate;
-    }
-    counter++;
-  }
-
-  throw new Error('Unable to stash backup');
-}
-
-async function stashRemainingBackups(backups: Map<string, string>): Promise<string[]> {
-  const stashed: string[] = [];
-  for (const [destPath, backupPath] of backups) {
-    if (!(await pathExists(backupPath))) continue;
-    try {
-      const newPath = await stashBackup(backupPath, destPath);
-      stashed.push(newPath);
-    } catch (error) {
-      ignoreError(error);
-    }
-  }
-  if (stashed.length > 0) {
-    try {
-      const root = await getBackupRoot();
-      await cleanupStashedBackups(root);
-    } catch (error) {
-      ignoreError(error);
-    }
-  }
-  return stashed;
-}
-
-async function backupExistingPath(destPath: string): Promise<string> {
-  const backupPath = await createBackupPath(destPath);
-  await renameWithExdevFallback(destPath, backupPath);
-  return backupPath;
-}
-
-async function restoreBackup(backupPath: string, destPath: string): Promise<void> {
-  try {
-    await fs.rm(destPath, { recursive: true, force: true });
-  } catch (error) {
-    ignoreError(error);
-  }
-
-  await renameWithExdevFallback(backupPath, destPath);
-}
+export { cleanupStashedBackupsForTests };
 
 async function createUniqueFile(
   parentPath: string,
@@ -444,109 +292,7 @@ async function createUniqueFile(
   throw new Error(`Unable to create unique file after ${MAX_ATTEMPTS} attempts`);
 }
 
-async function isFileHidden(filePath: string, fileName: string): Promise<boolean> {
-  if (fileName.startsWith('.')) {
-    return true;
-  }
-
-  // win hidden attr check
-  if (process.platform === 'win32') {
-    try {
-      const execFilePromise = promisify(execFile);
-
-      const { stdout } = await execFilePromise('attrib', [filePath], {
-        timeout: 500,
-        windowsHide: true,
-      });
-
-      const line = stdout.split(/\r?\n/).find((item) => item.trim().length > 0);
-      if (!line) return false;
-      const match = line.match(/^\s*([A-Za-z ]+)\s+.+$/);
-      if (!match) return false;
-      return match[1].toUpperCase().includes('H');
-    } catch {
-      return false;
-    }
-  }
-
-  return false;
-}
-
-function cleanupHiddenFileCache(): void {
-  if (isCleaningCache) return;
-  isCleaningCache = true;
-
-  try {
-    const now = Date.now();
-    let entriesRemoved = 0;
-
-    // expire old entries
-    for (const [key, value] of hiddenFileCache) {
-      if (now - value.timestamp > HIDDEN_FILE_CACHE_TTL) {
-        hiddenFileCache.delete(key);
-        entriesRemoved++;
-      }
-    }
-
-    if (hiddenFileCache.size > HIDDEN_FILE_CACHE_MAX) {
-      const entries = Array.from(hiddenFileCache.entries()).sort(
-        (a, b) => a[1].timestamp - b[1].timestamp
-      );
-      const toRemove = entries.slice(0, hiddenFileCache.size - HIDDEN_FILE_CACHE_MAX);
-      for (const [key] of toRemove) {
-        hiddenFileCache.delete(key);
-        entriesRemoved++;
-      }
-    }
-
-    if (entriesRemoved > 0) {
-      console.log(
-        `[Cache] Cleaned up ${entriesRemoved} hidden file cache entries, ${hiddenFileCache.size} remaining`
-      );
-    }
-  } finally {
-    isCleaningCache = false;
-  }
-}
-
-export async function isFileHiddenCached(filePath: string, fileName: string): Promise<boolean> {
-  if (fileName.startsWith('.')) {
-    return true;
-  }
-
-  if (process.platform !== 'win32') {
-    return false;
-  }
-
-  const cached = hiddenFileCache.get(filePath);
-  if (cached && Date.now() - cached.timestamp < HIDDEN_FILE_CACHE_TTL) {
-    return cached.isHidden;
-  }
-
-  const isHidden = await isFileHidden(filePath, fileName);
-
-  if (hiddenFileCache.size >= HIDDEN_FILE_CACHE_MAX) {
-    cleanupHiddenFileCache();
-  }
-
-  hiddenFileCache.set(filePath, { isHidden, timestamp: Date.now() });
-
-  return isHidden;
-}
-
-export function startHiddenFileCacheCleanup(): void {
-  if (!hiddenFileCacheCleanupInterval) {
-    hiddenFileCacheCleanupInterval = setInterval(cleanupHiddenFileCache, 5 * 60 * 1000);
-  }
-}
-
-export function stopHiddenFileCacheCleanup(): void {
-  if (hiddenFileCacheCleanupInterval) {
-    clearInterval(hiddenFileCacheCleanupInterval);
-    hiddenFileCacheCleanupInterval = null;
-  }
-  hiddenFileCache.clear();
-}
+export { isFileHiddenCached, startHiddenFileCacheCleanup, stopHiddenFileCacheCleanup };
 
 export function setupFileOperationHandlers(): void {
   const fileTasks = getFileTasks();

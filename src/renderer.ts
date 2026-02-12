@@ -35,6 +35,11 @@ import { createDiskSpaceController } from './rendererDiskSpace.js';
 import { createFolderIconPickerController } from './rendererFolderIconPicker.js';
 import { createInlineRenameController } from './rendererInlineRename.js';
 import { createGitStatusController } from './rendererGitStatus.js';
+import { createSortController, SORT_BY_VALUES } from './rendererSort.js';
+import { createZoomController } from './rendererZoom.js';
+import { createIndexerController } from './rendererIndexer.js';
+import { createLayoutController } from './rendererLayout.js';
+import { createDragDropController } from './rendererDragDrop.js';
 import { createThumbnailController, THUMBNAIL_QUALITY_VALUES } from './rendererThumbnails.js';
 import {
   activateModal,
@@ -63,21 +68,19 @@ import {
 } from './home.js';
 import { createTourController, type TourController } from './tour.js';
 import {
-  FILE_ICON_MAP,
   IMAGE_EXTENSIONS,
   RAW_EXTENSIONS,
   VIDEO_EXTENSIONS,
   AUDIO_EXTENSIONS,
   PDF_EXTENSIONS,
-  ARCHIVE_EXTENSIONS,
-  TEXT_EXTENSIONS,
-  WORD_EXTENSIONS,
-  SPREADSHEET_EXTENSIONS,
-  PRESENTATION_EXTENSIONS,
-  SOURCE_CODE_EXTENSIONS,
-  WEB_EXTENSIONS,
-  DATA_EXTENSIONS,
 } from './fileTypes.js';
+import {
+  getFileExtension,
+  getFileTypeFromName,
+  formatFileSize,
+  getFileIcon,
+  IMAGE_ICON,
+} from './rendererFileIcons.js';
 
 const SEARCH_DEBOUNCE_MS = 300;
 const SETTINGS_SAVE_DEBOUNCE_MS = 1000;
@@ -89,11 +92,6 @@ const VIRTUALIZE_THRESHOLD = 2000;
 const VIRTUALIZE_BATCH_SIZE = 200;
 const DIRECTORY_PROGRESS_THROTTLE_MS = 100;
 const SUPPORT_POPUP_DELAY_MS = 1500;
-const INDEX_STATUS_POLL_MS = 500;
-const SIDEBAR_MIN_WIDTH = 140;
-const SIDEBAR_MAX_WIDTH = 360;
-const PREVIEW_MIN_WIDTH = 200;
-const PREVIEW_MAX_WIDTH = 520;
 
 const NAME_COLLATOR = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
 
@@ -113,7 +111,6 @@ const THEME_VALUES = [
   'solarized',
   'github',
 ] as const;
-const SORT_BY_VALUES = ['name', 'date', 'size', 'type'] as const;
 const SORT_ORDER_VALUES = ['asc', 'desc'] as const;
 const FILE_CONFLICT_VALUES = ['ask', 'rename', 'skip', 'overwrite'] as const;
 const PREVIEW_POSITION_VALUES = ['right', 'bottom'] as const;
@@ -130,24 +127,12 @@ const DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
   day: 'numeric',
 });
 
-const LIST_COLUMN_MIN_WIDTHS: Record<string, number> = {
-  name: 180,
-  type: 120,
-  size: 80,
-  modified: 140,
-};
 const SPECIAL_DIRECTORY_ACTIONS: Record<string, { key: SpecialDirectory; label: string }> = {
   desktop: { key: 'desktop', label: 'Desktop' },
   documents: { key: 'documents', label: 'Documents' },
   downloads: { key: 'downloads', label: 'Downloads' },
   music: { key: 'music', label: 'Music' },
   videos: { key: 'videos', label: 'Videos' },
-};
-const LIST_COLUMN_MAX_WIDTHS: Record<string, number> = {
-  name: 640,
-  type: 320,
-  size: 200,
-  modified: 320,
 };
 
 const fileElementMap: Map<string, HTMLElement> = new Map();
@@ -227,17 +212,6 @@ let platformOS: string = '';
 let canUndo: boolean = false;
 let canRedo: boolean = false;
 let folderTreeEnabled: boolean = true;
-let currentZoomLevel: number = 1.0;
-let zoomPopupTimeout: NodeJS.Timeout | null = null;
-let indexStatusInterval: NodeJS.Timeout | null = null;
-
-let springLoadedTimeout: NodeJS.Timeout | null = null;
-let springLoadedFolder: HTMLElement | null = null;
-const SPRING_LOAD_DELAY = 800;
-let activeListResizeColumn: string | null = null;
-let listResizeStartX = 0;
-let listResizeStartWidth = 0;
-let listResizeCurrentWidth = 0;
 
 function getFileItemsArray(): HTMLElement[] {
   return Array.from(document.querySelectorAll('.file-item')) as HTMLElement[];
@@ -302,6 +276,72 @@ const statusSearchText = requireElement<HTMLElement>('status-search-text');
 const selectionIndicator = requireElement<HTMLElement>('selection-indicator');
 const selectionCount = requireElement<HTMLElement>('selection-count');
 const statusHidden = requireElement<HTMLElement>('status-hidden');
+
+const sortController = createSortController({
+  getSortBtn: () => sortBtn,
+  getCurrentSettings: () => currentSettings,
+  getAllFiles: () => allFiles,
+  saveSettingsWithTimestamp: (s) => saveSettingsWithTimestamp(s),
+  renderFiles: (f) => renderFiles(f),
+});
+const { showSortMenu, hideSortMenu, updateSortIndicators, changeSortMode } = sortController;
+
+const zoomController = createZoomController({
+  setZoomLevel: (level) => window.electronAPI.setZoomLevel(level),
+});
+const { zoomIn, zoomOut, zoomReset, updateZoomDisplay } = zoomController;
+
+const indexerController = createIndexerController({
+  getShowToast: () => showToast as (message: string, title: string, type: string) => void,
+});
+const { startIndexStatusPolling, stopIndexStatusPolling, updateIndexStatus, rebuildIndex } =
+  indexerController;
+
+const layoutController = createLayoutController({
+  getCurrentSettings: () => currentSettings,
+  debouncedSaveSettings: () => debouncedSaveSettings(),
+  getSidebarResizeHandle: () => sidebarResizeHandle,
+  getPreviewResizeHandle: () => previewResizeHandle,
+  getListHeader: () => listHeader,
+  consumeEvent,
+  changeSortMode: (mode) => changeSortMode(mode),
+});
+const {
+  applyListColumnWidths,
+  applySidebarWidth,
+  applyPreviewPanelWidth,
+  setSidebarCollapsed,
+  syncSidebarToggleState,
+  setupSidebarResize,
+  setupSidebarSections,
+  setupPreviewResize,
+  setupListHeader,
+} = layoutController;
+
+const dragDropController = createDragDropController({
+  getCurrentPath: () => currentPath,
+  getCurrentSettings: () => currentSettings,
+  getShowToast: () => showToast as (message: string, title: string, type: string) => void,
+  getFileGrid: () => fileGrid,
+  getFileView: () => fileView,
+  getDropIndicator: () => dropIndicator,
+  getDropIndicatorAction: () => dropIndicatorAction,
+  getDropIndicatorPath: () => dropIndicatorPath,
+  consumeEvent,
+  clearSelection: () => clearSelection(),
+  navigateTo: (p) => navigateTo(p),
+  updateUndoRedoState: () => updateUndoRedoState(),
+});
+const {
+  getDragOperation,
+  getDraggedPaths,
+  showDropIndicator,
+  hideDropIndicator,
+  scheduleSpringLoad,
+  clearSpringLoad,
+  handleDrop,
+  initDragAndDropListeners,
+} = dragDropController;
 
 const folderTreeManager = createFolderTreeManager({
   folderTree,
@@ -1236,78 +1276,6 @@ function applySettings(settings: Settings) {
   loadRecentFiles();
 }
 
-function startIndexStatusPolling() {
-  stopIndexStatusPolling();
-  indexStatusInterval = setInterval(async () => {
-    await updateIndexStatus();
-    const result = await window.electronAPI.getIndexStatus();
-    if (result.success && result.status && !result.status.isIndexing) {
-      stopIndexStatusPolling();
-    }
-  }, INDEX_STATUS_POLL_MS);
-}
-
-function stopIndexStatusPolling() {
-  if (indexStatusInterval) {
-    clearInterval(indexStatusInterval);
-    indexStatusInterval = null;
-  }
-}
-
-async function updateIndexStatus() {
-  const indexStatus = document.getElementById('index-status');
-  if (!indexStatus) return;
-
-  try {
-    const result = await window.electronAPI.getIndexStatus();
-    if (result.success && result.status) {
-      const status = result.status;
-      if (status.isIndexing) {
-        indexStatus.textContent = `Status: Indexing... (${status.indexedFiles.toLocaleString()} files found)`;
-        if (!indexStatusInterval) {
-          startIndexStatusPolling();
-        }
-      } else if (status.lastIndexTime) {
-        const date = new Date(status.lastIndexTime);
-        indexStatus.textContent = `Status: ${status.indexedFiles.toLocaleString()} files indexed on ${date.toLocaleDateString()} at ${date.toLocaleTimeString()}`;
-      } else {
-        indexStatus.textContent = 'Status: Not indexed yet';
-      }
-    } else {
-      indexStatus.textContent = 'Status: Unknown';
-    }
-  } catch (error) {
-    console.error('Failed to get index status:', error);
-    indexStatus.textContent = 'Status: Error';
-  }
-}
-
-async function rebuildIndex() {
-  const rebuildBtn = document.getElementById('rebuild-index-btn') as HTMLButtonElement;
-  if (!rebuildBtn) return;
-
-  const originalHTML = rebuildBtn.innerHTML;
-  rebuildBtn.disabled = true;
-  rebuildBtn.innerHTML = `${twemojiImg(String.fromCodePoint(0x23f3), 'twemoji')} Rebuilding...`;
-
-  try {
-    const result = await window.electronAPI.rebuildIndex();
-    if (result.success) {
-      showToast('Index rebuild started', 'File Indexer', 'success');
-      setTimeout(async () => {
-        await updateIndexStatus();
-      }, 300);
-    } else {
-      showToast('Failed to rebuild index: ' + result.error, 'Error', 'error');
-    }
-  } catch {
-    showToast('Error rebuilding index', 'Error', 'error');
-  } finally {
-    rebuildBtn.disabled = false;
-    rebuildBtn.innerHTML = originalHTML;
-  }
-}
-
 function updateDangerousOptionsVisibility(show: boolean) {
   const dangerousOptions = document.querySelectorAll('.dangerous-option');
   dangerousOptions.forEach((option) => {
@@ -1725,318 +1693,6 @@ async function addToRecentFiles(filePath: string) {
   homeController.renderHomeRecents();
 }
 
-function showSortMenu(e: MouseEvent) {
-  const sortMenu = document.getElementById('sort-menu');
-  if (!sortMenu) return;
-
-  const rect = sortBtn.getBoundingClientRect();
-  sortMenu.style.display = 'block';
-
-  const menuRect = sortMenu.getBoundingClientRect();
-  const viewportWidth = window.innerWidth;
-  const viewportHeight = window.innerHeight;
-
-  let left = rect.left;
-  let top = rect.bottom + 5;
-
-  if (left + menuRect.width > viewportWidth) {
-    left = viewportWidth - menuRect.width - 10;
-  }
-
-  if (top + menuRect.height > viewportHeight) {
-    top = rect.top - menuRect.height - 5;
-  }
-
-  if (left < 10) left = 10;
-  if (top < 10) top = 10;
-
-  sortMenu.style.left = left + 'px';
-  sortMenu.style.top = top + 'px';
-
-  updateSortIndicators();
-
-  e.stopPropagation();
-}
-
-function hideSortMenu() {
-  const sortMenu = document.getElementById('sort-menu');
-  if (sortMenu) {
-    sortMenu.style.display = 'none';
-  }
-}
-
-function updateSortIndicators() {
-  ['name', 'date', 'size', 'type'].forEach((sortType) => {
-    const text =
-      currentSettings.sortBy === sortType ? (currentSettings.sortOrder === 'asc' ? '▲' : '▼') : '';
-    for (const prefix of ['sort', 'list-sort']) {
-      const el = document.getElementById(`${prefix}-${sortType}`);
-      if (el) el.textContent = text;
-    }
-  });
-
-  document.querySelectorAll<HTMLElement>('.list-header-cell').forEach((cell) => {
-    const sortType = cell.dataset.sort;
-    if (!sortType) return;
-    const ariaSort =
-      currentSettings.sortBy === sortType
-        ? currentSettings.sortOrder === 'asc'
-          ? 'ascending'
-          : 'descending'
-        : 'none';
-    cell.setAttribute('aria-sort', ariaSort);
-  });
-}
-
-async function changeSortMode(sortBy: string) {
-  if (!isOneOf(sortBy, SORT_BY_VALUES)) {
-    return;
-  }
-  if (currentSettings.sortBy === sortBy) {
-    currentSettings.sortOrder = currentSettings.sortOrder === 'asc' ? 'desc' : 'asc';
-  } else {
-    currentSettings.sortBy = sortBy;
-    currentSettings.sortOrder = 'asc';
-  }
-
-  await saveSettingsWithTimestamp(currentSettings);
-  hideSortMenu();
-  updateSortIndicators();
-
-  if (allFiles.length > 0) {
-    renderFiles(allFiles);
-  }
-}
-
-type ListColumnKey = 'name' | 'type' | 'size' | 'modified';
-
-function setListColumnWidth(key: ListColumnKey, width: number, persist: boolean = true): void {
-  const min = LIST_COLUMN_MIN_WIDTHS[key] ?? 120;
-  const max = LIST_COLUMN_MAX_WIDTHS[key] ?? 480;
-  const clamped = Math.max(min, Math.min(max, Math.round(width)));
-  const varName = key === 'modified' ? '--list-col-modified' : `--list-col-${key}`;
-  const value = key === 'name' ? `minmax(${clamped}px, 1fr)` : `${clamped}px`;
-
-  document.documentElement.style.setProperty(varName, value);
-
-  if (persist) {
-    currentSettings.listColumnWidths = {
-      ...(currentSettings.listColumnWidths || {}),
-      [key]: clamped,
-    };
-    debouncedSaveSettings();
-  }
-}
-
-function applyListColumnWidths(): void {
-  const widths = currentSettings.listColumnWidths;
-  if (!widths) return;
-  (['name', 'type', 'size', 'modified'] as ListColumnKey[]).forEach((key) => {
-    const value = widths[key];
-    if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
-      setListColumnWidth(key, value, false);
-    }
-  });
-}
-
-function setSidebarWidth(width: number, persist: boolean = true): void {
-  const clamped = Math.max(SIDEBAR_MIN_WIDTH, Math.min(SIDEBAR_MAX_WIDTH, Math.round(width)));
-  document.documentElement.style.setProperty('--sidebar-width-current', `${clamped}px`);
-  if (persist) {
-    currentSettings.sidebarWidth = clamped;
-    debouncedSaveSettings();
-  }
-}
-
-function applySidebarWidth(): void {
-  if (typeof currentSettings.sidebarWidth === 'number') {
-    setSidebarWidth(currentSettings.sidebarWidth, false);
-  }
-}
-
-function setPreviewPanelWidth(width: number, persist: boolean = true): void {
-  const clamped = Math.max(PREVIEW_MIN_WIDTH, Math.min(PREVIEW_MAX_WIDTH, Math.round(width)));
-  document.documentElement.style.setProperty('--preview-panel-width', `${clamped}px`);
-  if (persist) {
-    currentSettings.previewPanelWidth = clamped;
-    debouncedSaveSettings();
-  }
-}
-
-function applyPreviewPanelWidth(): void {
-  if (typeof currentSettings.previewPanelWidth === 'number') {
-    setPreviewPanelWidth(currentSettings.previewPanelWidth, false);
-  }
-}
-
-function setSidebarCollapsed(collapsed?: boolean): void {
-  const sidebar = document.querySelector('.sidebar') as HTMLElement | null;
-  const toggle = document.getElementById('sidebar-toggle');
-  if (!sidebar) return;
-  const shouldCollapse =
-    typeof collapsed === 'boolean' ? collapsed : !sidebar.classList.contains('collapsed');
-  sidebar.classList.toggle('collapsed', shouldCollapse);
-  if (toggle) {
-    toggle.setAttribute('aria-expanded', String(!shouldCollapse));
-  }
-}
-
-function syncSidebarToggleState(): void {
-  const sidebar = document.querySelector('.sidebar') as HTMLElement | null;
-  const toggle = document.getElementById('sidebar-toggle');
-  if (!sidebar || !toggle) return;
-  toggle.setAttribute('aria-expanded', String(!sidebar.classList.contains('collapsed')));
-}
-
-function setupSidebarResize(): void {
-  if (!sidebarResizeHandle) return;
-  const sidebar = document.querySelector('.sidebar') as HTMLElement | null;
-  if (!sidebar) return;
-  let startX = 0;
-  let startWidth = 0;
-
-  const onMouseMove = (e: MouseEvent) => {
-    const delta = e.clientX - startX;
-    setSidebarWidth(startWidth + delta, false);
-  };
-
-  const onMouseUp = () => {
-    sidebarResizeHandle.classList.remove('resizing');
-    document.removeEventListener('mousemove', onMouseMove);
-    document.removeEventListener('mouseup', onMouseUp);
-    document.body.style.cursor = '';
-    document.body.style.userSelect = '';
-    const currentWidth = sidebar.getBoundingClientRect().width;
-    setSidebarWidth(currentWidth, true);
-  };
-
-  sidebarResizeHandle.addEventListener('mousedown', (e) => {
-    if (sidebar.classList.contains('collapsed')) return;
-    e.preventDefault();
-    startX = e.clientX;
-    startWidth = sidebar.getBoundingClientRect().width;
-    sidebarResizeHandle.classList.add('resizing');
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
-    document.addEventListener('mousemove', onMouseMove);
-    document.addEventListener('mouseup', onMouseUp);
-  });
-}
-
-function setupSidebarSections(): void {
-  const sections = document.querySelectorAll<HTMLElement>(
-    '.sidebar-section[data-collapsible="true"]'
-  );
-  sections.forEach((section) => {
-    const toggle = section.querySelector<HTMLButtonElement>('.section-toggle');
-    if (!toggle) return;
-    const syncAria = () => {
-      const isCollapsed = section.classList.contains('collapsed');
-      toggle.setAttribute('aria-expanded', String(!isCollapsed));
-    };
-    syncAria();
-    toggle.addEventListener('click', () => {
-      section.classList.toggle('collapsed');
-      syncAria();
-    });
-  });
-}
-
-function setupPreviewResize(): void {
-  if (!previewResizeHandle) return;
-  const previewPanel = document.getElementById('preview-panel') as HTMLElement | null;
-  if (!previewPanel) return;
-  let startX = 0;
-  let startWidth = 0;
-
-  const onMouseMove = (e: MouseEvent) => {
-    const delta = startX - e.clientX;
-    setPreviewPanelWidth(startWidth + delta, false);
-  };
-
-  const onMouseUp = () => {
-    previewResizeHandle.classList.remove('resizing');
-    document.removeEventListener('mousemove', onMouseMove);
-    document.removeEventListener('mouseup', onMouseUp);
-    document.body.style.cursor = '';
-    document.body.style.userSelect = '';
-    const currentWidth = previewPanel.getBoundingClientRect().width;
-    setPreviewPanelWidth(currentWidth, true);
-  };
-
-  previewResizeHandle.addEventListener('mousedown', (e) => {
-    e.preventDefault();
-    startX = e.clientX;
-    startWidth = previewPanel.getBoundingClientRect().width;
-    previewResizeHandle.classList.add('resizing');
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
-    document.addEventListener('mousemove', onMouseMove);
-    document.addEventListener('mouseup', onMouseUp);
-  });
-}
-
-function setupListHeader(): void {
-  if (!listHeader) return;
-
-  listHeader.addEventListener('click', (e) => {
-    const target = e.target as HTMLElement;
-    if (target.closest('.list-header-resize')) return;
-    const cell = target.closest('.list-header-cell') as HTMLElement | null;
-    if (!cell) return;
-    const sortType = cell.dataset.sort;
-    if (sortType) {
-      changeSortMode(sortType);
-    }
-  });
-
-  listHeader.querySelectorAll<HTMLElement>('.list-header-cell').forEach((cell) => {
-    cell.tabIndex = 0;
-    cell.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        const sortType = cell.dataset.sort;
-        if (sortType) {
-          changeSortMode(sortType);
-        }
-      }
-    });
-  });
-
-  listHeader.querySelectorAll('.list-header-resize').forEach((handle) => {
-    const resizeHandle = handle as HTMLElement;
-    resizeHandle.addEventListener('mousedown', (e) => {
-      const mouseEvent = e as MouseEvent;
-      consumeEvent(mouseEvent);
-      const resizeKey = resizeHandle.dataset.resize as ListColumnKey | undefined;
-      if (!resizeKey) return;
-      activeListResizeColumn = resizeKey;
-      const cell = resizeHandle.closest('.list-header-cell') as HTMLElement | null;
-      if (!cell) return;
-      listResizeStartX = mouseEvent.clientX;
-      listResizeStartWidth = cell.getBoundingClientRect().width;
-      listResizeCurrentWidth = listResizeStartWidth;
-      document.body.style.cursor = 'col-resize';
-      document.body.style.userSelect = 'none';
-    });
-  });
-
-  document.addEventListener('mousemove', (e) => {
-    if (!activeListResizeColumn) return;
-    const delta = e.clientX - listResizeStartX;
-    listResizeCurrentWidth = listResizeStartWidth + delta;
-    setListColumnWidth(activeListResizeColumn as ListColumnKey, listResizeCurrentWidth, false);
-  });
-
-  document.addEventListener('mouseup', () => {
-    if (!activeListResizeColumn) return;
-    setListColumnWidth(activeListResizeColumn as ListColumnKey, listResizeCurrentWidth, true);
-    activeListResizeColumn = null;
-    document.body.style.cursor = '';
-    document.body.style.userSelect = '';
-  });
-}
-
 function updateStatusBar() {
   if (statusItems) {
     statusItems.textContent = `${allFiles.length} item${allFiles.length !== 1 ? 's' : ''}`;
@@ -2093,58 +1749,6 @@ function updateStatusBar() {
       statusSearch.style.display = 'none';
     }
   }
-}
-
-function formatFileSize(bytes: number): string {
-  if (bytes === 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-}
-
-async function updateZoomLevel(newZoom: number) {
-  currentZoomLevel = Math.max(0.5, Math.min(2.0, newZoom));
-  const result = await window.electronAPI.setZoomLevel(currentZoomLevel);
-
-  if (result.success) {
-    updateZoomDisplay();
-    showZoomPopup();
-  }
-}
-
-function updateZoomDisplay() {
-  const zoomDisplay = document.getElementById('zoom-level-display');
-  if (zoomDisplay) {
-    zoomDisplay.textContent = `${Math.round(currentZoomLevel * 100)}%`;
-  }
-}
-
-function showZoomPopup() {
-  const zoomPopup = document.getElementById('zoom-popup') as HTMLElement;
-  if (!zoomPopup) return;
-
-  zoomPopup.style.display = 'flex';
-
-  if (zoomPopupTimeout) {
-    clearTimeout(zoomPopupTimeout);
-  }
-
-  zoomPopupTimeout = setTimeout(() => {
-    zoomPopup.style.display = 'none';
-  }, 2000);
-}
-
-async function zoomIn() {
-  await updateZoomLevel(currentZoomLevel + 0.1);
-}
-
-async function zoomOut() {
-  await updateZoomLevel(currentZoomLevel - 0.1);
-}
-
-async function zoomReset() {
-  await updateZoomLevel(1.0);
 }
 
 async function init() {
@@ -2263,7 +1867,7 @@ async function init() {
 
     window.electronAPI.getZoomLevel().then((zoomResult) => {
       if (zoomResult.success && zoomResult.zoomLevel) {
-        currentZoomLevel = zoomResult.zoomLevel;
+        zoomController.setCurrentZoomLevel(zoomResult.zoomLevel);
         updateZoomDisplay();
       }
     });
@@ -2357,35 +1961,6 @@ async function loadDrives() {
   } else if (folderTree) {
     clearHtml(folderTree);
   }
-}
-
-function getFileExtension(filename: string): string {
-  return filename.split('.').pop()?.toLowerCase() || '';
-}
-
-const FILE_TYPE_LABELS: ReadonlyArray<[Set<string>, string]> = [
-  [IMAGE_EXTENSIONS, 'Image'],
-  [RAW_EXTENSIONS, 'RAW Image'],
-  [VIDEO_EXTENSIONS, 'Video'],
-  [AUDIO_EXTENSIONS, 'Audio'],
-  [PDF_EXTENSIONS, 'PDF Document'],
-  [WORD_EXTENSIONS, 'Word Document'],
-  [SPREADSHEET_EXTENSIONS, 'Spreadsheet'],
-  [PRESENTATION_EXTENSIONS, 'Presentation'],
-  [ARCHIVE_EXTENSIONS, 'Archive'],
-  [SOURCE_CODE_EXTENSIONS, 'Source Code'],
-  [WEB_EXTENSIONS, 'Web File'],
-  [DATA_EXTENSIONS, 'Data File'],
-  [TEXT_EXTENSIONS, 'Text File'],
-];
-
-function getFileTypeFromName(filename: string): string {
-  const ext = getFileExtension(filename);
-  if (!ext) return 'File';
-  for (const [set, label] of FILE_TYPE_LABELS) {
-    if (set.has(ext)) return label;
-  }
-  return `${ext.toUpperCase()} File`;
 }
 
 function initCoreUiInteractions(): void {
@@ -2823,167 +2398,6 @@ function initGlobalClickListeners(): void {
   });
 }
 
-function isDropTargetFileItem(target: EventTarget | null): boolean {
-  return !!(target as HTMLElement | null)?.closest('.file-item');
-}
-
-function isDropTargetContentItem(target: EventTarget | null): boolean {
-  const element = target as HTMLElement | null;
-  if (!element) return false;
-  return !!(
-    element.closest('.file-grid') ||
-    element.closest('.column-view') ||
-    element.closest('.file-item') ||
-    element.closest('.column-item')
-  );
-}
-
-function isDropIntoCurrentDirectory(draggedPaths: string[], destinationPath: string): boolean {
-  return draggedPaths.some((dragPath: string) => {
-    const parentDir = path.dirname(dragPath);
-    return parentDir === destinationPath || dragPath === destinationPath;
-  });
-}
-
-function initFileGridDragAndDrop(): void {
-  if (!fileGrid) return;
-
-  fileGrid.addEventListener('click', (e) => {
-    if (e.target === fileGrid) {
-      clearSelection();
-    }
-  });
-
-  fileGrid.addEventListener('dragover', (e) => {
-    if (isDropTargetFileItem(e.target)) {
-      return;
-    }
-    consumeEvent(e);
-
-    if (!e.dataTransfer) return;
-
-    if (!currentPath) {
-      e.dataTransfer.dropEffect = 'none';
-      return;
-    }
-
-    const operation = getDragOperation(e);
-    e.dataTransfer.dropEffect = operation;
-    fileGrid.classList.add('drag-over');
-    showDropIndicator(operation, currentPath, e.clientX, e.clientY);
-  });
-
-  fileGrid.addEventListener('dragleave', (e) => {
-    consumeEvent(e);
-
-    const rect = fileGrid.getBoundingClientRect();
-    if (
-      e.clientX < rect.left ||
-      e.clientX >= rect.right ||
-      e.clientY < rect.top ||
-      e.clientY >= rect.bottom
-    ) {
-      fileGrid.classList.remove('drag-over');
-      hideDropIndicator();
-    }
-  });
-
-  fileGrid.addEventListener('drop', async (e) => {
-    consumeEvent(e);
-
-    fileGrid.classList.remove('drag-over');
-
-    if (isDropTargetFileItem(e.target)) {
-      return;
-    }
-
-    const draggedPaths = await getDraggedPaths(e);
-
-    if (draggedPaths.length === 0 || !currentPath) {
-      hideDropIndicator();
-      return;
-    }
-
-    if (isDropIntoCurrentDirectory(draggedPaths, currentPath)) {
-      showToast('Items are already in this directory', 'Info', 'info');
-      hideDropIndicator();
-      return;
-    }
-
-    const operation = getDragOperation(e);
-    await handleDrop(draggedPaths, currentPath, operation);
-    hideDropIndicator();
-  });
-}
-
-function initFileViewDragAndDrop(): void {
-  if (!fileView) return;
-
-  fileView.addEventListener('dragover', (e) => {
-    if (isDropTargetContentItem(e.target)) {
-      return;
-    }
-
-    consumeEvent(e);
-
-    if (!currentPath) {
-      e.dataTransfer!.dropEffect = 'none';
-      return;
-    }
-
-    const operation = getDragOperation(e);
-    e.dataTransfer!.dropEffect = operation;
-    fileView.classList.add('drag-over');
-    showDropIndicator(operation, currentPath, e.clientX, e.clientY);
-  });
-
-  fileView.addEventListener('dragleave', (e) => {
-    e.preventDefault();
-    const rect = fileView.getBoundingClientRect();
-    if (
-      e.clientX < rect.left ||
-      e.clientX >= rect.right ||
-      e.clientY < rect.top ||
-      e.clientY >= rect.bottom
-    ) {
-      fileView.classList.remove('drag-over');
-      hideDropIndicator();
-    }
-  });
-
-  fileView.addEventListener('drop', async (e) => {
-    if (isDropTargetContentItem(e.target)) {
-      return;
-    }
-
-    consumeEvent(e);
-
-    fileView.classList.remove('drag-over');
-
-    const draggedPaths = await getDraggedPaths(e);
-
-    if (draggedPaths.length === 0 || !currentPath) {
-      hideDropIndicator();
-      return;
-    }
-
-    if (isDropIntoCurrentDirectory(draggedPaths, currentPath)) {
-      showToast('Items are already in this directory', 'Info', 'info');
-      hideDropIndicator();
-      return;
-    }
-
-    const operation = getDragOperation(e);
-    await handleDrop(draggedPaths, currentPath, operation);
-    hideDropIndicator();
-  });
-}
-
-function initDragAndDropListeners(): void {
-  initFileGridDragAndDrop();
-  initFileViewDragAndDrop();
-}
-
 function initContextMenuListeners(): void {
   document.addEventListener('contextmenu', (e) => {
     if (!(e.target as HTMLElement).closest('.file-item')) {
@@ -3016,6 +2430,11 @@ function setupEventListeners() {
   initKeyboardListeners();
   initGlobalClickListeners();
   initDragAndDropListeners();
+  if (fileGrid) {
+    fileGrid.addEventListener('click', (e) => {
+      if (e.target === fileGrid) clearSelection();
+    });
+  }
   initContextMenuListeners();
 }
 function updateHiddenFilesCount(items: FileItem[], append = false): void {
@@ -3497,95 +2916,6 @@ function getFileItemData(fileItem: HTMLElement): FileItem | null {
   return filePathMap.get(itemPath) ?? null;
 }
 
-function getDragOperation(event: DragEvent): 'copy' | 'move' {
-  return event.ctrlKey || event.altKey ? 'copy' : 'move';
-}
-
-async function getDraggedPaths(event: DragEvent): Promise<string[]> {
-  let draggedPaths: string[] = [];
-  if (!event.dataTransfer) return draggedPaths;
-
-  try {
-    const textData = event.dataTransfer.getData('text/plain');
-    if (textData) {
-      draggedPaths = JSON.parse(textData);
-    }
-  } catch (error) {
-    console.debug('[Drag] Failed to parse drag data, trying fallback methods:', error);
-  }
-
-  if (draggedPaths.length === 0 && event.dataTransfer.files.length > 0) {
-    draggedPaths = Array.from(event.dataTransfer.files).map(
-      (f) => (f as File & { path: string }).path
-    );
-  }
-
-  if (draggedPaths.length === 0) {
-    const sharedData = await window.electronAPI.getDragData();
-    if (sharedData) {
-      draggedPaths = sharedData.paths;
-    }
-  }
-
-  return draggedPaths;
-}
-
-function showDropIndicator(
-  action: 'copy' | 'move' | 'add',
-  destPath: string,
-  x: number,
-  y: number
-): void {
-  if (!dropIndicator || !dropIndicatorAction || !dropIndicatorPath) return;
-  const label = path.basename(destPath) || destPath;
-  dropIndicatorAction.textContent = action === 'copy' ? 'Copy' : action === 'add' ? 'Add' : 'Move';
-  dropIndicatorPath.textContent = label;
-  dropIndicatorPath.title = destPath;
-  dropIndicator.style.display = 'inline-flex';
-  dropIndicator.style.left = `${x + 12}px`;
-  dropIndicator.style.top = `${y + 12}px`;
-}
-
-function hideDropIndicator(): void {
-  if (!dropIndicator) return;
-  dropIndicator.style.display = 'none';
-}
-
-function scheduleSpringLoad(target: HTMLElement, action: () => void): void {
-  if (springLoadedFolder !== target) {
-    if (springLoadedTimeout) {
-      clearTimeout(springLoadedTimeout);
-      springLoadedTimeout = null;
-    }
-    springLoadedFolder?.classList.remove('spring-loading');
-    springLoadedFolder = target;
-    springLoadedTimeout = setTimeout(() => {
-      if (springLoadedFolder === target) {
-        target.classList.remove('spring-loading');
-        action();
-      }
-      springLoadedFolder = null;
-      springLoadedTimeout = null;
-    }, SPRING_LOAD_DELAY);
-    setTimeout(() => {
-      if (springLoadedFolder === target) {
-        target.classList.add('spring-loading');
-      }
-    }, SPRING_LOAD_DELAY / 2);
-  }
-}
-
-function clearSpringLoad(target?: HTMLElement): void {
-  if (!target || springLoadedFolder === target) {
-    if (springLoadedTimeout) {
-      clearTimeout(springLoadedTimeout);
-      springLoadedTimeout = null;
-    }
-    springLoadedFolder?.classList.remove('spring-loading');
-    springLoadedFolder = null;
-  }
-}
-
 function setupFileGridEventDelegation(): void {
   if (!fileGrid || fileGridDelegationReady) return;
   fileGridDelegationReady = true;
@@ -3769,88 +3099,6 @@ function setupFileGridEventDelegation(): void {
     await handleDrop(draggedPaths, item.path, operation);
     hideDropIndicator();
   });
-}
-
-const IMAGE_ICON = twemojiImg(String.fromCodePoint(parseInt('1f5bc', 16)), 'twemoji');
-const RAW_ICON = twemojiImg(String.fromCodePoint(0x1f4f7), 'twemoji');
-const VIDEO_ICON = twemojiImg(String.fromCodePoint(0x1f3ac), 'twemoji');
-const AUDIO_ICON = twemojiImg(String.fromCodePoint(0x1f3b5), 'twemoji');
-const WORD_ICON = twemojiImg(String.fromCodePoint(0x1f4dd), 'twemoji');
-const SPREADSHEET_ICON = twemojiImg(String.fromCodePoint(0x1f4ca), 'twemoji');
-const ARCHIVE_ICON = twemojiImg(String.fromCodePoint(0x1f5dc), 'twemoji');
-const DEFAULT_FILE_ICON = twemojiImg(String.fromCodePoint(parseInt('1f4c4', 16)), 'twemoji');
-
-const fileIconCache = new Map<string, string>();
-function getFileIcon(filename: string): string {
-  const ext = getFileExtension(filename);
-
-  const cached = fileIconCache.get(ext);
-  if (cached) return cached;
-
-  const codepoint = FILE_ICON_MAP[ext];
-  let icon: string;
-
-  if (!codepoint) {
-    if (RAW_EXTENSIONS.has(ext)) {
-      icon = RAW_ICON;
-    } else if (IMAGE_EXTENSIONS.has(ext)) {
-      icon = IMAGE_ICON;
-    } else if (VIDEO_EXTENSIONS.has(ext)) {
-      icon = VIDEO_ICON;
-    } else if (AUDIO_EXTENSIONS.has(ext)) {
-      icon = AUDIO_ICON;
-    } else if (WORD_EXTENSIONS.has(ext)) {
-      icon = WORD_ICON;
-    } else if (SPREADSHEET_EXTENSIONS.has(ext) || PRESENTATION_EXTENSIONS.has(ext)) {
-      icon = SPREADSHEET_ICON;
-    } else if (ARCHIVE_EXTENSIONS.has(ext)) {
-      icon = ARCHIVE_ICON;
-    } else {
-      icon = DEFAULT_FILE_ICON;
-    }
-  } else if (codepoint === '1f5bc') {
-    icon = IMAGE_ICON;
-  } else {
-    icon = twemojiImg(String.fromCodePoint(parseInt(codepoint, 16)), 'twemoji');
-  }
-
-  fileIconCache.set(ext, icon);
-  return icon;
-}
-
-async function handleDrop(
-  sourcePaths: string[],
-  destPath: string,
-  operation: 'copy' | 'move'
-): Promise<void> {
-  try {
-    const conflictBehavior = currentSettings.fileConflictBehavior || 'ask';
-    const result =
-      operation === 'copy'
-        ? await window.electronAPI.copyItems(sourcePaths, destPath, conflictBehavior)
-        : await window.electronAPI.moveItems(sourcePaths, destPath, conflictBehavior);
-
-    if (result.success) {
-      showToast(
-        `${operation === 'copy' ? 'Copied' : 'Moved'} ${sourcePaths.length} item(s)`,
-        'Success',
-        'success'
-      );
-      await window.electronAPI.clearDragData();
-
-      if (operation === 'move') {
-        await updateUndoRedoState();
-      }
-
-      await navigateTo(currentPath);
-      clearSelection();
-    } else {
-      showToast(result.error || `Failed to ${operation} items`, 'Error', 'error');
-    }
-  } catch (error) {
-    console.error(`Error during ${operation}:`, error);
-    showToast(`Failed to ${operation} items`, 'Error', 'error');
-  }
 }
 
 async function renameSelected() {
@@ -4299,7 +3547,7 @@ window.addEventListener('beforeunload', () => {
   thumbnails.resetThumbnailObserver();
   virtualizedObserver = disconnectAndResetObserver(virtualizedObserver);
   diskSpaceController.clearCache();
-  zoomPopupTimeout = clearAndResetTimeout(zoomPopupTimeout);
+  zoomController.clearZoomPopupTimeout();
   if (!isResettingSettings) {
     if (tabsEnabled && tabs.length > 0) {
       const currentTab = tabs.find((t) => t.id === activeTabId);

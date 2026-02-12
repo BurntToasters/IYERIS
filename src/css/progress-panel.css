@@ -1,0 +1,76 @@
+.progress-panel {
+  position: fixed;
+  bottom: var(--spacing-massive);
+  right: var(--spacing-massive);
+  width: 360px;
+  max-height: 400px;
+  display: flex;
+  flex-direction: column;
+  z-index: 9000;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+  animation: progressPanelSlideIn 0.3s var(--animation-easing);
+}
+
+@keyframes progressPanelSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.progress-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-xxl) var(--spacing-xxxl);
+  border-bottom: 1px solid var(--separator);
+}
+
+.progress-panel-title {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-lg);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.progress-panel-icon {
+  color: var(--accent-color);
+}
+
+.progress-panel-close {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 16px;
+  padding: var(--spacing-sm);
+  border-radius: var(--radius-small);
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.15s ease,
+    opacity 0.15s ease;
+  line-height: 1;
+}
+
+.progress-panel-close:hover {
+  background: var(--hover-color);
+  color: var(--text-primary);
+}
+
+.progress-panel-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--spacing-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+}

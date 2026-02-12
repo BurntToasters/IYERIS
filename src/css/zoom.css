@@ -1,0 +1,90 @@
+.zoom-popup {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  background: var(--bg-secondary);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border: 1px solid var(--separator);
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+  z-index: 2500;
+  animation: zoomPopupSlideIn 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes zoomPopupSlideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+.zoom-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: transparent;
+  border: 1px solid var(--separator);
+  border-radius: 8px;
+  cursor: pointer;
+  transition:
+    background-color 0.15s cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 0.15s cubic-bezier(0.4, 0, 0.2, 1),
+    color 0.15s cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 0.15s cubic-bezier(0.4, 0, 0.2, 1),
+    transform 0.15s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  padding: 0;
+}
+
+.zoom-btn:hover {
+  background: var(--hover-color);
+  border-color: var(--separator);
+  transform: none;
+  box-shadow: none;
+}
+
+.zoom-btn:active {
+  transform: none;
+  background: var(--active-color);
+}
+
+.zoom-btn .twemoji {
+  width: 16px;
+  height: 16px;
+  filter: brightness(0) invert(1);
+}
+
+.zoom-btn .twemoji-small {
+  width: 14px;
+  height: 14px;
+  filter: brightness(0) invert(1);
+}
+
+.zoom-level {
+  min-width: 50px;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.95);
+  user-select: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.zoom-divider {
+  width: 1px;
+  height: 20px;
+  background: rgba(255, 255, 255, 0.2);
+  margin: 0 4px;
+}
