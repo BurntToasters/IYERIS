@@ -19,9 +19,7 @@ import {
   setTray,
   getIsQuitting,
   setIsQuitting,
-  getCurrentTrayState,
   setCurrentTrayState,
-  getTrayAssetsPath,
   setTrayAssetsPath,
   getShouldStartHidden,
   getIsDev,
@@ -203,17 +201,6 @@ export function updateTrayMenu(status?: string): void {
   } else {
     tray.setContextMenu(menu);
   }
-}
-
-export function setTrayState(state: TrayState): void {
-  const tray = getTray();
-  const trayAssetsPath = getTrayAssetsPath();
-  if (!tray || !trayAssetsPath || getCurrentTrayState() === state) return;
-  setCurrentTrayState(state);
-
-  const platform = getTrayPlatform();
-  const trayIcon = getTrayIcon(trayAssetsPath, platform, state);
-  tray.setImage(trayIcon.icon);
 }
 
 export function createWindow(isInitialWindow: boolean = false): BrowserWindow {

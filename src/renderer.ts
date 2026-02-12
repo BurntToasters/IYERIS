@@ -1,11 +1,4 @@
-import type {
-  Settings,
-  FileItem,
-  CustomTheme,
-  ContentSearchResult,
-  SpecialDirectory,
-  DriveInfo,
-} from './types';
+import type { Settings, FileItem, ContentSearchResult, SpecialDirectory, DriveInfo } from './types';
 import { createFolderTreeManager } from './folderDir.js';
 import { escapeHtml, getErrorMessage, ignoreError } from './shared.js';
 import { clearHtml, getById } from './rendererDom.js';
@@ -52,7 +45,6 @@ import {
 } from './rendererModals.js';
 import { initTooltipSystem } from './rendererTooltips.js';
 import {
-  encodeFileUrl,
   isWindowsPath,
   normalizeWindowsPath,
   rendererPath as path,
@@ -60,7 +52,7 @@ import {
 } from './rendererUtils.js';
 import { createDefaultSettings } from './settings.js';
 import { SHORTCUT_DEFINITIONS, getDefaultShortcuts } from './shortcuts.js';
-import type { ShortcutBinding, ShortcutDefinition } from './shortcuts.js';
+import type { ShortcutBinding } from './shortcuts.js';
 import {
   createHomeController,
   getPathDisplayValue,
@@ -420,16 +412,8 @@ const gitStatus = createGitStatusController({
   getGitBranch: (dir) => window.electronAPI.getGitBranch(dir),
 });
 
-const {
-  clearGitIndicators,
-  fetchGitStatusAsync,
-  updateGitBranch,
-  updateGitIndicators,
-  applyGitIndicatorsToPaths,
-  gitIndicatorPaths,
-  gitStatusCache,
-  gitStatusInFlight,
-} = gitStatus;
+const { clearGitIndicators, fetchGitStatusAsync, updateGitBranch, applyGitIndicatorsToPaths } =
+  gitStatus;
 
 let currentSettings: Settings = createDefaultSettings();
 let isResettingSettings = false;
@@ -670,23 +654,21 @@ const {
   isQuickLookOpen,
 } = previewController;
 
-const { loadBookmarks, addBookmark, addBookmarkByPath, removeBookmark } = createBookmarksController(
-  {
-    bookmarksList,
-    getCurrentPath: () => currentPath,
-    getCurrentSettings: () => currentSettings,
-    saveSettingsWithTimestamp,
-    showToast,
-    navigateTo: (p) => navigateTo(p),
-    getDraggedPaths,
-    getDragOperation,
-    handleDrop,
-    showDropIndicator,
-    hideDropIndicator,
-    consumeEvent,
-    renderHomeBookmarks: () => homeController.renderHomeBookmarks(),
-  }
-);
+const { loadBookmarks, addBookmark, addBookmarkByPath } = createBookmarksController({
+  bookmarksList,
+  getCurrentPath: () => currentPath,
+  getCurrentSettings: () => currentSettings,
+  saveSettingsWithTimestamp,
+  showToast,
+  navigateTo: (p) => navigateTo(p),
+  getDraggedPaths,
+  getDragOperation,
+  handleDrop,
+  showDropIndicator,
+  hideDropIndicator,
+  consumeEvent,
+  renderHomeBookmarks: () => homeController.renderHomeBookmarks(),
+});
 
 const clipboardController = createClipboardController({
   getSelectedItems: () => selectedItems,
@@ -1009,8 +991,6 @@ const themeEditorController = createThemeEditorController({
 const {
   applyCustomThemeColors,
   clearCustomThemeColors,
-  showThemeEditor,
-  hideThemeEditor,
   setupThemeEditorListeners,
   updateCustomThemeUI,
 } = themeEditorController;

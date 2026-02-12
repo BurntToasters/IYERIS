@@ -292,51 +292,6 @@ select:focus-visible {
   right: calc(100% - 2px);
 }
 
-.progress-bar-container {
-  height: 6px;
-  background: rgba(255, 255, 255, 0.08);
-  border-radius: 3px;
-  overflow: hidden;
-  margin-bottom: 12px;
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.3);
-}
-
-.progress-bar {
-  height: 100%;
-  background: linear-gradient(
-    90deg,
-    var(--accent-color) 0%,
-    color-mix(in srgb, var(--accent-color) 70%, var(--accent-hover) 30%) 33%,
-    color-mix(in srgb, var(--accent-color) 30%, var(--accent-hover) 70%) 66%,
-    var(--accent-hover) 100%
-  );
-  border-radius: 3px;
-  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 0 8px rgba(var(--accent-rgb), 0.5);
-  position: relative;
-  overflow: hidden;
-}
-
-.progress-bar::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
-  animation: progress-shimmer 1.5s infinite;
-}
-
-@keyframes progress-shimmer {
-  0% {
-    transform: translateX(-100%);
-  }
-  100% {
-    transform: translateX(100%);
-  }
-}
-
 .toggle-switch {
   position: relative;
   display: inline-block;

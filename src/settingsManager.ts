@@ -165,11 +165,6 @@ export async function saveSettings(settings: Settings): Promise<ApiResponse> {
   return result;
 }
 
-export function invalidateSettingsCache(): void {
-  cachedSettings = null;
-  settingsCacheTime = 0;
-}
-
 export function setupSettingsHandlers(createTray: () => Promise<void>): void {
   ipcMain.handle('get-settings', async (event: IpcMainInvokeEvent): Promise<SettingsResponse> => {
     try {

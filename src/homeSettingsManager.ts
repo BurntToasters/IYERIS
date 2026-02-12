@@ -105,11 +105,6 @@ export async function saveHomeSettings(settings: HomeSettings): Promise<ApiRespo
   return homeSaveLock as unknown as Promise<ApiResponse>;
 }
 
-export function invalidateHomeSettingsCache(): void {
-  cachedHomeSettings = null;
-  homeSettingsCacheTime = 0;
-}
-
 export function setupHomeSettingsHandlers(): void {
   ipcMain.handle(
     'get-home-settings',

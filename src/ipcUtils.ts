@@ -46,10 +46,6 @@ export function unregisterDirectoryOperationTarget(operationId: string): void {
   directoryOperationTargets.delete(operationId);
 }
 
-export function getDirectoryOperationTarget(operationId: string): WebContents | undefined {
-  return directoryOperationTargets.get(operationId);
-}
-
 export function setupFileTasksProgressHandler(
   activeFolderSizeCalculations: Map<string, { aborted: boolean }>,
   activeChecksumCalculations: Map<string, { aborted: boolean }>

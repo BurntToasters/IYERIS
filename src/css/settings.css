@@ -1422,7 +1422,6 @@ body.high-contrast .setting-description,
 body.high-contrast .section-title,
 body.high-contrast .nav-label,
 body.high-contrast .status-bar,
-body.high-contrast .file-item-details,
 body.high-contrast .breadcrumb-separator,
 body.high-contrast .modal-footer,
 body.high-contrast .preview-empty p,
@@ -1432,7 +1431,6 @@ body.high-contrast .filter-hint {
   color: var(--text-secondary);
 }
 
-body.use-system-font-size .file-item-name,
 body.use-system-font-size .nav-label,
 body.use-system-font-size .section-title,
 body.use-system-font-size .setting-description,
@@ -1455,7 +1453,6 @@ body.use-system-font-size h4 {
   font-size: calc(14px * var(--system-font-scale));
 }
 
-body.large-text .file-item-name,
 body.large-text .nav-label,
 body.large-text .section-title,
 body.large-text .setting-description,
@@ -1483,7 +1480,6 @@ body.large-text .shortcut-keys {
   font-size: 14px;
 }
 
-body.bold-text .file-item-name,
 body.bold-text .nav-label,
 body.bold-text .breadcrumb-item,
 body.bold-text .modal-header h3,

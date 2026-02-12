@@ -26,12 +26,8 @@ body.bold-text {
   font-weight: 500;
 }
 
-body.bold-text .file-item-name,
 body.bold-text .nav-label,
 body.bold-text .breadcrumb-item,
-body.bold-text .tab-label,
-body.bold-text .status-text,
-body.bold-text .toolbar-label,
 body.bold-text .address-bar,
 body.bold-text .search-bar,
 body.bold-text .setting-description,

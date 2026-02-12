@@ -104,5 +104,3 @@ export function initializeLogger(): void {
   log.info(`Electron: ${process.versions.electron}`);
   log.info('='.repeat(60));
 }
-
-export { log as electronLog };
