@@ -2,6 +2,7 @@ import { createDefaultSettings } from './settings.js';
 import type { Settings } from './types';
 
 export type SettingsFormState = Record<string, string | boolean>;
+const SETTINGS_HELP_URL = 'https://help.rosie.run/iyeris/en-us/faq';
 
 interface SettingsUiDeps {
   updateDangerousOptionsVisibility: (visible: boolean) => void;
@@ -82,6 +83,23 @@ export function createSettingsUiController(deps: SettingsUiDeps) {
     settingsRedoState = null;
   }
 
+  function syncSettingsDependentControls(): void {
+    const iconSizeSlider = document.getElementById('icon-size-slider') as HTMLInputElement | null;
+    const iconSizeValue = document.getElementById('icon-size-value');
+    if (iconSizeSlider && iconSizeValue) {
+      iconSizeValue.textContent = iconSizeSlider.value;
+    }
+
+    const dangerousOptionsToggle = document.getElementById(
+      'dangerous-options-toggle'
+    ) as HTMLInputElement | null;
+    if (dangerousOptionsToggle) {
+      deps.updateDangerousOptionsVisibility(dangerousOptionsToggle.checked);
+    }
+
+    syncQuickActionsFromMain();
+  }
+
   function captureSettingsFormState(): SettingsFormState {
     const state: SettingsFormState = {};
     const settingsModal = document.getElementById('settings-modal');
@@ -122,20 +140,7 @@ export function createSettingsUiController(deps: SettingsUiDeps) {
       }
     });
 
-    const iconSizeSlider = document.getElementById('icon-size-slider') as HTMLInputElement | null;
-    const iconSizeValue = document.getElementById('icon-size-value');
-    if (iconSizeSlider && iconSizeValue) {
-      iconSizeValue.textContent = iconSizeSlider.value;
-    }
-
-    const dangerousOptionsToggle = document.getElementById(
-      'dangerous-options-toggle'
-    ) as HTMLInputElement | null;
-    if (dangerousOptionsToggle) {
-      deps.updateDangerousOptionsVisibility(dangerousOptionsToggle.checked);
-    }
-
-    syncQuickActionsFromMain();
+    syncSettingsDependentControls();
     updateSettingsCardSummaries();
     suppressSettingsTracking = false;
     updateSettingsDirtyState();
@@ -519,19 +524,22 @@ export function createSettingsUiController(deps: SettingsUiDeps) {
       applySettingsSearch(searchInput.value);
     });
 
+    const clearSearch = () => {
+      searchInput.value = '';
+      applySettingsSearch('');
+    };
+
     searchInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
         jumpToFirstSettingMatch();
       } else if (e.key === 'Escape') {
-        searchInput.value = '';
-        applySettingsSearch('');
+        clearSearch();
       }
     });
 
     clearBtn?.addEventListener('click', () => {
-      searchInput.value = '';
-      applySettingsSearch('');
+      clearSearch();
       searchInput.focus();
     });
 
@@ -555,23 +563,27 @@ export function createSettingsUiController(deps: SettingsUiDeps) {
   }
 
   function syncQuickActionsFromMain(): void {
-    document.querySelectorAll<HTMLInputElement>('[data-sync-target]').forEach((quickToggle) => {
-      const targetId = quickToggle.dataset.syncTarget;
-      if (!targetId) return;
-      const target = document.getElementById(targetId) as HTMLInputElement | null;
-      if (target && target.type === 'checkbox') {
+    forEachQuickTogglePair((quickToggle, target) => {
+      if (target.type === 'checkbox') {
         quickToggle.checked = target.checked;
       }
     });
   }
 
-  function initSettingsQuickActions(): void {
+  function forEachQuickTogglePair(
+    callback: (quickToggle: HTMLInputElement, target: HTMLInputElement) => void
+  ): void {
     document.querySelectorAll<HTMLInputElement>('[data-sync-target]').forEach((quickToggle) => {
       const targetId = quickToggle.dataset.syncTarget;
       if (!targetId) return;
       const target = document.getElementById(targetId) as HTMLInputElement | null;
       if (!target) return;
+      callback(quickToggle, target);
+    });
+  }
 
+  function initSettingsQuickActions(): void {
+    forEachQuickTogglePair((quickToggle, target) => {
       quickToggle.addEventListener('change', () => {
         if (target.type === 'checkbox') {
           target.checked = quickToggle.checked;
@@ -607,42 +619,28 @@ export function createSettingsUiController(deps: SettingsUiDeps) {
       }
     });
 
-    const iconSizeSlider = document.getElementById('icon-size-slider') as HTMLInputElement | null;
-    const iconSizeValue = document.getElementById('icon-size-value');
-    if (iconSizeSlider && iconSizeValue) {
-      iconSizeValue.textContent = iconSizeSlider.value;
-    }
-
-    const dangerousOptionsToggle = document.getElementById(
-      'dangerous-options-toggle'
-    ) as HTMLInputElement | null;
-    if (dangerousOptionsToggle) {
-      deps.updateDangerousOptionsVisibility(dangerousOptionsToggle.checked);
-    }
-
-    syncQuickActionsFromMain();
+    syncSettingsDependentControls();
     markSettingsChanged();
   }
 
   function initSettingsSectionResets(): void {
     document.querySelectorAll<HTMLButtonElement>('.settings-section-reset').forEach((button) => {
+      const sectionId = button.dataset.section;
+      if (!sectionId) return;
+
       button.addEventListener('click', () => {
-        const sectionId = button.dataset.section;
-        if (sectionId) resetSettingsSection(sectionId);
+        resetSettingsSection(sectionId);
       });
 
-      const sectionId = button.dataset.section;
-      if (sectionId) {
-        const section = document.getElementById(`tab-${sectionId}`);
-        const hasInputs = Array.from(
-          section?.querySelectorAll('input, select, textarea') || []
-        ).some((element) => {
+      const section = document.getElementById(`tab-${sectionId}`);
+      const hasInputs = Array.from(section?.querySelectorAll('input, select, textarea') || []).some(
+        (element) => {
           const input = element as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
           return Boolean(SETTINGS_INPUT_KEYS[input.id]);
-        });
-        if (!hasInputs) {
-          button.style.display = 'none';
         }
+      );
+      if (!hasInputs) {
+        button.style.display = 'none';
       }
     });
   }
@@ -666,15 +664,8 @@ export function createSettingsUiController(deps: SettingsUiDeps) {
 
     document.querySelectorAll<HTMLButtonElement>('[data-learn-more]').forEach((button) => {
       button.addEventListener('click', () => {
-        const topic = button.dataset.learnMore;
-        if (!topic) return;
-        const urlMap: Record<string, string> = {
-          indexer: 'https://help.rosie.run/iyeris/en-us/faq',
-          clipboard: 'https://help.rosie.run/iyeris/en-us/faq',
-          graphics: 'https://help.rosie.run/iyeris/en-us/faq',
-        };
-        const url = urlMap[topic] || 'https://help.rosie.run/iyeris/en-us/faq';
-        window.electronAPI.openFile(url);
+        if (!button.dataset.learnMore) return;
+        window.electronAPI.openFile(SETTINGS_HELP_URL);
       });
     });
   }
@@ -724,19 +715,20 @@ export function createSettingsUiController(deps: SettingsUiDeps) {
   }
 
   function initSettingsUndoRedo(): void {
-    document.getElementById('settings-save-inline-btn')?.addEventListener('click', () => {
+    const bindClickById = (id: string, handler: () => void): void => {
+      document.getElementById(id)?.addEventListener('click', handler);
+    };
+    bindClickById('settings-save-inline-btn', () => {
       void deps.saveSettings();
     });
-
-    document.getElementById('settings-undo-btn')?.addEventListener('click', () => {
+    bindClickById('settings-undo-btn', () => {
       if (!settingsSavedState) return;
       const current = captureSettingsFormState();
       if (statesEqual(current, settingsSavedState)) return;
       settingsRedoState = current;
       applySettingsFormState(settingsSavedState);
     });
-
-    document.getElementById('settings-redo-btn')?.addEventListener('click', () => {
+    bindClickById('settings-redo-btn', () => {
       if (!settingsRedoState) return;
       const redoState = settingsRedoState;
       settingsRedoState = null;

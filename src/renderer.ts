@@ -7312,13 +7312,23 @@ function bindClickById(id: string, handler: () => void): void {
   document.getElementById(id)?.addEventListener('click', handler);
 }
 
-const globalClickBindings: Array<[string, () => void]> = [
+function bindClickBindings(bindings: ReadonlyArray<readonly [string, () => void]>): void {
+  bindings.forEach(([id, handler]) => bindClickById(id, handler));
+}
+
+async function chooseFolderAndApply(onPathSelected: (selectedPath: string) => void): Promise<void> {
+  const result = await window.electronAPI.selectFolder();
+  if (result.success && result.path) {
+    onPathSelected(result.path);
+  }
+}
+
+bindClickBindings([
   ['settings-btn', showSettingsModal],
   ['settings-close', hideSettingsModal],
   ['save-settings-btn', saveSettings],
   ['reset-settings-btn', resetSettings],
-];
-globalClickBindings.forEach(([id, handler]) => bindClickById(id, handler));
+]);
 document.getElementById('start-tour-btn')?.addEventListener('click', () => {
   hideSettingsModal();
   tourController.startTour();
@@ -7328,13 +7338,12 @@ document.getElementById('dangerous-options-toggle')?.addEventListener('change', 
   updateDangerousOptionsVisibility(target.checked);
 });
 document.getElementById('browse-startup-path-btn')?.addEventListener('click', async () => {
-  const result = await window.electronAPI.selectFolder();
-  if (result.success && result.path) {
-    const startupPathInput = document.getElementById('startup-path-input') as HTMLInputElement;
-    if (startupPathInput) {
-      startupPathInput.value = result.path;
-    }
-  }
+  await chooseFolderAndApply((selectedPath) => {
+    const startupPathInput = document.getElementById(
+      'startup-path-input'
+    ) as HTMLInputElement | null;
+    if (startupPathInput) startupPathInput.value = selectedPath;
+  });
 });
 const extractModal = document.getElementById('extract-modal') as HTMLElement | null;
 const extractClose = document.getElementById('extract-close');
@@ -7345,17 +7354,18 @@ const extractDestinationInput = document.getElementById(
   'extract-destination-input'
 ) as HTMLInputElement | null;
 
-extractClose?.addEventListener('click', hideExtractModal);
-extractCancel?.addEventListener('click', hideExtractModal);
+([extractClose, extractCancel] as const).forEach((el) =>
+  el?.addEventListener('click', hideExtractModal)
+);
 extractConfirm?.addEventListener('click', () => {
   void confirmExtractModal();
 });
 extractBrowseBtn?.addEventListener('click', async () => {
-  const result = await window.electronAPI.selectFolder();
-  if (result.success && result.path && extractDestinationInput) {
-    extractDestinationInput.value = result.path;
-    updateExtractPreview(result.path);
-  }
+  await chooseFolderAndApply((selectedPath) => {
+    if (!extractDestinationInput) return;
+    extractDestinationInput.value = selectedPath;
+    updateExtractPreview(selectedPath);
+  });
 });
 extractDestinationInput?.addEventListener('input', () => {
   updateExtractPreview(extractDestinationInput.value);
@@ -7377,12 +7387,11 @@ extractModal?.addEventListener('click', (e) => {
 
 setupCompressOptionsModal();
 
-const maintenanceClickBindings: Array<[string, () => void]> = [
+bindClickBindings([
   ['rebuild-index-btn', rebuildIndex],
   ['restart-admin-btn', restartAsAdmin],
   ['check-updates-btn', checkForUpdates],
-];
-maintenanceClickBindings.forEach(([id, handler]) => bindClickById(id, handler));
+]);
 
 document.getElementById('icon-size-slider')?.addEventListener('input', (e) => {
   const value = (e.target as HTMLInputElement).value;
@@ -7409,7 +7418,7 @@ async function updateThumbnailCacheSize(): Promise<void> {
   }
 }
 
-const utilityClickBindings: Array<[string, () => void]> = [
+bindClickBindings([
   ['zoom-in-btn', zoomIn],
   ['zoom-out-btn', zoomOut],
   ['zoom-reset-btn', zoomReset],
@@ -7418,8 +7427,7 @@ const utilityClickBindings: Array<[string, () => void]> = [
   ['folder-icon-close', hideFolderIconPicker],
   ['folder-icon-cancel', hideFolderIconPicker],
   ['folder-icon-reset', resetFolderIcon],
-];
-utilityClickBindings.forEach(([id, handler]) => bindClickById(id, handler));
+]);
 
 for (const [id, handler] of [
   ['folder-icon-modal', hideFolderIconPicker],
@@ -7432,22 +7440,16 @@ for (const [id, handler] of [
   });
 }
 
-const searchInputElement = getSearchInputElement();
-if (searchInputElement) {
-  searchInputElement.addEventListener('focus', () => {
-    if (currentSettings.enableSearchHistory) {
-      showSearchHistoryDropdown();
-    }
+function bindHistoryDropdownOnFocus(element: HTMLElement | null, showDropdown: () => void): void {
+  if (!element) return;
+  element.addEventListener('focus', () => {
+    if (currentSettings.enableSearchHistory) showDropdown();
   });
 }
 
-if (addressInput) {
-  addressInput.addEventListener('focus', () => {
-    if (currentSettings.enableSearchHistory) {
-      showDirectoryHistoryDropdown();
-    }
-  });
-}
+const searchInputElement = getSearchInputElement();
+bindHistoryDropdownOnFocus(searchInputElement, showSearchHistoryDropdown);
+bindHistoryDropdownOnFocus(addressInput, showDirectoryHistoryDropdown);
 
 document.addEventListener('mousedown', (e) => {
   const target = e.target as HTMLElement;
@@ -7468,34 +7470,34 @@ document.addEventListener('mousedown', (e) => {
     hideDirectoryHistoryDropdown();
   }
 
-  if (target.classList.contains('history-item') && target.dataset.query) {
-    e.preventDefault();
-    const query = target.dataset.query;
-    setSearchQuery(query);
-    setTimeout(() => focusSearchInput(), 0);
-    hideSearchHistoryDropdown();
-    performSearch();
-    return;
+  if (target.classList.contains('history-item')) {
+    if (target.dataset.query) {
+      e.preventDefault();
+      setSearchQuery(target.dataset.query);
+      setTimeout(() => focusSearchInput(), 0);
+      hideSearchHistoryDropdown();
+      performSearch();
+      return;
+    }
+    if (target.dataset.path) {
+      e.preventDefault();
+      navigateTo(target.dataset.path);
+      hideDirectoryHistoryDropdown();
+      return;
+    }
   }
 
-  if (target.classList.contains('history-item') && target.dataset.path) {
-    e.preventDefault();
-    const path = target.dataset.path;
-    navigateTo(path);
-    hideDirectoryHistoryDropdown();
-    return;
-  }
-
-  if (target.classList.contains('history-clear') && target.dataset.action === 'clear-search') {
-    e.preventDefault();
-    clearSearchHistory();
-    return;
-  }
-
-  if (target.classList.contains('history-clear') && target.dataset.action === 'clear-directory') {
-    e.preventDefault();
-    clearDirectoryHistory();
-    return;
+  if (target.classList.contains('history-clear')) {
+    let clearAction: (() => void) | null = null;
+    if (target.dataset.action === 'clear-search') {
+      clearAction = clearSearchHistory;
+    } else if (target.dataset.action === 'clear-directory') {
+      clearAction = clearDirectoryHistory;
+    }
+    if (clearAction) {
+      e.preventDefault();
+      clearAction();
+    }
   }
 });
 
@@ -7510,27 +7512,26 @@ document.addEventListener('mousedown', (e) => {
   }
 })();
 
+function disconnectAndResetObserver<T extends { disconnect: () => void }>(
+  observer: T | null
+): null {
+  observer?.disconnect();
+  return null;
+}
+
+function clearAndResetTimeout(timer: ReturnType<typeof setTimeout> | null): null {
+  if (timer) clearTimeout(timer);
+  return null;
+}
+
 window.addEventListener('beforeunload', () => {
   stopIndexStatusPolling();
   cancelActiveSearch();
   cleanupPropertiesDialog();
-  if (thumbnailObserver) {
-    thumbnailObserver.disconnect();
-    thumbnailObserver = null;
-  }
-  if (virtualizedObserver) {
-    virtualizedObserver.disconnect();
-    virtualizedObserver = null;
-  }
-
-  if (diskSpaceDebounceTimer) {
-    clearTimeout(diskSpaceDebounceTimer);
-    diskSpaceDebounceTimer = null;
-  }
-  if (zoomPopupTimeout) {
-    clearTimeout(zoomPopupTimeout);
-    zoomPopupTimeout = null;
-  }
+  thumbnailObserver = disconnectAndResetObserver(thumbnailObserver);
+  virtualizedObserver = disconnectAndResetObserver(virtualizedObserver);
+  diskSpaceDebounceTimer = clearAndResetTimeout(diskSpaceDebounceTimer);
+  zoomPopupTimeout = clearAndResetTimeout(zoomPopupTimeout);
   if (!isResettingSettings) {
     if (tabsEnabled && tabs.length > 0) {
       const currentTab = tabs.find((t) => t.id === activeTabId);
@@ -7556,21 +7557,20 @@ window.addEventListener('beforeunload', () => {
     currentSettings._timestamp = Date.now();
     window.electronAPI.saveSettingsSync(currentSettings);
   }
-  if (settingsSaveTimeout) {
-    clearTimeout(settingsSaveTimeout);
-    settingsSaveTimeout = null;
-  }
+  settingsSaveTimeout = clearAndResetTimeout(settingsSaveTimeout);
   cleanupTabs();
   cleanupArchiveOperations();
 
-  filePathMap.clear();
-  fileElementMap.clear();
-  gitIndicatorPaths.clear();
-  cutPaths.clear();
-  diskSpaceCache.clear();
-  gitStatusCache.clear();
-  gitStatusInFlight.clear();
-  thumbnailCache.clear();
+  [
+    filePathMap,
+    fileElementMap,
+    gitIndicatorPaths,
+    cutPaths,
+    diskSpaceCache,
+    gitStatusCache,
+    gitStatusInFlight,
+    thumbnailCache,
+  ].forEach((cache) => cache.clear());
   pendingThumbnailLoads.length = 0;
 
   for (const cleanup of ipcCleanupFunctions) {

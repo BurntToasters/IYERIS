@@ -691,9 +691,12 @@ export function setupSystemHandlers(
     }
   );
 
-  handleTrustedEvent('get-platform', '', (): string => process.platform);
-
-  handleTrustedEvent('get-app-version', '', (): string => app.getVersion());
+  const trustedStringEvents: Array<[string, () => string]> = [
+    ['get-platform', () => process.platform],
+    ['get-app-version', () => app.getVersion()],
+    ['get-logs-path', () => logger.getLogsDirectory()],
+  ];
+  trustedStringEvents.forEach(([channel, handler]) => handleTrustedEvent(channel, '', handler));
 
   handleTrustedEvent(
     'get-system-accent-color',
@@ -715,11 +718,12 @@ export function setupSystemHandlers(
     }
   );
 
-  handleTrustedEvent('is-mas', false, (): boolean => process.mas === true);
-
-  handleTrustedEvent('is-flatpak', false, (): boolean => isRunningInFlatpak());
-
-  handleTrustedEvent('is-ms-store', false, (): boolean => process.windowsStore === true);
+  const trustedBooleanEvents: Array<[string, () => boolean]> = [
+    ['is-mas', () => process.mas === true],
+    ['is-flatpak', () => isRunningInFlatpak()],
+    ['is-ms-store', () => process.windowsStore === true],
+  ];
+  trustedBooleanEvents.forEach(([channel, handler]) => handleTrustedEvent(channel, false, handler));
 
   handleTrustedEvent(
     'get-system-text-scale',
@@ -890,8 +894,6 @@ export function setupSystemHandlers(
       }
     }
   );
-
-  handleTrustedEvent('get-logs-path', '', (): string => logger.getLogsDirectory());
 
   handleTrustedApi('open-logs-folder', async (): Promise<ApiResponse> => {
     const logsDir = logger.getLogsDirectory();
