@@ -4,6 +4,10 @@
 
 IYERIS is an Electron-based cross-platform file explorer. The codebase is split across three process boundaries with strict separation enforced by TypeScript compilation and Electron's context isolation.
 
+IYERIS aims to not use `any` types in all TS files that get compiled to be packaged into the `electron-builder` packages.
+
+- `*.test.ts` files have an exception to this guideline.
+
 ### Directory Structure
 
 ```
