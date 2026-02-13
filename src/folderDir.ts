@@ -129,7 +129,7 @@ export function createFolderTreeManager(deps: FolderTreeDependencies): FolderTre
     item.setAttribute('aria-expanded', 'false');
     item.setAttribute('aria-level', String(depth + 1));
     item.tabIndex = -1;
-    item.style.paddingLeft = `${6 + depth * 12}px`;
+    item.style.setProperty('--tree-item-depth', String(depth));
 
     const toggle = document.createElement('span');
     toggle.className = 'tree-toggle';

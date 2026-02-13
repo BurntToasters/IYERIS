@@ -4,6 +4,7 @@ type SelectionDeps = {
   getSelectedItems: () => Set<string>;
   setSelectedItems: (items: Set<string>) => void;
   updateStatusBar: () => void;
+  onSelectionChanged?: () => void;
   isPreviewVisible: () => boolean;
   updatePreview: (file: FileItem) => void;
   clearPreview: () => void;
@@ -68,6 +69,7 @@ export function createSelectionController(deps: SelectionDeps) {
     } else {
       selectedItems.delete(itemPath);
     }
+    deps.onSelectionChanged?.();
     deps.updateStatusBar();
     setActiveItem(fileItem, true);
 
@@ -85,11 +87,13 @@ export function createSelectionController(deps: SelectionDeps) {
   }
 
   function clearSelection() {
-    document.querySelectorAll('.file-item.selected').forEach((item) => {
+    const scope = getSelectionScope();
+    scope.querySelectorAll('.file-item.selected').forEach((item) => {
       setSelectedState(item as HTMLElement, false);
     });
     const selectedItems = deps.getSelectedItems();
     selectedItems.clear();
+    deps.onSelectionChanged?.();
     deps.updateStatusBar();
     ensureActiveItem();
 
@@ -100,13 +104,15 @@ export function createSelectionController(deps: SelectionDeps) {
 
   function selectAll() {
     const selectedItems = deps.getSelectedItems();
-    document.querySelectorAll('.file-item').forEach((item) => {
+    selectedItems.clear();
+    getFileItemsArray().forEach((item) => {
       setSelectedState(item as HTMLElement, true);
       const itemPath = item.getAttribute('data-path');
       if (itemPath) {
         selectedItems.add(itemPath);
       }
     });
+    deps.onSelectionChanged?.();
     deps.updateStatusBar();
     ensureActiveItem();
   }
@@ -121,8 +127,16 @@ export function createSelectionController(deps: SelectionDeps) {
     }
   }
 
+  function getSelectionScope(): ParentNode {
+    const grid = deps.getFileGrid();
+    if (!grid || !grid.isConnected) return document;
+    if (grid.querySelector('.file-item')) return grid;
+    return document.querySelector('.file-item') ? document : grid;
+  }
+
   function getFileItemsArray(): HTMLElement[] {
-    return Array.from(document.querySelectorAll('.file-item')) as HTMLElement[];
+    const scope = getSelectionScope();
+    return Array.from(scope.querySelectorAll('.file-item')) as HTMLElement[];
   }
 
   function getGridColumns(): number {
@@ -271,6 +285,7 @@ export function createSelectionController(deps: SelectionDeps) {
 
     lastSelectedIndex = index;
     setActiveItem(fileItems[index], true);
+    deps.onSelectionChanged?.();
     deps.updateStatusBar();
 
     if (deps.isPreviewVisible() && deps.getSelectedItems().size === 1) {
@@ -315,18 +330,20 @@ export function createSelectionController(deps: SelectionDeps) {
 
       const fvRect = fileView.getBoundingClientRect();
       cachedItemRects = [];
-      document.querySelectorAll('.file-item').forEach((item) => {
-        const el = item as HTMLElement;
-        const r = el.getBoundingClientRect();
-        cachedItemRects.push({
-          el,
-          path: el.dataset.path || '',
-          left: r.left - fvRect.left + fileView.scrollLeft,
-          top: r.top - fvRect.top + fileView.scrollTop,
-          right: r.left - fvRect.left + fileView.scrollLeft + r.width,
-          bottom: r.top - fvRect.top + fileView.scrollTop + r.height,
+      getSelectionScope()
+        .querySelectorAll('.file-item')
+        .forEach((item) => {
+          const el = item as HTMLElement;
+          const r = el.getBoundingClientRect();
+          cachedItemRects.push({
+            el,
+            path: el.dataset.path || '',
+            left: r.left - fvRect.left + fileView.scrollLeft,
+            top: r.top - fvRect.top + fileView.scrollTop,
+            right: r.left - fvRect.left + fileView.scrollLeft + r.width,
+            bottom: r.top - fvRect.top + fileView.scrollTop + r.height,
+          });
         });
-      });
 
       e.preventDefault();
     });
@@ -372,6 +389,7 @@ export function createSelectionController(deps: SelectionDeps) {
         }
 
         deps.setSelectedItems(nextSelection);
+        deps.onSelectionChanged?.();
         deps.updateStatusBar();
       });
     });

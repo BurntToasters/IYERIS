@@ -224,8 +224,8 @@
 .section-title {
   font-size: var(--font-size-section-title);
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  text-transform: none;
+  letter-spacing: 0.02em;
   color: var(--text-secondary);
   text-shadow: none;
   margin: 0;
@@ -384,6 +384,7 @@
   align-items: center;
   gap: var(--nav-item-gap);
   padding: var(--nav-item-padding-v) var(--nav-item-padding-h);
+  padding-left: calc(6px + var(--tree-item-depth, 0) * 12px);
   border-radius: var(--radius-small);
   cursor: pointer;
   font-size: var(--font-size-nav);

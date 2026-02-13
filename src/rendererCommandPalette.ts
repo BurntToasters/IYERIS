@@ -11,6 +11,7 @@ interface Command {
   title: string;
   description?: string;
   icon?: string;
+  keywords?: string[];
   shortcut?: ShortcutBinding;
   action: () => void;
   category?: string;
@@ -56,6 +57,56 @@ export function createCommandPaletteController(deps: CommandPaletteDeps) {
   let commandPaletteFocusedIndex = -1;
   let commandPalettePreviousFocus: HTMLElement | null = null;
   let commandsRegistered = false;
+
+  function hasSubsequenceMatch(haystack: string, needle: string): boolean {
+    if (!needle) return true;
+    let i = 0;
+    for (let j = 0; j < haystack.length && i < needle.length; j++) {
+      if (haystack[j] === needle[i]) i++;
+    }
+    return i === needle.length;
+  }
+
+  function scoreCommandMatch(cmd: Command, query: string): number {
+    if (!query) return 0;
+    const tokens = query.split(/\s+/).filter(Boolean);
+    if (tokens.length === 0) return 0;
+
+    const title = cmd.title.toLowerCase();
+    const description = cmd.description?.toLowerCase() || '';
+    const id = cmd.id.toLowerCase();
+    const keywords = (cmd.keywords || []).map((word) => word.toLowerCase());
+
+    let score = 0;
+    for (const token of tokens) {
+      let tokenScore = -1;
+      if (title === token || id === token || keywords.includes(token)) {
+        tokenScore = 120;
+      } else if (
+        title.startsWith(token) ||
+        id.startsWith(token) ||
+        keywords.some((word) => word.startsWith(token))
+      ) {
+        tokenScore = 90;
+      } else if (title.includes(token)) {
+        tokenScore = 70;
+      } else if (id.includes(token) || keywords.some((word) => word.includes(token))) {
+        tokenScore = 56;
+      } else if (description.includes(token)) {
+        tokenScore = 44;
+      } else if (hasSubsequenceMatch(title, token) || hasSubsequenceMatch(id, token)) {
+        tokenScore = 28;
+      }
+
+      if (tokenScore < 0) return -1;
+      score += tokenScore;
+    }
+
+    if (tokens.length > 1 && (title.includes(query) || description.includes(query))) {
+      score += 24;
+    }
+    return score;
+  }
 
   function syncCommandShortcuts(): void {
     for (const cmd of commands) {
@@ -121,15 +172,31 @@ export function createCommandPaletteController(deps: CommandPaletteDeps) {
 
     // [id, title, description, icon, action, shortcutSource]
     // shortcutSource: 'r' = remappable (getShortcutBinding), 'f' = fixed, undefined = none
-    const defs: [string, string, string, string, () => void, 'r' | 'f' | undefined][] = [
-      ['new-folder', 'New Folder', 'Create a new folder', '📁', createNewFolder, 'r'],
-      ['new-file', 'New File', 'Create a new file', '📄', createNewFile, 'r'],
-      ['search', 'Search', 'Search files in current folder', '🔍', clickBtn('search-btn'), 'r'],
-      ['refresh', 'Refresh', 'Reload current folder', '🔄', refresh, 'f'],
-      ['go-back', 'Go Back', 'Navigate to previous folder', '⬅️', goBack, 'r'],
-      ['go-forward', 'Go Forward', 'Navigate to next folder', '➡️', goForward, 'r'],
-      ['go-up', 'Go Up', 'Navigate to parent folder', '⬆️', goUp, 'r'],
-      ['settings', 'Settings', 'Open settings', '⚙️', showSettingsModal, 'r'],
+    const defs: [
+      string,
+      string,
+      string,
+      string,
+      () => void,
+      'r' | 'f' | undefined,
+      string[] | undefined,
+    ][] = [
+      ['new-folder', 'New Folder', 'Create a new folder', '📁', createNewFolder, 'r', ['mkdir']],
+      ['new-file', 'New File', 'Create a new file', '📄', createNewFile, 'r', ['touch']],
+      [
+        'search',
+        'Search',
+        'Search files in current folder',
+        '🔍',
+        clickBtn('search-btn'),
+        'r',
+        ['find', 'lookup'],
+      ],
+      ['refresh', 'Refresh', 'Reload current folder', '🔄', refresh, 'f', ['reload', 'rescan']],
+      ['go-back', 'Go Back', 'Navigate to previous folder', '⬅️', goBack, 'r', ['back']],
+      ['go-forward', 'Go Forward', 'Navigate to next folder', '➡️', goForward, 'r', ['forward']],
+      ['go-up', 'Go Up', 'Navigate to parent folder', '⬆️', goUp, 'r', ['parent']],
+      ['settings', 'Settings', 'Open settings', '⚙️', showSettingsModal, 'r', ['preferences']],
       [
         'shortcuts',
         'Keyboard Shortcuts',
@@ -137,15 +204,32 @@ export function createCommandPaletteController(deps: CommandPaletteDeps) {
         '⌨️',
         showShortcutsModal,
         'r',
+        ['hotkeys', 'keys'],
       ],
-      ['select-all', 'Select All', 'Select all items', '☑️', selectAll, 'r'],
-      ['copy', 'Copy', 'Copy selected items', '📋', copyToClipboard, 'r'],
-      ['cut', 'Cut', 'Cut selected items', '✂️', cutToClipboard, 'r'],
-      ['paste', 'Paste', 'Paste items', '📎', pasteFromClipboard, 'r'],
-      ['delete', 'Delete', 'Delete selected items', '🗑️', deleteSelected, 'f'],
-      ['rename', 'Rename', 'Rename selected item', '✍️', renameSelected, 'f'],
-      ['grid-view', 'Grid View', 'Switch to grid view', '▦', () => setViewMode('grid'), undefined],
-      ['list-view', 'List View', 'Switch to list view', '☰', () => setViewMode('list'), undefined],
+      ['select-all', 'Select All', 'Select all items', '☑️', selectAll, 'r', ['highlight']],
+      ['copy', 'Copy', 'Copy selected items', '📋', copyToClipboard, 'r', ['duplicate']],
+      ['cut', 'Cut', 'Cut selected items', '✂️', cutToClipboard, 'r', ['move']],
+      ['paste', 'Paste', 'Paste items', '📎', pasteFromClipboard, 'r', ['insert']],
+      ['delete', 'Delete', 'Delete selected items', '🗑️', deleteSelected, 'f', ['remove']],
+      ['rename', 'Rename', 'Rename selected item', '✍️', renameSelected, 'f', ['edit name']],
+      [
+        'grid-view',
+        'Grid View',
+        'Switch to grid view',
+        '▦',
+        () => setViewMode('grid'),
+        undefined,
+        ['tiles'],
+      ],
+      [
+        'list-view',
+        'List View',
+        'Switch to list view',
+        '☰',
+        () => setViewMode('list'),
+        undefined,
+        ['rows', 'details'],
+      ],
       [
         'column-view',
         'Column View',
@@ -153,6 +237,7 @@ export function createCommandPaletteController(deps: CommandPaletteDeps) {
         '|||',
         () => setViewMode('column'),
         undefined,
+        ['finder', 'columns'],
       ],
       [
         'toggle-preview',
@@ -161,6 +246,7 @@ export function createCommandPaletteController(deps: CommandPaletteDeps) {
         '👁️',
         clickBtn('preview-toggle-btn'),
         undefined,
+        ['preview', 'inspector'],
       ],
       [
         'toggle-sidebar',
@@ -169,6 +255,7 @@ export function createCommandPaletteController(deps: CommandPaletteDeps) {
         '📂',
         clickBtn('sidebar-toggle'),
         'r',
+        ['navigation'],
       ],
       [
         'new-tab',
@@ -179,10 +266,11 @@ export function createCommandPaletteController(deps: CommandPaletteDeps) {
           if (deps.getTabsEnabled()) addNewTab();
         },
         'r',
+        ['tab'],
       ],
     ];
 
-    for (const [id, title, description, icon, fn, src] of defs) {
+    for (const [id, title, description, icon, fn, src, keywords] of defs) {
       const shortcut =
         src === 'r'
           ? deps.getShortcutBinding(id)
@@ -194,6 +282,7 @@ export function createCommandPaletteController(deps: CommandPaletteDeps) {
         title,
         description,
         icon,
+        keywords,
         shortcut,
         action: () => {
           hideCommandPalette();
@@ -241,12 +330,15 @@ export function createCommandPaletteController(deps: CommandPaletteDeps) {
       return;
     }
 
-    const filtered = commands.filter(
-      (cmd) =>
-        cmd.title.toLowerCase().includes(query) ||
-        cmd.description?.toLowerCase().includes(query) ||
-        cmd.id.toLowerCase().includes(query)
-    );
+    const filtered = commands
+      .map((cmd, index) => ({
+        cmd,
+        index,
+        score: scoreCommandMatch(cmd, query),
+      }))
+      .filter((entry) => entry.score >= 0)
+      .sort((a, b) => b.score - a.score || a.index - b.index)
+      .map((entry) => entry.cmd);
 
     renderCommandPaletteResults(filtered);
   }

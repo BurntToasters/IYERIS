@@ -309,24 +309,25 @@ describe('createDiskSpaceController', () => {
 
       ctrl.renderDiskSpace(mockElement, 1e12, 5e11);
       expect(mockElement.innerHTML).toContain('free of');
+      expect(mockElement.innerHTML).toContain('status-disk-meter-fill');
     });
 
-    it('uses orange color when usage > 80%', () => {
+    it('uses warning state when usage > 80%', () => {
       const deps = makeDeps();
       const ctrl = createDiskSpaceController(deps);
       const mockElement = { innerHTML: '' } as any;
 
       ctrl.renderDiskSpace(mockElement, 1000, 150);
-      expect(mockElement.innerHTML).toContain('#ff8c00');
+      expect(mockElement.innerHTML).toContain('status-disk-meter-fill warning');
     });
 
-    it('uses red color when usage > 90%', () => {
+    it('uses critical state when usage > 90%', () => {
       const deps = makeDeps();
       const ctrl = createDiskSpaceController(deps);
       const mockElement = { innerHTML: '' } as any;
 
       ctrl.renderDiskSpace(mockElement, 1000, 50);
-      expect(mockElement.innerHTML).toContain('#e81123');
+      expect(mockElement.innerHTML).toContain('status-disk-meter-fill critical');
     });
   });
 

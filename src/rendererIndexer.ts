@@ -1,6 +1,12 @@
 import { twemojiImg } from './rendererUtils.js';
 
-const INDEX_STATUS_POLL_MS = 500;
+const INDEX_STATUS_POLL_MS = 1500;
+
+type IndexStatusSnapshot = {
+  isIndexing: boolean;
+  indexedFiles: number;
+  lastIndexTime?: string | number | null;
+};
 
 interface IndexerConfig {
   getShowToast: () => (message: string, title: string, type: string) => void;
@@ -9,18 +15,29 @@ interface IndexerConfig {
 export function createIndexerController(config: IndexerConfig) {
   let indexStatusInterval: NodeJS.Timeout | null = null;
   let consecutiveErrors = 0;
+  let pollInFlight = false;
   const MAX_CONSECUTIVE_ERRORS = 10;
 
   function startIndexStatusPolling() {
     stopIndexStatusPolling();
     consecutiveErrors = 0;
-    indexStatusInterval = setInterval(async () => {
-      await updateIndexStatus();
-      const result = await window.electronAPI.getIndexStatus();
-      if (result.success && result.status && !result.status.isIndexing) {
-        stopIndexStatusPolling();
+    const runPoll = async () => {
+      if (pollInFlight) return;
+      pollInFlight = true;
+      try {
+        const status = await updateIndexStatus();
+        if (status && !status.isIndexing) {
+          stopIndexStatusPolling();
+        }
+      } finally {
+        pollInFlight = false;
       }
+    };
+
+    indexStatusInterval = setInterval(() => {
+      void runPoll();
     }, INDEX_STATUS_POLL_MS);
+    void runPoll();
   }
 
   function stopIndexStatusPolling() {
@@ -28,17 +45,18 @@ export function createIndexerController(config: IndexerConfig) {
       clearInterval(indexStatusInterval);
       indexStatusInterval = null;
     }
+    pollInFlight = false;
     consecutiveErrors = 0;
   }
 
-  async function updateIndexStatus() {
+  async function updateIndexStatus(): Promise<IndexStatusSnapshot | null> {
     const indexStatus = document.getElementById('index-status');
-    if (!indexStatus) return;
+    if (!indexStatus) return null;
 
     try {
       const result = await window.electronAPI.getIndexStatus();
       if (result.success && result.status) {
-        const status = result.status;
+        const status = result.status as IndexStatusSnapshot;
         if (status.isIndexing) {
           indexStatus.textContent = `Status: Indexing... (${status.indexedFiles.toLocaleString()} files found)`;
           if (!indexStatusInterval) {
@@ -50,8 +68,10 @@ export function createIndexerController(config: IndexerConfig) {
         } else {
           indexStatus.textContent = 'Status: Not indexed yet';
         }
+        return status;
       } else {
         indexStatus.textContent = 'Status: Unknown';
+        return null;
       }
     } catch (error) {
       console.error('Failed to get index status:', error);
@@ -60,6 +80,7 @@ export function createIndexerController(config: IndexerConfig) {
       if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
         stopIndexStatusPolling();
       }
+      return null;
     }
   }
 
@@ -75,6 +96,7 @@ export function createIndexerController(config: IndexerConfig) {
       const result = await window.electronAPI.rebuildIndex();
       if (result.success) {
         config.getShowToast()('Index rebuild started', 'File Indexer', 'success');
+        startIndexStatusPolling();
         setTimeout(async () => {
           await updateIndexStatus();
         }, 300);

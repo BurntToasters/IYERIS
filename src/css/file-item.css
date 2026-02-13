@@ -15,6 +15,9 @@
   border: 1px solid transparent;
   user-select: none;
   position: relative;
+  content-visibility: auto;
+  contain-intrinsic-size: 112px;
+  contain: layout style paint;
 }
 
 .file-main {
@@ -51,6 +54,16 @@
 }
 
 body.reduce-motion .file-item.animate-in {
+  animation: none;
+  opacity: 1;
+  transform: none;
+}
+
+body.performance-mode .file-item {
+  transition: none;
+}
+
+body.performance-mode .file-item.animate-in {
   animation: none;
   opacity: 1;
   transform: none;
@@ -308,6 +321,10 @@ body.reduce-motion .file-item.spring-loading {
   flex-shrink: 0;
   opacity: 0.4;
   transform: none;
+}
+
+.file-grid.list-view .file-item {
+  contain-intrinsic-size: 36px;
 }
 
 .file-grid.list-view .file-item:hover .file-checkbox,

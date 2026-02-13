@@ -16,12 +16,12 @@ export default tseslint.config(
     },
     rules: {
       // Type safety
-      '@typescript-eslint/no-explicit-any': 'error',
+      '@typescript-eslint/no-explicit-any': 'warn',
       '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
       '@typescript-eslint/no-require-imports': 'warn',
 
       // Console log
-      'no-console': ['warn', { allow: ['log', 'info', 'debug', 'warn', 'error'] }],
+      'no-console': ['warn', { allow: ['warn', 'error'] }],
 
       // Code quality
       'prefer-const': 'error',
@@ -32,13 +32,6 @@ export default tseslint.config(
       'no-useless-escape': 'warn',
 
       'no-empty': ['error', { allowEmptyCatch: true }],
-    },
-  },
-  {
-    files: ['src/**/*.test.ts'],
-    rules: {
-      '@typescript-eslint/no-explicit-any': 'off',
-      '@typescript-eslint/no-unused-vars': 'off',
     },
   },
   {

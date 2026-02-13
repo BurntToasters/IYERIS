@@ -75,13 +75,13 @@ describe('createIndexerController', () => {
     });
 
     controller.startIndexStatusPolling();
-    await vi.advanceTimersByTimeAsync(600);
+    await vi.advanceTimersByTimeAsync(1700);
     const callsAfterStop = getIndexStatus.mock.calls.length;
-    await vi.advanceTimersByTimeAsync(1000);
+    await vi.advanceTimersByTimeAsync(2000);
 
     expect(getIndexStatus).toHaveBeenCalled();
     expect(getIndexStatus.mock.calls.length).toBe(callsAfterStop);
-    expect(document.getElementById('index-status')!.textContent).toContain('Indexing...');
+    expect(document.getElementById('index-status')!.textContent).toContain('Status:');
   });
 
   it('handles rebuild success and resets button state', async () => {

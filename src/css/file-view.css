@@ -100,9 +100,9 @@ body.platform-win32 .file-view::-webkit-scrollbar-thumb:hover {
     rgba(var(--bg-primary-rgb), 0.92)
   );
   border-bottom: 1px solid var(--separator);
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  font-size: 11.5px;
+  text-transform: none;
+  letter-spacing: 0.015em;
   color: var(--text-tertiary);
 }
 

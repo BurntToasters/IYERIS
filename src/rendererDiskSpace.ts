@@ -67,28 +67,24 @@ export function createDiskSpaceController(deps: DiskSpaceControllerDeps) {
     const totalStr = deps.formatFileSize(total);
     const usedBytes = total - free;
     const usedPercent = ((usedBytes / total) * 100).toFixed(1);
-    let usageColor = '#107c10';
-    if (parseFloat(usedPercent) > 80) {
-      usageColor = '#ff8c00';
-    }
-    if (parseFloat(usedPercent) > 90) {
-      usageColor = '#e81123';
-    }
+    const usedPercentNumeric = parseFloat(usedPercent);
+    const usageState =
+      usedPercentNumeric > 90 ? 'critical' : usedPercentNumeric > 80 ? 'warning' : 'healthy';
 
     element.innerHTML = `
-    <span style="display: inline-flex; align-items: center; gap: 6px;">
+    <span class="status-disk">
       ${twemojiImg(String.fromCodePoint(0x1f4be), 'twemoji')} ${freeStr} free of ${totalStr}
-      <span style="display: inline-block; width: 60px; height: 8px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden; position: relative;">
-        <span style="position: absolute; left: 0; top: 0; height: 100%; width: ${usedPercent}%; background: ${usageColor}; transition: width 0.3s ease;"></span>
+      <span class="status-disk-meter">
+        <span class="status-disk-meter-fill ${usageState}" style="width: ${usedPercent}%"></span>
       </span>
-      <span style="opacity: 0.7;">(${usedPercent}% used)</span>
+      <span class="status-disk-percent">(${usedPercent}% used)</span>
     </span>
   `;
   }
 
   function renderDiskSpaceUnavailable(element: HTMLElement, message: string): void {
     element.innerHTML = `
-    <span style="display: inline-flex; align-items: center; gap: 6px; opacity: 0.7;">
+    <span class="status-disk status-disk-unavailable">
       ${twemojiImg(String.fromCodePoint(0x26a0), 'twemoji')} ${escapeHtml(message)}
     </span>
   `;

@@ -43,7 +43,7 @@ function setPlatform(platform: NodeJS.Platform): void {
 
 describe('utils.ts', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     vi.resetModules();
   });
 

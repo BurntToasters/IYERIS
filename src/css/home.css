@@ -37,9 +37,10 @@
 }
 
 .home-section-title {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+  font-size: 11.5px;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0.02em;
   color: var(--text-tertiary);
 }
 

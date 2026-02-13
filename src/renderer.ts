@@ -90,6 +90,8 @@ const DIRECTORY_HISTORY_MAX = 5;
 const RENDER_BATCH_SIZE = 50;
 const VIRTUALIZE_THRESHOLD = 2000;
 const VIRTUALIZE_BATCH_SIZE = 200;
+const ANIMATED_RENDER_ITEM_LIMIT = 320;
+const PERFORMANCE_MODE_ITEM_THRESHOLD = 6000;
 const DIRECTORY_PROGRESS_THROTTLE_MS = 100;
 const SUPPORT_POPUP_DELAY_MS = 1500;
 
@@ -208,6 +210,8 @@ let currentPath: string = '';
 let history: string[] = [];
 let historyIndex: number = -1;
 let selectedItems: Set<string> = new Set();
+let selectedItemsSizeBytes = 0;
+let selectedItemsSizeDirty = true;
 let viewMode: ViewMode = 'grid';
 let allFiles: FileItem[] = [];
 let hiddenFilesCount = 0;
@@ -215,6 +219,36 @@ let platformOS: string = '';
 let canUndo: boolean = false;
 let canRedo: boolean = false;
 let folderTreeEnabled: boolean = true;
+let disableEntryAnimation = false;
+
+function markSelectionDirty(): void {
+  selectedItemsSizeDirty = true;
+}
+
+function setSelectedItemsState(value: Set<string>): void {
+  selectedItems = value;
+  markSelectionDirty();
+}
+
+function clearSelectedItemsState(): void {
+  if (selectedItems.size === 0) return;
+  selectedItems.clear();
+  markSelectionDirty();
+}
+
+function getSelectedItemsSizeBytes(): number {
+  if (!selectedItemsSizeDirty) return selectedItemsSizeBytes;
+  let sum = 0;
+  for (const itemPath of selectedItems) {
+    const item = filePathMap.get(itemPath);
+    if (item) {
+      sum += item.size;
+    }
+  }
+  selectedItemsSizeBytes = sum;
+  selectedItemsSizeDirty = false;
+  return sum;
+}
 
 function getFileItemsArray(): HTMLElement[] {
   return Array.from(document.querySelectorAll('.file-item')) as HTMLElement[];
@@ -598,9 +632,10 @@ const previewController = createPreviewController({
 const selectionController = createSelectionController({
   getSelectedItems: () => selectedItems,
   setSelectedItems: (items) => {
-    selectedItems = items;
+    setSelectedItemsState(items);
   },
   updateStatusBar,
+  onSelectionChanged: markSelectionDirty,
   isPreviewVisible: () => previewController.isPreviewVisible(),
   updatePreview: (file) => previewController.updatePreview(file),
   clearPreview: () => previewController.clearPreview(),
@@ -668,6 +703,8 @@ const hoverCardController = createHoverCardController({
   getFileIcon,
   getThumbnailForPath: thumbnails.getThumbnailForPath,
   isRubberBandActive,
+  getHoverRoot: () => fileGrid,
+  getScrollContainer: () => fileView,
 });
 
 const { setEnabled: setHoverCardEnabled, setup: setupHoverCard } = hoverCardController;
@@ -821,7 +858,7 @@ const tabsController = createTabsController({
   },
   getSelectedItems: () => selectedItems,
   setSelectedItems: (value) => {
-    selectedItems = value;
+    setSelectedItemsState(value);
   },
   getAllFiles: () => allFiles,
   setAllFiles: (value) => {
@@ -1041,7 +1078,9 @@ const settingsModalController = createSettingsModalController({
   activateSettingsTab,
   updateCustomThemeUI,
   updateDangerousOptionsVisibility,
-  updateIndexStatus,
+  updateIndexStatus: async () => {
+    await updateIndexStatus();
+  },
   updateThumbnailCacheSize: thumbnails.updateThumbnailCacheSize,
   syncQuickActionsFromMain,
   updateSettingsCardSummaries,
@@ -1551,8 +1590,9 @@ function setHomeViewActive(active: boolean): void {
     resetVirtualizedRender();
     allFiles = [];
     filePathMap.clear();
-    selectedItems.clear();
+    clearSelectedItemsState();
     updateStatusBar();
+    document.body.classList.remove('performance-mode');
     const statusDiskSpace = document.getElementById('status-disk-space');
     if (statusDiskSpace) statusDiskSpace.textContent = '';
     const statusGitBranch = document.getElementById('status-git-branch');
@@ -1702,14 +1742,7 @@ function updateStatusBar() {
 
   if (statusSelected) {
     if (selectedItems.size > 0) {
-      const totalSize = (() => {
-        let sum = 0;
-        for (const itemPath of selectedItems) {
-          const item = filePathMap.get(itemPath);
-          if (item) sum += item.size;
-        }
-        return sum;
-      })();
+      const totalSize = getSelectedItemsSizeBytes();
       const sizeStr = formatFileSize(totalSize);
       statusSelected.textContent = `${selectedItems.size} selected (${sizeStr})`;
       statusSelected.style.display = 'inline';
@@ -2639,7 +2672,6 @@ function appendNextVirtualizedBatch(): void {
   const paths = appendFileItems(batch, virtualizedSearchQuery);
   applyGitIndicatorsToPaths(paths);
   clipboardController.updateCutVisuals();
-  updateStatusBar();
   ensureActiveItem();
 
   if (virtualizedRenderIndex < virtualizedItems.length) {
@@ -2652,6 +2684,23 @@ function appendNextVirtualizedBatch(): void {
 let renderItemIndex = 0;
 const animationCleanupItems: HTMLElement[] = [];
 let animationCleanupTimer: ReturnType<typeof setTimeout> | null = null;
+const fileIconNodeCache = new Map<string, HTMLElement>();
+
+function createFileIconNode(iconHtml: string): HTMLElement {
+  const cached = fileIconNodeCache.get(iconHtml);
+  if (cached) {
+    return cached.cloneNode(true) as HTMLElement;
+  }
+  const wrapper = document.createElement('div');
+  wrapper.innerHTML = iconHtml;
+  const first = wrapper.firstElementChild;
+  const node = first instanceof HTMLElement ? first : document.createElement('span');
+  if (!(first instanceof HTMLElement)) {
+    node.textContent = iconHtml;
+  }
+  fileIconNodeCache.set(iconHtml, node.cloneNode(true) as HTMLElement);
+  return node;
+}
 
 function scheduleAnimationCleanup(): void {
   if (animationCleanupTimer) return;
@@ -2672,7 +2721,8 @@ function appendFileItems(items: FileItem[], searchQuery?: string): string[] {
   if (!fileGrid) return [];
   const fragment = document.createDocumentFragment();
   const paths: string[] = [];
-  const shouldAnimate = !document.body.classList.contains('reduce-motion');
+  const shouldAnimate =
+    !disableEntryAnimation && !document.body.classList.contains('reduce-motion');
 
   for (const item of items) {
     const fileItem = createFileItem(item, searchQuery);
@@ -2704,12 +2754,18 @@ function renderFiles(items: FileItem[], searchQuery?: string) {
   thumbnails.resetThumbnailObserver();
   fileGrid.innerHTML = '';
   renderItemIndex = 0;
+  disableEntryAnimation = false;
   clearSelection();
   allFiles = items;
+  document.body.classList.toggle(
+    'performance-mode',
+    items.length >= PERFORMANCE_MODE_ITEM_THRESHOLD
+  );
   updateHiddenFilesCount(items);
 
   filePathMap.clear();
   fileElementMap.clear();
+  markSelectionDirty();
   gitStatus.clearCache();
   clipboardController.clearCutPaths();
   for (const item of items) {
@@ -2786,11 +2842,14 @@ function renderFiles(items: FileItem[], searchQuery?: string) {
     return sortOrder === 'asc' ? comparison : -comparison;
   });
 
+  disableEntryAnimation = sortedItems.length > ANIMATED_RENDER_ITEM_LIMIT;
+
   if (sortedItems.length >= VIRTUALIZE_THRESHOLD) {
     virtualizedRenderToken = renderToken;
     virtualizedItems = sortedItems;
     virtualizedRenderIndex = 0;
     virtualizedSearchQuery = searchQuery;
+    updateStatusBar();
     appendNextVirtualizedBatch();
     return;
   }
@@ -2893,7 +2952,7 @@ function createFileItem(item: FileItem, searchQuery?: string): HTMLElement {
   fileItem.innerHTML = `
     <div class="file-main">
       <div class="file-checkbox"><span class="checkbox-mark">✓</span></div>
-      <div class="file-icon">${icon}</div>
+      <div class="file-icon"></div>
       <div class="file-text">
         <div class="file-name">${escapeHtml(displayName)}</div>
         ${matchContextHtml}
@@ -2905,6 +2964,10 @@ function createFileItem(item: FileItem, searchQuery?: string): HTMLElement {
       <span class="file-modified">${dateDisplay}</span>
     </div>
   `;
+  const fileIcon = fileItem.querySelector('.file-icon');
+  if (fileIcon) {
+    fileIcon.appendChild(createFileIconNode(icon));
+  }
   fileItem.draggable = true;
 
   return fileItem;
@@ -3261,6 +3324,7 @@ async function applyViewMode() {
   }
 
   if (viewMode === 'column') {
+    document.body.classList.remove('performance-mode');
     cancelDirectoryRequest();
     hideLoading();
     fileGrid.style.display = 'none';

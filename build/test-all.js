@@ -65,8 +65,8 @@ function parseLint(output) {
 
   const errorMatch = cleanOutput.match(/(\d+)\s+errors?/);
   const warningMatch = cleanOutput.match(/(\d+)\s+warnings?/);
-  results.lint.errors = errorMatch ? parseInt(errorMatch[1], 10) : null;
-  results.lint.warnings = warningMatch ? parseInt(warningMatch[1], 10) : null;
+  results.lint.errors = errorMatch ? parseInt(errorMatch[1], 10) : 0;
+  results.lint.warnings = warningMatch ? parseInt(warningMatch[1], 10) : 0;
 }
 
 function parseTest(output) {
