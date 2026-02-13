@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Settings } from './types';
+import type { Settings } from '../types';
 
 const hoisted = vi.hoisted(() => ({
   appMock: {
@@ -42,11 +42,11 @@ vi.mock('fs', () => ({
   promises: hoisted.fsPromisesMock,
 }));
 
-vi.mock('./appState', () => ({
+vi.mock('../appState', () => ({
   getMainWindow: vi.fn(() => hoisted.mainWindowRef.value),
 }));
 
-import { checkFullDiskAccess, showFullDiskAccessDialog } from './fullDiskAccess';
+import { checkFullDiskAccess, showFullDiskAccessDialog } from '../fullDiskAccess';
 
 describe('fullDiskAccess', () => {
   beforeEach(() => {

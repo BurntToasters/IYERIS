@@ -1,6 +1,7 @@
+// @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-vi.mock('./rendererUtils.js', () => ({
+vi.mock('../rendererUtils.js', () => ({
   twemojiImg: (emoji: string, cls: string) => `<img class="${cls}" alt="${emoji}">`,
 }));
 
@@ -10,7 +11,7 @@ import {
   showDialog,
   showAlert,
   showConfirm,
-} from './rendererModals.js';
+} from '../rendererModals.js';
 
 function makeFocusable(el: HTMLElement) {
   Object.defineProperty(el, 'offsetParent', { get: () => document.body, configurable: true });

@@ -20,28 +20,28 @@ vi.mock('electron', () => ({
   BrowserWindow: hoisted.browserWindowMock,
 }));
 
-vi.mock('./appState', () => ({
+vi.mock('../appState', () => ({
   ZOOM_MIN: 0.5,
   ZOOM_MAX: 2,
 }));
 
-vi.mock('./security', () => ({
+vi.mock('../security', () => ({
   getErrorMessage: vi.fn((error: unknown) =>
     error instanceof Error ? error.message : String(error)
   ),
 }));
 
-vi.mock('./utils/logger', () => ({
+vi.mock('../utils/logger', () => ({
   logger: {
     debug: vi.fn(),
   },
 }));
 
-vi.mock('./ipcUtils', () => ({
+vi.mock('../ipcUtils', () => ({
   isTrustedIpcEvent: vi.fn(() => hoisted.trusted.value),
 }));
 
-import { setupZoomHandlers } from './zoomHandlers';
+import { setupZoomHandlers } from '../zoomHandlers';
 
 describe('setupZoomHandlers', () => {
   beforeEach(() => {

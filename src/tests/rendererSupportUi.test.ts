@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { createSupportUiController } from './rendererSupportUi';
+import { createSupportUiController } from '../rendererSupportUi';
 
 function makeDeps() {
   return {

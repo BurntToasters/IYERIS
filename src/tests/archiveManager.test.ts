@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { buildAdvancedRawFlags } from './archiveManager';
-import type { AdvancedCompressOptions } from './types';
+import { buildAdvancedRawFlags } from '../archiveManager';
+import type { AdvancedCompressOptions } from '../types';
 
 describe('ArchiveManager', () => {
   describe('Archive operations', () => {

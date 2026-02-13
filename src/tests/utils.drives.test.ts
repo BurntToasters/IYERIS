@@ -23,7 +23,7 @@ vi.mock('util', () => ({
   promisify: vi.fn(() => hoisted.execMock),
 }));
 
-vi.mock('./utils/logger', () => ({
+vi.mock('../utils/logger', () => ({
   logger: {
     debug: vi.fn(),
     info: vi.fn(),
@@ -32,7 +32,7 @@ vi.mock('./utils/logger', () => ({
   },
 }));
 
-vi.mock('./shared', () => ({
+vi.mock('../shared', () => ({
   ignoreError: vi.fn(),
 }));
 
@@ -64,7 +64,7 @@ describe('utils module (getDrives/getDriveInfo)', () => {
       });
       hoisted.fsStat.mockResolvedValue({ isDirectory: () => true });
 
-      const { getDrives } = await import('./utils');
+      const { getDrives } = await import('../utils');
       const drives = await getDrives();
       expect(drives).toContain('/');
       expect(drives).toContain('/media/usb1');
@@ -80,7 +80,7 @@ describe('utils module (getDrives/getDriveInfo)', () => {
       });
       hoisted.fsStat.mockResolvedValue({ isDirectory: () => true });
 
-      const { getDrives } = await import('./utils');
+      const { getDrives } = await import('../utils');
       const drives = await getDrives();
       expect(drives).toContain('/media/visible');
       const hasHidden = drives.some((d: string) => d.includes('.hidden'));
@@ -96,7 +96,7 @@ describe('utils module (getDrives/getDriveInfo)', () => {
       });
       hoisted.fsStat.mockResolvedValue({ isDirectory: () => false });
 
-      const { getDrives } = await import('./utils');
+      const { getDrives } = await import('../utils');
       const drives = await getDrives();
       expect(drives).toContain('/');
       expect(drives).not.toContain('/media/file.txt');
@@ -106,7 +106,7 @@ describe('utils module (getDrives/getDriveInfo)', () => {
       setPlatform('linux');
       hoisted.fsReaddir.mockRejectedValue(new Error('EACCES'));
 
-      const { getDrives } = await import('./utils');
+      const { getDrives } = await import('../utils');
       const drives = await getDrives();
       expect(drives).toContain('/');
     });
@@ -120,7 +120,7 @@ describe('utils module (getDrives/getDriveInfo)', () => {
       });
       hoisted.fsStat.mockRejectedValue(new Error('EACCES'));
 
-      const { getDrives } = await import('./utils');
+      const { getDrives } = await import('../utils');
       const drives = await getDrives();
       expect(drives).toContain('/');
       expect(drives).not.toContain('/media/broken');
@@ -130,7 +130,7 @@ describe('utils module (getDrives/getDriveInfo)', () => {
       setPlatform('linux');
       hoisted.fsReaddir.mockResolvedValue([]);
 
-      const { getDrives, getCachedDrives } = await import('./utils');
+      const { getDrives, getCachedDrives } = await import('../utils');
       const first = await getDrives();
       expect(getCachedDrives()).toEqual(first);
 
@@ -151,7 +151,7 @@ describe('utils module (getDrives/getDriveInfo)', () => {
       });
       hoisted.fsStat.mockResolvedValue({ isDirectory: () => true });
 
-      const { getDrives } = await import('./utils');
+      const { getDrives } = await import('../utils');
       const drives = await getDrives();
       expect(drives).toContain('/');
       expect(drives).toContain('/Volumes/Macintosh HD');
@@ -165,7 +165,7 @@ describe('utils module (getDrives/getDriveInfo)', () => {
 
       hoisted.execMock.mockResolvedValueOnce({ stdout: 'C\nD\nE\n' });
 
-      const { getDrives } = await import('./utils');
+      const { getDrives } = await import('../utils');
       const drives = await getDrives();
       expect(drives).toContain('C:\\');
       expect(drives).toContain('D:\\');
@@ -179,7 +179,7 @@ describe('utils module (getDrives/getDriveInfo)', () => {
         .mockRejectedValueOnce(new Error('ps fail'))
         .mockResolvedValueOnce({ stdout: 'Name\nC:\nD:\n' });
 
-      const { getDrives } = await import('./utils');
+      const { getDrives } = await import('../utils');
       const drives = await getDrives();
       expect(drives).toContain('C:\\');
       expect(drives).toContain('D:\\');
@@ -197,7 +197,7 @@ describe('utils module (getDrives/getDriveInfo)', () => {
         throw new Error('ENOENT');
       });
 
-      const { getDrives } = await import('./utils');
+      const { getDrives } = await import('../utils');
       const drives = await getDrives();
       expect(drives).toContain('C:\\');
     });
@@ -209,7 +209,7 @@ describe('utils module (getDrives/getDriveInfo)', () => {
         stdout: 'C\n\nNotADrive\n\n',
       });
 
-      const { getDrives } = await import('./utils');
+      const { getDrives } = await import('../utils');
       const drives = await getDrives();
       expect(drives).toContain('C:\\');
       expect(drives.length).toBe(1);
@@ -221,7 +221,7 @@ describe('utils module (getDrives/getDriveInfo)', () => {
       setPlatform('linux');
       hoisted.fsReaddir.mockRejectedValue(new Error('ENOENT'));
 
-      const { warmupDrivesCache } = await import('./utils');
+      const { warmupDrivesCache } = await import('../utils');
       expect(() => warmupDrivesCache()).not.toThrow();
     });
   });
@@ -236,7 +236,7 @@ describe('utils module (getDrives/getDriveInfo)', () => {
       });
       hoisted.fsStat.mockResolvedValue({ isDirectory: () => true });
 
-      const { getDriveInfo } = await import('./utils');
+      const { getDriveInfo } = await import('../utils');
       const info = await getDriveInfo();
       expect(info.length).toBeGreaterThan(0);
 
@@ -253,7 +253,7 @@ describe('utils module (getDrives/getDriveInfo)', () => {
       setPlatform('linux');
       hoisted.fsReaddir.mockResolvedValue([]);
 
-      const { getDriveInfo } = await import('./utils');
+      const { getDriveInfo } = await import('../utils');
       const first = await getDriveInfo();
       expect(first.length).toBeGreaterThan(0);
 
@@ -267,7 +267,7 @@ describe('utils module (getDrives/getDriveInfo)', () => {
 
       hoisted.execMock.mockResolvedValue({ stdout: 'C\n' });
 
-      const { getDriveInfo } = await import('./utils');
+      const { getDriveInfo } = await import('../utils');
       const info = await getDriveInfo();
       expect(info.length).toBeGreaterThan(0);
 
@@ -280,7 +280,7 @@ describe('utils module (getDrives/getDriveInfo)', () => {
   describe('getCachedDrives', () => {
     it('returns null when no cache populated', async () => {
       setPlatform('linux');
-      const { getCachedDrives } = await import('./utils');
+      const { getCachedDrives } = await import('../utils');
       expect(getCachedDrives()).toBe(null);
     });
   });

@@ -1,6 +1,7 @@
+// @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createSelectionController } from './rendererSelection';
+import { createSelectionController } from '../rendererSelection';
 
 HTMLElement.prototype.scrollIntoView = function () {};
 

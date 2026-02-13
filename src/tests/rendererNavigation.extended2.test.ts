@@ -1,10 +1,11 @@
+// @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('./shared.js', () => ({
+vi.mock('../shared.js', () => ({
   escapeHtml: (s: string) => s,
 }));
 
-vi.mock('./rendererDom.js', () => ({
+vi.mock('../rendererDom.js', () => ({
   clearHtml: vi.fn((el: HTMLElement) => {
     if (el) el.innerHTML = '';
   }),
@@ -13,11 +14,11 @@ vi.mock('./rendererDom.js', () => ({
   }),
 }));
 
-vi.mock('./rendererUtils.js', () => ({
+vi.mock('../rendererUtils.js', () => ({
   twemojiImg: () => '<img>',
 }));
 
-import { createNavigationController } from './rendererNavigation';
+import { createNavigationController } from '../rendererNavigation';
 
 function createDeps(overrides: Record<string, unknown> = {}) {
   const settings = {

@@ -6,12 +6,12 @@ import * as os from 'os';
 const mockIsCancelled = vi.hoisted(() => vi.fn(() => false));
 const mockSendProgress = vi.hoisted(() => vi.fn());
 
-vi.mock('./workerUtils', () => ({
+vi.mock('../../workers/workerUtils', () => ({
   isCancelled: mockIsCancelled,
   sendProgress: mockSendProgress,
 }));
 
-import { calculateFolderSize, calculateChecksum } from './computeTasks';
+import { calculateFolderSize, calculateChecksum } from '../../workers/computeTasks';
 
 let tmpDir: string;
 

@@ -1,10 +1,11 @@
+// @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-vi.mock('./rendererDom.js', () => ({
+vi.mock('../rendererDom.js', () => ({
   getById: vi.fn((id: string) => document.getElementById(id)),
 }));
 
-import { createTypeaheadController } from './rendererTypeahead';
+import { createTypeaheadController } from '../rendererTypeahead';
 
 HTMLElement.prototype.scrollIntoView = function () {};
 

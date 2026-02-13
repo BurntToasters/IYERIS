@@ -49,20 +49,20 @@ vi.mock('fs', () => ({
   },
 }));
 
-vi.mock('./appState', () => ({
+vi.mock('../appState', () => ({
   getMainWindow: vi.fn(() => hoisted.mainWindowMock),
   MAX_TEXT_PREVIEW_BYTES: 1024,
 }));
 
-vi.mock('./security', () => ({
+vi.mock('../security', () => ({
   getErrorMessage: vi.fn((err: unknown) => (err instanceof Error ? err.message : String(err))),
 }));
 
-vi.mock('./platformUtils', () => ({
+vi.mock('../platformUtils', () => ({
   isRunningInFlatpak: vi.fn(() => false),
 }));
 
-vi.mock('./utils/logger', () => ({
+vi.mock('../utils/logger', () => ({
   logger: {
     debug: vi.fn(),
     info: vi.fn(),
@@ -73,8 +73,8 @@ vi.mock('./utils/logger', () => ({
   },
 }));
 
-import { exportDiagnostics, getLogFileContent } from './diagnosticsHandlers';
-import type { Settings } from './types';
+import { exportDiagnostics, getLogFileContent } from '../diagnosticsHandlers';
+import type { Settings } from '../types';
 
 function makeSettings(overrides: Partial<Settings> = {}): Settings {
   return {

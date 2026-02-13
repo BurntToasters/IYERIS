@@ -1,6 +1,7 @@
+// @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { FileItem } from './types';
-import { createSelectionController } from './rendererSelection';
+import type { FileItem } from '../types';
+import { createSelectionController } from '../rendererSelection';
 
 function createMockDeps() {
   const selectedItems = new Set<string>();

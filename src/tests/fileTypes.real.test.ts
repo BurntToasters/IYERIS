@@ -17,7 +17,7 @@ import {
   WEB_EXTENSIONS,
   VIDEO_MIME_TYPES,
   AUDIO_MIME_TYPES,
-} from './fileTypes';
+} from '../fileTypes';
 
 describe('FILE_ICON_MAP', () => {
   it('is a non-empty object', () => {

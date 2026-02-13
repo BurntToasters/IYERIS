@@ -7,10 +7,10 @@ import {
   searchDirectoryContent,
   searchContentIndex,
   searchContentList,
-} from './searchTasks';
+} from '../../workers/searchTasks';
 
-vi.mock('./workerUtils', async (importOriginal) => {
-  const orig = await importOriginal<typeof import('./workerUtils')>();
+vi.mock('../../workers/workerUtils', async (importOriginal) => {
+  const orig = await importOriginal<typeof import('../../workers/workerUtils')>();
   return {
     ...orig,
     isCancelled: vi.fn(() => false),
@@ -30,7 +30,7 @@ let tmpDir: string;
 
 beforeEach(async () => {
   tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'search-ext-'));
-  const { resetIndexCache } = await import('./workerUtils');
+  const { resetIndexCache } = await import('../../workers/workerUtils');
   resetIndexCache();
 });
 
@@ -192,7 +192,7 @@ describe('searchDirectoryContent – uncovered branches', () => {
   });
 
   it('handles cancellation during content search', async () => {
-    const { isCancelled } = await import('./workerUtils');
+    const { isCancelled } = await import('../../workers/workerUtils');
     const mockCancelled = isCancelled as ReturnType<typeof vi.fn>;
 
     await fs.promises.writeFile(path.join(tmpDir, 'cancel.txt'), 'data');
@@ -549,7 +549,7 @@ describe('searchContentIndex', () => {
   });
 
   it('handles cancellation', async () => {
-    const { isCancelled } = await import('./workerUtils');
+    const { isCancelled } = await import('../../workers/workerUtils');
     const mockCancelled = isCancelled as ReturnType<typeof vi.fn>;
 
     const filePath = path.join(tmpDir, 'cancel.txt');
@@ -772,7 +772,7 @@ describe('searchContentList – additional edge cases', () => {
   });
 
   it('handles cancellation in content list search', async () => {
-    const { isCancelled } = await import('./workerUtils');
+    const { isCancelled } = await import('../../workers/workerUtils');
     const mockCancelled = isCancelled as ReturnType<typeof vi.fn>;
 
     const fp = path.join(tmpDir, 'cl.txt');

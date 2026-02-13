@@ -36,15 +36,15 @@ vi.mock('worker_threads', () => ({
   Worker: vi.fn(),
 }));
 
-vi.mock('./utils/logger', () => ({
+vi.mock('../utils/logger', () => ({
   logger: {
     error: vi.fn(),
   },
 }));
 
 import { Worker } from 'worker_threads';
-import { FileTaskManager } from './fileTasks';
-import { logger } from './utils/logger';
+import { FileTaskManager } from '../fileTasks';
+import { logger } from '../utils/logger';
 
 const WorkerMock = Worker as unknown as {
   mockReset: () => void;

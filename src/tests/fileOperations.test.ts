@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { isFileHiddenCached } from './fileOperations';
+import { isFileHiddenCached } from '../fileOperations';
 
 vi.mock('child_process');
 vi.mock('util');

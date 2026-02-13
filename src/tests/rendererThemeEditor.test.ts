@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { hexToRgb } from './rendererThemeEditor';
+import { hexToRgb } from '../rendererThemeEditor';
 
 describe('hexToRgb', () => {
   it('converts valid 6-char hex to rgb', () => {

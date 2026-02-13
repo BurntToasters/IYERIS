@@ -36,16 +36,16 @@ vi.mock('fs', () => ({
   },
 }));
 
-vi.mock('./security', () => ({
+vi.mock('../security', () => ({
   isPathSafe: mocks.isPathSafe,
   getErrorMessage: mocks.getErrorMessage,
 }));
 
-vi.mock('./shared', () => ({
+vi.mock('../shared', () => ({
   ignoreError: mocks.ignoreError,
 }));
 
-vi.mock('./ipcUtils', () => ({
+vi.mock('../ipcUtils', () => ({
   isTrustedIpcEvent: mocks.isTrustedIpcEvent,
 }));
 
@@ -56,7 +56,7 @@ import {
   getThumbnailCacheSize,
   stopThumbnailCacheCleanup,
   setupThumbnailCacheHandlers,
-} from './thumbnailCache';
+} from '../thumbnailCache';
 
 describe('getThumbnailFromCache', () => {
   beforeEach(() => vi.clearAllMocks());

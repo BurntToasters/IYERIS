@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getDefaultShortcuts, SHORTCUT_DEFINITIONS } from './shortcuts';
+import { getDefaultShortcuts, SHORTCUT_DEFINITIONS } from '../shortcuts';
 
 describe('SHORTCUT_DEFINITIONS', () => {
   it('is a non-empty array', () => {

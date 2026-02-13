@@ -2,10 +2,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { buildIndex, loadIndexFile, saveIndexFile } from './indexTasks';
+import { buildIndex, loadIndexFile, saveIndexFile } from '../../workers/indexTasks';
 
-vi.mock('./workerUtils', async (importOriginal) => {
-  const orig = await importOriginal<typeof import('./workerUtils')>();
+vi.mock('../../workers/workerUtils', async (importOriginal) => {
+  const orig = await importOriginal<typeof import('../../workers/workerUtils')>();
   return {
     ...orig,
     isCancelled: vi.fn(() => false),

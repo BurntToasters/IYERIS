@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { createUpdateActionsController } from './rendererUpdateActions';
+import { createUpdateActionsController } from '../rendererUpdateActions';
 
 type MockElement = {
   innerHTML: string;

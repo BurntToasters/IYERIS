@@ -1,18 +1,19 @@
+// @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-vi.mock('./shared.js', () => ({
+vi.mock('../shared.js', () => ({
   escapeHtml: (value: string) => value,
 }));
 
-vi.mock('./rendererUtils.js', () => ({
+vi.mock('../rendererUtils.js', () => ({
   twemojiImg: (value: string) => value,
 }));
 
-vi.mock('./home.js', () => ({
+vi.mock('../home.js', () => ({
   isHomeViewPath: (value: string) => value === 'home://',
 }));
 
-import { createBookmarksController } from './rendererBookmarks';
+import { createBookmarksController } from '../rendererBookmarks';
 
 function createDeps(bookmarks: string[], currentPath = '/test') {
   const settings = { bookmarks } as any;

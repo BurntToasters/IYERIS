@@ -1,18 +1,19 @@
+// @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('./shared.js', () => ({
+vi.mock('../shared.js', () => ({
   escapeHtml: (value: string) => value,
 }));
 
-vi.mock('./rendererUtils.js', () => ({
+vi.mock('../rendererUtils.js', () => ({
   twemojiImg: (value: string) => value,
 }));
 
-vi.mock('./home.js', () => ({
+vi.mock('../home.js', () => ({
   isHomeViewPath: (value: string) => value === 'home://',
 }));
 
-import { createBookmarksController } from './rendererBookmarks';
+import { createBookmarksController } from '../rendererBookmarks';
 
 function createDropEvent(draggedBookmarkPath: string): DragEvent {
   const event = new Event('drop', { bubbles: true, cancelable: true }) as DragEvent;

@@ -1,17 +1,18 @@
+// @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('./rendererDom.js', () => ({
+vi.mock('../rendererDom.js', () => ({
   getById: (id: string) => document.getElementById(id),
   clearHtml: (element: Element | null) => {
     if (element) element.innerHTML = '';
   },
 }));
 
-vi.mock('./shared.js', () => ({
+vi.mock('../shared.js', () => ({
   escapeHtml: (value: string) => value,
 }));
 
-import { createArchiveOperationsController } from './rendererArchiveOperations';
+import { createArchiveOperationsController } from '../rendererArchiveOperations';
 
 describe('createArchiveOperationsController', () => {
   beforeEach(() => {

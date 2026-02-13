@@ -20,33 +20,33 @@ vi.mock('electron', () => ({
   ipcMain: { handle: hoisted.ipcMainHandleMock },
 }));
 
-vi.mock('./appState', () => ({
+vi.mock('../appState', () => ({
   getMainWindow: hoisted.getMainWindowMock,
 }));
 
-vi.mock('./security', () => ({
+vi.mock('../security', () => ({
   isPathSafe: hoisted.isPathSafeMock,
   getErrorMessage: hoisted.getErrorMessageMock,
 }));
 
-vi.mock('./shared', () => ({
+vi.mock('../shared', () => ({
   ignoreError: () => {},
 }));
 
-vi.mock('./platformUtils', () => ({
+vi.mock('../platformUtils', () => ({
   get7zipModule: hoisted.get7zipModuleMock,
   get7zipPath: hoisted.get7zipPathMock,
 }));
 
-vi.mock('./utils/logger', () => ({
+vi.mock('../utils/logger', () => ({
   logger: hoisted.loggerMock,
 }));
 
-vi.mock('./ipcUtils', () => ({
+vi.mock('../ipcUtils', () => ({
   isTrustedIpcEvent: hoisted.isTrustedIpcEventMock,
 }));
 
-import { setupArchiveHandlers, cleanupArchiveOperations } from './archiveManager';
+import { setupArchiveHandlers, cleanupArchiveOperations } from '../archiveManager';
 
 describe('setupArchiveHandlers', () => {
   const handlers = new Map<string, (...args: any[]) => any>();

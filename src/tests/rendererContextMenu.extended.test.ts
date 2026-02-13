@@ -1,15 +1,16 @@
+// @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('./rendererCompressExtract.js', () => ({
+vi.mock('../rendererCompressExtract.js', () => ({
   isArchivePath: (value: string) => value.endsWith('.zip') || value.endsWith('.7z'),
 }));
 
-vi.mock('./fileTypes.js', () => ({
+vi.mock('../fileTypes.js', () => ({
   PDF_EXTENSIONS: new Set(['.pdf']),
 }));
 
-import { createContextMenuController } from './rendererContextMenu';
-import type { FileItem } from './types';
+import { createContextMenuController } from '../rendererContextMenu';
+import type { FileItem } from '../types';
 
 function createDeps() {
   return {

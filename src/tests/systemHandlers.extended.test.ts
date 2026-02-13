@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type { Settings } from './types';
+import type { Settings } from '../types';
 
 type Handler = (...args: any[]) => any;
 
@@ -89,33 +89,33 @@ vi.mock('util', () => ({
   promisify: vi.fn(() => hoisted.execFileAsyncMock),
 }));
 
-vi.mock('./appState', () => ({
+vi.mock('../appState', () => ({
   MAX_TEXT_PREVIEW_BYTES: 1024 * 1024,
   MAX_DATA_URL_BYTES: 10 * 1024 * 1024,
 }));
 
-vi.mock('./security', () => ({
+vi.mock('../security', () => ({
   isPathSafe: vi.fn(() => hoisted.safePath.value),
   getErrorMessage: vi.fn((error: unknown) =>
     error instanceof Error ? error.message : String(error)
   ),
 }));
 
-vi.mock('./shared', () => ({
+vi.mock('../shared', () => ({
   ignoreError: hoisted.ignoreErrorMock,
 }));
 
-vi.mock('./platformUtils', () => ({
+vi.mock('../platformUtils', () => ({
   isRunningInFlatpak: hoisted.isRunningInFlatpakMock,
 }));
 
-vi.mock('./utils/logger', () => ({
+vi.mock('../utils/logger', () => ({
   logger: {
     getLogsDirectory: vi.fn(() => '/tmp/logs'),
   },
 }));
 
-vi.mock('./ipcUtils', () => ({
+vi.mock('../ipcUtils', () => ({
   withTrustedApiHandler: vi.fn(
     (
       _channel: string,
@@ -134,30 +134,30 @@ vi.mock('./ipcUtils', () => ({
   ),
 }));
 
-vi.mock('./processUtils', () => ({
+vi.mock('../processUtils', () => ({
   launchDetached: hoisted.launchDetachedMock,
 }));
 
-vi.mock('./fullDiskAccess', () => ({
+vi.mock('../fullDiskAccess', () => ({
   checkFullDiskAccess: hoisted.checkFullDiskAccessMock,
   showFullDiskAccessDialog: hoisted.showFullDiskAccessDialogMock,
 }));
 
-vi.mock('./gitHandlers', () => ({
+vi.mock('../gitHandlers', () => ({
   getGitStatus: hoisted.getGitStatusMock,
   getGitBranch: hoisted.getGitBranchMock,
 }));
 
-vi.mock('./diskSpaceHandler', () => ({
+vi.mock('../diskSpaceHandler', () => ({
   getDiskSpace: hoisted.getDiskSpaceMock,
 }));
 
-vi.mock('./diagnosticsHandlers', () => ({
+vi.mock('../diagnosticsHandlers', () => ({
   exportDiagnostics: hoisted.exportDiagnosticsMock,
   getLogFileContent: hoisted.getLogFileContentMock,
 }));
 
-import { setupSystemHandlers } from './systemHandlers';
+import { setupSystemHandlers } from '../systemHandlers';
 
 const originalPlatform = process.platform;
 

@@ -7,10 +7,10 @@ import {
   searchDirectoryContent,
   searchIndexFile,
   searchContentList,
-} from './searchTasks';
+} from '../../workers/searchTasks';
 
-vi.mock('./workerUtils', async (importOriginal) => {
-  const orig = await importOriginal<typeof import('./workerUtils')>();
+vi.mock('../../workers/workerUtils', async (importOriginal) => {
+  const orig = await importOriginal<typeof import('../../workers/workerUtils')>();
   return {
     ...orig,
     isCancelled: vi.fn(() => false),

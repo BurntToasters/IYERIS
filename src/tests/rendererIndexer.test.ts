@@ -1,10 +1,11 @@
+// @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('./rendererUtils.js', () => ({
+vi.mock('../rendererUtils.js', () => ({
   twemojiImg: () => '<img />',
 }));
 
-import { createIndexerController } from './rendererIndexer';
+import { createIndexerController } from '../rendererIndexer';
 
 describe('createIndexerController', () => {
   beforeEach(() => {

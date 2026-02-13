@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-vi.mock('./rendererUtils.js', () => ({
+vi.mock('../rendererUtils.js', () => ({
   twemojiImg: (char: string, cls: string) => `<img class="${cls}" data-char="${char}">`,
 }));
 
@@ -9,7 +9,7 @@ import {
   getFileTypeFromName,
   formatFileSize,
   getFileIcon,
-} from './rendererFileIcons';
+} from '../rendererFileIcons';
 
 describe('getFileExtension', () => {
   it('extracts simple extension', () => {

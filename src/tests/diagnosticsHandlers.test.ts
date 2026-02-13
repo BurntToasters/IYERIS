@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { createSettingsDiagnosticsSnapshot } from './diagnosticsHandlers';
-import type { Settings } from './types';
+import { createSettingsDiagnosticsSnapshot } from '../diagnosticsHandlers';
+import type { Settings } from '../types';
 
 function makeSettings(overrides: Partial<Settings> = {}): Settings {
   return {

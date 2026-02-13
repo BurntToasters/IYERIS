@@ -9,28 +9,28 @@ vi.mock('electron', () => ({
   },
 }));
 
-vi.mock('./appState', () => ({
+vi.mock('../appState', () => ({
   getMainWindow: vi.fn(() => null),
 }));
 
-vi.mock('./security', () => ({
+vi.mock('../security', () => ({
   isPathSafe: (p: string) => !p.includes('\0') && !p.includes('..'),
   getErrorMessage: (e: unknown) => (e instanceof Error ? e.message : String(e)),
 }));
 
-vi.mock('./shared', () => ({
+vi.mock('../shared', () => ({
   ignoreError: () => {},
 }));
 
-vi.mock('./settingsManager', () => ({
+vi.mock('../settingsManager', () => ({
   loadSettings: vi.fn().mockResolvedValue({}),
 }));
 
-vi.mock('./ipcUtils', () => ({
+vi.mock('../ipcUtils', () => ({
   isTrustedIpcEvent: () => true,
 }));
 
-import { isPermissionError, executeElevated, tryWithElevation } from './elevatedOperations';
+import { isPermissionError, executeElevated, tryWithElevation } from '../elevatedOperations';
 
 describe('executeElevated validation', () => {
   it('rejects copy with missing sourcePath', async () => {

@@ -1,15 +1,16 @@
+// @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-vi.mock('./shared.js', () => ({
+vi.mock('../shared.js', () => ({
   escapeHtml: vi.fn((s: string) => s.replace(/</g, '&lt;').replace(/>/g, '&gt;')),
   getErrorMessage: vi.fn((e: unknown) => (e instanceof Error ? e.message : String(e))),
 }));
 
-vi.mock('./rendererUtils.js', () => ({
+vi.mock('../rendererUtils.js', () => ({
   twemojiImg: vi.fn((_code: string, _cls: string) => '<img class="twemoji" />'),
 }));
 
-import { createPropertiesDialogController } from './rendererPropertiesDialog';
+import { createPropertiesDialogController } from '../rendererPropertiesDialog';
 
 function makeDeps() {
   return {

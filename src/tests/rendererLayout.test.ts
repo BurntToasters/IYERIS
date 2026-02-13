@@ -1,5 +1,6 @@
+// @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { createLayoutController } from './rendererLayout.js';
+import { createLayoutController } from '../rendererLayout.js';
 
 function makeConfig(overrides: Partial<ReturnType<typeof defaultConfig>> = {}) {
   return { ...defaultConfig(), ...overrides };

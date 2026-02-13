@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createDefaultSettings } from './settings';
+import { createDefaultSettings } from '../settings';
 
 describe('createDefaultSettings', () => {
   it('returns an object with all required fields', () => {

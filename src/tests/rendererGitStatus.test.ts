@@ -1,5 +1,6 @@
+// @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { createGitStatusController } from './rendererGitStatus.js';
+import { createGitStatusController } from '../rendererGitStatus.js';
 
 function makeDeps(overrides: Partial<Parameters<typeof createGitStatusController>[0]> = {}) {
   return {

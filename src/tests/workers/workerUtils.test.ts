@@ -16,7 +16,7 @@ import {
   TEXT_FILE_EXTENSIONS,
   FILE_TYPE_EXTENSIONS,
   resetIndexCache,
-} from './workerUtils';
+} from '../../workers/workerUtils';
 
 describe('isRecord', () => {
   it('returns true for plain objects', () => {

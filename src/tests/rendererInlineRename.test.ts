@@ -1,6 +1,7 @@
+// @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createInlineRenameController } from './rendererInlineRename';
+import { createInlineRenameController } from '../rendererInlineRename';
 
 function createDeps() {
   return {

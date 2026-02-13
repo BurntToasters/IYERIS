@@ -103,21 +103,21 @@ vi.mock('fs', () => ({
   unlinkSync: mocks.fsUnlinkSync,
 }));
 
-vi.mock('./security', () => ({
+vi.mock('../security', () => ({
   getErrorMessage: mocks.getErrorMessage,
   isTrustedIpcSender: mocks.isTrustedIpcSender,
 }));
 
-vi.mock('./shared', () => ({
+vi.mock('../shared', () => ({
   ignoreError: mocks.ignoreError,
 }));
 
-vi.mock('./settings', () => ({
+vi.mock('../settings', () => ({
   createDefaultSettings: mocks.createDefaultSettings,
   sanitizeSettings: mocks.sanitizeSettings,
 }));
 
-vi.mock('./appState', () => ({
+vi.mock('../appState', () => ({
   SETTINGS_CACHE_TTL_MS: mocks.SETTINGS_CACHE_TTL_MS,
   getSharedClipboard: mocks.getSharedClipboard,
   setSharedClipboard: mocks.setSharedClipboard,
@@ -131,14 +131,14 @@ vi.mock('./appState', () => ({
   getIndexerTasks: mocks.getIndexerTasks,
 }));
 
-vi.mock('./indexer', () => ({
+vi.mock('../indexer', () => ({
   FileIndexer: class MockFileIndexer {
     setEnabled = vi.fn();
     initialize = vi.fn().mockResolvedValue(undefined);
   },
 }));
 
-vi.mock('./utils/logger', () => ({
+vi.mock('../utils/logger', () => ({
   logger: {
     debug: mocks.loggerDebug,
     error: mocks.loggerError,
@@ -147,7 +147,7 @@ vi.mock('./utils/logger', () => ({
   },
 }));
 
-vi.mock('./ipcUtils', () => ({
+vi.mock('../ipcUtils', () => ({
   isTrustedIpcEvent: mocks.isTrustedIpcEvent,
 }));
 
@@ -158,7 +158,7 @@ import {
   getCachedSettings,
   applyLoginItemSettings,
   setupSettingsHandlers,
-} from './settingsManager';
+} from '../settingsManager';
 
 describe('getSettingsPath', () => {
   it('returns path inside userData directory', () => {

@@ -1,5 +1,6 @@
+// @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { createFolderTreeManager } from './folderDir';
+import { createFolderTreeManager } from '../folderDir';
 
 function createParsePath(pathValue: string) {
   if (pathValue === '/') {

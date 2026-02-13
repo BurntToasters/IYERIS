@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 
 const mockClearHtml = vi.hoisted(() =>
@@ -11,20 +12,20 @@ const mockSetHtml = vi.hoisted(() =>
   })
 );
 
-vi.mock('./shared.js', () => ({
+vi.mock('../shared.js', () => ({
   escapeHtml: (s: string) => s,
 }));
 
-vi.mock('./rendererDom.js', () => ({
+vi.mock('../rendererDom.js', () => ({
   clearHtml: mockClearHtml,
   setHtml: mockSetHtml,
 }));
 
-vi.mock('./rendererUtils.js', () => ({
+vi.mock('../rendererUtils.js', () => ({
   twemojiImg: () => '<img>',
 }));
 
-import { createNavigationController } from './rendererNavigation';
+import { createNavigationController } from '../rendererNavigation';
 
 function flushPromises() {
   return new Promise<void>((resolve) => {

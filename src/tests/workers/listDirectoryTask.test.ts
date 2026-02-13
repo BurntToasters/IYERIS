@@ -3,8 +3,8 @@ import { promises as fs } from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
-vi.mock('./workerUtils', async (importOriginal) => {
-  const original = await importOriginal<typeof import('./workerUtils')>();
+vi.mock('../../workers/workerUtils', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../../workers/workerUtils')>();
   return {
     ...original,
     isCancelled: vi.fn(() => false),
@@ -13,8 +13,8 @@ vi.mock('./workerUtils', async (importOriginal) => {
   };
 });
 
-import { batchCheckHidden, isCancelled, sendProgress } from './workerUtils';
-import { listDirectory } from './listDirectoryTask';
+import { batchCheckHidden, isCancelled, sendProgress } from '../../workers/workerUtils';
+import { listDirectory } from '../../workers/listDirectoryTask';
 
 let tmpDir = '';
 

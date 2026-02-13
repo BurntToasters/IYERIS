@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-vi.mock('./shared.js', () => ({
+vi.mock('../shared.js', () => ({
   escapeHtml: vi.fn((s: string) => s),
 }));
 
-import { createToastManager } from './rendererToasts';
+import { createToastManager } from '../rendererToasts';
 
 function makeOptions() {
   const container = {

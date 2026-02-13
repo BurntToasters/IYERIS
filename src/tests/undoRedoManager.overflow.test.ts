@@ -5,8 +5,8 @@ import {
   getUndoStack,
   getRedoStack,
   clearUndoRedoStacks,
-} from './undoRedoManager';
-import { MAX_UNDO_STACK_SIZE } from './appState';
+} from '../undoRedoManager';
+import { MAX_UNDO_STACK_SIZE } from '../appState';
 
 describe('Undo/Redo stack size limits', () => {
   beforeEach(() => {

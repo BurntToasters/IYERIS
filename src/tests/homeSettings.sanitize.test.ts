@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createDefaultHomeSettings, sanitizeHomeSettings } from './homeSettings';
+import { createDefaultHomeSettings, sanitizeHomeSettings } from '../homeSettings';
 
 describe('sanitizeHomeSettings', () => {
   it('returns defaults when raw is not an object', () => {

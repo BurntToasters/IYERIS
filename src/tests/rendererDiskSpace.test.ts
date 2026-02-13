@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { createDiskSpaceController, type DiskSpaceControllerDeps } from './rendererDiskSpace';
+import { createDiskSpaceController, type DiskSpaceControllerDeps } from '../rendererDiskSpace';
 
-vi.mock('./rendererUtils.js', () => ({
+vi.mock('../rendererUtils.js', () => ({
   twemojiImg: vi.fn((emoji: string) => `<img alt="${emoji}" />`),
 }));
 
-vi.mock('./shared.js', () => ({
+vi.mock('../shared.js', () => ({
   escapeHtml: vi.fn((s: string) => s),
 }));
 

@@ -1,17 +1,17 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('./processUtils', () => ({
+vi.mock('../processUtils', () => ({
   captureSpawnOutput: vi.fn(),
 }));
 
-vi.mock('./security', () => ({
+vi.mock('../security', () => ({
   getErrorMessage: vi.fn((error: unknown) =>
     error instanceof Error ? error.message : String(error)
   ),
 }));
 
-import { captureSpawnOutput } from './processUtils';
-import { getDiskSpace } from './diskSpaceHandler';
+import { captureSpawnOutput } from '../processUtils';
+import { getDiskSpace } from '../diskSpaceHandler';
 
 const originalPlatform = process.platform;
 

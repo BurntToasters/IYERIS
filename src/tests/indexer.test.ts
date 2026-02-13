@@ -13,15 +13,15 @@ vi.mock('electron', () => ({
   },
 }));
 
-vi.mock('./utils', () => ({
+vi.mock('../utils', () => ({
   getDrives: getDrivesMock,
 }));
 
-vi.mock('./shared', () => ({
+vi.mock('../shared', () => ({
   ignoreError: vi.fn(),
 }));
 
-import { FileIndexer } from './indexer';
+import { FileIndexer } from '../indexer';
 
 type MockFileTaskManager = {
   runTask: ReturnType<typeof vi.fn>;

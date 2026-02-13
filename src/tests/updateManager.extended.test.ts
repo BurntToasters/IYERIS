@@ -28,29 +28,29 @@ vi.mock('electron', () => ({
   },
 }));
 
-vi.mock('./appState', () => ({
+vi.mock('../appState', () => ({
   getMainWindow: mocks.getMainWindow,
   getIsDev: mocks.getIsDev,
   setIsQuitting: mocks.setIsQuitting,
 }));
 
-vi.mock('./platformUtils', () => ({
+vi.mock('../platformUtils', () => ({
   getAutoUpdater: mocks.getAutoUpdater,
   isRunningInFlatpak: mocks.isRunningInFlatpak,
   checkMsiInstallation: mocks.checkMsiInstallation,
   isInstalledViaMsi: mocks.isInstalledViaMsi,
 }));
 
-vi.mock('./ipcUtils', () => ({
+vi.mock('../ipcUtils', () => ({
   safeSendToWindow: mocks.safeSendToWindow,
   isTrustedIpcEvent: mocks.isTrustedIpcEvent,
 }));
 
-vi.mock('./security', () => ({
+vi.mock('../security', () => ({
   getErrorMessage: mocks.getErrorMessage,
 }));
 
-import { compareVersions, setupUpdateHandlers, initializeAutoUpdater } from './updateManager';
+import { compareVersions, setupUpdateHandlers, initializeAutoUpdater } from '../updateManager';
 
 describe('compareVersions extended', () => {
   it('handles v prefix', () => {

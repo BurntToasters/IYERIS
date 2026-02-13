@@ -1,6 +1,7 @@
+// @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type { Settings } from './types';
-import { createTourController, type TourStep, type TourController } from './tour';
+import type { Settings } from '../types';
+import { createTourController, type TourStep, type TourController } from '../tour';
 
 function makeSettings(overrides: Partial<Settings> = {}): Settings {
   return {

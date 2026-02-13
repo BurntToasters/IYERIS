@@ -1,16 +1,17 @@
+// @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('./rendererDom.js', () => ({
+vi.mock('../rendererDom.js', () => ({
   clearHtml: vi.fn((el: HTMLElement) => {
     if (el) el.innerHTML = '';
   }),
 }));
 
-vi.mock('./shared.js', () => ({
+vi.mock('../shared.js', () => ({
   escapeHtml: (s: string) => s,
 }));
 
-import { createCommandPaletteController } from './rendererCommandPalette';
+import { createCommandPaletteController } from '../rendererCommandPalette';
 
 function createDeps(overrides: Record<string, unknown> = {}) {
   return {

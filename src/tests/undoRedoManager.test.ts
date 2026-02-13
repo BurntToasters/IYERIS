@@ -6,7 +6,7 @@ import {
   getRedoStack,
   clearUndoRedoStacks,
   clearUndoStackForPath,
-} from './undoRedoManager';
+} from '../undoRedoManager';
 
 describe('clearUndoStackForPath', () => {
   beforeEach(() => {

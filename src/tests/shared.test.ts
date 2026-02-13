@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { escapeHtml, getErrorMessage } from './shared';
+import { escapeHtml, getErrorMessage } from '../shared';
 
 describe('escapeHtml', () => {
   it('escapes ampersands', () => {

@@ -1,10 +1,11 @@
+// @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-vi.mock('./rendererDom.js', () => ({
+vi.mock('../rendererDom.js', () => ({
   getById: (id: string) => document.getElementById(id),
 }));
 
-import { initTooltipSystem } from './rendererTooltips.js';
+import { initTooltipSystem } from '../rendererTooltips.js';
 
 describe('rendererTooltips', () => {
   let errorHandler: (e: ErrorEvent) => void;

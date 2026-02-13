@@ -1,6 +1,7 @@
+// @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createFolderIconPickerController } from './rendererFolderIconPicker';
+import { createFolderIconPickerController } from '../rendererFolderIconPicker';
 
 function createDeps(overrides: Record<string, unknown> = {}) {
   const settings: { folderIcons?: { [path: string]: string } } = {

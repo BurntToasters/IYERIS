@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { describe, it, expect, beforeEach } from 'vitest';
 
 describe('loadHighlightJs', () => {
@@ -12,7 +13,7 @@ describe('loadHighlightJs', () => {
   });
 
   it('creates a link element and script element when none exist', async () => {
-    const { loadHighlightJs } = await import('./rendererHighlight');
+    const { loadHighlightJs } = await import('../rendererHighlight');
 
     const promise = loadHighlightJs();
 
@@ -34,7 +35,7 @@ describe('loadHighlightJs', () => {
   });
 
   it('returns cached hljs on second call', async () => {
-    const { loadHighlightJs } = await import('./rendererHighlight');
+    const { loadHighlightJs } = await import('../rendererHighlight');
 
     const promise1 = loadHighlightJs();
     const script = document.querySelector('script[data-highlightjs="core"]') as HTMLScriptElement;
@@ -51,7 +52,7 @@ describe('loadHighlightJs', () => {
   });
 
   it('deduplicates concurrent calls via hljsLoading promise', async () => {
-    const { loadHighlightJs } = await import('./rendererHighlight');
+    const { loadHighlightJs } = await import('../rendererHighlight');
 
     const p1 = loadHighlightJs();
     const p2 = loadHighlightJs();
@@ -71,7 +72,7 @@ describe('loadHighlightJs', () => {
   });
 
   it('resolves null on script error', async () => {
-    const { loadHighlightJs } = await import('./rendererHighlight');
+    const { loadHighlightJs } = await import('../rendererHighlight');
 
     const promise = loadHighlightJs();
     const script = document.querySelector('script[data-highlightjs="core"]') as HTMLScriptElement;
@@ -87,7 +88,7 @@ describe('loadHighlightJs', () => {
     existingLink.dataset.highlightjs = 'theme';
     document.head.appendChild(existingLink);
 
-    const { loadHighlightJs } = await import('./rendererHighlight');
+    const { loadHighlightJs } = await import('../rendererHighlight');
     const promise = loadHighlightJs();
 
     const links = document.querySelectorAll('link[data-highlightjs="theme"]');
@@ -106,7 +107,7 @@ describe('loadHighlightJs', () => {
     const fakeHljs = { highlightElement: () => {} };
     (window as Window & { hljs?: unknown }).hljs = fakeHljs;
 
-    const { loadHighlightJs } = await import('./rendererHighlight');
+    const { loadHighlightJs } = await import('../rendererHighlight');
     const result = await loadHighlightJs();
     expect(result).toBe(fakeHljs);
 
@@ -119,7 +120,7 @@ describe('loadHighlightJs', () => {
     existingScript.dataset.highlightjs = 'core';
     document.head.appendChild(existingScript);
 
-    const { loadHighlightJs } = await import('./rendererHighlight');
+    const { loadHighlightJs } = await import('../rendererHighlight');
     const promise = loadHighlightJs();
 
     const fakeHljs = { highlightElement: () => {} };
@@ -135,7 +136,7 @@ describe('loadHighlightJs', () => {
     existingScript.dataset.highlightjs = 'core';
     document.head.appendChild(existingScript);
 
-    const { loadHighlightJs } = await import('./rendererHighlight');
+    const { loadHighlightJs } = await import('../rendererHighlight');
     const promise = loadHighlightJs();
 
     existingScript.dispatchEvent(new Event('error'));
@@ -145,7 +146,7 @@ describe('loadHighlightJs', () => {
   });
 
   it('resolves null from window.hljs when hljs is undefined on load', async () => {
-    const { loadHighlightJs } = await import('./rendererHighlight');
+    const { loadHighlightJs } = await import('../rendererHighlight');
 
     const promise = loadHighlightJs();
     const script = document.querySelector('script[data-highlightjs="core"]') as HTMLScriptElement;

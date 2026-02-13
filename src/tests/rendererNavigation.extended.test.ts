@@ -1,19 +1,20 @@
+// @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('./shared.js', () => ({
+vi.mock('../shared.js', () => ({
   escapeHtml: (s: string) => s,
 }));
 
-vi.mock('./rendererDom.js', () => ({
+vi.mock('../rendererDom.js', () => ({
   clearHtml: vi.fn(),
   setHtml: vi.fn(),
 }));
 
-vi.mock('./rendererUtils.js', () => ({
+vi.mock('../rendererUtils.js', () => ({
   twemojiImg: () => '<img>',
 }));
 
-import { createNavigationController } from './rendererNavigation';
+import { createNavigationController } from '../rendererNavigation';
 
 function createDeps() {
   const settings = {

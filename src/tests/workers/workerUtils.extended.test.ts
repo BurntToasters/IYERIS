@@ -35,7 +35,7 @@ import {
   batchCheckHidden,
   parseIndexEntry,
   normalizePathForCompare,
-} from './workerUtils';
+} from '../../workers/workerUtils';
 
 describe('sendProgress', () => {
   beforeEach(() => {

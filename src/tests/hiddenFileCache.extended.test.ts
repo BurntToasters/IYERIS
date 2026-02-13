@@ -10,7 +10,7 @@ vi.mock('util', () => ({
   promisify: vi.fn(() => execFileMock),
 }));
 
-vi.mock('./appState', () => ({
+vi.mock('../appState', () => ({
   HIDDEN_FILE_CACHE_TTL: 300000,
   HIDDEN_FILE_CACHE_MAX: 3,
 }));
@@ -35,7 +35,7 @@ describe('hiddenFileCache (extended)', () => {
   describe('isFileHiddenCached on win32', () => {
     it('returns true for dotfiles on win32', async () => {
       setPlatform('win32');
-      const mod = await import('./hiddenFileCache');
+      const mod = await import('../hiddenFileCache');
       const result = await mod.isFileHiddenCached('C:\\Users\\test\\.bashrc', '.bashrc');
       expect(result).toBe(true);
     });
@@ -46,7 +46,7 @@ describe('hiddenFileCache (extended)', () => {
         stdout: '  A  H       C:\\Users\\test\\hidden.txt\r\n',
       });
 
-      const mod = await import('./hiddenFileCache');
+      const mod = await import('../hiddenFileCache');
       const result = await mod.isFileHiddenCached('C:\\Users\\test\\hidden.txt', 'hidden.txt');
       expect(result).toBe(true);
     });
@@ -57,7 +57,7 @@ describe('hiddenFileCache (extended)', () => {
         stdout: '  A          C:\\Users\\test\\visible.txt\r\n',
       });
 
-      const mod = await import('./hiddenFileCache');
+      const mod = await import('../hiddenFileCache');
       const result = await mod.isFileHiddenCached('C:\\Users\\test\\visible.txt', 'visible.txt');
       expect(result).toBe(false);
     });
@@ -66,7 +66,7 @@ describe('hiddenFileCache (extended)', () => {
       setPlatform('win32');
       execFileMock.mockRejectedValueOnce(new Error('Command not found'));
 
-      const mod = await import('./hiddenFileCache');
+      const mod = await import('../hiddenFileCache');
       const result = await mod.isFileHiddenCached('C:\\test\\file.txt', 'file.txt');
       expect(result).toBe(false);
     });
@@ -75,7 +75,7 @@ describe('hiddenFileCache (extended)', () => {
       setPlatform('win32');
       execFileMock.mockResolvedValueOnce({ stdout: '12345\r\n' });
 
-      const mod = await import('./hiddenFileCache');
+      const mod = await import('../hiddenFileCache');
       const result = await mod.isFileHiddenCached('C:\\test\\odd.txt', 'odd.txt');
       expect(result).toBe(false);
     });
@@ -86,7 +86,7 @@ describe('hiddenFileCache (extended)', () => {
         stdout: '  A  H       C:\\test\\file.txt\r\n',
       });
 
-      const mod = await import('./hiddenFileCache');
+      const mod = await import('../hiddenFileCache');
       const first = await mod.isFileHiddenCached('C:\\test\\file.txt', 'file.txt');
       expect(first).toBe(true);
 
@@ -100,7 +100,7 @@ describe('hiddenFileCache (extended)', () => {
       setPlatform('win32');
       execFileMock.mockResolvedValueOnce({ stdout: '' });
 
-      const mod = await import('./hiddenFileCache');
+      const mod = await import('../hiddenFileCache');
       const result = await mod.isFileHiddenCached('C:\\test\\file.txt', 'file.txt');
       expect(result).toBe(false);
     });
@@ -111,7 +111,7 @@ describe('hiddenFileCache (extended)', () => {
         stdout: '  A          C:\\test\\file.txt\r\n',
       });
 
-      const mod = await import('./hiddenFileCache');
+      const mod = await import('../hiddenFileCache');
 
       await mod.isFileHiddenCached('C:\\test\\a.txt', 'a.txt');
       await mod.isFileHiddenCached('C:\\test\\b.txt', 'b.txt');
@@ -128,7 +128,7 @@ describe('hiddenFileCache (extended)', () => {
       });
       const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
-      const mod = await import('./hiddenFileCache');
+      const mod = await import('../hiddenFileCache');
 
       await mod.isFileHiddenCached('C:\\test\\a.txt', 'a.txt');
       vi.advanceTimersByTime(10);
@@ -157,7 +157,7 @@ describe('hiddenFileCache (extended)', () => {
       });
       const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
-      const mod = await import('./hiddenFileCache');
+      const mod = await import('../hiddenFileCache');
 
       await mod.isFileHiddenCached('C:\\test\\a.txt', 'a.txt');
       vi.advanceTimersByTime(10);
@@ -192,7 +192,7 @@ describe('hiddenFileCache (extended)', () => {
       });
       const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
-      const mod = await import('./hiddenFileCache');
+      const mod = await import('../hiddenFileCache');
 
       await mod.isFileHiddenCached('C:\\test\\old1.txt', 'old1.txt');
       vi.advanceTimersByTime(10);
@@ -220,7 +220,7 @@ describe('hiddenFileCache (extended)', () => {
       });
       const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
-      const mod = await import('./hiddenFileCache');
+      const mod = await import('../hiddenFileCache');
 
       await mod.isFileHiddenCached('C:\\test\\old1.txt', 'old1.txt');
       vi.advanceTimersByTime(10);
@@ -253,7 +253,7 @@ describe('hiddenFileCache (extended)', () => {
       });
       const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
-      const mod = await import('./hiddenFileCache');
+      const mod = await import('../hiddenFileCache');
 
       await mod.isFileHiddenCached('C:\\test\\a.txt', 'a.txt');
       vi.advanceTimersByTime(10);
@@ -276,14 +276,14 @@ describe('hiddenFileCache (extended)', () => {
   describe('isFileHiddenCached on non-win32', () => {
     it('returns true for dotfiles', async () => {
       setPlatform('linux');
-      const mod = await import('./hiddenFileCache');
+      const mod = await import('../hiddenFileCache');
       const result = await mod.isFileHiddenCached('/home/user/.bashrc', '.bashrc');
       expect(result).toBe(true);
     });
 
     it('returns false for non-dotfiles', async () => {
       setPlatform('linux');
-      const mod = await import('./hiddenFileCache');
+      const mod = await import('../hiddenFileCache');
       const result = await mod.isFileHiddenCached('/home/user/file.txt', 'file.txt');
       expect(result).toBe(false);
       expect(execFileMock).not.toHaveBeenCalled();
@@ -293,7 +293,7 @@ describe('hiddenFileCache (extended)', () => {
   describe('cleanup interval', () => {
     it('starts and stops cleanup without errors', async () => {
       vi.useFakeTimers();
-      const mod = await import('./hiddenFileCache');
+      const mod = await import('../hiddenFileCache');
 
       mod.startHiddenFileCacheCleanup();
       mod.startHiddenFileCacheCleanup();
@@ -307,7 +307,7 @@ describe('hiddenFileCache (extended)', () => {
     it('cleanup is a no-op when cache is empty', async () => {
       vi.useFakeTimers();
       const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-      const mod = await import('./hiddenFileCache');
+      const mod = await import('../hiddenFileCache');
 
       mod.startHiddenFileCacheCleanup();
       vi.advanceTimersByTime(5 * 60 * 1000 + 100);
@@ -326,7 +326,7 @@ describe('hiddenFileCache (extended)', () => {
       execFileMock.mockResolvedValue({
         stdout: '  A  H       C:\\test\\file.txt\r\n',
       });
-      const mod = await import('./hiddenFileCache');
+      const mod = await import('../hiddenFileCache');
 
       await mod.isFileHiddenCached('C:\\test\\file.txt', 'file.txt');
 
@@ -350,7 +350,7 @@ describe('hiddenFileCache (extended)', () => {
         stdout: '  A  H       C:\\test\\file.txt\r\n',
       });
 
-      const mod = await import('./hiddenFileCache');
+      const mod = await import('../hiddenFileCache');
 
       const first = await mod.isFileHiddenCached('C:\\test\\file.txt', 'file.txt');
       expect(first).toBe(true);

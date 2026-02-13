@@ -1,5 +1,5 @@
 import { afterEach, describe, it, expect, vi, beforeEach } from 'vitest';
-import { createZoomController } from './rendererZoom';
+import { createZoomController } from '../rendererZoom';
 
 describe('createZoomController', () => {
   let setZoomLevel: ReturnType<typeof vi.fn>;

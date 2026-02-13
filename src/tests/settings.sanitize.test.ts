@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { sanitizeSettings, createDefaultSettings } from './settings';
+import { sanitizeSettings, createDefaultSettings } from '../settings';
 
 describe('sanitizeSettings', () => {
   const defaults = createDefaultSettings();

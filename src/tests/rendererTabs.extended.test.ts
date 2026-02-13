@@ -1,15 +1,16 @@
+// @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type { Settings } from './types';
+import type { Settings } from '../types';
 
-vi.mock('./rendererDom.js', () => ({
+vi.mock('../rendererDom.js', () => ({
   clearHtml: vi.fn((el: HTMLElement) => {
     el.innerHTML = '';
   }),
 }));
-vi.mock('./shared.js', () => ({ escapeHtml: (s: string) => s }));
-vi.mock('./rendererUtils.js', () => ({ twemojiImg: () => '<img />' }));
+vi.mock('../shared.js', () => ({ escapeHtml: (s: string) => s }));
+vi.mock('../rendererUtils.js', () => ({ twemojiImg: () => '<img />' }));
 
-import { createTabsController, type TabData } from './rendererTabs';
+import { createTabsController, type TabData } from '../rendererTabs';
 
 function makeSettings(overrides: Partial<Settings> = {}): Settings {
   return {

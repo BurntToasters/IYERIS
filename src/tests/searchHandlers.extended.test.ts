@@ -36,26 +36,26 @@ vi.mock('electron', () => ({
   },
 }));
 
-vi.mock('./appState', () => ({
+vi.mock('../appState', () => ({
   getFileTasks: vi.fn(() => fileTasks),
   getIndexerTasks: vi.fn(() => (hasIndexerTasks ? indexerTasks : null)),
   getFileIndexer: vi.fn(() => fileIndexer),
 }));
 
-vi.mock('./security', () => ({
+vi.mock('../security', () => ({
   isPathSafe: vi.fn(() => true),
   getErrorMessage: vi.fn((error: unknown) =>
     error instanceof Error ? error.message : String(error)
   ),
 }));
 
-vi.mock('./ipcUtils', () => ({
+vi.mock('../ipcUtils', () => ({
   isTrustedIpcEvent: vi.fn(() => true),
 }));
 
-import { setupSearchHandlers } from './searchHandlers';
-import { isPathSafe } from './security';
-import { isTrustedIpcEvent } from './ipcUtils';
+import { setupSearchHandlers } from '../searchHandlers';
+import { isPathSafe } from '../security';
+import { isTrustedIpcEvent } from '../ipcUtils';
 
 function getHandler(channel: string): Handler {
   const handler = handlers.get(channel);

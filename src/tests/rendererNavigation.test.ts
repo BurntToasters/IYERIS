@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parsePath, buildPathFromSegments } from './rendererNavigation';
+import { parsePath, buildPathFromSegments } from '../rendererNavigation';
 
 describe('parsePath', () => {
   describe('Unix paths', () => {

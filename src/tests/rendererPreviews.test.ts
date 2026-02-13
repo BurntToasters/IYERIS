@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 
 const mockQuicklookController = vi.hoisted(() => ({
@@ -15,35 +16,35 @@ const mockLoadPdfJs = vi.hoisted(() => vi.fn());
 const mockLoadHighlightJs = vi.hoisted(() => vi.fn());
 const mockGetLanguageForExt = vi.hoisted(() => vi.fn(() => null));
 
-vi.mock('./rendererQuicklook.js', () => ({
+vi.mock('../rendererQuicklook.js', () => ({
   createQuicklookController: mockCreateQuicklookController,
 }));
 
-vi.mock('./rendererPdfViewer.js', () => ({
+vi.mock('../rendererPdfViewer.js', () => ({
   createPdfViewer: mockCreatePdfViewer,
   loadPdfJs: mockLoadPdfJs,
 }));
 
-vi.mock('./rendererHighlight.js', () => ({
+vi.mock('../rendererHighlight.js', () => ({
   loadHighlightJs: mockLoadHighlightJs,
   getLanguageForExt: mockGetLanguageForExt,
 }));
 
-vi.mock('./shared.js', () => ({
+vi.mock('../shared.js', () => ({
   escapeHtml: vi.fn((s: string) => s.replace(/</g, '&lt;').replace(/>/g, '&gt;')),
   getErrorMessage: vi.fn((e: unknown) => (e instanceof Error ? e.message : String(e))),
 }));
 
-vi.mock('./rendererDom.js', () => ({
+vi.mock('../rendererDom.js', () => ({
   getById: vi.fn((id: string) => document.getElementById(id)),
 }));
 
-vi.mock('./rendererUtils.js', () => ({
+vi.mock('../rendererUtils.js', () => ({
   encodeFileUrl: vi.fn((p: string) => `file://${p}`),
   twemojiImg: vi.fn((_code: string, _cls: string) => '<img class="twemoji" />'),
 }));
 
-vi.mock('./fileTypes.js', () => ({
+vi.mock('../fileTypes.js', () => ({
   IMAGE_EXTENSIONS: new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'ico']),
   RAW_EXTENSIONS: new Set(['cr2', 'nef', 'arw', 'dng']),
   TEXT_EXTENSIONS: new Set(['txt', 'md', 'json', 'js', 'ts', 'html', 'css', 'xml', 'yml', 'yaml']),
@@ -53,8 +54,8 @@ vi.mock('./fileTypes.js', () => ({
   ARCHIVE_EXTENSIONS: new Set(['zip', 'tar', 'gz', '7z', 'rar']),
 }));
 
-import { createPreviewController } from './rendererPreviews';
-import type { FileItem } from './types';
+import { createPreviewController } from '../rendererPreviews';
+import type { FileItem } from '../types';
 
 function createDeps() {
   return {

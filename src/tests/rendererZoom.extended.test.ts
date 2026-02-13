@@ -1,5 +1,6 @@
+// @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { createZoomController } from './rendererZoom';
+import { createZoomController } from '../rendererZoom';
 
 function createDeps() {
   return {

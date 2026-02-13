@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { spawnWithTimeout, captureSpawnOutput, launchDetached } from './processUtils';
+import { spawnWithTimeout, captureSpawnOutput, launchDetached } from '../processUtils';
 
 describe('spawnWithTimeout', () => {
   it('spawns a command successfully', async () => {

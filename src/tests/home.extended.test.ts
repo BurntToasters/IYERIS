@@ -1,11 +1,12 @@
+// @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('./shared.js', () => ({
+vi.mock('../shared.js', () => ({
   escapeHtml: (s: string) => s,
   ignoreError: () => {},
 }));
 
-vi.mock('./homeSettings.js', () => ({
+vi.mock('../homeSettings.js', () => ({
   createDefaultHomeSettings: () => ({
     showQuickAccess: true,
     showRecents: true,
@@ -41,7 +42,7 @@ vi.mock('./homeSettings.js', () => ({
   }),
 }));
 
-import { createHomeController, HOME_QUICK_ACCESS_ITEMS } from './home';
+import { createHomeController, HOME_QUICK_ACCESS_ITEMS } from '../home';
 
 function createMinimalDom() {
   document.body.innerHTML = `

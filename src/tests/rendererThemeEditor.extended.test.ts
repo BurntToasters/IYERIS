@@ -1,5 +1,6 @@
+// @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { createThemeEditorController, hexToRgb } from './rendererThemeEditor';
+import { createThemeEditorController, hexToRgb } from '../rendererThemeEditor';
 
 function createDeps() {
   const settings = {

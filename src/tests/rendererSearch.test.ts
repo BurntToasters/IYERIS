@@ -1,24 +1,25 @@
+// @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('./shared.js', () => ({
+vi.mock('../shared.js', () => ({
   escapeHtml: (s: string) => s,
   ignoreError: () => {},
 }));
 
-vi.mock('./rendererDom.js', () => ({
+vi.mock('../rendererDom.js', () => ({
   clearHtml: vi.fn(),
   getById: vi.fn(() => null),
 }));
 
-vi.mock('./rendererUtils.js', () => ({
+vi.mock('../rendererUtils.js', () => ({
   twemojiImg: () => '<img>',
 }));
 
-vi.mock('./home.js', () => ({
+vi.mock('../home.js', () => ({
   isHomeViewPath: (p: string) => p === 'home-view',
 }));
 
-import { createSearchController } from './rendererSearch';
+import { createSearchController } from '../rendererSearch';
 
 function createDeps() {
   const settings = {

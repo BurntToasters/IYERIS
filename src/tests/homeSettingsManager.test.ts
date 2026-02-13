@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { HomeSettings } from './types';
+import type { HomeSettings } from '../types';
 
 type Handler = (...args: unknown[]) => unknown;
 const handlers = new Map<string, Handler>();
@@ -49,33 +49,33 @@ vi.mock('fs', () => ({
   promises: fsPromisesMock,
 }));
 
-vi.mock('./appState', () => ({
+vi.mock('../appState', () => ({
   SETTINGS_CACHE_TTL_MS: 30000,
 }));
 
-vi.mock('./homeSettings', () => ({
+vi.mock('../homeSettings', () => ({
   createDefaultHomeSettings: createDefaultHomeSettingsMock,
   sanitizeHomeSettings: sanitizeHomeSettingsMock,
 }));
 
-vi.mock('./security', () => ({
+vi.mock('../security', () => ({
   getErrorMessage: vi.fn((error: unknown) =>
     error instanceof Error ? error.message : String(error)
   ),
 }));
 
-vi.mock('./shared', () => ({
+vi.mock('../shared', () => ({
   ignoreError: vi.fn(),
 }));
 
-vi.mock('./utils/logger', () => ({
+vi.mock('../utils/logger', () => ({
   logger: {
     debug: vi.fn(),
     error: vi.fn(),
   },
 }));
 
-vi.mock('./ipcUtils', () => ({
+vi.mock('../ipcUtils', () => ({
   isTrustedIpcEvent: vi.fn(() => trustedIpc),
 }));
 
@@ -115,7 +115,7 @@ describe('homeSettingsManager', () => {
 
   it('caches home settings within TTL', async () => {
     fsPromisesMock.readFile.mockResolvedValueOnce('{"showWelcome":false}');
-    const manager = await import('./homeSettingsManager');
+    const manager = await import('../homeSettingsManager');
 
     const first = await manager.loadHomeSettings();
     const second = await manager.loadHomeSettings();
@@ -127,7 +127,7 @@ describe('homeSettingsManager', () => {
 
   it('backs up corrupt home settings and falls back to defaults', async () => {
     fsPromisesMock.readFile.mockResolvedValueOnce('{broken-json');
-    const manager = await import('./homeSettingsManager');
+    const manager = await import('../homeSettingsManager');
 
     const loaded = await manager.loadHomeSettings();
 
@@ -140,7 +140,7 @@ describe('homeSettingsManager', () => {
 
   it('falls back to copy+unlink when save rename fails', async () => {
     fsPromisesMock.rename.mockRejectedValueOnce(new Error('EXDEV'));
-    const manager = await import('./homeSettingsManager');
+    const manager = await import('../homeSettingsManager');
 
     const result = await manager.saveHomeSettings({ cards: ['a'] } as unknown as HomeSettings);
 
@@ -154,7 +154,7 @@ describe('homeSettingsManager', () => {
 
   it('returns untrusted response for get-home-settings handler', async () => {
     trustedIpc = false;
-    const manager = await import('./homeSettingsManager');
+    const manager = await import('../homeSettingsManager');
     manager.setupHomeSettingsHandlers();
     const handler = handlers.get('get-home-settings');
     if (!handler) throw new Error('get-home-settings handler missing');
@@ -181,7 +181,7 @@ describe('homeSettingsManager', () => {
     browserWindowMock.fromWebContents.mockReturnValue(senderWindow);
     browserWindowMock.getAllWindows.mockReturnValue([senderWindow, otherWindow, destroyedWindow]);
 
-    const manager = await import('./homeSettingsManager');
+    const manager = await import('../homeSettingsManager');
     manager.setupHomeSettingsHandlers();
     const handler = handlers.get('save-home-settings');
     if (!handler) throw new Error('save-home-settings handler missing');

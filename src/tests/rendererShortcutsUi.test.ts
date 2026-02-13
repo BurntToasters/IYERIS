@@ -1,10 +1,11 @@
+// @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-vi.mock('./shared.js', () => ({
+vi.mock('../shared.js', () => ({
   escapeHtml: (t: unknown) => String(t ?? ''),
 }));
 
-import { createShortcutsUiController } from './rendererShortcutsUi.js';
+import { createShortcutsUiController } from '../rendererShortcutsUi.js';
 
 type Deps = Parameters<typeof createShortcutsUiController>[0];
 

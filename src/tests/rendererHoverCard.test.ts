@@ -1,13 +1,14 @@
+// @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-vi.mock('./rendererDom.js', () => ({
+vi.mock('../rendererDom.js', () => ({
   getById: (id: string) => document.getElementById(id),
   clearHtml: (el: HTMLElement) => {
     if (el) el.innerHTML = '';
   },
 }));
 
-import { createHoverCardController } from './rendererHoverCard.js';
+import { createHoverCardController } from '../rendererHoverCard.js';
 
 type Deps = Parameters<typeof createHoverCardController>[0];
 

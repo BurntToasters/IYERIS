@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 
 const mockCancelSearch = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
@@ -16,25 +17,25 @@ const mockClearHtml = vi.hoisted(() =>
 );
 const mockGetById = vi.hoisted(() => vi.fn((id: string) => document.getElementById(id)));
 
-vi.mock('./shared.js', () => ({
+vi.mock('../shared.js', () => ({
   escapeHtml: (s: string) => s,
   ignoreError: () => {},
 }));
 
-vi.mock('./rendererDom.js', () => ({
+vi.mock('../rendererDom.js', () => ({
   clearHtml: mockClearHtml,
   getById: mockGetById,
 }));
 
-vi.mock('./rendererUtils.js', () => ({
+vi.mock('../rendererUtils.js', () => ({
   twemojiImg: () => '<img>',
 }));
 
-vi.mock('./home.js', () => ({
+vi.mock('../home.js', () => ({
   isHomeViewPath: (p: string) => p === 'home-view',
 }));
 
-import { createSearchController } from './rendererSearch';
+import { createSearchController } from '../rendererSearch';
 
 function createDeps(overrides: Record<string, unknown> = {}) {
   const settings = {

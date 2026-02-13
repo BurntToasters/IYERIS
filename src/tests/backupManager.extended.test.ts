@@ -16,12 +16,12 @@ vi.mock('electron', () => ({
   app: hoisted.appMock,
 }));
 
-vi.mock('./fileOperations', () => ({
+vi.mock('../fileOperations', () => ({
   pathExists: hoisted.pathExistsMock,
   renameWithExdevFallback: hoisted.renameWithExdevFallbackMock,
 }));
 
-vi.mock('./shared', () => ({
+vi.mock('../shared', () => ({
   ignoreError: hoisted.ignoreErrorMock,
 }));
 
@@ -29,9 +29,9 @@ import {
   cleanupStashedBackupsForTests,
   cleanupBackups,
   ensureOverwriteBackup,
-} from './backupManager';
-import { pathExists, renameWithExdevFallback } from './fileOperations';
-import type { PlannedFileOperation } from './fileOperations';
+} from '../backupManager';
+import { pathExists, renameWithExdevFallback } from '../fileOperations';
+import type { PlannedFileOperation } from '../fileOperations';
 
 let tmpRoot = '';
 

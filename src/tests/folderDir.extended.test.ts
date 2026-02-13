@@ -1,5 +1,6 @@
+// @vitest-environment jsdom
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { createFolderTreeManager } from './folderDir';
+import { createFolderTreeManager } from '../folderDir';
 
 const mockGetDirectoryContents = vi.hoisted(() =>
   vi.fn().mockResolvedValue({ success: true, contents: [] })

@@ -5,7 +5,7 @@ import {
   HOME_QUICK_ACCESS_ITEMS,
   isHomeViewPath,
   getPathDisplayValue,
-} from './home';
+} from '../home';
 
 describe('HOME_VIEW_PATH', () => {
   it('is a valid protocol path', () => {

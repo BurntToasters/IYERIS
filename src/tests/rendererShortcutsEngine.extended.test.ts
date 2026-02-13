@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-vi.mock('./shortcuts.js', async (importOriginal) => {
-  const orig = await importOriginal<typeof import('./shortcuts')>();
+vi.mock('../shortcuts.js', async (importOriginal) => {
+  const orig = await importOriginal<typeof import('../shortcuts')>();
   return {
     ...orig,
     SHORTCUT_DEFINITIONS: orig.SHORTCUT_DEFINITIONS,
@@ -9,9 +9,9 @@ vi.mock('./shortcuts.js', async (importOriginal) => {
   };
 });
 
-import { createShortcutEngineController } from './rendererShortcutsEngine';
-import { getDefaultShortcuts } from './shortcuts.js';
-import type { Settings } from './types';
+import { createShortcutEngineController } from '../rendererShortcutsEngine';
+import { getDefaultShortcuts } from '../shortcuts.js';
+import type { Settings } from '../types';
 
 function makeDeps(platformOS = 'linux') {
   return {

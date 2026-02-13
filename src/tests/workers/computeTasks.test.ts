@@ -2,9 +2,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { calculateFolderSize, calculateChecksum } from './computeTasks';
+import { calculateFolderSize, calculateChecksum } from '../../workers/computeTasks';
 
-vi.mock('./workerUtils', () => ({
+vi.mock('../../workers/workerUtils', () => ({
   isCancelled: vi.fn(() => false),
   sendProgress: vi.fn(),
 }));

@@ -1,6 +1,7 @@
+// @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-import { createExternalLinksController } from './rendererExternalLinks';
+import { createExternalLinksController } from '../rendererExternalLinks';
 
 function makeDeps() {
   return {

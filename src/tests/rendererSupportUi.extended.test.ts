@@ -1,5 +1,6 @@
+// @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { createSupportUiController } from './rendererSupportUi.js';
+import { createSupportUiController } from '../rendererSupportUi.js';
 
 type Deps = Parameters<typeof createSupportUiController>[0];
 type ElectronApiMock = Pick<Window['electronAPI'], 'getLicenses'>;

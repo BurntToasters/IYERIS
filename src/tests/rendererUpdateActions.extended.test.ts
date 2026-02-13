@@ -1,5 +1,6 @@
+// @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { createUpdateActionsController } from './rendererUpdateActions';
+import { createUpdateActionsController } from '../rendererUpdateActions';
 
 const mockCheckForUpdates = vi.hoisted(() => vi.fn());
 const mockDownloadUpdate = vi.hoisted(() => vi.fn());

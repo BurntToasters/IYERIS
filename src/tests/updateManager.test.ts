@@ -5,24 +5,24 @@ vi.mock('electron', () => ({
   app: { getVersion: vi.fn() },
 }));
 
-vi.mock('./appState', () => ({
+vi.mock('../appState', () => ({
   getMainWindow: () => null,
   getIsDev: () => false,
   setIsQuitting: vi.fn(),
 }));
 
-vi.mock('./platformUtils', () => ({
+vi.mock('../platformUtils', () => ({
   getAutoUpdater: vi.fn(),
   isRunningInFlatpak: vi.fn(),
   checkMsiInstallation: vi.fn(),
   isInstalledViaMsi: vi.fn(),
 }));
 
-vi.mock('./ipcUtils', () => ({
+vi.mock('../ipcUtils', () => ({
   safeSendToWindow: vi.fn(),
 }));
 
-import { compareVersions } from './updateManager';
+import { compareVersions } from '../updateManager';
 
 describe('compareVersions', () => {
   it('treats identical versions as equal', () => {

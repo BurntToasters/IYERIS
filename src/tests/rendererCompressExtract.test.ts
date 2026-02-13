@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 
 const mockArchiveSuffixes = vi.hoisted(() => [
@@ -17,15 +18,15 @@ const mockArchiveSuffixes = vi.hoisted(() => [
   '.tar.gz',
 ]);
 
-vi.mock('./fileTypes.js', () => ({
+vi.mock('../fileTypes.js', () => ({
   ARCHIVE_SUFFIXES: mockArchiveSuffixes,
 }));
 
-vi.mock('./shared.js', () => ({
+vi.mock('../shared.js', () => ({
   getErrorMessage: (err: unknown) => (err instanceof Error ? err.message : String(err)),
 }));
 
-vi.mock('./rendererUtils.js', () => ({
+vi.mock('../rendererUtils.js', () => ({
   normalizeWindowsPath: (value: string) => value.replace(/\//g, '\\'),
   rendererPath: {
     basename: (filePath: string, ext?: string): string => {
@@ -51,7 +52,7 @@ vi.mock('./rendererUtils.js', () => ({
   },
 }));
 
-import { isArchivePath, createCompressExtractController } from './rendererCompressExtract';
+import { isArchivePath, createCompressExtractController } from '../rendererCompressExtract';
 
 function createDeps() {
   return {

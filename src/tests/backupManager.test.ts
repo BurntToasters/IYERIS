@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { promises as fs } from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import type { PlannedFileOperation } from './fileOperations';
+import type { PlannedFileOperation } from '../fileOperations';
 
 const hoisted = vi.hoisted(() => ({
   appMock: {
@@ -17,12 +17,12 @@ vi.mock('electron', () => ({
   app: hoisted.appMock,
 }));
 
-vi.mock('./fileOperations', () => ({
+vi.mock('../fileOperations', () => ({
   pathExists: hoisted.pathExistsMock,
   renameWithExdevFallback: hoisted.renameWithExdevFallbackMock,
 }));
 
-vi.mock('./shared', () => ({
+vi.mock('../shared', () => ({
   ignoreError: hoisted.ignoreErrorMock,
 }));
 
@@ -32,9 +32,9 @@ import {
   restoreBackup,
   restoreOverwriteBackups,
   stashRemainingBackups,
-} from './backupManager';
-import { pathExists, renameWithExdevFallback } from './fileOperations';
-import { ignoreError } from './shared';
+} from '../backupManager';
+import { pathExists, renameWithExdevFallback } from '../fileOperations';
+import { ignoreError } from '../shared';
 
 let tmpRoot = '';
 

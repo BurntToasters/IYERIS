@@ -5,7 +5,7 @@ import {
   rendererPath,
   encodeFileUrl,
   twemojiImg,
-} from './rendererUtils';
+} from '../rendererUtils';
 
 describe('isWindowsPath', () => {
   it('recognises drive letter paths', () => {

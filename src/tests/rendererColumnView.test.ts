@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 
 const mockElectronAPI = vi.hoisted(() => ({
@@ -8,12 +9,12 @@ const mockElectronAPI = vi.hoisted(() => ({
   clearDragData: vi.fn(),
 }));
 
-vi.mock('./shared.js', () => ({
+vi.mock('../shared.js', () => ({
   escapeHtml: (value: string) => value,
   ignoreError: () => {},
 }));
 
-vi.mock('./rendererUtils.js', () => ({
+vi.mock('../rendererUtils.js', () => ({
   isWindowsPath: (value: string) => /^[A-Za-z]:[\\/]/.test(value) || value.startsWith('\\\\'),
   rendererPath: {
     basename: (filePath: string) => filePath.split(/[\\/]/).pop() || '',
@@ -29,11 +30,11 @@ vi.mock('./rendererUtils.js', () => ({
   },
 }));
 
-vi.mock('./home.js', () => ({
+vi.mock('../home.js', () => ({
   isHomeViewPath: (value: string) => value === 'iyeris://home',
 }));
 
-import { createColumnViewController } from './rendererColumnView';
+import { createColumnViewController } from '../rendererColumnView';
 
 function createDeps(overrides: Partial<Record<string, unknown>> = {}) {
   const columnView = document.getElementById('column-view') as HTMLElement;

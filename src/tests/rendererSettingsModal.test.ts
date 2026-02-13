@@ -1,6 +1,7 @@
+// @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-import { createSettingsModalController } from './rendererSettingsModal';
+import { createSettingsModalController } from '../rendererSettingsModal';
 
 function makeDeps() {
   return {

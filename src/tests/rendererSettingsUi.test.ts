@@ -1,5 +1,6 @@
+// @vitest-environment jsdom
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { createSettingsUiController } from './rendererSettingsUi';
+import { createSettingsUiController } from '../rendererSettingsUi';
 
 function createDeps() {
   return {

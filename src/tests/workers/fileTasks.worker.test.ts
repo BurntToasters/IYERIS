@@ -29,14 +29,14 @@ vi.mock('worker_threads', () => ({
   parentPort: mocks.parentPort,
 }));
 
-vi.mock('./workerUtils', () => ({
+vi.mock('../../workers/workerUtils', () => ({
   isRecord: (value: unknown) => !!value && typeof value === 'object',
   getErrorMessage: (error: unknown) => (error instanceof Error ? error.message : String(error)),
   cancelled: mocks.cancelled,
   pruneCancelled: mocks.pruneCancelled,
 }));
 
-vi.mock('./searchTasks', () => ({
+vi.mock('../../workers/searchTasks', () => ({
   searchDirectoryFiles: mocks.searchDirectoryFiles,
   searchDirectoryContent: mocks.searchDirectoryContent,
   searchContentList: mocks.searchContentList,
@@ -44,18 +44,18 @@ vi.mock('./searchTasks', () => ({
   searchIndexFile: mocks.searchIndexFile,
 }));
 
-vi.mock('./computeTasks', () => ({
+vi.mock('../../workers/computeTasks', () => ({
   calculateFolderSize: mocks.calculateFolderSize,
   calculateChecksum: mocks.calculateChecksum,
 }));
 
-vi.mock('./indexTasks', () => ({
+vi.mock('../../workers/indexTasks', () => ({
   buildIndex: mocks.buildIndex,
   loadIndexFile: mocks.loadIndexFile,
   saveIndexFile: mocks.saveIndexFile,
 }));
 
-vi.mock('./listDirectoryTask', () => ({
+vi.mock('../../workers/listDirectoryTask', () => ({
   listDirectory: mocks.listDirectory,
 }));
 
@@ -67,7 +67,7 @@ describe('workers/fileTasks', () => {
   });
 
   async function loadMessageListener() {
-    await import('./fileTasks');
+    await import('../../workers/fileTasks');
     const messageCall = mocks.parentPort.on.mock.calls.find((call) => call[0] === 'message');
     if (!messageCall) {
       throw new Error('Message listener not registered');

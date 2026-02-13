@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getLanguageForExt } from './rendererHighlight';
+import { getLanguageForExt } from '../rendererHighlight';
 
 describe('getLanguageForExt', () => {
   it('maps JavaScript extensions', () => {

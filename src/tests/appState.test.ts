@@ -8,7 +8,7 @@ import {
   ZOOM_MAX,
   MAX_TEXT_PREVIEW_BYTES,
   MAX_DATA_URL_BYTES,
-} from './appState';
+} from '../appState';
 
 describe('appState constants', () => {
   describe('MAX_UNDO_STACK_SIZE', () => {

@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const mockCreateDefaultSettings = vi.hoisted(() =>
@@ -52,11 +53,11 @@ const mockCreateDefaultSettings = vi.hoisted(() =>
   }))
 );
 
-vi.mock('./settings.js', () => ({
+vi.mock('../settings.js', () => ({
   createDefaultSettings: mockCreateDefaultSettings,
 }));
 
-import { createSettingsUiController } from './rendererSettingsUi';
+import { createSettingsUiController } from '../rendererSettingsUi';
 
 Element.prototype.scrollIntoView = vi.fn();
 

@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 
 const mockCreatePdfViewer = vi.hoisted(() => vi.fn());
@@ -20,29 +21,29 @@ const mockAudioMimeTypes = vi.hoisted(
   () => ({ mp3: 'audio/mpeg', wav: 'audio/wav' }) as Record<string, string>
 );
 
-vi.mock('./rendererPdfViewer.js', () => ({
+vi.mock('../rendererPdfViewer.js', () => ({
   createPdfViewer: mockCreatePdfViewer,
 }));
 
-vi.mock('./rendererHighlight.js', () => ({
+vi.mock('../rendererHighlight.js', () => ({
   loadHighlightJs: mockLoadHighlightJs,
   getLanguageForExt: mockGetLanguageForExt,
 }));
 
-vi.mock('./shared.js', () => ({
+vi.mock('../shared.js', () => ({
   escapeHtml: mockEscapeHtml,
 }));
 
-vi.mock('./rendererDom.js', () => ({
+vi.mock('../rendererDom.js', () => ({
   getById: mockGetById,
 }));
 
-vi.mock('./rendererUtils.js', () => ({
+vi.mock('../rendererUtils.js', () => ({
   encodeFileUrl: mockEncodeFileUrl,
   twemojiImg: mockTwemojiImg,
 }));
 
-vi.mock('./fileTypes.js', () => ({
+vi.mock('../fileTypes.js', () => ({
   IMAGE_EXTENSIONS: mockImageExtensions,
   TEXT_EXTENSIONS: mockTextExtensions,
   VIDEO_EXTENSIONS: mockVideoExtensions,
@@ -52,8 +53,8 @@ vi.mock('./fileTypes.js', () => ({
   AUDIO_MIME_TYPES: mockAudioMimeTypes,
 }));
 
-import { createQuicklookController, type QuicklookDeps } from './rendererQuicklook';
-import type { FileItem, Settings } from './types';
+import { createQuicklookController, type QuicklookDeps } from '../rendererQuicklook';
+import type { FileItem, Settings } from '../types';
 
 function makeFile(overrides: Partial<FileItem> = {}): FileItem {
   return {

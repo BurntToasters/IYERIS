@@ -1,10 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
 
-vi.mock('./shared.js', () => ({
+vi.mock('../shared.js', () => ({
   isRecord: vi.fn((v: unknown) => typeof v === 'object' && v !== null && !Array.isArray(v)),
 }));
 
-import { createSettingsActionsController } from './rendererSettingsActions';
+import { createSettingsActionsController } from '../rendererSettingsActions';
 
 function makeDeps() {
   return {

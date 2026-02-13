@@ -19,9 +19,9 @@ const mockLog = vi.hoisted(() => ({
 }));
 
 vi.mock('electron-log', () => ({ default: mockLog }));
-vi.mock('../shared', () => ({ ignoreError: () => {} }));
+vi.mock('../../shared', () => ({ ignoreError: () => {} }));
 
-import { logger } from './logger';
+import { logger } from '../../utils/logger';
 
 describe('logger', () => {
   beforeEach(() => {

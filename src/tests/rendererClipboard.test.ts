@@ -1,5 +1,6 @@
+// @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { createClipboardController } from './rendererClipboard';
+import { createClipboardController } from '../rendererClipboard';
 
 type ClipboardElectronApi = {
   setClipboard: ReturnType<typeof vi.fn>;
