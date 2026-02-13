@@ -15,8 +15,6 @@
     "@electron/notarize": "^3.1.1",
     "@eslint/js": "^9.39.2",
     "@types/node": "^25.0.3",
-    "@typescript-eslint/eslint-plugin": "^8.32.1",
-    "@typescript-eslint/parser": "^8.32.1",
     "@vitest/coverage-v8": "^4.0.18",
     "cross-env": "^7.0.3",
     "dotenv": "^17.2.3",
@@ -32,6 +30,11 @@
     "typescript-eslint": "^8.53.0",
     "vitest": "^4.0.16"
   },
+  "engines": {
+    "node": "24.x",
+    "npm": "11.x"
+  },
+  "packageManager": "npm@11.10.0",
   "overrides": {
     "tar": "^7.5.3"
   },
@@ -40,16 +43,13 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:all": "npm run build && node build/test-all.js",
+    "typecheck": "tsc --noEmit && tsc --noEmit --project tsconfig.renderer.json",
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
     "format": "prettier --write src/",
     "format:check": "prettier --check src/",
     "prepare": "husky",
-    "copy:css": "node -e \"const fs=require('fs');fs.mkdirSync('dist/css',{recursive:true});fs.copyFileSync('src/css/twemoji.css', 'dist/css/twemoji.css')\"",
-    "copy:highlight": "node -e \"const fs=require('fs');const path=require('path');const base=path.dirname(require.resolve('@highlightjs/cdn-assets/package.json'));const jsSrc=path.join(base,'highlight.min.js');const cssSrc=path.join(base,'styles','atom-one-dark.min.css');const dest=path.join('dist','vendor');fs.mkdirSync(dest,{recursive:true});fs.copyFileSync(jsSrc,path.join(dest,'highlight.js'));fs.copyFileSync(cssSrc,path.join(dest,'highlight.css'));\"",
-    "copy:pdfjs": "node -e \"const fs=require('fs');const path=require('path');const base=path.dirname(require.resolve('pdfjs-dist/package.json'));const dest=path.join('dist','vendor','pdfjs');fs.mkdirSync(dest,{recursive:true});fs.copyFileSync(path.join(base,'build','pdf.min.mjs'),path.join(dest,'pdf.min.mjs'));fs.copyFileSync(path.join(base,'build','pdf.worker.min.mjs'),path.join(dest,'pdf.worker.min.mjs'));\"",
-    "build:cleanup": "node -e \"const fs=require('fs');['release','dist'].forEach(d=>{try{fs.rmSync(d,{recursive:true,force:true})}catch(e){}})\"",
-    "build": "npm run build:cleanup && tsc --project tsconfig.main.json && tsc --project tsconfig.renderer.json && npm run copy:css && npm run copy:highlight && npm run copy:pdfjs",
+    "build": "node build/dist-tools.js clean && tsc --project tsconfig.main.json && tsc --project tsconfig.renderer.json && node build/dist-tools.js copy",
     "watch": "node build/watch.js",
     "start": "npm run build && electron .",
     "dev": "npm run build && electron . --enable-logging",
@@ -93,9 +93,9 @@
     "release:beta:linux": "npm run release:prepare && npm run licenses && npm run patch:beta && cross-env IS_BETA=true npm run build && dotenv -e .env -- electron-builder --linux AppImage deb rpm --x64 --arm64 -c.linux.icon=assets/icon-beta.png --publish always && npm run restore:release && npm run sign:gpg",
     "release:beta:linux:native": "npm run release:prepare && npm run licenses && npm run patch:beta && cross-env IS_BETA=true npm run build && cross-env USE_SYSTEM_FPM=true dotenv -e .env -- electron-builder --linux AppImage deb rpm --x64 --arm64 -c.linux.icon=assets/icon-beta.png --publish always && npm run restore:release && npm run sign:gpg",
     "release:beta:all": "npm run licenses && npm run release:beta:mac && npm run release:beta:win && npm run release:beta:linux",
-    "build:msstore:x64": "npm run licenses && npm run licenses && npm run build && electron-builder --win --x64 -c electron-builder.msstore.yml --publish never",
-    "build:msstore:arm64": "npm run licenses && npm run licenses && npm run build && electron-builder --win --arm64 -c electron-builder.msstore.yml --publish never",
-    "build:msstore": "npm run licenses && npm run licenses && npm run build:msstore:x64 && npm run build:msstore:arm64",
+    "build:msstore:x64": "npm run licenses && npm run build && electron-builder --win --x64 -c electron-builder.msstore.yml --publish never",
+    "build:msstore:arm64": "npm run licenses && npm run build && electron-builder --win --arm64 -c electron-builder.msstore.yml --publish never",
+    "build:msstore": "npm run licenses && npm run build:msstore:x64 && npm run build:msstore:arm64",
     "sign:gpg": "node build/gpg-sign.js"
   },
   "build": {
@@ -209,6 +209,15 @@
   "lint-staged": {
     "src/**/*.ts": [
       "eslint --fix",
+      "prettier --write"
+    ],
+    "build/**/*.js": [
+      "prettier --write"
+    ],
+    ".github/workflows/*.{yml,yaml}": [
+      "prettier --write"
+    ],
+    "*.{json,md,yml,yaml}": [
       "prettier --write"
     ]
   }
