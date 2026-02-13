@@ -1,7 +1,7 @@
 import { app } from 'electron';
 import { exec } from 'child_process';
 import * as fsSync from 'fs';
-import { logger } from './utils/logger';
+import { logger } from './logger';
 
 let autoUpdaterModule: typeof import('electron-updater') | null = null;
 let sevenBinModule: { path7za: string } | null = null;

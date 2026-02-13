@@ -17,7 +17,7 @@ import { checkMsiInstallation } from './platformUtils';
 import { setupFileTasksProgressHandler } from './ipcUtils';
 import { warmupDrivesCache } from './utils';
 import { FileIndexer } from './indexer';
-import { logger, initializeLogger } from './utils/logger';
+import { logger, initializeLogger } from './logger';
 
 import { setupZoomHandlers } from './zoomHandlers';
 import {

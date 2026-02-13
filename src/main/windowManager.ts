@@ -25,8 +25,8 @@ import {
   getIsDev,
 } from './appState';
 import { loadSettings, getCachedSettings } from './settingsManager';
-import { logger } from './utils/logger';
-import { ignoreError } from './shared';
+import { logger } from './logger';
+import { ignoreError } from '../shared';
 import { isTrustedIpcEvent } from './ipcUtils';
 
 type TrayState = 'idle' | 'active' | 'notification';
@@ -56,8 +56,8 @@ const TRAY_ICON_SIZES: Record<TrayPlatform, { width: number; height: number }> =
   linux: { width: 24, height: 24 },
 };
 
-const TRAY_ASSETS_PATH = path.join(__dirname, '..', 'assets');
-const INDEX_PATH = path.join(__dirname, '..', 'src', 'index.html');
+const TRAY_ASSETS_PATH = path.join(__dirname, '..', '..', 'assets');
+const INDEX_PATH = path.join(__dirname, '..', '..', 'src', 'index.html');
 const INDEX_URL = pathToFileURL(INDEX_PATH).toString();
 const INDEX_URL_OBJ = new URL(INDEX_URL);
 const trayIconCache = new Map<string, { path: string; icon: Electron.NativeImage }>();
@@ -241,7 +241,7 @@ export function createWindow(isInitialWindow: boolean = false): BrowserWindow {
       const version = app.getVersion();
       const isBeta = /-(beta|alpha|rc)/i.test(version);
       const iconName = isBeta ? 'icon-beta.png' : 'icon.png';
-      const iconPath = path.join(__dirname, '..', 'assets', iconName);
+      const iconPath = path.join(__dirname, '..', '..', 'assets', iconName);
       console.log(`[Window] Version: ${version}, isBeta: ${isBeta}, icon: ${iconName}`);
       console.log(`[Window] Icon path: ${iconPath}`);
       return iconPath;

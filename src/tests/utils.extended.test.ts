@@ -22,7 +22,7 @@ vi.mock('fs', () => ({
   },
 }));
 
-vi.mock('../utils/logger', () => ({
+vi.mock('../main/logger', () => ({
   logger: {
     debug: vi.fn(),
     info: vi.fn(),
@@ -53,14 +53,14 @@ describe('utils.ts', () => {
 
   describe('getCachedDrives', () => {
     it('returns null when cache is empty (fresh module)', async () => {
-      const mod = await import('../utils');
+      const mod = await import('../main/utils');
       expect(mod.getCachedDrives()).toBeNull();
     });
 
     it('returns cached drives after getDrives populates cache', async () => {
       setPlatform('linux');
       mockReaddir.mockResolvedValue([]);
-      const mod = await import('../utils');
+      const mod = await import('../main/utils');
       const drives = await mod.getDrives();
       expect(drives).toContain('/');
       const cached = mod.getCachedDrives();
@@ -70,7 +70,7 @@ describe('utils.ts', () => {
     it('returns null when cache TTL has expired', async () => {
       setPlatform('linux');
       mockReaddir.mockResolvedValue([]);
-      const mod = await import('../utils');
+      const mod = await import('../main/utils');
       await mod.getDrives();
 
       const cached = mod.getCachedDrives();
@@ -82,7 +82,7 @@ describe('utils.ts', () => {
     it('calls getDrives and caches on success', async () => {
       setPlatform('linux');
       mockReaddir.mockResolvedValue([]);
-      const mod = await import('../utils');
+      const mod = await import('../main/utils');
       mod.warmupDrivesCache();
 
       await new Promise((r) => setTimeout(r, 50));
@@ -96,7 +96,7 @@ describe('utils.ts', () => {
       setPlatform('win32');
       mockExecAsync.mockRejectedValue(new Error('command failed'));
       mockAccess.mockRejectedValue(new Error('no access'));
-      const mod = await import('../utils');
+      const mod = await import('../main/utils');
 
       mod.warmupDrivesCache();
       await new Promise((r) => setTimeout(r, 50));
@@ -110,7 +110,7 @@ describe('utils.ts', () => {
       it('returns same result on second call without re-executing', async () => {
         setPlatform('linux');
         mockReaddir.mockResolvedValue([]);
-        const mod = await import('../utils');
+        const mod = await import('../main/utils');
         const first = await mod.getDrives();
         mockReaddir.mockClear();
         const second = await mod.getDrives();
@@ -126,7 +126,7 @@ describe('utils.ts', () => {
         mockExecAsync.mockResolvedValueOnce({
           stdout: 'C\r\nD\r\nE\r\n',
         });
-        const mod = await import('../utils');
+        const mod = await import('../main/utils');
         const drives = await mod.getDrives();
         expect(drives).toEqual(['C:\\', 'D:\\', 'E:\\']);
       });
@@ -136,7 +136,7 @@ describe('utils.ts', () => {
         mockExecAsync.mockResolvedValueOnce({
           stdout: 'c\nd\n',
         });
-        const mod = await import('../utils');
+        const mod = await import('../main/utils');
         const drives = await mod.getDrives();
         expect(drives).toEqual(['C:\\', 'D:\\']);
       });
@@ -146,7 +146,7 @@ describe('utils.ts', () => {
         mockExecAsync.mockResolvedValueOnce({
           stdout: 'Name\r\n----\r\nC\r\nD\r\nSomething\r\n\r\n',
         });
-        const mod = await import('../utils');
+        const mod = await import('../main/utils');
         const drives = await mod.getDrives();
         expect(drives).toEqual(['C:\\', 'D:\\']);
       });
@@ -159,7 +159,7 @@ describe('utils.ts', () => {
         mockExecAsync.mockResolvedValueOnce({
           stdout: 'Name\r\nC:\r\nD:\r\n',
         });
-        const mod = await import('../utils');
+        const mod = await import('../main/utils');
         const drives = await mod.getDrives();
         expect(drives).toEqual(['C:\\', 'D:\\']);
       });
@@ -170,7 +170,7 @@ describe('utils.ts', () => {
         mockExecAsync.mockResolvedValueOnce({
           stdout: 'Name\r\nC:\r\nE:\r\n',
         });
-        const mod = await import('../utils');
+        const mod = await import('../main/utils');
         const drives = await mod.getDrives();
         expect(drives).toEqual(['C:\\', 'E:\\']);
       });
@@ -181,7 +181,7 @@ describe('utils.ts', () => {
         mockExecAsync.mockResolvedValueOnce({
           stdout: 'Name\r\nc:\r\nd:\r\n',
         });
-        const mod = await import('../utils');
+        const mod = await import('../main/utils');
         const drives = await mod.getDrives();
         expect(drives).toEqual(['C:\\', 'D:\\']);
       });
@@ -197,7 +197,7 @@ describe('utils.ts', () => {
           }
           return Promise.reject(new Error('ENOENT'));
         });
-        const mod = await import('../utils');
+        const mod = await import('../main/utils');
         const drives = await mod.getDrives();
         expect(drives).toContain('C:\\');
         expect(drives).toContain('D:\\');
@@ -212,7 +212,7 @@ describe('utils.ts', () => {
           if (drive === 'E:\\') return Promise.resolve();
           return Promise.reject(new Error('ENOENT'));
         });
-        const mod = await import('../utils');
+        const mod = await import('../main/utils');
         const drives = await mod.getDrives();
         expect(drives).toEqual(['E:\\']);
       });
@@ -222,7 +222,7 @@ describe('utils.ts', () => {
         mockExecAsync.mockRejectedValueOnce(new Error('powershell fail'));
         mockExecAsync.mockRejectedValueOnce(new Error('wmic fail'));
         mockAccess.mockRejectedValue(new Error('ENOENT'));
-        const mod = await import('../utils');
+        const mod = await import('../main/utils');
         const drives = await mod.getDrives();
         expect(drives).toEqual(['C:\\']);
       });
@@ -232,7 +232,7 @@ describe('utils.ts', () => {
         mockExecAsync.mockResolvedValueOnce({
           stdout: 'E\r\nA\r\nC\r\n',
         });
-        const mod = await import('../utils');
+        const mod = await import('../main/utils');
         const drives = await mod.getDrives();
         expect(drives).toEqual(['A:\\', 'C:\\', 'E:\\']);
       });
@@ -243,7 +243,7 @@ describe('utils.ts', () => {
         mockExecAsync.mockRejectedValueOnce(new Error('wmic fail'));
 
         mockAccess.mockImplementation(() => new Promise(() => {}));
-        const mod = await import('../utils');
+        const mod = await import('../main/utils');
         const drives = await mod.getDrives();
 
         expect(drives).toEqual(['C:\\']);
@@ -260,7 +260,7 @@ describe('utils.ts', () => {
           if (drive === 'F:\\') return Promise.resolve();
           return Promise.reject(new Error('ENOENT'));
         });
-        const mod = await import('../utils');
+        const mod = await import('../main/utils');
         const drives = await mod.getDrives();
         expect(drives).toEqual(['F:\\']);
       });
@@ -271,7 +271,7 @@ describe('utils.ts', () => {
         setPlatform('darwin');
         mockReaddir.mockResolvedValueOnce(['Macintosh HD', 'USB Drive']);
         mockStat.mockResolvedValue({ isDirectory: () => true } as any);
-        const mod = await import('../utils');
+        const mod = await import('../main/utils');
         const drives = await mod.getDrives();
         expect(drives).toContain('/');
         expect(drives).toContain('/Volumes/Macintosh HD');
@@ -282,7 +282,7 @@ describe('utils.ts', () => {
         setPlatform('darwin');
         mockReaddir.mockResolvedValueOnce(['.hidden', 'Visible']);
         mockStat.mockResolvedValue({ isDirectory: () => true } as any);
-        const mod = await import('../utils');
+        const mod = await import('../main/utils');
         const drives = await mod.getDrives();
         expect(drives).toContain('/');
         expect(drives).toContain('/Volumes/Visible');
@@ -295,7 +295,7 @@ describe('utils.ts', () => {
         mockStat
           .mockResolvedValueOnce({ isDirectory: () => true } as any)
           .mockResolvedValueOnce({ isDirectory: () => false } as any);
-        const mod = await import('../utils');
+        const mod = await import('../main/utils');
         const drives = await mod.getDrives();
         expect(drives).toContain('/');
         expect(drives).toContain('/Volumes/Volume1');
@@ -306,7 +306,7 @@ describe('utils.ts', () => {
         setPlatform('darwin');
         mockReaddir.mockResolvedValueOnce(['Volume1']);
         mockStat.mockRejectedValueOnce(new Error('permission denied'));
-        const mod = await import('../utils');
+        const mod = await import('../main/utils');
         const drives = await mod.getDrives();
         expect(drives).toContain('/');
         expect(drives).not.toContain('/Volumes/Volume1');
@@ -315,7 +315,7 @@ describe('utils.ts', () => {
       it('handles readdir failure gracefully', async () => {
         setPlatform('darwin');
         mockReaddir.mockRejectedValueOnce(new Error('ENOENT'));
-        const mod = await import('../utils');
+        const mod = await import('../main/utils');
         const drives = await mod.getDrives();
         expect(drives).toEqual(['/']);
       });
@@ -331,7 +331,7 @@ describe('utils.ts', () => {
 
         mockReaddir.mockResolvedValueOnce(['user']);
         mockStat.mockResolvedValue({ isDirectory: () => true } as any);
-        const mod = await import('../utils');
+        const mod = await import('../main/utils');
         const drives = await mod.getDrives();
         expect(drives).toContain('/');
         expect(drives).toContain('/media/usb1');
@@ -342,7 +342,7 @@ describe('utils.ts', () => {
       it('handles missing mount directories gracefully', async () => {
         setPlatform('linux');
         mockReaddir.mockRejectedValue(new Error('ENOENT'));
-        const mod = await import('../utils');
+        const mod = await import('../main/utils');
         const drives = await mod.getDrives();
         expect(drives).toEqual(['/']);
       });
@@ -354,7 +354,7 @@ describe('utils.ts', () => {
           .mockResolvedValueOnce([])
           .mockResolvedValueOnce([]);
         mockStat.mockResolvedValue({ isDirectory: () => true } as any);
-        const mod = await import('../utils');
+        const mod = await import('../main/utils');
         const drives = await mod.getDrives();
         expect(drives).toContain('/media/usb');
         expect(drives).not.toContain('/media/.snapshot');
@@ -369,7 +369,7 @@ describe('utils.ts', () => {
         mockStat
           .mockResolvedValueOnce({ isDirectory: () => true } as any)
           .mockResolvedValueOnce({ isDirectory: () => false } as any);
-        const mod = await import('../utils');
+        const mod = await import('../main/utils');
         const drives = await mod.getDrives();
         expect(drives).toContain('/media/disk');
         expect(drives).not.toContain('/media/readme.txt');
@@ -381,7 +381,7 @@ describe('utils.ts', () => {
     it('returns cached drive info if still valid', async () => {
       setPlatform('linux');
       mockReaddir.mockResolvedValue([]);
-      const mod = await import('../utils');
+      const mod = await import('../main/utils');
       const first = await mod.getDriveInfo();
       mockReaddir.mockClear();
       const second = await mod.getDriveInfo();
@@ -398,7 +398,7 @@ describe('utils.ts', () => {
           .mockResolvedValueOnce([])
           .mockResolvedValueOnce([]);
         mockStat.mockResolvedValue({ isDirectory: () => true } as any);
-        const mod = await import('../utils');
+        const mod = await import('../main/utils');
         const info = await mod.getDriveInfo();
         const rootInfo = info.find((d) => d.path === '/');
         expect(rootInfo).toBeDefined();
@@ -411,7 +411,7 @@ describe('utils.ts', () => {
       it('returns "/" as label for root partition', async () => {
         setPlatform('linux');
         mockReaddir.mockResolvedValue([]);
-        const mod = await import('../utils');
+        const mod = await import('../main/utils');
         const info = await mod.getDriveInfo();
         expect(info).toHaveLength(1);
         expect(info[0].path).toBe('/');
@@ -427,7 +427,7 @@ describe('utils.ts', () => {
         mockExecAsync.mockResolvedValueOnce({
           stdout: '   Volume Name:          Macintosh HD\n',
         });
-        const mod = await import('../utils');
+        const mod = await import('../main/utils');
         const info = await mod.getDriveInfo();
         const rootInfo = info.find((d) => d.path === '/');
         expect(rootInfo).toBeDefined();
@@ -440,7 +440,7 @@ describe('utils.ts', () => {
         mockExecAsync.mockResolvedValueOnce({
           stdout: '   Volume Name:          Not Applicable\n',
         });
-        const mod = await import('../utils');
+        const mod = await import('../main/utils');
         const info = await mod.getDriveInfo();
         const rootInfo = info.find((d) => d.path === '/');
         expect(rootInfo).toBeDefined();
@@ -451,7 +451,7 @@ describe('utils.ts', () => {
         setPlatform('darwin');
         mockReaddir.mockResolvedValueOnce([]);
         mockExecAsync.mockRejectedValueOnce(new Error('diskutil fail'));
-        const mod = await import('../utils');
+        const mod = await import('../main/utils');
         const info = await mod.getDriveInfo();
         const rootInfo = info.find((d) => d.path === '/');
         expect(rootInfo).toBeDefined();
@@ -465,7 +465,7 @@ describe('utils.ts', () => {
         mockExecAsync.mockResolvedValueOnce({
           stdout: '   Volume Name:          Macintosh HD\n',
         });
-        const mod = await import('../utils');
+        const mod = await import('../main/utils');
         const info = await mod.getDriveInfo();
         const backupInfo = info.find((d) => d.path === '/Volumes/Backup');
         expect(backupInfo).toBeDefined();
@@ -478,7 +478,7 @@ describe('utils.ts', () => {
         mockExecAsync.mockResolvedValueOnce({
           stdout: '   Device Node:  /dev/disk1\n   File System:  APFS\n',
         });
-        const mod = await import('../utils');
+        const mod = await import('../main/utils');
         const info = await mod.getDriveInfo();
         const rootInfo = info.find((d) => d.path === '/');
         expect(rootInfo).toBeDefined();
@@ -498,7 +498,7 @@ describe('utils.ts', () => {
             { DriveLetter: 'D', FileSystemLabel: 'Data' },
           ]),
         });
-        const mod = await import('../utils');
+        const mod = await import('../main/utils');
         const info = await mod.getDriveInfo();
         const cDrive = info.find((d) => d.path === 'C:\\');
         expect(cDrive).toBeDefined();
@@ -515,7 +515,7 @@ describe('utils.ts', () => {
         mockExecAsync.mockResolvedValueOnce({
           stdout: JSON.stringify({ DriveLetter: 'C', FileSystemLabel: '' }),
         });
-        const mod = await import('../utils');
+        const mod = await import('../main/utils');
         const info = await mod.getDriveInfo();
         const cDrive = info.find((d) => d.path === 'C:\\');
         expect(cDrive).toBeDefined();
@@ -532,7 +532,7 @@ describe('utils.ts', () => {
         mockExecAsync.mockResolvedValueOnce({
           stdout: 'Name   VolumeName\r\nC:     Windows\r\n',
         });
-        const mod = await import('../utils');
+        const mod = await import('../main/utils');
         const info = await mod.getDriveInfo();
         const cDrive = info.find((d) => d.path === 'C:\\');
         expect(cDrive).toBeDefined();
@@ -546,7 +546,7 @@ describe('utils.ts', () => {
         mockExecAsync.mockRejectedValueOnce(new Error('fail'));
 
         mockExecAsync.mockRejectedValueOnce(new Error('fail'));
-        const mod = await import('../utils');
+        const mod = await import('../main/utils');
         const info = await mod.getDriveInfo();
         const cDrive = info.find((d) => d.path === 'C:\\');
         expect(cDrive).toBeDefined();
@@ -559,7 +559,7 @@ describe('utils.ts', () => {
         mockExecAsync.mockResolvedValueOnce({
           stdout: JSON.stringify({ DriveLetter: 'C', FileSystemLabel: 'OS' }),
         });
-        const mod = await import('../utils');
+        const mod = await import('../main/utils');
         const info = await mod.getDriveInfo();
         expect(info[0].label).toBe('OS (C:)');
       });
@@ -573,7 +573,7 @@ describe('utils.ts', () => {
             { DriveLetter: 'C', FileSystemLabel: 'Main' },
           ]),
         });
-        const mod = await import('../utils');
+        const mod = await import('../main/utils');
         const info = await mod.getDriveInfo();
         expect(info[0].label).toBe('Main (C:)');
       });
@@ -585,7 +585,7 @@ describe('utils.ts', () => {
         mockExecAsync.mockResolvedValueOnce({ stdout: '   ' });
 
         mockExecAsync.mockRejectedValueOnce(new Error('wmic fail'));
-        const mod = await import('../utils');
+        const mod = await import('../main/utils');
         const info = await mod.getDriveInfo();
         expect(info[0].label).toBe('C:');
       });
@@ -596,7 +596,7 @@ describe('utils.ts', () => {
         mockExecAsync.mockResolvedValueOnce({ stdout: 'C\r\n' });
         mockExecAsync.mockRejectedValueOnce(new Error('fail'));
         mockExecAsync.mockRejectedValueOnce(new Error('fail'));
-        const mod = await import('../utils');
+        const mod = await import('../main/utils');
         const info = await mod.getDriveInfo();
 
         expect(info[0].path).toBe('C:\\');
@@ -611,7 +611,7 @@ describe('utils.ts', () => {
         mockExecAsync.mockResolvedValueOnce({
           stdout: 'Name   VolumeName\r\nC:     \r\n',
         });
-        const mod = await import('../utils');
+        const mod = await import('../main/utils');
         const info = await mod.getDriveInfo();
 
         expect(info[0].label).toBe('C:');
@@ -626,7 +626,7 @@ describe('utils.ts', () => {
             { DriveLetter: 'C', FileSystemLabel: 'Windows' },
           ]),
         });
-        const mod = await import('../utils');
+        const mod = await import('../main/utils');
         const info = await mod.getDriveInfo();
         expect(info[0].label).toBe('Windows (C:)');
       });
@@ -637,7 +637,7 @@ describe('utils.ts', () => {
     it('does not call getDrives again when driveInfo cache is valid', async () => {
       setPlatform('linux');
       mockReaddir.mockResolvedValue([]);
-      const mod = await import('../utils');
+      const mod = await import('../main/utils');
       await mod.getDriveInfo();
       const callCountAfterFirst = mockReaddir.mock.calls.length;
       await mod.getDriveInfo();
@@ -655,7 +655,7 @@ describe('utils.ts', () => {
       mockExecAsync.mockResolvedValueOnce({ stdout: 'Name\r\n' });
 
       mockAccess.mockRejectedValue(new Error('ENOENT'));
-      const mod = await import('../utils');
+      const mod = await import('../main/utils');
       const drives = await mod.getDrives();
       expect(drives).toEqual(['C:\\']);
     });
@@ -666,7 +666,7 @@ describe('utils.ts', () => {
       mockExecAsync.mockResolvedValueOnce({
         stdout: 'Name  \r\nC:  \r\nX:  \r\nZ:  \r\n',
       });
-      const mod = await import('../utils');
+      const mod = await import('../main/utils');
       const drives = await mod.getDrives();
       expect(drives).toEqual(['C:\\', 'X:\\', 'Z:\\']);
     });
@@ -682,7 +682,7 @@ describe('utils.ts', () => {
         if (drive === 'Z:\\') return Promise.resolve();
         return Promise.reject(new Error('nope'));
       });
-      const mod = await import('../utils');
+      const mod = await import('../main/utils');
       const drives = await mod.getDrives();
       expect(drives).toEqual(['Z:\\']);
 
@@ -698,7 +698,7 @@ describe('utils.ts', () => {
         .mockResolvedValueOnce(['shared'])
         .mockResolvedValueOnce([]);
       mockStat.mockResolvedValue({ isDirectory: () => true } as any);
-      const mod = await import('../utils');
+      const mod = await import('../main/utils');
       const drives = await mod.getDrives();
       expect(drives).toEqual(['/', '/mnt/shared']);
     });
@@ -712,7 +712,7 @@ describe('utils.ts', () => {
       mockStat
         .mockResolvedValueOnce({ isDirectory: () => true } as any)
         .mockRejectedValueOnce(new Error('EACCES'));
-      const mod = await import('../utils');
+      const mod = await import('../main/utils');
       const drives = await mod.getDrives();
       expect(drives).toContain('/');
       expect(drives).toContain('/media/good');
@@ -726,7 +726,7 @@ describe('utils.ts', () => {
         .mockResolvedValueOnce(['data'])
         .mockRejectedValueOnce(new Error('ENOENT'));
       mockStat.mockResolvedValue({ isDirectory: () => true } as any);
-      const mod = await import('../utils');
+      const mod = await import('../main/utils');
       const drives = await mod.getDrives();
       expect(drives).toEqual(['/', '/mnt/data']);
     });
@@ -739,7 +739,7 @@ describe('utils.ts', () => {
       mockExecAsync.mockResolvedValueOnce({
         stdout: 'some garbage output\n',
       });
-      const mod = await import('../utils');
+      const mod = await import('../main/utils');
       const info = await mod.getDriveInfo();
 
       expect(info[0].label).toBe('/');
@@ -752,7 +752,7 @@ describe('utils.ts', () => {
       mockExecAsync.mockResolvedValueOnce({
         stdout: '   Volume Name:          Macintosh HD\n',
       });
-      const mod = await import('../utils');
+      const mod = await import('../main/utils');
       const info = await mod.getDriveInfo();
       expect(info.find((d) => d.path === '/')!.label).toBe('Macintosh HD');
       expect(info.find((d) => d.path === '/Volumes/TimeMachine')!.label).toBe('TimeMachine');
@@ -765,7 +765,7 @@ describe('utils.ts', () => {
       mockExecAsync.mockResolvedValueOnce({
         stdout: '   Volume Name:          My Drive   \n',
       });
-      const mod = await import('../utils');
+      const mod = await import('../main/utils');
       const info = await mod.getDriveInfo();
       expect(info[0].label).toBe('My Drive');
     });
@@ -781,7 +781,7 @@ describe('utils.ts', () => {
       mockExecAsync.mockResolvedValueOnce({
         stdout: 'Name   VolumeName\r\nC:     Windows OS\r\nD:     Data Storage\r\n',
       });
-      const mod = await import('../utils');
+      const mod = await import('../main/utils');
       const info = await mod.getDriveInfo();
       expect(info.find((d) => d.path === 'C:\\')!.label).toBe('Windows OS (C:)');
       expect(info.find((d) => d.path === 'D:\\')!.label).toBe('Data Storage (D:)');
@@ -794,7 +794,7 @@ describe('utils.ts', () => {
       mockExecAsync.mockResolvedValueOnce({
         stdout: 'Name   VolumeName\r\nC:     System Reserved\r\n',
       });
-      const mod = await import('../utils');
+      const mod = await import('../main/utils');
       const info = await mod.getDriveInfo();
       expect(info[0].label).toBe('System Reserved (C:)');
     });
@@ -806,7 +806,7 @@ describe('utils.ts', () => {
       mockExecAsync.mockResolvedValueOnce({
         stdout: 'Name   VolumeName\r\nc:     mydrv\r\n',
       });
-      const mod = await import('../utils');
+      const mod = await import('../main/utils');
       const info = await mod.getDriveInfo();
       expect(info[0].label).toBe('mydrv (C:)');
     });
@@ -819,7 +819,7 @@ describe('utils.ts', () => {
 
       mockExecAsync.mockRejectedValueOnce(new Error('fail'));
       mockExecAsync.mockRejectedValueOnce(new Error('fail'));
-      const mod = await import('../utils');
+      const mod = await import('../main/utils');
       const info = await mod.getDriveInfo();
 
       expect(info[0].label).toBe('C:');
@@ -831,7 +831,7 @@ describe('utils.ts', () => {
       mockExecAsync.mockResolvedValueOnce({
         stdout: JSON.stringify({ DriveLetter: 'C', FileSystemLabel: '   ' }),
       });
-      const mod = await import('../utils');
+      const mod = await import('../main/utils');
       const info = await mod.getDriveInfo();
 
       expect(info[0].label).toBe('C:');
@@ -843,7 +843,7 @@ describe('utils.ts', () => {
       setPlatform('linux');
 
       mockReaddir.mockResolvedValue([]);
-      const mod = await import('../utils');
+      const mod = await import('../main/utils');
       const info = await mod.getDriveInfo();
       expect(info[0].path).toBe('/');
       expect(info[0].label).toBe('/');
@@ -855,7 +855,7 @@ describe('utils.ts', () => {
       setPlatform('linux');
       mockReaddir.mockResolvedValue(['ext-drive']);
       mockStat.mockResolvedValue({ isDirectory: () => true } as any);
-      const mod = await import('../utils');
+      const mod = await import('../main/utils');
       const [r1, r2] = await Promise.all([mod.getDrives(), mod.getDrives()]);
 
       expect(r1).toEqual(r2);
@@ -866,7 +866,7 @@ describe('utils.ts', () => {
     it('returns same result when called concurrently', async () => {
       setPlatform('linux');
       mockReaddir.mockResolvedValue([]);
-      const mod = await import('../utils');
+      const mod = await import('../main/utils');
       const [r1, r2] = await Promise.all([mod.getDriveInfo(), mod.getDriveInfo()]);
       expect(r1).toEqual(r2);
     });
@@ -882,7 +882,7 @@ describe('utils.ts', () => {
       mockExecAsync.mockResolvedValueOnce({
         stdout: 'Name   VolumeName\r\nC:     System\r\n',
       });
-      const mod = await import('../utils');
+      const mod = await import('../main/utils');
 
       const info = await mod.getDriveInfo();
       expect(info[0].label).toBe('System (C:)');
@@ -894,7 +894,7 @@ describe('utils.ts', () => {
       mockExecAsync.mockResolvedValueOnce({ stdout: '[]' });
 
       mockExecAsync.mockRejectedValueOnce(new Error('fail'));
-      const mod = await import('../utils');
+      const mod = await import('../main/utils');
       const info = await mod.getDriveInfo();
       expect(info[0].label).toBe('C:');
     });

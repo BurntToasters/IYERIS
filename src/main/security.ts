@@ -1,7 +1,7 @@
 import * as path from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
-import { ignoreError } from './shared';
-export { escapeHtml, getErrorMessage } from './shared';
+import { ignoreError } from '../shared';
+export { escapeHtml, getErrorMessage } from '../shared';
 
 const WINDOWS_RESERVED_NAMES = new Set([
   'con',
@@ -131,8 +131,8 @@ const normalizeRendererPath = (value: string): string => {
 
 const ALLOWED_RENDERER_PATHS = new Set(
   [
-    path.resolve(__dirname, '..', 'src', 'index.html'),
-    path.resolve(__dirname, '..', 'dist', 'index.html'),
+    path.resolve(__dirname, '..', '..', 'src', 'index.html'),
+    path.resolve(__dirname, '..', '..', 'dist', 'index.html'),
   ].map((p) => normalizeRendererPath(p))
 );
 

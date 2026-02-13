@@ -40,7 +40,7 @@ vi.mock('fs', () => ({
   },
 }));
 
-vi.mock('../security', () => ({
+vi.mock('../main/security', () => ({
   isPathSafe: mocks.isPathSafe,
   getErrorMessage: mocks.getErrorMessage,
 }));
@@ -49,13 +49,13 @@ vi.mock('../shared', () => ({
   ignoreError: mocks.ignoreError,
 }));
 
-vi.mock('../ipcUtils', () => ({
+vi.mock('../main/ipcUtils', () => ({
   isTrustedIpcEvent: mocks.isTrustedIpcEvent,
 }));
 
 async function freshImport() {
   vi.resetModules();
-  return import('../thumbnailCache');
+  return import('../main/thumbnailCache');
 }
 
 const CACHE_DIR = '/tmp/test-userData/thumbnail-cache';

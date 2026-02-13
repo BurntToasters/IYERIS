@@ -28,7 +28,7 @@ vi.mock('electron', () => ({
   },
 }));
 
-vi.mock('../appState', () => ({
+vi.mock('../main/appState', () => ({
   getMainWindow: () => null,
   getFileTasks: () => ({
     runTask: vi.fn(),
@@ -39,7 +39,7 @@ vi.mock('../appState', () => ({
   MAX_UNDO_STACK_SIZE: 50,
 }));
 
-vi.mock('../ipcUtils', () => ({
+vi.mock('../main/ipcUtils', () => ({
   registerDirectoryOperationTarget: vi.fn(),
   unregisterDirectoryOperationTarget: vi.fn(),
   isTrustedIpcEvent: vi.fn(() => true),
@@ -55,13 +55,13 @@ vi.mock('../ipcUtils', () => ({
   ),
 }));
 
-vi.mock('../undoRedoManager', () => ({
+vi.mock('../main/undoRedoManager', () => ({
   clearUndoStackForPath: (...args: unknown[]) => clearUndoStackForPath(...args),
   getUndoStack: () => [],
   pushUndoAction: vi.fn(),
 }));
 
-import { setupFileOperationHandlers, stopHiddenFileCacheCleanup } from '../fileOperations';
+import { setupFileOperationHandlers, stopHiddenFileCacheCleanup } from '../main/fileOperations';
 
 describe('delete-item handler', () => {
   beforeEach(() => {

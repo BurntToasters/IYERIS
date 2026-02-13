@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { generateCacheKey, MAX_CACHE_SIZE_MB, MAX_CACHE_AGE_DAYS } from '../thumbnailCache';
+import { generateCacheKey, MAX_CACHE_SIZE_MB, MAX_CACHE_AGE_DAYS } from '../main/thumbnailCache';
 
 describe('Thumbnail Cache', () => {
   describe('Cache key generation', () => {

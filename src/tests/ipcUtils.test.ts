@@ -4,12 +4,12 @@ vi.mock('electron', () => ({
   BrowserWindow: vi.fn(),
 }));
 
-vi.mock('../appState', () => ({
+vi.mock('../main/appState', () => ({
   getMainWindow: vi.fn(() => null),
   getFileTasks: vi.fn(() => ({ on: vi.fn() })),
 }));
 
-vi.mock('../security', () => ({
+vi.mock('../main/security', () => ({
   isTrustedIpcSender: vi.fn(() => false),
 }));
 
@@ -25,8 +25,8 @@ import {
   isTrustedIpcEvent,
   withTrustedIpcEvent,
   withTrustedApiHandler,
-} from '../ipcUtils';
-import { isTrustedIpcSender } from '../security';
+} from '../main/ipcUtils';
+import { isTrustedIpcSender } from '../main/security';
 import type { IpcMainInvokeEvent } from 'electron';
 
 function makeMockWindow(destroyed = false) {

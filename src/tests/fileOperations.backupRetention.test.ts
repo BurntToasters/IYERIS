@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { promises as fs } from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { cleanupStashedBackupsForTests } from '../fileOperations';
+import { cleanupStashedBackupsForTests } from '../main/fileOperations';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 let tmpDir = '';

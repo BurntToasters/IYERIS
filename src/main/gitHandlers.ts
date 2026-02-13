@@ -2,7 +2,7 @@ import * as path from 'path';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { isPathSafe } from './security';
-import { ignoreError } from './shared';
+import { ignoreError } from '../shared';
 import { spawnWithTimeout } from './processUtils';
 
 const execAsync = promisify(exec);

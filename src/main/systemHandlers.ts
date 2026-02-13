@@ -12,12 +12,12 @@ import * as path from 'path';
 import { promises as fs } from 'fs';
 import { exec, execFile, spawn } from 'child_process';
 import { promisify } from 'util';
-import type { ApiResponse, LicensesData, Settings } from './types';
+import type { ApiResponse, LicensesData, Settings } from '../types';
 import { MAX_TEXT_PREVIEW_BYTES, MAX_DATA_URL_BYTES } from './appState';
 import { isPathSafe, getErrorMessage } from './security';
-import { ignoreError } from './shared';
+import { ignoreError } from '../shared';
 import { isRunningInFlatpak } from './platformUtils';
-import { logger } from './utils/logger';
+import { logger } from './logger';
 import { withTrustedApiHandler, withTrustedIpcEvent } from './ipcUtils';
 import { launchDetached } from './processUtils';
 import { checkFullDiskAccess, showFullDiskAccessDialog } from './fullDiskAccess';
@@ -249,7 +249,7 @@ export function setupSystemHandlers(
   handleTrustedApi(
     'get-licenses',
     async (): Promise<{ success: boolean; licenses?: LicensesData; error?: string }> => {
-      const licensesPath = path.join(__dirname, '..', 'licenses.json');
+      const licensesPath = path.join(__dirname, '..', '..', 'licenses.json');
       const data = await fs.readFile(licensesPath, 'utf-8');
       const licenses = JSON.parse(data);
       return { success: true, licenses };

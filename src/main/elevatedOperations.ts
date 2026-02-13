@@ -6,9 +6,9 @@ import * as fs from 'fs/promises';
 import * as crypto from 'crypto';
 import { getMainWindow } from './appState';
 import { isPathSafe, getErrorMessage } from './security';
-import { ignoreError } from './shared';
+import { ignoreError } from '../shared';
 import { loadSettings } from './settingsManager';
-import type { ApiResponse } from './types';
+import type { ApiResponse } from '../types';
 import { isTrustedIpcEvent } from './ipcUtils';
 
 const execFilePromise = promisify(execFile);

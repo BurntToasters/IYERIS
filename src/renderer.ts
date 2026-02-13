@@ -230,55 +230,49 @@ const MAX_CACHED_FILES_PER_TAB = 10000;
 let tabCacheAccessOrder: string[] = [];
 let saveTabStateTimeout: NodeJS.Timeout | null = null;
 
-function requireElement<T extends HTMLElement>(id: string): T {
-  const el = document.getElementById(id);
-  if (!el) throw new Error(`Missing required DOM element: #${id}`);
-  return el as T;
-}
-
-const addressInput = requireElement<HTMLInputElement>('address-input');
-const fileGrid = requireElement<HTMLElement>('file-grid');
-fileGrid?.setAttribute('role', 'listbox');
-fileGrid?.setAttribute('aria-label', 'File list');
-const fileView = requireElement<HTMLElement>('file-view');
-const columnView = requireElement<HTMLElement>('column-view');
-const homeView = requireElement<HTMLElement>('home-view');
-const loading = requireElement<HTMLElement>('loading');
-const loadingText = requireElement<HTMLElement>('loading-text');
-const emptyState = requireElement<HTMLElement>('empty-state');
-const backBtn = requireElement<HTMLButtonElement>('back-btn');
-const forwardBtn = requireElement<HTMLButtonElement>('forward-btn');
-const upBtn = requireElement<HTMLButtonElement>('up-btn');
-const refreshBtn = requireElement<HTMLButtonElement>('refresh-btn');
-const newFileBtn = requireElement<HTMLButtonElement>('new-file-btn');
-const newFolderBtn = requireElement<HTMLButtonElement>('new-folder-btn');
-const viewToggleBtn = requireElement<HTMLButtonElement>('view-toggle-btn');
-const viewOptions = requireElement<HTMLElement>('view-options');
-const listHeader = requireElement<HTMLElement>('list-header');
-const folderTree = requireElement<HTMLElement>('folder-tree');
-const sidebarResizeHandle = requireElement<HTMLElement>('sidebar-resize-handle');
-const drivesList = requireElement<HTMLElement>('drives-list');
-const sortBtn = requireElement<HTMLButtonElement>('sort-btn');
-const bookmarksList = requireElement<HTMLElement>('bookmarks-list');
-const bookmarkAddBtn = requireElement<HTMLButtonElement>('bookmark-add-btn');
-const undoBtn = requireElement<HTMLButtonElement>('undo-btn');
-const redoBtn = requireElement<HTMLButtonElement>('redo-btn');
-const dropIndicator = requireElement<HTMLElement>('drop-indicator');
-const dropIndicatorAction = requireElement<HTMLElement>('drop-indicator-action');
-const dropIndicatorPath = requireElement<HTMLElement>('drop-indicator-path');
-const previewResizeHandle = requireElement<HTMLElement>('preview-resize-handle');
-const selectionCopyBtn = requireElement<HTMLButtonElement>('selection-copy-btn');
-const selectionCutBtn = requireElement<HTMLButtonElement>('selection-cut-btn');
-const selectionMoveBtn = requireElement<HTMLButtonElement>('selection-move-btn');
-const selectionRenameBtn = requireElement<HTMLButtonElement>('selection-rename-btn');
-const selectionDeleteBtn = requireElement<HTMLButtonElement>('selection-delete-btn');
-const statusItems = requireElement<HTMLElement>('status-items');
-const statusSelected = requireElement<HTMLElement>('status-selected');
-const statusSearch = requireElement<HTMLElement>('status-search');
-const statusSearchText = requireElement<HTMLElement>('status-search-text');
-const selectionIndicator = requireElement<HTMLElement>('selection-indicator');
-const selectionCount = requireElement<HTMLElement>('selection-count');
-const statusHidden = requireElement<HTMLElement>('status-hidden');
+import {
+  addressInput,
+  fileGrid,
+  fileView,
+  columnView,
+  homeView,
+  loading,
+  loadingText,
+  emptyState,
+  backBtn,
+  forwardBtn,
+  upBtn,
+  refreshBtn,
+  newFileBtn,
+  newFolderBtn,
+  viewToggleBtn,
+  viewOptions,
+  listHeader,
+  folderTree,
+  sidebarResizeHandle,
+  drivesList,
+  sortBtn,
+  bookmarksList,
+  bookmarkAddBtn,
+  undoBtn,
+  redoBtn,
+  dropIndicator,
+  dropIndicatorAction,
+  dropIndicatorPath,
+  previewResizeHandle,
+  selectionCopyBtn,
+  selectionCutBtn,
+  selectionMoveBtn,
+  selectionRenameBtn,
+  selectionDeleteBtn,
+  statusItems,
+  statusSelected,
+  statusSearch,
+  statusSearchText,
+  selectionIndicator,
+  selectionCount,
+  statusHidden,
+} from './rendererElements.js';
 
 const sortController = createSortController({
   getSortBtn: () => sortBtn,

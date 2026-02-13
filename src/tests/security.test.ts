@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { escapeHtml, isPathSafe, isUrlSafe, getErrorMessage } from '../security';
+import { escapeHtml, isPathSafe, isUrlSafe, getErrorMessage } from '../main/security';
 
 describe('escapeHtml', () => {
   it('escapes ampersands', () => {

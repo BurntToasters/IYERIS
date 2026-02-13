@@ -4,7 +4,7 @@ import { promises as fs } from 'fs';
 import * as fsSync from 'fs';
 import * as crypto from 'crypto';
 import { isPathSafe, getErrorMessage } from './security';
-import { ignoreError } from './shared';
+import { ignoreError } from '../shared';
 import { isTrustedIpcEvent } from './ipcUtils';
 
 const CACHE_DIR_NAME = 'thumbnail-cache';

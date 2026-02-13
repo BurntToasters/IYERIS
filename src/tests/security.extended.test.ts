@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as path from 'path';
 import { pathToFileURL } from 'url';
-import { isPathSafe, isTrustedIpcSender } from '../security';
+import { isPathSafe, isTrustedIpcSender } from '../main/security';
 
 const allowedSrcHtml = path.resolve(__dirname, '..', 'index.html');
 const allowedDistHtml = path.resolve(__dirname, '..', '..', 'dist', 'index.html');

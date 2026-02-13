@@ -1,4 +1,19 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
+interface PdfjsViewport {
+  width: number;
+  height: number;
+}
+
+interface PdfjsTextContent {
+  items: Array<{ str: string }>;
+}
+
+interface PdfjsTextLayerConstructor {
+  new (params: {
+    textContentSource: Promise<PdfjsTextContent>;
+    container: HTMLElement;
+    viewport: PdfjsViewport;
+  }): { render: () => Promise<void> };
+}
 
 interface PdfjsLib {
   getDocument: (params: {
@@ -10,7 +25,7 @@ interface PdfjsLib {
     enableXfa?: boolean;
   }) => { promise: Promise<PdfjsDocument> };
   GlobalWorkerOptions: { workerSrc: string };
-  TextLayer?: any;
+  TextLayer?: PdfjsTextLayerConstructor;
 }
 
 interface PdfjsDocument {
@@ -20,11 +35,11 @@ interface PdfjsDocument {
 }
 
 interface PdfjsPage {
-  getViewport: (params: { scale: number }) => any;
-  render: (params: { canvasContext: CanvasRenderingContext2D; viewport: any }) => {
+  getViewport: (params: { scale: number }) => PdfjsViewport;
+  render: (params: { canvasContext: CanvasRenderingContext2D; viewport: PdfjsViewport }) => {
     promise: Promise<void>;
   };
-  getTextContent: () => Promise<any>;
+  getTextContent: () => Promise<PdfjsTextContent>;
 }
 
 const ZOOM_LEVELS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0];
@@ -42,8 +57,11 @@ export async function loadPdfJs(): Promise<PdfjsLib | null> {
   pdfjsLoading = (async () => {
     try {
       const pdfJsModulePath = '../vendor/pdfjs/pdf.min.mjs';
-      const mod = (await import(/* webpackIgnore: true */ pdfJsModulePath)) as any;
-      const lib: PdfjsLib = mod.default || mod;
+      const mod = (await import(/* webpackIgnore: true */ pdfJsModulePath)) as Record<
+        string,
+        unknown
+      >;
+      const lib: PdfjsLib = (mod.default || mod) as PdfjsLib;
       lib.GlobalWorkerOptions.workerSrc = '../vendor/pdfjs/pdf.worker.min.mjs';
       pdfjsLib = lib;
       return pdfjsLib;
@@ -411,8 +429,8 @@ export async function createPdfViewer(
     requestAnimationFrame(() => {
       if (!destroyed) container.focus({ preventScroll: true });
     });
-  } catch (err: any) {
-    const msg = err?.message || 'Failed to load PDF';
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Failed to load PDF';
     console.error('[PDF] Load error:', msg);
     onError?.(msg);
     throw err;

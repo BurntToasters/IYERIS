@@ -1,5 +1,5 @@
 import { spawn } from 'child_process';
-import { ignoreError } from './shared';
+import { ignoreError } from '../shared';
 
 export type SpawnCaptureResult = {
   code: number | null;

@@ -106,7 +106,7 @@ vi.mock('fs', () => ({
   default: { existsSync: (...args: any[]) => (mocks.existsSync as any)(...args) },
 }));
 
-vi.mock('../appState', () => ({
+vi.mock('../main/appState', () => ({
   getMainWindow: mocks.getMainWindow,
   setMainWindow: mocks.setMainWindow,
   getActiveWindow: mocks.getActiveWindow,
@@ -120,12 +120,12 @@ vi.mock('../appState', () => ({
   getIsDev: mocks.getIsDev,
 }));
 
-vi.mock('../settingsManager', () => ({
+vi.mock('../main/settingsManager', () => ({
   loadSettings: (...args: any[]) => (mocks.loadSettings as any)(...args),
   getCachedSettings: () => mocks.getCachedSettings(),
 }));
 
-vi.mock('../utils/logger', () => ({
+vi.mock('../main/logger', () => ({
   logger: {
     error: vi.fn(),
     warn: vi.fn(),
@@ -137,7 +137,7 @@ vi.mock('../shared', () => ({
   ignoreError: vi.fn(),
 }));
 
-vi.mock('../ipcUtils', () => ({
+vi.mock('../main/ipcUtils', () => ({
   isTrustedIpcEvent: mocks.isTrustedIpcEvent,
 }));
 
@@ -150,7 +150,7 @@ import {
   createTray,
   createTrayForHiddenStart,
   createWindow,
-} from '../windowManager';
+} from '../main/windowManager';
 
 describe('windowManager extended', () => {
   beforeEach(() => {

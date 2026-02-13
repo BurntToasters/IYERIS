@@ -1,7 +1,7 @@
 import * as path from 'path';
 import { promises as fs } from 'fs';
 import { app, dialog } from 'electron';
-import type { ApiResponse, Settings } from './types';
+import type { ApiResponse, Settings } from '../types';
 import { getMainWindow } from './appState';
 import { shell } from 'electron';
 

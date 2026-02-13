@@ -1,7 +1,7 @@
 import { BrowserWindow, IpcMainInvokeEvent } from 'electron';
 import type { WebContents } from 'electron';
 import { getMainWindow, getFileTasks } from './appState';
-import { isRecord } from './shared';
+import { isRecord } from '../shared';
 import { isTrustedIpcSender } from './security';
 
 const directoryOperationTargets = new Map<string, WebContents>();

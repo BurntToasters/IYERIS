@@ -2,12 +2,12 @@ import { ipcMain, IpcMainInvokeEvent } from 'electron';
 import * as path from 'path';
 import { promises as fs } from 'fs';
 import * as fsSync from 'fs';
-import type { ApiResponse, AdvancedCompressOptions } from './types';
+import type { ApiResponse, AdvancedCompressOptions } from '../types';
 import { getMainWindow } from './appState';
 import { isPathSafe, getErrorMessage } from './security';
-import { ignoreError } from './shared';
+import { ignoreError } from '../shared';
 import { get7zipModule, get7zipPath } from './platformUtils';
-import { logger } from './utils/logger';
+import { logger } from './logger';
 import { isTrustedIpcEvent } from './ipcUtils';
 
 interface SevenZipOptions {

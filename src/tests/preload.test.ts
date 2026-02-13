@@ -20,7 +20,7 @@ describe('preload bridge', () => {
 
   it('exposes electronAPI on the main world', async () => {
     const electron = await import('electron');
-    await import('../preload');
+    await import('../main/preload');
 
     expect(electron.contextBridge.exposeInMainWorld).toHaveBeenCalledTimes(1);
     expect(electron.contextBridge.exposeInMainWorld).toHaveBeenCalledWith(
@@ -31,7 +31,7 @@ describe('preload bridge', () => {
 
   it('forwards invoke and sync channels correctly', async () => {
     const electron = await import('electron');
-    await import('../preload');
+    await import('../main/preload');
 
     const exposedApi = vi.mocked(electron.contextBridge.exposeInMainWorld).mock.calls[0][1] as {
       getDirectoryContents: (...args: unknown[]) => unknown;
@@ -55,7 +55,7 @@ describe('preload bridge', () => {
 
   it('registers and unregisters event listeners via onClipboardChanged', async () => {
     const electron = await import('electron');
-    await import('../preload');
+    await import('../main/preload');
 
     const exposedApi = vi.mocked(electron.contextBridge.exposeInMainWorld).mock.calls[0][1] as {
       onClipboardChanged: (

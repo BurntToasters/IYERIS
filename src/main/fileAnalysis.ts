@@ -1,7 +1,7 @@
 import { ipcMain, IpcMainInvokeEvent } from 'electron';
 import { getFileTasks } from './appState';
 import { isPathSafe, getErrorMessage } from './security';
-import { logger } from './utils/logger';
+import { logger } from './logger';
 import { isTrustedIpcEvent } from './ipcUtils';
 
 const activeFolderSizeCalculations = new Map<string, { aborted: boolean }>();

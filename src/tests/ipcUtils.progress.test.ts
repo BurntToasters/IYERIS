@@ -9,7 +9,7 @@ vi.mock('electron', () => ({
   BrowserWindow: vi.fn(),
 }));
 
-vi.mock('../appState', () => ({
+vi.mock('../main/appState', () => ({
   getMainWindow: vi.fn(() => mockMainWindow),
   getFileTasks: vi.fn(() => ({
     on: vi.fn((_event: string, cb: ProgressCallback) => {
@@ -18,7 +18,7 @@ vi.mock('../appState', () => ({
   })),
 }));
 
-vi.mock('../security', () => ({
+vi.mock('../main/security', () => ({
   isTrustedIpcSender: vi.fn(() => true),
 }));
 
@@ -30,7 +30,7 @@ import {
   setupFileTasksProgressHandler,
   registerDirectoryOperationTarget,
   unregisterDirectoryOperationTarget,
-} from '../ipcUtils';
+} from '../main/ipcUtils';
 
 function makeMockWindow(sendFn = vi.fn()): BrowserWindow {
   return {

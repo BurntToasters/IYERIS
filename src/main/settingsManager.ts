@@ -2,7 +2,7 @@ import { ipcMain, app, BrowserWindow, IpcMainInvokeEvent, clipboard } from 'elec
 import * as path from 'path';
 import { promises as fs } from 'fs';
 import * as fsSync from 'fs';
-import type { Settings, ApiResponse, SettingsResponse } from './types';
+import type { Settings, ApiResponse, SettingsResponse } from '../types';
 import {
   SETTINGS_CACHE_TTL_MS,
   getSharedClipboard,
@@ -17,10 +17,10 @@ import {
   getIndexerTasks,
 } from './appState';
 import { getErrorMessage, isTrustedIpcSender } from './security';
-import { ignoreError } from './shared';
-import { createDefaultSettings, sanitizeSettings } from './settings';
+import { ignoreError } from '../shared';
+import { createDefaultSettings, sanitizeSettings } from '../settings';
 import { FileIndexer } from './indexer';
-import { logger } from './utils/logger';
+import { logger } from './logger';
 import { isTrustedIpcEvent } from './ipcUtils';
 
 let cachedSettings: Settings | null = null;

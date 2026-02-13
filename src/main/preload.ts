@@ -10,7 +10,7 @@ import type {
   DirectoryContentsProgress,
   SpecialDirectory,
   AdvancedCompressOptions,
-} from './types';
+} from '../types';
 
 const electronAPI: ElectronAPI = {
   getDirectoryContents: (

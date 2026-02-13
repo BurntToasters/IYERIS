@@ -111,7 +111,7 @@ vi.mock('fs', () => ({
   unlinkSync: mocks.fsUnlinkSync,
 }));
 
-vi.mock('../security', () => ({
+vi.mock('../main/security', () => ({
   getErrorMessage: mocks.getErrorMessage,
   isTrustedIpcSender: mocks.isTrustedIpcSender,
 }));
@@ -125,7 +125,7 @@ vi.mock('../settings', () => ({
   sanitizeSettings: mocks.sanitizeSettings,
 }));
 
-vi.mock('../appState', () => ({
+vi.mock('../main/appState', () => ({
   SETTINGS_CACHE_TTL_MS: 30000,
   getSharedClipboard: mocks.getSharedClipboard,
   setSharedClipboard: mocks.setSharedClipboard,
@@ -139,13 +139,13 @@ vi.mock('../appState', () => ({
   getIndexerTasks: mocks.getIndexerTasks,
 }));
 
-vi.mock('../indexer', () => ({
+vi.mock('../main/indexer', () => ({
   FileIndexer: vi.fn(function () {
     return mocks.mockIndexerInstance;
   }),
 }));
 
-vi.mock('../utils/logger', () => ({
+vi.mock('../main/logger', () => ({
   logger: {
     debug: mocks.loggerDebug,
     error: mocks.loggerError,
@@ -153,12 +153,16 @@ vi.mock('../utils/logger', () => ({
   },
 }));
 
-vi.mock('../ipcUtils', () => ({
+vi.mock('../main/ipcUtils', () => ({
   isTrustedIpcEvent: mocks.isTrustedIpcEvent,
 }));
 
-import { loadSettings, applyLoginItemSettings, setupSettingsHandlers } from '../settingsManager';
-import { FileIndexer } from '../indexer';
+import {
+  loadSettings,
+  applyLoginItemSettings,
+  setupSettingsHandlers,
+} from '../main/settingsManager';
+import { FileIndexer } from '../main/indexer';
 
 describe('settingsManager.extended2', () => {
   let handlers: Record<string, (...args: any[]) => any>;

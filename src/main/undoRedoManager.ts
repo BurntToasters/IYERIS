@@ -1,10 +1,10 @@
 import { ipcMain, IpcMainInvokeEvent } from 'electron';
 import { promises as fs } from 'fs';
 import * as path from 'path';
-import type { UndoAction, UndoRenameAction, UndoMoveAction, ApiResponse } from './types';
+import type { UndoAction, UndoRenameAction, UndoMoveAction, ApiResponse } from '../types';
 import { MAX_UNDO_STACK_SIZE } from './appState';
-import { logger } from './utils/logger';
-import { ignoreError } from './shared';
+import { logger } from './logger';
+import { ignoreError } from '../shared';
 import { isTrustedIpcEvent } from './ipcUtils';
 
 const undoStack: UndoAction[] = [];

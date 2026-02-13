@@ -78,18 +78,18 @@ vi.mock('../settings', () => ({
   sanitizeSettings: sanitizeSettingsMock,
 }));
 
-vi.mock('../security', () => ({
+vi.mock('../main/security', () => ({
   getErrorMessage: vi.fn((error: unknown) =>
     error instanceof Error ? error.message : String(error)
   ),
   isTrustedIpcSender: vi.fn(() => trustedIpcSender),
 }));
 
-vi.mock('../ipcUtils', () => ({
+vi.mock('../main/ipcUtils', () => ({
   isTrustedIpcEvent: vi.fn(() => trustedIpcEvent),
 }));
 
-vi.mock('../appState', () => ({
+vi.mock('../main/appState', () => ({
   SETTINGS_CACHE_TTL_MS: 30000,
   getSharedClipboard: vi.fn(() => sharedClipboard),
   setSharedClipboard: vi.fn((value: { operation: 'copy' | 'cut'; paths: string[] } | null) => {
@@ -111,7 +111,7 @@ vi.mock('../appState', () => ({
   getIndexerTasks: vi.fn(() => null),
 }));
 
-vi.mock('../indexer', () => ({
+vi.mock('../main/indexer', () => ({
   FileIndexer: vi.fn().mockImplementation(() => ({
     setEnabled: vi.fn(),
     initialize: vi.fn(async () => undefined),
@@ -122,7 +122,7 @@ vi.mock('../shared', () => ({
   ignoreError: vi.fn(),
 }));
 
-vi.mock('../utils/logger', () => ({
+vi.mock('../main/logger', () => ({
   logger: {
     debug: vi.fn(),
     warn: vi.fn(),
@@ -180,7 +180,7 @@ describe('settingsManager', () => {
 
   it('caches loaded settings within TTL', async () => {
     fsPromisesMock.readFile.mockResolvedValueOnce('{"startOnLogin": true}');
-    const settingsManager = await import('../settingsManager');
+    const settingsManager = await import('../main/settingsManager');
 
     const first = await settingsManager.loadSettings();
     const second = await settingsManager.loadSettings();
@@ -192,7 +192,7 @@ describe('settingsManager', () => {
 
   it('backs up corrupt settings file and falls back to defaults', async () => {
     fsPromisesMock.readFile.mockResolvedValueOnce('{not-valid-json');
-    const settingsManager = await import('../settingsManager');
+    const settingsManager = await import('../main/settingsManager');
 
     const loaded = await settingsManager.loadSettings();
 
@@ -206,7 +206,7 @@ describe('settingsManager', () => {
 
   it('falls back to copy+unlink when atomic rename fails during save', async () => {
     fsPromisesMock.rename.mockRejectedValueOnce(new Error('EXDEV'));
-    const settingsManager = await import('../settingsManager');
+    const settingsManager = await import('../main/settingsManager');
 
     const result = await settingsManager.saveSettings({ startOnLogin: true } as Settings);
 
@@ -220,7 +220,7 @@ describe('settingsManager', () => {
 
   it('skips login item setup when app is not packaged', async () => {
     appMock.isPackaged = false;
-    const settingsManager = await import('../settingsManager');
+    const settingsManager = await import('../main/settingsManager');
 
     settingsManager.applyLoginItemSettings({ startOnLogin: true } as Settings);
 
@@ -229,7 +229,7 @@ describe('settingsManager', () => {
 
   it('applies login item settings when packaged', async () => {
     appMock.isPackaged = true;
-    const settingsManager = await import('../settingsManager');
+    const settingsManager = await import('../main/settingsManager');
 
     settingsManager.applyLoginItemSettings({ startOnLogin: true } as Settings);
 
@@ -243,7 +243,7 @@ describe('settingsManager', () => {
 
   it('rejects untrusted save-settings-sync sender', async () => {
     trustedIpcSender = false;
-    const settingsManager = await import('../settingsManager');
+    const settingsManager = await import('../main/settingsManager');
     settingsManager.setupSettingsHandlers(async () => undefined);
     const syncHandler = onHandlers.get('save-settings-sync');
     if (!syncHandler) {
@@ -261,7 +261,7 @@ describe('settingsManager', () => {
     fsSyncMock.renameSync.mockImplementationOnce(() => {
       throw new Error('EXDEV');
     });
-    const settingsManager = await import('../settingsManager');
+    const settingsManager = await import('../main/settingsManager');
     settingsManager.setupSettingsHandlers(async () => undefined);
     const syncHandler = onHandlers.get('save-settings-sync');
     if (!syncHandler) {
@@ -281,7 +281,7 @@ describe('settingsManager', () => {
   it('parses windows clipboard file list from FileNameW', async () => {
     const encoded = Buffer.from('C:\\a.txt\0D:\\b.txt\0\0', 'ucs2');
     clipboardMock.readBuffer.mockReturnValue(encoded);
-    const settingsManager = await import('../settingsManager');
+    const settingsManager = await import('../main/settingsManager');
     settingsManager.setupSettingsHandlers(async () => undefined);
     const clipboardHandler = handleHandlers.get('get-system-clipboard-files');
     if (!clipboardHandler) {

@@ -1,10 +1,10 @@
 import { promises as fs } from 'fs';
 import * as path from 'path';
 import { app } from 'electron';
-import type { IndexEntry, IndexStatus } from './types';
+import type { IndexEntry, IndexStatus } from '../types';
 import type { FileTaskManager } from './fileTasks';
 import { getDrives } from './utils';
-import { ignoreError } from './shared';
+import { ignoreError } from '../shared';
 type IndexEntryPayload = Partial<Omit<IndexEntry, 'modified'>> & {
   modified?: Date | number | string;
 };

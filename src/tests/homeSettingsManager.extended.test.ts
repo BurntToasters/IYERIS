@@ -50,7 +50,7 @@ vi.mock('fs', () => ({
   promises: fsPromisesMock,
 }));
 
-vi.mock('../appState', () => ({
+vi.mock('../main/appState', () => ({
   SETTINGS_CACHE_TTL_MS: 30000,
 }));
 
@@ -59,7 +59,7 @@ vi.mock('../homeSettings', () => ({
   sanitizeHomeSettings: sanitizeHomeSettingsMock,
 }));
 
-vi.mock('../security', () => ({
+vi.mock('../main/security', () => ({
   getErrorMessage: vi.fn((error: unknown) =>
     error instanceof Error ? error.message : String(error)
   ),
@@ -69,14 +69,14 @@ vi.mock('../shared', () => ({
   ignoreError: vi.fn(),
 }));
 
-vi.mock('../utils/logger', () => ({
+vi.mock('../main/logger', () => ({
   logger: {
     debug: vi.fn(),
     error: vi.fn(),
   },
 }));
 
-vi.mock('../ipcUtils', () => ({
+vi.mock('../main/ipcUtils', () => ({
   isTrustedIpcEvent: vi.fn(() => trustedIpc),
 }));
 
@@ -117,7 +117,7 @@ describe('homeSettingsManager extended', () => {
   describe('reset-home-settings handler', () => {
     it('returns untrusted error when IPC event is not trusted', async () => {
       trustedIpc = false;
-      const manager = await import('../homeSettingsManager');
+      const manager = await import('../main/homeSettingsManager');
       manager.setupHomeSettingsHandlers();
       const handler = handlers.get('reset-home-settings');
       expect(handler).toBeDefined();
@@ -129,7 +129,7 @@ describe('homeSettingsManager extended', () => {
 
     it('resets to default settings when trusted', async () => {
       trustedIpc = true;
-      const manager = await import('../homeSettingsManager');
+      const manager = await import('../main/homeSettingsManager');
       manager.setupHomeSettingsHandlers();
       const handler = handlers.get('reset-home-settings');
       expect(handler).toBeDefined();
@@ -145,7 +145,7 @@ describe('homeSettingsManager extended', () => {
   describe('get-home-settings-path handler', () => {
     it('returns empty string when IPC event is not trusted', async () => {
       trustedIpc = false;
-      const manager = await import('../homeSettingsManager');
+      const manager = await import('../main/homeSettingsManager');
       manager.setupHomeSettingsHandlers();
       const handler = handlers.get('get-home-settings-path');
       expect(handler).toBeDefined();
@@ -157,7 +157,7 @@ describe('homeSettingsManager extended', () => {
 
     it('returns the settings path when trusted', async () => {
       trustedIpc = true;
-      const manager = await import('../homeSettingsManager');
+      const manager = await import('../main/homeSettingsManager');
       manager.setupHomeSettingsHandlers();
       const handler = handlers.get('get-home-settings-path');
       expect(handler).toBeDefined();
@@ -171,7 +171,7 @@ describe('homeSettingsManager extended', () => {
   describe('save-home-settings handler', () => {
     it('returns untrusted error when IPC event is not trusted', async () => {
       trustedIpc = false;
-      const manager = await import('../homeSettingsManager');
+      const manager = await import('../main/homeSettingsManager');
       manager.setupHomeSettingsHandlers();
       const handler = handlers.get('save-home-settings');
       expect(handler).toBeDefined();
@@ -187,7 +187,7 @@ describe('homeSettingsManager extended', () => {
     it('returns settings on success when trusted', async () => {
       trustedIpc = true;
       fsPromisesMock.readFile.mockResolvedValueOnce('{"cards":["a"]}');
-      const manager = await import('../homeSettingsManager');
+      const manager = await import('../main/homeSettingsManager');
       manager.setupHomeSettingsHandlers();
       const handler = handlers.get('get-home-settings');
       expect(handler).toBeDefined();
@@ -208,7 +208,7 @@ describe('homeSettingsManager extended', () => {
       createDefaultHomeSettingsMock.mockImplementation(() => {
         throw new Error('defaults boom');
       });
-      const manager = await import('../homeSettingsManager');
+      const manager = await import('../main/homeSettingsManager');
       manager.setupHomeSettingsHandlers();
       const handler = handlers.get('get-home-settings');
       expect(handler).toBeDefined();
@@ -222,7 +222,7 @@ describe('homeSettingsManager extended', () => {
 
   describe('getHomeSettingsPath', () => {
     it('returns the correct path', async () => {
-      const manager = await import('../homeSettingsManager');
+      const manager = await import('../main/homeSettingsManager');
       const result = manager.getHomeSettingsPath();
       expect(result).toBe('/tmp/iyeris-user/homeSettings.json');
     });
@@ -231,7 +231,7 @@ describe('homeSettingsManager extended', () => {
   describe('saveHomeSettings edge cases', () => {
     it('returns error when writeFile fails', async () => {
       fsPromisesMock.writeFile.mockRejectedValueOnce(new Error('disk full'));
-      const manager = await import('../homeSettingsManager');
+      const manager = await import('../main/homeSettingsManager');
 
       const result = await manager.saveHomeSettings({ cards: [] } as unknown as HomeSettings);
 
@@ -241,7 +241,7 @@ describe('homeSettingsManager extended', () => {
     it('cleans up tmp file even when copyFile fails', async () => {
       fsPromisesMock.rename.mockRejectedValueOnce(new Error('EXDEV'));
       fsPromisesMock.copyFile.mockRejectedValueOnce(new Error('copy fail'));
-      const manager = await import('../homeSettingsManager');
+      const manager = await import('../main/homeSettingsManager');
 
       const result = await manager.saveHomeSettings({ cards: [] } as unknown as HomeSettings);
 
@@ -253,7 +253,7 @@ describe('homeSettingsManager extended', () => {
   describe('loadHomeSettings edge cases', () => {
     it('returns defaults when settings file does not exist', async () => {
       fsPromisesMock.readFile.mockRejectedValueOnce(new Error('ENOENT'));
-      const manager = await import('../homeSettingsManager');
+      const manager = await import('../main/homeSettingsManager');
 
       const result = await manager.loadHomeSettings();
 
@@ -264,7 +264,7 @@ describe('homeSettingsManager extended', () => {
     it('handles backup rename failure for corrupt file gracefully', async () => {
       fsPromisesMock.readFile.mockResolvedValueOnce('not-json!!!');
       fsPromisesMock.rename.mockRejectedValueOnce(new Error('rename fail'));
-      const manager = await import('../homeSettingsManager');
+      const manager = await import('../main/homeSettingsManager');
 
       const result = await manager.loadHomeSettings();
 

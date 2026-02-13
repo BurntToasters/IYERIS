@@ -10,11 +10,11 @@ import type {
   DirectoryResponse,
   PathResponse,
   PropertiesResponse,
-} from './types';
+} from '../types';
 import { tryWithElevation } from './elevatedOperations';
 import { getMainWindow, getFileTasks } from './appState';
 import { isPathSafe, isUrlSafe, getErrorMessage } from './security';
-import { ignoreError } from './shared';
+import { ignoreError } from '../shared';
 import {
   isFileHiddenCached,
   startHiddenFileCacheCleanup,

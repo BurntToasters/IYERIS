@@ -24,7 +24,7 @@ vi.mock('electron', () => ({
   shell: {},
 }));
 
-vi.mock('../appState', () => ({
+vi.mock('../main/appState', () => ({
   getMainWindow: () => null,
   getFileTasks: () => ({
     runTask: vi.fn(),
@@ -35,7 +35,7 @@ vi.mock('../appState', () => ({
   MAX_UNDO_STACK_SIZE: 50,
 }));
 
-vi.mock('../ipcUtils', () => ({
+vi.mock('../main/ipcUtils', () => ({
   registerDirectoryOperationTarget: vi.fn(),
   unregisterDirectoryOperationTarget: vi.fn(),
   isTrustedIpcEvent: vi.fn(() => true),
@@ -51,7 +51,7 @@ vi.mock('../ipcUtils', () => ({
   ),
 }));
 
-import { setupFileOperationHandlers, stopHiddenFileCacheCleanup } from '../fileOperations';
+import { setupFileOperationHandlers, stopHiddenFileCacheCleanup } from '../main/fileOperations';
 
 describe('create-file handler', () => {
   beforeEach(() => {

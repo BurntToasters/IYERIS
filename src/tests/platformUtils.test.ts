@@ -14,7 +14,7 @@ vi.mock('fs', () => ({
   existsSync: vi.fn(() => false),
 }));
 
-vi.mock('../utils/logger', () => ({
+vi.mock('../main/logger', () => ({
   logger: {
     debug: vi.fn(),
     info: vi.fn(),
@@ -23,7 +23,7 @@ vi.mock('../utils/logger', () => ({
   },
 }));
 
-import { isRunningInFlatpak, checkMsiInstallation, isInstalledViaMsi } from '../platformUtils';
+import { isRunningInFlatpak, checkMsiInstallation, isInstalledViaMsi } from '../main/platformUtils';
 
 beforeEach(() => {
   vi.clearAllMocks();

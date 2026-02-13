@@ -42,11 +42,11 @@ vi.mock('fs', () => ({
   promises: hoisted.fsPromisesMock,
 }));
 
-vi.mock('../appState', () => ({
+vi.mock('../main/appState', () => ({
   getMainWindow: vi.fn(() => hoisted.mainWindowRef.value),
 }));
 
-import { checkFullDiskAccess, showFullDiskAccessDialog } from '../fullDiskAccess';
+import { checkFullDiskAccess, showFullDiskAccessDialog } from '../main/fullDiskAccess';
 
 describe('fullDiskAccess', () => {
   beforeEach(() => {

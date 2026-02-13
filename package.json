@@ -2,7 +2,7 @@
   "name": "iyeris",
   "version": "0.10.0-beta.3",
   "description": "A beautiful cross-platform file explorer built with Electron, featuring a simple yet advanced modern design.",
-  "main": "dist/main.js",
+  "main": "dist/main/main.js",
   "dependencies": {
     "@highlightjs/cdn-assets": "^11.11.1",
     "7zip-bin": "^5.2.0",

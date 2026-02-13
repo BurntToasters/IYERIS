@@ -1,17 +1,17 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('../processUtils', () => ({
+vi.mock('../main/processUtils', () => ({
   captureSpawnOutput: vi.fn(),
 }));
 
-vi.mock('../security', () => ({
+vi.mock('../main/security', () => ({
   isPathSafe: vi.fn(() => true),
   getErrorMessage: vi.fn((error: unknown) =>
     error instanceof Error ? error.message : String(error)
   ),
 }));
 
-vi.mock('../utils/logger', () => ({
+vi.mock('../main/logger', () => ({
   logger: {
     debug: vi.fn(),
     info: vi.fn(),
@@ -20,8 +20,8 @@ vi.mock('../utils/logger', () => ({
   },
 }));
 
-import { captureSpawnOutput } from '../processUtils';
-import { getDiskSpace } from '../diskSpaceHandler';
+import { captureSpawnOutput } from '../main/processUtils';
+import { getDiskSpace } from '../main/diskSpaceHandler';
 
 const originalPlatform = process.platform;
 

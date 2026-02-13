@@ -76,7 +76,7 @@ vi.mock('electron', () => ({
   },
 }));
 
-vi.mock('../appState', () => ({
+vi.mock('../main/appState', () => ({
   getMainWindow: mocks.getMainWindow,
   setMainWindow: mocks.setMainWindow,
   getActiveWindow: mocks.getActiveWindow,
@@ -90,12 +90,12 @@ vi.mock('../appState', () => ({
   getIsDev: mocks.getIsDev,
 }));
 
-vi.mock('../settingsManager', () => ({
+vi.mock('../main/settingsManager', () => ({
   loadSettings: vi.fn().mockResolvedValue({ minimizeToTray: true }),
   getCachedSettings: vi.fn(() => ({ minimizeToTray: true })),
 }));
 
-vi.mock('../utils/logger', () => ({
+vi.mock('../main/logger', () => ({
   logger: {
     error: vi.fn(),
     warn: vi.fn(),
@@ -106,11 +106,11 @@ vi.mock('../shared', () => ({
   ignoreError: vi.fn(),
 }));
 
-vi.mock('../ipcUtils', () => ({
+vi.mock('../main/ipcUtils', () => ({
   isTrustedIpcEvent: mocks.isTrustedIpcEvent,
 }));
 
-import { quitApp, setupWindowHandlers, showAppWindow, updateTrayMenu } from '../windowManager';
+import { quitApp, setupWindowHandlers, showAppWindow, updateTrayMenu } from '../main/windowManager';
 
 describe('windowManager', () => {
   beforeEach(() => {

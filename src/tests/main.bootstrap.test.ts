@@ -53,7 +53,7 @@ vi.mock('electron', () => ({
   },
 }));
 
-vi.mock('../appState', () => ({
+vi.mock('../main/appState', () => ({
   getMainWindow: vi.fn(() => null),
   getFileIndexer: vi.fn(() => null),
   setFileIndexer: vi.fn(),
@@ -64,23 +64,23 @@ vi.mock('../appState', () => ({
   getIndexerTasks: vi.fn(() => ({ shutdown: mocks.indexerTasksShutdown })),
 }));
 
-vi.mock('../platformUtils', () => ({
+vi.mock('../main/platformUtils', () => ({
   checkMsiInstallation: vi.fn(),
 }));
 
-vi.mock('../ipcUtils', () => ({
+vi.mock('../main/ipcUtils', () => ({
   setupFileTasksProgressHandler: mocks.setupFileTasksProgressHandler,
 }));
 
-vi.mock('../utils', () => ({
+vi.mock('../main/utils', () => ({
   warmupDrivesCache: vi.fn(),
 }));
 
-vi.mock('../indexer', () => ({
+vi.mock('../main/indexer', () => ({
   FileIndexer: class {},
 }));
 
-vi.mock('../utils/logger', () => ({
+vi.mock('../main/logger', () => ({
   logger: {
     info: vi.fn(),
     warn: vi.fn(),
@@ -89,24 +89,24 @@ vi.mock('../utils/logger', () => ({
   initializeLogger: vi.fn(),
 }));
 
-vi.mock('../zoomHandlers', () => ({
+vi.mock('../main/zoomHandlers', () => ({
   setupZoomHandlers: mocks.setupZoomHandlers,
 }));
 
-vi.mock('../fileAnalysis', () => ({
+vi.mock('../main/fileAnalysis', () => ({
   setupFileAnalysisHandlers: mocks.setupFileAnalysisHandlers,
   cleanupFileAnalysis: vi.fn(),
   getActiveFolderSizeCalculations: mocks.getActiveFolderSizeCalculations,
   getActiveChecksumCalculations: mocks.getActiveChecksumCalculations,
 }));
 
-vi.mock('../systemHandlers', () => ({
+vi.mock('../main/systemHandlers', () => ({
   setupSystemHandlers: mocks.setupSystemHandlers,
   checkFullDiskAccess: vi.fn().mockResolvedValue(true),
   showFullDiskAccessDialog: vi.fn(),
 }));
 
-vi.mock('../settingsManager', () => ({
+vi.mock('../main/settingsManager', () => ({
   setupSettingsHandlers: mocks.setupSettingsHandlers,
   loadSettings: vi.fn().mockResolvedValue({
     enableIndexer: false,
@@ -117,16 +117,16 @@ vi.mock('../settingsManager', () => ({
   applyLoginItemSettings: vi.fn(),
 }));
 
-vi.mock('../homeSettingsManager', () => ({
+vi.mock('../main/homeSettingsManager', () => ({
   setupHomeSettingsHandlers: mocks.setupHomeSettingsHandlers,
 }));
 
-vi.mock('../undoRedoManager', () => ({
+vi.mock('../main/undoRedoManager', () => ({
   setupUndoRedoHandlers: mocks.setupUndoRedoHandlers,
   clearUndoRedoStacks: vi.fn(),
 }));
 
-vi.mock('../windowManager', () => ({
+vi.mock('../main/windowManager', () => ({
   createWindow: vi.fn(),
   createTray: vi.fn(),
   createTrayForHiddenStart: vi.fn(),
@@ -134,31 +134,31 @@ vi.mock('../windowManager', () => ({
   setupWindowHandlers: mocks.setupWindowHandlers,
 }));
 
-vi.mock('../fileOperations', () => ({
+vi.mock('../main/fileOperations', () => ({
   setupFileOperationHandlers: mocks.setupFileOperationHandlers,
   stopHiddenFileCacheCleanup: vi.fn(),
 }));
 
-vi.mock('../searchHandlers', () => ({
+vi.mock('../main/searchHandlers', () => ({
   setupSearchHandlers: mocks.setupSearchHandlers,
 }));
 
-vi.mock('../archiveManager', () => ({
+vi.mock('../main/archiveManager', () => ({
   setupArchiveHandlers: mocks.setupArchiveHandlers,
   cleanupArchiveOperations: vi.fn(),
 }));
 
-vi.mock('../updateManager', () => ({
+vi.mock('../main/updateManager', () => ({
   setupUpdateHandlers: mocks.setupUpdateHandlers,
   initializeAutoUpdater: vi.fn(),
 }));
 
-vi.mock('../thumbnailCache', () => ({
+vi.mock('../main/thumbnailCache', () => ({
   setupThumbnailCacheHandlers: mocks.setupThumbnailCacheHandlers,
   stopThumbnailCacheCleanup: vi.fn(),
 }));
 
-vi.mock('../elevatedOperations', () => ({
+vi.mock('../main/elevatedOperations', () => ({
   setupElevatedOperationHandlers: mocks.setupElevatedOperationHandlers,
 }));
 
@@ -169,7 +169,7 @@ describe('main bootstrap wiring', () => {
   });
 
   it('registers core handlers and bootstrap setup on module import', async () => {
-    await import('../main');
+    await import('../main/main');
 
     expect(mocks.appRequestSingleInstanceLock).toHaveBeenCalledTimes(1);
     expect(mocks.setupFileTasksProgressHandler).toHaveBeenCalledWith(

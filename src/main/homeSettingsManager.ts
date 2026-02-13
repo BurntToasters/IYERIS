@@ -1,12 +1,12 @@
 import { ipcMain, app, BrowserWindow, IpcMainInvokeEvent } from 'electron';
 import * as path from 'path';
 import { promises as fs } from 'fs';
-import type { HomeSettings, ApiResponse, HomeSettingsResponse } from './types';
+import type { HomeSettings, ApiResponse, HomeSettingsResponse } from '../types';
 import { SETTINGS_CACHE_TTL_MS } from './appState';
 import { getErrorMessage } from './security';
-import { ignoreError } from './shared';
-import { createDefaultHomeSettings, sanitizeHomeSettings } from './homeSettings';
-import { logger } from './utils/logger';
+import { ignoreError } from '../shared';
+import { createDefaultHomeSettings, sanitizeHomeSettings } from '../homeSettings';
+import { logger } from './logger';
 import { isTrustedIpcEvent } from './ipcUtils';
 
 let cachedHomeSettings: HomeSettings | null = null;

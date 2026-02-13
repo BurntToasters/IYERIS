@@ -2,9 +2,9 @@ import { promises as fs } from 'fs';
 import * as path from 'path';
 import { exec } from 'child_process';
 import { promisify } from 'util';
-import { logger } from './utils/logger';
-import type { DriveInfo } from './types';
-import { ignoreError } from './shared';
+import { logger } from './logger';
+import type { DriveInfo } from '../types';
+import { ignoreError } from '../shared';
 
 const execAsync = promisify(exec);
 

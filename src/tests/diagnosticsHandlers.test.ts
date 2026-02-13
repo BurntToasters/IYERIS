@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createSettingsDiagnosticsSnapshot } from '../diagnosticsHandlers';
+import { createSettingsDiagnosticsSnapshot } from '../main/diagnosticsHandlers';
 import type { Settings } from '../types';
 
 function makeSettings(overrides: Partial<Settings> = {}): Settings {

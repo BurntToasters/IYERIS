@@ -20,11 +20,11 @@ vi.mock('electron', () => ({
   ipcMain: { handle: hoisted.ipcMainHandleMock },
 }));
 
-vi.mock('../appState', () => ({
+vi.mock('../main/appState', () => ({
   getMainWindow: hoisted.getMainWindowMock,
 }));
 
-vi.mock('../security', () => ({
+vi.mock('../main/security', () => ({
   isPathSafe: hoisted.isPathSafeMock,
   getErrorMessage: hoisted.getErrorMessageMock,
 }));
@@ -33,20 +33,20 @@ vi.mock('../shared', () => ({
   ignoreError: () => {},
 }));
 
-vi.mock('../platformUtils', () => ({
+vi.mock('../main/platformUtils', () => ({
   get7zipModule: hoisted.get7zipModuleMock,
   get7zipPath: hoisted.get7zipPathMock,
 }));
 
-vi.mock('../utils/logger', () => ({
+vi.mock('../main/logger', () => ({
   logger: hoisted.loggerMock,
 }));
 
-vi.mock('../ipcUtils', () => ({
+vi.mock('../main/ipcUtils', () => ({
   isTrustedIpcEvent: hoisted.isTrustedIpcEventMock,
 }));
 
-import { setupArchiveHandlers, cleanupArchiveOperations } from '../archiveManager';
+import { setupArchiveHandlers, cleanupArchiveOperations } from '../main/archiveManager';
 
 describe('setupArchiveHandlers', () => {
   const handlers = new Map<string, (...args: any[]) => any>();

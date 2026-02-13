@@ -2,7 +2,7 @@ import * as path from 'path';
 import { promises as fs } from 'fs';
 import * as crypto from 'crypto';
 import { app } from 'electron';
-import { ignoreError } from './shared';
+import { ignoreError } from '../shared';
 import { pathExists, renameWithExdevFallback } from './fileOperations';
 import type { PlannedFileOperation } from './fileOperations';
 

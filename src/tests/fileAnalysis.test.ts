@@ -19,22 +19,22 @@ vi.mock('electron', () => ({
   },
 }));
 
-vi.mock('../appState', () => ({
+vi.mock('../main/appState', () => ({
   getFileTasks: vi.fn(() => fileTasks),
 }));
 
-vi.mock('../security', () => ({
+vi.mock('../main/security', () => ({
   isPathSafe: vi.fn(() => safePath),
   getErrorMessage: vi.fn((error: unknown) =>
     error instanceof Error ? error.message : String(error)
   ),
 }));
 
-vi.mock('../ipcUtils', () => ({
+vi.mock('../main/ipcUtils', () => ({
   isTrustedIpcEvent: vi.fn(() => trustedEvent),
 }));
 
-vi.mock('../utils/logger', () => ({
+vi.mock('../main/logger', () => ({
   logger: {
     debug: vi.fn(),
   },
@@ -45,7 +45,7 @@ import {
   getActiveChecksumCalculations,
   getActiveFolderSizeCalculations,
   setupFileAnalysisHandlers,
-} from '../fileAnalysis';
+} from '../main/fileAnalysis';
 
 function getHandler(channel: string): Handler {
   const handler = handlers.get(channel);

@@ -17,11 +17,11 @@ vi.mock('child_process', () => ({
   exec: vi.fn(),
 }));
 
-vi.mock('../processUtils', () => ({
+vi.mock('../main/processUtils', () => ({
   spawnWithTimeout: vi.fn(),
 }));
 
-vi.mock('../security', () => ({
+vi.mock('../main/security', () => ({
   isPathSafe: vi.fn(() => true),
 }));
 
@@ -30,9 +30,9 @@ vi.mock('../shared', () => ({
 }));
 
 import { exec } from 'child_process';
-import { spawnWithTimeout } from '../processUtils';
-import { isPathSafe } from '../security';
-import { getGitBranch, getGitStatus } from '../gitHandlers';
+import { spawnWithTimeout } from '../main/processUtils';
+import { isPathSafe } from '../main/security';
+import { getGitBranch, getGitStatus } from '../main/gitHandlers';
 
 function setExecResponses(responses: ExecResponse[]): void {
   const queue = [...responses];

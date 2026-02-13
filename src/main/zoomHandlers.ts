@@ -1,8 +1,8 @@
 import { ipcMain, BrowserWindow, IpcMainInvokeEvent } from 'electron';
-import type { ApiResponse } from './types';
+import type { ApiResponse } from '../types';
 import { ZOOM_MIN, ZOOM_MAX } from './appState';
 import { getErrorMessage } from './security';
-import { logger } from './utils/logger';
+import { logger } from './logger';
 import { isTrustedIpcEvent } from './ipcUtils';
 
 export function setupZoomHandlers(): void {

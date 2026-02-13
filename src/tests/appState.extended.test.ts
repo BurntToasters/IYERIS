@@ -16,11 +16,11 @@ vi.mock('os', () => ({
   totalmem: () => 8 * 1024 ** 3,
 }));
 
-vi.mock('../indexer', () => ({
+vi.mock('../main/indexer', () => ({
   FileIndexer: vi.fn(),
 }));
 
-vi.mock('../fileTasks', () => {
+vi.mock('../main/fileTasks', () => {
   class MockFileTaskManager {
     on = vi.fn();
     off = vi.fn();
@@ -56,7 +56,7 @@ import {
   getActiveWindow,
   ZOOM_MIN,
   ZOOM_MAX,
-} from '../appState';
+} from '../main/appState';
 
 describe('appState getters/setters', () => {
   describe('mainWindow', () => {
@@ -81,7 +81,7 @@ describe('appState getters/setters', () => {
     });
 
     it('can be set and retrieved', () => {
-      const mockIndexer = {} as unknown as import('../indexer').FileIndexer;
+      const mockIndexer = {} as unknown as import('../main/indexer').FileIndexer;
       setFileIndexer(mockIndexer);
       expect(getFileIndexer()).toBe(mockIndexer);
       setFileIndexer(null);

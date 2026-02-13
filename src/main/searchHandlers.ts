@@ -1,6 +1,6 @@
 import { ipcMain, app, IpcMainInvokeEvent } from 'electron';
 import * as path from 'path';
-import type { FileItem, ApiResponse, IndexSearchResponse, IndexEntry, IndexStatus } from './types';
+import type { FileItem, ApiResponse, IndexSearchResponse, IndexEntry, IndexStatus } from '../types';
 import { getFileTasks, getIndexerTasks, getFileIndexer } from './appState';
 import { isPathSafe, getErrorMessage } from './security';
 import { isTrustedIpcEvent } from './ipcUtils';

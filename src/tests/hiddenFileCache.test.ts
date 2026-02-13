@@ -4,7 +4,7 @@ vi.mock('child_process', () => ({
   execFile: vi.fn(),
 }));
 
-vi.mock('../appState', () => ({
+vi.mock('../main/appState', () => ({
   HIDDEN_FILE_CACHE_TTL: 300000,
   HIDDEN_FILE_CACHE_MAX: 5000,
 }));
@@ -13,7 +13,7 @@ import {
   isFileHiddenCached,
   startHiddenFileCacheCleanup,
   stopHiddenFileCacheCleanup,
-} from '../hiddenFileCache';
+} from '../main/hiddenFileCache';
 
 beforeEach(() => {
   vi.clearAllMocks();

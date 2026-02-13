@@ -38,11 +38,11 @@ vi.mock('fs', () => ({
   },
 }));
 
-vi.mock('../appState', () => ({
+vi.mock('../main/appState', () => ({
   MAX_UNDO_STACK_SIZE: 5,
 }));
 
-vi.mock('../utils/logger', () => ({
+vi.mock('../main/logger', () => ({
   logger: {
     debug: vi.fn(),
     info: vi.fn(),
@@ -55,7 +55,7 @@ vi.mock('../shared', () => ({
   ignoreError: vi.fn(),
 }));
 
-vi.mock('../ipcUtils', () => ({
+vi.mock('../main/ipcUtils', () => ({
   isTrustedIpcEvent: vi.fn(() => hoisted.trusted.value),
 }));
 
@@ -67,7 +67,7 @@ import {
   clearUndoRedoStacks,
   clearUndoStackForPath,
   setupUndoRedoHandlers,
-} from '../undoRedoManager';
+} from '../main/undoRedoManager';
 
 const fakeEvent = {
   senderFrame: { url: 'file:///app/index.html' },

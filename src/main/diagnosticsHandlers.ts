@@ -2,11 +2,11 @@ import * as path from 'path';
 import { promises as fs } from 'fs';
 import * as os from 'os';
 import { app, dialog, type SaveDialogOptions } from 'electron';
-import type { Settings } from './types';
+import type { Settings } from '../types';
 import { getMainWindow, MAX_TEXT_PREVIEW_BYTES } from './appState';
 import { getErrorMessage } from './security';
 import { isRunningInFlatpak } from './platformUtils';
-import { logger } from './utils/logger';
+import { logger } from './logger';
 
 type DiagnosticsRedaction = { token: string; value: string };
 type AppPathName = Parameters<typeof app.getPath>[0];

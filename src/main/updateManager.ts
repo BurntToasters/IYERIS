@@ -1,5 +1,5 @@
 import { ipcMain, app, IpcMainInvokeEvent } from 'electron';
-import type { Settings, ApiResponse, UpdateCheckResponse } from './types';
+import type { Settings, ApiResponse, UpdateCheckResponse } from '../types';
 import { getMainWindow, getIsDev, setIsQuitting } from './appState';
 import {
   getAutoUpdater,

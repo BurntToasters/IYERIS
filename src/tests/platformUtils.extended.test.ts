@@ -34,7 +34,7 @@ vi.mock('fs', () => ({
   existsSync: mockExistsSync,
 }));
 
-vi.mock('../utils/logger', () => ({
+vi.mock('../main/logger', () => ({
   logger: mockLogger,
 }));
 
@@ -59,7 +59,7 @@ describe('platformUtils extended', () => {
 
   describe('getAutoUpdater', () => {
     it('loads electron-updater module (throws in test env without real Electron)', async () => {
-      const { getAutoUpdater } = await import('../platformUtils');
+      const { getAutoUpdater } = await import('../main/platformUtils');
 
       expect(() => getAutoUpdater()).toThrow();
     });
@@ -67,14 +67,14 @@ describe('platformUtils extended', () => {
 
   describe('get7zipBin', () => {
     it('lazy-loads 7zip-bin and returns module with path7za', async () => {
-      const { get7zipBin } = await import('../platformUtils');
+      const { get7zipBin } = await import('../main/platformUtils');
       const result = get7zipBin();
       expect(result).toBeDefined();
       expect(typeof result.path7za).toBe('string');
     });
 
     it('returns same module on subsequent calls (cached)', async () => {
-      const { get7zipBin } = await import('../platformUtils');
+      const { get7zipBin } = await import('../main/platformUtils');
       const first = get7zipBin();
       const second = get7zipBin();
       expect(first).toBe(second);
@@ -83,7 +83,7 @@ describe('platformUtils extended', () => {
 
   describe('get7zipModule', () => {
     it('lazy-loads node-7z and returns the module with expected methods', async () => {
-      const { get7zipModule } = await import('../platformUtils');
+      const { get7zipModule } = await import('../main/platformUtils');
       const result = get7zipModule();
       expect(result).toBeDefined();
       expect(typeof result.list).toBe('function');
@@ -92,7 +92,7 @@ describe('platformUtils extended', () => {
     });
 
     it('returns same module on subsequent calls (cached)', async () => {
-      const { get7zipModule } = await import('../platformUtils');
+      const { get7zipModule } = await import('../main/platformUtils');
       const first = get7zipModule();
       const second = get7zipModule();
       expect(first).toBe(second);
@@ -102,28 +102,28 @@ describe('platformUtils extended', () => {
   describe('isRunningInFlatpak', () => {
     it('returns true when FLATPAK_ID env var is set', async () => {
       process.env.FLATPAK_ID = 'com.example.app';
-      const mod = await import('../platformUtils');
+      const mod = await import('../main/platformUtils');
       expect(mod.isRunningInFlatpak()).toBe(true);
     });
 
     it('returns true when /.flatpak-info exists', async () => {
       delete process.env.FLATPAK_ID;
       mockExistsSync.mockReturnValue(true);
-      const mod = await import('../platformUtils');
+      const mod = await import('../main/platformUtils');
       expect(mod.isRunningInFlatpak()).toBe(true);
     });
 
     it('returns false when neither indicator is present', async () => {
       delete process.env.FLATPAK_ID;
       mockExistsSync.mockReturnValue(false);
-      const mod = await import('../platformUtils');
+      const mod = await import('../main/platformUtils');
       expect(mod.isRunningInFlatpak()).toBe(false);
     });
 
     it('caches the result after first call', async () => {
       delete process.env.FLATPAK_ID;
       mockExistsSync.mockReturnValue(false);
-      const mod = await import('../platformUtils');
+      const mod = await import('../main/platformUtils');
       mod.isRunningInFlatpak();
       mockExistsSync.mockReturnValue(true);
 
@@ -134,7 +134,7 @@ describe('platformUtils extended', () => {
   describe('checkMsiInstallation', () => {
     it('returns false on non-win32', async () => {
       setPlatform('linux');
-      const mod = await import('../platformUtils');
+      const mod = await import('../main/platformUtils');
       const result = await mod.checkMsiInstallation();
       expect(result).toBe(false);
     });
@@ -146,7 +146,7 @@ describe('platformUtils extended', () => {
           callback(null, 'InstalledViaMsi    REG_DWORD    0x1');
         }
       );
-      const mod = await import('../platformUtils');
+      const mod = await import('../main/platformUtils');
       const result = await mod.checkMsiInstallation();
       expect(result).toBe(true);
     });
@@ -158,7 +158,7 @@ describe('platformUtils extended', () => {
           callback(new Error('Not found'), '');
         }
       );
-      const mod = await import('../platformUtils');
+      const mod = await import('../main/platformUtils');
       const result = await mod.checkMsiInstallation();
       expect(result).toBe(false);
     });
@@ -170,7 +170,7 @@ describe('platformUtils extended', () => {
           callback(null, 'InstalledViaMsi    REG_DWORD    0x0');
         }
       );
-      const mod = await import('../platformUtils');
+      const mod = await import('../main/platformUtils');
       const result = await mod.checkMsiInstallation();
       expect(result).toBe(false);
     });
@@ -184,7 +184,7 @@ describe('platformUtils extended', () => {
           callback(null, 'InstalledViaMsi    REG_DWORD    0x1');
         }
       );
-      const mod = await import('../platformUtils');
+      const mod = await import('../main/platformUtils');
       await mod.checkMsiInstallation();
       await mod.checkMsiInstallation();
       expect(callCount).toBe(1);
@@ -197,7 +197,7 @@ describe('platformUtils extended', () => {
           callback(null, 'InstalledViaMsi    REG_DWORD    0x1');
         }
       );
-      const mod = await import('../platformUtils');
+      const mod = await import('../main/platformUtils');
       await mod.checkMsiInstallation();
       mockExec.mockClear();
 
@@ -209,7 +209,7 @@ describe('platformUtils extended', () => {
 
   describe('isInstalledViaMsi', () => {
     it('returns false when msiCheckResult is null (never checked)', async () => {
-      const mod = await import('../platformUtils');
+      const mod = await import('../main/platformUtils');
       expect(mod.isInstalledViaMsi()).toBe(false);
     });
 
@@ -220,7 +220,7 @@ describe('platformUtils extended', () => {
           callback(null, 'InstalledViaMsi    REG_DWORD    0x1');
         }
       );
-      const mod = await import('../platformUtils');
+      const mod = await import('../main/platformUtils');
       await mod.checkMsiInstallation();
       expect(mod.isInstalledViaMsi()).toBe(true);
     });
@@ -232,7 +232,7 @@ describe('platformUtils extended', () => {
           callback(new Error('fail'), '');
         }
       );
-      const mod = await import('../platformUtils');
+      const mod = await import('../main/platformUtils');
       await mod.checkMsiInstallation();
       expect(mod.isInstalledViaMsi()).toBe(false);
     });
@@ -242,7 +242,7 @@ describe('platformUtils extended', () => {
     it('returns a string path when not packaged', async () => {
       mockApp.isPackaged = false;
 
-      const { get7zipPath } = await import('../platformUtils');
+      const { get7zipPath } = await import('../main/platformUtils');
       const result = get7zipPath();
       expect(typeof result).toBe('string');
       expect(result.length).toBeGreaterThan(0);
@@ -252,7 +252,7 @@ describe('platformUtils extended', () => {
     it('executes app.asar replacement logic when packaged', async () => {
       mockApp.isPackaged = true;
 
-      const { get7zipPath } = await import('../platformUtils');
+      const { get7zipPath } = await import('../main/platformUtils');
       const result = get7zipPath();
       expect(typeof result).toBe('string');
 
@@ -263,7 +263,7 @@ describe('platformUtils extended', () => {
     it('returns cached path on subsequent calls without recomputing', async () => {
       mockApp.isPackaged = false;
 
-      const { get7zipPath } = await import('../platformUtils');
+      const { get7zipPath } = await import('../main/platformUtils');
       const first = get7zipPath();
       mockLogger.debug.mockClear();
       const second = get7zipPath();

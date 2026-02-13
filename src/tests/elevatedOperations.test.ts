@@ -6,11 +6,11 @@ vi.mock('electron', () => ({
   app: { getPath: vi.fn(() => '/tmp'), on: vi.fn() },
 }));
 
-vi.mock('../appState', () => ({
+vi.mock('../main/appState', () => ({
   getMainWindow: vi.fn(() => null),
 }));
 
-vi.mock('../security', () => ({
+vi.mock('../main/security', () => ({
   isPathSafe: vi.fn((p: string) => !p.includes('\0') && p.startsWith('/')),
   getErrorMessage: vi.fn((e: unknown) => (e instanceof Error ? e.message : String(e))),
 }));
@@ -19,15 +19,15 @@ vi.mock('../shared', () => ({
   ignoreError: vi.fn(),
 }));
 
-vi.mock('../settingsManager', () => ({
+vi.mock('../main/settingsManager', () => ({
   loadSettings: vi.fn(async () => ({ skipElevationConfirmation: false })),
 }));
 
-vi.mock('../ipcUtils', () => ({
+vi.mock('../main/ipcUtils', () => ({
   isTrustedIpcEvent: vi.fn(() => true),
 }));
 
-import { isPermissionError, tryWithElevation } from '../elevatedOperations';
+import { isPermissionError, tryWithElevation } from '../main/elevatedOperations';
 
 beforeEach(() => {
   vi.clearAllMocks();

@@ -1,6 +1,6 @@
 import { captureSpawnOutput } from './processUtils';
 import { isPathSafe, getErrorMessage } from './security';
-import { logger } from './utils/logger';
+import { logger } from './logger';
 
 const SAFE_UNC_RE = /^\\\\[^\\]+\\[^\\]+(\\)?$/;
 

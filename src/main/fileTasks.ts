@@ -2,7 +2,7 @@ import { Worker } from 'worker_threads';
 import * as os from 'os';
 import * as path from 'path';
 import { EventEmitter } from 'events';
-import { logger } from './utils/logger';
+import { logger } from './logger';
 
 type TaskType =
   | 'build-index'

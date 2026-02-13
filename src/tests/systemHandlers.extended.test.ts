@@ -89,12 +89,12 @@ vi.mock('util', () => ({
   promisify: vi.fn(() => hoisted.execFileAsyncMock),
 }));
 
-vi.mock('../appState', () => ({
+vi.mock('../main/appState', () => ({
   MAX_TEXT_PREVIEW_BYTES: 1024 * 1024,
   MAX_DATA_URL_BYTES: 10 * 1024 * 1024,
 }));
 
-vi.mock('../security', () => ({
+vi.mock('../main/security', () => ({
   isPathSafe: vi.fn(() => hoisted.safePath.value),
   getErrorMessage: vi.fn((error: unknown) =>
     error instanceof Error ? error.message : String(error)
@@ -105,17 +105,17 @@ vi.mock('../shared', () => ({
   ignoreError: hoisted.ignoreErrorMock,
 }));
 
-vi.mock('../platformUtils', () => ({
+vi.mock('../main/platformUtils', () => ({
   isRunningInFlatpak: hoisted.isRunningInFlatpakMock,
 }));
 
-vi.mock('../utils/logger', () => ({
+vi.mock('../main/logger', () => ({
   logger: {
     getLogsDirectory: vi.fn(() => '/tmp/logs'),
   },
 }));
 
-vi.mock('../ipcUtils', () => ({
+vi.mock('../main/ipcUtils', () => ({
   withTrustedApiHandler: vi.fn(
     (
       _channel: string,
@@ -134,30 +134,30 @@ vi.mock('../ipcUtils', () => ({
   ),
 }));
 
-vi.mock('../processUtils', () => ({
+vi.mock('../main/processUtils', () => ({
   launchDetached: hoisted.launchDetachedMock,
 }));
 
-vi.mock('../fullDiskAccess', () => ({
+vi.mock('../main/fullDiskAccess', () => ({
   checkFullDiskAccess: hoisted.checkFullDiskAccessMock,
   showFullDiskAccessDialog: hoisted.showFullDiskAccessDialogMock,
 }));
 
-vi.mock('../gitHandlers', () => ({
+vi.mock('../main/gitHandlers', () => ({
   getGitStatus: hoisted.getGitStatusMock,
   getGitBranch: hoisted.getGitBranchMock,
 }));
 
-vi.mock('../diskSpaceHandler', () => ({
+vi.mock('../main/diskSpaceHandler', () => ({
   getDiskSpace: hoisted.getDiskSpaceMock,
 }));
 
-vi.mock('../diagnosticsHandlers', () => ({
+vi.mock('../main/diagnosticsHandlers', () => ({
   exportDiagnostics: hoisted.exportDiagnosticsMock,
   getLogFileContent: hoisted.getLogFileContentMock,
 }));
 
-import { setupSystemHandlers } from '../systemHandlers';
+import { setupSystemHandlers } from '../main/systemHandlers';
 
 const originalPlatform = process.platform;
 
