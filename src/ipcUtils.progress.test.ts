@@ -134,13 +134,12 @@ describe('setupFileTasksProgressHandler', () => {
     });
 
     it('unregisters target when send fails (destroyed contents)', () => {
-      const contents = makeMockContents(vi.fn(), true); // destroyed
+      const contents = makeMockContents(vi.fn(), true);
       registerDirectoryOperationTarget('dir2', contents);
 
       setupFileTasksProgressHandler(activeFolderSizeCalculations, activeChecksumCalculations);
       progressCallback!({ task: 'list-directory', operationId: 'dir2', data: {} });
 
-      // Should have unregistered - calling again should not throw
       progressCallback!({ task: 'list-directory', operationId: 'dir2', data: {} });
     });
 
@@ -150,7 +149,7 @@ describe('setupFileTasksProgressHandler', () => {
       activeFolderSizeCalculations.set('op1', { aborted: false });
 
       setupFileTasksProgressHandler(activeFolderSizeCalculations, activeChecksumCalculations);
-      // data is not a record
+
       progressCallback!({ task: 'folder-size', operationId: 'op1', data: 'string-data' });
 
       expect(send).toHaveBeenCalledWith('folder-size-progress', {

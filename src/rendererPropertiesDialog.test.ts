@@ -1,4 +1,3 @@
-/** @vitest-environment jsdom */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('./shared.js', () => ({
@@ -84,7 +83,6 @@ describe('rendererPropertiesDialog', () => {
     };
     (window as any).electronAPI = mockElectronAPI;
 
-    // Mock clipboard
     Object.defineProperty(navigator, 'clipboard', {
       value: { writeText: vi.fn().mockResolvedValue(undefined) },
       writable: true,
@@ -155,7 +153,7 @@ describe('rendererPropertiesDialog', () => {
 
       const btn = document.getElementById('calculate-checksum-btn')!;
       btn.click();
-      // Button should immediately hide
+
       expect(btn.style.display).toBe('none');
       await vi.waitFor(() => {
         expect(mockElectronAPI.calculateChecksum).toHaveBeenCalled();
@@ -224,7 +222,6 @@ describe('rendererPropertiesDialog', () => {
       expect(document.getElementById('checksum-progress-row')!.style.display).toBe('none');
       expect(document.getElementById('calculate-checksum-btn')!.style.display).toBe('inline-flex');
 
-      // Resolve to prevent unhandled rejection
       resolveChecksum!({ success: false, error: 'Calculation cancelled' });
     });
 
@@ -297,7 +294,6 @@ describe('rendererPropertiesDialog', () => {
         expect(info).toContain('5 folders');
       });
 
-      // File type stats should be visible
       expect(document.getElementById('folder-stats-row')!.style.display).toBe('flex');
       const statsContent = document.getElementById('folder-stats-content')!;
       expect(statsContent.innerHTML).toContain('.txt');
@@ -338,7 +334,7 @@ describe('rendererPropertiesDialog', () => {
       await vi.waitFor(() => {
         expect(mockElectronAPI.calculateFolderSize).toHaveBeenCalled();
       });
-      // Should not show error for cancelled
+
       const info = document.getElementById('folder-size-info')!.textContent;
       expect(info).not.toContain('Error');
     });
@@ -432,7 +428,7 @@ describe('rendererPropertiesDialog', () => {
       ctrl.showPropertiesDialog(makeFileProps() as any);
 
       const modal = document.getElementById('properties-modal')!;
-      modal.click(); // clicking modal itself (backdrop)
+      modal.click();
       expect(modal.style.display).toBe('none');
     });
 
@@ -443,7 +439,7 @@ describe('rendererPropertiesDialog', () => {
 
       const content = document.getElementById('properties-content')!;
       const modal = document.getElementById('properties-modal')!;
-      // Clicking content div, e.target !== modal
+
       modal.onclick!({ target: content } as any);
       expect(modal.style.display).toBe('flex');
     });
@@ -491,16 +487,16 @@ describe('rendererPropertiesDialog', () => {
       const deps = makeDeps();
       const ctrl = createPropertiesDialogController(deps);
       ctrl.showPropertiesDialog(makeFileProps() as any);
-      // show again — previous cleanup should be called
+
       ctrl.showPropertiesDialog(makeFileProps() as any);
-      // No error thrown
+
       expect(deps.onModalOpen).toHaveBeenCalledTimes(2);
     });
 
     it('is safe to call when nothing is active', () => {
       const deps = makeDeps();
       const ctrl = createPropertiesDialogController(deps);
-      ctrl.cleanup(); // no error
+      ctrl.cleanup();
     });
   });
 

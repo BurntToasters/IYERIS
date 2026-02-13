@@ -93,8 +93,7 @@ describe('sanitizeHomeSettings', () => {
 
     const result = sanitizeHomeSettings(raw);
     expect(result.showRecents).toBe(false);
-    // RESERVED_KEYS removes these if they appear as own keys from the defaults object
-    // The important thing is the sanitizer doesn't crash on prototype-less objects
+
     expect(typeof result).toBe('object');
   });
 
@@ -124,7 +123,7 @@ describe('sanitizeHomeSettings', () => {
       showRecents: true,
     });
     expect(result.showRecents).toBe(true);
-    // Unknown fields may pass through since the code spreads defaults, not input
+
     expect(result).not.toHaveProperty('unknownField');
   });
 });

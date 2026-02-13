@@ -140,14 +140,12 @@ describe('tryWithElevation extended', () => {
   });
 
   it('rejects empty newName (validated later by executeElevated, but passed by tryWithElevation)', async () => {
-    // empty string is falsy, so the && check short-circuits in tryWithElevation
-    // but executeElevated will catch it
     const result = await tryWithElevation(
       async () => 'done',
       { type: 'rename', sourcePath: '/src', newName: '' },
       'rename'
     );
-    // tryWithElevation allows empty newName through (falsy check short-circuits)
+
     expect(result.result).toBe('done');
     expect(result.elevated).toBe(false);
   });
@@ -181,7 +179,6 @@ describe('tryWithElevation extended', () => {
     const err = new Error('perm') as NodeJS.ErrnoException;
     err.code = 'EACCES';
 
-    // getMainWindow returns null, so promptForElevation returns false
     const result = await tryWithElevation(
       async () => {
         throw err;

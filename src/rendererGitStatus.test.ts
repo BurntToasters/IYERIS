@@ -1,6 +1,3 @@
-/**
- * @vitest-environment jsdom
- */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createGitStatusController } from './rendererGitStatus.js';
 
@@ -112,7 +109,7 @@ describe('rendererGitStatus', () => {
       const ctrl = createGitStatusController(deps as any);
 
       const p1 = ctrl.fetchGitStatusAsync('/test/dir');
-      // start second request, making first stale
+
       const p2 = ctrl.fetchGitStatusAsync('/test/dir');
       resolveGit({
         success: true,
@@ -141,9 +138,8 @@ describe('rendererGitStatus', () => {
       await ctrl.fetchGitStatusAsync('/test/dir');
       expect(deps.getGitStatus).toHaveBeenCalledTimes(1);
 
-      // Second fetch should use cache
       await ctrl.fetchGitStatusAsync('/test/dir');
-      // getGitStatus only called once due to cache
+
       expect(deps.getGitStatus).toHaveBeenCalledTimes(1);
     });
 
@@ -178,7 +174,6 @@ describe('rendererGitStatus', () => {
       });
       const ctrl = createGitStatusController(deps as any);
 
-      // Fill cache beyond max (100)
       for (let i = 0; i < 101; i++) {
         const path = `/test/dir${i}`;
         const current = { ...deps, getCurrentPath: () => path };
@@ -191,7 +186,6 @@ describe('rendererGitStatus', () => {
       expect(ctrl.gitStatusCache.size).toBe(101);
 
       await ctrl.fetchGitStatusAsync('/test/dir');
-      // After eviction, size should have been reduced during the call
     });
   });
 
@@ -297,10 +291,8 @@ describe('rendererGitStatus', () => {
       });
       const ctrl = createGitStatusController(deps as any);
 
-      // Manually set up currentGitStatuses through fetchGitStatusAsync
       await ctrl.fetchGitStatusAsync('/test/dir');
 
-      // Apply to a specific path
       ctrl.applyGitIndicatorsToPaths(['/test/dir/file.ts']);
     });
 

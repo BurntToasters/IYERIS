@@ -61,7 +61,6 @@ import {
 describe('appState getters/setters', () => {
   describe('mainWindow', () => {
     it('starts as null', () => {
-      // Reset
       setMainWindow(null);
       expect(getMainWindow()).toBe(null);
     });
@@ -234,7 +233,7 @@ describe('appState getters/setters', () => {
     it('returns null when no windows exist', () => {
       setMainWindow(null);
       const result = getActiveWindow();
-      // With our mock returning [], it should return null
+
       expect(result).toBe(null);
     });
   });

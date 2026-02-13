@@ -1,6 +1,3 @@
-/**
- * @vitest-environment jsdom
- */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('./rendererDom.js', () => ({
@@ -54,7 +51,7 @@ function setupCommandPaletteDOM() {
       <div id="command-palette-empty" style="display:none"></div>
     </div>
   `;
-  // jsdom does not implement scrollIntoView
+
   HTMLElement.prototype.scrollIntoView = function () {};
 }
 
@@ -73,7 +70,7 @@ describe('createCommandPaletteController', () => {
       const deps = createDeps();
       const ctrl = createCommandPaletteController(deps);
       ctrl.initCommandPalette();
-      // Should populate commands — verify by showing palette and checking results
+
       ctrl.showCommandPalette();
       vi.advanceTimersByTime(100);
       const results = document.getElementById('command-palette-results')!;
@@ -85,7 +82,7 @@ describe('createCommandPaletteController', () => {
       document.body.innerHTML = '';
       const deps = createDeps();
       const ctrl = createCommandPaletteController(deps);
-      // Should not throw
+
       ctrl.initCommandPalette();
     });
 
@@ -97,7 +94,6 @@ describe('createCommandPaletteController', () => {
       vi.advanceTimersByTime(100);
       const count1 = document.querySelectorAll('.command-palette-item').length;
 
-      // Init again
       ctrl.initCommandPalette();
       ctrl.showCommandPalette();
       vi.advanceTimersByTime(100);
@@ -135,7 +131,7 @@ describe('createCommandPaletteController', () => {
       document.body.innerHTML = '';
       const deps = createDeps();
       const ctrl = createCommandPaletteController(deps);
-      // No init, no DOM
+
       ctrl.showCommandPalette();
       expect(deps.activateModal).not.toHaveBeenCalled();
     });
@@ -158,7 +154,6 @@ describe('createCommandPaletteController', () => {
       const ctrl = createCommandPaletteController(deps);
       ctrl.initCommandPalette();
 
-      // Set up a focusable element
       const btn = document.createElement('button');
       btn.id = 'prev-focus';
       document.body.appendChild(btn);
@@ -167,7 +162,6 @@ describe('createCommandPaletteController', () => {
       ctrl.showCommandPalette();
       ctrl.hideCommandPalette();
 
-      // Previous focus should have been restored
       expect(document.activeElement).toBe(btn);
     });
   });
@@ -262,7 +256,7 @@ describe('createCommandPaletteController', () => {
       vi.advanceTimersByTime(100);
 
       const input = document.getElementById('command-palette-input') as HTMLInputElement;
-      // Focus items 0 then 1
+
       input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown' }));
       input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown' }));
       input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp' }));
@@ -280,11 +274,10 @@ describe('createCommandPaletteController', () => {
       vi.advanceTimersByTime(100);
 
       const input = document.getElementById('command-palette-input') as HTMLInputElement;
-      // Focus first item (New Folder)
+
       input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown' }));
       input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
 
-      // Modal should be hidden (hideCommandPalette called by action wrapper)
       const modal = document.getElementById('command-palette-modal')!;
       expect(modal.style.display).toBe('none');
     });
@@ -343,7 +336,6 @@ describe('createCommandPaletteController', () => {
       ctrl.showCommandPalette();
       vi.advanceTimersByTime(100);
 
-      // Click 'New Folder' (first command)
       const items = document.querySelectorAll('.command-palette-item');
       (items[0] as HTMLElement).click();
 
@@ -380,7 +372,6 @@ describe('createCommandPaletteController', () => {
       ctrl.showCommandPalette();
       vi.advanceTimersByTime(100);
 
-      // Check that the first item has a shortcut rendered
       const items = document.querySelectorAll('.command-palette-item');
       const firstItem = items[0];
       expect(firstItem.innerHTML).toContain('command-palette-key');
@@ -409,7 +400,7 @@ describe('createCommandPaletteController', () => {
       vi.advanceTimersByTime(100);
 
       const modal = document.getElementById('command-palette-modal')!;
-      // Simulate clicking the modal itself (overlay)
+
       modal.dispatchEvent(new MouseEvent('click', { bubbles: true }));
       expect(modal.style.display).toBe('none');
     });
@@ -423,7 +414,6 @@ describe('createCommandPaletteController', () => {
       ctrl.showCommandPalette();
       vi.advanceTimersByTime(100);
 
-      // Find the New Tab command
       const input = document.getElementById('command-palette-input') as HTMLInputElement;
       input.value = 'New Tab';
       input.dispatchEvent(new Event('input'));

@@ -1,4 +1,3 @@
-/** @vitest-environment jsdom */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 import { createSettingsModalController } from './rendererSettingsModal';
@@ -72,7 +71,6 @@ function makeDeps() {
   };
 }
 
-// All the form element IDs used by showSettingsModal
 const CHECKBOX_IDS = [
   'system-theme-toggle',
   'show-hidden-files-toggle',
@@ -150,7 +148,6 @@ function buildFormDOM(): void {
   document.body.innerHTML = html;
 }
 
-// Mock electronAPI
 const mockElectronAPI = {
   getSettingsPath: vi.fn().mockResolvedValue('/home/.config/iyeris/settings.json'),
 };
@@ -273,7 +270,6 @@ describe('rendererSettingsModal', () => {
     });
 
     it('falls back to classList when tab has no data-tab', async () => {
-      // Remove data-tab attributes
       document.querySelectorAll('.settings-tab').forEach((t) => t.removeAttribute('data-tab'));
       const deps = makeDeps();
       const ctrl = createSettingsModalController(deps as any);
@@ -362,7 +358,7 @@ describe('rendererSettingsModal', () => {
       document.getElementById('settings-modal')!.remove();
       const deps = makeDeps();
       const ctrl = createSettingsModalController(deps as any);
-      // should not throw, but modal lifecycle should be skipped
+
       await ctrl.showSettingsModal();
       expect(deps.activateModal).not.toHaveBeenCalled();
     });
@@ -373,20 +369,19 @@ describe('rendererSettingsModal', () => {
       const ctrl = createSettingsModalController(deps as any);
       await ctrl.showSettingsModal();
 
-      // Defaults with !== false should be checked
       expect(
         (document.getElementById('enable-syntax-highlighting-toggle') as HTMLInputElement).checked
       ).toBe(true);
       expect(
         (document.getElementById('auto-check-updates-toggle') as HTMLInputElement).checked
       ).toBe(true);
-      // Defaults with || false should be unchecked
+
       expect(
         (document.getElementById('show-hidden-files-toggle') as HTMLInputElement).checked
       ).toBe(false);
-      // Selects default values
+
       expect((document.getElementById('sort-by-select') as HTMLSelectElement).value).toBe('name');
-      // Input defaults
+
       expect((document.getElementById('icon-size-slider') as HTMLInputElement).value).toBe('64');
       expect(document.getElementById('icon-size-value')!.textContent).toBe('64');
     });
@@ -430,7 +425,7 @@ describe('rendererSettingsModal', () => {
       const deps = makeDeps();
       delete (deps as any).onSettingsModalHide;
       const ctrl = createSettingsModalController(deps as any);
-      ctrl.hideSettingsModal(); // should not throw
+      ctrl.hideSettingsModal();
       expect(deps.stopIndexStatusPolling).toHaveBeenCalled();
     });
   });

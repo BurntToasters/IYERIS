@@ -88,7 +88,7 @@ describe('readIndexData', () => {
     expect(first).toEqual({ version: 2 });
 
     mockStat.mockResolvedValue({ mtimeMs: 99999 });
-    // readFile should NOT be called again if cache hit
+
     mockReadFile.mockRejectedValue(new Error('should not be called'));
 
     const second = await readIndexData('/path/to/index.json', 'empty');
@@ -138,7 +138,6 @@ describe('readIndexData', () => {
     mockReadFile.mockResolvedValue('{invalid');
     await expect(readIndexData('/bad.json', 'msg')).rejects.toThrow();
 
-    // subsequent call should re-read, not use cache
     mockStat.mockResolvedValue({ mtimeMs: 500 });
     mockReadFile.mockResolvedValue('{"version": 3}');
     const data = await readIndexData('/bad.json', 'msg');
@@ -146,18 +145,15 @@ describe('readIndexData', () => {
   });
 
   it('clears cache after ENOENT', async () => {
-    // populate cache first
     mockStat.mockResolvedValue({ mtimeMs: 100 });
     mockReadFile.mockResolvedValue('{"ok": true}');
     await readIndexData('/x.json', 'msg');
 
-    // now file is gone
     const err = new Error('gone') as NodeJS.ErrnoException;
     err.code = 'ENOENT';
     mockStat.mockRejectedValue(err);
     await expect(readIndexData('/x.json', 'no index')).rejects.toThrow('no index');
 
-    // cache should be cleared
     mockStat.mockResolvedValue({ mtimeMs: 100 });
     mockReadFile.mockResolvedValue('{"rebuilt": true}');
     const data = await readIndexData('/x.json', 'msg');
@@ -179,7 +175,6 @@ describe('resetIndexCache', () => {
 
     resetIndexCache();
 
-    // even with same mtime, it should re-read after reset
     mockReadFile.mockResolvedValue('{"fresh": true}');
     const data = await readIndexData('/resetTest.json', 'msg');
     expect(data).toEqual({ fresh: true });
@@ -211,7 +206,7 @@ describe('isHidden', () => {
 
   it('returns true for .hidden on linux without checking attrib', async () => {
     Object.defineProperty(process, 'platform', { value: 'linux' });
-    // should not call attrib
+
     mockExecFileAsync.mockRejectedValue(new Error('should not be called'));
     expect(await isHidden('/tmp/.hidden', '.hidden')).toBe(true);
   });
@@ -263,7 +258,7 @@ describe('batchCheckHidden', () => {
     const results = await batchCheckHidden('/home/user', ['.bashrc', 'readme.md', '.gitignore']);
     expect(results.get('.bashrc')).toBe(true);
     expect(results.get('.gitignore')).toBe(true);
-    expect(results.has('readme.md')).toBe(false); // non-hidden files not set
+    expect(results.has('readme.md')).toBe(false);
   });
 
   it('ignores non-dot files on non-win32', async () => {

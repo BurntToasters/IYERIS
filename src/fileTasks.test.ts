@@ -84,9 +84,7 @@ afterEach(async () => {
     managers.map(async (manager) => {
       try {
         await manager.shutdown();
-      } catch {
-        // ignore: shutdown may reject pending tasks created intentionally by tests
-      }
+      } catch {}
     })
   );
 });

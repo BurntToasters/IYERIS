@@ -1,8 +1,9 @@
-/**
- * @vitest-environment jsdom
- */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDragDropController } from './rendererDragDrop';
+
+function flushPromises(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
 
 function createDragEvent(
   type: string,
@@ -61,8 +62,15 @@ function createConfig(overrides: Record<string, unknown> = {}) {
 describe('createDragDropController — extended', () => {
   beforeEach(() => {
     document.body.innerHTML = `
-      <div id="file-view"></div>
-      <div id="file-grid"></div>
+      <div id="file-view">
+        <div class="column-view">
+          <div class="column-item" data-path="/dest/sub-dir" data-type="directory">sub-dir</div>
+        </div>
+      </div>
+      <div id="file-grid">
+        <div class="file-item" data-path="/dest/folder" data-type="directory">folder</div>
+        <div class="file-item" data-path="/dest/readme.md" data-type="file">readme.md</div>
+      </div>
       <div id="drop-indicator" style="display:none">
         <span id="drop-indicator-action"></span>
         <span id="drop-indicator-path"></span>
@@ -97,7 +105,7 @@ describe('createDragDropController — extended', () => {
       expect(electronAPI.copyItems).toHaveBeenCalledWith(['/src.txt'], '/dest', 'ask');
       expect(electronAPI.moveItems).not.toHaveBeenCalled();
       expect(showToast).toHaveBeenCalledWith('Copied 1 item(s)', 'Success', 'success');
-      // copy should NOT call updateUndoRedoState
+
       expect(config.updateUndoRedoState).not.toHaveBeenCalled();
     });
 
@@ -199,7 +207,6 @@ describe('createDragDropController — extended', () => {
     });
 
     it('returns empty when all fallbacks return nothing', async () => {
-      // getDragData returns null
       const { config } = createConfig();
       const ctrl = createDragDropController(config);
       const result = await ctrl.getDraggedPaths(createDragEvent('drop'));
@@ -226,7 +233,7 @@ describe('createDragDropController — extended', () => {
       document.body.innerHTML = '';
       const { config } = createConfig();
       const ctrl = createDragDropController(config);
-      // Should not throw
+
       ctrl.showDropIndicator('copy', '/dest', 0, 0);
     });
 
@@ -243,7 +250,7 @@ describe('createDragDropController — extended', () => {
       document.body.innerHTML = '';
       const { config } = createConfig();
       const ctrl = createDragDropController(config);
-      // Should not throw
+
       ctrl.hideDropIndicator();
     });
   });
@@ -264,11 +271,9 @@ describe('createDragDropController — extended', () => {
 
       ctrl.scheduleSpringLoad(target, action);
 
-      // After half the delay, the spring-loading class is added
       vi.advanceTimersByTime(400);
       expect(target.classList.contains('spring-loading')).toBe(true);
 
-      // After full delay, action fires
       vi.advanceTimersByTime(400);
       expect(action).toHaveBeenCalledTimes(1);
       expect(target.classList.contains('spring-loading')).toBe(false);
@@ -299,7 +304,7 @@ describe('createDragDropController — extended', () => {
       const action2 = vi.fn();
 
       ctrl.scheduleSpringLoad(target, action1);
-      ctrl.scheduleSpringLoad(target, action2); // same target, should be ignored
+      ctrl.scheduleSpringLoad(target, action2);
 
       vi.advanceTimersByTime(800);
       expect(action1).toHaveBeenCalledTimes(1);
@@ -328,7 +333,7 @@ describe('createDragDropController — extended', () => {
       const action = vi.fn();
 
       ctrl.scheduleSpringLoad(target, action);
-      ctrl.clearSpringLoad(); // no arg
+      ctrl.clearSpringLoad();
 
       vi.advanceTimersByTime(800);
       expect(action).not.toHaveBeenCalled();
@@ -342,7 +347,7 @@ describe('createDragDropController — extended', () => {
       const action = vi.fn();
 
       ctrl.scheduleSpringLoad(target, action);
-      ctrl.clearSpringLoad(otherTarget); // different target, should not cancel
+      ctrl.clearSpringLoad(otherTarget);
 
       vi.advanceTimersByTime(800);
       expect(action).toHaveBeenCalledTimes(1);
@@ -355,6 +360,415 @@ describe('createDragDropController — extended', () => {
       const { config } = createConfig();
       const ctrl = createDragDropController(config);
       expect(() => ctrl.initDragAndDropListeners()).not.toThrow();
+    });
+  });
+
+  describe('initFileGridDragAndDrop — event dispatching', () => {
+    it('adds drag-over class and shows indicator on dragover (non file-item target)', () => {
+      const { config } = createConfig();
+      const ctrl = createDragDropController(config);
+      ctrl.initDragAndDropListeners();
+
+      const fileGrid = document.getElementById('file-grid')!;
+      const dragover = createDragEvent('dragover', { clientX: 100, clientY: 200 });
+      Object.defineProperty(dragover, 'target', { value: fileGrid });
+      fileGrid.dispatchEvent(dragover);
+
+      expect(fileGrid.classList.contains('drag-over')).toBe(true);
+      expect(config.consumeEvent).toHaveBeenCalled();
+      expect(document.getElementById('drop-indicator')!.style.display).toBe('inline-flex');
+    });
+
+    it('sets dropEffect to "none" when getCurrentPath returns empty', () => {
+      const { config } = createConfig({ currentPath: '' });
+      const ctrl = createDragDropController(config);
+      ctrl.initDragAndDropListeners();
+
+      const fileGrid = document.getElementById('file-grid')!;
+      const dragover = createDragEvent('dragover');
+      Object.defineProperty(dragover, 'target', { value: fileGrid });
+      fileGrid.dispatchEvent(dragover);
+
+      expect((dragover as any).dataTransfer.dropEffect).toBe('none');
+    });
+
+    it('shows "Copy" indicator when ctrlKey held on dragover', () => {
+      const { config } = createConfig();
+      const ctrl = createDragDropController(config);
+      ctrl.initDragAndDropListeners();
+
+      const fileGrid = document.getElementById('file-grid')!;
+      const dragover = createDragEvent('dragover', { ctrlKey: true, clientX: 10, clientY: 10 });
+      Object.defineProperty(dragover, 'target', { value: fileGrid });
+      fileGrid.dispatchEvent(dragover);
+
+      expect((dragover as any).dataTransfer.dropEffect).toBe('copy');
+      expect(document.getElementById('drop-indicator-action')!.textContent).toBe('Copy');
+    });
+
+    it('returns early on dragover when target is a .file-item', () => {
+      const { config } = createConfig();
+      const ctrl = createDragDropController(config);
+      ctrl.initDragAndDropListeners();
+
+      const fileItem = document.querySelector('#file-grid .file-item') as HTMLElement;
+      const dragover = createDragEvent('dragover');
+      fileItem.dispatchEvent(dragover);
+
+      expect(config.consumeEvent).not.toHaveBeenCalled();
+    });
+
+    it('removes drag-over class on dragleave when cursor exits bounds', () => {
+      const { config } = createConfig();
+      const ctrl = createDragDropController(config);
+      ctrl.initDragAndDropListeners();
+
+      const fileGrid = document.getElementById('file-grid')!;
+      fileGrid.classList.add('drag-over');
+      fileGrid.getBoundingClientRect = () =>
+        ({ left: 0, right: 500, top: 0, bottom: 500 }) as DOMRect;
+
+      const dragleave = createDragEvent('dragleave', { clientX: 600, clientY: 600 });
+      fileGrid.dispatchEvent(dragleave);
+
+      expect(fileGrid.classList.contains('drag-over')).toBe(false);
+      expect(document.getElementById('drop-indicator')!.style.display).toBe('none');
+    });
+
+    it('keeps drag-over class on dragleave when cursor is within bounds', () => {
+      const { config } = createConfig();
+      const ctrl = createDragDropController(config);
+      ctrl.initDragAndDropListeners();
+
+      const fileGrid = document.getElementById('file-grid')!;
+      fileGrid.classList.add('drag-over');
+      fileGrid.getBoundingClientRect = () =>
+        ({ left: 0, right: 500, top: 0, bottom: 500 }) as DOMRect;
+
+      const dragleave = createDragEvent('dragleave', { clientX: 250, clientY: 250 });
+      fileGrid.dispatchEvent(dragleave);
+
+      expect(fileGrid.classList.contains('drag-over')).toBe(true);
+    });
+
+    it('returns early on drop when target is a .file-item', async () => {
+      const { config } = createConfig();
+      const ctrl = createDragDropController(config);
+      ctrl.initDragAndDropListeners();
+
+      const fileItem = document.querySelector('#file-grid .file-item') as HTMLElement;
+      const dropEvt = createDragEvent('drop', {
+        textData: JSON.stringify(['/other/file.txt']),
+      });
+      fileItem.dispatchEvent(dropEvt);
+      await Promise.resolve();
+
+      const electronAPI = (window as any).electronAPI;
+      expect(electronAPI.moveItems).not.toHaveBeenCalled();
+      expect(electronAPI.copyItems).not.toHaveBeenCalled();
+    });
+
+    it('hides indicator when drop has no dragged paths', async () => {
+      const { config, showToast } = createConfig();
+      const ctrl = createDragDropController(config);
+      ctrl.initDragAndDropListeners();
+
+      const fileGrid = document.getElementById('file-grid')!;
+      const dropEvt = createDragEvent('drop', { textData: '' });
+      Object.defineProperty(dropEvt, 'target', { value: fileGrid });
+      fileGrid.dispatchEvent(dropEvt);
+      await Promise.resolve();
+
+      expect(showToast).not.toHaveBeenCalled();
+    });
+
+    it('performs move on drop (default, no modifier key)', async () => {
+      const { config } = createConfig();
+      const ctrl = createDragDropController(config);
+      ctrl.initDragAndDropListeners();
+
+      const fileGrid = document.getElementById('file-grid')!;
+      const dropEvt = createDragEvent('drop', {
+        textData: JSON.stringify(['/other/file.txt']),
+      });
+      Object.defineProperty(dropEvt, 'target', { value: fileGrid });
+      fileGrid.dispatchEvent(dropEvt);
+      await flushPromises();
+
+      const electronAPI = (window as any).electronAPI;
+      expect(electronAPI.moveItems).toHaveBeenCalledWith(['/other/file.txt'], '/dest', 'ask');
+      expect(config.updateUndoRedoState).toHaveBeenCalled();
+    });
+
+    it('performs copy on drop when ctrlKey is held', async () => {
+      const { config } = createConfig();
+      const ctrl = createDragDropController(config);
+      ctrl.initDragAndDropListeners();
+
+      const fileGrid = document.getElementById('file-grid')!;
+      const dropEvt = createDragEvent('drop', {
+        textData: JSON.stringify(['/other/file.txt']),
+        ctrlKey: true,
+      });
+      Object.defineProperty(dropEvt, 'target', { value: fileGrid });
+      fileGrid.dispatchEvent(dropEvt);
+      await flushPromises();
+
+      const electronAPI = (window as any).electronAPI;
+      expect(electronAPI.copyItems).toHaveBeenCalledWith(['/other/file.txt'], '/dest', 'ask');
+      expect(electronAPI.moveItems).not.toHaveBeenCalled();
+    });
+
+    it('shows toast when dragged path equals destination (same file)', async () => {
+      const { config, showToast } = createConfig();
+      const ctrl = createDragDropController(config);
+      ctrl.initDragAndDropListeners();
+
+      const fileGrid = document.getElementById('file-grid')!;
+      const dropEvt = createDragEvent('drop', {
+        textData: JSON.stringify(['/dest']),
+      });
+      Object.defineProperty(dropEvt, 'target', { value: fileGrid });
+      fileGrid.dispatchEvent(dropEvt);
+      await Promise.resolve();
+
+      expect(showToast).toHaveBeenCalledWith('Items are already in this directory', 'Info', 'info');
+    });
+  });
+
+  describe('initFileViewDragAndDrop — event dispatching', () => {
+    it('adds drag-over class on dragover when target is NOT a content item', () => {
+      const { config } = createConfig();
+      const ctrl = createDragDropController(config);
+      ctrl.initDragAndDropListeners();
+
+      const fileView = document.getElementById('file-view')!;
+      const dragover = createDragEvent('dragover', { clientX: 50, clientY: 50 });
+      Object.defineProperty(dragover, 'target', { value: fileView });
+      fileView.dispatchEvent(dragover);
+
+      expect(fileView.classList.contains('drag-over')).toBe(true);
+      expect(config.consumeEvent).toHaveBeenCalled();
+    });
+
+    it('returns early on dragover when target is a .column-item (content item)', () => {
+      const { config } = createConfig();
+      const ctrl = createDragDropController(config);
+      ctrl.initDragAndDropListeners();
+
+      const columnItem = document.querySelector('.column-item') as HTMLElement;
+      const dragover = createDragEvent('dragover');
+      columnItem.dispatchEvent(dragover);
+
+      expect(config.consumeEvent).not.toHaveBeenCalled();
+    });
+
+    it('sets dropEffect to "none" on file-view dragover when no currentPath', () => {
+      const { config } = createConfig({ currentPath: '' });
+      const ctrl = createDragDropController(config);
+      ctrl.initDragAndDropListeners();
+
+      const fileView = document.getElementById('file-view')!;
+      const dragover = createDragEvent('dragover');
+      Object.defineProperty(dragover, 'target', { value: fileView });
+      fileView.dispatchEvent(dragover);
+
+      expect((dragover as any).dataTransfer.dropEffect).toBe('none');
+    });
+
+    it('removes drag-over class on file-view dragleave when cursor exits bounds', () => {
+      const { config } = createConfig();
+      const ctrl = createDragDropController(config);
+      ctrl.initDragAndDropListeners();
+
+      const fileView = document.getElementById('file-view')!;
+      fileView.classList.add('drag-over');
+      fileView.getBoundingClientRect = () =>
+        ({ left: 0, right: 400, top: 0, bottom: 400 }) as DOMRect;
+
+      const dragleave = createDragEvent('dragleave', { clientX: 500, clientY: 500 });
+      fileView.dispatchEvent(dragleave);
+
+      expect(fileView.classList.contains('drag-over')).toBe(false);
+    });
+
+    it('keeps drag-over class on file-view dragleave when cursor is within bounds', () => {
+      const { config } = createConfig();
+      const ctrl = createDragDropController(config);
+      ctrl.initDragAndDropListeners();
+
+      const fileView = document.getElementById('file-view')!;
+      fileView.classList.add('drag-over');
+      fileView.getBoundingClientRect = () =>
+        ({ left: 0, right: 400, top: 0, bottom: 400 }) as DOMRect;
+
+      const dragleave = createDragEvent('dragleave', { clientX: 200, clientY: 200 });
+      fileView.dispatchEvent(dragleave);
+
+      expect(fileView.classList.contains('drag-over')).toBe(true);
+    });
+
+    it('returns early on file-view drop when target is a content item', async () => {
+      const { config } = createConfig();
+      const ctrl = createDragDropController(config);
+      ctrl.initDragAndDropListeners();
+
+      const columnItem = document.querySelector('.column-item') as HTMLElement;
+      const dropEvt = createDragEvent('drop', {
+        textData: JSON.stringify(['/other/file.txt']),
+      });
+      columnItem.dispatchEvent(dropEvt);
+      await Promise.resolve();
+
+      const electronAPI = (window as any).electronAPI;
+      expect(electronAPI.moveItems).not.toHaveBeenCalled();
+      expect(electronAPI.copyItems).not.toHaveBeenCalled();
+    });
+
+    it('performs move on file-view drop', async () => {
+      const { config, showToast } = createConfig();
+      const ctrl = createDragDropController(config);
+      ctrl.initDragAndDropListeners();
+
+      const fileView = document.getElementById('file-view')!;
+      const dropEvt = createDragEvent('drop', {
+        textData: JSON.stringify(['/source/data.txt']),
+      });
+      Object.defineProperty(dropEvt, 'target', { value: fileView });
+      fileView.dispatchEvent(dropEvt);
+      await flushPromises();
+
+      const electronAPI = (window as any).electronAPI;
+      expect(electronAPI.moveItems).toHaveBeenCalledWith(['/source/data.txt'], '/dest', 'ask');
+      expect(showToast).toHaveBeenCalledWith('Moved 1 item(s)', 'Success', 'success');
+    });
+
+    it('shows toast when items already in current dir on file-view drop', async () => {
+      const { config, showToast } = createConfig();
+      const ctrl = createDragDropController(config);
+      ctrl.initDragAndDropListeners();
+
+      const fileView = document.getElementById('file-view')!;
+      const dropEvt = createDragEvent('drop', {
+        textData: JSON.stringify(['/dest/existing.txt']),
+      });
+      Object.defineProperty(dropEvt, 'target', { value: fileView });
+      fileView.dispatchEvent(dropEvt);
+      await Promise.resolve();
+
+      expect(showToast).toHaveBeenCalledWith('Items are already in this directory', 'Info', 'info');
+    });
+
+    it('hides indicator when file-view drop has no dragged paths', async () => {
+      const { config, showToast } = createConfig();
+      const ctrl = createDragDropController(config);
+      ctrl.initDragAndDropListeners();
+
+      const fileView = document.getElementById('file-view')!;
+      const dropEvt = createDragEvent('drop', { textData: '' });
+      Object.defineProperty(dropEvt, 'target', { value: fileView });
+      fileView.dispatchEvent(dropEvt);
+      await Promise.resolve();
+
+      expect(showToast).not.toHaveBeenCalled();
+      expect(document.getElementById('drop-indicator')!.style.display).toBe('none');
+    });
+  });
+
+  describe('handleDrop — move vs copy undo and multi-item', () => {
+    it('calls updateUndoRedoState only for move, not copy', async () => {
+      const { config } = createConfig();
+      const ctrl = createDragDropController(config);
+
+      await ctrl.handleDrop(['/a.txt'], '/dest', 'move');
+      expect(config.updateUndoRedoState).toHaveBeenCalledTimes(1);
+
+      config.updateUndoRedoState.mockClear();
+      await ctrl.handleDrop(['/a.txt'], '/dest', 'copy');
+      expect(config.updateUndoRedoState).not.toHaveBeenCalled();
+    });
+
+    it('reports correct count in toast for multiple items', async () => {
+      const { config, showToast } = createConfig();
+      const ctrl = createDragDropController(config);
+
+      await ctrl.handleDrop(['/a.txt', '/b.txt', '/c.txt'], '/dest', 'move');
+
+      expect(showToast).toHaveBeenCalledWith('Moved 3 item(s)', 'Success', 'success');
+    });
+
+    it('uses fileConflictBehavior from settings', async () => {
+      const { config } = createConfig();
+      (config as any).getCurrentSettings = () => ({ fileConflictBehavior: 'overwrite' });
+      const ctrl = createDragDropController(config);
+
+      await ctrl.handleDrop(['/a.txt'], '/dest', 'copy');
+
+      const electronAPI = (window as any).electronAPI;
+      expect(electronAPI.copyItems).toHaveBeenCalledWith(['/a.txt'], '/dest', 'overwrite');
+    });
+
+    it('defaults fileConflictBehavior to "ask" when undefined', async () => {
+      const { config } = createConfig();
+      (config as any).getCurrentSettings = () => ({});
+      const ctrl = createDragDropController(config);
+
+      await ctrl.handleDrop(['/a.txt'], '/dest', 'move');
+
+      const electronAPI = (window as any).electronAPI;
+      expect(electronAPI.moveItems).toHaveBeenCalledWith(['/a.txt'], '/dest', 'ask');
+    });
+  });
+
+  describe('isDropIntoCurrentDirectory — edge cases via drop', () => {
+    it('detects when dragPath parent matches dest (file in same dir)', async () => {
+      const { config, showToast } = createConfig();
+      const ctrl = createDragDropController(config);
+      ctrl.initDragAndDropListeners();
+
+      const fileGrid = document.getElementById('file-grid')!;
+      const dropEvt = createDragEvent('drop', {
+        textData: JSON.stringify(['/dest/somefile.txt']),
+      });
+      Object.defineProperty(dropEvt, 'target', { value: fileGrid });
+      fileGrid.dispatchEvent(dropEvt);
+      await Promise.resolve();
+
+      expect(showToast).toHaveBeenCalledWith('Items are already in this directory', 'Info', 'info');
+    });
+
+    it('allows drop when dragged file comes from different directory', async () => {
+      const { config, showToast } = createConfig();
+      const ctrl = createDragDropController(config);
+      ctrl.initDragAndDropListeners();
+
+      const fileGrid = document.getElementById('file-grid')!;
+      const dropEvt = createDragEvent('drop', {
+        textData: JSON.stringify(['/completely-different/path.txt']),
+      });
+      Object.defineProperty(dropEvt, 'target', { value: fileGrid });
+      fileGrid.dispatchEvent(dropEvt);
+      await flushPromises();
+
+      const electronAPI = (window as any).electronAPI;
+      expect(electronAPI.moveItems).toHaveBeenCalled();
+      expect(showToast).toHaveBeenCalledWith('Moved 1 item(s)', 'Success', 'success');
+    });
+
+    it('rejects drop when any of multiple paths are in current dir', async () => {
+      const { config, showToast } = createConfig();
+      const ctrl = createDragDropController(config);
+      ctrl.initDragAndDropListeners();
+
+      const fileGrid = document.getElementById('file-grid')!;
+      const dropEvt = createDragEvent('drop', {
+        textData: JSON.stringify(['/other/ok.txt', '/dest/clash.txt']),
+      });
+      Object.defineProperty(dropEvt, 'target', { value: fileGrid });
+      fileGrid.dispatchEvent(dropEvt);
+      await Promise.resolve();
+
+      expect(showToast).toHaveBeenCalledWith('Items are already in this directory', 'Info', 'info');
     });
   });
 });

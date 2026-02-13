@@ -1,6 +1,3 @@
-/**
- * @vitest-environment jsdom
- */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('./shared.js', () => ({
@@ -131,13 +128,13 @@ describe('createHomeController - normalizeHomeSettings via loadHomeSettings', ()
 
     const hs = ctrl.getHomeSettings();
     expect(hs.showQuickAccess).toBe(false);
-    // sectionOrder should be normalized: given + missing
+
     expect(hs.sectionOrder).toContain('drives');
     expect(hs.sectionOrder).toContain('recents');
     expect(hs.sectionOrder).toContain('quick-access');
     expect(hs.sectionOrder).toContain('bookmarks');
     expect(hs.sectionOrder.length).toBe(4);
-    // quickAccessOrder should have given + missing
+
     expect(hs.quickAccessOrder[0]).toBe('trash');
     expect(hs.quickAccessOrder[1]).toBe('desktop');
     expect(hs.quickAccessOrder.length).toBe(HOME_QUICK_ACCESS_ITEMS.length);
@@ -155,7 +152,7 @@ describe('createHomeController - normalizeHomeSettings via loadHomeSettings', ()
     await ctrl.loadHomeSettings();
 
     const hs = ctrl.getHomeSettings();
-    expect(hs.showQuickAccess).toBe(true); // default
+    expect(hs.showQuickAccess).toBe(true);
     expect(hs.sectionOrder.length).toBe(4);
   });
 
@@ -170,7 +167,7 @@ describe('createHomeController - normalizeHomeSettings via loadHomeSettings', ()
     await ctrl.loadHomeSettings();
 
     const hs = ctrl.getHomeSettings();
-    expect(hs.showQuickAccess).toBe(true); // default
+    expect(hs.showQuickAccess).toBe(true);
   });
 
   it('handles API exception', async () => {
@@ -184,7 +181,7 @@ describe('createHomeController - normalizeHomeSettings via loadHomeSettings', ()
     await ctrl.loadHomeSettings();
 
     const hs = ctrl.getHomeSettings();
-    expect(hs.showQuickAccess).toBe(true); // default
+    expect(hs.showQuickAccess).toBe(true);
   });
 
   it('normalizes non-array sectionOrder', async () => {
@@ -344,11 +341,11 @@ describe('createHomeController - getVisibleSidebarQuickAccessItems', () => {
 
     const items = ctrl.getVisibleSidebarQuickAccessItems();
     const actions = items.map((i) => i.action);
-    // 'trash' and 'downloads' should be present but 'desktop' should be hidden
+
     expect(actions).toContain('trash');
     expect(actions).toContain('downloads');
     expect(actions).not.toContain('desktop');
-    // trash and downloads should appear in the first 3 items (given as first in order)
+
     expect(actions[0]).toBe('trash');
   });
 
@@ -423,7 +420,7 @@ describe('createHomeController - renderHomeView', () => {
     ctrl.renderHomeBookmarks();
 
     const bk = document.getElementById('home-bookmarks')!;
-    expect(bk.querySelectorAll('.home-item').length).toBe(2); // /bm1, /bm2
+    expect(bk.querySelectorAll('.home-item').length).toBe(2);
   });
 
   it('shows empty message when no bookmarks', async () => {
@@ -461,7 +458,7 @@ describe('createHomeController - renderHomeView', () => {
     const recents = document.getElementById('home-recents')!;
     const items = recents.querySelectorAll('.home-recent-item');
     expect(items.length).toBe(3);
-    // pinned item (/c.txt) should be first
+
     expect(items[0].getAttribute('data-recent-path')).toBe('/c.txt');
   });
 
@@ -513,7 +510,7 @@ describe('createHomeController - renderHomeView', () => {
 
     const recents = document.getElementById('home-recents')!;
     const items = recents.querySelectorAll('.home-recent-item');
-    expect(items.length).toBe(2); // /a.txt (pinned first), /b.txt — no dupe
+    expect(items.length).toBe(2);
   });
 });
 

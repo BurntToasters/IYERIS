@@ -90,9 +90,7 @@ describe('setupArchiveHandlers', () => {
     });
 
     it('rejects unsafe source path', async () => {
-      hoisted.isPathSafeMock
-        .mockReturnValueOnce(true) // output
-        .mockReturnValueOnce(false); // source
+      hoisted.isPathSafeMock.mockReturnValueOnce(true).mockReturnValueOnce(false);
       const handler = handlers.get('compress-files')!;
       const result = await handler({}, ['/bad\0src'], '/dst/out.zip', 'zip');
       expect(result).toEqual({ success: false, error: 'Invalid source path' });
@@ -127,9 +125,7 @@ describe('setupArchiveHandlers', () => {
     });
 
     it('rejects unsafe destination path', async () => {
-      hoisted.isPathSafeMock
-        .mockReturnValueOnce(true) // archive
-        .mockReturnValueOnce(false); // dest
+      hoisted.isPathSafeMock.mockReturnValueOnce(true).mockReturnValueOnce(false);
       const handler = handlers.get('extract-archive')!;
       const result = await handler({}, '/archive.zip', '/bad\0dst');
       expect(result).toEqual({ success: false, error: 'Invalid destination path' });

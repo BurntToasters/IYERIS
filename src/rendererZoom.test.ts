@@ -9,7 +9,7 @@ describe('createZoomController', () => {
     vi.clearAllMocks();
     setZoomLevel = vi.fn().mockResolvedValue({ success: true });
     ctrl = createZoomController({ setZoomLevel } as any);
-    // Reset zoom level to 1.0 for each test (module-level state persists)
+
     ctrl.setCurrentZoomLevel(1.0);
     vi.stubGlobal('document', {
       getElementById: vi.fn(() => null),
@@ -28,7 +28,7 @@ describe('createZoomController', () => {
   it('zoomIn increases zoom by 0.1', async () => {
     await ctrl.zoomIn();
     expect(setZoomLevel).toHaveBeenCalled();
-    // Zoom should be clamped to max 2.0
+
     const level = setZoomLevel.mock.calls[0][0];
     expect(level).toBeCloseTo(1.1, 1);
   });
@@ -90,8 +90,7 @@ describe('createZoomController', () => {
     setZoomLevel.mockResolvedValue({ success: false });
     ctrl.setCurrentZoomLevel(1.0);
     await ctrl.zoomIn();
-    // The zoom level is still set even if API fails (per current implementation)
-    // Just verify it doesn't throw
+
     expect(setZoomLevel).toHaveBeenCalled();
   });
 });

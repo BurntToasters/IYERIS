@@ -1,11 +1,7 @@
-/**
- * @vitest-environment jsdom
- */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createSelectionController } from './rendererSelection';
 
-// jsdom doesn't implement scrollIntoView
 HTMLElement.prototype.scrollIntoView = function () {};
 
 function createFileItem(path: string): HTMLElement {
@@ -67,7 +63,7 @@ describe('navigateFileGrid - ArrowUp/ArrowDown', () => {
 
   it('ArrowDown moves down by column count in grid mode', () => {
     const deps = createDeps();
-    // Simulate 3-column grid
+
     const originalGetComputedStyle = window.getComputedStyle;
     window.getComputedStyle = vi.fn(() => ({
       getPropertyValue: (prop: string) =>
@@ -76,9 +72,9 @@ describe('navigateFileGrid - ArrowUp/ArrowDown', () => {
 
     setupFileItems(9);
     const ctrl = createSelectionController(deps as any);
-    // Select first item
-    ctrl.navigateFileGrid('ArrowRight', false); // index 0 → 1
-    ctrl.navigateFileGrid('ArrowDown', false); // index 1 → 1+3=4
+
+    ctrl.navigateFileGrid('ArrowRight', false);
+    ctrl.navigateFileGrid('ArrowDown', false);
 
     expect(deps.selectedItems.has('/file4.txt')).toBe(true);
     expect(deps.selectedItems.size).toBe(1);
@@ -95,9 +91,9 @@ describe('navigateFileGrid - ArrowUp/ArrowDown', () => {
 
     setupFileItems(9);
     const ctrl = createSelectionController(deps as any);
-    // Navigate to index 6
+
     for (let i = 0; i < 6; i++) ctrl.navigateFileGrid('ArrowRight', false);
-    // Now go up
+
     ctrl.navigateFileGrid('ArrowUp', false);
 
     expect(deps.selectedItems.has('/file3.txt')).toBe(true);
@@ -117,7 +113,7 @@ describe('navigateFileGrid - ArrowUp/ArrowDown', () => {
 
     setupFileItems(3);
     const ctrl = createSelectionController(deps as any);
-    ctrl.navigateFileGrid('ArrowDown', false); // Already at 0, +3 would be out of bounds → stays at 2
+    ctrl.navigateFileGrid('ArrowDown', false);
 
     window.getComputedStyle = vi.fn(() => ({
       getPropertyValue: () => '',
@@ -136,11 +132,10 @@ describe('navigateFileGrid - shift selection', () => {
     setupFileItems(5);
     const ctrl = createSelectionController(deps as any);
 
-    ctrl.navigateFileGrid('ArrowRight', false); // select index 1
-    ctrl.navigateFileGrid('ArrowRight', true); // shift-select index 2
-    ctrl.navigateFileGrid('ArrowRight', true); // shift-select index 3
+    ctrl.navigateFileGrid('ArrowRight', false);
+    ctrl.navigateFileGrid('ArrowRight', true);
+    ctrl.navigateFileGrid('ArrowRight', true);
 
-    // With shift, a range from anchor to current should be selected
     expect(deps.selectedItems.size).toBeGreaterThanOrEqual(2);
   });
 });
@@ -156,10 +151,9 @@ describe('selectFirstItem with shift', () => {
     setupFileItems(5);
     const ctrl = createSelectionController(deps as any);
 
-    // Select a middle item first
     ctrl.navigateFileGrid('ArrowRight', false);
     ctrl.navigateFileGrid('ArrowRight', false);
-    // Now shift-select to first
+
     ctrl.selectFirstItem(true);
 
     expect(deps.selectedItems.has('/file0.txt')).toBe(true);
@@ -178,9 +172,8 @@ describe('selectLastItem with shift', () => {
     setupFileItems(5);
     const ctrl = createSelectionController(deps as any);
 
-    // Select first item
     ctrl.navigateFileGrid('ArrowRight', false);
-    // Shift-select to last
+
     ctrl.selectLastItem(true);
 
     expect(deps.selectedItems.has('/file4.txt')).toBe(true);
@@ -258,16 +251,12 @@ describe('getGridColumns cache (via invalidateGridColumnsCache)', () => {
     setupFileItems(3);
     const ctrl = createSelectionController(deps as any);
 
-    // First navigation uses list mode (1 column)
     ctrl.navigateFileGrid('ArrowRight', false);
 
-    // Invalidate cache and switch to grid mode
     ctrl.invalidateGridColumnsCache();
     deps.getViewMode.mockReturnValue('grid');
 
-    // Should recalculate columns
     ctrl.navigateFileGrid('ArrowRight', false);
-    // Test just verifies no crash
   });
 });
 

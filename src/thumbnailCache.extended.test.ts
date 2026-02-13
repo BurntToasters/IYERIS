@@ -189,11 +189,10 @@ describe('getThumbnailCacheSize', () => {
   });
 
   it('handles errors', async () => {
-    // Force readdir to fail to simulate cache dir issues
     mocks.fsMkdir.mockResolvedValue(undefined);
     mocks.fsReaddir.mockRejectedValue(new Error('Permission denied'));
     const result = await getThumbnailCacheSize();
-    // Since walkCacheDir swallows readdir errors, it returns 0
+
     expect(result.success).toBe(true);
     expect(result.sizeBytes).toBe(0);
   });

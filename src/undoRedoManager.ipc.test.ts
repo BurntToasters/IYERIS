@@ -135,7 +135,6 @@ describe('setupUndoRedoHandlers', () => {
         data: { oldPath: '/old', newPath: '/new', oldName: 'old', newName: 'new' },
       });
 
-      // /new exists (source), /old does not exist (target)
       hoisted.fsAccess.mockImplementation(async (p: string) => {
         if (p === '/new') return;
         throw new Error('ENOENT');
@@ -154,7 +153,6 @@ describe('setupUndoRedoHandlers', () => {
         data: { oldPath: '/old', newPath: '/new', oldName: 'old', newName: 'new' },
       });
 
-      // /new (source for undo) does not exist
       hoisted.fsAccess.mockRejectedValue(new Error('ENOENT'));
 
       const handler = handlers.get('undo-action')!;
@@ -169,7 +167,6 @@ describe('setupUndoRedoHandlers', () => {
         data: { oldPath: '/old', newPath: '/new', oldName: 'old', newName: 'new' },
       });
 
-      // Both /new and /old exist
       hoisted.fsAccess.mockResolvedValue(undefined);
 
       const handler = handlers.get('undo-action')!;
@@ -231,8 +228,8 @@ describe('setupUndoRedoHandlers', () => {
       });
 
       hoisted.fsAccess.mockImplementation(async (p: string) => {
-        if (p === '/dest/file.txt') return; // moved file exists
-        throw new Error('ENOENT'); // original location doesn't exist
+        if (p === '/dest/file.txt') return;
+        throw new Error('ENOENT');
       });
       hoisted.fsRename.mockResolvedValue(undefined);
 
@@ -261,7 +258,7 @@ describe('setupUndoRedoHandlers', () => {
       const result = (await handler(fakeEvent)) as { success: boolean; error?: string };
       expect(result.success).toBe(false);
       expect(result.error).toBe('I/O error');
-      // Action should be pushed back onto undo stack
+
       expect(getUndoStack().length).toBe(1);
     });
   });
@@ -289,7 +286,6 @@ describe('setupUndoRedoHandlers', () => {
         data: { oldPath: '/old', newPath: '/new', oldName: 'old', newName: 'new' },
       });
 
-      // /old exists (source for redo), /new does not
       hoisted.fsAccess.mockImplementation(async (p: string) => {
         if (p === '/old') return;
         throw new Error('ENOENT');
@@ -305,7 +301,6 @@ describe('setupUndoRedoHandlers', () => {
     it('redoes a create file action', async () => {
       pushRedoAction({ type: 'create', data: { path: '/test.txt', isDirectory: false } });
 
-      // File doesn't exist yet (good for redo)
       hoisted.fsAccess.mockRejectedValue(new Error('ENOENT'));
       hoisted.fsWriteFile.mockResolvedValue(undefined);
 
@@ -331,13 +326,13 @@ describe('setupUndoRedoHandlers', () => {
     it('returns error when file already exists at redo create target', async () => {
       pushRedoAction({ type: 'create', data: { path: '/exists.txt', isDirectory: false } });
 
-      hoisted.fsAccess.mockResolvedValue(undefined); // file already exists
+      hoisted.fsAccess.mockResolvedValue(undefined);
 
       const handler = handlers.get('redo-action')!;
       const result = (await handler(fakeEvent)) as { success: boolean; error?: string };
       expect(result.success).toBe(false);
       expect(result.error).toContain('already exists');
-      // Action should be pushed back to redo stack
+
       expect(getRedoStack().length).toBe(1);
     });
 
@@ -375,8 +370,8 @@ describe('setupUndoRedoHandlers', () => {
       });
 
       hoisted.fsAccess.mockImplementation(async (p: string) => {
-        if (p === '/src/file.txt') return; // original location exists
-        throw new Error('ENOENT'); // destination doesn't exist yet
+        if (p === '/src/file.txt') return;
+        throw new Error('ENOENT');
       });
       hoisted.fsRename.mockResolvedValue(undefined);
 

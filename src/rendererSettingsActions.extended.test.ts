@@ -1,4 +1,3 @@
-/** @vitest-environment jsdom */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('./shared.js', () => ({
@@ -35,7 +34,6 @@ function makeDeps() {
   };
 }
 
-// Save original before any spies
 const realCreateElement = document.createElement.bind(document);
 
 const BUTTON_IDS = [
@@ -67,7 +65,6 @@ describe('rendererSettingsActions extended', () => {
     };
     (window as any).electronAPI = mockElectronAPI;
 
-    // Mock URL.createObjectURL / revokeObjectURL
     (window as any).URL.createObjectURL = vi.fn(() => 'blob:mock-url');
     (window as any).URL.revokeObjectURL = vi.fn();
   });
@@ -93,7 +90,7 @@ describe('rendererSettingsActions extended', () => {
       document.body.innerHTML = '<button id="export-settings-btn"></button>';
       const deps = makeDeps();
       const ctrl = createSettingsActionsController(deps as any);
-      ctrl.initSettingsActions(); // should not throw
+      ctrl.initSettingsActions();
     });
   });
 
@@ -130,7 +127,7 @@ describe('rendererSettingsActions extended', () => {
       ctrl.initSettingsActions();
 
       const blob = new Blob([jsonContent], { type: 'application/json' });
-      // Create a mock file with working text() method
+
       const file = {
         name: 'settings.json',
         type: 'application/json',
@@ -138,18 +135,16 @@ describe('rendererSettingsActions extended', () => {
         text: () => Promise.resolve(jsonContent),
       };
 
-      // Intercept the file input that initSettingsActions creates on import-btn click
       vi.spyOn(document, 'createElement').mockImplementation(((tag: string) => {
         const el = realCreateElement(tag);
         if (tag === 'input') {
           const inputEl = el as HTMLInputElement;
           vi.spyOn(inputEl, 'click').mockImplementation(() => {
-            // Simulate file selection
             Object.defineProperty(inputEl, 'files', {
               value: [file],
               configurable: true,
             });
-            // Call onchange directly with a proper target
+
             const event = { target: inputEl } as any;
             if (typeof inputEl.onchange === 'function') {
               inputEl.onchange(event);
@@ -299,7 +294,7 @@ describe('rendererSettingsActions extended', () => {
       await vi.waitFor(() => {
         expect(deps.showToast).toHaveBeenCalled();
       });
-      // customTheme should not be present in merged settings
+
       if (deps.setCurrentSettings.mock.calls.length > 0) {
         const merged = deps.setCurrentSettings.mock.calls[0][0];
         expect(merged.customTheme).toBeUndefined();
@@ -357,7 +352,7 @@ describe('rendererSettingsActions extended', () => {
       await vi.waitFor(() => {
         expect(deps.showToast).toHaveBeenCalled();
       });
-      // NaN/Infinity should not be included
+
       if (deps.setCurrentSettings.mock.calls.length > 0) {
         const merged = deps.setCurrentSettings.mock.calls[0][0];
         expect(merged.sidebarWidth).toBeUndefined();
@@ -399,7 +394,7 @@ describe('rendererSettingsActions extended', () => {
       ctrl.initSettingsActions();
 
       document.getElementById('clear-search-history-btn')!.click();
-      // Give a tick for any async
+
       await new Promise((r) => setTimeout(r, 10));
       expect(deps.setCurrentSettings).not.toHaveBeenCalled();
     });

@@ -134,7 +134,6 @@ describe('utils module (getDrives/getDriveInfo)', () => {
       const first = await getDrives();
       expect(getCachedDrives()).toEqual(first);
 
-      // Second call should use cache
       hoisted.fsReaddir.mockClear();
       const second = await getDrives();
       expect(second).toEqual(first);
@@ -271,7 +270,7 @@ describe('utils module (getDrives/getDriveInfo)', () => {
       const { getDriveInfo } = await import('./utils');
       const info = await getDriveInfo();
       expect(info.length).toBeGreaterThan(0);
-      // Should have a label like "C:" since no volume label available
+
       const cDrive = info.find((d) => d.path === 'C:\\');
       expect(cDrive).toBeDefined();
       expect(cDrive!.label).toContain('C:');

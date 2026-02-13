@@ -1,6 +1,3 @@
-/**
- * @vitest-environment jsdom
- */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('./rendererDom.js', () => ({
@@ -14,12 +11,12 @@ describe('rendererTooltips', () => {
 
   beforeEach(() => {
     vi.useFakeTimers();
-    // Suppress uncaught exceptions from leaking listeners
+
     errorHandler = (e: ErrorEvent) => {
       e.preventDefault();
     };
     window.addEventListener('error', errorHandler);
-    // Mock requestAnimationFrame
+
     window.requestAnimationFrame = (cb: FrameRequestCallback) => {
       cb(0);
       return 0;
@@ -34,7 +31,6 @@ describe('rendererTooltips', () => {
   it('does nothing when tooltip element is missing', () => {
     document.body.innerHTML = '';
     initTooltipSystem();
-    // no error
   });
 
   describe('with tooltip DOM', () => {
@@ -172,7 +168,6 @@ describe('rendererTooltips', () => {
       Object.defineProperty(overEvent, 'target', { value: child });
       document.dispatchEvent(overEvent);
 
-      // Parent title removed, stored in data-original-title
       expect(parent.getAttribute('title')).toBeNull();
       expect(parent.dataset.originalTitle).toBe('Parent tooltip');
 

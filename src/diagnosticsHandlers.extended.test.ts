@@ -175,7 +175,6 @@ describe('diagnosticsHandlers (extended)', () => {
         'utf8'
       );
 
-      // Verify the written JSON includes expected fields
       const writtenData = JSON.parse(hoisted.fsWriteFile.mock.calls[0][1]);
       expect(writtenData.generatedAt).toBeDefined();
       expect(writtenData.app.name).toBe('IYERIS');
@@ -229,7 +228,7 @@ describe('diagnosticsHandlers (extended)', () => {
         read: vi.fn().mockResolvedValue(undefined),
         close: vi.fn().mockResolvedValue(undefined),
       };
-      hoisted.fsStat.mockResolvedValue({ size: 2048 }); // Larger than MAX_TEXT_PREVIEW_BYTES (1024 in mock)
+      hoisted.fsStat.mockResolvedValue({ size: 2048 });
       hoisted.fsOpen.mockResolvedValue(fileHandle);
       hoisted.fsWriteFile.mockResolvedValue(undefined);
 
@@ -261,7 +260,6 @@ describe('diagnosticsHandlers (extended)', () => {
       const result = await exportDiagnostics(mockLoadSettings);
       expect(result.success).toBe(true);
 
-      // showSaveDialog should be called with mainWindow as first arg
       expect(hoisted.dialogShowSaveDialog).toHaveBeenCalledWith(
         hoisted.mainWindowMock,
         expect.any(Object)

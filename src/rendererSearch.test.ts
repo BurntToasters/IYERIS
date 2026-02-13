@@ -1,6 +1,3 @@
-/**
- * @vitest-environment jsdom
- */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('./shared.js', () => ({
@@ -106,9 +103,8 @@ describe('addToSearchHistory', () => {
 
   it('clamps maxSearchHistoryItems between 1 and 20', () => {
     const deps = createDeps();
-    // 0 is falsy so || falls through to deps.searchHistoryMax (5).
-    // To test low clamp, set a truthy value below the minimum.
-    deps.settings.maxSearchHistoryItems = -5; // Math.max(1, Math.min(20, -5)) = 1
+
+    deps.settings.maxSearchHistoryItems = -5;
     const ctrl = createSearchController(deps as any);
     ctrl.addToSearchHistory('x');
     ctrl.addToSearchHistory('y');

@@ -10,7 +10,7 @@ import {
 describe('HOME_VIEW_PATH', () => {
   it('is a valid protocol path', () => {
     expect(HOME_VIEW_PATH).toBe('iyeris://home');
-    expect(HOME_VIEW_PATH).toMatch(/^[a-z]+:\/\//);
+    expect(HOME_VIEW_PATH).toMatch(/^[a-z]+:\/\/[a-z]+$/);
   });
 });
 

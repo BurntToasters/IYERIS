@@ -1,6 +1,3 @@
-/**
- * @vitest-environment jsdom
- */
 import { beforeEach, describe, expect, it } from 'vitest';
 import { getById, setHtml, clearHtml } from './rendererDom';
 
@@ -52,7 +49,6 @@ describe('rendererDom', () => {
 
     it('does nothing when element is null', () => {
       setHtml(null, '<b>bold</b>');
-      // no error
     });
   });
 
@@ -66,7 +62,6 @@ describe('rendererDom', () => {
 
     it('does nothing when element is null', () => {
       clearHtml(null);
-      // no error
     });
   });
 });

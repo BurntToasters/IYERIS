@@ -30,8 +30,6 @@ describe('logger extended', () => {
     it('is callable and sanitizes arguments', async () => {
       const { logger } = await import('./logger');
       logger.debug('Test /home/alice/secret');
-      // Debug may or may not call log.debug depending on --enable-logging flag
-      // The key thing is it doesn't throw
     });
 
     it('sanitizes Error objects in debug', async () => {
@@ -45,7 +43,7 @@ describe('logger extended', () => {
     it('logs startup info without throwing', async () => {
       const { initializeLogger } = await import('./logger');
       expect(() => initializeLogger()).not.toThrow();
-      // Should have called log.info at least once
+
       expect(mockLog.info).toHaveBeenCalled();
     });
 
@@ -78,7 +76,7 @@ describe('logger extended', () => {
       };
 
       archiveFn(oldLogFile);
-      // After archiving, toString should return a path with timestamp
+
       const newPath = oldLogFile.toString();
       expect(newPath).toContain('main.');
       expect(newPath).toContain('.log');

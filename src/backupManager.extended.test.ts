@@ -56,13 +56,11 @@ describe('cleanupStashedBackupsForTests - retention logic', () => {
     const root = path.join(tmpRoot, 'cleanup-test');
     await fs.mkdir(root, { recursive: true });
 
-    // create an old .bak file with mtime 30 days ago
     const oldFile = path.join(root, 'old.bak');
     await fs.writeFile(oldFile, 'old');
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     await fs.utimes(oldFile, thirtyDaysAgo, thirtyDaysAgo);
 
-    // create a recent .bak file
     const recentFile = path.join(root, 'recent.bak');
     await fs.writeFile(recentFile, 'recent');
 
@@ -76,11 +74,10 @@ describe('cleanupStashedBackupsForTests - retention logic', () => {
     const root = path.join(tmpRoot, 'cap-test');
     await fs.mkdir(root, { recursive: true });
 
-    // create 205 files
     for (let i = 0; i < 205; i++) {
       const filePath = path.join(root, `file-${String(i).padStart(3, '0')}.bak`);
       await fs.writeFile(filePath, `data-${i}`);
-      // stagger mtimes so sorting is deterministic
+
       const time = new Date(Date.now() - (205 - i) * 1000);
       await fs.utimes(filePath, time, time);
     }
@@ -89,7 +86,7 @@ describe('cleanupStashedBackupsForTests - retention logic', () => {
 
     const remaining = await fs.readdir(root);
     expect(remaining.length).toBe(200);
-    // oldest 5 should be removed (file-000 through file-004)
+
     expect(remaining).not.toContain('file-000.bak');
     expect(remaining).not.toContain('file-004.bak');
     expect(remaining).toContain('file-005.bak');

@@ -1,10 +1,8 @@
-/**
- * @vitest-environment jsdom
- */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createSupportUiController } from './rendererSupportUi.js';
 
 type Deps = Parameters<typeof createSupportUiController>[0];
+type ElectronApiMock = Pick<Window['electronAPI'], 'getLicenses'>;
 
 function makeDeps(overrides: Partial<Deps> = {}): Deps {
   return {
@@ -22,8 +20,8 @@ function makeDeps(overrides: Partial<Deps> = {}): Deps {
 describe('rendererSupportUi', () => {
   beforeEach(() => {
     document.body.innerHTML = '';
-    // @ts-expect-error - mock electronAPI
-    window.electronAPI = {
+
+    const electronApiMock: ElectronApiMock = {
       getLicenses: vi.fn(async () => ({
         success: true,
         licenses: {
@@ -37,12 +35,15 @@ describe('rendererSupportUi', () => {
         },
       })),
     };
+
+    Object.defineProperty(window, 'electronAPI', {
+      value: electronApiMock as Window['electronAPI'],
+      configurable: true,
+      writable: true,
+    });
   });
 
   describe('getRepositoryText / normalizeRepositoryUrl / sanitizeExternalUrl', () => {
-    // These are internal but exercised through showLicensesModal rendering
-    // We test them indirectly via the license display
-
     it('handles string repository URLs', async () => {
       window.electronAPI.getLicenses = vi.fn(async () => ({
         success: true,
@@ -196,7 +197,7 @@ describe('rendererSupportUi', () => {
       await ctrl.showLicensesModal();
 
       const content = document.getElementById('licenses-content')!;
-      // should have text but no link
+
       expect(content.innerHTML).not.toContain('license-link');
     });
 
@@ -303,7 +304,7 @@ describe('rendererSupportUi', () => {
     it('does nothing without modal element', async () => {
       const deps = makeDeps();
       const ctrl = createSupportUiController(deps);
-      await ctrl.showLicensesModal(); // no error
+      await ctrl.showLicensesModal();
       expect(deps.activateModal).not.toHaveBeenCalled();
     });
 
@@ -313,7 +314,7 @@ describe('rendererSupportUi', () => {
       const deps = makeDeps();
       const ctrl = createSupportUiController(deps);
       await ctrl.showLicensesModal();
-      // activateModal IS called (modal was found), but no content rendered
+
       expect(deps.activateModal).toHaveBeenCalled();
     });
 
@@ -359,7 +360,7 @@ describe('rendererSupportUi', () => {
     it('does nothing without modal element', () => {
       const deps = makeDeps();
       const ctrl = createSupportUiController(deps);
-      ctrl.hideLicensesModal(); // no error
+      ctrl.hideLicensesModal();
     });
   });
 
@@ -388,7 +389,7 @@ describe('rendererSupportUi', () => {
     it('does nothing without content element', () => {
       const deps = makeDeps();
       const ctrl = createSupportUiController(deps);
-      ctrl.copyLicensesText(); // no error
+      ctrl.copyLicensesText();
     });
   });
 
@@ -408,7 +409,6 @@ describe('rendererSupportUi', () => {
       const deps = makeDeps();
       const ctrl = createSupportUiController(deps);
       ctrl.initLicensesUi();
-      // no error — listeners registered
     });
 
     it('handles link clicks with sanitization', () => {
@@ -487,8 +487,8 @@ describe('rendererSupportUi', () => {
     it('does nothing without popup element', () => {
       const deps = makeDeps();
       const ctrl = createSupportUiController(deps);
-      ctrl.showSupportPopup(); // no error
-      ctrl.hideSupportPopup(); // no error
+      ctrl.showSupportPopup();
+      ctrl.hideSupportPopup();
     });
   });
 

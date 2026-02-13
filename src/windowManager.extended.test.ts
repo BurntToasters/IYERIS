@@ -175,7 +175,7 @@ describe('windowManager extended', () => {
         label?: string;
         enabled?: boolean;
       }>;
-      // Should have Show IYERIS and Quit but no status
+
       expect(template.find((t) => t.enabled === false)).toBeUndefined();
     });
   });
@@ -183,7 +183,7 @@ describe('windowManager extended', () => {
   describe('showAppWindow', () => {
     it('creates window when no active window', () => {
       mocks.getActiveWindow.mockReturnValue(null as any);
-      // createWindow is called internally; it will use the BrowserWindow mock
+
       expect(() => showAppWindow()).not.toThrow();
     });
   });
@@ -204,7 +204,7 @@ describe('windowManager extended', () => {
       for (const [channel, handler] of mocks.ipcMainHandle.mock.calls as any[][]) {
         handlers.set(channel as string, handler as (event: { sender: unknown }) => void);
       }
-      // Should not throw
+
       handlers.get('open-new-window')!({ sender: {} });
     });
 
@@ -216,7 +216,6 @@ describe('windowManager extended', () => {
       }
       mocks.isTrustedIpcEvent.mockReturnValueOnce(false);
       handlers.get('open-new-window')!({ sender: {} });
-      // No error thrown, just silently returns
     });
   });
 
@@ -276,7 +275,7 @@ describe('windowManager extended', () => {
       mocks.nativeImageResult.isEmpty.mockReturnValue(true);
 
       await createTray();
-      // Should not set tray since icon is empty
+
       expect(mocks.tray.setToolTip).not.toHaveBeenCalled();
     });
   });
@@ -285,7 +284,7 @@ describe('windowManager extended', () => {
     it('skips if tray already exists', async () => {
       mocks.getTray.mockReturnValue(mocks.tray);
       await createTrayForHiddenStart();
-      // Should not create a new tray
+
       expect(mocks.tray.setToolTip).not.toHaveBeenCalled();
     });
 

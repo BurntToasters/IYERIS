@@ -1,6 +1,3 @@
-/**
- * @vitest-environment jsdom
- */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createInlineRenameController } from './rendererInlineRename';
@@ -296,7 +293,7 @@ describe('startInlineRename', () => {
     ctrl.startInlineRename(fileItem, 'same.txt', '/workspace/same.txt');
 
     const input = fileItem.querySelector('.file-name-input') as HTMLInputElement;
-    // name stays the same
+
     input.dispatchEvent(new KeyboardEvent('keypress', { key: 'Enter', bubbles: true }));
 
     await vi.waitFor(() => {

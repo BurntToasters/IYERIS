@@ -1,6 +1,3 @@
-/**
- * @vitest-environment jsdom
- */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('./shared.js', () => ({
@@ -66,7 +63,7 @@ describe('rendererShortcutsUi', () => {
       expect(container.innerHTML).toContain('General');
       expect(container.innerHTML).toContain('Action A');
       expect(container.innerHTML).toContain('Change');
-      // Fixed items
+
       expect(container.innerHTML).toContain('Refresh');
       expect(container.innerHTML).toContain('Navigate Files');
     });
@@ -74,7 +71,7 @@ describe('rendererShortcutsUi', () => {
     it('does nothing without container', () => {
       const deps = makeDeps();
       const ctrl = createShortcutsUiController(deps);
-      ctrl.renderShortcutsModal(); // no error
+      ctrl.renderShortcutsModal();
     });
 
     it('shows Unassigned for empty binding', () => {
@@ -123,7 +120,7 @@ describe('rendererShortcutsUi', () => {
       const deps = makeDeps({ isMacPlatform: () => true });
       const ctrl = createShortcutsUiController(deps);
       ctrl.renderShortcutsModal();
-      // On Mac, refresh uses Meta key
+
       const container = document.getElementById('shortcuts-modal-sections')!;
       expect(container.innerHTML).toContain('Meta');
     });
@@ -151,7 +148,7 @@ describe('rendererShortcutsUi', () => {
     it('does nothing without container', () => {
       const deps = makeDeps();
       const ctrl = createShortcutsUiController(deps);
-      ctrl.initShortcutsModal(); // no error
+      ctrl.initShortcutsModal();
     });
 
     it('delegates click to edit button', () => {
@@ -208,7 +205,6 @@ describe('rendererShortcutsUi', () => {
       ctrl.initShortcutsModal();
 
       document.querySelector('span')!.click();
-      // no error
     });
   });
 
@@ -273,7 +269,7 @@ describe('rendererShortcutsUi', () => {
         'Shortcut Required',
         'warning'
       );
-      expect(ctrl.isShortcutCaptureActive()).toBe(true); // still capturing
+      expect(ctrl.isShortcutCaptureActive()).toBe(true);
     });
 
     it('shows warning for reserved shortcut', () => {
@@ -352,7 +348,7 @@ describe('rendererShortcutsUi', () => {
     it('stopShortcutCapture is safe when not capturing', () => {
       const deps = makeDeps();
       const ctrl = createShortcutsUiController(deps);
-      ctrl.stopShortcutCapture(); // no error
+      ctrl.stopShortcutCapture();
       expect(ctrl.isShortcutCaptureActive()).toBe(false);
     });
 
@@ -365,7 +361,7 @@ describe('rendererShortcutsUi', () => {
 
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Shift', bubbles: true }));
 
-      expect(ctrl.isShortcutCaptureActive()).toBe(true); // still capturing
+      expect(ctrl.isShortcutCaptureActive()).toBe(true);
     });
   });
 

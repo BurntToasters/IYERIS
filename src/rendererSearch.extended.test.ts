@@ -1,6 +1,3 @@
-/**
- * @vitest-environment jsdom
- */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('./shared.js', () => ({
@@ -104,11 +101,9 @@ describe('Search controller — extended', () => {
       const ctrl = createSearchController(deps as any);
       ctrl.initListeners();
 
-      // Open search and set a query
       ctrl.toggleSearch();
       ctrl.setQuery('hello');
 
-      // Apply filters using a date filter (simple input, not constrained by select options)
       const dateFrom = document.getElementById('search-filter-date-from') as HTMLInputElement;
       dateFrom.value = '2024-01-01';
       const applyBtn = document.getElementById('search-filter-apply')!;
@@ -166,7 +161,7 @@ describe('Search controller — extended', () => {
       document.getElementById('search-history-dropdown')!.remove();
       const deps = createDeps();
       const ctrl = createSearchController(deps as any);
-      // Should not throw
+
       ctrl.showSearchHistoryDropdown();
     });
 
@@ -293,11 +288,9 @@ describe('Search controller — extended', () => {
       const deps = createDeps({ currentPath: 'home-view' });
       const ctrl = createSearchController(deps as any);
       ctrl.openSearch(false);
-      // Force local mode even on home view (overriding the auto-switch)
-      // We test by calling performSearch directly while on home path in local mode
+
       ctrl.setQuery('test');
-      // openSearch(false) + home-view path: isGlobalSearch is false,
-      // but isHomeViewPath will be true → should show toast
+
       await ctrl.performSearch();
       expect(deps.showToast).toHaveBeenCalledWith(
         'Open a folder or use global search',
@@ -312,7 +305,7 @@ describe('Search controller — extended', () => {
       document.getElementById('filter-badge')!.remove();
       const deps = createDeps();
       const ctrl = createSearchController(deps as any);
-      // Apply some filters — should not throw
+
       ctrl.initListeners();
       const filterType = document.getElementById('search-filter-type') as HTMLSelectElement;
       if (filterType) filterType.value = 'image';

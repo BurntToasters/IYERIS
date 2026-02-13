@@ -1,4 +1,3 @@
-/** @vitest-environment jsdom */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('./rendererDom.js', () => ({
@@ -79,10 +78,10 @@ describe('rendererTypeahead', () => {
       vi.advanceTimersByTime(600);
       ctrl.handleInput('b');
       vi.advanceTimersByTime(600);
-      // only 600ms after 'b', buffer should still be active
+
       expect(indicator.textContent).toBe('ab');
       vi.advanceTimersByTime(200);
-      // now 800ms after 'b', buffer clears
+
       expect(indicator.textContent).toBe('');
     });
 
@@ -135,7 +134,7 @@ describe('rendererTypeahead', () => {
         createFileItem('apple.txt', '/apple'),
         createFileItem('banana.txt', '/banana'),
       ];
-      items[0].tabIndex = 0; // currently active
+      items[0].tabIndex = 0;
       items.forEach((i) => document.body.appendChild(i));
       deps.getFileItems.mockReturnValue(items);
       deps.getSelectedItems.mockReturnValue(new Set<string>());
@@ -193,7 +192,7 @@ describe('rendererTypeahead', () => {
       ctrl.reset();
       expect(indicator.style.display).toBe('none');
       expect(indicator.textContent).toBe('');
-      // timeout should be cleared so no error after advancing
+
       vi.advanceTimersByTime(1000);
       expect(indicator.textContent).toBe('');
     });
@@ -211,7 +210,7 @@ describe('rendererTypeahead', () => {
       document.body.innerHTML = '';
       const deps = makeDeps();
       const ctrl = createTypeaheadController(deps);
-      // should not throw
+
       ctrl.handleInput('x');
       ctrl.reset();
     });

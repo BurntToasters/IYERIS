@@ -1,6 +1,3 @@
-/**
- * @vitest-environment jsdom
- */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('./shared.js', () => ({
@@ -114,7 +111,7 @@ describe('NavigationController — extended', () => {
       ctrl.updateBreadcrumb('/home/user/Documents');
       const container = document.getElementById('breadcrumb-container')!;
       expect(container.style.display).toBe('inline-flex');
-      // Should have breadcrumb items for 'home', 'user', 'Documents'
+
       const items = container.querySelectorAll('.breadcrumb-item');
       expect(items.length).toBe(3);
     });
@@ -144,7 +141,7 @@ describe('NavigationController — extended', () => {
       ctrl.updateBreadcrumb('/a/b/c');
       const container = document.getElementById('breadcrumb-container')!;
       const separators = container.querySelectorAll('.breadcrumb-separator');
-      expect(separators.length).toBe(2); // between a/b and b/c
+      expect(separators.length).toBe(2);
     });
 
     it('navigates when breadcrumb label is clicked', () => {
@@ -153,7 +150,7 @@ describe('NavigationController — extended', () => {
       ctrl.updateBreadcrumb('/home/user');
       const container = document.getElementById('breadcrumb-container')!;
       const labels = container.querySelectorAll('.breadcrumb-label');
-      // Click first segment ('home') — should navigate to /home
+
       (labels[0] as HTMLElement).click();
       expect(deps.navigateTo).toHaveBeenCalledWith('/home');
     });
@@ -175,8 +172,8 @@ describe('NavigationController — extended', () => {
     it('switches back to breadcrumb mode', () => {
       const deps = createDeps();
       const ctrl = createNavigationController(deps as any);
-      ctrl.toggleBreadcrumbMode(); // -> address mode
-      ctrl.toggleBreadcrumbMode(); // -> breadcrumb mode
+      ctrl.toggleBreadcrumbMode();
+      ctrl.toggleBreadcrumbMode();
       const container = document.getElementById('breadcrumb-container')!;
       expect(container.style.display).toBe('inline-flex');
     });
@@ -195,7 +192,7 @@ describe('NavigationController — extended', () => {
 
       const menu = document.getElementById('breadcrumb-menu')!;
       expect(menu.style.display).toBe('block');
-      // Only directories should appear — 'subdir' but not 'file.txt'
+
       const items = menu.querySelectorAll('.breadcrumb-menu-item');
       expect(items.length).toBe(1);
       expect(items[0].textContent).toContain('subdir');
@@ -292,7 +289,7 @@ describe('NavigationController — extended', () => {
       document.getElementById('directory-history-dropdown')!.remove();
       const deps = createDeps();
       const ctrl = createNavigationController(deps as any);
-      // Should not throw
+
       ctrl.showDirectoryHistoryDropdown();
     });
 

@@ -170,13 +170,13 @@ describe('getSettingsPath', () => {
 
 describe('loadSettings', () => {
   let origDateNow: typeof Date.now;
-  // Use a monotonically increasing counter so each test's "now" is well past any previous cache
+
   let fakeNow = 1e12;
 
   beforeEach(() => {
     vi.clearAllMocks();
     origDateNow = Date.now;
-    // Jump far past any previous cache TTL
+
     fakeNow += 100000;
     Date.now = () => fakeNow;
   });
@@ -212,7 +212,7 @@ describe('loadSettings', () => {
 
     const settings1 = await loadSettings();
     expect(settings1.theme).toBe('light');
-    // Don't advance fakeNow - should use cache
+
     const settings2 = await loadSettings();
     expect(settings2.theme).toBe('light');
     expect(mocks.fsReadFile).toHaveBeenCalledTimes(1);
@@ -258,7 +258,6 @@ describe('saveSettings', () => {
     mocks.fsRename.mockResolvedValue(undefined);
     mocks.sanitizeSettings.mockReturnValue({ theme: 'dark' });
 
-    // Fire two saves concurrently
     const [r1, r2] = await Promise.all([
       saveSettings({ theme: 'dark' } as any),
       saveSettings({ theme: 'light' } as any),
@@ -270,8 +269,6 @@ describe('saveSettings', () => {
 
 describe('getCachedSettings', () => {
   it('returns null initially', () => {
-    // After module import, cache might have been populated by loadSettings tests
-    // Just verify the function works
     const result = getCachedSettings();
     expect(result === null || typeof result === 'object').toBe(true);
   });
@@ -298,7 +295,7 @@ describe('applyLoginItemSettings', () => {
     mocks.appSetLoginItemSettings.mockImplementation(() => {
       throw new Error('Not supported');
     });
-    // Should not throw
+
     expect(() => applyLoginItemSettings({ startOnLogin: true } as any)).not.toThrow();
   });
 });

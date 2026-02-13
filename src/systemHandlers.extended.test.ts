@@ -1,7 +1,7 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { Settings } from './types';
 
-type Handler = (...args: unknown[]) => unknown;
+type Handler = (...args: any[]) => any;
 
 const hoisted = vi.hoisted(() => {
   let nativeThemeUpdated: (() => void) | null = null;
@@ -17,7 +17,7 @@ const hoisted = vi.hoisted(() => {
     },
     appMock: {
       getPath: vi.fn((name: string) => (name === 'exe' ? '/tmp/iyeris' : '/tmp')),
-      getVersion: vi.fn(() => '1.2.3'),
+      getVersion: vi.fn(() => '0.0.0-test'),
       quit: vi.fn(),
     },
     shellMock: {
@@ -27,32 +27,37 @@ const hoisted = vi.hoisted(() => {
       getAccentColor: vi.fn(() => '0078d4ff'),
     },
     nativeThemeMock: {
-      shouldUseDarkColors: true,
+      shouldUseDarkColors: false,
       on: vi.fn((event: string, callback: () => void) => {
-        if (event === 'updated') nativeThemeUpdated = callback;
+        if (event === 'updated') {
+          nativeThemeUpdated = callback;
+        }
       }),
     },
     browserWindowMock: {
       getAllWindows: vi.fn(() => [] as unknown[]),
     },
     screenMock: {
-      getPrimaryDisplay: vi.fn(() => ({ scaleFactor: 1.5 })),
+      getPrimaryDisplay: vi.fn(() => ({ scaleFactor: 1.25 })),
     },
     fsPromisesMock: {
       stat: vi.fn(),
       open: vi.fn(),
       readFile: vi.fn(),
     },
+    execMock: vi.fn(),
+    execFileAsyncMock: vi.fn(),
+    spawnMock: vi.fn(),
     checkFullDiskAccessMock: vi.fn(async () => true),
     showFullDiskAccessDialogMock: vi.fn(async () => undefined),
     getGitStatusMock: vi.fn(async () => ({ success: true, isGitRepo: true, statuses: [] })),
     getGitBranchMock: vi.fn(async () => ({ success: true, branch: 'main' })),
     getDiskSpaceMock: vi.fn(async () => ({ success: true, total: 10, free: 5 })),
     exportDiagnosticsMock: vi.fn(async () => ({ success: true, path: '/tmp/diag.json' })),
-    getLogFileContentMock: vi.fn(async () => ({ success: true, content: 'log data' })),
+    getLogFileContentMock: vi.fn(async () => ({ success: true, content: 'log' })),
     launchDetachedMock: vi.fn(),
-    execFileAsyncMock: vi.fn(),
     isRunningInFlatpakMock: vi.fn(() => false),
+    ignoreErrorMock: vi.fn(),
   };
 });
 
@@ -75,18 +80,13 @@ vi.mock('fs', () => ({
 }));
 
 vi.mock('child_process', () => ({
-  exec: vi.fn(),
-  execFile: vi.fn((_cmd: string, _args: string[], cb: (...args: any[]) => any) => cb(null, '', '')),
-  spawn: vi.fn(() => ({
-    once: vi.fn(),
-    unref: vi.fn(),
-  })),
+  exec: hoisted.execMock,
+  execFile: vi.fn(),
+  spawn: hoisted.spawnMock,
 }));
 
 vi.mock('util', () => ({
-  promisify: vi.fn((fn: (...args: any[]) => any) => {
-    return hoisted.execFileAsyncMock;
-  }),
+  promisify: vi.fn(() => hoisted.execFileAsyncMock),
 }));
 
 vi.mock('./appState', () => ({
@@ -102,7 +102,7 @@ vi.mock('./security', () => ({
 }));
 
 vi.mock('./shared', () => ({
-  ignoreError: vi.fn(),
+  ignoreError: hoisted.ignoreErrorMock,
 }));
 
 vi.mock('./platformUtils', () => ({
@@ -119,17 +119,17 @@ vi.mock('./ipcUtils', () => ({
   withTrustedApiHandler: vi.fn(
     (
       _channel: string,
-      handler: (...args: unknown[]) => unknown,
+      handler: (...args: any[]) => any,
       untrustedResponse?: { success: boolean; error?: string }
     ) =>
-      async (...args: unknown[]) =>
+      async (...args: any[]) =>
         hoisted.trusted.value
           ? await handler(...args)
           : (untrustedResponse ?? { success: false, error: 'Untrusted IPC sender' })
   ),
   withTrustedIpcEvent: vi.fn(
-    (_channel: string, untrustedResponse: unknown, handler: (...args: unknown[]) => unknown) =>
-      async (...args: unknown[]) =>
+    (_channel: string, untrustedResponse: unknown, handler: (...args: any[]) => any) =>
+      async (...args: any[]) =>
         hoisted.trusted.value ? await handler(...args) : untrustedResponse
   ),
 }));
@@ -168,271 +168,1093 @@ function setPlatform(platform: NodeJS.Platform): void {
   });
 }
 
-describe('setupSystemHandlers extended', () => {
-  const loadSettings = async () => ({}) as Settings;
-  const saveSettings = async () => ({ success: true }) as any;
+function getHandler(channel: string): Handler {
+  const handler = hoisted.handlers.get(channel);
+  if (!handler) throw new Error(`${channel} handler missing`);
+  return handler;
+}
 
+const mockEvent = {} as any;
+let loadSettingsMock: (...args: any[]) => any;
+let saveSettingsMock: (...args: any[]) => any;
+
+describe('systemHandlers extended coverage', () => {
   beforeEach(() => {
     hoisted.handlers.clear();
     hoisted.trusted.value = true;
     hoisted.safePath.value = true;
     hoisted.nativeThemeUpdated.set(null);
+    hoisted.nativeThemeMock.shouldUseDarkColors = false;
+    hoisted.nativeThemeMock.on.mockClear();
+    hoisted.browserWindowMock.getAllWindows.mockReset();
+    hoisted.browserWindowMock.getAllWindows.mockReturnValue([]);
+    hoisted.fsPromisesMock.stat.mockReset();
+    hoisted.fsPromisesMock.open.mockReset();
+    hoisted.fsPromisesMock.readFile.mockReset();
+    hoisted.shellMock.openPath.mockReset();
+    hoisted.shellMock.openPath.mockResolvedValue('');
+    hoisted.execMock.mockReset();
+    hoisted.execFileAsyncMock.mockReset();
+    hoisted.spawnMock.mockReset();
+    hoisted.launchDetachedMock.mockReset();
+    hoisted.appMock.quit.mockReset();
+    hoisted.checkFullDiskAccessMock.mockReset();
+    hoisted.checkFullDiskAccessMock.mockResolvedValue(true);
+    hoisted.showFullDiskAccessDialogMock.mockReset();
+    hoisted.getDiskSpaceMock.mockReset();
+    hoisted.getDiskSpaceMock.mockResolvedValue({ success: true, total: 10, free: 5 });
+    hoisted.getGitStatusMock.mockReset();
+    hoisted.getGitStatusMock.mockResolvedValue({ success: true, isGitRepo: true, statuses: [] });
+    hoisted.getGitBranchMock.mockReset();
+    hoisted.getGitBranchMock.mockResolvedValue({ success: true, branch: 'main' });
+    hoisted.exportDiagnosticsMock.mockReset();
+    hoisted.exportDiagnosticsMock.mockResolvedValue({ success: true, path: '/tmp/diag.json' });
+    hoisted.getLogFileContentMock.mockReset();
+    hoisted.getLogFileContentMock.mockResolvedValue({ success: true, content: 'log' });
+    hoisted.ignoreErrorMock.mockReset();
+    hoisted.isRunningInFlatpakMock.mockReset();
+    hoisted.isRunningInFlatpakMock.mockReturnValue(false);
+    hoisted.systemPreferencesMock.getAccentColor.mockReset();
+    hoisted.systemPreferencesMock.getAccentColor.mockReturnValue('0078d4ff');
+    hoisted.screenMock.getPrimaryDisplay.mockReset();
+    hoisted.screenMock.getPrimaryDisplay.mockReturnValue({ scaleFactor: 1.25 });
     setPlatform(originalPlatform);
-    vi.clearAllMocks();
-    setupSystemHandlers(loadSettings, saveSettings);
+
+    loadSettingsMock = vi.fn(async () => ({ skipFullDiskAccessPrompt: false }) as any);
+    saveSettingsMock = vi.fn(async () => ({ success: true }));
+
+    setupSystemHandlers(loadSettingsMock, saveSettingsMock);
   });
 
   afterEach(() => {
     setPlatform(originalPlatform);
   });
 
-  it('registers all expected handlers', () => {
-    const expectedChannels = [
-      'get-disk-space',
-      'restart-as-admin',
-      'open-terminal',
-      'read-file-content',
-      'get-file-data-url',
-      'get-licenses',
-      'get-platform',
-      'get-app-version',
-      'get-logs-path',
-      'get-system-accent-color',
-      'is-mas',
-      'is-flatpak',
-      'is-ms-store',
-      'get-system-text-scale',
-      'check-full-disk-access',
-      'request-full-disk-access',
-      'get-git-status',
-      'get-git-branch',
-      'open-logs-folder',
-      'export-diagnostics',
-      'get-log-file-content',
-    ];
-    for (const ch of expectedChannels) {
-      expect(hoisted.handlers.has(ch), `Missing handler: ${ch}`).toBe(true);
-    }
+  describe('handler registration', () => {
+    it('registers all expected IPC handlers', () => {
+      const expectedChannels = [
+        'get-disk-space',
+        'restart-as-admin',
+        'open-terminal',
+        'read-file-content',
+        'get-file-data-url',
+        'get-licenses',
+        'get-platform',
+        'get-app-version',
+        'get-logs-path',
+        'get-system-accent-color',
+        'is-mas',
+        'is-flatpak',
+        'is-ms-store',
+        'get-system-text-scale',
+        'check-full-disk-access',
+        'request-full-disk-access',
+        'get-git-status',
+        'get-git-branch',
+        'open-logs-folder',
+        'export-diagnostics',
+        'get-log-file-content',
+      ];
+
+      for (const channel of expectedChannels) {
+        expect(hoisted.handlers.has(channel), `Missing handler: ${channel}`).toBe(true);
+      }
+    });
   });
 
-  describe('get-platform', () => {
-    it('returns current platform', async () => {
-      const handler = hoisted.handlers.get('get-platform')!;
-      const result = await handler({});
+  describe('restart-as-admin', () => {
+    it('builds powershell command and quits on win32', async () => {
+      setPlatform('win32');
+      hoisted.execFileAsyncMock.mockResolvedValue({ stdout: '', stderr: '' });
+      hoisted.handlers.clear();
+      setupSystemHandlers(loadSettingsMock, saveSettingsMock);
+
+      const handler = getHandler('restart-as-admin');
+      const result = await handler(mockEvent);
+
+      expect(result).toEqual({ success: true });
+      expect(hoisted.appMock.quit).toHaveBeenCalled();
+      expect(hoisted.execFileAsyncMock).toHaveBeenCalledWith(
+        'powershell',
+        expect.arrayContaining(['-NoProfile', '-Command', 'Start-Process'])
+      );
+    });
+
+    it('builds osascript command and quits on darwin', async () => {
+      setPlatform('darwin');
+      hoisted.execFileAsyncMock.mockResolvedValue({ stdout: '', stderr: '' });
+      hoisted.handlers.clear();
+      setupSystemHandlers(loadSettingsMock, saveSettingsMock);
+
+      const handler = getHandler('restart-as-admin');
+      const result = await handler(mockEvent);
+
+      expect(result).toEqual({ success: true });
+      expect(hoisted.appMock.quit).toHaveBeenCalled();
+      expect(hoisted.execFileAsyncMock).toHaveBeenCalledWith('osascript', expect.any(Array));
+    });
+
+    it('builds pkexec command and quits on linux', async () => {
+      setPlatform('linux');
+      hoisted.execFileAsyncMock.mockResolvedValue({ stdout: '', stderr: '' });
+      hoisted.handlers.clear();
+      setupSystemHandlers(loadSettingsMock, saveSettingsMock);
+
+      const handler = getHandler('restart-as-admin');
+      const result = await handler(mockEvent);
+
+      expect(result).toEqual({ success: true });
+      expect(hoisted.appMock.quit).toHaveBeenCalled();
+      expect(hoisted.execFileAsyncMock).toHaveBeenCalledWith('pkexec', ['/tmp/iyeris']);
+    });
+
+    it('returns error for unsupported platform', async () => {
+      setPlatform('freebsd' as NodeJS.Platform);
+      hoisted.handlers.clear();
+      setupSystemHandlers(loadSettingsMock, saveSettingsMock);
+
+      const handler = getHandler('restart-as-admin');
+      const result = await handler(mockEvent);
+
+      expect(result).toEqual({ success: false, error: 'Unsupported platform' });
+      expect(hoisted.appMock.quit).not.toHaveBeenCalled();
+    });
+
+    it('returns error when execFileAsync rejects', async () => {
+      setPlatform('win32');
+      hoisted.execFileAsyncMock.mockRejectedValue(new Error('User cancelled'));
+      hoisted.handlers.clear();
+      setupSystemHandlers(loadSettingsMock, saveSettingsMock);
+
+      const handler = getHandler('restart-as-admin');
+      const result = await handler(mockEvent);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Failed to restart with admin privileges');
+      expect(hoisted.appMock.quit).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('open-terminal', () => {
+    it('rejects invalid path', async () => {
+      hoisted.safePath.value = false;
+      const handler = getHandler('open-terminal');
+      const result = await handler(mockEvent, '/bad/path');
+
+      expect(result).toEqual({ success: false, error: 'Invalid directory path' });
+    });
+
+    it('opens Windows Terminal (wt) when available on win32', async () => {
+      setPlatform('win32');
+      hoisted.execMock.mockImplementation((_cmd: string, cb: (error: Error | null) => void) => {
+        cb(null);
+      });
+      hoisted.handlers.clear();
+      setupSystemHandlers(loadSettingsMock, saveSettingsMock);
+
+      const handler = getHandler('open-terminal');
+      const result = await handler(mockEvent, 'C:\\Users\\test');
+
+      expect(result).toEqual({ success: true });
+      expect(hoisted.launchDetachedMock).toHaveBeenCalledWith('wt', ['-d', 'C:\\Users\\test']);
+    });
+
+    it('falls back to cmd when wt is not available on win32', async () => {
+      setPlatform('win32');
+      hoisted.execMock.mockImplementation((_cmd: string, cb: (error: Error | null) => void) => {
+        cb(new Error('not found'));
+      });
+      hoisted.handlers.clear();
+      setupSystemHandlers(loadSettingsMock, saveSettingsMock);
+
+      const handler = getHandler('open-terminal');
+      const result = await handler(mockEvent, 'C:\\Users\\test');
+
+      expect(result).toEqual({ success: true });
+      expect(hoisted.launchDetachedMock).toHaveBeenCalledWith(
+        'cmd',
+        expect.arrayContaining(['/K', 'cd', '/d'])
+      );
+    });
+
+    it('escapes double quotes in dirPath for cmd fallback on win32', async () => {
+      setPlatform('win32');
+      hoisted.execMock.mockImplementation((_cmd: string, cb: (error: Error | null) => void) => {
+        cb(new Error('not found'));
+      });
+      hoisted.handlers.clear();
+      setupSystemHandlers(loadSettingsMock, saveSettingsMock);
+
+      const handler = getHandler('open-terminal');
+      await handler(mockEvent, 'C:\\my "dir"');
+
+      expect(hoisted.launchDetachedMock).toHaveBeenCalledWith('cmd', [
+        '/K',
+        'cd',
+        '/d',
+        '"C:\\my ""dir"""',
+      ]);
+    });
+
+    it('opens Terminal.app on darwin', async () => {
+      setPlatform('darwin');
+      hoisted.handlers.clear();
+      setupSystemHandlers(loadSettingsMock, saveSettingsMock);
+
+      const handler = getHandler('open-terminal');
+      const result = await handler(mockEvent, '/Users/test');
+
+      expect(result).toEqual({ success: true });
+      expect(hoisted.launchDetachedMock).toHaveBeenCalledWith('open', [
+        '-a',
+        'Terminal',
+        '--',
+        '/Users/test',
+      ]);
+    });
+
+    it('launches first available terminal emulator on linux', async () => {
+      setPlatform('linux');
+      const mockChild = {
+        once: vi.fn((event: string, cb: (...args: any[]) => void) => {
+          if (event === 'spawn') cb();
+        }),
+        unref: vi.fn(),
+      };
+      hoisted.spawnMock.mockReturnValue(mockChild);
+      hoisted.handlers.clear();
+      setupSystemHandlers(loadSettingsMock, saveSettingsMock);
+
+      const handler = getHandler('open-terminal');
+      const result = await handler(mockEvent, '/home/user');
+
+      expect(result).toEqual({ success: true });
+      expect(hoisted.spawnMock).toHaveBeenCalledTimes(1);
+      expect(hoisted.spawnMock).toHaveBeenCalledWith(
+        'x-terminal-emulator',
+        ['--working-directory', '/home/user'],
+        expect.objectContaining({ detached: true, cwd: '/home/user' })
+      );
+      expect(mockChild.unref).toHaveBeenCalled();
+    });
+
+    it('tries gnome-terminal when x-terminal-emulator fails on linux', async () => {
+      setPlatform('linux');
+      let callCount = 0;
+      hoisted.spawnMock.mockImplementation(() => {
+        callCount++;
+        const child = {
+          once: vi.fn((event: string, cb: (...args: any[]) => void) => {
+            if (callCount === 1 && event === 'error') cb(new Error('not found'));
+            if (callCount === 2 && event === 'spawn') cb();
+          }),
+          unref: vi.fn(),
+        };
+        return child;
+      });
+      hoisted.handlers.clear();
+      setupSystemHandlers(loadSettingsMock, saveSettingsMock);
+
+      const handler = getHandler('open-terminal');
+      const result = await handler(mockEvent, '/home/user');
+
+      expect(result).toEqual({ success: true });
+      expect(hoisted.spawnMock).toHaveBeenCalledTimes(2);
+      expect(hoisted.spawnMock).toHaveBeenNthCalledWith(
+        2,
+        'gnome-terminal',
+        ['--working-directory=/home/user'],
+        expect.objectContaining({ detached: true })
+      );
+    });
+
+    it('tries xterm when first two terminals fail on linux', async () => {
+      setPlatform('linux');
+      let callCount = 0;
+      hoisted.spawnMock.mockImplementation(() => {
+        callCount++;
+        const child = {
+          once: vi.fn((event: string, cb: (...args: any[]) => void) => {
+            if (callCount <= 2 && event === 'error') cb(new Error('not found'));
+            if (callCount === 3 && event === 'spawn') cb();
+          }),
+          unref: vi.fn(),
+        };
+        return child;
+      });
+      hoisted.handlers.clear();
+      setupSystemHandlers(loadSettingsMock, saveSettingsMock);
+
+      const handler = getHandler('open-terminal');
+      const result = await handler(mockEvent, '/home/user');
+
+      expect(result).toEqual({ success: true });
+      expect(hoisted.spawnMock).toHaveBeenCalledTimes(3);
+      expect(hoisted.spawnMock).toHaveBeenNthCalledWith(
+        3,
+        'xterm',
+        ['-e', 'bash'],
+        expect.objectContaining({ detached: true })
+      );
+    });
+
+    it('logs error when no terminal emulator found on linux', async () => {
+      setPlatform('linux');
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      hoisted.spawnMock.mockImplementation(() => {
+        const child = {
+          once: vi.fn((event: string, cb: (...args: any[]) => void) => {
+            if (event === 'error') cb(new Error('not found'));
+          }),
+          unref: vi.fn(),
+        };
+        return child;
+      });
+      hoisted.handlers.clear();
+      setupSystemHandlers(loadSettingsMock, saveSettingsMock);
+
+      const handler = getHandler('open-terminal');
+      const result = await handler(mockEvent, '/home/user');
+
+      expect(result).toEqual({ success: true });
+      expect(hoisted.spawnMock).toHaveBeenCalledTimes(3);
+      expect(consoleSpy).toHaveBeenCalledWith('No suitable terminal emulator found');
+      consoleSpy.mockRestore();
+    });
+  });
+
+  describe('read-file-content', () => {
+    it('returns error for not a regular file', async () => {
+      hoisted.fsPromisesMock.stat.mockResolvedValue({ isFile: () => false, size: 100 } as any);
+      const handler = getHandler('read-file-content');
+      const result = await handler(mockEvent, '/tmp/dir');
+
+      expect(result).toEqual({ success: false, error: 'Not a regular file' });
+    });
+
+    it('reads entire file when size is within maxSize', async () => {
+      hoisted.fsPromisesMock.stat.mockResolvedValue({ isFile: () => true, size: 10 } as any);
+      hoisted.fsPromisesMock.readFile.mockResolvedValue('hello world');
+      const handler = getHandler('read-file-content');
+      const result = await handler(mockEvent, '/tmp/small.txt');
+
+      expect(result).toEqual({
+        success: true,
+        content: 'hello world',
+        isTruncated: false,
+      });
+    });
+
+    it('truncates file content when size exceeds maxSize', async () => {
+      hoisted.fsPromisesMock.stat.mockResolvedValue({ isFile: () => true, size: 100 } as any);
+      hoisted.fsPromisesMock.open.mockResolvedValue({
+        read: vi.fn(async (buffer: Buffer, _offset: number, length: number) => {
+          Buffer.from('abcdefghijklmnopqrstuvwxyz').copy(buffer, 0, 0, length);
+        }),
+        close: vi.fn(async () => undefined),
+      } as any);
+      const handler = getHandler('read-file-content');
+      const result = await handler(mockEvent, '/tmp/big.txt', 5);
+
+      expect(result.success).toBe(true);
+      expect(result.isTruncated).toBe(true);
+      expect(result.content).toBe('abcde');
+    });
+
+    it('clamps maxSize to at least 1', async () => {
+      hoisted.fsPromisesMock.stat.mockResolvedValue({ isFile: () => true, size: 5 } as any);
+      hoisted.fsPromisesMock.open.mockResolvedValue({
+        read: vi.fn(async (buffer: Buffer, _offset: number, length: number) => {
+          Buffer.from('x').copy(buffer, 0, 0, length);
+        }),
+        close: vi.fn(async () => undefined),
+      } as any);
+      const handler = getHandler('read-file-content');
+      const result = await handler(mockEvent, '/tmp/file.txt', 0);
+
+      expect(result.success).toBe(true);
+      expect(result.isTruncated).toBe(true);
+    });
+
+    it('uses MAX_TEXT_PREVIEW_BYTES when maxSize is NaN', async () => {
+      hoisted.fsPromisesMock.stat.mockResolvedValue({ isFile: () => true, size: 10 } as any);
+      hoisted.fsPromisesMock.readFile.mockResolvedValue('content');
+      const handler = getHandler('read-file-content');
+      const result = await handler(mockEvent, '/tmp/file.txt', NaN);
+
+      expect(result).toEqual({ success: true, content: 'content', isTruncated: false });
+    });
+
+    it('uses MAX_TEXT_PREVIEW_BYTES when maxSize is Infinity', async () => {
+      hoisted.fsPromisesMock.stat.mockResolvedValue({ isFile: () => true, size: 10 } as any);
+      hoisted.fsPromisesMock.readFile.mockResolvedValue('content');
+      const handler = getHandler('read-file-content');
+      const result = await handler(mockEvent, '/tmp/file.txt', Infinity);
+
+      expect(result).toEqual({ success: true, content: 'content', isTruncated: false });
+    });
+
+    it('uses default maxSize when not provided', async () => {
+      hoisted.fsPromisesMock.stat.mockResolvedValue({ isFile: () => true, size: 10 } as any);
+      hoisted.fsPromisesMock.readFile.mockResolvedValue('abc');
+      const handler = getHandler('read-file-content');
+      const result = await handler(mockEvent, '/tmp/file.txt');
+
+      expect(result).toEqual({ success: true, content: 'abc', isTruncated: false });
+    });
+
+    it('closes file handle even when read succeeds (finally block)', async () => {
+      const closeMock = vi.fn(async () => undefined);
+      hoisted.fsPromisesMock.stat.mockResolvedValue({ isFile: () => true, size: 100 } as any);
+      hoisted.fsPromisesMock.open.mockResolvedValue({
+        read: vi.fn(async (buffer: Buffer, _offset: number, length: number) => {
+          Buffer.from('data').copy(buffer, 0, 0, Math.min(4, length));
+        }),
+        close: closeMock,
+      } as any);
+      const handler = getHandler('read-file-content');
+      await handler(mockEvent, '/tmp/file.txt', 4);
+
+      expect(closeMock).toHaveBeenCalled();
+    });
+
+    it('rejects invalid path', async () => {
+      hoisted.safePath.value = false;
+      const handler = getHandler('read-file-content');
+      const result = await handler(mockEvent, '/bad/path');
+
+      expect(result).toEqual({ success: false, error: 'Invalid file path' });
+    });
+  });
+
+  describe('get-file-data-url', () => {
+    it('rejects invalid path', async () => {
+      hoisted.safePath.value = false;
+      const handler = getHandler('get-file-data-url');
+      const result = await handler(mockEvent, '/bad/path');
+
+      expect(result).toEqual({ success: false, error: 'Invalid file path' });
+    });
+
+    it('rejects non-file entries', async () => {
+      hoisted.fsPromisesMock.stat.mockResolvedValue({ isFile: () => false, size: 100 } as any);
+      const handler = getHandler('get-file-data-url');
+      const result = await handler(mockEvent, '/tmp/dir');
+
+      expect(result).toEqual({ success: false, error: 'Not a regular file' });
+    });
+
+    it('rejects file too large for preview', async () => {
+      hoisted.fsPromisesMock.stat.mockResolvedValue({ isFile: () => true, size: 5000 } as any);
+      const handler = getHandler('get-file-data-url');
+      const result = await handler(mockEvent, '/tmp/big.jpg', 10);
+
+      expect(result).toEqual({ success: false, error: 'File too large to preview' });
+    });
+
+    it('returns data URL with correct base64 content', async () => {
+      hoisted.fsPromisesMock.stat.mockResolvedValue({ isFile: () => true, size: 3 } as any);
+      const buf = Buffer.from([0xde, 0xad, 0xbe]);
+      hoisted.fsPromisesMock.readFile.mockResolvedValue(buf);
+      const handler = getHandler('get-file-data-url');
+      const result = await handler(mockEvent, '/tmp/image.png', 1024);
+
+      expect(result.success).toBe(true);
+      expect(result.dataUrl).toBe(`data:image/png;base64,${buf.toString('base64')}`);
+    });
+
+    it('uses application/octet-stream for unknown extensions', async () => {
+      hoisted.fsPromisesMock.stat.mockResolvedValue({ isFile: () => true, size: 3 } as any);
+      hoisted.fsPromisesMock.readFile.mockResolvedValue(Buffer.from([0x01, 0x02, 0x03]));
+      const handler = getHandler('get-file-data-url');
+      const result = await handler(mockEvent, '/tmp/file.xyz');
+
+      expect(result.dataUrl).toMatch(/^data:application\/octet-stream;base64,/);
+    });
+
+    it('uses MAX_DATA_URL_BYTES when maxSize is NaN', async () => {
+      hoisted.fsPromisesMock.stat.mockResolvedValue({ isFile: () => true, size: 5 } as any);
+      hoisted.fsPromisesMock.readFile.mockResolvedValue(Buffer.from([0x01]));
+      const handler = getHandler('get-file-data-url');
+      const result = await handler(mockEvent, '/tmp/photo.png', NaN);
+
+      expect(result.success).toBe(true);
+    });
+
+    it('clamps maxSize to at least 1 for data url', async () => {
+      hoisted.fsPromisesMock.stat.mockResolvedValue({ isFile: () => true, size: 5 } as any);
+      const handler = getHandler('get-file-data-url');
+      const result = await handler(mockEvent, '/tmp/photo.png', 0);
+
+      expect(result).toEqual({ success: false, error: 'File too large to preview' });
+    });
+
+    it('maps .jpg to image/jpeg', async () => {
+      hoisted.fsPromisesMock.stat.mockResolvedValue({ isFile: () => true, size: 1 } as any);
+      hoisted.fsPromisesMock.readFile.mockResolvedValue(Buffer.from([0x01]));
+      const handler = getHandler('get-file-data-url');
+      const result = await handler(mockEvent, '/tmp/photo.jpg');
+      expect(result.dataUrl).toMatch(/^data:image\/jpeg;base64,/);
+    });
+
+    it('maps .jpeg to image/jpeg', async () => {
+      hoisted.fsPromisesMock.stat.mockResolvedValue({ isFile: () => true, size: 1 } as any);
+      hoisted.fsPromisesMock.readFile.mockResolvedValue(Buffer.from([0x01]));
+      const handler = getHandler('get-file-data-url');
+      const result = await handler(mockEvent, '/tmp/photo.jpeg');
+      expect(result.dataUrl).toMatch(/^data:image\/jpeg;base64,/);
+    });
+
+    it('maps .jfif to image/jpeg', async () => {
+      hoisted.fsPromisesMock.stat.mockResolvedValue({ isFile: () => true, size: 1 } as any);
+      hoisted.fsPromisesMock.readFile.mockResolvedValue(Buffer.from([0x01]));
+      const handler = getHandler('get-file-data-url');
+      const result = await handler(mockEvent, '/tmp/photo.jfif');
+      expect(result.dataUrl).toMatch(/^data:image\/jpeg;base64,/);
+    });
+
+    it('maps .gif to image/gif', async () => {
+      hoisted.fsPromisesMock.stat.mockResolvedValue({ isFile: () => true, size: 1 } as any);
+      hoisted.fsPromisesMock.readFile.mockResolvedValue(Buffer.from([0x01]));
+      const handler = getHandler('get-file-data-url');
+      const result = await handler(mockEvent, '/tmp/anim.gif');
+      expect(result.dataUrl).toMatch(/^data:image\/gif;base64,/);
+    });
+
+    it('maps .webp to image/webp', async () => {
+      hoisted.fsPromisesMock.stat.mockResolvedValue({ isFile: () => true, size: 1 } as any);
+      hoisted.fsPromisesMock.readFile.mockResolvedValue(Buffer.from([0x01]));
+      const handler = getHandler('get-file-data-url');
+      const result = await handler(mockEvent, '/tmp/photo.webp');
+      expect(result.dataUrl).toMatch(/^data:image\/webp;base64,/);
+    });
+
+    it('maps .avif to image/avif', async () => {
+      hoisted.fsPromisesMock.stat.mockResolvedValue({ isFile: () => true, size: 1 } as any);
+      hoisted.fsPromisesMock.readFile.mockResolvedValue(Buffer.from([0x01]));
+      const handler = getHandler('get-file-data-url');
+      const result = await handler(mockEvent, '/tmp/photo.avif');
+      expect(result.dataUrl).toMatch(/^data:image\/avif;base64,/);
+    });
+
+    it('maps .svg to image/svg+xml', async () => {
+      hoisted.fsPromisesMock.stat.mockResolvedValue({ isFile: () => true, size: 5 } as any);
+      hoisted.fsPromisesMock.readFile.mockResolvedValue(Buffer.from('<svg/>'));
+      const handler = getHandler('get-file-data-url');
+      const result = await handler(mockEvent, '/tmp/icon.svg');
+      expect(result.dataUrl).toMatch(/^data:image\/svg\+xml;base64,/);
+    });
+
+    it('maps .bmp to image/bmp', async () => {
+      hoisted.fsPromisesMock.stat.mockResolvedValue({ isFile: () => true, size: 1 } as any);
+      hoisted.fsPromisesMock.readFile.mockResolvedValue(Buffer.from([0x01]));
+      const handler = getHandler('get-file-data-url');
+      const result = await handler(mockEvent, '/tmp/img.bmp');
+      expect(result.dataUrl).toMatch(/^data:image\/bmp;base64,/);
+    });
+
+    it('maps .ico to image/x-icon', async () => {
+      hoisted.fsPromisesMock.stat.mockResolvedValue({ isFile: () => true, size: 1 } as any);
+      hoisted.fsPromisesMock.readFile.mockResolvedValue(Buffer.from([0x01]));
+      const handler = getHandler('get-file-data-url');
+      const result = await handler(mockEvent, '/tmp/favicon.ico');
+      expect(result.dataUrl).toMatch(/^data:image\/x-icon;base64,/);
+    });
+
+    it('maps .tif to image/tiff', async () => {
+      hoisted.fsPromisesMock.stat.mockResolvedValue({ isFile: () => true, size: 1 } as any);
+      hoisted.fsPromisesMock.readFile.mockResolvedValue(Buffer.from([0x01]));
+      const handler = getHandler('get-file-data-url');
+      const result = await handler(mockEvent, '/tmp/img.tif');
+      expect(result.dataUrl).toMatch(/^data:image\/tiff;base64,/);
+    });
+
+    it('maps .tiff to image/tiff', async () => {
+      hoisted.fsPromisesMock.stat.mockResolvedValue({ isFile: () => true, size: 1 } as any);
+      hoisted.fsPromisesMock.readFile.mockResolvedValue(Buffer.from([0x01]));
+      const handler = getHandler('get-file-data-url');
+      const result = await handler(mockEvent, '/tmp/img.tiff');
+      expect(result.dataUrl).toMatch(/^data:image\/tiff;base64,/);
+    });
+
+    it('maps .heic to image/heic', async () => {
+      hoisted.fsPromisesMock.stat.mockResolvedValue({ isFile: () => true, size: 1 } as any);
+      hoisted.fsPromisesMock.readFile.mockResolvedValue(Buffer.from([0x01]));
+      const handler = getHandler('get-file-data-url');
+      const result = await handler(mockEvent, '/tmp/photo.heic');
+      expect(result.dataUrl).toMatch(/^data:image\/heic;base64,/);
+    });
+
+    it('maps .heif to image/heif', async () => {
+      hoisted.fsPromisesMock.stat.mockResolvedValue({ isFile: () => true, size: 1 } as any);
+      hoisted.fsPromisesMock.readFile.mockResolvedValue(Buffer.from([0x01]));
+      const handler = getHandler('get-file-data-url');
+      const result = await handler(mockEvent, '/tmp/photo.heif');
+      expect(result.dataUrl).toMatch(/^data:image\/heif;base64,/);
+    });
+
+    it('maps .jxl to image/jxl', async () => {
+      hoisted.fsPromisesMock.stat.mockResolvedValue({ isFile: () => true, size: 1 } as any);
+      hoisted.fsPromisesMock.readFile.mockResolvedValue(Buffer.from([0x01]));
+      const handler = getHandler('get-file-data-url');
+      const result = await handler(mockEvent, '/tmp/photo.jxl');
+      expect(result.dataUrl).toMatch(/^data:image\/jxl;base64,/);
+    });
+
+    it('maps .jp2 to image/jp2', async () => {
+      hoisted.fsPromisesMock.stat.mockResolvedValue({ isFile: () => true, size: 1 } as any);
+      hoisted.fsPromisesMock.readFile.mockResolvedValue(Buffer.from([0x01]));
+      const handler = getHandler('get-file-data-url');
+      const result = await handler(mockEvent, '/tmp/photo.jp2');
+      expect(result.dataUrl).toMatch(/^data:image\/jp2;base64,/);
+    });
+
+    it('maps .apng to image/apng', async () => {
+      hoisted.fsPromisesMock.stat.mockResolvedValue({ isFile: () => true, size: 1 } as any);
+      hoisted.fsPromisesMock.readFile.mockResolvedValue(Buffer.from([0x01]));
+      const handler = getHandler('get-file-data-url');
+      const result = await handler(mockEvent, '/tmp/anim.apng');
+      expect(result.dataUrl).toMatch(/^data:image\/apng;base64,/);
+    });
+
+    it('maps .png to image/png', async () => {
+      hoisted.fsPromisesMock.stat.mockResolvedValue({ isFile: () => true, size: 1 } as any);
+      hoisted.fsPromisesMock.readFile.mockResolvedValue(Buffer.from([0x01]));
+      const handler = getHandler('get-file-data-url');
+      const result = await handler(mockEvent, '/tmp/img.png');
+      expect(result.dataUrl).toMatch(/^data:image\/png;base64,/);
+    });
+  });
+
+  describe('get-licenses', () => {
+    it('reads and parses licenses.json successfully', async () => {
+      const mockLicenses = { packages: [{ name: 'test-pkg', license: 'MIT' }] };
+      hoisted.fsPromisesMock.readFile.mockResolvedValue(JSON.stringify(mockLicenses));
+      const handler = getHandler('get-licenses');
+      const result = await handler(mockEvent);
+
+      expect(result.success).toBe(true);
+      expect(result.licenses).toEqual(mockLicenses);
+    });
+  });
+
+  describe('trusted string events', () => {
+    it('get-platform returns process.platform', async () => {
+      const handler = getHandler('get-platform');
+      const result = await handler(mockEvent);
       expect(result).toBe(process.platform);
     });
 
-    it('returns empty string for untrusted', async () => {
+    it('get-app-version returns app version', async () => {
+      const handler = getHandler('get-app-version');
+      const result = await handler(mockEvent);
+      expect(result).toBe('0.0.0-test');
+    });
+
+    it('get-logs-path returns logs directory', async () => {
+      const handler = getHandler('get-logs-path');
+      const result = await handler(mockEvent);
+      expect(result).toBe('/tmp/logs');
+    });
+
+    it('returns empty string for untrusted get-platform', async () => {
       hoisted.trusted.value = false;
-      const handler = hoisted.handlers.get('get-platform')!;
-      const result = await handler({});
+      const handler = getHandler('get-platform');
+      const result = await handler(mockEvent);
+      expect(result).toBe('');
+    });
+
+    it('returns empty string for untrusted get-app-version', async () => {
+      hoisted.trusted.value = false;
+      const handler = getHandler('get-app-version');
+      const result = await handler(mockEvent);
+      expect(result).toBe('');
+    });
+
+    it('returns empty string for untrusted get-logs-path', async () => {
+      hoisted.trusted.value = false;
+      const handler = getHandler('get-logs-path');
+      const result = await handler(mockEvent);
       expect(result).toBe('');
     });
   });
 
-  describe('get-app-version', () => {
-    it('returns app version', async () => {
-      const handler = hoisted.handlers.get('get-app-version')!;
-      const result = await handler({});
-      expect(result).toBe('1.2.3');
-    });
-  });
-
-  describe('get-logs-path', () => {
-    it('returns logs directory path', async () => {
-      const handler = hoisted.handlers.get('get-logs-path')!;
-      const result = await handler({});
-      expect(result).toBe('/tmp/logs');
-    });
-  });
-
   describe('get-system-accent-color', () => {
-    it('returns accent color and dark mode status', async () => {
+    it('returns accent color from systemPreferences on win32', async () => {
       setPlatform('win32');
+      hoisted.nativeThemeMock.shouldUseDarkColors = true;
       hoisted.handlers.clear();
-      setupSystemHandlers(loadSettings, saveSettings);
-      const handler = hoisted.handlers.get('get-system-accent-color')!;
-      const result = (await handler({})) as any;
-      expect(result.accentColor).toMatch(/^#[0-9a-f]{6}$/i);
-      expect(typeof result.isDarkMode).toBe('boolean');
+      setupSystemHandlers(loadSettingsMock, saveSettingsMock);
+
+      const handler = getHandler('get-system-accent-color');
+      const result = await handler(mockEvent);
+
+      expect(result).toEqual({ accentColor: '#0078d4', isDarkMode: true });
+    });
+
+    it('returns accent color from systemPreferences on darwin', async () => {
+      setPlatform('darwin');
+      hoisted.systemPreferencesMock.getAccentColor.mockReturnValue('ff5500ee');
+      hoisted.handlers.clear();
+      setupSystemHandlers(loadSettingsMock, saveSettingsMock);
+
+      const handler = getHandler('get-system-accent-color');
+      const result = await handler(mockEvent);
+
+      expect(result.accentColor).toBe('#ff5500');
+    });
+
+    it('returns default accent color on linux (skips systemPreferences)', async () => {
+      setPlatform('linux');
+      hoisted.handlers.clear();
+      setupSystemHandlers(loadSettingsMock, saveSettingsMock);
+
+      const handler = getHandler('get-system-accent-color');
+      const result = await handler(mockEvent);
+
+      expect(result.accentColor).toBe('#0078d4');
+      expect(hoisted.systemPreferencesMock.getAccentColor).not.toHaveBeenCalled();
+    });
+
+    it('falls back to default when getAccentColor throws', async () => {
+      setPlatform('win32');
+      hoisted.systemPreferencesMock.getAccentColor.mockImplementation(() => {
+        throw new Error('Not available');
+      });
+      hoisted.handlers.clear();
+      setupSystemHandlers(loadSettingsMock, saveSettingsMock);
+
+      const handler = getHandler('get-system-accent-color');
+      const result = await handler(mockEvent);
+
+      expect(result.accentColor).toBe('#0078d4');
+      expect(hoisted.ignoreErrorMock).toHaveBeenCalled();
+    });
+
+    it('falls back to default when color string is shorter than 6 chars', async () => {
+      setPlatform('win32');
+      hoisted.systemPreferencesMock.getAccentColor.mockReturnValue('abc');
+      hoisted.handlers.clear();
+      setupSystemHandlers(loadSettingsMock, saveSettingsMock);
+
+      const handler = getHandler('get-system-accent-color');
+      const result = await handler(mockEvent);
+
+      expect(result.accentColor).toBe('#0078d4');
+    });
+
+    it('falls back to default when color is empty string', async () => {
+      setPlatform('darwin');
+      hoisted.systemPreferencesMock.getAccentColor.mockReturnValue('');
+      hoisted.handlers.clear();
+      setupSystemHandlers(loadSettingsMock, saveSettingsMock);
+
+      const handler = getHandler('get-system-accent-color');
+      const result = await handler(mockEvent);
+
+      expect(result.accentColor).toBe('#0078d4');
+    });
+
+    it('returns untrusted default when not trusted', async () => {
+      hoisted.trusted.value = false;
+      const handler = getHandler('get-system-accent-color');
+      const result = await handler(mockEvent);
+
+      expect(result).toEqual({ accentColor: '#0078d4', isDarkMode: false });
+    });
+
+    it('returns isDarkMode false when nativeTheme is light', async () => {
+      setPlatform('win32');
+      hoisted.nativeThemeMock.shouldUseDarkColors = false;
+      hoisted.handlers.clear();
+      setupSystemHandlers(loadSettingsMock, saveSettingsMock);
+
+      const handler = getHandler('get-system-accent-color');
+      const result = await handler(mockEvent);
+
+      expect(result.isDarkMode).toBe(false);
     });
   });
 
-  describe('is-mas', () => {
-    it('returns false by default', async () => {
-      const handler = hoisted.handlers.get('is-mas')!;
-      const result = await handler({});
-      expect(result).toBe(false);
-    });
-  });
-
-  describe('is-flatpak', () => {
-    it('returns false when not in flatpak', async () => {
-      hoisted.isRunningInFlatpakMock.mockReturnValue(false);
-      const handler = hoisted.handlers.get('is-flatpak')!;
-      const result = await handler({});
+  describe('trusted boolean events', () => {
+    it('is-mas returns false by default', async () => {
+      const handler = getHandler('is-mas');
+      const result = await handler(mockEvent);
       expect(result).toBe(false);
     });
 
-    it('returns true when in flatpak', async () => {
-      hoisted.isRunningInFlatpakMock.mockReturnValue(true);
-      const handler = hoisted.handlers.get('is-flatpak')!;
-      const result = await handler({});
+    it('is-mas returns true when process.mas is true', async () => {
+      (process as any).mas = true;
+      const handler = getHandler('is-mas');
+      const result = await handler(mockEvent);
       expect(result).toBe(true);
+      delete (process as any).mas;
+    });
+
+    it('is-flatpak returns false by default', async () => {
+      const handler = getHandler('is-flatpak');
+      const result = await handler(mockEvent);
+      expect(result).toBe(false);
+    });
+
+    it('is-flatpak returns true when running in flatpak', async () => {
+      hoisted.isRunningInFlatpakMock.mockReturnValue(true);
+      hoisted.handlers.clear();
+      setupSystemHandlers(loadSettingsMock, saveSettingsMock);
+
+      const handler = getHandler('is-flatpak');
+      const result = await handler(mockEvent);
+      expect(result).toBe(true);
+    });
+
+    it('is-ms-store returns false by default', async () => {
+      const handler = getHandler('is-ms-store');
+      const result = await handler(mockEvent);
+      expect(result).toBe(false);
+    });
+
+    it('is-ms-store returns true when process.windowsStore is true', async () => {
+      (process as any).windowsStore = true;
+      const handler = getHandler('is-ms-store');
+      const result = await handler(mockEvent);
+      expect(result).toBe(true);
+      delete (process as any).windowsStore;
+    });
+
+    it('returns false for untrusted is-mas', async () => {
+      hoisted.trusted.value = false;
+      const handler = getHandler('is-mas');
+      const result = await handler(mockEvent);
+      expect(result).toBe(false);
+    });
+
+    it('returns false for untrusted is-flatpak', async () => {
+      hoisted.trusted.value = false;
+      const handler = getHandler('is-flatpak');
+      const result = await handler(mockEvent);
+      expect(result).toBe(false);
+    });
+
+    it('returns false for untrusted is-ms-store', async () => {
+      hoisted.trusted.value = false;
+      const handler = getHandler('is-ms-store');
+      const result = await handler(mockEvent);
+      expect(result).toBe(false);
     });
   });
 
   describe('get-system-text-scale', () => {
-    it('returns display scale factor', async () => {
-      const handler = hoisted.handlers.get('get-system-text-scale')!;
-      const result = await handler({});
-      expect(result).toBe(1.5);
+    it('returns primary display scale factor', async () => {
+      const handler = getHandler('get-system-text-scale');
+      const result = await handler(mockEvent);
+      expect(result).toBe(1.25);
+    });
+
+    it('returns different scale factor value', async () => {
+      hoisted.screenMock.getPrimaryDisplay.mockReturnValue({ scaleFactor: 2.0 });
+      hoisted.handlers.clear();
+      setupSystemHandlers(loadSettingsMock, saveSettingsMock);
+
+      const handler = getHandler('get-system-text-scale');
+      const result = await handler(mockEvent);
+      expect(result).toBe(2.0);
+    });
+
+    it('returns 1 for untrusted request', async () => {
+      hoisted.trusted.value = false;
+      const handler = getHandler('get-system-text-scale');
+      const result = await handler(mockEvent);
+      expect(result).toBe(1);
     });
   });
 
   describe('check-full-disk-access', () => {
-    it('returns access status', async () => {
+    it('returns hasAccess true when access is granted', async () => {
       hoisted.checkFullDiskAccessMock.mockResolvedValue(true);
-      const handler = hoisted.handlers.get('check-full-disk-access')!;
-      const result = (await handler({})) as any;
+      const handler = getHandler('check-full-disk-access');
+      const result = await handler(mockEvent);
+
       expect(result).toEqual({ success: true, hasAccess: true });
+    });
+
+    it('returns hasAccess false when access is denied', async () => {
+      hoisted.checkFullDiskAccessMock.mockResolvedValue(false);
+      const handler = getHandler('check-full-disk-access');
+      const result = await handler(mockEvent);
+
+      expect(result).toEqual({ success: true, hasAccess: false });
+    });
+
+    it('returns untrusted default when not trusted', async () => {
+      hoisted.trusted.value = false;
+      const handler = getHandler('check-full-disk-access');
+      const result = await handler(mockEvent);
+
+      expect(result).toEqual({ success: false, hasAccess: false });
     });
   });
 
-  describe('get-disk-space', () => {
-    it('delegates to getDiskSpace handler', async () => {
-      const handler = hoisted.handlers.get('get-disk-space')!;
-      const result = (await handler({}, '/')) as any;
-      expect(result).toEqual({ success: true, total: 10, free: 5 });
-      expect(hoisted.getDiskSpaceMock).toHaveBeenCalledWith('/');
+  describe('request-full-disk-access', () => {
+    it('returns error on non-darwin platform', async () => {
+      setPlatform('linux');
+      hoisted.handlers.clear();
+      setupSystemHandlers(loadSettingsMock, saveSettingsMock);
+
+      const handler = getHandler('request-full-disk-access');
+      const result = await handler(mockEvent);
+
+      expect(result).toEqual({
+        success: false,
+        error: 'Full Disk Access is only applicable on macOS',
+      });
+      expect(hoisted.showFullDiskAccessDialogMock).not.toHaveBeenCalled();
+    });
+
+    it('calls showFullDiskAccessDialog on darwin', async () => {
+      setPlatform('darwin');
+      hoisted.handlers.clear();
+      setupSystemHandlers(loadSettingsMock, saveSettingsMock);
+
+      const handler = getHandler('request-full-disk-access');
+      const result = await handler(mockEvent);
+
+      expect(result).toEqual({ success: true });
+      expect(hoisted.showFullDiskAccessDialogMock).toHaveBeenCalledWith(
+        loadSettingsMock,
+        saveSettingsMock
+      );
+    });
+
+    it('returns error on win32', async () => {
+      setPlatform('win32');
+      hoisted.handlers.clear();
+      setupSystemHandlers(loadSettingsMock, saveSettingsMock);
+
+      const handler = getHandler('request-full-disk-access');
+      const result = await handler(mockEvent);
+
+      expect(result).toEqual({
+        success: false,
+        error: 'Full Disk Access is only applicable on macOS',
+      });
     });
   });
 
   describe('get-git-status', () => {
-    it('delegates to getGitStatus', async () => {
-      const handler = hoisted.handlers.get('get-git-status')!;
-      const result = (await handler({}, '/repo', true)) as any;
-      expect(result.success).toBe(true);
-      expect(hoisted.getGitStatusMock).toHaveBeenCalledWith('/repo', true);
+    it('delegates to getGitStatus with includeUntracked true', async () => {
+      const handler = getHandler('get-git-status');
+      const result = await handler(mockEvent, '/tmp/repo', true);
+
+      expect(result).toEqual({ success: true, isGitRepo: true, statuses: [] });
+      expect(hoisted.getGitStatusMock).toHaveBeenCalledWith('/tmp/repo', true);
+    });
+
+    it('delegates to getGitStatus with includeUntracked false', async () => {
+      const handler = getHandler('get-git-status');
+      await handler(mockEvent, '/tmp/repo', false);
+
+      expect(hoisted.getGitStatusMock).toHaveBeenCalledWith('/tmp/repo', false);
+    });
+
+    it('defaults includeUntracked to true when not provided', async () => {
+      const handler = getHandler('get-git-status');
+      await handler(mockEvent, '/tmp/repo');
+
+      expect(hoisted.getGitStatusMock).toHaveBeenCalledWith('/tmp/repo', true);
     });
   });
 
   describe('get-git-branch', () => {
     it('delegates to getGitBranch', async () => {
-      const handler = hoisted.handlers.get('get-git-branch')!;
-      const result = (await handler({}, '/repo')) as any;
+      const handler = getHandler('get-git-branch');
+      const result = await handler(mockEvent, '/tmp/repo');
+
       expect(result).toEqual({ success: true, branch: 'main' });
+      expect(hoisted.getGitBranchMock).toHaveBeenCalledWith('/tmp/repo');
     });
   });
 
   describe('open-logs-folder', () => {
-    it('opens logs directory', async () => {
-      const handler = hoisted.handlers.get('open-logs-folder')!;
-      const result = (await handler({})) as any;
+    it('opens logs directory with shell.openPath', async () => {
+      const handler = getHandler('open-logs-folder');
+      const result = await handler(mockEvent);
+
       expect(result).toEqual({ success: true });
       expect(hoisted.shellMock.openPath).toHaveBeenCalledWith('/tmp/logs');
     });
   });
 
   describe('export-diagnostics', () => {
-    it('delegates to exportDiagnostics', async () => {
-      const handler = hoisted.handlers.get('export-diagnostics')!;
-      const result = (await handler({})) as any;
+    it('delegates to exportDiagnostics with loadSettings', async () => {
+      const handler = getHandler('export-diagnostics');
+      const result = await handler(mockEvent);
+
       expect(result).toEqual({ success: true, path: '/tmp/diag.json' });
+      expect(hoisted.exportDiagnosticsMock).toHaveBeenCalledWith(loadSettingsMock);
     });
   });
 
   describe('get-log-file-content', () => {
     it('delegates to getLogFileContent', async () => {
-      const handler = hoisted.handlers.get('get-log-file-content')!;
-      const result = (await handler({})) as any;
-      expect(result).toEqual({ success: true, content: 'log data' });
+      const handler = getHandler('get-log-file-content');
+      const result = await handler(mockEvent);
+
+      expect(result).toEqual({ success: true, content: 'log' });
+      expect(hoisted.getLogFileContentMock).toHaveBeenCalled();
     });
   });
 
-  describe('restart-as-admin', () => {
-    it('returns error for unsupported platform', async () => {
-      setPlatform('freebsd' as NodeJS.Platform);
-      hoisted.handlers.clear();
-      setupSystemHandlers(loadSettings, saveSettings);
-      const handler = hoisted.handlers.get('restart-as-admin')!;
-      const result = (await handler({})) as any;
-      expect(result).toEqual({ success: false, error: 'Unsupported platform' });
-    });
+  describe('get-disk-space', () => {
+    it('delegates to getDiskSpace with drive path', async () => {
+      const handler = getHandler('get-disk-space');
+      const result = await handler(mockEvent, '/');
 
-    it('restarts as admin on win32', async () => {
-      setPlatform('win32');
-      hoisted.handlers.clear();
-      setupSystemHandlers(loadSettings, saveSettings);
-      hoisted.execFileAsyncMock.mockResolvedValue('');
-      const handler = hoisted.handlers.get('restart-as-admin')!;
-      const result = (await handler({})) as any;
-      expect(result).toEqual({ success: true });
-      expect(hoisted.appMock.quit).toHaveBeenCalled();
-    });
-
-    it('handles admin restart failure', async () => {
-      setPlatform('darwin');
-      hoisted.handlers.clear();
-      setupSystemHandlers(loadSettings, saveSettings);
-      hoisted.execFileAsyncMock.mockRejectedValue(new Error('Cancelled'));
-      const handler = hoisted.handlers.get('restart-as-admin')!;
-      const result = (await handler({})) as any;
-      expect(result.success).toBe(false);
+      expect(result).toEqual({ success: true, total: 10, free: 5 });
+      expect(hoisted.getDiskSpaceMock).toHaveBeenCalledWith('/');
     });
   });
 
-  describe('read-file-content', () => {
-    it('reads full file when under max size', async () => {
-      hoisted.fsPromisesMock.stat.mockResolvedValue({ isFile: () => true, size: 100 });
-      hoisted.fsPromisesMock.readFile.mockResolvedValue('file content');
-      const handler = hoisted.handlers.get('read-file-content')!;
-      const result = (await handler({}, '/tmp/file.txt')) as any;
-      expect(result.success).toBe(true);
-      expect(result.content).toBe('file content');
-      expect(result.isTruncated).toBe(false);
+  describe('nativeTheme updated callback', () => {
+    it('sends isDarkMode true to all windows', () => {
+      const winA = { webContents: { send: vi.fn() } };
+      const winB = { webContents: { send: vi.fn() } };
+      hoisted.browserWindowMock.getAllWindows.mockReturnValue([winA, winB]);
+      hoisted.nativeThemeMock.shouldUseDarkColors = true;
+
+      const onUpdated = hoisted.nativeThemeUpdated.get();
+      if (!onUpdated) throw new Error('nativeTheme updated callback was not registered');
+      onUpdated();
+
+      expect(winA.webContents.send).toHaveBeenCalledWith('system-theme-changed', {
+        isDarkMode: true,
+      });
+      expect(winB.webContents.send).toHaveBeenCalledWith('system-theme-changed', {
+        isDarkMode: true,
+      });
     });
 
-    it('rejects non-regular files', async () => {
-      hoisted.fsPromisesMock.stat.mockResolvedValue({ isFile: () => false, size: 100 });
-      const handler = hoisted.handlers.get('read-file-content')!;
-      const result = (await handler({}, '/tmp/dir')) as any;
-      expect(result).toEqual({ success: false, error: 'Not a regular file' });
-    });
-  });
+    it('sends isDarkMode false when theme is light', () => {
+      const win = { webContents: { send: vi.fn() } };
+      hoisted.browserWindowMock.getAllWindows.mockReturnValue([win]);
+      hoisted.nativeThemeMock.shouldUseDarkColors = false;
 
-  describe('get-file-data-url', () => {
-    it('rejects non-files', async () => {
-      hoisted.fsPromisesMock.stat.mockResolvedValue({ isFile: () => false, size: 100 });
-      const handler = hoisted.handlers.get('get-file-data-url')!;
-      const result = (await handler({}, '/tmp/dir')) as any;
-      expect(result).toEqual({ success: false, error: 'Not a regular file' });
+      const onUpdated = hoisted.nativeThemeUpdated.get();
+      if (!onUpdated) throw new Error('nativeTheme updated callback was not registered');
+      onUpdated();
+
+      expect(win.webContents.send).toHaveBeenCalledWith('system-theme-changed', {
+        isDarkMode: false,
+      });
     });
 
-    it('rejects invalid paths', async () => {
-      hoisted.safePath.value = false;
-      const handler = hoisted.handlers.get('get-file-data-url')!;
-      const result = (await handler({}, '/bad')) as any;
-      expect(result).toEqual({ success: false, error: 'Invalid file path' });
-    });
-  });
+    it('handles no windows without throwing', () => {
+      hoisted.browserWindowMock.getAllWindows.mockReturnValue([]);
+      hoisted.nativeThemeMock.shouldUseDarkColors = true;
 
-  describe('get-licenses', () => {
-    it('reads and parses licenses.json', async () => {
-      hoisted.fsPromisesMock.readFile.mockResolvedValue(JSON.stringify({ MIT: [] }));
-      const handler = hoisted.handlers.get('get-licenses')!;
-      const result = (await handler({})) as any;
-      expect(result.success).toBe(true);
-      expect(result.licenses).toEqual({ MIT: [] });
-    });
-  });
+      const onUpdated = hoisted.nativeThemeUpdated.get();
+      if (!onUpdated) throw new Error('nativeTheme updated callback was not registered');
 
-  describe('open-terminal', () => {
-    it('rejects unsafe paths', async () => {
-      hoisted.safePath.value = false;
-      const handler = hoisted.handlers.get('open-terminal')!;
-      const result = (await handler({}, '/bad/path')) as any;
-      expect(result).toEqual({ success: false, error: 'Invalid directory path' });
+      expect(() => onUpdated()).not.toThrow();
     });
   });
 });

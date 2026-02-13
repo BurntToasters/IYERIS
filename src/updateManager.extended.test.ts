@@ -484,7 +484,6 @@ describe('initializeAutoUpdater', () => {
     mocks.getIsDev.mockReturnValue(false);
     mocks.checkMsiInstallation.mockResolvedValue(false);
 
-    // Should not throw - error is caught internally
     await expect(initializeAutoUpdater({ autoCheckUpdates: true } as any)).resolves.toBeUndefined();
   });
 });

@@ -1,6 +1,3 @@
-/**
- * @vitest-environment jsdom
- */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createClipboardController } from './rendererClipboard';
 
@@ -222,7 +219,7 @@ describe('createClipboardController — extended', () => {
       setupElectronApi();
       const deps = createDeps();
       const ctrl = createClipboardController(deps);
-      // Should not throw
+
       await ctrl.updateClipboardIndicator();
     });
 
@@ -250,12 +247,10 @@ describe('createClipboardController — extended', () => {
       const deps = createDeps({ fileElementMap: fileMap, selectedItems: new Set(['/a']) });
       const ctrl = createClipboardController(deps);
 
-      // Cut /a
       ctrl.cutToClipboard();
       expect(fileA.classList.contains('cut')).toBe(true);
       expect(fileB.classList.contains('cut')).toBe(false);
 
-      // Now cut /b — /a should lose cut
       deps.getSelectedItems = () => new Set(['/b']);
       ctrl.cutToClipboard();
       expect(fileA.classList.contains('cut')).toBe(false);

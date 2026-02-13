@@ -22,8 +22,6 @@ function makeDeps(overrides: Partial<DiskSpaceControllerDeps> = {}): DiskSpaceCo
 
 describe('createDiskSpaceController', () => {
   describe('getUnixDrivePath (via getCachedDiskSpace & clearCache)', () => {
-    // We can test getUnixDrivePath indirectly through the controller's cache interactions
-    // but the function is internal. Let's test via updateDiskSpace side effects.
     let deps: DiskSpaceControllerDeps;
     let ctrl: ReturnType<typeof createDiskSpaceController>;
 
@@ -50,9 +48,6 @@ describe('createDiskSpaceController', () => {
   });
 
   describe('getUnixDrivePath logic', () => {
-    // Test indirectly by calling updateDiskSpace with different paths
-    // and checking what drive path gets passed to getDiskSpace
-
     it('resolves / for regular unix paths', async () => {
       vi.useFakeTimers();
       const getDiskSpace = vi.fn().mockResolvedValue({ success: true, total: 1e12, free: 5e11 });
@@ -63,14 +58,13 @@ describe('createDiskSpaceController', () => {
       });
       const ctrl = createDiskSpaceController(deps);
 
-      // Mock document.getElementById
       const mockElement = { innerHTML: '' } as any;
       vi.stubGlobal('document', {
         getElementById: vi.fn(() => mockElement),
       });
 
       await ctrl.updateDiskSpace();
-      // Advance past debounce
+
       await vi.advanceTimersByTimeAsync(400);
 
       expect(getDiskSpace).toHaveBeenCalledWith('/');
@@ -235,12 +229,10 @@ describe('createDiskSpaceController', () => {
         getElementById: vi.fn(() => mockElement),
       });
 
-      // First call - triggers debounced fetch
       await ctrl.updateDiskSpace();
       await vi.advanceTimersByTimeAsync(400);
       expect(getDiskSpace).toHaveBeenCalledTimes(1);
 
-      // Verify cache was populated
       const cached = ctrl.getCachedDiskSpace('/');
       expect(cached).toEqual({ total: 1e12, free: 5e11 });
 
@@ -324,7 +316,7 @@ describe('createDiskSpaceController', () => {
       const ctrl = createDiskSpaceController(deps);
       const mockElement = { innerHTML: '' } as any;
 
-      ctrl.renderDiskSpace(mockElement, 1000, 150); // 85% used
+      ctrl.renderDiskSpace(mockElement, 1000, 150);
       expect(mockElement.innerHTML).toContain('#ff8c00');
     });
 
@@ -333,7 +325,7 @@ describe('createDiskSpaceController', () => {
       const ctrl = createDiskSpaceController(deps);
       const mockElement = { innerHTML: '' } as any;
 
-      ctrl.renderDiskSpace(mockElement, 1000, 50); // 95% used
+      ctrl.renderDiskSpace(mockElement, 1000, 50);
       expect(mockElement.innerHTML).toContain('#e81123');
     });
   });

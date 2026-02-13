@@ -1,6 +1,3 @@
-/**
- * @vitest-environment jsdom
- */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('./rendererUtils.js', () => ({
@@ -15,7 +12,6 @@ import {
   showConfirm,
 } from './rendererModals.js';
 
-/** jsdom offsetParent is always null; stub it so getFocusableElements works */
 function makeFocusable(el: HTMLElement) {
   Object.defineProperty(el, 'offsetParent', { get: () => document.body, configurable: true });
   return el;
@@ -24,7 +20,7 @@ function makeFocusable(el: HTMLElement) {
 describe('rendererModals', () => {
   beforeEach(() => {
     document.body.innerHTML = '';
-    // reset module-level state by deactivating any leftover
+
     deactivateModal();
   });
 
@@ -90,7 +86,6 @@ describe('rendererModals', () => {
       activateModal(modal, { restoreFocus: false });
 
       deactivateModal(modal, { restoreFocus: false });
-      // should NOT restore to outer since restoreFocus was false on activate
     });
   });
 
@@ -102,11 +97,11 @@ describe('rendererModals', () => {
       document.body.appendChild(modal2);
 
       activateModal(modal1);
-      deactivateModal(modal2); // different modal — no-op
+      deactivateModal(modal2);
     });
 
     it('works with no argument', () => {
-      deactivateModal(); // should not throw
+      deactivateModal();
     });
   });
 
@@ -131,7 +126,6 @@ describe('rendererModals', () => {
       });
       document.dispatchEvent(tabEvent);
 
-      // Focus should wrap to first
       expect(document.activeElement).toBe(btn1);
     });
 
@@ -203,7 +197,7 @@ describe('rendererModals', () => {
           <button id="dialog-cancel" style="display:none">Cancel</button>
         </div>
       `;
-      // make buttons focusable in jsdom
+
       makeFocusable(document.getElementById('dialog-ok') as HTMLElement);
       makeFocusable(document.getElementById('dialog-cancel') as HTMLElement);
     }
@@ -252,7 +246,7 @@ describe('rendererModals', () => {
       const promise = showDialog('Title', 'Msg');
       const ok = document.getElementById('dialog-ok') as HTMLButtonElement;
       ok.click();
-      ok.click(); // second click — guard prevents double resolve
+      ok.click();
       const result = await promise;
       expect(result).toBe(true);
     });
@@ -263,7 +257,6 @@ describe('rendererModals', () => {
         const promise = showDialog('T', 'M', type);
         document.getElementById('dialog-ok')!.click();
         await promise;
-        // just ensuring no errors
       }
     });
 

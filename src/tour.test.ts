@@ -1,6 +1,3 @@
-/**
- * @vitest-environment jsdom
- */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { Settings } from './types';
 import { createTourController, type TourStep, type TourController } from './tour';

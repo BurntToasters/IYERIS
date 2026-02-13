@@ -1,6 +1,3 @@
-/**
- * @vitest-environment jsdom
- */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createThemeEditorController, hexToRgb } from './rendererThemeEditor';
 
@@ -92,7 +89,7 @@ describe('createThemeEditorController', () => {
     it('removes all custom properties', () => {
       const deps = createDeps();
       const ctrl = createThemeEditorController(deps as any);
-      // Apply then clear
+
       ctrl.applyCustomThemeColors({
         name: 'Test',
         accentColor: '#ff0000',
@@ -170,14 +167,13 @@ describe('createThemeEditorController', () => {
       const ctrl = createThemeEditorController(deps as any);
       ctrl.showThemeEditor();
 
-      // Make a change to trigger unsaved state
       ctrl.setupThemeEditorListeners();
       const nameInput = document.getElementById('theme-name-input') as HTMLInputElement;
       nameInput.value = 'Changed';
       nameInput.dispatchEvent(new Event('input'));
 
       await ctrl.hideThemeEditor();
-      // Modal should still be visible since user cancelled
+
       const modal = document.getElementById('theme-editor-modal')!;
       expect(modal.style.display).toBe('flex');
     });

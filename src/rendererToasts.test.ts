@@ -72,13 +72,11 @@ describe('createToastManager', () => {
       })),
     });
 
-    // Show max toasts
     manager.showToast('Toast 1', '', 'info');
     manager.showToast('Toast 2', '', 'info');
     manager.showToast('Toast 3', '', 'info');
     expect(opts._container.appendChild).toHaveBeenCalledTimes(3);
 
-    // 4th should be queued
     manager.showToast('Toast 4', '', 'info');
     expect(opts._container.appendChild).toHaveBeenCalledTimes(3);
 
@@ -125,7 +123,6 @@ describe('createToastManager', () => {
 
     manager.showToast('Test', '', 'info');
 
-    // Fast-forward past duration + removal animation
     vi.advanceTimersByTime(opts.durationMs + 400);
 
     expect(mockElement.classList.add).toHaveBeenCalledWith('removing');
@@ -150,7 +147,6 @@ describe('createToastManager', () => {
       })),
     });
 
-    // Should not throw
     expect(() => manager.showToast('Test', '', 'info')).not.toThrow();
 
     vi.unstubAllGlobals();

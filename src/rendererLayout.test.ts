@@ -1,6 +1,3 @@
-/**
- * @vitest-environment jsdom
- */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createLayoutController } from './rendererLayout.js';
 
@@ -31,7 +28,7 @@ describe('rendererLayout', () => {
     it('sets CSS custom property for name column as minmax', () => {
       const cfg = makeConfig();
       const ctrl = createLayoutController(cfg);
-      // applyListColumnWidths with name width
+
       cfg.getCurrentSettings().listColumnWidths = { name: 300 };
       ctrl.applyListColumnWidths();
       const v = document.documentElement.style.getPropertyValue('--list-col-name');
@@ -68,7 +65,7 @@ describe('rendererLayout', () => {
     it('clamps below minimum', () => {
       const cfg = makeConfig();
       const ctrl = createLayoutController(cfg);
-      cfg.getCurrentSettings().listColumnWidths = { size: 10 }; // min is 80
+      cfg.getCurrentSettings().listColumnWidths = { size: 10 };
       ctrl.applyListColumnWidths();
       const v = document.documentElement.style.getPropertyValue('--list-col-size');
       expect(v).toBe('80px');
@@ -77,7 +74,7 @@ describe('rendererLayout', () => {
     it('clamps above maximum', () => {
       const cfg = makeConfig();
       const ctrl = createLayoutController(cfg);
-      cfg.getCurrentSettings().listColumnWidths = { name: 9999 }; // max is 640
+      cfg.getCurrentSettings().listColumnWidths = { name: 9999 };
       ctrl.applyListColumnWidths();
       const v = document.documentElement.style.getPropertyValue('--list-col-name');
       expect(v).toBe('minmax(640px, 1fr)');
@@ -88,7 +85,7 @@ describe('rendererLayout', () => {
       const ctrl = createLayoutController(cfg);
       cfg.getCurrentSettings().listColumnWidths = { name: 0, size: -5 };
       ctrl.applyListColumnWidths();
-      // 0 and negative are not finite&>0, so nothing set
+
       expect(document.documentElement.style.getPropertyValue('--list-col-name')).toBe('');
     });
 
@@ -96,7 +93,6 @@ describe('rendererLayout', () => {
       const cfg = makeConfig();
       const ctrl = createLayoutController(cfg);
       ctrl.applyListColumnWidths();
-      // no error, no CSS vars set
     });
 
     it('persists width to settings by default', () => {
@@ -104,8 +100,7 @@ describe('rendererLayout', () => {
       const ctrl = createLayoutController(cfg);
       cfg.getCurrentSettings().listColumnWidths = { type: 200 };
       ctrl.applyListColumnWidths();
-      // applyListColumnWidths calls setListColumnWidth(key, val, false) — persist=false
-      // so debouncedSaveSettings should NOT be called from applyListColumnWidths
+
       expect(cfg.debouncedSaveSettings).not.toHaveBeenCalled();
     });
   });
@@ -123,7 +118,7 @@ describe('rendererLayout', () => {
     it('clamps sidebar width to min/max', () => {
       const cfg = makeConfig();
       const ctrl = createLayoutController(cfg);
-      cfg.getCurrentSettings().sidebarWidth = 50; // min 140
+      cfg.getCurrentSettings().sidebarWidth = 50;
       ctrl.applySidebarWidth();
       expect(document.documentElement.style.getPropertyValue('--sidebar-width-current')).toBe(
         '140px'
@@ -133,7 +128,7 @@ describe('rendererLayout', () => {
     it('clamps sidebar width to max', () => {
       const cfg = makeConfig();
       const ctrl = createLayoutController(cfg);
-      cfg.getCurrentSettings().sidebarWidth = 999; // max 360
+      cfg.getCurrentSettings().sidebarWidth = 999;
       ctrl.applySidebarWidth();
       expect(document.documentElement.style.getPropertyValue('--sidebar-width-current')).toBe(
         '360px'
@@ -162,7 +157,7 @@ describe('rendererLayout', () => {
     it('clamps to min', () => {
       const cfg = makeConfig();
       const ctrl = createLayoutController(cfg);
-      cfg.getCurrentSettings().previewPanelWidth = 50; // min 200
+      cfg.getCurrentSettings().previewPanelWidth = 50;
       ctrl.applyPreviewPanelWidth();
       expect(document.documentElement.style.getPropertyValue('--preview-panel-width')).toBe(
         '200px'
@@ -172,7 +167,7 @@ describe('rendererLayout', () => {
     it('clamps to max', () => {
       const cfg = makeConfig();
       const ctrl = createLayoutController(cfg);
-      cfg.getCurrentSettings().previewPanelWidth = 999; // max 520
+      cfg.getCurrentSettings().previewPanelWidth = 999;
       ctrl.applyPreviewPanelWidth();
       expect(document.documentElement.style.getPropertyValue('--preview-panel-width')).toBe(
         '520px'
@@ -222,7 +217,7 @@ describe('rendererLayout', () => {
     it('does nothing without sidebar element', () => {
       const cfg = makeConfig();
       const ctrl = createLayoutController(cfg);
-      ctrl.setSidebarCollapsed(true); // no error
+      ctrl.setSidebarCollapsed(true);
     });
   });
 
@@ -249,7 +244,7 @@ describe('rendererLayout', () => {
     it('does nothing without sidebar or toggle', () => {
       const cfg = makeConfig();
       const ctrl = createLayoutController(cfg);
-      ctrl.syncSidebarToggleState(); // no error
+      ctrl.syncSidebarToggleState();
     });
   });
 
@@ -257,7 +252,7 @@ describe('rendererLayout', () => {
     it('does nothing with null handle', () => {
       const cfg = makeConfig();
       const ctrl = createLayoutController(cfg);
-      ctrl.setupSidebarResize(); // no error
+      ctrl.setupSidebarResize();
     });
 
     it('does nothing without sidebar element', () => {
@@ -265,7 +260,7 @@ describe('rendererLayout', () => {
       document.body.appendChild(handle);
       const cfg = makeConfig({ getSidebarResizeHandle: () => handle });
       const ctrl = createLayoutController(cfg);
-      ctrl.setupSidebarResize(); // no error — sidebar not found
+      ctrl.setupSidebarResize();
     });
 
     it('registers mousedown on handle', () => {
@@ -278,19 +273,16 @@ describe('rendererLayout', () => {
       const ctrl = createLayoutController(cfg);
       ctrl.setupSidebarResize();
 
-      // Mousedown on collapsed sidebar is ignored
       sidebar.classList.add('collapsed');
       handle.dispatchEvent(new MouseEvent('mousedown', { clientX: 200, bubbles: true }));
       expect(handle.classList.contains('resizing')).toBe(false);
 
-      // Uncollapse and try again
       sidebar.classList.remove('collapsed');
       handle.dispatchEvent(
         new MouseEvent('mousedown', { clientX: 200, bubbles: true, cancelable: true })
       );
       expect(handle.classList.contains('resizing')).toBe(true);
 
-      // Trigger mouseup
       document.dispatchEvent(new MouseEvent('mouseup'));
       expect(handle.classList.contains('resizing')).toBe(false);
     });
@@ -324,7 +316,7 @@ describe('rendererLayout', () => {
     it('does nothing with null handle', () => {
       const cfg = makeConfig();
       const ctrl = createLayoutController(cfg);
-      ctrl.setupPreviewResize(); // no error
+      ctrl.setupPreviewResize();
     });
 
     it('registers mousedown on handle', () => {
@@ -348,7 +340,7 @@ describe('rendererLayout', () => {
     it('does nothing with null header', () => {
       const cfg = makeConfig();
       const ctrl = createLayoutController(cfg);
-      ctrl.setupListHeader(); // no error
+      ctrl.setupListHeader();
     });
 
     it('calls changeSortMode on cell click', () => {
@@ -434,9 +426,8 @@ describe('rendererLayout', () => {
       );
       expect(cfg.consumeEvent).toHaveBeenCalled();
 
-      // mousemove
       document.dispatchEvent(new MouseEvent('mousemove', { clientX: 250 }));
-      // mouseup persists
+
       document.dispatchEvent(new MouseEvent('mouseup'));
       expect(cfg.debouncedSaveSettings).toHaveBeenCalled();
     });

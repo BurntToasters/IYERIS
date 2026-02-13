@@ -1,6 +1,3 @@
-/**
- * @vitest-environment jsdom
- */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('./rendererDom.js', () => ({
@@ -55,8 +52,7 @@ describe('rendererHoverCard', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     document.body.innerHTML = '';
-    // Suppress uncaught exceptions from leaking document-level mouseout listeners
-    // when jsdom fires synthetic events during DOM teardown
+
     errorHandler = (e: ErrorEvent) => {
       e.preventDefault();
     };
@@ -88,7 +84,6 @@ describe('rendererHoverCard', () => {
       ctrl.setup();
       ctrl.setEnabled(false);
       ctrl.setEnabled(true);
-      // No error; mouseover should work again
     });
   });
 
@@ -98,22 +93,20 @@ describe('rendererHoverCard', () => {
       const deps = makeDeps();
       const ctrl = createHoverCardController(deps);
       ctrl.setup();
-      ctrl.setup(); // second call is no-op
+      ctrl.setup();
     });
 
     it('returns early when required elements are missing', () => {
       document.body.innerHTML = '<div id="file-hover-card"></div>';
       const deps = makeDeps();
       const ctrl = createHoverCardController(deps);
-      ctrl.setup(); // missing name/size/type/date elements
-      // should not crash
+      ctrl.setup();
     });
 
     it('returns early when hover card itself is missing', () => {
       const deps = makeDeps();
       const ctrl = createHoverCardController(deps);
       ctrl.setup();
-      // should not crash
     });
 
     it('shows hover card on mouseover after delay', () => {
@@ -130,12 +123,10 @@ describe('rendererHoverCard', () => {
         })
       );
 
-      // mouseover on file-item
       const event = new MouseEvent('mouseover', { bubbles: true });
       Object.defineProperty(event, 'target', { value: fileItem });
       document.dispatchEvent(event);
 
-      // Fast forward past the 1000ms delay
       vi.advanceTimersByTime(1000);
 
       const card = document.getElementById('file-hover-card')!;
@@ -244,7 +235,7 @@ describe('rendererHoverCard', () => {
       ctrl.setup();
 
       const fileItem = document.getElementById('file-item-1')!;
-      // mouseover
+
       const overEvent = new MouseEvent('mouseover', { bubbles: true });
       Object.defineProperty(overEvent, 'target', { value: fileItem });
       document.dispatchEvent(overEvent);
@@ -252,7 +243,6 @@ describe('rendererHoverCard', () => {
 
       expect(document.getElementById('file-hover-card')!.classList.contains('visible')).toBe(true);
 
-      // mouseout from file-item to body
       const outEvent = new MouseEvent('mouseout', { bubbles: true, relatedTarget: document.body });
       Object.defineProperty(outEvent, 'target', { value: fileItem });
       document.dispatchEvent(outEvent);
@@ -303,7 +293,6 @@ describe('rendererHoverCard', () => {
       Object.defineProperty(overEvent, 'target', { value: fileItem });
       document.dispatchEvent(overEvent);
 
-      // Don't wait for delay — mouse out immediately
       const outEvent = new MouseEvent('mouseout', { bubbles: true, relatedTarget: document.body });
       Object.defineProperty(outEvent, 'target', { value: fileItem });
       document.dispatchEvent(outEvent);
@@ -341,7 +330,6 @@ describe('rendererHoverCard', () => {
       document.dispatchEvent(overEvent);
       vi.advanceTimersByTime(1000);
 
-      // Hover over non-file-item
       const nonFileEvent = new MouseEvent('mouseover', { bubbles: true });
       Object.defineProperty(nonFileEvent, 'target', { value: document.body });
       document.dispatchEvent(nonFileEvent);

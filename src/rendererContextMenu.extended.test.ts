@@ -1,6 +1,3 @@
-/**
- * @vitest-environment jsdom
- */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('./rendererCompressExtract.js', () => ({
@@ -151,7 +148,7 @@ describe('handleContextMenuAction - all branches', () => {
     const ctrl = createContextMenuController(deps);
     const item = { path: '/dir/file.txt', name: 'file.txt', isDirectory: false } as FileItem;
     await ctrl.handleContextMenuAction('open-terminal', item);
-    // path.dirname('/dir/file.txt') = '/dir'
+
     expect(window.electronAPI.openTerminal).toHaveBeenCalledWith('/dir');
   });
 
@@ -304,5 +301,280 @@ describe('handleEmptySpaceContextMenuAction - all branches', () => {
     await ctrl.handleEmptySpaceContextMenuAction(undefined);
     expect(deps.createNewFolderWithInlineRename).not.toHaveBeenCalled();
     expect(deps.pasteFromClipboard).not.toHaveBeenCalled();
+  });
+});
+
+function exposeOffsetParent(element: HTMLElement) {
+  Object.defineProperty(element, 'offsetParent', {
+    get: () => document.body,
+    configurable: true,
+  });
+}
+
+function buildMenus() {
+  document.body.innerHTML = `
+    <div id="context-menu" style="display:none;position:absolute">
+      <div id="open-item" class="context-menu-item">Open</div>
+      <div id="add-to-bookmarks-item" class="context-menu-item">Bookmark</div>
+      <div id="change-folder-icon-item" class="context-menu-item">Folder Icon</div>
+      <div id="copy-path-item" class="context-menu-item">Copy Path</div>
+      <div id="open-terminal-item" class="context-menu-item">Open Terminal</div>
+      <div id="compress-item" class="context-menu-item has-submenu">
+        Compress
+        <div class="context-submenu" style="display:none">
+          <div id="compress-zip-item" class="context-menu-item">zip</div>
+        </div>
+      </div>
+      <div id="extract-item" class="context-menu-item">Extract</div>
+      <div id="preview-pdf-item" class="context-menu-item">Preview PDF</div>
+    </div>
+    <div id="empty-space-context-menu" style="display:none;position:absolute">
+      <div id="empty-new-folder" class="context-menu-item">New Folder</div>
+      <div id="empty-open-terminal" class="context-menu-item">Open Terminal</div>
+    </div>
+  `;
+
+  document.querySelectorAll<HTMLElement>('.context-menu-item').forEach(exposeOffsetParent);
+}
+
+describe('handleKeyboardNavigation - context menu ArrowDown/ArrowUp (line 365)', () => {
+  beforeEach(() => {
+    buildMenus();
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+      value: vi.fn(),
+      configurable: true,
+    });
+    Object.defineProperty(window, 'electronAPI', {
+      value: {
+        openTerminal: vi.fn().mockResolvedValue({ success: true }),
+        getItemProperties: vi.fn().mockResolvedValue({ success: true, properties: {} }),
+      },
+      configurable: true,
+      writable: true,
+    });
+  });
+
+  it('ArrowDown advances focus index via setFocusIdx callback', () => {
+    const deps = createDeps();
+    const ctrl = createContextMenuController(deps as any);
+    const file = { path: '/tmp/a.txt', name: 'a.txt', isDirectory: false } as FileItem;
+    ctrl.showContextMenu(5, 5, file);
+
+    const handled = ctrl.handleKeyboardNavigation(
+      new KeyboardEvent('keydown', { key: 'ArrowDown' })
+    );
+    expect(handled).toBe(true);
+
+    const contextMenu = document.getElementById('context-menu') as HTMLElement;
+    const focused = contextMenu.querySelectorAll('.context-menu-item.focused');
+    expect(focused.length).toBe(1);
+  });
+
+  it('ArrowUp moves focus backwards via setFocusIdx callback', () => {
+    const deps = createDeps();
+    const ctrl = createContextMenuController(deps as any);
+    const file = { path: '/tmp/a.txt', name: 'a.txt', isDirectory: false } as FileItem;
+    ctrl.showContextMenu(5, 5, file);
+
+    ctrl.handleKeyboardNavigation(new KeyboardEvent('keydown', { key: 'ArrowDown' }));
+    ctrl.handleKeyboardNavigation(new KeyboardEvent('keydown', { key: 'ArrowDown' }));
+
+    const handled = ctrl.handleKeyboardNavigation(new KeyboardEvent('keydown', { key: 'ArrowUp' }));
+    expect(handled).toBe(true);
+  });
+
+  it('ArrowRight activates submenu on has-submenu item', () => {
+    const deps = createDeps();
+    const ctrl = createContextMenuController(deps as any);
+    const file = { path: '/tmp/a.txt', name: 'a.txt', isDirectory: false } as FileItem;
+    ctrl.showContextMenu(5, 5, file);
+
+    const contextMenu = document.getElementById('context-menu') as HTMLElement;
+    const allItems = Array.from(contextMenu.querySelectorAll('.context-menu-item')).filter((el) => {
+      const parent = (el as HTMLElement).parentElement;
+      return !parent?.classList.contains('context-submenu');
+    });
+    const submenuIdx = allItems.findIndex((el) => el.classList.contains('has-submenu'));
+
+    for (let i = 0; i < submenuIdx; i++) {
+      ctrl.handleKeyboardNavigation(new KeyboardEvent('keydown', { key: 'ArrowDown' }));
+    }
+
+    const handled = ctrl.handleKeyboardNavigation(
+      new KeyboardEvent('keydown', { key: 'ArrowRight' })
+    );
+    expect(handled).toBe(true);
+
+    const submenu = contextMenu.querySelector('.context-submenu') as HTMLElement;
+    expect(submenu.style.display).toBe('block');
+  });
+
+  it('ArrowRight returns true even when focused item is not a submenu', () => {
+    const deps = createDeps();
+    const ctrl = createContextMenuController(deps as any);
+    const file = { path: '/tmp/a.txt', name: 'a.txt', isDirectory: false } as FileItem;
+    ctrl.showContextMenu(5, 5, file);
+
+    const handled = ctrl.handleKeyboardNavigation(
+      new KeyboardEvent('keydown', { key: 'ArrowRight' })
+    );
+    expect(handled).toBe(true);
+  });
+});
+
+describe('handleKeyboardNavigation - empty space context menu (lines 371-383)', () => {
+  beforeEach(() => {
+    buildMenus();
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+      value: vi.fn(),
+      configurable: true,
+    });
+    Object.defineProperty(window, 'electronAPI', {
+      value: {
+        openTerminal: vi.fn().mockResolvedValue({ success: true }),
+        getItemProperties: vi.fn().mockResolvedValue({ success: true, properties: {} }),
+      },
+      configurable: true,
+      writable: true,
+    });
+  });
+
+  it('ArrowDown advances focus in empty space context menu', () => {
+    const deps = createDeps();
+    const ctrl = createContextMenuController(deps as any);
+    ctrl.showEmptySpaceContextMenu(10, 10);
+
+    const handled = ctrl.handleKeyboardNavigation(
+      new KeyboardEvent('keydown', { key: 'ArrowDown' })
+    );
+    expect(handled).toBe(true);
+
+    const emptyMenu = document.getElementById('empty-space-context-menu') as HTMLElement;
+    const focused = emptyMenu.querySelectorAll('.context-menu-item.focused');
+    expect(focused.length).toBe(1);
+  });
+
+  it('ArrowUp moves focus backwards in empty space context menu', () => {
+    const deps = createDeps();
+    const ctrl = createContextMenuController(deps as any);
+    ctrl.showEmptySpaceContextMenu(10, 10);
+
+    ctrl.handleKeyboardNavigation(new KeyboardEvent('keydown', { key: 'ArrowDown' }));
+
+    const handled = ctrl.handleKeyboardNavigation(new KeyboardEvent('keydown', { key: 'ArrowUp' }));
+    expect(handled).toBe(true);
+  });
+
+  it('Enter clicks focused item in empty space context menu', () => {
+    const deps = createDeps();
+    const ctrl = createContextMenuController(deps as any);
+    ctrl.showEmptySpaceContextMenu(10, 10);
+
+    const emptyMenu = document.getElementById('empty-space-context-menu') as HTMLElement;
+    const firstItem = emptyMenu.querySelector('.context-menu-item') as HTMLElement;
+    const clickSpy = vi.fn();
+    firstItem.addEventListener('click', clickSpy);
+
+    const handled = ctrl.handleKeyboardNavigation(new KeyboardEvent('keydown', { key: 'Enter' }));
+    expect(handled).toBe(true);
+    expect(clickSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('ArrowRight is not handled for empty space menu (no submenu)', () => {
+    const deps = createDeps();
+    const ctrl = createContextMenuController(deps as any);
+    ctrl.showEmptySpaceContextMenu(10, 10);
+
+    const handled = ctrl.handleKeyboardNavigation(
+      new KeyboardEvent('keydown', { key: 'ArrowRight' })
+    );
+    expect(handled).toBe(false);
+  });
+});
+
+describe('handleKeyboardNavigation - returns false when no menu is open (line 394)', () => {
+  beforeEach(() => {
+    buildMenus();
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+      value: vi.fn(),
+      configurable: true,
+    });
+    Object.defineProperty(window, 'electronAPI', {
+      value: {
+        openTerminal: vi.fn().mockResolvedValue({ success: true }),
+        getItemProperties: vi.fn().mockResolvedValue({ success: true, properties: {} }),
+      },
+      configurable: true,
+      writable: true,
+    });
+  });
+
+  it('returns false for ArrowDown when neither menu is open', () => {
+    const deps = createDeps();
+    const ctrl = createContextMenuController(deps as any);
+    const handled = ctrl.handleKeyboardNavigation(
+      new KeyboardEvent('keydown', { key: 'ArrowDown' })
+    );
+    expect(handled).toBe(false);
+  });
+
+  it('returns false for Enter when neither menu is open', () => {
+    const deps = createDeps();
+    const ctrl = createContextMenuController(deps as any);
+    const handled = ctrl.handleKeyboardNavigation(new KeyboardEvent('keydown', { key: 'Enter' }));
+    expect(handled).toBe(false);
+  });
+
+  it('returns false after both menus are hidden', () => {
+    const deps = createDeps();
+    const ctrl = createContextMenuController(deps as any);
+    const file = { path: '/tmp/a.txt', name: 'a.txt', isDirectory: false } as FileItem;
+
+    ctrl.showContextMenu(5, 5, file);
+    ctrl.hideContextMenu();
+
+    const handled = ctrl.handleKeyboardNavigation(new KeyboardEvent('keydown', { key: 'Tab' }));
+    expect(handled).toBe(false);
+  });
+});
+
+describe('getContextMenuData (line 394)', () => {
+  beforeEach(() => {
+    buildMenus();
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+      value: vi.fn(),
+      configurable: true,
+    });
+    Object.defineProperty(window, 'electronAPI', {
+      value: {
+        openTerminal: vi.fn().mockResolvedValue({ success: true }),
+        getItemProperties: vi.fn().mockResolvedValue({ success: true, properties: {} }),
+      },
+      configurable: true,
+      writable: true,
+    });
+  });
+
+  it('returns null initially', () => {
+    const deps = createDeps();
+    const ctrl = createContextMenuController(deps as any);
+    expect(ctrl.getContextMenuData()).toBeNull();
+  });
+
+  it('returns the item after showContextMenu', () => {
+    const deps = createDeps();
+    const ctrl = createContextMenuController(deps as any);
+    const item = { path: '/tmp/file.txt', name: 'file.txt', isDirectory: false } as FileItem;
+    ctrl.showContextMenu(10, 20, item);
+    expect(ctrl.getContextMenuData()).toBe(item);
+  });
+
+  it('returns null after hideContextMenu', () => {
+    const deps = createDeps();
+    const ctrl = createContextMenuController(deps as any);
+    const item = { path: '/tmp/file.txt', name: 'file.txt', isDirectory: false } as FileItem;
+    ctrl.showContextMenu(10, 20, item);
+    ctrl.hideContextMenu();
+    expect(ctrl.getContextMenuData()).toBeNull();
   });
 });
