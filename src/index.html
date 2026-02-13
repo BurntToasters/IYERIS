@@ -3126,11 +3126,23 @@
           </div>
         </div>
         <div class="modal-footer settings-footer">
-          <div class="settings-footer-left"></div>
+          <div class="settings-footer-left">
+            <div id="update-download-status" class="update-download-status" hidden></div>
+          </div>
           <div class="settings-footer-right">
             <button class="modal-button" id="check-updates-btn">
               <img src="../assets/twemoji/1f503.svg" class="twemoji" alt="🔃" draggable="false" />
               Check for Updates
+            </button>
+            <button
+              class="modal-button"
+              id="toggle-update-status-btn"
+              aria-controls="update-download-status"
+              aria-expanded="false"
+              hidden
+            >
+              <img src="../assets/twemoji/1f50d.svg" class="twemoji" alt="🔍" draggable="false" />
+              Show Download Status
             </button>
             <button class="modal-button" id="reset-settings-btn">Reset to Default</button>
             <button class="modal-button primary" id="save-settings-btn">Save</button>

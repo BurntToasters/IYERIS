@@ -1035,6 +1035,8 @@ const {
   updateCustomThemeUI,
 } = themeEditorController;
 
+let onSettingsModalHide = () => {};
+
 const settingsModalController = createSettingsModalController({
   getCurrentSettings: () => currentSettings,
   activateModal,
@@ -1051,6 +1053,7 @@ const settingsModalController = createSettingsModalController({
   clearSettingsChanged,
   initSettingsChangeTracking,
   stopIndexStatusPolling,
+  onSettingsModalHide: () => onSettingsModalHide(),
 });
 
 const { showSettingsModal, hideSettingsModal } = settingsModalController;
@@ -1117,7 +1120,9 @@ const updateActionsController = createUpdateActionsController({
   onModalClose: deactivateModal,
 });
 
-const { restartAsAdmin, checkForUpdates } = updateActionsController;
+const { restartAsAdmin, checkForUpdates, handleUpdateDownloaded, handleSettingsModalClosed } =
+  updateActionsController;
+onSettingsModalHide = handleSettingsModalClosed;
 
 async function loadSettings(): Promise<void> {
   const [result, sharedClipboard] = await Promise.all([
@@ -1893,6 +1898,12 @@ async function init() {
       }
     });
     ipcCleanupFunctions.push(cleanupUpdateAvailable);
+
+    const cleanupUpdateDownloaded = window.electronAPI.onUpdateDownloaded((info) => {
+      console.log('Update downloaded:', info);
+      handleUpdateDownloaded(info);
+    });
+    ipcCleanupFunctions.push(cleanupUpdateDownloaded);
 
     const cleanupSystemResumed = window.electronAPI.onSystemResumed(() => {
       console.log('[Renderer] System resumed from sleep, refreshing view...');

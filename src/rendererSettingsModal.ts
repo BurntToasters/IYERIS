@@ -16,6 +16,7 @@ interface SettingsModalDeps {
   clearSettingsChanged: () => void;
   initSettingsChangeTracking: () => void;
   stopIndexStatusPolling: () => void;
+  onSettingsModalHide?: () => void;
 }
 
 export function createSettingsModalController(deps: SettingsModalDeps) {
@@ -374,6 +375,7 @@ export function createSettingsModalController(deps: SettingsModalDeps) {
       deps.deactivateModal(settingsModal);
     }
     deps.stopIndexStatusPolling();
+    deps.onSettingsModalHide?.();
   }
 
   return { showSettingsModal, hideSettingsModal };

@@ -145,6 +145,12 @@ const electronAPI: ElectronAPI = {
     ipcRenderer.on('update-available', handler);
     return () => ipcRenderer.removeListener('update-available', handler);
   },
+  onUpdateDownloaded: (callback: (info: { version: string }) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, info: { version: string }) =>
+      callback(info);
+    ipcRenderer.on('update-downloaded', handler);
+    return () => ipcRenderer.removeListener('update-downloaded', handler);
+  },
   undoAction: () => ipcRenderer.invoke('undo-action'),
   redoAction: () => ipcRenderer.invoke('redo-action'),
   getUndoRedoState: () => ipcRenderer.invoke('get-undo-redo-state'),

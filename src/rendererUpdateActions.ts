@@ -23,6 +23,92 @@ type UpdateActionsDeps = {
 };
 
 export function createUpdateActionsController(deps: UpdateActionsDeps) {
+  let isDownloading = false;
+  let progressCleanup: (() => void) | null = null;
+  let downloadStatusVisible = false;
+  let latestDownloadStatus = '';
+
+  function getCheckUpdatesButton(): HTMLButtonElement | null {
+    return document.getElementById('check-updates-btn') as HTMLButtonElement | null;
+  }
+
+  function getStatusToggleButton(): HTMLButtonElement | null {
+    return document.getElementById('toggle-update-status-btn') as HTMLButtonElement | null;
+  }
+
+  function getDownloadStatusElement(): HTMLElement | null {
+    return document.getElementById('update-download-status');
+  }
+
+  function stopProgressListener(): void {
+    if (!progressCleanup) return;
+    progressCleanup();
+    progressCleanup = null;
+  }
+
+  function setDownloadStatus(message: string): void {
+    latestDownloadStatus = message;
+    const statusEl = getDownloadStatusElement();
+    if (statusEl && downloadStatusVisible) {
+      statusEl.textContent = message;
+    }
+  }
+
+  function updateStatusToggleButtonLabel(): void {
+    const toggleBtn = getStatusToggleButton();
+    if (!toggleBtn) return;
+
+    const icon = downloadStatusVisible ? 0x1f441 : 0x1f50d;
+    const label = downloadStatusVisible ? 'Hide Download Status' : 'Show Download Status';
+    toggleBtn.innerHTML = `${twemojiImg(String.fromCodePoint(icon), 'twemoji')} ${label}`;
+    toggleBtn.setAttribute('aria-expanded', String(downloadStatusVisible));
+  }
+
+  function setDownloadStatusVisibility(visible: boolean): void {
+    downloadStatusVisible = visible;
+    const statusEl = getDownloadStatusElement();
+    if (statusEl) {
+      statusEl.hidden = !visible;
+      statusEl.textContent = visible ? latestDownloadStatus : '';
+    }
+    updateStatusToggleButtonLabel();
+  }
+
+  function ensureStatusToggleBound(): void {
+    const toggleBtn = getStatusToggleButton();
+    if (!toggleBtn || toggleBtn.dataset.bound === 'true') return;
+
+    toggleBtn.dataset.bound = 'true';
+    toggleBtn.addEventListener('click', () => {
+      setDownloadStatusVisibility(!downloadStatusVisible);
+    });
+  }
+
+  function showDownloadStatusControls(): void {
+    ensureStatusToggleBound();
+    const toggleBtn = getStatusToggleButton();
+    if (!toggleBtn) return;
+    toggleBtn.hidden = false;
+    updateStatusToggleButtonLabel();
+  }
+
+  function setCheckUpdatesButtonDefault(): void {
+    const checkUpdatesBtn = getCheckUpdatesButton();
+    if (!checkUpdatesBtn) return;
+    checkUpdatesBtn.innerHTML = `${twemojiImg(String.fromCodePoint(0x1f504), 'twemoji')} Check for Updates`;
+    checkUpdatesBtn.classList.remove('primary');
+    checkUpdatesBtn.disabled = false;
+  }
+
+  function clearDownloadStatusUi(): void {
+    latestDownloadStatus = '';
+    setDownloadStatusVisibility(false);
+    const toggleBtn = getStatusToggleButton();
+    if (toggleBtn) {
+      toggleBtn.hidden = true;
+    }
+  }
+
   async function restartAsAdmin(): Promise<void> {
     const confirmed = await deps.showDialog(
       'Restart as Administrator',
@@ -44,9 +130,21 @@ export function createUpdateActionsController(deps: UpdateActionsDeps) {
   }
 
   async function checkForUpdates(): Promise<void> {
-    const btn = document.getElementById('check-updates-btn') as HTMLButtonElement | null;
+    const btn = getCheckUpdatesButton();
     if (!btn) return;
 
+    if (isDownloading) {
+      showDownloadStatusControls();
+      setDownloadStatusVisibility(true);
+      deps.showToast(
+        'An update is already being downloaded in the background.',
+        'Download in Progress',
+        'info'
+      );
+      return;
+    }
+
+    let startedBackgroundDownload = false;
     const originalHTML = btn.innerHTML;
     btn.innerHTML = `${twemojiImg(String.fromCodePoint(0x1f504), 'twemoji')} Checking...`;
     btn.disabled = true;
@@ -83,13 +181,13 @@ export function createUpdateActionsController(deps: UpdateActionsDeps) {
         if (result.hasUpdate) {
           const updateTitle = result.isBeta ? 'Beta Update Available' : 'Update Available';
           const updateMessage = result.isBeta
-            ? `[BETA CHANNEL] A new beta build is available!\n\nCurrent Version: ${result.currentVersion}\nNew Version: ${result.latestVersion}\n\nWould you like to download and install the update?`
-            : `A new version is available!\n\nCurrent Version: ${result.currentVersion}\nNew Version: ${result.latestVersion}\n\nWould you like to download and install the update?`;
+            ? `[BETA CHANNEL] A new beta build is available!\n\nCurrent Version: ${result.currentVersion}\nNew Version: ${result.latestVersion}\n\nWould you like to download the update in the background?`
+            : `A new version is available!\n\nCurrent Version: ${result.currentVersion}\nNew Version: ${result.latestVersion}\n\nWould you like to download the update in the background?`;
 
           const confirmed = await deps.showDialog(updateTitle, updateMessage, 'success', true);
 
           if (confirmed) {
-            await downloadAndInstallUpdate();
+            startedBackgroundDownload = startBackgroundDownload();
           }
         } else if (result.isBeta) {
           await deps.showDialog(
@@ -122,117 +220,104 @@ export function createUpdateActionsController(deps: UpdateActionsDeps) {
         false
       );
     } finally {
-      btn.innerHTML = originalHTML;
       btn.disabled = false;
+      if (!startedBackgroundDownload) {
+        btn.innerHTML = originalHTML;
+      }
     }
   }
 
-  async function downloadAndInstallUpdate(): Promise<void> {
-    const dialogModal = document.getElementById('dialog-modal') as HTMLElement | null;
-    const dialogTitle = document.getElementById('dialog-title') as HTMLElement | null;
-    const dialogContent = document.getElementById('dialog-content') as HTMLElement | null;
-    const dialogIcon = document.getElementById('dialog-icon') as HTMLElement | null;
-    const dialogOk = document.getElementById('dialog-ok') as HTMLButtonElement | null;
-    const dialogCancel = document.getElementById('dialog-cancel') as HTMLButtonElement | null;
+  function startBackgroundDownload(): boolean {
+    if (isDownloading) return false;
+    isDownloading = true;
+    showDownloadStatusControls();
+    setDownloadStatusVisibility(false);
+    setDownloadStatus('Preparing download...');
 
-    if (
-      !dialogModal ||
-      !dialogTitle ||
-      !dialogContent ||
-      !dialogIcon ||
-      !dialogOk ||
-      !dialogCancel
-    ) {
-      await deps.showDialog(
-        'Update Error',
-        'Update dialog elements were not found.',
-        'error',
-        false
-      );
-      return;
+    deps.showToast('Downloading update in the background...', 'Update', 'info');
+
+    const checkUpdatesBtn = getCheckUpdatesButton();
+    if (checkUpdatesBtn) {
+      checkUpdatesBtn.classList.remove('primary');
+      checkUpdatesBtn.disabled = false;
+      checkUpdatesBtn.innerHTML = `${twemojiImg(String.fromCodePoint(0x2b07), 'twemoji')} Downloading...`;
     }
 
-    dialogIcon.textContent = '⬇️';
-    dialogTitle.textContent = 'Downloading Update';
-    dialogContent.textContent = 'Preparing download... 0%';
-    dialogOk.style.display = 'none';
-    dialogCancel.style.display = 'none';
-    dialogModal.style.display = 'flex';
-    deps.onModalOpen(dialogModal);
-
-    const cleanupProgress = window.electronAPI.onUpdateDownloadProgress((progress) => {
-      const percent = progress.percent.toFixed(1);
+    progressCleanup = window.electronAPI.onUpdateDownloadProgress((progress) => {
+      const percent = Math.round(progress.percent);
       const transferred = deps.formatFileSize(progress.transferred);
       const total = deps.formatFileSize(progress.total);
       const speed = deps.formatFileSize(progress.bytesPerSecond);
-
-      dialogContent.textContent = `Downloading update...\n\n${percent}% (${transferred} / ${total})\nSpeed: ${speed}/s`;
+      setDownloadStatus(
+        `Downloading update: ${percent}% (${transferred} / ${total}) at ${speed}/s`
+      );
+      if (checkUpdatesBtn) {
+        checkUpdatesBtn.innerHTML = `${twemojiImg(String.fromCodePoint(0x2b07), 'twemoji')} Downloading ${percent}%`;
+      }
     });
 
-    try {
-      const downloadResult = await window.electronAPI.downloadUpdate();
-      cleanupProgress();
+    window.electronAPI
+      .downloadUpdate()
+      .then((result) => {
+        stopProgressListener();
+        isDownloading = false;
 
-      if (!downloadResult.success) {
-        dialogModal.style.display = 'none';
-        deps.onModalClose(dialogModal);
-        await deps.showDialog(
-          'Download Failed',
-          `Failed to download update: ${downloadResult.error}`,
-          'error',
-          false
-        );
-        return;
-      }
+        if (!result.success) {
+          const errorMessage = result.error || 'Failed to download update.';
+          setDownloadStatus(`Download failed: ${errorMessage}`);
+          setDownloadStatusVisibility(true);
+          deps.showToast(errorMessage, 'Download Failed', 'error');
+          setCheckUpdatesButtonDefault();
+          return;
+        }
 
-      dialogIcon.innerHTML = twemojiImg(String.fromCodePoint(0x2705), 'twemoji-large');
-      dialogTitle.textContent = 'Update Downloaded';
-      dialogContent.textContent =
-        'The update has been downloaded successfully.\n\nThe application will restart to install the update.';
-      dialogOk.style.display = 'block';
-      dialogOk.textContent = 'Install & Restart';
-      dialogCancel.style.display = 'block';
-      dialogCancel.textContent = 'Later';
-
-      const installPromise = new Promise<boolean>((resolve) => {
-        const cleanup = () => {
-          dialogOk.onclick = null;
-          dialogCancel.onclick = null;
-        };
-
-        dialogOk.onclick = () => {
-          cleanup();
-          resolve(true);
-        };
-
-        dialogCancel.onclick = () => {
-          cleanup();
-          resolve(false);
-        };
+        setDownloadStatus('Finalizing update package...');
+      })
+      .catch((error) => {
+        stopProgressListener();
+        isDownloading = false;
+        const errorMessage = getErrorMessage(error);
+        setDownloadStatus(`Download failed: ${errorMessage}`);
+        setDownloadStatusVisibility(true);
+        deps.showToast(errorMessage, 'Download Failed', 'error');
+        setCheckUpdatesButtonDefault();
       });
+    return true;
+  }
 
-      const shouldInstall = await installPromise;
-      dialogModal.style.display = 'none';
-      deps.onModalClose(dialogModal);
+  async function handleUpdateDownloaded(info: { version: string }): Promise<void> {
+    stopProgressListener();
+    isDownloading = false;
+    showDownloadStatusControls();
+    setDownloadStatus(`Update v${info.version} is downloaded and ready to install.`);
 
-      if (shouldInstall) {
-        await window.electronAPI.installUpdate();
-      }
-    } catch (error) {
-      cleanupProgress();
-      dialogModal.style.display = 'none';
-      deps.onModalClose(dialogModal);
-      await deps.showDialog(
-        'Update Error',
-        `An error occurred during the update process: ${getErrorMessage(error)}`,
-        'error',
-        false
-      );
+    const checkUpdatesBtn = getCheckUpdatesButton();
+    if (checkUpdatesBtn) {
+      checkUpdatesBtn.innerHTML = `${twemojiImg(String.fromCodePoint(0x2705), 'twemoji')} Update Ready`;
+      checkUpdatesBtn.classList.add('primary');
     }
+
+    const shouldRestart = await deps.showDialog(
+      'Update Ready',
+      `Update v${info.version} has been downloaded and is ready to install.\n\nWould you like to restart now to apply the update?`,
+      'success',
+      true
+    );
+
+    if (shouldRestart) {
+      await window.electronAPI.installUpdate();
+    }
+  }
+
+  function handleSettingsModalClosed(): void {
+    if (isDownloading) return;
+    clearDownloadStatusUi();
   }
 
   return {
     restartAsAdmin,
     checkForUpdates,
+    handleUpdateDownloaded,
+    handleSettingsModalClosed,
   };
 }
