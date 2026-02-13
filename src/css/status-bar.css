@@ -69,7 +69,7 @@
 .status-separator {
   width: 1px;
   height: 12px;
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--separator, rgba(255, 255, 255, 0.1));
   opacity: 1;
 }
 
@@ -93,6 +93,14 @@
 .status-version:hover {
   background: rgba(255, 255, 255, 0.1);
   color: var(--text-primary);
+}
+
+body.theme-light .status-version {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+body.theme-light .status-version:hover {
+  background: rgba(0, 0, 0, 0.1);
 }
 
 .status-operation {
@@ -136,6 +144,14 @@
 
 .status-view-mode:hover {
   background: rgba(255, 255, 255, 0.08);
+}
+
+body.theme-light .status-view-mode {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+body.theme-light .status-view-mode:hover {
+  background: rgba(0, 0, 0, 0.08);
 }
 
 .status-support-btn {
@@ -195,10 +211,10 @@
   align-items: center;
   gap: 4px;
   padding: 2px 8px;
-  background: rgba(180, 142, 173, 0.15);
+  background: rgba(var(--accent-rgb), 0.15);
   border-radius: 4px;
   font-size: 10.5px;
-  color: #b48ead;
+  color: var(--accent-color);
   font-family: var(--font-mono);
   margin-right: 8px;
 }

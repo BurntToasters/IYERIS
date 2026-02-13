@@ -1,10 +1,16 @@
 import { captureSpawnOutput } from './processUtils';
-import { getErrorMessage } from './security';
+import { isPathSafe, getErrorMessage } from './security';
+import { logger } from './utils/logger';
+
+const SAFE_UNC_RE = /^\\\\[^\\]+\\[^\\]+(\\)?$/;
 
 export async function getDiskSpace(
   drivePath: string
 ): Promise<{ success: boolean; total?: number; free?: number; error?: string }> {
-  console.log('[Main] get-disk-space called with path:', drivePath, 'Platform:', process.platform);
+  logger.debug('[Main] get-disk-space called with path:', drivePath, 'Platform:', process.platform);
+  if (!isPathSafe(drivePath)) {
+    return { success: false, error: 'Invalid drive path' };
+  }
   try {
     if (process.platform === 'win32') {
       const normalized = drivePath.replace(/\//g, '\\');
@@ -12,18 +18,21 @@ export async function getDiskSpace(
 
       let psCommand = '';
       if (isUnc) {
+        if (!SAFE_UNC_RE.test(normalized)) {
+          return { success: false, error: 'Invalid UNC path format' };
+        }
         const uncRoot = normalized.endsWith('\\') ? normalized : normalized + '\\';
-        const escapedRoot = uncRoot.replace(/'/g, "''");
-        console.log('[Main] Getting disk space for UNC path:', uncRoot);
+        const escapedRoot = uncRoot.replace(/'/g, "''").replace(/[`$]/g, '');
+        logger.debug('[Main] Getting disk space for UNC path:', uncRoot);
         psCommand = `Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Root -eq '${escapedRoot}' } | Select-Object @{Name='Free';Expression={$_.Free}}, @{Name='Used';Expression={$_.Used}} | ConvertTo-Json`;
       } else {
         const driveLetter = normalized.substring(0, 2);
         const driveChar = driveLetter.charAt(0).toUpperCase();
         if (!/^[A-Z]$/.test(driveChar)) {
-          console.error('[Main] Invalid drive letter:', driveChar);
+          logger.error('[Main] Invalid drive letter:', driveChar);
           return { success: false, error: 'Invalid drive letter' };
         }
-        console.log('[Main] Getting disk space for drive:', driveChar);
+        logger.debug('[Main] Getting disk space for drive:', driveChar);
         psCommand = `Get-PSDrive -Name ${driveChar} | Select-Object @{Name='Free';Expression={$_.Free}}, @{Name='Used';Expression={$_.Used}} | ConvertTo-Json`;
       }
 
@@ -37,10 +46,10 @@ export async function getDiskSpace(
         return { success: false, error: 'Disk space query timed out' };
       }
       if (code !== 0) {
-        console.error('[Main] PowerShell error:', stderr);
+        logger.error('[Main] PowerShell error:', stderr);
         return { success: false, error: 'PowerShell command failed' };
       }
-      console.log('[Main] PowerShell output:', stdout);
+      logger.debug('[Main] PowerShell output:', stdout);
       try {
         const trimmed = stdout.trim();
         if (!trimmed) {
@@ -54,24 +63,22 @@ export async function getDiskSpace(
         const free = parseInt(entry.Free);
         const used = parseInt(entry.Used);
         const total = free + used;
-        console.log('[Main] Success - Free:', free, 'Used:', used, 'Total:', total);
+        logger.debug('[Main] Success - Free:', free, 'Used:', used, 'Total:', total);
         return { success: true, free, total };
       } catch (parseError) {
-        console.error('[Main] JSON parse error:', parseError);
+        logger.error('[Main] JSON parse error:', parseError);
         return { success: false, error: 'Could not parse disk info' };
       }
     } else if (process.platform === 'darwin' || process.platform === 'linux') {
-      const { code, stdout, stderr, timedOut } = await captureSpawnOutput(
-        'df',
-        ['-k', '--', drivePath],
-        5000,
-        { shell: false }
-      );
+      const dfArgs = process.platform === 'darwin' ? ['-k', drivePath] : ['-k', '--', drivePath];
+      const { code, stdout, stderr, timedOut } = await captureSpawnOutput('df', dfArgs, 5000, {
+        shell: false,
+      });
       if (timedOut) {
         return { success: false, error: 'Disk space query timed out' };
       }
       if (code !== 0) {
-        console.error('[Main] df error:', stderr);
+        logger.error('[Main] df error:', stderr);
         return { success: false, error: 'df command failed' };
       }
       const lines = stdout.trim().split('\n');

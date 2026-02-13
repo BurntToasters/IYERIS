@@ -175,13 +175,16 @@ function debouncedSaveSettings(delay: number = SETTINGS_SAVE_DEBOUNCE_MS) {
   if (settingsSaveTimeout) {
     clearTimeout(settingsSaveTimeout);
   }
-  settingsSaveTimeout = setTimeout(() => {
+  const timeoutId = setTimeout(() => {
     saveSettingsWithTimestamp(currentSettings)
       .catch(ignoreError)
       .finally(() => {
-        settingsSaveTimeout = null;
+        if (settingsSaveTimeout === timeoutId) {
+          settingsSaveTimeout = null;
+        }
       });
   }, delay);
+  settingsSaveTimeout = timeoutId;
 }
 
 type ViewMode = 'grid' | 'list' | 'column';
@@ -1065,6 +1068,7 @@ const settingsActionsController = createSettingsActionsController({
   },
   saveSettingsWithTimestamp,
   showToast,
+  showConfirm,
   loadBookmarks,
   updateThumbnailCacheSize: thumbnails.updateThumbnailCacheSize,
   clearThumbnailCacheLocal: thumbnails.clearThumbnailCache,

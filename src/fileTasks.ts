@@ -204,12 +204,11 @@ export class FileTaskManager extends EventEmitter {
     });
 
     const index = this.workers.indexOf(workerState);
-    const replacement = this.createWorker();
-    if (index >= 0) {
-      this.workers[index] = replacement;
-    } else {
-      this.workers.push(replacement);
+    if (index < 0) {
+      return;
     }
+    const replacement = this.createWorker();
+    this.workers[index] = replacement;
     this.drain();
   }
 

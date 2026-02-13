@@ -120,7 +120,7 @@ describe('gitHandlers', () => {
     });
   });
 
-  it('returns empty statuses on timeout/error during git status', async () => {
+  it('returns error on timeout during git status', async () => {
     setExecResponses([{ stdout: '.git\n' }]);
     const child = new FakeChildProcess();
     vi.mocked(spawnWithTimeout).mockReturnValue({
@@ -134,7 +134,7 @@ describe('gitHandlers', () => {
 
     const result = await promise;
 
-    expect(result).toEqual({ success: true, isGitRepo: true, statuses: [] });
+    expect(result).toEqual({ success: false, error: 'Git status timed out' });
   });
 
   it('returns branch name for attached HEAD', async () => {

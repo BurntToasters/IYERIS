@@ -293,7 +293,11 @@ export function setupSettingsHandlers(createTray: () => Promise<void>): void {
       const allWindows = BrowserWindow.getAllWindows();
       for (const win of allWindows) {
         if (!win.isDestroyed() && win !== senderWindow) {
-          win.webContents.send('clipboard-changed', getSharedClipboard());
+          try {
+            win.webContents.send('clipboard-changed', getSharedClipboard());
+          } catch (sendError) {
+            ignoreError(sendError);
+          }
         }
       }
     }

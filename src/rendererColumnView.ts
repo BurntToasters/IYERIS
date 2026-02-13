@@ -161,6 +161,7 @@ export function createColumnViewController(deps: ColumnViewDeps) {
       handle.classList.remove('resizing');
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
+      window.removeEventListener('blur', onMouseUp);
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
     };
@@ -174,6 +175,7 @@ export function createColumnViewController(deps: ColumnViewDeps) {
       document.body.style.userSelect = 'none';
       document.addEventListener('mousemove', onMouseMove);
       document.addEventListener('mouseup', onMouseUp);
+      window.addEventListener('blur', onMouseUp);
     });
 
     pane.appendChild(handle);
@@ -235,13 +237,16 @@ export function createColumnViewController(deps: ColumnViewDeps) {
       }
       deps.consumeEvent(e);
 
-      if (!e.dataTransfer!.types.includes('text/plain') && e.dataTransfer!.files.length === 0) {
-        e.dataTransfer!.dropEffect = 'none';
+      if (
+        !e.dataTransfer ||
+        (!e.dataTransfer.types.includes('text/plain') && e.dataTransfer.files.length === 0)
+      ) {
+        if (e.dataTransfer) e.dataTransfer.dropEffect = 'none';
         return;
       }
 
       const operation = deps.getDragOperation(e);
-      e.dataTransfer!.dropEffect = operation;
+      e.dataTransfer.dropEffect = operation;
       pane.classList.add('drag-over');
       deps.showDropIndicator(operation, columnPath, e.clientX, e.clientY);
     });
@@ -402,8 +407,10 @@ export function createColumnViewController(deps: ColumnViewDeps) {
             }
 
             const selectedPaths = Array.from(deps.getSelectedItems());
-            e.dataTransfer!.effectAllowed = 'copyMove';
-            e.dataTransfer!.setData('text/plain', JSON.stringify(selectedPaths));
+            if (e.dataTransfer) {
+              e.dataTransfer.effectAllowed = 'copyMove';
+              e.dataTransfer.setData('text/plain', JSON.stringify(selectedPaths));
+            }
 
             window.electronAPI.setDragData(selectedPaths);
 
@@ -425,15 +432,15 @@ export function createColumnViewController(deps: ColumnViewDeps) {
               deps.consumeEvent(e);
 
               if (
-                !e.dataTransfer!.types.includes('text/plain') &&
-                e.dataTransfer!.files.length === 0
+                !e.dataTransfer ||
+                (!e.dataTransfer.types.includes('text/plain') && e.dataTransfer.files.length === 0)
               ) {
-                e.dataTransfer!.dropEffect = 'none';
+                if (e.dataTransfer) e.dataTransfer.dropEffect = 'none';
                 return;
               }
 
               const operation = deps.getDragOperation(e);
-              e.dataTransfer!.dropEffect = operation;
+              e.dataTransfer.dropEffect = operation;
               item.classList.add('drag-over');
               deps.showDropIndicator(operation, fileItem.path, e.clientX, e.clientY);
               deps.scheduleSpringLoad(item, () => {

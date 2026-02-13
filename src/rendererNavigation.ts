@@ -200,8 +200,9 @@ export function createNavigationController(deps: NavigationDeps) {
       item.addEventListener('dragover', (e) => {
         e.preventDefault();
         e.stopPropagation();
+        if (!e.dataTransfer) return;
         const operation = deps.getDragOperation(e);
-        e.dataTransfer!.dropEffect = operation;
+        e.dataTransfer.dropEffect = operation;
         item.classList.add('drag-over');
         deps.showDropIndicator(operation, targetPath, e.clientX, e.clientY);
       });

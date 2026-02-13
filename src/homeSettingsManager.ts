@@ -101,8 +101,12 @@ export async function saveHomeSettings(settings: HomeSettings): Promise<ApiRespo
     }
   };
 
-  homeSaveLock = homeSaveLock.then(doSave, doSave) as unknown as Promise<void>;
-  return homeSaveLock as unknown as Promise<ApiResponse>;
+  const result = homeSaveLock.then(doSave, doSave);
+  homeSaveLock = result.then(
+    () => undefined,
+    () => undefined
+  );
+  return result;
 }
 
 export function setupHomeSettingsHandlers(): void {
@@ -135,7 +139,11 @@ export function setupHomeSettingsHandlers(): void {
         const savedSettings = cachedHomeSettings || settings;
         for (const win of allWindows) {
           if (!win.isDestroyed() && win !== senderWindow) {
-            win.webContents.send('home-settings-changed', savedSettings);
+            try {
+              win.webContents.send('home-settings-changed', savedSettings);
+            } catch (sendError) {
+              ignoreError(sendError);
+            }
           }
         }
       }

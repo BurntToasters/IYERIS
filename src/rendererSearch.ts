@@ -156,6 +156,10 @@ export function createSearchController(deps: SearchDeps) {
     if (!searchBarWrapper || !searchInput || !searchScopeToggle || !searchFiltersPanel) return;
     searchRequestId += 1;
     cancelActiveSearch();
+    if (searchDebounceTimeout) {
+      clearTimeout(searchDebounceTimeout);
+      searchDebounceTimeout = null;
+    }
     searchBarWrapper.style.display = 'none';
     searchInput.value = '';
     isSearchMode = false;

@@ -5,9 +5,19 @@ vi.mock('../processUtils', () => ({
 }));
 
 vi.mock('../security', () => ({
+  isPathSafe: vi.fn(() => true),
   getErrorMessage: vi.fn((error: unknown) =>
     error instanceof Error ? error.message : String(error)
   ),
+}));
+
+vi.mock('../utils/logger', () => ({
+  logger: {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  },
 }));
 
 import { captureSpawnOutput } from '../processUtils';
@@ -40,7 +50,8 @@ describe('getDiskSpace', () => {
     const result = await getDiskSpace('/tmp');
 
     expect(result).toEqual({ success: true, total: 102400, free: 61440 });
-    expect(captureSpawnOutput).toHaveBeenCalledWith('df', ['-k', '--', '/tmp'], 5000, {
+    const expectedArgs = process.platform === 'darwin' ? ['-k', '/tmp'] : ['-k', '--', '/tmp'];
+    expect(captureSpawnOutput).toHaveBeenCalledWith('df', expectedArgs, 5000, {
       shell: false,
     });
   });

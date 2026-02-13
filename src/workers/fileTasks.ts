@@ -11,6 +11,21 @@ import { calculateFolderSize, calculateChecksum } from './computeTasks';
 import { buildIndex, loadIndexFile, saveIndexFile } from './indexTasks';
 import { listDirectory } from './listDirectoryTask';
 
+process.on('uncaughtException', (error) => {
+  parentPort?.postMessage({
+    type: 'worker-error',
+    error: `Uncaught exception: ${error.message}`,
+  });
+});
+
+process.on('unhandledRejection', (reason) => {
+  const message = reason instanceof Error ? reason.message : String(reason);
+  parentPort?.postMessage({
+    type: 'worker-error',
+    error: `Unhandled rejection: ${message}`,
+  });
+});
+
 const TASK_TYPES = [
   'build-index',
   'search-files',

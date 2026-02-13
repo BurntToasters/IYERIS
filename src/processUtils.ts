@@ -39,14 +39,19 @@ export async function captureSpawnOutput(
   options: Parameters<typeof spawn>[2]
 ): Promise<SpawnCaptureResult> {
   const { child, timedOut } = spawnWithTimeout(command, args, timeoutMs, options);
+  const MAX_OUTPUT_BYTES = 10 * 1024 * 1024;
   let stdout = '';
   let stderr = '';
 
   child.stdout?.on('data', (data: Buffer) => {
-    stdout += data.toString();
+    if (stdout.length < MAX_OUTPUT_BYTES) {
+      stdout += data.toString();
+    }
   });
   child.stderr?.on('data', (data: Buffer) => {
-    stderr += data.toString();
+    if (stderr.length < MAX_OUTPUT_BYTES) {
+      stderr += data.toString();
+    }
   });
 
   const code = await new Promise<number | null>((resolve, reject) => {
@@ -68,5 +73,6 @@ export function launchDetached(
     detached: true,
     stdio: 'ignore',
   });
+  child.on('error', ignoreError);
   child.unref();
 }

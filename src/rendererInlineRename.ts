@@ -47,6 +47,7 @@ export function createInlineRenameController(deps: InlineRenameDeps) {
       const createdPath = result.path;
       await deps.navigateTo(currentPath);
       setTimeout(() => {
+        if (typeof document === 'undefined') return;
         const fileItems = document.querySelectorAll('.file-item');
         for (const item of Array.from(fileItems)) {
           const nameEl = item.querySelector('.file-name');
@@ -116,6 +117,10 @@ export function createInlineRenameController(deps: InlineRenameDeps) {
       if (newName && newName !== currentName) {
         const result = await window.electronAPI.renameItem(itemPath, newName);
         if (result.success) {
+          nameElement.style.display = '';
+          nameElement.textContent = newName;
+          input.remove();
+          fileItem.classList.remove('renaming');
           await deps.navigateTo(deps.getCurrentPath());
         } else {
           await deps.showAlert(result.error || 'Unknown error', 'Error Renaming', 'error');

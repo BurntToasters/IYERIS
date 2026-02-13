@@ -2,7 +2,7 @@
   padding: 10px 0;
   font-size: 12px;
   color: var(--text-secondary);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid var(--separator, rgba(255, 255, 255, 0.1));
   margin-bottom: 10px;
 }
 
@@ -22,7 +22,7 @@
 }
 
 .archive-entry:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--hover-color, rgba(255, 255, 255, 0.05));
 }
 
 .archive-icon {

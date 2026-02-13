@@ -14,6 +14,7 @@ const hoisted = vi.hoisted(() => ({
   fsUnlink: vi.fn(),
   fsMkdir: vi.fn(),
   fsWriteFile: vi.fn(),
+  fsReaddir: vi.fn(),
 }));
 
 vi.mock('electron', () => ({
@@ -35,6 +36,7 @@ vi.mock('fs', () => ({
     unlink: hoisted.fsUnlink,
     mkdir: hoisted.fsMkdir,
     writeFile: hoisted.fsWriteFile,
+    readdir: hoisted.fsReaddir,
   },
 }));
 
@@ -194,6 +196,7 @@ describe('setupUndoRedoHandlers', () => {
 
       hoisted.fsAccess.mockResolvedValue(undefined);
       hoisted.fsStat.mockResolvedValue({ isDirectory: () => true });
+      hoisted.fsReaddir.mockResolvedValue([]);
       hoisted.fsRm.mockResolvedValue(undefined);
 
       const handler = handlers.get('undo-action')!;

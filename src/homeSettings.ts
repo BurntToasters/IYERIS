@@ -70,7 +70,7 @@ export function sanitizeHomeSettings(
     clean.sectionOrder = sanitizeStringArray(raw.sectionOrder);
   }
   if (Array.isArray(raw.pinnedRecents)) {
-    clean.pinnedRecents = sanitizeStringArray(raw.pinnedRecents);
+    clean.pinnedRecents = sanitizeStringArray(raw.pinnedRecents).slice(0, 200);
   }
   if (Array.isArray(raw.sidebarQuickAccessOrder)) {
     clean.sidebarQuickAccessOrder = sanitizeStringArray(raw.sidebarQuickAccessOrder);

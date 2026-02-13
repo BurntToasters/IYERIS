@@ -27,6 +27,7 @@ function makeDeps() {
     clearThumbnailCacheLocal: vi.fn(),
     hideSettingsModal: vi.fn(),
     showSettingsModal: vi.fn(),
+    showConfirm: vi.fn().mockResolvedValue(true),
     isOneOf: vi.fn((value: string, options: readonly string[]) => options.includes(value)),
     themeValues: ['light', 'dark', 'system', 'custom'] as const,
     sortByValues: ['name', 'size', 'modified', 'type'] as const,
@@ -389,8 +390,8 @@ describe('rendererSettingsActions extended', () => {
     });
 
     it('does nothing when not confirmed', async () => {
-      (window.confirm as ReturnType<typeof vi.fn>).mockReturnValue(false);
       const deps = makeDeps();
+      deps.showConfirm.mockResolvedValue(false);
       const ctrl = createSettingsActionsController(deps as any);
       ctrl.initSettingsActions();
 

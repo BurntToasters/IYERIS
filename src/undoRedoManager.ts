@@ -287,8 +287,19 @@ export function setupUndoRedoHandlers(): void {
             return { success: false, error: 'Cannot undo: File no longer exists' };
           }
           const stats = await fs.stat(itemPath);
-          if (stats.isDirectory()) await fs.rm(itemPath, { recursive: true, force: true });
-          else await fs.unlink(itemPath);
+          if (stats.isDirectory()) {
+            const entries = await fs.readdir(itemPath);
+            if (entries.length > 0) {
+              undoStack.push(action);
+              return {
+                success: false,
+                error: 'Cannot undo: Folder is not empty. Remove its contents first.',
+              };
+            }
+            await fs.rm(itemPath, { recursive: true, force: true });
+          } else {
+            await fs.unlink(itemPath);
+          }
           pushRedoAction(action);
           return { success: true };
         }

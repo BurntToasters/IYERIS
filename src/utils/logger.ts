@@ -96,6 +96,7 @@ export const logger = {
 };
 
 export function initializeLogger(): void {
+  (globalThis as Record<string, unknown>).__iyerisLogger = logger;
   log.info('='.repeat(60));
   log.info(`App started - ${new Date().toISOString()}`);
   log.info(`Platform: ${process.platform} ${os.release()}`);

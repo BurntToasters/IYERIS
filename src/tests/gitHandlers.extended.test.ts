@@ -62,7 +62,7 @@ describe('gitHandlers – extended coverage', () => {
     vi.mocked(isPathSafe).mockReturnValue(true);
   });
 
-  it('returns empty statuses when git status exits with non-zero code and stderr', async () => {
+  it('returns error when git status exits with non-zero code and stderr', async () => {
     setExecResponses([{ stdout: '.git\n' }]);
     const child = new FakeChildProcess();
     vi.mocked(spawnWithTimeout).mockReturnValue({
@@ -78,10 +78,10 @@ describe('gitHandlers – extended coverage', () => {
 
     const result = await promise;
 
-    expect(result).toEqual({ success: true, isGitRepo: true, statuses: [] });
+    expect(result).toEqual({ success: false, error: 'fatal: bad revision' });
   });
 
-  it('returns empty statuses when git status exits with non-zero code and no stderr', async () => {
+  it('returns error when git status exits with non-zero code and no stderr', async () => {
     setExecResponses([{ stdout: '.git\n' }]);
     const child = new FakeChildProcess();
     vi.mocked(spawnWithTimeout).mockReturnValue({
@@ -96,18 +96,18 @@ describe('gitHandlers – extended coverage', () => {
 
     const result = await promise;
 
-    expect(result).toEqual({ success: true, isGitRepo: true, statuses: [] });
+    expect(result).toEqual({ success: false, error: 'Git status failed' });
   });
 
-  it('returns undefined branch when execAsync for branch throws after repo confirmed', async () => {
+  it('returns error when execAsync for branch throws after repo confirmed', async () => {
     setExecResponses([{ stdout: '.git\n' }, { error: new Error('git branch failed') }]);
 
     const result = await getGitBranch('/tmp/project');
 
-    expect(result).toEqual({ success: true, branch: undefined });
+    expect(result).toEqual({ success: false, error: 'git branch failed' });
   });
 
-  it('returns empty statuses when git status output is truncated', async () => {
+  it('returns error when git status output is truncated', async () => {
     setExecResponses([{ stdout: '.git\n' }]);
     const child = new FakeChildProcess();
     vi.mocked(spawnWithTimeout).mockReturnValue({
@@ -126,10 +126,10 @@ describe('gitHandlers – extended coverage', () => {
     const result = await promise;
 
     expect(child.kill).toHaveBeenCalled();
-    expect(result).toEqual({ success: true, isGitRepo: true, statuses: [] });
+    expect(result).toEqual({ success: false, error: 'Git status output too large' });
   });
 
-  it('returns empty statuses when git process emits an error event', async () => {
+  it('returns error when git process emits an error event', async () => {
     setExecResponses([{ stdout: '.git\n' }]);
     const child = new FakeChildProcess();
     vi.mocked(spawnWithTimeout).mockReturnValue({
@@ -144,7 +144,7 @@ describe('gitHandlers – extended coverage', () => {
 
     const result = await promise;
 
-    expect(result).toEqual({ success: true, isGitRepo: true, statuses: [] });
+    expect(result).toEqual({ success: false, error: 'spawn ENOENT' });
   });
 
   it('maps ignored status code correctly', async () => {

@@ -342,6 +342,9 @@ export function setupArchiveHandlers(): void {
         if (!isTrustedIpcEvent(event, 'compress-files')) {
           return { success: false, error: 'Untrusted IPC sender' };
         }
+        if (!Array.isArray(sourcePaths) || sourcePaths.length === 0) {
+          return { success: false, error: 'No source files provided' };
+        }
         if (!isPathSafe(outputPath)) {
           logger.warn('[Security] Invalid output path rejected:', outputPath);
           return { success: false, error: 'Invalid output path' };

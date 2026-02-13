@@ -60,9 +60,10 @@ function getRestartAsAdminCommand(
     };
   }
   if (platform === 'darwin') {
+    const escapedPath = appPath.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
     return {
       command: 'osascript',
-      args: ['-e', `do shell script quoted form of "${appPath}" with administrator privileges`],
+      args: ['-e', `do shell script quoted form of "${escapedPath}" with administrator privileges`],
     };
   }
   if (platform === 'linux') {

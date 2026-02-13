@@ -171,7 +171,17 @@ export async function saveThumbnailToCache(
     if (buffer.length > MAX_THUMBNAIL_BYTES) {
       return { success: false, error: 'Thumbnail too large' };
     }
-    await fs.writeFile(cachePath, buffer);
+    const tmpPath = `${cachePath}.tmp-${process.pid}-${Date.now()}`;
+    await fs.writeFile(tmpPath, buffer);
+    try {
+      await fs.rename(tmpPath, cachePath);
+    } catch {
+      try {
+        await fs.copyFile(tmpPath, cachePath);
+      } finally {
+        await fs.unlink(tmpPath).catch(ignoreError);
+      }
+    }
 
     debouncedEnforceCacheSize();
 

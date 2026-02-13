@@ -190,6 +190,7 @@ async function executeElevatedLinux(operation: ElevatedOperation): Promise<Eleva
 
       activeElevatedProcesses.add(child);
       let stderr = '';
+      const MAX_STDERR = 64 * 1024;
       let resolved = false;
 
       const timeoutId = setTimeout(() => {
@@ -206,7 +207,9 @@ async function executeElevatedLinux(operation: ElevatedOperation): Promise<Eleva
       }, OPERATION_TIMEOUT);
 
       child.stderr?.on('data', (data) => {
-        stderr += data.toString();
+        if (stderr.length < MAX_STDERR) {
+          stderr += data.toString();
+        }
       });
 
       child.on('close', (code) => {

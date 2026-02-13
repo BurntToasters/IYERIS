@@ -115,6 +115,9 @@ app.on('web-contents-created', (_event, webContents) => {
   webContents.on('did-finish-load', () => {
     rendererRecoveryAttempts.delete(webContents.id);
   });
+  webContents.on('destroyed', () => {
+    rendererRecoveryAttempts.delete(webContents.id);
+  });
 });
 
 app.on('render-process-gone', (_event, webContents, details) => {

@@ -100,7 +100,7 @@ select:focus-visible {
 .spinner {
   width: var(--icon-size-spinner);
   height: var(--icon-size-spinner);
-  border: 2px solid rgba(255, 255, 255, 0.12);
+  border: 2px solid var(--spinner-track, rgba(255, 255, 255, 0.12));
   border-top-color: var(--accent-color);
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
@@ -385,9 +385,6 @@ select:focus-visible {
   text-align: right;
 }
 
-body.theme-light .zoom-btn .twemoji,
-body.theme-light .preview-text,
-body.theme-dark .status-left span,
 body.theme-dark,
 body.theme-nord,
 body.theme-catppuccin,

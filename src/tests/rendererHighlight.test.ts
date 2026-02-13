@@ -14,8 +14,11 @@ describe('getLanguageForExt', () => {
 
   it('maps Python extensions', () => {
     expect(getLanguageForExt('py')).toBe('python');
-    expect(getLanguageForExt('pyc')).toBe('python');
     expect(getLanguageForExt('pyw')).toBe('python');
+  });
+
+  it('does not map pyc (binary)', () => {
+    expect(getLanguageForExt('pyc')).toBeNull();
   });
 
   it('maps Ruby', () => {

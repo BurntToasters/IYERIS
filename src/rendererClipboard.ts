@@ -101,56 +101,60 @@ export function createClipboardController(deps: ClipboardDeps) {
     const currentPath = deps.getCurrentPath();
     if (!currentPath) return;
 
-    if (!clipboard || clipboard.paths.length === 0) {
-      const currentSettings = deps.getCurrentSettings();
-      if (currentSettings.globalClipboard !== false) {
-        const systemFiles = await window.electronAPI.getSystemClipboardFiles();
-        if (systemFiles && systemFiles.length > 0) {
-          const result = await window.electronAPI.copyItems(
-            systemFiles,
-            currentPath,
-            currentSettings.fileConflictBehavior || 'ask'
-          );
-          if (result.success) {
-            deps.showToast(
-              `${systemFiles.length} item(s) pasted from system clipboard`,
-              'Success',
-              'success'
+    try {
+      if (!clipboard || clipboard.paths.length === 0) {
+        const currentSettings = deps.getCurrentSettings();
+        if (currentSettings.globalClipboard !== false) {
+          const systemFiles = await window.electronAPI.getSystemClipboardFiles();
+          if (systemFiles && systemFiles.length > 0) {
+            const result = await window.electronAPI.copyItems(
+              systemFiles,
+              currentPath,
+              currentSettings.fileConflictBehavior || 'ask'
             );
-            deps.refresh();
-          } else {
-            deps.showToast(result.error || 'Paste failed', 'Error', 'error');
+            if (result.success) {
+              deps.showToast(
+                `${systemFiles.length} item(s) pasted from system clipboard`,
+                'Success',
+                'success'
+              );
+              deps.refresh();
+            } else {
+              deps.showToast(result.error || 'Paste failed', 'Error', 'error');
+            }
+            return;
           }
-          return;
         }
-      }
-      return;
-    }
-
-    const isCopy = clipboard.operation === 'copy';
-    const conflictBehavior = deps.getCurrentSettings().fileConflictBehavior || 'ask';
-    const result = isCopy
-      ? await window.electronAPI.copyItems(clipboard.paths, currentPath, conflictBehavior)
-      : await window.electronAPI.moveItems(clipboard.paths, currentPath, conflictBehavior);
-
-    if (result.success) {
-      deps.showToast(
-        `${clipboard.paths.length} item(s) ${isCopy ? 'copied' : 'moved'}`,
-        'Success',
-        'success'
-      );
-
-      if (!isCopy) {
-        await deps.updateUndoRedoState();
-        clipboard = null;
-        window.electronAPI.setClipboard(null);
-        updateClipboardIndicator();
+        return;
       }
 
-      updateCutVisuals();
-      deps.refresh();
-    } else {
-      deps.showToast(result.error || 'Operation failed', 'Error', 'error');
+      const isCopy = clipboard.operation === 'copy';
+      const conflictBehavior = deps.getCurrentSettings().fileConflictBehavior || 'ask';
+      const result = isCopy
+        ? await window.electronAPI.copyItems(clipboard.paths, currentPath, conflictBehavior)
+        : await window.electronAPI.moveItems(clipboard.paths, currentPath, conflictBehavior);
+
+      if (result.success) {
+        deps.showToast(
+          `${clipboard.paths.length} item(s) ${isCopy ? 'copied' : 'moved'}`,
+          'Success',
+          'success'
+        );
+
+        if (!isCopy) {
+          await deps.updateUndoRedoState();
+          clipboard = null;
+          window.electronAPI.setClipboard(null);
+          updateClipboardIndicator();
+        }
+
+        updateCutVisuals();
+        deps.refresh();
+      } else {
+        deps.showToast(result.error || 'Operation failed', 'Error', 'error');
+      }
+    } catch (error) {
+      deps.showToast('Paste operation failed', 'Error', 'error');
     }
   }
 

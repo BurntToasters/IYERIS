@@ -8,9 +8,12 @@ interface IndexerConfig {
 
 export function createIndexerController(config: IndexerConfig) {
   let indexStatusInterval: NodeJS.Timeout | null = null;
+  let consecutiveErrors = 0;
+  const MAX_CONSECUTIVE_ERRORS = 10;
 
   function startIndexStatusPolling() {
     stopIndexStatusPolling();
+    consecutiveErrors = 0;
     indexStatusInterval = setInterval(async () => {
       await updateIndexStatus();
       const result = await window.electronAPI.getIndexStatus();
@@ -25,6 +28,7 @@ export function createIndexerController(config: IndexerConfig) {
       clearInterval(indexStatusInterval);
       indexStatusInterval = null;
     }
+    consecutiveErrors = 0;
   }
 
   async function updateIndexStatus() {
@@ -52,6 +56,10 @@ export function createIndexerController(config: IndexerConfig) {
     } catch (error) {
       console.error('Failed to get index status:', error);
       indexStatus.textContent = 'Status: Error';
+      consecutiveErrors++;
+      if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+        stopIndexStatusPolling();
+      }
     }
   }
 

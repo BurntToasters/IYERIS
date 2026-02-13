@@ -258,12 +258,12 @@ export function createDragDropController(config: DragDropConfig) {
 
       const currentPath = config.getCurrentPath();
       if (!currentPath) {
-        e.dataTransfer!.dropEffect = 'none';
+        if (e.dataTransfer) e.dataTransfer.dropEffect = 'none';
         return;
       }
 
       const operation = getDragOperation(e);
-      e.dataTransfer!.dropEffect = operation;
+      if (e.dataTransfer) e.dataTransfer.dropEffect = operation;
       fileView.classList.add('drag-over');
       showDropIndicator(operation, currentPath, e.clientX, e.clientY);
     });

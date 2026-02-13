@@ -11,7 +11,6 @@ const EXT_TO_LANG: Record<string, string> = {
   ts: 'typescript',
   tsx: 'typescript',
   py: 'python',
-  pyc: 'python',
   pyw: 'python',
   rb: 'ruby',
   go: 'go',
@@ -101,7 +100,10 @@ export async function loadHighlightJs(): Promise<HighlightJs | null> {
       hljs = globalHljs;
       resolve(hljs);
     };
-    script.onerror = () => resolve(null);
+    script.onerror = () => {
+      hljsLoading = null;
+      resolve(null);
+    };
     document.head.appendChild(script);
   });
 

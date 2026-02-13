@@ -29,6 +29,18 @@ const IS_DEV_MODE = typeof process !== 'undefined' && (process.argv || []).inclu
 export function ignoreError(error: unknown): void {
   if (IS_DEV_MODE) {
     console.debug('[Ignored error]', error);
+  } else if (
+    typeof globalThis !== 'undefined' &&
+    typeof (globalThis as Record<string, unknown>).__iyerisLogger === 'object'
+  ) {
+    try {
+      const log = (globalThis as Record<string, unknown>).__iyerisLogger as {
+        debug?: (...args: unknown[]) => void;
+      };
+      log.debug?.('[Ignored error]', error instanceof Error ? error.message : String(error));
+    } catch {
+      /* noop */
+    }
   }
 }
 

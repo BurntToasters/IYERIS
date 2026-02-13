@@ -104,6 +104,7 @@ export class FileIndexer {
 
   // prevent unbounded mem growth
   private static readonly MAX_INDEX_SIZE = 200000;
+  private static readonly MAX_SCAN_DEPTH = 50;
 
   constructor(fileTasks?: FileTaskManager) {
     const userDataPath = app.getPath('userData');
@@ -181,8 +182,12 @@ export class FileIndexer {
   }
 
   // recursive scan with batching
-  private async scanDirectory(dirPath: string, signal?: AbortSignal): Promise<void> {
-    if (signal?.aborted || this.shouldExclude(dirPath)) {
+  private async scanDirectory(
+    dirPath: string,
+    signal?: AbortSignal,
+    depth: number = 0
+  ): Promise<void> {
+    if (signal?.aborted || this.shouldExclude(dirPath) || depth > FileIndexer.MAX_SCAN_DEPTH) {
       return;
     }
 
@@ -247,7 +252,7 @@ export class FileIndexer {
         if (signal?.aborted || this.index.size >= FileIndexer.MAX_INDEX_SIZE) {
           return;
         }
-        await this.scanDirectory(subdir, signal);
+        await this.scanDirectory(subdir, signal, depth + 1);
       }
     } catch (error) {
       console.log(`[Indexer] Cannot access ${dirPath}:`, (error as Error).message);

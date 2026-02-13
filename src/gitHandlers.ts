@@ -24,6 +24,7 @@ async function isGitRepository(dirPath: string): Promise<boolean> {
     await execAsync('git rev-parse --git-dir', {
       cwd: dirPath,
       timeout: 5000,
+      maxBuffer: 1024 * 1024,
     });
     return true;
   } catch {
@@ -127,7 +128,7 @@ export async function getGitStatus(
     return { success: true, isGitRepo: true, statuses };
   } catch (error) {
     console.error('[Git Status] Error:', error);
-    return { success: true, isGitRepo: true, statuses: [] };
+    return { success: false, error: error instanceof Error ? error.message : String(error) };
   }
 }
 
@@ -148,6 +149,7 @@ export async function getGitBranch(dirPath: string): Promise<{
     const { stdout } = await execAsync('git branch --show-current', {
       cwd: dirPath,
       timeout: 10000,
+      maxBuffer: 1024 * 1024,
     });
 
     const branch = stdout.trim();
@@ -156,6 +158,7 @@ export async function getGitBranch(dirPath: string): Promise<{
       const { stdout: refStdout } = await execAsync('git rev-parse --short HEAD', {
         cwd: dirPath,
         timeout: 10000,
+        maxBuffer: 1024 * 1024,
       });
       return { success: true, branch: `HEAD:${refStdout.trim()}` };
     }
@@ -163,6 +166,6 @@ export async function getGitBranch(dirPath: string): Promise<{
     return { success: true, branch };
   } catch (error) {
     console.error('[Git Branch] Error:', error);
-    return { success: true, branch: undefined };
+    return { success: false, error: error instanceof Error ? error.message : String(error) };
   }
 }

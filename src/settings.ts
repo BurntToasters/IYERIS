@@ -355,7 +355,11 @@ export function sanitizeSettings(
 
   // String array settings
   for (const key of ['bookmarks', 'searchHistory', 'directoryHistory', 'recentFiles'] as const) {
-    if (Array.isArray(raw[key])) clean[key] = sanitizeStringArray(raw[key]);
+    if (Array.isArray(raw[key])) {
+      const sanitized = sanitizeStringArray(raw[key]);
+      const maxLen = key === 'bookmarks' ? 500 : key === 'recentFiles' ? 200 : 100;
+      clean[key] = sanitized.slice(0, maxLen);
+    }
   }
 
   clean.shortcuts = sanitizeShortcuts(raw.shortcuts, clean.shortcuts);
