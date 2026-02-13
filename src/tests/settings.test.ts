@@ -71,6 +71,7 @@ describe('createDefaultSettings', () => {
     expect(settings.enableGitStatus).toBe(false);
     expect(settings.showRecentFiles).toBe(true);
     expect(settings.showFolderTree).toBe(true);
+    expect(settings.useLegacyTreeSpacing).toBe(false);
   });
 
   it('has correct default update channel', () => {

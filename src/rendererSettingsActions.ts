@@ -48,6 +48,8 @@ export function createSettingsActionsController(deps: SettingsActionsDeps) {
       validated.autoCheckUpdates = data.autoCheckUpdates;
     if (typeof data.showRecentFiles === 'boolean') validated.showRecentFiles = data.showRecentFiles;
     if (typeof data.showFolderTree === 'boolean') validated.showFolderTree = data.showFolderTree;
+    if (typeof data.useLegacyTreeSpacing === 'boolean')
+      validated.useLegacyTreeSpacing = data.useLegacyTreeSpacing;
     if (typeof data.enableTabs === 'boolean') validated.enableTabs = data.enableTabs;
     if (typeof data.globalContentSearch === 'boolean')
       validated.globalContentSearch = data.globalContentSearch;

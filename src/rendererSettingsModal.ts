@@ -86,6 +86,9 @@ export function createSettingsModalController(deps: SettingsModalDeps) {
     const showFolderTreeToggle = document.getElementById(
       'show-folder-tree-toggle'
     ) as HTMLInputElement;
+    const legacyTreeSpacingToggle = document.getElementById(
+      'legacy-tree-spacing-toggle'
+    ) as HTMLInputElement;
     const enableTabsToggle = document.getElementById('enable-tabs-toggle') as HTMLInputElement;
     const globalContentSearchToggle = document.getElementById(
       'global-content-search-toggle'
@@ -232,6 +235,10 @@ export function createSettingsModalController(deps: SettingsModalDeps) {
 
     if (showFolderTreeToggle) {
       showFolderTreeToggle.checked = settings.showFolderTree !== false;
+    }
+
+    if (legacyTreeSpacingToggle) {
+      legacyTreeSpacingToggle.checked = settings.useLegacyTreeSpacing === true;
     }
 
     if (enableTabsToggle) {

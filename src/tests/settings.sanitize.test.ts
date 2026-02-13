@@ -176,6 +176,7 @@ describe('sanitizeSettings', () => {
       expect(sanitizeSettings({ autoPlayVideos: true }).autoPlayVideos).toBe(true);
       expect(sanitizeSettings({ compactFileInfo: true }).compactFileInfo).toBe(true);
       expect(sanitizeSettings({ showFileExtensions: false }).showFileExtensions).toBe(false);
+      expect(sanitizeSettings({ useLegacyTreeSpacing: true }).useLegacyTreeSpacing).toBe(true);
     });
 
     it('ignores non-boolean values for boolean fields', () => {
@@ -184,6 +185,9 @@ describe('sanitizeSettings', () => {
       );
       expect(sanitizeSettings({ reduceMotion: 1 }).reduceMotion).toBe(defaults.reduceMotion);
       expect(sanitizeSettings({ enableTabs: null }).enableTabs).toBe(defaults.enableTabs);
+      expect(sanitizeSettings({ useLegacyTreeSpacing: 'yes' }).useLegacyTreeSpacing).toBe(
+        defaults.useLegacyTreeSpacing
+      );
     });
   });
 

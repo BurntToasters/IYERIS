@@ -1307,6 +1307,7 @@ function applySettings(settings: Settings) {
   }
 
   const nextFolderTreeEnabled = settings.showFolderTree !== false;
+  setFolderTreeSpacingMode(settings.useLegacyTreeSpacing === true);
   setFolderTreeVisibility(nextFolderTreeEnabled);
   if (nextFolderTreeEnabled && !folderTreeEnabled) {
     loadDrives();
@@ -1379,6 +1380,7 @@ async function saveSettings() {
     ['enable-indexer-toggle', 'enableIndexer'],
     ['show-recent-files-toggle', 'showRecentFiles'],
     ['show-folder-tree-toggle', 'showFolderTree'],
+    ['legacy-tree-spacing-toggle', 'useLegacyTreeSpacing'],
     ['enable-tabs-toggle', 'enableTabs'],
     ['global-content-search-toggle', 'globalContentSearch'],
     ['global-clipboard-toggle', 'globalClipboard'],
@@ -1971,6 +1973,15 @@ function setFolderTreeVisibility(enabled: boolean): void {
   const drivesSection = getById('drives-section');
   if (drivesSection) {
     drivesSection.style.display = enabled ? 'none' : '';
+  }
+}
+
+function setFolderTreeSpacingMode(useLegacyTreeSpacing: boolean): void {
+  if (!folderTree) return;
+  if (useLegacyTreeSpacing) {
+    folderTree.dataset.treeIndentMode = 'legacy';
+  } else {
+    delete folderTree.dataset.treeIndentMode;
   }
 }
 

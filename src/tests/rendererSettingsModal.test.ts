@@ -22,6 +22,7 @@ function makeDeps() {
       enableIndexer: true,
       showRecentFiles: true,
       showFolderTree: false,
+      useLegacyTreeSpacing: true,
       enableTabs: true,
       globalContentSearch: true,
       globalClipboard: false,
@@ -85,6 +86,7 @@ const CHECKBOX_IDS = [
   'enable-indexer-toggle',
   'show-recent-files-toggle',
   'show-folder-tree-toggle',
+  'legacy-tree-spacing-toggle',
   'enable-tabs-toggle',
   'global-content-search-toggle',
   'global-clipboard-toggle',
@@ -200,6 +202,9 @@ describe('rendererSettingsModal', () => {
       expect((document.getElementById('enable-indexer-toggle') as HTMLInputElement).checked).toBe(
         true
       );
+      expect(
+        (document.getElementById('legacy-tree-spacing-toggle') as HTMLInputElement).checked
+      ).toBe(true);
       expect((document.getElementById('reduce-motion-toggle') as HTMLInputElement).checked).toBe(
         false
       );

@@ -384,13 +384,17 @@
   align-items: center;
   gap: var(--nav-item-gap);
   padding: var(--nav-item-padding-v) var(--nav-item-padding-h);
-  padding-left: calc(6px + var(--tree-item-depth, 0) * 12px);
+  padding-left: calc(6px + min(var(--tree-item-depth, 0) * 9px, 78px));
   border-radius: var(--radius-small);
   cursor: pointer;
   font-size: var(--font-size-nav);
   font-weight: 500;
   color: var(--text-secondary);
   position: relative;
+}
+
+.folder-tree[data-tree-indent-mode='legacy'] .tree-item {
+  padding-left: calc(6px + var(--tree-item-depth, 0) * 12px);
 }
 
 .tree-item:hover {
@@ -457,6 +461,11 @@
 .tree-children {
   display: none;
   flex-direction: column;
+  margin-left: 0;
+  padding-left: 0;
+}
+
+.folder-tree[data-tree-indent-mode='legacy'] .tree-children {
   margin-left: 10px;
   border-left: 1px solid var(--separator, rgba(255, 255, 255, 0.06));
   padding-left: 6px;

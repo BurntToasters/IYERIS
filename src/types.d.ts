@@ -80,6 +80,7 @@ export interface Settings {
   folderIcons?: { [path: string]: string };
   showRecentFiles: boolean;
   showFolderTree: boolean;
+  useLegacyTreeSpacing: boolean;
   enableTabs: boolean;
   globalContentSearch: boolean;
   globalClipboard: boolean;

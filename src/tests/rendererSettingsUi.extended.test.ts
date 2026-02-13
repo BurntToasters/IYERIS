@@ -19,6 +19,7 @@ const mockCreateDefaultSettings = vi.hoisted(() =>
     maxDirectoryHistoryItems: 20,
     showRecentFiles: true,
     showFolderTree: true,
+    useLegacyTreeSpacing: false,
     enableTabs: true,
     enableSyntaxHighlighting: true,
     autoPlayVideos: false,

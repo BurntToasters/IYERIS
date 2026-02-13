@@ -34,6 +34,7 @@ export function createSettingsUiController(deps: SettingsUiDeps) {
     'max-directory-history-input': 'maxDirectoryHistoryItems',
     'show-recent-files-toggle': 'showRecentFiles',
     'show-folder-tree-toggle': 'showFolderTree',
+    'legacy-tree-spacing-toggle': 'useLegacyTreeSpacing',
     'enable-tabs-toggle': 'enableTabs',
     'enable-syntax-highlighting-toggle': 'enableSyntaxHighlighting',
     'auto-play-videos-toggle': 'autoPlayVideos',
