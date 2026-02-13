@@ -7,7 +7,6 @@ import {
   type DateRangeFilter,
   type ContentSearchResult,
   type SearchResult,
-  type IndexEntryPayload,
   isCancelled,
   parseDateRange,
   matchesDateRange,

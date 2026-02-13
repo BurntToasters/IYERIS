@@ -1,5 +1,5 @@
 import type { Settings } from './types';
-import { isRecord, RESERVED_KEYS, sanitizeStringArray } from './shared';
+import { isRecord, RESERVED_KEYS, sanitizeStringArray } from './shared.js';
 import { getDefaultShortcuts } from './shortcuts.js';
 
 export function createDefaultSettings(): Settings {

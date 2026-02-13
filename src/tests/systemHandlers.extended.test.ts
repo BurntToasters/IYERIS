@@ -516,7 +516,7 @@ describe('systemHandlers extended coverage', () => {
       const handler = getHandler('open-terminal');
       const result = await handler(mockEvent, '/home/user');
 
-      expect(result).toEqual({ success: true });
+      expect(result).toEqual({ success: false, error: 'No suitable terminal emulator found' });
       expect(hoisted.spawnMock).toHaveBeenCalledTimes(3);
       expect(consoleSpy).toHaveBeenCalledWith('No suitable terminal emulator found');
       consoleSpy.mockRestore();

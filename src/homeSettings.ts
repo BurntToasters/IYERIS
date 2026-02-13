@@ -1,5 +1,5 @@
 import type { HomeSettings } from './types';
-import { isRecord, RESERVED_KEYS, sanitizeStringArray } from './shared';
+import { isRecord, RESERVED_KEYS, sanitizeStringArray } from './shared.js';
 
 export function createDefaultHomeSettings(): HomeSettings {
   return {

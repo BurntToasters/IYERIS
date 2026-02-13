@@ -291,8 +291,7 @@ const { zoomIn, zoomOut, zoomReset, updateZoomDisplay } = zoomController;
 const indexerController = createIndexerController({
   getShowToast: () => showToast as (message: string, title: string, type: string) => void,
 });
-const { startIndexStatusPolling, stopIndexStatusPolling, updateIndexStatus, rebuildIndex } =
-  indexerController;
+const { stopIndexStatusPolling, updateIndexStatus, rebuildIndex } = indexerController;
 
 const layoutController = createLayoutController({
   getCurrentSettings: () => currentSettings,

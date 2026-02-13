@@ -153,7 +153,7 @@ export function createClipboardController(deps: ClipboardDeps) {
       } else {
         deps.showToast(result.error || 'Operation failed', 'Error', 'error');
       }
-    } catch (error) {
+    } catch {
       deps.showToast('Paste operation failed', 'Error', 'error');
     }
   }

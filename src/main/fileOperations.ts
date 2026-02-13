@@ -25,8 +25,6 @@ import {
   restoreOverwriteBackups,
   ensureOverwriteBackup,
   stashRemainingBackups,
-  backupExistingPath,
-  restoreBackup,
   cleanupStashedBackupsForTests,
 } from './backupManager';
 import { getDriveInfo, getDrives } from './utils';
@@ -549,12 +547,18 @@ export function setupFileOperationHandlers(): void {
 
       if (platform === 'darwin') {
         const trashPath = path.join(app.getPath('home'), '.Trash');
-        await shell.openPath(trashPath);
+        const openResult = await shell.openPath(trashPath);
+        if (openResult) {
+          return { success: false, error: openResult };
+        }
       } else if (platform === 'win32') {
         await shell.openExternal('shell:RecycleBinFolder');
       } else if (platform === 'linux') {
         const trashPath = path.join(app.getPath('home'), '.local/share/Trash/files');
-        await shell.openPath(trashPath);
+        const openResult = await shell.openPath(trashPath);
+        if (openResult) {
+          return { success: false, error: openResult };
+        }
       }
 
       console.log('[Trash] Opened system trash folder');
@@ -765,13 +769,19 @@ export function setupFileOperationHandlers(): void {
           const PARALLEL_BATCH_SIZE = getParallelBatchSize();
           for (let i = 0; i < validation.planned.length; i += PARALLEL_BATCH_SIZE) {
             const batch = validation.planned.slice(i, i + PARALLEL_BATCH_SIZE);
-            await Promise.all(
+            const settled = await Promise.allSettled(
               batch.map(async (item) => {
                 await ensureOverwriteBackup(backups, item);
                 await copyPathByType(item.sourcePath, item.destPath, item.isDirectory);
                 copiedPaths.push(item.destPath);
               })
             );
+            const rejected = settled.find(
+              (result): result is PromiseRejectedResult => result.status === 'rejected'
+            );
+            if (rejected) {
+              throw rejected.reason;
+            }
           }
         } catch (error) {
           await removePaths([...copiedPaths].reverse());
@@ -826,7 +836,7 @@ export function setupFileOperationHandlers(): void {
           const PARALLEL_BATCH_SIZE = getParallelBatchSize();
           for (let i = 0; i < validation.planned.length; i += PARALLEL_BATCH_SIZE) {
             const batch = validation.planned.slice(i, i + PARALLEL_BATCH_SIZE);
-            await Promise.all(
+            const settled = await Promise.allSettled(
               batch.map(async (item) => {
                 await ensureOverwriteBackup(backups, item);
                 await renameWithExdevFallback(item.sourcePath, item.destPath, item.isDirectory);
@@ -839,6 +849,12 @@ export function setupFileOperationHandlers(): void {
                 });
               })
             );
+            const rejected = settled.find(
+              (result): result is PromiseRejectedResult => result.status === 'rejected'
+            );
+            if (rejected) {
+              throw rejected.reason;
+            }
           }
         } catch (error) {
           for (const item of completed.reverse()) {

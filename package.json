@@ -1,6 +1,6 @@
 {
   "name": "iyeris",
-  "version": "0.10.0-beta.3",
+  "version": "0.10.0-beta.4",
   "description": "A beautiful cross-platform file explorer built with Electron, featuring a simple yet advanced modern design.",
   "main": "dist/main/main.js",
   "dependencies": {
@@ -52,7 +52,7 @@
     "build": "node build/dist-tools.js clean && tsc --project tsconfig.main.json && tsc --project tsconfig.renderer.json && node build/dist-tools.js copy",
     "watch": "node build/watch.js",
     "start": "npm run build && electron .",
-    "dev": "npm run build && electron . --enable-logging",
+    "dev": "npm run build && electron . --enable-logging --dev",
     "build:win": "npm run build && electron-builder --win --arm64 --x64",
     "build:win:x64": "npm run build && electron-builder --win --x64 --publish never",
     "build:win:arm64": "npm run build && electron-builder --win --arm64 --publish never",
@@ -120,7 +120,7 @@
       "licenses.json"
     ],
     "extraMetadata": {
-      "main": "dist/main.js"
+      "main": "dist/main/main.js"
     },
     "asar": true,
     "asarUnpack": [

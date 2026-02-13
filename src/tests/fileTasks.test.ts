@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import * as path from 'path';
 
 type Listener = (...args: unknown[]) => void;
 
@@ -90,6 +91,14 @@ afterEach(async () => {
 });
 
 describe('FileTaskManager', () => {
+  it('creates workers from the shared dist workers directory', () => {
+    createManager(1);
+
+    const firstCall = (Worker as unknown as { mock: { calls: unknown[][] } }).mock.calls[0];
+    expect(firstCall?.[0]).toMatch(/[\\/]workers[\\/]fileTasks\.js$/);
+    expect(String(firstCall?.[0])).not.toContain(`${path.sep}main${path.sep}workers`);
+  });
+
   it('dispatches tasks and resolves results', async () => {
     const manager = createManager(1);
     const promise = manager.runTask<string[]>('search-files', { query: 'x' }, 'op-1');

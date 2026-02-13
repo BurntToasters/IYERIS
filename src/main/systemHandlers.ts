@@ -171,6 +171,7 @@ export function setupSystemHandlers(
 
         if (!launched) {
           console.error('No suitable terminal emulator found');
+          return { success: false, error: 'No suitable terminal emulator found' };
         }
       }
 

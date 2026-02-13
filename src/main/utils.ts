@@ -131,6 +131,7 @@ export async function getDrives(): Promise<string[]> {
 
     for (const root of commonRoots) {
       try {
+        await fs.access(root);
         const subs = await fs.readdir(root);
         for (const sub of subs) {
           if (sub.startsWith('.')) continue;

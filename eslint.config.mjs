@@ -21,7 +21,7 @@ export default tseslint.config(
       '@typescript-eslint/no-require-imports': 'warn',
 
       // Console log
-      'no-console': ['warn', { allow: ['warn', 'error'] }],
+      'no-console': ['warn', { allow: ['log', 'info', 'debug', 'warn', 'error'] }],
 
       // Code quality
       'prefer-const': 'error',
@@ -37,7 +37,14 @@ export default tseslint.config(
   {
     files: ['src/**/*.test.ts'],
     rules: {
-      '@typescript-eslint/no-explicit-any': 'warn',
+      '@typescript-eslint/no-explicit-any': 'off',
+      '@typescript-eslint/no-unused-vars': 'off',
+    },
+  },
+  {
+    files: ['src/main/platformUtils.ts'],
+    rules: {
+      '@typescript-eslint/no-require-imports': 'off',
     },
   }
 );

@@ -137,7 +137,7 @@ export class FileTaskManager extends EventEmitter {
   }
 
   private createWorker(): WorkerState {
-    const workerPath = path.join(__dirname, 'workers', 'fileTasks.js');
+    const workerPath = path.join(__dirname, '..', 'workers', 'fileTasks.js');
     const worker = new Worker(workerPath);
     const workerState: WorkerState = { worker, busy: false };
 
