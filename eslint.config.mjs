@@ -33,5 +33,11 @@ export default tseslint.config(
 
       'no-empty': ['error', { allowEmptyCatch: true }],
     },
+  },
+  {
+    files: ['src/main/platformUtils.ts'],
+    rules: {
+      '@typescript-eslint/no-require-imports': 'off',
+    },
   }
 );

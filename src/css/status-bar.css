@@ -1,0 +1,268 @@
+.status-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: var(--status-bar-height);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 var(--status-bar-padding-h);
+  font-size: var(--font-size-status);
+  color: var(--text-secondary);
+  z-index: 100;
+  border-radius: 0;
+  border-bottom: none;
+  border-top: 1px solid var(--separator);
+  background: var(--bg-secondary);
+  backdrop-filter: none;
+  box-shadow: none;
+}
+
+.status-left,
+.status-right {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.status-left span,
+.status-right span {
+  opacity: 1;
+  color: var(--text-secondary);
+  font-size: var(--font-size-status);
+  letter-spacing: -0.01em;
+}
+
+.status-left span:hover,
+.status-right span:hover {
+  color: var(--text-primary);
+}
+
+.status-hidden {
+  color: var(--text-secondary);
+  opacity: 0.7;
+  font-size: var(--font-size-status);
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.15s ease,
+    opacity 0.15s ease;
+}
+
+.status-hidden:hover {
+  background: var(--hover-color);
+  opacity: 1;
+}
+
+.status-disk-space {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.status-disk {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.status-disk-meter {
+  width: 60px;
+  height: 8px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.12);
+  position: relative;
+}
+
+.status-disk-meter-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0;
+  border-radius: inherit;
+  transition: width 0.3s ease;
+  background: var(--success-color);
+}
+
+.status-disk-meter-fill.warning {
+  background: var(--warning-color);
+}
+
+.status-disk-meter-fill.critical {
+  background: var(--danger-color);
+}
+
+.status-disk-percent {
+  opacity: 0.72;
+}
+
+.status-disk-unavailable {
+  opacity: 0.7;
+}
+
+.status-separator {
+  width: 1px;
+  height: 12px;
+  background: var(--separator, rgba(255, 255, 255, 0.1));
+  opacity: 1;
+}
+
+.status-version {
+  font-size: 10.5px;
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+  opacity: 0.8;
+  padding: 2px 6px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.2s ease,
+    opacity 0.2s ease;
+}
+
+.status-version:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+}
+
+body.theme-light .status-version {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+body.theme-light .status-version:hover {
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.status-operation {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  color: var(--accent-color);
+  font-size: var(--font-size-status);
+}
+
+.status-operation-spinner {
+  display: inline-block;
+  animation: spin 1s linear infinite;
+}
+
+.status-clipboard {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: 2px var(--spacing-md);
+  background: rgba(var(--accent-rgb), 0.1);
+  border-radius: var(--radius-small);
+  font-size: var(--font-size-status);
+}
+
+.status-clipboard .twemoji {
+  width: 10px;
+  height: 10px;
+}
+
+.status-view-mode {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: 2px var(--spacing-md);
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: var(--radius-small);
+  font-size: var(--font-size-status);
+  font-family: var(--font-mono);
+}
+
+.status-view-mode:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+body.theme-light .status-view-mode {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+body.theme-light .status-view-mode:hover {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.status-support-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  background: rgba(var(--accent-rgb), 0.15);
+  border: none;
+  border-radius: 4px;
+  color: var(--accent-color);
+  font-size: 10.5px;
+  font-family: inherit;
+  cursor: pointer;
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.2s ease,
+    opacity 0.2s ease;
+}
+
+.status-support-btn:hover {
+  background: rgba(var(--accent-rgb), 0.25);
+  transform: translateY(-1px);
+}
+
+.status-support-btn:active {
+  transform: translateY(0);
+}
+
+.status-support-btn .twemoji {
+  width: 12px;
+  height: 12px;
+}
+
+.status-search {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  background: rgba(var(--accent-rgb), 0.1);
+  border-radius: 4px;
+  font-size: 10.5px;
+  color: var(--accent-color);
+}
+
+.status-search .twemoji {
+  width: 11px;
+  height: 11px;
+  opacity: 0.9;
+}
+
+.status-git-branch {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  background: rgba(var(--accent-rgb), 0.15);
+  border-radius: 4px;
+  font-size: 10.5px;
+  color: var(--accent-color);
+  font-family: var(--font-mono);
+  margin-right: 8px;
+}
+
+.status-git-branch .git-branch-icon {
+  opacity: 0.9;
+}
+
+body.reduce-transparency .status-bar {
+  background: var(--bg-secondary) !important;
+}

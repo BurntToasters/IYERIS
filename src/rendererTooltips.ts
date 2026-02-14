@@ -26,6 +26,7 @@ export function initTooltipSystem(): void {
         actualTarget.removeAttribute('title');
       }
 
+      if (tooltipTimeout) clearTimeout(tooltipTimeout);
       tooltipTimeout = setTimeout(() => {
         showTooltip(titleAttr, actualTarget || target);
       }, TOOLTIP_DELAY);
@@ -50,6 +51,25 @@ export function initTooltipSystem(): void {
 
     hideTooltip();
   });
+
+  document.addEventListener(
+    'scroll',
+    () => {
+      if (tooltipTimeout) {
+        clearTimeout(tooltipTimeout);
+        tooltipTimeout = null;
+      }
+      hideTooltip();
+      document.querySelectorAll('[data-original-title]').forEach((el) => {
+        const htmlEl = el as HTMLElement;
+        if (htmlEl.dataset.originalTitle) {
+          htmlEl.setAttribute('title', htmlEl.dataset.originalTitle);
+          delete htmlEl.dataset.originalTitle;
+        }
+      });
+    },
+    true
+  );
 }
 
 function showTooltip(text: string, anchor: HTMLElement): void {
@@ -75,6 +95,7 @@ function showTooltip(text: string, anchor: HTMLElement): void {
     tooltipElement.className = 'ui-tooltip top';
   }
 
+  if (top < 8) top = 8;
   if (left < 8) left = 8;
   if (left + tooltipRect.width > window.innerWidth - 8) {
     left = window.innerWidth - tooltipRect.width - 8;

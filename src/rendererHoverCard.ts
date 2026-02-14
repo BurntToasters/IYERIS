@@ -8,6 +8,8 @@ type HoverCardDeps = {
   getFileIcon: (name: string) => string;
   getThumbnailForPath: (path: string) => string | undefined;
   isRubberBandActive: () => boolean;
+  getHoverRoot?: () => HTMLElement | Document | null;
+  getScrollContainer?: () => HTMLElement | Document | null;
 };
 
 export function createHoverCardController(deps: HoverCardDeps) {
@@ -73,6 +75,8 @@ export function createHoverCardController(deps: HoverCardDeps) {
     const sizeEl = hoverSize;
     const typeEl = hoverType;
     const dateEl = hoverDate;
+    const hoverRoot = deps.getHoverRoot?.() ?? document;
+    const scrollContainer = deps.getScrollContainer?.() ?? hoverRoot;
 
     const showHoverCard = (fileItem: HTMLElement, x: number, y: number) => {
       const item = deps.getFileItemData(fileItem);
@@ -122,11 +126,12 @@ export function createHoverCardController(deps: HoverCardDeps) {
       card.classList.add('visible');
     };
 
-    document.addEventListener('mouseover', (e) => {
+    hoverRoot.addEventListener('mouseover', (e) => {
       if (!hoverCardEnabled) return;
 
-      const target = e.target as HTMLElement;
-      const fileItem = target.closest('.file-item') as HTMLElement;
+      const target = e.target;
+      if (!(target instanceof Element)) return;
+      const fileItem = target.closest('.file-item') as HTMLElement | null;
 
       if (!fileItem || deps.isRubberBandActive()) {
         if (currentHoverItem && !fileItem) {
@@ -148,19 +153,22 @@ export function createHoverCardController(deps: HoverCardDeps) {
       }, 1000);
     });
 
-    document.addEventListener('mouseout', (e) => {
-      const target = e.target as HTMLElement;
-      const relatedTarget = e.relatedTarget as HTMLElement;
+    hoverRoot.addEventListener('mouseout', (e) => {
+      const target = e.target;
+      if (!(target instanceof Element)) return;
+      const relatedTarget = (e as MouseEvent).relatedTarget;
       const fileItem = target.closest('.file-item');
-      const toFileItem = relatedTarget?.closest('.file-item');
-      const toHoverCard = relatedTarget?.closest('.file-hover-card');
+      const toFileItem =
+        relatedTarget instanceof Element ? relatedTarget.closest('.file-item') : null;
+      const toHoverCard =
+        relatedTarget instanceof Element ? relatedTarget.closest('.file-hover-card') : null;
 
       if (fileItem && !toFileItem && !toHoverCard) {
         hideHoverCard();
       }
     });
 
-    document.addEventListener('scroll', hideHoverCard, true);
+    scrollContainer.addEventListener('scroll', hideHoverCard, true);
     document.addEventListener('mousedown', hideHoverCard);
   }
 

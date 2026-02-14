@@ -1,0 +1,307 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+:root {
+  --glass-bg: rgba(28, 28, 28, 0.96);
+  --glass-border: rgba(255, 255, 255, 0.1);
+  --glass-shadow: 0 1px 2px rgba(0, 0, 0, 0.24);
+  --text-primary: #ffffff;
+  --text-secondary: rgba(255, 255, 255, 0.8);
+  --text-tertiary: rgba(255, 255, 255, 0.75);
+  --accent-color: #0078d4;
+  --accent-rgb: 0, 120, 212;
+  --accent-hover: #106ebe;
+  --accent-active: #005a9e;
+  --accent-gradient: linear-gradient(135deg, var(--accent-color) 0%, var(--accent-hover) 100%);
+  --hover-color: rgba(255, 255, 255, 0.06);
+  --active-color: rgba(255, 255, 255, 0.1);
+  --danger-color: #e81123;
+  --danger-hover: #ff6b6b;
+  --danger-active: #d60017;
+  --success-color: #107c10;
+  --warning-color: #ff8c00;
+
+  --git-modified: #e5a34d;
+  --git-added: #4caf50;
+  --git-deleted: #ef5350;
+  --git-renamed: #42a5f5;
+  --git-untracked: #9e9e9e;
+  --git-conflict: #ef5350;
+
+  --accent-subtle: rgba(var(--accent-rgb), 0.08);
+  --accent-light: rgba(var(--accent-rgb), 0.14);
+  --accent-medium: rgba(var(--accent-rgb), 0.22);
+  --accent-strong: rgba(var(--accent-rgb), 0.35);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.12);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.2);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.28);
+  --shadow-xl: 0 12px 32px rgba(0, 0, 0, 0.35);
+
+  --focus-ring: 0 0 0 2px rgba(var(--accent-rgb), 0.5);
+  --focus-ring-strong: 0 0 0 3px rgba(var(--accent-rgb), 0.6);
+  --glass-modal-bg: rgba(28, 28, 28, 0.98);
+  --glass-modal-border: rgba(255, 255, 255, 0.12);
+  --bg-primary: #181818;
+  --bg-primary-rgb: 24, 24, 24;
+  --bg-secondary: #212121;
+  --dropdown-bg: rgba(34, 34, 34, 0.98);
+  --separator: rgba(255, 255, 255, 0.08);
+  --surface-border: color-mix(in srgb, var(--text-primary) 12%, transparent);
+  --surface-border-strong: color-mix(in srgb, var(--text-primary) 18%, transparent);
+
+  --titlebar-height: 32px;
+  --tab-bar-height: 32px;
+
+  --radius-small: 6px;
+  --radius-medium: 10px;
+  --radius-large: 14px;
+  --radius-xlarge: 18px;
+
+  --font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI Variable', 'Segoe UI', system-ui, ui-sans-serif,
+    Helvetica, Arial, sans-serif;
+  --font-mono: 'Cascadia Code', 'Fira Code', Consolas, Monaco, 'Courier New', monospace;
+
+  --system-accent-color: var(--accent-color);
+  --system-accent-rgb: var(--accent-rgb);
+  --themed-icon-hue: 200deg;
+
+  --animation-duration: 200ms;
+  --animation-easing: cubic-bezier(0.33, 1, 0.68, 1);
+  --animation-easing-spring: cubic-bezier(0.33, 1, 0.68, 1);
+
+  --scrollbar-width: 10px;
+  --scrollbar-thumb-radius: 5px;
+  --scrollbar-show-always: 1;
+
+  --font-size-base: 13px;
+  --font-size-file-name: 12px;
+  --font-size-nav: 12px;
+  --font-size-section-title: 11px;
+  --font-size-status: 11px;
+  --font-size-breadcrumb: 12px;
+
+  --opacity-disabled: 0.5;
+  --opacity-muted: 0.4;
+
+  --icon-size-grid: 26px;
+  --icon-size-list: 12px;
+  --icon-size-toolbar: 28px;
+  --icon-size-nav: 16px;
+  --icon-size-sidebar-toggle: 26px;
+  --icon-size-spinner: 32px;
+
+  --toolbar-height: 38px;
+  --toolbar-padding-v: 6px;
+  --toolbar-padding-h: 9px;
+  --status-bar-height: 22px;
+  --address-bar-height: 26px;
+  --sidebar-width: 180px;
+  --sidebar-width-collapsed: 44px;
+  --sidebar-toggle-bottom: 26px;
+  --preview-panel-width: 260px;
+
+  --file-grid-gap-row: 10px;
+  --file-grid-gap-col: 12px;
+  --file-item-padding-v: 6px;
+  --file-item-padding-h: 4px;
+  --list-item-padding-v: 6px;
+  --list-item-padding-h: 9px;
+  --list-item-gap: 8px;
+  --list-item-min-height: 30px;
+  --list-col-name: minmax(220px, 1fr);
+  --list-col-type: 140px;
+  --list-col-size: 90px;
+  --list-col-modified: 160px;
+  --list-header-height: 30px;
+  --nav-item-padding-v: 5px;
+  --nav-item-padding-h: 8px;
+  --nav-item-gap: 8px;
+  --sidebar-section-gap: 16px;
+  --sidebar-padding-v: 10px;
+  --sidebar-padding-h: 8px;
+  --container-gap: 10px;
+  --container-edge-padding: 6px;
+  --container-edge-padding-top: 6px;
+  --container-edge-padding-bottom: 0px;
+  --grid-min-column: 82px;
+  --file-icon-margin-bottom: 4px;
+  --toolbar-gap: 6px;
+  --toolbar-left-right-gap: 4px;
+  --toolbar-separator-height: 16px;
+  --toolbar-separator-margin-v: 0;
+  --toolbar-separator-margin-h: 4px;
+  --breadcrumb-gap: 3px;
+  --breadcrumb-padding-v: 4px;
+  --breadcrumb-padding-h: 8px;
+  --status-bar-padding-h: 10px;
+  --list-info-gap: 18px;
+  --section-title-margin-bottom: 3px;
+
+  --modal-max-width: 600px;
+  --modal-padding: 24px;
+  --settings-modal-width: 980px;
+  --settings-modal-height: 680px;
+  --dialog-modal-max-width: 450px;
+
+  --spacing-xs: 2px;
+  --spacing-sm: 4px;
+  --spacing-md: 6px;
+  --spacing-lg: 8px;
+  --spacing-xl: 10px;
+  --spacing-xxl: 12px;
+  --spacing-xxxl: 16px;
+  --spacing-huge: 20px;
+  --spacing-massive: 24px;
+}
+
+body.platform-darwin {
+  --animation-duration: 250ms;
+  --animation-easing: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --animation-easing-spring: cubic-bezier(0.2, 0.8, 0.2, 1.15);
+  --scrollbar-width: 8px;
+  --scrollbar-thumb-radius: 4px;
+  --scrollbar-show-always: 0;
+  --radius-small: 8px;
+  --radius-medium: 12px;
+  --titlebar-height: 38px;
+}
+
+body.platform-win32 {
+  --animation-duration: 167ms;
+  --animation-easing: cubic-bezier(0.4, 0, 0.2, 1);
+  --animation-easing-spring: cubic-bezier(0.4, 0, 0.2, 1);
+  --scrollbar-width: 12px;
+  --scrollbar-thumb-radius: 0px;
+  --scrollbar-show-always: 1;
+  --radius-small: 4px;
+  --radius-medium: 8px;
+  --titlebar-height: 36px;
+}
+
+body.platform-linux {
+  --animation-duration: 200ms;
+  --animation-easing: cubic-bezier(0.25, 0.1, 0.25, 1);
+  --animation-easing-spring: cubic-bezier(0.25, 0.1, 0.25, 1);
+  --scrollbar-width: 10px;
+  --scrollbar-thumb-radius: 5px;
+  --scrollbar-show-always: 1;
+}
+
+body.compact-ui {
+  --font-size-base: 11px;
+  --font-size-file-name: 10px;
+  --font-size-nav: 10px;
+  --font-size-section-title: 9.5px;
+  --font-size-status: 9.5px;
+  --font-size-breadcrumb: 10.5px;
+
+  --icon-size-grid: 22px;
+  --icon-size-list: 11px;
+  --icon-size-toolbar: 22px;
+  --icon-size-nav: 12px;
+  --icon-size-sidebar-toggle: 20px;
+  --icon-size-spinner: 28px;
+
+  --toolbar-height: 32px;
+  --toolbar-padding-v: 4px;
+  --toolbar-padding-h: 6px;
+  --status-bar-height: 18px;
+  --address-bar-height: 22px;
+  --sidebar-width: 160px;
+  --sidebar-width-collapsed: 38px;
+  --sidebar-toggle-bottom: 22px;
+  --tab-bar-height: 28px;
+  --preview-panel-width: 220px;
+
+  --file-grid-gap-row: 6px;
+  --file-grid-gap-col: 8px;
+  --file-item-padding-v: 4px;
+  --file-item-padding-h: 3px;
+  --list-item-padding-v: 4px;
+  --list-item-padding-h: 7px;
+  --list-item-gap: 6px;
+  --list-item-min-height: 24px;
+  --list-header-height: 24px;
+  --nav-item-padding-v: 3px;
+  --nav-item-padding-h: 6px;
+  --nav-item-gap: 6px;
+  --sidebar-section-gap: 12px;
+  --sidebar-padding-v: 6px;
+  --sidebar-padding-h: 6px;
+  --container-gap: 6px;
+  --grid-min-column: 70px;
+  --file-icon-margin-bottom: 3px;
+  --toolbar-gap: 4px;
+  --breadcrumb-gap: 2px;
+  --breadcrumb-padding-v: 3px;
+  --breadcrumb-padding-h: 6px;
+}
+
+body.large-ui {
+  --font-size-base: 13px;
+  --font-size-file-name: 11.5px;
+  --font-size-nav: 12px;
+  --font-size-section-title: 11px;
+  --font-size-status: 11.5px;
+  --font-size-breadcrumb: 12px;
+
+  --icon-size-grid: 44px;
+  --icon-size-list: 18px;
+  --icon-size-toolbar: 34px;
+  --icon-size-nav: 16px;
+  --icon-size-sidebar-toggle: 28px;
+  --icon-size-spinner: 44px;
+
+  --toolbar-height: 48px;
+  --toolbar-padding-v: 10px;
+  --toolbar-padding-h: 12px;
+  --status-bar-height: 24px;
+  --address-bar-height: 28px;
+  --sidebar-width: 200px;
+  --sidebar-width-collapsed: 52px;
+  --sidebar-toggle-bottom: 32px;
+  --tab-bar-height: 36px;
+  --preview-panel-width: 320px;
+
+  --file-grid-gap-row: 8px;
+  --file-grid-gap-col: 10px;
+  --file-item-padding-v: 10px;
+  --file-item-padding-h: 8px;
+  --list-item-padding-v: 8px;
+  --list-item-padding-h: 12px;
+  --list-item-gap: 12px;
+  --list-item-min-height: 36px;
+  --list-col-name: minmax(260px, 1fr);
+  --list-col-type: 170px;
+  --list-col-size: 110px;
+  --list-col-modified: 190px;
+  --list-header-height: 34px;
+  --nav-item-padding-v: 6px;
+  --nav-item-padding-h: 10px;
+  --nav-item-gap: 10px;
+  --sidebar-section-gap: 20px;
+  --sidebar-padding-v: 12px;
+  --sidebar-padding-h: 10px;
+  --container-gap: 12px;
+  --container-edge-padding: 8px;
+  --container-edge-padding-top: 8px;
+  --container-edge-padding-bottom: 0px;
+  --grid-min-column: 98px;
+  --file-icon-margin-bottom: 8px;
+  --toolbar-gap: 8px;
+  --toolbar-left-right-gap: 6px;
+  --toolbar-separator-height: 20px;
+  --toolbar-separator-margin-v: 0;
+  --toolbar-separator-margin-h: 6px;
+  --breadcrumb-gap: 4px;
+  --breadcrumb-padding-v: 5px;
+  --breadcrumb-padding-h: 10px;
+  --status-bar-padding-h: 16px;
+  --list-info-gap: 24px;
+  --section-title-margin-bottom: 4px;
+}

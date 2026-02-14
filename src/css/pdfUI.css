@@ -1,0 +1,201 @@
+.preview-pdf-container {
+  position: relative;
+  width: 100%;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--hover-color, rgba(255, 255, 255, 0.03));
+  margin-bottom: 12px;
+}
+
+.pdfjs-viewer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+}
+
+.pdfjs-viewer:focus {
+  outline: none;
+}
+
+.pdfjs-page-viewport {
+  overflow: auto;
+  display: flex;
+  justify-content: center;
+  border-radius: 6px;
+}
+
+.pdfjs-page-wrapper {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+  transition: opacity 0.15s ease;
+}
+
+.pdfjs-page-wrapper.pdfjs-transitioning {
+  opacity: 0;
+}
+
+.pdfjs-canvas {
+  display: block;
+  border-radius: 6px;
+  box-shadow: var(--shadow-md, 0 2px 12px rgba(0, 0, 0, 0.25));
+  max-width: 100%;
+  height: auto;
+}
+
+.pdfjs-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+  padding: 6px 14px;
+  border-radius: 8px;
+  background: var(--hover-color, rgba(255, 255, 255, 0.06));
+  border: 1px solid var(--surface-border, rgba(255, 255, 255, 0.08));
+}
+
+.pdfjs-nav-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 6px;
+  background: var(--hover-color, rgba(255, 255, 255, 0.08));
+  color: var(--text-primary);
+  font-size: 18px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  line-height: 1;
+}
+
+.pdfjs-nav-btn:hover:not(:disabled) {
+  background: var(--active-color, rgba(255, 255, 255, 0.15));
+}
+
+.pdfjs-nav-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.pdfjs-page-indicator {
+  font-size: 12px;
+  color: var(--text-secondary);
+  min-width: 60px;
+  text-align: center;
+  user-select: none;
+}
+
+.pdfjs-controls-separator {
+  width: 1px;
+  height: 18px;
+  background: var(--surface-border, rgba(255, 255, 255, 0.12));
+  margin: 0 4px;
+}
+
+.pdfjs-zoom-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 6px;
+  background: var(--hover-color, rgba(255, 255, 255, 0.08));
+  color: var(--text-primary);
+  font-size: 16px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  line-height: 1;
+}
+
+.pdfjs-zoom-btn:hover:not(:disabled) {
+  background: var(--active-color, rgba(255, 255, 255, 0.15));
+}
+
+.pdfjs-zoom-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.pdfjs-zoom-indicator {
+  font-size: 11px;
+  color: var(--text-secondary);
+  min-width: 40px;
+  text-align: center;
+  user-select: none;
+}
+
+.preview-pdf-container.quicklook-pdf {
+  min-height: 300px;
+}
+
+.preview-pdf-container.quicklook-pdf .pdfjs-viewer {
+  width: 100%;
+}
+
+.preview-pdf-container.quicklook-pdf .pdfjs-page-viewport {
+  max-height: 65vh;
+}
+
+.preview-pdf-actions {
+  display: flex;
+  justify-content: center;
+  padding: 8px 0;
+  margin-bottom: 4px;
+}
+
+.preview-pdf-open-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 16px;
+  border: 1px solid var(--surface-border, rgba(255, 255, 255, 0.12));
+  border-radius: 8px;
+  background: var(--hover-color, rgba(255, 255, 255, 0.06));
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.preview-pdf-open-btn:hover {
+  background: var(--active-color, rgba(255, 255, 255, 0.1));
+  border-color: var(--surface-border-strong, rgba(255, 255, 255, 0.2));
+}
+
+.preview-pdf-open-btn:active {
+  background: var(--hover-color, rgba(255, 255, 255, 0.04));
+}
+
+.quicklook-content .preview-pdf-container {
+  margin-bottom: 0;
+}
+
+.textLayer {
+  position: absolute;
+  inset: 0;
+  overflow: clip;
+  line-height: 1;
+  text-size-adjust: none;
+  transform-origin: 0 0;
+  z-index: 1;
+}
+
+.textLayer :is(span, br) {
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  transform-origin: 0% 0%;
+}
+
+.textLayer ::selection {
+  background: rgba(0, 100, 255, 0.3);
+}

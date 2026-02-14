@@ -1,4 +1,4 @@
-const { execSync } = require('child_process');
+const { spawnSync } = require('child_process');
 
 const colors = {
   reset: '\x1b[0m',
@@ -10,49 +10,95 @@ const colors = {
 };
 
 const results = {
-  lint: { status: 'pending', errors: 0, warnings: 0 },
+  lint: { status: 'pending', errors: null, warnings: null },
   format: { status: 'pending' },
-  test: { status: 'pending', passed: 0, failed: 0 },
+  test: { status: 'pending', passed: null, failed: null },
   typecheck: { status: 'pending' },
 };
 
-function runCommand(name, command, parser) {
+function runCommand(name, command, args, parser) {
   console.log(`${colors.blue}${colors.bold}Running ${name}...${colors.reset}`);
-  try {
-    const output = execSync(command, { encoding: 'utf8', stdio: 'pipe' });
-    results[name].status = 'passed';
-    if (parser) parser(output);
-    console.log(`${colors.green}✓ ${name} passed${colors.reset}\n`);
-    return true;
-  } catch (error) {
-    const output = error.stdout || error.stderr || '';
-    if (parser) parser(output);
+  const run = spawnSync(command, args, {
+    encoding: 'utf8',
+    stdio: 'pipe',
+  });
 
-    // Check if it's just warnings (no errors)
-    if (name === 'lint' && results.lint.errors === 0) {
-      results[name].status = 'passed';
-      console.log(`${colors.green}✓ ${name} passed (${results.lint.warnings} warnings)${colors.reset}\n`);
-      return true;
+  const output = `${run.stdout || ''}${run.stderr || ''}`;
+  if (parser) parser(output);
+
+  if (!run.error && run.status === 0) {
+    results[name].status = 'passed';
+
+    if (name === 'lint') {
+      const warningCount = results.lint.warnings === null ? 'n/a' : results.lint.warnings;
+      console.log(`${colors.green}✓ ${name} passed (${warningCount} warnings)${colors.reset}\n`);
+    } else {
+      console.log(`${colors.green}✓ ${name} passed${colors.reset}\n`);
     }
 
-    results[name].status = 'failed';
-    console.log(`${colors.red}✗ ${name} failed${colors.reset}\n`);
-    return false;
+    return true;
   }
+
+  results[name].status = 'failed';
+  const reason = run.error
+    ? run.error.message
+    : run.status === null
+      ? `signal ${run.signal || 'unknown'}`
+      : `exit code ${run.status}`;
+  console.log(`${colors.red}✗ ${name} failed (${reason})${colors.reset}`);
+  printTail(output);
+  console.log('');
+  return false;
 }
 
 function parseLint(output) {
-  const errorMatch = output.match(/(\d+) errors?/);
-  const warningMatch = output.match(/(\d+) warnings?/);
-  results.lint.errors = errorMatch ? parseInt(errorMatch[1]) : 0;
-  results.lint.warnings = warningMatch ? parseInt(warningMatch[1]) : 0;
+  const cleanOutput = stripAnsi(output);
+  const summaryMatch = cleanOutput.match(
+    /✖\s+\d+\s+problems?\s+\((\d+)\s+errors?,\s+(\d+)\s+warnings?\)/
+  );
+
+  if (summaryMatch) {
+    results.lint.errors = parseInt(summaryMatch[1], 10);
+    results.lint.warnings = parseInt(summaryMatch[2], 10);
+    return;
+  }
+
+  const errorMatch = cleanOutput.match(/(\d+)\s+errors?/);
+  const warningMatch = cleanOutput.match(/(\d+)\s+warnings?/);
+  results.lint.errors = errorMatch ? parseInt(errorMatch[1], 10) : 0;
+  results.lint.warnings = warningMatch ? parseInt(warningMatch[1], 10) : 0;
 }
 
 function parseTest(output) {
-  const passedMatch = output.match(/(\d+) passed/);
-  const failedMatch = output.match(/(\d+) failed/);
-  results.test.passed = passedMatch ? parseInt(passedMatch[1]) : 0;
-  results.test.failed = failedMatch ? parseInt(failedMatch[1]) : 0;
+  const cleanOutput = stripAnsi(output);
+  const summaryPassedMatch = cleanOutput.match(/Tests?\s+(\d+)\s+passed/);
+  const summaryFailedMatch = cleanOutput.match(/Tests?\s+(\d+)\s+failed/);
+  const fallbackPassedMatch = cleanOutput.match(/(\d+)\s+passed/);
+  const fallbackFailedMatch = cleanOutput.match(/(\d+)\s+failed/);
+
+  results.test.passed = summaryPassedMatch
+    ? parseInt(summaryPassedMatch[1], 10)
+    : fallbackPassedMatch
+      ? parseInt(fallbackPassedMatch[1], 10)
+      : null;
+  results.test.failed = summaryFailedMatch
+    ? parseInt(summaryFailedMatch[1], 10)
+    : fallbackFailedMatch
+      ? parseInt(fallbackFailedMatch[1], 10)
+      : null;
+}
+
+function stripAnsi(value) {
+  return value.replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, '');
+}
+
+function printTail(output) {
+  const cleanOutput = stripAnsi(output).trim();
+  if (!cleanOutput) return;
+
+  const lines = cleanOutput.split('\n');
+  const tail = lines.slice(-20).join('\n');
+  console.log(`${colors.red}${tail}${colors.reset}`);
 }
 
 console.log(`${colors.bold}${colors.blue}
@@ -62,10 +108,10 @@ console.log(`${colors.bold}${colors.blue}
 ${colors.reset}`);
 
 // Run all checks
-runCommand('lint', 'npm run lint', parseLint);
-runCommand('format', 'npm run format:check');
-runCommand('test', 'npm test', parseTest);
-runCommand('typecheck', 'npx tsc --noEmit && npx tsc --noEmit --project tsconfig.renderer.json');
+runCommand('lint', 'npm', ['run', 'lint'], parseLint);
+runCommand('format', 'npm', ['run', 'format:check']);
+runCommand('test', 'npm', ['test'], parseTest);
+runCommand('typecheck', 'npm', ['run', 'typecheck']);
 
 // Print summary
 console.log(`${colors.bold}${colors.blue}
@@ -76,23 +122,31 @@ ${colors.reset}`);
 
 const allPassed = Object.values(results).every((r) => r.status === 'passed');
 
-console.log(`${colors.bold}Lint:${colors.reset}       ${
-  results.lint.status === 'passed' ? colors.green + '✓ PASS' : colors.red + '✗ FAIL'
-}${colors.reset} (${results.lint.errors} errors, ${results.lint.warnings} warnings)`);
+console.log(
+  `${colors.bold}Lint:${colors.reset}       ${
+    results.lint.status === 'passed' ? colors.green + '✓ PASS' : colors.red + '✗ FAIL'
+  }${colors.reset} (${results.lint.errors ?? 'n/a'} errors, ${results.lint.warnings ?? 'n/a'} warnings)`
+);
 
-console.log(`${colors.bold}Format:${colors.reset}     ${
-  results.format.status === 'passed' ? colors.green + '✓ PASS' : colors.red + '✗ FAIL'
-}${colors.reset}`);
+console.log(
+  `${colors.bold}Format:${colors.reset}     ${
+    results.format.status === 'passed' ? colors.green + '✓ PASS' : colors.red + '✗ FAIL'
+  }${colors.reset}`
+);
 
-console.log(`${colors.bold}Tests:${colors.reset}      ${
-  results.test.status === 'passed' ? colors.green + '✓ PASS' : colors.red + '✗ FAIL'
-}${colors.reset} (${results.test.passed} passed${
-  results.test.failed > 0 ? `, ${results.test.failed} failed` : ''
-})`);
+console.log(
+  `${colors.bold}Tests:${colors.reset}      ${
+    results.test.status === 'passed' ? colors.green + '✓ PASS' : colors.red + '✗ FAIL'
+  }${colors.reset} (${results.test.passed ?? 'n/a'} passed${
+    results.test.failed && results.test.failed > 0 ? `, ${results.test.failed} failed` : ''
+  })`
+);
 
-console.log(`${colors.bold}TypeCheck:${colors.reset}  ${
-  results.typecheck.status === 'passed' ? colors.green + '✓ PASS' : colors.red + '✗ FAIL'
-}${colors.reset}`);
+console.log(
+  `${colors.bold}TypeCheck:${colors.reset}  ${
+    results.typecheck.status === 'passed' ? colors.green + '✓ PASS' : colors.red + '✗ FAIL'
+  }${colors.reset}`
+);
 
 console.log('');
 
@@ -100,6 +154,8 @@ if (allPassed) {
   console.log(`${colors.green}${colors.bold}✓ All checks passed! Ready to commit.${colors.reset}`);
   process.exit(0);
 } else {
-  console.log(`${colors.red}${colors.bold}✗ Some checks failed. Please fix before committing.${colors.reset}`);
+  console.log(
+    `${colors.red}${colors.bold}✗ Some checks failed. Please fix before committing.${colors.reset}`
+  );
   process.exit(1);
 }

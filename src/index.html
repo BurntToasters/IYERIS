@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: file:; media-src 'self' file:; font-src 'self' data:; frame-src 'self' file:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: file:; media-src 'self' file:; font-src 'self' data:; frame-src 'none'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'"
     />
     <title>IYERIS - File Explorer</title>
     <link rel="stylesheet" href="css/main.css" />
@@ -117,7 +117,12 @@
 
         <div class="sidebar-section primary" id="bookmarks-section" data-collapsible="true">
           <div class="section-header">
-            <button class="section-toggle" type="button" aria-expanded="true">
+            <button
+              class="section-toggle"
+              type="button"
+              aria-expanded="true"
+              aria-label="Toggle Bookmarks section"
+            >
               <span class="section-title">Bookmarks</span>
               <span class="section-caret" aria-hidden="true">▾</span>
             </button>
@@ -137,7 +142,12 @@
 
         <div class="sidebar-section collapsed" id="recent-section" data-collapsible="true">
           <div class="section-header">
-            <button class="section-toggle" type="button" aria-expanded="false">
+            <button
+              class="section-toggle"
+              type="button"
+              aria-expanded="false"
+              aria-label="Toggle Recent section"
+            >
               <span class="section-title">Recent</span>
               <span class="section-caret" aria-hidden="true">▾</span>
             </button>
@@ -149,7 +159,12 @@
 
         <div class="sidebar-section" id="folder-tree-section" data-collapsible="true">
           <div class="section-header">
-            <button class="section-toggle" type="button" aria-expanded="true">
+            <button
+              class="section-toggle"
+              type="button"
+              aria-expanded="true"
+              aria-label="Toggle Folders section"
+            >
               <span class="section-title">Folders</span>
               <span class="section-caret" aria-hidden="true">▾</span>
             </button>
@@ -161,7 +176,12 @@
 
         <div class="sidebar-section collapsed" id="drives-section" data-collapsible="true">
           <div class="section-header">
-            <button class="section-toggle" type="button" aria-expanded="false">
+            <button
+              class="section-toggle"
+              type="button"
+              aria-expanded="false"
+              aria-label="Toggle Drives section"
+            >
               <span class="section-title">Drives</span>
               <span class="section-caret" aria-hidden="true">▾</span>
             </button>
@@ -935,7 +955,13 @@
       aria-label="File context menu"
       style="display: none"
     >
-      <div class="context-menu-item" data-action="open" role="menuitem" tabindex="0">
+      <button
+        type="button"
+        class="context-menu-item"
+        data-action="open"
+        role="menuitem"
+        tabindex="0"
+      >
         <img
           src="../assets/twemoji/1f4c2.svg"
           class="twemoji"
@@ -944,9 +970,33 @@
           aria-hidden="true"
         />
         Open <span class="context-menu-shortcut">Enter</span>
-      </div>
+      </button>
+      <button
+        type="button"
+        class="context-menu-item"
+        data-action="preview-pdf"
+        id="preview-pdf-item"
+        role="menuitem"
+        tabindex="0"
+        style="display: none"
+      >
+        <img
+          src="../assets/twemoji/1f50d.svg"
+          class="twemoji"
+          alt=""
+          draggable="false"
+          aria-hidden="true"
+        />
+        Preview PDF
+      </button>
       <div class="context-menu-separator" role="separator"></div>
-      <div class="context-menu-item" data-action="cut" role="menuitem" tabindex="0">
+      <button
+        type="button"
+        class="context-menu-item"
+        data-action="cut"
+        role="menuitem"
+        tabindex="0"
+      >
         <img
           src="../assets/twemoji/2702.svg"
           class="twemoji"
@@ -955,8 +1005,14 @@
           aria-hidden="true"
         />
         Cut <span class="context-menu-shortcut">Ctrl+X</span>
-      </div>
-      <div class="context-menu-item" data-action="copy" role="menuitem" tabindex="0">
+      </button>
+      <button
+        type="button"
+        class="context-menu-item"
+        data-action="copy"
+        role="menuitem"
+        tabindex="0"
+      >
         <img
           src="../assets/twemoji/1f4c4.svg"
           class="twemoji"
@@ -965,8 +1021,9 @@
           aria-hidden="true"
         />
         Copy <span class="context-menu-shortcut">Ctrl+C</span>
-      </div>
-      <div
+      </button>
+      <button
+        type="button"
         class="context-menu-item"
         data-action="copy-path"
         id="copy-path-item"
@@ -981,9 +1038,10 @@
           aria-hidden="true"
         />
         Copy file path
-      </div>
+      </button>
       <div class="context-menu-separator" role="separator"></div>
-      <div
+      <button
+        type="button"
         class="context-menu-item has-submenu"
         id="compress-item"
         role="menuitem"
@@ -1001,7 +1059,8 @@
         Compress To...
         <span class="submenu-arrow" aria-hidden="true">▸</span>
         <div class="context-submenu" role="menu" aria-label="Compress formats">
-          <div
+          <button
+            type="button"
             class="context-menu-item"
             data-action="compress"
             data-format="zip"
@@ -1016,8 +1075,9 @@
               aria-hidden="true"
             />
             ZIP
-          </div>
-          <div
+          </button>
+          <button
+            type="button"
             class="context-menu-item"
             data-action="compress"
             data-format="7z"
@@ -1032,8 +1092,9 @@
               aria-hidden="true"
             />
             7Z
-          </div>
-          <div
+          </button>
+          <button
+            type="button"
             class="context-menu-item"
             data-action="compress"
             data-format="tar"
@@ -1048,8 +1109,9 @@
               aria-hidden="true"
             />
             TAR
-          </div>
-          <div
+          </button>
+          <button
+            type="button"
             class="context-menu-item"
             data-action="compress"
             data-format="tar.gz"
@@ -1064,10 +1126,28 @@
               aria-hidden="true"
             />
             TAR.GZ
-          </div>
+          </button>
+          <div class="context-menu-separator" role="separator"></div>
+          <button
+            type="button"
+            class="context-menu-item"
+            data-action="compress-advanced"
+            role="menuitem"
+            tabindex="0"
+          >
+            <img
+              src="../assets/twemoji/2699.svg"
+              class="twemoji"
+              alt=""
+              draggable="false"
+              aria-hidden="true"
+            />
+            Other...
+          </button>
         </div>
-      </div>
-      <div
+      </button>
+      <button
+        type="button"
         class="context-menu-item"
         data-action="extract"
         id="extract-item"
@@ -1083,9 +1163,15 @@
           aria-hidden="true"
         />
         Extract Here
-      </div>
+      </button>
       <div class="context-menu-separator" role="separator"></div>
-      <div class="context-menu-item" data-action="rename" role="menuitem" tabindex="0">
+      <button
+        type="button"
+        class="context-menu-item"
+        data-action="rename"
+        role="menuitem"
+        tabindex="0"
+      >
         <img
           src="../assets/twemoji/270d.svg"
           class="twemoji"
@@ -1094,8 +1180,14 @@
           aria-hidden="true"
         />
         Rename <span class="context-menu-shortcut">F2</span>
-      </div>
-      <div class="context-menu-item" data-action="refresh" role="menuitem" tabindex="0">
+      </button>
+      <button
+        type="button"
+        class="context-menu-item"
+        data-action="refresh"
+        role="menuitem"
+        tabindex="0"
+      >
         <img
           src="../assets/twemoji/1f504.svg"
           class="twemoji"
@@ -1104,8 +1196,14 @@
           aria-hidden="true"
         />
         Refresh <span class="context-menu-shortcut">F5</span>
-      </div>
-      <div class="context-menu-item" data-action="delete" role="menuitem" tabindex="0">
+      </button>
+      <button
+        type="button"
+        class="context-menu-item"
+        data-action="delete"
+        role="menuitem"
+        tabindex="0"
+      >
         <img
           src="../assets/twemoji/1f5d1.svg"
           class="twemoji"
@@ -1114,9 +1212,10 @@
           aria-hidden="true"
         />
         Delete <span class="context-menu-shortcut">Del</span>
-      </div>
+      </button>
       <div class="context-menu-separator" role="separator"></div>
-      <div
+      <button
+        type="button"
         class="context-menu-item"
         data-action="add-to-bookmarks"
         id="add-to-bookmarks-item"
@@ -1132,8 +1231,9 @@
           aria-hidden="true"
         />
         Add to Bookmarks
-      </div>
-      <div
+      </button>
+      <button
+        type="button"
         class="context-menu-item"
         data-action="change-folder-icon"
         id="change-folder-icon-item"
@@ -1149,8 +1249,9 @@
           aria-hidden="true"
         />
         Change Folder Icon
-      </div>
-      <div
+      </button>
+      <button
+        type="button"
         class="context-menu-item"
         data-action="open-terminal"
         id="open-terminal-item"
@@ -1165,9 +1266,15 @@
           aria-hidden="true"
         />
         Open folder in Terminal
-      </div>
+      </button>
       <div class="context-menu-separator" role="separator"></div>
-      <div class="context-menu-item" data-action="properties" role="menuitem" tabindex="0">
+      <button
+        type="button"
+        class="context-menu-item"
+        data-action="properties"
+        role="menuitem"
+        tabindex="0"
+      >
         <img
           src="../assets/twemoji/2139.svg"
           class="twemoji"
@@ -1176,7 +1283,7 @@
           aria-hidden="true"
         />
         Properties
-      </div>
+      </button>
     </div>
 
     <div
@@ -1186,7 +1293,13 @@
       aria-label="Folder context menu"
       style="display: none"
     >
-      <div class="context-menu-item" data-action="new-folder" role="menuitem" tabindex="0">
+      <button
+        type="button"
+        class="context-menu-item"
+        data-action="new-folder"
+        role="menuitem"
+        tabindex="0"
+      >
         <img
           src="../assets/twemoji/1f4c1.svg"
           class="twemoji"
@@ -1195,8 +1308,14 @@
           aria-hidden="true"
         />
         New Folder <span class="context-menu-shortcut">Ctrl+Shift+N</span>
-      </div>
-      <div class="context-menu-item" data-action="new-file" role="menuitem" tabindex="0">
+      </button>
+      <button
+        type="button"
+        class="context-menu-item"
+        data-action="new-file"
+        role="menuitem"
+        tabindex="0"
+      >
         <img
           src="../assets/twemoji/1f5c3.svg"
           class="twemoji"
@@ -1205,9 +1324,15 @@
           aria-hidden="true"
         />
         New File
-      </div>
+      </button>
       <div class="context-menu-separator" role="separator"></div>
-      <div class="context-menu-item" data-action="paste" role="menuitem" tabindex="0">
+      <button
+        type="button"
+        class="context-menu-item"
+        data-action="paste"
+        role="menuitem"
+        tabindex="0"
+      >
         <img
           src="../assets/twemoji/1f4dc.svg"
           class="twemoji"
@@ -1216,9 +1341,15 @@
           aria-hidden="true"
         />
         Paste <span class="context-menu-shortcut">Ctrl+V</span>
-      </div>
+      </button>
       <div class="context-menu-separator" role="separator"></div>
-      <div class="context-menu-item" data-action="refresh" role="menuitem" tabindex="0">
+      <button
+        type="button"
+        class="context-menu-item"
+        data-action="refresh"
+        role="menuitem"
+        tabindex="0"
+      >
         <img
           src="../assets/twemoji/1f504.svg"
           class="twemoji"
@@ -1227,9 +1358,15 @@
           aria-hidden="true"
         />
         Refresh <span class="context-menu-shortcut">F5</span>
-      </div>
+      </button>
       <div class="context-menu-separator" role="separator"></div>
-      <div class="context-menu-item" data-action="open-terminal" role="menuitem" tabindex="0">
+      <button
+        type="button"
+        class="context-menu-item"
+        data-action="open-terminal"
+        role="menuitem"
+        tabindex="0"
+      >
         <img
           src="../assets/twemoji/1f5a5.svg"
           class="twemoji"
@@ -1238,7 +1375,7 @@
           aria-hidden="true"
         />
         Open folder in Terminal
-      </div>
+      </button>
     </div>
 
     <div id="drop-indicator" class="drop-indicator" style="display: none">
@@ -1291,6 +1428,190 @@
         <div class="modal-footer">
           <button class="modal-button" id="dialog-cancel" style="display: none">Cancel</button>
           <button class="modal-button primary" id="dialog-ok">OK</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-overlay" id="compress-options-modal" style="display: none">
+      <div
+        class="modal glass-panel compress-options-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="compress-options-title"
+      >
+        <div class="modal-header">
+          <h3 id="compress-options-title">
+            <img src="../assets/twemoji/1f5dc.svg" class="twemoji" alt="" draggable="false" />
+            Advanced Compression
+          </h3>
+          <button class="modal-close" id="compress-options-close" aria-label="Close">✕</button>
+        </div>
+        <div class="modal-content compress-options-content">
+          <div class="compress-options-grid">
+            <div class="compress-options-left">
+              <div class="compress-option-field">
+                <label class="compress-option-label" for="compress-archive-name"
+                  >Archive name</label
+                >
+                <input
+                  type="text"
+                  id="compress-archive-name"
+                  class="settings-input"
+                  placeholder="MyArchive.7z"
+                />
+              </div>
+              <div class="compress-option-field">
+                <label class="compress-option-label" for="compress-format">Archive format</label>
+                <select id="compress-format" class="settings-select">
+                  <option value="7z">7z</option>
+                  <option value="zip">zip</option>
+                  <option value="tar">tar</option>
+                  <option value="tar.gz">tar.gz</option>
+                </select>
+              </div>
+              <div class="compress-option-field">
+                <label class="compress-option-label" for="compress-level">Compression level</label>
+                <select id="compress-level" class="settings-select">
+                  <option value="0">Store (no compression)</option>
+                  <option value="1">Fastest</option>
+                  <option value="3">Fast</option>
+                  <option value="5" selected>Normal</option>
+                  <option value="7">Maximum</option>
+                  <option value="9">Ultra</option>
+                </select>
+              </div>
+              <div class="compress-option-field" id="compress-method-field">
+                <label class="compress-option-label" for="compress-method"
+                  >Compression method</label
+                >
+                <select id="compress-method" class="settings-select">
+                  <option value="LZMA2" selected>LZMA2</option>
+                  <option value="LZMA">LZMA</option>
+                  <option value="PPMd">PPMd</option>
+                  <option value="BZip2">BZip2</option>
+                  <option value="Deflate">Deflate</option>
+                  <option value="Deflate64">Deflate64</option>
+                </select>
+              </div>
+              <div class="compress-option-field" id="compress-dictionary-field">
+                <label class="compress-option-label" for="compress-dictionary"
+                  >Dictionary size</label
+                >
+                <select id="compress-dictionary" class="settings-select">
+                  <option value="">Default</option>
+                  <option value="64k">64 KB</option>
+                  <option value="256k">256 KB</option>
+                  <option value="1m">1 MB</option>
+                  <option value="4m">4 MB</option>
+                  <option value="8m">8 MB</option>
+                  <option value="16m">16 MB</option>
+                  <option value="32m">32 MB</option>
+                  <option value="64m">64 MB</option>
+                  <option value="128m">128 MB</option>
+                </select>
+              </div>
+              <div class="compress-option-field" id="compress-solid-field">
+                <label class="compress-option-label" for="compress-solid">Solid block size</label>
+                <select id="compress-solid" class="settings-select">
+                  <option value="" selected>Default</option>
+                  <option value="off">Non-solid</option>
+                  <option value="1m">1 MB</option>
+                  <option value="16m">16 MB</option>
+                  <option value="128m">128 MB</option>
+                  <option value="1g">1 GB</option>
+                  <option value="on">Solid</option>
+                </select>
+              </div>
+              <div class="compress-option-field" id="compress-threads-field">
+                <label class="compress-option-label" for="compress-threads">CPU threads</label>
+                <select id="compress-threads" class="settings-select">
+                  <option value="" selected>Auto</option>
+                  <option value="1">1</option>
+                  <option value="2">2</option>
+                  <option value="4">4</option>
+                  <option value="8">8</option>
+                  <option value="16">16</option>
+                </select>
+              </div>
+            </div>
+            <div class="compress-options-right">
+              <fieldset class="compress-option-fieldset" id="compress-encryption-fieldset">
+                <legend>Encryption</legend>
+                <div class="compress-option-field">
+                  <label class="compress-option-label" for="compress-password">Password</label>
+                  <div class="setting-input-group">
+                    <input
+                      type="password"
+                      id="compress-password"
+                      class="settings-input"
+                      placeholder="Enter password"
+                      autocomplete="off"
+                    />
+                    <button
+                      class="modal-button compact"
+                      id="compress-password-toggle"
+                      title="Show password"
+                      aria-label="Toggle password visibility"
+                      type="button"
+                    >
+                      <img
+                        src="../assets/twemoji/1f441.svg"
+                        class="twemoji"
+                        alt="👁"
+                        draggable="false"
+                      />
+                    </button>
+                  </div>
+                </div>
+                <div class="compress-option-field">
+                  <label class="compress-option-label" for="compress-password-confirm"
+                    >Confirm password</label
+                  >
+                  <input
+                    type="password"
+                    id="compress-password-confirm"
+                    class="settings-input"
+                    placeholder="Re-enter password"
+                    autocomplete="off"
+                  />
+                </div>
+                <div class="compress-option-field" id="compress-encryption-method-field">
+                  <label class="compress-option-label" for="compress-encryption-method"
+                    >Encryption method</label
+                  >
+                  <select id="compress-encryption-method" class="settings-select">
+                    <option value="AES256" selected>AES-256</option>
+                    <option value="ZipCrypto">ZipCrypto</option>
+                  </select>
+                </div>
+                <div class="compress-option-check" id="compress-encrypt-names-field">
+                  <label>
+                    <input type="checkbox" id="compress-encrypt-names" />
+                    <span>Encrypt file names</span>
+                  </label>
+                </div>
+              </fieldset>
+              <div class="compress-option-field" id="compress-split-field">
+                <label class="compress-option-label" for="compress-split">Split to volumes</label>
+                <select id="compress-split" class="settings-select">
+                  <option value="" selected>No splitting</option>
+                  <option value="10m">10 MB</option>
+                  <option value="100m">100 MB</option>
+                  <option value="700m">700 MB (CD)</option>
+                  <option value="4092m">4092 MB (FAT32)</option>
+                  <option value="4480m">4480 MB (DVD)</option>
+                </select>
+              </div>
+              <div class="compress-option-preview" id="compress-option-preview">
+                <span class="compress-option-preview-label">Output:</span>
+                <span class="compress-option-preview-path" id="compress-preview-path"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="modal-button" id="compress-options-cancel">Cancel</button>
+          <button class="modal-button primary" id="compress-options-confirm">Compress</button>
         </div>
       </div>
     </div>
@@ -1811,6 +2132,18 @@
                   </div>
                   <label class="toggle-switch">
                     <input type="checkbox" id="show-folder-tree-toggle" checked />
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+                <div class="setting-item" data-searchable="folder tree spacing indentation legacy">
+                  <div class="setting-info">
+                    <label for="legacy-tree-spacing-toggle">Legacy Tree Spacing</label>
+                    <p class="setting-description">
+                      Use the previous wide folder tree indentation and guide lines
+                    </p>
+                  </div>
+                  <label class="toggle-switch">
+                    <input type="checkbox" id="legacy-tree-spacing-toggle" />
                     <span class="toggle-slider"></span>
                   </label>
                 </div>
@@ -2805,11 +3138,23 @@
           </div>
         </div>
         <div class="modal-footer settings-footer">
-          <div class="settings-footer-left"></div>
+          <div class="settings-footer-left">
+            <div id="update-download-status" class="update-download-status" hidden></div>
+          </div>
           <div class="settings-footer-right">
             <button class="modal-button" id="check-updates-btn">
               <img src="../assets/twemoji/1f503.svg" class="twemoji" alt="🔃" draggable="false" />
               Check for Updates
+            </button>
+            <button
+              class="modal-button"
+              id="toggle-update-status-btn"
+              aria-controls="update-download-status"
+              aria-expanded="false"
+              hidden
+            >
+              <img src="../assets/twemoji/1f50d.svg" class="twemoji" alt="🔍" draggable="false" />
+              Show Download Status
             </button>
             <button class="modal-button" id="reset-settings-btn">Reset to Default</button>
             <button class="modal-button primary" id="save-settings-btn">Save</button>
@@ -3011,34 +3356,34 @@
     </div>
 
     <div class="sort-menu glass-panel" id="sort-menu" style="display: none">
-      <div class="context-menu-item" data-sort="name">
+      <button type="button" class="context-menu-item" data-sort="name">
         <span
           ><img src="../assets/twemoji/1f4dd.svg" class="twemoji" alt="📝" draggable="false" />
           Name</span
         >
         <span class="sort-indicator" id="sort-name"></span>
-      </div>
-      <div class="context-menu-item" data-sort="date">
+      </button>
+      <button type="button" class="context-menu-item" data-sort="date">
         <span
           ><img src="../assets/twemoji/1f4c5.svg" class="twemoji" alt="📅" draggable="false" /> Date
           Modified</span
         >
         <span class="sort-indicator" id="sort-date"></span>
-      </div>
-      <div class="context-menu-item" data-sort="size">
+      </button>
+      <button type="button" class="context-menu-item" data-sort="size">
         <span
           ><img src="../assets/twemoji/1f4ca.svg" class="twemoji" alt="📊" draggable="false" />
           Size</span
         >
         <span class="sort-indicator" id="sort-size"></span>
-      </div>
-      <div class="context-menu-item" data-sort="type">
+      </button>
+      <button type="button" class="context-menu-item" data-sort="type">
         <span
           ><img src="../assets/twemoji/1f4cb.svg" class="twemoji" alt="📋" draggable="false" />
           Type</span
         >
         <span class="sort-indicator" id="sort-type"></span>
-      </div>
+      </button>
     </div>
 
     <div class="zoom-popup" id="zoom-popup" style="display: none">

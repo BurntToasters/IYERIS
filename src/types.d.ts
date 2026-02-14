@@ -80,6 +80,7 @@ export interface Settings {
   folderIcons?: { [path: string]: string };
   showRecentFiles: boolean;
   showFolderTree: boolean;
+  useLegacyTreeSpacing: boolean;
   enableTabs: boolean;
   globalContentSearch: boolean;
   globalClipboard: boolean;
@@ -258,6 +259,18 @@ export interface IndexEntry {
   modified: Date;
 }
 
+export interface AdvancedCompressOptions {
+  compressionLevel?: number;
+  method?: string;
+  dictionarySize?: string;
+  solidBlockSize?: string;
+  cpuThreads?: string;
+  password?: string;
+  encryptionMethod?: string;
+  encryptFileNames?: boolean;
+  splitVolume?: string;
+}
+
 export interface IndexStatus {
   isIndexing: boolean;
   totalFiles: number;
@@ -384,6 +397,7 @@ export interface ElectronAPI {
   getItemProperties: (itemPath: string) => Promise<PropertiesResponse>;
   getSettings: () => Promise<SettingsResponse>;
   saveSettings: (settings: Settings) => Promise<ApiResponse>;
+  saveSettingsSync: (settings: Settings) => ApiResponse;
   resetSettings: () => Promise<ApiResponse>;
   relaunchApp: () => Promise<void>;
   getSettingsPath: () => Promise<string>;
@@ -471,6 +485,7 @@ export interface ElectronAPI {
   installUpdate: () => Promise<ApiResponse>;
   onUpdateDownloadProgress: (callback: (progress: UpdateDownloadProgress) => void) => () => void;
   onUpdateAvailable: (callback: (info: UpdateInfo) => void) => () => void;
+  onUpdateDownloaded: (callback: (info: { version: string }) => void) => () => void;
   undoAction: () => Promise<UndoResponse>;
   redoAction: () => Promise<UndoResponse>;
   getUndoRedoState: () => Promise<{ canUndo: boolean; canRedo: boolean }>;
@@ -482,7 +497,8 @@ export interface ElectronAPI {
     sourcePaths: string[],
     outputPath: string,
     format?: string,
-    operationId?: string
+    operationId?: string,
+    advancedOptions?: AdvancedCompressOptions
   ) => Promise<ApiResponse>;
   extractArchive: (
     archivePath: string,

@@ -8,6 +8,7 @@ interface SettingsActionsDeps {
   setCurrentSettings: (settings: Settings) => void;
   saveSettingsWithTimestamp: (settings: Settings) => Promise<{ success: boolean; error?: string }>;
   showToast: (message: string, title?: string, type?: ToastType) => void;
+  showConfirm: (message: string, title: string) => Promise<boolean>;
   loadBookmarks: () => void;
   updateThumbnailCacheSize: () => void;
   clearThumbnailCacheLocal: () => void;
@@ -47,6 +48,8 @@ export function createSettingsActionsController(deps: SettingsActionsDeps) {
       validated.autoCheckUpdates = data.autoCheckUpdates;
     if (typeof data.showRecentFiles === 'boolean') validated.showRecentFiles = data.showRecentFiles;
     if (typeof data.showFolderTree === 'boolean') validated.showFolderTree = data.showFolderTree;
+    if (typeof data.useLegacyTreeSpacing === 'boolean')
+      validated.useLegacyTreeSpacing = data.useLegacyTreeSpacing;
     if (typeof data.enableTabs === 'boolean') validated.enableTabs = data.enableTabs;
     if (typeof data.globalContentSearch === 'boolean')
       validated.globalContentSearch = data.globalContentSearch;
@@ -216,7 +219,11 @@ export function createSettingsActionsController(deps: SettingsActionsDeps) {
     });
 
     document.getElementById('clear-search-history-btn')?.addEventListener('click', async () => {
-      if (confirm('Are you sure you want to clear your search history?')) {
+      const confirmed = await deps.showConfirm(
+        'Are you sure you want to clear your search history?',
+        'Clear Search History'
+      );
+      if (confirmed) {
         const nextSettings = { ...deps.getCurrentSettings(), searchHistory: [] };
         deps.setCurrentSettings(nextSettings);
         await deps.saveSettingsWithTimestamp(nextSettings);
@@ -225,7 +232,11 @@ export function createSettingsActionsController(deps: SettingsActionsDeps) {
     });
 
     document.getElementById('clear-bookmarks-btn')?.addEventListener('click', async () => {
-      if (confirm('Are you sure you want to clear all bookmarks?')) {
+      const confirmed = await deps.showConfirm(
+        'Are you sure you want to clear all bookmarks?',
+        'Clear Bookmarks'
+      );
+      if (confirmed) {
         const nextSettings = { ...deps.getCurrentSettings(), bookmarks: [] };
         deps.setCurrentSettings(nextSettings);
         await deps.saveSettingsWithTimestamp(nextSettings);
@@ -235,7 +246,11 @@ export function createSettingsActionsController(deps: SettingsActionsDeps) {
     });
 
     document.getElementById('clear-thumbnail-cache-btn')?.addEventListener('click', async () => {
-      if (confirm('Are you sure you want to clear the thumbnail cache?')) {
+      const confirmed = await deps.showConfirm(
+        'Are you sure you want to clear the thumbnail cache?',
+        'Clear Thumbnail Cache'
+      );
+      if (confirmed) {
         const result = await window.electronAPI.clearThumbnailCache();
         if (result.success) {
           deps.clearThumbnailCacheLocal();

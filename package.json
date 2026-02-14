@@ -1,21 +1,21 @@
 {
   "name": "iyeris",
-  "version": "0.9.14",
-  "description": "A beautiful cross-platform file explorer built with Electron, featuring a stunning liquid-glass interface with smooth animations and modern design.",
-  "main": "dist/main.js",
+  "version": "0.10.0",
+  "description": "A beautiful cross-platform file explorer built with Electron, featuring a simple yet advanced modern design.",
+  "main": "dist/main/main.js",
   "dependencies": {
     "@highlightjs/cdn-assets": "^11.11.1",
     "7zip-bin": "^5.2.0",
     "electron-log": "^5.4.3",
     "electron-updater": "^6.6.2",
-    "node-7z": "^3.0.0"
+    "node-7z": "^3.0.0",
+    "pdfjs-dist": "^5.4.624"
   },
   "devDependencies": {
     "@electron/notarize": "^3.1.1",
     "@eslint/js": "^9.39.2",
     "@types/node": "^25.0.3",
-    "@typescript-eslint/eslint-plugin": "^8.32.1",
-    "@typescript-eslint/parser": "^8.32.1",
+    "@vitest/coverage-v8": "^4.0.18",
     "cross-env": "^7.0.3",
     "dotenv": "^17.2.3",
     "dotenv-cli": "^10.0.0",
@@ -23,12 +23,18 @@
     "electron-builder": "^26.4.0",
     "eslint": "^9.27.0",
     "husky": "^9.1.7",
+    "jsdom": "^28.0.0",
     "lint-staged": "^16.1.0",
     "prettier": "^3.5.3",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.53.0",
     "vitest": "^4.0.16"
   },
+  "engines": {
+    "node": "24.x",
+    "npm": "11.x"
+  },
+  "packageManager": "npm@11.10.0",
   "overrides": {
     "tar": "^7.5.3"
   },
@@ -37,18 +43,16 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:all": "npm run build && node build/test-all.js",
+    "typecheck": "tsc --noEmit && tsc --noEmit --project tsconfig.renderer.json",
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
     "format": "prettier --write src/",
     "format:check": "prettier --check src/",
     "prepare": "husky",
-    "copy:css": "node -e \"const fs=require('fs');fs.mkdirSync('dist/css',{recursive:true});fs.copyFileSync('src/css/twemoji.css', 'dist/css/twemoji.css')\"",
-    "copy:highlight": "node -e \"const fs=require('fs');const path=require('path');const base=path.dirname(require.resolve('@highlightjs/cdn-assets/package.json'));const jsSrc=path.join(base,'highlight.min.js');const cssSrc=path.join(base,'styles','atom-one-dark.min.css');const dest=path.join('dist','vendor');fs.mkdirSync(dest,{recursive:true});fs.copyFileSync(jsSrc,path.join(dest,'highlight.js'));fs.copyFileSync(cssSrc,path.join(dest,'highlight.css'));\"",
-    "build:cleanup": "node -e \"const fs=require('fs');['release','dist'].forEach(d=>{try{fs.rmSync(d,{recursive:true,force:true})}catch(e){}})\"",
-    "build": "npm run build:cleanup && tsc --project tsconfig.main.json && tsc --project tsconfig.renderer.json && npm run copy:css && npm run copy:highlight",
+    "build": "node build/dist-tools.js clean && tsc --project tsconfig.main.json && tsc --project tsconfig.renderer.json && node build/dist-tools.js copy",
     "watch": "node build/watch.js",
     "start": "npm run build && electron .",
-    "dev": "npm run build && electron . --enable-logging",
+    "dev": "npm run build && electron . --enable-logging --dev",
     "build:win": "npm run build && electron-builder --win --arm64 --x64",
     "build:win:x64": "npm run build && electron-builder --win --x64 --publish never",
     "build:win:arm64": "npm run build && electron-builder --win --arm64 --publish never",
@@ -89,9 +93,9 @@
     "release:beta:linux": "npm run release:prepare && npm run licenses && npm run patch:beta && cross-env IS_BETA=true npm run build && dotenv -e .env -- electron-builder --linux AppImage deb rpm --x64 --arm64 -c.linux.icon=assets/icon-beta.png --publish always && npm run restore:release && npm run sign:gpg",
     "release:beta:linux:native": "npm run release:prepare && npm run licenses && npm run patch:beta && cross-env IS_BETA=true npm run build && cross-env USE_SYSTEM_FPM=true dotenv -e .env -- electron-builder --linux AppImage deb rpm --x64 --arm64 -c.linux.icon=assets/icon-beta.png --publish always && npm run restore:release && npm run sign:gpg",
     "release:beta:all": "npm run licenses && npm run release:beta:mac && npm run release:beta:win && npm run release:beta:linux",
-    "build:msstore:x64": "npm run licenses && npm run licenses && npm run build && electron-builder --win --x64 -c electron-builder.msstore.yml --publish never",
-    "build:msstore:arm64": "npm run licenses && npm run licenses && npm run build && electron-builder --win --arm64 -c electron-builder.msstore.yml --publish never",
-    "build:msstore": "npm run licenses && npm run licenses && npm run build:msstore:x64 && npm run build:msstore:arm64",
+    "build:msstore:x64": "npm run licenses && npm run build && electron-builder --win --x64 -c electron-builder.msstore.yml --publish never",
+    "build:msstore:arm64": "npm run licenses && npm run build && electron-builder --win --arm64 -c electron-builder.msstore.yml --publish never",
+    "build:msstore": "npm run licenses && npm run build:msstore:x64 && npm run build:msstore:arm64",
     "sign:gpg": "node build/gpg-sign.js"
   },
   "build": {
@@ -116,7 +120,7 @@
       "licenses.json"
     ],
     "extraMetadata": {
-      "main": "dist/main.js"
+      "main": "dist/main/main.js"
     },
     "asar": true,
     "asarUnpack": [
@@ -136,7 +140,7 @@
       "entitlementsInherit": "build/entitlements.mac.plist",
       "notarize": false,
       "artifactName": "${productName}-MacOS-universal.${ext}",
-      "x64ArchFiles": "**/7zip-bin/mac/**"
+      "x64ArchFiles": "**/{7zip-bin/mac,@napi-rs/canvas-darwin-*}/**"
     },
     "mas": {
       "type": "distribution",
@@ -205,6 +209,15 @@
   "lint-staged": {
     "src/**/*.ts": [
       "eslint --fix",
+      "prettier --write"
+    ],
+    "build/**/*.js": [
+      "prettier --write"
+    ],
+    ".github/workflows/*.{yml,yaml}": [
+      "prettier --write"
+    ],
+    "*.{json,md,yml,yaml}": [
       "prettier --write"
     ]
   }

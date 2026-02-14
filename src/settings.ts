@@ -1,4 +1,5 @@
 import type { Settings } from './types';
+import { isRecord, RESERVED_KEYS, sanitizeStringArray } from './shared.js';
 import { getDefaultShortcuts } from './shortcuts.js';
 
 export function createDefaultSettings(): Settings {
@@ -29,6 +30,7 @@ export function createDefaultSettings(): Settings {
     folderIcons: {},
     showRecentFiles: true,
     showFolderTree: true,
+    useLegacyTreeSpacing: false,
     enableTabs: true,
     globalContentSearch: false,
     globalClipboard: true,
@@ -68,9 +70,6 @@ export function createDefaultSettings(): Settings {
   };
 }
 
-type UnknownRecord = Record<string, unknown>;
-
-const RESERVED_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 const THEME_VALUES = new Set<Settings['theme']>([
   'dark',
   'light',
@@ -96,17 +95,6 @@ const FILE_CONFLICT_VALUES = new Set<Settings['fileConflictBehavior']>([
 const THUMBNAIL_QUALITY_VALUES = new Set<Settings['thumbnailQuality']>(['low', 'medium', 'high']);
 const PREVIEW_PANEL_VALUES = new Set<Settings['previewPanelPosition']>(['right', 'bottom']);
 const GRID_COLUMNS_VALUES = new Set<Settings['gridColumns']>(['auto', '2', '3', '4', '5', '6']);
-
-function isRecord(value: unknown): value is UnknownRecord {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
-  const proto = Object.getPrototypeOf(value);
-  return proto === Object.prototype || proto === null;
-}
-
-function sanitizeStringArray(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return value.filter((item) => typeof item === 'string');
-}
 
 function sanitizeEnum<T extends string>(value: unknown, allowed: Set<T>): T | null {
   if (typeof value !== 'string') return null;
@@ -279,138 +267,109 @@ export function sanitizeSettings(
 
   if (!isRecord(raw)) return clean;
 
-  const theme = sanitizeEnum(raw.theme, THEME_VALUES);
-  if (theme) clean.theme = theme;
+  // Boolean settings — apply if value is boolean
+  const BOOLEAN_KEYS: (keyof Settings)[] = [
+    'useSystemTheme',
+    'showDangerousOptions',
+    'showHiddenFiles',
+    'enableSearchHistory',
+    'enableIndexer',
+    'minimizeToTray',
+    'startOnLogin',
+    'autoCheckUpdates',
+    'showRecentFiles',
+    'showFolderTree',
+    'useLegacyTreeSpacing',
+    'enableTabs',
+    'globalContentSearch',
+    'globalClipboard',
+    'enableSyntaxHighlighting',
+    'enableGitStatus',
+    'gitIncludeUntracked',
+    'showFileHoverCard',
+    'showFileCheckboxes',
+    'reduceMotion',
+    'highContrast',
+    'largeText',
+    'boldText',
+    'visibleFocus',
+    'reduceTransparency',
+    'liquidGlassMode',
+    'themedIcons',
+    'disableHardwareAcceleration',
+    'useSystemFontSize',
+    'confirmFileOperations',
+    'skipElevationConfirmation',
+    'autoPlayVideos',
+    'compactFileInfo',
+    'showFileExtensions',
+    'supportPopupDismissed',
+    'tourPromptDismissed',
+    'tourCompleted',
+    'skipFullDiskAccessPrompt',
+  ];
+  for (const key of BOOLEAN_KEYS) {
+    if (typeof raw[key] === 'boolean')
+      (clean as unknown as Record<string, unknown>)[key as string] = raw[key];
+  }
 
-  if (typeof raw.useSystemTheme === 'boolean') clean.useSystemTheme = raw.useSystemTheme;
+  // Enum settings — apply if value is in allowed set
+  const ENUM_FIELDS: [keyof Settings, Set<string>][] = [
+    ['theme', THEME_VALUES as Set<string>],
+    ['sortBy', SORT_BY_VALUES as Set<string>],
+    ['sortOrder', SORT_ORDER_VALUES as Set<string>],
+    ['viewMode', VIEW_MODE_VALUES as Set<string>],
+    ['uiDensity', UI_DENSITY_VALUES as Set<string>],
+    ['updateChannel', UPDATE_CHANNEL_VALUES as Set<string>],
+    ['fileConflictBehavior', FILE_CONFLICT_VALUES as Set<string>],
+    ['thumbnailQuality', THUMBNAIL_QUALITY_VALUES as Set<string>],
+    ['previewPanelPosition', PREVIEW_PANEL_VALUES as Set<string>],
+    ['gridColumns', GRID_COLUMNS_VALUES as Set<string>],
+  ];
+  for (const [key, allowed] of ENUM_FIELDS) {
+    const val = sanitizeEnum(raw[key], allowed);
+    if (val) (clean as unknown as Record<string, unknown>)[key as string] = val;
+  }
 
-  const sortBy = sanitizeEnum(raw.sortBy, SORT_BY_VALUES);
-  if (sortBy) clean.sortBy = sortBy;
-
-  const sortOrder = sanitizeEnum(raw.sortOrder, SORT_ORDER_VALUES);
-  if (sortOrder) clean.sortOrder = sortOrder;
-
-  const viewMode = sanitizeEnum(raw.viewMode, VIEW_MODE_VALUES);
-  if (viewMode) clean.viewMode = viewMode;
-
-  if (typeof raw.showDangerousOptions === 'boolean')
-    clean.showDangerousOptions = raw.showDangerousOptions;
+  // String settings
   if (typeof raw.startupPath === 'string') clean.startupPath = raw.startupPath;
-  if (typeof raw.showHiddenFiles === 'boolean') clean.showHiddenFiles = raw.showHiddenFiles;
-  if (typeof raw.enableSearchHistory === 'boolean')
-    clean.enableSearchHistory = raw.enableSearchHistory;
-  if (typeof raw.enableIndexer === 'boolean') clean.enableIndexer = raw.enableIndexer;
-  if (typeof raw.minimizeToTray === 'boolean') clean.minimizeToTray = raw.minimizeToTray;
-  if (typeof raw.startOnLogin === 'boolean') clean.startOnLogin = raw.startOnLogin;
-  if (typeof raw.autoCheckUpdates === 'boolean') clean.autoCheckUpdates = raw.autoCheckUpdates;
-  if (typeof raw.showRecentFiles === 'boolean') clean.showRecentFiles = raw.showRecentFiles;
-  if (typeof raw.showFolderTree === 'boolean') clean.showFolderTree = raw.showFolderTree;
-  if (typeof raw.enableTabs === 'boolean') clean.enableTabs = raw.enableTabs;
-  if (typeof raw.globalContentSearch === 'boolean')
-    clean.globalContentSearch = raw.globalContentSearch;
-  if (typeof raw.globalClipboard === 'boolean') clean.globalClipboard = raw.globalClipboard;
-  if (typeof raw.enableSyntaxHighlighting === 'boolean')
-    clean.enableSyntaxHighlighting = raw.enableSyntaxHighlighting;
-  if (typeof raw.enableGitStatus === 'boolean') clean.enableGitStatus = raw.enableGitStatus;
-  if (typeof raw.gitIncludeUntracked === 'boolean')
-    clean.gitIncludeUntracked = raw.gitIncludeUntracked;
-  if (typeof raw.showFileHoverCard === 'boolean') clean.showFileHoverCard = raw.showFileHoverCard;
-  if (typeof raw.showFileCheckboxes === 'boolean')
-    clean.showFileCheckboxes = raw.showFileCheckboxes;
 
-  if (typeof raw.reduceMotion === 'boolean') clean.reduceMotion = raw.reduceMotion;
-  if (typeof raw.highContrast === 'boolean') clean.highContrast = raw.highContrast;
-  if (typeof raw.largeText === 'boolean') clean.largeText = raw.largeText;
-  if (typeof raw.boldText === 'boolean') clean.boldText = raw.boldText;
-  if (typeof raw.visibleFocus === 'boolean') clean.visibleFocus = raw.visibleFocus;
-  if (typeof raw.reduceTransparency === 'boolean')
-    clean.reduceTransparency = raw.reduceTransparency;
-  if (typeof raw.liquidGlassMode === 'boolean') clean.liquidGlassMode = raw.liquidGlassMode;
+  // Positive number settings
+  for (const key of [
+    'maxThumbnailSizeMB',
+    'maxPreviewSizeMB',
+    'iconSize',
+    'sidebarWidth',
+    'previewPanelWidth',
+  ] as const) {
+    const val = sanitizeNumber(raw[key]);
+    if (val !== null && val > 0) (clean as unknown as Record<string, unknown>)[key as string] = val;
+  }
 
-  const uiDensity = sanitizeEnum(raw.uiDensity, UI_DENSITY_VALUES);
-  if (uiDensity) clean.uiDensity = uiDensity;
-
-  const updateChannel = sanitizeEnum(raw.updateChannel, UPDATE_CHANNEL_VALUES);
-  if (updateChannel) clean.updateChannel = updateChannel;
-
-  if (typeof raw.themedIcons === 'boolean') clean.themedIcons = raw.themedIcons;
-  if (typeof raw.disableHardwareAcceleration === 'boolean')
-    clean.disableHardwareAcceleration = raw.disableHardwareAcceleration;
-  if (typeof raw.useSystemFontSize === 'boolean') clean.useSystemFontSize = raw.useSystemFontSize;
-
-  if (typeof raw.confirmFileOperations === 'boolean')
-    clean.confirmFileOperations = raw.confirmFileOperations;
-
-  const conflictBehavior = sanitizeEnum(raw.fileConflictBehavior, FILE_CONFLICT_VALUES);
-  if (conflictBehavior) clean.fileConflictBehavior = conflictBehavior;
-
-  if (typeof raw.skipElevationConfirmation === 'boolean')
-    clean.skipElevationConfirmation = raw.skipElevationConfirmation;
-
-  const thumbnailQuality = sanitizeEnum(raw.thumbnailQuality, THUMBNAIL_QUALITY_VALUES);
-  if (thumbnailQuality) clean.thumbnailQuality = thumbnailQuality;
-
-  const previewPosition = sanitizeEnum(raw.previewPanelPosition, PREVIEW_PANEL_VALUES);
-  if (previewPosition) clean.previewPanelPosition = previewPosition;
-
-  const gridColumns = sanitizeEnum(raw.gridColumns, GRID_COLUMNS_VALUES);
-  if (gridColumns) clean.gridColumns = gridColumns;
-
-  const maxThumbnailSize = sanitizeNumber(raw.maxThumbnailSizeMB);
-  if (maxThumbnailSize !== null && maxThumbnailSize > 0)
-    clean.maxThumbnailSizeMB = maxThumbnailSize;
-
-  const maxPreviewSize = sanitizeNumber(raw.maxPreviewSizeMB);
-  if (maxPreviewSize !== null && maxPreviewSize > 0) clean.maxPreviewSizeMB = maxPreviewSize;
-
-  const iconSize = sanitizeNumber(raw.iconSize);
-  if (iconSize !== null && iconSize > 0) clean.iconSize = iconSize;
-
-  if (typeof raw.autoPlayVideos === 'boolean') clean.autoPlayVideos = raw.autoPlayVideos;
-  if (typeof raw.compactFileInfo === 'boolean') clean.compactFileInfo = raw.compactFileInfo;
-  if (typeof raw.showFileExtensions === 'boolean')
-    clean.showFileExtensions = raw.showFileExtensions;
-
-  const maxSearchHistoryItems = sanitizeInt(raw.maxSearchHistoryItems, 0, null);
-  if (maxSearchHistoryItems !== null) clean.maxSearchHistoryItems = maxSearchHistoryItems;
-
-  const maxDirectoryHistoryItems = sanitizeInt(raw.maxDirectoryHistoryItems, 0, null);
-  if (maxDirectoryHistoryItems !== null) clean.maxDirectoryHistoryItems = maxDirectoryHistoryItems;
-
-  const launchCount = sanitizeInt(raw.launchCount, 0, null);
-  if (launchCount !== null) clean.launchCount = launchCount;
-  if (typeof raw.supportPopupDismissed === 'boolean')
-    clean.supportPopupDismissed = raw.supportPopupDismissed;
-  if (typeof raw.tourPromptDismissed === 'boolean')
-    clean.tourPromptDismissed = raw.tourPromptDismissed;
-  if (typeof raw.tourCompleted === 'boolean') clean.tourCompleted = raw.tourCompleted;
-  if (typeof raw.skipFullDiskAccessPrompt === 'boolean')
-    clean.skipFullDiskAccessPrompt = raw.skipFullDiskAccessPrompt;
+  // Non-negative integer settings
+  for (const key of ['maxSearchHistoryItems', 'maxDirectoryHistoryItems', 'launchCount'] as const) {
+    const val = sanitizeInt(raw[key], 0, null);
+    if (val !== null) (clean as unknown as Record<string, unknown>)[key as string] = val;
+  }
 
   const customTheme = sanitizeCustomTheme(raw.customTheme);
   if (customTheme) clean.customTheme = customTheme;
 
-  if (Array.isArray(raw.bookmarks)) clean.bookmarks = sanitizeStringArray(raw.bookmarks);
-  if (Array.isArray(raw.searchHistory))
-    clean.searchHistory = sanitizeStringArray(raw.searchHistory);
-  if (Array.isArray(raw.directoryHistory))
-    clean.directoryHistory = sanitizeStringArray(raw.directoryHistory);
-  if (Array.isArray(raw.recentFiles)) clean.recentFiles = sanitizeStringArray(raw.recentFiles);
+  // String array settings
+  for (const key of ['bookmarks', 'searchHistory', 'directoryHistory', 'recentFiles'] as const) {
+    if (Array.isArray(raw[key])) {
+      const sanitized = sanitizeStringArray(raw[key]);
+      const maxLen = key === 'bookmarks' ? 500 : key === 'recentFiles' ? 200 : 100;
+      clean[key] = sanitized.slice(0, maxLen);
+    }
+  }
 
   clean.shortcuts = sanitizeShortcuts(raw.shortcuts, clean.shortcuts);
-  if (raw.folderIcons && isRecord(raw.folderIcons)) {
+  if (raw.folderIcons && isRecord(raw.folderIcons))
     clean.folderIcons = sanitizeStringRecord(raw.folderIcons);
-  }
 
   const listColumnWidths = sanitizeListColumnWidths(raw.listColumnWidths);
   if (listColumnWidths) clean.listColumnWidths = listColumnWidths;
-
-  const sidebarWidth = sanitizeNumber(raw.sidebarWidth);
-  if (sidebarWidth !== null && sidebarWidth > 0) clean.sidebarWidth = sidebarWidth;
-
-  const previewPanelWidth = sanitizeNumber(raw.previewPanelWidth);
-  if (previewPanelWidth !== null && previewPanelWidth > 0)
-    clean.previewPanelWidth = previewPanelWidth;
 
   const tabState = sanitizeTabState(raw.tabState);
   if (tabState) clean.tabState = tabState;

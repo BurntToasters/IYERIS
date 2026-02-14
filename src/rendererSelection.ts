@@ -4,6 +4,7 @@ type SelectionDeps = {
   getSelectedItems: () => Set<string>;
   setSelectedItems: (items: Set<string>) => void;
   updateStatusBar: () => void;
+  onSelectionChanged?: () => void;
   isPreviewVisible: () => boolean;
   updatePreview: (file: FileItem) => void;
   clearPreview: () => void;
@@ -19,6 +20,16 @@ export function createSelectionController(deps: SelectionDeps) {
   let rubberBandStart: { x: number; y: number } | null = null;
   let rubberBandInitialSelection: Set<string> = new Set();
   let activeItem: HTMLElement | null = null;
+  let rubberBandRafId: number | null = null;
+  let cachedItemRects: {
+    el: HTMLElement;
+    path: string;
+    left: number;
+    top: number;
+    right: number;
+    bottom: number;
+  }[] = [];
+  let gridColumnsCache: { value: number; time: number } | null = null;
 
   function setSelectedState(fileItem: HTMLElement, selected: boolean) {
     fileItem.classList.toggle('selected', selected);
@@ -58,6 +69,7 @@ export function createSelectionController(deps: SelectionDeps) {
     } else {
       selectedItems.delete(itemPath);
     }
+    deps.onSelectionChanged?.();
     deps.updateStatusBar();
     setActiveItem(fileItem, true);
 
@@ -75,11 +87,13 @@ export function createSelectionController(deps: SelectionDeps) {
   }
 
   function clearSelection() {
-    document.querySelectorAll('.file-item.selected').forEach((item) => {
+    const scope = getSelectionScope();
+    scope.querySelectorAll('.file-item.selected').forEach((item) => {
       setSelectedState(item as HTMLElement, false);
     });
     const selectedItems = deps.getSelectedItems();
     selectedItems.clear();
+    deps.onSelectionChanged?.();
     deps.updateStatusBar();
     ensureActiveItem();
 
@@ -90,13 +104,15 @@ export function createSelectionController(deps: SelectionDeps) {
 
   function selectAll() {
     const selectedItems = deps.getSelectedItems();
-    document.querySelectorAll('.file-item').forEach((item) => {
+    selectedItems.clear();
+    getFileItemsArray().forEach((item) => {
       setSelectedState(item as HTMLElement, true);
       const itemPath = item.getAttribute('data-path');
       if (itemPath) {
         selectedItems.add(itemPath);
       }
     });
+    deps.onSelectionChanged?.();
     deps.updateStatusBar();
     ensureActiveItem();
   }
@@ -111,16 +127,32 @@ export function createSelectionController(deps: SelectionDeps) {
     }
   }
 
+  function getSelectionScope(): ParentNode {
+    const grid = deps.getFileGrid();
+    if (!grid || !grid.isConnected) return document;
+    if (grid.querySelector('.file-item')) return grid;
+    return document.querySelector('.file-item') ? document : grid;
+  }
+
   function getFileItemsArray(): HTMLElement[] {
-    return Array.from(document.querySelectorAll('.file-item')) as HTMLElement[];
+    const scope = getSelectionScope();
+    return Array.from(scope.querySelectorAll('.file-item')) as HTMLElement[];
   }
 
   function getGridColumns(): number {
     const fileGrid = deps.getFileGrid();
     if (!fileGrid || deps.getViewMode() === 'list') return 1;
+    const now = Date.now();
+    if (gridColumnsCache && now - gridColumnsCache.time < 200) return gridColumnsCache.value;
     const gridStyle = window.getComputedStyle(fileGrid);
     const columns = gridStyle.getPropertyValue('grid-template-columns').split(' ').length;
-    return columns || 1;
+    const result = columns || 1;
+    gridColumnsCache = { value: result, time: now };
+    return result;
+  }
+
+  function invalidateGridColumnsCache(): void {
+    gridColumnsCache = null;
   }
 
   function navigateFileGrid(key: string, shiftKey: boolean) {
@@ -253,6 +285,7 @@ export function createSelectionController(deps: SelectionDeps) {
 
     lastSelectedIndex = index;
     setActiveItem(fileItems[index], true);
+    deps.onSelectionChanged?.();
     deps.updateStatusBar();
 
     if (deps.isPreviewVisible() && deps.getSelectedItems().size === 1) {
@@ -294,62 +327,82 @@ export function createSelectionController(deps: SelectionDeps) {
       selectionRect.style.width = '0';
       selectionRect.style.height = '0';
       selectionRect.classList.add('active');
+
+      const fvRect = fileView.getBoundingClientRect();
+      cachedItemRects = [];
+      getSelectionScope()
+        .querySelectorAll('.file-item')
+        .forEach((item) => {
+          const el = item as HTMLElement;
+          const r = el.getBoundingClientRect();
+          cachedItemRects.push({
+            el,
+            path: el.dataset.path || '',
+            left: r.left - fvRect.left + fileView.scrollLeft,
+            top: r.top - fvRect.top + fileView.scrollTop,
+            right: r.left - fvRect.left + fileView.scrollLeft + r.width,
+            bottom: r.top - fvRect.top + fileView.scrollTop + r.height,
+          });
+        });
+
       e.preventDefault();
     });
 
     document.addEventListener('mousemove', (e) => {
       if (!isRubberBandActive || !rubberBandStart) return;
+      if (rubberBandRafId !== null) return;
 
-      const fileViewRect = fileView.getBoundingClientRect();
-      const currentX = e.clientX - fileViewRect.left + fileView.scrollLeft;
-      const currentY = e.clientY - fileViewRect.top + fileView.scrollTop;
+      rubberBandRafId = requestAnimationFrame(() => {
+        rubberBandRafId = null;
+        if (!isRubberBandActive || !rubberBandStart) return;
 
-      const left = Math.min(rubberBandStart.x, currentX);
-      const top = Math.min(rubberBandStart.y, currentY);
-      const width = Math.abs(currentX - rubberBandStart.x);
-      const height = Math.abs(currentY - rubberBandStart.y);
+        const fileViewRect = fileView.getBoundingClientRect();
+        const currentX = e.clientX - fileViewRect.left + fileView.scrollLeft;
+        const currentY = e.clientY - fileViewRect.top + fileView.scrollTop;
 
-      selectionRect.style.left = `${left}px`;
-      selectionRect.style.top = `${top}px`;
-      selectionRect.style.width = `${width}px`;
-      selectionRect.style.height = `${height}px`;
+        const left = Math.min(rubberBandStart.x, currentX);
+        const top = Math.min(rubberBandStart.y, currentY);
+        const width = Math.abs(currentX - rubberBandStart.x);
+        const height = Math.abs(currentY - rubberBandStart.y);
 
-      const selRect = { left, top, right: left + width, bottom: top + height };
-      const fileItems = document.querySelectorAll('.file-item');
+        selectionRect.style.left = `${left}px`;
+        selectionRect.style.top = `${top}px`;
+        selectionRect.style.width = `${width}px`;
+        selectionRect.style.height = `${height}px`;
 
-      const nextSelection = new Set(rubberBandInitialSelection);
+        const selRect = { left, top, right: left + width, bottom: top + height };
+        const nextSelection = new Set(rubberBandInitialSelection);
 
-      fileItems.forEach((item) => {
-        const itemEl = item as HTMLElement;
-        const itemRect = itemEl.getBoundingClientRect();
-        const itemLeft = itemRect.left - fileViewRect.left + fileView.scrollLeft;
-        const itemTop = itemRect.top - fileViewRect.top + fileView.scrollTop;
-        const itemRight = itemLeft + itemRect.width;
-        const itemBottom = itemTop + itemRect.height;
+        for (const cached of cachedItemRects) {
+          const intersects =
+            selRect.left < cached.right &&
+            selRect.right > cached.left &&
+            selRect.top < cached.bottom &&
+            selRect.bottom > cached.top;
 
-        const intersects =
-          selRect.left < itemRight &&
-          selRect.right > itemLeft &&
-          selRect.top < itemBottom &&
-          selRect.bottom > itemTop;
-
-        const itemPath = itemEl.dataset.path;
-        if (intersects && itemPath) {
-          setSelectedState(itemEl, true);
-          nextSelection.add(itemPath);
-        } else if (!rubberBandInitialSelection.has(itemPath || '')) {
-          setSelectedState(itemEl, false);
+          if (intersects && cached.path) {
+            setSelectedState(cached.el, true);
+            nextSelection.add(cached.path);
+          } else if (!rubberBandInitialSelection.has(cached.path)) {
+            setSelectedState(cached.el, false);
+          }
         }
-      });
 
-      deps.setSelectedItems(nextSelection);
-      deps.updateStatusBar();
+        deps.setSelectedItems(nextSelection);
+        deps.onSelectionChanged?.();
+        deps.updateStatusBar();
+      });
     });
 
     document.addEventListener('mouseup', () => {
       if (!isRubberBandActive) return;
       isRubberBandActive = false;
       rubberBandStart = null;
+      cachedItemRects = [];
+      if (rubberBandRafId !== null) {
+        cancelAnimationFrame(rubberBandRafId);
+        rubberBandRafId = null;
+      }
       selectionRect.classList.remove('active');
     });
   }
@@ -366,5 +419,6 @@ export function createSelectionController(deps: SelectionDeps) {
     setupRubberBandSelection,
     isRubberBandActive: () => isRubberBandActive,
     ensureActiveItem,
+    invalidateGridColumnsCache,
   };
 }

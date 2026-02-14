@@ -16,6 +16,7 @@ interface SettingsModalDeps {
   clearSettingsChanged: () => void;
   initSettingsChangeTracking: () => void;
   stopIndexStatusPolling: () => void;
+  onSettingsModalHide?: () => void;
 }
 
 export function createSettingsModalController(deps: SettingsModalDeps) {
@@ -84,6 +85,9 @@ export function createSettingsModalController(deps: SettingsModalDeps) {
     ) as HTMLInputElement;
     const showFolderTreeToggle = document.getElementById(
       'show-folder-tree-toggle'
+    ) as HTMLInputElement;
+    const legacyTreeSpacingToggle = document.getElementById(
+      'legacy-tree-spacing-toggle'
     ) as HTMLInputElement;
     const enableTabsToggle = document.getElementById('enable-tabs-toggle') as HTMLInputElement;
     const globalContentSearchToggle = document.getElementById(
@@ -233,6 +237,10 @@ export function createSettingsModalController(deps: SettingsModalDeps) {
       showFolderTreeToggle.checked = settings.showFolderTree !== false;
     }
 
+    if (legacyTreeSpacingToggle) {
+      legacyTreeSpacingToggle.checked = settings.useLegacyTreeSpacing === true;
+    }
+
     if (enableTabsToggle) {
       enableTabsToggle.checked = settings.enableTabs !== false;
     }
@@ -374,6 +382,7 @@ export function createSettingsModalController(deps: SettingsModalDeps) {
       deps.deactivateModal(settingsModal);
     }
     deps.stopIndexStatusPolling();
+    deps.onSettingsModalHide?.();
   }
 
   return { showSettingsModal, hideSettingsModal };

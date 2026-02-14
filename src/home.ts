@@ -121,69 +121,53 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
   let homeSettingsHasUnsavedChanges = false;
   const driveUsageCache = new Map<string, { timestamp: number; total: number; free: number }>();
   let draggedSectionId: string | null = null;
-  let draggedQuickAction: string | null = null;
-  let draggedSidebarQuickAction: string | null = null;
+
+  function normalizeOrderedList<T>(raw: T[], isValid: (v: T) => boolean, allDefaults: T[]): T[] {
+    const filtered = Array.from(new Set(raw.filter(isValid)));
+    return [...filtered, ...allDefaults.filter((d) => !filtered.includes(d))];
+  }
 
   function normalizeHomeSettings(settings?: Partial<HomeSettings> | null): HomeSettings {
     const defaults = createDefaultHomeSettings();
     const merged = { ...defaults, ...(settings || {}) };
 
-    const sectionOrderRaw = Array.isArray(merged.sectionOrder)
-      ? merged.sectionOrder.filter((id): id is string => typeof id === 'string')
-      : [];
-    const sectionOrder = Array.from(new Set(sectionOrderRaw.filter(isHomeSectionId)));
-    const sectionOrderWithMissing = [
-      ...sectionOrder,
-      ...HOME_SECTION_IDS.filter((id) => !sectionOrder.includes(id)),
-    ];
-
-    const quickAccessRaw = Array.isArray(merged.quickAccessOrder) ? merged.quickAccessOrder : [];
-    const quickAccessOrder = Array.from(
-      new Set(quickAccessRaw.filter((action) => HOME_QUICK_ACCESS_ACTIONS.has(action)))
+    merged.sectionOrder = normalizeOrderedList(
+      Array.isArray(merged.sectionOrder)
+        ? merged.sectionOrder.filter((id): id is string => typeof id === 'string')
+        : [],
+      isHomeSectionId,
+      HOME_SECTION_IDS as unknown as string[]
     );
-    const quickAccessWithMissing = [
-      ...quickAccessOrder,
-      ...HOME_QUICK_ACCESS_ITEMS.map((item) => item.action).filter(
-        (action) => !quickAccessOrder.includes(action)
-      ),
-    ];
 
-    const sidebarQARaw = Array.isArray(merged.sidebarQuickAccessOrder)
-      ? merged.sidebarQuickAccessOrder
-      : [];
-    const sidebarQuickAccessOrder = Array.from(
-      new Set(sidebarQARaw.filter((action) => HOME_QUICK_ACCESS_ACTIONS.has(action)))
+    const allQAActions = HOME_QUICK_ACCESS_ITEMS.map((item) => item.action);
+    const isValidQA = (action: string) => HOME_QUICK_ACCESS_ACTIONS.has(action);
+
+    merged.quickAccessOrder = normalizeOrderedList(
+      Array.isArray(merged.quickAccessOrder) ? merged.quickAccessOrder : [],
+      isValidQA,
+      allQAActions
     );
-    const sidebarQAWithMissing = [
-      ...sidebarQuickAccessOrder,
-      ...HOME_QUICK_ACCESS_ITEMS.map((item) => item.action).filter(
-        (action) => !sidebarQuickAccessOrder.includes(action)
-      ),
-    ];
 
-    const pinnedRaw = Array.isArray(merged.pinnedRecents) ? merged.pinnedRecents : [];
-    const pinnedRecents = Array.from(
-      new Set(pinnedRaw.filter((value) => typeof value === 'string'))
+    merged.sidebarQuickAccessOrder = normalizeOrderedList(
+      Array.isArray(merged.sidebarQuickAccessOrder) ? merged.sidebarQuickAccessOrder : [],
+      isValidQA,
+      allQAActions
+    );
+
+    merged.pinnedRecents = Array.from(
+      new Set(
+        (Array.isArray(merged.pinnedRecents) ? merged.pinnedRecents : []).filter(
+          (value) => typeof value === 'string'
+        )
+      )
     );
 
     merged.hiddenQuickAccessItems = Array.from(
-      new Set(
-        (merged.hiddenQuickAccessItems || []).filter((action) =>
-          HOME_QUICK_ACCESS_ACTIONS.has(action)
-        )
-      )
+      new Set((merged.hiddenQuickAccessItems || []).filter(isValidQA))
     );
     merged.hiddenSidebarQuickAccessItems = Array.from(
-      new Set(
-        (merged.hiddenSidebarQuickAccessItems || []).filter((action) =>
-          HOME_QUICK_ACCESS_ACTIONS.has(action)
-        )
-      )
+      new Set((merged.hiddenSidebarQuickAccessItems || []).filter(isValidQA))
     );
-    merged.sectionOrder = sectionOrderWithMissing;
-    merged.quickAccessOrder = quickAccessWithMissing;
-    merged.sidebarQuickAccessOrder = sidebarQAWithMissing;
-    merged.pinnedRecents = pinnedRecents;
     return merged;
   }
 
@@ -347,34 +331,26 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
     }
   }
 
-  function getVisibleHomeQuickAccessItems(): Array<{
-    action: string;
-    label: string;
-    icon: number;
-  }> {
-    const hiddenSet = new Set(currentHomeSettings.hiddenQuickAccessItems || []);
+  function getVisibleQuickAccessItems(
+    orderKey: 'quickAccessOrder' | 'sidebarQuickAccessOrder',
+    hiddenKey: 'hiddenQuickAccessItems' | 'hiddenSidebarQuickAccessItems'
+  ): Array<{ action: string; label: string; icon: number }> {
+    const hiddenSet = new Set(currentHomeSettings[hiddenKey] || []);
     const itemsByAction = new Map(HOME_QUICK_ACCESS_ITEMS.map((item) => [item.action, item]));
-    const ordered = (currentHomeSettings.quickAccessOrder || []).map((action) =>
-      itemsByAction.get(action)
-    );
-    return ordered.filter((item): item is { action: string; label: string; icon: number } => {
-      return !!item && !hiddenSet.has(item.action);
-    });
+    return (currentHomeSettings[orderKey] || [])
+      .map((action) => itemsByAction.get(action))
+      .filter(
+        (item): item is { action: string; label: string; icon: number } =>
+          !!item && !hiddenSet.has(item.action)
+      );
   }
 
-  function getVisibleSidebarQuickAccessItems(): Array<{
-    action: string;
-    label: string;
-    icon: number;
-  }> {
-    const hiddenSet = new Set(currentHomeSettings.hiddenSidebarQuickAccessItems || []);
-    const itemsByAction = new Map(HOME_QUICK_ACCESS_ITEMS.map((item) => [item.action, item]));
-    const ordered = (currentHomeSettings.sidebarQuickAccessOrder || []).map((action) =>
-      itemsByAction.get(action)
-    );
-    return ordered.filter((item): item is { action: string; label: string; icon: number } => {
-      return !!item && !hiddenSet.has(item.action);
-    });
+  function getVisibleHomeQuickAccessItems() {
+    return getVisibleQuickAccessItems('quickAccessOrder', 'hiddenQuickAccessItems');
+  }
+
+  function getVisibleSidebarQuickAccessItems() {
+    return getVisibleQuickAccessItems('sidebarQuickAccessOrder', 'hiddenSidebarQuickAccessItems');
   }
 
   function renderHomeQuickAccess(): void {
@@ -707,156 +683,93 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
     });
   }
 
-  function renderHomeQuickAccessOptions(): void {
-    if (!homeQuickAccessOptions) return;
-    homeQuickAccessOptions.innerHTML = '';
+  function renderReorderableOptions(
+    container: HTMLElement | null,
+    orderKey: 'quickAccessOrder' | 'sidebarQuickAccessOrder',
+    hiddenKey: 'hiddenQuickAccessItems' | 'hiddenSidebarQuickAccessItems',
+    dragStateRef: { current: string | null },
+    rerender: () => void
+  ): void {
+    if (!container) return;
+    container.innerHTML = '';
 
-    const hiddenSet = new Set(tempHomeSettings.hiddenQuickAccessItems);
+    const hiddenSet = new Set(tempHomeSettings[hiddenKey]);
     const itemsByAction = new Map(HOME_QUICK_ACCESS_ITEMS.map((item) => [item.action, item]));
-    const orderedActions = tempHomeSettings.quickAccessOrder || [];
-    const orderedItems = orderedActions
+    const orderedItems = (tempHomeSettings[orderKey] || [])
       .map((action) => itemsByAction.get(action))
       .filter((item): item is { action: string; label: string; icon: number } => !!item);
 
-    orderedItems.forEach((item) => {
+    for (const item of orderedItems) {
       const option = document.createElement('label');
       option.className = 'home-option';
       option.draggable = true;
       option.innerHTML = `
-        <input type="checkbox" data-action="${item.action}" ${
-          hiddenSet.has(item.action) ? '' : 'checked'
-        }>
-        <span class="home-option-icon">${twemojiImg(
-          String.fromCodePoint(item.icon),
-          'twemoji'
-        )}</span>
+        <input type="checkbox" data-action="${item.action}" ${hiddenSet.has(item.action) ? '' : 'checked'}>
+        <span class="home-option-icon">${twemojiImg(String.fromCodePoint(item.icon), 'twemoji')}</span>
         <span class="home-option-label">${escapeHtml(item.label)}</span>
       `;
 
       option.addEventListener('dragstart', (e) => {
-        draggedQuickAction = item.action;
+        dragStateRef.current = item.action;
         option.classList.add('dragging');
         if (e.dataTransfer) {
           e.dataTransfer.effectAllowed = 'move';
           e.dataTransfer.setData('text/plain', item.action);
         }
       });
-
       option.addEventListener('dragend', () => {
-        draggedQuickAction = null;
+        dragStateRef.current = null;
         option.classList.remove('dragging');
       });
-
-      option.addEventListener('dragover', (e) => {
-        e.preventDefault();
-      });
-
+      option.addEventListener('dragover', (e) => e.preventDefault());
       option.addEventListener('drop', (e) => {
         e.preventDefault();
-        const fromAction = draggedQuickAction || e.dataTransfer?.getData('text/plain');
+        const fromAction = dragStateRef.current || e.dataTransfer?.getData('text/plain');
         if (!fromAction || fromAction === item.action) return;
-        tempHomeSettings.quickAccessOrder = reorderList(
-          tempHomeSettings.quickAccessOrder,
+        tempHomeSettings[orderKey] = reorderList(
+          tempHomeSettings[orderKey],
           fromAction,
           item.action
         );
         homeSettingsHasUnsavedChanges = true;
-        renderHomeQuickAccessOptions();
+        rerender();
       });
 
       const checkbox = option.querySelector('input') as HTMLInputElement | null;
-      if (checkbox) {
-        checkbox.addEventListener('change', () => {
-          const action = checkbox.dataset.action || '';
-          const updatedHidden = new Set(tempHomeSettings.hiddenQuickAccessItems);
-          if (checkbox.checked) {
-            updatedHidden.delete(action);
-          } else {
-            updatedHidden.add(action);
-          }
-          tempHomeSettings.hiddenQuickAccessItems = Array.from(updatedHidden);
-          homeSettingsHasUnsavedChanges = true;
-        });
-      }
+      checkbox?.addEventListener('change', () => {
+        const action = checkbox.dataset.action || '';
+        const updatedHidden = new Set(tempHomeSettings[hiddenKey]);
+        if (checkbox.checked) updatedHidden.delete(action);
+        else updatedHidden.add(action);
+        tempHomeSettings[hiddenKey] = Array.from(updatedHidden);
+        homeSettingsHasUnsavedChanges = true;
+      });
 
-      homeQuickAccessOptions.appendChild(option);
-    });
+      container.appendChild(option);
+    }
+  }
+
+  const quickActionDragState = { current: null as string | null };
+  const sidebarDragState = { current: null as string | null };
+
+  function renderHomeQuickAccessOptions(): void {
+    renderReorderableOptions(
+      homeQuickAccessOptions,
+      'quickAccessOrder',
+      'hiddenQuickAccessItems',
+      quickActionDragState,
+      renderHomeQuickAccessOptions
+    );
   }
 
   function renderSidebarQuickAccessOptions(): void {
-    if (!sidebarQuickAccessOptions) return;
-    sidebarQuickAccessOptions.innerHTML = '';
-
-    const hiddenSet = new Set(tempHomeSettings.hiddenSidebarQuickAccessItems);
-    const itemsByAction = new Map(HOME_QUICK_ACCESS_ITEMS.map((item) => [item.action, item]));
-    const orderedActions = tempHomeSettings.sidebarQuickAccessOrder || [];
-    const orderedItems = orderedActions
-      .map((action) => itemsByAction.get(action))
-      .filter((item): item is { action: string; label: string; icon: number } => !!item);
-
-    orderedItems.forEach((item) => {
-      const option = document.createElement('label');
-      option.className = 'home-option';
-      option.draggable = true;
-      option.innerHTML = `
-        <input type="checkbox" data-action="${item.action}" ${
-          hiddenSet.has(item.action) ? '' : 'checked'
-        }>
-        <span class="home-option-icon">${twemojiImg(
-          String.fromCodePoint(item.icon),
-          'twemoji'
-        )}</span>
-        <span class="home-option-label">${escapeHtml(item.label)}</span>
-      `;
-
-      option.addEventListener('dragstart', (e) => {
-        draggedSidebarQuickAction = item.action;
-        option.classList.add('dragging');
-        if (e.dataTransfer) {
-          e.dataTransfer.effectAllowed = 'move';
-          e.dataTransfer.setData('text/plain', item.action);
-        }
-      });
-
-      option.addEventListener('dragend', () => {
-        draggedSidebarQuickAction = null;
-        option.classList.remove('dragging');
-      });
-
-      option.addEventListener('dragover', (e) => {
-        e.preventDefault();
-      });
-
-      option.addEventListener('drop', (e) => {
-        e.preventDefault();
-        const fromAction = draggedSidebarQuickAction || e.dataTransfer?.getData('text/plain');
-        if (!fromAction || fromAction === item.action) return;
-        tempHomeSettings.sidebarQuickAccessOrder = reorderList(
-          tempHomeSettings.sidebarQuickAccessOrder,
-          fromAction,
-          item.action
-        );
-        homeSettingsHasUnsavedChanges = true;
-        renderSidebarQuickAccessOptions();
-      });
-
-      const checkbox = option.querySelector('input') as HTMLInputElement | null;
-      if (checkbox) {
-        checkbox.addEventListener('change', () => {
-          const action = checkbox.dataset.action || '';
-          const updatedHidden = new Set(tempHomeSettings.hiddenSidebarQuickAccessItems);
-          if (checkbox.checked) {
-            updatedHidden.delete(action);
-          } else {
-            updatedHidden.add(action);
-          }
-          tempHomeSettings.hiddenSidebarQuickAccessItems = Array.from(updatedHidden);
-          homeSettingsHasUnsavedChanges = true;
-        });
-      }
-
-      sidebarQuickAccessOptions.appendChild(option);
-    });
+    renderReorderableOptions(
+      sidebarQuickAccessOptions,
+      'sidebarQuickAccessOrder',
+      'hiddenSidebarQuickAccessItems',
+      sidebarDragState,
+      renderSidebarQuickAccessOptions
+    );
   }
 
   function syncHomeSettingsModal(): void {
@@ -927,35 +840,20 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
       }
     });
 
-    homeToggleQuickAccess?.addEventListener('change', () => {
-      tempHomeSettings.showQuickAccess = homeToggleQuickAccess.checked;
-      homeSettingsHasUnsavedChanges = true;
-    });
-
-    homeToggleRecents?.addEventListener('change', () => {
-      tempHomeSettings.showRecents = homeToggleRecents.checked;
-      homeSettingsHasUnsavedChanges = true;
-    });
-
-    homeToggleBookmarks?.addEventListener('change', () => {
-      tempHomeSettings.showBookmarks = homeToggleBookmarks.checked;
-      homeSettingsHasUnsavedChanges = true;
-    });
-
-    homeToggleDrives?.addEventListener('change', () => {
-      tempHomeSettings.showDrives = homeToggleDrives.checked;
-      homeSettingsHasUnsavedChanges = true;
-    });
-
-    homeToggleDiskUsage?.addEventListener('change', () => {
-      tempHomeSettings.showDiskUsage = homeToggleDiskUsage.checked;
-      homeSettingsHasUnsavedChanges = true;
-    });
-
-    homeToggleCompact?.addEventListener('change', () => {
-      tempHomeSettings.compactCards = homeToggleCompact.checked;
-      homeSettingsHasUnsavedChanges = true;
-    });
+    const toggleBindings: [HTMLInputElement | null, keyof HomeSettings][] = [
+      [homeToggleQuickAccess, 'showQuickAccess'],
+      [homeToggleRecents, 'showRecents'],
+      [homeToggleBookmarks, 'showBookmarks'],
+      [homeToggleDrives, 'showDrives'],
+      [homeToggleDiskUsage, 'showDiskUsage'],
+      [homeToggleCompact, 'compactCards'],
+    ];
+    for (const [el, key] of toggleBindings) {
+      el?.addEventListener('change', () => {
+        (tempHomeSettings as unknown as Record<string, unknown>)[key] = el.checked;
+        homeSettingsHasUnsavedChanges = true;
+      });
+    }
 
     window.electronAPI.onHomeSettingsChanged((settings) => {
       currentHomeSettings = normalizeHomeSettings(settings);

@@ -61,6 +61,29 @@ export function createSearchController(deps: SearchDeps) {
   let searchFilterApply: HTMLButtonElement | null = null;
   let searchInContentsToggle: HTMLInputElement | null = null;
 
+  function hasActiveFilters(): boolean {
+    return !!(
+      currentSearchFilters.fileType ||
+      currentSearchFilters.minSize !== undefined ||
+      currentSearchFilters.maxSize !== undefined ||
+      currentSearchFilters.dateFrom ||
+      currentSearchFilters.dateTo
+    );
+  }
+
+  function applySearchScopeUi(global: boolean) {
+    if (!searchScopeToggle) return;
+    searchScopeToggle.classList.toggle('global', global);
+    searchScopeToggle.title = global
+      ? 'Global Search (All Indexed Files)'
+      : 'Local Search (Current Folder)';
+    const img = searchScopeToggle.querySelector('img');
+    if (img) {
+      img.src = global ? '../assets/twemoji/1f30d.svg' : '../assets/twemoji/1f4c1.svg';
+      img.alt = global ? '🌍' : '📁';
+    }
+  }
+
   const ensureElements = () => {
     if (!searchBtn) searchBtn = getById('search-btn') as HTMLButtonElement | null;
     if (!searchInput) searchInput = getById('search-input') as HTMLInputElement | null;
@@ -133,6 +156,10 @@ export function createSearchController(deps: SearchDeps) {
     if (!searchBarWrapper || !searchInput || !searchScopeToggle || !searchFiltersPanel) return;
     searchRequestId += 1;
     cancelActiveSearch();
+    if (searchDebounceTimeout) {
+      clearTimeout(searchDebounceTimeout);
+      searchDebounceTimeout = null;
+    }
     searchBarWrapper.style.display = 'none';
     searchInput.value = '';
     isSearchMode = false;
@@ -189,23 +216,7 @@ export function createSearchController(deps: SearchDeps) {
     ensureElements();
     if (!searchScopeToggle) return;
     isGlobalSearch = !isGlobalSearch;
-    if (isGlobalSearch) {
-      searchScopeToggle.classList.add('global');
-      searchScopeToggle.title = 'Global Search (All Indexed Files)';
-      const img = searchScopeToggle.querySelector('img');
-      if (img) {
-        img.src = '../assets/twemoji/1f30d.svg';
-        img.alt = '🌍';
-      }
-    } else {
-      searchScopeToggle.classList.remove('global');
-      searchScopeToggle.title = 'Local Search (Current Folder)';
-      const img = searchScopeToggle.querySelector('img');
-      if (img) {
-        img.src = '../assets/twemoji/1f4c1.svg';
-        img.alt = '📁';
-      }
-    }
+    applySearchScopeUi(isGlobalSearch);
     syncSearchScopeAria();
     updateSearchPlaceholder();
     updateContentSearchToggle();
@@ -273,13 +284,7 @@ export function createSearchController(deps: SearchDeps) {
     if (fileGrid) clearHtml(fileGrid);
 
     let result;
-    const hasFilters =
-      currentSearchFilters.fileType ||
-      currentSearchFilters.minSize !== undefined ||
-      currentSearchFilters.maxSize !== undefined ||
-      currentSearchFilters.dateFrom ||
-      currentSearchFilters.dateTo ||
-      searchInContents;
+    const hasFilters = hasActiveFilters() || searchInContents;
 
     if (isGlobalSearch) {
       if (searchInContents) {
@@ -433,23 +438,7 @@ export function createSearchController(deps: SearchDeps) {
     }
 
     isGlobalSearch = isGlobal;
-    if (isGlobalSearch) {
-      searchScopeToggle.classList.add('global');
-      searchScopeToggle.title = 'Global Search (All Indexed Files)';
-      const img = searchScopeToggle.querySelector('img');
-      if (img) {
-        img.src = '../assets/twemoji/1f30d.svg';
-        img.alt = '🌍';
-      }
-    } else {
-      searchScopeToggle.classList.remove('global');
-      searchScopeToggle.title = 'Local Search (Current Folder)';
-      const img = searchScopeToggle.querySelector('img');
-      if (img) {
-        img.src = '../assets/twemoji/1f4c1.svg';
-        img.alt = '📁';
-      }
-    }
+    applySearchScopeUi(isGlobalSearch);
     updateSearchPlaceholder();
     searchInput.focus();
   }
@@ -507,14 +496,7 @@ export function createSearchController(deps: SearchDeps) {
         dateTo: searchFilterDateTo.value || undefined,
       };
 
-      const hasActiveFilters =
-        currentSearchFilters.fileType ||
-        currentSearchFilters.minSize !== undefined ||
-        currentSearchFilters.maxSize !== undefined ||
-        currentSearchFilters.dateFrom ||
-        currentSearchFilters.dateTo;
-
-      if (hasActiveFilters) {
+      if (hasActiveFilters()) {
         searchFilterToggle.classList.add('active');
       }
       updateFilterBadge();
@@ -594,14 +576,7 @@ export function createSearchController(deps: SearchDeps) {
       searchText += `: "${truncated}"`;
     }
 
-    const hasFilters =
-      currentSearchFilters.fileType ||
-      currentSearchFilters.minSize !== undefined ||
-      currentSearchFilters.maxSize !== undefined ||
-      currentSearchFilters.dateFrom ||
-      currentSearchFilters.dateTo;
-
-    if (hasFilters) {
+    if (hasActiveFilters()) {
       searchText += ' (filtered)';
     }
 

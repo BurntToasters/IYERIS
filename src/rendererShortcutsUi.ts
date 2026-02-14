@@ -155,20 +155,20 @@ export function createShortcutsUiController(deps: ShortcutsUiDeps) {
     const tokenHtml = tokens
       .map((token) => {
         if ('text' in token) {
-          return `<span class=\"shortcut-text\">${escapeHtml(token.text)}</span>`;
+          return `<span class="shortcut-text">${escapeHtml(token.text)}</span>`;
         }
         const keyHtml = token.keys
           .map((key, index) => {
             const label = escapeHtml(deps.formatShortcutKeyLabel(key));
             const plus =
-              index < token.keys.length - 1 ? '<span class=\"shortcut-plus\">+</span>' : '';
+              index < token.keys.length - 1 ? '<span class="shortcut-plus">+</span>' : '';
             return `<kbd>${label}</kbd>${plus}`;
           })
           .join('');
-        return `<span class=\"shortcut-token\">${keyHtml}</span>`;
+        return `<span class="shortcut-token">${keyHtml}</span>`;
       })
       .join('');
-    return `<span class=\"shortcut-keys\">${tokenHtml}</span>`;
+    return `<span class="shortcut-keys">${tokenHtml}</span>`;
   }
 
   function renderShortcutsModal(): void {
@@ -215,13 +215,13 @@ export function createShortcutsUiController(deps: ShortcutsUiDeps) {
         item.className = 'shortcut-item';
         item.dataset.shortcutId = def.id;
         item.innerHTML = `
-        <div class=\"shortcut-info\">
-          <span class=\"shortcut-description\">${escapeHtml(def.title)}</span>
+        <div class="shortcut-info">
+          <span class="shortcut-description">${escapeHtml(def.title)}</span>
         </div>
-        <div class=\"shortcut-controls\">
+        <div class="shortcut-controls">
           ${keyMarkup}
-          <button class=\"modal-button secondary\" data-shortcut-action=\"edit\">Change</button>
-          <button class=\"modal-button secondary compact\" data-shortcut-action=\"reset\" ${isDefault ? 'disabled' : ''}>Reset</button>
+          <button class="modal-button secondary" data-shortcut-action="edit">Change</button>
+          <button class="modal-button secondary compact" data-shortcut-action="reset" ${isDefault ? 'disabled' : ''}>Reset</button>
         </div>
       `;
         section.appendChild(item);
@@ -231,10 +231,10 @@ export function createShortcutsUiController(deps: ShortcutsUiDeps) {
         const item = document.createElement('div');
         item.className = 'shortcut-item fixed';
         item.innerHTML = `
-        <div class=\"shortcut-info\">
-          <span class=\"shortcut-description\">${escapeHtml(fixedItem.title)}</span>
+        <div class="shortcut-info">
+          <span class="shortcut-description">${escapeHtml(fixedItem.title)}</span>
         </div>
-        <div class=\"shortcut-controls\">
+        <div class="shortcut-controls">
           ${renderShortcutTokens(fixedItem.tokens)}
         </div>
       `;
@@ -303,7 +303,7 @@ export function createShortcutsUiController(deps: ShortcutsUiDeps) {
       const conflictId = deps.shortcutLookup.get(serialized);
       if (conflictId && conflictId !== id) {
         const conflictTitle = deps.shortcutDefinitionById.get(conflictId)?.title || conflictId;
-        deps.showToast(`Already used by \"${conflictTitle}\"`, 'Shortcut In Use', 'warning');
+        deps.showToast(`Already used by "${conflictTitle}"`, 'Shortcut In Use', 'warning');
         return;
       }
 

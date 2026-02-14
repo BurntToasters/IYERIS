@@ -265,23 +265,27 @@ export function createTabsController(deps: TabsDeps) {
     });
   }
 
+  function snapshotCurrentTab() {
+    const tabs = deps.getTabs();
+    const currentTab = tabs.find((t) => t.id === deps.getActiveTabId());
+    if (!currentTab) return;
+    currentTab.path = deps.getCurrentPath();
+    currentTab.history = [...deps.getHistory()];
+    currentTab.historyIndex = deps.getHistoryIndex();
+    currentTab.selectedItems = new Set(deps.getSelectedItems());
+    currentTab.scrollPosition = deps.getFileViewScrollTop();
+    if (deps.getAllFiles().length <= MAX_CACHED_FILES_PER_TAB) {
+      currentTab.cachedFiles = [...deps.getAllFiles()];
+      updateTabCacheAccess(currentTab.id);
+    }
+  }
+
   function switchToTab(tabId: string) {
     if (deps.getActiveTabId() === tabId || !deps.getTabsEnabled()) return;
 
-    const tabs = deps.getTabs();
-    const currentTab = tabs.find((t) => t.id === deps.getActiveTabId());
-    if (currentTab) {
-      currentTab.path = deps.getCurrentPath();
-      currentTab.history = [...deps.getHistory()];
-      currentTab.historyIndex = deps.getHistoryIndex();
-      currentTab.selectedItems = new Set(deps.getSelectedItems());
-      currentTab.scrollPosition = deps.getFileViewScrollTop();
-      if (deps.getAllFiles().length <= MAX_CACHED_FILES_PER_TAB) {
-        currentTab.cachedFiles = [...deps.getAllFiles()];
-        updateTabCacheAccess(currentTab.id);
-      }
-    }
+    snapshotCurrentTab();
 
+    const tabs = deps.getTabs();
     deps.setActiveTabId(tabId);
     const newTab = tabs.find((t) => t.id === tabId);
     if (newTab) {
@@ -342,20 +346,9 @@ export function createTabsController(deps: TabsDeps) {
   async function addNewTab(path?: string) {
     if (!deps.getTabsEnabled()) return;
 
-    const tabs = deps.getTabs();
-    const currentTab = tabs.find((t) => t.id === deps.getActiveTabId());
-    if (currentTab) {
-      currentTab.path = deps.getCurrentPath();
-      currentTab.history = [...deps.getHistory()];
-      currentTab.historyIndex = deps.getHistoryIndex();
-      currentTab.selectedItems = new Set(deps.getSelectedItems());
-      currentTab.scrollPosition = deps.getFileViewScrollTop();
-      if (deps.getAllFiles().length <= MAX_CACHED_FILES_PER_TAB) {
-        currentTab.cachedFiles = [...deps.getAllFiles()];
-        updateTabCacheAccess(currentTab.id);
-      }
-    }
+    snapshotCurrentTab();
 
+    const tabs = deps.getTabs();
     let tabPath = path;
     if (!tabPath) {
       const settings = deps.getCurrentSettings();

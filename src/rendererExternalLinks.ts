@@ -22,7 +22,7 @@ export function createExternalLinksController(deps: ExternalLinksDeps) {
       deps.openExternal('https://rosie.run/support');
     });
     document.getElementById('status-version')?.addEventListener('click', () => {
-      const version = document.getElementById('status-version')?.textContent || 'v0.1.0';
+      const version = (document.getElementById('status-version')?.textContent || 'v0.1.0').trim();
       deps.openExternal(`https://github.com/BurntToasters/IYERIS/releases/tag/${version}`);
     });
 

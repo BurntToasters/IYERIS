@@ -102,13 +102,18 @@ export function createArchiveOperationsController(deps: ArchiveOperationsDeps) {
       operation.currentFile = 'Cancelling...';
       renderOperations();
 
-      deps.cancelArchiveOperation(id).then((result) => {
-        if (result.success) {
-          console.log('[Archive] Operation cancelled:', id);
-        } else {
-          console.error('[Archive] Failed to cancel:', result.error);
-        }
-      });
+      deps
+        .cancelArchiveOperation(id)
+        .then((result) => {
+          if (result.success) {
+            console.log('[Archive] Operation cancelled:', id);
+          } else {
+            console.error('[Archive] Failed to cancel:', result.error);
+          }
+        })
+        .catch((err) => {
+          console.error('[Archive] Error cancelling operation:', err);
+        });
 
       setTimeout(() => {
         removeOperation(id);

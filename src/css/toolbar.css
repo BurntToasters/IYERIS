@@ -1,0 +1,286 @@
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--toolbar-gap);
+  padding: var(--toolbar-padding-v) var(--toolbar-padding-h);
+  min-height: var(--toolbar-height);
+  position: relative;
+  z-index: 100;
+  box-shadow: none;
+}
+
+.toolbar .view-options {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: var(--radius-small);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.toolbar-left,
+.toolbar-right {
+  display: flex;
+  gap: var(--toolbar-left-right-gap);
+  align-items: center;
+}
+
+.toolbar-right {
+  justify-content: flex-end;
+}
+
+.toolbar-group {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--toolbar-left-right-gap);
+  padding: 2px 4px;
+  border-radius: var(--radius-medium);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.toolbar-divider {
+  width: 1px;
+  height: var(--toolbar-separator-height);
+  background: var(--separator);
+  margin: 0 6px;
+}
+
+.view-option {
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  width: 28px;
+  height: 26px;
+  border-radius: var(--radius-small);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition:
+    background-color var(--animation-duration) var(--animation-easing),
+    border-color var(--animation-duration) var(--animation-easing),
+    color var(--animation-duration) var(--animation-easing),
+    box-shadow var(--animation-duration) var(--animation-easing),
+    transform var(--animation-duration) var(--animation-easing),
+    opacity var(--animation-duration) var(--animation-easing);
+}
+
+.view-option:hover {
+  color: var(--text-primary);
+  background: var(--hover-color);
+}
+
+.view-option.active {
+  color: var(--text-primary);
+  background: var(--accent-medium);
+  box-shadow: inset 0 0 0 1px var(--accent-strong);
+}
+
+#view-toggle-btn {
+  display: none;
+}
+
+.toolbar-center {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.toolbar-separator {
+  width: 1px;
+  height: var(--toolbar-separator-height);
+  background: rgba(255, 255, 255, 0.12);
+  margin: var(--toolbar-separator-margin-v) var(--toolbar-separator-margin-h);
+}
+
+.toolbar-button {
+  width: var(--icon-size-toolbar);
+  height: var(--icon-size-toolbar);
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  border-radius: var(--radius-small);
+  cursor: pointer;
+  transition:
+    background-color var(--animation-duration) var(--animation-easing),
+    border-color var(--animation-duration) var(--animation-easing),
+    color var(--animation-duration) var(--animation-easing),
+    box-shadow var(--animation-duration) var(--animation-easing),
+    transform var(--animation-duration) var(--animation-easing),
+    opacity var(--animation-duration) var(--animation-easing);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+}
+
+.toolbar-button:hover:not(:disabled) {
+  background: var(--hover-color);
+  box-shadow: none;
+  transform: none;
+}
+
+.toolbar-button:active:not(:disabled) {
+  background: var(--active-color);
+  transform: none;
+}
+
+.toolbar-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  filter: grayscale(0.3);
+}
+
+body.platform-darwin .toolbar-button {
+  border-radius: 8px;
+  transition:
+    background-color var(--animation-duration) var(--animation-easing-spring),
+    border-color var(--animation-duration) var(--animation-easing-spring),
+    color var(--animation-duration) var(--animation-easing-spring),
+    box-shadow var(--animation-duration) var(--animation-easing-spring),
+    transform var(--animation-duration) var(--animation-easing-spring),
+    opacity var(--animation-duration) var(--animation-easing-spring);
+}
+
+body.platform-darwin .toolbar-button:hover:not(:disabled) {
+  background: var(--hover-color);
+}
+
+body.platform-darwin .toolbar-button:active:not(:disabled) {
+  background: var(--active-color);
+  transform: none;
+}
+
+body.platform-win32 .toolbar-button {
+  border-radius: 4px;
+  transition:
+    background-color var(--animation-duration) var(--animation-easing),
+    border-color var(--animation-duration) var(--animation-easing),
+    color var(--animation-duration) var(--animation-easing),
+    box-shadow var(--animation-duration) var(--animation-easing),
+    transform var(--animation-duration) var(--animation-easing),
+    opacity var(--animation-duration) var(--animation-easing);
+}
+
+body.platform-win32 .toolbar-button:hover:not(:disabled) {
+  background: var(--hover-color);
+}
+
+body.platform-win32 .toolbar-button:active:not(:disabled) {
+  background: var(--active-color);
+}
+
+.clipboard-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  margin-left: 8px;
+  background: var(--accent-subtle);
+  border-radius: var(--radius-small);
+  font-size: 11px;
+  color: var(--accent-color);
+  transition:
+    background-color var(--animation-duration) var(--animation-easing),
+    border-color var(--animation-duration) var(--animation-easing),
+    color var(--animation-duration) var(--animation-easing),
+    box-shadow var(--animation-duration) var(--animation-easing),
+    transform var(--animation-duration) var(--animation-easing),
+    opacity var(--animation-duration) var(--animation-easing);
+}
+
+.clipboard-indicator.cut-mode {
+  background: rgba(255, 140, 0, 0.1);
+  color: var(--warning-color);
+}
+
+.clipboard-indicator .clipboard-icon {
+  opacity: 0.9;
+}
+
+.selection-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  row-gap: 4px;
+  padding: 4px 8px;
+  margin-left: 8px;
+  background: var(--accent-subtle);
+  border-radius: var(--radius-small);
+  font-size: 11px;
+  color: var(--text-primary);
+  transition:
+    background-color var(--animation-duration) var(--animation-easing),
+    border-color var(--animation-duration) var(--animation-easing),
+    color var(--animation-duration) var(--animation-easing),
+    box-shadow var(--animation-duration) var(--animation-easing),
+    transform var(--animation-duration) var(--animation-easing),
+    opacity var(--animation-duration) var(--animation-easing);
+}
+
+.selection-count {
+  font-weight: 600;
+  color: var(--accent-color);
+  min-width: 14px;
+  text-align: center;
+}
+
+.selection-text {
+  color: var(--text-secondary);
+}
+
+.selection-action {
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  border-radius: var(--radius-small);
+  padding: 4px 8px;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition:
+    background-color var(--animation-duration) var(--animation-easing),
+    border-color var(--animation-duration) var(--animation-easing),
+    color var(--animation-duration) var(--animation-easing),
+    box-shadow var(--animation-duration) var(--animation-easing),
+    transform var(--animation-duration) var(--animation-easing),
+    opacity var(--animation-duration) var(--animation-easing);
+}
+
+.selection-action:hover {
+  background: rgba(255, 255, 255, 0.18);
+  color: var(--text-primary);
+}
+
+.selection-action:active {
+  background: rgba(255, 255, 255, 0.24);
+}
+
+.selection-action:focus-visible {
+  box-shadow: var(--focus-ring);
+  outline: none;
+}
+.notification-badge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  background-color: var(--danger-color);
+  color: white;
+  font-size: 10px;
+  font-weight: bold;
+  padding: 2px 5px;
+  border-radius: 10px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  pointer-events: none;
+  z-index: 10;
+  min-width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
