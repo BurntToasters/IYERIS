@@ -256,7 +256,7 @@ describe('isMacPlatform', () => {
   it('falls back to process.platform when getPlatformOS returns empty string', () => {
     const engine = createShortcutEngineController(makeDeps(''));
 
-    expect(engine.isMacPlatform()).toBe(false);
+    expect(engine.isMacPlatform()).toBe(process.platform === 'darwin');
   });
 });
 

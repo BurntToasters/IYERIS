@@ -129,7 +129,9 @@ describe('windowManager', () => {
     expect(template.some((item) => item.label === 'Busy' && item.enabled === false)).toBe(true);
     expect(template.some((item) => item.label === 'Show IYERIS')).toBe(true);
     expect(template.some((item) => item.label === 'Quit')).toBe(true);
-    expect(mocks.tray.setContextMenu).toHaveBeenCalledWith({ id: 'menu' });
+    expect(mocks.tray.setContextMenu).toHaveBeenCalledWith(
+      process.platform === 'darwin' ? null : { id: 'menu' }
+    );
   });
 
   it('shows and focuses active window', () => {

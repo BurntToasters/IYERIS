@@ -161,7 +161,7 @@ export function createShortcutEngineController(deps: ShortcutEngineDeps) {
   ): void {
     rebuildFixedShortcuts();
     rebuildReservedShortcuts();
-    const defaults = getDefaultShortcuts();
+    const defaults = getDefaultShortcuts(isMacPlatform() ? 'darwin' : 'linux');
     const normalized: Record<string, ShortcutBinding> = {};
     const used = new Set<string>();
     let changed = false;
