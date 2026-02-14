@@ -88,10 +88,14 @@ const TOAST_DURATION_MS = 3000;
 const SEARCH_HISTORY_MAX = 5;
 const DIRECTORY_HISTORY_MAX = 5;
 const RENDER_BATCH_SIZE = 50;
-const VIRTUALIZE_THRESHOLD = 2000;
-const VIRTUALIZE_BATCH_SIZE = 200;
-const ANIMATED_RENDER_ITEM_LIMIT = 320;
-const PERFORMANCE_MODE_ITEM_THRESHOLD = 6000;
+const VIRTUALIZE_THRESHOLD = 1200;
+const VIRTUALIZE_BATCH_SIZE = 120;
+const ANIMATED_RENDER_ITEM_LIMIT = 160;
+const PERFORMANCE_MODE_ITEM_THRESHOLD = 2400;
+const THUMBNAIL_RENDER_ITEM_LIMIT = 1200;
+const ENTRY_ANIMATION_STAGGER_ITEMS = 12;
+const ENTRY_ANIMATION_STAGGER_MS = 12;
+const ENTRY_ANIMATION_CLEANUP_DELAY_MS = 320;
 const DIRECTORY_PROGRESS_THROTTLE_MS = 100;
 const SUPPORT_POPUP_DELAY_MS = 1500;
 
@@ -220,6 +224,7 @@ let canUndo: boolean = false;
 let canRedo: boolean = false;
 let folderTreeEnabled: boolean = true;
 let disableEntryAnimation = false;
+let disableThumbnailRendering = false;
 
 function markSelectionDirty(): void {
   selectedItemsSizeDirty = true;
@@ -478,6 +483,7 @@ const gitStatus = createGitStatusController({
   getCurrentSettings: () => currentSettings,
   getCurrentPath: () => currentPath,
   getFileElement: (p) => fileElementMap.get(p),
+  getRenderedPaths: () => fileElementMap.keys(),
   getGitStatus: (dir, untracked) => window.electronAPI.getGitStatus(dir, untracked),
   getGitBranch: (dir) => window.electronAPI.getGitBranch(dir),
 });
@@ -2725,7 +2731,7 @@ function scheduleAnimationCleanup(): void {
     if (animationCleanupItems.length > 0) {
       scheduleAnimationCleanup();
     }
-  }, 400);
+  }, ENTRY_ANIMATION_CLEANUP_DELAY_MS);
 }
 
 function appendFileItems(items: FileItem[], searchQuery?: string): string[] {
@@ -2738,8 +2744,8 @@ function appendFileItems(items: FileItem[], searchQuery?: string): string[] {
   for (const item of items) {
     const fileItem = createFileItem(item, searchQuery);
     if (shouldAnimate) {
-      const delayIndex = renderItemIndex % 20;
-      const delayMs = delayIndex * 20;
+      const delayIndex = renderItemIndex % ENTRY_ANIMATION_STAGGER_ITEMS;
+      const delayMs = delayIndex * ENTRY_ANIMATION_STAGGER_MS;
       fileItem.classList.add('animate-in');
       fileItem.style.animationDelay = `${delayMs / 1000}s`;
       animationCleanupItems.push(fileItem);
@@ -2766,6 +2772,7 @@ function renderFiles(items: FileItem[], searchQuery?: string) {
   fileGrid.innerHTML = '';
   renderItemIndex = 0;
   disableEntryAnimation = false;
+  disableThumbnailRendering = false;
   clearSelection();
   allFiles = items;
   document.body.classList.toggle(
@@ -2779,9 +2786,6 @@ function renderFiles(items: FileItem[], searchQuery?: string) {
   markSelectionDirty();
   gitStatus.clearCache();
   clipboardController.clearCutPaths();
-  for (const item of items) {
-    filePathMap.set(item.path, item);
-  }
 
   const LARGE_FOLDER_THRESHOLD = 10000;
   if (items.length >= LARGE_FOLDER_THRESHOLD) {
@@ -2803,6 +2807,10 @@ function renderFiles(items: FileItem[], searchQuery?: string) {
   }
 
   if (emptyState) emptyState.style.display = 'none';
+
+  for (const item of visibleItems) {
+    filePathMap.set(item.path, item);
+  }
 
   const sortBy = currentSettings.sortBy || 'name';
   const sortOrder = currentSettings.sortOrder || 'asc';
@@ -2854,6 +2862,7 @@ function renderFiles(items: FileItem[], searchQuery?: string) {
   });
 
   disableEntryAnimation = sortedItems.length > ANIMATED_RENDER_ITEM_LIMIT;
+  disableThumbnailRendering = sortedItems.length >= THUMBNAIL_RENDER_ITEM_LIMIT;
 
   if (sortedItems.length >= VIRTUALIZE_THRESHOLD) {
     virtualizedRenderToken = renderToken;
@@ -2916,10 +2925,12 @@ function createFileItem(item: FileItem, searchQuery?: string): HTMLElement {
               ? 'pdf'
               : null;
     if (thumbType) {
-      fileItem.classList.add('has-thumbnail');
-      fileItem.dataset.thumbnailType = thumbType;
       icon = thumbType === 'image' || thumbType === 'raw' ? IMAGE_ICON : getFileIcon(item.name);
-      thumbnails.observeThumbnailItem(fileItem);
+      if (!disableThumbnailRendering) {
+        fileItem.classList.add('has-thumbnail');
+        fileItem.dataset.thumbnailType = thumbType;
+        thumbnails.observeThumbnailItem(fileItem);
+      }
     } else {
       icon = getFileIcon(item.name);
     }

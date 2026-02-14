@@ -38,14 +38,14 @@
 }
 
 .file-item.animate-in {
-  animation: fileItemFadeIn 0.25s ease forwards;
+  animation: fileItemFadeIn 0.16s cubic-bezier(0.22, 1, 0.36, 1) forwards;
   opacity: 0;
 }
 
 @keyframes fileItemFadeIn {
   from {
     opacity: 0;
-    transform: translateY(8px) scale(0.95);
+    transform: translateY(4px) scale(0.98);
   }
   to {
     opacity: 1;
