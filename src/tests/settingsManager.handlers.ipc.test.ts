@@ -317,17 +317,13 @@ describe('settingsManager.extended2', () => {
         mocks.getFileIndexer.mockReturnValue(null);
         const error = new Error('indexer init failed');
         mocks.mockIndexerInstance.initialize.mockRejectedValue(error);
-        const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
         await handlers['save-settings'](makeEvent(), { enableIndexer: true } as any);
 
-        await new Promise((r) => setTimeout(r, 0));
-
-        expect(consoleErrorSpy).toHaveBeenCalledWith(
+        expect(mocks.loggerWarn).toHaveBeenCalledWith(
           '[Settings] Failed to initialize indexer:',
           error
         );
-        consoleErrorSpy.mockRestore();
       });
     });
 

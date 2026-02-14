@@ -1,8 +1,8 @@
-import type { Settings, FileItem, ContentSearchResult, SpecialDirectory, DriveInfo } from './types';
+import type { Settings, FileItem, SpecialDirectory, DriveInfo } from './types';
 import { createFolderTreeManager } from './folderDir.js';
 import { escapeHtml, getErrorMessage, ignoreError } from './shared.js';
 import { clearHtml, getById } from './rendererDom.js';
-import { createThemeEditorController, hexToRgb } from './rendererThemeEditor.js';
+import { createThemeEditorController } from './rendererThemeEditor.js';
 import {
   buildPathFromSegments,
   createNavigationController,
@@ -68,34 +68,21 @@ import {
 } from './home.js';
 import { createTourController, type TourController } from './tour.js';
 import {
-  IMAGE_EXTENSIONS,
-  RAW_EXTENSIONS,
-  VIDEO_EXTENSIONS,
-  AUDIO_EXTENSIONS,
-  PDF_EXTENSIONS,
-} from './fileTypes.js';
-import {
   getFileExtension,
   getFileTypeFromName,
   formatFileSize,
   getFileIcon,
-  IMAGE_ICON,
 } from './rendererFileIcons.js';
+import { createFileRenderController } from './rendererFileRender.js';
+import { createFileGridEventsController } from './rendererFileGridEvents.js';
+import { createEventListenersController } from './rendererEventListeners.js';
+import { createBootstrapController } from './rendererBootstrap.js';
 
 const SEARCH_DEBOUNCE_MS = 300;
 const SETTINGS_SAVE_DEBOUNCE_MS = 1000;
 const TOAST_DURATION_MS = 3000;
 const SEARCH_HISTORY_MAX = 5;
 const DIRECTORY_HISTORY_MAX = 5;
-const RENDER_BATCH_SIZE = 50;
-const VIRTUALIZE_THRESHOLD = 1200;
-const VIRTUALIZE_BATCH_SIZE = 120;
-const ANIMATED_RENDER_ITEM_LIMIT = 160;
-const PERFORMANCE_MODE_ITEM_THRESHOLD = 2400;
-const THUMBNAIL_RENDER_ITEM_LIMIT = 1200;
-const ENTRY_ANIMATION_STAGGER_ITEMS = 12;
-const ENTRY_ANIMATION_STAGGER_MS = 12;
-const ENTRY_ANIMATION_CLEANUP_DELAY_MS = 320;
 const DIRECTORY_PROGRESS_THROTTLE_MS = 100;
 const SUPPORT_POPUP_DELAY_MS = 1500;
 
@@ -155,20 +142,6 @@ function cacheDriveInfo(drives: DriveInfo[]): void {
   });
 }
 
-function updateVersionDisplays(appVersion: string): void {
-  const rawVersion = appVersion.trim();
-  const versionTag = rawVersion.startsWith('v') ? rawVersion : `v${rawVersion}`;
-  const statusVersion = getById('status-version');
-  if (statusVersion) {
-    statusVersion.textContent = versionTag;
-    statusVersion.setAttribute('title', `Version ${rawVersion}`);
-  }
-  const aboutVersion = getById('about-version-display');
-  if (aboutVersion) {
-    aboutVersion.textContent = `Version ${rawVersion}`;
-  }
-}
-
 async function saveSettingsWithTimestamp(settings: Settings) {
   if (isResettingSettings) {
     return { success: true };
@@ -223,8 +196,6 @@ let platformOS: string = '';
 let canUndo: boolean = false;
 let canRedo: boolean = false;
 let folderTreeEnabled: boolean = true;
-let disableEntryAnimation = false;
-let disableThumbnailRendering = false;
 
 function markSelectionDirty(): void {
   selectedItemsSizeDirty = true;
@@ -703,7 +674,7 @@ const thumbnails = createThumbnailController({
 });
 
 const hoverCardController = createHoverCardController({
-  getFileItemData,
+  getFileItemData: (el) => getFileItemData(el),
   formatFileSize,
   getFileTypeFromName,
   getFileIcon,
@@ -1794,202 +1765,45 @@ function updateStatusBar() {
   }
 }
 
-async function init() {
-  console.log('Init: Getting platform, store info, and settings...');
-
-  const [platform, mas, flatpak, msStore, appVersion] = await Promise.all([
-    window.electronAPI.getPlatform(),
-    window.electronAPI.isMas(),
-    window.electronAPI.isFlatpak(),
-    window.electronAPI.isMsStore(),
-    window.electronAPI.getAppVersion(),
-  ]);
-
-  await loadSettings();
-  await homeController.loadHomeSettings();
-  renderSidebarQuickAccess();
-
-  initTooltipSystem();
-  initCommandPalette();
-
-  platformOS = platform;
-  document.body.classList.add(`platform-${platformOS}`);
-  updateVersionDisplays(appVersion);
-
-  const titlebarIcon = document.getElementById('titlebar-icon') as HTMLImageElement;
-  if (titlebarIcon) {
-    const isBeta = /-(beta|alpha|rc)/i.test(appVersion);
-    const iconSrc = isBeta ? '../assets/folder-beta.png' : '../assets/folder.png';
-    titlebarIcon.src = iconSrc;
-    console.log(`[Init] Version: ${appVersion}, isBeta: ${isBeta}, titlebar icon: ${iconSrc}`);
-  }
-
-  window.electronAPI.getSystemAccentColor().then(({ accentColor, isDarkMode }) => {
-    const rgb = hexToRgb(accentColor);
-    document.documentElement.style.setProperty('--system-accent-color', accentColor);
-    document.documentElement.style.setProperty('--system-accent-rgb', rgb);
-    if (isDarkMode) {
-      document.body.classList.add('system-dark-mode');
-    }
-    if (currentSettings.useSystemTheme) {
-      const systemTheme = isDarkMode ? 'default' : 'light';
-      if (currentSettings.theme !== systemTheme) {
-        currentSettings.theme = systemTheme;
-        applySettings(currentSettings);
-      }
-    }
-  });
-
-  const startupPath =
-    currentSettings.startupPath && currentSettings.startupPath.trim() !== ''
-      ? currentSettings.startupPath
-      : HOME_VIEW_PATH;
-
-  setupEventListeners();
-  loadDrives();
-  initializeTabs();
-
-  await navigateTo(startupPath);
-
-  queueMicrotask(() => {
-    setupBreadcrumbListeners();
-    setupThemeEditorListeners();
-    homeController.setupHomeSettingsListeners();
-    loadBookmarks();
-
-    window.electronAPI.onHomeSettingsChanged(() => {
-      renderSidebarQuickAccess();
-    });
-  });
-
-  const isStoreVersion = mas || flatpak || msStore;
-
-  if (typeof requestIdleCallback !== 'undefined') {
-    requestIdleCallback(() => {
-      if (isStoreVersion) {
-        const updateBtn = document.getElementById('check-updates-btn');
-        if (updateBtn) {
-          updateBtn.style.display = 'none';
-        }
-
-        const autoCheckToggle = document.getElementById('auto-check-updates-toggle');
-        if (autoCheckToggle) {
-          const settingItem = autoCheckToggle.closest('.setting-item') as HTMLElement;
-          if (settingItem) {
-            settingItem.style.display = 'none';
-          }
-        }
-
-        const updatesCards = document.querySelectorAll('.settings-card-header');
-        updatesCards.forEach((header) => {
-          if (header.textContent === 'Updates') {
-            const card = header.closest('.settings-card') as HTMLElement;
-            if (card) {
-              card.style.display = 'none';
-            }
-          }
-        });
-      }
-
-      if (mas || msStore) {
-        const settingsCards = document.querySelectorAll('.settings-card-header');
-        settingsCards.forEach((header) => {
-          if (header.textContent === 'Developer Options') {
-            const card = header.closest('.settings-card') as HTMLElement;
-            if (card) {
-              card.style.display = 'none';
-            }
-          }
-        });
-      }
-    });
-  }
-
-  setTimeout(() => {
-    updateUndoRedoState();
-
-    window.electronAPI.getZoomLevel().then((zoomResult) => {
-      if (zoomResult.success && zoomResult.zoomLevel) {
-        zoomController.setCurrentZoomLevel(zoomResult.zoomLevel);
-        updateZoomDisplay();
-      }
-    });
-
-    const cleanupUpdateAvailable = window.electronAPI.onUpdateAvailable((info) => {
-      console.log('Update available:', info);
-
-      const settingsBtn = document.getElementById('settings-btn');
-      if (settingsBtn) {
-        if (!settingsBtn.querySelector('.notification-badge')) {
-          const badge = document.createElement('span');
-          badge.className = 'notification-badge';
-          badge.textContent = '1';
-          settingsBtn.style.position = 'relative';
-          settingsBtn.appendChild(badge);
-        }
-      }
-
-      const checkUpdatesBtn = document.getElementById('check-updates-btn');
-      if (checkUpdatesBtn) {
-        checkUpdatesBtn.innerHTML = `${twemojiImg(String.fromCodePoint(0x1f389), 'twemoji')} Update Available!`;
-        checkUpdatesBtn.classList.add('primary');
-      }
-    });
-    ipcCleanupFunctions.push(cleanupUpdateAvailable);
-
-    const cleanupUpdateDownloaded = window.electronAPI.onUpdateDownloaded((info) => {
-      console.log('Update downloaded:', info);
-      handleUpdateDownloaded(info);
-    });
-    ipcCleanupFunctions.push(cleanupUpdateDownloaded);
-
-    const cleanupSystemResumed = window.electronAPI.onSystemResumed(() => {
-      console.log('[Renderer] System resumed from sleep, refreshing view...');
-      diskSpaceController.clearCache();
-      if (currentPath) {
-        refresh();
-      }
-      loadDrives();
-    });
-    ipcCleanupFunctions.push(cleanupSystemResumed);
-
-    const cleanupSystemThemeChanged = window.electronAPI.onSystemThemeChanged(({ isDarkMode }) => {
-      if (currentSettings.useSystemTheme) {
-        console.log('[Renderer] System theme changed, isDarkMode:', isDarkMode);
-        const newTheme = isDarkMode ? 'default' : 'light';
-        currentSettings.theme = newTheme;
-        applySettings(currentSettings);
-      }
-    });
-    ipcCleanupFunctions.push(cleanupSystemThemeChanged);
-  }, 0);
-
-  console.log('Init: Complete');
-}
-
-function setFolderTreeVisibility(enabled: boolean): void {
-  const section = getById('folder-tree-section');
-  if (section) {
-    section.style.display = enabled ? '' : 'none';
-  }
-  if (!enabled && folderTree) {
-    clearHtml(folderTree);
-  }
-
-  const drivesSection = getById('drives-section');
-  if (drivesSection) {
-    drivesSection.style.display = enabled ? 'none' : '';
-  }
-}
-
-function setFolderTreeSpacingMode(useLegacyTreeSpacing: boolean): void {
-  if (!folderTree) return;
-  if (useLegacyTreeSpacing) {
-    folderTree.dataset.treeIndentMode = 'legacy';
-  } else {
-    delete folderTree.dataset.treeIndentMode;
-  }
-}
+const bootstrapController = createBootstrapController({
+  loadSettings: () => loadSettings(),
+  loadHomeSettings: () => homeController.loadHomeSettings(),
+  renderSidebarQuickAccess: () => renderSidebarQuickAccess(),
+  initTooltipSystem,
+  initCommandPalette,
+  setupEventListeners: () => setupEventListeners(),
+  loadDrives: () => loadDrives(),
+  initializeTabs,
+  navigateTo: (p) => navigateTo(p),
+  setupBreadcrumbListeners,
+  setupThemeEditorListeners,
+  setupHomeSettingsListeners: () => homeController.setupHomeSettingsListeners(),
+  loadBookmarks,
+  updateUndoRedoState: () => updateUndoRedoState(),
+  handleUpdateDownloaded,
+  refresh: () => refresh(),
+  applySettings,
+  getCurrentSettings: () => currentSettings,
+  setCurrentSettings: (s) => {
+    currentSettings = s;
+  },
+  setPlatformOS: (os) => {
+    platformOS = os;
+  },
+  getIpcCleanupFunctions: () => ipcCleanupFunctions,
+  setZoomLevel: (level) => zoomController.setCurrentZoomLevel(level),
+  clearDiskSpaceCache: () => diskSpaceController.clearCache(),
+  getCurrentPath: () => currentPath,
+  updateZoomDisplay,
+  getFolderTree: () => folderTree,
+  onHomeSettingsChanged: (cb) => window.electronAPI.onHomeSettingsChanged(cb),
+  homeViewPath: HOME_VIEW_PATH,
+});
+const {
+  init: bootstrapInit,
+  setFolderTreeVisibility,
+  setFolderTreeSpacingMode,
+} = bootstrapController;
 
 async function loadDrives() {
   if (!drivesList) return;
@@ -2021,484 +1835,131 @@ async function loadDrives() {
   }
 }
 
-function initCoreUiInteractions(): void {
-  initSettingsTabs();
-  initSettingsUi();
-  initShortcutsModal();
-  setupFileGridEventDelegation();
-  setupRubberBandSelection();
-  setupListHeader();
-  setupViewOptions();
-  setupSidebarResize();
-  setupSidebarSections();
-  setupPreviewResize();
-  initPreviewUi();
-  if (currentSettings.showFileHoverCard !== false) {
-    setupHoverCard();
-  }
-}
-
-function initSyncEventListeners(): void {
-  const cleanupClipboard = window.electronAPI.onClipboardChanged((newClipboard) => {
-    clipboardController.setClipboard(newClipboard);
-    clipboardController.updateCutVisuals();
-    console.log('[Sync] Clipboard updated from another window');
-  });
-  ipcCleanupFunctions.push(cleanupClipboard);
-
-  const cleanupSettings = window.electronAPI.onSettingsChanged((newSettings) => {
-    const currentTimestamp =
-      typeof currentSettings._timestamp === 'number' ? currentSettings._timestamp : 0;
-    const newTimestamp = typeof newSettings._timestamp === 'number' ? newSettings._timestamp : 0;
-
-    if (newTimestamp < currentTimestamp) {
-      console.log('[Sync] Ignoring stale settings from another window');
-      return;
-    }
-
-    console.log('[Sync] Settings updated from another window');
-    currentSettings = newSettings;
-    applySettings(newSettings);
-    const settingsModal = document.getElementById('settings-modal') as HTMLElement | null;
-    if (settingsModal && settingsModal.style.display === 'flex') {
-      const previousSavedState = getSavedState();
-      const currentFormState = captureSettingsFormState();
-      const nextSavedState = buildSettingsFormStateFromSettings(newSettings);
-      const mergedState = { ...nextSavedState };
-
-      if (previousSavedState) {
-        Object.keys(currentFormState).forEach((key) => {
-          if (currentFormState[key] !== previousSavedState[key]) {
-            mergedState[key] = currentFormState[key];
-          }
-        });
-      }
-
-      setSavedState(nextSavedState);
-      resetRedoState();
-      applySettingsFormState(mergedState);
-      const themeSelect = document.getElementById('theme-select') as HTMLSelectElement | null;
-      updateCustomThemeUI({
-        syncSelect: false,
-        selectedTheme: themeSelect?.value,
-      });
-    } else {
-      updateCustomThemeUI();
-    }
-    const shortcutsModal = document.getElementById('shortcuts-modal');
-    syncShortcutBindingsFromSettings(newSettings, {
-      render: shortcutsModal ? shortcutsModal.style.display === 'flex' : false,
-    });
-  });
-  ipcCleanupFunctions.push(cleanupSettings);
-}
-
-function initWindowControlListeners(): void {
-  const windowControls: Array<[string, () => void]> = [
-    ['minimize-btn', () => window.electronAPI.minimizeWindow()],
-    ['maximize-btn', () => window.electronAPI.maximizeWindow()],
-    ['close-btn', () => window.electronAPI.closeWindow()],
-  ];
-  windowControls.forEach(([id, action]) => {
-    document.getElementById(id)?.addEventListener('click', action);
-  });
-}
-
-function initActionButtonListeners(): void {
-  const clickBindings: Array<[Element | null | undefined, () => void]> = [
-    [backBtn, goBack],
-    [forwardBtn, goForward],
-    [upBtn, goUp],
-    [undoBtn, performUndo],
-    [redoBtn, performRedo],
-    [refreshBtn, refresh],
-    [newFileBtn, () => inlineRenameController.createNewFile()],
-    [newFolderBtn, () => inlineRenameController.createNewFolder()],
-    [viewToggleBtn, toggleView],
-    [
-      document.getElementById('empty-new-folder-btn'),
-      () => inlineRenameController.createNewFolder(),
-    ],
-    [document.getElementById('empty-new-file-btn'), () => inlineRenameController.createNewFile()],
-    [document.getElementById('select-all-btn'), selectAll],
-    [document.getElementById('deselect-all-btn'), clearSelection],
-    [selectionCopyBtn, clipboardController.copyToClipboard],
-    [selectionCutBtn, clipboardController.cutToClipboard],
-    [selectionMoveBtn, clipboardController.moveSelectedToFolder],
-    [selectionRenameBtn, renameSelected],
-    [selectionDeleteBtn, () => deleteSelected()],
-  ];
-  clickBindings.forEach(([element, handler]) => element?.addEventListener('click', handler));
-
-  const statusHiddenBtn = document.getElementById('status-hidden');
-  statusHiddenBtn?.addEventListener('click', () => {
-    currentSettings.showHiddenFiles = true;
-    const showHiddenFilesToggle = document.getElementById(
-      'show-hidden-files-toggle'
-    ) as HTMLInputElement | null;
-    if (showHiddenFilesToggle) {
-      showHiddenFilesToggle.checked = true;
-    }
-    saveSettings();
-    refresh();
-  });
-
-  document.addEventListener('mouseup', (e) => {
-    if (e.button === 3) {
-      e.preventDefault();
-      goBack();
-    } else if (e.button === 4) {
-      e.preventDefault();
-      goForward();
-    }
-  });
-}
-
-function initNavigationListeners(): void {
-  sortBtn?.addEventListener('click', showSortMenu);
-  bookmarkAddBtn?.addEventListener('click', addBookmark);
-  document.getElementById('sidebar-toggle')?.addEventListener('click', () => setSidebarCollapsed());
-  syncSidebarToggleState();
-
-  addressInput?.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') {
-      const value = addressInput.value.trim();
-      if (value === HOME_VIEW_LABEL) {
-        navigateTo(HOME_VIEW_PATH);
-      } else {
-        navigateTo(value);
-      }
-    }
-  });
-}
-
-function isModalOpen(): boolean {
-  if (isQuickLookOpen()) return true;
-  const modals = document.querySelectorAll('.modal-overlay');
-  for (let i = 0; i < modals.length; i++) {
-    const el = modals[i];
-    if (el instanceof HTMLElement && el.style.display === 'flex') return true;
-  }
-  return false;
-}
-
-function hasTextSelection(): boolean {
-  const selection = window.getSelection();
-  return selection !== null && selection.toString().length > 0;
-}
-
-function isEditableElementActive(): boolean {
-  const activeElement = document.activeElement as HTMLElement | null;
-  if (!activeElement) return false;
-  return (
-    activeElement.tagName === 'INPUT' ||
-    activeElement.tagName === 'TEXTAREA' ||
-    activeElement.isContentEditable
-  );
-}
-
-function runShortcutAction(actionId: string, e: KeyboardEvent): boolean {
-  // Actions that need special pre-checks
-  if (actionId === 'copy' && hasTextSelection()) return false;
-  if (actionId === 'cut' && hasTextSelection()) return false;
-  if ((actionId === 'paste' || actionId === 'select-all') && isEditableElementActive())
-    return false;
-
-  // Simple action map
-  const actions: Record<string, () => void> = {
-    'command-palette': () => showCommandPalette(),
-    settings: () => showSettingsModal(),
-    shortcuts: () => showShortcutsModal(),
-    refresh: () => refresh(),
-    search: () => openSearch(false),
-    'global-search': () => openSearch(true),
-    'toggle-sidebar': () => setSidebarCollapsed(),
-    'new-window': () => openNewWindow(),
-    'new-file': () => inlineRenameController.createNewFile(),
-    'new-folder': () => inlineRenameController.createNewFolder(),
-    'go-back': () => goBack(),
-    'go-forward': () => goForward(),
-    'go-up': () => goUp(),
-    'new-tab': () => {
-      if (tabsEnabled) addNewTab();
-    },
-    'close-tab': () => {
-      if (tabsEnabled && tabs.length > 1) closeTab(activeTabId);
-    },
-    copy: () => clipboardController.copyToClipboard(),
-    cut: () => clipboardController.cutToClipboard(),
-    paste: () => clipboardController.pasteFromClipboard(),
-    'select-all': () => selectAll(),
-    undo: () => performUndo(),
-    redo: () => performRedo(),
-    'zoom-in': () => zoomIn(),
-    'zoom-out': () => zoomOut(),
-    'zoom-reset': () => zoomReset(),
-  };
-
-  // Tab cycling needs special logic
-  if (actionId === 'next-tab' || actionId === 'prev-tab') {
-    e.preventDefault();
-    if (tabsEnabled && tabs.length > 1) {
-      const currentIndex = tabs.findIndex((t) => t.id === activeTabId);
-      if (currentIndex !== -1) {
-        const nextIndex =
-          actionId === 'next-tab'
-            ? (currentIndex + 1) % tabs.length
-            : (currentIndex - 1 + tabs.length) % tabs.length;
-        switchToTab(tabs[nextIndex].id);
-      }
-    }
-    return true;
-  }
-
-  const handler = actions[actionId];
-  if (handler) {
-    e.preventDefault();
-    handler();
-    return true;
-  }
-  return false;
-}
-
-function initKeyboardListeners(): void {
-  document.addEventListener('keydown', (e) => {
-    if (isShortcutCaptureActive()) {
-      return;
-    }
-    if (e.key === 'Escape') {
-      // Dismiss modals in priority order
-      const modalDismissals: [string, string, () => void][] = [
-        ['extract-modal', 'flex', hideExtractModal],
-        ['compress-options-modal', 'flex', hideCompressOptionsModal],
-        ['settings-modal', 'flex', hideSettingsModal],
-        ['shortcuts-modal', 'flex', hideShortcutsModal],
-        ['licenses-modal', 'flex', hideLicensesModal],
-        ['home-settings-modal', 'flex', () => homeController.closeHomeSettingsModal()],
-        ['sort-menu', 'block', hideSortMenu],
-        ['context-menu', 'block', hideContextMenu],
-        ['empty-space-context-menu', 'block', hideEmptySpaceContextMenu],
-      ];
-      for (const [id, display, handler] of modalDismissals) {
-        const el = document.getElementById(id);
-        if (el?.style.display === display) {
-          e.preventDefault();
-          handler();
-          return;
-        }
-      }
-
-      if (isSearchModeActive()) closeSearch();
-      if (isQuickLookOpen()) closeQuickLook();
-      return;
-    }
-
-    if (handleContextMenuKeyNav(e)) return;
-
-    if (isModalOpen()) {
-      return;
-    }
-
-    if (e.code === 'Space' && !e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey) {
-      if (isEditableElementActive()) return;
-      e.preventDefault();
-      if (isQuickLookOpen()) {
-        closeQuickLook();
-      } else {
-        showQuickLook();
-      }
-      return;
-    }
-
-    const fixedActionId = getFixedShortcutActionIdFromEvent(e);
-    if (fixedActionId) {
-      const handled = runShortcutAction(fixedActionId, e);
-      if (handled) {
-        return;
-      }
-    }
-
-    const shortcutActionId = getShortcutActionIdFromEvent(e);
-    if (shortcutActionId) {
-      const handled = runShortcutAction(shortcutActionId, e);
-      if (handled) {
-        return;
-      }
-    }
-
-    const EDIT_GUARDED_KEYS = new Set([
-      'Backspace',
-      'Enter',
-      'Home',
-      'End',
-      'PageUp',
-      'PageDown',
-      'ArrowUp',
-      'ArrowDown',
-      'ArrowLeft',
-      'ArrowRight',
-      'Delete',
-    ]);
-    if (EDIT_GUARDED_KEYS.has(e.key) && isEditableElementActive()) return;
-
-    if (e.key === 'Delete') {
-      e.preventDefault();
-      if (e.shiftKey) {
-        if (!currentSettings.showDangerousOptions) {
-          showToast(
-            'Enable Developer Mode in settings to permanently delete items',
-            'Developer Mode Required',
-            'warning'
-          );
-          return;
-        }
-        deleteSelected(true);
-      } else {
-        deleteSelected();
-      }
-      return;
-    }
-
-    const simpleKeyActions: Record<string, () => void> = {
-      Backspace: () => goUp(),
-      F2: () => renameSelected(),
-      Enter: () => openSelectedItem(),
-      Home: () => selectFirstItem(e.shiftKey),
-      End: () => selectLastItem(e.shiftKey),
-      PageUp: () => navigateByPage('up', e.shiftKey),
-      PageDown: () => navigateByPage('down', e.shiftKey),
-    };
-    const simpleAction = simpleKeyActions[e.key];
-    if (simpleAction) {
-      e.preventDefault();
-      simpleAction();
-    } else if (
-      e.key === 'ArrowUp' ||
-      e.key === 'ArrowDown' ||
-      e.key === 'ArrowLeft' ||
-      e.key === 'ArrowRight'
-    ) {
-      e.preventDefault();
-      navigateFileGrid(e.key, e.shiftKey);
-    } else if (
-      !e.ctrlKey &&
-      !e.metaKey &&
-      !e.altKey &&
-      e.key.length === 1 &&
-      !isSearchModeActive() &&
-      viewMode !== 'column'
-    ) {
-      if (isEditableElementActive()) return;
-      handleTypeaheadInput(e.key);
-    }
-  });
-}
-
-function initGlobalClickListeners(): void {
-  document.addEventListener('click', (e) => {
-    const target = e.target as HTMLElement;
-    const contextMenu = document.getElementById('context-menu');
-    const emptySpaceMenu = document.getElementById('empty-space-context-menu');
-    const sortMenu = document.getElementById('sort-menu');
-    const menuItem = target.closest('.context-menu-item') as HTMLElement;
-
-    if (menuItem) {
-      if (sortMenu && sortMenu.style.display === 'block') {
-        const sortType = menuItem.getAttribute('data-sort');
-        if (sortType) {
-          changeSortMode(sortType);
-        }
-        return;
-      }
-
-      if (emptySpaceMenu && emptySpaceMenu.style.display === 'block') {
-        handleEmptySpaceContextMenuAction(menuItem.dataset.action);
-        hideEmptySpaceContextMenu();
-        return;
-      }
-
-      const ctxData = getContextMenuData();
-      if (ctxData) {
-        handleContextMenuAction(menuItem.dataset.action, ctxData, menuItem.dataset.format);
-        hideContextMenu();
-        return;
-      }
-    }
-
-    if (contextMenu && contextMenu.style.display === 'block' && !contextMenu.contains(target)) {
-      hideContextMenu();
-    }
-    if (
-      emptySpaceMenu &&
-      emptySpaceMenu.style.display === 'block' &&
-      !emptySpaceMenu.contains(target)
-    ) {
-      hideEmptySpaceContextMenu();
-    }
-    if (
-      sortMenu &&
-      sortMenu.style.display === 'block' &&
-      !sortMenu.contains(target) &&
-      target !== sortBtn
-    ) {
-      hideSortMenu();
-    }
-
-    const breadcrumbMenu = getBreadcrumbMenuElement();
-    if (
-      breadcrumbMenu &&
-      isBreadcrumbMenuOpen() &&
-      !breadcrumbMenu.contains(target) &&
-      !target.closest('.breadcrumb-item')
-    ) {
-      hideBreadcrumbMenu();
-    }
-  });
-}
-
-function initContextMenuListeners(): void {
-  document.addEventListener('contextmenu', (e) => {
-    if (!(e.target as HTMLElement).closest('.file-item')) {
-      e.preventDefault();
-      const target = e.target as HTMLElement;
-      const clickedOnFileView =
-        target.closest('#file-view') ||
-        target.id === 'file-view' ||
-        target.closest('.file-grid') ||
-        target.id === 'file-grid' ||
-        target.closest('.empty-state') ||
-        target.id === 'empty-state';
-      if (clickedOnFileView && currentPath) {
-        showEmptySpaceContextMenu(e.pageX, e.pageY);
-      } else {
-        hideContextMenu();
-        hideEmptySpaceContextMenu();
-      }
-    }
-  });
-}
-
-function setupEventListeners() {
-  initCoreUiInteractions();
-  initSyncEventListeners();
-  initWindowControlListeners();
-  initActionButtonListeners();
-  initSearchListeners();
-  initNavigationListeners();
-  initKeyboardListeners();
-  initGlobalClickListeners();
-  initDragAndDropListeners();
-  if (fileGrid) {
-    fileGrid.addEventListener('click', (e) => {
-      if (e.target === fileGrid) clearSelection();
-    });
-  }
-  initContextMenuListeners();
-}
-function updateHiddenFilesCount(items: FileItem[], append = false): void {
-  const count = items.reduce((acc, item) => acc + (item.isHidden ? 1 : 0), 0);
-  hiddenFilesCount = append ? hiddenFilesCount + count : count;
-}
+const eventListenersController = createEventListenersController({
+  getCurrentSettings: () => currentSettings,
+  setCurrentSettings: (settings) => {
+    currentSettings = settings;
+  },
+  getCurrentPath: () => currentPath,
+  getViewMode: () => viewMode,
+  getTabsEnabled: () => tabsEnabled,
+  getTabs: () => tabs,
+  getActiveTabId: () => activeTabId,
+  getFileGrid: () => fileGrid,
+  getSortBtn: () => sortBtn,
+  getBackBtn: () => backBtn,
+  getForwardBtn: () => forwardBtn,
+  getUpBtn: () => upBtn,
+  getUndoBtn: () => undoBtn,
+  getRedoBtn: () => redoBtn,
+  getRefreshBtn: () => refreshBtn,
+  getNewFileBtn: () => newFileBtn,
+  getNewFolderBtn: () => newFolderBtn,
+  getViewToggleBtn: () => viewToggleBtn,
+  getAddressInput: () => addressInput,
+  getSelectionCopyBtn: () => selectionCopyBtn,
+  getSelectionCutBtn: () => selectionCutBtn,
+  getSelectionMoveBtn: () => selectionMoveBtn,
+  getSelectionRenameBtn: () => selectionRenameBtn,
+  getSelectionDeleteBtn: () => selectionDeleteBtn,
+  getBookmarkAddBtn: () => bookmarkAddBtn,
+  getIpcCleanupFunctions: () => ipcCleanupFunctions,
+  goBack,
+  goForward,
+  goUp,
+  refresh,
+  navigateTo: (p) => navigateTo(p),
+  clearSelection,
+  selectAll,
+  toggleView,
+  renameSelected: () => renameSelected(),
+  deleteSelected: (permanent) => deleteSelected(permanent),
+  performUndo,
+  performRedo,
+  saveSettings: () => saveSettings(),
+  openSelectedItem,
+  selectFirstItem,
+  selectLastItem,
+  navigateByPage,
+  navigateFileGrid,
+  handleTypeaheadInput: handleTypeaheadInput,
+  openSearch,
+  closeSearch,
+  isSearchModeActive: isSearchModeActive,
+  showQuickLook,
+  closeQuickLook,
+  isQuickLookOpen,
+  showSortMenu,
+  hideSortMenu: () => hideSortMenu(),
+  changeSortMode,
+  addBookmark,
+  setSidebarCollapsed,
+  syncSidebarToggleState,
+  showSettingsModal,
+  hideSettingsModal,
+  showShortcutsModal,
+  hideShortcutsModal,
+  hideExtractModal,
+  hideCompressOptionsModal,
+  hideLicensesModal,
+  closeHomeSettingsModal: () => homeController.closeHomeSettingsModal(),
+  showEmptySpaceContextMenu,
+  hideContextMenu,
+  hideEmptySpaceContextMenu,
+  handleContextMenuAction,
+  handleEmptySpaceContextMenuAction,
+  handleContextMenuKeyNav: handleContextMenuKeyNav,
+  getContextMenuData,
+  openNewWindow,
+  showCommandPalette,
+  addNewTab: () => addNewTab(),
+  closeTab,
+  switchToTab,
+  showToast: (m, t, ty) => showToast(m, t, ty),
+  applySettings,
+  getSavedState,
+  captureSettingsFormState,
+  buildSettingsFormStateFromSettings,
+  setSavedState,
+  resetRedoState,
+  applySettingsFormState,
+  updateCustomThemeUI,
+  syncShortcutBindingsFromSettings: (s, opts) => syncShortcutBindingsFromSettings(s, opts),
+  hideBreadcrumbMenu,
+  getBreadcrumbMenuElement,
+  isBreadcrumbMenuOpen,
+  isShortcutCaptureActive,
+  getFixedShortcutActionIdFromEvent,
+  getShortcutActionIdFromEvent,
+  createNewFile: () => inlineRenameController.createNewFile(),
+  createNewFolder: () => inlineRenameController.createNewFolder(),
+  copyToClipboard: () => clipboardController.copyToClipboard(),
+  cutToClipboard: () => clipboardController.cutToClipboard(),
+  pasteFromClipboard: () => clipboardController.pasteFromClipboard(),
+  moveSelectedToFolder: () => clipboardController.moveSelectedToFolder(),
+  clipboardOnClipboardChanged: (c) => clipboardController.setClipboard(c),
+  clipboardUpdateCutVisuals: () => clipboardController.updateCutVisuals(),
+  zoomIn,
+  zoomOut,
+  zoomReset,
+  initSettingsTabs,
+  initSettingsUi,
+  initShortcutsModal,
+  setupFileGridEventDelegation: () => setupFileGridEventDelegation(),
+  setupRubberBandSelection,
+  setupListHeader,
+  setupViewOptions,
+  setupSidebarResize,
+  setupSidebarSections,
+  setupPreviewResize,
+  initPreviewUi: () => initPreviewUi(),
+  setupHoverCard,
+  initSearchListeners: initSearchListeners,
+  initDragAndDropListeners,
+  homeViewLabel: HOME_VIEW_LABEL,
+  homeViewPath: HOME_VIEW_PATH,
+});
+const { setupEventListeners } = eventListenersController;
 
 async function navigateTo(path: string, skipHistoryUpdate = false) {
   if (!path) return;
@@ -2605,594 +2066,62 @@ async function navigateTo(path: string, skipHistoryUpdate = false) {
   }
 }
 
-let renderFilesToken = 0;
-const filePathMap: Map<string, FileItem> = new Map();
-let virtualizedRenderToken = 0;
-let virtualizedItems: FileItem[] = [];
-let virtualizedRenderIndex = 0;
-let virtualizedSearchQuery: string | undefined;
-let virtualizedObserver: IntersectionObserver | null = null;
-let virtualizedSentinel: HTMLElement | null = null;
-
-function resetVirtualizedRender(): void {
-  if (virtualizedObserver) {
-    virtualizedObserver.disconnect();
-    virtualizedObserver = null;
-  }
-  virtualizedItems = [];
-  virtualizedRenderIndex = 0;
-  virtualizedSearchQuery = undefined;
-  if (virtualizedSentinel && virtualizedSentinel.parentElement) {
-    virtualizedSentinel.parentElement.removeChild(virtualizedSentinel);
-  }
-  virtualizedSentinel = null;
-}
-
-function getVirtualizedObserver(): IntersectionObserver | null {
-  const root = document.getElementById('file-view');
-  if (!root) return null;
-  if (virtualizedObserver) return virtualizedObserver;
-
-  virtualizedObserver = new IntersectionObserver(
-    (entries) => {
-      const entry = entries.find((item) => item.isIntersecting);
-      if (entry && entry.target) {
-        virtualizedObserver?.unobserve(entry.target);
-        appendNextVirtualizedBatch();
-      }
-    },
-    {
-      root,
-      rootMargin: '200px',
-      threshold: 0.01,
-    }
-  );
-  return virtualizedObserver;
-}
-
-function ensureVirtualizedSentinel(): void {
-  if (!fileGrid) return;
-  const observer = getVirtualizedObserver();
-  if (!observer) return;
-
-  if (!virtualizedSentinel) {
-    virtualizedSentinel = document.createElement('div');
-    virtualizedSentinel.style.width = '100%';
-    virtualizedSentinel.style.height = '1px';
-    virtualizedSentinel.style.pointerEvents = 'none';
-  }
-
-  if (virtualizedSentinel.parentElement !== fileGrid) {
-    fileGrid.appendChild(virtualizedSentinel);
-  } else {
-    fileGrid.appendChild(virtualizedSentinel);
-  }
-
-  observer.observe(virtualizedSentinel);
-}
-
-function appendNextVirtualizedBatch(): void {
-  if (!fileGrid) return;
-  if (virtualizedRenderToken !== renderFilesToken) return;
-
-  const start = virtualizedRenderIndex;
-  const end = Math.min(start + VIRTUALIZE_BATCH_SIZE, virtualizedItems.length);
-  if (start >= end) {
-    if (virtualizedSentinel) {
-      virtualizedSentinel.remove();
-    }
-    return;
-  }
-
-  const batch = virtualizedItems.slice(start, end);
-  virtualizedRenderIndex = end;
-  const paths = appendFileItems(batch, virtualizedSearchQuery);
-  applyGitIndicatorsToPaths(paths);
-  clipboardController.updateCutVisuals();
-  ensureActiveItem();
-
-  if (virtualizedRenderIndex < virtualizedItems.length) {
-    ensureVirtualizedSentinel();
-  } else if (virtualizedSentinel) {
-    virtualizedSentinel.remove();
-  }
-}
-
-let renderItemIndex = 0;
-const animationCleanupItems: HTMLElement[] = [];
-let animationCleanupTimer: ReturnType<typeof setTimeout> | null = null;
-const fileIconNodeCache = new Map<string, HTMLElement>();
-
-function createFileIconNode(iconHtml: string): HTMLElement {
-  const cached = fileIconNodeCache.get(iconHtml);
-  if (cached) {
-    return cached.cloneNode(true) as HTMLElement;
-  }
-  const wrapper = document.createElement('div');
-  wrapper.innerHTML = iconHtml;
-  const first = wrapper.firstElementChild;
-  const node = first instanceof HTMLElement ? first : document.createElement('span');
-  if (!(first instanceof HTMLElement)) {
-    node.textContent = iconHtml;
-  }
-  fileIconNodeCache.set(iconHtml, node.cloneNode(true) as HTMLElement);
-  return node;
-}
-
-function scheduleAnimationCleanup(): void {
-  if (animationCleanupTimer) return;
-  animationCleanupTimer = setTimeout(() => {
-    animationCleanupTimer = null;
-    const batch = animationCleanupItems.splice(0);
-    for (const el of batch) {
-      el.classList.remove('animate-in');
-      el.style.animationDelay = '';
-    }
-    if (animationCleanupItems.length > 0) {
-      scheduleAnimationCleanup();
-    }
-  }, ENTRY_ANIMATION_CLEANUP_DELAY_MS);
-}
-
-function appendFileItems(items: FileItem[], searchQuery?: string): string[] {
-  if (!fileGrid) return [];
-  const fragment = document.createDocumentFragment();
-  const paths: string[] = [];
-  const shouldAnimate =
-    !disableEntryAnimation && !document.body.classList.contains('reduce-motion');
-
-  for (const item of items) {
-    const fileItem = createFileItem(item, searchQuery);
-    if (shouldAnimate) {
-      const delayIndex = renderItemIndex % ENTRY_ANIMATION_STAGGER_ITEMS;
-      const delayMs = delayIndex * ENTRY_ANIMATION_STAGGER_MS;
-      fileItem.classList.add('animate-in');
-      fileItem.style.animationDelay = `${delayMs / 1000}s`;
-      animationCleanupItems.push(fileItem);
-    }
-    renderItemIndex++;
-    fileElementMap.set(item.path, fileItem);
-    fragment.appendChild(fileItem);
-    paths.push(item.path);
-  }
-
-  fileGrid.appendChild(fragment);
-  if (shouldAnimate && animationCleanupItems.length > 0) {
-    scheduleAnimationCleanup();
-  }
-  return paths;
-}
-
-function renderFiles(items: FileItem[], searchQuery?: string) {
-  if (!fileGrid) return;
-
-  const renderToken = ++renderFilesToken;
-  resetVirtualizedRender();
-  thumbnails.resetThumbnailObserver();
-  fileGrid.innerHTML = '';
-  renderItemIndex = 0;
-  disableEntryAnimation = false;
-  disableThumbnailRendering = false;
-  clearSelection();
-  allFiles = items;
-  document.body.classList.toggle(
-    'performance-mode',
-    items.length >= PERFORMANCE_MODE_ITEM_THRESHOLD
-  );
-  updateHiddenFilesCount(items);
-
-  filePathMap.clear();
-  fileElementMap.clear();
-  markSelectionDirty();
-  gitStatus.clearCache();
-  clipboardController.clearCutPaths();
-
-  const LARGE_FOLDER_THRESHOLD = 10000;
-  if (items.length >= LARGE_FOLDER_THRESHOLD) {
-    showToast(
-      `This folder contains ${items.length.toLocaleString()} items. Performance may be affected.`,
-      'Large Folder',
-      'warning'
-    );
-  }
-
-  const visibleItems = currentSettings.showHiddenFiles
-    ? items
-    : items.filter((item) => !item.isHidden);
-
-  if (visibleItems.length === 0) {
-    if (emptyState) emptyState.style.display = 'flex';
-    updateStatusBar();
-    return;
-  }
-
-  if (emptyState) emptyState.style.display = 'none';
-
-  for (const item of visibleItems) {
-    filePathMap.set(item.path, item);
-  }
-
-  const sortBy = currentSettings.sortBy || 'name';
-  const sortOrder = currentSettings.sortOrder || 'asc';
-  const extCache = sortBy === 'type' ? new Map<FileItem, string>() : null;
-  const modifiedCache = sortBy === 'date' ? new Map<FileItem, number>() : null;
-
-  if (sortBy === 'type') {
-    visibleItems.forEach((item) => {
-      if (!item.isDirectory) {
-        const ext = getFileExtension(item.name);
-        extCache?.set(item, ext);
-      }
-    });
-  } else if (sortBy === 'date') {
-    visibleItems.forEach((item) => {
-      const time =
-        item.modified instanceof Date ? item.modified.getTime() : new Date(item.modified).getTime();
-      modifiedCache?.set(item, time);
-    });
-  }
-
-  const sortedItems = [...visibleItems].sort((a, b) => {
-    const dirSort = (b.isDirectory ? 1 : 0) - (a.isDirectory ? 1 : 0);
-    if (dirSort !== 0) return dirSort;
-
-    let comparison = 0;
-
-    switch (sortBy) {
-      case 'name':
-        comparison = NAME_COLLATOR.compare(a.name, b.name);
-        break;
-      case 'date':
-        comparison = (modifiedCache?.get(a) || 0) - (modifiedCache?.get(b) || 0);
-        break;
-      case 'size':
-        comparison = a.size - b.size;
-        break;
-      case 'type': {
-        const extA = extCache?.get(a) || '';
-        const extB = extCache?.get(b) || '';
-        comparison = NAME_COLLATOR.compare(extA, extB);
-        break;
-      }
-      default:
-        comparison = NAME_COLLATOR.compare(a.name, b.name);
-    }
-
-    return sortOrder === 'asc' ? comparison : -comparison;
-  });
-
-  disableEntryAnimation = sortedItems.length > ANIMATED_RENDER_ITEM_LIMIT;
-  disableThumbnailRendering = sortedItems.length >= THUMBNAIL_RENDER_ITEM_LIMIT;
-
-  if (sortedItems.length >= VIRTUALIZE_THRESHOLD) {
-    virtualizedRenderToken = renderToken;
-    virtualizedItems = sortedItems;
-    virtualizedRenderIndex = 0;
-    virtualizedSearchQuery = searchQuery;
-    updateStatusBar();
-    appendNextVirtualizedBatch();
-    return;
-  }
-
-  const batchSize = RENDER_BATCH_SIZE;
-  let currentBatch = 0;
-
-  const renderBatch = () => {
-    if (renderToken !== renderFilesToken) return;
-    const start = currentBatch * batchSize;
-    const end = Math.min(start + batchSize, sortedItems.length);
-    const batch = sortedItems.slice(start, end);
-    const paths = appendFileItems(batch, searchQuery);
-    applyGitIndicatorsToPaths(paths);
-    currentBatch++;
-
-    if (renderToken !== renderFilesToken) return;
-    if (end < sortedItems.length) {
-      requestAnimationFrame(renderBatch);
-    } else {
-      clipboardController.updateCutVisuals();
-      updateStatusBar();
-      ensureActiveItem();
-    }
-  };
-
-  renderBatch();
-}
-
-function createFileItem(item: FileItem, searchQuery?: string): HTMLElement {
-  const fileItem = document.createElement('div');
-  fileItem.className = 'file-item';
-  fileItem.tabIndex = -1;
-  fileItem.dataset.path = item.path;
-  fileItem.dataset.isDirectory = String(item.isDirectory);
-  fileItem.setAttribute('role', 'option');
-  fileItem.setAttribute('aria-selected', 'false');
-
-  let icon: string;
-  if (item.isDirectory) {
-    icon = folderIconPickerController.getFolderIcon(item.path);
-  } else {
-    const ext = getFileExtension(item.name);
-    const thumbType = RAW_EXTENSIONS.has(ext)
-      ? 'raw'
-      : IMAGE_EXTENSIONS.has(ext)
-        ? 'image'
-        : VIDEO_EXTENSIONS.has(ext)
-          ? 'video'
-          : AUDIO_EXTENSIONS.has(ext)
-            ? 'audio'
-            : PDF_EXTENSIONS.has(ext)
-              ? 'pdf'
-              : null;
-    if (thumbType) {
-      icon = thumbType === 'image' || thumbType === 'raw' ? IMAGE_ICON : getFileIcon(item.name);
-      if (!disableThumbnailRendering) {
-        fileItem.classList.add('has-thumbnail');
-        fileItem.dataset.thumbnailType = thumbType;
-        thumbnails.observeThumbnailItem(fileItem);
-      }
-    } else {
-      icon = getFileIcon(item.name);
-    }
-  }
-
-  const sizeDisplay = item.isDirectory ? '--' : formatFileSize(item.size);
-  const dateDisplay = DATE_FORMATTER.format(new Date(item.modified));
-  const typeDisplay = item.isDirectory ? 'Folder' : getFileTypeFromName(item.name);
-
-  const ariaDescription = item.isDirectory
-    ? `${typeDisplay}, modified ${dateDisplay}`
-    : `${typeDisplay}, ${sizeDisplay}, modified ${dateDisplay}`;
-  fileItem.setAttribute('aria-label', item.name);
-  fileItem.setAttribute('aria-description', ariaDescription);
-
-  const contentResult = item as ContentSearchResult;
-  let matchContextHtml = '';
-  if (contentResult.matchContext && searchQuery && searchQuery.length <= 500) {
-    const escapedContext = escapeHtml(contentResult.matchContext);
-    const escapedQuery = escapeHtml(searchQuery);
-    const regex = new RegExp(`(${escapedQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
-    const highlightedContext = escapedContext.replace(
-      regex,
-      '<span class="match-highlight">$1</span>'
-    );
-    const lineInfo = contentResult.matchLineNumber
-      ? `<span class="match-line-number">Line ${contentResult.matchLineNumber}</span>`
-      : '';
-    matchContextHtml = `<div class="match-context">${highlightedContext}${lineInfo}</div>`;
-  }
-
-  // Handle file extension display
-  let displayName = item.name;
-  if (currentSettings.showFileExtensions === false && !item.isDirectory) {
-    const lastDot = item.name.lastIndexOf('.');
-    if (lastDot > 0) {
-      displayName = item.name.substring(0, lastDot);
-    }
-  }
-
-  fileItem.innerHTML = `
-    <div class="file-main">
-      <div class="file-checkbox"><span class="checkbox-mark">✓</span></div>
-      <div class="file-icon"></div>
-      <div class="file-text">
-        <div class="file-name">${escapeHtml(displayName)}</div>
-        ${matchContextHtml}
-      </div>
-    </div>
-    <div class="file-info">
-      <span class="file-type">${escapeHtml(typeDisplay)}</span>
-      <span class="file-size" data-path="${escapeHtml(item.path)}">${sizeDisplay}</span>
-      <span class="file-modified">${dateDisplay}</span>
-    </div>
-  `;
-  const fileIcon = fileItem.querySelector('.file-icon');
-  if (fileIcon) {
-    fileIcon.appendChild(createFileIconNode(icon));
-  }
-  fileItem.draggable = true;
-
-  return fileItem;
-}
-
-let fileGridDelegationReady = false;
-
-function getFileItemElement(target: EventTarget | null): HTMLElement | null {
-  if (!(target instanceof Element)) return null;
-  const fileItem = target.closest('.file-item');
-  return fileItem instanceof HTMLElement ? fileItem : null;
-}
-
-function getFileItemData(fileItem: HTMLElement): FileItem | null {
-  const itemPath = fileItem.dataset.path;
-  if (!itemPath) return null;
-  return filePathMap.get(itemPath) ?? null;
-}
-
-function setupFileGridEventDelegation(): void {
-  if (!fileGrid || fileGridDelegationReady) return;
-  fileGridDelegationReady = true;
-
-  fileGrid.addEventListener(
-    'mouseenter',
-    (e) => {
-      const target = e.target;
-      if (!(target instanceof HTMLImageElement)) return;
-      if (target.dataset.animated !== 'true') return;
-      const animatedSrc = target.dataset.animatedSrc;
-      if (animatedSrc && target.src !== animatedSrc) {
-        target.src = animatedSrc;
-      }
-    },
-    true
-  );
-
-  fileGrid.addEventListener(
-    'mouseleave',
-    (e) => {
-      const target = e.target;
-      if (!(target instanceof HTMLImageElement)) return;
-      if (target.dataset.animated !== 'true') return;
-      const staticSrc = target.dataset.staticSrc;
-      if (staticSrc && target.src !== staticSrc) {
-        target.src = staticSrc;
-      }
-    },
-    true
-  );
-
-  fileGrid.addEventListener('click', (e) => {
-    const fileItem = getFileItemElement(e.target);
-    if (!fileItem) return;
-    if (!e.ctrlKey && !e.metaKey) {
-      clearSelection();
-    }
-    toggleSelection(fileItem);
-  });
-
-  fileGrid.addEventListener('dblclick', (e) => {
-    const fileItem = getFileItemElement(e.target);
-    if (!fileItem) return;
-    const item = getFileItemData(fileItem);
-    if (!item) return;
-    void openFileEntry(item);
-  });
-
-  fileGrid.addEventListener('auxclick', (e) => {
-    if (e.button !== 1) return;
-    const fileItem = getFileItemElement(e.target);
-    if (!fileItem) return;
-    const item = getFileItemData(fileItem);
-    if (!item || !item.isDirectory || !tabsEnabled) return;
-    e.preventDefault();
-    addNewTab(item.path);
-  });
-
-  fileGrid.addEventListener('contextmenu', (e) => {
-    const fileItem = getFileItemElement(e.target);
-    if (!fileItem) return;
-    const item = getFileItemData(fileItem);
-    if (!item) return;
-    e.preventDefault();
-    if (!fileItem.classList.contains('selected')) {
-      clearSelection();
-      toggleSelection(fileItem);
-    }
-    showContextMenu(e.pageX, e.pageY, item);
-  });
-
-  fileGrid.addEventListener('dragstart', (e) => {
-    const fileItem = getFileItemElement(e.target);
-    if (!fileItem) return;
-    e.stopPropagation();
-
-    if (!fileItem.classList.contains('selected')) {
-      clearSelection();
-      toggleSelection(fileItem);
-    }
-
-    const selectedPaths = Array.from(selectedItems);
-    if (!e.dataTransfer) return;
-
-    e.dataTransfer.effectAllowed = 'copyMove';
-    e.dataTransfer.setData('text/plain', JSON.stringify(selectedPaths));
-    window.electronAPI.setDragData(selectedPaths);
-    fileItem.classList.add('dragging');
-
-    if (selectedPaths.length > 1) {
-      const dragImage = document.createElement('div');
-      dragImage.className = 'drag-image';
-      dragImage.textContent = `${selectedPaths.length} items`;
-      dragImage.style.position = 'absolute';
-      dragImage.style.top = '-1000px';
-      document.body.appendChild(dragImage);
-      e.dataTransfer.setDragImage(dragImage, 0, 0);
-      requestAnimationFrame(() => dragImage.remove());
-    }
-  });
-
-  fileGrid.addEventListener('dragend', (e) => {
-    const fileItem = getFileItemElement(e.target);
-    if (!fileItem) return;
-    fileItem.classList.remove('dragging');
-    document.querySelectorAll('.file-item.drag-over').forEach((el) => {
-      el.classList.remove('drag-over', 'spring-loading');
-    });
-    document.getElementById('file-grid')?.classList.remove('drag-over');
-    window.electronAPI.clearDragData();
-    clearSpringLoad();
-    hideDropIndicator();
-  });
-
-  fileGrid.addEventListener('dragover', (e) => {
-    const fileItem = getFileItemElement(e.target);
-    if (!fileItem) return;
-    if (fileItem.dataset.isDirectory !== 'true') return;
-
-    consumeEvent(e);
-
-    if (!e.dataTransfer) return;
-    if (!e.dataTransfer.types.includes('text/plain') && e.dataTransfer.files.length === 0) {
-      e.dataTransfer.dropEffect = 'none';
-      return;
-    }
-    const operation = getDragOperation(e);
-    e.dataTransfer.dropEffect = operation;
-    fileItem.classList.add('drag-over');
-
-    const item = getFileItemData(fileItem);
-    if (item && item.isDirectory) {
-      showDropIndicator(operation, item.path, e.clientX, e.clientY);
-      scheduleSpringLoad(fileItem, () => {
-        fileItem.classList.remove('drag-over', 'spring-loading');
-        navigateTo(item.path);
-      });
-    }
-  });
-
-  fileGrid.addEventListener('dragleave', (e) => {
-    const fileItem = getFileItemElement(e.target);
-    if (!fileItem) return;
-    if (fileItem.dataset.isDirectory !== 'true') return;
-
-    consumeEvent(e);
-
-    const rect = fileItem.getBoundingClientRect();
-    if (
-      e.clientX < rect.left ||
-      e.clientX >= rect.right ||
-      e.clientY < rect.top ||
-      e.clientY >= rect.bottom
-    ) {
-      fileItem.classList.remove('drag-over', 'spring-loading');
-      clearSpringLoad(fileItem);
-      hideDropIndicator();
-    }
-  });
-
-  fileGrid.addEventListener('drop', async (e) => {
-    const fileItem = getFileItemElement(e.target);
-    if (!fileItem) return;
-    if (fileItem.dataset.isDirectory !== 'true') return;
-
-    consumeEvent(e);
-
-    fileItem.classList.remove('drag-over');
-    clearSpringLoad(fileItem);
-
-    const draggedPaths = await getDraggedPaths(e);
-
-    const item = getFileItemData(fileItem);
-    if (!item || draggedPaths.length === 0 || draggedPaths.includes(item.path)) {
-      hideDropIndicator();
-      return;
-    }
-
-    const operation = getDragOperation(e);
-    await handleDrop(draggedPaths, item.path, operation);
-    hideDropIndicator();
-  });
-}
+const fileRenderController = createFileRenderController({
+  getFileGrid: () => fileGrid,
+  getEmptyState: () => emptyState,
+  getCurrentSettings: () => currentSettings,
+  getFileElementMap: () => fileElementMap,
+  showToast: (m, t, ty) => showToast(m, t, ty),
+  clearSelection: () => clearSelection(),
+  updateStatusBar,
+  markSelectionDirty,
+  setHiddenFilesCount: (count) => {
+    hiddenFilesCount = count;
+  },
+  getHiddenFilesCount: () => hiddenFilesCount,
+  setAllFiles: (files) => {
+    allFiles = files;
+  },
+  setDisableEntryAnimation: () => {},
+  setDisableThumbnailRendering: () => {},
+  ensureActiveItem: () => ensureActiveItem(),
+  applyGitIndicatorsToPaths: (paths) => applyGitIndicatorsToPaths(paths),
+  updateCutVisuals: () => clipboardController.updateCutVisuals(),
+  clearCutPaths: () => clipboardController.clearCutPaths(),
+  clearGitCache: () => gitStatus.clearCache(),
+  observeThumbnailItem: (el) => thumbnails.observeThumbnailItem(el),
+  resetThumbnailObserver: () => thumbnails.resetThumbnailObserver(),
+  getFolderIcon: (p) => folderIconPickerController.getFolderIcon(p),
+  nameCollator: NAME_COLLATOR,
+  dateFormatter: DATE_FORMATTER,
+});
+const { renderFiles, resetVirtualizedRender } = fileRenderController;
+const filePathMap = fileRenderController.getFilePathMap();
+const getFileItemData = fileRenderController.getFileItemData;
+
+const fileGridEventsController = createFileGridEventsController({
+  getFileGrid: () => fileGrid,
+  getFileItemData: (el) => getFileItemData(el),
+  getSelectedItems: () => selectedItems,
+  getTabsEnabled: () => tabsEnabled,
+  clearSelection: () => clearSelection(),
+  toggleSelection: (el) => toggleSelection(el),
+  showContextMenu: (x, y, item) => showContextMenu(x, y, item),
+  openFileEntry: (item) => openFileEntry(item),
+  addNewTab: (path) => addNewTab(path),
+  navigateTo: (p) => navigateTo(p),
+  consumeEvent,
+  getDragOperation,
+  getDraggedPaths,
+  showDropIndicator,
+  hideDropIndicator,
+  scheduleSpringLoad,
+  clearSpringLoad,
+  handleDrop,
+  setDragData: (paths) => window.electronAPI.setDragData(paths),
+  clearDragData: () => window.electronAPI.clearDragData(),
+});
+const { setupFileGridEventDelegation } = fileGridEventsController;
 
 async function renameSelected() {
   if (selectedItems.size !== 1) return;
@@ -3614,7 +2543,7 @@ document.addEventListener('mousedown', (e) => {
 (async () => {
   try {
     console.log('Starting IYERIS...');
-    await init();
+    await bootstrapInit();
     console.log('IYERIS initialized successfully');
   } catch (error) {
     console.error('Failed to initialize IYERIS:', error);
@@ -3622,24 +2551,12 @@ document.addEventListener('mousedown', (e) => {
   }
 })();
 
-function disconnectAndResetObserver<T extends { disconnect: () => void }>(
-  observer: T | null
-): null {
-  observer?.disconnect();
-  return null;
-}
-
-function clearAndResetTimeout(timer: ReturnType<typeof setTimeout> | null): null {
-  if (timer) clearTimeout(timer);
-  return null;
-}
-
 window.addEventListener('beforeunload', () => {
   stopIndexStatusPolling();
   cancelActiveSearch();
   cleanupPropertiesDialog();
   thumbnails.resetThumbnailObserver();
-  virtualizedObserver = disconnectAndResetObserver(virtualizedObserver);
+  fileRenderController.disconnectVirtualizedObserver();
   diskSpaceController.clearCache();
   zoomController.clearZoomPopupTimeout();
   if (!isResettingSettings) {
@@ -3667,7 +2584,10 @@ window.addEventListener('beforeunload', () => {
     currentSettings._timestamp = Date.now();
     window.electronAPI.saveSettingsSync(currentSettings);
   }
-  settingsSaveTimeout = clearAndResetTimeout(settingsSaveTimeout);
+  if (settingsSaveTimeout) {
+    clearTimeout(settingsSaveTimeout);
+    settingsSaveTimeout = null;
+  }
   cleanupTabs();
   cleanupArchiveOperations();
 
