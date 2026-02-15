@@ -16,7 +16,7 @@ export default tseslint.config(
     },
     rules: {
       // Type safety
-      '@typescript-eslint/no-explicit-any': 'warn',
+      '@typescript-eslint/no-explicit-any': 'error',
       '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
       '@typescript-eslint/no-require-imports': 'warn',
 
@@ -38,6 +38,12 @@ export default tseslint.config(
     files: ['src/main/platformUtils.ts'],
     rules: {
       '@typescript-eslint/no-require-imports': 'off',
+    },
+  },
+  {
+    files: ['src/tests/**/*.ts'],
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'warn',
     },
   }
 );

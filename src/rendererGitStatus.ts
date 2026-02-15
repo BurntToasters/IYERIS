@@ -4,6 +4,7 @@ type GitStatusDeps = {
   getCurrentSettings: () => { enableGitStatus?: boolean; gitIncludeUntracked?: boolean };
   getCurrentPath: () => string;
   getFileElement: (path: string) => HTMLElement | undefined;
+  getRenderedPaths?: () => Iterable<string>;
   getGitStatus: (dirPath: string, includeUntracked: boolean) => Promise<GitStatusResponse>;
   getGitBranch: (dirPath: string) => Promise<{ success: boolean; branch?: string }>;
 };
@@ -12,7 +13,14 @@ const GIT_STATUS_CACHE_TTL_MS = 3000;
 const GIT_STATUS_CACHE_MAX = 100;
 
 export function createGitStatusController(deps: GitStatusDeps) {
-  const { getCurrentSettings, getCurrentPath, getFileElement, getGitStatus, getGitBranch } = deps;
+  const {
+    getCurrentSettings,
+    getCurrentPath,
+    getFileElement,
+    getRenderedPaths,
+    getGitStatus,
+    getGitBranch,
+  } = deps;
 
   const gitIndicatorPaths = new Set<string>();
   const gitStatusCache = new Map<
@@ -139,7 +147,11 @@ export function createGitStatusController(deps: GitStatusDeps) {
       }
     }
 
-    applyGitIndicatorsToPaths(Array.from(currentGitStatuses.keys()));
+    if (getRenderedPaths) {
+      applyGitIndicatorsToPaths(Array.from(getRenderedPaths()));
+    } else {
+      applyGitIndicatorsToPaths(Array.from(currentGitStatuses.keys()));
+    }
   }
 
   function applyGitIndicatorsToPaths(paths: string[]): void {

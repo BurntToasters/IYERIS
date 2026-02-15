@@ -116,7 +116,7 @@ export function applyLoginItemSettings(settings: Settings): void {
 
     logger.debug('[LoginItem] Login item settings applied successfully');
   } catch (error) {
-    console.error('[LoginItem] Failed to set login item:', error);
+    logger.warn('[LoginItem] Failed to set login item:', error);
   }
 }
 
@@ -196,9 +196,11 @@ export function setupSettingsHandlers(createTray: () => Promise<void>): void {
             setFileIndexer(fileIndexer);
           }
           fileIndexer.setEnabled(true);
-          fileIndexer.initialize(true).catch((err) => {
-            console.error('[Settings] Failed to initialize indexer:', err);
-          });
+          try {
+            await fileIndexer.initialize(true);
+          } catch (err) {
+            logger.warn('[Settings] Failed to initialize indexer:', err);
+          }
         } else {
           const fileIndexer = getFileIndexer();
           if (fileIndexer) {

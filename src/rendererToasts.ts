@@ -1,6 +1,6 @@
 import { escapeHtml } from './shared.js';
 
-type ToastType = 'success' | 'error' | 'info' | 'warning';
+export type ToastType = 'success' | 'error' | 'info' | 'warning';
 
 type ToastOptions = {
   durationMs: number;
