@@ -79,6 +79,8 @@ export function createGitStatusController(deps: GitStatusDeps) {
     const cacheKey = `${dirPath}|${includeUntracked ? 'all' : 'tracked'}`;
     const cached = gitStatusCache.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < GIT_STATUS_CACHE_TTL_MS) {
+      gitStatusCache.delete(cacheKey);
+      gitStatusCache.set(cacheKey, cached);
       return { success: true, isGitRepo: cached.isGitRepo, statuses: cached.statuses };
     }
 
@@ -90,7 +92,9 @@ export function createGitStatusController(deps: GitStatusDeps) {
     const request = getGitStatus(dirPath, includeUntracked)
       .then((result) => {
         if (result.success) {
-          if (gitStatusCache.size >= GIT_STATUS_CACHE_MAX) {
+          if (gitStatusCache.has(cacheKey)) {
+            gitStatusCache.delete(cacheKey);
+          } else if (gitStatusCache.size >= GIT_STATUS_CACHE_MAX) {
             const firstKey = gitStatusCache.keys().next().value;
             if (firstKey) gitStatusCache.delete(firstKey);
           }

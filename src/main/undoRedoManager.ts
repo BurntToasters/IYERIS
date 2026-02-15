@@ -287,6 +287,16 @@ export function setupUndoRedoHandlers(): void {
             return { success: false, error: 'Cannot undo: File no longer exists' };
           }
           const stats = await fs.stat(itemPath);
+          if (action.data.createdAtMs !== undefined) {
+            const birthMs = stats.birthtimeMs || stats.ctimeMs;
+            if (Math.abs(birthMs - action.data.createdAtMs) > 2000) {
+              undoStack.push(action);
+              return {
+                success: false,
+                error: 'Cannot undo: File has been replaced since creation',
+              };
+            }
+          }
           if (stats.isDirectory()) {
             const entries = await fs.readdir(itemPath);
             if (entries.length > 0) {
@@ -298,6 +308,13 @@ export function setupUndoRedoHandlers(): void {
             }
             await fs.rm(itemPath, { recursive: true, force: true });
           } else {
+            if (!action.data.isDirectory && stats.size > 0) {
+              undoStack.push(action);
+              return {
+                success: false,
+                error: 'Cannot undo: File has been modified since creation',
+              };
+            }
             await fs.unlink(itemPath);
           }
           pushRedoAction(action);

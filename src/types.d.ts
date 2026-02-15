@@ -284,7 +284,7 @@ export interface IndexSearchResponse extends ApiResponse {
 
 export interface UndoCreateAction {
   type: 'create';
-  data: { path: string; isDirectory: boolean };
+  data: { path: string; isDirectory: boolean; createdAtMs?: number };
 }
 
 export interface UndoRenameAction {
