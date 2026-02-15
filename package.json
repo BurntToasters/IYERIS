@@ -69,7 +69,7 @@
     "build:linux:x64": "npm run build && electron-builder --linux AppImage deb rpm --x64",
     "build:linux:arm64": "npm run build && electron-builder --linux AppImage deb rpm --arm64",
     "build:linux:native": "npm run build && USE_SYSTEM_FPM=true electron-builder --linux AppImage deb rpm --x64 --arm64",
-    "flatpak:setup": "sudo node build/setup-flatpak.js",
+    "flatpak:setup": "sudo env \"PATH=$PATH\" node build/setup-flatpak.js",
     "flatpak:build": "node build/flatpak.js build",
     "flatpak:build:x64": "node build/flatpak.js build --x64",
     "flatpak:build:arm64": "node build/flatpak.js build --arm64",
