@@ -282,6 +282,7 @@ import {
   selectionIndicator,
   selectionCount,
   statusHidden,
+  announceToScreenReader,
 } from './rendererElements.js';
 
 const sortController = createSortController({
@@ -1759,8 +1760,12 @@ function updateStatusBar() {
     if (searchStatus.active) {
       statusSearchText.textContent = searchStatus.text;
       statusSearch.style.display = 'inline-flex';
+      announceToScreenReader(
+        `Search results: ${allFiles.length} item${allFiles.length !== 1 ? 's' : ''} found`
+      );
     } else {
       statusSearch.style.display = 'none';
+      announceToScreenReader(`${allFiles.length} item${allFiles.length !== 1 ? 's' : ''}`);
     }
   }
 }
@@ -2158,12 +2163,18 @@ async function deleteSelected(permanent = false) {
   }
 
   const itemsSnapshot = Array.from(selectedItems);
-  const results = await Promise.allSettled(
-    itemsSnapshot.map((p) =>
-      permanent ? window.electronAPI.deleteItem(p) : window.electronAPI.trashItem(p)
-    )
-  );
-  const successCount = results.filter((r) => r.status === 'fulfilled' && r.value.success).length;
+  const DELETE_BATCH_SIZE = 20;
+  const allResults: PromiseSettledResult<{ success: boolean; error?: string }>[] = [];
+  for (let i = 0; i < itemsSnapshot.length; i += DELETE_BATCH_SIZE) {
+    const batch = itemsSnapshot.slice(i, i + DELETE_BATCH_SIZE);
+    const batchResults = await Promise.allSettled(
+      batch.map((p) =>
+        permanent ? window.electronAPI.deleteItem(p) : window.electronAPI.trashItem(p)
+      )
+    );
+    allResults.push(...batchResults);
+  }
+  const successCount = allResults.filter((r) => r.status === 'fulfilled' && r.value.success).length;
   if (successCount > 0) {
     const msg = permanent
       ? `${successCount} item${successCount > 1 ? 's' : ''} permanently deleted`

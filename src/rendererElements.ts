@@ -47,3 +47,13 @@ export const statusSearchText = requireElement<HTMLElement>('status-search-text'
 export const selectionIndicator = requireElement<HTMLElement>('selection-indicator');
 export const selectionCount = requireElement<HTMLElement>('selection-count');
 export const statusHidden = requireElement<HTMLElement>('status-hidden');
+
+const srAnnouncements = document.getElementById('sr-announcements');
+
+export function announceToScreenReader(message: string): void {
+  if (!srAnnouncements) return;
+  srAnnouncements.textContent = '';
+  requestAnimationFrame(() => {
+    srAnnouncements.textContent = message;
+  });
+}

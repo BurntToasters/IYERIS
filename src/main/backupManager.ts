@@ -112,18 +112,11 @@ async function stashBackup(backupPath: string, destPath: string): Promise<string
   const ext = path.extname(base);
   const baseName = ext ? base.slice(0, -ext.length) : base;
 
-  let counter = 0;
-  while (counter < 1000) {
-    const suffix = counter === 0 ? `${hash}` : `${hash}-${counter}`;
-    const candidate = path.join(root, `${baseName}.${suffix}${ext || ''}.bak`);
-    if (!(await pathExists(candidate))) {
-      await renameWithExdevFallback(backupPath, candidate);
-      return candidate;
-    }
-    counter++;
-  }
-
-  throw new Error('Unable to stash backup');
+  const timestamp = Date.now();
+  const rand = Math.random().toString(36).slice(2, 6);
+  const candidate = path.join(root, `${baseName}.${hash}-${timestamp}-${rand}${ext || ''}.bak`);
+  await renameWithExdevFallback(backupPath, candidate);
+  return candidate;
 }
 
 export async function stashRemainingBackups(backups: Map<string, string>): Promise<string[]> {

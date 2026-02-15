@@ -506,6 +506,7 @@ export function setupFileOperationHandlers(): void {
         data: {
           path: newPath,
           isDirectory: true,
+          createdAtMs: Date.now(),
         },
       });
 
@@ -692,6 +693,7 @@ export function setupFileOperationHandlers(): void {
         data: {
           path: created.path,
           isDirectory: false,
+          createdAtMs: Date.now(),
         },
       });
 

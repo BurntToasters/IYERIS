@@ -46,6 +46,7 @@ export function createColumnViewController(deps: ColumnViewDeps) {
   let columnPaths: string[] = [];
   let columnViewRenderId = 0;
   let isRenderingColumnView = false;
+  let renderCompleteResolve: (() => void) | null = null;
   const activeColumnOperationIds = new Set<string>();
 
   function cancelColumnOperations(): void {
@@ -66,21 +67,14 @@ export function createColumnViewController(deps: ColumnViewDeps) {
 
     const currentRenderId = ++columnViewRenderId;
     if (isRenderingColumnView) {
-      const maxWaitMs = 3000;
-      const startTime = performance.now();
-      await new Promise<void>((resolve) => {
-        const check = () => {
-          if (!isRenderingColumnView || currentRenderId !== columnViewRenderId) {
-            resolve();
-          } else if (performance.now() - startTime > maxWaitMs) {
-            isRenderingColumnView = false;
-            resolve();
-          } else {
-            requestAnimationFrame(check);
-          }
-        };
-        requestAnimationFrame(check);
-      });
+      await Promise.race([
+        new Promise<void>((resolve) => {
+          renderCompleteResolve = resolve;
+        }),
+        new Promise<void>((resolve) => setTimeout(resolve, 3000)),
+      ]);
+      isRenderingColumnView = false;
+      renderCompleteResolve = null;
       if (currentRenderId !== columnViewRenderId) return;
     }
 
@@ -141,6 +135,10 @@ export function createColumnViewController(deps: ColumnViewDeps) {
       }, 50);
     } finally {
       isRenderingColumnView = false;
+      if (renderCompleteResolve) {
+        renderCompleteResolve();
+        renderCompleteResolve = null;
+      }
     }
   }
 

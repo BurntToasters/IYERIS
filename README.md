@@ -1,4 +1,5 @@
 # <p align="center">IYERIS is An alternative file browser for Windows, MacOS, and Linux!</p>
+
 <div align="center">
   <table>
     <tr>
@@ -75,13 +76,16 @@
 ### <p align="center">ℹ️ More information on IYERIS is available at: <b>[https://help.rosie.run/iyeris/en-us/faq](https://help.rosie.run/iyeris/en-us/faq)</b></p>
 
 # Feature List & Roadmap
+
 ### 📌 Checkout the roadmap and more <b>[➡️HERE!](https://help.rosie.run/iyeris/en-us/feature-set-and-roadmap)</b>
 
 # Notes
-- This is a just-for-fun project and currently isn't intended to be a full replacement for any file exploration/browser application.
+
+- IYERIS is designed as a cross-platform file browser replacement for Windows, macOS, and Linux.
 - Self update function has been added. It has been tested as stable on Mac and Windows.
 
 # Stability
+
 IYERIS is still pre-1.0 software. You may encounter bugs or regressions.
 Keep backups of important files before using destructive or bulk file operations.
 If you encounter an issue, please include screenshots, errors, crash logs, and steps to reproduce and create a github issue :)

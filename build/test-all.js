@@ -1,5 +1,7 @@
 const { spawnSync } = require('child_process');
 
+const testVersion = '1.0.0';
+
 const colors = {
   reset: '\x1b[0m',
   green: '\x1b[32m',
@@ -103,8 +105,9 @@ function printTail(output) {
 
 console.log(`${colors.bold}${colors.blue}
 ╔══════════════════════════════════════╗
-║   IYERIS Quality Check Suite        ║
+║   IYERIS Quality Check Suite         ║
 ╚══════════════════════════════════════╝
+Version: ${testVersion} 
 ${colors.reset}`);
 
 // Run all checks
