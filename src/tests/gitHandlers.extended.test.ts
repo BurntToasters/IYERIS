@@ -1,4 +1,5 @@
 import { EventEmitter } from 'events';
+import * as path from 'path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 type ExecResponse = {
@@ -163,7 +164,9 @@ describe('gitHandlers – extended coverage', () => {
 
     const result = await promise;
 
-    expect(result.statuses).toEqual([{ path: '/tmp/project/ignored.log', status: 'ignored' }]);
+    expect(result.statuses).toEqual([
+      { path: path.join('/tmp/project', 'ignored.log'), status: 'ignored' },
+    ]);
   });
 
   it('maps AA and DD conflict codes correctly', async () => {
@@ -183,8 +186,8 @@ describe('gitHandlers – extended coverage', () => {
     const result = await promise;
 
     expect(result.statuses).toEqual([
-      { path: '/tmp/project/both.txt', status: 'conflict' },
-      { path: '/tmp/project/gone.txt', status: 'conflict' },
+      { path: path.join('/tmp/project', 'both.txt'), status: 'conflict' },
+      { path: path.join('/tmp/project', 'gone.txt'), status: 'conflict' },
     ]);
   });
 
@@ -204,7 +207,9 @@ describe('gitHandlers – extended coverage', () => {
 
     const result = await promise;
 
-    expect(result.statuses).toEqual([{ path: '/tmp/project/copy.txt', status: 'added' }]);
+    expect(result.statuses).toEqual([
+      { path: path.join('/tmp/project', 'copy.txt'), status: 'added' },
+    ]);
   });
 
   it('skips entries shorter than 3 characters', async () => {
@@ -223,7 +228,9 @@ describe('gitHandlers – extended coverage', () => {
 
     const result = await promise;
 
-    expect(result.statuses).toEqual([{ path: '/tmp/project/valid.txt', status: 'modified' }]);
+    expect(result.statuses).toEqual([
+      { path: path.join('/tmp/project', 'valid.txt'), status: 'modified' },
+    ]);
   });
 
   it('includes untracked files by default', async () => {

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import * as path from 'path';
 
 const { appGetPathMock, getDrivesMock } = vi.hoisted(() => ({
   appGetPathMock: vi.fn((name: string) =>
@@ -171,7 +172,7 @@ describe('FileIndexer', () => {
     const saveCall = fileTasks.runTask.mock.calls.find(([taskType]) => taskType === 'save-index');
     expect(saveCall).toBeDefined();
     const payload = saveCall?.[1] as { indexPath: string; entries: unknown[] };
-    expect(payload.indexPath).toBe('/tmp/iyeris-user/file-index.json');
+    expect(payload.indexPath).toBe(path.join('/tmp/iyeris-user', 'file-index.json'));
     expect(payload.entries).toHaveLength(1);
   });
 

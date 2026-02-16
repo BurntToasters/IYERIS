@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import * as path from 'path';
 import type { HomeSettings } from '../types';
 
 type Handler = (...args: unknown[]) => unknown;
@@ -132,8 +133,8 @@ describe('homeSettingsManager', () => {
     const loaded = await manager.loadHomeSettings();
 
     expect(fsPromisesMock.rename).toHaveBeenCalledWith(
-      '/tmp/iyeris-user/homeSettings.json',
-      expect.stringContaining('/tmp/iyeris-user/homeSettings.json.corrupt-')
+      path.join('/tmp/iyeris-user', 'homeSettings.json'),
+      expect.stringContaining(path.join('/tmp/iyeris-user', 'homeSettings.json.corrupt-'))
     );
     expect(loaded).toEqual(defaultHomeSettings);
   });
@@ -146,10 +147,12 @@ describe('homeSettingsManager', () => {
 
     expect(result).toEqual({ success: true });
     expect(fsPromisesMock.copyFile).toHaveBeenCalledWith(
-      '/tmp/iyeris-user/homeSettings.json.tmp',
-      '/tmp/iyeris-user/homeSettings.json'
+      path.join('/tmp/iyeris-user', 'homeSettings.json.tmp'),
+      path.join('/tmp/iyeris-user', 'homeSettings.json')
     );
-    expect(fsPromisesMock.unlink).toHaveBeenCalledWith('/tmp/iyeris-user/homeSettings.json.tmp');
+    expect(fsPromisesMock.unlink).toHaveBeenCalledWith(
+      path.join('/tmp/iyeris-user', 'homeSettings.json.tmp')
+    );
   });
 
   it('returns untrusted response for get-home-settings handler', async () => {

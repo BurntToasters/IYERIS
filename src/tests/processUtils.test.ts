@@ -3,7 +3,7 @@ import { spawnWithTimeout, captureSpawnOutput, launchDetached } from '../main/pr
 
 describe('spawnWithTimeout', () => {
   it('spawns a command successfully', async () => {
-    const { child, timedOut } = spawnWithTimeout('echo', ['hello'], 5000, {});
+    const { child, timedOut } = spawnWithTimeout('node', ['-e', 'console.log("hello")'], 5000, {});
     const code = await new Promise<number | null>((resolve) => {
       child.on('close', resolve);
     });
@@ -12,7 +12,12 @@ describe('spawnWithTimeout', () => {
   });
 
   it('reports timeout when command takes too long', async () => {
-    const { child, timedOut } = spawnWithTimeout('sleep', ['10'], 100, {});
+    const { child, timedOut } = spawnWithTimeout(
+      'node',
+      ['-e', 'setTimeout(()=>{},30000)'],
+      100,
+      {}
+    );
     const code = await new Promise<number | null>((resolve) => {
       child.on('close', resolve);
     });
@@ -31,24 +36,24 @@ describe('spawnWithTimeout', () => {
 
 describe('captureSpawnOutput', () => {
   it('captures stdout', async () => {
-    const result = await captureSpawnOutput('echo', ['hello world'], 5000, {});
+    const result = await captureSpawnOutput('node', ['-e', 'console.log("hello world")'], 5000, {});
     expect(result.stdout.trim()).toBe('hello world');
     expect(result.code).toBe(0);
     expect(result.timedOut).toBe(false);
   });
 
   it('captures stderr', async () => {
-    const result = await captureSpawnOutput('sh', ['-c', 'echo error >&2'], 5000, {});
+    const result = await captureSpawnOutput('node', ['-e', 'console.error("error")'], 5000, {});
     expect(result.stderr.trim()).toBe('error');
   });
 
   it('returns exit code', async () => {
-    const result = await captureSpawnOutput('sh', ['-c', 'exit 42'], 5000, {});
+    const result = await captureSpawnOutput('node', ['-e', 'process.exit(42)'], 5000, {});
     expect(result.code).toBe(42);
   });
 
   it('handles timeout', async () => {
-    const result = await captureSpawnOutput('sleep', ['10'], 100, {});
+    const result = await captureSpawnOutput('node', ['-e', 'setTimeout(()=>{},30000)'], 100, {});
     expect(result.timedOut).toBe(true);
   });
 
@@ -60,7 +65,7 @@ describe('captureSpawnOutput', () => {
 describe('launchDetached', () => {
   it('spawns a detached process without throwing', () => {
     expect(() => {
-      launchDetached('echo', ['test'], {});
+      launchDetached('node', ['-e', ''], {});
     }).not.toThrow();
   });
 });

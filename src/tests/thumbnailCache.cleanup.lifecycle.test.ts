@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import * as path from 'path';
 
 const mocks = vi.hoisted(() => ({
   ipcMainHandle: vi.fn(),
@@ -58,7 +59,7 @@ async function freshImport() {
   return import('../main/thumbnailCache');
 }
 
-const CACHE_DIR = '/tmp/test-userData/thumbnail-cache';
+const CACHE_DIR = path.join('/tmp', 'test-userData', 'thumbnail-cache');
 
 describe('ensureCacheDir', () => {
   beforeEach(() => vi.clearAllMocks());
@@ -99,10 +100,10 @@ describe('getCachePath', () => {
 
     const subDirCalls = mocks.fsMkdir.mock.calls
       .map((c: any[]) => c[0] as string)
-      .filter((p: string) => p !== CACHE_DIR && p.startsWith(CACHE_DIR + '/'));
+      .filter((p: string) => p !== CACHE_DIR && p.startsWith(CACHE_DIR + path.sep));
 
     expect(subDirCalls).toHaveLength(1);
-    const subDirName = subDirCalls[0].replace(CACHE_DIR + '/', '');
+    const subDirName = subDirCalls[0].replace(CACHE_DIR + path.sep, '');
     expect(subDirName).toMatch(/^[0-9a-f]{2}$/);
   });
 
@@ -133,10 +134,10 @@ describe('walkCacheDir', () => {
           { name: 'cd', isDirectory: () => true },
         ];
       }
-      if (dirPath === `${CACHE_DIR}/ab` && opts?.withFileTypes) {
+      if (dirPath === path.join(CACHE_DIR, 'ab') && opts?.withFileTypes) {
         return [{ name: 'f1.jpg', isDirectory: () => false }];
       }
-      if (dirPath === `${CACHE_DIR}/cd` && opts?.withFileTypes) {
+      if (dirPath === path.join(CACHE_DIR, 'cd') && opts?.withFileTypes) {
         return [{ name: 'f2.jpg', isDirectory: () => false }];
       }
       return [];
@@ -182,7 +183,7 @@ describe('walkCacheDir', () => {
         return [{ name: 'broken', isDirectory: () => true }];
       }
 
-      if (dirPath === `${CACHE_DIR}/broken`) throw new Error('EPERM');
+      if (dirPath === path.join(CACHE_DIR, 'broken')) throw new Error('EPERM');
       return [];
     });
 
@@ -218,7 +219,7 @@ describe('cleanupOldThumbnails', () => {
     await mod.cleanupOldThumbnails();
 
     const unlinkPaths = mocks.fsUnlink.mock.calls.map((c: any[]) => c[0]);
-    expect(unlinkPaths).toContain(`${CACHE_DIR}/old.jpg`);
+    expect(unlinkPaths).toContain(path.join(CACHE_DIR, 'old.jpg'));
   });
 
   it('removes empty subdirectories after deleting old files', async () => {
@@ -230,11 +231,11 @@ describe('cleanupOldThumbnails', () => {
       if (dirPath === CACHE_DIR && opts?.withFileTypes) {
         return [{ name: 'ab', isDirectory: () => true }];
       }
-      if (dirPath === `${CACHE_DIR}/ab` && opts?.withFileTypes) {
+      if (dirPath === path.join(CACHE_DIR, 'ab') && opts?.withFileTypes) {
         return [{ name: 'expired.jpg', isDirectory: () => false }];
       }
 
-      if (dirPath === `${CACHE_DIR}/ab` && !opts?.withFileTypes) {
+      if (dirPath === path.join(CACHE_DIR, 'ab') && !opts?.withFileTypes) {
         return [];
       }
       return [];
@@ -244,7 +245,7 @@ describe('cleanupOldThumbnails', () => {
 
     await mod.cleanupOldThumbnails();
 
-    expect(mocks.fsRmdir).toHaveBeenCalledWith(`${CACHE_DIR}/ab`);
+    expect(mocks.fsRmdir).toHaveBeenCalledWith(path.join(CACHE_DIR, 'ab'));
   });
 
   it('keeps non-empty subdirectories', async () => {
@@ -256,10 +257,10 @@ describe('cleanupOldThumbnails', () => {
       if (dirPath === CACHE_DIR && opts?.withFileTypes) {
         return [{ name: 'ab', isDirectory: () => true }];
       }
-      if (dirPath === `${CACHE_DIR}/ab` && opts?.withFileTypes) {
+      if (dirPath === path.join(CACHE_DIR, 'ab') && opts?.withFileTypes) {
         return [{ name: 'keep.jpg', isDirectory: () => false }];
       }
-      if (dirPath === `${CACHE_DIR}/ab` && !opts?.withFileTypes) {
+      if (dirPath === path.join(CACHE_DIR, 'ab') && !opts?.withFileTypes) {
         return ['keep.jpg'];
       }
       return [];
@@ -337,7 +338,7 @@ describe('enforceCacheSize', () => {
 
     const unlinkPaths = mocks.fsUnlink.mock.calls.map((c: any[]) => c[0]);
 
-    expect(unlinkPaths).toContain(`${CACHE_DIR}/oldest.jpg`);
+    expect(unlinkPaths).toContain(path.join(CACHE_DIR, 'oldest.jpg'));
     expect(unlinkPaths.filter((p: string) => p.includes('middle'))).toHaveLength(0);
     expect(unlinkPaths.filter((p: string) => p.includes('newest'))).toHaveLength(0);
   });

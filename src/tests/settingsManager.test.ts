@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import * as path from 'path';
 import type { Settings } from '../types';
 
 type Handler = (...args: unknown[]) => unknown;
@@ -198,8 +199,8 @@ describe('settingsManager', () => {
 
     expect(fsPromisesMock.rename).toHaveBeenCalledTimes(1);
     expect(fsPromisesMock.rename).toHaveBeenCalledWith(
-      '/tmp/iyeris-user/settings.json',
-      expect.stringContaining('/tmp/iyeris-user/settings.json.corrupt-')
+      path.join('/tmp/iyeris-user', 'settings.json'),
+      expect.stringContaining(path.join('/tmp/iyeris-user', 'settings.json.corrupt-'))
     );
     expect(loaded.startOnLogin).toBe(false);
   });
@@ -212,10 +213,12 @@ describe('settingsManager', () => {
 
     expect(result).toEqual({ success: true });
     expect(fsPromisesMock.copyFile).toHaveBeenCalledWith(
-      '/tmp/iyeris-user/settings.json.tmp',
-      '/tmp/iyeris-user/settings.json'
+      path.join('/tmp/iyeris-user', 'settings.json.tmp'),
+      path.join('/tmp/iyeris-user', 'settings.json')
     );
-    expect(fsPromisesMock.unlink).toHaveBeenCalledWith('/tmp/iyeris-user/settings.json.tmp');
+    expect(fsPromisesMock.unlink).toHaveBeenCalledWith(
+      path.join('/tmp/iyeris-user', 'settings.json.tmp')
+    );
   });
 
   it('skips login item setup when app is not packaged', async () => {
@@ -272,8 +275,8 @@ describe('settingsManager', () => {
     syncHandler(event, { startOnLogin: true });
 
     expect(fsSyncMock.copyFileSync).toHaveBeenCalledWith(
-      '/tmp/iyeris-user/settings.json.sync-tmp',
-      '/tmp/iyeris-user/settings.json'
+      path.join('/tmp/iyeris-user', 'settings.json.sync-tmp'),
+      path.join('/tmp/iyeris-user', 'settings.json')
     );
     expect(event.returnValue).toEqual({ success: true });
   });

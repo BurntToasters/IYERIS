@@ -67,15 +67,18 @@ describe('calculateFolderSize', () => {
     expect(result.dirs).toBe(result.folderCount);
   });
 
-  it('handles unreadable subdirectories gracefully', async () => {
-    const badDir = path.join(tmpDir, 'noaccess');
-    await fs.promises.mkdir(badDir);
-    await fs.promises.writeFile(path.join(tmpDir, 'ok.txt'), 'ok');
-    await fs.promises.chmod(badDir, 0o000);
-    const result = await calculateFolderSize({ folderPath: tmpDir });
-    expect(result.fileCount).toBe(1);
-    await fs.promises.chmod(badDir, 0o755);
-  });
+  it.skipIf(process.platform === 'win32')(
+    'handles unreadable subdirectories gracefully',
+    async () => {
+      const badDir = path.join(tmpDir, 'noaccess');
+      await fs.promises.mkdir(badDir);
+      await fs.promises.writeFile(path.join(tmpDir, 'ok.txt'), 'ok');
+      await fs.promises.chmod(badDir, 0o000);
+      const result = await calculateFolderSize({ folderPath: tmpDir });
+      expect(result.fileCount).toBe(1);
+      await fs.promises.chmod(badDir, 0o755);
+    }
+  );
 
   it('limits fileTypes to top 10', async () => {
     for (let i = 0; i < 15; i++) {

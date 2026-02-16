@@ -51,49 +51,55 @@ async function writeIndex(
 }
 
 describe('searchDirectoryFiles – uncovered branches', () => {
-  it('continues when readdir fails on an unreadable subdirectory (line 216)', async () => {
-    await fs.promises.writeFile(path.join(tmpDir, 'ok.txt'), 'content');
+  it.skipIf(process.platform === 'win32')(
+    'continues when readdir fails on an unreadable subdirectory (line 216)',
+    async () => {
+      await fs.promises.writeFile(path.join(tmpDir, 'ok.txt'), 'content');
 
-    const badDir = path.join(tmpDir, 'noperm');
-    await fs.promises.mkdir(badDir);
+      const badDir = path.join(tmpDir, 'noperm');
+      await fs.promises.mkdir(badDir);
 
-    await fs.promises.writeFile(path.join(badDir, 'match.txt'), 'x');
-    await fs.promises.chmod(badDir, 0o000);
+      await fs.promises.writeFile(path.join(badDir, 'match.txt'), 'x');
+      await fs.promises.chmod(badDir, 0o000);
 
-    const results = await searchDirectoryFiles({
-      dirPath: tmpDir,
-      query: 'ok',
-      maxDepth: 5,
-      maxResults: 100,
-    });
+      const results = await searchDirectoryFiles({
+        dirPath: tmpDir,
+        query: 'ok',
+        maxDepth: 5,
+        maxResults: 100,
+      });
 
-    expect(results.some((r) => r.name === 'ok.txt')).toBe(true);
-    expect(results.some((r) => r.name === 'match.txt')).toBe(false);
+      expect(results.some((r) => r.name === 'ok.txt')).toBe(true);
+      expect(results.some((r) => r.name === 'match.txt')).toBe(false);
 
-    await fs.promises.chmod(badDir, 0o755);
-  });
+      await fs.promises.chmod(badDir, 0o755);
+    }
+  );
 });
 
 describe('searchDirectoryContent – uncovered branches', () => {
-  it('continues when readdir fails on an unreadable subdirectory (line 302)', async () => {
-    await fs.promises.writeFile(path.join(tmpDir, 'root.txt'), 'findable text');
+  it.skipIf(process.platform === 'win32')(
+    'continues when readdir fails on an unreadable subdirectory (line 302)',
+    async () => {
+      await fs.promises.writeFile(path.join(tmpDir, 'root.txt'), 'findable text');
 
-    const badDir = path.join(tmpDir, 'unreadable');
-    await fs.promises.mkdir(badDir);
-    await fs.promises.chmod(badDir, 0o000);
+      const badDir = path.join(tmpDir, 'unreadable');
+      await fs.promises.mkdir(badDir);
+      await fs.promises.chmod(badDir, 0o000);
 
-    const results = await searchDirectoryContent({
-      dirPath: tmpDir,
-      query: 'findable',
-      maxDepth: 5,
-      maxResults: 100,
-    });
+      const results = await searchDirectoryContent({
+        dirPath: tmpDir,
+        query: 'findable',
+        maxDepth: 5,
+        maxResults: 100,
+      });
 
-    expect(results.length).toBe(1);
-    expect(results[0].name).toBe('root.txt');
+      expect(results.length).toBe(1);
+      expect(results[0].name).toBe('root.txt');
 
-    await fs.promises.chmod(badDir, 0o755);
-  });
+      await fs.promises.chmod(badDir, 0o755);
+    }
+  );
 
   it('traverses into subdirectories for content search (line 316)', async () => {
     const sub = path.join(tmpDir, 'subdir');
@@ -810,21 +816,24 @@ describe('searchContentList – additional edge cases', () => {
 });
 
 describe('searchFileContent – error handling (line 135)', () => {
-  it('returns found:false when file read throws a non-cancellation error', async () => {
-    const fp = path.join(tmpDir, 'unreadable.txt');
-    await fs.promises.writeFile(fp, 'secret data');
-    await fs.promises.chmod(fp, 0o000);
+  it.skipIf(process.platform === 'win32')(
+    'returns found:false when file read throws a non-cancellation error',
+    async () => {
+      const fp = path.join(tmpDir, 'unreadable.txt');
+      await fs.promises.writeFile(fp, 'secret data');
+      await fs.promises.chmod(fp, 0o000);
 
-    const results = await searchContentList({
-      files: [{ path: fp, size: 11, name: 'unreadable.txt', modified: Date.now() }],
-      query: 'secret',
-      maxResults: 100,
-    });
+      const results = await searchContentList({
+        files: [{ path: fp, size: 11, name: 'unreadable.txt', modified: Date.now() }],
+        query: 'secret',
+        maxResults: 100,
+      });
 
-    expect(results.length).toBe(0);
+      expect(results.length).toBe(0);
 
-    await fs.promises.chmod(fp, 0o644);
-  });
+      await fs.promises.chmod(fp, 0o644);
+    }
+  );
 
   it('returns found:false when file does not exist', async () => {
     const fp = path.join(tmpDir, 'ghost.txt');

@@ -87,7 +87,7 @@ describe('backupManager', () => {
 
     expect(backups.has('/tmp/dest.txt')).toBe(true);
     const backupPath = backups.get('/tmp/dest.txt');
-    expect(backupPath).toContain('/tmp/.dest.txt.iyeris-backup-123-');
+    expect(backupPath).toContain(path.join('/tmp', '.dest.txt.iyeris-backup-123-'));
     expect(renameWithExdevFallback).toHaveBeenCalledTimes(1);
     expect(renameWithExdevFallback).toHaveBeenCalledWith('/tmp/dest.txt', backupPath);
     nowSpy.mockRestore();
