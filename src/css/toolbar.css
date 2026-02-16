@@ -58,13 +58,7 @@
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition:
-    background-color var(--animation-duration) var(--animation-easing),
-    border-color var(--animation-duration) var(--animation-easing),
-    color var(--animation-duration) var(--animation-easing),
-    box-shadow var(--animation-duration) var(--animation-easing),
-    transform var(--animation-duration) var(--animation-easing),
-    opacity var(--animation-duration) var(--animation-easing);
+  transition: var(--transition-standard);
 }
 
 .view-option:hover {
@@ -105,13 +99,7 @@
   color: var(--text-primary);
   border-radius: var(--radius-small);
   cursor: pointer;
-  transition:
-    background-color var(--animation-duration) var(--animation-easing),
-    border-color var(--animation-duration) var(--animation-easing),
-    color var(--animation-duration) var(--animation-easing),
-    box-shadow var(--animation-duration) var(--animation-easing),
-    transform var(--animation-duration) var(--animation-easing),
-    opacity var(--animation-duration) var(--animation-easing);
+  transition: var(--transition-standard);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -137,13 +125,7 @@
 
 body.platform-darwin .toolbar-button {
   border-radius: 8px;
-  transition:
-    background-color var(--animation-duration) var(--animation-easing-spring),
-    border-color var(--animation-duration) var(--animation-easing-spring),
-    color var(--animation-duration) var(--animation-easing-spring),
-    box-shadow var(--animation-duration) var(--animation-easing-spring),
-    transform var(--animation-duration) var(--animation-easing-spring),
-    opacity var(--animation-duration) var(--animation-easing-spring);
+  transition: var(--transition-standard);
 }
 
 body.platform-darwin .toolbar-button:hover:not(:disabled) {
@@ -157,13 +139,7 @@ body.platform-darwin .toolbar-button:active:not(:disabled) {
 
 body.platform-win32 .toolbar-button {
   border-radius: 4px;
-  transition:
-    background-color var(--animation-duration) var(--animation-easing),
-    border-color var(--animation-duration) var(--animation-easing),
-    color var(--animation-duration) var(--animation-easing),
-    box-shadow var(--animation-duration) var(--animation-easing),
-    transform var(--animation-duration) var(--animation-easing),
-    opacity var(--animation-duration) var(--animation-easing);
+  transition: var(--transition-standard);
 }
 
 body.platform-win32 .toolbar-button:hover:not(:disabled) {
@@ -184,13 +160,7 @@ body.platform-win32 .toolbar-button:active:not(:disabled) {
   border-radius: var(--radius-small);
   font-size: 11px;
   color: var(--accent-color);
-  transition:
-    background-color var(--animation-duration) var(--animation-easing),
-    border-color var(--animation-duration) var(--animation-easing),
-    color var(--animation-duration) var(--animation-easing),
-    box-shadow var(--animation-duration) var(--animation-easing),
-    transform var(--animation-duration) var(--animation-easing),
-    opacity var(--animation-duration) var(--animation-easing);
+  transition: var(--transition-standard);
 }
 
 .clipboard-indicator.cut-mode {
@@ -214,13 +184,7 @@ body.platform-win32 .toolbar-button:active:not(:disabled) {
   border-radius: var(--radius-small);
   font-size: 11px;
   color: var(--text-primary);
-  transition:
-    background-color var(--animation-duration) var(--animation-easing),
-    border-color var(--animation-duration) var(--animation-easing),
-    color var(--animation-duration) var(--animation-easing),
-    box-shadow var(--animation-duration) var(--animation-easing),
-    transform var(--animation-duration) var(--animation-easing),
-    opacity var(--animation-duration) var(--animation-easing);
+  transition: var(--transition-standard);
 }
 
 .selection-count {
@@ -243,13 +207,7 @@ body.platform-win32 .toolbar-button:active:not(:disabled) {
   font-weight: 500;
   color: var(--text-secondary);
   cursor: pointer;
-  transition:
-    background-color var(--animation-duration) var(--animation-easing),
-    border-color var(--animation-duration) var(--animation-easing),
-    color var(--animation-duration) var(--animation-easing),
-    box-shadow var(--animation-duration) var(--animation-easing),
-    transform var(--animation-duration) var(--animation-easing),
-    opacity var(--animation-duration) var(--animation-easing);
+  transition: var(--transition-standard);
 }
 
 .selection-action:hover {

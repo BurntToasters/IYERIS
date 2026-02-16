@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { Settings } from '../types';
-import { createSortController, SORT_BY_VALUES } from '../rendererSort';
+import { createSortController } from '../rendererSort';
+import { SORT_BY_VALUES } from '../constants';
 
 function makeSettings(overrides: Partial<Settings> = {}): Settings {
   return {

@@ -1,6 +1,7 @@
 const { spawnSync } = require('child_process');
 
-const testVersion = '1.0.1';
+const testVersion = require('../package.json').version;
+const scriptVersion = '1.0.2';
 
 const colors = {
   reset: '\x1b[0m',
@@ -108,7 +109,8 @@ console.log(`${colors.bold}${colors.blue}
 ╔══════════════════════════════════════╗
 ║   IYERIS Quality Check Suite         ║
 ╚══════════════════════════════════════╝
-Version: ${testVersion} 
+IYERIS Version: ${testVersion}
+Script Version: ${scriptVersion} 
 ${colors.reset}`);
 
 // Run all checks

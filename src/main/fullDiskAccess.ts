@@ -4,16 +4,17 @@ import { app, dialog } from 'electron';
 import type { ApiResponse, Settings } from '../types';
 import { getMainWindow } from './appState';
 import { shell } from 'electron';
+import { logger } from './logger';
 
 export async function checkFullDiskAccess(): Promise<boolean> {
   if (process.platform !== 'darwin') {
-    console.log('[FDA] Not on macOS, skipping check');
+    logger.info('[FDA] Not on macOS, skipping check');
     return true;
   }
 
-  console.log('[FDA] Testing Full Disk Access...');
-  console.log('[FDA] App path:', app.getPath('exe'));
-  console.log('[FDA] Process path:', process.execPath);
+  logger.info('[FDA] Testing Full Disk Access...');
+  logger.info('[FDA] App path:', app.getPath('exe'));
+  logger.info('[FDA] Process path:', process.execPath);
 
   try {
     const tccPath = path.join(
@@ -23,16 +24,16 @@ export async function checkFullDiskAccess(): Promise<boolean> {
       'com.apple.TCC',
       'TCC.db'
     );
-    console.log('[FDA] Testing TCC.db at:', tccPath);
+    logger.info('[FDA] Testing TCC.db at:', tccPath);
 
     const fileHandle = await fs.open(tccPath, 'r');
     await fileHandle.close();
 
-    console.log('[FDA] Can read TCC.db');
+    logger.info('[FDA] Can read TCC.db');
     return true;
   } catch (error) {
     const err = error as { code?: string; message?: string };
-    console.log('[FDA] Cannot read TCC.db:', err.code || 'ERROR', '-', err.message);
+    logger.info('[FDA] Cannot read TCC.db:', err.code || 'ERROR', '-', err.message);
   }
 
   const testPaths = [
@@ -43,20 +44,20 @@ export async function checkFullDiskAccess(): Promise<boolean> {
 
   for (const testPath of testPaths) {
     try {
-      console.log('[FDA] Testing:', testPath);
+      logger.info('[FDA] Testing:', testPath);
       const stats = await fs.stat(testPath);
       if (stats.isDirectory()) {
         const files = await fs.readdir(testPath);
-        console.log('[FDA] Full Disk Access (read', files.length, 'items from', testPath + '): OK');
+        logger.info('[FDA] Full Disk Access (read', files.length, 'items from', testPath + '): OK');
         return true;
       }
     } catch (error) {
       const err = error as { code?: string; message?: string };
-      console.log('[FDA] Failed:', testPath, '-', err.code || err.message);
+      logger.info('[FDA] Failed:', testPath, '-', err.code || err.message);
     }
   }
 
-  console.log('[FDA] Full Disk Access: NOT granted');
+  logger.info('[FDA] Full Disk Access: NOT granted');
   return false;
 }
 
@@ -66,10 +67,10 @@ export async function showFullDiskAccessDialog(
 ): Promise<void> {
   const mainWindow = getMainWindow();
   if (!mainWindow || mainWindow.isDestroyed()) {
-    console.log('[FDA] Cannot show dialog - no valid window');
+    logger.info('[FDA] Cannot show dialog - no valid window');
     return;
   }
-  console.log('[FDA] Showing Full Disk Access dialog');
+  logger.info('[FDA] Showing Full Disk Access dialog');
   const result = await dialog.showMessageBox(mainWindow, {
     type: 'warning',
     title: 'Full Disk Access Required',
@@ -88,12 +89,12 @@ export async function showFullDiskAccessDialog(
     cancelId: 1,
   });
 
-  console.log('[FDA] User selected option:', result.response);
+  logger.info('[FDA] User selected option:', result.response);
   if (result.response === 0) {
-    console.log('[FDA] Opening System Settings...');
+    logger.info('[FDA] Opening System Settings...');
     shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles');
   } else if (result.response === 2) {
-    console.log('[FDA] User: "Don\'t Ask Again"');
+    logger.info('[FDA] User: "Don\'t Ask Again"');
     const settings = await loadSettings();
     settings.skipFullDiskAccessPrompt = true;
     await saveSettings(settings);

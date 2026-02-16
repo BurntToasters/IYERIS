@@ -1,6 +1,7 @@
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { HIDDEN_FILE_CACHE_TTL, HIDDEN_FILE_CACHE_MAX } from './appState';
+import { logger } from './logger';
 
 const hiddenFileCache = new Map<string, { isHidden: boolean; timestamp: number }>();
 let isCleaningCache = false;
@@ -60,7 +61,7 @@ function cleanupHiddenFileCache(): void {
     }
 
     if (entriesRemoved > 0) {
-      console.log(
+      logger.info(
         `[Cache] Cleaned up ${entriesRemoved} hidden file cache entries, ${hiddenFileCache.size} remaining`
       );
     }

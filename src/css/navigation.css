@@ -29,13 +29,7 @@
   padding: var(--breadcrumb-padding-v) var(--breadcrumb-padding-h);
   border-radius: var(--radius-small);
   cursor: pointer;
-  transition:
-    background-color var(--animation-duration) var(--animation-easing),
-    border-color var(--animation-duration) var(--animation-easing),
-    color var(--animation-duration) var(--animation-easing),
-    box-shadow var(--animation-duration) var(--animation-easing),
-    transform var(--animation-duration) var(--animation-easing),
-    opacity var(--animation-duration) var(--animation-easing);
+  transition: var(--transition-standard);
   white-space: nowrap;
   background: transparent;
   border: none;

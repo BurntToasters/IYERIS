@@ -32,10 +32,15 @@ vi.mock('../main/security', () => ({
 
 vi.mock('../main/ipcUtils', () => ({
   isTrustedIpcEvent: vi.fn(() => trustedEvent),
+  registerProgressTarget: vi.fn(),
+  unregisterProgressTarget: vi.fn(),
 }));
 
 vi.mock('../main/logger', () => ({
   logger: {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
     debug: vi.fn(),
   },
 }));

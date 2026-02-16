@@ -1,6 +1,18 @@
 import type { Settings } from './types';
 import { isRecord, RESERVED_KEYS, sanitizeStringArray } from './shared.js';
 import { getDefaultShortcuts } from './shortcuts.js';
+import {
+  THEME_VALUES as THEME_ARRAY,
+  SORT_BY_VALUES as SORT_BY_ARRAY,
+  SORT_ORDER_VALUES as SORT_ORDER_ARRAY,
+  VIEW_MODE_VALUES as VIEW_MODE_ARRAY,
+  UI_DENSITY_VALUES as UI_DENSITY_ARRAY,
+  UPDATE_CHANNEL_VALUES as UPDATE_CHANNEL_ARRAY,
+  FILE_CONFLICT_VALUES as FILE_CONFLICT_ARRAY,
+  THUMBNAIL_QUALITY_VALUES as THUMBNAIL_QUALITY_ARRAY,
+  PREVIEW_POSITION_VALUES as PREVIEW_PANEL_ARRAY,
+  GRID_COLUMNS_VALUES as GRID_COLUMNS_ARRAY,
+} from './constants.js';
 
 export function createDefaultSettings(): Settings {
   return {
@@ -70,31 +82,16 @@ export function createDefaultSettings(): Settings {
   };
 }
 
-const THEME_VALUES = new Set<Settings['theme']>([
-  'dark',
-  'light',
-  'default',
-  'custom',
-  'nord',
-  'catppuccin',
-  'dracula',
-  'solarized',
-  'github',
-]);
-const SORT_BY_VALUES = new Set<Settings['sortBy']>(['name', 'date', 'size', 'type']);
-const SORT_ORDER_VALUES = new Set<Settings['sortOrder']>(['asc', 'desc']);
-const VIEW_MODE_VALUES = new Set<Settings['viewMode']>(['grid', 'list', 'column']);
-const UI_DENSITY_VALUES = new Set<Settings['uiDensity']>(['compact', 'default', 'larger']);
-const UPDATE_CHANNEL_VALUES = new Set<Settings['updateChannel']>(['auto', 'beta', 'stable']);
-const FILE_CONFLICT_VALUES = new Set<Settings['fileConflictBehavior']>([
-  'ask',
-  'rename',
-  'skip',
-  'overwrite',
-]);
-const THUMBNAIL_QUALITY_VALUES = new Set<Settings['thumbnailQuality']>(['low', 'medium', 'high']);
-const PREVIEW_PANEL_VALUES = new Set<Settings['previewPanelPosition']>(['right', 'bottom']);
-const GRID_COLUMNS_VALUES = new Set<Settings['gridColumns']>(['auto', '2', '3', '4', '5', '6']);
+const THEME_VALUES = new Set<Settings['theme']>(THEME_ARRAY);
+const SORT_BY_VALUES = new Set<Settings['sortBy']>(SORT_BY_ARRAY);
+const SORT_ORDER_VALUES = new Set<Settings['sortOrder']>(SORT_ORDER_ARRAY);
+const VIEW_MODE_VALUES = new Set<Settings['viewMode']>(VIEW_MODE_ARRAY);
+const UI_DENSITY_VALUES = new Set<Settings['uiDensity']>(UI_DENSITY_ARRAY);
+const UPDATE_CHANNEL_VALUES = new Set<Settings['updateChannel']>(UPDATE_CHANNEL_ARRAY);
+const FILE_CONFLICT_VALUES = new Set<Settings['fileConflictBehavior']>(FILE_CONFLICT_ARRAY);
+const THUMBNAIL_QUALITY_VALUES = new Set<Settings['thumbnailQuality']>(THUMBNAIL_QUALITY_ARRAY);
+const PREVIEW_PANEL_VALUES = new Set<Settings['previewPanelPosition']>(PREVIEW_PANEL_ARRAY);
+const GRID_COLUMNS_VALUES = new Set<Settings['gridColumns']>(GRID_COLUMNS_ARRAY);
 
 function sanitizeEnum<T extends string>(value: unknown, allowed: Set<T>): T | null {
   if (typeof value !== 'string') return null;

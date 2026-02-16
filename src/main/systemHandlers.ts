@@ -113,7 +113,7 @@ export function setupSystemHandlers(
       app.quit();
       return { success: true };
     } catch (error) {
-      console.log('[Admin] Failed to restart as admin:', getErrorMessage(error));
+      logger.info('[Admin] Failed to restart as admin:', getErrorMessage(error));
       return {
         success: false,
         error: 'Failed to restart with admin privileges. The request may have been cancelled.',
@@ -170,7 +170,7 @@ export function setupSystemHandlers(
         }
 
         if (!launched) {
-          console.error('No suitable terminal emulator found');
+          logger.error('No suitable terminal emulator found');
           return { success: false, error: 'No suitable terminal emulator found' };
         }
       }

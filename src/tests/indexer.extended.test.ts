@@ -36,6 +36,15 @@ vi.mock('fs', () => ({
   promises: fsMock,
 }));
 
+vi.mock('../main/logger', () => ({
+  logger: {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+  },
+}));
+
 import { FileIndexer } from '../main/indexer';
 
 type MockFileTaskManager = {
@@ -240,27 +249,27 @@ describe('FileIndexer - clearIndex', () => {
   });
 
   it('silently ignores ENOENT when deleting index file', async () => {
+    const { logger } = await import('../main/logger');
+    vi.mocked(logger.error).mockClear();
     const indexer = new FileIndexer();
     fsMock.unlink.mockRejectedValue(Object.assign(new Error('not found'), { code: 'ENOENT' }));
-    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     await indexer.clearIndex();
 
-    expect(consoleSpy).not.toHaveBeenCalled();
-    consoleSpy.mockRestore();
+    expect(logger.error).not.toHaveBeenCalled();
   });
 
   it('logs error when deleting index file fails with non-ENOENT', async () => {
+    const { logger } = await import('../main/logger');
+    vi.mocked(logger.error).mockClear();
     const indexer = new FileIndexer();
     fsMock.unlink.mockRejectedValue(
       Object.assign(new Error('permission denied'), { code: 'EACCES' })
     );
-    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     await indexer.clearIndex();
 
-    expect(consoleSpy).toHaveBeenCalledWith('[Indexer] Error deleting index:', expect.any(Error));
-    consoleSpy.mockRestore();
+    expect(logger.error).toHaveBeenCalledWith('[Indexer] Error deleting index:', expect.any(Error));
   });
 });
 
@@ -426,20 +435,21 @@ describe('FileIndexer - initialize', () => {
   });
 
   it('handles initialization error gracefully', async () => {
+    const { logger } = await import('../main/logger');
+    vi.mocked(logger.error).mockClear();
     const fileTasks = makeTaskManager();
     const indexer = new FileIndexer(fileTasks as unknown as never);
 
     vi.spyOn(indexer, 'loadIndex').mockRejectedValue(new Error('load failed'));
 
-    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     await indexer.initialize(true);
     await (indexer as any).initializationPromise;
 
-    expect(consoleSpy).toHaveBeenCalledWith('[Indexer] Initialization failed:', expect.any(Error));
+    expect(logger.error).toHaveBeenCalledWith(
+      '[Indexer] Initialization failed:',
+      expect.any(Error)
+    );
     expect((indexer as any).initializationPromise).toBeNull();
-    consoleSpy.mockRestore();
-    logSpy.mockRestore();
   });
 });
 
@@ -476,38 +486,36 @@ describe('FileIndexer - buildIndex', () => {
     fileTasks.runTask.mockRejectedValue(new Error('Calculation cancelled'));
 
     const indexer = new FileIndexer(fileTasks as unknown as never);
-    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     await indexer.buildIndex();
 
     expect(indexer.getStatus().indexedFiles).toBe(0);
     expect(indexer.getStatus().isIndexing).toBe(false);
-    consoleSpy.mockRestore();
   });
 
   it('handles unexpected errors during build', async () => {
+    const { logger } = await import('../main/logger');
+    vi.mocked(logger.error).mockClear();
     const fileTasks = makeTaskManager();
     fileTasks.runTask.mockRejectedValue(new Error('unexpected failure'));
 
     const indexer = new FileIndexer(fileTasks as unknown as never);
-    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     await indexer.buildIndex();
 
-    expect(consoleSpy).toHaveBeenCalled();
+    expect(logger.error).toHaveBeenCalled();
     expect(indexer.getStatus().isIndexing).toBe(false);
-    consoleSpy.mockRestore();
   });
 
   it('handles non-Error thrown during build', async () => {
+    const { logger } = await import('../main/logger');
+    vi.mocked(logger.error).mockClear();
     const fileTasks = makeTaskManager();
     fileTasks.runTask.mockRejectedValue('string error');
 
     const indexer = new FileIndexer(fileTasks as unknown as never);
-    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     await indexer.buildIndex();
 
-    expect(consoleSpy).toHaveBeenCalled();
+    expect(logger.error).toHaveBeenCalled();
     expect(indexer.getStatus().isIndexing).toBe(false);
-    consoleSpy.mockRestore();
   });
 
   it('loads entries from worker result', async () => {
@@ -588,11 +596,9 @@ describe('FileIndexer - buildIndex', () => {
     fsMock.writeFile.mockResolvedValue(undefined);
     fsMock.rename.mockResolvedValue(undefined);
 
-    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     await indexer.buildIndex();
 
     expect(indexer.getStatus().isIndexing).toBe(false);
-    consoleSpy.mockRestore();
   });
 
   it('stops scanning when abortController is aborted during non-worker build', async () => {
@@ -669,28 +675,28 @@ describe('FileIndexer - loadIndex', () => {
   });
 
   it('handles ENOENT when loading without fileTasks', async () => {
+    const { logger } = await import('../main/logger');
+    vi.mocked(logger.info).mockClear();
     fsMock.readFile.mockRejectedValue(Object.assign(new Error('not found'), { code: 'ENOENT' }));
-    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
     const indexer = new FileIndexer();
     await indexer.loadIndex();
 
     expect(indexer.getStatus().indexedFiles).toBe(0);
-    expect(consoleSpy).toHaveBeenCalledWith(
+    expect(logger.info).toHaveBeenCalledWith(
       '[Indexer] No existing index found, will build on first search'
     );
-    consoleSpy.mockRestore();
   });
 
   it('handles non-ENOENT error when loading without fileTasks', async () => {
+    const { logger } = await import('../main/logger');
+    vi.mocked(logger.error).mockClear();
     fsMock.readFile.mockRejectedValue(Object.assign(new Error('corrupt'), { code: 'EIO' }));
-    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     const indexer = new FileIndexer();
     await indexer.loadIndex();
 
-    expect(consoleSpy).toHaveBeenCalledWith('[Indexer] Error loading index:', expect.any(Error));
-    consoleSpy.mockRestore();
+    expect(logger.error).toHaveBeenCalledWith('[Indexer] Error loading index:', expect.any(Error));
   });
 
   it('handles non-array parsed.index when loading without fileTasks', async () => {
@@ -757,23 +763,21 @@ describe('FileIndexer - saveIndex', () => {
     fsMock.writeFile.mockResolvedValue(undefined);
     fsMock.rename.mockResolvedValue(undefined);
 
-    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     await indexer.saveIndex();
 
     expect(fsMock.writeFile).toHaveBeenCalled();
     expect(fsMock.rename).toHaveBeenCalled();
-    consoleSpy.mockRestore();
   });
 
   it('handles save error gracefully', async () => {
+    const { logger } = await import('../main/logger');
+    vi.mocked(logger.error).mockClear();
     const indexer = new FileIndexer();
     fsMock.writeFile.mockRejectedValue(new Error('disk full'));
 
-    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     await indexer.saveIndex();
 
-    expect(consoleSpy).toHaveBeenCalledWith('[Indexer] Error saving index:', expect.any(Error));
-    consoleSpy.mockRestore();
+    expect(logger.error).toHaveBeenCalledWith('[Indexer] Error saving index:', expect.any(Error));
   });
 
   it('saves with lastIndexTime when set', async () => {
@@ -1356,6 +1360,8 @@ describe('FileIndexer - parseIndexTime', () => {
 
 describe('FileIndexer - getCommonLocations platform branches', () => {
   it('returns linux locations', async () => {
+    const { logger } = await import('../main/logger');
+    vi.mocked(logger.info).mockClear();
     Object.defineProperty(process, 'platform', { value: 'linux' });
     getDrivesMock.mockResolvedValue(['/mnt/data']);
 
@@ -1365,22 +1371,24 @@ describe('FileIndexer - getCommonLocations platform branches', () => {
     fsMock.writeFile.mockResolvedValue(undefined);
     fsMock.rename.mockResolvedValue(undefined);
 
-    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     await indexer.buildIndex();
 
-    const locationLog = consoleSpy.mock.calls.find(
-      (args: any) => typeof args[0] === 'string' && args[0].includes('Locations to scan')
-    );
+    const locationLog = vi
+      .mocked(logger.info)
+      .mock.calls.find(
+        (args: any) => typeof args[0] === 'string' && args[0].includes('Locations to scan')
+      );
     expect(locationLog).toBeDefined();
     const logStr = locationLog?.[0] as string;
     expect(logStr).toContain('/usr');
     expect(logStr).toContain('/opt');
     expect(logStr).toContain('/home');
     expect(logStr).toContain('/mnt/data');
-    consoleSpy.mockRestore();
   });
 
   it('returns win32 locations', async () => {
+    const { logger } = await import('../main/logger');
+    vi.mocked(logger.info).mockClear();
     Object.defineProperty(process, 'platform', { value: 'win32' });
     getDrivesMock.mockResolvedValue(['C:\\', 'D:\\']);
 
@@ -1390,22 +1398,24 @@ describe('FileIndexer - getCommonLocations platform branches', () => {
     fsMock.writeFile.mockResolvedValue(undefined);
     fsMock.rename.mockResolvedValue(undefined);
 
-    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     await indexer.buildIndex();
 
-    const locationLog = consoleSpy.mock.calls.find(
-      (args: any) => typeof args[0] === 'string' && args[0].includes('Locations to scan')
-    );
+    const locationLog = vi
+      .mocked(logger.info)
+      .mock.calls.find(
+        (args: any) => typeof args[0] === 'string' && args[0].includes('Locations to scan')
+      );
     expect(locationLog).toBeDefined();
     const logStr = locationLog?.[0] as string;
     expect(logStr).toContain('Desktop');
     expect(logStr).toContain('Documents');
     expect(logStr).toContain('C:\\');
     expect(logStr).toContain('D:\\');
-    consoleSpy.mockRestore();
   });
 
   it('returns darwin locations and skips root drive', async () => {
+    const { logger } = await import('../main/logger');
+    vi.mocked(logger.info).mockClear();
     Object.defineProperty(process, 'platform', { value: 'darwin' });
     getDrivesMock.mockResolvedValue(['/', '/Volumes/External']);
 
@@ -1415,22 +1425,24 @@ describe('FileIndexer - getCommonLocations platform branches', () => {
     fsMock.writeFile.mockResolvedValue(undefined);
     fsMock.rename.mockResolvedValue(undefined);
 
-    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     await indexer.buildIndex();
 
-    const locationLog = consoleSpy.mock.calls.find(
-      (args: any) => typeof args[0] === 'string' && args[0].includes('Locations to scan')
-    );
+    const locationLog = vi
+      .mocked(logger.info)
+      .mock.calls.find(
+        (args: any) => typeof args[0] === 'string' && args[0].includes('Locations to scan')
+      );
     expect(locationLog).toBeDefined();
     const logStr = locationLog?.[0] as string;
     expect(logStr).toContain('/Applications');
     expect(logStr).toContain('/Users');
     expect(logStr).toContain('/Volumes/External');
     expect(logStr).toContain('Movies');
-    consoleSpy.mockRestore();
   });
 
   it('linux does not add duplicate drives', async () => {
+    const { logger } = await import('../main/logger');
+    vi.mocked(logger.info).mockClear();
     Object.defineProperty(process, 'platform', { value: 'linux' });
     getDrivesMock.mockResolvedValue(['/', '/home']);
 
@@ -1440,19 +1452,21 @@ describe('FileIndexer - getCommonLocations platform branches', () => {
     fsMock.writeFile.mockResolvedValue(undefined);
     fsMock.rename.mockResolvedValue(undefined);
 
-    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     await indexer.buildIndex();
 
-    const locationLog = consoleSpy.mock.calls.find(
-      (args: any) => typeof args[0] === 'string' && args[0].includes('Locations to scan')
-    );
+    const locationLog = vi
+      .mocked(logger.info)
+      .mock.calls.find(
+        (args: any) => typeof args[0] === 'string' && args[0].includes('Locations to scan')
+      );
     const logStr = locationLog?.[0] as string;
     const homeCount = (logStr.match(/\/home/g) || []).length;
     expect(homeCount).toBeGreaterThanOrEqual(1);
-    consoleSpy.mockRestore();
   });
 
   it('darwin does not add drives that are already in locations list', async () => {
+    const { logger } = await import('../main/logger');
+    vi.mocked(logger.info).mockClear();
     Object.defineProperty(process, 'platform', { value: 'darwin' });
     getDrivesMock.mockResolvedValue(['/Applications']);
 
@@ -1462,16 +1476,16 @@ describe('FileIndexer - getCommonLocations platform branches', () => {
     fsMock.writeFile.mockResolvedValue(undefined);
     fsMock.rename.mockResolvedValue(undefined);
 
-    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     await indexer.buildIndex();
 
-    const locationLog = consoleSpy.mock.calls.find(
-      (args: any) => typeof args[0] === 'string' && args[0].includes('Locations to scan')
-    );
+    const locationLog = vi
+      .mocked(logger.info)
+      .mock.calls.find(
+        (args: any) => typeof args[0] === 'string' && args[0].includes('Locations to scan')
+      );
     const logStr = locationLog?.[0] as string;
     const appCount = (logStr.match(/\/Applications/g) || []).length;
     expect(appCount).toBe(1);
-    consoleSpy.mockRestore();
   });
 });
 
@@ -1563,11 +1577,9 @@ describe('FileIndexer - scanDirectory', () => {
     fsMock.writeFile.mockResolvedValue(undefined);
     fsMock.rename.mockResolvedValue(undefined);
 
-    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     await indexer.buildIndex();
 
     expect(indexer.getStatus().isIndexing).toBe(false);
-    consoleSpy.mockRestore();
   });
 
   it('handles stat errors via Promise.allSettled', async () => {
@@ -1766,12 +1778,10 @@ describe('FileIndexer - writeFileAtomic (via saveIndex)', () => {
     fsMock.writeFile.mockResolvedValue(undefined);
     fsMock.rename.mockResolvedValue(undefined);
 
-    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     await indexer.saveIndex();
 
     expect(fsMock.writeFile).toHaveBeenCalledTimes(1);
     expect(fsMock.rename).toHaveBeenCalledTimes(1);
-    consoleSpy.mockRestore();
   });
 
   it('handles EEXIST on rename by unlinking and retrying rename', async () => {
@@ -1786,12 +1796,10 @@ describe('FileIndexer - writeFileAtomic (via saveIndex)', () => {
     });
     fsMock.unlink.mockResolvedValue(undefined);
 
-    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     await indexer.saveIndex();
 
     expect(fsMock.unlink).toHaveBeenCalled();
     expect(renameCallCount).toBe(2);
-    consoleSpy.mockRestore();
   });
 
   it('handles EPERM on rename -- unlink, retry rename fails, falls back to copy', async () => {
@@ -1801,11 +1809,9 @@ describe('FileIndexer - writeFileAtomic (via saveIndex)', () => {
     fsMock.unlink.mockResolvedValue(undefined);
     fsMock.copyFile.mockResolvedValue(undefined);
 
-    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     await indexer.saveIndex();
 
     expect(fsMock.copyFile).toHaveBeenCalled();
-    consoleSpy.mockRestore();
   });
 
   it('handles EACCES on rename with unlink failure', async () => {
@@ -1815,11 +1821,9 @@ describe('FileIndexer - writeFileAtomic (via saveIndex)', () => {
     fsMock.unlink.mockRejectedValue(new Error('unlink failed'));
     fsMock.copyFile.mockResolvedValue(undefined);
 
-    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     await indexer.saveIndex();
 
     expect(fsMock.copyFile).toHaveBeenCalled();
-    consoleSpy.mockRestore();
   });
 
   it('falls back to copyFile when rename fails with non-EEXIST/EPERM/EACCES', async () => {
@@ -1829,11 +1833,9 @@ describe('FileIndexer - writeFileAtomic (via saveIndex)', () => {
     fsMock.copyFile.mockResolvedValue(undefined);
     fsMock.unlink.mockResolvedValue(undefined);
 
-    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     await indexer.saveIndex();
 
     expect(fsMock.copyFile).toHaveBeenCalled();
-    consoleSpy.mockRestore();
   });
 
   it('cleans up tmp file after copyFile fallback', async () => {
@@ -1843,11 +1845,9 @@ describe('FileIndexer - writeFileAtomic (via saveIndex)', () => {
     fsMock.copyFile.mockResolvedValue(undefined);
     fsMock.unlink.mockResolvedValue(undefined);
 
-    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     await indexer.saveIndex();
 
     expect(fsMock.unlink).toHaveBeenCalled();
-    consoleSpy.mockRestore();
   });
 
   it('handles copyFile failure gracefully (still cleans up tmp)', async () => {
@@ -1857,11 +1857,9 @@ describe('FileIndexer - writeFileAtomic (via saveIndex)', () => {
     fsMock.copyFile.mockRejectedValue(new Error('copy failed'));
     fsMock.unlink.mockResolvedValue(undefined);
 
-    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     await indexer.saveIndex();
 
     expect(fsMock.unlink).toHaveBeenCalled();
-    consoleSpy.mockRestore();
   });
 });
 

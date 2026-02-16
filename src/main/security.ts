@@ -34,11 +34,17 @@ const WINDOWS_RESTRICTED_PATHS = [
   'c:\\windows\\system32\\config\\security',
 ];
 
+const MAX_PATH_LENGTH = 32767;
+
 export function isPathSafe(
   inputPath: string,
   platform: NodeJS.Platform = process.platform
 ): boolean {
   if (!inputPath || typeof inputPath !== 'string') {
+    return false;
+  }
+
+  if (inputPath.length > MAX_PATH_LENGTH) {
     return false;
   }
 

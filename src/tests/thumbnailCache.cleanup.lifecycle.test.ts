@@ -54,6 +54,15 @@ vi.mock('../main/ipcUtils', () => ({
   isTrustedIpcEvent: mocks.isTrustedIpcEvent,
 }));
 
+vi.mock('../main/logger', () => ({
+  logger: {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+  },
+}));
+
 async function freshImport() {
   vi.resetModules();
   return import('../main/thumbnailCache');
@@ -294,17 +303,16 @@ describe('cleanupOldThumbnails', () => {
 
   it('catches and logs top-level errors (e.g. ensureCacheDir failure)', async () => {
     const mod = await freshImport();
-    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { logger } = await import('../main/logger');
 
     mocks.fsMkdir.mockRejectedValueOnce(new Error('ENOSPC'));
 
     await mod.cleanupOldThumbnails();
 
-    expect(spy).toHaveBeenCalledWith(
+    expect(logger.error).toHaveBeenCalledWith(
       expect.stringContaining('[ThumbnailCache]'),
       expect.any(Error)
     );
-    spy.mockRestore();
   });
 });
 

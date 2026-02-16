@@ -58,10 +58,10 @@ export async function getDrives(): Promise<string[]> {
         }
       }
       if (drives.size > 0) {
-        console.log('[Drives] PowerShell detected drives:', Array.from(drives).join(', '));
+        logger.info('[Drives] PowerShell detected drives:', Array.from(drives).join(', '));
       }
     } catch (e) {
-      console.log('[Drives] PowerShell drive detection failed:', (e as Error).message);
+      logger.info('[Drives] PowerShell drive detection failed:', (e as Error).message);
     }
 
     // fallback to wmic
@@ -76,16 +76,16 @@ export async function getDrives(): Promise<string[]> {
           }
         }
         if (drives.size > 0) {
-          console.log('[Drives] WMIC detected drives:', Array.from(drives).join(', '));
+          logger.info('[Drives] WMIC detected drives:', Array.from(drives).join(', '));
         }
       } catch (e) {
-        console.log('[Drives] WMIC drive detection failed:', (e as Error).message);
+        logger.info('[Drives] WMIC drive detection failed:', (e as Error).message);
       }
     }
 
     // direct fs check fallback
     if (drives.size === 0) {
-      console.log('[Drives] Falling back to direct drive letter check...');
+      logger.info('[Drives] Falling back to direct drive letter check...');
       const driveLetters: string[] = [];
       for (let i = 65; i <= 90; i++) {
         driveLetters.push(String.fromCharCode(i) + ':\\');
@@ -109,12 +109,12 @@ export async function getDrives(): Promise<string[]> {
       });
 
       if (drives.size > 0) {
-        console.log('[Drives] Direct check detected drives:', Array.from(drives).join(', '));
+        logger.info('[Drives] Direct check detected drives:', Array.from(drives).join(', '));
       }
     }
 
     if (drives.size === 0) {
-      console.log('[Drives] No drives detected, defaulting to C:\\');
+      logger.info('[Drives] No drives detected, defaulting to C:\\');
       const result = ['C:\\'];
       cachedDrives = result;
       drivesCacheTime = Date.now();
@@ -191,7 +191,7 @@ async function getWindowsDriveLabels(): Promise<Map<string, string>> {
       return labels;
     }
   } catch (e) {
-    console.log('[Drives] Get-Volume label detection failed:', (e as Error).message);
+    logger.info('[Drives] Get-Volume label detection failed:', (e as Error).message);
   }
 
   // fallback to wmic (this only works on W10)
@@ -213,7 +213,7 @@ async function getWindowsDriveLabels(): Promise<Map<string, string>> {
       }
     }
   } catch (e) {
-    console.log('[Drives] WMIC label detection failed:', (e as Error).message);
+    logger.info('[Drives] WMIC label detection failed:', (e as Error).message);
   }
 
   return labels;
@@ -233,7 +233,7 @@ async function getDarwinRootLabel(): Promise<string | null> {
       }
     }
   } catch (e) {
-    console.log('[Drives] diskutil label detection failed:', (e as Error).message);
+    logger.info('[Drives] diskutil label detection failed:', (e as Error).message);
   }
   return null;
 }

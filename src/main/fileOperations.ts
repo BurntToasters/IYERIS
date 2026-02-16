@@ -15,6 +15,7 @@ import { tryWithElevation } from './elevatedOperations';
 import { getMainWindow, getFileTasks } from './appState';
 import { isPathSafe, isUrlSafe, getErrorMessage } from './security';
 import { ignoreError } from '../shared';
+import { logger } from './logger';
 import {
   isFileHiddenCached,
   startHiddenFileCacheCleanup,
@@ -101,7 +102,7 @@ async function validateFileOperation(
   resolveConflict?: (fileName: string) => Promise<'rename' | 'skip' | 'overwrite' | 'cancel'>
 ): Promise<{ success: true; planned: PlannedFileOperation[] } | { success: false; error: string }> {
   if (!isPathSafe(destPath)) {
-    console.warn(`[Security] Invalid destination path rejected:`, destPath);
+    logger.warn(`[Security] Invalid destination path rejected:`, destPath);
     return { success: false, error: 'Invalid destination path' };
   }
 
@@ -121,7 +122,7 @@ async function validateFileOperation(
 
   for (const sourcePath of sourcePaths) {
     if (!isPathSafe(sourcePath)) {
-      console.warn(`[Security] Invalid source path rejected:`, sourcePath);
+      logger.warn(`[Security] Invalid source path rejected:`, sourcePath);
       return { success: false, error: 'Invalid source path' };
     }
 
@@ -138,7 +139,7 @@ async function validateFileOperation(
     try {
       stats = await fs.stat(sourcePath);
     } catch {
-      console.log(`[${operationType}] Source file not found:`, sourcePath);
+      logger.info(`[${operationType}] Source file not found:`, sourcePath);
       return { success: false, error: `Source file not found: ${itemName}` };
     }
 
@@ -326,7 +327,7 @@ export function setupFileOperationHandlers(): void {
       streamOnly?: boolean
     ): Promise<DirectoryResponse> => {
       if (!isPathSafe(dirPath)) {
-        console.warn('[Security] Invalid path rejected:', dirPath);
+        logger.warn('[Security] Invalid path rejected:', dirPath);
         return { success: false, error: 'Invalid path' };
       }
 
@@ -429,13 +430,13 @@ export function setupFileOperationHandlers(): void {
 
       if (parsed) {
         if (!isUrlSafe(filePath)) {
-          console.warn('[Security] Unsafe URL rejected:', filePath);
+          logger.warn('[Security] Unsafe URL rejected:', filePath);
           return { success: false, error: 'Invalid or unsafe URL' };
         }
         if (parsed.protocol === 'file:') {
           const targetPath = fileURLToPath(parsed);
           if (!isPathSafe(targetPath)) {
-            console.warn('[Security] Invalid path rejected:', targetPath);
+            logger.warn('[Security] Invalid path rejected:', targetPath);
             return { success: false, error: 'Invalid path' };
           }
           const openResult = await shell.openPath(targetPath);
@@ -450,7 +451,7 @@ export function setupFileOperationHandlers(): void {
       }
 
       if (!isPathSafe(filePath)) {
-        console.warn('[Security] Invalid path rejected:', filePath);
+        logger.warn('[Security] Invalid path rejected:', filePath);
         return { success: false, error: 'Invalid path' };
       }
       const openResult = await shell.openPath(filePath);
@@ -489,11 +490,11 @@ export function setupFileOperationHandlers(): void {
       folderName: string
     ): Promise<PathResponse> => {
       if (!isPathSafe(parentPath)) {
-        console.warn('[Security] Invalid parent path rejected:', parentPath);
+        logger.warn('[Security] Invalid parent path rejected:', parentPath);
         return { success: false, error: 'Invalid path' };
       }
       if (!isValidChildName(folderName)) {
-        console.warn('[Security] Invalid folder name rejected:', folderName);
+        logger.warn('[Security] Invalid folder name rejected:', folderName);
         return { success: false, error: 'Invalid folder name' };
       }
 
@@ -510,7 +511,7 @@ export function setupFileOperationHandlers(): void {
         },
       });
 
-      console.log('[Create] Folder created:', newPath);
+      logger.info('[Create] Folder created:', newPath);
       return { success: true, path: newPath };
     }
   );
@@ -520,7 +521,7 @@ export function setupFileOperationHandlers(): void {
     async (_event: IpcMainInvokeEvent, itemPath: string): Promise<ApiResponse> => {
       try {
         if (!isPathSafe(itemPath)) {
-          console.warn('[Security] Invalid path rejected:', itemPath);
+          logger.warn('[Security] Invalid path rejected:', itemPath);
           return { success: false, error: 'Invalid path' };
         }
 
@@ -528,7 +529,7 @@ export function setupFileOperationHandlers(): void {
 
         clearUndoStackForPath(itemPath);
 
-        console.log(
+        logger.info(
           '[Trash] Item moved to trash:',
           itemPath,
           '- Undo stack size:',
@@ -536,7 +537,7 @@ export function setupFileOperationHandlers(): void {
         );
         return { success: true };
       } catch (error) {
-        console.error('[Trash] Error:', error);
+        logger.error('[Trash] Error:', error);
         return { success: false, error: getErrorMessage(error) };
       }
     }
@@ -562,10 +563,10 @@ export function setupFileOperationHandlers(): void {
         }
       }
 
-      console.log('[Trash] Opened system trash folder');
+      logger.info('[Trash] Opened system trash folder');
       return { success: true };
     } catch (error) {
-      console.error('[Trash] Error opening trash:', error);
+      logger.error('[Trash] Error opening trash:', error);
       return { success: false, error: getErrorMessage(error) };
     }
   });
@@ -575,7 +576,7 @@ export function setupFileOperationHandlers(): void {
     async (_event: IpcMainInvokeEvent, itemPath: string): Promise<ApiResponse> => {
       try {
         if (!isPathSafe(itemPath)) {
-          console.warn('[Security] Invalid path rejected:', itemPath);
+          logger.warn('[Security] Invalid path rejected:', itemPath);
           return { success: false, error: 'Invalid path' };
         }
 
@@ -600,14 +601,14 @@ export function setupFileOperationHandlers(): void {
           return { success: false, error: result.error };
         }
 
-        console.log(
+        logger.info(
           '[Delete] Item permanently deleted:',
           itemPath,
           result.elevated ? '(elevated)' : ''
         );
         return { success: true };
       } catch (error) {
-        console.error('[Delete] Error:', error);
+        logger.error('[Delete] Error:', error);
         return { success: false, error: getErrorMessage(error) };
       }
     }
@@ -617,11 +618,11 @@ export function setupFileOperationHandlers(): void {
     'rename-item',
     async (_event: IpcMainInvokeEvent, oldPath: string, newName: string): Promise<PathResponse> => {
       if (!isPathSafe(oldPath)) {
-        console.warn('[Security] Invalid path rejected:', oldPath);
+        logger.warn('[Security] Invalid path rejected:', oldPath);
         return { success: false, error: 'Invalid path' };
       }
       if (!isValidChildName(newName)) {
-        console.warn('[Security] Invalid new name rejected:', newName);
+        logger.warn('[Security] Invalid new name rejected:', newName);
         return { success: false, error: 'Invalid file name' };
       }
 
@@ -652,7 +653,7 @@ export function setupFileOperationHandlers(): void {
           },
         });
 
-        console.log(
+        logger.info(
           '[Rename] Item renamed:',
           oldPath,
           '->',
@@ -678,11 +679,11 @@ export function setupFileOperationHandlers(): void {
       fileName: string
     ): Promise<PathResponse> => {
       if (!isPathSafe(parentPath)) {
-        console.warn('[Security] Invalid parent path rejected:', parentPath);
+        logger.warn('[Security] Invalid parent path rejected:', parentPath);
         return { success: false, error: 'Invalid path' };
       }
       if (!isValidChildName(fileName)) {
-        console.warn('[Security] Invalid file name rejected:', fileName);
+        logger.warn('[Security] Invalid file name rejected:', fileName);
         return { success: false, error: 'Invalid file name' };
       }
 
@@ -697,7 +698,7 @@ export function setupFileOperationHandlers(): void {
         },
       });
 
-      console.log('[Create] File created:', created.path);
+      logger.info('[Create] File created:', created.path);
       return { success: true, path: created.path };
     }
   );
@@ -888,7 +889,7 @@ export function setupFileOperationHandlers(): void {
           },
         });
 
-        console.log('[Move] Items moved:', sourcePaths.length);
+        logger.info('[Move] Items moved:', sourcePaths.length);
         return { success: true };
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);

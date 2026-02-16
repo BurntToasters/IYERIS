@@ -3,8 +3,7 @@ import { ignoreError } from './shared.js';
 import { encodeFileUrl } from './rendererUtils.js';
 import { generatePdfThumbnailPdfJs } from './rendererPdfViewer.js';
 import { ANIMATED_IMAGE_EXTENSIONS } from './fileTypes.js';
-
-export const THUMBNAIL_QUALITY_VALUES = ['low', 'medium', 'high'] as const;
+import { THUMBNAIL_QUALITY_VALUES } from './constants.js';
 
 const THUMBNAIL_ROOT_MARGIN = '100px';
 const THUMBNAIL_CACHE_MAX = 100;

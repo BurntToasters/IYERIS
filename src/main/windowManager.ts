@@ -242,8 +242,8 @@ export function createWindow(isInitialWindow: boolean = false): BrowserWindow {
       const isBeta = /-(beta|alpha|rc)/i.test(version);
       const iconName = isBeta ? 'icon-beta.png' : 'icon.png';
       const iconPath = path.join(__dirname, '..', '..', 'assets', iconName);
-      console.log(`[Window] Version: ${version}, isBeta: ${isBeta}, icon: ${iconName}`);
-      console.log(`[Window] Icon path: ${iconPath}`);
+      logger.info(`[Window] Version: ${version}, isBeta: ${isBeta}, icon: ${iconName}`);
+      logger.info(`[Window] Icon path: ${iconPath}`);
       return iconPath;
     })(),
   });
@@ -294,7 +294,7 @@ export function createWindow(isInitialWindow: boolean = false): BrowserWindow {
         event.preventDefault();
         return;
       }
-      console.warn('[Security] Blocked navigation to:', url);
+      logger.warn('[Security] Blocked navigation to:', url);
       event.preventDefault();
     }
   });
@@ -305,13 +305,13 @@ export function createWindow(isInitialWindow: boolean = false): BrowserWindow {
         event.preventDefault();
         return;
       }
-      console.warn('[Security] Blocked redirect to:', url);
+      logger.warn('[Security] Blocked redirect to:', url);
       event.preventDefault();
     }
   });
 
   const startHidden = isInitialWindow && shouldStartHidden;
-  console.log(
+  logger.info(
     '[Window] Creating window, isInitial:',
     isInitialWindow,
     'startHidden:',
@@ -322,7 +322,7 @@ export function createWindow(isInitialWindow: boolean = false): BrowserWindow {
 
   newWindow.once('ready-to-show', async () => {
     if (startHidden) {
-      console.log('[Window] Starting minimized to tray');
+      logger.info('[Window] Starting minimized to tray');
       const tray = getTray();
       if (!tray) {
         await createTray();
@@ -401,7 +401,7 @@ export function createWindow(isInitialWindow: boolean = false): BrowserWindow {
     if (mainWindow === newWindow) {
       const allWindows = BrowserWindow.getAllWindows();
       setMainWindow(allWindows.length > 0 ? allWindows[0] : null);
-      console.log('[Window] mainWindow updated after close, remaining windows:', allWindows.length);
+      logger.info('[Window] mainWindow updated after close, remaining windows:', allWindows.length);
     }
   });
 
@@ -418,13 +418,13 @@ export async function createTray(forHiddenStart: boolean = false): Promise<void>
 
   if (forHiddenStart) {
     if (getTray()) {
-      console.log(`${logPrefix} Tray already exists`);
+      logger.info(`${logPrefix} Tray already exists`);
       return;
     }
   } else {
     const settings = getCachedSettings() ?? (await loadSettings());
     if (!settings.minimizeToTray) {
-      console.log(`${logPrefix} Tray disabled in settings`);
+      logger.info(`${logPrefix} Tray disabled in settings`);
       return;
     }
 
@@ -443,15 +443,15 @@ export async function createTray(forHiddenStart: boolean = false): Promise<void>
   const iconPath = trayIconData.path;
   const trayIcon = trayIconData.icon;
   if (platform === 'darwin') {
-    console.log(`${logPrefix} macOS: Using template icon from:`, iconPath);
+    logger.info(`${logPrefix} macOS: Using template icon from:`, iconPath);
   } else if (platform === 'win32') {
-    console.log(`${logPrefix} Windows: Using icon from:`, iconPath);
+    logger.info(`${logPrefix} Windows: Using icon from:`, iconPath);
   } else {
-    console.log(`${logPrefix} Linux: Using icon from:`, iconPath);
+    logger.info(`${logPrefix} Linux: Using icon from:`, iconPath);
   }
 
   if (trayIcon!.isEmpty()) {
-    console.error(`${logPrefix} Failed to load tray icon from:`, iconPath!);
+    logger.error(`${logPrefix} Failed to load tray icon from:`, iconPath!);
     return;
   }
 
@@ -507,11 +507,11 @@ export async function createTray(forHiddenStart: boolean = false): Promise<void>
       });
     }
 
-    console.log(`${logPrefix} Tray created successfully`);
+    logger.info(`${logPrefix} Tray created successfully`);
   } catch (error) {
-    console.error(`${logPrefix} Failed to create tray icon:`, error);
+    logger.error(`${logPrefix} Failed to create tray icon:`, error);
     if (!forHiddenStart) {
-      console.log(`${logPrefix} Minimize to tray feature will be disabled`);
+      logger.info(`${logPrefix} Minimize to tray feature will be disabled`);
     }
     setTray(null);
     return;

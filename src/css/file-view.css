@@ -15,7 +15,7 @@
 }
 
 .file-view::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.15);
+  background: var(--scrollbar-thumb-bg);
   border-radius: var(--scrollbar-thumb-radius);
   border: 2px solid transparent;
   background-clip: padding-box;
@@ -23,7 +23,7 @@
 }
 
 .file-view::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.25);
+  background: var(--scrollbar-thumb-hover-bg);
   background-clip: padding-box;
 }
 

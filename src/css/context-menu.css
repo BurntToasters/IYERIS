@@ -25,13 +25,7 @@
   border-radius: var(--radius-small);
   background: none;
   cursor: pointer;
-  transition:
-    background-color var(--animation-duration) var(--animation-easing),
-    border-color var(--animation-duration) var(--animation-easing),
-    color var(--animation-duration) var(--animation-easing),
-    box-shadow var(--animation-duration) var(--animation-easing),
-    transform var(--animation-duration) var(--animation-easing),
-    opacity var(--animation-duration) var(--animation-easing);
+  transition: var(--transition-standard);
   font-size: 13px;
   font-weight: 400;
   font-family: inherit;
@@ -94,13 +88,7 @@
   border-radius: var(--radius-small);
   cursor: pointer;
   font-size: 13px;
-  transition:
-    background-color var(--animation-duration) var(--animation-easing),
-    border-color var(--animation-duration) var(--animation-easing),
-    color var(--animation-duration) var(--animation-easing),
-    box-shadow var(--animation-duration) var(--animation-easing),
-    transform var(--animation-duration) var(--animation-easing),
-    opacity var(--animation-duration) var(--animation-easing);
+  transition: var(--transition-standard);
   color: var(--text-primary);
 }
 

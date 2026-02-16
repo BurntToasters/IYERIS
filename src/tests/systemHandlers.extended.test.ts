@@ -111,6 +111,10 @@ vi.mock('../main/platformUtils', () => ({
 
 vi.mock('../main/logger', () => ({
   logger: {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
     getLogsDirectory: vi.fn(() => '/tmp/logs'),
   },
 }));
@@ -500,7 +504,8 @@ describe('systemHandlers extended coverage', () => {
 
     it('logs error when no terminal emulator found on linux', async () => {
       setPlatform('linux');
-      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const { logger } = await import('../main/logger');
+      vi.mocked(logger.error).mockClear();
       hoisted.spawnMock.mockImplementation(() => {
         const child = {
           once: vi.fn((event: string, cb: (...args: any[]) => void) => {
@@ -518,8 +523,7 @@ describe('systemHandlers extended coverage', () => {
 
       expect(result).toEqual({ success: false, error: 'No suitable terminal emulator found' });
       expect(hoisted.spawnMock).toHaveBeenCalledTimes(3);
-      expect(consoleSpy).toHaveBeenCalledWith('No suitable terminal emulator found');
-      consoleSpy.mockRestore();
+      expect(logger.error).toHaveBeenCalledWith('No suitable terminal emulator found');
     });
   });
 

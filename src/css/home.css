@@ -259,11 +259,7 @@
   justify-content: center;
   cursor: pointer;
   box-shadow: var(--glass-shadow);
-  transition:
-    transform var(--animation-duration) var(--animation-easing),
-    background-color var(--animation-duration) var(--animation-easing),
-    border-color var(--animation-duration) var(--animation-easing),
-    color var(--animation-duration) var(--animation-easing);
+  transition: var(--transition-standard);
   z-index: 2;
 }
 

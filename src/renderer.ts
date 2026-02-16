@@ -35,12 +35,24 @@ import { createDiskSpaceController } from './rendererDiskSpace.js';
 import { createFolderIconPickerController } from './rendererFolderIconPicker.js';
 import { createInlineRenameController } from './rendererInlineRename.js';
 import { createGitStatusController } from './rendererGitStatus.js';
-import { createSortController, SORT_BY_VALUES } from './rendererSort.js';
+import { createSortController } from './rendererSort.js';
 import { createZoomController } from './rendererZoom.js';
 import { createIndexerController } from './rendererIndexer.js';
 import { createLayoutController } from './rendererLayout.js';
 import { createDragDropController } from './rendererDragDrop.js';
-import { createThumbnailController, THUMBNAIL_QUALITY_VALUES } from './rendererThumbnails.js';
+import { createThumbnailController } from './rendererThumbnails.js';
+import {
+  THEME_VALUES,
+  SORT_BY_VALUES,
+  SORT_ORDER_VALUES,
+  FILE_CONFLICT_VALUES,
+  PREVIEW_POSITION_VALUES,
+  GRID_COLUMNS_VALUES,
+  VIEW_MODE_VALUES,
+  UPDATE_CHANNEL_VALUES,
+  THUMBNAIL_QUALITY_VALUES,
+  isOneOf,
+} from './constants.js';
 import {
   activateModal,
   deactivateModal,
@@ -93,27 +105,6 @@ function consumeEvent(e: Event): void {
   e.stopPropagation();
 }
 
-const THEME_VALUES = [
-  'dark',
-  'light',
-  'default',
-  'custom',
-  'nord',
-  'catppuccin',
-  'dracula',
-  'solarized',
-  'github',
-] as const;
-const SORT_ORDER_VALUES = ['asc', 'desc'] as const;
-const FILE_CONFLICT_VALUES = ['ask', 'rename', 'skip', 'overwrite'] as const;
-const PREVIEW_POSITION_VALUES = ['right', 'bottom'] as const;
-const GRID_COLUMNS_VALUES = ['auto', '2', '3', '4', '5', '6'] as const;
-const VIEW_MODE_VALUES = ['grid', 'list', 'column'] as const;
-const UPDATE_CHANNEL_VALUES = ['auto', 'beta', 'stable'] as const;
-
-function isOneOf<T extends readonly string[]>(value: string, options: T): value is T[number] {
-  return (options as readonly string[]).includes(value);
-}
 const DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
   year: 'numeric',
   month: 'short',

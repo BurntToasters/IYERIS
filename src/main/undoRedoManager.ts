@@ -324,7 +324,7 @@ export function setupUndoRedoHandlers(): void {
           return { success: false, error: 'Unknown action type' };
       }
     } catch (error) {
-      console.error('[Undo] Error:', error);
+      logger.error('[Undo] Error:', error);
       undoStack.push(action);
       return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
@@ -374,7 +374,7 @@ export function setupUndoRedoHandlers(): void {
           return { success: false, error: 'Unknown action type' };
       }
     } catch (error) {
-      console.error('[Redo] Error:', error);
+      logger.error('[Redo] Error:', error);
       redoStack.push(action);
       return { success: false, error: error instanceof Error ? error.message : String(error) };
     }

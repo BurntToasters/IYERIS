@@ -6,6 +6,7 @@ import * as crypto from 'crypto';
 import { isPathSafe, getErrorMessage } from './security';
 import { ignoreError } from '../shared';
 import { isTrustedIpcEvent } from './ipcUtils';
+import { logger } from './logger';
 
 const CACHE_DIR_NAME = 'thumbnail-cache';
 export const CACHE_VERSION = 1;
@@ -26,7 +27,7 @@ function debouncedEnforceCacheSize(): void {
   enforceSizeTimer = setTimeout(() => {
     enforceSizeTimer = null;
     enforceCacheSize().catch((err) =>
-      console.error('[ThumbnailCache] enforceCacheSize error:', err)
+      logger.error('[ThumbnailCache] enforceCacheSize error:', err)
     );
   }, ENFORCE_SIZE_DEBOUNCE_MS);
 }
@@ -40,7 +41,7 @@ async function ensureCacheDir(): Promise<string> {
     await fs.mkdir(cacheDir, { recursive: true });
     cacheInitialized = true;
   } catch (error) {
-    console.error('[ThumbnailCache] Failed to create cache directory:', error);
+    logger.error('[ThumbnailCache] Failed to create cache directory:', error);
     throw error;
   }
 
@@ -270,7 +271,7 @@ export async function cleanupOldThumbnails(): Promise<void> {
 
     await enforceCacheSize();
   } catch (error) {
-    console.error('[ThumbnailCache] Cleanup error:', error);
+    logger.error('[ThumbnailCache] Cleanup error:', error);
   }
 }
 

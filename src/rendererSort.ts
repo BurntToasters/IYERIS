@@ -1,9 +1,8 @@
 import type { Settings } from './types';
-
-const SORT_BY_VALUES = ['name', 'date', 'size', 'type'] as const;
+import { SORT_BY_VALUES, isOneOf } from './constants.js';
 
 function isOneOfSortBy(value: string): value is (typeof SORT_BY_VALUES)[number] {
-  return (SORT_BY_VALUES as readonly string[]).includes(value);
+  return isOneOf(value, SORT_BY_VALUES);
 }
 
 type SortControllerConfig = {
@@ -102,5 +101,3 @@ export function createSortController(config: SortControllerConfig) {
 
   return { showSortMenu, hideSortMenu, updateSortIndicators, changeSortMode };
 }
-
-export { SORT_BY_VALUES };

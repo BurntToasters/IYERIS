@@ -24,7 +24,7 @@ export function setupZoomHandlers(): void {
         logger.debug('[Zoom] Set zoom level to:', clampedZoom);
         return { success: true };
       } catch (error) {
-        console.error('[Zoom] Error:', error);
+        logger.error('[Zoom] Error:', error);
         return { success: false, error: getErrorMessage(error) };
       }
     }
@@ -47,7 +47,7 @@ export function setupZoomHandlers(): void {
         const zoomLevel = win.webContents.getZoomFactor();
         return { success: true, zoomLevel };
       } catch (error) {
-        console.error('[Zoom] Error:', error);
+        logger.error('[Zoom] Error:', error);
         return { success: false, error: getErrorMessage(error) };
       }
     }

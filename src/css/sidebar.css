@@ -82,13 +82,7 @@
   border-radius: var(--radius-small);
   cursor: pointer;
   color: var(--text-primary);
-  transition:
-    background-color var(--animation-duration) var(--animation-easing),
-    border-color var(--animation-duration) var(--animation-easing),
-    color var(--animation-duration) var(--animation-easing),
-    box-shadow var(--animation-duration) var(--animation-easing),
-    transform var(--animation-duration) var(--animation-easing),
-    opacity var(--animation-duration) var(--animation-easing);
+  transition: var(--transition-standard);
   z-index: 50;
   flex-shrink: 0;
 }
@@ -148,14 +142,14 @@
 }
 
 .sidebar::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.12);
+  background: var(--scrollbar-thumb-bg);
   border-radius: 3px;
   border: 1px solid transparent;
   background-clip: padding-box;
 }
 
 .sidebar::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: var(--scrollbar-thumb-hover-bg);
   background-clip: padding-box;
 }
 
@@ -338,13 +332,7 @@
   padding: var(--nav-item-padding-v) var(--nav-item-padding-h);
   border-radius: var(--radius-small);
   cursor: pointer;
-  transition:
-    background-color var(--animation-duration) var(--animation-easing),
-    border-color var(--animation-duration) var(--animation-easing),
-    color var(--animation-duration) var(--animation-easing),
-    box-shadow var(--animation-duration) var(--animation-easing),
-    transform var(--animation-duration) var(--animation-easing),
-    opacity var(--animation-duration) var(--animation-easing);
+  transition: var(--transition-standard);
   font-size: var(--font-size-nav);
   font-weight: 500;
   color: var(--text-secondary);

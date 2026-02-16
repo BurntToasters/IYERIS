@@ -4,6 +4,7 @@ import type { FileItem, ApiResponse, IndexSearchResponse, IndexEntry, IndexStatu
 import { getFileTasks, getIndexerTasks, getFileIndexer } from './appState';
 import { isPathSafe, getErrorMessage } from './security';
 import { isTrustedIpcEvent } from './ipcUtils';
+import { logger } from './logger';
 
 interface SearchFilters {
   fileType?: string;
@@ -197,7 +198,7 @@ export function setupSearchHandlers(): void {
 
         return { success: true, results };
       } catch (error) {
-        console.error('[Indexer] Search error:', error);
+        logger.error('[Indexer] Search error:', error);
         return { success: false, error: getErrorMessage(error) };
       }
     }
@@ -213,11 +214,11 @@ export function setupSearchHandlers(): void {
         return { success: false, error: 'Indexer not initialized' };
       }
 
-      console.log('[Indexer] Rebuild requested');
+      logger.info('[Indexer] Rebuild requested');
       await fileIndexer.rebuildIndex();
       return { success: true };
     } catch (error) {
-      console.error('[Indexer] Rebuild error:', error);
+      logger.error('[Indexer] Rebuild error:', error);
       return { success: false, error: getErrorMessage(error) };
     }
   });
@@ -239,7 +240,7 @@ export function setupSearchHandlers(): void {
         const status = fileIndexer.getStatus();
         return { success: true, status };
       } catch (error) {
-        console.error('[Indexer] Status error:', error);
+        logger.error('[Indexer] Status error:', error);
         return { success: false, error: getErrorMessage(error) };
       }
     }

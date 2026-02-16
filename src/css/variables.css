@@ -73,10 +73,19 @@
   --animation-duration: 200ms;
   --animation-easing: cubic-bezier(0.33, 1, 0.68, 1);
   --animation-easing-spring: cubic-bezier(0.33, 1, 0.68, 1);
+  --transition-standard:
+    background-color var(--animation-duration) var(--animation-easing),
+    border-color var(--animation-duration) var(--animation-easing),
+    color var(--animation-duration) var(--animation-easing),
+    box-shadow var(--animation-duration) var(--animation-easing),
+    transform var(--animation-duration) var(--animation-easing),
+    opacity var(--animation-duration) var(--animation-easing);
 
   --scrollbar-width: 10px;
   --scrollbar-thumb-radius: 5px;
   --scrollbar-show-always: 1;
+  --scrollbar-thumb-bg: rgba(255, 255, 255, 0.15);
+  --scrollbar-thumb-hover-bg: rgba(255, 255, 255, 0.25);
 
   --font-size-base: 13px;
   --font-size-file-name: 12px;
