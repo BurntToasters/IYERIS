@@ -192,10 +192,9 @@ export function createBootstrapController(config: BootstrapConfig) {
       config.updateUndoRedoState();
 
       window.electronAPI.getZoomLevel().then((zoomResult) => {
-        if (zoomResult.success && zoomResult.zoomLevel) {
-          config.setZoomLevel(zoomResult.zoomLevel);
-          config.updateZoomDisplay();
-        }
+        if (!zoomResult.success) return;
+        config.setZoomLevel(zoomResult.zoomLevel);
+        config.updateZoomDisplay();
       });
 
       const cleanupUpdateAvailable = window.electronAPI.onUpdateAvailable((_info) => {

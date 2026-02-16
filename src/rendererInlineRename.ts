@@ -66,27 +66,28 @@ export function createInlineRenameController(deps: InlineRenameDeps) {
         ? await window.electronAPI.createFile(currentPath, finalName)
         : await window.electronAPI.createFolder(currentPath, finalName);
 
-    if (result.success && result.path) {
-      const createdPath = result.path;
-      await deps.navigateTo(currentPath);
-      setTimeout(() => {
-        if (typeof document === 'undefined') return;
-        const fileItems = document.querySelectorAll('.file-item');
-        for (const item of Array.from(fileItems)) {
-          const nameEl = item.querySelector('.file-name');
-          if (nameEl?.textContent === finalName) {
-            startInlineRename(item as HTMLElement, finalName, createdPath);
-            break;
-          }
-        }
-      }, 100);
-    } else {
+    if (!result.success) {
       await deps.showAlert(
-        result.error || 'Unknown error',
+        result.error || 'Operation failed',
         `Error Creating ${type === 'file' ? 'File' : 'Folder'}`,
         'error'
       );
+      return;
     }
+
+    const createdPath = result.path;
+    await deps.navigateTo(currentPath);
+    setTimeout(() => {
+      if (typeof document === 'undefined') return;
+      const fileItems = document.querySelectorAll('.file-item');
+      for (const item of Array.from(fileItems)) {
+        const nameEl = item.querySelector('.file-name');
+        if (nameEl?.textContent === finalName) {
+          startInlineRename(item as HTMLElement, finalName, createdPath);
+          break;
+        }
+      }
+    }, 100);
   }
 
   async function createNewFileWithInlineRename() {
@@ -147,18 +148,18 @@ export function createInlineRenameController(deps: InlineRenameDeps) {
           return;
         }
         const result = await window.electronAPI.renameItem(itemPath, newName);
-        if (result.success) {
-          nameElement.style.display = '';
-          nameElement.textContent = newName;
-          input.remove();
-          fileItem.classList.remove('renaming');
-          await deps.navigateTo(deps.getCurrentPath());
-        } else {
-          await deps.showAlert(result.error || 'Unknown error', 'Error Renaming', 'error');
+        if (!result.success) {
+          await deps.showAlert(result.error || 'Operation failed', 'Error Renaming', 'error');
           nameElement.style.display = '';
           input.remove();
           fileItem.classList.remove('renaming');
+          return;
         }
+        nameElement.style.display = '';
+        nameElement.textContent = newName;
+        input.remove();
+        fileItem.classList.remove('renaming');
+        await deps.navigateTo(deps.getCurrentPath());
       } else {
         nameElement.style.display = '';
         input.remove();

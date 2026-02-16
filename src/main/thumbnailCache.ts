@@ -7,6 +7,12 @@ import { isPathSafe, getErrorMessage } from './security';
 import { ignoreError } from '../shared';
 import { isTrustedIpcEvent } from './ipcUtils';
 import { logger } from './logger';
+import type {
+  ThumbnailCacheResponse,
+  ThumbnailClearResponse,
+  ThumbnailCacheSizeResponse,
+  ThumbnailSaveResponse,
+} from '../types';
 
 const CACHE_DIR_NAME = 'thumbnail-cache';
 export const CACHE_VERSION = 1;
@@ -120,9 +126,7 @@ async function getCachePath(filePath: string, mtime: number): Promise<string> {
   return path.join(cacheSubDir, `${key}.jpg`);
 }
 
-export async function getThumbnailFromCache(
-  filePath: string
-): Promise<{ success: boolean; dataUrl?: string; error?: string }> {
+export async function getThumbnailFromCache(filePath: string): Promise<ThumbnailCacheResponse> {
   try {
     if (!isPathSafe(filePath)) {
       return { success: false, error: 'Invalid path' };
@@ -147,7 +151,7 @@ export async function getThumbnailFromCache(
 export async function saveThumbnailToCache(
   filePath: string,
   dataUrl: string
-): Promise<{ success: boolean; error?: string }> {
+): Promise<ThumbnailSaveResponse> {
   try {
     if (!isPathSafe(filePath)) {
       return { success: false, error: 'Invalid path' };
@@ -192,7 +196,7 @@ export async function saveThumbnailToCache(
   }
 }
 
-export async function clearThumbnailCache(): Promise<{ success: boolean; error?: string }> {
+export async function clearThumbnailCache(): Promise<ThumbnailClearResponse> {
   try {
     const dir = await ensureCacheDir();
     const entries = await fs.readdir(dir, { withFileTypes: true });
@@ -210,12 +214,7 @@ export async function clearThumbnailCache(): Promise<{ success: boolean; error?:
   }
 }
 
-export async function getThumbnailCacheSize(): Promise<{
-  success: boolean;
-  sizeBytes?: number;
-  fileCount?: number;
-  error?: string;
-}> {
+export async function getThumbnailCacheSize(): Promise<ThumbnailCacheSizeResponse> {
   try {
     const dir = await ensureCacheDir();
     let totalSize = 0;

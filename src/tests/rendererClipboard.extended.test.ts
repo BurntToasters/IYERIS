@@ -168,7 +168,7 @@ describe('createClipboardController — extended', () => {
 
     it('does nothing when folder selection returns no path', async () => {
       setupElectronApi({
-        selectFolder: vi.fn().mockResolvedValue({ success: true, path: '' }),
+        selectFolder: vi.fn().mockResolvedValue({ success: false, error: 'No folder selected' }),
       });
       const deps = createDeps({ selectedItems: new Set(['/a.txt']) });
       const ctrl = createClipboardController(deps);

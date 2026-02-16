@@ -295,25 +295,39 @@ export function createSearchController(deps: SearchDeps) {
         );
         if (currentRequestId !== searchRequestId) return;
 
-        if (result.success && result.results) {
+        if (!result.success) {
+          if (result.error !== 'Calculation cancelled') {
+            if (result.error === 'Indexer is disabled') {
+              deps.showToast(
+                'File indexer is disabled. Enable it in settings to use global search.',
+                'Index Disabled',
+                'warning'
+              );
+            } else {
+              deps.showToast(result.error || 'Search failed', 'Search Error', 'error');
+            }
+          }
+        } else {
           deps.setAllFiles(result.results);
           deps.renderFiles(result.results, query);
-        } else if (result.error !== 'Calculation cancelled') {
-          if (result.error === 'Indexer is disabled') {
-            deps.showToast(
-              'File indexer is disabled. Enable it in settings to use global search.',
-              'Index Disabled',
-              'warning'
-            );
-          } else {
-            deps.showToast(result.error || 'Global content search failed', 'Search Error', 'error');
-          }
         }
       } else {
         result = await window.electronAPI.searchIndex(query, operationId);
         if (currentRequestId !== searchRequestId) return;
 
-        if (result.success && result.results) {
+        if (!result.success) {
+          if (result.error !== 'Calculation cancelled') {
+            if (result.error === 'Indexer is disabled') {
+              deps.showToast(
+                'File indexer is disabled. Enable it in settings to use global search.',
+                'Index Disabled',
+                'warning'
+              );
+            } else {
+              deps.showToast(result.error || 'Search failed', 'Search Error', 'error');
+            }
+          }
+        } else {
           const fileItems: FileItem[] = [];
 
           for (const entry of result.results) {
@@ -332,16 +346,6 @@ export function createSearchController(deps: SearchDeps) {
 
           deps.setAllFiles(fileItems);
           deps.renderFiles(fileItems, query);
-        } else if (result.error !== 'Calculation cancelled') {
-          if (result.error === 'Indexer is disabled') {
-            deps.showToast(
-              'File indexer is disabled. Enable it in settings to use global search.',
-              'Index Disabled',
-              'warning'
-            );
-          } else {
-            deps.showToast(result.error || 'Global search failed', 'Search Error', 'error');
-          }
         }
       }
     } else {
@@ -362,11 +366,13 @@ export function createSearchController(deps: SearchDeps) {
       }
       if (currentRequestId !== searchRequestId) return;
 
-      if (result.success && result.results) {
+      if (!result.success) {
+        if (result.error !== 'Calculation cancelled') {
+          deps.showToast(result.error || 'Search failed', 'Search Error', 'error');
+        }
+      } else {
         deps.setAllFiles(result.results);
         deps.renderFiles(result.results, searchInContents ? query : undefined);
-      } else if (result.error !== 'Calculation cancelled') {
-        deps.showToast(result.error || 'Search failed', 'Search Error', 'error');
       }
     }
 

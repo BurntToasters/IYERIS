@@ -1137,7 +1137,7 @@ async function loadSettings(): Promise<void> {
     window.electronAPI.getClipboard(),
   ]);
 
-  if (result.success && result.settings) {
+  if (result.success) {
     const defaults = createDefaultSettings();
     currentSettings = { ...defaults, ...result.settings };
     currentSettings.enableSyntaxHighlighting = currentSettings.enableSyntaxHighlighting !== false;
@@ -1459,19 +1459,19 @@ async function saveSettings() {
   currentSettings.viewMode = viewMode;
 
   const result = await saveSettingsWithTimestamp(currentSettings);
-  if (result.success) {
-    if (previousTabsEnabled !== currentSettings.enableTabs) {
-      initializeTabs();
-    }
-    applySettings(currentSettings);
-    clearSettingsChanged();
-    hideSettingsModal();
-    showToast('Settings saved successfully!', 'Settings', 'success');
-    if (currentPath) {
-      refresh();
-    }
-  } else {
-    showToast('Failed to save settings: ' + result.error, 'Error', 'error');
+  if (!result.success) {
+    showToast('Failed to save settings: ' + (result.error || 'Operation failed'), 'Error', 'error');
+    return;
+  }
+  if (previousTabsEnabled !== currentSettings.enableTabs) {
+    initializeTabs();
+  }
+  applySettings(currentSettings);
+  clearSettingsChanged();
+  hideSettingsModal();
+  showToast('Settings saved successfully!', 'Settings', 'success');
+  if (currentPath) {
+    refresh();
   }
 }
 
@@ -1492,9 +1492,7 @@ async function resetSettings() {
       window.electronAPI.resetSettings(),
       window.electronAPI.resetHomeSettings(),
     ]);
-    if (settingsResult.success && homeResult.success) {
-      await window.electronAPI.relaunchApp();
-    } else {
+    if (!settingsResult.success || !homeResult.success) {
       isResettingSettings = false;
       const errors: string[] = [];
       if (!settingsResult.success) {
@@ -1504,7 +1502,9 @@ async function resetSettings() {
         errors.push(homeResult.error || 'Failed to reset Home settings');
       }
       showToast(`Failed to reset settings: ${errors.join(' | ')}`, 'Error', 'error');
+      return;
     }
+    await window.electronAPI.relaunchApp();
   }
 }
 
@@ -1618,21 +1618,21 @@ async function handleQuickAction(action?: string | null): Promise<void> {
   const specialAction = SPECIAL_DIRECTORY_ACTIONS[action];
   if (specialAction) {
     const result = await window.electronAPI.getSpecialDirectory(specialAction.key);
-    if (result.success && result.path) {
-      navigateTo(result.path);
-    } else {
+    if (!result.success) {
       showToast(
         result.error || `Failed to open ${specialAction.label} folder`,
         'Quick Access',
         'error'
       );
+      return;
     }
+    navigateTo(result.path);
     return;
   }
 
   if (action === 'browse') {
     const result = await window.electronAPI.selectFolder();
-    if (result.success && result.path) {
+    if (result.success) {
       navigateTo(result.path);
     }
     return;
@@ -1640,11 +1640,11 @@ async function handleQuickAction(action?: string | null): Promise<void> {
 
   if (action === 'trash') {
     const result = await window.electronAPI.openTrash();
-    if (result.success) {
-      showToast('Opening system trash folder', 'Info', 'info');
-    } else {
-      showToast('Failed to open trash folder', 'Error', 'error');
+    if (!result.success) {
+      showToast(result.error || 'Failed to open trash folder', 'Error', 'error');
+      return;
     }
+    showToast('Opening system trash folder', 'Info', 'info');
   }
 }
 
@@ -2018,39 +2018,40 @@ async function navigateTo(path: string, skipHistoryUpdate = false) {
     );
     if (requestId !== directoryRequestId) return;
 
-    if (result.success) {
-      currentPath = path;
-      updateCurrentTabPath(path);
-      if (addressInput) addressInput.value = path;
-      updateBreadcrumb(path);
-      try {
-        folderTreeManager.ensurePathVisible(path);
-      } catch (error) {
-        ignoreError(error);
-      }
-      addToDirectoryHistory(path);
-
-      if (!skipHistoryUpdate && (historyIndex === -1 || history[historyIndex] !== path)) {
-        history = history.slice(0, historyIndex + 1);
-        history.push(path);
-        historyIndex = history.length - 1;
-      }
-
-      updateNavigationButtons();
-
-      if (viewMode === 'column') {
-        await renderColumnView();
-      } else {
-        renderFiles(result.contents || []);
-      }
-      updateDiskSpace();
-      if (currentSettings.enableGitStatus) {
-        fetchGitStatusAsync(path);
-        updateGitBranch(path);
-      }
-    } else {
+    if (!result.success) {
       console.error('Error loading directory:', result.error);
       showToast(result.error || 'Unknown error', 'Error Loading Directory', 'error');
+      return;
+    }
+
+    currentPath = path;
+    updateCurrentTabPath(path);
+    if (addressInput) addressInput.value = path;
+    updateBreadcrumb(path);
+    try {
+      folderTreeManager.ensurePathVisible(path);
+    } catch (error) {
+      ignoreError(error);
+    }
+    addToDirectoryHistory(path);
+
+    if (!skipHistoryUpdate && (historyIndex === -1 || history[historyIndex] !== path)) {
+      history = history.slice(0, historyIndex + 1);
+      history.push(path);
+      historyIndex = history.length - 1;
+    }
+
+    updateNavigationButtons();
+
+    if (viewMode === 'column') {
+      await renderColumnView();
+    } else {
+      renderFiles(result.contents || []);
+    }
+    updateDiskSpace();
+    if (currentSettings.enableGitStatus) {
+      fetchGitStatusAsync(path);
+      updateGitBranch(path);
     }
   } catch (error) {
     console.error('Error navigating:', error);
@@ -2191,14 +2192,14 @@ async function performUndoRedo(isUndo: boolean) {
     ? await window.electronAPI.undoAction()
     : await window.electronAPI.redoAction();
   const label = isUndo ? 'Undo' : 'Redo';
-  if (result.success) {
-    showToast(`Action ${isUndo ? 'undone' : 'redone'}`, label, 'success');
-    await updateUndoRedoState();
-    refresh();
-  } else {
+  if (!result.success) {
     showToast(result.error || `Cannot ${label.toLowerCase()}`, `${label} Failed`, 'warning');
     await updateUndoRedoState();
+    return;
   }
+  showToast(`Action ${isUndo ? 'undone' : 'redone'}`, label, 'success');
+  await updateUndoRedoState();
+  refresh();
 }
 function performUndo() {
   return performUndoRedo(true);
@@ -2372,7 +2373,7 @@ function bindClickBindings(bindings: ReadonlyArray<readonly [string, () => void]
 
 async function chooseFolderAndApply(onPathSelected: (selectedPath: string) => void): Promise<void> {
   const result = await window.electronAPI.selectFolder();
-  if (result.success && result.path) {
+  if (result.success) {
     onPathSelected(result.path);
   }
 }

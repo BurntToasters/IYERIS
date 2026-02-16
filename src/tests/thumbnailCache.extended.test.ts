@@ -86,6 +86,7 @@ describe('getThumbnailFromCache', () => {
     mocks.fsReadFile.mockResolvedValue(fakeData);
     const result = await getThumbnailFromCache('/path/to/photo.jpg');
     expect(result.success).toBe(true);
+    if (!result.success) return;
     expect(result.dataUrl).toContain('data:image/jpeg;base64,');
   });
 
@@ -198,6 +199,7 @@ describe('getThumbnailCacheSize', () => {
     const result = await getThumbnailCacheSize();
 
     expect(result.success).toBe(true);
+    if (!result.success) return;
     expect(result.sizeBytes).toBe(0);
   });
 });

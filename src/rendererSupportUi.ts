@@ -108,56 +108,57 @@ export function createSupportUiController(deps: SupportUiDeps) {
     try {
       const result = await window.electronAPI.getLicenses();
 
-      if (result.success && result.licenses) {
-        const licenses = result.licenses;
-        const packageCount = Object.keys(licenses).length;
-
-        if (totalDeps) {
-          totalDeps.textContent = packageCount.toString();
-        }
-
-        let html = '';
-
-        for (const [packageName, packageInfo] of Object.entries(licenses)) {
-          const info = packageInfo;
-          html += '<div class="license-package">';
-          html += `<div class="license-package-name">${deps.escapeHtml(packageName)}</div>`;
-          html += '<div class="license-package-info">';
-          const licenseLabel = Array.isArray(info.licenses)
-            ? info.licenses.join(', ')
-            : info.licenses || 'Unknown';
-          html += `<span class="license-package-license">${deps.escapeHtml(licenseLabel)}</span>`;
-          const repositoryUrl = sanitizeExternalUrl(normalizeRepositoryUrl(info.repository));
-          const repositoryText = getRepositoryText(info.repository);
-          if (repositoryUrl) {
-            html += `<span>Repository: <a class="license-link" href="${deps.escapeHtml(
-              repositoryUrl
-            )}" data-url="${deps.escapeHtml(
-              repositoryUrl
-            )}" rel="noopener noreferrer">${deps.escapeHtml(repositoryUrl)}</a></span>`;
-          } else if (repositoryText) {
-            html += `<span>Repository: ${deps.escapeHtml(repositoryText)}</span>`;
-          }
-          if (info.publisher) {
-            html += `<span>Publisher: ${deps.escapeHtml(info.publisher)}</span>`;
-          }
-          html += '</div>';
-
-          if (info.licenseFile && info.licenseText) {
-            html += `<div class="license-package-text">${deps.escapeHtml(
-              info.licenseText.substring(0, 1000)
-            )}${info.licenseText.length > 1000 ? '...' : ''}</div>`;
-          }
-
-          html += '</div>';
-        }
-
-        licensesContent.innerHTML = html;
-      } else {
+      if (!result.success) {
         licensesContent.innerHTML = `<p style="color: var(--error-color); text-align: center;">Error loading licenses: ${deps.escapeHtml(
           result.error || 'Unknown error'
         )}</p>`;
+        return;
       }
+
+      const licenses = result.licenses;
+      const packageCount = Object.keys(licenses).length;
+
+      if (totalDeps) {
+        totalDeps.textContent = packageCount.toString();
+      }
+
+      let html = '';
+
+      for (const [packageName, packageInfo] of Object.entries(licenses)) {
+        const info = packageInfo;
+        html += '<div class="license-package">';
+        html += `<div class="license-package-name">${deps.escapeHtml(packageName)}</div>`;
+        html += '<div class="license-package-info">';
+        const licenseLabel = Array.isArray(info.licenses)
+          ? info.licenses.join(', ')
+          : info.licenses || 'Unknown';
+        html += `<span class="license-package-license">${deps.escapeHtml(licenseLabel)}</span>`;
+        const repositoryUrl = sanitizeExternalUrl(normalizeRepositoryUrl(info.repository));
+        const repositoryText = getRepositoryText(info.repository);
+        if (repositoryUrl) {
+          html += `<span>Repository: <a class="license-link" href="${deps.escapeHtml(
+            repositoryUrl
+          )}" data-url="${deps.escapeHtml(
+            repositoryUrl
+          )}" rel="noopener noreferrer">${deps.escapeHtml(repositoryUrl)}</a></span>`;
+        } else if (repositoryText) {
+          html += `<span>Repository: ${deps.escapeHtml(repositoryText)}</span>`;
+        }
+        if (info.publisher) {
+          html += `<span>Publisher: ${deps.escapeHtml(info.publisher)}</span>`;
+        }
+        html += '</div>';
+
+        if (info.licenseFile && info.licenseText) {
+          html += `<div class="license-package-text">${deps.escapeHtml(
+            info.licenseText.substring(0, 1000)
+          )}${info.licenseText.length > 1000 ? '...' : ''}</div>`;
+        }
+
+        html += '</div>';
+      }
+
+      licensesContent.innerHTML = html;
     } catch (error) {
       licensesContent.innerHTML = `<p style="color: var(--error-color); text-align: center;">Error: ${deps.escapeHtml(
         deps.getErrorMessage(error)

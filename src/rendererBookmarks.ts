@@ -210,7 +210,11 @@ export function createBookmarksController(deps: BookmarksDeps) {
         const targetPath = draggedPaths[0];
         try {
           const propsResult = await window.electronAPI.getItemProperties(targetPath);
-          if (propsResult.success && propsResult.properties?.isDirectory) {
+          if (!propsResult.success) {
+            showToast(propsResult.error || 'Failed to add bookmark', 'Bookmarks', 'error');
+            return;
+          }
+          if (propsResult.properties?.isDirectory) {
             await addBookmarkByPath(targetPath);
           } else {
             showToast('Only folders can be bookmarked', 'Bookmarks', 'info');

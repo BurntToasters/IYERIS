@@ -158,12 +158,12 @@ export function createCompressExtractController(deps: CompressExtractDeps) {
       cleanupProgressHandler();
       deps.removeOperation(operationId);
 
-      if (result.success) {
-        deps.showToast(`Created ${archiveName}`, 'Compressed Successfully', 'success');
-        await deps.navigateTo(deps.getCurrentPath());
-      } else {
+      if (!result.success) {
         deps.showToast(result.error || 'Compression failed', 'Error', 'error');
+        return;
       }
+      deps.showToast(`Created ${archiveName}`, 'Compressed Successfully', 'success');
+      await deps.navigateTo(deps.getCurrentPath());
     } catch (error) {
       cleanupProgressHandler();
       deps.removeOperation(operationId);
@@ -646,16 +646,16 @@ export function createCompressExtractController(deps: CompressExtractDeps) {
       cleanupProgressHandler();
       deps.removeOperation(operationId);
 
-      if (result.success) {
-        deps.showToast(`Extracted to ${destPath}`, 'Extraction Complete', 'success');
-        if (trackRecent) {
-          deps.addToRecentFiles(archivePath);
-        }
-        if (deps.getCurrentPath() === baseFolder) {
-          await deps.navigateTo(deps.getCurrentPath());
-        }
-      } else {
+      if (!result.success) {
         deps.showToast(result.error || 'Extraction failed', 'Error', 'error');
+        return;
+      }
+      deps.showToast(`Extracted to ${destPath}`, 'Extraction Complete', 'success');
+      if (trackRecent) {
+        deps.addToRecentFiles(archivePath);
+      }
+      if (deps.getCurrentPath() === baseFolder) {
+        await deps.navigateTo(deps.getCurrentPath());
       }
     } catch (error) {
       cleanupProgressHandler();

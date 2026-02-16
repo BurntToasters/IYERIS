@@ -303,7 +303,7 @@ export function createThumbnailController(deps: ThumbnailDeps) {
         }
 
         const diskCacheResult = await window.electronAPI.getCachedThumbnail(item.path);
-        if (diskCacheResult.success && diskCacheResult.dataUrl) {
+        if (diskCacheResult.success) {
           if (!document.body.contains(fileItem)) return;
           cacheThumbnail(item.path, diskCacheResult.dataUrl);
           if (iconDiv) {
@@ -419,11 +419,11 @@ export function createThumbnailController(deps: ThumbnailDeps) {
     if (!sizeElement) return;
 
     const result = await window.electronAPI.getThumbnailCacheSize();
-    if (result.success && typeof result.sizeBytes === 'number') {
-      sizeElement.textContent = `(${deps.formatFileSize(result.sizeBytes)}, ${result.fileCount} files)`;
-    } else {
+    if (!result.success) {
       sizeElement.textContent = '';
+      return;
     }
+    sizeElement.textContent = `(${deps.formatFileSize(result.sizeBytes)}, ${result.fileCount} files)`;
   }
 
   return {

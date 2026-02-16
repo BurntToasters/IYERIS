@@ -153,7 +153,7 @@ describe('createNewItemWithInlineRename', () => {
     const ctrl = createInlineRenameController(deps as any);
     await ctrl.createNewItemWithInlineRename('file');
 
-    expect(deps.showAlert).toHaveBeenCalledWith('Unknown error', 'Error Creating File', 'error');
+    expect(deps.showAlert).toHaveBeenCalledWith('Operation failed', 'Error Creating File', 'error');
   });
 });
 

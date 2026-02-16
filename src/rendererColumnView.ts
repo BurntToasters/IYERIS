@@ -1,4 +1,4 @@
-import type { Settings, FileItem, DriveInfo } from './types';
+import type { Settings, FileItem, DriveInfo, DirectoryResponse } from './types';
 import { escapeHtml, ignoreError } from './shared.js';
 import { isWindowsPath, rendererPath as path } from './rendererUtils.js';
 import { isHomeViewPath } from './home.js';
@@ -300,7 +300,7 @@ export function createColumnViewController(deps: ColumnViewDeps) {
     try {
       const operationId = deps.createDirectoryOperationId('column');
       activeColumnOperationIds.add(operationId);
-      let result: { success: boolean; contents?: FileItem[]; error?: string };
+      let result: DirectoryResponse;
       try {
         result = await window.electronAPI.getDirectoryContents(
           columnPath,

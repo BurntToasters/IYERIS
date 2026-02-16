@@ -80,7 +80,7 @@ export function createClipboardController(deps: ClipboardDeps) {
     const selectedItems = deps.getSelectedItems();
     if (selectedItems.size === 0) return;
     const result = await window.electronAPI.selectFolder();
-    if (!result.success || !result.path) return;
+    if (!result.success) return;
 
     const destPath = result.path;
     const sourcePaths = Array.from(selectedItems);
@@ -112,16 +112,16 @@ export function createClipboardController(deps: ClipboardDeps) {
               currentPath,
               currentSettings.fileConflictBehavior || 'ask'
             );
-            if (result.success) {
-              deps.showToast(
-                `${systemFiles.length} item(s) pasted from system clipboard`,
-                'Success',
-                'success'
-              );
-              deps.refresh();
-            } else {
+            if (!result.success) {
               deps.showToast(result.error || 'Paste failed', 'Error', 'error');
+              return;
             }
+            deps.showToast(
+              `${systemFiles.length} item(s) pasted from system clipboard`,
+              'Success',
+              'success'
+            );
+            deps.refresh();
             return;
           }
         }
@@ -134,25 +134,25 @@ export function createClipboardController(deps: ClipboardDeps) {
         ? await window.electronAPI.copyItems(clipboard.paths, currentPath, conflictBehavior)
         : await window.electronAPI.moveItems(clipboard.paths, currentPath, conflictBehavior);
 
-      if (result.success) {
-        deps.showToast(
-          `${clipboard.paths.length} item(s) ${isCopy ? 'copied' : 'moved'}`,
-          'Success',
-          'success'
-        );
-
-        if (!isCopy) {
-          await deps.updateUndoRedoState();
-          clipboard = null;
-          window.electronAPI.setClipboard(null);
-          updateClipboardIndicator();
-        }
-
-        updateCutVisuals();
-        deps.refresh();
-      } else {
+      if (!result.success) {
         deps.showToast(result.error || 'Operation failed', 'Error', 'error');
+        return;
       }
+      deps.showToast(
+        `${clipboard.paths.length} item(s) ${isCopy ? 'copied' : 'moved'}`,
+        'Success',
+        'success'
+      );
+
+      if (!isCopy) {
+        await deps.updateUndoRedoState();
+        clipboard = null;
+        window.electronAPI.setClipboard(null);
+        updateClipboardIndicator();
+      }
+
+      updateCutVisuals();
+      deps.refresh();
     } catch {
       deps.showToast('Paste operation failed', 'Error', 'error');
     }

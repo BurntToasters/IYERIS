@@ -356,7 +356,7 @@ describe('rendererSearch — extended2', () => {
 
       await ctrl.performSearch();
 
-      expect(deps.showToast).toHaveBeenCalledWith('Global search failed', 'Search Error', 'error');
+      expect(deps.showToast).toHaveBeenCalledWith('Search failed', 'Search Error', 'error');
     });
 
     it('ignores "Calculation cancelled" on global non-content search', async () => {
@@ -476,11 +476,7 @@ describe('rendererSearch — extended2', () => {
 
       await ctrl.performSearch();
 
-      expect(deps.showToast).toHaveBeenCalledWith(
-        'Global content search failed',
-        'Search Error',
-        'error'
-      );
+      expect(deps.showToast).toHaveBeenCalledWith('Search failed', 'Search Error', 'error');
     });
 
     it('ignores "Calculation cancelled" on global content search', async () => {

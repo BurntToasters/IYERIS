@@ -252,13 +252,13 @@ export function createSettingsActionsController(deps: SettingsActionsDeps) {
       );
       if (confirmed) {
         const result = await window.electronAPI.clearThumbnailCache();
-        if (result.success) {
-          deps.clearThumbnailCacheLocal();
-          deps.showToast('Thumbnail cache cleared', 'Data', 'success');
-          deps.updateThumbnailCacheSize();
-        } else {
-          deps.showToast('Failed to clear cache', 'Error', 'error');
+        if (!result.success) {
+          deps.showToast(result.error || 'Failed to clear cache', 'Error', 'error');
+          return;
         }
+        deps.clearThumbnailCacheLocal();
+        deps.showToast('Thumbnail cache cleared', 'Data', 'success');
+        deps.updateThumbnailCacheSize();
       }
     });
 
