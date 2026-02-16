@@ -264,7 +264,21 @@ export function createFileRenderController(config: FileRenderConfig) {
     const visibleItems = settings.showHiddenFiles ? items : items.filter((item) => !item.isHidden);
 
     if (visibleItems.length === 0) {
-      if (emptyState) emptyState.style.display = 'flex';
+      if (emptyState) {
+        const emptyText = emptyState.querySelector('p');
+        const emptyActions = emptyState.querySelector('.empty-actions') as HTMLElement | null;
+        const emptyHint = emptyState.querySelector('.empty-hint') as HTMLElement | null;
+        if (searchQuery) {
+          if (emptyText) emptyText.textContent = 'No files matching your search';
+          if (emptyActions) emptyActions.style.display = 'none';
+          if (emptyHint) emptyHint.style.display = 'none';
+        } else {
+          if (emptyText) emptyText.textContent = 'This folder is empty';
+          if (emptyActions) emptyActions.style.display = '';
+          if (emptyHint) emptyHint.style.display = '';
+        }
+        emptyState.style.display = 'flex';
+      }
       config.updateStatusBar();
       return;
     }

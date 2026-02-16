@@ -58,7 +58,9 @@ function createDeps() {
   return {
     getCurrentPath: vi.fn().mockReturnValue('/home/user/documents'),
     getSelectedItems: vi.fn().mockReturnValue(new Set<string>()),
+    getAllFiles: vi.fn().mockReturnValue([]),
     showToast: vi.fn() as ReturnType<typeof vi.fn>,
+    showConfirm: vi.fn().mockResolvedValue(true),
     navigateTo: vi.fn().mockResolvedValue(undefined),
     activateModal: vi.fn(),
     deactivateModal: vi.fn(),

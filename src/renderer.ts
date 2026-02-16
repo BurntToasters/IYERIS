@@ -515,7 +515,9 @@ const {
 } = createCompressExtractController({
   getCurrentPath: () => currentPath,
   getSelectedItems: () => selectedItems,
+  getAllFiles: () => allFiles,
   showToast,
+  showConfirm,
   navigateTo: (p) => navigateTo(p),
   activateModal,
   deactivateModal,

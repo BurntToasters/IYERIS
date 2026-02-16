@@ -20,11 +20,17 @@ function getArchiveBaseName(filePath: string): string {
 type CompressExtractDeps = {
   getCurrentPath: () => string;
   getSelectedItems: () => Set<string>;
+  getAllFiles: () => FileItem[];
   showToast: (
     message: string,
     title: string,
     type: 'success' | 'error' | 'info' | 'warning'
   ) => void;
+  showConfirm: (
+    message: string,
+    title?: string,
+    type?: 'info' | 'warning' | 'error' | 'success' | 'question'
+  ) => Promise<boolean>;
   navigateTo: (path: string) => Promise<void>;
   activateModal: (el: HTMLElement) => void;
   deactivateModal: (el: HTMLElement) => void;
@@ -102,6 +108,17 @@ export function createCompressExtractController(deps: CompressExtractDeps) {
     }
 
     const outputPath = path.join(deps.getCurrentPath(), archiveName);
+
+    const existingFile = deps.getAllFiles().find((f) => f.name === archiveName);
+    if (existingFile) {
+      const overwrite = await deps.showConfirm(
+        `"${archiveName}" already exists. Overwrite it?`,
+        'File Exists',
+        'warning'
+      );
+      if (!overwrite) return;
+    }
+
     const operationId = deps.generateOperationId();
 
     deps.addOperation(operationId, 'compress', archiveName);

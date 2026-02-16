@@ -331,7 +331,7 @@ export function createSearchController(deps: SearchDeps) {
           }
 
           deps.setAllFiles(fileItems);
-          deps.renderFiles(fileItems);
+          deps.renderFiles(fileItems, query);
         } else if (result.error !== 'Calculation cancelled') {
           if (result.error === 'Indexer is disabled') {
             deps.showToast(
@@ -488,12 +488,30 @@ export function createSearchController(deps: SearchDeps) {
       const minSizeUnit = parseFloat(searchFilterSizeUnitMin.value);
       const maxSizeUnit = parseFloat(searchFilterSizeUnitMax.value);
 
+      const minSizeBytes = minSizeValue !== undefined ? minSizeValue * minSizeUnit : undefined;
+      const maxSizeBytes = maxSizeValue !== undefined ? maxSizeValue * maxSizeUnit : undefined;
+
+      if (minSizeBytes !== undefined && maxSizeBytes !== undefined && minSizeBytes > maxSizeBytes) {
+        deps.showToast('Min size cannot be greater than max size', 'Invalid Filter', 'warning');
+        searchFilterMinSize.focus();
+        return;
+      }
+
+      const dateFrom = searchFilterDateFrom.value || undefined;
+      const dateTo = searchFilterDateTo.value || undefined;
+
+      if (dateFrom && dateTo && dateFrom > dateTo) {
+        deps.showToast('Start date cannot be after end date', 'Invalid Filter', 'warning');
+        searchFilterDateFrom.focus();
+        return;
+      }
+
       currentSearchFilters = {
         fileType: fileType !== 'all' ? fileType : undefined,
-        minSize: minSizeValue !== undefined ? minSizeValue * minSizeUnit : undefined,
-        maxSize: maxSizeValue !== undefined ? maxSizeValue * maxSizeUnit : undefined,
-        dateFrom: searchFilterDateFrom.value || undefined,
-        dateTo: searchFilterDateTo.value || undefined,
+        minSize: minSizeBytes,
+        maxSize: maxSizeBytes,
+        dateFrom,
+        dateTo,
       };
 
       if (hasActiveFilters()) {

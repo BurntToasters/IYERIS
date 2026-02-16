@@ -457,7 +457,13 @@
                 <div class="search-filter-group">
                   <label for="search-filter-min-size">Size</label>
                   <div class="search-filter-size-inputs">
-                    <input type="number" id="search-filter-min-size" placeholder="Min" min="0" />
+                    <input
+                      type="number"
+                      id="search-filter-min-size"
+                      placeholder="Min"
+                      min="0"
+                      aria-label="Minimum file size"
+                    />
                     <select id="search-filter-size-unit-min">
                       <option value="1">B</option>
                       <option value="1024" selected>KB</option>
@@ -465,7 +471,13 @@
                       <option value="1073741824">GB</option>
                     </select>
                     <span>to</span>
-                    <input type="number" id="search-filter-max-size" placeholder="Max" min="0" />
+                    <input
+                      type="number"
+                      id="search-filter-max-size"
+                      placeholder="Max"
+                      min="0"
+                      aria-label="Maximum file size"
+                    />
                     <select id="search-filter-size-unit-max">
                       <option value="1">B</option>
                       <option value="1024">KB</option>
@@ -477,9 +489,19 @@
                 <div class="search-filter-group">
                   <label for="search-filter-date-from">Modified Date</label>
                   <div class="search-filter-date-inputs">
-                    <input type="date" id="search-filter-date-from" placeholder="From" />
+                    <input
+                      type="date"
+                      id="search-filter-date-from"
+                      placeholder="From"
+                      aria-label="Modified date from"
+                    />
                     <span>to</span>
-                    <input type="date" id="search-filter-date-to" placeholder="To" />
+                    <input
+                      type="date"
+                      id="search-filter-date-to"
+                      placeholder="To"
+                      aria-label="Modified date to"
+                    />
                   </div>
                 </div>
                 <div class="search-filter-group">

@@ -4,6 +4,7 @@ import { promisify } from 'util';
 import { isPathSafe } from './security';
 import { ignoreError } from '../shared';
 import { spawnWithTimeout } from './processUtils';
+import { logger } from './logger';
 
 const execAsync = promisify(exec);
 
@@ -127,7 +128,7 @@ export async function getGitStatus(
 
     return { success: true, isGitRepo: true, statuses };
   } catch (error) {
-    console.error('[Git Status] Error:', error);
+    logger.error('[Git Status] Error:', error);
     return { success: false, error: error instanceof Error ? error.message : String(error) };
   }
 }
@@ -165,7 +166,7 @@ export async function getGitBranch(dirPath: string): Promise<{
 
     return { success: true, branch };
   } catch (error) {
-    console.error('[Git Branch] Error:', error);
+    logger.error('[Git Branch] Error:', error);
     return { success: false, error: error instanceof Error ? error.message : String(error) };
   }
 }

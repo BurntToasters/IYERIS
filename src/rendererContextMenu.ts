@@ -135,7 +135,7 @@ export function createContextMenuController(deps: ContextMenuDeps) {
     };
     showIf(addToBookmarksItem, item.isDirectory);
     showIf(changeFolderIconItem, item.isDirectory);
-    showIf(copyPathItem, !item.isDirectory);
+    showIf(copyPathItem, true);
     showIf(openTerminalItem, item.isDirectory);
     showIf(compressItem, true);
     showIf(extractItem, !item.isDirectory && isArchivePath(item.path));

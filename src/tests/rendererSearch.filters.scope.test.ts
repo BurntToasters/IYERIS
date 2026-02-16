@@ -310,7 +310,7 @@ describe('rendererSearch — extended2', () => {
       expect(mappedFiles[1].isHidden).toBe(true);
       expect(mappedFiles[2].isDirectory).toBe(true);
 
-      expect(deps.renderFiles).toHaveBeenCalledWith(mappedFiles);
+      expect(deps.renderFiles).toHaveBeenCalledWith(mappedFiles, 'app');
     });
 
     it('shows "Index Disabled" warning on global non-content search', async () => {
