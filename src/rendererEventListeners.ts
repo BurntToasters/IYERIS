@@ -155,7 +155,6 @@ export function createEventListenersController(config: EventListenersConfig) {
     const cleanupClipboard = window.electronAPI.onClipboardChanged((newClipboard) => {
       config.clipboardOnClipboardChanged(newClipboard);
       config.clipboardUpdateCutVisuals();
-      console.log('[Sync] Clipboard updated from another window');
     });
     config.getIpcCleanupFunctions().push(cleanupClipboard);
 
@@ -167,11 +166,9 @@ export function createEventListenersController(config: EventListenersConfig) {
       const newTimestamp = typeof newSettings._timestamp === 'number' ? newSettings._timestamp : 0;
 
       if ((newTimestamp as number) < (currentTimestamp as number)) {
-        console.log('[Sync] Ignoring stale settings from another window');
         return;
       }
 
-      console.log('[Sync] Settings updated from another window');
       config.setCurrentSettings(newSettings);
       config.applySettings(newSettings);
       const settingsModal = document.getElementById('settings-modal') as HTMLElement | null;

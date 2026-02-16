@@ -12,10 +12,14 @@ export function spawnWithTimeout(
   command: string,
   args: string[],
   timeoutMs: number,
-  options: Parameters<typeof spawn>[2]
+  options: Parameters<typeof spawn>[2] = {}
 ): { child: ReturnType<typeof spawn>; timedOut: () => boolean } {
   let didTimeout = false;
-  const child = spawn(command, args, options);
+  const child = spawn(command, args, {
+    ...options,
+    shell: options.shell ?? false,
+    stdio: options.stdio ?? 'pipe',
+  });
   const timeout = setTimeout(() => {
     didTimeout = true;
     try {
@@ -36,28 +40,76 @@ export async function captureSpawnOutput(
   command: string,
   args: string[],
   timeoutMs: number,
-  options: Parameters<typeof spawn>[2]
+  options: Parameters<typeof spawn>[2] = {}
 ): Promise<SpawnCaptureResult> {
   const { child, timedOut } = spawnWithTimeout(command, args, timeoutMs, options);
   const MAX_OUTPUT_BYTES = 10 * 1024 * 1024;
   let stdout = '';
   let stderr = '';
+  let stdoutBytes = 0;
+  let stderrBytes = 0;
+
+  const appendChunk = (chunk: Buffer | string, sink: 'stdout' | 'stderr'): void => {
+    const text = typeof chunk === 'string' ? chunk : chunk.toString();
+    const currentBytes = sink === 'stdout' ? stdoutBytes : stderrBytes;
+    if (currentBytes >= MAX_OUTPUT_BYTES) {
+      return;
+    }
+    const chunkBytes = Buffer.byteLength(text);
+    const remainingBytes = MAX_OUTPUT_BYTES - currentBytes;
+    if (chunkBytes <= remainingBytes) {
+      if (sink === 'stdout') {
+        stdout += text;
+        stdoutBytes += chunkBytes;
+      } else {
+        stderr += text;
+        stderrBytes += chunkBytes;
+      }
+      return;
+    }
+
+    const truncated = Buffer.from(text).subarray(0, remainingBytes).toString();
+    if (sink === 'stdout') {
+      stdout += truncated;
+      stdoutBytes = MAX_OUTPUT_BYTES;
+    } else {
+      stderr += truncated;
+      stderrBytes = MAX_OUTPUT_BYTES;
+    }
+  };
+
+  const waitForStreamCompletion = (
+    stream: NodeJS.ReadableStream | null | undefined
+  ): Promise<void> => {
+    if (!stream) return Promise.resolve();
+    return new Promise<void>((resolve) => {
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        resolve();
+      };
+      stream.once('end', finish);
+      stream.once('close', finish);
+      stream.once('error', finish);
+    });
+  };
 
   child.stdout?.on('data', (data: Buffer) => {
-    if (stdout.length < MAX_OUTPUT_BYTES) {
-      stdout += data.toString();
-    }
+    appendChunk(data, 'stdout');
   });
   child.stderr?.on('data', (data: Buffer) => {
-    if (stderr.length < MAX_OUTPUT_BYTES) {
-      stderr += data.toString();
-    }
+    appendChunk(data, 'stderr');
   });
+
+  const stdoutDone = waitForStreamCompletion(child.stdout);
+  const stderrDone = waitForStreamCompletion(child.stderr);
 
   const code = await new Promise<number | null>((resolve, reject) => {
     child.on('error', reject);
     child.on('close', resolve);
   });
+  await Promise.all([stdoutDone, stderrDone]);
 
   return { code, stdout, stderr, timedOut: timedOut() };
 }

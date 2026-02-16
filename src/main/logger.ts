@@ -1,9 +1,10 @@
 import log from 'electron-log';
 import * as path from 'path';
 import * as os from 'os';
-import { ignoreError } from '../shared';
+import * as fs from 'fs';
 
 const isDebugEnabled = process.argv.includes('--enable-logging') || process.env.DEBUG === 'true';
+const isTestEnv = process.env.VITEST === 'true' || process.env.NODE_ENV === 'test';
 
 const sensitivePatterns: RegExp[] = [
   /[A-Za-z]:\\Users\\[^\\]+/gi,
@@ -55,6 +56,50 @@ function sanitizeArgs(args: unknown[]): unknown[] {
   return args.map(sanitize);
 }
 
+function getCandidateLogDirectories(): string[] {
+  const candidates: string[] = [];
+  const customDir = process.env.IYERIS_LOG_DIR;
+  if (customDir && customDir.trim().length > 0) {
+    candidates.push(customDir);
+  }
+
+  if (!isTestEnv) {
+    if (process.platform === 'win32') {
+      const appData = process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming');
+      candidates.push(path.join(appData, 'iyeris', 'logs'));
+    } else if (process.platform === 'darwin') {
+      candidates.push(path.join(os.homedir(), 'Library', 'Logs', 'iyeris'));
+    } else {
+      candidates.push(path.join(os.homedir(), '.config', 'iyeris', 'logs'));
+    }
+  }
+
+  candidates.push(path.join(os.homedir(), '.iyeris', 'logs'));
+  candidates.push(path.join(os.tmpdir(), 'iyeris', 'logs'));
+  return candidates;
+}
+
+function findWritableLogPath(): string | null {
+  for (const dirPath of getCandidateLogDirectories()) {
+    const candidatePath = path.join(dirPath, 'main.log');
+    try {
+      fs.mkdirSync(path.dirname(candidatePath), { recursive: true });
+      fs.appendFileSync(candidatePath, '');
+      return candidatePath;
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
+const resolvedLogPath = findWritableLogPath();
+if (resolvedLogPath) {
+  log.transports.file.resolvePathFn = () => resolvedLogPath;
+} else {
+  log.transports.file.level = false;
+}
+
 log.transports.file.maxSize = 2 * 1024 * 1024;
 log.transports.file.format = '[{y}-{m}-{d} {h}:{i}:{s}.{ms}] [{level}] {text}';
 log.transports.console.format = '[{level}] {text}';
@@ -65,10 +110,25 @@ log.transports.file.archiveLogFn = (oldLogFile) => {
   const newPath = path.join(info.dir, `${info.name}.${timestamp}${info.ext}`);
   try {
     oldLogFile.toString = () => newPath;
-  } catch (error) {
-    ignoreError(error);
+  } catch {
+    return;
   }
 };
+
+function getTransportPath(): string | null {
+  try {
+    const fileTransport = log.transports.file as {
+      getFile?: () => { path?: string };
+    };
+    const transportPath = fileTransport.getFile?.().path;
+    if (typeof transportPath === 'string' && transportPath.length > 0) {
+      return transportPath;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
 
 export const logger = {
   debug: (...args: unknown[]): void => {
@@ -87,11 +147,12 @@ export const logger = {
     log.error(...sanitizeArgs(args));
   },
   getLogPath: (): string => {
-    return log.transports.file.getFile().path;
+    return (
+      getTransportPath() || resolvedLogPath || path.join(os.tmpdir(), 'iyeris', 'logs', 'main.log')
+    );
   },
   getLogsDirectory: (): string => {
-    const logPath = log.transports.file.getFile().path;
-    return path.dirname(logPath);
+    return path.dirname(logger.getLogPath());
   },
 };
 

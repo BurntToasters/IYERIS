@@ -1,4 +1,5 @@
 import { rendererPath as path } from './rendererUtils.js';
+import { ignoreError } from './shared.js';
 
 const SPRING_LOAD_DELAY = 800;
 
@@ -35,7 +36,7 @@ export function createDragDropController(config: DragDropConfig) {
         draggedPaths = JSON.parse(textData);
       }
     } catch (error) {
-      console.debug('[Drag] Failed to parse drag data, trying fallback methods:', error);
+      ignoreError(error);
     }
 
     if (draggedPaths.length === 0 && event.dataTransfer.files.length > 0) {

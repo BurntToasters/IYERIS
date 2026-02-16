@@ -1156,8 +1156,6 @@ async function loadSettings(): Promise<void> {
 
   if (sharedClipboard) {
     clipboardController.setClipboard(sharedClipboard);
-    const cb = clipboardController.getClipboard()!;
-    console.log('[Init] Loaded shared clipboard:', cb.operation, cb.paths.length, 'items');
   }
 
   window.addEventListener('focus', () => {
@@ -2546,9 +2544,7 @@ document.addEventListener('mousedown', (e) => {
 
 (async () => {
   try {
-    console.log('Starting IYERIS...');
     await bootstrapInit();
-    console.log('IYERIS initialized successfully');
   } catch (error) {
     console.error('Failed to initialize IYERIS:', error);
     alert('Failed to start IYERIS: ' + getErrorMessage(error));

@@ -1,7 +1,7 @@
 const { spawnSync } = require('child_process');
 
 const testVersion = require('../package.json').version;
-const scriptVersion = '1.0.2';
+const scriptVersion = '1.1.0';
 
 const colors = {
   reset: '\x1b[0m',
@@ -12,23 +12,30 @@ const colors = {
   bold: '\x1b[1m',
 };
 
-const results = {
-  lint: { status: 'pending', errors: null, warnings: null },
-  format: { status: 'pending' },
-  test: { status: 'pending', passed: null, failed: null },
-  typecheck: { status: 'pending' },
-};
+function createInitialResults() {
+  return {
+    lint: { status: 'pending', errors: null, warnings: null },
+    format: { status: 'pending' },
+    test: { status: 'pending', passed: null, failed: null },
+    typecheck: { status: 'pending' },
+  };
+}
 
-function runCommand(name, command, args, parser) {
+function getNpmCommand(platform = process.platform) {
+  return platform === 'win32' ? 'npm.cmd' : 'npm';
+}
+
+function runCommand(name, command, args, parser, results, runner = spawnSync) {
   console.log(`${colors.blue}${colors.bold}Running ${name}...${colors.reset}`);
-  const run = spawnSync(command, args, {
+  const run = runner(command, args, {
     encoding: 'utf8',
     stdio: 'pipe',
-    shell: true,
+    shell: false,
+    windowsHide: true,
   });
 
   const output = `${run.stdout || ''}${run.stderr || ''}`;
-  if (parser) parser(output);
+  if (parser) parser(output, results);
 
   if (!run.error && run.status === 0) {
     results[name].status = 'passed';
@@ -55,7 +62,7 @@ function runCommand(name, command, args, parser) {
   return false;
 }
 
-function parseLint(output) {
+function parseLint(output, results) {
   const cleanOutput = stripAnsi(output);
   const summaryMatch = cleanOutput.match(
     /✖\s+\d+\s+problems?\s+\((\d+)\s+errors?,\s+(\d+)\s+warnings?\)/
@@ -73,7 +80,7 @@ function parseLint(output) {
   results.lint.warnings = warningMatch ? parseInt(warningMatch[1], 10) : 0;
 }
 
-function parseTest(output) {
+function parseTest(output, results) {
   const cleanOutput = stripAnsi(output);
   const summaryPassedMatch = cleanOutput.match(/Tests?\s+(\d+)\s+passed/);
   const summaryFailedMatch = cleanOutput.match(/Tests?\s+(\d+)\s+failed/);
@@ -105,63 +112,89 @@ function printTail(output) {
   console.log(`${colors.red}${tail}${colors.reset}`);
 }
 
-console.log(`${colors.bold}${colors.blue}
+function printBanner() {
+  console.log(`${colors.bold}${colors.blue}
 ╔══════════════════════════════════════╗
 ║   IYERIS Quality Check Suite         ║
 ╚══════════════════════════════════════╝
 IYERIS Version: ${testVersion}
 Script Version: ${scriptVersion} 
 ${colors.reset}`);
+}
 
-// Run all checks
-runCommand('lint', 'npm', ['run', 'lint'], parseLint);
-runCommand('format', 'npm', ['run', 'format:check']);
-runCommand('test', 'npm', ['test'], parseTest);
-runCommand('typecheck', 'npm', ['run', 'typecheck']);
-
-// Print summary
-console.log(`${colors.bold}${colors.blue}
+function printSummary(results) {
+  console.log(`${colors.bold}${colors.blue}
 ╔══════════════════════════════════════╗
 ║           SUMMARY                    ║
 ╚══════════════════════════════════════╝
 ${colors.reset}`);
 
-const allPassed = Object.values(results).every((r) => r.status === 'passed');
+  const allPassed = Object.values(results).every((r) => r.status === 'passed');
 
-console.log(
-  `${colors.bold}Lint:${colors.reset}       ${
-    results.lint.status === 'passed' ? colors.green + '✓ PASS' : colors.red + '✗ FAIL'
-  }${colors.reset} (${results.lint.errors ?? 'n/a'} errors, ${results.lint.warnings ?? 'n/a'} warnings)`
-);
+  console.log(
+    `${colors.bold}Lint:${colors.reset}       ${
+      results.lint.status === 'passed' ? colors.green + '✓ PASS' : colors.red + '✗ FAIL'
+    }${colors.reset} (${results.lint.errors ?? 'n/a'} errors, ${results.lint.warnings ?? 'n/a'} warnings)`
+  );
 
-console.log(
-  `${colors.bold}Format:${colors.reset}     ${
-    results.format.status === 'passed' ? colors.green + '✓ PASS' : colors.red + '✗ FAIL'
-  }${colors.reset}`
-);
+  console.log(
+    `${colors.bold}Format:${colors.reset}     ${
+      results.format.status === 'passed' ? colors.green + '✓ PASS' : colors.red + '✗ FAIL'
+    }${colors.reset}`
+  );
 
-console.log(
-  `${colors.bold}Tests:${colors.reset}      ${
-    results.test.status === 'passed' ? colors.green + '✓ PASS' : colors.red + '✗ FAIL'
-  }${colors.reset} (${results.test.passed ?? 'n/a'} passed${
-    results.test.failed && results.test.failed > 0 ? `, ${results.test.failed} failed` : ''
-  })`
-);
+  console.log(
+    `${colors.bold}Tests:${colors.reset}      ${
+      results.test.status === 'passed' ? colors.green + '✓ PASS' : colors.red + '✗ FAIL'
+    }${colors.reset} (${results.test.passed ?? 'n/a'} passed${
+      results.test.failed && results.test.failed > 0 ? `, ${results.test.failed} failed` : ''
+    })`
+  );
 
-console.log(
-  `${colors.bold}TypeCheck:${colors.reset}  ${
-    results.typecheck.status === 'passed' ? colors.green + '✓ PASS' : colors.red + '✗ FAIL'
-  }${colors.reset}`
-);
+  console.log(
+    `${colors.bold}TypeCheck:${colors.reset}  ${
+      results.typecheck.status === 'passed' ? colors.green + '✓ PASS' : colors.red + '✗ FAIL'
+    }${colors.reset}`
+  );
 
-console.log('');
+  console.log('');
 
-if (allPassed) {
-  console.log(`${colors.green}${colors.bold}✓ All checks passed! Ready to commit.${colors.reset}`);
-  process.exit(0);
-} else {
+  if (allPassed) {
+    console.log(
+      `${colors.green}${colors.bold}✓ All checks passed! Ready to commit.${colors.reset}`
+    );
+    return 0;
+  }
+
   console.log(
     `${colors.red}${colors.bold}✗ Some checks failed. Please fix before committing.${colors.reset}`
   );
-  process.exit(1);
+  return 1;
+}
+
+function main() {
+  const results = createInitialResults();
+  const npmCommand = getNpmCommand();
+  printBanner();
+  runCommand('lint', npmCommand, ['run', 'lint'], parseLint, results);
+  runCommand('format', npmCommand, ['run', 'format:check'], undefined, results);
+  runCommand('test', npmCommand, ['test'], parseTest, results);
+  runCommand('typecheck', npmCommand, ['run', 'typecheck'], undefined, results);
+  return printSummary(results);
+}
+
+module.exports = {
+  createInitialResults,
+  getNpmCommand,
+  runCommand,
+  parseLint,
+  parseTest,
+  stripAnsi,
+  printTail,
+  printSummary,
+  main,
+};
+
+if (require.main === module) {
+  process.exit(main());
 }
