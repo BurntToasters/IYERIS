@@ -1,6 +1,6 @@
 const { spawnSync } = require('child_process');
 
-const testVersion = '1.0.0';
+const testVersion = '1.0.1';
 
 const colors = {
   reset: '\x1b[0m',
@@ -23,6 +23,7 @@ function runCommand(name, command, args, parser) {
   const run = spawnSync(command, args, {
     encoding: 'utf8',
     stdio: 'pipe',
+    shell: true,
   });
 
   const output = `${run.stdout || ''}${run.stderr || ''}`;
