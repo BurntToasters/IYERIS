@@ -8,11 +8,11 @@ function makeDeps(overrides: Partial<Parameters<typeof createGitStatusController
     getCurrentPath: () => '/test/dir',
     getFileElement: vi.fn((_path: string) => undefined as HTMLElement | undefined),
     getGitStatus: vi.fn(async () => ({
-      success: true,
+      success: true as const,
       isGitRepo: true,
       statuses: [{ path: '/test/dir/file.ts', status: 'modified' }],
     })),
-    getGitBranch: vi.fn(async () => ({ success: true, branch: 'main' })),
+    getGitBranch: vi.fn(async () => ({ success: true as const, branch: 'main' })),
     ...overrides,
   };
 }
@@ -70,7 +70,7 @@ describe('rendererGitStatus', () => {
     it('clears indicators when result is not a git repo', async () => {
       const deps = makeDeps({
         getGitStatus: vi.fn(async () => ({
-          success: true,
+          success: true as const,
           isGitRepo: false,
           statuses: [],
         })),
@@ -168,7 +168,7 @@ describe('rendererGitStatus', () => {
     it('evicts oldest cache entry when max reached', async () => {
       const deps = makeDeps({
         getGitStatus: vi.fn(async () => ({
-          success: true,
+          success: true as const,
           isGitRepo: true,
           statuses: [],
         })),

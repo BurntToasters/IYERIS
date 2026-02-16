@@ -135,7 +135,7 @@ function cacheDriveInfo(drives: DriveInfo[]): void {
 
 async function saveSettingsWithTimestamp(settings: Settings) {
   if (isResettingSettings) {
-    return { success: true };
+    return { success: true as const };
   }
   return window.electronAPI.saveSettings(settings);
 }
@@ -2178,6 +2178,7 @@ async function deleteSelected(permanent = false) {
 
 async function updateUndoRedoState() {
   const state = await window.electronAPI.getUndoRedoState();
+  if (!state.success) return;
   canUndo = state.canUndo;
   canRedo = state.canRedo;
 

@@ -174,10 +174,6 @@ export interface ContentSearchResult extends FileItem {
   matchLineNumber?: number;
 }
 
-export interface ContentSearchResponse extends ApiResponse {
-  results?: ContentSearchResult[];
-}
-
 export interface ItemProperties {
   path: string;
   name: string;
@@ -215,39 +211,113 @@ export interface ChecksumResult {
   error?: string;
 }
 
-export interface ApiResponse<T = void> {
-  success: boolean;
-  error?: string;
-  data?: T;
+export interface IpcSuccess {
+  success: true;
+  error?: undefined;
 }
 
-export interface DirectoryResponse extends ApiResponse {
-  contents?: FileItem[];
+export interface IpcError {
+  success: false;
+  error: string;
 }
 
-export interface PropertiesResponse extends ApiResponse {
-  properties?: ItemProperties;
-}
+export type IpcResult<TSuccess extends object = object> = (IpcSuccess & TSuccess) | IpcError;
 
-export interface SettingsResponse extends ApiResponse {
-  settings?: Settings;
-}
+export type ApiResponse<T = void> = T extends void ? IpcResult : IpcResult<{ data: T }>;
 
-export interface HomeSettingsResponse extends ApiResponse {
-  settings?: HomeSettings;
-}
+export type DirectoryResponse = IpcResult<{ contents: FileItem[] }>;
 
-export interface PathResponse extends ApiResponse {
-  path?: string;
-}
+export type PropertiesResponse = IpcResult<{ properties: ItemProperties }>;
+
+export type SettingsResponse = IpcResult<{ settings: Settings }>;
+
+export type HomeSettingsResponse = IpcResult<{ settings: HomeSettings }>;
+
+export type PathResponse = IpcResult<{ path: string }>;
+
+export type SearchResponse = IpcResult<{ results: FileItem[] }>;
+
+export type ContentSearchResponse = IpcResult<{ results: ContentSearchResult[] }>;
+
+export type IndexSearchResponse = IpcResult<{ results: IndexEntry[] }>;
+
+export type UndoResponse = IpcResult<{ canUndo: boolean; canRedo: boolean }>;
+
+export type UpdateCheckResponse = IpcResult<{
+  hasUpdate: boolean;
+  updateInfo?: UpdateInfo;
+  currentVersion: string;
+  latestVersion: string;
+  releaseUrl?: string;
+  isBeta?: boolean;
+  isFlatpak?: boolean;
+  flatpakMessage?: string;
+  isMas?: boolean;
+  masMessage?: string;
+  isMsStore?: boolean;
+  msStoreMessage?: string;
+  isMsi?: boolean;
+  msiMessage?: string;
+}>;
+
+export type GitStatusResponse = IpcResult<{
+  isGitRepo: boolean;
+  statuses: GitFileStatus[];
+}>;
+
+export type GitBranchResponse = IpcResult<{ branch: string }>;
+
+export type ArchiveListResponse = IpcResult<{ entries: ArchiveEntry[] }>;
+
+export type DiskSpaceResponse = IpcResult<{ total: number; free: number }>;
+
+export type ZoomLevelResponse = IpcResult<{ zoomLevel: number }>;
+
+export type FileContentResponse = IpcResult<{
+  content: string;
+  isTruncated: boolean;
+}>;
+
+export type FileDataUrlResponse = IpcResult<{ dataUrl: string }>;
+
+export type LicensesResponse = IpcResult<{ licenses: LicensesData }>;
+
+export type FullDiskAccessResponse = IpcResult<{ hasAccess: boolean }>;
+
+export type IndexStatusResponse = IpcResult<{ status: IndexStatus }>;
+
+export type FolderSizeResponse = IpcResult<{ result: FolderSizeResult }>;
+
+export type ChecksumResponse = IpcResult<{ result: ChecksumResult }>;
+
+export type ThumbnailCacheResponse = IpcResult<{ dataUrl: string }>;
+
+export type ThumbnailSaveResponse = IpcResult;
+
+export type ThumbnailClearResponse = IpcResult;
+
+export type ThumbnailCacheSizeResponse = IpcResult<{
+  sizeBytes: number;
+  fileCount: number;
+}>;
+
+export type DiagnosticsResponse = IpcResult<{ path: string }>;
+
+export type UndoRedoStateResponse = IpcResult<{
+  canUndo: boolean;
+  canRedo: boolean;
+}>;
+
+export type SystemAccentColorResponse = IpcResult<{
+  accentColor: string;
+  isDarkMode: boolean;
+}>;
+
+export type ConflictDialogResponse = 'rename' | 'skip' | 'overwrite' | 'cancel';
 
 export interface ClipboardOperation {
   operation: 'copy' | 'cut';
   paths: string[];
-}
-
-export interface SearchResponse extends ApiResponse {
-  results?: FileItem[];
 }
 
 export interface IndexEntry {
@@ -278,10 +348,6 @@ export interface IndexStatus {
   lastIndexTime: Date | null;
 }
 
-export interface IndexSearchResponse extends ApiResponse {
-  results?: IndexEntry[];
-}
-
 export interface UndoCreateAction {
   type: 'create';
   data: { path: string; isDirectory: boolean; createdAtMs?: number };
@@ -309,32 +375,10 @@ export interface UndoTrashAction {
 
 export type UndoAction = UndoCreateAction | UndoRenameAction | UndoMoveAction | UndoTrashAction;
 
-export interface UndoResponse extends ApiResponse {
-  canUndo?: boolean;
-  canRedo?: boolean;
-}
-
 export interface UpdateInfo {
   version: string;
   releaseDate: string;
   releaseNotes?: string;
-}
-
-export interface UpdateCheckResponse extends ApiResponse {
-  hasUpdate?: boolean;
-  updateInfo?: UpdateInfo;
-  currentVersion?: string;
-  latestVersion?: string;
-  releaseUrl?: string;
-  isBeta?: boolean;
-  isFlatpak?: boolean;
-  flatpakMessage?: string;
-  isMas?: boolean;
-  masMessage?: string;
-  isMsStore?: boolean;
-  msStoreMessage?: string;
-  isMsi?: boolean;
-  msiMessage?: string;
 }
 
 export interface GitFileStatus {
@@ -342,23 +386,10 @@ export interface GitFileStatus {
   status: 'modified' | 'added' | 'deleted' | 'renamed' | 'untracked' | 'ignored' | 'conflict';
 }
 
-export interface GitStatusResponse extends ApiResponse {
-  isGitRepo?: boolean;
-  statuses?: GitFileStatus[];
-}
-
-export interface GitBranchResponse extends ApiResponse {
-  branch?: string;
-}
-
 export interface ArchiveEntry {
   name: string;
   size: number;
   isDirectory: boolean;
-}
-
-export interface ArchiveListResponse extends ApiResponse {
-  entries?: ArchiveEntry[];
 }
 
 export interface UpdateDownloadProgress {
@@ -368,7 +399,22 @@ export interface UpdateDownloadProgress {
   total: number;
 }
 
+export interface ArchiveProgress {
+  operationId?: string;
+  current: number;
+  total: number;
+  name: string;
+}
+
+export interface ChecksumProgress {
+  operationId: string;
+  percent: number;
+  algorithm: string;
+}
+
 export type SpecialDirectory = 'desktop' | 'documents' | 'downloads' | 'music' | 'videos';
+
+export type ConflictBehavior = 'ask' | 'rename' | 'skip' | 'overwrite';
 
 export interface ElectronAPI {
   getDirectoryContents: (
@@ -377,12 +423,12 @@ export interface ElectronAPI {
     includeHidden?: boolean,
     streamOnly?: boolean
   ) => Promise<DirectoryResponse>;
-  cancelDirectoryContents: (operationId: string) => Promise<ApiResponse>;
+  cancelDirectoryContents: (operationId: string) => Promise<IpcResult>;
   getDrives: () => Promise<string[]>;
   getDriveInfo: () => Promise<DriveInfo[]>;
   getHomeDirectory: () => Promise<string>;
   getSpecialDirectory: (directory: SpecialDirectory) => Promise<PathResponse>;
-  openFile: (filePath: string) => Promise<ApiResponse>;
+  openFile: (filePath: string) => Promise<IpcResult>;
   selectFolder: () => Promise<PathResponse>;
   minimizeWindow: () => Promise<void>;
   maximizeWindow: () => Promise<void>;
@@ -390,30 +436,26 @@ export interface ElectronAPI {
   openNewWindow: () => Promise<void>;
   createFolder: (parentPath: string, folderName: string) => Promise<PathResponse>;
   createFile: (parentPath: string, fileName: string) => Promise<PathResponse>;
-  deleteItem: (itemPath: string) => Promise<ApiResponse>;
-  trashItem: (itemPath: string) => Promise<ApiResponse>;
-  openTrash: () => Promise<ApiResponse>;
+  deleteItem: (itemPath: string) => Promise<IpcResult>;
+  trashItem: (itemPath: string) => Promise<IpcResult>;
+  openTrash: () => Promise<IpcResult>;
   renameItem: (oldPath: string, newName: string) => Promise<PathResponse>;
   getItemProperties: (itemPath: string) => Promise<PropertiesResponse>;
   getSettings: () => Promise<SettingsResponse>;
-  saveSettings: (settings: Settings) => Promise<ApiResponse>;
-  saveSettingsSync: (settings: Settings) => ApiResponse;
-  resetSettings: () => Promise<ApiResponse>;
+  saveSettings: (settings: Settings) => Promise<IpcResult>;
+  saveSettingsSync: (settings: Settings) => IpcResult;
+  resetSettings: () => Promise<IpcResult>;
   relaunchApp: () => Promise<void>;
   getSettingsPath: () => Promise<string>;
   getHomeSettings: () => Promise<HomeSettingsResponse>;
-  saveHomeSettings: (settings: HomeSettings) => Promise<ApiResponse>;
-  resetHomeSettings: () => Promise<ApiResponse>;
+  saveHomeSettings: (settings: HomeSettings) => Promise<IpcResult>;
+  resetHomeSettings: () => Promise<IpcResult>;
   getHomeSettingsPath: () => Promise<string>;
 
-  setClipboard: (
-    clipboardData: { operation: 'copy' | 'cut'; paths: string[] } | null
-  ) => Promise<void>;
-  getClipboard: () => Promise<{ operation: 'copy' | 'cut'; paths: string[] } | null>;
+  setClipboard: (clipboardData: ClipboardOperation | null) => Promise<void>;
+  getClipboard: () => Promise<ClipboardOperation | null>;
   getSystemClipboardFiles: () => Promise<string[]>;
-  onClipboardChanged: (
-    callback: (clipboardData: { operation: 'copy' | 'cut'; paths: string[] } | null) => void
-  ) => () => void;
+  onClipboardChanged: (callback: (clipboardData: ClipboardOperation | null) => void) => () => void;
 
   setDragData: (paths: string[]) => Promise<void>;
   getDragData: () => Promise<{ paths: string[] } | null>;
@@ -425,17 +467,17 @@ export interface ElectronAPI {
   copyItems: (
     sourcePaths: string[],
     destPath: string,
-    conflictBehavior?: 'ask' | 'rename' | 'skip' | 'overwrite'
-  ) => Promise<ApiResponse>;
+    conflictBehavior?: ConflictBehavior
+  ) => Promise<IpcResult>;
   moveItems: (
     sourcePaths: string[],
     destPath: string,
-    conflictBehavior?: 'ask' | 'rename' | 'skip' | 'overwrite'
-  ) => Promise<ApiResponse>;
+    conflictBehavior?: ConflictBehavior
+  ) => Promise<IpcResult>;
   showConflictDialog: (
     fileName: string,
     operation: 'copy' | 'move'
-  ) => Promise<'rename' | 'skip' | 'overwrite' | 'cancel'>;
+  ) => Promise<ConflictDialogResponse>;
   searchFiles: (
     dirPath: string,
     query: string,
@@ -453,24 +495,16 @@ export interface ElectronAPI {
     filters?: SearchFilters,
     operationId?: string
   ) => Promise<ContentSearchResponse>;
-  getDiskSpace: (
-    drivePath: string
-  ) => Promise<{ success: boolean; total?: number; free?: number; error?: string }>;
-  restartAsAdmin: () => Promise<ApiResponse>;
-  openTerminal: (dirPath: string) => Promise<ApiResponse>;
-  elevatedCopy: (sourcePath: string, destPath: string) => Promise<ApiResponse>;
-  elevatedMove: (sourcePath: string, destPath: string) => Promise<ApiResponse>;
-  elevatedDelete: (itemPath: string) => Promise<ApiResponse>;
-  elevatedRename: (itemPath: string, newName: string) => Promise<ApiResponse>;
-  readFileContent: (
-    filePath: string,
-    maxSize?: number
-  ) => Promise<{ success: boolean; content?: string; error?: string; isTruncated?: boolean }>;
-  getFileDataUrl: (
-    filePath: string,
-    maxSize?: number
-  ) => Promise<{ success: boolean; dataUrl?: string; error?: string }>;
-  getLicenses: () => Promise<{ success: boolean; licenses?: LicensesData; error?: string }>;
+  getDiskSpace: (drivePath: string) => Promise<DiskSpaceResponse>;
+  restartAsAdmin: () => Promise<IpcResult>;
+  openTerminal: (dirPath: string) => Promise<IpcResult>;
+  elevatedCopy: (sourcePath: string, destPath: string) => Promise<IpcResult>;
+  elevatedMove: (sourcePath: string, destPath: string) => Promise<IpcResult>;
+  elevatedDelete: (itemPath: string) => Promise<IpcResult>;
+  elevatedRename: (itemPath: string, newName: string) => Promise<IpcResult>;
+  readFileContent: (filePath: string, maxSize?: number) => Promise<FileContentResponse>;
+  getFileDataUrl: (filePath: string, maxSize?: number) => Promise<FileDataUrlResponse>;
+  getLicenses: () => Promise<LicensesResponse>;
   getPlatform: () => Promise<string>;
   getAppVersion: () => Promise<string>;
   getSystemAccentColor: () => Promise<{ accentColor: string; isDarkMode: boolean }>;
@@ -478,59 +512,42 @@ export interface ElectronAPI {
   isFlatpak: () => Promise<boolean>;
   isMsStore: () => Promise<boolean>;
   getSystemTextScale: () => Promise<number>;
-  checkFullDiskAccess: () => Promise<{ success: boolean; hasAccess: boolean }>;
-  requestFullDiskAccess: () => Promise<ApiResponse>;
+  checkFullDiskAccess: () => Promise<FullDiskAccessResponse>;
+  requestFullDiskAccess: () => Promise<IpcResult>;
   checkForUpdates: () => Promise<UpdateCheckResponse>;
-  downloadUpdate: () => Promise<ApiResponse>;
-  installUpdate: () => Promise<ApiResponse>;
+  downloadUpdate: () => Promise<IpcResult>;
+  installUpdate: () => Promise<IpcResult>;
   onUpdateDownloadProgress: (callback: (progress: UpdateDownloadProgress) => void) => () => void;
   onUpdateAvailable: (callback: (info: UpdateInfo) => void) => () => void;
   onUpdateDownloaded: (callback: (info: { version: string }) => void) => () => void;
   undoAction: () => Promise<UndoResponse>;
   redoAction: () => Promise<UndoResponse>;
-  getUndoRedoState: () => Promise<{ canUndo: boolean; canRedo: boolean }>;
+  getUndoRedoState: () => Promise<UndoRedoStateResponse>;
   searchIndex: (query: string, operationId?: string) => Promise<IndexSearchResponse>;
-  cancelSearch: (operationId: string) => Promise<ApiResponse>;
-  rebuildIndex: () => Promise<ApiResponse>;
-  getIndexStatus: () => Promise<{ success: boolean; status?: IndexStatus; error?: string }>;
+  cancelSearch: (operationId: string) => Promise<IpcResult>;
+  rebuildIndex: () => Promise<IpcResult>;
+  getIndexStatus: () => Promise<IndexStatusResponse>;
   compressFiles: (
     sourcePaths: string[],
     outputPath: string,
     format?: string,
     operationId?: string,
     advancedOptions?: AdvancedCompressOptions
-  ) => Promise<ApiResponse>;
+  ) => Promise<IpcResult>;
   extractArchive: (
     archivePath: string,
     destPath: string,
     operationId?: string
-  ) => Promise<ApiResponse>;
-  cancelArchiveOperation: (operationId: string) => Promise<ApiResponse>;
-  onCompressProgress: (
-    callback: (progress: {
-      operationId?: string;
-      current: number;
-      total: number;
-      name: string;
-    }) => void
-  ) => () => void;
-  onExtractProgress: (
-    callback: (progress: {
-      operationId?: string;
-      current: number;
-      total: number;
-      name: string;
-    }) => void
-  ) => () => void;
+  ) => Promise<IpcResult>;
+  cancelArchiveOperation: (operationId: string) => Promise<IpcResult>;
+  onCompressProgress: (callback: (progress: ArchiveProgress) => void) => () => void;
+  onExtractProgress: (callback: (progress: ArchiveProgress) => void) => () => void;
   onSystemResumed: (callback: () => void) => () => void;
   onSystemThemeChanged: (callback: (data: { isDarkMode: boolean }) => void) => () => void;
-  setZoomLevel: (zoomLevel: number) => Promise<ApiResponse>;
-  getZoomLevel: () => Promise<{ success: boolean; zoomLevel?: number; error?: string }>;
-  calculateFolderSize: (
-    folderPath: string,
-    operationId: string
-  ) => Promise<{ success: boolean; result?: FolderSizeResult; error?: string }>;
-  cancelFolderSizeCalculation: (operationId: string) => Promise<ApiResponse>;
+  setZoomLevel: (zoomLevel: number) => Promise<IpcResult>;
+  getZoomLevel: () => Promise<ZoomLevelResponse>;
+  calculateFolderSize: (folderPath: string, operationId: string) => Promise<FolderSizeResponse>;
+  cancelFolderSizeCalculation: (operationId: string) => Promise<IpcResult>;
   onFolderSizeProgress: (
     callback: (progress: FolderSizeProgress & { operationId: string }) => void
   ) => () => void;
@@ -541,39 +558,22 @@ export interface ElectronAPI {
     filePath: string,
     operationId: string,
     algorithms: string[]
-  ) => Promise<{ success: boolean; result?: ChecksumResult; error?: string }>;
-  cancelChecksumCalculation: (operationId: string) => Promise<ApiResponse>;
-  onChecksumProgress: (
-    callback: (progress: { operationId: string; percent: number; algorithm: string }) => void
-  ) => () => void;
+  ) => Promise<ChecksumResponse>;
+  cancelChecksumCalculation: (operationId: string) => Promise<IpcResult>;
+  onChecksumProgress: (callback: (progress: ChecksumProgress) => void) => () => void;
   getGitStatus: (dirPath: string, includeUntracked?: boolean) => Promise<GitStatusResponse>;
   getGitBranch: (dirPath: string) => Promise<GitBranchResponse>;
   listArchiveContents: (archivePath: string) => Promise<ArchiveListResponse>;
 
-  getCachedThumbnail: (
-    filePath: string
-  ) => Promise<{ success: boolean; dataUrl?: string; error?: string }>;
-  saveCachedThumbnail: (
-    filePath: string,
-    dataUrl: string
-  ) => Promise<{ success: boolean; error?: string }>;
-  clearThumbnailCache: () => Promise<{ success: boolean; error?: string }>;
-  getThumbnailCacheSize: () => Promise<{
-    success: boolean;
-    sizeBytes?: number;
-    fileCount?: number;
-    error?: string;
-  }>;
+  getCachedThumbnail: (filePath: string) => Promise<ThumbnailCacheResponse>;
+  saveCachedThumbnail: (filePath: string, dataUrl: string) => Promise<ThumbnailSaveResponse>;
+  clearThumbnailCache: () => Promise<ThumbnailClearResponse>;
+  getThumbnailCacheSize: () => Promise<ThumbnailCacheSizeResponse>;
 
   getLogsPath: () => Promise<string>;
-  openLogsFolder: () => Promise<ApiResponse>;
-  exportDiagnostics: () => Promise<{ success: boolean; path?: string; error?: string }>;
-  getLogFileContent: () => Promise<{
-    success: boolean;
-    content?: string;
-    error?: string;
-    isTruncated?: boolean;
-  }>;
+  openLogsFolder: () => Promise<IpcResult>;
+  exportDiagnostics: () => Promise<DiagnosticsResponse>;
+  getLogFileContent: () => Promise<FileContentResponse>;
 }
 
 declare global {

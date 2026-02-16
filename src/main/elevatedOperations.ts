@@ -20,10 +20,7 @@ interface ElevatedOperation {
   newName?: string;
 }
 
-interface ElevatedResult {
-  success: boolean;
-  error?: string;
-}
+type ElevatedResult = { success: true } | { success: false; error: string };
 
 const OPERATION_TIMEOUT = 30000;
 const activeElevatedProcesses: Set<ChildProcess> = new Set();

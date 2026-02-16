@@ -354,7 +354,7 @@ export function setupFileOperationHandlers(): void {
           operationId
         );
 
-        return { success: true, contents: streamOnly ? undefined : result.contents };
+        return { success: true, contents: streamOnly ? [] : result.contents };
       } catch (error) {
         return { success: false, error: getErrorMessage(error) };
       } finally {
@@ -478,7 +478,7 @@ export function setupFileOperationHandlers(): void {
       if (!result.canceled && result.filePaths.length > 0) {
         return { success: true, path: result.filePaths[0] };
       }
-      return { success: false };
+      return { success: false, error: 'No folder selected' };
     }
   );
 
