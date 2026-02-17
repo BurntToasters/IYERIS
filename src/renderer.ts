@@ -1,6 +1,6 @@
 import type { Settings, FileItem, SpecialDirectory, DriveInfo } from './types';
 import { createFolderTreeManager } from './folderDir.js';
-import { escapeHtml, getErrorMessage, ignoreError } from './shared.js';
+import { assignKey, escapeHtml, getErrorMessage, ignoreError } from './shared.js';
 import { clearHtml, getById } from './rendererDom.js';
 import { createThemeEditorController } from './rendererThemeEditor.js';
 import {
@@ -1153,6 +1153,9 @@ async function loadSettings(): Promise<void> {
     }
 
     tourController.handleLaunch(newLaunchCount);
+  } else {
+    currentSettings = createDefaultSettings();
+    applySettings(currentSettings);
   }
 
   if (sharedClipboard) {
@@ -1311,7 +1314,7 @@ async function saveSettings() {
   ];
   for (const [id, key] of toggleMappings) {
     const el = document.getElementById(id) as HTMLInputElement | null;
-    if (el) (currentSettings as unknown as Record<string, unknown>)[key] = el.checked;
+    if (el) assignKey(currentSettings, key, el.checked as Settings[keyof Settings]);
   }
 
   // Select → enum settings mappings
@@ -1329,7 +1332,7 @@ async function saveSettings() {
   for (const [id, key, validValues] of selectMappings) {
     const el = document.getElementById(id) as HTMLSelectElement | null;
     if (el && isOneOf(el.value, validValues)) {
-      (currentSettings as unknown as Record<string, unknown>)[key] = el.value;
+      assignKey(currentSettings, key, el.value as Settings[keyof Settings]);
     }
   }
 
@@ -1345,7 +1348,7 @@ async function saveSettings() {
     if (el) {
       const val = parseInt(el.value, 10);
       if (val >= min && val <= max)
-        (currentSettings as unknown as Record<string, unknown>)[key] = val;
+        assignKey(currentSettings, key, val as Settings[keyof Settings]);
     }
   }
 
@@ -1933,7 +1936,6 @@ async function navigateTo(path: string, skipHistoryUpdate = false) {
 
   setHomeViewActive(false);
   let requestId = 0;
-  let operationId = '';
 
   try {
     resetTypeahead();
@@ -1948,11 +1950,10 @@ async function navigateTo(path: string, skipHistoryUpdate = false) {
     if (fileGrid) fileGrid.innerHTML = '';
     const request = startDirectoryRequest(path);
     requestId = request.requestId;
-    operationId = request.operationId;
 
     const result = await window.electronAPI.getDirectoryContents(
       path,
-      operationId,
+      request.operationId,
       currentSettings.showHiddenFiles,
       false
     );
@@ -2107,6 +2108,7 @@ async function deleteSelected(permanent = false) {
     allResults.push(...batchResults);
   }
   const successCount = allResults.filter((r) => r.status === 'fulfilled' && r.value.success).length;
+  const failCount = allResults.length - successCount;
   if (successCount > 0) {
     const msg = permanent
       ? `${successCount} item${successCount > 1 ? 's' : ''} permanently deleted`
@@ -2114,6 +2116,13 @@ async function deleteSelected(permanent = false) {
     showToast(msg, 'Success', 'success');
     if (!permanent) await updateUndoRedoState();
     refresh();
+  }
+  if (failCount > 0) {
+    showToast(
+      `${failCount} item${failCount > 1 ? 's' : ''} could not be deleted`,
+      'Partial Failure',
+      'error'
+    );
   }
 }
 
@@ -2233,14 +2242,12 @@ async function applyViewMode() {
 
     if (currentPath) {
       let requestId = 0;
-      let operationId = '';
       try {
         const request = startDirectoryRequest(currentPath);
         requestId = request.requestId;
-        operationId = request.operationId;
         const result = await window.electronAPI.getDirectoryContents(
           currentPath,
-          operationId,
+          request.operationId,
           currentSettings.showHiddenFiles
         );
         if (requestId !== directoryRequestId) return;

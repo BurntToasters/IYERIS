@@ -9,6 +9,7 @@ lerna-debug.log*
 **/.*/
 !.github/
 !.husky/
+!.npmrc
 
 .flatpak-builder/
 licenses.json

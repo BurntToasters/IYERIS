@@ -1,4 +1,5 @@
-import { ipcMain, IpcMainInvokeEvent } from 'electron';
+import type { IpcMainInvokeEvent } from 'electron';
+import { ipcMain } from 'electron';
 import { promises as fs } from 'fs';
 import * as path from 'path';
 import type { UndoAction, UndoRenameAction, UndoMoveAction, ApiResponse } from '../types';

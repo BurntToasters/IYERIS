@@ -273,13 +273,11 @@ export function createTourController(options: TourControllerOptions): TourContro
 
     const tooltipRect = tooltip.getBoundingClientRect();
     const placements = getPlacementOrder(prefer);
-    let chosen: TourPlacement = 'center';
-    let position = computePlacementPosition(chosen, targetRect, tooltipRect);
+    let position = computePlacementPosition('center', targetRect, tooltipRect);
 
     for (const placement of placements) {
       const candidate = computePlacementPosition(placement, targetRect, tooltipRect);
       if (placementFits(candidate.left, candidate.top, tooltipRect)) {
-        chosen = placement;
         position = candidate;
         break;
       }

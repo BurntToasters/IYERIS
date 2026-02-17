@@ -1,8 +1,8 @@
+import type { IpcMainInvokeEvent } from 'electron';
 import {
   ipcMain,
   app,
   shell,
-  IpcMainInvokeEvent,
   systemPreferences,
   nativeTheme,
   BrowserWindow,

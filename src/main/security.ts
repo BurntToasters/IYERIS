@@ -32,6 +32,12 @@ const WINDOWS_RESTRICTED_PATHS = [
   'c:\\windows\\system32\\config\\sam',
   'c:\\windows\\system32\\config\\system',
   'c:\\windows\\system32\\config\\security',
+  'c:\\windows\\system32\\config\\default',
+  'c:\\windows\\system32\\config\\software',
+  'c:\\bootmgr',
+  'c:\\pagefile.sys',
+  'c:\\hiberfil.sys',
+  'c:\\swapfile.sys',
 ];
 
 const MAX_PATH_LENGTH = 32767;

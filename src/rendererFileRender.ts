@@ -315,7 +315,7 @@ export function createFileRenderController(config: FileRenderConfig) {
       const dirSort = (b.isDirectory ? 1 : 0) - (a.isDirectory ? 1 : 0);
       if (dirSort !== 0) return dirSort;
 
-      let comparison = 0;
+      let comparison: number;
 
       switch (sortBy) {
         case 'name':

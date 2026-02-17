@@ -1,5 +1,7 @@
-import { ipcMain, dialog, app, IpcMainInvokeEvent } from 'electron';
-import { execFile, spawn, ChildProcess } from 'child_process';
+import type { IpcMainInvokeEvent } from 'electron';
+import { ipcMain, dialog, app } from 'electron';
+import type { ChildProcess } from 'child_process';
+import { execFile, spawn } from 'child_process';
 import { promisify } from 'util';
 import * as path from 'path';
 import * as fs from 'fs/promises';
@@ -264,7 +266,7 @@ function buildBashScript(op: ElevatedOperation): string {
 }
 
 async function executeElevated(operation: ElevatedOperation): Promise<ElevatedResult> {
-  const REQUIRED_PATHS: Record<string, string[]> = {
+  const REQUIRED_PATHS: Record<string, (keyof ElevatedOperation)[]> = {
     copy: ['sourcePath', 'destPath'],
     move: ['sourcePath', 'destPath'],
     delete: ['sourcePath'],
@@ -275,7 +277,7 @@ async function executeElevated(operation: ElevatedOperation): Promise<ElevatedRe
   const required = REQUIRED_PATHS[operation.type];
   if (required) {
     for (const key of required) {
-      if (!(operation as unknown as Record<string, unknown>)[key])
+      if (!operation[key])
         return {
           success: false,
           error: `Missing ${key === 'sourcePath' ? 'source' : key === 'destPath' ? 'destination' : 'required'} path`,

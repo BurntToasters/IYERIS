@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as path from 'path';
 
-type Handler = (...args: any[]) => any;
+type Handler = (...args: unknown[]) => unknown;
 const handlers = new Map<string, Handler>();
 
 const hoisted = vi.hoisted(() => ({

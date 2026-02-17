@@ -1,4 +1,5 @@
-import { ipcMain, app, IpcMainInvokeEvent } from 'electron';
+import type { IpcMainInvokeEvent } from 'electron';
+import { ipcMain, app } from 'electron';
 import * as path from 'path';
 import type { FileItem, ApiResponse, IndexSearchResponse, IndexEntry, IndexStatus } from '../types';
 import { getFileTasks, getIndexerTasks, getFileIndexer } from './appState';

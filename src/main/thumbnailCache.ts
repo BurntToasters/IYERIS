@@ -1,7 +1,8 @@
-import { ipcMain, app, IpcMainInvokeEvent } from 'electron';
+import type { IpcMainInvokeEvent } from 'electron';
+import { ipcMain, app } from 'electron';
 import * as path from 'path';
 import { promises as fs } from 'fs';
-import * as fsSync from 'fs';
+import type * as fsSync from 'fs';
 import * as crypto from 'crypto';
 import { isPathSafe, getErrorMessage } from './security';
 import { ignoreError } from '../shared';

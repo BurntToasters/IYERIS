@@ -256,7 +256,7 @@ export async function getDriveInfo(): Promise<DriveInfo[]> {
   const drives = await getDrives();
   const platform = process.platform;
 
-  let result: DriveInfo[] = [];
+  let result: DriveInfo[];
 
   if (platform === 'win32') {
     const labelMap = await getWindowsDriveLabels();

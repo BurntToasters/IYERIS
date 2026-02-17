@@ -1,6 +1,7 @@
-import { BrowserWindow, Tray } from 'electron';
+import type { Tray } from 'electron';
+import { BrowserWindow } from 'electron';
 import * as os from 'os';
-import { FileIndexer } from './indexer';
+import type { FileIndexer } from './indexer';
 import { FileTaskManager } from './fileTasks';
 
 export const MAX_UNDO_STACK_SIZE = 50;

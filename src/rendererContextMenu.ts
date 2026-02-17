@@ -76,12 +76,14 @@ export function createContextMenuController(deps: ContextMenuDeps) {
 
     clearContextMenuFocus(menu);
 
-    let newIndex = focusIndex;
-    if (direction === 'down') {
-      newIndex = focusIndex < items.length - 1 ? focusIndex + 1 : 0;
-    } else {
-      newIndex = focusIndex > 0 ? focusIndex - 1 : items.length - 1;
-    }
+    const newIndex =
+      direction === 'down'
+        ? focusIndex < items.length - 1
+          ? focusIndex + 1
+          : 0
+        : focusIndex > 0
+          ? focusIndex - 1
+          : items.length - 1;
 
     items[newIndex].classList.add('focused');
     items[newIndex].scrollIntoView({ block: 'nearest' });

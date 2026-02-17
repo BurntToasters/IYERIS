@@ -1,4 +1,4 @@
-import { BrowserWindow, IpcMainInvokeEvent } from 'electron';
+import type { BrowserWindow, IpcMainInvokeEvent } from 'electron';
 import type { WebContents } from 'electron';
 import { getMainWindow, getFileTasks } from './appState';
 import { isRecord } from '../shared';

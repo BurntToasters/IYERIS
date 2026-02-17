@@ -93,15 +93,17 @@ describe('compareVersions extended', () => {
 });
 
 describe('setupUpdateHandlers', () => {
-  let handlers: Record<string, (...args: any[]) => any>;
+  let handlers: Record<string, (...args: unknown[]) => Promise<Record<string, unknown>>>;
   const loadSettings = vi.fn(() => Promise.resolve({ updateChannel: 'auto' } as any));
 
   beforeEach(() => {
     vi.clearAllMocks();
     handlers = {};
-    mocks.ipcMainHandle.mockImplementation((channel: string, handler: (...args: any[]) => any) => {
-      handlers[channel] = handler;
-    });
+    mocks.ipcMainHandle.mockImplementation(
+      (channel: string, handler: (...args: unknown[]) => Promise<Record<string, unknown>>) => {
+        handlers[channel] = handler;
+      }
+    );
     setupUpdateHandlers(loadSettings);
   });
 

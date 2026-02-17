@@ -1,7 +1,8 @@
-import { ipcMain, app, dialog, shell, IpcMainInvokeEvent } from 'electron';
+import type { IpcMainInvokeEvent } from 'electron';
+import { ipcMain, app, dialog, shell } from 'electron';
 import * as path from 'path';
 import { promises as fs } from 'fs';
-import * as fsSync from 'fs';
+import type * as fsSync from 'fs';
 import { fileURLToPath } from 'url';
 import * as os from 'os';
 import type {

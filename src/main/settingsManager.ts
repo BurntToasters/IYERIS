@@ -1,4 +1,5 @@
-import { ipcMain, app, BrowserWindow, IpcMainInvokeEvent, clipboard } from 'electron';
+import type { IpcMainInvokeEvent } from 'electron';
+import { ipcMain, app, BrowserWindow, clipboard } from 'electron';
 import * as path from 'path';
 import { promises as fs } from 'fs';
 import * as fsSync from 'fs';

@@ -1,5 +1,5 @@
 import type { Settings } from './types';
-import { isRecord, RESERVED_KEYS, sanitizeStringArray } from './shared.js';
+import { assignKey, isRecord, RESERVED_KEYS, sanitizeStringArray } from './shared.js';
 import { getDefaultShortcuts } from './shortcuts.js';
 import {
   THEME_VALUES as THEME_ARRAY,
@@ -306,8 +306,7 @@ export function sanitizeSettings(
     'skipFullDiskAccessPrompt',
   ];
   for (const key of BOOLEAN_KEYS) {
-    if (typeof raw[key] === 'boolean')
-      (clean as unknown as Record<string, unknown>)[key as string] = raw[key];
+    if (typeof raw[key] === 'boolean') assignKey(clean, key, raw[key] as Settings[keyof Settings]);
   }
 
   // Enum settings — apply if value is in allowed set
@@ -325,7 +324,7 @@ export function sanitizeSettings(
   ];
   for (const [key, allowed] of ENUM_FIELDS) {
     const val = sanitizeEnum(raw[key], allowed);
-    if (val) (clean as unknown as Record<string, unknown>)[key as string] = val;
+    if (val) assignKey(clean, key, val as Settings[keyof Settings]);
   }
 
   // String settings
@@ -340,13 +339,13 @@ export function sanitizeSettings(
     'previewPanelWidth',
   ] as const) {
     const val = sanitizeNumber(raw[key]);
-    if (val !== null && val > 0) (clean as unknown as Record<string, unknown>)[key as string] = val;
+    if (val !== null && val > 0) assignKey(clean, key, val as Settings[keyof Settings]);
   }
 
   // Non-negative integer settings
   for (const key of ['maxSearchHistoryItems', 'maxDirectoryHistoryItems', 'launchCount'] as const) {
     const val = sanitizeInt(raw[key], 0, null);
-    if (val !== null) (clean as unknown as Record<string, unknown>)[key as string] = val;
+    if (val !== null) assignKey(clean, key, val as Settings[keyof Settings]);
   }
 
   const customTheme = sanitizeCustomTheme(raw.customTheme);

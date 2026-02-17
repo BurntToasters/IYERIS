@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { Settings } from '../types';
 
-type Handler = (...args: any[]) => any;
+type Handler = (...args: unknown[]) => Promise<Record<string, unknown>>;
 
 const hoisted = vi.hoisted(() => {
   let nativeThemeUpdated: (() => void) | null = null;
@@ -123,7 +123,7 @@ vi.mock('../main/ipcUtils', () => ({
   withTrustedApiHandler: vi.fn(
     (
       _channel: string,
-      handler: (...args: any[]) => any,
+      handler: (...args: unknown[]) => unknown,
       untrustedResponse?: { success: boolean; error?: string }
     ) =>
       async (...args: any[]) =>
@@ -132,7 +132,7 @@ vi.mock('../main/ipcUtils', () => ({
           : (untrustedResponse ?? { success: false, error: 'Untrusted IPC sender' })
   ),
   withTrustedIpcEvent: vi.fn(
-    (_channel: string, untrustedResponse: unknown, handler: (...args: any[]) => any) =>
+    (_channel: string, untrustedResponse: unknown, handler: (...args: unknown[]) => unknown) =>
       async (...args: any[]) =>
         hoisted.trusted.value ? await handler(...args) : untrustedResponse
   ),
@@ -179,8 +179,8 @@ function getHandler(channel: string): Handler {
 }
 
 const mockEvent = {} as any;
-let loadSettingsMock: (...args: any[]) => any;
-let saveSettingsMock: (...args: any[]) => any;
+let loadSettingsMock: () => Promise<Settings>;
+let saveSettingsMock: (settings: Settings) => Promise<{ success: true }>;
 
 describe('systemHandlers extended coverage', () => {
   beforeEach(() => {
@@ -225,7 +225,7 @@ describe('systemHandlers extended coverage', () => {
     setPlatform(originalPlatform);
 
     loadSettingsMock = vi.fn(async () => ({ skipFullDiskAccessPrompt: false }) as any);
-    saveSettingsMock = vi.fn(async () => ({ success: true }));
+    saveSettingsMock = vi.fn(async () => ({ success: true as const }));
 
     setupSystemHandlers(loadSettingsMock, saveSettingsMock);
   });

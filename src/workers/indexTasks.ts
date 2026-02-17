@@ -1,5 +1,5 @@
 import { promises as fs } from 'fs';
-import * as fsSync from 'fs';
+import type * as fsSync from 'fs';
 import * as path from 'path';
 import { ignoreError } from '../shared';
 import {

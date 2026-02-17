@@ -1,13 +1,5 @@
-import {
-  app,
-  BrowserWindow,
-  ipcMain,
-  Menu,
-  Tray,
-  nativeImage,
-  shell,
-  IpcMainInvokeEvent,
-} from 'electron';
+import type { IpcMainInvokeEvent } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, Tray, nativeImage, shell } from 'electron';
 import * as path from 'path';
 import { pathToFileURL } from 'url';
 import * as fsSync from 'fs';

@@ -355,8 +355,8 @@ describe('createCompressExtractController', () => {
 
     it('progress handler updates operation', async () => {
       deps.getSelectedItems.mockReturnValue(new Set(['/home/user/documents/file.txt']));
-      let capturedHandler: (...args: any[]) => any = () => {};
-      api.onCompressProgress.mockImplementation((handler: (...args: any[]) => any) => {
+      let capturedHandler: (...args: unknown[]) => unknown = () => {};
+      api.onCompressProgress.mockImplementation((handler: (...args: unknown[]) => unknown) => {
         capturedHandler = handler;
         return vi.fn();
       });
@@ -379,8 +379,8 @@ describe('createCompressExtractController', () => {
 
     it('progress handler ignores different operationIds', async () => {
       deps.getSelectedItems.mockReturnValue(new Set(['/home/user/documents/file.txt']));
-      let capturedHandler: (...args: any[]) => any = () => {};
-      api.onCompressProgress.mockImplementation((handler: (...args: any[]) => any) => {
+      let capturedHandler: (...args: unknown[]) => unknown = () => {};
+      api.onCompressProgress.mockImplementation((handler: (...args: unknown[]) => unknown) => {
         capturedHandler = handler;
         return vi.fn();
       });
@@ -403,8 +403,8 @@ describe('createCompressExtractController', () => {
     it('progress handler skips update when operation is aborted', async () => {
       deps.getSelectedItems.mockReturnValue(new Set(['/home/user/documents/file.txt']));
       deps.getOperation.mockReturnValue({ aborted: true });
-      let capturedHandler: (...args: any[]) => any = () => {};
-      api.onCompressProgress.mockImplementation((handler: (...args: any[]) => any) => {
+      let capturedHandler: (...args: unknown[]) => unknown = () => {};
+      api.onCompressProgress.mockImplementation((handler: (...args: unknown[]) => unknown) => {
         capturedHandler = handler;
         return vi.fn();
       });
@@ -437,8 +437,8 @@ describe('createCompressExtractController', () => {
 
     it('progress handler skips update when getOperation returns undefined', async () => {
       deps.getSelectedItems.mockReturnValue(new Set(['/home/user/documents/file.txt']));
-      let capturedHandler: (...args: any[]) => any = () => {};
-      api.onCompressProgress.mockImplementation((handler: (...args: any[]) => any) => {
+      let capturedHandler: (...args: unknown[]) => unknown = () => {};
+      api.onCompressProgress.mockImplementation((handler: (...args: unknown[]) => unknown) => {
         capturedHandler = handler;
         return vi.fn();
       });
@@ -2086,8 +2086,8 @@ describe('createCompressExtractController', () => {
           <span id="extract-preview-path"></span>
         </div>
       `;
-      let capturedHandler: (...args: any[]) => any = () => {};
-      api.onExtractProgress.mockImplementation((handler: (...args: any[]) => any) => {
+      let capturedHandler: (...args: unknown[]) => unknown = () => {};
+      api.onExtractProgress.mockImplementation((handler: (...args: unknown[]) => unknown) => {
         capturedHandler = handler;
         return vi.fn();
       });
@@ -2116,8 +2116,8 @@ describe('createCompressExtractController', () => {
           <span id="extract-preview-path"></span>
         </div>
       `;
-      let capturedHandler: (...args: any[]) => any = () => {};
-      api.onExtractProgress.mockImplementation((handler: (...args: any[]) => any) => {
+      let capturedHandler: (...args: unknown[]) => unknown = () => {};
+      api.onExtractProgress.mockImplementation((handler: (...args: unknown[]) => unknown) => {
         capturedHandler = handler;
         return vi.fn();
       });
@@ -2152,8 +2152,8 @@ describe('createCompressExtractController', () => {
         if (callCount === 1) return { aborted: false };
         return { aborted: true };
       });
-      let capturedHandler: (...args: any[]) => any = () => {};
-      api.onExtractProgress.mockImplementation((handler: (...args: any[]) => any) => {
+      let capturedHandler: (...args: unknown[]) => unknown = () => {};
+      api.onExtractProgress.mockImplementation((handler: (...args: unknown[]) => unknown) => {
         capturedHandler = handler;
         return vi.fn();
       });

@@ -492,7 +492,7 @@ export async function readIndexData(
       cachedIndexPath = null;
       cachedIndexMtimeMs = null;
       cachedIndexData = null;
-      throw new Error(emptyMessage);
+      throw new Error(emptyMessage, { cause: error });
     }
     throw error;
   }

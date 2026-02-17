@@ -79,9 +79,9 @@ export function sanitizeHomeSettings(
     clean.hiddenSidebarQuickAccessItems = sanitizeStringArray(raw.hiddenSidebarQuickAccessItems);
   }
 
-  for (const key of Object.keys(clean)) {
+  for (const key of Object.keys(clean) as (keyof HomeSettings)[]) {
     if (RESERVED_KEYS.has(key)) {
-      delete (clean as unknown as Record<string, unknown>)[key];
+      delete clean[key];
     }
   }
 

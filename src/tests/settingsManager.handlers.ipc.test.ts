@@ -165,8 +165,8 @@ import {
 import { FileIndexer } from '../main/indexer';
 
 describe('settingsManager.extended2', () => {
-  let handlers: Record<string, (...args: any[]) => any>;
-  let syncHandlers: Record<string, (...args: any[]) => any>;
+  let handlers: Record<string, (...args: unknown[]) => Promise<Record<string, unknown>>>;
+  let syncHandlers: Record<string, (...args: unknown[]) => unknown>;
   const createTray = vi.fn().mockResolvedValue(undefined);
   let origDateNow: typeof Date.now;
   let fakeNow = 2e12;
@@ -179,12 +179,16 @@ describe('settingsManager.extended2', () => {
 
     handlers = {};
     syncHandlers = {};
-    mocks.ipcMainHandle.mockImplementation((channel: string, handler: (...args: any[]) => any) => {
-      handlers[channel] = handler;
-    });
-    mocks.ipcMainOn.mockImplementation((channel: string, handler: (...args: any[]) => any) => {
-      syncHandlers[channel] = handler;
-    });
+    mocks.ipcMainHandle.mockImplementation(
+      (channel: string, handler: (...args: unknown[]) => Promise<Record<string, unknown>>) => {
+        handlers[channel] = handler;
+      }
+    );
+    mocks.ipcMainOn.mockImplementation(
+      (channel: string, handler: (...args: unknown[]) => unknown) => {
+        syncHandlers[channel] = handler;
+      }
+    );
 
     mocks.appGetPath.mockImplementation((name: string) => {
       if (name === 'exe') return '/usr/bin/iyeris';

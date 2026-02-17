@@ -301,20 +301,24 @@ describe('applyLoginItemSettings', () => {
 });
 
 describe('setupSettingsHandlers', () => {
-  let handlers: Record<string, (...args: any[]) => any>;
-  let syncHandlers: Record<string, (...args: any[]) => any>;
+  let handlers: Record<string, (...args: unknown[]) => Promise<Record<string, unknown>>>;
+  let syncHandlers: Record<string, (...args: unknown[]) => unknown>;
   const createTray = vi.fn().mockResolvedValue(undefined);
 
   beforeEach(() => {
     vi.clearAllMocks();
     handlers = {};
     syncHandlers = {};
-    mocks.ipcMainHandle.mockImplementation((channel: string, handler: (...args: any[]) => any) => {
-      handlers[channel] = handler;
-    });
-    mocks.ipcMainOn.mockImplementation((channel: string, handler: (...args: any[]) => any) => {
-      syncHandlers[channel] = handler;
-    });
+    mocks.ipcMainHandle.mockImplementation(
+      (channel: string, handler: (...args: unknown[]) => Promise<Record<string, unknown>>) => {
+        handlers[channel] = handler;
+      }
+    );
+    mocks.ipcMainOn.mockImplementation(
+      (channel: string, handler: (...args: unknown[]) => unknown) => {
+        syncHandlers[channel] = handler;
+      }
+    );
     setupSettingsHandlers(createTray);
   });
 

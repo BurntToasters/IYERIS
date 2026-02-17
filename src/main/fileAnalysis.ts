@@ -1,4 +1,5 @@
-import { ipcMain, IpcMainInvokeEvent } from 'electron';
+import type { IpcMainInvokeEvent } from 'electron';
+import { ipcMain } from 'electron';
 import { getFileTasks } from './appState';
 import { isPathSafe, getErrorMessage } from './security';
 import { logger } from './logger';

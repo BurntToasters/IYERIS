@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => {
-  const eventHandlers = new Map<string, (...args: any[]) => any>();
-  const onceHandlers = new Map<string, (...args: any[]) => any>();
-  const wcEventHandlers = new Map<string, (...args: any[]) => any>();
+  const eventHandlers = new Map<string, (...args: unknown[]) => unknown>();
+  const onceHandlers = new Map<string, (...args: unknown[]) => unknown>();
+  const wcEventHandlers = new Map<string, (...args: unknown[]) => unknown>();
 
   const activeWindow = {
     show: vi.fn(),
@@ -16,10 +16,10 @@ const mocks = vi.hoisted(() => {
     isDestroyed: vi.fn().mockReturnValue(false),
     isMinimized: vi.fn().mockReturnValue(false),
     isMaximized: vi.fn().mockReturnValue(false),
-    on: vi.fn((event: string, handler: (...args: any[]) => any) => {
+    on: vi.fn((event: string, handler: (...args: unknown[]) => unknown) => {
       eventHandlers.set(event, handler);
     }),
-    once: vi.fn((event: string, handler: (...args: any[]) => any) => {
+    once: vi.fn((event: string, handler: (...args: unknown[]) => unknown) => {
       onceHandlers.set(event, handler);
     }),
     loadFile: vi.fn(),
@@ -28,7 +28,7 @@ const mocks = vi.hoisted(() => {
       invalidate: vi.fn(),
       openDevTools: vi.fn(),
       setWindowOpenHandler: vi.fn(),
-      on: vi.fn((event: string, handler: (...args: any[]) => any) => {
+      on: vi.fn((event: string, handler: (...args: unknown[]) => unknown) => {
         wcEventHandlers.set(event, handler);
       }),
     },

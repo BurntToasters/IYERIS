@@ -307,7 +307,7 @@ export function createSettingsUiController(deps: SettingsUiDeps) {
           | HTMLSelectElement
           | null;
         if (!input) return;
-        let value = '';
+        let value: string;
         if (input instanceof HTMLInputElement && input.type === 'checkbox') {
           value = input.checked ? 'On' : 'Off';
         } else if (input instanceof HTMLSelectElement) {
