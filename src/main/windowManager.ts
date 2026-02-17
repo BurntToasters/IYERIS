@@ -63,6 +63,36 @@ const INDEX_URL_OBJ = new URL(INDEX_URL);
 const trayIconCache = new Map<string, { path: string; icon: Electron.NativeImage }>();
 let trayContextMenu: Menu | null = null;
 
+function existingPath(paths: string[]): string | null {
+  for (const candidate of paths) {
+    if (fsSync.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+function resolveTrayAssetsPath(): string {
+  const candidates = new Set<string>([TRAY_ASSETS_PATH]);
+
+  if (typeof process.resourcesPath === 'string' && process.resourcesPath.length > 0) {
+    candidates.add(path.join(process.resourcesPath, 'assets'));
+  }
+
+  if (typeof app.getAppPath === 'function') {
+    try {
+      candidates.add(path.join(app.getAppPath(), 'assets'));
+    } catch {
+      // Ignore app path lookup failures and continue trying other candidates.
+    }
+  }
+
+  candidates.add(path.join(process.cwd(), 'assets'));
+
+  const resolved = existingPath(Array.from(candidates));
+  return resolved ?? TRAY_ASSETS_PATH;
+}
+
 function getTrayPlatform(): TrayPlatform {
   if (
     process.platform === 'darwin' ||
@@ -94,11 +124,12 @@ function resolveTrayIconPath(
   }
 
   if (platform === 'linux') {
-    const iconPath = path.join(trayAssetsPath, 'iyeris.iconset', iconFile);
-    if (fsSync.existsSync(iconPath)) {
-      return iconPath;
-    }
-    return path.join(trayAssetsPath, 'icon.png');
+    const iconPath = existingPath([
+      path.join(trayAssetsPath, 'iyeris.iconset', iconFile),
+      path.join(trayAssetsPath, 'icon-square.png'),
+      path.join(trayAssetsPath, 'icon.png'),
+    ]);
+    return iconPath ?? path.join(trayAssetsPath, 'icon.png');
   }
 
   const iconPath = path.join(trayAssetsPath, iconFile);
@@ -121,8 +152,11 @@ function getTrayIcon(
 
   const iconPath = resolveTrayIconPath(trayAssetsPath, platform, state);
   let icon = nativeImage.createFromPath(iconPath);
-  if (platform !== 'win32' || !iconPath.endsWith('.ico')) {
-    icon = icon.resize(TRAY_ICON_SIZES[platform] || TRAY_ICON_SIZES.linux);
+  if (!icon.isEmpty() && (platform !== 'win32' || !iconPath.endsWith('.ico'))) {
+    const resizedIcon = icon.resize(TRAY_ICON_SIZES[platform] || TRAY_ICON_SIZES.linux);
+    if (!resizedIcon.isEmpty()) {
+      icon = resizedIcon;
+    }
   }
   if (platform === 'darwin') {
     icon.setTemplateImage(true);
@@ -242,13 +276,14 @@ export function createWindow(isInitialWindow: boolean = false): BrowserWindow {
       const isBeta = /-(beta|alpha|rc)/i.test(version);
       const iconName = isBeta ? 'icon-beta.png' : 'icon.png';
       const iconPath = path.join(__dirname, '..', '..', 'assets', iconName);
-      console.log(`[Window] Version: ${version}, isBeta: ${isBeta}, icon: ${iconName}`);
-      console.log(`[Window] Icon path: ${iconPath}`);
+      logger.info(`[Window] Version: ${version}, isBeta: ${isBeta}, icon: ${iconName}`);
+      logger.info(`[Window] Icon path: ${iconPath}`);
       return iconPath;
     })(),
   });
 
   trackWindowVisibility(newWindow);
+  let minimizeToTrayUnavailable = false;
 
   newWindow.loadFile(INDEX_PATH);
 
@@ -294,7 +329,7 @@ export function createWindow(isInitialWindow: boolean = false): BrowserWindow {
         event.preventDefault();
         return;
       }
-      console.warn('[Security] Blocked navigation to:', url);
+      logger.warn('[Security] Blocked navigation to:', url);
       event.preventDefault();
     }
   });
@@ -305,13 +340,13 @@ export function createWindow(isInitialWindow: boolean = false): BrowserWindow {
         event.preventDefault();
         return;
       }
-      console.warn('[Security] Blocked redirect to:', url);
+      logger.warn('[Security] Blocked redirect to:', url);
       event.preventDefault();
     }
   });
 
   const startHidden = isInitialWindow && shouldStartHidden;
-  console.log(
+  logger.info(
     '[Window] Creating window, isInitial:',
     isInitialWindow,
     'startHidden:',
@@ -322,7 +357,7 @@ export function createWindow(isInitialWindow: boolean = false): BrowserWindow {
 
   newWindow.once('ready-to-show', async () => {
     if (startHidden) {
-      console.log('[Window] Starting minimized to tray');
+      logger.info('[Window] Starting minimized to tray');
       const tray = getTray();
       if (!tray) {
         await createTray();
@@ -347,7 +382,15 @@ export function createWindow(isInitialWindow: boolean = false): BrowserWindow {
 
     void (async () => {
       const settings = getCachedSettings() ?? (await loadSettings());
-      const tray = getTray();
+      let tray = getTray();
+      if (settings.minimizeToTray && !tray && !minimizeToTrayUnavailable) {
+        await createTray();
+        tray = getTray();
+        if (!tray) {
+          minimizeToTrayUnavailable = true;
+          logger.warn('[Tray] Tray unavailable; minimize-to-tray disabled for this window session');
+        }
+      }
       if (settings.minimizeToTray && tray) {
         newWindow.hide();
         setWindowVisibility(newWindow, false);
@@ -366,7 +409,15 @@ export function createWindow(isInitialWindow: boolean = false): BrowserWindow {
 
   newWindow.on('minimize', async () => {
     const settings = getCachedSettings() ?? (await loadSettings());
-    const tray = getTray();
+    let tray = getTray();
+    if (settings.minimizeToTray && !tray && !minimizeToTrayUnavailable) {
+      await createTray();
+      tray = getTray();
+      if (!tray) {
+        minimizeToTrayUnavailable = true;
+        logger.warn('[Tray] Tray unavailable; minimize-to-tray disabled for this window session');
+      }
+    }
     if (settings.minimizeToTray && tray) {
       if (process.platform === 'darwin') {
         setImmediate(() => {
@@ -401,7 +452,7 @@ export function createWindow(isInitialWindow: boolean = false): BrowserWindow {
     if (mainWindow === newWindow) {
       const allWindows = BrowserWindow.getAllWindows();
       setMainWindow(allWindows.length > 0 ? allWindows[0] : null);
-      console.log('[Window] mainWindow updated after close, remaining windows:', allWindows.length);
+      logger.info('[Window] mainWindow updated after close, remaining windows:', allWindows.length);
     }
   });
 
@@ -418,13 +469,13 @@ export async function createTray(forHiddenStart: boolean = false): Promise<void>
 
   if (forHiddenStart) {
     if (getTray()) {
-      console.log(`${logPrefix} Tray already exists`);
+      logger.info(`${logPrefix} Tray already exists`);
       return;
     }
   } else {
     const settings = getCachedSettings() ?? (await loadSettings());
     if (!settings.minimizeToTray) {
-      console.log(`${logPrefix} Tray disabled in settings`);
+      logger.info(`${logPrefix} Tray disabled in settings`);
       return;
     }
 
@@ -435,7 +486,7 @@ export async function createTray(forHiddenStart: boolean = false): Promise<void>
     }
   }
 
-  const trayAssetsPath = TRAY_ASSETS_PATH;
+  const trayAssetsPath = resolveTrayAssetsPath();
   setTrayAssetsPath(trayAssetsPath);
 
   const platform = getTrayPlatform();
@@ -443,15 +494,15 @@ export async function createTray(forHiddenStart: boolean = false): Promise<void>
   const iconPath = trayIconData.path;
   const trayIcon = trayIconData.icon;
   if (platform === 'darwin') {
-    console.log(`${logPrefix} macOS: Using template icon from:`, iconPath);
+    logger.info(`${logPrefix} macOS: Using template icon from:`, iconPath);
   } else if (platform === 'win32') {
-    console.log(`${logPrefix} Windows: Using icon from:`, iconPath);
+    logger.info(`${logPrefix} Windows: Using icon from:`, iconPath);
   } else {
-    console.log(`${logPrefix} Linux: Using icon from:`, iconPath);
+    logger.info(`${logPrefix} Linux: Using icon from:`, iconPath);
   }
 
   if (trayIcon!.isEmpty()) {
-    console.error(`${logPrefix} Failed to load tray icon from:`, iconPath!);
+    logger.error(`${logPrefix} Failed to load tray icon from:`, iconPath!);
     return;
   }
 
@@ -507,11 +558,11 @@ export async function createTray(forHiddenStart: boolean = false): Promise<void>
       });
     }
 
-    console.log(`${logPrefix} Tray created successfully`);
+    logger.info(`${logPrefix} Tray created successfully`);
   } catch (error) {
-    console.error(`${logPrefix} Failed to create tray icon:`, error);
+    logger.error(`${logPrefix} Failed to create tray icon:`, error);
     if (!forHiddenStart) {
-      console.log(`${logPrefix} Minimize to tray feature will be disabled`);
+      logger.info(`${logPrefix} Minimize to tray feature will be disabled`);
     }
     setTray(null);
     return;

@@ -105,9 +105,7 @@ export function createArchiveOperationsController(deps: ArchiveOperationsDeps) {
       deps
         .cancelArchiveOperation(id)
         .then((result) => {
-          if (result.success) {
-            console.log('[Archive] Operation cancelled:', id);
-          } else {
+          if (!result.success) {
             console.error('[Archive] Failed to cancel:', result.error);
           }
         })

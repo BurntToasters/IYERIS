@@ -2,7 +2,7 @@ import { ipcMain, IpcMainInvokeEvent } from 'electron';
 import { getFileTasks } from './appState';
 import { isPathSafe, getErrorMessage } from './security';
 import { logger } from './logger';
-import { isTrustedIpcEvent } from './ipcUtils';
+import { isTrustedIpcEvent, registerProgressTarget, unregisterProgressTarget } from './ipcUtils';
 
 const activeFolderSizeCalculations = new Map<string, { aborted: boolean }>();
 const activeChecksumCalculations = new Map<string, { aborted: boolean }>();
@@ -45,18 +45,23 @@ function registerCalculationHandler<T>(
         logger.debug(`[${label}] Starting calculation for:`, itemPath, 'operationId:', operationId);
 
         activeMap.set(operationId, { aborted: false });
+        registerProgressTarget(operationId, event.sender);
         const result = await fileTasks.runTask<T>(taskType, payload, operationId);
         activeMap.delete(operationId);
+        unregisterProgressTarget(operationId);
         logger.debug(`[${label}] Completed:`, result);
         return { success: true, result };
       } catch (error) {
-        if (operationId) activeMap.delete(operationId);
+        if (operationId) {
+          activeMap.delete(operationId);
+          unregisterProgressTarget(operationId);
+        }
         const errorMessage = getErrorMessage(error);
         if (errorMessage === 'Calculation cancelled') {
           logger.debug(`[${label}] Calculation cancelled for operationId:`, operationId);
           return { success: false, error: 'Calculation cancelled' };
         }
-        console.error(`[${label}] Error:`, error);
+        logger.error(`[${label}] Error:`, error);
         return { success: false, error: errorMessage };
       }
     }

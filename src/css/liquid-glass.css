@@ -6,66 +6,78 @@ body.liquid-glass {
   --liquid-glass-luminosity: rgba(255, 255, 255, 0.08);
   --liquid-glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.25), 0 2px 8px rgba(0, 0, 0, 0.15);
   --liquid-glass-radius: 16px;
-  --liquid-glass-panel-bg: rgba(28, 28, 28, var(--liquid-glass-bg-opacity));
-  --liquid-glass-panel-border-color: rgba(255, 255, 255, var(--liquid-glass-border-opacity));
+  --liquid-glass-panel-bg: color-mix(in srgb, var(--surface-overlay) 78%, transparent);
+  --liquid-glass-panel-border-color: color-mix(
+    in srgb,
+    var(--panel-border) 85%,
+    rgba(255, 255, 255, var(--liquid-glass-border-opacity))
+  );
   --liquid-glass-panel-shadow: var(--liquid-glass-shadow);
   --liquid-glass-panel-highlight-edge: var(--liquid-glass-luminosity);
   --liquid-glass-panel-highlight-center: rgba(255, 255, 255, 0.15);
   --liquid-glass-overlay-bg: rgba(0, 0, 0, 0.35);
   --liquid-glass-overlay-filter: blur(12px);
-  --liquid-glass-modal-bg: rgba(28, 28, 28, 0.78);
-  --liquid-glass-modal-border-color: rgba(255, 255, 255, 0.18);
+  --liquid-glass-modal-bg: color-mix(in srgb, var(--surface-1) 78%, transparent);
+  --liquid-glass-modal-border-color: color-mix(
+    in srgb,
+    var(--panel-border-strong) 85%,
+    transparent
+  );
   --liquid-glass-modal-radius: 18px;
   --liquid-glass-modal-filter: blur(24px) saturate(170%);
   --liquid-glass-modal-shadow:
     0 24px 48px rgba(0, 0, 0, 0.35), 0 8px 16px rgba(0, 0, 0, 0.2),
     inset 0 1px 0 rgba(255, 255, 255, 0.1);
-  --liquid-glass-menu-bg: rgba(34, 34, 34, 0.75);
-  --liquid-glass-menu-border-color: rgba(255, 255, 255, var(--liquid-glass-border-opacity));
+  --liquid-glass-menu-bg: color-mix(in srgb, var(--surface-1) 74%, transparent);
+  --liquid-glass-menu-border-color: color-mix(in srgb, var(--panel-border) 85%, transparent);
   --liquid-glass-menu-radius: 14px;
   --liquid-glass-menu-filter: blur(var(--liquid-glass-blur))
     saturate(var(--liquid-glass-saturation));
   --liquid-glass-menu-shadow: var(--liquid-glass-shadow);
-  --liquid-glass-sidebar-bg: rgba(28, 28, 28, 0.68);
+  --liquid-glass-sidebar-bg: color-mix(in srgb, var(--surface-1) 68%, transparent);
   --liquid-glass-sidebar-filter: blur(14px) saturate(130%);
-  --liquid-glass-sidebar-border-color: rgba(255, 255, 255, 0.08);
-  --liquid-glass-titlebar-bg: rgba(33, 33, 33, 0.85);
+  --liquid-glass-sidebar-border-color: color-mix(in srgb, var(--panel-border) 85%, transparent);
+  --liquid-glass-titlebar-bg: color-mix(in srgb, var(--surface-1) 82%, transparent);
   --liquid-glass-titlebar-filter: blur(12px) saturate(120%);
-  --liquid-glass-tabbar-bg: rgba(28, 28, 28, 0.75);
+  --liquid-glass-tabbar-bg: color-mix(in srgb, var(--surface-1) 74%, transparent);
   --liquid-glass-tabbar-filter: blur(10px) saturate(115%);
-  --liquid-glass-statusbar-bg: rgba(33, 33, 33, 0.82);
+  --liquid-glass-statusbar-bg: color-mix(in srgb, var(--surface-1) 80%, transparent);
   --liquid-glass-statusbar-filter: blur(12px) saturate(120%);
-  --liquid-glass-toolbar-bg: rgba(28, 28, 28, 0.7);
+  --liquid-glass-toolbar-bg: color-mix(in srgb, var(--surface-1) 72%, transparent);
   --liquid-glass-toolbar-filter: blur(14px) saturate(130%);
-  --liquid-glass-input-bg: rgba(255, 255, 255, 0.06);
-  --liquid-glass-input-bg-hover: rgba(255, 255, 255, 0.09);
-  --liquid-glass-input-bg-focus: rgba(255, 255, 255, 0.1);
-  --liquid-glass-input-border-color: rgba(255, 255, 255, 0.12);
-  --liquid-glass-input-border-color-hover: rgba(255, 255, 255, 0.16);
+  --liquid-glass-input-bg: color-mix(in srgb, var(--interactive-hover) 55%, transparent);
+  --liquid-glass-input-bg-hover: color-mix(in srgb, var(--interactive-hover) 78%, transparent);
+  --liquid-glass-input-bg-focus: color-mix(in srgb, var(--interactive-selected) 58%, transparent);
+  --liquid-glass-input-border-color: color-mix(in srgb, var(--panel-border) 92%, transparent);
+  --liquid-glass-input-border-color-hover: color-mix(
+    in srgb,
+    var(--panel-border-strong) 92%,
+    transparent
+  );
   --liquid-glass-input-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
   --liquid-glass-input-focus-ring: 0 0 0 3px rgba(var(--accent-rgb), 0.25);
-  --liquid-glass-address-bg: rgba(255, 255, 255, 0.05);
+  --liquid-glass-address-bg: color-mix(in srgb, var(--surface-2) 68%, transparent);
   --liquid-glass-address-filter: blur(8px);
-  --liquid-glass-dropdown-bg: rgba(34, 34, 34, 0.78);
-  --liquid-glass-dropdown-border-color: rgba(255, 255, 255, var(--liquid-glass-border-opacity));
+  --liquid-glass-dropdown-bg: color-mix(in srgb, var(--surface-1) 78%, transparent);
+  --liquid-glass-dropdown-border-color: color-mix(in srgb, var(--panel-border) 85%, transparent);
   --liquid-glass-dropdown-radius: 14px;
   --liquid-glass-dropdown-filter: blur(var(--liquid-glass-blur))
     saturate(var(--liquid-glass-saturation));
   --liquid-glass-dropdown-shadow: var(--liquid-glass-shadow);
-  --liquid-glass-card-bg: rgba(34, 34, 34, 0.8);
+  --liquid-glass-card-bg: color-mix(in srgb, var(--surface-1) 80%, transparent);
   --liquid-glass-card-filter: blur(14px) saturate(140%);
-  --liquid-glass-card-border-color: rgba(255, 255, 255, 0.12);
+  --liquid-glass-card-border-color: color-mix(in srgb, var(--panel-border) 85%, transparent);
   --liquid-glass-card-radius: 14px;
-  --liquid-glass-toast-bg: rgba(34, 34, 34, 0.82);
+  --liquid-glass-toast-bg: color-mix(in srgb, var(--surface-1) 82%, transparent);
   --liquid-glass-toast-filter: blur(14px) saturate(130%);
-  --liquid-glass-toast-border-color: rgba(255, 255, 255, 0.1);
+  --liquid-glass-toast-border-color: color-mix(in srgb, var(--panel-border) 82%, transparent);
   --liquid-glass-toast-radius: 14px;
-  --liquid-glass-popup-bg: rgba(34, 34, 34, 0.8);
+  --liquid-glass-popup-bg: color-mix(in srgb, var(--surface-1) 80%, transparent);
   --liquid-glass-popup-filter: blur(var(--liquid-glass-blur))
     saturate(var(--liquid-glass-saturation));
-  --liquid-glass-popup-hover-bg: rgba(30, 30, 30, 0.8);
+  --liquid-glass-popup-hover-bg: color-mix(in srgb, var(--surface-2) 80%, transparent);
   --liquid-glass-popup-hover-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-  --liquid-glass-archive-hover-bg: rgba(30, 30, 30, 0.8);
+  --liquid-glass-archive-hover-bg: color-mix(in srgb, var(--surface-2) 80%, transparent);
   --liquid-glass-archive-hover-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
   --liquid-glass-card-hover-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
 }

@@ -4,8 +4,6 @@ import { encodeFileUrl } from './rendererUtils.js';
 import { generatePdfThumbnailPdfJs } from './rendererPdfViewer.js';
 import { ANIMATED_IMAGE_EXTENSIONS } from './fileTypes.js';
 
-export const THUMBNAIL_QUALITY_VALUES = ['low', 'medium', 'high'] as const;
-
 const THUMBNAIL_ROOT_MARGIN = '100px';
 const THUMBNAIL_CACHE_MAX = 100;
 const THUMBNAIL_CONCURRENT_LOADS = 4;
@@ -305,7 +303,7 @@ export function createThumbnailController(deps: ThumbnailDeps) {
         }
 
         const diskCacheResult = await window.electronAPI.getCachedThumbnail(item.path);
-        if (diskCacheResult.success && diskCacheResult.dataUrl) {
+        if (diskCacheResult.success) {
           if (!document.body.contains(fileItem)) return;
           cacheThumbnail(item.path, diskCacheResult.dataUrl);
           if (iconDiv) {
@@ -421,11 +419,11 @@ export function createThumbnailController(deps: ThumbnailDeps) {
     if (!sizeElement) return;
 
     const result = await window.electronAPI.getThumbnailCacheSize();
-    if (result.success && typeof result.sizeBytes === 'number') {
-      sizeElement.textContent = `(${deps.formatFileSize(result.sizeBytes)}, ${result.fileCount} files)`;
-    } else {
+    if (!result.success) {
       sizeElement.textContent = '';
+      return;
     }
+    sizeElement.textContent = `(${deps.formatFileSize(result.sizeBytes)}, ${result.fileCount} files)`;
   }
 
   return {

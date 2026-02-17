@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import * as path from 'path';
 
 type Handler = (...args: unknown[]) => unknown;
 const handlers = new Map<string, Handler>();
@@ -188,7 +189,7 @@ describe('setupSearchHandlers', () => {
     expect(indexerTasks.runTask).toHaveBeenCalledWith(
       'search-content-index',
       {
-        indexPath: '/tmp/iyeris-user/file-index.json',
+        indexPath: path.join('/tmp/iyeris-user', 'file-index.json'),
         query: 'needle',
         filters: { minSize: 10 },
         maxResults: 100,
@@ -215,7 +216,7 @@ describe('setupSearchHandlers', () => {
     expect(fileTasks.runTask).toHaveBeenCalledWith(
       'search-content-index',
       {
-        indexPath: '/tmp/iyeris-user/file-index.json',
+        indexPath: path.join('/tmp/iyeris-user', 'file-index.json'),
         query: 'needle',
         filters: undefined,
         maxResults: 100,

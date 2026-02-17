@@ -132,7 +132,7 @@ describe('fullDiskAccess', () => {
     hoisted.mainWindowRef.value = mainWindow;
     hoisted.dialogMock.showMessageBox.mockResolvedValue({ response: 2 });
     const settings = { skipFullDiskAccessPrompt: false } as unknown as Settings;
-    const saveSettings = vi.fn(async () => ({ success: true }));
+    const saveSettings = vi.fn(async () => ({ success: true as const }));
 
     await showFullDiskAccessDialog(async () => settings, saveSettings);
 

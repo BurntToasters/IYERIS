@@ -17,6 +17,15 @@ vi.mock('../shared', () => ({
   isRecord: vi.fn((v: unknown) => v !== null && typeof v === 'object' && !Array.isArray(v)),
 }));
 
+vi.mock('../main/logger', () => ({
+  logger: {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+  },
+}));
+
 import {
   safeSendToWindow,
   safeSendToContents,
@@ -75,16 +84,15 @@ describe('safeSendToWindow', () => {
     expect(safeSendToWindow(win, 'test-channel')).toBe(false);
   });
 
-  it('returns false and logs error on throw', () => {
+  it('returns false and logs error on throw', async () => {
     const win = makeMockWindow();
     (win.webContents.send as ReturnType<typeof vi.fn>).mockImplementation(() => {
       throw new Error('send failed');
     });
-    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { logger } = await import('../main/logger');
     const result = safeSendToWindow(win, 'fail-channel');
     expect(result).toBe(false);
-    expect(consoleSpy).toHaveBeenCalled();
-    consoleSpy.mockRestore();
+    expect(logger.error).toHaveBeenCalled();
   });
 });
 
@@ -123,22 +131,19 @@ describe('isTrustedIpcEvent', () => {
 
   it('returns false when isTrustedIpcSender returns false', () => {
     vi.mocked(isTrustedIpcSender).mockReturnValueOnce(false);
-    const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const event = makeMockEvent();
     expect(isTrustedIpcEvent(event)).toBe(false);
-    consoleSpy.mockRestore();
   });
 
-  it('logs channel name when provided and untrusted', () => {
+  it('logs channel name when provided and untrusted', async () => {
     vi.mocked(isTrustedIpcSender).mockReturnValueOnce(false);
-    const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { logger } = await import('../main/logger');
     const event = makeMockEvent();
     isTrustedIpcEvent(event, 'my-channel');
-    expect(consoleSpy).toHaveBeenCalledWith(
+    expect(logger.warn).toHaveBeenCalledWith(
       expect.stringContaining('my-channel'),
       expect.anything()
     );
-    consoleSpy.mockRestore();
   });
 });
 
@@ -155,7 +160,6 @@ describe('withTrustedIpcEvent', () => {
 
   it('returns untrustedResponse when event is not trusted', async () => {
     vi.mocked(isTrustedIpcSender).mockReturnValueOnce(false);
-    vi.spyOn(console, 'warn').mockImplementation(() => {});
     const handler = vi.fn();
     const wrapped = withTrustedIpcEvent('ch', 'blocked', handler);
     const event = makeMockEvent(false);
@@ -177,7 +181,6 @@ describe('withTrustedApiHandler', () => {
 
   it('returns untrusted response when not trusted', async () => {
     vi.mocked(isTrustedIpcSender).mockReturnValueOnce(false);
-    vi.spyOn(console, 'warn').mockImplementation(() => {});
     const handler = vi.fn();
     const wrapped = withTrustedApiHandler('ch', handler);
     const event = makeMockEvent(false);

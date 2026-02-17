@@ -78,8 +78,6 @@ export function createBootstrapController(config: BootstrapConfig) {
   }
 
   async function init() {
-    console.log('Init: Getting platform, store info, and settings...');
-
     const [platform, mas, flatpak, msStore, appVersion] = await Promise.all([
       window.electronAPI.getPlatform(),
       window.electronAPI.isMas(),
@@ -104,7 +102,6 @@ export function createBootstrapController(config: BootstrapConfig) {
       const isBeta = /-(beta|alpha|rc)/i.test(appVersion);
       const iconSrc = isBeta ? '../assets/folder-beta.png' : '../assets/folder.png';
       titlebarIcon.src = iconSrc;
-      console.log(`[Init] Version: ${appVersion}, isBeta: ${isBeta}, titlebar icon: ${iconSrc}`);
     }
 
     window.electronAPI.getSystemAccentColor().then(({ accentColor, isDarkMode }) => {
@@ -195,15 +192,12 @@ export function createBootstrapController(config: BootstrapConfig) {
       config.updateUndoRedoState();
 
       window.electronAPI.getZoomLevel().then((zoomResult) => {
-        if (zoomResult.success && zoomResult.zoomLevel) {
-          config.setZoomLevel(zoomResult.zoomLevel);
-          config.updateZoomDisplay();
-        }
+        if (!zoomResult.success) return;
+        config.setZoomLevel(zoomResult.zoomLevel);
+        config.updateZoomDisplay();
       });
 
-      const cleanupUpdateAvailable = window.electronAPI.onUpdateAvailable((info) => {
-        console.log('Update available:', info);
-
+      const cleanupUpdateAvailable = window.electronAPI.onUpdateAvailable((_info) => {
         const settingsBtn = document.getElementById('settings-btn');
         if (settingsBtn) {
           if (!settingsBtn.querySelector('.notification-badge')) {
@@ -224,13 +218,11 @@ export function createBootstrapController(config: BootstrapConfig) {
       config.getIpcCleanupFunctions().push(cleanupUpdateAvailable);
 
       const cleanupUpdateDownloaded = window.electronAPI.onUpdateDownloaded((info) => {
-        console.log('Update downloaded:', info);
         config.handleUpdateDownloaded(info);
       });
       config.getIpcCleanupFunctions().push(cleanupUpdateDownloaded);
 
       const cleanupSystemResumed = window.electronAPI.onSystemResumed(() => {
-        console.log('[Renderer] System resumed from sleep, refreshing view...');
         config.clearDiskSpaceCache();
         if (config.getCurrentPath()) {
           config.refresh();
@@ -243,7 +235,6 @@ export function createBootstrapController(config: BootstrapConfig) {
         ({ isDarkMode }) => {
           const settings = config.getCurrentSettings();
           if (settings.useSystemTheme) {
-            console.log('[Renderer] System theme changed, isDarkMode:', isDarkMode);
             const newTheme = isDarkMode ? 'default' : 'light';
             settings.theme = newTheme;
             config.applySettings(settings);
@@ -252,8 +243,6 @@ export function createBootstrapController(config: BootstrapConfig) {
       );
       config.getIpcCleanupFunctions().push(cleanupSystemThemeChanged);
     }, 0);
-
-    console.log('Init: Complete');
   }
 
   return {

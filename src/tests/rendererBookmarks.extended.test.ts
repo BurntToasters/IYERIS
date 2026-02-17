@@ -852,7 +852,7 @@ describe('rendererBookmarks extended', () => {
       );
     });
 
-    it('shows info toast when getItemProperties returns success: false', async () => {
+    it('shows error toast when getItemProperties returns success: false', async () => {
       const { deps } = createDeps(['/a']);
       deps.getDraggedPaths.mockResolvedValue(['/some-path']);
       (window as any).electronAPI.getItemProperties.mockResolvedValue({
@@ -865,11 +865,7 @@ describe('rendererBookmarks extended', () => {
       deps.bookmarksList.dispatchEvent(evt);
       await flushPromises();
 
-      expect(deps.showToast).toHaveBeenCalledWith(
-        'Only folders can be bookmarked',
-        'Bookmarks',
-        'info'
-      );
+      expect(deps.showToast).toHaveBeenCalledWith('Failed to add bookmark', 'Bookmarks', 'error');
     });
 
     it('shows error toast when getItemProperties throws', async () => {

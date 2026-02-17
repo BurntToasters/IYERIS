@@ -3,8 +3,10 @@ import type { WebContents } from 'electron';
 import { getMainWindow, getFileTasks } from './appState';
 import { isRecord } from '../shared';
 import { isTrustedIpcSender } from './security';
+import { logger } from './logger';
 
 const directoryOperationTargets = new Map<string, WebContents>();
+const progressTargets = new Map<string, WebContents>();
 
 export function safeSendToWindow(
   win: BrowserWindow | null,
@@ -17,7 +19,7 @@ export function safeSendToWindow(
       return true;
     }
   } catch (error) {
-    console.error(`[IPC] Failed to send ${channel}:`, error);
+    logger.error(`[IPC] Failed to send ${channel}:`, error);
   }
   return false;
 }
@@ -33,7 +35,7 @@ export function safeSendToContents(
       return true;
     }
   } catch (error) {
-    console.error(`[IPC] Failed to send ${channel}:`, error);
+    logger.error(`[IPC] Failed to send ${channel}:`, error);
   }
   return false;
 }
@@ -46,6 +48,17 @@ export function unregisterDirectoryOperationTarget(operationId: string): void {
   directoryOperationTargets.delete(operationId);
 }
 
+export function registerProgressTarget(operationId: string, sender: WebContents): void {
+  progressTargets.set(operationId, sender);
+  sender.once('destroyed', () => {
+    progressTargets.delete(operationId);
+  });
+}
+
+export function unregisterProgressTarget(operationId: string): void {
+  progressTargets.delete(operationId);
+}
+
 export function setupFileTasksProgressHandler(
   activeFolderSizeCalculations: Map<string, { aborted: boolean }>,
   activeChecksumCalculations: Map<string, { aborted: boolean }>
@@ -53,24 +66,43 @@ export function setupFileTasksProgressHandler(
   const fileTasks = getFileTasks();
 
   fileTasks.on('progress', (message: { task: string; operationId: string; data: unknown }) => {
-    const mainWindow = getMainWindow();
     const data = isRecord(message.data) ? message.data : {};
 
     if (message.task === 'folder-size') {
       if (activeFolderSizeCalculations.has(message.operationId)) {
-        safeSendToWindow(mainWindow, 'folder-size-progress', {
-          operationId: message.operationId,
-          ...data,
-        });
+        const target = progressTargets.get(message.operationId) || null;
+        const fallbackWindow = getMainWindow();
+        const sent = target
+          ? safeSendToContents(target, 'folder-size-progress', {
+              operationId: message.operationId,
+              ...data,
+            })
+          : safeSendToWindow(fallbackWindow, 'folder-size-progress', {
+              operationId: message.operationId,
+              ...data,
+            });
+        if (!sent) {
+          progressTargets.delete(message.operationId);
+        }
       }
       return;
     }
     if (message.task === 'checksum') {
       if (activeChecksumCalculations.has(message.operationId)) {
-        safeSendToWindow(mainWindow, 'checksum-progress', {
-          operationId: message.operationId,
-          ...data,
-        });
+        const target = progressTargets.get(message.operationId) || null;
+        const fallbackWindow = getMainWindow();
+        const sent = target
+          ? safeSendToContents(target, 'checksum-progress', {
+              operationId: message.operationId,
+              ...data,
+            })
+          : safeSendToWindow(fallbackWindow, 'checksum-progress', {
+              operationId: message.operationId,
+              ...data,
+            });
+        if (!sent) {
+          progressTargets.delete(message.operationId);
+        }
       }
       return;
     }
@@ -93,9 +125,9 @@ export function isTrustedIpcEvent(event: IpcMainInvokeEvent, channel?: string): 
   }
   const url = event.senderFrame?.url || event.sender?.getURL?.() || '';
   if (channel) {
-    console.warn(`[Security] Blocked IPC ${channel} from:`, url);
+    logger.warn(`[Security] Blocked IPC ${channel} from:`, url);
   } else {
-    console.warn('[Security] Blocked IPC from:', url);
+    logger.warn('[Security] Blocked IPC from:', url);
   }
   return false;
 }

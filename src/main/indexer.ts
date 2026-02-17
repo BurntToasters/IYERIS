@@ -5,6 +5,7 @@ import type { IndexEntry, IndexStatus } from '../types';
 import type { FileTaskManager } from './fileTasks';
 import { getDrives } from './utils';
 import { ignoreError } from '../shared';
+import { logger } from './logger';
 type IndexEntryPayload = Partial<Omit<IndexEntry, 'modified'>> & {
   modified?: Date | number | string;
 };
@@ -255,7 +256,7 @@ export class FileIndexer {
         await this.scanDirectory(subdir, signal, depth + 1);
       }
     } catch (error) {
-      console.log(`[Indexer] Cannot access ${dirPath}:`, (error as Error).message);
+      logger.info(`[Indexer] Cannot access ${dirPath}:`, (error as Error).message);
     }
   }
   private async estimateTotalFiles(locations: string[]): Promise<number> {
@@ -337,12 +338,12 @@ export class FileIndexer {
   }
   async buildIndex(): Promise<void> {
     if (this.isIndexing) {
-      console.log('[Indexer] Already indexing, skipping...');
+      logger.info('[Indexer] Already indexing, skipping...');
       return;
     }
 
     if (!this.enabled) {
-      console.log('[Indexer] Indexer is disabled, skipping...');
+      logger.info('[Indexer] Indexer is disabled, skipping...');
       return;
     }
 
@@ -351,11 +352,11 @@ export class FileIndexer {
     this.index.clear();
     this.abortController = new AbortController();
 
-    console.log('[Indexer] Starting index build...');
+    logger.info('[Indexer] Starting index build...');
 
     try {
       const locations = await this.getCommonLocations();
-      console.log(`[Indexer] Locations to scan: ${locations.join(', ')}`);
+      logger.info(`[Indexer] Locations to scan: ${locations.join(', ')}`);
       this.totalFiles = await this.estimateTotalFiles(locations);
 
       if (this.fileTasks) {
@@ -380,7 +381,7 @@ export class FileIndexer {
           }
         }
         this.indexedFiles = this.index.size;
-        console.log(`[Indexer] Worker scan complete. Indexed ${this.indexedFiles} files.`);
+        logger.info(`[Indexer] Worker scan complete. Indexed ${this.indexedFiles} files.`);
       } else {
         for (const location of locations) {
           if (this.abortController.signal.aborted) {
@@ -390,28 +391,28 @@ export class FileIndexer {
           const beforeCount = this.indexedFiles;
           try {
             await fs.access(location);
-            console.log(`[Indexer] Scanning: ${location}`);
+            logger.info(`[Indexer] Scanning: ${location}`);
             await this.scanDirectory(location, this.abortController.signal);
-            console.log(
+            logger.info(
               `[Indexer] Finished ${location}: indexed ${this.indexedFiles - beforeCount} new files (total: ${this.indexedFiles})`
             );
           } catch (error) {
-            console.log(`[Indexer] Skipping ${location}:`, (error as Error).message);
+            logger.info(`[Indexer] Skipping ${location}:`, (error as Error).message);
           }
         }
       }
 
       this.lastIndexTime = new Date();
       await this.saveIndex();
-      console.log(`[Indexer] Index build complete. Indexed ${this.indexedFiles} files.`);
+      logger.info(`[Indexer] Index build complete. Indexed ${this.indexedFiles} files.`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       if (message === 'Cancelled' || message === 'Calculation cancelled') {
         this.index.clear();
         this.indexedFiles = 0;
-        console.log('[Indexer] Index build cancelled');
+        logger.info('[Indexer] Index build cancelled');
       } else {
-        console.error('[Indexer] Error building index:', error);
+        logger.error('[Indexer] Error building index:', error);
       }
     } finally {
       this.isIndexing = false;
@@ -495,9 +496,9 @@ export class FileIndexer {
 
         await writeFileAtomic(this.indexPath, JSON.stringify(data));
       }
-      console.log(`[Indexer] Index saved to ${this.indexPath}`);
+      logger.info(`[Indexer] Index saved to ${this.indexPath}`);
     } catch (error) {
-      console.error('[Indexer] Error saving index:', error);
+      logger.error('[Indexer] Error saving index:', error);
     }
   }
 
@@ -510,7 +511,7 @@ export class FileIndexer {
           lastIndexTime?: string | number | null;
         }>('load-index', { indexPath: this.indexPath }, `load-index-${Date.now()}`);
         if (!result.exists) {
-          console.log('[Indexer] No existing index found, will build on first search');
+          logger.info('[Indexer] No existing index found, will build on first search');
           return;
         }
         this.loadIndexEntries(result.index || []);
@@ -522,12 +523,12 @@ export class FileIndexer {
         this.loadIndexEntries(Array.isArray(parsed.index) ? parsed.index : []);
         this.lastIndexTime = this.parseIndexTime(parsed.lastIndexTime);
       }
-      console.log(`[Indexer] Index loaded: ${this.indexedFiles} files`);
+      logger.info(`[Indexer] Index loaded: ${this.indexedFiles} files`);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-        console.log('[Indexer] No existing index found, will build on first search');
+        logger.info('[Indexer] No existing index found, will build on first search');
       } else {
-        console.error('[Indexer] Error loading index:', error);
+        logger.error('[Indexer] Error loading index:', error);
       }
     }
   }
@@ -539,16 +540,16 @@ export class FileIndexer {
 
     try {
       await fs.unlink(this.indexPath);
-      console.log('[Indexer] Index file deleted');
+      logger.info('[Indexer] Index file deleted');
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-        console.error('[Indexer] Error deleting index:', error);
+        logger.error('[Indexer] Error deleting index:', error);
       }
     }
   }
 
   async rebuildIndex(): Promise<void> {
-    console.log('[Indexer] Rebuilding index...');
+    logger.info('[Indexer] Rebuilding index...');
 
     if (this.abortController) {
       this.abortController.abort();
@@ -573,7 +574,7 @@ export class FileIndexer {
 
   setEnabled(enabled: boolean): void {
     this.enabled = enabled;
-    console.log(`[Indexer] Indexer ${enabled ? 'enabled' : 'disabled'}`);
+    logger.info(`[Indexer] Indexer ${enabled ? 'enabled' : 'disabled'}`);
 
     if (!enabled && this.abortController) {
       this.abortController.abort();
@@ -593,30 +594,30 @@ export class FileIndexer {
     this.enabled = enabled;
 
     if (!enabled) {
-      console.log('[Indexer] Indexer disabled, skipping initialization');
+      logger.info('[Indexer] Indexer disabled, skipping initialization');
       return;
     }
 
-    console.log('[Indexer] Initializing...');
+    logger.info('[Indexer] Initializing...');
 
     this.initializationPromise = (async () => {
       try {
         await this.loadIndex();
 
         if (this.index.size === 0) {
-          console.log('[Indexer] No existing index found, building now...');
+          logger.info('[Indexer] No existing index found, building now...');
           await this.buildIndex();
         } else if (
           !this.lastIndexTime ||
           Date.now() - this.lastIndexTime.getTime() > 7 * 24 * 60 * 60 * 1000
         ) {
-          console.log('[Indexer] Index is outdated, rebuilding...');
+          logger.info('[Indexer] Index is outdated, rebuilding...');
           await this.buildIndex();
         } else {
-          console.log('[Indexer] Using existing index with', this.index.size, 'files');
+          logger.info('[Indexer] Using existing index with', this.index.size, 'files');
         }
       } catch (err) {
-        console.error('[Indexer] Initialization failed:', err);
+        logger.error('[Indexer] Initialization failed:', err);
       } finally {
         this.initializationPromise = null;
       }

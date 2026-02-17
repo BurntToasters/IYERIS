@@ -35,12 +35,24 @@ import { createDiskSpaceController } from './rendererDiskSpace.js';
 import { createFolderIconPickerController } from './rendererFolderIconPicker.js';
 import { createInlineRenameController } from './rendererInlineRename.js';
 import { createGitStatusController } from './rendererGitStatus.js';
-import { createSortController, SORT_BY_VALUES } from './rendererSort.js';
+import { createSortController } from './rendererSort.js';
 import { createZoomController } from './rendererZoom.js';
 import { createIndexerController } from './rendererIndexer.js';
 import { createLayoutController } from './rendererLayout.js';
 import { createDragDropController } from './rendererDragDrop.js';
-import { createThumbnailController, THUMBNAIL_QUALITY_VALUES } from './rendererThumbnails.js';
+import { createThumbnailController } from './rendererThumbnails.js';
+import {
+  THEME_VALUES,
+  SORT_BY_VALUES,
+  SORT_ORDER_VALUES,
+  FILE_CONFLICT_VALUES,
+  PREVIEW_POSITION_VALUES,
+  GRID_COLUMNS_VALUES,
+  VIEW_MODE_VALUES,
+  UPDATE_CHANNEL_VALUES,
+  THUMBNAIL_QUALITY_VALUES,
+  isOneOf,
+} from './constants.js';
 import {
   activateModal,
   deactivateModal,
@@ -77,6 +89,7 @@ import { createFileRenderController } from './rendererFileRender.js';
 import { createFileGridEventsController } from './rendererFileGridEvents.js';
 import { createEventListenersController } from './rendererEventListeners.js';
 import { createBootstrapController } from './rendererBootstrap.js';
+import { applyAppearance } from './rendererAppearance.js';
 
 const SEARCH_DEBOUNCE_MS = 300;
 const SETTINGS_SAVE_DEBOUNCE_MS = 1000;
@@ -93,27 +106,6 @@ function consumeEvent(e: Event): void {
   e.stopPropagation();
 }
 
-const THEME_VALUES = [
-  'dark',
-  'light',
-  'default',
-  'custom',
-  'nord',
-  'catppuccin',
-  'dracula',
-  'solarized',
-  'github',
-] as const;
-const SORT_ORDER_VALUES = ['asc', 'desc'] as const;
-const FILE_CONFLICT_VALUES = ['ask', 'rename', 'skip', 'overwrite'] as const;
-const PREVIEW_POSITION_VALUES = ['right', 'bottom'] as const;
-const GRID_COLUMNS_VALUES = ['auto', '2', '3', '4', '5', '6'] as const;
-const VIEW_MODE_VALUES = ['grid', 'list', 'column'] as const;
-const UPDATE_CHANNEL_VALUES = ['auto', 'beta', 'stable'] as const;
-
-function isOneOf<T extends readonly string[]>(value: string, options: T): value is T[number] {
-  return (options as readonly string[]).includes(value);
-}
 const DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
   year: 'numeric',
   month: 'short',
@@ -144,7 +136,7 @@ function cacheDriveInfo(drives: DriveInfo[]): void {
 
 async function saveSettingsWithTimestamp(settings: Settings) {
   if (isResettingSettings) {
-    return { success: true };
+    return { success: true as const };
   }
   return window.electronAPI.saveSettings(settings);
 }
@@ -515,7 +507,9 @@ const {
 } = createCompressExtractController({
   getCurrentPath: () => currentPath,
   getSelectedItems: () => selectedItems,
+  getAllFiles: () => allFiles,
   showToast,
+  showConfirm,
   navigateTo: (p) => navigateTo(p),
   activateModal,
   deactivateModal,
@@ -1144,7 +1138,7 @@ async function loadSettings(): Promise<void> {
     window.electronAPI.getClipboard(),
   ]);
 
-  if (result.success && result.settings) {
+  if (result.success) {
     const defaults = createDefaultSettings();
     currentSettings = { ...defaults, ...result.settings };
     currentSettings.enableSyntaxHighlighting = currentSettings.enableSyntaxHighlighting !== false;
@@ -1163,8 +1157,6 @@ async function loadSettings(): Promise<void> {
 
   if (sharedClipboard) {
     clipboardController.setClipboard(sharedClipboard);
-    const cb = clipboardController.getClipboard()!;
-    console.log('[Init] Loaded shared clipboard:', cb.operation, cb.paths.length, 'items');
   }
 
   window.addEventListener('focus', () => {
@@ -1184,26 +1176,10 @@ async function applySystemFontSize(): Promise<void> {
 }
 
 function applySettings(settings: Settings) {
-  document.body.classList.remove(
-    'theme-dark',
-    'theme-light',
-    'theme-default',
-    'theme-custom',
-    'theme-nord',
-    'theme-catppuccin',
-    'theme-dracula',
-    'theme-solarized',
-    'theme-github'
-  );
-  if (settings.theme && settings.theme !== 'default') {
-    document.body.classList.add(`theme-${settings.theme}`);
-  }
-
-  if (settings.theme === 'custom' && settings.customTheme) {
-    applyCustomThemeColors(settings.customTheme);
-  } else {
-    clearCustomThemeColors();
-  }
+  applyAppearance(settings, {
+    applyCustomThemeColors,
+    clearCustomThemeColors,
+  });
 
   if (settings.viewMode) {
     viewMode = settings.viewMode;
@@ -1215,56 +1191,11 @@ function applySettings(settings: Settings) {
   applyPreviewPanelWidth();
   updateSortIndicators();
 
-  // Body class toggles
-  const classToggles: [string, boolean][] = [
-    ['reduce-motion', !!settings.reduceMotion],
-    ['high-contrast', !!settings.highContrast],
-    ['large-text', !!settings.largeText],
-    ['bold-text', !!settings.boldText],
-    ['visible-focus', !!settings.visibleFocus],
-    ['reduce-transparency', !!settings.reduceTransparency],
-    ['liquid-glass', !!settings.liquidGlassMode],
-    ['themed-icons', !!settings.themedIcons],
-    ['show-file-checkboxes', !!settings.showFileCheckboxes],
-    ['compact-file-info', !!settings.compactFileInfo],
-    ['hide-file-extensions', settings.showFileExtensions === false],
-  ];
-  for (const [cls, val] of classToggles) document.body.classList.toggle(cls, val);
-
   if (settings.useSystemFontSize) {
     applySystemFontSize();
   } else {
     document.documentElement.style.removeProperty('--system-font-scale');
     document.body.classList.remove('use-system-font-size');
-  }
-
-  document.body.classList.remove('compact-ui', 'large-ui');
-  if (settings.uiDensity === 'compact') {
-    document.body.classList.add('compact-ui');
-  } else if (settings.uiDensity === 'larger') {
-    document.body.classList.add('large-ui');
-  }
-
-  // Grid columns
-  if (settings.gridColumns && settings.gridColumns !== 'auto') {
-    document.documentElement.style.setProperty('--grid-columns', settings.gridColumns);
-  } else {
-    document.documentElement.style.removeProperty('--grid-columns');
-  }
-
-  // Icon size
-  if (settings.iconSize && settings.iconSize > 0) {
-    document.documentElement.style.setProperty('--icon-size-grid', `${settings.iconSize}px`);
-  } else {
-    document.documentElement.style.removeProperty('--icon-size-grid');
-  }
-
-  // Preview panel position
-  document.body.classList.remove('preview-right', 'preview-bottom');
-  if (settings.previewPanelPosition === 'bottom') {
-    document.body.classList.add('preview-bottom');
-  } else {
-    document.body.classList.add('preview-right');
   }
 
   setHoverCardEnabled(settings.showFileHoverCard !== false);
@@ -1468,19 +1399,19 @@ async function saveSettings() {
   currentSettings.viewMode = viewMode;
 
   const result = await saveSettingsWithTimestamp(currentSettings);
-  if (result.success) {
-    if (previousTabsEnabled !== currentSettings.enableTabs) {
-      initializeTabs();
-    }
-    applySettings(currentSettings);
-    clearSettingsChanged();
-    hideSettingsModal();
-    showToast('Settings saved successfully!', 'Settings', 'success');
-    if (currentPath) {
-      refresh();
-    }
-  } else {
-    showToast('Failed to save settings: ' + result.error, 'Error', 'error');
+  if (!result.success) {
+    showToast('Failed to save settings: ' + (result.error || 'Operation failed'), 'Error', 'error');
+    return;
+  }
+  if (previousTabsEnabled !== currentSettings.enableTabs) {
+    initializeTabs();
+  }
+  applySettings(currentSettings);
+  clearSettingsChanged();
+  hideSettingsModal();
+  showToast('Settings saved successfully!', 'Settings', 'success');
+  if (currentPath) {
+    refresh();
   }
 }
 
@@ -1501,9 +1432,7 @@ async function resetSettings() {
       window.electronAPI.resetSettings(),
       window.electronAPI.resetHomeSettings(),
     ]);
-    if (settingsResult.success && homeResult.success) {
-      await window.electronAPI.relaunchApp();
-    } else {
+    if (!settingsResult.success || !homeResult.success) {
       isResettingSettings = false;
       const errors: string[] = [];
       if (!settingsResult.success) {
@@ -1513,7 +1442,9 @@ async function resetSettings() {
         errors.push(homeResult.error || 'Failed to reset Home settings');
       }
       showToast(`Failed to reset settings: ${errors.join(' | ')}`, 'Error', 'error');
+      return;
     }
+    await window.electronAPI.relaunchApp();
   }
 }
 
@@ -1627,21 +1558,21 @@ async function handleQuickAction(action?: string | null): Promise<void> {
   const specialAction = SPECIAL_DIRECTORY_ACTIONS[action];
   if (specialAction) {
     const result = await window.electronAPI.getSpecialDirectory(specialAction.key);
-    if (result.success && result.path) {
-      navigateTo(result.path);
-    } else {
+    if (!result.success) {
       showToast(
         result.error || `Failed to open ${specialAction.label} folder`,
         'Quick Access',
         'error'
       );
+      return;
     }
+    navigateTo(result.path);
     return;
   }
 
   if (action === 'browse') {
     const result = await window.electronAPI.selectFolder();
-    if (result.success && result.path) {
+    if (result.success) {
       navigateTo(result.path);
     }
     return;
@@ -1649,11 +1580,11 @@ async function handleQuickAction(action?: string | null): Promise<void> {
 
   if (action === 'trash') {
     const result = await window.electronAPI.openTrash();
-    if (result.success) {
-      showToast('Opening system trash folder', 'Info', 'info');
-    } else {
-      showToast('Failed to open trash folder', 'Error', 'error');
+    if (!result.success) {
+      showToast(result.error || 'Failed to open trash folder', 'Error', 'error');
+      return;
     }
+    showToast('Opening system trash folder', 'Info', 'info');
   }
 }
 
@@ -2027,39 +1958,40 @@ async function navigateTo(path: string, skipHistoryUpdate = false) {
     );
     if (requestId !== directoryRequestId) return;
 
-    if (result.success) {
-      currentPath = path;
-      updateCurrentTabPath(path);
-      if (addressInput) addressInput.value = path;
-      updateBreadcrumb(path);
-      try {
-        folderTreeManager.ensurePathVisible(path);
-      } catch (error) {
-        ignoreError(error);
-      }
-      addToDirectoryHistory(path);
-
-      if (!skipHistoryUpdate && (historyIndex === -1 || history[historyIndex] !== path)) {
-        history = history.slice(0, historyIndex + 1);
-        history.push(path);
-        historyIndex = history.length - 1;
-      }
-
-      updateNavigationButtons();
-
-      if (viewMode === 'column') {
-        await renderColumnView();
-      } else {
-        renderFiles(result.contents || []);
-      }
-      updateDiskSpace();
-      if (currentSettings.enableGitStatus) {
-        fetchGitStatusAsync(path);
-        updateGitBranch(path);
-      }
-    } else {
+    if (!result.success) {
       console.error('Error loading directory:', result.error);
       showToast(result.error || 'Unknown error', 'Error Loading Directory', 'error');
+      return;
+    }
+
+    currentPath = path;
+    updateCurrentTabPath(path);
+    if (addressInput) addressInput.value = path;
+    updateBreadcrumb(path);
+    try {
+      folderTreeManager.ensurePathVisible(path);
+    } catch (error) {
+      ignoreError(error);
+    }
+    addToDirectoryHistory(path);
+
+    if (!skipHistoryUpdate && (historyIndex === -1 || history[historyIndex] !== path)) {
+      history = history.slice(0, historyIndex + 1);
+      history.push(path);
+      historyIndex = history.length - 1;
+    }
+
+    updateNavigationButtons();
+
+    if (viewMode === 'column') {
+      await renderColumnView();
+    } else {
+      renderFiles(result.contents || []);
+    }
+    updateDiskSpace();
+    if (currentSettings.enableGitStatus) {
+      fetchGitStatusAsync(path);
+      updateGitBranch(path);
     }
   } catch (error) {
     console.error('Error navigating:', error);
@@ -2187,6 +2119,7 @@ async function deleteSelected(permanent = false) {
 
 async function updateUndoRedoState() {
   const state = await window.electronAPI.getUndoRedoState();
+  if (!state.success) return;
   canUndo = state.canUndo;
   canRedo = state.canRedo;
 
@@ -2199,14 +2132,14 @@ async function performUndoRedo(isUndo: boolean) {
     ? await window.electronAPI.undoAction()
     : await window.electronAPI.redoAction();
   const label = isUndo ? 'Undo' : 'Redo';
-  if (result.success) {
-    showToast(`Action ${isUndo ? 'undone' : 'redone'}`, label, 'success');
-    await updateUndoRedoState();
-    refresh();
-  } else {
+  if (!result.success) {
     showToast(result.error || `Cannot ${label.toLowerCase()}`, `${label} Failed`, 'warning');
     await updateUndoRedoState();
+    return;
   }
+  showToast(`Action ${isUndo ? 'undone' : 'redone'}`, label, 'success');
+  await updateUndoRedoState();
+  refresh();
 }
 function performUndo() {
   return performUndoRedo(true);
@@ -2380,7 +2313,7 @@ function bindClickBindings(bindings: ReadonlyArray<readonly [string, () => void]
 
 async function chooseFolderAndApply(onPathSelected: (selectedPath: string) => void): Promise<void> {
   const result = await window.electronAPI.selectFolder();
-  if (result.success && result.path) {
+  if (result.success) {
     onPathSelected(result.path);
   }
 }
@@ -2553,9 +2486,7 @@ document.addEventListener('mousedown', (e) => {
 
 (async () => {
   try {
-    console.log('Starting IYERIS...');
     await bootstrapInit();
-    console.log('IYERIS initialized successfully');
   } catch (error) {
     console.error('Failed to initialize IYERIS:', error);
     alert('Failed to start IYERIS: ' + getErrorMessage(error));

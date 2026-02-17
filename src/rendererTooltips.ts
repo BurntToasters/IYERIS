@@ -2,6 +2,7 @@ import { getById } from './rendererDom.js';
 
 let tooltipElement: HTMLElement | null = null;
 let tooltipTimeout: NodeJS.Timeout | null = null;
+let currentTooltipAnchor: HTMLElement | null = null;
 const TOOLTIP_DELAY = 500;
 
 export function initTooltipSystem(): void {
@@ -49,6 +50,11 @@ export function initTooltipSystem(): void {
       delete actualTarget.dataset.originalTitle;
     }
 
+    if (currentTooltipAnchor) {
+      currentTooltipAnchor.removeAttribute('aria-describedby');
+      currentTooltipAnchor = null;
+    }
+
     hideTooltip();
   });
 
@@ -74,6 +80,9 @@ export function initTooltipSystem(): void {
 
 function showTooltip(text: string, anchor: HTMLElement): void {
   if (!tooltipElement) return;
+
+  currentTooltipAnchor = anchor;
+  anchor.setAttribute('aria-describedby', 'ui-tooltip');
 
   const content = tooltipElement.querySelector('.ui-tooltip-content');
   if (content) {
@@ -112,6 +121,10 @@ function showTooltip(text: string, anchor: HTMLElement): void {
 function hideTooltip(): void {
   if (tooltipElement) {
     tooltipElement.classList.remove('visible');
+    if (currentTooltipAnchor) {
+      currentTooltipAnchor.removeAttribute('aria-describedby');
+      currentTooltipAnchor = null;
+    }
     setTimeout(() => {
       if (tooltipElement) tooltipElement.style.display = 'none';
     }, 150);

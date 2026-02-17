@@ -155,16 +155,21 @@ describe('calculateChecksum – progress reporting (lines 182-186)', () => {
 });
 
 describe('calculateChecksum – stream error handling', () => {
-  it('rejects when the file is deleted mid-read (stream error)', async () => {
-    const testFile = path.join(tmpDir, 'stream-error.bin');
+  it.skipIf(process.platform === 'win32')(
+    'rejects when the file is deleted mid-read (stream error)',
+    async () => {
+      const testFile = path.join(tmpDir, 'stream-error.bin');
 
-    await fs.promises.writeFile(testFile, Buffer.alloc(64, 'e'));
-    await fs.promises.chmod(testFile, 0o000);
+      await fs.promises.writeFile(testFile, Buffer.alloc(64, 'e'));
+      await fs.promises.chmod(testFile, 0o000);
 
-    await expect(calculateChecksum({ filePath: testFile, algorithms: ['md5'] })).rejects.toThrow();
+      await expect(
+        calculateChecksum({ filePath: testFile, algorithms: ['md5'] })
+      ).rejects.toThrow();
 
-    await fs.promises.chmod(testFile, 0o644);
-  });
+      await fs.promises.chmod(testFile, 0o644);
+    }
+  );
 });
 
 describe('calculateChecksum – algorithms edge cases', () => {

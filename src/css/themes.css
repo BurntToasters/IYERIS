@@ -49,6 +49,16 @@ body.theme-light {
   --bg-secondary: #fafafa;
   --dropdown-bg: rgba(255, 255, 255, 0.98);
   --separator: rgba(0, 0, 0, 0.1);
+  --surface-0: var(--bg-primary);
+  --surface-1: var(--bg-secondary);
+  --surface-2: color-mix(in srgb, #ffffff 92%, var(--bg-secondary));
+  --surface-overlay: var(--glass-bg);
+  --panel-border: color-mix(in srgb, #000 12%, transparent);
+  --panel-border-strong: color-mix(in srgb, #000 22%, transparent);
+  --interactive-hover: var(--hover-color);
+  --interactive-active: var(--active-color);
+  --interactive-selected: rgba(var(--accent-rgb), 0.18);
+  --interactive-selected-border: rgba(var(--accent-rgb), 0.38);
   --themed-icon-hue: 210deg;
 
   background-color: var(--bg-primary);
@@ -596,6 +606,16 @@ body.theme-github {
   --hover-color: color-mix(in srgb, var(--text-primary) 6%, transparent);
   --active-color: color-mix(in srgb, var(--text-primary) 10%, transparent);
   --separator: color-mix(in srgb, var(--text-primary) 12%, transparent);
+  --surface-0: var(--bg-primary);
+  --surface-1: var(--bg-secondary);
+  --surface-2: color-mix(in srgb, var(--bg-secondary) 88%, transparent);
+  --surface-overlay: var(--glass-bg);
+  --panel-border: color-mix(in srgb, var(--text-primary) 12%, transparent);
+  --panel-border-strong: color-mix(in srgb, var(--text-primary) 20%, transparent);
+  --interactive-hover: var(--hover-color);
+  --interactive-active: var(--active-color);
+  --interactive-selected: var(--accent-light);
+  --interactive-selected-border: var(--accent-strong);
   --glass-modal-bg: rgba(var(--bg-primary-rgb), 0.98);
   --glass-modal-border: color-mix(in srgb, var(--text-primary) 12%, transparent);
 }
@@ -610,6 +630,16 @@ body.theme-custom {
   --text-secondary: var(--custom-text-secondary, rgba(255, 255, 255, 0.75));
   --glass-bg: var(--custom-glass-bg, rgba(255, 255, 255, 0.03));
   --glass-border: var(--custom-glass-border, rgba(255, 255, 255, 0.08));
+  --surface-0: var(--bg-primary);
+  --surface-1: var(--bg-secondary);
+  --surface-2: color-mix(in srgb, var(--bg-secondary) 88%, transparent);
+  --surface-overlay: var(--glass-bg);
+  --panel-border: color-mix(in srgb, var(--text-primary) 12%, transparent);
+  --panel-border-strong: color-mix(in srgb, var(--text-primary) 20%, transparent);
+  --interactive-hover: var(--hover-color);
+  --interactive-active: var(--active-color);
+  --interactive-selected: var(--accent-light);
+  --interactive-selected-border: var(--accent-strong);
 }
 
 body.theme-custom {

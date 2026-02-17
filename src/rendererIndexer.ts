@@ -55,24 +55,23 @@ export function createIndexerController(config: IndexerConfig) {
 
     try {
       const result = await window.electronAPI.getIndexStatus();
-      if (result.success && result.status) {
-        const status = result.status as IndexStatusSnapshot;
-        if (status.isIndexing) {
-          indexStatus.textContent = `Status: Indexing... (${status.indexedFiles.toLocaleString()} files found)`;
-          if (!indexStatusInterval) {
-            startIndexStatusPolling();
-          }
-        } else if (status.lastIndexTime) {
-          const date = new Date(status.lastIndexTime);
-          indexStatus.textContent = `Status: ${status.indexedFiles.toLocaleString()} files indexed on ${date.toLocaleDateString()} at ${date.toLocaleTimeString()}`;
-        } else {
-          indexStatus.textContent = 'Status: Not indexed yet';
-        }
-        return status;
-      } else {
+      if (!result.success) {
         indexStatus.textContent = 'Status: Unknown';
         return null;
       }
+      const status = result.status as IndexStatusSnapshot;
+      if (status.isIndexing) {
+        indexStatus.textContent = `Status: Indexing... (${status.indexedFiles.toLocaleString()} files found)`;
+        if (!indexStatusInterval) {
+          startIndexStatusPolling();
+        }
+      } else if (status.lastIndexTime) {
+        const date = new Date(status.lastIndexTime);
+        indexStatus.textContent = `Status: ${status.indexedFiles.toLocaleString()} files indexed on ${date.toLocaleDateString()} at ${date.toLocaleTimeString()}`;
+      } else {
+        indexStatus.textContent = 'Status: Not indexed yet';
+      }
+      return status;
     } catch (error) {
       console.error('Failed to get index status:', error);
       indexStatus.textContent = 'Status: Error';
@@ -94,15 +93,19 @@ export function createIndexerController(config: IndexerConfig) {
 
     try {
       const result = await window.electronAPI.rebuildIndex();
-      if (result.success) {
-        config.getShowToast()('Index rebuild started', 'File Indexer', 'success');
-        startIndexStatusPolling();
-        setTimeout(async () => {
-          await updateIndexStatus();
-        }, 300);
-      } else {
-        config.getShowToast()('Failed to rebuild index: ' + result.error, 'Error', 'error');
+      if (!result.success) {
+        config.getShowToast()(
+          'Failed to rebuild index: ' + (result.error || 'Operation failed'),
+          'Error',
+          'error'
+        );
+        return;
       }
+      config.getShowToast()('Index rebuild started', 'File Indexer', 'success');
+      startIndexStatusPolling();
+      setTimeout(async () => {
+        await updateIndexStatus();
+      }, 300);
     } catch {
       config.getShowToast()('Error rebuilding index', 'Error', 'error');
     } finally {

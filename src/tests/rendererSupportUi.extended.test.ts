@@ -12,7 +12,7 @@ function makeDeps(overrides: Partial<Deps> = {}): Deps {
     escapeHtml: (v: string) => v,
     getErrorMessage: (e: unknown) => String(e),
     getCurrentSettings: () => ({}) as any,
-    saveSettingsWithTimestamp: vi.fn(async () => ({ success: true })),
+    saveSettingsWithTimestamp: vi.fn(async () => ({ success: true as const })),
     openExternal: vi.fn(),
     ...overrides,
   };
@@ -24,7 +24,7 @@ describe('rendererSupportUi', () => {
 
     const electronApiMock: ElectronApiMock = {
       getLicenses: vi.fn(async () => ({
-        success: true,
+        success: true as const,
         licenses: {
           'some-pkg': {
             licenses: 'MIT',
@@ -47,7 +47,7 @@ describe('rendererSupportUi', () => {
   describe('getRepositoryText / normalizeRepositoryUrl / sanitizeExternalUrl', () => {
     it('handles string repository URLs', async () => {
       window.electronAPI.getLicenses = vi.fn(async () => ({
-        success: true,
+        success: true as const,
         licenses: {
           'test-pkg': {
             licenses: 'MIT',
@@ -74,7 +74,7 @@ describe('rendererSupportUi', () => {
 
     it('handles object repository { url: string }', async () => {
       window.electronAPI.getLicenses = vi.fn(async () => ({
-        success: true,
+        success: true as const,
         licenses: {
           'test-pkg': {
             licenses: 'ISC',
@@ -100,7 +100,7 @@ describe('rendererSupportUi', () => {
 
     it('handles git@ SSH-style repository', async () => {
       window.electronAPI.getLicenses = vi.fn(async () => ({
-        success: true,
+        success: true as const,
         licenses: {
           'ssh-pkg': {
             licenses: 'MIT',
@@ -126,7 +126,7 @@ describe('rendererSupportUi', () => {
 
     it('handles ssh:// repository', async () => {
       window.electronAPI.getLicenses = vi.fn(async () => ({
-        success: true,
+        success: true as const,
         licenses: {
           'ssh2-pkg': {
             licenses: 'MIT',
@@ -152,7 +152,7 @@ describe('rendererSupportUi', () => {
 
     it('handles git:// repository', async () => {
       window.electronAPI.getLicenses = vi.fn(async () => ({
-        success: true,
+        success: true as const,
         licenses: {
           'git-pkg': {
             licenses: 'MIT',
@@ -178,7 +178,7 @@ describe('rendererSupportUi', () => {
 
     it('shows plain text for invalid/non-standard URLs', async () => {
       window.electronAPI.getLicenses = vi.fn(async () => ({
-        success: true,
+        success: true as const,
         licenses: {
           'weird-pkg': {
             licenses: 'MIT',
@@ -204,7 +204,7 @@ describe('rendererSupportUi', () => {
 
     it('handles null/empty repository', async () => {
       window.electronAPI.getLicenses = vi.fn(async () => ({
-        success: true,
+        success: true as const,
         licenses: {
           'no-repo': { licenses: 'MIT', repository: null },
         },
@@ -226,7 +226,7 @@ describe('rendererSupportUi', () => {
 
     it('handles array licenses field', async () => {
       window.electronAPI.getLicenses = vi.fn(async () => ({
-        success: true,
+        success: true as const,
         licenses: {
           'multi-lic': { licenses: ['MIT', 'Apache-2.0'] },
         },
@@ -267,7 +267,7 @@ describe('rendererSupportUi', () => {
 
     it('displays error on getLicenses failure', async () => {
       window.electronAPI.getLicenses = vi.fn(async () => ({
-        success: false,
+        success: false as const,
         error: 'Could not read',
       }));
 
@@ -322,7 +322,7 @@ describe('rendererSupportUi', () => {
     it('truncates long license text', async () => {
       const longText = 'A'.repeat(1500);
       window.electronAPI.getLicenses = vi.fn(async () => ({
-        success: true,
+        success: true as const,
         licenses: {
           'long-pkg': {
             licenses: 'MIT',

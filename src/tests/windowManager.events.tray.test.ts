@@ -241,6 +241,27 @@ describe('windowManager extended2', () => {
       expect(minimizeHandler).toBeDefined();
     });
 
+    it('disables minimize-to-tray for window after tray creation fails once', async () => {
+      mocks.getTray.mockReturnValue(null);
+      mocks.getCachedSettings.mockReturnValue({ minimizeToTray: true });
+      mocks.nativeImageResult.isEmpty.mockReturnValue(true);
+      createWindow(false);
+      const minimizeHandler = mocks.eventHandlers.get('minimize');
+      expect(minimizeHandler).toBeDefined();
+
+      await minimizeHandler!();
+      await minimizeHandler!();
+
+      const trayIconErrors = mocks.loggerError.mock.calls.filter((args: unknown[]) =>
+        String(args[0]).includes('Failed to load tray icon from:')
+      );
+      expect(trayIconErrors).toHaveLength(1);
+      expect(mocks.loggerWarn).toHaveBeenCalledTimes(1);
+      expect(mocks.loggerWarn).toHaveBeenCalledWith(
+        '[Tray] Tray unavailable; minimize-to-tray disabled for this window session'
+      );
+    });
+
     it('registers closed handler that updates mainWindow', () => {
       createWindow(false);
       const closedHandler = mocks.eventHandlers.get('closed');

@@ -1,9 +1,9 @@
 .twemoji {
   display: inline-block;
-  width: 1.2em;
-  height: 1.2em;
+  width: 1em;
+  height: 1em;
   vertical-align: middle;
-  margin: 0 0.05em 0 0.1em;
+  margin: 0;
   user-select: none;
   -webkit-user-drag: none;
 }
@@ -24,9 +24,9 @@
 }
 
 .nav-icon .twemoji {
-  width: 1.2em;
-  height: 1.2em;
-  margin-right: 0.5em;
+  width: 1em;
+  height: 1em;
+  margin: 0;
 }
 
 .empty-icon .twemoji {
@@ -44,25 +44,25 @@
 .context-menu-item .twemoji {
   width: 1em;
   height: 1em;
-  margin-right: 0.5em;
+  margin-right: 0.45em;
 }
 
 .bookmark-icon .twemoji {
   width: 1em;
   height: 1em;
-  margin-right: 0.5em;
+  margin-right: 0.4em;
 }
 
 .file-icon .twemoji {
-  width: 48px;
-  height: 48px;
-  margin-bottom: 0.5rem;
+  width: var(--icon-size-grid);
+  height: var(--icon-size-grid);
+  margin-bottom: 0;
 }
 
 .list-view .file-icon .twemoji {
-  width: 24px;
-  height: 24px;
-  margin-right: 0.5rem;
+  width: max(var(--icon-size-list), 16px);
+  height: max(var(--icon-size-list), 16px);
+  margin-right: 0.45rem;
   margin-bottom: 0;
 }
 
@@ -73,8 +73,8 @@
 }
 
 .toolbar-button .twemoji {
-  width: 1em;
-  height: 1em;
+  width: 0.95em;
+  height: 0.95em;
 }
 
 .address-icon .twemoji,
@@ -84,14 +84,14 @@
 }
 
 .status-bar .twemoji {
-  width: 1em;
-  height: 1em;
+  width: var(--icon-size-status);
+  height: var(--icon-size-status);
 }
 
-.settings-modal h3 .twemoji {
-  width: 1.2em;
-  height: 1.2em;
-  margin-right: 0.3em;
+.settings-modal h3 .twemoji,
+.settings-tab .twemoji {
+  width: var(--icon-size-settings-tab);
+  height: var(--icon-size-settings-tab);
 }
 
 .history-item .twemoji {

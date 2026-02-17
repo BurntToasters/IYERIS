@@ -75,12 +75,12 @@
 }
 
 .history-dropdown::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2);
+  background: var(--scrollbar-thumb-bg);
   border-radius: 4px;
 }
 
 .history-dropdown::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.3);
+  background: var(--scrollbar-thumb-hover-bg);
 }
 
 .context-menu-item:focus-visible,
@@ -209,7 +209,7 @@
 }
 
 .modal-content::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2);
+  background: var(--scrollbar-thumb-bg);
   border-radius: 3px;
 }
 
@@ -436,13 +436,7 @@
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  transition:
-    background-color var(--animation-duration) var(--animation-easing),
-    border-color var(--animation-duration) var(--animation-easing),
-    color var(--animation-duration) var(--animation-easing),
-    box-shadow var(--animation-duration) var(--animation-easing),
-    transform var(--animation-duration) var(--animation-easing),
-    opacity var(--animation-duration) var(--animation-easing);
+  transition: var(--transition-standard);
   font-family: var(--font-family);
 }
 

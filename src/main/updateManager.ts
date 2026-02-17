@@ -9,6 +9,7 @@ import {
 } from './platformUtils';
 import { safeSendToWindow, isTrustedIpcEvent } from './ipcUtils';
 import { getErrorMessage } from './security';
+import { logger } from './logger';
 
 function parseVersion(v: string): {
   major: number;
@@ -97,13 +98,13 @@ export async function initializeAutoUpdater(settings: Settings): Promise<void> {
     if (useBetaChannel) {
       autoUpdater.channel = 'beta';
       autoUpdater.allowPrerelease = true;
-      console.log('[AutoUpdater] Beta channel enabled');
+      logger.info('[AutoUpdater] Beta channel enabled');
     } else {
       autoUpdater.channel = 'latest';
       autoUpdater.allowPrerelease = false;
-      console.log('[AutoUpdater] Stable channel enabled');
+      logger.info('[AutoUpdater] Stable channel enabled');
     }
-    console.log(
+    logger.info(
       '[AutoUpdater] Current version:',
       currentVersion,
       '| Channel setting:',
@@ -111,44 +112,44 @@ export async function initializeAutoUpdater(settings: Settings): Promise<void> {
     );
 
     if (isRunningInFlatpak()) {
-      console.log('[AutoUpdater] Running in Flatpak - auto-updater disabled');
-      console.log(
+      logger.info('[AutoUpdater] Running in Flatpak - auto-updater disabled');
+      logger.info(
         '[AutoUpdater] Updates should be installed via: flatpak update com.burnttoasters.iyeris'
       );
     } else if (process.mas) {
-      console.log('[AutoUpdater] Running in Mac App Store - auto-updater disabled');
+      logger.info('[AutoUpdater] Running in Mac App Store - auto-updater disabled');
     } else if (process.windowsStore) {
-      console.log('[AutoUpdater] Running in Microsoft Store - auto-updater disabled');
-      console.log('[AutoUpdater] Updates are handled by the Microsoft Store');
+      logger.info('[AutoUpdater] Running in Microsoft Store - auto-updater disabled');
+      logger.info('[AutoUpdater] Updates are handled by the Microsoft Store');
     } else if (isMsiInstall || isInstalledViaMsi()) {
-      console.log('[AutoUpdater] Installed via MSI (enterprise) - auto-updater disabled');
-      console.log('[AutoUpdater] Updates should be managed by your IT administrator');
+      logger.info('[AutoUpdater] Installed via MSI (enterprise) - auto-updater disabled');
+      logger.info('[AutoUpdater] Updates should be managed by your IT administrator');
     }
 
     autoUpdater.on('checking-for-update', () => {
-      console.log('[AutoUpdater] Checking for update...');
+      logger.info('[AutoUpdater] Checking for update...');
       safeSendToWindow(getMainWindow(), 'update-checking');
     });
 
     autoUpdater.on('update-available', (info: { version: string }) => {
-      console.log('[AutoUpdater] Update available:', info.version);
+      logger.info('[AutoUpdater] Update available:', info.version);
       const mainWindow = getMainWindow();
 
       const updateIsBeta = /-(beta|alpha|rc)/i.test(info.version);
       if (useBetaChannel && !updateIsBeta) {
-        console.log(`[AutoUpdater] Beta channel ignoring stable release ${info.version}`);
+        logger.info(`[AutoUpdater] Beta channel ignoring stable release ${info.version}`);
         safeSendToWindow(mainWindow, 'update-not-available', { version: currentVersion });
         return;
       }
       if (!useBetaChannel && updateIsBeta) {
-        console.log(`[AutoUpdater] Stable channel ignoring beta release ${info.version}`);
+        logger.info(`[AutoUpdater] Stable channel ignoring beta release ${info.version}`);
         safeSendToWindow(mainWindow, 'update-not-available', { version: currentVersion });
         return;
       }
 
       const comparison = compareVersions(info.version, currentVersion);
       if (comparison <= 0) {
-        console.log(
+        logger.info(
           `[AutoUpdater] Ignoring update ${info.version} - current version ${currentVersion} is newer or equal`
         );
         safeSendToWindow(mainWindow, 'update-not-available', { version: currentVersion });
@@ -159,12 +160,12 @@ export async function initializeAutoUpdater(settings: Settings): Promise<void> {
     });
 
     autoUpdater.on('update-not-available', (info: { version: string }) => {
-      console.log('[AutoUpdater] Update not available. Current version:', info.version);
+      logger.info('[AutoUpdater] Update not available. Current version:', info.version);
       safeSendToWindow(getMainWindow(), 'update-not-available', info);
     });
 
     autoUpdater.on('error', (err: Error) => {
-      console.error('[AutoUpdater] Error:', err);
+      logger.error('[AutoUpdater] Error:', err);
       safeSendToWindow(getMainWindow(), 'update-error', err.message);
     });
 
@@ -176,7 +177,7 @@ export async function initializeAutoUpdater(settings: Settings): Promise<void> {
         transferred: number;
         total: number;
       }) => {
-        console.log(`[AutoUpdater] Download progress: ${progressObj.percent.toFixed(2)}%`);
+        logger.info(`[AutoUpdater] Download progress: ${progressObj.percent.toFixed(2)}%`);
         safeSendToWindow(getMainWindow(), 'update-download-progress', {
           percent: progressObj.percent,
           bytesPerSecond: progressObj.bytesPerSecond,
@@ -187,7 +188,7 @@ export async function initializeAutoUpdater(settings: Settings): Promise<void> {
     );
 
     autoUpdater.on('update-downloaded', (info: { version: string }) => {
-      console.log('[AutoUpdater] Update downloaded:', info.version);
+      logger.info('[AutoUpdater] Update downloaded:', info.version);
       safeSendToWindow(getMainWindow(), 'update-downloaded', info);
     });
 
@@ -208,15 +209,15 @@ export async function initializeAutoUpdater(settings: Settings): Promise<void> {
       !isDev &&
       settings.autoCheckUpdates !== false
     ) {
-      console.log('[AutoUpdater] Checking for updates on startup...');
+      logger.info('[AutoUpdater] Checking for updates on startup...');
       autoUpdater.checkForUpdates().catch((err: Error) => {
-        console.error('[AutoUpdater] Startup check failed:', err);
+        logger.error('[AutoUpdater] Startup check failed:', err);
       });
     } else if (settings.autoCheckUpdates === false) {
-      console.log('[AutoUpdater] Auto-check on startup disabled by user');
+      logger.info('[AutoUpdater] Auto-check on startup disabled by user');
     }
   } catch (error) {
-    console.error('[AutoUpdater] Setup failed:', error);
+    logger.error('[AutoUpdater] Setup failed:', error);
   }
 }
 
@@ -270,7 +271,7 @@ export function setupUpdateHandlers(loadSettings: () => Promise<Settings>): void
         const result = await check();
         if (result) {
           const currentVersion = app.getVersion();
-          console.log(`[AutoUpdater] ${logMsg}`);
+          logger.info(`[AutoUpdater] ${logMsg}`);
           return {
             success: true,
             hasUpdate: false,
@@ -287,7 +288,7 @@ export function setupUpdateHandlers(loadSettings: () => Promise<Settings>): void
         const currentVersion = app.getVersion();
         const settings = await loadSettings();
         const updateChannel = settings.updateChannel || 'auto';
-        console.log(
+        logger.info(
           '[AutoUpdater] Manually checking for updates. Current version:',
           currentVersion,
           '| Channel:',
@@ -323,7 +324,7 @@ export function setupUpdateHandlers(loadSettings: () => Promise<Settings>): void
         const updateIsBeta = /-(beta|alpha|rc)/i.test(latestVersion);
 
         if (preferBeta && !updateIsBeta) {
-          console.log(`[AutoUpdater] Beta channel ignoring stable release ${latestVersion}`);
+          logger.info(`[AutoUpdater] Beta channel ignoring stable release ${latestVersion}`);
           return {
             success: true,
             hasUpdate: false,
@@ -334,7 +335,7 @@ export function setupUpdateHandlers(loadSettings: () => Promise<Settings>): void
         }
 
         if (!preferBeta && updateIsBeta) {
-          console.log(`[AutoUpdater] Stable channel ignoring beta release ${latestVersion}`);
+          logger.info(`[AutoUpdater] Stable channel ignoring beta release ${latestVersion}`);
           return {
             success: true,
             hasUpdate: false,
@@ -347,7 +348,7 @@ export function setupUpdateHandlers(loadSettings: () => Promise<Settings>): void
         const comparison = compareVersions(latestVersion, currentVersion);
         const hasUpdate = comparison > 0;
 
-        console.log('[AutoUpdater] Update check result:', {
+        logger.info('[AutoUpdater] Update check result:', {
           hasUpdate,
           currentVersion,
           latestVersion,
@@ -369,7 +370,7 @@ export function setupUpdateHandlers(loadSettings: () => Promise<Settings>): void
           releaseUrl: `https://github.com/BurntToasters/IYERIS/releases/tag/v${latestVersion}`,
         };
       } catch (error) {
-        console.error('[AutoUpdater] Check for updates failed:', error);
+        logger.error('[AutoUpdater] Check for updates failed:', error);
         return { success: false, error: getErrorMessage(error) };
       }
     }
@@ -381,11 +382,11 @@ export function setupUpdateHandlers(loadSettings: () => Promise<Settings>): void
         return { success: false, error: 'Untrusted IPC sender' };
       }
       const autoUpdater = getAutoUpdater();
-      console.log('[AutoUpdater] Starting update download...');
+      logger.info('[AutoUpdater] Starting update download...');
       await autoUpdater.downloadUpdate();
       return { success: true };
     } catch (error) {
-      console.error('[AutoUpdater] Download failed:', error);
+      logger.error('[AutoUpdater] Download failed:', error);
       return { success: false, error: getErrorMessage(error) };
     }
   });
@@ -396,11 +397,11 @@ export function setupUpdateHandlers(loadSettings: () => Promise<Settings>): void
         return { success: false, error: 'Untrusted IPC sender' };
       }
       const autoUpdater = getAutoUpdater();
-      console.log('[AutoUpdater] Installing update and restarting...');
+      logger.info('[AutoUpdater] Installing update and restarting...');
       setIsQuitting(true);
 
       app.releaseSingleInstanceLock();
-      console.log('[AutoUpdater] Released single instance lock');
+      logger.info('[AutoUpdater] Released single instance lock');
 
       setTimeout(() => {
         autoUpdater.quitAndInstall(false, true);
@@ -409,7 +410,7 @@ export function setupUpdateHandlers(loadSettings: () => Promise<Settings>): void
       return { success: true };
     } catch (error) {
       setIsQuitting(false);
-      console.error('[AutoUpdater] Install failed:', error);
+      logger.error('[AutoUpdater] Install failed:', error);
       return { success: false, error: getErrorMessage(error) };
     }
   });

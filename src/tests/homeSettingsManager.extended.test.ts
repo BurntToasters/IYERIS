@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import * as path from 'path';
 import type { HomeSettings } from '../types';
 
 type Handler = (...args: any[]) => any;
@@ -164,11 +165,11 @@ describe('homeSettingsManager extended', () => {
 
       const result = handler!({} as any);
 
-      expect(result).toBe('/tmp/iyeris-user/homeSettings.json');
+      expect(result).toBe(path.join('/tmp/iyeris-user', 'homeSettings.json'));
     });
   });
 
-  describe('save-home-settings handler', () => {
+  describe('save-home-settings', () => {
     it('returns untrusted error when IPC event is not trusted', async () => {
       trustedIpc = false;
       const manager = await import('../main/homeSettingsManager');
@@ -224,7 +225,7 @@ describe('homeSettingsManager extended', () => {
     it('returns the correct path', async () => {
       const manager = await import('../main/homeSettingsManager');
       const result = manager.getHomeSettingsPath();
-      expect(result).toBe('/tmp/iyeris-user/homeSettings.json');
+      expect(result).toBe(path.join('/tmp/iyeris-user', 'homeSettings.json'));
     });
   });
 
@@ -246,7 +247,9 @@ describe('homeSettingsManager extended', () => {
       const result = await manager.saveHomeSettings({ cards: [] } as unknown as HomeSettings);
 
       expect(result).toEqual({ success: false, error: 'copy fail' });
-      expect(fsPromisesMock.unlink).toHaveBeenCalledWith('/tmp/iyeris-user/homeSettings.json.tmp');
+      expect(fsPromisesMock.unlink).toHaveBeenCalledWith(
+        path.join('/tmp/iyeris-user', 'homeSettings.json.tmp')
+      );
     });
   });
 

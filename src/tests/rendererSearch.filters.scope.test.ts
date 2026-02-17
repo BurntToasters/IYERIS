@@ -310,7 +310,7 @@ describe('rendererSearch — extended2', () => {
       expect(mappedFiles[1].isHidden).toBe(true);
       expect(mappedFiles[2].isDirectory).toBe(true);
 
-      expect(deps.renderFiles).toHaveBeenCalledWith(mappedFiles);
+      expect(deps.renderFiles).toHaveBeenCalledWith(mappedFiles, 'app');
     });
 
     it('shows "Index Disabled" warning on global non-content search', async () => {
@@ -356,7 +356,7 @@ describe('rendererSearch — extended2', () => {
 
       await ctrl.performSearch();
 
-      expect(deps.showToast).toHaveBeenCalledWith('Global search failed', 'Search Error', 'error');
+      expect(deps.showToast).toHaveBeenCalledWith('Search failed', 'Search Error', 'error');
     });
 
     it('ignores "Calculation cancelled" on global non-content search', async () => {
@@ -476,11 +476,7 @@ describe('rendererSearch — extended2', () => {
 
       await ctrl.performSearch();
 
-      expect(deps.showToast).toHaveBeenCalledWith(
-        'Global content search failed',
-        'Search Error',
-        'error'
-      );
+      expect(deps.showToast).toHaveBeenCalledWith('Search failed', 'Search Error', 'error');
     });
 
     it('ignores "Calculation cancelled" on global content search', async () => {

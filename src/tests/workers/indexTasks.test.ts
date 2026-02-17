@@ -10,13 +10,20 @@ vi.mock('../../workers/workerUtils', async (importOriginal) => {
     ...orig,
     isCancelled: vi.fn(() => false),
     sendProgress: vi.fn(),
+    batchCheckHidden: vi.fn(async () => new Map()),
   };
 });
 
 let tmpDir: string;
 
+// On Windows, os.tmpdir() is under AppData which buildIndex's shouldExclude filters out.
+// Use a directory under the user's home that won't match any excluded segments.
+const tmpBase =
+  process.platform === 'win32' ? path.join(os.homedir(), '.iyeris-test-tmp') : os.tmpdir();
+
 beforeEach(async () => {
-  tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'index-test-'));
+  await fs.promises.mkdir(tmpBase, { recursive: true });
+  tmpDir = await fs.promises.mkdtemp(path.join(tmpBase, 'index-test-'));
 });
 
 afterEach(async () => {

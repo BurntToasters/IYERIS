@@ -15,6 +15,15 @@ vi.mock('../main/appState', () => ({
   HIDDEN_FILE_CACHE_MAX: 3,
 }));
 
+vi.mock('../main/logger', () => ({
+  logger: {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+  },
+}));
+
 const originalPlatform = process.platform;
 
 function setPlatform(platform: NodeJS.Platform): void {
@@ -126,7 +135,8 @@ describe('hiddenFileCache (extended)', () => {
       execFileMock.mockResolvedValue({
         stdout: '  A          C:\\test\\file.txt\r\n',
       });
-      const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+      const { logger } = await import('../main/logger');
+      vi.mocked(logger.info).mockClear();
 
       const mod = await import('../main/hiddenFileCache');
 
@@ -142,11 +152,9 @@ describe('hiddenFileCache (extended)', () => {
 
       await mod.isFileHiddenCached('C:\\test\\e.txt', 'e.txt');
 
-      expect(consoleSpy).toHaveBeenCalledWith(
+      expect(logger.info).toHaveBeenCalledWith(
         expect.stringContaining('Cleaned up 1 hidden file cache entries')
       );
-
-      consoleSpy.mockRestore();
     });
 
     it('evicts multiple entries when cache greatly exceeds max', async () => {
@@ -155,7 +163,8 @@ describe('hiddenFileCache (extended)', () => {
       execFileMock.mockResolvedValue({
         stdout: '  A          C:\\test\\file.txt\r\n',
       });
-      const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+      const { logger } = await import('../main/logger');
+      vi.mocked(logger.info).mockClear();
 
       const mod = await import('../main/hiddenFileCache');
 
@@ -174,12 +183,10 @@ describe('hiddenFileCache (extended)', () => {
 
       await mod.isFileHiddenCached('C:\\test\\f.txt', 'f.txt');
 
-      const cleanupCalls = consoleSpy.mock.calls.filter(
-        (call) => typeof call[0] === 'string' && call[0].includes('Cleaned up')
-      );
+      const cleanupCalls = vi
+        .mocked(logger.info)
+        .mock.calls.filter((call) => typeof call[0] === 'string' && call[0].includes('Cleaned up'));
       expect(cleanupCalls.length).toBeGreaterThanOrEqual(2);
-
-      consoleSpy.mockRestore();
     });
   });
 
@@ -190,7 +197,8 @@ describe('hiddenFileCache (extended)', () => {
       execFileMock.mockResolvedValue({
         stdout: '  A          C:\\test\\file.txt\r\n',
       });
-      const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+      const { logger } = await import('../main/logger');
+      vi.mocked(logger.info).mockClear();
 
       const mod = await import('../main/hiddenFileCache');
 
@@ -205,11 +213,9 @@ describe('hiddenFileCache (extended)', () => {
 
       await mod.isFileHiddenCached('C:\\test\\new1.txt', 'new1.txt');
 
-      expect(consoleSpy).toHaveBeenCalledWith(
+      expect(logger.info).toHaveBeenCalledWith(
         expect.stringContaining('Cleaned up 3 hidden file cache entries')
       );
-
-      consoleSpy.mockRestore();
     });
 
     it('removes only expired entries and keeps fresh ones', async () => {
@@ -218,7 +224,8 @@ describe('hiddenFileCache (extended)', () => {
       execFileMock.mockResolvedValue({
         stdout: '  A          C:\\test\\file.txt\r\n',
       });
-      const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+      const { logger } = await import('../main/logger');
+      vi.mocked(logger.info).mockClear();
 
       const mod = await import('../main/hiddenFileCache');
 
@@ -233,7 +240,7 @@ describe('hiddenFileCache (extended)', () => {
 
       await mod.isFileHiddenCached('C:\\test\\newest.txt', 'newest.txt');
 
-      expect(consoleSpy).toHaveBeenCalledWith(
+      expect(logger.info).toHaveBeenCalledWith(
         expect.stringContaining('Cleaned up 2 hidden file cache entries')
       );
 
@@ -241,8 +248,6 @@ describe('hiddenFileCache (extended)', () => {
       const result = await mod.isFileHiddenCached('C:\\test\\fresh.txt', 'fresh.txt');
       expect(result).toBe(false);
       expect(execFileMock).not.toHaveBeenCalled();
-
-      consoleSpy.mockRestore();
     });
 
     it('expired entries removed via interval timer', async () => {
@@ -251,7 +256,8 @@ describe('hiddenFileCache (extended)', () => {
       execFileMock.mockResolvedValue({
         stdout: '  A          C:\\test\\file.txt\r\n',
       });
-      const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+      const { logger } = await import('../main/logger');
+      vi.mocked(logger.info).mockClear();
 
       const mod = await import('../main/hiddenFileCache');
 
@@ -263,13 +269,12 @@ describe('hiddenFileCache (extended)', () => {
 
       vi.advanceTimersByTime(300001 + 5 * 60 * 1000);
 
-      const cleanupCalls = consoleSpy.mock.calls.filter(
-        (call) => typeof call[0] === 'string' && call[0].includes('Cleaned up')
-      );
+      const cleanupCalls = vi
+        .mocked(logger.info)
+        .mock.calls.filter((call) => typeof call[0] === 'string' && call[0].includes('Cleaned up'));
       expect(cleanupCalls.length).toBeGreaterThanOrEqual(1);
 
       mod.stopHiddenFileCacheCleanup();
-      consoleSpy.mockRestore();
     });
   });
 
@@ -306,19 +311,19 @@ describe('hiddenFileCache (extended)', () => {
 
     it('cleanup is a no-op when cache is empty', async () => {
       vi.useFakeTimers();
-      const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+      const { logger } = await import('../main/logger');
+      vi.mocked(logger.info).mockClear();
       const mod = await import('../main/hiddenFileCache');
 
       mod.startHiddenFileCacheCleanup();
       vi.advanceTimersByTime(5 * 60 * 1000 + 100);
 
-      const cleanupCalls = consoleSpy.mock.calls.filter(
-        (call) => typeof call[0] === 'string' && call[0].includes('Cleaned up')
-      );
+      const cleanupCalls = vi
+        .mocked(logger.info)
+        .mock.calls.filter((call) => typeof call[0] === 'string' && call[0].includes('Cleaned up'));
       expect(cleanupCalls.length).toBe(0);
 
       mod.stopHiddenFileCacheCleanup();
-      consoleSpy.mockRestore();
     });
 
     it('stopHiddenFileCacheCleanup clears the cache', async () => {

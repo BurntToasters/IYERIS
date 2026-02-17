@@ -12,7 +12,14 @@ import * as path from 'path';
 import { promises as fs } from 'fs';
 import { exec, execFile, spawn } from 'child_process';
 import { promisify } from 'util';
-import type { ApiResponse, LicensesData, Settings } from '../types';
+import type {
+  ApiResponse,
+  FileContentResponse,
+  FileDataUrlResponse,
+  LicensesData,
+  LicensesResponse,
+  Settings,
+} from '../types';
 import { MAX_TEXT_PREVIEW_BYTES, MAX_DATA_URL_BYTES } from './appState';
 import { isPathSafe, getErrorMessage } from './security';
 import { ignoreError } from '../shared';
@@ -113,7 +120,7 @@ export function setupSystemHandlers(
       app.quit();
       return { success: true };
     } catch (error) {
-      console.log('[Admin] Failed to restart as admin:', getErrorMessage(error));
+      logger.info('[Admin] Failed to restart as admin:', getErrorMessage(error));
       return {
         success: false,
         error: 'Failed to restart with admin privileges. The request may have been cancelled.',
@@ -170,7 +177,7 @@ export function setupSystemHandlers(
         }
 
         if (!launched) {
-          console.error('No suitable terminal emulator found');
+          logger.error('No suitable terminal emulator found');
           return { success: false, error: 'No suitable terminal emulator found' };
         }
       }
@@ -185,7 +192,7 @@ export function setupSystemHandlers(
       _event: IpcMainInvokeEvent,
       filePath: string,
       maxSize: number = 1024 * 1024
-    ): Promise<{ success: boolean; content?: string; error?: string; isTruncated?: boolean }> => {
+    ): Promise<FileContentResponse> => {
       if (!isPathSafe(filePath)) {
         return { success: false, error: 'Invalid file path' };
       }
@@ -222,7 +229,7 @@ export function setupSystemHandlers(
       _event: IpcMainInvokeEvent,
       filePath: string,
       maxSize: number = 10 * 1024 * 1024
-    ): Promise<{ success: boolean; dataUrl?: string; error?: string }> => {
+    ): Promise<FileDataUrlResponse> => {
       if (!isPathSafe(filePath)) {
         return { success: false, error: 'Invalid file path' };
       }
@@ -247,15 +254,12 @@ export function setupSystemHandlers(
     }
   );
 
-  handleTrustedApi(
-    'get-licenses',
-    async (): Promise<{ success: boolean; licenses?: LicensesData; error?: string }> => {
-      const licensesPath = path.join(__dirname, '..', '..', 'licenses.json');
-      const data = await fs.readFile(licensesPath, 'utf-8');
-      const licenses = JSON.parse(data);
-      return { success: true, licenses };
-    }
-  );
+  handleTrustedApi('get-licenses', async (): Promise<LicensesResponse> => {
+    const licensesPath = path.join(__dirname, '..', '..', 'licenses.json');
+    const data = await fs.readFile(licensesPath, 'utf-8');
+    const licenses = JSON.parse(data) as LicensesData;
+    return { success: true, licenses };
+  });
 
   const trustedStringEvents: Array<[string, () => string]> = [
     ['get-platform', () => process.platform],

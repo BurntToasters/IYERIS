@@ -270,6 +270,18 @@ export function setupSettingsHandlers(createTray: () => Promise<void>): void {
       }
       cachedSettings = sanitized;
       settingsCacheTime = Date.now();
+
+      const senderWindow = BrowserWindow.fromWebContents(event.sender);
+      for (const win of BrowserWindow.getAllWindows()) {
+        if (!win.isDestroyed() && win !== senderWindow) {
+          try {
+            win.webContents.send('settings-changed', sanitized);
+          } catch {
+            /* window may be closing */
+          }
+        }
+      }
+
       event.returnValue = { success: true };
     } catch (error) {
       event.returnValue = { success: false, error: getErrorMessage(error) };

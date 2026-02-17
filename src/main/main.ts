@@ -362,7 +362,7 @@ app.whenReady().then(async () => {
             mainWindow.webContents.send('system-resumed');
           }
         } catch (error) {
-          console.error('[PowerMonitor] Error after resume:', error);
+          logger.error('[PowerMonitor] Error after resume:', error);
         }
       }
     }, 2000);

@@ -16,12 +16,12 @@
 }
 
 .column-view::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.15);
+  background: var(--scrollbar-thumb-bg);
   border-radius: 4px;
 }
 
 .column-view::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.25);
+  background: var(--scrollbar-thumb-hover-bg);
 }
 
 .column-pane {
@@ -84,13 +84,7 @@
   gap: 8px;
   padding: 6px 12px;
   cursor: pointer;
-  transition:
-    background-color var(--animation-duration) var(--animation-easing),
-    border-color var(--animation-duration) var(--animation-easing),
-    color var(--animation-duration) var(--animation-easing),
-    box-shadow var(--animation-duration) var(--animation-easing),
-    transform var(--animation-duration) var(--animation-easing),
-    opacity var(--animation-duration) var(--animation-easing);
+  transition: var(--transition-standard);
   border-left: 3px solid transparent;
   font-size: 12px;
 }

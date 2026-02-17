@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import * as path from 'path';
 
 const hoisted = vi.hoisted(() => ({
   fsAccess: vi.fn(),
@@ -67,8 +68,8 @@ describe('utils module (getDrives/getDriveInfo)', () => {
       const { getDrives } = await import('../main/utils');
       const drives = await getDrives();
       expect(drives).toContain('/');
-      expect(drives).toContain('/media/usb1');
-      expect(drives).toContain('/mnt/data');
+      expect(drives).toContain(path.join('/media', 'usb1'));
+      expect(drives).toContain(path.join('/mnt', 'data'));
     });
 
     it('skips dotfiles in mount points', async () => {
@@ -82,7 +83,7 @@ describe('utils module (getDrives/getDriveInfo)', () => {
 
       const { getDrives } = await import('../main/utils');
       const drives = await getDrives();
-      expect(drives).toContain('/media/visible');
+      expect(drives).toContain(path.join('/media', 'visible'));
       const hasHidden = drives.some((d: string) => d.includes('.hidden'));
       expect(hasHidden).toBe(false);
     });
@@ -99,7 +100,7 @@ describe('utils module (getDrives/getDriveInfo)', () => {
       const { getDrives } = await import('../main/utils');
       const drives = await getDrives();
       expect(drives).toContain('/');
-      expect(drives).not.toContain('/media/file.txt');
+      expect(drives).not.toContain(path.join('/media', 'file.txt'));
     });
 
     it('handles inaccessible mount points gracefully', async () => {
@@ -123,7 +124,7 @@ describe('utils module (getDrives/getDriveInfo)', () => {
       const { getDrives } = await import('../main/utils');
       const drives = await getDrives();
       expect(drives).toContain('/');
-      expect(drives).not.toContain('/media/broken');
+      expect(drives).not.toContain(path.join('/media', 'broken'));
     });
 
     it('returns cached drives within TTL', async () => {
@@ -154,8 +155,8 @@ describe('utils module (getDrives/getDriveInfo)', () => {
       const { getDrives } = await import('../main/utils');
       const drives = await getDrives();
       expect(drives).toContain('/');
-      expect(drives).toContain('/Volumes/Macintosh HD');
-      expect(drives).toContain('/Volumes/External');
+      expect(drives).toContain(path.join('/Volumes', 'Macintosh HD'));
+      expect(drives).toContain(path.join('/Volumes', 'External'));
     });
   });
 
@@ -227,27 +228,30 @@ describe('utils module (getDrives/getDriveInfo)', () => {
   });
 
   describe('getDriveInfo', () => {
-    it('returns drive info with path and label on linux', async () => {
-      setPlatform('linux');
+    it.skipIf(process.platform === 'win32')(
+      'returns drive info with path and label on linux',
+      async () => {
+        setPlatform('linux');
 
-      hoisted.fsReaddir.mockImplementation(async (root: string) => {
-        if (root === '/media') return ['USB Drive'];
-        throw new Error('ENOENT');
-      });
-      hoisted.fsStat.mockResolvedValue({ isDirectory: () => true });
+        hoisted.fsReaddir.mockImplementation(async (root: string) => {
+          if (root === '/media') return ['USB Drive'];
+          throw new Error('ENOENT');
+        });
+        hoisted.fsStat.mockResolvedValue({ isDirectory: () => true });
 
-      const { getDriveInfo } = await import('../main/utils');
-      const info = await getDriveInfo();
-      expect(info.length).toBeGreaterThan(0);
+        const { getDriveInfo } = await import('../main/utils');
+        const info = await getDriveInfo();
+        expect(info.length).toBeGreaterThan(0);
 
-      const root = info.find((d) => d.path === '/');
-      expect(root).toBeDefined();
-      expect(typeof root!.label).toBe('string');
+        const root = info.find((d) => d.path === '/');
+        expect(root).toBeDefined();
+        expect(typeof root!.label).toBe('string');
 
-      const usb = info.find((d) => d.path === '/media/USB Drive');
-      expect(usb).toBeDefined();
-      expect(usb!.label).toBe('USB Drive');
-    });
+        const usb = info.find((d) => d.path === path.join('/media', 'USB Drive'));
+        expect(usb).toBeDefined();
+        expect(usb!.label).toBe('USB Drive');
+      }
+    );
 
     it('returns cached drive info within TTL', async () => {
       setPlatform('linux');

@@ -33,40 +33,39 @@ vi.mock('../main/ipcUtils', () => ({
 import { isPermissionError, executeElevated, tryWithElevation } from '../main/elevatedOperations';
 
 describe('executeElevated validation', () => {
+  function expectError(result: { success: boolean; error?: string }, substring: string) {
+    expect(result.success).toBe(false);
+    expect('error' in result ? result.error : '').toContain(substring);
+  }
+
   it('rejects copy with missing sourcePath', async () => {
     const result = await executeElevated({ type: 'copy', destPath: '/dst' });
-    expect(result.success).toBe(false);
-    expect(result.error).toContain('source');
+    expectError(result, 'source');
   });
 
   it('rejects copy with missing destPath', async () => {
     const result = await executeElevated({ type: 'copy', sourcePath: '/src' });
-    expect(result.success).toBe(false);
-    expect(result.error).toContain('destination');
+    expectError(result, 'destination');
   });
 
   it('rejects move with missing sourcePath', async () => {
     const result = await executeElevated({ type: 'move', destPath: '/dst' });
-    expect(result.success).toBe(false);
-    expect(result.error).toContain('source');
+    expectError(result, 'source');
   });
 
   it('rejects move with missing destPath', async () => {
     const result = await executeElevated({ type: 'move', sourcePath: '/src' });
-    expect(result.success).toBe(false);
-    expect(result.error).toContain('destination');
+    expectError(result, 'destination');
   });
 
   it('rejects delete with missing sourcePath', async () => {
     const result = await executeElevated({ type: 'delete' });
-    expect(result.success).toBe(false);
-    expect(result.error).toContain('source');
+    expectError(result, 'source');
   });
 
   it('rejects rename with missing sourcePath', async () => {
     const result = await executeElevated({ type: 'rename', newName: 'new.txt' });
-    expect(result.success).toBe(false);
-    expect(result.error).toContain('source');
+    expectError(result, 'source');
   });
 
   it('rejects rename with missing newName', async () => {
@@ -74,20 +73,17 @@ describe('executeElevated validation', () => {
       type: 'rename',
       sourcePath: '/src/old.txt',
     });
-    expect(result.success).toBe(false);
-    expect(result.error).toContain('new name');
+    expectError(result, 'new name');
   });
 
   it('rejects createFolder with missing destPath', async () => {
     const result = await executeElevated({ type: 'createFolder' });
-    expect(result.success).toBe(false);
-    expect(result.error).toContain('destination');
+    expectError(result, 'destination');
   });
 
   it('rejects createFile with missing destPath', async () => {
     const result = await executeElevated({ type: 'createFile' });
-    expect(result.success).toBe(false);
-    expect(result.error).toContain('destination');
+    expectError(result, 'destination');
   });
 });
 

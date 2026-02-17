@@ -1,4 +1,5 @@
 import { ipcMain, IpcMainInvokeEvent } from 'electron';
+import type { WebContents } from 'electron';
 import * as path from 'path';
 import { promises as fs } from 'fs';
 import * as fsSync from 'fs';
@@ -41,7 +42,15 @@ interface ArchiveProcess {
 
 const activeArchiveProcesses = new Map<string, ArchiveProcess>();
 
-function safeSend(channel: string, data: unknown): void {
+function safeSend(channel: string, data: unknown, sender?: WebContents | null): void {
+  if (sender && !sender.isDestroyed()) {
+    try {
+      sender.send(channel, data);
+      return;
+    } catch {
+      // fall through to mainWindow
+    }
+  }
   const mainWindow = getMainWindow();
   if (
     mainWindow &&
@@ -418,12 +427,16 @@ export function setupArchiveHandlers(): void {
 
             tarProcess.on('progress', (progress: { file?: string }) => {
               fileCount++;
-              safeSend('compress-progress', {
-                operationId,
-                current: fileCount,
-                total: fileCount + 20,
-                name: progress.file || 'Creating tar...',
-              });
+              safeSend(
+                'compress-progress',
+                {
+                  operationId,
+                  current: fileCount,
+                  total: fileCount + 20,
+                  name: progress.file || 'Creating tar...',
+                },
+                event.sender
+              );
             });
 
             tarProcess.on('end', () => {
@@ -441,12 +454,16 @@ export function setupArchiveHandlers(): void {
               }
 
               gzipProcess.on('progress', () => {
-                safeSend('compress-progress', {
-                  operationId,
-                  current: fileCount + 10,
-                  total: fileCount + 20,
-                  name: 'Compressing with gzip...',
-                });
+                safeSend(
+                  'compress-progress',
+                  {
+                    operationId,
+                    current: fileCount + 10,
+                    total: fileCount + 20,
+                    name: 'Compressing with gzip...',
+                  },
+                  event.sender
+                );
               });
 
               gzipProcess.on('end', () => {
@@ -566,12 +583,16 @@ export function setupArchiveHandlers(): void {
 
           seven.on('progress', (progress: { file?: string }) => {
             fileCount++;
-            safeSend('compress-progress', {
-              operationId,
-              current: fileCount,
-              total: fileCount + 10,
-              name: progress.file || 'Compressing...',
-            });
+            safeSend(
+              'compress-progress',
+              {
+                operationId,
+                current: fileCount,
+                total: fileCount + 10,
+                name: progress.file || 'Compressing...',
+              },
+              event.sender
+            );
           });
 
           seven.on('end', () => {
@@ -660,16 +681,20 @@ export function setupArchiveHandlers(): void {
 
           seven.on('progress', (progress: { file?: string }) => {
             fileCount++;
-            safeSend('extract-progress', {
-              operationId,
-              current: fileCount,
-              total: fileCount + 10,
-              name: progress.file || 'Extracting...',
-            });
+            safeSend(
+              'extract-progress',
+              {
+                operationId,
+                current: fileCount,
+                total: fileCount + 10,
+                name: progress.file || 'Extracting...',
+              },
+              event.sender
+            );
           });
 
           seven.on('end', async () => {
-            console.log('[Extract] 7zip extraction completed for:', archivePath);
+            logger.info('[Extract] 7zip extraction completed for:', archivePath);
             try {
               await assertExtractedPathsSafe(destPath);
               if (operationId) {

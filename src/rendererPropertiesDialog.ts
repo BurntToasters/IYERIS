@@ -212,7 +212,11 @@ export function createPropertiesDialogController(deps: PropertiesDialogDeps) {
               folderSizeOperationId
             );
 
-            if (result.success && result.result) {
+            if (!result.success) {
+              if (result.error !== 'Calculation cancelled') {
+                if (sizeInfo) sizeInfo.textContent = `Error: ${result.error || 'Operation failed'}`;
+              }
+            } else {
               const folderResult = result.result;
               const totalSize = formatSize(folderResult.totalSize);
               if (sizeInfo) {
@@ -244,8 +248,6 @@ export function createPropertiesDialogController(deps: PropertiesDialogDeps) {
                     .join('');
                 }
               }
-            } else if (result.error !== 'Calculation cancelled') {
-              if (sizeInfo) sizeInfo.textContent = `Error: ${result.error}`;
             }
           } catch (error) {
             if (sizeInfo) sizeInfo.textContent = `Error: ${getErrorMessage(error)}`;
@@ -314,7 +316,11 @@ export function createPropertiesDialogController(deps: PropertiesDialogDeps) {
               ['md5', 'sha256']
             );
 
-            if (result.success && result.result) {
+            if (!result.success) {
+              if (result.error !== 'Calculation cancelled') {
+                deps.showToast(result.error || 'Checksum calculation failed', 'Error', 'error');
+              }
+            } else {
               if (result.result.md5 && md5Row && md5Value) {
                 md5Value.textContent = result.result.md5;
                 md5Row.style.display = 'flex';
@@ -323,8 +329,6 @@ export function createPropertiesDialogController(deps: PropertiesDialogDeps) {
                 sha256Value.textContent = result.result.sha256;
                 sha256Row.style.display = 'flex';
               }
-            } else if (result.error !== 'Calculation cancelled') {
-              deps.showToast(result.error || 'Checksum calculation failed', 'Error', 'error');
             }
           } catch (error) {
             deps.showToast(getErrorMessage(error), 'Error', 'error');

@@ -1,5 +1,5 @@
 import { ipcMain, BrowserWindow, IpcMainInvokeEvent } from 'electron';
-import type { ApiResponse } from '../types';
+import type { ApiResponse, ZoomLevelResponse } from '../types';
 import { ZOOM_MIN, ZOOM_MAX } from './appState';
 import { getErrorMessage } from './security';
 import { logger } from './logger';
@@ -24,7 +24,7 @@ export function setupZoomHandlers(): void {
         logger.debug('[Zoom] Set zoom level to:', clampedZoom);
         return { success: true };
       } catch (error) {
-        console.error('[Zoom] Error:', error);
+        logger.error('[Zoom] Error:', error);
         return { success: false, error: getErrorMessage(error) };
       }
     }
@@ -32,9 +32,7 @@ export function setupZoomHandlers(): void {
 
   ipcMain.handle(
     'get-zoom-level',
-    async (
-      event: IpcMainInvokeEvent
-    ): Promise<{ success: boolean; zoomLevel?: number; error?: string }> => {
+    async (event: IpcMainInvokeEvent): Promise<ZoomLevelResponse> => {
       try {
         if (!isTrustedIpcEvent(event, 'get-zoom-level')) {
           return { success: false, error: 'Untrusted IPC sender' };
@@ -47,7 +45,7 @@ export function setupZoomHandlers(): void {
         const zoomLevel = win.webContents.getZoomFactor();
         return { success: true, zoomLevel };
       } catch (error) {
-        console.error('[Zoom] Error:', error);
+        logger.error('[Zoom] Error:', error);
         return { success: false, error: getErrorMessage(error) };
       }
     }

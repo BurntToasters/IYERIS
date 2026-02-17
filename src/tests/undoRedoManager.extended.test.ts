@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import * as path from 'path';
 
 type Handler = (...args: any[]) => any;
 const handlers = new Map<string, Handler>();
@@ -273,7 +274,7 @@ describe('undoRedoManager extended coverage', () => {
       });
 
       hoisted.fsAccess.mockImplementation(async (p: string) => {
-        if (p === '/src/file.txt') return;
+        if (p === path.join('/src', 'file.txt')) return;
         throw new Error('ENOENT');
       });
       hoisted.fsRename.mockResolvedValue(undefined);
@@ -592,7 +593,10 @@ describe('undoRedoManager extended coverage', () => {
       expect(result.success).toBe(true);
       const stack = getUndoStack();
       expect(stack.length).toBe(1);
-      expect((stack[0].data as any).sourcePaths).toEqual(['/dest/a.txt', '/dest/b.txt']);
+      expect((stack[0].data as any).sourcePaths).toEqual([
+        path.join('/dest', 'a.txt'),
+        path.join('/dest', 'b.txt'),
+      ]);
     });
 
     it('fails on second file source not found with originalPaths', async () => {

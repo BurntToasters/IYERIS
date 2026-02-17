@@ -1,4 +1,5 @@
 import { rendererPath as path } from './rendererUtils.js';
+import { ignoreError } from './shared.js';
 
 const SPRING_LOAD_DELAY = 800;
 
@@ -35,7 +36,7 @@ export function createDragDropController(config: DragDropConfig) {
         draggedPaths = JSON.parse(textData);
       }
     } catch (error) {
-      console.debug('[Drag] Failed to parse drag data, trying fallback methods:', error);
+      ignoreError(error);
     }
 
     if (draggedPaths.length === 0 && event.dataTransfer.files.length > 0) {
@@ -154,23 +155,23 @@ export function createDragDropController(config: DragDropConfig) {
           ? await window.electronAPI.copyItems(sourcePaths, destPath, conflictBehavior)
           : await window.electronAPI.moveItems(sourcePaths, destPath, conflictBehavior);
 
-      if (result.success) {
-        showToast(
-          `${operation === 'copy' ? 'Copied' : 'Moved'} ${sourcePaths.length} item(s)`,
-          'Success',
-          'success'
-        );
-        await window.electronAPI.clearDragData();
-
-        if (operation === 'move') {
-          await config.updateUndoRedoState();
-        }
-
-        await config.navigateTo(config.getCurrentPath());
-        config.clearSelection();
-      } else {
+      if (!result.success) {
         showToast(result.error || `Failed to ${operation} items`, 'Error', 'error');
+        return;
       }
+      showToast(
+        `${operation === 'copy' ? 'Copied' : 'Moved'} ${sourcePaths.length} item(s)`,
+        'Success',
+        'success'
+      );
+      await window.electronAPI.clearDragData();
+
+      if (operation === 'move') {
+        await config.updateUndoRedoState();
+      }
+
+      await config.navigateTo(config.getCurrentPath());
+      config.clearSelection();
     } catch (error) {
       console.error(`Error during ${operation}:`, error);
       showToast(`Failed to ${operation} items`, 'Error', 'error');

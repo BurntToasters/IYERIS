@@ -1,4 +1,5 @@
 import { EventEmitter } from 'events';
+import * as path from 'path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 type ExecResponse = {
@@ -111,11 +112,11 @@ describe('gitHandlers', () => {
       success: true,
       isGitRepo: true,
       statuses: [
-        { path: '/tmp/project/new.txt', status: 'untracked' },
-        { path: '/tmp/project/renamed.txt', status: 'renamed' },
-        { path: '/tmp/project/conflict.txt', status: 'conflict' },
-        { path: '/tmp/project/deleted.txt', status: 'deleted' },
-        { path: '/tmp/project/modified.txt', status: 'modified' },
+        { path: path.join('/tmp/project', 'new.txt'), status: 'untracked' },
+        { path: path.join('/tmp/project', 'renamed.txt'), status: 'renamed' },
+        { path: path.join('/tmp/project', 'conflict.txt'), status: 'conflict' },
+        { path: path.join('/tmp/project', 'deleted.txt'), status: 'deleted' },
+        { path: path.join('/tmp/project', 'modified.txt'), status: 'modified' },
       ],
     });
   });

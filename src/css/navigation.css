@@ -7,7 +7,7 @@
 .address-bar {
   display: flex;
   align-items: center;
-  padding: 0 6px;
+  padding: 0 8px;
   gap: 6px;
   height: var(--address-bar-height);
   width: 100%;
@@ -29,13 +29,7 @@
   padding: var(--breadcrumb-padding-v) var(--breadcrumb-padding-h);
   border-radius: var(--radius-small);
   cursor: pointer;
-  transition:
-    background-color var(--animation-duration) var(--animation-easing),
-    border-color var(--animation-duration) var(--animation-easing),
-    color var(--animation-duration) var(--animation-easing),
-    box-shadow var(--animation-duration) var(--animation-easing),
-    transform var(--animation-duration) var(--animation-easing),
-    opacity var(--animation-duration) var(--animation-easing);
+  transition: var(--transition-standard);
   white-space: nowrap;
   background: transparent;
   border: none;
@@ -43,7 +37,7 @@
 }
 
 .breadcrumb-item:focus-within {
-  background: var(--hover-color);
+  background: var(--interactive-hover);
 }
 
 .breadcrumb-label,
@@ -63,13 +57,13 @@
 }
 
 .breadcrumb-item:hover {
-  background: var(--hover-color);
+  background: var(--interactive-hover);
   box-shadow: none;
 }
 
 .breadcrumb-item.drag-over {
-  background: rgba(var(--accent-rgb), 0.2);
-  box-shadow: 0 0 0 1px rgba(var(--accent-rgb), 0.3);
+  background: color-mix(in srgb, var(--interactive-selected) 88%, transparent);
+  box-shadow: 0 0 0 1px var(--interactive-selected-border);
 }
 
 .breadcrumb-caret {
@@ -113,7 +107,7 @@
 .breadcrumb-item:focus-visible,
 .breadcrumb-label:focus-visible,
 .breadcrumb-caret:focus-visible {
-  background: var(--accent-light);
+  background: var(--interactive-selected);
   box-shadow: var(--focus-ring);
   outline: none;
 }

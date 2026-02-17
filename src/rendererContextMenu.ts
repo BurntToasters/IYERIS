@@ -135,7 +135,7 @@ export function createContextMenuController(deps: ContextMenuDeps) {
     };
     showIf(addToBookmarksItem, item.isDirectory);
     showIf(changeFolderIconItem, item.isDirectory);
-    showIf(copyPathItem, !item.isDirectory);
+    showIf(copyPathItem, true);
     showIf(openTerminalItem, item.isDirectory);
     showIf(compressItem, true);
     showIf(extractItem, !item.isDirectory && isArchivePath(item.path));
@@ -287,11 +287,15 @@ export function createContextMenuController(deps: ContextMenuDeps) {
 
       case 'properties': {
         const propsResult = await window.electronAPI.getItemProperties(item.path);
-        if (propsResult.success && propsResult.properties) {
-          deps.showPropertiesDialog(propsResult.properties);
-        } else {
-          deps.showToast(propsResult.error || 'Unknown error', 'Error Getting Properties', 'error');
+        if (!propsResult.success) {
+          deps.showToast(
+            propsResult.error || 'Failed to get properties',
+            'Error Getting Properties',
+            'error'
+          );
+          break;
         }
+        deps.showPropertiesDialog(propsResult.properties);
         break;
       }
 

@@ -138,55 +138,56 @@ export function createPreviewController(deps: PreviewDeps) {
       const result = await window.electronAPI.listArchiveContents(file.path);
       if (requestId !== previewRequestId) return;
 
-      if (result.success && result.entries) {
-        const entries = result.entries;
-        const fileCount = entries.filter((e) => !e.isDirectory).length;
-        const folderCount = entries.filter((e) => e.isDirectory).length;
-        const totalSize = entries.reduce((sum, e) => sum + e.size, 0);
-
-        let html = `
-        <div class="preview-section">
-          <h3>Archive Contents</h3>
-          <div class="archive-info">
-            <p>${fileCount} file${fileCount !== 1 ? 's' : ''}, ${folderCount} folder${folderCount !== 1 ? 's' : ''}</p>
-            <p>Total size: ${deps.formatFileSize(totalSize)}</p>
-          </div>
-          <div class="archive-list">
-      `;
-
-        const maxEntries = 100;
-        const displayEntries = entries.slice(0, maxEntries);
-
-        for (const entry of displayEntries) {
-          const icon = entry.isDirectory ? '📁' : '📄';
-          html += `
-          <div class="archive-entry">
-            <span class="archive-icon">${icon}</span>
-            <span class="archive-name">${escapeHtml(entry.name)}</span>
-            <span class="archive-size">${entry.isDirectory ? '' : deps.formatFileSize(entry.size)}</span>
-          </div>
-        `;
-        }
-
-        if (entries.length > maxEntries) {
-          html += `<p class="archive-more">... and ${entries.length - maxEntries} more</p>`;
-        }
-
-        html += `
-          </div>
-        </div>
-        ${generateFileInfo(file, null)}
-      `;
-
-        previewContent.innerHTML = html;
-      } else {
+      if (!result.success) {
         previewContent.innerHTML = `
         <div class="preview-error">
-          Failed to list archive contents: ${escapeHtml(result.error || 'Unknown error')}
+          Failed to list archive contents: ${escapeHtml(result.error || 'Operation failed')}
         </div>
         ${generateFileInfo(file, null)}
       `;
+        return;
       }
+
+      const entries = result.entries;
+      const fileCount = entries.filter((e) => !e.isDirectory).length;
+      const folderCount = entries.filter((e) => e.isDirectory).length;
+      const totalSize = entries.reduce((sum, e) => sum + e.size, 0);
+
+      let html = `
+      <div class="preview-section">
+        <h3>Archive Contents</h3>
+        <div class="archive-info">
+          <p>${fileCount} file${fileCount !== 1 ? 's' : ''}, ${folderCount} folder${folderCount !== 1 ? 's' : ''}</p>
+          <p>Total size: ${deps.formatFileSize(totalSize)}</p>
+        </div>
+        <div class="archive-list">
+      `;
+
+      const maxEntries = 100;
+      const displayEntries = entries.slice(0, maxEntries);
+
+      for (const entry of displayEntries) {
+        const icon = entry.isDirectory ? '📁' : '📄';
+        html += `
+        <div class="archive-entry">
+          <span class="archive-icon">${icon}</span>
+          <span class="archive-name">${escapeHtml(entry.name)}</span>
+          <span class="archive-size">${entry.isDirectory ? '' : deps.formatFileSize(entry.size)}</span>
+        </div>
+        `;
+      }
+
+      if (entries.length > maxEntries) {
+        html += `<p class="archive-more">... and ${entries.length - maxEntries} more</p>`;
+      }
+
+      html += `
+        </div>
+      </div>
+      ${generateFileInfo(file, null)}
+      `;
+
+      previewContent.innerHTML = html;
     } catch (error) {
       if (requestId !== previewRequestId) return;
       previewContent.innerHTML = `
@@ -217,7 +218,7 @@ export function createPreviewController(deps: PreviewDeps) {
 
     const props = await window.electronAPI.getItemProperties(file.path);
     if (requestId !== previewRequestId) return;
-    const info = props.success && props.properties ? props.properties : null;
+    const info = props.success ? props.properties : null;
     const fileUrl = encodeFileUrl(file.path);
     const altText = escapeHtml(file.name);
 
@@ -258,7 +259,7 @@ export function createPreviewController(deps: PreviewDeps) {
 
     const props = await window.electronAPI.getItemProperties(file.path);
     if (requestId !== previewRequestId) return;
-    const info = props.success && props.properties ? props.properties : null;
+    const info = props.success ? props.properties : null;
 
     const ext = deps.getFileExtension(file.name).toUpperCase() || 'RAW';
     const cameraFormats: Record<string, string> = {
@@ -311,34 +312,35 @@ export function createPreviewController(deps: PreviewDeps) {
     const result = await window.electronAPI.readFileContent(file.path, 50 * 1024);
     if (requestId !== previewRequestId) return;
 
-    if (result.success && typeof result.content === 'string') {
-      const props = await window.electronAPI.getItemProperties(file.path);
-      if (requestId !== previewRequestId) return;
-      const info = props.success && props.properties ? props.properties : null;
-      const ext = deps.getFileExtension(file.name);
-      const lang = getLanguageForExt(ext);
-
-      previewContent.innerHTML = `
-      ${result.isTruncated ? `<div class="preview-truncated">${twemojiImg(String.fromCodePoint(0x26a0), 'twemoji')} File truncated to first 50KB</div>` : ''}
-      <pre class="preview-text"><code class="${lang ? `language-${lang}` : ''}">${escapeHtml(result.content)}</code></pre>
-      ${generateFileInfo(file, info)}
-    `;
-
-      const settings = deps.getCurrentSettings();
-      if (lang && settings.enableSyntaxHighlighting) {
-        loadHighlightJs().then((hl) => {
-          if (requestId !== previewRequestId || !hl) return;
-          const codeBlock = previewContent?.querySelector('code');
-          if (codeBlock) hl.highlightElement?.(codeBlock);
-        });
-      }
-    } else {
+    if (!result.success) {
       previewContent.innerHTML = `
       <div class="preview-error">
-        Failed to load text: ${escapeHtml(result.error || 'Unknown error')}
+        Failed to load text: ${escapeHtml(result.error || 'Operation failed')}
       </div>
       ${generateFileInfo(file, null)}
     `;
+      return;
+    }
+
+    const props = await window.electronAPI.getItemProperties(file.path);
+    if (requestId !== previewRequestId) return;
+    const info = props.success ? props.properties : null;
+    const ext = deps.getFileExtension(file.name);
+    const lang = getLanguageForExt(ext);
+
+    previewContent.innerHTML = `
+    ${result.isTruncated ? `<div class="preview-truncated">${twemojiImg(String.fromCodePoint(0x26a0), 'twemoji')} File truncated to first 50KB</div>` : ''}
+    <pre class="preview-text"><code class="${lang ? `language-${lang}` : ''}">${escapeHtml(result.content)}</code></pre>
+    ${generateFileInfo(file, info)}
+  `;
+
+    const settings = deps.getCurrentSettings();
+    if (lang && settings.enableSyntaxHighlighting) {
+      loadHighlightJs().then((hl) => {
+        if (requestId !== previewRequestId || !hl) return;
+        const codeBlock = previewContent?.querySelector('code');
+        if (codeBlock) hl.highlightElement?.(codeBlock);
+      });
     }
   }
 
@@ -360,7 +362,7 @@ export function createPreviewController(deps: PreviewDeps) {
 
     const props = await window.electronAPI.getItemProperties(file.path);
     if (requestId !== previewRequestId) return;
-    const info = props.success && props.properties ? props.properties : null;
+    const info = props.success ? props.properties : null;
 
     const fileUrl = encodeFileUrl(file.path);
 
@@ -378,7 +380,7 @@ export function createPreviewController(deps: PreviewDeps) {
 
     const props = await window.electronAPI.getItemProperties(file.path);
     if (requestId !== previewRequestId) return;
-    const info = props.success && props.properties ? props.properties : null;
+    const info = props.success ? props.properties : null;
 
     const fileUrl = encodeFileUrl(file.path);
 
@@ -416,11 +418,7 @@ export function createPreviewController(deps: PreviewDeps) {
 
     const headerResult = await window.electronAPI.readFileContent(file.path, 16);
     if (requestId !== previewRequestId) return;
-    if (
-      !headerResult.success ||
-      typeof headerResult.content !== 'string' ||
-      !headerResult.content.startsWith('%PDF-')
-    ) {
+    if (!headerResult.success || !headerResult.content.startsWith('%PDF-')) {
       previewContent.innerHTML = `
       <div class="preview-error">
         ${twemojiImg(String.fromCodePoint(0x26a0), 'twemoji')} File does not appear to be a valid PDF
@@ -434,7 +432,7 @@ export function createPreviewController(deps: PreviewDeps) {
 
     const props = await window.electronAPI.getItemProperties(file.path);
     if (requestId !== previewRequestId) return;
-    const info = props.success && props.properties ? props.properties : null;
+    const info = props.success ? props.properties : null;
 
     const fileUrl = encodeFileUrl(file.path);
 
@@ -502,7 +500,7 @@ export function createPreviewController(deps: PreviewDeps) {
     if (!previewContent || requestId !== previewRequestId) return;
     const props = await window.electronAPI.getItemProperties(file.path);
     if (requestId !== previewRequestId) return;
-    const info = props.success && props.properties ? props.properties : null;
+    const info = props.success ? props.properties : null;
 
     previewContent.innerHTML = `
     <div class="preview-unsupported">

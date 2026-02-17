@@ -1,6 +1,6 @@
 .file-view {
   flex: 1;
-  padding: 8px;
+  padding: var(--spacing-lg);
   overflow-y: auto;
   position: relative;
 }
@@ -15,7 +15,7 @@
 }
 
 .file-view::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.15);
+  background: var(--scrollbar-thumb-bg);
   border-radius: var(--scrollbar-thumb-radius);
   border: 2px solid transparent;
   background-clip: padding-box;
@@ -23,7 +23,7 @@
 }
 
 .file-view::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.25);
+  background: var(--scrollbar-thumb-hover-bg);
   background-clip: padding-box;
 }
 
@@ -77,9 +77,12 @@ body.platform-win32 .file-view::-webkit-scrollbar-thumb:hover {
 
 .file-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(var(--grid-min-column), 1fr));
+  grid-template-columns: repeat(
+    var(--grid-columns, auto-fill),
+    minmax(var(--grid-min-column), 1fr)
+  );
   gap: var(--file-grid-gap-row) var(--file-grid-gap-col);
-  padding: 8px;
+  padding: var(--spacing-lg);
 }
 
 .list-header {
@@ -96,10 +99,10 @@ body.platform-win32 .file-view::-webkit-scrollbar-thumb:hover {
   z-index: 5;
   background: linear-gradient(
     180deg,
-    rgba(var(--bg-primary-rgb), 0.98),
-    rgba(var(--bg-primary-rgb), 0.92)
+    color-mix(in srgb, var(--surface-0) 96%, transparent),
+    color-mix(in srgb, var(--surface-0) 88%, transparent)
   );
-  border-bottom: 1px solid var(--separator);
+  border-bottom: 1px solid var(--panel-border);
   font-size: 11.5px;
   text-transform: none;
   letter-spacing: 0.015em;
@@ -175,7 +178,10 @@ body.platform-win32 .file-view::-webkit-scrollbar-thumb:hover {
 
 @media (max-width: 768px) {
   .file-grid {
-    grid-template-columns: repeat(auto-fill, minmax(calc(var(--grid-min-column) + 8px), 1fr));
+    grid-template-columns: repeat(
+      var(--grid-columns, auto-fill),
+      minmax(calc(var(--grid-min-column) + 8px), 1fr)
+    );
   }
 }
 

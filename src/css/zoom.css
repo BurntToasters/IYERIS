@@ -14,7 +14,7 @@
   border-radius: 12px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
   z-index: 2500;
-  animation: zoomPopupSlideIn 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  animation: zoomPopupSlideIn var(--animation-duration) var(--animation-easing);
 }
 
 @keyframes zoomPopupSlideIn {
@@ -38,13 +38,7 @@
   border: 1px solid var(--separator);
   border-radius: 8px;
   cursor: pointer;
-  transition:
-    background-color 0.15s cubic-bezier(0.4, 0, 0.2, 1),
-    border-color 0.15s cubic-bezier(0.4, 0, 0.2, 1),
-    color 0.15s cubic-bezier(0.4, 0, 0.2, 1),
-    box-shadow 0.15s cubic-bezier(0.4, 0, 0.2, 1),
-    transform 0.15s cubic-bezier(0.4, 0, 0.2, 1),
-    opacity 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: var(--transition-standard);
   padding: 0;
 }
 
@@ -77,7 +71,7 @@
   text-align: center;
   font-size: 14px;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.95);
+  color: var(--text-primary);
   user-select: none;
   font-variant-numeric: tabular-nums;
 }
@@ -85,6 +79,6 @@
 .zoom-divider {
   width: 1px;
   height: 20px;
-  background: rgba(255, 255, 255, 0.2);
+  background: var(--separator);
   margin: 0 4px;
 }

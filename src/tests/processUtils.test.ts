@@ -1,9 +1,20 @@
 import { describe, it, expect } from 'vitest';
 import { spawnWithTimeout, captureSpawnOutput, launchDetached } from '../main/processUtils';
 
+function shellCommand(
+  unixScript: string,
+  windowsScript: string
+): { command: string; args: string[] } {
+  if (process.platform === 'win32') {
+    return { command: 'cmd', args: ['/d', '/s', '/c', windowsScript] };
+  }
+  return { command: 'sh', args: ['-c', unixScript] };
+}
+
 describe('spawnWithTimeout', () => {
   it('spawns a command successfully', async () => {
-    const { child, timedOut } = spawnWithTimeout('echo', ['hello'], 5000, {});
+    const { command, args } = shellCommand('printf "hello\\n"', 'echo hello');
+    const { child, timedOut } = spawnWithTimeout(command, args, 5000, {});
     const code = await new Promise<number | null>((resolve) => {
       child.on('close', resolve);
     });
@@ -12,7 +23,8 @@ describe('spawnWithTimeout', () => {
   });
 
   it('reports timeout when command takes too long', async () => {
-    const { child, timedOut } = spawnWithTimeout('sleep', ['10'], 100, {});
+    const { command, args } = shellCommand('sleep 30', 'ping -n 30 127.0.0.1 >NUL');
+    const { child, timedOut } = spawnWithTimeout(command, args, 100, {});
     const code = await new Promise<number | null>((resolve) => {
       child.on('close', resolve);
     });
@@ -31,24 +43,28 @@ describe('spawnWithTimeout', () => {
 
 describe('captureSpawnOutput', () => {
   it('captures stdout', async () => {
-    const result = await captureSpawnOutput('echo', ['hello world'], 5000, {});
+    const { command, args } = shellCommand('printf "hello world\\n"', 'echo hello world');
+    const result = await captureSpawnOutput(command, args, 5000, {});
     expect(result.stdout.trim()).toBe('hello world');
     expect(result.code).toBe(0);
     expect(result.timedOut).toBe(false);
   });
 
   it('captures stderr', async () => {
-    const result = await captureSpawnOutput('sh', ['-c', 'echo error >&2'], 5000, {});
+    const { command, args } = shellCommand('printf "error\\n" 1>&2', 'echo error 1>&2');
+    const result = await captureSpawnOutput(command, args, 5000, {});
     expect(result.stderr.trim()).toBe('error');
   });
 
   it('returns exit code', async () => {
-    const result = await captureSpawnOutput('sh', ['-c', 'exit 42'], 5000, {});
+    const { command, args } = shellCommand('exit 42', 'exit /b 42');
+    const result = await captureSpawnOutput(command, args, 5000, {});
     expect(result.code).toBe(42);
   });
 
   it('handles timeout', async () => {
-    const result = await captureSpawnOutput('sleep', ['10'], 100, {});
+    const { command, args } = shellCommand('sleep 30', 'ping -n 30 127.0.0.1 >NUL');
+    const result = await captureSpawnOutput(command, args, 100, {});
     expect(result.timedOut).toBe(true);
   });
 
@@ -59,8 +75,9 @@ describe('captureSpawnOutput', () => {
 
 describe('launchDetached', () => {
   it('spawns a detached process without throwing', () => {
+    const { command, args } = shellCommand('exit 0', 'exit /b 0');
     expect(() => {
-      launchDetached('echo', ['test'], {});
+      launchDetached(command, args, {});
     }).not.toThrow();
   });
 });

@@ -44,7 +44,7 @@ describe('createNewItemWithInlineRename', () => {
     await ctrl.createNewItemWithInlineRename('file');
 
     const api = window.electronAPI as unknown as Record<string, ReturnType<typeof vi.fn>>;
-    expect(api.createFile).toHaveBeenCalledWith('/workspace', 'File');
+    expect(api.createFile).toHaveBeenCalledWith('/workspace', 'File.txt');
     expect(deps.navigateTo).toHaveBeenCalledWith('/workspace');
   });
 
@@ -82,16 +82,16 @@ describe('createNewItemWithInlineRename', () => {
     const deps = createDeps();
     deps.getAllFiles = vi.fn(() => [
       {
-        name: 'File',
-        path: '/workspace/File',
+        name: 'File.txt',
+        path: '/workspace/File.txt',
         isFile: true,
         isDirectory: false,
         size: 0,
         modified: 0,
       },
       {
-        name: 'File (1)',
-        path: '/workspace/File (1)',
+        name: 'File.txt (1)',
+        path: '/workspace/File.txt (1)',
         isFile: true,
         isDirectory: false,
         size: 0,
@@ -100,12 +100,12 @@ describe('createNewItemWithInlineRename', () => {
     ]);
 
     const api = window.electronAPI as unknown as Record<string, ReturnType<typeof vi.fn>>;
-    api.createFile.mockResolvedValue({ success: true, path: '/workspace/File (2)' });
+    api.createFile.mockResolvedValue({ success: true, path: '/workspace/File.txt (2)' });
 
     const ctrl = createInlineRenameController(deps as any);
     await ctrl.createNewItemWithInlineRename('file');
 
-    expect(api.createFile).toHaveBeenCalledWith('/workspace', 'File (2)');
+    expect(api.createFile).toHaveBeenCalledWith('/workspace', 'File.txt (2)');
   });
 
   it('avoids name collision for folders', async () => {
@@ -153,7 +153,7 @@ describe('createNewItemWithInlineRename', () => {
     const ctrl = createInlineRenameController(deps as any);
     await ctrl.createNewItemWithInlineRename('file');
 
-    expect(deps.showAlert).toHaveBeenCalledWith('Unknown error', 'Error Creating File', 'error');
+    expect(deps.showAlert).toHaveBeenCalledWith('Operation failed', 'Error Creating File', 'error');
   });
 });
 
