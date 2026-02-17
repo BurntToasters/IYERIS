@@ -30,6 +30,8 @@ finish-args:
   - --filesystem=/run/media
   # Notifications
   - --talk-name=org.freedesktop.Notifications
+  # KDE/GNOME tray host (StatusNotifierItem)
+  - --talk-name=org.kde.StatusNotifierWatcher
   # Needed for Electron
   - --env=ELECTRON_TRASH=gio
 
@@ -50,10 +52,10 @@ modules:
     build-commands:
       # Install dependencies (with network access)
       - npm install --legacy-peer-deps
-      
+
       # Build the application
       - npm run build
-      
+
       # Copy application files to /app
       - mkdir -p /app/iyeris/src
       - mkdir -p /app/iyeris/src/css
@@ -64,19 +66,19 @@ modules:
       - cp src/css/*.css /app/iyeris/src/css/
       - cp package.json /app/iyeris/
       - cp licenses.json /app/iyeris/
-      
+
       # Install icon
       - install -Dm644 assets/icon-square.png /app/share/icons/hicolor/512x512/apps/com.burnttoasters.iyeris.png
-      
+
       # Create desktop file
       - install -Dm644 com.burnttoasters.iyeris.desktop /app/share/applications/com.burnttoasters.iyeris.desktop
-      
+
       # Create AppStream metadata
       - install -Dm644 com.burnttoasters.iyeris.metainfo.xml /app/share/metainfo/com.burnttoasters.iyeris.metainfo.xml
-      
+
       # Create wrapper script
       - install -Dm755 iyeris.sh /app/bin/iyeris
-    
+
     sources:
       - type: dir
         path: .

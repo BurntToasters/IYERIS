@@ -22,9 +22,46 @@ const BUNDLE_NAMES = {
   aarch64: 'IYERIS-Linux-aarch64.flatpak',
 };
 
+function getSanitizedEnv() {
+  const env = { ...process.env };
+
+  for (const key of Object.keys(env)) {
+    if (key.startsWith('SNAP')) {
+      delete env[key];
+    }
+  }
+
+  const snapInjectedKeys = [
+    'GDK_PIXBUF_MODULE_FILE',
+    'GDK_PIXBUF_MODULEDIR',
+    'GSETTINGS_SCHEMA_DIR',
+    'GTK_EXE_PREFIX',
+    'GTK_PATH',
+    'GTK_IM_MODULE_FILE',
+    'GIO_MODULE_DIR',
+    'LOCPATH',
+    'XDG_DATA_HOME',
+    'XDG_DATA_DIRS',
+    'XDG_DATA_DIRS_VSCODE_SNAP_ORIG',
+    'VSCODE_NLS_CONFIG',
+  ];
+  for (const key of snapInjectedKeys) {
+    delete env[key];
+  }
+
+  if (typeof env.PATH === 'string') {
+    env.PATH = env.PATH.split(path.delimiter)
+      .filter((part) => part && !part.includes('/snap/') && !part.includes('/var/lib/snapd'))
+      .join(path.delimiter);
+  }
+
+  delete env.LD_LIBRARY_PATH;
+  return env;
+}
+
 function run(cmd, opts = {}) {
   console.log(`\n> ${cmd}`);
-  execSync(cmd, { stdio: 'inherit', cwd: ROOT, ...opts });
+  execSync(cmd, { stdio: 'inherit', cwd: ROOT, env: getSanitizedEnv(), ...opts });
 }
 
 function getHostArch() {
@@ -81,7 +118,22 @@ function buildArch(arch) {
     `\n=== Building Flatpak for ${arch} ${isCross ? '(cross-compile)' : '(native)'} ===\n`
   );
 
-  run(`flatpak-builder --arch=${arch} --repo=${REPO_DIR} --force-clean ${buildDir} ${MANIFEST}`);
+  try {
+    run(`flatpak-builder --arch=${arch} --repo=${REPO_DIR} --force-clean ${buildDir} ${MANIFEST}`);
+  } catch (error) {
+    const buildFilesPath = path.join(ROOT, buildDir, 'files');
+    const buildMetadataPath = path.join(ROOT, buildDir, 'metadata');
+    const canRetryExport = fs.existsSync(buildFilesPath) && fs.existsSync(buildMetadataPath);
+
+    if (!canRetryExport) {
+      throw error;
+    }
+
+    console.log(
+      '\nflatpak-builder export failed. Retrying export with --disable-sandbox (icon validator workaround)...\n'
+    );
+    run(`flatpak build-export --disable-sandbox --arch=${arch} ${REPO_DIR} ${buildDir}`);
+  }
 }
 
 function bundleArch(arch) {
