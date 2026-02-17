@@ -36,4 +36,12 @@
 ## Extra
 
 - **GIT - Delete local non-remote branches:**
-  - `git fetch --prune && git branch -vv | awk '/: gone]/ {print $1}' | xargs -r git branch -d`
+  - Safe: `npm run gitprune`
+  - Dry run: `npm run gitprune:dry`
+  - Force delete unmerged local-only branches: `npm run gitprune:force`
+
+## Release Smoke
+
+- Script integrity smoke: `npm run smoke:scripts`
+- Large-directory fixture for performance/manual smoke:
+  - `npm run smoke:perf:fixture -- --files 15000 --buckets 60 --folders 300 --clean`

@@ -12,6 +12,7 @@ type SuiteResult = {
 type TestAllResults = {
   lint: SuiteResult;
   format: SuiteResult;
+  scripts: SuiteResult;
   test: SuiteResult;
   typecheck: SuiteResult;
 };
@@ -20,7 +21,7 @@ type TestAllModule = {
   createInitialResults: () => TestAllResults;
   getNpmCommand: (platform?: string) => string;
   runCommand: (
-    name: 'lint' | 'format' | 'test' | 'typecheck',
+    name: 'lint' | 'format' | 'scripts' | 'test' | 'typecheck',
     command: string,
     args: string[],
     parser: ((output: string, results: TestAllResults) => void) | undefined,
@@ -56,6 +57,7 @@ describe('build/test-all.js', () => {
     const results = testAll.createInitialResults();
     expect(results.lint.status).toBe('pending');
     expect(results.format.status).toBe('pending');
+    expect(results.scripts.status).toBe('pending');
     expect(results.test.status).toBe('pending');
     expect(results.typecheck.status).toBe('pending');
   });
@@ -144,6 +146,7 @@ describe('build/test-all.js', () => {
     const results = testAll.createInitialResults();
     results.lint.status = 'passed';
     results.format.status = 'failed';
+    results.scripts.status = 'passed';
     results.test.status = 'passed';
     results.typecheck.status = 'passed';
     results.lint.errors = 0;

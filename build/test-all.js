@@ -1,7 +1,7 @@
 const { spawnSync } = require('child_process');
 
 const testVersion = require('../package.json').version;
-const scriptVersion = '1.1.0';
+const scriptVersion = '1.2.0';
 
 const colors = {
   reset: '\x1b[0m',
@@ -16,6 +16,7 @@ function createInitialResults() {
   return {
     lint: { status: 'pending', errors: null, warnings: null },
     format: { status: 'pending' },
+    scripts: { status: 'pending' },
     test: { status: 'pending', passed: null, failed: null },
     typecheck: { status: 'pending' },
   };
@@ -144,6 +145,12 @@ ${colors.reset}`);
   );
 
   console.log(
+    `${colors.bold}Scripts:${colors.reset}    ${
+      results.scripts.status === 'passed' ? colors.green + '✓ PASS' : colors.red + '✗ FAIL'
+    }${colors.reset}`
+  );
+
+  console.log(
     `${colors.bold}Tests:${colors.reset}      ${
       results.test.status === 'passed' ? colors.green + '✓ PASS' : colors.red + '✗ FAIL'
     }${colors.reset} (${results.test.passed ?? 'n/a'} passed${
@@ -178,6 +185,7 @@ function main() {
   printBanner();
   runCommand('lint', npmCommand, ['run', 'lint'], parseLint, results);
   runCommand('format', npmCommand, ['run', 'format:check'], undefined, results);
+  runCommand('scripts', npmCommand, ['run', 'smoke:scripts'], undefined, results);
   runCommand('test', npmCommand, ['test'], parseTest, results);
   runCommand('typecheck', npmCommand, ['run', 'typecheck'], undefined, results);
   return printSummary(results);
