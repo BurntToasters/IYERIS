@@ -1,19 +1,19 @@
 .glass-input {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid var(--separator);
+  background: color-mix(in srgb, var(--surface-2) 80%, transparent);
+  border: 1px solid var(--panel-border);
   border-radius: var(--radius-small);
   transition: var(--transition-standard);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .glass-input:hover {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.18);
+  background: var(--interactive-hover);
+  border-color: var(--panel-border-strong);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
 .glass-input:focus {
-  background: rgba(255, 255, 255, 0.08);
+  background: color-mix(in srgb, var(--interactive-selected) 75%, transparent);
   border-color: var(--accent-color);
   outline: none;
   box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.35);
@@ -63,10 +63,10 @@ body.platform-win32 .glass-input:focus {
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: var(--bg-secondary);
+  background-color: color-mix(in srgb, var(--surface-2) 82%, transparent);
   transition: background-color var(--animation-duration) var(--animation-easing);
   border-radius: 26px;
-  border: 1px solid var(--glass-border);
+  border: 1px solid var(--panel-border);
 }
 
 .toggle-slider:before {

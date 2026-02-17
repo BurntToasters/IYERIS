@@ -7,7 +7,7 @@
 .address-bar {
   display: flex;
   align-items: center;
-  padding: 0 6px;
+  padding: 0 8px;
   gap: 6px;
   height: var(--address-bar-height);
   width: 100%;
@@ -37,7 +37,7 @@
 }
 
 .breadcrumb-item:focus-within {
-  background: var(--hover-color);
+  background: var(--interactive-hover);
 }
 
 .breadcrumb-label,
@@ -57,13 +57,13 @@
 }
 
 .breadcrumb-item:hover {
-  background: var(--hover-color);
+  background: var(--interactive-hover);
   box-shadow: none;
 }
 
 .breadcrumb-item.drag-over {
-  background: rgba(var(--accent-rgb), 0.2);
-  box-shadow: 0 0 0 1px rgba(var(--accent-rgb), 0.3);
+  background: color-mix(in srgb, var(--interactive-selected) 88%, transparent);
+  box-shadow: 0 0 0 1px var(--interactive-selected-border);
 }
 
 .breadcrumb-caret {
@@ -107,7 +107,7 @@
 .breadcrumb-item:focus-visible,
 .breadcrumb-label:focus-visible,
 .breadcrumb-caret:focus-visible {
-  background: var(--accent-light);
+  background: var(--interactive-selected);
   box-shadow: var(--focus-ring);
   outline: none;
 }

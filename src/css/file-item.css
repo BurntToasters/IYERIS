@@ -64,7 +64,7 @@ body.performance-mode .file-item.animate-in {
 }
 
 .file-item:hover {
-  background: var(--hover-color);
+  background: var(--interactive-hover);
   box-shadow: none;
 }
 
@@ -77,7 +77,7 @@ body.platform-win32 .file-item:hover {
 }
 
 .file-item:active {
-  background: var(--active-color);
+  background: var(--interactive-active);
   transform: none;
 }
 
@@ -117,7 +117,7 @@ body.platform-win32 .file-item.selected {
 }
 
 .file-item:focus-visible {
-  background: var(--accent-light);
+  background: var(--interactive-selected);
   box-shadow:
     var(--focus-ring-strong),
     0 0 0 5px rgba(var(--accent-rgb), 0.15);
@@ -258,8 +258,8 @@ body.reduce-motion .file-item.spring-loading {
   width: 18px;
   height: 18px;
   border-radius: var(--radius-small);
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: color-mix(in srgb, var(--surface-2) 86%, transparent);
+  border: 1px solid var(--panel-border);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -301,7 +301,7 @@ body.reduce-motion .file-item.spring-loading {
 
 .file-checkbox:hover {
   transform: scale(1.1);
-  background: rgba(var(--accent-rgb), 0.3);
+  background: color-mix(in srgb, var(--interactive-selected) 85%, transparent);
 }
 
 .file-item.selected .file-checkbox:hover {

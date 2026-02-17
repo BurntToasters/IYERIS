@@ -55,6 +55,15 @@ function createDiagnosticsRedactions(): DiagnosticsRedaction[] {
   return redactions;
 }
 
+function getSafeUptimeSeconds(): number | null {
+  try {
+    const uptime = os.uptime();
+    return Number.isFinite(uptime) ? uptime : null;
+  } catch {
+    return null;
+  }
+}
+
 function redactDiagnosticsText(input: string, redactions: DiagnosticsRedaction[]): string {
   let output = input;
   for (const redaction of redactions) {
@@ -230,7 +239,7 @@ export async function exportDiagnostics(
       cpuCount: os.cpus().length,
       totalMemoryBytes: os.totalmem(),
       freeMemoryBytes: os.freemem(),
-      uptimeSeconds: os.uptime(),
+      uptimeSeconds: getSafeUptimeSeconds(),
       locale: app.getLocale(),
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     },

@@ -52,6 +52,16 @@
   --separator: rgba(255, 255, 255, 0.08);
   --surface-border: color-mix(in srgb, var(--text-primary) 12%, transparent);
   --surface-border-strong: color-mix(in srgb, var(--text-primary) 18%, transparent);
+  --surface-0: var(--bg-primary);
+  --surface-1: var(--bg-secondary);
+  --surface-2: color-mix(in srgb, var(--surface-1) 90%, transparent);
+  --surface-overlay: var(--glass-bg);
+  --panel-border: var(--surface-border);
+  --panel-border-strong: var(--surface-border-strong);
+  --interactive-hover: var(--hover-color);
+  --interactive-active: var(--active-color);
+  --interactive-selected: var(--accent-light);
+  --interactive-selected-border: var(--accent-strong);
 
   --titlebar-height: 32px;
   --tab-bar-height: 32px;
@@ -69,6 +79,7 @@
   --system-accent-color: var(--accent-color);
   --system-accent-rgb: var(--accent-rgb);
   --themed-icon-hue: 200deg;
+  --icon-stroke-width: 1.5;
 
   --animation-duration: 200ms;
   --animation-easing: cubic-bezier(0.33, 1, 0.68, 1);
@@ -103,16 +114,24 @@
   --icon-size-nav: 16px;
   --icon-size-sidebar-toggle: 26px;
   --icon-size-spinner: 32px;
+  --icon-size-status: 12px;
+  --icon-size-settings-tab: 18px;
 
   --toolbar-height: 38px;
   --toolbar-padding-v: 6px;
   --toolbar-padding-h: 9px;
+  --toolbar-group-height: 32px;
+  --control-height-sm: 24px;
+  --control-height-md: 28px;
+  --control-height-lg: 32px;
   --status-bar-height: 22px;
   --address-bar-height: 26px;
   --sidebar-width: 180px;
   --sidebar-width-collapsed: 44px;
   --sidebar-toggle-bottom: 26px;
   --preview-panel-width: 260px;
+  --preview-panel-height: 220px;
+  --grid-columns: auto-fill;
 
   --file-grid-gap-row: 10px;
   --file-grid-gap-col: 12px;
@@ -215,10 +234,16 @@ body.compact-ui {
   --icon-size-nav: 12px;
   --icon-size-sidebar-toggle: 20px;
   --icon-size-spinner: 28px;
+  --icon-size-status: 11px;
+  --icon-size-settings-tab: 16px;
 
   --toolbar-height: 32px;
   --toolbar-padding-v: 4px;
   --toolbar-padding-h: 6px;
+  --toolbar-group-height: 28px;
+  --control-height-sm: 22px;
+  --control-height-md: 26px;
+  --control-height-lg: 30px;
   --status-bar-height: 18px;
   --address-bar-height: 22px;
   --sidebar-width: 160px;
@@ -226,6 +251,7 @@ body.compact-ui {
   --sidebar-toggle-bottom: 22px;
   --tab-bar-height: 28px;
   --preview-panel-width: 220px;
+  --preview-panel-height: 190px;
 
   --file-grid-gap-row: 6px;
   --file-grid-gap-col: 8px;
@@ -265,10 +291,16 @@ body.large-ui {
   --icon-size-nav: 16px;
   --icon-size-sidebar-toggle: 28px;
   --icon-size-spinner: 44px;
+  --icon-size-status: 13px;
+  --icon-size-settings-tab: 20px;
 
   --toolbar-height: 48px;
   --toolbar-padding-v: 10px;
   --toolbar-padding-h: 12px;
+  --toolbar-group-height: 36px;
+  --control-height-sm: 26px;
+  --control-height-md: 32px;
+  --control-height-lg: 38px;
   --status-bar-height: 24px;
   --address-bar-height: 28px;
   --sidebar-width: 200px;
@@ -276,6 +308,7 @@ body.large-ui {
   --sidebar-toggle-bottom: 32px;
   --tab-bar-height: 36px;
   --preview-panel-width: 320px;
+  --preview-panel-height: 260px;
 
   --file-grid-gap-row: 8px;
   --file-grid-gap-col: 10px;

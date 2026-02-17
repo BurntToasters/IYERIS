@@ -89,6 +89,7 @@ import { createFileRenderController } from './rendererFileRender.js';
 import { createFileGridEventsController } from './rendererFileGridEvents.js';
 import { createEventListenersController } from './rendererEventListeners.js';
 import { createBootstrapController } from './rendererBootstrap.js';
+import { applyAppearance } from './rendererAppearance.js';
 
 const SEARCH_DEBOUNCE_MS = 300;
 const SETTINGS_SAVE_DEBOUNCE_MS = 1000;
@@ -1175,26 +1176,10 @@ async function applySystemFontSize(): Promise<void> {
 }
 
 function applySettings(settings: Settings) {
-  document.body.classList.remove(
-    'theme-dark',
-    'theme-light',
-    'theme-default',
-    'theme-custom',
-    'theme-nord',
-    'theme-catppuccin',
-    'theme-dracula',
-    'theme-solarized',
-    'theme-github'
-  );
-  if (settings.theme && settings.theme !== 'default') {
-    document.body.classList.add(`theme-${settings.theme}`);
-  }
-
-  if (settings.theme === 'custom' && settings.customTheme) {
-    applyCustomThemeColors(settings.customTheme);
-  } else {
-    clearCustomThemeColors();
-  }
+  applyAppearance(settings, {
+    applyCustomThemeColors,
+    clearCustomThemeColors,
+  });
 
   if (settings.viewMode) {
     viewMode = settings.viewMode;
@@ -1206,56 +1191,11 @@ function applySettings(settings: Settings) {
   applyPreviewPanelWidth();
   updateSortIndicators();
 
-  // Body class toggles
-  const classToggles: [string, boolean][] = [
-    ['reduce-motion', !!settings.reduceMotion],
-    ['high-contrast', !!settings.highContrast],
-    ['large-text', !!settings.largeText],
-    ['bold-text', !!settings.boldText],
-    ['visible-focus', !!settings.visibleFocus],
-    ['reduce-transparency', !!settings.reduceTransparency],
-    ['liquid-glass', !!settings.liquidGlassMode],
-    ['themed-icons', !!settings.themedIcons],
-    ['show-file-checkboxes', !!settings.showFileCheckboxes],
-    ['compact-file-info', !!settings.compactFileInfo],
-    ['hide-file-extensions', settings.showFileExtensions === false],
-  ];
-  for (const [cls, val] of classToggles) document.body.classList.toggle(cls, val);
-
   if (settings.useSystemFontSize) {
     applySystemFontSize();
   } else {
     document.documentElement.style.removeProperty('--system-font-scale');
     document.body.classList.remove('use-system-font-size');
-  }
-
-  document.body.classList.remove('compact-ui', 'large-ui');
-  if (settings.uiDensity === 'compact') {
-    document.body.classList.add('compact-ui');
-  } else if (settings.uiDensity === 'larger') {
-    document.body.classList.add('large-ui');
-  }
-
-  // Grid columns
-  if (settings.gridColumns && settings.gridColumns !== 'auto') {
-    document.documentElement.style.setProperty('--grid-columns', settings.gridColumns);
-  } else {
-    document.documentElement.style.removeProperty('--grid-columns');
-  }
-
-  // Icon size
-  if (settings.iconSize && settings.iconSize > 0) {
-    document.documentElement.style.setProperty('--icon-size-grid', `${settings.iconSize}px`);
-  } else {
-    document.documentElement.style.removeProperty('--icon-size-grid');
-  }
-
-  // Preview panel position
-  document.body.classList.remove('preview-right', 'preview-bottom');
-  if (settings.previewPanelPosition === 'bottom') {
-    document.body.classList.add('preview-bottom');
-  } else {
-    document.body.classList.add('preview-right');
   }
 
   setHoverCardEnabled(settings.showFileHoverCard !== false);

@@ -3,8 +3,8 @@
   justify-content: space-between;
   align-items: center;
   height: var(--titlebar-height);
-  background: var(--bg-secondary);
-  border-bottom: 1px solid var(--separator);
+  background: var(--surface-1);
+  border-bottom: 1px solid var(--panel-border);
   -webkit-app-region: drag;
   padding: 0 0 0 12px;
   position: relative;
@@ -48,8 +48,8 @@
 }
 
 .titlebar-button {
-  width: 40px;
-  height: 32px;
+  width: calc(var(--control-height-lg) + 4px);
+  height: var(--titlebar-height);
   border: none;
   background: transparent;
   color: var(--text-primary);
@@ -62,11 +62,11 @@
 }
 
 .titlebar-button:hover {
-  background: var(--hover-color);
+  background: var(--interactive-hover);
 }
 
 .titlebar-button:active {
-  background: var(--active-color);
+  background: var(--interactive-active);
 }
 
 .titlebar-button.close:hover {
@@ -121,8 +121,8 @@ body.platform-win32 .titlebar-title {
   border-left: none;
   border-right: none;
   border-top: none;
-  background: var(--bg-secondary);
-  border-bottom: 1px solid var(--separator);
+  background: var(--surface-1);
+  border-bottom: 1px solid var(--panel-border);
 }
 
 .tab-list {
@@ -154,12 +154,12 @@ body.platform-win32 .titlebar-title {
 }
 
 .tab-item:hover {
-  background: var(--hover-color);
+  background: var(--interactive-hover);
 }
 
 .tab-item.active {
-  background: var(--accent-light);
-  border-color: var(--accent-strong);
+  background: var(--interactive-selected);
+  border-color: var(--interactive-selected-border);
 }
 
 .tab-item .tab-icon {
@@ -209,17 +209,17 @@ body.platform-win32 .titlebar-title {
 }
 
 .tab-item .tab-close:hover {
-  background: var(--hover-color);
+  background: var(--interactive-hover);
   color: var(--text-primary);
 }
 
 .tab-item .tab-close:active {
-  background: var(--active-color);
+  background: var(--interactive-active);
 }
 
 .tab-new-btn {
-  width: 24px;
-  height: 24px;
+  width: var(--control-height-md);
+  height: var(--control-height-md);
   border: none;
   background: transparent;
   color: var(--text-secondary);
@@ -233,12 +233,12 @@ body.platform-win32 .titlebar-title {
 }
 
 .tab-new-btn:hover {
-  background: var(--hover-color);
+  background: var(--interactive-hover);
   color: var(--text-primary);
 }
 
 .tab-new-btn:active {
-  background: var(--active-color);
+  background: var(--interactive-active);
   transform: none;
 }
 

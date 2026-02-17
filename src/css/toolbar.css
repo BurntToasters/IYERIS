@@ -14,9 +14,10 @@
   align-items: center;
   gap: 4px;
   padding: 2px;
-  background: rgba(255, 255, 255, 0.04);
+  min-height: var(--toolbar-group-height);
+  background: color-mix(in srgb, var(--surface-2) 80%, transparent);
   border-radius: var(--radius-small);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--panel-border);
 }
 
 .toolbar-left,
@@ -34,16 +35,17 @@
   display: inline-flex;
   align-items: center;
   gap: var(--toolbar-left-right-gap);
-  padding: 2px 4px;
+  min-height: var(--toolbar-group-height);
+  padding: 2px 5px;
   border-radius: var(--radius-medium);
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: color-mix(in srgb, var(--surface-2) 76%, transparent);
+  border: 1px solid var(--panel-border);
 }
 
 .toolbar-divider {
   width: 1px;
   height: var(--toolbar-separator-height);
-  background: var(--separator);
+  background: var(--panel-border);
   margin: 0 6px;
 }
 
@@ -51,8 +53,8 @@
   border: none;
   background: transparent;
   color: var(--text-secondary);
-  width: 28px;
-  height: 26px;
+  width: var(--control-height-md);
+  height: var(--control-height-sm);
   border-radius: var(--radius-small);
   display: inline-flex;
   align-items: center;
@@ -63,13 +65,13 @@
 
 .view-option:hover {
   color: var(--text-primary);
-  background: var(--hover-color);
+  background: var(--interactive-hover);
 }
 
 .view-option.active {
   color: var(--text-primary);
-  background: var(--accent-medium);
-  box-shadow: inset 0 0 0 1px var(--accent-strong);
+  background: var(--interactive-selected);
+  box-shadow: inset 0 0 0 1px var(--interactive-selected-border);
 }
 
 #view-toggle-btn {
@@ -87,13 +89,13 @@
 .toolbar-separator {
   width: 1px;
   height: var(--toolbar-separator-height);
-  background: rgba(255, 255, 255, 0.12);
+  background: var(--panel-border);
   margin: var(--toolbar-separator-margin-v) var(--toolbar-separator-margin-h);
 }
 
 .toolbar-button {
-  width: var(--icon-size-toolbar);
-  height: var(--icon-size-toolbar);
+  width: var(--control-height-lg);
+  height: var(--control-height-lg);
   border: none;
   background: transparent;
   color: var(--text-primary);
@@ -107,13 +109,13 @@
 }
 
 .toolbar-button:hover:not(:disabled) {
-  background: var(--hover-color);
+  background: var(--interactive-hover);
   box-shadow: none;
   transform: none;
 }
 
 .toolbar-button:active:not(:disabled) {
-  background: var(--active-color);
+  background: var(--interactive-active);
   transform: none;
 }
 
@@ -154,9 +156,9 @@ body.platform-win32 .toolbar-button:active:not(:disabled) {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 4px 8px;
+  padding: 4px 9px;
   margin-left: 8px;
-  background: var(--accent-subtle);
+  background: color-mix(in srgb, var(--interactive-selected) 90%, transparent);
   border-radius: var(--radius-small);
   font-size: 11px;
   color: var(--accent-color);
@@ -178,9 +180,9 @@ body.platform-win32 .toolbar-button:active:not(:disabled) {
   gap: 6px;
   flex-wrap: wrap;
   row-gap: 4px;
-  padding: 4px 8px;
+  padding: 4px 9px;
   margin-left: 8px;
-  background: var(--accent-subtle);
+  background: color-mix(in srgb, var(--interactive-selected) 90%, transparent);
   border-radius: var(--radius-small);
   font-size: 11px;
   color: var(--text-primary);
@@ -199,7 +201,7 @@ body.platform-win32 .toolbar-button:active:not(:disabled) {
 }
 
 .selection-action {
-  background: rgba(255, 255, 255, 0.1);
+  background: color-mix(in srgb, var(--surface-2) 82%, transparent);
   border: none;
   border-radius: var(--radius-small);
   padding: 4px 8px;
@@ -211,12 +213,12 @@ body.platform-win32 .toolbar-button:active:not(:disabled) {
 }
 
 .selection-action:hover {
-  background: rgba(255, 255, 255, 0.18);
+  background: var(--interactive-hover);
   color: var(--text-primary);
 }
 
 .selection-action:active {
-  background: rgba(255, 255, 255, 0.24);
+  background: var(--interactive-active);
 }
 
 .selection-action:focus-visible {
