@@ -1,6 +1,6 @@
 {
   "name": "iyeris",
-  "version": "0.10.4",
+  "version": "1.0.0",
   "description": "A beautiful cross-platform file explorer built with Electron, featuring a simple yet advanced modern design.",
   "main": "dist/main/main.js",
   "dependencies": {
