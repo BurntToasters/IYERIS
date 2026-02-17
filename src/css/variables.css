@@ -28,7 +28,7 @@
   --git-added: #4caf50;
   --git-deleted: #ef5350;
   --git-renamed: #42a5f5;
-  --git-untracked: #9e9e9e;
+  --git-untracked: #b0b0b0;
   --git-conflict: #ef5350;
 
   --accent-subtle: rgba(var(--accent-rgb), 0.08);
