@@ -36,7 +36,11 @@
   },
   "packageManager": "npm@11.10.0",
   "overrides": {
-    "tar": "^7.5.3"
+    "tar": "^7.5.3",
+    "@develar/schema-utils": {
+      "ajv": "6.12.6",
+      "ajv-keywords": "3.5.2"
+    }
   },
   "scripts": {
     "licenses": "npx npm-license-crawler --production --json licenses.json",
