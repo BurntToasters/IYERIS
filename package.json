@@ -36,10 +36,7 @@
   },
   "packageManager": "npm@11.10.0",
   "overrides": {
-    "tar": "^7.5.3",
-    "electron-builder": {
-      "ajv": "^8.18.0"
-    }
+    "tar": "^7.5.3"
   },
   "scripts": {
     "licenses": "npx npm-license-crawler --production --json licenses.json",
