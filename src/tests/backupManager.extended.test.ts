@@ -16,6 +16,11 @@ vi.mock('electron', () => ({
   app: hoisted.appMock,
 }));
 
+vi.mock('../main/fileOperationUtils', () => ({
+  pathExists: hoisted.pathExistsMock,
+  renameWithExdevFallback: hoisted.renameWithExdevFallbackMock,
+}));
+
 vi.mock('../main/fileOperations', () => ({
   pathExists: hoisted.pathExistsMock,
   renameWithExdevFallback: hoisted.renameWithExdevFallbackMock,

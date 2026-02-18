@@ -1,4 +1,4 @@
-import type { Settings, FileItem, SpecialDirectory, DriveInfo } from './types';
+import type { Settings, FileItem, DriveInfo } from './types';
 import { createFolderTreeManager } from './folderDir.js';
 import { assignKey, escapeHtml, getErrorMessage, ignoreError } from './shared.js';
 import { clearHtml, getById } from './rendererDom.js';
@@ -91,35 +91,23 @@ import { createFileGridEventsController } from './rendererFileGridEvents.js';
 import { createEventListenersController } from './rendererEventListeners.js';
 import { createBootstrapController } from './rendererBootstrap.js';
 import { applyAppearance } from './rendererAppearance.js';
-
-const SEARCH_DEBOUNCE_MS = 300;
-const SETTINGS_SAVE_DEBOUNCE_MS = 1000;
-const TOAST_DURATION_MS = 3000;
-const SEARCH_HISTORY_MAX = 5;
-const DIRECTORY_HISTORY_MAX = 5;
-const DIRECTORY_PROGRESS_THROTTLE_MS = 100;
-const SUPPORT_POPUP_DELAY_MS = 1500;
-
-const NAME_COLLATOR = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
-
-function consumeEvent(e: Event): void {
-  e.preventDefault();
-  e.stopPropagation();
-}
-
-const DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
-  year: 'numeric',
-  month: 'short',
-  day: 'numeric',
-});
-
-const SPECIAL_DIRECTORY_ACTIONS: Record<string, { key: SpecialDirectory; label: string }> = {
-  desktop: { key: 'desktop', label: 'Desktop' },
-  documents: { key: 'documents', label: 'Documents' },
-  downloads: { key: 'downloads', label: 'Downloads' },
-  music: { key: 'music', label: 'Music' },
-  videos: { key: 'videos', label: 'Videos' },
-};
+import {
+  SEARCH_DEBOUNCE_MS,
+  SETTINGS_SAVE_DEBOUNCE_MS,
+  TOAST_DURATION_MS,
+  SEARCH_HISTORY_MAX,
+  DIRECTORY_HISTORY_MAX,
+  DIRECTORY_PROGRESS_THROTTLE_MS,
+  SUPPORT_POPUP_DELAY_MS,
+  MAX_RECENT_FILES,
+  MAX_CACHED_TABS,
+  MAX_CACHED_FILES_PER_TAB,
+  NAME_COLLATOR,
+  DATE_FORMATTER,
+  SPECIAL_DIRECTORY_ACTIONS,
+  consumeEvent,
+  type ViewMode,
+} from './rendererLocalConstants.js';
 
 const fileElementMap: Map<string, HTMLElement> = new Map();
 const driveLabelByPath = new Map<string, string>();
@@ -158,8 +146,6 @@ function debouncedSaveSettings(delay: number = SETTINGS_SAVE_DEBOUNCE_MS) {
   }, delay);
   settingsSaveTimeout = timeoutId;
 }
-
-type ViewMode = 'grid' | 'list' | 'column';
 
 const ipcCleanupFunctions: (() => void)[] = [];
 
@@ -228,8 +214,6 @@ let activeTabId: string = '';
 let tabsEnabled: boolean = false;
 let tabNewButtonListenerAttached: boolean = false;
 
-const MAX_CACHED_TABS = 5;
-const MAX_CACHED_FILES_PER_TAB = 10000;
 let tabCacheAccessOrder: string[] = [];
 let saveTabStateTimeout: NodeJS.Timeout | null = null;
 
@@ -1609,8 +1593,6 @@ async function handleQuickAction(action?: string | null): Promise<void> {
     showToast('Opening system trash folder', 'Info', 'info');
   }
 }
-
-const MAX_RECENT_FILES = 10;
 
 function loadRecentFiles() {
   const recentList = document.getElementById('recent-list');

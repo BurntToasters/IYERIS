@@ -20,104 +20,128 @@ const BASE_WORKER_COUNT = Math.max(1, Math.min(CPU_COUNT, MAX_WORKERS));
 const INDEXER_WORKER_COUNT = 1;
 const UI_WORKER_COUNT = Math.max(1, BASE_WORKER_COUNT);
 
-const fileTasks = new FileTaskManager(UI_WORKER_COUNT);
-const indexerTasks = new FileTaskManager(INDEXER_WORKER_COUNT);
+export interface AppContext {
+  readonly fileTasks: FileTaskManager;
+  readonly indexerTasks: FileTaskManager;
+  readonly windowDragData: WeakMap<Electron.WebContents, { paths: string[] }>;
 
-let mainWindow: BrowserWindow | null = null;
-let fileIndexer: FileIndexer | null = null;
-let tray: Tray | null = null;
-let isQuitting = false;
-let currentTrayState: 'idle' | 'active' | 'notification' = 'idle';
-let trayAssetsPath: string = '';
-let shouldStartHidden = false;
+  mainWindow: BrowserWindow | null;
+  fileIndexer: FileIndexer | null;
+  tray: Tray | null;
+  isQuitting: boolean;
+  currentTrayState: 'idle' | 'active' | 'notification';
+  trayAssetsPath: string;
+  shouldStartHidden: boolean;
+  sharedClipboard: { operation: 'copy' | 'cut'; paths: string[] } | null;
+  isDev: boolean;
+}
 
-let sharedClipboard: { operation: 'copy' | 'cut'; paths: string[] } | null = null;
-const windowDragData = new WeakMap<Electron.WebContents, { paths: string[] }>();
+export function createAppContext(overrides?: Partial<AppContext>): AppContext {
+  return {
+    fileTasks: overrides?.fileTasks ?? new FileTaskManager(UI_WORKER_COUNT),
+    indexerTasks: overrides?.indexerTasks ?? new FileTaskManager(INDEXER_WORKER_COUNT),
+    windowDragData: overrides?.windowDragData ?? new WeakMap(),
+    mainWindow: overrides?.mainWindow ?? null,
+    fileIndexer: overrides?.fileIndexer ?? null,
+    tray: overrides?.tray ?? null,
+    isQuitting: overrides?.isQuitting ?? false,
+    currentTrayState: overrides?.currentTrayState ?? 'idle',
+    trayAssetsPath: overrides?.trayAssetsPath ?? '',
+    shouldStartHidden: overrides?.shouldStartHidden ?? false,
+    sharedClipboard: overrides?.sharedClipboard ?? null,
+    isDev: overrides?.isDev ?? process.argv.includes('--dev'),
+  };
+}
 
-const isDev = process.argv.includes('--dev');
+const defaultContext = createAppContext();
+
+export function getAppContext(): AppContext {
+  return defaultContext;
+}
 
 export function getFileTasks(): FileTaskManager {
-  return fileTasks;
+  return defaultContext.fileTasks;
 }
 
 export function getIndexerTasks(): FileTaskManager {
-  return indexerTasks;
+  return defaultContext.indexerTasks;
 }
 
 export function getMainWindow(): BrowserWindow | null {
-  return mainWindow;
+  return defaultContext.mainWindow;
 }
 
 export function setMainWindow(win: BrowserWindow | null): void {
-  mainWindow = win;
+  defaultContext.mainWindow = win;
 }
 
 export function getActiveWindow(): BrowserWindow | null {
-  if (mainWindow && !mainWindow.isDestroyed()) return mainWindow;
+  if (defaultContext.mainWindow && !defaultContext.mainWindow.isDestroyed())
+    return defaultContext.mainWindow;
   const allWindows = BrowserWindow.getAllWindows();
   return allWindows.length > 0 ? allWindows[0] : null;
 }
 
 export function getFileIndexer(): FileIndexer | null {
-  return fileIndexer;
+  return defaultContext.fileIndexer;
 }
 
 export function setFileIndexer(indexer: FileIndexer | null): void {
-  fileIndexer = indexer;
+  defaultContext.fileIndexer = indexer;
 }
 
 export function getTray(): Tray | null {
-  return tray;
+  return defaultContext.tray;
 }
 
 export function setTray(t: Tray | null): void {
-  tray = t;
+  defaultContext.tray = t;
 }
 
 export function getIsQuitting(): boolean {
-  return isQuitting;
+  return defaultContext.isQuitting;
 }
 
 export function setIsQuitting(quitting: boolean): void {
-  isQuitting = quitting;
+  defaultContext.isQuitting = quitting;
 }
 
 export function getCurrentTrayState(): 'idle' | 'active' | 'notification' {
-  return currentTrayState;
+  return defaultContext.currentTrayState;
 }
 
 export function setCurrentTrayState(state: 'idle' | 'active' | 'notification'): void {
-  currentTrayState = state;
+  defaultContext.currentTrayState = state;
 }
 
 export function getTrayAssetsPath(): string {
-  return trayAssetsPath;
+  return defaultContext.trayAssetsPath;
 }
 
 export function setTrayAssetsPath(path: string): void {
-  trayAssetsPath = path;
+  defaultContext.trayAssetsPath = path;
 }
 
 export function getShouldStartHidden(): boolean {
-  return shouldStartHidden;
+  return defaultContext.shouldStartHidden;
 }
 
 export function setShouldStartHidden(hidden: boolean): void {
-  shouldStartHidden = hidden;
+  defaultContext.shouldStartHidden = hidden;
 }
 
 export function getSharedClipboard(): { operation: 'copy' | 'cut'; paths: string[] } | null {
-  return sharedClipboard;
+  return defaultContext.sharedClipboard;
 }
 
 export function setSharedClipboard(
   clipboard: { operation: 'copy' | 'cut'; paths: string[] } | null
 ): void {
-  sharedClipboard = clipboard;
+  defaultContext.sharedClipboard = clipboard;
 }
 
 export function getWindowDragData(webContents: Electron.WebContents): { paths: string[] } | null {
-  return windowDragData.get(webContents) || null;
+  return defaultContext.windowDragData.get(webContents) || null;
 }
 
 export function setWindowDragData(
@@ -125,16 +149,16 @@ export function setWindowDragData(
   data: { paths: string[] } | null
 ): void {
   if (data === null) {
-    windowDragData.delete(webContents);
+    defaultContext.windowDragData.delete(webContents);
   } else {
-    windowDragData.set(webContents, data);
+    defaultContext.windowDragData.set(webContents, data);
   }
 }
 
 export function clearWindowDragData(webContents: Electron.WebContents): void {
-  windowDragData.delete(webContents);
+  defaultContext.windowDragData.delete(webContents);
 }
 
 export function getIsDev(): boolean {
-  return isDev;
+  return defaultContext.isDev;
 }

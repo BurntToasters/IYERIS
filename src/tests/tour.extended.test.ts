@@ -93,7 +93,15 @@ function createTestController(
     hideCommandPalette,
   });
 
-  return { ctrl, settings, saveSettings, onModalOpen, onModalClose, showCommandPalette, hideCommandPalette };
+  return {
+    ctrl,
+    settings,
+    saveSettings,
+    onModalOpen,
+    onModalClose,
+    showCommandPalette,
+    hideCommandPalette,
+  };
 }
 
 describe('tour.extended', () => {

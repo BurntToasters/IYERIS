@@ -3,8 +3,8 @@ import { promises as fs } from 'fs';
 import * as crypto from 'crypto';
 import { app } from 'electron';
 import { ignoreError } from '../shared';
-import { pathExists, renameWithExdevFallback } from './fileOperations';
-import type { PlannedFileOperation } from './fileOperations';
+import { pathExists, renameWithExdevFallback } from './fileOperationUtils';
+import type { PlannedFileOperation } from './fileOperationUtils';
 
 const OVERWRITE_BACKUP_RETENTION_MS = 14 * 24 * 60 * 60 * 1000;
 const OVERWRITE_BACKUP_MAX_FILES = 200;
