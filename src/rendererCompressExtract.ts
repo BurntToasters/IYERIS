@@ -1,4 +1,5 @@
 import type { FileItem } from './types';
+import type { ToastAction } from './rendererToasts.js';
 import { ARCHIVE_SUFFIXES } from './fileTypes.js';
 import { getErrorMessage } from './shared.js';
 import { normalizeWindowsPath, rendererPath as path } from './rendererUtils.js';
@@ -24,7 +25,8 @@ type CompressExtractDeps = {
   showToast: (
     message: string,
     title: string,
-    type: 'success' | 'error' | 'info' | 'warning'
+    type: 'success' | 'error' | 'info' | 'warning',
+    actions?: ToastAction[]
   ) => void;
   showConfirm: (
     message: string,
@@ -159,7 +161,12 @@ export function createCompressExtractController(deps: CompressExtractDeps) {
       deps.removeOperation(operationId);
 
       if (!result.success) {
-        deps.showToast(result.error || 'Compression failed', 'Error', 'error');
+        deps.showToast(result.error || 'Compression failed', 'Error', 'error', [
+          {
+            label: 'Retry',
+            onClick: () => void handleCompress(format, customName, advancedOptions),
+          },
+        ]);
         return;
       }
       deps.showToast(`Created ${archiveName}`, 'Compressed Successfully', 'success');
@@ -167,7 +174,9 @@ export function createCompressExtractController(deps: CompressExtractDeps) {
     } catch (error) {
       cleanupProgressHandler();
       deps.removeOperation(operationId);
-      deps.showToast(getErrorMessage(error), 'Compression Error', 'error');
+      deps.showToast(getErrorMessage(error), 'Compression Error', 'error', [
+        { label: 'Retry', onClick: () => void handleCompress(format, customName, advancedOptions) },
+      ]);
     }
   }
 
@@ -647,7 +656,12 @@ export function createCompressExtractController(deps: CompressExtractDeps) {
       deps.removeOperation(operationId);
 
       if (!result.success) {
-        deps.showToast(result.error || 'Extraction failed', 'Error', 'error');
+        deps.showToast(result.error || 'Extraction failed', 'Error', 'error', [
+          {
+            label: 'Retry',
+            onClick: () => void handleExtract(archivePath, destBaseFolder, trackRecent),
+          },
+        ]);
         return;
       }
       deps.showToast(`Extracted to ${destPath}`, 'Extraction Complete', 'success');
@@ -660,7 +674,12 @@ export function createCompressExtractController(deps: CompressExtractDeps) {
     } catch (error) {
       cleanupProgressHandler();
       deps.removeOperation(operationId);
-      deps.showToast(getErrorMessage(error), 'Extraction Error', 'error');
+      deps.showToast(getErrorMessage(error), 'Extraction Error', 'error', [
+        {
+          label: 'Retry',
+          onClick: () => void handleExtract(archivePath, destBaseFolder, trackRecent),
+        },
+      ]);
     }
   }
 

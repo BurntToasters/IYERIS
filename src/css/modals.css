@@ -726,3 +726,116 @@ body.reduce-transparency.liquid-glass .archive-operations-panel {
 body.reduce-motion .modal-overlay {
   animation: none;
 }
+
+.batch-rename-modal {
+  width: 520px;
+  max-width: 90vw;
+  max-height: 80vh;
+}
+
+.batch-rename-content {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.batch-rename-mode-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.batch-rename-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.batch-rename-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.batch-rename-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.batch-rename-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.batch-rename-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.batch-rename-preview-list {
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid var(--separator);
+  border-radius: var(--radius-small);
+  background: var(--bg-secondary);
+  padding: 4px;
+}
+
+.batch-rename-preview-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  font-size: 12px;
+  border-radius: var(--radius-small);
+}
+
+.batch-rename-preview-row:nth-child(even) {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.batch-rename-preview-old {
+  flex: 1;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.batch-rename-preview-arrow {
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+  font-size: 10px;
+}
+
+.batch-rename-preview-new {
+  flex: 1;
+  color: var(--text-primary);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.batch-rename-preview-new.changed {
+  color: var(--accent-color);
+}
+
+.batch-rename-preview-new.error {
+  color: var(--danger-color);
+}
+
+.batch-rename-preview-empty {
+  padding: 16px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}

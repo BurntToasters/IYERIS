@@ -108,7 +108,12 @@ describe('createClipboardController — extended', () => {
       const deps = createDeps();
       const ctrl = createClipboardController(deps);
       await ctrl.pasteFromClipboard();
-      expect(deps.showToast).toHaveBeenCalledWith('Copy failed', 'Error', 'error');
+      expect(deps.showToast).toHaveBeenCalledWith(
+        'Copy failed',
+        'Error',
+        'error',
+        expect.any(Array)
+      );
       expect(deps.refresh).not.toHaveBeenCalled();
     });
 
@@ -120,7 +125,12 @@ describe('createClipboardController — extended', () => {
       const deps = createDeps();
       const ctrl = createClipboardController(deps);
       await ctrl.pasteFromClipboard();
-      expect(deps.showToast).toHaveBeenCalledWith('Paste failed', 'Error', 'error');
+      expect(deps.showToast).toHaveBeenCalledWith(
+        'Paste failed',
+        'Error',
+        'error',
+        expect.any(Array)
+      );
     });
 
     it('shows error toast when local paste operation fails', async () => {
@@ -132,7 +142,7 @@ describe('createClipboardController — extended', () => {
       ctrl.setClipboard({ operation: 'copy', paths: ['/a.txt'] });
       await ctrl.pasteFromClipboard();
       expect(electronApi.copyItems).toHaveBeenCalled();
-      expect(deps.showToast).toHaveBeenCalledWith('disk full', 'Error', 'error');
+      expect(deps.showToast).toHaveBeenCalledWith('disk full', 'Error', 'error', expect.any(Array));
     });
 
     it('shows generic error when local paste has no error message', async () => {
@@ -143,7 +153,12 @@ describe('createClipboardController — extended', () => {
       const ctrl = createClipboardController(deps);
       ctrl.setClipboard({ operation: 'cut', paths: ['/a.txt'] });
       await ctrl.pasteFromClipboard();
-      expect(deps.showToast).toHaveBeenCalledWith('Operation failed', 'Error', 'error');
+      expect(deps.showToast).toHaveBeenCalledWith(
+        'Operation failed',
+        'Error',
+        'error',
+        expect.any(Array)
+      );
     });
   });
 

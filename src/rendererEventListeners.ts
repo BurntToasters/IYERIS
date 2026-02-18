@@ -113,6 +113,9 @@ type EventListenersConfig = {
   zoomIn: () => void;
   zoomOut: () => void;
   zoomReset: () => void;
+  toggleHiddenFiles: () => void;
+  showPropertiesForSelected: () => void;
+  restoreClosedTab: () => void;
 
   initSettingsTabs: () => void;
   initSettingsUi: () => void;
@@ -346,6 +349,11 @@ export function createEventListenersController(config: EventListenersConfig) {
       'zoom-in': () => config.zoomIn(),
       'zoom-out': () => config.zoomOut(),
       'zoom-reset': () => config.zoomReset(),
+      'toggle-hidden-files': () => config.toggleHiddenFiles(),
+      properties: () => config.showPropertiesForSelected(),
+      'restore-closed-tab': () => {
+        if (config.getTabsEnabled()) config.restoreClosedTab();
+      },
     };
 
     if (actionId === 'next-tab' || actionId === 'prev-tab') {
@@ -455,14 +463,6 @@ export function createEventListenersController(config: EventListenersConfig) {
       if (e.key === 'Delete') {
         e.preventDefault();
         if (e.shiftKey) {
-          if (!config.getCurrentSettings().showDangerousOptions) {
-            config.showToast(
-              'Enable Developer Mode in settings to permanently delete items',
-              'Developer Mode Required',
-              'warning'
-            );
-            return;
-          }
           config.deleteSelected(true);
         } else {
           config.deleteSelected();

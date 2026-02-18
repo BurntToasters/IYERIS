@@ -162,6 +162,10 @@ vi.mock('../main/elevatedOperations', () => ({
   setupElevatedOperationHandlers: mocks.setupElevatedOperationHandlers,
 }));
 
+vi.mock('../main/openWithHandlers', () => ({
+  setupOpenWithHandlers: vi.fn(),
+}));
+
 describe('main bootstrap wiring', () => {
   beforeEach(() => {
     vi.clearAllMocks();

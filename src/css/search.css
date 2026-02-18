@@ -463,3 +463,100 @@ body.theme-light .toggle-slider-small {
     box-shadow: 0 0 0 0 rgba(var(--accent-rgb), 0);
   }
 }
+
+.search-regex-toggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 6px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-small);
+  transition:
+    background-color 0.12s cubic-bezier(0.4, 0, 0.2, 1),
+    color 0.12s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 0.12s cubic-bezier(0.4, 0, 0.2, 1);
+  opacity: 0.6;
+}
+
+.search-regex-toggle .regex-label {
+  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  line-height: 1;
+}
+
+.search-regex-toggle:hover {
+  background: var(--hover-color, rgba(255, 255, 255, 0.08));
+  opacity: 1;
+}
+
+.search-regex-toggle:active {
+  background: var(--active-color, rgba(255, 255, 255, 0.12));
+}
+
+.search-regex-toggle.active {
+  background: var(--accent-gradient);
+  opacity: 1;
+}
+
+.search-regex-toggle.active .regex-label {
+  color: var(--text-primary);
+}
+
+.search-regex-toggle.active:hover {
+  filter: brightness(1.1);
+}
+
+.search-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 48px 24px;
+  text-align: center;
+  color: var(--text-secondary);
+  grid-column: 1 / -1;
+}
+
+.search-empty-state .twemoji-large {
+  width: 40px;
+  height: 40px;
+  opacity: 0.5;
+  margin-bottom: 8px;
+}
+
+.search-empty-state h3 {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.search-empty-state p {
+  font-size: var(--font-size-base);
+  margin: 0;
+  word-break: break-word;
+}
+
+.search-empty-state ul {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0 0;
+  font-size: var(--font-size-base);
+  color: var(--text-tertiary);
+}
+
+.search-empty-state ul li {
+  padding: 3px 0;
+}
+
+.search-empty-state ul li::before {
+  content: '\2022';
+  margin-right: 6px;
+  opacity: 0.5;
+}

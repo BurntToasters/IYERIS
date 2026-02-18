@@ -23,11 +23,17 @@
   font-size: 14px;
   font-weight: 500;
   text-decoration: none;
+  clip-path: inset(50%);
+  overflow: hidden;
+  pointer-events: none;
   transition: top 0.15s ease;
 }
 
-.skip-link:focus {
+.skip-link:focus-visible {
   top: 0;
+  clip-path: none;
+  overflow: visible;
+  pointer-events: auto;
   outline: 3px solid var(--accent-hover, #106ebe);
   outline-offset: 2px;
 }

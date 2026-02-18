@@ -16,6 +16,8 @@ export interface TourControllerOptions {
   promptDelayMs?: number;
   onModalOpen?: (modal: HTMLElement) => void;
   onModalClose?: (modal: HTMLElement) => void;
+  showCommandPalette?: () => void;
+  hideCommandPalette?: () => void;
 }
 
 export interface TourController {
@@ -132,7 +134,6 @@ export function createTourController(options: TourControllerOptions): TourContro
   let tourStepIndex = 0;
   let tourUpdateRaf: number | null = null;
   let launchTimeout: number | null = null;
-  let allowPaletteShortcut = false;
 
   const clearLaunchTimeout = (): void => {
     if (launchTimeout !== null) {
@@ -314,12 +315,8 @@ export function createTourController(options: TourControllerOptions): TourContro
     if (step.target === '.command-palette-modal') {
       const paletteModal = document.getElementById('command-palette-modal');
       if (!paletteModal || paletteModal.style.display !== 'flex') {
-        allowPaletteShortcut = true;
-        document.dispatchEvent(
-          new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true })
-        );
+        options.showCommandPalette?.();
         window.requestAnimationFrame(() => {
-          allowPaletteShortcut = false;
           if (tourActive && steps[tourStepIndex]?.target === '.command-palette-modal') {
             updateStepUI(false);
           }
@@ -348,10 +345,7 @@ export function createTourController(options: TourControllerOptions): TourContro
     const boundedIndex = Math.max(0, Math.min(index, steps.length - 1));
     tourStepIndex = boundedIndex;
     if (prevStep?.target === '.command-palette-modal') {
-      const paletteModal = document.getElementById('command-palette-modal');
-      if (paletteModal && paletteModal.style.display === 'flex') {
-        paletteModal.style.display = 'none';
-      }
+      options.hideCommandPalette?.();
     }
     updateStepUI(true);
   };
@@ -388,10 +382,7 @@ export function createTourController(options: TourControllerOptions): TourContro
     hideOverlay();
     detachListeners();
     document.body.classList.remove('tour-active');
-    const paletteModal = document.getElementById('command-palette-modal');
-    if (paletteModal && paletteModal.style.display === 'flex') {
-      paletteModal.style.display = 'none';
-    }
+    options.hideCommandPalette?.();
     setTourCompleted(completed);
   };
 
@@ -401,10 +392,6 @@ export function createTourController(options: TourControllerOptions): TourContro
     const isPaletteShortcut =
       (event.ctrlKey || event.metaKey) && (event.key === 'k' || event.key === 'K');
     if (isPaletteStep && isPaletteShortcut) {
-      if (allowPaletteShortcut) {
-        allowPaletteShortcut = false;
-        return;
-      }
       event.preventDefault();
       event.stopPropagation();
       return;

@@ -1,4 +1,5 @@
 import type { FileItem, ItemProperties } from './types';
+import type { ToastAction } from './rendererToasts.js';
 import { isArchivePath } from './rendererCompressExtract.js';
 import { PDF_EXTENSIONS } from './fileTypes.js';
 import { rendererPath as path } from './rendererUtils.js';
@@ -14,7 +15,8 @@ type ContextMenuDeps = {
   showToast: (
     message: string,
     title: string,
-    type: 'success' | 'error' | 'info' | 'warning'
+    type: 'success' | 'error' | 'info' | 'warning',
+    actions?: ToastAction[]
   ) => void;
   openFileEntry: (item: FileItem) => Promise<void>;
   showQuickLookForFile: (item: FileItem) => Promise<void>;
@@ -28,6 +30,8 @@ type ContextMenuDeps = {
   handleCompress: (format: string) => Promise<void>;
   showCompressOptionsModal: () => void;
   showExtractModal: (archivePath: string, name: string) => void;
+  getSelectedItems: () => Set<string>;
+  showBatchRenameModal: () => void;
 };
 
 export function createContextMenuController(deps: ContextMenuDeps) {
@@ -124,6 +128,9 @@ export function createContextMenuController(deps: ContextMenuDeps) {
     const compressItem = document.getElementById('compress-item');
     const extractItem = document.getElementById('extract-item');
     const previewPdfItem = document.getElementById('preview-pdf-item');
+    const openWithSubmenu = document.getElementById('open-with-submenu');
+    const batchRenameItem = document.getElementById('batch-rename-item');
+    const createSymlinkItem = document.getElementById('create-symlink-item');
 
     if (!contextMenu) return;
 
@@ -145,6 +152,13 @@ export function createContextMenuController(deps: ContextMenuDeps) {
       previewPdfItem,
       !item.isDirectory && PDF_EXTENSIONS.has(deps.getFileExtension(item.name))
     );
+    showIf(openWithSubmenu, !item.isDirectory);
+    showIf(batchRenameItem, deps.getSelectedItems().size >= 2);
+    showIf(createSymlinkItem, true);
+
+    if (openWithSubmenu && !item.isDirectory) {
+      setupOpenWithSubmenu(openWithSubmenu, item);
+    }
 
     contextMenu.style.display = 'block';
     positionMenuInViewport(contextMenu, x, y);
@@ -266,6 +280,15 @@ export function createContextMenuController(deps: ContextMenuDeps) {
         }
         break;
 
+      case 'copy-name':
+        try {
+          await navigator.clipboard.writeText(item.name);
+          deps.showToast('File name copied to clipboard', 'Success', 'success');
+        } catch {
+          deps.showToast('Failed to copy file name', 'Error', 'error');
+        }
+        break;
+
       case 'add-to-bookmarks':
         if (item.isDirectory) {
           await deps.addBookmarkByPath(item.path);
@@ -316,6 +339,27 @@ export function createContextMenuController(deps: ContextMenuDeps) {
       case 'extract':
         deps.showExtractModal(item.path, item.name);
         break;
+
+      case 'batch-rename':
+        deps.showBatchRenameModal();
+        break;
+
+      case 'create-symlink': {
+        const linkName = `${item.name} - Link`;
+        const linkPath = path.join(deps.getCurrentPath(), linkName);
+        try {
+          const result = await window.electronAPI.createSymlink(item.path, linkPath);
+          if (result.success) {
+            deps.showToast(`Created symbolic link "${linkName}"`, 'Symlink Created', 'success');
+            deps.navigateTo(deps.getCurrentPath());
+          } else {
+            deps.showToast(result.error || 'Failed to create symlink', 'Error', 'error');
+          }
+        } catch {
+          deps.showToast('Failed to create symbolic link', 'Error', 'error');
+        }
+        break;
+      }
     }
   }
 
@@ -387,6 +431,53 @@ export function createContextMenuController(deps: ContextMenuDeps) {
       return true;
 
     return false;
+  }
+
+  function setupOpenWithSubmenu(submenuContainer: HTMLElement, item: FileItem) {
+    const panel = document.getElementById('open-with-apps-panel');
+    if (!panel) return;
+
+    panel.innerHTML = '<div class="open-with-loading">Loading apps...</div>';
+
+    let loaded = false;
+    const loadApps = async () => {
+      if (loaded) return;
+      loaded = true;
+
+      try {
+        const result = await window.electronAPI.getOpenWithApps(item.path);
+        if (!result.success || !result.apps || result.apps.length === 0) {
+          panel.innerHTML = '<div class="open-with-loading">No apps found</div>';
+          return;
+        }
+
+        panel.innerHTML = '';
+        for (const app of result.apps) {
+          const btn = document.createElement('button');
+          btn.className = 'context-menu-item';
+          btn.setAttribute('role', 'menuitem');
+          btn.setAttribute('tabindex', '0');
+          btn.textContent = app.name;
+          btn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            hideContextMenu();
+            try {
+              const openResult = await window.electronAPI.openFileWithApp(item.path, app.id);
+              if (!openResult.success) {
+                deps.showToast(openResult.error || 'Failed to open file', 'Error', 'error');
+              }
+            } catch {
+              deps.showToast('Failed to open file with selected app', 'Error', 'error');
+            }
+          });
+          panel.appendChild(btn);
+        }
+      } catch {
+        panel.innerHTML = '<div class="open-with-loading">Failed to load apps</div>';
+      }
+    };
+
+    submenuContainer.addEventListener('mouseenter', () => void loadApps(), { once: true });
   }
 
   return {

@@ -167,6 +167,7 @@ export interface SearchFilters {
   dateFrom?: string;
   dateTo?: string;
   searchInContents?: boolean;
+  regex?: boolean;
 }
 
 export interface ContentSearchResult extends FileItem {
@@ -183,6 +184,12 @@ export interface ItemProperties {
   created: Date;
   modified: Date;
   accessed: Date;
+  mode?: number;
+  owner?: string;
+  group?: string;
+  isReadOnly?: boolean;
+  isHiddenAttr?: boolean;
+  isSystemAttr?: boolean;
 }
 
 export interface FolderSizeProgress {
@@ -240,6 +247,13 @@ export type SearchResponse = IpcResult<{ results: FileItem[] }>;
 export type ContentSearchResponse = IpcResult<{ results: ContentSearchResult[] }>;
 
 export type IndexSearchResponse = IpcResult<{ results: IndexEntry[] }>;
+
+export interface OpenWithApp {
+  id: string;
+  name: string;
+}
+
+export type OpenWithAppsResponse = IpcResult<{ apps: OpenWithApp[] }>;
 
 export type UndoResponse = IpcResult<{ canUndo: boolean; canRedo: boolean }>;
 
@@ -373,7 +387,17 @@ export interface UndoTrashAction {
   data: { path: string; originalPath?: string };
 }
 
-export type UndoAction = UndoCreateAction | UndoRenameAction | UndoMoveAction | UndoTrashAction;
+export interface UndoBatchRenameAction {
+  type: 'batch-rename';
+  data: { renames: Array<{ oldPath: string; newPath: string }> };
+}
+
+export type UndoAction =
+  | UndoCreateAction
+  | UndoRenameAction
+  | UndoMoveAction
+  | UndoTrashAction
+  | UndoBatchRenameAction;
 
 export interface UpdateInfo {
   version: string;
@@ -574,6 +598,11 @@ export interface ElectronAPI {
   openLogsFolder: () => Promise<IpcResult>;
   exportDiagnostics: () => Promise<DiagnosticsResponse>;
   getLogFileContent: () => Promise<FileContentResponse>;
+
+  getOpenWithApps: (filePath: string) => Promise<OpenWithAppsResponse>;
+  openFileWithApp: (filePath: string, appId: string) => Promise<IpcResult>;
+  batchRename: (items: Array<{ oldPath: string; newName: string }>) => Promise<IpcResult>;
+  createSymlink: (targetPath: string, linkPath: string) => Promise<IpcResult>;
 }
 
 declare global {

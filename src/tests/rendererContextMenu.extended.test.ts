@@ -34,6 +34,8 @@ function createDeps() {
     handleCompress: vi.fn().mockResolvedValue(undefined),
     showCompressOptionsModal: vi.fn(),
     showExtractModal: vi.fn(),
+    getSelectedItems: vi.fn().mockReturnValue(new Set()),
+    showBatchRenameModal: vi.fn(),
   };
 }
 

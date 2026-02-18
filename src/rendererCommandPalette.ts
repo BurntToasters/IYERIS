@@ -45,6 +45,7 @@ interface CommandPaletteDeps {
   remappableCommandIds: Set<string>;
   formatShortcutKeyLabel: (key: string) => string;
   getTabsEnabled: () => boolean;
+  twemojiImg: (emoji: string, className?: string) => string;
   actions: CommandPaletteActions;
 }
 
@@ -382,7 +383,7 @@ export function createCommandPaletteController(deps: CommandPaletteDeps) {
 
       item.innerHTML = `
       <div class="command-palette-item-left">
-        ${cmd.icon ? `<span class="command-palette-item-icon">${cmd.icon}</span>` : ''}
+        ${cmd.icon ? `<span class="command-palette-item-icon">${deps.twemojiImg(cmd.icon, 'twemoji command-palette-emoji')}</span>` : ''}
         <div class="command-palette-item-text">
           <div class="command-palette-item-title">${escapeHtml(cmd.title)}</div>
           ${cmd.description ? `<div class="command-palette-item-description">${escapeHtml(cmd.description)}</div>` : ''}

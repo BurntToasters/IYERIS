@@ -181,6 +181,9 @@ function createMockConfig() {
     zoomIn: vi.fn(),
     zoomOut: vi.fn(),
     zoomReset: vi.fn(),
+    toggleHiddenFiles: vi.fn(),
+    showPropertiesForSelected: vi.fn(),
+    restoreClosedTab: vi.fn(),
 
     initSettingsTabs: vi.fn(),
     initSettingsUi: vi.fn(),
@@ -854,7 +857,7 @@ describe('createEventListenersController', () => {
       expect(config.deleteSelected).toHaveBeenCalledWith(true);
     });
 
-    it('shows warning toast for Shift+Delete when developer mode is off', () => {
+    it('dispatches Shift+Delete to permanently delete even when developer mode is off', () => {
       const config = createMockConfig();
       config.getCurrentSettings.mockReturnValue(makeSettings({ showDangerousOptions: false }));
       const ctrl = createEventListenersController(config);
@@ -864,12 +867,7 @@ describe('createEventListenersController', () => {
         new KeyboardEvent('keydown', { key: 'Delete', shiftKey: true, bubbles: true })
       );
 
-      expect(config.showToast).toHaveBeenCalledWith(
-        expect.stringContaining('Developer Mode'),
-        'Developer Mode Required',
-        'warning'
-      );
-      expect(config.deleteSelected).not.toHaveBeenCalled();
+      expect(config.deleteSelected).toHaveBeenCalledWith(true);
     });
 
     it('dispatches Backspace to go up', () => {

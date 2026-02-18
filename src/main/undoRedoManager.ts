@@ -2,7 +2,13 @@ import type { IpcMainInvokeEvent } from 'electron';
 import { ipcMain } from 'electron';
 import { promises as fs } from 'fs';
 import * as path from 'path';
-import type { UndoAction, UndoRenameAction, UndoMoveAction, ApiResponse } from '../types';
+import type {
+  UndoAction,
+  UndoRenameAction,
+  UndoMoveAction,
+  UndoBatchRenameAction,
+  ApiResponse,
+} from '../types';
 import { MAX_UNDO_STACK_SIZE } from './appState';
 import { logger } from './logger';
 import { ignoreError } from '../shared';
@@ -321,6 +327,14 @@ export function setupUndoRedoHandlers(): void {
           pushRedoAction(action);
           return { success: true };
         }
+        case 'batch-rename': {
+          const renames = (action as UndoBatchRenameAction).data.renames;
+          for (const item of [...renames].reverse()) {
+            await movePath(item.newPath, item.oldPath);
+          }
+          pushRedoAction(action);
+          return { success: true };
+        }
         default:
           return { success: false, error: 'Unknown action type' };
       }
@@ -368,6 +382,14 @@ export function setupUndoRedoHandlers(): void {
           }
           if (action.data.isDirectory) await fs.mkdir(itemPath);
           else await fs.writeFile(itemPath, '');
+          undoStack.push(action);
+          return { success: true };
+        }
+        case 'batch-rename': {
+          const renames = (action as UndoBatchRenameAction).data.renames;
+          for (const item of renames) {
+            await movePath(item.oldPath, item.newPath);
+          }
           undoStack.push(action);
           return { success: true };
         }

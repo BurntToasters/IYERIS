@@ -52,6 +52,7 @@ import { setupArchiveHandlers, cleanupArchiveOperations } from './archiveManager
 import { setupUpdateHandlers, initializeAutoUpdater } from './updateManager';
 import { setupThumbnailCacheHandlers, stopThumbnailCacheCleanup } from './thumbnailCache';
 import { setupElevatedOperationHandlers } from './elevatedOperations';
+import { setupOpenWithHandlers } from './openWithHandlers';
 
 const TOTAL_MEM_GB = os.totalmem() / 1024 ** 3;
 const rendererRecoveryAttempts = new Map<number, number>();
@@ -194,6 +195,7 @@ setupSearchHandlers();
 setupArchiveHandlers();
 setupUpdateHandlers(loadSettings);
 setupThumbnailCacheHandlers();
+setupOpenWithHandlers();
 
 app.whenReady().then(async () => {
   initializeLogger();

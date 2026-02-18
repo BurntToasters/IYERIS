@@ -127,7 +127,7 @@ describe('createDragDropController — extended', () => {
 
       await ctrl.handleDrop(['/src.txt'], '/dest', 'copy');
 
-      expect(showToast).toHaveBeenCalledWith('disk full', 'Error', 'error');
+      expect(showToast).toHaveBeenCalledWith('disk full', 'Error', 'error', expect.any(Array));
       expect(config.navigateTo).not.toHaveBeenCalled();
     });
 
@@ -147,7 +147,12 @@ describe('createDragDropController — extended', () => {
 
       await ctrl.handleDrop(['/a'], '/dest', 'move');
 
-      expect(showToast).toHaveBeenCalledWith('Failed to move items', 'Error', 'error');
+      expect(showToast).toHaveBeenCalledWith(
+        'Failed to move items',
+        'Error',
+        'error',
+        expect.any(Array)
+      );
     });
 
     it('catches exceptions and shows error toast', async () => {
@@ -166,7 +171,12 @@ describe('createDragDropController — extended', () => {
 
       await ctrl.handleDrop(['/a'], '/dest', 'copy');
 
-      expect(showToast).toHaveBeenCalledWith('Failed to copy items', 'Error', 'error');
+      expect(showToast).toHaveBeenCalledWith(
+        'Failed to copy items',
+        'Error',
+        'error',
+        expect.any(Array)
+      );
     });
   });
 

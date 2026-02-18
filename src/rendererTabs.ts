@@ -67,6 +67,8 @@ interface TabsDeps {
 export function createTabsController(deps: TabsDeps) {
   const MAX_CACHED_TABS = deps.maxCachedTabs;
   const MAX_CACHED_FILES_PER_TAB = deps.maxCachedFilesPerTab;
+  const MAX_CLOSED_TABS = 10;
+  const closedTabPaths: string[] = [];
 
   function generateTabId(): string {
     return `tab-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
@@ -380,6 +382,14 @@ export function createTabsController(deps: TabsDeps) {
     const tabIndex = tabs.findIndex((t) => t.id === tabId);
     if (tabIndex === -1) return;
 
+    const closingTab = tabs[tabIndex];
+    if (closingTab.path) {
+      closedTabPaths.push(closingTab.path);
+      if (closedTabPaths.length > MAX_CLOSED_TABS) {
+        closedTabPaths.shift();
+      }
+    }
+
     tabs.splice(tabIndex, 1);
 
     if (deps.getActiveTabId() === tabId) {
@@ -437,6 +447,13 @@ export function createTabsController(deps: TabsDeps) {
     }
   }
 
+  function restoreClosedTab(): void {
+    if (!deps.getTabsEnabled() || closedTabPaths.length === 0) return;
+    const path = closedTabPaths.pop()!;
+    addNewTab();
+    deps.navigateTo(path);
+  }
+
   function cleanup(): void {
     const timeout = deps.getSaveTabStateTimeout();
     if (timeout) {
@@ -449,6 +466,7 @@ export function createTabsController(deps: TabsDeps) {
     initializeTabs,
     addNewTab,
     closeTab,
+    restoreClosedTab,
     saveTabState,
     updateCurrentTabPath,
     switchToTab,

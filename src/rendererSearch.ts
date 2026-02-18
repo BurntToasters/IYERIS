@@ -10,6 +10,7 @@ export type SearchFilters = {
   maxSize?: number;
   dateFrom?: string;
   dateTo?: string;
+  regex?: boolean;
 };
 
 type SearchDeps = {
@@ -42,6 +43,7 @@ export function createSearchController(deps: SearchDeps) {
   let isSearchMode = false;
   let isGlobalSearch = false;
   let searchInContents = false;
+  let isRegexMode = false;
 
   let searchBtn: HTMLButtonElement | null = null;
   let searchInput: HTMLInputElement | null = null;
@@ -60,6 +62,35 @@ export function createSearchController(deps: SearchDeps) {
   let searchFilterClear: HTMLButtonElement | null = null;
   let searchFilterApply: HTMLButtonElement | null = null;
   let searchInContentsToggle: HTMLInputElement | null = null;
+  let searchRegexToggle: HTMLButtonElement | null = null;
+
+  function showSearchEmptyState(query: string): void {
+    const fileGrid = deps.getFileGrid();
+    if (!fileGrid) return;
+
+    const suggestions: string[] = [
+      'Check for typos in your search term',
+      'Try a broader search query',
+    ];
+    if (!isGlobalSearch) {
+      suggestions.push('Try Global Search to search all indexed files');
+    }
+    if (!searchInContents) {
+      suggestions.push('Enable "Search in file contents" to search inside files');
+    }
+    if (hasActiveFilters()) {
+      suggestions.push('Clear search filters to broaden results');
+    }
+
+    const suggestionsHtml = suggestions.map((s) => `<li>${escapeHtml(s)}</li>`).join('');
+
+    fileGrid.innerHTML = `<div class="search-empty-state">
+      ${twemojiImg(String.fromCodePoint(0x1f50d), 'twemoji-large', 'Search')}
+      <h3>No results found</h3>
+      <p>No files matching "${escapeHtml(query)}" were found.</p>
+      <ul>${suggestionsHtml}</ul>
+    </div>`;
+  }
 
   function hasActiveFilters(): boolean {
     return !!(
@@ -116,6 +147,8 @@ export function createSearchController(deps: SearchDeps) {
       searchFilterApply = getById('search-filter-apply') as HTMLButtonElement | null;
     if (!searchInContentsToggle)
       searchInContentsToggle = getById('search-in-contents-toggle') as HTMLInputElement | null;
+    if (!searchRegexToggle)
+      searchRegexToggle = getById('search-regex-toggle') as HTMLButtonElement | null;
   };
 
   function debouncedSearch(delay: number = deps.searchDebounceMs) {
@@ -284,7 +317,12 @@ export function createSearchController(deps: SearchDeps) {
     if (fileGrid) clearHtml(fileGrid);
 
     let result;
-    const hasFilters = hasActiveFilters() || searchInContents;
+    const hasFilters = hasActiveFilters() || searchInContents || isRegexMode;
+    if (isRegexMode) {
+      currentSearchFilters.regex = true;
+    } else {
+      delete currentSearchFilters.regex;
+    }
 
     if (isGlobalSearch) {
       if (searchInContents) {
@@ -310,6 +348,7 @@ export function createSearchController(deps: SearchDeps) {
         } else {
           deps.setAllFiles(result.results);
           deps.renderFiles(result.results, query);
+          if (result.results.length === 0) showSearchEmptyState(query);
         }
       } else {
         result = await window.electronAPI.searchIndex(query, operationId);
@@ -346,6 +385,7 @@ export function createSearchController(deps: SearchDeps) {
 
           deps.setAllFiles(fileItems);
           deps.renderFiles(fileItems, query);
+          if (fileItems.length === 0) showSearchEmptyState(query);
         }
       }
     } else {
@@ -373,6 +413,7 @@ export function createSearchController(deps: SearchDeps) {
       } else {
         deps.setAllFiles(result.results);
         deps.renderFiles(result.results, searchInContents ? query : undefined);
+        if (result.results.length === 0) showSearchEmptyState(query);
       }
     }
 
@@ -456,6 +497,15 @@ export function createSearchController(deps: SearchDeps) {
     searchBtn?.addEventListener('click', toggleSearch);
     searchClose?.addEventListener('click', closeSearch);
     searchScopeToggle?.addEventListener('click', toggleSearchScope);
+
+    searchRegexToggle?.addEventListener('click', () => {
+      isRegexMode = !isRegexMode;
+      searchRegexToggle!.classList.toggle('active', isRegexMode);
+      searchRegexToggle!.setAttribute('aria-pressed', String(isRegexMode));
+      if (isSearchMode && searchInput?.value) {
+        debouncedSearch();
+      }
+    });
 
     searchFilterToggle?.addEventListener('click', () => {
       if (!searchFiltersPanel || !searchFilterToggle) return;

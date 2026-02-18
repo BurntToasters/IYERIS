@@ -69,11 +69,18 @@ function createTestController(
   saveSettings: ReturnType<typeof vi.fn>;
   onModalOpen: ReturnType<typeof vi.fn>;
   onModalClose: ReturnType<typeof vi.fn>;
+  showCommandPalette: ReturnType<typeof vi.fn>;
+  hideCommandPalette: ReturnType<typeof vi.fn>;
 } {
   const settings = makeSettings(settingsOverrides);
   const saveSettings = vi.fn().mockResolvedValue(undefined);
   const onModalOpen = vi.fn();
   const onModalClose = vi.fn();
+  const showCommandPalette = vi.fn();
+  const hideCommandPalette = vi.fn(() => {
+    const modal = document.getElementById('command-palette-modal');
+    if (modal) modal.style.display = 'none';
+  });
 
   const ctrl = createTourController({
     getSettings: () => settings,
@@ -82,9 +89,11 @@ function createTestController(
     promptDelayMs: 0,
     onModalOpen,
     onModalClose,
+    showCommandPalette,
+    hideCommandPalette,
   });
 
-  return { ctrl, settings, saveSettings, onModalOpen, onModalClose };
+  return { ctrl, settings, saveSettings, onModalOpen, onModalClose, showCommandPalette, hideCommandPalette };
 }
 
 describe('tour.extended', () => {
@@ -286,8 +295,8 @@ describe('tour.extended', () => {
       { target: '.sidebar', title: 'After', description: 'Next', prefer: 'right' },
     ];
 
-    it('dispatches Ctrl+K keydown when stepping to command palette step', () => {
-      const { ctrl } = createTestController({}, paletteSteps);
+    it('calls showCommandPalette callback when stepping to command palette step', () => {
+      const { ctrl, showCommandPalette } = createTestController({}, paletteSteps);
 
       const tooltip = document.getElementById('tour-tooltip')!;
       const target = document.querySelector('.command-palette-modal') as HTMLElement;
@@ -297,24 +306,16 @@ describe('tour.extended', () => {
       const homeView = document.getElementById('home-view')!;
       mockBoundingClientRect(homeView, { left: 100, top: 100, width: 100, height: 100 });
 
-      const keydownSpy = vi.fn();
-      document.addEventListener('keydown', keydownSpy);
-
       ctrl.startTour();
 
       const nextBtn = document.getElementById('tour-next')!;
       nextBtn.click();
 
-      const ctrlKEvents = keydownSpy.mock.calls.filter(
-        (call) => call[0].key === 'k' && call[0].ctrlKey
-      );
-      expect(ctrlKEvents.length).toBeGreaterThanOrEqual(1);
-
-      document.removeEventListener('keydown', keydownSpy);
+      expect(showCommandPalette).toHaveBeenCalledTimes(1);
     });
 
-    it('closes command palette modal when navigating away from palette step', () => {
-      const { ctrl } = createTestController({}, paletteSteps);
+    it('calls hideCommandPalette when navigating away from palette step', () => {
+      const { ctrl, hideCommandPalette } = createTestController({}, paletteSteps);
 
       const tooltip = document.getElementById('tour-tooltip')!;
       const paletteTarget = document.querySelector('.command-palette-modal') as HTMLElement;
@@ -336,18 +337,17 @@ describe('tour.extended', () => {
 
       nextBtn.click();
 
+      expect(hideCommandPalette).toHaveBeenCalled();
       expect(paletteModal.style.display).toBe('none');
     });
 
-    it('closes palette on endTour if it is open', () => {
-      const { ctrl } = createTestController({}, paletteSteps);
-      const paletteModal = document.getElementById('command-palette-modal')!;
+    it('calls hideCommandPalette on endTour', () => {
+      const { ctrl, hideCommandPalette } = createTestController({}, paletteSteps);
 
       ctrl.startTour();
-      paletteModal.style.display = 'flex';
       ctrl.endTour(false);
 
-      expect(paletteModal.style.display).toBe('none');
+      expect(hideCommandPalette).toHaveBeenCalled();
     });
 
     it('skips palette dispatch if palette modal is already open', () => {

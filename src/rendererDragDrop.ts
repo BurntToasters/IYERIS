@@ -1,3 +1,4 @@
+import type { ToastAction } from './rendererToasts.js';
 import { rendererPath as path } from './rendererUtils.js';
 import { ignoreError } from './shared.js';
 
@@ -6,7 +7,12 @@ const SPRING_LOAD_DELAY = 800;
 interface DragDropConfig {
   getCurrentPath: () => string;
   getCurrentSettings: () => { fileConflictBehavior?: string };
-  getShowToast: () => (message: string, title: string, type: string) => void;
+  getShowToast: () => (
+    message: string,
+    title: string,
+    type: string,
+    actions?: ToastAction[]
+  ) => void;
   getFileGrid: () => HTMLElement | null;
   getFileView: () => HTMLElement | null;
   getDropIndicator: () => HTMLElement | null;
@@ -156,7 +162,12 @@ export function createDragDropController(config: DragDropConfig) {
           : await window.electronAPI.moveItems(sourcePaths, destPath, conflictBehavior);
 
       if (!result.success) {
-        showToast(result.error || `Failed to ${operation} items`, 'Error', 'error');
+        showToast(result.error || `Failed to ${operation} items`, 'Error', 'error', [
+          {
+            label: 'Retry',
+            onClick: () => void handleDrop(sourcePaths, destPath, operation),
+          },
+        ]);
         return;
       }
       showToast(
@@ -174,7 +185,12 @@ export function createDragDropController(config: DragDropConfig) {
       config.clearSelection();
     } catch (error) {
       console.error(`Error during ${operation}:`, error);
-      showToast(`Failed to ${operation} items`, 'Error', 'error');
+      showToast(`Failed to ${operation} items`, 'Error', 'error', [
+        {
+          label: 'Retry',
+          onClick: () => void handleDrop(sourcePaths, destPath, operation),
+        },
+      ]);
     }
   }
 

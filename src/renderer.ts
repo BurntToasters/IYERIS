@@ -31,6 +31,7 @@ import { createColumnViewController } from './rendererColumnView.js';
 import { createCompressExtractController } from './rendererCompressExtract.js';
 import { createBookmarksController } from './rendererBookmarks.js';
 import { createContextMenuController } from './rendererContextMenu.js';
+import { createBatchRenameController } from './rendererBatchRename.js';
 import { createDiskSpaceController } from './rendererDiskSpace.js';
 import { createFolderIconPickerController } from './rendererFolderIconPicker.js';
 import { createInlineRenameController } from './rendererInlineRename.js';
@@ -462,6 +463,8 @@ const tourController: TourController = createTourController({
   saveSettings: (settings) => saveSettingsWithTimestamp(settings),
   onModalOpen: activateModal,
   onModalClose: deactivateModal,
+  showCommandPalette: () => showCommandPalette(),
+  hideCommandPalette: () => hideCommandPalette(),
 });
 
 const toastManager = createToastManager({
@@ -726,6 +729,17 @@ const clipboardController = createClipboardController({
   updateUndoRedoState: () => updateUndoRedoState(),
 });
 
+const batchRenameController = createBatchRenameController({
+  getSelectedItems: () => selectedItems,
+  getAllFiles: () => allFiles,
+  showToast,
+  activateModal,
+  deactivateModal,
+  refresh: () => refresh(),
+  updateUndoRedoState: () => updateUndoRedoState(),
+});
+batchRenameController.initListeners();
+
 const {
   showContextMenu,
   hideContextMenu,
@@ -756,6 +770,8 @@ const {
   handleCompress: (format) => handleCompress(format),
   showCompressOptionsModal: () => showCompressOptionsModal(),
   showExtractModal: (archivePath, name) => showExtractModal(archivePath, name),
+  getSelectedItems: () => selectedItems,
+  showBatchRenameModal: () => batchRenameController.showBatchRenameModal(),
 });
 
 const { cancelColumnOperations, renderColumnView } = createColumnViewController({
@@ -864,6 +880,7 @@ const {
   initializeTabs,
   addNewTab,
   closeTab,
+  restoreClosedTab,
   saveTabState,
   updateCurrentTabPath,
   switchToTab,
@@ -917,6 +934,7 @@ const commandPaletteController = createCommandPaletteController({
   remappableCommandIds: new Set(SHORTCUT_DEFINITIONS.map((def) => def.id)),
   formatShortcutKeyLabel,
   getTabsEnabled: () => tabsEnabled,
+  twemojiImg,
   actions: {
     createNewFolder: () => {
       void inlineRenameController.createNewFolder();
@@ -969,7 +987,8 @@ const commandPaletteController = createCommandPaletteController({
   },
 });
 
-const { initCommandPalette, showCommandPalette, syncCommandShortcuts } = commandPaletteController;
+const { initCommandPalette, showCommandPalette, hideCommandPalette, syncCommandShortcuts } =
+  commandPaletteController;
 
 const shortcutsUi = createShortcutsUiController({
   isMacPlatform,
@@ -1881,6 +1900,24 @@ const eventListenersController = createEventListenersController({
   zoomIn,
   zoomOut,
   zoomReset,
+  toggleHiddenFiles: () => {
+    currentSettings.showHiddenFiles = !currentSettings.showHiddenFiles;
+    const toggle = document.getElementById('show-hidden-files-toggle') as HTMLInputElement | null;
+    if (toggle) toggle.checked = currentSettings.showHiddenFiles;
+    saveSettings();
+    refresh();
+  },
+  showPropertiesForSelected: () => {
+    const firstSelected = allFiles.find((f) => selectedItems.has(f.name));
+    if (!firstSelected) return;
+    void (async () => {
+      const result = await window.electronAPI.getItemProperties(firstSelected.path);
+      if (result.success) {
+        showPropertiesDialog(result.properties);
+      }
+    })();
+  },
+  restoreClosedTab: () => restoreClosedTab(),
   initSettingsTabs,
   initSettingsUi,
   initShortcutsModal,

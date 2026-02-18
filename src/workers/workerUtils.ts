@@ -384,6 +384,7 @@ export interface SearchFilters {
   maxSize?: number;
   dateFrom?: string;
   dateTo?: string;
+  regex?: boolean;
 }
 
 export type DateRangeFilter = {

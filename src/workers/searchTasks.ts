@@ -82,7 +82,8 @@ async function searchFileContent(
   filePath: string,
   searchQuery: string,
   operationId?: string,
-  sizeHint?: number
+  sizeHint?: number,
+  searchRegex?: RegExp | null
 ): Promise<{ found: boolean; context?: string; lineNumber?: number }> {
   const key = getTextExtensionKey(filePath);
   if (!key || !TEXT_FILE_EXTENSIONS.has(key)) {
@@ -109,14 +110,20 @@ async function searchFileContent(
           throw new Error('Calculation cancelled');
         }
         lineNumber++;
-        const lowerLine = line.toLowerCase();
-        const matchIndex = lowerLine.indexOf(searchQuery);
+        let matchIndex: number;
+        let matchLength: number;
+        if (searchRegex) {
+          const m = searchRegex.exec(line);
+          matchIndex = m ? m.index : -1;
+          matchLength = m ? m[0].length : 0;
+        } else {
+          const lowerLine = line.toLowerCase();
+          matchIndex = lowerLine.indexOf(searchQuery);
+          matchLength = searchQuery.length;
+        }
         if (matchIndex !== -1) {
           const start = Math.max(0, matchIndex - CONTENT_CONTEXT_CHARS);
-          const end = Math.min(
-            line.length,
-            matchIndex + searchQuery.length + CONTENT_CONTEXT_CHARS
-          );
+          const end = Math.min(line.length, matchIndex + matchLength + CONTENT_CONTEXT_CHARS);
           let context = line.substring(start, end).trim();
           if (start > 0) context = '...' + context;
           if (end < line.length) context = context + '...';
@@ -142,7 +149,8 @@ async function flushContentSearchBatch(
   searchQuery: string,
   results: ContentSearchResult[],
   maxResults: number,
-  operationId?: string
+  operationId?: string,
+  searchRegex?: RegExp | null
 ): Promise<void> {
   if (batch.length === 0 || results.length >= maxResults) {
     batch.length = 0;
@@ -150,7 +158,9 @@ async function flushContentSearchBatch(
   }
 
   const searchResults = await Promise.allSettled(
-    batch.map(({ filePath, size }) => searchFileContent(filePath, searchQuery, operationId, size))
+    batch.map(({ filePath, size }) =>
+      searchFileContent(filePath, searchQuery, operationId, size, searchRegex)
+    )
   );
   const foundItems: Array<PendingContentSearchItem & { context?: string; lineNumber?: number }> =
     [];
@@ -198,6 +208,15 @@ export async function searchDirectoryFiles(
   const { dirPath, query, filters, maxDepth, maxResults } = payload;
   const results: SearchResult[] = [];
   const searchQuery = String(query || '').toLowerCase();
+  const useRegex = filters?.regex === true;
+  let searchRegex: RegExp | null = null;
+  if (useRegex) {
+    try {
+      searchRegex = new RegExp(query, 'i');
+    } catch {
+      return results;
+    }
+  }
   const dateRange = parseDateRange(filters);
   const STAT_BATCH_SIZE = 50;
 
@@ -220,7 +239,9 @@ export async function searchDirectoryFiles(
     for (const item of items) {
       if (isCancelled(operationId)) throw new Error('Calculation cancelled');
       const fullPath = path.join(current.dir, item.name);
-      const matches = item.name.toLowerCase().includes(searchQuery);
+      const matches = searchRegex
+        ? searchRegex.test(item.name)
+        : item.name.toLowerCase().includes(searchQuery);
 
       if (matches) {
         matchingItems.push({ item, fullPath });
@@ -283,6 +304,14 @@ export async function searchDirectoryContent(
   const { dirPath, query, filters, maxDepth, maxResults } = payload;
   const results: ContentSearchResult[] = [];
   const searchQuery = String(query || '').toLowerCase();
+  let contentRegex: RegExp | null = null;
+  if (filters?.regex) {
+    try {
+      contentRegex = new RegExp(query, 'i');
+    } catch {
+      return results;
+    }
+  }
   const dateRange = parseDateRange(filters);
   const STAT_BATCH_SIZE = 50;
   const CONTENT_SEARCH_BATCH_SIZE = 8;
@@ -351,7 +380,7 @@ export async function searchDirectoryContent(
         );
         const contentResults = await Promise.allSettled(
           batch.map(({ fullPath, stats }) =>
-            searchFileContent(fullPath, searchQuery, operationId, stats.size)
+            searchFileContent(fullPath, searchQuery, operationId, stats.size, contentRegex)
           )
         );
 
@@ -404,6 +433,14 @@ export async function searchContentList(
   const { files, query, maxResults, filters } = payload;
   const results: ContentSearchResult[] = [];
   const searchQuery = String(query || '').toLowerCase();
+  let listRegex: RegExp | null = null;
+  if (filters?.regex) {
+    try {
+      listRegex = new RegExp(query, 'i');
+    } catch {
+      return results;
+    }
+  }
   const dateRange = parseDateRange(filters);
   const CONTENT_SEARCH_BATCH_SIZE = 8;
   const batch: PendingContentSearchItem[] = [];
@@ -425,12 +462,19 @@ export async function searchContentList(
     batch.push({ filePath, fileName, size: item.size, modified });
 
     if (batch.length >= CONTENT_SEARCH_BATCH_SIZE) {
-      await flushContentSearchBatch(batch, searchQuery, results, maxResults, operationId);
+      await flushContentSearchBatch(
+        batch,
+        searchQuery,
+        results,
+        maxResults,
+        operationId,
+        listRegex
+      );
     }
   }
 
   if (batch.length > 0 && results.length < maxResults) {
-    await flushContentSearchBatch(batch, searchQuery, results, maxResults, operationId);
+    await flushContentSearchBatch(batch, searchQuery, results, maxResults, operationId, listRegex);
   }
 
   return results;
@@ -459,6 +503,13 @@ export async function searchContentIndex(
   const CONTENT_SEARCH_BATCH_SIZE = 8;
   const batch: PendingContentSearchItem[] = [];
 
+  let indexRegex: RegExp | null = null;
+  if (filters?.regex) {
+    try {
+      indexRegex = new RegExp(query, 'i');
+    } catch {}
+  }
+
   for (const entry of indexEntries) {
     if (results.length >= limit) break;
     if (isCancelled(operationId)) throw new Error('Calculation cancelled');
@@ -480,12 +531,12 @@ export async function searchContentIndex(
     batch.push({ filePath, fileName, size, modified });
 
     if (batch.length >= CONTENT_SEARCH_BATCH_SIZE) {
-      await flushContentSearchBatch(batch, searchQuery, results, limit, operationId);
+      await flushContentSearchBatch(batch, searchQuery, results, limit, operationId, indexRegex);
     }
   }
 
   if (batch.length > 0 && results.length < limit) {
-    await flushContentSearchBatch(batch, searchQuery, results, limit, operationId);
+    await flushContentSearchBatch(batch, searchQuery, results, limit, operationId, indexRegex);
   }
 
   return results;

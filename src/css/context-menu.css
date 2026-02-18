@@ -190,6 +190,13 @@ body.theme-light .context-menu-separator {
   background: var(--separator);
 }
 
+.open-with-loading {
+  padding: 8px 14px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
 body.liquid-glass .context-menu {
   background: var(--liquid-glass-menu-bg);
   backdrop-filter: var(--liquid-glass-menu-filter);

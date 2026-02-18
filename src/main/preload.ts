@@ -272,6 +272,14 @@ const electronAPI: ElectronAPI = {
   openLogsFolder: () => ipcRenderer.invoke('open-logs-folder'),
   exportDiagnostics: () => ipcRenderer.invoke('export-diagnostics'),
   getLogFileContent: () => ipcRenderer.invoke('get-log-file-content'),
+
+  getOpenWithApps: (filePath: string) => ipcRenderer.invoke('get-open-with-apps', filePath),
+  openFileWithApp: (filePath: string, appId: string) =>
+    ipcRenderer.invoke('open-file-with-app', filePath, appId),
+  batchRename: (items: Array<{ oldPath: string; newName: string }>) =>
+    ipcRenderer.invoke('batch-rename', items),
+  createSymlink: (targetPath: string, linkPath: string) =>
+    ipcRenderer.invoke('create-symlink', targetPath, linkPath),
 };
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);

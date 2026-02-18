@@ -426,6 +426,15 @@
                   <span id="filter-badge" class="filter-badge" style="display: none"></span>
                 </button>
                 <button
+                  class="search-regex-toggle"
+                  id="search-regex-toggle"
+                  title="Use Regular Expressions"
+                  aria-label="Toggle regular expression search"
+                  aria-pressed="false"
+                >
+                  <span class="regex-label">.*</span>
+                </button>
+                <button
                   class="search-scope-toggle"
                   id="search-scope-toggle"
                   title="Toggle Global Search"
@@ -997,6 +1006,34 @@
       </button>
       <button
         type="button"
+        class="context-menu-item has-submenu"
+        id="open-with-submenu"
+        role="menuitem"
+        tabindex="0"
+        aria-haspopup="true"
+        aria-expanded="false"
+        style="display: none"
+      >
+        <img
+          src="../assets/twemoji/1f4e4.svg"
+          class="twemoji"
+          alt=""
+          draggable="false"
+          aria-hidden="true"
+        />
+        Open With...
+        <span class="submenu-arrow" aria-hidden="true">&#9656;</span>
+        <div
+          class="context-submenu"
+          id="open-with-apps-panel"
+          role="menu"
+          aria-label="Open with applications"
+        >
+          <div class="open-with-loading">Loading apps...</div>
+        </div>
+      </button>
+      <button
+        type="button"
         class="context-menu-item"
         data-action="preview-pdf"
         id="preview-pdf-item"
@@ -1062,6 +1099,58 @@
           aria-hidden="true"
         />
         Copy file path
+      </button>
+      <button
+        type="button"
+        class="context-menu-item"
+        data-action="copy-name"
+        id="copy-name-item"
+        role="menuitem"
+        tabindex="0"
+      >
+        <img
+          src="../assets/twemoji/1f4dd.svg"
+          class="twemoji"
+          alt=""
+          draggable="false"
+          aria-hidden="true"
+        />
+        Copy file name
+      </button>
+      <button
+        type="button"
+        class="context-menu-item"
+        data-action="batch-rename"
+        id="batch-rename-item"
+        role="menuitem"
+        tabindex="0"
+        style="display: none"
+      >
+        <img
+          src="../assets/twemoji/270f.svg"
+          class="twemoji"
+          alt=""
+          draggable="false"
+          aria-hidden="true"
+        />
+        Batch Rename...
+      </button>
+      <button
+        type="button"
+        class="context-menu-item"
+        data-action="create-symlink"
+        id="create-symlink-item"
+        role="menuitem"
+        tabindex="0"
+      >
+        <img
+          src="../assets/twemoji/1f517.svg"
+          class="twemoji"
+          alt=""
+          draggable="false"
+          aria-hidden="true"
+        />
+        Create Symbolic Link
       </button>
       <div class="context-menu-separator" role="separator"></div>
       <button
@@ -1678,6 +1767,103 @@
         <div class="modal-footer">
           <button class="modal-button" id="extract-cancel">Cancel</button>
           <button class="modal-button primary" id="extract-confirm">Extract</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-overlay" id="batch-rename-modal" style="display: none">
+      <div
+        class="modal glass-panel batch-rename-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="batch-rename-title"
+      >
+        <div class="modal-header">
+          <h3 id="batch-rename-title">
+            <img src="../assets/twemoji/270f.svg" class="twemoji" alt="" draggable="false" />
+            Batch Rename
+          </h3>
+          <button class="modal-close" id="batch-rename-close" aria-label="Close">✕</button>
+        </div>
+        <div class="modal-content batch-rename-content">
+          <div class="batch-rename-mode-selector">
+            <label class="batch-rename-label">Mode</label>
+            <select id="batch-rename-mode" class="settings-select">
+              <option value="find-replace">Find &amp; Replace</option>
+              <option value="sequential">Sequential Numbering</option>
+              <option value="extension">Change Extension</option>
+            </select>
+          </div>
+          <div class="batch-rename-fields" id="batch-rename-fields-find-replace">
+            <div class="batch-rename-field">
+              <label class="batch-rename-label" for="batch-rename-find">Find</label>
+              <input
+                type="text"
+                id="batch-rename-find"
+                class="settings-input"
+                placeholder="Text to find"
+              />
+            </div>
+            <div class="batch-rename-field">
+              <label class="batch-rename-label" for="batch-rename-replace">Replace with</label>
+              <input
+                type="text"
+                id="batch-rename-replace"
+                class="settings-input"
+                placeholder="Replacement text"
+              />
+            </div>
+            <label class="batch-rename-checkbox">
+              <input type="checkbox" id="batch-rename-use-regex" />
+              Use regular expression
+            </label>
+          </div>
+          <div
+            class="batch-rename-fields"
+            id="batch-rename-fields-sequential"
+            style="display: none"
+          >
+            <div class="batch-rename-field">
+              <label class="batch-rename-label" for="batch-rename-prefix">Pattern</label>
+              <input
+                type="text"
+                id="batch-rename-prefix"
+                class="settings-input"
+                placeholder="File_{N}"
+              />
+            </div>
+            <div class="batch-rename-field">
+              <label class="batch-rename-label" for="batch-rename-start">Start number</label>
+              <input
+                type="number"
+                id="batch-rename-start"
+                class="settings-input"
+                value="1"
+                min="0"
+              />
+            </div>
+          </div>
+          <div class="batch-rename-fields" id="batch-rename-fields-extension" style="display: none">
+            <div class="batch-rename-field">
+              <label class="batch-rename-label" for="batch-rename-new-ext">New extension</label>
+              <input
+                type="text"
+                id="batch-rename-new-ext"
+                class="settings-input"
+                placeholder=".txt"
+              />
+            </div>
+          </div>
+          <div class="batch-rename-preview">
+            <label class="batch-rename-label">Preview</label>
+            <div class="batch-rename-preview-list" id="batch-rename-preview-list">
+              <div class="batch-rename-preview-empty">Configure options above to see preview</div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="modal-button" id="batch-rename-cancel">Cancel</button>
+          <button class="modal-button primary" id="batch-rename-apply">Rename</button>
         </div>
       </div>
     </div>

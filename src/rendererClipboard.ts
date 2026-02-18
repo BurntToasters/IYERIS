@@ -1,4 +1,5 @@
 import type { Settings } from './types';
+import type { ToastAction } from './rendererToasts.js';
 import { rendererPath as path } from './rendererUtils.js';
 
 type ClipboardState = { operation: 'copy' | 'cut'; paths: string[] } | null;
@@ -11,7 +12,8 @@ type ClipboardDeps = {
   showToast: (
     message: string,
     title: string,
-    type: 'success' | 'error' | 'info' | 'warning'
+    type: 'success' | 'error' | 'info' | 'warning',
+    actions?: ToastAction[]
   ) => void;
   handleDrop: (
     sourcePaths: string[],
@@ -113,7 +115,9 @@ export function createClipboardController(deps: ClipboardDeps) {
               currentSettings.fileConflictBehavior || 'ask'
             );
             if (!result.success) {
-              deps.showToast(result.error || 'Paste failed', 'Error', 'error');
+              deps.showToast(result.error || 'Paste failed', 'Error', 'error', [
+                { label: 'Retry', onClick: () => void pasteFromClipboard() },
+              ]);
               return;
             }
             deps.showToast(
@@ -135,7 +139,9 @@ export function createClipboardController(deps: ClipboardDeps) {
         : await window.electronAPI.moveItems(clipboard.paths, currentPath, conflictBehavior);
 
       if (!result.success) {
-        deps.showToast(result.error || 'Operation failed', 'Error', 'error');
+        deps.showToast(result.error || 'Operation failed', 'Error', 'error', [
+          { label: 'Retry', onClick: () => void pasteFromClipboard() },
+        ]);
         return;
       }
       deps.showToast(
@@ -154,7 +160,9 @@ export function createClipboardController(deps: ClipboardDeps) {
       updateCutVisuals();
       deps.refresh();
     } catch {
-      deps.showToast('Paste operation failed', 'Error', 'error');
+      deps.showToast('Paste operation failed', 'Error', 'error', [
+        { label: 'Retry', onClick: () => void pasteFromClipboard() },
+      ]);
     }
   }
 

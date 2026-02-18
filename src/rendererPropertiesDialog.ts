@@ -25,6 +25,14 @@ function formatTypeSize(bytes: number): string {
   return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${units[i]}`;
 }
 
+function formatPermissions(mode: number): string {
+  const rwx = (m: number) => (m & 4 ? 'r' : '-') + (m & 2 ? 'w' : '-') + (m & 1 ? 'x' : '-');
+  const owner = rwx((mode >> 6) & 7);
+  const group = rwx((mode >> 3) & 7);
+  const other = rwx(mode & 7);
+  return `${owner}${group}${other}`;
+}
+
 function createOperationId(prefix: string): string {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
 }
@@ -115,6 +123,34 @@ export function createPropertiesDialogController(deps: PropertiesDialogDeps) {
       <div class="property-label">Accessed:</div>
       <div class="property-value">${new Date(props.accessed).toLocaleString()}</div>
     </div>`;
+
+    if (props.mode !== undefined) {
+      html += `<div class="property-separator"></div>`;
+      if (props.isReadOnly !== undefined) {
+        const attrs: string[] = [];
+        if (props.isReadOnly) attrs.push('Read-only');
+        if (props.isHiddenAttr) attrs.push('Hidden');
+        if (props.isSystemAttr) attrs.push('System');
+        html += `
+    <div class="property-row">
+      <div class="property-label">Attributes:</div>
+      <div class="property-value">${attrs.length > 0 ? escapeHtml(attrs.join(', ')) : 'None'}</div>
+    </div>`;
+      } else {
+        html += `
+    <div class="property-row">
+      <div class="property-label">Permissions:</div>
+      <div class="property-value"><code>${formatPermissions(props.mode)}</code> (${(props.mode & 0o777).toString(8)})</div>
+    </div>`;
+        if (props.owner) {
+          html += `
+    <div class="property-row">
+      <div class="property-label">Owner:</div>
+      <div class="property-value">${escapeHtml(props.owner)}${props.group ? `:${escapeHtml(props.group)}` : ''}</div>
+    </div>`;
+        }
+      }
+    }
 
     if (props.isFile) {
       html += `

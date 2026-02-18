@@ -320,7 +320,7 @@ describe('createCompressExtractController', () => {
       const ctrl = createCompressExtractController(deps as any);
       await ctrl.handleCompress();
 
-      expect(deps.showToast).toHaveBeenCalledWith('disk full', 'Error', 'error');
+      expect(deps.showToast).toHaveBeenCalledWith('disk full', 'Error', 'error', expect.any(Array));
     });
 
     it('shows generic error when result.error is empty', async () => {
@@ -329,7 +329,12 @@ describe('createCompressExtractController', () => {
       const ctrl = createCompressExtractController(deps as any);
       await ctrl.handleCompress();
 
-      expect(deps.showToast).toHaveBeenCalledWith('Compression failed', 'Error', 'error');
+      expect(deps.showToast).toHaveBeenCalledWith(
+        'Compression failed',
+        'Error',
+        'error',
+        expect.any(Array)
+      );
     });
 
     it('shows error toast when compressFiles throws', async () => {
@@ -338,7 +343,12 @@ describe('createCompressExtractController', () => {
       const ctrl = createCompressExtractController(deps as any);
       await ctrl.handleCompress();
 
-      expect(deps.showToast).toHaveBeenCalledWith('network error', 'Compression Error', 'error');
+      expect(deps.showToast).toHaveBeenCalledWith(
+        'network error',
+        'Compression Error',
+        'error',
+        expect.any(Array)
+      );
       expect(deps.removeOperation).toHaveBeenCalledWith('op-1');
     });
 
@@ -915,7 +925,12 @@ describe('createCompressExtractController', () => {
       ctrl.showExtractModal('/home/user/archive.zip');
       await ctrl.confirmExtractModal();
 
-      expect(deps.showToast).toHaveBeenCalledWith('corrupted archive', 'Error', 'error');
+      expect(deps.showToast).toHaveBeenCalledWith(
+        'corrupted archive',
+        'Error',
+        'error',
+        expect.any(Array)
+      );
     });
 
     it('shows generic error when extraction fails without error message', async () => {
@@ -931,7 +946,12 @@ describe('createCompressExtractController', () => {
       ctrl.showExtractModal('/home/user/archive.zip');
       await ctrl.confirmExtractModal();
 
-      expect(deps.showToast).toHaveBeenCalledWith('Extraction failed', 'Error', 'error');
+      expect(deps.showToast).toHaveBeenCalledWith(
+        'Extraction failed',
+        'Error',
+        'error',
+        expect.any(Array)
+      );
     });
 
     it('handles extraction exception', async () => {
@@ -947,7 +967,12 @@ describe('createCompressExtractController', () => {
       ctrl.showExtractModal('/home/user/archive.zip');
       await ctrl.confirmExtractModal();
 
-      expect(deps.showToast).toHaveBeenCalledWith('permission denied', 'Extraction Error', 'error');
+      expect(deps.showToast).toHaveBeenCalledWith(
+        'permission denied',
+        'Extraction Error',
+        'error',
+        expect.any(Array)
+      );
       expect(deps.removeOperation).toHaveBeenCalledWith('op-1');
     });
 

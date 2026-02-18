@@ -114,8 +114,8 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
     id: 'new-file',
     title: 'New File',
     category: 'File Operations',
-    defaultBinding: [],
-    defaultBindingMac: [],
+    defaultBinding: ['Ctrl', 'Shift', 'M'],
+    defaultBindingMac: ['Meta', 'Shift', 'M'],
   },
   {
     id: 'copy',
@@ -179,6 +179,27 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
     category: 'View',
     defaultBinding: ['Ctrl', '0'],
     defaultBindingMac: ['Meta', '0'],
+  },
+  {
+    id: 'toggle-hidden-files',
+    title: 'Toggle Hidden Files',
+    category: 'View',
+    defaultBinding: ['Ctrl', 'H'],
+    defaultBindingMac: ['Meta', 'Shift', 'H'],
+  },
+  {
+    id: 'properties',
+    title: 'Properties',
+    category: 'File Operations',
+    defaultBinding: ['Alt', 'Enter'],
+    defaultBindingMac: ['Meta', 'I'],
+  },
+  {
+    id: 'restore-closed-tab',
+    title: 'Restore Closed Tab',
+    category: 'Navigation',
+    defaultBinding: ['Ctrl', 'Shift', 'T'],
+    defaultBindingMac: ['Meta', 'Shift', 'T'],
   },
 ];
 

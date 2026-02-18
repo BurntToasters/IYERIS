@@ -711,19 +711,50 @@ export function setupFileOperationHandlers(): void {
         return { success: false, error: 'Invalid path' };
       }
       const stats = await fs.stat(itemPath);
-      return {
-        success: true,
-        properties: {
-          path: itemPath,
-          name: path.basename(itemPath),
-          size: stats.size,
-          isDirectory: stats.isDirectory(),
-          isFile: stats.isFile(),
-          created: stats.birthtime,
-          modified: stats.mtime,
-          accessed: stats.atime,
-        },
+      const properties: import('../types').ItemProperties = {
+        path: itemPath,
+        name: path.basename(itemPath),
+        size: stats.size,
+        isDirectory: stats.isDirectory(),
+        isFile: stats.isFile(),
+        created: stats.birthtime,
+        modified: stats.mtime,
+        accessed: stats.atime,
+        mode: stats.mode,
       };
+
+      if (process.platform !== 'win32') {
+        try {
+          const userInfo = os.userInfo();
+          properties.owner = stats.uid === userInfo.uid ? userInfo.username : String(stats.uid);
+          properties.group = String(stats.gid);
+        } catch {
+          properties.owner = String(stats.uid);
+          properties.group = String(stats.gid);
+        }
+      } else {
+        try {
+          const { execFile: execFileCb } = await import('child_process');
+          const { promisify } = await import('util');
+          const execFileAsync = promisify(execFileCb);
+          const { stdout } = await execFileAsync('attrib', [itemPath], {
+            timeout: 2000,
+            windowsHide: true,
+          });
+          const line = stdout.split(/\r?\n/).find((l) => l.trim().length > 0);
+          if (line) {
+            const match = line.match(/^\s*([A-Za-z ]+)\s+.+$/);
+            if (match) {
+              const attrs = match[1].toUpperCase();
+              properties.isReadOnly = attrs.includes('R');
+              properties.isHiddenAttr = attrs.includes('H');
+              properties.isSystemAttr = attrs.includes('S');
+            }
+          }
+        } catch {}
+      }
+
+      return { success: true, properties };
     }
   );
 
@@ -891,6 +922,116 @@ export function setupFileOperationHandlers(): void {
         });
 
         logger.info('[Move] Items moved:', sourcePaths.length);
+        return { success: true };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return { success: false, error: message };
+      }
+    }
+  );
+
+  handleTrustedApi(
+    'batch-rename',
+    async (
+      _event: IpcMainInvokeEvent,
+      items: Array<{ oldPath: string; newName: string }>
+    ): Promise<ApiResponse> => {
+      if (!Array.isArray(items) || items.length === 0) {
+        return { success: false, error: 'No items to rename' };
+      }
+
+      const completed: Array<{ oldPath: string; newPath: string }> = [];
+
+      try {
+        for (const item of items) {
+          if (!isPathSafe(item.oldPath)) {
+            throw new Error(`Invalid path: ${item.oldPath}`);
+          }
+
+          const dir = path.dirname(item.oldPath);
+          const newPath = path.join(dir, item.newName);
+
+          if (item.oldPath === newPath) continue;
+
+          const exists = await fs.access(newPath).then(
+            () => true,
+            () => false
+          );
+          if (exists) {
+            throw new Error(`"${item.newName}" already exists`);
+          }
+
+          await renameWithExdevFallback(item.oldPath, newPath, false);
+          completed.push({ oldPath: item.oldPath, newPath });
+        }
+
+        if (completed.length > 0) {
+          pushUndoAction({
+            type: 'batch-rename',
+            data: {
+              renames: completed,
+            },
+          });
+        }
+
+        logger.info('[BatchRename] Renamed:', completed.length, 'items');
+        return { success: true };
+      } catch (error) {
+        for (const item of completed.reverse()) {
+          try {
+            await renameWithExdevFallback(item.newPath, item.oldPath, false);
+          } catch (restoreError) {
+            ignoreError(restoreError);
+          }
+        }
+        const message = error instanceof Error ? error.message : String(error);
+        return { success: false, error: message };
+      }
+    }
+  );
+
+  handleTrustedApi(
+    'create-symlink',
+    async (
+      _event: IpcMainInvokeEvent,
+      targetPath: string,
+      linkPath: string
+    ): Promise<ApiResponse> => {
+      if (!isPathSafe(targetPath) || !isPathSafe(linkPath)) {
+        return { success: false, error: 'Invalid path' };
+      }
+
+      try {
+        let stats: fsSync.Stats;
+        try {
+          stats = await fs.stat(targetPath);
+        } catch {
+          return { success: false, error: 'Target does not exist' };
+        }
+
+        const symlinkType = stats.isDirectory() ? 'dir' : 'file';
+
+        if (process.platform === 'win32') {
+          const result = await tryWithElevation(
+            async () => {
+              await fs.symlink(targetPath, linkPath, symlinkType);
+            },
+            { type: 'copy', sourcePath: targetPath, destPath: linkPath },
+            'create symlink'
+          );
+          if (result.error) {
+            return {
+              success: false,
+              error:
+                result.error ||
+                'Failed to create symlink. On Windows, this may require administrator privileges or Developer Mode.',
+            };
+          }
+        } else {
+          await fs.symlink(targetPath, linkPath);
+        }
+
+        logger.info('[Symlink] Created:', linkPath, '->', targetPath);
         return { success: true };
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
