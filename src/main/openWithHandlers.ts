@@ -1,6 +1,6 @@
 import type { IpcMainInvokeEvent } from 'electron';
 import { ipcMain, shell } from 'electron';
-import { exec, execFile } from 'child_process';
+import { execFile } from 'child_process';
 import * as path from 'path';
 import { promises as fs } from 'fs';
 import { isPathSafe, getErrorMessage } from './security';
@@ -18,9 +18,9 @@ interface OpenWithResponse {
   error?: string;
 }
 
-function execPromise(command: string): Promise<string> {
+function execFilePromise(command: string, args: string[], timeout = 5000): Promise<string> {
   return new Promise((resolve, reject) => {
-    exec(command, { timeout: 5000 }, (error, stdout) => {
+    execFile(command, args, { timeout }, (error, stdout) => {
       if (error) reject(error);
       else resolve(stdout);
     });
@@ -34,11 +34,11 @@ async function getAppsForFileWindows(filePath: string): Promise<OpenWithApp[]> {
   const apps: OpenWithApp[] = [];
 
   try {
-    const assocOutput = await execPromise(`assoc ${ext}`);
+    const assocOutput = await execFilePromise('cmd', ['/c', 'assoc', ext]);
     const fileType = assocOutput.split('=')[1]?.trim();
     if (fileType) {
       try {
-        const ftypeOutput = await execPromise(`ftype ${fileType}`);
+        const ftypeOutput = await execFilePromise('cmd', ['/c', 'ftype', fileType]);
         const exePath =
           ftypeOutput.split('=')[1]?.split('"')[1] || ftypeOutput.split('=')[1]?.trim();
         if (exePath) {
@@ -68,10 +68,10 @@ async function getAppsForFileMac(_filePath: string): Promise<OpenWithApp[]> {
   const apps: OpenWithApp[] = [];
 
   try {
-    const output = await execPromise(
-      `mdfind "kMDItemContentType == 'com.apple.application-bundle'" | head -50`
-    );
-    const appPaths = output.trim().split('\n').filter(Boolean);
+    const output = await execFilePromise('mdfind', [
+      'kMDItemContentType == "com.apple.application-bundle"',
+    ]);
+    const appPaths = output.trim().split('\n').filter(Boolean).slice(0, 50);
 
     for (const appPath of appPaths) {
       const name = path.basename(appPath, '.app');
@@ -99,12 +99,12 @@ async function getAppsForFileLinux(filePath: string): Promise<OpenWithApp[]> {
   const apps: OpenWithApp[] = [];
 
   try {
-    const mimeOutput = await execPromise(`xdg-mime query filetype "${filePath}"`);
+    const mimeOutput = await execFilePromise('xdg-mime', ['query', 'filetype', filePath]);
     const mimeType = mimeOutput.trim();
 
     if (mimeType) {
       try {
-        const defaultApp = await execPromise(`xdg-mime query default "${mimeType}"`);
+        const defaultApp = await execFilePromise('xdg-mime', ['query', 'default', mimeType]);
         const desktopFile = defaultApp.trim();
         if (desktopFile) {
           const appInfo = await parseDesktopFile(desktopFile);
@@ -195,7 +195,7 @@ async function openFileWithAppPlatform(filePath: string, appId: string): Promise
 
   if (platform === 'win32') {
     await new Promise<void>((resolve, reject) => {
-      exec(`start "" "${filePath.replace(/"/g, '""')}"`, { shell: 'cmd.exe' }, (error) => {
+      execFile('cmd', ['/c', 'start', '', appId, filePath], (error) => {
         if (error) reject(error);
         else resolve();
       });

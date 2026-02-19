@@ -1700,7 +1700,9 @@ function updateStatusBar() {
       );
     } else {
       statusSearch.style.display = 'none';
-      announceToScreenReader(`${allFiles.length} item${allFiles.length !== 1 ? 's' : ''}`);
+      const folderName = currentPath ? currentPath.split(/[\\/]/).pop() || currentPath : '';
+      const prefix = folderName ? `${folderName}: ` : '';
+      announceToScreenReader(`${prefix}${allFiles.length} item${allFiles.length !== 1 ? 's' : ''}`);
     }
   }
 }
@@ -1950,6 +1952,7 @@ async function navigateTo(path: string, skipHistoryUpdate = false) {
 
     updateNavigationButtons();
     setHomeViewActive(true);
+    announceToScreenReader('Home view');
     return;
   }
 

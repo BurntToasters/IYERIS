@@ -359,6 +359,10 @@ body.theme-light .toggle-slider-small {
   font-family: var(--font-family);
 }
 
+.search-bar input.input-error {
+  color: var(--error-color, #ef4444);
+}
+
 .search-bar input::placeholder {
   color: var(--text-tertiary);
 }

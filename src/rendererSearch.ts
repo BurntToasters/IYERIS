@@ -195,6 +195,7 @@ export function createSearchController(deps: SearchDeps) {
     }
     searchBarWrapper.style.display = 'none';
     searchInput.value = '';
+    searchInput.classList.remove('input-error');
     isSearchMode = false;
     isGlobalSearch = false;
     searchScopeToggle.classList.remove('global');
@@ -320,8 +321,19 @@ export function createSearchController(deps: SearchDeps) {
     const hasFilters = hasActiveFilters() || searchInContents || isRegexMode;
     if (isRegexMode) {
       currentSearchFilters.regex = true;
+      try {
+        new RegExp(query);
+      } catch {
+        deps.hideLoading();
+        deps.showToast('Invalid regular expression pattern', 'Search', 'warning');
+        searchInput?.classList.add('input-error');
+        activeSearchOperationId = null;
+        return;
+      }
+      searchInput?.classList.remove('input-error');
     } else {
       delete currentSearchFilters.regex;
+      searchInput?.classList.remove('input-error');
     }
 
     if (isGlobalSearch) {

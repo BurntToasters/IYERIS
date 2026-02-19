@@ -111,7 +111,9 @@ export function createInlineRenameController(deps: InlineRenameDeps) {
     input.className = 'file-name-input';
     input.value = currentName;
     const nameContainer = fileItem.querySelector('.file-text') as HTMLElement | null;
-    (nameContainer || fileItem).appendChild(input);
+    const inputParent = nameContainer || fileItem;
+    inputParent.style.position = 'relative';
+    inputParent.appendChild(input);
 
     fileItem.classList.add('renaming');
 
@@ -125,6 +127,49 @@ export function createInlineRenameController(deps: InlineRenameDeps) {
     }
 
     let renameHandled = false;
+    let errorTooltip: HTMLElement | null = null;
+
+    const showInlineError = (message: string) => {
+      clearInlineError();
+      input.classList.add('input-error');
+      errorTooltip = document.createElement('div');
+      errorTooltip.className = 'rename-error-tooltip';
+      errorTooltip.textContent = message;
+      inputParent.appendChild(errorTooltip);
+    };
+
+    const clearInlineError = () => {
+      input.classList.remove('input-error');
+      if (errorTooltip) {
+        errorTooltip.remove();
+        errorTooltip = null;
+      }
+    };
+
+    const cleanup = () => {
+      clearInlineError();
+      input.removeEventListener('blur', finishRename);
+      input.removeEventListener('keypress', handleKeyPress);
+      input.removeEventListener('keydown', handleKeyDown);
+      input.removeEventListener('input', handleInput);
+      nameElement.style.display = '';
+      input.remove();
+      fileItem.classList.remove('renaming');
+    };
+
+    const handleInput = () => {
+      const name = input.value.trim();
+      if (name) {
+        const error = getFilenameError(name);
+        if (error) {
+          showInlineError(error);
+        } else {
+          clearInlineError();
+        }
+      } else {
+        clearInlineError();
+      }
+    };
 
     const finishRename = async () => {
       if (renameHandled) {
@@ -132,38 +177,28 @@ export function createInlineRenameController(deps: InlineRenameDeps) {
       }
       renameHandled = true;
 
-      input.removeEventListener('blur', finishRename);
-      input.removeEventListener('keypress', handleKeyPress);
-      input.removeEventListener('keydown', handleKeyDown);
-
       const newName = input.value.trim();
 
       if (newName && newName !== currentName) {
         const filenameError = getFilenameError(newName);
         if (filenameError) {
-          await deps.showAlert(filenameError, 'Invalid Name', 'warning');
-          nameElement.style.display = '';
-          input.remove();
-          fileItem.classList.remove('renaming');
+          renameHandled = false;
+          showInlineError(filenameError);
+          input.focus();
           return;
         }
         const result = await window.electronAPI.renameItem(itemPath, newName);
         if (!result.success) {
-          await deps.showAlert(result.error || 'Operation failed', 'Error Renaming', 'error');
-          nameElement.style.display = '';
-          input.remove();
-          fileItem.classList.remove('renaming');
+          renameHandled = false;
+          showInlineError(result.error || 'Rename failed');
+          input.focus();
           return;
         }
-        nameElement.style.display = '';
+        cleanup();
         nameElement.textContent = newName;
-        input.remove();
-        fileItem.classList.remove('renaming');
         await deps.navigateTo(deps.getCurrentPath());
       } else {
-        nameElement.style.display = '';
-        input.remove();
-        fileItem.classList.remove('renaming');
+        cleanup();
       }
     };
 
@@ -176,18 +211,14 @@ export function createInlineRenameController(deps: InlineRenameDeps) {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         renameHandled = true;
-        input.removeEventListener('blur', finishRename);
-        input.removeEventListener('keypress', handleKeyPress);
-        input.removeEventListener('keydown', handleKeyDown);
-        nameElement.style.display = '';
-        input.remove();
-        fileItem.classList.remove('renaming');
+        cleanup();
       }
     };
 
     input.addEventListener('blur', finishRename);
     input.addEventListener('keypress', handleKeyPress);
     input.addEventListener('keydown', handleKeyDown);
+    input.addEventListener('input', handleInput);
   }
 
   return {

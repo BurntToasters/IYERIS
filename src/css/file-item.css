@@ -389,6 +389,31 @@ body:not(.show-file-checkboxes) .file-checkbox {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
+.file-name-input.input-error {
+  border-color: var(--error-color, #ef4444);
+}
+
+.rename-error-tooltip {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-top: 4px;
+  padding: 4px 8px;
+  background: var(--error-color, #ef4444);
+  color: #fff;
+  font-size: 11px;
+  border-radius: 4px;
+  white-space: nowrap;
+  z-index: 100;
+  pointer-events: none;
+}
+
+.file-grid.list-view .rename-error-tooltip {
+  left: 0;
+  transform: none;
+}
+
 .file-grid.list-view .file-name-input {
   text-align: left;
 }

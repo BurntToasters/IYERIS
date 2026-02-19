@@ -329,7 +329,10 @@ describe('startInlineRename', () => {
     input.dispatchEvent(new KeyboardEvent('keypress', { key: 'Enter', bubbles: true }));
 
     await vi.waitFor(() => {
-      expect(deps.showAlert).toHaveBeenCalledWith('Item exists', 'Error Renaming', 'error');
+      expect(input.classList.contains('input-error')).toBe(true);
+      const tooltip = fileItem.querySelector('.rename-error-tooltip');
+      expect(tooltip).not.toBeNull();
+      expect(tooltip!.textContent).toBe('Item exists');
     });
   });
 });

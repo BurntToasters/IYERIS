@@ -73,8 +73,10 @@ export async function validateFileOperation(
   destPath: string,
   operationType: FileOperationType,
   conflictBehavior: ConflictBehavior = 'ask',
-  resolveConflict?: (fileName: string) => Promise<'rename' | 'skip' | 'overwrite' | 'cancel'>,
-  isPathSafe: (p: string) => boolean = () => true,
+  resolveConflict:
+    | ((fileName: string) => Promise<'rename' | 'skip' | 'overwrite' | 'cancel'>)
+    | undefined,
+  isPathSafe: (p: string) => boolean,
   logger?: { warn: (...args: unknown[]) => void }
 ): Promise<{ success: true; planned: PlannedFileOperation[] } | { success: false; error: string }> {
   if (!isPathSafe(destPath)) {
