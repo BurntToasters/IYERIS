@@ -435,6 +435,12 @@ body.theme-light .toggle-slider-small {
   transform: scale(0.9);
 }
 
+.search-save-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+  pointer-events: none;
+}
+
 .saved-search-section {
   border-bottom: 1px solid var(--separator);
   padding-bottom: 4px;

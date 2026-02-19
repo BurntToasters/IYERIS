@@ -177,6 +177,7 @@ export function createSearchController(deps: SearchDeps) {
       searchBarWrapper.style.display = 'block';
       searchInput.focus();
       isSearchMode = true;
+      syncSaveBtnState();
       if (isHomeViewPath(deps.getCurrentPath()) && !isGlobalSearch) {
         toggleSearchScope();
       }
@@ -200,6 +201,11 @@ export function createSearchController(deps: SearchDeps) {
     searchInput.classList.remove('input-error');
     isSearchMode = false;
     isGlobalSearch = false;
+    isRegexMode = false;
+    if (searchRegexToggle) {
+      searchRegexToggle.classList.remove('active');
+      searchRegexToggle.setAttribute('aria-pressed', 'false');
+    }
     searchScopeToggle.classList.remove('global');
     syncSearchScopeAria();
     hideSearchHistoryDropdown();
@@ -210,6 +216,7 @@ export function createSearchController(deps: SearchDeps) {
     syncSearchFilterAria();
     currentSearchFilters = {};
     updateFilterBadge();
+    syncSaveBtnState();
 
     const currentPath = deps.getCurrentPath();
     if (currentPath) {
@@ -776,12 +783,19 @@ export function createSearchController(deps: SearchDeps) {
 
     searchInput?.addEventListener('input', () => {
       if (!searchInput) return;
+      syncSaveBtnState();
       if (searchInput.value.length === 0) {
         closeSearch();
       } else if (searchInput.value.length >= 2) {
         debouncedSearch();
       }
     });
+  }
+
+  function syncSaveBtnState(): void {
+    if (!searchSaveBtn) return;
+    const hasQuery = !!(searchInput && searchInput.value.trim());
+    searchSaveBtn.disabled = !hasQuery;
   }
 
   function getStatusText(): { active: boolean; text: string } {

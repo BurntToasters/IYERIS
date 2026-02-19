@@ -1793,7 +1793,7 @@ const eventListenersController = createEventListenersController({
     refresh();
   },
   showPropertiesForSelected: () => {
-    const firstSelected = allFiles.find((f) => selectedItems.has(f.name));
+    const firstSelected = allFiles.find((f) => selectedItems.has(f.path));
     if (!firstSelected) return;
     void (async () => {
       const result = await window.electronAPI.getItemProperties(firstSelected.path);
@@ -2123,7 +2123,7 @@ function navigateHistory(delta: -1 | 1): void {
   const nextIndex = historyIndex + delta;
   if (nextIndex < 0 || nextIndex >= history.length) return;
   historyIndex = nextIndex;
-  navigateTo(history[historyIndex], true);
+  void navigateTo(history[historyIndex], true);
 }
 
 function goBack() {

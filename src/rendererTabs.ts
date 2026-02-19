@@ -69,6 +69,7 @@ export function createTabsController(deps: TabsDeps) {
   const MAX_CACHED_FILES_PER_TAB = deps.maxCachedFilesPerTab;
   const MAX_CLOSED_TABS = 10;
   const closedTabPaths: string[] = [];
+  let activeDismissHandler: ((e: MouseEvent) => void) | null = null;
 
   function generateTabId(): string {
     return `tab-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
@@ -577,23 +578,61 @@ export function createTabsController(deps: TabsDeps) {
       menu.style.top = `${window.innerHeight - rect.height - 4}px`;
     }
 
-    const dismiss = (e: MouseEvent) => {
+    const enabledItems = Array.from(
+      menu.querySelectorAll('.tab-context-menu-item:not(.disabled)')
+    ) as HTMLElement[];
+    if (enabledItems.length > 0) {
+      enabledItems[0].setAttribute('tabindex', '0');
+      enabledItems[0].focus();
+      for (let i = 1; i < enabledItems.length; i++) {
+        enabledItems[i].setAttribute('tabindex', '-1');
+      }
+    }
+
+    menu.addEventListener('keydown', (e: KeyboardEvent) => {
+      const focused = document.activeElement as HTMLElement | null;
+      const idx = focused ? enabledItems.indexOf(focused) : -1;
+
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        const next = idx < enabledItems.length - 1 ? idx + 1 : 0;
+        enabledItems[next]?.focus();
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        const prev = idx > 0 ? idx - 1 : enabledItems.length - 1;
+        enabledItems[prev]?.focus();
+      } else if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        focused?.click();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        hideTabContextMenu();
+      }
+    });
+
+    activeDismissHandler = (e: MouseEvent) => {
       if (!menu.contains(e.target as Node)) {
         hideTabContextMenu();
       }
     };
-    setTimeout(() => document.addEventListener('mousedown', dismiss, { once: true }), 0);
+    setTimeout(
+      () => document.addEventListener('mousedown', activeDismissHandler!, { once: true }),
+      0
+    );
   }
 
   function hideTabContextMenu(): void {
+    if (activeDismissHandler) {
+      document.removeEventListener('mousedown', activeDismissHandler);
+      activeDismissHandler = null;
+    }
     document.querySelectorAll('.tab-context-menu').forEach((el) => el.remove());
   }
 
   function restoreClosedTab(): void {
     if (!deps.getTabsEnabled() || closedTabPaths.length === 0) return;
     const path = closedTabPaths.pop()!;
-    addNewTab();
-    deps.navigateTo(path);
+    void addNewTab(path);
   }
 
   function cleanup(): void {

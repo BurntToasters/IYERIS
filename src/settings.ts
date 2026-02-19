@@ -399,9 +399,19 @@ export function sanitizeSettings(
         ...(s.filters && typeof s.filters === 'object'
           ? {
               filters: {
-                ...(typeof s.filters.fileType === 'string' ? { fileType: s.filters.fileType } : {}),
-                ...(typeof s.filters.minSize === 'number' ? { minSize: s.filters.minSize } : {}),
-                ...(typeof s.filters.maxSize === 'number' ? { maxSize: s.filters.maxSize } : {}),
+                ...(typeof s.filters.fileType === 'string' && s.filters.fileType.length <= 50
+                  ? { fileType: s.filters.fileType }
+                  : {}),
+                ...(typeof s.filters.minSize === 'number' &&
+                Number.isFinite(s.filters.minSize) &&
+                s.filters.minSize >= 0
+                  ? { minSize: s.filters.minSize }
+                  : {}),
+                ...(typeof s.filters.maxSize === 'number' &&
+                Number.isFinite(s.filters.maxSize) &&
+                s.filters.maxSize >= 0
+                  ? { maxSize: s.filters.maxSize }
+                  : {}),
                 ...(typeof s.filters.dateFrom === 'string' ? { dateFrom: s.filters.dateFrom } : {}),
                 ...(typeof s.filters.dateTo === 'string' ? { dateTo: s.filters.dateTo } : {}),
               },
