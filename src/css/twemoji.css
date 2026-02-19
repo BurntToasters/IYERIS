@@ -29,6 +29,14 @@
   margin: 0;
 }
 
+.tree-icon .twemoji,
+.tree-icon .file-icon {
+  width: 14px;
+  height: 14px;
+  font-size: 14px;
+  margin: 0;
+}
+
 .empty-icon .twemoji {
   width: 4em;
   height: 4em;
