@@ -24,6 +24,7 @@ interface CommandPaletteActions {
   goBack: () => void;
   goForward: () => void;
   goUp: () => void;
+  goHome: () => void;
   showSettingsModal: () => void;
   showShortcutsModal: () => void;
   selectAll: () => void;
@@ -157,6 +158,7 @@ export function createCommandPaletteController(deps: CommandPaletteDeps) {
       goBack,
       goForward,
       goUp,
+      goHome,
       showSettingsModal,
       showShortcutsModal,
       selectAll,
@@ -197,6 +199,7 @@ export function createCommandPaletteController(deps: CommandPaletteDeps) {
       ['go-back', 'Go Back', 'Navigate to previous folder', '⬅️', goBack, 'r', ['back']],
       ['go-forward', 'Go Forward', 'Navigate to next folder', '➡️', goForward, 'r', ['forward']],
       ['go-up', 'Go Up', 'Navigate to parent folder', '⬆️', goUp, 'r', ['parent']],
+      ['go-home', 'Go Home', 'Navigate to home view', '🏠', goHome, 'r', ['start']],
       ['settings', 'Settings', 'Open settings', '⚙️', showSettingsModal, 'r', ['preferences']],
       [
         'shortcuts',

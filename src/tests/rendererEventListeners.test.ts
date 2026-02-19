@@ -104,6 +104,7 @@ function createMockConfig() {
     goBack: vi.fn(),
     goForward: vi.fn(),
     goUp: vi.fn(),
+    goHome: vi.fn(),
     refresh: vi.fn(),
     navigateTo: vi.fn(),
     clearSelection: vi.fn(),

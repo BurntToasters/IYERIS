@@ -69,6 +69,8 @@ function createDeps() {
     showExtractModal: vi.fn(),
     getSelectedItems: vi.fn().mockReturnValue(new Set()),
     showBatchRenameModal: vi.fn(),
+    addNewTab: vi.fn().mockResolvedValue(undefined),
+    getTabsEnabled: vi.fn().mockReturnValue(true),
   };
 }
 

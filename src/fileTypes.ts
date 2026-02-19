@@ -288,6 +288,7 @@ const TEXT_ONLY_EXTS = [
 export const SOURCE_CODE_EXTENSIONS = new Set<string>(SOURCE_CODE_EXTS);
 export const WEB_EXTENSIONS = new Set<string>(WEB_EXTS);
 export const DATA_EXTENSIONS = new Set<string>(DATA_EXTS);
+export const MARKDOWN_EXTENSIONS = new Set(['md', 'markdown', 'mdown', 'mkd', 'mkdn']);
 export const TEXT_EXTENSIONS = new Set<string>([
   ...SOURCE_CODE_EXTS,
   ...WEB_EXTS,

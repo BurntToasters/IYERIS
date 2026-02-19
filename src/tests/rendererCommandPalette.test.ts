@@ -31,6 +31,7 @@ function createDeps(overrides: Record<string, unknown> = {}) {
       goBack: vi.fn(),
       goForward: vi.fn(),
       goUp: vi.fn(),
+      goHome: vi.fn(),
       showSettingsModal: vi.fn(),
       showShortcutsModal: vi.fn(),
       selectAll: vi.fn(),

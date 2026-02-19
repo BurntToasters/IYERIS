@@ -153,6 +153,17 @@ export function setupSystemHandlers(
         const terminals = [
           { cmd: 'x-terminal-emulator', args: ['--working-directory', dirPath] },
           { cmd: 'gnome-terminal', args: ['--working-directory=' + dirPath] },
+          { cmd: 'konsole', args: ['--workdir', dirPath] },
+          { cmd: 'xfce4-terminal', args: ['--working-directory=' + dirPath] },
+          { cmd: 'mate-terminal', args: ['--working-directory=' + dirPath] },
+          { cmd: 'tilix', args: ['--working-directory=' + dirPath] },
+          { cmd: 'terminator', args: ['--working-directory=' + dirPath] },
+          { cmd: 'alacritty', args: ['--working-directory', dirPath] },
+          { cmd: 'kitty', args: ['--directory', dirPath] },
+          { cmd: 'wezterm', args: ['start', '--cwd', dirPath] },
+          { cmd: 'foot', args: ['--working-directory=' + dirPath] },
+          { cmd: 'lxterminal', args: ['--working-directory=' + dirPath] },
+          { cmd: 'sakura', args: ['--working-directory=' + dirPath] },
           { cmd: 'xterm', args: ['-e', 'bash'] },
         ];
 

@@ -32,6 +32,8 @@ type ContextMenuDeps = {
   showExtractModal: (archivePath: string, name: string) => void;
   getSelectedItems: () => Set<string>;
   showBatchRenameModal: () => void;
+  addNewTab: (path?: string) => Promise<void>;
+  getTabsEnabled: () => boolean;
 };
 
 export function createContextMenuController(deps: ContextMenuDeps) {
@@ -51,6 +53,7 @@ export function createContextMenuController(deps: ContextMenuDeps) {
   let elOpenWithSubmenu: HTMLElement | null = null;
   let elBatchRename: HTMLElement | null = null;
   let elCreateSymlink: HTMLElement | null = null;
+  let elOpenInNewTab: HTMLElement | null = null;
   let elOpenWithAppsPanel: HTMLElement | null = null;
 
   function ensureElements() {
@@ -68,6 +71,7 @@ export function createContextMenuController(deps: ContextMenuDeps) {
     if (!elOpenWithSubmenu) elOpenWithSubmenu = document.getElementById('open-with-submenu');
     if (!elBatchRename) elBatchRename = document.getElementById('batch-rename-item');
     if (!elCreateSymlink) elCreateSymlink = document.getElementById('create-symlink-item');
+    if (!elOpenInNewTab) elOpenInNewTab = document.getElementById('open-in-new-tab-item');
     if (!elOpenWithAppsPanel) elOpenWithAppsPanel = document.getElementById('open-with-apps-panel');
   }
 
@@ -166,6 +170,7 @@ export function createContextMenuController(deps: ContextMenuDeps) {
       if (el) el.style.display = condition ? 'flex' : 'none';
     };
     showIf(elAddToBookmarks, item.isDirectory);
+    showIf(elOpenInNewTab, item.isDirectory && deps.getTabsEnabled());
     showIf(elChangeFolderIcon, item.isDirectory);
     showIf(elCopyPath, true);
     showIf(elOpenTerminal, item.isDirectory);
@@ -269,6 +274,12 @@ export function createContextMenuController(deps: ContextMenuDeps) {
     switch (action) {
       case 'open':
         await deps.openFileEntry(item);
+        break;
+
+      case 'open-in-new-tab':
+        if (item.isDirectory) {
+          await deps.addNewTab(item.path);
+        }
         break;
 
       case 'preview-pdf':

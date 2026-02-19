@@ -710,6 +710,8 @@ const {
   showExtractModal: (archivePath, name) => showExtractModal(archivePath, name),
   getSelectedItems: () => selectedItems,
   showBatchRenameModal: () => batchRenameController.showBatchRenameModal(),
+  addNewTab: (p) => addNewTab(p),
+  getTabsEnabled: () => tabsEnabled,
 });
 
 const { cancelColumnOperations, renderColumnView } = createColumnViewController({
@@ -891,6 +893,9 @@ const commandPaletteController = createCommandPaletteController({
     },
     goUp: () => {
       goUp();
+    },
+    goHome: () => {
+      navigateTo(HOME_VIEW_PATH);
     },
     showSettingsModal: () => {
       showSettingsModal();
@@ -1710,6 +1715,7 @@ const eventListenersController = createEventListenersController({
   goBack,
   goForward,
   goUp,
+  goHome: () => navigateTo(HOME_VIEW_PATH),
   refresh,
   navigateTo: (p) => navigateTo(p),
   clearSelection,

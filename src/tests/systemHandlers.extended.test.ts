@@ -472,7 +472,7 @@ describe('systemHandlers extended coverage', () => {
       );
     });
 
-    it('tries xterm when first two terminals fail on linux', async () => {
+    it('tries konsole when first two terminals fail on linux', async () => {
       setPlatform('linux');
       let callCount = 0;
       hoisted.spawnMock.mockImplementation(() => {
@@ -496,8 +496,8 @@ describe('systemHandlers extended coverage', () => {
       expect(hoisted.spawnMock).toHaveBeenCalledTimes(3);
       expect(hoisted.spawnMock).toHaveBeenNthCalledWith(
         3,
-        'xterm',
-        ['-e', 'bash'],
+        'konsole',
+        ['--workdir', '/home/user'],
         expect.objectContaining({ detached: true })
       );
     });
@@ -522,7 +522,7 @@ describe('systemHandlers extended coverage', () => {
       const result = await handler(mockEvent, '/home/user');
 
       expect(result).toEqual({ success: false, error: 'No suitable terminal emulator found' });
-      expect(hoisted.spawnMock).toHaveBeenCalledTimes(3);
+      expect(hoisted.spawnMock).toHaveBeenCalledTimes(14);
       expect(logger.error).toHaveBeenCalledWith('No suitable terminal emulator found');
     });
   });

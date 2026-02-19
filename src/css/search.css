@@ -657,3 +657,15 @@ body.theme-light .toggle-slider-small {
   margin-right: 6px;
   opacity: 0.5;
 }
+
+.search-results-cap-banner {
+  grid-column: 1 / -1;
+  padding: 8px 14px;
+  margin: 0 4px 6px;
+  font-size: var(--font-size-base);
+  color: var(--text-secondary);
+  background: var(--surface-secondary);
+  border: 1px solid var(--separator);
+  border-radius: var(--border-radius-md);
+  text-align: center;
+}

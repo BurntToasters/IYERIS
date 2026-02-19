@@ -71,6 +71,13 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
     defaultBinding: ['Alt', 'ArrowUp'],
   },
   {
+    id: 'go-home',
+    title: 'Go Home',
+    category: 'Navigation',
+    defaultBinding: ['Alt', 'Home'],
+    defaultBindingMac: ['Meta', 'Shift', 'H'],
+  },
+  {
     id: 'new-tab',
     title: 'New Tab',
     category: 'Navigation',

@@ -33,6 +33,7 @@ type EventListenersConfig = {
   goBack: () => void;
   goForward: () => void;
   goUp: () => void;
+  goHome: () => void;
   refresh: () => void;
   navigateTo: (path: string) => void;
   clearSelection: () => void;
@@ -333,6 +334,7 @@ export function createEventListenersController(config: EventListenersConfig) {
       'go-back': () => config.goBack(),
       'go-forward': () => config.goForward(),
       'go-up': () => config.goUp(),
+      'go-home': () => config.goHome(),
       'new-tab': () => {
         if (config.getTabsEnabled()) config.addNewTab();
       },

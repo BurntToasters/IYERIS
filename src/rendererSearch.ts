@@ -65,6 +65,8 @@ export function createSearchController(deps: SearchDeps) {
   let searchRegexToggle: HTMLButtonElement | null = null;
   let searchSaveBtn: HTMLButtonElement | null = null;
 
+  const SEARCH_RESULTS_CAP = 100;
+
   function showSearchEmptyState(query: string): void {
     const fileGrid = deps.getFileGrid();
     if (!fileGrid) return;
@@ -91,6 +93,18 @@ export function createSearchController(deps: SearchDeps) {
       <p>No files matching "${escapeHtml(query)}" were found.</p>
       <ul>${suggestionsHtml}</ul>
     </div>`;
+  }
+
+  function showResultsCapBanner(count: number): void {
+    if (count < SEARCH_RESULTS_CAP) return;
+    const fileGrid = deps.getFileGrid();
+    if (!fileGrid) return;
+
+    const banner = document.createElement('div');
+    banner.className = 'search-results-cap-banner';
+    banner.setAttribute('role', 'status');
+    banner.textContent = `Showing first ${SEARCH_RESULTS_CAP} results. Refine your search to see more specific matches.`;
+    fileGrid.prepend(banner);
   }
 
   function hasActiveFilters(): boolean {
@@ -370,6 +384,7 @@ export function createSearchController(deps: SearchDeps) {
           deps.setAllFiles(result.results);
           deps.renderFiles(result.results, query);
           if (result.results.length === 0) showSearchEmptyState(query);
+          else showResultsCapBanner(result.results.length);
         }
       } else {
         result = await window.electronAPI.searchIndex(query, operationId);
@@ -407,6 +422,7 @@ export function createSearchController(deps: SearchDeps) {
           deps.setAllFiles(fileItems);
           deps.renderFiles(fileItems, query);
           if (fileItems.length === 0) showSearchEmptyState(query);
+          else showResultsCapBanner(fileItems.length);
         }
       }
     } else {
@@ -435,6 +451,7 @@ export function createSearchController(deps: SearchDeps) {
         deps.setAllFiles(result.results);
         deps.renderFiles(result.results, searchInContents ? query : undefined);
         if (result.results.length === 0) showSearchEmptyState(query);
+        else showResultsCapBanner(result.results.length);
       }
     }
 
