@@ -145,7 +145,7 @@ export function withTrustedIpcEvent<TArgs extends unknown[], TResult>(
   };
 }
 
-export type IpcOperationResult = { success: boolean; error?: string };
+type IpcOperationResult = { success: boolean; error?: string };
 
 export function withTrustedApiHandler<TArgs extends unknown[], TResult extends IpcOperationResult>(
   channel: string,

@@ -2,7 +2,7 @@ import type { Settings } from './types';
 import { SHORTCUT_DEFINITIONS, getDefaultShortcuts } from './shortcuts.js';
 import type { ShortcutBinding, ShortcutDefinition } from './shortcuts.js';
 
-export interface ReservedShortcut {
+interface ReservedShortcut {
   label: string;
   actionId?: string;
 }

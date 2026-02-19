@@ -9,7 +9,7 @@ export interface TourStep {
   prefer?: TourPlacement;
 }
 
-export interface TourControllerOptions {
+interface TourControllerOptions {
   getSettings: () => Settings;
   saveSettings: (settings: Settings) => Promise<unknown>;
   steps?: TourStep[];

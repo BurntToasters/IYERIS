@@ -1,5 +1,6 @@
 import { createDefaultSettings } from './settings.js';
 import type { Settings } from './types';
+import { SEARCH_JUMP_HIGHLIGHT_MS, SETTINGS_SEARCH_DEBOUNCE_MS } from './rendererLocalConstants.js';
 
 export type SettingsFormState = Record<string, string | boolean>;
 const SETTINGS_HELP_URL = 'https://help.rosie.run/iyeris/en-us/faq';
@@ -516,7 +517,7 @@ export function createSettingsUiController(deps: SettingsUiDeps) {
 
     firstMatch.scrollIntoView({ behavior: 'smooth', block: 'center' });
     firstMatch.classList.add('search-jump');
-    setTimeout(() => firstMatch.classList.remove('search-jump'), 1200);
+    setTimeout(() => firstMatch.classList.remove('search-jump'), SEARCH_JUMP_HIGHLIGHT_MS);
   }
 
   function initSettingsSearch(): void {
@@ -525,8 +526,12 @@ export function createSettingsUiController(deps: SettingsUiDeps) {
     const countBtn = document.getElementById('settings-search-count') as HTMLButtonElement | null;
     if (!searchInput) return;
 
+    let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
     searchInput.addEventListener('input', () => {
-      applySettingsSearch(searchInput.value);
+      if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+      searchDebounceTimer = setTimeout(() => {
+        applySettingsSearch(searchInput.value);
+      }, SETTINGS_SEARCH_DEBOUNCE_MS);
     });
 
     const clearSearch = () => {

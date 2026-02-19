@@ -1,5 +1,6 @@
 import type { FileItem } from './types';
 import { clearHtml, getById } from './rendererDom.js';
+import { HOVER_CARD_DELAY_MS } from './rendererLocalConstants.js';
 
 type HoverCardDeps = {
   getFileItemData: (fileItem: HTMLElement) => FileItem | null;
@@ -151,7 +152,7 @@ export function createHoverCardController(deps: HoverCardDeps) {
           const rect = fileItem.getBoundingClientRect();
           showHoverCard(fileItem, rect.right, rect.top);
         }
-      }, 1000);
+      }, HOVER_CARD_DELAY_MS);
     };
 
     const handleMouseout = (e: Event) => {

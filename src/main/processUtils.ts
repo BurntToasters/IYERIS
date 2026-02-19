@@ -1,7 +1,7 @@
 import { spawn } from 'child_process';
 import { ignoreError } from '../shared';
 
-export type SpawnCaptureResult = {
+type SpawnCaptureResult = {
   code: number | null;
   stdout: string;
   stderr: string;

@@ -1,4 +1,5 @@
 import { getById } from './rendererDom.js';
+import { TYPEAHEAD_RESET_MS } from './rendererLocalConstants.js';
 
 type TypeaheadDeps = {
   getFileItems: () => HTMLElement[];
@@ -50,7 +51,7 @@ export function createTypeaheadController(deps: TypeaheadDeps) {
       typeaheadBuffer = '';
       hideIndicator();
       typeaheadTimeout = null;
-    }, 800);
+    }, TYPEAHEAD_RESET_MS);
 
     const needle = typeaheadBuffer.toLowerCase();
     const items = deps.getFileItems();

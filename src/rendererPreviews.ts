@@ -16,16 +16,7 @@ import {
   ARCHIVE_EXTENSIONS,
 } from './fileTypes.js';
 
-let markedInstance: typeof import('marked') | null = null;
-async function loadMarked(): Promise<typeof import('marked') | null> {
-  if (markedInstance) return markedInstance;
-  try {
-    markedInstance = await import('marked');
-    return markedInstance;
-  } catch {
-    return null;
-  }
-}
+import { loadMarked } from './rendererMarkdown.js';
 
 type PreviewDeps = QuicklookDeps;
 

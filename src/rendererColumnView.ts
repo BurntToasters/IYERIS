@@ -2,6 +2,10 @@ import type { Settings, FileItem, DriveInfo, DirectoryResponse } from './types';
 import { escapeHtml, ignoreError } from './shared.js';
 import { isWindowsPath, rendererPath as path } from './rendererUtils.js';
 import { isHomeViewPath } from './home.js';
+import {
+  COLUMN_VIEW_RENDER_TIMEOUT_MS,
+  COLUMN_VIEW_SCROLL_DELAY_MS,
+} from './rendererLocalConstants.js';
 
 type ColumnViewDeps = {
   columnView: HTMLElement;
@@ -71,7 +75,7 @@ export function createColumnViewController(deps: ColumnViewDeps) {
         new Promise<void>((resolve) => {
           renderCompleteResolve = resolve;
         }),
-        new Promise<void>((resolve) => setTimeout(resolve, 3000)),
+        new Promise<void>((resolve) => setTimeout(resolve, COLUMN_VIEW_RENDER_TIMEOUT_MS)),
       ]);
       isRenderingColumnView = false;
       renderCompleteResolve = null;
@@ -132,7 +136,7 @@ export function createColumnViewController(deps: ColumnViewDeps) {
         } else {
           deps.columnView.scrollLeft = deps.columnView.scrollWidth;
         }
-      }, 50);
+      }, COLUMN_VIEW_SCROLL_DELAY_MS);
     } finally {
       isRenderingColumnView = false;
       if (renderCompleteResolve) {
@@ -539,7 +543,7 @@ export function createColumnViewController(deps: ColumnViewDeps) {
       setTimeout(() => {
         if (clickRenderId !== columnViewRenderId) return;
         deps.columnView.scrollLeft = deps.columnView.scrollWidth;
-      }, 50);
+      }, COLUMN_VIEW_SCROLL_DELAY_MS);
     } else {
       element.classList.add('selected');
       element.setAttribute('aria-selected', 'true');

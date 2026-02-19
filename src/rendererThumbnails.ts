@@ -3,6 +3,11 @@ import { ignoreError } from './shared.js';
 import { encodeFileUrl } from './rendererUtils.js';
 import { generatePdfThumbnailPdfJs } from './rendererPdfViewer.js';
 import { ANIMATED_IMAGE_EXTENSIONS } from './fileTypes.js';
+import {
+  THUMBNAIL_TIMEOUT_MS,
+  DEFAULT_MAX_THUMBNAIL_SIZE_MB,
+  DEFAULT_MAX_PREVIEW_SIZE_MB,
+} from './rendererLocalConstants.js';
 
 const THUMBNAIL_ROOT_MARGIN = '100px';
 const THUMBNAIL_CACHE_MAX = 100;
@@ -163,7 +168,7 @@ export function createThumbnailController(deps: ThumbnailDeps) {
       setTimeout(() => {
         cleanup();
         reject(new Error('Video thumbnail timeout'));
-      }, 5000);
+      }, THUMBNAIL_TIMEOUT_MS);
 
       video.src = videoUrl;
     });
@@ -282,7 +287,8 @@ export function createThumbnailController(deps: ThumbnailDeps) {
         if (
           thumbnailType !== 'audio' &&
           thumbnailType !== 'pdf' &&
-          item.size > (currentSettings.maxThumbnailSizeMB || 10) * 1024 * 1024
+          item.size >
+            (currentSettings.maxThumbnailSizeMB || DEFAULT_MAX_THUMBNAIL_SIZE_MB) * 1024 * 1024
         ) {
           if (iconDiv) {
             iconDiv.innerHTML = deps.getFileIcon(item.name);
@@ -293,7 +299,8 @@ export function createThumbnailController(deps: ThumbnailDeps) {
 
         if (
           thumbnailType === 'pdf' &&
-          item.size > (currentSettings.maxPreviewSizeMB || 50) * 1024 * 1024
+          item.size >
+            (currentSettings.maxPreviewSizeMB || DEFAULT_MAX_PREVIEW_SIZE_MB) * 1024 * 1024
         ) {
           if (iconDiv) {
             iconDiv.innerHTML = deps.getFileIcon(item.name);

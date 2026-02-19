@@ -141,7 +141,7 @@ export async function stashRemainingBackups(backups: Map<string, string>): Promi
   return stashed;
 }
 
-export async function backupExistingPath(destPath: string): Promise<string> {
+async function backupExistingPath(destPath: string): Promise<string> {
   const backupPath = await createBackupPath(destPath);
   await renameWithExdevFallback(destPath, backupPath);
   return backupPath;

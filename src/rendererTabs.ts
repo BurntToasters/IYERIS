@@ -2,6 +2,7 @@ import type { FileItem, Settings } from './types';
 import { clearHtml } from './rendererDom.js';
 import { escapeHtml } from './shared.js';
 import { twemojiImg } from './rendererUtils.js';
+import { TAB_SAVE_DELAY_MS } from './rendererLocalConstants.js';
 
 export interface TabData {
   id: string;
@@ -348,7 +349,7 @@ export function createTabsController(deps: TabsDeps) {
     }
     const timeout = setTimeout(() => {
       saveTabState();
-    }, 500);
+    }, TAB_SAVE_DELAY_MS);
     deps.setSaveTabStateTimeout(timeout);
   }
 

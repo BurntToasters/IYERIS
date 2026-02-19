@@ -12,19 +12,19 @@ export interface PlannedFileOperation {
   overwrite?: boolean;
 }
 
-export type FileOperationType = 'copy' | 'move';
+type FileOperationType = 'copy' | 'move';
 export type ConflictBehavior = 'ask' | 'rename' | 'skip' | 'overwrite' | 'cancel';
 
 const INVALID_CHILD_NAMES = new Set(['', '.', '..']);
 
-export function normalizeCaseKey(targetPath: string): string {
+function normalizeCaseKey(targetPath: string): string {
   if (process.platform === 'win32' || process.platform === 'darwin') {
     return targetPath.toLowerCase();
   }
   return targetPath;
 }
 
-export function normalizePathForComparison(targetPath: string): string {
+function normalizePathForComparison(targetPath: string): string {
   return normalizeCaseKey(path.resolve(targetPath));
 }
 
@@ -47,7 +47,7 @@ export function isValidChildName(name: string): boolean {
   return !INVALID_CHILD_NAMES.has(name) && !name.includes('/') && !name.includes('\\');
 }
 
-export function splitFileName(fileName: string): { base: string; ext: string } {
+function splitFileName(fileName: string): { base: string; ext: string } {
   const lastDot = fileName.lastIndexOf('.');
   if (lastDot <= 0) {
     return { base: fileName, ext: '' };
@@ -55,7 +55,7 @@ export function splitFileName(fileName: string): { base: string; ext: string } {
   return { base: fileName.slice(0, lastDot), ext: fileName.slice(lastDot) };
 }
 
-export async function generateUniqueName(destPath: string, fileName: string): Promise<string> {
+async function generateUniqueName(destPath: string, fileName: string): Promise<string> {
   const { base, ext } = splitFileName(fileName);
   let counter = 2;
   let candidatePath = path.join(destPath, fileName);

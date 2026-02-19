@@ -16,7 +16,7 @@ import type {
 } from '../types';
 
 const CACHE_DIR_NAME = 'thumbnail-cache';
-export const CACHE_VERSION = 1;
+const CACHE_VERSION = 1;
 export const MAX_CACHE_SIZE_MB = 500;
 export const MAX_CACHE_AGE_DAYS = 30;
 const MAX_THUMBNAIL_BYTES = 5 * 1024 * 1024;

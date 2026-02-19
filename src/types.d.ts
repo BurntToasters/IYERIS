@@ -337,11 +337,6 @@ export type UndoRedoStateResponse = IpcResult<{
   canRedo: boolean;
 }>;
 
-export type SystemAccentColorResponse = IpcResult<{
-  accentColor: string;
-  isDarkMode: boolean;
-}>;
-
 export type ConflictDialogResponse = 'rename' | 'skip' | 'overwrite' | 'cancel';
 
 export interface ClipboardOperation {

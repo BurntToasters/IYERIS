@@ -244,7 +244,7 @@ export function createEventListenersController(config: EventListenersConfig) {
     clickBindings.forEach(([element, handler]) => element?.addEventListener('click', handler));
 
     const statusHiddenBtn = document.getElementById('status-hidden');
-    statusHiddenBtn?.addEventListener('click', () => {
+    const activateHiddenFiles = () => {
       const settings = config.getCurrentSettings();
       settings.showHiddenFiles = true;
       const showHiddenFilesToggle = document.getElementById(
@@ -255,6 +255,13 @@ export function createEventListenersController(config: EventListenersConfig) {
       }
       config.saveSettings();
       config.refresh();
+    };
+    statusHiddenBtn?.addEventListener('click', activateHiddenFiles);
+    statusHiddenBtn?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        activateHiddenFiles();
+      }
     });
 
     document.addEventListener('mouseup', (e) => {
@@ -314,49 +321,63 @@ export function createEventListenersController(config: EventListenersConfig) {
     );
   }
 
+  const EDIT_GUARDED_KEYS = new Set([
+    'Backspace',
+    'Enter',
+    'Home',
+    'End',
+    'PageUp',
+    'PageDown',
+    'ArrowUp',
+    'ArrowDown',
+    'ArrowLeft',
+    'ArrowRight',
+    'Delete',
+  ]);
+
+  const shortcutActions: Record<string, () => void> = {
+    'command-palette': () => config.showCommandPalette(),
+    settings: () => config.showSettingsModal(),
+    shortcuts: () => config.showShortcutsModal(),
+    refresh: () => config.refresh(),
+    search: () => config.openSearch(false),
+    'global-search': () => config.openSearch(true),
+    'toggle-sidebar': () => config.setSidebarCollapsed(),
+    'new-window': () => config.openNewWindow(),
+    'new-file': () => config.createNewFile(),
+    'new-folder': () => config.createNewFolder(),
+    'go-back': () => config.goBack(),
+    'go-forward': () => config.goForward(),
+    'go-up': () => config.goUp(),
+    'go-home': () => config.goHome(),
+    'new-tab': () => {
+      if (config.getTabsEnabled()) config.addNewTab();
+    },
+    'close-tab': () => {
+      if (config.getTabsEnabled() && config.getTabs().length > 1)
+        config.closeTab(config.getActiveTabId());
+    },
+    copy: () => config.copyToClipboard(),
+    cut: () => config.cutToClipboard(),
+    paste: () => config.pasteFromClipboard(),
+    'select-all': () => config.selectAll(),
+    undo: () => config.performUndo(),
+    redo: () => config.performRedo(),
+    'zoom-in': () => config.zoomIn(),
+    'zoom-out': () => config.zoomOut(),
+    'zoom-reset': () => config.zoomReset(),
+    'toggle-hidden-files': () => config.toggleHiddenFiles(),
+    properties: () => config.showPropertiesForSelected(),
+    'restore-closed-tab': () => {
+      if (config.getTabsEnabled()) config.restoreClosedTab();
+    },
+  };
+
   function runShortcutAction(actionId: string, e: KeyboardEvent): boolean {
     if (actionId === 'copy' && hasTextSelection()) return false;
     if (actionId === 'cut' && hasTextSelection()) return false;
     if ((actionId === 'paste' || actionId === 'select-all') && isEditableElementActive())
       return false;
-
-    const actions: Record<string, () => void> = {
-      'command-palette': () => config.showCommandPalette(),
-      settings: () => config.showSettingsModal(),
-      shortcuts: () => config.showShortcutsModal(),
-      refresh: () => config.refresh(),
-      search: () => config.openSearch(false),
-      'global-search': () => config.openSearch(true),
-      'toggle-sidebar': () => config.setSidebarCollapsed(),
-      'new-window': () => config.openNewWindow(),
-      'new-file': () => config.createNewFile(),
-      'new-folder': () => config.createNewFolder(),
-      'go-back': () => config.goBack(),
-      'go-forward': () => config.goForward(),
-      'go-up': () => config.goUp(),
-      'go-home': () => config.goHome(),
-      'new-tab': () => {
-        if (config.getTabsEnabled()) config.addNewTab();
-      },
-      'close-tab': () => {
-        if (config.getTabsEnabled() && config.getTabs().length > 1)
-          config.closeTab(config.getActiveTabId());
-      },
-      copy: () => config.copyToClipboard(),
-      cut: () => config.cutToClipboard(),
-      paste: () => config.pasteFromClipboard(),
-      'select-all': () => config.selectAll(),
-      undo: () => config.performUndo(),
-      redo: () => config.performRedo(),
-      'zoom-in': () => config.zoomIn(),
-      'zoom-out': () => config.zoomOut(),
-      'zoom-reset': () => config.zoomReset(),
-      'toggle-hidden-files': () => config.toggleHiddenFiles(),
-      properties: () => config.showPropertiesForSelected(),
-      'restore-closed-tab': () => {
-        if (config.getTabsEnabled()) config.restoreClosedTab();
-      },
-    };
 
     if (actionId === 'next-tab' || actionId === 'prev-tab') {
       e.preventDefault();
@@ -374,7 +395,7 @@ export function createEventListenersController(config: EventListenersConfig) {
       return true;
     }
 
-    const handler = actions[actionId];
+    const handler = shortcutActions[actionId];
     if (handler) {
       e.preventDefault();
       handler();
@@ -447,19 +468,6 @@ export function createEventListenersController(config: EventListenersConfig) {
         }
       }
 
-      const EDIT_GUARDED_KEYS = new Set([
-        'Backspace',
-        'Enter',
-        'Home',
-        'End',
-        'PageUp',
-        'PageDown',
-        'ArrowUp',
-        'ArrowDown',
-        'ArrowLeft',
-        'ArrowRight',
-        'Delete',
-      ]);
       if (EDIT_GUARDED_KEYS.has(e.key) && isEditableElementActive()) return;
 
       if (e.key === 'Delete') {

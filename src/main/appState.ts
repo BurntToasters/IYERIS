@@ -20,7 +20,7 @@ const BASE_WORKER_COUNT = Math.max(1, Math.min(CPU_COUNT, MAX_WORKERS));
 const INDEXER_WORKER_COUNT = 1;
 const UI_WORKER_COUNT = Math.max(1, BASE_WORKER_COUNT);
 
-export interface AppContext {
+interface AppContext {
   readonly fileTasks: FileTaskManager;
   readonly indexerTasks: FileTaskManager;
   readonly windowDragData: WeakMap<Electron.WebContents, { paths: string[] }>;
@@ -36,7 +36,7 @@ export interface AppContext {
   isDev: boolean;
 }
 
-export function createAppContext(overrides?: Partial<AppContext>): AppContext {
+function createAppContext(overrides?: Partial<AppContext>): AppContext {
   return {
     fileTasks: overrides?.fileTasks ?? new FileTaskManager(UI_WORKER_COUNT),
     indexerTasks: overrides?.indexerTasks ?? new FileTaskManager(INDEXER_WORKER_COUNT),
@@ -54,10 +54,6 @@ export function createAppContext(overrides?: Partial<AppContext>): AppContext {
 }
 
 const defaultContext = createAppContext();
-
-export function getAppContext(): AppContext {
-  return defaultContext;
-}
 
 export function getFileTasks(): FileTaskManager {
   return defaultContext.fileTasks;

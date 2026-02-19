@@ -534,6 +534,7 @@ describe('jumpToFirstSettingMatch (via initSettingsSearch)', () => {
     const searchInput = document.getElementById('settings-search') as HTMLInputElement;
     searchInput.value = 'hidden';
     searchInput.dispatchEvent(new Event('input'));
+    vi.advanceTimersByTime(200);
 
     const enterEvent = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true });
     const preventDefaultSpy = vi.spyOn(enterEvent, 'preventDefault');
@@ -596,6 +597,7 @@ describe('jumpToFirstSettingMatch (via initSettingsSearch)', () => {
     searchInput.value = 'hidden';
     searchInput.dispatchEvent(new Event('input'));
     searchInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    vi.advanceTimersByTime(200);
 
     const card = section.querySelector('.settings-card')!;
     expect(card.classList.contains('collapsed')).toBe(false);
@@ -683,6 +685,7 @@ describe('initSettingsSearch – keyboard and button interactions', () => {
     const searchInput = document.getElementById('settings-search') as HTMLInputElement;
     searchInput.value = 'hidden';
     searchInput.dispatchEvent(new Event('input'));
+    vi.advanceTimersByTime(200);
 
     const countBtn = document.getElementById('settings-search-count') as HTMLButtonElement;
     countBtn.click();

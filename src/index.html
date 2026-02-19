@@ -3440,7 +3440,7 @@
       >
         <div class="modal-header">
           <h2 id="licenses-title">Third-Party Licenses</h2>
-          <button class="close-button" id="licenses-close" aria-label="Close">×</button>
+          <button class="modal-close" id="licenses-close" aria-label="Close">✕</button>
         </div>
         <div class="modal-body licenses-modal-body">
           <div class="licenses-intro">
@@ -3479,7 +3479,7 @@
             <img src="../assets/twemoji/2328.svg" class="twemoji" alt="⌨️" draggable="false" />
             Keyboard Shortcuts
           </h2>
-          <button class="close-button" id="shortcuts-close" aria-label="Close">×</button>
+          <button class="modal-close" id="shortcuts-close" aria-label="Close">✕</button>
         </div>
         <div class="modal-body shortcuts-modal-body">
           <div id="shortcuts-modal-sections" class="shortcuts-modal-sections"></div>
@@ -3501,7 +3501,7 @@
     <div class="status-bar glass-panel" role="status" aria-live="polite">
       <div class="status-left">
         <span id="status-items">0 items</span>
-        <span id="status-hidden" class="status-hidden" style="display: none"></span>
+        <span id="status-hidden" class="status-hidden" role="button" tabindex="0" aria-label="Show hidden files" style="display: none"></span>
         <span id="status-selected" style="display: none"></span>
         <span id="status-search" class="status-search" style="display: none">
           <img
@@ -3697,7 +3697,7 @@
             <img src="../assets/twemoji/1f3a8.svg" class="twemoji" alt="🎨" draggable="false" />
             Custom Theme Editor
           </h3>
-          <button class="close-button" id="theme-editor-close" aria-label="Close">&times;</button>
+          <button class="modal-close" id="theme-editor-close" aria-label="Close">✕</button>
         </div>
         <div class="modal-body theme-editor-body">
           <div class="theme-editor-preview" id="theme-preview">
@@ -3723,7 +3723,7 @@
 
           <div class="theme-editor-controls">
             <div class="theme-color-group">
-              <label>Theme Name</label>
+              <label for="theme-name-input">Theme Name</label>
               <input
                 type="text"
                 id="theme-name-input"
@@ -3735,7 +3735,7 @@
 
             <div class="theme-color-row">
               <div class="theme-color-group">
-                <label>Accent Color</label>
+                <label for="theme-accent-color">Accent Color</label>
                 <div class="color-input-wrapper">
                   <input type="color" id="theme-accent-color" value="#0078d4" />
                   <input
@@ -3748,7 +3748,7 @@
                 </div>
               </div>
               <div class="theme-color-group">
-                <label>Background</label>
+                <label for="theme-bg-primary">Background</label>
                 <div class="color-input-wrapper">
                   <input type="color" id="theme-bg-primary" value="#1a1a1a" />
                   <input
@@ -3764,7 +3764,7 @@
 
             <div class="theme-color-row">
               <div class="theme-color-group">
-                <label>Secondary Background</label>
+                <label for="theme-bg-secondary">Secondary Background</label>
                 <div class="color-input-wrapper">
                   <input type="color" id="theme-bg-secondary" value="#252525" />
                   <input
@@ -3777,7 +3777,7 @@
                 </div>
               </div>
               <div class="theme-color-group">
-                <label>Text Color</label>
+                <label for="theme-text-primary">Text Color</label>
                 <div class="color-input-wrapper">
                   <input type="color" id="theme-text-primary" value="#ffffff" />
                   <input
@@ -3793,7 +3793,7 @@
 
             <div class="theme-color-row">
               <div class="theme-color-group">
-                <label>Secondary Text</label>
+                <label for="theme-text-secondary">Secondary Text</label>
                 <div class="color-input-wrapper">
                   <input type="color" id="theme-text-secondary" value="#b0b0b0" />
                   <input
@@ -3806,7 +3806,7 @@
                 </div>
               </div>
               <div class="theme-color-group">
-                <label>Glass Overlay</label>
+                <label for="theme-glass-bg">Glass Overlay</label>
                 <div class="color-input-wrapper">
                   <input type="color" id="theme-glass-bg" value="#ffffff" />
                   <input
@@ -3819,7 +3819,7 @@
                 </div>
               </div>
               <div class="theme-color-group">
-                <label>Glass Border</label>
+                <label for="theme-glass-border">Glass Border</label>
                 <div class="color-input-wrapper">
                   <input type="color" id="theme-glass-border" value="#ffffff" />
                   <input
@@ -3907,7 +3907,7 @@
             <img src="../assets/twemoji/270f.svg" class="twemoji" alt="✏️" draggable="false" />
             Customize Quick Access
           </h3>
-          <button class="close-button" id="home-settings-close" aria-label="Close">✕</button>
+          <button class="modal-close" id="home-settings-close" aria-label="Close">✕</button>
         </div>
         <div class="modal-body home-settings-body">
           <div class="home-settings-row">
