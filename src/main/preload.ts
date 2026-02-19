@@ -208,6 +208,21 @@ const electronAPI: ElectronAPI = {
     ipcRenderer.on('extract-progress', handler);
     return () => ipcRenderer.removeListener('extract-progress', handler);
   },
+  onFileOperationProgress: (
+    callback: (progress: {
+      operation: 'copy' | 'move';
+      current: number;
+      total: number;
+      name: string;
+    }) => void
+  ) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      progress: { operation: 'copy' | 'move'; current: number; total: number; name: string }
+    ) => callback(progress);
+    ipcRenderer.on('file-operation-progress', handler);
+    return () => ipcRenderer.removeListener('file-operation-progress', handler);
+  },
   onSystemResumed: (callback: () => void) => {
     const handler = () => callback();
     ipcRenderer.on('system-resumed', handler);

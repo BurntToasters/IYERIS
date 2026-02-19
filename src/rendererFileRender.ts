@@ -457,10 +457,14 @@ export function createFileRenderController(config: FileRenderConfig) {
       }
     }
 
+    const symlinkBadge = item.isSymlink
+      ? '<span class="symlink-badge" aria-label="Symbolic link">⤳</span>'
+      : '';
+
     fileItem.innerHTML = `
     <div class="file-main">
       <div class="file-checkbox"><span class="checkbox-mark">✓</span></div>
-      <div class="file-icon"></div>
+      <div class="file-icon">${symlinkBadge}</div>
       <div class="file-text">
         <div class="file-name">${escapeHtml(displayName)}</div>
         ${matchContextHtml}

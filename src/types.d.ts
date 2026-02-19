@@ -158,6 +158,7 @@ export interface FileItem {
   path: string;
   isDirectory: boolean;
   isFile: boolean;
+  isSymlink?: boolean;
   size: number;
   modified: Date;
   isHidden: boolean;
@@ -440,6 +441,13 @@ export interface ArchiveProgress {
   name: string;
 }
 
+export interface FileOperationProgress {
+  operation: 'copy' | 'move';
+  current: number;
+  total: number;
+  name: string;
+}
+
 export interface ChecksumProgress {
   operationId: string;
   percent: number;
@@ -576,6 +584,7 @@ export interface ElectronAPI {
   cancelArchiveOperation: (operationId: string) => Promise<IpcResult>;
   onCompressProgress: (callback: (progress: ArchiveProgress) => void) => () => void;
   onExtractProgress: (callback: (progress: ArchiveProgress) => void) => () => void;
+  onFileOperationProgress: (callback: (progress: FileOperationProgress) => void) => () => void;
   onSystemResumed: (callback: () => void) => () => void;
   onSystemThemeChanged: (callback: (data: { isDarkMode: boolean }) => void) => () => void;
   setZoomLevel: (zoomLevel: number) => Promise<IpcResult>;

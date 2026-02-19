@@ -547,7 +547,7 @@ export function setupFileOperationHandlers(): void {
   handleTrustedApi(
     'copy-items',
     async (
-      _event: IpcMainInvokeEvent,
+      event: IpcMainInvokeEvent,
       sourcePaths: string[],
       destPath: string,
       conflictBehavior?: ConflictBehavior
@@ -568,6 +568,7 @@ export function setupFileOperationHandlers(): void {
           return validation;
         }
 
+        const totalItems = validation.planned.length;
         const copiedPaths: string[] = [];
         const backups = new Map<string, string>();
         try {
@@ -586,6 +587,14 @@ export function setupFileOperationHandlers(): void {
             );
             if (rejected) {
               throw rejected.reason;
+            }
+            if (totalItems > 1) {
+              event.sender.send('file-operation-progress', {
+                operation: 'copy',
+                current: copiedPaths.length,
+                total: totalItems,
+                name: batch[batch.length - 1].destPath.split(/[\\/]/).pop() || '',
+              });
             }
           }
         } catch (error) {
@@ -612,7 +621,7 @@ export function setupFileOperationHandlers(): void {
   handleTrustedApi(
     'move-items',
     async (
-      _event: IpcMainInvokeEvent,
+      event: IpcMainInvokeEvent,
       sourcePaths: string[],
       destPath: string,
       conflictBehavior?: ConflictBehavior
@@ -633,6 +642,7 @@ export function setupFileOperationHandlers(): void {
           return validation;
         }
 
+        const totalItems = validation.planned.length;
         const originalParent = path.dirname(sourcePaths[0]);
         const movedPaths: string[] = [];
         const originalPaths: string[] = [];
@@ -661,6 +671,14 @@ export function setupFileOperationHandlers(): void {
             );
             if (rejected) {
               throw rejected.reason;
+            }
+            if (totalItems > 1) {
+              event.sender.send('file-operation-progress', {
+                operation: 'move',
+                current: movedPaths.length,
+                total: totalItems,
+                name: batch[batch.length - 1].destPath.split(/[\\/]/).pop() || '',
+              });
             }
           }
         } catch (error) {
