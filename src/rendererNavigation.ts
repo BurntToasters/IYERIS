@@ -343,6 +343,27 @@ export function createNavigationController(deps: NavigationDeps) {
         if (e.key === 'End') {
           e.preventDefault();
           focusBreadcrumbMenuItem(items.length - 1);
+          return;
+        }
+
+        if (e.key === 'Tab') {
+          e.preventDefault();
+          hideBreadcrumbMenu();
+          return;
+        }
+
+        if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+          e.preventDefault();
+          const char = e.key.toLowerCase();
+          const startIndex = breadcrumbMenuFocusIndex + 1;
+          for (let i = 0; i < items.length; i++) {
+            const idx = (startIndex + i) % items.length;
+            const text = items[idx].textContent?.trim().toLowerCase() || '';
+            if (text.startsWith(char)) {
+              focusBreadcrumbMenuItem(idx);
+              return;
+            }
+          }
         }
       });
     }

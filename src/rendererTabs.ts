@@ -263,6 +263,12 @@ export function createTabsController(deps: TabsDeps) {
         }
       });
 
+      tabElement.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        showTabContextMenu(e.clientX, e.clientY, tab.id);
+      });
+
       tabList.appendChild(tabElement);
     });
   }
@@ -445,6 +451,142 @@ export function createTabsController(deps: TabsDeps) {
       renderTabs();
       saveTabState();
     }
+  }
+
+  function closeOtherTabs(tabId: string): void {
+    if (!deps.getTabsEnabled()) return;
+    const tabs = deps.getTabs();
+    const keepTab = tabs.find((t) => t.id === tabId);
+    if (!keepTab) return;
+
+    const closingTabs = tabs.filter((t) => t.id !== tabId);
+    for (const t of closingTabs) {
+      if (t.path) {
+        closedTabPaths.push(t.path);
+        if (closedTabPaths.length > MAX_CLOSED_TABS) closedTabPaths.shift();
+      }
+    }
+
+    deps.setTabs([keepTab]);
+    if (deps.getActiveTabId() !== tabId) {
+      deps.setActiveTabId(tabId);
+      deps.setHistory([...keepTab.history]);
+      deps.setHistoryIndex(keepTab.historyIndex);
+      deps.setSelectedItems(new Set(keepTab.selectedItems));
+      if (keepTab.cachedFiles !== undefined) {
+        restoreTabView(keepTab);
+      } else {
+        deps.navigateTo(keepTab.path, true);
+      }
+    }
+    renderTabs();
+    debouncedSaveTabState();
+  }
+
+  function closeTabsToTheRight(tabId: string): void {
+    if (!deps.getTabsEnabled()) return;
+    const tabs = deps.getTabs();
+    const tabIndex = tabs.findIndex((t) => t.id === tabId);
+    if (tabIndex === -1 || tabIndex >= tabs.length - 1) return;
+
+    const closingTabs = tabs.slice(tabIndex + 1);
+    for (const t of closingTabs) {
+      if (t.path) {
+        closedTabPaths.push(t.path);
+        if (closedTabPaths.length > MAX_CLOSED_TABS) closedTabPaths.shift();
+      }
+    }
+
+    tabs.length = tabIndex + 1;
+
+    const activeTabId = deps.getActiveTabId();
+    if (!tabs.some((t) => t.id === activeTabId)) {
+      const lastTab = tabs[tabs.length - 1];
+      deps.setActiveTabId(lastTab.id);
+      deps.setHistory([...lastTab.history]);
+      deps.setHistoryIndex(lastTab.historyIndex);
+      deps.setSelectedItems(new Set(lastTab.selectedItems));
+      if (lastTab.cachedFiles !== undefined) {
+        restoreTabView(lastTab);
+      } else {
+        deps.navigateTo(lastTab.path, true);
+      }
+    }
+    renderTabs();
+    debouncedSaveTabState();
+  }
+
+  function duplicateTab(tabId: string): void {
+    if (!deps.getTabsEnabled()) return;
+    const tabs = deps.getTabs();
+    const sourceTab = tabs.find((t) => t.id === tabId);
+    if (!sourceTab) return;
+    void addNewTab(sourceTab.path);
+  }
+
+  function showTabContextMenu(x: number, y: number, tabId: string): void {
+    hideTabContextMenu();
+    const tabs = deps.getTabs();
+    const tabIndex = tabs.findIndex((t) => t.id === tabId);
+
+    const menu = document.createElement('div');
+    menu.className = 'tab-context-menu';
+    menu.setAttribute('role', 'menu');
+    menu.style.left = `${x}px`;
+    menu.style.top = `${y}px`;
+
+    const items: Array<{ label: string; action: () => void; disabled?: boolean }> = [
+      { label: 'Close Tab', action: () => closeTab(tabId), disabled: tabs.length <= 1 },
+      {
+        label: 'Close Other Tabs',
+        action: () => closeOtherTabs(tabId),
+        disabled: tabs.length <= 1,
+      },
+      {
+        label: 'Close Tabs to the Right',
+        action: () => closeTabsToTheRight(tabId),
+        disabled: tabIndex >= tabs.length - 1,
+      },
+      { label: 'Duplicate Tab', action: () => duplicateTab(tabId) },
+    ];
+
+    for (const item of items) {
+      const el = document.createElement('div');
+      el.className = 'tab-context-menu-item' + (item.disabled ? ' disabled' : '');
+      el.setAttribute('role', 'menuitem');
+      el.textContent = item.label;
+      if (item.disabled) {
+        el.setAttribute('aria-disabled', 'true');
+      } else {
+        el.addEventListener('click', (e) => {
+          e.stopPropagation();
+          hideTabContextMenu();
+          item.action();
+        });
+      }
+      menu.appendChild(el);
+    }
+
+    document.body.appendChild(menu);
+
+    const rect = menu.getBoundingClientRect();
+    if (rect.right > window.innerWidth) {
+      menu.style.left = `${window.innerWidth - rect.width - 4}px`;
+    }
+    if (rect.bottom > window.innerHeight) {
+      menu.style.top = `${window.innerHeight - rect.height - 4}px`;
+    }
+
+    const dismiss = (e: MouseEvent) => {
+      if (!menu.contains(e.target as Node)) {
+        hideTabContextMenu();
+      }
+    };
+    setTimeout(() => document.addEventListener('mousedown', dismiss, { once: true }), 0);
+  }
+
+  function hideTabContextMenu(): void {
+    document.querySelectorAll('.tab-context-menu').forEach((el) => el.remove());
   }
 
   function restoreClosedTab(): void {

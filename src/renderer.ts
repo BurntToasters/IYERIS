@@ -46,12 +46,7 @@ import {
   THEME_VALUES,
   SORT_BY_VALUES,
   SORT_ORDER_VALUES,
-  FILE_CONFLICT_VALUES,
-  PREVIEW_POSITION_VALUES,
-  GRID_COLUMNS_VALUES,
   VIEW_MODE_VALUES,
-  UPDATE_CHANNEL_VALUES,
-  THUMBNAIL_QUALITY_VALUES,
   isOneOf,
 } from './constants.js';
 import {
@@ -108,6 +103,12 @@ import {
   consumeEvent,
   type ViewMode,
 } from './rendererLocalConstants.js';
+import { createDirectoryLoaderController } from './rendererDirectoryLoader.js';
+import {
+  TOGGLE_MAPPINGS,
+  SELECT_MAPPINGS,
+  INT_RANGE_MAPPINGS,
+} from './rendererSettingsMappings.js';
 
 const fileElementMap: Map<string, HTMLElement> = new Map();
 const driveLabelByPath = new Map<string, string>();
@@ -327,6 +328,25 @@ const {
   initDragAndDropListeners,
 } = dragDropController;
 
+const directoryLoader = createDirectoryLoaderController({
+  getLoadingEl: () => loading,
+  getLoadingTextEl: () => loadingText,
+  getEmptyStateEl: () => emptyState,
+  cancelDirectoryContents: (operationId) => window.electronAPI.cancelDirectoryContents(operationId),
+  throttleMs: DIRECTORY_PROGRESS_THROTTLE_MS,
+});
+
+window.electronAPI.onDirectoryContentsProgress((progress) => {
+  directoryLoader.handleProgress(progress);
+});
+
+const createDirectoryOperationId = directoryLoader.createOperationId;
+const startDirectoryRequest = directoryLoader.startRequest;
+const finishDirectoryRequest = directoryLoader.finishRequest;
+const showLoading = directoryLoader.showLoading;
+const hideLoading = directoryLoader.hideLoading;
+const cancelDirectoryRequest = directoryLoader.cancelRequest;
+
 const folderTreeManager = createFolderTreeManager({
   folderTree,
   nameCollator: NAME_COLLATOR,
@@ -348,76 +368,6 @@ const folderTreeManager = createFolderTreeManager({
   getCurrentPath: () => currentPath,
   shouldShowHidden: () => currentSettings.showHiddenFiles,
 });
-
-let activeDirectoryProgressPath: string | null = null;
-let activeDirectoryProgressOperationId: string | null = null;
-let activeDirectoryOperationId: string | null = null;
-let directoryRequestId = 0;
-let directoryProgressCount = 0;
-let lastDirectoryProgressUpdate = 0;
-
-window.electronAPI.onDirectoryContentsProgress((progress) => {
-  if (activeDirectoryProgressOperationId) {
-    if (progress.operationId !== activeDirectoryProgressOperationId) return;
-  } else if (!activeDirectoryProgressPath || progress.dirPath !== activeDirectoryProgressPath) {
-    return;
-  }
-  directoryProgressCount = progress.loaded;
-  const now = Date.now();
-  if (now - lastDirectoryProgressUpdate < DIRECTORY_PROGRESS_THROTTLE_MS) return;
-  lastDirectoryProgressUpdate = now;
-  if (loadingText) {
-    loadingText.textContent = `Loading... (${directoryProgressCount.toLocaleString()} items)`;
-  }
-});
-
-function createDirectoryOperationId(prefix: string): string {
-  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
-
-function startDirectoryRequest(path: string): { requestId: number; operationId: string } {
-  const requestId = ++directoryRequestId;
-  if (activeDirectoryOperationId) {
-    window.electronAPI.cancelDirectoryContents(activeDirectoryOperationId).catch(ignoreError);
-  }
-  const operationId = createDirectoryOperationId('dir');
-  activeDirectoryOperationId = operationId;
-  activeDirectoryProgressOperationId = operationId;
-  activeDirectoryProgressPath = path;
-  directoryProgressCount = 0;
-  lastDirectoryProgressUpdate = 0;
-  if (loadingText) loadingText.textContent = 'Loading...';
-  return { requestId, operationId };
-}
-
-function finishDirectoryRequest(requestId: number): void {
-  if (requestId !== directoryRequestId) return;
-  activeDirectoryOperationId = null;
-  activeDirectoryProgressOperationId = null;
-  activeDirectoryProgressPath = null;
-  directoryProgressCount = 0;
-  lastDirectoryProgressUpdate = 0;
-  if (loadingText) loadingText.textContent = 'Loading...';
-}
-
-function showLoading(context?: string): void {
-  if (loading) loading.style.display = 'flex';
-  if (loadingText) loadingText.textContent = context || 'Loading...';
-  if (emptyState) emptyState.style.display = 'none';
-}
-
-function hideLoading(): void {
-  if (loading) loading.style.display = 'none';
-  if (loadingText) loadingText.textContent = 'Loading...';
-}
-
-function cancelDirectoryRequest(): void {
-  if (activeDirectoryOperationId) {
-    window.electronAPI.cancelDirectoryContents(activeDirectoryOperationId).catch(ignoreError);
-  }
-  directoryRequestId += 1;
-  finishDirectoryRequest(directoryRequestId);
-}
 
 const diskSpaceController = createDiskSpaceController({
   getCurrentPath: () => currentPath,
@@ -666,7 +616,11 @@ const hoverCardController = createHoverCardController({
   getScrollContainer: () => fileView,
 });
 
-const { setEnabled: setHoverCardEnabled, setup: setupHoverCard } = hoverCardController;
+const {
+  setEnabled: setHoverCardEnabled,
+  setup: setupHoverCard,
+  cleanup: cleanupHoverCard,
+} = hoverCardController;
 
 const typeaheadController = createTypeaheadController({
   getFileItems: () => getFileItemsArray(),
@@ -1280,73 +1234,19 @@ function openNewWindow() {
 async function saveSettings() {
   const previousTabsEnabled = tabsEnabled;
 
-  // Data-driven toggle → settings mappings
-  const toggleMappings: [string, keyof Settings][] = [
-    ['system-theme-toggle', 'useSystemTheme'],
-    ['show-hidden-files-toggle', 'showHiddenFiles'],
-    ['enable-git-status-toggle', 'enableGitStatus'],
-    ['git-include-untracked-toggle', 'gitIncludeUntracked'],
-    ['show-file-hover-card-toggle', 'showFileHoverCard'],
-    ['show-file-checkboxes-toggle', 'showFileCheckboxes'],
-    ['minimize-to-tray-toggle', 'minimizeToTray'],
-    ['start-on-login-toggle', 'startOnLogin'],
-    ['auto-check-updates-toggle', 'autoCheckUpdates'],
-    ['enable-search-history-toggle', 'enableSearchHistory'],
-    ['enable-indexer-toggle', 'enableIndexer'],
-    ['show-recent-files-toggle', 'showRecentFiles'],
-    ['show-folder-tree-toggle', 'showFolderTree'],
-    ['legacy-tree-spacing-toggle', 'useLegacyTreeSpacing'],
-    ['enable-tabs-toggle', 'enableTabs'],
-    ['global-content-search-toggle', 'globalContentSearch'],
-    ['global-clipboard-toggle', 'globalClipboard'],
-    ['enable-syntax-highlighting-toggle', 'enableSyntaxHighlighting'],
-    ['reduce-motion-toggle', 'reduceMotion'],
-    ['high-contrast-toggle', 'highContrast'],
-    ['large-text-toggle', 'largeText'],
-    ['use-system-font-size-toggle', 'useSystemFontSize'],
-    ['bold-text-toggle', 'boldText'],
-    ['visible-focus-toggle', 'visibleFocus'],
-    ['reduce-transparency-toggle', 'reduceTransparency'],
-    ['liquid-glass-toggle', 'liquidGlassMode'],
-    ['themed-icons-toggle', 'themedIcons'],
-    ['disable-hw-accel-toggle', 'disableHardwareAcceleration'],
-    ['confirm-file-operations-toggle', 'confirmFileOperations'],
-    ['auto-play-videos-toggle', 'autoPlayVideos'],
-    ['compact-file-info-toggle', 'compactFileInfo'],
-    ['show-file-extensions-toggle', 'showFileExtensions'],
-  ];
-  for (const [id, key] of toggleMappings) {
+  for (const [id, key] of TOGGLE_MAPPINGS) {
     const el = document.getElementById(id) as HTMLInputElement | null;
     if (el) assignKey(currentSettings, key, el.checked as Settings[keyof Settings]);
   }
 
-  // Select → enum settings mappings
-  const selectMappings: [string, keyof Settings, readonly string[]][] = [
-    ['theme-select', 'theme', THEME_VALUES],
-    ['sort-by-select', 'sortBy', SORT_BY_VALUES],
-    ['sort-order-select', 'sortOrder', SORT_ORDER_VALUES],
-    ['update-channel-select', 'updateChannel', UPDATE_CHANNEL_VALUES],
-    ['ui-density-select', 'uiDensity', ['default', 'compact', 'larger']],
-    ['file-conflict-behavior-select', 'fileConflictBehavior', FILE_CONFLICT_VALUES],
-    ['thumbnail-quality-select', 'thumbnailQuality', THUMBNAIL_QUALITY_VALUES],
-    ['preview-panel-position-select', 'previewPanelPosition', PREVIEW_POSITION_VALUES],
-    ['grid-columns-select', 'gridColumns', GRID_COLUMNS_VALUES],
-  ];
-  for (const [id, key, validValues] of selectMappings) {
+  for (const [id, key, validValues] of SELECT_MAPPINGS) {
     const el = document.getElementById(id) as HTMLSelectElement | null;
     if (el && isOneOf(el.value, validValues)) {
       assignKey(currentSettings, key, el.value as Settings[keyof Settings]);
     }
   }
 
-  // Integer range inputs
-  const intMappings: [string, keyof Settings, number, number][] = [
-    ['max-thumbnail-size-input', 'maxThumbnailSizeMB', 1, 100],
-    ['max-preview-size-input', 'maxPreviewSizeMB', 1, 500],
-    ['max-search-history-input', 'maxSearchHistoryItems', 1, 20],
-    ['max-directory-history-input', 'maxDirectoryHistoryItems', 1, 20],
-  ];
-  for (const [id, key, min, max] of intMappings) {
+  for (const [id, key, min, max] of INT_RANGE_MAPPINGS) {
     const el = document.getElementById(id) as HTMLInputElement | null;
     if (el) {
       const val = parseInt(el.value, 10);
@@ -1507,6 +1407,7 @@ function setHomeViewActive(active: boolean): void {
     resetVirtualizedRender();
     allFiles = [];
     filePathMap.clear();
+    fileElementMap.clear();
     clearSelectedItemsState();
     updateStatusBar();
     document.body.classList.remove('performance-mode');
@@ -1979,7 +1880,7 @@ async function navigateTo(path: string, skipHistoryUpdate = false) {
       currentSettings.showHiddenFiles,
       false
     );
-    if (requestId !== directoryRequestId) return;
+    if (!directoryLoader.isCurrentRequest(requestId)) return;
 
     if (!result.success) {
       console.error('Error loading directory:', result.error);
@@ -2020,7 +1921,7 @@ async function navigateTo(path: string, skipHistoryUpdate = false) {
     console.error('Error navigating:', error);
     showToast(getErrorMessage(error), 'Error Loading Directory', 'error');
   } finally {
-    const isCurrentRequest = requestId !== 0 && requestId === directoryRequestId;
+    const isCurrentRequest = directoryLoader.isCurrentRequest(requestId);
     finishDirectoryRequest(requestId);
     if (isCurrentRequest) hideLoading();
   }
@@ -2135,8 +2036,26 @@ async function deleteSelected(permanent = false) {
     const msg = permanent
       ? `${successCount} item${successCount > 1 ? 's' : ''} permanently deleted`
       : `${successCount} item${successCount > 1 ? 's' : ''} moved to ${platformOS === 'win32' ? 'Recycle Bin' : 'Trash'}`;
-    showToast(msg, 'Success', 'success');
-    if (!permanent) await updateUndoRedoState();
+    if (!permanent) {
+      await updateUndoRedoState();
+      showToast(
+        msg,
+        'Success',
+        'success',
+        canUndo
+          ? [
+              {
+                label: 'Undo',
+                onClick: () => {
+                  void performUndo();
+                },
+              },
+            ]
+          : undefined
+      );
+    } else {
+      showToast(msg, 'Success', 'success');
+    }
     refresh();
   }
   if (failCount > 0) {
@@ -2168,8 +2087,29 @@ async function performUndoRedo(isUndo: boolean) {
     await updateUndoRedoState();
     return;
   }
-  showToast(`Action ${isUndo ? 'undone' : 'redone'}`, label, 'success');
   await updateUndoRedoState();
+  const reverseAction = isUndo
+    ? canRedo
+      ? [
+          {
+            label: 'Redo',
+            onClick: () => {
+              void performRedo();
+            },
+          },
+        ]
+      : undefined
+    : canUndo
+      ? [
+          {
+            label: 'Undo',
+            onClick: () => {
+              void performUndo();
+            },
+          },
+        ]
+      : undefined;
+  showToast(`Action ${isUndo ? 'undone' : 'redone'}`, label, 'success', reverseAction);
   refresh();
 }
 function performUndo() {
@@ -2272,7 +2212,7 @@ async function applyViewMode() {
           request.operationId,
           currentSettings.showHiddenFiles
         );
-        if (requestId !== directoryRequestId) return;
+        if (!directoryLoader.isCurrentRequest(requestId)) return;
         if (result.success) {
           renderFiles(result.contents || []);
         }
@@ -2525,6 +2465,7 @@ document.addEventListener('mousedown', (e) => {
 window.addEventListener('beforeunload', () => {
   stopIndexStatusPolling();
   cancelActiveSearch();
+  cleanupHoverCard();
   cleanupPropertiesDialog();
   thumbnails.resetThumbnailObserver();
   fileRenderController.disconnectVirtualizedObserver();

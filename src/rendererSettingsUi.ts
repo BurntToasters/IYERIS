@@ -272,12 +272,16 @@ export function createSettingsUiController(deps: SettingsUiDeps) {
     const tabs = document.querySelectorAll('.settings-tab');
     const sections = document.querySelectorAll('.settings-section');
 
-    tabs.forEach((t) => t.classList.remove('active'));
+    tabs.forEach((t) => {
+      t.classList.remove('active');
+      t.setAttribute('aria-selected', 'false');
+    });
     sections.forEach((s) => s.classList.remove('active'));
 
     const tab = document.querySelector(`.settings-tab[data-tab="${tabId}"]`);
     const section = document.getElementById(`tab-${tabId}`);
     tab?.classList.add('active');
+    tab?.setAttribute('aria-selected', 'true');
     section?.classList.add('active');
 
     if (!settingsSearchTerm) {

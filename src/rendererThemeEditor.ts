@@ -138,6 +138,8 @@ export function createThemeEditorController(deps: ThemeEditorDeps) {
   };
 
   let themeEditorHasUnsavedChanges = false;
+  let savedThemeSnapshot: CustomTheme | null = null;
+  let savedThemeWasCustom = false;
 
   function applyCustomThemeColors(theme: CustomTheme) {
     setThemeCustomProperties(document.documentElement, theme);
@@ -193,6 +195,7 @@ export function createThemeEditorController(deps: ThemeEditorDeps) {
     }
 
     updateThemePreview();
+    applyCustomThemeColors(tempCustomTheme);
   }
 
   function applyThemePreset(presetName: string) {
@@ -216,6 +219,9 @@ export function createThemeEditorController(deps: ThemeEditorDeps) {
     themeEditorHasUnsavedChanges = false;
 
     const settings = deps.getCurrentSettings();
+    savedThemeWasCustom = settings.theme === 'custom';
+    savedThemeSnapshot = settings.customTheme ? { ...settings.customTheme } : null;
+
     if (settings.customTheme) {
       tempCustomTheme = { ...settings.customTheme };
     }
@@ -250,7 +256,18 @@ export function createThemeEditorController(deps: ThemeEditorDeps) {
       modal.style.display = 'none';
       deps.deactivateModal(modal);
     }
+
+    if (themeEditorHasUnsavedChanges) {
+      if (savedThemeWasCustom && savedThemeSnapshot) {
+        applyCustomThemeColors(savedThemeSnapshot);
+      } else {
+        clearCustomThemeColors();
+        deps.applySettings(deps.getCurrentSettings());
+      }
+    }
+
     themeEditorHasUnsavedChanges = false;
+    savedThemeSnapshot = null;
   }
 
   async function saveCustomTheme() {

@@ -284,3 +284,44 @@ body.reduce-transparency .titlebar {
 body.reduce-transparency .tab-bar {
   background: var(--bg-secondary) !important;
 }
+
+.tab-context-menu {
+  position: fixed;
+  z-index: 10001;
+  background: var(--bg-secondary);
+  border: 1px solid var(--separator);
+  border-radius: var(--radius-medium);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  padding: 4px 0;
+  min-width: 180px;
+}
+
+.tab-context-menu-item {
+  padding: 7px 14px;
+  font-size: 12px;
+  color: var(--text-primary);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.12s ease;
+}
+
+.tab-context-menu-item:hover:not(.disabled) {
+  background: rgba(var(--accent-rgb), 0.12);
+}
+
+.tab-context-menu-item.disabled {
+  color: var(--text-secondary);
+  opacity: 0.5;
+  cursor: default;
+}
+
+body.liquid-glass .tab-context-menu {
+  background: var(--liquid-glass-context-menu-bg, rgba(30, 30, 30, 0.85));
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  border-color: var(--liquid-glass-context-menu-border, rgba(255, 255, 255, 0.08));
+}
+
+body.theme-light .tab-context-menu {
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+}

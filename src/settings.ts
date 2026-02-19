@@ -28,6 +28,7 @@ export function createDefaultSettings(): Settings {
     showHiddenFiles: false,
     enableSearchHistory: true,
     searchHistory: [],
+    savedSearches: [],
     directoryHistory: [],
     enableIndexer: true,
     minimizeToTray: false,
@@ -369,6 +370,45 @@ export function sanitizeSettings(
 
   const tabState = sanitizeTabState(raw.tabState);
   if (tabState) clean.tabState = tabState;
+
+  if (Array.isArray(raw.savedSearches)) {
+    clean.savedSearches = raw.savedSearches
+      .filter(
+        (
+          s: unknown
+        ): s is {
+          name: string;
+          query: string;
+          isGlobal: boolean;
+          isRegex: boolean;
+          filters?: Record<string, unknown>;
+        } =>
+          !!s &&
+          typeof s === 'object' &&
+          typeof (s as Record<string, unknown>).name === 'string' &&
+          typeof (s as Record<string, unknown>).query === 'string' &&
+          typeof (s as Record<string, unknown>).isGlobal === 'boolean' &&
+          typeof (s as Record<string, unknown>).isRegex === 'boolean'
+      )
+      .slice(0, 50)
+      .map((s) => ({
+        name: String(s.name).slice(0, 100),
+        query: String(s.query).slice(0, 500),
+        isGlobal: !!s.isGlobal,
+        isRegex: !!s.isRegex,
+        ...(s.filters && typeof s.filters === 'object'
+          ? {
+              filters: {
+                ...(typeof s.filters.fileType === 'string' ? { fileType: s.filters.fileType } : {}),
+                ...(typeof s.filters.minSize === 'number' ? { minSize: s.filters.minSize } : {}),
+                ...(typeof s.filters.maxSize === 'number' ? { maxSize: s.filters.maxSize } : {}),
+                ...(typeof s.filters.dateFrom === 'string' ? { dateFrom: s.filters.dateFrom } : {}),
+                ...(typeof s.filters.dateTo === 'string' ? { dateTo: s.filters.dateTo } : {}),
+              },
+            }
+          : {}),
+      }));
+  }
 
   return clean;
 }

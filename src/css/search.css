@@ -409,6 +409,93 @@ body.theme-light .toggle-slider-small {
   transform: scale(0.9);
 }
 
+.search-save-btn {
+  background: none;
+  border: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-small);
+  padding: 0;
+  transition:
+    color 0.12s ease,
+    background-color 0.12s ease;
+}
+
+.search-save-btn:hover {
+  background: var(--hover-color, rgba(255, 255, 255, 0.08));
+  color: var(--text-primary);
+}
+
+.search-save-btn:active {
+  transform: scale(0.9);
+}
+
+.saved-search-section {
+  border-bottom: 1px solid var(--separator);
+  padding-bottom: 4px;
+  margin-bottom: 4px;
+}
+
+.saved-search-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  cursor: pointer;
+  border-radius: var(--radius-small);
+  font-size: var(--font-size-base);
+  color: var(--text-primary);
+}
+
+.saved-search-item:hover {
+  background: var(--hover-color);
+}
+
+.saved-search-item .saved-search-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.saved-search-item .saved-search-badges {
+  display: flex;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+.saved-search-item .saved-search-badge {
+  font-size: 9px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--accent-light);
+  color: var(--text-secondary);
+}
+
+.saved-search-item .saved-search-delete {
+  opacity: 0;
+  cursor: pointer;
+  background: none;
+  border: none;
+  color: var(--text-tertiary);
+  padding: 0 2px;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.saved-search-item:hover .saved-search-delete {
+  opacity: 1;
+}
+
+.saved-search-item .saved-search-delete:hover {
+  color: var(--danger-color);
+}
+
 .search-scope-toggle {
   background: none;
   border: none;

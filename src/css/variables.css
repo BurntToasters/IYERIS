@@ -31,12 +31,10 @@
   --git-untracked: #b0b0b0;
   --git-conflict: #ef5350;
 
-  --accent-subtle: rgba(var(--accent-rgb), 0.08);
   --accent-light: rgba(var(--accent-rgb), 0.14);
   --accent-medium: rgba(var(--accent-rgb), 0.22);
   --accent-strong: rgba(var(--accent-rgb), 0.35);
 
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.12);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.2);
   --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.28);
   --shadow-xl: 0 12px 32px rgba(0, 0, 0, 0.35);
@@ -69,7 +67,6 @@
   --radius-small: 6px;
   --radius-medium: 10px;
   --radius-large: 14px;
-  --radius-xlarge: 18px;
 
   --font-family:
     -apple-system, BlinkMacSystemFont, 'Segoe UI Variable', 'Segoe UI', system-ui, ui-sans-serif,
@@ -79,11 +76,9 @@
   --system-accent-color: var(--accent-color);
   --system-accent-rgb: var(--accent-rgb);
   --themed-icon-hue: 200deg;
-  --icon-stroke-width: 1.5;
 
   --animation-duration: 200ms;
   --animation-easing: cubic-bezier(0.33, 1, 0.68, 1);
-  --animation-easing-spring: cubic-bezier(0.33, 1, 0.68, 1);
   --transition-standard:
     background-color var(--animation-duration) var(--animation-easing),
     border-color var(--animation-duration) var(--animation-easing),
@@ -94,7 +89,6 @@
 
   --scrollbar-width: 10px;
   --scrollbar-thumb-radius: 5px;
-  --scrollbar-show-always: 1;
   --scrollbar-thumb-bg: rgba(255, 255, 255, 0.15);
   --scrollbar-thumb-hover-bg: rgba(255, 255, 255, 0.25);
 
@@ -105,12 +99,10 @@
   --font-size-status: 11px;
   --font-size-breadcrumb: 12px;
 
-  --opacity-disabled: 0.5;
   --opacity-muted: 0.4;
 
   --icon-size-grid: 26px;
   --icon-size-list: 12px;
-  --icon-size-toolbar: 28px;
   --icon-size-nav: 16px;
   --icon-size-sidebar-toggle: 26px;
   --icon-size-spinner: 32px;
@@ -128,7 +120,6 @@
   --address-bar-height: 26px;
   --sidebar-width: 180px;
   --sidebar-width-collapsed: 44px;
-  --sidebar-toggle-bottom: 26px;
   --preview-panel-width: 260px;
   --preview-panel-height: 220px;
   --grid-columns: auto-fill;
@@ -139,7 +130,6 @@
   --file-item-padding-h: 4px;
   --list-item-padding-v: 6px;
   --list-item-padding-h: 9px;
-  --list-item-gap: 8px;
   --list-item-min-height: 30px;
   --list-col-name: minmax(220px, 1fr);
   --list-col-type: 140px;
@@ -167,11 +157,7 @@
   --breadcrumb-padding-v: 4px;
   --breadcrumb-padding-h: 8px;
   --status-bar-padding-h: 10px;
-  --list-info-gap: 18px;
-  --section-title-margin-bottom: 3px;
-
   --modal-max-width: 600px;
-  --modal-padding: 24px;
   --settings-modal-width: 980px;
   --settings-modal-height: 680px;
   --dialog-modal-max-width: 450px;
@@ -190,10 +176,8 @@
 body.platform-darwin {
   --animation-duration: 250ms;
   --animation-easing: cubic-bezier(0.2, 0.8, 0.2, 1);
-  --animation-easing-spring: cubic-bezier(0.2, 0.8, 0.2, 1.15);
   --scrollbar-width: 8px;
   --scrollbar-thumb-radius: 4px;
-  --scrollbar-show-always: 0;
   --radius-small: 8px;
   --radius-medium: 12px;
   --titlebar-height: 38px;
@@ -202,10 +186,8 @@ body.platform-darwin {
 body.platform-win32 {
   --animation-duration: 167ms;
   --animation-easing: cubic-bezier(0.4, 0, 0.2, 1);
-  --animation-easing-spring: cubic-bezier(0.4, 0, 0.2, 1);
   --scrollbar-width: 12px;
   --scrollbar-thumb-radius: 0px;
-  --scrollbar-show-always: 1;
   --radius-small: 4px;
   --radius-medium: 8px;
   --titlebar-height: 36px;
@@ -214,10 +196,8 @@ body.platform-win32 {
 body.platform-linux {
   --animation-duration: 200ms;
   --animation-easing: cubic-bezier(0.25, 0.1, 0.25, 1);
-  --animation-easing-spring: cubic-bezier(0.25, 0.1, 0.25, 1);
   --scrollbar-width: 10px;
   --scrollbar-thumb-radius: 5px;
-  --scrollbar-show-always: 1;
 }
 
 body.compact-ui {
@@ -230,7 +210,6 @@ body.compact-ui {
 
   --icon-size-grid: 22px;
   --icon-size-list: 11px;
-  --icon-size-toolbar: 22px;
   --icon-size-nav: 12px;
   --icon-size-sidebar-toggle: 20px;
   --icon-size-spinner: 28px;
@@ -248,7 +227,6 @@ body.compact-ui {
   --address-bar-height: 22px;
   --sidebar-width: 160px;
   --sidebar-width-collapsed: 38px;
-  --sidebar-toggle-bottom: 22px;
   --tab-bar-height: 28px;
   --preview-panel-width: 220px;
   --preview-panel-height: 190px;
@@ -259,7 +237,6 @@ body.compact-ui {
   --file-item-padding-h: 3px;
   --list-item-padding-v: 4px;
   --list-item-padding-h: 7px;
-  --list-item-gap: 6px;
   --list-item-min-height: 24px;
   --list-header-height: 24px;
   --nav-item-padding-v: 3px;
@@ -287,7 +264,6 @@ body.large-ui {
 
   --icon-size-grid: 44px;
   --icon-size-list: 18px;
-  --icon-size-toolbar: 34px;
   --icon-size-nav: 16px;
   --icon-size-sidebar-toggle: 28px;
   --icon-size-spinner: 44px;
@@ -305,7 +281,6 @@ body.large-ui {
   --address-bar-height: 28px;
   --sidebar-width: 200px;
   --sidebar-width-collapsed: 52px;
-  --sidebar-toggle-bottom: 32px;
   --tab-bar-height: 36px;
   --preview-panel-width: 320px;
   --preview-panel-height: 260px;
@@ -316,7 +291,6 @@ body.large-ui {
   --file-item-padding-h: 8px;
   --list-item-padding-v: 8px;
   --list-item-padding-h: 12px;
-  --list-item-gap: 12px;
   --list-item-min-height: 36px;
   --list-col-name: minmax(260px, 1fr);
   --list-col-type: 170px;
@@ -344,6 +318,4 @@ body.large-ui {
   --breadcrumb-padding-v: 5px;
   --breadcrumb-padding-h: 10px;
   --status-bar-padding-h: 16px;
-  --list-info-gap: 24px;
-  --section-title-margin-bottom: 4px;
 }

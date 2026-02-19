@@ -27,10 +27,14 @@ type ClipboardDeps = {
 export function createClipboardController(deps: ClipboardDeps) {
   let clipboard: ClipboardState = null;
   let cutPaths = new Set<string>();
+  let elIndicator: HTMLElement | null = null;
+  let elIndicatorText: HTMLElement | null = null;
 
   async function updateClipboardIndicator() {
-    const indicator = document.getElementById('clipboard-indicator');
-    const indicatorText = document.getElementById('clipboard-text');
+    if (!elIndicator) elIndicator = document.getElementById('clipboard-indicator');
+    if (!elIndicatorText) elIndicatorText = document.getElementById('clipboard-text');
+    const indicator = elIndicator;
+    const indicatorText = elIndicatorText;
     if (!indicator || !indicatorText) return;
 
     if (clipboard && clipboard.paths.length > 0) {

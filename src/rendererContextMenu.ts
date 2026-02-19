@@ -39,6 +39,38 @@ export function createContextMenuController(deps: ContextMenuDeps) {
   let contextMenuFocusedIndex = -1;
   let emptySpaceMenuFocusedIndex = -1;
 
+  let elContextMenu: HTMLElement | null = null;
+  let elEmptySpaceContextMenu: HTMLElement | null = null;
+  let elAddToBookmarks: HTMLElement | null = null;
+  let elChangeFolderIcon: HTMLElement | null = null;
+  let elCopyPath: HTMLElement | null = null;
+  let elOpenTerminal: HTMLElement | null = null;
+  let elCompress: HTMLElement | null = null;
+  let elExtract: HTMLElement | null = null;
+  let elPreviewPdf: HTMLElement | null = null;
+  let elOpenWithSubmenu: HTMLElement | null = null;
+  let elBatchRename: HTMLElement | null = null;
+  let elCreateSymlink: HTMLElement | null = null;
+  let elOpenWithAppsPanel: HTMLElement | null = null;
+
+  function ensureElements() {
+    if (!elContextMenu) elContextMenu = document.getElementById('context-menu');
+    if (!elEmptySpaceContextMenu)
+      elEmptySpaceContextMenu = document.getElementById('empty-space-context-menu');
+    if (!elAddToBookmarks) elAddToBookmarks = document.getElementById('add-to-bookmarks-item');
+    if (!elChangeFolderIcon)
+      elChangeFolderIcon = document.getElementById('change-folder-icon-item');
+    if (!elCopyPath) elCopyPath = document.getElementById('copy-path-item');
+    if (!elOpenTerminal) elOpenTerminal = document.getElementById('open-terminal-item');
+    if (!elCompress) elCompress = document.getElementById('compress-item');
+    if (!elExtract) elExtract = document.getElementById('extract-item');
+    if (!elPreviewPdf) elPreviewPdf = document.getElementById('preview-pdf-item');
+    if (!elOpenWithSubmenu) elOpenWithSubmenu = document.getElementById('open-with-submenu');
+    if (!elBatchRename) elBatchRename = document.getElementById('batch-rename-item');
+    if (!elCreateSymlink) elCreateSymlink = document.getElementById('create-symlink-item');
+    if (!elOpenWithAppsPanel) elOpenWithAppsPanel = document.getElementById('open-with-apps-panel');
+  }
+
   function positionMenuInViewport(menu: HTMLElement, x: number, y: number) {
     const rect = menu.getBoundingClientRect();
     const vw = window.innerWidth;
@@ -120,17 +152,8 @@ export function createContextMenuController(deps: ContextMenuDeps) {
   }
 
   function showContextMenu(x: number, y: number, item: FileItem) {
-    const contextMenu = document.getElementById('context-menu');
-    const addToBookmarksItem = document.getElementById('add-to-bookmarks-item');
-    const changeFolderIconItem = document.getElementById('change-folder-icon-item');
-    const copyPathItem = document.getElementById('copy-path-item');
-    const openTerminalItem = document.getElementById('open-terminal-item');
-    const compressItem = document.getElementById('compress-item');
-    const extractItem = document.getElementById('extract-item');
-    const previewPdfItem = document.getElementById('preview-pdf-item');
-    const openWithSubmenu = document.getElementById('open-with-submenu');
-    const batchRenameItem = document.getElementById('batch-rename-item');
-    const createSymlinkItem = document.getElementById('create-symlink-item');
+    ensureElements();
+    const contextMenu = elContextMenu;
 
     if (!contextMenu) return;
 
@@ -142,22 +165,19 @@ export function createContextMenuController(deps: ContextMenuDeps) {
     const showIf = (el: HTMLElement | null, condition: boolean) => {
       if (el) el.style.display = condition ? 'flex' : 'none';
     };
-    showIf(addToBookmarksItem, item.isDirectory);
-    showIf(changeFolderIconItem, item.isDirectory);
-    showIf(copyPathItem, true);
-    showIf(openTerminalItem, item.isDirectory);
-    showIf(compressItem, true);
-    showIf(extractItem, !item.isDirectory && isArchivePath(item.path));
-    showIf(
-      previewPdfItem,
-      !item.isDirectory && PDF_EXTENSIONS.has(deps.getFileExtension(item.name))
-    );
-    showIf(openWithSubmenu, !item.isDirectory);
-    showIf(batchRenameItem, deps.getSelectedItems().size >= 2);
-    showIf(createSymlinkItem, true);
+    showIf(elAddToBookmarks, item.isDirectory);
+    showIf(elChangeFolderIcon, item.isDirectory);
+    showIf(elCopyPath, true);
+    showIf(elOpenTerminal, item.isDirectory);
+    showIf(elCompress, true);
+    showIf(elExtract, !item.isDirectory && isArchivePath(item.path));
+    showIf(elPreviewPdf, !item.isDirectory && PDF_EXTENSIONS.has(deps.getFileExtension(item.name)));
+    showIf(elOpenWithSubmenu, !item.isDirectory);
+    showIf(elBatchRename, deps.getSelectedItems().size >= 2);
+    showIf(elCreateSymlink, true);
 
-    if (openWithSubmenu && !item.isDirectory) {
-      setupOpenWithSubmenu(openWithSubmenu, item);
+    if (elOpenWithSubmenu && !item.isDirectory) {
+      setupOpenWithSubmenu(elOpenWithSubmenu, item);
     }
 
     contextMenu.style.display = 'block';
@@ -177,36 +197,36 @@ export function createContextMenuController(deps: ContextMenuDeps) {
   }
 
   function hideContextMenu() {
-    const contextMenuElement = document.getElementById('context-menu');
-    if (contextMenuElement) {
-      contextMenuElement.style.display = 'none';
+    ensureElements();
+    if (elContextMenu) {
+      elContextMenu.style.display = 'none';
       contextMenuData = null;
-      clearContextMenuFocus(contextMenuElement);
+      clearContextMenuFocus(elContextMenu);
       contextMenuFocusedIndex = -1;
     }
   }
 
   function showEmptySpaceContextMenu(x: number, y: number) {
-    const emptySpaceContextMenu = document.getElementById('empty-space-context-menu');
-    if (!emptySpaceContextMenu) return;
+    ensureElements();
+    if (!elEmptySpaceContextMenu) return;
 
     hideContextMenu();
 
     emptySpaceMenuFocusedIndex = -1;
-    emptySpaceContextMenu.style.display = 'block';
-    positionMenuInViewport(emptySpaceContextMenu, x, y);
+    elEmptySpaceContextMenu.style.display = 'block';
+    positionMenuInViewport(elEmptySpaceContextMenu, x, y);
     emptySpaceMenuFocusedIndex = navigateContextMenu(
-      emptySpaceContextMenu,
+      elEmptySpaceContextMenu,
       'down',
       emptySpaceMenuFocusedIndex
     );
   }
 
   function hideEmptySpaceContextMenu() {
-    const emptySpaceContextMenu = document.getElementById('empty-space-context-menu');
-    if (emptySpaceContextMenu) {
-      emptySpaceContextMenu.style.display = 'none';
-      clearContextMenuFocus(emptySpaceContextMenu);
+    ensureElements();
+    if (elEmptySpaceContextMenu) {
+      elEmptySpaceContextMenu.style.display = 'none';
+      clearContextMenuFocus(elEmptySpaceContextMenu);
       emptySpaceMenuFocusedIndex = -1;
     }
   }
@@ -364,8 +384,9 @@ export function createContextMenuController(deps: ContextMenuDeps) {
   }
 
   function handleKeyboardNavigation(e: KeyboardEvent): boolean {
-    const contextMenu = document.getElementById('context-menu');
-    const emptySpaceContextMenu = document.getElementById('empty-space-context-menu');
+    ensureElements();
+    const contextMenu = elContextMenu;
+    const emptySpaceContextMenu = elEmptySpaceContextMenu;
 
     const handleMenuKeyNav = (
       menu: HTMLElement | null,
@@ -434,7 +455,8 @@ export function createContextMenuController(deps: ContextMenuDeps) {
   }
 
   function setupOpenWithSubmenu(submenuContainer: HTMLElement, item: FileItem) {
-    const panel = document.getElementById('open-with-apps-panel');
+    ensureElements();
+    const panel = elOpenWithAppsPanel;
     if (!panel) return;
 
     panel.innerHTML = '<div class="open-with-loading">Loading apps...</div>';

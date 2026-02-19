@@ -1,6 +1,5 @@
 import type { ToastAction } from './rendererToasts.js';
 import { rendererPath as path } from './rendererUtils.js';
-import { ignoreError } from './shared.js';
 
 const SPRING_LOAD_DELAY = 800;
 
@@ -41,8 +40,8 @@ export function createDragDropController(config: DragDropConfig) {
       if (textData) {
         draggedPaths = JSON.parse(textData);
       }
-    } catch (error) {
-      ignoreError(error);
+    } catch {
+      // JSON.parse failed — drag data isn't JSON, will fall through to file-based paths
     }
 
     if (draggedPaths.length === 0 && event.dataTransfer.files.length > 0) {

@@ -42,6 +42,20 @@ export interface TabState {
   activeTabId: string;
 }
 
+export interface SavedSearch {
+  name: string;
+  query: string;
+  isGlobal: boolean;
+  isRegex: boolean;
+  filters?: {
+    fileType?: string;
+    minSize?: number;
+    maxSize?: number;
+    dateFrom?: string;
+    dateTo?: string;
+  };
+}
+
 export interface Settings {
   _timestamp?: number;
   shortcuts: { [actionId: string]: string[] };
@@ -65,6 +79,7 @@ export interface Settings {
   showHiddenFiles: boolean;
   enableSearchHistory: boolean;
   searchHistory: string[];
+  savedSearches: SavedSearch[];
   directoryHistory: string[];
   enableIndexer: boolean;
   minimizeToTray: boolean;

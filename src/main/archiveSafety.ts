@@ -133,7 +133,7 @@ export async function assertArchiveEntriesSafe(
     list.on('error', (err: Error) => reject(err));
   });
 
-  const destRoot = path.resolve(destPath);
+  const destRoot = await fs.realpath(path.resolve(destPath));
   const destRootWithSep = destRoot.endsWith(path.sep) ? destRoot : destRoot + path.sep;
   const invalidEntries: string[] = [];
 

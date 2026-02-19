@@ -17,6 +17,7 @@ export function createHoverCardController(deps: HoverCardDeps) {
   let hoverCardInitialized = false;
   let hoverCardTimeout: NodeJS.Timeout | null = null;
   let currentHoverItem: HTMLElement | null = null;
+  let cleanupFns: (() => void)[] = [];
 
   let hoverCard: HTMLElement | null = null;
   let hoverThumbnail: HTMLElement | null = null;
@@ -126,10 +127,10 @@ export function createHoverCardController(deps: HoverCardDeps) {
       card.classList.add('visible');
     };
 
-    hoverRoot.addEventListener('mouseover', (e) => {
+    const handleMouseover = (e: Event) => {
       if (!hoverCardEnabled) return;
 
-      const target = e.target;
+      const target = (e as MouseEvent).target;
       if (!(target instanceof Element)) return;
       const fileItem = target.closest('.file-item') as HTMLElement | null;
 
@@ -151,10 +152,10 @@ export function createHoverCardController(deps: HoverCardDeps) {
           showHoverCard(fileItem, rect.right, rect.top);
         }
       }, 1000);
-    });
+    };
 
-    hoverRoot.addEventListener('mouseout', (e) => {
-      const target = e.target;
+    const handleMouseout = (e: Event) => {
+      const target = (e as MouseEvent).target;
       if (!(target instanceof Element)) return;
       const relatedTarget = (e as MouseEvent).relatedTarget;
       const fileItem = target.closest('.file-item');
@@ -166,14 +167,30 @@ export function createHoverCardController(deps: HoverCardDeps) {
       if (fileItem && !toFileItem && !toHoverCard) {
         hideHoverCard();
       }
-    });
+    };
 
-    scrollContainer.addEventListener('scroll', hideHoverCard, true);
-    document.addEventListener('mousedown', hideHoverCard);
+    const handleScroll = () => hideHoverCard();
+    const handleMousedown = () => hideHoverCard();
+
+    hoverRoot.addEventListener('mouseover', handleMouseover);
+    hoverRoot.addEventListener('mouseout', handleMouseout);
+    scrollContainer.addEventListener('scroll', handleScroll, true);
+    document.addEventListener('mousedown', handleMousedown);
+
+    cleanupFns = [
+      () => hoverRoot.removeEventListener('mouseover', handleMouseover),
+      () => hoverRoot.removeEventListener('mouseout', handleMouseout),
+      () => scrollContainer.removeEventListener('scroll', handleScroll, true),
+      () => document.removeEventListener('mousedown', handleMousedown),
+    ];
   }
 
-  return {
-    setEnabled,
-    setup,
-  };
+  function cleanup(): void {
+    hideHoverCard();
+    for (const fn of cleanupFns) fn();
+    cleanupFns = [];
+    hoverCardInitialized = false;
+  }
+
+  return { setEnabled, setup, hideHoverCard, cleanup };
 }
