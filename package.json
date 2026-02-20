@@ -111,7 +111,7 @@
     "release:beta:all": "npm run licenses && npm run release:beta:mac && npm run release:beta:win && npm run release:beta:linux",
     "build:msstore:x64": "npm run licenses && npm run build && electron-builder --win --x64 -c electron-builder.msstore.yml --publish never",
     "build:msstore:arm64": "npm run licenses && npm run build && electron-builder --win --arm64 -c electron-builder.msstore.yml --publish never",
-    "build:msstore": "npm run licenses && npm run build:msstore:x64 && npm run build:msstore:arm64",
+    "build:msstore": "npm run release:prepare && npm run licenses && npm run build && electron-builder --win --arm64 -c electron-builder.msstore.yml --publish never && electron-builder --win --x64 -c electron-builder.msstore.yml --publish never",
     "sign:gpg": "node build/gpg-sign.js"
   },
   "build": {
