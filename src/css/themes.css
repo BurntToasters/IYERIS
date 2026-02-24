@@ -414,8 +414,11 @@ body.theme-light pre.preview-text code.hljs {
 
 body.theme-dark {
   background-color: #1d2b3e;
-  background-image:
-    radial-gradient(ellipse 120% 120% at 50% 50%, rgba(50, 100, 180, 0.03) 0%, transparent 60%);
+  background-image: radial-gradient(
+    ellipse 120% 120% at 50% 50%,
+    rgba(50, 100, 180, 0.03) 0%,
+    transparent 60%
+  );
   --bg-primary: #1f2d41;
   --bg-primary-rgb: 31, 45, 65;
   --bg-secondary: #263548;
@@ -469,7 +472,11 @@ body.theme-nord {
   --warning-color: #ebcb8b;
   --themed-icon-hue: 190deg;
   background-color: #2e3440;
-  background-image: radial-gradient(ellipse 120% 120% at 50% 50%, rgba(59, 66, 82, 0.4) 0%, transparent 60%);
+  background-image: radial-gradient(
+    ellipse 120% 120% at 50% 50%,
+    rgba(59, 66, 82, 0.4) 0%,
+    transparent 60%
+  );
 }
 
 body.theme-nord .glass-panel {
@@ -496,7 +503,11 @@ body.theme-catppuccin {
   --warning-color: #f9e2af;
   --themed-icon-hue: 260deg;
   background-color: #1e1e2e;
-  background-image: radial-gradient(ellipse 120% 120% at 50% 50%, rgba(49, 50, 68, 0.4) 0%, transparent 60%);
+  background-image: radial-gradient(
+    ellipse 120% 120% at 50% 50%,
+    rgba(49, 50, 68, 0.4) 0%,
+    transparent 60%
+  );
 }
 
 body.theme-catppuccin .glass-panel {
@@ -523,7 +534,11 @@ body.theme-dracula {
   --warning-color: #ffb86c;
   --themed-icon-hue: 270deg;
   background-color: #282a36;
-  background-image: radial-gradient(ellipse 120% 120% at 50% 50%, rgba(68, 71, 90, 0.4) 0%, transparent 60%);
+  background-image: radial-gradient(
+    ellipse 120% 120% at 50% 50%,
+    rgba(68, 71, 90, 0.4) 0%,
+    transparent 60%
+  );
 }
 
 body.theme-dracula .glass-panel {
@@ -550,7 +565,11 @@ body.theme-solarized {
   --warning-color: #b58900;
   --themed-icon-hue: 190deg;
   background-color: #002b36;
-  background-image: radial-gradient(ellipse 120% 120% at 50% 50%, rgba(7, 54, 66, 0.4) 0%, transparent 60%);
+  background-image: radial-gradient(
+    ellipse 120% 120% at 50% 50%,
+    rgba(7, 54, 66, 0.4) 0%,
+    transparent 60%
+  );
 }
 
 body.theme-solarized .glass-panel {
@@ -577,7 +596,11 @@ body.theme-github {
   --warning-color: #d29922;
   --themed-icon-hue: 210deg;
   background-color: #0d1117;
-  background-image: radial-gradient(ellipse 120% 120% at 50% 50%, rgba(22, 27, 34, 0.4) 0%, transparent 60%);
+  background-image: radial-gradient(
+    ellipse 120% 120% at 50% 50%,
+    rgba(22, 27, 34, 0.4) 0%,
+    transparent 60%
+  );
 }
 
 body.theme-github .glass-panel {
