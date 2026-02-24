@@ -413,26 +413,9 @@ body.theme-light pre.preview-text code.hljs {
 }
 
 body.theme-dark {
-  background:
-    radial-gradient(ellipse 120% 120% at 50% 50%, rgba(50, 100, 180, 0.015) 0%, transparent 50%),
-    linear-gradient(
-      135deg,
-      #1a2332 0%,
-      #1b2535 8%,
-      #1c2738 16%,
-      #1d293b 24%,
-      #1e2b3e 32%,
-      #1f2d41 40%,
-      #202f44 48%,
-      #213047 50%,
-      #202f44 52%,
-      #1f2d41 60%,
-      #1e2b3e 68%,
-      #1d293b 76%,
-      #1c2738 84%,
-      #1b2535 92%,
-      #1a2332 100%
-    );
+  background-color: #1d2b3e;
+  background-image:
+    radial-gradient(ellipse 120% 120% at 50% 50%, rgba(50, 100, 180, 0.03) 0%, transparent 60%);
   --bg-primary: #1f2d41;
   --bg-primary-rgb: 31, 45, 65;
   --bg-secondary: #263548;
@@ -447,9 +430,9 @@ body.theme-dark {
 
 body.theme-dark::before {
   background:
-    radial-gradient(ellipse 80% 60% at 20% 50%, rgba(50, 110, 200, 0.045) 0%, transparent 50%),
-    radial-gradient(ellipse 70% 50% at 80% 80%, rgba(70, 130, 220, 0.035) 0%, transparent 50%),
-    radial-gradient(ellipse 60% 40% at 40% 20%, rgba(60, 100, 180, 0.025) 0%, transparent 50%);
+    radial-gradient(ellipse 80% 60% at 20% 50%, rgba(50, 110, 200, 0.035) 0%, transparent 60%),
+    radial-gradient(ellipse 70% 50% at 80% 80%, rgba(70, 130, 220, 0.025) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 40% at 40% 20%, rgba(60, 100, 180, 0.02) 0%, transparent 60%);
 }
 
 body.theme-dark .status-bar {
@@ -485,7 +468,8 @@ body.theme-nord {
   --success-color: #a3be8c;
   --warning-color: #ebcb8b;
   --themed-icon-hue: 190deg;
-  background: linear-gradient(135deg, #2e3440 0%, #3b4252 50%, #2e3440 100%);
+  background-color: #2e3440;
+  background-image: radial-gradient(ellipse 120% 120% at 50% 50%, rgba(59, 66, 82, 0.4) 0%, transparent 60%);
 }
 
 body.theme-nord .glass-panel {
@@ -511,7 +495,8 @@ body.theme-catppuccin {
   --success-color: #a6e3a1;
   --warning-color: #f9e2af;
   --themed-icon-hue: 260deg;
-  background: linear-gradient(135deg, #1e1e2e 0%, #313244 50%, #1e1e2e 100%);
+  background-color: #1e1e2e;
+  background-image: radial-gradient(ellipse 120% 120% at 50% 50%, rgba(49, 50, 68, 0.4) 0%, transparent 60%);
 }
 
 body.theme-catppuccin .glass-panel {
@@ -537,7 +522,8 @@ body.theme-dracula {
   --success-color: #50fa7b;
   --warning-color: #ffb86c;
   --themed-icon-hue: 270deg;
-  background: linear-gradient(135deg, #282a36 0%, #44475a 50%, #282a36 100%);
+  background-color: #282a36;
+  background-image: radial-gradient(ellipse 120% 120% at 50% 50%, rgba(68, 71, 90, 0.4) 0%, transparent 60%);
 }
 
 body.theme-dracula .glass-panel {
@@ -563,7 +549,8 @@ body.theme-solarized {
   --success-color: #859900;
   --warning-color: #b58900;
   --themed-icon-hue: 190deg;
-  background: linear-gradient(135deg, #002b36 0%, #073642 50%, #002b36 100%);
+  background-color: #002b36;
+  background-image: radial-gradient(ellipse 120% 120% at 50% 50%, rgba(7, 54, 66, 0.4) 0%, transparent 60%);
 }
 
 body.theme-solarized .glass-panel {
@@ -589,7 +576,8 @@ body.theme-github {
   --success-color: #3fb950;
   --warning-color: #d29922;
   --themed-icon-hue: 210deg;
-  background: linear-gradient(135deg, #0d1117 0%, #161b22 50%, #0d1117 100%);
+  background-color: #0d1117;
+  background-image: radial-gradient(ellipse 120% 120% at 50% 50%, rgba(22, 27, 34, 0.4) 0%, transparent 60%);
 }
 
 body.theme-github .glass-panel {
