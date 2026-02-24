@@ -12,7 +12,7 @@ interface SettingsActionsDeps {
   loadBookmarks: () => void;
   updateThumbnailCacheSize: () => void;
   clearThumbnailCacheLocal: () => void;
-  hideSettingsModal: () => void;
+  hideSettingsModal: () => void | Promise<void>;
   showSettingsModal: () => void;
   isOneOf: <T extends readonly string[]>(value: string, options: T) => value is T[number];
   themeValues: readonly Settings['theme'][];
@@ -155,6 +155,7 @@ export function createSettingsActionsController(deps: SettingsActionsDeps) {
           textSecondary: expandHex(ct.textSecondary),
           glassBg: expandHex(ct.glassBg),
           glassBorder: expandHex(ct.glassBorder),
+          iconHue: isValidHex(ct.iconHue) ? expandHex(ct.iconHue) : expandHex(ct.accentColor),
         };
       }
     }

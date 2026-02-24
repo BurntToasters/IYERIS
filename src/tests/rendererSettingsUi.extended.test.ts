@@ -104,12 +104,8 @@ describe('updateSettingsDirtyState (via markSettingsChanged / clearSettingsChang
     document.body.innerHTML = '';
   });
 
-  it('shows unsaved bar when form differs from saved state', () => {
+  it('reports dirty when form differs from saved state', () => {
     setUpSettingsModal('<input type="checkbox" id="show-hidden-files-toggle" />');
-    const bar = document.createElement('div');
-    bar.id = 'settings-unsaved-bar';
-    bar.hidden = true;
-    document.body.appendChild(bar);
 
     const ctrl = makeController();
 
@@ -123,38 +119,16 @@ describe('updateSettingsDirtyState (via markSettingsChanged / clearSettingsChang
 
     ctrl.applySettingsFormState({ 'show-hidden-files-toggle': true });
 
-    expect(bar.hidden).toBe(false);
+    expect(ctrl.isSettingsDirty()).toBe(true);
   });
 
-  it('enables undo button when dirty and disables when clean', () => {
+  it('reports not dirty when form matches saved state', () => {
     setUpSettingsModal('<input type="checkbox" id="show-hidden-files-toggle" />');
-    const undoBtn = document.createElement('button');
-    undoBtn.id = 'settings-undo-btn';
-    undoBtn.disabled = true;
-    document.body.appendChild(undoBtn);
-
-    const ctrl = makeController();
-    ctrl.clearSettingsChanged();
-    expect(undoBtn.disabled).toBe(true);
-
-    (document.getElementById('show-hidden-files-toggle') as HTMLInputElement).checked = true;
-
-    ctrl.setSavedState({ 'show-hidden-files-toggle': false });
-    ctrl.applySettingsFormState({ 'show-hidden-files-toggle': true });
-    expect(undoBtn.disabled).toBe(false);
-  });
-
-  it('disables redo button when settingsRedoState is null', () => {
-    setUpSettingsModal('<input type="checkbox" id="show-hidden-files-toggle" />');
-    const redoBtn = document.createElement('button');
-    redoBtn.id = 'settings-redo-btn';
-    redoBtn.disabled = false;
-    document.body.appendChild(redoBtn);
 
     const ctrl = makeController();
     ctrl.clearSettingsChanged();
 
-    expect(redoBtn.disabled).toBe(true);
+    expect(ctrl.isSettingsDirty()).toBe(false);
   });
 
   it('marks section dirty tab with .dirty class when section inputs differ', () => {
@@ -189,18 +163,14 @@ describe('updateSettingsDirtyState (via markSettingsChanged / clearSettingsChang
     expect(tab.classList.contains('dirty')).toBe(false);
   });
 
-  it('returns early when settingsSavedState is null', () => {
+  it('returns false when settingsSavedState is null', () => {
     setUpSettingsModal('<input type="checkbox" id="show-hidden-files-toggle" />');
-    const bar = document.createElement('div');
-    bar.id = 'settings-unsaved-bar';
-    bar.hidden = true;
-    document.body.appendChild(bar);
 
     const ctrl = makeController();
 
     ctrl.applySettingsFormState({ 'show-hidden-files-toggle': true });
 
-    expect(bar.hidden).toBe(true);
+    expect(ctrl.isSettingsDirty()).toBe(false);
   });
 });
 
@@ -209,14 +179,11 @@ describe('markSettingsChanged – suppress tracking', () => {
     document.body.innerHTML = '';
   });
 
-  it('does not update dirty state when tracking is suppressed', () => {
+  it('does not trigger change handler when tracking is suppressed', () => {
     setUpSettingsModal('<input type="checkbox" id="show-hidden-files-toggle" />');
-    const bar = document.createElement('div');
-    bar.id = 'settings-unsaved-bar';
-    bar.hidden = true;
-    document.body.appendChild(bar);
 
-    const ctrl = makeController();
+    const deps = createDeps();
+    const ctrl = makeController(deps);
     ctrl.clearSettingsChanged();
     ctrl.setSuppressSettingsTracking(true);
 
@@ -224,9 +191,10 @@ describe('markSettingsChanged – suppress tracking', () => {
 
     ctrl.initSettingsChangeTracking();
     const input = document.getElementById('show-hidden-files-toggle') as HTMLInputElement;
+    (deps as any).updateSettingsCardSummaries = vi.fn();
     input.dispatchEvent(new Event('change'));
 
-    expect(bar.hidden).toBe(true);
+    expect((deps as any).updateSettingsCardSummaries).not.toHaveBeenCalled();
   });
 });
 
@@ -245,16 +213,11 @@ describe('initSettingsChangeTracking – event listeners', () => {
     ctrl.clearSettingsChanged();
     ctrl.initSettingsChangeTracking();
 
-    const bar = document.createElement('div');
-    bar.id = 'settings-unsaved-bar';
-    bar.hidden = true;
-    document.body.appendChild(bar);
-
     const checkbox = document.getElementById('show-hidden-files-toggle') as HTMLInputElement;
     checkbox.checked = true;
     checkbox.dispatchEvent(new Event('change'));
 
-    expect(bar.hidden).toBe(false);
+    expect(ctrl.isSettingsDirty()).toBe(true);
   });
 
   it('attaches input listener to text inputs', () => {
@@ -264,16 +227,11 @@ describe('initSettingsChangeTracking – event listeners', () => {
     ctrl.clearSettingsChanged();
     ctrl.initSettingsChangeTracking();
 
-    const bar = document.createElement('div');
-    bar.id = 'settings-unsaved-bar';
-    bar.hidden = true;
-    document.body.appendChild(bar);
-
     const input = document.getElementById('startup-path-input') as HTMLInputElement;
     input.value = '/new/path';
     input.dispatchEvent(new Event('input'));
 
-    expect(bar.hidden).toBe(false);
+    expect(ctrl.isSettingsDirty()).toBe(true);
   });
 
   it('is idempotent – does not double-attach listeners', () => {
@@ -1109,66 +1067,6 @@ describe('initSettingsWhyToggles (via initSettingsUi)', () => {
   });
 });
 
-describe('initSettingsPreview (via initSettingsUi)', () => {
-  beforeEach(() => {
-    document.body.innerHTML = '';
-    (window as any).electronAPI = {
-      openFile: vi.fn(),
-      getSystemAccentColor: vi.fn().mockResolvedValue({ isDarkMode: true }),
-    };
-  });
-
-  afterEach(() => {
-    delete (window as any).electronAPI;
-  });
-
-  it('toggles preview panel visibility on preview toggle click', () => {
-    setUpSettingsModal(`
-      <button id="theme-preview-toggle">Preview</button>
-      <div id="settings-preview-panel" hidden>Preview Content</div>
-    `);
-
-    const ctrl = makeController();
-    ctrl.initSettingsUi();
-
-    const toggleBtn = document.getElementById('theme-preview-toggle') as HTMLButtonElement;
-    const panel = document.getElementById('settings-preview-panel')!;
-
-    toggleBtn.click();
-    expect(panel.hasAttribute('hidden')).toBe(false);
-
-    toggleBtn.click();
-    expect(panel.hasAttribute('hidden')).toBe(true);
-  });
-
-  it('close button hides the preview panel', () => {
-    setUpSettingsModal(`
-      <button id="theme-preview-toggle">Preview</button>
-      <div id="settings-preview-panel">Preview Content</div>
-      <button id="settings-preview-close">Close</button>
-    `);
-
-    const ctrl = makeController();
-    ctrl.initSettingsUi();
-
-    const panel = document.getElementById('settings-preview-panel')!;
-    expect(panel.hasAttribute('hidden')).toBe(false);
-
-    const closeBtn = document.getElementById('settings-preview-close') as HTMLButtonElement;
-    closeBtn.click();
-    expect(panel.hasAttribute('hidden')).toBe(true);
-  });
-
-  it('does not throw when preview panel is missing', () => {
-    setUpSettingsModal(`
-      <button id="theme-preview-toggle">Preview</button>
-    `);
-
-    const ctrl = makeController();
-    expect(() => ctrl.initSettingsUi()).not.toThrow();
-  });
-});
-
 describe('initThemeSelectionBehavior (via initSettingsUi)', () => {
   beforeEach(() => {
     document.body.innerHTML = '';
@@ -1455,15 +1353,11 @@ describe('statesEqual (via updateSettingsDirtyState)', () => {
 
   it('treats states as equal when both are identical', () => {
     setUpSettingsModal('<input type="checkbox" id="show-hidden-files-toggle" />');
-    const bar = document.createElement('div');
-    bar.id = 'settings-unsaved-bar';
-    bar.hidden = false;
-    document.body.appendChild(bar);
 
     const ctrl = makeController();
     ctrl.clearSettingsChanged();
 
-    expect(bar.hidden).toBe(true);
+    expect(ctrl.isSettingsDirty()).toBe(false);
   });
 
   it('detects inequality when a key exists in one state but not the other', () => {
@@ -1471,10 +1365,6 @@ describe('statesEqual (via updateSettingsDirtyState)', () => {
       <input type="checkbox" id="show-hidden-files-toggle" />
       <input type="text" id="startup-path-input" value="" />
     `);
-    const bar = document.createElement('div');
-    bar.id = 'settings-unsaved-bar';
-    bar.hidden = true;
-    document.body.appendChild(bar);
 
     const ctrl = makeController();
     ctrl.setSavedState({ 'show-hidden-files-toggle': false });
@@ -1484,7 +1374,7 @@ describe('statesEqual (via updateSettingsDirtyState)', () => {
       'startup-path-input': '/path',
     });
 
-    expect(bar.hidden).toBe(false);
+    expect(ctrl.isSettingsDirty()).toBe(true);
   });
 });
 
@@ -1708,9 +1598,6 @@ describe('initSettingsUi – full integration', () => {
       <button id="settings-save-inline-btn">Save</button>
       <button id="settings-undo-btn">Undo</button>
       <button id="settings-redo-btn">Redo</button>
-      <button id="theme-preview-toggle">Preview</button>
-      <div id="settings-preview-panel" hidden></div>
-      <button id="settings-preview-close">Close</button>
       <button class="setting-why-toggle" data-why-target="why-1">Why?</button>
       <div id="why-1" hidden>Reason</div>
       <button data-learn-more="true">Learn More</button>

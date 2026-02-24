@@ -1,4 +1,5 @@
 import type { Settings } from './types';
+import type { DialogType } from './rendererModals';
 
 interface SettingsModalDeps {
   getCurrentSettings: () => Settings;
@@ -17,6 +18,8 @@ interface SettingsModalDeps {
   initSettingsChangeTracking: () => void;
   stopIndexStatusPolling: () => void;
   onSettingsModalHide?: () => void;
+  isSettingsDirty: () => boolean;
+  showConfirm: (message: string, title?: string, type?: DialogType) => Promise<boolean>;
 }
 
 export function createSettingsModalController(deps: SettingsModalDeps) {
@@ -375,7 +378,15 @@ export function createSettingsModalController(deps: SettingsModalDeps) {
     }
   }
 
-  function hideSettingsModal() {
+  async function hideSettingsModal() {
+    if (deps.isSettingsDirty()) {
+      const discard = await deps.showConfirm(
+        'You have unsaved changes. Are you sure you want to close without saving?',
+        'Unsaved Changes',
+        'warning'
+      );
+      if (!discard) return;
+    }
     const settingsModal = document.getElementById('settings-modal');
     if (settingsModal) {
       settingsModal.style.display = 'none';

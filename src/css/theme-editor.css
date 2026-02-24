@@ -1,10 +1,12 @@
 .theme-color-row {
   display: flex;
   gap: 16px;
+  flex-wrap: wrap;
 }
 
 .theme-color-group {
   flex: 1;
+  min-width: 150px;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -121,7 +123,7 @@
 }
 
 .theme-editor-modal {
-  width: 580px;
+  width: 640px;
   max-width: 95vw;
 }
 

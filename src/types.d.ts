@@ -7,6 +7,7 @@ export interface CustomTheme {
   textSecondary: string;
   glassBg: string;
   glassBorder: string;
+  iconHue: string;
 }
 
 export interface LicenseInfo {

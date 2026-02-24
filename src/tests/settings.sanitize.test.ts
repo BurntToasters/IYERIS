@@ -344,6 +344,7 @@ describe('sanitizeSettings', () => {
         textSecondary: '#ccc',
         glassBg: 'rgba(0,0,0,0.5)',
         glassBorder: 'rgba(255,255,255,0.1)',
+        iconHue: '#00ff00',
       };
       const result = sanitizeSettings({ customTheme: theme });
       expect(result.customTheme).toEqual(theme);

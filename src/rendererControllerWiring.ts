@@ -197,7 +197,7 @@ export function wireControllers(deps: WiringDeps) {
   let addNewTab!: (path?: string) => Promise<void>;
   let showPropertiesDialog!: (properties: import('./types').ItemProperties) => void;
   let showSettingsModal!: () => void;
-  let hideSettingsModal!: () => void;
+  let hideSettingsModal!: () => void | Promise<void>;
   /* eslint-enable prefer-const */
 
   const archiveOperationsController = createArchiveOperationsController({
@@ -1034,6 +1034,7 @@ export function wireControllers(deps: WiringDeps) {
     getSavedState,
     setSavedState,
     resetRedoState,
+    isSettingsDirty,
   } = settingsUi;
 
   const themeEditorController = createThemeEditorController({
@@ -1080,6 +1081,8 @@ export function wireControllers(deps: WiringDeps) {
     initSettingsChangeTracking,
     stopIndexStatusPolling,
     onSettingsModalHide: () => onSettingsModalHide(),
+    isSettingsDirty,
+    showConfirm,
   });
 
   showSettingsModal = settingsModalController.showSettingsModal;

@@ -134,6 +134,7 @@ function sanitizeCustomTheme(value: unknown): Settings['customTheme'] | undefine
     textSecondary,
     glassBg,
     glassBorder,
+    iconHue,
   } = value;
   if (
     typeof name !== 'string' ||
@@ -156,6 +157,7 @@ function sanitizeCustomTheme(value: unknown): Settings['customTheme'] | undefine
     textSecondary,
     glassBg,
     glassBorder,
+    iconHue: typeof iconHue === 'string' ? iconHue : accentColor,
   };
 }
 

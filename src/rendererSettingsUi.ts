@@ -175,20 +175,15 @@ export function createSettingsUiController(deps: SettingsUiDeps) {
     return true;
   }
 
+  function isSettingsDirty(): boolean {
+    if (!settingsSavedState) return false;
+    const current = captureSettingsFormState();
+    return !statesEqual(current, settingsSavedState);
+  }
+
   function updateSettingsDirtyState(): void {
     if (!settingsSavedState) return;
     const current = captureSettingsFormState();
-    const isDirty = !statesEqual(current, settingsSavedState);
-
-    const unsavedBar = document.getElementById('settings-unsaved-bar') as HTMLElement | null;
-    if (unsavedBar) {
-      unsavedBar.hidden = !isDirty;
-    }
-
-    const undoBtn = document.getElementById('settings-undo-btn') as HTMLButtonElement | null;
-    const redoBtn = document.getElementById('settings-redo-btn') as HTMLButtonElement | null;
-    if (undoBtn) undoBtn.disabled = !isDirty;
-    if (redoBtn) redoBtn.disabled = !settingsRedoState;
 
     document.querySelectorAll('.settings-section').forEach((section) => {
       if (section.id === 'tab-about') return;
@@ -680,24 +675,6 @@ export function createSettingsUiController(deps: SettingsUiDeps) {
     });
   }
 
-  function initSettingsPreview(): void {
-    const previewToggle = document.getElementById('theme-preview-toggle');
-    const previewPanel = document.getElementById('settings-preview-panel');
-    const previewClose = document.getElementById('settings-preview-close');
-    if (!previewPanel) return;
-
-    const togglePreview = () => {
-      if (previewPanel.hasAttribute('hidden')) {
-        previewPanel.removeAttribute('hidden');
-      } else {
-        previewPanel.setAttribute('hidden', 'true');
-      }
-    };
-
-    previewToggle?.addEventListener('click', togglePreview);
-    previewClose?.addEventListener('click', () => previewPanel.setAttribute('hidden', 'true'));
-  }
-
   function initThemeSelectionBehavior(): void {
     const themeSelect = document.getElementById('theme-select') as HTMLSelectElement | null;
     const systemThemeToggle = document.getElementById(
@@ -755,7 +732,6 @@ export function createSettingsUiController(deps: SettingsUiDeps) {
     initSettingsQuickActions();
     initSettingsSectionResets();
     initSettingsWhyToggles();
-    initSettingsPreview();
     initThemeSelectionBehavior();
     initSettingsUndoRedo();
   }
@@ -789,5 +765,6 @@ export function createSettingsUiController(deps: SettingsUiDeps) {
     getSavedState,
     setSavedState,
     resetRedoState,
+    isSettingsDirty,
   };
 }

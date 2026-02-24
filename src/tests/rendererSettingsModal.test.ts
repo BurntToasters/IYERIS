@@ -70,6 +70,8 @@ function makeDeps() {
     initSettingsChangeTracking: vi.fn(),
     stopIndexStatusPolling: vi.fn(),
     onSettingsModalHide: vi.fn(),
+    isSettingsDirty: vi.fn(() => false),
+    showConfirm: vi.fn().mockResolvedValue(true),
   };
 }
 

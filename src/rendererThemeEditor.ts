@@ -27,6 +27,23 @@ function hexToRgba(hex: string, alpha: number): string {
   return c ? `rgba(${c[0]}, ${c[1]}, ${c[2]}, ${alpha})` : `rgba(255, 255, 255, ${alpha})`;
 }
 
+function hexToHueDeg(hex: string): string {
+  const c = parseHexRgb(hex);
+  if (!c) return '200deg';
+  const [r, g, b] = c.map((v) => v / 255);
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const d = max - min;
+  let h = 0;
+  if (d !== 0) {
+    if (max === r) h = ((g - b) / d + 6) % 6;
+    else if (max === g) h = (b - r) / d + 2;
+    else h = (r - g) / d + 4;
+    h *= 60;
+  }
+  return `${Math.round(h)}deg`;
+}
+
 function setThemeCustomProperties(el: HTMLElement, theme: CustomTheme) {
   el.style.setProperty('--custom-accent-color', theme.accentColor);
   el.style.setProperty('--custom-accent-rgb', hexToRgb(theme.accentColor));
@@ -37,6 +54,7 @@ function setThemeCustomProperties(el: HTMLElement, theme: CustomTheme) {
   el.style.setProperty('--custom-text-secondary', theme.textSecondary);
   el.style.setProperty('--custom-glass-bg', hexToRgba(theme.glassBg, 0.03));
   el.style.setProperty('--custom-glass-border', hexToRgba(theme.glassBorder, 0.08));
+  el.style.setProperty('--themed-icon-hue', hexToHueDeg(theme.iconHue));
 }
 
 const CUSTOM_THEME_PROPERTIES = [
@@ -49,6 +67,7 @@ const CUSTOM_THEME_PROPERTIES = [
   '--custom-text-secondary',
   '--custom-glass-bg',
   '--custom-glass-border',
+  '--themed-icon-hue',
 ];
 
 const themePresets: Record<string, CustomTheme> = {
@@ -61,6 +80,7 @@ const themePresets: Record<string, CustomTheme> = {
     textSecondary: '#a0a4a8',
     glassBg: '#ffffff',
     glassBorder: '#4a9eff',
+    iconHue: '#4a9eff',
   },
   forest: {
     name: 'Forest Green',
@@ -71,6 +91,7 @@ const themePresets: Record<string, CustomTheme> = {
     textSecondary: '#a5d6a7',
     glassBg: '#ffffff',
     glassBorder: '#2ecc71',
+    iconHue: '#2ecc71',
   },
   sunset: {
     name: 'Sunset Orange',
@@ -81,6 +102,7 @@ const themePresets: Record<string, CustomTheme> = {
     textSecondary: '#ffab91',
     glassBg: '#ffffff',
     glassBorder: '#ff7043',
+    iconHue: '#ff7043',
   },
   lavender: {
     name: 'Lavender Purple',
@@ -91,6 +113,7 @@ const themePresets: Record<string, CustomTheme> = {
     textSecondary: '#b39ddb',
     glassBg: '#ffffff',
     glassBorder: '#9c7cf4',
+    iconHue: '#9c7cf4',
   },
   rose: {
     name: 'Rose Pink',
@@ -101,6 +124,7 @@ const themePresets: Record<string, CustomTheme> = {
     textSecondary: '#f8bbd9',
     glassBg: '#ffffff',
     glassBorder: '#f48fb1',
+    iconHue: '#f48fb1',
   },
   ocean: {
     name: 'Ocean Teal',
@@ -111,6 +135,7 @@ const themePresets: Record<string, CustomTheme> = {
     textSecondary: '#80deea',
     glassBg: '#ffffff',
     glassBorder: '#26c6da',
+    iconHue: '#26c6da',
   },
 };
 
@@ -122,6 +147,7 @@ const THEME_COLOR_FIELDS: ReadonlyArray<readonly [string, keyof CustomTheme]> = 
   ['theme-text-secondary', 'textSecondary'],
   ['theme-glass-bg', 'glassBg'],
   ['theme-glass-border', 'glassBorder'],
+  ['theme-icon-hue', 'iconHue'],
 ];
 const THEME_COLOR_KEY_BY_INPUT_ID = new Map<string, keyof CustomTheme>(THEME_COLOR_FIELDS);
 
@@ -135,6 +161,7 @@ export function createThemeEditorController(deps: ThemeEditorDeps) {
     textSecondary: '#b0b0b0',
     glassBg: '#ffffff',
     glassBorder: '#ffffff',
+    iconHue: '#0078d4',
   };
 
   let themeEditorHasUnsavedChanges = false;

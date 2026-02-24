@@ -324,18 +324,6 @@ describe('clearSettingsChanged', () => {
     expect(saved).not.toBeNull();
     expect(saved!['show-hidden-files-toggle']).toBe(true);
   });
-
-  it('updates unsaved bar to hidden when state is clean', () => {
-    setUpSettingsModal('<input type="checkbox" id="show-hidden-files-toggle" checked />');
-    const bar = document.createElement('div');
-    bar.id = 'settings-unsaved-bar';
-    bar.hidden = false;
-    document.body.appendChild(bar);
-
-    const ctrl = makeController();
-    ctrl.clearSettingsChanged();
-    expect(bar.hidden).toBe(true);
-  });
 });
 
 describe('activateSettingsTab', () => {

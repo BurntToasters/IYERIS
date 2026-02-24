@@ -2174,40 +2174,9 @@
                 </button>
               </h4>
 
-              <div class="settings-preview-panel" id="settings-preview-panel" hidden>
-                <div class="settings-preview-header">
-                  <span>Live Preview</span>
-                  <button class="settings-chip" id="settings-preview-close" type="button">
-                    Close
-                  </button>
-                </div>
-                <div class="settings-preview-body">
-                  <div class="settings-preview-swatch"></div>
-                  <div class="settings-preview-copy">
-                    <div class="settings-preview-title">IYERIS Preview</div>
-                    <div class="settings-preview-subtitle">
-                      Accent colors, text, and surfaces update live.
-                    </div>
-                  </div>
-                  <div class="settings-preview-actions">
-                    <button class="settings-preview-btn primary" type="button">Primary</button>
-                    <button class="settings-preview-btn" type="button">Secondary</button>
-                    <div class="settings-preview-toggle">
-                      <span>Toggle</span>
-                      <span class="settings-preview-switch">
-                        <span class="settings-preview-knob"></span>
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
               <div class="settings-card">
                 <div class="settings-card-header">
                   <span class="settings-card-title">Theme</span>
-                  <button class="settings-chip" id="theme-preview-toggle" type="button">
-                    Preview
-                  </button>
                 </div>
                 <div
                   class="setting-item"
@@ -3510,29 +3479,6 @@
             </div>
           </div>
         </div>
-        <div
-          class="settings-unsaved-bar"
-          id="settings-unsaved-bar"
-          hidden
-          role="alert"
-          aria-live="polite"
-        >
-          <div class="settings-unsaved-text">
-            <span class="settings-unsaved-dot"></span>
-            Unsaved changes
-          </div>
-          <div class="settings-unsaved-actions">
-            <button class="modal-button secondary" id="settings-undo-btn" type="button">
-              Undo
-            </button>
-            <button class="modal-button secondary" id="settings-redo-btn" type="button">
-              Redo
-            </button>
-            <button class="modal-button primary" id="settings-save-inline-btn" type="button">
-              Save
-            </button>
-          </div>
-        </div>
         <div class="modal-footer settings-footer">
           <div class="settings-footer-left">
             <div id="update-download-status" class="update-download-status" hidden></div>
@@ -3962,6 +3908,22 @@
                     id="theme-glass-border-text"
                     class="glass-input color-text"
                     value="#ffffff"
+                    maxlength="7"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div class="theme-color-row">
+              <div class="theme-color-group">
+                <label for="theme-icon-hue">Icon Hue</label>
+                <div class="color-input-wrapper">
+                  <input type="color" id="theme-icon-hue" value="#0078d4" />
+                  <input
+                    type="text"
+                    id="theme-icon-hue-text"
+                    class="glass-input color-text"
+                    value="#0078d4"
                     maxlength="7"
                   />
                 </div>
