@@ -192,7 +192,7 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
     title: 'Toggle Hidden Files',
     category: 'View',
     defaultBinding: ['Ctrl', 'H'],
-    defaultBindingMac: ['Meta', 'Shift', 'H'],
+    defaultBindingMac: ['Meta', '.'],
   },
   {
     id: 'properties',

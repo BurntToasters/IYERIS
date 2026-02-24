@@ -402,6 +402,13 @@ describe('systemHandlers extended coverage', () => {
 
     it('opens Terminal.app on darwin', async () => {
       setPlatform('darwin');
+      const mockChild = {
+        once: vi.fn((event: string, cb: (...args: any[]) => void) => {
+          if (event === 'spawn') cb();
+        }),
+        unref: vi.fn(),
+      };
+      hoisted.spawnMock.mockReturnValue(mockChild);
       hoisted.handlers.clear();
       setupSystemHandlers(loadSettingsMock, saveSettingsMock);
 
@@ -409,12 +416,11 @@ describe('systemHandlers extended coverage', () => {
       const result = await handler(mockEvent, '/Users/test');
 
       expect(result).toEqual({ success: true });
-      expect(hoisted.launchDetachedMock).toHaveBeenCalledWith('open', [
-        '-a',
-        'Terminal',
-        '--',
-        '/Users/test',
-      ]);
+      expect(hoisted.spawnMock).toHaveBeenCalledWith(
+        'open',
+        expect.arrayContaining(['-a', expect.any(String), '--', '/Users/test']),
+        expect.objectContaining({ detached: true })
+      );
     });
 
     it('launches first available terminal emulator on linux', async () => {

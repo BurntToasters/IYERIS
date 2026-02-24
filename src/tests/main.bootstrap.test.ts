@@ -166,6 +166,11 @@ vi.mock('../main/openWithHandlers', () => ({
   setupOpenWithHandlers: vi.fn(),
 }));
 
+vi.mock('../main/fileWatcher', () => ({
+  setupFileWatcherHandlers: vi.fn(),
+  cleanupAllWatchers: vi.fn(),
+}));
+
 describe('main bootstrap wiring', () => {
   beforeEach(() => {
     vi.clearAllMocks();

@@ -72,8 +72,26 @@ export function createPropertiesDialogController(deps: PropertiesDialogDeps) {
     </div>
     <div class="property-row">
       <div class="property-label">Type:</div>
-      <div class="property-value">${props.isDirectory ? 'Folder' : 'File'}</div>
-    </div>
+      <div class="property-value">${props.isDirectory ? 'Folder' : 'File'}${props.isSymlink ? ' (Symbolic Link)' : ''}</div>
+    </div>`;
+
+    if (props.symlinkTarget) {
+      html += `
+    <div class="property-row">
+      <div class="property-label">Link Target:</div>
+      <div class="property-value property-path">${escapeHtml(props.symlinkTarget)}</div>
+    </div>`;
+    }
+
+    if (props.shortcutTarget) {
+      html += `
+    <div class="property-row">
+      <div class="property-label">Target:</div>
+      <div class="property-value property-path">${escapeHtml(props.shortcutTarget)}</div>
+    </div>`;
+    }
+
+    html += `
     <div class="property-row">
       <div class="property-label">Size:</div>
       <div class="property-value" id="props-size-value">${sizeDisplay}</div>
@@ -124,23 +142,55 @@ export function createPropertiesDialogController(deps: PropertiesDialogDeps) {
       <div class="property-value">${new Date(props.accessed).toLocaleString()}</div>
     </div>`;
 
+    if (props.macTags && props.macTags.length > 0) {
+      const TAG_COLORS: Record<string, string> = {
+        Red: '#ff3b30',
+        Orange: '#ff9500',
+        Yellow: '#ffcc00',
+        Green: '#34c759',
+        Blue: '#007aff',
+        Purple: '#af52de',
+        Gray: '#8e8e93',
+      };
+      const tagHtml = props.macTags
+        .map((tag) => {
+          const colorName = tag.replace(/\n\d+$/, '');
+          const color = TAG_COLORS[colorName];
+          const dot = color
+            ? `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${color};margin-right:4px;vertical-align:middle;"></span>`
+            : '';
+          return `<span class="property-tag">${dot}${escapeHtml(colorName)}</span>`;
+        })
+        .join(' ');
+      html += `
+    <div class="property-row">
+      <div class="property-label">Tags:</div>
+      <div class="property-value">${tagHtml}</div>
+    </div>`;
+    }
+
     if (props.mode !== undefined) {
       html += `<div class="property-separator"></div>`;
       if (props.isReadOnly !== undefined) {
-        const attrs: string[] = [];
-        if (props.isReadOnly) attrs.push('Read-only');
-        if (props.isHiddenAttr) attrs.push('Hidden');
-        if (props.isSystemAttr) attrs.push('System');
         html += `
     <div class="property-row">
       <div class="property-label">Attributes:</div>
-      <div class="property-value">${attrs.length > 0 ? escapeHtml(attrs.join(', ')) : 'None'}</div>
+      <div class="property-value property-attrs-edit">
+        <label><input type="checkbox" id="attr-readonly" ${props.isReadOnly ? 'checked' : ''}> Read-only</label>
+        <label><input type="checkbox" id="attr-hidden" ${props.isHiddenAttr ? 'checked' : ''}> Hidden</label>
+        ${props.isSystemAttr ? '<span class="property-system-badge">System</span>' : ''}
+        <button class="property-btn property-btn-sm" id="apply-attrs-btn">Apply</button>
+      </div>
     </div>`;
       } else {
         html += `
     <div class="property-row">
       <div class="property-label">Permissions:</div>
-      <div class="property-value"><code>${formatPermissions(props.mode)}</code> (${(props.mode & 0o777).toString(8)})</div>
+      <div class="property-value property-perms-edit">
+        <code>${formatPermissions(props.mode)}</code>
+        <input type="text" id="perm-octal-input" class="property-perm-input" value="${(props.mode & 0o777).toString(8)}" maxlength="4" size="5">
+        <button class="property-btn property-btn-sm" id="apply-perms-btn">Apply</button>
+      </div>
     </div>`;
         if (props.owner) {
           html += `
@@ -218,6 +268,39 @@ export function createPropertiesDialogController(deps: PropertiesDialogDeps) {
       modal.style.display = 'none';
       deps.onModalClose(modal);
     };
+
+    const applyAttrsBtn = document.getElementById('apply-attrs-btn');
+    if (applyAttrsBtn) {
+      applyAttrsBtn.addEventListener('click', async () => {
+        const readOnly = (document.getElementById('attr-readonly') as HTMLInputElement)?.checked;
+        const hidden = (document.getElementById('attr-hidden') as HTMLInputElement)?.checked;
+        const result = await window.electronAPI.setAttributes(props.path, { readOnly, hidden });
+        if (result.success) {
+          deps.showToast('Attributes updated', 'Success', 'success');
+        } else {
+          deps.showToast(result.error || 'Failed to update attributes', 'Error', 'error');
+        }
+      });
+    }
+
+    const applyPermsBtn = document.getElementById('apply-perms-btn');
+    if (applyPermsBtn) {
+      applyPermsBtn.addEventListener('click', async () => {
+        const input = document.getElementById('perm-octal-input') as HTMLInputElement;
+        if (!input) return;
+        const octal = parseInt(input.value, 8);
+        if (isNaN(octal) || octal < 0 || octal > 0o777) {
+          deps.showToast('Invalid permissions (use octal, e.g. 755)', 'Error', 'error');
+          return;
+        }
+        const result = await window.electronAPI.setPermissions(props.path, octal);
+        if (result.success) {
+          deps.showToast('Permissions updated', 'Success', 'success');
+        } else {
+          deps.showToast(result.error || 'Failed to update permissions', 'Error', 'error');
+        }
+      });
+    }
 
     if (props.isDirectory) {
       const calculateBtn = document.getElementById('calculate-folder-size-btn');

@@ -34,6 +34,12 @@ type ContextMenuDeps = {
   showBatchRenameModal: () => void;
   addNewTab: (path?: string) => Promise<void>;
   getTabsEnabled: () => boolean;
+  pasteIntoFolder: (folderPath: string) => Promise<void>;
+  duplicateItems: (paths: string[]) => Promise<void>;
+  moveSelectedToFolder: () => Promise<void>;
+  copySelectedToFolder: () => Promise<void>;
+  shareItems: (filePaths: string[]) => Promise<void>;
+  hasClipboardContent: () => boolean;
 };
 
 export function createContextMenuController(deps: ContextMenuDeps) {
@@ -52,9 +58,14 @@ export function createContextMenuController(deps: ContextMenuDeps) {
   let elPreviewPdf: HTMLElement | null = null;
   let elOpenWithSubmenu: HTMLElement | null = null;
   let elBatchRename: HTMLElement | null = null;
-  let elCreateSymlink: HTMLElement | null = null;
   let elOpenInNewTab: HTMLElement | null = null;
   let elOpenWithAppsPanel: HTMLElement | null = null;
+  let elPasteInto: HTMLElement | null = null;
+  let elDuplicate: HTMLElement | null = null;
+  let elCopyMoveSubmenu: HTMLElement | null = null;
+  let elAdvancedSubmenu: HTMLElement | null = null;
+  let elShare: HTMLElement | null = null;
+  let elShowPackageContents: HTMLElement | null = null;
 
   function ensureElements() {
     if (!elContextMenu) elContextMenu = document.getElementById('context-menu');
@@ -70,9 +81,15 @@ export function createContextMenuController(deps: ContextMenuDeps) {
     if (!elPreviewPdf) elPreviewPdf = document.getElementById('preview-pdf-item');
     if (!elOpenWithSubmenu) elOpenWithSubmenu = document.getElementById('open-with-submenu');
     if (!elBatchRename) elBatchRename = document.getElementById('batch-rename-item');
-    if (!elCreateSymlink) elCreateSymlink = document.getElementById('create-symlink-item');
     if (!elOpenInNewTab) elOpenInNewTab = document.getElementById('open-in-new-tab-item');
     if (!elOpenWithAppsPanel) elOpenWithAppsPanel = document.getElementById('open-with-apps-panel');
+    if (!elPasteInto) elPasteInto = document.getElementById('paste-into-item');
+    if (!elDuplicate) elDuplicate = document.getElementById('duplicate-item');
+    if (!elCopyMoveSubmenu) elCopyMoveSubmenu = document.getElementById('copy-move-submenu');
+    if (!elAdvancedSubmenu) elAdvancedSubmenu = document.getElementById('advanced-submenu');
+    if (!elShare) elShare = document.getElementById('share-item');
+    if (!elShowPackageContents)
+      elShowPackageContents = document.getElementById('show-package-contents-item');
   }
 
   function positionMenuInViewport(menu: HTMLElement, x: number, y: number) {
@@ -169,17 +186,23 @@ export function createContextMenuController(deps: ContextMenuDeps) {
     const showIf = (el: HTMLElement | null, condition: boolean) => {
       if (el) el.style.display = condition ? 'flex' : 'none';
     };
-    showIf(elAddToBookmarks, item.isDirectory);
-    showIf(elOpenInNewTab, item.isDirectory && deps.getTabsEnabled());
-    showIf(elChangeFolderIcon, item.isDirectory);
+    const isBundle = !!item.isAppBundle;
+    showIf(elAddToBookmarks, item.isDirectory && !isBundle);
+    showIf(elOpenInNewTab, item.isDirectory && !isBundle && deps.getTabsEnabled());
+    showIf(elChangeFolderIcon, item.isDirectory && !isBundle);
     showIf(elCopyPath, true);
-    showIf(elOpenTerminal, item.isDirectory);
+    showIf(elOpenTerminal, item.isDirectory && !isBundle);
     showIf(elCompress, true);
     showIf(elExtract, !item.isDirectory && isArchivePath(item.path));
     showIf(elPreviewPdf, !item.isDirectory && PDF_EXTENSIONS.has(deps.getFileExtension(item.name)));
     showIf(elOpenWithSubmenu, !item.isDirectory);
     showIf(elBatchRename, deps.getSelectedItems().size >= 2);
-    showIf(elCreateSymlink, true);
+    showIf(elPasteInto, item.isDirectory && !isBundle && deps.hasClipboardContent());
+    showIf(elDuplicate, true);
+    showIf(elCopyMoveSubmenu, true);
+    showIf(elAdvancedSubmenu, true);
+    showIf(elShare, !item.isDirectory || isBundle);
+    showIf(elShowPackageContents, isBundle);
 
     if (elOpenWithSubmenu && !item.isDirectory) {
       setupOpenWithSubmenu(elOpenWithSubmenu, item);
@@ -188,15 +211,13 @@ export function createContextMenuController(deps: ContextMenuDeps) {
     contextMenu.style.display = 'block';
     positionMenuInViewport(contextMenu, x, y);
 
-    const submenu = contextMenu.querySelector('.context-submenu') as HTMLElement;
-    if (submenu) {
-      submenu.classList.remove('flip-left');
-      const menuRight =
-        parseFloat(contextMenu.style.left) + contextMenu.getBoundingClientRect().width;
-      if (menuRight + 160 > window.innerWidth - 10) {
-        submenu.classList.add('flip-left');
-      }
-    }
+    const submenus = contextMenu.querySelectorAll('.context-submenu');
+    const menuRight =
+      parseFloat(contextMenu.style.left) + contextMenu.getBoundingClientRect().width;
+    const shouldFlip = menuRight + 160 > window.innerWidth - 10;
+    submenus.forEach((submenu) => {
+      submenu.classList.toggle('flip-left', shouldFlip);
+    });
 
     contextMenuFocusedIndex = navigateContextMenu(contextMenu, 'down', contextMenuFocusedIndex);
   }
@@ -282,6 +303,12 @@ export function createContextMenuController(deps: ContextMenuDeps) {
         }
         break;
 
+      case 'show-package-contents':
+        if (item.isAppBundle) {
+          deps.navigateTo(item.path);
+        }
+        break;
+
       case 'preview-pdf':
         await deps.showQuickLookForFile(item);
         break;
@@ -308,15 +335,6 @@ export function createContextMenuController(deps: ContextMenuDeps) {
           deps.showToast('File path copied to clipboard', 'Success', 'success');
         } catch {
           deps.showToast('Failed to copy file path', 'Error', 'error');
-        }
-        break;
-
-      case 'copy-name':
-        try {
-          await navigator.clipboard.writeText(item.name);
-          deps.showToast('File name copied to clipboard', 'Success', 'success');
-        } catch {
-          deps.showToast('Failed to copy file name', 'Error', 'error');
         }
         break;
 
@@ -391,6 +409,31 @@ export function createContextMenuController(deps: ContextMenuDeps) {
         }
         break;
       }
+
+      case 'paste-into':
+        if (item.isDirectory) {
+          await deps.pasteIntoFolder(item.path);
+        }
+        break;
+
+      case 'duplicate': {
+        const selected = Array.from(deps.getSelectedItems());
+        const pathsToDuplicate = selected.length > 0 ? selected : [item.path];
+        await deps.duplicateItems(pathsToDuplicate);
+        break;
+      }
+
+      case 'move-to':
+        await deps.moveSelectedToFolder();
+        break;
+
+      case 'copy-to':
+        await deps.copySelectedToFolder();
+        break;
+
+      case 'share':
+        await deps.shareItems([item.path]);
+        break;
     }
   }
 

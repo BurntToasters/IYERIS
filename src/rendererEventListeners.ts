@@ -243,6 +243,27 @@ export function createEventListenersController(config: EventListenersConfig) {
     ];
     clickBindings.forEach(([element, handler]) => element?.addEventListener('click', handler));
 
+    const overflowBtn = document.getElementById('selection-overflow-btn');
+    const overflowMenu = document.getElementById('selection-overflow-menu');
+    if (overflowBtn && overflowMenu) {
+      overflowBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const open = overflowMenu.style.display !== 'none';
+        overflowMenu.style.display = open ? 'none' : 'block';
+        overflowBtn.setAttribute('aria-expanded', String(!open));
+      });
+      overflowMenu.addEventListener('click', () => {
+        overflowMenu.style.display = 'none';
+        overflowBtn.setAttribute('aria-expanded', 'false');
+      });
+      document.addEventListener('click', (e) => {
+        if (!overflowBtn.contains(e.target as Node) && !overflowMenu.contains(e.target as Node)) {
+          overflowMenu.style.display = 'none';
+          overflowBtn.setAttribute('aria-expanded', 'false');
+        }
+      });
+    }
+
     const statusHiddenBtn = document.getElementById('status-hidden');
     const activateHiddenFiles = () => {
       const settings = config.getCurrentSettings();

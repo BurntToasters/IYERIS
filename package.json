@@ -156,7 +156,11 @@
       "entitlementsInherit": "build/entitlements.mac.plist",
       "notarize": false,
       "artifactName": "${productName}-MacOS-universal.${ext}",
-      "x64ArchFiles": "**/{7zip-bin/mac,@napi-rs/canvas-darwin-*}/**"
+      "x64ArchFiles": "**/{7zip-bin/mac,@napi-rs/canvas-darwin-*}/**",
+      "files": [
+        "!node_modules/7zip-bin/linux",
+        "!node_modules/7zip-bin/win"
+      ]
     },
     "mas": {
       "type": "distribution",
@@ -176,7 +180,12 @@
         }
       ],
       "icon": "assets/icon-square.ico",
-      "artifactName": "${productName}-Win-${arch}.${ext}"
+      "artifactName": "${productName}-Win-${arch}.${ext}",
+      "files": [
+        "!node_modules/7zip-bin/linux",
+        "!node_modules/7zip-bin/mac",
+        "!node_modules/7zip-bin/win/ia32"
+      ]
     },
     "nsis": {
       "oneClick": false,
@@ -203,7 +212,13 @@
       ],
       "icon": "assets/icon.png",
       "category": "Utility",
-      "artifactName": "${productName}-Linux-${arch}.${ext}"
+      "artifactName": "${productName}-Linux-${arch}.${ext}",
+      "files": [
+        "!node_modules/7zip-bin/mac",
+        "!node_modules/7zip-bin/win",
+        "!node_modules/7zip-bin/linux/arm",
+        "!node_modules/7zip-bin/linux/ia32"
+      ]
     }
   },
   "repository": {

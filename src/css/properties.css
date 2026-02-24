@@ -221,3 +221,70 @@
   height: 14px;
   opacity: 0.9;
 }
+
+.property-attrs-edit {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.property-attrs-edit label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.property-attrs-edit input[type='checkbox'] {
+  accent-color: var(--accent);
+}
+
+.property-system-badge {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: var(--radius-small);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--separator);
+  color: var(--text-secondary);
+}
+
+.property-perms-edit {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.property-perm-input {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--separator);
+  border-radius: var(--radius-small);
+  color: var(--text-primary);
+  padding: 2px 6px;
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  width: 48px;
+  text-align: center;
+}
+
+.property-perm-input:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.property-btn-sm {
+  font-size: 11px;
+  padding: 2px 8px;
+}
+
+.property-tag {
+  display: inline-flex;
+  align-items: center;
+  font-size: 12px;
+  padding: 1px 8px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--separator);
+  margin-right: 4px;
+}

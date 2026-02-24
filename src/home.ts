@@ -5,7 +5,6 @@ import { assignKey, escapeHtml } from './shared.js';
 export const HOME_VIEW_PATH = 'iyeris://home';
 export const HOME_VIEW_LABEL = 'Home';
 export const HOME_QUICK_ACCESS_ITEMS: Array<{ action: string; label: string; icon: number }> = [
-  { action: 'home', label: 'Home', icon: 0x1f3e0 },
   { action: 'userhome', label: 'Home Folder', icon: 0x1f532 },
   { action: 'desktop', label: 'Desktop', icon: 0x1f5a5 },
   { action: 'documents', label: 'Documents', icon: 0x1f4c4 },

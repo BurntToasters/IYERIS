@@ -698,6 +698,17 @@ export function wireControllers(deps: WiringDeps) {
     showBatchRenameModal: () => batchRenameController.showBatchRenameModal(),
     addNewTab: (p) => addNewTab(p),
     getTabsEnabled: () => deps.getTabsEnabled(),
+    pasteIntoFolder: (folderPath) => clipboardController.pasteIntoFolder(folderPath),
+    duplicateItems: (paths) => clipboardController.duplicateItems(paths),
+    moveSelectedToFolder: () => clipboardController.moveSelectedToFolder(),
+    copySelectedToFolder: () => clipboardController.copySelectedToFolder(),
+    shareItems: async (filePaths) => {
+      const result = await window.electronAPI.shareItems(filePaths);
+      if (!result.success) {
+        showToast(result.error || 'Failed to share', 'Error', 'error');
+      }
+    },
+    hasClipboardContent: () => clipboardController.getClipboard() !== null,
   });
 
   const { cancelColumnOperations, renderColumnView } = createColumnViewController({

@@ -103,6 +103,105 @@ export function createClipboardController(deps: ClipboardDeps) {
     await deps.handleDrop(sourcePaths, destPath, 'move');
   }
 
+  async function copySelectedToFolder(): Promise<void> {
+    const selectedItems = deps.getSelectedItems();
+    if (selectedItems.size === 0) return;
+    const result = await window.electronAPI.selectFolder();
+    if (!result.success) return;
+
+    const destPath = result.path;
+    const sourcePaths = Array.from(selectedItems);
+    const alreadyInDest = sourcePaths.some((sourcePath) => {
+      const parentDir = path.dirname(sourcePath);
+      return parentDir === destPath || sourcePath === destPath;
+    });
+
+    if (alreadyInDest) {
+      deps.showToast('Items are already in this directory', 'Info', 'info');
+      return;
+    }
+
+    await deps.handleDrop(sourcePaths, destPath, 'copy');
+  }
+
+  async function pasteIntoFolder(folderPath: string): Promise<void> {
+    if (!folderPath) return;
+
+    try {
+      if (!clipboard || clipboard.paths.length === 0) {
+        const currentSettings = deps.getCurrentSettings();
+        if (currentSettings.globalClipboard !== false) {
+          const systemFiles = await window.electronAPI.getSystemClipboardFiles();
+          if (systemFiles && systemFiles.length > 0) {
+            const result = await window.electronAPI.copyItems(
+              systemFiles,
+              folderPath,
+              currentSettings.fileConflictBehavior || 'ask'
+            );
+            if (!result.success) {
+              deps.showToast(result.error || 'Paste failed', 'Error', 'error');
+              return;
+            }
+            deps.showToast(
+              `${systemFiles.length} item(s) pasted from system clipboard`,
+              'Success',
+              'success'
+            );
+            deps.refresh();
+            return;
+          }
+        }
+        return;
+      }
+
+      const isCopy = clipboard.operation === 'copy';
+      const conflictBehavior = deps.getCurrentSettings().fileConflictBehavior || 'ask';
+      const result = isCopy
+        ? await window.electronAPI.copyItems(clipboard.paths, folderPath, conflictBehavior)
+        : await window.electronAPI.moveItems(clipboard.paths, folderPath, conflictBehavior);
+
+      if (!result.success) {
+        deps.showToast(result.error || 'Operation failed', 'Error', 'error');
+        return;
+      }
+      deps.showToast(
+        `${clipboard.paths.length} item(s) ${isCopy ? 'copied' : 'moved'} into folder`,
+        'Success',
+        'success'
+      );
+
+      if (!isCopy) {
+        await deps.updateUndoRedoState();
+        clipboard = null;
+        window.electronAPI.setClipboard(null);
+        updateClipboardIndicator();
+      }
+
+      updateCutVisuals();
+      deps.refresh();
+    } catch {
+      deps.showToast('Paste operation failed', 'Error', 'error');
+    }
+  }
+
+  async function duplicateItems(paths: string[]): Promise<void> {
+    if (paths.length === 0) return;
+    const currentPath = deps.getCurrentPath();
+
+    try {
+      const conflictBehavior = 'rename' as const;
+      const result = await window.electronAPI.copyItems(paths, currentPath, conflictBehavior);
+      if (!result.success) {
+        deps.showToast(result.error || 'Duplicate failed', 'Error', 'error');
+        return;
+      }
+      deps.showToast(`${paths.length} item(s) duplicated`, 'Success', 'success');
+      deps.refresh();
+    } catch {
+      deps.showToast('Duplicate failed', 'Error', 'error');
+    }
+  }
+
   async function pasteFromClipboard() {
     const currentPath = deps.getCurrentPath();
     if (!currentPath) return;
@@ -196,7 +295,10 @@ export function createClipboardController(deps: ClipboardDeps) {
     copyToClipboard,
     cutToClipboard,
     moveSelectedToFolder,
+    copySelectedToFolder,
     pasteFromClipboard,
+    pasteIntoFolder,
+    duplicateItems,
     updateCutVisuals,
     getClipboard: () => clipboard,
     setClipboard: (value: ClipboardState) => {

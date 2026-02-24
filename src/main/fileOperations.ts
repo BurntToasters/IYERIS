@@ -325,10 +325,36 @@ export function setupFileOperationHandlers(): void {
       } else if (platform === 'win32') {
         await shell.openExternal('shell:RecycleBinFolder');
       } else if (platform === 'linux') {
-        const trashPath = path.join(app.getPath('home'), '.local/share/Trash/files');
-        const openResult = await shell.openPath(trashPath);
-        if (openResult) {
-          return { success: false, error: openResult };
+        const gioResult = await new Promise<boolean>((resolve) => {
+          const child = require('child_process').spawn('gio', ['open', 'trash:///'], {
+            stdio: 'ignore',
+            detached: true,
+          });
+          child.on('spawn', () => {
+            child.unref();
+            resolve(true);
+          });
+          child.on('error', () => resolve(false));
+        });
+        if (!gioResult) {
+          const xdgResult = await new Promise<boolean>((resolve) => {
+            const child = require('child_process').spawn('xdg-open', ['trash:///'], {
+              stdio: 'ignore',
+              detached: true,
+            });
+            child.on('spawn', () => {
+              child.unref();
+              resolve(true);
+            });
+            child.on('error', () => resolve(false));
+          });
+          if (!xdgResult) {
+            const trashPath = path.join(app.getPath('home'), '.local/share/Trash/files');
+            const openResult = await shell.openPath(trashPath);
+            if (openResult) {
+              return { success: false, error: openResult };
+            }
+          }
         }
       }
 
@@ -479,12 +505,23 @@ export function setupFileOperationHandlers(): void {
         return { success: false, error: 'Invalid path' };
       }
       const stats = await fs.stat(itemPath);
+      let isSymlink = false;
+      let symlinkTarget: string | undefined;
+      try {
+        const lstats = await fs.lstat(itemPath);
+        isSymlink = lstats.isSymbolicLink();
+        if (isSymlink) {
+          symlinkTarget = await fs.readlink(itemPath);
+        }
+      } catch {}
       const properties: import('../types').ItemProperties = {
         path: itemPath,
         name: path.basename(itemPath),
         size: stats.size,
         isDirectory: stats.isDirectory(),
         isFile: stats.isFile(),
+        isSymlink: isSymlink || undefined,
+        symlinkTarget,
         created: stats.birthtime,
         modified: stats.mtime,
         accessed: stats.atime,
@@ -522,7 +559,100 @@ export function setupFileOperationHandlers(): void {
         } catch {}
       }
 
+      if (process.platform === 'win32' && itemPath.endsWith('.lnk')) {
+        try {
+          const details = shell.readShortcutLink(itemPath);
+          properties.isShortcut = true;
+          properties.shortcutTarget = details.target;
+        } catch {}
+      }
+
+      if (process.platform === 'darwin') {
+        try {
+          const { execFile: execFileCb } = await import('child_process');
+          const { promisify } = await import('util');
+          const execFileAsync = promisify(execFileCb);
+          const { stdout } = await execFileAsync(
+            'mdls',
+            ['-name', 'kMDItemUserTags', '-raw', itemPath],
+            {
+              timeout: 3000,
+            }
+          );
+          const trimmed = stdout.trim();
+          if (trimmed && trimmed !== '(null)') {
+            const tags = trimmed
+              .replace(/^\(/, '')
+              .replace(/\)$/, '')
+              .split(',')
+              .map((t: string) =>
+                t
+                  .trim()
+                  .replace(/^"|"$/g, '')
+                  .replace(/\\n\\t/g, '')
+                  .trim()
+              )
+              .filter(Boolean);
+            if (tags.length > 0) {
+              properties.macTags = tags;
+            }
+          }
+        } catch {}
+      }
+
       return { success: true, properties };
+    }
+  );
+
+  handleTrustedApi(
+    'set-permissions',
+    async (_event: IpcMainInvokeEvent, itemPath: string, mode: number): Promise<ApiResponse> => {
+      if (!isPathSafe(itemPath)) return { success: false, error: 'Invalid path' };
+      if (process.platform === 'win32')
+        return { success: false, error: 'Use set-attributes on Windows' };
+      try {
+        const chmodOp = async () => {
+          await fs.chmod(itemPath, mode);
+        };
+        const result = await tryWithElevation(
+          chmodOp,
+          { type: 'custom' as 'delete', sourcePath: itemPath },
+          'change permissions'
+        );
+        if (result.error) return { success: false, error: result.error };
+        logger.info('[Permissions] Changed permissions for', itemPath, 'to', mode.toString(8));
+        return { success: true };
+      } catch (error) {
+        return { success: false, error: getErrorMessage(error) };
+      }
+    }
+  );
+
+  handleTrustedApi(
+    'set-attributes',
+    async (
+      _event: IpcMainInvokeEvent,
+      itemPath: string,
+      attrs: { readOnly?: boolean; hidden?: boolean }
+    ): Promise<ApiResponse> => {
+      if (!isPathSafe(itemPath)) return { success: false, error: 'Invalid path' };
+      if (process.platform !== 'win32')
+        return { success: false, error: 'Attributes only supported on Windows' };
+      try {
+        const { execFile: execFileCb } = await import('child_process');
+        const { promisify } = await import('util');
+        const execFileAsync = promisify(execFileCb);
+        const args: string[] = [];
+        if (attrs.readOnly !== undefined) args.push(attrs.readOnly ? '+R' : '-R');
+        if (attrs.hidden !== undefined) args.push(attrs.hidden ? '+H' : '-H');
+        if (args.length === 0) return { success: true };
+        args.push(itemPath);
+        await execFileAsync('attrib', args, { timeout: 5000, windowsHide: true });
+        logger.info('[Attributes] Changed attributes for', itemPath, args.join(' '));
+        return { success: true };
+      } catch (error) {
+        return { success: false, error: getErrorMessage(error) };
+      }
     }
   );
 

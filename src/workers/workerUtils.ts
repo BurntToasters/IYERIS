@@ -236,9 +236,15 @@ export const FILE_TYPE_EXTENSIONS: Record<string, ReadonlySet<string>> = {
 
 const HIDDEN_ATTR_CACHE_TTL_MS = 5 * 60 * 1000;
 const HIDDEN_ATTR_CACHE_MAX = 5000;
-const hiddenAttrCache = new Map<string, { isHidden: boolean; timestamp: number }>();
 
-function getHiddenCache(filePath: string): boolean | null {
+interface WinAttrFlags {
+  isHidden: boolean;
+  isSystemProtected: boolean;
+}
+
+const hiddenAttrCache = new Map<string, { flags: WinAttrFlags; timestamp: number }>();
+
+function getAttrCache(filePath: string): WinAttrFlags | null {
   const cached = hiddenAttrCache.get(filePath);
   if (!cached) return null;
   if (Date.now() - cached.timestamp > HIDDEN_ATTR_CACHE_TTL_MS) {
@@ -247,10 +253,10 @@ function getHiddenCache(filePath: string): boolean | null {
   }
   hiddenAttrCache.delete(filePath);
   hiddenAttrCache.set(filePath, cached);
-  return cached.isHidden;
+  return cached.flags;
 }
 
-function setHiddenCache(filePath: string, isHidden: boolean): void {
+function setAttrCache(filePath: string, flags: WinAttrFlags): void {
   hiddenAttrCache.delete(filePath);
   if (hiddenAttrCache.size >= HIDDEN_ATTR_CACHE_MAX) {
     const lruKey = hiddenAttrCache.keys().next().value;
@@ -258,15 +264,27 @@ function setHiddenCache(filePath: string, isHidden: boolean): void {
       hiddenAttrCache.delete(lruKey);
     }
   }
-  hiddenAttrCache.set(filePath, { isHidden, timestamp: Date.now() });
+  hiddenAttrCache.set(filePath, { flags, timestamp: Date.now() });
 }
+
+function parseAttrFlags(attrStr: string): WinAttrFlags {
+  const upper = attrStr.toUpperCase();
+  const hasH = upper.includes('H');
+  const hasS = upper.includes('S');
+  return {
+    isHidden: hasH,
+    isSystemProtected: hasH && hasS,
+  };
+}
+
+const DEFAULT_ATTR_FLAGS: WinAttrFlags = { isHidden: false, isSystemProtected: false };
 
 export async function isHidden(filePath: string, fileName: string): Promise<boolean> {
   if (fileName.startsWith('.')) return true;
   if (process.platform !== 'win32') return false;
 
-  const cached = getHiddenCache(filePath);
-  if (cached !== null) return cached;
+  const cached = getAttrCache(filePath);
+  if (cached !== null) return cached.isHidden;
 
   try {
     const { stdout } = await execFileAsync('attrib', [filePath], {
@@ -275,19 +293,19 @@ export async function isHidden(filePath: string, fileName: string): Promise<bool
     });
     const line = stdout.split(/\r?\n/).find((item) => item.trim().length > 0);
     if (!line) {
-      setHiddenCache(filePath, false);
+      setAttrCache(filePath, DEFAULT_ATTR_FLAGS);
       return false;
     }
     const match = line.match(/^\s*([A-Za-z ]+)\s+.+$/);
     if (!match) {
-      setHiddenCache(filePath, false);
+      setAttrCache(filePath, DEFAULT_ATTR_FLAGS);
       return false;
     }
-    const hidden = match[1].toUpperCase().includes('H');
-    setHiddenCache(filePath, hidden);
-    return hidden;
+    const flags = parseAttrFlags(match[1]);
+    setAttrCache(filePath, flags);
+    return flags.isHidden;
   } catch {
-    setHiddenCache(filePath, false);
+    setAttrCache(filePath, DEFAULT_ATTR_FLAGS);
     return false;
   }
 }
@@ -295,13 +313,13 @@ export async function isHidden(filePath: string, fileName: string): Promise<bool
 export async function batchCheckHidden(
   dirPath: string,
   fileNames: string[]
-): Promise<Map<string, boolean>> {
-  const results = new Map<string, boolean>();
+): Promise<Map<string, WinAttrFlags>> {
+  const results = new Map<string, WinAttrFlags>();
 
   if (process.platform !== 'win32') {
     for (const fileName of fileNames) {
       if (fileName.startsWith('.')) {
-        results.set(fileName, true);
+        results.set(fileName, { isHidden: true, isSystemProtected: false });
       }
     }
     return results;
@@ -311,12 +329,12 @@ export async function batchCheckHidden(
 
   for (const fileName of fileNames) {
     if (fileName.startsWith('.')) {
-      results.set(fileName, true);
+      results.set(fileName, { isHidden: true, isSystemProtected: false });
       continue;
     }
 
     const fullPath = path.join(dirPath, fileName);
-    const cached = getHiddenCache(fullPath);
+    const cached = getAttrCache(fullPath);
     if (cached !== null) {
       results.set(fileName, cached);
       continue;
@@ -349,17 +367,16 @@ export async function batchCheckHidden(
           for (const line of lines) {
             const match = line.match(/^\s*([A-Za-z ]+)\s+(.+)$/);
             if (!match) continue;
-            const attrs = match[1].toUpperCase();
             const matchedPath = match[2].trim();
             const name = path.basename(matchedPath);
-            const isHiddenAttr = attrs.includes('H');
-            results.set(name, isHiddenAttr);
-            setHiddenCache(path.join(dirPath, name), isHiddenAttr);
+            const flags = parseAttrFlags(match[1]);
+            results.set(name, flags);
+            setAttrCache(path.join(dirPath, name), flags);
           }
         } catch {
           for (const fileName of batch) {
-            results.set(fileName, false);
-            setHiddenCache(path.join(dirPath, fileName), false);
+            results.set(fileName, DEFAULT_ATTR_FLAGS);
+            setAttrCache(path.join(dirPath, fileName), DEFAULT_ATTR_FLAGS);
           }
         }
       })()
@@ -370,8 +387,8 @@ export async function batchCheckHidden(
 
   for (const fileName of pending) {
     if (!results.has(fileName)) {
-      results.set(fileName, false);
-      setHiddenCache(path.join(dirPath, fileName), false);
+      results.set(fileName, DEFAULT_ATTR_FLAGS);
+      setAttrCache(path.join(dirPath, fileName), DEFAULT_ATTR_FLAGS);
     }
   }
 
@@ -514,9 +531,15 @@ export interface SearchResult {
   path: string;
   isDirectory: boolean;
   isFile: boolean;
+  isSymlink?: boolean;
+  isAppBundle?: boolean;
+  isShortcut?: boolean;
+  isDesktopEntry?: boolean;
+  symlinkTarget?: string;
   size: number;
   modified: Date;
   isHidden: boolean;
+  isSystemProtected?: boolean;
 }
 
 export interface ContentSearchResult extends SearchResult {

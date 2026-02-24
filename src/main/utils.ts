@@ -139,7 +139,33 @@ export async function getDrives(): Promise<string[]> {
           try {
             const stats = await fs.stat(fullPath);
             if (stats.isDirectory()) {
-              detected.push(fullPath);
+              if (root === '/run/media') {
+                try {
+                  const innerSubs = await fs.readdir(fullPath);
+                  let foundMount = false;
+                  for (const innerSub of innerSubs) {
+                    if (innerSub.startsWith('.')) continue;
+                    const innerPath = path.join(fullPath, innerSub);
+                    try {
+                      const innerStats = await fs.stat(innerPath);
+                      if (innerStats.isDirectory()) {
+                        detected.push(innerPath);
+                        foundMount = true;
+                      }
+                    } catch (error) {
+                      ignoreError(error);
+                    }
+                  }
+                  if (!foundMount) {
+                    detected.push(fullPath);
+                  }
+                } catch (error) {
+                  ignoreError(error);
+                  detected.push(fullPath);
+                }
+              } else {
+                detected.push(fullPath);
+              }
             }
           } catch (error) {
             ignoreError(error);

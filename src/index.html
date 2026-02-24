@@ -21,6 +21,25 @@
         </div>
         <div class="titlebar-title">IYERIS</div>
       </div>
+      <div
+        class="titlebar-tabs"
+        id="tab-bar"
+        style="display: none"
+        role="tablist"
+        aria-label="File browser tabs"
+      >
+        <div class="tab-list" id="tab-list"></div>
+        <button class="tab-new-btn" id="new-tab-btn" title="New Tab (Ctrl+T)" aria-label="New tab">
+          <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+            <path
+              d="M7 1 L7 13 M1 7 L13 7"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+            />
+          </svg>
+        </button>
+      </div>
       <div class="titlebar-controls">
         <button
           class="titlebar-button"
@@ -66,26 +85,6 @@
           </svg>
         </button>
       </div>
-    </div>
-
-    <div
-      class="tab-bar glass-panel"
-      id="tab-bar"
-      style="display: none"
-      role="tablist"
-      aria-label="File browser tabs"
-    >
-      <div class="tab-list" id="tab-list"></div>
-      <button class="tab-new-btn" id="new-tab-btn" title="New Tab (Ctrl+T)" aria-label="New tab">
-        <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
-          <path
-            d="M7 1 L7 13 M1 7 L13 7"
-            stroke="currentColor"
-            stroke-width="1.5"
-            stroke-linecap="round"
-          />
-        </svg>
-      </button>
     </div>
 
     <div class="container">
@@ -321,46 +320,45 @@
               >
                 None
               </button>
-              <button
-                class="selection-action"
-                id="selection-copy-btn"
-                title="Copy"
-                aria-label="Copy selected files"
-              >
-                Copy
-              </button>
-              <button
-                class="selection-action"
-                id="selection-cut-btn"
-                title="Cut"
-                aria-label="Cut selected files"
-              >
-                Cut
-              </button>
-              <button
-                class="selection-action"
-                id="selection-move-btn"
-                title="Move To..."
-                aria-label="Move selected files"
-              >
-                Move
-              </button>
-              <button
-                class="selection-action"
-                id="selection-rename-btn"
-                title="Rename"
-                aria-label="Rename selected file"
-              >
-                Rename
-              </button>
-              <button
-                class="selection-action"
-                id="selection-delete-btn"
-                title="Delete"
-                aria-label="Delete selected files"
-              >
-                Delete
-              </button>
+              <span class="selection-overflow-wrapper">
+                <button
+                  class="selection-action selection-overflow-btn"
+                  id="selection-overflow-btn"
+                  title="More actions"
+                  aria-label="More selection actions"
+                  aria-haspopup="true"
+                  aria-expanded="false"
+                >
+                  ···
+                </button>
+                <div
+                  class="selection-overflow-menu"
+                  id="selection-overflow-menu"
+                  role="menu"
+                  style="display: none"
+                >
+                  <button class="selection-overflow-item" id="selection-copy-btn" role="menuitem">
+                    Copy
+                  </button>
+                  <button class="selection-overflow-item" id="selection-cut-btn" role="menuitem">
+                    Cut
+                  </button>
+                  <button class="selection-overflow-item" id="selection-move-btn" role="menuitem">
+                    Move To...
+                  </button>
+                  <button class="selection-overflow-item" id="selection-rename-btn" role="menuitem">
+                    Rename
+                  </button>
+                  <div class="selection-overflow-separator"></div>
+                  <button
+                    class="selection-overflow-item selection-overflow-danger"
+                    id="selection-delete-btn"
+                    role="menuitem"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </span>
             </span>
           </div>
 
@@ -1050,6 +1048,24 @@
       </button>
       <button
         type="button"
+        class="context-menu-item"
+        id="show-package-contents-item"
+        data-action="show-package-contents"
+        role="menuitem"
+        tabindex="0"
+        style="display: none"
+      >
+        <img
+          src="../assets/twemoji/1f4e6.svg"
+          class="twemoji"
+          alt=""
+          draggable="false"
+          aria-hidden="true"
+        />
+        Show Package Contents
+      </button>
+      <button
+        type="button"
         class="context-menu-item has-submenu"
         id="open-with-submenu"
         role="menuitem"
@@ -1130,6 +1146,24 @@
       <button
         type="button"
         class="context-menu-item"
+        data-action="paste-into"
+        id="paste-into-item"
+        role="menuitem"
+        tabindex="0"
+        style="display: none"
+      >
+        <img
+          src="../assets/twemoji/1f4cb.svg"
+          class="twemoji"
+          alt=""
+          draggable="false"
+          aria-hidden="true"
+        />
+        Paste <span class="context-menu-shortcut">Ctrl+V</span>
+      </button>
+      <button
+        type="button"
+        class="context-menu-item"
         data-action="copy-path"
         id="copy-path-item"
         role="menuitem"
@@ -1147,20 +1181,72 @@
       <button
         type="button"
         class="context-menu-item"
-        data-action="copy-name"
-        id="copy-name-item"
+        data-action="duplicate"
+        id="duplicate-item"
         role="menuitem"
         tabindex="0"
       >
         <img
-          src="../assets/twemoji/1f4dd.svg"
+          src="../assets/twemoji/1f4d1.svg"
           class="twemoji"
           alt=""
           draggable="false"
           aria-hidden="true"
         />
-        Copy file name
+        Duplicate
       </button>
+      <div
+        class="context-menu-item has-submenu"
+        id="copy-move-submenu"
+        role="menuitem"
+        tabindex="0"
+        aria-haspopup="true"
+        aria-expanded="false"
+      >
+        <img
+          src="../assets/twemoji/1f4e4.svg"
+          class="twemoji"
+          alt=""
+          draggable="false"
+          aria-hidden="true"
+        />
+        Copy / Move
+        <span class="submenu-arrow" aria-hidden="true">&#9656;</span>
+        <div class="context-submenu" role="menu" aria-label="Copy and move options">
+          <button
+            type="button"
+            class="context-menu-item"
+            data-action="move-to"
+            role="menuitem"
+            tabindex="0"
+          >
+            <img
+              src="../assets/twemoji/1f4e4.svg"
+              class="twemoji"
+              alt=""
+              draggable="false"
+              aria-hidden="true"
+            />
+            Move To...
+          </button>
+          <button
+            type="button"
+            class="context-menu-item"
+            data-action="copy-to"
+            role="menuitem"
+            tabindex="0"
+          >
+            <img
+              src="../assets/twemoji/1f4e5.svg"
+              class="twemoji"
+              alt=""
+              draggable="false"
+              aria-hidden="true"
+            />
+            Copy To...
+          </button>
+        </div>
+      </div>
       <button
         type="button"
         class="context-menu-item"
@@ -1179,23 +1265,42 @@
         />
         Batch Rename...
       </button>
-      <button
-        type="button"
-        class="context-menu-item"
-        data-action="create-symlink"
-        id="create-symlink-item"
+      <div
+        class="context-menu-item has-submenu"
+        id="advanced-submenu"
         role="menuitem"
         tabindex="0"
+        aria-haspopup="true"
+        aria-expanded="false"
       >
         <img
-          src="../assets/twemoji/1f517.svg"
+          src="../assets/twemoji/2699.svg"
           class="twemoji"
           alt=""
           draggable="false"
           aria-hidden="true"
         />
-        Create Symbolic Link
-      </button>
+        Advanced
+        <span class="submenu-arrow" aria-hidden="true">&#9656;</span>
+        <div class="context-submenu" role="menu" aria-label="Advanced options">
+          <button
+            type="button"
+            class="context-menu-item"
+            data-action="create-symlink"
+            role="menuitem"
+            tabindex="0"
+          >
+            <img
+              src="../assets/twemoji/1f517.svg"
+              class="twemoji"
+              alt=""
+              draggable="false"
+              aria-hidden="true"
+            />
+            Create Symbolic Link
+          </button>
+        </div>
+      </div>
       <div class="context-menu-separator" role="separator"></div>
       <div
         class="context-menu-item has-submenu"
@@ -1422,6 +1527,23 @@
           aria-hidden="true"
         />
         Open folder in Terminal
+      </button>
+      <button
+        type="button"
+        class="context-menu-item"
+        data-action="share"
+        id="share-item"
+        role="menuitem"
+        tabindex="0"
+      >
+        <img
+          src="../assets/twemoji/1f310.svg"
+          class="twemoji"
+          alt=""
+          draggable="false"
+          aria-hidden="true"
+        />
+        Share...
       </button>
       <div class="context-menu-separator" role="separator"></div>
       <button
@@ -3319,6 +3441,13 @@
                   <span class="about-credit-value"
                     ><a href="#" id="about-twemoji-link" class="about-link">Twemoji</a> by Twitter +
                     Contributors (CC-BY 4.0)</span
+                  >
+                </div>
+                <div class="about-credit-item">
+                  <span class="about-credit-label">Archive Engine</span>
+                  <span class="about-credit-value"
+                    ><a href="#" id="about-7zip-link" class="about-link">7-Zip</a> by Igor Pavlov
+                    (LGPL-2.1)</span
                   >
                 </div>
               </div>

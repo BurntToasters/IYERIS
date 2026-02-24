@@ -609,8 +609,31 @@ export function setupApplicationMenu(): void {
         ],
       },
       {
+        label: 'File',
+        submenu: [
+          {
+            label: 'Close Window',
+            accelerator: 'CmdOrCtrl+W',
+            click: () => {
+              BrowserWindow.getFocusedWindow()?.close();
+            },
+          },
+        ],
+      },
+      {
         label: 'Window',
         submenu: [{ role: 'minimize' }, { role: 'zoom' }, { type: 'separator' }, { role: 'front' }],
+      },
+      {
+        role: 'help',
+        submenu: [
+          {
+            label: 'IYERIS Website',
+            click: () => {
+              shell.openExternal('https://iyeris.app');
+            },
+          },
+        ],
       },
     ];
 

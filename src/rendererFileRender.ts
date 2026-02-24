@@ -402,11 +402,16 @@ export function createFileRenderController(config: FileRenderConfig) {
     fileItem.tabIndex = -1;
     fileItem.dataset.path = item.path;
     fileItem.dataset.isDirectory = String(item.isDirectory);
+    if (item.isAppBundle) fileItem.dataset.isAppBundle = 'true';
+    if (item.isShortcut) fileItem.dataset.isShortcut = 'true';
+    if (item.isDesktopEntry) fileItem.dataset.isDesktopEntry = 'true';
     fileItem.setAttribute('role', 'option');
     fileItem.setAttribute('aria-selected', 'false');
 
     let icon: string;
-    if (item.isDirectory) {
+    if (item.isAppBundle) {
+      icon = getFileIcon(item.name);
+    } else if (item.isDirectory) {
       icon = config.getFolderIcon(item.path);
     } else {
       const ext = getFileExtension(item.name);
@@ -423,9 +428,17 @@ export function createFileRenderController(config: FileRenderConfig) {
       }
     }
 
-    const sizeDisplay = item.isDirectory ? '--' : formatFileSize(item.size);
+    const sizeDisplay = item.isDirectory && !item.isAppBundle ? '--' : formatFileSize(item.size);
     const dateDisplay = config.dateFormatter.format(new Date(item.modified));
-    const typeDisplay = item.isDirectory ? 'Folder' : getFileTypeFromName(item.name);
+    const typeDisplay = item.isAppBundle
+      ? 'Application'
+      : item.isDesktopEntry
+        ? 'Application'
+        : item.isShortcut
+          ? 'Shortcut'
+          : item.isDirectory
+            ? 'Folder'
+            : getFileTypeFromName(item.name);
 
     const ariaDescription = item.isDirectory
       ? `${typeDisplay}, modified ${dateDisplay}`

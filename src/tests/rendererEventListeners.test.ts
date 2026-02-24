@@ -233,6 +233,8 @@ function setupBasicDom() {
     <div id="selection-move-btn"></div>
     <div id="selection-rename-btn"></div>
     <div id="selection-delete-btn"></div>
+    <div id="selection-overflow-btn"></div>
+    <div id="selection-overflow-menu" style="display:none"></div>
     <div id="bookmark-add-btn"></div>
     <div id="select-all-btn"></div>
     <div id="deselect-all-btn"></div>

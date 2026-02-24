@@ -159,9 +159,15 @@ export interface FileItem {
   isDirectory: boolean;
   isFile: boolean;
   isSymlink?: boolean;
+  isAppBundle?: boolean;
+  isShortcut?: boolean;
+  isDesktopEntry?: boolean;
+  symlinkTarget?: string;
+  shortcutTarget?: string;
   size: number;
   modified: Date;
   isHidden: boolean;
+  isSystemProtected?: boolean;
 }
 
 export interface DriveInfo {
@@ -197,6 +203,10 @@ export interface ItemProperties {
   size: number;
   isDirectory: boolean;
   isFile: boolean;
+  isSymlink?: boolean;
+  symlinkTarget?: string;
+  isShortcut?: boolean;
+  shortcutTarget?: string;
   created: Date;
   modified: Date;
   accessed: Date;
@@ -206,6 +216,7 @@ export interface ItemProperties {
   isReadOnly?: boolean;
   isHiddenAttr?: boolean;
   isSystemAttr?: boolean;
+  macTags?: string[];
 }
 
 export interface FolderSizeProgress {
@@ -483,6 +494,11 @@ export interface ElectronAPI {
   openTrash: () => Promise<IpcResult>;
   renameItem: (oldPath: string, newName: string) => Promise<PathResponse>;
   getItemProperties: (itemPath: string) => Promise<PropertiesResponse>;
+  setPermissions: (itemPath: string, mode: number) => Promise<IpcResult>;
+  setAttributes: (
+    itemPath: string,
+    attrs: { readOnly?: boolean; hidden?: boolean }
+  ) => Promise<IpcResult>;
   getSettings: () => Promise<SettingsResponse>;
   saveSettings: (settings: Settings) => Promise<IpcResult>;
   saveSettingsSync: (settings: Settings) => IpcResult;
@@ -544,6 +560,9 @@ export interface ElectronAPI {
   elevatedMove: (sourcePath: string, destPath: string) => Promise<IpcResult>;
   elevatedDelete: (itemPath: string) => Promise<IpcResult>;
   elevatedRename: (itemPath: string, newName: string) => Promise<IpcResult>;
+  resolveShortcut: (
+    shortcutPath: string
+  ) => Promise<{ success: boolean; target?: string; error?: string }>;
   readFileContent: (filePath: string, maxSize?: number) => Promise<FileContentResponse>;
   getFileDataUrl: (filePath: string, maxSize?: number) => Promise<FileDataUrlResponse>;
   getLicenses: () => Promise<LicensesResponse>;
@@ -586,9 +605,12 @@ export interface ElectronAPI {
   onExtractProgress: (callback: (progress: ArchiveProgress) => void) => () => void;
   onFileOperationProgress: (callback: (progress: FileOperationProgress) => void) => () => void;
   onSystemResumed: (callback: () => void) => () => void;
+  onDirectoryChanged: (callback: (data: { dirPath: string }) => void) => () => void;
   onSystemThemeChanged: (callback: (data: { isDarkMode: boolean }) => void) => () => void;
   setZoomLevel: (zoomLevel: number) => Promise<IpcResult>;
   getZoomLevel: () => Promise<ZoomLevelResponse>;
+  watchDirectory: (dirPath: string) => Promise<boolean>;
+  unwatchDirectory: () => Promise<void>;
   calculateFolderSize: (folderPath: string, operationId: string) => Promise<FolderSizeResponse>;
   cancelFolderSizeCalculation: (operationId: string) => Promise<IpcResult>;
   onFolderSizeProgress: (
@@ -622,6 +644,8 @@ export interface ElectronAPI {
   openFileWithApp: (filePath: string, appId: string) => Promise<IpcResult>;
   batchRename: (items: Array<{ oldPath: string; newName: string }>) => Promise<IpcResult>;
   createSymlink: (targetPath: string, linkPath: string) => Promise<IpcResult>;
+  shareItems: (filePaths: string[]) => Promise<IpcResult>;
+  launchDesktopEntry: (filePath: string) => Promise<IpcResult>;
 }
 
 declare global {

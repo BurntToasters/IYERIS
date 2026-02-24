@@ -38,6 +38,12 @@ function createDeps() {
     showBatchRenameModal: vi.fn(),
     addNewTab: vi.fn().mockResolvedValue(undefined),
     getTabsEnabled: vi.fn().mockReturnValue(true),
+    pasteIntoFolder: vi.fn().mockResolvedValue(undefined),
+    duplicateItems: vi.fn().mockResolvedValue(undefined),
+    moveSelectedToFolder: vi.fn().mockResolvedValue(undefined),
+    copySelectedToFolder: vi.fn().mockResolvedValue(undefined),
+    shareItems: vi.fn().mockResolvedValue(undefined),
+    hasClipboardContent: vi.fn().mockReturnValue(false),
   };
 }
 

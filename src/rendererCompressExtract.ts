@@ -578,6 +578,27 @@ export function createCompressExtractController(deps: CompressExtractDeps) {
   }
 
   async function openFileEntry(item: FileItem): Promise<void> {
+    if (item.isAppBundle) {
+      await window.electronAPI.openFile(item.path);
+      return;
+    }
+    if (item.isDesktopEntry) {
+      await window.electronAPI.launchDesktopEntry(item.path);
+      return;
+    }
+    if (item.isShortcut) {
+      try {
+        const result = await window.electronAPI.resolveShortcut(item.path);
+        if (result.success && result.target) {
+          await window.electronAPI.openFile(result.target);
+        } else {
+          await window.electronAPI.openFile(item.path);
+        }
+      } catch {
+        await window.electronAPI.openFile(item.path);
+      }
+      return;
+    }
     if (item.isDirectory) {
       deps.navigateTo(item.path);
       return;

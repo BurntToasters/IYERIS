@@ -111,18 +111,14 @@ body.platform-win32 .titlebar-title {
   font-family: 'Segoe UI Variable', 'Segoe UI', system-ui, sans-serif;
 }
 
-.tab-bar {
+.titlebar-tabs {
   display: flex;
   align-items: center;
-  height: var(--tab-bar-height);
-  padding: 0 6px;
-  gap: 4px;
-  border-radius: 0;
-  border-left: none;
-  border-right: none;
-  border-top: none;
-  background: var(--surface-1);
-  border-bottom: 1px solid var(--panel-border);
+  flex: 1;
+  min-width: 0;
+  padding: 0 4px;
+  gap: 2px;
+  -webkit-app-region: no-drag;
 }
 
 .tab-list {
@@ -142,13 +138,14 @@ body.platform-win32 .titlebar-title {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 10px;
+  padding: 3px 10px;
   background: transparent;
   border: 1px solid transparent;
   border-radius: var(--radius-small);
   cursor: pointer;
-  min-width: 100px;
+  min-width: 80px;
   max-width: 180px;
+  height: calc(var(--titlebar-height) - 10px);
   transition: var(--transition-standard);
   position: relative;
 }
@@ -242,26 +239,24 @@ body.platform-win32 .titlebar-title {
   transform: none;
 }
 
-body.tabs-enabled .container {
-  height: calc(
-    100vh - var(--titlebar-height) - var(--tab-bar-height) - var(--status-bar-height) -
-      var(--container-edge-padding-top) - var(--container-edge-padding-bottom)
-  );
-}
-
-body.tabs-enabled .tab-bar {
-  display: flex;
-}
-
-body.tabs-enabled.tabs-single .container {
-  height: calc(
-    100vh - var(--titlebar-height) - var(--status-bar-height) - var(--container-edge-padding-top) -
-      var(--container-edge-padding-bottom)
-  );
-}
-
-body.tabs-enabled.tabs-single .tab-bar {
+body.tabs-enabled .titlebar-title {
   display: none;
+}
+
+body.tabs-enabled .titlebar-drag-region {
+  flex: 0 0 auto;
+}
+
+body.tabs-enabled.tabs-single .titlebar-tabs {
+  display: none !important;
+}
+
+body.tabs-enabled.tabs-single .titlebar-title {
+  display: block;
+}
+
+body.tabs-enabled.tabs-single .titlebar-drag-region {
+  flex: 1;
 }
 
 .toolbar-new-tab-btn {
@@ -281,8 +276,8 @@ body.reduce-transparency .titlebar {
   background: var(--bg-secondary) !important;
 }
 
-body.reduce-transparency .tab-bar {
-  background: var(--bg-secondary) !important;
+body.reduce-transparency .titlebar-tabs {
+  background: transparent !important;
 }
 
 .tab-context-menu {

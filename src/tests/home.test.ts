@@ -27,7 +27,6 @@ describe('HOME_QUICK_ACCESS_ITEMS', () => {
 
   it('has required quick access items', () => {
     const actions = HOME_QUICK_ACCESS_ITEMS.map((item) => item.action);
-    expect(actions).toContain('home');
     expect(actions).toContain('userhome');
     expect(actions).toContain('desktop');
     expect(actions).toContain('documents');

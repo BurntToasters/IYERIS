@@ -92,7 +92,7 @@ export function createFileGridEventsController(config: FileGridEventsConfig) {
       const fileItem = getFileItemElement(e.target);
       if (!fileItem) return;
       const item = config.getFileItemData(fileItem);
-      if (!item || !item.isDirectory || !config.getTabsEnabled()) return;
+      if (!item || !item.isDirectory || item.isAppBundle || !config.getTabsEnabled()) return;
       e.preventDefault();
       config.addNewTab(item.path);
     });
@@ -156,7 +156,8 @@ export function createFileGridEventsController(config: FileGridEventsConfig) {
     fileGrid.addEventListener('dragover', (e) => {
       const fileItem = getFileItemElement(e.target);
       if (!fileItem) return;
-      if (fileItem.dataset.isDirectory !== 'true') return;
+      if (fileItem.dataset.isDirectory !== 'true' || fileItem.dataset.isAppBundle === 'true')
+        return;
 
       config.consumeEvent(e);
 
@@ -182,7 +183,8 @@ export function createFileGridEventsController(config: FileGridEventsConfig) {
     fileGrid.addEventListener('dragleave', (e) => {
       const fileItem = getFileItemElement(e.target);
       if (!fileItem) return;
-      if (fileItem.dataset.isDirectory !== 'true') return;
+      if (fileItem.dataset.isDirectory !== 'true' || fileItem.dataset.isAppBundle === 'true')
+        return;
 
       config.consumeEvent(e);
 
@@ -202,7 +204,8 @@ export function createFileGridEventsController(config: FileGridEventsConfig) {
     fileGrid.addEventListener('drop', async (e) => {
       const fileItem = getFileItemElement(e.target);
       if (!fileItem) return;
-      if (fileItem.dataset.isDirectory !== 'true') return;
+      if (fileItem.dataset.isDirectory !== 'true' || fileItem.dataset.isAppBundle === 'true')
+        return;
 
       config.consumeEvent(e);
 

@@ -7,6 +7,7 @@ import {
   nativeTheme,
   BrowserWindow,
   screen,
+  ShareMenu,
 } from 'electron';
 import * as path from 'path';
 import { promises as fs } from 'fs';
@@ -20,7 +21,7 @@ import type {
   LicensesResponse,
   Settings,
 } from '../types';
-import { MAX_TEXT_PREVIEW_BYTES, MAX_DATA_URL_BYTES } from './appState';
+import { MAX_TEXT_PREVIEW_BYTES, MAX_DATA_URL_BYTES, getMainWindow } from './appState';
 import { isPathSafe, getErrorMessage } from './security';
 import { ignoreError } from '../shared';
 import { isRunningInFlatpak } from './platformUtils';
@@ -129,6 +130,27 @@ export function setupSystemHandlers(
   });
 
   handleTrustedApi(
+    'resolve-shortcut',
+    async (
+      _event: IpcMainInvokeEvent,
+      shortcutPath: string
+    ): Promise<{ success: boolean; target?: string; error?: string }> => {
+      if (!isPathSafe(shortcutPath)) {
+        return { success: false, error: 'Invalid path' };
+      }
+      if (process.platform !== 'win32') {
+        return { success: false, error: 'Shortcuts are only supported on Windows' };
+      }
+      try {
+        const details = shell.readShortcutLink(shortcutPath);
+        return { success: true, target: details.target };
+      } catch (error) {
+        return { success: false, error: getErrorMessage(error) };
+      }
+    }
+  );
+
+  handleTrustedApi(
     'open-terminal',
     async (_event: IpcMainInvokeEvent, dirPath: string): Promise<ApiResponse> => {
       if (!isPathSafe(dirPath)) {
@@ -148,9 +170,51 @@ export function setupSystemHandlers(
           launchDetached('cmd', ['/K', 'cd', '/d', quotedPath]);
         }
       } else if (platform === 'darwin') {
-        launchDetached('open', ['-a', 'Terminal', '--', dirPath]);
+        const macTerminals = [
+          { app: 'iTerm', args: [] as string[] },
+          { app: 'Warp', args: [] as string[] },
+          { app: 'Alacritty', args: [] as string[] },
+          { app: 'kitty', args: [] as string[] },
+          { app: 'Hyper', args: [] as string[] },
+          { app: 'Terminal', args: [] as string[] },
+        ];
+        const termProgram = process.env.TERM_PROGRAM;
+        if (termProgram) {
+          const envMatch = macTerminals.findIndex((t) =>
+            termProgram.toLowerCase().includes(t.app.toLowerCase())
+          );
+          if (envMatch > 0) {
+            const [preferred] = macTerminals.splice(envMatch, 1);
+            macTerminals.unshift(preferred);
+          }
+        }
+        let macLaunched = false;
+        for (const term of macTerminals) {
+          const success = await new Promise<boolean>((resolve) => {
+            const child = spawn('open', ['-a', term.app, '--', dirPath, ...term.args], {
+              shell: false,
+              detached: true,
+              stdio: 'ignore',
+            });
+            child.once('spawn', () => {
+              child.unref();
+              resolve(true);
+            });
+            child.once('error', () => resolve(false));
+            child.once('exit', (code) => {
+              if (!macLaunched) resolve(code === 0);
+            });
+          });
+          if (success) {
+            macLaunched = true;
+            break;
+          }
+        }
+        if (!macLaunched) {
+          launchDetached('open', ['-a', 'Terminal', '--', dirPath]);
+        }
       } else {
-        const terminals = [
+        const baseTerminals = [
           { cmd: 'x-terminal-emulator', args: ['--working-directory', dirPath] },
           { cmd: 'gnome-terminal', args: ['--working-directory=' + dirPath] },
           { cmd: 'konsole', args: ['--workdir', dirPath] },
@@ -166,6 +230,13 @@ export function setupSystemHandlers(
           { cmd: 'sakura', args: ['--working-directory=' + dirPath] },
           { cmd: 'xterm', args: ['-e', 'bash'] },
         ];
+        const inFlatpak = isRunningInFlatpak();
+        const terminals = inFlatpak
+          ? baseTerminals.map((t) => ({
+              cmd: 'flatpak-spawn',
+              args: ['--host', t.cmd, ...t.args],
+            }))
+          : baseTerminals;
 
         let launched = false;
         for (const term of terminals) {
@@ -349,6 +420,76 @@ export function setupSystemHandlers(
   handleTrustedApi('export-diagnostics', async () => exportDiagnostics(loadSettings));
 
   handleTrustedApi('get-log-file-content', async () => getLogFileContent());
+
+  handleTrustedApi(
+    'share-items',
+    async (_event: IpcMainInvokeEvent, filePaths: string[]): Promise<ApiResponse> => {
+      try {
+        if (!filePaths || filePaths.length === 0) {
+          return { success: false, error: 'No items to share' };
+        }
+        if (process.platform === 'darwin') {
+          const win = getMainWindow();
+          if (!win) {
+            return { success: false, error: 'No active window' };
+          }
+          const shareMenu = new ShareMenu({ filePaths });
+          shareMenu.popup({ window: win });
+          return { success: true };
+        }
+        if (process.platform === 'win32') {
+          for (const filePath of filePaths) {
+            shell.showItemInFolder(filePath);
+          }
+          return { success: true };
+        }
+        const xdgShare = await new Promise<boolean>((resolve) => {
+          const child = spawn('xdg-open', [filePaths[0]], { stdio: 'ignore', detached: true });
+          child.on('error', () => resolve(false));
+          child.on('spawn', () => {
+            child.unref();
+            resolve(true);
+          });
+        });
+        if (!xdgShare) {
+          return { success: false, error: 'Could not open file for sharing' };
+        }
+        return { success: true };
+      } catch (error) {
+        return { success: false, error: getErrorMessage(error) };
+      }
+    }
+  );
+
+  handleTrustedApi(
+    'launch-desktop-entry',
+    async (_event: IpcMainInvokeEvent, desktopFilePath: string): Promise<ApiResponse> => {
+      if (!isPathSafe(desktopFilePath)) return { success: false, error: 'Invalid path' };
+      if (process.platform !== 'linux') return { success: false, error: 'Only supported on Linux' };
+
+      const launchers = [
+        { cmd: 'gio', args: ['launch', desktopFilePath] },
+        { cmd: 'gtk-launch', args: [require('path').basename(desktopFilePath)] },
+        { cmd: 'xdg-open', args: [desktopFilePath] },
+      ];
+
+      for (const launcher of launchers) {
+        const success = await new Promise<boolean>((resolve) => {
+          const child = spawn(launcher.cmd, launcher.args, {
+            stdio: 'ignore',
+            detached: true,
+          });
+          child.once('spawn', () => {
+            child.unref();
+            resolve(true);
+          });
+          child.once('error', () => resolve(false));
+        });
+        if (success) return { success: true };
+      }
+      return { success: false, error: 'Could not launch desktop entry' };
+    }
+  );
 
   nativeTheme.on('updated', () => {
     const isDarkMode = nativeTheme.shouldUseDarkColors;

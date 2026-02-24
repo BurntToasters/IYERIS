@@ -52,7 +52,7 @@
 .context-menu-item .twemoji {
   width: 1em;
   height: 1em;
-  margin-right: 0.45em;
+  flex-shrink: 0;
 }
 
 .bookmark-icon .twemoji {

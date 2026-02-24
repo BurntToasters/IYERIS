@@ -1280,6 +1280,7 @@ async function navigateTo(path: string, skipHistoryUpdate = false) {
       renderFiles(result.contents || []);
     }
     updateDiskSpace();
+    window.electronAPI.watchDirectory(path);
     if (currentSettings.enableGitStatus) {
       fetchGitStatusAsync(path);
       updateGitBranch(path);

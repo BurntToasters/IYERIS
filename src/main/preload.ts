@@ -43,6 +43,10 @@ const electronAPI: ElectronAPI = {
   renameItem: (oldPath: string, newName: string) =>
     ipcRenderer.invoke('rename-item', oldPath, newName),
   getItemProperties: (itemPath: string) => ipcRenderer.invoke('get-item-properties', itemPath),
+  setPermissions: (itemPath: string, mode: number) =>
+    ipcRenderer.invoke('set-permissions', itemPath, mode),
+  setAttributes: (itemPath: string, attrs: { readOnly?: boolean; hidden?: boolean }) =>
+    ipcRenderer.invoke('set-attributes', itemPath, attrs),
   getSettings: () => ipcRenderer.invoke('get-settings'),
   saveSettings: (settings: Settings) => ipcRenderer.invoke('save-settings', settings),
   saveSettingsSync: (settings: Settings) => ipcRenderer.sendSync('save-settings-sync', settings),
@@ -114,6 +118,7 @@ const electronAPI: ElectronAPI = {
   elevatedDelete: (itemPath: string) => ipcRenderer.invoke('elevated-delete', itemPath),
   elevatedRename: (itemPath: string, newName: string) =>
     ipcRenderer.invoke('elevated-rename', itemPath, newName),
+  resolveShortcut: (shortcutPath: string) => ipcRenderer.invoke('resolve-shortcut', shortcutPath),
   readFileContent: (filePath: string, maxSize?: number) =>
     ipcRenderer.invoke('read-file-content', filePath, maxSize),
   getFileDataUrl: (filePath: string, maxSize?: number) =>
@@ -228,6 +233,12 @@ const electronAPI: ElectronAPI = {
     ipcRenderer.on('system-resumed', handler);
     return () => ipcRenderer.removeListener('system-resumed', handler);
   },
+  onDirectoryChanged: (callback: (data: { dirPath: string }) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, data: { dirPath: string }) =>
+      callback(data);
+    ipcRenderer.on('directory-changed', handler);
+    return () => ipcRenderer.removeListener('directory-changed', handler);
+  },
   onSystemThemeChanged: (callback: (data: { isDarkMode: boolean }) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, data: { isDarkMode: boolean }) =>
       callback(data);
@@ -236,6 +247,8 @@ const electronAPI: ElectronAPI = {
   },
   setZoomLevel: (zoomLevel: number) => ipcRenderer.invoke('set-zoom-level', zoomLevel),
   getZoomLevel: () => ipcRenderer.invoke('get-zoom-level'),
+  watchDirectory: (dirPath: string) => ipcRenderer.invoke('watch-directory', dirPath),
+  unwatchDirectory: () => ipcRenderer.invoke('unwatch-directory'),
   calculateFolderSize: (folderPath: string, operationId: string) =>
     ipcRenderer.invoke('calculate-folder-size', folderPath, operationId),
   cancelFolderSizeCalculation: (operationId: string) =>
@@ -295,6 +308,8 @@ const electronAPI: ElectronAPI = {
     ipcRenderer.invoke('batch-rename', items),
   createSymlink: (targetPath: string, linkPath: string) =>
     ipcRenderer.invoke('create-symlink', targetPath, linkPath),
+  shareItems: (filePaths: string[]) => ipcRenderer.invoke('share-items', filePaths),
+  launchDesktopEntry: (filePath: string) => ipcRenderer.invoke('launch-desktop-entry', filePath),
 };
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);

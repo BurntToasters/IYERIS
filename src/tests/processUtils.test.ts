@@ -23,14 +23,15 @@ describe('spawnWithTimeout', () => {
   });
 
   it('reports timeout when command takes too long', async () => {
-    const { command, args } = shellCommand('sleep 30', 'ping -n 30 127.0.0.1 >NUL');
+    const command = process.execPath;
+    const args = ['-e', 'setTimeout(()=>{},30000)'];
     const { child, timedOut } = spawnWithTimeout(command, args, 100, {});
     const code = await new Promise<number | null>((resolve) => {
       child.on('close', resolve);
     });
     expect(timedOut()).toBe(true);
     expect(code).not.toBe(0);
-  });
+  }, 15_000);
 
   it('clears timeout on error event', async () => {
     const { child, timedOut } = spawnWithTimeout('nonexistent_command_xyz', [], 5000, {});
@@ -63,10 +64,11 @@ describe('captureSpawnOutput', () => {
   });
 
   it('handles timeout', async () => {
-    const { command, args } = shellCommand('sleep 30', 'ping -n 30 127.0.0.1 >NUL');
+    const command = process.execPath;
+    const args = ['-e', 'setTimeout(()=>{},30000)'];
     const result = await captureSpawnOutput(command, args, 100, {});
     expect(result.timedOut).toBe(true);
-  });
+  }, 15_000);
 
   it('rejects on spawn error for nonexistent command', async () => {
     await expect(captureSpawnOutput('nonexistent_command_xyz', [], 5000, {})).rejects.toThrow();

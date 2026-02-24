@@ -31,7 +31,7 @@ function runCommand(name, command, args, parser, results, runner = spawnSync) {
   const run = runner(command, args, {
     encoding: 'utf8',
     stdio: 'pipe',
-    shell: false,
+    shell: process.platform === 'win32',
     windowsHide: true,
   });
 

@@ -12,6 +12,7 @@ import { ignoreError } from '../shared';
 import { loadSettings } from './settingsManager';
 import type { ApiResponse } from '../types';
 import { isTrustedIpcEvent } from './ipcUtils';
+import { isRunningInFlatpak } from './platformUtils';
 
 const execFilePromise = promisify(execFile);
 
@@ -183,7 +184,11 @@ async function executeElevatedMac(operation: ElevatedOperation): Promise<Elevate
 async function executeElevatedLinux(operation: ElevatedOperation): Promise<ElevatedResult> {
   return executeElevatedUnix(operation, (scriptPath) => {
     return new Promise((resolve) => {
-      const child = spawn('pkexec', ['bash', scriptPath], {
+      const cmd = isRunningInFlatpak() ? 'flatpak-spawn' : 'pkexec';
+      const args = isRunningInFlatpak()
+        ? ['--host', 'pkexec', 'bash', scriptPath]
+        : ['bash', scriptPath];
+      const child = spawn(cmd, args, {
         stdio: ['ignore', 'pipe', 'pipe'],
       });
 

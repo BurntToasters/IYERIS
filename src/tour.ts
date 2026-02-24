@@ -317,9 +317,11 @@ export function createTourController(options: TourControllerOptions): TourContro
       if (!paletteModal || paletteModal.style.display !== 'flex') {
         options.showCommandPalette?.();
         window.requestAnimationFrame(() => {
-          if (tourActive && steps[tourStepIndex]?.target === '.command-palette-modal') {
-            updateStepUI(false);
-          }
+          window.requestAnimationFrame(() => {
+            if (tourActive && steps[tourStepIndex]?.target === '.command-palette-modal') {
+              updateStepUI(false);
+            }
+          });
         });
         return;
       }

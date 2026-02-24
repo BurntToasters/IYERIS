@@ -380,6 +380,73 @@ export function setupSettingsHandlers(createTray: () => Promise<void>): void {
         }
       }
 
+      if (process.platform === 'linux') {
+        const gnomeCopied = clipboard.readBuffer('x-special/gnome-copied-files');
+        if (gnomeCopied && gnomeCopied.length > 0) {
+          const content = gnomeCopied.toString('utf8');
+          const lines = content.split('\n').filter(Boolean);
+          const paths: string[] = [];
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (trimmed === 'copy' || trimmed === 'cut') continue;
+            let filePath = trimmed;
+            if (filePath.startsWith('file://')) {
+              filePath = decodeURIComponent(filePath.substring(7));
+            }
+            if (filePath) paths.push(filePath);
+          }
+          if (paths.length > 0) {
+            logger.debug('[System Clipboard] Found files (GNOME format):', paths.length, 'items');
+            return paths;
+          }
+        }
+
+        const uriList = clipboard.readBuffer('text/uri-list');
+        if (uriList && uriList.length > 0) {
+          const content = uriList.toString('utf8');
+          const lines = content.split('\n').filter(Boolean);
+          const paths: string[] = [];
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (trimmed.startsWith('#')) continue;
+            let filePath = trimmed;
+            if (filePath.startsWith('file://')) {
+              filePath = decodeURIComponent(filePath.substring(7));
+            }
+            if (filePath) paths.push(filePath);
+          }
+          if (paths.length > 0) {
+            logger.debug(
+              '[System Clipboard] Found files (URI list format):',
+              paths.length,
+              'items'
+            );
+            return paths;
+          }
+        }
+      }
+
+      if (process.platform === 'darwin') {
+        const nsFilenames = clipboard.readBuffer('NSFilenamesPboardType');
+        if (nsFilenames && nsFilenames.length > 0) {
+          const content = nsFilenames.toString('utf8');
+          const pathMatches = content.match(/<string>([^<]+)<\/string>/g);
+          if (pathMatches) {
+            const paths = pathMatches
+              .map((m) => m.replace(/<\/?string>/g, '').trim())
+              .filter(Boolean);
+            if (paths.length > 0) {
+              logger.debug(
+                '[System Clipboard] Found files (Finder plist format):',
+                paths.length,
+                'items'
+              );
+              return paths;
+            }
+          }
+        }
+      }
+
       return [];
     } catch (error) {
       logger.error('[System Clipboard] Error reading files from clipboard:', error);

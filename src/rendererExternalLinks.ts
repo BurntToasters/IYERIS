@@ -49,6 +49,10 @@ export function createExternalLinksController(deps: ExternalLinksDeps) {
       e.preventDefault();
       deps.openExternal('https://github.com/jdecked/twemoji');
     });
+    document.getElementById('about-7zip-link')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      deps.openExternal('https://www.7-zip.org');
+    });
   }
 
   return { initExternalLinks };

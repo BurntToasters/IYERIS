@@ -256,8 +256,8 @@ describe('batchCheckHidden', () => {
   it('marks dot-files as hidden on non-win32', async () => {
     Object.defineProperty(process, 'platform', { value: 'linux' });
     const results = await batchCheckHidden('/home/user', ['.bashrc', 'readme.md', '.gitignore']);
-    expect(results.get('.bashrc')).toBe(true);
-    expect(results.get('.gitignore')).toBe(true);
+    expect(results.get('.bashrc')).toEqual({ isHidden: true, isSystemProtected: false });
+    expect(results.get('.gitignore')).toEqual({ isHidden: true, isSystemProtected: false });
     expect(results.has('readme.md')).toBe(false);
   });
 
@@ -274,9 +274,9 @@ describe('batchCheckHidden', () => {
     });
 
     const results = await batchCheckHidden('C:\\Users\\test', ['.dot', 'file1.txt', 'file2.txt']);
-    expect(results.get('.dot')).toBe(true);
-    expect(results.get('file1.txt')).toBe(true);
-    expect(results.get('file2.txt')).toBe(false);
+    expect(results.get('.dot')).toEqual({ isHidden: true, isSystemProtected: false });
+    expect(results.get('file1.txt')).toEqual({ isHidden: true, isSystemProtected: false });
+    expect(results.get('file2.txt')).toEqual({ isHidden: false, isSystemProtected: false });
   });
 
   it('handles attrib failure gracefully on win32', async () => {
@@ -284,7 +284,26 @@ describe('batchCheckHidden', () => {
     mockExecFileAsync.mockRejectedValue(new Error('attrib failed'));
 
     const results = await batchCheckHidden('C:\\test', ['normal.txt']);
-    expect(results.get('normal.txt')).toBe(false);
+    expect(results.get('normal.txt')).toEqual({ isHidden: false, isSystemProtected: false });
+  });
+
+  it('detects System+Hidden as isSystemProtected on win32', async () => {
+    Object.defineProperty(process, 'platform', { value: 'win32' });
+    mockExecFileAsync.mockResolvedValue({
+      stdout:
+        'A  SH        ntuser.dat.LOG1\r\n   SH        ntuser.ini\r\n    H        AppData\r\nA            readme.txt\r\n',
+    });
+
+    const results = await batchCheckHidden('C:\\Users\\test', [
+      'ntuser.dat.LOG1',
+      'ntuser.ini',
+      'AppData',
+      'readme.txt',
+    ]);
+    expect(results.get('ntuser.dat.LOG1')).toEqual({ isHidden: true, isSystemProtected: true });
+    expect(results.get('ntuser.ini')).toEqual({ isHidden: true, isSystemProtected: true });
+    expect(results.get('AppData')).toEqual({ isHidden: true, isSystemProtected: false });
+    expect(results.get('readme.txt')).toEqual({ isHidden: false, isSystemProtected: false });
   });
 
   it('returns empty map for empty file list', async () => {

@@ -281,6 +281,7 @@ export async function searchDirectoryFiles(
 
       for (const { item, fullPath, stats } of filteredItems) {
         if (results.length >= maxResults) break;
+        const attrFlags = hiddenMap.get(item.name);
         results.push({
           name: item.name,
           path: fullPath,
@@ -288,7 +289,8 @@ export async function searchDirectoryFiles(
           isFile: item.isFile(),
           size: stats.size,
           modified: stats.mtime,
-          isHidden: hiddenMap.get(item.name) || false,
+          isHidden: attrFlags?.isHidden || false,
+          isSystemProtected: attrFlags?.isSystemProtected || undefined,
         });
       }
     }
@@ -406,6 +408,7 @@ export async function searchDirectoryContent(
 
           for (const { item, fullPath, stats, contentResult } of foundItems) {
             if (results.length >= maxResults) break;
+            const attrFlags = hiddenMap.get(item.name);
             results.push({
               name: item.name,
               path: fullPath,
@@ -413,7 +416,8 @@ export async function searchDirectoryContent(
               isFile: true,
               size: stats.size,
               modified: stats.mtime,
-              isHidden: hiddenMap.get(item.name) || false,
+              isHidden: attrFlags?.isHidden || false,
+              isSystemProtected: attrFlags?.isSystemProtected || undefined,
               matchContext: contentResult.context,
               matchLineNumber: contentResult.lineNumber,
             });
