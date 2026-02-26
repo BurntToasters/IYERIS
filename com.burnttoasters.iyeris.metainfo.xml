@@ -42,7 +42,8 @@
     
                                         
                                             
-        <release version="1.0.0-beta.4" date="2026-02-24"/>
+        
+    <release version="1.0.0-beta.5" date="2026-02-26"/>
   </releases>
   <content_rating type="oars-1.1"/>
 </component>
