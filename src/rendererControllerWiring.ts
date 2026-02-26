@@ -220,7 +220,8 @@ export function wireControllers(deps: WiringDeps) {
     saveSettingsWithTimestamp: (s) => deps.saveSettingsWithTimestamp(s),
     renderFiles: (f) => deps.late.renderFiles(f),
   });
-  const { showSortMenu, hideSortMenu, updateSortIndicators, changeSortMode } = sortController;
+  const { showSortMenu, hideSortMenu, updateSortIndicators, changeSortMode, handleSortMenuKeyNav } =
+    sortController;
 
   const zoomController = createZoomController({
     setZoomLevel: (level) => window.electronAPI.setZoomLevel(level),
@@ -1175,6 +1176,7 @@ export function wireControllers(deps: WiringDeps) {
     hideSortMenu,
     updateSortIndicators,
     changeSortMode,
+    handleSortMenuKeyNav,
 
     zoomController,
     zoomIn,

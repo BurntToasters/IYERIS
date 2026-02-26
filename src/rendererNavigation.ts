@@ -330,6 +330,11 @@ export function createNavigationController(deps: NavigationDeps) {
           isBreadcrumbMode = true;
           updateBreadcrumb(deps.getCurrentPath());
           addressInput?.blur();
+          const fileGrid = document.getElementById('file-grid');
+          const activeItem = fileGrid?.querySelector<HTMLElement>('.file-item[tabindex="0"]');
+          if (activeItem) {
+            activeItem.focus();
+          }
         }
       });
     }

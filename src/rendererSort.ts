@@ -14,6 +14,26 @@ type SortControllerConfig = {
 };
 
 export function createSortController(config: SortControllerConfig) {
+  let sortMenuFocusIndex = -1;
+
+  function getSortMenuItems(): HTMLElement[] {
+    const sortMenu = document.getElementById('sort-menu');
+    if (!sortMenu) return [];
+    return Array.from(sortMenu.querySelectorAll<HTMLElement>('.context-menu-item'));
+  }
+
+  function focusSortMenuItem(index: number): void {
+    const items = getSortMenuItems();
+    if (items.length === 0) return;
+    const safeIndex = Math.max(0, Math.min(items.length - 1, index));
+    items.forEach((item, i) => {
+      item.classList.toggle('focused', i === safeIndex);
+      item.tabIndex = i === safeIndex ? 0 : -1;
+    });
+    sortMenuFocusIndex = safeIndex;
+    items[safeIndex].focus({ preventScroll: true });
+  }
+
   function showSortMenu(e: MouseEvent) {
     const sortMenu = document.getElementById('sort-menu');
     if (!sortMenu) return;
@@ -43,6 +63,7 @@ export function createSortController(config: SortControllerConfig) {
     sortMenu.style.top = top + 'px';
 
     updateSortIndicators();
+    focusSortMenuItem(0);
 
     e.stopPropagation();
   }
@@ -51,7 +72,51 @@ export function createSortController(config: SortControllerConfig) {
     const sortMenu = document.getElementById('sort-menu');
     if (sortMenu) {
       sortMenu.style.display = 'none';
+      sortMenu.querySelectorAll('.context-menu-item.focused').forEach((item) => {
+        item.classList.remove('focused');
+      });
     }
+    sortMenuFocusIndex = -1;
+  }
+
+  function handleSortMenuKeyNav(e: KeyboardEvent): boolean {
+    const sortMenu = document.getElementById('sort-menu');
+    if (!sortMenu || sortMenu.style.display !== 'block') return false;
+
+    const items = getSortMenuItems();
+    if (items.length === 0) return false;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      focusSortMenuItem(sortMenuFocusIndex < items.length - 1 ? sortMenuFocusIndex + 1 : 0);
+      return true;
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      focusSortMenuItem(sortMenuFocusIndex > 0 ? sortMenuFocusIndex - 1 : items.length - 1);
+      return true;
+    }
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      if (sortMenuFocusIndex >= 0 && items[sortMenuFocusIndex]) {
+        const sortType = items[sortMenuFocusIndex].getAttribute('data-sort');
+        if (sortType) {
+          void changeSortMode(sortType);
+        }
+      }
+      return true;
+    }
+    if (e.key === 'Home') {
+      e.preventDefault();
+      focusSortMenuItem(0);
+      return true;
+    }
+    if (e.key === 'End') {
+      e.preventDefault();
+      focusSortMenuItem(items.length - 1);
+      return true;
+    }
+    return false;
   }
 
   function updateSortIndicators() {
@@ -99,5 +164,5 @@ export function createSortController(config: SortControllerConfig) {
     }
   }
 
-  return { showSortMenu, hideSortMenu, updateSortIndicators, changeSortMode };
+  return { showSortMenu, hideSortMenu, updateSortIndicators, changeSortMode, handleSortMenuKeyNav };
 }

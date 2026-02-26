@@ -86,6 +86,14 @@ export function createShortcutsUiController(deps: ShortcutsUiDeps) {
             title: 'Go to Parent (Backspace)',
             tokens: [{ keys: ['Backspace'] }],
           },
+          {
+            title: 'Cycle Pane Focus',
+            tokens: [{ keys: ['F6'] }],
+          },
+          {
+            title: 'Context Menu',
+            tokens: [{ keys: ['Shift', 'F10'] }],
+          },
         ],
       ],
       [
@@ -122,6 +130,21 @@ export function createShortcutsUiController(deps: ShortcutsUiDeps) {
               { keys: ['ArrowLeft'] },
               { keys: ['ArrowRight'] },
             ],
+          },
+          {
+            title: 'Move Focus (No Select)',
+            tokens: [
+              { keys: ['Ctrl'] },
+              { text: '+' },
+              { keys: ['ArrowUp'] },
+              { keys: ['ArrowDown'] },
+              { keys: ['ArrowLeft'] },
+              { keys: ['ArrowRight'] },
+            ],
+          },
+          {
+            title: 'Toggle Selection at Cursor',
+            tokens: [{ keys: ['Ctrl', 'Space'] }],
           },
         ],
       ],

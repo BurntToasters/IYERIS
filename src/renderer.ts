@@ -281,6 +281,7 @@ const {
   hideSortMenu,
   updateSortIndicators,
   changeSortMode,
+  handleSortMenuKeyNav,
   zoomController,
   zoomIn,
   zoomOut,
@@ -1119,6 +1120,7 @@ const eventListenersController = createEventListenersController({
   handleContextMenuAction,
   handleEmptySpaceContextMenuAction,
   handleContextMenuKeyNav: handleContextMenuKeyNav,
+  handleSortMenuKeyNav: (e: KeyboardEvent) => handleSortMenuKeyNav(e),
   getContextMenuData,
   openNewWindow,
   showCommandPalette,
@@ -1170,6 +1172,79 @@ const eventListenersController = createEventListenersController({
     })();
   },
   restoreClosedTab: () => restoreClosedTab(),
+  togglePreviewPanel: () => previewController.togglePreviewPanel(),
+  showContextMenuForSelected: () => {
+    const selectedPaths = Array.from(selectedItems);
+    if (selectedPaths.length === 0) return;
+    const firstPath = selectedPaths[0];
+    const item = allFiles.find((f) => f.path === firstPath);
+    if (!item) return;
+    const el = document.querySelector<HTMLElement>(
+      `.file-item[data-path="${CSS.escape(firstPath)}"]`
+    );
+    if (el) {
+      const rect = el.getBoundingClientRect();
+      showContextMenu(rect.left + rect.width / 2, rect.top + rect.height / 2, item);
+    }
+  },
+  focusFileGrid: () => {
+    ensureActiveItem();
+    const fileGrid = document.getElementById('file-grid');
+    const activeItem = fileGrid?.querySelector<HTMLElement>('.file-item[tabindex="0"]');
+    if (activeItem) {
+      activeItem.focus();
+    } else {
+      fileGrid?.focus();
+    }
+  },
+  ensureActiveItem: () => ensureActiveItem(),
+  toggleSelectionAtCursor: () => {
+    const fileGrid = document.getElementById('file-grid');
+    if (!fileGrid) return;
+    const activeItem = fileGrid.querySelector<HTMLElement>('.file-item[tabindex="0"]');
+    if (activeItem) {
+      toggleSelection(activeItem);
+    }
+  },
+  navigateFileGridFocusOnly: (key: string) => {
+    const fileGrid = document.getElementById('file-grid');
+    if (!fileGrid) return;
+    const items = Array.from(fileGrid.querySelectorAll<HTMLElement>('.file-item'));
+    if (items.length === 0) return;
+
+    const active = fileGrid.querySelector<HTMLElement>('.file-item[tabindex="0"]');
+    let currentIndex = active ? items.indexOf(active) : 0;
+    if (currentIndex === -1) currentIndex = 0;
+
+    const gridStyle = window.getComputedStyle(fileGrid);
+    const columns =
+      viewMode === 'list'
+        ? 1
+        : gridStyle.getPropertyValue('grid-template-columns').split(' ').length || 1;
+
+    let newIndex = currentIndex;
+    switch (key) {
+      case 'ArrowUp':
+        newIndex = Math.max(0, currentIndex - columns);
+        break;
+      case 'ArrowDown':
+        newIndex = Math.min(items.length - 1, currentIndex + columns);
+        break;
+      case 'ArrowLeft':
+        newIndex = Math.max(0, currentIndex - 1);
+        break;
+      case 'ArrowRight':
+        newIndex = Math.min(items.length - 1, currentIndex + 1);
+        break;
+    }
+
+    if (newIndex !== currentIndex) {
+      if (active) active.tabIndex = -1;
+      items[newIndex].tabIndex = 0;
+      items[newIndex].focus({ preventScroll: true });
+      items[newIndex].scrollIntoView({ block: 'nearest' });
+    }
+  },
   initSettingsTabs,
   initSettingsUi,
   initShortcutsModal,

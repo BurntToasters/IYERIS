@@ -208,6 +208,20 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
     defaultBinding: ['Ctrl', 'Shift', 'T'],
     defaultBindingMac: ['Meta', 'Shift', 'T'],
   },
+  {
+    id: 'focus-address-bar',
+    title: 'Focus Address Bar',
+    category: 'Navigation',
+    defaultBinding: ['Alt', 'D'],
+    defaultBindingMac: ['Meta', 'L'],
+  },
+  {
+    id: 'toggle-preview-panel',
+    title: 'Toggle Preview Panel',
+    category: 'View',
+    defaultBinding: ['Alt', 'P'],
+    defaultBindingMac: ['Meta', 'Shift', 'P'],
+  },
 ];
 
 export function getDefaultShortcuts(platform?: NodeJS.Platform): Record<string, ShortcutBinding> {

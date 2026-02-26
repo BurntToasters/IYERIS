@@ -76,6 +76,7 @@ type EventListenersConfig = {
   handleContextMenuAction: (action: string | undefined, item: FileItem, format?: string) => void;
   handleEmptySpaceContextMenuAction: (action: string | undefined) => void;
   handleContextMenuKeyNav: (e: KeyboardEvent) => boolean;
+  handleSortMenuKeyNav: (e: KeyboardEvent) => boolean;
   getContextMenuData: () => FileItem | null;
   openNewWindow: () => void;
   showCommandPalette: () => void;
@@ -117,6 +118,12 @@ type EventListenersConfig = {
   toggleHiddenFiles: () => void;
   showPropertiesForSelected: () => void;
   restoreClosedTab: () => void;
+  togglePreviewPanel: () => void;
+  showContextMenuForSelected: () => void;
+  focusFileGrid: () => void;
+  ensureActiveItem: () => void;
+  toggleSelectionAtCursor: () => void;
+  navigateFileGridFocusOnly: (key: string) => void;
 
   initSettingsTabs: () => void;
   initSettingsUi: () => void;
@@ -327,6 +334,17 @@ export function createEventListenersController(config: EventListenersConfig) {
     return false;
   }
 
+  function isOverlayOpen(): boolean {
+    if (isModalOpen()) return true;
+    const overlayIds = ['sort-menu', 'context-menu', 'empty-space-context-menu'];
+    for (const id of overlayIds) {
+      const el = document.getElementById(id);
+      if (el && el.style.display === 'block') return true;
+    }
+    if (config.isBreadcrumbMenuOpen()) return true;
+    return false;
+  }
+
   function hasTextSelection(): boolean {
     const selection = window.getSelection();
     return selection !== null && selection.toString().length > 0;
@@ -392,6 +410,8 @@ export function createEventListenersController(config: EventListenersConfig) {
     'restore-closed-tab': () => {
       if (config.getTabsEnabled()) config.restoreClosedTab();
     },
+    'focus-address-bar': () => focusAddressBar(),
+    'toggle-preview-panel': () => config.togglePreviewPanel(),
   };
 
   function runShortcutAction(actionId: string, e: KeyboardEvent): boolean {
@@ -457,8 +477,29 @@ export function createEventListenersController(config: EventListenersConfig) {
       }
 
       if (config.handleContextMenuKeyNav(e)) return;
+      if (config.handleSortMenuKeyNav(e)) return;
 
-      if (isModalOpen()) {
+      if (isOverlayOpen()) {
+        return;
+      }
+
+      if (e.key === 'F6') {
+        e.preventDefault();
+        cyclePaneFocus(e.shiftKey);
+        return;
+      }
+
+      if ((e.key === 'F10' && e.shiftKey) || e.key === 'ContextMenu') {
+        if (isEditableElementActive()) return;
+        e.preventDefault();
+        config.showContextMenuForSelected();
+        return;
+      }
+
+      if (e.code === 'Space' && e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey) {
+        if (isEditableElementActive()) return;
+        e.preventDefault();
+        config.toggleSelectionAtCursor();
         return;
       }
 
@@ -521,7 +562,11 @@ export function createEventListenersController(config: EventListenersConfig) {
         e.key === 'ArrowRight'
       ) {
         e.preventDefault();
-        config.navigateFileGrid(e.key, e.shiftKey);
+        if (e.ctrlKey && !e.shiftKey) {
+          config.navigateFileGridFocusOnly(e.key);
+        } else {
+          config.navigateFileGrid(e.key, e.shiftKey);
+        }
       } else if (
         !e.ctrlKey &&
         !e.metaKey &&
@@ -534,6 +579,71 @@ export function createEventListenersController(config: EventListenersConfig) {
         config.handleTypeaheadInput(e.key);
       }
     });
+  }
+
+  function focusAddressBar(): void {
+    const addressInput = config.getAddressInput();
+    if (!addressInput) return;
+    const breadcrumbContainer = document.getElementById('breadcrumb-container');
+    if (breadcrumbContainer && breadcrumbContainer.style.display !== 'none') {
+      breadcrumbContainer.style.display = 'none';
+      addressInput.style.display = 'block';
+    }
+    addressInput.focus();
+    addressInput.select();
+  }
+
+  const PANE_ORDER = ['sidebar', 'address-bar', 'file-grid'] as const;
+
+  function cyclePaneFocus(reverse: boolean): void {
+    const activeEl = document.activeElement as HTMLElement | null;
+    let currentPane = -1;
+
+    if (activeEl) {
+      if (activeEl.closest('#sidebar') || activeEl.closest('.sidebar')) currentPane = 0;
+      else if (
+        activeEl.closest('.address-bar') ||
+        activeEl.id === 'address-input' ||
+        activeEl.closest('#breadcrumb-container')
+      )
+        currentPane = 1;
+      else if (
+        activeEl.closest('#file-grid') ||
+        activeEl.closest('#file-view') ||
+        activeEl.classList.contains('file-item')
+      )
+        currentPane = 2;
+    }
+
+    const step = reverse ? -1 : 1;
+    const startIndex =
+      currentPane === -1 ? 0 : (currentPane + step + PANE_ORDER.length) % PANE_ORDER.length;
+
+    for (let i = 0; i < PANE_ORDER.length; i++) {
+      const idx = (startIndex + i * step + PANE_ORDER.length * 2) % PANE_ORDER.length;
+      const pane = PANE_ORDER[idx];
+
+      if (pane === 'sidebar') {
+        const sidebar = document.getElementById('sidebar');
+        if (!sidebar || sidebar.classList.contains('collapsed')) continue;
+        const treeItem = sidebar.querySelector<HTMLElement>('.tree-item[tabindex="0"]');
+        if (treeItem) {
+          treeItem.focus();
+          return;
+        }
+        const firstFocusable = sidebar.querySelector<HTMLElement>('button, [tabindex="0"]');
+        if (firstFocusable) {
+          firstFocusable.focus();
+          return;
+        }
+      } else if (pane === 'address-bar') {
+        focusAddressBar();
+        return;
+      } else if (pane === 'file-grid') {
+        config.focusFileGrid();
+        return;
+      }
+    }
   }
 
   function initGlobalClickListeners(): void {

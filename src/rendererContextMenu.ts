@@ -479,6 +479,24 @@ export function createContextMenuController(deps: ContextMenuDeps) {
         }
         return true;
       }
+      if (hasSubmenu && e.key === 'ArrowLeft') {
+        e.preventDefault();
+        const activeSubmenu = menu.querySelector<HTMLElement>(
+          '.context-submenu[style*="display: block"]'
+        );
+        if (activeSubmenu) {
+          activeSubmenu.style.display = '';
+          activeSubmenu.querySelectorAll('.context-menu-item.focused').forEach((item) => {
+            item.classList.remove('focused');
+          });
+          const parentItem = activeSubmenu.closest<HTMLElement>('.context-menu-item.has-submenu');
+          if (parentItem) {
+            parentItem.classList.add('focused');
+            parentItem.focus({ preventScroll: true });
+          }
+        }
+        return true;
+      }
       return false;
     };
 
