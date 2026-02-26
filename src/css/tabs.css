@@ -209,6 +209,10 @@ body.platform-win32 .titlebar-title {
   opacity: 1;
 }
 
+.tab-item:only-child .tab-close {
+  display: none;
+}
+
 .tab-item .tab-close:hover {
   background: var(--interactive-hover);
   color: var(--text-primary);
