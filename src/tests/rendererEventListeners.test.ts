@@ -84,8 +84,6 @@ function createMockConfig() {
     getBackBtn: vi.fn(() => document.getElementById('back-btn')!),
     getForwardBtn: vi.fn(() => document.getElementById('forward-btn')!),
     getUpBtn: vi.fn(() => document.getElementById('up-btn')!),
-    getUndoBtn: vi.fn(() => document.getElementById('undo-btn')!),
-    getRedoBtn: vi.fn(() => document.getElementById('redo-btn')!),
     getRefreshBtn: vi.fn(() => document.getElementById('refresh-btn')!),
     getNewFileBtn: vi.fn(() => document.getElementById('new-file-btn')! as HTMLButtonElement),
     getNewFolderBtn: vi.fn(() => document.getElementById('new-folder-btn')! as HTMLButtonElement),
@@ -228,8 +226,6 @@ function setupBasicDom() {
     <div id="back-btn"></div>
     <div id="forward-btn"></div>
     <div id="up-btn"></div>
-    <div id="undo-btn"></div>
-    <div id="redo-btn"></div>
     <div id="refresh-btn"></div>
     <button id="new-file-btn"></button>
     <button id="new-folder-btn"></button>
@@ -1064,26 +1060,6 @@ describe('createEventListenersController', () => {
       document.getElementById('deselect-all-btn')!.click();
 
       expect(config.clearSelection).toHaveBeenCalled();
-    });
-
-    it('undo button triggers performUndo', () => {
-      const config = createMockConfig();
-      const ctrl = createEventListenersController(config);
-      ctrl.setupEventListeners();
-
-      document.getElementById('undo-btn')!.click();
-
-      expect(config.performUndo).toHaveBeenCalled();
-    });
-
-    it('redo button triggers performRedo', () => {
-      const config = createMockConfig();
-      const ctrl = createEventListenersController(config);
-      ctrl.setupEventListeners();
-
-      document.getElementById('redo-btn')!.click();
-
-      expect(config.performRedo).toHaveBeenCalled();
     });
   });
 

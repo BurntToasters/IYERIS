@@ -182,8 +182,6 @@ import {
   sortBtn,
   bookmarksList,
   bookmarkAddBtn,
-  undoBtn,
-  redoBtn,
   dropIndicator,
   dropIndicatorAction,
   dropIndicatorPath,
@@ -981,7 +979,10 @@ const bootstrapController = createBootstrapController({
   renderSidebarQuickAccess: () => renderSidebarQuickAccess(),
   initTooltipSystem,
   initCommandPalette,
-  setupEventListeners: () => setupEventListeners(),
+  setupEventListeners: () => {
+    setupEventListeners();
+    setupMoreActionsMenu();
+  },
   loadDrives: () => loadDrives(),
   initializeTabs,
   navigateTo: (p) => navigateTo(p),
@@ -1060,8 +1061,6 @@ const eventListenersController = createEventListenersController({
   getBackBtn: () => backBtn,
   getForwardBtn: () => forwardBtn,
   getUpBtn: () => upBtn,
-  getUndoBtn: () => undoBtn,
-  getRedoBtn: () => redoBtn,
   getRefreshBtn: () => refreshBtn,
   getNewFileBtn: () => newFileBtn,
   getNewFolderBtn: () => newFolderBtn,
@@ -1516,8 +1515,106 @@ async function updateUndoRedoState() {
   canUndo = state.canUndo;
   canRedo = state.canRedo;
 
-  if (undoBtn) undoBtn.disabled = !canUndo;
-  if (redoBtn) redoBtn.disabled = !canRedo;
+  const moreUndoBtn = document.getElementById('more-undo-btn') as HTMLButtonElement | null;
+  const moreRedoBtn = document.getElementById('more-redo-btn') as HTMLButtonElement | null;
+  if (moreUndoBtn) moreUndoBtn.disabled = !canUndo;
+  if (moreRedoBtn) moreRedoBtn.disabled = !canRedo;
+}
+
+function setupMoreActionsMenu() {
+  const btn = document.getElementById('more-actions-btn');
+  const menu = document.getElementById('more-actions-menu');
+  if (!btn || !menu) return;
+
+  function showMenu() {
+    if (!menu) return;
+    const rect = btn!.getBoundingClientRect();
+    menu.style.display = 'block';
+
+    const menuRect = menu.getBoundingClientRect();
+    let left = rect.left;
+    let top = rect.bottom + 5;
+
+    if (left + menuRect.width > window.innerWidth) {
+      left = window.innerWidth - menuRect.width - 10;
+    }
+    if (top + menuRect.height > window.innerHeight) {
+      top = rect.top - menuRect.height - 5;
+    }
+    if (left < 10) left = 10;
+    if (top < 10) top = 10;
+
+    menu.style.left = left + 'px';
+    menu.style.top = top + 'px';
+    btn!.setAttribute('aria-expanded', 'true');
+
+    void updateUndoRedoState();
+
+    const items = Array.from(menu.querySelectorAll<HTMLElement>('.context-menu-item'));
+    const firstEnabled = items.find((el) => !(el as HTMLButtonElement).disabled);
+    if (firstEnabled) {
+      firstEnabled.classList.add('focused');
+      firstEnabled.tabIndex = 0;
+      firstEnabled.focus({ preventScroll: true });
+    }
+  }
+
+  function hideMenu() {
+    if (!menu) return;
+    menu.style.display = 'none';
+    btn!.setAttribute('aria-expanded', 'false');
+    menu.querySelectorAll('.focused').forEach((el) => el.classList.remove('focused'));
+  }
+
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (menu.style.display === 'block') {
+      hideMenu();
+    } else {
+      showMenu();
+    }
+  });
+
+  const undoItem = document.getElementById('more-undo-btn');
+  const redoItem = document.getElementById('more-redo-btn');
+
+  undoItem?.addEventListener('click', () => {
+    hideMenu();
+    void performUndo();
+  });
+  redoItem?.addEventListener('click', () => {
+    hideMenu();
+    void performRedo();
+  });
+
+  menu.addEventListener('keydown', (e) => {
+    const items = Array.from(menu.querySelectorAll<HTMLElement>('.context-menu-item'));
+    const focusedIndex = items.findIndex((el) => el.classList.contains('focused'));
+
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const dir = e.key === 'ArrowDown' ? 1 : -1;
+      const next = (focusedIndex + dir + items.length) % items.length;
+      items.forEach((el, i) => {
+        el.classList.toggle('focused', i === next);
+        el.tabIndex = i === next ? 0 : -1;
+      });
+      items[next].focus({ preventScroll: true });
+    } else if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      if (focusedIndex >= 0) items[focusedIndex].click();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      hideMenu();
+      btn.focus();
+    }
+  });
+
+  document.addEventListener('mousedown', (e) => {
+    if (menu.style.display === 'block' && !menu.contains(e.target as Node) && e.target !== btn) {
+      hideMenu();
+    }
+  });
 }
 
 async function performUndoRedo(isUndo: boolean) {

@@ -15,8 +15,6 @@ type EventListenersConfig = {
   getBackBtn: () => HTMLElement;
   getForwardBtn: () => HTMLElement;
   getUpBtn: () => HTMLElement;
-  getUndoBtn: () => HTMLElement;
-  getRedoBtn: () => HTMLElement;
   getRefreshBtn: () => HTMLElement;
   getNewFileBtn: () => HTMLButtonElement;
   getNewFolderBtn: () => HTMLButtonElement;
@@ -232,8 +230,6 @@ export function createEventListenersController(config: EventListenersConfig) {
       [config.getBackBtn(), config.goBack],
       [config.getForwardBtn(), config.goForward],
       [config.getUpBtn(), config.goUp],
-      [config.getUndoBtn(), config.performUndo],
-      [config.getRedoBtn(), config.performRedo],
       [config.getRefreshBtn(), config.refresh],
       [config.getNewFileBtn(), () => config.createNewFile()],
       [config.getNewFolderBtn(), () => config.createNewFolder()],
@@ -336,7 +332,12 @@ export function createEventListenersController(config: EventListenersConfig) {
 
   function isOverlayOpen(): boolean {
     if (isModalOpen()) return true;
-    const overlayIds = ['sort-menu', 'context-menu', 'empty-space-context-menu'];
+    const overlayIds = [
+      'sort-menu',
+      'context-menu',
+      'empty-space-context-menu',
+      'more-actions-menu',
+    ];
     for (const id of overlayIds) {
       const el = document.getElementById(id);
       if (el && el.style.display === 'block') return true;
@@ -461,6 +462,19 @@ export function createEventListenersController(config: EventListenersConfig) {
           ['sort-menu', 'block', config.hideSortMenu],
           ['context-menu', 'block', config.hideContextMenu],
           ['empty-space-context-menu', 'block', config.hideEmptySpaceContextMenu],
+          [
+            'more-actions-menu',
+            'block',
+            () => {
+              const m = document.getElementById('more-actions-menu');
+              if (m) {
+                m.style.display = 'none';
+                const btn = document.getElementById('more-actions-btn');
+                btn?.setAttribute('aria-expanded', 'false');
+                m.querySelectorAll('.focused').forEach((el) => el.classList.remove('focused'));
+              }
+            },
+          ],
         ];
         for (const [id, display, handler] of modalDismissals) {
           const el = document.getElementById(id);
