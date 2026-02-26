@@ -17,6 +17,8 @@ type InlineRenameDeps = {
 
 const INVALID_FILENAME_CHARS = /[<>:"|?*]/;
 const RESERVED_NAMES = /^(CON|PRN|AUX|NUL|COM\d|LPT\d)(\.|$)/i;
+const BIDI_CONTROL_CHARS = /[\u200E\u200F\u202A-\u202E\u2066-\u2069]/;
+const MAX_FILENAME_LENGTH = 255;
 
 function hasControlChars(name: string): boolean {
   for (let i = 0; i < name.length; i++) {
@@ -28,6 +30,12 @@ function hasControlChars(name: string): boolean {
 function getFilenameError(name: string): string | null {
   if (INVALID_FILENAME_CHARS.test(name) || hasControlChars(name)) {
     return 'File name cannot contain < > : " | ? *';
+  }
+  if (BIDI_CONTROL_CHARS.test(name)) {
+    return 'File name cannot contain bidirectional control characters';
+  }
+  if (name.length > MAX_FILENAME_LENGTH) {
+    return 'File name is too long (max 255 characters)';
   }
   if (name.endsWith('.') || name.endsWith(' ')) {
     return 'File name cannot end with a period or space';

@@ -280,7 +280,6 @@ export function createSelectionController(deps: SelectionDeps) {
       if (itemPath) {
         deps.getSelectedItems().add(itemPath);
       }
-      lastSelectedIndex = index;
     }
 
     lastSelectedIndex = index;

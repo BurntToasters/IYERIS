@@ -107,9 +107,7 @@ function createMockDeps() {
 describe('createTabsController', () => {
   beforeEach(() => {
     document.body.innerHTML = `
-      <div id="tab-bar"><div id="tab-list"></div></div>
-      <button id="new-tab-btn"></button>
-      <button id="toolbar-new-tab-btn"></button>
+      <div id="tab-bar"><div id="tab-list"></div><button id="new-tab-btn"></button></div>
     `;
   });
 

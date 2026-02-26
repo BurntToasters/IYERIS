@@ -121,9 +121,7 @@ function createMockDeps(overrides: Record<string, any> = {}) {
 
 function setupDOM() {
   document.body.innerHTML = `
-    <div id="tab-bar"><div id="tab-list" role="tablist"></div></div>
-    <button id="new-tab-btn"></button>
-    <button id="toolbar-new-tab-btn"></button>
+    <div id="tab-bar"><div id="tab-list" role="tablist"></div><button id="new-tab-btn"></button></div>
     <input id="address-input" />
   `;
 }
@@ -651,43 +649,6 @@ describe('rendererTabs extended', () => {
     });
   });
 
-  describe('updateTabBarVisibility', () => {
-    it('adds tabs-single class when only one tab exists', () => {
-      const deps = createMockDeps();
-      const ctrl = createTabsController(deps);
-      ctrl.initializeTabs();
-
-      expect(deps._getTabs().length).toBe(1);
-      expect(document.body.classList.contains('tabs-single')).toBe(true);
-    });
-
-    it('removes tabs-single class when multiple tabs exist', async () => {
-      const deps = createMockDeps();
-      const ctrl = createTabsController(deps);
-      ctrl.initializeTabs();
-
-      await ctrl.addNewTab('/second');
-
-      expect(deps._getTabs().length).toBe(2);
-      expect(document.body.classList.contains('tabs-single')).toBe(false);
-    });
-
-    it('re-adds tabs-single when closing back to one tab', async () => {
-      const deps = createMockDeps();
-      const ctrl = createTabsController(deps);
-      ctrl.initializeTabs();
-
-      await ctrl.addNewTab('/second');
-      expect(document.body.classList.contains('tabs-single')).toBe(false);
-
-      const secondTabId = deps._getTabs()[1].id;
-      ctrl.closeTab(secondTabId);
-
-      expect(deps._getTabs().length).toBe(1);
-      expect(document.body.classList.contains('tabs-single')).toBe(true);
-    });
-  });
-
   describe('new tab button listeners', () => {
     it('new-tab-btn click fires addNewTab', () => {
       const deps = createMockDeps();
@@ -696,19 +657,6 @@ describe('rendererTabs extended', () => {
 
       const initialCount = deps._getTabs().length;
       const btn = document.getElementById('new-tab-btn')!;
-      btn.click();
-
-      expect(deps._getTabs().length).toBe(initialCount + 1);
-      expect(deps.navigateTo).toHaveBeenCalled();
-    });
-
-    it('toolbar-new-tab-btn click fires addNewTab', () => {
-      const deps = createMockDeps();
-      const ctrl = createTabsController(deps);
-      ctrl.initializeTabs();
-
-      const initialCount = deps._getTabs().length;
-      const btn = document.getElementById('toolbar-new-tab-btn')!;
       btn.click();
 
       expect(deps._getTabs().length).toBe(initialCount + 1);

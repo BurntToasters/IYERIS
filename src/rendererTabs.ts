@@ -71,6 +71,7 @@ export function createTabsController(deps: TabsDeps) {
   const MAX_CLOSED_TABS = 10;
   const closedTabPaths: string[] = [];
   let activeDismissHandler: ((e: MouseEvent) => void) | null = null;
+  let dismissTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
   function generateTabId(): string {
     return `tab-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
@@ -103,7 +104,6 @@ export function createTabsController(deps: TabsDeps) {
     if (settings.enableTabs === false) {
       deps.setTabsEnabled(false);
       document.body.classList.remove('tabs-enabled');
-      document.body.classList.remove('tabs-single');
       const tabBar = document.getElementById('tab-bar');
       if (tabBar) tabBar.style.display = 'none';
       return;
@@ -145,13 +145,6 @@ export function createTabsController(deps: TabsDeps) {
         });
       }
 
-      const toolbarNewTabBtn = document.getElementById('toolbar-new-tab-btn');
-      if (toolbarNewTabBtn) {
-        toolbarNewTabBtn.addEventListener('click', () => {
-          addNewTab();
-        });
-      }
-
       deps.setTabNewButtonListenerAttached(true);
     }
   }
@@ -169,12 +162,6 @@ export function createTabsController(deps: TabsDeps) {
 
   function updateTabBarVisibility() {
     if (!deps.getTabsEnabled()) return;
-    const tabs = deps.getTabs();
-    if (tabs.length <= 1) {
-      document.body.classList.add('tabs-single');
-    } else {
-      document.body.classList.remove('tabs-single');
-    }
   }
 
   function renderTabs() {
@@ -616,13 +603,17 @@ export function createTabsController(deps: TabsDeps) {
         hideTabContextMenu();
       }
     };
-    setTimeout(
-      () => document.addEventListener('mousedown', activeDismissHandler!, { once: true }),
-      0
-    );
+    dismissTimeoutId = setTimeout(() => {
+      dismissTimeoutId = null;
+      document.addEventListener('mousedown', activeDismissHandler!, { once: true });
+    }, 0);
   }
 
   function hideTabContextMenu(): void {
+    if (dismissTimeoutId !== null) {
+      clearTimeout(dismissTimeoutId);
+      dismissTimeoutId = null;
+    }
     if (activeDismissHandler) {
       document.removeEventListener('mousedown', activeDismissHandler);
       activeDismissHandler = null;

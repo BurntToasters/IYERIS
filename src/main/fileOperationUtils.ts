@@ -18,7 +18,7 @@ export type ConflictBehavior = 'ask' | 'rename' | 'skip' | 'overwrite' | 'cancel
 const INVALID_CHILD_NAMES = new Set(['', '.', '..']);
 
 function normalizeCaseKey(targetPath: string): string {
-  if (process.platform === 'win32' || process.platform === 'darwin') {
+  if (process.platform === 'win32') {
     return targetPath.toLowerCase();
   }
   return targetPath;
