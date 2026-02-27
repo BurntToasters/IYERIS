@@ -118,6 +118,14 @@ export function createDragDropController(config: DragDropConfig) {
     return normalizeDraggedPaths(lines.length > 1 ? lines : trimmed);
   }
 
+  function readDataTransferText(dataTransfer: DataTransfer, format: string): string {
+    try {
+      return dataTransfer.getData(format);
+    } catch {
+      return '';
+    }
+  }
+
   function getDragOperation(event: DragEvent): 'copy' | 'move' {
     return event.ctrlKey || event.altKey ? 'copy' : 'move';
   }
@@ -126,24 +134,42 @@ export function createDragDropController(config: DragDropConfig) {
     let draggedPaths: string[] = [];
     if (!event.dataTransfer) return draggedPaths;
 
-    try {
-      const textData = event.dataTransfer.getData('text/plain');
-      if (textData) {
-        try {
-          draggedPaths = normalizeDraggedPaths(JSON.parse(textData));
-        } catch {
-          draggedPaths = extractPathsFromText(textData);
-        }
+    const textData = readDataTransferText(event.dataTransfer, 'text/plain');
+    if (textData) {
+      try {
+        draggedPaths = normalizeDraggedPaths(JSON.parse(textData));
+      } catch {
+        draggedPaths = extractPathsFromText(textData);
       }
-    } catch {
-      draggedPaths = [];
+    }
+
+    if (draggedPaths.length === 0) {
+      const uriListData = readDataTransferText(event.dataTransfer, 'text/uri-list');
+      if (uriListData) {
+        draggedPaths = extractPathsFromText(uriListData);
+      }
+    }
+
+    if (draggedPaths.length === 0) {
+      const publicFileUrlData = readDataTransferText(event.dataTransfer, 'public.file-url');
+      if (publicFileUrlData) {
+        draggedPaths = extractPathsFromText(publicFileUrlData);
+      }
     }
 
     if (draggedPaths.length === 0 && event.dataTransfer.files.length > 0) {
       draggedPaths = normalizeDraggedPaths(
-        Array.from(event.dataTransfer.files).map(
-          (f) => (f as File & { path?: string | null }).path || ''
-        )
+        Array.from(event.dataTransfer.files).map((file) => {
+          const fromFilePath = (file as File & { path?: string | null }).path;
+          if (typeof fromFilePath === 'string' && fromFilePath.trim()) {
+            return fromFilePath;
+          }
+          try {
+            return window.electronAPI.getPathForFile?.(file) || '';
+          } catch {
+            return '';
+          }
+        })
       );
     }
 

@@ -10,6 +10,8 @@ function createDragEvent(
   type: string,
   options: {
     textData?: string;
+    uriListData?: string;
+    publicFileUrlData?: string;
     files?: Array<{ path: string }>;
     ctrlKey?: boolean;
     altKey?: boolean;
@@ -26,7 +28,12 @@ function createDragEvent(
   const dataTransfer = {
     files: options.files ?? [],
     dropEffect: 'move',
-    getData: vi.fn((key: string) => (key === 'text/plain' ? options.textData || '' : '')),
+    getData: vi.fn((key: string) => {
+      if (key === 'text/plain') return options.textData || '';
+      if (key === 'text/uri-list') return options.uriListData || '';
+      if (key === 'public.file-url') return options.publicFileUrlData || '';
+      return '';
+    }),
   };
   Object.assign(event, {
     dataTransfer,
@@ -83,6 +90,7 @@ describe('createDragDropController — extended', () => {
         copyItems: vi.fn().mockResolvedValue({ success: true }),
         moveItems: vi.fn().mockResolvedValue({ success: true }),
         clearDragData: vi.fn().mockResolvedValue(undefined),
+        getPathForFile: vi.fn().mockReturnValue(''),
       },
       configurable: true,
       writable: true,
@@ -262,6 +270,52 @@ describe('createDragDropController — extended', () => {
       } finally {
         Object.defineProperty(process, 'platform', { value: originalPlatform });
       }
+    });
+
+    it('parses file URLs from text/uri-list payloads', async () => {
+      const { config } = createConfig();
+      const ctrl = createDragDropController(config);
+      const result = await ctrl.getDraggedPaths(
+        createDragEvent('drop', {
+          uriListData: 'file:///tmp/from-uri-list.txt',
+        })
+      );
+      expect(result).toEqual(['/tmp/from-uri-list.txt']);
+    });
+
+    it('parses file URLs from public.file-url payloads', async () => {
+      const { config } = createConfig();
+      const ctrl = createDragDropController(config);
+      const result = await ctrl.getDraggedPaths(
+        createDragEvent('drop', {
+          publicFileUrlData: 'file:///tmp/from-public-file-url.txt',
+        })
+      );
+      expect(result).toEqual(['/tmp/from-public-file-url.txt']);
+    });
+
+    it('uses getPathForFile fallback when file.path is unavailable', async () => {
+      const getPathForFile = vi.fn().mockReturnValue('/tmp/from-web-utils.txt');
+      Object.defineProperty(window, 'electronAPI', {
+        value: {
+          getDragData: vi.fn().mockResolvedValue(null),
+          copyItems: vi.fn(),
+          moveItems: vi.fn(),
+          clearDragData: vi.fn(),
+          getPathForFile,
+        },
+        configurable: true,
+        writable: true,
+      });
+      const { config } = createConfig();
+      const ctrl = createDragDropController(config);
+      const result = await ctrl.getDraggedPaths(
+        createDragEvent('drop', {
+          files: [{} as never],
+        })
+      );
+      expect(getPathForFile).toHaveBeenCalledTimes(1);
+      expect(result).toEqual(['/tmp/from-web-utils.txt']);
     });
 
     it('returns empty paths when shared drag-data lookup fails', async () => {

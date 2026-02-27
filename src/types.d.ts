@@ -521,6 +521,7 @@ export interface ElectronAPI {
   setDragData: (paths: string[]) => Promise<void>;
   getDragData: () => Promise<{ paths: string[] } | null>;
   clearDragData: () => Promise<void>;
+  getPathForFile?: (file: File) => string;
 
   onSettingsChanged: (callback: (settings: Settings) => void) => () => void;
   onHomeSettingsChanged: (callback: (settings: HomeSettings) => void) => () => void;

@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import type {
   ElectronAPI,
   Settings,
@@ -79,6 +79,13 @@ const electronAPI: ElectronAPI = {
   setDragData: (paths: string[]) => ipcRenderer.invoke('set-drag-data', paths),
   getDragData: () => ipcRenderer.invoke('get-drag-data'),
   clearDragData: () => ipcRenderer.invoke('clear-drag-data'),
+  getPathForFile: (file: File) => {
+    try {
+      return webUtils.getPathForFile(file);
+    } catch {
+      return '';
+    }
+  },
 
   // Settings sync
   onSettingsChanged: (callback: (settings: Settings) => void) => {
