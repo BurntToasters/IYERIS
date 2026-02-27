@@ -425,7 +425,8 @@ export function createColumnViewController(deps: ColumnViewDeps) {
     item.addEventListener('click', () =>
       handleColumnItemClick(item, fileItem.path, fileItem.isDirectory, columnIndex)
     );
-    item.addEventListener('dblclick', () => {
+    item.addEventListener('dblclick', (e) => {
+      if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
       if (!fileItem.isDirectory) {
         void deps.openFileEntry(fileItem);
       }
