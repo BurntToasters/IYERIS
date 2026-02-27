@@ -175,9 +175,30 @@ export async function getDrives(): Promise<string[]> {
         ignoreError(error);
       }
     }
-    cachedDrives = detected;
-    drivesCacheTime = Date.now();
-    return detected;
+    try {
+      const rootReal = await fs.realpath('/');
+      const rootStat = await fs.stat('/');
+      const deduped: string[] = ['/'];
+      for (const d of detected) {
+        if (d === '/') continue;
+        try {
+          const real = await fs.realpath(d);
+          if (real === '/' || real === rootReal) continue;
+          const dStat = await fs.stat(d);
+          if (dStat.dev === rootStat.dev) continue;
+          deduped.push(d);
+        } catch {
+          deduped.push(d);
+        }
+      }
+      cachedDrives = deduped;
+      drivesCacheTime = Date.now();
+      return deduped;
+    } catch {
+      cachedDrives = detected;
+      drivesCacheTime = Date.now();
+      return detected;
+    }
   }
 }
 
