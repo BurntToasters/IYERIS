@@ -725,6 +725,25 @@ function renderSidebarQuickAccess() {
 
   grid.innerHTML = '';
 
+  const homeDiv = document.createElement('div');
+  homeDiv.className = 'nav-item quick-action';
+  homeDiv.dataset.action = 'home';
+  homeDiv.setAttribute('role', 'button');
+  homeDiv.tabIndex = 0;
+  homeDiv.setAttribute('aria-label', 'Navigate to Home');
+  homeDiv.innerHTML = `
+    <span class="nav-icon" aria-hidden="true">${twemojiImg(String.fromCodePoint(0x1f3e0), 'twemoji')}</span>
+    <span class="nav-label">Home</span>
+  `;
+  homeDiv.addEventListener('click', () => handleQuickAction('home'));
+  homeDiv.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      handleQuickAction('home');
+    }
+  });
+  grid.appendChild(homeDiv);
+
   const visibleItems = homeController.getVisibleSidebarQuickAccessItems();
   const itemsByAction = new Map(HOME_QUICK_ACCESS_ITEMS.map((item) => [item.action, item]));
 
