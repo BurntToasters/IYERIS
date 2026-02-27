@@ -8,6 +8,7 @@ import {
   getFileIndexer,
   setFileIndexer,
   getTray,
+  getIsQuitting,
   setIsQuitting,
   setShouldStartHidden,
   getFileTasks,
@@ -381,7 +382,8 @@ app.whenReady().then(async () => {
   });
 });
 
-app.on('before-quit', () => {
+app.on('before-quit', (event) => {
+  if (getIsQuitting()) return;
   setIsQuitting(true);
 
   clearUndoRedoStacks();
@@ -393,17 +395,22 @@ app.on('before-quit', () => {
 
   const fileTasks = getFileTasks();
   const indexerTasks = getIndexerTasks();
-  fileTasks.shutdown().catch((error) => {
-    logger.error('[Main] Failed to shutdown file tasks:', error);
-  });
-  indexerTasks?.shutdown().catch((error) => {
-    logger.error('[Main] Failed to shutdown indexer tasks:', error);
-  });
 
-  const tray = getTray();
-  if (tray) {
-    tray.destroy();
-  }
+  event.preventDefault();
+  Promise.allSettled([
+    fileTasks.shutdown().catch((error) => {
+      logger.error('[Main] Failed to shutdown file tasks:', error);
+    }),
+    indexerTasks?.shutdown().catch((error) => {
+      logger.error('[Main] Failed to shutdown indexer tasks:', error);
+    }),
+  ]).finally(() => {
+    const tray = getTray();
+    if (tray) {
+      tray.destroy();
+    }
+    app.exit();
+  });
 });
 
 app.on('window-all-closed', () => {

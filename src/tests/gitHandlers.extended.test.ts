@@ -2,24 +2,15 @@ import { EventEmitter } from 'events';
 import * as path from 'path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-type ExecResponse = {
-  error?: Error | null;
-  stdout?: string;
-  stderr?: string;
-};
-
 class FakeChildProcess extends EventEmitter {
   stdout = new EventEmitter();
   stderr = new EventEmitter();
   kill = vi.fn();
 }
 
-vi.mock('child_process', () => ({
-  exec: vi.fn(),
-}));
-
 vi.mock('../main/processUtils', () => ({
   spawnWithTimeout: vi.fn(),
+  captureSpawnOutput: vi.fn(),
 }));
 
 vi.mock('../main/security', () => ({
@@ -30,41 +21,34 @@ vi.mock('../shared', () => ({
   ignoreError: vi.fn(),
 }));
 
-import { exec } from 'child_process';
-import { spawnWithTimeout } from '../main/processUtils';
+import { spawnWithTimeout, captureSpawnOutput } from '../main/processUtils';
 import { isPathSafe } from '../main/security';
 import { getGitBranch, getGitStatus } from '../main/gitHandlers';
 
-function setExecResponses(responses: ExecResponse[]): void {
+function mockCaptureResponses(
+  responses: Array<{ code: number; stdout: string; stderr?: string; timedOut?: boolean }>
+): void {
   const queue = [...responses];
-  vi.mocked(exec).mockImplementation((...args: unknown[]) => {
-    const cb = args[args.length - 1] as
-      | ((error: Error | null, stdout: string, stderr: string) => void)
-      | undefined;
-    if (typeof cb !== 'function') {
-      throw new Error('Expected callback in exec mock');
-    }
-    const next = queue.shift() || {};
-    queueMicrotask(() => {
-      cb(
-        next.error ?? null,
-        { stdout: next.stdout ?? '', stderr: next.stderr ?? '' } as unknown as string,
-        ''
-      );
-    });
-    return {} as never;
+  vi.mocked(captureSpawnOutput).mockImplementation(async () => {
+    const next = queue.shift() || { code: 0, stdout: '' };
+    return {
+      code: next.code,
+      stdout: next.stdout,
+      stderr: next.stderr ?? '',
+      timedOut: next.timedOut ?? false,
+    };
   });
 }
 
 describe('gitHandlers – extended coverage', () => {
   beforeEach(() => {
-    vi.mocked(exec).mockReset();
     vi.mocked(spawnWithTimeout).mockReset();
+    vi.mocked(captureSpawnOutput).mockReset();
     vi.mocked(isPathSafe).mockReturnValue(true);
   });
 
   it('returns error when git status exits with non-zero code and stderr', async () => {
-    setExecResponses([{ stdout: '.git\n' }]);
+    mockCaptureResponses([{ code: 0, stdout: '.git\n' }]);
     const child = new FakeChildProcess();
     vi.mocked(spawnWithTimeout).mockReturnValue({
       child: child as any,
@@ -83,7 +67,7 @@ describe('gitHandlers – extended coverage', () => {
   });
 
   it('returns error when git status exits with non-zero code and no stderr', async () => {
-    setExecResponses([{ stdout: '.git\n' }]);
+    mockCaptureResponses([{ code: 0, stdout: '.git\n' }]);
     const child = new FakeChildProcess();
     vi.mocked(spawnWithTimeout).mockReturnValue({
       child: child as any,
@@ -100,8 +84,10 @@ describe('gitHandlers – extended coverage', () => {
     expect(result).toEqual({ success: false, error: 'Git status failed' });
   });
 
-  it('returns error when execAsync for branch throws after repo confirmed', async () => {
-    setExecResponses([{ stdout: '.git\n' }, { error: new Error('git branch failed') }]);
+  it('returns error when captureSpawnOutput for branch throws after repo confirmed', async () => {
+    vi.mocked(captureSpawnOutput)
+      .mockResolvedValueOnce({ code: 0, stdout: '.git\n', stderr: '', timedOut: false })
+      .mockRejectedValueOnce(new Error('git branch failed'));
 
     const result = await getGitBranch('/tmp/project');
 
@@ -109,7 +95,7 @@ describe('gitHandlers – extended coverage', () => {
   });
 
   it('returns error when git status output is truncated', async () => {
-    setExecResponses([{ stdout: '.git\n' }]);
+    mockCaptureResponses([{ code: 0, stdout: '.git\n' }]);
     const child = new FakeChildProcess();
     vi.mocked(spawnWithTimeout).mockReturnValue({
       child: child as any,
@@ -131,7 +117,7 @@ describe('gitHandlers – extended coverage', () => {
   });
 
   it('returns error when git process emits an error event', async () => {
-    setExecResponses([{ stdout: '.git\n' }]);
+    mockCaptureResponses([{ code: 0, stdout: '.git\n' }]);
     const child = new FakeChildProcess();
     vi.mocked(spawnWithTimeout).mockReturnValue({
       child: child as any,
@@ -149,7 +135,7 @@ describe('gitHandlers – extended coverage', () => {
   });
 
   it('maps ignored status code correctly', async () => {
-    setExecResponses([{ stdout: '.git\n' }]);
+    mockCaptureResponses([{ code: 0, stdout: '.git\n' }]);
     const child = new FakeChildProcess();
     vi.mocked(spawnWithTimeout).mockReturnValue({
       child: child as any,
@@ -170,7 +156,7 @@ describe('gitHandlers – extended coverage', () => {
   });
 
   it('maps AA and DD conflict codes correctly', async () => {
-    setExecResponses([{ stdout: '.git\n' }]);
+    mockCaptureResponses([{ code: 0, stdout: '.git\n' }]);
     const child = new FakeChildProcess();
     vi.mocked(spawnWithTimeout).mockReturnValue({
       child: child as any,
@@ -192,7 +178,7 @@ describe('gitHandlers – extended coverage', () => {
   });
 
   it('maps C (copied) status code as added', async () => {
-    setExecResponses([{ stdout: '.git\n' }]);
+    mockCaptureResponses([{ code: 0, stdout: '.git\n' }]);
     const child = new FakeChildProcess();
     vi.mocked(spawnWithTimeout).mockReturnValue({
       child: child as any,
@@ -213,7 +199,7 @@ describe('gitHandlers – extended coverage', () => {
   });
 
   it('skips entries shorter than 3 characters', async () => {
-    setExecResponses([{ stdout: '.git\n' }]);
+    mockCaptureResponses([{ code: 0, stdout: '.git\n' }]);
     const child = new FakeChildProcess();
     vi.mocked(spawnWithTimeout).mockReturnValue({
       child: child as any,
@@ -234,7 +220,7 @@ describe('gitHandlers – extended coverage', () => {
   });
 
   it('includes untracked files by default', async () => {
-    setExecResponses([{ stdout: '.git\n' }]);
+    mockCaptureResponses([{ code: 0, stdout: '.git\n' }]);
     const child = new FakeChildProcess();
     vi.mocked(spawnWithTimeout).mockReturnValue({
       child: child as any,

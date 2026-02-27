@@ -50,6 +50,8 @@ export function setupFileWatcherHandlers(): void {
     const senderId = event.sender.id;
     cleanupWatcher(senderId);
 
+    if (event.sender.isDestroyed()) return false;
+
     try {
       const watcher = fs.watch(dirPath, { persistent: false }, (_eventType, filename) => {
         if (!filename) return;
@@ -79,6 +81,8 @@ export function setupFileWatcherHandlers(): void {
         cleanupWatcher(senderId);
       });
 
+      event.sender.once('destroyed', () => cleanupWatcher(senderId));
+
       activeWatchers.set(senderId, {
         watcher,
         sender: event.sender,
@@ -86,8 +90,6 @@ export function setupFileWatcherHandlers(): void {
         debounceTimer: null,
         firstEventTime: 0,
       });
-
-      event.sender.once('destroyed', () => cleanupWatcher(senderId));
 
       logger.debug('[FileWatcher] Watching:', dirPath);
       return true;

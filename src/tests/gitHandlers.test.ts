@@ -2,24 +2,15 @@ import { EventEmitter } from 'events';
 import * as path from 'path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-type ExecResponse = {
-  error?: Error | null;
-  stdout?: string;
-  stderr?: string;
-};
-
 class FakeChildProcess extends EventEmitter {
   stdout = new EventEmitter();
   stderr = new EventEmitter();
   kill = vi.fn();
 }
 
-vi.mock('child_process', () => ({
-  exec: vi.fn(),
-}));
-
 vi.mock('../main/processUtils', () => ({
   spawnWithTimeout: vi.fn(),
+  captureSpawnOutput: vi.fn(),
 }));
 
 vi.mock('../main/security', () => ({
@@ -30,36 +21,29 @@ vi.mock('../shared', () => ({
   ignoreError: vi.fn(),
 }));
 
-import { exec } from 'child_process';
-import { spawnWithTimeout } from '../main/processUtils';
+import { spawnWithTimeout, captureSpawnOutput } from '../main/processUtils';
 import { isPathSafe } from '../main/security';
 import { getGitBranch, getGitStatus } from '../main/gitHandlers';
 
-function setExecResponses(responses: ExecResponse[]): void {
+function mockCaptureResponses(
+  responses: Array<{ code: number; stdout: string; stderr?: string; timedOut?: boolean }>
+): void {
   const queue = [...responses];
-  vi.mocked(exec).mockImplementation((...args: unknown[]) => {
-    const cb = args[args.length - 1] as
-      | ((error: Error | null, stdout: string, stderr: string) => void)
-      | undefined;
-    if (typeof cb !== 'function') {
-      throw new Error('Expected callback in exec mock');
-    }
-    const next = queue.shift() || {};
-    queueMicrotask(() => {
-      cb(
-        next.error ?? null,
-        { stdout: next.stdout ?? '', stderr: next.stderr ?? '' } as unknown as string,
-        ''
-      );
-    });
-    return {} as never;
+  vi.mocked(captureSpawnOutput).mockImplementation(async () => {
+    const next = queue.shift() || { code: 0, stdout: '' };
+    return {
+      code: next.code,
+      stdout: next.stdout,
+      stderr: next.stderr ?? '',
+      timedOut: next.timedOut ?? false,
+    };
   });
 }
 
 describe('gitHandlers', () => {
   beforeEach(() => {
-    vi.mocked(exec).mockReset();
     vi.mocked(spawnWithTimeout).mockReset();
+    vi.mocked(captureSpawnOutput).mockReset();
     vi.mocked(isPathSafe).mockReturnValue(true);
   });
 
@@ -74,7 +58,7 @@ describe('gitHandlers', () => {
   });
 
   it('returns non-repo status when git metadata is missing', async () => {
-    setExecResponses([{ error: new Error('not a git repo') }]);
+    mockCaptureResponses([{ code: 128, stdout: '' }]);
 
     const result = await getGitStatus('/tmp/project');
 
@@ -83,7 +67,7 @@ describe('gitHandlers', () => {
   });
 
   it('parses porcelain status output and rename pairs', async () => {
-    setExecResponses([{ stdout: '.git\n' }]);
+    mockCaptureResponses([{ code: 0, stdout: '.git\n' }]);
     const child = new FakeChildProcess();
     vi.mocked(spawnWithTimeout).mockReturnValue({
       child: child as unknown as import('child_process').ChildProcess,
@@ -122,7 +106,7 @@ describe('gitHandlers', () => {
   });
 
   it('returns error on timeout during git status', async () => {
-    setExecResponses([{ stdout: '.git\n' }]);
+    mockCaptureResponses([{ code: 0, stdout: '.git\n' }]);
     const child = new FakeChildProcess();
     vi.mocked(spawnWithTimeout).mockReturnValue({
       child: child as unknown as import('child_process').ChildProcess,
@@ -139,7 +123,10 @@ describe('gitHandlers', () => {
   });
 
   it('returns branch name for attached HEAD', async () => {
-    setExecResponses([{ stdout: '.git\n' }, { stdout: 'feature/test\n' }]);
+    mockCaptureResponses([
+      { code: 0, stdout: '.git\n' },
+      { code: 0, stdout: 'feature/test\n' },
+    ]);
 
     const result = await getGitBranch('/tmp/project');
 
@@ -147,7 +134,11 @@ describe('gitHandlers', () => {
   });
 
   it('falls back to short HEAD when branch name is empty', async () => {
-    setExecResponses([{ stdout: '.git\n' }, { stdout: '\n' }, { stdout: 'abc123\n' }]);
+    mockCaptureResponses([
+      { code: 0, stdout: '.git\n' },
+      { code: 0, stdout: '\n' },
+      { code: 0, stdout: 'abc123\n' },
+    ]);
 
     const result = await getGitBranch('/tmp/project');
 
@@ -155,7 +146,7 @@ describe('gitHandlers', () => {
   });
 
   it('returns undefined branch when repo check fails', async () => {
-    setExecResponses([{ error: new Error('not repo') }]);
+    mockCaptureResponses([{ code: 128, stdout: '' }]);
 
     const result = await getGitBranch('/tmp/project');
 

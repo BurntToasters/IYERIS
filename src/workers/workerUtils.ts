@@ -73,7 +73,9 @@ export function sendProgress(task: TaskType, operationId: string, data: Progress
 
 export function normalizePathForCompare(filePath: string): string {
   const resolved = path.resolve(filePath);
-  return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+  if (process.platform === 'win32') return resolved.toLowerCase();
+  if (process.platform === 'darwin') return resolved.normalize('NFC');
+  return resolved;
 }
 
 export function normalizeModifiedDate(value: number | string | Date | undefined): Date {
@@ -259,9 +261,9 @@ function getAttrCache(filePath: string): WinAttrFlags | null {
 function setAttrCache(filePath: string, flags: WinAttrFlags): void {
   hiddenAttrCache.delete(filePath);
   if (hiddenAttrCache.size >= HIDDEN_ATTR_CACHE_MAX) {
-    const lruKey = hiddenAttrCache.keys().next().value;
-    if (lruKey) {
-      hiddenAttrCache.delete(lruKey);
+    const oldestKey = hiddenAttrCache.keys().next().value;
+    if (oldestKey) {
+      hiddenAttrCache.delete(oldestKey);
     }
   }
   hiddenAttrCache.set(filePath, { flags, timestamp: Date.now() });
@@ -358,7 +360,7 @@ export async function batchCheckHidden(
         try {
           const { stdout } = await execFileAsync('attrib', batch, {
             cwd: dirPath,
-            timeout: 2000,
+            timeout: 5000,
             windowsHide: true,
             maxBuffer: 1024 * 1024,
           });
@@ -532,6 +534,7 @@ export interface SearchResult {
   isDirectory: boolean;
   isFile: boolean;
   isSymlink?: boolean;
+  isBrokenSymlink?: boolean;
   isAppBundle?: boolean;
   isShortcut?: boolean;
   isDesktopEntry?: boolean;

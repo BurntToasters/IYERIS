@@ -160,6 +160,7 @@ export interface FileItem {
   isDirectory: boolean;
   isFile: boolean;
   isSymlink?: boolean;
+  isBrokenSymlink?: boolean;
   isAppBundle?: boolean;
   isShortcut?: boolean;
   isDesktopEntry?: boolean;

@@ -41,25 +41,28 @@ export async function listDirectory(
           ? (attrFlags?.isHidden ?? entry.name.startsWith('.'))
           : entry.name.startsWith('.');
         const isSystemProtectedFlag = attrFlags?.isSystemProtected ?? false;
+        const isDir = entry.isDirectory();
+        const isBundle = isMac && isDir && entry.name.endsWith('.app');
+        const isLink = entry.isSymbolicLink();
+        let linkTarget: string | undefined;
+        let isBrokenSymlink = false;
+        if (isLink) {
+          try {
+            const rawTarget = await fs.readlink(fullPath);
+            linkTarget = isWin ? rawTarget.replace(/\//g, '\\') : rawTarget;
+          } catch {
+            isBrokenSymlink = true;
+          }
+        }
         try {
           const stats = await fs.stat(fullPath);
-          const isDir = entry.isDirectory();
-          const isBundle = isMac && isDir && entry.name.endsWith('.app');
-          const isLink = entry.isSymbolicLink();
-          let linkTarget: string | undefined;
-          if (isLink) {
-            try {
-              linkTarget = await fs.readlink(fullPath);
-            } catch {
-              /* ignore */
-            }
-          }
           return {
             name: entry.name,
             path: fullPath,
             isDirectory: isDir,
             isFile: entry.isFile(),
             isSymlink: isLink || undefined,
+            isBrokenSymlink: isBrokenSymlink || undefined,
             isAppBundle: isBundle || undefined,
             isShortcut: (isWin && entry.name.endsWith('.lnk')) || undefined,
             isDesktopEntry: (isLinux && entry.name.endsWith('.desktop')) || undefined,
@@ -70,23 +73,13 @@ export async function listDirectory(
             isSystemProtected: isSystemProtectedFlag || undefined,
           };
         } catch {
-          const isDir = entry.isDirectory();
-          const isBundle = isMac && isDir && entry.name.endsWith('.app');
-          const isLink = entry.isSymbolicLink();
-          let linkTarget: string | undefined;
-          if (isLink) {
-            try {
-              linkTarget = await fs.readlink(fullPath);
-            } catch {
-              /* ignore */
-            }
-          }
           return {
             name: entry.name,
             path: fullPath,
             isDirectory: isDir,
             isFile: entry.isFile(),
             isSymlink: isLink || undefined,
+            isBrokenSymlink: (isLink && true) || undefined,
             isAppBundle: isBundle || undefined,
             isShortcut: (isWin && entry.name.endsWith('.lnk')) || undefined,
             isDesktopEntry: (isLinux && entry.name.endsWith('.desktop')) || undefined,

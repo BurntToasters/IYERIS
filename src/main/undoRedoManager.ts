@@ -31,9 +31,18 @@ async function movePath(source: string, dest: string): Promise<void> {
   const stats = await fs.stat(source);
   if (stats.isDirectory()) {
     await fs.cp(source, dest, { recursive: true });
+    const destStats = await fs.stat(dest);
+    if (!destStats.isDirectory()) {
+      throw new Error('Cross-device copy verification failed');
+    }
     await fs.rm(source, { recursive: true, force: true });
   } else {
     await fs.copyFile(source, dest);
+    const [srcStat, destStat] = await Promise.all([fs.stat(source), fs.stat(dest)]);
+    if (destStat.size !== srcStat.size) {
+      await fs.unlink(dest).catch(ignoreError);
+      throw new Error('Cross-device copy verification failed: size mismatch');
+    }
     await fs.unlink(source);
   }
 }

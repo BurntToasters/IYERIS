@@ -26,6 +26,7 @@ export function createThumbnailController(deps: ThumbnailDeps) {
   const thumbnailCache = new Map<string, string>();
   let activeThumbnailLoads = 0;
   const pendingThumbnailLoads: Array<() => void> = [];
+  const inflightThumbnails = new Set<string>();
 
   let thumbnailObserver: IntersectionObserver | null = null;
   let thumbnailObserverRoot: HTMLElement | null = null;
@@ -268,11 +269,15 @@ export function createThumbnailController(deps: ThumbnailDeps) {
       return;
     }
 
+    if (inflightThumbnails.has(item.path)) return;
+    inflightThumbnails.add(item.path);
+
     const thumbnailType = fileItem.dataset.thumbnailType || 'image';
 
     enqueueThumbnailLoad(async () => {
       try {
         if (!document.body.contains(fileItem)) {
+          inflightThumbnails.delete(item.path);
           return;
         }
 
@@ -366,6 +371,8 @@ export function createThumbnailController(deps: ThumbnailDeps) {
           iconDiv.innerHTML = deps.getFileIcon(item.name);
         }
         fileItem.classList.remove('has-thumbnail');
+      } finally {
+        inflightThumbnails.delete(item.path);
       }
     });
   }
@@ -440,9 +447,13 @@ export function createThumbnailController(deps: ThumbnailDeps) {
     loadThumbnail,
     updateThumbnailCacheSize,
     getThumbnailForPath: (path: string) => thumbnailCache.get(path),
-    clearThumbnailCache: () => thumbnailCache.clear(),
+    clearThumbnailCache: () => {
+      thumbnailCache.clear();
+      inflightThumbnails.clear();
+    },
     clearPendingThumbnailLoads: () => {
       pendingThumbnailLoads.length = 0;
+      inflightThumbnails.clear();
     },
   };
 }

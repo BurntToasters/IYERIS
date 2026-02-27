@@ -44,21 +44,23 @@ async function writeFileAtomic(targetPath: string, data: string): Promise<void> 
     if (err.code === 'EEXIST' || err.code === 'EPERM' || err.code === 'EACCES') {
       try {
         await fs.unlink(targetPath);
-      } catch (error) {
-        ignoreError(error);
+      } catch (unlinkError) {
+        ignoreError(unlinkError);
       }
       try {
         await fs.rename(tmpPath, targetPath);
         return;
-      } catch (error) {
-        ignoreError(error);
+      } catch (retryError) {
+        ignoreError(retryError);
       }
     }
     try {
       await fs.copyFile(tmpPath, targetPath);
-    } finally {
+    } catch (copyError) {
       await fs.unlink(tmpPath).catch(ignoreError);
+      throw copyError;
     }
+    await fs.unlink(tmpPath).catch(ignoreError);
   }
 }
 

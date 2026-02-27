@@ -214,7 +214,7 @@ export async function searchDirectoryFiles(
     try {
       searchRegex = new RegExp(query, 'i');
     } catch {
-      return results;
+      throw new Error(`Invalid regex pattern: ${query}`);
     }
   }
   const dateRange = parseDateRange(filters);
@@ -311,7 +311,7 @@ export async function searchDirectoryContent(
     try {
       contentRegex = new RegExp(query, 'i');
     } catch {
-      return results;
+      throw new Error(`Invalid regex pattern: ${query}`);
     }
   }
   const dateRange = parseDateRange(filters);
@@ -442,7 +442,7 @@ export async function searchContentList(
     try {
       listRegex = new RegExp(query, 'i');
     } catch {
-      return results;
+      throw new Error(`Invalid regex pattern: ${query}`);
     }
   }
   const dateRange = parseDateRange(filters);
@@ -511,7 +511,9 @@ export async function searchContentIndex(
   if (filters?.regex) {
     try {
       indexRegex = new RegExp(query, 'i');
-    } catch {}
+    } catch {
+      throw new Error(`Invalid regex pattern: ${query}`);
+    }
   }
 
   for (const entry of indexEntries) {

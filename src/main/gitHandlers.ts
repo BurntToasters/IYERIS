@@ -1,12 +1,8 @@
 import * as path from 'path';
-import { exec } from 'child_process';
-import { promisify } from 'util';
 import { isPathSafe } from './security';
 import { ignoreError } from '../shared';
-import { spawnWithTimeout } from './processUtils';
+import { spawnWithTimeout, captureSpawnOutput } from './processUtils';
 import { logger } from './logger';
-
-const execAsync = promisify(exec);
 
 const MAX_GIT_STATUS_BYTES = 20 * 1024 * 1024;
 
@@ -22,12 +18,11 @@ function mapGitStatusCode(statusCode: string): string {
 
 async function isGitRepository(dirPath: string): Promise<boolean> {
   try {
-    await execAsync('git rev-parse --git-dir', {
+    const result = await captureSpawnOutput('git', ['rev-parse', '--git-dir'], 5000, {
       cwd: dirPath,
-      timeout: 5000,
-      maxBuffer: 1024 * 1024,
+      windowsHide: true,
     });
-    return true;
+    return result.code === 0;
   } catch {
     return false;
   }
@@ -147,21 +142,23 @@ export async function getGitBranch(dirPath: string): Promise<{
       return { success: true, branch: undefined };
     }
 
-    const { stdout } = await execAsync('git branch --show-current', {
+    const branchResult = await captureSpawnOutput('git', ['branch', '--show-current'], 10000, {
       cwd: dirPath,
-      timeout: 10000,
-      maxBuffer: 1024 * 1024,
+      windowsHide: true,
     });
 
-    const branch = stdout.trim();
+    if (branchResult.code !== 0) {
+      return { success: false, error: branchResult.stderr.trim() || 'Failed to get branch' };
+    }
+
+    const branch = branchResult.stdout.trim();
 
     if (!branch) {
-      const { stdout: refStdout } = await execAsync('git rev-parse --short HEAD', {
+      const refResult = await captureSpawnOutput('git', ['rev-parse', '--short', 'HEAD'], 10000, {
         cwd: dirPath,
-        timeout: 10000,
-        maxBuffer: 1024 * 1024,
+        windowsHide: true,
       });
-      return { success: true, branch: `HEAD:${refStdout.trim()}` };
+      return { success: true, branch: `HEAD:${refResult.stdout.trim()}` };
     }
 
     return { success: true, branch };

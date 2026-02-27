@@ -404,6 +404,18 @@ export function createSelectionController(deps: SelectionDeps) {
       }
       selectionRect.classList.remove('active');
     });
+
+    window.addEventListener('blur', () => {
+      if (!isRubberBandActive) return;
+      isRubberBandActive = false;
+      rubberBandStart = null;
+      cachedItemRects = [];
+      if (rubberBandRafId !== null) {
+        cancelAnimationFrame(rubberBandRafId);
+        rubberBandRafId = null;
+      }
+      selectionRect.classList.remove('active');
+    });
   }
 
   return {
