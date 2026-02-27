@@ -514,6 +514,7 @@ export interface ElectronAPI {
 
   setClipboard: (clipboardData: ClipboardOperation | null) => Promise<void>;
   getClipboard: () => Promise<ClipboardOperation | null>;
+  getSystemClipboardData: () => Promise<ClipboardOperation>;
   getSystemClipboardFiles: () => Promise<string[]>;
   onClipboardChanged: (callback: (clipboardData: ClipboardOperation | null) => void) => () => void;
 

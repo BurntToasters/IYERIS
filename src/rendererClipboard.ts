@@ -30,6 +30,117 @@ export function createClipboardController(deps: ClipboardDeps) {
   let elIndicator: HTMLElement | null = null;
   let elIndicatorText: HTMLElement | null = null;
 
+  function getRetryActions(retry?: () => void): ToastAction[] | undefined {
+    if (!retry) return undefined;
+    return [{ label: 'Retry', onClick: () => void retry() }];
+  }
+
+  function isPermissionDeniedError(message?: string): boolean {
+    if (!message) return false;
+    const value = message.toLowerCase();
+    return (
+      value.includes('eacces') ||
+      value.includes('eperm') ||
+      value.includes('permission denied') ||
+      value.includes('operation not permitted') ||
+      value.includes('access is denied') ||
+      value.includes('not authorized')
+    );
+  }
+
+  async function getSystemClipboardData(): Promise<{
+    operation: 'copy' | 'cut';
+    paths: string[];
+  } | null> {
+    try {
+      const data =
+        typeof window.electronAPI.getSystemClipboardData === 'function'
+          ? await window.electronAPI.getSystemClipboardData()
+          : {
+              operation: 'copy' as const,
+              paths: await window.electronAPI.getSystemClipboardFiles(),
+            };
+
+      if (!data || !Array.isArray(data.paths) || data.paths.length === 0) {
+        return null;
+      }
+
+      return {
+        operation: data.operation === 'cut' ? 'cut' : 'copy',
+        paths: data.paths,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  async function pasteSystemClipboard(destPath: string, retry?: () => void): Promise<boolean> {
+    const systemClipboard = await getSystemClipboardData();
+    if (!systemClipboard || systemClipboard.paths.length === 0) {
+      return false;
+    }
+
+    const conflictBehavior = deps.getCurrentSettings().fileConflictBehavior || 'ask';
+    const retryActions = getRetryActions(retry);
+
+    if (systemClipboard.operation === 'cut') {
+      const moveResult = await window.electronAPI.moveItems(
+        systemClipboard.paths,
+        destPath,
+        conflictBehavior
+      );
+      if (moveResult.success) {
+        deps.showToast(
+          `${systemClipboard.paths.length} item(s) moved from system clipboard`,
+          'Success',
+          'success'
+        );
+        deps.refresh();
+        return true;
+      }
+
+      if (isPermissionDeniedError(moveResult.error)) {
+        const copyResult = await window.electronAPI.copyItems(
+          systemClipboard.paths,
+          destPath,
+          conflictBehavior
+        );
+        if (!copyResult.success) {
+          deps.showToast(copyResult.error || 'Paste failed', 'Error', 'error', retryActions);
+          return true;
+        }
+        deps.showToast(
+          `${systemClipboard.paths.length} item(s) copied from system clipboard; couldn't remove originals`,
+          'Permission Required',
+          'warning'
+        );
+        deps.refresh();
+        return true;
+      }
+
+      deps.showToast(moveResult.error || 'Paste failed', 'Error', 'error', retryActions);
+      return true;
+    }
+
+    const copyResult = await window.electronAPI.copyItems(
+      systemClipboard.paths,
+      destPath,
+      conflictBehavior
+    );
+    if (!copyResult.success) {
+      deps.showToast(copyResult.error || 'Paste failed', 'Error', 'error', retryActions);
+      return true;
+    }
+
+    deps.showToast(
+      `${systemClipboard.paths.length} item(s) pasted from system clipboard`,
+      'Success',
+      'success'
+    );
+    deps.refresh();
+    return true;
+  }
+
   async function updateClipboardIndicator() {
     if (!elIndicator) elIndicator = document.getElementById('clipboard-indicator');
     if (!elIndicatorText) elIndicatorText = document.getElementById('clipboard-text');
@@ -45,10 +156,13 @@ export function createClipboardController(deps: ClipboardDeps) {
       indicator.style.display = 'inline-flex';
     } else {
       if (deps.getCurrentSettings().globalClipboard !== false) {
-        const systemFiles = await window.electronAPI.getSystemClipboardFiles();
-        if (systemFiles && systemFiles.length > 0) {
-          indicatorText.textContent = `${systemFiles.length} from system`;
-          indicator.classList.remove('cut-mode');
+        const systemClipboard = await getSystemClipboardData();
+        if (systemClipboard && systemClipboard.paths.length > 0) {
+          indicatorText.textContent =
+            systemClipboard.operation === 'cut'
+              ? `${systemClipboard.paths.length} from system (cut)`
+              : `${systemClipboard.paths.length} from system`;
+          indicator.classList.toggle('cut-mode', systemClipboard.operation === 'cut');
           indicator.style.display = 'inline-flex';
           return;
         }
@@ -131,23 +245,8 @@ export function createClipboardController(deps: ClipboardDeps) {
       if (!clipboard || clipboard.paths.length === 0) {
         const currentSettings = deps.getCurrentSettings();
         if (currentSettings.globalClipboard !== false) {
-          const systemFiles = await window.electronAPI.getSystemClipboardFiles();
-          if (systemFiles && systemFiles.length > 0) {
-            const result = await window.electronAPI.copyItems(
-              systemFiles,
-              folderPath,
-              currentSettings.fileConflictBehavior || 'ask'
-            );
-            if (!result.success) {
-              deps.showToast(result.error || 'Paste failed', 'Error', 'error');
-              return;
-            }
-            deps.showToast(
-              `${systemFiles.length} item(s) pasted from system clipboard`,
-              'Success',
-              'success'
-            );
-            deps.refresh();
+          const handled = await pasteSystemClipboard(folderPath);
+          if (handled) {
             return;
           }
         }
@@ -210,25 +309,8 @@ export function createClipboardController(deps: ClipboardDeps) {
       if (!clipboard || clipboard.paths.length === 0) {
         const currentSettings = deps.getCurrentSettings();
         if (currentSettings.globalClipboard !== false) {
-          const systemFiles = await window.electronAPI.getSystemClipboardFiles();
-          if (systemFiles && systemFiles.length > 0) {
-            const result = await window.electronAPI.copyItems(
-              systemFiles,
-              currentPath,
-              currentSettings.fileConflictBehavior || 'ask'
-            );
-            if (!result.success) {
-              deps.showToast(result.error || 'Paste failed', 'Error', 'error', [
-                { label: 'Retry', onClick: () => void pasteFromClipboard() },
-              ]);
-              return;
-            }
-            deps.showToast(
-              `${systemFiles.length} item(s) pasted from system clipboard`,
-              'Success',
-              'success'
-            );
-            deps.refresh();
+          const handled = await pasteSystemClipboard(currentPath, () => void pasteFromClipboard());
+          if (handled) {
             return;
           }
         }

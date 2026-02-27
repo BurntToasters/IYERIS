@@ -289,7 +289,7 @@ function getUnixDriveLabel(drivePath: string, rootLabel?: string | null): string
   if (drivePath === '/' && rootLabel) {
     return rootLabel;
   }
-  const normalized = drivePath.replace(/\/+$/, '');
+  const normalized = drivePath.replace(/[/\\]+$/, '').replace(/\\/g, '/');
   const parts = normalized.split('/').filter(Boolean);
   const basename = parts[parts.length - 1];
   return basename || drivePath;

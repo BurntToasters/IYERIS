@@ -4,6 +4,7 @@ import { createClipboardController } from '../rendererClipboard';
 
 type ClipboardElectronApi = {
   setClipboard: ReturnType<typeof vi.fn>;
+  getSystemClipboardData: ReturnType<typeof vi.fn>;
   getSystemClipboardFiles: ReturnType<typeof vi.fn>;
   copyItems: ReturnType<typeof vi.fn>;
   moveItems: ReturnType<typeof vi.fn>;
@@ -13,6 +14,7 @@ type ClipboardElectronApi = {
 function setupElectronApi(overrides: Partial<ClipboardElectronApi> = {}): ClipboardElectronApi {
   const api: ClipboardElectronApi = {
     setClipboard: vi.fn().mockResolvedValue(undefined),
+    getSystemClipboardData: vi.fn().mockResolvedValue({ operation: 'copy', paths: [] }),
     getSystemClipboardFiles: vi.fn().mockResolvedValue([]),
     copyItems: vi.fn().mockResolvedValue({ success: true }),
     moveItems: vi.fn().mockResolvedValue({ success: true }),
@@ -128,7 +130,10 @@ describe('createClipboardController', () => {
     const selected = new Set<string>();
     const deps = createDeps(selected, new Map());
     const electronApi = setupElectronApi({
-      getSystemClipboardFiles: vi.fn().mockResolvedValue(['/tmp/a.txt']),
+      getSystemClipboardData: vi.fn().mockResolvedValue({
+        operation: 'copy',
+        paths: ['/tmp/a.txt'],
+      }),
       copyItems: vi.fn().mockResolvedValue({ success: true }),
     });
     const controller = createClipboardController(deps);

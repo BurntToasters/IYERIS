@@ -29,10 +29,11 @@ function getNpmCommand(platform = process.platform) {
 
 function runCommand(name, command, args, parser, results, runner = spawnSync) {
   console.log(`${colors.blue}${colors.bold}Running ${name}...${colors.reset}`);
+  const useShell = process.platform === 'win32' && /\.cmd$/i.test(command);
   const run = runner(command, args, {
     encoding: 'utf8',
     stdio: 'pipe',
-    shell: process.platform === 'win32',
+    shell: useShell,
     windowsHide: true,
   });
 

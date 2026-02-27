@@ -72,8 +72,10 @@ export function sendProgress(task: TaskType, operationId: string, data: Progress
 }
 
 export function normalizePathForCompare(filePath: string): string {
-  const resolved = path.resolve(filePath);
-  if (process.platform === 'win32') return resolved.toLowerCase();
+  if (process.platform === 'win32') {
+    return path.win32.resolve(filePath).toLowerCase();
+  }
+  const resolved = path.posix.resolve(filePath.replace(/\\/g, '/'));
   if (process.platform === 'darwin') return resolved.normalize('NFC');
   return resolved;
 }

@@ -445,10 +445,56 @@ describe('settingsManager.extended2', () => {
       setupSettingsHandlers(createTray);
     });
 
+    it('returns default clipboard data for untrusted sender', () => {
+      mocks.isTrustedIpcEvent.mockReturnValueOnce(false);
+      const result = handlers['get-system-clipboard-data']({ sender: {} } as any);
+      expect(result).toEqual({ operation: 'copy', paths: [] });
+    });
+
     it('returns empty array for untrusted sender', () => {
       mocks.isTrustedIpcEvent.mockReturnValueOnce(false);
       const result = handlers['get-system-clipboard-files']({ sender: {} } as any);
       expect(result).toEqual([]);
+    });
+
+    it('detects cut operation from Windows Preferred DropEffect', () => {
+      const originalPlatform = process.platform;
+      Object.defineProperty(process, 'platform', { value: 'win32' });
+      try {
+        const encoded = Buffer.from('C:\\a.txt\0\0', 'ucs2');
+        mocks.clipboardReadBuffer.mockImplementation((format?: string) => {
+          if (format === 'FileNameW') return encoded;
+          if (format === 'Preferred DropEffect') return Buffer.from([2, 0, 0, 0]);
+          return Buffer.alloc(0);
+        });
+        mocks.clipboardRead.mockReturnValue('');
+
+        const result = handlers['get-system-clipboard-data']({ sender: {} } as any);
+
+        expect(result).toEqual({ operation: 'cut', paths: ['C:\\a.txt'] });
+      } finally {
+        Object.defineProperty(process, 'platform', { value: originalPlatform });
+      }
+    });
+
+    it('detects cut operation from Linux GNOME clipboard metadata', () => {
+      const originalPlatform = process.platform;
+      Object.defineProperty(process, 'platform', { value: 'linux' });
+      try {
+        mocks.clipboardReadBuffer.mockImplementation((format?: string) => {
+          if (format === 'x-special/gnome-copied-files') {
+            return Buffer.from('cut\nfile:///home/user/a.txt', 'utf8');
+          }
+          return Buffer.alloc(0);
+        });
+        mocks.clipboardRead.mockReturnValue('');
+
+        const result = handlers['get-system-clipboard-data']({ sender: {} } as any);
+
+        expect(result).toEqual({ operation: 'cut', paths: ['/home/user/a.txt'] });
+      } finally {
+        Object.defineProperty(process, 'platform', { value: originalPlatform });
+      }
     });
 
     it('parses macOS/Linux file:// URLs', () => {
@@ -506,6 +552,30 @@ describe('settingsManager.extended2', () => {
       }
     });
 
+    it('parses win32 file:// URLs that use host-style drive letters', () => {
+      const originalPlatform = process.platform;
+      Object.defineProperty(process, 'platform', { value: 'win32' });
+      try {
+        mocks.clipboardReadBuffer.mockReturnValue(Buffer.alloc(0));
+        mocks.clipboardRead.mockReturnValue('file://C:/Users/test/file.txt');
+
+        const result = handlers['get-system-clipboard-files']({ sender: {} } as any);
+
+        expect(result).toEqual(['C:/Users/test/file.txt']);
+      } finally {
+        Object.defineProperty(process, 'platform', { value: originalPlatform });
+      }
+    });
+
+    it('handles malformed encoded file URLs without throwing', () => {
+      mocks.clipboardReadBuffer.mockReturnValue(Buffer.alloc(0));
+      mocks.clipboardRead.mockReturnValue('file:///home/user/Bad%ZZName.txt');
+
+      const result = handlers['get-system-clipboard-files']({ sender: {} } as any);
+
+      expect(result).toEqual(['/home/user/Bad%ZZName.txt']);
+    });
+
     it('handles plain paths (non-file:// scheme) in public.file-url', () => {
       mocks.clipboardReadBuffer.mockReturnValue(Buffer.alloc(0));
       mocks.clipboardRead.mockReturnValue('/some/plain/path');
@@ -522,6 +592,29 @@ describe('settingsManager.extended2', () => {
       const result = handlers['get-system-clipboard-files']({ sender: {} } as any);
 
       expect(result).toEqual(['/a.txt', '/b.txt']);
+    });
+
+    it('ignores macOS transient file IDs and falls back to Finder paths', () => {
+      const originalPlatform = process.platform;
+      Object.defineProperty(process, 'platform', { value: 'darwin' });
+      try {
+        mocks.clipboardReadBuffer.mockImplementation((format?: string) => {
+          if (format === 'NSFilenamesPboardType') {
+            return Buffer.from(
+              '<array><string>/Users/dev/Desktop/Test File.txt</string></array>',
+              'utf8'
+            );
+          }
+          return Buffer.alloc(0);
+        });
+        mocks.clipboardRead.mockReturnValue('file:///.file/id=6571367.6378738');
+
+        const result = handlers['get-system-clipboard-files']({ sender: {} } as any);
+
+        expect(result).toEqual(['/Users/dev/Desktop/Test File.txt']);
+      } finally {
+        Object.defineProperty(process, 'platform', { value: originalPlatform });
+      }
     });
   });
 

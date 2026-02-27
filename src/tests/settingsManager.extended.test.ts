@@ -328,6 +328,7 @@ describe('setupSettingsHandlers', () => {
     expect(handlers['reset-settings']).toBeDefined();
     expect(handlers['set-clipboard']).toBeDefined();
     expect(handlers['get-clipboard']).toBeDefined();
+    expect(handlers['get-system-clipboard-data']).toBeDefined();
     expect(handlers['get-system-clipboard-files']).toBeDefined();
     expect(handlers['set-drag-data']).toBeDefined();
     expect(handlers['get-drag-data']).toBeDefined();

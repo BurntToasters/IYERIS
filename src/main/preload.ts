@@ -62,6 +62,7 @@ const electronAPI: ElectronAPI = {
   setClipboard: (clipboardData: { operation: 'copy' | 'cut'; paths: string[] } | null) =>
     ipcRenderer.invoke('set-clipboard', clipboardData),
   getClipboard: () => ipcRenderer.invoke('get-clipboard'),
+  getSystemClipboardData: () => ipcRenderer.invoke('get-system-clipboard-data'),
   getSystemClipboardFiles: () => ipcRenderer.invoke('get-system-clipboard-files'),
   onClipboardChanged: (
     callback: (clipboardData: { operation: 'copy' | 'cut'; paths: string[] } | null) => void

@@ -223,6 +223,63 @@ describe('createDragDropController — extended', () => {
       const result = await ctrl.getDraggedPaths(createDragEvent('drop'));
       expect(result).toEqual([]);
     });
+
+    it('falls back to file entries when text payload is a non-path JSON string', async () => {
+      const { config } = createConfig();
+      const ctrl = createDragDropController(config);
+      const result = await ctrl.getDraggedPaths(
+        createDragEvent('drop', {
+          textData: JSON.stringify('id=6571367.6378738'),
+          files: [{ path: '/real-file.txt' }] as never,
+        })
+      );
+      expect(result).toEqual(['/real-file.txt']);
+    });
+
+    it('ignores file entries that do not expose a path', async () => {
+      const { config } = createConfig();
+      const ctrl = createDragDropController(config);
+      const result = await ctrl.getDraggedPaths(
+        createDragEvent('drop', {
+          files: [{} as never],
+        })
+      );
+      expect(result).toEqual([]);
+    });
+
+    it('supports windows file:// drive URLs with host-style drive letters', async () => {
+      const originalPlatform = process.platform;
+      Object.defineProperty(process, 'platform', { value: 'win32' });
+      try {
+        const { config } = createConfig();
+        const ctrl = createDragDropController(config);
+        const result = await ctrl.getDraggedPaths(
+          createDragEvent('drop', {
+            textData: 'file://C:/Users/test/file.txt',
+          })
+        );
+        expect(result).toEqual(['C:/Users/test/file.txt']);
+      } finally {
+        Object.defineProperty(process, 'platform', { value: originalPlatform });
+      }
+    });
+
+    it('returns empty paths when shared drag-data lookup fails', async () => {
+      Object.defineProperty(window, 'electronAPI', {
+        value: {
+          getDragData: vi.fn().mockRejectedValue(new Error('ipc unavailable')),
+          copyItems: vi.fn(),
+          moveItems: vi.fn(),
+          clearDragData: vi.fn(),
+        },
+        configurable: true,
+        writable: true,
+      });
+      const { config } = createConfig();
+      const ctrl = createDragDropController(config);
+      const result = await ctrl.getDraggedPaths(createDragEvent('drop'));
+      expect(result).toEqual([]);
+    });
   });
 
   describe('showDropIndicator', () => {
@@ -491,6 +548,25 @@ describe('createDragDropController — extended', () => {
       await Promise.resolve();
 
       expect(showToast).not.toHaveBeenCalled();
+    });
+
+    it('handles non-array JSON drop payloads without throwing', async () => {
+      const { config } = createConfig();
+      const ctrl = createDragDropController(config);
+      ctrl.initDragAndDropListeners();
+
+      const fileGrid = document.getElementById('file-grid')!;
+      const dropEvt = createDragEvent('drop', {
+        textData: JSON.stringify('id=6571367.6378738'),
+      });
+      Object.defineProperty(dropEvt, 'target', { value: fileGrid });
+      fileGrid.dispatchEvent(dropEvt);
+      await flushPromises();
+
+      const electronAPI = (window as any).electronAPI;
+      expect(electronAPI.moveItems).not.toHaveBeenCalled();
+      expect(electronAPI.copyItems).not.toHaveBeenCalled();
+      expect(document.getElementById('drop-indicator')!.style.display).toBe('none');
     });
 
     it('performs move on drop (default, no modifier key)', async () => {
