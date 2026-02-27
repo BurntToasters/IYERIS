@@ -51,8 +51,8 @@ function createDeps(overrides: Record<string, unknown> = {}) {
 describe('createClipboardController — extended', () => {
   beforeEach(() => {
     document.body.innerHTML = `
-      <div id="clipboard-indicator" style="display:none">
-        <span id="clipboard-text"></span>
+      <div id="status-clipboard" style="display:none">
+        <span id="status-clipboard-text"></span>
       </div>
     `;
   });
@@ -323,7 +323,7 @@ describe('createClipboardController — extended', () => {
       const deps = createDeps({ settingsOverrides: { globalClipboard: false } });
       const ctrl = createClipboardController(deps);
       await ctrl.updateClipboardIndicator();
-      expect(document.getElementById('clipboard-indicator')!.style.display).toBe('none');
+      expect(document.getElementById('status-clipboard')!.style.display).toBe('none');
     });
 
     it('does nothing when indicator elements are missing', async () => {
@@ -345,8 +345,8 @@ describe('createClipboardController — extended', () => {
       const deps = createDeps();
       const ctrl = createClipboardController(deps);
       await ctrl.updateClipboardIndicator();
-      expect(document.getElementById('clipboard-text')!.textContent).toBe('2 from system');
-      expect(document.getElementById('clipboard-indicator')!.style.display).toBe('inline-flex');
+      expect(document.getElementById('status-clipboard-text')!.textContent).toBe('2 from system');
+      expect(document.getElementById('status-clipboard')!.style.display).toBe('inline-flex');
     });
 
     it('shows system cut state in indicator', async () => {
@@ -359,8 +359,10 @@ describe('createClipboardController — extended', () => {
       const deps = createDeps();
       const ctrl = createClipboardController(deps);
       await ctrl.updateClipboardIndicator();
-      expect(document.getElementById('clipboard-text')!.textContent).toBe('1 from system (cut)');
-      expect(document.getElementById('clipboard-indicator')!.classList.contains('cut-mode')).toBe(
+      expect(document.getElementById('status-clipboard-text')!.textContent).toBe(
+        '1 from system (cut)'
+      );
+      expect(document.getElementById('status-clipboard')!.classList.contains('cut-mode')).toBe(
         true
       );
     });

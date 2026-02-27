@@ -51,8 +51,8 @@ function createDeps(selectedItems: Set<string>, fileElementMap: Map<string, HTML
 describe('createClipboardController', () => {
   beforeEach(() => {
     document.body.innerHTML = `
-      <div id="clipboard-indicator" style="display:none">
-        <span id="clipboard-text"></span>
+      <div id="status-clipboard" style="display:none">
+        <span id="status-clipboard-text"></span>
       </div>
       <div id="file-a"></div>
       <div id="file-b"></div>
@@ -73,8 +73,8 @@ describe('createClipboardController', () => {
       operation: 'copy',
       paths: ['/a'],
     });
-    expect(document.getElementById('clipboard-indicator')!.style.display).toBe('inline-flex');
-    expect(document.getElementById('clipboard-text')!.textContent).toBe('1 copied');
+    expect(document.getElementById('status-clipboard')!.style.display).toBe('inline-flex');
+    expect(document.getElementById('status-clipboard-text')!.textContent).toBe('1 copied');
     expect(deps.showToast).toHaveBeenCalledWith('1 item(s) copied', 'Clipboard', 'success');
   });
 
@@ -94,7 +94,7 @@ describe('createClipboardController', () => {
       paths: ['/a'],
     });
     expect(fileA.classList.contains('cut')).toBe(true);
-    expect(document.getElementById('clipboard-text')!.textContent).toBe('1 cut');
+    expect(document.getElementById('status-clipboard-text')!.textContent).toBe('1 cut');
   });
 
   it('pastes local clipboard using copy operation', async () => {

@@ -157,18 +157,52 @@ body.theme-light .status-version:hover {
 }
 
 .status-clipboard {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: var(--spacing-sm);
-  padding: 2px var(--spacing-md);
-  background: rgba(var(--accent-rgb), 0.1);
-  border-radius: var(--radius-small);
+  gap: 4px;
+  max-width: 170px;
+  padding: 2px 8px;
+  border: 1px solid color-mix(in srgb, var(--accent-color) 28%, transparent);
+  background: color-mix(in srgb, var(--accent-color) 14%, transparent);
+  border-radius: 999px;
   font-size: var(--font-size-status);
+  color: var(--accent-color);
+  line-height: 1.2;
+  white-space: nowrap;
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease;
+}
+
+.status-clipboard:hover {
+  background: color-mix(in srgb, var(--accent-color) 18%, transparent);
+  color: var(--accent-color);
+}
+
+.status-clipboard.cut-mode {
+  color: var(--warning-color);
+  border-color: color-mix(in srgb, var(--warning-color) 34%, transparent);
+  background: color-mix(in srgb, var(--warning-color) 16%, transparent);
+}
+
+.status-clipboard.cut-mode:hover {
+  color: var(--warning-color);
+  background: color-mix(in srgb, var(--warning-color) 20%, transparent);
+}
+
+.status-clipboard-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .status-clipboard .twemoji {
-  width: 10px;
-  height: 10px;
+  width: 11px;
+  height: 11px;
+  opacity: 0.9;
+  flex: 0 0 auto;
 }
 
 .status-view-mode {

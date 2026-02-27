@@ -30,6 +30,23 @@ export function createClipboardController(deps: ClipboardDeps) {
   let elIndicator: HTMLElement | null = null;
   let elIndicatorText: HTMLElement | null = null;
 
+  function resolveClipboardIndicatorElements(): {
+    indicator: HTMLElement | null;
+    text: HTMLElement | null;
+  } {
+    if (!elIndicator) {
+      elIndicator =
+        document.getElementById('status-clipboard') ||
+        document.getElementById('clipboard-indicator');
+    }
+    if (!elIndicatorText) {
+      elIndicatorText =
+        document.getElementById('status-clipboard-text') ||
+        document.getElementById('clipboard-text');
+    }
+    return { indicator: elIndicator, text: elIndicatorText };
+  }
+
   function getRetryActions(retry?: () => void): ToastAction[] | undefined {
     if (!retry) return undefined;
     return [{ label: 'Retry', onClick: () => void retry() }];
@@ -142,16 +159,14 @@ export function createClipboardController(deps: ClipboardDeps) {
   }
 
   async function updateClipboardIndicator() {
-    if (!elIndicator) elIndicator = document.getElementById('clipboard-indicator');
-    if (!elIndicatorText) elIndicatorText = document.getElementById('clipboard-text');
-    const indicator = elIndicator;
-    const indicatorText = elIndicatorText;
+    const { indicator, text: indicatorText } = resolveClipboardIndicatorElements();
     if (!indicator || !indicatorText) return;
 
     if (clipboard && clipboard.paths.length > 0) {
       const count = clipboard.paths.length;
       const operation = clipboard.operation === 'cut' ? 'cut' : 'copied';
       indicatorText.textContent = `${count} ${operation}`;
+      indicator.title = `Clipboard: ${count} ${operation}`;
       indicator.classList.toggle('cut-mode', clipboard.operation === 'cut');
       indicator.style.display = 'inline-flex';
     } else {
@@ -162,12 +177,14 @@ export function createClipboardController(deps: ClipboardDeps) {
             systemClipboard.operation === 'cut'
               ? `${systemClipboard.paths.length} from system (cut)`
               : `${systemClipboard.paths.length} from system`;
+          indicator.title = `Clipboard: ${indicatorText.textContent}`;
           indicator.classList.toggle('cut-mode', systemClipboard.operation === 'cut');
           indicator.style.display = 'inline-flex';
           return;
         }
       }
       indicator.style.display = 'none';
+      indicator.title = 'Clipboard contents';
     }
   }
 
