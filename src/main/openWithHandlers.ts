@@ -18,6 +18,110 @@ interface OpenWithResponse {
   error?: string;
 }
 
+const DESKTOP_EXEC_FIELD_REGEX = /%[fFuUdDnNickvm]/g;
+
+function tokenizeExecCommand(command: string): string[] {
+  const tokens: string[] = [];
+  let current = '';
+  let quote: '"' | "'" | null = null;
+  let escaped = false;
+
+  for (let i = 0; i < command.length; i++) {
+    const char = command[i];
+
+    if (escaped) {
+      current += char;
+      escaped = false;
+      continue;
+    }
+
+    if (char === '\\' && quote !== "'") {
+      escaped = true;
+      continue;
+    }
+
+    if (quote) {
+      if (char === quote) {
+        quote = null;
+      } else {
+        current += char;
+      }
+      continue;
+    }
+
+    if (char === '"' || char === "'") {
+      quote = char;
+      continue;
+    }
+
+    if (/\s/.test(char)) {
+      if (current) {
+        tokens.push(current);
+        current = '';
+      }
+      continue;
+    }
+
+    current += char;
+  }
+
+  if (escaped) {
+    current += '\\';
+  }
+  if (current) {
+    tokens.push(current);
+  }
+
+  return tokens;
+}
+
+function buildLinuxExecInvocation(
+  execLine: string,
+  filePath: string
+): { command: string; args: string[] } | null {
+  const tokens = tokenizeExecCommand(execLine.trim());
+  if (tokens.length === 0) return null;
+
+  const expanded: string[] = [];
+  let hasFilePlaceholder = false;
+
+  for (const rawToken of tokens) {
+    const token = rawToken.replace(/%%/g, '%');
+    const placeholderMatches = token.match(DESKTOP_EXEC_FIELD_REGEX);
+    if (placeholderMatches) {
+      if (
+        placeholderMatches.includes('%f') ||
+        placeholderMatches.includes('%F') ||
+        placeholderMatches.includes('%u') ||
+        placeholderMatches.includes('%U')
+      ) {
+        hasFilePlaceholder = true;
+      }
+    }
+
+    const replaced = token
+      .replace(DESKTOP_EXEC_FIELD_REGEX, (code) => {
+        if (code === '%f' || code === '%F' || code === '%u' || code === '%U') {
+          return filePath;
+        }
+        return '';
+      })
+      .trim();
+
+    if (replaced) {
+      expanded.push(replaced);
+    }
+  }
+
+  if (expanded.length === 0) return null;
+
+  const [command, ...args] = expanded;
+  if (!hasFilePlaceholder) {
+    args.push(filePath);
+  }
+  return { command, args };
+}
+
 function execFilePromise(command: string, args: string[], timeout = 5000): Promise<string> {
   return new Promise((resolve, reject) => {
     execFile(command, args, { timeout }, (error, stdout) => {
@@ -224,21 +328,19 @@ async function openFileWithAppPlatform(filePath: string, appId: string): Promise
         const content = await fs.readFile(fullPath, 'utf-8');
         const execMatch = content.match(/^Exec=(.+)$/m);
         if (execMatch) {
-          execCmd = execMatch[1]
-            .trim()
-            .replace(/%[fFuUdDnNickvm]/g, '')
-            .trim();
+          execCmd = execMatch[1].trim();
           break;
         }
       } catch {}
     }
 
     if (execCmd) {
-      const cmdParts = execCmd.split(/\s+/);
-      const binary = cmdParts[0];
-      const args = [...cmdParts.slice(1), filePath];
+      const invocation = buildLinuxExecInvocation(execCmd, filePath);
+      if (!invocation) {
+        throw new Error('Invalid desktop entry Exec command');
+      }
       await new Promise<void>((resolve, reject) => {
-        execFile(binary, args, (error) => {
+        execFile(invocation.command, invocation.args, (error) => {
           if (error) reject(error);
           else resolve();
         });
@@ -249,6 +351,8 @@ async function openFileWithAppPlatform(filePath: string, appId: string): Promise
     }
   }
 }
+
+export { tokenizeExecCommand, buildLinuxExecInvocation };
 
 export function setupOpenWithHandlers(): void {
   ipcMain.handle(

@@ -5,6 +5,7 @@ import { promises as fs } from 'fs';
 import type * as fsSync from 'fs';
 import { fileURLToPath } from 'url';
 import * as os from 'os';
+import { spawn } from 'child_process';
 import type {
   FileItem,
   ApiResponse,
@@ -38,7 +39,6 @@ import {
   withTrustedIpcEvent,
 } from './ipcUtils';
 import {
-  pathExists,
   renameWithExdevFallback,
   validateFileOperation,
   copyPathByType,
@@ -46,7 +46,6 @@ import {
   createUniqueFile,
   isValidChildName,
   getParallelBatchSize,
-  type PlannedFileOperation,
   type ConflictBehavior,
 } from './fileOperationUtils';
 
@@ -326,7 +325,7 @@ export function setupFileOperationHandlers(): void {
         await shell.openExternal('shell:RecycleBinFolder');
       } else if (platform === 'linux') {
         const gioResult = await new Promise<boolean>((resolve) => {
-          const child = require('child_process').spawn('gio', ['open', 'trash:///'], {
+          const child = spawn('gio', ['open', 'trash:///'], {
             stdio: 'ignore',
             detached: true,
           });
@@ -338,7 +337,7 @@ export function setupFileOperationHandlers(): void {
         });
         if (!gioResult) {
           const xdgResult = await new Promise<boolean>((resolve) => {
-            const child = require('child_process').spawn('xdg-open', ['trash:///'], {
+            const child = spawn('xdg-open', ['trash:///'], {
               stdio: 'ignore',
               detached: true,
             });

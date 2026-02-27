@@ -122,6 +122,19 @@ function validateScripts(scripts, { rootDir = process.cwd(), pathExists = fs.exi
       );
     }
 
+    if (scriptName === 'test:all' && !command.includes('npm run deps:preflight')) {
+      errors.push('[test:all] must run deps:preflight before build/test checks');
+    }
+
+    if (command.includes('electron-builder') && command.includes('--publish always')) {
+      if (!command.includes('npm run release:prepare')) {
+        errors.push(`[${scriptName}] release command must run release:prepare`);
+      }
+      if (!command.includes('npm run licenses')) {
+        errors.push(`[${scriptName}] release command must run licenses`);
+      }
+    }
+
     if (command.includes('flatpak') && !command.includes('node build/flatpak.js')) {
       warnings.push(
         `[${scriptName}] uses flatpak commands directly; verify platform tooling is installed`

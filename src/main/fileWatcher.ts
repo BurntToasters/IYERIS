@@ -1,7 +1,6 @@
 import type { IpcMainInvokeEvent } from 'electron';
-import { ipcMain, BrowserWindow } from 'electron';
+import { ipcMain } from 'electron';
 import * as fs from 'fs';
-import * as path from 'path';
 import { isTrustedIpcEvent } from './ipcUtils';
 import { isPathSafe } from './security';
 import { logger } from './logger';

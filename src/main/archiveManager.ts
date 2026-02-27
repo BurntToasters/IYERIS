@@ -1,6 +1,5 @@
 import { ipcMain } from 'electron';
 import type { WebContents, IpcMainInvokeEvent } from 'electron';
-import * as path from 'path';
 import { promises as fs } from 'fs';
 import type { ApiResponse, AdvancedCompressOptions } from '../types';
 import { getMainWindow } from './appState';

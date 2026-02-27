@@ -350,9 +350,7 @@ describe('systemHandlers extended coverage', () => {
 
     it('opens Windows Terminal (wt) when available on win32', async () => {
       setPlatform('win32');
-      hoisted.execMock.mockImplementation((_cmd: string, cb: (error: Error | null) => void) => {
-        cb(null);
-      });
+      hoisted.execFileAsyncMock.mockResolvedValue({ stdout: '', stderr: '' });
       hoisted.handlers.clear();
       setupSystemHandlers(loadSettingsMock, saveSettingsMock);
 
@@ -360,14 +358,13 @@ describe('systemHandlers extended coverage', () => {
       const result = await handler(mockEvent, 'C:\\Users\\test');
 
       expect(result).toEqual({ success: true });
+      expect(hoisted.execFileAsyncMock).toHaveBeenCalledWith('where', ['wt']);
       expect(hoisted.launchDetachedMock).toHaveBeenCalledWith('wt', ['-d', 'C:\\Users\\test']);
     });
 
     it('falls back to cmd when wt is not available on win32', async () => {
       setPlatform('win32');
-      hoisted.execMock.mockImplementation((_cmd: string, cb: (error: Error | null) => void) => {
-        cb(new Error('not found'));
-      });
+      hoisted.execFileAsyncMock.mockRejectedValue(new Error('not found'));
       hoisted.handlers.clear();
       setupSystemHandlers(loadSettingsMock, saveSettingsMock);
 
@@ -383,9 +380,7 @@ describe('systemHandlers extended coverage', () => {
 
     it('escapes double quotes in dirPath for cmd fallback on win32', async () => {
       setPlatform('win32');
-      hoisted.execMock.mockImplementation((_cmd: string, cb: (error: Error | null) => void) => {
-        cb(new Error('not found'));
-      });
+      hoisted.execFileAsyncMock.mockRejectedValue(new Error('not found'));
       hoisted.handlers.clear();
       setupSystemHandlers(loadSettingsMock, saveSettingsMock);
 

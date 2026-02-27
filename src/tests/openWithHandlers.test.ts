@@ -56,7 +56,11 @@ vi.mock('../main/ipcUtils', () => ({
   ),
 }));
 
-import { setupOpenWithHandlers } from '../main/openWithHandlers';
+import {
+  setupOpenWithHandlers,
+  tokenizeExecCommand,
+  buildLinuxExecInvocation,
+} from '../main/openWithHandlers';
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -76,6 +80,29 @@ describe('setupOpenWithHandlers', () => {
     setupOpenWithHandlers();
     expect(hoisted.handlers.has('get-open-with-apps')).toBe(true);
     expect(hoisted.handlers.has('open-file-with-app')).toBe(true);
+  });
+});
+
+describe('desktop Exec parsing helpers', () => {
+  it('tokenizes quoted command strings', () => {
+    const tokens = tokenizeExecCommand('"my app" --open "%f" --name test');
+    expect(tokens).toEqual(['my app', '--open', '%f', '--name', 'test']);
+  });
+
+  it('builds invocation and appends file path when no placeholder is present', () => {
+    const invocation = buildLinuxExecInvocation('my-app --flag', '/tmp/example.txt');
+    expect(invocation).toEqual({
+      command: 'my-app',
+      args: ['--flag', '/tmp/example.txt'],
+    });
+  });
+
+  it('replaces placeholders in invocation args', () => {
+    const invocation = buildLinuxExecInvocation('my-app --open=%f %U', '/tmp/with space.txt');
+    expect(invocation).toEqual({
+      command: 'my-app',
+      args: ['--open=/tmp/with space.txt', '/tmp/with space.txt'],
+    });
   });
 });
 
@@ -207,6 +234,30 @@ describe('open-file-with-app', () => {
       '/home/user/file.txt',
       'org.gnome.TextEditor.desktop'
     )) as { success: boolean };
+    expect(result.success).toBe(true);
+  });
+
+  it('opens file on Linux with quoted Exec command paths', async () => {
+    Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
+
+    hoisted.fsPromisesMock.readFile.mockImplementation(async (filePath: string) => {
+      if (filePath.endsWith('app.desktop')) {
+        return '[Desktop Entry]\nName=App\nExec="/usr/bin/my app" --open "%f"\nType=Application';
+      }
+      throw new Error('ENOENT');
+    });
+
+    hoisted.execFileMock.mockImplementation(
+      (cmd: string, args: string[], cb: (err: Error | null) => void) => {
+        expect(cmd).toBe('/usr/bin/my app');
+        expect(args).toEqual(['--open', '/home/user/file.txt']);
+        cb(null);
+      }
+    );
+
+    const result = (await invoke('open-file-with-app', '/home/user/file.txt', 'app.desktop')) as {
+      success: boolean;
+    };
     expect(result.success).toBe(true);
   });
 

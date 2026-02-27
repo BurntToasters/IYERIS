@@ -228,30 +228,27 @@ describe('utils module (getDrives/getDriveInfo)', () => {
   });
 
   describe('getDriveInfo', () => {
-    it.skipIf(process.platform === 'win32')(
-      'returns drive info with path and label on linux',
-      async () => {
-        setPlatform('linux');
+    it('returns drive info with path and label on linux', async () => {
+      setPlatform('linux');
 
-        hoisted.fsReaddir.mockImplementation(async (root: string) => {
-          if (root === '/media') return ['USB Drive'];
-          throw new Error('ENOENT');
-        });
-        hoisted.fsStat.mockResolvedValue({ isDirectory: () => true });
+      hoisted.fsReaddir.mockImplementation(async (root: string) => {
+        if (root === '/media') return ['USB Drive'];
+        throw new Error('ENOENT');
+      });
+      hoisted.fsStat.mockResolvedValue({ isDirectory: () => true });
 
-        const { getDriveInfo } = await import('../main/utils');
-        const info = await getDriveInfo();
-        expect(info.length).toBeGreaterThan(0);
+      const { getDriveInfo } = await import('../main/utils');
+      const info = await getDriveInfo();
+      expect(info.length).toBeGreaterThan(0);
 
-        const root = info.find((d) => d.path === '/');
-        expect(root).toBeDefined();
-        expect(typeof root!.label).toBe('string');
+      const root = info.find((d) => d.path === '/');
+      expect(root).toBeDefined();
+      expect(typeof root!.label).toBe('string');
 
-        const usb = info.find((d) => d.path === path.join('/media', 'USB Drive'));
-        expect(usb).toBeDefined();
-        expect(usb!.label).toBe('USB Drive');
-      }
-    );
+      const usb = info.find((d) => d.path === path.join('/media', 'USB Drive'));
+      expect(usb).toBeDefined();
+      expect(usb!.label).toBe('USB Drive');
+    });
 
     it('returns cached drive info within TTL', async () => {
       setPlatform('linux');

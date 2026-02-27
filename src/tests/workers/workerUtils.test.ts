@@ -137,7 +137,7 @@ describe('normalizePathForCompare', () => {
     expect(result).toContain('relative');
   });
 
-  it.skipIf(process.platform === 'win32')('preserves case on linux', () => {
+  it('preserves case on linux', () => {
     Object.defineProperty(process, 'platform', { value: 'linux' });
     const result = normalizePathForCompare('/Home/User/Test');
     expect(result).toBe('/Home/User/Test');

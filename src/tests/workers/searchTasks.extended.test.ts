@@ -51,17 +51,25 @@ async function writeIndex(
 }
 
 describe('searchDirectoryFiles – uncovered branches', () => {
-  it.skipIf(process.platform === 'win32')(
-    'continues when readdir fails on an unreadable subdirectory (line 216)',
-    async () => {
-      await fs.promises.writeFile(path.join(tmpDir, 'ok.txt'), 'content');
+  it('continues when readdir fails on an unreadable subdirectory (line 216)', async () => {
+    await fs.promises.writeFile(path.join(tmpDir, 'ok.txt'), 'content');
 
-      const badDir = path.join(tmpDir, 'noperm');
-      await fs.promises.mkdir(badDir);
+    const badDir = path.join(tmpDir, 'noperm');
+    await fs.promises.mkdir(badDir);
+    await fs.promises.writeFile(path.join(badDir, 'match.txt'), 'x');
 
-      await fs.promises.writeFile(path.join(badDir, 'match.txt'), 'x');
-      await fs.promises.chmod(badDir, 0o000);
+    const realReaddir = fs.promises.readdir.bind(fs.promises);
+    const blockedPath = path.resolve(badDir);
+    const readdirSpy = vi
+      .spyOn(fs.promises, 'readdir')
+      .mockImplementation(async (targetPath: fs.PathLike, options?: object) => {
+        if (path.resolve(String(targetPath)) === blockedPath) {
+          throw new Error('EACCES');
+        }
+        return (await realReaddir(targetPath, options as { withFileTypes: true })) as never;
+      });
 
+    try {
       const results = await searchDirectoryFiles({
         dirPath: tmpDir,
         query: 'ok',
@@ -71,22 +79,31 @@ describe('searchDirectoryFiles – uncovered branches', () => {
 
       expect(results.some((r) => r.name === 'ok.txt')).toBe(true);
       expect(results.some((r) => r.name === 'match.txt')).toBe(false);
-
-      await fs.promises.chmod(badDir, 0o755);
+    } finally {
+      readdirSpy.mockRestore();
     }
-  );
+  });
 });
 
 describe('searchDirectoryContent – uncovered branches', () => {
-  it.skipIf(process.platform === 'win32')(
-    'continues when readdir fails on an unreadable subdirectory (line 302)',
-    async () => {
-      await fs.promises.writeFile(path.join(tmpDir, 'root.txt'), 'findable text');
+  it('continues when readdir fails on an unreadable subdirectory (line 302)', async () => {
+    await fs.promises.writeFile(path.join(tmpDir, 'root.txt'), 'findable text');
 
-      const badDir = path.join(tmpDir, 'unreadable');
-      await fs.promises.mkdir(badDir);
-      await fs.promises.chmod(badDir, 0o000);
+    const badDir = path.join(tmpDir, 'unreadable');
+    await fs.promises.mkdir(badDir);
 
+    const realReaddir = fs.promises.readdir.bind(fs.promises);
+    const blockedPath = path.resolve(badDir);
+    const readdirSpy = vi
+      .spyOn(fs.promises, 'readdir')
+      .mockImplementation(async (targetPath: fs.PathLike, options?: object) => {
+        if (path.resolve(String(targetPath)) === blockedPath) {
+          throw new Error('EACCES');
+        }
+        return (await realReaddir(targetPath, options as { withFileTypes: true })) as never;
+      });
+
+    try {
       const results = await searchDirectoryContent({
         dirPath: tmpDir,
         query: 'findable',
@@ -96,10 +113,10 @@ describe('searchDirectoryContent – uncovered branches', () => {
 
       expect(results.length).toBe(1);
       expect(results[0].name).toBe('root.txt');
-
-      await fs.promises.chmod(badDir, 0o755);
+    } finally {
+      readdirSpy.mockRestore();
     }
-  );
+  });
 
   it('traverses into subdirectories for content search (line 316)', async () => {
     const sub = path.join(tmpDir, 'subdir');
@@ -816,24 +833,18 @@ describe('searchContentList – additional edge cases', () => {
 });
 
 describe('searchFileContent – error handling (line 135)', () => {
-  it.skipIf(process.platform === 'win32')(
-    'returns found:false when file read throws a non-cancellation error',
-    async () => {
-      const fp = path.join(tmpDir, 'unreadable.txt');
-      await fs.promises.writeFile(fp, 'secret data');
-      await fs.promises.chmod(fp, 0o000);
+  it('returns found:false when file read throws a non-cancellation error', async () => {
+    const fp = path.join(tmpDir, 'unreadable.txt');
+    await fs.promises.mkdir(fp);
 
-      const results = await searchContentList({
-        files: [{ path: fp, size: 11, name: 'unreadable.txt', modified: Date.now() }],
-        query: 'secret',
-        maxResults: 100,
-      });
+    const results = await searchContentList({
+      files: [{ path: fp, size: 11, name: 'unreadable.txt', modified: Date.now() }],
+      query: 'secret',
+      maxResults: 100,
+    });
 
-      expect(results.length).toBe(0);
-
-      await fs.promises.chmod(fp, 0o644);
-    }
-  );
+    expect(results.length).toBe(0);
+  });
 
   it('returns found:false when file does not exist', async () => {
     const fp = path.join(tmpDir, 'ghost.txt');

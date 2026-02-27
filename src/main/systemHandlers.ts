@@ -11,7 +11,7 @@ import {
 } from 'electron';
 import * as path from 'path';
 import { promises as fs } from 'fs';
-import { exec, execFile, spawn } from 'child_process';
+import { execFile, spawn } from 'child_process';
 import { promisify } from 'util';
 import type {
   ApiResponse,
@@ -159,9 +159,9 @@ export function setupSystemHandlers(
       const platform = process.platform;
 
       if (platform === 'win32') {
-        const hasWT = await new Promise<boolean>((resolve) => {
-          exec('where wt', (error) => resolve(!error));
-        });
+        const hasWT = await execFileAsync('where', ['wt'])
+          .then(() => true)
+          .catch(() => false);
 
         if (hasWT) {
           launchDetached('wt', ['-d', dirPath]);
@@ -469,7 +469,7 @@ export function setupSystemHandlers(
 
       const launchers = [
         { cmd: 'gio', args: ['launch', desktopFilePath] },
-        { cmd: 'gtk-launch', args: [require('path').basename(desktopFilePath)] },
+        { cmd: 'gtk-launch', args: [path.basename(desktopFilePath)] },
         { cmd: 'xdg-open', args: [desktopFilePath] },
       ];
 

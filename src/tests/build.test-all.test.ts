@@ -10,6 +10,7 @@ type SuiteResult = {
 };
 
 type TestAllResults = {
+  deps: SuiteResult;
   lint: SuiteResult;
   format: SuiteResult;
   scripts: SuiteResult;
@@ -21,7 +22,7 @@ type TestAllModule = {
   createInitialResults: () => TestAllResults;
   getNpmCommand: (platform?: string) => string;
   runCommand: (
-    name: 'lint' | 'format' | 'scripts' | 'test' | 'typecheck',
+    name: 'deps' | 'lint' | 'format' | 'scripts' | 'test' | 'typecheck',
     command: string,
     args: string[],
     parser: ((output: string, results: TestAllResults) => void) | undefined,
@@ -55,6 +56,7 @@ const testAll = require('../../build/test-all.js') as TestAllModule;
 describe('build/test-all.js', () => {
   it('creates pending results', () => {
     const results = testAll.createInitialResults();
+    expect(results.deps.status).toBe('pending');
     expect(results.lint.status).toBe('pending');
     expect(results.format.status).toBe('pending');
     expect(results.scripts.status).toBe('pending');
@@ -144,6 +146,7 @@ describe('build/test-all.js', () => {
 
   it('returns non-zero summary code when any check failed', () => {
     const results = testAll.createInitialResults();
+    results.deps.status = 'passed';
     results.lint.status = 'passed';
     results.format.status = 'failed';
     results.scripts.status = 'passed';
