@@ -587,12 +587,12 @@ describe('rendererSelection extended2', () => {
       const deps = createDeps();
       deps.getViewMode.mockReturnValue('list' as any);
 
-      let items = addFileItems(Array.from({ length: 10 }, (_, i) => `/file${i}.txt`));
+      const items = addFileItems(Array.from({ length: 10 }, (_, i) => `/file${i}.txt`));
       const ctrl = createSelectionController(deps as any);
       ctrl.selectLastItem(false);
 
       items.forEach((el) => el.remove());
-      items = addFileItems(['/new0.txt', '/new1.txt', '/new2.txt']);
+      addFileItems(['/new0.txt', '/new1.txt', '/new2.txt']);
 
       ctrl.navigateFileGrid('ArrowRight', false);
 

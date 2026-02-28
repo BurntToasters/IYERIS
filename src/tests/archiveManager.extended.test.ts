@@ -49,13 +49,13 @@ vi.mock('../main/ipcUtils', () => ({
 import { setupArchiveHandlers, cleanupArchiveOperations } from '../main/archiveManager';
 
 describe('setupArchiveHandlers', () => {
-  const handlers = new Map<string, (...args: any[]) => any>();
+  const handlers = new Map<string, (...args: unknown[]) => unknown>();
 
   beforeEach(() => {
     handlers.clear();
     hoisted.ipcMainHandleMock.mockReset();
     hoisted.ipcMainHandleMock.mockImplementation(
-      (channel: string, handler: (...args: any[]) => any) => {
+      (channel: string, handler: (...args: unknown[]) => unknown) => {
         handlers.set(channel, handler);
       }
     );

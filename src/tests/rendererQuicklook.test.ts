@@ -11,6 +11,9 @@ const mockTwemojiImg = vi.hoisted(() => vi.fn((_e: string, _c: string) => '<img 
 
 const mockImageExtensions = vi.hoisted(() => new Set(['png', 'jpg', 'jpeg', 'gif', 'webp']));
 const mockTextExtensions = vi.hoisted(() => new Set(['txt', 'md', 'js', 'ts', 'json', 'css']));
+const mockMarkdownExtensions = vi.hoisted(
+  () => new Set(['md', 'markdown', 'mdown', 'mkd', 'mkdn'])
+);
 const mockVideoExtensions = vi.hoisted(() => new Set(['mp4', 'webm', 'mkv']));
 const mockAudioExtensions = vi.hoisted(() => new Set(['mp3', 'wav', 'ogg']));
 const mockPdfExtensions = vi.hoisted(() => new Set(['pdf']));
@@ -45,6 +48,7 @@ vi.mock('../rendererUtils.js', () => ({
 
 vi.mock('../fileTypes.js', () => ({
   IMAGE_EXTENSIONS: mockImageExtensions,
+  MARKDOWN_EXTENSIONS: mockMarkdownExtensions,
   TEXT_EXTENSIONS: mockTextExtensions,
   VIDEO_EXTENSIONS: mockVideoExtensions,
   AUDIO_EXTENSIONS: mockAudioExtensions,
@@ -992,7 +996,7 @@ describe('createQuicklookController', () => {
         success: true,
         content: 'hello',
       });
-      const txtFile = makeFile({ name: 'readme.md', path: '/readme.md' });
+      const txtFile = makeFile({ name: 'readme.txt', path: '/readme.txt' });
       await ctrl.showQuickLookForFile(txtFile);
       expect(dom.content.querySelector('pre')).not.toBeNull();
       expect(dom.content.querySelector('img')).toBeNull();

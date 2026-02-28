@@ -231,6 +231,14 @@ export function createBootstrapController(config: BootstrapConfig) {
       });
       config.getIpcCleanupFunctions().push(cleanupSystemResumed);
 
+      const cleanupDirectoryChanged = window.electronAPI.onDirectoryChanged(({ dirPath }) => {
+        const currentPath = config.getCurrentPath();
+        if (currentPath && currentPath === dirPath) {
+          config.refresh();
+        }
+      });
+      config.getIpcCleanupFunctions().push(cleanupDirectoryChanged);
+
       const cleanupSystemThemeChanged = window.electronAPI.onSystemThemeChanged(
         ({ isDarkMode }) => {
           const settings = config.getCurrentSettings();

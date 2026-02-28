@@ -44,6 +44,10 @@ export function ignoreError(error: unknown): void {
   }
 }
 
+export function assignKey<T extends object>(obj: T, key: keyof T, value: T[keyof T]): void {
+  obj[key] = value;
+}
+
 export function isRecord(value: unknown): value is Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
   const proto = Object.getPrototypeOf(value);

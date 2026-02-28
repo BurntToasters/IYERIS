@@ -1,11 +1,10 @@
 import type { DriveInfo, HomeSettings, Settings } from './types';
 import { createDefaultHomeSettings } from './homeSettings.js';
-import { escapeHtml, ignoreError } from './shared.js';
+import { assignKey, escapeHtml } from './shared.js';
 
 export const HOME_VIEW_PATH = 'iyeris://home';
 export const HOME_VIEW_LABEL = 'Home';
 export const HOME_QUICK_ACCESS_ITEMS: Array<{ action: string; label: string; icon: number }> = [
-  { action: 'home', label: 'Home', icon: 0x1f3e0 },
   { action: 'userhome', label: 'Home Folder', icon: 0x1f532 },
   { action: 'desktop', label: 'Desktop', icon: 0x1f5a5 },
   { action: 'documents', label: 'Documents', icon: 0x1f4c4 },
@@ -122,7 +121,11 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
   const driveUsageCache = new Map<string, { timestamp: number; total: number; free: number }>();
   let draggedSectionId: string | null = null;
 
-  function normalizeOrderedList<T>(raw: T[], isValid: (v: T) => boolean, allDefaults: T[]): T[] {
+  function normalizeOrderedList<T>(
+    raw: T[],
+    isValid: (v: T) => boolean,
+    allDefaults: readonly T[]
+  ): T[] {
     const filtered = Array.from(new Set(raw.filter(isValid)));
     return [...filtered, ...allDefaults.filter((d) => !filtered.includes(d))];
   }
@@ -136,7 +139,7 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
         ? merged.sectionOrder.filter((id): id is string => typeof id === 'string')
         : [],
       isHomeSectionId,
-      HOME_SECTION_IDS as unknown as string[]
+      HOME_SECTION_IDS
     );
 
     const allQAActions = HOME_QUICK_ACCESS_ITEMS.map((item) => item.action);
@@ -408,8 +411,8 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
         await Promise.resolve(navigateTo(filePath));
         return;
       }
-    } catch (error) {
-      ignoreError(error);
+    } catch {
+      // Could not check if path is directory; fall through to openFile
     }
 
     if (openPath) {
@@ -850,7 +853,7 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
     ];
     for (const [el, key] of toggleBindings) {
       el?.addEventListener('change', () => {
-        (tempHomeSettings as unknown as Record<string, unknown>)[key] = el.checked;
+        assignKey(tempHomeSettings, key, el.checked as HomeSettings[keyof HomeSettings]);
         homeSettingsHasUnsavedChanges = true;
       });
     }

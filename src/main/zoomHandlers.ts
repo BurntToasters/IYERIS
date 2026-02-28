@@ -1,4 +1,5 @@
-import { ipcMain, BrowserWindow, IpcMainInvokeEvent } from 'electron';
+import type { IpcMainInvokeEvent } from 'electron';
+import { ipcMain, BrowserWindow } from 'electron';
 import type { ApiResponse, ZoomLevelResponse } from '../types';
 import { ZOOM_MIN, ZOOM_MAX } from './appState';
 import { getErrorMessage } from './security';

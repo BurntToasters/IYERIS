@@ -15,8 +15,6 @@ type EventListenersConfig = {
   getBackBtn: () => HTMLElement;
   getForwardBtn: () => HTMLElement;
   getUpBtn: () => HTMLElement;
-  getUndoBtn: () => HTMLElement;
-  getRedoBtn: () => HTMLElement;
   getRefreshBtn: () => HTMLElement;
   getNewFileBtn: () => HTMLButtonElement;
   getNewFolderBtn: () => HTMLButtonElement;
@@ -33,6 +31,7 @@ type EventListenersConfig = {
   goBack: () => void;
   goForward: () => void;
   goUp: () => void;
+  goHome: () => void;
   refresh: () => void;
   navigateTo: (path: string) => void;
   clearSelection: () => void;
@@ -62,7 +61,7 @@ type EventListenersConfig = {
   setSidebarCollapsed: () => void;
   syncSidebarToggleState: () => void;
   showSettingsModal: () => void;
-  hideSettingsModal: () => void;
+  hideSettingsModal: () => void | Promise<void>;
   showShortcutsModal: () => void;
   hideShortcutsModal: () => void;
   hideExtractModal: () => void;
@@ -75,6 +74,7 @@ type EventListenersConfig = {
   handleContextMenuAction: (action: string | undefined, item: FileItem, format?: string) => void;
   handleEmptySpaceContextMenuAction: (action: string | undefined) => void;
   handleContextMenuKeyNav: (e: KeyboardEvent) => boolean;
+  handleSortMenuKeyNav: (e: KeyboardEvent) => boolean;
   getContextMenuData: () => FileItem | null;
   openNewWindow: () => void;
   showCommandPalette: () => void;
@@ -113,6 +113,15 @@ type EventListenersConfig = {
   zoomIn: () => void;
   zoomOut: () => void;
   zoomReset: () => void;
+  toggleHiddenFiles: () => void;
+  showPropertiesForSelected: () => void;
+  restoreClosedTab: () => void;
+  togglePreviewPanel: () => void;
+  showContextMenuForSelected: () => void;
+  focusFileGrid: () => void;
+  ensureActiveItem: () => void;
+  toggleSelectionAtCursor: () => void;
+  navigateFileGridFocusOnly: (key: string) => void;
 
   initSettingsTabs: () => void;
   initSettingsUi: () => void;
@@ -221,8 +230,6 @@ export function createEventListenersController(config: EventListenersConfig) {
       [config.getBackBtn(), config.goBack],
       [config.getForwardBtn(), config.goForward],
       [config.getUpBtn(), config.goUp],
-      [config.getUndoBtn(), config.performUndo],
-      [config.getRedoBtn(), config.performRedo],
       [config.getRefreshBtn(), config.refresh],
       [config.getNewFileBtn(), () => config.createNewFile()],
       [config.getNewFolderBtn(), () => config.createNewFolder()],
@@ -239,8 +246,29 @@ export function createEventListenersController(config: EventListenersConfig) {
     ];
     clickBindings.forEach(([element, handler]) => element?.addEventListener('click', handler));
 
+    const overflowBtn = document.getElementById('selection-overflow-btn');
+    const overflowMenu = document.getElementById('selection-overflow-menu');
+    if (overflowBtn && overflowMenu) {
+      overflowBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const open = overflowMenu.style.display !== 'none';
+        overflowMenu.style.display = open ? 'none' : 'block';
+        overflowBtn.setAttribute('aria-expanded', String(!open));
+      });
+      overflowMenu.addEventListener('click', () => {
+        overflowMenu.style.display = 'none';
+        overflowBtn.setAttribute('aria-expanded', 'false');
+      });
+      document.addEventListener('click', (e) => {
+        if (!overflowBtn.contains(e.target as Node) && !overflowMenu.contains(e.target as Node)) {
+          overflowMenu.style.display = 'none';
+          overflowBtn.setAttribute('aria-expanded', 'false');
+        }
+      });
+    }
+
     const statusHiddenBtn = document.getElementById('status-hidden');
-    statusHiddenBtn?.addEventListener('click', () => {
+    const activateHiddenFiles = () => {
       const settings = config.getCurrentSettings();
       settings.showHiddenFiles = true;
       const showHiddenFilesToggle = document.getElementById(
@@ -251,6 +279,13 @@ export function createEventListenersController(config: EventListenersConfig) {
       }
       config.saveSettings();
       config.refresh();
+    };
+    statusHiddenBtn?.addEventListener('click', activateHiddenFiles);
+    statusHiddenBtn?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        activateHiddenFiles();
+      }
     });
 
     document.addEventListener('mouseup', (e) => {
@@ -295,6 +330,22 @@ export function createEventListenersController(config: EventListenersConfig) {
     return false;
   }
 
+  function isOverlayOpen(): boolean {
+    if (isModalOpen()) return true;
+    const overlayIds = [
+      'sort-menu',
+      'context-menu',
+      'empty-space-context-menu',
+      'more-actions-menu',
+    ];
+    for (const id of overlayIds) {
+      const el = document.getElementById(id);
+      if (el && el.style.display === 'block') return true;
+    }
+    if (config.isBreadcrumbMenuOpen()) return true;
+    return false;
+  }
+
   function hasTextSelection(): boolean {
     const selection = window.getSelection();
     return selection !== null && selection.toString().length > 0;
@@ -310,43 +361,65 @@ export function createEventListenersController(config: EventListenersConfig) {
     );
   }
 
+  const EDIT_GUARDED_KEYS = new Set([
+    'Backspace',
+    'Enter',
+    'Home',
+    'End',
+    'PageUp',
+    'PageDown',
+    'ArrowUp',
+    'ArrowDown',
+    'ArrowLeft',
+    'ArrowRight',
+    'Delete',
+  ]);
+
+  const shortcutActions: Record<string, () => void> = {
+    'command-palette': () => config.showCommandPalette(),
+    settings: () => config.showSettingsModal(),
+    shortcuts: () => config.showShortcutsModal(),
+    refresh: () => config.refresh(),
+    search: () => config.openSearch(false),
+    'global-search': () => config.openSearch(true),
+    'toggle-sidebar': () => config.setSidebarCollapsed(),
+    'new-window': () => config.openNewWindow(),
+    'new-file': () => config.createNewFile(),
+    'new-folder': () => config.createNewFolder(),
+    'go-back': () => config.goBack(),
+    'go-forward': () => config.goForward(),
+    'go-up': () => config.goUp(),
+    'go-home': () => config.goHome(),
+    'new-tab': () => {
+      if (config.getTabsEnabled()) config.addNewTab();
+    },
+    'close-tab': () => {
+      if (config.getTabsEnabled() && config.getTabs().length > 1)
+        config.closeTab(config.getActiveTabId());
+    },
+    copy: () => config.copyToClipboard(),
+    cut: () => config.cutToClipboard(),
+    paste: () => config.pasteFromClipboard(),
+    'select-all': () => config.selectAll(),
+    undo: () => config.performUndo(),
+    redo: () => config.performRedo(),
+    'zoom-in': () => config.zoomIn(),
+    'zoom-out': () => config.zoomOut(),
+    'zoom-reset': () => config.zoomReset(),
+    'toggle-hidden-files': () => config.toggleHiddenFiles(),
+    properties: () => config.showPropertiesForSelected(),
+    'restore-closed-tab': () => {
+      if (config.getTabsEnabled()) config.restoreClosedTab();
+    },
+    'focus-address-bar': () => focusAddressBar(),
+    'toggle-preview-panel': () => config.togglePreviewPanel(),
+  };
+
   function runShortcutAction(actionId: string, e: KeyboardEvent): boolean {
     if (actionId === 'copy' && hasTextSelection()) return false;
     if (actionId === 'cut' && hasTextSelection()) return false;
     if ((actionId === 'paste' || actionId === 'select-all') && isEditableElementActive())
       return false;
-
-    const actions: Record<string, () => void> = {
-      'command-palette': () => config.showCommandPalette(),
-      settings: () => config.showSettingsModal(),
-      shortcuts: () => config.showShortcutsModal(),
-      refresh: () => config.refresh(),
-      search: () => config.openSearch(false),
-      'global-search': () => config.openSearch(true),
-      'toggle-sidebar': () => config.setSidebarCollapsed(),
-      'new-window': () => config.openNewWindow(),
-      'new-file': () => config.createNewFile(),
-      'new-folder': () => config.createNewFolder(),
-      'go-back': () => config.goBack(),
-      'go-forward': () => config.goForward(),
-      'go-up': () => config.goUp(),
-      'new-tab': () => {
-        if (config.getTabsEnabled()) config.addNewTab();
-      },
-      'close-tab': () => {
-        if (config.getTabsEnabled() && config.getTabs().length > 1)
-          config.closeTab(config.getActiveTabId());
-      },
-      copy: () => config.copyToClipboard(),
-      cut: () => config.cutToClipboard(),
-      paste: () => config.pasteFromClipboard(),
-      'select-all': () => config.selectAll(),
-      undo: () => config.performUndo(),
-      redo: () => config.performRedo(),
-      'zoom-in': () => config.zoomIn(),
-      'zoom-out': () => config.zoomOut(),
-      'zoom-reset': () => config.zoomReset(),
-    };
 
     if (actionId === 'next-tab' || actionId === 'prev-tab') {
       e.preventDefault();
@@ -364,7 +437,7 @@ export function createEventListenersController(config: EventListenersConfig) {
       return true;
     }
 
-    const handler = actions[actionId];
+    const handler = shortcutActions[actionId];
     if (handler) {
       e.preventDefault();
       handler();
@@ -389,6 +462,19 @@ export function createEventListenersController(config: EventListenersConfig) {
           ['sort-menu', 'block', config.hideSortMenu],
           ['context-menu', 'block', config.hideContextMenu],
           ['empty-space-context-menu', 'block', config.hideEmptySpaceContextMenu],
+          [
+            'more-actions-menu',
+            'block',
+            () => {
+              const m = document.getElementById('more-actions-menu');
+              if (m) {
+                m.style.display = 'none';
+                const btn = document.getElementById('more-actions-btn');
+                btn?.setAttribute('aria-expanded', 'false');
+                m.querySelectorAll('.focused').forEach((el) => el.classList.remove('focused'));
+              }
+            },
+          ],
         ];
         for (const [id, display, handler] of modalDismissals) {
           const el = document.getElementById(id);
@@ -405,8 +491,29 @@ export function createEventListenersController(config: EventListenersConfig) {
       }
 
       if (config.handleContextMenuKeyNav(e)) return;
+      if (config.handleSortMenuKeyNav(e)) return;
 
-      if (isModalOpen()) {
+      if (isOverlayOpen()) {
+        return;
+      }
+
+      if (e.key === 'F6') {
+        e.preventDefault();
+        cyclePaneFocus(e.shiftKey);
+        return;
+      }
+
+      if ((e.key === 'F10' && e.shiftKey) || e.key === 'ContextMenu') {
+        if (isEditableElementActive()) return;
+        e.preventDefault();
+        config.showContextMenuForSelected();
+        return;
+      }
+
+      if (e.code === 'Space' && e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey) {
+        if (isEditableElementActive()) return;
+        e.preventDefault();
+        config.toggleSelectionAtCursor();
         return;
       }
 
@@ -437,32 +544,11 @@ export function createEventListenersController(config: EventListenersConfig) {
         }
       }
 
-      const EDIT_GUARDED_KEYS = new Set([
-        'Backspace',
-        'Enter',
-        'Home',
-        'End',
-        'PageUp',
-        'PageDown',
-        'ArrowUp',
-        'ArrowDown',
-        'ArrowLeft',
-        'ArrowRight',
-        'Delete',
-      ]);
       if (EDIT_GUARDED_KEYS.has(e.key) && isEditableElementActive()) return;
 
       if (e.key === 'Delete') {
         e.preventDefault();
         if (e.shiftKey) {
-          if (!config.getCurrentSettings().showDangerousOptions) {
-            config.showToast(
-              'Enable Developer Mode in settings to permanently delete items',
-              'Developer Mode Required',
-              'warning'
-            );
-            return;
-          }
           config.deleteSelected(true);
         } else {
           config.deleteSelected();
@@ -490,7 +576,11 @@ export function createEventListenersController(config: EventListenersConfig) {
         e.key === 'ArrowRight'
       ) {
         e.preventDefault();
-        config.navigateFileGrid(e.key, e.shiftKey);
+        if (e.ctrlKey && !e.shiftKey) {
+          config.navigateFileGridFocusOnly(e.key);
+        } else {
+          config.navigateFileGrid(e.key, e.shiftKey);
+        }
       } else if (
         !e.ctrlKey &&
         !e.metaKey &&
@@ -503,6 +593,71 @@ export function createEventListenersController(config: EventListenersConfig) {
         config.handleTypeaheadInput(e.key);
       }
     });
+  }
+
+  function focusAddressBar(): void {
+    const addressInput = config.getAddressInput();
+    if (!addressInput) return;
+    const breadcrumbContainer = document.getElementById('breadcrumb-container');
+    if (breadcrumbContainer && breadcrumbContainer.style.display !== 'none') {
+      breadcrumbContainer.style.display = 'none';
+      addressInput.style.display = 'block';
+    }
+    addressInput.focus();
+    addressInput.select();
+  }
+
+  const PANE_ORDER = ['sidebar', 'address-bar', 'file-grid'] as const;
+
+  function cyclePaneFocus(reverse: boolean): void {
+    const activeEl = document.activeElement as HTMLElement | null;
+    let currentPane = -1;
+
+    if (activeEl) {
+      if (activeEl.closest('#sidebar') || activeEl.closest('.sidebar')) currentPane = 0;
+      else if (
+        activeEl.closest('.address-bar') ||
+        activeEl.id === 'address-input' ||
+        activeEl.closest('#breadcrumb-container')
+      )
+        currentPane = 1;
+      else if (
+        activeEl.closest('#file-grid') ||
+        activeEl.closest('#file-view') ||
+        activeEl.classList.contains('file-item')
+      )
+        currentPane = 2;
+    }
+
+    const step = reverse ? -1 : 1;
+    const startIndex =
+      currentPane === -1 ? 0 : (currentPane + step + PANE_ORDER.length) % PANE_ORDER.length;
+
+    for (let i = 0; i < PANE_ORDER.length; i++) {
+      const idx = (startIndex + i * step + PANE_ORDER.length * 2) % PANE_ORDER.length;
+      const pane = PANE_ORDER[idx];
+
+      if (pane === 'sidebar') {
+        const sidebar = document.getElementById('sidebar');
+        if (!sidebar || sidebar.classList.contains('collapsed')) continue;
+        const treeItem = sidebar.querySelector<HTMLElement>('.tree-item[tabindex="0"]');
+        if (treeItem) {
+          treeItem.focus();
+          return;
+        }
+        const firstFocusable = sidebar.querySelector<HTMLElement>('button, [tabindex="0"]');
+        if (firstFocusable) {
+          firstFocusable.focus();
+          return;
+        }
+      } else if (pane === 'address-bar') {
+        focusAddressBar();
+        return;
+      } else if (pane === 'file-grid') {
+        config.focusFileGrid();
+        return;
+      }
+    }
   }
 
   function initGlobalClickListeners(): void {

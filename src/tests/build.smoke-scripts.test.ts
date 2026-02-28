@@ -91,6 +91,19 @@ describe('build/smoke-scripts.js', () => {
     );
   });
 
+  it('flags test:all when deps preflight is missing', () => {
+    const result = smokeScripts.validateScripts(
+      {
+        'test:all': 'npm run build && node build/test-all.js',
+      },
+      {
+        pathExists: () => true,
+      }
+    );
+
+    expect(result.errors).toContain('[test:all] must run deps:preflight before build/test checks');
+  });
+
   it('passes a valid script graph', () => {
     const result = smokeScripts.validateScripts(
       {

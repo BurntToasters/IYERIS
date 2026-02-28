@@ -1,4 +1,4 @@
-import type { FileItem, Settings } from './types';
+import type { FileItem, SavedSearch, Settings } from './types';
 import { escapeHtml, ignoreError } from './shared.js';
 import { clearHtml, getById } from './rendererDom.js';
 import { twemojiImg } from './rendererUtils.js';
@@ -10,6 +10,7 @@ export type SearchFilters = {
   maxSize?: number;
   dateFrom?: string;
   dateTo?: string;
+  regex?: boolean;
 };
 
 type SearchDeps = {
@@ -42,6 +43,7 @@ export function createSearchController(deps: SearchDeps) {
   let isSearchMode = false;
   let isGlobalSearch = false;
   let searchInContents = false;
+  let isRegexMode = false;
 
   let searchBtn: HTMLButtonElement | null = null;
   let searchInput: HTMLInputElement | null = null;
@@ -60,6 +62,50 @@ export function createSearchController(deps: SearchDeps) {
   let searchFilterClear: HTMLButtonElement | null = null;
   let searchFilterApply: HTMLButtonElement | null = null;
   let searchInContentsToggle: HTMLInputElement | null = null;
+  let searchRegexToggle: HTMLButtonElement | null = null;
+  let searchSaveBtn: HTMLButtonElement | null = null;
+
+  const SEARCH_RESULTS_CAP = 100;
+
+  function showSearchEmptyState(query: string): void {
+    const fileGrid = deps.getFileGrid();
+    if (!fileGrid) return;
+
+    const suggestions: string[] = [
+      'Check for typos in your search term',
+      'Try a broader search query',
+    ];
+    if (!isGlobalSearch) {
+      suggestions.push('Try Global Search to search all indexed files');
+    }
+    if (!searchInContents) {
+      suggestions.push('Enable "Search in file contents" to search inside files');
+    }
+    if (hasActiveFilters()) {
+      suggestions.push('Clear search filters to broaden results');
+    }
+
+    const suggestionsHtml = suggestions.map((s) => `<li>${escapeHtml(s)}</li>`).join('');
+
+    fileGrid.innerHTML = `<div class="search-empty-state">
+      ${twemojiImg(String.fromCodePoint(0x1f50d), 'twemoji-large', 'Search')}
+      <h3>No results found</h3>
+      <p>No files matching "${escapeHtml(query)}" were found.</p>
+      <ul>${suggestionsHtml}</ul>
+    </div>`;
+  }
+
+  function showResultsCapBanner(count: number): void {
+    if (count < SEARCH_RESULTS_CAP) return;
+    const fileGrid = deps.getFileGrid();
+    if (!fileGrid) return;
+
+    const banner = document.createElement('div');
+    banner.className = 'search-results-cap-banner';
+    banner.setAttribute('role', 'status');
+    banner.textContent = `Showing first ${SEARCH_RESULTS_CAP} results. Refine your search to see more specific matches.`;
+    fileGrid.prepend(banner);
+  }
 
   function hasActiveFilters(): boolean {
     return !!(
@@ -116,6 +162,9 @@ export function createSearchController(deps: SearchDeps) {
       searchFilterApply = getById('search-filter-apply') as HTMLButtonElement | null;
     if (!searchInContentsToggle)
       searchInContentsToggle = getById('search-in-contents-toggle') as HTMLInputElement | null;
+    if (!searchRegexToggle)
+      searchRegexToggle = getById('search-regex-toggle') as HTMLButtonElement | null;
+    if (!searchSaveBtn) searchSaveBtn = getById('search-save-btn') as HTMLButtonElement | null;
   };
 
   function debouncedSearch(delay: number = deps.searchDebounceMs) {
@@ -142,6 +191,7 @@ export function createSearchController(deps: SearchDeps) {
       searchBarWrapper.style.display = 'block';
       searchInput.focus();
       isSearchMode = true;
+      syncSaveBtnState();
       if (isHomeViewPath(deps.getCurrentPath()) && !isGlobalSearch) {
         toggleSearchScope();
       }
@@ -162,8 +212,14 @@ export function createSearchController(deps: SearchDeps) {
     }
     searchBarWrapper.style.display = 'none';
     searchInput.value = '';
+    searchInput.classList.remove('input-error');
     isSearchMode = false;
     isGlobalSearch = false;
+    isRegexMode = false;
+    if (searchRegexToggle) {
+      searchRegexToggle.classList.remove('active');
+      searchRegexToggle.setAttribute('aria-pressed', 'false');
+    }
     searchScopeToggle.classList.remove('global');
     syncSearchScopeAria();
     hideSearchHistoryDropdown();
@@ -174,6 +230,7 @@ export function createSearchController(deps: SearchDeps) {
     syncSearchFilterAria();
     currentSearchFilters = {};
     updateFilterBadge();
+    syncSaveBtnState();
 
     const currentPath = deps.getCurrentPath();
     if (currentPath) {
@@ -284,7 +341,23 @@ export function createSearchController(deps: SearchDeps) {
     if (fileGrid) clearHtml(fileGrid);
 
     let result;
-    const hasFilters = hasActiveFilters() || searchInContents;
+    const hasFilters = hasActiveFilters() || searchInContents || isRegexMode;
+    if (isRegexMode) {
+      currentSearchFilters.regex = true;
+      try {
+        new RegExp(query);
+      } catch {
+        deps.hideLoading();
+        deps.showToast('Invalid regular expression pattern', 'Search', 'warning');
+        searchInput?.classList.add('input-error');
+        activeSearchOperationId = null;
+        return;
+      }
+      searchInput?.classList.remove('input-error');
+    } else {
+      delete currentSearchFilters.regex;
+      searchInput?.classList.remove('input-error');
+    }
 
     if (isGlobalSearch) {
       if (searchInContents) {
@@ -310,6 +383,8 @@ export function createSearchController(deps: SearchDeps) {
         } else {
           deps.setAllFiles(result.results);
           deps.renderFiles(result.results, query);
+          if (result.results.length === 0) showSearchEmptyState(query);
+          else showResultsCapBanner(result.results.length);
         }
       } else {
         result = await window.electronAPI.searchIndex(query, operationId);
@@ -346,6 +421,8 @@ export function createSearchController(deps: SearchDeps) {
 
           deps.setAllFiles(fileItems);
           deps.renderFiles(fileItems, query);
+          if (fileItems.length === 0) showSearchEmptyState(query);
+          else showResultsCapBanner(fileItems.length);
         }
       }
     } else {
@@ -373,6 +450,8 @@ export function createSearchController(deps: SearchDeps) {
       } else {
         deps.setAllFiles(result.results);
         deps.renderFiles(result.results, searchInContents ? query : undefined);
+        if (result.results.length === 0) showSearchEmptyState(query);
+        else showResultsCapBanner(result.results.length);
       }
     }
 
@@ -398,26 +477,55 @@ export function createSearchController(deps: SearchDeps) {
     deps.debouncedSaveSettings();
   }
 
+  function renderSavedSearchesSection(): string {
+    const settings = deps.getCurrentSettings();
+    const saved = settings.savedSearches || [];
+    if (saved.length === 0) return '';
+
+    const items = saved
+      .map((s, i) => {
+        const badges: string[] = [];
+        if (s.isGlobal) badges.push('<span class="saved-search-badge">Global</span>');
+        if (s.isRegex) badges.push('<span class="saved-search-badge">Regex</span>');
+        if (s.filters && Object.keys(s.filters).length > 0)
+          badges.push('<span class="saved-search-badge">Filtered</span>');
+        return `<div class="saved-search-item" data-saved-index="${i}">
+            ${twemojiImg(String.fromCodePoint(0x2b50), 'twemoji')}
+            <span class="saved-search-name" title="${escapeHtml(s.query)}">${escapeHtml(s.name)}</span>
+            <span class="saved-search-badges">${badges.join('')}</span>
+            <button class="saved-search-delete" data-delete-index="${i}" title="Delete saved search" aria-label="Delete saved search ${escapeHtml(s.name)}">&times;</button>
+          </div>`;
+      })
+      .join('');
+
+    return `<div class="saved-search-section">${items}</div>`;
+  }
+
   function showSearchHistoryDropdown() {
     const dropdown = getById('search-history-dropdown');
     const settings = deps.getCurrentSettings();
     if (!dropdown || !settings.enableSearchHistory) return;
 
     const history = settings.searchHistory || [];
+    const savedHtml = renderSavedSearchesSection();
 
-    if (history.length === 0) {
-      dropdown.innerHTML = '<div class="history-empty">No recent searches</div>';
+    let historyHtml: string;
+    if (history.length === 0 && !savedHtml) {
+      historyHtml = '<div class="history-empty">No recent searches</div>';
     } else {
-      dropdown.innerHTML =
+      historyHtml =
         history
           .map(
             (item) =>
               `<div class="history-item" data-query="${escapeHtml(item)}">${twemojiImg(String.fromCodePoint(0x1f50d), 'twemoji')} ${escapeHtml(item)}</div>`
           )
           .join('') +
-        `<div class="history-clear" data-action="clear-search">${twemojiImg(String.fromCodePoint(0x1f5d1), 'twemoji')} Clear Search History</div>`;
+        (history.length > 0
+          ? `<div class="history-clear" data-action="clear-search">${twemojiImg(String.fromCodePoint(0x1f5d1), 'twemoji')} Clear Search History</div>`
+          : '');
     }
 
+    dropdown.innerHTML = savedHtml + historyHtml;
     dropdown.style.display = 'block';
   }
 
@@ -432,6 +540,88 @@ export function createSearchController(deps: SearchDeps) {
     deps.saveSettingsWithTimestamp(settings);
     hideSearchHistoryDropdown();
     deps.showToast('Search history cleared', 'History', 'success');
+  }
+
+  function saveCurrentSearch(): void {
+    ensureElements();
+    const query = searchInput?.value.trim();
+    if (!query) {
+      deps.showToast('Enter a search query first', 'Save Search', 'info');
+      return;
+    }
+
+    const name = window.prompt('Name for this saved search:', query);
+    if (!name || !name.trim()) return;
+
+    const settings = deps.getCurrentSettings();
+    if (!settings.savedSearches) settings.savedSearches = [];
+
+    if (settings.savedSearches.length >= 50) {
+      deps.showToast('Maximum of 50 saved searches reached', 'Save Search', 'warning');
+      return;
+    }
+
+    const entry: SavedSearch = {
+      name: name.trim().slice(0, 100),
+      query,
+      isGlobal: isGlobalSearch,
+      isRegex: isRegexMode,
+    };
+
+    if (hasActiveFilters()) {
+      const { regex: _regex, ...filtersCopy } = currentSearchFilters;
+      entry.filters = filtersCopy;
+    }
+
+    settings.savedSearches.push(entry);
+    deps.debouncedSaveSettings();
+    deps.showToast(`Search "${entry.name}" saved`, 'Saved Search', 'success');
+  }
+
+  function deleteSavedSearch(index: number): void {
+    const settings = deps.getCurrentSettings();
+    if (!settings.savedSearches || index < 0 || index >= settings.savedSearches.length) return;
+    const removed = settings.savedSearches.splice(index, 1);
+    deps.debouncedSaveSettings();
+    deps.showToast(`Removed "${removed[0]?.name}"`, 'Saved Search', 'info');
+    showSearchHistoryDropdown();
+  }
+
+  function loadSavedSearch(index: number): void {
+    const settings = deps.getCurrentSettings();
+    if (!settings.savedSearches || index < 0 || index >= settings.savedSearches.length) return;
+    const saved = settings.savedSearches[index];
+
+    ensureElements();
+    if (!searchBarWrapper || !searchInput || !searchScopeToggle) return;
+
+    if (!isSearchMode) {
+      searchBarWrapper.style.display = 'block';
+      isSearchMode = true;
+    }
+
+    isGlobalSearch = saved.isGlobal;
+    applySearchScopeUi(isGlobalSearch);
+    syncSearchScopeAria();
+    updateSearchPlaceholder();
+
+    isRegexMode = saved.isRegex;
+    if (searchRegexToggle) {
+      searchRegexToggle.classList.toggle('active', isRegexMode);
+      searchRegexToggle.setAttribute('aria-pressed', String(isRegexMode));
+    }
+
+    if (saved.filters && Object.keys(saved.filters).length > 0) {
+      currentSearchFilters = { ...saved.filters };
+    } else {
+      currentSearchFilters = {};
+    }
+    updateFilterBadge();
+
+    searchInput.value = saved.query;
+    searchInput.focus();
+    hideSearchHistoryDropdown();
+    performSearch();
   }
 
   function openSearch(isGlobal: boolean): void {
@@ -456,6 +646,35 @@ export function createSearchController(deps: SearchDeps) {
     searchBtn?.addEventListener('click', toggleSearch);
     searchClose?.addEventListener('click', closeSearch);
     searchScopeToggle?.addEventListener('click', toggleSearchScope);
+
+    searchSaveBtn?.addEventListener('click', saveCurrentSearch);
+
+    const dropdown = getById('search-history-dropdown');
+    dropdown?.addEventListener('click', (e) => {
+      const target = e.target as HTMLElement;
+      const deleteBtn = target.closest<HTMLElement>('[data-delete-index]');
+      if (deleteBtn) {
+        e.stopPropagation();
+        const idx = parseInt(deleteBtn.dataset.deleteIndex || '', 10);
+        if (!isNaN(idx)) deleteSavedSearch(idx);
+        return;
+      }
+      const savedItem = target.closest<HTMLElement>('[data-saved-index]');
+      if (savedItem) {
+        const idx = parseInt(savedItem.dataset.savedIndex || '', 10);
+        if (!isNaN(idx)) loadSavedSearch(idx);
+        return;
+      }
+    });
+
+    searchRegexToggle?.addEventListener('click', () => {
+      isRegexMode = !isRegexMode;
+      searchRegexToggle!.classList.toggle('active', isRegexMode);
+      searchRegexToggle!.setAttribute('aria-pressed', String(isRegexMode));
+      if (isSearchMode && searchInput?.value) {
+        debouncedSearch();
+      }
+    });
 
     searchFilterToggle?.addEventListener('click', () => {
       if (!searchFiltersPanel || !searchFilterToggle) return;
@@ -581,12 +800,19 @@ export function createSearchController(deps: SearchDeps) {
 
     searchInput?.addEventListener('input', () => {
       if (!searchInput) return;
+      syncSaveBtnState();
       if (searchInput.value.length === 0) {
         closeSearch();
       } else if (searchInput.value.length >= 2) {
         debouncedSearch();
       }
     });
+  }
+
+  function syncSaveBtnState(): void {
+    if (!searchSaveBtn) return;
+    const hasQuery = !!(searchInput && searchInput.value.trim());
+    searchSaveBtn.disabled = !hasQuery;
   }
 
   function getStatusText(): { active: boolean; text: string } {
@@ -651,6 +877,9 @@ export function createSearchController(deps: SearchDeps) {
     hideSearchHistoryDropdown,
     clearSearchHistory,
     addToSearchHistory,
+    saveCurrentSearch,
+    deleteSavedSearch,
+    loadSavedSearch,
     getStatusText,
     isSearchMode: isSearchActive,
     isGlobalSearch: isGlobalSearchActive,

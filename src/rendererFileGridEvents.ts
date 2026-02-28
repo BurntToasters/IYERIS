@@ -29,7 +29,10 @@ type FileGridEventsConfig = {
 };
 
 export function createFileGridEventsController(config: FileGridEventsConfig) {
+  const MODIFIER_DOUBLE_CLICK_SUPPRESSION_MS = 500;
   let fileGridDelegationReady = false;
+  let suppressOpenPath: string | null = null;
+  let suppressOpenUntil = 0;
 
   function getFileItemElement(target: EventTarget | null): HTMLElement | null {
     if (!(target instanceof Element)) return null;
@@ -73,6 +76,15 @@ export function createFileGridEventsController(config: FileGridEventsConfig) {
     fileGrid.addEventListener('click', (e) => {
       const fileItem = getFileItemElement(e.target);
       if (!fileItem) return;
+
+      if (e.ctrlKey || e.metaKey) {
+        const itemPath = fileItem.dataset.path || null;
+        if (itemPath) {
+          suppressOpenPath = itemPath;
+          suppressOpenUntil = Date.now() + MODIFIER_DOUBLE_CLICK_SUPPRESSION_MS;
+        }
+      }
+
       if (!e.ctrlKey && !e.metaKey) {
         config.clearSelection();
       }
@@ -82,6 +94,13 @@ export function createFileGridEventsController(config: FileGridEventsConfig) {
     fileGrid.addEventListener('dblclick', (e) => {
       const fileItem = getFileItemElement(e.target);
       if (!fileItem) return;
+      if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+
+      const itemPath = fileItem.dataset.path || '';
+      if (itemPath && suppressOpenPath === itemPath && Date.now() <= suppressOpenUntil) {
+        return;
+      }
+
       const item = config.getFileItemData(fileItem);
       if (!item) return;
       void config.openFileEntry(item);
@@ -92,7 +111,7 @@ export function createFileGridEventsController(config: FileGridEventsConfig) {
       const fileItem = getFileItemElement(e.target);
       if (!fileItem) return;
       const item = config.getFileItemData(fileItem);
-      if (!item || !item.isDirectory || !config.getTabsEnabled()) return;
+      if (!item || !item.isDirectory || item.isAppBundle || !config.getTabsEnabled()) return;
       e.preventDefault();
       config.addNewTab(item.path);
     });
@@ -156,7 +175,8 @@ export function createFileGridEventsController(config: FileGridEventsConfig) {
     fileGrid.addEventListener('dragover', (e) => {
       const fileItem = getFileItemElement(e.target);
       if (!fileItem) return;
-      if (fileItem.dataset.isDirectory !== 'true') return;
+      if (fileItem.dataset.isDirectory !== 'true' || fileItem.dataset.isAppBundle === 'true')
+        return;
 
       config.consumeEvent(e);
 
@@ -182,7 +202,8 @@ export function createFileGridEventsController(config: FileGridEventsConfig) {
     fileGrid.addEventListener('dragleave', (e) => {
       const fileItem = getFileItemElement(e.target);
       if (!fileItem) return;
-      if (fileItem.dataset.isDirectory !== 'true') return;
+      if (fileItem.dataset.isDirectory !== 'true' || fileItem.dataset.isAppBundle === 'true')
+        return;
 
       config.consumeEvent(e);
 
@@ -202,7 +223,8 @@ export function createFileGridEventsController(config: FileGridEventsConfig) {
     fileGrid.addEventListener('drop', async (e) => {
       const fileItem = getFileItemElement(e.target);
       if (!fileItem) return;
-      if (fileItem.dataset.isDirectory !== 'true') return;
+      if (fileItem.dataset.isDirectory !== 'true' || fileItem.dataset.isAppBundle === 'true')
+        return;
 
       config.consumeEvent(e);
 

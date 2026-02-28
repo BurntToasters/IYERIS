@@ -53,11 +53,17 @@ export async function getDiskSpace(
       try {
         const trimmed = stdout.trim();
         if (!trimmed) {
+          if (isUnc) {
+            return await getUncDiskSpaceViaDriveInfo(normalized);
+          }
           return { success: false, error: 'Disk space not available for path' };
         }
         const data = JSON.parse(trimmed);
         const entry = Array.isArray(data) ? data[0] : data;
         if (!entry) {
+          if (isUnc) {
+            return await getUncDiskSpaceViaDriveInfo(normalized);
+          }
           return { success: false, error: 'Disk space not available for path' };
         }
         const free = parseInt(entry.Free);
@@ -96,6 +102,35 @@ export async function getDiskSpace(
     } else {
       return { success: false, error: 'Disk space info not available on this platform' };
     }
+  } catch (error) {
+    return { success: false, error: getErrorMessage(error) };
+  }
+}
+
+async function getUncDiskSpaceViaDriveInfo(
+  uncPath: string
+): Promise<{ success: boolean; total?: number; free?: number; error?: string }> {
+  try {
+    const escaped = uncPath.replace(/'/g, "''").replace(/[`$]/g, '');
+    const psCommand = `$d = [System.IO.DriveInfo]::new('${escaped}'); @{Free=$d.AvailableFreeSpace;Total=$d.TotalSize} | ConvertTo-Json`;
+    const { code, stdout } = await captureSpawnOutput('powershell', ['-Command', psCommand], 5000, {
+      shell: false,
+    });
+    if (code !== 0) {
+      return { success: false, error: 'UNC disk space fallback failed' };
+    }
+    const trimmed = stdout.trim();
+    if (!trimmed) {
+      return { success: false, error: 'Disk space not available for UNC path' };
+    }
+    const data = JSON.parse(trimmed);
+    const free = parseInt(data.Free);
+    const total = parseInt(data.Total);
+    if (isNaN(free) || isNaN(total)) {
+      return { success: false, error: 'Invalid UNC disk space data' };
+    }
+    logger.debug('[Main] UNC fallback success - Free:', free, 'Total:', total);
+    return { success: true, free, total };
   } catch (error) {
     return { success: false, error: getErrorMessage(error) };
   }

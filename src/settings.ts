@@ -1,5 +1,5 @@
 import type { Settings } from './types';
-import { isRecord, RESERVED_KEYS, sanitizeStringArray } from './shared.js';
+import { assignKey, isRecord, RESERVED_KEYS, sanitizeStringArray } from './shared.js';
 import { getDefaultShortcuts } from './shortcuts.js';
 import {
   THEME_VALUES as THEME_ARRAY,
@@ -28,6 +28,7 @@ export function createDefaultSettings(): Settings {
     showHiddenFiles: false,
     enableSearchHistory: true,
     searchHistory: [],
+    savedSearches: [],
     directoryHistory: [],
     enableIndexer: true,
     minimizeToTray: false,
@@ -133,6 +134,7 @@ function sanitizeCustomTheme(value: unknown): Settings['customTheme'] | undefine
     textSecondary,
     glassBg,
     glassBorder,
+    iconHue,
   } = value;
   if (
     typeof name !== 'string' ||
@@ -155,6 +157,7 @@ function sanitizeCustomTheme(value: unknown): Settings['customTheme'] | undefine
     textSecondary,
     glassBg,
     glassBorder,
+    iconHue: typeof iconHue === 'string' ? iconHue : accentColor,
   };
 }
 
@@ -306,8 +309,7 @@ export function sanitizeSettings(
     'skipFullDiskAccessPrompt',
   ];
   for (const key of BOOLEAN_KEYS) {
-    if (typeof raw[key] === 'boolean')
-      (clean as unknown as Record<string, unknown>)[key as string] = raw[key];
+    if (typeof raw[key] === 'boolean') assignKey(clean, key, raw[key] as Settings[keyof Settings]);
   }
 
   // Enum settings — apply if value is in allowed set
@@ -325,7 +327,7 @@ export function sanitizeSettings(
   ];
   for (const [key, allowed] of ENUM_FIELDS) {
     const val = sanitizeEnum(raw[key], allowed);
-    if (val) (clean as unknown as Record<string, unknown>)[key as string] = val;
+    if (val) assignKey(clean, key, val as Settings[keyof Settings]);
   }
 
   // String settings
@@ -340,13 +342,13 @@ export function sanitizeSettings(
     'previewPanelWidth',
   ] as const) {
     const val = sanitizeNumber(raw[key]);
-    if (val !== null && val > 0) (clean as unknown as Record<string, unknown>)[key as string] = val;
+    if (val !== null && val > 0) assignKey(clean, key, val as Settings[keyof Settings]);
   }
 
   // Non-negative integer settings
   for (const key of ['maxSearchHistoryItems', 'maxDirectoryHistoryItems', 'launchCount'] as const) {
     const val = sanitizeInt(raw[key], 0, null);
-    if (val !== null) (clean as unknown as Record<string, unknown>)[key as string] = val;
+    if (val !== null) assignKey(clean, key, val as Settings[keyof Settings]);
   }
 
   const customTheme = sanitizeCustomTheme(raw.customTheme);
@@ -370,6 +372,55 @@ export function sanitizeSettings(
 
   const tabState = sanitizeTabState(raw.tabState);
   if (tabState) clean.tabState = tabState;
+
+  if (Array.isArray(raw.savedSearches)) {
+    clean.savedSearches = raw.savedSearches
+      .filter(
+        (
+          s: unknown
+        ): s is {
+          name: string;
+          query: string;
+          isGlobal: boolean;
+          isRegex: boolean;
+          filters?: Record<string, unknown>;
+        } =>
+          !!s &&
+          typeof s === 'object' &&
+          typeof (s as Record<string, unknown>).name === 'string' &&
+          typeof (s as Record<string, unknown>).query === 'string' &&
+          typeof (s as Record<string, unknown>).isGlobal === 'boolean' &&
+          typeof (s as Record<string, unknown>).isRegex === 'boolean'
+      )
+      .slice(0, 50)
+      .map((s) => ({
+        name: String(s.name).slice(0, 100),
+        query: String(s.query).slice(0, 500),
+        isGlobal: !!s.isGlobal,
+        isRegex: !!s.isRegex,
+        ...(s.filters && typeof s.filters === 'object'
+          ? {
+              filters: {
+                ...(typeof s.filters.fileType === 'string' && s.filters.fileType.length <= 50
+                  ? { fileType: s.filters.fileType }
+                  : {}),
+                ...(typeof s.filters.minSize === 'number' &&
+                Number.isFinite(s.filters.minSize) &&
+                s.filters.minSize >= 0
+                  ? { minSize: s.filters.minSize }
+                  : {}),
+                ...(typeof s.filters.maxSize === 'number' &&
+                Number.isFinite(s.filters.maxSize) &&
+                s.filters.maxSize >= 0
+                  ? { maxSize: s.filters.maxSize }
+                  : {}),
+                ...(typeof s.filters.dateFrom === 'string' ? { dateFrom: s.filters.dateFrom } : {}),
+                ...(typeof s.filters.dateTo === 'string' ? { dateTo: s.filters.dateTo } : {}),
+              },
+            }
+          : {}),
+      }));
+  }
 
   return clean;
 }

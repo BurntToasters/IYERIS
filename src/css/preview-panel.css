@@ -359,3 +359,119 @@ body.preview-bottom .preview-content {
     display: none !important;
   }
 }
+
+.preview-markdown {
+  padding: 4px 12px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-primary);
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.preview-markdown h1,
+.preview-markdown h2,
+.preview-markdown h3,
+.preview-markdown h4,
+.preview-markdown h5,
+.preview-markdown h6 {
+  margin: 16px 0 8px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--text-primary);
+}
+
+.preview-markdown h1 {
+  font-size: 1.5em;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--separator);
+}
+
+.preview-markdown h2 {
+  font-size: 1.3em;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--separator);
+}
+
+.preview-markdown h3 {
+  font-size: 1.1em;
+}
+
+.preview-markdown p {
+  margin: 8px 0;
+}
+
+.preview-markdown ul,
+.preview-markdown ol {
+  margin: 8px 0;
+  padding-left: 24px;
+}
+
+.preview-markdown li {
+  margin: 4px 0;
+}
+
+.preview-markdown code {
+  background: var(--surface-secondary);
+  padding: 2px 5px;
+  border-radius: 4px;
+  font-size: 0.9em;
+  font-family: var(--font-mono, monospace);
+}
+
+.preview-markdown pre {
+  background: var(--surface-secondary);
+  border: 1px solid var(--separator);
+  border-radius: 6px;
+  padding: 10px 12px;
+  overflow-x: auto;
+  margin: 10px 0;
+}
+
+.preview-markdown pre code {
+  background: none;
+  padding: 0;
+  border-radius: 0;
+}
+
+.preview-markdown blockquote {
+  border-left: 3px solid var(--accent-color);
+  margin: 10px 0;
+  padding: 4px 12px;
+  color: var(--text-secondary);
+}
+
+.preview-markdown hr {
+  border: none;
+  border-top: 1px solid var(--separator);
+  margin: 16px 0;
+}
+
+.preview-markdown a {
+  color: var(--accent-color);
+  text-decoration: none;
+}
+
+.preview-markdown img {
+  max-width: 100%;
+  border-radius: 6px;
+}
+
+.preview-markdown table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 10px 0;
+  font-size: 12px;
+}
+
+.preview-markdown th,
+.preview-markdown td {
+  border: 1px solid var(--separator);
+  padding: 6px 10px;
+  text-align: left;
+}
+
+.preview-markdown th {
+  background: var(--surface-secondary);
+  font-weight: 600;
+}

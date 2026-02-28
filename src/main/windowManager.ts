@@ -1,13 +1,5 @@
-import {
-  app,
-  BrowserWindow,
-  ipcMain,
-  Menu,
-  Tray,
-  nativeImage,
-  shell,
-  IpcMainInvokeEvent,
-} from 'electron';
+import type { IpcMainInvokeEvent } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, Tray, nativeImage, shell } from 'electron';
 import * as path from 'path';
 import { pathToFileURL } from 'url';
 import * as fsSync from 'fs';
@@ -617,8 +609,31 @@ export function setupApplicationMenu(): void {
         ],
       },
       {
+        label: 'File',
+        submenu: [
+          {
+            label: 'Close Window',
+            accelerator: 'CmdOrCtrl+W',
+            click: () => {
+              BrowserWindow.getFocusedWindow()?.close();
+            },
+          },
+        ],
+      },
+      {
         label: 'Window',
         submenu: [{ role: 'minimize' }, { role: 'zoom' }, { type: 'separator' }, { role: 'front' }],
+      },
+      {
+        role: 'help',
+        submenu: [
+          {
+            label: 'IYERIS Website',
+            click: () => {
+              shell.openExternal('https://iyeris.app');
+            },
+          },
+        ],
       },
     ];
 

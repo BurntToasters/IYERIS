@@ -82,19 +82,6 @@ body.liquid-glass {
   --liquid-glass-card-hover-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
 }
 
-body.performance-mode.liquid-glass {
-  --liquid-glass-blur: 10px;
-  --liquid-glass-saturation: 120%;
-  --liquid-glass-modal-filter: blur(14px) saturate(130%);
-  --liquid-glass-sidebar-filter: blur(8px) saturate(110%);
-  --liquid-glass-titlebar-filter: blur(8px) saturate(105%);
-  --liquid-glass-tabbar-filter: blur(8px) saturate(105%);
-  --liquid-glass-statusbar-filter: blur(8px) saturate(105%);
-  --liquid-glass-toolbar-filter: blur(8px) saturate(110%);
-  --liquid-glass-card-filter: blur(10px) saturate(115%);
-  --liquid-glass-toast-filter: blur(10px) saturate(110%);
-}
-
 body.theme-light.liquid-glass {
   --liquid-glass-bg-opacity: 0.78;
   --liquid-glass-border-opacity: 0.2;

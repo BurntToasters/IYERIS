@@ -1,7 +1,7 @@
 const { spawnSync } = require('child_process');
 
 const testVersion = require('../package.json').version;
-const scriptVersion = '1.2.0';
+const scriptVersion = '1.3.0';
 
 const colors = {
   reset: '\x1b[0m',
@@ -14,6 +14,7 @@ const colors = {
 
 function createInitialResults() {
   return {
+    deps: { status: 'pending' },
     lint: { status: 'pending', errors: null, warnings: null },
     format: { status: 'pending' },
     scripts: { status: 'pending' },
@@ -28,10 +29,11 @@ function getNpmCommand(platform = process.platform) {
 
 function runCommand(name, command, args, parser, results, runner = spawnSync) {
   console.log(`${colors.blue}${colors.bold}Running ${name}...${colors.reset}`);
+  const useShell = process.platform === 'win32' && /\.cmd$/i.test(command);
   const run = runner(command, args, {
     encoding: 'utf8',
     stdio: 'pipe',
-    shell: false,
+    shell: useShell,
     windowsHide: true,
   });
 
@@ -133,6 +135,12 @@ ${colors.reset}`);
   const allPassed = Object.values(results).every((r) => r.status === 'passed');
 
   console.log(
+    `${colors.bold}Deps:${colors.reset}       ${
+      results.deps.status === 'passed' ? colors.green + '✓ PASS' : colors.red + '✗ FAIL'
+    }${colors.reset}`
+  );
+
+  console.log(
     `${colors.bold}Lint:${colors.reset}       ${
       results.lint.status === 'passed' ? colors.green + '✓ PASS' : colors.red + '✗ FAIL'
     }${colors.reset} (${results.lint.errors ?? 'n/a'} errors, ${results.lint.warnings ?? 'n/a'} warnings)`
@@ -183,7 +191,8 @@ function main() {
   const results = createInitialResults();
   const npmCommand = getNpmCommand();
   printBanner();
-  runCommand('lint', npmCommand, ['run', 'lint'], parseLint, results);
+  runCommand('deps', process.execPath, ['build/dependency-preflight.js'], undefined, results);
+  runCommand('lint', npmCommand, ['run', 'lint:prod'], parseLint, results);
   runCommand('format', npmCommand, ['run', 'format:check'], undefined, results);
   runCommand('scripts', npmCommand, ['run', 'smoke:scripts'], undefined, results);
   runCommand('test', npmCommand, ['test'], parseTest, results);

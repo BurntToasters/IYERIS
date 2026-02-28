@@ -1,4 +1,5 @@
 import { twemojiImg } from './rendererUtils.js';
+import { INDEX_REBUILD_DELAY_MS } from './rendererLocalConstants.js';
 
 const INDEX_STATUS_POLL_MS = 1500;
 
@@ -105,7 +106,7 @@ export function createIndexerController(config: IndexerConfig) {
       startIndexStatusPolling();
       setTimeout(async () => {
         await updateIndexStatus();
-      }, 300);
+      }, INDEX_REBUILD_DELAY_MS);
     } catch {
       config.getShowToast()('Error rebuilding index', 'Error', 'error');
     } finally {

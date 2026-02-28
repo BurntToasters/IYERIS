@@ -2,6 +2,11 @@ import { escapeHtml } from './shared.js';
 
 export type ToastType = 'success' | 'error' | 'info' | 'warning';
 
+export interface ToastAction {
+  label: string;
+  onClick: () => void;
+}
+
 type ToastOptions = {
   durationMs: number;
   maxVisible: number;
@@ -10,21 +15,31 @@ type ToastOptions = {
 };
 
 export function createToastManager(options: ToastOptions) {
-  const toastQueue: Array<{ message: string; title: string; type: ToastType }> = [];
+  const toastQueue: Array<{
+    message: string;
+    title: string;
+    type: ToastType;
+    actions?: ToastAction[];
+  }> = [];
   let visibleToastCount = 0;
 
   const processToastQueue = () => {
     if (toastQueue.length > 0 && visibleToastCount < options.maxVisible) {
       const next = toastQueue.shift();
       if (next) {
-        showToastQueued(next.message, next.title, next.type);
+        showToastQueued(next.message, next.title, next.type, next.actions);
       }
     }
   };
 
-  const showToastQueued = (message: string, title: string = '', type: ToastType = 'info'): void => {
+  const showToastQueued = (
+    message: string,
+    title: string = '',
+    type: ToastType = 'info',
+    actions?: ToastAction[]
+  ): void => {
     if (visibleToastCount >= options.maxVisible) {
-      toastQueue.push({ message, title, type });
+      toastQueue.push({ message, title, type, actions });
       return;
     }
 
@@ -52,6 +67,23 @@ export function createToastManager(options: ToastOptions) {
     </div>
   `;
 
+    if (actions && actions.length > 0) {
+      const actionsContainer = document.createElement('div');
+      actionsContainer.className = 'toast-actions';
+      for (const action of actions) {
+        const btn = document.createElement('button');
+        btn.className = 'toast-action-btn';
+        btn.textContent = action.label;
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          action.onClick();
+          removeToast();
+        });
+        actionsContainer.appendChild(btn);
+      }
+      toast.appendChild(actionsContainer);
+    }
+
     container.appendChild(toast);
 
     let removed = false;
@@ -69,11 +101,17 @@ export function createToastManager(options: ToastOptions) {
     };
 
     toast.addEventListener('click', removeToast);
-    setTimeout(removeToast, options.durationMs);
+    const duration = actions && actions.length > 0 ? options.durationMs * 2 : options.durationMs;
+    setTimeout(removeToast, duration);
   };
 
-  const showToast = (message: string, title: string = '', type: ToastType = 'info'): void => {
-    showToastQueued(message, title, type);
+  const showToast = (
+    message: string,
+    title: string = '',
+    type: ToastType = 'info',
+    actions?: ToastAction[]
+  ): void => {
+    showToastQueued(message, title, type, actions);
   };
 
   return { showToast };

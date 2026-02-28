@@ -1,6 +1,6 @@
 {
   "name": "iyeris",
-  "version": "0.10.4",
+  "version": "1.0.0",
   "description": "A beautiful cross-platform file explorer built with Electron, featuring a simple yet advanced modern design.",
   "main": "dist/main/main.js",
   "dependencies": {
@@ -8,12 +8,13 @@
     "7zip-bin": "^5.2.0",
     "electron-log": "^5.4.3",
     "electron-updater": "^6.6.2",
+    "marked": "^17.0.3",
     "node-7z": "^3.0.0",
     "pdfjs-dist": "^5.4.624"
   },
   "devDependencies": {
     "@electron/notarize": "^3.1.1",
-    "@eslint/js": "^9.39.2",
+    "@eslint/js": "^10.0.1",
     "@types/node": "^25.0.3",
     "@vitest/coverage-v8": "^4.0.18",
     "cross-env": "^10.1.0",
@@ -21,7 +22,7 @@
     "dotenv-cli": "^11.0.0",
     "electron": "^40.0.0",
     "electron-builder": "^26.4.0",
-    "eslint": "^9.39.2",
+    "eslint": "^10.0.0",
     "husky": "^9.1.7",
     "jsdom": "^28.0.0",
     "lint-staged": "^16.1.0",
@@ -36,18 +37,26 @@
   },
   "packageManager": "npm@11.10.0",
   "overrides": {
-    "tar": "^7.5.3"
+    "tar": "^7.5.3",
+    "@develar/schema-utils": {
+      "ajv": "6.12.6",
+      "ajv-keywords": "3.5.2"
+    }
   },
   "scripts": {
+    "deps:preflight": "node build/dependency-preflight.js",
     "licenses": "npx npm-license-crawler --production --json licenses.json",
     "test": "vitest run",
     "test:watch": "vitest",
     "smoke:scripts": "node build/smoke-scripts.js",
     "smoke:perf:fixture": "node build/generate-large-dir-fixture.js",
     "smoke:release:quick": "npm run smoke:scripts && npm run test -- src/tests/rendererAppearance.test.ts src/tests/rendererLayout.test.ts src/tests/rendererSettingsModal.test.ts src/tests/rendererSettingsUi.extended.test.ts src/tests/home.interactions.settings.test.ts src/tests/rendererFileRender.test.ts",
-    "test:all": "npm run build && node build/test-all.js",
+    "test:all": "npm run deps:preflight && npm run build && node build/test-all.js",
     "typecheck": "tsc --noEmit && tsc --noEmit --project tsconfig.renderer.json",
-    "lint": "eslint src/",
+    "lint": "npm run lint:app && npm run lint:test",
+    "lint:app": "eslint src/ --ignore-pattern src/tests/",
+    "lint:prod": "eslint src/main/ src/workers/ --max-warnings 0",
+    "lint:test": "eslint src/tests/",
     "lint:fix": "eslint src/ --fix",
     "format": "prettier --write src/",
     "format:check": "prettier --check src/",
@@ -106,7 +115,7 @@
     "release:beta:all": "npm run licenses && npm run release:beta:mac && npm run release:beta:win && npm run release:beta:linux",
     "build:msstore:x64": "npm run licenses && npm run build && electron-builder --win --x64 -c electron-builder.msstore.yml --publish never",
     "build:msstore:arm64": "npm run licenses && npm run build && electron-builder --win --arm64 -c electron-builder.msstore.yml --publish never",
-    "build:msstore": "npm run licenses && npm run build:msstore:x64 && npm run build:msstore:arm64",
+    "build:msstore": "npm run release:prepare && npm run licenses && npm run build && electron-builder --win --arm64 -c electron-builder.msstore.yml --publish never && electron-builder --win --x64 -c electron-builder.msstore.yml --publish never",
     "sign:gpg": "node build/gpg-sign.js"
   },
   "build": {
@@ -151,7 +160,11 @@
       "entitlementsInherit": "build/entitlements.mac.plist",
       "notarize": false,
       "artifactName": "${productName}-MacOS-universal.${ext}",
-      "x64ArchFiles": "**/{7zip-bin/mac,@napi-rs/canvas-darwin-*}/**"
+      "x64ArchFiles": "**/{7zip-bin/mac,@napi-rs/canvas-darwin-*}/**",
+      "files": [
+        "!node_modules/7zip-bin/linux",
+        "!node_modules/7zip-bin/win"
+      ]
     },
     "mas": {
       "type": "distribution",
@@ -171,7 +184,12 @@
         }
       ],
       "icon": "assets/icon-square.ico",
-      "artifactName": "${productName}-Win-${arch}.${ext}"
+      "artifactName": "${productName}-Win-${arch}.${ext}",
+      "files": [
+        "!node_modules/7zip-bin/linux",
+        "!node_modules/7zip-bin/mac",
+        "!node_modules/7zip-bin/win/ia32"
+      ]
     },
     "nsis": {
       "oneClick": false,
@@ -198,7 +216,13 @@
       ],
       "icon": "assets/icon.png",
       "category": "Utility",
-      "artifactName": "${productName}-Linux-${arch}.${ext}"
+      "artifactName": "${productName}-Linux-${arch}.${ext}",
+      "files": [
+        "!node_modules/7zip-bin/mac",
+        "!node_modules/7zip-bin/win",
+        "!node_modules/7zip-bin/linux/arm",
+        "!node_modules/7zip-bin/linux/ia32"
+      ]
     }
   },
   "repository": {

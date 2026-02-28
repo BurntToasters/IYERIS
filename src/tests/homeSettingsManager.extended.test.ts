@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as path from 'path';
 import type { HomeSettings } from '../types';
 
-type Handler = (...args: any[]) => any;
+type Handler = (...args: unknown[]) => Promise<Record<string, unknown>>;
 const handlers = new Map<string, Handler>();
 
 const appMock = {

@@ -280,7 +280,6 @@ export function createSelectionController(deps: SelectionDeps) {
       if (itemPath) {
         deps.getSelectedItems().add(itemPath);
       }
-      lastSelectedIndex = index;
     }
 
     lastSelectedIndex = index;
@@ -395,6 +394,18 @@ export function createSelectionController(deps: SelectionDeps) {
     });
 
     document.addEventListener('mouseup', () => {
+      if (!isRubberBandActive) return;
+      isRubberBandActive = false;
+      rubberBandStart = null;
+      cachedItemRects = [];
+      if (rubberBandRafId !== null) {
+        cancelAnimationFrame(rubberBandRafId);
+        rubberBandRafId = null;
+      }
+      selectionRect.classList.remove('active');
+    });
+
+    window.addEventListener('blur', () => {
       if (!isRubberBandActive) return;
       isRubberBandActive = false;
       rubberBandStart = null;

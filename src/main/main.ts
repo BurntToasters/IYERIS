@@ -8,6 +8,7 @@ import {
   getFileIndexer,
   setFileIndexer,
   getTray,
+  getIsQuitting,
   setIsQuitting,
   setShouldStartHidden,
   getFileTasks,
@@ -52,6 +53,8 @@ import { setupArchiveHandlers, cleanupArchiveOperations } from './archiveManager
 import { setupUpdateHandlers, initializeAutoUpdater } from './updateManager';
 import { setupThumbnailCacheHandlers, stopThumbnailCacheCleanup } from './thumbnailCache';
 import { setupElevatedOperationHandlers } from './elevatedOperations';
+import { setupOpenWithHandlers } from './openWithHandlers';
+import { setupFileWatcherHandlers, cleanupAllWatchers } from './fileWatcher';
 
 const TOTAL_MEM_GB = os.totalmem() / 1024 ** 3;
 const rendererRecoveryAttempts = new Map<number, number>();
@@ -194,6 +197,8 @@ setupSearchHandlers();
 setupArchiveHandlers();
 setupUpdateHandlers(loadSettings);
 setupThumbnailCacheHandlers();
+setupOpenWithHandlers();
+setupFileWatcherHandlers();
 
 app.whenReady().then(async () => {
   initializeLogger();
@@ -377,7 +382,8 @@ app.whenReady().then(async () => {
   });
 });
 
-app.on('before-quit', () => {
+app.on('before-quit', (event) => {
+  if (getIsQuitting()) return;
   setIsQuitting(true);
 
   clearUndoRedoStacks();
@@ -385,20 +391,26 @@ app.on('before-quit', () => {
   stopThumbnailCacheCleanup();
   cleanupArchiveOperations();
   cleanupFileAnalysis();
+  cleanupAllWatchers();
 
   const fileTasks = getFileTasks();
   const indexerTasks = getIndexerTasks();
-  fileTasks.shutdown().catch((error) => {
-    logger.error('[Main] Failed to shutdown file tasks:', error);
-  });
-  indexerTasks?.shutdown().catch((error) => {
-    logger.error('[Main] Failed to shutdown indexer tasks:', error);
-  });
 
-  const tray = getTray();
-  if (tray) {
-    tray.destroy();
-  }
+  event.preventDefault();
+  Promise.allSettled([
+    fileTasks.shutdown().catch((error) => {
+      logger.error('[Main] Failed to shutdown file tasks:', error);
+    }),
+    indexerTasks?.shutdown().catch((error) => {
+      logger.error('[Main] Failed to shutdown indexer tasks:', error);
+    }),
+  ]).finally(() => {
+    const tray = getTray();
+    if (tray) {
+      tray.destroy();
+    }
+    app.exit();
+  });
 });
 
 app.on('window-all-closed', () => {

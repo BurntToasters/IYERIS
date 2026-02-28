@@ -71,6 +71,13 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
     defaultBinding: ['Alt', 'ArrowUp'],
   },
   {
+    id: 'go-home',
+    title: 'Go Home',
+    category: 'Navigation',
+    defaultBinding: ['Alt', 'Home'],
+    defaultBindingMac: ['Meta', 'Shift', 'H'],
+  },
+  {
     id: 'new-tab',
     title: 'New Tab',
     category: 'Navigation',
@@ -114,8 +121,8 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
     id: 'new-file',
     title: 'New File',
     category: 'File Operations',
-    defaultBinding: [],
-    defaultBindingMac: [],
+    defaultBinding: ['Ctrl', 'Shift', 'M'],
+    defaultBindingMac: ['Meta', 'Shift', 'M'],
   },
   {
     id: 'copy',
@@ -179,6 +186,41 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
     category: 'View',
     defaultBinding: ['Ctrl', '0'],
     defaultBindingMac: ['Meta', '0'],
+  },
+  {
+    id: 'toggle-hidden-files',
+    title: 'Toggle Hidden Files',
+    category: 'View',
+    defaultBinding: ['Ctrl', 'H'],
+    defaultBindingMac: ['Meta', '.'],
+  },
+  {
+    id: 'properties',
+    title: 'Properties',
+    category: 'File Operations',
+    defaultBinding: ['Alt', 'Enter'],
+    defaultBindingMac: ['Meta', 'I'],
+  },
+  {
+    id: 'restore-closed-tab',
+    title: 'Restore Closed Tab',
+    category: 'Navigation',
+    defaultBinding: ['Ctrl', 'Shift', 'T'],
+    defaultBindingMac: ['Meta', 'Shift', 'T'],
+  },
+  {
+    id: 'focus-address-bar',
+    title: 'Focus Address Bar',
+    category: 'Navigation',
+    defaultBinding: ['Alt', 'D'],
+    defaultBindingMac: ['Meta', 'L'],
+  },
+  {
+    id: 'toggle-preview-panel',
+    title: 'Toggle Preview Panel',
+    category: 'View',
+    defaultBinding: ['Alt', 'P'],
+    defaultBindingMac: ['Meta', 'Shift', 'P'],
   },
 ];
 

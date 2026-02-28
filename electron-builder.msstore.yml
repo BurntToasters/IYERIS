@@ -15,6 +15,10 @@ asarUnpack:
 win:
   target: appx
   icon: assets/icon-square.png
+  files:
+    - '!node_modules/7zip-bin/linux'
+    - '!node_modules/7zip-bin/mac'
+    - '!node_modules/7zip-bin/win/ia32'
 appx:
   identityName: BurntToasters.IYERIS
   publisher: CN=BC0CB990-55E8-4580-97B7-1E2DAA4B44F6

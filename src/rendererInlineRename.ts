@@ -17,6 +17,8 @@ type InlineRenameDeps = {
 
 const INVALID_FILENAME_CHARS = /[<>:"|?*]/;
 const RESERVED_NAMES = /^(CON|PRN|AUX|NUL|COM\d|LPT\d)(\.|$)/i;
+const BIDI_CONTROL_CHARS = /[\u200E\u200F\u202A-\u202E\u2066-\u2069]/;
+const MAX_FILENAME_LENGTH = 255;
 
 function hasControlChars(name: string): boolean {
   for (let i = 0; i < name.length; i++) {
@@ -28,6 +30,12 @@ function hasControlChars(name: string): boolean {
 function getFilenameError(name: string): string | null {
   if (INVALID_FILENAME_CHARS.test(name) || hasControlChars(name)) {
     return 'File name cannot contain < > : " | ? *';
+  }
+  if (BIDI_CONTROL_CHARS.test(name)) {
+    return 'File name cannot contain bidirectional control characters';
+  }
+  if (name.length > MAX_FILENAME_LENGTH) {
+    return 'File name is too long (max 255 characters)';
   }
   if (name.endsWith('.') || name.endsWith(' ')) {
     return 'File name cannot end with a period or space';
@@ -111,7 +119,9 @@ export function createInlineRenameController(deps: InlineRenameDeps) {
     input.className = 'file-name-input';
     input.value = currentName;
     const nameContainer = fileItem.querySelector('.file-text') as HTMLElement | null;
-    (nameContainer || fileItem).appendChild(input);
+    const inputParent = nameContainer || fileItem;
+    inputParent.style.position = 'relative';
+    inputParent.appendChild(input);
 
     fileItem.classList.add('renaming');
 
@@ -125,6 +135,49 @@ export function createInlineRenameController(deps: InlineRenameDeps) {
     }
 
     let renameHandled = false;
+    let errorTooltip: HTMLElement | null = null;
+
+    const showInlineError = (message: string) => {
+      clearInlineError();
+      input.classList.add('input-error');
+      errorTooltip = document.createElement('div');
+      errorTooltip.className = 'rename-error-tooltip';
+      errorTooltip.textContent = message;
+      inputParent.appendChild(errorTooltip);
+    };
+
+    const clearInlineError = () => {
+      input.classList.remove('input-error');
+      if (errorTooltip) {
+        errorTooltip.remove();
+        errorTooltip = null;
+      }
+    };
+
+    const cleanup = () => {
+      clearInlineError();
+      input.removeEventListener('blur', finishRename);
+      input.removeEventListener('keypress', handleKeyPress);
+      input.removeEventListener('keydown', handleKeyDown);
+      input.removeEventListener('input', handleInput);
+      nameElement.style.display = '';
+      input.remove();
+      fileItem.classList.remove('renaming');
+    };
+
+    const handleInput = () => {
+      const name = input.value.trim();
+      if (name) {
+        const error = getFilenameError(name);
+        if (error) {
+          showInlineError(error);
+        } else {
+          clearInlineError();
+        }
+      } else {
+        clearInlineError();
+      }
+    };
 
     const finishRename = async () => {
       if (renameHandled) {
@@ -132,38 +185,28 @@ export function createInlineRenameController(deps: InlineRenameDeps) {
       }
       renameHandled = true;
 
-      input.removeEventListener('blur', finishRename);
-      input.removeEventListener('keypress', handleKeyPress);
-      input.removeEventListener('keydown', handleKeyDown);
-
       const newName = input.value.trim();
 
       if (newName && newName !== currentName) {
         const filenameError = getFilenameError(newName);
         if (filenameError) {
-          await deps.showAlert(filenameError, 'Invalid Name', 'warning');
-          nameElement.style.display = '';
-          input.remove();
-          fileItem.classList.remove('renaming');
+          renameHandled = false;
+          showInlineError(filenameError);
+          input.focus();
           return;
         }
         const result = await window.electronAPI.renameItem(itemPath, newName);
         if (!result.success) {
-          await deps.showAlert(result.error || 'Operation failed', 'Error Renaming', 'error');
-          nameElement.style.display = '';
-          input.remove();
-          fileItem.classList.remove('renaming');
+          renameHandled = false;
+          showInlineError(result.error || 'Rename failed');
+          input.focus();
           return;
         }
-        nameElement.style.display = '';
+        cleanup();
         nameElement.textContent = newName;
-        input.remove();
-        fileItem.classList.remove('renaming');
         await deps.navigateTo(deps.getCurrentPath());
       } else {
-        nameElement.style.display = '';
-        input.remove();
-        fileItem.classList.remove('renaming');
+        cleanup();
       }
     };
 
@@ -176,18 +219,14 @@ export function createInlineRenameController(deps: InlineRenameDeps) {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         renameHandled = true;
-        input.removeEventListener('blur', finishRename);
-        input.removeEventListener('keypress', handleKeyPress);
-        input.removeEventListener('keydown', handleKeyDown);
-        nameElement.style.display = '';
-        input.remove();
-        fileItem.classList.remove('renaming');
+        cleanup();
       }
     };
 
     input.addEventListener('blur', finishRename);
     input.addEventListener('keypress', handleKeyPress);
     input.addEventListener('keydown', handleKeyDown);
+    input.addEventListener('input', handleInput);
   }
 
   return {

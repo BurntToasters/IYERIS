@@ -17,9 +17,9 @@ vi.mock('../../workers/workerUtils', async (importOriginal) => {
     sendProgress: vi.fn(),
     isHidden: vi.fn((_filePath: string, fileName: string) => fileName.startsWith('.')),
     batchCheckHidden: vi.fn((_dir: string, names: string[]) => {
-      const map = new Map<string, boolean>();
+      const map = new Map<string, { isHidden: boolean; isSystemProtected: boolean }>();
       for (const name of names) {
-        map.set(name, name.startsWith('.'));
+        map.set(name, { isHidden: name.startsWith('.'), isSystemProtected: false });
       }
       return Promise.resolve(map);
     }),

@@ -85,6 +85,10 @@ body.tour-active #command-palette-modal {
   pointer-events: none;
 }
 
+body.tour-active .command-palette-modal {
+  animation: none !important;
+}
+
 .tour-highlight {
   position: absolute;
   border-radius: 14px;

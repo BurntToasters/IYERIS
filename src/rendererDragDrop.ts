@@ -1,12 +1,17 @@
+import type { ToastAction } from './rendererToasts.js';
 import { rendererPath as path } from './rendererUtils.js';
-import { ignoreError } from './shared.js';
 
 const SPRING_LOAD_DELAY = 800;
 
 interface DragDropConfig {
   getCurrentPath: () => string;
   getCurrentSettings: () => { fileConflictBehavior?: string };
-  getShowToast: () => (message: string, title: string, type: string) => void;
+  getShowToast: () => (
+    message: string,
+    title: string,
+    type: string,
+    actions?: ToastAction[]
+  ) => void;
   getFileGrid: () => HTMLElement | null;
   getFileView: () => HTMLElement | null;
   getDropIndicator: () => HTMLElement | null;
@@ -22,6 +27,105 @@ export function createDragDropController(config: DragDropConfig) {
   let springLoadedTimeout: NodeJS.Timeout | null = null;
   let springLoadedFolder: HTMLElement | null = null;
 
+  function isAbsolutePath(value: string): boolean {
+    return value.startsWith('/') || /^[A-Za-z]:[\\/]/.test(value) || value.startsWith('\\\\');
+  }
+
+  function decodeFileUrl(value: string): string {
+    try {
+      const url = new URL(value);
+      if (url.protocol !== 'file:') return '';
+      let decodedPath = '';
+      try {
+        decodedPath = decodeURIComponent(url.pathname || '');
+      } catch {
+        decodedPath = url.pathname || '';
+      }
+
+      if (
+        process.platform === 'win32' &&
+        url.hostname &&
+        /^[A-Za-z]$/.test(url.hostname) &&
+        decodedPath.startsWith('/')
+      ) {
+        return `${url.hostname.toUpperCase()}:${decodedPath.replace(/\//g, '\\')}`;
+      }
+
+      if (process.platform === 'win32' && /^\/[A-Za-z]:[\\/]/.test(decodedPath)) {
+        decodedPath = decodedPath.slice(1);
+      }
+
+      if (url.hostname && url.hostname !== 'localhost') {
+        if (process.platform === 'win32') {
+          return `\\\\${url.hostname}${decodedPath.replace(/\//g, '\\')}`;
+        }
+        return `//${url.hostname}${decodedPath}`;
+      }
+      return decodedPath;
+    } catch {
+      return '';
+    }
+  }
+
+  function normalizeDraggedPath(value: unknown): string | null {
+    if (typeof value !== 'string') return null;
+    let normalized = value.trim();
+    if (!normalized) return null;
+
+    const hasWrappingQuotes =
+      (normalized.startsWith('"') && normalized.endsWith('"')) ||
+      (normalized.startsWith("'") && normalized.endsWith("'"));
+    if (hasWrappingQuotes && normalized.length >= 2) {
+      normalized = normalized.slice(1, -1).trim();
+      if (!normalized) return null;
+    }
+
+    if (normalized.startsWith('file://')) {
+      normalized = decodeFileUrl(normalized);
+      if (!normalized) return null;
+    }
+
+    if (normalized.startsWith('/.file/id=')) {
+      return null;
+    }
+
+    if (!isAbsolutePath(normalized)) {
+      return null;
+    }
+
+    return normalized;
+  }
+
+  function normalizeDraggedPaths(value: unknown): string[] {
+    const candidates = Array.isArray(value) ? value : typeof value === 'string' ? [value] : [];
+    const normalized = new Set<string>();
+    for (const candidate of candidates) {
+      const normalizedPath = normalizeDraggedPath(candidate);
+      if (normalizedPath) {
+        normalized.add(normalizedPath);
+      }
+    }
+    return Array.from(normalized);
+  }
+
+  function extractPathsFromText(textData: string): string[] {
+    const trimmed = textData.trim();
+    if (!trimmed) return [];
+    const lines = trimmed
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+    return normalizeDraggedPaths(lines.length > 1 ? lines : trimmed);
+  }
+
+  function readDataTransferText(dataTransfer: DataTransfer, format: string): string {
+    try {
+      return dataTransfer.getData(format);
+    } catch {
+      return '';
+    }
+  }
+
   function getDragOperation(event: DragEvent): 'copy' | 'move' {
     return event.ctrlKey || event.altKey ? 'copy' : 'move';
   }
@@ -30,25 +134,53 @@ export function createDragDropController(config: DragDropConfig) {
     let draggedPaths: string[] = [];
     if (!event.dataTransfer) return draggedPaths;
 
-    try {
-      const textData = event.dataTransfer.getData('text/plain');
-      if (textData) {
-        draggedPaths = JSON.parse(textData);
+    const textData = readDataTransferText(event.dataTransfer, 'text/plain');
+    if (textData) {
+      try {
+        draggedPaths = normalizeDraggedPaths(JSON.parse(textData));
+      } catch {
+        draggedPaths = extractPathsFromText(textData);
       }
-    } catch (error) {
-      ignoreError(error);
+    }
+
+    if (draggedPaths.length === 0) {
+      const uriListData = readDataTransferText(event.dataTransfer, 'text/uri-list');
+      if (uriListData) {
+        draggedPaths = extractPathsFromText(uriListData);
+      }
+    }
+
+    if (draggedPaths.length === 0) {
+      const publicFileUrlData = readDataTransferText(event.dataTransfer, 'public.file-url');
+      if (publicFileUrlData) {
+        draggedPaths = extractPathsFromText(publicFileUrlData);
+      }
     }
 
     if (draggedPaths.length === 0 && event.dataTransfer.files.length > 0) {
-      draggedPaths = Array.from(event.dataTransfer.files).map(
-        (f) => (f as File & { path: string }).path
+      draggedPaths = normalizeDraggedPaths(
+        Array.from(event.dataTransfer.files).map((file) => {
+          const fromFilePath = (file as File & { path?: string | null }).path;
+          if (typeof fromFilePath === 'string' && fromFilePath.trim()) {
+            return fromFilePath;
+          }
+          try {
+            return window.electronAPI.getPathForFile?.(file) || '';
+          } catch {
+            return '';
+          }
+        })
       );
     }
 
     if (draggedPaths.length === 0) {
-      const sharedData = await window.electronAPI.getDragData();
-      if (sharedData) {
-        draggedPaths = sharedData.paths;
+      try {
+        const sharedData = await window.electronAPI.getDragData();
+        if (sharedData && Array.isArray(sharedData.paths)) {
+          draggedPaths = normalizeDraggedPaths(sharedData.paths);
+        }
+      } catch {
+        draggedPaths = [];
       }
     }
 
@@ -133,6 +265,7 @@ export function createDragDropController(config: DragDropConfig) {
 
   function isDropIntoCurrentDirectory(draggedPaths: string[], destinationPath: string): boolean {
     return draggedPaths.some((dragPath: string) => {
+      if (!dragPath) return false;
       const parentDir = path.dirname(dragPath);
       return parentDir === destinationPath || dragPath === destinationPath;
     });
@@ -156,7 +289,12 @@ export function createDragDropController(config: DragDropConfig) {
           : await window.electronAPI.moveItems(sourcePaths, destPath, conflictBehavior);
 
       if (!result.success) {
-        showToast(result.error || `Failed to ${operation} items`, 'Error', 'error');
+        showToast(result.error || `Failed to ${operation} items`, 'Error', 'error', [
+          {
+            label: 'Retry',
+            onClick: () => void handleDrop(sourcePaths, destPath, operation),
+          },
+        ]);
         return;
       }
       showToast(
@@ -174,7 +312,12 @@ export function createDragDropController(config: DragDropConfig) {
       config.clearSelection();
     } catch (error) {
       console.error(`Error during ${operation}:`, error);
-      showToast(`Failed to ${operation} items`, 'Error', 'error');
+      showToast(`Failed to ${operation} items`, 'Error', 'error', [
+        {
+          label: 'Retry',
+          onClick: () => void handleDrop(sourcePaths, destPath, operation),
+        },
+      ]);
     }
   }
 
@@ -226,23 +369,27 @@ export function createDragDropController(config: DragDropConfig) {
         return;
       }
 
-      const draggedPaths = await getDraggedPaths(e);
-      const currentPath = config.getCurrentPath();
+      try {
+        const draggedPaths = await getDraggedPaths(e);
+        const currentPath = config.getCurrentPath();
 
-      if (draggedPaths.length === 0 || !currentPath) {
+        if (draggedPaths.length === 0 || !currentPath) {
+          return;
+        }
+
+        if (isDropIntoCurrentDirectory(draggedPaths, currentPath)) {
+          config.getShowToast()('Items are already in this directory', 'Info', 'info');
+          return;
+        }
+
+        const operation = getDragOperation(e);
+        await handleDrop(draggedPaths, currentPath, operation);
+      } catch (error) {
+        console.error('Error handling drop:', error);
+        config.getShowToast()('Failed to handle drop', 'Error', 'error');
+      } finally {
         hideDropIndicator();
-        return;
       }
-
-      if (isDropIntoCurrentDirectory(draggedPaths, currentPath)) {
-        config.getShowToast()('Items are already in this directory', 'Info', 'info');
-        hideDropIndicator();
-        return;
-      }
-
-      const operation = getDragOperation(e);
-      await handleDrop(draggedPaths, currentPath, operation);
-      hideDropIndicator();
     });
   }
 
@@ -292,23 +439,27 @@ export function createDragDropController(config: DragDropConfig) {
 
       fileView.classList.remove('drag-over');
 
-      const draggedPaths = await getDraggedPaths(e);
-      const currentPath = config.getCurrentPath();
+      try {
+        const draggedPaths = await getDraggedPaths(e);
+        const currentPath = config.getCurrentPath();
 
-      if (draggedPaths.length === 0 || !currentPath) {
+        if (draggedPaths.length === 0 || !currentPath) {
+          return;
+        }
+
+        if (isDropIntoCurrentDirectory(draggedPaths, currentPath)) {
+          config.getShowToast()('Items are already in this directory', 'Info', 'info');
+          return;
+        }
+
+        const operation = getDragOperation(e);
+        await handleDrop(draggedPaths, currentPath, operation);
+      } catch (error) {
+        console.error('Error handling drop:', error);
+        config.getShowToast()('Failed to handle drop', 'Error', 'error');
+      } finally {
         hideDropIndicator();
-        return;
       }
-
-      if (isDropIntoCurrentDirectory(draggedPaths, currentPath)) {
-        config.getShowToast()('Items are already in this directory', 'Info', 'info');
-        hideDropIndicator();
-        return;
-      }
-
-      const operation = getDragOperation(e);
-      await handleDrop(draggedPaths, currentPath, operation);
-      hideDropIndicator();
     });
   }
 

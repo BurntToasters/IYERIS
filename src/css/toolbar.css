@@ -225,6 +225,70 @@ body.platform-win32 .toolbar-button:active:not(:disabled) {
   box-shadow: var(--focus-ring);
   outline: none;
 }
+
+.selection-overflow-wrapper {
+  position: relative;
+}
+
+.selection-overflow-btn {
+  font-weight: 700;
+  letter-spacing: 1px;
+  min-width: 28px;
+  text-align: center;
+}
+
+.selection-overflow-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 1001;
+  min-width: 140px;
+  padding: 4px;
+  background: var(--dropdown-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-small);
+  box-shadow: var(--shadow-lg);
+  animation: menu-fade var(--animation-duration) var(--animation-easing);
+}
+
+.selection-overflow-item {
+  display: block;
+  width: 100%;
+  padding: 6px 12px;
+  border: none;
+  border-radius: var(--radius-small);
+  background: none;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: inherit;
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+  transition: var(--transition-standard);
+}
+
+.selection-overflow-item:hover {
+  background: var(--hover-color);
+}
+
+.selection-overflow-item:active {
+  background: var(--active-color);
+}
+
+.selection-overflow-danger {
+  color: var(--danger-color);
+}
+
+.selection-overflow-danger:hover {
+  background: color-mix(in srgb, var(--danger-color) 12%, transparent);
+}
+
+.selection-overflow-separator {
+  height: 1px;
+  background: var(--separator);
+  margin: 3px 4px;
+}
+
 .notification-badge {
   position: absolute;
   top: -2px;

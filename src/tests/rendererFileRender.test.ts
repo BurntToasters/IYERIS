@@ -35,6 +35,7 @@ function makeSettings(overrides: Partial<Settings> = {}): Settings {
     showHiddenFiles: true,
     enableSearchHistory: false,
     searchHistory: [],
+    savedSearches: [],
     directoryHistory: [],
     enableIndexer: false,
     minimizeToTray: false,

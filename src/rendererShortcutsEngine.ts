@@ -2,7 +2,7 @@ import type { Settings } from './types';
 import { SHORTCUT_DEFINITIONS, getDefaultShortcuts } from './shortcuts.js';
 import type { ShortcutBinding, ShortcutDefinition } from './shortcuts.js';
 
-export interface ReservedShortcut {
+interface ReservedShortcut {
   label: string;
   actionId?: string;
 }
@@ -124,6 +124,7 @@ export function createShortcutEngineController(deps: ShortcutEngineDeps) {
     registerFixedShortcut(['Ctrl', 'R'], 'refresh');
     registerFixedShortcut(['Meta', 'R'], 'refresh');
     if (!isMacPlatform()) {
+      registerFixedShortcut(['Ctrl', 'L'], 'focus-address-bar');
       registerFixedShortcut(['Ctrl', 'Shift', 'Z'], 'redo');
     } else {
       registerFixedShortcut(['Meta', 'Z'], 'undo');
@@ -142,6 +143,7 @@ export function createShortcutEngineController(deps: ShortcutEngineDeps) {
     registerReservedShortcut(['Shift', 'ArrowLeft'], null, 'Extend Selection');
     registerReservedShortcut(['Shift', 'ArrowRight'], null, 'Extend Selection');
     if (!isMacPlatform()) {
+      registerReservedShortcut(['Ctrl', 'L'], 'focus-address-bar', 'Focus Address Bar');
       registerReservedShortcut(['Ctrl', 'Shift', 'Z'], 'redo', 'Redo');
     } else {
       registerReservedShortcut(['Meta', 'Z'], 'undo', 'Undo');

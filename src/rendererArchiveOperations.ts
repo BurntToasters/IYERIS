@@ -1,5 +1,9 @@
 import { clearHtml, getById } from './rendererDom.js';
 import { escapeHtml } from './shared.js';
+import {
+  ARCHIVE_RENDER_THROTTLE_MS,
+  ARCHIVE_COMPLETION_DELAY_MS,
+} from './rendererLocalConstants.js';
 
 type ArchiveOperationType = 'compress' | 'extract';
 
@@ -81,7 +85,7 @@ export function createArchiveOperationsController(deps: ArchiveOperationsDeps) {
       operation.total = total;
       operation.currentFile = currentFile;
       if (renderOperationsTimeout) clearTimeout(renderOperationsTimeout);
-      renderOperationsTimeout = setTimeout(renderOperations, 50);
+      renderOperationsTimeout = setTimeout(renderOperations, ARCHIVE_RENDER_THROTTLE_MS);
     }
   }
 
@@ -115,7 +119,7 @@ export function createArchiveOperationsController(deps: ArchiveOperationsDeps) {
 
       setTimeout(() => {
         removeOperation(id);
-      }, 1500);
+      }, ARCHIVE_COMPLETION_DELAY_MS);
     }
   }
 

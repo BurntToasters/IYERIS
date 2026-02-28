@@ -47,6 +47,7 @@ vi.mock('../rendererUtils.js', () => ({
 vi.mock('../fileTypes.js', () => ({
   IMAGE_EXTENSIONS: new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'ico']),
   RAW_EXTENSIONS: new Set(['cr2', 'nef', 'arw', 'dng']),
+  MARKDOWN_EXTENSIONS: new Set(['md', 'markdown', 'mdown', 'mkd', 'mkdn']),
   TEXT_EXTENSIONS: new Set(['txt', 'md', 'json', 'js', 'ts', 'html', 'css', 'xml', 'yml', 'yaml']),
   VIDEO_EXTENSIONS: new Set(['mp4', 'webm', 'mkv', 'avi', 'mov']),
   AUDIO_EXTENSIONS: new Set(['mp3', 'wav', 'ogg', 'flac', 'aac']),
@@ -517,7 +518,7 @@ describe('rendererPreviews', () => {
     it('renders text content from readFileContent', async () => {
       const deps = createDeps();
       const ctrl = createPreviewController(deps as any);
-      const file = makeFile({ name: 'readme.md', path: '/home/user/readme.md' });
+      const file = makeFile({ name: 'readme.txt', path: '/home/user/readme.txt' });
       ctrl.updatePreview(file);
 
       await vi.waitFor(() => {

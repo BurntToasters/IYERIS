@@ -139,7 +139,33 @@ export async function getDrives(): Promise<string[]> {
           try {
             const stats = await fs.stat(fullPath);
             if (stats.isDirectory()) {
-              detected.push(fullPath);
+              if (root === '/run/media') {
+                try {
+                  const innerSubs = await fs.readdir(fullPath);
+                  let foundMount = false;
+                  for (const innerSub of innerSubs) {
+                    if (innerSub.startsWith('.')) continue;
+                    const innerPath = path.join(fullPath, innerSub);
+                    try {
+                      const innerStats = await fs.stat(innerPath);
+                      if (innerStats.isDirectory()) {
+                        detected.push(innerPath);
+                        foundMount = true;
+                      }
+                    } catch (error) {
+                      ignoreError(error);
+                    }
+                  }
+                  if (!foundMount) {
+                    detected.push(fullPath);
+                  }
+                } catch (error) {
+                  ignoreError(error);
+                  detected.push(fullPath);
+                }
+              } else {
+                detected.push(fullPath);
+              }
             }
           } catch (error) {
             ignoreError(error);
@@ -149,9 +175,30 @@ export async function getDrives(): Promise<string[]> {
         ignoreError(error);
       }
     }
-    cachedDrives = detected;
-    drivesCacheTime = Date.now();
-    return detected;
+    try {
+      const rootReal = await fs.realpath('/');
+      const rootStat = await fs.stat('/');
+      const deduped: string[] = ['/'];
+      for (const d of detected) {
+        if (d === '/') continue;
+        try {
+          const real = await fs.realpath(d);
+          if (real === '/' || real === rootReal) continue;
+          const dStat = await fs.stat(d);
+          if (dStat.dev === rootStat.dev) continue;
+          deduped.push(d);
+        } catch {
+          deduped.push(d);
+        }
+      }
+      cachedDrives = deduped;
+      drivesCacheTime = Date.now();
+      return deduped;
+    } catch {
+      cachedDrives = detected;
+      drivesCacheTime = Date.now();
+      return detected;
+    }
   }
 }
 
@@ -242,7 +289,7 @@ function getUnixDriveLabel(drivePath: string, rootLabel?: string | null): string
   if (drivePath === '/' && rootLabel) {
     return rootLabel;
   }
-  const normalized = drivePath.replace(/\/+$/, '');
+  const normalized = drivePath.replace(/[/\\]+$/, '').replace(/\\/g, '/');
   const parts = normalized.split('/').filter(Boolean);
   const basename = parts[parts.length - 1];
   return basename || drivePath;
@@ -256,7 +303,7 @@ export async function getDriveInfo(): Promise<DriveInfo[]> {
   const drives = await getDrives();
   const platform = process.platform;
 
-  let result: DriveInfo[] = [];
+  let result: DriveInfo[];
 
   if (platform === 'win32') {
     const labelMap = await getWindowsDriveLabels();

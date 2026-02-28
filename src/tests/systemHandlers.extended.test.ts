@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { Settings } from '../types';
 
-type Handler = (...args: any[]) => any;
+type Handler = (...args: unknown[]) => Promise<Record<string, unknown>>;
 
 const hoisted = vi.hoisted(() => {
   let nativeThemeUpdated: (() => void) | null = null;
@@ -123,7 +123,7 @@ vi.mock('../main/ipcUtils', () => ({
   withTrustedApiHandler: vi.fn(
     (
       _channel: string,
-      handler: (...args: any[]) => any,
+      handler: (...args: unknown[]) => unknown,
       untrustedResponse?: { success: boolean; error?: string }
     ) =>
       async (...args: any[]) =>
@@ -132,7 +132,7 @@ vi.mock('../main/ipcUtils', () => ({
           : (untrustedResponse ?? { success: false, error: 'Untrusted IPC sender' })
   ),
   withTrustedIpcEvent: vi.fn(
-    (_channel: string, untrustedResponse: unknown, handler: (...args: any[]) => any) =>
+    (_channel: string, untrustedResponse: unknown, handler: (...args: unknown[]) => unknown) =>
       async (...args: any[]) =>
         hoisted.trusted.value ? await handler(...args) : untrustedResponse
   ),
@@ -179,8 +179,8 @@ function getHandler(channel: string): Handler {
 }
 
 const mockEvent = {} as any;
-let loadSettingsMock: (...args: any[]) => any;
-let saveSettingsMock: (...args: any[]) => any;
+let loadSettingsMock: () => Promise<Settings>;
+let saveSettingsMock: (settings: Settings) => Promise<{ success: true }>;
 
 describe('systemHandlers extended coverage', () => {
   beforeEach(() => {
@@ -225,7 +225,7 @@ describe('systemHandlers extended coverage', () => {
     setPlatform(originalPlatform);
 
     loadSettingsMock = vi.fn(async () => ({ skipFullDiskAccessPrompt: false }) as any);
-    saveSettingsMock = vi.fn(async () => ({ success: true }));
+    saveSettingsMock = vi.fn(async () => ({ success: true as const }));
 
     setupSystemHandlers(loadSettingsMock, saveSettingsMock);
   });
@@ -350,9 +350,7 @@ describe('systemHandlers extended coverage', () => {
 
     it('opens Windows Terminal (wt) when available on win32', async () => {
       setPlatform('win32');
-      hoisted.execMock.mockImplementation((_cmd: string, cb: (error: Error | null) => void) => {
-        cb(null);
-      });
+      hoisted.execFileAsyncMock.mockResolvedValue({ stdout: '', stderr: '' });
       hoisted.handlers.clear();
       setupSystemHandlers(loadSettingsMock, saveSettingsMock);
 
@@ -360,14 +358,13 @@ describe('systemHandlers extended coverage', () => {
       const result = await handler(mockEvent, 'C:\\Users\\test');
 
       expect(result).toEqual({ success: true });
+      expect(hoisted.execFileAsyncMock).toHaveBeenCalledWith('where', ['wt']);
       expect(hoisted.launchDetachedMock).toHaveBeenCalledWith('wt', ['-d', 'C:\\Users\\test']);
     });
 
     it('falls back to cmd when wt is not available on win32', async () => {
       setPlatform('win32');
-      hoisted.execMock.mockImplementation((_cmd: string, cb: (error: Error | null) => void) => {
-        cb(new Error('not found'));
-      });
+      hoisted.execFileAsyncMock.mockRejectedValue(new Error('not found'));
       hoisted.handlers.clear();
       setupSystemHandlers(loadSettingsMock, saveSettingsMock);
 
@@ -383,9 +380,7 @@ describe('systemHandlers extended coverage', () => {
 
     it('escapes double quotes in dirPath for cmd fallback on win32', async () => {
       setPlatform('win32');
-      hoisted.execMock.mockImplementation((_cmd: string, cb: (error: Error | null) => void) => {
-        cb(new Error('not found'));
-      });
+      hoisted.execFileAsyncMock.mockRejectedValue(new Error('not found'));
       hoisted.handlers.clear();
       setupSystemHandlers(loadSettingsMock, saveSettingsMock);
 
@@ -402,6 +397,13 @@ describe('systemHandlers extended coverage', () => {
 
     it('opens Terminal.app on darwin', async () => {
       setPlatform('darwin');
+      const mockChild = {
+        once: vi.fn((event: string, cb: (...args: any[]) => void) => {
+          if (event === 'spawn') cb();
+        }),
+        unref: vi.fn(),
+      };
+      hoisted.spawnMock.mockReturnValue(mockChild);
       hoisted.handlers.clear();
       setupSystemHandlers(loadSettingsMock, saveSettingsMock);
 
@@ -409,12 +411,11 @@ describe('systemHandlers extended coverage', () => {
       const result = await handler(mockEvent, '/Users/test');
 
       expect(result).toEqual({ success: true });
-      expect(hoisted.launchDetachedMock).toHaveBeenCalledWith('open', [
-        '-a',
-        'Terminal',
-        '--',
-        '/Users/test',
-      ]);
+      expect(hoisted.spawnMock).toHaveBeenCalledWith(
+        'open',
+        expect.arrayContaining(['-a', expect.any(String), '--', '/Users/test']),
+        expect.objectContaining({ detached: true })
+      );
     });
 
     it('launches first available terminal emulator on linux', async () => {
@@ -472,7 +473,7 @@ describe('systemHandlers extended coverage', () => {
       );
     });
 
-    it('tries xterm when first two terminals fail on linux', async () => {
+    it('tries konsole when first two terminals fail on linux', async () => {
       setPlatform('linux');
       let callCount = 0;
       hoisted.spawnMock.mockImplementation(() => {
@@ -496,8 +497,8 @@ describe('systemHandlers extended coverage', () => {
       expect(hoisted.spawnMock).toHaveBeenCalledTimes(3);
       expect(hoisted.spawnMock).toHaveBeenNthCalledWith(
         3,
-        'xterm',
-        ['-e', 'bash'],
+        'konsole',
+        ['--workdir', '/home/user'],
         expect.objectContaining({ detached: true })
       );
     });
@@ -522,7 +523,7 @@ describe('systemHandlers extended coverage', () => {
       const result = await handler(mockEvent, '/home/user');
 
       expect(result).toEqual({ success: false, error: 'No suitable terminal emulator found' });
-      expect(hoisted.spawnMock).toHaveBeenCalledTimes(3);
+      expect(hoisted.spawnMock).toHaveBeenCalledTimes(14);
       expect(logger.error).toHaveBeenCalledWith('No suitable terminal emulator found');
     });
   });

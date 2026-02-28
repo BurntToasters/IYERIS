@@ -25,6 +25,7 @@ const BUTTON_IDS = [
   'about-shortcuts-btn',
   'about-rosie-link',
   'about-twemoji-link',
+  'about-7zip-link',
 ];
 
 describe('rendererExternalLinks', () => {
@@ -153,6 +154,17 @@ describe('rendererExternalLinks', () => {
     el.dispatchEvent(event);
     expect(spy).toHaveBeenCalled();
     expect(deps.openExternal).toHaveBeenCalledWith('https://github.com/jdecked/twemoji');
+  });
+
+  it('about-7zip-link prevents default and opens 7-Zip website', () => {
+    const deps = makeDeps();
+    createExternalLinksController(deps).initExternalLinks();
+    const el = document.getElementById('about-7zip-link')! as HTMLAnchorElement;
+    const event = new MouseEvent('click', { bubbles: true, cancelable: true });
+    const spy = vi.spyOn(event, 'preventDefault');
+    el.dispatchEvent(event);
+    expect(spy).toHaveBeenCalled();
+    expect(deps.openExternal).toHaveBeenCalledWith('https://www.7-zip.org');
   });
 
   it('works when some elements are missing', () => {

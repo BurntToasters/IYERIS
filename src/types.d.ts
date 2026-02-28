@@ -7,6 +7,7 @@ export interface CustomTheme {
   textSecondary: string;
   glassBg: string;
   glassBorder: string;
+  iconHue: string;
 }
 
 export interface LicenseInfo {
@@ -42,6 +43,20 @@ export interface TabState {
   activeTabId: string;
 }
 
+export interface SavedSearch {
+  name: string;
+  query: string;
+  isGlobal: boolean;
+  isRegex: boolean;
+  filters?: {
+    fileType?: string;
+    minSize?: number;
+    maxSize?: number;
+    dateFrom?: string;
+    dateTo?: string;
+  };
+}
+
 export interface Settings {
   _timestamp?: number;
   shortcuts: { [actionId: string]: string[] };
@@ -65,6 +80,7 @@ export interface Settings {
   showHiddenFiles: boolean;
   enableSearchHistory: boolean;
   searchHistory: string[];
+  savedSearches: SavedSearch[];
   directoryHistory: string[];
   enableIndexer: boolean;
   minimizeToTray: boolean;
@@ -143,9 +159,17 @@ export interface FileItem {
   path: string;
   isDirectory: boolean;
   isFile: boolean;
+  isSymlink?: boolean;
+  isBrokenSymlink?: boolean;
+  isAppBundle?: boolean;
+  isShortcut?: boolean;
+  isDesktopEntry?: boolean;
+  symlinkTarget?: string;
+  shortcutTarget?: string;
   size: number;
   modified: Date;
   isHidden: boolean;
+  isSystemProtected?: boolean;
 }
 
 export interface DriveInfo {
@@ -167,6 +191,7 @@ export interface SearchFilters {
   dateFrom?: string;
   dateTo?: string;
   searchInContents?: boolean;
+  regex?: boolean;
 }
 
 export interface ContentSearchResult extends FileItem {
@@ -180,9 +205,20 @@ export interface ItemProperties {
   size: number;
   isDirectory: boolean;
   isFile: boolean;
+  isSymlink?: boolean;
+  symlinkTarget?: string;
+  isShortcut?: boolean;
+  shortcutTarget?: string;
   created: Date;
   modified: Date;
   accessed: Date;
+  mode?: number;
+  owner?: string;
+  group?: string;
+  isReadOnly?: boolean;
+  isHiddenAttr?: boolean;
+  isSystemAttr?: boolean;
+  macTags?: string[];
 }
 
 export interface FolderSizeProgress {
@@ -240,6 +276,13 @@ export type SearchResponse = IpcResult<{ results: FileItem[] }>;
 export type ContentSearchResponse = IpcResult<{ results: ContentSearchResult[] }>;
 
 export type IndexSearchResponse = IpcResult<{ results: IndexEntry[] }>;
+
+export interface OpenWithApp {
+  id: string;
+  name: string;
+}
+
+export type OpenWithAppsResponse = IpcResult<{ apps: OpenWithApp[] }>;
 
 export type UndoResponse = IpcResult<{ canUndo: boolean; canRedo: boolean }>;
 
@@ -308,11 +351,6 @@ export type UndoRedoStateResponse = IpcResult<{
   canRedo: boolean;
 }>;
 
-export type SystemAccentColorResponse = IpcResult<{
-  accentColor: string;
-  isDarkMode: boolean;
-}>;
-
 export type ConflictDialogResponse = 'rename' | 'skip' | 'overwrite' | 'cancel';
 
 export interface ClipboardOperation {
@@ -373,7 +411,17 @@ export interface UndoTrashAction {
   data: { path: string; originalPath?: string };
 }
 
-export type UndoAction = UndoCreateAction | UndoRenameAction | UndoMoveAction | UndoTrashAction;
+export interface UndoBatchRenameAction {
+  type: 'batch-rename';
+  data: { renames: Array<{ oldPath: string; newPath: string }> };
+}
+
+export type UndoAction =
+  | UndoCreateAction
+  | UndoRenameAction
+  | UndoMoveAction
+  | UndoTrashAction
+  | UndoBatchRenameAction;
 
 export interface UpdateInfo {
   version: string;
@@ -401,6 +449,13 @@ export interface UpdateDownloadProgress {
 
 export interface ArchiveProgress {
   operationId?: string;
+  current: number;
+  total: number;
+  name: string;
+}
+
+export interface FileOperationProgress {
+  operation: 'copy' | 'move';
   current: number;
   total: number;
   name: string;
@@ -441,6 +496,11 @@ export interface ElectronAPI {
   openTrash: () => Promise<IpcResult>;
   renameItem: (oldPath: string, newName: string) => Promise<PathResponse>;
   getItemProperties: (itemPath: string) => Promise<PropertiesResponse>;
+  setPermissions: (itemPath: string, mode: number) => Promise<IpcResult>;
+  setAttributes: (
+    itemPath: string,
+    attrs: { readOnly?: boolean; hidden?: boolean }
+  ) => Promise<IpcResult>;
   getSettings: () => Promise<SettingsResponse>;
   saveSettings: (settings: Settings) => Promise<IpcResult>;
   saveSettingsSync: (settings: Settings) => IpcResult;
@@ -454,12 +514,14 @@ export interface ElectronAPI {
 
   setClipboard: (clipboardData: ClipboardOperation | null) => Promise<void>;
   getClipboard: () => Promise<ClipboardOperation | null>;
+  getSystemClipboardData: () => Promise<ClipboardOperation>;
   getSystemClipboardFiles: () => Promise<string[]>;
   onClipboardChanged: (callback: (clipboardData: ClipboardOperation | null) => void) => () => void;
 
   setDragData: (paths: string[]) => Promise<void>;
   getDragData: () => Promise<{ paths: string[] } | null>;
   clearDragData: () => Promise<void>;
+  getPathForFile?: (file: File) => string;
 
   onSettingsChanged: (callback: (settings: Settings) => void) => () => void;
   onHomeSettingsChanged: (callback: (settings: HomeSettings) => void) => () => void;
@@ -502,6 +564,9 @@ export interface ElectronAPI {
   elevatedMove: (sourcePath: string, destPath: string) => Promise<IpcResult>;
   elevatedDelete: (itemPath: string) => Promise<IpcResult>;
   elevatedRename: (itemPath: string, newName: string) => Promise<IpcResult>;
+  resolveShortcut: (
+    shortcutPath: string
+  ) => Promise<{ success: boolean; target?: string; error?: string }>;
   readFileContent: (filePath: string, maxSize?: number) => Promise<FileContentResponse>;
   getFileDataUrl: (filePath: string, maxSize?: number) => Promise<FileDataUrlResponse>;
   getLicenses: () => Promise<LicensesResponse>;
@@ -542,10 +607,14 @@ export interface ElectronAPI {
   cancelArchiveOperation: (operationId: string) => Promise<IpcResult>;
   onCompressProgress: (callback: (progress: ArchiveProgress) => void) => () => void;
   onExtractProgress: (callback: (progress: ArchiveProgress) => void) => () => void;
+  onFileOperationProgress: (callback: (progress: FileOperationProgress) => void) => () => void;
   onSystemResumed: (callback: () => void) => () => void;
+  onDirectoryChanged: (callback: (data: { dirPath: string }) => void) => () => void;
   onSystemThemeChanged: (callback: (data: { isDarkMode: boolean }) => void) => () => void;
   setZoomLevel: (zoomLevel: number) => Promise<IpcResult>;
   getZoomLevel: () => Promise<ZoomLevelResponse>;
+  watchDirectory: (dirPath: string) => Promise<boolean>;
+  unwatchDirectory: () => Promise<void>;
   calculateFolderSize: (folderPath: string, operationId: string) => Promise<FolderSizeResponse>;
   cancelFolderSizeCalculation: (operationId: string) => Promise<IpcResult>;
   onFolderSizeProgress: (
@@ -574,6 +643,13 @@ export interface ElectronAPI {
   openLogsFolder: () => Promise<IpcResult>;
   exportDiagnostics: () => Promise<DiagnosticsResponse>;
   getLogFileContent: () => Promise<FileContentResponse>;
+
+  getOpenWithApps: (filePath: string) => Promise<OpenWithAppsResponse>;
+  openFileWithApp: (filePath: string, appId: string) => Promise<IpcResult>;
+  batchRename: (items: Array<{ oldPath: string; newName: string }>) => Promise<IpcResult>;
+  createSymlink: (targetPath: string, linkPath: string) => Promise<IpcResult>;
+  shareItems: (filePaths: string[]) => Promise<IpcResult>;
+  launchDesktopEntry: (filePath: string) => Promise<IpcResult>;
 }
 
 declare global {

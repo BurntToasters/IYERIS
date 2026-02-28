@@ -2,6 +2,7 @@ import type { FileItem, Settings } from './types';
 import { clearHtml } from './rendererDom.js';
 import { escapeHtml } from './shared.js';
 import { twemojiImg } from './rendererUtils.js';
+import { TAB_SAVE_DELAY_MS } from './rendererLocalConstants.js';
 
 export interface TabData {
   id: string;
@@ -67,6 +68,10 @@ interface TabsDeps {
 export function createTabsController(deps: TabsDeps) {
   const MAX_CACHED_TABS = deps.maxCachedTabs;
   const MAX_CACHED_FILES_PER_TAB = deps.maxCachedFilesPerTab;
+  const MAX_CLOSED_TABS = 10;
+  const closedTabPaths: string[] = [];
+  let activeDismissHandler: ((e: MouseEvent) => void) | null = null;
+  let dismissTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
   function generateTabId(): string {
     return `tab-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
@@ -99,7 +104,6 @@ export function createTabsController(deps: TabsDeps) {
     if (settings.enableTabs === false) {
       deps.setTabsEnabled(false);
       document.body.classList.remove('tabs-enabled');
-      document.body.classList.remove('tabs-single');
       const tabBar = document.getElementById('tab-bar');
       if (tabBar) tabBar.style.display = 'none';
       return;
@@ -141,13 +145,6 @@ export function createTabsController(deps: TabsDeps) {
         });
       }
 
-      const toolbarNewTabBtn = document.getElementById('toolbar-new-tab-btn');
-      if (toolbarNewTabBtn) {
-        toolbarNewTabBtn.addEventListener('click', () => {
-          addNewTab();
-        });
-      }
-
       deps.setTabNewButtonListenerAttached(true);
     }
   }
@@ -165,12 +162,6 @@ export function createTabsController(deps: TabsDeps) {
 
   function updateTabBarVisibility() {
     if (!deps.getTabsEnabled()) return;
-    const tabs = deps.getTabs();
-    if (tabs.length <= 1) {
-      document.body.classList.add('tabs-single');
-    } else {
-      document.body.classList.remove('tabs-single');
-    }
   }
 
   function renderTabs() {
@@ -261,6 +252,12 @@ export function createTabsController(deps: TabsDeps) {
         }
       });
 
+      tabElement.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        showTabContextMenu(e.clientX, e.clientY, tab.id);
+      });
+
       tabList.appendChild(tabElement);
     });
   }
@@ -339,7 +336,7 @@ export function createTabsController(deps: TabsDeps) {
     }
     const timeout = setTimeout(() => {
       saveTabState();
-    }, 500);
+    }, TAB_SAVE_DELAY_MS);
     deps.setSaveTabStateTimeout(timeout);
   }
 
@@ -379,6 +376,14 @@ export function createTabsController(deps: TabsDeps) {
 
     const tabIndex = tabs.findIndex((t) => t.id === tabId);
     if (tabIndex === -1) return;
+
+    const closingTab = tabs[tabIndex];
+    if (closingTab.path) {
+      closedTabPaths.push(closingTab.path);
+      if (closedTabPaths.length > MAX_CLOSED_TABS) {
+        closedTabPaths.shift();
+      }
+    }
 
     tabs.splice(tabIndex, 1);
 
@@ -437,6 +442,191 @@ export function createTabsController(deps: TabsDeps) {
     }
   }
 
+  function closeOtherTabs(tabId: string): void {
+    if (!deps.getTabsEnabled()) return;
+    const tabs = deps.getTabs();
+    const keepTab = tabs.find((t) => t.id === tabId);
+    if (!keepTab) return;
+
+    const closingTabs = tabs.filter((t) => t.id !== tabId);
+    for (const t of closingTabs) {
+      if (t.path) {
+        closedTabPaths.push(t.path);
+        if (closedTabPaths.length > MAX_CLOSED_TABS) closedTabPaths.shift();
+      }
+    }
+
+    deps.setTabs([keepTab]);
+    if (deps.getActiveTabId() !== tabId) {
+      deps.setActiveTabId(tabId);
+      deps.setHistory([...keepTab.history]);
+      deps.setHistoryIndex(keepTab.historyIndex);
+      deps.setSelectedItems(new Set(keepTab.selectedItems));
+      if (keepTab.cachedFiles !== undefined) {
+        restoreTabView(keepTab);
+      } else {
+        deps.navigateTo(keepTab.path, true);
+      }
+    }
+    renderTabs();
+    debouncedSaveTabState();
+  }
+
+  function closeTabsToTheRight(tabId: string): void {
+    if (!deps.getTabsEnabled()) return;
+    const tabs = deps.getTabs();
+    const tabIndex = tabs.findIndex((t) => t.id === tabId);
+    if (tabIndex === -1 || tabIndex >= tabs.length - 1) return;
+
+    const closingTabs = tabs.slice(tabIndex + 1);
+    for (const t of closingTabs) {
+      if (t.path) {
+        closedTabPaths.push(t.path);
+        if (closedTabPaths.length > MAX_CLOSED_TABS) closedTabPaths.shift();
+      }
+    }
+
+    tabs.length = tabIndex + 1;
+
+    const activeTabId = deps.getActiveTabId();
+    if (!tabs.some((t) => t.id === activeTabId)) {
+      const lastTab = tabs[tabs.length - 1];
+      deps.setActiveTabId(lastTab.id);
+      deps.setHistory([...lastTab.history]);
+      deps.setHistoryIndex(lastTab.historyIndex);
+      deps.setSelectedItems(new Set(lastTab.selectedItems));
+      if (lastTab.cachedFiles !== undefined) {
+        restoreTabView(lastTab);
+      } else {
+        deps.navigateTo(lastTab.path, true);
+      }
+    }
+    renderTabs();
+    debouncedSaveTabState();
+  }
+
+  function duplicateTab(tabId: string): void {
+    if (!deps.getTabsEnabled()) return;
+    const tabs = deps.getTabs();
+    const sourceTab = tabs.find((t) => t.id === tabId);
+    if (!sourceTab) return;
+    void addNewTab(sourceTab.path);
+  }
+
+  function showTabContextMenu(x: number, y: number, tabId: string): void {
+    hideTabContextMenu();
+    const tabs = deps.getTabs();
+    const tabIndex = tabs.findIndex((t) => t.id === tabId);
+
+    const menu = document.createElement('div');
+    menu.className = 'tab-context-menu';
+    menu.setAttribute('role', 'menu');
+    menu.style.left = `${x}px`;
+    menu.style.top = `${y}px`;
+
+    const items: Array<{ label: string; action: () => void; disabled?: boolean }> = [
+      { label: 'Close Tab', action: () => closeTab(tabId), disabled: tabs.length <= 1 },
+      {
+        label: 'Close Other Tabs',
+        action: () => closeOtherTabs(tabId),
+        disabled: tabs.length <= 1,
+      },
+      {
+        label: 'Close Tabs to the Right',
+        action: () => closeTabsToTheRight(tabId),
+        disabled: tabIndex >= tabs.length - 1,
+      },
+      { label: 'Duplicate Tab', action: () => duplicateTab(tabId) },
+    ];
+
+    for (const item of items) {
+      const el = document.createElement('div');
+      el.className = 'tab-context-menu-item' + (item.disabled ? ' disabled' : '');
+      el.setAttribute('role', 'menuitem');
+      el.textContent = item.label;
+      if (item.disabled) {
+        el.setAttribute('aria-disabled', 'true');
+      } else {
+        el.addEventListener('click', (e) => {
+          e.stopPropagation();
+          hideTabContextMenu();
+          item.action();
+        });
+      }
+      menu.appendChild(el);
+    }
+
+    document.body.appendChild(menu);
+
+    const rect = menu.getBoundingClientRect();
+    if (rect.right > window.innerWidth) {
+      menu.style.left = `${window.innerWidth - rect.width - 4}px`;
+    }
+    if (rect.bottom > window.innerHeight) {
+      menu.style.top = `${window.innerHeight - rect.height - 4}px`;
+    }
+
+    const enabledItems = Array.from(
+      menu.querySelectorAll('.tab-context-menu-item:not(.disabled)')
+    ) as HTMLElement[];
+    if (enabledItems.length > 0) {
+      enabledItems[0].setAttribute('tabindex', '0');
+      enabledItems[0].focus();
+      for (let i = 1; i < enabledItems.length; i++) {
+        enabledItems[i].setAttribute('tabindex', '-1');
+      }
+    }
+
+    menu.addEventListener('keydown', (e: KeyboardEvent) => {
+      const focused = document.activeElement as HTMLElement | null;
+      const idx = focused ? enabledItems.indexOf(focused) : -1;
+
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        const next = idx < enabledItems.length - 1 ? idx + 1 : 0;
+        enabledItems[next]?.focus();
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        const prev = idx > 0 ? idx - 1 : enabledItems.length - 1;
+        enabledItems[prev]?.focus();
+      } else if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        focused?.click();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        hideTabContextMenu();
+      }
+    });
+
+    activeDismissHandler = (e: MouseEvent) => {
+      if (!menu.contains(e.target as Node)) {
+        hideTabContextMenu();
+      }
+    };
+    dismissTimeoutId = setTimeout(() => {
+      dismissTimeoutId = null;
+      document.addEventListener('mousedown', activeDismissHandler!, { once: true });
+    }, 0);
+  }
+
+  function hideTabContextMenu(): void {
+    if (dismissTimeoutId !== null) {
+      clearTimeout(dismissTimeoutId);
+      dismissTimeoutId = null;
+    }
+    if (activeDismissHandler) {
+      document.removeEventListener('mousedown', activeDismissHandler);
+      activeDismissHandler = null;
+    }
+    document.querySelectorAll('.tab-context-menu').forEach((el) => el.remove());
+  }
+
+  function restoreClosedTab(): void {
+    if (!deps.getTabsEnabled() || closedTabPaths.length === 0) return;
+    const path = closedTabPaths.pop()!;
+    void addNewTab(path);
+  }
+
   function cleanup(): void {
     const timeout = deps.getSaveTabStateTimeout();
     if (timeout) {
@@ -449,6 +639,7 @@ export function createTabsController(deps: TabsDeps) {
     initializeTabs,
     addNewTab,
     closeTab,
+    restoreClosedTab,
     saveTabState,
     updateCurrentTabPath,
     switchToTab,

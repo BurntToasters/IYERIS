@@ -3,6 +3,10 @@ import * as path from 'path';
 import { ignoreError } from '../shared';
 import { type SearchResult, isCancelled, sendProgress, batchCheckHidden } from './workerUtils';
 
+const isMac = process.platform === 'darwin';
+const isWin = process.platform === 'win32';
+const isLinux = process.platform === 'linux';
+
 interface ListDirectoryPayload {
   dirPath: string;
   batchSize?: number;
@@ -28,38 +32,68 @@ export async function listDirectory(
     const names = batch.map((entry) => entry.name);
     const hiddenMap = shouldCheckHidden
       ? await batchCheckHidden(dirPath, names)
-      : new Map<string, boolean>();
+      : new Map<string, { isHidden: boolean; isSystemProtected: boolean }>();
     let items = await Promise.all(
       batch.map(async (entry) => {
         const fullPath = path.join(dirPath, entry.name);
+        const attrFlags = hiddenMap.get(entry.name);
         const isHiddenFlag = shouldCheckHidden
-          ? (hiddenMap.get(entry.name) ?? entry.name.startsWith('.'))
+          ? (attrFlags?.isHidden ?? entry.name.startsWith('.'))
           : entry.name.startsWith('.');
+        const isSystemProtectedFlag = attrFlags?.isSystemProtected ?? false;
+        const isDir = entry.isDirectory();
+        const isBundle = isMac && isDir && entry.name.endsWith('.app');
+        const isLink = entry.isSymbolicLink();
+        let linkTarget: string | undefined;
+        let isBrokenSymlink = false;
+        if (isLink) {
+          try {
+            const rawTarget = await fs.readlink(fullPath);
+            linkTarget = isWin ? rawTarget.replace(/\//g, '\\') : rawTarget;
+          } catch {
+            isBrokenSymlink = true;
+          }
+        }
         try {
           const stats = await fs.stat(fullPath);
           return {
             name: entry.name,
             path: fullPath,
-            isDirectory: entry.isDirectory(),
+            isDirectory: isDir,
             isFile: entry.isFile(),
+            isSymlink: isLink || undefined,
+            isBrokenSymlink: isBrokenSymlink || undefined,
+            isAppBundle: isBundle || undefined,
+            isShortcut: (isWin && entry.name.endsWith('.lnk')) || undefined,
+            isDesktopEntry: (isLinux && entry.name.endsWith('.desktop')) || undefined,
+            symlinkTarget: linkTarget,
             size: stats.size,
             modified: stats.mtime,
             isHidden: isHiddenFlag,
+            isSystemProtected: isSystemProtectedFlag || undefined,
           };
         } catch {
           return {
             name: entry.name,
             path: fullPath,
-            isDirectory: entry.isDirectory(),
+            isDirectory: isDir,
             isFile: entry.isFile(),
+            isSymlink: isLink || undefined,
+            isBrokenSymlink: (isLink && true) || undefined,
+            isAppBundle: isBundle || undefined,
+            isShortcut: (isWin && entry.name.endsWith('.lnk')) || undefined,
+            isDesktopEntry: (isLinux && entry.name.endsWith('.desktop')) || undefined,
+            symlinkTarget: linkTarget,
             size: 0,
             modified: new Date(),
             isHidden: isHiddenFlag,
+            isSystemProtected: isSystemProtectedFlag || undefined,
           };
         }
       })
     );
 
+    items = items.filter((item) => !item.isSystemProtected);
     if (!includeHidden) {
       items = items.filter((item) => !item.isHidden);
     }

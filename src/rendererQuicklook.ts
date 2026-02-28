@@ -6,6 +6,7 @@ import { createPdfViewer, type PdfViewerHandle } from './rendererPdfViewer.js';
 import { loadHighlightJs, getLanguageForExt } from './rendererHighlight.js';
 import {
   IMAGE_EXTENSIONS,
+  MARKDOWN_EXTENSIONS,
   TEXT_EXTENSIONS,
   VIDEO_EXTENSIONS,
   AUDIO_EXTENSIONS,
@@ -13,6 +14,8 @@ import {
   VIDEO_MIME_TYPES,
   AUDIO_MIME_TYPES,
 } from './fileTypes.js';
+
+import { loadMarked } from './rendererMarkdown.js';
 
 interface PdfViewerElement extends HTMLElement {
   __pdfViewer?: PdfViewerHandle | null;
@@ -199,6 +202,31 @@ export function createQuicklookController(deps: QuicklookDeps) {
         quicklookContent.innerHTML = `<div class="preview-error">Failed to render PDF</div>`;
       }
       quicklookInfo.textContent = quickInfo(file, 'PDF \u2022 ');
+    } else if (MARKDOWN_EXTENSIONS.has(ext)) {
+      const result = await window.electronAPI.readFileContent(file.path, 100 * 1024);
+      if (requestId !== quicklookRequestId || currentQuicklookFile?.path !== file.path) return;
+      if (result.success && typeof result.content === 'string') {
+        const md = await loadMarked();
+        if (requestId !== quicklookRequestId || currentQuicklookFile?.path !== file.path) return;
+        if (md) {
+          const rendered = md.marked.parse(result.content, {
+            async: false,
+            breaks: true,
+          }) as string;
+          quicklookContent.innerHTML = `
+          ${result.isTruncated ? `<div class="preview-truncated">${twemojiImg(String.fromCodePoint(0x26a0), 'twemoji')} File truncated to first 100KB</div>` : ''}
+          <div class="preview-markdown">${rendered}</div>
+        `;
+        } else {
+          quicklookContent.innerHTML = `
+          ${result.isTruncated ? `<div class="preview-truncated">${twemojiImg(String.fromCodePoint(0x26a0), 'twemoji')} File truncated to first 100KB</div>` : ''}
+          <pre class="preview-text"><code>${escapeHtml(result.content)}</code></pre>
+        `;
+        }
+        quicklookInfo.textContent = quickInfo(file);
+      } else {
+        quicklookContent.innerHTML = `<div class="preview-error">Failed to load markdown</div>`;
+      }
     } else if (TEXT_EXTENSIONS.has(ext)) {
       const result = await window.electronAPI.readFileContent(file.path, 100 * 1024);
       if (requestId !== quicklookRequestId || currentQuicklookFile?.path !== file.path) {

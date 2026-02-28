@@ -579,6 +579,33 @@ describe('createColumnViewController', () => {
           expect.objectContaining({ name: 'open.txt' })
         );
       });
+
+      it('does not open file on modified double click', async () => {
+        const deps = createDeps();
+        deps.getCurrentPath = () => '/test';
+
+        const items = [makeFileItem('open.txt', '/test/open.txt', false)];
+
+        mockElectronAPI.getDirectoryContents.mockImplementation((colPath: string) => {
+          if (colPath === '/test') {
+            return Promise.resolve({ success: true, contents: items });
+          }
+          return Promise.resolve({ success: true, contents: [] });
+        });
+
+        const controller = createColumnViewController(deps as any);
+        await controller.renderColumnView();
+
+        const columnView = document.getElementById('column-view')!;
+        const fileItem = Array.from(columnView.querySelectorAll('.column-item')).find(
+          (el) => el.querySelector('.column-item-name')?.textContent === 'open.txt'
+        );
+
+        fileItem!.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, ctrlKey: true }));
+        await vi.advanceTimersByTimeAsync(100);
+
+        expect(deps.openFileEntry).not.toHaveBeenCalled();
+      });
     });
 
     describe('context menu', () => {

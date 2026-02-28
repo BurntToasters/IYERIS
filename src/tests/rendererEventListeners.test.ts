@@ -18,6 +18,7 @@ function makeSettings(overrides: Partial<Settings> = {}): Settings {
     showHiddenFiles: true,
     enableSearchHistory: false,
     searchHistory: [],
+    savedSearches: [],
     directoryHistory: [],
     enableIndexer: false,
     minimizeToTray: false,
@@ -83,8 +84,6 @@ function createMockConfig() {
     getBackBtn: vi.fn(() => document.getElementById('back-btn')!),
     getForwardBtn: vi.fn(() => document.getElementById('forward-btn')!),
     getUpBtn: vi.fn(() => document.getElementById('up-btn')!),
-    getUndoBtn: vi.fn(() => document.getElementById('undo-btn')!),
-    getRedoBtn: vi.fn(() => document.getElementById('redo-btn')!),
     getRefreshBtn: vi.fn(() => document.getElementById('refresh-btn')!),
     getNewFileBtn: vi.fn(() => document.getElementById('new-file-btn')! as HTMLButtonElement),
     getNewFolderBtn: vi.fn(() => document.getElementById('new-folder-btn')! as HTMLButtonElement),
@@ -103,6 +102,7 @@ function createMockConfig() {
     goBack: vi.fn(),
     goForward: vi.fn(),
     goUp: vi.fn(),
+    goHome: vi.fn(),
     refresh: vi.fn(),
     navigateTo: vi.fn(),
     clearSelection: vi.fn(),
@@ -145,6 +145,7 @@ function createMockConfig() {
     handleContextMenuAction: vi.fn(),
     handleEmptySpaceContextMenuAction: vi.fn(),
     handleContextMenuKeyNav: vi.fn(() => false),
+    handleSortMenuKeyNav: vi.fn(() => false),
     getContextMenuData: vi.fn(() => null),
     openNewWindow: vi.fn(),
     showCommandPalette: vi.fn(),
@@ -181,6 +182,15 @@ function createMockConfig() {
     zoomIn: vi.fn(),
     zoomOut: vi.fn(),
     zoomReset: vi.fn(),
+    toggleHiddenFiles: vi.fn(),
+    showPropertiesForSelected: vi.fn(),
+    restoreClosedTab: vi.fn(),
+    togglePreviewPanel: vi.fn(),
+    showContextMenuForSelected: vi.fn(),
+    focusFileGrid: vi.fn(),
+    ensureActiveItem: vi.fn(),
+    toggleSelectionAtCursor: vi.fn(),
+    navigateFileGridFocusOnly: vi.fn(),
 
     initSettingsTabs: vi.fn(),
     initSettingsUi: vi.fn(),
@@ -216,8 +226,6 @@ function setupBasicDom() {
     <div id="back-btn"></div>
     <div id="forward-btn"></div>
     <div id="up-btn"></div>
-    <div id="undo-btn"></div>
-    <div id="redo-btn"></div>
     <div id="refresh-btn"></div>
     <button id="new-file-btn"></button>
     <button id="new-folder-btn"></button>
@@ -228,6 +236,8 @@ function setupBasicDom() {
     <div id="selection-move-btn"></div>
     <div id="selection-rename-btn"></div>
     <div id="selection-delete-btn"></div>
+    <div id="selection-overflow-btn"></div>
+    <div id="selection-overflow-menu" style="display:none"></div>
     <div id="bookmark-add-btn"></div>
     <div id="select-all-btn"></div>
     <div id="deselect-all-btn"></div>
@@ -854,7 +864,7 @@ describe('createEventListenersController', () => {
       expect(config.deleteSelected).toHaveBeenCalledWith(true);
     });
 
-    it('shows warning toast for Shift+Delete when developer mode is off', () => {
+    it('dispatches Shift+Delete to permanently delete even when developer mode is off', () => {
       const config = createMockConfig();
       config.getCurrentSettings.mockReturnValue(makeSettings({ showDangerousOptions: false }));
       const ctrl = createEventListenersController(config);
@@ -864,12 +874,7 @@ describe('createEventListenersController', () => {
         new KeyboardEvent('keydown', { key: 'Delete', shiftKey: true, bubbles: true })
       );
 
-      expect(config.showToast).toHaveBeenCalledWith(
-        expect.stringContaining('Developer Mode'),
-        'Developer Mode Required',
-        'warning'
-      );
-      expect(config.deleteSelected).not.toHaveBeenCalled();
+      expect(config.deleteSelected).toHaveBeenCalledWith(true);
     });
 
     it('dispatches Backspace to go up', () => {
@@ -1055,26 +1060,6 @@ describe('createEventListenersController', () => {
       document.getElementById('deselect-all-btn')!.click();
 
       expect(config.clearSelection).toHaveBeenCalled();
-    });
-
-    it('undo button triggers performUndo', () => {
-      const config = createMockConfig();
-      const ctrl = createEventListenersController(config);
-      ctrl.setupEventListeners();
-
-      document.getElementById('undo-btn')!.click();
-
-      expect(config.performUndo).toHaveBeenCalled();
-    });
-
-    it('redo button triggers performRedo', () => {
-      const config = createMockConfig();
-      const ctrl = createEventListenersController(config);
-      ctrl.setupEventListeners();
-
-      document.getElementById('redo-btn')!.click();
-
-      expect(config.performRedo).toHaveBeenCalled();
     });
   });
 

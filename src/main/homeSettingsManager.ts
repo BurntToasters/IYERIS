@@ -1,4 +1,5 @@
-import { ipcMain, app, BrowserWindow, IpcMainInvokeEvent } from 'electron';
+import type { IpcMainInvokeEvent } from 'electron';
+import { ipcMain, app, BrowserWindow } from 'electron';
 import * as path from 'path';
 import { promises as fs } from 'fs';
 import type { HomeSettings, ApiResponse, HomeSettingsResponse } from '../types';

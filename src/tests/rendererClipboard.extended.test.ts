@@ -4,6 +4,7 @@ import { createClipboardController } from '../rendererClipboard';
 
 type ElectronApi = {
   setClipboard: ReturnType<typeof vi.fn>;
+  getSystemClipboardData: ReturnType<typeof vi.fn>;
   getSystemClipboardFiles: ReturnType<typeof vi.fn>;
   copyItems: ReturnType<typeof vi.fn>;
   moveItems: ReturnType<typeof vi.fn>;
@@ -13,6 +14,7 @@ type ElectronApi = {
 function setupElectronApi(overrides: Partial<ElectronApi> = {}): ElectronApi {
   const api: ElectronApi = {
     setClipboard: vi.fn().mockResolvedValue(undefined),
+    getSystemClipboardData: vi.fn().mockResolvedValue({ operation: 'copy', paths: [] }),
     getSystemClipboardFiles: vi.fn().mockResolvedValue([]),
     copyItems: vi.fn().mockResolvedValue({ success: true }),
     moveItems: vi.fn().mockResolvedValue({ success: true }),
@@ -49,8 +51,8 @@ function createDeps(overrides: Record<string, unknown> = {}) {
 describe('createClipboardController — extended', () => {
   beforeEach(() => {
     document.body.innerHTML = `
-      <div id="clipboard-indicator" style="display:none">
-        <span id="clipboard-text"></span>
+      <div id="status-clipboard" style="display:none">
+        <span id="status-clipboard-text"></span>
       </div>
     `;
   });
@@ -85,7 +87,9 @@ describe('createClipboardController — extended', () => {
     });
 
     it('returns silently when clipboard empty and no system files', async () => {
-      setupElectronApi({ getSystemClipboardFiles: vi.fn().mockResolvedValue([]) });
+      setupElectronApi({
+        getSystemClipboardData: vi.fn().mockResolvedValue({ operation: 'copy', paths: [] }),
+      });
       const deps = createDeps();
       const ctrl = createClipboardController(deps);
       await ctrl.pasteFromClipboard();
@@ -93,7 +97,7 @@ describe('createClipboardController — extended', () => {
     });
 
     it('returns silently when clipboard empty and system files is null', async () => {
-      setupElectronApi({ getSystemClipboardFiles: vi.fn().mockResolvedValue(null) });
+      setupElectronApi({ getSystemClipboardData: vi.fn().mockResolvedValue(null) });
       const deps = createDeps();
       const ctrl = createClipboardController(deps);
       await ctrl.pasteFromClipboard();
@@ -102,25 +106,41 @@ describe('createClipboardController — extended', () => {
 
     it('shows error toast when system clipboard paste fails', async () => {
       setupElectronApi({
-        getSystemClipboardFiles: vi.fn().mockResolvedValue(['/sys/file.txt']),
+        getSystemClipboardData: vi.fn().mockResolvedValue({
+          operation: 'copy',
+          paths: ['/sys/file.txt'],
+        }),
         copyItems: vi.fn().mockResolvedValue({ success: false, error: 'Copy failed' }),
       });
       const deps = createDeps();
       const ctrl = createClipboardController(deps);
       await ctrl.pasteFromClipboard();
-      expect(deps.showToast).toHaveBeenCalledWith('Copy failed', 'Error', 'error');
+      expect(deps.showToast).toHaveBeenCalledWith(
+        'Copy failed',
+        'Error',
+        'error',
+        expect.any(Array)
+      );
       expect(deps.refresh).not.toHaveBeenCalled();
     });
 
     it('shows generic error when paste result has no error message', async () => {
       setupElectronApi({
-        getSystemClipboardFiles: vi.fn().mockResolvedValue(['/sys/file.txt']),
+        getSystemClipboardData: vi.fn().mockResolvedValue({
+          operation: 'copy',
+          paths: ['/sys/file.txt'],
+        }),
         copyItems: vi.fn().mockResolvedValue({ success: false }),
       });
       const deps = createDeps();
       const ctrl = createClipboardController(deps);
       await ctrl.pasteFromClipboard();
-      expect(deps.showToast).toHaveBeenCalledWith('Paste failed', 'Error', 'error');
+      expect(deps.showToast).toHaveBeenCalledWith(
+        'Paste failed',
+        'Error',
+        'error',
+        expect.any(Array)
+      );
     });
 
     it('shows error toast when local paste operation fails', async () => {
@@ -132,7 +152,7 @@ describe('createClipboardController — extended', () => {
       ctrl.setClipboard({ operation: 'copy', paths: ['/a.txt'] });
       await ctrl.pasteFromClipboard();
       expect(electronApi.copyItems).toHaveBeenCalled();
-      expect(deps.showToast).toHaveBeenCalledWith('disk full', 'Error', 'error');
+      expect(deps.showToast).toHaveBeenCalledWith('disk full', 'Error', 'error', expect.any(Array));
     });
 
     it('shows generic error when local paste has no error message', async () => {
@@ -143,7 +163,54 @@ describe('createClipboardController — extended', () => {
       const ctrl = createClipboardController(deps);
       ctrl.setClipboard({ operation: 'cut', paths: ['/a.txt'] });
       await ctrl.pasteFromClipboard();
-      expect(deps.showToast).toHaveBeenCalledWith('Operation failed', 'Error', 'error');
+      expect(deps.showToast).toHaveBeenCalledWith(
+        'Operation failed',
+        'Error',
+        'error',
+        expect.any(Array)
+      );
+    });
+
+    it('moves items when system clipboard operation is cut', async () => {
+      const electronApi = setupElectronApi({
+        getSystemClipboardData: vi.fn().mockResolvedValue({
+          operation: 'cut',
+          paths: ['/sys/file.txt'],
+        }),
+      });
+      const deps = createDeps();
+      const ctrl = createClipboardController(deps);
+
+      await ctrl.pasteFromClipboard();
+
+      expect(electronApi.moveItems).toHaveBeenCalledWith(['/sys/file.txt'], '/dest', 'ask');
+      expect(deps.showToast).toHaveBeenCalledWith(
+        '1 item(s) moved from system clipboard',
+        'Success',
+        'success'
+      );
+    });
+
+    it('falls back to copy with warning when system cut move is permission denied', async () => {
+      const electronApi = setupElectronApi({
+        getSystemClipboardData: vi.fn().mockResolvedValue({
+          operation: 'cut',
+          paths: ['/sys/file.txt'],
+        }),
+        moveItems: vi.fn().mockResolvedValue({ success: false, error: 'EPERM: access denied' }),
+        copyItems: vi.fn().mockResolvedValue({ success: true }),
+      });
+      const deps = createDeps();
+      const ctrl = createClipboardController(deps);
+
+      await ctrl.pasteFromClipboard();
+
+      expect(electronApi.copyItems).toHaveBeenCalledWith(['/sys/file.txt'], '/dest', 'ask');
+      expect(deps.showToast).toHaveBeenCalledWith(
+        "1 item(s) copied from system clipboard; couldn't remove originals",
+        'Permission Required',
+        'warning'
+      );
     });
   });
 
@@ -206,13 +273,57 @@ describe('createClipboardController — extended', () => {
     });
   });
 
+  describe('pasteIntoFolder', () => {
+    it('moves items for system cut clipboard data', async () => {
+      const electronApi = setupElectronApi({
+        getSystemClipboardData: vi.fn().mockResolvedValue({
+          operation: 'cut',
+          paths: ['/sys/file.txt'],
+        }),
+      });
+      const deps = createDeps();
+      const ctrl = createClipboardController(deps);
+
+      await ctrl.pasteIntoFolder('/target');
+
+      expect(electronApi.moveItems).toHaveBeenCalledWith(['/sys/file.txt'], '/target', 'ask');
+      expect(deps.showToast).toHaveBeenCalledWith(
+        '1 item(s) moved from system clipboard',
+        'Success',
+        'success'
+      );
+    });
+
+    it('falls back to copy in pasteIntoFolder when system cut move is permission denied', async () => {
+      const electronApi = setupElectronApi({
+        getSystemClipboardData: vi.fn().mockResolvedValue({
+          operation: 'cut',
+          paths: ['/sys/file.txt'],
+        }),
+        moveItems: vi.fn().mockResolvedValue({ success: false, error: 'permission denied' }),
+        copyItems: vi.fn().mockResolvedValue({ success: true }),
+      });
+      const deps = createDeps();
+      const ctrl = createClipboardController(deps);
+
+      await ctrl.pasteIntoFolder('/target');
+
+      expect(electronApi.copyItems).toHaveBeenCalledWith(['/sys/file.txt'], '/target', 'ask');
+      expect(deps.showToast).toHaveBeenCalledWith(
+        "1 item(s) copied from system clipboard; couldn't remove originals",
+        'Permission Required',
+        'warning'
+      );
+    });
+  });
+
   describe('updateClipboardIndicator', () => {
     it('hides indicator when clipboard is empty and globalClipboard is off', async () => {
       setupElectronApi();
       const deps = createDeps({ settingsOverrides: { globalClipboard: false } });
       const ctrl = createClipboardController(deps);
       await ctrl.updateClipboardIndicator();
-      expect(document.getElementById('clipboard-indicator')!.style.display).toBe('none');
+      expect(document.getElementById('status-clipboard')!.style.display).toBe('none');
     });
 
     it('does nothing when indicator elements are missing', async () => {
@@ -226,13 +337,34 @@ describe('createClipboardController — extended', () => {
 
     it('shows system clipboard files info', async () => {
       setupElectronApi({
-        getSystemClipboardFiles: vi.fn().mockResolvedValue(['/a.txt', '/b.txt']),
+        getSystemClipboardData: vi.fn().mockResolvedValue({
+          operation: 'copy',
+          paths: ['/a.txt', '/b.txt'],
+        }),
       });
       const deps = createDeps();
       const ctrl = createClipboardController(deps);
       await ctrl.updateClipboardIndicator();
-      expect(document.getElementById('clipboard-text')!.textContent).toBe('2 from system');
-      expect(document.getElementById('clipboard-indicator')!.style.display).toBe('inline-flex');
+      expect(document.getElementById('status-clipboard-text')!.textContent).toBe('2 from system');
+      expect(document.getElementById('status-clipboard')!.style.display).toBe('inline-flex');
+    });
+
+    it('shows system cut state in indicator', async () => {
+      setupElectronApi({
+        getSystemClipboardData: vi.fn().mockResolvedValue({
+          operation: 'cut',
+          paths: ['/a.txt'],
+        }),
+      });
+      const deps = createDeps();
+      const ctrl = createClipboardController(deps);
+      await ctrl.updateClipboardIndicator();
+      expect(document.getElementById('status-clipboard-text')!.textContent).toBe(
+        '1 from system (cut)'
+      );
+      expect(document.getElementById('status-clipboard')!.classList.contains('cut-mode')).toBe(
+        true
+      );
     });
   });
 

@@ -1,4 +1,5 @@
-import { ipcMain, app, BrowserWindow, IpcMainInvokeEvent, clipboard } from 'electron';
+import type { IpcMainInvokeEvent } from 'electron';
+import { ipcMain, app, BrowserWindow, clipboard } from 'electron';
 import * as path from 'path';
 import { promises as fs } from 'fs';
 import * as fsSync from 'fs';
@@ -327,11 +328,77 @@ export function setupSettingsHandlers(createTray: () => Promise<void>): void {
     }
   );
 
-  ipcMain.handle('get-system-clipboard-files', (event: IpcMainInvokeEvent): string[] => {
-    if (!isTrustedIpcEvent(event, 'get-system-clipboard-files')) {
-      return [];
-    }
+  const readSystemClipboardData = (): { operation: 'copy' | 'cut'; paths: string[] } => {
     try {
+      const isMacTransientFileRef = (filePath: string): boolean =>
+        process.platform === 'darwin' && filePath.startsWith('/.file/id=');
+
+      const readWindowsDropEffect = (): 'copy' | 'cut' => {
+        if (process.platform !== 'win32') return 'copy';
+        try {
+          const dropEffect = clipboard.readBuffer('Preferred DropEffect');
+          if (dropEffect && dropEffect.length >= 4) {
+            const effect = dropEffect.readUInt32LE(0);
+            if ((effect & 2) === 2) {
+              return 'cut';
+            }
+          }
+        } catch (error) {
+          ignoreError(error);
+        }
+        return 'copy';
+      };
+
+      const parseClipboardPath = (line: string): string => {
+        let filePath = line.trim();
+        if (!filePath) return '';
+        if (filePath.startsWith('file://')) {
+          try {
+            const parsed = new URL(filePath);
+            let decodedPath = '';
+            try {
+              decodedPath = decodeURIComponent(parsed.pathname || '');
+            } catch {
+              decodedPath = parsed.pathname || '';
+            }
+            if (
+              process.platform === 'win32' &&
+              parsed.hostname &&
+              /^[A-Za-z]$/.test(parsed.hostname) &&
+              decodedPath.startsWith('/')
+            ) {
+              filePath = `${parsed.hostname.toUpperCase()}:${decodedPath.replace(/\//g, '\\')}`;
+            } else if (parsed.hostname && parsed.hostname !== 'localhost') {
+              if (process.platform === 'win32') {
+                decodedPath = `\\\\${parsed.hostname}${decodedPath.replace(/\//g, '\\')}`;
+              } else {
+                decodedPath = `//${parsed.hostname}${decodedPath}`;
+              }
+              filePath = decodedPath;
+            } else if (
+              process.platform === 'win32' &&
+              decodedPath.startsWith('/') &&
+              decodedPath.charAt(2) === ':'
+            ) {
+              filePath = decodedPath.substring(1);
+            } else {
+              filePath = decodedPath;
+            }
+          } catch {
+            const rawPath = filePath.substring(7);
+            try {
+              filePath = decodeURIComponent(rawPath);
+            } catch {
+              filePath = rawPath;
+            }
+          }
+        }
+        if (isMacTransientFileRef(filePath)) {
+          return '';
+        }
+        return filePath;
+      };
+
       // win format (ucs-2)
       const files = clipboard.readBuffer('FileNameW');
       if (files && files.length > 0) {
@@ -343,8 +410,44 @@ export function setupSettingsHandlers(createTray: () => Promise<void>): void {
           }
         }
         if (paths.length > 0) {
-          logger.debug('[System Clipboard] Found files (Windows format):', paths.length, 'items');
-          return paths;
+          const operation = readWindowsDropEffect();
+          logger.debug(
+            '[System Clipboard] Found files (Windows format):',
+            paths.length,
+            'items',
+            `(${operation})`
+          );
+          return { operation, paths };
+        }
+      }
+
+      if (process.platform === 'linux') {
+        const gnomeCopied = clipboard.readBuffer('x-special/gnome-copied-files');
+        if (gnomeCopied && gnomeCopied.length > 0) {
+          const content = gnomeCopied.toString('utf8');
+          const lines = content.split('\n').filter(Boolean);
+          const paths: string[] = [];
+          let operation: 'copy' | 'cut' = 'copy';
+          const firstLine = lines[0]?.trim().toLowerCase();
+          const dataLines =
+            firstLine === 'copy' || firstLine === 'cut'
+              ? ((operation = firstLine), lines.slice(1))
+              : lines;
+
+          for (const line of dataLines) {
+            const trimmed = line.trim();
+            const filePath = parseClipboardPath(trimmed);
+            if (filePath) paths.push(filePath);
+          }
+          if (paths.length > 0) {
+            logger.debug(
+              '[System Clipboard] Found files (GNOME format):',
+              paths.length,
+              'items',
+              `(${operation})`
+            );
+            return { operation, paths };
+          }
         }
       }
 
@@ -354,17 +457,7 @@ export function setupSettingsHandlers(createTray: () => Promise<void>): void {
         const paths: string[] = [];
         const lines = filePaths.split('\n').filter(Boolean);
         for (const line of lines) {
-          let filePath = line.trim();
-          if (filePath.startsWith('file://')) {
-            filePath = decodeURIComponent(filePath.substring(7));
-            if (
-              process.platform === 'win32' &&
-              filePath.startsWith('/') &&
-              filePath.charAt(2) === ':'
-            ) {
-              filePath = filePath.substring(1);
-            }
-          }
+          const filePath = parseClipboardPath(line);
           if (filePath) {
             paths.push(filePath);
           }
@@ -375,15 +468,76 @@ export function setupSettingsHandlers(createTray: () => Promise<void>): void {
             paths.length,
             'items'
           );
-          return paths;
+          return { operation: 'copy', paths };
         }
       }
 
-      return [];
+      if (process.platform === 'linux') {
+        const uriList = clipboard.readBuffer('text/uri-list');
+        if (uriList && uriList.length > 0) {
+          const content = uriList.toString('utf8');
+          const lines = content.split('\n').filter(Boolean);
+          const paths: string[] = [];
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (trimmed.startsWith('#')) continue;
+            const filePath = parseClipboardPath(trimmed);
+            if (filePath) paths.push(filePath);
+          }
+          if (paths.length > 0) {
+            logger.debug(
+              '[System Clipboard] Found files (URI list format):',
+              paths.length,
+              'items'
+            );
+            return { operation: 'copy', paths };
+          }
+        }
+      }
+
+      if (process.platform === 'darwin') {
+        const nsFilenames = clipboard.readBuffer('NSFilenamesPboardType');
+        if (nsFilenames && nsFilenames.length > 0) {
+          const content = nsFilenames.toString('utf8');
+          const pathMatches = content.match(/<string>([^<]+)<\/string>/g);
+          if (pathMatches) {
+            const paths = pathMatches
+              .map((m) => m.replace(/<\/?string>/g, '').trim())
+              .filter(Boolean);
+            if (paths.length > 0) {
+              logger.debug(
+                '[System Clipboard] Found files (Finder plist format):',
+                paths.length,
+                'items'
+              );
+              return { operation: 'copy', paths };
+            }
+          }
+        }
+      }
+
+      return { operation: 'copy', paths: [] };
     } catch (error) {
       logger.error('[System Clipboard] Error reading files from clipboard:', error);
+      return { operation: 'copy', paths: [] };
+    }
+  };
+
+  ipcMain.handle(
+    'get-system-clipboard-data',
+    (event: IpcMainInvokeEvent): { operation: 'copy' | 'cut'; paths: string[] } => {
+      if (!isTrustedIpcEvent(event, 'get-system-clipboard-data')) {
+        return { operation: 'copy', paths: [] };
+      }
+      return readSystemClipboardData();
+    }
+  );
+
+  ipcMain.handle('get-system-clipboard-files', (event: IpcMainInvokeEvent): string[] => {
+    if (!isTrustedIpcEvent(event, 'get-system-clipboard-files')) {
       return [];
     }
+    return readSystemClipboardData().paths;
   });
 
   ipcMain.handle('set-drag-data', (event: IpcMainInvokeEvent, paths: string[]): void => {

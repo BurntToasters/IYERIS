@@ -10,32 +10,6 @@
   border: 0;
 }
 
-.skip-link {
-  position: absolute;
-  top: -100%;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 100000;
-  padding: 8px 16px;
-  background: var(--accent-color, #0078d4);
-  color: #fff;
-  border-radius: 0 0 6px 6px;
-  font-size: 14px;
-  font-weight: 500;
-  text-decoration: none;
-  transition: top 0.15s ease;
-}
-
-.skip-link:focus {
-  top: 0;
-  outline: 3px solid var(--accent-hover, #106ebe);
-  outline-offset: 2px;
-}
-
-body.reduce-motion .skip-link {
-  transition: none;
-}
-
 body.reduce-motion .selection-rect {
   transition: none;
 }

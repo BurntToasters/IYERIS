@@ -392,25 +392,22 @@ describe('utils.ts', () => {
     });
 
     describe('linux platform', () => {
-      it.skipIf(process.platform === 'win32')(
-        'uses basename as label for mount points',
-        async () => {
-          setPlatform('linux');
-          mockReaddir
-            .mockResolvedValueOnce(['usb-drive'])
-            .mockResolvedValueOnce([])
-            .mockResolvedValueOnce([]);
-          mockStat.mockResolvedValue({ isDirectory: () => true } as any);
-          const mod = await import('../main/utils');
-          const info = await mod.getDriveInfo();
-          const rootInfo = info.find((d) => d.path === '/');
-          expect(rootInfo).toBeDefined();
-          expect(rootInfo!.label).toBe('/');
-          const usbInfo = info.find((d) => d.path === path.join('/media', 'usb-drive'));
-          expect(usbInfo).toBeDefined();
-          expect(usbInfo!.label).toBe('usb-drive');
-        }
-      );
+      it('uses basename as label for mount points', async () => {
+        setPlatform('linux');
+        mockReaddir
+          .mockResolvedValueOnce(['usb-drive'])
+          .mockResolvedValueOnce([])
+          .mockResolvedValueOnce([]);
+        mockStat.mockResolvedValue({ isDirectory: () => true } as any);
+        const mod = await import('../main/utils');
+        const info = await mod.getDriveInfo();
+        const rootInfo = info.find((d) => d.path === '/');
+        expect(rootInfo).toBeDefined();
+        expect(rootInfo!.label).toBe('/');
+        const usbInfo = info.find((d) => d.path === path.join('/media', 'usb-drive'));
+        expect(usbInfo).toBeDefined();
+        expect(usbInfo!.label).toBe('usb-drive');
+      });
 
       it('returns "/" as label for root partition', async () => {
         setPlatform('linux');
@@ -462,22 +459,19 @@ describe('utils.ts', () => {
         expect(rootInfo!.label).toBe('/');
       });
 
-      it.skipIf(process.platform === 'win32')(
-        'assigns Volume subdirectory basenames as labels',
-        async () => {
-          setPlatform('darwin');
-          mockReaddir.mockResolvedValueOnce(['Backup']);
-          mockStat.mockResolvedValueOnce({ isDirectory: () => true } as any);
-          mockExecAsync.mockResolvedValueOnce({
-            stdout: '   Volume Name:          Macintosh HD\n',
-          });
-          const mod = await import('../main/utils');
-          const info = await mod.getDriveInfo();
-          const backupInfo = info.find((d) => d.path === path.join('/Volumes', 'Backup'));
-          expect(backupInfo).toBeDefined();
-          expect(backupInfo!.label).toBe('Backup');
-        }
-      );
+      it('assigns Volume subdirectory basenames as labels', async () => {
+        setPlatform('darwin');
+        mockReaddir.mockResolvedValueOnce(['Backup']);
+        mockStat.mockResolvedValueOnce({ isDirectory: () => true } as any);
+        mockExecAsync.mockResolvedValueOnce({
+          stdout: '   Volume Name:          Macintosh HD\n',
+        });
+        const mod = await import('../main/utils');
+        const info = await mod.getDriveInfo();
+        const backupInfo = info.find((d) => d.path === path.join('/Volumes', 'Backup'));
+        expect(backupInfo).toBeDefined();
+        expect(backupInfo!.label).toBe('Backup');
+      });
 
       it('handles diskutil with no Volume Name line', async () => {
         setPlatform('darwin');
@@ -752,26 +746,23 @@ describe('utils.ts', () => {
       expect(info[0].label).toBe('/');
     });
 
-    it.skipIf(process.platform === 'win32')(
-      'uses basename for volume subdirs even when root label exists',
-      async () => {
-        setPlatform('darwin');
-        mockReaddir.mockResolvedValueOnce(['TimeMachine', 'External']);
-        mockStat.mockResolvedValue({ isDirectory: () => true } as any);
-        mockExecAsync.mockResolvedValueOnce({
-          stdout: '   Volume Name:          Macintosh HD\n',
-        });
-        const mod = await import('../main/utils');
-        const info = await mod.getDriveInfo();
-        expect(info.find((d) => d.path === '/')!.label).toBe('Macintosh HD');
-        expect(info.find((d) => d.path === path.join('/Volumes', 'TimeMachine'))!.label).toBe(
-          'TimeMachine'
-        );
-        expect(info.find((d) => d.path === path.join('/Volumes', 'External'))!.label).toBe(
-          'External'
-        );
-      }
-    );
+    it('uses basename for volume subdirs even when root label exists', async () => {
+      setPlatform('darwin');
+      mockReaddir.mockResolvedValueOnce(['TimeMachine', 'External']);
+      mockStat.mockResolvedValue({ isDirectory: () => true } as any);
+      mockExecAsync.mockResolvedValueOnce({
+        stdout: '   Volume Name:          Macintosh HD\n',
+      });
+      const mod = await import('../main/utils');
+      const info = await mod.getDriveInfo();
+      expect(info.find((d) => d.path === '/')!.label).toBe('Macintosh HD');
+      expect(info.find((d) => d.path === path.join('/Volumes', 'TimeMachine'))!.label).toBe(
+        'TimeMachine'
+      );
+      expect(info.find((d) => d.path === path.join('/Volumes', 'External'))!.label).toBe(
+        'External'
+      );
+    });
 
     it('handles Volume Name with extra whitespace', async () => {
       setPlatform('darwin');

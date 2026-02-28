@@ -23,6 +23,7 @@ function createDeps(overrides: Record<string, unknown> = {}) {
     remappableCommandIds: new Set<string>(),
     formatShortcutKeyLabel: vi.fn((k: string) => k),
     getTabsEnabled: vi.fn(() => (overrides.tabsEnabled as boolean) ?? true),
+    twemojiImg: vi.fn((emoji: string) => `<img class="twemoji" alt="${emoji}" />`),
     actions: {
       createNewFolder: vi.fn(),
       createNewFile: vi.fn(),
@@ -30,6 +31,7 @@ function createDeps(overrides: Record<string, unknown> = {}) {
       goBack: vi.fn(),
       goForward: vi.fn(),
       goUp: vi.fn(),
+      goHome: vi.fn(),
       showSettingsModal: vi.fn(),
       showShortcutsModal: vi.fn(),
       selectAll: vi.fn(),

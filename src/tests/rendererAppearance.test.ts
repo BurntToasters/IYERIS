@@ -46,6 +46,7 @@ describe('applyAppearance', () => {
           textSecondary: '#cccccc',
           glassBg: '#ffffff',
           glassBorder: '#ffffff',
+          iconHue: '#336699',
         },
       }),
       { applyCustomThemeColors, clearCustomThemeColors }

@@ -4,6 +4,9 @@ import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 vi.mock('../shared.js', () => ({
   escapeHtml: (s: string) => s,
   ignoreError: () => {},
+  assignKey: <T extends object>(obj: T, key: keyof T, value: T[keyof T]) => {
+    obj[key] = value;
+  },
 }));
 
 vi.mock('../homeSettings.js', () => ({

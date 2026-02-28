@@ -67,18 +67,29 @@ describe('calculateFolderSize', () => {
     expect(result.dirs).toBe(result.folderCount);
   });
 
-  it.skipIf(process.platform === 'win32')(
-    'handles unreadable subdirectories gracefully',
-    async () => {
-      const badDir = path.join(tmpDir, 'noaccess');
-      await fs.promises.mkdir(badDir);
-      await fs.promises.writeFile(path.join(tmpDir, 'ok.txt'), 'ok');
-      await fs.promises.chmod(badDir, 0o000);
+  it('handles unreadable subdirectories gracefully', async () => {
+    const badDir = path.join(tmpDir, 'noaccess');
+    await fs.promises.mkdir(badDir);
+    await fs.promises.writeFile(path.join(tmpDir, 'ok.txt'), 'ok');
+
+    const realReaddir = fs.promises.readdir.bind(fs.promises);
+    const blockedPath = path.resolve(badDir);
+    const readdirSpy = vi
+      .spyOn(fs.promises, 'readdir')
+      .mockImplementation(async (targetPath: fs.PathLike, options?: object) => {
+        if (path.resolve(String(targetPath)) === blockedPath) {
+          throw new Error('EACCES');
+        }
+        return (await realReaddir(targetPath, options as { withFileTypes: true })) as never;
+      });
+
+    try {
       const result = await calculateFolderSize({ folderPath: tmpDir });
       expect(result.fileCount).toBe(1);
-      await fs.promises.chmod(badDir, 0o755);
+    } finally {
+      readdirSpy.mockRestore();
     }
-  );
+  });
 
   it('limits fileTypes to top 10', async () => {
     for (let i = 0; i < 15; i++) {

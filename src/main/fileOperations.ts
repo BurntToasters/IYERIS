@@ -1,9 +1,11 @@
-import { ipcMain, app, dialog, shell, IpcMainInvokeEvent } from 'electron';
+import type { IpcMainInvokeEvent } from 'electron';
+import { ipcMain, app, dialog, shell } from 'electron';
 import * as path from 'path';
 import { promises as fs } from 'fs';
-import * as fsSync from 'fs';
+import type * as fsSync from 'fs';
 import { fileURLToPath } from 'url';
 import * as os from 'os';
+import { spawn } from 'child_process';
 import type {
   FileItem,
   ApiResponse,
@@ -36,260 +38,26 @@ import {
   withTrustedApiHandler,
   withTrustedIpcEvent,
 } from './ipcUtils';
+import {
+  renameWithExdevFallback,
+  validateFileOperation,
+  copyPathByType,
+  removePaths,
+  createUniqueFile,
+  isValidChildName,
+  getParallelBatchSize,
+  type ConflictBehavior,
+} from './fileOperationUtils';
+
+export {
+  pathExists,
+  renameWithExdevFallback,
+  type PlannedFileOperation,
+} from './fileOperationUtils';
 
 type AppPathName = Parameters<typeof app.getPath>[0];
 
-function normalizeCaseKey(targetPath: string): string {
-  if (process.platform === 'win32' || process.platform === 'darwin') {
-    return targetPath.toLowerCase();
-  }
-  return targetPath;
-}
-
-function normalizePathForComparison(targetPath: string): string {
-  return normalizeCaseKey(path.resolve(targetPath));
-}
-
-function getParallelBatchSize(): number {
-  const totalMemGb = os.totalmem() / 1024 ** 3;
-  if (totalMemGb < 6) return 4;
-  if (totalMemGb < 12) return 8;
-  if (totalMemGb < 24) return 12;
-  return 16;
-}
-
-export interface PlannedFileOperation {
-  sourcePath: string;
-  destPath: string;
-  itemName: string;
-  isDirectory: boolean;
-  overwrite?: boolean;
-}
-
-type FileOperationType = 'copy' | 'move';
-type ConflictBehavior = 'ask' | 'rename' | 'skip' | 'overwrite' | 'cancel';
-const INVALID_CHILD_NAMES = new Set(['', '.', '..']);
-
-export function pathExists(p: string): Promise<boolean> {
-  return fs.stat(p).then(
-    () => true,
-    () => false
-  );
-}
-
-function isValidChildName(name: string): boolean {
-  return !INVALID_CHILD_NAMES.has(name) && !name.includes('/') && !name.includes('\\');
-}
-
-async function generateUniqueName(destPath: string, fileName: string): Promise<string> {
-  const { base, ext } = splitFileName(fileName);
-  let counter = 2;
-  let candidatePath = path.join(destPath, fileName);
-  while (await pathExists(candidatePath)) {
-    const candidateName = `${base} (${counter})${ext}`;
-    candidatePath = path.join(destPath, candidateName);
-    counter++;
-    if (counter > 9999) throw new Error('Unable to generate unique name');
-  }
-  return candidatePath;
-}
-
-async function validateFileOperation(
-  sourcePaths: string[],
-  destPath: string,
-  operationType: FileOperationType,
-  conflictBehavior: ConflictBehavior = 'ask',
-  resolveConflict?: (fileName: string) => Promise<'rename' | 'skip' | 'overwrite' | 'cancel'>
-): Promise<{ success: true; planned: PlannedFileOperation[] } | { success: false; error: string }> {
-  if (!isPathSafe(destPath)) {
-    logger.warn(`[Security] Invalid destination path rejected:`, destPath);
-    return { success: false, error: 'Invalid destination path' };
-  }
-
-  if (!Array.isArray(sourcePaths) || sourcePaths.length === 0) {
-    return { success: false, error: 'No source items provided' };
-  }
-
-  const normalizedDestPath = normalizePathForComparison(destPath);
-  let normalizedDestRealPath = normalizedDestPath;
-  try {
-    normalizedDestRealPath = normalizePathForComparison(await fs.realpath(destPath));
-  } catch (error) {
-    ignoreError(error);
-  }
-  const planned: PlannedFileOperation[] = [];
-  const destKeys = new Set<string>();
-
-  for (const sourcePath of sourcePaths) {
-    if (!isPathSafe(sourcePath)) {
-      logger.warn(`[Security] Invalid source path rejected:`, sourcePath);
-      return { success: false, error: 'Invalid source path' };
-    }
-
-    const itemName = path.basename(sourcePath);
-    const itemDestPath = path.join(destPath, itemName);
-    const destKey = normalizeCaseKey(itemDestPath);
-
-    if (destKeys.has(destKey)) {
-      return { success: false, error: `Multiple items share the same name: "${itemName}"` };
-    }
-    destKeys.add(destKey);
-
-    let stats: fsSync.Stats;
-    try {
-      stats = await fs.stat(sourcePath);
-    } catch {
-      logger.info(`[${operationType}] Source file not found:`, sourcePath);
-      return { success: false, error: `Source file not found: ${itemName}` };
-    }
-
-    if (stats.isDirectory()) {
-      // prevent copying dir into itself
-      let normalizedSourcePath = normalizePathForComparison(sourcePath);
-      try {
-        normalizedSourcePath = normalizePathForComparison(await fs.realpath(sourcePath));
-      } catch (error) {
-        ignoreError(error);
-      }
-      const sourcePrefix = normalizedSourcePath.endsWith(path.sep)
-        ? normalizedSourcePath
-        : normalizedSourcePath + path.sep;
-      if (
-        normalizedDestRealPath === normalizedSourcePath ||
-        normalizedDestRealPath.startsWith(sourcePrefix)
-      ) {
-        return {
-          success: false,
-          error: `Cannot ${operationType} "${itemName}" into itself or a subfolder`,
-        };
-      }
-    }
-
-    const destExists = await pathExists(itemDestPath);
-    if (destExists) {
-      let behavior = conflictBehavior;
-      if (behavior === 'ask' && resolveConflict) {
-        behavior = await resolveConflict(itemName);
-        if (behavior === 'cancel') {
-          return { success: false, error: 'Operation cancelled' };
-        }
-      }
-      if (behavior === 'skip') {
-        continue;
-      } else if (behavior === 'rename') {
-        const newDestPath = await generateUniqueName(destPath, itemName);
-        planned.push({
-          sourcePath,
-          destPath: newDestPath,
-          itemName: path.basename(newDestPath),
-          isDirectory: stats.isDirectory(),
-        });
-        continue;
-      } else if (behavior === 'overwrite') {
-        planned.push({
-          sourcePath,
-          destPath: itemDestPath,
-          itemName,
-          isDirectory: stats.isDirectory(),
-          overwrite: true,
-        });
-        continue;
-      }
-      return {
-        success: false,
-        error: `A file named "${itemName}" already exists in the destination`,
-      };
-    }
-
-    planned.push({
-      sourcePath,
-      destPath: itemDestPath,
-      itemName,
-      isDirectory: stats.isDirectory(),
-    });
-  }
-
-  return { success: true, planned };
-}
-
-function splitFileName(fileName: string): { base: string; ext: string } {
-  const lastDot = fileName.lastIndexOf('.');
-  if (lastDot <= 0) {
-    return { base: fileName, ext: '' };
-  }
-  return { base: fileName.slice(0, lastDot), ext: fileName.slice(lastDot) };
-}
-
-async function copyPathByType(
-  sourcePath: string,
-  destPath: string,
-  isDirectory: boolean
-): Promise<void> {
-  if (isDirectory) {
-    await fs.cp(sourcePath, destPath, { recursive: true });
-  } else {
-    await fs.copyFile(sourcePath, destPath);
-  }
-}
-
-export async function renameWithExdevFallback(
-  sourcePath: string,
-  destPath: string,
-  isDirectory?: boolean
-): Promise<void> {
-  try {
-    await fs.rename(sourcePath, destPath);
-  } catch (error) {
-    const err = error as NodeJS.ErrnoException;
-    if (err.code !== 'EXDEV') {
-      throw error;
-    }
-    const stats = typeof isDirectory === 'boolean' ? null : await fs.stat(sourcePath);
-    await copyPathByType(sourcePath, destPath, isDirectory ?? stats?.isDirectory() ?? false);
-    await fs.rm(sourcePath, { recursive: true, force: true });
-  }
-}
-
-async function removePaths(paths: string[]): Promise<void> {
-  for (const targetPath of paths) {
-    try {
-      await fs.rm(targetPath, { recursive: true, force: true });
-    } catch (error) {
-      ignoreError(error);
-    }
-  }
-}
-
 export { cleanupStashedBackupsForTests };
-
-async function createUniqueFile(
-  parentPath: string,
-  fileName: string
-): Promise<{ name: string; path: string }> {
-  const { base, ext } = splitFileName(fileName);
-  const MAX_ATTEMPTS = 9999;
-  let counter = 1;
-
-  // find available name with (n) suffix
-  while (counter <= MAX_ATTEMPTS) {
-    const candidateName = counter === 1 ? fileName : `${base} (${counter})${ext}`;
-    const candidatePath = path.join(parentPath, candidateName);
-    try {
-      const handle = await fs.open(candidatePath, 'wx');
-      await handle.close();
-      return { name: candidateName, path: candidatePath };
-    } catch (error) {
-      const err = error as NodeJS.ErrnoException;
-      if (err.code === 'EEXIST') {
-        counter += 1;
-        continue;
-      }
-      throw error;
-    }
-  }
-
-  throw new Error(`Unable to create unique file after ${MAX_ATTEMPTS} attempts`);
-}
 
 export { isFileHiddenCached, startHiddenFileCacheCleanup, stopHiddenFileCacheCleanup };
 
@@ -556,10 +324,36 @@ export function setupFileOperationHandlers(): void {
       } else if (platform === 'win32') {
         await shell.openExternal('shell:RecycleBinFolder');
       } else if (platform === 'linux') {
-        const trashPath = path.join(app.getPath('home'), '.local/share/Trash/files');
-        const openResult = await shell.openPath(trashPath);
-        if (openResult) {
-          return { success: false, error: openResult };
+        const gioResult = await new Promise<boolean>((resolve) => {
+          const child = spawn('gio', ['open', 'trash:///'], {
+            stdio: 'ignore',
+            detached: true,
+          });
+          child.on('spawn', () => {
+            child.unref();
+            resolve(true);
+          });
+          child.on('error', () => resolve(false));
+        });
+        if (!gioResult) {
+          const xdgResult = await new Promise<boolean>((resolve) => {
+            const child = spawn('xdg-open', ['trash:///'], {
+              stdio: 'ignore',
+              detached: true,
+            });
+            child.on('spawn', () => {
+              child.unref();
+              resolve(true);
+            });
+            child.on('error', () => resolve(false));
+          });
+          if (!xdgResult) {
+            const trashPath = path.join(app.getPath('home'), '.local/share/Trash/files');
+            const openResult = await shell.openPath(trashPath);
+            if (openResult) {
+              return { success: false, error: openResult };
+            }
+          }
         }
       }
 
@@ -710,19 +504,154 @@ export function setupFileOperationHandlers(): void {
         return { success: false, error: 'Invalid path' };
       }
       const stats = await fs.stat(itemPath);
-      return {
-        success: true,
-        properties: {
-          path: itemPath,
-          name: path.basename(itemPath),
-          size: stats.size,
-          isDirectory: stats.isDirectory(),
-          isFile: stats.isFile(),
-          created: stats.birthtime,
-          modified: stats.mtime,
-          accessed: stats.atime,
-        },
+      let isSymlink = false;
+      let symlinkTarget: string | undefined;
+      try {
+        const lstats = await fs.lstat(itemPath);
+        isSymlink = lstats.isSymbolicLink();
+        if (isSymlink) {
+          symlinkTarget = await fs.readlink(itemPath);
+        }
+      } catch {}
+      const properties: import('../types').ItemProperties = {
+        path: itemPath,
+        name: path.basename(itemPath),
+        size: stats.size,
+        isDirectory: stats.isDirectory(),
+        isFile: stats.isFile(),
+        isSymlink: isSymlink || undefined,
+        symlinkTarget,
+        created: stats.birthtime,
+        modified: stats.mtime,
+        accessed: stats.atime,
+        mode: stats.mode,
       };
+
+      if (process.platform !== 'win32') {
+        try {
+          const userInfo = os.userInfo();
+          properties.owner = stats.uid === userInfo.uid ? userInfo.username : String(stats.uid);
+          properties.group = String(stats.gid);
+        } catch {
+          properties.owner = String(stats.uid);
+          properties.group = String(stats.gid);
+        }
+      } else {
+        try {
+          const { execFile: execFileCb } = await import('child_process');
+          const { promisify } = await import('util');
+          const execFileAsync = promisify(execFileCb);
+          const { stdout } = await execFileAsync('attrib', [itemPath], {
+            timeout: 2000,
+            windowsHide: true,
+          });
+          const line = stdout.split(/\r?\n/).find((l) => l.trim().length > 0);
+          if (line) {
+            const match = line.match(/^\s*([A-Za-z ]+)\s+.+$/);
+            if (match) {
+              const attrs = match[1].toUpperCase();
+              properties.isReadOnly = attrs.includes('R');
+              properties.isHiddenAttr = attrs.includes('H');
+              properties.isSystemAttr = attrs.includes('S');
+            }
+          }
+        } catch {}
+      }
+
+      if (process.platform === 'win32' && itemPath.endsWith('.lnk')) {
+        try {
+          const details = shell.readShortcutLink(itemPath);
+          properties.isShortcut = true;
+          properties.shortcutTarget = details.target;
+        } catch {}
+      }
+
+      if (process.platform === 'darwin') {
+        try {
+          const { execFile: execFileCb } = await import('child_process');
+          const { promisify } = await import('util');
+          const execFileAsync = promisify(execFileCb);
+          const { stdout } = await execFileAsync(
+            'mdls',
+            ['-name', 'kMDItemUserTags', '-raw', itemPath],
+            {
+              timeout: 3000,
+            }
+          );
+          const trimmed = stdout.trim();
+          if (trimmed && trimmed !== '(null)') {
+            const tags = trimmed
+              .replace(/^\(/, '')
+              .replace(/\)$/, '')
+              .split(',')
+              .map((t: string) =>
+                t
+                  .trim()
+                  .replace(/^"|"$/g, '')
+                  .replace(/\\n\\t/g, '')
+                  .trim()
+              )
+              .filter(Boolean);
+            if (tags.length > 0) {
+              properties.macTags = tags;
+            }
+          }
+        } catch {}
+      }
+
+      return { success: true, properties };
+    }
+  );
+
+  handleTrustedApi(
+    'set-permissions',
+    async (_event: IpcMainInvokeEvent, itemPath: string, mode: number): Promise<ApiResponse> => {
+      if (!isPathSafe(itemPath)) return { success: false, error: 'Invalid path' };
+      if (process.platform === 'win32')
+        return { success: false, error: 'Use set-attributes on Windows' };
+      try {
+        const chmodOp = async () => {
+          await fs.chmod(itemPath, mode);
+        };
+        const result = await tryWithElevation(
+          chmodOp,
+          { type: 'custom' as 'delete', sourcePath: itemPath },
+          'change permissions'
+        );
+        if (result.error) return { success: false, error: result.error };
+        logger.info('[Permissions] Changed permissions for', itemPath, 'to', mode.toString(8));
+        return { success: true };
+      } catch (error) {
+        return { success: false, error: getErrorMessage(error) };
+      }
+    }
+  );
+
+  handleTrustedApi(
+    'set-attributes',
+    async (
+      _event: IpcMainInvokeEvent,
+      itemPath: string,
+      attrs: { readOnly?: boolean; hidden?: boolean }
+    ): Promise<ApiResponse> => {
+      if (!isPathSafe(itemPath)) return { success: false, error: 'Invalid path' };
+      if (process.platform !== 'win32')
+        return { success: false, error: 'Attributes only supported on Windows' };
+      try {
+        const { execFile: execFileCb } = await import('child_process');
+        const { promisify } = await import('util');
+        const execFileAsync = promisify(execFileCb);
+        const args: string[] = [];
+        if (attrs.readOnly !== undefined) args.push(attrs.readOnly ? '+R' : '-R');
+        if (attrs.hidden !== undefined) args.push(attrs.hidden ? '+H' : '-H');
+        if (args.length === 0) return { success: true };
+        args.push(itemPath);
+        await execFileAsync('attrib', args, { timeout: 5000, windowsHide: true });
+        logger.info('[Attributes] Changed attributes for', itemPath, args.join(' '));
+        return { success: true };
+      } catch (error) {
+        return { success: false, error: getErrorMessage(error) };
+      }
     }
   );
 
@@ -747,7 +676,7 @@ export function setupFileOperationHandlers(): void {
   handleTrustedApi(
     'copy-items',
     async (
-      _event: IpcMainInvokeEvent,
+      event: IpcMainInvokeEvent,
       sourcePaths: string[],
       destPath: string,
       conflictBehavior?: ConflictBehavior
@@ -760,12 +689,15 @@ export function setupFileOperationHandlers(): void {
           destPath,
           'copy',
           behavior,
-          resolveConflict
+          resolveConflict,
+          isPathSafe,
+          logger
         );
         if (!validation.success) {
           return validation;
         }
 
+        const totalItems = validation.planned.length;
         const copiedPaths: string[] = [];
         const backups = new Map<string, string>();
         try {
@@ -784,6 +716,14 @@ export function setupFileOperationHandlers(): void {
             );
             if (rejected) {
               throw rejected.reason;
+            }
+            if (totalItems > 1) {
+              event.sender.send('file-operation-progress', {
+                operation: 'copy',
+                current: copiedPaths.length,
+                total: totalItems,
+                name: batch[batch.length - 1].destPath.split(/[\\/]/).pop() || '',
+              });
             }
           }
         } catch (error) {
@@ -810,7 +750,7 @@ export function setupFileOperationHandlers(): void {
   handleTrustedApi(
     'move-items',
     async (
-      _event: IpcMainInvokeEvent,
+      event: IpcMainInvokeEvent,
       sourcePaths: string[],
       destPath: string,
       conflictBehavior?: ConflictBehavior
@@ -823,12 +763,15 @@ export function setupFileOperationHandlers(): void {
           destPath,
           'move',
           behavior,
-          resolveConflict
+          resolveConflict,
+          isPathSafe,
+          logger
         );
         if (!validation.success) {
           return validation;
         }
 
+        const totalItems = validation.planned.length;
         const originalParent = path.dirname(sourcePaths[0]);
         const movedPaths: string[] = [];
         const originalPaths: string[] = [];
@@ -857,6 +800,14 @@ export function setupFileOperationHandlers(): void {
             );
             if (rejected) {
               throw rejected.reason;
+            }
+            if (totalItems > 1) {
+              event.sender.send('file-operation-progress', {
+                operation: 'move',
+                current: movedPaths.length,
+                total: totalItems,
+                name: batch[batch.length - 1].destPath.split(/[\\/]/).pop() || '',
+              });
             }
           }
         } catch (error) {
@@ -890,6 +841,116 @@ export function setupFileOperationHandlers(): void {
         });
 
         logger.info('[Move] Items moved:', sourcePaths.length);
+        return { success: true };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return { success: false, error: message };
+      }
+    }
+  );
+
+  handleTrustedApi(
+    'batch-rename',
+    async (
+      _event: IpcMainInvokeEvent,
+      items: Array<{ oldPath: string; newName: string }>
+    ): Promise<ApiResponse> => {
+      if (!Array.isArray(items) || items.length === 0) {
+        return { success: false, error: 'No items to rename' };
+      }
+
+      const completed: Array<{ oldPath: string; newPath: string }> = [];
+
+      try {
+        for (const item of items) {
+          if (!isPathSafe(item.oldPath)) {
+            throw new Error(`Invalid path: ${item.oldPath}`);
+          }
+
+          const dir = path.dirname(item.oldPath);
+          const newPath = path.join(dir, item.newName);
+
+          if (item.oldPath === newPath) continue;
+
+          const exists = await fs.access(newPath).then(
+            () => true,
+            () => false
+          );
+          if (exists) {
+            throw new Error(`"${item.newName}" already exists`);
+          }
+
+          await renameWithExdevFallback(item.oldPath, newPath, false);
+          completed.push({ oldPath: item.oldPath, newPath });
+        }
+
+        if (completed.length > 0) {
+          pushUndoAction({
+            type: 'batch-rename',
+            data: {
+              renames: completed,
+            },
+          });
+        }
+
+        logger.info('[BatchRename] Renamed:', completed.length, 'items');
+        return { success: true };
+      } catch (error) {
+        for (const item of completed.reverse()) {
+          try {
+            await renameWithExdevFallback(item.newPath, item.oldPath, false);
+          } catch (restoreError) {
+            ignoreError(restoreError);
+          }
+        }
+        const message = error instanceof Error ? error.message : String(error);
+        return { success: false, error: message };
+      }
+    }
+  );
+
+  handleTrustedApi(
+    'create-symlink',
+    async (
+      _event: IpcMainInvokeEvent,
+      targetPath: string,
+      linkPath: string
+    ): Promise<ApiResponse> => {
+      if (!isPathSafe(targetPath) || !isPathSafe(linkPath)) {
+        return { success: false, error: 'Invalid path' };
+      }
+
+      try {
+        let stats: fsSync.Stats;
+        try {
+          stats = await fs.stat(targetPath);
+        } catch {
+          return { success: false, error: 'Target does not exist' };
+        }
+
+        const symlinkType = stats.isDirectory() ? 'dir' : 'file';
+
+        if (process.platform === 'win32') {
+          const result = await tryWithElevation(
+            async () => {
+              await fs.symlink(targetPath, linkPath, symlinkType);
+            },
+            { type: 'copy', sourcePath: targetPath, destPath: linkPath },
+            'create symlink'
+          );
+          if (result.error) {
+            return {
+              success: false,
+              error:
+                result.error ||
+                'Failed to create symlink. On Windows, this may require administrator privileges or Developer Mode.',
+            };
+          }
+        } else {
+          await fs.symlink(targetPath, linkPath);
+        }
+
+        logger.info('[Symlink] Created:', linkPath, '->', targetPath);
         return { success: true };
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);

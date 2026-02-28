@@ -320,7 +320,7 @@ describe('createCompressExtractController', () => {
       const ctrl = createCompressExtractController(deps as any);
       await ctrl.handleCompress();
 
-      expect(deps.showToast).toHaveBeenCalledWith('disk full', 'Error', 'error');
+      expect(deps.showToast).toHaveBeenCalledWith('disk full', 'Error', 'error', expect.any(Array));
     });
 
     it('shows generic error when result.error is empty', async () => {
@@ -329,7 +329,12 @@ describe('createCompressExtractController', () => {
       const ctrl = createCompressExtractController(deps as any);
       await ctrl.handleCompress();
 
-      expect(deps.showToast).toHaveBeenCalledWith('Compression failed', 'Error', 'error');
+      expect(deps.showToast).toHaveBeenCalledWith(
+        'Compression failed',
+        'Error',
+        'error',
+        expect.any(Array)
+      );
     });
 
     it('shows error toast when compressFiles throws', async () => {
@@ -338,7 +343,12 @@ describe('createCompressExtractController', () => {
       const ctrl = createCompressExtractController(deps as any);
       await ctrl.handleCompress();
 
-      expect(deps.showToast).toHaveBeenCalledWith('network error', 'Compression Error', 'error');
+      expect(deps.showToast).toHaveBeenCalledWith(
+        'network error',
+        'Compression Error',
+        'error',
+        expect.any(Array)
+      );
       expect(deps.removeOperation).toHaveBeenCalledWith('op-1');
     });
 
@@ -355,8 +365,8 @@ describe('createCompressExtractController', () => {
 
     it('progress handler updates operation', async () => {
       deps.getSelectedItems.mockReturnValue(new Set(['/home/user/documents/file.txt']));
-      let capturedHandler: (...args: any[]) => any = () => {};
-      api.onCompressProgress.mockImplementation((handler: (...args: any[]) => any) => {
+      let capturedHandler: (...args: unknown[]) => unknown = () => {};
+      api.onCompressProgress.mockImplementation((handler: (...args: unknown[]) => unknown) => {
         capturedHandler = handler;
         return vi.fn();
       });
@@ -379,8 +389,8 @@ describe('createCompressExtractController', () => {
 
     it('progress handler ignores different operationIds', async () => {
       deps.getSelectedItems.mockReturnValue(new Set(['/home/user/documents/file.txt']));
-      let capturedHandler: (...args: any[]) => any = () => {};
-      api.onCompressProgress.mockImplementation((handler: (...args: any[]) => any) => {
+      let capturedHandler: (...args: unknown[]) => unknown = () => {};
+      api.onCompressProgress.mockImplementation((handler: (...args: unknown[]) => unknown) => {
         capturedHandler = handler;
         return vi.fn();
       });
@@ -403,8 +413,8 @@ describe('createCompressExtractController', () => {
     it('progress handler skips update when operation is aborted', async () => {
       deps.getSelectedItems.mockReturnValue(new Set(['/home/user/documents/file.txt']));
       deps.getOperation.mockReturnValue({ aborted: true });
-      let capturedHandler: (...args: any[]) => any = () => {};
-      api.onCompressProgress.mockImplementation((handler: (...args: any[]) => any) => {
+      let capturedHandler: (...args: unknown[]) => unknown = () => {};
+      api.onCompressProgress.mockImplementation((handler: (...args: unknown[]) => unknown) => {
         capturedHandler = handler;
         return vi.fn();
       });
@@ -437,8 +447,8 @@ describe('createCompressExtractController', () => {
 
     it('progress handler skips update when getOperation returns undefined', async () => {
       deps.getSelectedItems.mockReturnValue(new Set(['/home/user/documents/file.txt']));
-      let capturedHandler: (...args: any[]) => any = () => {};
-      api.onCompressProgress.mockImplementation((handler: (...args: any[]) => any) => {
+      let capturedHandler: (...args: unknown[]) => unknown = () => {};
+      api.onCompressProgress.mockImplementation((handler: (...args: unknown[]) => unknown) => {
         capturedHandler = handler;
         return vi.fn();
       });
@@ -915,7 +925,12 @@ describe('createCompressExtractController', () => {
       ctrl.showExtractModal('/home/user/archive.zip');
       await ctrl.confirmExtractModal();
 
-      expect(deps.showToast).toHaveBeenCalledWith('corrupted archive', 'Error', 'error');
+      expect(deps.showToast).toHaveBeenCalledWith(
+        'corrupted archive',
+        'Error',
+        'error',
+        expect.any(Array)
+      );
     });
 
     it('shows generic error when extraction fails without error message', async () => {
@@ -931,7 +946,12 @@ describe('createCompressExtractController', () => {
       ctrl.showExtractModal('/home/user/archive.zip');
       await ctrl.confirmExtractModal();
 
-      expect(deps.showToast).toHaveBeenCalledWith('Extraction failed', 'Error', 'error');
+      expect(deps.showToast).toHaveBeenCalledWith(
+        'Extraction failed',
+        'Error',
+        'error',
+        expect.any(Array)
+      );
     });
 
     it('handles extraction exception', async () => {
@@ -947,7 +967,12 @@ describe('createCompressExtractController', () => {
       ctrl.showExtractModal('/home/user/archive.zip');
       await ctrl.confirmExtractModal();
 
-      expect(deps.showToast).toHaveBeenCalledWith('permission denied', 'Extraction Error', 'error');
+      expect(deps.showToast).toHaveBeenCalledWith(
+        'permission denied',
+        'Extraction Error',
+        'error',
+        expect.any(Array)
+      );
       expect(deps.removeOperation).toHaveBeenCalledWith('op-1');
     });
 
@@ -2086,8 +2111,8 @@ describe('createCompressExtractController', () => {
           <span id="extract-preview-path"></span>
         </div>
       `;
-      let capturedHandler: (...args: any[]) => any = () => {};
-      api.onExtractProgress.mockImplementation((handler: (...args: any[]) => any) => {
+      let capturedHandler: (...args: unknown[]) => unknown = () => {};
+      api.onExtractProgress.mockImplementation((handler: (...args: unknown[]) => unknown) => {
         capturedHandler = handler;
         return vi.fn();
       });
@@ -2116,8 +2141,8 @@ describe('createCompressExtractController', () => {
           <span id="extract-preview-path"></span>
         </div>
       `;
-      let capturedHandler: (...args: any[]) => any = () => {};
-      api.onExtractProgress.mockImplementation((handler: (...args: any[]) => any) => {
+      let capturedHandler: (...args: unknown[]) => unknown = () => {};
+      api.onExtractProgress.mockImplementation((handler: (...args: unknown[]) => unknown) => {
         capturedHandler = handler;
         return vi.fn();
       });
@@ -2152,8 +2177,8 @@ describe('createCompressExtractController', () => {
         if (callCount === 1) return { aborted: false };
         return { aborted: true };
       });
-      let capturedHandler: (...args: any[]) => any = () => {};
-      api.onExtractProgress.mockImplementation((handler: (...args: any[]) => any) => {
+      let capturedHandler: (...args: unknown[]) => unknown = () => {};
+      api.onExtractProgress.mockImplementation((handler: (...args: unknown[]) => unknown) => {
         capturedHandler = handler;
         return vi.fn();
       });

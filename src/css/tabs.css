@@ -111,18 +111,19 @@ body.platform-win32 .titlebar-title {
   font-family: 'Segoe UI Variable', 'Segoe UI', system-ui, sans-serif;
 }
 
-.tab-bar {
+.titlebar-tabs {
   display: flex;
   align-items: center;
-  height: var(--tab-bar-height);
-  padding: 0 6px;
-  gap: 4px;
-  border-radius: 0;
-  border-left: none;
-  border-right: none;
-  border-top: none;
-  background: var(--surface-1);
-  border-bottom: 1px solid var(--panel-border);
+  justify-content: center;
+  flex: 1;
+  min-width: 0;
+  padding: 0 4px;
+  gap: 2px;
+}
+
+.tab-item,
+.tab-new-btn {
+  -webkit-app-region: no-drag;
 }
 
 .tab-list {
@@ -130,7 +131,6 @@ body.platform-win32 .titlebar-title {
   align-items: center;
   gap: 2px;
   overflow-x: auto;
-  flex: 1;
   scrollbar-width: none;
 }
 
@@ -142,13 +142,14 @@ body.platform-win32 .titlebar-title {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 10px;
+  padding: 3px 10px;
   background: transparent;
   border: 1px solid transparent;
   border-radius: var(--radius-small);
   cursor: pointer;
-  min-width: 100px;
+  min-width: 80px;
   max-width: 180px;
+  height: calc(var(--titlebar-height) - 10px);
   transition: var(--transition-standard);
   position: relative;
 }
@@ -208,6 +209,10 @@ body.platform-win32 .titlebar-title {
   opacity: 1;
 }
 
+.tab-item:only-child .tab-close {
+  display: none;
+}
+
 .tab-item .tab-close:hover {
   background: var(--interactive-hover);
   color: var(--text-primary);
@@ -242,34 +247,12 @@ body.platform-win32 .titlebar-title {
   transform: none;
 }
 
-body.tabs-enabled .container {
-  height: calc(
-    100vh - var(--titlebar-height) - var(--tab-bar-height) - var(--status-bar-height) -
-      var(--container-edge-padding-top) - var(--container-edge-padding-bottom)
-  );
-}
-
-body.tabs-enabled .tab-bar {
-  display: flex;
-}
-
-body.tabs-enabled.tabs-single .container {
-  height: calc(
-    100vh - var(--titlebar-height) - var(--status-bar-height) - var(--container-edge-padding-top) -
-      var(--container-edge-padding-bottom)
-  );
-}
-
-body.tabs-enabled.tabs-single .tab-bar {
+body.tabs-enabled .titlebar-title {
   display: none;
 }
 
-.toolbar-new-tab-btn {
-  display: none;
-}
-
-body.tabs-enabled.tabs-single .toolbar-new-tab-btn {
-  display: flex;
+body.tabs-enabled .titlebar-drag-region {
+  flex: 0 0 auto;
 }
 
 .tab-item:focus-visible {
@@ -281,6 +264,47 @@ body.reduce-transparency .titlebar {
   background: var(--bg-secondary) !important;
 }
 
-body.reduce-transparency .tab-bar {
-  background: var(--bg-secondary) !important;
+body.reduce-transparency .titlebar-tabs {
+  background: transparent !important;
+}
+
+.tab-context-menu {
+  position: fixed;
+  z-index: 10001;
+  background: var(--bg-secondary);
+  border: 1px solid var(--separator);
+  border-radius: var(--radius-medium);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  padding: 4px 0;
+  min-width: 180px;
+}
+
+.tab-context-menu-item {
+  padding: 7px 14px;
+  font-size: 12px;
+  color: var(--text-primary);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.12s ease;
+}
+
+.tab-context-menu-item:hover:not(.disabled) {
+  background: rgba(var(--accent-rgb), 0.12);
+}
+
+.tab-context-menu-item.disabled {
+  color: var(--text-secondary);
+  opacity: 0.5;
+  cursor: default;
+}
+
+body.liquid-glass .tab-context-menu {
+  background: var(--liquid-glass-context-menu-bg, rgba(30, 30, 30, 0.85));
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  border-color: var(--liquid-glass-context-menu-border, rgba(255, 255, 255, 0.08));
+}
+
+body.theme-light .tab-context-menu {
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
 }

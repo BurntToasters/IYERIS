@@ -26,6 +26,21 @@ const ENTRY_ANIMATION_STAGGER_ITEMS = 12;
 const ENTRY_ANIMATION_STAGGER_MS = 12;
 const ENTRY_ANIMATION_CLEANUP_DELAY_MS = 320;
 
+const THUMBNAIL_TYPE_MAP: [Set<string>, string][] = [
+  [RAW_EXTENSIONS, 'raw'],
+  [IMAGE_EXTENSIONS, 'image'],
+  [VIDEO_EXTENSIONS, 'video'],
+  [AUDIO_EXTENSIONS, 'audio'],
+  [PDF_EXTENSIONS, 'pdf'],
+];
+
+function getThumbnailType(ext: string): string | null {
+  for (const [extSet, type] of THUMBNAIL_TYPE_MAP) {
+    if (extSet.has(ext)) return type;
+  }
+  return null;
+}
+
 type FileRenderConfig = {
   getFileGrid: () => HTMLElement | null;
   getEmptyState: () => HTMLElement | null;
@@ -315,7 +330,7 @@ export function createFileRenderController(config: FileRenderConfig) {
       const dirSort = (b.isDirectory ? 1 : 0) - (a.isDirectory ? 1 : 0);
       if (dirSort !== 0) return dirSort;
 
-      let comparison = 0;
+      let comparison: number;
 
       switch (sortBy) {
         case 'name':
@@ -387,25 +402,20 @@ export function createFileRenderController(config: FileRenderConfig) {
     fileItem.tabIndex = -1;
     fileItem.dataset.path = item.path;
     fileItem.dataset.isDirectory = String(item.isDirectory);
+    if (item.isAppBundle) fileItem.dataset.isAppBundle = 'true';
+    if (item.isShortcut) fileItem.dataset.isShortcut = 'true';
+    if (item.isDesktopEntry) fileItem.dataset.isDesktopEntry = 'true';
     fileItem.setAttribute('role', 'option');
     fileItem.setAttribute('aria-selected', 'false');
 
     let icon: string;
-    if (item.isDirectory) {
+    if (item.isAppBundle) {
+      icon = getFileIcon(item.name);
+    } else if (item.isDirectory) {
       icon = config.getFolderIcon(item.path);
     } else {
       const ext = getFileExtension(item.name);
-      const thumbType = RAW_EXTENSIONS.has(ext)
-        ? 'raw'
-        : IMAGE_EXTENSIONS.has(ext)
-          ? 'image'
-          : VIDEO_EXTENSIONS.has(ext)
-            ? 'video'
-            : AUDIO_EXTENSIONS.has(ext)
-              ? 'audio'
-              : PDF_EXTENSIONS.has(ext)
-                ? 'pdf'
-                : null;
+      const thumbType = getThumbnailType(ext);
       if (thumbType) {
         icon = thumbType === 'image' || thumbType === 'raw' ? IMAGE_ICON : getFileIcon(item.name);
         if (!disableThumbnailRendering) {
@@ -418,9 +428,17 @@ export function createFileRenderController(config: FileRenderConfig) {
       }
     }
 
-    const sizeDisplay = item.isDirectory ? '--' : formatFileSize(item.size);
+    const sizeDisplay = item.isDirectory && !item.isAppBundle ? '--' : formatFileSize(item.size);
     const dateDisplay = config.dateFormatter.format(new Date(item.modified));
-    const typeDisplay = item.isDirectory ? 'Folder' : getFileTypeFromName(item.name);
+    const typeDisplay = item.isAppBundle
+      ? 'Application'
+      : item.isDesktopEntry
+        ? 'Application'
+        : item.isShortcut
+          ? 'Shortcut'
+          : item.isDirectory
+            ? 'Folder'
+            : getFileTypeFromName(item.name);
 
     const ariaDescription = item.isDirectory
       ? `${typeDisplay}, modified ${dateDisplay}`
@@ -452,10 +470,14 @@ export function createFileRenderController(config: FileRenderConfig) {
       }
     }
 
+    const symlinkBadge = item.isSymlink
+      ? '<span class="symlink-badge" aria-label="Symbolic link">⤳</span>'
+      : '';
+
     fileItem.innerHTML = `
     <div class="file-main">
       <div class="file-checkbox"><span class="checkbox-mark">✓</span></div>
-      <div class="file-icon"></div>
+      <div class="file-icon">${symlinkBadge}</div>
       <div class="file-text">
         <div class="file-name">${escapeHtml(displayName)}</div>
         ${matchContextHtml}

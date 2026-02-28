@@ -1,5 +1,6 @@
 import { createDefaultSettings } from './settings.js';
 import type { Settings } from './types';
+import { SEARCH_JUMP_HIGHLIGHT_MS, SETTINGS_SEARCH_DEBOUNCE_MS } from './rendererLocalConstants.js';
 
 export type SettingsFormState = Record<string, string | boolean>;
 const SETTINGS_HELP_URL = 'https://help.rosie.run/iyeris/en-us/faq';
@@ -174,20 +175,15 @@ export function createSettingsUiController(deps: SettingsUiDeps) {
     return true;
   }
 
+  function isSettingsDirty(): boolean {
+    if (!settingsSavedState) return false;
+    const current = captureSettingsFormState();
+    return !statesEqual(current, settingsSavedState);
+  }
+
   function updateSettingsDirtyState(): void {
     if (!settingsSavedState) return;
     const current = captureSettingsFormState();
-    const isDirty = !statesEqual(current, settingsSavedState);
-
-    const unsavedBar = document.getElementById('settings-unsaved-bar') as HTMLElement | null;
-    if (unsavedBar) {
-      unsavedBar.hidden = !isDirty;
-    }
-
-    const undoBtn = document.getElementById('settings-undo-btn') as HTMLButtonElement | null;
-    const redoBtn = document.getElementById('settings-redo-btn') as HTMLButtonElement | null;
-    if (undoBtn) undoBtn.disabled = !isDirty;
-    if (redoBtn) redoBtn.disabled = !settingsRedoState;
 
     document.querySelectorAll('.settings-section').forEach((section) => {
       if (section.id === 'tab-about') return;
@@ -272,12 +268,16 @@ export function createSettingsUiController(deps: SettingsUiDeps) {
     const tabs = document.querySelectorAll('.settings-tab');
     const sections = document.querySelectorAll('.settings-section');
 
-    tabs.forEach((t) => t.classList.remove('active'));
+    tabs.forEach((t) => {
+      t.classList.remove('active');
+      t.setAttribute('aria-selected', 'false');
+    });
     sections.forEach((s) => s.classList.remove('active'));
 
     const tab = document.querySelector(`.settings-tab[data-tab="${tabId}"]`);
     const section = document.getElementById(`tab-${tabId}`);
     tab?.classList.add('active');
+    tab?.setAttribute('aria-selected', 'true');
     section?.classList.add('active');
 
     if (!settingsSearchTerm) {
@@ -307,7 +307,7 @@ export function createSettingsUiController(deps: SettingsUiDeps) {
           | HTMLSelectElement
           | null;
         if (!input) return;
-        let value = '';
+        let value: string;
         if (input instanceof HTMLInputElement && input.type === 'checkbox') {
           value = input.checked ? 'On' : 'Off';
         } else if (input instanceof HTMLSelectElement) {
@@ -512,7 +512,7 @@ export function createSettingsUiController(deps: SettingsUiDeps) {
 
     firstMatch.scrollIntoView({ behavior: 'smooth', block: 'center' });
     firstMatch.classList.add('search-jump');
-    setTimeout(() => firstMatch.classList.remove('search-jump'), 1200);
+    setTimeout(() => firstMatch.classList.remove('search-jump'), SEARCH_JUMP_HIGHLIGHT_MS);
   }
 
   function initSettingsSearch(): void {
@@ -521,8 +521,12 @@ export function createSettingsUiController(deps: SettingsUiDeps) {
     const countBtn = document.getElementById('settings-search-count') as HTMLButtonElement | null;
     if (!searchInput) return;
 
+    let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
     searchInput.addEventListener('input', () => {
-      applySettingsSearch(searchInput.value);
+      if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+      searchDebounceTimer = setTimeout(() => {
+        applySettingsSearch(searchInput.value);
+      }, SETTINGS_SEARCH_DEBOUNCE_MS);
     });
 
     const clearSearch = () => {
@@ -671,24 +675,6 @@ export function createSettingsUiController(deps: SettingsUiDeps) {
     });
   }
 
-  function initSettingsPreview(): void {
-    const previewToggle = document.getElementById('theme-preview-toggle');
-    const previewPanel = document.getElementById('settings-preview-panel');
-    const previewClose = document.getElementById('settings-preview-close');
-    if (!previewPanel) return;
-
-    const togglePreview = () => {
-      if (previewPanel.hasAttribute('hidden')) {
-        previewPanel.removeAttribute('hidden');
-      } else {
-        previewPanel.setAttribute('hidden', 'true');
-      }
-    };
-
-    previewToggle?.addEventListener('click', togglePreview);
-    previewClose?.addEventListener('click', () => previewPanel.setAttribute('hidden', 'true'));
-  }
-
   function initThemeSelectionBehavior(): void {
     const themeSelect = document.getElementById('theme-select') as HTMLSelectElement | null;
     const systemThemeToggle = document.getElementById(
@@ -746,7 +732,6 @@ export function createSettingsUiController(deps: SettingsUiDeps) {
     initSettingsQuickActions();
     initSettingsSectionResets();
     initSettingsWhyToggles();
-    initSettingsPreview();
     initThemeSelectionBehavior();
     initSettingsUndoRedo();
   }
@@ -780,5 +765,6 @@ export function createSettingsUiController(deps: SettingsUiDeps) {
     getSavedState,
     setSavedState,
     resetRedoState,
+    isSettingsDirty,
   };
 }

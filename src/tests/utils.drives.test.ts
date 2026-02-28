@@ -5,6 +5,7 @@ const hoisted = vi.hoisted(() => ({
   fsAccess: vi.fn(),
   fsReaddir: vi.fn(),
   fsStat: vi.fn(),
+  fsRealpath: vi.fn(),
   execMock: vi.fn(),
 }));
 
@@ -13,6 +14,7 @@ vi.mock('fs', () => ({
     access: hoisted.fsAccess,
     readdir: hoisted.fsReaddir,
     stat: hoisted.fsStat,
+    realpath: hoisted.fsRealpath,
   },
 }));
 
@@ -47,6 +49,7 @@ describe('utils module (getDrives/getDriveInfo)', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     vi.resetModules();
+    hoisted.fsRealpath.mockImplementation(async (p: string) => p);
   });
 
   afterEach(() => {
@@ -63,7 +66,10 @@ describe('utils module (getDrives/getDriveInfo)', () => {
         if (root === '/run/media') throw new Error('ENOENT');
         return [];
       });
-      hoisted.fsStat.mockResolvedValue({ isDirectory: () => true });
+      hoisted.fsStat.mockImplementation(async (p: string) => ({
+        isDirectory: () => true,
+        dev: p === '/' ? 1 : 2,
+      }));
 
       const { getDrives } = await import('../main/utils');
       const drives = await getDrives();
@@ -79,7 +85,10 @@ describe('utils module (getDrives/getDriveInfo)', () => {
         if (root === '/media') return ['.hidden', 'visible'];
         throw new Error('ENOENT');
       });
-      hoisted.fsStat.mockResolvedValue({ isDirectory: () => true });
+      hoisted.fsStat.mockImplementation(async (p: string) => ({
+        isDirectory: () => true,
+        dev: p === '/' ? 1 : 2,
+      }));
 
       const { getDrives } = await import('../main/utils');
       const drives = await getDrives();
@@ -105,6 +114,7 @@ describe('utils module (getDrives/getDriveInfo)', () => {
 
     it('handles inaccessible mount points gracefully', async () => {
       setPlatform('linux');
+      hoisted.fsStat.mockResolvedValue({ isDirectory: () => true, dev: 1 });
       hoisted.fsReaddir.mockRejectedValue(new Error('EACCES'));
 
       const { getDrives } = await import('../main/utils');
@@ -129,6 +139,7 @@ describe('utils module (getDrives/getDriveInfo)', () => {
 
     it('returns cached drives within TTL', async () => {
       setPlatform('linux');
+      hoisted.fsStat.mockResolvedValue({ isDirectory: () => true, dev: 1 });
       hoisted.fsReaddir.mockResolvedValue([]);
 
       const { getDrives, getCachedDrives } = await import('../main/utils');
@@ -143,19 +154,70 @@ describe('utils module (getDrives/getDriveInfo)', () => {
   });
 
   describe('getDrives on macOS', () => {
-    it('scans /Volumes', async () => {
+    it('filters out /Volumes entries that duplicate the root drive', async () => {
       setPlatform('darwin');
 
       hoisted.fsReaddir.mockImplementation(async (root: string) => {
         if (root === '/Volumes') return ['Macintosh HD', 'External'];
         throw new Error('ENOENT');
       });
-      hoisted.fsStat.mockResolvedValue({ isDirectory: () => true });
+      hoisted.fsStat.mockImplementation(async (p: string) => {
+        if (p === '/') return { isDirectory: () => true, dev: 100 };
+        if (p === path.join('/Volumes', 'Macintosh HD'))
+          return { isDirectory: () => true, dev: 100 };
+        return { isDirectory: () => true, dev: 200 };
+      });
+      hoisted.fsRealpath.mockImplementation(async (p: string) => p);
 
       const { getDrives } = await import('../main/utils');
       const drives = await getDrives();
       expect(drives).toContain('/');
-      expect(drives).toContain(path.join('/Volumes', 'Macintosh HD'));
+      expect(drives).not.toContain(path.join('/Volumes', 'Macintosh HD'));
+      expect(drives).toContain(path.join('/Volumes', 'External'));
+    });
+
+    it('filters out /Volumes entries whose realpath resolves to root', async () => {
+      setPlatform('darwin');
+
+      hoisted.fsReaddir.mockImplementation(async (root: string) => {
+        if (root === '/Volumes') return ['Macintosh HD', 'USB'];
+        throw new Error('ENOENT');
+      });
+      hoisted.fsStat.mockImplementation(async (p: string) => ({
+        isDirectory: () => true,
+        dev: p === '/' ? 10 : 20,
+      }));
+      hoisted.fsRealpath.mockImplementation(async (p: string) => {
+        if (p === path.join('/Volumes', 'Macintosh HD')) return '/';
+        return p;
+      });
+
+      const { getDrives } = await import('../main/utils');
+      const drives = await getDrives();
+      expect(drives).toContain('/');
+      expect(drives).not.toContain(path.join('/Volumes', 'Macintosh HD'));
+      expect(drives).toContain(path.join('/Volumes', 'USB'));
+    });
+
+    it('keeps entries when dedup realpath throws', async () => {
+      setPlatform('darwin');
+
+      hoisted.fsReaddir.mockImplementation(async (root: string) => {
+        if (root === '/Volumes') return ['External'];
+        throw new Error('ENOENT');
+      });
+      hoisted.fsStat.mockImplementation(async () => ({
+        isDirectory: () => true,
+        dev: 300,
+      }));
+      hoisted.fsRealpath.mockImplementation(async (p: string) => {
+        if (p === '/') return '/';
+        throw new Error('ENOENT');
+      });
+
+      const { getDrives } = await import('../main/utils');
+      const drives = await getDrives();
+      expect(drives).toContain('/');
       expect(drives).toContain(path.join('/Volumes', 'External'));
     });
   });
@@ -228,33 +290,34 @@ describe('utils module (getDrives/getDriveInfo)', () => {
   });
 
   describe('getDriveInfo', () => {
-    it.skipIf(process.platform === 'win32')(
-      'returns drive info with path and label on linux',
-      async () => {
-        setPlatform('linux');
+    it('returns drive info with path and label on linux', async () => {
+      setPlatform('linux');
 
-        hoisted.fsReaddir.mockImplementation(async (root: string) => {
-          if (root === '/media') return ['USB Drive'];
-          throw new Error('ENOENT');
-        });
-        hoisted.fsStat.mockResolvedValue({ isDirectory: () => true });
+      hoisted.fsReaddir.mockImplementation(async (root: string) => {
+        if (root === '/media') return ['USB Drive'];
+        throw new Error('ENOENT');
+      });
+      hoisted.fsStat.mockImplementation(async (p: string) => ({
+        isDirectory: () => true,
+        dev: p === '/' ? 1 : 2,
+      }));
 
-        const { getDriveInfo } = await import('../main/utils');
-        const info = await getDriveInfo();
-        expect(info.length).toBeGreaterThan(0);
+      const { getDriveInfo } = await import('../main/utils');
+      const info = await getDriveInfo();
+      expect(info.length).toBeGreaterThan(0);
 
-        const root = info.find((d) => d.path === '/');
-        expect(root).toBeDefined();
-        expect(typeof root!.label).toBe('string');
+      const root = info.find((d) => d.path === '/');
+      expect(root).toBeDefined();
+      expect(typeof root!.label).toBe('string');
 
-        const usb = info.find((d) => d.path === path.join('/media', 'USB Drive'));
-        expect(usb).toBeDefined();
-        expect(usb!.label).toBe('USB Drive');
-      }
-    );
+      const usb = info.find((d) => d.path === path.join('/media', 'USB Drive'));
+      expect(usb).toBeDefined();
+      expect(usb!.label).toBe('USB Drive');
+    });
 
     it('returns cached drive info within TTL', async () => {
       setPlatform('linux');
+      hoisted.fsStat.mockResolvedValue({ isDirectory: () => true, dev: 1 });
       hoisted.fsReaddir.mockResolvedValue([]);
 
       const { getDriveInfo } = await import('../main/utils');

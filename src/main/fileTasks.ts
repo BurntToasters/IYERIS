@@ -52,10 +52,24 @@ interface PendingTask {
   operationId?: string;
 }
 
+const TASK_TIMEOUT_MS: Partial<Record<TaskType, number>> = {
+  'folder-size': 5 * 60 * 1000,
+  checksum: 5 * 60 * 1000,
+  'build-index': 10 * 60 * 1000,
+  'search-files': 2 * 60 * 1000,
+  'search-content': 2 * 60 * 1000,
+  'search-content-list': 2 * 60 * 1000,
+  'search-content-index': 2 * 60 * 1000,
+  'search-index': 60 * 1000,
+  'list-directory': 2 * 60 * 1000,
+};
+const DEFAULT_TASK_TIMEOUT_MS = 2 * 60 * 1000;
+
 export class FileTaskManager extends EventEmitter {
   private workers: WorkerState[] = [];
   private queue: TaskRequest[] = [];
   private pending = new Map<string, PendingTask>();
+  private taskTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private nextId = 0;
   private shuttingDown = false;
   private static readonly MAX_QUEUE_SIZE = 1000;
@@ -105,6 +119,10 @@ export class FileTaskManager extends EventEmitter {
 
   async shutdown(): Promise<void> {
     this.shuttingDown = true;
+    for (const timer of this.taskTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.taskTimers.clear();
     const shutdownError = new Error('File task manager shutting down');
     for (const pending of this.pending.values()) {
       pending.reject(shutdownError);
@@ -134,6 +152,22 @@ export class FileTaskManager extends EventEmitter {
     workerState.currentTaskId = task.id;
     workerState.currentOperationId = task.operationId;
     workerState.worker.postMessage(task);
+
+    const timeoutMs = TASK_TIMEOUT_MS[task.type] ?? DEFAULT_TASK_TIMEOUT_MS;
+    const timer = setTimeout(() => {
+      this.taskTimers.delete(task.id);
+      const pending = this.pending.get(task.id);
+      if (pending) {
+        logger.warn(`[FileTasks] Task ${task.type} (${task.id}) timed out after ${timeoutMs}ms`);
+        pending.reject(new Error(`Task timed out after ${Math.round(timeoutMs / 1000)}s`));
+        this.pending.delete(task.id);
+        if (task.operationId) {
+          this.cancelOperation(task.operationId);
+        }
+        this.handleWorkerFailure(workerState, new Error('Task timeout'));
+      }
+    }, timeoutMs);
+    this.taskTimers.set(task.id, timer);
   }
 
   private createWorker(): WorkerState {
@@ -148,6 +182,11 @@ export class FileTaskManager extends EventEmitter {
       }
 
       if (message.type === 'result') {
+        const timer = this.taskTimers.get(message.id);
+        if (timer) {
+          clearTimeout(timer);
+          this.taskTimers.delete(message.id);
+        }
         const pending = this.pending.get(message.id);
         if (!pending) {
           this.finishWorkerTask(workerState);

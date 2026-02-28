@@ -1,4 +1,4 @@
-export type HighlightJs = {
+type HighlightJs = {
   highlightElement?: (element: Element) => void;
 };
 

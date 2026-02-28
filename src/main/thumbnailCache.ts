@@ -1,7 +1,8 @@
-import { ipcMain, app, IpcMainInvokeEvent } from 'electron';
+import type { IpcMainInvokeEvent } from 'electron';
+import { ipcMain, app } from 'electron';
 import * as path from 'path';
 import { promises as fs } from 'fs';
-import * as fsSync from 'fs';
+import type * as fsSync from 'fs';
 import * as crypto from 'crypto';
 import { isPathSafe, getErrorMessage } from './security';
 import { ignoreError } from '../shared';
@@ -15,7 +16,7 @@ import type {
 } from '../types';
 
 const CACHE_DIR_NAME = 'thumbnail-cache';
-export const CACHE_VERSION = 1;
+const CACHE_VERSION = 1;
 export const MAX_CACHE_SIZE_MB = 500;
 export const MAX_CACHE_AGE_DAYS = 30;
 const MAX_THUMBNAIL_BYTES = 5 * 1024 * 1024;

@@ -8,12 +8,15 @@ import { createQuicklookController, type QuicklookDeps } from './rendererQuicklo
 import {
   IMAGE_EXTENSIONS,
   RAW_EXTENSIONS,
+  MARKDOWN_EXTENSIONS,
   TEXT_EXTENSIONS,
   VIDEO_EXTENSIONS,
   AUDIO_EXTENSIONS,
   PDF_EXTENSIONS,
   ARCHIVE_EXTENSIONS,
 } from './fileTypes.js';
+
+import { loadMarked } from './rendererMarkdown.js';
 
 type PreviewDeps = QuicklookDeps;
 
@@ -108,6 +111,8 @@ export function createPreviewController(deps: PreviewDeps) {
         showImagePreview(file, requestId);
       } else if (RAW_EXTENSIONS.has(ext)) {
         showRawImagePreview(file, requestId);
+      } else if (MARKDOWN_EXTENSIONS.has(ext)) {
+        showMarkdownPreview(file, requestId);
       } else if (TEXT_EXTENSIONS.has(ext)) {
         showTextPreview(file, requestId);
       } else if (VIDEO_EXTENSIONS.has(ext)) {
@@ -302,6 +307,48 @@ export function createPreviewController(deps: PreviewDeps) {
     </div>
     ${generateFileInfo(file, info)}
   `;
+  }
+
+  async function showMarkdownPreview(file: FileItem, requestId: number) {
+    ensureElements();
+    if (!previewContent || requestId !== previewRequestId) return;
+    previewContent.innerHTML = loadingHtml('markdown');
+
+    const result = await window.electronAPI.readFileContent(file.path, 100 * 1024);
+    if (requestId !== previewRequestId) return;
+
+    if (!result.success) {
+      previewContent.innerHTML = `
+      <div class="preview-error">
+        Failed to load markdown: ${escapeHtml(result.error || 'Operation failed')}
+      </div>
+      ${generateFileInfo(file, null)}
+    `;
+      return;
+    }
+
+    const props = await window.electronAPI.getItemProperties(file.path);
+    if (requestId !== previewRequestId) return;
+    const info = props.success ? props.properties : null;
+
+    const md = await loadMarked();
+    if (requestId !== previewRequestId) return;
+
+    if (md) {
+      const rendered = md.marked.parse(result.content, { async: false, breaks: true }) as string;
+      previewContent.innerHTML = `
+      ${result.isTruncated ? `<div class="preview-truncated">${twemojiImg(String.fromCodePoint(0x26a0), 'twemoji')} File truncated to first 100KB</div>` : ''}
+      <div class="preview-markdown">${rendered}</div>
+      ${generateFileInfo(file, info)}
+    `;
+    } else {
+      const lang = getLanguageForExt(deps.getFileExtension(file.name));
+      previewContent.innerHTML = `
+      ${result.isTruncated ? `<div class="preview-truncated">${twemojiImg(String.fromCodePoint(0x26a0), 'twemoji')} File truncated to first 100KB</div>` : ''}
+      <pre class="preview-text"><code class="${lang ? `language-${lang}` : ''}">${escapeHtml(result.content)}</code></pre>
+      ${generateFileInfo(file, info)}
+    `;
+    }
   }
 
   async function showTextPreview(file: FileItem, requestId: number) {

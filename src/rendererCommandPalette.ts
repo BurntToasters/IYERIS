@@ -24,6 +24,7 @@ interface CommandPaletteActions {
   goBack: () => void;
   goForward: () => void;
   goUp: () => void;
+  goHome: () => void;
   showSettingsModal: () => void;
   showShortcutsModal: () => void;
   selectAll: () => void;
@@ -45,6 +46,7 @@ interface CommandPaletteDeps {
   remappableCommandIds: Set<string>;
   formatShortcutKeyLabel: (key: string) => string;
   getTabsEnabled: () => boolean;
+  twemojiImg: (emoji: string, className?: string) => string;
   actions: CommandPaletteActions;
 }
 
@@ -156,6 +158,7 @@ export function createCommandPaletteController(deps: CommandPaletteDeps) {
       goBack,
       goForward,
       goUp,
+      goHome,
       showSettingsModal,
       showShortcutsModal,
       selectAll,
@@ -196,6 +199,7 @@ export function createCommandPaletteController(deps: CommandPaletteDeps) {
       ['go-back', 'Go Back', 'Navigate to previous folder', '⬅️', goBack, 'r', ['back']],
       ['go-forward', 'Go Forward', 'Navigate to next folder', '➡️', goForward, 'r', ['forward']],
       ['go-up', 'Go Up', 'Navigate to parent folder', '⬆️', goUp, 'r', ['parent']],
+      ['go-home', 'Go Home', 'Navigate to home view', '🏠', goHome, 'r', ['start']],
       ['settings', 'Settings', 'Open settings', '⚙️', showSettingsModal, 'r', ['preferences']],
       [
         'shortcuts',
@@ -382,7 +386,7 @@ export function createCommandPaletteController(deps: CommandPaletteDeps) {
 
       item.innerHTML = `
       <div class="command-palette-item-left">
-        ${cmd.icon ? `<span class="command-palette-item-icon">${cmd.icon}</span>` : ''}
+        ${cmd.icon ? `<span class="command-palette-item-icon">${deps.twemojiImg(cmd.icon, 'twemoji command-palette-emoji')}</span>` : ''}
         <div class="command-palette-item-text">
           <div class="command-palette-item-title">${escapeHtml(cmd.title)}</div>
           ${cmd.description ? `<div class="command-palette-item-description">${escapeHtml(cmd.description)}</div>` : ''}

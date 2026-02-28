@@ -9,7 +9,9 @@ vi.mock('../../workers/workerUtils', async (importOriginal) => {
     ...original,
     isCancelled: vi.fn(() => false),
     sendProgress: vi.fn(),
-    batchCheckHidden: vi.fn(async () => new Map<string, boolean>()),
+    batchCheckHidden: vi.fn(
+      async () => new Map<string, { isHidden: boolean; isSystemProtected: boolean }>()
+    ),
   };
 });
 
@@ -24,7 +26,9 @@ beforeEach(async () => {
   vi.mocked(isCancelled).mockReturnValue(false);
   vi.mocked(sendProgress).mockReset();
   vi.mocked(batchCheckHidden).mockReset();
-  vi.mocked(batchCheckHidden).mockResolvedValue(new Map<string, boolean>());
+  vi.mocked(batchCheckHidden).mockResolvedValue(
+    new Map<string, { isHidden: boolean; isSystemProtected: boolean }>()
+  );
 });
 
 afterEach(async () => {

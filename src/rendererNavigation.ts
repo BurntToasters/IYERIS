@@ -84,6 +84,7 @@ export function createNavigationController(deps: NavigationDeps) {
   let breadcrumbMenuPath: string | null = null;
   let breadcrumbMenuAnchor: HTMLElement | null = null;
   let breadcrumbMenuFocusIndex = -1;
+  let breadcrumbDelegated = false;
 
   const ensureElements = () => {
     if (!breadcrumbContainer) breadcrumbContainer = deps.getBreadcrumbContainer();
@@ -94,6 +95,7 @@ export function createNavigationController(deps: NavigationDeps) {
   function updateBreadcrumb(currentPath: string): void {
     ensureElements();
     if (!breadcrumbContainer || !addressInput) return;
+    ensureBreadcrumbDelegation();
 
     hideBreadcrumbMenu();
 
@@ -112,17 +114,11 @@ export function createNavigationController(deps: NavigationDeps) {
       clearHtml(breadcrumbContainer);
       const item = document.createElement('div');
       item.className = 'breadcrumb-item';
+      item.dataset.path = deps.homeViewPath;
       const labelButton = document.createElement('button');
       labelButton.type = 'button';
       labelButton.className = 'breadcrumb-label';
       labelButton.textContent = deps.homeViewLabel;
-      labelButton.addEventListener('click', () => deps.navigateTo(deps.homeViewPath));
-      labelButton.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          deps.navigateTo(deps.homeViewPath);
-        }
-      });
       item.appendChild(labelButton);
       breadcrumbContainer.appendChild(item);
       return;
@@ -167,79 +163,6 @@ export function createNavigationController(deps: NavigationDeps) {
       item.appendChild(label);
       item.appendChild(caret);
 
-      label.addEventListener('click', (e) => {
-        e.stopPropagation();
-        deps.navigateTo(targetPath);
-      });
-
-      label.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          deps.navigateTo(targetPath);
-        } else if (e.key === 'ArrowDown' || e.key === 'F4') {
-          e.preventDefault();
-          void showBreadcrumbMenu(targetPath, caret);
-        }
-      });
-
-      caret.addEventListener('click', (e) => {
-        e.stopPropagation();
-        void showBreadcrumbMenu(targetPath, caret);
-      });
-
-      caret.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown' || e.key === 'F4') {
-          e.preventDefault();
-          void showBreadcrumbMenu(targetPath, caret);
-        } else if (e.key === 'Escape') {
-          e.preventDefault();
-          hideBreadcrumbMenu();
-        }
-      });
-
-      item.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        if (!e.dataTransfer) return;
-        const operation = deps.getDragOperation(e);
-        e.dataTransfer.dropEffect = operation;
-        item.classList.add('drag-over');
-        deps.showDropIndicator(operation, targetPath, e.clientX, e.clientY);
-      });
-
-      item.addEventListener('dragleave', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        const rect = item.getBoundingClientRect();
-        if (
-          e.clientX < rect.left ||
-          e.clientX >= rect.right ||
-          e.clientY < rect.top ||
-          e.clientY >= rect.bottom
-        ) {
-          item.classList.remove('drag-over');
-          deps.hideDropIndicator();
-        }
-      });
-
-      item.addEventListener('drop', async (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        item.classList.remove('drag-over');
-        const draggedPaths = await deps.getDraggedPaths(e);
-        if (draggedPaths.length === 0) {
-          deps.hideDropIndicator();
-          return;
-        }
-        if (draggedPaths.includes(targetPath)) {
-          deps.hideDropIndicator();
-          return;
-        }
-        const operation = deps.getDragOperation(e);
-        await deps.handleDrop(draggedPaths, targetPath, operation);
-        deps.hideDropIndicator();
-      });
-
       container.appendChild(item);
 
       if (index < segments.length - 1) {
@@ -268,8 +191,113 @@ export function createNavigationController(deps: NavigationDeps) {
     }
   }
 
+  function ensureBreadcrumbDelegation(): void {
+    if (breadcrumbDelegated || !breadcrumbContainer) return;
+    breadcrumbDelegated = true;
+
+    const getItemPath = (el: HTMLElement): string | null => {
+      const item = el.closest<HTMLElement>('.breadcrumb-item');
+      return item?.dataset.path ?? null;
+    };
+
+    breadcrumbContainer.addEventListener('click', (e) => {
+      const target = e.target as HTMLElement;
+      const path = getItemPath(target);
+      if (!path) return;
+
+      if (target.classList.contains('breadcrumb-label')) {
+        e.stopPropagation();
+        deps.navigateTo(path);
+      } else if (target.classList.contains('breadcrumb-caret')) {
+        e.stopPropagation();
+        void showBreadcrumbMenu(path, target);
+      }
+    });
+
+    breadcrumbContainer.addEventListener('keydown', (e) => {
+      const target = e.target as HTMLElement;
+      const item = target.closest<HTMLElement>('.breadcrumb-item');
+      const path = item?.dataset.path;
+      if (!path) return;
+
+      if (target.classList.contains('breadcrumb-label')) {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          deps.navigateTo(path);
+        } else if (e.key === 'ArrowDown' || e.key === 'F4') {
+          e.preventDefault();
+          const caret = item.querySelector<HTMLElement>('.breadcrumb-caret');
+          if (caret) void showBreadcrumbMenu(path, caret);
+        }
+      } else if (target.classList.contains('breadcrumb-caret')) {
+        if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown' || e.key === 'F4') {
+          e.preventDefault();
+          void showBreadcrumbMenu(path, target);
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          hideBreadcrumbMenu();
+        }
+      }
+    });
+
+    breadcrumbContainer.addEventListener('dragover', (e) => {
+      const target = e.target as HTMLElement;
+      const item = target.closest<HTMLElement>('.breadcrumb-item');
+      const path = item?.dataset.path;
+      if (!item || !path) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (!e.dataTransfer) return;
+      const operation = deps.getDragOperation(e);
+      e.dataTransfer.dropEffect = operation;
+      item.classList.add('drag-over');
+      deps.showDropIndicator(operation, path, e.clientX, e.clientY);
+    });
+
+    breadcrumbContainer.addEventListener('dragleave', (e) => {
+      const target = e.target as HTMLElement;
+      const item = target.closest<HTMLElement>('.breadcrumb-item');
+      if (!item) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const rect = item.getBoundingClientRect();
+      if (
+        e.clientX < rect.left ||
+        e.clientX >= rect.right ||
+        e.clientY < rect.top ||
+        e.clientY >= rect.bottom
+      ) {
+        item.classList.remove('drag-over');
+        deps.hideDropIndicator();
+      }
+    });
+
+    breadcrumbContainer.addEventListener('drop', async (e) => {
+      const target = e.target as HTMLElement;
+      const item = target.closest<HTMLElement>('.breadcrumb-item');
+      const path = item?.dataset.path;
+      if (!item || !path) return;
+      e.preventDefault();
+      e.stopPropagation();
+      item.classList.remove('drag-over');
+      const draggedPaths = await deps.getDraggedPaths(e);
+      if (draggedPaths.length === 0) {
+        deps.hideDropIndicator();
+        return;
+      }
+      if (draggedPaths.includes(path)) {
+        deps.hideDropIndicator();
+        return;
+      }
+      const operation = deps.getDragOperation(e);
+      await deps.handleDrop(draggedPaths, path, operation);
+      deps.hideDropIndicator();
+    });
+  }
+
   function setupBreadcrumbListeners(): void {
     ensureElements();
+    ensureBreadcrumbDelegation();
 
     const addressBar = document.querySelector('.address-bar');
     if (addressBar) {
@@ -302,6 +330,11 @@ export function createNavigationController(deps: NavigationDeps) {
           isBreadcrumbMode = true;
           updateBreadcrumb(deps.getCurrentPath());
           addressInput?.blur();
+          const fileGrid = document.getElementById('file-grid');
+          const activeItem = fileGrid?.querySelector<HTMLElement>('.file-item[tabindex="0"]');
+          if (activeItem) {
+            activeItem.focus();
+          }
         }
       });
     }
@@ -343,6 +376,27 @@ export function createNavigationController(deps: NavigationDeps) {
         if (e.key === 'End') {
           e.preventDefault();
           focusBreadcrumbMenuItem(items.length - 1);
+          return;
+        }
+
+        if (e.key === 'Tab') {
+          e.preventDefault();
+          hideBreadcrumbMenu();
+          return;
+        }
+
+        if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+          e.preventDefault();
+          const char = e.key.toLowerCase();
+          const startIndex = breadcrumbMenuFocusIndex + 1;
+          for (let i = 0; i < items.length; i++) {
+            const idx = (startIndex + i) % items.length;
+            const text = items[idx].textContent?.trim().toLowerCase() || '';
+            if (text.startsWith(char)) {
+              focusBreadcrumbMenuItem(idx);
+              return;
+            }
+          }
         }
       });
     }
@@ -499,16 +553,18 @@ export function createNavigationController(deps: NavigationDeps) {
     const history = settings.directoryHistory || [];
 
     if (history.length === 0) {
-      dropdown.innerHTML = '<div class="history-empty">No recent directories</div>';
+      setHtml(dropdown, '<div class="history-empty">No recent directories</div>');
     } else {
-      dropdown.innerHTML =
+      setHtml(
+        dropdown,
         history
           .map(
             (item) =>
               `<div class="history-item" data-path="${escapeHtml(item)}">${twemojiImg(String.fromCodePoint(0x1f4c1), 'twemoji')} ${escapeHtml(item)}</div>`
           )
           .join('') +
-        `<div class="history-clear" data-action="clear-directory">${twemojiImg(String.fromCodePoint(0x1f5d1), 'twemoji')} Clear Directory History</div>`;
+          `<div class="history-clear" data-action="clear-directory">${twemojiImg(String.fromCodePoint(0x1f5d1), 'twemoji')} Clear Directory History</div>`
+      );
     }
 
     dropdown.style.display = 'block';
