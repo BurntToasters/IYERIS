@@ -13,19 +13,6 @@ env:
   NODE_VERSION: '24'
 
 jobs:
-  dependency-review:
-    name: Dependency Review
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: read
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Review dependency changes
-        uses: actions/dependency-review-action@v4
-
   lint:
     name: Lint
     runs-on: ${{ matrix.os }}
