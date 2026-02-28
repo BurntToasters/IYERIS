@@ -66,7 +66,7 @@
         <td></td>
         <td></td>
         <td align="center">
-          <strong>Flatpak:</strong> <a href="https://github.com/BurntToasters/IYERIS/releases/latest/download/IYERIS-Linux.flatpak">Flatpak Bundle</a>
+          <strong>Flatpak:</strong> <a href="https://github.com/BurntToasters/IYERIS/releases/latest/download/IYERIS-Linux-x86_64.flatpak">x64</a> / <a href="https://github.com/BurntToasters/IYERIS/releases/latest/download/IYERIS-Linux-aarch64.flatpak">arm64</a>
         </td>
       </tr>
     </tbody>
