@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 
 function cleanBuildArtifacts() {
-  for (const dir of ['release', 'dist']) {
+  for (const dir of ['dist']) {
     try {
       fs.rmSync(dir, { recursive: true, force: true });
     } catch {

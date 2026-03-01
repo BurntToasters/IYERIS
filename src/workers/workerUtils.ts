@@ -405,6 +405,7 @@ export interface SearchFilters {
   maxSize?: number;
   dateFrom?: string;
   dateTo?: string;
+  searchInContents?: boolean;
   regex?: boolean;
 }
 

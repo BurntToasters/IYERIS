@@ -1,17 +1,8 @@
-import type { FileItem, SavedSearch, Settings } from './types';
+import type { FileItem, SavedSearch, SearchFilters, Settings } from './types';
 import { escapeHtml, ignoreError } from './shared.js';
 import { clearHtml, getById } from './rendererDom.js';
 import { twemojiImg } from './rendererUtils.js';
 import { isHomeViewPath } from './home.js';
-
-export type SearchFilters = {
-  fileType?: string;
-  minSize?: number;
-  maxSize?: number;
-  dateFrom?: string;
-  dateTo?: string;
-  regex?: boolean;
-};
 
 type SearchDeps = {
   getCurrentPath: () => string;

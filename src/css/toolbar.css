@@ -152,28 +152,6 @@ body.platform-win32 .toolbar-button:active:not(:disabled) {
   background: var(--active-color);
 }
 
-.clipboard-indicator {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 9px;
-  margin-left: 8px;
-  background: color-mix(in srgb, var(--interactive-selected) 90%, transparent);
-  border-radius: var(--radius-small);
-  font-size: 11px;
-  color: var(--accent-color);
-  transition: var(--transition-standard);
-}
-
-.clipboard-indicator.cut-mode {
-  background: rgba(255, 140, 0, 0.1);
-  color: var(--warning-color);
-}
-
-.clipboard-indicator .clipboard-icon {
-  opacity: 0.9;
-}
-
 .selection-indicator {
   display: inline-flex;
   align-items: center;

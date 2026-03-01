@@ -1,14 +1,8 @@
 import type { Settings, FileItem, DriveInfo } from './types';
 import { assignKey, escapeHtml, getErrorMessage, ignoreError } from './shared.js';
-import { clearHtml, getById } from './rendererDom.js';
+import { clearHtml } from './rendererDom.js';
 import type { TabData } from './rendererTabs.js';
-import {
-  activateModal,
-  deactivateModal,
-  showAlert,
-  showConfirm,
-  showDialog,
-} from './rendererModals.js';
+import { showConfirm } from './rendererModals.js';
 import { initTooltipSystem } from './rendererTooltips.js';
 import {
   isWindowsPath,
@@ -17,7 +11,7 @@ import {
   twemojiImg,
 } from './rendererUtils.js';
 import { createDefaultSettings } from './settings.js';
-import type { ShortcutBinding } from './shortcuts.js';
+
 import {
   createHomeController,
   getPathDisplayValue,
@@ -26,13 +20,8 @@ import {
   HOME_QUICK_ACCESS_ITEMS,
   isHomeViewPath,
 } from './home.js';
-import type { TourController } from './tour.js';
-import {
-  getFileExtension,
-  getFileTypeFromName,
-  formatFileSize,
-  getFileIcon,
-} from './rendererFileIcons.js';
+
+import { formatFileSize, getFileIcon } from './rendererFileIcons.js';
 import { createFileRenderController } from './rendererFileRender.js';
 import { createFileGridEventsController } from './rendererFileGridEvents.js';
 import { createEventListenersController } from './rendererEventListeners.js';
@@ -144,10 +133,6 @@ function getSelectedItemsSizeBytes(): number {
   selectedItemsSizeBytes = sum;
   selectedItemsSizeDirty = false;
   return sum;
-}
-
-function getFileItemsArray(): HTMLElement[] {
-  return Array.from(document.querySelectorAll('.file-item')) as HTMLElement[];
 }
 
 let tabs: TabData[] = [];

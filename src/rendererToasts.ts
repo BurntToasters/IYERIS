@@ -1,4 +1,5 @@
 import { escapeHtml } from './shared.js';
+import { TOAST_ANIMATION_MS } from './rendererLocalConstants.js';
 
 export type ToastType = 'success' | 'error' | 'info' | 'warning';
 
@@ -97,7 +98,7 @@ export function createToastManager(options: ToastOptions) {
         }
         visibleToastCount--;
         processToastQueue();
-      }, 300);
+      }, TOAST_ANIMATION_MS);
     };
 
     toast.addEventListener('click', removeToast);
