@@ -128,7 +128,7 @@
 .licenses-intro {
   margin-bottom: 24px;
   padding: 16px;
-  background: rgba(123, 97, 255, 0.1);
+  background: color-mix(in srgb, var(--accent-color) 10%, transparent);
   border-radius: 8px;
   border-left: 3px solid var(--accent-color);
 }

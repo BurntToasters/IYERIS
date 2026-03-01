@@ -615,7 +615,7 @@ export function setupFileOperationHandlers(): void {
         };
         const result = await tryWithElevation(
           chmodOp,
-          { type: 'custom' as 'delete', sourcePath: itemPath },
+          { type: 'chmod', sourcePath: itemPath, mode },
           'change permissions'
         );
         if (result.error) return { success: false, error: result.error };

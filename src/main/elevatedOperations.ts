@@ -17,10 +17,11 @@ import { isRunningInFlatpak } from './platformUtils';
 const execFilePromise = promisify(execFile);
 
 interface ElevatedOperation {
-  type: 'copy' | 'move' | 'delete' | 'rename' | 'createFolder' | 'createFile';
+  type: 'copy' | 'move' | 'delete' | 'rename' | 'createFolder' | 'createFile' | 'chmod';
   sourcePath?: string;
   destPath?: string;
   newName?: string;
+  mode?: number;
 }
 
 type ElevatedResult = { success: true } | { success: false; error: string };
@@ -134,6 +135,8 @@ function buildPowerShellScript(op: ElevatedOperation): string {
       return `try { New-Item -Path '${escape(op.destPath!)}' -ItemType Directory -Force -ErrorAction Stop; exit 0 } catch { exit 1 }`;
     case 'createFile':
       return `try { New-Item -Path '${escape(op.destPath!)}' -ItemType File -Force -ErrorAction Stop; exit 0 } catch { exit 1 }`;
+    case 'chmod':
+      return 'exit 1';
     default:
       return 'exit 1';
   }
@@ -265,6 +268,8 @@ function buildBashScript(op: ElevatedOperation): string {
       return `#!/bin/bash\nset -e\nmkdir -p '${escape(op.destPath!)}'`;
     case 'createFile':
       return `#!/bin/bash\nset -e\ntouch '${escape(op.destPath!)}'`;
+    case 'chmod':
+      return `#!/bin/bash\nset -e\nchmod ${op.mode!.toString(8)} '${escape(op.sourcePath!)}'`;
     default:
       return '#!/bin/bash\nexit 1';
   }
@@ -276,6 +281,7 @@ async function executeElevated(operation: ElevatedOperation): Promise<ElevatedRe
     move: ['sourcePath', 'destPath'],
     delete: ['sourcePath'],
     rename: ['sourcePath'],
+    chmod: ['sourcePath'],
     createFolder: ['destPath'],
     createFile: ['destPath'],
   };

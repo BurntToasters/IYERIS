@@ -233,15 +233,15 @@ body.theme-light .search-filter-btn.secondary:hover {
   background: rgba(0, 0, 0, 0.1);
 }
 
-.search-content-toggle {
+.search-filter-group .search-content-toggle {
   display: flex;
   align-items: center;
   gap: 10px;
   cursor: pointer;
-  font-size: 13px !important;
-  font-weight: 500 !important;
-  text-transform: none !important;
-  color: var(--text-primary) !important;
+  font-size: 13px;
+  font-weight: 500;
+  text-transform: none;
+  color: var(--text-primary);
 }
 
 .search-content-toggle input {

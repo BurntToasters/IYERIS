@@ -1,6 +1,5 @@
 import type { FileItem } from './types';
-
-type DialogType = 'info' | 'warning' | 'error' | 'success' | 'question';
+import type { DialogType } from './rendererModals.js';
 
 type InlineRenameDeps = {
   getCurrentPath: () => string;

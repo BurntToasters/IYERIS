@@ -1,3 +1,5 @@
+import { ZOOM_POPUP_HIDE_MS } from './rendererLocalConstants.js';
+
 type ZoomConfig = {
   setZoomLevel: (level: number) => Promise<{ success: boolean }>;
 };
@@ -35,7 +37,7 @@ export function createZoomController(config: ZoomConfig) {
 
     zoomPopupTimeout = setTimeout(() => {
       zoomPopup.style.display = 'none';
-    }, 2000);
+    }, ZOOM_POPUP_HIDE_MS);
   }
 
   async function zoomIn() {

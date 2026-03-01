@@ -1,5 +1,4 @@
 import { app, BrowserWindow, powerMonitor } from 'electron';
-import * as os from 'os';
 import * as path from 'path';
 import { readFileSync } from 'fs';
 
@@ -55,8 +54,7 @@ import { setupThumbnailCacheHandlers, stopThumbnailCacheCleanup } from './thumbn
 import { setupElevatedOperationHandlers } from './elevatedOperations';
 import { setupOpenWithHandlers } from './openWithHandlers';
 import { setupFileWatcherHandlers, cleanupAllWatchers } from './fileWatcher';
-
-const TOTAL_MEM_GB = os.totalmem() / 1024 ** 3;
+import { TOTAL_MEM_GB } from './appState';
 const rendererRecoveryAttempts = new Map<number, number>();
 const RENDERER_RELAUNCH_ARG_PREFIX = '--renderer-relaunch-count=';
 const rendererRelaunchCountArg = process.argv.find((arg) =>

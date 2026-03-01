@@ -54,6 +54,7 @@ vi.mock('electron', () => ({
 }));
 
 vi.mock('../main/appState', () => ({
+  TOTAL_MEM_GB: 16,
   getMainWindow: vi.fn(() => null),
   getFileIndexer: vi.fn(() => null),
   setFileIndexer: vi.fn(),

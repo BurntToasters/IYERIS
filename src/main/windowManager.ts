@@ -493,13 +493,13 @@ export async function createTray(forHiddenStart: boolean = false): Promise<void>
     logger.info(`${logPrefix} Linux: Using icon from:`, iconPath);
   }
 
-  if (trayIcon!.isEmpty()) {
-    logger.error(`${logPrefix} Failed to load tray icon from:`, iconPath!);
+  if (trayIcon.isEmpty()) {
+    logger.error(`${logPrefix} Failed to load tray icon from:`, iconPath);
     return;
   }
 
   try {
-    const newTray = new Tray(trayIcon!);
+    const newTray = new Tray(trayIcon);
     setTray(newTray);
 
     newTray.setToolTip('IYERIS');

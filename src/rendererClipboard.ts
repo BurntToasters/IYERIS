@@ -35,14 +35,10 @@ export function createClipboardController(deps: ClipboardDeps) {
     text: HTMLElement | null;
   } {
     if (!elIndicator) {
-      elIndicator =
-        document.getElementById('status-clipboard') ||
-        document.getElementById('clipboard-indicator');
+      elIndicator = document.getElementById('status-clipboard');
     }
     if (!elIndicatorText) {
-      elIndicatorText =
-        document.getElementById('status-clipboard-text') ||
-        document.getElementById('clipboard-text');
+      elIndicatorText = document.getElementById('status-clipboard-text');
     }
     return { indicator: elIndicator, text: elIndicatorText };
   }
