@@ -1,12 +1,45 @@
 const fs = require('fs');
 const path = require('path');
 
+const FLATPAK_BUILD_DIR_PREFIX = 'build-dir';
+
 const CLEAN_TARGETS = {
   clean: ['dist'],
   'clean-release': ['release'],
+  'clean-all': ['dist', 'release'],
 };
 
-function cleanDirs(dirs) {
+function listFlatpakBuildDirs() {
+  try {
+    return fs
+      .readdirSync('.', { withFileTypes: true })
+      .filter(
+        (entry) =>
+          entry.isDirectory() &&
+          (entry.name === FLATPAK_BUILD_DIR_PREFIX ||
+            entry.name.startsWith(`${FLATPAK_BUILD_DIR_PREFIX}-`))
+      )
+      .map((entry) => entry.name);
+  } catch {
+    return [];
+  }
+}
+
+function getCleanTargets(mode) {
+  const baseTargets = CLEAN_TARGETS[mode];
+  if (!baseTargets) {
+    throw new Error(`Unknown clean mode "${mode}"`);
+  }
+
+  if (mode === 'clean-all') {
+    return Array.from(new Set([...baseTargets, ...listFlatpakBuildDirs()]));
+  }
+
+  return baseTargets;
+}
+
+function cleanDirs(mode) {
+  const dirs = getCleanTargets(mode);
   for (const dir of dirs) {
     try {
       fs.rmSync(dir, { recursive: true, force: true, maxRetries: 8, retryDelay: 100 });
@@ -19,11 +52,7 @@ function cleanDirs(dirs) {
 }
 
 function cleanBuildArtifacts(mode) {
-  const targets = CLEAN_TARGETS[mode];
-  if (!targets) {
-    throw new Error(`Unknown clean mode "${mode}"`);
-  }
-  cleanDirs(targets);
+  cleanDirs(mode);
 }
 
 function copyFileEnsuringDir(src, dest) {
@@ -60,7 +89,7 @@ function copyRuntimeAssets() {
 
 const mode = process.argv[2];
 
-if (mode === 'clean' || mode === 'clean-release') {
+if (mode === 'clean' || mode === 'clean-release' || mode === 'clean-all') {
   cleanBuildArtifacts(mode);
   process.exit(0);
 }
@@ -70,5 +99,5 @@ if (mode === 'copy') {
   process.exit(0);
 }
 
-console.error('Usage: node build/dist-tools.js <clean|clean-release|copy>');
+console.error('Usage: node build/dist-tools.js <clean|clean-release|clean-all|copy>');
 process.exit(1);
