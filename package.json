@@ -64,7 +64,7 @@
     "gitprune:dry": "node build/git-prune-local-branches.js --dry-run",
     "gitprune:force": "node build/git-prune-local-branches.js --force",
     "prepare": "husky",
-    "build": "node build/dist-tools.js clean && tsc --project tsconfig.main.json && tsc --project tsconfig.renderer.json && node build/dist-tools.js copy",
+    "build": "node build/dist-tools.js clean-all && tsc --project tsconfig.main.json && tsc --project tsconfig.renderer.json && node build/dist-tools.js copy",
     "watch": "node build/watch.js",
     "start": "npm run build && electron .",
     "dev": "npm run build && electron . --enable-logging --dev",
