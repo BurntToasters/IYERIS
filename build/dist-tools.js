@@ -1,14 +1,29 @@
 const fs = require('fs');
 const path = require('path');
 
-function cleanBuildArtifacts() {
-  for (const dir of ['dist']) {
+const CLEAN_TARGETS = {
+  clean: ['dist'],
+  'clean-release': ['release'],
+};
+
+function cleanDirs(dirs) {
+  for (const dir of dirs) {
     try {
-      fs.rmSync(dir, { recursive: true, force: true });
-    } catch {
-      // Ignore cleanup errors to keep behavior identical to previous script.
+      fs.rmSync(dir, { recursive: true, force: true, maxRetries: 8, retryDelay: 100 });
+    } catch (error) {
+      if (error && error.code === 'ENOENT') continue;
+      const message = error && error.message ? error.message : String(error);
+      throw new Error(`Failed to clean "${dir}": ${message}`);
     }
   }
+}
+
+function cleanBuildArtifacts(mode) {
+  const targets = CLEAN_TARGETS[mode];
+  if (!targets) {
+    throw new Error(`Unknown clean mode "${mode}"`);
+  }
+  cleanDirs(targets);
 }
 
 function copyFileEnsuringDir(src, dest) {
@@ -45,8 +60,8 @@ function copyRuntimeAssets() {
 
 const mode = process.argv[2];
 
-if (mode === 'clean') {
-  cleanBuildArtifacts();
+if (mode === 'clean' || mode === 'clean-release') {
+  cleanBuildArtifacts(mode);
   process.exit(0);
 }
 
@@ -55,5 +70,5 @@ if (mode === 'copy') {
   process.exit(0);
 }
 
-console.error('Usage: node build/dist-tools.js <clean|copy>');
+console.error('Usage: node build/dist-tools.js <clean|clean-release|copy>');
 process.exit(1);

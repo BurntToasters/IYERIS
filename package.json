@@ -100,7 +100,7 @@
     "build:beta:mac": "npm run patch:beta && cross-env IS_BETA=true npm run build && dotenv -e .env -- electron-builder --mac --universal -c.mac.icon=assets/iyeris-beta.icns && npm run restore:release",
     "build:beta:linux": "npm run patch:beta && cross-env IS_BETA=true npm run build && electron-builder --linux AppImage deb rpm --x64 --arm64 -c.linux.icon=assets/icon-beta.png && npm run restore:release",
     "build:beta:linux:native": "npm run patch:beta && cross-env IS_BETA=true npm run build && USE_SYSTEM_FPM=true electron-builder --linux AppImage deb rpm --x64 --arm64 -c.linux.icon=assets/icon-beta.png && npm run restore:release",
-    "release:prepare": "node build/update-metainfo.js",
+    "release:prepare": "node build/dist-tools.js clean-release && node build/update-metainfo.js",
     "release:mac": "npm run release:prepare && npm run licenses && npm run build && dotenv -e .env -- electron-builder --mac --universal --publish always && npm run sign:gpg",
     "release:win": "npm run release:prepare && npm run licenses && npm run build && dotenv -e .env -- electron-builder --win nsis msi --arm64 --x64 --publish always && npm run sign:gpg",
     "release:win:nsis": "npm run release:prepare && npm run licenses && npm run build && dotenv -e .env -- electron-builder --win nsis --arm64 --x64 --publish always && npm run sign:gpg",
