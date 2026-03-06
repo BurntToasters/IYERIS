@@ -2,6 +2,7 @@ import type { Settings } from './types';
 import { hexToRgb } from './rendererThemeEditor.js';
 import { twemojiImg } from './rendererUtils.js';
 import { getById, clearHtml } from './rendererDom.js';
+import { ignoreError } from './shared.js';
 
 type BootstrapConfig = {
   loadSettings: () => Promise<void>;
@@ -104,22 +105,25 @@ export function createBootstrapController(config: BootstrapConfig) {
       titlebarIcon.src = iconSrc;
     }
 
-    window.electronAPI.getSystemAccentColor().then(({ accentColor, isDarkMode }) => {
-      const rgb = hexToRgb(accentColor);
-      document.documentElement.style.setProperty('--system-accent-color', accentColor);
-      document.documentElement.style.setProperty('--system-accent-rgb', rgb);
-      if (isDarkMode) {
-        document.body.classList.add('system-dark-mode');
-      }
-      const currentSettings = config.getCurrentSettings();
-      if (currentSettings.useSystemTheme) {
-        const systemTheme = isDarkMode ? 'default' : 'light';
-        if (currentSettings.theme !== systemTheme) {
-          currentSettings.theme = systemTheme;
-          config.applySettings(currentSettings);
+    window.electronAPI
+      .getSystemAccentColor()
+      .then(({ accentColor, isDarkMode }) => {
+        const rgb = hexToRgb(accentColor);
+        document.documentElement.style.setProperty('--system-accent-color', accentColor);
+        document.documentElement.style.setProperty('--system-accent-rgb', rgb);
+        if (isDarkMode) {
+          document.body.classList.add('system-dark-mode');
         }
-      }
-    });
+        const currentSettings = config.getCurrentSettings();
+        if (currentSettings.useSystemTheme) {
+          const systemTheme = isDarkMode ? 'default' : 'light';
+          if (currentSettings.theme !== systemTheme) {
+            currentSettings.theme = systemTheme;
+            config.applySettings(currentSettings);
+          }
+        }
+      })
+      .catch(ignoreError);
 
     const currentSettings = config.getCurrentSettings();
     const startupPath =
@@ -191,11 +195,14 @@ export function createBootstrapController(config: BootstrapConfig) {
     setTimeout(() => {
       config.updateUndoRedoState();
 
-      window.electronAPI.getZoomLevel().then((zoomResult) => {
-        if (!zoomResult.success) return;
-        config.setZoomLevel(zoomResult.zoomLevel);
-        config.updateZoomDisplay();
-      });
+      window.electronAPI
+        .getZoomLevel()
+        .then((zoomResult) => {
+          if (!zoomResult.success) return;
+          config.setZoomLevel(zoomResult.zoomLevel);
+          config.updateZoomDisplay();
+        })
+        .catch(ignoreError);
 
       const cleanupUpdateAvailable = window.electronAPI.onUpdateAvailable((_info) => {
         const settingsBtn = document.getElementById('settings-btn');

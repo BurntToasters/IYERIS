@@ -46,6 +46,8 @@ function getFilenameError(name: string): string | null {
 }
 
 export function createInlineRenameController(deps: InlineRenameDeps) {
+  let pendingRenameTimeout: ReturnType<typeof setTimeout> | null = null;
+
   async function createNewFile() {
     await createNewFileWithInlineRename();
   }
@@ -84,7 +86,9 @@ export function createInlineRenameController(deps: InlineRenameDeps) {
 
     const createdPath = result.path;
     await deps.navigateTo(currentPath);
-    setTimeout(() => {
+    if (pendingRenameTimeout) clearTimeout(pendingRenameTimeout);
+    pendingRenameTimeout = setTimeout(() => {
+      pendingRenameTimeout = null;
       if (typeof document === 'undefined') return;
       const fileItems = document.querySelectorAll('.file-item');
       for (const item of Array.from(fileItems)) {
