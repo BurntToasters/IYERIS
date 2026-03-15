@@ -20,7 +20,7 @@
     "cross-env": "^10.1.0",
     "dotenv": "^17.2.3",
     "dotenv-cli": "^11.0.0",
-    "electron": "^40.0.0",
+    "electron": "^41.0.2",
     "electron-builder": "^26.4.0",
     "eslint": "^10.0.0",
     "husky": "^9.1.7",
