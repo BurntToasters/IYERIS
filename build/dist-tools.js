@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 
 const FLATPAK_BUILD_DIR_PREFIX = 'build-dir';
+const FLATPAK_TRANSIENT_DIRS = ['repo', '.flatpak-builder'];
 
 const CLEAN_TARGETS = {
   clean: ['dist'],
@@ -32,7 +33,9 @@ function getCleanTargets(mode) {
   }
 
   if (mode === 'clean-all') {
-    return Array.from(new Set([...baseTargets, ...listFlatpakBuildDirs()]));
+    return Array.from(
+      new Set([...baseTargets, ...FLATPAK_TRANSIENT_DIRS, ...listFlatpakBuildDirs()])
+    );
   }
 
   return baseTargets;
