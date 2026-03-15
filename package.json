@@ -1,6 +1,6 @@
 {
   "name": "iyeris",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "A beautiful cross-platform file explorer built with Electron, featuring a simple yet advanced modern design.",
   "main": "dist/main/main.js",
   "dependencies": {
@@ -77,6 +77,7 @@
     "build:win:all": "npm run build && electron-builder --win nsis msi --arm64 --x64",
     "build:mac:universal": "npm run build && dotenv -e .env -- electron-builder --mac --universal",
     "build:mac:mas": "npm run build && dotenv -e .env -- electron-builder --mac mas --universal",
+    "mac:ssh:keychain": "bash build/mac-keychain-ssh.sh",
     "build:mac:universal:dev": "npm run build && electron-builder --mac --universal",
     "build:linux": "npm run build && electron-builder --linux AppImage deb rpm --x64 --arm64",
     "build:linux:all": "npm run build:linux && npm run flatpak:clean && npm run flatpak:bundle",
@@ -102,6 +103,7 @@
     "build:beta:linux:native": "npm run patch:beta && cross-env IS_BETA=true npm run build && USE_SYSTEM_FPM=true electron-builder --linux AppImage deb rpm --x64 --arm64 -c.linux.icon=assets/icon-beta.png && npm run restore:release",
     "release:prepare": "node build/dist-tools.js clean-release && node build/update-metainfo.js",
     "release:mac": "npm run release:prepare && npm run licenses && npm run build && dotenv -e .env -- electron-builder --mac --universal --publish always && npm run sign:gpg",
+    "release:mac:ssh": "npm run mac:ssh:keychain && npm run release:mac",
     "release:win": "npm run release:prepare && npm run licenses && npm run build && dotenv -e .env -- electron-builder --win nsis msi --arm64 --x64 --publish always && npm run sign:gpg",
     "release:win:nsis": "npm run release:prepare && npm run licenses && npm run build && dotenv -e .env -- electron-builder --win nsis --arm64 --x64 --publish always && npm run sign:gpg",
     "release:win:msi": "npm run release:prepare && npm run licenses && npm run build && dotenv -e .env -- electron-builder --win msi --arm64 --x64 --publish always && npm run sign:gpg",
