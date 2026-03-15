@@ -139,7 +139,11 @@
       "src/index.html",
       "src/css/*.css",
       "assets/**/*",
-      "licenses.json"
+      "licenses.json",
+      "!build-dir/**",
+      "!build-dir-*/**",
+      "!repo/**",
+      "!.flatpak-builder/**"
     ],
     "extraMetadata": {
       "main": "dist/main/main.js"
