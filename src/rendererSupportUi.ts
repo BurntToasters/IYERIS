@@ -10,6 +10,9 @@ interface SupportUiDeps {
   openExternal: (url: string) => void;
 }
 
+const MIGRATION_RELEASE_URL = 'https://github.com/BurntToasters/IYERIS/releases/latest';
+const MIGRATION_DISMISS_REVEAL_COUNT = 2;
+
 export function createSupportUiController(deps: SupportUiDeps) {
   function getRepositoryText(repository: unknown): string | null {
     if (typeof repository === 'string') {
@@ -257,6 +260,59 @@ export function createSupportUiController(deps: SupportUiDeps) {
     });
   }
 
+  function showMigrationPopup() {
+    const settings = deps.getCurrentSettings();
+    const nextViewCount = (settings.migrationNoticeViewCount || 0) + 1;
+    settings.migrationNoticeViewCount = nextViewCount;
+    void deps.saveSettingsWithTimestamp(settings).catch(() => {});
+
+    const dismissButton = document.getElementById('migration-popup-dismiss') as HTMLElement | null;
+    if (dismissButton) {
+      dismissButton.style.display = nextViewCount >= MIGRATION_DISMISS_REVEAL_COUNT ? '' : 'none';
+    }
+
+    const modal = document.getElementById('migration-popup-modal');
+    if (modal) {
+      modal.style.display = 'flex';
+      deps.activateModal(modal);
+    }
+  }
+
+  function hideMigrationPopup() {
+    const modal = document.getElementById('migration-popup-modal');
+    if (modal) {
+      modal.style.display = 'none';
+      deps.deactivateModal(modal);
+    }
+  }
+
+  function initMigrationPopup(): void {
+    document.getElementById('migration-popup-remind')?.addEventListener('click', () => {
+      hideMigrationPopup();
+    });
+
+    document.getElementById('migration-popup-dismiss')?.addEventListener('click', async () => {
+      const settings = deps.getCurrentSettings();
+      settings.migrationNoticeDismissed = true;
+      await deps.saveSettingsWithTimestamp(settings);
+      hideMigrationPopup();
+    });
+
+    document.getElementById('migration-popup-update')?.addEventListener('click', () => {
+      deps.openExternal(MIGRATION_RELEASE_URL);
+      hideMigrationPopup();
+    });
+
+    const modal = document.getElementById('migration-popup-modal');
+    if (modal) {
+      modal.addEventListener('click', (e) => {
+        if ((e.target as HTMLElement).id === 'migration-popup-modal') {
+          hideMigrationPopup();
+        }
+      });
+    }
+  }
+
   return {
     showLicensesModal,
     hideLicensesModal,
@@ -265,5 +321,8 @@ export function createSupportUiController(deps: SupportUiDeps) {
     showSupportPopup,
     hideSupportPopup,
     initSupportPopup,
+    showMigrationPopup,
+    hideMigrationPopup,
+    initMigrationPopup,
   };
 }

@@ -25,6 +25,9 @@ export function createExternalLinksController(deps: ExternalLinksDeps) {
       const version = (document.getElementById('status-version')?.textContent || 'v0.1.0').trim();
       deps.openExternal(`https://github.com/BurntToasters/IYERIS/releases/tag/${version}`);
     });
+    document.getElementById('status-eol-badge')?.addEventListener('click', () => {
+      deps.openExternal('https://github.com/BurntToasters/IYERIS/releases/latest');
+    });
 
     document.getElementById('about-github-btn')?.addEventListener('click', () => {
       deps.openExternal('https://github.com/BurntToasters/IYERIS');

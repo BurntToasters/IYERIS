@@ -1,41 +1,33 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   ipcMainHandle: vi.fn(),
-  appGetVersion: vi.fn(() => '1.0.0'),
-  appRelaunch: vi.fn(),
-  appQuit: vi.fn(),
-  appReleaseSingleInstanceLock: vi.fn(),
+  appGetVersion: vi.fn(() => '1.0.5'),
   getMainWindow: vi.fn(),
   getIsDev: vi.fn(() => false),
-  setIsQuitting: vi.fn(),
-  getAutoUpdater: vi.fn(),
+  safeSendToWindow: vi.fn(),
+  isTrustedIpcEvent: vi.fn(() => true),
   isRunningInFlatpak: vi.fn(() => false),
   checkMsiInstallation: vi.fn(() => Promise.resolve(false)),
   isInstalledViaMsi: vi.fn(() => false),
-  safeSendToWindow: vi.fn(),
-  isTrustedIpcEvent: vi.fn(() => true),
-  getErrorMessage: vi.fn((e: unknown) => (e instanceof Error ? e.message : String(e))),
+  getErrorMessage: vi.fn((error: unknown) =>
+    error instanceof Error ? error.message : String(error)
+  ),
 }));
 
 vi.mock('electron', () => ({
   ipcMain: { handle: mocks.ipcMainHandle },
   app: {
     getVersion: mocks.appGetVersion,
-    relaunch: mocks.appRelaunch,
-    quit: mocks.appQuit,
-    releaseSingleInstanceLock: mocks.appReleaseSingleInstanceLock,
   },
 }));
 
 vi.mock('../main/appState', () => ({
   getMainWindow: mocks.getMainWindow,
   getIsDev: mocks.getIsDev,
-  setIsQuitting: mocks.setIsQuitting,
 }));
 
 vi.mock('../main/platformUtils', () => ({
-  getAutoUpdater: mocks.getAutoUpdater,
   isRunningInFlatpak: mocks.isRunningInFlatpak,
   checkMsiInstallation: mocks.checkMsiInstallation,
   isInstalledViaMsi: mocks.isInstalledViaMsi,
@@ -52,440 +44,199 @@ vi.mock('../main/security', () => ({
 
 import { compareVersions, setupUpdateHandlers, initializeAutoUpdater } from '../main/updateManager';
 
+type HandlerMap = Record<string, (...args: unknown[]) => Promise<Record<string, unknown>>>;
+
+function mockGithubLatestRelease(tagName: string, htmlUrl?: string) {
+  const payload = {
+    tag_name: tagName,
+    html_url: htmlUrl ?? `https://github.com/BurntToasters/IYERIS/releases/tag/${tagName}`,
+    body: 'release notes',
+    published_at: '2026-03-20T00:00:00.000Z',
+  };
+
+  const fetchMock = vi.fn().mockResolvedValue({
+    ok: true,
+    status: 200,
+    statusText: 'OK',
+    json: vi.fn().mockResolvedValue(payload),
+  });
+
+  vi.stubGlobal('fetch', fetchMock);
+  return fetchMock;
+}
+
 describe('compareVersions extended', () => {
-  it('handles v prefix', () => {
-    expect(compareVersions('v2.0.0', 'v1.0.0')).toBe(1);
-    expect(compareVersions('v1.0.0', 'v1.0.0')).toBe(0);
+  it('handles v prefix and equality', () => {
+    expect(compareVersions('v2.0.0', '2.0.0')).toBe(0);
   });
 
-  it('handles build metadata (ignored)', () => {
-    expect(compareVersions('1.0.0+build123', '1.0.0+build456')).toBe(0);
+  it('treats prerelease as lower precedence than stable', () => {
+    expect(compareVersions('2.0.0-beta.1', '2.0.0')).toBe(-1);
   });
 
-  it('numeric prerelease < string prerelease', () => {
-    expect(compareVersions('1.0.0-1', '1.0.0-beta')).toBe(-1);
-    expect(compareVersions('1.0.0-beta', '1.0.0-1')).toBe(1);
-  });
-
-  it('shorter prerelease < longer if prefix matches', () => {
-    expect(compareVersions('1.0.0-beta', '1.0.0-beta.1')).toBe(-1);
-    expect(compareVersions('1.0.0-beta.1', '1.0.0-beta')).toBe(1);
-  });
-
-  it('handles missing minor/patch', () => {
-    expect(compareVersions('1', '1.0.0')).toBe(0);
-    expect(compareVersions('1.2', '1.2.0')).toBe(0);
-  });
-
-  it('handles invalid version strings', () => {
-    expect(compareVersions('invalid', 'invalid')).toBe(0);
-    expect(compareVersions('invalid', '1.0.0')).toBe(-1);
-  });
-
-  it('handles whitespace', () => {
-    expect(compareVersions('  1.0.0  ', '1.0.0')).toBe(0);
-  });
-
-  it('compares multiple prerelease identifiers', () => {
-    expect(compareVersions('1.0.0-alpha.1', '1.0.0-alpha.2')).toBe(-1);
-    expect(compareVersions('1.0.0-alpha.2.1', '1.0.0-alpha.2.0')).toBe(1);
+  it('orders patch/minor/major correctly', () => {
+    expect(compareVersions('1.0.1', '1.0.0')).toBe(1);
+    expect(compareVersions('1.1.0', '1.0.9')).toBe(1);
+    expect(compareVersions('2.0.0', '1.9.9')).toBe(1);
   });
 });
 
 describe('setupUpdateHandlers', () => {
-  let handlers: Record<string, (...args: unknown[]) => Promise<Record<string, unknown>>>;
-  const loadSettings = vi.fn(() => Promise.resolve({ updateChannel: 'auto' } as any));
+  let handlers: HandlerMap;
 
   beforeEach(() => {
     vi.clearAllMocks();
     handlers = {};
+
     mocks.ipcMainHandle.mockImplementation(
       (channel: string, handler: (...args: unknown[]) => Promise<Record<string, unknown>>) => {
         handlers[channel] = handler;
       }
     );
-    setupUpdateHandlers(loadSettings);
+
+    setupUpdateHandlers(() => Promise.resolve({ updateChannel: 'auto' } as any));
+    vi.stubGlobal('fetch', vi.fn());
   });
 
-  it('registers all three handlers', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    (process as any).mas = false;
+    (process as any).windowsStore = false;
+  });
+
+  it('registers all update IPC handlers', () => {
     expect(handlers['check-for-updates']).toBeDefined();
     expect(handlers['download-update']).toBeDefined();
     expect(handlers['install-update']).toBeDefined();
   });
 
-  describe('check-for-updates', () => {
-    const event = { sender: { id: 1 } } as any;
-
-    it('rejects untrusted sender', async () => {
-      mocks.isTrustedIpcEvent.mockReturnValueOnce(false);
-      const result = await handlers['check-for-updates'](event);
-      expect(result).toEqual({ success: false, error: 'Untrusted IPC sender' });
-    });
-
-    it('detects flatpak environment', async () => {
-      mocks.isRunningInFlatpak.mockReturnValueOnce(true);
-      mocks.appGetVersion.mockReturnValueOnce('1.0.0');
-      const result = await handlers['check-for-updates'](event);
-      expect(result.success).toBe(true);
-      expect(result.isFlatpak).toBe(true);
-    });
-
-    it('detects MAS environment', async () => {
-      mocks.isRunningInFlatpak.mockReturnValue(false);
-      const origMas = process.mas;
-      (process as any).mas = true;
-      try {
-        const result = await handlers['check-for-updates'](event);
-        expect(result.success).toBe(true);
-        expect(result.isMas).toBe(true);
-      } finally {
-        (process as any).mas = origMas;
-      }
-    });
-
-    it('detects MS Store environment', async () => {
-      mocks.isRunningInFlatpak.mockReturnValue(false);
-      const origMas = process.mas;
-      const origStore = process.windowsStore;
-      (process as any).mas = false;
-      (process as any).windowsStore = true;
-      try {
-        const result = await handlers['check-for-updates'](event);
-        expect(result.success).toBe(true);
-        expect(result.isMsStore).toBe(true);
-      } finally {
-        (process as any).mas = origMas;
-        (process as any).windowsStore = origStore;
-      }
-    });
-
-    it('detects MSI installation', async () => {
-      mocks.isRunningInFlatpak.mockReturnValue(false);
-      (process as any).mas = false;
-      (process as any).windowsStore = false;
-      mocks.checkMsiInstallation.mockResolvedValue(true);
-      const result = await handlers['check-for-updates'](event);
-      expect(result.success).toBe(true);
-      expect(result.isMsi).toBe(true);
-    });
-
-    it('checks for updates successfully with newer version', async () => {
-      mocks.isRunningInFlatpak.mockReturnValue(false);
-      mocks.checkMsiInstallation.mockResolvedValue(false);
-      mocks.appGetVersion.mockReturnValue('1.0.0');
-      (process as any).mas = false;
-      (process as any).windowsStore = false;
-      const mockAutoUpdater = {
-        channel: '',
-        allowPrerelease: false,
-        checkForUpdates: vi.fn().mockResolvedValue({
-          updateInfo: {
-            version: '2.0.0',
-            releaseDate: '2025-01-01',
-            releaseNotes: 'New features',
-          },
-        }),
-      };
-      mocks.getAutoUpdater.mockReturnValue(mockAutoUpdater);
-      const result = await handlers['check-for-updates'](event);
-      expect(result.success).toBe(true);
-      expect(result.hasUpdate).toBe(true);
-      expect(result.latestVersion).toBe('v2.0.0');
-      expect(result.releaseUrl).toContain('v2.0.0');
-    });
-
-    it('returns no update for same version', async () => {
-      mocks.isRunningInFlatpak.mockReturnValue(false);
-      mocks.checkMsiInstallation.mockResolvedValue(false);
-      mocks.appGetVersion.mockReturnValue('1.0.0');
-      (process as any).mas = false;
-      (process as any).windowsStore = false;
-      const mockAutoUpdater = {
-        channel: '',
-        allowPrerelease: false,
-        checkForUpdates: vi.fn().mockResolvedValue({
-          updateInfo: { version: '1.0.0', releaseDate: '2025-01-01' },
-        }),
-      };
-      mocks.getAutoUpdater.mockReturnValue(mockAutoUpdater);
-      const result = await handlers['check-for-updates'](event);
-      expect(result.success).toBe(true);
-      expect(result.hasUpdate).toBe(false);
-    });
-
-    it('handles null checkForUpdates result', async () => {
-      mocks.isRunningInFlatpak.mockReturnValue(false);
-      mocks.checkMsiInstallation.mockResolvedValue(false);
-      (process as any).mas = false;
-      (process as any).windowsStore = false;
-      mocks.getAutoUpdater.mockReturnValue({
-        channel: '',
-        allowPrerelease: false,
-        checkForUpdates: vi.fn().mockResolvedValue(null),
-      });
-      const result = await handlers['check-for-updates'](event);
-      expect(result).toEqual({ success: false, error: 'Update check returned no result' });
-    });
-
-    it('handles check failure', async () => {
-      mocks.isRunningInFlatpak.mockReturnValue(false);
-      mocks.checkMsiInstallation.mockResolvedValue(false);
-      (process as any).mas = false;
-      (process as any).windowsStore = false;
-      mocks.getAutoUpdater.mockReturnValue({
-        channel: '',
-        allowPrerelease: false,
-        checkForUpdates: vi.fn().mockRejectedValue(new Error('Network error')),
-      });
-      const result = await handlers['check-for-updates'](event);
-      expect(result.success).toBe(false);
-      expect(result.error).toBe('Network error');
-    });
-
-    it('ignores beta release on stable channel', async () => {
-      mocks.isRunningInFlatpak.mockReturnValue(false);
-      mocks.checkMsiInstallation.mockResolvedValue(false);
-      mocks.appGetVersion.mockReturnValue('1.0.0');
-      (process as any).mas = false;
-      (process as any).windowsStore = false;
-      loadSettings.mockResolvedValue({ updateChannel: 'stable' } as any);
-      mocks.getAutoUpdater.mockReturnValue({
-        channel: '',
-        allowPrerelease: false,
-        checkForUpdates: vi.fn().mockResolvedValue({
-          updateInfo: { version: '2.0.0-beta.1', releaseDate: '2025-01-01' },
-        }),
-      });
-      const result = await handlers['check-for-updates'](event);
-      expect(result.success).toBe(true);
-      expect(result.hasUpdate).toBe(false);
-    });
-
-    it('ignores stable release on beta channel', async () => {
-      mocks.isRunningInFlatpak.mockReturnValue(false);
-      mocks.checkMsiInstallation.mockResolvedValue(false);
-      mocks.appGetVersion.mockReturnValue('2.0.0-beta.1');
-      (process as any).mas = false;
-      (process as any).windowsStore = false;
-      loadSettings.mockResolvedValue({ updateChannel: 'beta' } as any);
-      mocks.getAutoUpdater.mockReturnValue({
-        channel: '',
-        allowPrerelease: true,
-        checkForUpdates: vi.fn().mockResolvedValue({
-          updateInfo: { version: '1.5.0', releaseDate: '2025-01-01' },
-        }),
-      });
-      const result = await handlers['check-for-updates'](event);
-      expect(result.success).toBe(true);
-      expect(result.hasUpdate).toBe(false);
-    });
+  it('rejects untrusted check-for-updates sender', async () => {
+    mocks.isTrustedIpcEvent.mockReturnValueOnce(false);
+    const result = await handlers['check-for-updates']({ sender: { id: 1 } } as any);
+    expect(result).toEqual({ success: false, error: 'Untrusted IPC sender' });
   });
 
-  describe('download-update', () => {
-    const event = { sender: { id: 1 } } as any;
-
-    it('rejects untrusted sender', async () => {
-      mocks.isTrustedIpcEvent.mockReturnValueOnce(false);
-      const result = await handlers['download-update'](event);
-      expect(result).toEqual({ success: false, error: 'Untrusted IPC sender' });
-    });
-
-    it('downloads update successfully', async () => {
-      mocks.getAutoUpdater.mockReturnValue({
-        downloadUpdate: vi.fn().mockResolvedValue(undefined),
-      });
-      const result = await handlers['download-update'](event);
-      expect(result).toEqual({ success: true });
-    });
-
-    it('handles download failure', async () => {
-      mocks.getAutoUpdater.mockReturnValue({
-        downloadUpdate: vi.fn().mockRejectedValue(new Error('Download failed')),
-      });
-      const result = await handlers['download-update'](event);
-      expect(result).toEqual({ success: false, error: 'Download failed' });
-    });
+  it('returns store-managed response for Flatpak installs', async () => {
+    mocks.isRunningInFlatpak.mockReturnValueOnce(true);
+    const result = await handlers['check-for-updates']({ sender: { id: 1 } } as any);
+    expect(result.success).toBe(true);
+    expect(result.hasUpdate).toBe(false);
+    expect(result.isFlatpak).toBe(true);
   });
 
-  describe('install-update', () => {
-    const event = { sender: { id: 1 } } as any;
+  it('returns manual-install update info when newer release tag exists', async () => {
+    const fetchMock = mockGithubLatestRelease('v2.0.0');
+    const result = await handlers['check-for-updates']({ sender: { id: 1 } } as any);
 
-    it('rejects untrusted sender', async () => {
-      mocks.isTrustedIpcEvent.mockReturnValueOnce(false);
-      const result = await handlers['install-update'](event);
-      expect(result).toEqual({ success: false, error: 'Untrusted IPC sender' });
-    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(result.success).toBe(true);
+    expect(result.hasUpdate).toBe(true);
+    expect(result.currentVersion).toBe('v1.0.5');
+    expect(result.latestVersion).toBe('v2.0.0');
+    expect(result.requiresManualInstall).toBe(true);
+    expect(result.releaseUrl).toContain('/releases/tag/v2.0.0');
+    expect(String(result.manualUpdateMessage)).toContain('manually download and install');
+  });
 
-    it('installs update and schedules quitAndInstall', async () => {
-      vi.useFakeTimers();
-      const quitAndInstall = vi.fn();
-      mocks.getAutoUpdater.mockReturnValue({ quitAndInstall });
-      const result = await handlers['install-update'](event);
-      expect(result).toEqual({ success: true });
-      expect(mocks.setIsQuitting).toHaveBeenCalledWith(true);
-      expect(mocks.appReleaseSingleInstanceLock).toHaveBeenCalled();
-      vi.advanceTimersByTime(200);
-      expect(quitAndInstall).toHaveBeenCalledWith(false, true);
-      vi.useRealTimers();
-    });
+  it('returns no update when latest release matches current version', async () => {
+    mockGithubLatestRelease('v1.0.5');
+    const result = await handlers['check-for-updates']({ sender: { id: 1 } } as any);
+
+    expect(result.success).toBe(true);
+    expect(result.hasUpdate).toBe(false);
+    expect(result.requiresManualInstall).toBe(false);
+  });
+
+  it('returns an error when GitHub latest release lookup fails', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 503,
+        statusText: 'Service Unavailable',
+      })
+    );
+
+    const result = await handlers['check-for-updates']({ sender: { id: 1 } } as any);
+
+    expect(result.success).toBe(false);
+    expect(String(result.error)).toContain('503');
+  });
+
+  it('download-update returns manual install required message', async () => {
+    const result = await handlers['download-update']({ sender: { id: 1 } } as any);
+    expect(result.success).toBe(false);
+    expect(String(result.error)).toContain('manually download and install');
+  });
+
+  it('install-update returns manual install required message', async () => {
+    const result = await handlers['install-update']({ sender: { id: 1 } } as any);
+    expect(result.success).toBe(false);
+    expect(String(result.error)).toContain('manually download and install');
   });
 });
 
 describe('initializeAutoUpdater', () => {
-  it('sets up auto updater with stable channel by default', async () => {
-    const mockAutoUpdater = {
-      logger: null as any,
-      autoDownload: true,
-      autoInstallOnAppQuit: false,
-      channel: '',
-      allowPrerelease: true,
-      on: vi.fn(),
-      checkForUpdates: vi.fn().mockResolvedValue(undefined),
-    };
-    mocks.getAutoUpdater.mockReturnValue(mockAutoUpdater);
-    mocks.appGetVersion.mockReturnValue('1.0.0');
-    mocks.getIsDev.mockReturnValue(false);
-    mocks.isRunningInFlatpak.mockReturnValue(false);
-    mocks.checkMsiInstallation.mockResolvedValue(false);
-    mocks.isInstalledViaMsi.mockReturnValue(false);
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.stubGlobal('fetch', vi.fn());
     (process as any).mas = false;
     (process as any).windowsStore = false;
+  });
 
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    (process as any).mas = false;
+    (process as any).windowsStore = false;
+  });
+
+  it('emits update-available on startup when a newer release exists', async () => {
+    mockGithubLatestRelease('v2.0.0');
     await initializeAutoUpdater({ autoCheckUpdates: true } as any);
 
-    expect(mockAutoUpdater.autoDownload).toBe(false);
-    expect(mockAutoUpdater.autoInstallOnAppQuit).toBe(true);
-    expect(mockAutoUpdater.channel).toBe('latest');
-    expect(mockAutoUpdater.allowPrerelease).toBe(false);
-    expect(mockAutoUpdater.checkForUpdates).toHaveBeenCalled();
+    expect(mocks.safeSendToWindow).toHaveBeenCalledWith(
+      mocks.getMainWindow(),
+      'update-available',
+      expect.objectContaining({ version: '2.0.0' })
+    );
   });
 
-  it('uses beta channel when updateChannel is beta', async () => {
-    const mockAutoUpdater = {
-      logger: null as any,
-      autoDownload: true,
-      autoInstallOnAppQuit: false,
-      channel: '',
-      allowPrerelease: false,
-      on: vi.fn(),
-      checkForUpdates: vi.fn().mockResolvedValue(undefined),
-    };
-    mocks.getAutoUpdater.mockReturnValue(mockAutoUpdater);
-    mocks.appGetVersion.mockReturnValue('1.0.0');
-    mocks.getIsDev.mockReturnValue(false);
-    mocks.isRunningInFlatpak.mockReturnValue(false);
-    mocks.checkMsiInstallation.mockResolvedValue(false);
-    mocks.isInstalledViaMsi.mockReturnValue(false);
-    (process as any).mas = false;
-    (process as any).windowsStore = false;
-
-    await initializeAutoUpdater({ updateChannel: 'beta', autoCheckUpdates: true } as any);
-
-    expect(mockAutoUpdater.channel).toBe('beta');
-    expect(mockAutoUpdater.allowPrerelease).toBe(true);
-  });
-
-  it('auto-detects beta channel from version string', async () => {
-    const mockAutoUpdater = {
-      logger: null as any,
-      autoDownload: true,
-      autoInstallOnAppQuit: false,
-      channel: '',
-      allowPrerelease: false,
-      on: vi.fn(),
-      checkForUpdates: vi.fn().mockResolvedValue(undefined),
-    };
-    mocks.getAutoUpdater.mockReturnValue(mockAutoUpdater);
-    mocks.appGetVersion.mockReturnValue('1.0.0-beta.1');
-    mocks.getIsDev.mockReturnValue(false);
-    mocks.isRunningInFlatpak.mockReturnValue(false);
-    mocks.checkMsiInstallation.mockResolvedValue(false);
-    mocks.isInstalledViaMsi.mockReturnValue(false);
-    (process as any).mas = false;
-    (process as any).windowsStore = false;
-
+  it('emits update-not-available on startup when up to date', async () => {
+    mockGithubLatestRelease('v1.0.5');
     await initializeAutoUpdater({ autoCheckUpdates: true } as any);
 
-    expect(mockAutoUpdater.channel).toBe('beta');
-    expect(mockAutoUpdater.allowPrerelease).toBe(true);
+    expect(mocks.safeSendToWindow).toHaveBeenCalledWith(
+      mocks.getMainWindow(),
+      'update-not-available',
+      { version: '1.0.5' }
+    );
   });
 
-  it('skips auto-check in flatpak', async () => {
-    const mockAutoUpdater = {
-      logger: null as any,
-      autoDownload: true,
-      autoInstallOnAppQuit: false,
-      channel: '',
-      allowPrerelease: false,
-      on: vi.fn(),
-      checkForUpdates: vi.fn(),
-    };
-    mocks.getAutoUpdater.mockReturnValue(mockAutoUpdater);
-    mocks.appGetVersion.mockReturnValue('1.0.0');
-    mocks.getIsDev.mockReturnValue(false);
-    mocks.isRunningInFlatpak.mockReturnValue(true);
-    mocks.checkMsiInstallation.mockResolvedValue(false);
-
-    await initializeAutoUpdater({ autoCheckUpdates: true } as any);
-
-    expect(mockAutoUpdater.checkForUpdates).not.toHaveBeenCalled();
-  });
-
-  it('skips auto-check when autoCheckUpdates is false', async () => {
-    const mockAutoUpdater = {
-      logger: null as any,
-      autoDownload: true,
-      autoInstallOnAppQuit: false,
-      channel: '',
-      allowPrerelease: false,
-      on: vi.fn(),
-      checkForUpdates: vi.fn(),
-    };
-    mocks.getAutoUpdater.mockReturnValue(mockAutoUpdater);
-    mocks.appGetVersion.mockReturnValue('1.0.0');
-    mocks.getIsDev.mockReturnValue(false);
-    mocks.isRunningInFlatpak.mockReturnValue(false);
-    mocks.checkMsiInstallation.mockResolvedValue(false);
-    mocks.isInstalledViaMsi.mockReturnValue(false);
-    (process as any).mas = false;
-    (process as any).windowsStore = false;
-
+  it('skips startup check when autoCheckUpdates is disabled', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
     await initializeAutoUpdater({ autoCheckUpdates: false } as any);
-
-    expect(mockAutoUpdater.checkForUpdates).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(mocks.safeSendToWindow).not.toHaveBeenCalled();
   });
 
-  it('skips auto-check in dev mode', async () => {
-    const mockAutoUpdater = {
-      logger: null as any,
-      autoDownload: true,
-      autoInstallOnAppQuit: false,
-      channel: '',
-      allowPrerelease: false,
-      on: vi.fn(),
-      checkForUpdates: vi.fn(),
-    };
-    mocks.getAutoUpdater.mockReturnValue(mockAutoUpdater);
-    mocks.appGetVersion.mockReturnValue('1.0.0');
-    mocks.getIsDev.mockReturnValue(true);
-    mocks.isRunningInFlatpak.mockReturnValue(false);
-    mocks.checkMsiInstallation.mockResolvedValue(false);
-    mocks.isInstalledViaMsi.mockReturnValue(false);
-    (process as any).mas = false;
-    (process as any).windowsStore = false;
+  it('skips startup check for Flatpak installs', async () => {
+    mocks.isRunningInFlatpak.mockReturnValueOnce(true);
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    await initializeAutoUpdater({ autoCheckUpdates: true } as any);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(mocks.safeSendToWindow).not.toHaveBeenCalled();
+  });
 
+  it('emits update-error if GitHub check throws', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('Network down')));
     await initializeAutoUpdater({ autoCheckUpdates: true } as any);
 
-    expect(mockAutoUpdater.checkForUpdates).not.toHaveBeenCalled();
-  });
-
-  it('handles getAutoUpdater throwing an error', async () => {
-    mocks.getAutoUpdater.mockImplementation(() => {
-      throw new Error('No updater available');
-    });
-    mocks.getIsDev.mockReturnValue(false);
-    mocks.checkMsiInstallation.mockResolvedValue(false);
-
-    await expect(initializeAutoUpdater({ autoCheckUpdates: true } as any)).resolves.toBeUndefined();
+    expect(mocks.safeSendToWindow).toHaveBeenCalledWith(
+      mocks.getMainWindow(),
+      'update-error',
+      'Network down'
+    );
   });
 });

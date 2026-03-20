@@ -122,6 +122,8 @@ export function createSettingsDiagnosticsSnapshot(settings: Settings): Record<st
     'showFileExtensions',
     'maxSearchHistoryItems',
     'maxDirectoryHistoryItems',
+    'migrationNoticeDismissed',
+    'migrationNoticeViewCount',
   ] as const;
   const snapshot: Record<string, unknown> = {};
   for (const key of SCALAR_KEYS) snapshot[key] = settings[key];
