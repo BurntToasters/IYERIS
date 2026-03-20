@@ -116,7 +116,7 @@ export function createSearchController(deps: SearchDeps) {
       : 'Local Search (Current Folder)';
     const img = searchScopeToggle.querySelector('img');
     if (img) {
-      img.src = global ? '../assets/twemoji/1f30d.svg' : '../assets/twemoji/1f4c1.svg';
+      img.src = global ? '/twemoji/1f30d.svg' : '/twemoji/1f4c1.svg';
       img.alt = global ? '🌍' : '📁';
     }
   }

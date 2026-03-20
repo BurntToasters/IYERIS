@@ -204,7 +204,7 @@ export function createColumnViewController(deps: ColumnViewDeps) {
         item.dataset.path = drive.path;
         item.title = drive.path;
         item.innerHTML = `
-        <span class="column-item-icon"><img src="../assets/twemoji/1f4bf.svg" class="twemoji" alt="💿" draggable="false" /></span>
+        <span class="column-item-icon"><img src="/twemoji/1f4bf.svg" class="twemoji" alt="💿" draggable="false" /></span>
         <span class="column-item-name">${escapeHtml(drive.label || drive.path)}</span>
         <span class="column-item-arrow">▸</span>
       `;
@@ -409,7 +409,7 @@ export function createColumnViewController(deps: ColumnViewDeps) {
     }
 
     const icon = fileItem.isDirectory
-      ? '<img src="../assets/twemoji/1f4c1.svg" class="twemoji" alt="📁" draggable="false" />'
+      ? '<img src="/twemoji/1f4c1.svg" class="twemoji" alt="📁" draggable="false" />'
       : deps.getFileIcon(fileItem.name);
 
     const symlinkBadge = fileItem.isSymlink

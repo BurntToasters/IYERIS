@@ -56,13 +56,13 @@ export async function loadPdfJs(): Promise<PdfjsLib | null> {
 
   pdfjsLoading = (async () => {
     try {
-      const pdfJsModulePath = '../vendor/pdfjs/pdf.min.mjs';
+      const pdfJsModulePath = '/vendor/pdfjs/pdf.min.mjs';
       const mod = (await import(/* webpackIgnore: true */ pdfJsModulePath)) as Record<
         string,
         unknown
       >;
       const lib: PdfjsLib = (mod.default || mod) as PdfjsLib;
-      lib.GlobalWorkerOptions.workerSrc = '../vendor/pdfjs/pdf.worker.min.mjs';
+      lib.GlobalWorkerOptions.workerSrc = '/vendor/pdfjs/pdf.worker.min.mjs';
       pdfjsLib = lib;
       return pdfjsLib;
     } catch (err) {

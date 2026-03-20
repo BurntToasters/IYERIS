@@ -101,7 +101,7 @@ export function createBootstrapController(config: BootstrapConfig) {
     const titlebarIcon = document.getElementById('titlebar-icon') as HTMLImageElement;
     if (titlebarIcon) {
       const isBeta = /-(beta|alpha|rc)/i.test(appVersion);
-      const iconSrc = isBeta ? '../assets/folder-beta.png' : '../assets/folder.png';
+      const iconSrc = isBeta ? '/folder-beta.png' : '/folder.png';
       titlebarIcon.src = iconSrc;
     }
 

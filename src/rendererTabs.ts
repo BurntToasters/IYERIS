@@ -195,7 +195,7 @@ export function createTabsController(deps: TabsDeps) {
       const tabTitle = isHomeTab ? deps.homeViewLabel : tab.path;
       const tabIcon = isHomeTab
         ? twemojiImg(String.fromCodePoint(0x1f3e0), 'twemoji')
-        : '<img src="../assets/twemoji/1f4c2.svg" class="twemoji" alt="📂" draggable="false" />';
+        : '<img src="/twemoji/1f4c2.svg" class="twemoji" alt="📂" draggable="false" />';
 
       tabElement.innerHTML = `
       <span class="tab-icon">

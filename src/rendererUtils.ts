@@ -104,7 +104,7 @@ function emojiToCodepoint(emoji: string): string {
 
 export function twemojiImg(emoji: string, className: string = 'twemoji', alt?: string): string {
   const codepoint = emojiToCodepoint(emoji);
-  const src = `../assets/twemoji/${codepoint}.svg`;
+  const src = `/twemoji/${codepoint}.svg`;
   const altText = escapeHtml(alt || emoji);
   return `<img src="${src}" class="${className}" alt="${altText}" draggable="false" loading="lazy" decoding="async" />`;
 }

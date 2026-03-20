@@ -1,243 +1,103 @@
 {
   "name": "iyeris",
   "version": "1.1.0-beta.1",
-  "description": "A beautiful cross-platform file explorer built with Electron, featuring a simple yet advanced modern design.",
-  "main": "dist/main/main.js",
+  "private": true,
+  "type": "module",
+  "description": "A beautiful cross-platform file explorer built with Tauri, featuring a simple yet advanced modern design.",
   "dependencies": {
     "@highlightjs/cdn-assets": "^11.11.1",
-    "7zip-bin": "^5.2.0",
-    "electron-log": "^5.4.3",
-    "electron-updater": "^6.6.2",
+    "@tauri-apps/api": "^2.0.0",
+    "@tauri-apps/plugin-dialog": "^2.6.0",
+    "@tauri-apps/plugin-notification": "^2.3.3",
+    "@tauri-apps/plugin-process": "^2.0.0",
+    "@tauri-apps/plugin-updater": "^2.10.0",
     "marked": "^17.0.3",
-    "node-7z": "^3.0.0",
     "pdfjs-dist": "^5.4.624"
   },
   "devDependencies": {
-    "@electron/notarize": "^3.1.1",
     "@eslint/js": "^10.0.1",
+    "@tauri-apps/cli": "^2.0.0",
     "@types/node": "^25.0.3",
     "@vitest/coverage-v8": "^4.0.18",
     "cross-env": "^10.1.0",
-    "dotenv": "^17.2.3",
     "dotenv-cli": "^11.0.0",
-    "electron": "^41.0.2",
-    "electron-builder": "^26.4.0",
     "eslint": "^10.0.0",
     "husky": "^9.1.7",
     "jsdom": "^28.0.0",
     "lint-staged": "^16.1.0",
+    "npm-license-crawler": "^0.2.1",
     "prettier": "^3.5.3",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.53.0",
+    "vite": "^7.3.1",
     "vitest": "^4.0.16"
   },
   "engines": {
-    "node": "24.x",
-    "npm": "11.x"
-  },
-  "packageManager": "npm@11.10.0",
-  "overrides": {
-    "tar": "^7.5.3",
-    "@develar/schema-utils": {
-      "ajv": "6.12.6",
-      "ajv-keywords": "3.5.2"
-    }
+    "node": ">=22",
+    "npm": ">=10"
   },
   "scripts": {
-    "deps:preflight": "node build/dependency-preflight.js",
-    "licenses": "npx npm-license-crawler --production --json licenses.json",
+    "dev": "vite",
+    "build": "npm run copy-vendor && vite build",
+    "preview": "vite preview",
+    "copy-vendor": "node scripts/copy-vendor.js",
+    "postinstall": "node scripts/copy-vendor.js",
+    "start": "npm run tauri:dev",
+    "tauri": "tauri",
+    "tauri:dev": "npm run sync-version && npm run copy-vendor && tauri dev",
+    "tauri:build": "npm run sync-version && npm run licenses && tauri build",
     "test": "vitest run",
     "test:watch": "vitest",
-    "smoke:scripts": "node build/smoke-scripts.js",
-    "smoke:perf:fixture": "node build/generate-large-dir-fixture.js",
-    "smoke:release:quick": "npm run smoke:scripts && npm run test -- src/tests/rendererAppearance.test.ts src/tests/rendererLayout.test.ts src/tests/rendererSettingsModal.test.ts src/tests/rendererSettingsUi.extended.test.ts src/tests/home.interactions.settings.test.ts src/tests/rendererFileRender.test.ts",
-    "test:all": "npm run deps:preflight && npm run build && node build/test-all.js",
-    "typecheck": "tsc --noEmit && tsc --noEmit --project tsconfig.renderer.json",
+    "test:cov": "vitest run --coverage",
+    "test:all": "node scripts/test-all.js",
+    "typecheck": "tsc --noEmit",
     "lint": "npm run lint:app && npm run lint:test",
     "lint:app": "eslint src/ --ignore-pattern src/tests/",
-    "lint:prod": "eslint src/main/ src/workers/ --max-warnings 0",
+    "lint:prod": "eslint src/ --ignore-pattern src/tests/ --max-warnings 0",
     "lint:test": "eslint src/tests/",
     "lint:fix": "eslint src/ --fix",
-    "format": "prettier --write src/",
-    "format:check": "prettier --check src/",
+    "format": "prettier --write \"src/**/*.{ts,css,html}\" \".github/workflows/*.{yml,yaml}\" \"scripts/*.js\" \"vitest.config.ts\"",
+    "format:check": "prettier --check \"src/**/*.{ts,css,html}\" \".github/workflows/*.{yml,yaml}\" \"scripts/*.js\"",
+    "licenses": "npx npm-license-crawler --production --json public/licenses.json",
+    "sync-version": "node scripts/sync-version.js",
+    "icons:normalize": "node scripts/normalize-iconsets.js",
+    "dist:clean": "node scripts/dist-tools.js clean",
+    "dist:clean-release": "node scripts/dist-tools.js clean-release",
+    "dist:clean-release-artifacts": "node scripts/dist-tools.js clean-release-artifacts",
+    "dist:clean-all": "node scripts/dist-tools.js clean-all",
+    "build:win:x64": "npm run sync-version && npm run licenses && dotenv -e .env -- tauri build --target x86_64-pc-windows-msvc --bundles nsis",
+    "build:win:arm64": "npm run sync-version && npm run licenses && dotenv -e .env -- tauri build --target aarch64-pc-windows-msvc --bundles nsis",
+    "build:win": "npm run build:win:x64 && npm run build:win:arm64",
+    "build:mac:universal": "npm run sync-version && npm run licenses && npm run icons:normalize && dotenv -e .env -- tauri build --target universal-apple-darwin --bundles dmg,app",
+    "build:mac:zip": "node scripts/zip-macos.js",
+    "mac:ssh:keychain": "bash scripts/mac-keychain-ssh.sh",
+    "build:linux:x64": "npm run sync-version && npm run licenses && dotenv -e .env -- tauri build --target x86_64-unknown-linux-gnu --bundles appimage,deb,rpm",
+    "build:linux:arm64": "npm run sync-version && npm run licenses && dotenv -e .env -- tauri build --target aarch64-unknown-linux-gnu --bundles appimage,deb,rpm",
+    "build:linux": "npm run build:linux:x64 && npm run build:linux:arm64",
+    "flatpak:bundle": "node scripts/flatpak-bundle.js",
+    "flatpak:clean": "node scripts/dist-tools.js clean-flatpak",
+    "release:prepare": "npm i && npm run sync-version && npm run icons:normalize && cargo check --manifest-path src-tauri/Cargo.toml -q && npm run dist:clean-release-artifacts && node scripts/update-metainfo.js",
+    "release:finalize": "dotenv -e .env -- node scripts/post-release-assets.js",
+    "release:win": "npm run release:prepare && npm run build:win && npm run release:sign:gpg && npm run release:finalize",
+    "release:mac": "npm run release:prepare && npm run build:mac:universal && npm run build:mac:zip && npm run release:sign:gpg && npm run release:finalize",
+    "release:mac:ssh": "npm run mac:ssh:keychain && npm run release:mac",
+    "release:linux": "npm run release:prepare && npm run build:linux && npm run flatpak:clean && npm run flatpak:bundle && npm run release:sign:gpg && npm run release:finalize",
+    "release:linux:x64": "npm run release:prepare && npm run build:linux:x64 && npm run flatpak:clean && npm run flatpak:bundle && npm run release:sign:gpg && npm run release:finalize",
+    "release:linux:arm64": "npm run release:prepare && npm run build:linux:arm64 && npm run flatpak:clean && npm run flatpak:bundle && npm run release:sign:gpg && npm run release:finalize",
+    "release:sign:gpg": "dotenv -e .env -- node scripts/gpg-sign.js",
+    "setup:deb": "sudo apt update && sudo apt install -y build-essential curl wget file libgtk-3-dev libwebkit2gtk-4.1-dev libjavascriptcoregtk-4.1-dev libsoup-3.0-dev libglib2.0-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf rpm flatpak flatpak-builder && sudo flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo && rustup toolchain install stable --profile minimal && rustup default stable",
+    "setup:flatpak": "sudo flatpak install -y flathub org.gnome.Platform//49 org.gnome.Sdk//49 org.freedesktop.Sdk.Extension.node22//25.08 org.freedesktop.Sdk.Extension.rust-stable//25.08",
     "gitprune": "node build/git-prune-local-branches.js",
     "gitprune:dry": "node build/git-prune-local-branches.js --dry-run",
     "gitprune:force": "node build/git-prune-local-branches.js --force",
-    "prepare": "husky",
-    "build": "node build/dist-tools.js clean-all && tsc --project tsconfig.main.json && tsc --project tsconfig.renderer.json && node build/dist-tools.js copy",
-    "watch": "node build/watch.js",
-    "start": "npm run build && electron .",
-    "dev": "npm run build && electron . --enable-logging --dev",
-    "build:win": "npm run build && electron-builder --win --arm64 --x64",
-    "build:win:x64": "npm run build && electron-builder --win --x64 --publish never",
-    "build:win:arm64": "npm run build && electron-builder --win --arm64 --publish never",
-    "build:win:msi": "npm run build && electron-builder --win msi --arm64 --x64",
-    "build:win:msi:x64": "npm run build && electron-builder --win msi --x64 --publish never",
-    "build:win:msi:arm64": "npm run build && electron-builder --win msi --arm64 --publish never",
-    "build:win:all": "npm run build && electron-builder --win nsis msi --arm64 --x64",
-    "build:mac:universal": "npm run build && dotenv -e .env -- electron-builder --mac --universal",
-    "build:mac:mas": "npm run build && dotenv -e .env -- electron-builder --mac mas --universal",
-    "mac:ssh:keychain": "bash build/mac-keychain-ssh.sh",
-    "build:mac:universal:dev": "npm run build && electron-builder --mac --universal",
-    "build:linux": "npm run build && electron-builder --linux AppImage deb rpm --x64 --arm64",
-    "build:linux:all": "npm run build:linux && npm run flatpak:clean && npm run flatpak:bundle",
-    "build:linux:all:native": "npm run build:linux:native && npm run flatpak:clean && npm run flatpak:bundle",
-    "build:linux:x64": "npm run build && electron-builder --linux AppImage deb rpm --x64",
-    "build:linux:arm64": "npm run build && electron-builder --linux AppImage deb rpm --arm64",
-    "build:linux:native": "npm run build && USE_SYSTEM_FPM=true electron-builder --linux AppImage deb rpm --x64 --arm64",
-    "flatpak:setup": "sudo env \"PATH=$PATH\" node build/setup-flatpak.js",
-    "flatpak:build": "node build/flatpak.js build",
-    "flatpak:build:x64": "node build/flatpak.js build --x64",
-    "flatpak:build:arm64": "node build/flatpak.js build --arm64",
-    "flatpak:run": "flatpak run com.burnttoasters.iyeris",
-    "flatpak:bundle": "node build/flatpak.js bundle",
-    "flatpak:bundle:x64": "node build/flatpak.js bundle --x64",
-    "flatpak:bundle:arm64": "node build/flatpak.js bundle --arm64",
-    "flatpak:clean": "node build/flatpak.js clean",
-    "patch:beta": "node build/patch-beta.js",
-    "restore:release": "node build/restore-release.js",
-    "build:beta:win": "npm run patch:beta && cross-env IS_BETA=true npm run build && electron-builder --win --arm64 --x64 -c.win.icon=assets/icon-square-beta.ico && npm run restore:release",
-    "build:beta:win:x64": "npm run patch:beta && cross-env IS_BETA=true npm run build && electron-builder --win --x64 --publish never -c.win.icon=assets/icon-square-beta.ico && npm run restore:release",
-    "build:beta:mac": "npm run patch:beta && cross-env IS_BETA=true npm run build && dotenv -e .env -- electron-builder --mac --universal -c.mac.icon=assets/iyeris-beta.icns && npm run restore:release",
-    "build:beta:linux": "npm run patch:beta && cross-env IS_BETA=true npm run build && electron-builder --linux AppImage deb rpm --x64 --arm64 -c.linux.icon=assets/icon-beta.png && npm run restore:release",
-    "build:beta:linux:native": "npm run patch:beta && cross-env IS_BETA=true npm run build && USE_SYSTEM_FPM=true electron-builder --linux AppImage deb rpm --x64 --arm64 -c.linux.icon=assets/icon-beta.png && npm run restore:release",
-    "release:prepare": "node build/dist-tools.js clean-release && node build/update-metainfo.js",
-    "release:finalize": "node build/post-release-assets.js",
-    "release:mac": "npm run release:prepare && npm run licenses && npm run build && dotenv -e .env -- electron-builder --mac --universal --publish always && npm run sign:gpg && npm run release:finalize",
-    "release:mac:ssh": "npm run mac:ssh:keychain && npm run release:mac",
-    "release:win": "npm run release:prepare && npm run licenses && npm run build && dotenv -e .env -- electron-builder --win nsis msi --arm64 --x64 --publish always && npm run sign:gpg && npm run release:finalize",
-    "release:win:nsis": "npm run release:prepare && npm run licenses && npm run build && dotenv -e .env -- electron-builder --win nsis --arm64 --x64 --publish always && npm run sign:gpg",
-    "release:win:msi": "npm run release:prepare && npm run licenses && npm run build && dotenv -e .env -- electron-builder --win msi --arm64 --x64 --publish always && npm run sign:gpg",
-    "release:linux": "npm run release:prepare && npm run licenses && npm run build && dotenv -e .env -- electron-builder --linux AppImage deb rpm --x64 --arm64 --publish always && npm run flatpak:clean && npm run flatpak:bundle && npm run sign:gpg && npm run release:finalize",
-    "release:linux:native": "npm run release:prepare && npm run licenses && npm run build && cross-env USE_SYSTEM_FPM=true dotenv -e .env -- electron-builder --linux AppImage deb rpm --x64 --arm64 --publish always && npm run flatpak:clean && npm run flatpak:bundle && npm run sign:gpg && npm run release:finalize",
-    "release:all": "npm run licenses && npm run release:mac && npm run release:win && npm run release:linux",
-    "release:beta:mac": "npm run release:prepare && npm run licenses && npm run patch:beta && cross-env IS_BETA=true npm run build && dotenv -e .env -- electron-builder --mac --universal -c.mac.icon=assets/iyeris-beta.icns --publish always && npm run restore:release && npm run sign:gpg && npm run release:finalize",
-    "release:beta:win": "npm run release:prepare && npm run licenses && npm run patch:beta && cross-env IS_BETA=true npm run build && dotenv -e .env -- electron-builder --win nsis --arm64 --x64 -c.win.icon=assets/icon-square-beta.ico --publish always && npm run restore:release && npm run sign:gpg && npm run release:finalize",
-    "release:beta:linux": "npm run release:prepare && npm run licenses && npm run patch:beta && cross-env IS_BETA=true npm run build && dotenv -e .env -- electron-builder --linux AppImage deb rpm --x64 --arm64 -c.linux.icon=assets/icon-beta.png --publish always && npm run restore:release && npm run sign:gpg && npm run release:finalize",
-    "release:beta:linux:native": "npm run release:prepare && npm run licenses && npm run patch:beta && cross-env IS_BETA=true npm run build && cross-env USE_SYSTEM_FPM=true dotenv -e .env -- electron-builder --linux AppImage deb rpm --x64 --arm64 -c.linux.icon=assets/icon-beta.png --publish always && npm run restore:release && npm run sign:gpg && npm run release:finalize",
-    "release:beta:all": "npm run licenses && npm run release:beta:mac && npm run release:beta:win && npm run release:beta:linux",
-    "build:msstore:x64": "npm run licenses && npm run build && electron-builder --win --x64 -c electron-builder.msstore.yml --publish never",
-    "build:msstore:arm64": "npm run licenses && npm run build && electron-builder --win --arm64 -c electron-builder.msstore.yml --publish never",
-    "build:msstore": "npm run release:prepare && npm run licenses && npm run build && electron-builder --win --arm64 -c electron-builder.msstore.yml --publish never && electron-builder --win --x64 -c electron-builder.msstore.yml --publish never",
-    "sign:gpg": "node build/gpg-sign.js"
-  },
-  "build": {
-    "appId": "com.burnttoasters.iyeris",
-    "productName": "IYERIS",
-    "afterSign": "build/notarize.js",
-    "publish": {
-      "provider": "github",
-      "owner": "BurntToasters",
-      "repo": "IYERIS"
-    },
-    "directories": {
-      "output": "release",
-      "buildResources": "assets"
-    },
-    "files": [
-      "dist/**/*",
-      "!**/*.map",
-      "src/index.html",
-      "src/css/*.css",
-      "assets/**/*",
-      "licenses.json",
-      "!build-dir/**",
-      "!build-dir-*/**",
-      "!repo/**",
-      "!.flatpak-builder/**"
-    ],
-    "extraMetadata": {
-      "main": "dist/main/main.js"
-    },
-    "asar": true,
-    "asarUnpack": [
-      "**/*.node",
-      "**/node_modules/7zip-bin/**/*"
-    ],
-    "mac": {
-      "category": "public.app-category.productivity",
-      "target": [
-        "dmg",
-        "zip"
-      ],
-      "icon": "assets/iyeris.icns",
-      "hardenedRuntime": true,
-      "gatekeeperAssess": false,
-      "entitlements": "build/entitlements.mac.plist",
-      "entitlementsInherit": "build/entitlements.mac.plist",
-      "notarize": false,
-      "artifactName": "${productName}-MacOS-universal.${ext}",
-      "x64ArchFiles": "**/{7zip-bin/mac,@napi-rs/canvas-darwin-*}/**",
-      "files": [
-        "!node_modules/7zip-bin/linux",
-        "!node_modules/7zip-bin/win"
-      ]
-    },
-    "mas": {
-      "type": "distribution",
-      "category": "public.app-category.productivity",
-      "entitlements": "build/entitlements.mas.plist",
-      "entitlementsInherit": "build/entitlements.mas.inherit.plist",
-      "provisioningProfile": "build/embedded.provisionprofile"
-    },
-    "win": {
-      "target": [
-        {
-          "target": "nsis",
-          "arch": [
-            "arm64",
-            "x64"
-          ]
-        }
-      ],
-      "icon": "assets/icon-square.ico",
-      "artifactName": "${productName}-Win-${arch}.${ext}",
-      "files": [
-        "!node_modules/7zip-bin/linux",
-        "!node_modules/7zip-bin/mac",
-        "!node_modules/7zip-bin/win/ia32"
-      ]
-    },
-    "nsis": {
-      "oneClick": false,
-      "perMachine": false,
-      "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true,
-      "artifactName": "${productName}-Win-${arch}.${ext}"
-    },
-    "msi": {
-      "oneClick": false,
-      "perMachine": true,
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true,
-      "artifactName": "${productName}-Win-${arch}-Enterprise.${ext}",
-      "warningsAsErrors": false
-    },
-    "msiProjectCreated": "build/msi-hook.js",
-    "linux": {
-      "target": [
-        "AppImage",
-        "deb",
-        "rpm"
-      ],
-      "icon": "assets/icon.png",
-      "category": "Utility",
-      "artifactName": "${productName}-Linux-${arch}.${ext}",
-      "files": [
-        "!node_modules/7zip-bin/mac",
-        "!node_modules/7zip-bin/win",
-        "!node_modules/7zip-bin/linux/arm",
-        "!node_modules/7zip-bin/linux/ia32"
-      ]
-    }
+    "prepare": "husky"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/BurntToasters/IYERIS.git"
   },
   "keywords": [
-    "electron",
+    "tauri",
     "file-explorer",
     "glassmorphism",
     "cross-platform"
@@ -253,7 +113,7 @@
       "eslint --fix",
       "prettier --write"
     ],
-    "build/**/*.js": [
+    "scripts/**/*.js": [
       "prettier --write"
     ],
     ".github/workflows/*.{yml,yaml}": [

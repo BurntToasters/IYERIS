@@ -1,0 +1,17 @@
+{
+  "$schema": "https://schema.tauri.app/capabilities/2",
+  "identifier": "default",
+  "description": "Default permissions for IYERIS file explorer",
+  "windows": ["main"],
+  "permissions": [
+    "core:app:default",
+    "core:event:default",
+    "core:window:default",
+    "core:webview:default",
+    "dialog:default",
+    "updater:default",
+    "process:default",
+    "notification:default",
+    "shell:default"
+  ]
+}

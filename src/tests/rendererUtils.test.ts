@@ -216,6 +216,6 @@ describe('twemojiImg', () => {
 
   it('generates correct src path', () => {
     const result = twemojiImg('⚠');
-    expect(result).toContain('src="../assets/twemoji/');
+    expect(result).toContain('src="/twemoji/');
   });
 });
