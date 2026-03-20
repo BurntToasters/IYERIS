@@ -50,7 +50,7 @@ function main() {
     '--repo=flatpak-repo',
     '--force-clean',
     'flatpak-build',
-    'com.burnttoasters.iyeris.yml',
+    'run.rosie.iyeris.yml',
   ]);
 
   const arch = detectArch();
@@ -58,7 +58,7 @@ function main() {
   fs.mkdirSync(distDir, { recursive: true });
   const bundlePath = path.join(distDir, `IYERIS-Linux-${arch}.flatpak`);
 
-  run('flatpak', ['build-bundle', 'flatpak-repo', bundlePath, 'com.burnttoasters.iyeris']);
+  run('flatpak', ['build-bundle', 'flatpak-repo', bundlePath, 'run.rosie.iyeris']);
   console.log(`Created Flatpak bundle: ${bundlePath}`);
 }
 

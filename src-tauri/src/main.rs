@@ -32,6 +32,7 @@ pub(crate) struct AppState {
     pub clipboard: Mutex<ClipboardState>,
     pub drag: Mutex<DragState>,
     pub watcher: Mutex<Option<watcher::DirectoryWatcher>>,
+    pub zoom_level: Mutex<f64>,
 }
 
 pub(crate) fn make_temp_path(path: &Path, purpose: &str) -> PathBuf {
@@ -99,6 +100,7 @@ fn main() {
             }),
             drag: Mutex::new(DragState { paths: vec![] }),
             watcher: Mutex::new(None),
+            zoom_level: Mutex::new(1.0),
         })
         .setup(|app| {
             system::setup_tray(app)?;

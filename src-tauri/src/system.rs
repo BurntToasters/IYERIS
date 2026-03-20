@@ -96,15 +96,24 @@ pub fn open_new_window(app: tauri::AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn set_zoom_level(webview: tauri::WebviewWindow, zoom_level: f64) -> Result<(), String> {
-    webview
-        .set_zoom(zoom_level)
-        .map_err(|e| e.to_string())
+pub fn set_zoom_level(
+    webview: tauri::WebviewWindow,
+    zoom_level: f64,
+    state: tauri::State<'_, crate::AppState>,
+) -> Result<(), String> {
+    webview.set_zoom(zoom_level).map_err(|e| e.to_string())?;
+    if let Ok(mut z) = state.zoom_level.lock() {
+        *z = zoom_level;
+    }
+    Ok(())
 }
 
 #[tauri::command]
-pub fn get_zoom_level(webview: tauri::WebviewWindow) -> Result<f64, String> {
-    webview.scale_factor().map_err(|e| e.to_string())
+pub fn get_zoom_level(
+    state: tauri::State<'_, crate::AppState>,
+) -> Result<f64, String> {
+    let z = state.zoom_level.lock().map_err(|e| e.to_string())?;
+    Ok(*z)
 }
 
 #[tauri::command]
@@ -213,16 +222,33 @@ pub async fn share_items(file_paths: Vec<String>) -> Result<(), String> {
 
     #[cfg(target_os = "macos")]
     {
-        let _paths_arg = file_paths.join("\" \"");
-        std::process::Command::new("osascript")
-            .args([
-                "-e",
-                &format!(
-                    "tell application \"Finder\" to activate\ntell application \"System Events\" to keystroke \"\" -- placeholder"
-                ),
-            ])
-            .spawn()
-            .map_err(|e| e.to_string())?;
+        for path in &file_paths {
+            std::process::Command::new("open")
+                .args(["-R", path])
+                .spawn()
+                .map_err(|e| e.to_string())?;
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        for path in &file_paths {
+            let parent = std::path::Path::new(path)
+                .parent()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_default();
+            let _ = open::that(&parent);
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        for path in &file_paths {
+            std::process::Command::new("explorer")
+                .args(["/select,", path])
+                .spawn()
+                .map_err(|e| e.to_string())?;
+        }
     }
 
     Ok(())
@@ -268,14 +294,64 @@ pub async fn request_full_disk_access() -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn get_open_with_apps(_file_path: String) -> Result<Vec<serde_json::Value>, String> {
-    // TODO: platform-specific "Open With" app enumeration
-    Ok(vec![])
+pub async fn get_open_with_apps(file_path: String) -> Result<Vec<serde_json::Value>, String> {
+    #[cfg(target_os = "macos")]
+    {
+        let path = crate::validate_existing_path(&file_path, "File")?;
+        let output = tokio::task::spawn_blocking(move || {
+            let swift_code = format!(
+                r#"import AppKit; import Foundation;
+let url = URL(fileURLWithPath: "{}");
+let apps = NSWorkspace.shared.urlsForApplications(toOpen: url);
+var result: [[String: String]] = [];
+for app in apps {{
+    let name = FileManager.default.displayName(atPath: app.path);
+    result.append(["id": app.path, "name": name]);
+}}
+let data = try! JSONSerialization.data(withJSONObject: result);
+print(String(data: data, encoding: .utf8)!)"#,
+                path.display()
+            );
+            std::process::Command::new("swift")
+                .args(["-e", &swift_code])
+                .output()
+        })
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())?;
+
+        if output.status.success() {
+            let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if let Ok(apps) = serde_json::from_str::<Vec<serde_json::Value>>(&stdout) {
+                return Ok(apps);
+            }
+        }
+        Ok(vec![])
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = file_path;
+        Ok(vec![])
+    }
 }
 
 #[tauri::command]
-pub async fn open_file_with_app(file_path: String, _app_id: String) -> Result<(), String> {
-    open::that(&file_path).map_err(|e| e.to_string())
+pub async fn open_file_with_app(file_path: String, app_id: String) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .args(["-a", &app_id, &file_path])
+            .spawn()
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = app_id;
+        open::that(&file_path).map_err(|e| e.to_string())
+    }
 }
 
 pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {

@@ -1,4 +1,4 @@
-app-id: com.burnttoasters.iyeris
+app-id: run.rosie.iyeris
 runtime: org.freedesktop.Platform
 runtime-version: '24.08'
 sdk: org.freedesktop.Sdk
@@ -68,13 +68,13 @@ modules:
       - cp licenses.json /app/iyeris/
 
       # Install icon
-      - install -Dm644 assets/icon-square.png /app/share/icons/hicolor/512x512/apps/com.burnttoasters.iyeris.png
+      - install -Dm644 assets/icon-square.png /app/share/icons/hicolor/512x512/apps/run.rosie.iyeris.png
 
       # Create desktop file
-      - install -Dm644 com.burnttoasters.iyeris.desktop /app/share/applications/com.burnttoasters.iyeris.desktop
+      - install -Dm644 run.rosie.iyeris.desktop /app/share/applications/run.rosie.iyeris.desktop
 
       # Create AppStream metadata
-      - install -Dm644 com.burnttoasters.iyeris.metainfo.xml /app/share/metainfo/com.burnttoasters.iyeris.metainfo.xml
+      - install -Dm644 run.rosie.iyeris.metainfo.xml /app/share/metainfo/run.rosie.iyeris.metainfo.xml
 
       # Create wrapper script
       - install -Dm755 iyeris.sh /app/bin/iyeris

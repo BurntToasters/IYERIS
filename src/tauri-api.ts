@@ -1,8 +1,20 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import type { Update } from '@tauri-apps/plugin-updater';
 import type { ElectronAPI, Settings, HomeSettings } from './types';
 
 type SpecialDirectory = 'desktop' | 'documents' | 'downloads' | 'music' | 'videos';
+
+let pendingUpdate: Update | null = null;
+const updateDownloadProgressCallbacks = new Set<
+  (progress: {
+    percent: number;
+    transferred: number;
+    total: number;
+    bytesPerSecond: number;
+  }) => void
+>();
+const updateDownloadedCallbacks = new Set<(info: { version: string }) => void>();
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function wrap(fn: () => Promise<any>): Promise<any> {
@@ -19,9 +31,15 @@ function buildFileItem(raw: Record<string, unknown>) {
     name: raw.name as string,
     path: raw.path as string,
     isDirectory: raw.isDirectory as boolean,
-    isFile: !raw.isDirectory,
-    isSymlink: raw.isSymlink as boolean,
-    isHidden: raw.isHidden as boolean,
+    isFile: !(raw.isDirectory as boolean),
+    isSymlink: (raw.isSymlink as boolean) ?? false,
+    isBrokenSymlink: (raw.isBrokenSymlink as boolean) ?? false,
+    isAppBundle: (raw.isAppBundle as boolean) ?? false,
+    isShortcut: (raw.isShortcut as boolean) ?? false,
+    isDesktopEntry: (raw.isDesktopEntry as boolean) ?? false,
+    symlinkTarget: (raw.symlinkTarget as string) ?? undefined,
+    shortcutTarget: (raw.shortcutTarget as string) ?? undefined,
+    isHidden: (raw.isHidden as boolean) ?? false,
     size: raw.size as number,
     modified: new Date(raw.modified as number),
     isSystemProtected: false,
@@ -121,7 +139,8 @@ const electronAPI: ElectronAPI = {
           size: props.size as number,
           isDirectory: props.isDirectory as boolean,
           isFile: !(props.isDirectory as boolean),
-          isSymlink: props.isSymlink as boolean,
+          isSymlink: (props.isSymlink as boolean) ?? false,
+          isHidden: (props.isHidden as boolean) ?? false,
           created: new Date(props.created as number),
           modified: new Date(props.modified as number),
           accessed: new Date(props.accessed as number),
@@ -347,22 +366,78 @@ const electronAPI: ElectronAPI = {
   },
   requestFullDiskAccess: () => wrap(() => invoke('request_full_disk_access')),
   checkForUpdates: async () => {
-    return {
-      success: true,
-      hasUpdate: false,
-      currentVersion: await invoke<string>('get_app_version'),
-      latestVersion: '',
-      isFlatpak: await invoke<boolean>('is_flatpak'),
-    } as never;
+    const currentVersion = await invoke<string>('get_app_version');
+    const isFlatpak = await invoke<boolean>('is_flatpak');
+    try {
+      const { check } = await import('@tauri-apps/plugin-updater');
+      const update = await check();
+      if (update) {
+        pendingUpdate = update;
+        return {
+          success: true,
+          hasUpdate: true,
+          currentVersion,
+          latestVersion: update.version,
+          isFlatpak,
+        } as never;
+      }
+      return {
+        success: true,
+        hasUpdate: false,
+        currentVersion,
+        latestVersion: currentVersion,
+        isFlatpak,
+      } as never;
+    } catch {
+      return {
+        success: true,
+        hasUpdate: false,
+        currentVersion,
+        latestVersion: currentVersion,
+        isFlatpak,
+      } as never;
+    }
   },
-  downloadUpdate: () => wrap(() => invoke('download_update')),
-  installUpdate: () => wrap(() => invoke('install_update')),
+  downloadUpdate: async () => {
+    try {
+      if (!pendingUpdate) return { success: false as const, error: 'No update available' };
+      let downloaded = 0;
+      let contentLength = 0;
+      await pendingUpdate.downloadAndInstall((event) => {
+        if (event.event === 'Started' && event.data.contentLength) {
+          contentLength = event.data.contentLength;
+        } else if (event.event === 'Progress') {
+          downloaded += event.data.chunkLength;
+          const percent = contentLength > 0 ? (downloaded / contentLength) * 100 : 0;
+          const payload = {
+            percent,
+            transferred: downloaded,
+            total: contentLength,
+            bytesPerSecond: 0,
+          };
+          updateDownloadProgressCallbacks.forEach((cb) => cb(payload));
+        } else if (event.event === 'Finished') {
+          updateDownloadedCallbacks.forEach((cb) => cb({ version: pendingUpdate?.version ?? '' }));
+        }
+      });
+      return { success: true as const };
+    } catch (e) {
+      return { success: false as const, error: String(e) };
+    }
+  },
+  installUpdate: async () => {
+    try {
+      const { relaunch } = await import('@tauri-apps/plugin-process');
+      await relaunch();
+      return { success: true as const };
+    } catch (e) {
+      return { success: false as const, error: String(e) };
+    }
+  },
   onUpdateDownloadProgress: (callback) => {
-    const unlisten = listen('update-download-progress', (event) =>
-      callback(event.payload as never)
-    );
+    updateDownloadProgressCallbacks.add(callback);
     return () => {
-      unlisten.then((fn) => fn());
+      updateDownloadProgressCallbacks.delete(callback);
     };
   },
   onUpdateAvailable: (callback) => {
@@ -372,9 +447,9 @@ const electronAPI: ElectronAPI = {
     };
   },
   onUpdateDownloaded: (callback) => {
-    const unlisten = listen('update-downloaded', (event) => callback(event.payload as never));
+    updateDownloadedCallbacks.add(callback);
     return () => {
-      unlisten.then((fn) => fn());
+      updateDownloadedCallbacks.delete(callback);
     };
   },
   undoAction: () => Promise.resolve({ success: true, canUndo: false, canRedo: false } as never),
@@ -492,8 +567,18 @@ const electronAPI: ElectronAPI = {
   unwatchDirectory: () => invoke('unwatch_directory'),
   calculateFolderSize: async (folderPath, operationId) => {
     try {
-      const totalSize = await invoke<number>('calculate_folder_size', { folderPath, operationId });
-      return { success: true, result: { totalSize, fileCount: 0, folderCount: 0 } } as never;
+      const result = await invoke<Record<string, number>>('calculate_folder_size', {
+        folderPath,
+        operationId,
+      });
+      return {
+        success: true,
+        result: {
+          totalSize: result.totalSize ?? 0,
+          fileCount: result.fileCount ?? 0,
+          folderCount: result.folderCount ?? 0,
+        },
+      } as never;
     } catch (e) {
       return { success: false, error: String(e) } as never;
     }

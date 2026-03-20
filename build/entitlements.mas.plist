@@ -19,7 +19,7 @@
     <key>com.apple.security.network.client</key>
     <true/>
     <key>com.apple.application-identifier</key>
-    <string>FYJZP8B2KG.com.burnttoasters.iyeris</string>
+    <string>FYJZP8B2KG.run.rosie.iyeris</string>
     <key>com.apple.developer.team-identifier</key>
     <string>FYJZP8B2KG</string>
   </dict>

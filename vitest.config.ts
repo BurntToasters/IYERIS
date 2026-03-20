@@ -50,12 +50,7 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'html'],
       include: ['src/**/*.ts'],
-      exclude: [
-        'src/tests/**/*.test.ts',
-        'src/main/**',
-        'src/workers/**',
-        'src/renderer.ts',
-      ],
+      exclude: ['src/tests/**/*.test.ts', 'src/main/**', 'src/workers/**', 'src/renderer.ts'],
     },
   },
 });

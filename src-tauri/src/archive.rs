@@ -1,7 +1,7 @@
 use serde::Serialize;
 use std::collections::HashSet;
 use std::fs;
-use std::io::Write;
+use std::io::{BufReader, Cursor, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tauri::Emitter;
@@ -60,6 +60,7 @@ pub async fn compress_files(
         match fmt.as_str() {
             "zip" => compress_zip(&source_paths, &output, &compress_op_id, &app),
             "tar.gz" | "tgz" => compress_tar_gz(&source_paths, &output, &compress_op_id, &app),
+            "7z" => compress_7z(&source_paths, &output, &compress_op_id, &app),
             _ => Err(format!("Unsupported format: {}", fmt)),
         }
     })
@@ -176,6 +177,75 @@ fn compress_tar_gz(
     Ok(())
 }
 
+fn compress_7z(
+    sources: &[String],
+    output: &Path,
+    op_id: &str,
+    app: &tauri::AppHandle,
+) -> Result<(), String> {
+    let sz = sevenz_rust::SevenZWriter::create(output).map_err(|e| e.to_string())?;
+    let sz_cell = std::cell::RefCell::new(sz);
+    let total = sources.len() as u64;
+    let mut count = 0u64;
+
+    for source in sources {
+        if !op_id.is_empty() && !is_active(op_id) {
+            drop(sz_cell);
+            let _ = fs::remove_file(output);
+            return Err("Operation cancelled".to_string());
+        }
+
+        let path = PathBuf::from(source);
+        let name = path.file_name().unwrap().to_string_lossy().to_string();
+
+        if path.is_dir() {
+            add_dir_to_7z(&sz_cell, &path, &name, op_id)?;
+        } else {
+            let data = fs::read(&path).map_err(|e| e.to_string())?;
+            let entry = sevenz_rust::SevenZArchiveEntry::from_path(&path, name.clone());
+            sz_cell.borrow_mut()
+                .push_archive_entry(entry, Some(Cursor::new(data)))
+                .map_err(|e| e.to_string())?;
+        }
+
+        count += 1;
+        let _ = app.emit("compress-progress", serde_json::json!({
+            "operationId": op_id,
+            "current": count,
+            "total": total,
+            "name": name,
+        }));
+    }
+
+    sz_cell.into_inner().finish().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+fn add_dir_to_7z(
+    sz: &std::cell::RefCell<sevenz_rust::SevenZWriter<fs::File>>,
+    dir: &Path,
+    prefix: &str,
+    op_id: &str,
+) -> Result<(), String> {
+    for entry in fs::read_dir(dir).map_err(|e| e.to_string())?.flatten() {
+        if !op_id.is_empty() && !is_active(op_id) {
+            return Err("Operation cancelled".to_string());
+        }
+        let path = entry.path();
+        let name = format!("{}/{}", prefix, entry.file_name().to_string_lossy());
+        if path.is_dir() {
+            add_dir_to_7z(sz, &path, &name, op_id)?;
+        } else {
+            let data = fs::read(&path).map_err(|e| e.to_string())?;
+            let archive_entry = sevenz_rust::SevenZArchiveEntry::from_path(&path, name);
+            sz.borrow_mut()
+                .push_archive_entry(archive_entry, Some(Cursor::new(data)))
+                .map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn extract_archive(
     archive_path: String,
@@ -201,10 +271,16 @@ pub async fn extract_archive(
             .unwrap_or("")
             .to_lowercase();
 
+        let full_name = archive.to_string_lossy().to_lowercase();
+        if full_name.ends_with(".tar.xz") || full_name.ends_with(".txz") {
+            return extract_tar_xz(&archive, &dest);
+        }
         match ext.as_str() {
             "zip" => extract_zip(&archive, &dest, &extract_op_id, &app),
             "gz" | "tgz" => extract_tar_gz(&archive, &dest, &extract_op_id, &app),
             "tar" => extract_tar(&archive, &dest),
+            "7z" => extract_7z(&archive, &dest, &extract_op_id, &app),
+            "xz" => extract_tar_xz(&archive, &dest),
             _ => Err(format!("Unsupported archive format: {}", ext)),
         }
     })
@@ -277,6 +353,49 @@ fn extract_tar(archive: &Path, dest: &Path) -> Result<(), String> {
     tar.unpack(dest).map_err(|e| e.to_string())
 }
 
+fn extract_7z(
+    archive: &Path,
+    dest: &Path,
+    op_id: &str,
+    app: &tauri::AppHandle,
+) -> Result<(), String> {
+    let file = fs::File::open(archive).map_err(|e| e.to_string())?;
+    let reader = BufReader::new(file);
+    let mut count = 0usize;
+    sevenz_rust::decompress_with_extract_fn(reader, dest, |entry, reader, dest_path| {
+        if !op_id.is_empty() && !is_active(op_id) {
+            return Ok(false);
+        }
+        count += 1;
+        let name = entry.name().to_string();
+        let _ = app.emit("extract-progress", serde_json::json!({
+            "operationId": op_id,
+            "current": count,
+            "total": 0,
+            "name": name,
+        }));
+        let out_path = dest_path.join(entry.name());
+        if entry.is_directory() {
+            fs::create_dir_all(&out_path).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+        } else {
+            if let Some(parent) = out_path.parent() {
+                fs::create_dir_all(parent).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+            }
+            let mut outfile = fs::File::create(&out_path).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+            std::io::copy(reader, &mut outfile).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+        }
+        Ok(true)
+    })
+    .map_err(|e| e.to_string())
+}
+
+fn extract_tar_xz(archive: &Path, dest: &Path) -> Result<(), String> {
+    let file = fs::File::open(archive).map_err(|e| e.to_string())?;
+    let dec = xz2::read::XzDecoder::new(file);
+    let mut tar = tar::Archive::new(dec);
+    tar.unpack(dest).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub async fn cancel_archive_operation(operation_id: String) -> Result<(), String> {
     let mut ops = ACTIVE_OPS.lock().map_err(|e| e.to_string())?;
@@ -315,6 +434,72 @@ pub async fn list_archive_contents(archive_path: String) -> Result<Vec<ArchiveEn
                     });
                 }
 
+                Ok(entries)
+            }
+            "7z" => {
+                let mut entries = Vec::new();
+                let file = fs::File::open(&archive).map_err(|e| e.to_string())?;
+                let reader = BufReader::new(file);
+                sevenz_rust::decompress_with_extract_fn(reader, Path::new(""), |entry, _reader, _dest| {
+                    entries.push(ArchiveEntry {
+                        name: Path::new(entry.name())
+                            .file_name()
+                            .unwrap_or_default()
+                            .to_string_lossy()
+                            .to_string(),
+                        path: entry.name().to_string(),
+                        size: entry.size() as u64,
+                        is_directory: entry.is_directory(),
+                        compressed_size: entry.compressed_size as u64,
+                    });
+                    Ok(false)
+                })
+                .ok();
+                Ok(entries)
+            }
+            "gz" | "tgz" => {
+                let file = fs::File::open(&archive).map_err(|e| e.to_string())?;
+                let dec = flate2::read::GzDecoder::new(file);
+                let mut tar = tar::Archive::new(dec);
+                let mut entries = Vec::new();
+                for entry in tar.entries().map_err(|e| e.to_string())? {
+                    let entry = entry.map_err(|e| e.to_string())?;
+                    let path_str = entry.path().map_err(|e| e.to_string())?.to_string_lossy().to_string();
+                    let name = Path::new(&path_str)
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .to_string();
+                    entries.push(ArchiveEntry {
+                        name,
+                        path: path_str,
+                        size: entry.size(),
+                        is_directory: entry.header().entry_type().is_dir(),
+                        compressed_size: entry.size(),
+                    });
+                }
+                Ok(entries)
+            }
+            "tar" => {
+                let file = fs::File::open(&archive).map_err(|e| e.to_string())?;
+                let mut tar = tar::Archive::new(file);
+                let mut entries = Vec::new();
+                for entry in tar.entries().map_err(|e| e.to_string())? {
+                    let entry = entry.map_err(|e| e.to_string())?;
+                    let path_str = entry.path().map_err(|e| e.to_string())?.to_string_lossy().to_string();
+                    let name = Path::new(&path_str)
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .to_string();
+                    entries.push(ArchiveEntry {
+                        name,
+                        path: path_str,
+                        size: entry.size(),
+                        is_directory: entry.header().entry_type().is_dir(),
+                        compressed_size: entry.size(),
+                    });
+                }
                 Ok(entries)
             }
             _ => Err(format!("Listing not supported for format: {}", ext)),

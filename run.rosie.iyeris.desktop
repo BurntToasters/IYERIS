@@ -2,7 +2,7 @@
 Name=IYERIS
 Comment=A beautiful cross-platform file explorer with liquid-glass interface
 Exec=iyeris %U
-Icon=com.burnttoasters.iyeris
+Icon=run.rosie.iyeris
 Type=Application
 Categories=Utility;FileManager;FileTools;
 StartupNotify=true

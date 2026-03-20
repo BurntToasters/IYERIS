@@ -114,9 +114,7 @@ export async function initializeAutoUpdater(settings: Settings): Promise<void> {
 
     if (isRunningInFlatpak()) {
       logger.info('[AutoUpdater] Running in Flatpak - auto-updater disabled');
-      logger.info(
-        '[AutoUpdater] Updates should be installed via: flatpak update com.burnttoasters.iyeris'
-      );
+      logger.info('[AutoUpdater] Updates should be installed via: flatpak update run.rosie.iyeris');
     } else if (process.mas) {
       logger.info('[AutoUpdater] Running in Mac App Store - auto-updater disabled');
     } else if (process.windowsStore) {
@@ -241,7 +239,7 @@ export function setupUpdateHandlers(loadSettings: () => Promise<Settings>): void
           check: () => isRunningInFlatpak(),
           flag: 'isFlatpak',
           messageKey: 'flatpakMessage',
-          message: 'Updates are managed by Flatpak. Run: flatpak update com.burnttoasters.iyeris',
+          message: 'Updates are managed by Flatpak. Run: flatpak update run.rosie.iyeris',
           logMsg: 'Flatpak detected - redirecting to Flatpak update mechanism',
         },
         {

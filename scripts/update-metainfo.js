@@ -8,7 +8,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.join(__dirname, '..');
 const pkgPath = path.join(repoRoot, 'package.json');
-const xmlPath = path.join(repoRoot, 'com.burnttoasters.iyeris.metainfo.xml');
+const xmlPath = path.join(repoRoot, 'run.rosie.iyeris.metainfo.xml');
 
 function formatDate(date) {
   const year = date.getUTCFullYear();

@@ -10,6 +10,14 @@ static ACTIVE_FOLDER_CALCS: std::sync::LazyLock<Mutex<std::collections::HashSet<
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct FolderSizeResult {
+    pub total_size: u64,
+    pub file_count: u64,
+    pub folder_count: u64,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct FileItem {
     pub name: String,
     pub path: String,
@@ -282,7 +290,7 @@ pub async fn calculate_folder_size(
     folder_path: String,
     operation_id: String,
     app: tauri::AppHandle,
-) -> Result<u64, String> {
+) -> Result<FolderSizeResult, String> {
     let path = crate::validate_existing_path(&folder_path, "Folder")?;
 
     {
@@ -293,7 +301,8 @@ pub async fn calculate_folder_size(
     let op_id = operation_id.clone();
     let result = tokio::task::spawn_blocking(move || {
         let mut total: u64 = 0;
-        let mut count: u64 = 0;
+        let mut file_count: u64 = 0;
+        let mut folder_count: u64 = 0;
 
         for entry in WalkDir::new(&path).into_iter().flatten() {
             {
@@ -306,19 +315,25 @@ pub async fn calculate_folder_size(
             if let Ok(meta) = entry.metadata() {
                 if meta.is_file() {
                     total += meta.len();
-                    count += 1;
-                    if count % 500 == 0 {
+                    file_count += 1;
+                    if file_count % 500 == 0 {
                         let _ = app.emit("folder-size-progress", serde_json::json!({
                             "operationId": op_id,
                             "size": total,
-                            "files": count,
+                            "files": file_count,
                         }));
                     }
+                } else if meta.is_dir() {
+                    folder_count += 1;
                 }
             }
         }
 
-        Ok(total)
+        Ok(FolderSizeResult {
+            total_size: total,
+            file_count,
+            folder_count,
+        })
     })
     .await
     .map_err(|e| e.to_string())?;
