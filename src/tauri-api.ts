@@ -366,8 +366,61 @@ const electronAPI: ElectronAPI = {
   },
   requestFullDiskAccess: () => wrap(() => invoke('request_full_disk_access')),
   checkForUpdates: async () => {
-    const currentVersion = await invoke<string>('get_app_version');
-    const isFlatpak = await invoke<boolean>('is_flatpak');
+    const [currentVersion, isFlatpak, isMas, isMsStore, isMsi] = await Promise.all([
+      invoke<string>('get_app_version'),
+      invoke<boolean>('is_flatpak'),
+      invoke<boolean>('is_mas'),
+      invoke<boolean>('is_ms_store'),
+      invoke<boolean>('is_msi'),
+    ]);
+    const isBeta = /-(beta|alpha|rc)/i.test(currentVersion);
+
+    const storeChecks: Array<{
+      active: boolean;
+      flag: 'isFlatpak' | 'isMas' | 'isMsStore' | 'isMsi';
+      messageKey: 'flatpakMessage' | 'masMessage' | 'msStoreMessage' | 'msiMessage';
+      message: string;
+    }> = [
+      {
+        active: isFlatpak,
+        flag: 'isFlatpak',
+        messageKey: 'flatpakMessage',
+        message: 'Updates are managed by Flatpak. Run: flatpak update run.rosie.iyeris',
+      },
+      {
+        active: isMas,
+        flag: 'isMas',
+        messageKey: 'masMessage',
+        message: 'Updates are managed by the Mac App Store.',
+      },
+      {
+        active: isMsStore,
+        flag: 'isMsStore',
+        messageKey: 'msStoreMessage',
+        message: 'Updates are managed by the Microsoft Store.',
+      },
+      {
+        active: isMsi,
+        flag: 'isMsi',
+        messageKey: 'msiMessage',
+        message:
+          'This is an enterprise installation. Updates are managed by your IT administrator. To enable auto-updates, uninstall the MSI version and install the regular version from the website.',
+      },
+    ];
+
+    for (const store of storeChecks) {
+      if (!store.active) continue;
+      return {
+        success: true,
+        hasUpdate: false,
+        currentVersion,
+        latestVersion: currentVersion,
+        isBeta,
+        [store.flag]: true,
+        [store.messageKey]: store.message,
+      } as never;
+    }
+
     try {
       const { check } = await import('@tauri-apps/plugin-updater');
       const update = await check();
@@ -378,23 +431,25 @@ const electronAPI: ElectronAPI = {
           hasUpdate: true,
           currentVersion,
           latestVersion: update.version,
-          isFlatpak,
+          isBeta,
         } as never;
       }
+      pendingUpdate = null;
       return {
         success: true,
         hasUpdate: false,
         currentVersion,
         latestVersion: currentVersion,
-        isFlatpak,
+        isBeta,
       } as never;
     } catch {
+      pendingUpdate = null;
       return {
         success: true,
         hasUpdate: false,
         currentVersion,
         latestVersion: currentVersion,
-        isFlatpak,
+        isBeta,
       } as never;
     }
   },

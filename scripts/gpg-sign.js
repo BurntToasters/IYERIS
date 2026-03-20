@@ -43,7 +43,8 @@ const isChecksumTextName = rx(/^SHA256SUMS(?:-[a-z0-9_]+(?:-[a-z0-9_]+)?)?\.txt$
 
 const ARTIFACT_RULES = [
   rx(/-setup\.exe$/i),
-  rx(/^IYERIS-(?:Windows|Linux|macOS)-(?:x64|arm64)\.exe$/i),
+  rx(/^IYERIS-(?:Win|Windows)-(?:x64|arm64)\.exe$/i),
+  rx(/^IYERIS-(?:Win|Windows)\.exe$/i),
   ext('.msi'),
   ext('.dmg'),
   ext('.deb'),
@@ -155,19 +156,35 @@ function walk(dir, results = []) {
 }
 
 function cleanArtifactBaseName(name) {
-  if (/\.app\.tar\.gz$/i.test(name)) return 'IYERIS-macOS.app.tar.gz';
+  if (/\.app\.tar\.gz$/i.test(name)) return 'IYERIS-MacOS-universal.app.tar.gz';
   if (/\.nsis\.zip$/i.test(name)) return name;
   if (/\.tar\.gz$/i.test(name)) return name;
-  if (/\.dmg$/i.test(name)) return 'IYERIS-macOS.dmg';
-  if (/^IYERIS\.zip$/i.test(name)) return 'IYERIS-macOS.zip';
-  if (/x64-setup\.exe$/i.test(name)) return 'IYERIS-Windows-x64.exe';
-  if (/arm64-setup\.exe$/i.test(name)) return 'IYERIS-Windows-arm64.exe';
-  if (/amd64\.AppImage$/i.test(name)) return 'IYERIS-Linux-x64.AppImage';
-  if (/aarch64\.AppImage$/i.test(name)) return 'IYERIS-Linux-arm64.AppImage';
-  if (/amd64\.deb$/i.test(name)) return 'IYERIS-Linux-x64.deb';
-  if (/aarch64\.deb$/i.test(name)) return 'IYERIS-Linux-arm64.deb';
-  if (/x86_64\.rpm$/i.test(name)) return 'IYERIS-Linux-x64.rpm';
-  if (/aarch64\.rpm$/i.test(name)) return 'IYERIS-Linux-arm64.rpm';
+  if (/\.dmg$/i.test(name)) return 'IYERIS-MacOS-universal.dmg';
+  if (/^IYERIS\.zip$/i.test(name)) return 'IYERIS-MacOS-universal.zip';
+
+  if (/x64-setup\.exe$/i.test(name)) return 'IYERIS-Win-x64.exe';
+  if (/arm64-setup\.exe$/i.test(name)) return 'IYERIS-Win-arm64.exe';
+  if (/^IYERIS-Windows-x64\.exe$/i.test(name)) return 'IYERIS-Win-x64.exe';
+  if (/^IYERIS-Windows-arm64\.exe$/i.test(name)) return 'IYERIS-Win-arm64.exe';
+
+  if (/x64.*\.msi$/i.test(name)) return 'IYERIS-Win-x64-Enterprise.msi';
+  if (/arm64.*\.msi$/i.test(name)) return 'IYERIS-Win-arm64-Enterprise.msi';
+
+  if (/x86_64\.appimage$/i.test(name) || /amd64\.appimage$/i.test(name))
+    return 'IYERIS-Linux-x86_64.AppImage';
+  if (/aarch64\.appimage$/i.test(name) || /arm64\.appimage$/i.test(name))
+    return 'IYERIS-Linux-arm64.AppImage';
+
+  if (/x86_64\.deb$/i.test(name) || /amd64\.deb$/i.test(name)) return 'IYERIS-Linux-amd64.deb';
+  if (/aarch64\.deb$/i.test(name) || /arm64\.deb$/i.test(name)) return 'IYERIS-Linux-arm64.deb';
+
+  if (/x86_64\.rpm$/i.test(name) || /amd64\.rpm$/i.test(name)) return 'IYERIS-Linux-x86_64.rpm';
+  if (/aarch64\.rpm$/i.test(name) || /arm64\.rpm$/i.test(name)) return 'IYERIS-Linux-aarch64.rpm';
+
+  if (/IYERIS-Linux-(?:x64|x86_64|amd64)\.flatpak$/i.test(name))
+    return 'IYERIS-Linux-x86_64.flatpak';
+  if (/IYERIS-Linux-(?:arm64|aarch64)\.flatpak$/i.test(name)) return 'IYERIS-Linux-aarch64.flatpak';
+
   return name;
 }
 

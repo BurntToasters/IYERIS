@@ -41,7 +41,39 @@ pub fn get_system_text_scale() -> f64 {
 
 #[tauri::command]
 pub fn is_mas() -> bool {
-    cfg!(feature = "mas")
+    #[cfg(target_os = "macos")]
+    {
+        if cfg!(feature = "mas") {
+            return true;
+        }
+
+        if std::env::var("APP_SANDBOX_CONTAINER_ID").is_ok() {
+            return true;
+        }
+
+        if let Ok(exe) = std::env::current_exe() {
+            for ancestor in exe.ancestors() {
+                let Some(name) = ancestor.file_name().and_then(|value| value.to_str()) else {
+                    continue;
+                };
+                if !name.ends_with(".app") {
+                    continue;
+                }
+
+                let receipt = ancestor.join("Contents").join("_MASReceipt").join("receipt");
+                if receipt.exists() {
+                    return true;
+                }
+            }
+        }
+
+        false
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        false
+    }
 }
 
 #[tauri::command]
@@ -51,7 +83,51 @@ pub fn is_flatpak() -> bool {
 
 #[tauri::command]
 pub fn is_ms_store() -> bool {
-    false
+    #[cfg(target_os = "windows")]
+    {
+        if std::env::var("APPX_PACKAGE_FAMILY_NAME").is_ok()
+            || std::env::var("PACKAGE_FAMILY_NAME").is_ok()
+        {
+            return true;
+        }
+
+        if let Ok(exe) = std::env::current_exe() {
+            let exe_path = exe.to_string_lossy().to_ascii_lowercase();
+            if exe_path.contains("\\windowsapps\\") {
+                return true;
+            }
+        }
+
+        false
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        false
+    }
+}
+
+#[tauri::command]
+pub fn is_msi() -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        let output = std::process::Command::new("reg")
+            .args(["query", "HKCU\\Software\\IYERIS", "/v", "InstalledViaMsi"])
+            .output();
+
+        if let Ok(result) = output {
+            if result.status.success() {
+                let stdout = String::from_utf8_lossy(&result.stdout);
+                return stdout.contains("InstalledViaMsi") && stdout.contains("0x1");
+            }
+        }
+        false
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        false
+    }
 }
 
 #[tauri::command]

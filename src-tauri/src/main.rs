@@ -168,6 +168,7 @@ fn main() {
             system::is_mas,
             system::is_flatpak,
             system::is_ms_store,
+            system::is_msi,
             system::minimize_window,
             system::maximize_window,
             system::close_window,

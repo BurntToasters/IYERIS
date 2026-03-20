@@ -5,6 +5,10 @@ description = "A beautiful cross-platform file explorer."
 authors = ["BurntToasters <code@rosie.run>"]
 edition = "2021"
 
+[features]
+default = []
+mas = []
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 

@@ -29,8 +29,8 @@ function normalizeArch(raw) {
     .toLowerCase()
     .trim();
   if (value === 'x86_64' || value === 'amd64' || value === 'x64' || value === 'x86-64')
-    return 'x64';
-  if (value === 'aarch64' || value === 'arm64') return 'arm64';
+    return 'x86_64';
+  if (value === 'aarch64' || value === 'arm64') return 'aarch64';
   return value || 'unknown';
 }
 
