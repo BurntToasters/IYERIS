@@ -89,6 +89,8 @@ export interface Settings {
   customTheme?: CustomTheme;
   launchCount?: number;
   supportPopupDismissed?: boolean;
+  migrationNoticeDismissed?: boolean;
+  migrationNoticeViewCount?: number;
   tourPromptDismissed?: boolean;
   tourCompleted?: boolean;
   skipFullDiskAccessPrompt?: boolean;
@@ -292,6 +294,8 @@ export type UpdateCheckResponse = IpcResult<{
   currentVersion: string;
   latestVersion: string;
   releaseUrl?: string;
+  requiresManualInstall?: boolean;
+  manualUpdateMessage?: string;
   isBeta?: boolean;
   isFlatpak?: boolean;
   flatpakMessage?: string;

@@ -48,6 +48,8 @@ describe('createDefaultSettings', () => {
     expect(settings.minimizeToTray).toBe(false);
     expect(settings.startOnLogin).toBe(false);
     expect(settings.autoCheckUpdates).toBe(true);
+    expect(settings.migrationNoticeDismissed).toBe(false);
+    expect(settings.migrationNoticeViewCount).toBe(0);
   });
 
   it('has correct default accessibility settings', () => {

@@ -263,6 +263,52 @@ body.theme-light .status-view-mode:hover {
   height: 12px;
 }
 
+.status-eol-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: min(52vw, 460px);
+  padding: 2px 8px;
+  border: 1px solid color-mix(in srgb, var(--danger-color) 55%, transparent);
+  border-radius: var(--radius-small);
+  background: color-mix(in srgb, var(--danger-color) 17%, var(--surface-2));
+  color: var(--danger-color);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  font-family: inherit;
+  cursor: pointer;
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.2s ease,
+    opacity 0.2s ease;
+}
+
+.status-eol-badge:hover {
+  background: color-mix(in srgb, var(--danger-color) 26%, var(--surface-2));
+  border-color: color-mix(in srgb, var(--danger-color) 75%, transparent);
+  transform: translateY(-1px);
+}
+
+.status-eol-badge:active {
+  transform: translateY(0);
+}
+
+.status-eol-badge span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status-eol-badge .twemoji {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+}
+
 .status-search {
   display: inline-flex;
   align-items: center;

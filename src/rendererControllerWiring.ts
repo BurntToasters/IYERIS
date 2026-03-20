@@ -1129,6 +1129,9 @@ export function wireControllers(deps: WiringDeps) {
     initLicensesUi,
     showSupportPopup,
     initSupportPopup,
+    showMigrationPopup,
+    hideMigrationPopup,
+    initMigrationPopup,
   } = supportUiController;
 
   const externalLinksController = createExternalLinksController({
@@ -1410,6 +1413,9 @@ export function wireControllers(deps: WiringDeps) {
     initLicensesUi,
     showSupportPopup,
     initSupportPopup,
+    showMigrationPopup,
+    hideMigrationPopup,
+    initMigrationPopup,
 
     externalLinksController,
     initExternalLinks,

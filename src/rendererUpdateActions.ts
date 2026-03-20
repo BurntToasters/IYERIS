@@ -22,6 +22,8 @@ type UpdateActionsDeps = {
   onModalClose: (modal: HTMLElement) => void;
 };
 
+const RELEASES_LATEST_URL = 'https://github.com/BurntToasters/IYERIS/releases/latest';
+
 export function createUpdateActionsController(deps: UpdateActionsDeps) {
   let isDownloading = false;
   let progressCleanup: (() => void) | null = null;
@@ -179,6 +181,32 @@ export function createUpdateActionsController(deps: UpdateActionsDeps) {
         }
 
         if (result.hasUpdate) {
+          if (result.requiresManualInstall) {
+            const message =
+              result.manualUpdateMessage ||
+              `A new version is available, but this upgrade requires a manual install.\n\nCurrent Version: ${result.currentVersion}\nNew Version: ${result.latestVersion}\n\nDownload and install the latest release from GitHub.`;
+
+            const openReleasePage = await deps.showDialog(
+              'Manual Update Required',
+              message,
+              'warning',
+              true
+            );
+
+            if (openReleasePage) {
+              const releaseUrl = result.releaseUrl || RELEASES_LATEST_URL;
+              const openResult = await window.electronAPI.openFile(releaseUrl);
+              if (!openResult.success) {
+                deps.showToast(
+                  openResult.error || 'Failed to open the release page.',
+                  'Update Error',
+                  'error'
+                );
+              }
+            }
+            return;
+          }
+
           const updateTitle = result.isBeta ? 'Beta Update Available' : 'Update Available';
           const updateMessage = result.isBeta
             ? `[BETA CHANNEL] A new beta build is available!\n\nCurrent Version: ${result.currentVersion}\nNew Version: ${result.latestVersion}\n\nWould you like to download the update in the background?`

@@ -1,16 +1,26 @@
 import type { IpcMainInvokeEvent } from 'electron';
 import { ipcMain, app } from 'electron';
-import type { Settings, ApiResponse, UpdateCheckResponse } from '../types';
-import { getMainWindow, getIsDev, setIsQuitting } from './appState';
-import {
-  getAutoUpdater,
-  isRunningInFlatpak,
-  checkMsiInstallation,
-  isInstalledViaMsi,
-} from './platformUtils';
+import type { Settings, ApiResponse, UpdateCheckResponse, UpdateInfo } from '../types';
+import { getMainWindow, getIsDev } from './appState';
+import { isRunningInFlatpak, checkMsiInstallation, isInstalledViaMsi } from './platformUtils';
 import { safeSendToWindow, isTrustedIpcEvent } from './ipcUtils';
 import { getErrorMessage } from './security';
 import { logger } from './logger';
+
+const RELEASES_LATEST_URL = 'https://github.com/BurntToasters/IYERIS/releases/latest';
+const GITHUB_RELEASE_API_URL = 'https://api.github.com/repos/BurntToasters/IYERIS/releases/latest';
+const GITHUB_API_ACCEPT = 'application/vnd.github+json';
+const GITHUB_USER_AGENT = 'IYERIS-Update-Checker';
+const UPDATE_CHECK_TIMEOUT_MS = 10000;
+const MANUAL_UPDATE_BASE_MESSAGE =
+  'IYERIS v2 uses a new Tauri backend and bundle identifier. You must manually download and install the next release.';
+
+type LatestGithubRelease = {
+  tag_name?: unknown;
+  html_url?: unknown;
+  body?: unknown;
+  published_at?: unknown;
+};
 
 function parseVersion(v: string): {
   major: number;
@@ -73,152 +83,127 @@ export function compareVersions(a: string, b: string): number {
   return comparePrerelease(vA.prerelease, vB.prerelease);
 }
 
-export async function initializeAutoUpdater(settings: Settings): Promise<void> {
-  const isDev = getIsDev();
-  const isMsiInstall = await checkMsiInstallation().catch(() => false);
+function createManualUpdateMessage(currentVersionTag: string, latestVersionTag: string): string {
+  return `${MANUAL_UPDATE_BASE_MESSAGE}\n\nCurrent Version: ${currentVersionTag}\nNew Version: ${latestVersionTag}\n\nDownload: ${RELEASES_LATEST_URL}`;
+}
+
+function toVersionTag(version: string): string {
+  const trimmed = version.trim();
+  return trimmed.startsWith('v') ? trimmed : `v${trimmed}`;
+}
+
+async function fetchLatestReleaseFromGithub(): Promise<{
+  latestVersion: string;
+  releaseUrl: string;
+  updateInfo: UpdateInfo;
+}> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), UPDATE_CHECK_TIMEOUT_MS);
 
   try {
-    const autoUpdater = getAutoUpdater();
-    autoUpdater.logger = console;
-    autoUpdater.autoDownload = false;
-    autoUpdater.autoInstallOnAppQuit = true;
+    const response = await fetch(GITHUB_RELEASE_API_URL, {
+      method: 'GET',
+      headers: {
+        Accept: GITHUB_API_ACCEPT,
+        'User-Agent': GITHUB_USER_AGENT,
+      },
+      cache: 'no-store',
+      signal: controller.signal,
+    });
 
-    const currentVersion = app.getVersion();
-    const isBetaVersion = /-(beta|alpha|rc)/i.test(currentVersion);
-    const updateChannel = settings.updateChannel || 'auto';
-
-    let useBetaChannel = false;
-    if (updateChannel === 'beta') {
-      useBetaChannel = true;
-    } else if (updateChannel === 'stable') {
-      useBetaChannel = false;
-    } else {
-      useBetaChannel = process.env.IS_BETA === 'true' || isBetaVersion;
-    }
-
-    if (useBetaChannel) {
-      autoUpdater.channel = 'beta';
-      autoUpdater.allowPrerelease = true;
-      logger.info('[AutoUpdater] Beta channel enabled');
-    } else {
-      autoUpdater.channel = 'latest';
-      autoUpdater.allowPrerelease = false;
-      logger.info('[AutoUpdater] Stable channel enabled');
-    }
-    logger.info(
-      '[AutoUpdater] Current version:',
-      currentVersion,
-      '| Channel setting:',
-      updateChannel
-    );
-
-    if (isRunningInFlatpak()) {
-      logger.info('[AutoUpdater] Running in Flatpak - auto-updater disabled');
-      logger.info(
-        '[AutoUpdater] Updates should be installed via: flatpak update com.burnttoasters.iyeris'
+    if (!response.ok) {
+      throw new Error(
+        `GitHub latest release lookup failed with status ${response.status} ${response.statusText}`
       );
-    } else if (process.mas) {
-      logger.info('[AutoUpdater] Running in Mac App Store - auto-updater disabled');
-    } else if (process.windowsStore) {
-      logger.info('[AutoUpdater] Running in Microsoft Store - auto-updater disabled');
-      logger.info('[AutoUpdater] Updates are handled by the Microsoft Store');
-    } else if (isMsiInstall || isInstalledViaMsi()) {
-      logger.info('[AutoUpdater] Installed via MSI (enterprise) - auto-updater disabled');
-      logger.info('[AutoUpdater] Updates should be managed by your IT administrator');
     }
 
-    autoUpdater.on('checking-for-update', () => {
-      logger.info('[AutoUpdater] Checking for update...');
-      safeSendToWindow(getMainWindow(), 'update-checking');
-    });
+    const payload = (await response.json()) as LatestGithubRelease;
+    const tagName = typeof payload.tag_name === 'string' ? payload.tag_name.trim() : '';
+    if (!tagName) {
+      throw new Error('GitHub latest release response did not include a tag_name');
+    }
 
-    autoUpdater.on('update-available', (info: { version: string }) => {
-      logger.info('[AutoUpdater] Update available:', info.version);
-      const mainWindow = getMainWindow();
+    const latestVersion = tagName.replace(/^v/i, '');
+    const releaseUrl =
+      typeof payload.html_url === 'string' && payload.html_url.trim()
+        ? payload.html_url
+        : RELEASES_LATEST_URL;
 
-      const updateIsBeta = /-(beta|alpha|rc)/i.test(info.version);
-      if (useBetaChannel && !updateIsBeta) {
-        logger.info(`[AutoUpdater] Beta channel ignoring stable release ${info.version}`);
-        safeSendToWindow(mainWindow, 'update-not-available', { version: currentVersion });
-        return;
-      }
-      if (!useBetaChannel && updateIsBeta) {
-        logger.info(`[AutoUpdater] Stable channel ignoring beta release ${info.version}`);
-        safeSendToWindow(mainWindow, 'update-not-available', { version: currentVersion });
-        return;
-      }
-
-      const comparison = compareVersions(info.version, currentVersion);
-      if (comparison <= 0) {
-        logger.info(
-          `[AutoUpdater] Ignoring update ${info.version} - current version ${currentVersion} is newer or equal`
-        );
-        safeSendToWindow(mainWindow, 'update-not-available', { version: currentVersion });
-        return;
-      }
-
-      safeSendToWindow(mainWindow, 'update-available', info);
-    });
-
-    autoUpdater.on('update-not-available', (info: { version: string }) => {
-      logger.info('[AutoUpdater] Update not available. Current version:', info.version);
-      safeSendToWindow(getMainWindow(), 'update-not-available', info);
-    });
-
-    autoUpdater.on('error', (err: Error) => {
-      logger.error('[AutoUpdater] Error:', err);
-      safeSendToWindow(getMainWindow(), 'update-error', err.message);
-    });
-
-    autoUpdater.on(
-      'download-progress',
-      (progressObj: {
-        percent: number;
-        bytesPerSecond: number;
-        transferred: number;
-        total: number;
-      }) => {
-        logger.info(`[AutoUpdater] Download progress: ${progressObj.percent.toFixed(2)}%`);
-        safeSendToWindow(getMainWindow(), 'update-download-progress', {
-          percent: progressObj.percent,
-          bytesPerSecond: progressObj.bytesPerSecond,
-          transferred: progressObj.transferred,
-          total: progressObj.total,
-        });
-      }
-    );
-
-    autoUpdater.on('update-downloaded', (info: { version: string }) => {
-      logger.info('[AutoUpdater] Update downloaded:', info.version);
-      safeSendToWindow(getMainWindow(), 'update-downloaded', info);
-    });
-
-    const updaterWithBeforeQuit = autoUpdater as unknown as {
-      on?: (event: string, listener: () => void) => void;
+    return {
+      latestVersion,
+      releaseUrl,
+      updateInfo: {
+        version: latestVersion,
+        releaseDate: typeof payload.published_at === 'string' ? payload.published_at : '',
+        releaseNotes: typeof payload.body === 'string' ? payload.body : undefined,
+      },
     };
-    if (typeof updaterWithBeforeQuit.on === 'function') {
-      updaterWithBeforeQuit.on('before-quit-for-update', () => {
-        setIsQuitting(true);
-      });
-    }
+  } catch (error) {
+    throw new Error(getErrorMessage(error), { cause: error });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 
-    if (
-      !isRunningInFlatpak() &&
-      !process.mas &&
-      !process.windowsStore &&
-      !isMsiInstall &&
-      !isDev &&
-      settings.autoCheckUpdates !== false
-    ) {
-      logger.info('[AutoUpdater] Checking for updates on startup...');
-      autoUpdater.checkForUpdates().catch((err: Error) => {
-        logger.error('[AutoUpdater] Startup check failed:', err);
-      });
-    } else if (settings.autoCheckUpdates === false) {
-      logger.info('[AutoUpdater] Auto-check on startup disabled by user');
+async function checkReleaseUpdate(currentVersion: string): Promise<{
+  hasUpdate: boolean;
+  latestVersion: string;
+  releaseUrl: string;
+  updateInfo: UpdateInfo;
+}> {
+  const latest = await fetchLatestReleaseFromGithub();
+  const hasUpdate = compareVersions(latest.latestVersion, currentVersion) > 0;
+  return {
+    hasUpdate,
+    latestVersion: latest.latestVersion,
+    releaseUrl: latest.releaseUrl,
+    updateInfo: latest.updateInfo,
+  };
+}
+
+export async function initializeAutoUpdater(settings: Settings): Promise<void> {
+  const isDev = getIsDev();
+  const currentVersion = app.getVersion();
+  const isMsiInstall = await checkMsiInstallation().catch(() => false);
+
+  if (isRunningInFlatpak()) {
+    logger.info('[AutoUpdater] Running in Flatpak - startup update checks disabled');
+    return;
+  }
+  if (process.mas) {
+    logger.info('[AutoUpdater] Running in Mac App Store - startup update checks disabled');
+    return;
+  }
+  if (process.windowsStore) {
+    logger.info('[AutoUpdater] Running in Microsoft Store - startup update checks disabled');
+    return;
+  }
+  if (isMsiInstall || isInstalledViaMsi()) {
+    logger.info('[AutoUpdater] Installed via MSI (enterprise) - startup update checks disabled');
+    return;
+  }
+  if (isDev) {
+    logger.info('[AutoUpdater] Development mode - startup update checks disabled');
+    return;
+  }
+  if (settings.autoCheckUpdates === false) {
+    logger.info('[AutoUpdater] Auto-check on startup disabled by user');
+    return;
+  }
+
+  logger.info('[AutoUpdater] Checking latest GitHub release on startup...', currentVersion);
+  try {
+    const result = await checkReleaseUpdate(currentVersion);
+    if (result.hasUpdate) {
+      logger.info('[AutoUpdater] New release available:', result.latestVersion);
+      safeSendToWindow(getMainWindow(), 'update-available', result.updateInfo);
+    } else {
+      logger.info('[AutoUpdater] No newer release found');
+      safeSendToWindow(getMainWindow(), 'update-not-available', { version: currentVersion });
     }
   } catch (error) {
-    logger.error('[AutoUpdater] Setup failed:', error);
+    logger.error('[AutoUpdater] Startup check failed:', error);
+    safeSendToWindow(getMainWindow(), 'update-error', getErrorMessage(error));
   }
 }
 
@@ -276,8 +261,8 @@ export function setupUpdateHandlers(loadSettings: () => Promise<Settings>): void
           return {
             success: true,
             hasUpdate: false,
-            currentVersion: `v${currentVersion}`,
-            latestVersion: `v${currentVersion}`,
+            currentVersion: toVersionTag(currentVersion),
+            latestVersion: toVersionTag(currentVersion),
             [flag]: true,
             [messageKey]: message,
           } as UpdateCheckResponse;
@@ -285,90 +270,37 @@ export function setupUpdateHandlers(loadSettings: () => Promise<Settings>): void
       }
 
       try {
-        const autoUpdater = getAutoUpdater();
         const currentVersion = app.getVersion();
-        const settings = await loadSettings();
-        const updateChannel = settings.updateChannel || 'auto';
+        await loadSettings();
+
         logger.info(
-          '[AutoUpdater] Manually checking for updates. Current version:',
-          currentVersion,
-          '| Channel:',
-          updateChannel
+          '[AutoUpdater] Manually checking latest release. Current version:',
+          currentVersion
         );
 
-        const isBetaVersion = /-(beta|alpha|rc)/i.test(currentVersion);
-        let preferBeta = false;
-        if (updateChannel === 'beta') {
-          preferBeta = true;
-        } else if (updateChannel === 'stable') {
-          preferBeta = false;
-        } else {
-          preferBeta = isBetaVersion;
-        }
-
-        if (preferBeta) {
-          autoUpdater.channel = 'beta';
-          autoUpdater.allowPrerelease = true;
-        } else {
-          autoUpdater.channel = 'latest';
-          autoUpdater.allowPrerelease = false;
-        }
-
-        const updateCheckResult = await autoUpdater.checkForUpdates();
-
-        if (!updateCheckResult) {
-          return { success: false, error: 'Update check returned no result' };
-        }
-
-        const updateInfo = updateCheckResult.updateInfo;
-        const latestVersion = updateInfo.version;
-        const updateIsBeta = /-(beta|alpha|rc)/i.test(latestVersion);
-
-        if (preferBeta && !updateIsBeta) {
-          logger.info(`[AutoUpdater] Beta channel ignoring stable release ${latestVersion}`);
-          return {
-            success: true,
-            hasUpdate: false,
-            isBeta: true,
-            currentVersion: `v${currentVersion}`,
-            latestVersion: `v${currentVersion}`,
-          };
-        }
-
-        if (!preferBeta && updateIsBeta) {
-          logger.info(`[AutoUpdater] Stable channel ignoring beta release ${latestVersion}`);
-          return {
-            success: true,
-            hasUpdate: false,
-            isBeta: false,
-            currentVersion: `v${currentVersion}`,
-            latestVersion: `v${currentVersion}`,
-          };
-        }
-
-        const comparison = compareVersions(latestVersion, currentVersion);
-        const hasUpdate = comparison > 0;
+        const result = await checkReleaseUpdate(currentVersion);
+        const currentVersionTag = toVersionTag(currentVersion);
+        const latestVersionTag = toVersionTag(result.latestVersion);
 
         logger.info('[AutoUpdater] Update check result:', {
-          hasUpdate,
+          hasUpdate: result.hasUpdate,
           currentVersion,
-          latestVersion,
-          preferBeta,
-          updateIsBeta,
+          latestVersion: result.latestVersion,
+          releaseUrl: result.releaseUrl,
         });
 
         return {
           success: true,
-          hasUpdate,
-          isBeta: preferBeta,
-          updateInfo: {
-            version: updateInfo.version,
-            releaseDate: updateInfo.releaseDate,
-            releaseNotes: updateInfo.releaseNotes as string | undefined,
-          },
-          currentVersion: `v${currentVersion}`,
-          latestVersion: `v${latestVersion}`,
-          releaseUrl: `https://github.com/BurntToasters/IYERIS/releases/tag/v${latestVersion}`,
+          hasUpdate: result.hasUpdate,
+          updateInfo: result.updateInfo,
+          currentVersion: currentVersionTag,
+          latestVersion: latestVersionTag,
+          releaseUrl: result.releaseUrl,
+          requiresManualInstall: result.hasUpdate,
+          manualUpdateMessage: result.hasUpdate
+            ? createManualUpdateMessage(currentVersionTag, latestVersionTag)
+            : undefined,
+          isBeta: false,
         };
       } catch (error) {
         logger.error('[AutoUpdater] Check for updates failed:', error);
@@ -377,42 +309,21 @@ export function setupUpdateHandlers(loadSettings: () => Promise<Settings>): void
     }
   );
 
+  const manualInstallError = `${MANUAL_UPDATE_BASE_MESSAGE} Download it here: ${RELEASES_LATEST_URL}`;
+
   ipcMain.handle('download-update', async (event: IpcMainInvokeEvent): Promise<ApiResponse> => {
-    try {
-      if (!isTrustedIpcEvent(event, 'download-update')) {
-        return { success: false, error: 'Untrusted IPC sender' };
-      }
-      const autoUpdater = getAutoUpdater();
-      logger.info('[AutoUpdater] Starting update download...');
-      await autoUpdater.downloadUpdate();
-      return { success: true };
-    } catch (error) {
-      logger.error('[AutoUpdater] Download failed:', error);
-      return { success: false, error: getErrorMessage(error) };
+    if (!isTrustedIpcEvent(event, 'download-update')) {
+      return { success: false, error: 'Untrusted IPC sender' };
     }
+    logger.info('[AutoUpdater] download-update requested but manual install is required');
+    return { success: false, error: manualInstallError };
   });
 
   ipcMain.handle('install-update', async (event: IpcMainInvokeEvent): Promise<ApiResponse> => {
-    try {
-      if (!isTrustedIpcEvent(event, 'install-update')) {
-        return { success: false, error: 'Untrusted IPC sender' };
-      }
-      const autoUpdater = getAutoUpdater();
-      logger.info('[AutoUpdater] Installing update and restarting...');
-      setIsQuitting(true);
-
-      app.releaseSingleInstanceLock();
-      logger.info('[AutoUpdater] Released single instance lock');
-
-      setTimeout(() => {
-        autoUpdater.quitAndInstall(false, true);
-      }, 100);
-
-      return { success: true };
-    } catch (error) {
-      setIsQuitting(false);
-      logger.error('[AutoUpdater] Install failed:', error);
-      return { success: false, error: getErrorMessage(error) };
+    if (!isTrustedIpcEvent(event, 'install-update')) {
+      return { success: false, error: 'Untrusted IPC sender' };
     }
+    logger.info('[AutoUpdater] install-update requested but manual install is required');
+    return { success: false, error: manualInstallError };
   });
 }
