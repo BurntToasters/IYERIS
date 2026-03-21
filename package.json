@@ -79,7 +79,7 @@
     "build:linux": "npm run build:linux:x64 && npm run build:linux:arm64",
     "flatpak:bundle": "node scripts/flatpak-bundle.js",
     "flatpak:clean": "node scripts/dist-tools.js clean-flatpak",
-    "release:prepare": "npm i && npm run sync-version && npm run icons:normalize && cargo check --manifest-path src-tauri/Cargo.toml -q && npm run dist:clean-release-artifacts && node scripts/update-metainfo.js",
+    "release:prepare": "npm run sync-version && npm run icons:normalize && cargo check --manifest-path src-tauri/Cargo.toml -q && npm run dist:clean-release-artifacts && node scripts/update-metainfo.js",
     "release:finalize": "dotenv -e .env -- node scripts/post-release-assets.js",
     "release:win": "npm run release:prepare && npm run build:win && npm run release:sign:gpg && npm run release:finalize",
     "release:mac": "npm run release:prepare && npm run build:mac:universal && npm run build:mac:zip && npm run release:sign:gpg && npm run release:finalize",

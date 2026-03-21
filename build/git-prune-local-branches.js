@@ -1,4 +1,5 @@
-const { spawnSync } = require('child_process');
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 const SCRIPT_VERSION = '1.0.0';
 
@@ -17,7 +18,7 @@ function runGit(args) {
   return { ok, stdout, stderr, status: result.status, error: result.error };
 }
 
-function parseArgs(argv) {
+export function parseArgs(argv) {
   const args = argv.slice(2);
   const options = {
     remote: 'origin',
@@ -54,7 +55,7 @@ function parseLines(value) {
     .filter(Boolean);
 }
 
-function stripRemotePrefix(ref, remote) {
+export function stripRemotePrefix(ref, remote) {
   const prefix = `${remote}/`;
   if (!ref.startsWith(prefix)) return null;
   const name = ref.slice(prefix.length);
@@ -62,7 +63,7 @@ function stripRemotePrefix(ref, remote) {
   return name;
 }
 
-function selectBranchesToDelete(localBranches, remoteBranches, currentBranch) {
+export function selectBranchesToDelete(localBranches, remoteBranches, currentBranch) {
   const remoteSet = new Set(remoteBranches);
   return localBranches.filter((branch) => branch !== currentBranch && !remoteSet.has(branch));
 }
@@ -111,7 +112,7 @@ function fetchPruned(remote) {
   }
 }
 
-function deleteBranches(branches, { force = false, dryRun = false } = {}) {
+export function deleteBranches(branches, { force = false, dryRun = false } = {}) {
   const deleted = [];
   const skipped = [];
   const flag = force ? '-D' : '-d';
@@ -181,7 +182,7 @@ function printSummary({
   }
 }
 
-function main(argv = process.argv) {
+export function main(argv = process.argv) {
   const options = parseArgs(argv);
 
   ensureRemoteExists(options.remote);
@@ -212,15 +213,7 @@ function main(argv = process.argv) {
   return skipped.length > 0 && !options.dryRun ? 1 : 0;
 }
 
-module.exports = {
-  parseArgs,
-  stripRemotePrefix,
-  selectBranchesToDelete,
-  deleteBranches,
-  main,
-};
-
-if (require.main === module) {
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   try {
     process.exit(main());
   } catch (error) {

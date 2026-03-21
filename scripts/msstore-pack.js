@@ -8,7 +8,10 @@ const ROOT = path.resolve(import.meta.dirname, '..');
 const TAURI_CONF = JSON.parse(
   fs.readFileSync(path.join(ROOT, 'src-tauri', 'tauri.conf.json'), 'utf8')
 );
+const CARGO_TOML = fs.readFileSync(path.join(ROOT, 'src-tauri', 'Cargo.toml'), 'utf8');
 const PRODUCT_NAME = TAURI_CONF.productName;
+const cargoNameMatch = CARGO_TOML.match(/^\s*name\s*=\s*"([^"]+)"/m);
+const CARGO_BIN_NAME = cargoNameMatch?.[1] ?? null;
 const VERSION = TAURI_CONF.version;
 const ASSETS_DIR = path.join(ROOT, 'src-tauri', 'msstore-assets');
 const MANIFEST_TEMPLATE = path.join(ASSETS_DIR, 'AppxManifest.xml');
@@ -44,18 +47,21 @@ function ensureDir(dir) {
 }
 
 function findExe(rustTarget) {
-  const releasePath = path.join(
-    ROOT,
-    'src-tauri',
-    'target',
-    rustTarget,
-    'release',
-    `${PRODUCT_NAME}.exe`
+  const candidateNames = Array.from(
+    new Set(
+      [PRODUCT_NAME, PRODUCT_NAME?.toLowerCase?.(), CARGO_BIN_NAME]
+        .filter(Boolean)
+        .map((name) => `${name}.exe`)
+    )
   );
-  if (fs.existsSync(releasePath)) return releasePath;
 
-  const fallback = path.join(ROOT, 'src-tauri', 'target', 'release', `${PRODUCT_NAME}.exe`);
-  if (fs.existsSync(fallback)) return fallback;
+  for (const exeName of candidateNames) {
+    const releasePath = path.join(ROOT, 'src-tauri', 'target', rustTarget, 'release', exeName);
+    if (fs.existsSync(releasePath)) return releasePath;
+
+    const fallback = path.join(ROOT, 'src-tauri', 'target', 'release', exeName);
+    if (fs.existsSync(fallback)) return fallback;
+  }
 
   return null;
 }

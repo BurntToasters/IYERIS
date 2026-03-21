@@ -42,6 +42,4 @@
 
 ## Release Smoke
 
-- Script integrity smoke: `npm run smoke:scripts`
-- Large-directory fixture for performance/manual smoke:
-  - `npm run smoke:perf:fixture -- --files 15000 --buckets 60 --folders 300 --clean`
+- Full local release smoke: `npm run test:all`

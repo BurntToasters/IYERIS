@@ -1,5 +1,6 @@
 use serde::Serialize;
 use std::fs;
+use std::collections::HashSet;
 use std::sync::Mutex;
 use std::time::UNIX_EPOCH;
 use tauri::Emitter;
@@ -7,6 +8,8 @@ use walkdir::WalkDir;
 
 static ACTIVE_FOLDER_CALCS: std::sync::LazyLock<Mutex<std::collections::HashSet<String>>> =
     std::sync::LazyLock::new(|| Mutex::new(std::collections::HashSet::new()));
+static ACTIVE_DIRECTORY_LISTINGS: std::sync::LazyLock<Mutex<HashSet<String>>> =
+    std::sync::LazyLock::new(|| Mutex::new(HashSet::new()));
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -23,6 +26,11 @@ pub struct FileItem {
     pub path: String,
     pub is_directory: bool,
     pub is_symlink: bool,
+    pub is_broken_symlink: bool,
+    pub is_app_bundle: bool,
+    pub is_shortcut: bool,
+    pub is_desktop_entry: bool,
+    pub symlink_target: Option<String>,
     pub is_hidden: bool,
     pub size: u64,
     pub modified: f64,
@@ -46,6 +54,30 @@ pub struct DriveInfo {
     pub is_removable: bool,
 }
 
+fn drive_space(mount_point: &str) -> (u64, u64) {
+    let path = std::path::Path::new(mount_point);
+    let total = fs2::total_space(path).unwrap_or(0);
+    let available = fs2::available_space(path).unwrap_or(0);
+    (total, available)
+}
+
+fn build_drive(
+    name: String,
+    mount_point: String,
+    fs_type: String,
+    is_removable: bool,
+) -> DriveInfo {
+    let (total_space, available_space) = drive_space(&mount_point);
+    DriveInfo {
+        name,
+        mount_point,
+        total_space,
+        available_space,
+        fs_type,
+        is_removable,
+    }
+}
+
 fn is_hidden(name: &str, _path: &std::path::Path) -> bool {
     if name.starts_with('.') {
         return true;
@@ -58,6 +90,54 @@ fn is_hidden(name: &str, _path: &std::path::Path) -> bool {
         }
     }
     false
+}
+
+fn detect_special_file_flags(path: &std::path::Path, is_directory: bool) -> (bool, bool, bool) {
+    let name_lower = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .map(|name| name.to_ascii_lowercase())
+        .unwrap_or_default();
+
+    #[cfg(target_os = "macos")]
+    let is_app_bundle = is_directory && name_lower.ends_with(".app");
+    #[cfg(not(target_os = "macos"))]
+    let is_app_bundle = false;
+
+    #[cfg(target_os = "windows")]
+    let is_shortcut = !is_directory && name_lower.ends_with(".lnk");
+    #[cfg(not(target_os = "windows"))]
+    let is_shortcut = false;
+
+    #[cfg(target_os = "linux")]
+    let is_desktop_entry = !is_directory && name_lower.ends_with(".desktop");
+    #[cfg(not(target_os = "linux"))]
+    let is_desktop_entry = false;
+
+    (is_app_bundle, is_shortcut, is_desktop_entry)
+}
+
+fn read_symlink_info(path: &std::path::Path, meta: &fs::Metadata) -> (Option<String>, bool) {
+    if !meta.file_type().is_symlink() {
+        return (None, false);
+    }
+
+    match fs::read_link(path) {
+        Ok(target) => {
+            let resolved_target = if target.is_absolute() {
+                target.clone()
+            } else {
+                path.parent()
+                    .unwrap_or_else(|| std::path::Path::new(""))
+                    .join(&target)
+            };
+            (
+                Some(target.to_string_lossy().to_string()),
+                !resolved_target.exists(),
+            )
+        }
+        Err(_) => (None, true),
+    }
 }
 
 fn metadata_to_file_item(path: &std::path::Path, meta: &fs::Metadata) -> FileItem {
@@ -90,11 +170,22 @@ fn metadata_to_file_item(path: &std::path::Path, meta: &fs::Metadata) -> FileIte
     #[cfg(not(unix))]
     let permissions = 0u32;
 
+    let is_directory = meta.is_dir();
+    let is_symlink = meta.file_type().is_symlink();
+    let (symlink_target, is_broken_symlink) = read_symlink_info(path, meta);
+    let (is_app_bundle, is_shortcut, is_desktop_entry) =
+        detect_special_file_flags(path, is_directory);
+
     FileItem {
         name: name.clone(),
         path: path.to_string_lossy().to_string(),
-        is_directory: meta.is_dir(),
-        is_symlink: meta.is_symlink(),
+        is_directory,
+        is_symlink,
+        is_broken_symlink,
+        is_app_bundle,
+        is_shortcut,
+        is_desktop_entry,
+        symlink_target,
         is_hidden: is_hidden(&name, path),
         size: meta.len(),
         modified,
@@ -108,18 +199,36 @@ fn metadata_to_file_item(path: &std::path::Path, meta: &fs::Metadata) -> FileIte
 #[tauri::command]
 pub async fn get_directory_contents(
     dir_path: String,
-    _operation_id: Option<String>,
+    operation_id: Option<String>,
     include_hidden: Option<bool>,
     _stream_only: Option<bool>,
+    app: tauri::AppHandle,
 ) -> Result<Vec<FileItem>, String> {
     let path = crate::validate_existing_path(&dir_path, "Directory")?;
     let show_hidden = include_hidden.unwrap_or(false);
+    let op_id = operation_id.unwrap_or_default();
 
-    tokio::task::spawn_blocking(move || {
+    if !op_id.is_empty() {
+        let mut listings = ACTIVE_DIRECTORY_LISTINGS.lock().map_err(|e| e.to_string())?;
+        listings.insert(op_id.clone());
+    }
+
+    let listing_op_id = op_id.clone();
+    let progress_path = dir_path.clone();
+
+    let result = tokio::task::spawn_blocking(move || {
         let entries = fs::read_dir(&path).map_err(|e| format!("Failed to read directory: {}", e))?;
         let mut items = Vec::new();
+        let mut loaded: usize = 0;
 
         for entry in entries.flatten() {
+            if !listing_op_id.is_empty() {
+                let listings = ACTIVE_DIRECTORY_LISTINGS.lock().map_err(|e| e.to_string())?;
+                if !listings.contains(&listing_op_id) {
+                    break;
+                }
+            }
+
             let entry_path = entry.path();
             let name = entry
                 .file_name()
@@ -136,12 +245,47 @@ pub async fn get_directory_contents(
             };
 
             items.push(metadata_to_file_item(&entry_path, &meta));
+            loaded += 1;
+
+            if loaded % 200 == 0 {
+                let _ = app.emit(
+                    "directory-contents-progress",
+                    serde_json::json!({
+                        "dirPath": progress_path,
+                        "loaded": loaded,
+                        "operationId": listing_op_id,
+                    }),
+                );
+            }
         }
+
+        let _ = app.emit(
+            "directory-contents-progress",
+            serde_json::json!({
+                "dirPath": progress_path,
+                "loaded": loaded,
+                "operationId": listing_op_id,
+            }),
+        );
 
         Ok(items)
     })
     .await
-    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())?;
+
+    if !op_id.is_empty() {
+        let mut listings = ACTIVE_DIRECTORY_LISTINGS.lock().map_err(|e| e.to_string())?;
+        listings.remove(&op_id);
+    }
+
+    result
+}
+
+#[tauri::command]
+pub async fn cancel_directory_contents(operation_id: String) -> Result<(), String> {
+    let mut listings = ACTIVE_DIRECTORY_LISTINGS.lock().map_err(|e| e.to_string())?;
+    listings.remove(&operation_id);
+    Ok(())
 }
 
 #[tauri::command]
@@ -155,41 +299,30 @@ pub async fn get_drives() -> Result<Vec<DriveInfo>, String> {
                 let mount = format!("{}:\\", letter as char);
                 let path = std::path::Path::new(&mount);
                 if path.exists() {
-                    drives.push(DriveInfo {
-                        name: format!("{}: Drive", letter as char),
-                        mount_point: mount,
-                        total_space: 0,
-                        available_space: 0,
-                        fs_type: String::new(),
-                        is_removable: false,
-                    });
+                    drives.push(build_drive(
+                        format!("{}: Drive", letter as char),
+                        mount,
+                        String::new(),
+                        false,
+                    ));
                 }
             }
         }
 
         #[cfg(target_os = "macos")]
         {
-            drives.push(DriveInfo {
-                name: "Macintosh HD".into(),
-                mount_point: "/".into(),
-                total_space: 0,
-                available_space: 0,
-                fs_type: "apfs".into(),
-                is_removable: false,
-            });
+            drives.push(build_drive(
+                "Macintosh HD".into(),
+                "/".into(),
+                "apfs".into(),
+                false,
+            ));
             if let Ok(entries) = fs::read_dir("/Volumes") {
                 for entry in entries.flatten() {
                     let mount = entry.path().to_string_lossy().to_string();
                     let name = entry.file_name().to_string_lossy().to_string();
                     if name != "Macintosh HD" {
-                        drives.push(DriveInfo {
-                            name,
-                            mount_point: mount,
-                            total_space: 0,
-                            available_space: 0,
-                            fs_type: String::new(),
-                            is_removable: true,
-                        });
+                        drives.push(build_drive(name, mount, String::new(), true));
                     }
                 }
             }
@@ -197,37 +330,16 @@ pub async fn get_drives() -> Result<Vec<DriveInfo>, String> {
 
         #[cfg(target_os = "linux")]
         {
-            drives.push(DriveInfo {
-                name: "Root".into(),
-                mount_point: "/".into(),
-                total_space: 0,
-                available_space: 0,
-                fs_type: "ext4".into(),
-                is_removable: false,
-            });
+            drives.push(build_drive("Root".into(), "/".into(), "ext4".into(), false));
             let home = std::env::var("HOME").unwrap_or_default();
             if !home.is_empty() && home != "/" {
-                drives.push(DriveInfo {
-                    name: "Home".into(),
-                    mount_point: home,
-                    total_space: 0,
-                    available_space: 0,
-                    fs_type: String::new(),
-                    is_removable: false,
-                });
+                drives.push(build_drive("Home".into(), home, String::new(), false));
             }
             if let Ok(entries) = fs::read_dir("/media") {
                 for entry in entries.flatten() {
                     let mount = entry.path().to_string_lossy().to_string();
                     let name = entry.file_name().to_string_lossy().to_string();
-                    drives.push(DriveInfo {
-                        name,
-                        mount_point: mount,
-                        total_space: 0,
-                        available_space: 0,
-                        fs_type: String::new(),
-                        is_removable: true,
-                    });
+                    drives.push(build_drive(name, mount, String::new(), true));
                 }
             }
         }
@@ -272,13 +384,15 @@ pub async fn get_special_directory(directory: String) -> Result<String, String> 
 
 #[tauri::command]
 pub async fn get_disk_space(drive_path: String) -> Result<serde_json::Value, String> {
+    let path = crate::validate_existing_path(&drive_path, "Drive")?;
     tokio::task::spawn_blocking(move || {
-        let info = sys_info::disk_info().map_err(|e| e.to_string())?;
+        let total = fs2::total_space(&path).map_err(|e| e.to_string())?;
+        let free = fs2::available_space(&path).map_err(|e| e.to_string())?;
         Ok(serde_json::json!({
-            "total": info.total * 1024,
-            "free": info.free * 1024,
-            "used": (info.total - info.free) * 1024,
-            "path": drive_path,
+            "total": total,
+            "free": free,
+            "used": total.saturating_sub(free),
+            "path": path.to_string_lossy(),
         }))
     })
     .await

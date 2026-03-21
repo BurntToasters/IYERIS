@@ -10,6 +10,7 @@ mod search;
 mod settings;
 mod system;
 mod thumbnails;
+mod undo;
 mod watcher;
 
 use std::path::{Path, PathBuf};
@@ -108,8 +109,19 @@ fn main() {
             zoom_level: Mutex::new(1.0),
         })
         .setup(|app| {
-            system::setup_tray(app)?;
-            indexer::initialize_index(app.handle());
+            if let Err(error) = system::setup_tray(app) {
+                eprintln!("Tray setup failed: {}", error);
+            }
+            let settings_json = settings::get_settings(app.handle().clone())
+                .unwrap_or_else(|_| "{}".to_string());
+            let enable_indexer = serde_json::from_str::<serde_json::Value>(&settings_json)
+                .ok()
+                .and_then(|value| value.get("enableIndexer").and_then(|flag| flag.as_bool()))
+                .unwrap_or(true);
+
+            if enable_indexer {
+                indexer::initialize_index(app.handle());
+            }
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -123,6 +135,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             // Directory operations
             directory::get_directory_contents,
+            directory::cancel_directory_contents,
             directory::get_drives,
             directory::get_drive_info,
             directory::get_home_directory,
@@ -142,6 +155,7 @@ fn main() {
             file_operations::move_items,
             file_operations::get_item_properties,
             file_operations::set_permissions,
+            file_operations::set_attributes,
             file_operations::read_file_content,
             file_operations::get_file_data_url,
             file_operations::batch_rename,
@@ -150,12 +164,15 @@ fn main() {
             // Clipboard & drag
             file_operations::set_clipboard,
             file_operations::get_clipboard,
+            file_operations::get_system_clipboard_data,
+            file_operations::get_system_clipboard_files,
             file_operations::set_drag_data,
             file_operations::get_drag_data,
             file_operations::clear_drag_data,
             // Search
             search::search_files,
             search::search_files_content,
+            search::search_files_content_global,
             search::cancel_search,
             search::search_index,
             search::rebuild_index,
@@ -204,6 +221,7 @@ fn main() {
             system::request_full_disk_access,
             system::get_open_with_apps,
             system::open_file_with_app,
+            system::launch_desktop_entry,
             // Elevated operations
             elevated::elevated_copy,
             elevated::elevated_move,
@@ -228,6 +246,10 @@ fn main() {
             // Checksum
             file_operations::calculate_checksum,
             file_operations::cancel_checksum_calculation,
+            // Undo/redo
+            undo::undo_action,
+            undo::redo_action,
+            undo::get_undo_redo_state,
         ])
         .run(tauri::generate_context!())
     {

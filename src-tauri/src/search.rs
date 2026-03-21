@@ -1,4 +1,5 @@
-use serde::Serialize;
+use chrono::{NaiveDate, TimeZone, Utc};
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs;
 use std::io::Read;
@@ -22,19 +23,142 @@ pub struct SearchResult {
     pub match_context: Option<String>,
 }
 
+#[derive(Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RawSearchFilters {
+    file_type: Option<String>,
+    min_size: Option<u64>,
+    max_size: Option<u64>,
+    date_from: Option<String>,
+    date_to: Option<String>,
+    regex: Option<bool>,
+}
+
+#[derive(Default)]
+struct ParsedFilters {
+    file_type: Option<String>,
+    min_size: Option<u64>,
+    max_size: Option<u64>,
+    date_from_ms: Option<f64>,
+    date_to_ms: Option<f64>,
+    regex: bool,
+}
+
 fn is_search_active(op_id: &str) -> bool {
     ACTIVE_SEARCHES.lock().map(|s| s.contains(op_id)).unwrap_or(false)
+}
+
+fn parse_date_to_ms(raw: &str, end_of_day: bool) -> Option<f64> {
+    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(raw) {
+        return Some(dt.timestamp_millis() as f64);
+    }
+    if let Ok(date) = NaiveDate::parse_from_str(raw, "%Y-%m-%d") {
+        let datetime = if end_of_day {
+            date.and_hms_opt(23, 59, 59)?
+        } else {
+            date.and_hms_opt(0, 0, 0)?
+        };
+        return Some(Utc.from_utc_datetime(&datetime).timestamp_millis() as f64);
+    }
+    None
+}
+
+fn parse_filters(raw: Option<serde_json::Value>) -> ParsedFilters {
+    let raw_filters = match raw {
+        Some(serde_json::Value::String(value)) => {
+            serde_json::from_str::<RawSearchFilters>(&value).ok()
+        }
+        Some(value) => serde_json::from_value::<RawSearchFilters>(value).ok(),
+        None => None,
+    }
+    .unwrap_or_default();
+
+    ParsedFilters {
+        file_type: raw_filters.file_type.map(|value| value.trim().to_ascii_lowercase()),
+        min_size: raw_filters.min_size,
+        max_size: raw_filters.max_size,
+        date_from_ms: raw_filters
+            .date_from
+            .as_deref()
+            .and_then(|value| parse_date_to_ms(value, false)),
+        date_to_ms: raw_filters
+            .date_to
+            .as_deref()
+            .and_then(|value| parse_date_to_ms(value, true)),
+        regex: raw_filters.regex.unwrap_or(false),
+    }
+}
+
+fn matches_filters(
+    entry_path: &std::path::Path,
+    meta: &std::fs::Metadata,
+    filters: &ParsedFilters,
+) -> bool {
+    if let Some(file_type) = &filters.file_type {
+        if meta.is_dir() {
+            return false;
+        }
+        let ext = entry_path
+            .extension()
+            .and_then(|value| value.to_str())
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+        let normalized_filter = file_type.trim_start_matches('.').to_ascii_lowercase();
+        if ext != normalized_filter {
+            return false;
+        }
+    }
+
+    if let Some(min_size) = filters.min_size {
+        if meta.is_file() && meta.len() < min_size {
+            return false;
+        }
+    }
+
+    if let Some(max_size) = filters.max_size {
+        if meta.is_file() && meta.len() > max_size {
+            return false;
+        }
+    }
+
+    if filters.date_from_ms.is_some() || filters.date_to_ms.is_some() {
+        let modified = meta
+            .modified()
+            .ok()
+            .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|duration| duration.as_secs_f64() * 1000.0);
+
+        if let (Some(required), Some(actual)) = (filters.date_from_ms, modified) {
+            if actual < required {
+                return false;
+            }
+        }
+
+        if let (Some(required), Some(actual)) = (filters.date_to_ms, modified) {
+            if actual > required {
+                return false;
+            }
+        }
+    }
+
+    true
 }
 
 #[tauri::command]
 pub async fn search_files(
     dir_path: String,
     query: String,
-    _filters: Option<serde_json::Value>,
+    filters: Option<serde_json::Value>,
     operation_id: Option<String>,
 ) -> Result<Vec<SearchResult>, String> {
     let path = crate::validate_existing_path(&dir_path, "Directory")?;
     let op_id = operation_id.unwrap_or_default();
+    let parsed_filters = parse_filters(filters);
+    let regex = if parsed_filters.regex {
+        Some(regex::Regex::new(&query).map_err(|e| format!("Invalid regex: {}", e))?)
+    } else {
+        None
+    };
 
     if !op_id.is_empty() {
         let mut searches = ACTIVE_SEARCHES.lock().map_err(|e| e.to_string())?;
@@ -61,11 +185,20 @@ pub async fn search_files(
                 .to_string_lossy()
                 .to_string();
 
-            if name.to_lowercase().contains(&query_lower) {
+            let name_matches = if let Some(regex) = &regex {
+                regex.is_match(&name)
+            } else {
+                name.to_lowercase().contains(&query_lower)
+            };
+
+            if name_matches {
                 let meta = match entry.metadata() {
                     Ok(m) => m,
                     Err(_) => continue,
                 };
+                if !matches_filters(entry_path, &meta, &parsed_filters) {
+                    continue;
+                }
 
                 let modified = meta
                     .modified()
@@ -110,11 +243,17 @@ pub async fn search_files(
 pub async fn search_files_content(
     dir_path: String,
     query: String,
-    _filters: Option<serde_json::Value>,
+    filters: Option<serde_json::Value>,
     operation_id: Option<String>,
 ) -> Result<Vec<SearchResult>, String> {
     let path = crate::validate_existing_path(&dir_path, "Directory")?;
     let op_id = operation_id.unwrap_or_default();
+    let parsed_filters = parse_filters(filters);
+    let regex = if parsed_filters.regex {
+        Some(regex::Regex::new(&query).map_err(|e| format!("Invalid regex: {}", e))?)
+    } else {
+        None
+    };
 
     if !op_id.is_empty() {
         let mut searches = ACTIVE_SEARCHES.lock().map_err(|e| e.to_string())?;
@@ -141,6 +280,9 @@ pub async fn search_files_content(
                 Ok(m) => m,
                 Err(_) => continue,
             };
+            if !matches_filters(entry_path, &meta, &parsed_filters) {
+                continue;
+            }
 
             if !meta.is_file() || meta.len() > max_file_size {
                 continue;
@@ -156,7 +298,13 @@ pub async fn search_files_content(
                 continue;
             }
 
-            if let Some(pos) = content.to_lowercase().find(&query_lower) {
+            let matched_position = if let Some(regex) = &regex {
+                regex.find(&content).map(|match_result| match_result.start())
+            } else {
+                content.to_lowercase().find(&query_lower)
+            };
+
+            if let Some(pos) = matched_position {
                 let start = pos.saturating_sub(50);
                 let end = (pos + query.len() + 50).min(content.len());
                 let context = content[start..end].to_string();
@@ -201,6 +349,19 @@ pub async fn search_files_content(
     }
 
     result
+}
+
+#[tauri::command]
+pub async fn search_files_content_global(
+    query: String,
+    filters: Option<serde_json::Value>,
+    operation_id: Option<String>,
+) -> Result<Vec<SearchResult>, String> {
+    let home = directories::UserDirs::new()
+        .map(|dirs| dirs.home_dir().to_string_lossy().to_string())
+        .ok_or_else(|| "Could not determine home directory".to_string())?;
+
+    search_files_content(home, query, filters, operation_id).await
 }
 
 #[tauri::command]

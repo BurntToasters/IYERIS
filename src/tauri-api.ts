@@ -4,6 +4,9 @@ import type { Update } from '@tauri-apps/plugin-updater';
 import type { TauriAPI, Settings, HomeSettings } from './types';
 
 type SpecialDirectory = 'desktop' | 'documents' | 'downloads' | 'music' | 'videos';
+type FileConflictBehavior = 'ask' | 'rename' | 'skip' | 'overwrite';
+type ConflictResolution = 'rename' | 'skip' | 'overwrite' | 'cancel';
+type ConflictDecision = Exclude<ConflictResolution, 'cancel'>;
 
 let pendingUpdate: Update | null = null;
 const updateDownloadProgressCallbacks = new Set<
@@ -15,6 +18,12 @@ const updateDownloadProgressCallbacks = new Set<
   }) => void
 >();
 const updateDownloadedCallbacks = new Set<(info: { version: string }) => void>();
+const updateAvailableCallbacks = new Set<
+  (info: { version: string; releaseDate: string; releaseNotes?: string }) => void
+>();
+const systemResumedCallbacks = new Set<() => void>();
+const systemThemeChangedCallbacks = new Set<(data: { isDarkMode: boolean }) => void>();
+let systemFallbacksBound = false;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function wrap(fn: () => Promise<any>): Promise<any> {
@@ -46,6 +55,131 @@ function buildFileItem(raw: Record<string, unknown>) {
   };
 }
 
+function bindSystemFallbacks() {
+  if (systemFallbacksBound) return;
+  systemFallbacksBound = true;
+
+  const emitResumed = () => {
+    systemResumedCallbacks.forEach((cb) => cb());
+  };
+
+  const emitThemeChanged = () => {
+    const isDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    systemThemeChangedCallbacks.forEach((cb) => cb({ isDarkMode }));
+  };
+
+  window.addEventListener('focus', emitResumed);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') emitResumed();
+  });
+
+  const media = window.matchMedia('(prefers-color-scheme: dark)');
+  media.addEventListener('change', emitThemeChanged);
+}
+
+function decodeFileUri(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed.toLowerCase().startsWith('file://')) return null;
+  const withoutScheme = trimmed.replace(/^file:\/\//i, '');
+  const normalized =
+    withoutScheme.startsWith('/') && /^[A-Za-z]:/.test(withoutScheme.slice(1))
+      ? withoutScheme.slice(1)
+      : withoutScheme;
+  const isWindowsPath = /^[A-Za-z]:/.test(normalized) || normalized.startsWith('\\\\');
+  try {
+    const decoded = decodeURIComponent(normalized);
+    return isWindowsPath ? decoded.replace(/\//g, '\\') : decoded;
+  } catch {
+    return isWindowsPath ? normalized.replace(/\//g, '\\') : normalized;
+  }
+}
+
+function extractClipboardPaths(text: string): string[] {
+  if (!text) return [];
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) => !line.startsWith('#'));
+  const parsed = lines
+    .map((line) => decodeFileUri(line) ?? (/^[A-Za-z]:\\|^\\\\/.test(line) ? line : null))
+    .filter((line): line is string => Boolean(line));
+  return Array.from(new Set(parsed));
+}
+
+function parseConflictItem(errorMessage: string): string | null {
+  const marker = 'CONFLICT:';
+  const index = errorMessage.indexOf(marker);
+  if (index === -1) return null;
+  const item = errorMessage.slice(index + marker.length).trim();
+  return item || null;
+}
+
+async function promptConflictResolution(
+  fileName: string,
+  operation: 'copy' | 'move'
+): Promise<ConflictResolution> {
+  try {
+    const { message } = await import('@tauri-apps/plugin-dialog');
+    const result = await message(`"${fileName}" already exists in this location.`, {
+      title: operation === 'copy' ? 'Copy Conflict' : 'Move Conflict',
+      kind: 'warning',
+      buttons: {
+        yes: 'Replace',
+        no: 'Keep Both',
+        cancel: 'Skip',
+      },
+    });
+    const normalized = String(result).trim().toLowerCase();
+    if (normalized === 'yes' || normalized === 'replace') return 'overwrite';
+    if (normalized === 'no' || normalized === 'keep both') return 'rename';
+    if (normalized === 'cancel' || normalized === 'skip') return 'skip';
+    return 'skip';
+  } catch {
+    return 'cancel';
+  }
+}
+
+async function runFileOperationWithConflictResolution(
+  command: 'copy_items' | 'move_items',
+  operation: 'copy' | 'move',
+  sourcePaths: string[],
+  destPath: string,
+  conflictBehavior?: FileConflictBehavior
+) {
+  const behavior = conflictBehavior ?? 'ask';
+  const conflictResolutions: Record<string, ConflictDecision> = {};
+
+  while (true) {
+    try {
+      await invoke(command, {
+        sourcePaths,
+        destPath,
+        conflictBehavior: behavior,
+        conflictResolutions: behavior === 'ask' ? conflictResolutions : null,
+      });
+      return { success: true as const };
+    } catch (e) {
+      const error = String(e);
+      if (behavior !== 'ask') {
+        return { success: false as const, error };
+      }
+
+      const conflictItem = parseConflictItem(error);
+      if (!conflictItem) {
+        return { success: false as const, error };
+      }
+
+      const resolution = await promptConflictResolution(conflictItem, operation);
+      if (resolution === 'cancel') {
+        return { success: false as const, error: 'Operation cancelled' };
+      }
+
+      conflictResolutions[conflictItem] = resolution;
+    }
+  }
+}
+
 const tauriAPI: TauriAPI = {
   getDirectoryContents: async (dirPath, operationId, includeHidden, _streamOnly) => {
     try {
@@ -60,7 +194,8 @@ const tauriAPI: TauriAPI = {
       return { success: false, error: String(e) } as never;
     }
   },
-  cancelDirectoryContents: (_operationId) => Promise.resolve({ success: true } as never),
+  cancelDirectoryContents: (operationId) =>
+    wrap(() => invoke('cancel_directory_contents', { operationId })),
   getDrives: async () => {
     try {
       const drives = await invoke<Record<string, unknown>[]>('get_drives');
@@ -161,7 +296,7 @@ const tauriAPI: TauriAPI = {
     }
   },
   setPermissions: (itemPath, mode) => wrap(() => invoke('set_permissions', { itemPath, mode })),
-  setAttributes: () => Promise.resolve({ success: true } as never),
+  setAttributes: (itemPath, attrs) => wrap(() => invoke('set_attributes', { itemPath, attrs })),
   getSettings: async () => {
     try {
       const json = await invoke<string>('get_settings');
@@ -173,7 +308,10 @@ const tauriAPI: TauriAPI = {
   },
   saveSettings: (settings: Settings) =>
     wrap(() => invoke('save_settings', { settings: JSON.stringify(settings) })),
-  saveSettingsSync: () => ({ success: true }) as never,
+  saveSettingsSync: (settings: Settings) => {
+    void invoke('save_settings', { settings: JSON.stringify(settings) });
+    return { success: true } as never;
+  },
   resetSettings: () => wrap(() => invoke('reset_settings')),
   relaunchApp: () => invoke('relaunch_app'),
   getSettingsPath: () => invoke('get_settings_path'),
@@ -193,8 +331,45 @@ const tauriAPI: TauriAPI = {
 
   setClipboard: (clipboardData) => invoke('set_clipboard', { clipboardData }),
   getClipboard: () => invoke('get_clipboard'),
-  getSystemClipboardData: () => Promise.resolve(null as never),
-  getSystemClipboardFiles: () => Promise.resolve([]),
+  getSystemClipboardData: async () => {
+    try {
+      const data = await invoke<{ operation?: string; paths?: string[] } | null>(
+        'get_system_clipboard_data'
+      );
+      if (data?.paths?.length) {
+        return {
+          operation: data.operation === 'cut' ? 'cut' : 'copy',
+          paths: data.paths,
+        } as never;
+      }
+    } catch {
+      /* fallback below */
+    }
+
+    try {
+      const text = await navigator.clipboard.readText();
+      const paths = extractClipboardPaths(text);
+      if (paths.length === 0) return null as never;
+      return { operation: 'copy', paths } as never;
+    } catch {
+      return null as never;
+    }
+  },
+  getSystemClipboardFiles: async () => {
+    try {
+      const paths = await invoke<string[]>('get_system_clipboard_files');
+      if (Array.isArray(paths) && paths.length > 0) return paths;
+    } catch {
+      /* fallback below */
+    }
+
+    try {
+      const text = await navigator.clipboard.readText();
+      return extractClipboardPaths(text);
+    } catch {
+      return [];
+    }
+  },
   onClipboardChanged: (callback) => {
     const unlisten = listen('clipboard-changed', (event) => callback(event.payload as never));
     return () => {
@@ -242,14 +417,23 @@ const tauriAPI: TauriAPI = {
   },
 
   copyItems: (sourcePaths, destPath, conflictBehavior) =>
-    wrap(() =>
-      invoke('copy_items', { sourcePaths, destPath, conflictBehavior: conflictBehavior ?? null })
-    ),
+    runFileOperationWithConflictResolution(
+      'copy_items',
+      'copy',
+      sourcePaths,
+      destPath,
+      conflictBehavior
+    ) as never,
   moveItems: (sourcePaths, destPath, conflictBehavior) =>
-    wrap(() =>
-      invoke('move_items', { sourcePaths, destPath, conflictBehavior: conflictBehavior ?? null })
-    ),
-  showConflictDialog: () => Promise.resolve('rename' as never),
+    runFileOperationWithConflictResolution(
+      'move_items',
+      'move',
+      sourcePaths,
+      destPath,
+      conflictBehavior
+    ) as never,
+  showConflictDialog: (fileName, operation) =>
+    promptConflictResolution(fileName, operation as 'copy' | 'move') as never,
   searchFiles: async (dirPath, query, filters, operationId) => {
     try {
       const results = await invoke<Record<string, unknown>[]>('search_files', {
@@ -284,9 +468,7 @@ const tauriAPI: TauriAPI = {
   },
   searchFilesWithContentGlobal: async (query, filters, operationId) => {
     try {
-      const home = await invoke<string>('get_home_directory');
-      const results = await invoke<Record<string, unknown>[]>('search_files_content', {
-        dirPath: home,
+      const results = await invoke<Record<string, unknown>[]>('search_files_content_global', {
         query,
         filters: filters ? JSON.stringify(filters) : null,
         operationId: operationId ?? null,
@@ -434,6 +616,13 @@ const tauriAPI: TauriAPI = {
       const update = await check();
       if (update) {
         pendingUpdate = update;
+        updateAvailableCallbacks.forEach((cb) =>
+          cb({
+            version: update.version,
+            releaseDate: '',
+            releaseNotes: typeof update.body === 'string' ? update.body : undefined,
+          })
+        );
         return {
           success: true,
           hasUpdate: true,
@@ -450,14 +639,15 @@ const tauriAPI: TauriAPI = {
         latestVersion: currentVersion,
         isBeta,
       } as never;
-    } catch {
+    } catch (e) {
       pendingUpdate = null;
+      const message = String(e);
+      const error = /pubkey|signature|updater/i.test(message)
+        ? 'Updater is not configured correctly. Configure the updater public key before checking for updates.'
+        : message;
       return {
-        success: true,
-        hasUpdate: false,
-        currentVersion,
-        latestVersion: currentVersion,
-        isBeta,
+        success: false,
+        error,
       } as never;
     }
   },
@@ -504,9 +694,13 @@ const tauriAPI: TauriAPI = {
     };
   },
   onUpdateAvailable: (callback) => {
-    const unlisten = listen('update-available', (event) => callback(event.payload as never));
+    updateAvailableCallbacks.add(
+      callback as (info: { version: string; releaseDate: string; releaseNotes?: string }) => void
+    );
     return () => {
-      unlisten.then((fn) => fn());
+      updateAvailableCallbacks.delete(
+        callback as (info: { version: string; releaseDate: string; releaseNotes?: string }) => void
+      );
     };
   },
   onUpdateDownloaded: (callback) => {
@@ -515,10 +709,30 @@ const tauriAPI: TauriAPI = {
       updateDownloadedCallbacks.delete(callback);
     };
   },
-  undoAction: () => Promise.resolve({ success: true, canUndo: false, canRedo: false } as never),
-  redoAction: () => Promise.resolve({ success: true, canUndo: false, canRedo: false } as never),
-  getUndoRedoState: () =>
-    Promise.resolve({ success: true, canUndo: false, canRedo: false } as never),
+  undoAction: async () => {
+    try {
+      const state = await invoke<{ canUndo: boolean; canRedo: boolean }>('undo_action');
+      return { success: true, canUndo: state.canUndo, canRedo: state.canRedo } as never;
+    } catch (e) {
+      return { success: false, error: String(e) } as never;
+    }
+  },
+  redoAction: async () => {
+    try {
+      const state = await invoke<{ canUndo: boolean; canRedo: boolean }>('redo_action');
+      return { success: true, canUndo: state.canUndo, canRedo: state.canRedo } as never;
+    } catch (e) {
+      return { success: false, error: String(e) } as never;
+    }
+  },
+  getUndoRedoState: async () => {
+    try {
+      const state = await invoke<{ canUndo: boolean; canRedo: boolean }>('get_undo_redo_state');
+      return { success: true, canUndo: state.canUndo, canRedo: state.canRedo } as never;
+    } catch (e) {
+      return { success: false, error: String(e) } as never;
+    }
+  },
   searchIndex: async (query, operationId) => {
     try {
       const results = await invoke<Record<string, unknown>[]>('search_index', {
@@ -593,9 +807,10 @@ const tauriAPI: TauriAPI = {
     };
   },
   onSystemResumed: (callback) => {
-    const unlisten = listen('system-resumed', () => callback());
+    bindSystemFallbacks();
+    systemResumedCallbacks.add(callback);
     return () => {
-      unlisten.then((fn) => fn());
+      systemResumedCallbacks.delete(callback);
     };
   },
   onDirectoryChanged: (callback) => {
@@ -605,9 +820,10 @@ const tauriAPI: TauriAPI = {
     };
   },
   onSystemThemeChanged: (callback) => {
-    const unlisten = listen('system-theme-changed', (event) => callback(event.payload as never));
+    bindSystemFallbacks();
+    systemThemeChangedCallbacks.add(callback);
     return () => {
-      unlisten.then((fn) => fn());
+      systemThemeChangedCallbacks.delete(callback);
     };
   },
   setZoomLevel: (zoomLevel) => wrap(() => invoke('set_zoom_level', { zoomLevel })),
@@ -789,11 +1005,28 @@ const tauriAPI: TauriAPI = {
   },
   openFileWithApp: (filePath, appId) =>
     wrap(() => invoke('open_file_with_app', { filePath, appId })),
-  batchRename: (items) => wrap(() => invoke('batch_rename', { items })),
+  batchRename: async (items) => {
+    try {
+      const results = await invoke<Array<{ success?: boolean; error?: string }>>('batch_rename', {
+        items,
+      });
+      const failures = results.filter((item) => item.success === false);
+      if (failures.length > 0) {
+        const firstError = failures[0]?.error || 'Batch rename failed';
+        return {
+          success: false,
+          error: `${failures.length} item(s) failed to rename. ${firstError}`,
+        } as never;
+      }
+      return { success: true } as never;
+    } catch (e) {
+      return { success: false, error: String(e) } as never;
+    }
+  },
   createSymlink: (targetPath, linkPath) =>
     wrap(() => invoke('create_symlink', { targetPath, linkPath })),
   shareItems: (filePaths) => wrap(() => invoke('share_items', { filePaths })),
-  launchDesktopEntry: () => Promise.resolve({ success: true } as never),
+  launchDesktopEntry: (filePath) => wrap(() => invoke('launch_desktop_entry', { filePath })),
 };
 
 (window as unknown as { tauriAPI: TauriAPI }).tauriAPI = tauriAPI;

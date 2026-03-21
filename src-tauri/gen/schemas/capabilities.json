@@ -3,7 +3,7 @@
     "identifier": "default",
     "description": "Default permissions for IYERIS file explorer",
     "local": true,
-    "windows": ["main"],
+    "windows": ["main", "window-*"],
     "permissions": [
       "core:app:default",
       "core:event:default",

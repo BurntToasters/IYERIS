@@ -1294,6 +1294,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "fs2"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9564fc758e15025b46aa6643b1b77d047d1a56a1aea6e01002ac0c7026876213"
+dependencies = [
+ "libc",
+ "winapi",
+]
+
+[[package]]
 name = "futf"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2144,7 +2154,7 @@ checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
 
 [[package]]
 name = "iyeris"
-version = "1.1.0-beta.1"
+version = "2.0.0-beta.1"
 dependencies = [
  "chrono",
  "core-foundation 0.9.4",
@@ -2152,6 +2162,7 @@ dependencies = [
  "directories",
  "env_logger",
  "flate2",
+ "fs2",
  "glob",
  "hex",
  "log",
@@ -2165,7 +2176,6 @@ dependencies = [
  "serde_json",
  "sevenz-rust",
  "sha2",
- "sys-info",
  "tar",
  "tauri",
  "tauri-build",
@@ -4435,16 +4445,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.117",
-]
-
-[[package]]
-name = "sys-info"
-version = "0.9.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0b3a0d0aba8bf96a0e1ddfdc352fc53b3df7f39318c71854910c3c4b024ae52c"
-dependencies = [
- "cc",
- "libc",
 ]
 
 [[package]]

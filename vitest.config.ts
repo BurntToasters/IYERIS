@@ -44,7 +44,6 @@ export default defineConfig({
       'src/tests/build.smoke-scripts.test.ts',
       'src/tests/build.test-all.test.ts',
       'src/tests/build.post-release-assets.test.ts',
-      'src/tests/build.git-prune-local-branches.test.ts',
     ],
     coverage: {
       provider: 'v8',

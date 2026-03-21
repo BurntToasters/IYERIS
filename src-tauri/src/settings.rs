@@ -56,6 +56,17 @@ pub fn save_settings(app: tauri::AppHandle, settings: String) -> Result<(), Stri
     let path = settings_path(&app)?;
     write_json_file(&path, &settings)?;
 
+    let enable_indexer = serde_json::from_str::<serde_json::Value>(&settings)
+        .ok()
+        .and_then(|value| value.get("enableIndexer").and_then(|flag| flag.as_bool()))
+        .unwrap_or(true);
+
+    if enable_indexer {
+        crate::indexer::initialize_index(&app);
+    } else {
+        crate::indexer::cancel_build();
+    }
+
     let _ = app.emit("settings-changed", &settings);
     Ok(())
 }

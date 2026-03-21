@@ -1,9 +1,12 @@
+use crate::undo;
 use serde::Serialize;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::Read;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::sync::Mutex;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::Emitter;
 
 static ACTIVE_CHECKSUMS: std::sync::LazyLock<Mutex<HashSet<String>>> =
@@ -17,8 +20,16 @@ pub struct ItemProperties {
     pub size: u64,
     pub is_directory: bool,
     pub is_symlink: bool,
+    pub symlink_target: Option<String>,
+    pub is_shortcut: Option<bool>,
+    pub shortcut_target: Option<String>,
     pub is_hidden: bool,
     pub readonly: bool,
+    pub owner: Option<String>,
+    pub group: Option<String>,
+    pub is_hidden_attr: Option<bool>,
+    pub is_system_attr: Option<bool>,
+    pub mac_tags: Option<Vec<String>>,
     pub created: f64,
     pub modified: f64,
     pub accessed: f64,
@@ -29,30 +40,145 @@ pub struct ItemProperties {
     pub permissions: u32,
 }
 
+enum OpenTarget {
+    FilePath(PathBuf),
+    External(String),
+}
+
+fn validate_child_name(raw_name: &str, label: &str) -> Result<String, String> {
+    let name = raw_name.trim();
+    if name.is_empty() {
+        return Err(format!("{} is required", label));
+    }
+    if name == "." || name == ".." {
+        return Err(format!("{} cannot be '.' or '..'", label));
+    }
+    if name.contains('/') || name.contains('\\') || name.contains('\0') {
+        return Err(format!(
+            "{} cannot contain path separators or null bytes",
+            label
+        ));
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let invalid_chars = ['<', '>', ':', '"', '|', '?', '*'];
+        if name.chars().any(|ch| invalid_chars.contains(&ch)) {
+            return Err(format!("{} contains invalid Windows characters", label));
+        }
+        let base_upper = name
+            .split('.')
+            .next()
+            .unwrap_or_default()
+            .to_ascii_uppercase();
+        let reserved = [
+            "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7",
+            "COM8", "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8",
+            "LPT9",
+        ];
+        if reserved.contains(&base_upper.as_str()) {
+            return Err(format!("{} uses a reserved Windows filename", label));
+        }
+    }
+
+    Ok(name.to_string())
+}
+
+fn parse_file_uri_path(raw_value: &str) -> Result<PathBuf, String> {
+    let without_scheme = raw_value.trim_start_matches("file://");
+    let normalized = if without_scheme.starts_with('/')
+        && without_scheme.len() >= 3
+        && without_scheme.as_bytes()[2] == b':'
+    {
+        &without_scheme[1..]
+    } else {
+        without_scheme
+    };
+
+    #[cfg(target_os = "windows")]
+    let normalized = normalized.replace('/', "\\");
+    #[cfg(not(target_os = "windows"))]
+    let normalized = normalized.to_string();
+
+    crate::validate_existing_path(&normalized, "File URI")
+}
+
+fn parse_open_target(file_path: &str) -> Result<OpenTarget, String> {
+    let value = file_path.trim();
+    if value.is_empty() {
+        return Err("File path is required".to_string());
+    }
+
+    let value_lower = value.to_ascii_lowercase();
+    if value_lower.starts_with("http://")
+        || value_lower.starts_with("https://")
+        || value_lower.starts_with("mailto:")
+    {
+        return Ok(OpenTarget::External(value.to_string()));
+    }
+    if value_lower.starts_with("file://") {
+        return Ok(OpenTarget::FilePath(parse_file_uri_path(value)?));
+    }
+    if value.contains("://") {
+        return Err("Unsupported URL scheme".to_string());
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let mut chars = value.chars();
+        if let (Some(first), Some(':')) = (chars.next(), chars.next()) {
+            if first.is_ascii_alphabetic() {
+                let path = crate::validate_existing_path(value, "File")?;
+                return Ok(OpenTarget::FilePath(path));
+            }
+        }
+    }
+
+    Ok(OpenTarget::FilePath(crate::validate_existing_path(
+        value, "File",
+    )?))
+}
+
 #[tauri::command]
 pub async fn open_file(file_path: String) -> Result<(), String> {
-    open::that(&file_path).map_err(|e| format!("Failed to open file: {}", e))
+    match parse_open_target(&file_path)? {
+        OpenTarget::FilePath(path) => {
+            open::that(&path).map_err(|e| format!("Failed to open file: {}", e))
+        }
+        OpenTarget::External(url) => {
+            open::that(url).map_err(|e| format!("Failed to open URL: {}", e))
+        }
+    }
 }
 
 #[tauri::command]
 pub async fn create_folder(parent_path: String, folder_name: String) -> Result<String, String> {
     let parent = crate::validate_existing_path(&parent_path, "Parent")?;
+    let folder_name = validate_child_name(&folder_name, "Folder name")?;
     let new_path = parent.join(&folder_name);
-    fs::create_dir_all(&new_path).map_err(|e| format!("Failed to create folder: {}", e))?;
+    fs::create_dir(&new_path).map_err(|e| format!("Failed to create folder: {}", e))?;
+    undo::push_create_action(&new_path, true)?;
     Ok(new_path.to_string_lossy().to_string())
 }
 
 #[tauri::command]
 pub async fn create_file(parent_path: String, file_name: String) -> Result<String, String> {
     let parent = crate::validate_existing_path(&parent_path, "Parent")?;
+    let file_name = validate_child_name(&file_name, "File name")?;
     let new_path = parent.join(&file_name);
-    fs::File::create(&new_path).map_err(|e| format!("Failed to create file: {}", e))?;
+    fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&new_path)
+        .map_err(|e| format!("Failed to create file: {}", e))?;
+    undo::push_create_action(&new_path, false)?;
     Ok(new_path.to_string_lossy().to_string())
 }
 
 #[tauri::command]
 pub async fn delete_item(item_path: String) -> Result<(), String> {
     let path = crate::validate_existing_path(&item_path, "Item")?;
+    undo::clear_undo_redo_for_path(&path.to_string_lossy())?;
     if path.is_dir() {
         fs::remove_dir_all(&path).map_err(|e| format!("Failed to delete directory: {}", e))
     } else {
@@ -63,6 +189,7 @@ pub async fn delete_item(item_path: String) -> Result<(), String> {
 #[tauri::command]
 pub async fn trash_item(item_path: String) -> Result<(), String> {
     let path = crate::validate_existing_path(&item_path, "Item")?;
+    undo::clear_undo_redo_for_path(&path.to_string_lossy())?;
     trash::delete(&path).map_err(|e| format!("Failed to trash item: {}", e))
 }
 
@@ -94,11 +221,13 @@ pub async fn open_trash() -> Result<(), String> {
 #[tauri::command]
 pub async fn rename_item(old_path: String, new_name: String) -> Result<String, String> {
     let path = crate::validate_existing_path(&old_path, "Item")?;
+    let new_name = validate_child_name(&new_name, "New name")?;
     let new_path = path
         .parent()
         .ok_or("Cannot determine parent directory")?
         .join(&new_name);
     fs::rename(&path, &new_path).map_err(|e| format!("Failed to rename: {}", e))?;
+    undo::push_rename_action(&path, &new_path)?;
     Ok(new_path.to_string_lossy().to_string())
 }
 
@@ -106,42 +235,58 @@ pub async fn rename_item(old_path: String, new_name: String) -> Result<String, S
 pub async fn copy_items(
     source_paths: Vec<String>,
     dest_path: String,
-    _conflict_behavior: Option<String>,
+    conflict_behavior: Option<String>,
+    conflict_resolutions: Option<HashMap<String, String>>,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
     let dest = crate::validate_existing_path(&dest_path, "Destination")?;
-    let total = source_paths.len();
+    let behavior = conflict_behavior.unwrap_or_else(|| "ask".to_string());
+    let resolutions = conflict_resolutions.unwrap_or_default();
+    let planned = plan_file_operations(&source_paths, &dest, &behavior, "copy", &resolutions)?;
+    let total = planned.len();
+    let mut copied_paths: Vec<PathBuf> = Vec::new();
+    let mut backups: HashMap<String, OverwriteBackup> = HashMap::new();
 
-    for (i, source) in source_paths.iter().enumerate() {
-        let src = PathBuf::from(source);
-        let name = src
-            .file_name()
-            .ok_or("Invalid source path")?
-            .to_string_lossy()
-            .to_string();
-        let target = dest.join(&name);
+    let operation = (|| -> Result<(), String> {
+        for (index, item) in planned.iter().enumerate() {
+            ensure_overwrite_backup(&mut backups, item)?;
 
-        let _ = app.emit(
-            "file-operation-progress",
-            serde_json::json!({
-                "operation": "copy",
-                "current": i + 1,
-                "total": total,
-                "name": name,
-            }),
-        );
+            if item.is_directory {
+                copy_dir_recursive(&item.source_path, &item.dest_path)?;
+            } else {
+                fs::copy(&item.source_path, &item.dest_path).map_err(|e| {
+                    format!("Failed to copy {}: {}", item.item_name, e)
+                })?;
+            }
+            copied_paths.push(item.dest_path.clone());
 
-        if src.is_dir() {
-            copy_dir_recursive(&src, &target)?;
-        } else {
-            fs::copy(&src, &target).map_err(|e| format!("Failed to copy {}: {}", name, e))?;
+            if total > 1 {
+                let _ = app.emit(
+                    "file-operation-progress",
+                    serde_json::json!({
+                        "operation": "copy",
+                        "current": index + 1,
+                        "total": total,
+                        "name": item.item_name,
+                    }),
+                );
+            }
         }
+        Ok(())
+    })();
+
+    if let Err(error) = operation {
+        remove_paths_reversed(&copied_paths);
+        restore_overwrite_backups(&backups, false);
+        cleanup_backups(&backups);
+        return Err(error);
     }
 
+    cleanup_backups(&backups);
     Ok(())
 }
 
-fn copy_dir_recursive(src: &std::path::Path, dest: &std::path::Path) -> Result<(), String> {
+fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<(), String> {
     fs::create_dir_all(dest).map_err(|e| format!("Failed to create directory: {}", e))?;
     for entry in fs::read_dir(src).map_err(|e| e.to_string())?.flatten() {
         let entry_path = entry.path();
@@ -159,43 +304,384 @@ fn copy_dir_recursive(src: &std::path::Path, dest: &std::path::Path) -> Result<(
 pub async fn move_items(
     source_paths: Vec<String>,
     dest_path: String,
-    _conflict_behavior: Option<String>,
+    conflict_behavior: Option<String>,
+    conflict_resolutions: Option<HashMap<String, String>>,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
     let dest = crate::validate_existing_path(&dest_path, "Destination")?;
-    let total = source_paths.len();
+    let behavior = conflict_behavior.unwrap_or_else(|| "ask".to_string());
+    let resolutions = conflict_resolutions.unwrap_or_default();
+    let planned = plan_file_operations(&source_paths, &dest, &behavior, "move", &resolutions)?;
+    let total = planned.len();
+    let mut moved_paths: Vec<String> = Vec::new();
+    let mut original_paths: Vec<String> = Vec::new();
+    let mut completed_moves: Vec<CompletedMove> = Vec::new();
+    let mut backups: HashMap<String, OverwriteBackup> = HashMap::new();
 
-    for (i, source) in source_paths.iter().enumerate() {
-        let src = PathBuf::from(source);
-        let name = src
-            .file_name()
-            .ok_or("Invalid source path")?
-            .to_string_lossy()
-            .to_string();
-        let target = dest.join(&name);
+    let operation = (|| -> Result<(), String> {
+        for (index, item) in planned.iter().enumerate() {
+            ensure_overwrite_backup(&mut backups, item)?;
+            move_path_with_fallback(&item.source_path, &item.dest_path, item.is_directory)?;
 
-        let _ = app.emit(
-            "file-operation-progress",
-            serde_json::json!({
-                "operation": "move",
-                "current": i + 1,
-                "total": total,
-                "name": name,
-            }),
-        );
+            moved_paths.push(item.dest_path.to_string_lossy().to_string());
+            original_paths.push(item.source_path.to_string_lossy().to_string());
+            completed_moves.push(CompletedMove {
+                source_path: item.source_path.clone(),
+                dest_path: item.dest_path.clone(),
+                is_directory: item.is_directory,
+            });
 
-        if let Err(_) = fs::rename(&src, &target) {
-            if src.is_dir() {
-                copy_dir_recursive(&src, &target)?;
-                fs::remove_dir_all(&src).map_err(|e| e.to_string())?;
-            } else {
-                fs::copy(&src, &target).map_err(|e| e.to_string())?;
-                fs::remove_file(&src).map_err(|e| e.to_string())?;
+            if total > 1 {
+                let _ = app.emit(
+                    "file-operation-progress",
+                    serde_json::json!({
+                        "operation": "move",
+                        "current": index + 1,
+                        "total": total,
+                        "name": item.item_name,
+                    }),
+                );
             }
         }
+        Ok(())
+    })();
+
+    if let Err(error) = operation {
+        rollback_moves(&completed_moves);
+        restore_overwrite_backups(&backups, true);
+        cleanup_backups(&backups);
+        return Err(error);
     }
 
+    cleanup_backups(&backups);
+    undo::push_move_action(moved_paths, original_paths, dest_path)?;
     Ok(())
+}
+
+fn remove_existing_path(path: &Path) -> Result<(), String> {
+    if !path.exists() {
+        return Ok(());
+    }
+    if path.is_dir() {
+        fs::remove_dir_all(path).map_err(|e| format!("Failed to remove existing directory: {}", e))
+    } else {
+        fs::remove_file(path).map_err(|e| format!("Failed to remove existing file: {}", e))
+    }
+}
+
+fn normalize_case_key(path: &Path) -> String {
+    #[cfg(target_os = "windows")]
+    {
+        path.to_string_lossy().to_ascii_lowercase()
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        path.to_string_lossy().to_string()
+    }
+}
+
+fn create_renamed_target(dest: &Path, original_name: &str, reserved: &HashSet<String>) -> PathBuf {
+    let (base, ext) = split_filename(original_name);
+    for i in 2..10_000 {
+        let candidate = match &ext {
+            Some(ext) => format!("{} ({}).{}", base, i, ext),
+            None => format!("{} ({})", base, i),
+        };
+        let target = dest.join(candidate);
+        let key = normalize_case_key(&target);
+        if !target.exists() && !reserved.contains(&key) {
+            return target;
+        }
+    }
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    dest.join(format!("{} ({})", original_name, timestamp))
+}
+
+fn split_filename(name: &str) -> (String, Option<String>) {
+    if let Some(dot_index) = name.rfind('.') {
+        if dot_index > 0 && dot_index < name.len() - 1 {
+            return (
+                name[..dot_index].to_string(),
+                Some(name[dot_index + 1..].to_string()),
+            );
+        }
+    }
+    (name.to_string(), None)
+}
+
+fn resolve_conflict_target(
+    dest: &Path,
+    original_name: &str,
+    behavior: &str,
+) -> Result<Option<(PathBuf, bool)>, String> {
+    let target = dest.join(original_name);
+    if !target.exists() {
+        return Ok(Some((target, false)));
+    }
+
+    match behavior.to_ascii_lowercase().as_str() {
+        "skip" => Ok(None),
+        "overwrite" => Ok(Some((target, true))),
+        "rename" | "ask" => Ok(Some((target, false))),
+        _ => Ok(Some((target, false))),
+    }
+}
+
+#[derive(Clone)]
+struct PlannedFileOperation {
+    source_path: PathBuf,
+    dest_path: PathBuf,
+    item_name: String,
+    is_directory: bool,
+    overwrite: bool,
+}
+
+#[derive(Clone)]
+struct CompletedMove {
+    source_path: PathBuf,
+    dest_path: PathBuf,
+    is_directory: bool,
+}
+
+#[derive(Clone)]
+struct OverwriteBackup {
+    dest_path: PathBuf,
+    backup_path: PathBuf,
+}
+
+fn plan_file_operations(
+    source_paths: &[String],
+    dest: &Path,
+    behavior: &str,
+    operation: &str,
+    conflict_resolutions: &HashMap<String, String>,
+) -> Result<Vec<PlannedFileOperation>, String> {
+    if source_paths.is_empty() {
+        return Err("No source items provided".to_string());
+    }
+
+    let mut planned: Vec<PlannedFileOperation> = Vec::new();
+    let mut reserved: HashSet<String> = HashSet::new();
+    let dest_real = fs::canonicalize(dest).unwrap_or_else(|_| dest.to_path_buf());
+    let behavior_normalized = behavior.to_ascii_lowercase();
+
+    for source in source_paths {
+        let src = crate::validate_existing_path(source, "Source")?;
+        let metadata = fs::symlink_metadata(&src).map_err(|e| e.to_string())?;
+        let item_name = src
+            .file_name()
+            .map(|name| name.to_string_lossy().to_string())
+            .ok_or("Invalid source path")?;
+
+        let base_target = dest.join(&item_name);
+        let base_key = normalize_case_key(&base_target);
+        if reserved.contains(&base_key) {
+            return Err(format!("Multiple items share the same name: \"{}\"", item_name));
+        }
+
+        if metadata.is_dir() {
+            if let Ok(source_real) = fs::canonicalize(&src) {
+                if dest_real == source_real || dest_real.starts_with(&source_real) {
+                    return Err(format!(
+                        "Cannot {} \"{}\" into itself or a subfolder",
+                        operation, item_name
+                    ));
+                }
+            }
+        }
+
+        let resolved = match resolve_conflict_target(dest, &item_name, behavior)? {
+            None => continue,
+            Some((target, overwrite)) => {
+                if overwrite {
+                    (target, overwrite)
+                } else if target.exists() {
+                    if behavior_normalized == "ask" {
+                        match conflict_resolutions
+                            .get(&item_name)
+                            .map(|value| value.to_ascii_lowercase())
+                            .as_deref()
+                        {
+                            Some("overwrite") => (target, true),
+                            Some("rename") => (create_renamed_target(dest, &item_name, &reserved), false),
+                            Some("skip") => continue,
+                            Some("cancel") => return Err("Operation cancelled".to_string()),
+                            Some(_) => {
+                                return Err(format!(
+                                    "Unsupported conflict resolution for \"{}\"",
+                                    item_name
+                                ))
+                            }
+                            None => return Err(format!("CONFLICT:{}", item_name)),
+                        }
+                    } else {
+                        (create_renamed_target(dest, &item_name, &reserved), false)
+                    }
+                } else {
+                    (target, false)
+                }
+            }
+        };
+
+        let destination_key = normalize_case_key(&resolved.0);
+        if reserved.contains(&destination_key) {
+            return Err(format!(
+                "Multiple items resolve to the same destination: \"{}\"",
+                resolved
+                    .0
+                    .file_name()
+                    .map(|name| name.to_string_lossy().to_string())
+                    .unwrap_or_default()
+            ));
+        }
+        reserved.insert(destination_key);
+
+        planned.push(PlannedFileOperation {
+            source_path: src,
+            dest_path: resolved.0,
+            item_name,
+            is_directory: metadata.is_dir(),
+            overwrite: resolved.1,
+        });
+    }
+
+    Ok(planned)
+}
+
+fn is_cross_device_error(err: &std::io::Error) -> bool {
+    matches!(err.raw_os_error(), Some(17) | Some(18))
+}
+
+fn move_path_with_fallback(
+    source: &Path,
+    target: &Path,
+    is_directory: bool,
+) -> Result<(), String> {
+    if let Some(parent) = target.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("Failed to create directory: {}", e))?;
+    }
+    match fs::rename(source, target) {
+        Ok(_) => return Ok(()),
+        Err(error) if !is_cross_device_error(&error) => {
+            return Err(format!(
+                "Failed to move {} to {}: {}",
+                source.display(),
+                target.display(),
+                error
+            ));
+        }
+        Err(_) => {}
+    }
+
+    if is_directory {
+        copy_dir_recursive(source, target)?;
+        fs::remove_dir_all(source).map_err(|e| e.to_string())?;
+    } else {
+        fs::copy(source, target).map_err(|e| e.to_string())?;
+        fs::remove_file(source).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+fn create_backup_path(dest_path: &Path) -> Result<PathBuf, String> {
+    let parent = dest_path
+        .parent()
+        .ok_or("Cannot determine parent directory for backup path")?;
+    let base = dest_path
+        .file_name()
+        .map(|name| name.to_string_lossy().to_string())
+        .ok_or("Cannot determine destination name for backup path")?;
+
+    for attempt in 0..10 {
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis();
+        let candidate = parent.join(format!(
+            ".{}.iyeris-backup-{}-{}-{}",
+            base,
+            std::process::id(),
+            timestamp,
+            attempt
+        ));
+        if !candidate.exists() {
+            return Ok(candidate);
+        }
+    }
+    Err("Unable to create backup path".to_string())
+}
+
+fn ensure_overwrite_backup(
+    backups: &mut HashMap<String, OverwriteBackup>,
+    operation: &PlannedFileOperation,
+) -> Result<(), String> {
+    if !operation.overwrite {
+        return Ok(());
+    }
+
+    let key = normalize_case_key(&operation.dest_path);
+    if backups.contains_key(&key) || !operation.dest_path.exists() {
+        return Ok(());
+    }
+
+    let backup_path = create_backup_path(&operation.dest_path)?;
+    let is_directory = fs::symlink_metadata(&operation.dest_path)
+        .map(|meta| meta.is_dir())
+        .unwrap_or(false);
+    move_path_with_fallback(&operation.dest_path, &backup_path, is_directory)?;
+    backups.insert(
+        key,
+        OverwriteBackup {
+            dest_path: operation.dest_path.clone(),
+            backup_path,
+        },
+    );
+    Ok(())
+}
+
+fn restore_overwrite_backups(
+    backups: &HashMap<String, OverwriteBackup>,
+    skip_if_destination_exists: bool,
+) {
+    for backup in backups.values() {
+        if !backup.backup_path.exists() {
+            continue;
+        }
+        if skip_if_destination_exists && backup.dest_path.exists() {
+            continue;
+        }
+        if backup.dest_path.exists() {
+            let _ = remove_existing_path(&backup.dest_path);
+        }
+        let is_directory = fs::symlink_metadata(&backup.backup_path)
+            .map(|meta| meta.is_dir())
+            .unwrap_or(false);
+        let _ = move_path_with_fallback(&backup.backup_path, &backup.dest_path, is_directory);
+    }
+}
+
+fn cleanup_backups(backups: &HashMap<String, OverwriteBackup>) {
+    for backup in backups.values() {
+        if backup.backup_path.exists() {
+            let _ = remove_existing_path(&backup.backup_path);
+        }
+    }
+}
+
+fn remove_paths_reversed(paths: &[PathBuf]) {
+    for path in paths.iter().rev() {
+        let _ = remove_existing_path(path);
+    }
+}
+
+fn rollback_moves(completed: &[CompletedMove]) {
+    for item in completed.iter().rev() {
+        let _ = move_path_with_fallback(&item.dest_path, &item.source_path, item.is_directory);
+    }
 }
 
 #[tauri::command]
@@ -222,15 +708,65 @@ pub async fn get_item_properties(item_path: String) -> Result<ItemProperties, St
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_default();
+    let is_symlink = meta.file_type().is_symlink();
+    let symlink_target = if is_symlink {
+        fs::read_link(&path)
+            .ok()
+            .map(|target| target.to_string_lossy().to_string())
+    } else {
+        None
+    };
+
+    #[cfg(unix)]
+    let (owner, group) = {
+        use std::os::unix::fs::MetadataExt;
+        (Some(meta.uid().to_string()), Some(meta.gid().to_string()))
+    };
+    #[cfg(not(unix))]
+    let (owner, group): (Option<String>, Option<String>) = (None, None);
+
+    #[cfg(target_os = "windows")]
+    let (is_shortcut, shortcut_target) = {
+        let shortcut = path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext| ext.eq_ignore_ascii_case("lnk"))
+            .unwrap_or(false);
+        let target = if shortcut {
+            resolve_windows_shortcut_target(&path).ok()
+        } else {
+            None
+        };
+        (Some(shortcut), target)
+    };
+    #[cfg(not(target_os = "windows"))]
+    let (is_shortcut, shortcut_target): (Option<bool>, Option<String>) = (None, None);
+
+    #[cfg(target_os = "windows")]
+    let (is_hidden_attr, is_system_attr) = {
+        use std::os::windows::fs::MetadataExt;
+        let attrs = meta.file_attributes();
+        (Some(attrs & 0x2 != 0), Some(attrs & 0x4 != 0))
+    };
+    #[cfg(not(target_os = "windows"))]
+    let (is_hidden_attr, is_system_attr): (Option<bool>, Option<bool>) = (None, None);
 
     Ok(ItemProperties {
         name: name.clone(),
         path: path.to_string_lossy().to_string(),
         size: meta.len(),
         is_directory: meta.is_dir(),
-        is_symlink: meta.is_symlink(),
+        is_symlink,
+        symlink_target,
+        is_shortcut,
+        shortcut_target,
         is_hidden: name.starts_with('.'),
         readonly: meta.permissions().readonly(),
+        owner,
+        group,
+        is_hidden_attr,
+        is_system_attr,
+        mac_tags: None,
         created: to_ms(meta.created()),
         modified: to_ms(meta.modified()),
         accessed: to_ms(meta.accessed()),
@@ -259,6 +795,44 @@ pub async fn set_permissions(item_path: String, mode: u32) -> Result<(), String>
         let mut perms = meta.permissions();
         perms.set_readonly(mode & 0o200 == 0);
         fs::set_permissions(&path, perms).map_err(|e| e.to_string())?;
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn set_attributes(item_path: String, attrs: serde_json::Value) -> Result<(), String> {
+    let path = crate::validate_existing_path(&item_path, "Item")?;
+    let read_only = attrs
+        .get("readOnly")
+        .and_then(|value| value.as_bool());
+    let hidden = attrs.get("hidden").and_then(|value| value.as_bool());
+
+    if let Some(is_read_only) = read_only {
+        let mut perms = fs::metadata(&path)
+            .map_err(|e| format!("Failed to read metadata: {}", e))?
+            .permissions();
+        perms.set_readonly(is_read_only);
+        fs::set_permissions(&path, perms)
+            .map_err(|e| format!("Failed to update readonly attribute: {}", e))?;
+    }
+
+    #[cfg(target_os = "windows")]
+    if let Some(is_hidden) = hidden {
+        let hidden_flag = if is_hidden { "+h" } else { "-h" };
+        let path_str = path.to_string_lossy().to_string();
+        let output = Command::new("attrib")
+            .args([hidden_flag, &path_str])
+            .output()
+            .map_err(|e| format!("Failed to update hidden attribute: {}", e))?;
+        if !output.status.success() {
+            return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    if hidden.is_some() {
+        return Err("Hidden attribute updates are only supported on Windows.".to_string());
     }
 
     Ok(())
@@ -361,6 +935,7 @@ pub async fn batch_rename(
     items: Vec<serde_json::Value>,
 ) -> Result<Vec<serde_json::Value>, String> {
     let mut results = Vec::new();
+    let mut completed_renames: Vec<(String, String)> = Vec::new();
     for item in &items {
         let old_path = item["oldPath"]
             .as_str()
@@ -368,17 +943,22 @@ pub async fn batch_rename(
         let new_name = item["newName"]
             .as_str()
             .ok_or("Missing newName")?;
-        let path = PathBuf::from(old_path);
+        let new_name = validate_child_name(new_name, "New name")?;
+        let path = crate::validate_existing_path(old_path, "Item")?;
         let new_path = path
             .parent()
             .ok_or("Cannot determine parent")?
             .join(new_name);
         match fs::rename(&path, &new_path) {
-            Ok(_) => results.push(serde_json::json!({
-                "oldPath": old_path,
-                "newPath": new_path.to_string_lossy(),
-                "success": true,
-            })),
+            Ok(_) => {
+                let new_path_string = new_path.to_string_lossy().to_string();
+                completed_renames.push((old_path.to_string(), new_path_string.clone()));
+                results.push(serde_json::json!({
+                    "oldPath": old_path,
+                    "newPath": new_path_string,
+                    "success": true,
+                }));
+            }
             Err(e) => results.push(serde_json::json!({
                 "oldPath": old_path,
                 "success": false,
@@ -386,6 +966,7 @@ pub async fn batch_rename(
             })),
         }
     }
+    undo::push_batch_rename_action(completed_renames)?;
     Ok(results)
 }
 
@@ -414,14 +995,43 @@ pub async fn create_symlink(target_path: String, link_path: String) -> Result<()
 
 #[tauri::command]
 pub async fn resolve_shortcut(shortcut_path: String) -> Result<String, String> {
-    let path = PathBuf::from(&shortcut_path);
-    let resolved = fs::read_link(&path).map_err(|e| format!("Failed to resolve shortcut: {}", e))?;
-    Ok(resolved.to_string_lossy().to_string())
+    let path = crate::validate_existing_path(&shortcut_path, "Shortcut")?;
+
+    #[cfg(target_os = "windows")]
+    {
+        let escaped_path = path.to_string_lossy().replace('\'', "''");
+        let script = format!(
+            "$s=(New-Object -ComObject WScript.Shell).CreateShortcut('{}'); if($s.TargetPath) {{ Write-Output $s.TargetPath }}",
+            escaped_path
+        );
+        let output = Command::new("powershell")
+            .args(["-NoProfile", "-Command", &script])
+            .output()
+            .map_err(|e| format!("Failed to resolve shortcut: {}", e))?;
+
+        if !output.status.success() {
+            return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+        }
+
+        let target = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if target.is_empty() {
+            return Err("Shortcut target path is empty.".to_string());
+        }
+        return Ok(target);
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let resolved =
+            fs::read_link(&path).map_err(|e| format!("Failed to resolve shortcut: {}", e))?;
+        Ok(resolved.to_string_lossy().to_string())
+    }
 }
 
 #[tauri::command]
 pub fn set_clipboard(
     state: tauri::State<'_, crate::AppState>,
+    app: tauri::AppHandle,
     clipboard_data: Option<serde_json::Value>,
 ) -> Result<(), String> {
     let mut cb = state.clipboard.lock().map_err(|e| e.to_string())?;
@@ -439,6 +1049,17 @@ pub fn set_clipboard(
         cb.operation = None;
         cb.paths.clear();
     }
+
+    let payload = if let Some(operation) = cb.operation.clone() {
+        serde_json::json!({
+            "operation": operation,
+            "paths": cb.paths.clone(),
+        })
+    } else {
+        serde_json::Value::Null
+    };
+    drop(cb);
+    let _ = app.emit("clipboard-changed", payload);
     Ok(())
 }
 
@@ -455,6 +1076,208 @@ pub fn get_clipboard(
     } else {
         Ok(serde_json::Value::Null)
     }
+}
+
+fn percent_decode_lossy(input: &str) -> String {
+    let bytes = input.as_bytes();
+    let mut decoded: Vec<u8> = Vec::with_capacity(bytes.len());
+    let mut index = 0usize;
+
+    while index < bytes.len() {
+        if bytes[index] == b'%' && index + 2 < bytes.len() {
+            let hi = bytes[index + 1] as char;
+            let lo = bytes[index + 2] as char;
+            if let (Some(hi), Some(lo)) = (hi.to_digit(16), lo.to_digit(16)) {
+                decoded.push(((hi << 4) | lo) as u8);
+                index += 3;
+                continue;
+            }
+        }
+        decoded.push(bytes[index]);
+        index += 1;
+    }
+
+    String::from_utf8_lossy(&decoded).to_string()
+}
+
+fn decode_file_uri_path(raw: &str) -> Option<String> {
+    let value = raw.trim();
+    if !value.to_ascii_lowercase().starts_with("file://") {
+        return None;
+    }
+
+    let without_scheme = &value[7..];
+    let normalized = if without_scheme.starts_with('/')
+        && without_scheme.len() >= 3
+        && without_scheme.as_bytes()[2] == b':'
+    {
+        &without_scheme[1..]
+    } else {
+        without_scheme
+    };
+
+    #[cfg(target_os = "windows")]
+    {
+        Some(percent_decode_lossy(normalized).replace('/', "\\"))
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        Some(percent_decode_lossy(normalized))
+    }
+}
+
+fn is_absolute_path_like(value: &str) -> bool {
+    if value.is_empty() {
+        return false;
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let mut chars = value.chars();
+        if let (Some(first), Some(':')) = (chars.next(), chars.next()) {
+            if first.is_ascii_alphabetic() {
+                return true;
+            }
+        }
+        value.starts_with("\\\\")
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        value.starts_with('/')
+    }
+}
+
+fn parse_clipboard_paths(text: &str) -> Vec<String> {
+    let mut seen: HashSet<String> = HashSet::new();
+    let mut paths: Vec<String> = Vec::new();
+
+    for line in text.lines().map(|line| line.trim()).filter(|line| !line.is_empty()) {
+        let candidate = if let Some(path) = decode_file_uri_path(line) {
+            Some(path)
+        } else if is_absolute_path_like(line) {
+            Some(line.to_string())
+        } else {
+            None
+        };
+
+        if let Some(path) = candidate {
+            let key = normalize_case_key(Path::new(&path));
+            if seen.insert(key) {
+                paths.push(path);
+            }
+        }
+    }
+
+    paths
+}
+
+fn run_command_capture(command: &str, args: &[&str]) -> Option<String> {
+    let output = Command::new(command).args(args).output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    Some(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+#[cfg(target_os = "windows")]
+fn get_windows_system_clipboard_files() -> Vec<String> {
+    let script = "$ErrorActionPreference='Stop'; try { $items = Get-Clipboard -Format FileDropList; if ($items) { $items | ForEach-Object { $_.FullName } } } catch { }";
+    run_command_capture("powershell", &["-NoProfile", "-Command", script])
+        .map(|output| parse_clipboard_paths(&output))
+        .unwrap_or_default()
+}
+
+#[cfg(target_os = "windows")]
+fn get_windows_system_clipboard_text_paths() -> Vec<String> {
+    let script = "try { Get-Clipboard -Raw } catch { '' }";
+    run_command_capture("powershell", &["-NoProfile", "-Command", script])
+        .map(|output| parse_clipboard_paths(&output))
+        .unwrap_or_default()
+}
+
+fn get_system_clipboard_files_internal() -> Vec<String> {
+    #[cfg(target_os = "windows")]
+    {
+        let files = get_windows_system_clipboard_files();
+        if !files.is_empty() {
+            return files;
+        }
+        return get_windows_system_clipboard_text_paths();
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        return run_command_capture("pbpaste", &[])
+            .map(|output| parse_clipboard_paths(&output))
+            .unwrap_or_default();
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let text = run_command_capture("wl-paste", &["-n", "-t", "text/uri-list"])
+            .or_else(|| run_command_capture("xclip", &["-selection", "clipboard", "-o"]))
+            .or_else(|| run_command_capture("xsel", &["--clipboard", "--output"]))
+            .unwrap_or_default();
+        return parse_clipboard_paths(&text);
+    }
+
+    #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
+    {
+        Vec::new()
+    }
+}
+
+fn clipboard_paths_match(paths_a: &[String], paths_b: &[String]) -> bool {
+    if paths_a.len() != paths_b.len() {
+        return false;
+    }
+
+    let set_a: HashSet<String> = paths_a
+        .iter()
+        .map(|path| normalize_case_key(Path::new(path)))
+        .collect();
+    let set_b: HashSet<String> = paths_b
+        .iter()
+        .map(|path| normalize_case_key(Path::new(path)))
+        .collect();
+    set_a == set_b
+}
+
+#[tauri::command]
+pub fn get_system_clipboard_data(
+    state: tauri::State<'_, crate::AppState>,
+) -> Result<serde_json::Value, String> {
+    let system_paths = get_system_clipboard_files_internal();
+    if !system_paths.is_empty() {
+        let cb = state.clipboard.lock().map_err(|e| e.to_string())?;
+        let operation = if cb.operation.as_deref() == Some("cut")
+            && clipboard_paths_match(&cb.paths, &system_paths)
+        {
+            "cut"
+        } else {
+            "copy"
+        };
+        return Ok(serde_json::json!({
+            "operation": operation,
+            "paths": system_paths,
+        }));
+    }
+
+    get_clipboard(state)
+}
+
+#[tauri::command]
+pub fn get_system_clipboard_files(
+    state: tauri::State<'_, crate::AppState>,
+) -> Result<Vec<String>, String> {
+    let system_paths = get_system_clipboard_files_internal();
+    if !system_paths.is_empty() {
+        return Ok(system_paths);
+    }
+    let cb = state.clipboard.lock().map_err(|e| e.to_string())?;
+    Ok(cb.paths.clone())
 }
 
 #[tauri::command]
