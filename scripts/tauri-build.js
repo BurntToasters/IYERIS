@@ -107,15 +107,9 @@ if (isMacBuildTarget()) {
 }
 
 if (isPrerelease) {
-  const idx = args.indexOf('--bundles');
-  if (idx !== -1 && idx + 1 < args.length) {
-    const filtered = args[idx + 1]
-      .split(',')
-      .filter((b) => b !== 'msi')
-      .join(',');
-    args[idx + 1] = filtered;
-    console.log(`[tauri-build] Pre-release detected (${pkg.version}), bundles: ${filtered}`);
-  }
+  console.log(
+    `[tauri-build] Pre-release detected (${pkg.version}), keeping all bundles including MSI`
+  );
 }
 
 execSync(`npx tauri build ${args.join(' ')}`, { stdio: 'inherit' });

@@ -15,6 +15,7 @@ pub fn watch_directory(
     state: tauri::State<'_, crate::AppState>,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
+    log::debug!("[Watcher] watch_directory: {}", dir_path);
     let path = crate::validate_existing_path(&dir_path, "Directory")?;
 
     // Drop existing watcher first to prevent duplicate watchers

@@ -26,8 +26,33 @@ export function getErrorMessage(error: unknown): string {
 
 const IS_DEV_MODE = typeof process !== 'undefined' && (process.argv || []).includes('--dev');
 
+let devModeEnabled = IS_DEV_MODE;
+
+export function setDevMode(enabled: boolean): void {
+  devModeEnabled = enabled;
+  if (enabled) {
+    (globalThis as Record<string, unknown>).__iyerisLogger = {
+      debug: (...args: unknown[]) => console.debug('[IYERIS]', ...args),
+      info: (...args: unknown[]) => console.info('[IYERIS]', ...args),
+      warn: (...args: unknown[]) => console.warn('[IYERIS]', ...args),
+      error: (...args: unknown[]) => console.error('[IYERIS]', ...args),
+    };
+    console.info('[IYERIS] Dev mode enabled — verbose logging active');
+  }
+}
+
+export function isDevMode(): boolean {
+  return devModeEnabled;
+}
+
+export function devLog(category: string, ...args: unknown[]): void {
+  if (devModeEnabled) {
+    console.debug(`[${category}]`, ...args);
+  }
+}
+
 export function ignoreError(error: unknown): void {
-  if (IS_DEV_MODE) {
+  if (devModeEnabled) {
     console.warn('[Ignored error]', error);
   } else if (
     typeof globalThis !== 'undefined' &&

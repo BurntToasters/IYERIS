@@ -284,7 +284,7 @@ fn get_state() -> Result<UndoRedoState, String> {
 
 fn copy_dir_recursive(source: &Path, dest: &Path) -> Result<(), String> {
     fs::create_dir_all(dest).map_err(|e| format!("Failed to create directory: {}", e))?;
-    for entry in fs::read_dir(source).map_err(|e| e.to_string())?.flatten() {
+    for entry in fs::read_dir(source).map_err(|e| e.to_string())?.filter_map(|e| e.map_err(|err| log::warn!("[Undo] copy_dir entry error: {}", err)).ok()) {
         let entry_path = entry.path();
         let target = dest.join(entry.file_name());
         if entry_path.is_dir() {
@@ -496,14 +496,15 @@ fn metadata_time_ms(metadata: &fs::Metadata) -> Option<f64> {
 
 fn execute_create_undo(action: &CreateActionData) -> Result<(), CreateUndoFailure> {
     let item_path = PathBuf::from(&action.path);
-    if !item_path.exists() {
-        return Err(CreateUndoFailure::Drop(
-            "Cannot undo: File no longer exists".to_string(),
-        ));
-    }
 
-    let metadata = fs::metadata(&item_path)
-        .map_err(|e| CreateUndoFailure::Keep(format!("Cannot undo: {}", e)))?;
+    let metadata = match fs::metadata(&item_path) {
+        Ok(m) => m,
+        Err(_) => {
+            return Err(CreateUndoFailure::Drop(
+                "Cannot undo: File no longer exists".to_string(),
+            ));
+        }
+    };
 
     if let (Some(created_at), Some(current_created_at)) = (action.created_at_ms, metadata_time_ms(&metadata))
     {

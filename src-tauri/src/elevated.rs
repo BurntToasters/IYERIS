@@ -2,7 +2,10 @@ use std::process::Command;
 
 #[cfg(target_os = "windows")]
 fn ps_escape(s: &str) -> String {
-    s.replace('\'', "''")
+    s.replace('`', "``")
+        .replace('$', "`$")
+        .replace('"', "`\"")
+        .replace('\'', "''")
 }
 
 #[cfg(target_os = "macos")]
@@ -12,22 +15,33 @@ fn shell_escape(s: &str) -> String {
 
 #[tauri::command]
 pub async fn elevated_copy(source_path: String, dest_path: String) -> Result<(), String> {
+    crate::validate_existing_path(&source_path, "Source")?;
+    crate::validate_path(&dest_path, "Destination")?;
     run_elevated_file_op("copy", &source_path, Some(&dest_path)).await
 }
 
 #[tauri::command]
 pub async fn elevated_move(source_path: String, dest_path: String) -> Result<(), String> {
+    crate::validate_existing_path(&source_path, "Source")?;
+    crate::validate_path(&dest_path, "Destination")?;
     run_elevated_file_op("move", &source_path, Some(&dest_path)).await
 }
 
 #[tauri::command]
 pub async fn elevated_delete(item_path: String) -> Result<(), String> {
+    let path = crate::validate_existing_path(&item_path, "Item")?;
+    if path.parent().is_none() {
+        return Err("Cannot delete a root directory".to_string());
+    }
     run_elevated_file_op("delete", &item_path, None).await
 }
 
 #[tauri::command]
 pub async fn elevated_rename(item_path: String, new_name: String) -> Result<(), String> {
-    let path = std::path::PathBuf::from(&item_path);
+    let path = crate::validate_existing_path(&item_path, "Item")?;
+    if new_name.contains('/') || new_name.contains('\\') || new_name.contains("..") || new_name.trim().is_empty() {
+        return Err("Invalid new name".to_string());
+    }
     let new_path = path
         .parent()
         .ok_or("Cannot determine parent directory")?
@@ -37,6 +51,7 @@ pub async fn elevated_rename(item_path: String, new_name: String) -> Result<(), 
 
 #[tauri::command]
 pub async fn restart_as_admin() -> Result<(), String> {
+    log::info!("[Elevated] restart_as_admin requested");
     #[cfg(target_os = "windows")]
     {
         let exe = std::env::current_exe().map_err(|e| e.to_string())?;
@@ -47,7 +62,7 @@ pub async fn restart_as_admin() -> Result<(), String> {
                     "-Command",
                     &format!(
                         "Start-Process '{}' -Verb RunAs",
-                        exe.display()
+                        ps_escape(&exe.display().to_string())
                     ),
                 ])
                 .creation_flags(0x08000000)
@@ -85,6 +100,7 @@ pub async fn restart_as_admin() -> Result<(), String> {
 }
 
 async fn run_elevated_file_op(op: &str, source: &str, dest: Option<&str>) -> Result<(), String> {
+    log::debug!("[Elevated] {} src={} dst={:?}", op, source, dest);
     let source = source.to_string();
     let dest = dest.map(String::from);
     let op = op.to_string();

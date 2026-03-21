@@ -1,6 +1,7 @@
 import type { Settings } from './types';
 import type { ToastAction } from './rendererToasts.js';
 import { rendererPath as path } from './rendererUtils.js';
+import { devLog } from './shared.js';
 
 type ClipboardState = { operation: 'copy' | 'cut'; paths: string[] } | null;
 
@@ -155,6 +156,7 @@ export function createClipboardController(deps: ClipboardDeps) {
   }
 
   async function updateClipboardIndicator() {
+    devLog('Clipboard', 'updateClipboardIndicator called');
     const { indicator, text: indicatorText } = resolveClipboardIndicatorElements();
     if (!indicator || !indicatorText) return;
 
@@ -187,11 +189,12 @@ export function createClipboardController(deps: ClipboardDeps) {
   function setClipboardSelection(operation: 'copy' | 'cut'): void {
     const selectedItems = deps.getSelectedItems();
     if (selectedItems.size === 0) return;
+    devLog('Clipboard', `${operation}: ${selectedItems.size} item(s)`);
     clipboard = {
       operation,
       paths: Array.from(selectedItems),
     };
-    window.tauriAPI.setClipboard(clipboard);
+    window.tauriAPI.setClipboard(clipboard).catch(() => {});
     updateCutVisuals();
     updateClipboardIndicator();
     deps.showToast(
@@ -285,7 +288,7 @@ export function createClipboardController(deps: ClipboardDeps) {
       if (!isCopy) {
         await deps.updateUndoRedoState();
         clipboard = null;
-        window.tauriAPI.setClipboard(null);
+        window.tauriAPI.setClipboard(null).catch(() => {});
         updateClipboardIndicator();
       }
 
@@ -351,7 +354,7 @@ export function createClipboardController(deps: ClipboardDeps) {
       if (!isCopy) {
         await deps.updateUndoRedoState();
         clipboard = null;
-        window.tauriAPI.setClipboard(null);
+        window.tauriAPI.setClipboard(null).catch(() => {});
         updateClipboardIndicator();
       }
 

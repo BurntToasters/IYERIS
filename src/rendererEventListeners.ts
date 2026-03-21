@@ -678,14 +678,18 @@ export function createEventListenersController(config: EventListenersConfig) {
         }
 
         if (emptySpaceMenu && emptySpaceMenu.style.display === 'block') {
-          config.handleEmptySpaceContextMenuAction(menuItem.dataset.action);
+          void config.handleEmptySpaceContextMenuAction(menuItem.dataset.action);
           config.hideEmptySpaceContextMenu();
           return;
         }
 
         const ctxData = config.getContextMenuData();
         if (ctxData) {
-          config.handleContextMenuAction(menuItem.dataset.action, ctxData, menuItem.dataset.format);
+          void config.handleContextMenuAction(
+            menuItem.dataset.action,
+            ctxData,
+            menuItem.dataset.format
+          );
           config.hideContextMenu();
           return;
         }

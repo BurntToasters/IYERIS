@@ -204,6 +204,7 @@ pub async fn get_directory_contents(
     _stream_only: Option<bool>,
     app: tauri::AppHandle,
 ) -> Result<Vec<FileItem>, String> {
+    log::debug!("[Directory] get_directory_contents: {} (op={:?})", dir_path, operation_id);
     let path = crate::validate_existing_path(&dir_path, "Directory")?;
     let show_hidden = include_hidden.unwrap_or(false);
     let op_id = operation_id.unwrap_or_default();
@@ -221,7 +222,7 @@ pub async fn get_directory_contents(
         let mut items = Vec::new();
         let mut loaded: usize = 0;
 
-        for entry in entries.flatten() {
+        for entry in entries.filter_map(|e| e.map_err(|err| log::warn!("[Directory] read_dir entry error: {}", err)).ok()) {
             if !listing_op_id.is_empty() {
                 let listings = ACTIVE_DIRECTORY_LISTINGS.lock().map_err(|e| e.to_string())?;
                 if !listings.contains(&listing_op_id) {
@@ -318,7 +319,7 @@ pub async fn get_drives() -> Result<Vec<DriveInfo>, String> {
                 false,
             ));
             if let Ok(entries) = fs::read_dir("/Volumes") {
-                for entry in entries.flatten() {
+                for entry in entries.filter_map(|e| e.map_err(|err| log::warn!("[Directory] /Volumes entry error: {}", err)).ok()) {
                     let mount = entry.path().to_string_lossy().to_string();
                     let name = entry.file_name().to_string_lossy().to_string();
                     if name != "Macintosh HD" {
@@ -336,7 +337,7 @@ pub async fn get_drives() -> Result<Vec<DriveInfo>, String> {
                 drives.push(build_drive("Home".into(), home, String::new(), false));
             }
             if let Ok(entries) = fs::read_dir("/media") {
-                for entry in entries.flatten() {
+                for entry in entries.filter_map(|e| e.map_err(|err| log::warn!("[Directory] /media entry error: {}", err)).ok()) {
                     let mount = entry.path().to_string_lossy().to_string();
                     let name = entry.file_name().to_string_lossy().to_string();
                     drives.push(build_drive(name, mount, String::new(), true));
@@ -418,7 +419,7 @@ pub async fn calculate_folder_size(
         let mut file_count: u64 = 0;
         let mut folder_count: u64 = 0;
 
-        for entry in WalkDir::new(&path).into_iter().flatten() {
+        for entry in WalkDir::new(&path).into_iter().filter_map(|e| e.map_err(|err| log::warn!("[Directory] folder size walk error: {}", err)).ok()) {
             {
                 let calcs = ACTIVE_FOLDER_CALCS.lock().map_err(|e| e.to_string())?;
                 if !calcs.contains(&op_id) {
@@ -428,7 +429,7 @@ pub async fn calculate_folder_size(
 
             if let Ok(meta) = entry.metadata() {
                 if meta.is_file() {
-                    total += meta.len();
+                    total = total.saturating_add(meta.len());
                     file_count += 1;
                     if file_count % 500 == 0 {
                         let _ = app.emit("folder-size-progress", serde_json::json!({

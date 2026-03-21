@@ -66,7 +66,7 @@ pub fn get_thumbnail_cache_size(app: tauri::AppHandle) -> Result<u64, String> {
     let dir = cache_dir(&app)?;
     let mut total = 0u64;
     if let Ok(entries) = fs::read_dir(&dir) {
-        for entry in entries.flatten() {
+        for entry in entries.filter_map(|e| e.map_err(|err| log::warn!("[Thumbnails] cache dir entry error: {}", err)).ok()) {
             if let Ok(meta) = entry.metadata() {
                 total += meta.len();
             }

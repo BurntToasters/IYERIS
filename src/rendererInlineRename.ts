@@ -90,6 +90,7 @@ export function createInlineRenameController(deps: InlineRenameDeps) {
     pendingRenameTimeout = setTimeout(() => {
       pendingRenameTimeout = null;
       if (typeof document === 'undefined') return;
+      if (deps.getCurrentPath() !== currentPath) return;
       const fileItems = document.querySelectorAll('.file-item');
       for (const item of Array.from(fileItems)) {
         const nameEl = item.querySelector('.file-name');

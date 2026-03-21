@@ -11,6 +11,7 @@ pub async fn get_git_status(
     dir_path: String,
     include_untracked: Option<bool>,
 ) -> Result<serde_json::Value, String> {
+    log::debug!("[Git] get_git_status: {}", dir_path);
     let path = crate::validate_existing_path(&dir_path, "Directory")?;
     let include_untracked = include_untracked.unwrap_or(false);
 
@@ -83,6 +84,7 @@ pub async fn get_git_status(
 
 #[tauri::command]
 pub async fn get_git_branch(dir_path: String) -> Result<String, String> {
+    log::debug!("[Git] get_git_branch: {}", dir_path);
     let path = crate::validate_existing_path(&dir_path, "Directory")?;
 
     match tokio::time::timeout(GIT_TIMEOUT, tokio::task::spawn_blocking(move || {

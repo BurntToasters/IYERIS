@@ -141,6 +141,7 @@ fn parse_open_target(file_path: &str) -> Result<OpenTarget, String> {
 
 #[tauri::command]
 pub async fn open_file(file_path: String) -> Result<(), String> {
+    log::debug!("[FileOps] open_file: {}", file_path);
     match parse_open_target(&file_path)? {
         OpenTarget::FilePath(path) => {
             open::that(&path).map_err(|e| format!("Failed to open file: {}", e))
@@ -153,6 +154,7 @@ pub async fn open_file(file_path: String) -> Result<(), String> {
 
 #[tauri::command]
 pub async fn create_folder(parent_path: String, folder_name: String) -> Result<String, String> {
+    log::debug!("[FileOps] create_folder: {}/{}", parent_path, folder_name);
     let parent = crate::validate_existing_path(&parent_path, "Parent")?;
     let folder_name = validate_child_name(&folder_name, "Folder name")?;
     let new_path = parent.join(&folder_name);
@@ -163,6 +165,7 @@ pub async fn create_folder(parent_path: String, folder_name: String) -> Result<S
 
 #[tauri::command]
 pub async fn create_file(parent_path: String, file_name: String) -> Result<String, String> {
+    log::debug!("[FileOps] create_file: {}/{}", parent_path, file_name);
     let parent = crate::validate_existing_path(&parent_path, "Parent")?;
     let file_name = validate_child_name(&file_name, "File name")?;
     let new_path = parent.join(&file_name);
@@ -177,6 +180,7 @@ pub async fn create_file(parent_path: String, file_name: String) -> Result<Strin
 
 #[tauri::command]
 pub async fn delete_item(item_path: String) -> Result<(), String> {
+    log::debug!("[FileOps] delete_item: {}", item_path);
     let path = crate::validate_existing_path(&item_path, "Item")?;
     undo::clear_undo_redo_for_path(&path.to_string_lossy())?;
     if path.is_dir() {
@@ -188,6 +192,7 @@ pub async fn delete_item(item_path: String) -> Result<(), String> {
 
 #[tauri::command]
 pub async fn trash_item(item_path: String) -> Result<(), String> {
+    log::debug!("[FileOps] trash_item: {}", item_path);
     let path = crate::validate_existing_path(&item_path, "Item")?;
     trash::delete(&path).map_err(|e| format!("Failed to trash item: {}", e))
 }
@@ -219,6 +224,7 @@ pub async fn open_trash() -> Result<(), String> {
 
 #[tauri::command]
 pub async fn rename_item(old_path: String, new_name: String) -> Result<String, String> {
+    log::debug!("[FileOps] rename_item: {} -> {}", old_path, new_name);
     let path = crate::validate_existing_path(&old_path, "Item")?;
     let new_name = validate_child_name(&new_name, "New name")?;
     let new_path = path
@@ -238,6 +244,7 @@ pub async fn copy_items(
     conflict_resolutions: Option<HashMap<String, String>>,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
+    log::debug!("[FileOps] copy_items: {} items -> {}", source_paths.len(), dest_path);
     let dest = crate::validate_existing_path(&dest_path, "Destination")?;
     let behavior = conflict_behavior.unwrap_or_else(|| "ask".to_string());
     let resolutions = conflict_resolutions.unwrap_or_default();
@@ -292,10 +299,29 @@ pub async fn copy_items(
 
 fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<(), String> {
     fs::create_dir_all(dest).map_err(|e| format!("Failed to create directory: {}", e))?;
-    for entry in fs::read_dir(src).map_err(|e| e.to_string())?.flatten() {
+    for entry in fs::read_dir(src).map_err(|e| e.to_string())?.filter_map(|e| e.map_err(|err| log::warn!("[FileOps] copy_dir entry error: {}", err)).ok()) {
         let entry_path = entry.path();
         let target = dest.join(entry.file_name());
-        if entry_path.is_dir() {
+        let meta = fs::symlink_metadata(&entry_path).map_err(|e| e.to_string())?;
+        if meta.file_type().is_symlink() {
+            #[cfg(unix)]
+            {
+                let link_target = fs::read_link(&entry_path).map_err(|e| e.to_string())?;
+                std::os::unix::fs::symlink(&link_target, &target)
+                    .map_err(|e| format!("Failed to create symlink: {}", e))?;
+            }
+            #[cfg(windows)]
+            {
+                let link_target = fs::read_link(&entry_path).map_err(|e| e.to_string())?;
+                if meta.file_type().is_dir() || link_target.is_dir() {
+                    std::os::windows::fs::symlink_dir(&link_target, &target)
+                        .map_err(|e| format!("Failed to create symlink: {}", e))?;
+                } else {
+                    std::os::windows::fs::symlink_file(&link_target, &target)
+                        .map_err(|e| format!("Failed to create symlink: {}", e))?;
+                }
+            }
+        } else if meta.is_dir() {
             copy_dir_recursive(&entry_path, &target)?;
         } else {
             fs::copy(&entry_path, &target).map_err(|e| e.to_string())?;
@@ -312,6 +338,7 @@ pub async fn move_items(
     conflict_resolutions: Option<HashMap<String, String>>,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
+    log::debug!("[FileOps] move_items: {} items -> {}", source_paths.len(), dest_path);
     let dest = crate::validate_existing_path(&dest_path, "Destination")?;
     let behavior = conflict_behavior.unwrap_or_else(|| "ask".to_string());
     let resolutions = conflict_resolutions.unwrap_or_default();
@@ -583,10 +610,16 @@ fn move_path_with_fallback(
 
     if is_directory {
         copy_dir_recursive(source, target)?;
-        fs::remove_dir_all(source).map_err(|e| e.to_string())?;
+        if let Err(e) = fs::remove_dir_all(source) {
+            let _ = fs::remove_dir_all(target);
+            return Err(format!("Failed to remove source after cross-device move: {}", e));
+        }
     } else {
         fs::copy(source, target).map_err(|e| e.to_string())?;
-        fs::remove_file(source).map_err(|e| e.to_string())?;
+        if let Err(e) = fs::remove_file(source) {
+            let _ = fs::remove_file(target);
+            return Err(format!("Failed to remove source after cross-device move: {}", e));
+        }
     }
     Ok(())
 }
@@ -690,6 +723,7 @@ fn rollback_moves(completed: &[CompletedMove]) {
 
 #[tauri::command]
 pub async fn get_item_properties(item_path: String) -> Result<ItemProperties, String> {
+    log::debug!("[FileOps] get_item_properties: {}", item_path);
     let path = crate::validate_existing_path(&item_path, "Item")?;
     let meta = fs::symlink_metadata(&path).map_err(|e| e.to_string())?;
 
@@ -980,6 +1014,14 @@ pub async fn batch_rename(
             .parent()
             .ok_or("Cannot determine parent")?
             .join(new_name);
+        if new_path != path && new_path.exists() {
+            results.push(serde_json::json!({
+                "oldPath": old_path,
+                "success": false,
+                "error": format!("Destination already exists: {}", new_path.display()),
+            }));
+            continue;
+        }
         match fs::rename(&path, &new_path) {
             Ok(_) => {
                 let new_path_string = new_path.to_string_lossy().to_string();
@@ -1069,6 +1111,7 @@ pub fn set_clipboard(
     app: tauri::AppHandle,
     clipboard_data: Option<serde_json::Value>,
 ) -> Result<(), String> {
+    log::debug!("[Clipboard] set_clipboard: {:?}", clipboard_data);
     let mut cb = state.clipboard.lock().map_err(|e| e.to_string())?;
     if let Some(data) = clipboard_data {
         cb.operation = data["operation"].as_str().map(String::from);
@@ -1404,6 +1447,7 @@ fn clipboard_paths_match(paths_a: &[String], paths_b: &[String]) -> bool {
 pub fn get_system_clipboard_data(
     state: tauri::State<'_, crate::AppState>,
 ) -> Result<serde_json::Value, String> {
+    log::debug!("[Clipboard] get_system_clipboard_data");
     let system_paths = get_system_clipboard_files_internal();
     if !system_paths.is_empty() {
         let cb = state.clipboard.lock().map_err(|e| e.to_string())?;
@@ -1427,6 +1471,7 @@ pub fn get_system_clipboard_data(
 pub fn get_system_clipboard_files(
     state: tauri::State<'_, crate::AppState>,
 ) -> Result<Vec<String>, String> {
+    log::debug!("[Clipboard] get_system_clipboard_files");
     let system_paths = get_system_clipboard_files_internal();
     if !system_paths.is_empty() {
         return Ok(system_paths);
@@ -1437,6 +1482,7 @@ pub fn get_system_clipboard_files(
 
 #[tauri::command]
 pub fn write_to_system_clipboard(text: String) -> Result<(), String> {
+    log::debug!("[Clipboard] write_to_system_clipboard ({} chars)", text.len());
     #[cfg(target_os = "windows")]
     {
         return write_windows_system_clipboard_text(&text);

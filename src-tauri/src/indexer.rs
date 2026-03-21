@@ -17,6 +17,9 @@ static FILE_INDEX: std::sync::LazyLock<Arc<RwLock<FileIndex>>> =
 static BUILD_CANCEL: std::sync::LazyLock<Mutex<bool>> =
     std::sync::LazyLock::new(|| Mutex::new(false));
 
+static BUILD_MUTEX: std::sync::LazyLock<Mutex<()>> =
+    std::sync::LazyLock::new(|| Mutex::new(()));
+
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct IndexEntry {
@@ -129,7 +132,7 @@ fn get_index_locations() -> Vec<PathBuf> {
     #[cfg(target_os = "macos")]
     {
         if let Ok(entries) = fs::read_dir("/Volumes") {
-            for entry in entries.flatten() {
+            for entry in entries.filter_map(|e| e.map_err(|err| log::warn!("[Indexer] /Volumes entry error: {}", err)).ok()) {
                 let p = entry.path();
                 if p.to_string_lossy() != "/Volumes/Macintosh HD" {
                     locations.push(p);
@@ -156,7 +159,7 @@ fn build_index_sync() -> Vec<IndexEntry> {
             .max_depth(MAX_SCAN_DEPTH)
             .into_iter()
             .filter_entry(|e| !should_exclude(e.path(), &excl_segments, &excl_files))
-            .flatten()
+            .filter_map(|e| e.map_err(|err| log::warn!("[Indexer] walk error: {}", err)).ok())
         {
             if is_build_cancelled() || entries.len() >= MAX_INDEX_SIZE {
                 break;
@@ -288,6 +291,11 @@ pub fn initialize_index(app: &tauri::AppHandle) {
 }
 
 fn run_index_build(app: &tauri::AppHandle) {
+    let _guard = match BUILD_MUTEX.lock() {
+        Ok(g) => g,
+        Err(_) => return,
+    };
+
     set_build_cancelled(false);
 
     if let Ok(mut index) = FILE_INDEX.write() {

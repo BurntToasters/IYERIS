@@ -13,12 +13,18 @@ mod thumbnails;
 mod undo;
 mod watcher;
 
+use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
 use tauri::Manager;
 
 static TEMP_FILE_COUNTER: AtomicU64 = AtomicU64::new(1);
+static DEV_MODE: AtomicBool = AtomicBool::new(false);
+
+pub(crate) fn is_dev_mode() -> bool {
+    DEV_MODE.load(Ordering::Relaxed)
+}
 
 pub(crate) struct ClipboardState {
     pub operation: Option<String>,
@@ -69,6 +75,35 @@ pub(crate) fn validate_existing_path(raw: &str, label: &str) -> Result<PathBuf, 
 }
 
 fn main() {
+    let args: Vec<String> = std::env::args().collect();
+    let dev_mode = args.iter().any(|a| a == "--dev" || a == "--verbose");
+    DEV_MODE.store(dev_mode, Ordering::Relaxed);
+
+    if dev_mode {
+        let mut builder = env_logger::Builder::new();
+        builder
+            .filter_level(log::LevelFilter::Debug)
+            .format(|buf, record| {
+                writeln!(
+                    buf,
+                    "[{} {} {}:{}] {}",
+                    chrono::Local::now().format("%H:%M:%S%.3f"),
+                    record.level(),
+                    record.file().unwrap_or("?"),
+                    record.line().unwrap_or(0),
+                    record.args(),
+                )
+            })
+            .init();
+        log::info!("IYERIS dev mode enabled (args: {:?})", args);
+        log::info!(
+            "Platform: {} / {} / v{}",
+            std::env::consts::OS,
+            std::env::consts::ARCH,
+            env!("CARGO_PKG_VERSION"),
+        );
+    }
+
     #[cfg(target_os = "linux")]
     {
         if std::env::var("WEBKIT_DISABLE_COMPOSITING_MODE").is_err() {
@@ -111,12 +146,13 @@ fn main() {
             tray: Mutex::new(None),
         })
         .setup(|app| {
-            // On macOS, decorations + overlay titlebar shows traffic lights
-            // On Windows/Linux, disable decorations for custom titlebar
+            log::debug!("[Setup] App setup starting");
+
             #[cfg(not(target_os = "macos"))]
             {
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = window.set_decorations(false);
+                    log::debug!("[Setup] Disabled decorations for custom titlebar");
                 }
             }
 
@@ -126,13 +162,17 @@ fn main() {
                     if let Ok(mut guard) = state.tray.lock() {
                         *guard = Some(tray);
                     };
+                    log::debug!("[Setup] System tray initialized");
                 }
-                Err(error) => eprintln!("Tray setup failed: {}", error),
+                Err(error) => {
+                    eprintln!("Tray setup failed: {}", error);
+                    log::warn!("[Setup] Tray setup failed: {}", error);
+                }
             }
             let settings_json = settings::get_settings(app.handle().clone())
                 .unwrap_or_else(|_| "{}".to_string());
+            log::debug!("[Setup] Settings loaded ({} bytes)", settings_json.len());
 
-            // Sync autostart state with settings (disable if not explicitly enabled)
             let start_on_login = serde_json::from_str::<serde_json::Value>(&settings_json)
                 .ok()
                 .and_then(|v| v.get("startOnLogin").and_then(|f| f.as_bool()))
@@ -149,7 +189,11 @@ fn main() {
 
             if enable_indexer {
                 indexer::initialize_index(app.handle());
+                log::debug!("[Setup] File indexer initialized");
+            } else {
+                log::debug!("[Setup] File indexer disabled by settings");
             }
+            log::info!("[Setup] App setup complete");
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -224,6 +268,7 @@ fn main() {
             system::get_platform,
             system::get_system_accent_color,
             system::get_system_text_scale,
+            system::is_dev_mode,
             system::is_mas,
             system::is_flatpak,
             system::is_ms_store,

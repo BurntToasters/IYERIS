@@ -288,9 +288,12 @@ export function wireControllers(deps: WiringDeps) {
     throttleMs: DIRECTORY_PROGRESS_THROTTLE_MS,
   });
 
-  window.tauriAPI.onDirectoryContentsProgress((progress) => {
-    directoryLoader.handleProgress(progress);
-  });
+  const cleanupDirectoryContentsProgress = window.tauriAPI.onDirectoryContentsProgress(
+    (progress) => {
+      directoryLoader.handleProgress(progress);
+    }
+  );
+  deps.getIpcCleanupFunctions().push(cleanupDirectoryContentsProgress);
 
   let fileOperationProgressToastId: string | null = null;
   const cleanupFileOperationProgress = window.tauriAPI.onFileOperationProgress((progress) => {

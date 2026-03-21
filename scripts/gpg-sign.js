@@ -245,8 +245,8 @@ function requiredLinuxTargetKeys(channelVariants) {
   return targetKeys;
 }
 
-function canPopulateFallbackTarget(target) {
-  return target.os !== 'linux';
+function canPopulateFallbackTarget(_target) {
+  return true;
 }
 
 function assertLinuxX64PackageSet(byName) {
@@ -300,6 +300,11 @@ function resolveUpdaterTargets(name) {
   if (/\.rpm$/i.test(name)) {
     const arch = inferArchFromName(name);
     if (arch) targets.push({ os: 'linux', arch, installer: 'rpm' });
+    return targets;
+  }
+  if (/\.flatpak$/i.test(name)) {
+    const arch = inferArchFromName(name);
+    if (arch) targets.push({ os: 'linux', arch, installer: 'flatpak' });
     return targets;
   }
   return targets;
@@ -383,6 +388,15 @@ function generateUpdaterManifests(files) {
         ) {
           manifest.platforms[fallbackKey] = { url, signature };
           manifest.fallbackPriority = priority;
+        }
+        if (
+          channel.targetSuffix &&
+          priority > 0 &&
+          canPopulateFallbackTarget(target) &&
+          (!manifest.platforms[targetName] || priority > (manifest._bareKeyPriority ?? -1))
+        ) {
+          manifest.platforms[targetName] = { url, signature };
+          manifest._bareKeyPriority = priority;
         }
       }
     }
@@ -544,6 +558,15 @@ function generateChecksums(files) {
     let targetKeys = targetKeysForArtifactName(name);
     if (targetKeys.length === 0 && manifestTargetKeys.length > 0) targetKeys = manifestTargetKeys;
     if (targetKeys.length === 0) targetKeys = ['generic'];
+    if (IS_PRERELEASE) {
+      const betaKeys = [];
+      for (const k of targetKeys) {
+        if (k.includes('-beta')) continue;
+        const dashIdx = k.indexOf('-');
+        if (dashIdx > 0) betaKeys.push(`${k.slice(0, dashIdx)}-beta-${k.slice(dashIdx + 1)}`);
+      }
+      targetKeys = [...targetKeys, ...betaKeys];
+    }
     for (const targetKey of targetKeys) addToBucket(targetKey, filePath);
   }
   const outputs = [];

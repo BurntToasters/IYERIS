@@ -52,6 +52,7 @@ pub fn get_settings(app: tauri::AppHandle) -> Result<String, String> {
 
 #[tauri::command]
 pub fn save_settings(app: tauri::AppHandle, settings: String) -> Result<(), String> {
+    log::debug!("[Settings] save_settings ({} bytes)", settings.len());
     let _lock = SETTINGS_LOCK.lock().map_err(|e| e.to_string())?;
     let path = settings_path(&app)?;
     write_json_file(&path, &settings)?;

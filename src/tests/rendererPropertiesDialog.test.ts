@@ -73,13 +73,13 @@ describe('rendererPropertiesDialog', () => {
           ],
         },
       }),
-      cancelFolderSizeCalculation: vi.fn(),
+      cancelFolderSizeCalculation: vi.fn().mockResolvedValue(undefined),
       onFolderSizeProgress: vi.fn(() => vi.fn()),
       calculateChecksum: vi.fn().mockResolvedValue({
         success: true,
         result: { md5: 'abc123def456', sha256: 'deadbeef0123456789abcdef' },
       }),
-      cancelChecksumCalculation: vi.fn(),
+      cancelChecksumCalculation: vi.fn().mockResolvedValue(undefined),
       onChecksumProgress: vi.fn(() => vi.fn()),
       writeToSystemClipboard: vi.fn().mockResolvedValue(undefined),
     };

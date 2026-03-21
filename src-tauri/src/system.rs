@@ -135,6 +135,9 @@ fn desktop_search_paths() -> Vec<PathBuf> {
 
 #[cfg(target_os = "linux")]
 fn load_desktop_entry(desktop_file_name: &str) -> Option<(String, String)> {
+    if desktop_file_name.contains("..") || desktop_file_name.contains('/') || desktop_file_name.contains('\\') {
+        return None;
+    }
     for dir in desktop_search_paths() {
         let full_path = dir.join(desktop_file_name);
         let Ok(content) = fs::read_to_string(&full_path) else {
@@ -352,6 +355,7 @@ pub fn close_window(window: tauri::Window) -> Result<(), String> {
 
 #[tauri::command]
 pub fn open_new_window(app: tauri::AppHandle) -> Result<(), String> {
+    log::debug!("[System] open_new_window");
     let label = format!("window-{}", std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -400,6 +404,7 @@ pub fn get_zoom_level(
 
 #[tauri::command]
 pub async fn open_terminal(dir_path: String) -> Result<(), String> {
+    log::debug!("[System] open_terminal: {}", dir_path);
     let path = crate::validate_existing_path(&dir_path, "Directory")?;
 
     #[cfg(target_os = "macos")]
@@ -433,6 +438,11 @@ pub async fn open_terminal(dir_path: String) -> Result<(), String> {
     }
 
     Ok(())
+}
+
+#[tauri::command]
+pub fn is_dev_mode() -> bool {
+    crate::is_dev_mode()
 }
 
 #[tauri::command]
@@ -746,6 +756,7 @@ print(String(data: data, encoding: .utf8)!)"#,
 
 #[tauri::command]
 pub async fn open_file_with_app(file_path: String, app_id: String) -> Result<(), String> {
+    log::debug!("[System] open_file_with_app: {} with {}", file_path, app_id);
     #[cfg(target_os = "macos")]
     {
         std::process::Command::new("open")

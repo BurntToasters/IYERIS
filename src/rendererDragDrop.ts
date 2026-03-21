@@ -1,5 +1,6 @@
 import type { ToastAction } from './rendererToasts.js';
 import { rendererPath as path } from './rendererUtils.js';
+import { devLog } from './shared.js';
 
 const SPRING_LOAD_DELAY = 800;
 
@@ -277,6 +278,7 @@ export function createDragDropController(config: DragDropConfig) {
     destPath: string,
     operation: 'copy' | 'move'
   ): Promise<void> {
+    devLog('DragDrop', `handleDrop: ${operation} ${sourcePaths.length} item(s) to ${destPath}`);
     const showToast = config.getShowToast();
     try {
       const conflictBehavior = (config.getCurrentSettings().fileConflictBehavior || 'ask') as

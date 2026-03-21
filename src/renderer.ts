@@ -1,5 +1,5 @@
 import type { Settings, FileItem, DriveInfo } from './types';
-import { assignKey, escapeHtml, getErrorMessage, ignoreError } from './shared.js';
+import { assignKey, escapeHtml, getErrorMessage, ignoreError, devLog } from './shared.js';
 import { clearHtml } from './rendererDom.js';
 import type { TabData } from './rendererTabs.js';
 import { showConfirm } from './rendererModals.js';
@@ -105,6 +105,8 @@ let platformOS: string = '';
 let canUndo: boolean = false;
 let canRedo: boolean = false;
 let folderTreeEnabled: boolean = true;
+let isNavigating: boolean = false;
+let refreshDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
 function markSelectionDirty(): void {
   selectedItemsSizeDirty = true;
@@ -494,6 +496,7 @@ async function loadSettings(): Promise<void> {
 
   let focusDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   window.addEventListener('focus', () => {
+    devLog('Focus', 'Window focus event — debouncing clipboard indicator update');
     if (focusDebounceTimer) clearTimeout(focusDebounceTimer);
     focusDebounceTimer = setTimeout(() => {
       clipboardController.updateClipboardIndicator();
@@ -513,6 +516,7 @@ async function applySystemFontSize(): Promise<void> {
 }
 
 function applySettings(settings: Settings) {
+  devLog('Settings', 'applySettings', { viewMode: settings.viewMode, theme: settings.theme });
   applyAppearance(settings, {
     applyCustomThemeColors,
     clearCustomThemeColors,
@@ -831,51 +835,55 @@ function setHomeViewActive(active: boolean): void {
 async function handleQuickAction(action?: string | null): Promise<void> {
   if (!action) return;
 
-  if (action === 'home') {
-    navigateTo(HOME_VIEW_PATH);
-    return;
-  }
-
-  if (action === 'userhome') {
-    const homePath = await window.tauriAPI.getHomeDirectory();
-    if (homePath) {
-      navigateTo(homePath);
-    } else {
-      showToast('Failed to open Home Folder', 'Quick Access', 'error');
-    }
-    return;
-  }
-
-  const specialAction = SPECIAL_DIRECTORY_ACTIONS[action];
-  if (specialAction) {
-    const result = await window.tauriAPI.getSpecialDirectory(specialAction.key);
-    if (!result.success) {
-      showToast(
-        result.error || `Failed to open ${specialAction.label} folder`,
-        'Quick Access',
-        'error'
-      );
+  try {
+    if (action === 'home') {
+      navigateTo(HOME_VIEW_PATH);
       return;
     }
-    navigateTo(result.path);
-    return;
-  }
 
-  if (action === 'browse') {
-    const result = await window.tauriAPI.selectFolder();
-    if (result.success) {
+    if (action === 'userhome') {
+      const homePath = await window.tauriAPI.getHomeDirectory();
+      if (homePath) {
+        navigateTo(homePath);
+      } else {
+        showToast('Failed to open Home Folder', 'Quick Access', 'error');
+      }
+      return;
+    }
+
+    const specialAction = SPECIAL_DIRECTORY_ACTIONS[action];
+    if (specialAction) {
+      const result = await window.tauriAPI.getSpecialDirectory(specialAction.key);
+      if (!result.success) {
+        showToast(
+          result.error || `Failed to open ${specialAction.label} folder`,
+          'Quick Access',
+          'error'
+        );
+        return;
+      }
       navigateTo(result.path);
-    }
-    return;
-  }
-
-  if (action === 'trash') {
-    const result = await window.tauriAPI.openTrash();
-    if (!result.success) {
-      showToast(result.error || 'Failed to open trash folder', 'Error', 'error');
       return;
     }
-    showToast('Opening system trash folder', 'Info', 'info');
+
+    if (action === 'browse') {
+      const result = await window.tauriAPI.selectFolder();
+      if (result.success) {
+        navigateTo(result.path);
+      }
+      return;
+    }
+
+    if (action === 'trash') {
+      const result = await window.tauriAPI.openTrash();
+      if (!result.success) {
+        showToast(result.error || 'Failed to open trash folder', 'Error', 'error');
+        return;
+      }
+      showToast('Opening system trash folder', 'Info', 'info');
+    }
+  } catch (error) {
+    showToast(getErrorMessage(error), 'Quick Access', 'error');
   }
 }
 
@@ -1286,6 +1294,8 @@ const { setupEventListeners } = eventListenersController;
 
 async function navigateTo(path: string, skipHistoryUpdate = false) {
   if (!path) return;
+  isNavigating = true;
+  devLog('Navigate', `navigateTo: ${path}`, { skipHistoryUpdate });
   const trimmedPath = path.trim();
   if (trimmedPath === HOME_VIEW_LABEL) {
     path = HOME_VIEW_PATH;
@@ -1316,6 +1326,7 @@ async function navigateTo(path: string, skipHistoryUpdate = false) {
     updateNavigationButtons();
     setHomeViewActive(true);
     announceToScreenReader('Home view');
+    isNavigating = false;
     return;
   }
 
@@ -1375,7 +1386,7 @@ async function navigateTo(path: string, skipHistoryUpdate = false) {
       renderFiles(result.contents || []);
     }
     updateDiskSpace();
-    window.tauriAPI.watchDirectory(path);
+    window.tauriAPI.watchDirectory(path).catch(() => {});
     if (currentSettings.enableGitStatus) {
       fetchGitStatusAsync(path);
       updateGitBranch(path);
@@ -1386,7 +1397,10 @@ async function navigateTo(path: string, skipHistoryUpdate = false) {
   } finally {
     const isCurrentRequest = directoryLoader.isCurrentRequest(requestId);
     finishDirectoryRequest(requestId);
-    if (isCurrentRequest) hideLoading();
+    if (isCurrentRequest) {
+      hideLoading();
+      isNavigating = false;
+    }
   }
 }
 
@@ -1713,9 +1727,14 @@ function goUp() {
 }
 
 function refresh() {
-  if (currentPath) {
-    navigateTo(currentPath);
-  }
+  if (!currentPath || isNavigating) return;
+  if (refreshDebounceTimer) clearTimeout(refreshDebounceTimer);
+  refreshDebounceTimer = setTimeout(() => {
+    refreshDebounceTimer = null;
+    if (!isNavigating && currentPath) {
+      navigateTo(currentPath);
+    }
+  }, 200);
 }
 
 function updateNavigationButtons() {
@@ -2046,6 +2065,7 @@ window.addEventListener('beforeunload', () => {
   fileRenderController.disconnectVirtualizedObserver();
   diskSpaceController.clearCache();
   zoomController.clearZoomPopupTimeout();
+  window.tauriAPI.unwatchDirectory().catch(() => {});
   if (!isResettingSettings) {
     if (tabsEnabled && tabs.length > 0) {
       const currentTab = tabs.find((t) => t.id === activeTabId);

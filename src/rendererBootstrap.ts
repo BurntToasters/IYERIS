@@ -2,7 +2,7 @@ import type { Settings } from './types';
 import { hexToRgb } from './rendererThemeEditor.js';
 import { twemojiImg } from './rendererUtils.js';
 import { getById, clearHtml } from './rendererDom.js';
-import { ignoreError } from './shared.js';
+import { ignoreError, setDevMode, devLog } from './shared.js';
 
 type BootstrapConfig = {
   loadSettings: () => Promise<void>;
@@ -81,16 +81,24 @@ export function createBootstrapController(config: BootstrapConfig) {
   }
 
   async function init() {
-    const [platform, mas, flatpak, msStore, appVersion] = await Promise.all([
-      window.tauriAPI.getPlatform(),
-      window.tauriAPI.isMas(),
-      window.tauriAPI.isFlatpak(),
-      window.tauriAPI.isMsStore(),
-      window.tauriAPI.getAppVersion(),
+    const [platform, mas, flatpak, msStore, appVersion, devMode] = await Promise.all([
+      window.tauriAPI.getPlatform().catch(() => 'unknown'),
+      window.tauriAPI.isMas().catch(() => false),
+      window.tauriAPI.isFlatpak().catch(() => false),
+      window.tauriAPI.isMsStore().catch(() => false),
+      window.tauriAPI.getAppVersion().catch(() => '0.0.0'),
+      window.tauriAPI.isDevMode().catch(() => false),
     ]);
 
+    if (devMode) {
+      setDevMode(true);
+      devLog('Bootstrap', 'Platform:', platform, 'Version:', appVersion);
+    }
+
     await config.loadSettings();
+    devLog('Bootstrap', 'Settings loaded');
     await config.loadHomeSettings();
+    devLog('Bootstrap', 'Home settings loaded');
     config.renderSidebarQuickAccess();
 
     config.initTooltipSystem();
@@ -245,6 +253,7 @@ export function createBootstrapController(config: BootstrapConfig) {
       config.getIpcCleanupFunctions().push(cleanupSystemResumed);
 
       const cleanupDirectoryChanged = window.tauriAPI.onDirectoryChanged(({ dirPath }) => {
+        devLog('Watcher', `directory-changed event: ${dirPath}`);
         const currentPath = config.getCurrentPath();
         if (currentPath && currentPath === dirPath) {
           config.refresh();

@@ -317,7 +317,7 @@ export function createColumnViewController(deps: ColumnViewDeps) {
         e.dataTransfer.setData('text/plain', JSON.stringify(selectedPaths));
       }
 
-      window.tauriAPI.setDragData(selectedPaths);
+      window.tauriAPI.setDragData(selectedPaths).catch(() => {});
 
       item.classList.add('dragging');
     });
@@ -327,7 +327,7 @@ export function createColumnViewController(deps: ColumnViewDeps) {
       document.querySelectorAll('.column-item.drag-over').forEach((el) => {
         el.classList.remove('drag-over');
       });
-      window.tauriAPI.clearDragData();
+      window.tauriAPI.clearDragData().catch(() => {});
       deps.clearSpringLoad();
       deps.hideDropIndicator();
     });
@@ -551,6 +551,7 @@ export function createColumnViewController(deps: ColumnViewDeps) {
       element.setAttribute('aria-selected', 'true');
       columnPaths.push(itemPath);
 
+      const previousPath = deps.getCurrentPath();
       deps.setCurrentPath(itemPath);
       deps.addressInput.value = itemPath;
       deps.updateBreadcrumb(itemPath);
@@ -564,6 +565,11 @@ export function createColumnViewController(deps: ColumnViewDeps) {
 
       if (clickRenderId === columnViewRenderId && newPane) {
         deps.columnView.appendChild(newPane);
+      } else if (clickRenderId === columnViewRenderId && !newPane) {
+        deps.setCurrentPath(previousPath);
+        deps.addressInput.value = previousPath;
+        deps.updateBreadcrumb(previousPath);
+        columnPaths.pop();
       }
 
       setTimeout(() => {

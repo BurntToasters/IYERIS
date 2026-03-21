@@ -151,6 +151,7 @@ pub async fn search_files(
     filters: Option<serde_json::Value>,
     operation_id: Option<String>,
 ) -> Result<Vec<SearchResult>, String> {
+    log::debug!("[Search] search_files: q={:?} in {}", query, dir_path);
     let path = crate::validate_existing_path(&dir_path, "Directory")?;
     let op_id = operation_id.unwrap_or_default();
     let parsed_filters = parse_filters(filters);
@@ -173,7 +174,7 @@ pub async fn search_files(
         for entry in WalkDir::new(&path)
             .max_depth(20)
             .into_iter()
-            .flatten()
+            .filter_map(|e| e.map_err(|err| log::warn!("[Search] walk error: {}", err)).ok())
         {
             if !search_op_id.is_empty() && !is_search_active(&search_op_id) {
                 break;
@@ -246,6 +247,7 @@ pub async fn search_files_content(
     filters: Option<serde_json::Value>,
     operation_id: Option<String>,
 ) -> Result<Vec<SearchResult>, String> {
+    log::debug!("[Search] search_files_content: q={:?} in {}", query, dir_path);
     let path = crate::validate_existing_path(&dir_path, "Directory")?;
     let op_id = operation_id.unwrap_or_default();
     let parsed_filters = parse_filters(filters);
@@ -269,7 +271,7 @@ pub async fn search_files_content(
         for entry in WalkDir::new(&path)
             .max_depth(20)
             .into_iter()
-            .flatten()
+            .filter_map(|e| e.map_err(|err| log::warn!("[Search] content walk error: {}", err)).ok())
         {
             if !search_op_id.is_empty() && !is_search_active(&search_op_id) {
                 break;
@@ -305,8 +307,15 @@ pub async fn search_files_content(
             };
 
             if let Some(pos) = matched_position {
-                let start = pos.saturating_sub(50);
-                let end = (pos + query.len() + 50).min(content.len());
+                let start = content[..pos].char_indices()
+                    .rev()
+                    .nth(49)
+                    .map(|(i, _)| i)
+                    .unwrap_or(0);
+                let end = content[pos..].char_indices()
+                    .nth(query.len() + 50)
+                    .map(|(i, _)| pos + i)
+                    .unwrap_or(content.len());
                 let context = content[start..end].to_string();
 
                 let modified = meta

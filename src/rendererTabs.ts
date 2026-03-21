@@ -295,7 +295,7 @@ export function createTabsController(deps: TabsDeps) {
           restoreTabView(newTab);
           updateTabCacheAccess(newTab.id);
         } else {
-          deps.navigateTo(newTab.path, true);
+          void deps.navigateTo(newTab.path, true);
         }
       }
 
@@ -363,7 +363,7 @@ export function createTabsController(deps: TabsDeps) {
     deps.setHistoryIndex(0);
     deps.setSelectedItems(new Set());
 
-    deps.navigateTo(tabPath, true);
+    void deps.navigateTo(tabPath, true);
 
     renderTabs();
     debouncedSaveTabState();
@@ -400,7 +400,7 @@ export function createTabsController(deps: TabsDeps) {
         if (nextTab.cachedFiles !== undefined) {
           restoreTabView(nextTab);
         } else {
-          deps.navigateTo(nextTab.path, true);
+          void deps.navigateTo(nextTab.path, true);
         }
       }
     }
@@ -465,7 +465,7 @@ export function createTabsController(deps: TabsDeps) {
       if (keepTab.cachedFiles !== undefined) {
         restoreTabView(keepTab);
       } else {
-        deps.navigateTo(keepTab.path, true);
+        void deps.navigateTo(keepTab.path, true);
       }
     }
     renderTabs();
@@ -498,7 +498,7 @@ export function createTabsController(deps: TabsDeps) {
       if (lastTab.cachedFiles !== undefined) {
         restoreTabView(lastTab);
       } else {
-        deps.navigateTo(lastTab.path, true);
+        void deps.navigateTo(lastTab.path, true);
       }
     }
     renderTabs();

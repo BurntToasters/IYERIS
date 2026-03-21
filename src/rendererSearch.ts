@@ -304,152 +304,158 @@ export function createSearchController(deps: SearchDeps) {
   }
 
   async function performSearch() {
-    ensureElements();
-    if (!searchInput) return;
-    const query = searchInput.value.trim();
-    if (!query) {
-      searchRequestId += 1;
-      cancelActiveSearch();
-      return;
-    }
-
-    if (!isGlobalSearch && isHomeViewPath(deps.getCurrentPath())) {
-      deps.showToast('Open a folder or use global search', 'Search', 'info');
-      return;
-    }
-
-    if (!isGlobalSearch && !deps.getCurrentPath()) return;
-
-    const currentRequestId = ++searchRequestId;
-    cancelActiveSearch();
-    const operationId = deps.createDirectoryOperationId('search');
-    activeSearchOperationId = operationId;
-
-    addToSearchHistory(query);
-
-    deps.showLoading('Searching...');
-    const fileGrid = deps.getFileGrid();
-    if (fileGrid) clearHtml(fileGrid);
-
-    let result;
-    const hasFilters = hasActiveFilters() || searchInContents || isRegexMode;
-    if (isRegexMode) {
-      currentSearchFilters.regex = true;
-      try {
-        new RegExp(query);
-      } catch {
-        deps.hideLoading();
-        deps.showToast('Invalid regular expression pattern', 'Search', 'warning');
-        searchInput?.classList.add('input-error');
-        activeSearchOperationId = null;
+    try {
+      ensureElements();
+      if (!searchInput) return;
+      const query = searchInput.value.trim();
+      if (!query) {
+        searchRequestId += 1;
+        cancelActiveSearch();
         return;
       }
-      searchInput?.classList.remove('input-error');
-    } else {
-      delete currentSearchFilters.regex;
-      searchInput?.classList.remove('input-error');
-    }
 
-    if (isGlobalSearch) {
-      if (searchInContents) {
-        result = await window.tauriAPI.searchFilesWithContentGlobal(
-          query,
-          hasFilters ? currentSearchFilters : undefined,
-          operationId
-        );
+      if (!isGlobalSearch && isHomeViewPath(deps.getCurrentPath())) {
+        deps.showToast('Open a folder or use global search', 'Search', 'info');
+        return;
+      }
+
+      if (!isGlobalSearch && !deps.getCurrentPath()) return;
+
+      const currentRequestId = ++searchRequestId;
+      cancelActiveSearch();
+      const operationId = deps.createDirectoryOperationId('search');
+      activeSearchOperationId = operationId;
+
+      addToSearchHistory(query);
+
+      deps.showLoading('Searching...');
+      const fileGrid = deps.getFileGrid();
+      if (fileGrid) clearHtml(fileGrid);
+
+      let result;
+      const hasFilters = hasActiveFilters() || searchInContents || isRegexMode;
+      if (isRegexMode) {
+        currentSearchFilters.regex = true;
+        try {
+          new RegExp(query);
+        } catch {
+          deps.hideLoading();
+          deps.showToast('Invalid regular expression pattern', 'Search', 'warning');
+          searchInput?.classList.add('input-error');
+          activeSearchOperationId = null;
+          return;
+        }
+        searchInput?.classList.remove('input-error');
+      } else {
+        delete currentSearchFilters.regex;
+        searchInput?.classList.remove('input-error');
+      }
+
+      if (isGlobalSearch) {
+        if (searchInContents) {
+          result = await window.tauriAPI.searchFilesWithContentGlobal(
+            query,
+            hasFilters ? currentSearchFilters : undefined,
+            operationId
+          );
+          if (currentRequestId !== searchRequestId) return;
+
+          if (!result.success) {
+            if (result.error !== 'Calculation cancelled') {
+              if (result.error === 'Indexer is disabled') {
+                deps.showToast(
+                  'File indexer is disabled. Enable it in settings to use global search.',
+                  'Index Disabled',
+                  'warning'
+                );
+              } else {
+                deps.showToast(result.error || 'Search failed', 'Search Error', 'error');
+              }
+            }
+          } else {
+            deps.setAllFiles(result.results);
+            deps.renderFiles(result.results, query);
+            if (result.results.length === 0) showSearchEmptyState(query);
+            else showResultsCapBanner(result.results.length);
+          }
+        } else {
+          result = await window.tauriAPI.searchIndex(query, operationId);
+          if (currentRequestId !== searchRequestId) return;
+
+          if (!result.success) {
+            if (result.error !== 'Calculation cancelled') {
+              if (result.error === 'Indexer is disabled') {
+                deps.showToast(
+                  'File indexer is disabled. Enable it in settings to use global search.',
+                  'Index Disabled',
+                  'warning'
+                );
+              } else {
+                deps.showToast(result.error || 'Search failed', 'Search Error', 'error');
+              }
+            }
+          } else {
+            const fileItems: FileItem[] = [];
+
+            for (const entry of result.results) {
+              const isHidden = entry.name.startsWith('.');
+
+              fileItems.push({
+                name: entry.name,
+                path: entry.path,
+                isDirectory: entry.isDirectory,
+                isFile: entry.isFile,
+                size: entry.size,
+                modified: entry.modified,
+                isHidden,
+              });
+            }
+
+            deps.setAllFiles(fileItems);
+            deps.renderFiles(fileItems, query);
+            if (fileItems.length === 0) showSearchEmptyState(query);
+            else showResultsCapBanner(fileItems.length);
+          }
+        }
+      } else {
+        if (searchInContents) {
+          result = await window.tauriAPI.searchFilesWithContent(
+            deps.getCurrentPath(),
+            query,
+            hasFilters ? currentSearchFilters : undefined,
+            operationId
+          );
+        } else {
+          result = await window.tauriAPI.searchFiles(
+            deps.getCurrentPath(),
+            query,
+            hasFilters ? currentSearchFilters : undefined,
+            operationId
+          );
+        }
         if (currentRequestId !== searchRequestId) return;
 
         if (!result.success) {
           if (result.error !== 'Calculation cancelled') {
-            if (result.error === 'Indexer is disabled') {
-              deps.showToast(
-                'File indexer is disabled. Enable it in settings to use global search.',
-                'Index Disabled',
-                'warning'
-              );
-            } else {
-              deps.showToast(result.error || 'Search failed', 'Search Error', 'error');
-            }
+            deps.showToast(result.error || 'Search failed', 'Search Error', 'error');
           }
         } else {
           deps.setAllFiles(result.results);
-          deps.renderFiles(result.results, query);
+          deps.renderFiles(result.results, searchInContents ? query : undefined);
           if (result.results.length === 0) showSearchEmptyState(query);
           else showResultsCapBanner(result.results.length);
         }
-      } else {
-        result = await window.tauriAPI.searchIndex(query, operationId);
-        if (currentRequestId !== searchRequestId) return;
-
-        if (!result.success) {
-          if (result.error !== 'Calculation cancelled') {
-            if (result.error === 'Indexer is disabled') {
-              deps.showToast(
-                'File indexer is disabled. Enable it in settings to use global search.',
-                'Index Disabled',
-                'warning'
-              );
-            } else {
-              deps.showToast(result.error || 'Search failed', 'Search Error', 'error');
-            }
-          }
-        } else {
-          const fileItems: FileItem[] = [];
-
-          for (const entry of result.results) {
-            const isHidden = entry.name.startsWith('.');
-
-            fileItems.push({
-              name: entry.name,
-              path: entry.path,
-              isDirectory: entry.isDirectory,
-              isFile: entry.isFile,
-              size: entry.size,
-              modified: entry.modified,
-              isHidden,
-            });
-          }
-
-          deps.setAllFiles(fileItems);
-          deps.renderFiles(fileItems, query);
-          if (fileItems.length === 0) showSearchEmptyState(query);
-          else showResultsCapBanner(fileItems.length);
-        }
       }
-    } else {
-      if (searchInContents) {
-        result = await window.tauriAPI.searchFilesWithContent(
-          deps.getCurrentPath(),
-          query,
-          hasFilters ? currentSearchFilters : undefined,
-          operationId
-        );
-      } else {
-        result = await window.tauriAPI.searchFiles(
-          deps.getCurrentPath(),
-          query,
-          hasFilters ? currentSearchFilters : undefined,
-          operationId
-        );
-      }
+
       if (currentRequestId !== searchRequestId) return;
-
-      if (!result.success) {
-        if (result.error !== 'Calculation cancelled') {
-          deps.showToast(result.error || 'Search failed', 'Search Error', 'error');
-        }
-      } else {
-        deps.setAllFiles(result.results);
-        deps.renderFiles(result.results, searchInContents ? query : undefined);
-        if (result.results.length === 0) showSearchEmptyState(query);
-        else showResultsCapBanner(result.results.length);
-      }
+      deps.hideLoading();
+      deps.updateStatusBar();
+      activeSearchOperationId = null;
+    } catch (error) {
+      deps.hideLoading();
+      deps.showToast('Search failed unexpectedly', 'Search Error', 'error');
+      activeSearchOperationId = null;
     }
-
-    if (currentRequestId !== searchRequestId) return;
-    deps.hideLoading();
-    deps.updateStatusBar();
-    activeSearchOperationId = null;
   }
 
   function addToSearchHistory(query: string) {

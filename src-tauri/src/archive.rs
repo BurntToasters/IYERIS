@@ -29,7 +29,13 @@ fn safe_entry_path(entry_name: &str, dest: &Path) -> Result<PathBuf, String> {
     let canonical_path = path
         .parent()
         .and_then(|p| p.canonicalize().ok())
-        .unwrap_or_else(|| path.clone());
+        .unwrap_or_else(|| {
+            let mut fallback = canonical_dest.clone();
+            if let Some(parent) = std::path::Path::new(entry_name).parent() {
+                fallback = fallback.join(parent);
+            }
+            fallback
+        });
 
     if !canonical_path.starts_with(&canonical_dest) {
         return Err(format!("Path traversal detected: {}", entry_name));
@@ -46,6 +52,7 @@ pub async fn compress_files(
     _advanced_options: Option<serde_json::Value>,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
+    log::debug!("[Archive] compress: {} items -> {} (fmt={:?})", source_paths.len(), output_path, format);
     let output = PathBuf::from(&output_path);
     let fmt = format.unwrap_or_else(|| "zip".to_string());
     let op_id = operation_id.unwrap_or_default();
@@ -89,31 +96,39 @@ fn compress_zip(
     let mut count = 0u64;
     let total = sources.len() as u64;
 
-    for source in sources {
-        let path = PathBuf::from(source);
-        if !op_id.is_empty() && !is_active(op_id) {
-            let _ = fs::remove_file(output);
-            return Err("Operation cancelled".to_string());
-        }
+    let result = (|| -> Result<(), String> {
+        for source in sources {
+            let path = PathBuf::from(source);
+            if !op_id.is_empty() && !is_active(op_id) {
+                return Err("Operation cancelled".to_string());
+            }
 
-        if path.is_dir() {
-            add_dir_to_zip(&mut zip, &path, &path, &options, op_id, app)?;
-        } else {
-            let name = path.file_name()
-                .ok_or_else(|| format!("Invalid path: {}", path.display()))?
-                .to_string_lossy().to_string();
-            zip.start_file(&name, options).map_err(|e| e.to_string())?;
-            let data = fs::read(&path).map_err(|e| e.to_string())?;
-            zip.write_all(&data).map_err(|e| e.to_string())?;
-        }
+            if path.is_dir() {
+                add_dir_to_zip(&mut zip, &path, &path, &options, op_id, app)?;
+            } else {
+                let name = path.file_name()
+                    .ok_or_else(|| format!("Invalid path: {}", path.display()))?
+                    .to_string_lossy().to_string();
+                zip.start_file(&name, options).map_err(|e| e.to_string())?;
+                let data = fs::read(&path).map_err(|e| e.to_string())?;
+                zip.write_all(&data).map_err(|e| e.to_string())?;
+            }
 
-        count += 1;
-        let _ = app.emit("compress-progress", serde_json::json!({
-            "operationId": op_id,
-            "current": count,
-            "total": total,
-            "name": path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(),
-        }));
+            count += 1;
+            let _ = app.emit("compress-progress", serde_json::json!({
+                "operationId": op_id,
+                "current": count,
+                "total": total,
+                "name": path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(),
+            }));
+        }
+        Ok(())
+    })();
+
+    if result.is_err() {
+        drop(zip);
+        let _ = fs::remove_file(output);
+        return result;
     }
 
     zip.finish().map_err(|e| e.to_string())?;
@@ -128,7 +143,7 @@ fn add_dir_to_zip(
     op_id: &str,
     app: &tauri::AppHandle,
 ) -> Result<(), String> {
-    for entry in fs::read_dir(dir).map_err(|e| e.to_string())?.flatten() {
+    for entry in fs::read_dir(dir).map_err(|e| e.to_string())?.filter_map(|e| e.map_err(|err| log::warn!("[Archive] zip dir entry error: {}", err)).ok()) {
         if !op_id.is_empty() && !is_active(op_id) {
             return Err("Operation cancelled".to_string());
         }
@@ -233,7 +248,7 @@ fn add_dir_to_7z(
     prefix: &str,
     op_id: &str,
 ) -> Result<(), String> {
-    for entry in fs::read_dir(dir).map_err(|e| e.to_string())?.flatten() {
+    for entry in fs::read_dir(dir).map_err(|e| e.to_string())?.filter_map(|e| e.map_err(|err| log::warn!("[Archive] 7z dir entry error: {}", err)).ok()) {
         if !op_id.is_empty() && !is_active(op_id) {
             return Err("Operation cancelled".to_string());
         }
@@ -259,6 +274,7 @@ pub async fn extract_archive(
     operation_id: Option<String>,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
+    log::debug!("[Archive] extract: {} -> {}", archive_path, dest_path);
     let archive = crate::validate_existing_path(&archive_path, "Archive")?;
     let dest = PathBuf::from(&dest_path);
     fs::create_dir_all(&dest).map_err(|e| e.to_string())?;

@@ -46,7 +46,7 @@ export function createThumbnailController(deps: ThumbnailDeps) {
     };
 
     if (activeThumbnailLoads < THUMBNAIL_CONCURRENT_LOADS) {
-      execute();
+      execute().catch(() => {});
     } else if (pendingThumbnailLoads.length < THUMBNAIL_QUEUE_MAX) {
       pendingThumbnailLoads.push(execute);
     }

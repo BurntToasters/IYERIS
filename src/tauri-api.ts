@@ -9,6 +9,7 @@ type ConflictResolution = 'rename' | 'skip' | 'overwrite' | 'cancel';
 type ConflictDecision = Exclude<ConflictResolution, 'cancel'>;
 
 let pendingUpdate: Update | null = null;
+let updateDownloadInProgress = false;
 let currentUpdateChannel: 'auto' | 'beta' | 'stable' = 'auto';
 let cachedPlatformOS: string | null = null;
 
@@ -294,7 +295,14 @@ const tauriAPI: TauriAPI = {
   getSettings: async () => {
     try {
       const json = await invoke<string>('get_settings');
-      const settings = json && json !== '{}' ? JSON.parse(json) : {};
+      let settings = {};
+      if (json && json !== '{}') {
+        try {
+          settings = JSON.parse(json);
+        } catch {
+          console.error('[Settings] Failed to parse settings JSON, using defaults');
+        }
+      }
       return { success: true, settings } as never;
     } catch (e) {
       return { success: false, error: String(e) } as never;
@@ -314,7 +322,14 @@ const tauriAPI: TauriAPI = {
   getHomeSettings: async () => {
     try {
       const json = await invoke<string>('get_home_settings');
-      const settings = json && json !== '{}' ? JSON.parse(json) : {};
+      let settings = {};
+      if (json && json !== '{}') {
+        try {
+          settings = JSON.parse(json);
+        } catch {
+          console.error('[Settings] Failed to parse home settings JSON, using defaults');
+        }
+      }
       return { success: true, settings } as never;
     } catch (e) {
       return { success: false, error: String(e) } as never;
@@ -528,6 +543,7 @@ const tauriAPI: TauriAPI = {
   isMas: () => invoke('is_mas'),
   isFlatpak: () => invoke('is_flatpak'),
   isMsStore: () => invoke('is_ms_store'),
+  isDevMode: () => invoke('is_dev_mode'),
   getSystemTextScale: () => invoke('get_system_text_scale'),
   checkFullDiskAccess: async () => {
     try {
@@ -619,7 +635,9 @@ const tauriAPI: TauriAPI = {
           isBeta,
         } as never;
       }
-      pendingUpdate = null;
+      if (!updateDownloadInProgress) {
+        pendingUpdate = null;
+      }
       return {
         success: true,
         hasUpdate: false,
@@ -628,7 +646,9 @@ const tauriAPI: TauriAPI = {
         isBeta,
       } as never;
     } catch (e) {
-      pendingUpdate = null;
+      if (!updateDownloadInProgress) {
+        pendingUpdate = null;
+      }
       const message = String(e);
       const error = /pubkey|signature|updater/i.test(message)
         ? 'Updater is not configured correctly. Configure the updater public key before checking for updates.'
@@ -642,6 +662,7 @@ const tauriAPI: TauriAPI = {
   downloadUpdate: async () => {
     try {
       if (!pendingUpdate) return { success: false as const, error: 'No update available' };
+      updateDownloadInProgress = true;
       let downloaded = 0;
       let contentLength = 0;
       await pendingUpdate.downloadAndInstall((event) => {

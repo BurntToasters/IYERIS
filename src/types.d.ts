@@ -581,6 +581,7 @@ export interface TauriAPI {
   isMas: () => Promise<boolean>;
   isFlatpak: () => Promise<boolean>;
   isMsStore: () => Promise<boolean>;
+  isDevMode: () => Promise<boolean>;
   getSystemTextScale: () => Promise<number>;
   checkFullDiskAccess: () => Promise<FullDiskAccessResponse>;
   requestFullDiskAccess: () => Promise<IpcResult>;

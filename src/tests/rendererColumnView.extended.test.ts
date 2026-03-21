@@ -5,8 +5,8 @@ const mockTauriAPI = vi.hoisted(() => ({
   getDirectoryContents: vi.fn(),
   getDriveInfo: vi.fn(),
   cancelDirectoryContents: vi.fn().mockResolvedValue(undefined),
-  setDragData: vi.fn(),
-  clearDragData: vi.fn(),
+  setDragData: vi.fn().mockResolvedValue(undefined),
+  clearDragData: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('../shared.js', () => ({
