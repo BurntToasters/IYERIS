@@ -47,13 +47,6 @@ import { createLayoutController } from './rendererLayout.js';
 import { createDragDropController } from './rendererDragDrop.js';
 import { createThumbnailController } from './rendererThumbnails.js';
 import {
-  THEME_VALUES,
-  SORT_BY_VALUES,
-  SORT_ORDER_VALUES,
-  VIEW_MODE_VALUES,
-  isOneOf,
-} from './constants.js';
-import {
   activateModal,
   deactivateModal,
   showAlert,
@@ -313,7 +306,10 @@ export function wireControllers(deps: WiringDeps) {
       const toast = document.createElement('div');
       toast.id = fileOperationProgressToastId;
       toast.className = 'toast toast-info';
-      toast.innerHTML = `<div class="toast-message">${message}</div>`;
+      const msgDiv = document.createElement('div');
+      msgDiv.className = 'toast-message';
+      msgDiv.textContent = message;
+      toast.appendChild(msgDiv);
       container.appendChild(toast);
       setTimeout(() => {
         toast.remove();
@@ -811,6 +807,9 @@ export function wireControllers(deps: WiringDeps) {
     navigateTo: (pathValue, force) => {
       void deps.late.navigateTo(pathValue, force);
     },
+    watchDirectory: (pathValue) => {
+      window.tauriAPI.watchDirectory(pathValue).catch(() => {});
+    },
     debouncedSaveSettings: deps.debouncedSaveSettings,
     saveSettingsWithTimestamp: deps.saveSettingsWithTimestamp,
     maxCachedTabs: MAX_CACHED_TABS,
@@ -1105,11 +1104,6 @@ export function wireControllers(deps: WiringDeps) {
     clearThumbnailCacheLocal: thumbnails.clearThumbnailCache,
     hideSettingsModal,
     showSettingsModal,
-    isOneOf,
-    themeValues: THEME_VALUES,
-    sortByValues: SORT_BY_VALUES,
-    sortOrderValues: SORT_ORDER_VALUES,
-    viewModeValues: VIEW_MODE_VALUES,
   });
 
   const { initSettingsActions } = settingsActionsController;

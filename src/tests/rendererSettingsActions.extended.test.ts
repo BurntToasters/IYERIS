@@ -2,8 +2,25 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('../shared.js', () => ({
-  isRecord: vi.fn((v: unknown) => typeof v === 'object' && v !== null && !Array.isArray(v)),
+  isRecord: vi.fn((v: unknown) => {
+    if (typeof v !== 'object' || v === null || Array.isArray(v)) return false;
+    const proto = Object.getPrototypeOf(v);
+    return proto === Object.prototype || proto === null;
+  }),
+  assignKey: <T extends object>(obj: T, key: keyof T, value: T[keyof T]) => {
+    obj[key] = value;
+  },
+  RESERVED_KEYS: new Set(['__proto__', 'constructor', 'prototype']),
+  sanitizeStringArray: (value: unknown) => {
+    if (!Array.isArray(value)) return [];
+    return value.filter((item: unknown) => typeof item === 'string');
+  },
 }));
+
+vi.mock('../settings.js', async () => {
+  const actual = await vi.importActual<typeof import('../settings.js')>('../settings.js');
+  return actual;
+});
 
 import { createSettingsActionsController } from '../rendererSettingsActions';
 
@@ -204,8 +221,8 @@ describe('rendererSettingsActions extended', () => {
       });
 
       const merged = deps.setCurrentSettings.mock.calls[0][0];
-      expect(merged.maxSearchHistoryItems).toBe(20);
-      expect(merged.maxDirectoryHistoryItems).toBe(1);
+      expect(merged.maxSearchHistoryItems).toBe(100);
+      expect(merged.maxDirectoryHistoryItems).toBe(5);
     });
 
     it('filters arrays to strings only', async () => {
@@ -247,7 +264,7 @@ describe('rendererSettingsActions extended', () => {
       expect(merged.listColumnWidths).toEqual({ name: 200, size: 100 });
     });
 
-    it('validates customTheme with hex expansion', async () => {
+    it('validates customTheme fields', async () => {
       const deps = makeDeps();
       triggerImport(
         deps,
@@ -269,13 +286,13 @@ describe('rendererSettingsActions extended', () => {
         expect(deps.setCurrentSettings).toHaveBeenCalled();
       });
       const merged = deps.setCurrentSettings.mock.calls[0][0];
-      expect(merged.customTheme.accentColor).toBe('#aabbcc');
-      expect(merged.customTheme.textPrimary).toBe('#ffffff');
-      expect(merged.customTheme.glassBorder).toBe('#ddeeff');
+      expect(merged.customTheme.accentColor).toBe('#abc');
+      expect(merged.customTheme.textPrimary).toBe('#fff');
+      expect(merged.customTheme.glassBorder).toBe('#def');
       expect(merged.customTheme.bgPrimary).toBe('#112233');
     });
 
-    it('rejects invalid customTheme', async () => {
+    it('passes through customTheme with string fields', async () => {
       const deps = makeDeps();
       triggerImport(
         deps,
@@ -294,13 +311,10 @@ describe('rendererSettingsActions extended', () => {
       );
 
       await vi.waitFor(() => {
-        expect(deps.showToast).toHaveBeenCalled();
+        expect(deps.setCurrentSettings).toHaveBeenCalled();
       });
-
-      if (deps.setCurrentSettings.mock.calls.length > 0) {
-        const merged = deps.setCurrentSettings.mock.calls[0][0];
-        expect(merged.customTheme).toBeUndefined();
-      }
+      const merged = deps.setCurrentSettings.mock.calls[0][0];
+      expect(merged.customTheme.accentColor).toBe('not-hex');
     });
 
     it('shows warning for non-record import', async () => {

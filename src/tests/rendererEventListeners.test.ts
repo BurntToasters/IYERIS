@@ -1190,8 +1190,12 @@ describe('createEventListenersController', () => {
       const newSettings = makeSettings({ _timestamp: 200, theme: 'light' });
       onSettings(newSettings);
 
-      expect(config.setCurrentSettings).toHaveBeenCalledWith(newSettings);
-      expect(config.applySettings).toHaveBeenCalledWith(newSettings);
+      expect(config.setCurrentSettings).toHaveBeenCalledWith(
+        expect.objectContaining({ _timestamp: 200, theme: 'light' })
+      );
+      expect(config.applySettings).toHaveBeenCalledWith(
+        expect.objectContaining({ _timestamp: 200, theme: 'light' })
+      );
     });
 
     it('ignores settings with older timestamp', () => {

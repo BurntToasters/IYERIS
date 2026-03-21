@@ -28,6 +28,47 @@ export function createPreviewController(deps: PreviewDeps) {
 
   let activePdfViewer: PdfViewerHandle | null = null;
 
+  const DANGEROUS_TAGS = new Set([
+    'SCRIPT',
+    'IFRAME',
+    'OBJECT',
+    'EMBED',
+    'FORM',
+    'STYLE',
+    'LINK',
+    'META',
+    'BASE',
+    'NOSCRIPT',
+  ]);
+
+  function sanitizeMarkdownHtml(html: string): string {
+    const template = document.createElement('template');
+    template.innerHTML = html;
+    const walker = document.createTreeWalker(template.content, NodeFilter.SHOW_ELEMENT);
+    const toRemove: Element[] = [];
+    while (walker.nextNode()) {
+      const el = walker.currentNode as Element;
+      if (DANGEROUS_TAGS.has(el.tagName)) {
+        toRemove.push(el);
+        continue;
+      }
+      for (const attr of Array.from(el.attributes)) {
+        if (attr.name.startsWith('on')) {
+          el.removeAttribute(attr.name);
+        } else if (
+          (attr.name === 'href' || attr.name === 'src' || attr.name === 'action') &&
+          /^\s*javascript\s*:/i.test(attr.value)
+        ) {
+          el.removeAttribute(attr.name);
+        }
+      }
+    }
+    for (const el of toRemove) el.remove();
+    const div = document.createElement('div');
+    div.appendChild(template.content.cloneNode(true));
+    return div.innerHTML;
+  }
+
   const loadingHtml = (label: string) =>
     `<div class="preview-loading"><div class="spinner"></div><p>Loading ${label}...</p></div>`;
 
@@ -99,6 +140,10 @@ export function createPreviewController(deps: PreviewDeps) {
 
   function updatePreview(file: FileItem) {
     const requestId = ++previewRequestId;
+    if (activePdfViewer) {
+      activePdfViewer.destroy();
+      activePdfViewer = null;
+    }
     if (!file || file.isDirectory) {
       showEmptyPreview();
       return;
@@ -335,7 +380,9 @@ export function createPreviewController(deps: PreviewDeps) {
     if (requestId !== previewRequestId) return;
 
     if (md) {
-      const rendered = md.marked.parse(result.content, { async: false, breaks: true }) as string;
+      const rendered = sanitizeMarkdownHtml(
+        md.marked.parse(result.content, { async: false, breaks: true }) as string
+      );
       previewContent.innerHTML = `
       ${result.isTruncated ? `<div class="preview-truncated">${twemojiImg(String.fromCodePoint(0x26a0), 'twemoji')} File truncated to first 100KB</div>` : ''}
       <div class="preview-markdown">${rendered}</div>
@@ -619,6 +666,10 @@ export function createPreviewController(deps: PreviewDeps) {
     if (previewCloseBtn) {
       previewCloseBtn.addEventListener('click', () => {
         isPreviewPanelVisible = false;
+        if (activePdfViewer) {
+          activePdfViewer.destroy();
+          activePdfViewer = null;
+        }
         if (previewPanel) previewPanel.style.display = 'none';
         previewRequestId++;
         syncPreviewToggleState();

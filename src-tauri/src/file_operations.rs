@@ -45,7 +45,7 @@ enum OpenTarget {
     External(String),
 }
 
-fn validate_child_name(raw_name: &str, label: &str) -> Result<String, String> {
+pub(crate) fn validate_child_name(raw_name: &str, label: &str) -> Result<String, String> {
     let name = raw_name.trim();
     if name.is_empty() {
         return Err(format!("{} is required", label));
@@ -182,6 +182,9 @@ pub async fn create_file(parent_path: String, file_name: String) -> Result<Strin
 pub async fn delete_item(item_path: String) -> Result<(), String> {
     log::debug!("[FileOps] delete_item: {}", item_path);
     let path = crate::validate_existing_path(&item_path, "Item")?;
+    if path.parent().is_none() {
+        return Err("Cannot delete a root directory".to_string());
+    }
     undo::clear_undo_redo_for_path(&path.to_string_lossy())?;
     if path.is_dir() {
         fs::remove_dir_all(&path).map_err(|e| format!("Failed to delete directory: {}", e))
@@ -194,6 +197,10 @@ pub async fn delete_item(item_path: String) -> Result<(), String> {
 pub async fn trash_item(item_path: String) -> Result<(), String> {
     log::debug!("[FileOps] trash_item: {}", item_path);
     let path = crate::validate_existing_path(&item_path, "Item")?;
+    if path.parent().is_none() {
+        return Err("Cannot trash a root directory".to_string());
+    }
+    undo::clear_undo_redo_for_path(&path.to_string_lossy())?;
     trash::delete(&path).map_err(|e| format!("Failed to trash item: {}", e))
 }
 
@@ -231,6 +238,9 @@ pub async fn rename_item(old_path: String, new_name: String) -> Result<String, S
         .parent()
         .ok_or("Cannot determine parent directory")?
         .join(&new_name);
+    if new_path.exists() {
+        return Err("A file or folder with that name already exists".to_string());
+    }
     fs::rename(&path, &new_path).map_err(|e| format!("Failed to rename: {}", e))?;
     undo::push_rename_action(&path, &new_path)?;
     Ok(new_path.to_string_lossy().to_string())
@@ -1001,6 +1011,15 @@ pub async fn batch_rename(
 ) -> Result<Vec<serde_json::Value>, String> {
     let mut results = Vec::new();
     let mut completed_renames: Vec<(String, String)> = Vec::new();
+
+    let moving_set: std::collections::HashSet<PathBuf> = items
+        .iter()
+        .filter_map(|item| {
+            let old_path = item["oldPath"].as_str()?;
+            crate::validate_existing_path(old_path, "Item").ok()
+        })
+        .collect();
+
     for item in &items {
         let old_path = item["oldPath"]
             .as_str()
@@ -1014,7 +1033,7 @@ pub async fn batch_rename(
             .parent()
             .ok_or("Cannot determine parent")?
             .join(new_name);
-        if new_path != path && new_path.exists() {
+        if new_path != path && new_path.exists() && !moving_set.contains(&new_path) {
             results.push(serde_json::json!({
                 "oldPath": old_path,
                 "success": false,
@@ -1046,7 +1065,7 @@ pub async fn batch_rename(
 #[tauri::command]
 pub async fn create_symlink(target_path: String, link_path: String) -> Result<(), String> {
     let target = crate::validate_existing_path(&target_path, "Target")?;
-    let link = PathBuf::from(&link_path);
+    let link = crate::validate_path(&link_path, "Link")?;
 
     #[cfg(unix)]
     {
@@ -1379,6 +1398,7 @@ fn write_windows_system_clipboard_text(text: &str) -> Result<(), String> {
 
         let ptr = GlobalLock(hmem);
         if ptr.is_null() {
+            // GlobalFree unavailable in windows 0.58 — memory lost on this rare error path
             return cleanup_and_err("Failed to lock memory".into());
         }
 
@@ -1387,6 +1407,7 @@ fn write_windows_system_clipboard_text(text: &str) -> Result<(), String> {
 
         let handle = windows::Win32::Foundation::HANDLE(hmem.0);
         if SetClipboardData(CF_UNICODETEXT.0 as u32, handle).is_err() {
+            // On failure caller should free hmem but GlobalFree unavailable in windows 0.58
             return cleanup_and_err("Failed to set clipboard data".into());
         }
 
@@ -1656,15 +1677,13 @@ pub async fn calculate_checksum(
 
         Ok(serde_json::Value::Object(results))
     })
-    .await
-    .map_err(|e| e.to_string())?;
+    .await;
 
-    {
-        let mut active = ACTIVE_CHECKSUMS.lock().map_err(|e| e.to_string())?;
+    if let Ok(mut active) = ACTIVE_CHECKSUMS.lock() {
         active.remove(&operation_id);
     }
 
-    result
+    result.map_err(|e| e.to_string())?
 }
 
 #[tauri::command]

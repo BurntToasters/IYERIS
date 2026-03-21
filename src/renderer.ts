@@ -10,7 +10,7 @@ import {
   rendererPath as path,
   twemojiImg,
 } from './rendererUtils.js';
-import { createDefaultSettings } from './settings.js';
+import { createDefaultSettings, sanitizeSettings } from './settings.js';
 
 import {
   createHomeController,
@@ -70,6 +70,7 @@ async function saveSettingsWithTimestamp(settings: Settings) {
   if (isResettingSettings) {
     return { success: true as const };
   }
+  settings._timestamp = Date.now();
   return window.tauriAPI.saveSettings(settings);
 }
 
@@ -471,9 +472,7 @@ async function loadSettings(): Promise<void> {
   ]);
 
   if (result.success) {
-    const defaults = createDefaultSettings();
-    currentSettings = { ...defaults, ...result.settings };
-    currentSettings.enableSyntaxHighlighting = currentSettings.enableSyntaxHighlighting !== false;
+    currentSettings = sanitizeSettings(result.settings ?? {});
     syncShortcutBindingsFromSettings(currentSettings, { save: true });
     applySettings(currentSettings);
     const newLaunchCount = (currentSettings.launchCount || 0) + 1;

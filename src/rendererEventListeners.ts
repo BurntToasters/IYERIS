@@ -1,6 +1,7 @@
 import type { Settings, FileItem } from './types';
 import type { ToastType } from './rendererToasts.js';
 import type { SettingsFormState } from './rendererSettingsUi.js';
+import { sanitizeSettings } from './settings.js';
 
 type EventListenersConfig = {
   getCurrentSettings: () => Settings;
@@ -167,7 +168,8 @@ export function createEventListenersController(config: EventListenersConfig) {
     });
     config.getIpcCleanupFunctions().push(cleanupClipboard);
 
-    const cleanupSettings = window.tauriAPI.onSettingsChanged((newSettings) => {
+    const cleanupSettings = window.tauriAPI.onSettingsChanged((rawSettings) => {
+      const newSettings = sanitizeSettings(rawSettings);
       const currentTimestamp =
         typeof config.getCurrentSettings()._timestamp === 'number'
           ? config.getCurrentSettings()._timestamp

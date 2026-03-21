@@ -173,6 +173,7 @@ fn compress_tar_gz(
     _op_id: &str,
     _app: &tauri::AppHandle,
 ) -> Result<(), String> {
+    let result = (|| -> Result<(), String> {
     let file = fs::File::create(output).map_err(|e| e.to_string())?;
     let enc = flate2::write::GzEncoder::new(file, flate2::Compression::default());
     let mut tar = tar::Builder::new(enc);
@@ -194,6 +195,12 @@ fn compress_tar_gz(
         .finish()
         .map_err(|e| e.to_string())?;
     Ok(())
+    })();
+
+    if result.is_err() {
+        let _ = fs::remove_file(output);
+    }
+    result
 }
 
 fn compress_7z(
@@ -202,6 +209,7 @@ fn compress_7z(
     op_id: &str,
     app: &tauri::AppHandle,
 ) -> Result<(), String> {
+    let result = (|| -> Result<(), String> {
     let sz = sevenz_rust::SevenZWriter::create(output).map_err(|e| e.to_string())?;
     let sz_cell = std::cell::RefCell::new(sz);
     let total = sources.len() as u64;
@@ -240,6 +248,12 @@ fn compress_7z(
 
     sz_cell.into_inner().finish().map_err(|e| e.to_string())?;
     Ok(())
+    })();
+
+    if result.is_err() {
+        let _ = fs::remove_file(output);
+    }
+    result
 }
 
 fn add_dir_to_7z(
@@ -396,7 +410,8 @@ fn extract_7z(
             "total": 0,
             "name": name,
         }));
-        let out_path = dest_path.join(entry.name());
+        let out_path = safe_entry_path(entry.name(), dest_path)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
         if entry.is_directory() {
             fs::create_dir_all(&out_path).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
         } else {
@@ -476,7 +491,7 @@ pub async fn list_archive_contents(archive_path: String) -> Result<Vec<ArchiveEn
                     });
                     Ok(false)
                 })
-                .ok();
+                .map_err(|e| e.to_string())?;
                 Ok(entries)
             }
             "gz" | "tgz" => {

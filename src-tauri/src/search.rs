@@ -229,15 +229,15 @@ pub async fn search_files(
 
         Ok(results)
     })
-    .await
-    .map_err(|e| e.to_string())?;
+    .await;
 
     if !op_id.is_empty() {
-        let mut searches = ACTIVE_SEARCHES.lock().map_err(|e| e.to_string())?;
-        searches.remove(&op_id);
+        if let Ok(mut searches) = ACTIVE_SEARCHES.lock() {
+            searches.remove(&op_id);
+        }
     }
 
-    result
+    result.map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -254,7 +254,12 @@ pub async fn search_files_content(
     let regex = if parsed_filters.regex {
         Some(regex::Regex::new(&query).map_err(|e| format!("Invalid regex: {}", e))?)
     } else {
-        None
+        Some(
+            regex::RegexBuilder::new(&regex::escape(&query))
+                .case_insensitive(true)
+                .build()
+                .map_err(|e| format!("Regex build error: {}", e))?,
+        )
     };
 
     if !op_id.is_empty() {
@@ -264,7 +269,7 @@ pub async fn search_files_content(
 
     let search_op_id = op_id.clone();
     let result = tokio::task::spawn_blocking(move || {
-        let query_lower = query.to_lowercase();
+        let _query = query;
         let mut results = Vec::new();
         let max_file_size: u64 = 10 * 1024 * 1024;
 
@@ -301,19 +306,19 @@ pub async fn search_files_content(
             }
 
             let matched_position = if let Some(regex) = &regex {
-                regex.find(&content).map(|match_result| match_result.start())
+                regex.find(&content).map(|match_result| (match_result.start(), match_result.end() - match_result.start()))
             } else {
-                content.to_lowercase().find(&query_lower)
+                None
             };
 
-            if let Some(pos) = matched_position {
+            if let Some((pos, match_len)) = matched_position {
                 let start = content[..pos].char_indices()
                     .rev()
                     .nth(49)
                     .map(|(i, _)| i)
                     .unwrap_or(0);
                 let end = content[pos..].char_indices()
-                    .nth(query.len() + 50)
+                    .nth(match_len + 50)
                     .map(|(i, _)| pos + i)
                     .unwrap_or(content.len());
                 let context = content[start..end].to_string();
@@ -349,15 +354,15 @@ pub async fn search_files_content(
 
         Ok(results)
     })
-    .await
-    .map_err(|e| e.to_string())?;
+    .await;
 
     if !op_id.is_empty() {
-        let mut searches = ACTIVE_SEARCHES.lock().map_err(|e| e.to_string())?;
-        searches.remove(&op_id);
+        if let Ok(mut searches) = ACTIVE_SEARCHES.lock() {
+            searches.remove(&op_id);
+        }
     }
 
-    result
+    result.map_err(|e| e.to_string())?
 }
 
 #[tauri::command]

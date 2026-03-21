@@ -9,8 +9,8 @@ vi.mock('../shared.js', () => ({
   },
 }));
 
-vi.mock('../homeSettings.js', () => ({
-  createDefaultHomeSettings: () => ({
+vi.mock('../homeSettings.js', () => {
+  const defaults = () => ({
     showQuickAccess: true,
     showRecents: true,
     showBookmarks: true,
@@ -42,8 +42,15 @@ vi.mock('../homeSettings.js', () => ({
       'trash',
     ],
     hiddenSidebarQuickAccessItems: [],
-  }),
-}));
+  });
+  return {
+    createDefaultHomeSettings: defaults,
+    sanitizeHomeSettings: (raw: unknown) => ({
+      ...defaults(),
+      ...(raw && typeof raw === 'object' ? raw : {}),
+    }),
+  };
+});
 
 import { createHomeController } from '../home';
 

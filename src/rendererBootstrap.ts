@@ -16,7 +16,7 @@ type BootstrapConfig = {
   navigateTo: (path: string) => Promise<void>;
   setupBreadcrumbListeners: () => void;
   setupThemeEditorListeners: () => void;
-  setupHomeSettingsListeners: () => void;
+  setupHomeSettingsListeners: () => () => void;
   loadBookmarks: () => void;
   updateUndoRedoState: () => Promise<void>;
   handleUpdateDownloaded: (info: { version: string }) => void;
@@ -150,7 +150,8 @@ export function createBootstrapController(config: BootstrapConfig) {
     queueMicrotask(() => {
       config.setupBreadcrumbListeners();
       config.setupThemeEditorListeners();
-      config.setupHomeSettingsListeners();
+      const cleanupHomeSettingsInternal = config.setupHomeSettingsListeners();
+      config.getIpcCleanupFunctions().push(cleanupHomeSettingsInternal);
       config.loadBookmarks();
 
       const cleanupHomeSettings = config.onHomeSettingsChanged(() => {
@@ -203,7 +204,7 @@ export function createBootstrapController(config: BootstrapConfig) {
     }
 
     setTimeout(() => {
-      config.updateUndoRedoState();
+      void config.updateUndoRedoState();
 
       window.tauriAPI
         .getZoomLevel()
@@ -317,7 +318,7 @@ export function createBootstrapController(config: BootstrapConfig) {
         const settings = config.getCurrentSettings();
         settings.skipFullDiskAccessPrompt = true;
         config.setCurrentSettings(settings);
-        config.saveSettings();
+        void config.saveSettings();
       },
       { once: true }
     );

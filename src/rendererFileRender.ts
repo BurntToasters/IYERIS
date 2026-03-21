@@ -245,6 +245,10 @@ export function createFileRenderController(config: FileRenderConfig) {
 
     const renderToken = ++renderFilesToken;
     resetVirtualizedRender();
+    if (animationCleanupTimer) {
+      clearTimeout(animationCleanupTimer);
+      animationCleanupTimer = null;
+    }
     config.resetThumbnailObserver();
     fileGrid.innerHTML = '';
     renderItemIndex = 0;

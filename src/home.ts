@@ -1,5 +1,5 @@
 import type { DriveInfo, HomeSettings, Settings } from './types';
-import { createDefaultHomeSettings } from './homeSettings.js';
+import { createDefaultHomeSettings, sanitizeHomeSettings } from './homeSettings.js';
 import { assignKey, escapeHtml } from './shared.js';
 
 export const HOME_VIEW_PATH = 'iyeris://home';
@@ -56,7 +56,7 @@ type HomeControllerOptions = {
 
 export type HomeController = {
   loadHomeSettings: () => Promise<void>;
-  setupHomeSettingsListeners: () => void;
+  setupHomeSettingsListeners: () => () => void;
   renderHomeView: () => void;
   renderHomeRecents: () => void;
   renderHomeBookmarks: () => void;
@@ -131,8 +131,8 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
   }
 
   function normalizeHomeSettings(settings?: Partial<HomeSettings> | null): HomeSettings {
-    const defaults = createDefaultHomeSettings();
-    const merged = { ...defaults, ...(settings || {}) };
+    const sanitized = sanitizeHomeSettings(settings);
+    const merged = sanitized;
 
     merged.sectionOrder = normalizeOrderedList(
       Array.isArray(merged.sectionOrder)
@@ -415,12 +415,16 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
       // Could not check if path is directory; fall through to openFile
     }
 
-    if (openPath) {
-      await Promise.resolve(openPath(filePath));
-      return;
-    }
+    try {
+      if (openPath) {
+        await Promise.resolve(openPath(filePath));
+        return;
+      }
 
-    await window.tauriAPI.openFile(filePath);
+      await window.tauriAPI.openFile(filePath);
+    } catch {
+      showToast('Failed to open file', 'Error', 'error');
+    }
   }
 
   async function togglePinnedRecent(filePath: string): Promise<void> {
@@ -524,13 +528,17 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
       return { total: cached.total, free: cached.free };
     }
 
-    const result = await window.tauriAPI.getDiskSpace(drive);
-    if (!result.success || typeof result.total !== 'number' || typeof result.free !== 'number') {
+    try {
+      const result = await window.tauriAPI.getDiskSpace(drive);
+      if (!result.success || typeof result.total !== 'number' || typeof result.free !== 'number') {
+        return null;
+      }
+
+      driveUsageCache.set(drive, { total: result.total, free: result.free, timestamp: Date.now() });
+      return { total: result.total, free: result.free };
+    } catch {
       return null;
     }
-
-    driveUsageCache.set(drive, { total: result.total, free: result.free, timestamp: Date.now() });
-    return { total: result.total, free: result.free };
   }
 
   async function renderHomeDrives(drives?: DriveInfo[]): Promise<void> {
@@ -824,12 +832,12 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
     }
   }
 
-  function setupHomeSettingsListeners(): void {
+  function setupHomeSettingsListeners(): () => void {
     setupHomeDelegatedListeners();
     homeCustomizeBtn?.addEventListener('click', () => openHomeSettingsModal());
-    homeSettingsClose?.addEventListener('click', () => closeHomeSettingsModal());
-    homeSettingsCancel?.addEventListener('click', () => closeHomeSettingsModal());
-    homeSettingsSave?.addEventListener('click', () => saveHomeSettings());
+    homeSettingsClose?.addEventListener('click', () => void closeHomeSettingsModal());
+    homeSettingsCancel?.addEventListener('click', () => void closeHomeSettingsModal());
+    homeSettingsSave?.addEventListener('click', () => void saveHomeSettings());
 
     homeSettingsReset?.addEventListener('click', () => {
       tempHomeSettings = createDefaultHomeSettings();
@@ -858,7 +866,7 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
       });
     }
 
-    window.tauriAPI.onHomeSettingsChanged((settings) => {
+    const cleanupHomeSettingsListener = window.tauriAPI.onHomeSettingsChanged((settings) => {
       const incoming = normalizeHomeSettings(settings);
       if (JSON.stringify(incoming) === JSON.stringify(currentHomeSettings)) return;
       currentHomeSettings = incoming;
@@ -868,6 +876,7 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
         syncHomeSettingsModal();
       }
     });
+    return cleanupHomeSettingsListener;
   }
 
   return {

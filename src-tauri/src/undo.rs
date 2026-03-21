@@ -277,9 +277,12 @@ pub fn clear_undo_redo_for_path(item_path: &str) -> Result<(), String> {
 }
 
 fn get_state() -> Result<UndoRedoState, String> {
-    let can_undo = !UNDO_STACK.lock().map_err(|e| e.to_string())?.is_empty();
-    let can_redo = !REDO_STACK.lock().map_err(|e| e.to_string())?.is_empty();
-    Ok(UndoRedoState { can_undo, can_redo })
+    let undo = UNDO_STACK.lock().map_err(|e| e.to_string())?;
+    let redo = REDO_STACK.lock().map_err(|e| e.to_string())?;
+    Ok(UndoRedoState {
+        can_undo: !undo.is_empty(),
+        can_redo: !redo.is_empty(),
+    })
 }
 
 fn copy_dir_recursive(source: &Path, dest: &Path) -> Result<(), String> {
@@ -287,7 +290,26 @@ fn copy_dir_recursive(source: &Path, dest: &Path) -> Result<(), String> {
     for entry in fs::read_dir(source).map_err(|e| e.to_string())?.filter_map(|e| e.map_err(|err| log::warn!("[Undo] copy_dir entry error: {}", err)).ok()) {
         let entry_path = entry.path();
         let target = dest.join(entry.file_name());
-        if entry_path.is_dir() {
+        let meta = fs::symlink_metadata(&entry_path).map_err(|e| e.to_string())?;
+        if meta.file_type().is_symlink() {
+            #[cfg(unix)]
+            {
+                let link_target = fs::read_link(&entry_path).map_err(|e| e.to_string())?;
+                std::os::unix::fs::symlink(&link_target, &target)
+                    .map_err(|e| format!("Failed to create symlink: {}", e))?;
+            }
+            #[cfg(windows)]
+            {
+                let link_target = fs::read_link(&entry_path).map_err(|e| e.to_string())?;
+                if meta.file_type().is_dir() || link_target.is_dir() {
+                    std::os::windows::fs::symlink_dir(&link_target, &target)
+                        .map_err(|e| format!("Failed to create symlink: {}", e))?;
+                } else {
+                    std::os::windows::fs::symlink_file(&link_target, &target)
+                        .map_err(|e| format!("Failed to create symlink: {}", e))?;
+                }
+            }
+        } else if meta.is_dir() {
             copy_dir_recursive(&entry_path, &target)?;
         } else {
             fs::copy(&entry_path, &target).map_err(|e| e.to_string())?;
@@ -317,7 +339,10 @@ fn move_path(source: &Path, dest: &Path) -> Result<(), String> {
         if !dest_meta.is_dir() {
             return Err("Cross-device copy verification failed".to_string());
         }
-        fs::remove_dir_all(source).map_err(|e| e.to_string())?;
+        if let Err(e) = fs::remove_dir_all(source) {
+            let _ = fs::remove_dir_all(dest);
+            return Err(e.to_string());
+        }
     } else {
         fs::copy(source, dest).map_err(|e| e.to_string())?;
         let source_size = fs::metadata(source).map_err(|e| e.to_string())?.len();
@@ -326,7 +351,10 @@ fn move_path(source: &Path, dest: &Path) -> Result<(), String> {
             let _ = fs::remove_file(dest);
             return Err("Cross-device copy verification failed: size mismatch".to_string());
         }
-        fs::remove_file(source).map_err(|e| e.to_string())?;
+        if let Err(e) = fs::remove_file(source) {
+            let _ = fs::remove_file(dest);
+            return Err(e.to_string());
+        }
     }
     Ok(())
 }
@@ -571,12 +599,17 @@ pub async fn undo_action() -> Result<UndoRedoState, String> {
             }
         }
         UndoAction::BatchRename(data) => {
-            for rename in data.renames.iter().rev() {
+            let total = data.renames.len();
+            for (i, rename) in data.renames.iter().rev().enumerate() {
                 if let Err(err) = move_path(
                     &PathBuf::from(&rename.new_path),
                     &PathBuf::from(&rename.old_path),
                 ) {
-                    push_undo_action(UndoAction::BatchRename(data), false)?;
+                    let remaining = data.renames[..total - i].to_vec();
+                    push_undo_action(
+                        UndoAction::BatchRename(BatchRenameActionData { renames: remaining }),
+                        false,
+                    )?;
                     return Err(err);
                 }
             }
@@ -643,11 +676,14 @@ pub async fn redo_action() -> Result<UndoRedoState, String> {
             push_undo_action(UndoAction::Create(data), false)?;
         }
         UndoAction::BatchRename(data) => {
-            for rename in &data.renames {
+            for (i, rename) in data.renames.iter().enumerate() {
                 if let Err(err) =
                     move_path(&PathBuf::from(&rename.old_path), &PathBuf::from(&rename.new_path))
                 {
-                    push_redo_action(UndoAction::BatchRename(data))?;
+                    let remaining = data.renames[i..].to_vec();
+                    push_redo_action(UndoAction::BatchRename(BatchRenameActionData {
+                        renames: remaining,
+                    }))?;
                     return Err(err);
                 }
             }

@@ -367,7 +367,7 @@ export function createCompressExtractController(deps: CompressExtractDeps) {
     const els = getCompressOptionsElements();
     if (!els.nameInput || !els.formatSelect) return;
 
-    let archiveName = els.nameInput.value.trim().replace(/[/\\]/g, '_');
+    let archiveName = els.nameInput.value.trim().replace(/[/\\<>:"|?*]/g, '_');
     if (!archiveName) {
       deps.showToast('Enter an archive name', 'Missing Name', 'warning');
       els.nameInput.focus();
@@ -578,32 +578,36 @@ export function createCompressExtractController(deps: CompressExtractDeps) {
   }
 
   async function openFileEntry(item: FileItem): Promise<void> {
-    if (item.isAppBundle) {
-      await window.tauriAPI.openFile(item.path);
-      return;
-    }
-    if (item.isDesktopEntry) {
-      await window.tauriAPI.launchDesktopEntry(item.path);
-      return;
-    }
-    if (item.isShortcut) {
-      try {
-        const result = await window.tauriAPI.resolveShortcut(item.path);
-        if (result.success && result.target) {
-          await window.tauriAPI.openFile(result.target);
-        } else {
+    try {
+      if (item.isAppBundle) {
+        await window.tauriAPI.openFile(item.path);
+        return;
+      }
+      if (item.isDesktopEntry) {
+        await window.tauriAPI.launchDesktopEntry(item.path);
+        return;
+      }
+      if (item.isShortcut) {
+        try {
+          const result = await window.tauriAPI.resolveShortcut(item.path);
+          if (result.success && result.target) {
+            await window.tauriAPI.openFile(result.target);
+          } else {
+            await window.tauriAPI.openFile(item.path);
+          }
+        } catch {
           await window.tauriAPI.openFile(item.path);
         }
-      } catch {
-        await window.tauriAPI.openFile(item.path);
+        return;
       }
-      return;
+      if (item.isDirectory) {
+        void deps.navigateTo(item.path);
+        return;
+      }
+      await openPathWithArchivePrompt(item.path, item.name);
+    } catch {
+      deps.showToast('Failed to open file', 'Error', 'error');
     }
-    if (item.isDirectory) {
-      deps.navigateTo(item.path);
-      return;
-    }
-    await openPathWithArchivePrompt(item.path, item.name);
   }
 
   async function confirmExtractModal(): Promise<void> {

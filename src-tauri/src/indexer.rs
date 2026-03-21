@@ -226,8 +226,15 @@ fn load_index_from_disk(path: &Path) -> Option<IndexFileData> {
 }
 
 fn save_index_to_disk(path: &Path, entries: &[IndexEntry]) -> Result<(), String> {
-    let data = IndexFileData {
-        index: entries.to_vec(),
+    #[derive(serde::Serialize)]
+    struct IndexFileDataRef<'a> {
+        index: &'a [IndexEntry],
+        last_index_time: Option<f64>,
+        version: u32,
+    }
+
+    let data = IndexFileDataRef {
+        index: entries,
         last_index_time: Some(
             std::time::SystemTime::now()
                 .duration_since(UNIX_EPOCH)

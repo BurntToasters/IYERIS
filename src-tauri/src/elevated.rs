@@ -33,15 +33,14 @@ pub async fn elevated_delete(item_path: String) -> Result<(), String> {
     if path.parent().is_none() {
         return Err("Cannot delete a root directory".to_string());
     }
+    crate::undo::clear_undo_redo_for_path(&item_path)?;
     run_elevated_file_op("delete", &item_path, None).await
 }
 
 #[tauri::command]
 pub async fn elevated_rename(item_path: String, new_name: String) -> Result<(), String> {
     let path = crate::validate_existing_path(&item_path, "Item")?;
-    if new_name.contains('/') || new_name.contains('\\') || new_name.contains("..") || new_name.trim().is_empty() {
-        return Err("Invalid new name".to_string());
-    }
+    let new_name = crate::file_operations::validate_child_name(&new_name, "New name")?;
     let new_path = path
         .parent()
         .ok_or("Cannot determine parent directory")?

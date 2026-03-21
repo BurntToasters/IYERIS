@@ -57,6 +57,7 @@ interface TabsDeps {
   updateNavigationButtons: () => void;
   setHomeViewActive: (active: boolean) => void;
   navigateTo: (path: string, force?: boolean) => void;
+  watchDirectory: (path: string) => void;
 
   debouncedSaveSettings: () => void;
   saveSettingsWithTimestamp: (settings: Settings) => Promise<unknown>;
@@ -121,14 +122,13 @@ export function createTabsController(deps: TabsDeps) {
         selectedItems: new Set(t.selectedItems || []),
       }));
       deps.setTabs(tabs);
-      deps.setActiveTabId(tabState.activeTabId);
 
-      const activeTab = tabs.find((t) => t.id === tabState.activeTabId);
-      if (activeTab) {
-        deps.setHistory([...activeTab.history]);
-        deps.setHistoryIndex(activeTab.historyIndex);
-        deps.setSelectedItems(new Set(activeTab.selectedItems));
-      }
+      const activeTab = tabs.find((t) => t.id === tabState.activeTabId) || tabs[0];
+      deps.setActiveTabId(activeTab.id);
+
+      deps.setHistory([...activeTab.history]);
+      deps.setHistoryIndex(activeTab.historyIndex);
+      deps.setSelectedItems(new Set(activeTab.selectedItems));
     } else {
       const initialTab = createNewTabData(deps.getCurrentPath() || '');
       deps.setTabs([initialTab]);
@@ -321,6 +321,7 @@ export function createTabsController(deps: TabsDeps) {
     }
 
     deps.setHomeViewActive(false);
+    deps.watchDirectory(tab.path);
 
     if (deps.getViewMode() === 'column') {
       deps.renderColumnView();
@@ -403,6 +404,10 @@ export function createTabsController(deps: TabsDeps) {
           void deps.navigateTo(nextTab.path, true);
         }
       }
+
+      setTimeout(() => {
+        deps.setFileViewScrollTop(nextTab.scrollPosition);
+      }, 50);
     }
 
     renderTabs();
@@ -467,6 +472,9 @@ export function createTabsController(deps: TabsDeps) {
       } else {
         void deps.navigateTo(keepTab.path, true);
       }
+      setTimeout(() => {
+        deps.setFileViewScrollTop(keepTab.scrollPosition);
+      }, 50);
     }
     renderTabs();
     debouncedSaveTabState();
@@ -500,6 +508,9 @@ export function createTabsController(deps: TabsDeps) {
       } else {
         void deps.navigateTo(lastTab.path, true);
       }
+      setTimeout(() => {
+        deps.setFileViewScrollTop(lastTab.scrollPosition);
+      }, 50);
     }
     renderTabs();
     debouncedSaveTabState();

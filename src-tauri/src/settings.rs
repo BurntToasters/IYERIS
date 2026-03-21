@@ -54,12 +54,15 @@ pub fn get_settings(app: tauri::AppHandle) -> Result<String, String> {
 pub fn save_settings(app: tauri::AppHandle, settings: String) -> Result<(), String> {
     log::debug!("[Settings] save_settings ({} bytes)", settings.len());
     let _lock = SETTINGS_LOCK.lock().map_err(|e| e.to_string())?;
+
+    let parsed: serde_json::Value = serde_json::from_str(&settings)
+        .map_err(|e| format!("Invalid settings JSON: {}", e))?;
+
     let path = settings_path(&app)?;
     write_json_file(&path, &settings)?;
 
-    let enable_indexer = serde_json::from_str::<serde_json::Value>(&settings)
-        .ok()
-        .and_then(|value| value.get("enableIndexer").and_then(|flag| flag.as_bool()))
+    let enable_indexer = parsed.get("enableIndexer")
+        .and_then(|flag| flag.as_bool())
         .unwrap_or(true);
 
     if enable_indexer {
@@ -97,6 +100,8 @@ pub fn get_home_settings(app: tauri::AppHandle) -> Result<String, String> {
 #[tauri::command]
 pub fn save_home_settings(app: tauri::AppHandle, settings: String) -> Result<(), String> {
     let _lock = SETTINGS_LOCK.lock().map_err(|e| e.to_string())?;
+    serde_json::from_str::<serde_json::Value>(&settings)
+        .map_err(|e| format!("Invalid home settings JSON: {}", e))?;
     let path = home_settings_path(&app)?;
     write_json_file(&path, &settings)?;
 
