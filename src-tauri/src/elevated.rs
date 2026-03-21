@@ -5,6 +5,7 @@ fn ps_escape(s: &str) -> String {
     s.replace('\'', "''")
 }
 
+#[cfg(target_os = "macos")]
 fn shell_escape(s: &str) -> String {
     s.replace('\'', "'\\''")
 }

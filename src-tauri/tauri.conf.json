@@ -19,7 +19,7 @@
         "minHeight": 500,
         "resizable": true,
         "decorations": true,
-        "titleBarStyle": "overlay"
+        "titleBarStyle": "Overlay"
       }
     ],
     "security": {
