@@ -1014,6 +1014,7 @@ const bootstrapController = createBootstrapController({
   setCurrentSettings: (s) => {
     currentSettings = s;
   },
+  saveSettings: () => saveSettings(),
   setPlatformOS: (os) => {
     platformOS = os;
   },

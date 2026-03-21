@@ -21,6 +21,7 @@ interface DragDropConfig {
   clearSelection: () => void;
   navigateTo: (path: string) => Promise<void>;
   updateUndoRedoState: () => Promise<void>;
+  getPlatformOS: () => string;
 }
 
 export function createDragDropController(config: DragDropConfig) {
@@ -43,7 +44,7 @@ export function createDragDropController(config: DragDropConfig) {
       }
 
       if (
-        process.platform === 'win32' &&
+        config.getPlatformOS() === 'win32' &&
         url.hostname &&
         /^[A-Za-z]$/.test(url.hostname) &&
         decodedPath.startsWith('/')
@@ -51,12 +52,12 @@ export function createDragDropController(config: DragDropConfig) {
         return `${url.hostname.toUpperCase()}:${decodedPath.replace(/\//g, '\\')}`;
       }
 
-      if (process.platform === 'win32' && /^\/[A-Za-z]:[\\/]/.test(decodedPath)) {
+      if (config.getPlatformOS() === 'win32' && /^\/[A-Za-z]:[\\/]/.test(decodedPath)) {
         decodedPath = decodedPath.slice(1);
       }
 
       if (url.hostname && url.hostname !== 'localhost') {
-        if (process.platform === 'win32') {
+        if (config.getPlatformOS() === 'win32') {
           return `\\\\${url.hostname}${decodedPath.replace(/\//g, '\\')}`;
         }
         return `//${url.hostname}${decodedPath}`;

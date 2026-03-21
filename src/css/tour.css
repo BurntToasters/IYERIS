@@ -1,17 +1,20 @@
 #support-popup-modal,
-#tour-prompt-modal {
+#tour-prompt-modal,
+#fda-prompt-modal {
   background: rgba(0, 0, 0, 0.85);
 }
 
 .support-popup-modal,
-.tour-prompt-modal {
+.tour-prompt-modal,
+.fda-prompt-modal {
   max-width: 380px;
   text-align: center;
   animation: popupSlideIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .support-popup-body,
-.tour-prompt-body {
+.tour-prompt-body,
+.fda-prompt-body {
   padding: 24px 20px;
 }
 
@@ -36,10 +39,35 @@
 }
 
 .support-popup-submessage,
-.tour-prompt-submessage {
+.tour-prompt-submessage,
+.fda-prompt-message {
   font-size: 13px;
   color: var(--text-secondary);
   line-height: 1.5;
+}
+
+.fda-prompt-message {
+  margin-bottom: 12px;
+}
+
+.fda-prompt-submessage {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  line-height: 1.4;
+  font-style: italic;
+}
+
+.fda-prompt-footer .modal-button.text {
+  background: none;
+  border: none;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  min-width: auto;
+  padding: 6px 8px;
+}
+
+.fda-prompt-footer .modal-button.text:hover {
+  color: var(--text-secondary);
 }
 
 .support-popup-note,
@@ -54,7 +82,8 @@
 }
 
 .support-popup-footer,
-.tour-prompt-footer {
+.tour-prompt-footer,
+.fda-prompt-footer {
   justify-content: center;
   gap: 12px;
   padding: 16px 20px;
@@ -62,12 +91,14 @@
 }
 
 .support-popup-footer .modal-button,
-.tour-prompt-footer .modal-button {
+.tour-prompt-footer .modal-button,
+.fda-prompt-footer .modal-button {
   min-width: 100px;
 }
 
 .support-popup-footer .modal-button.primary,
-.tour-prompt-footer .modal-button.primary {
+.tour-prompt-footer .modal-button.primary,
+.fda-prompt-footer .modal-button.primary {
   display: inline-flex;
   align-items: center;
   justify-content: center;

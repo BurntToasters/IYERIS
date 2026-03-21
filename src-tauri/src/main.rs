@@ -34,6 +34,7 @@ pub(crate) struct AppState {
     pub drag: Mutex<DragState>,
     pub watcher: Mutex<Option<watcher::DirectoryWatcher>>,
     pub zoom_level: Mutex<f64>,
+    pub tray: Mutex<Option<tauri::tray::TrayIcon>>,
 }
 
 pub(crate) fn make_temp_path(path: &Path, purpose: &str) -> PathBuf {
@@ -107,13 +108,40 @@ fn main() {
             drag: Mutex::new(DragState { paths: vec![] }),
             watcher: Mutex::new(None),
             zoom_level: Mutex::new(1.0),
+            tray: Mutex::new(None),
         })
         .setup(|app| {
-            if let Err(error) = system::setup_tray(app) {
-                eprintln!("Tray setup failed: {}", error);
+            // On macOS, decorations + overlay titlebar shows traffic lights
+            // On Windows/Linux, disable decorations for custom titlebar
+            #[cfg(not(target_os = "macos"))]
+            {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.set_decorations(false);
+                }
+            }
+
+            match system::setup_tray(app) {
+                Ok(tray) => {
+                    let state = app.state::<AppState>();
+                    if let Ok(mut guard) = state.tray.lock() {
+                        *guard = Some(tray);
+                    };
+                }
+                Err(error) => eprintln!("Tray setup failed: {}", error),
             }
             let settings_json = settings::get_settings(app.handle().clone())
                 .unwrap_or_else(|_| "{}".to_string());
+
+            // Sync autostart state with settings (disable if not explicitly enabled)
+            let start_on_login = serde_json::from_str::<serde_json::Value>(&settings_json)
+                .ok()
+                .and_then(|v| v.get("startOnLogin").and_then(|f| f.as_bool()))
+                .unwrap_or(false);
+            if !start_on_login {
+                use tauri_plugin_autostart::ManagerExt;
+                let _ = app.autolaunch().disable();
+            }
+
             let enable_indexer = serde_json::from_str::<serde_json::Value>(&settings_json)
                 .ok()
                 .and_then(|value| value.get("enableIndexer").and_then(|flag| flag.as_bool()))

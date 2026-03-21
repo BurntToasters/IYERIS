@@ -1,4 +1,5 @@
 import { escapeHtml } from './shared.js';
+import { convertFileSrc } from '@tauri-apps/api/core';
 
 export function isWindowsPath(value: string): boolean {
   return /^[A-Za-z]:[\\/]/.test(value) || value.startsWith('\\\\');
@@ -59,30 +60,7 @@ export const rendererPath = {
 };
 
 export function encodeFileUrl(filePath: string): string {
-  const normalizedPath = filePath.replace(/\\/g, '/');
-  if (/^[A-Za-z]:/.test(normalizedPath)) {
-    const drive = normalizedPath.slice(0, 2);
-    const rest = normalizedPath.slice(2);
-    const encodedRest = rest
-      .split('/')
-      .map((segment) => encodeURIComponent(segment))
-      .join('/');
-    const normalizedRest = encodedRest.startsWith('/') ? encodedRest : `/${encodedRest}`;
-    return `file:///${drive}${normalizedRest}`;
-  }
-  if (normalizedPath.startsWith('//')) {
-    const uncPath = normalizedPath.slice(2);
-    const encoded = uncPath
-      .split('/')
-      .map((segment) => encodeURIComponent(segment))
-      .join('/');
-    return `file://${encoded}`;
-  }
-  const encoded = normalizedPath
-    .split('/')
-    .map((segment) => encodeURIComponent(segment))
-    .join('/');
-  return `file:///${encoded}`;
+  return convertFileSrc(filePath);
 }
 
 function emojiToCodepoint(emoji: string): string {

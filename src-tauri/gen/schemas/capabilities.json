@@ -14,7 +14,8 @@
       "process:default",
       "notification:default",
       "shell:default",
-      "autostart:default"
+      "autostart:default",
+      { "identifier": "core:window:allow-set-decorations", "allow": [{ "label": "main" }] }
     ]
   }
 }

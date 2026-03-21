@@ -267,6 +267,7 @@ export function wireControllers(deps: WiringDeps) {
     clearSelection: () => clearSelection(),
     navigateTo: (p) => deps.late.navigateTo(p),
     updateUndoRedoState: () => deps.late.updateUndoRedoState(),
+    getPlatformOS: () => deps.getPlatformOS(),
   });
   const {
     getDragOperation,

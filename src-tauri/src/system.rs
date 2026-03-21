@@ -196,7 +196,11 @@ fn parse_mime_cache_apps(mime_type: &str) -> Vec<String> {
 
 #[tauri::command]
 pub fn get_platform() -> String {
-    std::env::consts::OS.to_string()
+    match std::env::consts::OS {
+        "macos" => "darwin".to_string(),
+        "windows" => "win32".to_string(),
+        os => os.to_string(),
+    }
 }
 
 #[tauri::command]
@@ -349,17 +353,22 @@ pub fn open_new_window(app: tauri::AppHandle) -> Result<(), String> {
         .unwrap_or_default()
         .as_millis());
 
-    tauri::WebviewWindowBuilder::new(
+    let builder = tauri::WebviewWindowBuilder::new(
         &app,
         &label,
         tauri::WebviewUrl::App("index.html".into()),
     )
     .title("IYERIS")
     .inner_size(1200.0, 800.0)
-    .min_inner_size(800.0, 500.0)
-    .decorations(false)
-    .build()
-    .map_err(|e| e.to_string())?;
+    .min_inner_size(800.0, 500.0);
+
+    #[cfg(target_os = "macos")]
+    let builder = builder.decorations(true).title_bar_style(tauri::TitleBarStyle::Overlay);
+
+    #[cfg(not(target_os = "macos"))]
+    let builder = builder.decorations(false);
+
+    builder.build().map_err(|e| e.to_string())?;
 
     Ok(())
 }
@@ -861,7 +870,7 @@ pub fn get_autostart(app: tauri::AppHandle) -> Result<bool, String> {
     manager.is_enabled().map_err(|e| e.to_string())
 }
 
-pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+pub fn setup_tray(app: &mut tauri::App) -> Result<tauri::tray::TrayIcon, Box<dyn std::error::Error>> {
     use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
     use tauri::menu::{MenuBuilder, MenuItemBuilder};
 
@@ -869,7 +878,12 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
     let quit = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
     let menu = MenuBuilder::new(app).items(&[&show, &quit]).build()?;
 
-    let _tray = TrayIconBuilder::new()
+    let icon_bytes = include_bytes!("../icons/icon-tray-Template.png");
+    let icon = tauri::image::Image::from_bytes(icon_bytes)?;
+
+    let tray = TrayIconBuilder::new()
+        .icon(icon)
+        .icon_as_template(true)
         .menu(&menu)
         .on_menu_event(move |app, event| {
             match event.id().as_ref() {
@@ -902,5 +916,5 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
         .build(app)?;
 
     TRAY_READY.store(true, Ordering::Relaxed);
-    Ok(())
+    Ok(tray)
 }

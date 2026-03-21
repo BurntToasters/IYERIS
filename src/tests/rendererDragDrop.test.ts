@@ -57,6 +57,7 @@ function createConfig() {
     clearSelection: vi.fn(),
     navigateTo: vi.fn().mockResolvedValue(undefined),
     updateUndoRedoState: vi.fn().mockResolvedValue(undefined),
+    getPlatformOS: () => 'darwin',
   };
 
   return { config, showToast };

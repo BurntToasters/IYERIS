@@ -25,6 +25,7 @@ type BootstrapConfig = {
   applySettings: (settings: Settings) => void;
   getCurrentSettings: () => Settings;
   setCurrentSettings: (s: Settings) => void;
+  saveSettings: () => void;
   setPlatformOS: (os: string) => void;
   getIpcCleanupFunctions: () => (() => void)[];
   setZoomLevel: (level: number) => void;
@@ -261,6 +262,56 @@ export function createBootstrapController(config: BootstrapConfig) {
       });
       config.getIpcCleanupFunctions().push(cleanupSystemThemeChanged);
     }, 0);
+
+    if (platform === 'darwin' && !config.getCurrentSettings().skipFullDiskAccessPrompt) {
+      setTimeout(() => {
+        void checkFullDiskAccess();
+      }, 3000);
+    }
+  }
+
+  async function checkFullDiskAccess(): Promise<void> {
+    try {
+      const result = await window.tauriAPI.checkFullDiskAccess();
+      if (result.success && result.hasAccess) return;
+    } catch {
+      return;
+    }
+
+    const modal = getById('fda-prompt-modal');
+    if (!modal) return;
+    modal.style.display = 'flex';
+
+    const openBtn = getById('fda-prompt-open');
+    const laterBtn = getById('fda-prompt-later');
+    const neverBtn = getById('fda-prompt-never');
+
+    const close = () => {
+      modal.style.display = 'none';
+    };
+
+    openBtn?.addEventListener(
+      'click',
+      () => {
+        close();
+        void window.tauriAPI.requestFullDiskAccess();
+      },
+      { once: true }
+    );
+
+    laterBtn?.addEventListener('click', close, { once: true });
+
+    neverBtn?.addEventListener(
+      'click',
+      () => {
+        close();
+        const settings = config.getCurrentSettings();
+        settings.skipFullDiskAccessPrompt = true;
+        config.setCurrentSettings(settings);
+        config.saveSettings();
+      },
+      { once: true }
+    );
   }
 
   return {

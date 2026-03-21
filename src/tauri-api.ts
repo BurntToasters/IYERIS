@@ -10,20 +10,24 @@ type ConflictDecision = Exclude<ConflictResolution, 'cancel'>;
 
 let pendingUpdate: Update | null = null;
 let currentUpdateChannel: 'auto' | 'beta' | 'stable' = 'auto';
+let cachedPlatformOS: string | null = null;
 
-function updaterTargetBase(): string {
-  const os = navigator.userAgent.includes('Windows')
-    ? 'windows'
-    : navigator.userAgent.includes('Mac')
-      ? 'darwin'
-      : 'linux';
-  return os;
+async function getUpdaterTargetBase(): Promise<string> {
+  if (!cachedPlatformOS) {
+    cachedPlatformOS = await invoke<string>('get_platform');
+  }
+  const mapped = cachedPlatformOS === 'win32' ? 'windows' : cachedPlatformOS;
+  return mapped;
 }
 
-function getCheckTarget(channel: 'auto' | 'beta' | 'stable', isBeta: boolean): string | undefined {
+async function getCheckTarget(
+  channel: 'auto' | 'beta' | 'stable',
+  isBeta: boolean
+): Promise<string | undefined> {
   const useBeta = channel === 'beta' || (channel === 'auto' && isBeta);
   if (!useBeta) return undefined;
-  return `${updaterTargetBase()}-beta`;
+  const base = await getUpdaterTargetBase();
+  return `${base}-beta`;
 }
 const updateDownloadProgressCallbacks = new Set<
   (progress: {
@@ -305,6 +309,10 @@ const tauriAPI: TauriAPI = {
           accessed: new Date(props.accessed as number),
           mode: props.permissions as number,
           isReadOnly: props.readonly as boolean,
+          isHiddenAttr: props.isHiddenAttr as boolean | undefined,
+          isSystemAttr: props.isSystemAttr as boolean | undefined,
+          owner: props.owner as string | undefined,
+          group: props.group as string | undefined,
         },
       } as never;
     } catch (e) {
@@ -325,7 +333,9 @@ const tauriAPI: TauriAPI = {
   saveSettings: (settings: Settings) =>
     wrap(() => invoke('save_settings', { settings: JSON.stringify(settings) })),
   saveSettingsSync: (settings: Settings) => {
-    void invoke('save_settings', { settings: JSON.stringify(settings) });
+    void invoke('save_settings', { settings: JSON.stringify(settings) }).catch((e) => {
+      console.error('[Settings] saveSettingsSync failed:', e);
+    });
     return { success: true } as never;
   },
   resetSettings: () => wrap(() => invoke('reset_settings')),
@@ -389,7 +399,7 @@ const tauriAPI: TauriAPI = {
   onClipboardChanged: (callback) => {
     const unlisten = listen('clipboard-changed', (event) => callback(event.payload as never));
     return () => {
-      unlisten.then((fn) => fn());
+      unlisten.then((fn) => fn()).catch(() => {});
     };
   },
 
@@ -415,7 +425,7 @@ const tauriAPI: TauriAPI = {
       }
     });
     return () => {
-      unlisten.then((fn) => fn());
+      unlisten.then((fn) => fn()).catch(() => {});
     };
   },
   onHomeSettingsChanged: (callback) => {
@@ -428,7 +438,7 @@ const tauriAPI: TauriAPI = {
       }
     });
     return () => {
-      unlisten.then((fn) => fn());
+      unlisten.then((fn) => fn()).catch(() => {});
     };
   },
 
@@ -629,7 +639,7 @@ const tauriAPI: TauriAPI = {
 
     try {
       const { check } = await import('@tauri-apps/plugin-updater');
-      const target = getCheckTarget(currentUpdateChannel, isBeta);
+      const target = await getCheckTarget(currentUpdateChannel, isBeta);
       const update = target ? await check({ target }) : await check();
       if (update) {
         pendingUpdate = update;
@@ -824,19 +834,19 @@ const tauriAPI: TauriAPI = {
   onCompressProgress: (callback) => {
     const unlisten = listen('compress-progress', (event) => callback(event.payload as never));
     return () => {
-      unlisten.then((fn) => fn());
+      unlisten.then((fn) => fn()).catch(() => {});
     };
   },
   onExtractProgress: (callback) => {
     const unlisten = listen('extract-progress', (event) => callback(event.payload as never));
     return () => {
-      unlisten.then((fn) => fn());
+      unlisten.then((fn) => fn()).catch(() => {});
     };
   },
   onFileOperationProgress: (callback) => {
     const unlisten = listen('file-operation-progress', (event) => callback(event.payload as never));
     return () => {
-      unlisten.then((fn) => fn());
+      unlisten.then((fn) => fn()).catch(() => {});
     };
   },
   onSystemResumed: (callback) => {
@@ -849,7 +859,7 @@ const tauriAPI: TauriAPI = {
   onDirectoryChanged: (callback) => {
     const unlisten = listen('directory-changed', (event) => callback(event.payload as never));
     return () => {
-      unlisten.then((fn) => fn());
+      unlisten.then((fn) => fn()).catch(() => {});
     };
   },
   onSystemThemeChanged: (callback) => {
@@ -909,7 +919,7 @@ const tauriAPI: TauriAPI = {
       });
     });
     return () => {
-      unlisten.then((fn) => fn());
+      unlisten.then((fn) => fn()).catch(() => {});
     };
   },
   onDirectoryContentsProgress: (callback) => {
@@ -917,7 +927,7 @@ const tauriAPI: TauriAPI = {
       callback(event.payload as never)
     );
     return () => {
-      unlisten.then((fn) => fn());
+      unlisten.then((fn) => fn()).catch(() => {});
     };
   },
   calculateChecksum: async (filePath, operationId, algorithms) => {
@@ -937,7 +947,7 @@ const tauriAPI: TauriAPI = {
   onChecksumProgress: (callback) => {
     const unlisten = listen('checksum-progress', (event) => callback(event.payload as never));
     return () => {
-      unlisten.then((fn) => fn());
+      unlisten.then((fn) => fn()).catch(() => {});
     };
   },
   getGitStatus: async (dirPath, includeUntracked) => {

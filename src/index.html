@@ -13,8 +13,8 @@
   </head>
   <body>
     <div id="sr-announcements" class="sr-only" aria-live="polite" aria-atomic="true"></div>
-    <div class="titlebar" role="banner">
-      <div class="titlebar-drag-region">
+    <div class="titlebar" role="banner" data-tauri-drag-region>
+      <div class="titlebar-drag-region" data-tauri-drag-region>
         <div class="titlebar-icon">
           <img id="titlebar-icon" src="/folder.png" alt="IYERIS" />
         </div>
@@ -3756,6 +3756,38 @@
           <button class="modal-button secondary" id="tour-prompt-skip">Skip</button>
           <button class="modal-button primary" id="tour-prompt-yes">
             <img src="/twemoji/1f44b.svg" class="twemoji" alt="👋" draggable="false" /> Yes Please!
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-overlay" id="fda-prompt-modal" style="display: none">
+      <div
+        class="modal glass-panel fda-prompt-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="fda-prompt-title"
+      >
+        <div class="modal-header">
+          <h3 id="fda-prompt-title">
+            <img src="/twemoji/1f512.svg" class="twemoji" alt="🔒" draggable="false" />
+            Full Disk Access Required
+          </h3>
+        </div>
+        <div class="modal-body fda-prompt-body">
+          <p class="fda-prompt-message">
+            IYERIS needs Full Disk Access to browse all files and folders on your Mac, including
+            protected directories like Desktop, Documents, and Downloads.
+          </p>
+          <p class="fda-prompt-submessage">
+            Without it, some folders may appear empty or inaccessible.
+          </p>
+        </div>
+        <div class="modal-footer fda-prompt-footer">
+          <button class="modal-button text" id="fda-prompt-never">Don't ask again</button>
+          <button class="modal-button secondary" id="fda-prompt-later">Later</button>
+          <button class="modal-button primary" id="fda-prompt-open">
+            Open System Settings
           </button>
         </div>
       </div>

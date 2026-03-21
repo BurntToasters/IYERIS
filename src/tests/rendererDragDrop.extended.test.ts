@@ -63,6 +63,7 @@ function createConfig(overrides: Record<string, unknown> = {}) {
     clearSelection: vi.fn(),
     navigateTo: vi.fn().mockResolvedValue(undefined),
     updateUndoRedoState: vi.fn().mockResolvedValue(undefined),
+    getPlatformOS: () => (overrides.platformOS as string) ?? 'darwin',
   };
   return { config, showToast };
 }
@@ -255,20 +256,14 @@ describe('createDragDropController — extended', () => {
     });
 
     it('supports windows file:// drive URLs with host-style drive letters', async () => {
-      const originalPlatform = process.platform;
-      Object.defineProperty(process, 'platform', { value: 'win32' });
-      try {
-        const { config } = createConfig();
-        const ctrl = createDragDropController(config);
-        const result = await ctrl.getDraggedPaths(
-          createDragEvent('drop', {
-            textData: 'file://C:/Users/test/file.txt',
-          })
-        );
-        expect(result).toEqual(['C:/Users/test/file.txt']);
-      } finally {
-        Object.defineProperty(process, 'platform', { value: originalPlatform });
-      }
+      const { config } = createConfig({ platformOS: 'win32' });
+      const ctrl = createDragDropController(config);
+      const result = await ctrl.getDraggedPaths(
+        createDragEvent('drop', {
+          textData: 'file://C:/Users/test/file.txt',
+        })
+      );
+      expect(result).toEqual(['C:/Users/test/file.txt']);
     });
 
     it('parses file URLs from text/uri-list payloads', async () => {

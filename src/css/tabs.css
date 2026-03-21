@@ -5,7 +5,6 @@
   height: var(--titlebar-height);
   background: var(--surface-1);
   border-bottom: 1px solid var(--panel-border);
-  -webkit-app-region: drag;
   padding: 0 0 0 12px;
   position: relative;
   z-index: 10;
@@ -43,7 +42,6 @@
 
 .titlebar-controls {
   display: flex;
-  -webkit-app-region: no-drag;
   gap: 0;
 }
 
@@ -119,11 +117,6 @@ body.platform-win32 .titlebar-title {
   min-width: 0;
   padding: 0 4px;
   gap: 2px;
-}
-
-.tab-item,
-.tab-new-btn {
-  -webkit-app-region: no-drag;
 }
 
 .tab-list {
