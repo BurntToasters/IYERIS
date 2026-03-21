@@ -480,14 +480,14 @@ export function createPropertiesDialogController(deps: PropertiesDialogDeps) {
 
       if (copyMd5Btn && md5Value) {
         copyMd5Btn.addEventListener('click', () => {
-          navigator.clipboard.writeText(md5Value.textContent || '');
+          window.tauriAPI.writeToSystemClipboard(md5Value.textContent || '');
           deps.showToast('MD5 copied to clipboard', 'Copied', 'success');
         });
       }
 
       if (copySha256Btn && sha256Value) {
         copySha256Btn.addEventListener('click', () => {
-          navigator.clipboard.writeText(sha256Value.textContent || '');
+          window.tauriAPI.writeToSystemClipboard(sha256Value.textContent || '');
           deps.showToast('SHA-256 copied to clipboard', 'Copied', 'success');
         });
       }

@@ -1,4 +1,10 @@
 use std::process::Command;
+use std::time::Duration;
+
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
+const GIT_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[tauri::command]
 pub async fn get_git_status(
@@ -8,16 +14,17 @@ pub async fn get_git_status(
     let path = crate::validate_existing_path(&dir_path, "Directory")?;
     let include_untracked = include_untracked.unwrap_or(false);
 
-    tokio::task::spawn_blocking(move || {
+    match tokio::time::timeout(GIT_TIMEOUT, tokio::task::spawn_blocking(move || {
         let mut args = vec!["status", "--porcelain"];
         if include_untracked {
             args.push("-uall");
         }
 
-        let output = Command::new("git")
-            .args(&args)
-            .current_dir(&path)
-            .output();
+        let mut cmd = Command::new("git");
+        cmd.args(&args).current_dir(&path);
+        #[cfg(target_os = "windows")]
+        cmd.creation_flags(0x08000000);
+        let output = cmd.output();
 
         match output {
             Ok(out) if out.status.success() => {
@@ -43,44 +50,59 @@ pub async fn get_git_status(
                     }
                 }
 
-                Ok(serde_json::json!({
+                serde_json::json!({
                     "isGitRepo": true,
                     "modified": modified,
                     "added": added,
                     "deleted": deleted,
                     "untracked": untracked,
-                }))
+                })
             }
-            _ => Ok(serde_json::json!({
+            _ => serde_json::json!({
                 "isGitRepo": false,
                 "modified": [],
                 "added": [],
                 "deleted": [],
                 "untracked": [],
-            })),
+            }),
         }
-    })
+    }))
     .await
-    .map_err(|e| e.to_string())?
+    {
+        Ok(Ok(val)) => Ok(val),
+        Ok(Err(e)) => Err(e.to_string()),
+        Err(_) => Ok(serde_json::json!({
+            "isGitRepo": false,
+            "modified": [],
+            "added": [],
+            "deleted": [],
+            "untracked": [],
+        })),
+    }
 }
 
 #[tauri::command]
 pub async fn get_git_branch(dir_path: String) -> Result<String, String> {
     let path = crate::validate_existing_path(&dir_path, "Directory")?;
 
-    tokio::task::spawn_blocking(move || {
-        let output = Command::new("git")
-            .args(["rev-parse", "--abbrev-ref", "HEAD"])
-            .current_dir(&path)
-            .output();
+    match tokio::time::timeout(GIT_TIMEOUT, tokio::task::spawn_blocking(move || {
+        let mut cmd = Command::new("git");
+        cmd.args(["rev-parse", "--abbrev-ref", "HEAD"]).current_dir(&path);
+        #[cfg(target_os = "windows")]
+        cmd.creation_flags(0x08000000);
+        let output = cmd.output();
 
         match output {
             Ok(out) if out.status.success() => {
-                Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+                String::from_utf8_lossy(&out.stdout).trim().to_string()
             }
-            _ => Ok(String::new()),
+            _ => String::new(),
         }
-    })
+    }))
     .await
-    .map_err(|e| e.to_string())?
+    {
+        Ok(Ok(val)) => Ok(val),
+        Ok(Err(e)) => Err(e.to_string()),
+        Err(_) => Ok(String::new()),
+    }
 }

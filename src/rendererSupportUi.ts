@@ -179,8 +179,8 @@ export function createSupportUiController(deps: SupportUiDeps) {
     if (!licensesContent) return;
 
     const text = licensesContent.innerText;
-    navigator.clipboard
-      .writeText(text)
+    window.tauriAPI
+      .writeToSystemClipboard(text)
       .then(() => {
         const btn = document.getElementById('copy-licenses-btn');
         if (btn) {

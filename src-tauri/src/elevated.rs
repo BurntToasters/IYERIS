@@ -40,16 +40,20 @@ pub async fn restart_as_admin() -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
         let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-        Command::new("powershell")
-            .args([
-                "-Command",
-                &format!(
-                    "Start-Process '{}' -Verb RunAs",
-                    exe.display()
-                ),
-            ])
-            .spawn()
-            .map_err(|e| format!("Failed to restart as admin: {}", e))?;
+        {
+            use std::os::windows::process::CommandExt;
+            Command::new("powershell")
+                .args([
+                    "-Command",
+                    &format!(
+                        "Start-Process '{}' -Verb RunAs",
+                        exe.display()
+                    ),
+                ])
+                .creation_flags(0x08000000)
+                .spawn()
+                .map_err(|e| format!("Failed to restart as admin: {}", e))?;
+        }
     }
 
     #[cfg(target_os = "macos")]
@@ -103,13 +107,17 @@ async fn run_elevated_file_op(op: &str, source: &str, dest: Option<&str>) -> Res
                 _ => return Err(format!("Unknown operation: {}", op)),
             };
 
-            let output = Command::new("powershell")
-                .args([
-                    "-Command",
-                    &format!("Start-Process powershell -ArgumentList '-Command {}' -Verb RunAs -Wait", script),
-                ])
-                .output()
-                .map_err(|e| e.to_string())?;
+            let output = {
+                use std::os::windows::process::CommandExt;
+                Command::new("powershell")
+                    .args([
+                        "-Command",
+                        &format!("Start-Process powershell -ArgumentList '-Command {}' -Verb RunAs -Wait", script),
+                    ])
+                    .creation_flags(0x08000000)
+                    .output()
+                    .map_err(|e| e.to_string())?
+            };
 
             if !output.status.success() {
                 return Err(format!(

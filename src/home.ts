@@ -859,7 +859,9 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
     }
 
     window.tauriAPI.onHomeSettingsChanged((settings) => {
-      currentHomeSettings = normalizeHomeSettings(settings);
+      const incoming = normalizeHomeSettings(settings);
+      if (JSON.stringify(incoming) === JSON.stringify(currentHomeSettings)) return;
+      currentHomeSettings = incoming;
       applyHomeSettings(currentHomeSettings);
       if (homeSettingsModal && homeSettingsModal.style.display === 'flex') {
         tempHomeSettings = normalizeHomeSettings(currentHomeSettings);

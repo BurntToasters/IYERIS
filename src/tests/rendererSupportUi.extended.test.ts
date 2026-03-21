@@ -372,18 +372,17 @@ describe('rendererSupportUi', () => {
         <button id="copy-licenses-btn">Copy</button>
       `;
 
-      Object.defineProperty(navigator, 'clipboard', {
-        value: { writeText: vi.fn(async () => {}) },
-        configurable: true,
-        writable: true,
-      });
+      (window as any).tauriAPI = {
+        ...(window as any).tauriAPI,
+        writeToSystemClipboard: vi.fn(async () => {}),
+      };
 
       const deps = makeDeps();
       const ctrl = createSupportUiController(deps);
       ctrl.copyLicensesText();
 
       await vi.waitFor(() => {
-        expect(navigator.clipboard.writeText).toHaveBeenCalled();
+        expect(window.tauriAPI.writeToSystemClipboard).toHaveBeenCalled();
       });
     });
 

@@ -331,7 +331,7 @@ export function createContextMenuController(deps: ContextMenuDeps) {
 
       case 'copy-path':
         try {
-          await navigator.clipboard.writeText(item.path);
+          await window.tauriAPI.writeToSystemClipboard(item.path);
           deps.showToast('File path copied to clipboard', 'Success', 'success');
         } catch {
           deps.showToast('Failed to copy file path', 'Error', 'error');

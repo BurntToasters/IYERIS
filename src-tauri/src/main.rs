@@ -194,6 +194,7 @@ fn main() {
             file_operations::get_clipboard,
             file_operations::get_system_clipboard_data,
             file_operations::get_system_clipboard_files,
+            file_operations::write_to_system_clipboard,
             file_operations::set_drag_data,
             file_operations::get_drag_data,
             file_operations::clear_drag_data,

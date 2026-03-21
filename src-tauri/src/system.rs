@@ -308,9 +308,13 @@ pub fn is_ms_store() -> bool {
 pub fn is_msi() -> bool {
     #[cfg(target_os = "windows")]
     {
-        let output = std::process::Command::new("reg")
-            .args(["query", "HKCU\\Software\\IYERIS", "/v", "InstalledViaMsi"])
-            .output();
+        let output = {
+            use std::os::windows::process::CommandExt;
+            std::process::Command::new("reg")
+                .args(["query", "HKCU\\Software\\IYERIS", "/v", "InstalledViaMsi"])
+                .creation_flags(0x08000000)
+                .output()
+        };
 
         if let Ok(result) = output {
             if result.status.success() {
@@ -613,14 +617,18 @@ print(String(data: data, encoding: .utf8)!)"#,
 
         let mut apps: Vec<(String, String)> = Vec::new();
         if !ext.is_empty() {
-            if let Ok(assoc_output) = Command::new("cmd").args(["/C", "assoc", &ext]).output() {
+            if let Ok(assoc_output) = {
+                use std::os::windows::process::CommandExt;
+                Command::new("cmd").args(["/C", "assoc", &ext]).creation_flags(0x08000000).output()
+            } {
                 if assoc_output.status.success() {
                     let assoc_text = String::from_utf8_lossy(&assoc_output.stdout).trim().to_string();
                     if let Some(file_type) = assoc_text.split('=').nth(1).map(|value| value.trim()) {
                         if !file_type.is_empty() {
-                            if let Ok(ftype_output) =
-                                Command::new("cmd").args(["/C", "ftype", file_type]).output()
-                            {
+                            if let Ok(ftype_output) = {
+                                use std::os::windows::process::CommandExt;
+                                Command::new("cmd").args(["/C", "ftype", file_type]).creation_flags(0x08000000).output()
+                            } {
                                 if ftype_output.status.success() {
                                     let ftype_text =
                                         String::from_utf8_lossy(&ftype_output.stdout).trim().to_string();

@@ -81,6 +81,7 @@ describe('rendererPropertiesDialog', () => {
       }),
       cancelChecksumCalculation: vi.fn(),
       onChecksumProgress: vi.fn(() => vi.fn()),
+      writeToSystemClipboard: vi.fn().mockResolvedValue(undefined),
     };
     (window as any).tauriAPI = mockTauriAPI;
 
@@ -237,7 +238,7 @@ describe('rendererPropertiesDialog', () => {
       });
 
       document.getElementById('copy-md5-btn')!.click();
-      expect(navigator.clipboard.writeText).toHaveBeenCalledWith('abc123def456');
+      expect(window.tauriAPI.writeToSystemClipboard).toHaveBeenCalledWith('abc123def456');
       expect(deps.showToast).toHaveBeenCalledWith('MD5 copied to clipboard', 'Copied', 'success');
     });
 
@@ -252,7 +253,9 @@ describe('rendererPropertiesDialog', () => {
       });
 
       document.getElementById('copy-sha256-btn')!.click();
-      expect(navigator.clipboard.writeText).toHaveBeenCalledWith('deadbeef0123456789abcdef');
+      expect(window.tauriAPI.writeToSystemClipboard).toHaveBeenCalledWith(
+        'deadbeef0123456789abcdef'
+      );
       expect(deps.showToast).toHaveBeenCalledWith(
         'SHA-256 copied to clipboard',
         'Copied',

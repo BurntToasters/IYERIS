@@ -97,36 +97,6 @@ function bindSystemFallbacks() {
   media.addEventListener('change', emitThemeChanged);
 }
 
-function decodeFileUri(value: string): string | null {
-  const trimmed = value.trim();
-  if (!trimmed.toLowerCase().startsWith('file://')) return null;
-  const withoutScheme = trimmed.replace(/^file:\/\//i, '');
-  const normalized =
-    withoutScheme.startsWith('/') && /^[A-Za-z]:/.test(withoutScheme.slice(1))
-      ? withoutScheme.slice(1)
-      : withoutScheme;
-  const isWindowsPath = /^[A-Za-z]:/.test(normalized) || normalized.startsWith('\\\\');
-  try {
-    const decoded = decodeURIComponent(normalized);
-    return isWindowsPath ? decoded.replace(/\//g, '\\') : decoded;
-  } catch {
-    return isWindowsPath ? normalized.replace(/\//g, '\\') : normalized;
-  }
-}
-
-function extractClipboardPaths(text: string): string[] {
-  if (!text) return [];
-  const lines = text
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .filter((line) => !line.startsWith('#'));
-  const parsed = lines
-    .map((line) => decodeFileUri(line) ?? (/^[A-Za-z]:\\|^\\\\/.test(line) ? line : null))
-    .filter((line): line is string => Boolean(line));
-  return Array.from(new Set(parsed));
-}
-
 function parseConflictItem(errorMessage: string): string | null {
   const marker = 'CONFLICT:';
   const index = errorMessage.indexOf(marker);
@@ -369,33 +339,20 @@ const tauriAPI: TauriAPI = {
         } as never;
       }
     } catch {
-      /* fallback below */
+      /* no data */
     }
-
-    try {
-      const text = await navigator.clipboard.readText();
-      const paths = extractClipboardPaths(text);
-      if (paths.length === 0) return null as never;
-      return { operation: 'copy', paths } as never;
-    } catch {
-      return null as never;
-    }
+    return null as never;
   },
   getSystemClipboardFiles: async () => {
     try {
       const paths = await invoke<string[]>('get_system_clipboard_files');
       if (Array.isArray(paths) && paths.length > 0) return paths;
     } catch {
-      /* fallback below */
+      /* no data */
     }
-
-    try {
-      const text = await navigator.clipboard.readText();
-      return extractClipboardPaths(text);
-    } catch {
-      return [];
-    }
+    return [];
   },
+  writeToSystemClipboard: (text: string) => invoke('write_to_system_clipboard', { text }),
   onClipboardChanged: (callback) => {
     const unlisten = listen('clipboard-changed', (event) => callback(event.payload as never));
     return () => {

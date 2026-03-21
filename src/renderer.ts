@@ -492,8 +492,12 @@ async function loadSettings(): Promise<void> {
     clipboardController.setClipboard(sharedClipboard);
   }
 
+  let focusDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   window.addEventListener('focus', () => {
-    clipboardController.updateClipboardIndicator();
+    if (focusDebounceTimer) clearTimeout(focusDebounceTimer);
+    focusDebounceTimer = setTimeout(() => {
+      clipboardController.updateClipboardIndicator();
+    }, 300);
   });
 }
 

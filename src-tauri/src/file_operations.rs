@@ -742,18 +742,25 @@ pub async fn get_item_properties(item_path: String) -> Result<ItemProperties, St
                 "$s=(New-Object -ComObject WScript.Shell).CreateShortcut('{}'); if($s.TargetPath) {{ Write-Output $s.TargetPath }}",
                 escaped
             );
-            Command::new("powershell")
-                .args(["-NoProfile", "-Command", &script])
-                .output()
-                .ok()
-                .and_then(|o| {
-                    if o.status.success() {
-                        let t = String::from_utf8_lossy(&o.stdout).trim().to_string();
-                        if t.is_empty() { None } else { Some(t) }
-                    } else {
-                        None
-                    }
-                })
+            {
+                let mut cmd = Command::new("powershell");
+                cmd.args(["-NoProfile", "-Command", &script]);
+                #[cfg(target_os = "windows")]
+                {
+                    use std::os::windows::process::CommandExt;
+                    cmd.creation_flags(0x08000000);
+                }
+                cmd.output()
+                    .ok()
+                    .and_then(|o| {
+                        if o.status.success() {
+                            let t = String::from_utf8_lossy(&o.stdout).trim().to_string();
+                            if t.is_empty() { None } else { Some(t) }
+                        } else {
+                            None
+                        }
+                    })
+            }
         } else {
             None
         };
@@ -841,9 +848,13 @@ pub async fn set_attributes(item_path: String, attrs: serde_json::Value) -> Resu
     if let Some(is_hidden) = hidden {
         let hidden_flag = if is_hidden { "+h" } else { "-h" };
         let path_str = path.to_string_lossy().to_string();
-        let output = Command::new("attrib")
-            .args([hidden_flag, &path_str])
-            .output()
+        let output = {
+            let mut cmd = Command::new("attrib");
+            cmd.args([hidden_flag, &path_str]);
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x08000000);
+            cmd.output()
+        }
             .map_err(|e| format!("Failed to update hidden attribute: {}", e))?;
         if !output.status.success() {
             return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
@@ -1024,10 +1035,14 @@ pub async fn resolve_shortcut(shortcut_path: String) -> Result<String, String> {
             "$s=(New-Object -ComObject WScript.Shell).CreateShortcut('{}'); if($s.TargetPath) {{ Write-Output $s.TargetPath }}",
             escaped_path
         );
-        let output = Command::new("powershell")
-            .args(["-NoProfile", "-Command", &script])
-            .output()
-            .map_err(|e| format!("Failed to resolve shortcut: {}", e))?;
+        let output = {
+            let mut cmd = Command::new("powershell");
+            cmd.args(["-NoProfile", "-Command", &script]);
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x08000000);
+            cmd.output()
+        }
+        .map_err(|e| format!("Failed to resolve shortcut: {}", e))?;
 
         if !output.status.success() {
             return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
@@ -1193,8 +1208,16 @@ fn parse_clipboard_paths(text: &str) -> Vec<String> {
     paths
 }
 
+#[cfg(not(target_os = "windows"))]
 fn run_command_capture(command: &str, args: &[&str]) -> Option<String> {
-    let output = Command::new(command).args(args).output().ok()?;
+    let mut cmd = Command::new(command);
+    cmd.args(args);
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000);
+    }
+    let output = cmd.output().ok()?;
     if !output.status.success() {
         return None;
     }
@@ -1203,18 +1226,130 @@ fn run_command_capture(command: &str, args: &[&str]) -> Option<String> {
 
 #[cfg(target_os = "windows")]
 fn get_windows_system_clipboard_files() -> Vec<String> {
-    let script = "$ErrorActionPreference='Stop'; try { $items = Get-Clipboard -Format FileDropList; if ($items) { $items | ForEach-Object { $_.FullName } } } catch { }";
-    run_command_capture("powershell", &["-NoProfile", "-Command", script])
-        .map(|output| parse_clipboard_paths(&output))
-        .unwrap_or_default()
+    use windows::Win32::System::DataExchange::*;
+    use windows::Win32::System::Ole::CF_HDROP;
+    use windows::Win32::UI::Shell::DragQueryFileW;
+
+    unsafe {
+        if OpenClipboard(None).is_err() {
+            return Vec::new();
+        }
+
+        let result = (|| {
+            let handle = GetClipboardData(CF_HDROP.0 as u32);
+            let handle = match handle {
+                Ok(h) => h,
+                Err(_) => return Vec::new(),
+            };
+
+            let hdrop = windows::Win32::UI::Shell::HDROP(handle.0);
+            let count = DragQueryFileW(hdrop, 0xFFFFFFFF, None);
+            if count == 0 {
+                return Vec::new();
+            }
+
+            let mut paths = Vec::with_capacity(count as usize);
+            for i in 0..count {
+                let len = DragQueryFileW(hdrop, i, None);
+                if len == 0 {
+                    continue;
+                }
+                let mut buf = vec![0u16; (len + 1) as usize];
+                DragQueryFileW(hdrop, i, Some(&mut buf));
+                let path = String::from_utf16_lossy(&buf[..len as usize]);
+                paths.push(path);
+            }
+            paths
+        })();
+
+        let _ = CloseClipboard();
+        result
+    }
 }
 
 #[cfg(target_os = "windows")]
 fn get_windows_system_clipboard_text_paths() -> Vec<String> {
-    let script = "try { Get-Clipboard -Raw } catch { '' }";
-    run_command_capture("powershell", &["-NoProfile", "-Command", script])
-        .map(|output| parse_clipboard_paths(&output))
-        .unwrap_or_default()
+    use windows::Win32::Foundation::HGLOBAL;
+    use windows::Win32::System::DataExchange::*;
+    use windows::Win32::System::Memory::*;
+    use windows::Win32::System::Ole::CF_UNICODETEXT;
+
+    unsafe {
+        if OpenClipboard(None).is_err() {
+            return Vec::new();
+        }
+
+        let result = (|| {
+            let handle = GetClipboardData(CF_UNICODETEXT.0 as u32);
+            let handle = match handle {
+                Ok(h) => h,
+                Err(_) => return Vec::new(),
+            };
+
+            let ptr = GlobalLock(std::mem::transmute::<_, HGLOBAL>(handle.0));
+            if ptr.is_null() {
+                return Vec::new();
+            }
+
+            let wide = ptr as *const u16;
+            let mut len = 0usize;
+            while *wide.add(len) != 0 {
+                len += 1;
+            }
+            let slice = std::slice::from_raw_parts(wide, len);
+            let text = String::from_utf16_lossy(slice);
+            let _ = GlobalUnlock(std::mem::transmute::<_, HGLOBAL>(handle.0));
+            parse_clipboard_paths(&text)
+        })();
+
+        let _ = CloseClipboard();
+        result
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn write_windows_system_clipboard_text(text: &str) -> Result<(), String> {
+    use windows::Win32::System::DataExchange::*;
+    use windows::Win32::System::Memory::*;
+    use windows::Win32::System::Ole::CF_UNICODETEXT;
+
+    let wide: Vec<u16> = text.encode_utf16().chain(std::iter::once(0)).collect();
+    let byte_len = wide.len() * 2;
+
+    unsafe {
+        OpenClipboard(None).map_err(|e| format!("Failed to open clipboard: {}", e))?;
+
+        let cleanup_and_err = |msg: String| -> Result<(), String> {
+            let _ = CloseClipboard();
+            Err(msg)
+        };
+
+        if EmptyClipboard().is_err() {
+            return cleanup_and_err("Failed to empty clipboard".into());
+        }
+
+        let hmem = GlobalAlloc(GMEM_MOVEABLE, byte_len);
+        let hmem = match hmem {
+            Ok(h) => h,
+            Err(e) => return cleanup_and_err(format!("Failed to allocate memory: {}", e)),
+        };
+
+        let ptr = GlobalLock(hmem);
+        if ptr.is_null() {
+            return cleanup_and_err("Failed to lock memory".into());
+        }
+
+        std::ptr::copy_nonoverlapping(wide.as_ptr() as *const u8, ptr as *mut u8, byte_len);
+        let _ = GlobalUnlock(hmem);
+
+        let handle = windows::Win32::Foundation::HANDLE(hmem.0);
+        if SetClipboardData(CF_UNICODETEXT.0 as u32, handle).is_err() {
+            return cleanup_and_err("Failed to set clipboard data".into());
+        }
+
+        let _ = CloseClipboard();
+        Ok(())
+    }
 }
 
 fn get_system_clipboard_files_internal() -> Vec<String> {
@@ -1298,6 +1433,59 @@ pub fn get_system_clipboard_files(
     }
     let cb = state.clipboard.lock().map_err(|e| e.to_string())?;
     Ok(cb.paths.clone())
+}
+
+#[tauri::command]
+pub fn write_to_system_clipboard(text: String) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        return write_windows_system_clipboard_text(&text);
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let mut cmd = Command::new("pbcopy");
+        cmd.stdin(std::process::Stdio::piped());
+        let mut child = cmd.spawn().map_err(|e| e.to_string())?;
+        if let Some(mut stdin) = child.stdin.take() {
+            use std::io::Write;
+            stdin.write_all(text.as_bytes()).map_err(|e| e.to_string())?;
+        }
+        child.wait().map_err(|e| e.to_string())?;
+        return Ok(());
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let try_copy = |cmd_name: &str, args: &[&str]| -> Result<(), String> {
+            let mut cmd = Command::new(cmd_name);
+            cmd.args(args).stdin(std::process::Stdio::piped());
+            let mut child = cmd.spawn().map_err(|e| e.to_string())?;
+            if let Some(mut stdin) = child.stdin.take() {
+                use std::io::Write;
+                stdin.write_all(text.as_bytes()).map_err(|e| e.to_string())?;
+            }
+            child.wait().map_err(|e| e.to_string())?;
+            Ok(())
+        };
+
+        if try_copy("wl-copy", &[]).is_ok() {
+            return Ok(());
+        }
+        if try_copy("xclip", &["-selection", "clipboard"]).is_ok() {
+            return Ok(());
+        }
+        if try_copy("xsel", &["--clipboard", "--input"]).is_ok() {
+            return Ok(());
+        }
+        return Err("No clipboard tool found".into());
+    }
+
+    #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
+    {
+        let _ = text;
+        Err("Clipboard not supported on this platform".into())
+    }
 }
 
 #[tauri::command]

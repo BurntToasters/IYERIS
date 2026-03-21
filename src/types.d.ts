@@ -520,6 +520,7 @@ export interface TauriAPI {
   getClipboard: () => Promise<ClipboardOperation | null>;
   getSystemClipboardData: () => Promise<ClipboardOperation>;
   getSystemClipboardFiles: () => Promise<string[]>;
+  writeToSystemClipboard: (text: string) => Promise<void>;
   onClipboardChanged: (callback: (clipboardData: ClipboardOperation | null) => void) => () => void;
 
   setDragData: (paths: string[]) => Promise<void>;
