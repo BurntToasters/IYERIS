@@ -558,6 +558,8 @@ function applySettings(settings: Settings) {
 
   loadBookmarks();
   loadRecentFiles();
+
+  window.tauriAPI.setUpdateChannel(settings.updateChannel || 'auto');
 }
 
 function updateDangerousOptionsVisibility(show: boolean) {

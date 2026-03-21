@@ -142,7 +142,7 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
       - name: Package Microsoft Store artifact
-        if: matrix.msstore_arch != '' && secrets.MSSTORE_IDENTITY_NAME != '' && secrets.MSSTORE_PUBLISHER != '' && secrets.MSSTORE_PUBLISHER_DISPLAY_NAME != ''
+        if: matrix.msstore_arch != ''
         run: node scripts/msstore-pack.js ${{ matrix.msstore_arch }}
         env:
           MSSTORE_IDENTITY_NAME: ${{ secrets.MSSTORE_IDENTITY_NAME }}

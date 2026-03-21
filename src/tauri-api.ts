@@ -9,6 +9,22 @@ type ConflictResolution = 'rename' | 'skip' | 'overwrite' | 'cancel';
 type ConflictDecision = Exclude<ConflictResolution, 'cancel'>;
 
 let pendingUpdate: Update | null = null;
+let currentUpdateChannel: 'auto' | 'beta' | 'stable' = 'auto';
+
+function updaterTargetBase(): string {
+  const os = navigator.userAgent.includes('Windows')
+    ? 'windows'
+    : navigator.userAgent.includes('Mac')
+      ? 'darwin'
+      : 'linux';
+  return os;
+}
+
+function getCheckTarget(channel: 'auto' | 'beta' | 'stable', isBeta: boolean): string | undefined {
+  const useBeta = channel === 'beta' || (channel === 'auto' && isBeta);
+  if (!useBeta) return undefined;
+  return `${updaterTargetBase()}-beta`;
+}
 const updateDownloadProgressCallbacks = new Set<
   (progress: {
     percent: number;
@@ -613,16 +629,21 @@ const tauriAPI: TauriAPI = {
 
     try {
       const { check } = await import('@tauri-apps/plugin-updater');
-      const update = await check();
+      const target = getCheckTarget(currentUpdateChannel, isBeta);
+      const update = target ? await check({ target }) : await check();
       if (update) {
         pendingUpdate = update;
-        updateAvailableCallbacks.forEach((cb) =>
-          cb({
-            version: update.version,
-            releaseDate: '',
-            releaseNotes: typeof update.body === 'string' ? update.body : undefined,
-          })
-        );
+        updateAvailableCallbacks.forEach((cb) => {
+          try {
+            cb({
+              version: update.version,
+              releaseDate: '',
+              releaseNotes: typeof update.body === 'string' ? update.body : undefined,
+            });
+          } catch (err) {
+            console.error('[Updater] onUpdateAvailable callback error:', err);
+          }
+        });
         return {
           success: true,
           hasUpdate: true,
@@ -668,9 +689,21 @@ const tauriAPI: TauriAPI = {
             total: contentLength,
             bytesPerSecond: 0,
           };
-          updateDownloadProgressCallbacks.forEach((cb) => cb(payload));
+          updateDownloadProgressCallbacks.forEach((cb) => {
+            try {
+              cb(payload);
+            } catch (err) {
+              console.error('[Updater] onDownloadProgress callback error:', err);
+            }
+          });
         } else if (event.event === 'Finished') {
-          updateDownloadedCallbacks.forEach((cb) => cb({ version: pendingUpdate?.version ?? '' }));
+          updateDownloadedCallbacks.forEach((cb) => {
+            try {
+              cb({ version: pendingUpdate?.version ?? '' });
+            } catch (err) {
+              console.error('[Updater] onUpdateDownloaded callback error:', err);
+            }
+          });
         }
       });
       return { success: true as const };
@@ -1027,6 +1060,9 @@ const tauriAPI: TauriAPI = {
     wrap(() => invoke('create_symlink', { targetPath, linkPath })),
   shareItems: (filePaths) => wrap(() => invoke('share_items', { filePaths })),
   launchDesktopEntry: (filePath) => wrap(() => invoke('launch_desktop_entry', { filePath })),
+  setUpdateChannel: (channel) => {
+    currentUpdateChannel = channel === 'beta' ? 'beta' : channel === 'stable' ? 'stable' : 'auto';
+  },
 };
 
 (window as unknown as { tauriAPI: TauriAPI }).tauriAPI = tauriAPI;

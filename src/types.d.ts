@@ -583,6 +583,7 @@ export interface TauriAPI {
   getSystemTextScale: () => Promise<number>;
   checkFullDiskAccess: () => Promise<FullDiskAccessResponse>;
   requestFullDiskAccess: () => Promise<IpcResult>;
+  setUpdateChannel: (channel: 'auto' | 'beta' | 'stable') => void;
   checkForUpdates: () => Promise<UpdateCheckResponse>;
   downloadUpdate: () => Promise<IpcResult>;
   installUpdate: () => Promise<IpcResult>;
