@@ -13,7 +13,8 @@
       "updater:default",
       "process:default",
       "notification:default",
-      "shell:default"
+      "shell:default",
+      "autostart:default"
     ]
   }
 }

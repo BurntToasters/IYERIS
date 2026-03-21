@@ -165,7 +165,7 @@ export function createDragDropController(config: DragDropConfig) {
             return fromFilePath;
           }
           try {
-            return window.electronAPI.getPathForFile?.(file) || '';
+            return window.tauriAPI.getPathForFile?.(file) || '';
           } catch {
             return '';
           }
@@ -175,7 +175,7 @@ export function createDragDropController(config: DragDropConfig) {
 
     if (draggedPaths.length === 0) {
       try {
-        const sharedData = await window.electronAPI.getDragData();
+        const sharedData = await window.tauriAPI.getDragData();
         if (sharedData && Array.isArray(sharedData.paths)) {
           draggedPaths = normalizeDraggedPaths(sharedData.paths);
         }
@@ -285,8 +285,8 @@ export function createDragDropController(config: DragDropConfig) {
         | 'overwrite';
       const result =
         operation === 'copy'
-          ? await window.electronAPI.copyItems(sourcePaths, destPath, conflictBehavior)
-          : await window.electronAPI.moveItems(sourcePaths, destPath, conflictBehavior);
+          ? await window.tauriAPI.copyItems(sourcePaths, destPath, conflictBehavior)
+          : await window.tauriAPI.moveItems(sourcePaths, destPath, conflictBehavior);
 
       if (!result.success) {
         showToast(result.error || `Failed to ${operation} items`, 'Error', 'error', [
@@ -302,7 +302,7 @@ export function createDragDropController(config: DragDropConfig) {
         'Success',
         'success'
       );
-      await window.electronAPI.clearDragData();
+      await window.tauriAPI.clearDragData();
 
       if (operation === 'move') {
         await config.updateUndoRedoState();

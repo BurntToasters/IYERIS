@@ -55,7 +55,7 @@ export function createColumnViewController(deps: ColumnViewDeps) {
 
   function cancelColumnOperations(): void {
     for (const operationId of activeColumnOperationIds) {
-      window.electronAPI.cancelDirectoryContents(operationId).catch(ignoreError);
+      window.tauriAPI.cancelDirectoryContents(operationId).catch(ignoreError);
     }
     activeColumnOperationIds.clear();
   }
@@ -191,7 +191,7 @@ export function createColumnViewController(deps: ColumnViewDeps) {
       const drives =
         deps.getCachedDriveInfo().length > 0
           ? deps.getCachedDriveInfo()
-          : await window.electronAPI.getDriveInfo();
+          : await window.tauriAPI.getDriveInfo();
       if (deps.getCachedDriveInfo().length === 0) {
         deps.cacheDriveInfo(drives);
       }
@@ -317,7 +317,7 @@ export function createColumnViewController(deps: ColumnViewDeps) {
         e.dataTransfer.setData('text/plain', JSON.stringify(selectedPaths));
       }
 
-      window.electronAPI.setDragData(selectedPaths);
+      window.tauriAPI.setDragData(selectedPaths);
 
       item.classList.add('dragging');
     });
@@ -327,7 +327,7 @@ export function createColumnViewController(deps: ColumnViewDeps) {
       document.querySelectorAll('.column-item.drag-over').forEach((el) => {
         el.classList.remove('drag-over');
       });
-      window.electronAPI.clearDragData();
+      window.tauriAPI.clearDragData();
       deps.clearSpringLoad();
       deps.hideDropIndicator();
     });
@@ -481,7 +481,7 @@ export function createColumnViewController(deps: ColumnViewDeps) {
       activeColumnOperationIds.add(operationId);
       let result: DirectoryResponse;
       try {
-        result = await window.electronAPI.getDirectoryContents(
+        result = await window.tauriAPI.getDirectoryContents(
           columnPath,
           operationId,
           deps.getCurrentSettings().showHiddenFiles

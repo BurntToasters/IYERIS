@@ -170,7 +170,7 @@ export function createSearchController(deps: SearchDeps) {
 
   function cancelActiveSearch(): void {
     if (!activeSearchOperationId) return;
-    window.electronAPI.cancelSearch(activeSearchOperationId).catch(ignoreError);
+    window.tauriAPI.cancelSearch(activeSearchOperationId).catch(ignoreError);
     activeSearchOperationId = null;
   }
 
@@ -352,7 +352,7 @@ export function createSearchController(deps: SearchDeps) {
 
     if (isGlobalSearch) {
       if (searchInContents) {
-        result = await window.electronAPI.searchFilesWithContentGlobal(
+        result = await window.tauriAPI.searchFilesWithContentGlobal(
           query,
           hasFilters ? currentSearchFilters : undefined,
           operationId
@@ -378,7 +378,7 @@ export function createSearchController(deps: SearchDeps) {
           else showResultsCapBanner(result.results.length);
         }
       } else {
-        result = await window.electronAPI.searchIndex(query, operationId);
+        result = await window.tauriAPI.searchIndex(query, operationId);
         if (currentRequestId !== searchRequestId) return;
 
         if (!result.success) {
@@ -418,14 +418,14 @@ export function createSearchController(deps: SearchDeps) {
       }
     } else {
       if (searchInContents) {
-        result = await window.electronAPI.searchFilesWithContent(
+        result = await window.tauriAPI.searchFilesWithContent(
           deps.getCurrentPath(),
           query,
           hasFilters ? currentSearchFilters : undefined,
           operationId
         );
       } else {
-        result = await window.electronAPI.searchFiles(
+        result = await window.tauriAPI.searchFiles(
           deps.getCurrentPath(),
           query,
           hasFilters ? currentSearchFilters : undefined,

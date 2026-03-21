@@ -981,14 +981,14 @@ describe('initSettingsSectionResets – visibility', () => {
 describe('initSettingsWhyToggles (via initSettingsUi)', () => {
   beforeEach(() => {
     document.body.innerHTML = '';
-    (window as any).electronAPI = {
+    (window as any).tauriAPI = {
       openFile: vi.fn(),
       getSystemAccentColor: vi.fn().mockResolvedValue({ isDarkMode: true }),
     };
   });
 
   afterEach(() => {
-    delete (window as any).electronAPI;
+    delete (window as any).tauriAPI;
   });
 
   it('toggles hidden attribute on target element', () => {
@@ -1036,7 +1036,7 @@ describe('initSettingsWhyToggles (via initSettingsUi)', () => {
     expect(() => btn.click()).not.toThrow();
   });
 
-  it('learn-more button calls electronAPI.openFile with help URL', () => {
+  it('learn-more button calls tauriAPI.openFile with help URL', () => {
     setUpSettingsModal(`
       <button data-learn-more="true">Learn More</button>
     `);
@@ -1047,7 +1047,7 @@ describe('initSettingsWhyToggles (via initSettingsUi)', () => {
     const btn = document.querySelector('[data-learn-more]') as HTMLButtonElement;
     btn.click();
 
-    expect((window as any).electronAPI.openFile).toHaveBeenCalledWith(
+    expect((window as any).tauriAPI.openFile).toHaveBeenCalledWith(
       'https://help.rosie.run/iyeris/en-us/faq'
     );
   });
@@ -1063,21 +1063,21 @@ describe('initSettingsWhyToggles (via initSettingsUi)', () => {
     const btn = document.querySelector('[data-learn-more]') as HTMLButtonElement;
     btn.click();
 
-    expect((window as any).electronAPI.openFile).not.toHaveBeenCalled();
+    expect((window as any).tauriAPI.openFile).not.toHaveBeenCalled();
   });
 });
 
 describe('initThemeSelectionBehavior (via initSettingsUi)', () => {
   beforeEach(() => {
     document.body.innerHTML = '';
-    (window as any).electronAPI = {
+    (window as any).tauriAPI = {
       openFile: vi.fn(),
       getSystemAccentColor: vi.fn().mockResolvedValue({ isDarkMode: true }),
     };
   });
 
   afterEach(() => {
-    delete (window as any).electronAPI;
+    delete (window as any).tauriAPI;
   });
 
   it('unchecks system theme toggle when theme select changes', () => {
@@ -1121,9 +1121,7 @@ describe('initThemeSelectionBehavior (via initSettingsUi)', () => {
   });
 
   it('sets theme to default when system toggle is checked and system is dark mode', async () => {
-    (window as any).electronAPI.getSystemAccentColor = vi
-      .fn()
-      .mockResolvedValue({ isDarkMode: true });
+    (window as any).tauriAPI.getSystemAccentColor = vi.fn().mockResolvedValue({ isDarkMode: true });
 
     setUpSettingsModal(`
       <select id="theme-select">
@@ -1147,7 +1145,7 @@ describe('initThemeSelectionBehavior (via initSettingsUi)', () => {
   });
 
   it('sets theme to light when system toggle is checked and system is light mode', async () => {
-    (window as any).electronAPI.getSystemAccentColor = vi
+    (window as any).tauriAPI.getSystemAccentColor = vi
       .fn()
       .mockResolvedValue({ isDarkMode: false });
 
@@ -1187,12 +1185,12 @@ describe('initThemeSelectionBehavior (via initSettingsUi)', () => {
     systemToggle.checked = false;
     systemToggle.dispatchEvent(new Event('change'));
 
-    expect((window as any).electronAPI.getSystemAccentColor).not.toHaveBeenCalled();
+    expect((window as any).tauriAPI.getSystemAccentColor).not.toHaveBeenCalled();
   });
 
   it('handles getSystemAccentColor failure gracefully', async () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    (window as any).electronAPI.getSystemAccentColor = vi.fn().mockRejectedValue(new Error('fail'));
+    (window as any).tauriAPI.getSystemAccentColor = vi.fn().mockRejectedValue(new Error('fail'));
 
     setUpSettingsModal(`
       <select id="theme-select">
@@ -1229,14 +1227,14 @@ describe('initThemeSelectionBehavior (via initSettingsUi)', () => {
 describe('initSettingsUndoRedo (via initSettingsUi)', () => {
   beforeEach(() => {
     document.body.innerHTML = '';
-    (window as any).electronAPI = {
+    (window as any).tauriAPI = {
       openFile: vi.fn(),
       getSystemAccentColor: vi.fn().mockResolvedValue({ isDarkMode: true }),
     };
   });
 
   afterEach(() => {
-    delete (window as any).electronAPI;
+    delete (window as any).tauriAPI;
   });
 
   it('save button calls deps.saveSettings', () => {
@@ -1576,14 +1574,14 @@ describe('applySettingsSearch – edge cases', () => {
 describe('initSettingsUi – full integration', () => {
   beforeEach(() => {
     document.body.innerHTML = '';
-    (window as any).electronAPI = {
+    (window as any).tauriAPI = {
       openFile: vi.fn(),
       getSystemAccentColor: vi.fn().mockResolvedValue({ isDarkMode: true }),
     };
   });
 
   afterEach(() => {
-    delete (window as any).electronAPI;
+    delete (window as any).tauriAPI;
   });
 
   it('initializes all sub-systems without error', () => {

@@ -314,7 +314,7 @@ export function createThumbnailController(deps: ThumbnailDeps) {
           return;
         }
 
-        const diskCacheResult = await window.electronAPI.getCachedThumbnail(item.path);
+        const diskCacheResult = await window.tauriAPI.getCachedThumbnail(item.path);
         if (diskCacheResult.success) {
           if (!document.body.contains(fileItem)) return;
           cacheThumbnail(item.path, diskCacheResult.dataUrl);
@@ -359,7 +359,7 @@ export function createThumbnailController(deps: ThumbnailDeps) {
           renderThumbnailImage(iconDiv as HTMLElement, thumbnailUrl, item, fileItem);
 
           if (shouldCacheToDisk && thumbnailUrl.startsWith('data:')) {
-            window.electronAPI.saveCachedThumbnail(item.path, thumbnailUrl).catch(ignoreError);
+            window.tauriAPI.saveCachedThumbnail(item.path, thumbnailUrl).catch(ignoreError);
           }
         }
       } catch {
@@ -432,7 +432,7 @@ export function createThumbnailController(deps: ThumbnailDeps) {
     const sizeElement = document.getElementById('thumbnail-cache-size');
     if (!sizeElement) return;
 
-    const result = await window.electronAPI.getThumbnailCacheSize();
+    const result = await window.tauriAPI.getThumbnailCacheSize();
     if (!result.success) {
       sizeElement.textContent = '';
       return;

@@ -163,7 +163,7 @@ export function createQuicklookController(deps: QuicklookDeps) {
       quicklookContent.appendChild(container);
       quicklookInfo.textContent = quickInfo(file);
     } else if (PDF_EXTENSIONS.has(ext)) {
-      const headerResult = await window.electronAPI.readFileContent(file.path, 16);
+      const headerResult = await window.tauriAPI.readFileContent(file.path, 16);
       if (requestId !== quicklookRequestId || currentQuicklookFile?.path !== file.path) return;
       if (
         !headerResult.success ||
@@ -203,7 +203,7 @@ export function createQuicklookController(deps: QuicklookDeps) {
       }
       quicklookInfo.textContent = quickInfo(file, 'PDF \u2022 ');
     } else if (MARKDOWN_EXTENSIONS.has(ext)) {
-      const result = await window.electronAPI.readFileContent(file.path, 100 * 1024);
+      const result = await window.tauriAPI.readFileContent(file.path, 100 * 1024);
       if (requestId !== quicklookRequestId || currentQuicklookFile?.path !== file.path) return;
       if (result.success && typeof result.content === 'string') {
         const md = await loadMarked();
@@ -228,7 +228,7 @@ export function createQuicklookController(deps: QuicklookDeps) {
         quicklookContent.innerHTML = `<div class="preview-error">Failed to load markdown</div>`;
       }
     } else if (TEXT_EXTENSIONS.has(ext)) {
-      const result = await window.electronAPI.readFileContent(file.path, 100 * 1024);
+      const result = await window.tauriAPI.readFileContent(file.path, 100 * 1024);
       if (requestId !== quicklookRequestId || currentQuicklookFile?.path !== file.path) {
         return;
       }

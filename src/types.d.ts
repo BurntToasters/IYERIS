@@ -471,7 +471,7 @@ export type SpecialDirectory = 'desktop' | 'documents' | 'downloads' | 'music' |
 
 export type ConflictBehavior = 'ask' | 'rename' | 'skip' | 'overwrite';
 
-export interface ElectronAPI {
+export interface TauriAPI {
   getDirectoryContents: (
     dirPath: string,
     operationId?: string,
@@ -489,6 +489,8 @@ export interface ElectronAPI {
   maximizeWindow: () => Promise<void>;
   closeWindow: () => Promise<void>;
   openNewWindow: () => Promise<void>;
+  setAutostart: (enabled: boolean) => Promise<void>;
+  getAutostart: () => Promise<boolean>;
   createFolder: (parentPath: string, folderName: string) => Promise<PathResponse>;
   createFile: (parentPath: string, fileName: string) => Promise<PathResponse>;
   deleteItem: (itemPath: string) => Promise<IpcResult>;
@@ -654,6 +656,6 @@ export interface ElectronAPI {
 
 declare global {
   interface Window {
-    electronAPI: ElectronAPI;
+    tauriAPI: TauriAPI;
   }
 }

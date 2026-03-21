@@ -20,6 +20,7 @@ type BootstrapConfig = {
   loadBookmarks: () => void;
   updateUndoRedoState: () => Promise<void>;
   handleUpdateDownloaded: (info: { version: string }) => void;
+  silentCheckAndDownload: () => Promise<void>;
   refresh: () => void;
   applySettings: (settings: Settings) => void;
   getCurrentSettings: () => Settings;
@@ -80,11 +81,11 @@ export function createBootstrapController(config: BootstrapConfig) {
 
   async function init() {
     const [platform, mas, flatpak, msStore, appVersion] = await Promise.all([
-      window.electronAPI.getPlatform(),
-      window.electronAPI.isMas(),
-      window.electronAPI.isFlatpak(),
-      window.electronAPI.isMsStore(),
-      window.electronAPI.getAppVersion(),
+      window.tauriAPI.getPlatform(),
+      window.tauriAPI.isMas(),
+      window.tauriAPI.isFlatpak(),
+      window.tauriAPI.isMsStore(),
+      window.tauriAPI.getAppVersion(),
     ]);
 
     await config.loadSettings();
@@ -105,7 +106,7 @@ export function createBootstrapController(config: BootstrapConfig) {
       titlebarIcon.src = iconSrc;
     }
 
-    window.electronAPI
+    window.tauriAPI
       .getSystemAccentColor()
       .then(({ accentColor, isDarkMode }) => {
         const rgb = hexToRgb(accentColor);
@@ -195,7 +196,7 @@ export function createBootstrapController(config: BootstrapConfig) {
     setTimeout(() => {
       config.updateUndoRedoState();
 
-      window.electronAPI
+      window.tauriAPI
         .getZoomLevel()
         .then((zoomResult) => {
           if (!zoomResult.success) return;
@@ -204,7 +205,7 @@ export function createBootstrapController(config: BootstrapConfig) {
         })
         .catch(ignoreError);
 
-      const cleanupUpdateAvailable = window.electronAPI.onUpdateAvailable((_info) => {
+      const cleanupUpdateAvailable = window.tauriAPI.onUpdateAvailable((_info) => {
         const settingsBtn = document.getElementById('settings-btn');
         if (settingsBtn) {
           if (!settingsBtn.querySelector('.notification-badge')) {
@@ -224,12 +225,16 @@ export function createBootstrapController(config: BootstrapConfig) {
       });
       config.getIpcCleanupFunctions().push(cleanupUpdateAvailable);
 
-      const cleanupUpdateDownloaded = window.electronAPI.onUpdateDownloaded((info) => {
+      const cleanupUpdateDownloaded = window.tauriAPI.onUpdateDownloaded((info) => {
         config.handleUpdateDownloaded(info);
       });
       config.getIpcCleanupFunctions().push(cleanupUpdateDownloaded);
 
-      const cleanupSystemResumed = window.electronAPI.onSystemResumed(() => {
+      if (!isStoreVersion && config.getCurrentSettings().autoCheckUpdates) {
+        setTimeout(() => void config.silentCheckAndDownload(), 10000);
+      }
+
+      const cleanupSystemResumed = window.tauriAPI.onSystemResumed(() => {
         config.clearDiskSpaceCache();
         if (config.getCurrentPath()) {
           config.refresh();
@@ -238,7 +243,7 @@ export function createBootstrapController(config: BootstrapConfig) {
       });
       config.getIpcCleanupFunctions().push(cleanupSystemResumed);
 
-      const cleanupDirectoryChanged = window.electronAPI.onDirectoryChanged(({ dirPath }) => {
+      const cleanupDirectoryChanged = window.tauriAPI.onDirectoryChanged(({ dirPath }) => {
         const currentPath = config.getCurrentPath();
         if (currentPath && currentPath === dirPath) {
           config.refresh();
@@ -246,16 +251,14 @@ export function createBootstrapController(config: BootstrapConfig) {
       });
       config.getIpcCleanupFunctions().push(cleanupDirectoryChanged);
 
-      const cleanupSystemThemeChanged = window.electronAPI.onSystemThemeChanged(
-        ({ isDarkMode }) => {
-          const settings = config.getCurrentSettings();
-          if (settings.useSystemTheme) {
-            const newTheme = isDarkMode ? 'default' : 'light';
-            settings.theme = newTheme;
-            config.applySettings(settings);
-          }
+      const cleanupSystemThemeChanged = window.tauriAPI.onSystemThemeChanged(({ isDarkMode }) => {
+        const settings = config.getCurrentSettings();
+        if (settings.useSystemTheme) {
+          const newTheme = isDarkMode ? 'default' : 'light';
+          settings.theme = newTheme;
+          config.applySettings(settings);
         }
-      );
+      });
       config.getIpcCleanupFunctions().push(cleanupSystemThemeChanged);
     }, 0);
   }

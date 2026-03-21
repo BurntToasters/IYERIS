@@ -76,7 +76,7 @@ function flushPromises() {
 describe('rendererBookmarks extended', () => {
   beforeEach(() => {
     document.body.innerHTML = '<div id="bookmarks-list"></div>';
-    (window as any).electronAPI = {
+    (window as any).tauriAPI = {
       getItemProperties: vi.fn().mockResolvedValue({
         success: true,
         properties: { isDirectory: true },
@@ -814,7 +814,7 @@ describe('rendererBookmarks extended', () => {
     it('adds a folder as bookmark when dropping a directory', async () => {
       const { deps, settings } = createDeps(['/a']);
       deps.getDraggedPaths.mockResolvedValue(['/new-folder']);
-      (window as any).electronAPI.getItemProperties.mockResolvedValue({
+      (window as any).tauriAPI.getItemProperties.mockResolvedValue({
         success: true,
         properties: { isDirectory: true },
       });
@@ -826,7 +826,7 @@ describe('rendererBookmarks extended', () => {
       await flushPromises();
 
       expect(deps.consumeEvent).toHaveBeenCalled();
-      expect((window as any).electronAPI.getItemProperties).toHaveBeenCalledWith('/new-folder');
+      expect((window as any).tauriAPI.getItemProperties).toHaveBeenCalledWith('/new-folder');
       expect(deps.saveSettingsWithTimestamp).toHaveBeenCalled();
       expect(settings.bookmarks).toContain('/new-folder');
     });
@@ -834,7 +834,7 @@ describe('rendererBookmarks extended', () => {
     it('shows info toast when dropping a non-directory', async () => {
       const { deps } = createDeps(['/a']);
       deps.getDraggedPaths.mockResolvedValue(['/some-file.txt']);
-      (window as any).electronAPI.getItemProperties.mockResolvedValue({
+      (window as any).tauriAPI.getItemProperties.mockResolvedValue({
         success: true,
         properties: { isDirectory: false },
       });
@@ -855,7 +855,7 @@ describe('rendererBookmarks extended', () => {
     it('shows error toast when getItemProperties returns success: false', async () => {
       const { deps } = createDeps(['/a']);
       deps.getDraggedPaths.mockResolvedValue(['/some-path']);
-      (window as any).electronAPI.getItemProperties.mockResolvedValue({
+      (window as any).tauriAPI.getItemProperties.mockResolvedValue({
         success: false,
       });
       const controller = createBookmarksController(deps as any);
@@ -871,7 +871,7 @@ describe('rendererBookmarks extended', () => {
     it('shows error toast when getItemProperties throws', async () => {
       const { deps } = createDeps(['/a']);
       deps.getDraggedPaths.mockResolvedValue(['/some-path']);
-      (window as any).electronAPI.getItemProperties.mockRejectedValue(new Error('fail'));
+      (window as any).tauriAPI.getItemProperties.mockRejectedValue(new Error('fail'));
       const controller = createBookmarksController(deps as any);
       controller.loadBookmarks();
 
@@ -892,7 +892,7 @@ describe('rendererBookmarks extended', () => {
       deps.bookmarksList.dispatchEvent(evt);
       await flushPromises();
 
-      expect((window as any).electronAPI.getItemProperties).not.toHaveBeenCalled();
+      expect((window as any).tauriAPI.getItemProperties).not.toHaveBeenCalled();
     });
   });
 

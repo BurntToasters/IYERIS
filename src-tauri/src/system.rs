@@ -430,6 +430,43 @@ pub async fn open_file_with_app(file_path: String, app_id: String) -> Result<(),
     }
 }
 
+pub fn should_minimize_to_tray(app: &tauri::AppHandle) -> bool {
+    let dir = match app.path().app_data_dir() {
+        Ok(d) => d,
+        Err(_) => return false,
+    };
+    let path = dir.join("settings.json");
+    let content = match fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(_) => return false,
+    };
+    let json: serde_json::Value = match serde_json::from_str(&content) {
+        Ok(v) => v,
+        Err(_) => return false,
+    };
+    json.get("minimizeToTray")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+}
+
+#[tauri::command]
+pub fn set_autostart(app: tauri::AppHandle, enabled: bool) -> Result<(), String> {
+    use tauri_plugin_autostart::ManagerExt;
+    let manager = app.autolaunch();
+    if enabled {
+        manager.enable().map_err(|e| e.to_string())
+    } else {
+        manager.disable().map_err(|e| e.to_string())
+    }
+}
+
+#[tauri::command]
+pub fn get_autostart(app: tauri::AppHandle) -> Result<bool, String> {
+    use tauri_plugin_autostart::ManagerExt;
+    let manager = app.autolaunch();
+    manager.is_enabled().map_err(|e| e.to_string())
+}
+
 pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
     use tauri::menu::{MenuBuilder, MenuItemBuilder};

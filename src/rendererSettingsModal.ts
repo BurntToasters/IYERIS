@@ -357,7 +357,7 @@ export function createSettingsModalController(deps: SettingsModalDeps) {
     await deps.updateIndexStatus();
     void deps.updateThumbnailCacheSize();
 
-    const path = await window.electronAPI.getSettingsPath();
+    const path = await window.tauriAPI.getSettingsPath();
     if (settingsPath) {
       settingsPath.textContent = path;
     }

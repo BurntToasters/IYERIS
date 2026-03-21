@@ -141,7 +141,7 @@ describe('createUpdateActionsController', () => {
     });
 
     (globalThis as { window?: unknown }).window = {
-      electronAPI: {
+      tauriAPI: {
         checkForUpdates,
         downloadUpdate,
         installUpdate,

@@ -2,21 +2,17 @@
 
 ## Architecture Overview
 
-IYERIS is an Electron-based cross-platform file explorer. The codebase is split across three process boundaries with strict separation enforced by TypeScript compilation and Electron's context isolation.
-
-IYERIS aims to not use `any` types in all TS files that get compiled to be packaged into the `electron-builder` packages.
-
-- `*.test.ts` files have an exception to this guideline.
+IYERIS is a Tauri v2 cross-platform file explorer. The codebase is split between a Rust backend (`src-tauri/`) and a TypeScript frontend (`src/`), communicating via Tauri's `invoke` IPC mechanism.
 
 ### Directory Structure
 
 ```
 src/
-  main/             Main process modules (Node.js context)
   renderer.ts       Renderer entry point + composition root
   renderer*.ts      Renderer controller modules (browser context)
   rendererElements.ts  Cached DOM element references
-  shared.ts         Process-agnostic utilities (used by both main & renderer)
+  tauri-api.ts      Tauri API bridge (wraps invoke calls into typed TauriAPI)
+  shared.ts         Process-agnostic utilities
   settings.ts       Settings defaults & sanitization (shared)
   shortcuts.ts      Shortcut definitions (shared)
   homeSettings.ts   Home screen settings sanitization (shared)
@@ -25,22 +21,27 @@ src/
   home.ts           Home view controller (renderer-only)
   tour.ts           Onboarding tour controller (renderer-only)
   folderDir.ts      Folder tree manager (renderer-only)
-  preload.ts        Preload bridge (context bridge between main & renderer)
   index.html        Application HTML shell
   css/              Stylesheets (one file per component)
-  workers/          Web Worker modules for background tasks
   tests/            Test files mirroring source structure
+
+src-tauri/
+  src/main.rs       Tauri app builder, plugin init, invoke handler registration
+  src/*.rs          Backend modules (file ops, archive, search, indexer, etc.)
+  Cargo.toml        Rust dependencies
+  tauri.conf.json   Tauri application configuration
+  capabilities/     Tauri v2 security permissions
+  entitlements.plist macOS sandbox entitlements
+  icons/            Application icons for all platforms
 ```
 
 ### Process Separation
 
-**Main process** (`src/main/`): Node.js context with full filesystem/OS access. Contains IPC handlers, settings persistence, file operations, archive management, indexing, and window management.
+**Rust backend** (`src-tauri/src/`): Full filesystem/OS access. Handles file operations, archive management, indexing, search, settings persistence, system tray, and window management via Tauri commands.
 
-**Renderer process** (`src/renderer*.ts`): Browser context with no direct Node.js access. All system operations go through `window.electronAPI` (the preload bridge). Contains UI controllers, DOM manipulation, and user interaction logic.
+**Frontend** (`src/renderer*.ts`): Browser context with no direct filesystem access. All system operations go through `window.tauriAPI` (the typed bridge in `tauri-api.ts`). Contains UI controllers, DOM manipulation, and user interaction logic.
 
-**Preload** (`src/main/preload.ts`): Bridges main and renderer via `contextBridge.exposeInMainWorld`. Exposes a fully-typed `electronAPI` object defined in `types.d.ts`.
-
-**Workers** (`src/workers/`): Background threads for CPU-intensive tasks (directory listing, file indexing, search, checksums). Communicate with the main process via `worker_threads`.
+**Tauri API bridge** (`src/tauri-api.ts`): Wraps `@tauri-apps/api/core.invoke()` calls into a fully-typed `TauriAPI` object defined in `types.d.ts`.
 
 ### Key Patterns
 
@@ -64,36 +65,24 @@ export function createNavigationController(deps: NavigationDeps) {
 
 This makes every module independently testable — tests create mock `deps` objects without any module-level mocking.
 
-#### Main Process Handler Registration
+#### Rust Command Registration
 
-Main process modules use `setup*Handlers()` functions to register IPC handlers:
+Backend modules expose Tauri commands via `#[tauri::command]`:
 
-```typescript
-export function setupFileOperationHandlers() {
-  ipcMain.handle('read-directory', async (event, dirPath) => {
-    /* ... */
-  });
+```rust
+#[tauri::command]
+async fn get_directory_contents(dir_path: String) -> Result<Vec<FileEntry>, String> {
+    // ...
 }
 ```
 
-#### Shared Modules
-
-Files at `src/` root (outside `main/`) that are imported by both processes:
-
-- `shared.ts` — `escapeHtml()`, `getErrorMessage()`, `ignoreError()`
-- `types.d.ts` — All TypeScript interfaces (`Settings`, `FileItem`, `ElectronAPI`, etc.)
-- `settings.ts` — `createDefaultSettings()`, `sanitizeSettings()`
-- `shortcuts.ts` — Shortcut definitions and defaults
-- `homeSettings.ts` — Home screen settings sanitization
+Commands are registered in `main.rs` via `tauri::Builder::invoke_handler`.
 
 ### Build System
 
-Two separate TypeScript compilations:
+Single TypeScript compilation via Vite (frontend only). Rust backend is compiled by `tauri build`.
 
-- **`tsconfig.main.json`** — CommonJS output to `dist/main/` (main process + preload)
-- **`tsconfig.renderer.json`** — ES2020 module output to `dist/renderer/` (renderer entry point pulls in all renderer modules transitively)
-
-Build pipeline: `npm run build` = clean → compile main → compile renderer → copy vendor assets
+Build pipeline: `npm run build` = copy vendor assets → Vite build to `dist/`
 
 ### Testing
 
@@ -104,10 +93,10 @@ Build pipeline: `npm run build` = clean → compile main → compile renderer �
 ### Quality Checks
 
 ```bash
-npm run test:all    # Build + lint + format + vitest + typecheck
+npm run test:all    # Lint + format + vitest + typecheck
 npm run lint        # ESLint
 npm run format      # Prettier
-npm run typecheck   # tsc --noEmit (both configs)
+npm run typecheck   # tsc --noEmit
 npm test            # Vitest only
 ```
 

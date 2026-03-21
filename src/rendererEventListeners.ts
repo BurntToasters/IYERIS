@@ -161,13 +161,13 @@ export function createEventListenersController(config: EventListenersConfig) {
   }
 
   function initSyncEventListeners(): void {
-    const cleanupClipboard = window.electronAPI.onClipboardChanged((newClipboard) => {
+    const cleanupClipboard = window.tauriAPI.onClipboardChanged((newClipboard) => {
       config.clipboardOnClipboardChanged(newClipboard);
       config.clipboardUpdateCutVisuals();
     });
     config.getIpcCleanupFunctions().push(cleanupClipboard);
 
-    const cleanupSettings = window.electronAPI.onSettingsChanged((newSettings) => {
+    const cleanupSettings = window.tauriAPI.onSettingsChanged((newSettings) => {
       const currentTimestamp =
         typeof config.getCurrentSettings()._timestamp === 'number'
           ? config.getCurrentSettings()._timestamp
@@ -216,9 +216,9 @@ export function createEventListenersController(config: EventListenersConfig) {
 
   function initWindowControlListeners(): void {
     const windowControls: Array<[string, () => void]> = [
-      ['minimize-btn', () => window.electronAPI.minimizeWindow()],
-      ['maximize-btn', () => window.electronAPI.maximizeWindow()],
-      ['close-btn', () => window.electronAPI.closeWindow()],
+      ['minimize-btn', () => window.tauriAPI.minimizeWindow()],
+      ['maximize-btn', () => window.tauriAPI.maximizeWindow()],
+      ['close-btn', () => window.tauriAPI.closeWindow()],
     ];
     windowControls.forEach(([id, action]) => {
       document.getElementById(id)?.addEventListener('click', action);

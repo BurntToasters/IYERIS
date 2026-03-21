@@ -73,7 +73,7 @@ function setupNavDOM() {
     <div id="directory-history-dropdown" style="display:none"></div>
   `;
 
-  Object.defineProperty(window, 'electronAPI', {
+  Object.defineProperty(window, 'tauriAPI', {
     value: {
       getDirectoryContents: vi.fn().mockResolvedValue({
         success: true,
@@ -201,8 +201,8 @@ describe('NavigationController — extended', () => {
 
     it('shows "No subfolders" when directory has no subfolders', async () => {
       (
-        window as unknown as { electronAPI: { getDirectoryContents: ReturnType<typeof vi.fn> } }
-      ).electronAPI.getDirectoryContents.mockResolvedValue({
+        window as unknown as { tauriAPI: { getDirectoryContents: ReturnType<typeof vi.fn> } }
+      ).tauriAPI.getDirectoryContents.mockResolvedValue({
         success: true,
         contents: [
           {
@@ -224,8 +224,8 @@ describe('NavigationController — extended', () => {
 
     it('shows "Failed to load" on API failure', async () => {
       (
-        window as unknown as { electronAPI: { getDirectoryContents: ReturnType<typeof vi.fn> } }
-      ).electronAPI.getDirectoryContents.mockResolvedValue({ success: false });
+        window as unknown as { tauriAPI: { getDirectoryContents: ReturnType<typeof vi.fn> } }
+      ).tauriAPI.getDirectoryContents.mockResolvedValue({ success: false });
       const deps = createDeps();
       const ctrl = createNavigationController(deps as any);
       const caret = document.createElement('button');

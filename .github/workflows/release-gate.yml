@@ -1,118 +1,307 @@
-name: Release Gate
+name: Release
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '0 8 * * 1'
 
 permissions:
   contents: read
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 env:
-  NODE_VERSION: '24'
-  CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-  HUSKY: '0'
+  RUST_VERSION: 'stable'
 
 jobs:
-  windows-release-gate:
-    name: Windows Targets (NSIS/MSI/MS Store)
-    runs-on: windows-latest
+  verify:
+    runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v5
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
+      - name: Guard release branch
+        run: |
+          if [ "${GITHUB_REF}" != "refs/heads/main" ]; then
+            echo "Release workflow must be run from refs/heads/main (current: ${GITHUB_REF})." >&2
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v5
         with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
+          node-version: 22
+          cache: npm
 
-      - name: Install dependencies
-        run: npm ci
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
 
-      - name: Dependency preflight
-        run: npm run deps:preflight
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            rpm \
+            libgtk-3-dev \
+            libdbus-1-dev
+
+      - run: npm ci
+      - run: npm run test:all
+      - run: npm run build
+
+  build:
+    needs: verify
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            bundles: nsis,msi
+            label: win-x64
+            experimental: false
+          - os: windows-latest
+            target: aarch64-pc-windows-msvc
+            bundles: nsis,msi
+            label: win-arm64
+            experimental: false
+          - os: macos-latest
+            target: universal-apple-darwin
+            bundles: dmg,app
+            label: mac-universal
+            experimental: false
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            bundles: appimage,deb,rpm
+            label: linux-x64
+            experimental: false
+          - os: ubuntu-22.04
+            target: aarch64-unknown-linux-gnu
+            bundles: appimage,deb,rpm
+            label: linux-arm64
+            experimental: true
+
+    runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.experimental }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+          targets: ${{ matrix.target }}
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            rpm \
+            libgtk-3-dev \
+            libdbus-1-dev
+
+      - name: Install ARM64 cross-compilation toolchain
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo apt-get install -y \
+            gcc-aarch64-linux-gnu \
+            g++-aarch64-linux-gnu
+          echo "PKG_CONFIG_SYSROOT_DIR=/usr/aarch64-linux-gnu" >> $GITHUB_ENV
+          echo "CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+          echo "CXX_aarch64_unknown_linux_gnu=aarch64-linux-gnu-g++" >> $GITHUB_ENV
+
+      - run: npm ci
+      - run: npm run release:prepare
+      - run: npm run sync-version
+      - run: npm run licenses
 
       - name: Build
-        run: npm run build
+        run: npx tauri build --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
-      - name: Ensure license manifest exists
-        run: node -e "const fs=require('fs');if(!fs.existsSync('licenses.json'))fs.writeFileSync('licenses.json','[]\\n');"
+      - name: Verify Linux x64 bundle outputs
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        run: |
+          check_bundle() {
+            label="$1"
+            pattern="$2"
+            count="$(find src-tauri/target -type f -name "$pattern" | wc -l | tr -d ' ')"
+            echo "$label: $count"
+            if [ "$count" -eq 0 ]; then
+              echo "Missing required Linux x64 artifact: $label ($pattern)" >&2
+              exit 1
+            fi
+          }
+          check_bundle "AppImage" "*.AppImage"
+          check_bundle "AppImage signature" "*.AppImage.sig"
+          check_bundle "Deb package" "*.deb"
+          check_bundle "Deb signature" "*.deb.sig"
+          check_bundle "RPM package" "*.rpm"
+          check_bundle "RPM signature" "*.rpm.sig"
 
-      - name: Package NSIS (x64)
-        run: npx electron-builder --win nsis --x64 --publish never
+      - name: Create macOS zip
+        if: runner.os == 'macOS'
+        run: node scripts/zip-macos.js
 
-      - name: Package MSI (x64)
-        run: npx electron-builder --win msi --x64 --publish never
-
-      - name: Package Microsoft Store (x64)
-        run: npx electron-builder --win --x64 -c electron-builder.msstore.yml --publish never
-
-  macos-release-gate:
-    name: macOS Targets (DMG/ZIP)
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v5
         with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
+          name: artifacts-${{ matrix.label }}
+          path: |
+            src-tauri/target/**/bundle/**/*.exe
+            src-tauri/target/**/bundle/**/*.exe.sig
+            src-tauri/target/**/bundle/**/*.msi
+            src-tauri/target/**/bundle/**/*.msi.sig
+            src-tauri/target/**/bundle/**/*.nsis.zip
+            src-tauri/target/**/bundle/**/*.nsis.zip.sig
+            src-tauri/target/**/bundle/**/*.dmg
+            src-tauri/target/**/bundle/**/*.dmg.sig
+            src-tauri/target/**/bundle/**/*.zip
+            src-tauri/target/**/bundle/**/*.zip.sig
+            src-tauri/target/**/bundle/**/*.app.tar.gz
+            src-tauri/target/**/bundle/**/*.app.tar.gz.sig
+            src-tauri/target/**/bundle/**/*.AppImage
+            src-tauri/target/**/bundle/**/*.AppImage.sig
+            src-tauri/target/**/bundle/**/*.AppImage.tar.gz
+            src-tauri/target/**/bundle/**/*.AppImage.tar.gz.sig
+            src-tauri/target/**/bundle/**/*.deb
+            src-tauri/target/**/bundle/**/*.deb.sig
+            src-tauri/target/**/bundle/**/*.rpm
+            src-tauri/target/**/bundle/**/*.rpm.sig
 
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Dependency preflight
-        run: npm run deps:preflight
-
-      - name: Build
-        run: npm run build
-
-      - name: Ensure license manifest exists
-        run: node -e "const fs=require('fs');if(!fs.existsSync('licenses.json'))fs.writeFileSync('licenses.json','[]\\n');"
-
-      - name: Package DMG + ZIP (universal)
-        run: npx electron-builder --mac dmg zip --universal --publish never
-
-  linux-release-gate:
-    name: Linux Targets (AppImage/DEB/RPM/Flatpak)
-    runs-on: ubuntu-latest
+  flatpak:
+    needs: verify
+    runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v5
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
+      - uses: actions/setup-node@v5
         with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
+          node-version: 22
+          cache: npm
 
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Dependency preflight
-        run: npm run deps:preflight
-
-      - name: Build
-        run: npm run build
-
-      - name: Ensure license manifest exists
-        run: node -e "const fs=require('fs');if(!fs.existsSync('licenses.json'))fs.writeFileSync('licenses.json','[]\\n');"
-
-      - name: Package AppImage + DEB + RPM (x64)
-        run: npx electron-builder --linux AppImage deb rpm --x64 --publish never
-
-      - name: Install Flatpak toolchain
+      - name: Install Flatpak tooling
         run: |
           sudo apt-get update
           sudo apt-get install -y flatpak flatpak-builder
+          sudo flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          sudo flatpak install -y flathub \
+            org.gnome.Platform//49 \
+            org.gnome.Sdk//49 \
+            org.freedesktop.Sdk.Extension.node22//25.08 \
+            org.freedesktop.Sdk.Extension.rust-stable//25.08
 
-      - name: Install Flatpak runtimes
+      - run: npm ci
+      - run: npm run release:prepare
+      - run: npm run sync-version
+      - run: npm run flatpak:clean
+      - run: npm run flatpak:bundle
+
+      - name: Upload Flatpak artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: artifacts-flatpak-x64
+          path: dist/*.flatpak
+
+  sign-and-publish:
+    needs: [build, flatpak]
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    env:
+      HAS_GPG_KEY: ${{ secrets.GPG_PRIVATE_KEY != '' }}
+      GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}
+      GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v5
+        with:
+          path: release-artifacts
+
+      - name: Verify required artifact bundles
         run: |
-          flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
-          flatpak install -y flathub org.freedesktop.Platform//24.08
-          flatpak install -y flathub org.freedesktop.Sdk//24.08
-          flatpak install -y flathub org.electronjs.Electron2.BaseApp//24.08
-          flatpak install -y flathub org.freedesktop.Sdk.Extension.node22//24.08
+          required=(
+            artifacts-win-x64
+            artifacts-win-arm64
+            artifacts-mac-universal
+            artifacts-linux-x64
+            artifacts-flatpak-x64
+          )
+          for name in "${required[@]}"; do
+            if [ ! -d "release-artifacts/$name" ]; then
+              echo "Missing required artifact bundle: $name" >&2
+              exit 1
+            fi
+          done
 
-      - name: Package Flatpak (x64)
-        run: npm run flatpak:bundle:x64
+      - name: Flatten artifacts into release/
+        run: |
+          mkdir -p release
+          while IFS= read -r file; do
+            base="$(basename "$file")"
+            if [ -e "release/$base" ]; then
+              echo "Duplicate artifact basename detected: $base" >&2
+              exit 1
+            fi
+            cp "$file" "release/$base"
+          done < <(find release-artifacts -type f \( \
+            -name '*.exe' -o -name '*.msi' -o -name '*.dmg' -o -name '*.deb' \
+            -o -name '*.rpm' -o -name '*.flatpak' -o -name '*.zip' \
+            -o -name '*.AppImage' -o -name '*.tar.gz' -o -name '*.sig' \
+          \) | sort)
+          ls -lh release/
+
+      - name: Validate signing configuration
+        run: |
+          if [ "${HAS_GPG_KEY}" != "true" ]; then
+            echo "Missing GPG_PRIVATE_KEY secret." >&2
+            exit 1
+          fi
+          if [ -z "${GPG_KEY_ID}" ]; then
+            echo "Missing GPG_KEY_ID secret." >&2
+            exit 1
+          fi
+          if [ -z "${GPG_PASSPHRASE}" ]; then
+            echo "Missing GPG_PASSPHRASE secret." >&2
+            exit 1
+          fi
+
+      - name: Import GPG key
+        run: |
+          echo "$GPG_PRIVATE_KEY" | gpg --batch --import
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+
+      - name: Sign and upload
+        run: node scripts/gpg-sign.js
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+          REQUIRED_LINUX_TARGETS: x86_64

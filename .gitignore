@@ -45,6 +45,7 @@ cargo_error.txt
 # Build outputs
 dist/
 release/
+msstore/
 flatpak-build/
 flatpak-build-*/
 flatpak-repo/

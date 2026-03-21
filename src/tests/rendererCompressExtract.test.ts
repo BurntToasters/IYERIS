@@ -74,7 +74,7 @@ function createDeps() {
   };
 }
 
-function setupElectronAPI(overrides: Record<string, unknown> = {}) {
+function setupTauriAPI(overrides: Record<string, unknown> = {}) {
   const api = {
     compressFiles: vi.fn().mockResolvedValue({ success: true }),
     extractArchive: vi.fn().mockResolvedValue({ success: true }),
@@ -83,7 +83,7 @@ function setupElectronAPI(overrides: Record<string, unknown> = {}) {
     openFile: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
-  (window as unknown as Record<string, unknown>).electronAPI = api;
+  (window as unknown as Record<string, unknown>).tauriAPI = api;
   return api;
 }
 
@@ -173,11 +173,11 @@ describe('isArchivePath', () => {
 
 describe('createCompressExtractController', () => {
   let deps: ReturnType<typeof createDeps>;
-  let api: ReturnType<typeof setupElectronAPI>;
+  let api: ReturnType<typeof setupTauriAPI>;
 
   beforeEach(() => {
     deps = createDeps();
-    api = setupElectronAPI();
+    api = setupTauriAPI();
     document.body.innerHTML = '';
   });
 

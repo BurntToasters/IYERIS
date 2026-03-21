@@ -86,7 +86,7 @@ function setupNavDOM() {
     <div id="directory-history-dropdown" style="display:none"></div>
   `;
 
-  Object.defineProperty(window, 'electronAPI', {
+  Object.defineProperty(window, 'tauriAPI', {
     value: {
       getDirectoryContents: vi.fn().mockResolvedValue({
         success: true,

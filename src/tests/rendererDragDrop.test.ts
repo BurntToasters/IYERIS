@@ -73,7 +73,7 @@ describe('createDragDropController', () => {
       </div>
     `;
 
-    Object.defineProperty(window, 'electronAPI', {
+    Object.defineProperty(window, 'tauriAPI', {
       value: {
         getDragData: vi.fn().mockResolvedValue({ paths: ['/fallback.txt'] }),
         copyItems: vi.fn().mockResolvedValue({ success: true }),
@@ -112,14 +112,13 @@ describe('createDragDropController', () => {
   it('handles move drop success path and refreshes state', async () => {
     const { config, showToast } = createConfig();
     const controller = createDragDropController(config);
-    const electronAPI = (
-      window as unknown as { electronAPI: Record<string, ReturnType<typeof vi.fn>> }
-    ).electronAPI;
+    const tauriAPI = (window as unknown as { tauriAPI: Record<string, ReturnType<typeof vi.fn>> })
+      .tauriAPI;
 
     await controller.handleDrop(['/source.txt'], '/dest', 'move');
 
-    expect(electronAPI.moveItems).toHaveBeenCalledWith(['/source.txt'], '/dest', 'ask');
-    expect(electronAPI.clearDragData).toHaveBeenCalledTimes(1);
+    expect(tauriAPI.moveItems).toHaveBeenCalledWith(['/source.txt'], '/dest', 'ask');
+    expect(tauriAPI.clearDragData).toHaveBeenCalledTimes(1);
     expect(config.updateUndoRedoState).toHaveBeenCalledTimes(1);
     expect(config.navigateTo).toHaveBeenCalledWith('/dest');
     expect(config.clearSelection).toHaveBeenCalledTimes(1);
@@ -158,10 +157,9 @@ describe('createDragDropController', () => {
     await Promise.resolve();
 
     expect(showToast).toHaveBeenCalledWith('Items are already in this directory', 'Info', 'info');
-    const electronAPI = (
-      window as unknown as { electronAPI: Record<string, ReturnType<typeof vi.fn>> }
-    ).electronAPI;
-    expect(electronAPI.copyItems).not.toHaveBeenCalled();
-    expect(electronAPI.moveItems).not.toHaveBeenCalled();
+    const tauriAPI = (window as unknown as { tauriAPI: Record<string, ReturnType<typeof vi.fn>> })
+      .tauriAPI;
+    expect(tauriAPI.copyItems).not.toHaveBeenCalled();
+    expect(tauriAPI.moveItems).not.toHaveBeenCalled();
   });
 });

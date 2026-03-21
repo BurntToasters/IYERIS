@@ -78,7 +78,7 @@ function setupSearchDOM() {
     <div id="file-grid"></div>
   `;
 
-  Object.defineProperty(window, 'electronAPI', {
+  Object.defineProperty(window, 'tauriAPI', {
     value: {
       cancelSearch: vi.fn().mockResolvedValue(undefined),
       searchFiles: vi.fn().mockResolvedValue({ success: true, results: [] }),

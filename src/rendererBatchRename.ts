@@ -225,7 +225,7 @@ export function createBatchRenameController(deps: BatchRenameDeps) {
     }
 
     try {
-      const result = await window.electronAPI.batchRename(
+      const result = await window.tauriAPI.batchRename(
         toRename.map((i) => ({ oldPath: i.oldPath, newName: i.newName }))
       );
 

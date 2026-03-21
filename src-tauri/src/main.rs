@@ -87,10 +87,15 @@ fn main() {
     let builder = builder
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
                 let _ = window.set_focus();
             }
         }))
-        .plugin(tauri_plugin_updater::Builder::new().build());
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ));
 
     if let Err(err) = builder
         .manage(AppState {
@@ -106,6 +111,14 @@ fn main() {
             system::setup_tray(app)?;
             indexer::initialize_index(app.handle());
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if window.label() == "main" && system::should_minimize_to_tray(window.app_handle()) {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
         })
         .invoke_handler(tauri::generate_handler![
             // Directory operations
@@ -185,6 +198,8 @@ fn main() {
             system::get_log_file_content,
             system::share_items,
             system::select_folder,
+            system::set_autostart,
+            system::get_autostart,
             system::check_full_disk_access,
             system::request_full_disk_access,
             system::get_open_with_apps,

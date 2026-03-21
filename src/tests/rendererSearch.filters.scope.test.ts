@@ -102,7 +102,7 @@ function setupSearchDOM() {
     <div id="file-grid"></div>
   `;
 
-  Object.defineProperty(window, 'electronAPI', {
+  Object.defineProperty(window, 'tauriAPI', {
     value: {
       cancelSearch: mockCancelSearch,
       searchFiles: mockSearchFiles,
@@ -577,7 +577,7 @@ describe('rendererSearch — extended2', () => {
   });
 
   describe('cancelActiveSearch — with active operation', () => {
-    it('calls electronAPI.cancelSearch when there is an active search', async () => {
+    it('calls tauriAPI.cancelSearch when there is an active search', async () => {
       mockSearchFiles.mockImplementationOnce(
         () =>
           new Promise((resolve) => setTimeout(() => resolve({ success: true, results: [] }), 1000))

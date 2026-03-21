@@ -72,8 +72,8 @@ export function createInlineRenameController(deps: InlineRenameDeps) {
 
     const result =
       type === 'file'
-        ? await window.electronAPI.createFile(currentPath, finalName)
-        : await window.electronAPI.createFolder(currentPath, finalName);
+        ? await window.tauriAPI.createFile(currentPath, finalName)
+        : await window.tauriAPI.createFolder(currentPath, finalName);
 
     if (!result.success) {
       await deps.showAlert(
@@ -198,7 +198,7 @@ export function createInlineRenameController(deps: InlineRenameDeps) {
           input.focus();
           return;
         }
-        const result = await window.electronAPI.renameItem(itemPath, newName);
+        const result = await window.tauriAPI.renameItem(itemPath, newName);
         if (!result.success) {
           renameHandled = false;
           showInlineError(result.error || 'Rename failed');

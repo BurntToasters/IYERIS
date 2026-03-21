@@ -70,7 +70,7 @@ async function saveSettingsWithTimestamp(settings: Settings) {
   if (isResettingSettings) {
     return { success: true as const };
   }
-  return window.electronAPI.saveSettings(settings);
+  return window.tauriAPI.saveSettings(settings);
 }
 
 let settingsSaveTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -452,6 +452,7 @@ const {
   cleanupPropertiesDialog,
   restartAsAdmin,
   checkForUpdates,
+  silentCheckAndDownload,
   handleUpdateDownloaded,
   generateOperationId,
   addOperation,
@@ -463,8 +464,8 @@ const showToast = toastManager.showToast;
 
 async function loadSettings(): Promise<void> {
   const [result, sharedClipboard] = await Promise.all([
-    window.electronAPI.getSettings(),
-    window.electronAPI.getClipboard(),
+    window.tauriAPI.getSettings(),
+    window.tauriAPI.getClipboard(),
   ]);
 
   if (result.success) {
@@ -498,7 +499,7 @@ async function loadSettings(): Promise<void> {
 
 async function applySystemFontSize(): Promise<void> {
   try {
-    const scaleFactor = await window.electronAPI.getSystemTextScale();
+    const scaleFactor = await window.tauriAPI.getSystemTextScale();
     const fontScale = 1 + (scaleFactor - 1) * 0.5;
     document.documentElement.style.setProperty('--system-font-scale', fontScale.toString());
     document.body.classList.add('use-system-font-size');
@@ -575,7 +576,7 @@ function openNewWindow() {
         console.error('[Tabs] Failed to persist tab state before opening new window:', error);
       }
     }
-    await window.electronAPI.openNewWindow();
+    await window.tauriAPI.openNewWindow();
   })().catch((error) => {
     console.error('[Window] Failed to open new window:', error);
   });
@@ -625,7 +626,7 @@ async function saveSettings() {
   // System theme override
   if (currentSettings.useSystemTheme) {
     try {
-      const { isDarkMode } = await window.electronAPI.getSystemAccentColor();
+      const { isDarkMode } = await window.tauriAPI.getSystemAccentColor();
       const systemTheme = isDarkMode ? 'default' : 'light';
       currentSettings.theme = systemTheme;
     } catch (error) {
@@ -659,6 +660,14 @@ async function saveSettings() {
     showToast('Failed to save settings: ' + (result.error || 'Operation failed'), 'Error', 'error');
     return;
   }
+  try {
+    const autostartEnabled = await window.tauriAPI.getAutostart();
+    if (currentSettings.startOnLogin !== autostartEnabled) {
+      await window.tauriAPI.setAutostart(currentSettings.startOnLogin);
+    }
+  } catch {
+    /* autostart may not be available on all platforms */
+  }
   if (previousTabsEnabled !== currentSettings.enableTabs) {
     initializeTabs();
   }
@@ -685,8 +694,8 @@ async function resetSettings() {
       settingsSaveTimeout = null;
     }
     const [settingsResult, homeResult] = await Promise.all([
-      window.electronAPI.resetSettings(),
-      window.electronAPI.resetHomeSettings(),
+      window.tauriAPI.resetSettings(),
+      window.tauriAPI.resetHomeSettings(),
     ]);
     if (!settingsResult.success || !homeResult.success) {
       isResettingSettings = false;
@@ -700,7 +709,7 @@ async function resetSettings() {
       showToast(`Failed to reset settings: ${errors.join(' | ')}`, 'Error', 'error');
       return;
     }
-    await window.electronAPI.relaunchApp();
+    await window.tauriAPI.relaunchApp();
   }
 }
 
@@ -822,7 +831,7 @@ async function handleQuickAction(action?: string | null): Promise<void> {
   }
 
   if (action === 'userhome') {
-    const homePath = await window.electronAPI.getHomeDirectory();
+    const homePath = await window.tauriAPI.getHomeDirectory();
     if (homePath) {
       navigateTo(homePath);
     } else {
@@ -833,7 +842,7 @@ async function handleQuickAction(action?: string | null): Promise<void> {
 
   const specialAction = SPECIAL_DIRECTORY_ACTIONS[action];
   if (specialAction) {
-    const result = await window.electronAPI.getSpecialDirectory(specialAction.key);
+    const result = await window.tauriAPI.getSpecialDirectory(specialAction.key);
     if (!result.success) {
       showToast(
         result.error || `Failed to open ${specialAction.label} folder`,
@@ -847,7 +856,7 @@ async function handleQuickAction(action?: string | null): Promise<void> {
   }
 
   if (action === 'browse') {
-    const result = await window.electronAPI.selectFolder();
+    const result = await window.tauriAPI.selectFolder();
     if (result.success) {
       navigateTo(result.path);
     }
@@ -855,7 +864,7 @@ async function handleQuickAction(action?: string | null): Promise<void> {
   }
 
   if (action === 'trash') {
-    const result = await window.electronAPI.openTrash();
+    const result = await window.tauriAPI.openTrash();
     if (!result.success) {
       showToast(result.error || 'Failed to open trash folder', 'Error', 'error');
       return;
@@ -996,6 +1005,7 @@ const bootstrapController = createBootstrapController({
   loadBookmarks,
   updateUndoRedoState: () => updateUndoRedoState(),
   handleUpdateDownloaded,
+  silentCheckAndDownload,
   refresh: () => refresh(),
   applySettings,
   getCurrentSettings: () => currentSettings,
@@ -1011,7 +1021,7 @@ const bootstrapController = createBootstrapController({
   getCurrentPath: () => currentPath,
   updateZoomDisplay,
   getFolderTree: () => folderTree,
-  onHomeSettingsChanged: (cb) => window.electronAPI.onHomeSettingsChanged(cb),
+  onHomeSettingsChanged: (cb) => window.tauriAPI.onHomeSettingsChanged(cb),
   homeViewPath: HOME_VIEW_PATH,
 });
 const {
@@ -1023,7 +1033,7 @@ const {
 async function loadDrives() {
   if (!drivesList) return;
 
-  const drives = await window.electronAPI.getDriveInfo();
+  const drives = await window.tauriAPI.getDriveInfo();
   cacheDriveInfo(drives);
   clearHtml(drivesList);
 
@@ -1168,7 +1178,7 @@ const eventListenersController = createEventListenersController({
     const firstSelected = allFiles.find((f) => selectedItems.has(f.path));
     if (!firstSelected) return;
     void (async () => {
-      const result = await window.electronAPI.getItemProperties(firstSelected.path);
+      const result = await window.tauriAPI.getItemProperties(firstSelected.path);
       if (result.success) {
         showPropertiesDialog(result.properties);
       }
@@ -1319,7 +1329,7 @@ async function navigateTo(path: string, skipHistoryUpdate = false) {
     const request = startDirectoryRequest(path);
     requestId = request.requestId;
 
-    const result = await window.electronAPI.getDirectoryContents(
+    const result = await window.tauriAPI.getDirectoryContents(
       path,
       request.operationId,
       currentSettings.showHiddenFiles,
@@ -1358,7 +1368,7 @@ async function navigateTo(path: string, skipHistoryUpdate = false) {
       renderFiles(result.contents || []);
     }
     updateDiskSpace();
-    window.electronAPI.watchDirectory(path);
+    window.tauriAPI.watchDirectory(path);
     if (currentSettings.enableGitStatus) {
       fetchGitStatusAsync(path);
       updateGitBranch(path);
@@ -1425,8 +1435,8 @@ const fileGridEventsController = createFileGridEventsController({
   scheduleSpringLoad,
   clearSpringLoad,
   handleDrop,
-  setDragData: (paths) => window.electronAPI.setDragData(paths),
-  clearDragData: () => window.electronAPI.clearDragData(),
+  setDragData: (paths) => window.tauriAPI.setDragData(paths),
+  clearDragData: () => window.tauriAPI.clearDragData(),
 });
 const { setupFileGridEventDelegation } = fileGridEventsController;
 
@@ -1470,9 +1480,7 @@ async function deleteSelected(permanent = false) {
   for (let i = 0; i < itemsSnapshot.length; i += DELETE_BATCH_SIZE) {
     const batch = itemsSnapshot.slice(i, i + DELETE_BATCH_SIZE);
     const batchResults = await Promise.allSettled(
-      batch.map((p) =>
-        permanent ? window.electronAPI.deleteItem(p) : window.electronAPI.trashItem(p)
-      )
+      batch.map((p) => (permanent ? window.tauriAPI.deleteItem(p) : window.tauriAPI.trashItem(p)))
     );
     allResults.push(...batchResults);
   }
@@ -1514,7 +1522,7 @@ async function deleteSelected(permanent = false) {
 }
 
 async function updateUndoRedoState() {
-  const state = await window.electronAPI.getUndoRedoState();
+  const state = await window.tauriAPI.getUndoRedoState();
   if (!state.success) return;
   canUndo = state.canUndo;
   canRedo = state.canRedo;
@@ -1622,9 +1630,7 @@ function setupMoreActionsMenu() {
 }
 
 async function performUndoRedo(isUndo: boolean) {
-  const result = isUndo
-    ? await window.electronAPI.undoAction()
-    : await window.electronAPI.redoAction();
+  const result = isUndo ? await window.tauriAPI.undoAction() : await window.tauriAPI.redoAction();
   const label = isUndo ? 'Undo' : 'Redo';
   if (!result.success) {
     showToast(result.error || `Cannot ${label.toLowerCase()}`, `${label} Failed`, 'warning');
@@ -1769,7 +1775,7 @@ async function applyViewMode() {
       try {
         const request = startDirectoryRequest(currentPath);
         requestId = request.requestId;
-        const result = await window.electronAPI.getDirectoryContents(
+        const result = await window.tauriAPI.getDirectoryContents(
           currentPath,
           request.operationId,
           currentSettings.showHiddenFiles
@@ -1843,7 +1849,7 @@ function bindClickBindings(bindings: ReadonlyArray<readonly [string, () => void]
 }
 
 async function chooseFolderAndApply(onPathSelected: (selectedPath: string) => void): Promise<void> {
-  const result = await window.electronAPI.selectFolder();
+  const result = await window.tauriAPI.selectFolder();
   if (result.success) {
     onPathSelected(result.path);
   }
@@ -2056,7 +2062,7 @@ window.addEventListener('beforeunload', () => {
       };
     }
     currentSettings._timestamp = Date.now();
-    window.electronAPI.saveSettingsSync(currentSettings);
+    window.tauriAPI.saveSettingsSync(currentSettings);
   }
   if (settingsSaveTimeout) {
     clearTimeout(settingsSaveTimeout);

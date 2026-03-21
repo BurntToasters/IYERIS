@@ -670,7 +670,7 @@ export function createSettingsUiController(deps: SettingsUiDeps) {
     document.querySelectorAll<HTMLButtonElement>('[data-learn-more]').forEach((button) => {
       button.addEventListener('click', () => {
         if (!button.dataset.learnMore) return;
-        window.electronAPI.openFile(SETTINGS_HELP_URL);
+        window.tauriAPI.openFile(SETTINGS_HELP_URL);
       });
     });
   }
@@ -692,7 +692,7 @@ export function createSettingsUiController(deps: SettingsUiDeps) {
     systemThemeToggle.addEventListener('change', async () => {
       if (!systemThemeToggle.checked) return;
       try {
-        const { isDarkMode } = await window.electronAPI.getSystemAccentColor();
+        const { isDarkMode } = await window.tauriAPI.getSystemAccentColor();
         const systemTheme = isDarkMode ? 'default' : 'light';
         themeSelect.value = systemTheme;
       } catch (error) {

@@ -243,11 +243,11 @@ export function createPropertiesDialogController(deps: PropertiesDialogDeps) {
 
     const cleanup = () => {
       if (folderSizeActive) {
-        window.electronAPI.cancelFolderSizeCalculation(folderSizeOperationId);
+        window.tauriAPI.cancelFolderSizeCalculation(folderSizeOperationId);
         folderSizeActive = false;
       }
       if (checksumActive) {
-        window.electronAPI.cancelChecksumCalculation(checksumOperationId);
+        window.tauriAPI.cancelChecksumCalculation(checksumOperationId);
         checksumActive = false;
       }
       if (folderSizeProgressCleanup) {
@@ -274,7 +274,7 @@ export function createPropertiesDialogController(deps: PropertiesDialogDeps) {
       applyAttrsBtn.addEventListener('click', async () => {
         const readOnly = (document.getElementById('attr-readonly') as HTMLInputElement)?.checked;
         const hidden = (document.getElementById('attr-hidden') as HTMLInputElement)?.checked;
-        const result = await window.electronAPI.setAttributes(props.path, { readOnly, hidden });
+        const result = await window.tauriAPI.setAttributes(props.path, { readOnly, hidden });
         if (result.success) {
           deps.showToast('Attributes updated', 'Success', 'success');
         } else {
@@ -293,7 +293,7 @@ export function createPropertiesDialogController(deps: PropertiesDialogDeps) {
           deps.showToast('Invalid permissions (use octal, e.g. 755)', 'Error', 'error');
           return;
         }
-        const result = await window.electronAPI.setPermissions(props.path, octal);
+        const result = await window.tauriAPI.setPermissions(props.path, octal);
         if (result.success) {
           deps.showToast('Permissions updated', 'Success', 'success');
         } else {
@@ -316,7 +316,7 @@ export function createPropertiesDialogController(deps: PropertiesDialogDeps) {
           if (progressRow) progressRow.style.display = 'flex';
           folderSizeActive = true;
 
-          folderSizeProgressCleanup = window.electronAPI.onFolderSizeProgress((progress) => {
+          folderSizeProgressCleanup = window.tauriAPI.onFolderSizeProgress((progress) => {
             if (progress.operationId === folderSizeOperationId && progressBar && progressText) {
               const currentSize = formatSize(progress.calculatedSize);
               progressText.textContent = `${progress.fileCount} files, ${progress.folderCount} folders - ${currentSize}`;
@@ -326,7 +326,7 @@ export function createPropertiesDialogController(deps: PropertiesDialogDeps) {
           });
 
           try {
-            const result = await window.electronAPI.calculateFolderSize(
+            const result = await window.tauriAPI.calculateFolderSize(
               props.path,
               folderSizeOperationId
             );
@@ -388,7 +388,7 @@ export function createPropertiesDialogController(deps: PropertiesDialogDeps) {
       if (cancelBtn) {
         cancelBtn.addEventListener('click', () => {
           if (folderSizeActive) {
-            window.electronAPI.cancelFolderSizeCalculation(folderSizeOperationId);
+            window.tauriAPI.cancelFolderSizeCalculation(folderSizeOperationId);
             folderSizeActive = false;
           }
           if (folderSizeProgressCleanup) {
@@ -421,7 +421,7 @@ export function createPropertiesDialogController(deps: PropertiesDialogDeps) {
           if (progressRow) progressRow.style.display = 'flex';
           checksumActive = true;
 
-          checksumProgressCleanup = window.electronAPI.onChecksumProgress((progress) => {
+          checksumProgressCleanup = window.tauriAPI.onChecksumProgress((progress) => {
             if (progress.operationId === checksumOperationId && progressBar && progressText) {
               progressBar.style.width = `${progress.percent}%`;
               progressText.textContent = `Calculating ${progress.algorithm.toUpperCase()}... ${progress.percent.toFixed(1)}%`;
@@ -429,7 +429,7 @@ export function createPropertiesDialogController(deps: PropertiesDialogDeps) {
           });
 
           try {
-            const result = await window.electronAPI.calculateChecksum(
+            const result = await window.tauriAPI.calculateChecksum(
               props.path,
               checksumOperationId,
               ['md5', 'sha256']
@@ -466,7 +466,7 @@ export function createPropertiesDialogController(deps: PropertiesDialogDeps) {
       if (cancelBtn) {
         cancelBtn.addEventListener('click', () => {
           if (checksumActive) {
-            window.electronAPI.cancelChecksumCalculation(checksumOperationId);
+            window.tauriAPI.cancelChecksumCalculation(checksumOperationId);
             checksumActive = false;
           }
           if (checksumProgressCleanup) {

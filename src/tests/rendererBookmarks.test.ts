@@ -56,7 +56,7 @@ function createDeps(bookmarks: string[], currentPath: () => string) {
 describe('createBookmarksController', () => {
   beforeEach(() => {
     document.body.innerHTML = '<div id="bookmarks-list"></div>';
-    Object.defineProperty(window, 'electronAPI', {
+    Object.defineProperty(window, 'tauriAPI', {
       value: {
         getItemProperties: vi.fn().mockResolvedValue({
           success: true,

@@ -221,7 +221,7 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
 
   async function loadHomeSettings(): Promise<void> {
     try {
-      const result = await window.electronAPI.getHomeSettings();
+      const result = await window.tauriAPI.getHomeSettings();
       if (result.success && result.settings) {
         currentHomeSettings = normalizeHomeSettings(result.settings);
       } else {
@@ -406,7 +406,7 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
 
   async function openRecentPath(filePath: string): Promise<void> {
     try {
-      const propsResult = await window.electronAPI.getItemProperties(filePath);
+      const propsResult = await window.tauriAPI.getItemProperties(filePath);
       if (propsResult.success && propsResult.properties?.isDirectory) {
         await Promise.resolve(navigateTo(filePath));
         return;
@@ -420,7 +420,7 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
       return;
     }
 
-    await window.electronAPI.openFile(filePath);
+    await window.tauriAPI.openFile(filePath);
   }
 
   async function togglePinnedRecent(filePath: string): Promise<void> {
@@ -434,7 +434,7 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
       ...currentHomeSettings,
       pinnedRecents: Array.from(pinned),
     });
-    const result = await window.electronAPI.saveHomeSettings(currentHomeSettings);
+    const result = await window.tauriAPI.saveHomeSettings(currentHomeSettings);
     if (result.success) {
       renderHomeRecents();
       if (homeSettingsModal && homeSettingsModal.style.display === 'flex') {
@@ -524,7 +524,7 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
       return { total: cached.total, free: cached.free };
     }
 
-    const result = await window.electronAPI.getDiskSpace(drive);
+    const result = await window.tauriAPI.getDiskSpace(drive);
     if (!result.success || typeof result.total !== 'number' || typeof result.free !== 'number') {
       return null;
     }
@@ -551,7 +551,7 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
 
     if (!drives) {
       try {
-        driveList = await window.electronAPI.getDriveInfo();
+        driveList = await window.tauriAPI.getDriveInfo();
       } catch {
         driveList = [];
       }
@@ -813,7 +813,7 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
 
   async function saveHomeSettings(): Promise<void> {
     tempHomeSettings = normalizeHomeSettings(tempHomeSettings);
-    const result = await window.electronAPI.saveHomeSettings(tempHomeSettings);
+    const result = await window.tauriAPI.saveHomeSettings(tempHomeSettings);
     if (result.success) {
       currentHomeSettings = { ...tempHomeSettings };
       applyHomeSettings(currentHomeSettings);
@@ -858,7 +858,7 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
       });
     }
 
-    window.electronAPI.onHomeSettingsChanged((settings) => {
+    window.tauriAPI.onHomeSettingsChanged((settings) => {
       currentHomeSettings = normalizeHomeSettings(settings);
       applyHomeSettings(currentHomeSettings);
       if (homeSettingsModal && homeSettingsModal.style.display === 'flex') {

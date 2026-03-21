@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createSupportUiController } from '../rendererSupportUi.js';
 
 type Deps = Parameters<typeof createSupportUiController>[0];
-type ElectronApiMock = Pick<Window['electronAPI'], 'getLicenses'>;
+type TauriApiMock = Pick<Window['tauriAPI'], 'getLicenses'>;
 
 function makeDeps(overrides: Partial<Deps> = {}): Deps {
   return {
@@ -22,7 +22,7 @@ describe('rendererSupportUi', () => {
   beforeEach(() => {
     document.body.innerHTML = '';
 
-    const electronApiMock: ElectronApiMock = {
+    const tauriApiMock: TauriApiMock = {
       getLicenses: vi.fn(async () => ({
         success: true as const,
         licenses: {
@@ -37,8 +37,8 @@ describe('rendererSupportUi', () => {
       })),
     };
 
-    Object.defineProperty(window, 'electronAPI', {
-      value: electronApiMock as Window['electronAPI'],
+    Object.defineProperty(window, 'tauriAPI', {
+      value: tauriApiMock as Window['tauriAPI'],
       configurable: true,
       writable: true,
     });
@@ -46,7 +46,7 @@ describe('rendererSupportUi', () => {
 
   describe('getRepositoryText / normalizeRepositoryUrl / sanitizeExternalUrl', () => {
     it('handles string repository URLs', async () => {
-      window.electronAPI.getLicenses = vi.fn(async () => ({
+      window.tauriAPI.getLicenses = vi.fn(async () => ({
         success: true as const,
         licenses: {
           'test-pkg': {
@@ -73,7 +73,7 @@ describe('rendererSupportUi', () => {
     });
 
     it('handles object repository { url: string }', async () => {
-      window.electronAPI.getLicenses = vi.fn(async () => ({
+      window.tauriAPI.getLicenses = vi.fn(async () => ({
         success: true as const,
         licenses: {
           'test-pkg': {
@@ -99,7 +99,7 @@ describe('rendererSupportUi', () => {
     });
 
     it('handles git@ SSH-style repository', async () => {
-      window.electronAPI.getLicenses = vi.fn(async () => ({
+      window.tauriAPI.getLicenses = vi.fn(async () => ({
         success: true as const,
         licenses: {
           'ssh-pkg': {
@@ -125,7 +125,7 @@ describe('rendererSupportUi', () => {
     });
 
     it('handles ssh:// repository', async () => {
-      window.electronAPI.getLicenses = vi.fn(async () => ({
+      window.tauriAPI.getLicenses = vi.fn(async () => ({
         success: true as const,
         licenses: {
           'ssh2-pkg': {
@@ -151,7 +151,7 @@ describe('rendererSupportUi', () => {
     });
 
     it('handles git:// repository', async () => {
-      window.electronAPI.getLicenses = vi.fn(async () => ({
+      window.tauriAPI.getLicenses = vi.fn(async () => ({
         success: true as const,
         licenses: {
           'git-pkg': {
@@ -177,7 +177,7 @@ describe('rendererSupportUi', () => {
     });
 
     it('shows plain text for invalid/non-standard URLs', async () => {
-      window.electronAPI.getLicenses = vi.fn(async () => ({
+      window.tauriAPI.getLicenses = vi.fn(async () => ({
         success: true as const,
         licenses: {
           'weird-pkg': {
@@ -203,7 +203,7 @@ describe('rendererSupportUi', () => {
     });
 
     it('handles null/empty repository', async () => {
-      window.electronAPI.getLicenses = vi.fn(async () => ({
+      window.tauriAPI.getLicenses = vi.fn(async () => ({
         success: true as const,
         licenses: {
           'no-repo': { licenses: 'MIT', repository: null },
@@ -225,7 +225,7 @@ describe('rendererSupportUi', () => {
     });
 
     it('handles array licenses field', async () => {
-      window.electronAPI.getLicenses = vi.fn(async () => ({
+      window.tauriAPI.getLicenses = vi.fn(async () => ({
         success: true as const,
         licenses: {
           'multi-lic': { licenses: ['MIT', 'Apache-2.0'] },
@@ -266,7 +266,7 @@ describe('rendererSupportUi', () => {
     });
 
     it('displays error on getLicenses failure', async () => {
-      window.electronAPI.getLicenses = vi.fn(async () => ({
+      window.tauriAPI.getLicenses = vi.fn(async () => ({
         success: false as const,
         error: 'Could not read',
       }));
@@ -285,7 +285,7 @@ describe('rendererSupportUi', () => {
     });
 
     it('displays error on exception', async () => {
-      window.electronAPI.getLicenses = vi.fn(async () => {
+      window.tauriAPI.getLicenses = vi.fn(async () => {
         throw new Error('Network down');
       });
 
@@ -321,7 +321,7 @@ describe('rendererSupportUi', () => {
 
     it('truncates long license text', async () => {
       const longText = 'A'.repeat(1500);
-      window.electronAPI.getLicenses = vi.fn(async () => ({
+      window.tauriAPI.getLicenses = vi.fn(async () => ({
         success: true as const,
         licenses: {
           'long-pkg': {

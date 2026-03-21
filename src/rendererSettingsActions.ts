@@ -252,7 +252,7 @@ export function createSettingsActionsController(deps: SettingsActionsDeps) {
         'Clear Thumbnail Cache'
       );
       if (confirmed) {
-        const result = await window.electronAPI.clearThumbnailCache();
+        const result = await window.tauriAPI.clearThumbnailCache();
         if (!result.success) {
           deps.showToast(result.error || 'Failed to clear cache', 'Error', 'error');
           return;
@@ -264,14 +264,14 @@ export function createSettingsActionsController(deps: SettingsActionsDeps) {
     });
 
     document.getElementById('open-logs-btn')?.addEventListener('click', async () => {
-      const result = await window.electronAPI.openLogsFolder();
+      const result = await window.tauriAPI.openLogsFolder();
       if (!result.success) {
         deps.showToast(result.error || 'Failed to open logs folder', 'Error', 'error');
       }
     });
 
     document.getElementById('export-diagnostics-btn')?.addEventListener('click', async () => {
-      const result = await window.electronAPI.exportDiagnostics();
+      const result = await window.tauriAPI.exportDiagnostics();
       if (result.success) {
         const exportPath = result.path ? `\n${result.path}` : '';
         deps.showToast(`Diagnostics exported${exportPath}`, 'Diagnostics', 'success');

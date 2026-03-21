@@ -276,7 +276,7 @@ export function createContextMenuController(deps: ContextMenuDeps) {
         break;
 
       case 'open-terminal': {
-        const terminalResult = await window.electronAPI.openTerminal(deps.getCurrentPath());
+        const terminalResult = await window.tauriAPI.openTerminal(deps.getCurrentPath());
         if (!terminalResult.success) {
           deps.showToast(terminalResult.error || 'Failed to open terminal', 'Error', 'error');
         }
@@ -352,7 +352,7 @@ export function createContextMenuController(deps: ContextMenuDeps) {
 
       case 'open-terminal': {
         const terminalPath = item.isDirectory ? item.path : path.dirname(item.path);
-        const terminalResult = await window.electronAPI.openTerminal(terminalPath);
+        const terminalResult = await window.tauriAPI.openTerminal(terminalPath);
         if (!terminalResult.success) {
           deps.showToast(terminalResult.error || 'Failed to open terminal', 'Error', 'error');
         }
@@ -360,7 +360,7 @@ export function createContextMenuController(deps: ContextMenuDeps) {
       }
 
       case 'properties': {
-        const propsResult = await window.electronAPI.getItemProperties(item.path);
+        const propsResult = await window.tauriAPI.getItemProperties(item.path);
         if (!propsResult.success) {
           deps.showToast(
             propsResult.error || 'Failed to get properties',
@@ -397,7 +397,7 @@ export function createContextMenuController(deps: ContextMenuDeps) {
         const linkName = `${item.name} - Link`;
         const linkPath = path.join(deps.getCurrentPath(), linkName);
         try {
-          const result = await window.electronAPI.createSymlink(item.path, linkPath);
+          const result = await window.tauriAPI.createSymlink(item.path, linkPath);
           if (result.success) {
             deps.showToast(`Created symbolic link "${linkName}"`, 'Symlink Created', 'success');
             deps.navigateTo(deps.getCurrentPath());
@@ -539,7 +539,7 @@ export function createContextMenuController(deps: ContextMenuDeps) {
       loaded = true;
 
       try {
-        const result = await window.electronAPI.getOpenWithApps(item.path);
+        const result = await window.tauriAPI.getOpenWithApps(item.path);
         if (!result.success || !result.apps || result.apps.length === 0) {
           panel.innerHTML = '<div class="open-with-loading">No apps found</div>';
           return;
@@ -556,7 +556,7 @@ export function createContextMenuController(deps: ContextMenuDeps) {
             e.stopPropagation();
             hideContextMenu();
             try {
-              const openResult = await window.electronAPI.openFileWithApp(item.path, app.id);
+              const openResult = await window.tauriAPI.openFileWithApp(item.path, app.id);
               if (!openResult.success) {
                 deps.showToast(openResult.error || 'Failed to open file', 'Error', 'error');
               }

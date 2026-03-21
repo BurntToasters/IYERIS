@@ -106,7 +106,7 @@ export function createSupportUiController(deps: SupportUiDeps) {
       '<p style="text-align: center; color: var(--text-secondary);">Loading licenses...</p>';
 
     try {
-      const result = await window.electronAPI.getLicenses();
+      const result = await window.tauriAPI.getLicenses();
 
       if (!result.success) {
         licensesContent.innerHTML = `<p style="color: var(--error-color); text-align: center;">Error loading licenses: ${deps.escapeHtml(

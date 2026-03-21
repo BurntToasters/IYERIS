@@ -93,7 +93,7 @@ describe('createContextMenuController', () => {
       },
       configurable: true,
     });
-    Object.defineProperty(window, 'electronAPI', {
+    Object.defineProperty(window, 'tauriAPI', {
       value: {
         openTerminal: vi.fn().mockResolvedValue({ success: true }),
         getItemProperties: vi.fn().mockResolvedValue({ success: true, properties: {} }),
@@ -164,10 +164,9 @@ describe('createContextMenuController', () => {
   it('handles empty-space open-terminal errors', async () => {
     const deps = createDeps();
     const controller = createContextMenuController(deps);
-    const electronApi = (
-      window as unknown as { electronAPI: { openTerminal: ReturnType<typeof vi.fn> } }
-    ).electronAPI;
-    electronApi.openTerminal = vi
+    const tauriApi = (window as unknown as { tauriAPI: { openTerminal: ReturnType<typeof vi.fn> } })
+      .tauriAPI;
+    tauriApi.openTerminal = vi
       .fn()
       .mockResolvedValue({ success: false, error: 'terminal unavailable' });
 

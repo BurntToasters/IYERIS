@@ -261,8 +261,8 @@ function setupBasicDom() {
   `;
 }
 
-function setupElectronAPIMock() {
-  (window as any).electronAPI = {
+function setupTauriAPIMock() {
+  (window as any).tauriAPI = {
     onClipboardChanged: vi.fn(() => vi.fn()),
     onSettingsChanged: vi.fn(() => vi.fn()),
     minimizeWindow: vi.fn(),
@@ -276,7 +276,7 @@ import { createEventListenersController } from '../rendererEventListeners';
 describe('createEventListenersController', () => {
   beforeEach(() => {
     setupBasicDom();
-    setupElectronAPIMock();
+    setupTauriAPIMock();
   });
 
   describe('setupEventListeners', () => {
@@ -1071,7 +1071,7 @@ describe('createEventListenersController', () => {
 
       document.getElementById('minimize-btn')!.click();
 
-      expect(window.electronAPI.minimizeWindow).toHaveBeenCalled();
+      expect(window.tauriAPI.minimizeWindow).toHaveBeenCalled();
     });
 
     it('maximize button calls maximizeWindow', () => {
@@ -1081,7 +1081,7 @@ describe('createEventListenersController', () => {
 
       document.getElementById('maximize-btn')!.click();
 
-      expect(window.electronAPI.maximizeWindow).toHaveBeenCalled();
+      expect(window.tauriAPI.maximizeWindow).toHaveBeenCalled();
     });
 
     it('close button calls closeWindow', () => {
@@ -1091,7 +1091,7 @@ describe('createEventListenersController', () => {
 
       document.getElementById('close-btn')!.click();
 
-      expect(window.electronAPI.closeWindow).toHaveBeenCalled();
+      expect(window.tauriAPI.closeWindow).toHaveBeenCalled();
     });
   });
 
@@ -1150,20 +1150,20 @@ describe('createEventListenersController', () => {
   });
 
   describe('IPC sync listeners', () => {
-    it('registers clipboard change listener via electronAPI', () => {
+    it('registers clipboard change listener via tauriAPI', () => {
       const config = createMockConfig();
       const ctrl = createEventListenersController(config);
       ctrl.setupEventListeners();
 
-      expect(window.electronAPI.onClipboardChanged).toHaveBeenCalled();
+      expect(window.tauriAPI.onClipboardChanged).toHaveBeenCalled();
     });
 
-    it('registers settings change listener via electronAPI', () => {
+    it('registers settings change listener via tauriAPI', () => {
       const config = createMockConfig();
       const ctrl = createEventListenersController(config);
       ctrl.setupEventListeners();
 
-      expect(window.electronAPI.onSettingsChanged).toHaveBeenCalled();
+      expect(window.tauriAPI.onSettingsChanged).toHaveBeenCalled();
     });
 
     it('calls clipboardOnClipboardChanged when clipboard changes', () => {
@@ -1171,7 +1171,7 @@ describe('createEventListenersController', () => {
       const ctrl = createEventListenersController(config);
       ctrl.setupEventListeners();
 
-      const onClipboard = (window.electronAPI.onClipboardChanged as ReturnType<typeof vi.fn>).mock
+      const onClipboard = (window.tauriAPI.onClipboardChanged as ReturnType<typeof vi.fn>).mock
         .calls[0][0];
       const clipboardData = { operation: 'copy' as const, paths: ['/test.txt'] };
       onClipboard(clipboardData);
@@ -1185,7 +1185,7 @@ describe('createEventListenersController', () => {
       const ctrl = createEventListenersController(config);
       ctrl.setupEventListeners();
 
-      const onSettings = (window.electronAPI.onSettingsChanged as ReturnType<typeof vi.fn>).mock
+      const onSettings = (window.tauriAPI.onSettingsChanged as ReturnType<typeof vi.fn>).mock
         .calls[0][0];
       const newSettings = makeSettings({ _timestamp: 200, theme: 'light' });
       onSettings(newSettings);
@@ -1199,7 +1199,7 @@ describe('createEventListenersController', () => {
       const ctrl = createEventListenersController(config);
       ctrl.setupEventListeners();
 
-      const onSettings = (window.electronAPI.onSettingsChanged as ReturnType<typeof vi.fn>).mock
+      const onSettings = (window.tauriAPI.onSettingsChanged as ReturnType<typeof vi.fn>).mock
         .calls[0][0];
       const oldSettings = makeSettings({ _timestamp: 50, theme: 'light' });
       onSettings(oldSettings);

@@ -9,9 +9,9 @@ const TAURI_TARGET_DIR = path.join('src-tauri', 'target');
 const CLEAN_TARGETS = {
   clean: ['dist'],
   'clean-release': ['release'],
-  'clean-release-artifacts': ['release', 'dist'],
+  'clean-release-artifacts': ['release', 'dist', 'msstore'],
   'clean-flatpak': ['flatpak-repo'],
-  'clean-all': ['dist', 'release', 'flatpak-repo'],
+  'clean-all': ['dist', 'release', 'msstore', 'flatpak-repo'],
 };
 
 function listFlatpakBuildDirs(cwd) {

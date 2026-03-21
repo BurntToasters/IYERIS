@@ -2,7 +2,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createClipboardController } from '../rendererClipboard';
 
-type ClipboardElectronApi = {
+type ClipboardTauriApi = {
   setClipboard: ReturnType<typeof vi.fn>;
   getSystemClipboardData: ReturnType<typeof vi.fn>;
   getSystemClipboardFiles: ReturnType<typeof vi.fn>;
@@ -11,8 +11,8 @@ type ClipboardElectronApi = {
   selectFolder: ReturnType<typeof vi.fn>;
 };
 
-function setupElectronApi(overrides: Partial<ClipboardElectronApi> = {}): ClipboardElectronApi {
-  const api: ClipboardElectronApi = {
+function setupTauriApi(overrides: Partial<ClipboardTauriApi> = {}): ClipboardTauriApi {
+  const api: ClipboardTauriApi = {
     setClipboard: vi.fn().mockResolvedValue(undefined),
     getSystemClipboardData: vi.fn().mockResolvedValue({ operation: 'copy', paths: [] }),
     getSystemClipboardFiles: vi.fn().mockResolvedValue([]),
@@ -22,7 +22,7 @@ function setupElectronApi(overrides: Partial<ClipboardElectronApi> = {}): Clipbo
     ...overrides,
   };
 
-  Object.defineProperty(window, 'electronAPI', {
+  Object.defineProperty(window, 'tauriAPI', {
     value: api,
     configurable: true,
     writable: true,
@@ -62,14 +62,14 @@ describe('createClipboardController', () => {
   it('copies selected items and updates clipboard indicator', async () => {
     const selected = new Set<string>(['/a']);
     const fileMap = new Map<string, HTMLElement>([['/a', document.getElementById('file-a')!]]);
-    const electronApi = setupElectronApi();
+    const tauriApi = setupTauriApi();
     const deps = createDeps(selected, fileMap);
     const controller = createClipboardController(deps);
 
     controller.copyToClipboard();
     await Promise.resolve();
 
-    expect(electronApi.setClipboard).toHaveBeenCalledWith({
+    expect(tauriApi.setClipboard).toHaveBeenCalledWith({
       operation: 'copy',
       paths: ['/a'],
     });
@@ -82,14 +82,14 @@ describe('createClipboardController', () => {
     const selected = new Set<string>(['/a']);
     const fileA = document.getElementById('file-a')!;
     const fileMap = new Map<string, HTMLElement>([['/a', fileA]]);
-    const electronApi = setupElectronApi();
+    const tauriApi = setupTauriApi();
     const deps = createDeps(selected, fileMap);
     const controller = createClipboardController(deps);
 
     controller.cutToClipboard();
     await Promise.resolve();
 
-    expect(electronApi.setClipboard).toHaveBeenCalledWith({
+    expect(tauriApi.setClipboard).toHaveBeenCalledWith({
       operation: 'cut',
       paths: ['/a'],
     });
@@ -100,13 +100,13 @@ describe('createClipboardController', () => {
   it('pastes local clipboard using copy operation', async () => {
     const selected = new Set<string>();
     const deps = createDeps(selected, new Map());
-    const electronApi = setupElectronApi();
+    const tauriApi = setupTauriApi();
     const controller = createClipboardController(deps);
     controller.setClipboard({ operation: 'copy', paths: ['/src/file.txt'] });
 
     await controller.pasteFromClipboard();
 
-    expect(electronApi.copyItems).toHaveBeenCalledWith(['/src/file.txt'], '/dest', 'ask');
+    expect(tauriApi.copyItems).toHaveBeenCalledWith(['/src/file.txt'], '/dest', 'ask');
     expect(deps.refresh).toHaveBeenCalledTimes(1);
     expect(deps.showToast).toHaveBeenCalledWith('1 item(s) copied', 'Success', 'success');
   });
@@ -114,22 +114,22 @@ describe('createClipboardController', () => {
   it('pastes local clipboard using move operation and clears clipboard', async () => {
     const selected = new Set<string>();
     const deps = createDeps(selected, new Map());
-    const electronApi = setupElectronApi();
+    const tauriApi = setupTauriApi();
     const controller = createClipboardController(deps);
     controller.setClipboard({ operation: 'cut', paths: ['/src/file.txt'] });
 
     await controller.pasteFromClipboard();
 
-    expect(electronApi.moveItems).toHaveBeenCalledWith(['/src/file.txt'], '/dest', 'ask');
+    expect(tauriApi.moveItems).toHaveBeenCalledWith(['/src/file.txt'], '/dest', 'ask');
     expect(deps.updateUndoRedoState).toHaveBeenCalledTimes(1);
-    expect(electronApi.setClipboard).toHaveBeenCalledWith(null);
+    expect(tauriApi.setClipboard).toHaveBeenCalledWith(null);
     expect(controller.getClipboard()).toBeNull();
   });
 
   it('uses system clipboard files when local clipboard is empty', async () => {
     const selected = new Set<string>();
     const deps = createDeps(selected, new Map());
-    const electronApi = setupElectronApi({
+    const tauriApi = setupTauriApi({
       getSystemClipboardData: vi.fn().mockResolvedValue({
         operation: 'copy',
         paths: ['/tmp/a.txt'],
@@ -140,7 +140,7 @@ describe('createClipboardController', () => {
 
     await controller.pasteFromClipboard();
 
-    expect(electronApi.copyItems).toHaveBeenCalledWith(['/tmp/a.txt'], '/dest', 'ask');
+    expect(tauriApi.copyItems).toHaveBeenCalledWith(['/tmp/a.txt'], '/dest', 'ask');
     expect(deps.showToast).toHaveBeenCalledWith(
       '1 item(s) pasted from system clipboard',
       'Success',
@@ -151,7 +151,7 @@ describe('createClipboardController', () => {
   it('prevents moving to same destination folder', async () => {
     const selected = new Set<string>(['/target/file.txt']);
     const deps = createDeps(selected, new Map());
-    const electronApi = setupElectronApi({
+    const tauriApi = setupTauriApi({
       selectFolder: vi.fn().mockResolvedValue({ success: true, path: '/target' }),
     });
     const controller = createClipboardController(deps);
@@ -164,6 +164,6 @@ describe('createClipboardController', () => {
       'Info',
       'info'
     );
-    expect(electronApi.selectFolder).toHaveBeenCalledTimes(1);
+    expect(tauriApi.selectFolder).toHaveBeenCalledTimes(1);
   });
 });

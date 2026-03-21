@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import type { Update } from '@tauri-apps/plugin-updater';
-import type { ElectronAPI, Settings, HomeSettings } from './types';
+import type { TauriAPI, Settings, HomeSettings } from './types';
 
 type SpecialDirectory = 'desktop' | 'documents' | 'downloads' | 'music' | 'videos';
 
@@ -46,7 +46,7 @@ function buildFileItem(raw: Record<string, unknown>) {
   };
 }
 
-const electronAPI: ElectronAPI = {
+const tauriAPI: TauriAPI = {
   getDirectoryContents: async (dirPath, operationId, includeHidden, _streamOnly) => {
     try {
       const items = await invoke<Record<string, unknown>[]>('get_directory_contents', {
@@ -101,6 +101,14 @@ const electronAPI: ElectronAPI = {
   maximizeWindow: () => invoke('maximize_window'),
   closeWindow: () => invoke('close_window'),
   openNewWindow: () => invoke('open_new_window'),
+  setAutostart: (enabled: boolean) => invoke('set_autostart', { enabled }),
+  getAutostart: async () => {
+    try {
+      return await invoke<boolean>('get_autostart');
+    } catch {
+      return false;
+    }
+  },
   createFolder: async (parentPath, folderName) => {
     try {
       const p = await invoke<string>('create_folder', { parentPath, folderName });
@@ -788,4 +796,4 @@ const electronAPI: ElectronAPI = {
   launchDesktopEntry: () => Promise.resolve({ success: true } as never),
 };
 
-(window as unknown as { electronAPI: ElectronAPI }).electronAPI = electronAPI;
+(window as unknown as { tauriAPI: TauriAPI }).tauriAPI = tauriAPI;

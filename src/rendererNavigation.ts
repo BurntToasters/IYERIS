@@ -452,7 +452,7 @@ export function createNavigationController(deps: NavigationDeps) {
     }
 
     const operationId = deps.createDirectoryOperationId('breadcrumb');
-    const result = await window.electronAPI.getDirectoryContents(
+    const result = await window.tauriAPI.getDirectoryContents(
       targetPath,
       operationId,
       deps.getCurrentSettings().showHiddenFiles

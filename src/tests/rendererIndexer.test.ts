@@ -21,7 +21,7 @@ describe('createIndexerController', () => {
   });
 
   it('renders indexing status text', async () => {
-    Object.defineProperty(window, 'electronAPI', {
+    Object.defineProperty(window, 'tauriAPI', {
       value: {
         getIndexStatus: vi.fn().mockResolvedValue({
           success: true,
@@ -61,7 +61,7 @@ describe('createIndexerController', () => {
         status: { isIndexing: false, indexedFiles: 10, lastIndexTime: Date.now() },
       });
 
-    Object.defineProperty(window, 'electronAPI', {
+    Object.defineProperty(window, 'tauriAPI', {
       value: {
         getIndexStatus,
         rebuildIndex: vi.fn(),
@@ -91,7 +91,7 @@ describe('createIndexerController', () => {
       status: { isIndexing: false, indexedFiles: 0, lastIndexTime: null },
     });
 
-    Object.defineProperty(window, 'electronAPI', {
+    Object.defineProperty(window, 'tauriAPI', {
       value: {
         getIndexStatus,
         rebuildIndex,
@@ -116,7 +116,7 @@ describe('createIndexerController', () => {
   });
 
   it('handles rebuild failures', async () => {
-    Object.defineProperty(window, 'electronAPI', {
+    Object.defineProperty(window, 'tauriAPI', {
       value: {
         getIndexStatus: vi.fn().mockResolvedValue({ success: false }),
         rebuildIndex: vi.fn().mockResolvedValue({ success: false, error: 'boom' }),

@@ -54,18 +54,18 @@ function buildDOM() {
 
 describe('rendererSettingsActions extended', () => {
   let originalConfirm: typeof window.confirm;
-  let mockElectronAPI: any;
+  let mockTauriAPI: any;
 
   beforeEach(() => {
     buildDOM();
     originalConfirm = window.confirm;
     window.confirm = vi.fn(() => true);
-    mockElectronAPI = {
+    mockTauriAPI = {
       clearThumbnailCache: vi.fn().mockResolvedValue({ success: true }),
       openLogsFolder: vi.fn().mockResolvedValue({ success: true }),
       exportDiagnostics: vi.fn().mockResolvedValue({ success: true, path: '/tmp/diag.zip' }),
     };
-    (window as any).electronAPI = mockElectronAPI;
+    (window as any).tauriAPI = mockTauriAPI;
 
     (window as any).URL.createObjectURL = vi.fn(() => 'blob:mock-url');
     (window as any).URL.revokeObjectURL = vi.fn();
@@ -75,7 +75,7 @@ describe('rendererSettingsActions extended', () => {
     vi.restoreAllMocks();
     window.confirm = originalConfirm;
     document.body.innerHTML = '';
-    delete (window as any).electronAPI;
+    delete (window as any).tauriAPI;
   });
 
   describe('initSettingsActions', () => {
@@ -432,7 +432,7 @@ describe('rendererSettingsActions extended', () => {
     });
 
     it('shows error when clearing fails', async () => {
-      mockElectronAPI.clearThumbnailCache.mockResolvedValue({ success: false });
+      mockTauriAPI.clearThumbnailCache.mockResolvedValue({ success: false });
       const deps = makeDeps();
       const ctrl = createSettingsActionsController(deps as any);
       ctrl.initSettingsActions();
@@ -452,12 +452,12 @@ describe('rendererSettingsActions extended', () => {
 
       document.getElementById('open-logs-btn')!.click();
       await vi.waitFor(() => {
-        expect(mockElectronAPI.openLogsFolder).toHaveBeenCalled();
+        expect(mockTauriAPI.openLogsFolder).toHaveBeenCalled();
       });
     });
 
     it('shows error toast on failure', async () => {
-      mockElectronAPI.openLogsFolder.mockResolvedValue({
+      mockTauriAPI.openLogsFolder.mockResolvedValue({
         success: false,
         error: 'No logs',
       });
@@ -489,7 +489,7 @@ describe('rendererSettingsActions extended', () => {
     });
 
     it('shows info toast when cancelled', async () => {
-      mockElectronAPI.exportDiagnostics.mockResolvedValue({
+      mockTauriAPI.exportDiagnostics.mockResolvedValue({
         success: false,
         error: 'Export cancelled',
       });
@@ -508,7 +508,7 @@ describe('rendererSettingsActions extended', () => {
     });
 
     it('shows error toast on failure', async () => {
-      mockElectronAPI.exportDiagnostics.mockResolvedValue({
+      mockTauriAPI.exportDiagnostics.mockResolvedValue({
         success: false,
         error: 'Disk full',
       });
@@ -523,7 +523,7 @@ describe('rendererSettingsActions extended', () => {
     });
 
     it('shows fallback error when error string is empty', async () => {
-      mockElectronAPI.exportDiagnostics.mockResolvedValue({
+      mockTauriAPI.exportDiagnostics.mockResolvedValue({
         success: false,
         error: '',
       });

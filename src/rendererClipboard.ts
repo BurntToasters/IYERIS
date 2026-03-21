@@ -67,11 +67,11 @@ export function createClipboardController(deps: ClipboardDeps) {
   } | null> {
     try {
       const data =
-        typeof window.electronAPI.getSystemClipboardData === 'function'
-          ? await window.electronAPI.getSystemClipboardData()
+        typeof window.tauriAPI.getSystemClipboardData === 'function'
+          ? await window.tauriAPI.getSystemClipboardData()
           : {
               operation: 'copy' as const,
-              paths: await window.electronAPI.getSystemClipboardFiles(),
+              paths: await window.tauriAPI.getSystemClipboardFiles(),
             };
 
       if (!data || !Array.isArray(data.paths) || data.paths.length === 0) {
@@ -97,7 +97,7 @@ export function createClipboardController(deps: ClipboardDeps) {
     const retryActions = getRetryActions(retry);
 
     if (systemClipboard.operation === 'cut') {
-      const moveResult = await window.electronAPI.moveItems(
+      const moveResult = await window.tauriAPI.moveItems(
         systemClipboard.paths,
         destPath,
         conflictBehavior
@@ -113,7 +113,7 @@ export function createClipboardController(deps: ClipboardDeps) {
       }
 
       if (isPermissionDeniedError(moveResult.error)) {
-        const copyResult = await window.electronAPI.copyItems(
+        const copyResult = await window.tauriAPI.copyItems(
           systemClipboard.paths,
           destPath,
           conflictBehavior
@@ -135,7 +135,7 @@ export function createClipboardController(deps: ClipboardDeps) {
       return true;
     }
 
-    const copyResult = await window.electronAPI.copyItems(
+    const copyResult = await window.tauriAPI.copyItems(
       systemClipboard.paths,
       destPath,
       conflictBehavior
@@ -191,7 +191,7 @@ export function createClipboardController(deps: ClipboardDeps) {
       operation,
       paths: Array.from(selectedItems),
     };
-    window.electronAPI.setClipboard(clipboard);
+    window.tauriAPI.setClipboard(clipboard);
     updateCutVisuals();
     updateClipboardIndicator();
     deps.showToast(
@@ -212,7 +212,7 @@ export function createClipboardController(deps: ClipboardDeps) {
   async function moveSelectedToFolder(): Promise<void> {
     const selectedItems = deps.getSelectedItems();
     if (selectedItems.size === 0) return;
-    const result = await window.electronAPI.selectFolder();
+    const result = await window.tauriAPI.selectFolder();
     if (!result.success) return;
 
     const destPath = result.path;
@@ -233,7 +233,7 @@ export function createClipboardController(deps: ClipboardDeps) {
   async function copySelectedToFolder(): Promise<void> {
     const selectedItems = deps.getSelectedItems();
     if (selectedItems.size === 0) return;
-    const result = await window.electronAPI.selectFolder();
+    const result = await window.tauriAPI.selectFolder();
     if (!result.success) return;
 
     const destPath = result.path;
@@ -269,8 +269,8 @@ export function createClipboardController(deps: ClipboardDeps) {
       const isCopy = clipboard.operation === 'copy';
       const conflictBehavior = deps.getCurrentSettings().fileConflictBehavior || 'ask';
       const result = isCopy
-        ? await window.electronAPI.copyItems(clipboard.paths, folderPath, conflictBehavior)
-        : await window.electronAPI.moveItems(clipboard.paths, folderPath, conflictBehavior);
+        ? await window.tauriAPI.copyItems(clipboard.paths, folderPath, conflictBehavior)
+        : await window.tauriAPI.moveItems(clipboard.paths, folderPath, conflictBehavior);
 
       if (!result.success) {
         deps.showToast(result.error || 'Operation failed', 'Error', 'error');
@@ -285,7 +285,7 @@ export function createClipboardController(deps: ClipboardDeps) {
       if (!isCopy) {
         await deps.updateUndoRedoState();
         clipboard = null;
-        window.electronAPI.setClipboard(null);
+        window.tauriAPI.setClipboard(null);
         updateClipboardIndicator();
       }
 
@@ -302,7 +302,7 @@ export function createClipboardController(deps: ClipboardDeps) {
 
     try {
       const conflictBehavior = 'rename' as const;
-      const result = await window.electronAPI.copyItems(paths, currentPath, conflictBehavior);
+      const result = await window.tauriAPI.copyItems(paths, currentPath, conflictBehavior);
       if (!result.success) {
         deps.showToast(result.error || 'Duplicate failed', 'Error', 'error');
         return;
@@ -333,8 +333,8 @@ export function createClipboardController(deps: ClipboardDeps) {
       const isCopy = clipboard.operation === 'copy';
       const conflictBehavior = deps.getCurrentSettings().fileConflictBehavior || 'ask';
       const result = isCopy
-        ? await window.electronAPI.copyItems(clipboard.paths, currentPath, conflictBehavior)
-        : await window.electronAPI.moveItems(clipboard.paths, currentPath, conflictBehavior);
+        ? await window.tauriAPI.copyItems(clipboard.paths, currentPath, conflictBehavior)
+        : await window.tauriAPI.moveItems(clipboard.paths, currentPath, conflictBehavior);
 
       if (!result.success) {
         deps.showToast(result.error || 'Operation failed', 'Error', 'error', [
@@ -351,7 +351,7 @@ export function createClipboardController(deps: ClipboardDeps) {
       if (!isCopy) {
         await deps.updateUndoRedoState();
         clipboard = null;
-        window.electronAPI.setClipboard(null);
+        window.tauriAPI.setClipboard(null);
         updateClipboardIndicator();
       }
 
