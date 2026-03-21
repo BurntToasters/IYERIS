@@ -65,7 +65,7 @@
         "https://github.com/BurntToasters/IYERIS/releases/latest/download/latest-{{target}}-{{arch}}.json",
         "https://github.com/BurntToasters/IYERIS/releases/download/v{{current_version}}/latest-{{target}}-{{arch}}.json"
       ],
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEYyRENEOTU0OTk0NDE5NTUKUldSVkdVU1pWTm5jOG1uODJ0MUtSbGF2QzhaVGF6Y2xKVWt2aWJlSGExOVFPZWZaY1Y1RDhxNDAK"
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDQ1NTNBOTc5QTJFMkI4OTAKUldTUXVPS2llYWxUUlExc3Jtb0krdVFtUnFXYTZMdVdoVWJ3VWxjT3pCZHUyMjByWHpyV3l5TVAK"
     }
   }
 }
