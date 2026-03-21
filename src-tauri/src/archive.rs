@@ -99,7 +99,9 @@ fn compress_zip(
         if path.is_dir() {
             add_dir_to_zip(&mut zip, &path, &path, &options, op_id, app)?;
         } else {
-            let name = path.file_name().unwrap().to_string_lossy().to_string();
+            let name = path.file_name()
+                .ok_or_else(|| format!("Invalid path: {}", path.display()))?
+                .to_string_lossy().to_string();
             zip.start_file(&name, options).map_err(|e| e.to_string())?;
             let data = fs::read(&path).map_err(|e| e.to_string())?;
             zip.write_all(&data).map_err(|e| e.to_string())?;
@@ -110,7 +112,7 @@ fn compress_zip(
             "operationId": op_id,
             "current": count,
             "total": total,
-            "name": path.file_name().unwrap().to_string_lossy(),
+            "name": path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(),
         }));
     }
 
@@ -162,7 +164,9 @@ fn compress_tar_gz(
 
     for source in sources {
         let path = PathBuf::from(source);
-        let name = path.file_name().unwrap().to_string_lossy().to_string();
+        let name = path.file_name()
+            .ok_or_else(|| format!("Invalid path: {}", path.display()))?
+            .to_string_lossy().to_string();
         if path.is_dir() {
             tar.append_dir_all(&name, &path).map_err(|e| e.to_string())?;
         } else {
@@ -196,7 +200,9 @@ fn compress_7z(
         }
 
         let path = PathBuf::from(source);
-        let name = path.file_name().unwrap().to_string_lossy().to_string();
+        let name = path.file_name()
+            .ok_or_else(|| format!("Invalid path: {}", path.display()))?
+            .to_string_lossy().to_string();
 
         if path.is_dir() {
             add_dir_to_7z(&sz_cell, &path, &name, op_id)?;

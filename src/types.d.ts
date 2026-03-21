@@ -436,8 +436,10 @@ export interface GitFileStatus {
 
 export interface ArchiveEntry {
   name: string;
+  path: string;
   size: number;
   isDirectory: boolean;
+  compressedSize: number;
 }
 
 export interface UpdateDownloadProgress {

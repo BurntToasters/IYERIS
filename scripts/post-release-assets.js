@@ -10,7 +10,7 @@ const __dirname = path.dirname(__filename);
 const RELEASE_DIR = path.join(__dirname, '..', 'release');
 
 const BUILD_ONLY_DIRECTORIES = ['app', 'appimage', 'deb', 'dmg', 'macos', 'msi', 'nsis', 'rpm'];
-const BUILD_ONLY_FILES = ['builder-debug.yml', 'builder-effective-config.yaml'];
+const BUILD_ONLY_FILES = [];
 
 function removePath(targetPath) {
   fs.rmSync(targetPath, { recursive: true, force: true, maxRetries: 8, retryDelay: 100 });

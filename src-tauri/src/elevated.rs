@@ -1,5 +1,14 @@
 use std::process::Command;
 
+#[cfg(target_os = "windows")]
+fn ps_escape(s: &str) -> String {
+    s.replace('\'', "''")
+}
+
+fn shell_escape(s: &str) -> String {
+    s.replace('\'', "'\\''")
+}
+
 #[tauri::command]
 pub async fn elevated_copy(source_path: String, dest_path: String) -> Result<(), String> {
     run_elevated_file_op("copy", &source_path, Some(&dest_path)).await
@@ -45,12 +54,13 @@ pub async fn restart_as_admin() -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
         let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+        let escaped = shell_escape(&exe.display().to_string()).replace('\\', "\\\\").replace('"', "\\\"");
         Command::new("osascript")
             .args([
                 "-e",
                 &format!(
                     "do shell script \"open '{}'\" with administrator privileges",
-                    exe.display()
+                    escaped
                 ),
             ])
             .spawn()
@@ -77,18 +87,18 @@ async fn run_elevated_file_op(op: &str, source: &str, dest: Option<&str>) -> Res
     tokio::task::spawn_blocking(move || {
         #[cfg(target_os = "windows")]
         {
+            let src = ps_escape(&source);
+            let dst = ps_escape(dest.as_deref().unwrap_or(""));
             let script = match op.as_str() {
                 "copy" => format!(
-                    "Copy-Item -Path '{}' -Destination '{}' -Recurse -Force",
-                    source,
-                    dest.as_deref().unwrap_or("")
+                    "Copy-Item -Path ''{}'' -Destination ''{}'' -Recurse -Force",
+                    src, dst
                 ),
                 "move" => format!(
-                    "Move-Item -Path '{}' -Destination '{}' -Force",
-                    source,
-                    dest.as_deref().unwrap_or("")
+                    "Move-Item -Path ''{}'' -Destination ''{}'' -Force",
+                    src, dst
                 ),
-                "delete" => format!("Remove-Item -Path '{}' -Recurse -Force", source),
+                "delete" => format!("Remove-Item -Path ''{}'' -Recurse -Force", src),
                 _ => return Err(format!("Unknown operation: {}", op)),
             };
 
@@ -110,25 +120,20 @@ async fn run_elevated_file_op(op: &str, source: &str, dest: Option<&str>) -> Res
 
         #[cfg(target_os = "macos")]
         {
+            let src = shell_escape(&source);
+            let dst = shell_escape(dest.as_deref().unwrap_or(""));
             let cmd = match op.as_str() {
-                "copy" => format!(
-                    "cp -R '{}' '{}'",
-                    source,
-                    dest.as_deref().unwrap_or("")
-                ),
-                "move" => format!(
-                    "mv '{}' '{}'",
-                    source,
-                    dest.as_deref().unwrap_or("")
-                ),
-                "delete" => format!("rm -rf '{}'", source),
+                "copy" => format!("cp -R '{}' '{}'", src, dst),
+                "move" => format!("mv '{}' '{}'", src, dst),
+                "delete" => format!("rm -rf '{}'", src),
                 _ => return Err(format!("Unknown operation: {}", op)),
             };
 
+            let osa_cmd = cmd.replace('\\', "\\\\").replace('"', "\\\"");
             let output = Command::new("osascript")
                 .args([
                     "-e",
-                    &format!("do shell script \"{}\" with administrator privileges", cmd),
+                    &format!("do shell script \"{}\" with administrator privileges", osa_cmd),
                 ])
                 .output()
                 .map_err(|e| e.to_string())?;

@@ -103,6 +103,5 @@ jobs:
       - name: Build release smoke
         run: |
           npm run release:prepare
-          npm run sync-version
           npm run licenses
           npx tauri build --no-bundle

@@ -18,5 +18,5 @@
     "isolatedModules": true
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "src-tauri", "src/main/**", "src/workers/**", "src/tests/**"]
+  "exclude": ["node_modules", "dist", "src-tauri", "src/tests/**"]
 }

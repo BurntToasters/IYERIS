@@ -524,11 +524,6 @@ pub async fn share_items(file_paths: Vec<String>) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn select_folder() -> Result<Option<String>, String> {
-    Ok(None)
-}
-
-#[tauri::command]
 pub async fn check_full_disk_access() -> Result<bool, String> {
     #[cfg(target_os = "macos")]
     {

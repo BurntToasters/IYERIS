@@ -420,7 +420,7 @@ pub async fn calculate_folder_size(
 
         for entry in WalkDir::new(&path).into_iter().flatten() {
             {
-                let calcs = ACTIVE_FOLDER_CALCS.lock().unwrap();
+                let calcs = ACTIVE_FOLDER_CALCS.lock().map_err(|e| e.to_string())?;
                 if !calcs.contains(&op_id) {
                     return Err("Calculation cancelled".to_string());
                 }

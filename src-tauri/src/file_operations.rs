@@ -189,7 +189,6 @@ pub async fn delete_item(item_path: String) -> Result<(), String> {
 #[tauri::command]
 pub async fn trash_item(item_path: String) -> Result<(), String> {
     let path = crate::validate_existing_path(&item_path, "Item")?;
-    undo::clear_undo_redo_for_path(&path.to_string_lossy())?;
     trash::delete(&path).map_err(|e| format!("Failed to trash item: {}", e))
 }
 
@@ -283,6 +282,11 @@ pub async fn copy_items(
     }
 
     cleanup_backups(&backups);
+
+    for item in &planned {
+        let _ = undo::push_create_action(&item.dest_path, item.is_directory);
+    }
+
     Ok(())
 }
 
@@ -733,7 +737,23 @@ pub async fn get_item_properties(item_path: String) -> Result<ItemProperties, St
             .map(|ext| ext.eq_ignore_ascii_case("lnk"))
             .unwrap_or(false);
         let target = if shortcut {
-            resolve_windows_shortcut_target(&path).ok()
+            let escaped = path.to_string_lossy().replace('\'', "''");
+            let script = format!(
+                "$s=(New-Object -ComObject WScript.Shell).CreateShortcut('{}'); if($s.TargetPath) {{ Write-Output $s.TargetPath }}",
+                escaped
+            );
+            Command::new("powershell")
+                .args(["-NoProfile", "-Command", &script])
+                .output()
+                .ok()
+                .and_then(|o| {
+                    if o.status.success() {
+                        let t = String::from_utf8_lossy(&o.stdout).trim().to_string();
+                        if t.is_empty() { None } else { Some(t) }
+                    } else {
+                        None
+                    }
+                })
         } else {
             None
         };
@@ -1332,7 +1352,7 @@ pub async fn calculate_checksum(
 
         for algo in &algorithms {
             {
-                let active = ACTIVE_CHECKSUMS.lock().unwrap();
+                let active = ACTIVE_CHECKSUMS.lock().map_err(|e| e.to_string())?;
                 if !active.contains(&op_id) {
                     return Err("Checksum cancelled".to_string());
                 }

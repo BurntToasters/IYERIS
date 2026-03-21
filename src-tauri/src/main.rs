@@ -214,7 +214,6 @@ fn main() {
             system::export_diagnostics,
             system::get_log_file_content,
             system::share_items,
-            system::select_folder,
             system::set_autostart,
             system::get_autostart,
             system::check_full_disk_access,
@@ -236,10 +235,6 @@ fn main() {
             // File watcher
             watcher::watch_directory,
             watcher::unwatch_directory,
-            // Update
-            platform::check_for_updates,
-            platform::download_update,
-            platform::install_update,
             // Git
             platform::get_git_status,
             platform::get_git_branch,

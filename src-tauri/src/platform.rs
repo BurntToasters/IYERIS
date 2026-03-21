@@ -1,24 +1,6 @@
 use std::process::Command;
 
 #[tauri::command]
-pub async fn check_for_updates() -> Result<serde_json::Value, String> {
-    Ok(serde_json::json!({
-        "available": false,
-        "message": "Updates are handled by the Tauri updater plugin"
-    }))
-}
-
-#[tauri::command]
-pub async fn download_update() -> Result<(), String> {
-    Ok(())
-}
-
-#[tauri::command]
-pub async fn install_update() -> Result<(), String> {
-    Ok(())
-}
-
-#[tauri::command]
 pub async fn get_git_status(
     dir_path: String,
     include_untracked: Option<bool>,
