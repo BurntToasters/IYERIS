@@ -38,6 +38,21 @@ type BootstrapConfig = {
 };
 
 export function createBootstrapController(config: BootstrapConfig) {
+  const DIRECTORY_CHANGE_REFRESH_COOLDOWN_MS = 1200;
+  let lastDirectoryRefreshAt = 0;
+
+  function normalizePathForWatcher(pathValue: string): string {
+    const trimmed = pathValue.trim();
+    if (!trimmed) return '';
+    const isWindowsPath = /^[A-Za-z]:[\\/]/.test(trimmed) || trimmed.startsWith('\\\\');
+    if (isWindowsPath) {
+      const normalized = trimmed.replace(/\//g, '\\');
+      return normalized.replace(/\\+$/, '').toLowerCase();
+    }
+    const normalized = trimmed.replace(/\/+$/, '');
+    return normalized || '/';
+  }
+
   function updateVersionDisplays(appVersion: string): void {
     const rawVersion = appVersion.trim();
     const versionTag = rawVersion.startsWith('v') ? rawVersion : `v${rawVersion}`;
@@ -256,7 +271,17 @@ export function createBootstrapController(config: BootstrapConfig) {
       const cleanupDirectoryChanged = window.tauriAPI.onDirectoryChanged(({ dirPath }) => {
         devLog('Watcher', `directory-changed event: ${dirPath}`);
         const currentPath = config.getCurrentPath();
-        if (currentPath && currentPath === dirPath) {
+        const currentPathKey = currentPath ? normalizePathForWatcher(currentPath) : '';
+        const dirPathKey = normalizePathForWatcher(dirPath || '');
+        if (!currentPathKey || currentPathKey !== dirPathKey) {
+          return;
+        }
+        const now = Date.now();
+        if (now - lastDirectoryRefreshAt < DIRECTORY_CHANGE_REFRESH_COOLDOWN_MS) {
+          return;
+        }
+        lastDirectoryRefreshAt = now;
+        if (currentPath) {
           config.refresh();
         }
       });

@@ -225,7 +225,7 @@ pub async fn rename_item(old_path: String, new_name: String) -> Result<String, S
         .parent()
         .ok_or("Cannot determine parent directory")?
         .join(&new_name);
-    if new_path.exists() {
+    if path_entry_exists(&new_path) {
         return Err("A file or folder with that name already exists".to_string());
     }
     fs::rename(&path, &new_path).map_err(|e| format!("Failed to rename: {}", e))?;
@@ -254,7 +254,10 @@ pub async fn copy_items(
         for (index, item) in planned.iter().enumerate() {
             ensure_overwrite_backup(&mut backups, item)?;
 
-            if item.is_directory {
+            let source_meta = fs::symlink_metadata(&item.source_path).map_err(|e| e.to_string())?;
+            if source_meta.file_type().is_symlink() {
+                copy_symlink_path(&item.source_path, &item.dest_path)?;
+            } else if source_meta.is_dir() {
                 copy_dir_recursive(&item.source_path, &item.dest_path)?;
             } else {
                 fs::copy(&item.source_path, &item.dest_path).map_err(|e| {
@@ -310,7 +313,10 @@ fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<(), String> {
             #[cfg(windows)]
             {
                 let link_target = fs::read_link(&entry_path).map_err(|e| e.to_string())?;
-                if meta.file_type().is_dir() || link_target.is_dir() {
+                let is_dir_link = fs::metadata(&entry_path)
+                    .map(|linked_meta| linked_meta.is_dir())
+                    .unwrap_or(false);
+                if is_dir_link {
                     std::os::windows::fs::symlink_dir(&link_target, &target)
                         .map_err(|e| format!("Failed to create symlink: {}", e))?;
                 } else {
@@ -325,6 +331,53 @@ fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+fn copy_symlink_path(source: &Path, target: &Path) -> Result<(), String> {
+    let link_target = fs::read_link(source).map_err(|e| e.to_string())?;
+
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink(&link_target, target)
+            .map_err(|e| format!("Failed to create symlink: {}", e))
+    }
+
+    #[cfg(windows)]
+    {
+        let is_dir_link = fs::metadata(source)
+            .map(|linked_meta| linked_meta.is_dir())
+            .unwrap_or(false);
+        if is_dir_link {
+            std::os::windows::fs::symlink_dir(&link_target, target)
+                .map_err(|e| format!("Failed to create symlink: {}", e))
+        } else {
+            std::os::windows::fs::symlink_file(&link_target, target)
+                .map_err(|e| format!("Failed to create symlink: {}", e))
+        }
+    }
+}
+
+fn remove_symlink_path(path: &Path) -> Result<(), String> {
+    #[cfg(unix)]
+    {
+        fs::remove_file(path).map_err(|e| format!("Failed to remove symlink: {}", e))
+    }
+
+    #[cfg(windows)]
+    {
+        let is_dir_link = fs::metadata(path)
+            .map(|linked_meta| linked_meta.is_dir())
+            .unwrap_or(false);
+        if is_dir_link {
+            fs::remove_dir(path)
+                .or_else(|_| fs::remove_file(path))
+                .map_err(|e| format!("Failed to remove symlink: {}", e))
+        } else {
+            fs::remove_file(path)
+                .or_else(|_| fs::remove_dir(path))
+                .map_err(|e| format!("Failed to remove symlink: {}", e))
+        }
+    }
 }
 
 #[tauri::command]
@@ -349,14 +402,13 @@ pub async fn move_items(
     let operation = (|| -> Result<(), String> {
         for (index, item) in planned.iter().enumerate() {
             ensure_overwrite_backup(&mut backups, item)?;
-            move_path_with_fallback(&item.source_path, &item.dest_path, item.is_directory)?;
+            move_path_with_fallback(&item.source_path, &item.dest_path)?;
 
             moved_paths.push(item.dest_path.to_string_lossy().to_string());
             original_paths.push(item.source_path.to_string_lossy().to_string());
             completed_moves.push(CompletedMove {
                 source_path: item.source_path.clone(),
                 dest_path: item.dest_path.clone(),
-                is_directory: item.is_directory,
             });
 
             if total > 1 {
@@ -387,10 +439,15 @@ pub async fn move_items(
 }
 
 fn remove_existing_path(path: &Path) -> Result<(), String> {
-    if !path.exists() {
-        return Ok(());
+    let meta = match fs::symlink_metadata(path) {
+        Ok(meta) => meta,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error.to_string()),
+    };
+    if meta.file_type().is_symlink() {
+        return remove_symlink_path(path);
     }
-    if path.is_dir() {
+    if meta.is_dir() {
         fs::remove_dir_all(path).map_err(|e| format!("Failed to remove existing directory: {}", e))
     } else {
         fs::remove_file(path).map_err(|e| format!("Failed to remove existing file: {}", e))
@@ -409,6 +466,10 @@ fn normalize_case_key(path: &Path) -> String {
     }
 }
 
+fn path_entry_exists(path: &Path) -> bool {
+    fs::symlink_metadata(path).is_ok()
+}
+
 fn create_renamed_target(dest: &Path, original_name: &str, reserved: &HashSet<String>) -> PathBuf {
     let (base, ext) = split_filename(original_name);
     for i in 2..10_000 {
@@ -418,7 +479,7 @@ fn create_renamed_target(dest: &Path, original_name: &str, reserved: &HashSet<St
         };
         let target = dest.join(candidate);
         let key = normalize_case_key(&target);
-        if !target.exists() && !reserved.contains(&key) {
+        if !path_entry_exists(&target) && !reserved.contains(&key) {
             return target;
         }
     }
@@ -447,7 +508,7 @@ fn resolve_conflict_target(
     behavior: &str,
 ) -> Result<Option<(PathBuf, bool)>, String> {
     let target = dest.join(original_name);
-    if !target.exists() {
+    if !path_entry_exists(&target) {
         return Ok(Some((target, false)));
     }
 
@@ -472,7 +533,6 @@ struct PlannedFileOperation {
 struct CompletedMove {
     source_path: PathBuf,
     dest_path: PathBuf,
-    is_directory: bool,
 }
 
 #[derive(Clone)]
@@ -527,7 +587,7 @@ fn plan_file_operations(
             Some((target, overwrite)) => {
                 if overwrite {
                     (target, overwrite)
-                } else if target.exists() {
+                } else if path_entry_exists(&target) {
                     if behavior_normalized == "ask" {
                         match conflict_resolutions
                             .get(&item_name)
@@ -584,11 +644,11 @@ fn is_cross_device_error(err: &std::io::Error) -> bool {
     matches!(err.raw_os_error(), Some(17) | Some(18))
 }
 
-fn move_path_with_fallback(
-    source: &Path,
-    target: &Path,
-    is_directory: bool,
-) -> Result<(), String> {
+fn move_path_with_fallback(source: &Path, target: &Path) -> Result<(), String> {
+    let source_meta = fs::symlink_metadata(source).map_err(|e| e.to_string())?;
+    let is_symlink = source_meta.file_type().is_symlink();
+    let is_directory = source_meta.is_dir();
+
     if let Some(parent) = target.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("Failed to create directory: {}", e))?;
     }
@@ -605,7 +665,13 @@ fn move_path_with_fallback(
         Err(_) => {}
     }
 
-    if is_directory {
+    if is_symlink {
+        copy_symlink_path(source, target)?;
+        if let Err(e) = remove_symlink_path(source) {
+            let _ = remove_existing_path(target);
+            return Err(format!("Failed to remove source symlink after cross-device move: {}", e));
+        }
+    } else if is_directory {
         copy_dir_recursive(source, target)?;
         if let Err(e) = fs::remove_dir_all(source) {
             let _ = fs::remove_dir_all(target);
@@ -642,7 +708,7 @@ fn create_backup_path(dest_path: &Path) -> Result<PathBuf, String> {
             timestamp,
             attempt
         ));
-        if !candidate.exists() {
+        if !path_entry_exists(&candidate) {
             return Ok(candidate);
         }
     }
@@ -658,15 +724,12 @@ fn ensure_overwrite_backup(
     }
 
     let key = normalize_case_key(&operation.dest_path);
-    if backups.contains_key(&key) || !operation.dest_path.exists() {
+    if backups.contains_key(&key) || !path_entry_exists(&operation.dest_path) {
         return Ok(());
     }
 
     let backup_path = create_backup_path(&operation.dest_path)?;
-    let is_directory = fs::symlink_metadata(&operation.dest_path)
-        .map(|meta| meta.is_dir())
-        .unwrap_or(false);
-    move_path_with_fallback(&operation.dest_path, &backup_path, is_directory)?;
+    move_path_with_fallback(&operation.dest_path, &backup_path)?;
     backups.insert(
         key,
         OverwriteBackup {
@@ -682,25 +745,22 @@ fn restore_overwrite_backups(
     skip_if_destination_exists: bool,
 ) {
     for backup in backups.values() {
-        if !backup.backup_path.exists() {
+        if !path_entry_exists(&backup.backup_path) {
             continue;
         }
-        if skip_if_destination_exists && backup.dest_path.exists() {
+        if skip_if_destination_exists && path_entry_exists(&backup.dest_path) {
             continue;
         }
-        if backup.dest_path.exists() {
+        if path_entry_exists(&backup.dest_path) {
             let _ = remove_existing_path(&backup.dest_path);
         }
-        let is_directory = fs::symlink_metadata(&backup.backup_path)
-            .map(|meta| meta.is_dir())
-            .unwrap_or(false);
-        let _ = move_path_with_fallback(&backup.backup_path, &backup.dest_path, is_directory);
+        let _ = move_path_with_fallback(&backup.backup_path, &backup.dest_path);
     }
 }
 
 fn cleanup_backups(backups: &HashMap<String, OverwriteBackup>) {
     for backup in backups.values() {
-        if backup.backup_path.exists() {
+        if path_entry_exists(&backup.backup_path) {
             let _ = remove_existing_path(&backup.backup_path);
         }
     }
@@ -714,7 +774,7 @@ fn remove_paths_reversed(paths: &[PathBuf]) {
 
 fn rollback_moves(completed: &[CompletedMove]) {
     for item in completed.iter().rev() {
-        let _ = move_path_with_fallback(&item.dest_path, &item.source_path, item.is_directory);
+        let _ = move_path_with_fallback(&item.dest_path, &item.source_path);
     }
 }
 
@@ -1020,7 +1080,7 @@ pub async fn batch_rename(
             .parent()
             .ok_or("Cannot determine parent")?
             .join(new_name);
-        if new_path != path && new_path.exists() && !moving_set.contains(&new_path) {
+        if new_path != path && path_entry_exists(&new_path) && !moving_set.contains(&new_path) {
             results.push(serde_json::json!({
                 "oldPath": old_path,
                 "success": false,

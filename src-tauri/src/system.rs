@@ -427,11 +427,21 @@ pub async fn open_terminal(dir_path: String) -> Result<(), String> {
     #[cfg(target_os = "linux")]
     {
         for terminal in &["x-terminal-emulator", "gnome-terminal", "konsole", "xfce4-terminal", "xterm"] {
-            if std::process::Command::new(terminal)
-                .arg(format!("--working-directory={}", path.display()))
-                .spawn()
-                .is_ok()
-            {
+            let launched = if *terminal == "xterm" {
+                let escaped = path
+                    .to_string_lossy()
+                    .replace('\'', "'\\''");
+                std::process::Command::new(terminal)
+                    .args(["-e", "sh", "-lc", &format!("cd '{}' && exec \"$SHELL\"", escaped)])
+                    .spawn()
+                    .is_ok()
+            } else {
+                std::process::Command::new(terminal)
+                    .arg(format!("--working-directory={}", path.display()))
+                    .spawn()
+                    .is_ok()
+            };
+            if launched {
                 return Ok(());
             }
         }

@@ -54,11 +54,69 @@ pub struct DriveInfo {
     pub is_removable: bool,
 }
 
+#[cfg(target_os = "windows")]
+fn normalize_windows_disk_query_path(path: &std::path::Path) -> String {
+    let mut value = path.to_string_lossy().replace('/', "\\");
+    if let Some(stripped) = value.strip_prefix(r"\\?\UNC\") {
+        value = format!(r"\\{}", stripped);
+    } else if let Some(stripped) = value.strip_prefix(r"\\?\") {
+        value = stripped.to_string();
+    }
+    if value.len() == 2 && value.as_bytes()[1] == b':' {
+        value.push('\\');
+    }
+    value
+}
+
+#[cfg(target_os = "windows")]
+fn windows_drive_space(path: &std::path::Path) -> Option<(u64, u64)> {
+    use std::ffi::OsStr;
+    use std::iter::once;
+    use std::os::windows::ffi::OsStrExt;
+    use windows::core::PCWSTR;
+    use windows::Win32::Storage::FileSystem::GetDiskFreeSpaceExW;
+
+    let query_path = normalize_windows_disk_query_path(path);
+    if query_path.is_empty() {
+        return None;
+    }
+    let wide_path: Vec<u16> = OsStr::new(&query_path)
+        .encode_wide()
+        .chain(once(0))
+        .collect();
+
+    let mut free_to_caller: u64 = 0;
+    let mut total_space: u64 = 0;
+    let mut total_free_space: u64 = 0;
+    let result = unsafe {
+        GetDiskFreeSpaceExW(
+            PCWSTR(wide_path.as_ptr()),
+            Some(&mut free_to_caller),
+            Some(&mut total_space),
+            Some(&mut total_free_space),
+        )
+    };
+    if result.is_err() {
+        return None;
+    }
+    Some((total_space, free_to_caller))
+}
+
+fn query_disk_space(path: &std::path::Path) -> Result<(u64, u64), String> {
+    #[cfg(target_os = "windows")]
+    {
+        if let Some(space) = windows_drive_space(path) {
+            return Ok(space);
+        }
+    }
+    let total = fs2::total_space(path).map_err(|e| e.to_string())?;
+    let available = fs2::available_space(path).map_err(|e| e.to_string())?;
+    Ok((total, available))
+}
+
 fn drive_space(mount_point: &str) -> (u64, u64) {
     let path = std::path::Path::new(mount_point);
-    let total = fs2::total_space(path).unwrap_or(0);
-    let available = fs2::available_space(path).unwrap_or(0);
-    (total, available)
+    query_disk_space(path).unwrap_or((0, 0))
 }
 
 fn build_drive(
@@ -387,8 +445,7 @@ pub async fn get_special_directory(directory: String) -> Result<String, String> 
 pub async fn get_disk_space(drive_path: String) -> Result<serde_json::Value, String> {
     let path = crate::validate_existing_path(&drive_path, "Drive")?;
     tokio::task::spawn_blocking(move || {
-        let total = fs2::total_space(&path).map_err(|e| e.to_string())?;
-        let free = fs2::available_space(&path).map_err(|e| e.to_string())?;
+        let (total, free) = query_disk_space(&path)?;
         Ok(serde_json::json!({
             "total": total,
             "free": free,
