@@ -184,6 +184,13 @@ export interface DirectoryContentsProgress {
   operationId?: string;
 }
 
+export interface DirectoryChangedEvent {
+  dirPath: string;
+  eventId?: number;
+  eventKind?: string;
+  eventPaths?: string[];
+}
+
 export interface SearchFilters {
   fileType?: string;
   minSize?: number;
@@ -616,7 +623,7 @@ export interface TauriAPI {
   onExtractProgress: (callback: (progress: ArchiveProgress) => void) => () => void;
   onFileOperationProgress: (callback: (progress: FileOperationProgress) => void) => () => void;
   onSystemResumed: (callback: () => void) => () => void;
-  onDirectoryChanged: (callback: (data: { dirPath: string }) => void) => () => void;
+  onDirectoryChanged: (callback: (data: DirectoryChangedEvent) => void) => () => void;
   onSystemThemeChanged: (callback: (data: { isDarkMode: boolean }) => void) => () => void;
   setZoomLevel: (zoomLevel: number) => Promise<IpcResult>;
   getZoomLevel: () => Promise<ZoomLevelResponse>;

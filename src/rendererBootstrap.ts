@@ -21,7 +21,7 @@ type BootstrapConfig = {
   updateUndoRedoState: () => Promise<void>;
   handleUpdateDownloaded: (info: { version: string }) => void;
   silentCheckAndDownload: () => Promise<void>;
-  refresh: () => void;
+  refresh: (reason?: string) => void;
   applySettings: (settings: Settings) => void;
   getCurrentSettings: () => Settings;
   setCurrentSettings: (s: Settings) => void;
@@ -38,7 +38,7 @@ type BootstrapConfig = {
 };
 
 export function createBootstrapController(config: BootstrapConfig) {
-  const DIRECTORY_CHANGE_REFRESH_COOLDOWN_MS = 1200;
+  const DIRECTORY_CHANGE_REFRESH_COOLDOWN_MS = 1800;
   let lastDirectoryRefreshAt = 0;
 
   function normalizePathForWatcher(pathValue: string): string {
@@ -260,31 +260,52 @@ export function createBootstrapController(config: BootstrapConfig) {
       }
 
       const cleanupSystemResumed = window.tauriAPI.onSystemResumed(() => {
+        devLog('System', 'system-resumed event received');
         config.clearDiskSpaceCache();
         if (config.getCurrentPath()) {
-          config.refresh();
+          config.refresh('system-resumed');
         }
         config.loadDrives();
       });
       config.getIpcCleanupFunctions().push(cleanupSystemResumed);
 
-      const cleanupDirectoryChanged = window.tauriAPI.onDirectoryChanged(({ dirPath }) => {
-        devLog('Watcher', `directory-changed event: ${dirPath}`);
-        const currentPath = config.getCurrentPath();
-        const currentPathKey = currentPath ? normalizePathForWatcher(currentPath) : '';
-        const dirPathKey = normalizePathForWatcher(dirPath || '');
-        if (!currentPathKey || currentPathKey !== dirPathKey) {
-          return;
+      const cleanupDirectoryChanged = window.tauriAPI.onDirectoryChanged(
+        ({ dirPath, eventKind, eventPaths, eventId }) => {
+          devLog('Watcher', 'directory-changed event received', {
+            eventId: eventId ?? null,
+            eventKind: eventKind ?? 'unknown',
+            dirPath,
+            eventPaths: Array.isArray(eventPaths) ? eventPaths : [],
+          });
+          const currentPath = config.getCurrentPath();
+          const currentPathKey = currentPath ? normalizePathForWatcher(currentPath) : '';
+          const dirPathKey = normalizePathForWatcher(dirPath || '');
+          if (!currentPathKey || currentPathKey !== dirPathKey) {
+            devLog('Watcher', 'Ignored directory-changed event (path mismatch)', {
+              currentPath: currentPath || '',
+              eventPath: dirPath || '',
+              currentPathKey,
+              eventPathKey: dirPathKey,
+            });
+            return;
+          }
+          const now = Date.now();
+          if (now - lastDirectoryRefreshAt < DIRECTORY_CHANGE_REFRESH_COOLDOWN_MS) {
+            devLog('Watcher', 'Ignored directory-changed event (cooldown)', {
+              elapsedMs: now - lastDirectoryRefreshAt,
+              cooldownMs: DIRECTORY_CHANGE_REFRESH_COOLDOWN_MS,
+            });
+            return;
+          }
+          lastDirectoryRefreshAt = now;
+          if (currentPath) {
+            devLog('Watcher', 'Triggering refresh from directory-changed event', {
+              path: currentPath,
+            });
+            config.refresh('watcher-directory-changed');
+          }
         }
-        const now = Date.now();
-        if (now - lastDirectoryRefreshAt < DIRECTORY_CHANGE_REFRESH_COOLDOWN_MS) {
-          return;
-        }
-        lastDirectoryRefreshAt = now;
-        if (currentPath) {
-          config.refresh();
-        }
-      });
+      );
       config.getIpcCleanupFunctions().push(cleanupDirectoryChanged);
 
       const cleanupSystemThemeChanged = window.tauriAPI.onSystemThemeChanged(({ isDarkMode }) => {

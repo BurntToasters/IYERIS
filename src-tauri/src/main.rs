@@ -68,10 +68,18 @@ pub(crate) fn validate_path(raw: &str, label: &str) -> Result<PathBuf, String> {
 
 pub(crate) fn validate_existing_path(raw: &str, label: &str) -> Result<PathBuf, String> {
     let path = validate_path(raw, label)?;
-    if !path.exists() {
-        return Err(format!("{} path does not exist: {}", label, path.display()));
+    match std::fs::symlink_metadata(&path) {
+        Ok(_) => Ok(path),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            Err(format!("{} path does not exist: {}", label, path.display()))
+        }
+        Err(error) => Err(format!(
+            "Failed to access {} path {}: {}",
+            label,
+            path.display(),
+            error
+        )),
     }
-    Ok(path)
 }
 
 fn main() {

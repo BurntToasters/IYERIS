@@ -2,7 +2,7 @@ use serde::Serialize;
 use std::fs;
 use std::collections::HashSet;
 use std::sync::Mutex;
-use std::time::UNIX_EPOCH;
+use std::time::{Instant, UNIX_EPOCH};
 use tauri::Emitter;
 use walkdir::WalkDir;
 
@@ -112,6 +112,25 @@ fn query_disk_space(path: &std::path::Path) -> Result<(u64, u64), String> {
     let total = fs2::total_space(path).map_err(|e| e.to_string())?;
     let available = fs2::available_space(path).map_err(|e| e.to_string())?;
     Ok((total, available))
+}
+
+#[cfg(target_os = "windows")]
+fn windows_logical_drive_mounts() -> Vec<String> {
+    use windows::Win32::Storage::FileSystem::GetLogicalDrives;
+
+    let mask = unsafe { GetLogicalDrives() };
+    if mask == 0 {
+        return Vec::new();
+    }
+
+    let mut mounts = Vec::new();
+    for bit in 0..26u32 {
+        if mask & (1 << bit) != 0 {
+            let letter = (b'A' + bit as u8) as char;
+            mounts.push(format!("{}:\\", letter));
+        }
+    }
+    mounts
 }
 
 fn drive_space(mount_point: &str) -> (u64, u64) {
@@ -262,7 +281,13 @@ pub async fn get_directory_contents(
     _stream_only: Option<bool>,
     app: tauri::AppHandle,
 ) -> Result<Vec<FileItem>, String> {
-    log::debug!("[Directory] get_directory_contents: {} (op={:?})", dir_path, operation_id);
+    let started_at = Instant::now();
+    log::debug!(
+        "[Directory] get_directory_contents request: path={} op={:?} include_hidden={:?}",
+        dir_path,
+        operation_id,
+        include_hidden
+    );
     let path = crate::validate_existing_path(&dir_path, "Directory")?;
     let show_hidden = include_hidden.unwrap_or(false);
     let op_id = operation_id.unwrap_or_default();
@@ -284,6 +309,11 @@ pub async fn get_directory_contents(
             if !listing_op_id.is_empty() {
                 let listings = ACTIVE_DIRECTORY_LISTINGS.lock().map_err(|e| e.to_string())?;
                 if !listings.contains(&listing_op_id) {
+                    log::debug!(
+                        "[Directory] get_directory_contents cancelled mid-scan: op={} loaded={}",
+                        listing_op_id,
+                        loaded
+                    );
                     break;
                 }
             }
@@ -337,11 +367,39 @@ pub async fn get_directory_contents(
         listings.remove(&op_id);
     }
 
+    match &result {
+        Ok(items) => {
+            let elapsed_ms = started_at.elapsed().as_millis();
+            log::debug!(
+                "[Directory] get_directory_contents completed: path={} op={} items={} show_hidden={} elapsed={}ms",
+                dir_path,
+                if op_id.is_empty() { "<none>" } else { &op_id },
+                items.len(),
+                show_hidden,
+                elapsed_ms
+            );
+        }
+        Err(error) => {
+            let elapsed_ms = started_at.elapsed().as_millis();
+            log::warn!(
+                "[Directory] get_directory_contents failed: path={} op={} elapsed={}ms error={}",
+                dir_path,
+                if op_id.is_empty() { "<none>" } else { &op_id },
+                elapsed_ms,
+                error
+            );
+        }
+    }
+
     result
 }
 
 #[tauri::command]
 pub async fn cancel_directory_contents(operation_id: String) -> Result<(), String> {
+    log::debug!(
+        "[Directory] cancel_directory_contents request: op={}",
+        operation_id
+    );
     let mut listings = ACTIVE_DIRECTORY_LISTINGS.lock().map_err(|e| e.to_string())?;
     listings.remove(&operation_id);
     Ok(())
@@ -349,21 +407,36 @@ pub async fn cancel_directory_contents(operation_id: String) -> Result<(), Strin
 
 #[tauri::command]
 pub async fn get_drives() -> Result<Vec<DriveInfo>, String> {
+    let started_at = Instant::now();
+    log::debug!("[Directory] get_drives request");
     tokio::task::spawn_blocking(|| {
         let mut drives = Vec::new();
 
         #[cfg(target_os = "windows")]
         {
-            for letter in b'A'..=b'Z' {
-                let mount = format!("{}:\\", letter as char);
-                let path = std::path::Path::new(&mount);
-                if path.exists() {
+            let mounts = windows_logical_drive_mounts();
+            if !mounts.is_empty() {
+                for mount in mounts {
+                    let letter = mount.chars().next().unwrap_or('?');
                     drives.push(build_drive(
-                        format!("{}: Drive", letter as char),
+                        format!("{}: Drive", letter),
                         mount,
                         String::new(),
                         false,
                     ));
+                }
+            } else {
+                for letter in b'A'..=b'Z' {
+                    let mount = format!("{}:\\", letter as char);
+                    let path = std::path::Path::new(&mount);
+                    if path.exists() {
+                        drives.push(build_drive(
+                            format!("{}: Drive", letter as char),
+                            mount,
+                            String::new(),
+                            false,
+                        ));
+                    }
                 }
             }
         }
@@ -406,12 +479,24 @@ pub async fn get_drives() -> Result<Vec<DriveInfo>, String> {
         Ok(drives)
     })
     .await
-    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())
+    .map(|result| {
+        if let Ok(drives) = &result {
+            log::debug!(
+                "[Directory] get_drives completed: count={} elapsed={}ms",
+                drives.len(),
+                started_at.elapsed().as_millis()
+            );
+        }
+        result
+    })?
 }
 
 #[tauri::command]
 pub async fn get_drive_info() -> Result<Vec<DriveInfo>, String> {
-    get_drives().await
+    let drives = get_drives().await?;
+    log::debug!("[Directory] get_drive_info returning {} drives", drives.len());
+    Ok(drives)
 }
 
 #[tauri::command]
@@ -443,9 +528,18 @@ pub async fn get_special_directory(directory: String) -> Result<String, String> 
 
 #[tauri::command]
 pub async fn get_disk_space(drive_path: String) -> Result<serde_json::Value, String> {
+    let started_at = Instant::now();
+    log::debug!("[Directory] get_disk_space request: {}", drive_path);
     let path = crate::validate_existing_path(&drive_path, "Drive")?;
+    let path_display = path.to_string_lossy().to_string();
     tokio::task::spawn_blocking(move || {
         let (total, free) = query_disk_space(&path)?;
+        log::debug!(
+            "[Directory] get_disk_space result: path={} total={} free={}",
+            path_display,
+            total,
+            free
+        );
         Ok(serde_json::json!({
             "total": total,
             "free": free,
@@ -454,7 +548,17 @@ pub async fn get_disk_space(drive_path: String) -> Result<serde_json::Value, Str
         }))
     })
     .await
-    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())
+    .map(|result| {
+        if result.is_ok() {
+            log::debug!(
+                "[Directory] get_disk_space completed in {}ms for {}",
+                started_at.elapsed().as_millis(),
+                drive_path
+            );
+        }
+        result
+    })?
 }
 
 #[tauri::command]

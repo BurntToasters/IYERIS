@@ -301,7 +301,10 @@ fn copy_dir_recursive(source: &Path, dest: &Path) -> Result<(), String> {
             #[cfg(windows)]
             {
                 let link_target = fs::read_link(&entry_path).map_err(|e| e.to_string())?;
-                if meta.file_type().is_dir() || link_target.is_dir() {
+                let is_dir_link = fs::metadata(&entry_path)
+                    .map(|linked_meta| linked_meta.is_dir())
+                    .unwrap_or(false);
+                if is_dir_link {
                     std::os::windows::fs::symlink_dir(&link_target, &target)
                         .map_err(|e| format!("Failed to create symlink: {}", e))?;
                 } else {
@@ -325,6 +328,73 @@ fn is_cross_device_error(err: &std::io::Error) -> bool {
     }
 }
 
+fn copy_symlink_path(source: &Path, target: &Path) -> Result<(), String> {
+    let link_target = fs::read_link(source).map_err(|e| e.to_string())?;
+
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink(&link_target, target)
+            .map_err(|e| format!("Failed to create symlink: {}", e))
+    }
+
+    #[cfg(windows)]
+    {
+        let is_dir_link = fs::metadata(source)
+            .map(|linked_meta| linked_meta.is_dir())
+            .unwrap_or(false);
+        if is_dir_link {
+            std::os::windows::fs::symlink_dir(&link_target, target)
+                .map_err(|e| format!("Failed to create symlink: {}", e))
+        } else {
+            std::os::windows::fs::symlink_file(&link_target, target)
+                .map_err(|e| format!("Failed to create symlink: {}", e))
+        }
+    }
+}
+
+fn remove_symlink_path(path: &Path) -> Result<(), String> {
+    #[cfg(unix)]
+    {
+        fs::remove_file(path).map_err(|e| format!("Failed to remove symlink: {}", e))
+    }
+
+    #[cfg(windows)]
+    {
+        let is_dir_link = fs::metadata(path)
+            .map(|linked_meta| linked_meta.is_dir())
+            .unwrap_or(false);
+        if is_dir_link {
+            fs::remove_dir(path)
+                .or_else(|_| fs::remove_file(path))
+                .map_err(|e| format!("Failed to remove symlink: {}", e))
+        } else {
+            fs::remove_file(path)
+                .or_else(|_| fs::remove_dir(path))
+                .map_err(|e| format!("Failed to remove symlink: {}", e))
+        }
+    }
+}
+
+fn remove_existing_path(path: &Path) -> Result<(), String> {
+    let meta = match fs::symlink_metadata(path) {
+        Ok(meta) => meta,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error.to_string()),
+    };
+    if meta.file_type().is_symlink() {
+        return remove_symlink_path(path);
+    }
+    if meta.is_dir() {
+        fs::remove_dir_all(path).map_err(|e| format!("Failed to remove existing directory: {}", e))
+    } else {
+        fs::remove_file(path).map_err(|e| format!("Failed to remove existing file: {}", e))
+    }
+}
+
+fn path_entry_exists(path: &Path) -> bool {
+    fs::symlink_metadata(path).is_ok()
+}
+
 fn move_path(source: &Path, dest: &Path) -> Result<(), String> {
     match fs::rename(source, dest) {
         Ok(_) => return Ok(()),
@@ -332,8 +402,14 @@ fn move_path(source: &Path, dest: &Path) -> Result<(), String> {
         Err(_) => {}
     }
 
-    let source_meta = fs::metadata(source).map_err(|e| e.to_string())?;
-    if source_meta.is_dir() {
+    let source_meta = fs::symlink_metadata(source).map_err(|e| e.to_string())?;
+    if source_meta.file_type().is_symlink() {
+        copy_symlink_path(source, dest)?;
+        if let Err(e) = remove_symlink_path(source) {
+            let _ = remove_existing_path(dest);
+            return Err(e);
+        }
+    } else if source_meta.is_dir() {
         copy_dir_recursive(source, dest)?;
         let dest_meta = fs::metadata(dest).map_err(|e| e.to_string())?;
         if !dest_meta.is_dir() {
@@ -371,7 +447,7 @@ fn execute_rename_action(from_path: &str, to_path: &str, direction: &str) -> Res
     };
     let to = crate::validate_path(to_path, "Target")
         .map_err(|_| format!("Cannot {}: Invalid target path", direction))?;
-    if to.exists() {
+    if path_entry_exists(&to) {
         return Err(format!(
             "Cannot {}: A file already exists at the {} location",
             direction,
@@ -416,14 +492,14 @@ fn execute_move_undo(action: MoveActionData) -> Result<(), String> {
     };
 
     for source in &action.source_paths {
-        if !Path::new(source).exists() {
+        if !path_entry_exists(Path::new(source)) {
             push_undo_action(UndoAction::Move(action), false)?;
             return Err("Cannot undo: One or more files no longer exist".to_string());
         }
     }
 
     for target in &targets {
-        if Path::new(target).exists() {
+        if path_entry_exists(Path::new(target)) {
             push_undo_action(UndoAction::Move(action), false)?;
             return Err("Cannot undo: A file already exists at the original location".to_string());
         }
@@ -495,10 +571,10 @@ fn execute_move_redo(action: &MoveActionData) -> Result<Vec<String>, String> {
 
     let mut new_moved_paths = Vec::new();
     for (source, target) in source_target_pairs {
-        if !source.exists() {
+        if !path_entry_exists(&source) {
             return Err("Cannot redo: File not found at original location".to_string());
         }
-        if target.exists() {
+        if path_entry_exists(&target) {
             return Err("Cannot redo: A file already exists at the target location".to_string());
         }
         move_path(&source, &target)?;
@@ -655,7 +731,7 @@ pub async fn redo_action() -> Result<UndoRedoState, String> {
         },
         UndoAction::Create(data) => {
             let item_path = PathBuf::from(&data.path);
-            if item_path.exists() {
+            if path_entry_exists(&item_path) {
                 push_redo_action(UndoAction::Create(data))?;
                 return Err(
                     "Cannot redo: A file or folder already exists at this location".to_string(),

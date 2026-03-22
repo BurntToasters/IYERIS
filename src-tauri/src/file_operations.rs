@@ -615,7 +615,11 @@ fn plan_file_operations(
             }
         };
 
+        let source_key = normalize_case_key(&src);
         let destination_key = normalize_case_key(&resolved.0);
+        if source_key == destination_key {
+            return Err(format!("Cannot {} \"{}\" onto itself", operation, item_name));
+        }
         if reserved.contains(&destination_key) {
             return Err(format!(
                 "Multiple items resolve to the same destination: \"{}\"",
@@ -1361,6 +1365,19 @@ fn parse_clipboard_paths(text: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn make_test_temp_dir(prefix: &str) -> PathBuf {
+        let mut dir = std::env::temp_dir();
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        dir.push(format!("iyeris-{}-{}-{}", prefix, std::process::id(), nonce));
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
 
     #[test]
     fn percent_decode_lossy_decodes_hex_sequences() {
@@ -1399,6 +1416,56 @@ mod tests {
         assert_eq!(
             decode_file_uri_path("file://server/share/folder"),
             Some("//server/share/folder".to_string())
+        );
+    }
+
+    #[test]
+    fn plan_file_operations_rejects_copy_overwrite_onto_self() {
+        let dir = make_test_temp_dir("copy-self");
+        let file_path = dir.join("sample.txt");
+        fs::write(&file_path, "abc").unwrap();
+
+        let planned = plan_file_operations(
+            &[file_path.to_string_lossy().to_string()],
+            &dir,
+            "overwrite",
+            "copy",
+            &HashMap::new(),
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+        assert!(planned.is_err());
+        assert!(
+            planned
+                .err()
+                .unwrap()
+                .to_ascii_lowercase()
+                .contains("onto itself")
+        );
+    }
+
+    #[test]
+    fn plan_file_operations_rejects_move_overwrite_onto_self() {
+        let dir = make_test_temp_dir("move-self");
+        let file_path = dir.join("sample.txt");
+        fs::write(&file_path, "abc").unwrap();
+
+        let planned = plan_file_operations(
+            &[file_path.to_string_lossy().to_string()],
+            &dir,
+            "overwrite",
+            "move",
+            &HashMap::new(),
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+        assert!(planned.is_err());
+        assert!(
+            planned
+                .err()
+                .unwrap()
+                .to_ascii_lowercase()
+                .contains("onto itself")
         );
     }
 }
