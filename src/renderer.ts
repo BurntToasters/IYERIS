@@ -1324,6 +1324,7 @@ async function navigateTo(path: string, skipHistoryUpdate = false, trigger = 'di
     }
 
     thumbnails.disconnectThumbnailObserver();
+    thumbnails.clearPendingThumbnailLoads();
 
     hideLoading();
 
@@ -1362,6 +1363,7 @@ async function navigateTo(path: string, skipHistoryUpdate = false, trigger = 'di
     }
 
     thumbnails.disconnectThumbnailObserver();
+    thumbnails.clearPendingThumbnailLoads();
 
     showLoading('Loading folder...');
     if (fileGrid) fileGrid.innerHTML = '';

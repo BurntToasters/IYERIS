@@ -306,14 +306,14 @@ export function createTabsController(deps: TabsDeps) {
         deps.cancelDirectoryRequest?.();
         restoreTabView(newTab);
         updateTabCacheAccess(newTab.id);
+        deps.setFileViewScrollTop(newTab.scrollPosition);
       } else {
-        void deps.navigateTo(newTab.path, true);
+        void (async () => {
+          await deps.navigateTo(newTab.path, true);
+          deps.setFileViewScrollTop(newTab.scrollPosition);
+        })();
       }
     }
-
-    setTimeout(() => {
-      deps.setFileViewScrollTop(newTab.scrollPosition);
-    }, 50);
 
     renderTabs();
     debouncedSaveTabState();

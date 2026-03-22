@@ -2179,7 +2179,7 @@ checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
 
 [[package]]
 name = "iyeris"
-version = "2.0.0-beta.8"
+version = "2.0.0-beta.9"
 dependencies = [
  "chrono",
  "core-foundation 0.9.4",
