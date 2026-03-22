@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import type { Update } from '@tauri-apps/plugin-updater';
 import type { TauriAPI, Settings, HomeSettings } from './types';
+import { devLog } from './shared.js';
 
 type SpecialDirectory = 'desktop' | 'documents' | 'downloads' | 'music' | 'videos';
 type FileConflictBehavior = 'ask' | 'rename' | 'skip' | 'overwrite';
@@ -12,6 +13,29 @@ let pendingUpdate: Update | null = null;
 let updateDownloadInProgress = false;
 let currentUpdateChannel: 'auto' | 'beta' | 'stable' = 'auto';
 let cachedPlatformOS: string | null = null;
+let lastWatchedDirectoryPath = '';
+const IPC_SLOW_WARNING_MS = 1200;
+
+function nowMs(): number {
+  return typeof performance !== 'undefined' ? performance.now() : Date.now();
+}
+
+function elapsedMs(startedAt: number): number {
+  return Math.max(0, nowMs() - startedAt);
+}
+
+function isRuntimeDevLoggingEnabled(): boolean {
+  if (typeof globalThis === 'undefined') return false;
+  const value = (globalThis as Record<string, unknown>).__iyerisLogger;
+  return typeof value === 'object' && value !== null;
+}
+
+function logIpcTiming(command: string, durationMs: number, details: Record<string, unknown>): void {
+  devLog('IPC', `${command} completed in ${durationMs.toFixed(1)}ms`, details);
+  if (isRuntimeDevLoggingEnabled() && durationMs >= IPC_SLOW_WARNING_MS) {
+    console.warn(`[IPC] Slow ${command}: ${durationMs.toFixed(1)}ms`, details);
+  }
+}
 
 async function getUpdaterTargetBase(): Promise<string> {
   if (!cachedPlatformOS) {
@@ -106,6 +130,18 @@ function parseConflictItem(errorMessage: string): string | null {
   return item || null;
 }
 
+function normalizeWatchPath(pathValue: string): string {
+  const trimmed = pathValue.trim();
+  if (!trimmed) return '';
+  const isWindowsPath = /^[A-Za-z]:[\\/]/.test(trimmed) || trimmed.startsWith('\\\\');
+  if (isWindowsPath) {
+    const normalized = trimmed.replace(/\//g, '\\');
+    return normalized.replace(/\\+$/, '').toLowerCase();
+  }
+  const normalized = trimmed.replace(/\/+$/, '');
+  return normalized || '/';
+}
+
 async function promptConflictResolution(
   fileName: string,
   operation: 'copy' | 'move'
@@ -173,6 +209,12 @@ async function runFileOperationWithConflictResolution(
 
 const tauriAPI: TauriAPI = {
   getDirectoryContents: async (dirPath, operationId, includeHidden, _streamOnly) => {
+    const startedAt = nowMs();
+    devLog('IPC', 'get_directory_contents request', {
+      dirPath,
+      operationId: operationId ?? null,
+      includeHidden: includeHidden ?? null,
+    });
     try {
       const items = await invoke<Record<string, unknown>[]>('get_directory_contents', {
         dirPath,
@@ -180,13 +222,27 @@ const tauriAPI: TauriAPI = {
         includeHidden: includeHidden ?? null,
         streamOnly: null,
       });
+      const durationMs = elapsedMs(startedAt);
+      logIpcTiming('get_directory_contents', durationMs, {
+        dirPath,
+        operationId: operationId ?? null,
+        itemCount: items.length,
+      });
       return { success: true, contents: items.map(buildFileItem) } as never;
     } catch (e) {
+      const durationMs = elapsedMs(startedAt);
+      devLog('IPC', `get_directory_contents failed in ${durationMs.toFixed(1)}ms`, {
+        dirPath,
+        operationId: operationId ?? null,
+        error: String(e),
+      });
       return { success: false, error: String(e) } as never;
     }
   },
-  cancelDirectoryContents: (operationId) =>
-    wrap(() => invoke('cancel_directory_contents', { operationId })),
+  cancelDirectoryContents: (operationId) => {
+    devLog('IPC', 'cancel_directory_contents request', { operationId });
+    return wrap(() => invoke('cancel_directory_contents', { operationId }));
+  },
   getDrives: async () => {
     try {
       const drives = await invoke<Record<string, unknown>[]>('get_drives');
@@ -196,10 +252,15 @@ const tauriAPI: TauriAPI = {
     }
   },
   getDriveInfo: async () => {
+    const startedAt = nowMs();
+    devLog('IPC', 'get_drive_info request');
     try {
       const drives = await invoke<Record<string, unknown>[]>('get_drive_info');
-      return drives.map((d) => ({ path: d.mountPoint as string, label: d.name as string }));
+      const mapped = drives.map((d) => ({ path: d.mountPoint as string, label: d.name as string }));
+      logIpcTiming('get_drive_info', elapsedMs(startedAt), { driveCount: mapped.length });
+      return mapped;
     } catch {
+      devLog('IPC', `get_drive_info failed in ${elapsedMs(startedAt).toFixed(1)}ms`);
       return [];
     }
   },
@@ -483,10 +544,21 @@ const tauriAPI: TauriAPI = {
     }
   },
   getDiskSpace: async (drivePath) => {
+    const startedAt = nowMs();
+    devLog('IPC', 'get_disk_space request', { drivePath });
     try {
       const info = await invoke<Record<string, unknown>>('get_disk_space', { drivePath });
+      logIpcTiming('get_disk_space', elapsedMs(startedAt), {
+        drivePath,
+        total: info.total as number,
+        free: info.free as number,
+      });
       return { success: true, total: info.total as number, free: info.free as number } as never;
     } catch (e) {
+      devLog('IPC', `get_disk_space failed in ${elapsedMs(startedAt).toFixed(1)}ms`, {
+        drivePath,
+        error: String(e),
+      });
       return { success: false, error: String(e) } as never;
     }
   },
@@ -835,7 +907,10 @@ const tauriAPI: TauriAPI = {
     };
   },
   onDirectoryChanged: (callback) => {
-    const unlisten = listen('directory-changed', (event) => callback(event.payload as never));
+    const unlisten = listen('directory-changed', (event) => {
+      devLog('Watcher', 'directory-changed payload', event.payload as Record<string, unknown>);
+      callback(event.payload as never);
+    });
     return () => {
       unlisten.then((fn) => fn()).catch(() => {});
     };
@@ -857,14 +932,40 @@ const tauriAPI: TauriAPI = {
     }
   },
   watchDirectory: async (dirPath) => {
+    const normalized = normalizeWatchPath(dirPath);
+    devLog('Watcher', 'watch_directory request', {
+      dirPath,
+      normalized,
+      lastWatchedDirectoryPath,
+    });
     try {
+      if (normalized && normalized === lastWatchedDirectoryPath) {
+        devLog('Watcher', 'watch_directory skipped (already watching path)', {
+          normalized,
+        });
+        return true;
+      }
       await invoke('watch_directory', { dirPath });
+      lastWatchedDirectoryPath = normalized;
+      devLog('Watcher', 'watch_directory started', {
+        dirPath,
+        normalized,
+      });
       return true;
-    } catch {
+    } catch (error) {
+      devLog('Watcher', 'watch_directory failed', {
+        dirPath,
+        normalized,
+        error: String(error),
+      });
       return false;
     }
   },
-  unwatchDirectory: () => invoke('unwatch_directory'),
+  unwatchDirectory: () => {
+    devLog('Watcher', 'unwatch_directory request', { lastWatchedDirectoryPath });
+    lastWatchedDirectoryPath = '';
+    return invoke('unwatch_directory');
+  },
   calculateFolderSize: async (folderPath, operationId) => {
     try {
       const result = await invoke<Record<string, number>>('calculate_folder_size', {
@@ -901,9 +1002,9 @@ const tauriAPI: TauriAPI = {
     };
   },
   onDirectoryContentsProgress: (callback) => {
-    const unlisten = listen('directory-contents-progress', (event) =>
-      callback(event.payload as never)
-    );
+    const unlisten = listen('directory-contents-progress', (event) => {
+      callback(event.payload as never);
+    });
     return () => {
       unlisten.then((fn) => fn()).catch(() => {});
     };

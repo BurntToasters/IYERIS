@@ -108,8 +108,8 @@ import {
 } from './rendererElements.js';
 
 export interface LateBound {
-  navigateTo(path: string, force?: boolean): Promise<void>;
-  refresh(): void;
+  navigateTo(path: string, force?: boolean, trigger?: string): Promise<void>;
+  refresh(reason?: string): void;
   renderFiles(files: FileItem[], highlight?: string): void;
   updateStatusBar(): void;
   updateUndoRedoState(): Promise<void>;
@@ -649,7 +649,7 @@ export function wireControllers(deps: WiringDeps) {
     getCurrentSettings: () => deps.getCurrentSettings(),
     showToast,
     handleDrop,
-    refresh: () => deps.late.refresh(),
+    refresh: () => deps.late.refresh('clipboard-operation'),
     updateUndoRedoState: () => deps.late.updateUndoRedoState(),
   });
 
@@ -659,7 +659,7 @@ export function wireControllers(deps: WiringDeps) {
     showToast,
     activateModal,
     deactivateModal,
-    refresh: () => deps.late.refresh(),
+    refresh: () => deps.late.refresh('batch-rename'),
     updateUndoRedoState: () => deps.late.updateUndoRedoState(),
   });
   batchRenameController.initListeners();
@@ -917,7 +917,7 @@ export function wireControllers(deps: WiringDeps) {
         void inlineRenameController.createNewFile();
       },
       refresh: () => {
-        deps.late.refresh();
+        deps.late.refresh('command-palette');
       },
       goBack: () => {
         goBack();

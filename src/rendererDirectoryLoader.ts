@@ -1,4 +1,4 @@
-import { ignoreError } from './shared.js';
+import { devLog, ignoreError } from './shared.js';
 
 interface DirectoryLoaderConfig {
   getLoadingEl: () => HTMLElement | null;
@@ -15,6 +15,7 @@ export function createDirectoryLoaderController(config: DirectoryLoaderConfig) {
   let directoryRequestId = 0;
   let directoryProgressCount = 0;
   let lastDirectoryProgressUpdate = 0;
+  let lastStaleProgressLogAt = 0;
 
   function createOperationId(prefix: string): string {
     return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -23,6 +24,10 @@ export function createDirectoryLoaderController(config: DirectoryLoaderConfig) {
   function startRequest(dirPath: string): { requestId: number; operationId: string } {
     const requestId = ++directoryRequestId;
     if (activeDirectoryOperationId) {
+      devLog('DirectoryLoader', 'Cancelling previous request', {
+        previousOperationId: activeDirectoryOperationId,
+        nextPath: dirPath,
+      });
       config.cancelDirectoryContents(activeDirectoryOperationId).catch(ignoreError);
     }
     const operationId = createOperationId('dir');
@@ -33,11 +38,18 @@ export function createDirectoryLoaderController(config: DirectoryLoaderConfig) {
     lastDirectoryProgressUpdate = 0;
     const loadingText = config.getLoadingTextEl();
     if (loadingText) loadingText.textContent = 'Loading...';
+    devLog('DirectoryLoader', 'Request started', { requestId, operationId, dirPath });
     return { requestId, operationId };
   }
 
   function finishRequest(requestId: number): void {
-    if (requestId !== directoryRequestId) return;
+    if (requestId !== directoryRequestId) {
+      devLog('DirectoryLoader', 'Ignored finishRequest for stale request', {
+        requestId,
+        activeRequestId: directoryRequestId,
+      });
+      return;
+    }
     activeDirectoryOperationId = null;
     activeDirectoryProgressOperationId = null;
     activeDirectoryProgressPath = null;
@@ -45,6 +57,7 @@ export function createDirectoryLoaderController(config: DirectoryLoaderConfig) {
     lastDirectoryProgressUpdate = 0;
     const loadingText = config.getLoadingTextEl();
     if (loadingText) loadingText.textContent = 'Loading...';
+    devLog('DirectoryLoader', 'Request finished', { requestId });
   }
 
   function showLoading(context?: string): void {
@@ -65,6 +78,10 @@ export function createDirectoryLoaderController(config: DirectoryLoaderConfig) {
 
   function cancelRequest(): void {
     if (activeDirectoryOperationId) {
+      devLog('DirectoryLoader', 'Cancelling active request', {
+        operationId: activeDirectoryOperationId,
+        requestId: directoryRequestId,
+      });
       config.cancelDirectoryContents(activeDirectoryOperationId).catch(ignoreError);
     }
     directoryRequestId += 1;
@@ -76,19 +93,42 @@ export function createDirectoryLoaderController(config: DirectoryLoaderConfig) {
     dirPath?: string;
     loaded: number;
   }): void {
+    const now = Date.now();
     if (activeDirectoryProgressOperationId) {
-      if (progress.operationId !== activeDirectoryProgressOperationId) return;
+      if (progress.operationId !== activeDirectoryProgressOperationId) {
+        if (now - lastStaleProgressLogAt > 1000) {
+          lastStaleProgressLogAt = now;
+          devLog('DirectoryLoader', 'Ignored stale progress (operation mismatch)', {
+            expectedOperationId: activeDirectoryProgressOperationId,
+            receivedOperationId: progress.operationId ?? '',
+            loaded: progress.loaded,
+          });
+        }
+        return;
+      }
     } else if (!activeDirectoryProgressPath || progress.dirPath !== activeDirectoryProgressPath) {
+      if (now - lastStaleProgressLogAt > 1000) {
+        lastStaleProgressLogAt = now;
+        devLog('DirectoryLoader', 'Ignored stale progress (path mismatch)', {
+          expectedPath: activeDirectoryProgressPath ?? '',
+          receivedPath: progress.dirPath ?? '',
+          loaded: progress.loaded,
+        });
+      }
       return;
     }
     directoryProgressCount = progress.loaded;
-    const now = Date.now();
     if (now - lastDirectoryProgressUpdate < config.throttleMs) return;
     lastDirectoryProgressUpdate = now;
     const loadingText = config.getLoadingTextEl();
     if (loadingText) {
       loadingText.textContent = `Loading... (${directoryProgressCount.toLocaleString()} items)`;
     }
+    devLog('DirectoryLoader', 'Progress', {
+      operationId: progress.operationId ?? '',
+      dirPath: progress.dirPath ?? '',
+      loaded: directoryProgressCount,
+    });
   }
 
   function getCurrentRequestId(): number {

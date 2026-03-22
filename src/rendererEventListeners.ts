@@ -33,7 +33,7 @@ type EventListenersConfig = {
   goForward: () => void;
   goUp: () => void;
   goHome: () => void;
-  refresh: () => void;
+  refresh: (reason?: string) => void;
   navigateTo: (path: string) => void;
   clearSelection: () => void;
   selectAll: () => void;
@@ -280,7 +280,7 @@ export function createEventListenersController(config: EventListenersConfig) {
         showHiddenFilesToggle.checked = true;
       }
       config.saveSettings();
-      config.refresh();
+      config.refresh('status-hidden-click');
     };
     statusHiddenBtn?.addEventListener('click', activateHiddenFiles);
     statusHiddenBtn?.addEventListener('keydown', (e) => {
@@ -381,7 +381,7 @@ export function createEventListenersController(config: EventListenersConfig) {
     'command-palette': () => config.showCommandPalette(),
     settings: () => config.showSettingsModal(),
     shortcuts: () => config.showShortcutsModal(),
-    refresh: () => config.refresh(),
+    refresh: () => config.refresh('shortcut-refresh'),
     search: () => config.openSearch(false),
     'global-search': () => config.openSearch(true),
     'toggle-sidebar': () => config.setSidebarCollapsed(),

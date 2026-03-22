@@ -108,6 +108,7 @@ let canRedo: boolean = false;
 let folderTreeEnabled: boolean = true;
 let isNavigating: boolean = false;
 let refreshDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+let navigationSequence = 0;
 
 function markSelectionDirty(): void {
   selectedItemsSizeDirty = true;
@@ -685,7 +686,7 @@ async function saveSettings() {
   hideSettingsModal();
   showToast('Settings saved successfully!', 'Settings', 'success');
   if (currentPath) {
-    refresh();
+    refresh('settings-saved');
   }
 }
 
@@ -1019,7 +1020,7 @@ const bootstrapController = createBootstrapController({
   updateUndoRedoState: () => updateUndoRedoState(),
   handleUpdateDownloaded,
   silentCheckAndDownload,
-  refresh: () => refresh(),
+  refresh: (reason) => refresh(reason),
   applySettings,
   getCurrentSettings: () => currentSettings,
   setCurrentSettings: (s) => {
@@ -1186,7 +1187,7 @@ const eventListenersController = createEventListenersController({
     const toggle = document.getElementById('show-hidden-files-toggle') as HTMLInputElement | null;
     if (toggle) toggle.checked = currentSettings.showHiddenFiles;
     saveSettings();
-    refresh();
+    refresh('toggle-hidden-files');
   },
   showPropertiesForSelected: () => {
     const firstSelected = allFiles.find((f) => selectedItems.has(f.path));
@@ -1291,10 +1292,20 @@ const eventListenersController = createEventListenersController({
 });
 const { setupEventListeners } = eventListenersController;
 
-async function navigateTo(path: string, skipHistoryUpdate = false) {
-  if (!path) return;
+async function navigateTo(path: string, skipHistoryUpdate = false, trigger = 'direct') {
+  if (!path) {
+    devLog('Navigate', 'Ignored empty navigation request', { trigger });
+    return;
+  }
+  const navigationId = ++navigationSequence;
+  const navigationStartAt = Date.now();
+  devLog('Navigate', `[${navigationId}] start`, {
+    path,
+    skipHistoryUpdate,
+    trigger,
+    wasNavigating: isNavigating,
+  });
   isNavigating = true;
-  devLog('Navigate', `navigateTo: ${path}`, { skipHistoryUpdate });
   const trimmedPath = path.trim();
   if (trimmedPath === HOME_VIEW_LABEL) {
     path = HOME_VIEW_PATH;
@@ -1326,6 +1337,12 @@ async function navigateTo(path: string, skipHistoryUpdate = false) {
     setHomeViewActive(true);
     announceToScreenReader('Home view');
     isNavigating = false;
+    devLog('Navigate', `[${navigationId}] completed`, {
+      source: 'home',
+      path: HOME_VIEW_PATH,
+      trigger,
+      durationMs: Date.now() - navigationStartAt,
+    });
     return;
   }
 
@@ -1345,6 +1362,12 @@ async function navigateTo(path: string, skipHistoryUpdate = false) {
     if (fileGrid) fileGrid.innerHTML = '';
     const request = startDirectoryRequest(path);
     requestId = request.requestId;
+    devLog('Navigate', `[${navigationId}] directory request`, {
+      path,
+      requestId,
+      operationId: request.operationId,
+      showHidden: currentSettings.showHiddenFiles,
+    });
 
     const result = await window.tauriAPI.getDirectoryContents(
       path,
@@ -1352,9 +1375,20 @@ async function navigateTo(path: string, skipHistoryUpdate = false) {
       currentSettings.showHiddenFiles,
       false
     );
-    if (!directoryLoader.isCurrentRequest(requestId)) return;
+    if (!directoryLoader.isCurrentRequest(requestId)) {
+      devLog('Navigate', `[${navigationId}] stale directory result ignored`, {
+        path,
+        requestId,
+      });
+      return;
+    }
 
     if (!result.success) {
+      devLog('Navigate', `[${navigationId}] directory request failed`, {
+        path,
+        requestId,
+        error: result.error || 'Unknown error',
+      });
       console.error('Error loading directory:', result.error);
       showToast(result.error || 'Unknown error', 'Error Loading Directory', 'error');
       return;
@@ -1384,13 +1418,40 @@ async function navigateTo(path: string, skipHistoryUpdate = false) {
     } else {
       renderFiles(result.contents || []);
     }
+    devLog('Navigate', `[${navigationId}] render complete`, {
+      path,
+      requestId,
+      itemCount: result.contents?.length ?? 0,
+      viewMode,
+    });
     updateDiskSpace();
-    window.tauriAPI.watchDirectory(path).catch(() => {});
+    window.tauriAPI
+      .watchDirectory(path)
+      .then((watching) => {
+        devLog('Watcher', `[${navigationId}] watchDirectory result`, { path, watching });
+      })
+      .catch((error) => {
+        devLog('Watcher', `[${navigationId}] watchDirectory failed`, {
+          path,
+          error: getErrorMessage(error),
+        });
+      });
     if (currentSettings.enableGitStatus) {
       fetchGitStatusAsync(path);
       updateGitBranch(path);
     }
+    devLog('Navigate', `[${navigationId}] success`, {
+      path,
+      trigger,
+      durationMs: Date.now() - navigationStartAt,
+    });
   } catch (error) {
+    devLog('Navigate', `[${navigationId}] exception`, {
+      path,
+      trigger,
+      error: getErrorMessage(error),
+      durationMs: Date.now() - navigationStartAt,
+    });
     console.error('Error navigating:', error);
     showToast(getErrorMessage(error), 'Error Loading Directory', 'error');
   } finally {
@@ -1399,6 +1460,17 @@ async function navigateTo(path: string, skipHistoryUpdate = false) {
     if (isCurrentRequest) {
       hideLoading();
       isNavigating = false;
+      devLog('Navigate', `[${navigationId}] finalized`, {
+        path,
+        requestId,
+        trigger,
+        durationMs: Date.now() - navigationStartAt,
+      });
+    } else {
+      devLog('Navigate', `[${navigationId}] finalize skipped for stale request`, {
+        path,
+        requestId,
+      });
     }
   }
 }
@@ -1530,7 +1602,7 @@ async function deleteSelected(permanent = false) {
     } else {
       showToast(msg, 'Success', 'success');
     }
-    refresh();
+    refresh(permanent ? 'delete-selected-permanent' : 'delete-selected');
   }
   if (failCount > 0) {
     showToast(
@@ -1680,7 +1752,7 @@ async function performUndoRedo(isUndo: boolean) {
         ]
       : undefined;
   showToast(`Action ${isUndo ? 'undone' : 'redone'}`, label, 'success', reverseAction);
-  refresh();
+  refresh(isUndo ? 'undo' : 'redo');
 }
 function performUndo() {
   return performUndoRedo(true);
@@ -1725,13 +1797,35 @@ function goUp() {
   navigateTo(parentPath);
 }
 
-function refresh() {
-  if (!currentPath || isNavigating) return;
-  if (refreshDebounceTimer) clearTimeout(refreshDebounceTimer);
+function refresh(reason = 'unspecified') {
+  if (!currentPath) {
+    devLog('Refresh', 'Skipped refresh (no current path)', { reason });
+    return;
+  }
+  if (isNavigating) {
+    devLog('Refresh', 'Skipped refresh (navigation already in progress)', {
+      reason,
+      currentPath,
+    });
+    return;
+  }
+  if (refreshDebounceTimer) {
+    devLog('Refresh', 'Resetting pending refresh debounce', { reason, currentPath });
+    clearTimeout(refreshDebounceTimer);
+  } else {
+    devLog('Refresh', 'Scheduling refresh', { reason, currentPath });
+  }
   refreshDebounceTimer = setTimeout(() => {
     refreshDebounceTimer = null;
     if (!isNavigating && currentPath) {
-      navigateTo(currentPath);
+      devLog('Refresh', 'Executing debounced refresh', { reason, currentPath });
+      navigateTo(currentPath, false, `refresh:${reason}`);
+    } else {
+      devLog('Refresh', 'Skipped debounced refresh execution', {
+        reason,
+        currentPath,
+        isNavigating,
+      });
     }
   }, 200);
 }
