@@ -113,11 +113,11 @@ describe('addToDirectoryHistory', () => {
 });
 
 describe('clearDirectoryHistory', () => {
-  it('clears history and saves settings', () => {
+  it('clears history and saves settings', async () => {
     const deps = createDeps();
     deps.settings.directoryHistory = ['/a', '/b'];
     const ctrl = createNavigationController(deps as any);
-    ctrl.clearDirectoryHistory();
+    await ctrl.clearDirectoryHistory();
     expect(deps.settings.directoryHistory).toEqual([]);
     expect(deps.saveSettingsWithTimestamp).toHaveBeenCalledWith(deps.settings);
     expect(deps.showToast).toHaveBeenCalledWith('Directory history cleared', 'History', 'success');

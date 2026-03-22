@@ -454,7 +454,7 @@ const tauriAPI: TauriAPI = {
       try {
         callback(JSON.parse(payload));
       } catch {
-        callback(payload as never);
+        console.error('[Settings] Failed to parse settings-changed payload');
       }
     });
     return () => {
@@ -467,7 +467,7 @@ const tauriAPI: TauriAPI = {
       try {
         callback(JSON.parse(payload));
       } catch {
-        callback(payload as never);
+        console.error('[Settings] Failed to parse home-settings-changed payload');
       }
     });
     return () => {
@@ -627,13 +627,22 @@ const tauriAPI: TauriAPI = {
   },
   requestFullDiskAccess: () => wrap(() => invoke('request_full_disk_access')),
   checkForUpdates: async () => {
-    const [currentVersion, isFlatpak, isMas, isMsStore, isMsi] = await Promise.all([
-      invoke<string>('get_app_version'),
-      invoke<boolean>('is_flatpak'),
-      invoke<boolean>('is_mas'),
-      invoke<boolean>('is_ms_store'),
-      invoke<boolean>('is_msi'),
-    ]);
+    let currentVersion: string;
+    let isFlatpak: boolean;
+    let isMas: boolean;
+    let isMsStore: boolean;
+    let isMsi: boolean;
+    try {
+      [currentVersion, isFlatpak, isMas, isMsStore, isMsi] = await Promise.all([
+        invoke<string>('get_app_version'),
+        invoke<boolean>('is_flatpak'),
+        invoke<boolean>('is_mas'),
+        invoke<boolean>('is_ms_store'),
+        invoke<boolean>('is_msi'),
+      ]);
+    } catch (e) {
+      return { success: false as const, error: String(e) } as never;
+    }
     const isBeta = /-(beta|alpha|rc)/i.test(currentVersion);
 
     const storeChecks: Array<{
@@ -768,6 +777,7 @@ const tauriAPI: TauriAPI = {
       });
       return { success: true as const };
     } catch (e) {
+      updateDownloadInProgress = false;
       return { success: false as const, error: String(e) };
     }
   },
@@ -909,6 +919,15 @@ const tauriAPI: TauriAPI = {
   onDirectoryChanged: (callback) => {
     const unlisten = listen('directory-changed', (event) => {
       devLog('Watcher', 'directory-changed payload', event.payload as Record<string, unknown>);
+      callback(event.payload as never);
+    });
+    return () => {
+      unlisten.then((fn) => fn()).catch(() => {});
+    };
+  },
+  onWatchedDirRemoved: (callback) => {
+    const unlisten = listen('watched-dir-removed', (event) => {
+      devLog('Watcher', 'watched-dir-removed payload', event.payload as Record<string, unknown>);
       callback(event.payload as never);
     });
     return () => {
@@ -1091,8 +1110,10 @@ const tauriAPI: TauriAPI = {
   clearThumbnailCache: () => wrap(() => invoke('clear_thumbnail_cache')),
   getThumbnailCacheSize: async () => {
     try {
-      const sizeBytes = await invoke<number>('get_thumbnail_cache_size');
-      return { success: true, sizeBytes, fileCount: 0 } as never;
+      const result = await invoke<{ sizeBytes: number; fileCount: number }>(
+        'get_thumbnail_cache_size'
+      );
+      return { success: true, sizeBytes: result.sizeBytes, fileCount: result.fileCount } as never;
     } catch (e) {
       return { success: false, error: String(e) } as never;
     }

@@ -812,6 +812,12 @@ export function wireControllers(deps: WiringDeps) {
     },
     debouncedSaveSettings: deps.debouncedSaveSettings,
     saveSettingsWithTimestamp: deps.saveSettingsWithTimestamp,
+    cancelDirectoryRequest: () => cancelDirectoryRequest(),
+    closeSearch: () => closeSearch(),
+    isSearchModeActive: () => isSearchModeActive(),
+    resetTypeahead: () => resetTypeahead(),
+    fetchGitStatusAsync: (path: string) => fetchGitStatusAsync(path),
+    updateGitBranch: (path: string) => updateGitBranch(path),
     maxCachedTabs: MAX_CACHED_TABS,
     maxCachedFilesPerTab: MAX_CACHED_FILES_PER_TAB,
   });

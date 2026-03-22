@@ -31,7 +31,7 @@ export function createThumbnailController(deps: ThumbnailDeps) {
   let thumbnailObserver: IntersectionObserver | null = null;
   let thumbnailObserverRoot: HTMLElement | null = null;
 
-  function enqueueThumbnailLoad(loadFn: () => Promise<void>): void {
+  function enqueueThumbnailLoad(loadFn: () => Promise<void>): boolean {
     const execute = async () => {
       activeThumbnailLoads++;
       try {
@@ -47,9 +47,12 @@ export function createThumbnailController(deps: ThumbnailDeps) {
 
     if (activeThumbnailLoads < THUMBNAIL_CONCURRENT_LOADS) {
       execute().catch(() => {});
+      return true;
     } else if (pendingThumbnailLoads.length < THUMBNAIL_QUEUE_MAX) {
       pendingThumbnailLoads.push(execute);
+      return true;
     }
+    return false;
   }
 
   function resetThumbnailObserver(): void {
@@ -274,7 +277,7 @@ export function createThumbnailController(deps: ThumbnailDeps) {
 
     const thumbnailType = fileItem.dataset.thumbnailType || 'image';
 
-    enqueueThumbnailLoad(async () => {
+    const scheduled = enqueueThumbnailLoad(async () => {
       try {
         if (!document.body.contains(fileItem)) {
           inflightThumbnails.delete(item.path);
@@ -375,6 +378,9 @@ export function createThumbnailController(deps: ThumbnailDeps) {
         inflightThumbnails.delete(item.path);
       }
     });
+    if (!scheduled) {
+      inflightThumbnails.delete(item.path);
+    }
   }
 
   function cacheThumbnail(path: string, url: string): void {

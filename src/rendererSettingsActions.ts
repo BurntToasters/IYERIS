@@ -73,7 +73,7 @@ export function createSettingsActionsController(deps: SettingsActionsDeps) {
           deps.setCurrentSettings(nextSettings);
           await deps.saveSettingsWithTimestamp(nextSettings);
 
-          deps.hideSettingsModal();
+          await deps.hideSettingsModal();
           deps.showSettingsModal();
           deps.showToast(
             `Imported ${Object.keys(validatedSettings).length} settings successfully`,

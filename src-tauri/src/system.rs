@@ -7,6 +7,7 @@ use tauri::Manager;
 use std::path::PathBuf;
 
 static TRAY_READY: AtomicBool = AtomicBool::new(false);
+static WINDOW_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
 #[cfg(target_os = "linux")]
 const DESKTOP_EXEC_FIELD_REGEX: &str = "%[fFuUdDnNickvm]";
@@ -356,15 +357,12 @@ pub fn close_window(window: tauri::Window) -> Result<(), String> {
 #[tauri::command]
 pub fn open_new_window(app: tauri::AppHandle) -> Result<(), String> {
     log::debug!("[System] open_new_window");
-    let label = format!("window-{}", std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis());
+    let label = format!("window-{}", WINDOW_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed));
 
     let builder = tauri::WebviewWindowBuilder::new(
         &app,
         &label,
-        tauri::WebviewUrl::App("index.html".into()),
+        tauri::WebviewUrl::default(),
     )
     .title("IYERIS")
     .inner_size(1200.0, 800.0)
@@ -509,12 +507,28 @@ pub fn export_diagnostics(app: tauri::AppHandle) -> Result<String, String> {
 
 #[tauri::command]
 pub fn get_log_file_content(app: tauri::AppHandle) -> Result<String, String> {
+    use std::io::{Read, Seek, SeekFrom};
+
     let log_dir = app
         .path()
         .app_log_dir()
         .map_err(|e: tauri::Error| e.to_string())?;
     let log_file = log_dir.join("iyeris.log");
-    fs::read_to_string(&log_file).map_err(|e| format!("Failed to read log: {}", e))
+
+    let mut file =
+        fs::File::open(&log_file).map_err(|e| format!("Failed to read log: {}", e))?;
+
+    const MAX_LOG_BYTES: u64 = 1_024 * 1_024;
+    let metadata = file.metadata().map_err(|e| e.to_string())?;
+    if metadata.len() > MAX_LOG_BYTES {
+        file.seek(SeekFrom::End(-(MAX_LOG_BYTES as i64)))
+            .map_err(|e| e.to_string())?;
+    }
+
+    let mut content = String::new();
+    file.read_to_string(&mut content)
+        .map_err(|e| format!("Failed to read log: {}", e))?;
+    Ok(content)
 }
 
 #[tauri::command]
@@ -597,21 +611,19 @@ pub async fn get_open_with_apps(file_path: String) -> Result<Vec<serde_json::Val
     {
         let path = crate::validate_existing_path(&file_path, "File")?;
         let output = tokio::task::spawn_blocking(move || {
-            let swift_code = format!(
-                r#"import AppKit; import Foundation;
-let url = URL(fileURLWithPath: "{}");
+            let swift_code = r#"import AppKit; import Foundation;
+let url = URL(fileURLWithPath: ProcessInfo.processInfo.environment["FILE_PATH"]!);
 let apps = NSWorkspace.shared.urlsForApplications(toOpen: url);
 var result: [[String: String]] = [];
-for app in apps {{
+for app in apps {
     let name = FileManager.default.displayName(atPath: app.path);
     result.append(["id": app.path, "name": name]);
-}}
+}
 let data = try! JSONSerialization.data(withJSONObject: result);
-print(String(data: data, encoding: .utf8)!)"#,
-                path.display()
-            );
+print(String(data: data, encoding: .utf8)!)"#;
             std::process::Command::new("swift")
-                .args(["-e", &swift_code])
+                .args(["-e", swift_code])
+                .env("FILE_PATH", path.to_string_lossy().as_ref())
                 .output()
         })
         .await
@@ -629,6 +641,13 @@ print(String(data: data, encoding: .utf8)!)"#,
 
     #[cfg(target_os = "windows")]
     {
+        fn is_valid_windows_filetype(value: &str) -> bool {
+            !value.is_empty()
+                && value
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-')
+        }
+
         let path = crate::validate_existing_path(&file_path, "File")?;
         let ext = path
             .extension()
@@ -645,7 +664,7 @@ print(String(data: data, encoding: .utf8)!)"#,
                 if assoc_output.status.success() {
                     let assoc_text = String::from_utf8_lossy(&assoc_output.stdout).trim().to_string();
                     if let Some(file_type) = assoc_text.split('=').nth(1).map(|value| value.trim()) {
-                        if !file_type.is_empty() {
+                        if is_valid_windows_filetype(file_type) {
                             if let Ok(ftype_output) = {
                                 use std::os::windows::process::CommandExt;
                                 Command::new("cmd").args(["/C", "ftype", file_type]).creation_flags(0x08000000).output()

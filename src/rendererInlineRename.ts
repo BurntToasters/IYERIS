@@ -62,12 +62,13 @@ export function createInlineRenameController(deps: InlineRenameDeps) {
       deps.showToast(`Open a folder to create a ${type}`, 'Create', 'info');
       return;
     }
-    const baseName = type === 'file' ? 'File.txt' : 'New Folder';
-    let finalName = baseName;
+    const stem = type === 'file' ? 'File' : 'New Folder';
+    const ext = type === 'file' ? '.txt' : '';
+    let finalName = `${stem}${ext}`;
     let counter = 1;
     const existingNames = new Set(deps.getAllFiles().map((f) => f.name));
     while (existingNames.has(finalName)) {
-      finalName = `${baseName} (${counter++})`;
+      finalName = `${stem} (${counter++})${ext}`;
     }
 
     const result =
@@ -93,8 +94,7 @@ export function createInlineRenameController(deps: InlineRenameDeps) {
       if (deps.getCurrentPath() !== currentPath) return;
       const fileItems = document.querySelectorAll('.file-item');
       for (const item of Array.from(fileItems)) {
-        const nameEl = item.querySelector('.file-name');
-        if (nameEl?.textContent === finalName) {
+        if (item.getAttribute('data-path') === createdPath) {
           startInlineRename(item as HTMLElement, finalName, createdPath);
           break;
         }
@@ -199,10 +199,17 @@ export function createInlineRenameController(deps: InlineRenameDeps) {
           input.focus();
           return;
         }
-        const result = await window.tauriAPI.renameItem(itemPath, newName);
-        if (!result.success) {
+        try {
+          const result = await window.tauriAPI.renameItem(itemPath, newName);
+          if (!result.success) {
+            renameHandled = false;
+            showInlineError(result.error || 'Rename failed');
+            input.focus();
+            return;
+          }
+        } catch {
           renameHandled = false;
-          showInlineError(result.error || 'Rename failed');
+          showInlineError('Rename failed');
           input.focus();
           return;
         }
@@ -216,7 +223,7 @@ export function createInlineRenameController(deps: InlineRenameDeps) {
 
     const handleKeyPress = (e: KeyboardEvent) => {
       if (e.key === 'Enter') {
-        finishRename();
+        void finishRename();
       }
     };
 

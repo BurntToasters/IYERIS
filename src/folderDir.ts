@@ -228,8 +228,9 @@ export function createFolderTreeManager(deps: FolderTreeDependencies): FolderTre
     item.addEventListener('dragover', (e) => {
       e.preventDefault();
       e.stopPropagation();
+      if (!e.dataTransfer) return;
       const operation = getDragOperation(e);
-      e.dataTransfer!.dropEffect = operation;
+      e.dataTransfer.dropEffect = operation;
       item.classList.add('drag-over');
       showDropIndicator(operation, nodePath, e.clientX, e.clientY);
       scheduleSpringLoad(item, () => {

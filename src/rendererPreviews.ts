@@ -1,5 +1,5 @@
 import type { FileItem, ItemProperties } from './types';
-import { escapeHtml, getErrorMessage } from './shared.js';
+import { escapeHtml, getErrorMessage, sanitizeMarkdownHtml } from './shared.js';
 import { getById } from './rendererDom.js';
 import { encodeFileUrl, twemojiImg } from './rendererUtils.js';
 import { createPdfViewer, type PdfViewerHandle } from './rendererPdfViewer.js';
@@ -27,47 +27,6 @@ export function createPreviewController(deps: PreviewDeps) {
   let previewRequestId = 0;
 
   let activePdfViewer: PdfViewerHandle | null = null;
-
-  const DANGEROUS_TAGS = new Set([
-    'SCRIPT',
-    'IFRAME',
-    'OBJECT',
-    'EMBED',
-    'FORM',
-    'STYLE',
-    'LINK',
-    'META',
-    'BASE',
-    'NOSCRIPT',
-  ]);
-
-  function sanitizeMarkdownHtml(html: string): string {
-    const template = document.createElement('template');
-    template.innerHTML = html;
-    const walker = document.createTreeWalker(template.content, NodeFilter.SHOW_ELEMENT);
-    const toRemove: Element[] = [];
-    while (walker.nextNode()) {
-      const el = walker.currentNode as Element;
-      if (DANGEROUS_TAGS.has(el.tagName)) {
-        toRemove.push(el);
-        continue;
-      }
-      for (const attr of Array.from(el.attributes)) {
-        if (attr.name.startsWith('on')) {
-          el.removeAttribute(attr.name);
-        } else if (
-          (attr.name === 'href' || attr.name === 'src' || attr.name === 'action') &&
-          /^\s*javascript\s*:/i.test(attr.value)
-        ) {
-          el.removeAttribute(attr.name);
-        }
-      }
-    }
-    for (const el of toRemove) el.remove();
-    const div = document.createElement('div');
-    div.appendChild(template.content.cloneNode(true));
-    return div.innerHTML;
-  }
 
   const loadingHtml = (label: string) =>
     `<div class="preview-loading"><div class="spinner"></div><p>Loading ${label}...</p></div>`;
@@ -132,6 +91,12 @@ export function createPreviewController(deps: PreviewDeps) {
         }
       }
     } else {
+      if (previewContent) {
+        previewContent.querySelectorAll('video, audio').forEach((el) => {
+          (el as HTMLMediaElement).pause();
+          (el as HTMLMediaElement).removeAttribute('src');
+        });
+      }
       previewPanel.style.display = 'none';
       previewRequestId++;
     }
@@ -430,11 +395,13 @@ export function createPreviewController(deps: PreviewDeps) {
 
     const settings = deps.getCurrentSettings();
     if (lang && settings.enableSyntaxHighlighting) {
-      loadHighlightJs().then((hl) => {
-        if (requestId !== previewRequestId || !hl) return;
-        const codeBlock = previewContent?.querySelector('code');
-        if (codeBlock) hl.highlightElement?.(codeBlock);
-      });
+      loadHighlightJs()
+        .then((hl) => {
+          if (requestId !== previewRequestId || !hl) return;
+          const codeBlock = previewContent?.querySelector('code');
+          if (codeBlock) hl.highlightElement?.(codeBlock);
+        })
+        .catch(() => {});
     }
   }
 
@@ -669,6 +636,12 @@ export function createPreviewController(deps: PreviewDeps) {
         if (activePdfViewer) {
           activePdfViewer.destroy();
           activePdfViewer = null;
+        }
+        if (previewContent) {
+          previewContent.querySelectorAll('video, audio').forEach((el) => {
+            (el as HTMLMediaElement).pause();
+            (el as HTMLMediaElement).removeAttribute('src');
+          });
         }
         if (previewPanel) previewPanel.style.display = 'none';
         previewRequestId++;

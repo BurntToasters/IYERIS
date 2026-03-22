@@ -39,6 +39,12 @@ fn classify_directory_change_event(event: &Event, watch_path: &Path) -> (&'stati
         return ("no-paths", Vec::new());
     }
 
+    if matches!(event.kind, EventKind::Remove(_))
+        && event.paths.iter().any(|p| p == watch_path)
+    {
+        return ("watched-dir-removed", Vec::new());
+    }
+
     let relevant_paths = event
         .paths
         .iter()
@@ -63,20 +69,11 @@ pub fn watch_directory(
     let path = crate::validate_existing_path(&dir_path, "Directory")?;
     let path_display = path.to_string_lossy().to_string();
 
-    {
-        let mut w = state.watcher.lock().map_err(|e| e.to_string())?;
-        if let Some(existing) = w.as_ref() {
-            log::debug!(
-                "[Watcher] Replacing existing watcher: {}",
-                existing._path.display()
-            );
-        }
-        *w = None;
-    }
-
+    // Build and start the new watcher BEFORE dropping the old one.
+    // If watcher creation fails the existing watcher remains active.
     let (tx, rx) = mpsc::channel::<notify::Result<Event>>();
-    let mut watcher = notify::recommended_watcher(tx).map_err(|e| e.to_string())?;
-    watcher
+    let mut new_watcher = notify::recommended_watcher(tx).map_err(|e| e.to_string())?;
+    new_watcher
         .watch(&path, RecursiveMode::NonRecursive)
         .map_err(|e| e.to_string())?;
 
@@ -111,6 +108,19 @@ pub fn watch_directory(
                     }
                     let (decision, relevant_paths) =
                         classify_directory_change_event(&event, &watch_path);
+                    if decision == "watched-dir-removed" {
+                        log::debug!(
+                            "[Watcher] [{}] Watched directory removed, emitting watched-dir-removed",
+                            event_id
+                        );
+                        let _ = app.emit(
+                            "watched-dir-removed",
+                            serde_json::json!({
+                                "dirPath": watch_path.to_string_lossy(),
+                            }),
+                        );
+                        break;
+                    }
                     if decision != "emit" {
                         log::debug!(
                             "[Watcher] [{}] Ignored event decision={} kind={} paths={:?}",
@@ -159,9 +169,16 @@ pub fn watch_directory(
         );
     });
 
+    // Atomically replace the old watcher — dropped here only on success.
     let mut w = state.watcher.lock().map_err(|e| e.to_string())?;
+    if let Some(existing) = w.as_ref() {
+        log::debug!(
+            "[Watcher] Replacing existing watcher: {}",
+            existing._path.display()
+        );
+    }
     *w = Some(DirectoryWatcher {
-        _watcher: watcher,
+        _watcher: new_watcher,
         _path: path,
     });
 

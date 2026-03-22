@@ -254,7 +254,9 @@ fn save_index_to_disk(path: &Path, entries: &[IndexEntry]) -> Result<(), String>
     drop(file);
 
     if let Err(e) = fs::rename(&tmp, path) {
-        let _ = fs::remove_file(&tmp);
+        if let Err(cleanup_err) = fs::remove_file(&tmp) {
+            log::warn!("[Indexer] Failed to clean up temp file {}: {}", tmp.display(), cleanup_err);
+        }
         return Err(e.to_string());
     }
 

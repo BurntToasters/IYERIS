@@ -66,6 +66,9 @@ pub(crate) fn validate_child_name(raw_name: &str, label: &str) -> Result<String,
         if name.chars().any(|ch| invalid_chars.contains(&ch)) {
             return Err(format!("{} contains invalid Windows characters", label));
         }
+        if name.ends_with('.') {
+            return Err(format!("{} cannot end with a period on Windows", label));
+        }
         let base_upper = name
             .split('.')
             .next()
@@ -172,12 +175,15 @@ pub async fn delete_item(item_path: String) -> Result<(), String> {
     if path.parent().is_none() {
         return Err("Cannot delete a root directory".to_string());
     }
-    undo::clear_undo_redo_for_path(&path.to_string_lossy())?;
-    if path.is_dir() {
+    let result = if path.is_dir() {
         fs::remove_dir_all(&path).map_err(|e| format!("Failed to delete directory: {}", e))
     } else {
         fs::remove_file(&path).map_err(|e| format!("Failed to delete file: {}", e))
+    };
+    if result.is_ok() {
+        undo::clear_undo_redo_for_path(&path.to_string_lossy())?;
     }
+    result
 }
 
 #[tauri::command]
@@ -187,8 +193,11 @@ pub async fn trash_item(item_path: String) -> Result<(), String> {
     if path.parent().is_none() {
         return Err("Cannot trash a root directory".to_string());
     }
-    undo::clear_undo_redo_for_path(&path.to_string_lossy())?;
-    trash::delete(&path).map_err(|e| format!("Failed to trash item: {}", e))
+    let result = trash::delete(&path).map_err(|e| format!("Failed to trash item: {}", e));
+    if result.is_ok() {
+        undo::clear_undo_redo_for_path(&path.to_string_lossy())?;
+    }
+    result
 }
 
 #[tauri::command]
@@ -228,7 +237,13 @@ pub async fn rename_item(old_path: String, new_name: String) -> Result<String, S
     if path_entry_exists(&new_path) {
         return Err("A file or folder with that name already exists".to_string());
     }
-    fs::rename(&path, &new_path).map_err(|e| format!("Failed to rename: {}", e))?;
+    fs::rename(&path, &new_path).map_err(|e| {
+        if e.kind() == std::io::ErrorKind::AlreadyExists {
+            "A file or folder with that name already exists".to_string()
+        } else {
+            format!("Failed to rename: {}", e)
+        }
+    })?;
     undo::push_rename_action(&path, &new_path)?;
     Ok(new_path.to_string_lossy().to_string())
 }
@@ -299,7 +314,8 @@ pub async fn copy_items(
 
 fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<(), String> {
     fs::create_dir_all(dest).map_err(|e| format!("Failed to create directory: {}", e))?;
-    for entry in fs::read_dir(src).map_err(|e| e.to_string())?.filter_map(|e| e.map_err(|err| log::warn!("[FileOps] copy_dir entry error: {}", err)).ok()) {
+    for entry_result in fs::read_dir(src).map_err(|e| e.to_string())? {
+        let entry = entry_result.map_err(|e| e.to_string())?;
         let entry_path = entry.path();
         let target = dest.join(entry.file_name());
         let meta = fs::symlink_metadata(&entry_path).map_err(|e| e.to_string())?;
@@ -313,7 +329,7 @@ fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<(), String> {
             #[cfg(windows)]
             {
                 let link_target = fs::read_link(&entry_path).map_err(|e| e.to_string())?;
-                let is_dir_link = fs::metadata(&entry_path)
+                let is_dir_link = fs::symlink_metadata(&entry_path)
                     .map(|linked_meta| linked_meta.is_dir())
                     .unwrap_or(false);
                 if is_dir_link {
@@ -344,8 +360,9 @@ fn copy_symlink_path(source: &Path, target: &Path) -> Result<(), String> {
 
     #[cfg(windows)]
     {
-        let is_dir_link = fs::metadata(source)
-            .map(|linked_meta| linked_meta.is_dir())
+        let source_meta = fs::symlink_metadata(source).map_err(|e| e.to_string())?;
+        let is_dir_link = source_meta.is_dir() || fs::metadata(source)
+            .map(|m| m.is_dir())
             .unwrap_or(false);
         if is_dir_link {
             std::os::windows::fs::symlink_dir(&link_target, target)
@@ -1060,56 +1077,147 @@ fn base64_encode(data: &[u8]) -> String {
 pub async fn batch_rename(
     items: Vec<serde_json::Value>,
 ) -> Result<Vec<serde_json::Value>, String> {
+    struct RenameOp {
+        old_path_str: String,
+        old_path: PathBuf,
+        new_path: PathBuf,
+    }
+
     let mut results = Vec::new();
     let mut completed_renames: Vec<(String, String)> = Vec::new();
 
-    let moving_set: std::collections::HashSet<PathBuf> = items
-        .iter()
-        .filter_map(|item| {
-            let old_path = item["oldPath"].as_str()?;
-            crate::validate_existing_path(old_path, "Item").ok()
-        })
-        .collect();
+    // Phase 0: validate all items upfront and build the full plan
+    let mut plan: Vec<Result<RenameOp, (String, String)>> = Vec::new();
+    let mut old_path_set: HashSet<PathBuf> = HashSet::new();
 
     for item in &items {
-        let old_path = item["oldPath"]
-            .as_str()
-            .ok_or("Missing oldPath")?;
-        let new_name = item["newName"]
-            .as_str()
-            .ok_or("Missing newName")?;
-        let new_name = validate_child_name(new_name, "New name")?;
-        let path = crate::validate_existing_path(old_path, "Item")?;
-        let new_path = path
-            .parent()
-            .ok_or("Cannot determine parent")?
-            .join(new_name);
-        if new_path != path && path_entry_exists(&new_path) && !moving_set.contains(&new_path) {
-            results.push(serde_json::json!({
-                "oldPath": old_path,
-                "success": false,
-                "error": format!("Destination already exists: {}", new_path.display()),
-            }));
-            continue;
-        }
-        match fs::rename(&path, &new_path) {
-            Ok(_) => {
-                let new_path_string = new_path.to_string_lossy().to_string();
-                completed_renames.push((old_path.to_string(), new_path_string.clone()));
-                results.push(serde_json::json!({
-                    "oldPath": old_path,
-                    "newPath": new_path_string,
-                    "success": true,
-                }));
+        let old_path_str = match item["oldPath"].as_str() {
+            Some(s) => s.to_string(),
+            None => {
+                plan.push(Err(("".to_string(), "Missing oldPath".to_string())));
+                continue;
             }
-            Err(e) => results.push(serde_json::json!({
-                "oldPath": old_path,
-                "success": false,
-                "error": e.to_string(),
-            })),
+        };
+        let new_name_raw = match item["newName"].as_str() {
+            Some(s) => s,
+            None => {
+                plan.push(Err((old_path_str, "Missing newName".to_string())));
+                continue;
+            }
+        };
+        let new_name = match validate_child_name(new_name_raw, "New name") {
+            Ok(n) => n,
+            Err(e) => {
+                plan.push(Err((old_path_str, e)));
+                continue;
+            }
+        };
+        let old_path = match crate::validate_existing_path(&old_path_str, "Item") {
+            Ok(p) => p,
+            Err(e) => {
+                plan.push(Err((old_path_str, e)));
+                continue;
+            }
+        };
+        let new_path = match old_path.parent() {
+            Some(parent) => parent.join(&new_name),
+            None => {
+                plan.push(Err((old_path_str, "Cannot determine parent".to_string())));
+                continue;
+            }
+        };
+        old_path_set.insert(old_path.clone());
+        plan.push(Ok(RenameOp { old_path_str, old_path, new_path }));
+    }
+
+    // Phase 1: pre-move any source files whose destination is also a source being renamed
+    // (prevents swap/chain renames from clobbering file content)
+    let mut temp_map: HashMap<PathBuf, PathBuf> = HashMap::new();
+    for op in plan.iter().filter_map(|r| r.as_ref().ok()) {
+        if op.new_path != op.old_path
+            && path_entry_exists(&op.new_path)
+            && old_path_set.contains(&op.new_path)
+            && !temp_map.contains_key(&op.new_path)
+        {
+            let temp_path = op.new_path.with_file_name(format!(
+                ".iyeris-rename-tmp-{}",
+                op.new_path.file_name().unwrap_or_default().to_string_lossy()
+            ));
+            if let Err(e) = fs::rename(&op.new_path, &temp_path) {
+                // Roll back any temp renames already completed
+                for (orig, temp) in &temp_map {
+                    let _ = fs::rename(temp, orig);
+                }
+                return Err(format!("Batch rename staging failed: {}", e));
+            }
+            temp_map.insert(op.new_path.clone(), temp_path);
         }
     }
-    undo::push_batch_rename_action(completed_renames)?;
+
+    // Phase 2: execute all renames (validation errors are passed through as-is)
+    for plan_entry in &plan {
+        match plan_entry {
+            Err((old_path_str, error)) => {
+                results.push(serde_json::json!({
+                    "oldPath": old_path_str,
+                    "success": false,
+                    "error": error,
+                }));
+            }
+            Ok(op) => {
+                // True conflict: destination exists and is not being renamed away
+                if op.new_path != op.old_path
+                    && path_entry_exists(&op.new_path)
+                    && !old_path_set.contains(&op.new_path)
+                {
+                    results.push(serde_json::json!({
+                        "oldPath": op.old_path_str,
+                        "success": false,
+                        "error": format!("Destination already exists: {}", op.new_path.display()),
+                    }));
+                    continue;
+                }
+                // Use the temp path if this source was pre-moved during phase 1
+                let actual_src = temp_map
+                    .get(&op.old_path)
+                    .cloned()
+                    .unwrap_or_else(|| op.old_path.clone());
+                match fs::rename(&actual_src, &op.new_path) {
+                    Ok(_) => {
+                        let new_path_string = op.new_path.to_string_lossy().to_string();
+                        completed_renames.push((op.old_path_str.clone(), new_path_string.clone()));
+                        results.push(serde_json::json!({
+                            "oldPath": op.old_path_str,
+                            "newPath": new_path_string,
+                            "success": true,
+                        }));
+                    }
+                    Err(e) => results.push(serde_json::json!({
+                        "oldPath": op.old_path_str,
+                        "success": false,
+                        "error": e.to_string(),
+                    })),
+                }
+            }
+        }
+    }
+
+    // Phase 3: restore any staged temp files whose Phase 2 rename was skipped or failed
+    // and whose original slot is now free (not occupied by a successful rename from this batch).
+    for (original_path, temp_path) in &temp_map {
+        if path_entry_exists(temp_path) && !path_entry_exists(original_path) {
+            if let Err(e) = fs::rename(temp_path, original_path) {
+                log::warn!(
+                    "[FileOps] batch_rename: failed to restore staged temp {:?} to {:?}: {}",
+                    temp_path, original_path, e
+                );
+            }
+        }
+    }
+
+    undo::push_batch_rename_action(completed_renames).unwrap_or_else(|e| {
+        log::warn!("[FileOps] Failed to push batch rename undo action: {}", e);
+    });
     Ok(results)
 }
 

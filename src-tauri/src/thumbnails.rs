@@ -61,16 +61,26 @@ pub fn clear_thumbnail_cache(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+#[derive(serde::Serialize)]
+pub struct ThumbnailCacheInfo {
+    #[serde(rename = "sizeBytes")]
+    pub size_bytes: u64,
+    #[serde(rename = "fileCount")]
+    pub file_count: u64,
+}
+
 #[tauri::command]
-pub fn get_thumbnail_cache_size(app: tauri::AppHandle) -> Result<u64, String> {
+pub fn get_thumbnail_cache_size(app: tauri::AppHandle) -> Result<ThumbnailCacheInfo, String> {
     let dir = cache_dir(&app)?;
     let mut total = 0u64;
+    let mut count = 0u64;
     if let Ok(entries) = fs::read_dir(&dir) {
         for entry in entries.filter_map(|e| e.map_err(|err| log::warn!("[Thumbnails] cache dir entry error: {}", err)).ok()) {
             if let Ok(meta) = entry.metadata() {
                 total += meta.len();
+                count += 1;
             }
         }
     }
-    Ok(total)
+    Ok(ThumbnailCacheInfo { size_bytes: total, file_count: count })
 }

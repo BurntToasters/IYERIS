@@ -49,6 +49,7 @@ export function createContextMenuController(deps: ContextMenuDeps) {
 
   let elContextMenu: HTMLElement | null = null;
   let elEmptySpaceContextMenu: HTMLElement | null = null;
+  let openWithMouseEnterCleanup: (() => void) | null = null;
   let elAddToBookmarks: HTMLElement | null = null;
   let elChangeFolderIcon: HTMLElement | null = null;
   let elCopyPath: HTMLElement | null = null;
@@ -539,6 +540,12 @@ export function createContextMenuController(deps: ContextMenuDeps) {
     const panel = elOpenWithAppsPanel;
     if (!panel) return;
 
+    // Remove any stale mouseenter listener from a previous showContextMenu call
+    if (openWithMouseEnterCleanup) {
+      openWithMouseEnterCleanup();
+      openWithMouseEnterCleanup = null;
+    }
+
     panel.innerHTML = '<div class="open-with-loading">Loading apps...</div>';
 
     let loaded = false;
@@ -579,7 +586,9 @@ export function createContextMenuController(deps: ContextMenuDeps) {
       }
     };
 
-    submenuContainer.addEventListener('mouseenter', () => void loadApps(), { once: true });
+    const handler = () => void loadApps();
+    submenuContainer.addEventListener('mouseenter', handler, { once: true });
+    openWithMouseEnterCleanup = () => submenuContainer.removeEventListener('mouseenter', handler);
   }
 
   return {

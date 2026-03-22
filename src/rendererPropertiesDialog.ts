@@ -272,13 +272,17 @@ export function createPropertiesDialogController(deps: PropertiesDialogDeps) {
     const applyAttrsBtn = document.getElementById('apply-attrs-btn');
     if (applyAttrsBtn) {
       applyAttrsBtn.addEventListener('click', async () => {
-        const readOnly = (document.getElementById('attr-readonly') as HTMLInputElement)?.checked;
-        const hidden = (document.getElementById('attr-hidden') as HTMLInputElement)?.checked;
-        const result = await window.tauriAPI.setAttributes(props.path, { readOnly, hidden });
-        if (result.success) {
-          deps.showToast('Attributes updated', 'Success', 'success');
-        } else {
-          deps.showToast(result.error || 'Failed to update attributes', 'Error', 'error');
+        try {
+          const readOnly = (document.getElementById('attr-readonly') as HTMLInputElement)?.checked;
+          const hidden = (document.getElementById('attr-hidden') as HTMLInputElement)?.checked;
+          const result = await window.tauriAPI.setAttributes(props.path, { readOnly, hidden });
+          if (result.success) {
+            deps.showToast('Attributes updated', 'Success', 'success');
+          } else {
+            deps.showToast(result.error || 'Failed to update attributes', 'Error', 'error');
+          }
+        } catch (e) {
+          deps.showToast(getErrorMessage(e), 'Error', 'error');
         }
       });
     }
@@ -286,18 +290,22 @@ export function createPropertiesDialogController(deps: PropertiesDialogDeps) {
     const applyPermsBtn = document.getElementById('apply-perms-btn');
     if (applyPermsBtn) {
       applyPermsBtn.addEventListener('click', async () => {
-        const input = document.getElementById('perm-octal-input') as HTMLInputElement;
-        if (!input) return;
-        const octal = parseInt(input.value, 8);
-        if (isNaN(octal) || octal < 0 || octal > 0o777) {
-          deps.showToast('Invalid permissions (use octal, e.g. 755)', 'Error', 'error');
-          return;
-        }
-        const result = await window.tauriAPI.setPermissions(props.path, octal);
-        if (result.success) {
-          deps.showToast('Permissions updated', 'Success', 'success');
-        } else {
-          deps.showToast(result.error || 'Failed to update permissions', 'Error', 'error');
+        try {
+          const input = document.getElementById('perm-octal-input') as HTMLInputElement;
+          if (!input) return;
+          const octal = parseInt(input.value, 8);
+          if (isNaN(octal) || octal < 0 || octal > 0o777) {
+            deps.showToast('Invalid permissions (use octal, e.g. 755)', 'Error', 'error');
+            return;
+          }
+          const result = await window.tauriAPI.setPermissions(props.path, octal);
+          if (result.success) {
+            deps.showToast('Permissions updated', 'Success', 'success');
+          } else {
+            deps.showToast(result.error || 'Failed to update permissions', 'Error', 'error');
+          }
+        } catch (e) {
+          deps.showToast(getErrorMessage(e), 'Error', 'error');
         }
       });
     }

@@ -11,6 +11,7 @@ interface SupportUiDeps {
 }
 
 export function createSupportUiController(deps: SupportUiDeps) {
+  let licensesUiInitialized = false;
   function getRepositoryText(repository: unknown): string | null {
     if (typeof repository === 'string') {
       const trimmed = repository.trim();
@@ -197,6 +198,8 @@ export function createSupportUiController(deps: SupportUiDeps) {
   }
 
   function initLicensesUi(): void {
+    if (licensesUiInitialized) return;
+    licensesUiInitialized = true;
     document.getElementById('licenses-btn')?.addEventListener('click', showLicensesModal);
     document.getElementById('licenses-close')?.addEventListener('click', hideLicensesModal);
     document.getElementById('close-licenses-btn')?.addEventListener('click', hideLicensesModal);
