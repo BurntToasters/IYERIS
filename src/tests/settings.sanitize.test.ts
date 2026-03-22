@@ -177,9 +177,6 @@ describe('sanitizeSettings', () => {
       expect(sanitizeSettings({ compactFileInfo: true }).compactFileInfo).toBe(true);
       expect(sanitizeSettings({ showFileExtensions: false }).showFileExtensions).toBe(false);
       expect(sanitizeSettings({ useLegacyTreeSpacing: true }).useLegacyTreeSpacing).toBe(true);
-      expect(sanitizeSettings({ migrationNoticeDismissed: true }).migrationNoticeDismissed).toBe(
-        true
-      );
     });
 
     it('ignores non-boolean values for boolean fields', () => {
@@ -190,9 +187,6 @@ describe('sanitizeSettings', () => {
       expect(sanitizeSettings({ enableTabs: null }).enableTabs).toBe(defaults.enableTabs);
       expect(sanitizeSettings({ useLegacyTreeSpacing: 'yes' }).useLegacyTreeSpacing).toBe(
         defaults.useLegacyTreeSpacing
-      );
-      expect(sanitizeSettings({ migrationNoticeDismissed: 'yes' }).migrationNoticeDismissed).toBe(
-        defaults.migrationNoticeDismissed
       );
     });
   });
@@ -236,7 +230,6 @@ describe('sanitizeSettings', () => {
       expect(sanitizeSettings({ launchCount: 5 }).launchCount).toBe(5);
       expect(sanitizeSettings({ maxSearchHistoryItems: 10 }).maxSearchHistoryItems).toBe(10);
       expect(sanitizeSettings({ maxDirectoryHistoryItems: 8 }).maxDirectoryHistoryItems).toBe(8);
-      expect(sanitizeSettings({ migrationNoticeViewCount: 3 }).migrationNoticeViewCount).toBe(3);
     });
 
     it('truncates fractional values', () => {
@@ -247,9 +240,6 @@ describe('sanitizeSettings', () => {
       expect(sanitizeSettings({ launchCount: -1 }).launchCount).toBe(defaults.launchCount);
       expect(sanitizeSettings({ maxSearchHistoryItems: -5 }).maxSearchHistoryItems).toBe(
         defaults.maxSearchHistoryItems
-      );
-      expect(sanitizeSettings({ migrationNoticeViewCount: -2 }).migrationNoticeViewCount).toBe(
-        defaults.migrationNoticeViewCount
       );
     });
   });
