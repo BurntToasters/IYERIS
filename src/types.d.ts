@@ -89,8 +89,6 @@ export interface Settings {
   customTheme?: CustomTheme;
   launchCount?: number;
   supportPopupDismissed?: boolean;
-  migrationNoticeDismissed?: boolean;
-  migrationNoticeViewCount?: number;
   tourPromptDismissed?: boolean;
   tourCompleted?: boolean;
   skipFullDiskAccessPrompt?: boolean;

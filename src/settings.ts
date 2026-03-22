@@ -36,8 +36,7 @@ export function createDefaultSettings(): Settings {
     autoCheckUpdates: true,
     launchCount: 0,
     supportPopupDismissed: false,
-    migrationNoticeDismissed: false,
-    migrationNoticeViewCount: 0,
+
     tourPromptDismissed: false,
     tourCompleted: false,
     skipFullDiskAccessPrompt: false,
@@ -306,7 +305,6 @@ export function sanitizeSettings(
     'compactFileInfo',
     'showFileExtensions',
     'supportPopupDismissed',
-    'migrationNoticeDismissed',
     'tourPromptDismissed',
     'tourCompleted',
     'skipFullDiskAccessPrompt',
@@ -352,12 +350,7 @@ export function sanitizeSettings(
   if (iconSizeVal !== null) clean.iconSize = iconSizeVal;
 
   // Non-negative integer settings
-  for (const key of [
-    'maxSearchHistoryItems',
-    'maxDirectoryHistoryItems',
-    'launchCount',
-    'migrationNoticeViewCount',
-  ] as const) {
+  for (const key of ['maxSearchHistoryItems', 'maxDirectoryHistoryItems', 'launchCount'] as const) {
     const val = sanitizeInt(raw[key], 0, null);
     if (val !== null) assignKey(clean, key, val as Settings[keyof Settings]);
   }
