@@ -1,6 +1,6 @@
 {
   "name": "iyeris",
-  "version": "2.0.0-beta.10",
+  "version": "2.0.0-beta.11",
   "private": true,
   "type": "module",
   "description": "A beautiful cross-platform file explorer built with Tauri, featuring a simple yet advanced modern design.",
