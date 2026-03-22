@@ -317,7 +317,12 @@ export function createColumnViewController(deps: ColumnViewDeps) {
         e.dataTransfer.setData('text/plain', JSON.stringify(selectedPaths));
       }
 
-      window.tauriAPI.setDragData(selectedPaths).catch(() => {});
+      const setDragDataResult = window.tauriAPI.setDragData(selectedPaths) as
+        | Promise<unknown>
+        | undefined;
+      if (setDragDataResult && typeof setDragDataResult.catch === 'function') {
+        setDragDataResult.catch(() => {});
+      }
 
       item.classList.add('dragging');
     });
@@ -327,7 +332,10 @@ export function createColumnViewController(deps: ColumnViewDeps) {
       document.querySelectorAll('.column-item.drag-over').forEach((el) => {
         el.classList.remove('drag-over');
       });
-      window.tauriAPI.clearDragData().catch(() => {});
+      const clearDragDataResult = window.tauriAPI.clearDragData() as Promise<unknown> | undefined;
+      if (clearDragDataResult && typeof clearDragDataResult.catch === 'function') {
+        clearDragDataResult.catch(() => {});
+      }
       deps.clearSpringLoad();
       deps.hideDropIndicator();
     });

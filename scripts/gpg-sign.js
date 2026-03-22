@@ -14,7 +14,7 @@ const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf-8')
 
 const VERSION = pkg.version;
 const TAG = `v${VERSION}`;
-const IS_PRERELEASE = /-(?:beta|alpha)\./i.test(VERSION);
+const IS_PRERELEASE = /-(?:beta|alpha|rc)(?:[.-]?\d+)?/i.test(VERSION);
 
 const GPG_KEY_ID = process.env.GPG_KEY_ID;
 const GPG_PASSPHRASE = process.env.GPG_PASSPHRASE;
@@ -76,6 +76,7 @@ const SIGN_RULES = [
 
 const isArtifact = (name) => ARTIFACT_RULES.some((r) => r(name));
 const isSignable = (name) => SIGN_RULES.some((r) => r(name));
+const isPrereleaseBlockedArtifact = (name) => IS_PRERELEASE && /\.msi(?:\.sig|\.asc)?$/i.test(name);
 
 const SEARCH_DIRS = [path.join(root, 'src-tauri', 'target'), path.join(root, 'dist')];
 
@@ -197,6 +198,7 @@ function cleanArtifactName(name) {
 }
 
 function shouldUploadReleaseEntry(name) {
+  if (isPrereleaseBlockedArtifact(name)) return false;
   return isArtifact(name) || name.endsWith('.asc') || isChecksumTextName(name);
 }
 
@@ -283,6 +285,7 @@ function resolveUpdaterTargets(name) {
     return targets;
   }
   if (/\.msi$/i.test(name)) {
+    if (isPrereleaseBlockedArtifact(name)) return targets;
     const arch = inferArchFromName(name);
     if (arch) targets.push({ os: 'windows', arch, installer: 'msi' });
     return targets;
@@ -492,7 +495,10 @@ function normalizePreStagedArtifacts(staged) {
 function collectArtifacts() {
   fs.mkdirSync(releaseDir, { recursive: true });
   const discovered = SEARCH_DIRS.flatMap((d) => walk(d));
-  const found = discovered.filter((f) => artifactMatchesVersion(path.basename(f)));
+  const found = discovered.filter((f) => {
+    const name = path.basename(f);
+    return artifactMatchesVersion(name) && !isPrereleaseBlockedArtifact(name);
+  });
   if (found.length > 0) {
     clearReleaseStaging();
     if (found.length < discovered.length)
@@ -520,6 +526,7 @@ function collectArtifacts() {
     .filter(
       (n) =>
         isArtifact(n) &&
+        !isPrereleaseBlockedArtifact(n) &&
         !isPerTargetManifest(n) &&
         artifactMatchesVersion(n) &&
         !n.endsWith('.asc') &&
@@ -543,7 +550,9 @@ function sha256(filePath) {
 function generateChecksums(files) {
   const candidates = files.filter((f) => {
     const name = path.basename(f);
-    return !name.endsWith('.asc') && !isChecksumTextName(name);
+    return (
+      !name.endsWith('.asc') && !isChecksumTextName(name) && !isPrereleaseBlockedArtifact(name)
+    );
   });
   const manifestTargetKeys = Array.from(
     new Set(candidates.map((f) => parseManifestTargetKey(path.basename(f))).filter(Boolean))
@@ -600,7 +609,8 @@ function signFile(filePath) {
 function signArtifacts(files) {
   const ascFiles = [];
   for (const f of files) {
-    if (isSignable(path.basename(f))) {
+    const name = path.basename(f);
+    if (isSignable(name) && !isPrereleaseBlockedArtifact(name)) {
       ascFiles.push(signFile(f));
       console.log(`  + ${path.basename(f)}.asc`);
     }

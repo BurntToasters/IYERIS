@@ -85,21 +85,8 @@ pub(crate) fn validate_child_name(raw_name: &str, label: &str) -> Result<String,
 }
 
 fn parse_file_uri_path(raw_value: &str) -> Result<PathBuf, String> {
-    let without_scheme = raw_value.trim_start_matches("file://");
-    let normalized = if without_scheme.starts_with('/')
-        && without_scheme.len() >= 3
-        && without_scheme.as_bytes()[2] == b':'
-    {
-        &without_scheme[1..]
-    } else {
-        without_scheme
-    };
-
-    #[cfg(target_os = "windows")]
-    let normalized = normalized.replace('/', "\\");
-    #[cfg(not(target_os = "windows"))]
-    let normalized = normalized.to_string();
-
+    let normalized =
+        decode_file_uri_path(raw_value).ok_or_else(|| "Invalid file URI".to_string())?;
     crate::validate_existing_path(&normalized, "File URI")
 }
 
@@ -1202,25 +1189,66 @@ fn decode_file_uri_path(raw: &str) -> Option<String> {
     if !value.to_ascii_lowercase().starts_with("file://") {
         return None;
     }
-
     let without_scheme = &value[7..];
-    let normalized = if without_scheme.starts_with('/')
-        && without_scheme.len() >= 3
-        && without_scheme.as_bytes()[2] == b':'
-    {
-        &without_scheme[1..]
+    let (authority_raw, path_raw) = if let Some(index) = without_scheme.find('/') {
+        (&without_scheme[..index], &without_scheme[index..])
     } else {
-        without_scheme
+        (without_scheme, "")
     };
+    let authority = percent_decode_lossy(authority_raw);
+    let path_part = percent_decode_lossy(path_raw);
 
     #[cfg(target_os = "windows")]
     {
-        Some(percent_decode_lossy(normalized).replace('/', "\\"))
+        let is_drive_authority = authority.len() == 2
+            && authority.as_bytes()[1] == b':'
+            && authority
+                .as_bytes()
+                .first()
+                .map(|ch| (*ch as char).is_ascii_alphabetic())
+                .unwrap_or(false);
+
+        if is_drive_authority {
+            let joined = format!("{}{}", authority, path_part);
+            return Some(joined.replace('/', "\\"));
+        }
+
+        if !authority.is_empty() && !authority.eq_ignore_ascii_case("localhost") {
+            let mut unc_path = format!("\\\\{}", authority);
+            if !path_part.is_empty() {
+                unc_path.push_str(&path_part.replace('/', "\\"));
+            }
+            return Some(unc_path);
+        }
+
+        let mut local_path = path_part;
+        if local_path.starts_with('/')
+            && local_path.len() >= 3
+            && local_path.as_bytes()[2] == b':'
+        {
+            local_path = local_path[1..].to_string();
+        } else if local_path.is_empty() && !authority.is_empty() {
+            local_path = authority;
+        }
+
+        Some(local_path.replace('/', "\\"))
     }
 
     #[cfg(not(target_os = "windows"))]
     {
-        Some(percent_decode_lossy(normalized))
+        if !authority.is_empty() && !authority.eq_ignore_ascii_case("localhost") {
+            return Some(format!("//{}{}", authority, path_part));
+        }
+
+        if path_part.starts_with('/') {
+            return Some(path_part);
+        }
+
+        if authority.is_empty() {
+            return Some(format!("/{}", path_part));
+        }
+
+        Some(authority)
     }
 }
 
@@ -1268,6 +1296,51 @@ fn parse_clipboard_paths(text: &str) -> Vec<String> {
     }
 
     paths
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn percent_decode_lossy_decodes_hex_sequences() {
+        assert_eq!(percent_decode_lossy("Alpha%20Beta"), "Alpha Beta");
+        assert_eq!(percent_decode_lossy("%2fpath%2Ffile"), "/path/file");
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn decode_file_uri_path_supports_windows_drive_and_unc() {
+        assert_eq!(
+            decode_file_uri_path("file:///C:/Program%20Files/IYERIS/test.txt"),
+            Some("C:\\Program Files\\IYERIS\\test.txt".to_string())
+        );
+        assert_eq!(
+            decode_file_uri_path("file://localhost/C:/Windows"),
+            Some("C:\\Windows".to_string())
+        );
+        assert_eq!(
+            decode_file_uri_path("file://server/share/folder%20a"),
+            Some("\\\\server\\share\\folder a".to_string())
+        );
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn decode_file_uri_path_supports_unix_and_network_forms() {
+        assert_eq!(
+            decode_file_uri_path("file:///home/user/My%20File.txt"),
+            Some("/home/user/My File.txt".to_string())
+        );
+        assert_eq!(
+            decode_file_uri_path("file://localhost/tmp/example"),
+            Some("/tmp/example".to_string())
+        );
+        assert_eq!(
+            decode_file_uri_path("file://server/share/folder"),
+            Some("//server/share/folder".to_string())
+        );
+    }
 }
 
 #[cfg(not(target_os = "windows"))]

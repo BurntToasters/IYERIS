@@ -2,7 +2,7 @@ import { execSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
-const isPrerelease = /-(?:beta|alpha|rc)\./i.test(pkg.version);
+const isPrerelease = /-(?:beta|alpha|rc)(?:[.-]?\d+)?/i.test(pkg.version);
 
 const rawArgs = process.argv.slice(2);
 const args = [];
@@ -31,6 +31,83 @@ function isMacBuildTarget() {
   const target = getArgValue('--target');
   if (target) return /apple-darwin/i.test(target);
   return process.platform === 'darwin';
+}
+
+function isWindowsBuildTarget() {
+  const target = getArgValue('--target');
+  if (target) return /windows/i.test(target);
+  return process.platform === 'win32';
+}
+
+function getBundlesArgMeta() {
+  const idx = args.indexOf('--bundles');
+  if (idx !== -1) {
+    return {
+      index: idx,
+      inline: false,
+      value: idx + 1 < args.length ? args[idx + 1] : '',
+    };
+  }
+
+  const inlineIdx = args.findIndex((arg) => arg.startsWith('--bundles='));
+  if (inlineIdx !== -1) {
+    return {
+      index: inlineIdx,
+      inline: true,
+      value: args[inlineIdx].slice('--bundles='.length),
+    };
+  }
+
+  return null;
+}
+
+function setBundlesArg(value) {
+  const existing = getBundlesArgMeta();
+  if (!existing) {
+    args.push('--bundles', value);
+    return;
+  }
+  if (existing.inline) {
+    args[existing.index] = `--bundles=${value}`;
+    return;
+  }
+  if (existing.index + 1 < args.length) {
+    args[existing.index + 1] = value;
+  } else {
+    args.push(value);
+  }
+}
+
+function stripMsiBundleForPrereleaseWindows() {
+  if (!isPrerelease || !isWindowsBuildTarget()) {
+    return;
+  }
+
+  const bundlesMeta = getBundlesArgMeta();
+  if (!bundlesMeta) {
+    setBundlesArg('nsis');
+    console.log(
+      `[tauri-build] Pre-release detected (${pkg.version}); forcing bundles to nsis (MSI disabled).`
+    );
+    return;
+  }
+
+  const requestedBundles = bundlesMeta.value
+    .split(',')
+    .map((bundle) => bundle.trim())
+    .filter(Boolean);
+  const filteredBundles = requestedBundles.filter((bundle) => bundle.toLowerCase() !== 'msi');
+
+  if (filteredBundles.length === requestedBundles.length) {
+    console.log(`[tauri-build] Pre-release detected (${pkg.version}); MSI already excluded.`);
+    return;
+  }
+
+  const nextBundles = filteredBundles.length > 0 ? filteredBundles : ['nsis'];
+  setBundlesArg(nextBundles.join(','));
+  console.log(
+    `[tauri-build] Pre-release detected (${pkg.version}); removed MSI bundle (${requestedBundles.join(',')} -> ${nextBundles.join(',')}).`
+  );
 }
 
 function applyMacEnvCompatibility() {
@@ -106,10 +183,8 @@ if (isMacBuildTarget()) {
   }
 }
 
-if (isPrerelease) {
-  console.log(
-    `[tauri-build] Pre-release detected (${pkg.version}), keeping all bundles including MSI`
-  );
-}
+stripMsiBundleForPrereleaseWindows();
 
-execSync(`npx tauri build ${args.join(' ')}`, { stdio: 'inherit' });
+const tauriBuildArgs = args.join(' ').trim();
+const tauriBuildCommand = tauriBuildArgs ? `npx tauri build ${tauriBuildArgs}` : 'npx tauri build';
+execSync(tauriBuildCommand, { stdio: 'inherit' });

@@ -309,14 +309,14 @@ pub async fn extract_archive(
 
         let full_name = archive.to_string_lossy().to_lowercase();
         if full_name.ends_with(".tar.xz") || full_name.ends_with(".txz") {
-            return extract_tar_xz(&archive, &dest);
+            return extract_tar_xz(&archive, &dest, &extract_op_id, &app);
         }
         match ext.as_str() {
             "zip" => extract_zip(&archive, &dest, &extract_op_id, &app),
             "gz" | "tgz" => extract_tar_gz(&archive, &dest, &extract_op_id, &app),
-            "tar" => extract_tar(&archive, &dest),
+            "tar" => extract_tar(&archive, &dest, &extract_op_id, &app),
             "7z" => extract_7z(&archive, &dest, &extract_op_id, &app),
-            "xz" => extract_tar_xz(&archive, &dest),
+            "xz" => extract_tar_xz(&archive, &dest, &extract_op_id, &app),
             _ => Err(format!("Unsupported archive format: {}", ext)),
         }
     })
@@ -374,19 +374,24 @@ fn extract_zip(
 fn extract_tar_gz(
     archive: &Path,
     dest: &Path,
-    _op_id: &str,
-    _app: &tauri::AppHandle,
+    op_id: &str,
+    app: &tauri::AppHandle,
 ) -> Result<(), String> {
     let file = fs::File::open(archive).map_err(|e| e.to_string())?;
     let dec = flate2::read::GzDecoder::new(file);
     let mut tar = tar::Archive::new(dec);
-    tar.unpack(dest).map_err(|e| e.to_string())
+    extract_tar_entries(&mut tar, dest, op_id, app)
 }
 
-fn extract_tar(archive: &Path, dest: &Path) -> Result<(), String> {
+fn extract_tar(
+    archive: &Path,
+    dest: &Path,
+    op_id: &str,
+    app: &tauri::AppHandle,
+) -> Result<(), String> {
     let file = fs::File::open(archive).map_err(|e| e.to_string())?;
     let mut tar = tar::Archive::new(file);
-    tar.unpack(dest).map_err(|e| e.to_string())
+    extract_tar_entries(&mut tar, dest, op_id, app)
 }
 
 fn extract_7z(
@@ -408,7 +413,7 @@ fn extract_7z(
             "operationId": op_id,
             "current": count,
             "total": 0,
-            "name": name,
+            "name": name.clone(),
         }));
         let out_path = safe_entry_path(entry.name(), dest_path)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
@@ -426,11 +431,52 @@ fn extract_7z(
     .map_err(|e| e.to_string())
 }
 
-fn extract_tar_xz(archive: &Path, dest: &Path) -> Result<(), String> {
+fn extract_tar_xz(
+    archive: &Path,
+    dest: &Path,
+    op_id: &str,
+    app: &tauri::AppHandle,
+) -> Result<(), String> {
     let file = fs::File::open(archive).map_err(|e| e.to_string())?;
     let dec = xz2::read::XzDecoder::new(file);
     let mut tar = tar::Archive::new(dec);
-    tar.unpack(dest).map_err(|e| e.to_string())
+    extract_tar_entries(&mut tar, dest, op_id, app)
+}
+
+fn extract_tar_entries<R: std::io::Read>(
+    tar: &mut tar::Archive<R>,
+    dest: &Path,
+    op_id: &str,
+    app: &tauri::AppHandle,
+) -> Result<(), String> {
+    let mut count = 0usize;
+    for entry in tar.entries().map_err(|e| e.to_string())? {
+        if !op_id.is_empty() && !is_active(op_id) {
+            return Err("Operation cancelled".to_string());
+        }
+
+        let mut entry = entry.map_err(|e| e.to_string())?;
+        let name = entry
+            .path()
+            .map_err(|e| e.to_string())?
+            .to_string_lossy()
+            .to_string();
+
+        count += 1;
+        let _ = app.emit("extract-progress", serde_json::json!({
+            "operationId": op_id,
+            "current": count,
+            "total": 0,
+            "name": name,
+        }));
+
+        let unpacked = entry.unpack_in(dest).map_err(|e| e.to_string())?;
+        if !unpacked {
+            return Err(format!("Path traversal detected: {}", name));
+        }
+    }
+
+    Ok(())
 }
 
 #[tauri::command]

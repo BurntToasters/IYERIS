@@ -417,8 +417,9 @@ pub async fn open_terminal(dir_path: String) -> Result<(), String> {
 
     #[cfg(target_os = "windows")]
     {
+        let cd_command = format!("cd /d \"{}\"", path.display());
         std::process::Command::new("cmd")
-            .args(["/c", "start", "cmd", "/k", &format!("cd /d {}", path.display())])
+            .args(["/c", "start", "", "cmd", "/k", &cd_command])
             .spawn()
             .map_err(|e| e.to_string())?;
     }
