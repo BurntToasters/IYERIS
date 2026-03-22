@@ -3252,6 +3252,15 @@
         <span class="status-separator"></span>
         <span class="status-version" id="status-version" title="Version">v0.0.0</span>
         <span class="status-separator"></span>
+        <button
+          class="status-eol-badge"
+          id="status-eol-badge"
+          title="IYERIS V1 is End of Life. This means security updates, bug fixes, and features updates no longer happen for V1. Please download V2 from GitHub or https://iyeris.app to experience the newest IYERIS!"
+        >
+          <img src="../assets/twemoji/1f534.svg" class="twemoji" alt="🔴" draggable="false" />
+          <span>IYERIS V1 IS EOL. CLICK TO UPDATE NOW!</span>
+        </button>
+        <span class="status-separator"></span>
         <button class="status-support-btn" id="heart-button" title="Support this project!">
           <img src="/twemoji/2764.svg" class="twemoji" alt="❤️" draggable="false" />
           <span>Support</span>
@@ -3691,6 +3700,55 @@
         <div class="modal-footer">
           <button class="modal-button secondary" id="folder-icon-reset">Reset to Default</button>
           <button class="modal-button primary" id="folder-icon-cancel">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-overlay" id="migration-popup-modal" style="display: none">
+      <div
+        class="modal glass-panel migration-popup-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="migration-popup-title"
+      >
+        <div class="modal-header">
+          <h3 id="migration-popup-title">
+            <img src="../assets/twemoji/26a0.svg" class="twemoji" alt="⚠" draggable="false" />
+            Important Upgrade Notice
+          </h3>
+        </div>
+        <div class="modal-body migration-popup-body">
+          <div class="migration-popup-icon">
+            <img
+              src="../assets/twemoji/1f4e6.svg"
+              class="twemoji-xlarge"
+              alt="📦"
+              draggable="false"
+            />
+          </div>
+          <p class="migration-popup-message">The next IYERIS release moves to Tauri v2.</p>
+          <p class="migration-popup-submessage">
+            This is a full backend migration from Electron and includes a new bundle identifier.
+            In-app updating cannot migrate this install automatically.
+          </p>
+          <p class="migration-popup-note">
+            You will need to manually download and install the next release from GitHub.
+          </p>
+        </div>
+        <div class="modal-footer migration-popup-footer">
+          <button class="modal-button secondary" id="migration-popup-remind">
+            Remind me later
+          </button>
+          <button class="modal-button primary" id="migration-popup-update">
+            <img src="../assets/twemoji/2b07.svg" class="twemoji" alt="⬇" draggable="false" />
+            Update now
+          </button>
+          <button
+            class="modal-button secondary compact migration-dismiss-btn"
+            id="migration-popup-dismiss"
+          >
+            Don't show again
+          </button>
         </div>
       </div>
     </div>

@@ -35,6 +35,7 @@ import {
   DIRECTORY_HISTORY_MAX,
   DIRECTORY_PROGRESS_THROTTLE_MS,
   SUPPORT_POPUP_DELAY_MS,
+  MIGRATION_POPUP_DELAY_MS,
   MAX_RECENT_FILES,
   MAX_CACHED_TABS,
   MAX_CACHED_FILES_PER_TAB,
@@ -451,6 +452,8 @@ const {
   initLicensesUi,
   showSupportPopup,
   initSupportPopup,
+  showMigrationPopup,
+  initMigrationPopup,
   initExternalLinks,
   showPropertiesDialog,
   cleanupPropertiesDialog,
@@ -480,11 +483,14 @@ async function loadSettings(): Promise<void> {
     currentSettings.launchCount = newLaunchCount;
     debouncedSaveSettings(100);
 
-    if (newLaunchCount === 2 && !currentSettings.supportPopupDismissed) {
-      setTimeout(() => showSupportPopup(), SUPPORT_POPUP_DELAY_MS);
+    if (currentSettings.migrationNoticeDismissed !== true) {
+      setTimeout(() => showMigrationPopup(), MIGRATION_POPUP_DELAY_MS);
+    } else {
+      if (newLaunchCount === 2 && !currentSettings.supportPopupDismissed) {
+        setTimeout(() => showSupportPopup(), SUPPORT_POPUP_DELAY_MS);
+      }
+      tourController.handleLaunch(newLaunchCount);
     }
-
-    tourController.handleLaunch(newLaunchCount);
   } else {
     currentSettings = createDefaultSettings();
     applySettings(currentSettings);
@@ -2073,6 +2079,7 @@ document.getElementById('icon-size-slider')?.addEventListener('input', (e) => {
 
 initSettingsActions();
 initSupportPopup();
+initMigrationPopup();
 initLicensesUi();
 initExternalLinks();
 

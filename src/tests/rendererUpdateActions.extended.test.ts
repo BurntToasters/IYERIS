@@ -7,6 +7,7 @@ const mockDownloadUpdate = vi.hoisted(() => vi.fn());
 const mockInstallUpdate = vi.hoisted(() => vi.fn());
 const mockRestartAsAdmin = vi.hoisted(() => vi.fn());
 const mockOnUpdateDownloadProgress = vi.hoisted(() => vi.fn());
+const mockOpenFile = vi.hoisted(() => vi.fn());
 
 type MockElement = {
   innerHTML: string;
@@ -117,6 +118,7 @@ describe('rendererUpdateActions extended coverage', () => {
     mockInstallUpdate.mockReset();
     mockRestartAsAdmin.mockReset();
     mockOnUpdateDownloadProgress.mockReset();
+    mockOpenFile.mockReset();
     mockOnUpdateDownloadProgress.mockImplementation((cb: typeof progressHandler) => {
       progressHandler = cb;
       return () => {
@@ -130,6 +132,7 @@ describe('rendererUpdateActions extended coverage', () => {
       installUpdate: mockInstallUpdate,
       restartAsAdmin: mockRestartAsAdmin,
       onUpdateDownloadProgress: mockOnUpdateDownloadProgress,
+      openFile: mockOpenFile,
     };
 
     showDialog = vi.fn().mockResolvedValue(overrides?.showDialogReturn ?? true);
@@ -315,6 +318,35 @@ describe('rendererUpdateActions extended coverage', () => {
         false
       );
       expect(checkUpdatesBtn.disabled).toBe(false);
+    });
+  });
+
+  describe('manual install update flow', () => {
+    it('prompts for manual install and opens release page without download', async () => {
+      const controller = setup();
+      mockOpenFile.mockResolvedValue({ success: true });
+      mockCheckForUpdates.mockResolvedValue({
+        success: true,
+        hasUpdate: true,
+        requiresManualInstall: true,
+        manualUpdateMessage: 'Manual install required',
+        currentVersion: 'v1.0.5',
+        latestVersion: 'v2.0.0',
+        releaseUrl: 'https://github.com/BurntToasters/IYERIS/releases/latest',
+      });
+
+      await controller.checkForUpdates();
+
+      expect(showDialog).toHaveBeenCalledWith(
+        'Manual Update Required',
+        'Manual install required',
+        'warning',
+        true
+      );
+      expect(mockOpenFile).toHaveBeenCalledWith(
+        'https://github.com/BurntToasters/IYERIS/releases/latest'
+      );
+      expect(mockDownloadUpdate).not.toHaveBeenCalled();
     });
   });
 

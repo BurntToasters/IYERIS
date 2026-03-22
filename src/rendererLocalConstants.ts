@@ -9,6 +9,7 @@ export const SEARCH_HISTORY_MAX = 5;
 export const DIRECTORY_HISTORY_MAX = 5;
 export const DIRECTORY_PROGRESS_THROTTLE_MS = 100;
 export const SUPPORT_POPUP_DELAY_MS = 1500;
+export const MIGRATION_POPUP_DELAY_MS = 1200;
 export const MAX_RECENT_FILES = 10;
 export const MAX_CACHED_TABS = 5;
 export const MAX_CACHED_FILES_PER_TAB = 10000;
