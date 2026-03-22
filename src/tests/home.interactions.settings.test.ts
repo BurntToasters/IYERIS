@@ -806,21 +806,16 @@ describe('reorderList — section order drag and drop', () => {
 
     const firstItem = items[0] as HTMLElement;
     const lastItem = items[3] as HTMLElement;
+    const firstSectionId = firstItem.dataset.section;
 
-    firstItem.dispatchEvent(
-      Object.assign(new Event('dragstart', { bubbles: true }), {
-        dataTransfer: { effectAllowed: '', setData: vi.fn() },
-      })
-    );
-
-    lastItem.dispatchEvent(
-      Object.assign(new Event('drop', { bubbles: true, cancelable: true }), {
-        dataTransfer: { getData: () => '' },
-      })
-    );
+    firstItem.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0 }));
+    lastItem.dispatchEvent(new PointerEvent('pointerenter', { bubbles: true }));
+    document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
 
     items = orderList.querySelectorAll('.home-section-order-item');
     expect(items.length).toBe(4);
+    // First section should have moved — quick-access is now elsewhere
+    expect((items[0] as HTMLElement).dataset.section).not.toBe(firstSectionId);
   });
 
   it('does not reorder when dropping on same item', async () => {
@@ -839,16 +834,9 @@ describe('reorderList — section order drag and drop', () => {
     const first = items[0] as HTMLElement;
     const firstSectionBefore = first.dataset.section;
 
-    first.dispatchEvent(
-      Object.assign(new Event('dragstart', { bubbles: true }), {
-        dataTransfer: { effectAllowed: '', setData: vi.fn() },
-      })
-    );
-    first.dispatchEvent(
-      Object.assign(new Event('drop', { bubbles: true, cancelable: true }), {
-        dataTransfer: { getData: () => '' },
-      })
-    );
+    // Drag and immediately release without entering another item — no reorder
+    first.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0 }));
+    document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
 
     const updatedItems = orderList.querySelectorAll('.home-section-order-item');
     expect((updatedItems[0] as HTMLElement).dataset.section).toBe(firstSectionBefore);
