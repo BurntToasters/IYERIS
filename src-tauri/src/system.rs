@@ -927,12 +927,17 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<tauri::tray::TrayIcon, Box<dyn
     let quit = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
     let menu = MenuBuilder::new(app).items(&[&show, &quit]).build()?;
 
+    #[cfg(target_os = "macos")]
     let icon_bytes = include_bytes!("../icons/icon-tray-Template.png");
+    #[cfg(not(target_os = "macos"))]
+    let icon_bytes = include_bytes!("../icons/icon.png");
     let icon = tauri::image::Image::from_bytes(icon_bytes)?;
 
-    let tray = TrayIconBuilder::new()
-        .icon(icon)
-        .icon_as_template(true)
+    let tray_builder = TrayIconBuilder::new()
+        .icon(icon);
+    #[cfg(target_os = "macos")]
+    let tray_builder = tray_builder.icon_as_template(true);
+    let tray = tray_builder
         .menu(&menu)
         .on_menu_event(move |app, event| {
             match event.id().as_ref() {
