@@ -346,6 +346,16 @@
   opacity: 0.5;
 }
 
+.home-section-order-item.drop-target {
+  background: color-mix(in srgb, var(--accent-color) 12%, transparent);
+  color: var(--text-primary);
+}
+
+.home-settings-compact-row {
+  padding: 8px 14px 10px;
+  border-top: 1px solid var(--panel-border);
+}
+
 .home-section-order-handle {
   width: 16px;
   height: 16px;

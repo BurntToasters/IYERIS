@@ -522,7 +522,7 @@ function applySettings(settings: Settings) {
     clearCustomThemeColors,
   });
 
-  if (settings.viewMode) {
+  if (settings.viewMode && settings.viewMode !== viewMode) {
     viewMode = settings.viewMode;
     void applyViewMode();
   }

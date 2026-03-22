@@ -652,42 +652,55 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
 
       const row = document.createElement('div');
       row.className = 'home-section-order-item';
-      row.draggable = true;
       row.dataset.section = sectionId;
       row.innerHTML = `
         <span class="home-section-order-handle" aria-hidden="true">:::</span>
         <span class="home-section-order-label">${escapeHtml(label)}</span>
       `;
 
-      row.addEventListener('dragstart', (e) => {
+      row.addEventListener('pointerenter', () => {
+        if (!draggedSectionId || draggedSectionId === sectionId) return;
+        homeSectionOrder
+          .querySelectorAll('.home-section-order-item')
+          .forEach((el) => el.classList.remove('drop-target'));
+        row.classList.add('drop-target');
+      });
+
+      row.addEventListener('pointerdown', (e) => {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        const fromId = sectionId;
         draggedSectionId = sectionId;
         row.classList.add('dragging');
-        if (e.dataTransfer) {
-          e.dataTransfer.effectAllowed = 'move';
-          e.dataTransfer.setData('text/plain', sectionId);
-        }
-      });
 
-      row.addEventListener('dragend', () => {
-        draggedSectionId = null;
-        row.classList.remove('dragging');
-      });
+        const onPointerUp = () => {
+          document.removeEventListener('pointerup', onPointerUp);
+          document.removeEventListener('pointercancel', onPointerUp);
 
-      row.addEventListener('dragover', (e) => {
-        e.preventDefault();
-      });
+          const target = homeSectionOrder.querySelector<HTMLElement>(
+            '.home-section-order-item.drop-target'
+          );
+          const toId = target?.dataset.section;
 
-      row.addEventListener('drop', (e) => {
-        e.preventDefault();
-        const fromId = draggedSectionId || e.dataTransfer?.getData('text/plain');
-        if (!fromId || fromId === sectionId) return;
-        tempHomeSettings.sectionOrder = reorderList(
-          tempHomeSettings.sectionOrder,
-          fromId,
-          sectionId
-        );
-        homeSettingsHasUnsavedChanges = true;
-        renderSectionOrderList();
+          draggedSectionId = null;
+          row.classList.remove('dragging');
+          homeSectionOrder
+            .querySelectorAll('.home-section-order-item')
+            .forEach((el) => el.classList.remove('drop-target'));
+
+          if (toId && toId !== fromId) {
+            tempHomeSettings.sectionOrder = reorderList(
+              tempHomeSettings.sectionOrder,
+              fromId,
+              toId
+            );
+            homeSettingsHasUnsavedChanges = true;
+            renderSectionOrderList();
+          }
+        };
+
+        document.addEventListener('pointerup', onPointerUp);
+        document.addEventListener('pointercancel', onPointerUp);
       });
 
       homeSectionOrder.appendChild(row);

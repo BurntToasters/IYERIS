@@ -104,18 +104,24 @@ function bindSystemFallbacks() {
   if (systemFallbacksBound) return;
   systemFallbacksBound = true;
 
-  const emitResumed = () => {
-    systemResumedCallbacks.forEach((cb) => cb());
-  };
+  let hiddenAt: number | null = null;
+  const RESUME_THRESHOLD_MS = 5_000;
 
   const emitThemeChanged = () => {
     const isDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
     systemThemeChangedCallbacks.forEach((cb) => cb({ isDarkMode }));
   };
 
-  window.addEventListener('focus', emitResumed);
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') emitResumed();
+    if (document.visibilityState === 'hidden') {
+      hiddenAt = Date.now();
+    } else if (document.visibilityState === 'visible' && hiddenAt !== null) {
+      const elapsed = Date.now() - hiddenAt;
+      hiddenAt = null;
+      if (elapsed >= RESUME_THRESHOLD_MS) {
+        systemResumedCallbacks.forEach((cb) => cb());
+      }
+    }
   });
 
   const media = window.matchMedia('(prefers-color-scheme: dark)');

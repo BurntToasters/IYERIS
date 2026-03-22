@@ -65,12 +65,15 @@ pub fn save_settings(app: tauri::AppHandle, settings: String) -> Result<(), Stri
         .and_then(|flag| flag.as_bool())
         .unwrap_or(true);
 
+    let (is_building, entry_count, _) = crate::indexer::get_status();
+    let indexer_was_enabled = entry_count > 0 || is_building;
+
     let _ = app.emit("settings-changed", &settings);
     drop(_lock);
 
-    if enable_indexer {
+    if enable_indexer && !indexer_was_enabled {
         crate::indexer::initialize_index(&app);
-    } else {
+    } else if !enable_indexer {
         crate::indexer::cancel_build();
     }
 

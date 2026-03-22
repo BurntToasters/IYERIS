@@ -508,6 +508,7 @@ export function wireControllers(deps: WiringDeps) {
     debouncedSaveSettings: deps.debouncedSaveSettings,
     saveSettingsWithTimestamp: deps.saveSettingsWithTimestamp,
     getFileGrid: () => fileGrid,
+    setHomeViewActive: (active) => deps.late.setHomeViewActive(active),
     searchDebounceMs: SEARCH_DEBOUNCE_MS,
     searchHistoryMax: SEARCH_HISTORY_MAX,
   });

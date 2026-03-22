@@ -349,3 +349,17 @@ body.liquid-glass .file-hover-card:hover {
   box-shadow: var(--liquid-glass-card-hover-shadow);
   transform: translateY(-2px);
 }
+
+/* Allow glass panel shadows to render outside the rectangular clip boundary */
+body.liquid-glass .content-wrapper {
+  overflow: visible;
+}
+
+/* Inset the scrollbar track so it doesn't overlap the 16px rounded corners */
+body.liquid-glass .file-view::-webkit-scrollbar-track {
+  margin: var(--liquid-glass-radius) 4px;
+}
+
+body.liquid-glass .sidebar::-webkit-scrollbar-track {
+  margin: var(--liquid-glass-radius) 4px;
+}

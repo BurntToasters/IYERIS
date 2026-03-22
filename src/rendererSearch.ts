@@ -22,6 +22,7 @@ type SearchDeps = {
   debouncedSaveSettings: () => void;
   saveSettingsWithTimestamp: (settings: Settings) => Promise<{ success: boolean; error?: string }>;
   getFileGrid: () => HTMLElement | null;
+  setHomeViewActive: (active: boolean) => void;
   searchDebounceMs: number;
   searchHistoryMax: number;
 };
@@ -349,6 +350,10 @@ export function createSearchController(deps: SearchDeps) {
       deps.showLoading('Searching...');
 
       let result;
+
+      if (isHomeViewPath(deps.getCurrentPath())) {
+        deps.setHomeViewActive(false);
+      }
 
       if (isGlobalSearch) {
         if (searchInContents) {
