@@ -305,11 +305,6 @@ function resolveUpdaterTargets(name) {
     if (arch) targets.push({ os: 'linux', arch, installer: 'rpm' });
     return targets;
   }
-  if (/\.flatpak$/i.test(name)) {
-    const arch = inferArchFromName(name);
-    if (arch) targets.push({ os: 'linux', arch, installer: 'flatpak' });
-    return targets;
-  }
   return targets;
 }
 
