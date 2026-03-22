@@ -746,7 +746,7 @@ const tauriAPI: TauriAPI = {
       updateDownloadInProgress = true;
       let downloaded = 0;
       let contentLength = 0;
-      await pendingUpdate.downloadAndInstall((event) => {
+      await pendingUpdate.download((event) => {
         if (event.event === 'Started' && event.data.contentLength) {
           contentLength = event.data.contentLength;
         } else if (event.event === 'Progress') {
@@ -775,6 +775,7 @@ const tauriAPI: TauriAPI = {
           });
         }
       });
+      updateDownloadInProgress = false;
       return { success: true as const };
     } catch (e) {
       updateDownloadInProgress = false;
@@ -783,8 +784,12 @@ const tauriAPI: TauriAPI = {
   },
   installUpdate: async () => {
     try {
-      const { relaunch } = await import('@tauri-apps/plugin-process');
-      await relaunch();
+      if (pendingUpdate) {
+        await pendingUpdate.install();
+      } else {
+        const { relaunch } = await import('@tauri-apps/plugin-process');
+        await relaunch();
+      }
       return { success: true as const };
     } catch (e) {
       return { success: false as const, error: String(e) };
