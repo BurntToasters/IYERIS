@@ -153,19 +153,19 @@ function buildFormDOM(): void {
   document.body.innerHTML = html;
 }
 
-const mockElectronAPI = {
+const mockTauriAPI = {
   getSettingsPath: vi.fn().mockResolvedValue('/home/.config/iyeris/settings.json'),
 };
 
 describe('rendererSettingsModal', () => {
   beforeEach(() => {
     buildFormDOM();
-    (window as any).electronAPI = mockElectronAPI;
+    (window as any).tauriAPI = mockTauriAPI;
   });
 
   afterEach(() => {
     document.body.innerHTML = '';
-    delete (window as any).electronAPI;
+    delete (window as any).tauriAPI;
   });
 
   describe('showSettingsModal', () => {
@@ -326,7 +326,7 @@ describe('rendererSettingsModal', () => {
       const deps = makeDeps();
       const ctrl = createSettingsModalController(deps as any);
       await ctrl.showSettingsModal();
-      expect(mockElectronAPI.getSettingsPath).toHaveBeenCalled();
+      expect(mockTauriAPI.getSettingsPath).toHaveBeenCalled();
       expect(document.getElementById('settings-path')!.textContent).toBe(
         '/home/.config/iyeris/settings.json'
       );

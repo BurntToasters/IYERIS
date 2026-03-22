@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-const mockElectronAPI = vi.hoisted(() => ({
+const mockTauriAPI = vi.hoisted(() => ({
   getDirectoryContents: vi.fn(),
   getDriveInfo: vi.fn(),
   cancelDirectoryContents: vi.fn().mockResolvedValue(undefined),
-  setDragData: vi.fn(),
-  clearDragData: vi.fn(),
+  setDragData: vi.fn().mockResolvedValue(undefined),
+  clearDragData: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('../shared.js', () => ({
@@ -135,7 +135,7 @@ async function setupRenderedColumn(
   const deps = createDeps();
   deps.getCurrentPath = () => currentPath;
 
-  mockElectronAPI.getDirectoryContents.mockImplementation((colPath: string) => {
+  mockTauriAPI.getDirectoryContents.mockImplementation((colPath: string) => {
     const items = contentsMap[colPath] || [];
     return Promise.resolve({ success: true, contents: items });
   });
@@ -158,8 +158,8 @@ describe('createColumnViewController — extended', () => {
     vi.clearAllMocks();
     vi.useFakeTimers({ shouldAdvanceTime: true });
     document.body.innerHTML = '<div id="column-view"></div>';
-    Object.defineProperty(window, 'electronAPI', {
-      value: { ...mockElectronAPI },
+    Object.defineProperty(window, 'tauriAPI', {
+      value: { ...mockTauriAPI },
       configurable: true,
       writable: true,
     });
@@ -647,7 +647,7 @@ describe('createColumnViewController — extended', () => {
       expect(item.classList.contains('selected')).toBe(true);
       expect(item.classList.contains('dragging')).toBe(true);
       expect(deps.clearSelection).toHaveBeenCalled();
-      expect(mockElectronAPI.setDragData).toHaveBeenCalled();
+      expect(mockTauriAPI.setDragData).toHaveBeenCalled();
     });
 
     it('dragstart preserves existing selection when item is already selected', async () => {
@@ -671,7 +671,7 @@ describe('createColumnViewController — extended', () => {
       itemA.dispatchEvent(dragEvent);
 
       expect(deps.clearSelection).not.toHaveBeenCalled();
-      expect(mockElectronAPI.setDragData).toHaveBeenCalledWith(['/drag/a.txt', '/drag/b.txt']);
+      expect(mockTauriAPI.setDragData).toHaveBeenCalledWith(['/drag/a.txt', '/drag/b.txt']);
     });
 
     it('dragend cleans up dragging state', async () => {
@@ -691,7 +691,7 @@ describe('createColumnViewController — extended', () => {
 
       expect(item.classList.contains('dragging')).toBe(false);
       expect(otherDiv.classList.contains('drag-over')).toBe(false);
-      expect(mockElectronAPI.clearDragData).toHaveBeenCalled();
+      expect(mockTauriAPI.clearDragData).toHaveBeenCalled();
       expect(deps.clearSpringLoad).toHaveBeenCalled();
       expect(deps.hideDropIndicator).toHaveBeenCalled();
     });
@@ -706,7 +706,7 @@ describe('createColumnViewController — extended', () => {
         currentPath = v;
       };
 
-      mockElectronAPI.getDirectoryContents.mockImplementation((colPath: string) => {
+      mockTauriAPI.getDirectoryContents.mockImplementation((colPath: string) => {
         if (colPath === '/parent') {
           return Promise.resolve({
             success: true,
@@ -757,7 +757,7 @@ describe('createColumnViewController — extended', () => {
         }),
       };
 
-      mockElectronAPI.getDirectoryContents.mockImplementation((colPath: string) => {
+      mockTauriAPI.getDirectoryContents.mockImplementation((colPath: string) => {
         if (colPath === '/parent') {
           return Promise.resolve({
             success: true,
@@ -790,7 +790,7 @@ describe('createColumnViewController — extended', () => {
         currentPath = v;
       };
 
-      mockElectronAPI.getDirectoryContents.mockImplementation((colPath: string) => {
+      mockTauriAPI.getDirectoryContents.mockImplementation((colPath: string) => {
         if (colPath === '/') {
           return Promise.resolve({
             success: true,
@@ -832,7 +832,7 @@ describe('createColumnViewController — extended', () => {
         }),
       };
 
-      mockElectronAPI.getDirectoryContents.mockImplementation((colPath: string) => {
+      mockTauriAPI.getDirectoryContents.mockImplementation((colPath: string) => {
         if (colPath === '/') {
           return Promise.resolve({
             success: true,
@@ -874,7 +874,7 @@ describe('createColumnViewController — extended', () => {
       });
       deps.getCurrentPath = () => '/view';
 
-      mockElectronAPI.getDirectoryContents.mockImplementation((colPath: string) => {
+      mockTauriAPI.getDirectoryContents.mockImplementation((colPath: string) => {
         if (colPath === '/view') {
           return Promise.resolve({
             success: true,
@@ -917,7 +917,7 @@ describe('createColumnViewController — extended', () => {
       });
       deps.getCurrentPath = () => '/view';
 
-      mockElectronAPI.getDirectoryContents.mockImplementation((colPath: string) => {
+      mockTauriAPI.getDirectoryContents.mockImplementation((colPath: string) => {
         if (colPath === '/view') {
           return Promise.resolve({
             success: true,
@@ -953,7 +953,7 @@ describe('createColumnViewController — extended', () => {
       const deps = createDeps();
       deps.getCurrentPath = () => '/view';
 
-      mockElectronAPI.getDirectoryContents.mockImplementation((colPath: string) => {
+      mockTauriAPI.getDirectoryContents.mockImplementation((colPath: string) => {
         if (colPath === '/view') {
           return Promise.resolve({
             success: true,
@@ -979,7 +979,7 @@ describe('createColumnViewController — extended', () => {
       const deps = createDeps();
       deps.getCurrentPath = () => '/view';
 
-      mockElectronAPI.getDirectoryContents.mockImplementation((colPath: string) => {
+      mockTauriAPI.getDirectoryContents.mockImplementation((colPath: string) => {
         if (colPath === '/view') {
           return Promise.resolve({
             success: true,
@@ -1007,7 +1007,7 @@ describe('createColumnViewController — extended', () => {
       const deps = createDeps();
       deps.getCurrentPath = () => '/test';
 
-      mockElectronAPI.getDirectoryContents.mockResolvedValue({
+      mockTauriAPI.getDirectoryContents.mockResolvedValue({
         success: true,
         contents: [],
       });
@@ -1043,7 +1043,7 @@ describe('createColumnViewController — extended', () => {
       const deps = createDeps();
       deps.getCurrentPath = () => '/test';
 
-      mockElectronAPI.getDirectoryContents.mockResolvedValue({
+      mockTauriAPI.getDirectoryContents.mockResolvedValue({
         success: true,
         contents: [],
       });
@@ -1077,7 +1077,7 @@ describe('createColumnViewController — extended', () => {
         testPath = v;
       };
 
-      mockElectronAPI.getDirectoryContents.mockImplementation((colPath: string) => {
+      mockTauriAPI.getDirectoryContents.mockImplementation((colPath: string) => {
         if (colPath === '/parent') {
           return Promise.resolve({
             success: true,
@@ -1114,7 +1114,7 @@ describe('createColumnViewController — extended', () => {
         currentPath = v;
       };
 
-      mockElectronAPI.getDirectoryContents.mockImplementation((colPath: string) => {
+      mockTauriAPI.getDirectoryContents.mockImplementation((colPath: string) => {
         if (colPath === '/') {
           return Promise.resolve({
             success: true,
@@ -1158,7 +1158,7 @@ describe('createColumnViewController — extended', () => {
       const deps = createDeps();
       deps.getCurrentPath = () => '/first';
 
-      mockElectronAPI.getDirectoryContents.mockResolvedValue({
+      mockTauriAPI.getDirectoryContents.mockResolvedValue({
         success: true,
         contents: [],
       });
@@ -1184,7 +1184,7 @@ describe('createColumnViewController — extended', () => {
       const deps = createDeps();
       deps.getCurrentPath = () => '/fail';
 
-      mockElectronAPI.getDirectoryContents.mockResolvedValue({
+      mockTauriAPI.getDirectoryContents.mockResolvedValue({
         success: false,
       });
 
@@ -1201,7 +1201,7 @@ describe('createColumnViewController — extended', () => {
       const deps = createDeps();
       deps.getCurrentPath = () => '/undef';
 
-      mockElectronAPI.getDirectoryContents.mockResolvedValue({
+      mockTauriAPI.getDirectoryContents.mockResolvedValue({
         success: true,
         contents: undefined,
       });
@@ -1244,7 +1244,7 @@ describe('createColumnViewController — extended', () => {
       deps.getCurrentPath = () => '';
 
       const drives = [{ path: '/dev/sda1', label: '' }];
-      mockElectronAPI.getDriveInfo.mockResolvedValue(drives);
+      mockTauriAPI.getDriveInfo.mockResolvedValue(drives);
 
       const controller = createColumnViewController(deps as any);
       await controller.renderColumnView();

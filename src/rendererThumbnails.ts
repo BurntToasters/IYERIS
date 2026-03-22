@@ -31,7 +31,7 @@ export function createThumbnailController(deps: ThumbnailDeps) {
   let thumbnailObserver: IntersectionObserver | null = null;
   let thumbnailObserverRoot: HTMLElement | null = null;
 
-  function enqueueThumbnailLoad(loadFn: () => Promise<void>): void {
+  function enqueueThumbnailLoad(loadFn: () => Promise<void>): boolean {
     const execute = async () => {
       activeThumbnailLoads++;
       try {
@@ -46,10 +46,13 @@ export function createThumbnailController(deps: ThumbnailDeps) {
     };
 
     if (activeThumbnailLoads < THUMBNAIL_CONCURRENT_LOADS) {
-      execute();
+      execute().catch(() => {});
+      return true;
     } else if (pendingThumbnailLoads.length < THUMBNAIL_QUEUE_MAX) {
       pendingThumbnailLoads.push(execute);
+      return true;
     }
+    return false;
   }
 
   function resetThumbnailObserver(): void {
@@ -274,7 +277,7 @@ export function createThumbnailController(deps: ThumbnailDeps) {
 
     const thumbnailType = fileItem.dataset.thumbnailType || 'image';
 
-    enqueueThumbnailLoad(async () => {
+    const scheduled = enqueueThumbnailLoad(async () => {
       try {
         if (!document.body.contains(fileItem)) {
           inflightThumbnails.delete(item.path);
@@ -314,7 +317,7 @@ export function createThumbnailController(deps: ThumbnailDeps) {
           return;
         }
 
-        const diskCacheResult = await window.electronAPI.getCachedThumbnail(item.path);
+        const diskCacheResult = await window.tauriAPI.getCachedThumbnail(item.path);
         if (diskCacheResult.success) {
           if (!document.body.contains(fileItem)) return;
           cacheThumbnail(item.path, diskCacheResult.dataUrl);
@@ -359,7 +362,7 @@ export function createThumbnailController(deps: ThumbnailDeps) {
           renderThumbnailImage(iconDiv as HTMLElement, thumbnailUrl, item, fileItem);
 
           if (shouldCacheToDisk && thumbnailUrl.startsWith('data:')) {
-            window.electronAPI.saveCachedThumbnail(item.path, thumbnailUrl).catch(ignoreError);
+            window.tauriAPI.saveCachedThumbnail(item.path, thumbnailUrl).catch(ignoreError);
           }
         }
       } catch {
@@ -375,6 +378,9 @@ export function createThumbnailController(deps: ThumbnailDeps) {
         inflightThumbnails.delete(item.path);
       }
     });
+    if (!scheduled) {
+      inflightThumbnails.delete(item.path);
+    }
   }
 
   function cacheThumbnail(path: string, url: string): void {
@@ -432,7 +438,7 @@ export function createThumbnailController(deps: ThumbnailDeps) {
     const sizeElement = document.getElementById('thumbnail-cache-size');
     if (!sizeElement) return;
 
-    const result = await window.electronAPI.getThumbnailCacheSize();
+    const result = await window.tauriAPI.getThumbnailCacheSize();
     if (!result.success) {
       sizeElement.textContent = '';
       return;

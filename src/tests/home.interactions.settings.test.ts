@@ -9,8 +9,8 @@ vi.mock('../shared.js', () => ({
   },
 }));
 
-vi.mock('../homeSettings.js', () => ({
-  createDefaultHomeSettings: () => ({
+vi.mock('../homeSettings.js', () => {
+  const defaults = () => ({
     showQuickAccess: true,
     showRecents: true,
     showBookmarks: true,
@@ -42,8 +42,15 @@ vi.mock('../homeSettings.js', () => ({
       'trash',
     ],
     hiddenSidebarQuickAccessItems: [],
-  }),
-}));
+  });
+  return {
+    createDefaultHomeSettings: defaults,
+    sanitizeHomeSettings: (raw: unknown) => ({
+      ...defaults(),
+      ...(raw && typeof raw === 'object' ? raw : {}),
+    }),
+  };
+});
 
 import { createHomeController } from '../home';
 
@@ -83,7 +90,7 @@ function createMinimalDom() {
   `;
 }
 
-function createMockElectronAPI() {
+function createMockTauriAPI() {
   return {
     getHomeSettings: vi.fn(async () => ({ success: true, settings: {} })),
     saveHomeSettings: vi.fn(async () => ({ success: true })),
@@ -115,12 +122,12 @@ function createOptions() {
 }
 
 describe('handleHomeItemActivation — delegated clicks', () => {
-  let api: ReturnType<typeof createMockElectronAPI>;
+  let api: ReturnType<typeof createMockTauriAPI>;
 
   beforeEach(() => {
     createMinimalDom();
-    api = createMockElectronAPI();
-    (window as unknown as Record<string, unknown>).electronAPI = api;
+    api = createMockTauriAPI();
+    (window as unknown as Record<string, unknown>).tauriAPI = api;
   });
 
   afterEach(() => {
@@ -206,12 +213,12 @@ describe('handleHomeItemActivation — delegated clicks', () => {
 });
 
 describe('setupHomeDelegatedListeners — keydown events', () => {
-  let api: ReturnType<typeof createMockElectronAPI>;
+  let api: ReturnType<typeof createMockTauriAPI>;
 
   beforeEach(() => {
     createMinimalDom();
-    api = createMockElectronAPI();
-    (window as unknown as Record<string, unknown>).electronAPI = api;
+    api = createMockTauriAPI();
+    (window as unknown as Record<string, unknown>).tauriAPI = api;
   });
 
   afterEach(() => {
@@ -317,12 +324,12 @@ describe('setupHomeDelegatedListeners — keydown events', () => {
 });
 
 describe('openRecentPath — via recent item clicks', () => {
-  let api: ReturnType<typeof createMockElectronAPI>;
+  let api: ReturnType<typeof createMockTauriAPI>;
 
   beforeEach(() => {
     createMinimalDom();
-    api = createMockElectronAPI();
-    (window as unknown as Record<string, unknown>).electronAPI = api;
+    api = createMockTauriAPI();
+    (window as unknown as Record<string, unknown>).tauriAPI = api;
   });
 
   afterEach(() => {
@@ -371,7 +378,7 @@ describe('openRecentPath — via recent item clicks', () => {
     expect(opts.openPath).toHaveBeenCalledWith('/a.txt');
   });
 
-  it('falls back to electronAPI.openFile when openPath is not provided', async () => {
+  it('falls back to tauriAPI.openFile when openPath is not provided', async () => {
     api.getItemProperties.mockResolvedValue({
       success: true,
       properties: { isDirectory: false },
@@ -428,12 +435,12 @@ describe('openRecentPath — via recent item clicks', () => {
 });
 
 describe('togglePinnedRecent — pin/unpin', () => {
-  let api: ReturnType<typeof createMockElectronAPI>;
+  let api: ReturnType<typeof createMockTauriAPI>;
 
   beforeEach(() => {
     createMinimalDom();
-    api = createMockElectronAPI();
-    (window as unknown as Record<string, unknown>).electronAPI = api;
+    api = createMockTauriAPI();
+    (window as unknown as Record<string, unknown>).tauriAPI = api;
   });
 
   afterEach(() => {
@@ -529,12 +536,12 @@ describe('togglePinnedRecent — pin/unpin', () => {
 });
 
 describe('getDriveUsage — cache behavior', () => {
-  let api: ReturnType<typeof createMockElectronAPI>;
+  let api: ReturnType<typeof createMockTauriAPI>;
 
   beforeEach(() => {
     createMinimalDom();
-    api = createMockElectronAPI();
-    (window as unknown as Record<string, unknown>).electronAPI = api;
+    api = createMockTauriAPI();
+    (window as unknown as Record<string, unknown>).tauriAPI = api;
   });
 
   afterEach(() => {
@@ -623,12 +630,12 @@ describe('getDriveUsage — cache behavior', () => {
 });
 
 describe('saveHomeSettings — via save button click', () => {
-  let api: ReturnType<typeof createMockElectronAPI>;
+  let api: ReturnType<typeof createMockTauriAPI>;
 
   beforeEach(() => {
     createMinimalDom();
-    api = createMockElectronAPI();
-    (window as unknown as Record<string, unknown>).electronAPI = api;
+    api = createMockTauriAPI();
+    (window as unknown as Record<string, unknown>).tauriAPI = api;
   });
 
   afterEach(() => {
@@ -687,12 +694,12 @@ describe('saveHomeSettings — via save button click', () => {
 });
 
 describe('openHomeSettingsModal — via customize button', () => {
-  let api: ReturnType<typeof createMockElectronAPI>;
+  let api: ReturnType<typeof createMockTauriAPI>;
 
   beforeEach(() => {
     createMinimalDom();
-    api = createMockElectronAPI();
-    (window as unknown as Record<string, unknown>).electronAPI = api;
+    api = createMockTauriAPI();
+    (window as unknown as Record<string, unknown>).tauriAPI = api;
   });
 
   afterEach(() => {
@@ -770,12 +777,12 @@ describe('openHomeSettingsModal — via customize button', () => {
 });
 
 describe('reorderList — section order drag and drop', () => {
-  let api: ReturnType<typeof createMockElectronAPI>;
+  let api: ReturnType<typeof createMockTauriAPI>;
 
   beforeEach(() => {
     createMinimalDom();
-    api = createMockElectronAPI();
-    (window as unknown as Record<string, unknown>).electronAPI = api;
+    api = createMockTauriAPI();
+    (window as unknown as Record<string, unknown>).tauriAPI = api;
   });
 
   afterEach(() => {
@@ -799,21 +806,16 @@ describe('reorderList — section order drag and drop', () => {
 
     const firstItem = items[0] as HTMLElement;
     const lastItem = items[3] as HTMLElement;
+    const firstSectionId = firstItem.dataset.section;
 
-    firstItem.dispatchEvent(
-      Object.assign(new Event('dragstart', { bubbles: true }), {
-        dataTransfer: { effectAllowed: '', setData: vi.fn() },
-      })
-    );
-
-    lastItem.dispatchEvent(
-      Object.assign(new Event('drop', { bubbles: true, cancelable: true }), {
-        dataTransfer: { getData: () => '' },
-      })
-    );
+    firstItem.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0 }));
+    lastItem.dispatchEvent(new PointerEvent('pointerenter', { bubbles: true }));
+    document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
 
     items = orderList.querySelectorAll('.home-section-order-item');
     expect(items.length).toBe(4);
+    // First section should have moved — quick-access is now elsewhere
+    expect((items[0] as HTMLElement).dataset.section).not.toBe(firstSectionId);
   });
 
   it('does not reorder when dropping on same item', async () => {
@@ -832,16 +834,9 @@ describe('reorderList — section order drag and drop', () => {
     const first = items[0] as HTMLElement;
     const firstSectionBefore = first.dataset.section;
 
-    first.dispatchEvent(
-      Object.assign(new Event('dragstart', { bubbles: true }), {
-        dataTransfer: { effectAllowed: '', setData: vi.fn() },
-      })
-    );
-    first.dispatchEvent(
-      Object.assign(new Event('drop', { bubbles: true, cancelable: true }), {
-        dataTransfer: { getData: () => '' },
-      })
-    );
+    // Drag and immediately release without entering another item — no reorder
+    first.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0 }));
+    document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
 
     const updatedItems = orderList.querySelectorAll('.home-section-order-item');
     expect((updatedItems[0] as HTMLElement).dataset.section).toBe(firstSectionBefore);
@@ -882,12 +877,12 @@ describe('reorderList — section order drag and drop', () => {
 });
 
 describe('Home settings listeners — toggles and actions', () => {
-  let api: ReturnType<typeof createMockElectronAPI>;
+  let api: ReturnType<typeof createMockTauriAPI>;
 
   beforeEach(() => {
     createMinimalDom();
-    api = createMockElectronAPI();
-    (window as unknown as Record<string, unknown>).electronAPI = api;
+    api = createMockTauriAPI();
+    (window as unknown as Record<string, unknown>).tauriAPI = api;
   });
 
   afterEach(() => {
@@ -1132,12 +1127,12 @@ describe('Home settings listeners — toggles and actions', () => {
 });
 
 describe('onHomeSettingsChanged — external updates', () => {
-  let api: ReturnType<typeof createMockElectronAPI>;
+  let api: ReturnType<typeof createMockTauriAPI>;
 
   beforeEach(() => {
     createMinimalDom();
-    api = createMockElectronAPI();
-    (window as unknown as Record<string, unknown>).electronAPI = api;
+    api = createMockTauriAPI();
+    (window as unknown as Record<string, unknown>).tauriAPI = api;
   });
 
   afterEach(() => {

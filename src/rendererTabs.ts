@@ -57,7 +57,14 @@ interface TabsDeps {
   updateNavigationButtons: () => void;
   setHomeViewActive: (active: boolean) => void;
   navigateTo: (path: string, force?: boolean) => void;
+  watchDirectory: (path: string) => void;
 
+  cancelDirectoryRequest?: () => void;
+  closeSearch?: () => void;
+  isSearchModeActive?: () => boolean;
+  resetTypeahead?: () => void;
+  fetchGitStatusAsync?: (path: string) => void;
+  updateGitBranch?: (path: string) => void;
   debouncedSaveSettings: () => void;
   saveSettingsWithTimestamp: (settings: Settings) => Promise<unknown>;
 
@@ -121,14 +128,13 @@ export function createTabsController(deps: TabsDeps) {
         selectedItems: new Set(t.selectedItems || []),
       }));
       deps.setTabs(tabs);
-      deps.setActiveTabId(tabState.activeTabId);
 
-      const activeTab = tabs.find((t) => t.id === tabState.activeTabId);
-      if (activeTab) {
-        deps.setHistory([...activeTab.history]);
-        deps.setHistoryIndex(activeTab.historyIndex);
-        deps.setSelectedItems(new Set(activeTab.selectedItems));
-      }
+      const activeTab = tabs.find((t) => t.id === tabState.activeTabId) || tabs[0];
+      deps.setActiveTabId(activeTab.id);
+
+      deps.setHistory([...activeTab.history]);
+      deps.setHistoryIndex(activeTab.historyIndex);
+      deps.setSelectedItems(new Set(activeTab.selectedItems));
     } else {
       const initialTab = createNewTabData(deps.getCurrentPath() || '');
       deps.setTabs([initialTab]);
@@ -195,7 +201,7 @@ export function createTabsController(deps: TabsDeps) {
       const tabTitle = isHomeTab ? deps.homeViewLabel : tab.path;
       const tabIcon = isHomeTab
         ? twemojiImg(String.fromCodePoint(0x1f3e0), 'twemoji')
-        : '<img src="../assets/twemoji/1f4c2.svg" class="twemoji" alt="📂" draggable="false" />';
+        : '<img src="/twemoji/1f4c2.svg" class="twemoji" alt="📂" draggable="false" />';
 
       tabElement.innerHTML = `
       <span class="tab-icon">
@@ -283,25 +289,30 @@ export function createTabsController(deps: TabsDeps) {
     snapshotCurrentTab();
 
     const tabs = deps.getTabs();
-    deps.setActiveTabId(tabId);
     const newTab = tabs.find((t) => t.id === tabId);
-    if (newTab) {
-      deps.setHistory([...newTab.history]);
-      deps.setHistoryIndex(newTab.historyIndex);
-      deps.setSelectedItems(new Set(newTab.selectedItems));
+    if (!newTab) return;
+    deps.setActiveTabId(tabId);
+    deps.setHistory([...newTab.history]);
+    deps.setHistoryIndex(newTab.historyIndex);
+    deps.setSelectedItems(new Set(newTab.selectedItems));
 
-      if (newTab.path) {
-        if (newTab.cachedFiles !== undefined) {
-          restoreTabView(newTab);
-          updateTabCacheAccess(newTab.id);
-        } else {
-          deps.navigateTo(newTab.path, true);
-        }
-      }
+    if (deps.isSearchModeActive?.()) {
+      deps.closeSearch?.();
+    }
+    deps.resetTypeahead?.();
 
-      setTimeout(() => {
+    if (newTab.path) {
+      if (newTab.cachedFiles !== undefined) {
+        deps.cancelDirectoryRequest?.();
+        restoreTabView(newTab);
+        updateTabCacheAccess(newTab.id);
         deps.setFileViewScrollTop(newTab.scrollPosition);
-      }, 50);
+      } else {
+        void (async () => {
+          await deps.navigateTo(newTab.path, true);
+          deps.setFileViewScrollTop(newTab.scrollPosition);
+        })();
+      }
     }
 
     renderTabs();
@@ -321,11 +332,17 @@ export function createTabsController(deps: TabsDeps) {
     }
 
     deps.setHomeViewActive(false);
+    deps.watchDirectory(tab.path);
 
     if (deps.getViewMode() === 'column') {
       deps.renderColumnView();
     } else {
       deps.renderFiles(tab.cachedFiles || []);
+    }
+
+    if (deps.getCurrentSettings().enableGitStatus) {
+      deps.fetchGitStatusAsync?.(tab.path);
+      deps.updateGitBranch?.(tab.path);
     }
   }
 
@@ -363,7 +380,7 @@ export function createTabsController(deps: TabsDeps) {
     deps.setHistoryIndex(0);
     deps.setSelectedItems(new Set());
 
-    deps.navigateTo(tabPath, true);
+    void deps.navigateTo(tabPath, true);
 
     renderTabs();
     debouncedSaveTabState();
@@ -398,11 +415,16 @@ export function createTabsController(deps: TabsDeps) {
 
       if (nextTab.path) {
         if (nextTab.cachedFiles !== undefined) {
+          deps.cancelDirectoryRequest?.();
           restoreTabView(nextTab);
         } else {
-          deps.navigateTo(nextTab.path, true);
+          void deps.navigateTo(nextTab.path, true);
         }
       }
+
+      setTimeout(() => {
+        deps.setFileViewScrollTop(nextTab.scrollPosition);
+      }, 50);
     }
 
     renderTabs();
@@ -463,10 +485,14 @@ export function createTabsController(deps: TabsDeps) {
       deps.setHistoryIndex(keepTab.historyIndex);
       deps.setSelectedItems(new Set(keepTab.selectedItems));
       if (keepTab.cachedFiles !== undefined) {
+        deps.cancelDirectoryRequest?.();
         restoreTabView(keepTab);
       } else {
-        deps.navigateTo(keepTab.path, true);
+        void deps.navigateTo(keepTab.path, true);
       }
+      setTimeout(() => {
+        deps.setFileViewScrollTop(keepTab.scrollPosition);
+      }, 50);
     }
     renderTabs();
     debouncedSaveTabState();
@@ -496,10 +522,14 @@ export function createTabsController(deps: TabsDeps) {
       deps.setHistoryIndex(lastTab.historyIndex);
       deps.setSelectedItems(new Set(lastTab.selectedItems));
       if (lastTab.cachedFiles !== undefined) {
+        deps.cancelDirectoryRequest?.();
         restoreTabView(lastTab);
       } else {
-        deps.navigateTo(lastTab.path, true);
+        void deps.navigateTo(lastTab.path, true);
       }
+      setTimeout(() => {
+        deps.setFileViewScrollTop(lastTab.scrollPosition);
+      }, 50);
     }
     renderTabs();
     debouncedSaveTabState();

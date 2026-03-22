@@ -35,6 +35,7 @@ export function createLayoutController(config: LayoutConfig) {
   let listResizeStartX = 0;
   let listResizeStartWidth = 0;
   let listResizeCurrentWidth = 0;
+  let listHeaderGlobalListenersAttached = false;
 
   function setListColumnWidth(key: ListColumnKey, width: number, persist: boolean = true): void {
     const min = LIST_COLUMN_MIN_WIDTHS[key] ?? 120;
@@ -120,6 +121,8 @@ export function createLayoutController(config: LayoutConfig) {
   function setupSidebarResize(): void {
     const sidebarResizeHandle = config.getSidebarResizeHandle();
     if (!sidebarResizeHandle) return;
+    if (sidebarResizeHandle.dataset.resizeBound === '1') return;
+    sidebarResizeHandle.dataset.resizeBound = '1';
     const sidebar = document.querySelector('.sidebar') as HTMLElement | null;
     if (!sidebar) return;
     let startX = 0;
@@ -158,6 +161,8 @@ export function createLayoutController(config: LayoutConfig) {
       '.sidebar-section[data-collapsible="true"]'
     );
     sections.forEach((section) => {
+      if (section.dataset.collapsibleBound === '1') return;
+      section.dataset.collapsibleBound = '1';
       const toggle = section.querySelector<HTMLButtonElement>('.section-toggle');
       if (!toggle) return;
       const syncAria = () => {
@@ -175,6 +180,8 @@ export function createLayoutController(config: LayoutConfig) {
   function setupPreviewResize(): void {
     const previewResizeHandle = config.getPreviewResizeHandle();
     if (!previewResizeHandle) return;
+    if (previewResizeHandle.dataset.resizeBound === '1') return;
+    previewResizeHandle.dataset.resizeBound = '1';
     const previewPanel = document.getElementById('preview-panel') as HTMLElement | null;
     if (!previewPanel) return;
     let startX = 0;
@@ -210,6 +217,8 @@ export function createLayoutController(config: LayoutConfig) {
   function setupListHeader(): void {
     const listHeader = config.getListHeader();
     if (!listHeader) return;
+    if (listHeader.dataset.layoutBound === '1') return;
+    listHeader.dataset.layoutBound = '1';
 
     listHeader.addEventListener('click', (e) => {
       const target = e.target as HTMLElement;
@@ -253,20 +262,23 @@ export function createLayoutController(config: LayoutConfig) {
       });
     });
 
-    document.addEventListener('mousemove', (e) => {
-      if (!activeListResizeColumn) return;
-      const delta = e.clientX - listResizeStartX;
-      listResizeCurrentWidth = listResizeStartWidth + delta;
-      setListColumnWidth(activeListResizeColumn as ListColumnKey, listResizeCurrentWidth, false);
-    });
+    if (!listHeaderGlobalListenersAttached) {
+      listHeaderGlobalListenersAttached = true;
+      document.addEventListener('mousemove', (e) => {
+        if (!activeListResizeColumn) return;
+        const delta = e.clientX - listResizeStartX;
+        listResizeCurrentWidth = listResizeStartWidth + delta;
+        setListColumnWidth(activeListResizeColumn as ListColumnKey, listResizeCurrentWidth, false);
+      });
 
-    document.addEventListener('mouseup', () => {
-      if (!activeListResizeColumn) return;
-      setListColumnWidth(activeListResizeColumn as ListColumnKey, listResizeCurrentWidth, true);
-      activeListResizeColumn = null;
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-    });
+      document.addEventListener('mouseup', () => {
+        if (!activeListResizeColumn) return;
+        setListColumnWidth(activeListResizeColumn as ListColumnKey, listResizeCurrentWidth, true);
+        activeListResizeColumn = null;
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+      });
+    }
   }
 
   return {

@@ -186,6 +186,17 @@ export interface DirectoryContentsProgress {
   operationId?: string;
 }
 
+export interface DirectoryChangedEvent {
+  dirPath: string;
+  eventId?: number;
+  eventKind?: string;
+  eventPaths?: string[];
+}
+
+export interface WatchedDirRemovedEvent {
+  dirPath: string;
+}
+
 export interface SearchFilters {
   fileType?: string;
   minSize?: number;
@@ -440,8 +451,10 @@ export interface GitFileStatus {
 
 export interface ArchiveEntry {
   name: string;
+  path: string;
   size: number;
   isDirectory: boolean;
+  compressedSize: number;
 }
 
 export interface UpdateDownloadProgress {
@@ -475,7 +488,7 @@ export type SpecialDirectory = 'desktop' | 'documents' | 'downloads' | 'music' |
 
 export type ConflictBehavior = 'ask' | 'rename' | 'skip' | 'overwrite';
 
-export interface ElectronAPI {
+export interface TauriAPI {
   getDirectoryContents: (
     dirPath: string,
     operationId?: string,
@@ -493,6 +506,8 @@ export interface ElectronAPI {
   maximizeWindow: () => Promise<void>;
   closeWindow: () => Promise<void>;
   openNewWindow: () => Promise<void>;
+  setAutostart: (enabled: boolean) => Promise<void>;
+  getAutostart: () => Promise<boolean>;
   createFolder: (parentPath: string, folderName: string) => Promise<PathResponse>;
   createFile: (parentPath: string, fileName: string) => Promise<PathResponse>;
   deleteItem: (itemPath: string) => Promise<IpcResult>;
@@ -520,6 +535,7 @@ export interface ElectronAPI {
   getClipboard: () => Promise<ClipboardOperation | null>;
   getSystemClipboardData: () => Promise<ClipboardOperation>;
   getSystemClipboardFiles: () => Promise<string[]>;
+  writeToSystemClipboard: (text: string) => Promise<void>;
   onClipboardChanged: (callback: (clipboardData: ClipboardOperation | null) => void) => () => void;
 
   setDragData: (paths: string[]) => Promise<void>;
@@ -580,9 +596,11 @@ export interface ElectronAPI {
   isMas: () => Promise<boolean>;
   isFlatpak: () => Promise<boolean>;
   isMsStore: () => Promise<boolean>;
+  isDevMode: () => Promise<boolean>;
   getSystemTextScale: () => Promise<number>;
   checkFullDiskAccess: () => Promise<FullDiskAccessResponse>;
   requestFullDiskAccess: () => Promise<IpcResult>;
+  setUpdateChannel: (channel: 'auto' | 'beta' | 'stable') => void;
   checkForUpdates: () => Promise<UpdateCheckResponse>;
   downloadUpdate: () => Promise<IpcResult>;
   installUpdate: () => Promise<IpcResult>;
@@ -613,7 +631,8 @@ export interface ElectronAPI {
   onExtractProgress: (callback: (progress: ArchiveProgress) => void) => () => void;
   onFileOperationProgress: (callback: (progress: FileOperationProgress) => void) => () => void;
   onSystemResumed: (callback: () => void) => () => void;
-  onDirectoryChanged: (callback: (data: { dirPath: string }) => void) => () => void;
+  onDirectoryChanged: (callback: (data: DirectoryChangedEvent) => void) => () => void;
+  onWatchedDirRemoved: (callback: (data: WatchedDirRemovedEvent) => void) => () => void;
   onSystemThemeChanged: (callback: (data: { isDarkMode: boolean }) => void) => () => void;
   setZoomLevel: (zoomLevel: number) => Promise<IpcResult>;
   getZoomLevel: () => Promise<ZoomLevelResponse>;
@@ -658,6 +677,6 @@ export interface ElectronAPI {
 
 declare global {
   interface Window {
-    electronAPI: ElectronAPI;
+    tauriAPI: TauriAPI;
   }
 }

@@ -1,6 +1,7 @@
 import type { Settings, FileItem } from './types';
 import type { ToastType } from './rendererToasts.js';
 import type { SettingsFormState } from './rendererSettingsUi.js';
+import { sanitizeSettings } from './settings.js';
 
 type EventListenersConfig = {
   getCurrentSettings: () => Settings;
@@ -32,7 +33,7 @@ type EventListenersConfig = {
   goForward: () => void;
   goUp: () => void;
   goHome: () => void;
-  refresh: () => void;
+  refresh: (reason?: string) => void;
   navigateTo: (path: string) => void;
   clearSelection: () => void;
   selectAll: () => void;
@@ -161,13 +162,14 @@ export function createEventListenersController(config: EventListenersConfig) {
   }
 
   function initSyncEventListeners(): void {
-    const cleanupClipboard = window.electronAPI.onClipboardChanged((newClipboard) => {
+    const cleanupClipboard = window.tauriAPI.onClipboardChanged((newClipboard) => {
       config.clipboardOnClipboardChanged(newClipboard);
       config.clipboardUpdateCutVisuals();
     });
     config.getIpcCleanupFunctions().push(cleanupClipboard);
 
-    const cleanupSettings = window.electronAPI.onSettingsChanged((newSettings) => {
+    const cleanupSettings = window.tauriAPI.onSettingsChanged((rawSettings) => {
+      const newSettings = sanitizeSettings(rawSettings);
       const currentTimestamp =
         typeof config.getCurrentSettings()._timestamp === 'number'
           ? config.getCurrentSettings()._timestamp
@@ -216,9 +218,9 @@ export function createEventListenersController(config: EventListenersConfig) {
 
   function initWindowControlListeners(): void {
     const windowControls: Array<[string, () => void]> = [
-      ['minimize-btn', () => window.electronAPI.minimizeWindow()],
-      ['maximize-btn', () => window.electronAPI.maximizeWindow()],
-      ['close-btn', () => window.electronAPI.closeWindow()],
+      ['minimize-btn', () => window.tauriAPI.minimizeWindow()],
+      ['maximize-btn', () => window.tauriAPI.maximizeWindow()],
+      ['close-btn', () => window.tauriAPI.closeWindow()],
     ];
     windowControls.forEach(([id, action]) => {
       document.getElementById(id)?.addEventListener('click', action);
@@ -278,7 +280,7 @@ export function createEventListenersController(config: EventListenersConfig) {
         showHiddenFilesToggle.checked = true;
       }
       config.saveSettings();
-      config.refresh();
+      config.refresh('status-hidden-click');
     };
     statusHiddenBtn?.addEventListener('click', activateHiddenFiles);
     statusHiddenBtn?.addEventListener('keydown', (e) => {
@@ -379,7 +381,7 @@ export function createEventListenersController(config: EventListenersConfig) {
     'command-palette': () => config.showCommandPalette(),
     settings: () => config.showSettingsModal(),
     shortcuts: () => config.showShortcutsModal(),
-    refresh: () => config.refresh(),
+    refresh: () => config.refresh('shortcut-refresh'),
     search: () => config.openSearch(false),
     'global-search': () => config.openSearch(true),
     'toggle-sidebar': () => config.setSidebarCollapsed(),
@@ -678,14 +680,18 @@ export function createEventListenersController(config: EventListenersConfig) {
         }
 
         if (emptySpaceMenu && emptySpaceMenu.style.display === 'block') {
-          config.handleEmptySpaceContextMenuAction(menuItem.dataset.action);
+          void config.handleEmptySpaceContextMenuAction(menuItem.dataset.action);
           config.hideEmptySpaceContextMenu();
           return;
         }
 
         const ctxData = config.getContextMenuData();
         if (ctxData) {
-          config.handleContextMenuAction(menuItem.dataset.action, ctxData, menuItem.dataset.format);
+          void config.handleContextMenuAction(
+            menuItem.dataset.action,
+            ctxData,
+            menuItem.dataset.format
+          );
           config.hideContextMenu();
           return;
         }

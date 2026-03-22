@@ -94,6 +94,7 @@ function createMockDeps() {
     updateNavigationButtons: vi.fn(),
     setHomeViewActive: vi.fn(),
     navigateTo: vi.fn(),
+    watchDirectory: vi.fn(),
     debouncedSaveSettings: vi.fn(),
     saveSettingsWithTimestamp: vi.fn().mockResolvedValue(undefined),
     maxCachedTabs: 5,

@@ -452,11 +452,14 @@ export function createNavigationController(deps: NavigationDeps) {
     }
 
     const operationId = deps.createDirectoryOperationId('breadcrumb');
-    const result = await window.electronAPI.getDirectoryContents(
+    const result = await window.tauriAPI.getDirectoryContents(
       targetPath,
       operationId,
       deps.getCurrentSettings().showHiddenFiles
     );
+
+    // Bail if the menu was closed or replaced by a newer target while we awaited
+    if (breadcrumbMenuPath !== targetPath) return;
 
     if (!result.success) {
       setHtml(
@@ -575,12 +578,16 @@ export function createNavigationController(deps: NavigationDeps) {
     if (dropdown) dropdown.style.display = 'none';
   }
 
-  function clearDirectoryHistory() {
+  async function clearDirectoryHistory() {
     const settings = deps.getCurrentSettings();
     settings.directoryHistory = [];
-    deps.saveSettingsWithTimestamp(settings);
+    const result = await deps.saveSettingsWithTimestamp(settings);
     hideDirectoryHistoryDropdown();
-    deps.showToast('Directory history cleared', 'History', 'success');
+    if (result.success) {
+      deps.showToast('Directory history cleared', 'History', 'success');
+    } else {
+      deps.showToast('Failed to clear directory history', 'History', 'error');
+    }
   }
 
   function getBreadcrumbMenuElement(): HTMLElement | null {

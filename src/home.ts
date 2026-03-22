@@ -1,5 +1,5 @@
 import type { DriveInfo, HomeSettings, Settings } from './types';
-import { createDefaultHomeSettings } from './homeSettings.js';
+import { createDefaultHomeSettings, sanitizeHomeSettings } from './homeSettings.js';
 import { assignKey, escapeHtml } from './shared.js';
 
 export const HOME_VIEW_PATH = 'iyeris://home';
@@ -56,7 +56,7 @@ type HomeControllerOptions = {
 
 export type HomeController = {
   loadHomeSettings: () => Promise<void>;
-  setupHomeSettingsListeners: () => void;
+  setupHomeSettingsListeners: () => () => void;
   renderHomeView: () => void;
   renderHomeRecents: () => void;
   renderHomeBookmarks: () => void;
@@ -131,8 +131,8 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
   }
 
   function normalizeHomeSettings(settings?: Partial<HomeSettings> | null): HomeSettings {
-    const defaults = createDefaultHomeSettings();
-    const merged = { ...defaults, ...(settings || {}) };
+    const sanitized = sanitizeHomeSettings(settings);
+    const merged = sanitized;
 
     merged.sectionOrder = normalizeOrderedList(
       Array.isArray(merged.sectionOrder)
@@ -221,7 +221,7 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
 
   async function loadHomeSettings(): Promise<void> {
     try {
-      const result = await window.electronAPI.getHomeSettings();
+      const result = await window.tauriAPI.getHomeSettings();
       if (result.success && result.settings) {
         currentHomeSettings = normalizeHomeSettings(result.settings);
       } else {
@@ -406,7 +406,7 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
 
   async function openRecentPath(filePath: string): Promise<void> {
     try {
-      const propsResult = await window.electronAPI.getItemProperties(filePath);
+      const propsResult = await window.tauriAPI.getItemProperties(filePath);
       if (propsResult.success && propsResult.properties?.isDirectory) {
         await Promise.resolve(navigateTo(filePath));
         return;
@@ -415,12 +415,16 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
       // Could not check if path is directory; fall through to openFile
     }
 
-    if (openPath) {
-      await Promise.resolve(openPath(filePath));
-      return;
-    }
+    try {
+      if (openPath) {
+        await Promise.resolve(openPath(filePath));
+        return;
+      }
 
-    await window.electronAPI.openFile(filePath);
+      await window.tauriAPI.openFile(filePath);
+    } catch {
+      showToast('Failed to open file', 'Error', 'error');
+    }
   }
 
   async function togglePinnedRecent(filePath: string): Promise<void> {
@@ -434,7 +438,7 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
       ...currentHomeSettings,
       pinnedRecents: Array.from(pinned),
     });
-    const result = await window.electronAPI.saveHomeSettings(currentHomeSettings);
+    const result = await window.tauriAPI.saveHomeSettings(currentHomeSettings);
     if (result.success) {
       renderHomeRecents();
       if (homeSettingsModal && homeSettingsModal.style.display === 'flex') {
@@ -524,13 +528,17 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
       return { total: cached.total, free: cached.free };
     }
 
-    const result = await window.electronAPI.getDiskSpace(drive);
-    if (!result.success || typeof result.total !== 'number' || typeof result.free !== 'number') {
+    try {
+      const result = await window.tauriAPI.getDiskSpace(drive);
+      if (!result.success || typeof result.total !== 'number' || typeof result.free !== 'number') {
+        return null;
+      }
+
+      driveUsageCache.set(drive, { total: result.total, free: result.free, timestamp: Date.now() });
+      return { total: result.total, free: result.free };
+    } catch {
       return null;
     }
-
-    driveUsageCache.set(drive, { total: result.total, free: result.free, timestamp: Date.now() });
-    return { total: result.total, free: result.free };
   }
 
   async function renderHomeDrives(drives?: DriveInfo[]): Promise<void> {
@@ -551,7 +559,7 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
 
     if (!drives) {
       try {
-        driveList = await window.electronAPI.getDriveInfo();
+        driveList = await window.tauriAPI.getDriveInfo();
       } catch {
         driveList = [];
       }
@@ -644,42 +652,55 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
 
       const row = document.createElement('div');
       row.className = 'home-section-order-item';
-      row.draggable = true;
       row.dataset.section = sectionId;
       row.innerHTML = `
         <span class="home-section-order-handle" aria-hidden="true">:::</span>
         <span class="home-section-order-label">${escapeHtml(label)}</span>
       `;
 
-      row.addEventListener('dragstart', (e) => {
+      row.addEventListener('pointerenter', () => {
+        if (!draggedSectionId || draggedSectionId === sectionId) return;
+        homeSectionOrder
+          .querySelectorAll('.home-section-order-item')
+          .forEach((el) => el.classList.remove('drop-target'));
+        row.classList.add('drop-target');
+      });
+
+      row.addEventListener('pointerdown', (e) => {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        const fromId = sectionId;
         draggedSectionId = sectionId;
         row.classList.add('dragging');
-        if (e.dataTransfer) {
-          e.dataTransfer.effectAllowed = 'move';
-          e.dataTransfer.setData('text/plain', sectionId);
-        }
-      });
 
-      row.addEventListener('dragend', () => {
-        draggedSectionId = null;
-        row.classList.remove('dragging');
-      });
+        const onPointerUp = () => {
+          document.removeEventListener('pointerup', onPointerUp);
+          document.removeEventListener('pointercancel', onPointerUp);
 
-      row.addEventListener('dragover', (e) => {
-        e.preventDefault();
-      });
+          const target = homeSectionOrder.querySelector<HTMLElement>(
+            '.home-section-order-item.drop-target'
+          );
+          const toId = target?.dataset.section;
 
-      row.addEventListener('drop', (e) => {
-        e.preventDefault();
-        const fromId = draggedSectionId || e.dataTransfer?.getData('text/plain');
-        if (!fromId || fromId === sectionId) return;
-        tempHomeSettings.sectionOrder = reorderList(
-          tempHomeSettings.sectionOrder,
-          fromId,
-          sectionId
-        );
-        homeSettingsHasUnsavedChanges = true;
-        renderSectionOrderList();
+          draggedSectionId = null;
+          row.classList.remove('dragging');
+          homeSectionOrder
+            .querySelectorAll('.home-section-order-item')
+            .forEach((el) => el.classList.remove('drop-target'));
+
+          if (toId && toId !== fromId) {
+            tempHomeSettings.sectionOrder = reorderList(
+              tempHomeSettings.sectionOrder,
+              fromId,
+              toId
+            );
+            homeSettingsHasUnsavedChanges = true;
+            renderSectionOrderList();
+          }
+        };
+
+        document.addEventListener('pointerup', onPointerUp);
+        document.addEventListener('pointercancel', onPointerUp);
       });
 
       homeSectionOrder.appendChild(row);
@@ -813,7 +834,7 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
 
   async function saveHomeSettings(): Promise<void> {
     tempHomeSettings = normalizeHomeSettings(tempHomeSettings);
-    const result = await window.electronAPI.saveHomeSettings(tempHomeSettings);
+    const result = await window.tauriAPI.saveHomeSettings(tempHomeSettings);
     if (result.success) {
       currentHomeSettings = { ...tempHomeSettings };
       applyHomeSettings(currentHomeSettings);
@@ -824,12 +845,12 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
     }
   }
 
-  function setupHomeSettingsListeners(): void {
+  function setupHomeSettingsListeners(): () => void {
     setupHomeDelegatedListeners();
     homeCustomizeBtn?.addEventListener('click', () => openHomeSettingsModal());
-    homeSettingsClose?.addEventListener('click', () => closeHomeSettingsModal());
-    homeSettingsCancel?.addEventListener('click', () => closeHomeSettingsModal());
-    homeSettingsSave?.addEventListener('click', () => saveHomeSettings());
+    homeSettingsClose?.addEventListener('click', () => void closeHomeSettingsModal());
+    homeSettingsCancel?.addEventListener('click', () => void closeHomeSettingsModal());
+    homeSettingsSave?.addEventListener('click', () => void saveHomeSettings());
 
     homeSettingsReset?.addEventListener('click', () => {
       tempHomeSettings = createDefaultHomeSettings();
@@ -858,14 +879,17 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
       });
     }
 
-    window.electronAPI.onHomeSettingsChanged((settings) => {
-      currentHomeSettings = normalizeHomeSettings(settings);
+    const cleanupHomeSettingsListener = window.tauriAPI.onHomeSettingsChanged((settings) => {
+      const incoming = normalizeHomeSettings(settings);
+      if (JSON.stringify(incoming) === JSON.stringify(currentHomeSettings)) return;
+      currentHomeSettings = incoming;
       applyHomeSettings(currentHomeSettings);
       if (homeSettingsModal && homeSettingsModal.style.display === 'flex') {
         tempHomeSettings = normalizeHomeSettings(currentHomeSettings);
         syncHomeSettingsModal();
       }
     });
+    return cleanupHomeSettingsListener;
   }
 
   return {

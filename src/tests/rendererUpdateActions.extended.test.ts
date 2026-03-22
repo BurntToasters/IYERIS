@@ -126,7 +126,7 @@ describe('rendererUpdateActions extended coverage', () => {
       };
     });
 
-    (window as any).electronAPI = {
+    (window as any).tauriAPI = {
       checkForUpdates: mockCheckForUpdates,
       downloadUpdate: mockDownloadUpdate,
       installUpdate: mockInstallUpdate,
@@ -155,7 +155,7 @@ describe('rendererUpdateActions extended coverage', () => {
   });
 
   describe('restartAsAdmin', () => {
-    it('calls electronAPI.restartAsAdmin when user confirms the dialog', async () => {
+    it('calls tauriAPI.restartAsAdmin when user confirms the dialog', async () => {
       const controller = setup();
       mockRestartAsAdmin.mockResolvedValue({ success: true });
 

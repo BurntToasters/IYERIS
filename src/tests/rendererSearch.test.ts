@@ -43,6 +43,7 @@ function createDeps() {
     debouncedSaveSettings: vi.fn(),
     saveSettingsWithTimestamp: vi.fn().mockResolvedValue({ success: true }),
     getFileGrid: vi.fn(() => null),
+    setHomeViewActive: vi.fn(),
     searchDebounceMs: 200,
     searchHistoryMax: 5,
   };

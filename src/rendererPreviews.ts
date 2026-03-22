@@ -1,5 +1,5 @@
 import type { FileItem, ItemProperties } from './types';
-import { escapeHtml, getErrorMessage } from './shared.js';
+import { escapeHtml, getErrorMessage, sanitizeMarkdownHtml } from './shared.js';
 import { getById } from './rendererDom.js';
 import { encodeFileUrl, twemojiImg } from './rendererUtils.js';
 import { createPdfViewer, type PdfViewerHandle } from './rendererPdfViewer.js';
@@ -91,6 +91,12 @@ export function createPreviewController(deps: PreviewDeps) {
         }
       }
     } else {
+      if (previewContent) {
+        previewContent.querySelectorAll('video, audio').forEach((el) => {
+          (el as HTMLMediaElement).pause();
+          (el as HTMLMediaElement).removeAttribute('src');
+        });
+      }
       previewPanel.style.display = 'none';
       previewRequestId++;
     }
@@ -99,6 +105,10 @@ export function createPreviewController(deps: PreviewDeps) {
 
   function updatePreview(file: FileItem) {
     const requestId = ++previewRequestId;
+    if (activePdfViewer) {
+      activePdfViewer.destroy();
+      activePdfViewer = null;
+    }
     if (!file || file.isDirectory) {
       showEmptyPreview();
       return;
@@ -140,7 +150,7 @@ export function createPreviewController(deps: PreviewDeps) {
     previewContent.innerHTML = loadingHtml('archive contents');
 
     try {
-      const result = await window.electronAPI.listArchiveContents(file.path);
+      const result = await window.tauriAPI.listArchiveContents(file.path);
       if (requestId !== previewRequestId) return;
 
       if (!result.success) {
@@ -221,7 +231,7 @@ export function createPreviewController(deps: PreviewDeps) {
       return;
     }
 
-    const props = await window.electronAPI.getItemProperties(file.path);
+    const props = await window.tauriAPI.getItemProperties(file.path);
     if (requestId !== previewRequestId) return;
     const info = props.success ? props.properties : null;
     const fileUrl = encodeFileUrl(file.path);
@@ -262,7 +272,7 @@ export function createPreviewController(deps: PreviewDeps) {
     ensureElements();
     if (!previewContent || requestId !== previewRequestId) return;
 
-    const props = await window.electronAPI.getItemProperties(file.path);
+    const props = await window.tauriAPI.getItemProperties(file.path);
     if (requestId !== previewRequestId) return;
     const info = props.success ? props.properties : null;
 
@@ -314,7 +324,7 @@ export function createPreviewController(deps: PreviewDeps) {
     if (!previewContent || requestId !== previewRequestId) return;
     previewContent.innerHTML = loadingHtml('markdown');
 
-    const result = await window.electronAPI.readFileContent(file.path, 100 * 1024);
+    const result = await window.tauriAPI.readFileContent(file.path, 100 * 1024);
     if (requestId !== previewRequestId) return;
 
     if (!result.success) {
@@ -327,7 +337,7 @@ export function createPreviewController(deps: PreviewDeps) {
       return;
     }
 
-    const props = await window.electronAPI.getItemProperties(file.path);
+    const props = await window.tauriAPI.getItemProperties(file.path);
     if (requestId !== previewRequestId) return;
     const info = props.success ? props.properties : null;
 
@@ -335,7 +345,9 @@ export function createPreviewController(deps: PreviewDeps) {
     if (requestId !== previewRequestId) return;
 
     if (md) {
-      const rendered = md.marked.parse(result.content, { async: false, breaks: true }) as string;
+      const rendered = sanitizeMarkdownHtml(
+        md.marked.parse(result.content, { async: false, breaks: true }) as string
+      );
       previewContent.innerHTML = `
       ${result.isTruncated ? `<div class="preview-truncated">${twemojiImg(String.fromCodePoint(0x26a0), 'twemoji')} File truncated to first 100KB</div>` : ''}
       <div class="preview-markdown">${rendered}</div>
@@ -356,7 +368,7 @@ export function createPreviewController(deps: PreviewDeps) {
     if (!previewContent || requestId !== previewRequestId) return;
     previewContent.innerHTML = loadingHtml('text');
 
-    const result = await window.electronAPI.readFileContent(file.path, 50 * 1024);
+    const result = await window.tauriAPI.readFileContent(file.path, 50 * 1024);
     if (requestId !== previewRequestId) return;
 
     if (!result.success) {
@@ -369,7 +381,7 @@ export function createPreviewController(deps: PreviewDeps) {
       return;
     }
 
-    const props = await window.electronAPI.getItemProperties(file.path);
+    const props = await window.tauriAPI.getItemProperties(file.path);
     if (requestId !== previewRequestId) return;
     const info = props.success ? props.properties : null;
     const ext = deps.getFileExtension(file.name);
@@ -383,11 +395,13 @@ export function createPreviewController(deps: PreviewDeps) {
 
     const settings = deps.getCurrentSettings();
     if (lang && settings.enableSyntaxHighlighting) {
-      loadHighlightJs().then((hl) => {
-        if (requestId !== previewRequestId || !hl) return;
-        const codeBlock = previewContent?.querySelector('code');
-        if (codeBlock) hl.highlightElement?.(codeBlock);
-      });
+      loadHighlightJs()
+        .then((hl) => {
+          if (requestId !== previewRequestId || !hl) return;
+          const codeBlock = previewContent?.querySelector('code');
+          if (codeBlock) hl.highlightElement?.(codeBlock);
+        })
+        .catch(() => {});
     }
   }
 
@@ -407,7 +421,7 @@ export function createPreviewController(deps: PreviewDeps) {
       return;
     }
 
-    const props = await window.electronAPI.getItemProperties(file.path);
+    const props = await window.tauriAPI.getItemProperties(file.path);
     if (requestId !== previewRequestId) return;
     const info = props.success ? props.properties : null;
 
@@ -425,7 +439,7 @@ export function createPreviewController(deps: PreviewDeps) {
     ensureElements();
     if (!previewContent || requestId !== previewRequestId) return;
 
-    const props = await window.electronAPI.getItemProperties(file.path);
+    const props = await window.tauriAPI.getItemProperties(file.path);
     if (requestId !== previewRequestId) return;
     const info = props.success ? props.properties : null;
 
@@ -463,7 +477,7 @@ export function createPreviewController(deps: PreviewDeps) {
       return;
     }
 
-    const headerResult = await window.electronAPI.readFileContent(file.path, 16);
+    const headerResult = await window.tauriAPI.readFileContent(file.path, 16);
     if (requestId !== previewRequestId) return;
     if (!headerResult.success || !headerResult.content.startsWith('%PDF-')) {
       previewContent.innerHTML = `
@@ -477,7 +491,7 @@ export function createPreviewController(deps: PreviewDeps) {
 
     previewContent.innerHTML = loadingHtml('PDF');
 
-    const props = await window.electronAPI.getItemProperties(file.path);
+    const props = await window.tauriAPI.getItemProperties(file.path);
     if (requestId !== previewRequestId) return;
     const info = props.success ? props.properties : null;
 
@@ -510,7 +524,7 @@ export function createPreviewController(deps: PreviewDeps) {
       openBtn.className = 'preview-pdf-open-btn';
       openBtn.title = 'Open in default application';
       openBtn.innerHTML = `${twemojiImg(String.fromCodePoint(0x1f4c4), 'twemoji-small')} Open in Default App`;
-      openBtn.addEventListener('click', () => void window.electronAPI.openFile(file.path));
+      openBtn.addEventListener('click', () => void window.tauriAPI.openFile(file.path));
       actionsDiv.appendChild(openBtn);
       previewContent.appendChild(actionsDiv);
 
@@ -537,7 +551,7 @@ export function createPreviewController(deps: PreviewDeps) {
         '.preview-pdf-open-btn'
       ) as HTMLButtonElement | null;
       if (fallbackBtn) {
-        fallbackBtn.addEventListener('click', () => void window.electronAPI.openFile(file.path));
+        fallbackBtn.addEventListener('click', () => void window.tauriAPI.openFile(file.path));
       }
     }
   }
@@ -545,7 +559,7 @@ export function createPreviewController(deps: PreviewDeps) {
   async function showFileInfo(file: FileItem, requestId: number) {
     ensureElements();
     if (!previewContent || requestId !== previewRequestId) return;
-    const props = await window.electronAPI.getItemProperties(file.path);
+    const props = await window.tauriAPI.getItemProperties(file.path);
     if (requestId !== previewRequestId) return;
     const info = props.success ? props.properties : null;
 
@@ -619,6 +633,16 @@ export function createPreviewController(deps: PreviewDeps) {
     if (previewCloseBtn) {
       previewCloseBtn.addEventListener('click', () => {
         isPreviewPanelVisible = false;
+        if (activePdfViewer) {
+          activePdfViewer.destroy();
+          activePdfViewer = null;
+        }
+        if (previewContent) {
+          previewContent.querySelectorAll('video, audio').forEach((el) => {
+            (el as HTMLMediaElement).pause();
+            (el as HTMLMediaElement).removeAttribute('src');
+          });
+        }
         if (previewPanel) previewPanel.style.display = 'none';
         previewRequestId++;
         syncPreviewToggleState();

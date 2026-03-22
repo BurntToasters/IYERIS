@@ -69,7 +69,7 @@ export async function loadHighlightJs(): Promise<HighlightJs | null> {
     if (!existingLink) {
       const link = document.createElement('link');
       link.rel = 'stylesheet';
-      link.href = '../dist/vendor/highlight.css';
+      link.href = '/vendor/highlight.css';
       link.dataset.highlightjs = 'theme';
       document.head.appendChild(link);
     }
@@ -83,7 +83,10 @@ export async function loadHighlightJs(): Promise<HighlightJs | null> {
         hljs = globalHljs;
         resolve(hljs);
       });
-      existingScript.addEventListener('error', () => resolve(null));
+      existingScript.addEventListener('error', () => {
+        hljsLoading = null;
+        resolve(null);
+      });
       const existingGlobal = (window as Window & { hljs?: HighlightJs }).hljs;
       if (existingGlobal) {
         hljs = existingGlobal;
@@ -93,7 +96,7 @@ export async function loadHighlightJs(): Promise<HighlightJs | null> {
     }
 
     const script = document.createElement('script');
-    script.src = '../dist/vendor/highlight.js';
+    script.src = '/vendor/highlight.js';
     script.dataset.highlightjs = 'core';
     script.onload = () => {
       const globalHljs = (window as Window & { hljs?: HighlightJs }).hljs || null;

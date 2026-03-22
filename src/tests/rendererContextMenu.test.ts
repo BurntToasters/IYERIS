@@ -93,10 +93,11 @@ describe('createContextMenuController', () => {
       },
       configurable: true,
     });
-    Object.defineProperty(window, 'electronAPI', {
+    Object.defineProperty(window, 'tauriAPI', {
       value: {
         openTerminal: vi.fn().mockResolvedValue({ success: true }),
         getItemProperties: vi.fn().mockResolvedValue({ success: true, properties: {} }),
+        writeToSystemClipboard: vi.fn().mockResolvedValue(undefined),
       },
       configurable: true,
       writable: true,
@@ -131,14 +132,14 @@ describe('createContextMenuController', () => {
 
     await controller.handleContextMenuAction('copy-path', item);
 
-    expect(navigator.clipboard.writeText).toHaveBeenCalledWith('/tmp/file.txt');
+    expect(window.tauriAPI.writeToSystemClipboard).toHaveBeenCalledWith('/tmp/file.txt');
     expect(deps.showToast).toHaveBeenCalledWith(
       'File path copied to clipboard',
       'Success',
       'success'
     );
 
-    vi.mocked(navigator.clipboard.writeText).mockRejectedValueOnce(new Error('denied'));
+    vi.mocked(window.tauriAPI.writeToSystemClipboard).mockRejectedValueOnce(new Error('denied'));
     await controller.handleContextMenuAction('copy-path', item);
     expect(deps.showToast).toHaveBeenCalledWith('Failed to copy file path', 'Error', 'error');
   });
@@ -164,10 +165,9 @@ describe('createContextMenuController', () => {
   it('handles empty-space open-terminal errors', async () => {
     const deps = createDeps();
     const controller = createContextMenuController(deps);
-    const electronApi = (
-      window as unknown as { electronAPI: { openTerminal: ReturnType<typeof vi.fn> } }
-    ).electronAPI;
-    electronApi.openTerminal = vi
+    const tauriApi = (window as unknown as { tauriAPI: { openTerminal: ReturnType<typeof vi.fn> } })
+      .tauriAPI;
+    tauriApi.openTerminal = vi
       .fn()
       .mockResolvedValue({ success: false, error: 'terminal unavailable' });
 

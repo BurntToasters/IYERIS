@@ -35,6 +35,7 @@ vi.mock('../rendererHighlight.js', () => ({
 
 vi.mock('../shared.js', () => ({
   escapeHtml: mockEscapeHtml,
+  sanitizeMarkdownHtml: (html: string) => html,
 }));
 
 vi.mock('../rendererDom.js', () => ({
@@ -139,7 +140,7 @@ describe('createQuicklookController', () => {
     vi.clearAllMocks();
     dom = setupDom();
     deps = createDeps();
-    (window as any).electronAPI = {
+    (window as any).tauriAPI = {
       readFileContent: vi.fn().mockResolvedValue({ success: true, content: 'hello' }),
       openFile: vi.fn(),
     };
@@ -149,7 +150,7 @@ describe('createQuicklookController', () => {
 
   afterEach(() => {
     cleanupDom();
-    delete (window as any).electronAPI;
+    delete (window as any).tauriAPI;
   });
 
   describe('initQuicklookUi', () => {
@@ -563,7 +564,7 @@ describe('createQuicklookController', () => {
 
     describe('PDF preview', () => {
       it('reads file header to validate PDF', async () => {
-        (window as any).electronAPI.readFileContent = vi
+        (window as any).tauriAPI.readFileContent = vi
           .fn()
           .mockResolvedValue({ success: true, content: '%PDF-1.4 header' });
 
@@ -584,12 +585,12 @@ describe('createQuicklookController', () => {
         const file = makeFile({ name: 'doc.pdf', path: '/home/user/doc.pdf' });
         await ctrl.showQuickLookForFile(file);
 
-        expect((window as any).electronAPI.readFileContent).toHaveBeenCalledWith(file.path, 16);
+        expect((window as any).tauriAPI.readFileContent).toHaveBeenCalledWith(file.path, 16);
         expect(mockCreatePdfViewer).toHaveBeenCalled();
       });
 
       it('shows error when file is not a valid PDF', async () => {
-        (window as any).electronAPI.readFileContent = vi
+        (window as any).tauriAPI.readFileContent = vi
           .fn()
           .mockResolvedValue({ success: true, content: 'not-a-pdf' });
 
@@ -602,7 +603,7 @@ describe('createQuicklookController', () => {
       });
 
       it('shows error when readFileContent fails for PDF', async () => {
-        (window as any).electronAPI.readFileContent = vi
+        (window as any).tauriAPI.readFileContent = vi
           .fn()
           .mockResolvedValue({ success: false, error: 'read error' });
 
@@ -614,7 +615,7 @@ describe('createQuicklookController', () => {
       });
 
       it('shows error when createPdfViewer throws', async () => {
-        (window as any).electronAPI.readFileContent = vi
+        (window as any).tauriAPI.readFileContent = vi
           .fn()
           .mockResolvedValue({ success: true, content: '%PDF-1.4' });
         mockCreatePdfViewer.mockRejectedValue(new Error('PDF render failed'));
@@ -627,7 +628,7 @@ describe('createQuicklookController', () => {
       });
 
       it('sets PDF info text with prefix', async () => {
-        (window as any).electronAPI.readFileContent = vi
+        (window as any).tauriAPI.readFileContent = vi
           .fn()
           .mockResolvedValue({ success: true, content: '%PDF-1.4' });
 
@@ -652,7 +653,7 @@ describe('createQuicklookController', () => {
       });
 
       it('stores pdf viewer on modal element for cleanup', async () => {
-        (window as any).electronAPI.readFileContent = vi
+        (window as any).tauriAPI.readFileContent = vi
           .fn()
           .mockResolvedValue({ success: true, content: '%PDF-1.4' });
 
@@ -677,7 +678,7 @@ describe('createQuicklookController', () => {
       });
 
       it('destroys viewer if quicklook changed during PDF load', async () => {
-        (window as any).electronAPI.readFileContent = vi
+        (window as any).tauriAPI.readFileContent = vi
           .fn()
           .mockResolvedValue({ success: true, content: '%PDF-1.4' });
 
@@ -719,7 +720,7 @@ describe('createQuicklookController', () => {
         const readPromise = new Promise((res) => {
           resolveRead = res;
         });
-        (window as any).electronAPI.readFileContent = vi.fn().mockReturnValue(readPromise);
+        (window as any).tauriAPI.readFileContent = vi.fn().mockReturnValue(readPromise);
 
         const ctrl = createQuicklookController(deps as any);
         const file1 = makeFile({ name: 'doc1.pdf', path: '/home/user/doc1.pdf' });
@@ -737,7 +738,7 @@ describe('createQuicklookController', () => {
 
     describe('text preview', () => {
       it('shows text content with pre/code block', async () => {
-        (window as any).electronAPI.readFileContent = vi.fn().mockResolvedValue({
+        (window as any).tauriAPI.readFileContent = vi.fn().mockResolvedValue({
           success: true,
           content: 'const x = 1;',
         });
@@ -746,7 +747,7 @@ describe('createQuicklookController', () => {
         const file = makeFile({ name: 'script.js', path: '/home/user/script.js' });
         await ctrl.showQuickLookForFile(file);
 
-        expect((window as any).electronAPI.readFileContent).toHaveBeenCalledWith(
+        expect((window as any).tauriAPI.readFileContent).toHaveBeenCalledWith(
           file.path,
           100 * 1024
         );
@@ -755,7 +756,7 @@ describe('createQuicklookController', () => {
       });
 
       it('shows truncation warning when file is truncated', async () => {
-        (window as any).electronAPI.readFileContent = vi.fn().mockResolvedValue({
+        (window as any).tauriAPI.readFileContent = vi.fn().mockResolvedValue({
           success: true,
           content: 'truncated content',
           isTruncated: true,
@@ -770,7 +771,7 @@ describe('createQuicklookController', () => {
       });
 
       it('does not show truncation warning when not truncated', async () => {
-        (window as any).electronAPI.readFileContent = vi.fn().mockResolvedValue({
+        (window as any).tauriAPI.readFileContent = vi.fn().mockResolvedValue({
           success: true,
           content: 'short content',
           isTruncated: false,
@@ -784,7 +785,7 @@ describe('createQuicklookController', () => {
       });
 
       it('shows error when readFileContent fails', async () => {
-        (window as any).electronAPI.readFileContent = vi.fn().mockResolvedValue({
+        (window as any).tauriAPI.readFileContent = vi.fn().mockResolvedValue({
           success: false,
           error: 'Access denied',
         });
@@ -800,7 +801,7 @@ describe('createQuicklookController', () => {
         const mockHighlightElement = vi.fn();
         mockLoadHighlightJs.mockResolvedValue({ highlightElement: mockHighlightElement });
         mockGetLanguageForExt.mockReturnValue('javascript');
-        (window as any).electronAPI.readFileContent = vi.fn().mockResolvedValue({
+        (window as any).tauriAPI.readFileContent = vi.fn().mockResolvedValue({
           success: true,
           content: 'const x = 1;',
         });
@@ -819,7 +820,7 @@ describe('createQuicklookController', () => {
         (deps.getCurrentSettings as ReturnType<typeof vi.fn>).mockReturnValue({
           enableSyntaxHighlighting: false,
         });
-        (window as any).electronAPI.readFileContent = vi.fn().mockResolvedValue({
+        (window as any).tauriAPI.readFileContent = vi.fn().mockResolvedValue({
           success: true,
           content: 'const x = 1;',
         });
@@ -833,7 +834,7 @@ describe('createQuicklookController', () => {
 
       it('does not apply syntax highlighting when language is null', async () => {
         mockGetLanguageForExt.mockReturnValue(null);
-        (window as any).electronAPI.readFileContent = vi.fn().mockResolvedValue({
+        (window as any).tauriAPI.readFileContent = vi.fn().mockResolvedValue({
           success: true,
           content: 'plain text',
         });
@@ -850,7 +851,7 @@ describe('createQuicklookController', () => {
         (deps.getCurrentSettings as ReturnType<typeof vi.fn>).mockReturnValue({
           enableSyntaxHighlighting: false,
         });
-        (window as any).electronAPI.readFileContent = vi.fn().mockResolvedValue({
+        (window as any).tauriAPI.readFileContent = vi.fn().mockResolvedValue({
           success: true,
           content: 'const x: number = 1;',
         });
@@ -866,7 +867,7 @@ describe('createQuicklookController', () => {
       it('handles loadHighlightJs returning null gracefully', async () => {
         mockLoadHighlightJs.mockResolvedValue(null);
         mockGetLanguageForExt.mockReturnValue('javascript');
-        (window as any).electronAPI.readFileContent = vi.fn().mockResolvedValue({
+        (window as any).tauriAPI.readFileContent = vi.fn().mockResolvedValue({
           success: true,
           content: 'const x = 1;',
         });
@@ -883,7 +884,7 @@ describe('createQuicklookController', () => {
         const readPromise = new Promise((res) => {
           resolveRead = res;
         });
-        (window as any).electronAPI.readFileContent = vi.fn().mockReturnValue(readPromise);
+        (window as any).tauriAPI.readFileContent = vi.fn().mockReturnValue(readPromise);
 
         const ctrl = createQuicklookController(deps as any);
         const file1 = makeFile({ name: 'first.txt', path: '/home/user/first.txt' });
@@ -950,7 +951,7 @@ describe('createQuicklookController', () => {
         const readPromise = new Promise((res) => {
           resolveRead = res;
         });
-        (window as any).electronAPI.readFileContent = vi.fn().mockReturnValue(readPromise);
+        (window as any).tauriAPI.readFileContent = vi.fn().mockReturnValue(readPromise);
 
         const ctrl = createQuicklookController(deps as any);
         const file = makeFile({ name: 'doc.md', path: '/home/user/doc.md' });
@@ -992,7 +993,7 @@ describe('createQuicklookController', () => {
       await ctrl.showQuickLookForFile(imgFile);
       expect(dom.content.querySelector('img')).not.toBeNull();
 
-      (window as any).electronAPI.readFileContent = vi.fn().mockResolvedValue({
+      (window as any).tauriAPI.readFileContent = vi.fn().mockResolvedValue({
         success: true,
         content: 'hello',
       });

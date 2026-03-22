@@ -5,10 +5,19 @@
   height: var(--titlebar-height);
   background: var(--surface-1);
   border-bottom: 1px solid var(--panel-border);
-  -webkit-app-region: drag;
   padding: 0 0 0 12px;
   position: relative;
   z-index: 10;
+  will-change: transform;
+}
+
+.titlebar-drag-handle {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 8px;
+  z-index: 2;
 }
 
 .titlebar-drag-region {
@@ -16,6 +25,8 @@
   align-items: center;
   flex: 1;
   gap: 8px;
+  position: relative;
+  z-index: 1;
 }
 
 .titlebar-icon {
@@ -43,8 +54,9 @@
 
 .titlebar-controls {
   display: flex;
-  -webkit-app-region: no-drag;
   gap: 0;
+  position: relative;
+  z-index: 3;
 }
 
 .titlebar-button {
@@ -119,11 +131,23 @@ body.platform-win32 .titlebar-title {
   min-width: 0;
   padding: 0 4px;
   gap: 2px;
+  position: relative;
+  z-index: 1;
 }
 
-.tab-item,
-.tab-new-btn {
-  -webkit-app-region: no-drag;
+@supports (-webkit-app-region: drag) {
+  .titlebar,
+  .titlebar-drag-region,
+  .titlebar-drag-handle {
+    -webkit-app-region: drag;
+  }
+
+  .titlebar-button,
+  .tab-item,
+  .tab-close,
+  .tab-new-btn {
+    -webkit-app-region: no-drag;
+  }
 }
 
 .tab-list {

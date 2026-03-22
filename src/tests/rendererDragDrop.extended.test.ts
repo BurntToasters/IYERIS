@@ -63,6 +63,7 @@ function createConfig(overrides: Record<string, unknown> = {}) {
     clearSelection: vi.fn(),
     navigateTo: vi.fn().mockResolvedValue(undefined),
     updateUndoRedoState: vi.fn().mockResolvedValue(undefined),
+    getPlatformOS: () => (overrides.platformOS as string) ?? 'darwin',
   };
   return { config, showToast };
 }
@@ -84,7 +85,7 @@ describe('createDragDropController — extended', () => {
         <span id="drop-indicator-path"></span>
       </div>
     `;
-    Object.defineProperty(window, 'electronAPI', {
+    Object.defineProperty(window, 'tauriAPI', {
       value: {
         getDragData: vi.fn().mockResolvedValue(null),
         copyItems: vi.fn().mockResolvedValue({ success: true }),
@@ -105,28 +106,27 @@ describe('createDragDropController — extended', () => {
     it('handles copy operation', async () => {
       const { config, showToast } = createConfig();
       const ctrl = createDragDropController(config);
-      const electronAPI = (
-        window as unknown as { electronAPI: Record<string, ReturnType<typeof vi.fn>> }
-      ).electronAPI;
+      const tauriAPI = (window as unknown as { tauriAPI: Record<string, ReturnType<typeof vi.fn>> })
+        .tauriAPI;
 
       await ctrl.handleDrop(['/src.txt'], '/dest', 'copy');
 
-      expect(electronAPI.copyItems).toHaveBeenCalledWith(['/src.txt'], '/dest', 'ask');
-      expect(electronAPI.moveItems).not.toHaveBeenCalled();
+      expect(tauriAPI.copyItems).toHaveBeenCalledWith(['/src.txt'], '/dest', 'ask');
+      expect(tauriAPI.moveItems).not.toHaveBeenCalled();
       expect(showToast).toHaveBeenCalledWith('Copied 1 item(s)', 'Success', 'success');
 
       expect(config.updateUndoRedoState).not.toHaveBeenCalled();
     });
 
     it('shows error toast on failure', async () => {
-      const electronAPI = {
+      const tauriAPI = {
         getDragData: vi.fn(),
         copyItems: vi.fn().mockResolvedValue({ success: false, error: 'disk full' }),
         moveItems: vi.fn(),
         clearDragData: vi.fn(),
       };
-      Object.defineProperty(window, 'electronAPI', {
-        value: electronAPI,
+      Object.defineProperty(window, 'tauriAPI', {
+        value: tauriAPI,
         configurable: true,
         writable: true,
       });
@@ -140,7 +140,7 @@ describe('createDragDropController — extended', () => {
     });
 
     it('shows generic error when no error message', async () => {
-      Object.defineProperty(window, 'electronAPI', {
+      Object.defineProperty(window, 'tauriAPI', {
         value: {
           getDragData: vi.fn(),
           copyItems: vi.fn(),
@@ -164,7 +164,7 @@ describe('createDragDropController — extended', () => {
     });
 
     it('catches exceptions and shows error toast', async () => {
-      Object.defineProperty(window, 'electronAPI', {
+      Object.defineProperty(window, 'tauriAPI', {
         value: {
           getDragData: vi.fn(),
           copyItems: vi.fn().mockRejectedValue(new Error('boom')),
@@ -208,8 +208,8 @@ describe('createDragDropController — extended', () => {
       expect(result).toEqual(['/from-file.txt']);
     });
 
-    it('falls back to electronAPI.getDragData when text and files empty', async () => {
-      Object.defineProperty(window, 'electronAPI', {
+    it('falls back to tauriAPI.getDragData when text and files empty', async () => {
+      Object.defineProperty(window, 'tauriAPI', {
         value: {
           getDragData: vi.fn().mockResolvedValue({ paths: ['/shared.txt'] }),
           copyItems: vi.fn(),
@@ -256,20 +256,14 @@ describe('createDragDropController — extended', () => {
     });
 
     it('supports windows file:// drive URLs with host-style drive letters', async () => {
-      const originalPlatform = process.platform;
-      Object.defineProperty(process, 'platform', { value: 'win32' });
-      try {
-        const { config } = createConfig();
-        const ctrl = createDragDropController(config);
-        const result = await ctrl.getDraggedPaths(
-          createDragEvent('drop', {
-            textData: 'file://C:/Users/test/file.txt',
-          })
-        );
-        expect(result).toEqual(['C:/Users/test/file.txt']);
-      } finally {
-        Object.defineProperty(process, 'platform', { value: originalPlatform });
-      }
+      const { config } = createConfig({ platformOS: 'win32' });
+      const ctrl = createDragDropController(config);
+      const result = await ctrl.getDraggedPaths(
+        createDragEvent('drop', {
+          textData: 'file://C:/Users/test/file.txt',
+        })
+      );
+      expect(result).toEqual(['C:/Users/test/file.txt']);
     });
 
     it('parses file URLs from text/uri-list payloads', async () => {
@@ -296,7 +290,7 @@ describe('createDragDropController — extended', () => {
 
     it('uses getPathForFile fallback when file.path is unavailable', async () => {
       const getPathForFile = vi.fn().mockReturnValue('/tmp/from-web-utils.txt');
-      Object.defineProperty(window, 'electronAPI', {
+      Object.defineProperty(window, 'tauriAPI', {
         value: {
           getDragData: vi.fn().mockResolvedValue(null),
           copyItems: vi.fn(),
@@ -319,7 +313,7 @@ describe('createDragDropController — extended', () => {
     });
 
     it('returns empty paths when shared drag-data lookup fails', async () => {
-      Object.defineProperty(window, 'electronAPI', {
+      Object.defineProperty(window, 'tauriAPI', {
         value: {
           getDragData: vi.fn().mockRejectedValue(new Error('ipc unavailable')),
           copyItems: vi.fn(),
@@ -585,9 +579,9 @@ describe('createDragDropController — extended', () => {
       fileItem.dispatchEvent(dropEvt);
       await Promise.resolve();
 
-      const electronAPI = (window as any).electronAPI;
-      expect(electronAPI.moveItems).not.toHaveBeenCalled();
-      expect(electronAPI.copyItems).not.toHaveBeenCalled();
+      const tauriAPI = (window as any).tauriAPI;
+      expect(tauriAPI.moveItems).not.toHaveBeenCalled();
+      expect(tauriAPI.copyItems).not.toHaveBeenCalled();
     });
 
     it('hides indicator when drop has no dragged paths', async () => {
@@ -617,9 +611,9 @@ describe('createDragDropController — extended', () => {
       fileGrid.dispatchEvent(dropEvt);
       await flushPromises();
 
-      const electronAPI = (window as any).electronAPI;
-      expect(electronAPI.moveItems).not.toHaveBeenCalled();
-      expect(electronAPI.copyItems).not.toHaveBeenCalled();
+      const tauriAPI = (window as any).tauriAPI;
+      expect(tauriAPI.moveItems).not.toHaveBeenCalled();
+      expect(tauriAPI.copyItems).not.toHaveBeenCalled();
       expect(document.getElementById('drop-indicator')!.style.display).toBe('none');
     });
 
@@ -636,8 +630,8 @@ describe('createDragDropController — extended', () => {
       fileGrid.dispatchEvent(dropEvt);
       await flushPromises();
 
-      const electronAPI = (window as any).electronAPI;
-      expect(electronAPI.moveItems).toHaveBeenCalledWith(['/other/file.txt'], '/dest', 'ask');
+      const tauriAPI = (window as any).tauriAPI;
+      expect(tauriAPI.moveItems).toHaveBeenCalledWith(['/other/file.txt'], '/dest', 'ask');
       expect(config.updateUndoRedoState).toHaveBeenCalled();
     });
 
@@ -655,9 +649,9 @@ describe('createDragDropController — extended', () => {
       fileGrid.dispatchEvent(dropEvt);
       await flushPromises();
 
-      const electronAPI = (window as any).electronAPI;
-      expect(electronAPI.copyItems).toHaveBeenCalledWith(['/other/file.txt'], '/dest', 'ask');
-      expect(electronAPI.moveItems).not.toHaveBeenCalled();
+      const tauriAPI = (window as any).tauriAPI;
+      expect(tauriAPI.copyItems).toHaveBeenCalledWith(['/other/file.txt'], '/dest', 'ask');
+      expect(tauriAPI.moveItems).not.toHaveBeenCalled();
     });
 
     it('shows toast when dragged path equals destination (same file)', async () => {
@@ -761,9 +755,9 @@ describe('createDragDropController — extended', () => {
       columnItem.dispatchEvent(dropEvt);
       await Promise.resolve();
 
-      const electronAPI = (window as any).electronAPI;
-      expect(electronAPI.moveItems).not.toHaveBeenCalled();
-      expect(electronAPI.copyItems).not.toHaveBeenCalled();
+      const tauriAPI = (window as any).tauriAPI;
+      expect(tauriAPI.moveItems).not.toHaveBeenCalled();
+      expect(tauriAPI.copyItems).not.toHaveBeenCalled();
     });
 
     it('performs move on file-view drop', async () => {
@@ -779,8 +773,8 @@ describe('createDragDropController — extended', () => {
       fileView.dispatchEvent(dropEvt);
       await flushPromises();
 
-      const electronAPI = (window as any).electronAPI;
-      expect(electronAPI.moveItems).toHaveBeenCalledWith(['/source/data.txt'], '/dest', 'ask');
+      const tauriAPI = (window as any).tauriAPI;
+      expect(tauriAPI.moveItems).toHaveBeenCalledWith(['/source/data.txt'], '/dest', 'ask');
       expect(showToast).toHaveBeenCalledWith('Moved 1 item(s)', 'Success', 'success');
     });
 
@@ -845,8 +839,8 @@ describe('createDragDropController — extended', () => {
 
       await ctrl.handleDrop(['/a.txt'], '/dest', 'copy');
 
-      const electronAPI = (window as any).electronAPI;
-      expect(electronAPI.copyItems).toHaveBeenCalledWith(['/a.txt'], '/dest', 'overwrite');
+      const tauriAPI = (window as any).tauriAPI;
+      expect(tauriAPI.copyItems).toHaveBeenCalledWith(['/a.txt'], '/dest', 'overwrite');
     });
 
     it('defaults fileConflictBehavior to "ask" when undefined', async () => {
@@ -856,8 +850,8 @@ describe('createDragDropController — extended', () => {
 
       await ctrl.handleDrop(['/a.txt'], '/dest', 'move');
 
-      const electronAPI = (window as any).electronAPI;
-      expect(electronAPI.moveItems).toHaveBeenCalledWith(['/a.txt'], '/dest', 'ask');
+      const tauriAPI = (window as any).tauriAPI;
+      expect(tauriAPI.moveItems).toHaveBeenCalledWith(['/a.txt'], '/dest', 'ask');
     });
   });
 
@@ -891,8 +885,8 @@ describe('createDragDropController — extended', () => {
       fileGrid.dispatchEvent(dropEvt);
       await flushPromises();
 
-      const electronAPI = (window as any).electronAPI;
-      expect(electronAPI.moveItems).toHaveBeenCalled();
+      const tauriAPI = (window as any).tauriAPI;
+      expect(tauriAPI.moveItems).toHaveBeenCalled();
       expect(showToast).toHaveBeenCalledWith('Moved 1 item(s)', 'Success', 'success');
     });
 

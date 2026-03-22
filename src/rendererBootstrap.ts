@@ -2,7 +2,7 @@ import type { Settings } from './types';
 import { hexToRgb } from './rendererThemeEditor.js';
 import { twemojiImg } from './rendererUtils.js';
 import { getById, clearHtml } from './rendererDom.js';
-import { ignoreError } from './shared.js';
+import { ignoreError, setDevMode, devLog } from './shared.js';
 
 type BootstrapConfig = {
   loadSettings: () => Promise<void>;
@@ -16,14 +16,16 @@ type BootstrapConfig = {
   navigateTo: (path: string) => Promise<void>;
   setupBreadcrumbListeners: () => void;
   setupThemeEditorListeners: () => void;
-  setupHomeSettingsListeners: () => void;
+  setupHomeSettingsListeners: () => () => void;
   loadBookmarks: () => void;
   updateUndoRedoState: () => Promise<void>;
   handleUpdateDownloaded: (info: { version: string }) => void;
-  refresh: () => void;
+  silentCheckAndDownload: () => Promise<void>;
+  refresh: (reason?: string) => void;
   applySettings: (settings: Settings) => void;
   getCurrentSettings: () => Settings;
   setCurrentSettings: (s: Settings) => void;
+  saveSettings: () => void;
   setPlatformOS: (os: string) => void;
   getIpcCleanupFunctions: () => (() => void)[];
   setZoomLevel: (level: number) => void;
@@ -33,9 +35,26 @@ type BootstrapConfig = {
   getFolderTree: () => HTMLElement | null;
   onHomeSettingsChanged: (cb: () => void) => () => void;
   homeViewPath: string;
+  goUp: () => void;
+  showToast: (message: string, title?: string, type?: string) => void;
 };
 
 export function createBootstrapController(config: BootstrapConfig) {
+  const DIRECTORY_CHANGE_REFRESH_COOLDOWN_MS = 1800;
+  let lastDirectoryRefreshAt = 0;
+
+  function normalizePathForWatcher(pathValue: string): string {
+    const trimmed = pathValue.trim();
+    if (!trimmed) return '';
+    const isWindowsPath = /^[A-Za-z]:[\\/]/.test(trimmed) || trimmed.startsWith('\\\\');
+    if (isWindowsPath) {
+      const normalized = trimmed.replace(/\//g, '\\');
+      return normalized.replace(/\\+$/, '').toLowerCase();
+    }
+    const normalized = trimmed.replace(/\/+$/, '');
+    return normalized || '/';
+  }
+
   function updateVersionDisplays(appVersion: string): void {
     const rawVersion = appVersion.trim();
     const versionTag = rawVersion.startsWith('v') ? rawVersion : `v${rawVersion}`;
@@ -79,16 +98,24 @@ export function createBootstrapController(config: BootstrapConfig) {
   }
 
   async function init() {
-    const [platform, mas, flatpak, msStore, appVersion] = await Promise.all([
-      window.electronAPI.getPlatform(),
-      window.electronAPI.isMas(),
-      window.electronAPI.isFlatpak(),
-      window.electronAPI.isMsStore(),
-      window.electronAPI.getAppVersion(),
+    const [platform, mas, flatpak, msStore, appVersion, devMode] = await Promise.all([
+      window.tauriAPI.getPlatform().catch(() => 'unknown'),
+      window.tauriAPI.isMas().catch(() => false),
+      window.tauriAPI.isFlatpak().catch(() => false),
+      window.tauriAPI.isMsStore().catch(() => false),
+      window.tauriAPI.getAppVersion().catch(() => '0.0.0'),
+      window.tauriAPI.isDevMode().catch(() => false),
     ]);
 
+    if (devMode) {
+      setDevMode(true);
+      devLog('Bootstrap', 'Platform:', platform, 'Version:', appVersion);
+    }
+
     await config.loadSettings();
+    devLog('Bootstrap', 'Settings loaded');
     await config.loadHomeSettings();
+    devLog('Bootstrap', 'Home settings loaded');
     config.renderSidebarQuickAccess();
 
     config.initTooltipSystem();
@@ -101,11 +128,11 @@ export function createBootstrapController(config: BootstrapConfig) {
     const titlebarIcon = document.getElementById('titlebar-icon') as HTMLImageElement;
     if (titlebarIcon) {
       const isBeta = /-(beta|alpha|rc)/i.test(appVersion);
-      const iconSrc = isBeta ? '../assets/folder-beta.png' : '../assets/folder.png';
+      const iconSrc = isBeta ? '/folder-beta.png' : '/folder.png';
       titlebarIcon.src = iconSrc;
     }
 
-    window.electronAPI
+    window.tauriAPI
       .getSystemAccentColor()
       .then(({ accentColor, isDarkMode }) => {
         const rgb = hexToRgb(accentColor);
@@ -132,7 +159,7 @@ export function createBootstrapController(config: BootstrapConfig) {
         : config.homeViewPath;
 
     config.setupEventListeners();
-    config.loadDrives();
+    void config.loadDrives();
     config.initializeTabs();
 
     await config.navigateTo(startupPath);
@@ -140,7 +167,8 @@ export function createBootstrapController(config: BootstrapConfig) {
     queueMicrotask(() => {
       config.setupBreadcrumbListeners();
       config.setupThemeEditorListeners();
-      config.setupHomeSettingsListeners();
+      const cleanupHomeSettingsInternal = config.setupHomeSettingsListeners();
+      config.getIpcCleanupFunctions().push(cleanupHomeSettingsInternal);
       config.loadBookmarks();
 
       const cleanupHomeSettings = config.onHomeSettingsChanged(() => {
@@ -193,9 +221,9 @@ export function createBootstrapController(config: BootstrapConfig) {
     }
 
     setTimeout(() => {
-      config.updateUndoRedoState();
+      void config.updateUndoRedoState();
 
-      window.electronAPI
+      window.tauriAPI
         .getZoomLevel()
         .then((zoomResult) => {
           if (!zoomResult.success) return;
@@ -204,7 +232,7 @@ export function createBootstrapController(config: BootstrapConfig) {
         })
         .catch(ignoreError);
 
-      const cleanupUpdateAvailable = window.electronAPI.onUpdateAvailable((_info) => {
+      const cleanupUpdateAvailable = window.tauriAPI.onUpdateAvailable((_info) => {
         const settingsBtn = document.getElementById('settings-btn');
         if (settingsBtn) {
           if (!settingsBtn.querySelector('.notification-badge')) {
@@ -224,40 +252,131 @@ export function createBootstrapController(config: BootstrapConfig) {
       });
       config.getIpcCleanupFunctions().push(cleanupUpdateAvailable);
 
-      const cleanupUpdateDownloaded = window.electronAPI.onUpdateDownloaded((info) => {
+      const cleanupUpdateDownloaded = window.tauriAPI.onUpdateDownloaded((info) => {
         config.handleUpdateDownloaded(info);
       });
       config.getIpcCleanupFunctions().push(cleanupUpdateDownloaded);
 
-      const cleanupSystemResumed = window.electronAPI.onSystemResumed(() => {
+      if (!isStoreVersion && config.getCurrentSettings().autoCheckUpdates) {
+        setTimeout(() => void config.silentCheckAndDownload(), 10000);
+      }
+
+      const cleanupSystemResumed = window.tauriAPI.onSystemResumed(() => {
+        devLog('System', 'system-resumed event received');
         config.clearDiskSpaceCache();
         if (config.getCurrentPath()) {
-          config.refresh();
+          config.refresh('system-resumed');
         }
-        config.loadDrives();
+        void config.loadDrives();
       });
       config.getIpcCleanupFunctions().push(cleanupSystemResumed);
 
-      const cleanupDirectoryChanged = window.electronAPI.onDirectoryChanged(({ dirPath }) => {
-        const currentPath = config.getCurrentPath();
-        if (currentPath && currentPath === dirPath) {
-          config.refresh();
-        }
-      });
-      config.getIpcCleanupFunctions().push(cleanupDirectoryChanged);
-
-      const cleanupSystemThemeChanged = window.electronAPI.onSystemThemeChanged(
-        ({ isDarkMode }) => {
-          const settings = config.getCurrentSettings();
-          if (settings.useSystemTheme) {
-            const newTheme = isDarkMode ? 'default' : 'light';
-            settings.theme = newTheme;
-            config.applySettings(settings);
+      const cleanupDirectoryChanged = window.tauriAPI.onDirectoryChanged(
+        ({ dirPath, eventKind, eventPaths, eventId }) => {
+          devLog('Watcher', 'directory-changed event received', {
+            eventId: eventId ?? null,
+            eventKind: eventKind ?? 'unknown',
+            dirPath,
+            eventPaths: Array.isArray(eventPaths) ? eventPaths : [],
+          });
+          const currentPath = config.getCurrentPath();
+          const currentPathKey = currentPath ? normalizePathForWatcher(currentPath) : '';
+          const dirPathKey = normalizePathForWatcher(dirPath || '');
+          if (!currentPathKey || currentPathKey !== dirPathKey) {
+            devLog('Watcher', 'Ignored directory-changed event (path mismatch)', {
+              currentPath: currentPath || '',
+              eventPath: dirPath || '',
+              currentPathKey,
+              eventPathKey: dirPathKey,
+            });
+            return;
+          }
+          const now = Date.now();
+          if (now - lastDirectoryRefreshAt < DIRECTORY_CHANGE_REFRESH_COOLDOWN_MS) {
+            devLog('Watcher', 'Ignored directory-changed event (cooldown)', {
+              elapsedMs: now - lastDirectoryRefreshAt,
+              cooldownMs: DIRECTORY_CHANGE_REFRESH_COOLDOWN_MS,
+            });
+            return;
+          }
+          lastDirectoryRefreshAt = now;
+          if (currentPath) {
+            devLog('Watcher', 'Triggering refresh from directory-changed event', {
+              path: currentPath,
+            });
+            config.refresh('watcher-directory-changed');
           }
         }
       );
+      config.getIpcCleanupFunctions().push(cleanupDirectoryChanged);
+
+      const cleanupWatchedDirRemoved = window.tauriAPI.onWatchedDirRemoved(({ dirPath }) => {
+        devLog('Watcher', 'watched-dir-removed event received', { dirPath });
+        config.showToast('This folder was deleted.', 'Folder removed', 'warning');
+        config.goUp();
+      });
+      config.getIpcCleanupFunctions().push(cleanupWatchedDirRemoved);
+
+      const cleanupSystemThemeChanged = window.tauriAPI.onSystemThemeChanged(({ isDarkMode }) => {
+        const settings = config.getCurrentSettings();
+        if (settings.useSystemTheme) {
+          const newTheme = isDarkMode ? 'default' : 'light';
+          settings.theme = newTheme;
+          config.applySettings(settings);
+        }
+      });
       config.getIpcCleanupFunctions().push(cleanupSystemThemeChanged);
     }, 0);
+
+    if (platform === 'darwin' && !config.getCurrentSettings().skipFullDiskAccessPrompt) {
+      setTimeout(() => {
+        void checkFullDiskAccess();
+      }, 3000);
+    }
+  }
+
+  async function checkFullDiskAccess(): Promise<void> {
+    try {
+      const result = await window.tauriAPI.checkFullDiskAccess();
+      if (result.success && result.hasAccess) return;
+    } catch {
+      return;
+    }
+
+    const modal = getById('fda-prompt-modal');
+    if (!modal) return;
+    modal.style.display = 'flex';
+
+    const openBtn = getById('fda-prompt-open');
+    const laterBtn = getById('fda-prompt-later');
+    const neverBtn = getById('fda-prompt-never');
+
+    const close = () => {
+      modal.style.display = 'none';
+    };
+
+    openBtn?.addEventListener(
+      'click',
+      () => {
+        close();
+        void window.tauriAPI.requestFullDiskAccess();
+      },
+      { once: true }
+    );
+
+    laterBtn?.addEventListener('click', close, { once: true });
+
+    neverBtn?.addEventListener(
+      'click',
+      () => {
+        close();
+        const settings = config.getCurrentSettings();
+        settings.skipFullDiskAccessPrompt = true;
+        config.setCurrentSettings(settings);
+        void config.saveSettings();
+      },
+      { once: true }
+    );
   }
 
   return {

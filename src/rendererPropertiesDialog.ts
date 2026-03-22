@@ -171,7 +171,7 @@ export function createPropertiesDialogController(deps: PropertiesDialogDeps) {
 
     if (props.mode !== undefined) {
       html += `<div class="property-separator"></div>`;
-      if (props.isReadOnly !== undefined) {
+      if (props.isHiddenAttr !== undefined) {
         html += `
     <div class="property-row">
       <div class="property-label">Attributes:</div>
@@ -243,11 +243,11 @@ export function createPropertiesDialogController(deps: PropertiesDialogDeps) {
 
     const cleanup = () => {
       if (folderSizeActive) {
-        window.electronAPI.cancelFolderSizeCalculation(folderSizeOperationId);
+        window.tauriAPI.cancelFolderSizeCalculation(folderSizeOperationId).catch(() => {});
         folderSizeActive = false;
       }
       if (checksumActive) {
-        window.electronAPI.cancelChecksumCalculation(checksumOperationId);
+        window.tauriAPI.cancelChecksumCalculation(checksumOperationId).catch(() => {});
         checksumActive = false;
       }
       if (folderSizeProgressCleanup) {
@@ -272,13 +272,17 @@ export function createPropertiesDialogController(deps: PropertiesDialogDeps) {
     const applyAttrsBtn = document.getElementById('apply-attrs-btn');
     if (applyAttrsBtn) {
       applyAttrsBtn.addEventListener('click', async () => {
-        const readOnly = (document.getElementById('attr-readonly') as HTMLInputElement)?.checked;
-        const hidden = (document.getElementById('attr-hidden') as HTMLInputElement)?.checked;
-        const result = await window.electronAPI.setAttributes(props.path, { readOnly, hidden });
-        if (result.success) {
-          deps.showToast('Attributes updated', 'Success', 'success');
-        } else {
-          deps.showToast(result.error || 'Failed to update attributes', 'Error', 'error');
+        try {
+          const readOnly = (document.getElementById('attr-readonly') as HTMLInputElement)?.checked;
+          const hidden = (document.getElementById('attr-hidden') as HTMLInputElement)?.checked;
+          const result = await window.tauriAPI.setAttributes(props.path, { readOnly, hidden });
+          if (result.success) {
+            deps.showToast('Attributes updated', 'Success', 'success');
+          } else {
+            deps.showToast(result.error || 'Failed to update attributes', 'Error', 'error');
+          }
+        } catch (e) {
+          deps.showToast(getErrorMessage(e), 'Error', 'error');
         }
       });
     }
@@ -286,18 +290,22 @@ export function createPropertiesDialogController(deps: PropertiesDialogDeps) {
     const applyPermsBtn = document.getElementById('apply-perms-btn');
     if (applyPermsBtn) {
       applyPermsBtn.addEventListener('click', async () => {
-        const input = document.getElementById('perm-octal-input') as HTMLInputElement;
-        if (!input) return;
-        const octal = parseInt(input.value, 8);
-        if (isNaN(octal) || octal < 0 || octal > 0o777) {
-          deps.showToast('Invalid permissions (use octal, e.g. 755)', 'Error', 'error');
-          return;
-        }
-        const result = await window.electronAPI.setPermissions(props.path, octal);
-        if (result.success) {
-          deps.showToast('Permissions updated', 'Success', 'success');
-        } else {
-          deps.showToast(result.error || 'Failed to update permissions', 'Error', 'error');
+        try {
+          const input = document.getElementById('perm-octal-input') as HTMLInputElement;
+          if (!input) return;
+          const octal = parseInt(input.value, 8);
+          if (isNaN(octal) || octal < 0 || octal > 0o777) {
+            deps.showToast('Invalid permissions (use octal, e.g. 755)', 'Error', 'error');
+            return;
+          }
+          const result = await window.tauriAPI.setPermissions(props.path, octal);
+          if (result.success) {
+            deps.showToast('Permissions updated', 'Success', 'success');
+          } else {
+            deps.showToast(result.error || 'Failed to update permissions', 'Error', 'error');
+          }
+        } catch (e) {
+          deps.showToast(getErrorMessage(e), 'Error', 'error');
         }
       });
     }
@@ -316,7 +324,7 @@ export function createPropertiesDialogController(deps: PropertiesDialogDeps) {
           if (progressRow) progressRow.style.display = 'flex';
           folderSizeActive = true;
 
-          folderSizeProgressCleanup = window.electronAPI.onFolderSizeProgress((progress) => {
+          folderSizeProgressCleanup = window.tauriAPI.onFolderSizeProgress((progress) => {
             if (progress.operationId === folderSizeOperationId && progressBar && progressText) {
               const currentSize = formatSize(progress.calculatedSize);
               progressText.textContent = `${progress.fileCount} files, ${progress.folderCount} folders - ${currentSize}`;
@@ -326,7 +334,7 @@ export function createPropertiesDialogController(deps: PropertiesDialogDeps) {
           });
 
           try {
-            const result = await window.electronAPI.calculateFolderSize(
+            const result = await window.tauriAPI.calculateFolderSize(
               props.path,
               folderSizeOperationId
             );
@@ -388,7 +396,7 @@ export function createPropertiesDialogController(deps: PropertiesDialogDeps) {
       if (cancelBtn) {
         cancelBtn.addEventListener('click', () => {
           if (folderSizeActive) {
-            window.electronAPI.cancelFolderSizeCalculation(folderSizeOperationId);
+            window.tauriAPI.cancelFolderSizeCalculation(folderSizeOperationId).catch(() => {});
             folderSizeActive = false;
           }
           if (folderSizeProgressCleanup) {
@@ -421,7 +429,7 @@ export function createPropertiesDialogController(deps: PropertiesDialogDeps) {
           if (progressRow) progressRow.style.display = 'flex';
           checksumActive = true;
 
-          checksumProgressCleanup = window.electronAPI.onChecksumProgress((progress) => {
+          checksumProgressCleanup = window.tauriAPI.onChecksumProgress((progress) => {
             if (progress.operationId === checksumOperationId && progressBar && progressText) {
               progressBar.style.width = `${progress.percent}%`;
               progressText.textContent = `Calculating ${progress.algorithm.toUpperCase()}... ${progress.percent.toFixed(1)}%`;
@@ -429,7 +437,7 @@ export function createPropertiesDialogController(deps: PropertiesDialogDeps) {
           });
 
           try {
-            const result = await window.electronAPI.calculateChecksum(
+            const result = await window.tauriAPI.calculateChecksum(
               props.path,
               checksumOperationId,
               ['md5', 'sha256']
@@ -466,7 +474,7 @@ export function createPropertiesDialogController(deps: PropertiesDialogDeps) {
       if (cancelBtn) {
         cancelBtn.addEventListener('click', () => {
           if (checksumActive) {
-            window.electronAPI.cancelChecksumCalculation(checksumOperationId);
+            window.tauriAPI.cancelChecksumCalculation(checksumOperationId).catch(() => {});
             checksumActive = false;
           }
           if (checksumProgressCleanup) {
@@ -480,14 +488,14 @@ export function createPropertiesDialogController(deps: PropertiesDialogDeps) {
 
       if (copyMd5Btn && md5Value) {
         copyMd5Btn.addEventListener('click', () => {
-          navigator.clipboard.writeText(md5Value.textContent || '');
+          window.tauriAPI.writeToSystemClipboard(md5Value.textContent || '').catch(() => {});
           deps.showToast('MD5 copied to clipboard', 'Copied', 'success');
         });
       }
 
       if (copySha256Btn && sha256Value) {
         copySha256Btn.addEventListener('click', () => {
-          navigator.clipboard.writeText(sha256Value.textContent || '');
+          window.tauriAPI.writeToSystemClipboard(sha256Value.textContent || '').catch(() => {});
           deps.showToast('SHA-256 copied to clipboard', 'Copied', 'success');
         });
       }

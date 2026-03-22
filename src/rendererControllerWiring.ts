@@ -47,13 +47,6 @@ import { createLayoutController } from './rendererLayout.js';
 import { createDragDropController } from './rendererDragDrop.js';
 import { createThumbnailController } from './rendererThumbnails.js';
 import {
-  THEME_VALUES,
-  SORT_BY_VALUES,
-  SORT_ORDER_VALUES,
-  VIEW_MODE_VALUES,
-  isOneOf,
-} from './constants.js';
-import {
   activateModal,
   deactivateModal,
   showAlert,
@@ -115,8 +108,8 @@ import {
 } from './rendererElements.js';
 
 export interface LateBound {
-  navigateTo(path: string, force?: boolean): Promise<void>;
-  refresh(): void;
+  navigateTo(path: string, force?: boolean, trigger?: string): Promise<void>;
+  refresh(reason?: string): void;
   renderFiles(files: FileItem[], highlight?: string): void;
   updateStatusBar(): void;
   updateUndoRedoState(): Promise<void>;
@@ -201,7 +194,7 @@ export function wireControllers(deps: WiringDeps) {
   /* eslint-enable prefer-const */
 
   const archiveOperationsController = createArchiveOperationsController({
-    cancelArchiveOperation: (operationId) => window.electronAPI.cancelArchiveOperation(operationId),
+    cancelArchiveOperation: (operationId) => window.tauriAPI.cancelArchiveOperation(operationId),
   });
 
   const {
@@ -224,7 +217,7 @@ export function wireControllers(deps: WiringDeps) {
     sortController;
 
   const zoomController = createZoomController({
-    setZoomLevel: (level) => window.electronAPI.setZoomLevel(level),
+    setZoomLevel: (level) => window.tauriAPI.setZoomLevel(level),
   });
   const { zoomIn, zoomOut, zoomReset, updateZoomDisplay } = zoomController;
 
@@ -267,6 +260,7 @@ export function wireControllers(deps: WiringDeps) {
     clearSelection: () => clearSelection(),
     navigateTo: (p) => deps.late.navigateTo(p),
     updateUndoRedoState: () => deps.late.updateUndoRedoState(),
+    getPlatformOS: () => deps.getPlatformOS(),
   });
   const {
     getDragOperation,
@@ -283,17 +277,19 @@ export function wireControllers(deps: WiringDeps) {
     getLoadingEl: () => loading,
     getLoadingTextEl: () => loadingText,
     getEmptyStateEl: () => emptyState,
-    cancelDirectoryContents: (operationId) =>
-      window.electronAPI.cancelDirectoryContents(operationId),
+    cancelDirectoryContents: (operationId) => window.tauriAPI.cancelDirectoryContents(operationId),
     throttleMs: DIRECTORY_PROGRESS_THROTTLE_MS,
   });
 
-  window.electronAPI.onDirectoryContentsProgress((progress) => {
-    directoryLoader.handleProgress(progress);
-  });
+  const cleanupDirectoryContentsProgress = window.tauriAPI.onDirectoryContentsProgress(
+    (progress) => {
+      directoryLoader.handleProgress(progress);
+    }
+  );
+  deps.getIpcCleanupFunctions().push(cleanupDirectoryContentsProgress);
 
   let fileOperationProgressToastId: string | null = null;
-  const cleanupFileOperationProgress = window.electronAPI.onFileOperationProgress((progress) => {
+  const cleanupFileOperationProgress = window.tauriAPI.onFileOperationProgress((progress) => {
     const label = progress.operation === 'copy' ? 'Copying' : 'Moving';
     const message = `${label} ${progress.current} of ${progress.total}`;
     if (fileOperationProgressToastId) {
@@ -310,7 +306,10 @@ export function wireControllers(deps: WiringDeps) {
       const toast = document.createElement('div');
       toast.id = fileOperationProgressToastId;
       toast.className = 'toast toast-info';
-      toast.innerHTML = `<div class="toast-message">${message}</div>`;
+      const msgDiv = document.createElement('div');
+      msgDiv.className = 'toast-message';
+      msgDiv.textContent = message;
+      toast.appendChild(msgDiv);
       container.appendChild(toast);
       setTimeout(() => {
         toast.remove();
@@ -345,7 +344,7 @@ export function wireControllers(deps: WiringDeps) {
     hideDropIndicator,
     createDirectoryOperationId,
     getDirectoryContents: (dirPath, operationId, showHidden) =>
-      window.electronAPI.getDirectoryContents(dirPath, operationId, showHidden),
+      window.tauriAPI.getDirectoryContents(dirPath, operationId, showHidden),
     parsePath,
     buildPathFromSegments,
     getCurrentPath: () => deps.getCurrentPath(),
@@ -357,7 +356,7 @@ export function wireControllers(deps: WiringDeps) {
     getPlatformOS: () => deps.getPlatformOS(),
     formatFileSize,
     isHomeViewPath,
-    getDiskSpace: (drivePath) => window.electronAPI.getDiskSpace(drivePath),
+    getDiskSpace: (drivePath) => window.tauriAPI.getDiskSpace(drivePath),
   });
   const { updateDiskSpace } = diskSpaceController;
 
@@ -366,8 +365,8 @@ export function wireControllers(deps: WiringDeps) {
     getCurrentPath: () => deps.getCurrentPath(),
     getFileElement: (p) => deps.getFileElementMap().get(p),
     getRenderedPaths: () => deps.getFileElementMap().keys(),
-    getGitStatus: (dir, untracked) => window.electronAPI.getGitStatus(dir, untracked),
-    getGitBranch: (dir) => window.electronAPI.getGitBranch(dir),
+    getGitStatus: (dir, untracked) => window.tauriAPI.getGitStatus(dir, untracked),
+    getGitBranch: (dir) => window.tauriAPI.getGitBranch(dir),
   });
 
   const { clearGitIndicators, fetchGitStatusAsync, updateGitBranch, applyGitIndicatorsToPaths } =
@@ -509,6 +508,7 @@ export function wireControllers(deps: WiringDeps) {
     debouncedSaveSettings: deps.debouncedSaveSettings,
     saveSettingsWithTimestamp: deps.saveSettingsWithTimestamp,
     getFileGrid: () => fileGrid,
+    setHomeViewActive: (active) => deps.late.setHomeViewActive(active),
     searchDebounceMs: SEARCH_DEBOUNCE_MS,
     searchHistoryMax: SEARCH_HISTORY_MAX,
   });
@@ -650,7 +650,7 @@ export function wireControllers(deps: WiringDeps) {
     getCurrentSettings: () => deps.getCurrentSettings(),
     showToast,
     handleDrop,
-    refresh: () => deps.late.refresh(),
+    refresh: () => deps.late.refresh('clipboard-operation'),
     updateUndoRedoState: () => deps.late.updateUndoRedoState(),
   });
 
@@ -660,7 +660,7 @@ export function wireControllers(deps: WiringDeps) {
     showToast,
     activateModal,
     deactivateModal,
-    refresh: () => deps.late.refresh(),
+    refresh: () => deps.late.refresh('batch-rename'),
     updateUndoRedoState: () => deps.late.updateUndoRedoState(),
   });
   batchRenameController.initListeners();
@@ -704,7 +704,7 @@ export function wireControllers(deps: WiringDeps) {
     moveSelectedToFolder: () => clipboardController.moveSelectedToFolder(),
     copySelectedToFolder: () => clipboardController.copySelectedToFolder(),
     shareItems: async (filePaths) => {
-      const result = await window.electronAPI.shareItems(filePaths);
+      const result = await window.tauriAPI.shareItems(filePaths);
       if (!result.success) {
         showToast(result.error || 'Failed to share', 'Error', 'error');
       }
@@ -808,8 +808,17 @@ export function wireControllers(deps: WiringDeps) {
     navigateTo: (pathValue, force) => {
       void deps.late.navigateTo(pathValue, force);
     },
+    watchDirectory: (pathValue) => {
+      window.tauriAPI.watchDirectory(pathValue).catch(() => {});
+    },
     debouncedSaveSettings: deps.debouncedSaveSettings,
     saveSettingsWithTimestamp: deps.saveSettingsWithTimestamp,
+    cancelDirectoryRequest: () => cancelDirectoryRequest(),
+    closeSearch: () => closeSearch(),
+    isSearchModeActive: () => isSearchModeActive(),
+    resetTypeahead: () => resetTypeahead(),
+    fetchGitStatusAsync: (path: string) => fetchGitStatusAsync(path),
+    updateGitBranch: (path: string) => updateGitBranch(path),
     maxCachedTabs: MAX_CACHED_TABS,
     maxCachedFilesPerTab: MAX_CACHED_FILES_PER_TAB,
   });
@@ -915,7 +924,7 @@ export function wireControllers(deps: WiringDeps) {
         void inlineRenameController.createNewFile();
       },
       refresh: () => {
-        deps.late.refresh();
+        deps.late.refresh('command-palette');
       },
       goBack: () => {
         goBack();
@@ -1102,11 +1111,6 @@ export function wireControllers(deps: WiringDeps) {
     clearThumbnailCacheLocal: thumbnails.clearThumbnailCache,
     hideSettingsModal,
     showSettingsModal,
-    isOneOf,
-    themeValues: THEME_VALUES,
-    sortByValues: SORT_BY_VALUES,
-    sortOrderValues: SORT_ORDER_VALUES,
-    viewModeValues: VIEW_MODE_VALUES,
   });
 
   const { initSettingsActions } = settingsActionsController;
@@ -1119,7 +1123,7 @@ export function wireControllers(deps: WiringDeps) {
     getCurrentSettings: () => deps.getCurrentSettings(),
     saveSettingsWithTimestamp: deps.saveSettingsWithTimestamp,
     openExternal: (url) => {
-      window.electronAPI.openFile(url);
+      window.tauriAPI.openFile(url);
     },
   });
 
@@ -1136,7 +1140,7 @@ export function wireControllers(deps: WiringDeps) {
 
   const externalLinksController = createExternalLinksController({
     openExternal: (url) => {
-      window.electronAPI.openFile(url);
+      window.tauriAPI.openFile(url);
     },
     showLicensesModal,
     showShortcutsModal,
@@ -1161,8 +1165,13 @@ export function wireControllers(deps: WiringDeps) {
     onModalClose: deactivateModal,
   });
 
-  const { restartAsAdmin, checkForUpdates, handleUpdateDownloaded, handleSettingsModalClosed } =
-    updateActionsController;
+  const {
+    restartAsAdmin,
+    checkForUpdates,
+    silentCheckAndDownload,
+    handleUpdateDownloaded,
+    handleSettingsModalClosed,
+  } = updateActionsController;
   onSettingsModalHide = handleSettingsModalClosed;
 
   return {
@@ -1427,6 +1436,7 @@ export function wireControllers(deps: WiringDeps) {
     updateActionsController,
     restartAsAdmin,
     checkForUpdates,
+    silentCheckAndDownload,
     handleUpdateDownloaded,
     handleSettingsModalClosed,
   };

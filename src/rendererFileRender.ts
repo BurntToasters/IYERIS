@@ -134,11 +134,7 @@ export function createFileRenderController(config: FileRenderConfig) {
       virtualizedSentinel.style.pointerEvents = 'none';
     }
 
-    if (virtualizedSentinel.parentElement !== fileGrid) {
-      fileGrid.appendChild(virtualizedSentinel);
-    } else {
-      fileGrid.appendChild(virtualizedSentinel);
-    }
+    fileGrid.appendChild(virtualizedSentinel);
 
     observer.observe(virtualizedSentinel);
   }
@@ -245,6 +241,10 @@ export function createFileRenderController(config: FileRenderConfig) {
 
     const renderToken = ++renderFilesToken;
     resetVirtualizedRender();
+    if (animationCleanupTimer) {
+      clearTimeout(animationCleanupTimer);
+      animationCleanupTimer = null;
+    }
     config.resetThumbnailObserver();
     fileGrid.innerHTML = '';
     renderItemIndex = 0;

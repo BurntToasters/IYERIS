@@ -75,12 +75,24 @@ export function showDialog(
       document.activeElement.blur();
     }
 
-    const dialogModal = document.getElementById('dialog-modal') as HTMLElement;
-    const dialogTitle = document.getElementById('dialog-title') as HTMLElement;
-    const dialogContent = document.getElementById('dialog-content') as HTMLElement;
-    const dialogIcon = document.getElementById('dialog-icon') as HTMLElement;
-    const dialogOk = document.getElementById('dialog-ok') as HTMLButtonElement;
-    const dialogCancel = document.getElementById('dialog-cancel') as HTMLButtonElement;
+    const dialogModal = document.getElementById('dialog-modal') as HTMLElement | null;
+    const dialogTitle = document.getElementById('dialog-title') as HTMLElement | null;
+    const dialogContent = document.getElementById('dialog-content') as HTMLElement | null;
+    const dialogIcon = document.getElementById('dialog-icon') as HTMLElement | null;
+    const dialogOk = document.getElementById('dialog-ok') as HTMLButtonElement | null;
+    const dialogCancel = document.getElementById('dialog-cancel') as HTMLButtonElement | null;
+
+    if (
+      !dialogModal ||
+      !dialogTitle ||
+      !dialogContent ||
+      !dialogIcon ||
+      !dialogOk ||
+      !dialogCancel
+    ) {
+      resolve(false);
+      return;
+    }
 
     const icons: Record<DialogType, string> = {
       info: '2139',

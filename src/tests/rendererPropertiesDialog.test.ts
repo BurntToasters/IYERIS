@@ -55,12 +55,12 @@ function buildDOM() {
   `;
 }
 
-let mockElectronAPI: any;
+let mockTauriAPI: any;
 
 describe('rendererPropertiesDialog', () => {
   beforeEach(() => {
     buildDOM();
-    mockElectronAPI = {
+    mockTauriAPI = {
       calculateFolderSize: vi.fn().mockResolvedValue({
         success: true,
         result: {
@@ -73,16 +73,17 @@ describe('rendererPropertiesDialog', () => {
           ],
         },
       }),
-      cancelFolderSizeCalculation: vi.fn(),
+      cancelFolderSizeCalculation: vi.fn().mockResolvedValue(undefined),
       onFolderSizeProgress: vi.fn(() => vi.fn()),
       calculateChecksum: vi.fn().mockResolvedValue({
         success: true,
         result: { md5: 'abc123def456', sha256: 'deadbeef0123456789abcdef' },
       }),
-      cancelChecksumCalculation: vi.fn(),
+      cancelChecksumCalculation: vi.fn().mockResolvedValue(undefined),
       onChecksumProgress: vi.fn(() => vi.fn()),
+      writeToSystemClipboard: vi.fn().mockResolvedValue(undefined),
     };
-    (window as any).electronAPI = mockElectronAPI;
+    (window as any).tauriAPI = mockTauriAPI;
 
     Object.defineProperty(navigator, 'clipboard', {
       value: { writeText: vi.fn().mockResolvedValue(undefined) },
@@ -93,7 +94,7 @@ describe('rendererPropertiesDialog', () => {
 
   afterEach(() => {
     document.body.innerHTML = '';
-    delete (window as any).electronAPI;
+    delete (window as any).tauriAPI;
   });
 
   describe('showPropertiesDialog - file', () => {
@@ -157,12 +158,12 @@ describe('rendererPropertiesDialog', () => {
 
       expect(btn.style.display).toBe('none');
       await vi.waitFor(() => {
-        expect(mockElectronAPI.calculateChecksum).toHaveBeenCalled();
+        expect(mockTauriAPI.calculateChecksum).toHaveBeenCalled();
       });
     });
 
     it('shows error toast on checksum failure', async () => {
-      mockElectronAPI.calculateChecksum.mockResolvedValue({
+      mockTauriAPI.calculateChecksum.mockResolvedValue({
         success: false,
         error: 'File locked',
       });
@@ -177,7 +178,7 @@ describe('rendererPropertiesDialog', () => {
     });
 
     it('suppresses toast for cancelled checksum', async () => {
-      mockElectronAPI.calculateChecksum.mockResolvedValue({
+      mockTauriAPI.calculateChecksum.mockResolvedValue({
         success: false,
         error: 'Calculation cancelled',
       });
@@ -187,13 +188,13 @@ describe('rendererPropertiesDialog', () => {
 
       document.getElementById('calculate-checksum-btn')!.click();
       await vi.waitFor(() => {
-        expect(mockElectronAPI.calculateChecksum).toHaveBeenCalled();
+        expect(mockTauriAPI.calculateChecksum).toHaveBeenCalled();
       });
       expect(deps.showToast).not.toHaveBeenCalled();
     });
 
     it('shows error toast on checksum exception', async () => {
-      mockElectronAPI.calculateChecksum.mockRejectedValue(new Error('Network error'));
+      mockTauriAPI.calculateChecksum.mockRejectedValue(new Error('Network error'));
       const deps = makeDeps();
       const ctrl = createPropertiesDialogController(deps);
       ctrl.showPropertiesDialog(makeFileProps() as any);
@@ -206,7 +207,7 @@ describe('rendererPropertiesDialog', () => {
 
     it('cancels checksum calculation', async () => {
       let resolveChecksum: any;
-      mockElectronAPI.calculateChecksum.mockReturnValue(
+      mockTauriAPI.calculateChecksum.mockReturnValue(
         new Promise((r) => {
           resolveChecksum = r;
         })
@@ -219,7 +220,7 @@ describe('rendererPropertiesDialog', () => {
       document.getElementById('calculate-checksum-btn')!.click();
       document.getElementById('cancel-checksum-btn')!.click();
 
-      expect(mockElectronAPI.cancelChecksumCalculation).toHaveBeenCalled();
+      expect(mockTauriAPI.cancelChecksumCalculation).toHaveBeenCalled();
       expect(document.getElementById('checksum-progress-row')!.style.display).toBe('none');
       expect(document.getElementById('calculate-checksum-btn')!.style.display).toBe('inline-flex');
 
@@ -237,7 +238,7 @@ describe('rendererPropertiesDialog', () => {
       });
 
       document.getElementById('copy-md5-btn')!.click();
-      expect(navigator.clipboard.writeText).toHaveBeenCalledWith('abc123def456');
+      expect(window.tauriAPI.writeToSystemClipboard).toHaveBeenCalledWith('abc123def456');
       expect(deps.showToast).toHaveBeenCalledWith('MD5 copied to clipboard', 'Copied', 'success');
     });
 
@@ -252,7 +253,9 @@ describe('rendererPropertiesDialog', () => {
       });
 
       document.getElementById('copy-sha256-btn')!.click();
-      expect(navigator.clipboard.writeText).toHaveBeenCalledWith('deadbeef0123456789abcdef');
+      expect(window.tauriAPI.writeToSystemClipboard).toHaveBeenCalledWith(
+        'deadbeef0123456789abcdef'
+      );
       expect(deps.showToast).toHaveBeenCalledWith(
         'SHA-256 copied to clipboard',
         'Copied',
@@ -302,7 +305,7 @@ describe('rendererPropertiesDialog', () => {
     });
 
     it('handles folder size error', async () => {
-      mockElectronAPI.calculateFolderSize.mockResolvedValue({
+      mockTauriAPI.calculateFolderSize.mockResolvedValue({
         success: false,
         error: 'Permission denied',
       });
@@ -321,7 +324,7 @@ describe('rendererPropertiesDialog', () => {
     });
 
     it('suppresses error message for cancelled calculation', async () => {
-      mockElectronAPI.calculateFolderSize.mockResolvedValue({
+      mockTauriAPI.calculateFolderSize.mockResolvedValue({
         success: false,
         error: 'Calculation cancelled',
       });
@@ -333,7 +336,7 @@ describe('rendererPropertiesDialog', () => {
       document.getElementById('calculate-folder-size-btn')!.click();
 
       await vi.waitFor(() => {
-        expect(mockElectronAPI.calculateFolderSize).toHaveBeenCalled();
+        expect(mockTauriAPI.calculateFolderSize).toHaveBeenCalled();
       });
 
       const info = document.getElementById('folder-size-info')!.textContent;
@@ -341,7 +344,7 @@ describe('rendererPropertiesDialog', () => {
     });
 
     it('handles folder size exception', async () => {
-      mockElectronAPI.calculateFolderSize.mockRejectedValue(new Error('Disk failure'));
+      mockTauriAPI.calculateFolderSize.mockRejectedValue(new Error('Disk failure'));
 
       const deps = makeDeps();
       const ctrl = createPropertiesDialogController(deps);
@@ -358,7 +361,7 @@ describe('rendererPropertiesDialog', () => {
 
     it('cancels folder size calculation', async () => {
       let resolveCalc: any;
-      mockElectronAPI.calculateFolderSize.mockReturnValue(
+      mockTauriAPI.calculateFolderSize.mockReturnValue(
         new Promise((r) => {
           resolveCalc = r;
         })
@@ -371,7 +374,7 @@ describe('rendererPropertiesDialog', () => {
       document.getElementById('calculate-folder-size-btn')!.click();
       document.getElementById('cancel-folder-size-btn')!.click();
 
-      expect(mockElectronAPI.cancelFolderSizeCalculation).toHaveBeenCalled();
+      expect(mockTauriAPI.cancelFolderSizeCalculation).toHaveBeenCalled();
       expect(document.getElementById('folder-size-info')!.textContent).toBe(
         'Calculation cancelled'
       );
@@ -384,7 +387,7 @@ describe('rendererPropertiesDialog', () => {
     });
 
     it('handles folder with no fileTypes in result', async () => {
-      mockElectronAPI.calculateFolderSize.mockResolvedValue({
+      mockTauriAPI.calculateFolderSize.mockResolvedValue({
         success: true,
         result: { totalSize: 1024, fileCount: 1, folderCount: 0, fileTypes: [] },
       });
@@ -467,7 +470,7 @@ describe('rendererPropertiesDialog', () => {
   describe('cleanup', () => {
     it('cancels active operations when called', async () => {
       let resolveChecksum: any;
-      mockElectronAPI.calculateChecksum.mockReturnValue(
+      mockTauriAPI.calculateChecksum.mockReturnValue(
         new Promise((r) => {
           resolveChecksum = r;
         })
@@ -480,7 +483,7 @@ describe('rendererPropertiesDialog', () => {
       document.getElementById('calculate-checksum-btn')!.click();
       ctrl.cleanup();
 
-      expect(mockElectronAPI.cancelChecksumCalculation).toHaveBeenCalled();
+      expect(mockTauriAPI.cancelChecksumCalculation).toHaveBeenCalled();
       resolveChecksum!({ success: false, error: 'cancelled' });
     });
 

@@ -26,8 +26,33 @@ export function getErrorMessage(error: unknown): string {
 
 const IS_DEV_MODE = typeof process !== 'undefined' && (process.argv || []).includes('--dev');
 
+let devModeEnabled = IS_DEV_MODE;
+
+export function setDevMode(enabled: boolean): void {
+  devModeEnabled = enabled;
+  if (enabled) {
+    (globalThis as Record<string, unknown>).__iyerisLogger = {
+      debug: (...args: unknown[]) => console.debug('[IYERIS]', ...args),
+      info: (...args: unknown[]) => console.info('[IYERIS]', ...args),
+      warn: (...args: unknown[]) => console.warn('[IYERIS]', ...args),
+      error: (...args: unknown[]) => console.error('[IYERIS]', ...args),
+    };
+    console.info('[IYERIS] Dev mode enabled — verbose logging active');
+  }
+}
+
+export function isDevMode(): boolean {
+  return devModeEnabled;
+}
+
+export function devLog(category: string, ...args: unknown[]): void {
+  if (devModeEnabled) {
+    console.debug(`[${category}]`, ...args);
+  }
+}
+
 export function ignoreError(error: unknown): void {
-  if (IS_DEV_MODE) {
+  if (devModeEnabled) {
     console.warn('[Ignored error]', error);
   } else if (
     typeof globalThis !== 'undefined' &&
@@ -59,4 +84,45 @@ export const RESERVED_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 export function sanitizeStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value.filter((item) => typeof item === 'string');
+}
+
+const DANGEROUS_TAGS = new Set([
+  'SCRIPT',
+  'IFRAME',
+  'OBJECT',
+  'EMBED',
+  'FORM',
+  'STYLE',
+  'LINK',
+  'META',
+  'BASE',
+  'NOSCRIPT',
+]);
+
+export function sanitizeMarkdownHtml(html: string): string {
+  const template = document.createElement('template');
+  template.innerHTML = html;
+  const walker = document.createTreeWalker(template.content, NodeFilter.SHOW_ELEMENT);
+  const toRemove: Element[] = [];
+  while (walker.nextNode()) {
+    const el = walker.currentNode as Element;
+    if (DANGEROUS_TAGS.has(el.tagName)) {
+      toRemove.push(el);
+      continue;
+    }
+    for (const attr of Array.from(el.attributes)) {
+      if (attr.name.startsWith('on')) {
+        el.removeAttribute(attr.name);
+      } else if (
+        (attr.name === 'href' || attr.name === 'src' || attr.name === 'action') &&
+        /^\s*javascript\s*:/i.test(attr.value)
+      ) {
+        el.removeAttribute(attr.name);
+      }
+    }
+  }
+  for (const el of toRemove) el.remove();
+  const div = document.createElement('div');
+  div.appendChild(template.content.cloneNode(true));
+  return div.innerHTML;
 }

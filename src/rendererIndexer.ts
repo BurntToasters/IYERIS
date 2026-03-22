@@ -55,7 +55,7 @@ export function createIndexerController(config: IndexerConfig) {
     if (!indexStatus) return null;
 
     try {
-      const result = await window.electronAPI.getIndexStatus();
+      const result = await window.tauriAPI.getIndexStatus();
       if (!result.success) {
         indexStatus.textContent = 'Status: Unknown';
         return null;
@@ -93,7 +93,7 @@ export function createIndexerController(config: IndexerConfig) {
     rebuildBtn.innerHTML = `${twemojiImg(String.fromCodePoint(0x23f3), 'twemoji')} Rebuilding...`;
 
     try {
-      const result = await window.electronAPI.rebuildIndex();
+      const result = await window.tauriAPI.rebuildIndex();
       if (!result.success) {
         config.getShowToast()(
           'Failed to rebuild index: ' + (result.error || 'Operation failed'),

@@ -9,8 +9,8 @@ vi.mock('../shared.js', () => ({
   },
 }));
 
-vi.mock('../homeSettings.js', () => ({
-  createDefaultHomeSettings: () => ({
+vi.mock('../homeSettings.js', () => {
+  const defaults = () => ({
     showQuickAccess: true,
     showRecents: true,
     showBookmarks: true,
@@ -42,8 +42,15 @@ vi.mock('../homeSettings.js', () => ({
       'trash',
     ],
     hiddenSidebarQuickAccessItems: [],
-  }),
-}));
+  });
+  return {
+    createDefaultHomeSettings: defaults,
+    sanitizeHomeSettings: (raw: unknown) => ({
+      ...defaults(),
+      ...(raw && typeof raw === 'object' ? raw : {}),
+    }),
+  };
+});
 
 import { createHomeController, HOME_QUICK_ACCESS_ITEMS } from '../home';
 
@@ -103,7 +110,7 @@ function createOptions() {
 describe('createHomeController - normalizeHomeSettings via loadHomeSettings', () => {
   beforeEach(() => {
     createMinimalDom();
-    (window as unknown as Record<string, unknown>).electronAPI = {
+    (window as unknown as Record<string, unknown>).tauriAPI = {
       getHomeSettings: vi.fn(),
       saveHomeSettings: vi.fn(),
       getDriveInfo: vi.fn(async () => []),
@@ -113,7 +120,7 @@ describe('createHomeController - normalizeHomeSettings via loadHomeSettings', ()
   });
 
   it('loads and normalizes valid settings', async () => {
-    const api = window.electronAPI as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    const api = window.tauriAPI as unknown as Record<string, ReturnType<typeof vi.fn>>;
     api.getHomeSettings.mockResolvedValue({
       success: true,
       settings: {
@@ -146,7 +153,7 @@ describe('createHomeController - normalizeHomeSettings via loadHomeSettings', ()
   });
 
   it('handles null settings from API', async () => {
-    const api = window.electronAPI as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    const api = window.tauriAPI as unknown as Record<string, ReturnType<typeof vi.fn>>;
     api.getHomeSettings.mockResolvedValue({ success: true, settings: null });
 
     const opts = createOptions();
@@ -161,7 +168,7 @@ describe('createHomeController - normalizeHomeSettings via loadHomeSettings', ()
   });
 
   it('handles API failure', async () => {
-    const api = window.electronAPI as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    const api = window.tauriAPI as unknown as Record<string, ReturnType<typeof vi.fn>>;
     api.getHomeSettings.mockResolvedValue({ success: false, error: 'disk error' });
 
     const opts = createOptions();
@@ -175,7 +182,7 @@ describe('createHomeController - normalizeHomeSettings via loadHomeSettings', ()
   });
 
   it('handles API exception', async () => {
-    const api = window.electronAPI as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    const api = window.tauriAPI as unknown as Record<string, ReturnType<typeof vi.fn>>;
     api.getHomeSettings.mockRejectedValue(new Error('network'));
 
     const opts = createOptions();
@@ -189,7 +196,7 @@ describe('createHomeController - normalizeHomeSettings via loadHomeSettings', ()
   });
 
   it('normalizes non-array sectionOrder', async () => {
-    const api = window.electronAPI as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    const api = window.tauriAPI as unknown as Record<string, ReturnType<typeof vi.fn>>;
     api.getHomeSettings.mockResolvedValue({
       success: true,
       settings: { sectionOrder: 'not-an-array' },
@@ -207,7 +214,7 @@ describe('createHomeController - normalizeHomeSettings via loadHomeSettings', ()
   });
 
   it('deduplicates sectionOrder', async () => {
-    const api = window.electronAPI as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    const api = window.tauriAPI as unknown as Record<string, ReturnType<typeof vi.fn>>;
     api.getHomeSettings.mockResolvedValue({
       success: true,
       settings: { sectionOrder: ['drives', 'drives', 'recents', 'recents'] },
@@ -225,7 +232,7 @@ describe('createHomeController - normalizeHomeSettings via loadHomeSettings', ()
   });
 
   it('filters invalid sectionOrder entries', async () => {
-    const api = window.electronAPI as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    const api = window.tauriAPI as unknown as Record<string, ReturnType<typeof vi.fn>>;
     api.getHomeSettings.mockResolvedValue({
       success: true,
       settings: { sectionOrder: ['nonsense', 'drives', 42] },
@@ -243,7 +250,7 @@ describe('createHomeController - normalizeHomeSettings via loadHomeSettings', ()
   });
 
   it('normalizes non-array quickAccessOrder', async () => {
-    const api = window.electronAPI as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    const api = window.tauriAPI as unknown as Record<string, ReturnType<typeof vi.fn>>;
     api.getHomeSettings.mockResolvedValue({
       success: true,
       settings: { quickAccessOrder: null },
@@ -261,7 +268,7 @@ describe('createHomeController - normalizeHomeSettings via loadHomeSettings', ()
   });
 
   it('deduplicates and validates hiddenQuickAccessItems', async () => {
-    const api = window.electronAPI as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    const api = window.tauriAPI as unknown as Record<string, ReturnType<typeof vi.fn>>;
     api.getHomeSettings.mockResolvedValue({
       success: true,
       settings: {
@@ -280,7 +287,7 @@ describe('createHomeController - normalizeHomeSettings via loadHomeSettings', ()
   });
 
   it('normalizes non-array pinnedRecents', async () => {
-    const api = window.electronAPI as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    const api = window.tauriAPI as unknown as Record<string, ReturnType<typeof vi.fn>>;
     api.getHomeSettings.mockResolvedValue({
       success: true,
       settings: { pinnedRecents: 'not-array' },
@@ -298,7 +305,7 @@ describe('createHomeController - normalizeHomeSettings via loadHomeSettings', ()
   });
 
   it('deduplicates pinnedRecents and filters non-strings', async () => {
-    const api = window.electronAPI as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    const api = window.tauriAPI as unknown as Record<string, ReturnType<typeof vi.fn>>;
     api.getHomeSettings.mockResolvedValue({
       success: true,
       settings: { pinnedRecents: ['/a', '/a', 42, '/b', null] },
@@ -318,7 +325,7 @@ describe('createHomeController - normalizeHomeSettings via loadHomeSettings', ()
 describe('createHomeController - getVisibleSidebarQuickAccessItems', () => {
   beforeEach(() => {
     createMinimalDom();
-    (window as unknown as Record<string, unknown>).electronAPI = {
+    (window as unknown as Record<string, unknown>).tauriAPI = {
       getHomeSettings: vi.fn(async () => ({ success: true, settings: {} })),
       saveHomeSettings: vi.fn(),
       getDriveInfo: vi.fn(async () => []),
@@ -328,7 +335,7 @@ describe('createHomeController - getVisibleSidebarQuickAccessItems', () => {
   });
 
   it('returns items in order with hidden removed', async () => {
-    const api = window.electronAPI as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    const api = window.tauriAPI as unknown as Record<string, ReturnType<typeof vi.fn>>;
     api.getHomeSettings.mockResolvedValue({
       success: true,
       settings: {
@@ -354,7 +361,7 @@ describe('createHomeController - getVisibleSidebarQuickAccessItems', () => {
   });
 
   it('returns all items when none hidden', async () => {
-    const api = window.electronAPI as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    const api = window.tauriAPI as unknown as Record<string, ReturnType<typeof vi.fn>>;
     api.getHomeSettings.mockResolvedValue({
       success: true,
       settings: {
@@ -376,7 +383,7 @@ describe('createHomeController - getVisibleSidebarQuickAccessItems', () => {
 describe('createHomeController - renderHomeView', () => {
   beforeEach(() => {
     createMinimalDom();
-    (window as unknown as Record<string, unknown>).electronAPI = {
+    (window as unknown as Record<string, unknown>).tauriAPI = {
       getHomeSettings: vi.fn(async () => ({ success: true, settings: {} })),
       saveHomeSettings: vi.fn(),
       getDriveInfo: vi.fn(async () => []),
@@ -398,7 +405,7 @@ describe('createHomeController - renderHomeView', () => {
   });
 
   it('renders empty message when showQuickAccess is false', async () => {
-    const api = window.electronAPI as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    const api = window.tauriAPI as unknown as Record<string, ReturnType<typeof vi.fn>>;
     api.getHomeSettings.mockResolvedValue({
       success: true,
       settings: { showQuickAccess: false },
@@ -441,7 +448,7 @@ describe('createHomeController - renderHomeView', () => {
   });
 
   it('renders recents with pinned first', async () => {
-    const api = window.electronAPI as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    const api = window.tauriAPI as unknown as Record<string, ReturnType<typeof vi.fn>>;
     api.getHomeSettings.mockResolvedValue({
       success: true,
       settings: { pinnedRecents: ['/c.txt'] },
@@ -494,7 +501,7 @@ describe('createHomeController - renderHomeView', () => {
   });
 
   it('deduplicates pinned + recent paths', async () => {
-    const api = window.electronAPI as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    const api = window.tauriAPI as unknown as Record<string, ReturnType<typeof vi.fn>>;
     api.getHomeSettings.mockResolvedValue({
       success: true,
       settings: { pinnedRecents: ['/a.txt'] },
@@ -521,7 +528,7 @@ describe('createHomeController - renderHomeView', () => {
 describe('createHomeController - closeHomeSettingsModal', () => {
   beforeEach(() => {
     createMinimalDom();
-    (window as unknown as Record<string, unknown>).electronAPI = {
+    (window as unknown as Record<string, unknown>).tauriAPI = {
       getHomeSettings: vi.fn(async () => ({ success: true, settings: {} })),
       saveHomeSettings: vi.fn(),
       getDriveInfo: vi.fn(async () => []),
@@ -563,7 +570,7 @@ describe('createHomeController - closeHomeSettingsModal', () => {
 describe('createHomeController - renderHomeDrives', () => {
   beforeEach(() => {
     createMinimalDom();
-    (window as unknown as Record<string, unknown>).electronAPI = {
+    (window as unknown as Record<string, unknown>).tauriAPI = {
       getHomeSettings: vi.fn(async () => ({ success: true, settings: {} })),
       saveHomeSettings: vi.fn(),
       getDriveInfo: vi.fn(async () => []),
@@ -573,7 +580,7 @@ describe('createHomeController - renderHomeDrives', () => {
   });
 
   it('renders drive items when given drives', async () => {
-    const api = window.electronAPI as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    const api = window.tauriAPI as unknown as Record<string, ReturnType<typeof vi.fn>>;
     api.getHomeSettings.mockResolvedValue({
       success: true,
       settings: { showDiskUsage: false },
@@ -608,7 +615,7 @@ describe('createHomeController - renderHomeDrives', () => {
   });
 
   it('shows disk usage cards when showDiskUsage is true', async () => {
-    const api = window.electronAPI as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    const api = window.tauriAPI as unknown as Record<string, ReturnType<typeof vi.fn>>;
     api.getHomeSettings.mockResolvedValue({
       success: true,
       settings: { showDiskUsage: true },
@@ -631,7 +638,7 @@ describe('createHomeController - renderHomeDrives', () => {
   });
 
   it('hides drives section when showDrives is false', async () => {
-    const api = window.electronAPI as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    const api = window.tauriAPI as unknown as Record<string, ReturnType<typeof vi.fn>>;
     api.getHomeSettings.mockResolvedValue({
       success: true,
       settings: { showDrives: false },
@@ -653,7 +660,7 @@ describe('createHomeController - renderHomeDrives', () => {
 describe('createHomeController - setupHomeSettingsListeners', () => {
   beforeEach(() => {
     createMinimalDom();
-    (window as unknown as Record<string, unknown>).electronAPI = {
+    (window as unknown as Record<string, unknown>).tauriAPI = {
       getHomeSettings: vi.fn(async () => ({ success: true, settings: {} })),
       saveHomeSettings: vi.fn(async () => ({ success: true })),
       getDriveInfo: vi.fn(async () => []),

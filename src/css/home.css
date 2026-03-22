@@ -193,8 +193,8 @@
   height: 14px;
   display: block;
   background-color: currentColor;
-  mask: url('../../assets/twemoji/1f4cc.svg') center / contain no-repeat;
-  -webkit-mask: url('../../assets/twemoji/1f4cc.svg') center / contain no-repeat;
+  mask: url('/twemoji/1f4cc.svg') center / contain no-repeat;
+  -webkit-mask: url('/twemoji/1f4cc.svg') center / contain no-repeat;
 }
 
 .home-drive-card {
@@ -270,8 +270,8 @@
   height: 16px;
   display: block;
   background-color: currentColor;
-  mask: url('../../assets/twemoji/270f.svg') center / contain no-repeat;
-  -webkit-mask: url('../../assets/twemoji/270f.svg') center / contain no-repeat;
+  mask: url('/twemoji/270f.svg') center / contain no-repeat;
+  -webkit-mask: url('/twemoji/270f.svg') center / contain no-repeat;
 }
 
 .home-customize-btn:hover {
@@ -344,6 +344,16 @@
 
 .home-section-order-item.dragging {
   opacity: 0.5;
+}
+
+.home-section-order-item.drop-target {
+  background: color-mix(in srgb, var(--accent-color) 12%, transparent);
+  color: var(--text-primary);
+}
+
+.home-settings-compact-row {
+  padding: 8px 14px 10px;
+  border-top: 1px solid var(--panel-border);
 }
 
 .home-section-order-handle {

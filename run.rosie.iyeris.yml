@@ -1,0 +1,62 @@
+app-id: run.rosie.iyeris
+runtime: org.gnome.Platform
+runtime-version: '49'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node22
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: iyeris
+separate-locales: false
+
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  - --share=network
+  - --device=dri
+  - --filesystem=host
+  - --filesystem=home
+  - --filesystem=/media
+  - --filesystem=/run/media
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher
+
+modules:
+  - name: iyeris
+    buildsystem: simple
+    build-options:
+      build-args:
+        - --share=network
+      append-path: /run/build/iyeris/cargo/bin:/usr/lib/sdk/node22/bin:/usr/lib/sdk/rust-stable/bin
+      env:
+        CARGO_HOME: /run/build/iyeris/cargo
+        RUSTUP_HOME: /run/build/iyeris/rustup
+        npm_config_cache: /run/build/iyeris/npm-cache
+        HUSKY: '0'
+    build-commands:
+      - curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal
+      - npm ci
+      - npm run sync-version
+      - npm run licenses
+      - npm run build
+      - unset CFLAGS CXXFLAGS CFLAGS_x86_64_unknown_linux_gnu && npx tauri build --no-bundle
+      - install -Dm755 src-tauri/target/release/iyeris /app/bin/iyeris
+      - install -Dm644 run.rosie.iyeris.desktop /app/share/applications/run.rosie.iyeris.desktop
+      - install -Dm644 run.rosie.iyeris.metainfo.xml /app/share/metainfo/run.rosie.iyeris.metainfo.xml
+      - install -Dm644 src-tauri/icons/128x128.png /app/share/icons/hicolor/128x128/apps/run.rosie.iyeris.png
+      - install -Dm644 src-tauri/icons/32x32.png /app/share/icons/hicolor/32x32/apps/run.rosie.iyeris.png
+      - install -Dm644 src-tauri/icons/icon.png /app/share/icons/hicolor/512x512/apps/run.rosie.iyeris.png
+    sources:
+      - type: dir
+        path: .
+        skip:
+          - .git
+          - .github
+          - node_modules
+          - release
+          - release-artifacts
+          - dist
+          - src-tauri/target
+          - target
+          - '*.log'

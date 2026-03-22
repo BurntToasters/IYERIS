@@ -120,7 +120,7 @@ export function createUpdateActionsController(deps: UpdateActionsDeps) {
     );
 
     if (confirmed) {
-      const result = await window.electronAPI.restartAsAdmin();
+      const result = await window.tauriAPI.restartAsAdmin();
       if (!result.success) {
         deps.showToast(
           result.error || 'Failed to restart with admin privileges',
@@ -152,7 +152,7 @@ export function createUpdateActionsController(deps: UpdateActionsDeps) {
     btn.disabled = true;
 
     try {
-      const result = await window.electronAPI.checkForUpdates();
+      const result = await window.tauriAPI.checkForUpdates();
 
       if (result.success) {
         const storeChecks: { flag?: boolean; title: string; msg?: string }[] = [
@@ -195,7 +195,7 @@ export function createUpdateActionsController(deps: UpdateActionsDeps) {
 
             if (openReleasePage) {
               const releaseUrl = result.releaseUrl || RELEASES_LATEST_URL;
-              const openResult = await window.electronAPI.openFile(releaseUrl);
+              const openResult = await window.tauriAPI.openFile(releaseUrl);
               if (!openResult.success) {
                 deps.showToast(
                   openResult.error || 'Failed to open the release page.',
@@ -271,7 +271,7 @@ export function createUpdateActionsController(deps: UpdateActionsDeps) {
       checkUpdatesBtn.innerHTML = `${twemojiImg(String.fromCodePoint(0x2b07), 'twemoji')} Downloading...`;
     }
 
-    progressCleanup = window.electronAPI.onUpdateDownloadProgress((progress) => {
+    progressCleanup = window.tauriAPI.onUpdateDownloadProgress((progress) => {
       const percent = Math.round(progress.percent);
       const transferred = deps.formatFileSize(progress.transferred);
       const total = deps.formatFileSize(progress.total);
@@ -284,7 +284,7 @@ export function createUpdateActionsController(deps: UpdateActionsDeps) {
       }
     });
 
-    window.electronAPI
+    window.tauriAPI
       .downloadUpdate()
       .then((result) => {
         stopProgressListener();
@@ -333,7 +333,25 @@ export function createUpdateActionsController(deps: UpdateActionsDeps) {
     );
 
     if (shouldRestart) {
-      await window.electronAPI.installUpdate();
+      await window.tauriAPI.installUpdate();
+    }
+  }
+
+  async function silentCheckAndDownload(): Promise<void> {
+    if (isDownloading) return;
+    try {
+      const result = await window.tauriAPI.checkForUpdates();
+      if (!result.success) return;
+      if (result.isFlatpak || result.isMas || result.isMsStore || result.isMsi) return;
+      if (!result.hasUpdate) return;
+      deps.showToast(
+        `Update ${result.latestVersion} available — downloading in the background...`,
+        'Update',
+        'info'
+      );
+      startBackgroundDownload();
+    } catch {
+      /* silent — don't surface startup update errors to the user */
     }
   }
 
@@ -345,6 +363,7 @@ export function createUpdateActionsController(deps: UpdateActionsDeps) {
   return {
     restartAsAdmin,
     checkForUpdates,
+    silentCheckAndDownload,
     handleUpdateDownloaded,
     handleSettingsModalClosed,
   };

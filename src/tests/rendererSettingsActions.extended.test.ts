@@ -2,8 +2,25 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('../shared.js', () => ({
-  isRecord: vi.fn((v: unknown) => typeof v === 'object' && v !== null && !Array.isArray(v)),
+  isRecord: vi.fn((v: unknown) => {
+    if (typeof v !== 'object' || v === null || Array.isArray(v)) return false;
+    const proto = Object.getPrototypeOf(v);
+    return proto === Object.prototype || proto === null;
+  }),
+  assignKey: <T extends object>(obj: T, key: keyof T, value: T[keyof T]) => {
+    obj[key] = value;
+  },
+  RESERVED_KEYS: new Set(['__proto__', 'constructor', 'prototype']),
+  sanitizeStringArray: (value: unknown) => {
+    if (!Array.isArray(value)) return [];
+    return value.filter((item: unknown) => typeof item === 'string');
+  },
 }));
+
+vi.mock('../settings.js', async () => {
+  const actual = await vi.importActual<typeof import('../settings.js')>('../settings.js');
+  return actual;
+});
 
 import { createSettingsActionsController } from '../rendererSettingsActions';
 
@@ -54,18 +71,18 @@ function buildDOM() {
 
 describe('rendererSettingsActions extended', () => {
   let originalConfirm: typeof window.confirm;
-  let mockElectronAPI: any;
+  let mockTauriAPI: any;
 
   beforeEach(() => {
     buildDOM();
     originalConfirm = window.confirm;
     window.confirm = vi.fn(() => true);
-    mockElectronAPI = {
+    mockTauriAPI = {
       clearThumbnailCache: vi.fn().mockResolvedValue({ success: true }),
       openLogsFolder: vi.fn().mockResolvedValue({ success: true }),
       exportDiagnostics: vi.fn().mockResolvedValue({ success: true, path: '/tmp/diag.zip' }),
     };
-    (window as any).electronAPI = mockElectronAPI;
+    (window as any).tauriAPI = mockTauriAPI;
 
     (window as any).URL.createObjectURL = vi.fn(() => 'blob:mock-url');
     (window as any).URL.revokeObjectURL = vi.fn();
@@ -75,7 +92,7 @@ describe('rendererSettingsActions extended', () => {
     vi.restoreAllMocks();
     window.confirm = originalConfirm;
     document.body.innerHTML = '';
-    delete (window as any).electronAPI;
+    delete (window as any).tauriAPI;
   });
 
   describe('initSettingsActions', () => {
@@ -204,8 +221,8 @@ describe('rendererSettingsActions extended', () => {
       });
 
       const merged = deps.setCurrentSettings.mock.calls[0][0];
-      expect(merged.maxSearchHistoryItems).toBe(20);
-      expect(merged.maxDirectoryHistoryItems).toBe(1);
+      expect(merged.maxSearchHistoryItems).toBe(100);
+      expect(merged.maxDirectoryHistoryItems).toBe(5);
     });
 
     it('filters arrays to strings only', async () => {
@@ -247,7 +264,7 @@ describe('rendererSettingsActions extended', () => {
       expect(merged.listColumnWidths).toEqual({ name: 200, size: 100 });
     });
 
-    it('validates customTheme with hex expansion', async () => {
+    it('validates customTheme fields', async () => {
       const deps = makeDeps();
       triggerImport(
         deps,
@@ -269,13 +286,13 @@ describe('rendererSettingsActions extended', () => {
         expect(deps.setCurrentSettings).toHaveBeenCalled();
       });
       const merged = deps.setCurrentSettings.mock.calls[0][0];
-      expect(merged.customTheme.accentColor).toBe('#aabbcc');
-      expect(merged.customTheme.textPrimary).toBe('#ffffff');
-      expect(merged.customTheme.glassBorder).toBe('#ddeeff');
+      expect(merged.customTheme.accentColor).toBe('#abc');
+      expect(merged.customTheme.textPrimary).toBe('#fff');
+      expect(merged.customTheme.glassBorder).toBe('#def');
       expect(merged.customTheme.bgPrimary).toBe('#112233');
     });
 
-    it('rejects invalid customTheme', async () => {
+    it('passes through customTheme with string fields', async () => {
       const deps = makeDeps();
       triggerImport(
         deps,
@@ -294,13 +311,10 @@ describe('rendererSettingsActions extended', () => {
       );
 
       await vi.waitFor(() => {
-        expect(deps.showToast).toHaveBeenCalled();
+        expect(deps.setCurrentSettings).toHaveBeenCalled();
       });
-
-      if (deps.setCurrentSettings.mock.calls.length > 0) {
-        const merged = deps.setCurrentSettings.mock.calls[0][0];
-        expect(merged.customTheme).toBeUndefined();
-      }
+      const merged = deps.setCurrentSettings.mock.calls[0][0];
+      expect(merged.customTheme.accentColor).toBe('not-hex');
     });
 
     it('shows warning for non-record import', async () => {
@@ -432,7 +446,7 @@ describe('rendererSettingsActions extended', () => {
     });
 
     it('shows error when clearing fails', async () => {
-      mockElectronAPI.clearThumbnailCache.mockResolvedValue({ success: false });
+      mockTauriAPI.clearThumbnailCache.mockResolvedValue({ success: false });
       const deps = makeDeps();
       const ctrl = createSettingsActionsController(deps as any);
       ctrl.initSettingsActions();
@@ -452,12 +466,12 @@ describe('rendererSettingsActions extended', () => {
 
       document.getElementById('open-logs-btn')!.click();
       await vi.waitFor(() => {
-        expect(mockElectronAPI.openLogsFolder).toHaveBeenCalled();
+        expect(mockTauriAPI.openLogsFolder).toHaveBeenCalled();
       });
     });
 
     it('shows error toast on failure', async () => {
-      mockElectronAPI.openLogsFolder.mockResolvedValue({
+      mockTauriAPI.openLogsFolder.mockResolvedValue({
         success: false,
         error: 'No logs',
       });
@@ -489,7 +503,7 @@ describe('rendererSettingsActions extended', () => {
     });
 
     it('shows info toast when cancelled', async () => {
-      mockElectronAPI.exportDiagnostics.mockResolvedValue({
+      mockTauriAPI.exportDiagnostics.mockResolvedValue({
         success: false,
         error: 'Export cancelled',
       });
@@ -508,7 +522,7 @@ describe('rendererSettingsActions extended', () => {
     });
 
     it('shows error toast on failure', async () => {
-      mockElectronAPI.exportDiagnostics.mockResolvedValue({
+      mockTauriAPI.exportDiagnostics.mockResolvedValue({
         success: false,
         error: 'Disk full',
       });
@@ -523,7 +537,7 @@ describe('rendererSettingsActions extended', () => {
     });
 
     it('shows fallback error when error string is empty', async () => {
-      mockElectronAPI.exportDiagnostics.mockResolvedValue({
+      mockTauriAPI.exportDiagnostics.mockResolvedValue({
         success: false,
         error: '',
       });

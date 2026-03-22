@@ -194,7 +194,7 @@ export function createFileGridEventsController(config: FileGridEventsConfig) {
         config.showDropIndicator(operation, item.path, e.clientX, e.clientY);
         config.scheduleSpringLoad(fileItem, () => {
           fileItem.classList.remove('drag-over', 'spring-loading');
-          config.navigateTo(item.path);
+          void config.navigateTo(item.path);
         });
       }
     });

@@ -1,5 +1,5 @@
 import type { Settings, FileItem, DriveInfo } from './types';
-import { assignKey, escapeHtml, getErrorMessage, ignoreError } from './shared.js';
+import { assignKey, escapeHtml, getErrorMessage, ignoreError, devLog } from './shared.js';
 import { clearHtml } from './rendererDom.js';
 import type { TabData } from './rendererTabs.js';
 import { showConfirm } from './rendererModals.js';
@@ -10,7 +10,7 @@ import {
   rendererPath as path,
   twemojiImg,
 } from './rendererUtils.js';
-import { createDefaultSettings } from './settings.js';
+import { createDefaultSettings, sanitizeSettings } from './settings.js';
 
 import {
   createHomeController,
@@ -71,7 +71,8 @@ async function saveSettingsWithTimestamp(settings: Settings) {
   if (isResettingSettings) {
     return { success: true as const };
   }
-  return window.electronAPI.saveSettings(settings);
+  settings._timestamp = Date.now();
+  return window.tauriAPI.saveSettings(settings);
 }
 
 let settingsSaveTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -106,6 +107,9 @@ let platformOS: string = '';
 let canUndo: boolean = false;
 let canRedo: boolean = false;
 let folderTreeEnabled: boolean = true;
+let isNavigating: boolean = false;
+let refreshDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+let navigationSequence = 0;
 
 function markSelectionDirty(): void {
   selectedItemsSizeDirty = true;
@@ -455,6 +459,7 @@ const {
   cleanupPropertiesDialog,
   restartAsAdmin,
   checkForUpdates,
+  silentCheckAndDownload,
   handleUpdateDownloaded,
   generateOperationId,
   addOperation,
@@ -466,14 +471,12 @@ const showToast = toastManager.showToast;
 
 async function loadSettings(): Promise<void> {
   const [result, sharedClipboard] = await Promise.all([
-    window.electronAPI.getSettings(),
-    window.electronAPI.getClipboard(),
+    window.tauriAPI.getSettings(),
+    window.tauriAPI.getClipboard(),
   ]);
 
   if (result.success) {
-    const defaults = createDefaultSettings();
-    currentSettings = { ...defaults, ...result.settings };
-    currentSettings.enableSyntaxHighlighting = currentSettings.enableSyntaxHighlighting !== false;
+    currentSettings = sanitizeSettings(result.settings ?? {});
     syncShortcutBindingsFromSettings(currentSettings, { save: true });
     applySettings(currentSettings);
     const newLaunchCount = (currentSettings.launchCount || 0) + 1;
@@ -497,14 +500,19 @@ async function loadSettings(): Promise<void> {
     clipboardController.setClipboard(sharedClipboard);
   }
 
+  let focusDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   window.addEventListener('focus', () => {
-    clipboardController.updateClipboardIndicator();
+    devLog('Focus', 'Window focus event — debouncing clipboard indicator update');
+    if (focusDebounceTimer) clearTimeout(focusDebounceTimer);
+    focusDebounceTimer = setTimeout(() => {
+      clipboardController.updateClipboardIndicator();
+    }, 300);
   });
 }
 
 async function applySystemFontSize(): Promise<void> {
   try {
-    const scaleFactor = await window.electronAPI.getSystemTextScale();
+    const scaleFactor = await window.tauriAPI.getSystemTextScale();
     const fontScale = 1 + (scaleFactor - 1) * 0.5;
     document.documentElement.style.setProperty('--system-font-scale', fontScale.toString());
     document.body.classList.add('use-system-font-size');
@@ -514,14 +522,15 @@ async function applySystemFontSize(): Promise<void> {
 }
 
 function applySettings(settings: Settings) {
+  devLog('Settings', 'applySettings', { viewMode: settings.viewMode, theme: settings.theme });
   applyAppearance(settings, {
     applyCustomThemeColors,
     clearCustomThemeColors,
   });
 
-  if (settings.viewMode) {
+  if (settings.viewMode && settings.viewMode !== viewMode) {
     viewMode = settings.viewMode;
-    applyViewMode();
+    void applyViewMode();
   }
 
   applyListColumnWidths();
@@ -557,12 +566,14 @@ function applySettings(settings: Settings) {
   setFolderTreeSpacingMode(settings.useLegacyTreeSpacing === true);
   setFolderTreeVisibility(nextFolderTreeEnabled);
   if (nextFolderTreeEnabled && !folderTreeEnabled) {
-    loadDrives();
+    void loadDrives();
   }
   folderTreeEnabled = nextFolderTreeEnabled;
 
   loadBookmarks();
   loadRecentFiles();
+
+  window.tauriAPI.setUpdateChannel(settings.updateChannel || 'auto');
 }
 
 function updateDangerousOptionsVisibility(show: boolean) {
@@ -581,7 +592,7 @@ function openNewWindow() {
         console.error('[Tabs] Failed to persist tab state before opening new window:', error);
       }
     }
-    await window.electronAPI.openNewWindow();
+    await window.tauriAPI.openNewWindow();
   })().catch((error) => {
     console.error('[Window] Failed to open new window:', error);
   });
@@ -631,7 +642,7 @@ async function saveSettings() {
   // System theme override
   if (currentSettings.useSystemTheme) {
     try {
-      const { isDarkMode } = await window.electronAPI.getSystemAccentColor();
+      const { isDarkMode } = await window.tauriAPI.getSystemAccentColor();
       const systemTheme = isDarkMode ? 'default' : 'light';
       currentSettings.theme = systemTheme;
     } catch (error) {
@@ -665,6 +676,14 @@ async function saveSettings() {
     showToast('Failed to save settings: ' + (result.error || 'Operation failed'), 'Error', 'error');
     return;
   }
+  try {
+    const autostartEnabled = await window.tauriAPI.getAutostart();
+    if (currentSettings.startOnLogin !== autostartEnabled) {
+      await window.tauriAPI.setAutostart(currentSettings.startOnLogin);
+    }
+  } catch {
+    /* autostart may not be available on all platforms */
+  }
   if (previousTabsEnabled !== currentSettings.enableTabs) {
     initializeTabs();
   }
@@ -673,7 +692,7 @@ async function saveSettings() {
   hideSettingsModal();
   showToast('Settings saved successfully!', 'Settings', 'success');
   if (currentPath) {
-    refresh();
+    refresh('settings-saved');
   }
 }
 
@@ -691,8 +710,8 @@ async function resetSettings() {
       settingsSaveTimeout = null;
     }
     const [settingsResult, homeResult] = await Promise.all([
-      window.electronAPI.resetSettings(),
-      window.electronAPI.resetHomeSettings(),
+      window.tauriAPI.resetSettings(),
+      window.tauriAPI.resetHomeSettings(),
     ]);
     if (!settingsResult.success || !homeResult.success) {
       isResettingSettings = false;
@@ -706,7 +725,7 @@ async function resetSettings() {
       showToast(`Failed to reset settings: ${errors.join(' | ')}`, 'Error', 'error');
       return;
     }
-    await window.electronAPI.relaunchApp();
+    await window.tauriAPI.relaunchApp();
   }
 }
 
@@ -822,51 +841,55 @@ function setHomeViewActive(active: boolean): void {
 async function handleQuickAction(action?: string | null): Promise<void> {
   if (!action) return;
 
-  if (action === 'home') {
-    navigateTo(HOME_VIEW_PATH);
-    return;
-  }
-
-  if (action === 'userhome') {
-    const homePath = await window.electronAPI.getHomeDirectory();
-    if (homePath) {
-      navigateTo(homePath);
-    } else {
-      showToast('Failed to open Home Folder', 'Quick Access', 'error');
-    }
-    return;
-  }
-
-  const specialAction = SPECIAL_DIRECTORY_ACTIONS[action];
-  if (specialAction) {
-    const result = await window.electronAPI.getSpecialDirectory(specialAction.key);
-    if (!result.success) {
-      showToast(
-        result.error || `Failed to open ${specialAction.label} folder`,
-        'Quick Access',
-        'error'
-      );
+  try {
+    if (action === 'home') {
+      navigateTo(HOME_VIEW_PATH);
       return;
     }
-    navigateTo(result.path);
-    return;
-  }
 
-  if (action === 'browse') {
-    const result = await window.electronAPI.selectFolder();
-    if (result.success) {
+    if (action === 'userhome') {
+      const homePath = await window.tauriAPI.getHomeDirectory();
+      if (homePath) {
+        navigateTo(homePath);
+      } else {
+        showToast('Failed to open Home Folder', 'Quick Access', 'error');
+      }
+      return;
+    }
+
+    const specialAction = SPECIAL_DIRECTORY_ACTIONS[action];
+    if (specialAction) {
+      const result = await window.tauriAPI.getSpecialDirectory(specialAction.key);
+      if (!result.success) {
+        showToast(
+          result.error || `Failed to open ${specialAction.label} folder`,
+          'Quick Access',
+          'error'
+        );
+        return;
+      }
       navigateTo(result.path);
-    }
-    return;
-  }
-
-  if (action === 'trash') {
-    const result = await window.electronAPI.openTrash();
-    if (!result.success) {
-      showToast(result.error || 'Failed to open trash folder', 'Error', 'error');
       return;
     }
-    showToast('Opening system trash folder', 'Info', 'info');
+
+    if (action === 'browse') {
+      const result = await window.tauriAPI.selectFolder();
+      if (result.success) {
+        navigateTo(result.path);
+      }
+      return;
+    }
+
+    if (action === 'trash') {
+      const result = await window.tauriAPI.openTrash();
+      if (!result.success) {
+        showToast(result.error || 'Failed to open trash folder', 'Error', 'error');
+        return;
+      }
+      showToast('Opening system trash folder', 'Info', 'info');
+    }
+  } catch (error) {
+    showToast(getErrorMessage(error), 'Quick Access', 'error');
   }
 }
 
@@ -1002,12 +1025,14 @@ const bootstrapController = createBootstrapController({
   loadBookmarks,
   updateUndoRedoState: () => updateUndoRedoState(),
   handleUpdateDownloaded,
-  refresh: () => refresh(),
+  silentCheckAndDownload,
+  refresh: (reason) => refresh(reason),
   applySettings,
   getCurrentSettings: () => currentSettings,
   setCurrentSettings: (s) => {
     currentSettings = s;
   },
+  saveSettings: () => saveSettings(),
   setPlatformOS: (os) => {
     platformOS = os;
   },
@@ -1017,8 +1042,10 @@ const bootstrapController = createBootstrapController({
   getCurrentPath: () => currentPath,
   updateZoomDisplay,
   getFolderTree: () => folderTree,
-  onHomeSettingsChanged: (cb) => window.electronAPI.onHomeSettingsChanged(cb),
+  onHomeSettingsChanged: (cb) => window.tauriAPI.onHomeSettingsChanged(cb),
   homeViewPath: HOME_VIEW_PATH,
+  goUp,
+  showToast: (m, t, ty) => showToast(m, t, ty as 'success' | 'error' | 'info' | 'warning'),
 });
 const {
   init: bootstrapInit,
@@ -1028,31 +1055,34 @@ const {
 
 async function loadDrives() {
   if (!drivesList) return;
+  try {
+    const drives = await window.tauriAPI.getDriveInfo();
+    cacheDriveInfo(drives);
+    clearHtml(drivesList);
 
-  const drives = await window.electronAPI.getDriveInfo();
-  cacheDriveInfo(drives);
-  clearHtml(drivesList);
-
-  drives.forEach((drive) => {
-    const driveLabel = drive.label || drive.path;
-    const driveItem = document.createElement('div');
-    driveItem.className = 'nav-item';
-    driveItem.title = drive.path;
-    driveItem.innerHTML = `
+    drives.forEach((drive) => {
+      const driveLabel = drive.label || drive.path;
+      const driveItem = document.createElement('div');
+      driveItem.className = 'nav-item';
+      driveItem.title = drive.path;
+      driveItem.innerHTML = `
       <span class="nav-icon">${twemojiImg(String.fromCodePoint(0x1f4be), 'twemoji')}</span>
       <span class="nav-label">${escapeHtml(driveLabel)}</span>
     `;
-    driveItem.addEventListener('click', () => navigateTo(drive.path));
-    drivesList.appendChild(driveItem);
-  });
+      driveItem.addEventListener('click', () => navigateTo(drive.path));
+      drivesList.appendChild(driveItem);
+    });
 
-  const drivePaths = drives.map((drive) => drive.path);
-  void homeController.renderHomeDrives(drives);
+    const drivePaths = drives.map((drive) => drive.path);
+    void homeController.renderHomeDrives(drives);
 
-  if (currentSettings.showFolderTree !== false) {
-    folderTreeManager.render(drivePaths);
-  } else if (folderTree) {
-    clearHtml(folderTree);
+    if (currentSettings.showFolderTree !== false) {
+      folderTreeManager.render(drivePaths);
+    } else if (folderTree) {
+      clearHtml(folderTree);
+    }
+  } catch (error) {
+    console.error('[Drives] Failed to load drives:', error);
   }
 }
 
@@ -1168,13 +1198,13 @@ const eventListenersController = createEventListenersController({
     const toggle = document.getElementById('show-hidden-files-toggle') as HTMLInputElement | null;
     if (toggle) toggle.checked = currentSettings.showHiddenFiles;
     saveSettings();
-    refresh();
+    refresh('toggle-hidden-files');
   },
   showPropertiesForSelected: () => {
     const firstSelected = allFiles.find((f) => selectedItems.has(f.path));
     if (!firstSelected) return;
     void (async () => {
-      const result = await window.electronAPI.getItemProperties(firstSelected.path);
+      const result = await window.tauriAPI.getItemProperties(firstSelected.path);
       if (result.success) {
         showPropertiesDialog(result.properties);
       }
@@ -1273,8 +1303,20 @@ const eventListenersController = createEventListenersController({
 });
 const { setupEventListeners } = eventListenersController;
 
-async function navigateTo(path: string, skipHistoryUpdate = false) {
-  if (!path) return;
+async function navigateTo(path: string, skipHistoryUpdate = false, trigger = 'direct') {
+  if (!path) {
+    devLog('Navigate', 'Ignored empty navigation request', { trigger });
+    return;
+  }
+  const navigationId = ++navigationSequence;
+  const navigationStartAt = Date.now();
+  devLog('Navigate', `[${navigationId}] start`, {
+    path,
+    skipHistoryUpdate,
+    trigger,
+    wasNavigating: isNavigating,
+  });
+  isNavigating = true;
   const trimmedPath = path.trim();
   if (trimmedPath === HOME_VIEW_LABEL) {
     path = HOME_VIEW_PATH;
@@ -1288,6 +1330,7 @@ async function navigateTo(path: string, skipHistoryUpdate = false) {
     }
 
     thumbnails.disconnectThumbnailObserver();
+    thumbnails.clearPendingThumbnailLoads();
 
     hideLoading();
 
@@ -1305,6 +1348,13 @@ async function navigateTo(path: string, skipHistoryUpdate = false) {
     updateNavigationButtons();
     setHomeViewActive(true);
     announceToScreenReader('Home view');
+    isNavigating = false;
+    devLog('Navigate', `[${navigationId}] completed`, {
+      source: 'home',
+      path: HOME_VIEW_PATH,
+      trigger,
+      durationMs: Date.now() - navigationStartAt,
+    });
     return;
   }
 
@@ -1319,21 +1369,39 @@ async function navigateTo(path: string, skipHistoryUpdate = false) {
     }
 
     thumbnails.disconnectThumbnailObserver();
+    thumbnails.clearPendingThumbnailLoads();
 
     showLoading('Loading folder...');
     if (fileGrid) fileGrid.innerHTML = '';
     const request = startDirectoryRequest(path);
     requestId = request.requestId;
+    devLog('Navigate', `[${navigationId}] directory request`, {
+      path,
+      requestId,
+      operationId: request.operationId,
+      showHidden: currentSettings.showHiddenFiles,
+    });
 
-    const result = await window.electronAPI.getDirectoryContents(
+    const result = await window.tauriAPI.getDirectoryContents(
       path,
       request.operationId,
       currentSettings.showHiddenFiles,
       false
     );
-    if (!directoryLoader.isCurrentRequest(requestId)) return;
+    if (!directoryLoader.isCurrentRequest(requestId)) {
+      devLog('Navigate', `[${navigationId}] stale directory result ignored`, {
+        path,
+        requestId,
+      });
+      return;
+    }
 
     if (!result.success) {
+      devLog('Navigate', `[${navigationId}] directory request failed`, {
+        path,
+        requestId,
+        error: result.error || 'Unknown error',
+      });
       console.error('Error loading directory:', result.error);
       showToast(result.error || 'Unknown error', 'Error Loading Directory', 'error');
       return;
@@ -1363,19 +1431,60 @@ async function navigateTo(path: string, skipHistoryUpdate = false) {
     } else {
       renderFiles(result.contents || []);
     }
+    devLog('Navigate', `[${navigationId}] render complete`, {
+      path,
+      requestId,
+      itemCount: result.contents?.length ?? 0,
+      viewMode,
+    });
     updateDiskSpace();
-    window.electronAPI.watchDirectory(path);
+    window.tauriAPI
+      .watchDirectory(path)
+      .then((watching) => {
+        devLog('Watcher', `[${navigationId}] watchDirectory result`, { path, watching });
+      })
+      .catch((error) => {
+        devLog('Watcher', `[${navigationId}] watchDirectory failed`, {
+          path,
+          error: getErrorMessage(error),
+        });
+      });
     if (currentSettings.enableGitStatus) {
       fetchGitStatusAsync(path);
       updateGitBranch(path);
     }
+    devLog('Navigate', `[${navigationId}] success`, {
+      path,
+      trigger,
+      durationMs: Date.now() - navigationStartAt,
+    });
   } catch (error) {
+    devLog('Navigate', `[${navigationId}] exception`, {
+      path,
+      trigger,
+      error: getErrorMessage(error),
+      durationMs: Date.now() - navigationStartAt,
+    });
     console.error('Error navigating:', error);
     showToast(getErrorMessage(error), 'Error Loading Directory', 'error');
   } finally {
     const isCurrentRequest = directoryLoader.isCurrentRequest(requestId);
     finishDirectoryRequest(requestId);
-    if (isCurrentRequest) hideLoading();
+    if (isCurrentRequest) {
+      hideLoading();
+      isNavigating = false;
+      devLog('Navigate', `[${navigationId}] finalized`, {
+        path,
+        requestId,
+        trigger,
+        durationMs: Date.now() - navigationStartAt,
+      });
+    } else {
+      devLog('Navigate', `[${navigationId}] finalize skipped for stale request`, {
+        path,
+        requestId,
+      });
+    }
   }
 }
 
@@ -1431,8 +1540,8 @@ const fileGridEventsController = createFileGridEventsController({
   scheduleSpringLoad,
   clearSpringLoad,
   handleDrop,
-  setDragData: (paths) => window.electronAPI.setDragData(paths),
-  clearDragData: () => window.electronAPI.clearDragData(),
+  setDragData: (paths) => window.tauriAPI.setDragData(paths),
+  clearDragData: () => window.tauriAPI.clearDragData(),
 });
 const { setupFileGridEventDelegation } = fileGridEventsController;
 
@@ -1476,9 +1585,7 @@ async function deleteSelected(permanent = false) {
   for (let i = 0; i < itemsSnapshot.length; i += DELETE_BATCH_SIZE) {
     const batch = itemsSnapshot.slice(i, i + DELETE_BATCH_SIZE);
     const batchResults = await Promise.allSettled(
-      batch.map((p) =>
-        permanent ? window.electronAPI.deleteItem(p) : window.electronAPI.trashItem(p)
-      )
+      batch.map((p) => (permanent ? window.tauriAPI.deleteItem(p) : window.tauriAPI.trashItem(p)))
     );
     allResults.push(...batchResults);
   }
@@ -1508,7 +1615,7 @@ async function deleteSelected(permanent = false) {
     } else {
       showToast(msg, 'Success', 'success');
     }
-    refresh();
+    refresh(permanent ? 'delete-selected-permanent' : 'delete-selected');
   }
   if (failCount > 0) {
     showToast(
@@ -1520,7 +1627,7 @@ async function deleteSelected(permanent = false) {
 }
 
 async function updateUndoRedoState() {
-  const state = await window.electronAPI.getUndoRedoState();
+  const state = await window.tauriAPI.getUndoRedoState();
   if (!state.success) return;
   canUndo = state.canUndo;
   canRedo = state.canRedo;
@@ -1628,9 +1735,7 @@ function setupMoreActionsMenu() {
 }
 
 async function performUndoRedo(isUndo: boolean) {
-  const result = isUndo
-    ? await window.electronAPI.undoAction()
-    : await window.electronAPI.redoAction();
+  const result = isUndo ? await window.tauriAPI.undoAction() : await window.tauriAPI.redoAction();
   const label = isUndo ? 'Undo' : 'Redo';
   if (!result.success) {
     showToast(result.error || `Cannot ${label.toLowerCase()}`, `${label} Failed`, 'warning');
@@ -1660,7 +1765,7 @@ async function performUndoRedo(isUndo: boolean) {
         ]
       : undefined;
   showToast(`Action ${isUndo ? 'undone' : 'redone'}`, label, 'success', reverseAction);
-  refresh();
+  refresh(isUndo ? 'undo' : 'redo');
 }
 function performUndo() {
   return performUndoRedo(true);
@@ -1705,10 +1810,42 @@ function goUp() {
   navigateTo(parentPath);
 }
 
-function refresh() {
-  if (currentPath) {
-    navigateTo(currentPath);
+function refresh(reason = 'unspecified') {
+  if (!currentPath) {
+    devLog('Refresh', 'Skipped refresh (no current path)', { reason });
+    return;
   }
+  if (isNavigating) {
+    devLog('Refresh', 'Skipped refresh (navigation already in progress)', {
+      reason,
+      currentPath,
+    });
+    return;
+  }
+  if (isSearchModeActive()) {
+    devLog('Refresh', 'Skipped refresh (search is active)', { reason, currentPath });
+    return;
+  }
+  if (refreshDebounceTimer) {
+    devLog('Refresh', 'Resetting pending refresh debounce', { reason, currentPath });
+    clearTimeout(refreshDebounceTimer);
+  } else {
+    devLog('Refresh', 'Scheduling refresh', { reason, currentPath });
+  }
+  refreshDebounceTimer = setTimeout(() => {
+    refreshDebounceTimer = null;
+    if (!isNavigating && !isSearchModeActive() && currentPath) {
+      devLog('Refresh', 'Executing debounced refresh', { reason, currentPath });
+      navigateTo(currentPath, false, `refresh:${reason}`);
+    } else {
+      devLog('Refresh', 'Skipped debounced refresh execution', {
+        reason,
+        currentPath,
+        isNavigating,
+        isSearchActive: isSearchModeActive(),
+      });
+    }
+  }, 200);
 }
 
 function updateNavigationButtons() {
@@ -1775,7 +1912,7 @@ async function applyViewMode() {
       try {
         const request = startDirectoryRequest(currentPath);
         requestId = request.requestId;
-        const result = await window.electronAPI.getDirectoryContents(
+        const result = await window.tauriAPI.getDirectoryContents(
           currentPath,
           request.operationId,
           currentSettings.showHiddenFiles
@@ -1784,8 +1921,15 @@ async function applyViewMode() {
         if (result.success) {
           renderFiles(result.contents || []);
         }
+      } catch {
+        // ignore; finishDirectoryRequest handles cleanup
       } finally {
+        const wasCurrentRequest = directoryLoader.isCurrentRequest(requestId);
         finishDirectoryRequest(requestId);
+        if (wasCurrentRequest) {
+          hideLoading();
+          isNavigating = false;
+        }
       }
     }
   }
@@ -1849,7 +1993,7 @@ function bindClickBindings(bindings: ReadonlyArray<readonly [string, () => void]
 }
 
 async function chooseFolderAndApply(onPathSelected: (selectedPath: string) => void): Promise<void> {
-  const result = await window.electronAPI.selectFolder();
+  const result = await window.tauriAPI.selectFolder();
   if (result.success) {
     onPathSelected(result.path);
   }
@@ -2040,6 +2184,7 @@ window.addEventListener('beforeunload', () => {
   fileRenderController.disconnectVirtualizedObserver();
   diskSpaceController.clearCache();
   zoomController.clearZoomPopupTimeout();
+  window.tauriAPI.unwatchDirectory().catch(() => {});
   if (!isResettingSettings) {
     if (tabsEnabled && tabs.length > 0) {
       const currentTab = tabs.find((t) => t.id === activeTabId);
@@ -2063,7 +2208,7 @@ window.addEventListener('beforeunload', () => {
       };
     }
     currentSettings._timestamp = Date.now();
-    window.electronAPI.saveSettingsSync(currentSettings);
+    window.tauriAPI.saveSettingsSync(currentSettings);
   }
   if (settingsSaveTimeout) {
     clearTimeout(settingsSaveTimeout);

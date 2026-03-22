@@ -27,7 +27,7 @@ describe('createNewItemWithInlineRename', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     document.body.innerHTML = '<div id="file-grid"></div>';
-    (window as unknown as Record<string, unknown>).electronAPI = {
+    (window as unknown as Record<string, unknown>).tauriAPI = {
       createFile: vi.fn(async () => ({ success: true, path: '/workspace/File' })),
       createFolder: vi.fn(async () => ({ success: true, path: '/workspace/New Folder' })),
       renameItem: vi.fn(async () => ({ success: true })),
@@ -43,7 +43,7 @@ describe('createNewItemWithInlineRename', () => {
     const ctrl = createInlineRenameController(deps as any);
     await ctrl.createNewItemWithInlineRename('file');
 
-    const api = window.electronAPI as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    const api = window.tauriAPI as unknown as Record<string, ReturnType<typeof vi.fn>>;
     expect(api.createFile).toHaveBeenCalledWith('/workspace', 'File.txt');
     expect(deps.navigateTo).toHaveBeenCalledWith('/workspace');
   });
@@ -53,7 +53,7 @@ describe('createNewItemWithInlineRename', () => {
     const ctrl = createInlineRenameController(deps as any);
     await ctrl.createNewItemWithInlineRename('folder');
 
-    const api = window.electronAPI as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    const api = window.tauriAPI as unknown as Record<string, ReturnType<typeof vi.fn>>;
     expect(api.createFolder).toHaveBeenCalledWith('/workspace', 'New Folder');
     expect(deps.navigateTo).toHaveBeenCalledWith('/workspace');
   });
@@ -90,8 +90,8 @@ describe('createNewItemWithInlineRename', () => {
         modified: 0,
       },
       {
-        name: 'File.txt (1)',
-        path: '/workspace/File.txt (1)',
+        name: 'File (1).txt',
+        path: '/workspace/File (1).txt',
         isFile: true,
         isDirectory: false,
         size: 0,
@@ -99,13 +99,13 @@ describe('createNewItemWithInlineRename', () => {
       },
     ]);
 
-    const api = window.electronAPI as unknown as Record<string, ReturnType<typeof vi.fn>>;
-    api.createFile.mockResolvedValue({ success: true, path: '/workspace/File.txt (2)' });
+    const api = window.tauriAPI as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    api.createFile.mockResolvedValue({ success: true, path: '/workspace/File (2).txt' });
 
     const ctrl = createInlineRenameController(deps as any);
     await ctrl.createNewItemWithInlineRename('file');
 
-    expect(api.createFile).toHaveBeenCalledWith('/workspace', 'File.txt (2)');
+    expect(api.createFile).toHaveBeenCalledWith('/workspace', 'File (2).txt');
   });
 
   it('avoids name collision for folders', async () => {
@@ -121,7 +121,7 @@ describe('createNewItemWithInlineRename', () => {
       },
     ]);
 
-    const api = window.electronAPI as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    const api = window.tauriAPI as unknown as Record<string, ReturnType<typeof vi.fn>>;
     api.createFolder.mockResolvedValue({ success: true, path: '/workspace/New Folder (1)' });
 
     const ctrl = createInlineRenameController(deps as any);
@@ -131,7 +131,7 @@ describe('createNewItemWithInlineRename', () => {
   });
 
   it('shows alert on API failure', async () => {
-    const api = window.electronAPI as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    const api = window.tauriAPI as unknown as Record<string, ReturnType<typeof vi.fn>>;
     api.createFile.mockResolvedValue({ success: false, error: 'Permission denied' });
 
     const deps = createDeps();
@@ -146,7 +146,7 @@ describe('createNewItemWithInlineRename', () => {
   });
 
   it('shows unknown error when no error message', async () => {
-    const api = window.electronAPI as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    const api = window.tauriAPI as unknown as Record<string, ReturnType<typeof vi.fn>>;
     api.createFile.mockResolvedValue({ success: false });
 
     const deps = createDeps();
@@ -160,7 +160,7 @@ describe('createNewItemWithInlineRename', () => {
 describe('createNewFile / createNewFolder convenience wrappers', () => {
   beforeEach(() => {
     document.body.innerHTML = '';
-    (window as unknown as Record<string, unknown>).electronAPI = {
+    (window as unknown as Record<string, unknown>).tauriAPI = {
       createFile: vi.fn(async () => ({ success: true, path: '/workspace/File' })),
       createFolder: vi.fn(async () => ({ success: true, path: '/workspace/New Folder' })),
       renameItem: vi.fn(async () => ({ success: true })),
@@ -171,7 +171,7 @@ describe('createNewFile / createNewFolder convenience wrappers', () => {
     const deps = createDeps();
     const ctrl = createInlineRenameController(deps as any);
     await ctrl.createNewFile();
-    const api = window.electronAPI as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    const api = window.tauriAPI as unknown as Record<string, ReturnType<typeof vi.fn>>;
     expect(api.createFile).toHaveBeenCalled();
   });
 
@@ -179,7 +179,7 @@ describe('createNewFile / createNewFolder convenience wrappers', () => {
     const deps = createDeps();
     const ctrl = createInlineRenameController(deps as any);
     await ctrl.createNewFolder();
-    const api = window.electronAPI as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    const api = window.tauriAPI as unknown as Record<string, ReturnType<typeof vi.fn>>;
     expect(api.createFolder).toHaveBeenCalled();
   });
 });
@@ -187,7 +187,7 @@ describe('createNewFile / createNewFolder convenience wrappers', () => {
 describe('startInlineRename', () => {
   beforeEach(() => {
     document.body.innerHTML = '';
-    (window as unknown as Record<string, unknown>).electronAPI = {
+    (window as unknown as Record<string, unknown>).tauriAPI = {
       renameItem: vi.fn(async () => ({ success: true })),
     };
   });
@@ -274,7 +274,7 @@ describe('startInlineRename', () => {
     input.value = 'new.txt';
     input.dispatchEvent(new KeyboardEvent('keypress', { key: 'Enter', bubbles: true }));
 
-    const api = window.electronAPI as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    const api = window.tauriAPI as unknown as Record<string, ReturnType<typeof vi.fn>>;
     await vi.waitFor(() => {
       expect(api.renameItem).toHaveBeenCalledWith('/workspace/old.txt', 'new.txt');
     });
@@ -301,12 +301,12 @@ describe('startInlineRename', () => {
       expect(fileItem.classList.contains('renaming')).toBe(false);
     });
 
-    const api = window.electronAPI as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    const api = window.tauriAPI as unknown as Record<string, ReturnType<typeof vi.fn>>;
     expect(api.renameItem).not.toHaveBeenCalled();
   });
 
   it('shows alert on rename failure', async () => {
-    const api = window.electronAPI as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    const api = window.tauriAPI as unknown as Record<string, ReturnType<typeof vi.fn>>;
     api.renameItem.mockResolvedValue({ success: false, error: 'Item exists' });
 
     const deps = createDeps();

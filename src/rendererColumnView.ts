@@ -55,7 +55,7 @@ export function createColumnViewController(deps: ColumnViewDeps) {
 
   function cancelColumnOperations(): void {
     for (const operationId of activeColumnOperationIds) {
-      window.electronAPI.cancelDirectoryContents(operationId).catch(ignoreError);
+      window.tauriAPI.cancelDirectoryContents(operationId).catch(ignoreError);
     }
     activeColumnOperationIds.clear();
   }
@@ -77,7 +77,6 @@ export function createColumnViewController(deps: ColumnViewDeps) {
         }),
         new Promise<void>((resolve) => setTimeout(resolve, COLUMN_VIEW_RENDER_TIMEOUT_MS)),
       ]);
-      isRenderingColumnView = false;
       renderCompleteResolve = null;
       if (currentRenderId !== columnViewRenderId) return;
     }
@@ -138,10 +137,12 @@ export function createColumnViewController(deps: ColumnViewDeps) {
         }
       }, COLUMN_VIEW_SCROLL_DELAY_MS);
     } finally {
-      isRenderingColumnView = false;
       if (renderCompleteResolve) {
         renderCompleteResolve();
         renderCompleteResolve = null;
+      }
+      if (currentRenderId === columnViewRenderId) {
+        isRenderingColumnView = false;
       }
     }
   }
@@ -191,7 +192,7 @@ export function createColumnViewController(deps: ColumnViewDeps) {
       const drives =
         deps.getCachedDriveInfo().length > 0
           ? deps.getCachedDriveInfo()
-          : await window.electronAPI.getDriveInfo();
+          : await window.tauriAPI.getDriveInfo();
       if (deps.getCachedDriveInfo().length === 0) {
         deps.cacheDriveInfo(drives);
       }
@@ -204,7 +205,7 @@ export function createColumnViewController(deps: ColumnViewDeps) {
         item.dataset.path = drive.path;
         item.title = drive.path;
         item.innerHTML = `
-        <span class="column-item-icon"><img src="../assets/twemoji/1f4bf.svg" class="twemoji" alt="💿" draggable="false" /></span>
+        <span class="column-item-icon"><img src="/twemoji/1f4bf.svg" class="twemoji" alt="💿" draggable="false" /></span>
         <span class="column-item-name">${escapeHtml(drive.label || drive.path)}</span>
         <span class="column-item-arrow">▸</span>
       `;
@@ -317,7 +318,12 @@ export function createColumnViewController(deps: ColumnViewDeps) {
         e.dataTransfer.setData('text/plain', JSON.stringify(selectedPaths));
       }
 
-      window.electronAPI.setDragData(selectedPaths);
+      const setDragDataResult = window.tauriAPI.setDragData(selectedPaths) as
+        | Promise<unknown>
+        | undefined;
+      if (setDragDataResult && typeof setDragDataResult.catch === 'function') {
+        setDragDataResult.catch(() => {});
+      }
 
       item.classList.add('dragging');
     });
@@ -327,7 +333,10 @@ export function createColumnViewController(deps: ColumnViewDeps) {
       document.querySelectorAll('.column-item.drag-over').forEach((el) => {
         el.classList.remove('drag-over');
       });
-      window.electronAPI.clearDragData();
+      const clearDragDataResult = window.tauriAPI.clearDragData() as Promise<unknown> | undefined;
+      if (clearDragDataResult && typeof clearDragDataResult.catch === 'function') {
+        clearDragDataResult.catch(() => {});
+      }
       deps.clearSpringLoad();
       deps.hideDropIndicator();
     });
@@ -409,7 +418,7 @@ export function createColumnViewController(deps: ColumnViewDeps) {
     }
 
     const icon = fileItem.isDirectory
-      ? '<img src="../assets/twemoji/1f4c1.svg" class="twemoji" alt="📁" draggable="false" />'
+      ? '<img src="/twemoji/1f4c1.svg" class="twemoji" alt="📁" draggable="false" />'
       : deps.getFileIcon(fileItem.name);
 
     const symlinkBadge = fileItem.isSymlink
@@ -481,7 +490,7 @@ export function createColumnViewController(deps: ColumnViewDeps) {
       activeColumnOperationIds.add(operationId);
       let result: DirectoryResponse;
       try {
-        result = await window.electronAPI.getDirectoryContents(
+        result = await window.tauriAPI.getDirectoryContents(
           columnPath,
           operationId,
           deps.getCurrentSettings().showHiddenFiles
@@ -551,6 +560,7 @@ export function createColumnViewController(deps: ColumnViewDeps) {
       element.setAttribute('aria-selected', 'true');
       columnPaths.push(itemPath);
 
+      const previousPath = deps.getCurrentPath();
       deps.setCurrentPath(itemPath);
       deps.addressInput.value = itemPath;
       deps.updateBreadcrumb(itemPath);
@@ -564,6 +574,11 @@ export function createColumnViewController(deps: ColumnViewDeps) {
 
       if (clickRenderId === columnViewRenderId && newPane) {
         deps.columnView.appendChild(newPane);
+      } else if (clickRenderId === columnViewRenderId && !newPane) {
+        deps.setCurrentPath(previousPath);
+        deps.addressInput.value = previousPath;
+        deps.updateBreadcrumb(previousPath);
+        columnPaths.pop();
       }
 
       setTimeout(() => {

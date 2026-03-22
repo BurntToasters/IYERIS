@@ -4,10 +4,9 @@ type ZoomConfig = {
   setZoomLevel: (level: number) => Promise<{ success: boolean }>;
 };
 
-let currentZoomLevel = 1.0;
-let zoomPopupTimeout: ReturnType<typeof setTimeout> | null = null;
-
 export function createZoomController(config: ZoomConfig) {
+  let currentZoomLevel = 1.0;
+  let zoomPopupTimeout: ReturnType<typeof setTimeout> | null = null;
   async function updateZoomLevel(newZoom: number) {
     currentZoomLevel = Math.max(0.5, Math.min(2.0, newZoom));
     const result = await config.setZoomLevel(currentZoomLevel);

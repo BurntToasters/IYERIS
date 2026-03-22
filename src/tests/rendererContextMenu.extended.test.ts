@@ -53,7 +53,7 @@ describe('handleContextMenuAction - all branches', () => {
       value: { writeText: vi.fn().mockResolvedValue(undefined) },
       configurable: true,
     });
-    Object.defineProperty(window, 'electronAPI', {
+    Object.defineProperty(window, 'tauriAPI', {
       value: {
         openTerminal: vi.fn().mockResolvedValue({ success: true }),
         getItemProperties: vi.fn().mockResolvedValue({ success: true, properties: { size: 100 } }),
@@ -151,7 +151,7 @@ describe('handleContextMenuAction - all branches', () => {
     const ctrl = createContextMenuController(deps);
     const item = { path: '/mydir', name: 'mydir', isDirectory: true } as FileItem;
     await ctrl.handleContextMenuAction('open-terminal', item);
-    expect(window.electronAPI.openTerminal).toHaveBeenCalledWith('/mydir');
+    expect(window.tauriAPI.openTerminal).toHaveBeenCalledWith('/mydir');
   });
 
   it('handles "open-terminal" for file (uses dirname)', async () => {
@@ -160,12 +160,12 @@ describe('handleContextMenuAction - all branches', () => {
     const item = { path: '/dir/file.txt', name: 'file.txt', isDirectory: false } as FileItem;
     await ctrl.handleContextMenuAction('open-terminal', item);
 
-    expect(window.electronAPI.openTerminal).toHaveBeenCalledWith('/dir');
+    expect(window.tauriAPI.openTerminal).toHaveBeenCalledWith('/dir');
   });
 
   it('handles "open-terminal" failure', async () => {
     const deps = createDeps();
-    (window.electronAPI as unknown as { openTerminal: ReturnType<typeof vi.fn> }).openTerminal = vi
+    (window.tauriAPI as unknown as { openTerminal: ReturnType<typeof vi.fn> }).openTerminal = vi
       .fn()
       .mockResolvedValue({ success: false, error: 'no terminal' });
     const ctrl = createContextMenuController(deps);
@@ -185,7 +185,7 @@ describe('handleContextMenuAction - all branches', () => {
   it('handles "properties" failure', async () => {
     const deps = createDeps();
     (
-      window.electronAPI as unknown as { getItemProperties: ReturnType<typeof vi.fn> }
+      window.tauriAPI as unknown as { getItemProperties: ReturnType<typeof vi.fn> }
     ).getItemProperties = vi.fn().mockResolvedValue({ success: false, error: 'access denied' });
     const ctrl = createContextMenuController(deps);
     const item = { path: '/file.txt', name: 'file.txt', isDirectory: false } as FileItem;
@@ -249,7 +249,7 @@ describe('handleContextMenuAction - all branches', () => {
 
 describe('handleEmptySpaceContextMenuAction - all branches', () => {
   beforeEach(() => {
-    Object.defineProperty(window, 'electronAPI', {
+    Object.defineProperty(window, 'tauriAPI', {
       value: {
         openTerminal: vi.fn().mockResolvedValue({ success: true }),
       },
@@ -292,13 +292,13 @@ describe('handleEmptySpaceContextMenuAction - all branches', () => {
     deps.getCurrentPath.mockReturnValue('/workspace');
     const ctrl = createContextMenuController(deps);
     await ctrl.handleEmptySpaceContextMenuAction('open-terminal');
-    expect(window.electronAPI.openTerminal).toHaveBeenCalledWith('/workspace');
+    expect(window.tauriAPI.openTerminal).toHaveBeenCalledWith('/workspace');
   });
 
   it('handles "open-terminal" failure', async () => {
     const deps = createDeps();
     deps.getCurrentPath.mockReturnValue('/workspace');
-    (window.electronAPI as unknown as { openTerminal: ReturnType<typeof vi.fn> }).openTerminal = vi
+    (window.tauriAPI as unknown as { openTerminal: ReturnType<typeof vi.fn> }).openTerminal = vi
       .fn()
       .mockResolvedValue({ success: false, error: 'no shell' });
     const ctrl = createContextMenuController(deps);
@@ -355,7 +355,7 @@ describe('handleKeyboardNavigation - context menu ArrowDown/ArrowUp (line 365)',
       value: vi.fn(),
       configurable: true,
     });
-    Object.defineProperty(window, 'electronAPI', {
+    Object.defineProperty(window, 'tauriAPI', {
       value: {
         openTerminal: vi.fn().mockResolvedValue({ success: true }),
         getItemProperties: vi.fn().mockResolvedValue({ success: true, properties: {} }),
@@ -440,7 +440,7 @@ describe('handleKeyboardNavigation - empty space context menu (lines 371-383)', 
       value: vi.fn(),
       configurable: true,
     });
-    Object.defineProperty(window, 'electronAPI', {
+    Object.defineProperty(window, 'tauriAPI', {
       value: {
         openTerminal: vi.fn().mockResolvedValue({ success: true }),
         getItemProperties: vi.fn().mockResolvedValue({ success: true, properties: {} }),
@@ -510,7 +510,7 @@ describe('handleKeyboardNavigation - returns false when no menu is open (line 39
       value: vi.fn(),
       configurable: true,
     });
-    Object.defineProperty(window, 'electronAPI', {
+    Object.defineProperty(window, 'tauriAPI', {
       value: {
         openTerminal: vi.fn().mockResolvedValue({ success: true }),
         getItemProperties: vi.fn().mockResolvedValue({ success: true, properties: {} }),
@@ -556,7 +556,7 @@ describe('getContextMenuData (line 394)', () => {
       value: vi.fn(),
       configurable: true,
     });
-    Object.defineProperty(window, 'electronAPI', {
+    Object.defineProperty(window, 'tauriAPI', {
       value: {
         openTerminal: vi.fn().mockResolvedValue({ success: true }),
         getItemProperties: vi.fn().mockResolvedValue({ success: true, properties: {} }),

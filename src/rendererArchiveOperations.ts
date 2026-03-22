@@ -145,7 +145,7 @@ export function createArchiveOperationsController(deps: ArchiveOperationsDeps) {
       item.innerHTML = `
       <div class="archive-operation-header">
         <div class="archive-operation-title">
-          <img src="../assets/twemoji/${icon}.svg" class="twemoji" alt="${iconEmoji}" draggable="false" />
+          <img src="/twemoji/${icon}.svg" class="twemoji" alt="${iconEmoji}" draggable="false" />
           <span class="archive-operation-name" title="${escapeHtml(operation.name)}">${title}: ${escapeHtml(operation.name)}</span>
         </div>
         ${!operation.aborted ? `<button class="archive-operation-cancel" data-id="${escapeHtml(id)}">Cancel</button>` : ''}

@@ -49,6 +49,7 @@ export function createContextMenuController(deps: ContextMenuDeps) {
 
   let elContextMenu: HTMLElement | null = null;
   let elEmptySpaceContextMenu: HTMLElement | null = null;
+  let openWithMouseEnterCleanup: (() => void) | null = null;
   let elAddToBookmarks: HTMLElement | null = null;
   let elChangeFolderIcon: HTMLElement | null = null;
   let elCopyPath: HTMLElement | null = null;
@@ -258,30 +259,34 @@ export function createContextMenuController(deps: ContextMenuDeps) {
   }
 
   async function handleEmptySpaceContextMenuAction(action: string | undefined) {
-    switch (action) {
-      case 'new-folder':
-        await deps.createNewFolderWithInlineRename();
-        break;
+    try {
+      switch (action) {
+        case 'new-folder':
+          await deps.createNewFolderWithInlineRename();
+          break;
 
-      case 'new-file':
-        await deps.createNewFileWithInlineRename();
-        break;
+        case 'new-file':
+          await deps.createNewFileWithInlineRename();
+          break;
 
-      case 'paste':
-        await deps.pasteFromClipboard();
-        break;
+        case 'paste':
+          await deps.pasteFromClipboard();
+          break;
 
-      case 'refresh':
-        await deps.navigateTo(deps.getCurrentPath());
-        break;
+        case 'refresh':
+          await deps.navigateTo(deps.getCurrentPath());
+          break;
 
-      case 'open-terminal': {
-        const terminalResult = await window.electronAPI.openTerminal(deps.getCurrentPath());
-        if (!terminalResult.success) {
-          deps.showToast(terminalResult.error || 'Failed to open terminal', 'Error', 'error');
+        case 'open-terminal': {
+          const terminalResult = await window.tauriAPI.openTerminal(deps.getCurrentPath());
+          if (!terminalResult.success) {
+            deps.showToast(terminalResult.error || 'Failed to open terminal', 'Error', 'error');
+          }
+          break;
         }
-        break;
       }
+    } catch {
+      deps.showToast('Action failed', 'Error', 'error');
     }
 
     hideEmptySpaceContextMenu();
@@ -292,148 +297,152 @@ export function createContextMenuController(deps: ContextMenuDeps) {
     item: FileItem,
     format?: string
   ) {
-    switch (action) {
-      case 'open':
-        await deps.openFileEntry(item);
-        break;
+    try {
+      switch (action) {
+        case 'open':
+          await deps.openFileEntry(item);
+          break;
 
-      case 'open-in-new-tab':
-        if (item.isDirectory) {
-          await deps.addNewTab(item.path);
-        }
-        break;
+        case 'open-in-new-tab':
+          if (item.isDirectory) {
+            await deps.addNewTab(item.path);
+          }
+          break;
 
-      case 'show-package-contents':
-        if (item.isAppBundle) {
-          deps.navigateTo(item.path);
-        }
-        break;
+        case 'show-package-contents':
+          if (item.isAppBundle) {
+            void deps.navigateTo(item.path);
+          }
+          break;
 
-      case 'preview-pdf':
-        await deps.showQuickLookForFile(item);
-        break;
+        case 'preview-pdf':
+          await deps.showQuickLookForFile(item);
+          break;
 
-      case 'rename': {
-        const fileItem = deps.getFileElementMap().get(item.path);
-        if (fileItem) {
-          deps.startInlineRename(fileItem, item.name, item.path);
-        }
-        break;
-      }
-
-      case 'copy':
-        deps.copyToClipboard();
-        break;
-
-      case 'cut':
-        deps.cutToClipboard();
-        break;
-
-      case 'copy-path':
-        try {
-          await navigator.clipboard.writeText(item.path);
-          deps.showToast('File path copied to clipboard', 'Success', 'success');
-        } catch {
-          deps.showToast('Failed to copy file path', 'Error', 'error');
-        }
-        break;
-
-      case 'add-to-bookmarks':
-        if (item.isDirectory) {
-          await deps.addBookmarkByPath(item.path);
-        }
-        break;
-
-      case 'change-folder-icon':
-        if (item.isDirectory) {
-          deps.showFolderIconPicker(item.path);
-        }
-        break;
-
-      case 'open-terminal': {
-        const terminalPath = item.isDirectory ? item.path : path.dirname(item.path);
-        const terminalResult = await window.electronAPI.openTerminal(terminalPath);
-        if (!terminalResult.success) {
-          deps.showToast(terminalResult.error || 'Failed to open terminal', 'Error', 'error');
-        }
-        break;
-      }
-
-      case 'properties': {
-        const propsResult = await window.electronAPI.getItemProperties(item.path);
-        if (!propsResult.success) {
-          deps.showToast(
-            propsResult.error || 'Failed to get properties',
-            'Error Getting Properties',
-            'error'
-          );
+        case 'rename': {
+          const fileItem = deps.getFileElementMap().get(item.path);
+          if (fileItem) {
+            deps.startInlineRename(fileItem, item.name, item.path);
+          }
           break;
         }
-        deps.showPropertiesDialog(propsResult.properties);
-        break;
-      }
 
-      case 'delete':
-        await deps.deleteSelected();
-        break;
+        case 'copy':
+          deps.copyToClipboard();
+          break;
 
-      case 'compress':
-        await deps.handleCompress(format || 'zip');
-        break;
+        case 'cut':
+          deps.cutToClipboard();
+          break;
 
-      case 'compress-advanced':
-        deps.showCompressOptionsModal();
-        break;
-
-      case 'extract':
-        deps.showExtractModal(item.path, item.name);
-        break;
-
-      case 'batch-rename':
-        deps.showBatchRenameModal();
-        break;
-
-      case 'create-symlink': {
-        const linkName = `${item.name} - Link`;
-        const linkPath = path.join(deps.getCurrentPath(), linkName);
-        try {
-          const result = await window.electronAPI.createSymlink(item.path, linkPath);
-          if (result.success) {
-            deps.showToast(`Created symbolic link "${linkName}"`, 'Symlink Created', 'success');
-            deps.navigateTo(deps.getCurrentPath());
-          } else {
-            deps.showToast(result.error || 'Failed to create symlink', 'Error', 'error');
+        case 'copy-path':
+          try {
+            await window.tauriAPI.writeToSystemClipboard(item.path);
+            deps.showToast('File path copied to clipboard', 'Success', 'success');
+          } catch {
+            deps.showToast('Failed to copy file path', 'Error', 'error');
           }
-        } catch {
-          deps.showToast('Failed to create symbolic link', 'Error', 'error');
+          break;
+
+        case 'add-to-bookmarks':
+          if (item.isDirectory) {
+            await deps.addBookmarkByPath(item.path);
+          }
+          break;
+
+        case 'change-folder-icon':
+          if (item.isDirectory) {
+            deps.showFolderIconPicker(item.path);
+          }
+          break;
+
+        case 'open-terminal': {
+          const terminalPath = item.isDirectory ? item.path : path.dirname(item.path);
+          const terminalResult = await window.tauriAPI.openTerminal(terminalPath);
+          if (!terminalResult.success) {
+            deps.showToast(terminalResult.error || 'Failed to open terminal', 'Error', 'error');
+          }
+          break;
         }
-        break;
-      }
 
-      case 'paste-into':
-        if (item.isDirectory) {
-          await deps.pasteIntoFolder(item.path);
+        case 'properties': {
+          const propsResult = await window.tauriAPI.getItemProperties(item.path);
+          if (!propsResult.success) {
+            deps.showToast(
+              propsResult.error || 'Failed to get properties',
+              'Error Getting Properties',
+              'error'
+            );
+            break;
+          }
+          deps.showPropertiesDialog(propsResult.properties);
+          break;
         }
-        break;
 
-      case 'duplicate': {
-        const selected = Array.from(deps.getSelectedItems());
-        const pathsToDuplicate = selected.length > 0 ? selected : [item.path];
-        await deps.duplicateItems(pathsToDuplicate);
-        break;
+        case 'delete':
+          await deps.deleteSelected();
+          break;
+
+        case 'compress':
+          await deps.handleCompress(format || 'zip');
+          break;
+
+        case 'compress-advanced':
+          deps.showCompressOptionsModal();
+          break;
+
+        case 'extract':
+          deps.showExtractModal(item.path, item.name);
+          break;
+
+        case 'batch-rename':
+          deps.showBatchRenameModal();
+          break;
+
+        case 'create-symlink': {
+          const linkName = `${item.name} - Link`;
+          const linkPath = path.join(deps.getCurrentPath(), linkName);
+          try {
+            const result = await window.tauriAPI.createSymlink(item.path, linkPath);
+            if (result.success) {
+              deps.showToast(`Created symbolic link "${linkName}"`, 'Symlink Created', 'success');
+              void deps.navigateTo(deps.getCurrentPath());
+            } else {
+              deps.showToast(result.error || 'Failed to create symlink', 'Error', 'error');
+            }
+          } catch {
+            deps.showToast('Failed to create symbolic link', 'Error', 'error');
+          }
+          break;
+        }
+
+        case 'paste-into':
+          if (item.isDirectory) {
+            await deps.pasteIntoFolder(item.path);
+          }
+          break;
+
+        case 'duplicate': {
+          const selected = Array.from(deps.getSelectedItems());
+          const pathsToDuplicate = selected.length > 0 ? selected : [item.path];
+          await deps.duplicateItems(pathsToDuplicate);
+          break;
+        }
+
+        case 'move-to':
+          await deps.moveSelectedToFolder();
+          break;
+
+        case 'copy-to':
+          await deps.copySelectedToFolder();
+          break;
+
+        case 'share':
+          await deps.shareItems([item.path]);
+          break;
       }
-
-      case 'move-to':
-        await deps.moveSelectedToFolder();
-        break;
-
-      case 'copy-to':
-        await deps.copySelectedToFolder();
-        break;
-
-      case 'share':
-        await deps.shareItems([item.path]);
-        break;
+    } catch {
+      deps.showToast('Action failed', 'Error', 'error');
     }
   }
 
@@ -531,6 +540,12 @@ export function createContextMenuController(deps: ContextMenuDeps) {
     const panel = elOpenWithAppsPanel;
     if (!panel) return;
 
+    // Remove any stale mouseenter listener from a previous showContextMenu call
+    if (openWithMouseEnterCleanup) {
+      openWithMouseEnterCleanup();
+      openWithMouseEnterCleanup = null;
+    }
+
     panel.innerHTML = '<div class="open-with-loading">Loading apps...</div>';
 
     let loaded = false;
@@ -539,7 +554,7 @@ export function createContextMenuController(deps: ContextMenuDeps) {
       loaded = true;
 
       try {
-        const result = await window.electronAPI.getOpenWithApps(item.path);
+        const result = await window.tauriAPI.getOpenWithApps(item.path);
         if (!result.success || !result.apps || result.apps.length === 0) {
           panel.innerHTML = '<div class="open-with-loading">No apps found</div>';
           return;
@@ -556,7 +571,7 @@ export function createContextMenuController(deps: ContextMenuDeps) {
             e.stopPropagation();
             hideContextMenu();
             try {
-              const openResult = await window.electronAPI.openFileWithApp(item.path, app.id);
+              const openResult = await window.tauriAPI.openFileWithApp(item.path, app.id);
               if (!openResult.success) {
                 deps.showToast(openResult.error || 'Failed to open file', 'Error', 'error');
               }
@@ -571,7 +586,9 @@ export function createContextMenuController(deps: ContextMenuDeps) {
       }
     };
 
-    submenuContainer.addEventListener('mouseenter', () => void loadApps(), { once: true });
+    const handler = () => void loadApps();
+    submenuContainer.addEventListener('mouseenter', handler, { once: true });
+    openWithMouseEnterCleanup = () => submenuContainer.removeEventListener('mouseenter', handler);
   }
 
   return {

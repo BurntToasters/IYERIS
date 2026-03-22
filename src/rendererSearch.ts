@@ -22,6 +22,7 @@ type SearchDeps = {
   debouncedSaveSettings: () => void;
   saveSettingsWithTimestamp: (settings: Settings) => Promise<{ success: boolean; error?: string }>;
   getFileGrid: () => HTMLElement | null;
+  setHomeViewActive: (active: boolean) => void;
   searchDebounceMs: number;
   searchHistoryMax: number;
 };
@@ -116,7 +117,7 @@ export function createSearchController(deps: SearchDeps) {
       : 'Local Search (Current Folder)';
     const img = searchScopeToggle.querySelector('img');
     if (img) {
-      img.src = global ? '../assets/twemoji/1f30d.svg' : '../assets/twemoji/1f4c1.svg';
+      img.src = global ? '/twemoji/1f30d.svg' : '/twemoji/1f4c1.svg';
       img.alt = global ? '🌍' : '📁';
     }
   }
@@ -170,7 +171,7 @@ export function createSearchController(deps: SearchDeps) {
 
   function cancelActiveSearch(): void {
     if (!activeSearchOperationId) return;
-    window.electronAPI.cancelSearch(activeSearchOperationId).catch(ignoreError);
+    window.tauriAPI.cancelSearch(activeSearchOperationId).catch(ignoreError);
     activeSearchOperationId = null;
   }
 
@@ -304,152 +305,167 @@ export function createSearchController(deps: SearchDeps) {
   }
 
   async function performSearch() {
-    ensureElements();
-    if (!searchInput) return;
-    const query = searchInput.value.trim();
-    if (!query) {
-      searchRequestId += 1;
-      cancelActiveSearch();
-      return;
-    }
-
-    if (!isGlobalSearch && isHomeViewPath(deps.getCurrentPath())) {
-      deps.showToast('Open a folder or use global search', 'Search', 'info');
-      return;
-    }
-
-    if (!isGlobalSearch && !deps.getCurrentPath()) return;
-
-    const currentRequestId = ++searchRequestId;
-    cancelActiveSearch();
-    const operationId = deps.createDirectoryOperationId('search');
-    activeSearchOperationId = operationId;
-
-    addToSearchHistory(query);
-
-    deps.showLoading('Searching...');
-    const fileGrid = deps.getFileGrid();
-    if (fileGrid) clearHtml(fileGrid);
-
-    let result;
-    const hasFilters = hasActiveFilters() || searchInContents || isRegexMode;
-    if (isRegexMode) {
-      currentSearchFilters.regex = true;
-      try {
-        new RegExp(query);
-      } catch {
-        deps.hideLoading();
-        deps.showToast('Invalid regular expression pattern', 'Search', 'warning');
-        searchInput?.classList.add('input-error');
-        activeSearchOperationId = null;
+    try {
+      ensureElements();
+      if (!searchInput) return;
+      const query = searchInput.value.trim();
+      if (!query) {
+        searchRequestId += 1;
+        cancelActiveSearch();
         return;
       }
-      searchInput?.classList.remove('input-error');
-    } else {
-      delete currentSearchFilters.regex;
-      searchInput?.classList.remove('input-error');
-    }
 
-    if (isGlobalSearch) {
-      if (searchInContents) {
-        result = await window.electronAPI.searchFilesWithContentGlobal(
-          query,
-          hasFilters ? currentSearchFilters : undefined,
-          operationId
-        );
+      if (!isGlobalSearch && isHomeViewPath(deps.getCurrentPath())) {
+        deps.showToast('Open a folder or use global search', 'Search', 'info');
+        return;
+      }
+
+      if (!isGlobalSearch && !deps.getCurrentPath()) return;
+
+      const currentRequestId = ++searchRequestId;
+      cancelActiveSearch();
+      const operationId = deps.createDirectoryOperationId('search');
+      activeSearchOperationId = operationId;
+
+      // Validate regex BEFORE touching history or clearing the grid
+      const hasFilters = hasActiveFilters() || searchInContents || isRegexMode;
+      if (isRegexMode) {
+        currentSearchFilters.regex = true;
+        try {
+          new RegExp(query);
+        } catch {
+          deps.showToast('Invalid regular expression pattern', 'Search', 'warning');
+          searchInput?.classList.add('input-error');
+          activeSearchOperationId = null;
+          return;
+        }
+        searchInput?.classList.remove('input-error');
+      } else {
+        delete currentSearchFilters.regex;
+        searchInput?.classList.remove('input-error');
+      }
+
+      addToSearchHistory(query);
+
+      deps.showLoading('Searching...');
+
+      let result;
+
+      if (isHomeViewPath(deps.getCurrentPath())) {
+        deps.setHomeViewActive(false);
+      }
+
+      if (isGlobalSearch) {
+        if (searchInContents) {
+          result = await window.tauriAPI.searchFilesWithContentGlobal(
+            query,
+            hasFilters ? currentSearchFilters : undefined,
+            operationId
+          );
+          if (currentRequestId !== searchRequestId) return;
+          const fileGrid = deps.getFileGrid();
+          if (fileGrid) clearHtml(fileGrid);
+
+          if (!result.success) {
+            if (result.error !== 'Calculation cancelled') {
+              if (result.error === 'Indexer is disabled') {
+                deps.showToast(
+                  'File indexer is disabled. Enable it in settings to use global search.',
+                  'Index Disabled',
+                  'warning'
+                );
+              } else {
+                deps.showToast(result.error || 'Search failed', 'Search Error', 'error');
+              }
+            }
+          } else {
+            deps.setAllFiles(result.results);
+            deps.renderFiles(result.results, query);
+            if (result.results.length === 0) showSearchEmptyState(query);
+            else showResultsCapBanner(result.results.length);
+          }
+        } else {
+          result = await window.tauriAPI.searchIndex(query, operationId);
+          if (currentRequestId !== searchRequestId) return;
+          const fileGrid2 = deps.getFileGrid();
+          if (fileGrid2) clearHtml(fileGrid2);
+
+          if (!result.success) {
+            if (result.error !== 'Calculation cancelled') {
+              if (result.error === 'Indexer is disabled') {
+                deps.showToast(
+                  'File indexer is disabled. Enable it in settings to use global search.',
+                  'Index Disabled',
+                  'warning'
+                );
+              } else {
+                deps.showToast(result.error || 'Search failed', 'Search Error', 'error');
+              }
+            }
+          } else {
+            const fileItems: FileItem[] = [];
+
+            for (const entry of result.results) {
+              const isHidden = entry.name.startsWith('.');
+
+              fileItems.push({
+                name: entry.name,
+                path: entry.path,
+                isDirectory: entry.isDirectory,
+                isFile: entry.isFile,
+                size: entry.size,
+                modified: entry.modified,
+                isHidden,
+              });
+            }
+
+            deps.setAllFiles(fileItems);
+            deps.renderFiles(fileItems, query);
+            if (fileItems.length === 0) showSearchEmptyState(query);
+            else showResultsCapBanner(fileItems.length);
+          }
+        }
+      } else {
+        if (searchInContents) {
+          result = await window.tauriAPI.searchFilesWithContent(
+            deps.getCurrentPath(),
+            query,
+            hasFilters ? currentSearchFilters : undefined,
+            operationId
+          );
+        } else {
+          result = await window.tauriAPI.searchFiles(
+            deps.getCurrentPath(),
+            query,
+            hasFilters ? currentSearchFilters : undefined,
+            operationId
+          );
+        }
         if (currentRequestId !== searchRequestId) return;
+        const fileGrid3 = deps.getFileGrid();
+        if (fileGrid3) clearHtml(fileGrid3);
 
         if (!result.success) {
           if (result.error !== 'Calculation cancelled') {
-            if (result.error === 'Indexer is disabled') {
-              deps.showToast(
-                'File indexer is disabled. Enable it in settings to use global search.',
-                'Index Disabled',
-                'warning'
-              );
-            } else {
-              deps.showToast(result.error || 'Search failed', 'Search Error', 'error');
-            }
+            deps.showToast(result.error || 'Search failed', 'Search Error', 'error');
           }
         } else {
           deps.setAllFiles(result.results);
-          deps.renderFiles(result.results, query);
+          deps.renderFiles(result.results, searchInContents ? query : undefined);
           if (result.results.length === 0) showSearchEmptyState(query);
           else showResultsCapBanner(result.results.length);
         }
-      } else {
-        result = await window.electronAPI.searchIndex(query, operationId);
-        if (currentRequestId !== searchRequestId) return;
-
-        if (!result.success) {
-          if (result.error !== 'Calculation cancelled') {
-            if (result.error === 'Indexer is disabled') {
-              deps.showToast(
-                'File indexer is disabled. Enable it in settings to use global search.',
-                'Index Disabled',
-                'warning'
-              );
-            } else {
-              deps.showToast(result.error || 'Search failed', 'Search Error', 'error');
-            }
-          }
-        } else {
-          const fileItems: FileItem[] = [];
-
-          for (const entry of result.results) {
-            const isHidden = entry.name.startsWith('.');
-
-            fileItems.push({
-              name: entry.name,
-              path: entry.path,
-              isDirectory: entry.isDirectory,
-              isFile: entry.isFile,
-              size: entry.size,
-              modified: entry.modified,
-              isHidden,
-            });
-          }
-
-          deps.setAllFiles(fileItems);
-          deps.renderFiles(fileItems, query);
-          if (fileItems.length === 0) showSearchEmptyState(query);
-          else showResultsCapBanner(fileItems.length);
-        }
       }
-    } else {
-      if (searchInContents) {
-        result = await window.electronAPI.searchFilesWithContent(
-          deps.getCurrentPath(),
-          query,
-          hasFilters ? currentSearchFilters : undefined,
-          operationId
-        );
-      } else {
-        result = await window.electronAPI.searchFiles(
-          deps.getCurrentPath(),
-          query,
-          hasFilters ? currentSearchFilters : undefined,
-          operationId
-        );
-      }
+
       if (currentRequestId !== searchRequestId) return;
-
-      if (!result.success) {
-        if (result.error !== 'Calculation cancelled') {
-          deps.showToast(result.error || 'Search failed', 'Search Error', 'error');
-        }
-      } else {
-        deps.setAllFiles(result.results);
-        deps.renderFiles(result.results, searchInContents ? query : undefined);
-        if (result.results.length === 0) showSearchEmptyState(query);
-        else showResultsCapBanner(result.results.length);
-      }
+      deps.hideLoading();
+      deps.updateStatusBar();
+      activeSearchOperationId = null;
+    } catch (error) {
+      deps.hideLoading();
+      deps.showToast('Search failed unexpectedly', 'Search Error', 'error');
+      activeSearchOperationId = null;
     }
-
-    if (currentRequestId !== searchRequestId) return;
-    deps.hideLoading();
-    deps.updateStatusBar();
-    activeSearchOperationId = null;
   }
 
   function addToSearchHistory(query: string) {
@@ -610,6 +626,7 @@ export function createSearchController(deps: SearchDeps) {
     updateFilterBadge();
 
     searchInput.value = saved.query;
+    syncSaveBtnState();
     searchInput.focus();
     hideSearchHistoryDropdown();
     performSearch();

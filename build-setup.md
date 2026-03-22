@@ -29,7 +29,7 @@
   - **Build essentials:** `build-essential` (Ubuntu/Debian) or `make`, `gcc`, `g++` (Fedora)
   - **All packages:** `RPM`, `DEB`, `DPKG`, `dpkg-dev`, `Ruby`, `GPG/GnuPG`, `flatpak-builder`, `fakeroot`, `git`
   - **Flatpak:** (configured with [Flathub](https://flathub.org/en/setup)):
-  - **Required Flatpak runtimes:** `org.freedesktop.Platform`, `org.freedesktop.Sdk` (check [com.burnttoasters.iyeris.yml](com.burnttoasters.iyeris.yml) for specific versions)
+  - **Required Flatpak runtimes:** `org.freedesktop.Platform`, `org.freedesktop.Sdk` (check [run.rosie.iyeris.yml](run.rosie.iyeris.yml) for specific versions)
 - **Terminal:** Integrated terminal (or any 3rd party terminal) running Bash or ZSH.
 - **NodeJS:** Node.js `v24.13.0` or later (LTS): [https://nodejs.org/en/download](https://nodejs.org/en/download)
 
@@ -42,6 +42,4 @@
 
 ## Release Smoke
 
-- Script integrity smoke: `npm run smoke:scripts`
-- Large-directory fixture for performance/manual smoke:
-  - `npm run smoke:perf:fixture -- --files 15000 --buckets 60 --folders 300 --clean`
+- Full local release smoke: `npm run test:all`

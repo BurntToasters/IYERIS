@@ -121,6 +121,13 @@ export function createDiskSpaceController(deps: DiskSpaceControllerDeps) {
 
     diskSpaceDebounceTimer = setTimeout(async () => {
       const result = await deps.getDiskSpace(drivePath);
+      if (drivePath !== lastDiskSpacePath) {
+        diskSpaceDebounceTimer = null;
+        return;
+      }
+      const currentStatusDiskSpace = document.getElementById(
+        'status-disk-space'
+      ) as HTMLElement | null;
       if (
         result.success &&
         typeof result.total === 'number' &&
@@ -134,13 +141,13 @@ export function createDiskSpaceController(deps: DiskSpaceControllerDeps) {
           if (firstKey) diskSpaceCache.delete(firstKey);
         }
         diskSpaceCache.set(drivePath, { timestamp: Date.now(), total, free });
-        renderDiskSpace(statusDiskSpace, total, free);
+        if (currentStatusDiskSpace) renderDiskSpace(currentStatusDiskSpace, total, free);
       } else {
         const isUnc = platformOS === 'win32' && drivePath.startsWith('\\\\');
         const message = isUnc
           ? 'Disk space unavailable for network share'
           : 'Disk space unavailable';
-        renderDiskSpaceUnavailable(statusDiskSpace, message);
+        if (currentStatusDiskSpace) renderDiskSpaceUnavailable(currentStatusDiskSpace, message);
       }
       diskSpaceDebounceTimer = null;
     }, DISK_SPACE_DEBOUNCE_MS);

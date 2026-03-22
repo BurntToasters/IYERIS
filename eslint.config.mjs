@@ -11,7 +11,7 @@ export default tseslint.config(
     files: ['src/**/*.ts'],
     languageOptions: {
       parserOptions: {
-        project: ['./tsconfig.json', './tsconfig.renderer.json'],
+        project: ['./tsconfig.json'],
       },
     },
     rules: {
@@ -21,7 +21,10 @@ export default tseslint.config(
         'error',
         { disallowTypeAnnotations: false },
       ],
-      '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+      '@typescript-eslint/no-unused-vars': [
+        'warn',
+        { argsIgnorePattern: '^_', destructuredArrayIgnorePattern: '^_', ignoreRestSiblings: true },
+      ],
       '@typescript-eslint/no-require-imports': 'warn',
 
       // Console log
@@ -39,13 +42,12 @@ export default tseslint.config(
     },
   },
   {
-    files: ['src/main/platformUtils.ts'],
-    rules: {
-      '@typescript-eslint/no-require-imports': 'off',
-    },
-  },
-  {
     files: ['src/tests/**/*.ts'],
+    languageOptions: {
+      parserOptions: {
+        project: ['./tsconfig.test.json'],
+      },
+    },
     rules: {
       '@typescript-eslint/no-explicit-any': 'warn',
     },

@@ -209,7 +209,7 @@ export function createBookmarksController(deps: BookmarksDeps) {
         if (draggedPaths.length === 0) return;
         const targetPath = draggedPaths[0];
         try {
-          const propsResult = await window.electronAPI.getItemProperties(targetPath);
+          const propsResult = await window.tauriAPI.getItemProperties(targetPath);
           if (!propsResult.success) {
             showToast(propsResult.error || 'Failed to add bookmark', 'Bookmarks', 'error');
             return;

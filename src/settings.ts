@@ -340,13 +340,16 @@ export function sanitizeSettings(
   for (const key of [
     'maxThumbnailSizeMB',
     'maxPreviewSizeMB',
-    'iconSize',
     'sidebarWidth',
     'previewPanelWidth',
   ] as const) {
     const val = sanitizeNumber(raw[key]);
     if (val !== null && val > 0) assignKey(clean, key, val as Settings[keyof Settings]);
   }
+
+  // iconSize — clamp to slider bounds (32–128)
+  const iconSizeVal = sanitizeInt(raw.iconSize, 32, 128);
+  if (iconSizeVal !== null) clean.iconSize = iconSizeVal;
 
   // Non-negative integer settings
   for (const key of [
@@ -380,6 +383,10 @@ export function sanitizeSettings(
 
   const tabState = sanitizeTabState(raw.tabState);
   if (tabState) clean.tabState = tabState;
+
+  if (typeof raw._timestamp === 'number' && Number.isFinite(raw._timestamp)) {
+    clean._timestamp = raw._timestamp;
+  }
 
   if (Array.isArray(raw.savedSearches)) {
     clean.savedSearches = raw.savedSearches

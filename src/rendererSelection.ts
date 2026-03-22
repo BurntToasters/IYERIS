@@ -87,6 +87,7 @@ export function createSelectionController(deps: SelectionDeps) {
   }
 
   function clearSelection() {
+    lastSelectedIndex = -1;
     const scope = getSelectionScope();
     scope.querySelectorAll('.file-item.selected').forEach((item) => {
       setSelectedState(item as HTMLElement, false);

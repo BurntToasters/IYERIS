@@ -1,5 +1,6 @@
 import type { ToastAction } from './rendererToasts.js';
 import { rendererPath as path } from './rendererUtils.js';
+import { devLog } from './shared.js';
 
 const SPRING_LOAD_DELAY = 800;
 
@@ -21,6 +22,7 @@ interface DragDropConfig {
   clearSelection: () => void;
   navigateTo: (path: string) => Promise<void>;
   updateUndoRedoState: () => Promise<void>;
+  getPlatformOS: () => string;
 }
 
 export function createDragDropController(config: DragDropConfig) {
@@ -43,7 +45,7 @@ export function createDragDropController(config: DragDropConfig) {
       }
 
       if (
-        process.platform === 'win32' &&
+        config.getPlatformOS() === 'win32' &&
         url.hostname &&
         /^[A-Za-z]$/.test(url.hostname) &&
         decodedPath.startsWith('/')
@@ -51,12 +53,12 @@ export function createDragDropController(config: DragDropConfig) {
         return `${url.hostname.toUpperCase()}:${decodedPath.replace(/\//g, '\\')}`;
       }
 
-      if (process.platform === 'win32' && /^\/[A-Za-z]:[\\/]/.test(decodedPath)) {
+      if (config.getPlatformOS() === 'win32' && /^\/[A-Za-z]:[\\/]/.test(decodedPath)) {
         decodedPath = decodedPath.slice(1);
       }
 
       if (url.hostname && url.hostname !== 'localhost') {
-        if (process.platform === 'win32') {
+        if (config.getPlatformOS() === 'win32') {
           return `\\\\${url.hostname}${decodedPath.replace(/\//g, '\\')}`;
         }
         return `//${url.hostname}${decodedPath}`;
@@ -165,7 +167,7 @@ export function createDragDropController(config: DragDropConfig) {
             return fromFilePath;
           }
           try {
-            return window.electronAPI.getPathForFile?.(file) || '';
+            return window.tauriAPI.getPathForFile?.(file) || '';
           } catch {
             return '';
           }
@@ -175,7 +177,7 @@ export function createDragDropController(config: DragDropConfig) {
 
     if (draggedPaths.length === 0) {
       try {
-        const sharedData = await window.electronAPI.getDragData();
+        const sharedData = await window.tauriAPI.getDragData();
         if (sharedData && Array.isArray(sharedData.paths)) {
           draggedPaths = normalizeDraggedPaths(sharedData.paths);
         }
@@ -276,6 +278,7 @@ export function createDragDropController(config: DragDropConfig) {
     destPath: string,
     operation: 'copy' | 'move'
   ): Promise<void> {
+    devLog('DragDrop', `handleDrop: ${operation} ${sourcePaths.length} item(s) to ${destPath}`);
     const showToast = config.getShowToast();
     try {
       const conflictBehavior = (config.getCurrentSettings().fileConflictBehavior || 'ask') as
@@ -285,8 +288,8 @@ export function createDragDropController(config: DragDropConfig) {
         | 'overwrite';
       const result =
         operation === 'copy'
-          ? await window.electronAPI.copyItems(sourcePaths, destPath, conflictBehavior)
-          : await window.electronAPI.moveItems(sourcePaths, destPath, conflictBehavior);
+          ? await window.tauriAPI.copyItems(sourcePaths, destPath, conflictBehavior)
+          : await window.tauriAPI.moveItems(sourcePaths, destPath, conflictBehavior);
 
       if (!result.success) {
         showToast(result.error || `Failed to ${operation} items`, 'Error', 'error', [
@@ -302,7 +305,7 @@ export function createDragDropController(config: DragDropConfig) {
         'Success',
         'success'
       );
-      await window.electronAPI.clearDragData();
+      await window.tauriAPI.clearDragData();
 
       if (operation === 'move') {
         await config.updateUndoRedoState();
@@ -364,6 +367,7 @@ export function createDragDropController(config: DragDropConfig) {
       config.consumeEvent(e);
 
       fileGrid.classList.remove('drag-over');
+      hideDropIndicator();
 
       if (isDropTargetFileItem(e.target)) {
         return;
@@ -387,8 +391,6 @@ export function createDragDropController(config: DragDropConfig) {
       } catch (error) {
         console.error('Error handling drop:', error);
         config.getShowToast()('Failed to handle drop', 'Error', 'error');
-      } finally {
-        hideDropIndicator();
       }
     });
   }

@@ -102,12 +102,12 @@ function buildDOM() {
   `;
 }
 
-let mockElectronAPI: any;
+let mockTauriAPI: any;
 
 describe('rendererPreviews', () => {
   beforeEach(() => {
     buildDOM();
-    mockElectronAPI = {
+    mockTauriAPI = {
       getItemProperties: vi.fn().mockResolvedValue({
         success: true,
         properties: {
@@ -135,7 +135,7 @@ describe('rendererPreviews', () => {
         ],
       }),
     };
-    (window as any).electronAPI = mockElectronAPI;
+    (window as any).tauriAPI = mockTauriAPI;
 
     mockCreateQuicklookController.mockClear();
     mockCreateQuicklookController.mockReturnValue(mockQuicklookController);
@@ -152,7 +152,7 @@ describe('rendererPreviews', () => {
 
   afterEach(() => {
     document.body.innerHTML = '';
-    delete (window as any).electronAPI;
+    delete (window as any).tauriAPI;
   });
 
   describe('createPreviewController', () => {
@@ -324,7 +324,7 @@ describe('rendererPreviews', () => {
 
       ctrl.togglePreviewPanel();
 
-      expect(mockElectronAPI.readFileContent).not.toHaveBeenCalled();
+      expect(mockTauriAPI.readFileContent).not.toHaveBeenCalled();
     });
 
     it('does nothing if preview panel element is missing', () => {
@@ -529,7 +529,7 @@ describe('rendererPreviews', () => {
     });
 
     it('shows truncation notice for truncated content', async () => {
-      mockElectronAPI.readFileContent.mockResolvedValue({
+      mockTauriAPI.readFileContent.mockResolvedValue({
         success: true,
         content: 'Partial content...',
         isTruncated: true,
@@ -548,7 +548,7 @@ describe('rendererPreviews', () => {
     });
 
     it('shows error when readFileContent fails', async () => {
-      mockElectronAPI.readFileContent.mockResolvedValue({
+      mockTauriAPI.readFileContent.mockResolvedValue({
         success: false,
         error: 'Permission denied',
       });
@@ -687,7 +687,7 @@ describe('rendererPreviews', () => {
 
   describe('archive preview', () => {
     it('displays file and folder counts', async () => {
-      mockElectronAPI.listArchiveContents.mockResolvedValue({
+      mockTauriAPI.listArchiveContents.mockResolvedValue({
         success: true,
         entries: [
           { name: 'a.txt', isDirectory: false, size: 100 },
@@ -709,7 +709,7 @@ describe('rendererPreviews', () => {
     });
 
     it('shows singular for single file and folder', async () => {
-      mockElectronAPI.listArchiveContents.mockResolvedValue({
+      mockTauriAPI.listArchiveContents.mockResolvedValue({
         success: true,
         entries: [{ name: 'only.txt', isDirectory: false, size: 50 }],
       });
@@ -732,7 +732,7 @@ describe('rendererPreviews', () => {
         isDirectory: false,
         size: 10,
       }));
-      mockElectronAPI.listArchiveContents.mockResolvedValue({
+      mockTauriAPI.listArchiveContents.mockResolvedValue({
         success: true,
         entries,
       });
@@ -749,7 +749,7 @@ describe('rendererPreviews', () => {
     });
 
     it('shows error when archive listing fails', async () => {
-      mockElectronAPI.listArchiveContents.mockResolvedValue({
+      mockTauriAPI.listArchiveContents.mockResolvedValue({
         success: false,
         error: 'Corrupt archive',
       });
@@ -767,7 +767,7 @@ describe('rendererPreviews', () => {
     });
 
     it('shows error when listArchiveContents throws', async () => {
-      mockElectronAPI.listArchiveContents.mockRejectedValue(new Error('IO failure'));
+      mockTauriAPI.listArchiveContents.mockRejectedValue(new Error('IO failure'));
 
       const deps = createDeps();
       const ctrl = createPreviewController(deps as any);
@@ -801,7 +801,7 @@ describe('rendererPreviews', () => {
     });
 
     it('shows invalid PDF error when header check fails', async () => {
-      mockElectronAPI.readFileContent.mockResolvedValue({
+      mockTauriAPI.readFileContent.mockResolvedValue({
         success: true,
         content: 'NOT-A-PDF',
       });
@@ -822,7 +822,7 @@ describe('rendererPreviews', () => {
     });
 
     it('renders PDF viewer on success', async () => {
-      mockElectronAPI.readFileContent.mockResolvedValue({
+      mockTauriAPI.readFileContent.mockResolvedValue({
         success: true,
         content: '%PDF-1.4 dummy',
       });
@@ -855,7 +855,7 @@ describe('rendererPreviews', () => {
     });
 
     it('shows fallback when createPdfViewer throws', async () => {
-      mockElectronAPI.readFileContent.mockResolvedValue({
+      mockTauriAPI.readFileContent.mockResolvedValue({
         success: true,
         content: '%PDF-1.4 data',
       });
@@ -877,8 +877,8 @@ describe('rendererPreviews', () => {
       });
     });
 
-    it('fallback open button calls electronAPI.openFile', async () => {
-      mockElectronAPI.readFileContent.mockResolvedValue({
+    it('fallback open button calls tauriAPI.openFile', async () => {
+      mockTauriAPI.readFileContent.mockResolvedValue({
         success: true,
         content: '%PDF-1.4 data',
       });
@@ -898,7 +898,7 @@ describe('rendererPreviews', () => {
         const btn = content.querySelector('.preview-pdf-open-btn') as HTMLButtonElement;
         expect(btn).toBeTruthy();
         btn.click();
-        expect(mockElectronAPI.openFile).toHaveBeenCalledWith('/home/user/broken.pdf');
+        expect(mockTauriAPI.openFile).toHaveBeenCalledWith('/home/user/broken.pdf');
       });
     });
   });
@@ -1028,7 +1028,7 @@ describe('rendererPreviews', () => {
 
   describe('generateFileInfo', () => {
     it('includes created date when properties have it', async () => {
-      mockElectronAPI.getItemProperties.mockResolvedValue({
+      mockTauriAPI.getItemProperties.mockResolvedValue({
         success: true,
         properties: {
           name: 'test.xyz',
@@ -1056,7 +1056,7 @@ describe('rendererPreviews', () => {
     });
 
     it('omits created/accessed when properties lack them', async () => {
-      mockElectronAPI.getItemProperties.mockResolvedValue({
+      mockTauriAPI.getItemProperties.mockResolvedValue({
         success: true,
         properties: {
           name: 'test.xyz',
@@ -1083,8 +1083,8 @@ describe('rendererPreviews', () => {
   });
 
   describe('PDF open button in successful render', () => {
-    it('open button calls electronAPI.openFile', async () => {
-      mockElectronAPI.readFileContent.mockResolvedValue({
+    it('open button calls tauriAPI.openFile', async () => {
+      mockTauriAPI.readFileContent.mockResolvedValue({
         success: true,
         content: '%PDF-1.4 data',
       });
@@ -1113,14 +1113,14 @@ describe('rendererPreviews', () => {
         const btn = content.querySelector('.preview-pdf-open-btn') as HTMLButtonElement;
         expect(btn).toBeTruthy();
         btn.click();
-        expect(mockElectronAPI.openFile).toHaveBeenCalledWith('/home/user/doc.pdf');
+        expect(mockTauriAPI.openFile).toHaveBeenCalledWith('/home/user/doc.pdf');
       });
     });
   });
 
   describe('clearPreview with active PDF viewer', () => {
     it('destroys active PDF viewer on clear', async () => {
-      mockElectronAPI.readFileContent.mockResolvedValue({
+      mockTauriAPI.readFileContent.mockResolvedValue({
         success: true,
         content: '%PDF-1.4 data',
       });

@@ -14,6 +14,7 @@ const MIGRATION_RELEASE_URL = 'https://github.com/BurntToasters/IYERIS/releases/
 const MIGRATION_DISMISS_REVEAL_COUNT = 2;
 
 export function createSupportUiController(deps: SupportUiDeps) {
+  let licensesUiInitialized = false;
   function getRepositoryText(repository: unknown): string | null {
     if (typeof repository === 'string') {
       const trimmed = repository.trim();
@@ -109,7 +110,7 @@ export function createSupportUiController(deps: SupportUiDeps) {
       '<p style="text-align: center; color: var(--text-secondary);">Loading licenses...</p>';
 
     try {
-      const result = await window.electronAPI.getLicenses();
+      const result = await window.tauriAPI.getLicenses();
 
       if (!result.success) {
         licensesContent.innerHTML = `<p style="color: var(--error-color); text-align: center;">Error loading licenses: ${deps.escapeHtml(
@@ -182,8 +183,8 @@ export function createSupportUiController(deps: SupportUiDeps) {
     if (!licensesContent) return;
 
     const text = licensesContent.innerText;
-    navigator.clipboard
-      .writeText(text)
+    window.tauriAPI
+      .writeToSystemClipboard(text)
       .then(() => {
         const btn = document.getElementById('copy-licenses-btn');
         if (btn) {
@@ -200,6 +201,8 @@ export function createSupportUiController(deps: SupportUiDeps) {
   }
 
   function initLicensesUi(): void {
+    if (licensesUiInitialized) return;
+    licensesUiInitialized = true;
     document.getElementById('licenses-btn')?.addEventListener('click', showLicensesModal);
     document.getElementById('licenses-close')?.addEventListener('click', hideLicensesModal);
     document.getElementById('close-licenses-btn')?.addEventListener('click', hideLicensesModal);

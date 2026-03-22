@@ -1,5 +1,5 @@
 import type { FileItem, Settings } from './types';
-import { escapeHtml } from './shared.js';
+import { escapeHtml, sanitizeMarkdownHtml } from './shared.js';
 import { getById } from './rendererDom.js';
 import { encodeFileUrl, twemojiImg } from './rendererUtils.js';
 import { createPdfViewer, type PdfViewerHandle } from './rendererPdfViewer.js';
@@ -163,7 +163,7 @@ export function createQuicklookController(deps: QuicklookDeps) {
       quicklookContent.appendChild(container);
       quicklookInfo.textContent = quickInfo(file);
     } else if (PDF_EXTENSIONS.has(ext)) {
-      const headerResult = await window.electronAPI.readFileContent(file.path, 16);
+      const headerResult = await window.tauriAPI.readFileContent(file.path, 16);
       if (requestId !== quicklookRequestId || currentQuicklookFile?.path !== file.path) return;
       if (
         !headerResult.success ||
@@ -203,16 +203,18 @@ export function createQuicklookController(deps: QuicklookDeps) {
       }
       quicklookInfo.textContent = quickInfo(file, 'PDF \u2022 ');
     } else if (MARKDOWN_EXTENSIONS.has(ext)) {
-      const result = await window.electronAPI.readFileContent(file.path, 100 * 1024);
+      const result = await window.tauriAPI.readFileContent(file.path, 100 * 1024);
       if (requestId !== quicklookRequestId || currentQuicklookFile?.path !== file.path) return;
       if (result.success && typeof result.content === 'string') {
         const md = await loadMarked();
         if (requestId !== quicklookRequestId || currentQuicklookFile?.path !== file.path) return;
         if (md) {
-          const rendered = md.marked.parse(result.content, {
-            async: false,
-            breaks: true,
-          }) as string;
+          const rendered = sanitizeMarkdownHtml(
+            md.marked.parse(result.content, {
+              async: false,
+              breaks: true,
+            }) as string
+          );
           quicklookContent.innerHTML = `
           ${result.isTruncated ? `<div class="preview-truncated">${twemojiImg(String.fromCodePoint(0x26a0), 'twemoji')} File truncated to first 100KB</div>` : ''}
           <div class="preview-markdown">${rendered}</div>
@@ -228,7 +230,7 @@ export function createQuicklookController(deps: QuicklookDeps) {
         quicklookContent.innerHTML = `<div class="preview-error">Failed to load markdown</div>`;
       }
     } else if (TEXT_EXTENSIONS.has(ext)) {
-      const result = await window.electronAPI.readFileContent(file.path, 100 * 1024);
+      const result = await window.tauriAPI.readFileContent(file.path, 100 * 1024);
       if (requestId !== quicklookRequestId || currentQuicklookFile?.path !== file.path) {
         return;
       }
@@ -241,12 +243,18 @@ export function createQuicklookController(deps: QuicklookDeps) {
         quicklookInfo.textContent = quickInfo(file);
         const settings = deps.getCurrentSettings();
         if (lang && settings.enableSyntaxHighlighting) {
-          loadHighlightJs().then((hl) => {
-            if (requestId !== quicklookRequestId || currentQuicklookFile?.path !== file.path || !hl)
-              return;
-            const codeBlock = quicklookContent?.querySelector('code');
-            if (codeBlock) hl.highlightElement?.(codeBlock);
-          });
+          loadHighlightJs()
+            .then((hl) => {
+              if (
+                requestId !== quicklookRequestId ||
+                currentQuicklookFile?.path !== file.path ||
+                !hl
+              )
+                return;
+              const codeBlock = quicklookContent?.querySelector('code');
+              if (codeBlock) hl.highlightElement?.(codeBlock);
+            })
+            .catch(() => {});
         }
       } else {
         quicklookContent.innerHTML = `<div class="preview-error">Failed to load text</div>`;
@@ -276,6 +284,12 @@ export function createQuicklookController(deps: QuicklookDeps) {
     if (quicklookModal && (quicklookModal as PdfViewerElement).__pdfViewer) {
       (quicklookModal as PdfViewerElement).__pdfViewer!.destroy();
       (quicklookModal as PdfViewerElement).__pdfViewer = null;
+    }
+    if (quicklookContent) {
+      quicklookContent.querySelectorAll('video, audio').forEach((el) => {
+        (el as HTMLMediaElement).pause();
+        (el as HTMLMediaElement).removeAttribute('src');
+      });
     }
     if (quicklookModal) quicklookModal.style.display = 'none';
     if (quicklookModal) {
