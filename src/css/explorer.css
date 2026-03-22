@@ -25,6 +25,7 @@ body::before {
     radial-gradient(ellipse 120% 60% at 50% 120%, rgba(0, 0, 0, 0.25), transparent 60%);
   z-index: -1;
   pointer-events: none;
+  will-change: transform;
 }
 
 .glass-panel {
@@ -34,6 +35,7 @@ body::before {
   border: 1px solid var(--panel-border);
   box-shadow: var(--glass-shadow);
   border-radius: var(--radius-medium);
+  will-change: transform;
 }
 
 .container {
