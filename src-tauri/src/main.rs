@@ -87,6 +87,16 @@ fn main() {
     let dev_mode = args.iter().any(|a| a == "--dev" || a == "--verbose");
     DEV_MODE.store(dev_mode, Ordering::Relaxed);
 
+    #[cfg(target_os = "windows")]
+    if dev_mode {
+        use windows::Win32::System::Console::{AttachConsole, AllocConsole, ATTACH_PARENT_PROCESS};
+        unsafe {
+            if AttachConsole(ATTACH_PARENT_PROCESS).is_err() {
+                let _ = AllocConsole();
+            }
+        }
+    }
+
     // Must run before env_logger init to avoid set_var in a multi-threaded context
     #[cfg(target_os = "linux")]
     {

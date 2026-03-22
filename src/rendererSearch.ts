@@ -347,8 +347,6 @@ export function createSearchController(deps: SearchDeps) {
       addToSearchHistory(query);
 
       deps.showLoading('Searching...');
-      const fileGrid = deps.getFileGrid();
-      if (fileGrid) clearHtml(fileGrid);
 
       let result;
 
@@ -360,6 +358,8 @@ export function createSearchController(deps: SearchDeps) {
             operationId
           );
           if (currentRequestId !== searchRequestId) return;
+          const fileGrid = deps.getFileGrid();
+          if (fileGrid) clearHtml(fileGrid);
 
           if (!result.success) {
             if (result.error !== 'Calculation cancelled') {
@@ -382,6 +382,8 @@ export function createSearchController(deps: SearchDeps) {
         } else {
           result = await window.tauriAPI.searchIndex(query, operationId);
           if (currentRequestId !== searchRequestId) return;
+          const fileGrid2 = deps.getFileGrid();
+          if (fileGrid2) clearHtml(fileGrid2);
 
           if (!result.success) {
             if (result.error !== 'Calculation cancelled') {
@@ -435,6 +437,8 @@ export function createSearchController(deps: SearchDeps) {
           );
         }
         if (currentRequestId !== searchRequestId) return;
+        const fileGrid3 = deps.getFileGrid();
+        if (fileGrid3) clearHtml(fileGrid3);
 
         if (!result.success) {
           if (result.error !== 'Calculation cancelled') {

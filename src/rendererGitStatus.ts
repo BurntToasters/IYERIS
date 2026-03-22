@@ -151,11 +151,7 @@ export function createGitStatusController(deps: GitStatusDeps) {
       }
     }
 
-    if (getRenderedPaths) {
-      applyGitIndicatorsToPaths(Array.from(getRenderedPaths()));
-    } else {
-      applyGitIndicatorsToPaths(Array.from(currentGitStatuses.keys()));
-    }
+    applyGitIndicatorsToPaths(Array.from(currentGitStatuses.keys()));
   }
 
   function applyGitIndicatorsToPaths(paths: string[]): void {

@@ -103,6 +103,7 @@
   justify-content: center;
   z-index: 2000;
   animation: fadeIn 0.2s cubic-bezier(0.33, 1, 0.68, 1);
+  will-change: transform;
 }
 
 .modal {
@@ -196,7 +197,7 @@
 
 .modal-content {
   padding: 24px;
-  max-height: 500px;
+  max-height: min(500px, calc(100vh - 140px));
   overflow-y: auto;
 }
 

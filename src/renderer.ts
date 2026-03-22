@@ -1324,6 +1324,7 @@ async function navigateTo(path: string, skipHistoryUpdate = false, trigger = 'di
     }
 
     thumbnails.disconnectThumbnailObserver();
+    thumbnails.clearPendingThumbnailLoads();
 
     hideLoading();
 
@@ -1362,6 +1363,7 @@ async function navigateTo(path: string, skipHistoryUpdate = false, trigger = 'di
     }
 
     thumbnails.disconnectThumbnailObserver();
+    thumbnails.clearPendingThumbnailLoads();
 
     showLoading('Loading folder...');
     if (fileGrid) fileGrid.innerHTML = '';
@@ -1814,6 +1816,10 @@ function refresh(reason = 'unspecified') {
     });
     return;
   }
+  if (isSearchModeActive()) {
+    devLog('Refresh', 'Skipped refresh (search is active)', { reason, currentPath });
+    return;
+  }
   if (refreshDebounceTimer) {
     devLog('Refresh', 'Resetting pending refresh debounce', { reason, currentPath });
     clearTimeout(refreshDebounceTimer);
@@ -1822,7 +1828,7 @@ function refresh(reason = 'unspecified') {
   }
   refreshDebounceTimer = setTimeout(() => {
     refreshDebounceTimer = null;
-    if (!isNavigating && currentPath) {
+    if (!isNavigating && !isSearchModeActive() && currentPath) {
       devLog('Refresh', 'Executing debounced refresh', { reason, currentPath });
       navigateTo(currentPath, false, `refresh:${reason}`);
     } else {
@@ -1830,6 +1836,7 @@ function refresh(reason = 'unspecified') {
         reason,
         currentPath,
         isNavigating,
+        isSearchActive: isSearchModeActive(),
       });
     }
   }, 200);

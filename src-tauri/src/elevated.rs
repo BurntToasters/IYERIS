@@ -5,11 +5,6 @@ fn ps_escape(s: &str) -> String {
     s.replace('\'', "''")
 }
 
-#[cfg(target_os = "windows")]
-fn ps_escape_nested(s: &str) -> String {
-    s.replace('\'', "''''")
-}
-
 #[cfg(target_os = "macos")]
 fn shell_escape(s: &str) -> String {
     s.replace('\'', "'\\''")
@@ -109,31 +104,44 @@ async fn run_elevated_file_op(op: &str, source: &str, dest: Option<&str>) -> Res
     tokio::task::spawn_blocking(move || {
         #[cfg(target_os = "windows")]
         {
-            let src = ps_escape_nested(&source);
-            let dst = ps_escape_nested(dest.as_deref().unwrap_or(""));
             let script = match op.as_str() {
                 "copy" => format!(
-                    "Copy-Item -Path ''{}'' -Destination ''{}'' -Recurse -Force",
-                    src, dst
+                    "Copy-Item -LiteralPath '{}' -Destination '{}' -Recurse -Force",
+                    ps_escape(&source),
+                    ps_escape(dest.as_deref().unwrap_or(""))
                 ),
                 "move" => format!(
-                    "Move-Item -Path ''{}'' -Destination ''{}'' -Force",
-                    src, dst
+                    "Move-Item -LiteralPath '{}' -Destination '{}' -Force",
+                    ps_escape(&source),
+                    ps_escape(dest.as_deref().unwrap_or(""))
                 ),
-                "delete" => format!("Remove-Item -Path ''{}'' -Recurse -Force", src),
+                "delete" => format!(
+                    "Remove-Item -LiteralPath '{}' -Recurse -Force",
+                    ps_escape(&source)
+                ),
                 _ => return Err(format!("Unknown operation: {}", op)),
             };
 
+            let temp_dir = std::env::temp_dir();
+            let script_path = temp_dir.join(format!("iyeris_elevated_{}.ps1", std::process::id()));
+            std::fs::write(&script_path, &script)
+                .map_err(|e| format!("Failed to write temp script: {}", e))?;
+
             let output = {
                 use std::os::windows::process::CommandExt;
-                Command::new("powershell")
+                let result = Command::new("powershell")
                     .args([
                         "-Command",
-                        &format!("Start-Process powershell -ArgumentList '-Command {}' -Verb RunAs -Wait", script),
+                        &format!(
+                            "Start-Process powershell -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','{}' -Verb RunAs -Wait",
+                            ps_escape(&script_path.display().to_string())
+                        ),
                     ])
                     .creation_flags(0x08000000)
                     .output()
-                    .map_err(|e| e.to_string())?
+                    .map_err(|e| e.to_string());
+                let _ = std::fs::remove_file(&script_path);
+                result?
             };
 
             if !output.status.success() {
