@@ -18,7 +18,6 @@ const BUTTON_IDS = [
   'help-link',
   'heart-button',
   'status-version',
-  'status-eol-badge',
   'about-github-btn',
   'about-support-btn',
   'about-help-btn',
@@ -95,15 +94,6 @@ describe('rendererExternalLinks', () => {
     el.click();
     expect(deps.openExternal).toHaveBeenCalledWith(
       'https://github.com/BurntToasters/IYERIS/releases/tag/v0.1.0'
-    );
-  });
-
-  it('status-eol-badge opens latest release URL', () => {
-    const deps = makeDeps();
-    createExternalLinksController(deps).initExternalLinks();
-    document.getElementById('status-eol-badge')!.click();
-    expect(deps.openExternal).toHaveBeenCalledWith(
-      'https://github.com/BurntToasters/IYERIS/releases/latest'
     );
   });
 
