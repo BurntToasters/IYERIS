@@ -35,6 +35,8 @@ type BootstrapConfig = {
   getFolderTree: () => HTMLElement | null;
   onHomeSettingsChanged: (cb: () => void) => () => void;
   homeViewPath: string;
+  goUp: () => void;
+  showToast: (message: string, title?: string, type?: string) => void;
 };
 
 export function createBootstrapController(config: BootstrapConfig) {
@@ -157,7 +159,7 @@ export function createBootstrapController(config: BootstrapConfig) {
         : config.homeViewPath;
 
     config.setupEventListeners();
-    config.loadDrives();
+    void config.loadDrives();
     config.initializeTabs();
 
     await config.navigateTo(startupPath);
@@ -265,7 +267,7 @@ export function createBootstrapController(config: BootstrapConfig) {
         if (config.getCurrentPath()) {
           config.refresh('system-resumed');
         }
-        config.loadDrives();
+        void config.loadDrives();
       });
       config.getIpcCleanupFunctions().push(cleanupSystemResumed);
 
@@ -307,6 +309,13 @@ export function createBootstrapController(config: BootstrapConfig) {
         }
       );
       config.getIpcCleanupFunctions().push(cleanupDirectoryChanged);
+
+      const cleanupWatchedDirRemoved = window.tauriAPI.onWatchedDirRemoved(({ dirPath }) => {
+        devLog('Watcher', 'watched-dir-removed event received', { dirPath });
+        config.showToast('This folder was deleted.', 'Folder removed', 'warning');
+        config.goUp();
+      });
+      config.getIpcCleanupFunctions().push(cleanupWatchedDirRemoved);
 
       const cleanupSystemThemeChanged = window.tauriAPI.onSystemThemeChanged(({ isDarkMode }) => {
         const settings = config.getCurrentSettings();

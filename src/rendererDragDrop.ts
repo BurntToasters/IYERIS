@@ -367,6 +367,7 @@ export function createDragDropController(config: DragDropConfig) {
       config.consumeEvent(e);
 
       fileGrid.classList.remove('drag-over');
+      hideDropIndicator();
 
       if (isDropTargetFileItem(e.target)) {
         return;
@@ -390,8 +391,6 @@ export function createDragDropController(config: DragDropConfig) {
       } catch (error) {
         console.error('Error handling drop:', error);
         config.getShowToast()('Failed to handle drop', 'Error', 'error');
-      } finally {
-        hideDropIndicator();
       }
     });
   }

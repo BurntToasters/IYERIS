@@ -156,6 +156,9 @@ pub async fn search_files(
     let op_id = operation_id.unwrap_or_default();
     let parsed_filters = parse_filters(filters);
     let regex = if parsed_filters.regex {
+        if query.len() > 1024 {
+            return Err("Regex pattern too long (max 1024 characters)".to_string());
+        }
         Some(regex::Regex::new(&query).map_err(|e| format!("Invalid regex: {}", e))?)
     } else {
         None
@@ -252,6 +255,9 @@ pub async fn search_files_content(
     let op_id = operation_id.unwrap_or_default();
     let parsed_filters = parse_filters(filters);
     let regex = if parsed_filters.regex {
+        if query.len() > 1024 {
+            return Err("Regex pattern too long (max 1024 characters)".to_string());
+        }
         Some(regex::Regex::new(&query).map_err(|e| format!("Invalid regex: {}", e))?)
     } else {
         Some(

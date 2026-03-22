@@ -2,10 +2,12 @@ use std::process::Command;
 
 #[cfg(target_os = "windows")]
 fn ps_escape(s: &str) -> String {
-    s.replace('`', "``")
-        .replace('$', "`$")
-        .replace('"', "`\"")
-        .replace('\'', "''")
+    s.replace('\'', "''")
+}
+
+#[cfg(target_os = "windows")]
+fn ps_escape_nested(s: &str) -> String {
+    s.replace('\'', "''''")
 }
 
 #[cfg(target_os = "macos")]
@@ -107,8 +109,8 @@ async fn run_elevated_file_op(op: &str, source: &str, dest: Option<&str>) -> Res
     tokio::task::spawn_blocking(move || {
         #[cfg(target_os = "windows")]
         {
-            let src = ps_escape(&source);
-            let dst = ps_escape(dest.as_deref().unwrap_or(""));
+            let src = ps_escape_nested(&source);
+            let dst = ps_escape_nested(dest.as_deref().unwrap_or(""));
             let script = match op.as_str() {
                 "copy" => format!(
                     "Copy-Item -Path ''{}'' -Destination ''{}'' -Recurse -Force",

@@ -515,6 +515,13 @@ fn execute_move_undo(action: MoveActionData) -> Result<(), String> {
         let source = PathBuf::from(&action.source_paths[index]);
         let target = PathBuf::from(&targets[index]);
         if let Err(err) = move_path(&source, &target) {
+            // Rollback items already successfully moved (0..index)
+            for i in (0..index).rev() {
+                let _ = move_path(
+                    &PathBuf::from(&targets[i]),
+                    &PathBuf::from(&action.source_paths[i]),
+                );
+            }
             let remaining_action = if index > 0 {
                 UndoAction::Move(MoveActionData {
                     source_paths: action.source_paths[index..].to_vec(),
@@ -569,15 +576,25 @@ fn execute_move_redo(action: &MoveActionData) -> Result<Vec<String>, String> {
         return Err("Cannot redo: Original parent path not available".to_string());
     }
 
-    let mut new_moved_paths = Vec::new();
-    for (source, target) in source_target_pairs {
-        if !path_entry_exists(&source) {
+    // Pre-check all sources and targets before any moves to avoid partial state
+    for (source, target) in &source_target_pairs {
+        if !path_entry_exists(source) {
             return Err("Cannot redo: File not found at original location".to_string());
         }
-        if path_entry_exists(&target) {
+        if path_entry_exists(target) {
             return Err("Cannot redo: A file already exists at the target location".to_string());
         }
-        move_path(&source, &target)?;
+    }
+
+    let mut new_moved_paths = Vec::new();
+    for (index, (source, target)) in source_target_pairs.iter().enumerate() {
+        if let Err(err) = move_path(source, target) {
+            // Rollback items already successfully moved (0..index)
+            for j in (0..index).rev() {
+                let _ = move_path(&source_target_pairs[j].1, &source_target_pairs[j].0);
+            }
+            return Err(format!("Partial redo failed: {}", err));
+        }
         new_moved_paths.push(target.to_string_lossy().to_string());
     }
 
@@ -681,6 +698,14 @@ pub async fn undo_action() -> Result<UndoRedoState, String> {
                     &PathBuf::from(&rename.new_path),
                     &PathBuf::from(&rename.old_path),
                 ) {
+                    // Rollback items already successfully moved back
+                    for j in 0..i {
+                        let processed = &data.renames[total - 1 - j];
+                        let _ = move_path(
+                            &PathBuf::from(&processed.old_path),
+                            &PathBuf::from(&processed.new_path),
+                        );
+                    }
                     let remaining = data.renames[..total - i].to_vec();
                     push_undo_action(
                         UndoAction::BatchRename(BatchRenameActionData { renames: remaining }),
@@ -756,10 +781,15 @@ pub async fn redo_action() -> Result<UndoRedoState, String> {
                 if let Err(err) =
                     move_path(&PathBuf::from(&rename.old_path), &PathBuf::from(&rename.new_path))
                 {
-                    let remaining = data.renames[i..].to_vec();
-                    push_redo_action(UndoAction::BatchRename(BatchRenameActionData {
-                        renames: remaining,
-                    }))?;
+                    // Roll back the renames that already succeeded (0..i)
+                    for j in (0..i).rev() {
+                        let previous = &data.renames[j];
+                        let _ = move_path(
+                            &PathBuf::from(&previous.new_path),
+                            &PathBuf::from(&previous.old_path),
+                        );
+                    }
+                    push_redo_action(UndoAction::BatchRename(data))?;
                     return Err(err);
                 }
             }

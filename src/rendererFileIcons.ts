@@ -17,7 +17,7 @@ import {
 import { twemojiImg } from './rendererUtils.js';
 
 export function getFileExtension(filename: string): string {
-  return filename.split('.').pop()?.toLowerCase() || '';
+  return filename.split('.').pop()!.toLowerCase();
 }
 
 const FILE_TYPE_LABELS: ReadonlyArray<[Set<string>, string]> = [
@@ -46,7 +46,7 @@ export function getFileTypeFromName(filename: string): string {
 }
 
 export function formatFileSize(bytes: number): string {
-  if (bytes <= 0) return '0 B';
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
   const k = 1024;
   const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
   const i = Math.min(Math.floor(Math.log(bytes) / Math.log(k)), sizes.length - 1);

@@ -247,9 +247,14 @@ fn metadata_to_file_item(path: &std::path::Path, meta: &fs::Metadata) -> FileIte
     #[cfg(not(unix))]
     let permissions = 0u32;
 
-    let is_directory = meta.is_dir();
     let is_symlink = meta.file_type().is_symlink();
     let (symlink_target, is_broken_symlink) = read_symlink_info(path, meta);
+    // For symlinks to directories, follow the link so is_directory is correct for navigation
+    let is_directory = if is_symlink {
+        fs::metadata(path).map(|m| m.is_dir()).unwrap_or(false)
+    } else {
+        meta.is_dir()
+    };
     let (is_app_bundle, is_shortcut, is_desktop_entry) =
         detect_special_file_flags(path, is_directory);
 
@@ -359,13 +364,15 @@ pub async fn get_directory_contents(
 
         Ok(items)
     })
-    .await
-    .map_err(|e| e.to_string())?;
+    .await;
 
     if !op_id.is_empty() {
-        let mut listings = ACTIVE_DIRECTORY_LISTINGS.lock().map_err(|e| e.to_string())?;
-        listings.remove(&op_id);
+        if let Ok(mut listings) = ACTIVE_DIRECTORY_LISTINGS.lock() {
+            listings.remove(&op_id);
+        }
     }
+
+    let result = result.map_err(|e| e.to_string())?;
 
     match &result {
         Ok(items) => {
@@ -611,15 +618,15 @@ pub async fn calculate_folder_size(
             folder_count,
         })
     })
-    .await
-    .map_err(|e| e.to_string())?;
+    .await;
 
     {
-        let mut calcs = ACTIVE_FOLDER_CALCS.lock().map_err(|e| e.to_string())?;
-        calcs.remove(&operation_id);
+        if let Ok(mut calcs) = ACTIVE_FOLDER_CALCS.lock() {
+            calcs.remove(&operation_id);
+        }
     }
 
-    result
+    result.map_err(|e| e.to_string())?
 }
 
 #[tauri::command]

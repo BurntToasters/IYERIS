@@ -524,7 +524,7 @@ function applySettings(settings: Settings) {
 
   if (settings.viewMode) {
     viewMode = settings.viewMode;
-    applyViewMode();
+    void applyViewMode();
   }
 
   applyListColumnWidths();
@@ -560,7 +560,7 @@ function applySettings(settings: Settings) {
   setFolderTreeSpacingMode(settings.useLegacyTreeSpacing === true);
   setFolderTreeVisibility(nextFolderTreeEnabled);
   if (nextFolderTreeEnabled && !folderTreeEnabled) {
-    loadDrives();
+    void loadDrives();
   }
   folderTreeEnabled = nextFolderTreeEnabled;
 
@@ -1038,6 +1038,8 @@ const bootstrapController = createBootstrapController({
   getFolderTree: () => folderTree,
   onHomeSettingsChanged: (cb) => window.tauriAPI.onHomeSettingsChanged(cb),
   homeViewPath: HOME_VIEW_PATH,
+  goUp,
+  showToast: (m, t, ty) => showToast(m, t, ty as 'success' | 'error' | 'info' | 'warning'),
 });
 const {
   init: bootstrapInit,
@@ -1047,31 +1049,34 @@ const {
 
 async function loadDrives() {
   if (!drivesList) return;
+  try {
+    const drives = await window.tauriAPI.getDriveInfo();
+    cacheDriveInfo(drives);
+    clearHtml(drivesList);
 
-  const drives = await window.tauriAPI.getDriveInfo();
-  cacheDriveInfo(drives);
-  clearHtml(drivesList);
-
-  drives.forEach((drive) => {
-    const driveLabel = drive.label || drive.path;
-    const driveItem = document.createElement('div');
-    driveItem.className = 'nav-item';
-    driveItem.title = drive.path;
-    driveItem.innerHTML = `
+    drives.forEach((drive) => {
+      const driveLabel = drive.label || drive.path;
+      const driveItem = document.createElement('div');
+      driveItem.className = 'nav-item';
+      driveItem.title = drive.path;
+      driveItem.innerHTML = `
       <span class="nav-icon">${twemojiImg(String.fromCodePoint(0x1f4be), 'twemoji')}</span>
       <span class="nav-label">${escapeHtml(driveLabel)}</span>
     `;
-    driveItem.addEventListener('click', () => navigateTo(drive.path));
-    drivesList.appendChild(driveItem);
-  });
+      driveItem.addEventListener('click', () => navigateTo(drive.path));
+      drivesList.appendChild(driveItem);
+    });
 
-  const drivePaths = drives.map((drive) => drive.path);
-  void homeController.renderHomeDrives(drives);
+    const drivePaths = drives.map((drive) => drive.path);
+    void homeController.renderHomeDrives(drives);
 
-  if (currentSettings.showFolderTree !== false) {
-    folderTreeManager.render(drivePaths);
-  } else if (folderTree) {
-    clearHtml(folderTree);
+    if (currentSettings.showFolderTree !== false) {
+      folderTreeManager.render(drivePaths);
+    } else if (folderTree) {
+      clearHtml(folderTree);
+    }
+  } catch (error) {
+    console.error('[Drives] Failed to load drives:', error);
   }
 }
 
@@ -1903,8 +1908,15 @@ async function applyViewMode() {
         if (result.success) {
           renderFiles(result.contents || []);
         }
+      } catch {
+        // ignore; finishDirectoryRequest handles cleanup
       } finally {
+        const wasCurrentRequest = directoryLoader.isCurrentRequest(requestId);
         finishDirectoryRequest(requestId);
+        if (wasCurrentRequest) {
+          hideLoading();
+          isNavigating = false;
+        }
       }
     }
   }

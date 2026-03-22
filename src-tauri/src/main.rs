@@ -87,6 +87,17 @@ fn main() {
     let dev_mode = args.iter().any(|a| a == "--dev" || a == "--verbose");
     DEV_MODE.store(dev_mode, Ordering::Relaxed);
 
+    // Must run before env_logger init to avoid set_var in a multi-threaded context
+    #[cfg(target_os = "linux")]
+    {
+        if std::env::var("WEBKIT_DISABLE_COMPOSITING_MODE").is_err() {
+            let has_nvidia = std::path::Path::new("/proc/driver/nvidia/version").exists();
+            if !has_nvidia {
+                unsafe { std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1") };
+            }
+        }
+    }
+
     if dev_mode {
         let mut builder = env_logger::Builder::new();
         builder
@@ -110,16 +121,6 @@ fn main() {
             std::env::consts::ARCH,
             env!("CARGO_PKG_VERSION"),
         );
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        if std::env::var("WEBKIT_DISABLE_COMPOSITING_MODE").is_err() {
-            let has_nvidia = std::path::Path::new("/proc/driver/nvidia/version").exists();
-            if !has_nvidia {
-                unsafe { std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1") };
-            }
-        }
     }
 
     let builder = tauri::Builder::default()

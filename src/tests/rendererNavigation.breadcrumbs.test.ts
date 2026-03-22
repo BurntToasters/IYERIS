@@ -315,11 +315,11 @@ describe('NavigationController — extended', () => {
   });
 
   describe('clearDirectoryHistory', () => {
-    it('clears history, saves, and shows toast', () => {
+    it('clears history, saves, and shows toast', async () => {
       const deps = createDeps();
       deps.settings.directoryHistory = ['/a', '/b'];
       const ctrl = createNavigationController(deps as any);
-      ctrl.clearDirectoryHistory();
+      await ctrl.clearDirectoryHistory();
       expect(deps.settings.directoryHistory).toEqual([]);
       expect(deps.saveSettingsWithTimestamp).toHaveBeenCalledWith(deps.settings);
       expect(deps.showToast).toHaveBeenCalledWith(

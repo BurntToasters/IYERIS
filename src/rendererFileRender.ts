@@ -134,11 +134,7 @@ export function createFileRenderController(config: FileRenderConfig) {
       virtualizedSentinel.style.pointerEvents = 'none';
     }
 
-    if (virtualizedSentinel.parentElement !== fileGrid) {
-      fileGrid.appendChild(virtualizedSentinel);
-    } else {
-      fileGrid.appendChild(virtualizedSentinel);
-    }
+    fileGrid.appendChild(virtualizedSentinel);
 
     observer.observe(virtualizedSentinel);
   }

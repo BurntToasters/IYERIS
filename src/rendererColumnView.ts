@@ -77,7 +77,6 @@ export function createColumnViewController(deps: ColumnViewDeps) {
         }),
         new Promise<void>((resolve) => setTimeout(resolve, COLUMN_VIEW_RENDER_TIMEOUT_MS)),
       ]);
-      isRenderingColumnView = false;
       renderCompleteResolve = null;
       if (currentRenderId !== columnViewRenderId) return;
     }
@@ -138,10 +137,12 @@ export function createColumnViewController(deps: ColumnViewDeps) {
         }
       }, COLUMN_VIEW_SCROLL_DELAY_MS);
     } finally {
-      isRenderingColumnView = false;
       if (renderCompleteResolve) {
         renderCompleteResolve();
         renderCompleteResolve = null;
+      }
+      if (currentRenderId === columnViewRenderId) {
+        isRenderingColumnView = false;
       }
     }
   }

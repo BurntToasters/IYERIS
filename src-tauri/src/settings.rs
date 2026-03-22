@@ -65,13 +65,15 @@ pub fn save_settings(app: tauri::AppHandle, settings: String) -> Result<(), Stri
         .and_then(|flag| flag.as_bool())
         .unwrap_or(true);
 
+    let _ = app.emit("settings-changed", &settings);
+    drop(_lock);
+
     if enable_indexer {
         crate::indexer::initialize_index(&app);
     } else {
         crate::indexer::cancel_build();
     }
 
-    let _ = app.emit("settings-changed", &settings);
     Ok(())
 }
 

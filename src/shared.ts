@@ -85,3 +85,44 @@ export function sanitizeStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value.filter((item) => typeof item === 'string');
 }
+
+const DANGEROUS_TAGS = new Set([
+  'SCRIPT',
+  'IFRAME',
+  'OBJECT',
+  'EMBED',
+  'FORM',
+  'STYLE',
+  'LINK',
+  'META',
+  'BASE',
+  'NOSCRIPT',
+]);
+
+export function sanitizeMarkdownHtml(html: string): string {
+  const template = document.createElement('template');
+  template.innerHTML = html;
+  const walker = document.createTreeWalker(template.content, NodeFilter.SHOW_ELEMENT);
+  const toRemove: Element[] = [];
+  while (walker.nextNode()) {
+    const el = walker.currentNode as Element;
+    if (DANGEROUS_TAGS.has(el.tagName)) {
+      toRemove.push(el);
+      continue;
+    }
+    for (const attr of Array.from(el.attributes)) {
+      if (attr.name.startsWith('on')) {
+        el.removeAttribute(attr.name);
+      } else if (
+        (attr.name === 'href' || attr.name === 'src' || attr.name === 'action') &&
+        /^\s*javascript\s*:/i.test(attr.value)
+      ) {
+        el.removeAttribute(attr.name);
+      }
+    }
+  }
+  for (const el of toRemove) el.remove();
+  const div = document.createElement('div');
+  div.appendChild(template.content.cloneNode(true));
+  return div.innerHTML;
+}

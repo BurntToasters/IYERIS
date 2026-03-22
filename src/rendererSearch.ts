@@ -326,20 +326,13 @@ export function createSearchController(deps: SearchDeps) {
       const operationId = deps.createDirectoryOperationId('search');
       activeSearchOperationId = operationId;
 
-      addToSearchHistory(query);
-
-      deps.showLoading('Searching...');
-      const fileGrid = deps.getFileGrid();
-      if (fileGrid) clearHtml(fileGrid);
-
-      let result;
+      // Validate regex BEFORE touching history or clearing the grid
       const hasFilters = hasActiveFilters() || searchInContents || isRegexMode;
       if (isRegexMode) {
         currentSearchFilters.regex = true;
         try {
           new RegExp(query);
         } catch {
-          deps.hideLoading();
           deps.showToast('Invalid regular expression pattern', 'Search', 'warning');
           searchInput?.classList.add('input-error');
           activeSearchOperationId = null;
@@ -350,6 +343,14 @@ export function createSearchController(deps: SearchDeps) {
         delete currentSearchFilters.regex;
         searchInput?.classList.remove('input-error');
       }
+
+      addToSearchHistory(query);
+
+      deps.showLoading('Searching...');
+      const fileGrid = deps.getFileGrid();
+      if (fileGrid) clearHtml(fileGrid);
+
+      let result;
 
       if (isGlobalSearch) {
         if (searchInContents) {
@@ -616,6 +617,7 @@ export function createSearchController(deps: SearchDeps) {
     updateFilterBadge();
 
     searchInput.value = saved.query;
+    syncSaveBtnState();
     searchInput.focus();
     hideSearchHistoryDropdown();
     performSearch();

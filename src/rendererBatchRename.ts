@@ -38,7 +38,7 @@ export function createBatchRenameController(deps: BatchRenameDeps) {
 
     const allFiles = deps.getAllFiles();
     selectedFiles = allFiles
-      .filter((f) => selected.has(f.name))
+      .filter((f) => selected.has(f.path))
       .map((f) => ({ name: f.name, path: f.path }));
 
     if (selectedFiles.length < 2) {

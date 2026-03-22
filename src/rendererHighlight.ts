@@ -83,7 +83,10 @@ export async function loadHighlightJs(): Promise<HighlightJs | null> {
         hljs = globalHljs;
         resolve(hljs);
       });
-      existingScript.addEventListener('error', () => resolve(null));
+      existingScript.addEventListener('error', () => {
+        hljsLoading = null;
+        resolve(null);
+      });
       const existingGlobal = (window as Window & { hljs?: HighlightJs }).hljs;
       if (existingGlobal) {
         hljs = existingGlobal;

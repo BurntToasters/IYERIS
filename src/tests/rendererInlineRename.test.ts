@@ -90,8 +90,8 @@ describe('createNewItemWithInlineRename', () => {
         modified: 0,
       },
       {
-        name: 'File.txt (1)',
-        path: '/workspace/File.txt (1)',
+        name: 'File (1).txt',
+        path: '/workspace/File (1).txt',
         isFile: true,
         isDirectory: false,
         size: 0,
@@ -100,12 +100,12 @@ describe('createNewItemWithInlineRename', () => {
     ]);
 
     const api = window.tauriAPI as unknown as Record<string, ReturnType<typeof vi.fn>>;
-    api.createFile.mockResolvedValue({ success: true, path: '/workspace/File.txt (2)' });
+    api.createFile.mockResolvedValue({ success: true, path: '/workspace/File (2).txt' });
 
     const ctrl = createInlineRenameController(deps as any);
     await ctrl.createNewItemWithInlineRename('file');
 
-    expect(api.createFile).toHaveBeenCalledWith('/workspace', 'File.txt (2)');
+    expect(api.createFile).toHaveBeenCalledWith('/workspace', 'File (2).txt');
   });
 
   it('avoids name collision for folders', async () => {
