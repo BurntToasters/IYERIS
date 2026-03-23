@@ -1,7 +1,7 @@
 use serde::Serialize;
 use std::collections::HashSet;
 use std::fs;
-use std::io::{BufReader, Write};
+use std::io::BufReader;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tauri::Emitter;
