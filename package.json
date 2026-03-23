@@ -85,7 +85,7 @@
     "flatpak:clean": "node scripts/dist-tools.js clean-flatpak",
     "prerelease:prepare": "node scripts/release-warning.js",
     "release:prepare": "npm i && npm run sync-version && npm run icons:normalize && cargo check --manifest-path src-tauri/Cargo.toml -q && npm run dist:clean-release-artifacts && node scripts/update-metainfo.js",
-    "release:finalize": "dotenv -e .env -- node scripts/post-release-assets.js && git fetch origin && git reset --hard @{u}",
+    "release:finalize": "dotenv -e .env -- node scripts/post-release-assets.js && git fetch origin && git reset --hard @{u} && git clean -fd",
     "release:win": "npm run release:prepare && npm run build:win && npm run release:sign:gpg && npm run release:finalize",
     "release:mac": "npm run release:prepare && npm run build:mac:universal && npm run build:mac:zip && npm run release:sign:gpg && npm run release:finalize",
     "release:mac:ssh": "npm run mac:ssh:keychain && npm run release:mac",

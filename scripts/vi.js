@@ -13,6 +13,7 @@ function run(cmd, args) {
 try {
   run('git', ['fetch', 'origin']);
   run('git', ['reset', '--hard', '@{u}']);
+  run('git', ['clean', '-fd']);
   run('git', ['pull']);
   run('npm', ['i']);
 
