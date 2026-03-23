@@ -199,6 +199,9 @@ body.platform-linux {
   --animation-easing: cubic-bezier(0.25, 0.1, 0.25, 1);
   --scrollbar-width: 10px;
   --scrollbar-thumb-radius: 5px;
+  --radius-small: 6px;
+  --radius-medium: 8px;
+  --titlebar-height: 36px;
 }
 
 body.compact-ui {

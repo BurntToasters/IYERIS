@@ -112,6 +112,9 @@ export function createBootstrapController(config: BootstrapConfig) {
       devLog('Bootstrap', 'Platform:', platform, 'Version:', appVersion);
     }
 
+    config.setPlatformOS(platform);
+    document.body.classList.add(`platform-${platform}`);
+
     await config.loadSettings();
     devLog('Bootstrap', 'Settings loaded');
     await config.loadHomeSettings();
@@ -120,9 +123,6 @@ export function createBootstrapController(config: BootstrapConfig) {
 
     config.initTooltipSystem();
     config.initCommandPalette();
-
-    config.setPlatformOS(platform);
-    document.body.classList.add(`platform-${platform}`);
     updateVersionDisplays(appVersion);
 
     const titlebarIcon = document.getElementById('titlebar-icon') as HTMLImageElement;

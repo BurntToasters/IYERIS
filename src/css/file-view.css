@@ -75,6 +75,11 @@ body.platform-win32 .file-view::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.35);
 }
 
+body.platform-linux .file-view {
+  scrollbar-color: var(--scrollbar-thumb-bg) transparent;
+  scrollbar-width: thin;
+}
+
 .file-grid {
   display: grid;
   grid-template-columns: repeat(

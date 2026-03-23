@@ -91,6 +91,15 @@ body.platform-win32 .file-item:active {
   transform: none;
 }
 
+body.platform-linux .file-item:hover {
+  background: var(--hover-color);
+}
+
+body.platform-linux .file-item:active {
+  background: var(--active-color);
+  transform: none;
+}
+
 .file-item.selected {
   background: rgba(var(--system-accent-rgb, var(--accent-rgb)), 0.18);
   border-color: rgba(var(--system-accent-rgb, var(--accent-rgb)), 0.35);
@@ -104,6 +113,11 @@ body.platform-darwin .file-item.selected {
 
 body.platform-win32 .file-item.selected {
   background: rgba(var(--system-accent-rgb, var(--accent-rgb)), 0.16);
+  border-color: rgba(var(--system-accent-rgb, var(--accent-rgb)), 0.3);
+}
+
+body.platform-linux .file-item.selected {
+  background: rgba(var(--system-accent-rgb, var(--accent-rgb)), 0.18);
   border-color: rgba(var(--system-accent-rgb, var(--accent-rgb)), 0.3);
 }
 
@@ -174,6 +188,11 @@ body.platform-darwin .file-item.drag-over {
 }
 
 body.platform-win32 .file-item.drag-over {
+  transform: none;
+  box-shadow: 0 0 0 2px rgba(var(--system-accent-rgb, var(--accent-rgb)), 0.35);
+}
+
+body.platform-linux .file-item.drag-over {
   transform: none;
   box-shadow: 0 0 0 2px rgba(var(--system-accent-rgb, var(--accent-rgb)), 0.35);
 }
