@@ -13,6 +13,7 @@ mod thumbnails;
 mod undo;
 mod watcher;
 
+use std::collections::HashMap;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -38,8 +39,8 @@ pub(crate) struct DragState {
 pub(crate) struct AppState {
     pub clipboard: Mutex<ClipboardState>,
     pub drag: Mutex<DragState>,
-    pub watcher: Mutex<Option<watcher::DirectoryWatcher>>,
-    pub zoom_level: Mutex<f64>,
+    pub watchers: Mutex<HashMap<String, watcher::DirectoryWatcher>>,
+    pub zoom_levels: Mutex<HashMap<String, f64>>,
     pub tray: Mutex<Option<tauri::tray::TrayIcon>>,
 }
 
@@ -145,6 +146,16 @@ fn main() {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.show();
                 let _ = window.set_focus();
+            } else {
+                let windows = app.webview_windows();
+                let target = windows
+                    .values()
+                    .find(|w| w.is_visible().unwrap_or(false))
+                    .or_else(|| windows.values().next());
+                if let Some(w) = target {
+                    let _ = w.show();
+                    let _ = w.set_focus();
+                }
             }
         }))
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -153,15 +164,15 @@ fn main() {
             None,
         ));
 
-    if let Err(err) = builder
+    match builder
         .manage(AppState {
             clipboard: Mutex::new(ClipboardState {
                 operation: None,
                 paths: vec![],
             }),
             drag: Mutex::new(DragState { paths: vec![] }),
-            watcher: Mutex::new(None),
-            zoom_level: Mutex::new(1.0),
+            watchers: Mutex::new(HashMap::new()),
+            zoom_levels: Mutex::new(HashMap::new()),
             tray: Mutex::new(None),
         })
         .setup(|app| {
@@ -220,6 +231,25 @@ fn main() {
                 if window.label() == "main" && system::should_minimize_to_tray(window.app_handle()) {
                     api.prevent_close();
                     let _ = window.hide();
+                    #[cfg(target_os = "macos")]
+                    if !system::has_other_visible_windows(window.app_handle(), "main") {
+                        let _ = window.app_handle().set_dock_visibility(false);
+                    }
+                }
+            }
+            if let tauri::WindowEvent::Destroyed = event {
+                if window.label() != "main" {
+                    let app = window.app_handle();
+                    if system::should_minimize_to_tray(app) {
+                        let main_hidden = app.get_webview_window("main")
+                            .is_some_and(|w| !w.is_visible().unwrap_or(true));
+                        if main_hidden && !system::has_other_visible_windows(app, window.label()) {
+                            #[cfg(target_os = "macos")]
+                            {
+                                let _ = app.set_dock_visibility(false);
+                            }
+                        }
+                    }
                 }
             }
         })
@@ -339,10 +369,27 @@ fn main() {
             undo::redo_action,
             undo::get_undo_redo_state,
         ])
-        .run(tauri::generate_context!())
+        .build(tauri::generate_context!())
     {
-        eprintln!("Application error: {}", err);
-        std::process::exit(1);
+        Ok(app) => {
+            app.run(|app_handle, event| {
+                #[cfg(target_os = "macos")]
+                if let tauri::RunEvent::Reopen { has_visible_windows, .. } = event {
+                    if !has_visible_windows {
+                        let _ = app_handle.set_dock_visibility(true);
+                        if let Some(window) = app_handle.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
+                    }
+                }
+                let _ = app_handle;
+            });
+        }
+        Err(err) => {
+            eprintln!("Application error: {}", err);
+            std::process::exit(1);
+        }
     }
 }
 

@@ -141,6 +141,7 @@ type EventListenersConfig = {
 
   homeViewLabel: string;
   homeViewPath: string;
+  isMacPlatform: () => boolean;
 };
 
 export function createEventListenersController(config: EventListenersConfig) {
@@ -512,7 +513,12 @@ export function createEventListenersController(config: EventListenersConfig) {
         return;
       }
 
-      if (e.code === 'Space' && e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey) {
+      if (
+        e.code === 'Space' &&
+        (config.isMacPlatform() ? e.metaKey : e.ctrlKey) &&
+        !e.shiftKey &&
+        !e.altKey
+      ) {
         if (isEditableElementActive()) return;
         e.preventDefault();
         config.toggleSelectionAtCursor();
@@ -578,7 +584,7 @@ export function createEventListenersController(config: EventListenersConfig) {
         e.key === 'ArrowRight'
       ) {
         e.preventDefault();
-        if (e.ctrlKey && !e.shiftKey) {
+        if ((config.isMacPlatform() ? e.metaKey : e.ctrlKey) && !e.shiftKey) {
           config.navigateFileGridFocusOnly(e.key);
         } else {
           config.navigateFileGrid(e.key, e.shiftKey);

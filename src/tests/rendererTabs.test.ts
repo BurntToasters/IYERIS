@@ -99,6 +99,7 @@ function createMockDeps() {
     saveSettingsWithTimestamp: vi.fn().mockResolvedValue(undefined),
     maxCachedTabs: 5,
     maxCachedFilesPerTab: 500,
+    isMainWindow: true,
     _settings: settings,
     _getTabs: () => tabs,
     _getActiveTabId: () => activeTabId,

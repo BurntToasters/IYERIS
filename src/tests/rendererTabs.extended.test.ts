@@ -104,6 +104,7 @@ function createMockDeps(overrides: Record<string, any> = {}) {
     saveSettingsWithTimestamp: vi.fn().mockResolvedValue(undefined),
     maxCachedTabs: 3,
     maxCachedFilesPerTab: 500,
+    isMainWindow: true,
     _settings: settings,
     _getTabs: () => tabs,
     _getActiveTabId: () => activeTabId,

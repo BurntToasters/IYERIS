@@ -209,6 +209,7 @@ function createMockConfig() {
 
     homeViewLabel: 'Home',
     homeViewPath: '~home',
+    isMacPlatform: () => false,
 
     _ipcCleanupFunctions: ipcCleanupFunctions,
     _setCurrentSettings: (s: Settings) => {

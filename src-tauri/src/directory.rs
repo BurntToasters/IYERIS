@@ -284,7 +284,7 @@ pub async fn get_directory_contents(
     operation_id: Option<String>,
     include_hidden: Option<bool>,
     _stream_only: Option<bool>,
-    app: tauri::AppHandle,
+    webview: tauri::WebviewWindow,
 ) -> Result<Vec<FileItem>, String> {
     let started_at = Instant::now();
     log::debug!(
@@ -342,7 +342,7 @@ pub async fn get_directory_contents(
             loaded += 1;
 
             if loaded % 200 == 0 {
-                let _ = app.emit(
+                let _ = webview.emit(
                     "directory-contents-progress",
                     serde_json::json!({
                         "dirPath": progress_path,
@@ -353,7 +353,7 @@ pub async fn get_directory_contents(
             }
         }
 
-        let _ = app.emit(
+        let _ = webview.emit(
             "directory-contents-progress",
             serde_json::json!({
                 "dirPath": progress_path,
@@ -572,7 +572,7 @@ pub async fn get_disk_space(drive_path: String) -> Result<serde_json::Value, Str
 pub async fn calculate_folder_size(
     folder_path: String,
     operation_id: String,
-    app: tauri::AppHandle,
+    webview: tauri::WebviewWindow,
 ) -> Result<FolderSizeResult, String> {
     let path = crate::validate_existing_path(&folder_path, "Folder")?;
 
@@ -600,7 +600,7 @@ pub async fn calculate_folder_size(
                     total = total.saturating_add(meta.len());
                     file_count += 1;
                     if file_count % 500 == 0 {
-                        let _ = app.emit("folder-size-progress", serde_json::json!({
+                        let _ = webview.emit("folder-size-progress", serde_json::json!({
                             "operationId": op_id,
                             "size": total,
                             "files": file_count,

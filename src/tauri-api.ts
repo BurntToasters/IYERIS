@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import type { Update } from '@tauri-apps/plugin-updater';
 import type { TauriAPI, Settings, HomeSettings } from './types';
 import { devLog } from './shared.js';
@@ -362,15 +363,16 @@ const tauriAPI: TauriAPI = {
   getSettings: async () => {
     try {
       const json = await invoke<string>('get_settings');
-      let settings = {};
       if (json && json !== '{}') {
         try {
-          settings = JSON.parse(json);
+          const settings = JSON.parse(json);
+          return { success: true, settings } as never;
         } catch {
-          console.error('[Settings] Failed to parse settings JSON, using defaults');
+          console.error('[Settings] Failed to parse settings JSON, file may be corrupted');
+          return { success: false, error: 'Settings file is corrupted, using defaults' } as never;
         }
       }
-      return { success: true, settings } as never;
+      return { success: true, settings: {} } as never;
     } catch (e) {
       return { success: false, error: String(e) } as never;
     }
@@ -389,15 +391,19 @@ const tauriAPI: TauriAPI = {
   getHomeSettings: async () => {
     try {
       const json = await invoke<string>('get_home_settings');
-      let settings = {};
       if (json && json !== '{}') {
         try {
-          settings = JSON.parse(json);
+          const settings = JSON.parse(json);
+          return { success: true, settings } as never;
         } catch {
-          console.error('[Settings] Failed to parse home settings JSON, using defaults');
+          console.error('[Settings] Failed to parse home settings JSON, file may be corrupted');
+          return {
+            success: false,
+            error: 'Home settings file is corrupted, using defaults',
+          } as never;
         }
       }
-      return { success: true, settings } as never;
+      return { success: true, settings: {} } as never;
     } catch (e) {
       return { success: false, error: String(e) } as never;
     }
@@ -616,6 +622,7 @@ const tauriAPI: TauriAPI = {
     }
   },
   getPlatform: () => invoke('get_platform'),
+  getWindowLabel: () => getCurrentWebviewWindow().label,
   getAppVersion: () => invoke('get_app_version'),
   getSystemAccentColor: () => invoke('get_system_accent_color'),
   isMas: () => invoke('is_mas'),
