@@ -363,15 +363,16 @@ const tauriAPI: TauriAPI = {
   getSettings: async () => {
     try {
       const json = await invoke<string>('get_settings');
-      let settings = {};
       if (json && json !== '{}') {
         try {
-          settings = JSON.parse(json);
+          const settings = JSON.parse(json);
+          return { success: true, settings } as never;
         } catch {
-          console.error('[Settings] Failed to parse settings JSON, using defaults');
+          console.error('[Settings] Failed to parse settings JSON, file may be corrupted');
+          return { success: false, error: 'Settings file is corrupted, using defaults' } as never;
         }
       }
-      return { success: true, settings } as never;
+      return { success: true, settings: {} } as never;
     } catch (e) {
       return { success: false, error: String(e) } as never;
     }
@@ -390,15 +391,19 @@ const tauriAPI: TauriAPI = {
   getHomeSettings: async () => {
     try {
       const json = await invoke<string>('get_home_settings');
-      let settings = {};
       if (json && json !== '{}') {
         try {
-          settings = JSON.parse(json);
+          const settings = JSON.parse(json);
+          return { success: true, settings } as never;
         } catch {
-          console.error('[Settings] Failed to parse home settings JSON, using defaults');
+          console.error('[Settings] Failed to parse home settings JSON, file may be corrupted');
+          return {
+            success: false,
+            error: 'Home settings file is corrupted, using defaults',
+          } as never;
         }
       }
-      return { success: true, settings } as never;
+      return { success: true, settings: {} } as never;
     } catch (e) {
       return { success: false, error: String(e) } as never;
     }

@@ -148,7 +148,12 @@ fn main() {
                 let _ = window.set_focus();
             } else {
                 let windows = app.webview_windows();
-                if let Some((_, w)) = windows.iter().next() {
+                let target = windows
+                    .values()
+                    .find(|w| w.is_visible().unwrap_or(false))
+                    .or_else(|| windows.values().next());
+                if let Some(w) = target {
+                    let _ = w.show();
                     let _ = w.set_focus();
                 }
             }

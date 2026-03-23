@@ -56,7 +56,8 @@ pub async fn compress_files(
     format: Option<String>,
     operation_id: Option<String>,
     _advanced_options: Option<serde_json::Value>,
-    app: tauri::AppHandle,
+    webview: tauri::WebviewWindow,
+    _app: tauri::AppHandle,
 ) -> Result<(), String> {
     log::debug!("[Archive] compress: {} items -> {} (fmt={:?})", source_paths.len(), output_path, format);
     let output = crate::validate_path(&output_path, "Output")?;
@@ -74,9 +75,9 @@ pub async fn compress_files(
     let compress_op_id = op_id.clone();
     let result = tokio::task::spawn_blocking(move || {
         match fmt.as_str() {
-            "zip" => compress_zip(&source_paths, &output, &compress_op_id, &app),
-            "tar.gz" | "tgz" => compress_tar_gz(&source_paths, &output, &compress_op_id, &app),
-            "7z" => compress_7z(&source_paths, &output, &compress_op_id, &app),
+            "zip" => compress_zip(&source_paths, &output, &compress_op_id, &webview),
+            "tar.gz" | "tgz" => compress_tar_gz(&source_paths, &output, &compress_op_id, &webview),
+            "7z" => compress_7z(&source_paths, &output, &compress_op_id, &webview),
             _ => Err(format!("Unsupported format: {}", fmt)),
         }
     })
@@ -95,7 +96,7 @@ fn compress_zip(
     sources: &[String],
     output: &Path,
     op_id: &str,
-    app: &tauri::AppHandle,
+    webview: &tauri::WebviewWindow,
 ) -> Result<(), String> {
     let file = fs::File::create(output).map_err(|e| e.to_string())?;
     let mut zip = zip::ZipWriter::new(file);
@@ -113,7 +114,7 @@ fn compress_zip(
             }
 
             if path.is_dir() {
-                add_dir_to_zip(&mut zip, &path, &path, &options, op_id, app)?;
+                add_dir_to_zip(&mut zip, &path, &path, &options, op_id)?;
             } else {
                 let name = path.file_name()
                     .ok_or_else(|| format!("Invalid path: {}", path.display()))?
@@ -124,7 +125,7 @@ fn compress_zip(
             }
 
             count += 1;
-            let _ = app.emit("compress-progress", serde_json::json!({
+            let _ = webview.emit("compress-progress", serde_json::json!({
                 "operationId": op_id,
                 "current": count,
                 "total": total,
@@ -153,7 +154,6 @@ fn add_dir_to_zip(
     base: &Path,
     options: &zip::write::SimpleFileOptions,
     op_id: &str,
-    app: &tauri::AppHandle,
 ) -> Result<(), String> {
     for entry in fs::read_dir(dir).map_err(|e| e.to_string())?.filter_map(|e| e.map_err(|err| log::warn!("[Archive] zip dir entry error: {}", err)).ok()) {
         if !op_id.is_empty() && !is_active(op_id) {
@@ -173,7 +173,7 @@ fn add_dir_to_zip(
         if meta.is_dir() {
             zip.add_directory(&format!("{}/", name), *options)
                 .map_err(|e| e.to_string())?;
-            add_dir_to_zip(zip, &path, base, options, op_id, app)?;
+            add_dir_to_zip(zip, &path, base, options, op_id)?;
         } else {
             zip.start_file(&name, *options).map_err(|e| e.to_string())?;
             let mut source_file = fs::File::open(&path).map_err(|e| e.to_string())?;
@@ -187,13 +187,16 @@ fn compress_tar_gz(
     sources: &[String],
     output: &Path,
     op_id: &str,
-    _app: &tauri::AppHandle,
+    webview: &tauri::WebviewWindow,
 ) -> Result<(), String> {
     let result = (|| -> Result<(), String> {
     let file = fs::File::create(output).map_err(|e| e.to_string())?;
     let enc = flate2::write::GzEncoder::new(file, flate2::Compression::default());
     let mut tar = tar::Builder::new(enc);
     tar.follow_symlinks(false);
+
+    let total = sources.len() as u64;
+    let mut count = 0u64;
 
     for source in sources {
         if !op_id.is_empty() && !is_active(op_id) {
@@ -223,6 +226,13 @@ fn compress_tar_gz(
         } else {
             tar.append_path_with_name(&path, &name).map_err(|e| e.to_string())?;
         }
+        count += 1;
+        let _ = webview.emit("compress-progress", serde_json::json!({
+            "operationId": op_id,
+            "current": count,
+            "total": total,
+            "name": name,
+        }));
     }
 
     tar.into_inner()
@@ -242,7 +252,7 @@ fn compress_7z(
     sources: &[String],
     output: &Path,
     op_id: &str,
-    app: &tauri::AppHandle,
+    webview: &tauri::WebviewWindow,
 ) -> Result<(), String> {
     let result = (|| -> Result<(), String> {
     let sz = sevenz_rust::SevenZWriter::create(output).map_err(|e| e.to_string())?;
@@ -273,7 +283,7 @@ fn compress_7z(
         }
 
         count += 1;
-        let _ = app.emit("compress-progress", serde_json::json!({
+        let _ = webview.emit("compress-progress", serde_json::json!({
             "operationId": op_id,
             "current": count,
             "total": total,
@@ -325,7 +335,8 @@ pub async fn extract_archive(
     archive_path: String,
     dest_path: String,
     operation_id: Option<String>,
-    app: tauri::AppHandle,
+    webview: tauri::WebviewWindow,
+    _app: tauri::AppHandle,
 ) -> Result<(), String> {
     log::debug!("[Archive] extract: {} -> {}", archive_path, dest_path);
     let archive = crate::validate_existing_path(&archive_path, "Archive")?;
@@ -348,14 +359,14 @@ pub async fn extract_archive(
 
         let full_name = archive.to_string_lossy().to_lowercase();
         if full_name.ends_with(".tar.xz") || full_name.ends_with(".txz") {
-            return extract_tar_xz(&archive, &dest, &extract_op_id, &app);
+            return extract_tar_xz(&archive, &dest, &extract_op_id, &webview);
         }
         match ext.as_str() {
-            "zip" => extract_zip(&archive, &dest, &extract_op_id, &app),
-            "gz" | "tgz" => extract_tar_gz(&archive, &dest, &extract_op_id, &app),
-            "tar" => extract_tar(&archive, &dest, &extract_op_id, &app),
-            "7z" => extract_7z(&archive, &dest, &extract_op_id, &app),
-            "xz" => extract_tar_xz(&archive, &dest, &extract_op_id, &app),
+            "zip" => extract_zip(&archive, &dest, &extract_op_id, &webview),
+            "gz" | "tgz" => extract_tar_gz(&archive, &dest, &extract_op_id, &webview),
+            "tar" => extract_tar(&archive, &dest, &extract_op_id, &webview),
+            "7z" => extract_7z(&archive, &dest, &extract_op_id, &webview),
+            "xz" => extract_tar_xz(&archive, &dest, &extract_op_id, &webview),
             _ => Err(format!("Unsupported archive format: {}", ext)),
         }
     })
@@ -374,7 +385,7 @@ fn extract_zip(
     archive: &Path,
     dest: &Path,
     op_id: &str,
-    app: &tauri::AppHandle,
+    webview: &tauri::WebviewWindow,
 ) -> Result<(), String> {
     let file = fs::File::open(archive).map_err(|e| e.to_string())?;
     let mut zip = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
@@ -389,7 +400,7 @@ fn extract_zip(
         let name = entry.name().to_string();
         let out_path = safe_entry_path(&name, dest)?;
 
-        let _ = app.emit("extract-progress", serde_json::json!({
+        let _ = webview.emit("extract-progress", serde_json::json!({
             "operationId": op_id,
             "current": i + 1,
             "total": total,
@@ -414,30 +425,30 @@ fn extract_tar_gz(
     archive: &Path,
     dest: &Path,
     op_id: &str,
-    app: &tauri::AppHandle,
+    webview: &tauri::WebviewWindow,
 ) -> Result<(), String> {
     let file = fs::File::open(archive).map_err(|e| e.to_string())?;
     let dec = flate2::read::GzDecoder::new(file);
     let mut tar = tar::Archive::new(dec);
-    extract_tar_entries(&mut tar, dest, op_id, app)
+    extract_tar_entries(&mut tar, dest, op_id, webview)
 }
 
 fn extract_tar(
     archive: &Path,
     dest: &Path,
     op_id: &str,
-    app: &tauri::AppHandle,
+    webview: &tauri::WebviewWindow,
 ) -> Result<(), String> {
     let file = fs::File::open(archive).map_err(|e| e.to_string())?;
     let mut tar = tar::Archive::new(file);
-    extract_tar_entries(&mut tar, dest, op_id, app)
+    extract_tar_entries(&mut tar, dest, op_id, webview)
 }
 
 fn extract_7z(
     archive: &Path,
     dest: &Path,
     op_id: &str,
-    app: &tauri::AppHandle,
+    webview: &tauri::WebviewWindow,
 ) -> Result<(), String> {
     let file = fs::File::open(archive).map_err(|e| e.to_string())?;
     let reader = BufReader::new(file);
@@ -448,7 +459,7 @@ fn extract_7z(
         }
         count += 1;
         let name = entry.name().to_string();
-        let _ = app.emit("extract-progress", serde_json::json!({
+        let _ = webview.emit("extract-progress", serde_json::json!({
             "operationId": op_id,
             "current": count,
             "total": 0,
@@ -474,19 +485,19 @@ fn extract_tar_xz(
     archive: &Path,
     dest: &Path,
     op_id: &str,
-    app: &tauri::AppHandle,
+    webview: &tauri::WebviewWindow,
 ) -> Result<(), String> {
     let file = fs::File::open(archive).map_err(|e| e.to_string())?;
     let dec = xz2::read::XzDecoder::new(file);
     let mut tar = tar::Archive::new(dec);
-    extract_tar_entries(&mut tar, dest, op_id, app)
+    extract_tar_entries(&mut tar, dest, op_id, webview)
 }
 
 fn extract_tar_entries<R: std::io::Read>(
     tar: &mut tar::Archive<R>,
     dest: &Path,
     op_id: &str,
-    app: &tauri::AppHandle,
+    webview: &tauri::WebviewWindow,
 ) -> Result<(), String> {
     let mut count = 0usize;
     for entry in tar.entries().map_err(|e| e.to_string())? {
@@ -502,7 +513,7 @@ fn extract_tar_entries<R: std::io::Read>(
             .to_string();
 
         count += 1;
-        let _ = app.emit("extract-progress", serde_json::json!({
+        let _ = webview.emit("extract-progress", serde_json::json!({
             "operationId": op_id,
             "current": count,
             "total": 0,

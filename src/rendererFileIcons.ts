@@ -64,6 +64,7 @@ const DEFAULT_FILE_ICON = twemojiImg(String.fromCodePoint(parseInt('1f4c4', 16))
 
 export { IMAGE_ICON };
 
+const FILE_ICON_CACHE_MAX = 300;
 const fileIconCache = new Map<string, string>();
 
 export function getFileIcon(filename: string): string {
@@ -99,6 +100,9 @@ export function getFileIcon(filename: string): string {
     icon = twemojiImg(String.fromCodePoint(parseInt(codepoint, 16)), 'twemoji');
   }
 
+  if (fileIconCache.size >= FILE_ICON_CACHE_MAX) {
+    fileIconCache.delete(fileIconCache.keys().next().value!);
+  }
   fileIconCache.set(ext, icon);
   return icon;
 }

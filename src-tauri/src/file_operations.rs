@@ -1895,7 +1895,7 @@ pub async fn calculate_checksum(
     file_path: String,
     operation_id: String,
     algorithms: Vec<String>,
-    app: tauri::AppHandle,
+    webview: tauri::WebviewWindow,
 ) -> Result<serde_json::Value, String> {
     let path = crate::validate_existing_path(&file_path, "File")?;
 
@@ -1935,7 +1935,7 @@ pub async fn calculate_checksum(
                         read_total += n as u64;
                         if read_total % (1024 * 1024) == 0 {
                             let percent = if file_size > 0 { (read_total as f64 / file_size as f64) * 100.0 } else { 100.0 };
-                            let _ = app.emit("checksum-progress", serde_json::json!({
+                            let _ = webview.emit("checksum-progress", serde_json::json!({
                                 "operationId": op_id, "percent": percent, "algorithm": algo
                             }));
                         }
