@@ -792,10 +792,9 @@ const tauriAPI: TauriAPI = {
     try {
       if (pendingUpdate) {
         await pendingUpdate.install();
-      } else {
-        const { relaunch } = await import('@tauri-apps/plugin-process');
-        await relaunch();
       }
+      const { relaunch } = await import('@tauri-apps/plugin-process');
+      await relaunch();
       return { success: true as const };
     } catch (e) {
       return { success: false as const, error: String(e) };
