@@ -369,7 +369,7 @@ pub fn open_new_window(app: tauri::AppHandle) -> Result<(), String> {
     .min_inner_size(800.0, 500.0);
 
     #[cfg(target_os = "macos")]
-    let builder = builder.decorations(true).title_bar_style(tauri::TitleBarStyle::Overlay);
+    let builder = builder.decorations(true).title_bar_style(tauri::TitleBarStyle::Overlay).hidden_title(true);
 
     #[cfg(not(target_os = "macos"))]
     let builder = builder.decorations(false);
