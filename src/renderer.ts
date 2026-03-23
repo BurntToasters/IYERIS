@@ -194,6 +194,7 @@ let currentSettings: Settings = createDefaultSettings();
 let isResettingSettings = false;
 
 const late = {} as LateBound;
+const isMainWindow = window.tauriAPI.getWindowLabel() === 'main';
 
 const wired = wireControllers({
   getCurrentPath: () => currentPath,
@@ -259,6 +260,7 @@ const wired = wireControllers({
   getCachedDriveInfo: () => cachedDriveInfo,
   cacheDriveInfo,
   getIpcCleanupFunctions: () => ipcCleanupFunctions,
+  isMainWindow,
   late,
 });
 
@@ -1294,6 +1296,7 @@ const eventListenersController = createEventListenersController({
   initDragAndDropListeners,
   homeViewLabel: HOME_VIEW_LABEL,
   homeViewPath: HOME_VIEW_PATH,
+  isMacPlatform: () => platformOS === 'darwin',
 });
 const { setupEventListeners } = eventListenersController;
 
@@ -2179,7 +2182,7 @@ window.addEventListener('beforeunload', () => {
   zoomController.clearZoomPopupTimeout();
   window.tauriAPI.unwatchDirectory().catch(() => {});
   if (!isResettingSettings) {
-    if (tabsEnabled && tabs.length > 0) {
+    if (isMainWindow && tabsEnabled && tabs.length > 0) {
       const currentTab = tabs.find((t) => t.id === activeTabId);
       if (currentTab) {
         currentTab.path = currentPath;

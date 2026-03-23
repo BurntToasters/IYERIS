@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import type { Update } from '@tauri-apps/plugin-updater';
 import type { TauriAPI, Settings, HomeSettings } from './types';
 import { devLog } from './shared.js';
@@ -616,6 +617,7 @@ const tauriAPI: TauriAPI = {
     }
   },
   getPlatform: () => invoke('get_platform'),
+  getWindowLabel: () => getCurrentWebviewWindow().label,
   getAppVersion: () => invoke('get_app_version'),
   getSystemAccentColor: () => invoke('get_system_accent_color'),
   isMas: () => invoke('is_mas'),

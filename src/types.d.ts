@@ -589,6 +589,7 @@ export interface TauriAPI {
   getFileDataUrl: (filePath: string, maxSize?: number) => Promise<FileDataUrlResponse>;
   getLicenses: () => Promise<LicensesResponse>;
   getPlatform: () => Promise<string>;
+  getWindowLabel: () => string;
   getAppVersion: () => Promise<string>;
   getSystemAccentColor: () => Promise<{ accentColor: string; isDarkMode: boolean }>;
   isMas: () => Promise<boolean>;

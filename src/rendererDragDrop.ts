@@ -129,7 +129,7 @@ export function createDragDropController(config: DragDropConfig) {
   }
 
   function getDragOperation(event: DragEvent): 'copy' | 'move' {
-    return event.ctrlKey || event.altKey ? 'copy' : 'move';
+    return event.ctrlKey || event.metaKey || event.altKey ? 'copy' : 'move';
   }
 
   async function getDraggedPaths(event: DragEvent): Promise<string[]> {

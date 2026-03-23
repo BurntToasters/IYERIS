@@ -166,6 +166,7 @@ export interface WiringDeps {
   getCachedDriveInfo(): DriveInfo[];
   cacheDriveInfo(drives: DriveInfo[]): void;
   getIpcCleanupFunctions(): (() => void)[];
+  isMainWindow: boolean;
 
   late: LateBound;
 }
@@ -379,6 +380,7 @@ export function wireControllers(deps: WiringDeps) {
     onModalClose: deactivateModal,
     showCommandPalette: () => showCommandPalette(),
     hideCommandPalette: () => hideCommandPalette(),
+    isMac: deps.getPlatformOS() === 'darwin',
   });
 
   const toastManager = createToastManager({
@@ -821,6 +823,7 @@ export function wireControllers(deps: WiringDeps) {
     updateGitBranch: (path: string) => updateGitBranch(path),
     maxCachedTabs: MAX_CACHED_TABS,
     maxCachedFilesPerTab: MAX_CACHED_FILES_PER_TAB,
+    isMainWindow: deps.isMainWindow,
   });
 
   const {

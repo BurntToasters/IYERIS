@@ -118,7 +118,7 @@ export function createShortcutsUiController(deps: ShortcutsUiDeps) {
         [
           {
             title: 'Multi-select',
-            tokens: [{ keys: ['Ctrl'] }, { text: '+' }, { text: 'Click' }],
+            tokens: [{ keys: [refreshModifier] }, { text: '+' }, { text: 'Click' }],
           },
           {
             title: 'Extend Selection',
@@ -134,7 +134,7 @@ export function createShortcutsUiController(deps: ShortcutsUiDeps) {
           {
             title: 'Move Focus (No Select)',
             tokens: [
-              { keys: ['Ctrl'] },
+              { keys: [refreshModifier] },
               { text: '+' },
               { keys: ['ArrowUp'] },
               { keys: ['ArrowDown'] },
@@ -144,7 +144,7 @@ export function createShortcutsUiController(deps: ShortcutsUiDeps) {
           },
           {
             title: 'Toggle Selection at Cursor',
-            tokens: [{ keys: ['Ctrl', 'Space'] }],
+            tokens: [{ keys: [refreshModifier, 'Space'] }],
           },
         ],
       ],

@@ -70,6 +70,7 @@ interface TabsDeps {
 
   maxCachedTabs: number;
   maxCachedFilesPerTab: number;
+  isMainWindow: boolean;
 }
 
 export function createTabsController(deps: TabsDeps) {
@@ -122,7 +123,7 @@ export function createTabsController(deps: TabsDeps) {
     if (tabBar) tabBar.style.removeProperty('display');
 
     const tabState = settings.tabState;
-    if (tabState && tabState.tabs.length > 0) {
+    if (deps.isMainWindow && tabState && tabState.tabs.length > 0) {
       const tabs = tabState.tabs.map((t) => ({
         ...t,
         selectedItems: new Set(t.selectedItems || []),

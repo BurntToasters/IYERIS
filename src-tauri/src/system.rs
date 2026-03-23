@@ -386,19 +386,22 @@ pub fn set_zoom_level(
     zoom_level: f64,
     state: tauri::State<'_, crate::AppState>,
 ) -> Result<(), String> {
+    let label = webview.label().to_string();
     webview.set_zoom(zoom_level).map_err(|e| e.to_string())?;
-    if let Ok(mut z) = state.zoom_level.lock() {
-        *z = zoom_level;
+    if let Ok(mut z) = state.zoom_levels.lock() {
+        z.insert(label, zoom_level);
     }
     Ok(())
 }
 
 #[tauri::command]
 pub fn get_zoom_level(
+    window: tauri::Window,
     state: tauri::State<'_, crate::AppState>,
 ) -> Result<f64, String> {
-    let z = state.zoom_level.lock().map_err(|e| e.to_string())?;
-    Ok(*z)
+    let label = window.label();
+    let z = state.zoom_levels.lock().map_err(|e| e.to_string())?;
+    Ok(*z.get(label).unwrap_or(&1.0))
 }
 
 #[tauri::command]
@@ -879,6 +882,12 @@ pub async fn launch_desktop_entry(file_path: String) -> Result<(), String> {
     }
 }
 
+pub fn has_other_visible_windows(app: &tauri::AppHandle, exclude_label: &str) -> bool {
+    app.webview_windows()
+        .iter()
+        .any(|(label, w)| label != exclude_label && w.is_visible().unwrap_or(false))
+}
+
 pub fn should_minimize_to_tray(app: &tauri::AppHandle) -> bool {
     if !TRAY_READY.load(Ordering::Relaxed) {
         return false;
@@ -943,9 +952,18 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<tauri::tray::TrayIcon, Box<dyn
         .on_menu_event(move |app, event| {
             match event.id().as_ref() {
                 "show" => {
+                    #[cfg(target_os = "macos")]
+                    {
+                        let _ = app.set_dock_visibility(true);
+                    }
                     if let Some(window) = app.get_webview_window("main") {
                         let _ = window.show();
                         let _ = window.set_focus();
+                    } else {
+                        let windows = app.webview_windows();
+                        if let Some((_, w)) = windows.iter().next() {
+                            let _ = w.set_focus();
+                        }
                     }
                 }
                 "quit" => {
@@ -962,9 +980,18 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<tauri::tray::TrayIcon, Box<dyn
             } = event
             {
                 let app = tray.app_handle();
+                #[cfg(target_os = "macos")]
+                {
+                    let _ = app.set_dock_visibility(true);
+                }
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = window.show();
                     let _ = window.set_focus();
+                } else {
+                    let windows = app.webview_windows();
+                    if let Some((_, w)) = windows.iter().next() {
+                        let _ = w.set_focus();
+                    }
                 }
             }
         })

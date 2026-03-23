@@ -18,6 +18,7 @@ interface TourControllerOptions {
   onModalClose?: (modal: HTMLElement) => void;
   showCommandPalette?: () => void;
   hideCommandPalette?: () => void;
+  isMac?: boolean;
 }
 
 export interface TourController {
@@ -33,57 +34,57 @@ const TOUR_HIGHLIGHT_PADDING = 8;
 const TOUR_TOOLTIP_MARGIN = 12;
 const TOUR_VIEWPORT_PADDING = 16;
 
-const defaultSteps: TourStep[] = [
-  {
-    target: '#home-view',
-    title: 'Welcome to Home',
-    description:
-      'Your central hub for Quick Access, Recent Files, Bookmarks, and Drives. Click the Home button in the sidebar anytime to return here.',
-    prefer: 'top',
-  },
-  {
-    target: '.sidebar',
-    title: 'Sidebar Navigation',
-    description:
-      'Quickly jump between Home, Bookmarks, Recent Files, and your Drives. Toggle the sidebar with Ctrl+B.',
-    prefer: 'right',
-  },
-  {
-    target: '.address-bar',
-    title: 'Smart Address Bar',
-    description:
-      'Click breadcrumbs to jump to parent folders, or type a path directly to navigate anywhere instantly.',
-    prefer: 'bottom',
-  },
-  {
-    target: '#search-btn',
-    title: 'Powerful Search',
-    description:
-      'Search files and folders with advanced filters. Press Ctrl+F to search the current folder, or Shift+Ctrl+F for global search.',
-    prefer: 'bottom',
-  },
-  {
-    target: '.command-palette-modal',
-    title: 'Command Palette',
-    description:
-      'Access any action quickly with Ctrl+K. Type to search commands, navigate, or change settings.',
-    prefer: 'bottom',
-  },
-  {
-    target: '#view-options',
-    title: 'View Modes',
-    description:
-      'Switch between Grid, List, and Column views to browse your files the way you prefer.',
-    prefer: 'bottom',
-  },
-  {
-    target: '#settings-btn',
-    title: 'Customize Everything',
-    description:
-      'Change themes, adjust accessibility options, configure keyboard shortcuts, and much more in Settings.',
-    prefer: 'left',
-  },
-];
+function getDefaultSteps(isMac: boolean): TourStep[] {
+  const mod = isMac ? '⌘' : 'Ctrl+';
+  return [
+    {
+      target: '#home-view',
+      title: 'Welcome to Home',
+      description:
+        'Your central hub for Quick Access, Recent Files, Bookmarks, and Drives. Click the Home button in the sidebar anytime to return here.',
+      prefer: 'top',
+    },
+    {
+      target: '.sidebar',
+      title: 'Sidebar Navigation',
+      description: `Quickly jump between Home, Bookmarks, Recent Files, and your Drives. Toggle the sidebar with ${mod}B.`,
+      prefer: 'right',
+    },
+    {
+      target: '.address-bar',
+      title: 'Smart Address Bar',
+      description:
+        'Click breadcrumbs to jump to parent folders, or type a path directly to navigate anywhere instantly.',
+      prefer: 'bottom',
+    },
+    {
+      target: '#search-btn',
+      title: 'Powerful Search',
+      description: `Search files and folders with advanced filters. Press ${mod}F to search the current folder, or ${isMac ? '⇧⌘F' : 'Shift+Ctrl+F'} for global search.`,
+      prefer: 'bottom',
+    },
+    {
+      target: '.command-palette-modal',
+      title: 'Command Palette',
+      description: `Access any action quickly with ${mod}K. Type to search commands, navigate, or change settings.`,
+      prefer: 'bottom',
+    },
+    {
+      target: '#view-options',
+      title: 'View Modes',
+      description:
+        'Switch between Grid, List, and Column views to browse your files the way you prefer.',
+      prefer: 'bottom',
+    },
+    {
+      target: '#settings-btn',
+      title: 'Customize Everything',
+      description:
+        'Change themes, adjust accessibility options, configure keyboard shortcuts, and much more in Settings.',
+      prefer: 'left',
+    },
+  ];
+}
 
 const noopController: TourController = {
   handleLaunch: () => {},
@@ -95,7 +96,7 @@ const noopController: TourController = {
 };
 
 export function createTourController(options: TourControllerOptions): TourController {
-  const steps = options.steps ?? defaultSteps;
+  const steps = options.steps ?? getDefaultSteps(options.isMac ?? false);
   const promptDelayMs = options.promptDelayMs ?? 1500;
 
   const promptModal = document.getElementById('tour-prompt-modal') as HTMLElement | null;

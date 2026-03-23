@@ -115,6 +115,10 @@ export function createBootstrapController(config: BootstrapConfig) {
     config.setPlatformOS(platform);
     document.body.classList.add(`platform-${platform}`);
 
+    if (platform === 'darwin') {
+      patchShortcutTextForMac();
+    }
+
     await config.loadSettings();
     devLog('Bootstrap', 'Settings loaded');
     await config.loadHomeSettings();
@@ -377,6 +381,37 @@ export function createBootstrapController(config: BootstrapConfig) {
       },
       { once: true }
     );
+  }
+
+  function patchShortcutTextForMac(): void {
+    const replacements: Record<string, string> = {
+      'Ctrl+': '⌘',
+      'Ctrl/Cmd': '⌘',
+    };
+    document.querySelectorAll<HTMLElement>('.context-menu-shortcut').forEach((el) => {
+      for (const [from, to] of Object.entries(replacements)) {
+        if (el.textContent?.includes(from)) {
+          el.textContent = el.textContent.replace(from, to).replace('Shift+', '⇧');
+        }
+      }
+    });
+    const titledElements = [
+      { id: 'new-tab-btn', from: 'Ctrl+T', to: '⌘T' },
+      { id: 'sidebar-toggle', from: 'Ctrl+B', to: '⌘B' },
+      { id: 'search-btn', from: 'Ctrl+F', to: '⌘F' },
+      { id: 'zoom-out-btn', from: 'Ctrl/Cmd + -', to: '⌘-' },
+      { id: 'zoom-in-btn', from: 'Ctrl/Cmd + +', to: '⌘+' },
+    ];
+    for (const { id, from, to } of titledElements) {
+      const el = document.getElementById(id);
+      if (el) {
+        el.title = el.title.replace(from, to);
+      }
+    }
+    const emptyHint = document.querySelector<HTMLElement>('.empty-hint');
+    if (emptyHint && emptyHint.textContent?.includes('Ctrl+')) {
+      emptyHint.textContent = emptyHint.textContent.replace('Ctrl+Shift+N', '⌘⇧N');
+    }
   }
 
   return {

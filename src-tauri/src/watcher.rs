@@ -62,10 +62,12 @@ fn classify_directory_change_event(event: &Event, watch_path: &Path) -> (&'stati
 #[tauri::command]
 pub fn watch_directory(
     dir_path: String,
+    window: tauri::Window,
     state: tauri::State<'_, crate::AppState>,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
-    log::debug!("[Watcher] watch_directory request: {}", dir_path);
+    let window_label = window.label().to_string();
+    log::debug!("[Watcher] watch_directory request: {} (window={})", dir_path, window_label);
     let path = crate::validate_existing_path(&dir_path, "Directory")?;
     let path_display = path.to_string_lossy().to_string();
 
@@ -170,14 +172,15 @@ pub fn watch_directory(
     });
 
     // Atomically replace the old watcher — dropped here only on success.
-    let mut w = state.watcher.lock().map_err(|e| e.to_string())?;
-    if let Some(existing) = w.as_ref() {
+    let mut w = state.watchers.lock().map_err(|e| e.to_string())?;
+    if let Some(existing) = w.get(&window_label) {
         log::debug!(
-            "[Watcher] Replacing existing watcher: {}",
+            "[Watcher] Replacing existing watcher for window {}: {}",
+            window_label,
             existing._path.display()
         );
     }
-    *w = Some(DirectoryWatcher {
+    w.insert(window_label, DirectoryWatcher {
         _watcher: new_watcher,
         _path: path,
     });
@@ -187,10 +190,12 @@ pub fn watch_directory(
 
 #[tauri::command]
 pub fn unwatch_directory(
+    window: tauri::Window,
     state: tauri::State<'_, crate::AppState>,
 ) -> Result<(), String> {
-    log::debug!("[Watcher] unwatch_directory request");
-    let mut w = state.watcher.lock().map_err(|e| e.to_string())?;
-    *w = None;
+    let window_label = window.label().to_string();
+    log::debug!("[Watcher] unwatch_directory request (window={})", window_label);
+    let mut w = state.watchers.lock().map_err(|e| e.to_string())?;
+    w.remove(&window_label);
     Ok(())
 }
