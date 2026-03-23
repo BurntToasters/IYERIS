@@ -42,6 +42,16 @@ body.platform-win32 .glass-input:focus {
   box-shadow: none;
 }
 
+body.platform-linux .glass-input {
+  border-radius: 6px;
+  transition: var(--transition-standard);
+}
+
+body.platform-linux .glass-input:focus {
+  border-color: var(--system-accent-color, var(--accent-color));
+  box-shadow: 0 0 0 2px rgba(var(--system-accent-rgb, var(--accent-rgb)), 0.3);
+}
+
 .toggle-switch {
   position: relative;
   display: inline-block;

@@ -152,6 +152,19 @@ body.platform-win32 .toolbar-button:active:not(:disabled) {
   background: var(--active-color);
 }
 
+body.platform-linux .toolbar-button {
+  border-radius: 6px;
+  transition: var(--transition-standard);
+}
+
+body.platform-linux .toolbar-button:hover:not(:disabled) {
+  background: var(--hover-color);
+}
+
+body.platform-linux .toolbar-button:active:not(:disabled) {
+  background: var(--active-color);
+}
+
 .selection-indicator {
   display: inline-flex;
   align-items: center;

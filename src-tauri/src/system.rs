@@ -362,11 +362,12 @@ pub fn open_new_window(app: tauri::AppHandle) -> Result<(), String> {
     let builder = tauri::WebviewWindowBuilder::new(
         &app,
         &label,
-        tauri::WebviewUrl::default(),
+        tauri::WebviewUrl::App("index.html".into()),
     )
     .title("IYERIS")
     .inner_size(1200.0, 800.0)
-    .min_inner_size(800.0, 500.0);
+    .min_inner_size(800.0, 500.0)
+    .background_color(tauri::utils::config::Color(24, 24, 24, 255));
 
     #[cfg(target_os = "macos")]
     let builder = builder.decorations(true).title_bar_style(tauri::TitleBarStyle::Overlay).hidden_title(true);

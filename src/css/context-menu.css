@@ -149,6 +149,33 @@ body.platform-win32 .context-menu-separator {
   margin: 2px 0;
 }
 
+body.platform-linux .context-menu {
+  border-radius: var(--radius-medium);
+  padding: 4px;
+  background: var(--dropdown-bg);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-md);
+}
+
+body.platform-linux .context-menu-item {
+  padding: 6px 12px;
+  border-radius: var(--radius-small);
+  font-size: 13px;
+}
+
+body.platform-linux .context-menu-item:hover,
+body.platform-linux .context-menu-item.focused {
+  background: var(--hover-color);
+}
+
+body.platform-linux .context-menu-item:active {
+  background: var(--active-color);
+}
+
+body.platform-linux .context-menu-separator {
+  margin: 3px 4px;
+}
+
 .sort-menu {
   position: fixed;
   z-index: 1000;
