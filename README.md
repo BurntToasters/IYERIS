@@ -33,13 +33,13 @@
     <tbody>
       <tr>
         <td align="center">
-          <strong><a href="https://github.com/BurntToasters/IYERIS/releases/latest/download/IYERIS-Win.exe">Universal EXE (x64/arm64)</a></strong>
+          <strong>EXE: <a href="https://github.com/BurntToasters/IYERIS/releases/latest/download/IYERIS-Win-x64.exe">x64</a> / <a href="https://github.com/BurntToasters/IYERIS/releases/latest/download/IYERIS-Win-arm64.exe">arm64</a></strong>
         </td>
         <td align="center">
           <strong><a href="https://github.com/BurntToasters/IYERIS/releases/latest/download/IYERIS-MacOS-universal.dmg">Universal DMG</a></strong>
         </td>
         <td align="center">
-          <strong>AppImage:</strong> <a href="https://github.com/BurntToasters/IYERIS/releases/latest/download/IYERIS-Linux-x86_64.AppImage">x64</a> / <a href="https://github.com/BurntToasters/IYERIS/releases/latest/download/IYERIS-Linux-arm64.AppImage">arm64</a>
+          <strong>AppImage:</strong> <a href="https://github.com/BurntToasters/IYERIS/releases/latest/download/IYERIS-Linux-x86_64.AppImage">x64</a> <!--/ <a href="https://github.com/BurntToasters/IYERIS/releases/latest/download/IYERIS-Linux-arm64.AppImage">arm64</a>-->
         </td>
       </tr>
       <tr>
@@ -50,7 +50,7 @@
           <strong><a href="https://github.com/BurntToasters/IYERIS/releases/latest/download/IYERIS-MacOS-universal.zip">Universal ZIP</a></strong>
         </td>
         <td align="center">
-          <strong>DEB:</strong> <a href="https://github.com/BurntToasters/IYERIS/releases/latest/download/IYERIS-Linux-amd64.deb">x64</a> / <a href="https://github.com/BurntToasters/IYERIS/releases/latest/download/IYERIS-Linux-arm64.deb">arm64</a>
+          <strong>DEB:</strong> <a href="https://github.com/BurntToasters/IYERIS/releases/latest/download/IYERIS-Linux-amd64.deb">x64</a> <!--/ <a href="https://github.com/BurntToasters/IYERIS/releases/latest/download/IYERIS-Linux-arm64.deb">arm64</a>-->
         </td>
       </tr>
       <tr>
@@ -59,19 +59,22 @@
         </td>
         <td></td>
         <td align="center">
-          <strong>RPM:</strong> <a href="https://github.com/BurntToasters/IYERIS/releases/latest/download/IYERIS-Linux-x86_64.rpm">x64</a> / <a href="https://github.com/BurntToasters/IYERIS/releases/latest/download/IYERIS-Linux-aarch64.rpm">arm64</a>
+          <strong>RPM:</strong> <a href="https://github.com/BurntToasters/IYERIS/releases/latest/download/IYERIS-Linux-x86_64.rpm">x64</a> <!--/ <a href="https://github.com/BurntToasters/IYERIS/releases/latest/download/IYERIS-Linux-aarch64.rpm">arm64</a>-->
         </td>
       </tr>
       <tr>
         <td></td>
         <td></td>
         <td align="center">
-          <strong>Flatpak:</strong> <a href="https://github.com/BurntToasters/IYERIS/releases/latest/download/IYERIS-Linux-x86_64.flatpak">x64</a> / <a href="https://github.com/BurntToasters/IYERIS/releases/latest/download/IYERIS-Linux-aarch64.flatpak">arm64</a>
+          <strong>Flatpak:</strong> <a href="https://github.com/BurntToasters/IYERIS/releases/latest/download/IYERIS-Linux-x86_64.flatpak">x64</a> <!--/ <a href="https://github.com/BurntToasters/IYERIS/releases/latest/download/IYERIS-Linux-aarch64.flatpak">arm64</a>-->
         </td>
       </tr>
     </tbody>
   </table>
 </div>
+
+### Flatpak Installation:
+* You can use this quick command on linux to pull the latest flatpak binary from this repo and install it: <div><code>cd ~/Downloads && wget https://github.com/BurntToasters/IYERIS/releases/latest/download/IYERIS-Linux-x86_64.flatpak && flatpak install --user -y ./IYERIS-Linux-x86_64.flatpak</code></div>
 
 ### <p align="center">ℹ️ More information on IYERIS is available at: <b>https://iyeris.app</b></p>
 
@@ -121,3 +124,8 @@
 <img width="45%" height="1012" alt="IYERIS-View3" src="https://prod.rosie.run/apps/iyeris/_static/v1/Appearence%20Text.png" />
 &nbsp;
 </p>
+
+# Build from source
+***MOST*** of IYERIS's deps are handled by NodeJS 22-24 by running `npm i`.<br>
+***HOWEVER***, Tauri V2 uses rust and is required for a user to manuall install if they want to build IYERIS from source. Checkout how to install rust [here](https://rust-lang.org/tools/install/).
+Please check out [build-setup.md](https://github.com/BurntToasters/IYERIS/blob/main/build-setup.md) in this repo for more info about each operating system's requirements to build IYERIS.
