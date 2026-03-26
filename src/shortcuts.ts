@@ -57,18 +57,21 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
     title: 'Go Back',
     category: 'Navigation',
     defaultBinding: ['Alt', 'ArrowLeft'],
+    defaultBindingMac: ['Meta', '['],
   },
   {
     id: 'go-forward',
     title: 'Go Forward',
     category: 'Navigation',
     defaultBinding: ['Alt', 'ArrowRight'],
+    defaultBindingMac: ['Meta', ']'],
   },
   {
     id: 'go-up',
     title: 'Go to Parent',
     category: 'Navigation',
     defaultBinding: ['Alt', 'ArrowUp'],
+    defaultBindingMac: ['Meta', 'ArrowUp'],
   },
   {
     id: 'go-home',

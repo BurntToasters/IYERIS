@@ -373,4 +373,98 @@ describe('rendererShortcutsUi', () => {
       expect(ctrl.isShortcutCaptureActive()).toBe(false);
     });
   });
+
+  describe('macOS remapping', () => {
+    function makeMacDeps(overrides: Partial<Deps> = {}): Deps {
+      return makeDeps({
+        isMacPlatform: () => true,
+        formatShortcutKeyLabel: (key: string) => {
+          if (key === 'Meta') return '⌘ Cmd';
+          if (key === 'Ctrl') return '⌃ Ctrl';
+          return key;
+        },
+        getDefaultShortcuts: () => ({
+          'action-a': ['Meta', 'A'],
+          'action-b': ['Meta', 'B'],
+        }),
+        getShortcutBindings: () => ({
+          'action-a': ['Meta', 'A'],
+          'action-b': ['Meta', 'B'],
+        }),
+        eventToBinding: vi.fn((e: KeyboardEvent) => {
+          const mods: string[] = [];
+          if (e.ctrlKey) mods.push('Ctrl');
+          if (e.shiftKey) mods.push('Shift');
+          if (e.altKey) mods.push('Alt');
+          if (e.metaKey) mods.push('Meta');
+          const key = e.key.length === 1 ? e.key.toUpperCase() : e.key;
+          return [...mods, key];
+        }),
+        ...overrides,
+      });
+    }
+
+    function setupMacCapture() {
+      document.body.innerHTML = '<div id="shortcuts-modal-sections"></div>';
+      const deps = makeMacDeps();
+      const ctrl = createShortcutsUiController(deps);
+      ctrl.renderShortcutsModal();
+      ctrl.initShortcutsModal();
+      return { deps, ctrl };
+    }
+
+    it('captures Cmd key (metaKey) correctly on macOS', () => {
+      const { deps, ctrl } = setupMacCapture();
+      const editBtn = document.querySelector('[data-shortcut-action="edit"]') as HTMLButtonElement;
+      editBtn.click();
+
+      window.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'X', metaKey: true, bubbles: true })
+      );
+
+      expect(ctrl.isShortcutCaptureActive()).toBe(false);
+      expect(deps.setShortcutBindings).toHaveBeenCalled();
+      const call = vi.mocked(deps.setShortcutBindings).mock.calls[0][0];
+      expect(call['action-a']).toEqual(['Meta', 'X']);
+    });
+
+    it('captures Cmd+Shift combination on macOS', () => {
+      const { deps, ctrl } = setupMacCapture();
+      const editBtn = document.querySelector('[data-shortcut-action="edit"]') as HTMLButtonElement;
+      editBtn.click();
+
+      window.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'N', metaKey: true, shiftKey: true, bubbles: true })
+      );
+
+      expect(ctrl.isShortcutCaptureActive()).toBe(false);
+      expect(deps.setShortcutBindings).toHaveBeenCalled();
+      const call = vi.mocked(deps.setShortcutBindings).mock.calls[0][0];
+      expect(call['action-a']).toEqual(['Shift', 'Meta', 'N']);
+    });
+
+    it('resets to Mac defaults (Meta) not Linux defaults (Ctrl)', () => {
+      const { deps, ctrl } = setupMacCapture();
+      const resetBtn = document.querySelector(
+        '[data-shortcut-action="reset"]'
+      ) as HTMLButtonElement;
+      resetBtn.disabled = false;
+      resetBtn.click();
+
+      expect(deps.setShortcutBindings).toHaveBeenCalled();
+      const call = vi.mocked(deps.setShortcutBindings).mock.calls[0][0];
+      expect(call['action-a']).toEqual(['Meta', 'A']);
+    });
+
+    it('renders Mac modifier symbols in key labels', () => {
+      document.body.innerHTML = '<div id="shortcuts-modal-sections"></div>';
+      const deps = makeMacDeps();
+      const ctrl = createShortcutsUiController(deps);
+      ctrl.renderShortcutsModal();
+
+      const kbds = document.querySelectorAll('kbd');
+      const texts = Array.from(kbds).map((kbd) => kbd.textContent);
+      expect(texts.some((t) => t?.includes('⌘ Cmd'))).toBe(true);
+    });
+  });
 });

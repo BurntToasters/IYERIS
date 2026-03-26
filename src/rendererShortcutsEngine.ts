@@ -166,8 +166,18 @@ export function createShortcutEngineController(deps: ShortcutEngineDeps) {
     const used = new Set<string>();
     let changed = false;
 
+    const nonMacDefaults = isMacPlatform() ? getDefaultShortcuts('linux') : null;
+
     for (const def of SHORTCUT_DEFINITIONS) {
-      const raw = settings.shortcuts?.[def.id] || defaults[def.id];
+      let raw = settings.shortcuts?.[def.id] || defaults[def.id];
+      if (nonMacDefaults && settings.shortcuts?.[def.id] && def.defaultBindingMac) {
+        const savedKey = serializeShortcut(normalizeShortcutBinding(raw));
+        const nonMacKey = serializeShortcut(normalizeShortcutBinding(nonMacDefaults[def.id]));
+        if (savedKey === nonMacKey) {
+          raw = def.defaultBindingMac;
+          changed = true;
+        }
+      }
       let binding = normalizeShortcutBinding(raw);
       if (binding.length > 0 && (!hasModifier(binding) || binding.length < 2)) {
         binding = normalizeShortcutBinding(defaults[def.id]);

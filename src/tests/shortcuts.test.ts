@@ -90,12 +90,14 @@ describe('getDefaultShortcuts', () => {
       expect(winShortcuts.redo).toContain('Y');
     });
 
-    it('navigation shortcuts are platform-independent', () => {
+    it('navigation shortcuts use Mac-specific bindings on darwin', () => {
       const macShortcuts = getDefaultShortcuts('darwin');
       const winShortcuts = getDefaultShortcuts('win32');
 
-      expect(macShortcuts['go-back']).toEqual(winShortcuts['go-back']);
-      expect(macShortcuts['go-forward']).toEqual(winShortcuts['go-forward']);
+      expect(macShortcuts['go-back']).toEqual(['Meta', '[']);
+      expect(macShortcuts['go-forward']).toEqual(['Meta', ']']);
+      expect(winShortcuts['go-back']).toEqual(['Alt', 'ArrowLeft']);
+      expect(winShortcuts['go-forward']).toEqual(['Alt', 'ArrowRight']);
     });
   });
 

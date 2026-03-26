@@ -980,7 +980,8 @@ export function wireControllers(deps: WiringDeps) {
   const shortcutsUi = createShortcutsUiController({
     isMacPlatform,
     formatShortcutKeyLabel,
-    getDefaultShortcuts,
+    getDefaultShortcuts: () =>
+      getDefaultShortcuts(isMacPlatform() ? 'darwin' : deps.getPlatformOS()),
     shortcutDefinitions: SHORTCUT_DEFINITIONS,
     getShortcutBindings,
     setShortcutBindings,

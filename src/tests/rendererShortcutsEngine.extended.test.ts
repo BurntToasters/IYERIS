@@ -325,3 +325,53 @@ describe('getShortcutBinding edge cases', () => {
     expect(engine.getShortcutBinding('test')).toEqual(['Ctrl', 'A']);
   });
 });
+
+describe('macOS Ctrl-to-Meta migration', () => {
+  it('migrates Ctrl shortcuts to Meta on macOS when they match non-Mac defaults', () => {
+    const deps = makeDeps('darwin');
+    const engine = createShortcutEngineController(deps);
+    const linuxDefaults = getDefaultShortcuts('linux');
+    const settings = { shortcuts: { ...linuxDefaults } } as unknown as Settings;
+    engine.syncShortcutBindingsFromSettings(settings);
+    const bindings = engine.getShortcutBindings();
+
+    expect(bindings['command-palette']).toEqual(['Meta', 'K']);
+    expect(bindings['search']).toEqual(['Meta', 'F']);
+    expect(bindings['copy']).toEqual(['Meta', 'C']);
+    expect(bindings['toggle-hidden-files']).toEqual(['Meta', '.']);
+  });
+
+  it('preserves custom shortcuts that differ from non-Mac defaults on macOS', () => {
+    const deps = makeDeps('darwin');
+    const engine = createShortcutEngineController(deps);
+    const settings = {
+      shortcuts: { 'command-palette': ['Ctrl', 'Shift', 'P'] },
+    } as unknown as Settings;
+    engine.syncShortcutBindingsFromSettings(settings);
+    const bindings = engine.getShortcutBindings();
+
+    expect(bindings['command-palette']).toEqual(['Ctrl', 'Shift', 'P']);
+  });
+
+  it('does not migrate Ctrl shortcuts on non-Mac platforms', () => {
+    const deps = makeDeps('linux');
+    const engine = createShortcutEngineController(deps);
+    const linuxDefaults = getDefaultShortcuts('linux');
+    const settings = { shortcuts: { ...linuxDefaults } } as unknown as Settings;
+    engine.syncShortcutBindingsFromSettings(settings);
+    const bindings = engine.getShortcutBindings();
+
+    expect(bindings['command-palette']).toEqual(['Ctrl', 'K']);
+    expect(bindings['search']).toEqual(['Ctrl', 'F']);
+  });
+
+  it('saves settings after migration on macOS', () => {
+    const deps = makeDeps('darwin');
+    const engine = createShortcutEngineController(deps);
+    const linuxDefaults = getDefaultShortcuts('linux');
+    const settings = { shortcuts: { ...linuxDefaults } } as unknown as Settings;
+    engine.syncShortcutBindingsFromSettings(settings, { save: true });
+
+    expect(deps.debouncedSaveSettings).toHaveBeenCalled();
+  });
+});
