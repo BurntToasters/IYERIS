@@ -413,9 +413,7 @@ export function wireControllers(deps: WiringDeps) {
   });
 
   function isWindowsPlatform(): boolean {
-    const os = deps.getPlatformOS();
-    if (os) return os === 'win32';
-    return typeof process !== 'undefined' && process.platform === 'win32';
+    return deps.getPlatformOS() === 'win32';
   }
 
   const {

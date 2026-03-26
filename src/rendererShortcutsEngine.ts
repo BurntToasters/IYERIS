@@ -27,9 +27,7 @@ export function createShortcutEngineController(deps: ShortcutEngineDeps) {
   );
 
   function isMacPlatform(): boolean {
-    const platformOS = deps.getPlatformOS();
-    if (platformOS) return platformOS === 'darwin';
-    return typeof process !== 'undefined' && process.platform === 'darwin';
+    return deps.getPlatformOS() === 'darwin';
   }
 
   function normalizeModifierKey(key: string): string | null {

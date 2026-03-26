@@ -86,6 +86,7 @@ pub(crate) fn validate_existing_path(raw: &str, label: &str) -> Result<PathBuf, 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let dev_mode = args.iter().any(|a| a == "--dev" || a == "--verbose");
+    let start_minimized = args.iter().any(|a| a == "--minimized");
     DEV_MODE.store(dev_mode, Ordering::Relaxed);
 
     #[cfg(target_os = "windows")]
@@ -101,6 +102,9 @@ fn main() {
     // Must run before env_logger init to avoid set_var in a multi-threaded context
     #[cfg(target_os = "linux")]
     {
+        if std::env::var("GDK_BACKEND").is_err() {
+            unsafe { std::env::set_var("GDK_BACKEND", "x11") };
+        }
         if std::env::var("WEBKIT_DISABLE_COMPOSITING_MODE").is_err() {
             let has_nvidia = std::path::Path::new("/proc/driver/nvidia/version").exists();
             if !has_nvidia {
@@ -161,7 +165,7 @@ fn main() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
-            None,
+            Some(vec!["--minimized"]),
         ));
 
     match builder
@@ -175,7 +179,7 @@ fn main() {
             zoom_levels: Mutex::new(HashMap::new()),
             tray: Mutex::new(None),
         })
-        .setup(|app| {
+        .setup(move |app| {
             log::debug!("[Setup] App setup starting");
 
             #[cfg(not(target_os = "macos"))]
@@ -183,6 +187,17 @@ fn main() {
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = window.set_decorations(false);
                     log::debug!("[Setup] Disabled decorations for custom titlebar");
+                }
+            }
+
+            if start_minimized {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.hide();
+                    log::debug!("[Setup] Started minimized to tray");
+                }
+                #[cfg(target_os = "macos")]
+                {
+                    let _ = app.handle().set_dock_visibility(false);
                 }
             }
 
@@ -207,9 +222,13 @@ fn main() {
                 .ok()
                 .and_then(|v| v.get("startOnLogin").and_then(|f| f.as_bool()))
                 .unwrap_or(false);
-            if !start_on_login {
+            {
                 use tauri_plugin_autostart::ManagerExt;
-                let _ = app.autolaunch().disable();
+                if start_on_login {
+                    let _ = app.autolaunch().enable();
+                } else {
+                    let _ = app.autolaunch().disable();
+                }
             }
 
             let enable_indexer = serde_json::from_str::<serde_json::Value>(&settings_json)
