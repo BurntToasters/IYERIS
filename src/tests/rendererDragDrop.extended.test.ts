@@ -480,7 +480,7 @@ describe('createDragDropController — extended', () => {
   });
 
   describe('initFileGridDragAndDrop — event dispatching', () => {
-    it('adds drag-over class and shows indicator on dragover (non file-item target)', () => {
+    it('adds drag-over class and shows indicator on dragover (non file-item target)', async () => {
       const { config } = createConfig();
       const ctrl = createDragDropController(config);
       ctrl.initDragAndDropListeners();
@@ -492,6 +492,7 @@ describe('createDragDropController — extended', () => {
 
       expect(fileGrid.classList.contains('drag-over')).toBe(true);
       expect(config.consumeEvent).toHaveBeenCalled();
+      await new Promise((r) => requestAnimationFrame(r));
       expect(document.getElementById('drop-indicator')!.style.display).toBe('inline-flex');
     });
 
@@ -508,7 +509,7 @@ describe('createDragDropController — extended', () => {
       expect((dragover as any).dataTransfer.dropEffect).toBe('none');
     });
 
-    it('shows "Copy" indicator when ctrlKey held on dragover', () => {
+    it('shows "Copy" indicator when ctrlKey held on dragover', async () => {
       const { config } = createConfig();
       const ctrl = createDragDropController(config);
       ctrl.initDragAndDropListeners();
@@ -519,6 +520,7 @@ describe('createDragDropController — extended', () => {
       fileGrid.dispatchEvent(dragover);
 
       expect((dragover as any).dataTransfer.dropEffect).toBe('copy');
+      await new Promise((r) => requestAnimationFrame(r));
       expect(document.getElementById('drop-indicator-action')!.textContent).toBe('Copy');
     });
 

@@ -1,6 +1,6 @@
 {
   "name": "iyeris",
-  "version": "2.0.3",
+  "version": "2.0.4",
   "private": true,
   "type": "module",
   "description": "A beautiful cross-platform file explorer built with Tauri, featuring a simple yet advanced modern design.",
@@ -23,13 +23,13 @@
     "dotenv-cli": "^11.0.0",
     "eslint": "^10.0.0",
     "husky": "^9.1.7",
-    "jsdom": "^28.0.0",
+    "jsdom": "^29.0.1",
     "lint-staged": "^16.1.0",
     "npm-license-crawler": "^0.2.1",
     "prettier": "^3.5.3",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.53.0",
-    "vite": "^7.3.1",
+    "vite": "^8.0.2",
     "vitest": "^4.0.16"
   },
   "engines": {

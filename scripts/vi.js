@@ -3,7 +3,7 @@ import { spawnSync, execSync } from 'child_process';
 
 function run(cmd, args) {
   console.log(`> ${cmd} ${args.join(' ')}`);
-  const res = spawnSync(cmd, args, { stdio: 'inherit' });
+  const res = spawnSync(cmd, args, { stdio: 'inherit', shell: process.platform === 'win32' });
   if (res.status !== 0) {
     console.error(`Command failed: ${cmd} ${args.join(' ')}`);
     process.exit(res.status || 1);

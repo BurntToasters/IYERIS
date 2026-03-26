@@ -21,6 +21,8 @@ finish-args:
   - --filesystem=/run/media
   - --talk-name=org.freedesktop.Notifications
   - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=org.run_rosie_iyeris.SingleInstance
+  - --own-name=org.run_rosie_iyeris.SingleInstance
 
 modules:
   - name: iyeris

@@ -37,6 +37,14 @@ fn write_json_file(path: &std::path::Path, data: &str) -> Result<(), String> {
     file.write_all(data.as_bytes()).map_err(|e| e.to_string())?;
     file.sync_all().map_err(|e| e.to_string())?;
     drop(file);
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let perms = fs::Permissions::from_mode(0o600);
+        let _ = fs::set_permissions(&tmp, perms);
+    }
+
     fs::rename(&tmp, path).map_err(|e| {
         let _ = fs::remove_file(&tmp);
         e.to_string()

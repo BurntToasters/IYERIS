@@ -192,11 +192,21 @@ export function createThumbnailController(deps: ThumbnailDeps) {
       ctx.scale(dpr, dpr);
 
       const audioContext = new AudioContext();
+      let settled = false;
+
+      const timeout = setTimeout(() => {
+        if (!settled) {
+          settled = true;
+          audioContext.close();
+          reject(new Error('Audio waveform timeout'));
+        }
+      }, THUMBNAIL_TIMEOUT_MS);
 
       fetch(audioUrl)
         .then((response) => response.arrayBuffer())
         .then((arrayBuffer) => audioContext.decodeAudioData(arrayBuffer))
         .then((audioBuffer) => {
+          if (settled) return;
           const rawData = audioBuffer.getChannelData(0);
           const samples = 80;
           const blockSize = Math.floor(rawData.length / samples);
@@ -243,10 +253,15 @@ export function createThumbnailController(deps: ThumbnailDeps) {
           ctx.closePath();
           ctx.fill();
 
+          settled = true;
+          clearTimeout(timeout);
           audioContext.close();
           resolve(canvas.toDataURL('image/jpeg', getThumbnailQuality()));
         })
         .catch((error) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timeout);
           audioContext.close();
           reject(error);
         });

@@ -224,9 +224,8 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
   },
 ];
 
-export function getDefaultShortcuts(platform?: NodeJS.Platform): Record<string, ShortcutBinding> {
-  const resolvedPlatform =
-    platform ?? (typeof process !== 'undefined' ? process.platform : 'win32');
+export function getDefaultShortcuts(platform?: string): Record<string, ShortcutBinding> {
+  const resolvedPlatform = platform ?? 'win32';
   const isMac = resolvedPlatform === 'darwin';
   const map: Record<string, ShortcutBinding> = {};
   for (const def of SHORTCUT_DEFINITIONS) {

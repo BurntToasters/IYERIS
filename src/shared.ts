@@ -24,9 +24,7 @@ export function getErrorMessage(error: unknown): string {
   return String(error);
 }
 
-const IS_DEV_MODE = typeof process !== 'undefined' && (process.argv || []).includes('--dev');
-
-let devModeEnabled = IS_DEV_MODE;
+let devModeEnabled = false;
 
 export function setDevMode(enabled: boolean): void {
   devModeEnabled = enabled;

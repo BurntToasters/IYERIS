@@ -7,16 +7,16 @@ export default defineConfig({
   build: {
     outDir: "../dist",
     emptyOutDir: true,
-    rollupOptions: {
+    rolldownOptions: {
       input: {
-        main: resolve(__dirname, "src/index.html"),
+        main: resolve(import.meta.dirname, "src/index.html"),
       },
     },
   },
   resolve: {
     alias: {
-      "../assets": resolve(__dirname, "assets"),
-      "../dist/css": resolve(__dirname, "src/css"),
+      "../assets": resolve(import.meta.dirname, "assets"),
+      "../dist/css": resolve(import.meta.dirname, "src/css"),
     },
   },
   server: {
