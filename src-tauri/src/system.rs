@@ -947,6 +947,8 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<tauri::tray::TrayIcon, Box<dyn
         .icon(icon);
     #[cfg(target_os = "macos")]
     let tray_builder = tray_builder.icon_as_template(true);
+    #[cfg(not(target_os = "linux"))]
+    let tray_builder = tray_builder.show_menu_on_left_click(false);
     let tray = tray_builder
         .menu(&menu)
         .on_menu_event(move |app, event| {
@@ -985,20 +987,38 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<tauri::tray::TrayIcon, Box<dyn
             } = event
             {
                 let app = tray.app_handle();
-                #[cfg(target_os = "macos")]
-                {
-                    let _ = app.set_dock_visibility(true);
-                }
-                if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.show();
-                    let _ = window.set_focus();
+                let windows = app.webview_windows();
+                let visible_windows: Vec<_> = windows
+                    .values()
+                    .filter(|w| w.is_visible().unwrap_or(false))
+                    .collect();
+
+                if visible_windows.len() > 1 {
+                    for w in &visible_windows {
+                        let _ = w.set_focus();
+                    }
+                } else if visible_windows.len() == 1 {
+                    let w = visible_windows[0];
+                    if w.is_focused().unwrap_or(false) {
+                        let _ = w.hide();
+                        #[cfg(target_os = "macos")]
+                        {
+                            if !has_other_visible_windows(app, w.label()) {
+                                let _ = app.set_dock_visibility(false);
+                            }
+                        }
+                    } else {
+                        let _ = w.set_focus();
+                    }
                 } else {
-                    let windows = app.webview_windows();
-                    let target = windows
-                        .values()
-                        .find(|w| w.is_visible().unwrap_or(false))
-                        .or_else(|| windows.values().next());
-                    if let Some(w) = target {
+                    #[cfg(target_os = "macos")]
+                    {
+                        let _ = app.set_dock_visibility(true);
+                    }
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                    } else if let Some(w) = windows.values().next() {
                         let _ = w.show();
                         let _ = w.set_focus();
                     }

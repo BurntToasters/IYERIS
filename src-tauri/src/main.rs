@@ -246,27 +246,26 @@ fn main() {
         })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                if window.label() == "main" && system::should_minimize_to_tray(window.app_handle()) {
+                // Only hide-to-tray the LAST visible window; let others close normally.
+                if system::should_minimize_to_tray(window.app_handle())
+                    && !system::has_other_visible_windows(window.app_handle(), window.label())
+                {
                     api.prevent_close();
                     let _ = window.hide();
                     #[cfg(target_os = "macos")]
-                    if !system::has_other_visible_windows(window.app_handle(), "main") {
+                    {
                         let _ = window.app_handle().set_dock_visibility(false);
                     }
                 }
             }
             if let tauri::WindowEvent::Destroyed = event {
-                if window.label() != "main" {
-                    let app = window.app_handle();
-                    if system::should_minimize_to_tray(app) {
-                        let main_hidden = app.get_webview_window("main")
-                            .is_some_and(|w| !w.is_visible().unwrap_or(true));
-                        if main_hidden && !system::has_other_visible_windows(app, window.label()) {
-                            #[cfg(target_os = "macos")]
-                            {
-                                let _ = app.set_dock_visibility(false);
-                            }
-                        }
+                let app = window.app_handle();
+                if system::should_minimize_to_tray(app)
+                    && !system::has_other_visible_windows(app, window.label())
+                {
+                    #[cfg(target_os = "macos")]
+                    {
+                        let _ = app.set_dock_visibility(false);
                     }
                 }
             }
