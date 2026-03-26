@@ -1,6 +1,6 @@
 {
   "name": "iyeris",
-  "version": "2.0.5-beta.1",
+  "version": "2.0.5",
   "private": true,
   "type": "module",
   "description": "A beautiful cross-platform file explorer built with Tauri, featuring a simple yet advanced modern design.",
@@ -63,6 +63,8 @@
     "icons:normalize": "node scripts/normalize-iconsets.js",
     "wc": "npm run win-compiler:x64",
     "vi": "node scripts/vi.js",
+    "b": "git fetch && git switch beta && npm run vi",
+    "r": "git switch main && npm run vi && npm run gitprune:force",
     "win-compiler:x64": "powershell -NoProfile -ExecutionPolicy Bypass -NoExit -Command \"& 'C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\Common7\\Tools\\Launch-VsDevShell.ps1' -SkipAutomaticLocation",
     "win-compiler:arm64": "powershell -NoProfile -ExecutionPolicy Bypass -NoExit -Command \"& 'C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\Common7\\Tools\\Launch-VsDevShell.ps1' -SkipAutomaticLocation -Arch arm64 -HostArch amd64\"",
     "dist:clean": "node scripts/dist-tools.js clean",
