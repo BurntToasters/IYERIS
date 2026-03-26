@@ -8,9 +8,16 @@ const rawArgs = process.argv.slice(2);
 const args = [];
 const requireMacSigning = rawArgs.includes('--require-macos-signing');
 const requireMacNotarization = rawArgs.includes('--require-macos-notarization');
+const requireTauriSigning = rawArgs.includes('--require-tauri-signing');
 
 for (const arg of rawArgs) {
-  if (arg === '--require-macos-signing' || arg === '--require-macos-notarization') continue;
+  if (
+    arg === '--require-macos-signing' ||
+    arg === '--require-macos-notarization' ||
+    arg === '--require-tauri-signing'
+  ) {
+    continue;
+  }
   args.push(arg);
 }
 
@@ -61,6 +68,21 @@ function getBundlesArgMeta() {
   return null;
 }
 
+function hasNoBundleFlag() {
+  return args.includes('--no-bundle');
+}
+
+function assertTauriSigningConfigured() {
+  if (!requireTauriSigning || hasNoBundleFlag()) return;
+
+  if (!hasEnvValue('TAURI_SIGNING_PRIVATE_KEY')) {
+    console.error(
+      '[tauri-build] Missing required env var for signed builds: TAURI_SIGNING_PRIVATE_KEY'
+    );
+    process.exit(1);
+  }
+}
+
 function setBundlesArg(value) {
   const existing = getBundlesArgMeta();
   if (!existing) {
@@ -80,6 +102,11 @@ function setBundlesArg(value) {
 
 function stripMsiBundleForPrereleaseWindows() {
   if (!isPrerelease || !isWindowsBuildTarget()) {
+    return;
+  }
+
+  if (hasNoBundleFlag()) {
+    console.log(`[tauri-build] Pre-release detected (${pkg.version}); --no-bundle requested.`);
     return;
   }
 
@@ -183,6 +210,7 @@ if (isMacBuildTarget()) {
   }
 }
 
+assertTauriSigningConfigured();
 stripMsiBundleForPrereleaseWindows();
 
 const tauriBuildArgs = args.join(' ').trim();
