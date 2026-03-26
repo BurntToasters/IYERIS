@@ -806,6 +806,38 @@ export function createSearchController(deps: SearchDeps) {
       }
     });
 
+    searchInput?.addEventListener('keydown', (e) => {
+      const dropdown = getById('search-history-dropdown');
+      if (!dropdown || dropdown.style.display === 'none') return;
+
+      const items = Array.from(
+        dropdown.querySelectorAll<HTMLElement>('.history-item, .saved-search-item, .history-clear')
+      );
+      if (items.length === 0) return;
+
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        const active = dropdown.querySelector<HTMLElement>('.dropdown-active');
+        let idx = active ? items.indexOf(active) : -1;
+        if (e.key === 'ArrowDown') {
+          idx = idx < items.length - 1 ? idx + 1 : 0;
+        } else {
+          idx = idx > 0 ? idx - 1 : items.length - 1;
+        }
+        active?.classList.remove('dropdown-active');
+        items[idx].classList.add('dropdown-active');
+        items[idx].scrollIntoView({ block: 'nearest' });
+      } else if (e.key === 'Enter') {
+        const active = dropdown.querySelector<HTMLElement>('.dropdown-active');
+        if (active) {
+          e.preventDefault();
+          active.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+        }
+      } else if (e.key === 'Escape') {
+        hideSearchHistoryDropdown();
+      }
+    });
+
     searchInput?.addEventListener('input', () => {
       if (!searchInput) return;
       syncSaveBtnState();

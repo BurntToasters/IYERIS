@@ -31,7 +31,8 @@
   pointer-events: auto;
 }
 
-.history-item:hover {
+.history-item:hover,
+.history-item.dropdown-active {
   background: var(--hover-color);
   box-shadow: none;
 }
@@ -59,7 +60,8 @@
   pointer-events: auto;
 }
 
-.history-clear:hover {
+.history-clear:hover,
+.history-clear.dropdown-active {
   background: rgba(232, 17, 35, 0.2);
   color: var(--danger-hover);
 }
@@ -458,7 +460,8 @@ body.theme-light .toggle-slider-small {
   color: var(--text-primary);
 }
 
-.saved-search-item:hover {
+.saved-search-item:hover,
+.saved-search-item.dropdown-active {
   background: var(--hover-color);
 }
 
