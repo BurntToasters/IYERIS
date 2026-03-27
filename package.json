@@ -27,7 +27,7 @@
     "lint-staged": "^16.1.0",
     "npm-license-crawler": "^0.2.1",
     "prettier": "^3.5.3",
-    "typescript": "^5.9.3",
+    "typescript": "^6.0.2",
     "typescript-eslint": "^8.53.0",
     "vite": "^8.0.2",
     "vitest": "^4.0.16"
