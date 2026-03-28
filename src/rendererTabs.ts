@@ -77,6 +77,7 @@ export function createTabsController(deps: TabsDeps) {
   const MAX_CACHED_TABS = deps.maxCachedTabs;
   const MAX_CACHED_FILES_PER_TAB = deps.maxCachedFilesPerTab;
   const MAX_CLOSED_TABS = 10;
+  const MAX_HISTORY_PER_TAB = 200;
   const closedTabPaths: string[] = [];
   let activeDismissHandler: ((e: MouseEvent) => void) | null = null;
   let dismissTimeoutId: ReturnType<typeof setTimeout> | null = null;
@@ -274,8 +275,16 @@ export function createTabsController(deps: TabsDeps) {
     const currentTab = tabs.find((t) => t.id === deps.getActiveTabId());
     if (!currentTab) return;
     currentTab.path = deps.getCurrentPath();
-    currentTab.history = [...deps.getHistory()];
-    currentTab.historyIndex = deps.getHistoryIndex();
+    const history = deps.getHistory();
+    const historyIndex = deps.getHistoryIndex();
+    if (history.length > MAX_HISTORY_PER_TAB) {
+      const trimCount = history.length - MAX_HISTORY_PER_TAB;
+      currentTab.history = history.slice(trimCount);
+      currentTab.historyIndex = Math.max(0, historyIndex - trimCount);
+    } else {
+      currentTab.history = [...history];
+      currentTab.historyIndex = historyIndex;
+    }
     currentTab.selectedItems = new Set(deps.getSelectedItems());
     currentTab.scrollPosition = deps.getFileViewScrollTop();
     if (deps.getAllFiles().length <= MAX_CACHED_FILES_PER_TAB) {

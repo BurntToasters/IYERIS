@@ -331,6 +331,12 @@ export function createSearchController(deps: SearchDeps) {
       const hasFilters = hasActiveFilters() || searchInContents || isRegexMode;
       if (isRegexMode) {
         currentSearchFilters.regex = true;
+        if (query.length > 1000) {
+          deps.showToast('Regex pattern too long (max 1000 characters)', 'Search', 'warning');
+          searchInput?.classList.add('input-error');
+          activeSearchOperationId = null;
+          return;
+        }
         try {
           new RegExp(query);
         } catch {

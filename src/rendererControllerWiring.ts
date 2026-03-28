@@ -253,6 +253,7 @@ export function wireControllers(deps: WiringDeps) {
     getCurrentPath: () => deps.getCurrentPath(),
     getCurrentSettings: () => deps.getCurrentSettings(),
     getShowToast: () => showToast as (message: string, title: string, type: string) => void,
+    showConfirm,
     getFileGrid: () => fileGrid,
     getFileView: () => fileView,
     getDropIndicator: () => dropIndicator,
@@ -410,6 +411,7 @@ export function wireControllers(deps: WiringDeps) {
     navigateTo: (p) => deps.late.navigateTo(p),
     showToast,
     showAlert,
+    showConfirm,
     isHomeViewPath,
     announceToScreenReader,
   });
@@ -651,6 +653,7 @@ export function wireControllers(deps: WiringDeps) {
     getFileElementMap: () => deps.getFileElementMap(),
     getCurrentSettings: () => deps.getCurrentSettings(),
     showToast,
+    showConfirm,
     handleDrop,
     refresh: () => deps.late.refresh('clipboard-operation'),
     updateUndoRedoState: () => deps.late.updateUndoRedoState(),

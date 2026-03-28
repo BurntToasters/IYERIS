@@ -5,6 +5,23 @@ import { devLog } from './shared.js';
 
 type ClipboardState = { operation: 'copy' | 'cut'; paths: string[] } | null;
 
+export function isPermissionDeniedError(message?: string): boolean {
+  if (!message) return false;
+  const value = message.toLowerCase();
+  return (
+    value.includes('eacces') ||
+    value.includes('eperm') ||
+    value.includes('permission denied') ||
+    value.includes('operation not permitted') ||
+    value.includes('access is denied') ||
+    value.includes('not authorized') ||
+    value.includes('unauthorized') ||
+    value.includes('access denied') ||
+    value.includes('privilege') ||
+    /\berr(?:no)?[:\s]+13\b/.test(value)
+  );
+}
+
 type ClipboardDeps = {
   getSelectedItems: () => Set<string>;
   getCurrentPath: () => string;
@@ -16,6 +33,7 @@ type ClipboardDeps = {
     type: 'success' | 'error' | 'info' | 'warning',
     actions?: ToastAction[]
   ) => void;
+  showConfirm: (message: string, title: string, type: 'warning') => Promise<boolean>;
   handleDrop: (
     sourcePaths: string[],
     destPath: string,
@@ -47,19 +65,6 @@ export function createClipboardController(deps: ClipboardDeps) {
   function getRetryActions(retry?: () => void): ToastAction[] | undefined {
     if (!retry) return undefined;
     return [{ label: 'Retry', onClick: () => void retry() }];
-  }
-
-  function isPermissionDeniedError(message?: string): boolean {
-    if (!message) return false;
-    const value = message.toLowerCase();
-    return (
-      value.includes('eacces') ||
-      value.includes('eperm') ||
-      value.includes('permission denied') ||
-      value.includes('operation not permitted') ||
-      value.includes('access is denied') ||
-      value.includes('not authorized')
-    );
   }
 
   async function getSystemClipboardData(): Promise<{
@@ -114,21 +119,34 @@ export function createClipboardController(deps: ClipboardDeps) {
       }
 
       if (isPermissionDeniedError(moveResult.error)) {
-        const copyResult = await window.tauriAPI.copyItems(
-          systemClipboard.paths,
-          destPath,
-          conflictBehavior
-        );
-        if (!copyResult.success) {
-          deps.showToast(copyResult.error || 'Paste failed', 'Error', 'error', retryActions);
-          return true;
-        }
-        deps.showToast(
-          `${systemClipboard.paths.length} item(s) copied from system clipboard; couldn't remove originals`,
-          'Permission Required',
+        const confirmed = await deps.showConfirm(
+          'This operation requires administrator privileges. You will be prompted to authorize.',
+          'Elevated Permissions Required',
           'warning'
         );
-        deps.refresh();
+        if (confirmed) {
+          const elevResult = await window.tauriAPI.elevatedMoveBatch(
+            systemClipboard.paths,
+            destPath
+          );
+          if (elevResult.success) {
+            deps.showToast(
+              `${systemClipboard.paths.length} item(s) moved (elevated)`,
+              'Success',
+              'success'
+            );
+            deps.refresh();
+            return true;
+          }
+          deps.showToast(
+            elevResult.error || 'Elevated move failed',
+            'Error',
+            'error',
+            retryActions
+          );
+          return true;
+        }
+        deps.showToast('Operation cancelled', 'Info', 'info');
         return true;
       }
 
@@ -142,6 +160,37 @@ export function createClipboardController(deps: ClipboardDeps) {
       conflictBehavior
     );
     if (!copyResult.success) {
+      if (isPermissionDeniedError(copyResult.error)) {
+        const confirmed = await deps.showConfirm(
+          'This operation requires administrator privileges. You will be prompted to authorize.',
+          'Elevated Permissions Required',
+          'warning'
+        );
+        if (confirmed) {
+          const elevResult = await window.tauriAPI.elevatedCopyBatch(
+            systemClipboard.paths,
+            destPath
+          );
+          if (elevResult.success) {
+            deps.showToast(
+              `${systemClipboard.paths.length} item(s) pasted (elevated)`,
+              'Success',
+              'success'
+            );
+            deps.refresh();
+            return true;
+          }
+          deps.showToast(
+            elevResult.error || 'Elevated copy failed',
+            'Error',
+            'error',
+            retryActions
+          );
+          return true;
+        }
+        deps.showToast('Operation cancelled', 'Info', 'info');
+        return true;
+      }
       deps.showToast(copyResult.error || 'Paste failed', 'Error', 'error', retryActions);
       return true;
     }
@@ -276,6 +325,38 @@ export function createClipboardController(deps: ClipboardDeps) {
         : await window.tauriAPI.moveItems(clipboard.paths, folderPath, conflictBehavior);
 
       if (!result.success) {
+        if (isPermissionDeniedError(result.error)) {
+          const confirmed = await deps.showConfirm(
+            'This operation requires administrator privileges. You will be prompted to authorize.',
+            'Elevated Permissions Required',
+            'warning'
+          );
+          if (confirmed) {
+            const elevResult = isCopy
+              ? await window.tauriAPI.elevatedCopyBatch(clipboard.paths, folderPath)
+              : await window.tauriAPI.elevatedMoveBatch(clipboard.paths, folderPath);
+            if (elevResult.success) {
+              deps.showToast(
+                `${clipboard.paths.length} item(s) ${isCopy ? 'copied' : 'moved'} into folder (elevated)`,
+                'Success',
+                'success'
+              );
+              if (!isCopy) {
+                await deps.updateUndoRedoState();
+                clipboard = null;
+                window.tauriAPI.setClipboard(null).catch(() => {});
+                updateClipboardIndicator();
+              }
+              updateCutVisuals();
+              deps.refresh();
+              return;
+            }
+            deps.showToast(elevResult.error || 'Elevated operation failed', 'Error', 'error');
+            return;
+          }
+          deps.showToast('Operation cancelled', 'Info', 'info');
+          return;
+        }
         deps.showToast(result.error || 'Operation failed', 'Error', 'error');
         return;
       }
@@ -307,6 +388,25 @@ export function createClipboardController(deps: ClipboardDeps) {
       const conflictBehavior = 'rename' as const;
       const result = await window.tauriAPI.copyItems(paths, currentPath, conflictBehavior);
       if (!result.success) {
+        if (isPermissionDeniedError(result.error)) {
+          const confirmed = await deps.showConfirm(
+            'This operation requires administrator privileges. You will be prompted to authorize.',
+            'Elevated Permissions Required',
+            'warning'
+          );
+          if (confirmed) {
+            const elevResult = await window.tauriAPI.elevatedCopyBatch(paths, currentPath);
+            if (elevResult.success) {
+              deps.showToast(`${paths.length} item(s) duplicated (elevated)`, 'Success', 'success');
+              deps.refresh();
+              return;
+            }
+            deps.showToast(elevResult.error || 'Elevated duplicate failed', 'Error', 'error');
+            return;
+          }
+          deps.showToast('Operation cancelled', 'Info', 'info');
+          return;
+        }
         deps.showToast(result.error || 'Duplicate failed', 'Error', 'error');
         return;
       }
@@ -340,6 +440,38 @@ export function createClipboardController(deps: ClipboardDeps) {
         : await window.tauriAPI.moveItems(clipboard.paths, currentPath, conflictBehavior);
 
       if (!result.success) {
+        if (isPermissionDeniedError(result.error)) {
+          const confirmed = await deps.showConfirm(
+            'This operation requires administrator privileges. You will be prompted to authorize.',
+            'Elevated Permissions Required',
+            'warning'
+          );
+          if (confirmed) {
+            const elevResult = isCopy
+              ? await window.tauriAPI.elevatedCopyBatch(clipboard.paths, currentPath)
+              : await window.tauriAPI.elevatedMoveBatch(clipboard.paths, currentPath);
+            if (elevResult.success) {
+              deps.showToast(
+                `${clipboard.paths.length} item(s) ${isCopy ? 'copied' : 'moved'} (elevated)`,
+                'Success',
+                'success'
+              );
+              if (!isCopy) {
+                await deps.updateUndoRedoState();
+                clipboard = null;
+                window.tauriAPI.setClipboard(null).catch(() => {});
+                updateClipboardIndicator();
+              }
+              updateCutVisuals();
+              deps.refresh();
+              return;
+            }
+            deps.showToast(elevResult.error || 'Elevated operation failed', 'Error', 'error');
+            return;
+          }
+          deps.showToast('Operation cancelled', 'Info', 'info');
+          return;
+        }
         deps.showToast(result.error || 'Operation failed', 'Error', 'error', [
           { label: 'Retry', onClick: () => void pasteFromClipboard() },
         ]);

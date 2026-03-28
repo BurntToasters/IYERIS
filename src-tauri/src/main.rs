@@ -413,6 +413,9 @@ fn main() {
             elevated::elevated_move,
             elevated::elevated_delete,
             elevated::elevated_rename,
+            elevated::elevated_copy_batch,
+            elevated::elevated_move_batch,
+            elevated::elevated_delete_batch,
             elevated::restart_as_admin,
             // Thumbnails
             thumbnails::get_cached_thumbnail,

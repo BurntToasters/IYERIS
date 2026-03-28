@@ -3,7 +3,7 @@ import { twemojiImg } from './rendererUtils.js';
 export type DialogType = 'info' | 'warning' | 'error' | 'success' | 'question';
 
 const MODAL_FOCUS_SELECTORS =
-  'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), audio[controls], video[controls], [contenteditable]:not([contenteditable="false"]), [tabindex]:not([tabindex="-1"])';
 let activeModal: HTMLElement | null = null;
 let modalRestoreFocusEl: HTMLElement | null = null;
 
