@@ -66,7 +66,6 @@ function makeSettings(overrides: Partial<Settings> = {}): Settings {
     useSystemFontSize: false,
     confirmFileOperations: true,
     fileConflictBehavior: 'ask',
-    skipElevationConfirmation: false,
     maxThumbnailSizeMB: 10,
     thumbnailQuality: 'medium',
     autoPlayVideos: false,

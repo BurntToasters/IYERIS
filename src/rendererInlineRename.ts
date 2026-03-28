@@ -12,6 +12,7 @@ type InlineRenameDeps = {
   ) => void;
   showAlert: (message: string, title: string, type: DialogType) => Promise<void>;
   isHomeViewPath: (path: string) => boolean;
+  announceToScreenReader?: (message: string) => void;
 };
 
 const INVALID_FILENAME_CHARS = /[<>:"|?*]/;
@@ -215,6 +216,7 @@ export function createInlineRenameController(deps: InlineRenameDeps) {
         }
         cleanup();
         nameElement.textContent = newName;
+        deps.announceToScreenReader?.(`Renamed to ${newName}`);
         await deps.navigateTo(deps.getCurrentPath());
       } else {
         cleanup();

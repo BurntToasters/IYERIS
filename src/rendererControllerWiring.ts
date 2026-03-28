@@ -105,6 +105,7 @@ import {
   dropIndicatorAction,
   dropIndicatorPath,
   previewResizeHandle,
+  announceToScreenReader,
 } from './rendererElements.js';
 
 export interface LateBound {
@@ -410,6 +411,7 @@ export function wireControllers(deps: WiringDeps) {
     showToast,
     showAlert,
     isHomeViewPath,
+    announceToScreenReader,
   });
 
   function isWindowsPlatform(): boolean {

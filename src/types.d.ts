@@ -125,7 +125,6 @@ export interface Settings {
 
   confirmFileOperations: boolean;
   fileConflictBehavior: 'ask' | 'rename' | 'skip' | 'overwrite';
-  skipElevationConfirmation: boolean;
   maxThumbnailSizeMB: number;
   thumbnailQuality: 'low' | 'medium' | 'high';
   autoPlayVideos: boolean;
