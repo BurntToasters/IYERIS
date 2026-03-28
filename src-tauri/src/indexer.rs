@@ -56,6 +56,8 @@ fn exclude_segments() -> HashSet<&'static str> {
         "appdata", "programdata", "windows", "program files", "program files (x86)",
         "$windows.~bt", "$windows.~ws", "recovery", "perflogs", "library",
         "$winreagent", "config.msi", "msocache", "intel", "nvidia", "amd",
+        "proc", "sys", "dev", "run", "boot",
+        "private", "lost+found",
     ].into_iter().collect()
 }
 
@@ -157,6 +159,7 @@ fn build_index_sync() -> Vec<IndexEntry> {
 
         for entry in WalkDir::new(location)
             .max_depth(MAX_SCAN_DEPTH)
+            .follow_links(false)
             .into_iter()
             .filter_entry(|e| !should_exclude(e.path(), &excl_segments, &excl_files))
             .filter_map(|e| e.map_err(|err| log::warn!("[Indexer] walk error: {}", err)).ok())

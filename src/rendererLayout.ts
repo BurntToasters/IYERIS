@@ -35,7 +35,6 @@ export function createLayoutController(config: LayoutConfig) {
   let listResizeStartX = 0;
   let listResizeStartWidth = 0;
   let listResizeCurrentWidth = 0;
-  let listHeaderGlobalListenersAttached = false;
 
   function setListColumnWidth(key: ListColumnKey, width: number, persist: boolean = true): void {
     const min = LIST_COLUMN_MIN_WIDTHS[key] ?? 120;
@@ -259,26 +258,28 @@ export function createLayoutController(config: LayoutConfig) {
         listResizeCurrentWidth = listResizeStartWidth;
         document.body.style.cursor = 'col-resize';
         document.body.style.userSelect = 'none';
+
+        const onMouseMove = (ev: MouseEvent) => {
+          const delta = ev.clientX - listResizeStartX;
+          listResizeCurrentWidth = listResizeStartWidth + delta;
+          setListColumnWidth(
+            activeListResizeColumn as ListColumnKey,
+            listResizeCurrentWidth,
+            false
+          );
+        };
+        const onMouseUp = () => {
+          document.removeEventListener('mousemove', onMouseMove);
+          document.removeEventListener('mouseup', onMouseUp);
+          setListColumnWidth(activeListResizeColumn as ListColumnKey, listResizeCurrentWidth, true);
+          activeListResizeColumn = null;
+          document.body.style.cursor = '';
+          document.body.style.userSelect = '';
+        };
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
       });
     });
-
-    if (!listHeaderGlobalListenersAttached) {
-      listHeaderGlobalListenersAttached = true;
-      document.addEventListener('mousemove', (e) => {
-        if (!activeListResizeColumn) return;
-        const delta = e.clientX - listResizeStartX;
-        listResizeCurrentWidth = listResizeStartWidth + delta;
-        setListColumnWidth(activeListResizeColumn as ListColumnKey, listResizeCurrentWidth, false);
-      });
-
-      document.addEventListener('mouseup', () => {
-        if (!activeListResizeColumn) return;
-        setListColumnWidth(activeListResizeColumn as ListColumnKey, listResizeCurrentWidth, true);
-        activeListResizeColumn = null;
-        document.body.style.cursor = '';
-        document.body.style.userSelect = '';
-      });
-    }
   }
 
   return {

@@ -669,6 +669,22 @@ body.high-contrast .glass-panel {
   border-color: var(--glass-border) !important;
 }
 
+body.high-contrast.theme-light {
+  --text-secondary: rgba(0, 0, 0, 0.95) !important;
+  --text-tertiary: rgba(0, 0, 0, 0.85) !important;
+  --glass-border: rgba(0, 0, 0, 0.35) !important;
+  --separator: rgba(0, 0, 0, 0.3) !important;
+}
+
+@media (prefers-color-scheme: light) {
+  body.high-contrast:not([class*='theme-']) {
+    --text-secondary: rgba(0, 0, 0, 0.95) !important;
+    --text-tertiary: rgba(0, 0, 0, 0.85) !important;
+    --glass-border: rgba(0, 0, 0, 0.35) !important;
+    --separator: rgba(0, 0, 0, 0.3) !important;
+  }
+}
+
 @media (prefers-color-scheme: light) {
   body:not([class*='theme-']) {
     --glass-bg: rgba(255, 255, 255, 0.96);

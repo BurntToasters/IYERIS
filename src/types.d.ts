@@ -125,7 +125,6 @@ export interface Settings {
 
   confirmFileOperations: boolean;
   fileConflictBehavior: 'ask' | 'rename' | 'skip' | 'overwrite';
-  skipElevationConfirmation: boolean;
   maxThumbnailSizeMB: number;
   thumbnailQuality: 'low' | 'medium' | 'high';
   autoPlayVideos: boolean;
@@ -582,6 +581,9 @@ export interface TauriAPI {
   elevatedMove: (sourcePath: string, destPath: string) => Promise<IpcResult>;
   elevatedDelete: (itemPath: string) => Promise<IpcResult>;
   elevatedRename: (itemPath: string, newName: string) => Promise<IpcResult>;
+  elevatedCopyBatch: (sourcePaths: string[], destPath: string) => Promise<IpcResult>;
+  elevatedMoveBatch: (sourcePaths: string[], destPath: string) => Promise<IpcResult>;
+  elevatedDeleteBatch: (itemPaths: string[]) => Promise<IpcResult>;
   resolveShortcut: (
     shortcutPath: string
   ) => Promise<{ success: boolean; target?: string; error?: string }>;

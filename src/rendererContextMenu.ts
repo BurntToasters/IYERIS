@@ -400,7 +400,13 @@ export function createContextMenuController(deps: ContextMenuDeps) {
           break;
 
         case 'create-symlink': {
-          const linkName = `${item.name} - Link`;
+          let linkName = `${item.name} - Link`;
+          if (linkName.length > 255) {
+            const dotIdx = item.name.lastIndexOf('.');
+            const ext = dotIdx > 0 ? item.name.slice(dotIdx) : '';
+            const base = item.name.slice(0, 248 - ext.length);
+            linkName = `${base} - Link${ext}`;
+          }
           const linkPath = path.join(deps.getCurrentPath(), linkName);
           try {
             const result = await window.tauriAPI.createSymlink(item.path, linkPath);

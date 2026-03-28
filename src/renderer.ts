@@ -3,6 +3,7 @@ import { assignKey, escapeHtml, getErrorMessage, ignoreError, devLog } from './s
 import { clearHtml } from './rendererDom.js';
 import type { TabData } from './rendererTabs.js';
 import { showConfirm } from './rendererModals.js';
+import { isPermissionDeniedError } from './rendererClipboard.js';
 import { initTooltipSystem } from './rendererTooltips.js';
 import {
   isWindowsPath,
@@ -469,6 +470,38 @@ const {
 } = wired;
 const showToast = toastManager.showToast;
 
+function syncOsAccessibilityPreferences(settings: Settings): void {
+  const isFirstLaunch = (settings.launchCount || 0) === 0;
+
+  if (isFirstLaunch) {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      settings.reduceMotion = true;
+    }
+    if (window.matchMedia('(prefers-contrast: more)').matches) {
+      settings.highContrast = true;
+    }
+    if (window.matchMedia('(prefers-reduced-transparency: reduce)').matches) {
+      settings.reduceTransparency = true;
+    }
+  }
+}
+
+let scalingWarningShown = false;
+let settingsFullyLoaded = false;
+function warnIfMultipleScalingActive(settings: Settings): void {
+  if (!settingsFullyLoaded) return;
+  const activeCount =
+    (settings.largeText ? 1 : 0) +
+    (settings.useSystemFontSize ? 1 : 0) +
+    (settings.uiDensity === 'larger' ? 1 : 0);
+  if (activeCount >= 2 && !scalingWarningShown) {
+    scalingWarningShown = true;
+    showToast('Multiple text scaling options are active and may compound', 'Accessibility', 'info');
+  } else if (activeCount < 2) {
+    scalingWarningShown = false;
+  }
+}
+
 async function loadSettings(): Promise<void> {
   const [result, sharedClipboard] = await Promise.all([
     window.tauriAPI.getSettings(),
@@ -478,6 +511,9 @@ async function loadSettings(): Promise<void> {
   if (result.success) {
     currentSettings = sanitizeSettings(result.settings ?? {});
     syncShortcutBindingsFromSettings(currentSettings, { save: true });
+
+    syncOsAccessibilityPreferences(currentSettings);
+
     applySettings(currentSettings);
     const newLaunchCount = (currentSettings.launchCount || 0) + 1;
     currentSettings.launchCount = newLaunchCount;
@@ -489,12 +525,15 @@ async function loadSettings(): Promise<void> {
     tourController.handleLaunch(newLaunchCount);
   } else {
     currentSettings = createDefaultSettings();
+    syncOsAccessibilityPreferences(currentSettings);
     applySettings(currentSettings);
   }
 
   if (sharedClipboard) {
     clipboardController.setClipboard(sharedClipboard);
   }
+
+  settingsFullyLoaded = true;
 
   let focusDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   window.addEventListener('focus', () => {
@@ -570,6 +609,8 @@ function applySettings(settings: Settings) {
   loadRecentFiles();
 
   window.tauriAPI.setUpdateChannel(settings.updateChannel || 'auto');
+
+  warnIfMultipleScalingActive(settings);
 }
 
 function updateDangerousOptionsVisibility(show: boolean) {
@@ -1588,6 +1629,36 @@ async function deleteSelected(permanent = false) {
   }
   const successCount = allResults.filter((r) => r.status === 'fulfilled' && r.value.success).length;
   const failCount = allResults.length - successCount;
+
+  const permissionFailedPaths: string[] = [];
+  for (let i = 0; i < allResults.length; i++) {
+    const r = allResults[i];
+    if (r.status === 'fulfilled' && !r.value.success && isPermissionDeniedError(r.value.error)) {
+      permissionFailedPaths.push(itemsSnapshot[i]);
+    }
+  }
+
+  if (permissionFailedPaths.length > 0) {
+    const confirmed = await showConfirm(
+      `${permissionFailedPaths.length} item${permissionFailedPaths.length > 1 ? 's' : ''} require administrator privileges to delete. You will be prompted to authorize.`,
+      'Elevated Permissions Required',
+      'warning'
+    );
+    if (confirmed) {
+      const elevResult = await window.tauriAPI.elevatedDeleteBatch(permissionFailedPaths);
+      if (elevResult.success) {
+        const totalSuccess = successCount + permissionFailedPaths.length;
+        const msg = permanent
+          ? `${totalSuccess} item${totalSuccess > 1 ? 's' : ''} permanently deleted`
+          : `${totalSuccess} item${totalSuccess > 1 ? 's' : ''} deleted`;
+        showToast(msg, 'Success', 'success');
+        refresh(permanent ? 'delete-selected-permanent' : 'delete-selected');
+        return;
+      }
+      showToast(elevResult.error || 'Elevated delete failed', 'Error', 'error');
+    }
+  }
+
   if (successCount > 0) {
     const msg = permanent
       ? `${successCount} item${successCount > 1 ? 's' : ''} permanently deleted`
@@ -1614,7 +1685,7 @@ async function deleteSelected(permanent = false) {
     }
     refresh(permanent ? 'delete-selected-permanent' : 'delete-selected');
   }
-  if (failCount > 0) {
+  if (failCount > 0 && permissionFailedPaths.length === 0) {
     showToast(
       `${failCount} item${failCount > 1 ? 's' : ''} could not be deleted`,
       'Partial Failure',

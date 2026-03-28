@@ -133,7 +133,9 @@ function parseConflictItem(errorMessage: string): string | null {
   const marker = 'CONFLICT:';
   const index = errorMessage.indexOf(marker);
   if (index === -1) return null;
-  const item = errorMessage.slice(index + marker.length).trim();
+  const rest = errorMessage.slice(index + marker.length).trim();
+  const endIndex = rest.search(/\s*[([{]/);
+  const item = endIndex === -1 ? rest : rest.slice(0, endIndex);
   return item || null;
 }
 
@@ -583,6 +585,11 @@ const tauriAPI: TauriAPI = {
   elevatedDelete: (itemPath) => wrap(() => invoke('elevated_delete', { itemPath })),
   elevatedRename: (itemPath, newName) =>
     wrap(() => invoke('elevated_rename', { itemPath, newName })),
+  elevatedCopyBatch: (sourcePaths, destPath) =>
+    wrap(() => invoke('elevated_copy_batch', { sourcePaths, destPath })),
+  elevatedMoveBatch: (sourcePaths, destPath) =>
+    wrap(() => invoke('elevated_move_batch', { sourcePaths, destPath })),
+  elevatedDeleteBatch: (itemPaths) => wrap(() => invoke('elevated_delete_batch', { itemPaths })),
   resolveShortcut: async (shortcutPath) => {
     try {
       const target = await invoke<string>('resolve_shortcut', { shortcutPath });

@@ -95,7 +95,13 @@ const DANGEROUS_TAGS = new Set([
   'META',
   'BASE',
   'NOSCRIPT',
+  'SVG',
+  'MATH',
+  'TEMPLATE',
+  'APPLET',
 ]);
+
+const SAFE_URL_PATTERN = /^(?:https?|mailto|#):/i;
 
 export function sanitizeMarkdownHtml(html: string): string {
   const template = document.createElement('template');
@@ -109,13 +115,20 @@ export function sanitizeMarkdownHtml(html: string): string {
       continue;
     }
     for (const attr of Array.from(el.attributes)) {
-      if (attr.name.startsWith('on')) {
+      if (attr.name.startsWith('on') || attr.name === 'style') {
         el.removeAttribute(attr.name);
-      } else if (
-        (attr.name === 'href' || attr.name === 'src' || attr.name === 'action') &&
-        /^\s*javascript\s*:/i.test(attr.value)
-      ) {
-        el.removeAttribute(attr.name);
+      } else if (attr.name === 'href' || attr.name === 'src' || attr.name === 'action') {
+        const val = attr.value.trim();
+        if (/^\s*javascript\s*:/i.test(val) || /^\s*data\s*:/i.test(val)) {
+          el.removeAttribute(attr.name);
+        } else if (
+          attr.name === 'href' &&
+          val &&
+          !val.startsWith('#') &&
+          !SAFE_URL_PATTERN.test(val)
+        ) {
+          el.removeAttribute(attr.name);
+        }
       }
     }
   }

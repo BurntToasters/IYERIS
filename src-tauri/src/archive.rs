@@ -20,7 +20,13 @@ pub struct ArchiveEntry {
 }
 
 fn is_active(op_id: &str) -> bool {
-    ACTIVE_OPS.lock().map(|s| s.contains(op_id)).unwrap_or(false)
+    match ACTIVE_OPS.lock() {
+        Ok(s) => s.contains(op_id),
+        Err(e) => {
+            log::warn!("[Archive] ACTIVE_OPS mutex poisoned: {}", e);
+            false
+        }
+    }
 }
 
 fn safe_entry_path(entry_name: &str, dest: &Path) -> Result<PathBuf, String> {

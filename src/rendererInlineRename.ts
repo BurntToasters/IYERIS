@@ -1,5 +1,6 @@
 import type { FileItem } from './types';
 import type { DialogType } from './rendererModals.js';
+import { isPermissionDeniedError } from './rendererClipboard.js';
 
 type InlineRenameDeps = {
   getCurrentPath: () => string;
@@ -11,7 +12,9 @@ type InlineRenameDeps = {
     type: 'success' | 'error' | 'info' | 'warning'
   ) => void;
   showAlert: (message: string, title: string, type: DialogType) => Promise<void>;
+  showConfirm: (message: string, title: string, type: 'warning') => Promise<boolean>;
   isHomeViewPath: (path: string) => boolean;
+  announceToScreenReader?: (message: string) => void;
 };
 
 const INVALID_FILENAME_CHARS = /[<>:"|?*]/;
@@ -27,6 +30,9 @@ function hasControlChars(name: string): boolean {
 }
 
 function getFilenameError(name: string): string | null {
+  if (name === '.' || name === '..') {
+    return 'File name cannot be . or ..';
+  }
   if (INVALID_FILENAME_CHARS.test(name) || hasControlChars(name)) {
     return 'File name cannot contain < > : " | ? *';
   }
@@ -202,10 +208,32 @@ export function createInlineRenameController(deps: InlineRenameDeps) {
         try {
           const result = await window.tauriAPI.renameItem(itemPath, newName);
           if (!result.success) {
-            renameHandled = false;
-            showInlineError(result.error || 'Rename failed');
-            input.focus();
-            return;
+            if (isPermissionDeniedError(result.error)) {
+              const confirmed = await deps.showConfirm(
+                'Renaming this item requires administrator privileges. You will be prompted to authorize.',
+                'Elevated Permissions Required',
+                'warning'
+              );
+              if (confirmed) {
+                const elevResult = await window.tauriAPI.elevatedRename(itemPath, newName);
+                if (!elevResult.success) {
+                  renameHandled = false;
+                  showInlineError(elevResult.error || 'Elevated rename failed');
+                  input.focus();
+                  return;
+                }
+              } else {
+                renameHandled = false;
+                showInlineError('Operation cancelled');
+                input.focus();
+                return;
+              }
+            } else {
+              renameHandled = false;
+              showInlineError(result.error || 'Rename failed');
+              input.focus();
+              return;
+            }
           }
         } catch {
           renameHandled = false;
@@ -215,6 +243,7 @@ export function createInlineRenameController(deps: InlineRenameDeps) {
         }
         cleanup();
         nameElement.textContent = newName;
+        deps.announceToScreenReader?.(`Renamed to ${newName}`);
         await deps.navigateTo(deps.getCurrentPath());
       } else {
         cleanup();

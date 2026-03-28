@@ -1,13 +1,35 @@
 use std::fs;
 use std::path::Path;
 use std::process::Command;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::Manager;
 #[cfg(target_os = "linux")]
 use std::path::PathBuf;
 
 static TRAY_READY: AtomicBool = AtomicBool::new(false);
-static WINDOW_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+static WINDOW_COUNTER: AtomicU64 = AtomicU64::new(1);
+static LAST_FOCUS_LOST_MS: AtomicU64 = AtomicU64::new(0);
+
+pub fn record_focus_lost() {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
+    LAST_FOCUS_LOST_MS.store(now, Ordering::Relaxed);
+}
+
+fn was_recently_focused() -> bool {
+    let last = LAST_FOCUS_LOST_MS.load(Ordering::Relaxed);
+    if last == 0 {
+        return false;
+    }
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
+    now.saturating_sub(last) < 500
+}
 
 #[cfg(target_os = "linux")]
 const DESKTOP_EXEC_FIELD_REGEX: &str = "%[fFuUdDnNickvm]";
@@ -237,7 +259,57 @@ fn is_dark_mode() -> bool {
 
 #[tauri::command]
 pub fn get_system_text_scale() -> f64 {
-    1.0
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        let output = std::process::Command::new("reg")
+            .args([
+                "query",
+                "HKCU\\SOFTWARE\\Microsoft\\Accessibility",
+                "/v",
+                "TextScaleFactor",
+            ])
+            .creation_flags(0x08000000)
+            .output();
+        if let Ok(out) = output {
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            for line in stdout.lines() {
+                if let Some(pos) = line.find("0x") {
+                    if let Ok(val) = u32::from_str_radix(line[pos + 2..].trim(), 16) {
+                        return (val as f64) / 100.0;
+                    }
+                }
+                if line.contains("REG_DWORD") {
+                    let parts: Vec<&str> = line.split_whitespace().collect();
+                    if let Some(last) = parts.last() {
+                        if let Ok(val) = last.parse::<u32>() {
+                            return (val as f64) / 100.0;
+                        }
+                    }
+                }
+            }
+        }
+        1.0
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let output = std::process::Command::new("gsettings")
+            .args(["get", "org.gnome.desktop.interface", "text-scaling-factor"])
+            .output();
+        if let Ok(out) = output {
+            let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if let Ok(val) = stdout.parse::<f64>() {
+                return val;
+            }
+        }
+        1.0
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        1.0
+    }
 }
 
 #[tauri::command]
@@ -411,45 +483,107 @@ pub async fn open_terminal(dir_path: String) -> Result<(), String> {
 
     #[cfg(target_os = "macos")]
     {
-        std::process::Command::new("open")
-            .args(["-a", "Terminal", path.to_str().unwrap_or(".")])
-            .spawn()
-            .map_err(|e| e.to_string())?;
+        let mac_terminals = [
+            "iTerm", "Warp", "Alacritty", "kitty", "Hyper", "Terminal",
+        ];
+        let preferred = std::env::var("TERM_PROGRAM").unwrap_or_default().to_lowercase();
+        let ordered: Vec<&str> = if !preferred.is_empty() {
+            let mut v: Vec<&str> = Vec::with_capacity(mac_terminals.len());
+            for t in &mac_terminals {
+                if preferred.contains(&t.to_lowercase()) {
+                    v.insert(0, t);
+                } else {
+                    v.push(t);
+                }
+            }
+            v
+        } else {
+            mac_terminals.to_vec()
+        };
+
+        for app_name in &ordered {
+            let status = std::process::Command::new("open")
+                .args(["-a", app_name, "--", path.to_str().unwrap_or(".")])
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status();
+            if let Ok(s) = status {
+                if s.success() {
+                    return Ok(());
+                }
+            }
+        }
+        return Err("No terminal emulator found".into());
     }
 
     #[cfg(target_os = "windows")]
     {
-        let cd_command = format!("cd /d \"{}\"", path.display());
-        std::process::Command::new("cmd")
-            .args(["/c", "start", "", "cmd", "/k", &cd_command])
-            .spawn()
-            .map_err(|e| e.to_string())?;
+        let has_wt = std::process::Command::new("where")
+            .arg("wt")
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
+
+        if has_wt {
+            std::process::Command::new("wt")
+                .args(["-d", path.to_str().unwrap_or(".")])
+                .spawn()
+                .map_err(|e| e.to_string())?;
+        } else {
+            let cd_command = format!("cd /d \"{}\"", path.display());
+            std::process::Command::new("cmd")
+                .args(["/c", "start", "", "cmd", "/k", &cd_command])
+                .spawn()
+                .map_err(|e| e.to_string())?;
+        }
     }
 
     #[cfg(target_os = "linux")]
     {
-        for terminal in &["x-terminal-emulator", "gnome-terminal", "konsole", "xfce4-terminal", "xterm"] {
-            let launched = if *terminal == "xterm" {
-                let escaped = path
-                    .to_string_lossy()
-                    .replace('\'', "'\\''");
-                std::process::Command::new(terminal)
-                    .args(["-e", "sh", "-lc", &format!("cd '{}' && exec \"$SHELL\"", escaped)])
+        let terminals: Vec<(&str, Vec<String>)> = vec![
+            ("x-terminal-emulator", vec!["--working-directory".into(), dir_path.clone()]),
+            ("gnome-terminal", vec![format!("--working-directory={}", dir_path)]),
+            ("konsole", vec!["--workdir".into(), dir_path.clone()]),
+            ("xfce4-terminal", vec![format!("--working-directory={}", dir_path)]),
+            ("mate-terminal", vec![format!("--working-directory={}", dir_path)]),
+            ("tilix", vec![format!("--working-directory={}", dir_path)]),
+            ("terminator", vec![format!("--working-directory={}", dir_path)]),
+            ("alacritty", vec!["--working-directory".into(), dir_path.clone()]),
+            ("kitty", vec!["--directory".into(), dir_path.clone()]),
+            ("wezterm", vec!["start".into(), "--cwd".into(), dir_path.clone()]),
+            ("foot", vec![format!("--working-directory={}", dir_path)]),
+            ("lxterminal", vec![format!("--working-directory={}", dir_path)]),
+            ("sakura", vec![format!("--working-directory={}", dir_path)]),
+            ("xterm", vec!["-e".into(), "sh".into(), "-lc".into(), format!("cd '{}' && exec \"$SHELL\"", path.to_string_lossy().replace('\'', "'\\''"))]),
+        ];
+
+        let in_flatpak = std::env::var("FLATPAK_ID").is_ok()
+            || std::path::Path::new("/.flatpak-info").exists();
+
+        for (cmd, args) in &terminals {
+            let result = if in_flatpak {
+                let mut fp_args = vec!["--host".to_string(), cmd.to_string()];
+                fp_args.extend(args.iter().cloned());
+                std::process::Command::new("flatpak-spawn")
+                    .args(&fp_args)
+                    .current_dir(&path)
                     .spawn()
-                    .is_ok()
             } else {
-                std::process::Command::new(terminal)
-                    .arg(format!("--working-directory={}", path.display()))
+                std::process::Command::new(cmd)
+                    .args(args)
+                    .current_dir(&path)
                     .spawn()
-                    .is_ok()
             };
-            if launched {
+            if result.is_ok() {
                 return Ok(());
             }
         }
         return Err("No terminal emulator found".into());
     }
 
+    #[allow(unreachable_code)]
     Ok(())
 }
 
@@ -500,11 +634,45 @@ pub fn open_logs_folder(app: tauri::AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 pub fn export_diagnostics(app: tauri::AppHandle) -> Result<String, String> {
+    let settings_summary = match app.path().app_data_dir() {
+        Ok(dir) => {
+            let path = dir.join("settings.json");
+            match fs::read_to_string(&path) {
+                Ok(content) => {
+                    match serde_json::from_str::<serde_json::Value>(&content) {
+                        Ok(mut val) => {
+                            if let Some(obj) = val.as_object_mut() {
+                                obj.remove("bookmarks");
+                                obj.remove("tabState");
+                                obj.remove("recentFiles");
+                                obj.remove("searchHistory");
+                                obj.remove("directoryHistory");
+                            }
+                            val
+                        }
+                        Err(_) => serde_json::json!("parse error"),
+                    }
+                }
+                Err(_) => serde_json::json!("not found"),
+            }
+        }
+        Err(_) => serde_json::json!("unavailable"),
+    };
+
+    let (indexer_building, indexer_entries, indexer_last_built) = crate::indexer::get_status();
+
     let info = serde_json::json!({
         "version": app.package_info().version.to_string(),
         "os": std::env::consts::OS,
         "arch": std::env::consts::ARCH,
         "platform": get_platform(),
+        "devMode": crate::is_dev_mode(),
+        "indexer": {
+            "building": indexer_building,
+            "entries": indexer_entries,
+            "lastBuilt": indexer_last_built,
+        },
+        "settings": settings_summary,
     });
     Ok(serde_json::to_string_pretty(&info).map_err(|e| e.to_string())?)
 }
@@ -957,6 +1125,7 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<tauri::tray::TrayIcon, Box<dyn
                     #[cfg(target_os = "macos")]
                     {
                         let _ = app.set_dock_visibility(true);
+                        let _ = app.show();
                     }
                     if let Some(window) = app.get_webview_window("main") {
                         let _ = window.show();
@@ -993,27 +1162,29 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<tauri::tray::TrayIcon, Box<dyn
                     .filter(|w| w.is_visible().unwrap_or(false))
                     .collect();
 
-                if visible_windows.len() > 1 {
-                    for w in &visible_windows {
-                        let _ = w.set_focus();
-                    }
-                } else if visible_windows.len() == 1 {
-                    let w = visible_windows[0];
-                    if w.is_focused().unwrap_or(false) {
-                        let _ = w.hide();
+                if !visible_windows.is_empty() {
+                    let any_focused = visible_windows
+                        .iter()
+                        .any(|w| w.is_focused().unwrap_or(false));
+                    if any_focused || was_recently_focused() {
                         #[cfg(target_os = "macos")]
                         {
-                            if !has_other_visible_windows(app, w.label()) {
-                                let _ = app.set_dock_visibility(false);
-                            }
+                            let _ = app.hide();
+                            let _ = app.set_dock_visibility(false);
+                        }
+                        for w in &visible_windows {
+                            let _ = w.hide();
                         }
                     } else {
-                        let _ = w.set_focus();
+                        for w in &visible_windows {
+                            let _ = w.set_focus();
+                        }
                     }
                 } else {
                     #[cfg(target_os = "macos")]
                     {
                         let _ = app.set_dock_visibility(true);
+                        let _ = app.show();
                     }
                     if let Some(window) = app.get_webview_window("main") {
                         let _ = window.show();

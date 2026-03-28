@@ -33,20 +33,22 @@ export function createSettingsActionsController(deps: SettingsActionsDeps) {
 
   function initSettingsActions(): void {
     document.getElementById('export-settings-btn')?.addEventListener('click', async () => {
+      let url: string | null = null;
       try {
         const settingsJson = JSON.stringify(deps.getCurrentSettings(), null, 2);
         const blob = new Blob([settingsJson], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
+        url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
         a.download = `iyeris-settings-${new Date().toISOString().split('T')[0]}.json`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-        URL.revokeObjectURL(url);
         deps.showToast('Settings exported successfully', 'Export', 'success');
       } catch {
         deps.showToast('Failed to export settings', 'Export', 'error');
+      } finally {
+        if (url) URL.revokeObjectURL(url);
       }
     });
 

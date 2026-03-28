@@ -59,6 +59,7 @@ export function createCommandPaletteController(deps: CommandPaletteDeps) {
   let commandPaletteFocusedIndex = -1;
   let commandPalettePreviousFocus: HTMLElement | null = null;
   let commandsRegistered = false;
+  let commandPaletteInitialized = false;
 
   function hasSubsequenceMatch(haystack: string, needle: string): boolean {
     if (!needle) return true;
@@ -127,12 +128,16 @@ export function createCommandPaletteController(deps: CommandPaletteDeps) {
   }
 
   function initCommandPalette(): void {
+    if (commandPaletteInitialized) return;
+
     commandPaletteModal = document.getElementById('command-palette-modal');
     commandPaletteInput = document.getElementById('command-palette-input') as HTMLInputElement;
     commandPaletteResults = document.getElementById('command-palette-results');
     commandPaletteEmpty = document.getElementById('command-palette-empty');
 
     if (!commandPaletteModal || !commandPaletteInput || !commandPaletteResults) return;
+
+    commandPaletteInitialized = true;
 
     registerCommands();
     syncCommandShortcuts();
