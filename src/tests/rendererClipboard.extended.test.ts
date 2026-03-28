@@ -9,6 +9,9 @@ type TauriApi = {
   copyItems: ReturnType<typeof vi.fn>;
   moveItems: ReturnType<typeof vi.fn>;
   selectFolder: ReturnType<typeof vi.fn>;
+  elevatedCopyBatch: ReturnType<typeof vi.fn>;
+  elevatedMoveBatch: ReturnType<typeof vi.fn>;
+  elevatedDeleteBatch: ReturnType<typeof vi.fn>;
 };
 
 function setupTauriApi(overrides: Partial<TauriApi> = {}): TauriApi {
@@ -19,6 +22,9 @@ function setupTauriApi(overrides: Partial<TauriApi> = {}): TauriApi {
     copyItems: vi.fn().mockResolvedValue({ success: true }),
     moveItems: vi.fn().mockResolvedValue({ success: true }),
     selectFolder: vi.fn().mockResolvedValue({ success: true, path: '/target' }),
+    elevatedCopyBatch: vi.fn().mockResolvedValue({ success: true }),
+    elevatedMoveBatch: vi.fn().mockResolvedValue({ success: true }),
+    elevatedDeleteBatch: vi.fn().mockResolvedValue({ success: true }),
     ...overrides,
   };
   Object.defineProperty(window, 'tauriAPI', {
@@ -42,6 +48,7 @@ function createDeps(overrides: Record<string, unknown> = {}) {
     getFileElementMap: () => fileElementMap,
     getCurrentSettings: () => settings as never,
     showToast: vi.fn(),
+    showConfirm: vi.fn().mockResolvedValue(true),
     handleDrop: vi.fn().mockResolvedValue(undefined),
     refresh: vi.fn(),
     updateUndoRedoState: vi.fn().mockResolvedValue(undefined),
@@ -191,25 +198,26 @@ describe('createClipboardController — extended', () => {
       );
     });
 
-    it('falls back to copy with warning when system cut move is permission denied', async () => {
+    it('prompts elevation when system cut move is permission denied', async () => {
       const tauriApi = setupTauriApi({
         getSystemClipboardData: vi.fn().mockResolvedValue({
           operation: 'cut',
           paths: ['/sys/file.txt'],
         }),
         moveItems: vi.fn().mockResolvedValue({ success: false, error: 'EPERM: access denied' }),
-        copyItems: vi.fn().mockResolvedValue({ success: true }),
+        elevatedMoveBatch: vi.fn().mockResolvedValue({ success: true }),
       });
       const deps = createDeps();
       const ctrl = createClipboardController(deps);
 
       await ctrl.pasteFromClipboard();
 
-      expect(tauriApi.copyItems).toHaveBeenCalledWith(['/sys/file.txt'], '/dest', 'ask');
+      expect(deps.showConfirm).toHaveBeenCalled();
+      expect(tauriApi.elevatedMoveBatch).toHaveBeenCalledWith(['/sys/file.txt'], '/dest');
       expect(deps.showToast).toHaveBeenCalledWith(
-        "1 item(s) copied from system clipboard; couldn't remove originals",
-        'Permission Required',
-        'warning'
+        '1 item(s) moved (elevated)',
+        'Success',
+        'success'
       );
     });
   });
@@ -294,25 +302,26 @@ describe('createClipboardController — extended', () => {
       );
     });
 
-    it('falls back to copy in pasteIntoFolder when system cut move is permission denied', async () => {
+    it('prompts elevation in pasteIntoFolder when system cut move is permission denied', async () => {
       const tauriApi = setupTauriApi({
         getSystemClipboardData: vi.fn().mockResolvedValue({
           operation: 'cut',
           paths: ['/sys/file.txt'],
         }),
         moveItems: vi.fn().mockResolvedValue({ success: false, error: 'permission denied' }),
-        copyItems: vi.fn().mockResolvedValue({ success: true }),
+        elevatedMoveBatch: vi.fn().mockResolvedValue({ success: true }),
       });
       const deps = createDeps();
       const ctrl = createClipboardController(deps);
 
       await ctrl.pasteIntoFolder('/target');
 
-      expect(tauriApi.copyItems).toHaveBeenCalledWith(['/sys/file.txt'], '/target', 'ask');
+      expect(deps.showConfirm).toHaveBeenCalled();
+      expect(tauriApi.elevatedMoveBatch).toHaveBeenCalledWith(['/sys/file.txt'], '/target');
       expect(deps.showToast).toHaveBeenCalledWith(
-        "1 item(s) copied from system clipboard; couldn't remove originals",
-        'Permission Required',
-        'warning'
+        '1 item(s) moved (elevated)',
+        'Success',
+        'success'
       );
     });
   });

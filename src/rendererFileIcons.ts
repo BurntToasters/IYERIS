@@ -17,7 +17,8 @@ import {
 import { twemojiImg } from './rendererUtils.js';
 
 export function getFileExtension(filename: string): string {
-  return filename.split('.').pop()!.toLowerCase();
+  const ext = filename.split('.').pop()!.toLowerCase();
+  return ext.length > 20 ? ext.slice(0, 20) : ext;
 }
 
 const FILE_TYPE_LABELS: ReadonlyArray<[Set<string>, string]> = [

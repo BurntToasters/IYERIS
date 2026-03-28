@@ -1,4 +1,5 @@
 import type { ToastAction } from './rendererToasts.js';
+import { isPermissionDeniedError } from './rendererClipboard.js';
 import { rendererPath as path } from './rendererUtils.js';
 import { devLog } from './shared.js';
 
@@ -13,6 +14,7 @@ interface DragDropConfig {
     type: string,
     actions?: ToastAction[]
   ) => void;
+  showConfirm: (message: string, title: string, type: 'warning') => Promise<boolean>;
   getFileGrid: () => HTMLElement | null;
   getFileView: () => HTMLElement | null;
   getDropIndicator: () => HTMLElement | null;
@@ -293,6 +295,37 @@ export function createDragDropController(config: DragDropConfig) {
           : await window.tauriAPI.moveItems(sourcePaths, destPath, conflictBehavior);
 
       if (!result.success) {
+        if (isPermissionDeniedError(result.error)) {
+          const confirmed = await config.showConfirm(
+            'This operation requires administrator privileges. You will be prompted to authorize.',
+            'Elevated Permissions Required',
+            'warning'
+          );
+          if (confirmed) {
+            const elevResult =
+              operation === 'copy'
+                ? await window.tauriAPI.elevatedCopyBatch(sourcePaths, destPath)
+                : await window.tauriAPI.elevatedMoveBatch(sourcePaths, destPath);
+            if (elevResult.success) {
+              showToast(
+                `${operation === 'copy' ? 'Copied' : 'Moved'} ${sourcePaths.length} item(s) (elevated)`,
+                'Success',
+                'success'
+              );
+              await window.tauriAPI.clearDragData();
+              if (operation === 'move') {
+                await config.updateUndoRedoState();
+              }
+              await config.navigateTo(config.getCurrentPath());
+              config.clearSelection();
+              return;
+            }
+            showToast(elevResult.error || `Elevated ${operation} failed`, 'Error', 'error');
+            return;
+          }
+          showToast('Operation cancelled', 'Info', 'info');
+          return;
+        }
         showToast(result.error || `Failed to ${operation} items`, 'Error', 'error', [
           {
             label: 'Retry',

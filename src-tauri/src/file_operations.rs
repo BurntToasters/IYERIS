@@ -59,6 +59,9 @@ pub(crate) fn validate_child_name(raw_name: &str, label: &str) -> Result<String,
             label
         ));
     }
+    if name.len() > 255 {
+        return Err(format!("{} is too long (max 255 characters)", label));
+    }
 
     #[cfg(target_os = "windows")]
     {
@@ -230,13 +233,11 @@ pub async fn rename_item(old_path: String, new_name: String) -> Result<String, S
     log::debug!("[FileOps] rename_item: {} -> {}", old_path, new_name);
     let path = crate::validate_existing_path(&old_path, "Item")?;
     let new_name = validate_child_name(&new_name, "New name")?;
-    let new_path = path
+    let parent = path
         .parent()
-        .ok_or("Cannot determine parent directory")?
-        .join(&new_name);
-    if path_entry_exists(&new_path) {
-        return Err("A file or folder with that name already exists".to_string());
-    }
+        .ok_or("Cannot determine parent directory")?;
+    let canonical_parent = parent.canonicalize().map_err(|e| format!("Cannot resolve parent directory: {}", e))?;
+    let new_path = canonical_parent.join(&new_name);
     fs::rename(&path, &new_path).map_err(|e| {
         if e.kind() == std::io::ErrorKind::AlreadyExists {
             "A file or folder with that name already exists".to_string()
@@ -1683,6 +1684,13 @@ fn write_windows_system_clipboard_text(text: &str) -> Result<(), String> {
     use windows::Win32::System::Memory::*;
     use windows::Win32::System::Ole::CF_UNICODETEXT;
 
+    unsafe fn global_free(hmem: windows::Win32::Foundation::HGLOBAL) {
+        extern "system" {
+            fn GlobalFree(hmem: *mut std::ffi::c_void) -> *mut std::ffi::c_void;
+        }
+        GlobalFree(hmem.0);
+    }
+
     let wide: Vec<u16> = text.encode_utf16().chain(std::iter::once(0)).collect();
     let byte_len = wide.len() * 2;
 
@@ -1706,7 +1714,7 @@ fn write_windows_system_clipboard_text(text: &str) -> Result<(), String> {
 
         let ptr = GlobalLock(hmem);
         if ptr.is_null() {
-            // GlobalFree unavailable in windows 0.58 — memory lost on this rare error path
+            global_free(hmem);
             return cleanup_and_err("Failed to lock memory".into());
         }
 
@@ -1715,7 +1723,7 @@ fn write_windows_system_clipboard_text(text: &str) -> Result<(), String> {
 
         let handle = windows::Win32::Foundation::HANDLE(hmem.0);
         if SetClipboardData(CF_UNICODETEXT.0 as u32, handle).is_err() {
-            // On failure caller should free hmem but GlobalFree unavailable in windows 0.58
+            global_free(hmem);
             return cleanup_and_err("Failed to set clipboard data".into());
         }
 
@@ -1909,7 +1917,15 @@ pub async fn calculate_checksum(
         use sha2::{Sha256, Sha512, Digest};
         use md5::Md5;
 
+        const MAX_CHECKSUM_SIZE: u64 = 4 * 1024 * 1024 * 1024; // 4 GB
         let file_size = fs::metadata(&path).map_err(|e| e.to_string())?.len();
+        if file_size > MAX_CHECKSUM_SIZE {
+            return Err(format!(
+                "File too large for checksum ({} MB, max {} MB)",
+                file_size / (1024 * 1024),
+                MAX_CHECKSUM_SIZE / (1024 * 1024)
+            ));
+        }
         let mut file = fs::File::open(&path).map_err(|e| e.to_string())?;
         let mut results = serde_json::Map::new();
 

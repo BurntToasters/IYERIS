@@ -3,6 +3,7 @@ import { assignKey, escapeHtml, getErrorMessage, ignoreError, devLog } from './s
 import { clearHtml } from './rendererDom.js';
 import type { TabData } from './rendererTabs.js';
 import { showConfirm } from './rendererModals.js';
+import { isPermissionDeniedError } from './rendererClipboard.js';
 import { initTooltipSystem } from './rendererTooltips.js';
 import {
   isWindowsPath,
@@ -1628,6 +1629,36 @@ async function deleteSelected(permanent = false) {
   }
   const successCount = allResults.filter((r) => r.status === 'fulfilled' && r.value.success).length;
   const failCount = allResults.length - successCount;
+
+  const permissionFailedPaths: string[] = [];
+  for (let i = 0; i < allResults.length; i++) {
+    const r = allResults[i];
+    if (r.status === 'fulfilled' && !r.value.success && isPermissionDeniedError(r.value.error)) {
+      permissionFailedPaths.push(itemsSnapshot[i]);
+    }
+  }
+
+  if (permissionFailedPaths.length > 0) {
+    const confirmed = await showConfirm(
+      `${permissionFailedPaths.length} item${permissionFailedPaths.length > 1 ? 's' : ''} require administrator privileges to delete. You will be prompted to authorize.`,
+      'Elevated Permissions Required',
+      'warning'
+    );
+    if (confirmed) {
+      const elevResult = await window.tauriAPI.elevatedDeleteBatch(permissionFailedPaths);
+      if (elevResult.success) {
+        const totalSuccess = successCount + permissionFailedPaths.length;
+        const msg = permanent
+          ? `${totalSuccess} item${totalSuccess > 1 ? 's' : ''} permanently deleted`
+          : `${totalSuccess} item${totalSuccess > 1 ? 's' : ''} deleted`;
+        showToast(msg, 'Success', 'success');
+        refresh(permanent ? 'delete-selected-permanent' : 'delete-selected');
+        return;
+      }
+      showToast(elevResult.error || 'Elevated delete failed', 'Error', 'error');
+    }
+  }
+
   if (successCount > 0) {
     const msg = permanent
       ? `${successCount} item${successCount > 1 ? 's' : ''} permanently deleted`
@@ -1654,7 +1685,7 @@ async function deleteSelected(permanent = false) {
     }
     refresh(permanent ? 'delete-selected-permanent' : 'delete-selected');
   }
-  if (failCount > 0) {
+  if (failCount > 0 && permissionFailedPaths.length === 0) {
     showToast(
       `${failCount} item${failCount > 1 ? 's' : ''} could not be deleted`,
       'Partial Failure',

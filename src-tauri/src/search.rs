@@ -45,7 +45,13 @@ struct ParsedFilters {
 }
 
 fn is_search_active(op_id: &str) -> bool {
-    ACTIVE_SEARCHES.lock().map(|s| s.contains(op_id)).unwrap_or(false)
+    match ACTIVE_SEARCHES.lock() {
+        Ok(s) => s.contains(op_id),
+        Err(e) => {
+            log::warn!("[Search] ACTIVE_SEARCHES mutex poisoned: {}", e);
+            false
+        }
+    }
 }
 
 fn parse_date_to_ms(raw: &str, end_of_day: bool) -> Option<f64> {
@@ -176,6 +182,7 @@ pub async fn search_files(
 
         for entry in WalkDir::new(&path)
             .max_depth(20)
+            .follow_links(false)
             .into_iter()
             .filter_map(|e| e.map_err(|err| log::warn!("[Search] walk error: {}", err)).ok())
         {
@@ -281,6 +288,7 @@ pub async fn search_files_content(
 
         for entry in WalkDir::new(&path)
             .max_depth(20)
+            .follow_links(false)
             .into_iter()
             .filter_map(|e| e.map_err(|err| log::warn!("[Search] content walk error: {}", err)).ok())
         {

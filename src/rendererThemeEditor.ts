@@ -167,6 +167,7 @@ export function createThemeEditorController(deps: ThemeEditorDeps) {
   let themeEditorHasUnsavedChanges = false;
   let savedThemeSnapshot: CustomTheme | null = null;
   let savedThemeWasCustom = false;
+  let isSavingTheme = false;
 
   function applyCustomThemeColors(theme: CustomTheme) {
     setThemeCustomProperties(document.documentElement, theme);
@@ -298,24 +299,32 @@ export function createThemeEditorController(deps: ThemeEditorDeps) {
   }
 
   async function saveCustomTheme() {
-    const nameInput = document.getElementById('theme-name-input') as HTMLInputElement;
-    if (nameInput && nameInput.value.trim()) {
-      tempCustomTheme.name = nameInput.value.trim();
-    }
+    if (isSavingTheme) return;
+    isSavingTheme = true;
 
-    const settings = deps.getCurrentSettings();
-    deps.setCurrentSettingsTheme('custom', { ...tempCustomTheme });
+    try {
+      const nameInput = document.getElementById('theme-name-input') as HTMLInputElement;
+      if (nameInput && nameInput.value.trim()) {
+        tempCustomTheme.name = nameInput.value.trim();
+      }
 
-    deps.applySettings(settings);
+      const themeSnapshot = { ...tempCustomTheme };
+      const settings = deps.getCurrentSettings();
+      deps.setCurrentSettingsTheme('custom', themeSnapshot);
 
-    const result = await deps.saveSettingsWithTimestamp(settings);
-    if (result.success) {
-      themeEditorHasUnsavedChanges = false;
-      hideThemeEditor(true);
-      updateCustomThemeUI();
-      deps.showToast('Custom theme saved!', 'Theme', 'success');
-    } else {
-      deps.showToast('Failed to save theme: ' + result.error, 'Error', 'error');
+      deps.applySettings(settings);
+
+      const result = await deps.saveSettingsWithTimestamp(settings);
+      if (result.success) {
+        themeEditorHasUnsavedChanges = false;
+        hideThemeEditor(true);
+        updateCustomThemeUI();
+        deps.showToast('Custom theme saved!', 'Theme', 'success');
+      } else {
+        deps.showToast('Failed to save theme: ' + result.error, 'Error', 'error');
+      }
+    } finally {
+      isSavingTheme = false;
     }
   }
 

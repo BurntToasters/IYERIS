@@ -66,13 +66,17 @@ function applyPreviewPanelPosition(settings: Settings): void {
 }
 
 function applyCssVariables(settings: Settings): void {
-  if (settings.gridColumns && settings.gridColumns !== 'auto') {
+  if (
+    settings.gridColumns &&
+    settings.gridColumns !== 'auto' &&
+    /^[a-z0-9\s(),%.\-]+$/i.test(settings.gridColumns)
+  ) {
     document.documentElement.style.setProperty('--grid-columns', settings.gridColumns);
   } else {
     document.documentElement.style.removeProperty('--grid-columns');
   }
 
-  if (settings.iconSize && settings.iconSize > 0) {
+  if (settings.iconSize && settings.iconSize > 0 && settings.iconSize <= 512) {
     document.documentElement.style.setProperty('--icon-size-grid', `${settings.iconSize}px`);
   } else {
     document.documentElement.style.removeProperty('--icon-size-grid');

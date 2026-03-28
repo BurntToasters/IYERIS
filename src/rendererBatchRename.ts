@@ -112,11 +112,15 @@ export function createBatchRenameController(deps: BatchRenameDeps) {
 
           if (findText) {
             if (useRegex?.checked) {
-              try {
-                const regex = new RegExp(findText, 'g');
-                newName = file.name.replace(regex, replaceText);
-              } catch {
-                error = 'Invalid regex';
+              if (findText.length > 1000) {
+                error = 'Regex too long (max 1000 characters)';
+              } else {
+                try {
+                  const regex = new RegExp(findText, 'g');
+                  newName = file.name.replace(regex, replaceText);
+                } catch {
+                  error = 'Invalid regex';
+                }
               }
             } else {
               newName = file.name.split(findText).join(replaceText);
