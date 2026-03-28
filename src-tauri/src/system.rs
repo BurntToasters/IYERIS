@@ -1066,7 +1066,10 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<tauri::tray::TrayIcon, Box<dyn
                     .collect();
 
                 if !visible_windows.is_empty() {
-                    if was_recently_focused() {
+                    let any_focused = visible_windows
+                        .iter()
+                        .any(|w| w.is_focused().unwrap_or(false));
+                    if any_focused || was_recently_focused() {
                         for w in &visible_windows {
                             let _ = w.hide();
                         }
