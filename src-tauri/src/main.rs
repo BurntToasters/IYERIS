@@ -298,6 +298,7 @@ fn main() {
                     let _ = window.hide();
                     #[cfg(target_os = "macos")]
                     {
+                        let _ = window.app_handle().hide();
                         let _ = window.app_handle().set_dock_visibility(false);
                     }
                 }
@@ -450,7 +451,15 @@ fn main() {
                         }
                     }
                 }
-                let _ = app_handle;
+                if let tauri::RunEvent::ExitRequested { .. } = event {
+                    log::info!("[App] Exit requested — cleaning up");
+                    indexer::cancel_build();
+                    if let Some(state) = app_handle.try_state::<AppState>() {
+                        if let Ok(mut watchers) = state.watchers.lock() {
+                            watchers.clear();
+                        }
+                    }
+                }
             });
         }
         Err(err) => {
