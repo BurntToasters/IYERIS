@@ -69,7 +69,6 @@ export function createDefaultSettings(): Settings {
 
     confirmFileOperations: false,
     fileConflictBehavior: 'ask',
-    skipElevationConfirmation: false,
     maxThumbnailSizeMB: 10,
     thumbnailQuality: 'medium',
     autoPlayVideos: false,
@@ -300,7 +299,6 @@ export function sanitizeSettings(
     'disableHardwareAcceleration',
     'useSystemFontSize',
     'confirmFileOperations',
-    'skipElevationConfirmation',
     'autoPlayVideos',
     'compactFileInfo',
     'showFileExtensions',

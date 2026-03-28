@@ -469,6 +469,38 @@ const {
 } = wired;
 const showToast = toastManager.showToast;
 
+function syncOsAccessibilityPreferences(settings: Settings): void {
+  const isFirstLaunch = (settings.launchCount || 0) === 0;
+
+  if (isFirstLaunch) {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      settings.reduceMotion = true;
+    }
+    if (window.matchMedia('(prefers-contrast: more)').matches) {
+      settings.highContrast = true;
+    }
+    if (window.matchMedia('(prefers-reduced-transparency: reduce)').matches) {
+      settings.reduceTransparency = true;
+    }
+  }
+}
+
+let scalingWarningShown = false;
+let settingsFullyLoaded = false;
+function warnIfMultipleScalingActive(settings: Settings): void {
+  if (!settingsFullyLoaded) return;
+  const activeCount =
+    (settings.largeText ? 1 : 0) +
+    (settings.useSystemFontSize ? 1 : 0) +
+    (settings.uiDensity === 'larger' ? 1 : 0);
+  if (activeCount >= 2 && !scalingWarningShown) {
+    scalingWarningShown = true;
+    showToast('Multiple text scaling options are active and may compound', 'Accessibility', 'info');
+  } else if (activeCount < 2) {
+    scalingWarningShown = false;
+  }
+}
+
 async function loadSettings(): Promise<void> {
   const [result, sharedClipboard] = await Promise.all([
     window.tauriAPI.getSettings(),
@@ -478,6 +510,9 @@ async function loadSettings(): Promise<void> {
   if (result.success) {
     currentSettings = sanitizeSettings(result.settings ?? {});
     syncShortcutBindingsFromSettings(currentSettings, { save: true });
+
+    syncOsAccessibilityPreferences(currentSettings);
+
     applySettings(currentSettings);
     const newLaunchCount = (currentSettings.launchCount || 0) + 1;
     currentSettings.launchCount = newLaunchCount;
@@ -489,12 +524,15 @@ async function loadSettings(): Promise<void> {
     tourController.handleLaunch(newLaunchCount);
   } else {
     currentSettings = createDefaultSettings();
+    syncOsAccessibilityPreferences(currentSettings);
     applySettings(currentSettings);
   }
 
   if (sharedClipboard) {
     clipboardController.setClipboard(sharedClipboard);
   }
+
+  settingsFullyLoaded = true;
 
   let focusDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   window.addEventListener('focus', () => {
@@ -570,6 +608,8 @@ function applySettings(settings: Settings) {
   loadRecentFiles();
 
   window.tauriAPI.setUpdateChannel(settings.updateChannel || 'auto');
+
+  warnIfMultipleScalingActive(settings);
 }
 
 function updateDangerousOptionsVisibility(show: boolean) {

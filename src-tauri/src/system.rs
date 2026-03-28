@@ -1,13 +1,35 @@
 use std::fs;
 use std::path::Path;
 use std::process::Command;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::Manager;
 #[cfg(target_os = "linux")]
 use std::path::PathBuf;
 
 static TRAY_READY: AtomicBool = AtomicBool::new(false);
-static WINDOW_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+static WINDOW_COUNTER: AtomicU64 = AtomicU64::new(1);
+static LAST_FOCUS_LOST_MS: AtomicU64 = AtomicU64::new(0);
+
+pub fn record_focus_lost() {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
+    LAST_FOCUS_LOST_MS.store(now, Ordering::Relaxed);
+}
+
+fn was_recently_focused() -> bool {
+    let last = LAST_FOCUS_LOST_MS.load(Ordering::Relaxed);
+    if last == 0 {
+        return false;
+    }
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
+    now.saturating_sub(last) < 500
+}
 
 #[cfg(target_os = "linux")]
 const DESKTOP_EXEC_FIELD_REGEX: &str = "%[fFuUdDnNickvm]";
@@ -237,7 +259,57 @@ fn is_dark_mode() -> bool {
 
 #[tauri::command]
 pub fn get_system_text_scale() -> f64 {
-    1.0
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        let output = std::process::Command::new("reg")
+            .args([
+                "query",
+                "HKCU\\SOFTWARE\\Microsoft\\Accessibility",
+                "/v",
+                "TextScaleFactor",
+            ])
+            .creation_flags(0x08000000)
+            .output();
+        if let Ok(out) = output {
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            for line in stdout.lines() {
+                if let Some(pos) = line.find("0x") {
+                    if let Ok(val) = u32::from_str_radix(line[pos + 2..].trim(), 16) {
+                        return (val as f64) / 100.0;
+                    }
+                }
+                if line.contains("REG_DWORD") {
+                    let parts: Vec<&str> = line.split_whitespace().collect();
+                    if let Some(last) = parts.last() {
+                        if let Ok(val) = last.parse::<u32>() {
+                            return (val as f64) / 100.0;
+                        }
+                    }
+                }
+            }
+        }
+        1.0
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let output = std::process::Command::new("gsettings")
+            .args(["get", "org.gnome.desktop.interface", "text-scaling-factor"])
+            .output();
+        if let Ok(out) = output {
+            let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if let Ok(val) = stdout.parse::<f64>() {
+                return val;
+            }
+        }
+        1.0
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        1.0
+    }
 }
 
 #[tauri::command]
@@ -993,22 +1065,19 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<tauri::tray::TrayIcon, Box<dyn
                     .filter(|w| w.is_visible().unwrap_or(false))
                     .collect();
 
-                if visible_windows.len() > 1 {
-                    for w in &visible_windows {
-                        let _ = w.set_focus();
-                    }
-                } else if visible_windows.len() == 1 {
-                    let w = visible_windows[0];
-                    if w.is_focused().unwrap_or(false) {
-                        let _ = w.hide();
+                if !visible_windows.is_empty() {
+                    if was_recently_focused() {
+                        for w in &visible_windows {
+                            let _ = w.hide();
+                        }
                         #[cfg(target_os = "macos")]
                         {
-                            if !has_other_visible_windows(app, w.label()) {
-                                let _ = app.set_dock_visibility(false);
-                            }
+                            let _ = app.set_dock_visibility(false);
                         }
                     } else {
-                        let _ = w.set_focus();
+                        for w in &visible_windows {
+                            let _ = w.set_focus();
+                        }
                     }
                 } else {
                     #[cfg(target_os = "macos")]

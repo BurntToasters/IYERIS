@@ -83,18 +83,62 @@ pub(crate) fn validate_existing_path(raw: &str, label: &str) -> Result<PathBuf, 
     }
 }
 
+fn early_settings_path() -> Option<PathBuf> {
+    #[cfg(target_os = "windows")]
+    let base = std::env::var("APPDATA").ok().map(PathBuf::from);
+
+    #[cfg(target_os = "macos")]
+    let base = std::env::var("HOME")
+        .ok()
+        .map(|h| PathBuf::from(h).join("Library").join("Application Support"));
+
+    #[cfg(target_os = "linux")]
+    let base = std::env::var("XDG_DATA_HOME")
+        .ok()
+        .map(PathBuf::from)
+        .or_else(|| {
+            std::env::var("HOME")
+                .ok()
+                .map(|h| PathBuf::from(h).join(".local").join("share"))
+        });
+
+    #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
+    let base: Option<PathBuf> = None;
+
+    base.map(|b| b.join("run.rosie.iyeris").join("settings.json"))
+}
+
+fn read_early_setting_bool(key: &str) -> bool {
+    early_settings_path()
+        .and_then(|path| std::fs::read_to_string(path).ok())
+        .and_then(|content| serde_json::from_str::<serde_json::Value>(&content).ok())
+        .and_then(|json| json.get(key).and_then(|v| v.as_bool()))
+        .unwrap_or(false)
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let dev_mode = args.iter().any(|a| a == "--dev" || a == "--verbose");
     let start_minimized = args.iter().any(|a| a == "--minimized");
     DEV_MODE.store(dev_mode, Ordering::Relaxed);
 
+    let disable_hw_accel = read_early_setting_bool("disableHardwareAcceleration");
+
     #[cfg(target_os = "windows")]
-    if dev_mode {
-        use windows::Win32::System::Console::{AttachConsole, AllocConsole, ATTACH_PARENT_PROCESS};
-        unsafe {
-            if AttachConsole(ATTACH_PARENT_PROCESS).is_err() {
-                let _ = AllocConsole();
+    {
+        if dev_mode {
+            use windows::Win32::System::Console::{
+                AllocConsole, AttachConsole, ATTACH_PARENT_PROCESS,
+            };
+            unsafe {
+                if AttachConsole(ATTACH_PARENT_PROCESS).is_err() {
+                    let _ = AllocConsole();
+                }
+            }
+        }
+        if disable_hw_accel {
+            unsafe {
+                std::env::set_var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "--disable-gpu");
             }
         }
     }
@@ -107,7 +151,7 @@ fn main() {
         }
         if std::env::var("WEBKIT_DISABLE_COMPOSITING_MODE").is_err() {
             let has_nvidia = std::path::Path::new("/proc/driver/nvidia/version").exists();
-            if !has_nvidia {
+            if disable_hw_accel || !has_nvidia {
                 unsafe { std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1") };
             }
         }
@@ -257,6 +301,9 @@ fn main() {
                         let _ = window.app_handle().set_dock_visibility(false);
                     }
                 }
+            }
+            if let tauri::WindowEvent::Focused(false) = event {
+                system::record_focus_lost();
             }
             if let tauri::WindowEvent::Destroyed = event {
                 let app = window.app_handle();
