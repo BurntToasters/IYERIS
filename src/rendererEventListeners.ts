@@ -193,7 +193,7 @@ export function createEventListenersController(config: EventListenersConfig) {
         if (previousSavedState) {
           Object.keys(currentFormState).forEach((key) => {
             if (currentFormState[key] !== previousSavedState[key]) {
-              mergedState[key] = currentFormState[key];
+              mergedState[key] = currentFormState[key] as string | boolean;
             }
           });
         }
@@ -434,7 +434,7 @@ export function createEventListenersController(config: EventListenersConfig) {
             actionId === 'next-tab'
               ? (currentIndex + 1) % tabs.length
               : (currentIndex - 1 + tabs.length) % tabs.length;
-          config.switchToTab(tabs[nextIndex].id);
+          config.switchToTab(tabs[nextIndex]!.id);
         }
       }
       return true;
@@ -670,7 +670,8 @@ export function createEventListenersController(config: EventListenersConfig) {
 
   function initGlobalClickListeners(): void {
     document.addEventListener('click', (e) => {
-      const target = e.target as HTMLElement;
+      if (!(e.target instanceof HTMLElement)) return;
+      const target = e.target;
       const contextMenu = document.getElementById('context-menu');
       const emptySpaceMenu = document.getElementById('empty-space-context-menu');
       const sortMenu = document.getElementById('sort-menu');
@@ -736,9 +737,10 @@ export function createEventListenersController(config: EventListenersConfig) {
 
   function initContextMenuListeners(): void {
     document.addEventListener('contextmenu', (e) => {
-      if (!(e.target as HTMLElement).closest('.file-item')) {
+      if (!(e.target instanceof HTMLElement) || !e.target.closest('.file-item')) {
         e.preventDefault();
-        const target = e.target as HTMLElement;
+        if (!(e.target instanceof HTMLElement)) return;
+        const target = e.target;
         const clickedOnFileView =
           target.closest('#file-view') ||
           target.id === 'file-view' ||

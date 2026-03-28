@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { Settings } from '../types';
 
 vi.mock('../rendererDom.js', () => ({ clearHtml: vi.fn() }));
-vi.mock('../shared.js', () => ({ escapeHtml: (s: string) => s }));
+vi.mock('../shared.js', () => ({ escapeHtml: (s: string) => s, ignoreError: () => {} }));
 vi.mock('../rendererUtils.js', () => ({ twemojiImg: () => '<img />' }));
 
 import { createTabsController, type TabData } from '../rendererTabs';

@@ -199,6 +199,7 @@ describe('createColumnViewController — extended', () => {
         clientX: 150,
       });
       document.dispatchEvent(mousemoveEvent);
+      await new Promise((resolve) => requestAnimationFrame(resolve));
 
       expect(pane.style.width).toBe('300px');
 
@@ -222,6 +223,7 @@ describe('createColumnViewController — extended', () => {
 
       handle.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: 200 }));
       document.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 50 }));
+      await new Promise((resolve) => requestAnimationFrame(resolve));
 
       expect(pane.style.width).toBe('150px');
 
@@ -240,6 +242,7 @@ describe('createColumnViewController — extended', () => {
 
       handle.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: 100 }));
       document.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 300 }));
+      await new Promise((resolve) => requestAnimationFrame(resolve));
 
       expect(pane.style.width).toBe('500px');
 

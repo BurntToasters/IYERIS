@@ -1,7 +1,7 @@
 import type { Settings } from './types';
 import type { ToastAction } from './rendererToasts.js';
 import { rendererPath as path } from './rendererUtils.js';
-import { devLog } from './shared.js';
+import { devLog, ignoreError } from './shared.js';
 
 type ClipboardState = { operation: 'copy' | 'cut'; paths: string[] } | null;
 
@@ -243,9 +243,9 @@ export function createClipboardController(deps: ClipboardDeps) {
       operation,
       paths: Array.from(selectedItems),
     };
-    window.tauriAPI.setClipboard(clipboard).catch(() => {});
+    window.tauriAPI.setClipboard(clipboard).catch(ignoreError);
     updateCutVisuals();
-    updateClipboardIndicator();
+    void updateClipboardIndicator().catch(ignoreError);
     deps.showToast(
       `${selectedItems.size} item(s) ${operation === 'cut' ? 'cut' : 'copied'}`,
       'Clipboard',
@@ -344,8 +344,8 @@ export function createClipboardController(deps: ClipboardDeps) {
               if (!isCopy) {
                 await deps.updateUndoRedoState();
                 clipboard = null;
-                window.tauriAPI.setClipboard(null).catch(() => {});
-                updateClipboardIndicator();
+                window.tauriAPI.setClipboard(null).catch(ignoreError);
+                void updateClipboardIndicator().catch(ignoreError);
               }
               updateCutVisuals();
               deps.refresh();
@@ -369,8 +369,8 @@ export function createClipboardController(deps: ClipboardDeps) {
       if (!isCopy) {
         await deps.updateUndoRedoState();
         clipboard = null;
-        window.tauriAPI.setClipboard(null).catch(() => {});
-        updateClipboardIndicator();
+        window.tauriAPI.setClipboard(null).catch(ignoreError);
+        void updateClipboardIndicator().catch(ignoreError);
       }
 
       updateCutVisuals();
@@ -459,8 +459,8 @@ export function createClipboardController(deps: ClipboardDeps) {
               if (!isCopy) {
                 await deps.updateUndoRedoState();
                 clipboard = null;
-                window.tauriAPI.setClipboard(null).catch(() => {});
-                updateClipboardIndicator();
+                window.tauriAPI.setClipboard(null).catch(ignoreError);
+                void updateClipboardIndicator().catch(ignoreError);
               }
               updateCutVisuals();
               deps.refresh();
@@ -486,8 +486,8 @@ export function createClipboardController(deps: ClipboardDeps) {
       if (!isCopy) {
         await deps.updateUndoRedoState();
         clipboard = null;
-        window.tauriAPI.setClipboard(null).catch(() => {});
-        updateClipboardIndicator();
+        window.tauriAPI.setClipboard(null).catch(ignoreError);
+        void updateClipboardIndicator().catch(ignoreError);
       }
 
       updateCutVisuals();

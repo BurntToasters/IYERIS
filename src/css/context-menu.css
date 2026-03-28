@@ -9,7 +9,7 @@
 
 .context-menu {
   position: fixed;
-  z-index: 1000;
+  z-index: var(--z-dropdown);
   padding: 6px;
   min-width: 220px;
   background: var(--dropdown-bg);
@@ -118,7 +118,7 @@ body.platform-darwin .context-menu-item.focused {
 
 body.platform-darwin .context-menu-separator {
   margin: 4px 8px;
-  background: rgba(255, 255, 255, 0.12);
+  background: var(--surface-border);
 }
 
 body.platform-win32 .context-menu {
@@ -178,14 +178,14 @@ body.platform-linux .context-menu-separator {
 
 .sort-menu {
   position: fixed;
-  z-index: 1000;
+  z-index: var(--z-dropdown);
   min-width: 180px;
   padding: 4px;
   display: none;
   background: var(--dropdown-bg);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-medium);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+  box-shadow: var(--shadow-lg);
 }
 
 body.theme-light .context-menu {

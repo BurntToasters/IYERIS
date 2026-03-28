@@ -1,5 +1,5 @@
 import type { Settings, FileItem, DriveInfo, DirectoryResponse } from './types';
-import { escapeHtml, ignoreError } from './shared.js';
+import { devLog, escapeHtml, ignoreError } from './shared.js';
 import { isWindowsPath, rendererPath as path } from './rendererUtils.js';
 import { isHomeViewPath } from './home.js';
 import {
@@ -45,6 +45,28 @@ type ColumnViewDeps = {
   getFileByPath: (path: string) => FileItem | undefined;
   nameCollator: Intl.Collator;
 };
+
+async function withConcurrencyLimit<T>(tasks: (() => Promise<T>)[], limit: number): Promise<T[]> {
+  const results: T[] = new Array(tasks.length);
+  let nextIndex = 0;
+
+  async function runNext(): Promise<void> {
+    while (nextIndex < tasks.length) {
+      const index = nextIndex++;
+      const task = tasks[index];
+      if (!task) continue;
+      try {
+        results[index] = await task();
+      } catch {
+        results[index] = null as T;
+      }
+    }
+  }
+
+  const workers = Array.from({ length: Math.min(limit, tasks.length) }, () => runNext());
+  await Promise.all(workers);
+  return results;
+}
 
 export function createColumnViewController(deps: ColumnViewDeps) {
   let columnPaths: string[] = [];
@@ -112,17 +134,16 @@ export function createColumnViewController(deps: ColumnViewDeps) {
         }
       }
 
-      const panePromises = columnPaths.map((colPath, index) =>
-        renderColumn(colPath, index, currentRenderId)
+      const paneResults = await withConcurrencyLimit(
+        columnPaths.map((colPath, index) => () => renderColumn(colPath, index, currentRenderId)),
+        3
       );
-
-      const panes = await Promise.all(panePromises);
 
       if (currentRenderId !== columnViewRenderId) {
         return;
       }
 
-      for (const pane of panes) {
+      for (const pane of paneResults) {
         if (pane) {
           deps.columnView.appendChild(pane);
         }
@@ -153,14 +174,23 @@ export function createColumnViewController(deps: ColumnViewDeps) {
 
     let startX: number;
     let startWidth: number;
+    let resizeRafId = 0;
 
     const onMouseMove = (e: MouseEvent) => {
-      const delta = e.clientX - startX;
-      const newWidth = Math.max(150, Math.min(500, startWidth + delta));
-      pane.style.width = newWidth + 'px';
+      if (resizeRafId) cancelAnimationFrame(resizeRafId);
+      resizeRafId = requestAnimationFrame(() => {
+        const delta = e.clientX - startX;
+        const newWidth = Math.max(150, Math.min(500, startWidth + delta));
+        pane.style.width = newWidth + 'px';
+        resizeRafId = 0;
+      });
     };
 
     const onMouseUp = () => {
+      if (resizeRafId) {
+        cancelAnimationFrame(resizeRafId);
+        resizeRafId = 0;
+      }
       handle.classList.remove('resizing');
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
@@ -212,7 +242,8 @@ export function createColumnViewController(deps: ColumnViewDeps) {
         item.addEventListener('click', () => handleColumnItemClick(item, drive.path, true, 0));
         pane.appendChild(item);
       });
-    } catch {
+    } catch (error) {
+      devLog('ColumnView', 'renderDriveColumn failed', error);
       pane.innerHTML = '<div class="column-item placeholder">Error loading drives</div>';
     }
 
@@ -322,7 +353,7 @@ export function createColumnViewController(deps: ColumnViewDeps) {
         | Promise<unknown>
         | undefined;
       if (setDragDataResult && typeof setDragDataResult.catch === 'function') {
-        setDragDataResult.catch(() => {});
+        setDragDataResult.catch(ignoreError);
       }
 
       item.classList.add('dragging');
@@ -335,7 +366,7 @@ export function createColumnViewController(deps: ColumnViewDeps) {
       });
       const clearDragDataResult = window.tauriAPI.clearDragData() as Promise<unknown> | undefined;
       if (clearDragDataResult && typeof clearDragDataResult.catch === 'function') {
-        clearDragDataResult.catch(() => {});
+        clearDragDataResult.catch(ignoreError);
       }
       deps.clearSpringLoad();
       deps.hideDropIndicator();
@@ -431,17 +462,51 @@ export function createColumnViewController(deps: ColumnViewDeps) {
           ${fileItem.isDirectory ? '<span class="column-item-arrow">▸</span>' : ''}
         `;
 
-    item.addEventListener('click', () =>
-      handleColumnItemClick(item, fileItem.path, fileItem.isDirectory, columnIndex)
-    );
-    item.addEventListener('dblclick', (e) => {
-      if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
-      if (!fileItem.isDirectory) {
-        void deps.openFileEntry(fileItem);
-      }
+    setupItemDragHandlers(item, fileItem, pane, columnIndex);
+
+    return item;
+  }
+
+  function resolveFileItemFromElement(itemPath: string, item: HTMLElement): FileItem {
+    const cached = deps.getFileByPath(itemPath);
+    if (cached) return cached;
+    const name = itemPath.split(/[\\/]/).pop() || '';
+    return {
+      name,
+      path: itemPath,
+      isDirectory: item.classList.contains('is-directory'),
+      isFile: !item.classList.contains('is-directory'),
+      size: 0,
+      modified: new Date(),
+      isHidden: name.startsWith('.'),
+    };
+  }
+
+  function setupPaneEventDelegation(pane: HTMLDivElement, columnIndex: number): void {
+    pane.addEventListener('click', (e) => {
+      const item = (e.target as HTMLElement).closest('.column-item') as HTMLElement | null;
+      if (!item || item.classList.contains('placeholder')) return;
+      const itemPath = item.dataset.path;
+      if (!itemPath) return;
+      const isDir = item.classList.contains('is-directory');
+      handleColumnItemClick(item, itemPath, isDir, columnIndex);
     });
 
-    item.addEventListener('contextmenu', (e) => {
+    pane.addEventListener('dblclick', (e) => {
+      if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+      const item = (e.target as HTMLElement).closest('.column-item') as HTMLElement | null;
+      if (!item || item.classList.contains('placeholder')) return;
+      const itemPath = item.dataset.path;
+      if (!itemPath || item.classList.contains('is-directory')) return;
+      void deps.openFileEntry(resolveFileItemFromElement(itemPath, item));
+    });
+
+    pane.addEventListener('contextmenu', (e) => {
+      const item = (e.target as HTMLElement).closest('.column-item') as HTMLElement | null;
+      if (!item || item.classList.contains('placeholder')) return;
+      const itemPath = item.dataset.path;
+      if (!itemPath) return;
+
       deps.consumeEvent(e);
 
       pane.querySelectorAll('.column-item').forEach((i) => {
@@ -452,7 +517,7 @@ export function createColumnViewController(deps: ColumnViewDeps) {
       item.setAttribute('aria-selected', 'true');
 
       deps.clearSelection();
-      deps.getSelectedItems().add(fileItem.path);
+      deps.getSelectedItems().add(itemPath);
 
       const colPath = columnPaths[columnIndex];
       if (colPath && colPath !== deps.getCurrentPath()) {
@@ -461,12 +526,8 @@ export function createColumnViewController(deps: ColumnViewDeps) {
         deps.updateBreadcrumb(colPath);
       }
 
-      deps.showContextMenu(e.pageX, e.pageY, fileItem);
+      deps.showContextMenu(e.pageX, e.pageY, resolveFileItemFromElement(itemPath, item));
     });
-
-    setupItemDragHandlers(item, fileItem, pane, columnIndex);
-
-    return item;
   }
 
   async function renderColumn(
@@ -484,6 +545,62 @@ export function createColumnViewController(deps: ColumnViewDeps) {
     pane.dataset.path = columnPath;
 
     setupPaneDragHandlers(pane, columnPath);
+    setupPaneEventDelegation(pane, columnIndex);
+
+    pane.addEventListener('keydown', (e) => {
+      const items = Array.from(
+        pane.querySelectorAll('.column-item:not(.placeholder)')
+      ) as HTMLElement[];
+      if (items.length === 0) return;
+      const focused = pane.querySelector('.column-item:focus') as HTMLElement | null;
+      const currentIndex = focused ? items.indexOf(focused) : -1;
+
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        const next = currentIndex < items.length - 1 ? currentIndex + 1 : 0;
+        items[next]?.focus();
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        const prev = currentIndex > 0 ? currentIndex - 1 : items.length - 1;
+        items[prev]?.focus();
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        if (focused) {
+          const itemPath = focused.dataset.path;
+          if (itemPath && focused.classList.contains('is-directory')) {
+            focused.click();
+            setTimeout(() => {
+              const nextPane = pane.nextElementSibling as HTMLElement | null;
+              if (nextPane) {
+                const firstItem = nextPane.querySelector(
+                  '.column-item:not(.placeholder)'
+                ) as HTMLElement | null;
+                firstItem?.focus();
+              }
+            }, 100);
+          }
+        }
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        const prevPane = pane.previousElementSibling as HTMLElement | null;
+        if (prevPane) {
+          const selectedInPrev = prevPane.querySelector(
+            '.column-item.expanded, .column-item:focus'
+          ) as HTMLElement | null;
+          if (selectedInPrev) {
+            selectedInPrev.focus();
+          } else {
+            const firstItem = prevPane.querySelector(
+              '.column-item:not(.placeholder)'
+            ) as HTMLElement | null;
+            firstItem?.focus();
+          }
+        }
+      } else if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        focused?.click();
+      }
+    });
 
     try {
       const operationId = deps.createDirectoryOperationId('column');
@@ -546,7 +663,7 @@ export function createColumnViewController(deps: ColumnViewDeps) {
     const currentPaneIndex = allPanes.indexOf(currentPane as Element);
 
     for (let i = allPanes.length - 1; i > currentPaneIndex; i--) {
-      allPanes[i].remove();
+      allPanes[i]!.remove();
     }
     columnPaths = columnPaths.slice(0, currentPaneIndex + 1);
 

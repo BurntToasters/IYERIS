@@ -4,6 +4,7 @@ mod archive;
 mod directory;
 mod elevated;
 mod file_operations;
+mod fs_utils;
 mod indexer;
 mod platform;
 mod search;
@@ -116,14 +117,8 @@ fn read_early_setting_bool(key: &str) -> bool {
         .unwrap_or(false)
 }
 
-fn main() {
-    let args: Vec<String> = std::env::args().collect();
-    let dev_mode = args.iter().any(|a| a == "--dev" || a == "--verbose");
-    let start_minimized = args.iter().any(|a| a == "--minimized");
-    DEV_MODE.store(dev_mode, Ordering::Relaxed);
-
-    let disable_hw_accel = read_early_setting_bool("disableHardwareAcceleration");
-
+/// Set environment variables that must be configured before any threads are spawned.
+fn setup_environment(disable_hw_accel: bool, dev_mode: bool) {
     #[cfg(target_os = "windows")]
     {
         if dev_mode {
@@ -156,6 +151,20 @@ fn main() {
             }
         }
     }
+
+    // Suppress unused parameter warnings on platforms that don't use them.
+    let _ = (disable_hw_accel, dev_mode);
+}
+
+fn main() {
+    let args: Vec<String> = std::env::args().collect();
+    let dev_mode = args.iter().any(|a| a == "--dev" || a == "--verbose");
+    let start_minimized = args.iter().any(|a| a == "--minimized");
+    DEV_MODE.store(dev_mode, Ordering::Relaxed);
+
+    let _disable_hw_accel = read_early_setting_bool("disableHardwareAcceleration");
+
+    setup_environment(_disable_hw_accel, dev_mode);
 
     if dev_mode {
         let mut builder = env_logger::Builder::new();

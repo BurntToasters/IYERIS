@@ -3,6 +3,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('../shared.js', () => ({
   escapeHtml: (value: string) => value,
+  devLog: () => {},
+  getErrorMessage: (e: unknown) => String(e),
 }));
 
 vi.mock('../rendererUtils.js', () => ({
@@ -879,7 +881,11 @@ describe('rendererBookmarks extended', () => {
       deps.bookmarksList.dispatchEvent(evt);
       await flushPromises();
 
-      expect(deps.showToast).toHaveBeenCalledWith('Failed to add bookmark', 'Bookmarks', 'error');
+      expect(deps.showToast).toHaveBeenCalledWith(
+        'Failed to add bookmark: Error: fail',
+        'Bookmarks',
+        'error'
+      );
     });
 
     it('returns early when draggedPaths is empty', async () => {

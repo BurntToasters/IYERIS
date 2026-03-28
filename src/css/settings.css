@@ -58,7 +58,11 @@
 .settings-sidebar {
   width: calc(210px * var(--settings-scale));
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0) 30%),
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--text-primary) 3%, transparent) 0%,
+      transparent 30%
+    ),
     var(--surface-1);
   border-right: 1px solid var(--panel-border);
   padding: calc(12px * var(--settings-scale)) calc(10px * var(--settings-scale));
@@ -343,7 +347,7 @@
   padding: 2px 6px;
   border-radius: 5px;
   background: rgba(0, 0, 0, 0.25);
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  border: 1px solid color-mix(in srgb, var(--text-primary) 15%, transparent);
   font-family: var(--font-mono);
   font-size: 10px;
   color: var(--text-primary);
@@ -729,7 +733,7 @@
 .index-status-badge {
   display: inline-block;
   padding: 2px 8px;
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--active-color);
   border-radius: 4px;
   font-size: 11px;
 }

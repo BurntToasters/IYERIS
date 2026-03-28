@@ -78,7 +78,7 @@
   line-height: 1.4;
   margin-top: 16px;
   padding-top: 12px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 1px solid var(--separator);
 }
 
 .support-popup-footer,
@@ -87,7 +87,7 @@
   justify-content: center;
   gap: 12px;
   padding: 16px 20px;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-top: 1px solid var(--hover-color);
 }
 
 .support-popup-footer .modal-button,
@@ -108,7 +108,7 @@
 .tour-overlay {
   position: fixed;
   inset: 0;
-  z-index: 3200;
+  z-index: var(--z-tour);
   pointer-events: auto;
 }
 

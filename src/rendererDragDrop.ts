@@ -142,7 +142,8 @@ export function createDragDropController(config: DragDropConfig) {
     const textData = readDataTransferText(event.dataTransfer, 'text/plain');
     if (textData) {
       try {
-        draggedPaths = normalizeDraggedPaths(JSON.parse(textData));
+        const parsed: unknown = JSON.parse(textData);
+        if (Array.isArray(parsed)) draggedPaths = normalizeDraggedPaths(parsed);
       } catch {
         draggedPaths = extractPathsFromText(textData);
       }

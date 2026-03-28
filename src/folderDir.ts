@@ -183,7 +183,7 @@ export function createFolderTreeManager(deps: FolderTreeDependencies): FolderTre
         const items = getVisibleTreeItems();
         const index = items.indexOf(item);
         if (index >= 0 && index < items.length - 1) {
-          setTreeItemFocus(items[index + 1], true);
+          setTreeItemFocus(items[index + 1] ?? null, true);
         }
         return;
       }
@@ -211,7 +211,7 @@ export function createFolderTreeManager(deps: FolderTreeDependencies): FolderTre
         if (index === -1) return;
         const nextIndex = e.key === 'ArrowDown' ? index + 1 : index - 1;
         if (nextIndex >= 0 && nextIndex < items.length) {
-          setTreeItemFocus(items[nextIndex], true);
+          setTreeItemFocus(items[nextIndex] ?? null, true);
         }
         return;
       }
@@ -221,7 +221,7 @@ export function createFolderTreeManager(deps: FolderTreeDependencies): FolderTre
         const items = getVisibleTreeItems();
         if (items.length === 0) return;
         const target = e.key === 'Home' ? items[0] : items[items.length - 1];
-        setTreeItemFocus(target, true);
+        setTreeItemFocus(target ?? null, true);
       }
     });
 

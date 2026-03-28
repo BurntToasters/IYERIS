@@ -10,7 +10,7 @@
   border-radius: var(--radius-medium);
   box-shadow: var(--shadow-lg);
   padding: 6px;
-  z-index: 500;
+  z-index: var(--z-modal-backdrop);
 }
 
 .breadcrumb-menu-item,
@@ -58,7 +58,7 @@
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-medium);
   box-shadow: var(--shadow-md);
-  z-index: 5000;
+  z-index: var(--z-command-palette);
   max-height: 300px;
   overflow-y: auto;
   overflow-x: hidden;
@@ -101,7 +101,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 2000;
+  z-index: var(--z-modal);
   animation: fadeIn 0.2s cubic-bezier(0.33, 1, 0.68, 1);
   will-change: transform;
 }
@@ -430,7 +430,7 @@
 
 .modal-button {
   padding: 8px 20px;
-  background: rgba(255, 255, 255, 0.04);
+  background: color-mix(in srgb, var(--text-primary) 4%, transparent);
   border: 1px solid var(--separator);
   border-radius: var(--radius-medium);
   color: var(--text-primary);
@@ -477,16 +477,16 @@
 }
 
 .modal-button#dialog-cancel {
-  background: rgba(255, 255, 255, 0.04);
-  border-color: rgba(255, 255, 255, 0.1);
+  background: color-mix(in srgb, var(--text-primary) 4%, transparent);
+  border-color: var(--active-color);
 }
 
 .modal-button#dialog-cancel:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--separator);
 }
 
 #dialog-modal {
-  z-index: 3000;
+  z-index: var(--z-modal-stacked);
 }
 
 .dialog-modal {
@@ -513,13 +513,13 @@
 }
 
 .modal-button.warning {
-  background: rgba(255, 140, 0, 0.15);
+  background: color-mix(in srgb, var(--warning-color) 15%, transparent);
   color: var(--warning-color);
-  border-color: rgba(255, 140, 0, 0.3);
+  border-color: color-mix(in srgb, var(--warning-color) 30%, transparent);
 }
 
 .modal-button.warning:hover {
-  background: rgba(255, 140, 0, 0.25);
+  background: color-mix(in srgb, var(--warning-color) 25%, transparent);
 }
 
 body.theme-light .modal.glass-panel {
@@ -800,7 +800,7 @@ body.reduce-motion .modal-overlay {
 }
 
 .batch-rename-preview-row:nth-child(even) {
-  background: rgba(255, 255, 255, 0.03);
+  background: color-mix(in srgb, var(--text-primary) 3%, transparent);
 }
 
 .batch-rename-preview-old {

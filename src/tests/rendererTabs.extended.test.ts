@@ -7,7 +7,7 @@ vi.mock('../rendererDom.js', () => ({
     el.innerHTML = '';
   }),
 }));
-vi.mock('../shared.js', () => ({ escapeHtml: (s: string) => s }));
+vi.mock('../shared.js', () => ({ escapeHtml: (s: string) => s, ignoreError: () => {} }));
 vi.mock('../rendererUtils.js', () => ({ twemojiImg: () => '<img />' }));
 
 import { createTabsController, type TabData } from '../rendererTabs';

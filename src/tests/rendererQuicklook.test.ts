@@ -36,6 +36,7 @@ vi.mock('../rendererHighlight.js', () => ({
 vi.mock('../shared.js', () => ({
   escapeHtml: mockEscapeHtml,
   sanitizeMarkdownHtml: (html: string) => html,
+  ignoreError: () => {},
 }));
 
 vi.mock('../rendererDom.js', () => ({

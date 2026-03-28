@@ -31,7 +31,7 @@ export function createSortController(config: SortControllerConfig) {
       item.tabIndex = i === safeIndex ? 0 : -1;
     });
     sortMenuFocusIndex = safeIndex;
-    items[safeIndex].focus({ preventScroll: true });
+    items[safeIndex]!.focus({ preventScroll: true });
   }
 
   function showSortMenu(e: MouseEvent) {
@@ -40,6 +40,7 @@ export function createSortController(config: SortControllerConfig) {
 
     const rect = config.getSortBtn().getBoundingClientRect();
     sortMenu.style.display = 'block';
+    config.getSortBtn().setAttribute('aria-expanded', 'true');
 
     const menuRect = sortMenu.getBoundingClientRect();
     const viewportWidth = window.innerWidth;
@@ -76,6 +77,7 @@ export function createSortController(config: SortControllerConfig) {
         item.classList.remove('focused');
       });
     }
+    config.getSortBtn().setAttribute('aria-expanded', 'false');
     sortMenuFocusIndex = -1;
   }
 
@@ -98,8 +100,9 @@ export function createSortController(config: SortControllerConfig) {
     }
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
-      if (sortMenuFocusIndex >= 0 && items[sortMenuFocusIndex]) {
-        const sortType = items[sortMenuFocusIndex].getAttribute('data-sort');
+      const focusedSortItem = items[sortMenuFocusIndex];
+      if (sortMenuFocusIndex >= 0 && focusedSortItem) {
+        const sortType = focusedSortItem.getAttribute('data-sort');
         if (sortType) {
           void changeSortMode(sortType);
         }

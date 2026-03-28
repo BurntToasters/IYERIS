@@ -53,7 +53,7 @@
     "macOS": {
       "entitlements": "entitlements.plist",
       "hardenedRuntime": true,
-      "minimumSystemVersion": "10.15"
+      "minimumSystemVersion": "14.0"
     },
     "linux": {
       "appimage": {

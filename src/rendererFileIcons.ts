@@ -102,7 +102,8 @@ export function getFileIcon(filename: string): string {
   }
 
   if (fileIconCache.size >= FILE_ICON_CACHE_MAX) {
-    fileIconCache.delete(fileIconCache.keys().next().value!);
+    const oldestKey = fileIconCache.keys().next().value;
+    if (oldestKey !== undefined) fileIconCache.delete(oldestKey);
   }
   fileIconCache.set(ext, icon);
   return icon;

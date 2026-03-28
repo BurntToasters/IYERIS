@@ -52,7 +52,7 @@ export const rendererPath = {
     return dotIndex === -1 ? '' : name.slice(dotIndex);
   },
   join: (...parts: string[]): string => {
-    if (parts.length > 0 && isWindowsPath(parts[0])) {
+    if (parts.length > 0 && isWindowsPath(parts[0]!)) {
       return parts.join('\\').replace(/\\+/g, '\\');
     }
     return parts.join('/').replace(/\/+/g, '/');

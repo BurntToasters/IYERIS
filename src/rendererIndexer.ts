@@ -1,4 +1,5 @@
 import { twemojiImg } from './rendererUtils.js';
+import { devLog } from './shared.js';
 import { INDEX_REBUILD_DELAY_MS } from './rendererLocalConstants.js';
 
 const INDEX_STATUS_POLL_MS = 1500;
@@ -74,7 +75,7 @@ export function createIndexerController(config: IndexerConfig) {
       }
       return status;
     } catch (error) {
-      console.error('Failed to get index status:', error);
+      devLog('Indexer', 'Failed to get index status', error);
       indexStatus.textContent = 'Status: Error';
       consecutiveErrors++;
       if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {

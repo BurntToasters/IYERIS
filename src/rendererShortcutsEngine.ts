@@ -171,23 +171,23 @@ export function createShortcutEngineController(deps: ShortcutEngineDeps) {
     for (const def of SHORTCUT_DEFINITIONS) {
       let raw = settings.shortcuts?.[def.id] || defaults[def.id];
       if (nonMacDefaults && settings.shortcuts?.[def.id] && def.defaultBindingMac) {
-        const savedKey = serializeShortcut(normalizeShortcutBinding(raw));
-        const nonMacKey = serializeShortcut(normalizeShortcutBinding(nonMacDefaults[def.id]));
+        const savedKey = serializeShortcut(normalizeShortcutBinding(raw ?? []));
+        const nonMacKey = serializeShortcut(normalizeShortcutBinding(nonMacDefaults[def.id] ?? []));
         if (savedKey === nonMacKey) {
           raw = def.defaultBindingMac;
           changed = true;
         }
       }
-      let binding = normalizeShortcutBinding(raw);
+      let binding = normalizeShortcutBinding(raw ?? []);
       if (binding.length > 0 && (!hasModifier(binding) || binding.length < 2)) {
-        binding = normalizeShortcutBinding(defaults[def.id]);
+        binding = normalizeShortcutBinding(defaults[def.id] ?? []);
         changed = true;
       }
       if (binding.length > 0) {
         let serialized = serializeShortcut(binding);
         const reservedEntry = reservedShortcutLookup.get(serialized);
         if (reservedEntry && reservedEntry.actionId !== def.id) {
-          const fallback = normalizeShortcutBinding(defaults[def.id]);
+          const fallback = normalizeShortcutBinding(defaults[def.id] ?? []);
           const fallbackSerialized = serializeShortcut(fallback);
           if (serialized !== fallbackSerialized) {
             binding = fallback;
@@ -196,7 +196,7 @@ export function createShortcutEngineController(deps: ShortcutEngineDeps) {
           }
         }
         if (binding.length > 0 && used.has(serialized)) {
-          const fallback = normalizeShortcutBinding(defaults[def.id]);
+          const fallback = normalizeShortcutBinding(defaults[def.id] ?? []);
           const fallbackSerialized = serializeShortcut(fallback);
           if (!used.has(fallbackSerialized)) {
             binding = fallback;

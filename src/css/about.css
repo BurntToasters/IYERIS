@@ -53,7 +53,7 @@
   justify-content: space-between;
   align-items: center;
   padding: 12px 16px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid color-mix(in srgb, var(--text-primary) 4%, transparent);
 }
 
 .about-credit-item:last-child {
@@ -93,8 +93,8 @@
   justify-content: center;
   gap: 8px;
   padding: 12px 16px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: color-mix(in srgb, var(--text-primary) 5%, transparent);
+  border: 1px solid var(--separator);
   border-radius: 8px;
   color: var(--text-primary);
   font-size: 13px;
@@ -110,7 +110,7 @@
 }
 
 .about-link-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--active-color);
   border-color: var(--accent-color);
   transform: translateY(-1px);
 }
@@ -140,7 +140,7 @@
 }
 
 .licenses-content {
-  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.6;
   white-space: pre-wrap;
@@ -151,9 +151,9 @@
 .license-package {
   margin-bottom: 32px;
   padding: 16px;
-  background: rgba(255, 255, 255, 0.02);
+  background: color-mix(in srgb, var(--text-primary) 2%, transparent);
   border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  border: 1px solid color-mix(in srgb, var(--text-primary) 5%, transparent);
 }
 
 .license-package-name {
@@ -197,5 +197,5 @@
   font-size: 11px;
   max-height: 200px;
   overflow-y: auto;
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  border: 1px solid color-mix(in srgb, var(--text-primary) 5%, transparent);
 }

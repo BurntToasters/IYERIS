@@ -9,6 +9,8 @@ use tauri::Emitter;
 static ACTIVE_OPS: std::sync::LazyLock<Mutex<HashSet<String>>> =
     std::sync::LazyLock::new(|| Mutex::new(HashSet::new()));
 
+const MAX_DECOMPRESSED_SIZE: u64 = 10_737_418_240; // 10 GB
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ArchiveEntry {
@@ -396,6 +398,7 @@ fn extract_zip(
     let file = fs::File::open(archive).map_err(|e| e.to_string())?;
     let mut zip = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
     let total = zip.len();
+    let mut cumulative_bytes: u64 = 0;
 
     for i in 0..total {
         if !op_id.is_empty() && !is_active(op_id) {
@@ -420,7 +423,11 @@ fn extract_zip(
                 fs::create_dir_all(parent).map_err(|e| e.to_string())?;
             }
             let mut outfile = fs::File::create(&out_path).map_err(|e| e.to_string())?;
-            std::io::copy(&mut entry, &mut outfile).map_err(|e| e.to_string())?;
+            let written = std::io::copy(&mut entry, &mut outfile).map_err(|e| e.to_string())?;
+            cumulative_bytes = cumulative_bytes.saturating_add(written);
+            if cumulative_bytes > MAX_DECOMPRESSED_SIZE {
+                return Err("Decompressed size limit exceeded (10 GB)".to_string());
+            }
         }
     }
 
@@ -459,6 +466,7 @@ fn extract_7z(
     let file = fs::File::open(archive).map_err(|e| e.to_string())?;
     let reader = BufReader::new(file);
     let mut count = 0usize;
+    let mut cumulative_bytes: u64 = 0;
     sevenz_rust::decompress_with_extract_fn(reader, dest, |entry, reader, dest_path| {
         if !op_id.is_empty() && !is_active(op_id) {
             return Ok(false);
@@ -480,7 +488,11 @@ fn extract_7z(
                 fs::create_dir_all(parent).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
             }
             let mut outfile = fs::File::create(&out_path).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
-            std::io::copy(reader, &mut outfile).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+            let written = std::io::copy(reader, &mut outfile).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+            cumulative_bytes = cumulative_bytes.saturating_add(written);
+            if cumulative_bytes > MAX_DECOMPRESSED_SIZE {
+                return Err(sevenz_rust::Error::MaybeBadPassword(std::io::Error::new(std::io::ErrorKind::Other, "Decompressed size limit exceeded (10 GB)")));
+            }
         }
         Ok(true)
     })
@@ -506,6 +518,7 @@ fn extract_tar_entries<R: std::io::Read>(
     webview: &tauri::WebviewWindow,
 ) -> Result<(), String> {
     let mut count = 0usize;
+    let mut cumulative_bytes: u64 = 0;
     for entry in tar.entries().map_err(|e| e.to_string())? {
         if !op_id.is_empty() && !is_active(op_id) {
             return Err("Operation cancelled".to_string());
@@ -517,6 +530,11 @@ fn extract_tar_entries<R: std::io::Read>(
             .map_err(|e| e.to_string())?
             .to_string_lossy()
             .to_string();
+
+        cumulative_bytes = cumulative_bytes.saturating_add(entry.size());
+        if cumulative_bytes > MAX_DECOMPRESSED_SIZE {
+            return Err("Decompressed size limit exceeded (10 GB)".to_string());
+        }
 
         count += 1;
         let _ = webview.emit("extract-progress", serde_json::json!({

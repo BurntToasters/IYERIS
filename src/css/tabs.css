@@ -7,7 +7,7 @@
   border-bottom: 1px solid var(--panel-border);
   padding: 0 0 0 12px;
   position: relative;
-  z-index: 10;
+  z-index: var(--z-component);
   will-change: transform;
 }
 
@@ -312,7 +312,7 @@ body.reduce-transparency .titlebar-tabs {
 
 .tab-context-menu {
   position: fixed;
-  z-index: 10001;
+  z-index: var(--z-toast-above);
   background: var(--bg-secondary);
   border: 1px solid var(--separator);
   border-radius: var(--radius-medium);

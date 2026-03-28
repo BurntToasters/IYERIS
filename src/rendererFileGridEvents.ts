@@ -1,4 +1,5 @@
 import type { FileItem } from './types';
+import { devLog } from './shared.js';
 
 type FileGridEventsConfig = {
   getFileGrid: () => HTMLElement | null;
@@ -231,17 +232,22 @@ export function createFileGridEventsController(config: FileGridEventsConfig) {
       fileItem.classList.remove('drag-over');
       config.clearSpringLoad(fileItem);
 
-      const draggedPaths = await config.getDraggedPaths(e);
+      try {
+        const draggedPaths = await config.getDraggedPaths(e);
 
-      const item = config.getFileItemData(fileItem);
-      if (!item || draggedPaths.length === 0 || draggedPaths.includes(item.path)) {
+        const item = config.getFileItemData(fileItem);
+        if (!item || draggedPaths.length === 0 || draggedPaths.includes(item.path)) {
+          config.hideDropIndicator();
+          return;
+        }
+
+        const operation = config.getDragOperation(e);
+        await config.handleDrop(draggedPaths, item.path, operation);
+      } catch (error) {
+        devLog('Drop', 'Drop handler failed', error);
+      } finally {
         config.hideDropIndicator();
-        return;
       }
-
-      const operation = config.getDragOperation(e);
-      await config.handleDrop(draggedPaths, item.path, operation);
-      config.hideDropIndicator();
     });
   }
 

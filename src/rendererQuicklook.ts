@@ -1,5 +1,5 @@
 import type { FileItem, Settings } from './types';
-import { escapeHtml, sanitizeMarkdownHtml } from './shared.js';
+import { devLog, escapeHtml, ignoreError, sanitizeMarkdownHtml } from './shared.js';
 import { getById } from './rendererDom.js';
 import { encodeFileUrl, twemojiImg } from './rendererUtils.js';
 import { createPdfViewer, type PdfViewerHandle } from './rendererPdfViewer.js';
@@ -115,13 +115,14 @@ export function createQuicklookController(deps: QuicklookDeps) {
             img.naturalWidth && img.naturalHeight
               ? `${img.naturalWidth} × ${img.naturalHeight} • `
               : '';
-          quicklookInfo!.textContent = quickInfo(file, dims);
+          if (quicklookInfo) quicklookInfo.textContent = quickInfo(file, dims);
         });
         img.addEventListener('error', () => {
           if (requestId !== quicklookRequestId || currentQuicklookFile?.path !== file.path) {
             return;
           }
-          quicklookContent!.innerHTML = `<div class="preview-error">Failed to load image</div>`;
+          if (quicklookContent)
+            quicklookContent.innerHTML = `<div class="preview-error">Failed to load image</div>`;
         });
         wrapper.appendChild(img);
         quicklookContent.appendChild(wrapper);
@@ -183,7 +184,7 @@ export function createQuicklookController(deps: QuicklookDeps) {
           maxWidth: 900,
           containerClass: 'quicklook-pdf',
           showPageControls: true,
-          onError: (msg) => console.error('[QuickLook] PDF error:', msg),
+          onError: (msg) => devLog('QuickLook', 'PDF error', msg),
         });
 
         if (requestId !== quicklookRequestId || currentQuicklookFile?.path !== file.path) {
@@ -254,7 +255,7 @@ export function createQuicklookController(deps: QuicklookDeps) {
               const codeBlock = quicklookContent?.querySelector('code');
               if (codeBlock) hl.highlightElement?.(codeBlock);
             })
-            .catch(() => {});
+            .catch(ignoreError);
         }
       } else {
         quicklookContent.innerHTML = `<div class="preview-error">Failed to load text</div>`;
@@ -273,7 +274,7 @@ export function createQuicklookController(deps: QuicklookDeps) {
   async function showQuickLook() {
     const selectedItems = deps.getSelectedItems();
     if (selectedItems.size !== 1) return;
-    const selectedPath = Array.from(selectedItems)[0];
+    const selectedPath = Array.from(selectedItems)[0]!;
     const file = deps.getFileByPath(selectedPath);
     if (!file) return;
     await showQuickLookForFile(file);
@@ -282,7 +283,7 @@ export function createQuicklookController(deps: QuicklookDeps) {
   function closeQuickLook() {
     ensureElements();
     if (quicklookModal && (quicklookModal as PdfViewerElement).__pdfViewer) {
-      (quicklookModal as PdfViewerElement).__pdfViewer!.destroy();
+      (quicklookModal as PdfViewerElement).__pdfViewer?.destroy();
       (quicklookModal as PdfViewerElement).__pdfViewer = null;
     }
     if (quicklookContent) {

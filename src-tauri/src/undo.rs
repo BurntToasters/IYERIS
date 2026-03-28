@@ -271,7 +271,6 @@ pub fn clear_undo_stack_for_path(item_path: &str) -> Result<(), String> {
     Ok(())
 }
 
-#[allow(dead_code)]
 pub fn clear_undo_redo_for_path(item_path: &str) -> Result<(), String> {
     clear_undo_stack_for_path(item_path)
 }
@@ -286,39 +285,7 @@ fn get_state() -> Result<UndoRedoState, String> {
 }
 
 fn copy_dir_recursive(source: &Path, dest: &Path) -> Result<(), String> {
-    fs::create_dir_all(dest).map_err(|e| format!("Failed to create directory: {}", e))?;
-    for entry in fs::read_dir(source).map_err(|e| e.to_string())?.filter_map(|e| e.map_err(|err| log::warn!("[Undo] copy_dir entry error: {}", err)).ok()) {
-        let entry_path = entry.path();
-        let target = dest.join(entry.file_name());
-        let meta = fs::symlink_metadata(&entry_path).map_err(|e| e.to_string())?;
-        if meta.file_type().is_symlink() {
-            #[cfg(unix)]
-            {
-                let link_target = fs::read_link(&entry_path).map_err(|e| e.to_string())?;
-                std::os::unix::fs::symlink(&link_target, &target)
-                    .map_err(|e| format!("Failed to create symlink: {}", e))?;
-            }
-            #[cfg(windows)]
-            {
-                let link_target = fs::read_link(&entry_path).map_err(|e| e.to_string())?;
-                let is_dir_link = fs::metadata(&entry_path)
-                    .map(|linked_meta| linked_meta.is_dir())
-                    .unwrap_or(false);
-                if is_dir_link {
-                    std::os::windows::fs::symlink_dir(&link_target, &target)
-                        .map_err(|e| format!("Failed to create symlink: {}", e))?;
-                } else {
-                    std::os::windows::fs::symlink_file(&link_target, &target)
-                        .map_err(|e| format!("Failed to create symlink: {}", e))?;
-                }
-            }
-        } else if meta.is_dir() {
-            copy_dir_recursive(&entry_path, &target)?;
-        } else {
-            fs::copy(&entry_path, &target).map_err(|e| e.to_string())?;
-        }
-    }
-    Ok(())
+    crate::fs_utils::copy_dir_recursive(source, dest)
 }
 
 fn is_cross_device_error(err: &std::io::Error) -> bool {

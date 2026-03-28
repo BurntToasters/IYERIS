@@ -2,6 +2,7 @@ import type { FileItem, ItemProperties } from './types';
 import type { ToastAction } from './rendererToasts.js';
 import { isArchivePath } from './rendererCompressExtract.js';
 import { PDF_EXTENSIONS } from './fileTypes.js';
+import { getErrorMessage } from './shared.js';
 import { rendererPath as path } from './rendererUtils.js';
 
 type ContextMenuDeps = {
@@ -143,9 +144,9 @@ export function createContextMenuController(deps: ContextMenuDeps) {
           ? focusIndex - 1
           : items.length - 1;
 
-    items[newIndex].classList.add('focused');
-    items[newIndex].scrollIntoView({ block: 'nearest' });
-    items[newIndex].focus({ preventScroll: true });
+    items[newIndex]!.classList.add('focused');
+    items[newIndex]!.scrollIntoView({ block: 'nearest' });
+    items[newIndex]!.focus({ preventScroll: true });
     return newIndex;
   }
 
@@ -153,7 +154,7 @@ export function createContextMenuController(deps: ContextMenuDeps) {
     const items = getVisibleMenuItems(menu);
     if (focusIndex < 0 || focusIndex >= items.length) return false;
 
-    const item = items[focusIndex];
+    const item = items[focusIndex]!;
     if (item.classList.contains('has-submenu')) {
       const submenu = item.querySelector('.context-submenu') as HTMLElement;
       if (submenu) {
@@ -162,8 +163,8 @@ export function createContextMenuController(deps: ContextMenuDeps) {
           '.context-menu-item'
         ) as NodeListOf<HTMLElement>;
         if (submenuItems.length > 0) {
-          submenuItems[0].classList.add('focused');
-          submenuItems[0].focus({ preventScroll: true });
+          submenuItems[0]!.classList.add('focused');
+          submenuItems[0]!.focus({ preventScroll: true });
         }
       }
       return false;
@@ -447,8 +448,8 @@ export function createContextMenuController(deps: ContextMenuDeps) {
           await deps.shareItems([item.path]);
           break;
       }
-    } catch {
-      deps.showToast('Action failed', 'Error', 'error');
+    } catch (error) {
+      deps.showToast('Action failed: ' + getErrorMessage(error), 'Error', 'error');
     }
   }
 
@@ -477,11 +478,12 @@ export function createContextMenuController(deps: ContextMenuDeps) {
       if (e.key === 'Enter' && getFocusIdx() >= 0) {
         e.preventDefault();
         const items = getVisibleMenuItems(menu);
-        if (items[getFocusIdx()]) {
+        const focusedItem = items[getFocusIdx()];
+        if (focusedItem) {
           if (hasSubmenu) {
             activateContextMenuItem(menu, getFocusIdx());
           } else {
-            items[getFocusIdx()].click();
+            focusedItem.click();
           }
         }
         return true;

@@ -648,7 +648,7 @@ describe('tour.extended', () => {
 
   describe('default steps', () => {
     it('uses default steps when no custom steps array is provided', () => {
-      const { ctrl } = createTestController();
+      createTestController();
 
       const settings = makeSettings();
       const saveSettings = vi.fn().mockResolvedValue(undefined);
@@ -952,8 +952,6 @@ describe('tour.extended', () => {
   describe('handleLaunch clears previous timeout', () => {
     it('clears prior launch timeout on second call', () => {
       const { ctrl } = createTestController();
-
-      const promptModal = document.getElementById('tour-prompt-modal')!;
 
       ctrl.handleLaunch(1);
 

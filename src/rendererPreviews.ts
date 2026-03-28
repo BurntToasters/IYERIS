@@ -1,5 +1,5 @@
 import type { FileItem, ItemProperties } from './types';
-import { escapeHtml, getErrorMessage, sanitizeMarkdownHtml } from './shared.js';
+import { escapeHtml, getErrorMessage, ignoreError, sanitizeMarkdownHtml } from './shared.js';
 import { getById } from './rendererDom.js';
 import { encodeFileUrl, twemojiImg } from './rendererUtils.js';
 import { createPdfViewer, type PdfViewerHandle } from './rendererPdfViewer.js';
@@ -84,7 +84,7 @@ export function createPreviewController(deps: PreviewDeps) {
       previewPanel.style.display = 'flex';
       const selectedItems = deps.getSelectedItems();
       if (selectedItems.size === 1) {
-        const selectedPath = Array.from(selectedItems)[0];
+        const selectedPath = Array.from(selectedItems)[0]!;
         const file = deps.getFileByPath(selectedPath);
         if (file && file.isFile) {
           updatePreview(file);
@@ -258,12 +258,14 @@ export function createPreviewController(deps: PreviewDeps) {
       });
       img.addEventListener('error', () => {
         if (requestId !== previewRequestId) return;
-        previewContent!.innerHTML = `
-        <div class="preview-error">
-          Failed to load image
-        </div>
-        ${generateFileInfo(file, info)}
-      `;
+        if (previewContent) {
+          previewContent.innerHTML = `
+          <div class="preview-error">
+            Failed to load image
+          </div>
+          ${generateFileInfo(file, info)}
+        `;
+        }
       });
     }
   }
@@ -401,7 +403,7 @@ export function createPreviewController(deps: PreviewDeps) {
           const codeBlock = previewContent?.querySelector('code');
           if (codeBlock) hl.highlightElement?.(codeBlock);
         })
-        .catch(() => {});
+        .catch(ignoreError);
     }
   }
 

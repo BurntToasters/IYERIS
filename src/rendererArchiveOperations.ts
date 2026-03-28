@@ -1,5 +1,5 @@
 import { clearHtml, getById } from './rendererDom.js';
-import { escapeHtml } from './shared.js';
+import { devLog, escapeHtml } from './shared.js';
 import {
   ARCHIVE_RENDER_THROTTLE_MS,
   ARCHIVE_COMPLETION_DELAY_MS,
@@ -110,11 +110,11 @@ export function createArchiveOperationsController(deps: ArchiveOperationsDeps) {
         .cancelArchiveOperation(id)
         .then((result) => {
           if (!result.success) {
-            console.error('[Archive] Failed to cancel:', result.error);
+            devLog('Archive', 'Failed to cancel', result.error);
           }
         })
         .catch((err) => {
-          console.error('[Archive] Error cancelling operation:', err);
+          devLog('Archive', 'Error cancelling operation', err);
         });
 
       setTimeout(() => {

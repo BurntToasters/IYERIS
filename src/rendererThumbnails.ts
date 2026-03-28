@@ -46,7 +46,7 @@ export function createThumbnailController(deps: ThumbnailDeps) {
     };
 
     if (activeThumbnailLoads < THUMBNAIL_CONCURRENT_LOADS) {
-      execute().catch(() => {});
+      execute().catch(ignoreError);
       return true;
     } else if (pendingThumbnailLoads.length < THUMBNAIL_QUEUE_MAX) {
       pendingThumbnailLoads.push(execute);
@@ -216,7 +216,7 @@ export function createThumbnailController(deps: ThumbnailDeps) {
             const blockStart = blockSize * i;
             let sum = 0;
             for (let j = 0; j < blockSize; j++) {
-              sum += Math.abs(rawData[blockStart + j]);
+              sum += Math.abs(rawData[blockStart + j] ?? 0);
             }
             filteredData.push(sum / blockSize);
           }

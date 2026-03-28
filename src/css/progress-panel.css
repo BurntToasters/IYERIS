@@ -6,7 +6,7 @@
   max-height: 400px;
   display: flex;
   flex-direction: column;
-  z-index: 9000;
+  z-index: var(--z-progress);
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
   animation: progressPanelSlideIn 0.3s var(--animation-easing);
 }

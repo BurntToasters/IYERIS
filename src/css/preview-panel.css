@@ -17,7 +17,7 @@
   height: 100%;
   cursor: col-resize;
   background: transparent;
-  z-index: 20;
+  z-index: var(--z-sidebar);
 }
 
 .preview-resize-handle:hover,
@@ -138,11 +138,11 @@
   max-height: 300px;
 }
 
-pre.preview-text {
+.preview-text {
   background: color-mix(in srgb, var(--surface-2) 80%, transparent);
   border-radius: 8px;
   padding: 15px;
-  font-family: 'SF Mono', 'Fira Code', 'Courier New', monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.6;
   color: var(--text-primary);
@@ -164,21 +164,6 @@ pre.preview-text code {
 pre.preview-text code.hljs {
   background: transparent;
   padding: 0;
-}
-
-.preview-text:not(pre) {
-  background: color-mix(in srgb, var(--surface-2) 80%, transparent);
-  border-radius: 8px;
-  padding: 15px;
-  font-family: 'SF Mono', 'Fira Code', 'Courier New', monospace;
-  font-size: 12px;
-  line-height: 1.6;
-  color: var(--text-primary);
-  white-space: pre-wrap;
-  word-wrap: break-word;
-  max-height: 400px;
-  overflow-y: auto;
-  margin-bottom: 15px;
 }
 
 .preview-info {
@@ -217,13 +202,13 @@ pre.preview-text code.hljs {
 }
 
 .preview-truncated {
-  background: rgba(255, 165, 0, 0.1);
-  border: 1px solid rgba(255, 165, 0, 0.3);
+  background: color-mix(in srgb, var(--warning-color) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warning-color) 30%, transparent);
   border-radius: 6px;
   padding: 8px 12px;
   margin-bottom: 15px;
   font-size: 12px;
-  color: #ffa500;
+  color: var(--warning-color);
   text-align: center;
 }
 
@@ -413,7 +398,7 @@ body.preview-bottom .preview-content {
 }
 
 .preview-markdown code {
-  background: var(--surface-secondary);
+  background: var(--surface-2);
   padding: 2px 5px;
   border-radius: 4px;
   font-size: 0.9em;
@@ -421,7 +406,7 @@ body.preview-bottom .preview-content {
 }
 
 .preview-markdown pre {
-  background: var(--surface-secondary);
+  background: var(--surface-2);
   border: 1px solid var(--separator);
   border-radius: 6px;
   padding: 10px 12px;
@@ -473,6 +458,6 @@ body.preview-bottom .preview-content {
 }
 
 .preview-markdown th {
-  background: var(--surface-secondary);
+  background: var(--surface-2);
   font-weight: 600;
 }

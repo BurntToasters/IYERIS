@@ -314,40 +314,7 @@ pub async fn copy_items(
 }
 
 fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<(), String> {
-    fs::create_dir_all(dest).map_err(|e| format!("Failed to create directory: {}", e))?;
-    for entry_result in fs::read_dir(src).map_err(|e| e.to_string())? {
-        let entry = entry_result.map_err(|e| e.to_string())?;
-        let entry_path = entry.path();
-        let target = dest.join(entry.file_name());
-        let meta = fs::symlink_metadata(&entry_path).map_err(|e| e.to_string())?;
-        if meta.file_type().is_symlink() {
-            #[cfg(unix)]
-            {
-                let link_target = fs::read_link(&entry_path).map_err(|e| e.to_string())?;
-                std::os::unix::fs::symlink(&link_target, &target)
-                    .map_err(|e| format!("Failed to create symlink: {}", e))?;
-            }
-            #[cfg(windows)]
-            {
-                let link_target = fs::read_link(&entry_path).map_err(|e| e.to_string())?;
-                let is_dir_link = fs::symlink_metadata(&entry_path)
-                    .map(|linked_meta| linked_meta.is_dir())
-                    .unwrap_or(false);
-                if is_dir_link {
-                    std::os::windows::fs::symlink_dir(&link_target, &target)
-                        .map_err(|e| format!("Failed to create symlink: {}", e))?;
-                } else {
-                    std::os::windows::fs::symlink_file(&link_target, &target)
-                        .map_err(|e| format!("Failed to create symlink: {}", e))?;
-                }
-            }
-        } else if meta.is_dir() {
-            copy_dir_recursive(&entry_path, &target)?;
-        } else {
-            fs::copy(&entry_path, &target).map_err(|e| e.to_string())?;
-        }
-    }
-    Ok(())
+    crate::fs_utils::copy_dir_recursive(src, dest)
 }
 
 fn copy_symlink_path(source: &Path, target: &Path) -> Result<(), String> {
@@ -1961,36 +1928,60 @@ pub async fn calculate_checksum(
                 "sha512" => {
                     let mut hasher = Sha512::new();
                     let mut buf = [0u8; 8192];
+                    let mut read_total = 0u64;
                     use std::io::Seek;
                     file.seek(std::io::SeekFrom::Start(0)).map_err(|e| e.to_string())?;
                     loop {
                         let n = file.read(&mut buf).map_err(|e| e.to_string())?;
                         if n == 0 { break; }
                         hasher.update(&buf[..n]);
+                        read_total += n as u64;
+                        if read_total % (1024 * 1024) == 0 {
+                            let percent = if file_size > 0 { (read_total as f64 / file_size as f64) * 100.0 } else { 100.0 };
+                            let _ = webview.emit("checksum-progress", serde_json::json!({
+                                "operationId": op_id, "percent": percent, "algorithm": algo
+                            }));
+                        }
                     }
                     hex::encode(hasher.finalize())
                 },
                 "md5" => {
                     let mut hasher = Md5::new();
                     let mut buf = [0u8; 8192];
+                    let mut read_total = 0u64;
                     use std::io::Seek;
                     file.seek(std::io::SeekFrom::Start(0)).map_err(|e| e.to_string())?;
                     loop {
                         let n = file.read(&mut buf).map_err(|e| e.to_string())?;
                         if n == 0 { break; }
                         hasher.update(&buf[..n]);
+                        read_total += n as u64;
+                        if read_total % (1024 * 1024) == 0 {
+                            let percent = if file_size > 0 { (read_total as f64 / file_size as f64) * 100.0 } else { 100.0 };
+                            let _ = webview.emit("checksum-progress", serde_json::json!({
+                                "operationId": op_id, "percent": percent, "algorithm": algo
+                            }));
+                        }
                     }
                     hex::encode(hasher.finalize())
                 },
                 "crc32" => {
                     let mut hasher = crc32fast::Hasher::new();
                     let mut buf = [0u8; 8192];
+                    let mut read_total = 0u64;
                     use std::io::Seek;
                     file.seek(std::io::SeekFrom::Start(0)).map_err(|e| e.to_string())?;
                     loop {
                         let n = file.read(&mut buf).map_err(|e| e.to_string())?;
                         if n == 0 { break; }
                         hasher.update(&buf[..n]);
+                        read_total += n as u64;
+                        if read_total % (1024 * 1024) == 0 {
+                            let percent = if file_size > 0 { (read_total as f64 / file_size as f64) * 100.0 } else { 100.0 };
+                            let _ = webview.emit("checksum-progress", serde_json::json!({
+                                "operationId": op_id, "percent": percent, "algorithm": algo
+                            }));
+                        }
                     }
                     format!("{:08x}", hasher.finalize())
                 },
