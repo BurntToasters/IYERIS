@@ -234,14 +234,14 @@ fn main() {
             }
 
             if start_minimized {
-                if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.hide();
-                    log::debug!("[Setup] Started minimized to tray");
-                }
+                log::debug!("[Setup] Started minimized to tray");
                 #[cfg(target_os = "macos")]
                 {
                     let _ = app.handle().set_dock_visibility(false);
                 }
+            } else if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                log::debug!("[Setup] Showing main window");
             }
 
             match system::setup_tray(app) {
