@@ -2,7 +2,7 @@ use chrono::{NaiveDate, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs;
-use std::io::{BufRead, Read};
+use std::io::BufRead;
 use std::sync::Mutex;
 use walkdir::WalkDir;
 
