@@ -240,9 +240,9 @@ function sanitizeTabState(value: unknown): Settings['tabState'] | undefined {
 
   if (tabs.length === 0) return undefined;
 
-  let activeTabId = typeof value.activeTabId === 'string' ? value.activeTabId : tabs[0].id;
+  let activeTabId = typeof value.activeTabId === 'string' ? value.activeTabId : tabs[0]!.id;
   if (!tabs.some((tab) => tab.id === activeTabId)) {
-    activeTabId = tabs[0].id;
+    activeTabId = tabs[0]!.id;
   }
 
   return { tabs, activeTabId };

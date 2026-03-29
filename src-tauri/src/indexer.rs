@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::UNIX_EPOCH;
 use tauri::Manager;
@@ -14,8 +15,7 @@ const MAX_SCAN_DEPTH: usize = 50;
 static FILE_INDEX: std::sync::LazyLock<Arc<RwLock<FileIndex>>> =
     std::sync::LazyLock::new(|| Arc::new(RwLock::new(FileIndex::default())));
 
-static BUILD_CANCEL: std::sync::LazyLock<Mutex<bool>> =
-    std::sync::LazyLock::new(|| Mutex::new(false));
+static BUILD_CANCEL: AtomicBool = AtomicBool::new(false);
 
 static BUILD_MUTEX: std::sync::LazyLock<Mutex<()>> =
     std::sync::LazyLock::new(|| Mutex::new(()));
@@ -205,13 +205,11 @@ fn build_index_sync() -> Vec<IndexEntry> {
 }
 
 fn is_build_cancelled() -> bool {
-    BUILD_CANCEL.lock().map(|g| *g).unwrap_or(false)
+    BUILD_CANCEL.load(Ordering::Relaxed)
 }
 
 fn set_build_cancelled(val: bool) {
-    if let Ok(mut g) = BUILD_CANCEL.lock() {
-        *g = val;
-    }
+    BUILD_CANCEL.store(val, Ordering::Relaxed);
 }
 
 fn index_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
@@ -358,9 +356,9 @@ pub fn get_status() -> (bool, usize, Option<String>) {
     }
 }
 
-pub fn trigger_rebuild(app: &tauri::AppHandle) {
+pub async fn trigger_rebuild(app: &tauri::AppHandle) {
     set_build_cancelled(true);
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
     let app_handle = app.clone();
     std::thread::spawn(move || {

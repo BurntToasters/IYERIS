@@ -1,5 +1,5 @@
 import { twemojiImg } from './rendererUtils.js';
-import { escapeHtml } from './shared.js';
+import { devLog, escapeHtml } from './shared.js';
 
 export interface DiskSpaceControllerDeps {
   getCurrentPath: () => string;
@@ -120,36 +120,41 @@ export function createDiskSpaceController(deps: DiskSpaceControllerDeps) {
     }
 
     diskSpaceDebounceTimer = setTimeout(async () => {
-      const result = await deps.getDiskSpace(drivePath);
-      if (drivePath !== lastDiskSpacePath) {
-        diskSpaceDebounceTimer = null;
-        return;
-      }
-      const currentStatusDiskSpace = document.getElementById(
-        'status-disk-space'
-      ) as HTMLElement | null;
-      if (
-        result.success &&
-        typeof result.total === 'number' &&
-        typeof result.free === 'number' &&
-        result.total > 0
-      ) {
-        const total = result.total;
-        const free = result.free;
-        if (diskSpaceCache.size >= DISK_SPACE_CACHE_MAX) {
-          const firstKey = diskSpaceCache.keys().next().value;
-          if (firstKey) diskSpaceCache.delete(firstKey);
+      try {
+        const result = await deps.getDiskSpace(drivePath);
+        if (drivePath !== lastDiskSpacePath) {
+          diskSpaceDebounceTimer = null;
+          return;
         }
-        diskSpaceCache.set(drivePath, { timestamp: Date.now(), total, free });
-        if (currentStatusDiskSpace) renderDiskSpace(currentStatusDiskSpace, total, free);
-      } else {
-        const isUnc = platformOS === 'win32' && drivePath.startsWith('\\\\');
-        const message = isUnc
-          ? 'Disk space unavailable for network share'
-          : 'Disk space unavailable';
-        if (currentStatusDiskSpace) renderDiskSpaceUnavailable(currentStatusDiskSpace, message);
+        const currentStatusDiskSpace = document.getElementById(
+          'status-disk-space'
+        ) as HTMLElement | null;
+        if (
+          result.success &&
+          typeof result.total === 'number' &&
+          typeof result.free === 'number' &&
+          result.total > 0
+        ) {
+          const total = result.total;
+          const free = result.free;
+          if (diskSpaceCache.size >= DISK_SPACE_CACHE_MAX) {
+            const firstKey = diskSpaceCache.keys().next().value;
+            if (firstKey) diskSpaceCache.delete(firstKey);
+          }
+          diskSpaceCache.set(drivePath, { timestamp: Date.now(), total, free });
+          if (currentStatusDiskSpace) renderDiskSpace(currentStatusDiskSpace, total, free);
+        } else {
+          const isUnc = platformOS === 'win32' && drivePath.startsWith('\\\\');
+          const message = isUnc
+            ? 'Disk space unavailable for network share'
+            : 'Disk space unavailable';
+          if (currentStatusDiskSpace) renderDiskSpaceUnavailable(currentStatusDiskSpace, message);
+        }
+      } catch (error) {
+        devLog('DiskSpace', 'updateDiskSpace failed', error);
+      } finally {
+        diskSpaceDebounceTimer = null;
       }
-      diskSpaceDebounceTimer = null;
     }, DISK_SPACE_DEBOUNCE_MS);
   }
 

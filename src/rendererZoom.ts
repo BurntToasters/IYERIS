@@ -1,4 +1,5 @@
 import { ZOOM_POPUP_HIDE_MS } from './rendererLocalConstants.js';
+import { devLog } from './shared.js';
 
 type ZoomConfig = {
   setZoomLevel: (level: number) => Promise<{ success: boolean }>;
@@ -9,11 +10,15 @@ export function createZoomController(config: ZoomConfig) {
   let zoomPopupTimeout: ReturnType<typeof setTimeout> | null = null;
   async function updateZoomLevel(newZoom: number) {
     currentZoomLevel = Math.max(0.5, Math.min(2.0, newZoom));
-    const result = await config.setZoomLevel(currentZoomLevel);
+    try {
+      const result = await config.setZoomLevel(currentZoomLevel);
 
-    if (result.success) {
-      updateZoomDisplay();
-      showZoomPopup();
+      if (result.success) {
+        updateZoomDisplay();
+        showZoomPopup();
+      }
+    } catch (error) {
+      devLog('Zoom', 'setZoomLevel failed', error);
     }
   }
 

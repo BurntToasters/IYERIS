@@ -1,3 +1,5 @@
+import { devLog } from './shared.js';
+
 interface PdfjsViewport {
   width: number;
   height: number;
@@ -63,7 +65,7 @@ export async function loadPdfJs(): Promise<PdfjsLib | null> {
       pdfjsLib = lib;
       return pdfjsLib;
     } catch (err) {
-      console.error('[PDF] Failed to load pdf.js:', err);
+      devLog('PDF', 'Failed to load pdf.js', err);
       pdfjsLoading = null;
       return null;
     }
@@ -241,7 +243,7 @@ export async function createPdfViewer(
     if (pageIndicator) pageIndicator.textContent = `${currentPage} / ${totalPages}`;
     if (prevBtn) prevBtn.disabled = currentPage <= 1;
     if (nextBtn) nextBtn.disabled = currentPage >= totalPages;
-    if (zoomIndicator) zoomIndicator.textContent = `${Math.round(ZOOM_LEVELS[zoomIndex] * 100)}%`;
+    if (zoomIndicator) zoomIndicator.textContent = `${Math.round(ZOOM_LEVELS[zoomIndex]! * 100)}%`;
     if (zoomOutBtn) zoomOutBtn.disabled = zoomIndex <= 0;
     if (zoomInBtn) zoomInBtn.disabled = zoomIndex >= ZOOM_LEVELS.length - 1;
   }
@@ -275,14 +277,14 @@ export async function createPdfViewer(
         canvas,
         textLayerEl,
         maxWidth,
-        ZOOM_LEVELS[zoomIndex],
+        ZOOM_LEVELS[zoomIndex]!,
         lib!
       );
       updateControls();
 
       if (animate) pageWrapper.classList.remove('pdfjs-transitioning');
     } catch (err) {
-      console.error('[PDF] Render error:', err);
+      devLog('PDF', 'Render error', err);
       onError?.('Failed to render page');
       if (animate) pageWrapper.classList.remove('pdfjs-transitioning');
     } finally {
@@ -370,7 +372,7 @@ export async function createPdfViewer(
       return;
     }
 
-    if (ZOOM_LEVELS[zoomIndex] > 1.0) return;
+    if (ZOOM_LEVELS[zoomIndex]! > 1.0) return;
 
     if (now - lastWheelNav < WHEEL_NAV_COOLDOWN) return;
     if (Math.abs(e.deltaY) < 20) return;
@@ -420,7 +422,7 @@ export async function createPdfViewer(
       if (sep) (sep as HTMLElement).style.display = 'none';
     }
 
-    await renderPage(doc, 1, canvas, textLayerEl, maxWidth, ZOOM_LEVELS[zoomIndex], lib);
+    await renderPage(doc, 1, canvas, textLayerEl, maxWidth, ZOOM_LEVELS[zoomIndex]!, lib);
     updateControls();
 
     requestAnimationFrame(() => {
@@ -428,7 +430,7 @@ export async function createPdfViewer(
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Failed to load PDF';
-    console.error('[PDF] Load error:', msg);
+    devLog('PDF', 'Load error', msg);
     onError?.(msg);
     throw err;
   }
@@ -441,7 +443,7 @@ export async function createPdfViewer(
     zoomIn,
     zoomOut,
     resetZoom,
-    getZoom: () => ZOOM_LEVELS[zoomIndex],
+    getZoom: () => ZOOM_LEVELS[zoomIndex]!,
     destroy,
   };
 }

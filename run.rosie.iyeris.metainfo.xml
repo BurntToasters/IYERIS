@@ -29,6 +29,13 @@
   <url type="homepage">https://github.com/BurntToasters/IYERIS</url>
   <url type="bugtracker">https://github.com/BurntToasters/IYERIS/issues</url>
   <developer_name>BurntToasters</developer_name>
+  <developer id="run.rosie.iyeris">
+    <name>BurntToasters</name>
+  </developer>
+  <categories>
+    <category>Utility</category>
+    <category>FileManager</category>
+  </categories>
   <launchable type="desktop-id">run.rosie.iyeris.desktop</launchable>
   <screenshots>
     <screenshot type="default">
@@ -37,6 +44,7 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="2.0.7-beta.2" date="2026-03-28"/>
     <release version="2.0.7-beta.1" date="2026-03-28"/>
     <release version="2.0.6" date="2026-03-28"/>
     <release version="2.0.6-beta.4" date="2026-03-28"/>

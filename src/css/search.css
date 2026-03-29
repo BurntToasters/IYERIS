@@ -1,7 +1,7 @@
 .search-bar-wrapper {
   position: relative;
   width: 100%;
-  z-index: 200;
+  z-index: var(--z-navigation);
 }
 
 @keyframes dropdown-slide {
@@ -62,7 +62,7 @@
 
 .history-clear:hover,
 .history-clear.dropdown-active {
-  background: rgba(232, 17, 35, 0.2);
+  background: color-mix(in srgb, var(--danger-color) 20%, transparent);
   color: var(--danger-hover);
 }
 
@@ -98,7 +98,7 @@
 }
 
 .search-filter-toggle:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--active-color);
   color: var(--text-primary);
 }
 
@@ -116,7 +116,7 @@
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-medium);
   box-shadow: var(--shadow-md);
-  z-index: 5000;
+  z-index: var(--z-command-palette);
   padding: 16px;
   animation: dropdown-slide var(--animation-duration) var(--animation-easing);
 }
@@ -219,12 +219,12 @@
 }
 
 .search-filter-btn.secondary {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--active-color);
   color: var(--text-primary);
 }
 
 .search-filter-btn.secondary:hover {
-  background: rgba(255, 255, 255, 0.15);
+  background: color-mix(in srgb, var(--text-primary) 15%, transparent);
 }
 
 body.theme-light .search-filter-btn.secondary {
@@ -254,7 +254,7 @@ body.theme-light .search-filter-btn.secondary:hover {
   display: inline-block;
   width: 36px;
   height: 20px;
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--active-color);
   border-radius: 10px;
   position: relative;
   transition: background 0.2s;
@@ -331,7 +331,7 @@ body.theme-light .toggle-slider-small {
 }
 
 .history-clear:active {
-  background: rgba(232, 17, 35, 0.3);
+  background: color-mix(in srgb, var(--danger-color) 30%, transparent);
 }
 
 .history-empty {

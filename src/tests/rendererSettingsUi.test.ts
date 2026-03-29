@@ -687,7 +687,7 @@ describe('applySettingsSearch', () => {
     `
     );
     sec1.classList.add('active');
-    const sec2 = addSettingsSection(
+    addSettingsSection(
       'appearance',
       `
       <div class="settings-card">

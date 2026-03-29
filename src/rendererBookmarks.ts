@@ -1,5 +1,5 @@
 import type { Settings } from './types';
-import { escapeHtml } from './shared.js';
+import { escapeHtml, getErrorMessage } from './shared.js';
 import { twemojiImg } from './rendererUtils.js';
 import { isHomeViewPath } from './home.js';
 
@@ -207,7 +207,7 @@ export function createBookmarksController(deps: BookmarksDeps) {
 
         const draggedPaths = await getDraggedPaths(e);
         if (draggedPaths.length === 0) return;
-        const targetPath = draggedPaths[0];
+        const targetPath = draggedPaths[0]!;
         try {
           const propsResult = await window.tauriAPI.getItemProperties(targetPath);
           if (!propsResult.success) {
@@ -219,8 +219,8 @@ export function createBookmarksController(deps: BookmarksDeps) {
           } else {
             showToast('Only folders can be bookmarked', 'Bookmarks', 'info');
           }
-        } catch {
-          showToast('Failed to add bookmark', 'Bookmarks', 'error');
+        } catch (error) {
+          showToast('Failed to add bookmark: ' + getErrorMessage(error), 'Bookmarks', 'error');
         }
       });
 

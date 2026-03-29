@@ -748,7 +748,7 @@ describe('folderDir extended coverage', () => {
 
   describe('already loaded node', () => {
     it('does not reload children when the node was already loaded', async () => {
-      const { manager } = await renderWithChildren();
+      await renderWithChildren();
       const callCountAfterFirstLoad = mockGetDirectoryContents.mock.calls.length;
 
       const rootToggle = document.querySelector(

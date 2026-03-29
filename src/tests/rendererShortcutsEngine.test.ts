@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 
 vi.mock('../shortcuts.js', async (importOriginal) => {
   const orig = await importOriginal<typeof import('../shortcuts')>();

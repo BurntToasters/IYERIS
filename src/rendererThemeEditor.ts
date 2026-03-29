@@ -14,7 +14,7 @@ type ThemeEditorDeps = {
 
 function parseHexRgb(hex: string): [number, number, number] | null {
   const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-  return m ? [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)] : null;
+  return m ? [parseInt(m[1]!, 16), parseInt(m[2]!, 16), parseInt(m[3]!, 16)] : null;
 }
 
 export function hexToRgb(hex: string): string {
@@ -30,7 +30,7 @@ function hexToRgba(hex: string, alpha: number): string {
 function hexToHueDeg(hex: string): string {
   const c = parseHexRgb(hex);
   if (!c) return '200deg';
-  const [r, g, b] = c.map((v) => v / 255);
+  const [r = 0, g = 0, b = 0] = c.map((v) => v / 255);
   const max = Math.max(r, g, b);
   const min = Math.min(r, g, b);
   const d = max - min;

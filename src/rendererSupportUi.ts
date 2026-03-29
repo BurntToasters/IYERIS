@@ -1,4 +1,5 @@
 import type { Settings } from './types';
+import { devLog } from './shared.js';
 
 interface SupportUiDeps {
   activateModal: (modal: HTMLElement) => void;
@@ -193,7 +194,7 @@ export function createSupportUiController(deps: SupportUiDeps) {
         }
       })
       .catch((err) => {
-        console.error('Failed to copy:', err);
+        devLog('SupportUi', 'Failed to copy', err);
       });
   }
 

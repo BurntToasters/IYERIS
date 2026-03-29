@@ -5,25 +5,6 @@ import { createSelectionController } from '../rendererSelection';
 
 HTMLElement.prototype.scrollIntoView = function () {};
 
-const mockRaf = vi.hoisted(() => {
-  let rafId = 0;
-  let rafCallback: FrameRequestCallback | null = null;
-  return {
-    requestAnimationFrame: (cb: FrameRequestCallback) => {
-      rafCallback = cb;
-      return ++rafId;
-    },
-    cancelAnimationFrame: vi.fn(),
-    flushRaf: () => {
-      if (rafCallback) {
-        rafCallback(performance.now());
-        rafCallback = null;
-      }
-    },
-    getRafCallback: () => rafCallback,
-  };
-});
-
 function createDeps() {
   const selectedItems = new Set<string>();
   const fileGrid = document.createElement('div');
@@ -449,7 +430,7 @@ describe('rendererSelection extended2', () => {
       const originalGetComputedStyle = window.getComputedStyle;
       window.getComputedStyle = getComputedStyleSpy as unknown as typeof window.getComputedStyle;
 
-      const items = addFileItems(['/a', '/b', '/c', '/d', '/e', '/f']);
+      addFileItems(['/a', '/b', '/c', '/d', '/e', '/f']);
       const ctrl = createSelectionController(deps as any);
 
       ctrl.navigateFileGrid('ArrowDown', false);
@@ -467,7 +448,7 @@ describe('rendererSelection extended2', () => {
       const deps = createDeps();
       deps.getViewMode.mockReturnValue('list' as any);
 
-      const items = addFileItems(['/a', '/b', '/c']);
+      addFileItems(['/a', '/b', '/c']);
       const ctrl = createSelectionController(deps as any);
 
       ctrl.selectFirstItem(false);
@@ -481,7 +462,7 @@ describe('rendererSelection extended2', () => {
       const deps = createDeps();
       deps.getFileGrid.mockReturnValue(null as any);
 
-      const items = addFileItems(['/a', '/b', '/c']);
+      addFileItems(['/a', '/b', '/c']);
       const ctrl = createSelectionController(deps as any);
 
       ctrl.selectFirstItem(false);
@@ -501,7 +482,7 @@ describe('rendererSelection extended2', () => {
         getPropertyValue: () => '',
       })) as unknown as typeof window.getComputedStyle;
 
-      const items = addFileItems(['/a', '/b', '/c']);
+      addFileItems(['/a', '/b', '/c']);
       const ctrl = createSelectionController(deps as any);
 
       ctrl.selectFirstItem(false);
@@ -518,7 +499,7 @@ describe('rendererSelection extended2', () => {
       const deps = createDeps();
       deps.isPreviewVisible.mockReturnValue(true);
 
-      const items = addFileItems(['/a.txt', '/b.txt', '/c.txt']);
+      addFileItems(['/a.txt', '/b.txt', '/c.txt']);
       const ctrl = createSelectionController(deps as any);
 
       ctrl.navigateFileGrid('ArrowRight', false);
@@ -531,7 +512,7 @@ describe('rendererSelection extended2', () => {
       deps.isPreviewVisible.mockReturnValue(true);
       deps.getFileByPath.mockReturnValue(undefined as any);
 
-      const items = addFileItems(['/a.txt', '/b.txt']);
+      addFileItems(['/a.txt', '/b.txt']);
       const ctrl = createSelectionController(deps as any);
 
       ctrl.navigateFileGrid('ArrowRight', false);
@@ -543,7 +524,7 @@ describe('rendererSelection extended2', () => {
       const deps = createDeps();
       deps.getViewMode.mockReturnValue('list' as any);
 
-      const items = addFileItems(['/a', '/b', '/c', '/d', '/e']);
+      addFileItems(['/a', '/b', '/c', '/d', '/e']);
       const ctrl = createSelectionController(deps as any);
 
       ctrl.navigateFileGrid('ArrowRight', false);
@@ -558,7 +539,7 @@ describe('rendererSelection extended2', () => {
     it('does not select when index is out of bounds (handled via navigation clamping)', () => {
       const deps = createDeps();
 
-      const items = addFileItems(['/a']);
+      addFileItems(['/a']);
       const ctrl = createSelectionController(deps as any);
 
       ctrl.selectFirstItem(false);
@@ -575,7 +556,7 @@ describe('rendererSelection extended2', () => {
       const deps = createDeps();
       deps.getViewMode.mockReturnValue('list' as any);
 
-      const items = addFileItems(['/a', '/b', '/c']);
+      addFileItems(['/a', '/b', '/c']);
       const ctrl = createSelectionController(deps as any);
 
       ctrl.navigateFileGrid('ArrowRight', false);
@@ -603,7 +584,7 @@ describe('rendererSelection extended2', () => {
       const deps = createDeps();
       deps.getViewMode.mockReturnValue('list' as any);
 
-      const items = addFileItems(['/a']);
+      addFileItems(['/a']);
       const ctrl = createSelectionController(deps as any);
 
       ctrl.navigateFileGrid('ArrowLeft', false);
@@ -707,7 +688,7 @@ describe('rendererSelection extended2', () => {
   describe('selectFirstItem and selectLastItem - no shift when no prior selection', () => {
     it('selectFirstItem with shift but no prior selection selects only first', () => {
       const deps = createDeps();
-      const items = addFileItems(['/a', '/b', '/c']);
+      addFileItems(['/a', '/b', '/c']);
       const ctrl = createSelectionController(deps as any);
 
       ctrl.selectFirstItem(true);
@@ -717,7 +698,7 @@ describe('rendererSelection extended2', () => {
 
     it('selectLastItem with shift but no prior selection selects only last', () => {
       const deps = createDeps();
-      const items = addFileItems(['/a', '/b', '/c']);
+      addFileItems(['/a', '/b', '/c']);
       const ctrl = createSelectionController(deps as any);
 
       ctrl.selectLastItem(true);
@@ -1132,11 +1113,9 @@ describe('rendererSelection extended2', () => {
       Object.defineProperty(fileView, 'scrollLeft', { value: 0, writable: true });
       Object.defineProperty(fileView, 'scrollTop', { value: 0, writable: true });
 
-      let pendingCallback: FrameRequestCallback | null = null;
       const origRAF = window.requestAnimationFrame;
       const origCAF = window.cancelAnimationFrame;
-      window.requestAnimationFrame = (cb: FrameRequestCallback) => {
-        pendingCallback = cb;
+      window.requestAnimationFrame = (_cb: FrameRequestCallback) => {
         return 42;
       };
       const cancelSpy = vi.fn();
@@ -1188,7 +1167,7 @@ describe('rendererSelection extended2', () => {
 
       let rafCallCount = 0;
       const origRAF = window.requestAnimationFrame;
-      window.requestAnimationFrame = (cb: FrameRequestCallback) => {
+      window.requestAnimationFrame = (_cb: FrameRequestCallback) => {
         rafCallCount++;
         return rafCallCount;
       };

@@ -4,6 +4,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('../shared.js', () => ({
   escapeHtml: (s: string) => s,
   ignoreError: () => {},
+  devLog: () => {},
+  getErrorMessage: (e: unknown) => String(e),
   assignKey: <T extends object>(obj: T, key: keyof T, value: T[keyof T]) => {
     obj[key] = value;
   },

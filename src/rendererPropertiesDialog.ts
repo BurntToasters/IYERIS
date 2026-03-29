@@ -1,5 +1,5 @@
 import type { ItemProperties } from './types';
-import { escapeHtml, getErrorMessage } from './shared.js';
+import { escapeHtml, getErrorMessage, ignoreError } from './shared.js';
 import { twemojiImg } from './rendererUtils.js';
 
 type ToastType = 'success' | 'error' | 'info' | 'warning';
@@ -243,11 +243,11 @@ export function createPropertiesDialogController(deps: PropertiesDialogDeps) {
 
     const cleanup = () => {
       if (folderSizeActive) {
-        window.tauriAPI.cancelFolderSizeCalculation(folderSizeOperationId).catch(() => {});
+        window.tauriAPI.cancelFolderSizeCalculation(folderSizeOperationId).catch(ignoreError);
         folderSizeActive = false;
       }
       if (checksumActive) {
-        window.tauriAPI.cancelChecksumCalculation(checksumOperationId).catch(() => {});
+        window.tauriAPI.cancelChecksumCalculation(checksumOperationId).catch(ignoreError);
         checksumActive = false;
       }
       if (folderSizeProgressCleanup) {
@@ -396,7 +396,7 @@ export function createPropertiesDialogController(deps: PropertiesDialogDeps) {
       if (cancelBtn) {
         cancelBtn.addEventListener('click', () => {
           if (folderSizeActive) {
-            window.tauriAPI.cancelFolderSizeCalculation(folderSizeOperationId).catch(() => {});
+            window.tauriAPI.cancelFolderSizeCalculation(folderSizeOperationId).catch(ignoreError);
             folderSizeActive = false;
           }
           if (folderSizeProgressCleanup) {
@@ -474,7 +474,7 @@ export function createPropertiesDialogController(deps: PropertiesDialogDeps) {
       if (cancelBtn) {
         cancelBtn.addEventListener('click', () => {
           if (checksumActive) {
-            window.tauriAPI.cancelChecksumCalculation(checksumOperationId).catch(() => {});
+            window.tauriAPI.cancelChecksumCalculation(checksumOperationId).catch(ignoreError);
             checksumActive = false;
           }
           if (checksumProgressCleanup) {
@@ -488,14 +488,14 @@ export function createPropertiesDialogController(deps: PropertiesDialogDeps) {
 
       if (copyMd5Btn && md5Value) {
         copyMd5Btn.addEventListener('click', () => {
-          window.tauriAPI.writeToSystemClipboard(md5Value.textContent || '').catch(() => {});
+          window.tauriAPI.writeToSystemClipboard(md5Value.textContent || '').catch(ignoreError);
           deps.showToast('MD5 copied to clipboard', 'Copied', 'success');
         });
       }
 
       if (copySha256Btn && sha256Value) {
         copySha256Btn.addEventListener('click', () => {
-          window.tauriAPI.writeToSystemClipboard(sha256Value.textContent || '').catch(() => {});
+          window.tauriAPI.writeToSystemClipboard(sha256Value.textContent || '').catch(ignoreError);
           deps.showToast('SHA-256 copied to clipboard', 'Copied', 'success');
         });
       }

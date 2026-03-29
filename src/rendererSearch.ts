@@ -25,6 +25,7 @@ type SearchDeps = {
   setHomeViewActive: (active: boolean) => void;
   searchDebounceMs: number;
   searchHistoryMax: number;
+  announceToScreenReader?: (message: string) => void;
 };
 
 export function createSearchController(deps: SearchDeps) {
@@ -467,7 +468,15 @@ export function createSearchController(deps: SearchDeps) {
       deps.hideLoading();
       deps.updateStatusBar();
       activeSearchOperationId = null;
-    } catch (error) {
+
+      // Announce result count to screen readers
+      const resultCount = (deps.getFileGrid()?.querySelectorAll('.file-item') ?? []).length;
+      deps.announceToScreenReader?.(
+        resultCount === 0
+          ? 'No results found'
+          : `${resultCount} result${resultCount !== 1 ? 's' : ''} found`
+      );
+    } catch {
       deps.hideLoading();
       deps.showToast('Search failed unexpectedly', 'Search Error', 'error');
       activeSearchOperationId = null;
@@ -603,7 +612,7 @@ export function createSearchController(deps: SearchDeps) {
   function loadSavedSearch(index: number): void {
     const settings = deps.getCurrentSettings();
     if (!settings.savedSearches || index < 0 || index >= settings.savedSearches.length) return;
-    const saved = settings.savedSearches[index];
+    const saved = settings.savedSearches[index]!;
 
     ensureElements();
     if (!searchBarWrapper || !searchInput || !searchScopeToggle) return;
@@ -683,8 +692,8 @@ export function createSearchController(deps: SearchDeps) {
 
     searchRegexToggle?.addEventListener('click', () => {
       isRegexMode = !isRegexMode;
-      searchRegexToggle!.classList.toggle('active', isRegexMode);
-      searchRegexToggle!.setAttribute('aria-pressed', String(isRegexMode));
+      searchRegexToggle?.classList.toggle('active', isRegexMode);
+      searchRegexToggle?.setAttribute('aria-pressed', String(isRegexMode));
       if (isSearchMode && searchInput?.value) {
         debouncedSearch();
       }
@@ -831,8 +840,8 @@ export function createSearchController(deps: SearchDeps) {
           idx = idx > 0 ? idx - 1 : items.length - 1;
         }
         active?.classList.remove('dropdown-active');
-        items[idx].classList.add('dropdown-active');
-        items[idx].scrollIntoView({ block: 'nearest' });
+        items[idx]!.classList.add('dropdown-active');
+        items[idx]!.scrollIntoView({ block: 'nearest' });
       } else if (e.key === 'Enter') {
         const active = dropdown.querySelector<HTMLElement>('.dropdown-active');
         if (active) {

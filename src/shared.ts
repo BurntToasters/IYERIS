@@ -6,7 +6,7 @@ const ESCAPE_MAP: Record<string, string> = {
   "'": '&#039;',
 };
 const ESCAPE_RE = /[&<>"']/g;
-const escapeReplacer = (m: string): string => ESCAPE_MAP[m];
+const escapeReplacer = (m: string): string => ESCAPE_MAP[m] ?? '';
 
 export function escapeHtml(text: unknown): string {
   if (text === null || text === undefined) return '';

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { Settings, FileItem } from '../types';
+import type { Settings } from '../types';
 import type { SettingsFormState } from '../rendererSettingsUi';
 
 function makeSettings(overrides: Partial<Settings> = {}): Settings {

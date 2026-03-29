@@ -22,10 +22,10 @@ export default tseslint.config(
         { disallowTypeAnnotations: false },
       ],
       '@typescript-eslint/no-unused-vars': [
-        'warn',
+        'error',
         { argsIgnorePattern: '^_', destructuredArrayIgnorePattern: '^_', ignoreRestSiblings: true },
       ],
-      '@typescript-eslint/no-require-imports': 'warn',
+      '@typescript-eslint/no-require-imports': 'error',
 
       // Console log
       'no-console': ['warn', { allow: ['warn', 'error'] }],
@@ -34,8 +34,8 @@ export default tseslint.config(
       'prefer-const': 'error',
       'no-var': 'error',
       eqeqeq: ['error', 'always', { null: 'ignore' }],
-      'no-async-promise-executor': 'warn',
-      'no-case-declarations': 'warn',
+      'no-async-promise-executor': 'error',
+      'no-case-declarations': 'error',
       'no-useless-escape': 'warn',
 
       'no-empty': ['error', { allowEmptyCatch: true }],

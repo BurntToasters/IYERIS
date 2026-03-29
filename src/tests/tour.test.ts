@@ -339,7 +339,7 @@ describe('createTourController', () => {
     });
 
     it('yes button on prompt starts tour', async () => {
-      const { ctrl, settings, saveSettings } = createTestController();
+      const { ctrl, settings } = createTestController();
       const yesBtn = document.getElementById('tour-prompt-yes')!;
 
       ctrl.showPrompt();

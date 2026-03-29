@@ -471,7 +471,7 @@ describe('jumpToFirstSettingMatch (via initSettingsSearch)', () => {
 
   it('scrolls to first matching item when Enter is pressed in search', () => {
     vi.useFakeTimers();
-    const modal = setUpSettingsModal(`
+    setUpSettingsModal(`
       <input type="text" id="settings-search" value="" />
     `);
     addSettingsTab('general');

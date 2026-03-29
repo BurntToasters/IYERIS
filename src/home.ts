@@ -1,6 +1,6 @@
 import type { DriveInfo, HomeSettings, Settings } from './types';
 import { createDefaultHomeSettings, sanitizeHomeSettings } from './homeSettings.js';
-import { assignKey, escapeHtml } from './shared.js';
+import { assignKey, devLog, escapeHtml, getErrorMessage, ignoreError } from './shared.js';
 
 export const HOME_VIEW_PATH = 'iyeris://home';
 export const HOME_VIEW_LABEL = 'Home';
@@ -228,7 +228,7 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
         currentHomeSettings = createDefaultHomeSettings();
       }
     } catch (error) {
-      console.error('[HomeSettings] Failed to load:', error);
+      devLog('HomeSettings', 'Failed to load', error);
       currentHomeSettings = createDefaultHomeSettings();
     }
 
@@ -422,8 +422,8 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
       }
 
       await window.tauriAPI.openFile(filePath);
-    } catch {
-      showToast('Failed to open file', 'Error', 'error');
+    } catch (error) {
+      showToast('Failed to open file: ' + getErrorMessage(error), 'Error', 'error');
     }
   }
 
@@ -475,6 +475,7 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
       item.setAttribute('role', 'button');
       item.tabIndex = 0;
       item.dataset.recentPath = filePath;
+      item.setAttribute('aria-label', `Open recent: ${name}`);
       item.innerHTML = `
         <div class="home-recent-main">
           <span class="home-item-icon">${icon}</span>
@@ -607,16 +608,22 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
       const bar = card.querySelector('.home-drive-bar span') as HTMLElement | null;
 
       void (async () => {
-        const usage = await getDriveUsage(drive.path);
-        if (!usage || !meta || !bar) {
+        try {
+          const usage = await getDriveUsage(drive.path);
+          if (!usage || !meta || !bar) {
+            if (meta) meta.textContent = 'Usage unavailable';
+            if (bar) bar.style.width = '0%';
+            return;
+          }
+          const used = Math.max(0, usage.total - usage.free);
+          const percent = usage.total > 0 ? (used / usage.total) * 100 : 0;
+          meta.textContent = `${formatFileSize(usage.free)} free of ${formatFileSize(usage.total)}`;
+          bar.style.width = `${Math.min(100, Math.max(4, percent))}%`;
+        } catch (e) {
+          ignoreError(e);
           if (meta) meta.textContent = 'Usage unavailable';
           if (bar) bar.style.width = '0%';
-          return;
         }
-        const used = Math.max(0, usage.total - usage.free);
-        const percent = usage.total > 0 ? (used / usage.total) * 100 : 0;
-        meta.textContent = `${formatFileSize(usage.free)} free of ${formatFileSize(usage.total)}`;
-        bar.style.width = `${Math.min(100, Math.max(4, percent))}%`;
       })();
 
       homeDrives.appendChild(card);

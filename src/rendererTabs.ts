@@ -1,6 +1,6 @@
 import type { FileItem, Settings } from './types';
 import { clearHtml } from './rendererDom.js';
-import { escapeHtml } from './shared.js';
+import { escapeHtml, ignoreError } from './shared.js';
 import { twemojiImg } from './rendererUtils.js';
 import { TAB_SAVE_DELAY_MS } from './rendererLocalConstants.js';
 
@@ -131,7 +131,7 @@ export function createTabsController(deps: TabsDeps) {
       }));
       deps.setTabs(tabs);
 
-      const activeTab = tabs.find((t) => t.id === tabState.activeTabId) || tabs[0];
+      const activeTab = tabs.find((t) => t.id === tabState.activeTabId) || tabs[0]!;
       deps.setActiveTabId(activeTab.id);
 
       deps.setHistory([...activeTab.history]);
@@ -149,7 +149,7 @@ export function createTabsController(deps: TabsDeps) {
       const newTabBtn = document.getElementById('new-tab-btn');
       if (newTabBtn) {
         newTabBtn.addEventListener('click', () => {
-          addNewTab();
+          void addNewTab().catch(ignoreError);
         });
       }
 
@@ -319,8 +319,12 @@ export function createTabsController(deps: TabsDeps) {
         deps.setFileViewScrollTop(newTab.scrollPosition);
       } else {
         void (async () => {
-          await deps.navigateTo(newTab.path, true);
-          deps.setFileViewScrollTop(newTab.scrollPosition);
+          try {
+            await deps.navigateTo(newTab.path, true);
+            deps.setFileViewScrollTop(newTab.scrollPosition);
+          } catch (e) {
+            ignoreError(e);
+          }
         })();
       }
     }
@@ -404,7 +408,7 @@ export function createTabsController(deps: TabsDeps) {
     const tabIndex = tabs.findIndex((t) => t.id === tabId);
     if (tabIndex === -1) return;
 
-    const closingTab = tabs[tabIndex];
+    const closingTab = tabs[tabIndex]!;
     if (closingTab.path) {
       closedTabPaths.push(closingTab.path);
       if (closedTabPaths.length > MAX_CLOSED_TABS) {
@@ -416,7 +420,7 @@ export function createTabsController(deps: TabsDeps) {
 
     if (deps.getActiveTabId() === tabId) {
       const newIndex = Math.min(tabIndex, tabs.length - 1);
-      const nextTab = tabs[newIndex];
+      const nextTab = tabs[newIndex]!;
       deps.setActiveTabId(nextTab.id);
 
       deps.setHistory([...nextTab.history]);
@@ -526,7 +530,7 @@ export function createTabsController(deps: TabsDeps) {
 
     const activeTabId = deps.getActiveTabId();
     if (!tabs.some((t) => t.id === activeTabId)) {
-      const lastTab = tabs[tabs.length - 1];
+      const lastTab = tabs[tabs.length - 1]!;
       deps.setActiveTabId(lastTab.id);
       deps.setHistory([...lastTab.history]);
       deps.setHistoryIndex(lastTab.historyIndex);
@@ -550,7 +554,7 @@ export function createTabsController(deps: TabsDeps) {
     const tabs = deps.getTabs();
     const sourceTab = tabs.find((t) => t.id === tabId);
     if (!sourceTab) return;
-    void addNewTab(sourceTab.path);
+    void addNewTab(sourceTab.path).catch(ignoreError);
   }
 
   function showTabContextMenu(x: number, y: number, tabId: string): void {
@@ -610,10 +614,10 @@ export function createTabsController(deps: TabsDeps) {
       menu.querySelectorAll('.tab-context-menu-item:not(.disabled)')
     ) as HTMLElement[];
     if (enabledItems.length > 0) {
-      enabledItems[0].setAttribute('tabindex', '0');
-      enabledItems[0].focus();
+      enabledItems[0]!.setAttribute('tabindex', '0');
+      enabledItems[0]!.focus();
       for (let i = 1; i < enabledItems.length; i++) {
-        enabledItems[i].setAttribute('tabindex', '-1');
+        enabledItems[i]!.setAttribute('tabindex', '-1');
       }
     }
 
@@ -664,7 +668,7 @@ export function createTabsController(deps: TabsDeps) {
   function restoreClosedTab(): void {
     if (!deps.getTabsEnabled() || closedTabPaths.length === 0) return;
     const path = closedTabPaths.pop()!;
-    void addNewTab(path);
+    void addNewTab(path).catch(ignoreError);
   }
 
   function cleanup(): void {

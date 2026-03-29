@@ -1,4 +1,5 @@
 import type { GitStatusResponse, GitFileStatus } from './types';
+import { devLog } from './shared.js';
 
 type GitStatusDeps = {
   getCurrentSettings: () => { enableGitStatus?: boolean; gitIncludeUntracked?: boolean };
@@ -13,14 +14,7 @@ const GIT_STATUS_CACHE_TTL_MS = 3000;
 const GIT_STATUS_CACHE_MAX = 100;
 
 export function createGitStatusController(deps: GitStatusDeps) {
-  const {
-    getCurrentSettings,
-    getCurrentPath,
-    getFileElement,
-    getRenderedPaths,
-    getGitStatus,
-    getGitBranch,
-  } = deps;
+  const { getCurrentSettings, getCurrentPath, getFileElement, getGitStatus, getGitBranch } = deps;
 
   const gitIndicatorPaths = new Set<string>();
   const gitStatusCache = new Map<
@@ -68,7 +62,7 @@ export function createGitStatusController(deps: GitStatusDeps) {
         clearGitIndicators();
       }
     } catch (error) {
-      console.error('[Git Status] Failed to fetch:', error);
+      devLog('GitStatus', 'Failed to fetch', error);
     }
   }
 

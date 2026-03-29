@@ -30,9 +30,9 @@
   min-width: 150px;
   width: 220px;
   flex-shrink: 0;
-  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  border-right: 1px solid var(--hover-color);
   overflow-y: auto;
-  background: rgba(255, 255, 255, 0.02);
+  background: color-mix(in srgb, var(--text-primary) 2%, transparent);
   position: relative;
 }
 
@@ -48,7 +48,7 @@
   width: 4px;
   cursor: col-resize;
   background: transparent;
-  z-index: 10;
+  z-index: var(--z-component);
   transition: background var(--animation-duration) var(--animation-easing);
 }
 
@@ -70,12 +70,12 @@
 }
 
 .column-pane::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--active-color);
   border-radius: 3px;
 }
 
 .column-pane::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: color-mix(in srgb, var(--text-primary) 20%, transparent);
 }
 
 .column-item {
@@ -90,7 +90,7 @@
 }
 
 .column-item:hover {
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--hover-color);
 }
 
 .column-item.selected {

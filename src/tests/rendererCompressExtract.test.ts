@@ -1286,7 +1286,6 @@ describe('createCompressExtractController', () => {
 
       deps.getSelectedItems.mockReturnValue(new Set(['/home/user/documents/a.txt']));
       ctrl.showCompressOptionsModal();
-      const modal = document.getElementById('compress-options-modal') as HTMLElement;
       const nameInput = document.getElementById('compress-archive-name') as HTMLInputElement;
 
       const event = new KeyboardEvent('keydown', {

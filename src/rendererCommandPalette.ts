@@ -370,10 +370,14 @@ export function createCommandPaletteController(deps: CommandPaletteDeps) {
     resultsContainer.style.display = 'flex';
     emptyContainer.style.display = 'none';
 
+    resultsContainer.setAttribute('role', 'listbox');
+
     cmds.forEach((cmd, index) => {
       const item = document.createElement('div');
       item.className = 'command-palette-item';
       item.dataset.index = String(index);
+      item.setAttribute('role', 'option');
+      item.id = `command-palette-option-${index}`;
 
       let shortcutHtml = '';
       if (cmd.shortcut) {
@@ -424,11 +428,19 @@ export function createCommandPaletteController(deps: CommandPaletteDeps) {
     items.forEach((item, i) => {
       if (i === index) {
         item.classList.add('focused');
+        item.setAttribute('aria-selected', 'true');
         commandPaletteFocusedIndex = index;
       } else {
         item.classList.remove('focused');
+        item.setAttribute('aria-selected', 'false');
       }
     });
+
+    if (commandPaletteInput && index >= 0) {
+      commandPaletteInput.setAttribute('aria-activedescendant', `command-palette-option-${index}`);
+    } else if (commandPaletteInput) {
+      commandPaletteInput.removeAttribute('aria-activedescendant');
+    }
   }
 
   function handleCommandPaletteKeydown(e: KeyboardEvent): void {
@@ -445,7 +457,7 @@ export function createCommandPaletteController(deps: CommandPaletteDeps) {
       if (nextIndex < items.length) {
         setCommandPaletteFocus(nextIndex);
         if (commandPaletteResults) {
-          items[nextIndex].scrollIntoView({ block: 'nearest' });
+          items[nextIndex]!.scrollIntoView({ block: 'nearest' });
         }
       }
     } else if (e.key === 'ArrowUp') {
@@ -454,7 +466,7 @@ export function createCommandPaletteController(deps: CommandPaletteDeps) {
       if (prevIndex >= 0) {
         setCommandPaletteFocus(prevIndex);
         if (commandPaletteResults) {
-          items[prevIndex].scrollIntoView({ block: 'nearest' });
+          items[prevIndex]!.scrollIntoView({ block: 'nearest' });
         }
       }
     } else if (e.key === 'Enter') {

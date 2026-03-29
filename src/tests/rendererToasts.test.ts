@@ -47,6 +47,7 @@ describe('createToastManager', () => {
         setAttribute: vi.fn(),
         innerHTML: '',
         addEventListener: vi.fn(),
+        querySelector: vi.fn(() => null),
         classList: { add: vi.fn() },
       })),
     });
@@ -68,6 +69,7 @@ describe('createToastManager', () => {
         setAttribute: vi.fn(),
         innerHTML: '',
         addEventListener: vi.fn(),
+        querySelector: vi.fn(() => null),
         classList: { add: vi.fn() },
       })),
     });
@@ -93,6 +95,7 @@ describe('createToastManager', () => {
       setAttribute: vi.fn(),
       innerHTML: '',
       addEventListener: vi.fn(),
+      querySelector: vi.fn(() => null),
       classList: { add: vi.fn() },
     };
     vi.stubGlobal('document', {
@@ -115,6 +118,7 @@ describe('createToastManager', () => {
       setAttribute: vi.fn(),
       innerHTML: '',
       addEventListener: vi.fn(),
+      querySelector: vi.fn(() => null),
       classList: { add: vi.fn() },
     };
     vi.stubGlobal('document', {
@@ -143,6 +147,7 @@ describe('createToastManager', () => {
         setAttribute: vi.fn(),
         innerHTML: '',
         addEventListener: vi.fn(),
+        querySelector: vi.fn(() => null),
         classList: { add: vi.fn() },
       })),
     });
@@ -162,6 +167,7 @@ describe('createToastManager', () => {
       setAttribute: vi.fn(),
       innerHTML: '',
       addEventListener: vi.fn(),
+      querySelector: vi.fn(() => null),
       classList: { add: vi.fn() },
     };
     vi.stubGlobal('document', {
