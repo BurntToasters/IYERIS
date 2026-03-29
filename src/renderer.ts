@@ -320,7 +320,7 @@ const {
   closeSearch,
   openSearch,
   performSearch,
-  cancelActiveSearch,
+  cleanupSearch,
   showSearchHistoryDropdown,
   hideSearchHistoryDropdown,
   clearSearchHistory,
@@ -2197,7 +2197,7 @@ document.addEventListener('mousedown', (e) => {
 
 window.addEventListener('beforeunload', () => {
   stopIndexStatusPolling();
-  cancelActiveSearch();
+  cleanupSearch();
   cleanupHoverCard();
   cleanupPropertiesDialog();
   thumbnails.resetThumbnailObserver();

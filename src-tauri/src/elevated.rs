@@ -23,14 +23,39 @@ fn create_temp_script(extension: &str, content: &str) -> Result<std::path::PathB
             .as_nanos(),
         extension
     ));
-    let mut f = std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&script_path)
-        .map_err(|e| format!("Failed to create temp script: {}", e))?;
-    f.write_all(content.as_bytes())
-        .map_err(|e| format!("Failed to write temp script: {}", e))?;
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        let mut f = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o700)
+            .open(&script_path)
+            .map_err(|e| format!("Failed to create temp script: {}", e))?;
+        f.write_all(content.as_bytes())
+            .map_err(|e| format!("Failed to write temp script: {}", e))?;
+    }
+
+    #[cfg(not(unix))]
+    {
+        let mut f = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&script_path)
+            .map_err(|e| format!("Failed to create temp script: {}", e))?;
+        f.write_all(content.as_bytes())
+            .map_err(|e| format!("Failed to write temp script: {}", e))?;
+    }
+
     Ok(script_path)
+}
+
+#[cfg(any(target_os = "windows", target_os = "linux"))]
+fn cleanup_temp_script(script_path: &std::path::Path) {
+    if let Err(e) = std::fs::remove_file(script_path) {
+        log::warn!("[Elevated] Failed to clean up temp script {}: {}", script_path.display(), e);
+    }
 }
 
 #[tauri::command]
@@ -161,9 +186,7 @@ async fn run_elevated_file_op(op: &str, source: &str, dest: Option<&str>) -> Res
                     .creation_flags(0x08000000)
                     .output()
                     .map_err(|e| e.to_string());
-                if let Err(e) = std::fs::remove_file(&script_path) {
-                    log::warn!("[Elevated] Failed to clean up temp script {}: {}", script_path.display(), e);
-                }
+                cleanup_temp_script(&script_path);
                 result?
             };
 
@@ -330,9 +353,7 @@ async fn run_elevated_batch_op(op: &str, items: Vec<(String, Option<String>)>) -
                     .creation_flags(0x08000000)
                     .output()
                     .map_err(|e| e.to_string());
-                if let Err(e) = std::fs::remove_file(&script_path) {
-                    log::warn!("[Elevated] Failed to clean up temp script {}: {}", script_path.display(), e);
-                }
+                cleanup_temp_script(&script_path);
                 result?
             };
             if !output.status.success() {
@@ -387,19 +408,10 @@ async fn run_elevated_batch_op(op: &str, items: Vec<(String, Option<String>)>) -
             let script_content = lines.join("\n");
             let script_path = create_temp_script("sh", &script_content)?;
 
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                std::fs::set_permissions(&script_path, std::fs::Permissions::from_mode(0o700))
-                    .map_err(|e| format!("Failed to set script permissions: {}", e))?;
-            }
-
             let output = Command::new("pkexec")
                 .args(["sh", &script_path.to_string_lossy()])
                 .output();
-            if let Err(e) = std::fs::remove_file(&script_path) {
-                log::warn!("[Elevated] Failed to clean up temp script {}: {}", script_path.display(), e);
-            }
+            cleanup_temp_script(&script_path);
             let output = output.map_err(|e| e.to_string())?;
             if !output.status.success() {
                 return Err(format!(

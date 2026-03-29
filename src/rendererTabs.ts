@@ -172,6 +172,70 @@ export function createTabsController(deps: TabsDeps) {
     if (!deps.getTabsEnabled()) return;
   }
 
+  let tabListDelegated = false;
+
+  function attachTabListDelegation(tabList: HTMLElement) {
+    if (tabListDelegated) return;
+    tabListDelegated = true;
+
+    tabList.addEventListener('click', (e) => {
+      const target = e.target as HTMLElement;
+      const tabEl = target.closest<HTMLElement>('.tab-item');
+      if (!tabEl?.dataset.tabId) return;
+      if (target.classList.contains('tab-close')) {
+        e.stopPropagation();
+        closeTab(tabEl.dataset.tabId);
+      } else {
+        switchToTab(tabEl.dataset.tabId);
+      }
+    });
+
+    tabList.addEventListener('keydown', (e) => {
+      const tabEl = (e.target as HTMLElement).closest<HTMLElement>('.tab-item');
+      if (!tabEl?.dataset.tabId) return;
+
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        switchToTab(tabEl.dataset.tabId);
+        return;
+      }
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'Home' || e.key === 'End') {
+        e.preventDefault();
+        const tabItems = Array.from(tabList.querySelectorAll<HTMLElement>('.tab-item'));
+        if (tabItems.length === 0) return;
+        const currentIndex = tabItems.indexOf(tabEl);
+        if (currentIndex === -1) return;
+        let nextIndex = currentIndex;
+        if (e.key === 'ArrowLeft') {
+          nextIndex = (currentIndex - 1 + tabItems.length) % tabItems.length;
+        } else if (e.key === 'ArrowRight') {
+          nextIndex = (currentIndex + 1) % tabItems.length;
+        } else if (e.key === 'Home') {
+          nextIndex = 0;
+        } else if (e.key === 'End') {
+          nextIndex = tabItems.length - 1;
+        }
+        tabItems[nextIndex]?.focus();
+      }
+    });
+
+    tabList.addEventListener('auxclick', (e) => {
+      if (e.button !== 1) return;
+      const tabEl = (e.target as HTMLElement).closest<HTMLElement>('.tab-item');
+      if (!tabEl?.dataset.tabId) return;
+      e.preventDefault();
+      closeTab(tabEl.dataset.tabId);
+    });
+
+    tabList.addEventListener('contextmenu', (e) => {
+      const tabEl = (e.target as HTMLElement).closest<HTMLElement>('.tab-item');
+      if (!tabEl?.dataset.tabId) return;
+      e.preventDefault();
+      e.stopPropagation();
+      showTabContextMenu(e.clientX, e.clientY, tabEl.dataset.tabId);
+    });
+  }
+
   function renderTabs() {
     const tabList = document.getElementById('tab-list');
     if (!deps.getTabsEnabled()) return;
@@ -180,6 +244,7 @@ export function createTabsController(deps: TabsDeps) {
 
     if (!tabList) return;
 
+    attachTabListDelegation(tabList);
     clearHtml(tabList);
 
     const tabs = deps.getTabs();
@@ -212,59 +277,6 @@ export function createTabsController(deps: TabsDeps) {
       <span class="tab-title" title="${escapeHtml(tabTitle)}">${escapeHtml(folderName)}</span>
       <button class="tab-close" title="Close Tab" aria-label="Close tab">&times;</button>
     `;
-
-      tabElement.addEventListener('click', (e) => {
-        if ((e.target as HTMLElement).classList.contains('tab-close')) {
-          e.stopPropagation();
-          closeTab(tab.id);
-        } else {
-          switchToTab(tab.id);
-        }
-      });
-
-      tabElement.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          switchToTab(tab.id);
-          return;
-        }
-        if (
-          e.key === 'ArrowLeft' ||
-          e.key === 'ArrowRight' ||
-          e.key === 'Home' ||
-          e.key === 'End'
-        ) {
-          e.preventDefault();
-          const tabItems = Array.from(tabList.querySelectorAll<HTMLElement>('.tab-item'));
-          if (tabItems.length === 0) return;
-          const currentIndex = tabItems.indexOf(tabElement);
-          if (currentIndex === -1) return;
-          let nextIndex = currentIndex;
-          if (e.key === 'ArrowLeft') {
-            nextIndex = (currentIndex - 1 + tabItems.length) % tabItems.length;
-          } else if (e.key === 'ArrowRight') {
-            nextIndex = (currentIndex + 1) % tabItems.length;
-          } else if (e.key === 'Home') {
-            nextIndex = 0;
-          } else if (e.key === 'End') {
-            nextIndex = tabItems.length - 1;
-          }
-          tabItems[nextIndex]?.focus();
-        }
-      });
-
-      tabElement.addEventListener('auxclick', (e) => {
-        if (e.button === 1) {
-          e.preventDefault();
-          closeTab(tab.id);
-        }
-      });
-
-      tabElement.addEventListener('contextmenu', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        showTabContextMenu(e.clientX, e.clientY, tab.id);
-      });
 
       tabList.appendChild(tabElement);
     });

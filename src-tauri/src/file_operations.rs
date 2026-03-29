@@ -12,6 +12,9 @@ use tauri::Emitter;
 static ACTIVE_CHECKSUMS: std::sync::LazyLock<Mutex<HashSet<String>>> =
     std::sync::LazyLock::new(|| Mutex::new(HashSet::new()));
 
+static FILE_OP_LOCK: std::sync::LazyLock<Mutex<()>> =
+    std::sync::LazyLock::new(|| Mutex::new(()));
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ItemProperties {
@@ -258,6 +261,7 @@ pub async fn copy_items(
     app: tauri::AppHandle,
 ) -> Result<(), String> {
     log::debug!("[FileOps] copy_items: {} items -> {}", source_paths.len(), dest_path);
+    let _lock = FILE_OP_LOCK.lock().map_err(|e| format!("File operation lock error: {}", e))?;
     let dest = crate::validate_existing_path(&dest_path, "Destination")?;
     let behavior = conflict_behavior.unwrap_or_else(|| "ask".to_string());
     let resolutions = conflict_resolutions.unwrap_or_default();
@@ -328,10 +332,11 @@ fn copy_symlink_path(source: &Path, target: &Path) -> Result<(), String> {
 
     #[cfg(windows)]
     {
-        let source_meta = fs::symlink_metadata(source).map_err(|e| e.to_string())?;
-        let is_dir_link = source_meta.is_dir() || fs::metadata(source)
+        let is_dir_link = fs::metadata(source)
             .map(|m| m.is_dir())
-            .unwrap_or(false);
+            .unwrap_or_else(|_| {
+                link_target.is_dir()
+            });
         if is_dir_link {
             std::os::windows::fs::symlink_dir(&link_target, target)
                 .map_err(|e| format!("Failed to create symlink: {}", e))
@@ -374,6 +379,7 @@ pub async fn move_items(
     app: tauri::AppHandle,
 ) -> Result<(), String> {
     log::debug!("[FileOps] move_items: {} items -> {}", source_paths.len(), dest_path);
+    let _lock = FILE_OP_LOCK.lock().map_err(|e| format!("File operation lock error: {}", e))?;
     let dest = crate::validate_existing_path(&dest_path, "Destination")?;
     let behavior = conflict_behavior.unwrap_or_else(|| "ask".to_string());
     let resolutions = conflict_resolutions.unwrap_or_default();

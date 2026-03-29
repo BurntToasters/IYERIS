@@ -323,7 +323,7 @@ body.theme-light .toggle-slider-small {
   padding: 6px 8px;
   border-radius: 4px;
   margin-top: 6px;
-  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -606,7 +606,7 @@ body.theme-light .toggle-slider-small {
 }
 
 .search-regex-toggle .regex-label {
-  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   font-weight: 600;
   color: var(--text-secondary);

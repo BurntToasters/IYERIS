@@ -923,6 +923,14 @@ export function createSearchController(deps: SearchDeps) {
     return searchInput;
   }
 
+  function cleanup(): void {
+    cancelActiveSearch();
+    if (searchDebounceTimeout) {
+      clearTimeout(searchDebounceTimeout);
+      searchDebounceTimeout = null;
+    }
+  }
+
   return {
     initListeners,
     toggleSearch,
@@ -931,6 +939,7 @@ export function createSearchController(deps: SearchDeps) {
     performSearch,
     debouncedSearch,
     cancelActiveSearch,
+    cleanup,
     updateContentSearchToggle,
     updateSearchPlaceholder,
     showSearchHistoryDropdown,
