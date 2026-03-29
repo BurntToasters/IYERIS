@@ -136,7 +136,7 @@ function main() {
   runCommand('typecheck', npm, ['run', 'typecheck'], null, results);
   runCommand('lint', npm, ['run', 'lint'], null, results);
   runCommand('format', npm, ['run', 'format:check'], null, results);
-  runCommand('test', npm, ['run', 'test'], parseTest, results);
+  runCommand('test', npm, ['run', 'test:cov'], parseTest, results);
   runCommand('rust', 'cargo', ['check', '--manifest-path', 'src-tauri/Cargo.toml'], null, results, {
     timeout: rustTimeoutMs,
   });

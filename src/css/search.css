@@ -88,7 +88,7 @@
   height: 14px;
   padding: 0 4px;
   background: var(--accent-color);
-  color: var(--text-primary);
+  color: var(--text-on-accent);
   font-size: 9px;
   font-weight: 600;
   border-radius: 7px;
@@ -104,7 +104,7 @@
 
 .search-filter-toggle.active {
   background: var(--accent-color);
-  color: var(--text-primary);
+  color: var(--text-on-accent);
 }
 
 .search-filters-panel {
@@ -211,7 +211,7 @@
 
 .search-filter-btn.primary {
   background: var(--accent-color);
-  color: var(--text-primary);
+  color: var(--text-on-accent);
 }
 
 .search-filter-btn.primary:hover {
@@ -237,6 +237,7 @@ body.theme-light .search-filter-btn.secondary:hover {
 
 .search-filter-group .search-content-toggle {
   display: flex;
+  position: relative;
   align-items: center;
   gap: 10px;
   cursor: pointer;
@@ -247,7 +248,21 @@ body.theme-light .search-filter-btn.secondary:hover {
 }
 
 .search-content-toggle input {
-  display: none;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  clip-path: inset(50%);
+  border: 0;
+  white-space: nowrap;
+}
+
+.search-content-toggle input:focus-visible + .toggle-slider-small {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 2px;
 }
 
 .toggle-slider-small {
@@ -371,7 +386,7 @@ body.theme-light .toggle-slider-small {
 
 .search-bar input::selection {
   background: var(--accent-color);
-  color: var(--text-primary);
+  color: var(--text-on-accent);
 }
 
 .search-icon {
@@ -501,7 +516,16 @@ body.theme-light .toggle-slider-small {
   opacity: 1;
 }
 
+.saved-search-item:focus-within .saved-search-delete {
+  opacity: 1;
+}
+
 .saved-search-item .saved-search-delete:hover {
+  color: var(--danger-color);
+}
+
+.saved-search-item .saved-search-delete:focus-visible {
+  opacity: 1;
   color: var(--danger-color);
 }
 
@@ -604,7 +628,7 @@ body.theme-light .toggle-slider-small {
 }
 
 .search-regex-toggle.active .regex-label {
-  color: var(--text-primary);
+  color: var(--text-on-accent);
 }
 
 .search-regex-toggle.active:hover {

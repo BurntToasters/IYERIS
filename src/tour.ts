@@ -33,6 +33,7 @@ export interface TourController {
 const TOUR_HIGHLIGHT_PADDING = 8;
 const TOUR_TOOLTIP_MARGIN = 12;
 const TOUR_VIEWPORT_PADDING = 16;
+let detachGlobalTourListeners: (() => void) | null = null;
 
 function getDefaultSteps(isMac: boolean): TourStep[] {
   const mod = isMac ? '⌘' : 'Ctrl+';
@@ -354,12 +355,26 @@ export function createTourController(options: TourControllerOptions): TourContro
   };
 
   const attachListeners = (): void => {
+    if (detachGlobalTourListeners) {
+      detachGlobalTourListeners();
+      detachGlobalTourListeners = null;
+    }
     window.addEventListener('resize', scheduleTourUpdate, { passive: true });
     window.addEventListener('scroll', scheduleTourUpdate, true);
     document.addEventListener('keydown', handleKeydown, true);
+    detachGlobalTourListeners = () => {
+      window.removeEventListener('resize', scheduleTourUpdate);
+      window.removeEventListener('scroll', scheduleTourUpdate, true);
+      document.removeEventListener('keydown', handleKeydown, true);
+    };
   };
 
   const detachListeners = (): void => {
+    if (detachGlobalTourListeners) {
+      detachGlobalTourListeners();
+      detachGlobalTourListeners = null;
+      return;
+    }
     window.removeEventListener('resize', scheduleTourUpdate);
     window.removeEventListener('scroll', scheduleTourUpdate, true);
     document.removeEventListener('keydown', handleKeydown, true);

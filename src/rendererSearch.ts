@@ -194,9 +194,10 @@ export function createSearchController(deps: SearchDeps) {
     }
   }
 
-  function closeSearch() {
+  function closeSearch(options: { restoreCurrentPath?: boolean } = {}) {
     ensureElements();
     if (!searchBarWrapper || !searchInput || !searchScopeToggle || !searchFiltersPanel) return;
+    const shouldRestoreCurrentPath = options.restoreCurrentPath ?? true;
     searchRequestId += 1;
     cancelActiveSearch();
     if (searchDebounceTimeout) {
@@ -226,7 +227,7 @@ export function createSearchController(deps: SearchDeps) {
     syncSaveBtnState();
 
     const currentPath = deps.getCurrentPath();
-    if (currentPath) {
+    if (shouldRestoreCurrentPath && currentPath) {
       deps.navigateTo(currentPath);
     }
   }
@@ -556,11 +557,15 @@ export function createSearchController(deps: SearchDeps) {
     if (dropdown) dropdown.style.display = 'none';
   }
 
-  function clearSearchHistory() {
+  async function clearSearchHistory() {
     const settings = deps.getCurrentSettings();
     settings.searchHistory = [];
-    deps.saveSettingsWithTimestamp(settings);
     hideSearchHistoryDropdown();
+    const result = await deps.saveSettingsWithTimestamp(settings);
+    if (!result.success) {
+      deps.showToast(result.error || 'Failed to clear search history', 'History', 'error');
+      return;
+    }
     deps.showToast('Search history cleared', 'History', 'success');
   }
 
@@ -667,7 +672,7 @@ export function createSearchController(deps: SearchDeps) {
     syncSearchScopeAria();
     syncSearchFilterAria();
     searchBtn?.addEventListener('click', toggleSearch);
-    searchClose?.addEventListener('click', closeSearch);
+    searchClose?.addEventListener('click', () => closeSearch());
     searchScopeToggle?.addEventListener('click', toggleSearchScope);
 
     searchSaveBtn?.addEventListener('click', saveCurrentSearch);

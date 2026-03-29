@@ -1314,7 +1314,7 @@ async function navigateTo(path: string, skipHistoryUpdate = false, trigger = 'di
     resetTypeahead();
 
     if (isSearchModeActive()) {
-      closeSearch();
+      closeSearch({ restoreCurrentPath: false });
     }
 
     thumbnails.disconnectThumbnailObserver();
@@ -1353,7 +1353,7 @@ async function navigateTo(path: string, skipHistoryUpdate = false, trigger = 'di
     resetTypeahead();
 
     if (isSearchModeActive()) {
-      closeSearch();
+      closeSearch({ restoreCurrentPath: false });
     }
 
     thumbnails.disconnectThumbnailObserver();

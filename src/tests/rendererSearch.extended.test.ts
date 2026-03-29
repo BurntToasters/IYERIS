@@ -117,22 +117,22 @@ describe('Search controller — extended', () => {
   });
 
   describe('clearSearchHistory', () => {
-    it('clears history and shows toast', () => {
+    it('clears history and shows toast', async () => {
       const deps = createDeps();
       deps.settings.searchHistory = ['a', 'b', 'c'];
       const ctrl = createSearchController(deps as any);
-      ctrl.clearSearchHistory();
+      await ctrl.clearSearchHistory();
       expect(deps.settings.searchHistory).toEqual([]);
       expect(deps.saveSettingsWithTimestamp).toHaveBeenCalledWith(deps.settings);
       expect(deps.showToast).toHaveBeenCalledWith('Search history cleared', 'History', 'success');
     });
 
-    it('hides search history dropdown', () => {
+    it('hides search history dropdown', async () => {
       const deps = createDeps();
       const ctrl = createSearchController(deps as any);
       const dropdown = document.getElementById('search-history-dropdown')!;
       dropdown.style.display = 'block';
-      ctrl.clearSearchHistory();
+      await ctrl.clearSearchHistory();
       expect(dropdown.style.display).toBe('none');
     });
   });

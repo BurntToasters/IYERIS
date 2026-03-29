@@ -822,7 +822,7 @@ export function wireControllers(deps: WiringDeps) {
     debouncedSaveSettings: deps.debouncedSaveSettings,
     saveSettingsWithTimestamp: deps.saveSettingsWithTimestamp,
     cancelDirectoryRequest: () => cancelDirectoryRequest(),
-    closeSearch: () => closeSearch(),
+    closeSearch: (options) => closeSearch(options),
     isSearchModeActive: () => isSearchModeActive(),
     resetTypeahead: () => resetTypeahead(),
     fetchGitStatusAsync: (path: string) => fetchGitStatusAsync(path),

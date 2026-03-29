@@ -377,6 +377,17 @@ export function createEventListenersController(config: EventListenersConfig) {
     'ArrowRight',
     'Delete',
   ]);
+  const EDITABLE_SAFE_SHORTCUT_ACTIONS = new Set([
+    'command-palette',
+    'settings',
+    'shortcuts',
+    'search',
+    'global-search',
+    'new-window',
+    'zoom-in',
+    'zoom-out',
+    'zoom-reset',
+  ]);
 
   const shortcutActions: Record<string, () => void> = {
     'command-palette': () => config.showCommandPalette(),
@@ -419,6 +430,9 @@ export function createEventListenersController(config: EventListenersConfig) {
   };
 
   function runShortcutAction(actionId: string, e: KeyboardEvent): boolean {
+    if (isEditableElementActive() && !EDITABLE_SAFE_SHORTCUT_ACTIONS.has(actionId)) {
+      return false;
+    }
     if (actionId === 'copy' && hasTextSelection()) return false;
     if (actionId === 'cut' && hasTextSelection()) return false;
     if ((actionId === 'paste' || actionId === 'select-all') && isEditableElementActive())
@@ -646,7 +660,8 @@ export function createEventListenersController(config: EventListenersConfig) {
       const pane = PANE_ORDER[idx];
 
       if (pane === 'sidebar') {
-        const sidebar = document.getElementById('sidebar');
+        const sidebar =
+          document.getElementById('sidebar') || document.querySelector<HTMLElement>('.sidebar');
         if (!sidebar || sidebar.classList.contains('collapsed')) continue;
         const treeItem = sidebar.querySelector<HTMLElement>('.tree-item[tabindex="0"]');
         if (treeItem) {

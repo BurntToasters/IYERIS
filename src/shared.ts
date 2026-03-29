@@ -30,12 +30,12 @@ export function setDevMode(enabled: boolean): void {
   devModeEnabled = enabled;
   if (enabled) {
     (globalThis as Record<string, unknown>).__iyerisLogger = {
-      debug: (...args: unknown[]) => console.debug('[IYERIS]', ...args),
-      info: (...args: unknown[]) => console.info('[IYERIS]', ...args),
-      warn: (...args: unknown[]) => console.warn('[IYERIS]', ...args),
-      error: (...args: unknown[]) => console.error('[IYERIS]', ...args),
+      debug: (...args: unknown[]) => globalThis.console.debug('[IYERIS]', ...args),
+      info: (...args: unknown[]) => globalThis.console.info('[IYERIS]', ...args),
+      warn: (...args: unknown[]) => globalThis.console.warn('[IYERIS]', ...args),
+      error: (...args: unknown[]) => globalThis.console.error('[IYERIS]', ...args),
     };
-    console.info('[IYERIS] Dev mode enabled — verbose logging active');
+    globalThis.console.info('[IYERIS] Dev mode enabled — verbose logging active');
   }
 }
 
@@ -45,13 +45,13 @@ export function isDevMode(): boolean {
 
 export function devLog(category: string, ...args: unknown[]): void {
   if (devModeEnabled) {
-    console.debug(`[${category}]`, ...args);
+    globalThis.console.debug(`[${category}]`, ...args);
   }
 }
 
 export function ignoreError(error: unknown): void {
   if (devModeEnabled) {
-    console.warn('[Ignored error]', error);
+    globalThis.console.warn('[Ignored error]', error);
   } else if (
     typeof globalThis !== 'undefined' &&
     typeof (globalThis as Record<string, unknown>).__iyerisLogger === 'object'

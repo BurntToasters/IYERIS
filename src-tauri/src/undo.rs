@@ -289,9 +289,17 @@ fn copy_dir_recursive(source: &Path, dest: &Path) -> Result<(), String> {
 }
 
 fn is_cross_device_error(err: &std::io::Error) -> bool {
-    match err.raw_os_error() {
-        Some(code) => code == 18 || code == 17,
-        None => false,
+    #[cfg(unix)]
+    {
+        err.kind() == std::io::ErrorKind::CrossesDevices || matches!(err.raw_os_error(), Some(18))
+    }
+    #[cfg(windows)]
+    {
+        err.kind() == std::io::ErrorKind::CrossesDevices || matches!(err.raw_os_error(), Some(17))
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        err.kind() == std::io::ErrorKind::CrossesDevices
     }
 }
 

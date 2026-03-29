@@ -77,7 +77,15 @@ export function createSettingsActionsController(deps: SettingsActionsDeps) {
 
           const nextSettings = { ...deps.getCurrentSettings(), ...validatedSettings };
           deps.setCurrentSettings(nextSettings);
-          await deps.saveSettingsWithTimestamp(nextSettings);
+          const saveResult = await deps.saveSettingsWithTimestamp(nextSettings);
+          if (!saveResult.success) {
+            deps.showToast(
+              saveResult.error || 'Failed to save imported settings',
+              'Import',
+              'error'
+            );
+            return;
+          }
 
           await deps.hideSettingsModal();
           deps.showSettingsModal();
@@ -101,7 +109,11 @@ export function createSettingsActionsController(deps: SettingsActionsDeps) {
       if (confirmed) {
         const nextSettings = { ...deps.getCurrentSettings(), searchHistory: [] };
         deps.setCurrentSettings(nextSettings);
-        await deps.saveSettingsWithTimestamp(nextSettings);
+        const saveResult = await deps.saveSettingsWithTimestamp(nextSettings);
+        if (!saveResult.success) {
+          deps.showToast(saveResult.error || 'Failed to clear search history', 'Data', 'error');
+          return;
+        }
         deps.showToast('Search history cleared', 'Data', 'success');
       }
     });
@@ -114,7 +126,11 @@ export function createSettingsActionsController(deps: SettingsActionsDeps) {
       if (confirmed) {
         const nextSettings = { ...deps.getCurrentSettings(), bookmarks: [] };
         deps.setCurrentSettings(nextSettings);
-        await deps.saveSettingsWithTimestamp(nextSettings);
+        const saveResult = await deps.saveSettingsWithTimestamp(nextSettings);
+        if (!saveResult.success) {
+          deps.showToast(saveResult.error || 'Failed to clear bookmarks', 'Data', 'error');
+          return;
+        }
         deps.loadBookmarks();
         deps.showToast('Bookmarks cleared', 'Data', 'success');
       }

@@ -30,7 +30,6 @@ interface DragDropConfig {
 export function createDragDropController(config: DragDropConfig) {
   let springLoadedTimeout: NodeJS.Timeout | null = null;
   let springLoadedFolder: HTMLElement | null = null;
-  let dragoverRafId: number | null = null;
 
   function isAbsolutePath(value: string): boolean {
     return value.startsWith('/') || /^[A-Za-z]:[\\/]/.test(value) || value.startsWith('\\\\');
@@ -380,14 +379,7 @@ export function createDragDropController(config: DragDropConfig) {
       const operation = getDragOperation(e);
       e.dataTransfer.dropEffect = operation;
       fileGrid.classList.add('drag-over');
-      const cx = e.clientX,
-        cy = e.clientY;
-      if (dragoverRafId === null) {
-        dragoverRafId = requestAnimationFrame(() => {
-          dragoverRafId = null;
-          showDropIndicator(operation, currentPath, cx, cy);
-        });
-      }
+      showDropIndicator(operation, currentPath, e.clientX, e.clientY);
     });
 
     fileGrid.addEventListener('dragleave', (e) => {
@@ -401,10 +393,6 @@ export function createDragDropController(config: DragDropConfig) {
         e.clientY >= rect.bottom
       ) {
         fileGrid.classList.remove('drag-over');
-        if (dragoverRafId !== null) {
-          cancelAnimationFrame(dragoverRafId);
-          dragoverRafId = null;
-        }
         hideDropIndicator();
       }
     });
@@ -461,14 +449,7 @@ export function createDragDropController(config: DragDropConfig) {
       const operation = getDragOperation(e);
       if (e.dataTransfer) e.dataTransfer.dropEffect = operation;
       fileView.classList.add('drag-over');
-      const cx = e.clientX,
-        cy = e.clientY;
-      if (dragoverRafId === null) {
-        dragoverRafId = requestAnimationFrame(() => {
-          dragoverRafId = null;
-          showDropIndicator(operation, currentPath, cx, cy);
-        });
-      }
+      showDropIndicator(operation, currentPath, e.clientX, e.clientY);
     });
 
     fileView.addEventListener('dragleave', (e) => {
@@ -481,10 +462,6 @@ export function createDragDropController(config: DragDropConfig) {
         e.clientY >= rect.bottom
       ) {
         fileView.classList.remove('drag-over');
-        if (dragoverRafId !== null) {
-          cancelAnimationFrame(dragoverRafId);
-          dragoverRafId = null;
-        }
         hideDropIndicator();
       }
     });

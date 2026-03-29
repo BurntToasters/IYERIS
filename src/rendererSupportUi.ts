@@ -251,7 +251,12 @@ export function createSupportUiController(deps: SupportUiDeps) {
     document.getElementById('support-popup-dismiss')?.addEventListener('click', async () => {
       const settings = deps.getCurrentSettings();
       settings.supportPopupDismissed = true;
-      await deps.saveSettingsWithTimestamp(settings);
+      const result = await deps.saveSettingsWithTimestamp(settings);
+      if (!result.success) {
+        devLog('Support', 'Failed to persist support popup dismissal', {
+          error: result.error || 'Unknown error',
+        });
+      }
       hideSupportPopup();
     });
 

@@ -66,21 +66,31 @@ export function createPreviewController(deps: PreviewDeps) {
 
   function syncPreviewToggleState() {
     ensureElements();
+    const viewportBlocksPanel =
+      typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 900px)').matches;
+    const effectiveVisibility = isPreviewPanelVisible && !viewportBlocksPanel;
     if (previewToggleBtn) {
-      previewToggleBtn.setAttribute('aria-pressed', String(isPreviewPanelVisible));
-      previewToggleBtn.setAttribute('aria-expanded', String(isPreviewPanelVisible));
+      previewToggleBtn.setAttribute('aria-pressed', String(effectiveVisibility));
+      previewToggleBtn.setAttribute('aria-expanded', String(effectiveVisibility));
       previewToggleBtn.setAttribute('aria-controls', 'preview-panel');
     }
     if (previewPanel) {
-      previewPanel.setAttribute('aria-hidden', String(!isPreviewPanelVisible));
+      previewPanel.setAttribute('aria-hidden', String(!effectiveVisibility));
     }
   }
 
   function togglePreviewPanel() {
     ensureElements();
     if (!previewPanel) return;
-    isPreviewPanelVisible = !isPreviewPanelVisible;
-    if (isPreviewPanelVisible) {
+    const viewportBlocksPanel =
+      typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 900px)').matches;
+    if (!isPreviewPanelVisible) {
+      if (viewportBlocksPanel) {
+        previewPanel.style.display = 'none';
+        syncPreviewToggleState();
+        return;
+      }
+      isPreviewPanelVisible = true;
       previewPanel.style.display = 'flex';
       const selectedItems = deps.getSelectedItems();
       if (selectedItems.size === 1) {
@@ -91,6 +101,7 @@ export function createPreviewController(deps: PreviewDeps) {
         }
       }
     } else {
+      isPreviewPanelVisible = false;
       if (previewContent) {
         previewContent.querySelectorAll('video, audio').forEach((el) => {
           (el as HTMLMediaElement).pause();
@@ -628,6 +639,16 @@ export function createPreviewController(deps: PreviewDeps) {
 
   function initPreviewUi() {
     ensureElements();
+    window.addEventListener('resize', () => {
+      if (
+        previewPanel &&
+        typeof window.matchMedia === 'function' &&
+        window.matchMedia('(max-width: 900px)').matches
+      ) {
+        previewPanel.style.display = 'none';
+      }
+      syncPreviewToggleState();
+    });
     if (previewToggleBtn) {
       previewToggleBtn.addEventListener('click', togglePreviewPanel);
     }

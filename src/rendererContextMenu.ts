@@ -596,7 +596,11 @@ export function createContextMenuController(deps: ContextMenuDeps) {
 
     const handler = () => void loadApps();
     submenuContainer.addEventListener('mouseenter', handler, { once: true });
-    openWithMouseEnterCleanup = () => submenuContainer.removeEventListener('mouseenter', handler);
+    submenuContainer.addEventListener('focus', handler, { once: true });
+    openWithMouseEnterCleanup = () => {
+      submenuContainer.removeEventListener('mouseenter', handler);
+      submenuContainer.removeEventListener('focus', handler);
+    };
   }
 
   return {

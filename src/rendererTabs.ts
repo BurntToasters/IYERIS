@@ -60,7 +60,7 @@ interface TabsDeps {
   watchDirectory: (path: string) => void;
 
   cancelDirectoryRequest?: () => void;
-  closeSearch?: () => void;
+  closeSearch?: (options?: { restoreCurrentPath?: boolean }) => void;
   isSearchModeActive?: () => boolean;
   resetTypeahead?: () => void;
   fetchGitStatusAsync?: (path: string) => void;
@@ -307,7 +307,7 @@ export function createTabsController(deps: TabsDeps) {
     deps.setSelectedItems(new Set(newTab.selectedItems));
 
     if (deps.isSearchModeActive?.()) {
-      deps.closeSearch?.();
+      deps.closeSearch?.({ restoreCurrentPath: false });
     }
     deps.resetTypeahead?.();
 

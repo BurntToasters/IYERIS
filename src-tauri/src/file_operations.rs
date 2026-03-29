@@ -630,7 +630,18 @@ fn plan_file_operations(
 }
 
 fn is_cross_device_error(err: &std::io::Error) -> bool {
-    matches!(err.raw_os_error(), Some(17) | Some(18))
+    #[cfg(unix)]
+    {
+        err.kind() == std::io::ErrorKind::CrossesDevices || matches!(err.raw_os_error(), Some(18))
+    }
+    #[cfg(windows)]
+    {
+        err.kind() == std::io::ErrorKind::CrossesDevices || matches!(err.raw_os_error(), Some(17))
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        err.kind() == std::io::ErrorKind::CrossesDevices
+    }
 }
 
 fn move_path_with_fallback(source: &Path, target: &Path) -> Result<(), String> {
@@ -1624,19 +1635,26 @@ fn get_windows_system_clipboard_text_paths() -> Vec<String> {
                 Err(_) => return Vec::new(),
             };
 
-            let ptr = GlobalLock(std::mem::transmute::<_, HGLOBAL>(handle.0));
+            let hglobal = std::mem::transmute::<_, HGLOBAL>(handle.0);
+            let ptr = GlobalLock(hglobal);
             if ptr.is_null() {
+                return Vec::new();
+            }
+
+            let max_units = GlobalSize(hglobal) / std::mem::size_of::<u16>();
+            if max_units == 0 {
+                let _ = GlobalUnlock(hglobal);
                 return Vec::new();
             }
 
             let wide = ptr as *const u16;
             let mut len = 0usize;
-            while *wide.add(len) != 0 {
+            while len < max_units && *wide.add(len) != 0 {
                 len += 1;
             }
             let slice = std::slice::from_raw_parts(wide, len);
             let text = String::from_utf16_lossy(slice);
-            let _ = GlobalUnlock(std::mem::transmute::<_, HGLOBAL>(handle.0));
+            let _ = GlobalUnlock(hglobal);
             parse_clipboard_paths(&text)
         })();
 

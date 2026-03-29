@@ -462,7 +462,7 @@
 .modal-button.primary {
   background: var(--accent-color);
   border-color: var(--accent-color);
-  color: var(--text-primary);
+  color: var(--text-on-accent);
   box-shadow: none;
 }
 
