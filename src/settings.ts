@@ -67,7 +67,7 @@ export function createDefaultSettings(): Settings {
     disableHardwareAcceleration: false,
     useSystemFontSize: false,
 
-    confirmFileOperations: false,
+    confirmFileOperations: true,
     fileConflictBehavior: 'ask',
     maxThumbnailSizeMB: 10,
     thumbnailQuality: 'medium',

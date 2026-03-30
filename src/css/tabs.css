@@ -247,7 +247,8 @@ body.platform-linux .titlebar-title {
 }
 
 .tab-item:hover .tab-close,
-.tab-item.active .tab-close {
+.tab-item.active .tab-close,
+.tab-item:focus-within .tab-close {
   opacity: 1;
 }
 
@@ -258,6 +259,10 @@ body.platform-linux .titlebar-title {
 .tab-item .tab-close:hover {
   background: var(--interactive-hover);
   color: var(--text-primary);
+}
+
+.tab-item .tab-close:focus-visible {
+  opacity: 1;
 }
 
 .tab-item .tab-close:active {

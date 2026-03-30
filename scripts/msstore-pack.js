@@ -58,9 +58,6 @@ function findExe(rustTarget) {
   for (const exeName of candidateNames) {
     const releasePath = path.join(ROOT, 'src-tauri', 'target', rustTarget, 'release', exeName);
     if (fs.existsSync(releasePath)) return releasePath;
-
-    const fallback = path.join(ROOT, 'src-tauri', 'target', 'release', exeName);
-    if (fs.existsSync(fallback)) return fallback;
   }
 
   return null;

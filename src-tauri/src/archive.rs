@@ -32,9 +32,26 @@ fn is_active(op_id: &str) -> bool {
 }
 
 fn safe_entry_path(entry_name: &str, dest: &Path) -> Result<PathBuf, String> {
+    let mut component_path = dest.to_path_buf();
     for component in std::path::Path::new(entry_name).components() {
-        if matches!(component, std::path::Component::ParentDir) {
-            return Err(format!("Path traversal detected: {}", entry_name));
+        match component {
+            std::path::Component::ParentDir
+            | std::path::Component::RootDir
+            | std::path::Component::Prefix(_) => {
+                return Err(format!("Path traversal detected: {}", entry_name));
+            }
+            std::path::Component::CurDir => {}
+            std::path::Component::Normal(part) => {
+                component_path.push(part);
+                if let Ok(meta) = fs::symlink_metadata(&component_path) {
+                    if meta.file_type().is_symlink() {
+                        return Err(format!(
+                            "Refusing to extract through symlink path: {}",
+                            entry_name
+                        ));
+                    }
+                }
+            }
         }
     }
 
@@ -55,6 +72,17 @@ fn safe_entry_path(entry_name: &str, dest: &Path) -> Result<PathBuf, String> {
         return Err(format!("Path traversal detected: {}", entry_name));
     }
     Ok(path)
+}
+
+fn ensure_path_within_dest(path: &Path, dest: &Path, entry_name: &str) -> Result<(), String> {
+    let canonical_dest = dest.canonicalize().unwrap_or_else(|_| dest.to_path_buf());
+    let canonical_path = path
+        .canonicalize()
+        .map_err(|e| format!("Failed to resolve extraction path for {}: {}", entry_name, e))?;
+    if !canonical_path.starts_with(&canonical_dest) {
+        return Err(format!("Path traversal detected: {}", entry_name));
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -418,9 +446,15 @@ fn extract_zip(
 
         if entry.is_dir() {
             fs::create_dir_all(&out_path).map_err(|e| e.to_string())?;
+            ensure_path_within_dest(&out_path, dest, &name)?;
         } else {
+            let entry_size = entry.size();
+            if cumulative_bytes.saturating_add(entry_size) > MAX_DECOMPRESSED_SIZE {
+                return Err("Decompressed size limit exceeded (10 GB)".to_string());
+            }
             if let Some(parent) = out_path.parent() {
                 fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+                ensure_path_within_dest(parent, dest, &name)?;
             }
             let mut outfile = fs::File::create(&out_path).map_err(|e| e.to_string())?;
             let written = std::io::copy(&mut entry, &mut outfile).map_err(|e| e.to_string())?;
@@ -483,9 +517,17 @@ fn extract_7z(
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
         if entry.is_directory() {
             fs::create_dir_all(&out_path).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+            ensure_path_within_dest(&out_path, dest_path, &name)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
         } else {
+            let entry_size = entry.size() as u64;
+            if cumulative_bytes.saturating_add(entry_size) > MAX_DECOMPRESSED_SIZE {
+                return Err(sevenz_rust::Error::MaybeBadPassword(std::io::Error::new(std::io::ErrorKind::Other, "Decompressed size limit exceeded (10 GB)")));
+            }
             if let Some(parent) = out_path.parent() {
                 fs::create_dir_all(parent).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+                ensure_path_within_dest(parent, dest_path, &name)
+                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
             }
             let mut outfile = fs::File::create(&out_path).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
             let written = std::io::copy(reader, &mut outfile).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
@@ -525,11 +567,19 @@ fn extract_tar_entries<R: std::io::Read>(
         }
 
         let mut entry = entry.map_err(|e| e.to_string())?;
+        let entry_type = entry.header().entry_type();
         let name = entry
             .path()
             .map_err(|e| e.to_string())?
             .to_string_lossy()
             .to_string();
+
+        if entry_type.is_symlink() || entry_type.is_hard_link() {
+            return Err(format!(
+                "Symlink and hard link entries are not supported: {}",
+                name
+            ));
+        }
 
         cumulative_bytes = cumulative_bytes.saturating_add(entry.size());
         if cumulative_bytes > MAX_DECOMPRESSED_SIZE {

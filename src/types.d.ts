@@ -519,7 +519,7 @@ export interface TauriAPI {
   ) => Promise<IpcResult>;
   getSettings: () => Promise<SettingsResponse>;
   saveSettings: (settings: Settings) => Promise<IpcResult>;
-  saveSettingsSync: (settings: Settings) => IpcResult;
+  saveSettingsSync: (settings: Settings) => Promise<IpcResult>;
   resetSettings: () => Promise<IpcResult>;
   relaunchApp: () => Promise<void>;
   getSettingsPath: () => Promise<string>;

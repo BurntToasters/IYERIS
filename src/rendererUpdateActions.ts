@@ -333,7 +333,15 @@ export function createUpdateActionsController(deps: UpdateActionsDeps) {
     );
 
     if (shouldRestart) {
-      await window.tauriAPI.installUpdate();
+      const installResult = await window.tauriAPI.installUpdate();
+      if (!installResult.success) {
+        deps.showToast(
+          installResult.error || 'Failed to install update. Please try again.',
+          'Update Install Failed',
+          'error'
+        );
+        setCheckUpdatesButtonDefault();
+      }
     }
   }
 

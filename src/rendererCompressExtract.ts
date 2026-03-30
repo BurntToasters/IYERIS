@@ -18,6 +18,23 @@ function getArchiveBaseName(filePath: string): string {
   return path.basename(filePath, path.extname(filePath));
 }
 
+function sanitizeArchiveExtractFolderName(name: string): string {
+  const normalized = name.trim().replace(/[\\/]+/g, '_');
+  const cleaned = Array.from(normalized)
+    .map((char) => {
+      const code = char.charCodeAt(0);
+      if (code < 0x20 || '<>:"|?*'.includes(char)) return '_';
+      return char;
+    })
+    .join('')
+    .replace(/\.+$/g, '')
+    .trim();
+  if (!cleaned || cleaned === '.' || cleaned === '..') {
+    return 'extracted';
+  }
+  return cleaned;
+}
+
 type CompressExtractDeps = {
   getCurrentPath: () => string;
   getSelectedItems: () => Set<string>;
@@ -73,7 +90,8 @@ export function createCompressExtractController(deps: CompressExtractDeps) {
   }
 
   function buildArchiveExtractPath(baseFolder: string, archivePath: string): string {
-    return joinFilePath(baseFolder, getArchiveBaseName(archivePath));
+    const safeFolderName = sanitizeArchiveExtractFolderName(getArchiveBaseName(archivePath));
+    return joinFilePath(baseFolder, safeFolderName);
   }
 
   async function handleCompress(

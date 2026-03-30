@@ -308,7 +308,6 @@ export function createThumbnailController(deps: ThumbnailDeps) {
         const currentSettings = deps.getCurrentSettings();
 
         if (
-          thumbnailType !== 'audio' &&
           thumbnailType !== 'pdf' &&
           item.size >
             (currentSettings.maxThumbnailSizeMB || DEFAULT_MAX_THUMBNAIL_SIZE_MB) * 1024 * 1024

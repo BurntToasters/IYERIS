@@ -12,6 +12,9 @@ use tauri::Emitter;
 static ACTIVE_CHECKSUMS: std::sync::LazyLock<Mutex<HashSet<String>>> =
     std::sync::LazyLock::new(|| Mutex::new(HashSet::new()));
 
+static FILE_OP_LOCK: std::sync::LazyLock<Mutex<()>> =
+    std::sync::LazyLock::new(|| Mutex::new(()));
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ItemProperties {
@@ -175,9 +178,7 @@ pub async fn create_file(parent_path: String, file_name: String) -> Result<Strin
 pub async fn delete_item(item_path: String) -> Result<(), String> {
     log::debug!("[FileOps] delete_item: {}", item_path);
     let path = crate::validate_existing_path(&item_path, "Item")?;
-    if path.parent().is_none() {
-        return Err("Cannot delete a root directory".to_string());
-    }
+    crate::ensure_not_root_path(&path, "delete")?;
     let result = if path.is_dir() {
         fs::remove_dir_all(&path).map_err(|e| format!("Failed to delete directory: {}", e))
     } else {
@@ -193,9 +194,7 @@ pub async fn delete_item(item_path: String) -> Result<(), String> {
 pub async fn trash_item(item_path: String) -> Result<(), String> {
     log::debug!("[FileOps] trash_item: {}", item_path);
     let path = crate::validate_existing_path(&item_path, "Item")?;
-    if path.parent().is_none() {
-        return Err("Cannot trash a root directory".to_string());
-    }
+    crate::ensure_not_root_path(&path, "trash")?;
     let result = trash::delete(&path).map_err(|e| format!("Failed to trash item: {}", e));
     if result.is_ok() {
         undo::clear_undo_redo_for_path(&path.to_string_lossy())?;
@@ -258,6 +257,7 @@ pub async fn copy_items(
     app: tauri::AppHandle,
 ) -> Result<(), String> {
     log::debug!("[FileOps] copy_items: {} items -> {}", source_paths.len(), dest_path);
+    let _lock = FILE_OP_LOCK.lock().map_err(|e| format!("File operation lock error: {}", e))?;
     let dest = crate::validate_existing_path(&dest_path, "Destination")?;
     let behavior = conflict_behavior.unwrap_or_else(|| "ask".to_string());
     let resolutions = conflict_resolutions.unwrap_or_default();
@@ -328,10 +328,11 @@ fn copy_symlink_path(source: &Path, target: &Path) -> Result<(), String> {
 
     #[cfg(windows)]
     {
-        let source_meta = fs::symlink_metadata(source).map_err(|e| e.to_string())?;
-        let is_dir_link = source_meta.is_dir() || fs::metadata(source)
+        let is_dir_link = fs::metadata(source)
             .map(|m| m.is_dir())
-            .unwrap_or(false);
+            .unwrap_or_else(|_| {
+                link_target.is_dir()
+            });
         if is_dir_link {
             std::os::windows::fs::symlink_dir(&link_target, target)
                 .map_err(|e| format!("Failed to create symlink: {}", e))
@@ -374,6 +375,7 @@ pub async fn move_items(
     app: tauri::AppHandle,
 ) -> Result<(), String> {
     log::debug!("[FileOps] move_items: {} items -> {}", source_paths.len(), dest_path);
+    let _lock = FILE_OP_LOCK.lock().map_err(|e| format!("File operation lock error: {}", e))?;
     let dest = crate::validate_existing_path(&dest_path, "Destination")?;
     let behavior = conflict_behavior.unwrap_or_else(|| "ask".to_string());
     let resolutions = conflict_resolutions.unwrap_or_default();
@@ -630,7 +632,18 @@ fn plan_file_operations(
 }
 
 fn is_cross_device_error(err: &std::io::Error) -> bool {
-    matches!(err.raw_os_error(), Some(17) | Some(18))
+    #[cfg(unix)]
+    {
+        err.kind() == std::io::ErrorKind::CrossesDevices || matches!(err.raw_os_error(), Some(18))
+    }
+    #[cfg(windows)]
+    {
+        err.kind() == std::io::ErrorKind::CrossesDevices || matches!(err.raw_os_error(), Some(17))
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        err.kind() == std::io::ErrorKind::CrossesDevices
+    }
 }
 
 fn move_path_with_fallback(source: &Path, target: &Path) -> Result<(), String> {
@@ -1624,19 +1637,26 @@ fn get_windows_system_clipboard_text_paths() -> Vec<String> {
                 Err(_) => return Vec::new(),
             };
 
-            let ptr = GlobalLock(std::mem::transmute::<_, HGLOBAL>(handle.0));
+            let hglobal = std::mem::transmute::<_, HGLOBAL>(handle.0);
+            let ptr = GlobalLock(hglobal);
             if ptr.is_null() {
+                return Vec::new();
+            }
+
+            let max_units = GlobalSize(hglobal) / std::mem::size_of::<u16>();
+            if max_units == 0 {
+                let _ = GlobalUnlock(hglobal);
                 return Vec::new();
             }
 
             let wide = ptr as *const u16;
             let mut len = 0usize;
-            while *wide.add(len) != 0 {
+            while len < max_units && *wide.add(len) != 0 {
                 len += 1;
             }
             let slice = std::slice::from_raw_parts(wide, len);
             let text = String::from_utf16_lossy(slice);
-            let _ = GlobalUnlock(std::mem::transmute::<_, HGLOBAL>(handle.0));
+            let _ = GlobalUnlock(hglobal);
             parse_clipboard_paths(&text)
         })();
 

@@ -9,9 +9,14 @@ const require = createRequire(import.meta.url);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
 
-function copyIfExists(src, dest) {
+let missingRequiredAssets = 0;
+
+function copyIfExists(src, dest, { required = true } = {}) {
   if (!fs.existsSync(src)) {
-    console.warn(`  ! Source not found: ${path.relative(root, src)}`);
+    const rel = path.relative(root, src);
+    const prefix = required ? 'ERROR' : 'WARN';
+    console[required ? 'error' : 'warn'](`  ! [${prefix}] Source not found: ${rel}`);
+    if (required) missingRequiredAssets += 1;
     return false;
   }
   fs.mkdirSync(path.dirname(dest), { recursive: true });
@@ -19,9 +24,12 @@ function copyIfExists(src, dest) {
   return true;
 }
 
-function copyDirIfExists(src, dest) {
+function copyDirIfExists(src, dest, { required = true } = {}) {
   if (!fs.existsSync(src)) {
-    console.warn(`  ! Source dir not found: ${path.relative(root, src)}`);
+    const rel = path.relative(root, src);
+    const prefix = required ? 'ERROR' : 'WARN';
+    console[required ? 'error' : 'warn'](`  ! [${prefix}] Source dir not found: ${rel}`);
+    if (required) missingRequiredAssets += 1;
     return false;
   }
   fs.cpSync(src, dest, { recursive: true, force: true });
@@ -54,6 +62,13 @@ copyDirIfExists(path.join(root, 'assets', 'twemoji'), path.join(root, 'public', 
 
 for (const img of ['folder.png', 'folder-beta.png', 'icon.png']) {
   copyIfExists(path.join(root, 'assets', img), path.join(root, 'public', img));
+}
+
+if (missingRequiredAssets > 0) {
+  console.error(
+    `Vendor asset copy failed: ${missingRequiredAssets} required asset(s) are missing.`
+  );
+  process.exit(1);
 }
 
 console.log('Done.');

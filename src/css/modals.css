@@ -10,7 +10,7 @@
   border-radius: var(--radius-medium);
   box-shadow: var(--shadow-lg);
   padding: 6px;
-  z-index: var(--z-modal-backdrop);
+  z-index: var(--z-dropdown-above);
 }
 
 .breadcrumb-menu-item,
@@ -462,7 +462,7 @@
 .modal-button.primary {
   background: var(--accent-color);
   border-color: var(--accent-color);
-  color: var(--text-primary);
+  color: var(--text-on-accent);
   box-shadow: none;
 }
 

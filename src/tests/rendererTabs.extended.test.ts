@@ -276,8 +276,8 @@ describe('rendererTabs extended', () => {
       const tabList = document.getElementById('tab-list')!;
       const items = tabList.querySelectorAll<HTMLElement>('.tab-item');
 
-      const focusSpy = vi.spyOn(items[2], 'focus');
-      items[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+      const focusSpy = vi.spyOn(items[2]!, 'focus');
+      items[0]!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
       expect(focusSpy).toHaveBeenCalled();
     });
 
@@ -290,8 +290,8 @@ describe('rendererTabs extended', () => {
       const tabList = document.getElementById('tab-list')!;
       const items = tabList.querySelectorAll<HTMLElement>('.tab-item');
 
-      const focusSpy = vi.spyOn(items[0], 'focus');
-      items[2].dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
+      const focusSpy = vi.spyOn(items[0]!, 'focus');
+      items[2]!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
       expect(focusSpy).toHaveBeenCalled();
     });
 
@@ -304,8 +304,8 @@ describe('rendererTabs extended', () => {
       const tabList = document.getElementById('tab-list')!;
       const items = tabList.querySelectorAll<HTMLElement>('.tab-item');
 
-      const focusSpy = vi.spyOn(items[2], 'focus');
-      items[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }));
+      const focusSpy = vi.spyOn(items[2]!, 'focus');
+      items[0]!.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }));
       expect(focusSpy).toHaveBeenCalled();
     });
 
@@ -318,7 +318,7 @@ describe('rendererTabs extended', () => {
       const tabList = document.getElementById('tab-list')!;
       const items = tabList.querySelectorAll<HTMLElement>('.tab-item');
 
-      items[1].dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      items[1]!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
       expect(deps._getActiveTabId()).toBe('tab-2');
     });
 
@@ -331,7 +331,7 @@ describe('rendererTabs extended', () => {
       const tabList = document.getElementById('tab-list')!;
       const items = tabList.querySelectorAll<HTMLElement>('.tab-item');
 
-      items[1].dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
+      items[1]!.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
       expect(deps._getActiveTabId()).toBe('tab-2');
     });
   });
@@ -368,10 +368,10 @@ describe('rendererTabs extended', () => {
       expect(items.length).toBe(2);
 
       const auxEvent = new MouseEvent('auxclick', { button: 1, bubbles: true });
-      items[1].dispatchEvent(auxEvent);
+      items[1]!.dispatchEvent(auxEvent);
 
       expect(deps._getTabs().length).toBe(1);
-      expect(deps._getTabs()[0].id).toBe('tab-a');
+      expect(deps._getTabs()[0]!.id).toBe('tab-a');
     });
 
     it('does not close tab on non-middle auxclick (button !== 1)', () => {
@@ -404,7 +404,7 @@ describe('rendererTabs extended', () => {
       const items = tabList.querySelectorAll<HTMLElement>('.tab-item');
 
       const rightClick = new MouseEvent('auxclick', { button: 2, bubbles: true });
-      items[1].dispatchEvent(rightClick);
+      items[1]!.dispatchEvent(rightClick);
 
       expect(deps._getTabs().length).toBe(2);
     });
@@ -734,13 +734,13 @@ describe('rendererTabs extended', () => {
       const tabList = document.getElementById('tab-list')!;
       const items = tabList.querySelectorAll<HTMLElement>('.tab-item');
 
-      expect(items[0].classList.contains('active')).toBe(false);
-      expect(items[0].getAttribute('aria-selected')).toBe('false');
-      expect(items[0].tabIndex).toBe(-1);
+      expect(items[0]!.classList.contains('active')).toBe(false);
+      expect(items[0]!.getAttribute('aria-selected')).toBe('false');
+      expect(items[0]!.tabIndex).toBe(-1);
 
-      expect(items[1].classList.contains('active')).toBe(true);
-      expect(items[1].getAttribute('aria-selected')).toBe('true');
-      expect(items[1].tabIndex).toBe(0);
+      expect(items[1]!.classList.contains('active')).toBe(true);
+      expect(items[1]!.getAttribute('aria-selected')).toBe('true');
+      expect(items[1]!.tabIndex).toBe(0);
     });
 
     it('renders folder name as title text from path', () => {
@@ -842,10 +842,10 @@ describe('rendererTabs extended', () => {
       const tabList = document.getElementById('tab-list')!;
       const closeBtns = tabList.querySelectorAll<HTMLButtonElement>('.tab-close');
 
-      closeBtns[1].click();
+      closeBtns[1]!.click();
 
       expect(deps._getTabs().length).toBe(1);
-      expect(deps._getTabs()[0].id).toBe('tab-1');
+      expect(deps._getTabs()[0]!.id).toBe('tab-1');
     });
 
     it('sets role=tab and aria-controls on tab elements', () => {

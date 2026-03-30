@@ -289,9 +289,17 @@ fn copy_dir_recursive(source: &Path, dest: &Path) -> Result<(), String> {
 }
 
 fn is_cross_device_error(err: &std::io::Error) -> bool {
-    match err.raw_os_error() {
-        Some(code) => code == 18 || code == 17,
-        None => false,
+    #[cfg(unix)]
+    {
+        err.kind() == std::io::ErrorKind::CrossesDevices || matches!(err.raw_os_error(), Some(18))
+    }
+    #[cfg(windows)]
+    {
+        err.kind() == std::io::ErrorKind::CrossesDevices || matches!(err.raw_os_error(), Some(17))
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        err.kind() == std::io::ErrorKind::CrossesDevices
     }
 }
 
@@ -683,9 +691,8 @@ pub async fn undo_action() -> Result<UndoRedoState, String> {
             }
             push_redo_action(UndoAction::BatchRename(data))?;
         }
-        UndoAction::Trash(data) => {
-            push_undo_action(UndoAction::Trash(data), false)?;
-            return Err("Undo for trash actions is not implemented".to_string());
+        UndoAction::Trash(_) => {
+            return Err("Cannot undo: Items sent to trash must be restored from the system trash".to_string());
         }
     }
 
@@ -762,9 +769,8 @@ pub async fn redo_action() -> Result<UndoRedoState, String> {
             }
             push_undo_action(UndoAction::BatchRename(data), false)?;
         }
-        UndoAction::Trash(data) => {
-            push_redo_action(UndoAction::Trash(data))?;
-            return Err("Redo for trash actions is not implemented".to_string());
+        UndoAction::Trash(_) => {
+            return Err("Cannot redo: Items sent to trash must be restored from the system trash".to_string());
         }
     }
 

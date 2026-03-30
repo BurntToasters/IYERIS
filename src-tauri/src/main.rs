@@ -84,6 +84,14 @@ pub(crate) fn validate_existing_path(raw: &str, label: &str) -> Result<PathBuf, 
     }
 }
 
+pub(crate) fn ensure_not_root_path(path: &Path, action: &str) -> Result<(), String> {
+    let canonical = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    if canonical.parent().is_none() {
+        return Err(format!("Cannot {} a root directory", action));
+    }
+    Ok(())
+}
+
 fn early_settings_path() -> Option<PathBuf> {
     #[cfg(target_os = "windows")]
     let base = std::env::var("APPDATA").ok().map(PathBuf::from);

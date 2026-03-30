@@ -24,6 +24,7 @@ function createInitialResults() {
   return {
     typecheck: { status: 'pending' },
     lint: { status: 'pending' },
+    lintTest: { status: 'pending' },
     format: { status: 'pending' },
     test: { status: 'pending', passed: null, failed: null, files: null },
     rust: { status: 'pending' },
@@ -110,6 +111,9 @@ ${colors.reset}`);
     `${colors.bold}Lint:${colors.reset}       ${results.lint.status === 'passed' ? `${colors.green}✓ PASS` : `${colors.red}✗ FAIL`}${colors.reset}`
   );
   console.log(
+    `${colors.bold}Lint(Test):${colors.reset}  ${results.lintTest.status === 'passed' ? `${colors.green}✓ PASS` : `${colors.red}✗ FAIL`}${colors.reset}`
+  );
+  console.log(
     `${colors.bold}Format:${colors.reset}     ${results.format.status === 'passed' ? `${colors.green}✓ PASS` : `${colors.red}✗ FAIL`}${colors.reset}`
   );
   console.log(
@@ -134,9 +138,10 @@ function main() {
   const npm = getNpmCommand();
   printBanner();
   runCommand('typecheck', npm, ['run', 'typecheck'], null, results);
-  runCommand('lint', npm, ['run', 'lint'], null, results);
+  runCommand('lint', npm, ['run', 'lint:prod'], null, results);
+  runCommand('lintTest', npm, ['run', 'lint:test'], null, results);
   runCommand('format', npm, ['run', 'format:check'], null, results);
-  runCommand('test', npm, ['run', 'test'], parseTest, results);
+  runCommand('test', npm, ['run', 'test:cov'], parseTest, results);
   runCommand('rust', 'cargo', ['check', '--manifest-path', 'src-tauri/Cargo.toml'], null, results, {
     timeout: rustTimeoutMs,
   });
