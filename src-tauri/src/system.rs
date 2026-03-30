@@ -773,12 +773,35 @@ pub fn relaunch_app(app: tauri::AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 pub fn get_licenses(app: tauri::AppHandle) -> Result<String, String> {
-    let resource_path = app
-        .path()
-        .resource_dir()
-        .map_err(|e: tauri::Error| e.to_string())?;
-    let licenses_path = resource_path.join("licenses.json");
-    fs::read_to_string(&licenses_path).map_err(|e| format!("Failed to read licenses: {}", e))
+    if let Some(asset) = app.asset_resolver().get("licenses.json".to_string()) {
+        return String::from_utf8(asset.bytes)
+            .map_err(|e| format!("Failed to decode bundled licenses.json: {}", e));
+    }
+
+    let mut attempted_paths: Vec<String> = Vec::new();
+
+    if let Ok(resource_path) = app.path().resource_dir() {
+        for candidate in ["licenses.json", "public/licenses.json", "dist/licenses.json"] {
+            let licenses_path = resource_path.join(candidate);
+            attempted_paths.push(licenses_path.display().to_string());
+            if let Ok(content) = fs::read_to_string(&licenses_path) {
+                return Ok(content);
+            }
+        }
+    }
+
+    for candidate in ["licenses.json", "public/licenses.json", "dist/licenses.json"] {
+        let licenses_path = std::path::Path::new(candidate);
+        attempted_paths.push(licenses_path.display().to_string());
+        if let Ok(content) = fs::read_to_string(licenses_path) {
+            return Ok(content);
+        }
+    }
+
+    Err(format!(
+        "Failed to read licenses: licenses.json was not found in bundled assets or known paths (tried: {})",
+        attempted_paths.join(", ")
+    ))
 }
 
 #[tauri::command]
