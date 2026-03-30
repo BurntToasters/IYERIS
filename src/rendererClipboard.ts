@@ -91,13 +91,18 @@ export function createClipboardController(deps: ClipboardDeps) {
     paths: string[];
   } | null> {
     try {
-      const data =
+      const CLIPBOARD_TIMEOUT_MS = 5000;
+      const timeout = new Promise<null>((resolve) =>
+        setTimeout(() => resolve(null), CLIPBOARD_TIMEOUT_MS)
+      );
+      const data = await Promise.race([
         typeof window.tauriAPI.getSystemClipboardData === 'function'
-          ? await window.tauriAPI.getSystemClipboardData()
-          : {
-              operation: 'copy' as const,
-              paths: await window.tauriAPI.getSystemClipboardFiles(),
-            };
+          ? window.tauriAPI.getSystemClipboardData()
+          : window.tauriAPI
+              .getSystemClipboardFiles()
+              .then((paths) => ({ operation: 'copy' as const, paths })),
+        timeout,
+      ]);
 
       if (!data || !Array.isArray(data.paths) || data.paths.length === 0) {
         return null;

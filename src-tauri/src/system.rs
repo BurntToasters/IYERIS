@@ -773,12 +773,35 @@ pub fn relaunch_app(app: tauri::AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 pub fn get_licenses(app: tauri::AppHandle) -> Result<String, String> {
-    let resource_path = app
-        .path()
-        .resource_dir()
-        .map_err(|e: tauri::Error| e.to_string())?;
-    let licenses_path = resource_path.join("licenses.json");
-    fs::read_to_string(&licenses_path).map_err(|e| format!("Failed to read licenses: {}", e))
+    if let Some(asset) = app.asset_resolver().get("licenses.json".to_string()) {
+        return String::from_utf8(asset.bytes)
+            .map_err(|e| format!("Failed to decode bundled licenses.json: {}", e));
+    }
+
+    let mut attempted_paths: Vec<String> = Vec::new();
+
+    if let Ok(resource_path) = app.path().resource_dir() {
+        for candidate in ["licenses.json", "public/licenses.json", "dist/licenses.json"] {
+            let licenses_path = resource_path.join(candidate);
+            attempted_paths.push(licenses_path.display().to_string());
+            if let Ok(content) = fs::read_to_string(&licenses_path) {
+                return Ok(content);
+            }
+        }
+    }
+
+    for candidate in ["licenses.json", "public/licenses.json", "dist/licenses.json"] {
+        let licenses_path = std::path::Path::new(candidate);
+        attempted_paths.push(licenses_path.display().to_string());
+        if let Ok(content) = fs::read_to_string(licenses_path) {
+            return Ok(content);
+        }
+    }
+
+    Err(format!(
+        "Failed to read licenses: licenses.json was not found in bundled assets or known paths (tried: {})",
+        attempted_paths.join(", ")
+    ))
 }
 
 #[tauri::command]
@@ -950,6 +973,31 @@ pub async fn get_open_with_apps(file_path: String) -> Result<Vec<serde_json::Val
     {
         let path = crate::validate_existing_path(&file_path, "File")?;
         let output = tokio::task::spawn_blocking(move || {
+            let jxa_code = r#"ObjC.import('AppKit');
+ObjC.import('Foundation');
+const env = $.NSProcessInfo.processInfo.environment;
+const filePath = ObjC.unwrap(env.objectForKey('FILE_PATH'));
+const fileUrl = $.NSURL.fileURLWithPath(filePath);
+const apps = $.NSWorkspace.sharedWorkspace.urlsForApplicationsToOpenURL(fileUrl);
+const fm = $.NSFileManager.defaultManager;
+const result = [];
+for (let i = 0; i < apps.count; i++) {
+  const appUrl = apps.objectAtIndex(i);
+  const appPath = ObjC.unwrap(appUrl.path);
+  const displayName = ObjC.unwrap(fm.displayNameAtPath(appPath));
+  result.push({ id: appPath, name: displayName });
+}
+JSON.stringify(result);"#;
+            let jxa_output = std::process::Command::new("osascript")
+                .args(["-l", "JavaScript", "-e", jxa_code])
+                .env("FILE_PATH", path.to_string_lossy().as_ref())
+                .output();
+            if let Ok(output) = jxa_output {
+                if output.status.success() {
+                    return Ok(output);
+                }
+            }
+
             let swift_code = r#"import AppKit; import Foundation;
 let url = URL(fileURLWithPath: ProcessInfo.processInfo.environment["FILE_PATH"]!);
 let apps = NSWorkspace.shared.urlsForApplications(toOpen: url);

@@ -87,7 +87,11 @@ export function createNavigationController(deps: NavigationDeps) {
   let breadcrumbDelegated = false;
 
   const ensureElements = () => {
-    if (!breadcrumbContainer) breadcrumbContainer = deps.getBreadcrumbContainer();
+    const newContainer = deps.getBreadcrumbContainer();
+    if (newContainer !== breadcrumbContainer) {
+      breadcrumbContainer = newContainer;
+      breadcrumbDelegated = false;
+    }
     if (!breadcrumbMenu) breadcrumbMenu = deps.getBreadcrumbMenu();
     if (!addressInput) addressInput = deps.getAddressInput();
   };

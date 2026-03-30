@@ -2,7 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import type { Update } from '@tauri-apps/plugin-updater';
-import type { TauriAPI, Settings, HomeSettings } from './types';
+import type { TauriAPI, Settings, HomeSettings, LicensesData } from './types';
 import { devLog, ignoreError } from './shared.js';
 
 type SpecialDirectory = 'desktop' | 'documents' | 'downloads' | 'music' | 'videos';
@@ -623,7 +623,11 @@ const tauriAPI: TauriAPI = {
   getLicenses: async () => {
     try {
       const json = await invoke<string>('get_licenses');
-      return { success: true, licenses: JSON.parse(json) as unknown[] } as never;
+      const parsed = JSON.parse(json) as unknown;
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        return { success: false, error: 'Invalid licenses payload format' } as never;
+      }
+      return { success: true, licenses: parsed as LicensesData } as never;
     } catch (e) {
       return { success: false, error: String(e) } as never;
     }

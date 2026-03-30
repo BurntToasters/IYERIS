@@ -200,6 +200,7 @@ export function createSearchController(deps: SearchDeps) {
     const shouldRestoreCurrentPath = options.restoreCurrentPath ?? true;
     searchRequestId += 1;
     cancelActiveSearch();
+    deps.hideLoading();
     if (searchDebounceTimeout) {
       clearTimeout(searchDebounceTimeout);
       searchDebounceTimeout = null;
@@ -307,6 +308,8 @@ export function createSearchController(deps: SearchDeps) {
   }
 
   async function performSearch() {
+    let loadingShown = false;
+    let operationIdForCleanup: string | null = null;
     try {
       ensureElements();
       if (!searchInput) return;
@@ -328,6 +331,7 @@ export function createSearchController(deps: SearchDeps) {
       cancelActiveSearch();
       const operationId = deps.createDirectoryOperationId('search');
       activeSearchOperationId = operationId;
+      operationIdForCleanup = operationId;
 
       // Validate regex BEFORE touching history or clearing the grid
       const hasFilters = hasActiveFilters() || searchInContents || isRegexMode;
@@ -356,6 +360,7 @@ export function createSearchController(deps: SearchDeps) {
       addToSearchHistory(query);
 
       deps.showLoading('Searching...');
+      loadingShown = true;
 
       let result;
 
@@ -466,7 +471,6 @@ export function createSearchController(deps: SearchDeps) {
       }
 
       if (currentRequestId !== searchRequestId) return;
-      deps.hideLoading();
       deps.updateStatusBar();
       activeSearchOperationId = null;
 
@@ -478,9 +482,15 @@ export function createSearchController(deps: SearchDeps) {
           : `${resultCount} result${resultCount !== 1 ? 's' : ''} found`
       );
     } catch {
-      deps.hideLoading();
       deps.showToast('Search failed unexpectedly', 'Search Error', 'error');
       activeSearchOperationId = null;
+    } finally {
+      if (loadingShown) {
+        deps.hideLoading();
+      }
+      if (operationIdForCleanup && activeSearchOperationId === operationIdForCleanup) {
+        activeSearchOperationId = null;
+      }
     }
   }
 
@@ -851,7 +861,7 @@ export function createSearchController(deps: SearchDeps) {
         const active = dropdown.querySelector<HTMLElement>('.dropdown-active');
         if (active) {
           e.preventDefault();
-          active.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+          active.dispatchEvent(new MouseEvent('click', { bubbles: true }));
         }
       } else if (e.key === 'Escape') {
         hideSearchHistoryDropdown();

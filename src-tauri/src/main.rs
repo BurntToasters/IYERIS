@@ -270,8 +270,14 @@ fn main() {
                     log::debug!("[Setup] System tray initialized");
                 }
                 Err(error) => {
-                    eprintln!("Tray setup failed: {}", error);
                     log::warn!("[Setup] Tray setup failed: {}", error);
+                    if let Some(window) = app.get_webview_window("main") {
+                        use tauri::Emitter;
+                        let _ = window.emit(
+                            "tray-setup-failed",
+                            serde_json::json!({ "error": error.to_string() }),
+                        );
+                    }
                 }
             }
             let settings_json = settings::get_settings(app.handle().clone())
@@ -494,7 +500,10 @@ mod tests {
     fn make_temp_path_includes_purpose() {
         let base = Path::new("/tmp/test.json");
         let temp = make_temp_path(base, "download");
-        let name = temp.file_name().unwrap().to_str().unwrap();
+        let name = temp
+            .file_name()
+            .and_then(|n| n.to_str())
+            .expect("temp path should have a valid UTF-8 filename");
         assert!(name.contains("download"));
         assert!(name.ends_with(".tmp"));
     }

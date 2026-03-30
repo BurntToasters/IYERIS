@@ -157,7 +157,14 @@ export function createCompressExtractController(deps: CompressExtractDeps) {
       }
     };
 
-    const cleanupProgressHandler = window.tauriAPI.onCompressProgress(progressHandler);
+    const rawCompressCleanup = window.tauriAPI.onCompressProgress(progressHandler);
+    let compressProgressCleaned = false;
+    const cleanupProgressHandler = () => {
+      if (!compressProgressCleaned) {
+        compressProgressCleaned = true;
+        rawCompressCleanup();
+      }
+    };
 
     try {
       const operation = deps.getOperation(operationId);
@@ -684,7 +691,14 @@ export function createCompressExtractController(deps: CompressExtractDeps) {
       }
     };
 
-    const cleanupProgressHandler = window.tauriAPI.onExtractProgress(progressHandler);
+    const rawExtractCleanup = window.tauriAPI.onExtractProgress(progressHandler);
+    let extractProgressCleaned = false;
+    const cleanupProgressHandler = () => {
+      if (!extractProgressCleaned) {
+        extractProgressCleaned = true;
+        rawExtractCleanup();
+      }
+    };
 
     try {
       const operation = deps.getOperation(operationId);

@@ -50,7 +50,8 @@ export function createContextMenuController(deps: ContextMenuDeps) {
 
   let elContextMenu: HTMLElement | null = null;
   let elEmptySpaceContextMenu: HTMLElement | null = null;
-  let openWithMouseEnterCleanup: (() => void) | null = null;
+  let openWithAbortController: AbortController | null = null;
+  let pasteInProgress = false;
   let elAddToBookmarks: HTMLElement | null = null;
   let elChangeFolderIcon: HTMLElement | null = null;
   let elCopyPath: HTMLElement | null = null;
@@ -425,7 +426,16 @@ export function createContextMenuController(deps: ContextMenuDeps) {
 
         case 'paste-into':
           if (item.isDirectory) {
-            await deps.pasteIntoFolder(item.path);
+            if (pasteInProgress) {
+              deps.showToast('Paste already in progress', 'Info', 'info');
+              break;
+            }
+            pasteInProgress = true;
+            try {
+              await deps.pasteIntoFolder(item.path);
+            } finally {
+              pasteInProgress = false;
+            }
           }
           break;
 
@@ -548,11 +558,12 @@ export function createContextMenuController(deps: ContextMenuDeps) {
     const panel = elOpenWithAppsPanel;
     if (!panel) return;
 
-    // Remove any stale mouseenter listener from a previous showContextMenu call
-    if (openWithMouseEnterCleanup) {
-      openWithMouseEnterCleanup();
-      openWithMouseEnterCleanup = null;
+    if (openWithAbortController) {
+      openWithAbortController.abort();
+      openWithAbortController = null;
     }
+    openWithAbortController = new AbortController();
+    const { signal } = openWithAbortController;
 
     panel.innerHTML = '<div class="open-with-loading">Loading apps...</div>';
 
@@ -595,12 +606,8 @@ export function createContextMenuController(deps: ContextMenuDeps) {
     };
 
     const handler = () => void loadApps();
-    submenuContainer.addEventListener('mouseenter', handler, { once: true });
-    submenuContainer.addEventListener('focus', handler, { once: true });
-    openWithMouseEnterCleanup = () => {
-      submenuContainer.removeEventListener('mouseenter', handler);
-      submenuContainer.removeEventListener('focus', handler);
-    };
+    submenuContainer.addEventListener('mouseenter', handler, { once: true, signal });
+    submenuContainer.addEventListener('focus', handler, { once: true, signal });
   }
 
   return {

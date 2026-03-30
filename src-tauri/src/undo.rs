@@ -791,27 +791,33 @@ mod tests {
     static TEST_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
     fn clear_stacks() {
-        UNDO_STACK.lock().unwrap().clear();
-        REDO_STACK.lock().unwrap().clear();
+        UNDO_STACK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clear();
+        REDO_STACK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clear();
     }
 
     #[test]
     fn push_undo_action_caps_at_max_size() {
-        let _guard = TEST_LOCK.lock().unwrap();
+        let _guard = TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
         clear_stacks();
         for i in 0..(MAX_UNDO_STACK_SIZE + 10) {
             let path = PathBuf::from(format!("C:/tmp/test-{}", i));
             push_create_action(&path, false).unwrap();
         }
-        let undo_len = UNDO_STACK.lock().unwrap().len();
-        let redo_len = REDO_STACK.lock().unwrap().len();
+        let undo_len = UNDO_STACK.lock().unwrap_or_else(|p| p.into_inner()).len();
+        let redo_len = REDO_STACK.lock().unwrap_or_else(|p| p.into_inner()).len();
         assert_eq!(undo_len, MAX_UNDO_STACK_SIZE);
         assert_eq!(redo_len, 0);
     }
 
     #[test]
     fn clear_path_prunes_related_rename_chain() {
-        let _guard = TEST_LOCK.lock().unwrap();
+        let _guard = TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
         clear_stacks();
         let a = PathBuf::from("C:/tmp/a.txt");
         let b = PathBuf::from("C:/tmp/b.txt");
@@ -819,7 +825,7 @@ mod tests {
         push_rename_action(&a, &b).unwrap();
         push_rename_action(&b, &c).unwrap();
         clear_undo_stack_for_path("C:/tmp/c.txt").unwrap();
-        let undo_len = UNDO_STACK.lock().unwrap().len();
+        let undo_len = UNDO_STACK.lock().unwrap_or_else(|p| p.into_inner()).len();
         assert_eq!(undo_len, 0);
     }
 }

@@ -15,6 +15,11 @@ static ACTIVE_CHECKSUMS: std::sync::LazyLock<Mutex<HashSet<String>>> =
 static FILE_OP_LOCK: std::sync::LazyLock<Mutex<()>> =
     std::sync::LazyLock::new(|| Mutex::new(()));
 
+const DEFAULT_READ_FILE_CONTENT_LIMIT_BYTES: u64 = 10 * 1024 * 1024;
+const MAX_READ_FILE_CONTENT_LIMIT_BYTES: u64 = 64 * 1024 * 1024;
+const DEFAULT_FILE_DATA_URL_LIMIT_BYTES: u64 = 50 * 1024 * 1024;
+const MAX_FILE_DATA_URL_LIMIT_BYTES: u64 = 100 * 1024 * 1024;
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ItemProperties {
@@ -776,7 +781,14 @@ fn remove_paths_reversed(paths: &[PathBuf]) {
 
 fn rollback_moves(completed: &[CompletedMove]) {
     for item in completed.iter().rev() {
-        let _ = move_path_with_fallback(&item.dest_path, &item.source_path);
+        if let Err(e) = move_path_with_fallback(&item.dest_path, &item.source_path) {
+            log::error!(
+                "[FileOps] Rollback failed: {} -> {}: {}",
+                item.dest_path.display(),
+                item.source_path.display(),
+                e
+            );
+        }
     }
 }
 
@@ -968,7 +980,9 @@ pub async fn read_file_content(
     max_size: Option<u64>,
 ) -> Result<String, String> {
     let path = crate::validate_existing_path(&file_path, "File")?;
-    let limit = max_size.unwrap_or(10 * 1024 * 1024);
+    let limit = max_size
+        .unwrap_or(DEFAULT_READ_FILE_CONTENT_LIMIT_BYTES)
+        .min(MAX_READ_FILE_CONTENT_LIMIT_BYTES);
 
     tokio::task::spawn_blocking(move || {
         let meta = fs::metadata(&path).map_err(|e| e.to_string())?;
@@ -995,7 +1009,9 @@ pub async fn get_file_data_url(
     max_size: Option<u64>,
 ) -> Result<String, String> {
     let path = crate::validate_existing_path(&file_path, "File")?;
-    let limit = max_size.unwrap_or(50 * 1024 * 1024);
+    let limit = max_size
+        .unwrap_or(DEFAULT_FILE_DATA_URL_LIMIT_BYTES)
+        .min(MAX_FILE_DATA_URL_LIMIT_BYTES);
 
     tokio::task::spawn_blocking(move || {
         let meta = fs::metadata(&path).map_err(|e| e.to_string())?;
@@ -1192,6 +1208,7 @@ pub async fn batch_rename(
                     "[FileOps] batch_rename: failed to restore staged temp {:?} to {:?}: {}",
                     temp_path, original_path, e
                 );
+                let _ = fs::remove_file(temp_path);
             }
         }
     }
@@ -1215,13 +1232,20 @@ pub async fn create_symlink(target_path: String, link_path: String) -> Result<()
 
     #[cfg(target_os = "windows")]
     {
-        if target.is_dir() {
+        let result = if target.is_dir() {
             std::os::windows::fs::symlink_dir(&target, &link)
-                .map_err(|e| format!("Failed to create symlink: {}", e))
         } else {
             std::os::windows::fs::symlink_file(&target, &link)
-                .map_err(|e| format!("Failed to create symlink: {}", e))
-        }
+        };
+        result.map_err(|e| {
+            if e.raw_os_error() == Some(1314) {
+                "Creating symlinks requires administrator privileges on Windows. \
+                 Run the app as administrator or enable Developer Mode in Windows Settings."
+                    .to_string()
+            } else {
+                format!("Failed to create symlink: {}", e)
+            }
+        })
     }
 }
 

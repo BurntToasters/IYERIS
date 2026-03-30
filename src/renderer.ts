@@ -2187,28 +2187,30 @@ document.addEventListener('mousedown', (e) => {
     hideDirectoryHistoryDropdown();
   }
 
-  if (target.classList.contains('history-item')) {
-    if (target.dataset.query) {
+  const historyItem = target.closest<HTMLElement>('.history-item');
+  if (historyItem) {
+    if (historyItem.dataset.query) {
       e.preventDefault();
-      setSearchQuery(target.dataset.query);
+      setSearchQuery(historyItem.dataset.query);
       setTimeout(() => focusSearchInput(), 0);
       hideSearchHistoryDropdown();
       performSearch();
       return;
     }
-    if (target.dataset.path) {
+    if (historyItem.dataset.path) {
       e.preventDefault();
-      navigateTo(target.dataset.path);
+      navigateTo(historyItem.dataset.path);
       hideDirectoryHistoryDropdown();
       return;
     }
   }
 
-  if (target.classList.contains('history-clear')) {
+  const historyClear = target.closest<HTMLElement>('.history-clear');
+  if (historyClear) {
     let clearAction: (() => void) | null = null;
-    if (target.dataset.action === 'clear-search') {
+    if (historyClear.dataset.action === 'clear-search') {
       clearAction = clearSearchHistory;
-    } else if (target.dataset.action === 'clear-directory') {
+    } else if (historyClear.dataset.action === 'clear-directory') {
       clearAction = clearDirectoryHistory;
     }
     if (clearAction) {

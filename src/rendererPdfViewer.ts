@@ -25,7 +25,7 @@ interface PdfjsLib {
     disableStream?: boolean;
     isEvalSupported?: boolean;
     enableXfa?: boolean;
-  }) => { promise: Promise<PdfjsDocument> };
+  }) => { promise: Promise<PdfjsDocument>; destroy: () => void };
   GlobalWorkerOptions: { workerSrc: string };
   TextLayer?: PdfjsTextLayerConstructor;
 }
@@ -178,6 +178,7 @@ export async function createPdfViewer(
   let rendering = false;
   let lastWheelNav = 0;
   let lastWheelZoom = 0;
+  const PDF_LOAD_TIMEOUT_MS = 30_000;
 
   let controlsEl: HTMLElement | null = null;
   let pageIndicator: HTMLElement | null = null;
@@ -403,7 +404,16 @@ export async function createPdfViewer(
       isEvalSupported: false,
       enableXfa: false,
     });
-    doc = await loadingTask.promise;
+    const loadTimer = setTimeout(() => {
+      if (!doc && !destroyed) {
+        loadingTask.destroy();
+      }
+    }, PDF_LOAD_TIMEOUT_MS);
+    try {
+      doc = await loadingTask.promise;
+    } finally {
+      clearTimeout(loadTimer);
+    }
     totalPages = doc.numPages;
 
     if (destroyed) {

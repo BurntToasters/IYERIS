@@ -16,7 +16,7 @@
     "autostart:default",
     {
       "identifier": "core:window:allow-set-decorations",
-      "allow": [{ "label": "main" }]
+      "allow": [{ "label": "main" }, { "label": "window-*" }]
     }
   ]
 }

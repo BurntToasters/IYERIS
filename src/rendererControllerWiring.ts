@@ -526,6 +526,9 @@ export function wireControllers(deps: WiringDeps) {
     getFileExtension,
     getFileIcon,
     openFileEntry,
+    openExternal: (url) => {
+      void window.tauriAPI.openFile(url);
+    },
     onModalOpen: activateModal,
     onModalClose: deactivateModal,
   });
