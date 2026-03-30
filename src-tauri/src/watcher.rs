@@ -81,6 +81,19 @@ pub fn watch_directory(
 
     let watch_path = path.clone();
     log::debug!("[Watcher] Started watcher thread for {}", path_display);
+
+    // Acquire the watcher map lock BEFORE spawning the thread so that
+    // a concurrent unwatch_directory call cannot slip in between the
+    // thread start and the map insertion.
+    let mut w = state.watchers.lock().map_err(|e| e.to_string())?;
+    if let Some(existing) = w.get(&window_label) {
+        log::debug!(
+            "[Watcher] Replacing existing watcher for window {}: {}",
+            window_label,
+            existing._path.display()
+        );
+    }
+
     std::thread::spawn(move || {
         let debounce_duration = Duration::from_millis(500);
         let startup_suppression_duration = Duration::from_millis(800);
@@ -171,15 +184,6 @@ pub fn watch_directory(
         );
     });
 
-    // Atomically replace the old watcher — dropped here only on success.
-    let mut w = state.watchers.lock().map_err(|e| e.to_string())?;
-    if let Some(existing) = w.get(&window_label) {
-        log::debug!(
-            "[Watcher] Replacing existing watcher for window {}: {}",
-            window_label,
-            existing._path.display()
-        );
-    }
     w.insert(window_label, DirectoryWatcher {
         _watcher: new_watcher,
         _path: path,

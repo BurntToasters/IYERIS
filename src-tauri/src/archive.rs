@@ -9,7 +9,7 @@ use tauri::Emitter;
 static ACTIVE_OPS: std::sync::LazyLock<Mutex<HashSet<String>>> =
     std::sync::LazyLock::new(|| Mutex::new(HashSet::new()));
 
-const MAX_DECOMPRESSED_SIZE: u64 = 10_737_418_240; // 10 GB
+const MAX_DECOMPRESSED_SIZE: u64 = 53_687_091_200; // 50 GB
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -24,9 +24,9 @@ pub struct ArchiveEntry {
 fn is_active(op_id: &str) -> bool {
     match ACTIVE_OPS.lock() {
         Ok(s) => s.contains(op_id),
-        Err(e) => {
-            log::warn!("[Archive] ACTIVE_OPS mutex poisoned: {}", e);
-            false
+        Err(poisoned) => {
+            log::warn!("[Archive] ACTIVE_OPS mutex poisoned, recovering");
+            poisoned.into_inner().contains(op_id)
         }
     }
 }
@@ -377,6 +377,7 @@ pub async fn extract_archive(
     log::debug!("[Archive] extract: {} -> {}", archive_path, dest_path);
     let archive = crate::validate_existing_path(&archive_path, "Archive")?;
     let dest = crate::validate_path(&dest_path, "Destination")?;
+    let dest_preexisted = dest.exists();
     fs::create_dir_all(&dest).map_err(|e| e.to_string())?;
     let op_id = operation_id.unwrap_or_default();
 
@@ -412,6 +413,10 @@ pub async fn extract_archive(
         if let Ok(mut ops) = ACTIVE_OPS.lock() {
             ops.remove(&op_id);
         }
+    }
+
+    if !matches!(&result, Ok(Ok(()))) && !dest_preexisted {
+        let _ = fs::remove_dir_all(&dest_path);
     }
 
     result.map_err(|e| e.to_string())?
@@ -450,7 +455,7 @@ fn extract_zip(
         } else {
             let entry_size = entry.size();
             if cumulative_bytes.saturating_add(entry_size) > MAX_DECOMPRESSED_SIZE {
-                return Err("Decompressed size limit exceeded (10 GB)".to_string());
+                return Err("Decompressed size limit exceeded (50 GB)".to_string());
             }
             if let Some(parent) = out_path.parent() {
                 fs::create_dir_all(parent).map_err(|e| e.to_string())?;
@@ -460,7 +465,7 @@ fn extract_zip(
             let written = std::io::copy(&mut entry, &mut outfile).map_err(|e| e.to_string())?;
             cumulative_bytes = cumulative_bytes.saturating_add(written);
             if cumulative_bytes > MAX_DECOMPRESSED_SIZE {
-                return Err("Decompressed size limit exceeded (10 GB)".to_string());
+                return Err("Decompressed size limit exceeded (50 GB)".to_string());
             }
         }
     }
@@ -522,7 +527,7 @@ fn extract_7z(
         } else {
             let entry_size = entry.size() as u64;
             if cumulative_bytes.saturating_add(entry_size) > MAX_DECOMPRESSED_SIZE {
-                return Err(sevenz_rust::Error::MaybeBadPassword(std::io::Error::new(std::io::ErrorKind::Other, "Decompressed size limit exceeded (10 GB)")));
+                return Err(sevenz_rust::Error::MaybeBadPassword(std::io::Error::new(std::io::ErrorKind::Other, "Decompressed size limit exceeded (50 GB)")));
             }
             if let Some(parent) = out_path.parent() {
                 fs::create_dir_all(parent).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
@@ -533,7 +538,7 @@ fn extract_7z(
             let written = std::io::copy(reader, &mut outfile).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
             cumulative_bytes = cumulative_bytes.saturating_add(written);
             if cumulative_bytes > MAX_DECOMPRESSED_SIZE {
-                return Err(sevenz_rust::Error::MaybeBadPassword(std::io::Error::new(std::io::ErrorKind::Other, "Decompressed size limit exceeded (10 GB)")));
+                return Err(sevenz_rust::Error::MaybeBadPassword(std::io::Error::new(std::io::ErrorKind::Other, "Decompressed size limit exceeded (50 GB)")));
             }
         }
         Ok(true)
@@ -583,7 +588,7 @@ fn extract_tar_entries<R: std::io::Read>(
 
         cumulative_bytes = cumulative_bytes.saturating_add(entry.size());
         if cumulative_bytes > MAX_DECOMPRESSED_SIZE {
-            return Err("Decompressed size limit exceeded (10 GB)".to_string());
+            return Err("Decompressed size limit exceeded (50 GB)".to_string());
         }
 
         count += 1;

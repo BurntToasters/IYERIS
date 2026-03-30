@@ -35,6 +35,7 @@ export function createPreviewController(deps: PreviewDeps) {
   let previewContent: HTMLElement | null = null;
   let previewToggleBtn: HTMLButtonElement | null = null;
   let previewCloseBtn: HTMLButtonElement | null = null;
+  let resizeHandler: (() => void) | null = null;
 
   const ensureElements = () => {
     if (!previewPanel) previewPanel = getById('preview-panel');
@@ -639,7 +640,8 @@ export function createPreviewController(deps: PreviewDeps) {
 
   function initPreviewUi() {
     ensureElements();
-    window.addEventListener('resize', () => {
+    if (resizeHandler) window.removeEventListener('resize', resizeHandler);
+    resizeHandler = () => {
       if (
         previewPanel &&
         typeof window.matchMedia === 'function' &&
@@ -648,7 +650,8 @@ export function createPreviewController(deps: PreviewDeps) {
         previewPanel.style.display = 'none';
       }
       syncPreviewToggleState();
-    });
+    };
+    window.addEventListener('resize', resizeHandler);
     if (previewToggleBtn) {
       previewToggleBtn.addEventListener('click', togglePreviewPanel);
     }

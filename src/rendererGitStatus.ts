@@ -104,6 +104,10 @@ export function createGitStatusController(deps: GitStatusDeps) {
         gitStatusInFlight.delete(cacheKey);
       });
 
+    if (gitStatusInFlight.size >= 20) {
+      const firstKey = gitStatusInFlight.keys().next().value;
+      if (firstKey) gitStatusInFlight.delete(firstKey);
+    }
     gitStatusInFlight.set(cacheKey, request);
     return request;
   }

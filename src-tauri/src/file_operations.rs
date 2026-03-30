@@ -776,7 +776,14 @@ fn remove_paths_reversed(paths: &[PathBuf]) {
 
 fn rollback_moves(completed: &[CompletedMove]) {
     for item in completed.iter().rev() {
-        let _ = move_path_with_fallback(&item.dest_path, &item.source_path);
+        if let Err(e) = move_path_with_fallback(&item.dest_path, &item.source_path) {
+            log::error!(
+                "[FileOps] Rollback failed: {} -> {}: {}",
+                item.dest_path.display(),
+                item.source_path.display(),
+                e
+            );
+        }
     }
 }
 
@@ -1192,6 +1199,7 @@ pub async fn batch_rename(
                     "[FileOps] batch_rename: failed to restore staged temp {:?} to {:?}: {}",
                     temp_path, original_path, e
                 );
+                let _ = fs::remove_file(temp_path);
             }
         }
     }
@@ -1215,13 +1223,20 @@ pub async fn create_symlink(target_path: String, link_path: String) -> Result<()
 
     #[cfg(target_os = "windows")]
     {
-        if target.is_dir() {
+        let result = if target.is_dir() {
             std::os::windows::fs::symlink_dir(&target, &link)
-                .map_err(|e| format!("Failed to create symlink: {}", e))
         } else {
             std::os::windows::fs::symlink_file(&target, &link)
-                .map_err(|e| format!("Failed to create symlink: {}", e))
-        }
+        };
+        result.map_err(|e| {
+            if e.raw_os_error() == Some(1314) {
+                "Creating symlinks requires administrator privileges on Windows. \
+                 Run the app as administrator or enable Developer Mode in Windows Settings."
+                    .to_string()
+            } else {
+                format!("Failed to create symlink: {}", e)
+            }
+        })
     }
 }
 

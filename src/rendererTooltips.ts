@@ -106,15 +106,15 @@ export function initTooltipSystem(): void {
     tooltipTrackedElements.clear();
   };
 
-  document.addEventListener('mouseover', mouseOverHandler);
-  document.addEventListener('mouseout', mouseOutHandler);
-  document.addEventListener('scroll', scrollHandler, true);
-
   detachTooltipListeners = () => {
     document.removeEventListener('mouseover', mouseOverHandler);
     document.removeEventListener('mouseout', mouseOutHandler);
     document.removeEventListener('scroll', scrollHandler, true);
   };
+
+  document.addEventListener('mouseover', mouseOverHandler);
+  document.addEventListener('mouseout', mouseOutHandler);
+  document.addEventListener('scroll', scrollHandler, true);
 }
 
 function showTooltip(text: string, anchor: HTMLElement): void {

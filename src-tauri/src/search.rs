@@ -47,9 +47,9 @@ struct ParsedFilters {
 fn is_search_active(op_id: &str) -> bool {
     match ACTIVE_SEARCHES.lock() {
         Ok(s) => s.contains(op_id),
-        Err(e) => {
-            log::warn!("[Search] ACTIVE_SEARCHES mutex poisoned: {}", e);
-            false
+        Err(poisoned) => {
+            log::warn!("[Search] ACTIVE_SEARCHES mutex poisoned, recovering");
+            poisoned.into_inner().contains(op_id)
         }
     }
 }
