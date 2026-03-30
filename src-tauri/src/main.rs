@@ -167,7 +167,9 @@ fn setup_environment(disable_hw_accel: bool, dev_mode: bool) {
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let dev_mode = args.iter().any(|a| a == "--dev" || a == "--verbose");
-    let start_minimized = args.iter().any(|a| a == "--minimized");
+    let start_minimized = args
+        .iter()
+        .any(|a| a == "--minimized" || a == "--hidden");
     DEV_MODE.store(dev_mode, Ordering::Relaxed);
 
     let _disable_hw_accel = read_early_setting_bool("disableHardwareAcceleration");
@@ -463,9 +465,19 @@ fn main() {
         .build(tauri::generate_context!())
     {
         Ok(app) => {
-            app.run(|app_handle, event| {
+            #[cfg(target_os = "macos")]
+            let launched_minimized_at_start = start_minimized;
+            #[cfg(target_os = "macos")]
+            let launch_instant = std::time::Instant::now();
+
+            app.run(move |app_handle, event| {
                 #[cfg(target_os = "macos")]
                 if let tauri::RunEvent::Reopen { has_visible_windows, .. } = event {
+                    if launched_minimized_at_start
+                        && launch_instant.elapsed() < std::time::Duration::from_secs(10)
+                    {
+                        return;
+                    }
                     if !has_visible_windows {
                         let _ = app_handle.set_dock_visibility(true);
                         if let Some(window) = app_handle.get_webview_window("main") {
