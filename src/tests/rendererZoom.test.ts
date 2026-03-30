@@ -29,34 +29,34 @@ describe('createZoomController', () => {
     await ctrl.zoomIn();
     expect(setZoomLevel).toHaveBeenCalled();
 
-    const level = setZoomLevel.mock.calls[0][0];
+    const level = setZoomLevel.mock.calls[0]![0];
     expect(level).toBeCloseTo(1.1, 1);
   });
 
   it('zoomOut decreases zoom by 0.1', async () => {
     await ctrl.zoomOut();
-    const level = setZoomLevel.mock.calls[0][0];
+    const level = setZoomLevel.mock.calls[0]![0];
     expect(level).toBeCloseTo(0.9, 1);
   });
 
   it('zoomReset sets zoom to 1.0', async () => {
     ctrl.setCurrentZoomLevel(1.5);
     await ctrl.zoomReset();
-    const level = setZoomLevel.mock.calls[0][0];
+    const level = setZoomLevel.mock.calls[0]![0];
     expect(level).toBe(1.0);
   });
 
   it('clamps zoom to minimum 0.5', async () => {
     ctrl.setCurrentZoomLevel(0.5);
     await ctrl.zoomOut();
-    const level = setZoomLevel.mock.calls[0][0];
+    const level = setZoomLevel.mock.calls[0]![0];
     expect(level).toBe(0.5);
   });
 
   it('clamps zoom to maximum 2.0', async () => {
     ctrl.setCurrentZoomLevel(2.0);
     await ctrl.zoomIn();
-    const level = setZoomLevel.mock.calls[0][0];
+    const level = setZoomLevel.mock.calls[0]![0];
     expect(level).toBe(2.0);
   });
 

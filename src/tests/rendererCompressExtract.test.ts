@@ -2238,5 +2238,21 @@ describe('createCompressExtractController', () => {
       expect(destPath).not.toContain('.zip');
       expect(destPath).toContain('data');
     });
+
+    it('sanitizes dangerous archive base names in extract path', async () => {
+      document.body.innerHTML = `
+        <div id="extract-modal" style="display:flex">
+          <span id="extract-modal-message"></span>
+          <input id="extract-destination-input" type="text" value="/home/user" />
+          <span id="extract-preview-path"></span>
+        </div>
+      `;
+      const ctrl = createCompressExtractController(deps as any);
+      ctrl.showExtractModal('/home/user/..tar.gz');
+      await ctrl.confirmExtractModal();
+
+      const destPath = api.extractArchive.mock.calls[0][1] as string;
+      expect(destPath).toBe('/home/user/extracted');
+    });
   });
 });

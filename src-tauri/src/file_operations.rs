@@ -178,9 +178,7 @@ pub async fn create_file(parent_path: String, file_name: String) -> Result<Strin
 pub async fn delete_item(item_path: String) -> Result<(), String> {
     log::debug!("[FileOps] delete_item: {}", item_path);
     let path = crate::validate_existing_path(&item_path, "Item")?;
-    if path.parent().is_none() {
-        return Err("Cannot delete a root directory".to_string());
-    }
+    crate::ensure_not_root_path(&path, "delete")?;
     let result = if path.is_dir() {
         fs::remove_dir_all(&path).map_err(|e| format!("Failed to delete directory: {}", e))
     } else {
@@ -196,9 +194,7 @@ pub async fn delete_item(item_path: String) -> Result<(), String> {
 pub async fn trash_item(item_path: String) -> Result<(), String> {
     log::debug!("[FileOps] trash_item: {}", item_path);
     let path = crate::validate_existing_path(&item_path, "Item")?;
-    if path.parent().is_none() {
-        return Err("Cannot trash a root directory".to_string());
-    }
+    crate::ensure_not_root_path(&path, "trash")?;
     let result = trash::delete(&path).map_err(|e| format!("Failed to trash item: {}", e));
     if result.is_ok() {
         undo::clear_undo_redo_for_path(&path.to_string_lossy())?;

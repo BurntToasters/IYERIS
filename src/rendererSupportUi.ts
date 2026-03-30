@@ -211,12 +211,12 @@ export function createSupportUiController(deps: SupportUiDeps) {
         const target = event.target as HTMLElement | null;
         const link = target?.closest('a.license-link') as HTMLAnchorElement | null;
         if (!link) return;
+        event.preventDefault();
 
         const url = link.dataset.url || link.getAttribute('href');
         const safeUrl = sanitizeExternalUrl(url);
         if (!safeUrl) return;
 
-        event.preventDefault();
         deps.openExternal(safeUrl);
       });
     }

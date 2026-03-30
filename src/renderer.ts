@@ -69,13 +69,29 @@ async function saveSettingsWithTimestamp(settings: Settings) {
 }
 
 let settingsSaveTimeout: ReturnType<typeof setTimeout> | null = null;
+let lastSettingsSaveErrorAt = 0;
+
+function notifySettingsSaveError(error?: string): void {
+  const now = Date.now();
+  if (now - lastSettingsSaveErrorAt < 5000) return;
+  lastSettingsSaveErrorAt = now;
+  showToast(`Failed to save settings: ${error || 'Operation failed'}`, 'Error', 'error');
+}
+
 function debouncedSaveSettings(delay: number = SETTINGS_SAVE_DEBOUNCE_MS) {
   if (settingsSaveTimeout) {
     clearTimeout(settingsSaveTimeout);
   }
   const timeoutId = setTimeout(() => {
     saveSettingsWithTimestamp(currentSettings)
-      .catch(ignoreError)
+      .then((result) => {
+        if (!result.success) {
+          notifySettingsSaveError(result.error);
+        }
+      })
+      .catch((error) => {
+        notifySettingsSaveError(getErrorMessage(error));
+      })
       .finally(() => {
         if (settingsSaveTimeout === timeoutId) {
           settingsSaveTimeout = null;
@@ -1590,20 +1606,32 @@ async function deleteSelected(permanent = false) {
   }
 
   if (permissionFailedPaths.length > 0) {
+    const needsPermanentFallback = !permanent;
     const confirmed = await showConfirm(
-      `${permissionFailedPaths.length} item${permissionFailedPaths.length > 1 ? 's' : ''} require administrator privileges to delete. You will be prompted to authorize.`,
-      'Elevated Permissions Required',
-      'warning'
+      needsPermanentFallback
+        ? `${permissionFailedPaths.length} item${permissionFailedPaths.length > 1 ? 's' : ''} could not be moved to Trash due to permissions. Permanently delete ${permissionFailedPaths.length > 1 ? 'them' : 'it'} instead? This cannot be undone.`
+        : `${permissionFailedPaths.length} item${permissionFailedPaths.length > 1 ? 's' : ''} require administrator privileges to delete. You will be prompted to authorize.`,
+      needsPermanentFallback ? 'Permanent Delete Required' : 'Elevated Permissions Required',
+      needsPermanentFallback ? 'error' : 'warning'
     );
     if (confirmed) {
       const elevResult = await window.tauriAPI.elevatedDeleteBatch(permissionFailedPaths);
       if (elevResult.success) {
         const totalSuccess = successCount + permissionFailedPaths.length;
-        const msg = permanent
+        const unresolvedFailures = Math.max(0, failCount - permissionFailedPaths.length);
+        const effectivePermanent = permanent || needsPermanentFallback;
+        const msg = effectivePermanent
           ? `${totalSuccess} item${totalSuccess > 1 ? 's' : ''} permanently deleted`
           : `${totalSuccess} item${totalSuccess > 1 ? 's' : ''} deleted`;
         showToast(msg, 'Success', 'success');
-        refresh(permanent ? 'delete-selected-permanent' : 'delete-selected');
+        if (unresolvedFailures > 0) {
+          showToast(
+            `${unresolvedFailures} item${unresolvedFailures > 1 ? 's' : ''} could not be deleted`,
+            'Partial Failure',
+            'error'
+          );
+        }
+        refresh(effectivePermanent ? 'delete-selected-permanent' : 'delete-selected');
         return;
       }
       showToast(elevResult.error || 'Elevated delete failed', 'Error', 'error');
@@ -1636,7 +1664,7 @@ async function deleteSelected(permanent = false) {
     }
     refresh(permanent ? 'delete-selected-permanent' : 'delete-selected');
   }
-  if (failCount > 0 && permissionFailedPaths.length === 0) {
+  if (failCount > 0) {
     showToast(
       `${failCount} item${failCount > 1 ? 's' : ''} could not be deleted`,
       'Partial Failure',
@@ -1879,7 +1907,11 @@ async function setViewMode(nextMode: 'grid' | 'list' | 'column') {
   await applyViewMode();
 
   currentSettings.viewMode = viewMode;
-  saveSettingsWithTimestamp(currentSettings);
+  void saveSettingsWithTimestamp(currentSettings).then((result) => {
+    if (!result.success) {
+      notifySettingsSaveError(result.error);
+    }
+  });
 }
 
 late.navigateTo = navigateTo;
@@ -2228,7 +2260,7 @@ window.addEventListener('beforeunload', () => {
       };
     }
     currentSettings._timestamp = Date.now();
-    window.tauriAPI.saveSettingsSync(currentSettings);
+    void window.tauriAPI.saveSettingsSync(currentSettings);
   }
   if (settingsSaveTimeout) {
     clearTimeout(settingsSaveTimeout);

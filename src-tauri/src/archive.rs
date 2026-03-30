@@ -74,6 +74,17 @@ fn safe_entry_path(entry_name: &str, dest: &Path) -> Result<PathBuf, String> {
     Ok(path)
 }
 
+fn ensure_path_within_dest(path: &Path, dest: &Path, entry_name: &str) -> Result<(), String> {
+    let canonical_dest = dest.canonicalize().unwrap_or_else(|_| dest.to_path_buf());
+    let canonical_path = path
+        .canonicalize()
+        .map_err(|e| format!("Failed to resolve extraction path for {}: {}", entry_name, e))?;
+    if !canonical_path.starts_with(&canonical_dest) {
+        return Err(format!("Path traversal detected: {}", entry_name));
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn compress_files(
     source_paths: Vec<String>,
@@ -435,6 +446,7 @@ fn extract_zip(
 
         if entry.is_dir() {
             fs::create_dir_all(&out_path).map_err(|e| e.to_string())?;
+            ensure_path_within_dest(&out_path, dest, &name)?;
         } else {
             let entry_size = entry.size();
             if cumulative_bytes.saturating_add(entry_size) > MAX_DECOMPRESSED_SIZE {
@@ -442,6 +454,7 @@ fn extract_zip(
             }
             if let Some(parent) = out_path.parent() {
                 fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+                ensure_path_within_dest(parent, dest, &name)?;
             }
             let mut outfile = fs::File::create(&out_path).map_err(|e| e.to_string())?;
             let written = std::io::copy(&mut entry, &mut outfile).map_err(|e| e.to_string())?;
@@ -504,6 +517,8 @@ fn extract_7z(
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
         if entry.is_directory() {
             fs::create_dir_all(&out_path).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+            ensure_path_within_dest(&out_path, dest_path, &name)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
         } else {
             let entry_size = entry.size() as u64;
             if cumulative_bytes.saturating_add(entry_size) > MAX_DECOMPRESSED_SIZE {
@@ -511,6 +526,8 @@ fn extract_7z(
             }
             if let Some(parent) = out_path.parent() {
                 fs::create_dir_all(parent).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+                ensure_path_within_dest(parent, dest_path, &name)
+                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
             }
             let mut outfile = fs::File::create(&out_path).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
             let written = std::io::copy(reader, &mut outfile).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;

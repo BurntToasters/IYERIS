@@ -102,6 +102,8 @@ const DANGEROUS_TAGS = new Set([
 ]);
 
 const SAFE_URL_PATTERN = /^(?:https?|mailto|#):/i;
+const SAFE_RESOURCE_URL_PATTERN = /^(?:asset:|https:\/\/asset\.localhost\/)/i;
+const HAS_SCHEME_PATTERN = /^[a-z][a-z0-9+.-]*:/i;
 
 export function sanitizeMarkdownHtml(html: string): string {
   const template = document.createElement('template');
@@ -126,6 +128,13 @@ export function sanitizeMarkdownHtml(html: string): string {
           val &&
           !val.startsWith('#') &&
           !SAFE_URL_PATTERN.test(val)
+        ) {
+          el.removeAttribute(attr.name);
+        } else if (
+          (attr.name === 'src' || attr.name === 'action') &&
+          val &&
+          (/^\s*\/\//.test(val) ||
+            (HAS_SCHEME_PATTERN.test(val) && !SAFE_RESOURCE_URL_PATTERN.test(val)))
         ) {
           el.removeAttribute(attr.name);
         }

@@ -75,9 +75,7 @@ pub async fn elevated_move(source_path: String, dest_path: String) -> Result<(),
 #[tauri::command]
 pub async fn elevated_delete(item_path: String) -> Result<(), String> {
     let path = crate::validate_existing_path(&item_path, "Item")?;
-    if path.parent().is_none() {
-        return Err("Cannot delete a root directory".to_string());
-    }
+    crate::ensure_not_root_path(&path, "delete")?;
     run_elevated_file_op("delete", &item_path, None).await?;
     crate::undo::clear_undo_redo_for_path(&item_path)?;
     Ok(())
@@ -287,9 +285,7 @@ pub async fn elevated_move_batch(source_paths: Vec<String>, dest_path: String) -
 pub async fn elevated_delete_batch(item_paths: Vec<String>) -> Result<(), String> {
     for p in &item_paths {
         let path = crate::validate_existing_path(p, "Item")?;
-        if path.parent().is_none() {
-            return Err("Cannot delete a root directory".to_string());
-        }
+        crate::ensure_not_root_path(&path, "delete")?;
     }
     let items: Vec<(String, Option<String>)> = item_paths
         .into_iter()

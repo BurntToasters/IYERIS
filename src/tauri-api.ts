@@ -384,12 +384,8 @@ const tauriAPI: TauriAPI = {
   },
   saveSettings: (settings: Settings) =>
     wrap(() => invoke('save_settings', { settings: JSON.stringify(settings) })),
-  saveSettingsSync: (settings: Settings) => {
-    void invoke('save_settings', { settings: JSON.stringify(settings) }).catch((e) => {
-      console.error('[Settings] saveSettingsSync failed:', e);
-    });
-    return { success: true } as never;
-  },
+  saveSettingsSync: (settings: Settings) =>
+    wrap(() => invoke('save_settings', { settings: JSON.stringify(settings) })),
   resetSettings: () => wrap(() => invoke('reset_settings')),
   relaunchApp: () => invoke('relaunch_app'),
   getSettingsPath: () => invoke('get_settings_path'),
