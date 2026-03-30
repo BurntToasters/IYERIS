@@ -28,7 +28,7 @@ const RELEASE_DOWNLOAD_BASE_URL = (
 const RELEASE_NOTES = process.env.RELEASE_NOTES || '';
 const RELEASE_PUB_DATE = process.env.RELEASE_PUB_DATE || new Date().toISOString();
 const ALLOW_ASSET_REPLACE = !/^(0|false|no|off)$/i.test(
-  String(process.env.ALLOW_ASSET_REPLACE || 'true').trim()
+  String(process.env.ALLOW_ASSET_REPLACE || 'false').trim()
 );
 const REQUIRED_LINUX_TARGETS = (process.env.REQUIRED_LINUX_TARGETS || '').trim();
 const REQUIRE_LINUX_AARCH64 = /^(1|true|yes|on)$/i.test(
@@ -642,7 +642,11 @@ function ghRequest(method, endpoint, body) {
           if (res.statusCode >= 200 && res.statusCode < 300) resolve(json);
           else reject(new Error(`GitHub ${res.statusCode}: ${json.message || data}`));
         } catch {
-          resolve(data);
+          if (res.statusCode >= 200 && res.statusCode < 300) {
+            resolve(data);
+          } else {
+            reject(new Error(`GitHub ${res.statusCode}: ${data || 'Non-JSON error response'}`));
+          }
         }
       });
     });

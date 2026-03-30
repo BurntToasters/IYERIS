@@ -29,6 +29,7 @@ export type QuicklookDeps = {
   getFileExtension: (name: string) => string;
   getFileIcon: (name: string) => string;
   openFileEntry: (file: FileItem) => void;
+  openExternal: (url: string) => void;
   onModalOpen?: (modal: HTMLElement) => void;
   onModalClose?: (modal: HTMLElement) => void;
 };
@@ -58,6 +59,25 @@ export function createQuicklookController(deps: QuicklookDeps) {
 
   const loadingHtml = (label: string) =>
     `<div class="preview-loading"><div class="spinner"></div><p>Loading ${label}...</p></div>`;
+
+  const sanitizeExternalHref = (href: string | null): string | null => {
+    if (!href) return null;
+    const trimmed = href.trim();
+    if (!trimmed || trimmed.startsWith('#')) return null;
+    try {
+      const parsed = new URL(trimmed);
+      if (
+        parsed.protocol === 'http:' ||
+        parsed.protocol === 'https:' ||
+        parsed.protocol === 'mailto:'
+      ) {
+        return parsed.toString();
+      }
+    } catch {
+      return null;
+    }
+    return null;
+  };
 
   async function showQuickLookForFile(file: FileItem) {
     ensureElements();
@@ -322,6 +342,18 @@ export function createQuicklookController(deps: QuicklookDeps) {
         if (e.target === quicklookModal) {
           closeQuickLook();
         }
+      });
+    }
+
+    if (quicklookContent) {
+      quicklookContent.addEventListener('click', (event) => {
+        const target = event.target as HTMLElement | null;
+        const link = target?.closest('.preview-markdown a') as HTMLAnchorElement | null;
+        if (!link) return;
+        event.preventDefault();
+        const safeHref = sanitizeExternalHref(link.getAttribute('href'));
+        if (!safeHref) return;
+        deps.openExternal(safeHref);
       });
     }
   }

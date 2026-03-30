@@ -177,7 +177,7 @@ async fn run_elevated_file_op(op: &str, source: &str, dest: Option<&str>) -> Res
                     .args([
                         "-Command",
                         &format!(
-                            "Start-Process powershell -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','{}' -Verb RunAs -Wait",
+                            "$p = Start-Process powershell -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','{}' -Verb RunAs -Wait -PassThru; exit $p.ExitCode",
                             ps_escape(&script_path.display().to_string())
                         ),
                     ])
@@ -342,7 +342,7 @@ async fn run_elevated_batch_op(op: &str, items: Vec<(String, Option<String>)>) -
                     .args([
                         "-Command",
                         &format!(
-                            "Start-Process powershell -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','{}' -Verb RunAs -Wait",
+                            "$p = Start-Process powershell -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','{}' -Verb RunAs -Wait -PassThru; exit $p.ExitCode",
                             ps_escape(&script_path.display().to_string())
                         ),
                     ])
