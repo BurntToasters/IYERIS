@@ -257,6 +257,9 @@ fn main() {
                 #[cfg(target_os = "macos")]
                 {
                     let _ = app.handle().set_dock_visibility(false);
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.hide();
+                    }
                 }
             } else if let Some(window) = app.get_webview_window("main") {
                 let _ = window.show();
