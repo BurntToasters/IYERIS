@@ -15,7 +15,10 @@
       "process:default",
       "notification:default",
       "autostart:default",
-      { "identifier": "core:window:allow-set-decorations", "allow": [{ "label": "main" }] }
+      {
+        "identifier": "core:window:allow-set-decorations",
+        "allow": [{ "label": "main" }, { "label": "window-*" }]
+      }
     ]
   }
 }

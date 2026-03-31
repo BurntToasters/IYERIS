@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { createUpdateActionsController } from '../rendererUpdateActions';
 
 const mockCheckForUpdates = vi.hoisted(() => vi.fn());
@@ -83,14 +83,6 @@ describe('rendererUpdateActions extended coverage', () => {
   let checkUpdatesBtn: MockElement;
   let toggleStatusBtn: MockElement;
   let statusEl: MockElement;
-  let progressHandler:
-    | ((progress: {
-        percent: number;
-        bytesPerSecond: number;
-        transferred: number;
-        total: number;
-      }) => void)
-    | null;
 
   function setup(overrides?: { showDialogReturn?: boolean | Promise<boolean> }) {
     checkUpdatesBtn = createMockElement('Check for Updates');
@@ -112,19 +104,24 @@ describe('rendererUpdateActions extended coverage', () => {
       configurable: true,
     });
 
-    progressHandler = null;
     mockCheckForUpdates.mockReset();
     mockDownloadUpdate.mockReset();
     mockInstallUpdate.mockReset();
     mockRestartAsAdmin.mockReset();
     mockOnUpdateDownloadProgress.mockReset();
     mockOpenFile.mockReset();
-    mockOnUpdateDownloadProgress.mockImplementation((cb: typeof progressHandler) => {
-      progressHandler = cb;
-      return () => {
-        progressHandler = null;
-      };
-    });
+    mockOnUpdateDownloadProgress.mockImplementation(
+      (
+        _cb: (progress: {
+          percent: number;
+          bytesPerSecond: number;
+          transferred: number;
+          total: number;
+        }) => void
+      ) => {
+        return () => {};
+      }
+    );
 
     (window as any).tauriAPI = {
       checkForUpdates: mockCheckForUpdates,

@@ -1,4 +1,4 @@
-import { isRecord } from './shared.js';
+import { isRecord, getErrorMessage } from './shared.js';
 import { sanitizeSettings } from './settings.js';
 import type { Settings } from './types';
 
@@ -45,8 +45,8 @@ export function createSettingsActionsController(deps: SettingsActionsDeps) {
         a.click();
         document.body.removeChild(a);
         deps.showToast('Settings exported successfully', 'Export', 'success');
-      } catch {
-        deps.showToast('Failed to export settings', 'Export', 'error');
+      } catch (error) {
+        deps.showToast('Failed to export settings: ' + getErrorMessage(error), 'Export', 'error');
       } finally {
         if (url) URL.revokeObjectURL(url);
       }
@@ -62,9 +62,13 @@ export function createSettingsActionsController(deps: SettingsActionsDeps) {
 
         try {
           const text = await file.text();
-          const parsed = JSON.parse(text);
+          const parsed: unknown = JSON.parse(text);
+          if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+            deps.showToast('Invalid settings file format', 'Import', 'warning');
+            return;
+          }
 
-          const validatedSettings = validateImportedSettings(parsed);
+          const validatedSettings = validateImportedSettings(parsed as Record<string, unknown>);
 
           if (Object.keys(validatedSettings).length === 0) {
             deps.showToast('No valid settings found in file', 'Import', 'warning');
@@ -73,7 +77,15 @@ export function createSettingsActionsController(deps: SettingsActionsDeps) {
 
           const nextSettings = { ...deps.getCurrentSettings(), ...validatedSettings };
           deps.setCurrentSettings(nextSettings);
-          await deps.saveSettingsWithTimestamp(nextSettings);
+          const saveResult = await deps.saveSettingsWithTimestamp(nextSettings);
+          if (!saveResult.success) {
+            deps.showToast(
+              saveResult.error || 'Failed to save imported settings',
+              'Import',
+              'error'
+            );
+            return;
+          }
 
           await deps.hideSettingsModal();
           deps.showSettingsModal();
@@ -82,8 +94,8 @@ export function createSettingsActionsController(deps: SettingsActionsDeps) {
             'Import',
             'success'
           );
-        } catch {
-          deps.showToast('Failed to import settings: Invalid file format', 'Import', 'error');
+        } catch (error) {
+          deps.showToast('Failed to import settings: ' + getErrorMessage(error), 'Import', 'error');
         }
       };
       input.click();
@@ -97,7 +109,11 @@ export function createSettingsActionsController(deps: SettingsActionsDeps) {
       if (confirmed) {
         const nextSettings = { ...deps.getCurrentSettings(), searchHistory: [] };
         deps.setCurrentSettings(nextSettings);
-        await deps.saveSettingsWithTimestamp(nextSettings);
+        const saveResult = await deps.saveSettingsWithTimestamp(nextSettings);
+        if (!saveResult.success) {
+          deps.showToast(saveResult.error || 'Failed to clear search history', 'Data', 'error');
+          return;
+        }
         deps.showToast('Search history cleared', 'Data', 'success');
       }
     });
@@ -110,7 +126,11 @@ export function createSettingsActionsController(deps: SettingsActionsDeps) {
       if (confirmed) {
         const nextSettings = { ...deps.getCurrentSettings(), bookmarks: [] };
         deps.setCurrentSettings(nextSettings);
-        await deps.saveSettingsWithTimestamp(nextSettings);
+        const saveResult = await deps.saveSettingsWithTimestamp(nextSettings);
+        if (!saveResult.success) {
+          deps.showToast(saveResult.error || 'Failed to clear bookmarks', 'Data', 'error');
+          return;
+        }
         deps.loadBookmarks();
         deps.showToast('Bookmarks cleared', 'Data', 'success');
       }

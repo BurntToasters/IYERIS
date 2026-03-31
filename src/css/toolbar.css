@@ -5,7 +5,7 @@
   padding: var(--toolbar-padding-v) var(--toolbar-padding-h);
   min-height: var(--toolbar-height);
   position: relative;
-  z-index: 100;
+  z-index: var(--z-toolbar);
   box-shadow: none;
 }
 
@@ -232,7 +232,7 @@ body.platform-linux .toolbar-button:active:not(:disabled) {
   position: absolute;
   top: calc(100% + 4px);
   right: 0;
-  z-index: 1001;
+  z-index: var(--z-dropdown-above);
   min-width: 140px;
   padding: 4px;
   background: var(--dropdown-bg);
@@ -292,7 +292,7 @@ body.platform-linux .toolbar-button:active:not(:disabled) {
   border-radius: 10px;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
   pointer-events: none;
-  z-index: 10;
+  z-index: var(--z-component);
   min-width: 16px;
   height: 16px;
   display: flex;

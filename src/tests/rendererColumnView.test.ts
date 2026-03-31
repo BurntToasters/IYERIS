@@ -10,6 +10,7 @@ const mockTauriAPI = vi.hoisted(() => ({
 }));
 
 vi.mock('../shared.js', () => ({
+  devLog: () => {},
   escapeHtml: (value: string) => value,
   ignoreError: () => {},
 }));

@@ -1,5 +1,5 @@
 import type { FileItem, Settings } from './types';
-import { escapeHtml, sanitizeMarkdownHtml } from './shared.js';
+import { devLog, escapeHtml, ignoreError, sanitizeMarkdownHtml } from './shared.js';
 import { getById } from './rendererDom.js';
 import { encodeFileUrl, twemojiImg } from './rendererUtils.js';
 import { createPdfViewer, type PdfViewerHandle } from './rendererPdfViewer.js';
@@ -29,6 +29,7 @@ export type QuicklookDeps = {
   getFileExtension: (name: string) => string;
   getFileIcon: (name: string) => string;
   openFileEntry: (file: FileItem) => void;
+  openExternal: (url: string) => void;
   onModalOpen?: (modal: HTMLElement) => void;
   onModalClose?: (modal: HTMLElement) => void;
 };
@@ -58,6 +59,25 @@ export function createQuicklookController(deps: QuicklookDeps) {
 
   const loadingHtml = (label: string) =>
     `<div class="preview-loading"><div class="spinner"></div><p>Loading ${label}...</p></div>`;
+
+  const sanitizeExternalHref = (href: string | null): string | null => {
+    if (!href) return null;
+    const trimmed = href.trim();
+    if (!trimmed || trimmed.startsWith('#')) return null;
+    try {
+      const parsed = new URL(trimmed);
+      if (
+        parsed.protocol === 'http:' ||
+        parsed.protocol === 'https:' ||
+        parsed.protocol === 'mailto:'
+      ) {
+        return parsed.toString();
+      }
+    } catch {
+      return null;
+    }
+    return null;
+  };
 
   async function showQuickLookForFile(file: FileItem) {
     ensureElements();
@@ -115,13 +135,14 @@ export function createQuicklookController(deps: QuicklookDeps) {
             img.naturalWidth && img.naturalHeight
               ? `${img.naturalWidth} × ${img.naturalHeight} • `
               : '';
-          quicklookInfo!.textContent = quickInfo(file, dims);
+          if (quicklookInfo) quicklookInfo.textContent = quickInfo(file, dims);
         });
         img.addEventListener('error', () => {
           if (requestId !== quicklookRequestId || currentQuicklookFile?.path !== file.path) {
             return;
           }
-          quicklookContent!.innerHTML = `<div class="preview-error">Failed to load image</div>`;
+          if (quicklookContent)
+            quicklookContent.innerHTML = `<div class="preview-error">Failed to load image</div>`;
         });
         wrapper.appendChild(img);
         quicklookContent.appendChild(wrapper);
@@ -183,7 +204,7 @@ export function createQuicklookController(deps: QuicklookDeps) {
           maxWidth: 900,
           containerClass: 'quicklook-pdf',
           showPageControls: true,
-          onError: (msg) => console.error('[QuickLook] PDF error:', msg),
+          onError: (msg) => devLog('QuickLook', 'PDF error', msg),
         });
 
         if (requestId !== quicklookRequestId || currentQuicklookFile?.path !== file.path) {
@@ -254,7 +275,7 @@ export function createQuicklookController(deps: QuicklookDeps) {
               const codeBlock = quicklookContent?.querySelector('code');
               if (codeBlock) hl.highlightElement?.(codeBlock);
             })
-            .catch(() => {});
+            .catch(ignoreError);
         }
       } else {
         quicklookContent.innerHTML = `<div class="preview-error">Failed to load text</div>`;
@@ -273,7 +294,7 @@ export function createQuicklookController(deps: QuicklookDeps) {
   async function showQuickLook() {
     const selectedItems = deps.getSelectedItems();
     if (selectedItems.size !== 1) return;
-    const selectedPath = Array.from(selectedItems)[0];
+    const selectedPath = Array.from(selectedItems)[0]!;
     const file = deps.getFileByPath(selectedPath);
     if (!file) return;
     await showQuickLookForFile(file);
@@ -282,7 +303,7 @@ export function createQuicklookController(deps: QuicklookDeps) {
   function closeQuickLook() {
     ensureElements();
     if (quicklookModal && (quicklookModal as PdfViewerElement).__pdfViewer) {
-      (quicklookModal as PdfViewerElement).__pdfViewer!.destroy();
+      (quicklookModal as PdfViewerElement).__pdfViewer?.destroy();
       (quicklookModal as PdfViewerElement).__pdfViewer = null;
     }
     if (quicklookContent) {
@@ -321,6 +342,18 @@ export function createQuicklookController(deps: QuicklookDeps) {
         if (e.target === quicklookModal) {
           closeQuickLook();
         }
+      });
+    }
+
+    if (quicklookContent) {
+      quicklookContent.addEventListener('click', (event) => {
+        const target = event.target as HTMLElement | null;
+        const link = target?.closest('.preview-markdown a') as HTMLAnchorElement | null;
+        if (!link) return;
+        event.preventDefault();
+        const safeHref = sanitizeExternalHref(link.getAttribute('href'));
+        if (!safeHref) return;
+        deps.openExternal(safeHref);
       });
     }
   }

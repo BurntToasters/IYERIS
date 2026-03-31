@@ -1,7 +1,7 @@
 import type { Settings } from './types';
 import type { ToastAction } from './rendererToasts.js';
 import { rendererPath as path } from './rendererUtils.js';
-import { devLog } from './shared.js';
+import { devLog, ignoreError } from './shared.js';
 
 type ClipboardState = { operation: 'copy' | 'cut'; paths: string[] } | null;
 
@@ -67,18 +67,42 @@ export function createClipboardController(deps: ClipboardDeps) {
     return [{ label: 'Retry', onClick: () => void retry() }];
   }
 
+  function cloneClipboardState(value: ClipboardState): ClipboardState {
+    if (!value) return null;
+    return { operation: value.operation, paths: [...value.paths] };
+  }
+
+  function isSameClipboardState(a: ClipboardState, b: ClipboardState): boolean {
+    if (!a || !b) return a === b;
+    if (a.operation !== b.operation || a.paths.length !== b.paths.length) return false;
+    return a.paths.every((pathValue, index) => pathValue === b.paths[index]);
+  }
+
+  function clearClipboardIfUnchanged(snapshot: ClipboardState): void {
+    if (!snapshot || snapshot.operation !== 'cut') return;
+    if (!isSameClipboardState(clipboard, snapshot)) return;
+    clipboard = null;
+    window.tauriAPI.setClipboard(null).catch(ignoreError);
+    void updateClipboardIndicator().catch(ignoreError);
+  }
+
   async function getSystemClipboardData(): Promise<{
     operation: 'copy' | 'cut';
     paths: string[];
   } | null> {
     try {
-      const data =
+      const CLIPBOARD_TIMEOUT_MS = 5000;
+      const timeout = new Promise<null>((resolve) =>
+        setTimeout(() => resolve(null), CLIPBOARD_TIMEOUT_MS)
+      );
+      const data = await Promise.race([
         typeof window.tauriAPI.getSystemClipboardData === 'function'
-          ? await window.tauriAPI.getSystemClipboardData()
-          : {
-              operation: 'copy' as const,
-              paths: await window.tauriAPI.getSystemClipboardFiles(),
-            };
+          ? window.tauriAPI.getSystemClipboardData()
+          : window.tauriAPI
+              .getSystemClipboardFiles()
+              .then((paths) => ({ operation: 'copy' as const, paths })),
+        timeout,
+      ]);
 
       if (!data || !Array.isArray(data.paths) || data.paths.length === 0) {
         return null;
@@ -243,9 +267,9 @@ export function createClipboardController(deps: ClipboardDeps) {
       operation,
       paths: Array.from(selectedItems),
     };
-    window.tauriAPI.setClipboard(clipboard).catch(() => {});
+    window.tauriAPI.setClipboard(clipboard).catch(ignoreError);
     updateCutVisuals();
-    updateClipboardIndicator();
+    void updateClipboardIndicator().catch(ignoreError);
     deps.showToast(
       `${selectedItems.size} item(s) ${operation === 'cut' ? 'cut' : 'copied'}`,
       'Clipboard',
@@ -317,12 +341,14 @@ export function createClipboardController(deps: ClipboardDeps) {
         }
         return;
       }
+      const clipboardSnapshot = cloneClipboardState(clipboard);
+      if (!clipboardSnapshot) return;
 
-      const isCopy = clipboard.operation === 'copy';
+      const isCopy = clipboardSnapshot.operation === 'copy';
       const conflictBehavior = deps.getCurrentSettings().fileConflictBehavior || 'ask';
       const result = isCopy
-        ? await window.tauriAPI.copyItems(clipboard.paths, folderPath, conflictBehavior)
-        : await window.tauriAPI.moveItems(clipboard.paths, folderPath, conflictBehavior);
+        ? await window.tauriAPI.copyItems(clipboardSnapshot.paths, folderPath, conflictBehavior)
+        : await window.tauriAPI.moveItems(clipboardSnapshot.paths, folderPath, conflictBehavior);
 
       if (!result.success) {
         if (isPermissionDeniedError(result.error)) {
@@ -333,19 +359,17 @@ export function createClipboardController(deps: ClipboardDeps) {
           );
           if (confirmed) {
             const elevResult = isCopy
-              ? await window.tauriAPI.elevatedCopyBatch(clipboard.paths, folderPath)
-              : await window.tauriAPI.elevatedMoveBatch(clipboard.paths, folderPath);
+              ? await window.tauriAPI.elevatedCopyBatch(clipboardSnapshot.paths, folderPath)
+              : await window.tauriAPI.elevatedMoveBatch(clipboardSnapshot.paths, folderPath);
             if (elevResult.success) {
               deps.showToast(
-                `${clipboard.paths.length} item(s) ${isCopy ? 'copied' : 'moved'} into folder (elevated)`,
+                `${clipboardSnapshot.paths.length} item(s) ${isCopy ? 'copied' : 'moved'} into folder (elevated)`,
                 'Success',
                 'success'
               );
               if (!isCopy) {
                 await deps.updateUndoRedoState();
-                clipboard = null;
-                window.tauriAPI.setClipboard(null).catch(() => {});
-                updateClipboardIndicator();
+                clearClipboardIfUnchanged(clipboardSnapshot);
               }
               updateCutVisuals();
               deps.refresh();
@@ -361,16 +385,14 @@ export function createClipboardController(deps: ClipboardDeps) {
         return;
       }
       deps.showToast(
-        `${clipboard.paths.length} item(s) ${isCopy ? 'copied' : 'moved'} into folder`,
+        `${clipboardSnapshot.paths.length} item(s) ${isCopy ? 'copied' : 'moved'} into folder`,
         'Success',
         'success'
       );
 
       if (!isCopy) {
         await deps.updateUndoRedoState();
-        clipboard = null;
-        window.tauriAPI.setClipboard(null).catch(() => {});
-        updateClipboardIndicator();
+        clearClipboardIfUnchanged(clipboardSnapshot);
       }
 
       updateCutVisuals();
@@ -432,12 +454,14 @@ export function createClipboardController(deps: ClipboardDeps) {
         }
         return;
       }
+      const clipboardSnapshot = cloneClipboardState(clipboard);
+      if (!clipboardSnapshot) return;
 
-      const isCopy = clipboard.operation === 'copy';
+      const isCopy = clipboardSnapshot.operation === 'copy';
       const conflictBehavior = deps.getCurrentSettings().fileConflictBehavior || 'ask';
       const result = isCopy
-        ? await window.tauriAPI.copyItems(clipboard.paths, currentPath, conflictBehavior)
-        : await window.tauriAPI.moveItems(clipboard.paths, currentPath, conflictBehavior);
+        ? await window.tauriAPI.copyItems(clipboardSnapshot.paths, currentPath, conflictBehavior)
+        : await window.tauriAPI.moveItems(clipboardSnapshot.paths, currentPath, conflictBehavior);
 
       if (!result.success) {
         if (isPermissionDeniedError(result.error)) {
@@ -448,19 +472,17 @@ export function createClipboardController(deps: ClipboardDeps) {
           );
           if (confirmed) {
             const elevResult = isCopy
-              ? await window.tauriAPI.elevatedCopyBatch(clipboard.paths, currentPath)
-              : await window.tauriAPI.elevatedMoveBatch(clipboard.paths, currentPath);
+              ? await window.tauriAPI.elevatedCopyBatch(clipboardSnapshot.paths, currentPath)
+              : await window.tauriAPI.elevatedMoveBatch(clipboardSnapshot.paths, currentPath);
             if (elevResult.success) {
               deps.showToast(
-                `${clipboard.paths.length} item(s) ${isCopy ? 'copied' : 'moved'} (elevated)`,
+                `${clipboardSnapshot.paths.length} item(s) ${isCopy ? 'copied' : 'moved'} (elevated)`,
                 'Success',
                 'success'
               );
               if (!isCopy) {
                 await deps.updateUndoRedoState();
-                clipboard = null;
-                window.tauriAPI.setClipboard(null).catch(() => {});
-                updateClipboardIndicator();
+                clearClipboardIfUnchanged(clipboardSnapshot);
               }
               updateCutVisuals();
               deps.refresh();
@@ -478,16 +500,14 @@ export function createClipboardController(deps: ClipboardDeps) {
         return;
       }
       deps.showToast(
-        `${clipboard.paths.length} item(s) ${isCopy ? 'copied' : 'moved'}`,
+        `${clipboardSnapshot.paths.length} item(s) ${isCopy ? 'copied' : 'moved'}`,
         'Success',
         'success'
       );
 
       if (!isCopy) {
         await deps.updateUndoRedoState();
-        clipboard = null;
-        window.tauriAPI.setClipboard(null).catch(() => {});
-        updateClipboardIndicator();
+        clearClipboardIfUnchanged(clipboardSnapshot);
       }
 
       updateCutVisuals();

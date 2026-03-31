@@ -125,6 +125,7 @@ export function createHoverCardController(deps: HoverCardDeps) {
 
       card.style.left = `${posX}px`;
       card.style.top = `${posY}px`;
+      card.setAttribute('role', 'tooltip');
       card.classList.add('visible');
     };
 
@@ -173,14 +174,46 @@ export function createHoverCardController(deps: HoverCardDeps) {
     const handleScroll = () => hideHoverCard();
     const handleMousedown = () => hideHoverCard();
 
+    const handleFocusin = (e: Event) => {
+      if (!hoverCardEnabled) return;
+      const target = e.target;
+      if (!(target instanceof HTMLElement)) return;
+      const fileItem = target.closest('.file-item') as HTMLElement | null;
+      if (!fileItem) return;
+      if (fileItem === currentHoverItem) return;
+      hideHoverCard();
+      currentHoverItem = fileItem;
+      hoverCardTimeout = setTimeout(() => {
+        if (currentHoverItem === fileItem && document.body.contains(fileItem)) {
+          const rect = fileItem.getBoundingClientRect();
+          showHoverCard(fileItem, rect.right, rect.top);
+        }
+      }, HOVER_CARD_DELAY_MS);
+    };
+
+    const handleFocusout = (e: Event) => {
+      const relatedTarget = (e as FocusEvent).relatedTarget;
+      const toFileItem =
+        relatedTarget instanceof Element ? relatedTarget.closest('.file-item') : null;
+      const toHoverCard =
+        relatedTarget instanceof Element ? relatedTarget.closest('.file-hover-card') : null;
+      if (!toFileItem && !toHoverCard) {
+        hideHoverCard();
+      }
+    };
+
     hoverRoot.addEventListener('mouseover', handleMouseover);
     hoverRoot.addEventListener('mouseout', handleMouseout);
+    hoverRoot.addEventListener('focusin', handleFocusin);
+    hoverRoot.addEventListener('focusout', handleFocusout);
     scrollContainer.addEventListener('scroll', handleScroll, true);
     document.addEventListener('mousedown', handleMousedown);
 
     cleanupFns = [
       () => hoverRoot.removeEventListener('mouseover', handleMouseover),
       () => hoverRoot.removeEventListener('mouseout', handleMouseout),
+      () => hoverRoot.removeEventListener('focusin', handleFocusin),
+      () => hoverRoot.removeEventListener('focusout', handleFocusout),
       () => scrollContainer.removeEventListener('scroll', handleScroll, true),
       () => document.removeEventListener('mousedown', handleMousedown),
     ];

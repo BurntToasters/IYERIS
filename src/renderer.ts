@@ -14,8 +14,6 @@ import {
 import { createDefaultSettings, sanitizeSettings } from './settings.js';
 
 import {
-  createHomeController,
-  getPathDisplayValue,
   HOME_VIEW_LABEL,
   HOME_VIEW_PATH,
   HOME_QUICK_ACCESS_ITEMS,
@@ -29,16 +27,11 @@ import { createEventListenersController } from './rendererEventListeners.js';
 import { createBootstrapController } from './rendererBootstrap.js';
 import { applyAppearance } from './rendererAppearance.js';
 import {
-  SEARCH_DEBOUNCE_MS,
   SETTINGS_SAVE_DEBOUNCE_MS,
-  TOAST_DURATION_MS,
   SEARCH_HISTORY_MAX,
   DIRECTORY_HISTORY_MAX,
-  DIRECTORY_PROGRESS_THROTTLE_MS,
   SUPPORT_POPUP_DELAY_MS,
   MAX_RECENT_FILES,
-  MAX_CACHED_TABS,
-  MAX_CACHED_FILES_PER_TAB,
   NAME_COLLATOR,
   DATE_FORMATTER,
   SPECIAL_DIRECTORY_ACTIONS,
@@ -76,13 +69,29 @@ async function saveSettingsWithTimestamp(settings: Settings) {
 }
 
 let settingsSaveTimeout: ReturnType<typeof setTimeout> | null = null;
+let lastSettingsSaveErrorAt = 0;
+
+function notifySettingsSaveError(error?: string): void {
+  const now = Date.now();
+  if (now - lastSettingsSaveErrorAt < 5000) return;
+  lastSettingsSaveErrorAt = now;
+  showToast(`Failed to save settings: ${error || 'Operation failed'}`, 'Error', 'error');
+}
+
 function debouncedSaveSettings(delay: number = SETTINGS_SAVE_DEBOUNCE_MS) {
   if (settingsSaveTimeout) {
     clearTimeout(settingsSaveTimeout);
   }
   const timeoutId = setTimeout(() => {
     saveSettingsWithTimestamp(currentSettings)
-      .catch(ignoreError)
+      .then((result) => {
+        if (!result.success) {
+          notifySettingsSaveError(result.error);
+        }
+      })
+      .catch((error) => {
+        notifySettingsSaveError(getErrorMessage(error));
+      })
       .finally(() => {
         if (settingsSaveTimeout === timeoutId) {
           settingsSaveTimeout = null;
@@ -154,8 +163,6 @@ import {
   fileView,
   columnView,
   homeView,
-  loading,
-  loadingText,
   emptyState,
   backBtn,
   forwardBtn,
@@ -167,15 +174,9 @@ import {
   viewOptions,
   listHeader,
   folderTree,
-  sidebarResizeHandle,
   drivesList,
   sortBtn,
-  bookmarksList,
   bookmarkAddBtn,
-  dropIndicator,
-  dropIndicatorAction,
-  dropIndicatorPath,
-  previewResizeHandle,
   selectionCopyBtn,
   selectionCutBtn,
   selectionMoveBtn,
@@ -278,7 +279,6 @@ const {
   zoomReset,
   updateZoomDisplay,
   stopIndexStatusPolling,
-  updateIndexStatus,
   rebuildIndex,
   applyListColumnWidths,
   applySidebarWidth,
@@ -298,7 +298,6 @@ const {
   handleDrop,
   initDragAndDropListeners,
   directoryLoader,
-  createDirectoryOperationId,
   startDirectoryRequest,
   finishDirectoryRequest,
   showLoading,
@@ -316,10 +315,7 @@ const {
   toastManager,
   folderIconPickerController,
   inlineRenameController,
-  handleCompress,
-  showCompressOptionsModal,
   hideCompressOptionsModal,
-  showExtractModal,
   hideExtractModal,
   openPathWithArchivePrompt,
   openFileEntry,
@@ -340,7 +336,7 @@ const {
   closeSearch,
   openSearch,
   performSearch,
-  cancelActiveSearch,
+  cleanupSearch,
   showSearchHistoryDropdown,
   hideSearchHistoryDropdown,
   clearSearchHistory,
@@ -351,9 +347,7 @@ const {
   focusSearchInput,
   previewController,
   initPreviewUi,
-  updatePreview,
   showQuickLook,
-  showQuickLookForFile,
   closeQuickLook,
   isQuickLookOpen,
   toggleSelection,
@@ -365,9 +359,9 @@ const {
   selectLastItem,
   navigateByPage,
   setupRubberBandSelection,
-  isRubberBandActive,
   ensureActiveItem,
   invalidateGridColumnsCache,
+  invalidateFileItemsCache,
   thumbnails,
   setHoverCardEnabled,
   setupHoverCard,
@@ -376,9 +370,7 @@ const {
   resetTypeahead,
   loadBookmarks,
   addBookmark,
-  addBookmarkByPath,
   clipboardController,
-  batchRenameController,
   showContextMenu,
   hideContextMenu,
   showEmptySpaceContextMenu,
@@ -389,7 +381,6 @@ const {
   getContextMenuData,
   cancelColumnOperations,
   renderColumnView,
-  tabsController,
   initializeTabs,
   addNewTab,
   closeTab,
@@ -398,47 +389,21 @@ const {
   updateCurrentTabPath,
   switchToTab,
   cleanupTabs,
-  isWindowsPlatform,
-  shortcutEngine,
-  isMacPlatform,
-  normalizeShortcutBinding,
-  serializeShortcut,
-  hasModifier,
-  eventToBinding,
-  rebuildShortcutLookup,
   getFixedShortcutActionIdFromEvent,
   syncShortcutBindingsFromSettings,
-  getShortcutBinding,
   getShortcutActionIdFromEvent,
-  areBindingsEqual,
-  formatShortcutKeyLabel,
-  getShortcutBindings,
-  setShortcutBindings,
-  shortcutLookup,
-  reservedShortcutLookup,
-  shortcutDefinitionById,
   initCommandPalette,
   showCommandPalette,
-  hideCommandPalette,
-  syncCommandShortcuts,
-  renderShortcutsModal,
   initShortcutsModal,
-  stopShortcutCapture,
   isShortcutCaptureActive,
   showShortcutsModal,
   hideShortcutsModal,
   initSettingsTabs,
   initSettingsUi,
-  activateSettingsTab,
-  applySettingsSearch,
-  updateSettingsCardSummaries,
-  syncQuickActionsFromMain,
   captureSettingsFormState,
   applySettingsFormState,
   buildSettingsFormStateFromSettings,
   clearSettingsChanged,
-  initSettingsChangeTracking,
-  setSuppressSettingsTracking,
   getSavedState,
   setSavedState,
   resetRedoState,
@@ -449,7 +414,6 @@ const {
   showSettingsModal,
   hideSettingsModal,
   initSettingsActions,
-  showLicensesModal,
   hideLicensesModal,
   initLicensesUi,
   showSupportPopup,
@@ -462,11 +426,6 @@ const {
   checkForUpdates,
   silentCheckAndDownload,
   handleUpdateDownloaded,
-  generateOperationId,
-  addOperation,
-  getOperation,
-  updateOperation,
-  removeOperation,
 } = wired;
 const showToast = toastManager.showToast;
 
@@ -552,7 +511,7 @@ async function applySystemFontSize(): Promise<void> {
     document.documentElement.style.setProperty('--system-font-scale', fontScale.toString());
     document.body.classList.add('use-system-font-size');
   } catch (error) {
-    console.error('[Settings] Failed to get system text scale:', error);
+    devLog('Settings', 'Failed to get system text scale', error);
   }
 }
 
@@ -626,12 +585,12 @@ function openNewWindow() {
       try {
         await saveTabState(true);
       } catch (error) {
-        console.error('[Tabs] Failed to persist tab state before opening new window:', error);
+        devLog('Tabs', 'Failed to persist tab state before opening new window', error);
       }
     }
     await window.tauriAPI.openNewWindow();
   })().catch((error) => {
-    console.error('[Window] Failed to open new window:', error);
+    devLog('Window', 'Failed to open new window', error);
   });
 }
 
@@ -654,7 +613,7 @@ async function saveSettings() {
     const el = document.getElementById(id) as HTMLInputElement | null;
     if (el) {
       const val = parseInt(el.value, 10);
-      if (val >= min && val <= max)
+      if (!isNaN(val) && val >= min && val <= max)
         assignKey(currentSettings, key, val as Settings[keyof Settings]);
     }
   }
@@ -674,7 +633,10 @@ async function saveSettings() {
 
   // Icon size slider
   const iconSizeSlider = document.getElementById('icon-size-slider') as HTMLInputElement | null;
-  if (iconSizeSlider) currentSettings.iconSize = parseInt(iconSizeSlider.value, 10);
+  if (iconSizeSlider) {
+    const iconSizeVal = parseInt(iconSizeSlider.value, 10);
+    if (!isNaN(iconSizeVal)) currentSettings.iconSize = iconSizeVal;
+  }
 
   // System theme override
   if (currentSettings.useSystemTheme) {
@@ -683,7 +645,7 @@ async function saveSettings() {
       const systemTheme = isDarkMode ? 'default' : 'light';
       currentSettings.theme = systemTheme;
     } catch (error) {
-      console.error('[Settings] Failed to apply system theme:', error);
+      devLog('Settings', 'Failed to apply system theme', error);
     }
   }
 
@@ -1119,7 +1081,7 @@ async function loadDrives() {
       clearHtml(folderTree);
     }
   } catch (error) {
-    console.error('[Drives] Failed to load drives:', error);
+    devLog('Drives', 'Failed to load drives', error);
   }
 }
 
@@ -1241,9 +1203,13 @@ const eventListenersController = createEventListenersController({
     const firstSelected = allFiles.find((f) => selectedItems.has(f.path));
     if (!firstSelected) return;
     void (async () => {
-      const result = await window.tauriAPI.getItemProperties(firstSelected.path);
-      if (result.success) {
-        showPropertiesDialog(result.properties);
+      try {
+        const result = await window.tauriAPI.getItemProperties(firstSelected.path);
+        if (result.success) {
+          showPropertiesDialog(result.properties);
+        }
+      } catch (e) {
+        ignoreError(e);
       }
     })();
   },
@@ -1252,7 +1218,7 @@ const eventListenersController = createEventListenersController({
   showContextMenuForSelected: () => {
     const selectedPaths = Array.from(selectedItems);
     if (selectedPaths.length === 0) return;
-    const firstPath = selectedPaths[0];
+    const firstPath = selectedPaths[0]!;
     const item = allFiles.find((f) => f.path === firstPath);
     if (!item) return;
     const el = document.querySelector<HTMLElement>(
@@ -1316,9 +1282,9 @@ const eventListenersController = createEventListenersController({
 
     if (newIndex !== currentIndex) {
       if (active) active.tabIndex = -1;
-      items[newIndex].tabIndex = 0;
-      items[newIndex].focus({ preventScroll: true });
-      items[newIndex].scrollIntoView({ block: 'nearest' });
+      items[newIndex]!.tabIndex = 0;
+      items[newIndex]!.focus({ preventScroll: true });
+      items[newIndex]!.scrollIntoView({ block: 'nearest' });
     }
   },
   initSettingsTabs,
@@ -1364,7 +1330,7 @@ async function navigateTo(path: string, skipHistoryUpdate = false, trigger = 'di
     resetTypeahead();
 
     if (isSearchModeActive()) {
-      closeSearch();
+      closeSearch({ restoreCurrentPath: false });
     }
 
     thumbnails.disconnectThumbnailObserver();
@@ -1403,7 +1369,7 @@ async function navigateTo(path: string, skipHistoryUpdate = false, trigger = 'di
     resetTypeahead();
 
     if (isSearchModeActive()) {
-      closeSearch();
+      closeSearch({ restoreCurrentPath: false });
     }
 
     thumbnails.disconnectThumbnailObserver();
@@ -1440,7 +1406,7 @@ async function navigateTo(path: string, skipHistoryUpdate = false, trigger = 'di
         requestId,
         error: result.error || 'Unknown error',
       });
-      console.error('Error loading directory:', result.error);
+      devLog('Navigate', 'Error loading directory', result.error);
       showToast(result.error || 'Unknown error', 'Error Loading Directory', 'error');
       return;
     }
@@ -1468,6 +1434,7 @@ async function navigateTo(path: string, skipHistoryUpdate = false, trigger = 'di
       await renderColumnView();
     } else {
       renderFiles(result.contents || []);
+      invalidateFileItemsCache();
     }
     devLog('Navigate', `[${navigationId}] render complete`, {
       path,
@@ -1503,7 +1470,7 @@ async function navigateTo(path: string, skipHistoryUpdate = false, trigger = 'di
       error: getErrorMessage(error),
       durationMs: Date.now() - navigationStartAt,
     });
-    console.error('Error navigating:', error);
+    devLog('Navigate', 'Error navigating', error);
     showToast(getErrorMessage(error), 'Error Loading Directory', 'error');
   } finally {
     const isCurrentRequest = directoryLoader.isCurrentRequest(requestId);
@@ -1585,7 +1552,7 @@ const { setupFileGridEventDelegation } = fileGridEventsController;
 
 async function renameSelected() {
   if (selectedItems.size !== 1) return;
-  const itemPath = Array.from(selectedItems)[0];
+  const itemPath = Array.from(selectedItems)[0]!;
   const fileItem = fileElementMap.get(itemPath);
   if (fileItem) {
     const item = filePathMap.get(itemPath);
@@ -1632,27 +1599,39 @@ async function deleteSelected(permanent = false) {
 
   const permissionFailedPaths: string[] = [];
   for (let i = 0; i < allResults.length; i++) {
-    const r = allResults[i];
+    const r = allResults[i]!;
     if (r.status === 'fulfilled' && !r.value.success && isPermissionDeniedError(r.value.error)) {
-      permissionFailedPaths.push(itemsSnapshot[i]);
+      permissionFailedPaths.push(itemsSnapshot[i]!);
     }
   }
 
   if (permissionFailedPaths.length > 0) {
+    const needsPermanentFallback = !permanent;
     const confirmed = await showConfirm(
-      `${permissionFailedPaths.length} item${permissionFailedPaths.length > 1 ? 's' : ''} require administrator privileges to delete. You will be prompted to authorize.`,
-      'Elevated Permissions Required',
-      'warning'
+      needsPermanentFallback
+        ? `${permissionFailedPaths.length} item${permissionFailedPaths.length > 1 ? 's' : ''} could not be moved to Trash due to permissions. Permanently delete ${permissionFailedPaths.length > 1 ? 'them' : 'it'} instead? This cannot be undone.`
+        : `${permissionFailedPaths.length} item${permissionFailedPaths.length > 1 ? 's' : ''} require administrator privileges to delete. You will be prompted to authorize.`,
+      needsPermanentFallback ? 'Permanent Delete Required' : 'Elevated Permissions Required',
+      needsPermanentFallback ? 'error' : 'warning'
     );
     if (confirmed) {
       const elevResult = await window.tauriAPI.elevatedDeleteBatch(permissionFailedPaths);
       if (elevResult.success) {
         const totalSuccess = successCount + permissionFailedPaths.length;
-        const msg = permanent
+        const unresolvedFailures = Math.max(0, failCount - permissionFailedPaths.length);
+        const effectivePermanent = permanent || needsPermanentFallback;
+        const msg = effectivePermanent
           ? `${totalSuccess} item${totalSuccess > 1 ? 's' : ''} permanently deleted`
           : `${totalSuccess} item${totalSuccess > 1 ? 's' : ''} deleted`;
         showToast(msg, 'Success', 'success');
-        refresh(permanent ? 'delete-selected-permanent' : 'delete-selected');
+        if (unresolvedFailures > 0) {
+          showToast(
+            `${unresolvedFailures} item${unresolvedFailures > 1 ? 's' : ''} could not be deleted`,
+            'Partial Failure',
+            'error'
+          );
+        }
+        refresh(effectivePermanent ? 'delete-selected-permanent' : 'delete-selected');
         return;
       }
       showToast(elevResult.error || 'Elevated delete failed', 'Error', 'error');
@@ -1685,7 +1664,7 @@ async function deleteSelected(permanent = false) {
     }
     refresh(permanent ? 'delete-selected-permanent' : 'delete-selected');
   }
-  if (failCount > 0 && permissionFailedPaths.length === 0) {
+  if (failCount > 0) {
     showToast(
       `${failCount} item${failCount > 1 ? 's' : ''} could not be deleted`,
       'Partial Failure',
@@ -1712,8 +1691,8 @@ function setupMoreActionsMenu() {
   if (!btn || !menu) return;
 
   function showMenu() {
-    if (!menu) return;
-    const rect = btn!.getBoundingClientRect();
+    if (!menu || !btn) return;
+    const rect = btn.getBoundingClientRect();
     menu.style.display = 'block';
 
     const menuRect = menu.getBoundingClientRect();
@@ -1731,7 +1710,7 @@ function setupMoreActionsMenu() {
 
     menu.style.left = left + 'px';
     menu.style.top = top + 'px';
-    btn!.setAttribute('aria-expanded', 'true');
+    btn.setAttribute('aria-expanded', 'true');
 
     void updateUndoRedoState();
 
@@ -1745,9 +1724,9 @@ function setupMoreActionsMenu() {
   }
 
   function hideMenu() {
-    if (!menu) return;
+    if (!menu || !btn) return;
     menu.style.display = 'none';
-    btn!.setAttribute('aria-expanded', 'false');
+    btn.setAttribute('aria-expanded', 'false');
     menu.querySelectorAll('.focused').forEach((el) => el.classList.remove('focused'));
   }
 
@@ -1784,10 +1763,10 @@ function setupMoreActionsMenu() {
         el.classList.toggle('focused', i === next);
         el.tabIndex = i === next ? 0 : -1;
       });
-      items[next].focus({ preventScroll: true });
+      items[next]!.focus({ preventScroll: true });
     } else if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
-      if (focusedIndex >= 0) items[focusedIndex].click();
+      if (focusedIndex >= 0) items[focusedIndex]!.click();
     } else if (e.key === 'Escape') {
       e.preventDefault();
       hideMenu();
@@ -1846,7 +1825,7 @@ function navigateHistory(delta: -1 | 1): void {
   const nextIndex = historyIndex + delta;
   if (nextIndex < 0 || nextIndex >= history.length) return;
   historyIndex = nextIndex;
-  void navigateTo(history[historyIndex], true);
+  void navigateTo(history[historyIndex]!, true);
 }
 
 function goBack() {
@@ -1928,7 +1907,11 @@ async function setViewMode(nextMode: 'grid' | 'list' | 'column') {
   await applyViewMode();
 
   currentSettings.viewMode = viewMode;
-  saveSettingsWithTimestamp(currentSettings);
+  void saveSettingsWithTimestamp(currentSettings).then((result) => {
+    if (!result.success) {
+      notifySettingsSaveError(result.error);
+    }
+  });
 }
 
 late.navigateTo = navigateTo;
@@ -1952,11 +1935,12 @@ late.getFileItemData = getFileItemData;
 async function toggleView() {
   const viewModeCycle: ViewMode[] = ['grid', 'list', 'column'];
   const nextIndex = (viewModeCycle.indexOf(viewMode) + 1) % viewModeCycle.length;
-  await setViewMode(viewModeCycle[nextIndex]);
+  await setViewMode(viewModeCycle[nextIndex]!);
 }
 
 async function applyViewMode() {
   invalidateGridColumnsCache();
+  invalidateFileItemsCache();
   if (isHomeViewPath(currentPath)) {
     setHomeViewActive(true);
     return;
@@ -1988,6 +1972,7 @@ async function applyViewMode() {
         if (!directoryLoader.isCurrentRequest(requestId)) return;
         if (result.success) {
           renderFiles(result.contents || []);
+          invalidateFileItemsCache();
         }
       } catch {
         // ignore; finishDirectoryRequest handles cleanup
@@ -2005,7 +1990,7 @@ async function applyViewMode() {
   updateViewModeControls();
 }
 
-const VIEW_TOGGLE_CONFIG: Record<string, { svg: string; title: string }> = {
+const VIEW_TOGGLE_CONFIG: Record<ViewMode, { svg: string; title: string }> = {
   list: {
     svg: `<svg width="16" height="16" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="2" fill="currentColor" rx="1"/><rect x="2" y="7" width="12" height="2" fill="currentColor" rx="1"/><rect x="2" y="11" width="12" height="2" fill="currentColor" rx="1"/></svg>`,
     title: 'Switch to Column View',
@@ -2202,28 +2187,30 @@ document.addEventListener('mousedown', (e) => {
     hideDirectoryHistoryDropdown();
   }
 
-  if (target.classList.contains('history-item')) {
-    if (target.dataset.query) {
+  const historyItem = target.closest<HTMLElement>('.history-item');
+  if (historyItem) {
+    if (historyItem.dataset.query) {
       e.preventDefault();
-      setSearchQuery(target.dataset.query);
+      setSearchQuery(historyItem.dataset.query);
       setTimeout(() => focusSearchInput(), 0);
       hideSearchHistoryDropdown();
       performSearch();
       return;
     }
-    if (target.dataset.path) {
+    if (historyItem.dataset.path) {
       e.preventDefault();
-      navigateTo(target.dataset.path);
+      navigateTo(historyItem.dataset.path);
       hideDirectoryHistoryDropdown();
       return;
     }
   }
 
-  if (target.classList.contains('history-clear')) {
+  const historyClear = target.closest<HTMLElement>('.history-clear');
+  if (historyClear) {
     let clearAction: (() => void) | null = null;
-    if (target.dataset.action === 'clear-search') {
+    if (historyClear.dataset.action === 'clear-search') {
       clearAction = clearSearchHistory;
-    } else if (target.dataset.action === 'clear-directory') {
+    } else if (historyClear.dataset.action === 'clear-directory') {
       clearAction = clearDirectoryHistory;
     }
     if (clearAction) {
@@ -2237,21 +2224,21 @@ document.addEventListener('mousedown', (e) => {
   try {
     await bootstrapInit();
   } catch (error) {
-    console.error('Failed to initialize IYERIS:', error);
+    devLog('Init', 'Failed to initialize IYERIS', error);
     alert('Failed to start IYERIS: ' + getErrorMessage(error));
   }
 })();
 
 window.addEventListener('beforeunload', () => {
   stopIndexStatusPolling();
-  cancelActiveSearch();
+  cleanupSearch();
   cleanupHoverCard();
   cleanupPropertiesDialog();
   thumbnails.resetThumbnailObserver();
   fileRenderController.disconnectVirtualizedObserver();
   diskSpaceController.clearCache();
   zoomController.clearZoomPopupTimeout();
-  window.tauriAPI.unwatchDirectory().catch(() => {});
+  window.tauriAPI.unwatchDirectory().catch(ignoreError);
   if (!isResettingSettings) {
     if (isMainWindow && tabsEnabled && tabs.length > 0) {
       const currentTab = tabs.find((t) => t.id === activeTabId);
@@ -2275,7 +2262,7 @@ window.addEventListener('beforeunload', () => {
       };
     }
     currentSettings._timestamp = Date.now();
-    window.tauriAPI.saveSettingsSync(currentSettings);
+    void window.tauriAPI.saveSettingsSync(currentSettings);
   }
   if (settingsSaveTimeout) {
     clearTimeout(settingsSaveTimeout);
@@ -2295,7 +2282,7 @@ window.addEventListener('beforeunload', () => {
     try {
       cleanup();
     } catch (e) {
-      console.error('[Cleanup] Error cleaning up IPC listener:', e);
+      devLog('Cleanup', 'Error cleaning up IPC listener', e);
     }
   }
   ipcCleanupFunctions.length = 0;

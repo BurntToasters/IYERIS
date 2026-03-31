@@ -2,8 +2,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import type { Update } from '@tauri-apps/plugin-updater';
-import type { TauriAPI, Settings, HomeSettings } from './types';
-import { devLog } from './shared.js';
+import type { TauriAPI, Settings, HomeSettings, LicensesData } from './types';
+import { devLog, ignoreError } from './shared.js';
 
 type SpecialDirectory = 'desktop' | 'documents' | 'downloads' | 'music' | 'videos';
 type FileConflictBehavior = 'ask' | 'rename' | 'skip' | 'overwrite';
@@ -71,8 +71,9 @@ const systemResumedCallbacks = new Set<() => void>();
 const systemThemeChangedCallbacks = new Set<(data: { isDarkMode: boolean }) => void>();
 let systemFallbacksBound = false;
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function wrap(fn: () => Promise<any>): Promise<any> {
+async function wrap(
+  fn: () => Promise<unknown>
+): Promise<{ success: true } | { success: false; error: string }> {
   try {
     await fn();
     return { success: true as const };
@@ -256,7 +257,8 @@ const tauriAPI: TauriAPI = {
     try {
       const drives = await invoke<Record<string, unknown>[]>('get_drives');
       return drives.map((d) => d.mountPoint as string);
-    } catch {
+    } catch (e) {
+      devLog('IPC', 'getDrives failed', e);
       return [];
     }
   },
@@ -301,7 +303,8 @@ const tauriAPI: TauriAPI = {
   getAutostart: async () => {
     try {
       return await invoke<boolean>('get_autostart');
-    } catch {
+    } catch (e) {
+      devLog('IPC', 'getAutostart failed', e);
       return false;
     }
   },
@@ -367,10 +370,10 @@ const tauriAPI: TauriAPI = {
       const json = await invoke<string>('get_settings');
       if (json && json !== '{}') {
         try {
-          const settings = JSON.parse(json);
+          const settings = JSON.parse(json) as Record<string, unknown>;
           return { success: true, settings } as never;
-        } catch {
-          console.error('[Settings] Failed to parse settings JSON, file may be corrupted');
+        } catch (e) {
+          console.error('[Settings] Failed to parse settings JSON, file may be corrupted', e);
           return { success: false, error: 'Settings file is corrupted, using defaults' } as never;
         }
       }
@@ -381,12 +384,8 @@ const tauriAPI: TauriAPI = {
   },
   saveSettings: (settings: Settings) =>
     wrap(() => invoke('save_settings', { settings: JSON.stringify(settings) })),
-  saveSettingsSync: (settings: Settings) => {
-    void invoke('save_settings', { settings: JSON.stringify(settings) }).catch((e) => {
-      console.error('[Settings] saveSettingsSync failed:', e);
-    });
-    return { success: true } as never;
-  },
+  saveSettingsSync: (settings: Settings) =>
+    wrap(() => invoke('save_settings', { settings: JSON.stringify(settings) })),
   resetSettings: () => wrap(() => invoke('reset_settings')),
   relaunchApp: () => invoke('relaunch_app'),
   getSettingsPath: () => invoke('get_settings_path'),
@@ -395,10 +394,10 @@ const tauriAPI: TauriAPI = {
       const json = await invoke<string>('get_home_settings');
       if (json && json !== '{}') {
         try {
-          const settings = JSON.parse(json);
+          const settings = JSON.parse(json) as Record<string, unknown>;
           return { success: true, settings } as never;
-        } catch {
-          console.error('[Settings] Failed to parse home settings JSON, file may be corrupted');
+        } catch (e) {
+          console.error('[Settings] Failed to parse home settings JSON, file may be corrupted', e);
           return {
             success: false,
             error: 'Home settings file is corrupted, using defaults',
@@ -428,8 +427,8 @@ const tauriAPI: TauriAPI = {
           paths: data.paths,
         } as never;
       }
-    } catch {
-      /* no data */
+    } catch (e) {
+      devLog('IPC', 'getSystemClipboardData failed', e);
     }
     return null as never;
   },
@@ -437,8 +436,8 @@ const tauriAPI: TauriAPI = {
     try {
       const paths = await invoke<string[]>('get_system_clipboard_files');
       if (Array.isArray(paths) && paths.length > 0) return paths;
-    } catch {
-      /* no data */
+    } catch (e) {
+      devLog('IPC', 'getSystemClipboardFiles failed', e);
     }
     return [];
   },
@@ -446,7 +445,7 @@ const tauriAPI: TauriAPI = {
   onClipboardChanged: (callback) => {
     const unlisten = listen('clipboard-changed', (event) => callback(event.payload as never));
     return () => {
-      unlisten.then((fn) => fn()).catch(() => {});
+      unlisten.then((fn) => fn()).catch(ignoreError);
     };
   },
 
@@ -455,7 +454,8 @@ const tauriAPI: TauriAPI = {
     try {
       const paths = await invoke<string[]>('get_drag_data');
       return paths.length > 0 ? { paths } : null;
-    } catch {
+    } catch (e) {
+      devLog('IPC', 'getDragData failed', e);
       return null;
     }
   },
@@ -466,26 +466,26 @@ const tauriAPI: TauriAPI = {
     const unlisten = listen('settings-changed', (event) => {
       const payload = event.payload as string;
       try {
-        callback(JSON.parse(payload));
+        callback(JSON.parse(payload) as Settings);
       } catch {
         console.error('[Settings] Failed to parse settings-changed payload');
       }
     });
     return () => {
-      unlisten.then((fn) => fn()).catch(() => {});
+      unlisten.then((fn) => fn()).catch(ignoreError);
     };
   },
   onHomeSettingsChanged: (callback) => {
     const unlisten = listen('home-settings-changed', (event) => {
       const payload = event.payload as string;
       try {
-        callback(JSON.parse(payload));
+        callback(JSON.parse(payload) as HomeSettings);
       } catch {
         console.error('[Settings] Failed to parse home-settings-changed payload');
       }
     });
     return () => {
-      unlisten.then((fn) => fn()).catch(() => {});
+      unlisten.then((fn) => fn()).catch(ignoreError);
     };
   },
 
@@ -623,7 +623,11 @@ const tauriAPI: TauriAPI = {
   getLicenses: async () => {
     try {
       const json = await invoke<string>('get_licenses');
-      return { success: true, licenses: JSON.parse(json) } as never;
+      const parsed = JSON.parse(json) as unknown;
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        return { success: false, error: 'Invalid licenses payload format' } as never;
+      }
+      return { success: true, licenses: parsed as LicensesData } as never;
     } catch (e) {
       return { success: false, error: String(e) } as never;
     }
@@ -918,19 +922,19 @@ const tauriAPI: TauriAPI = {
   onCompressProgress: (callback) => {
     const unlisten = listen('compress-progress', (event) => callback(event.payload as never));
     return () => {
-      unlisten.then((fn) => fn()).catch(() => {});
+      unlisten.then((fn) => fn()).catch(ignoreError);
     };
   },
   onExtractProgress: (callback) => {
     const unlisten = listen('extract-progress', (event) => callback(event.payload as never));
     return () => {
-      unlisten.then((fn) => fn()).catch(() => {});
+      unlisten.then((fn) => fn()).catch(ignoreError);
     };
   },
   onFileOperationProgress: (callback) => {
     const unlisten = listen('file-operation-progress', (event) => callback(event.payload as never));
     return () => {
-      unlisten.then((fn) => fn()).catch(() => {});
+      unlisten.then((fn) => fn()).catch(ignoreError);
     };
   },
   onSystemResumed: (callback) => {
@@ -946,7 +950,7 @@ const tauriAPI: TauriAPI = {
       callback(event.payload as never);
     });
     return () => {
-      unlisten.then((fn) => fn()).catch(() => {});
+      unlisten.then((fn) => fn()).catch(ignoreError);
     };
   },
   onWatchedDirRemoved: (callback) => {
@@ -955,7 +959,7 @@ const tauriAPI: TauriAPI = {
       callback(event.payload as never);
     });
     return () => {
-      unlisten.then((fn) => fn()).catch(() => {});
+      unlisten.then((fn) => fn()).catch(ignoreError);
     };
   },
   onSystemThemeChanged: (callback) => {
@@ -1041,7 +1045,7 @@ const tauriAPI: TauriAPI = {
       });
     });
     return () => {
-      unlisten.then((fn) => fn()).catch(() => {});
+      unlisten.then((fn) => fn()).catch(ignoreError);
     };
   },
   onDirectoryContentsProgress: (callback) => {
@@ -1049,7 +1053,7 @@ const tauriAPI: TauriAPI = {
       callback(event.payload as never);
     });
     return () => {
-      unlisten.then((fn) => fn()).catch(() => {});
+      unlisten.then((fn) => fn()).catch(ignoreError);
     };
   },
   calculateChecksum: async (filePath, operationId, algorithms) => {
@@ -1069,7 +1073,7 @@ const tauriAPI: TauriAPI = {
   onChecksumProgress: (callback) => {
     const unlisten = listen('checksum-progress', (event) => callback(event.payload as never));
     return () => {
-      unlisten.then((fn) => fn()).catch(() => {});
+      unlisten.then((fn) => fn()).catch(ignoreError);
     };
   },
   getGitStatus: async (dirPath, includeUntracked) => {

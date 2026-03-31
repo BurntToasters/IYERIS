@@ -62,8 +62,8 @@
   -webkit-backdrop-filter: none;
   border: 1px solid var(--separator);
   border-radius: var(--radius-large);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
-  z-index: 2000;
+  box-shadow: var(--shadow-lg);
+  z-index: var(--z-modal);
   overflow: hidden;
   animation: slideInFromRight 0.3s cubic-bezier(0.33, 1, 0.68, 1);
 }
@@ -152,7 +152,7 @@
   gap: 8px;
   font-size: 13px;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.9);
+  color: var(--text-primary);
   flex: 1;
   min-width: 0;
 }
@@ -170,8 +170,8 @@
 }
 
 .archive-operation-cancel {
-  background: rgba(255, 59, 48, 0.15);
-  border: 1px solid rgba(255, 59, 48, 0.3);
+  background: color-mix(in srgb, var(--danger-color) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--danger-color) 30%, transparent);
   border-radius: 6px;
   padding: 4px 10px;
   font-size: 11px;
@@ -189,8 +189,8 @@
 }
 
 .archive-operation-cancel:hover {
-  background: rgba(255, 59, 48, 0.25);
-  border-color: rgba(255, 59, 48, 0.5);
+  background: color-mix(in srgb, var(--danger-color) 25%, transparent);
+  border-color: color-mix(in srgb, var(--danger-color) 50%, transparent);
 }
 
 .archive-operation-cancel:active {
@@ -199,7 +199,7 @@
 
 .archive-operation-file {
   font-size: 12px;
-  color: rgba(255, 255, 255, 0.6);
+  color: color-mix(in srgb, var(--text-primary) 60%, transparent);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -208,13 +208,13 @@
 
 .archive-operation-stats {
   font-size: 11px;
-  color: rgba(255, 255, 255, 0.5);
+  color: color-mix(in srgb, var(--text-primary) 50%, transparent);
   margin-bottom: 8px;
 }
 
 .archive-progress-bar-container {
   height: 4px;
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--active-color);
   border-radius: 2px;
   overflow: hidden;
 }
@@ -241,6 +241,11 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--text-primary) 30%, transparent),
+    transparent
+  );
   animation: progress-shimmer 1.5s infinite;
 }

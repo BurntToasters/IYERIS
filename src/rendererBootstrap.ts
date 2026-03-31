@@ -316,6 +316,25 @@ export function createBootstrapController(config: BootstrapConfig) {
 
       const cleanupWatchedDirRemoved = window.tauriAPI.onWatchedDirRemoved(({ dirPath }) => {
         devLog('Watcher', 'watched-dir-removed event received', { dirPath });
+        const currentPath = config.getCurrentPath();
+        const currentPathKey = normalizePathForWatcher(currentPath || '');
+        const removedPathKey = normalizePathForWatcher(dirPath || '');
+        if (!currentPathKey || !removedPathKey) {
+          return;
+        }
+        const separator = removedPathKey.includes('\\') ? '\\' : '/';
+        const currentPathWithinRemoved =
+          currentPathKey === removedPathKey ||
+          currentPathKey.startsWith(`${removedPathKey}${separator}`);
+        if (!currentPathWithinRemoved) {
+          devLog('Watcher', 'Ignored watched-dir-removed event (path mismatch)', {
+            currentPath: currentPath || '',
+            eventPath: dirPath || '',
+            currentPathKey,
+            eventPathKey: removedPathKey,
+          });
+          return;
+        }
         config.showToast('This folder was deleted.', 'Folder removed', 'warning');
         config.goUp();
       });

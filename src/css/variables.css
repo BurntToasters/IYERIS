@@ -11,6 +11,7 @@
   --text-primary: #ffffff;
   --text-secondary: rgba(255, 255, 255, 0.8);
   --text-tertiary: rgba(255, 255, 255, 0.75);
+  --text-on-accent: #ffffff;
   --accent-color: #0078d4;
   --accent-rgb: 0, 120, 212;
   --accent-hover: #106ebe;
@@ -172,6 +173,24 @@
   --spacing-xxxl: 16px;
   --spacing-huge: 20px;
   --spacing-massive: 24px;
+
+  --z-component: 10;
+  --z-sidebar: 20;
+  --z-sidebar-header: 50;
+  --z-toolbar: 100;
+  --z-navigation: 200;
+  --z-modal-backdrop: 500;
+  --z-dropdown: 1000;
+  --z-dropdown-above: 1001;
+  --z-modal: 2000;
+  --z-zoom: 2500;
+  --z-modal-stacked: 3000;
+  --z-tour: 3200;
+  --z-command-palette: 5000;
+  --z-progress: 9000;
+  --z-toast: 10000;
+  --z-toast-above: 10001;
+  --z-tooltip: 99999;
 }
 
 body.platform-darwin {

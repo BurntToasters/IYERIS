@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { Settings } from '../types';
 
 vi.mock('../rendererDom.js', () => ({ clearHtml: vi.fn() }));
-vi.mock('../shared.js', () => ({ escapeHtml: (s: string) => s }));
+vi.mock('../shared.js', () => ({ escapeHtml: (s: string) => s, ignoreError: () => {} }));
 vi.mock('../rendererUtils.js', () => ({ twemojiImg: () => '<img />' }));
 
 import { createTabsController, type TabData } from '../rendererTabs';
@@ -245,7 +245,7 @@ describe('createTabsController', () => {
       ctrl.closeTab('tab-b');
 
       expect(deps._getTabs().length).toBe(1);
-      expect(deps._getTabs()[0].id).toBe('tab-a');
+      expect(deps._getTabs()[0]!.id).toBe('tab-a');
     });
 
     it('does not close the last remaining tab', () => {
@@ -253,7 +253,7 @@ describe('createTabsController', () => {
       const ctrl = createTabsController(deps);
       ctrl.initializeTabs();
 
-      const tabId = deps._getTabs()[0].id;
+      const tabId = deps._getTabs()[0]!.id;
       ctrl.closeTab(tabId);
 
       expect(deps._getTabs().length).toBe(1);
@@ -408,12 +408,12 @@ describe('createTabsController', () => {
       const ctrl = createTabsController(deps);
       ctrl.initializeTabs();
 
-      const tabId = deps._getTabs()[0].id;
+      const tabId = deps._getTabs()[0]!.id;
       deps.setActiveTabId(tabId);
 
       ctrl.updateCurrentTabPath('/new/path');
 
-      expect(deps._getTabs()[0].path).toBe('/new/path');
+      expect(deps._getTabs()[0]!.path).toBe('/new/path');
     });
 
     it('does nothing when tabs disabled', () => {

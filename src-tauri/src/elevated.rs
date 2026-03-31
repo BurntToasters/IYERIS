@@ -23,14 +23,39 @@ fn create_temp_script(extension: &str, content: &str) -> Result<std::path::PathB
             .as_nanos(),
         extension
     ));
-    let mut f = std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&script_path)
-        .map_err(|e| format!("Failed to create temp script: {}", e))?;
-    f.write_all(content.as_bytes())
-        .map_err(|e| format!("Failed to write temp script: {}", e))?;
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        let mut f = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o700)
+            .open(&script_path)
+            .map_err(|e| format!("Failed to create temp script: {}", e))?;
+        f.write_all(content.as_bytes())
+            .map_err(|e| format!("Failed to write temp script: {}", e))?;
+    }
+
+    #[cfg(not(unix))]
+    {
+        let mut f = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&script_path)
+            .map_err(|e| format!("Failed to create temp script: {}", e))?;
+        f.write_all(content.as_bytes())
+            .map_err(|e| format!("Failed to write temp script: {}", e))?;
+    }
+
     Ok(script_path)
+}
+
+#[cfg(any(target_os = "windows", target_os = "linux"))]
+fn cleanup_temp_script(script_path: &std::path::Path) {
+    if let Err(e) = std::fs::remove_file(script_path) {
+        log::warn!("[Elevated] Failed to clean up temp script {}: {}", script_path.display(), e);
+    }
 }
 
 #[tauri::command]
@@ -50,11 +75,10 @@ pub async fn elevated_move(source_path: String, dest_path: String) -> Result<(),
 #[tauri::command]
 pub async fn elevated_delete(item_path: String) -> Result<(), String> {
     let path = crate::validate_existing_path(&item_path, "Item")?;
-    if path.parent().is_none() {
-        return Err("Cannot delete a root directory".to_string());
-    }
+    crate::ensure_not_root_path(&path, "delete")?;
+    run_elevated_file_op("delete", &item_path, None).await?;
     crate::undo::clear_undo_redo_for_path(&item_path)?;
-    run_elevated_file_op("delete", &item_path, None).await
+    Ok(())
 }
 
 #[tauri::command]
@@ -153,16 +177,14 @@ async fn run_elevated_file_op(op: &str, source: &str, dest: Option<&str>) -> Res
                     .args([
                         "-Command",
                         &format!(
-                            "Start-Process powershell -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','{}' -Verb RunAs -Wait",
+                            "$p = Start-Process powershell -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','{}' -Verb RunAs -Wait -PassThru; exit $p.ExitCode",
                             ps_escape(&script_path.display().to_string())
                         ),
                     ])
                     .creation_flags(0x08000000)
                     .output()
                     .map_err(|e| e.to_string());
-                if let Err(e) = std::fs::remove_file(&script_path) {
-                    log::warn!("[Elevated] Failed to clean up temp script {}: {}", script_path.display(), e);
-                }
+                cleanup_temp_script(&script_path);
                 result?
             };
 
@@ -263,16 +285,17 @@ pub async fn elevated_move_batch(source_paths: Vec<String>, dest_path: String) -
 pub async fn elevated_delete_batch(item_paths: Vec<String>) -> Result<(), String> {
     for p in &item_paths {
         let path = crate::validate_existing_path(p, "Item")?;
-        if path.parent().is_none() {
-            return Err("Cannot delete a root directory".to_string());
-        }
-        crate::undo::clear_undo_redo_for_path(p)?;
+        crate::ensure_not_root_path(&path, "delete")?;
     }
     let items: Vec<(String, Option<String>)> = item_paths
         .into_iter()
         .map(|s| (s, None))
         .collect();
-    run_elevated_batch_op("delete", items).await
+    run_elevated_batch_op("delete", items.clone()).await?;
+    for (item_path, _) in &items {
+        crate::undo::clear_undo_redo_for_path(item_path)?;
+    }
+    Ok(())
 }
 
 async fn run_elevated_batch_op(op: &str, items: Vec<(String, Option<String>)>) -> Result<(), String> {
@@ -319,16 +342,14 @@ async fn run_elevated_batch_op(op: &str, items: Vec<(String, Option<String>)>) -
                     .args([
                         "-Command",
                         &format!(
-                            "Start-Process powershell -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','{}' -Verb RunAs -Wait",
+                            "$p = Start-Process powershell -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','{}' -Verb RunAs -Wait -PassThru; exit $p.ExitCode",
                             ps_escape(&script_path.display().to_string())
                         ),
                     ])
                     .creation_flags(0x08000000)
                     .output()
                     .map_err(|e| e.to_string());
-                if let Err(e) = std::fs::remove_file(&script_path) {
-                    log::warn!("[Elevated] Failed to clean up temp script {}: {}", script_path.display(), e);
-                }
+                cleanup_temp_script(&script_path);
                 result?
             };
             if !output.status.success() {
@@ -383,19 +404,10 @@ async fn run_elevated_batch_op(op: &str, items: Vec<(String, Option<String>)>) -
             let script_content = lines.join("\n");
             let script_path = create_temp_script("sh", &script_content)?;
 
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                std::fs::set_permissions(&script_path, std::fs::Permissions::from_mode(0o700))
-                    .map_err(|e| format!("Failed to set script permissions: {}", e))?;
-            }
-
             let output = Command::new("pkexec")
                 .args(["sh", &script_path.to_string_lossy()])
                 .output();
-            if let Err(e) = std::fs::remove_file(&script_path) {
-                log::warn!("[Elevated] Failed to clean up temp script {}: {}", script_path.display(), e);
-            }
+            cleanup_temp_script(&script_path);
             let output = output.map_err(|e| e.to_string())?;
             if !output.status.success() {
                 return Err(format!(

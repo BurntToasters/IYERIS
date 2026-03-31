@@ -271,7 +271,6 @@ pub fn clear_undo_stack_for_path(item_path: &str) -> Result<(), String> {
     Ok(())
 }
 
-#[allow(dead_code)]
 pub fn clear_undo_redo_for_path(item_path: &str) -> Result<(), String> {
     clear_undo_stack_for_path(item_path)
 }
@@ -286,45 +285,21 @@ fn get_state() -> Result<UndoRedoState, String> {
 }
 
 fn copy_dir_recursive(source: &Path, dest: &Path) -> Result<(), String> {
-    fs::create_dir_all(dest).map_err(|e| format!("Failed to create directory: {}", e))?;
-    for entry in fs::read_dir(source).map_err(|e| e.to_string())?.filter_map(|e| e.map_err(|err| log::warn!("[Undo] copy_dir entry error: {}", err)).ok()) {
-        let entry_path = entry.path();
-        let target = dest.join(entry.file_name());
-        let meta = fs::symlink_metadata(&entry_path).map_err(|e| e.to_string())?;
-        if meta.file_type().is_symlink() {
-            #[cfg(unix)]
-            {
-                let link_target = fs::read_link(&entry_path).map_err(|e| e.to_string())?;
-                std::os::unix::fs::symlink(&link_target, &target)
-                    .map_err(|e| format!("Failed to create symlink: {}", e))?;
-            }
-            #[cfg(windows)]
-            {
-                let link_target = fs::read_link(&entry_path).map_err(|e| e.to_string())?;
-                let is_dir_link = fs::metadata(&entry_path)
-                    .map(|linked_meta| linked_meta.is_dir())
-                    .unwrap_or(false);
-                if is_dir_link {
-                    std::os::windows::fs::symlink_dir(&link_target, &target)
-                        .map_err(|e| format!("Failed to create symlink: {}", e))?;
-                } else {
-                    std::os::windows::fs::symlink_file(&link_target, &target)
-                        .map_err(|e| format!("Failed to create symlink: {}", e))?;
-                }
-            }
-        } else if meta.is_dir() {
-            copy_dir_recursive(&entry_path, &target)?;
-        } else {
-            fs::copy(&entry_path, &target).map_err(|e| e.to_string())?;
-        }
-    }
-    Ok(())
+    crate::fs_utils::copy_dir_recursive(source, dest)
 }
 
 fn is_cross_device_error(err: &std::io::Error) -> bool {
-    match err.raw_os_error() {
-        Some(code) => code == 18 || code == 17,
-        None => false,
+    #[cfg(unix)]
+    {
+        err.kind() == std::io::ErrorKind::CrossesDevices || matches!(err.raw_os_error(), Some(18))
+    }
+    #[cfg(windows)]
+    {
+        err.kind() == std::io::ErrorKind::CrossesDevices || matches!(err.raw_os_error(), Some(17))
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        err.kind() == std::io::ErrorKind::CrossesDevices
     }
 }
 
@@ -716,9 +691,8 @@ pub async fn undo_action() -> Result<UndoRedoState, String> {
             }
             push_redo_action(UndoAction::BatchRename(data))?;
         }
-        UndoAction::Trash(data) => {
-            push_undo_action(UndoAction::Trash(data), false)?;
-            return Err("Undo for trash actions is not implemented".to_string());
+        UndoAction::Trash(_) => {
+            return Err("Cannot undo: Items sent to trash must be restored from the system trash".to_string());
         }
     }
 
@@ -795,9 +769,8 @@ pub async fn redo_action() -> Result<UndoRedoState, String> {
             }
             push_undo_action(UndoAction::BatchRename(data), false)?;
         }
-        UndoAction::Trash(data) => {
-            push_redo_action(UndoAction::Trash(data))?;
-            return Err("Redo for trash actions is not implemented".to_string());
+        UndoAction::Trash(_) => {
+            return Err("Cannot redo: Items sent to trash must be restored from the system trash".to_string());
         }
     }
 
@@ -818,27 +791,33 @@ mod tests {
     static TEST_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
     fn clear_stacks() {
-        UNDO_STACK.lock().unwrap().clear();
-        REDO_STACK.lock().unwrap().clear();
+        UNDO_STACK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clear();
+        REDO_STACK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clear();
     }
 
     #[test]
     fn push_undo_action_caps_at_max_size() {
-        let _guard = TEST_LOCK.lock().unwrap();
+        let _guard = TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
         clear_stacks();
         for i in 0..(MAX_UNDO_STACK_SIZE + 10) {
             let path = PathBuf::from(format!("C:/tmp/test-{}", i));
             push_create_action(&path, false).unwrap();
         }
-        let undo_len = UNDO_STACK.lock().unwrap().len();
-        let redo_len = REDO_STACK.lock().unwrap().len();
+        let undo_len = UNDO_STACK.lock().unwrap_or_else(|p| p.into_inner()).len();
+        let redo_len = REDO_STACK.lock().unwrap_or_else(|p| p.into_inner()).len();
         assert_eq!(undo_len, MAX_UNDO_STACK_SIZE);
         assert_eq!(redo_len, 0);
     }
 
     #[test]
     fn clear_path_prunes_related_rename_chain() {
-        let _guard = TEST_LOCK.lock().unwrap();
+        let _guard = TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
         clear_stacks();
         let a = PathBuf::from("C:/tmp/a.txt");
         let b = PathBuf::from("C:/tmp/b.txt");
@@ -846,7 +825,7 @@ mod tests {
         push_rename_action(&a, &b).unwrap();
         push_rename_action(&b, &c).unwrap();
         clear_undo_stack_for_path("C:/tmp/c.txt").unwrap();
-        let undo_len = UNDO_STACK.lock().unwrap().len();
+        let undo_len = UNDO_STACK.lock().unwrap_or_else(|p| p.into_inner()).len();
         assert_eq!(undo_len, 0);
     }
 }

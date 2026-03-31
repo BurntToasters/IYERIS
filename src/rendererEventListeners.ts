@@ -193,7 +193,7 @@ export function createEventListenersController(config: EventListenersConfig) {
         if (previousSavedState) {
           Object.keys(currentFormState).forEach((key) => {
             if (currentFormState[key] !== previousSavedState[key]) {
-              mergedState[key] = currentFormState[key];
+              mergedState[key] = currentFormState[key] as string | boolean;
             }
           });
         }
@@ -377,6 +377,17 @@ export function createEventListenersController(config: EventListenersConfig) {
     'ArrowRight',
     'Delete',
   ]);
+  const EDITABLE_SAFE_SHORTCUT_ACTIONS = new Set([
+    'command-palette',
+    'settings',
+    'shortcuts',
+    'search',
+    'global-search',
+    'new-window',
+    'zoom-in',
+    'zoom-out',
+    'zoom-reset',
+  ]);
 
   const shortcutActions: Record<string, () => void> = {
     'command-palette': () => config.showCommandPalette(),
@@ -419,6 +430,9 @@ export function createEventListenersController(config: EventListenersConfig) {
   };
 
   function runShortcutAction(actionId: string, e: KeyboardEvent): boolean {
+    if (isEditableElementActive() && !EDITABLE_SAFE_SHORTCUT_ACTIONS.has(actionId)) {
+      return false;
+    }
     if (actionId === 'copy' && hasTextSelection()) return false;
     if (actionId === 'cut' && hasTextSelection()) return false;
     if ((actionId === 'paste' || actionId === 'select-all') && isEditableElementActive())
@@ -434,7 +448,7 @@ export function createEventListenersController(config: EventListenersConfig) {
             actionId === 'next-tab'
               ? (currentIndex + 1) % tabs.length
               : (currentIndex - 1 + tabs.length) % tabs.length;
-          config.switchToTab(tabs[nextIndex].id);
+          config.switchToTab(tabs[nextIndex]!.id);
         }
       }
       return true;
@@ -646,7 +660,8 @@ export function createEventListenersController(config: EventListenersConfig) {
       const pane = PANE_ORDER[idx];
 
       if (pane === 'sidebar') {
-        const sidebar = document.getElementById('sidebar');
+        const sidebar =
+          document.getElementById('sidebar') || document.querySelector<HTMLElement>('.sidebar');
         if (!sidebar || sidebar.classList.contains('collapsed')) continue;
         const treeItem = sidebar.querySelector<HTMLElement>('.tree-item[tabindex="0"]');
         if (treeItem) {
@@ -670,7 +685,8 @@ export function createEventListenersController(config: EventListenersConfig) {
 
   function initGlobalClickListeners(): void {
     document.addEventListener('click', (e) => {
-      const target = e.target as HTMLElement;
+      if (!(e.target instanceof HTMLElement)) return;
+      const target = e.target;
       const contextMenu = document.getElementById('context-menu');
       const emptySpaceMenu = document.getElementById('empty-space-context-menu');
       const sortMenu = document.getElementById('sort-menu');
@@ -736,9 +752,10 @@ export function createEventListenersController(config: EventListenersConfig) {
 
   function initContextMenuListeners(): void {
     document.addEventListener('contextmenu', (e) => {
-      if (!(e.target as HTMLElement).closest('.file-item')) {
+      if (!(e.target instanceof HTMLElement) || !e.target.closest('.file-item')) {
         e.preventDefault();
-        const target = e.target as HTMLElement;
+        if (!(e.target instanceof HTMLElement)) return;
+        const target = e.target;
         const clickedOnFileView =
           target.closest('#file-view') ||
           target.id === 'file-view' ||

@@ -12,6 +12,7 @@
     <link rel="stylesheet" href="css/twemoji.css" />
   </head>
   <body>
+    <a href="#file-grid" class="skip-link">Skip to file list</a>
     <div id="sr-announcements" class="sr-only" aria-live="polite" aria-atomic="true"></div>
     <div class="titlebar" role="banner" data-tauri-drag-region>
       <div class="titlebar-drag-handle" data-tauri-drag-region aria-hidden="true"></div>
@@ -89,7 +90,7 @@
     </div>
 
     <div class="container">
-      <nav class="sidebar glass-panel" aria-label="Main navigation">
+      <nav class="sidebar glass-panel" id="sidebar" aria-label="Main navigation">
         <div class="sidebar-section quick-actions">
           <div class="section-header">
             <button
@@ -525,6 +526,7 @@
                 title="Sort Options"
                 aria-label="Sort options"
                 aria-haspopup="true"
+                aria-expanded="false"
               >
                 <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
                   <path
@@ -3873,7 +3875,12 @@
         <div class="command-palette-content" id="command-palette-content">
           <div class="command-palette-section">
             <div class="command-palette-section-title">Commands</div>
-            <div id="command-palette-results" class="command-palette-results"></div>
+            <div
+              id="command-palette-results"
+              class="command-palette-results"
+              role="listbox"
+              aria-live="polite"
+            ></div>
           </div>
           <div class="command-palette-empty" id="command-palette-empty" style="display: none">
             <img

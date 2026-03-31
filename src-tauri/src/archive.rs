@@ -9,6 +9,8 @@ use tauri::Emitter;
 static ACTIVE_OPS: std::sync::LazyLock<Mutex<HashSet<String>>> =
     std::sync::LazyLock::new(|| Mutex::new(HashSet::new()));
 
+const MAX_DECOMPRESSED_SIZE: u64 = 53_687_091_200; // 50 GB
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ArchiveEntry {
@@ -22,17 +24,34 @@ pub struct ArchiveEntry {
 fn is_active(op_id: &str) -> bool {
     match ACTIVE_OPS.lock() {
         Ok(s) => s.contains(op_id),
-        Err(e) => {
-            log::warn!("[Archive] ACTIVE_OPS mutex poisoned: {}", e);
-            false
+        Err(poisoned) => {
+            log::warn!("[Archive] ACTIVE_OPS mutex poisoned, recovering");
+            poisoned.into_inner().contains(op_id)
         }
     }
 }
 
 fn safe_entry_path(entry_name: &str, dest: &Path) -> Result<PathBuf, String> {
+    let mut component_path = dest.to_path_buf();
     for component in std::path::Path::new(entry_name).components() {
-        if matches!(component, std::path::Component::ParentDir) {
-            return Err(format!("Path traversal detected: {}", entry_name));
+        match component {
+            std::path::Component::ParentDir
+            | std::path::Component::RootDir
+            | std::path::Component::Prefix(_) => {
+                return Err(format!("Path traversal detected: {}", entry_name));
+            }
+            std::path::Component::CurDir => {}
+            std::path::Component::Normal(part) => {
+                component_path.push(part);
+                if let Ok(meta) = fs::symlink_metadata(&component_path) {
+                    if meta.file_type().is_symlink() {
+                        return Err(format!(
+                            "Refusing to extract through symlink path: {}",
+                            entry_name
+                        ));
+                    }
+                }
+            }
         }
     }
 
@@ -55,6 +74,41 @@ fn safe_entry_path(entry_name: &str, dest: &Path) -> Result<PathBuf, String> {
     Ok(path)
 }
 
+fn ensure_path_within_dest(path: &Path, dest: &Path, entry_name: &str) -> Result<(), String> {
+    let canonical_dest = dest.canonicalize().unwrap_or_else(|_| dest.to_path_buf());
+    let canonical_path = path
+        .canonicalize()
+        .map_err(|e| format!("Failed to resolve extraction path for {}: {}", entry_name, e))?;
+    if !canonical_path.starts_with(&canonical_dest) {
+        return Err(format!("Path traversal detected: {}", entry_name));
+    }
+    Ok(())
+}
+
+fn canonicalize_for_comparison(path: &Path) -> PathBuf {
+    if let Ok(canonical) = path.canonicalize() {
+        return canonical;
+    }
+
+    let absolute = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir()
+            .unwrap_or_else(|_| PathBuf::from("/"))
+            .join(path)
+    };
+
+    if let Some(parent) = absolute.parent() {
+        if let Ok(canonical_parent) = parent.canonicalize() {
+            if let Some(name) = absolute.file_name() {
+                return canonical_parent.join(name);
+            }
+        }
+    }
+
+    absolute
+}
+
 #[tauri::command]
 pub async fn compress_files(
     source_paths: Vec<String>,
@@ -67,8 +121,18 @@ pub async fn compress_files(
 ) -> Result<(), String> {
     log::debug!("[Archive] compress: {} items -> {} (fmt={:?})", source_paths.len(), output_path, format);
     let output = crate::validate_path(&output_path, "Output")?;
+    let output_cmp = canonicalize_for_comparison(&output);
     for source in &source_paths {
-        crate::validate_existing_path(source, "Source")?;
+        let source_path = crate::validate_existing_path(source, "Source")?;
+        let source_cmp = source_path
+            .canonicalize()
+            .unwrap_or_else(|_| source_path.clone());
+        if source_cmp == output_cmp || output_cmp.starts_with(&source_cmp) {
+            return Err(format!(
+                "Output path cannot be the same as or inside source path: {}",
+                source_path.display()
+            ));
+        }
     }
     let fmt = format.unwrap_or_else(|| "zip".to_string());
     let op_id = operation_id.unwrap_or_default();
@@ -347,6 +411,7 @@ pub async fn extract_archive(
     log::debug!("[Archive] extract: {} -> {}", archive_path, dest_path);
     let archive = crate::validate_existing_path(&archive_path, "Archive")?;
     let dest = crate::validate_path(&dest_path, "Destination")?;
+    let dest_preexisted = dest.exists();
     fs::create_dir_all(&dest).map_err(|e| e.to_string())?;
     let op_id = operation_id.unwrap_or_default();
 
@@ -384,6 +449,10 @@ pub async fn extract_archive(
         }
     }
 
+    if !matches!(&result, Ok(Ok(()))) && !dest_preexisted {
+        let _ = fs::remove_dir_all(&dest_path);
+    }
+
     result.map_err(|e| e.to_string())?
 }
 
@@ -396,6 +465,7 @@ fn extract_zip(
     let file = fs::File::open(archive).map_err(|e| e.to_string())?;
     let mut zip = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
     let total = zip.len();
+    let mut cumulative_bytes: u64 = 0;
 
     for i in 0..total {
         if !op_id.is_empty() && !is_active(op_id) {
@@ -415,12 +485,22 @@ fn extract_zip(
 
         if entry.is_dir() {
             fs::create_dir_all(&out_path).map_err(|e| e.to_string())?;
+            ensure_path_within_dest(&out_path, dest, &name)?;
         } else {
+            let entry_size = entry.size();
+            if cumulative_bytes.saturating_add(entry_size) > MAX_DECOMPRESSED_SIZE {
+                return Err("Decompressed size limit exceeded (50 GB)".to_string());
+            }
             if let Some(parent) = out_path.parent() {
                 fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+                ensure_path_within_dest(parent, dest, &name)?;
             }
             let mut outfile = fs::File::create(&out_path).map_err(|e| e.to_string())?;
-            std::io::copy(&mut entry, &mut outfile).map_err(|e| e.to_string())?;
+            let written = std::io::copy(&mut entry, &mut outfile).map_err(|e| e.to_string())?;
+            cumulative_bytes = cumulative_bytes.saturating_add(written);
+            if cumulative_bytes > MAX_DECOMPRESSED_SIZE {
+                return Err("Decompressed size limit exceeded (50 GB)".to_string());
+            }
         }
     }
 
@@ -459,9 +539,10 @@ fn extract_7z(
     let file = fs::File::open(archive).map_err(|e| e.to_string())?;
     let reader = BufReader::new(file);
     let mut count = 0usize;
-    sevenz_rust::decompress_with_extract_fn(reader, dest, |entry, reader, dest_path| {
+    let mut cumulative_bytes: u64 = 0;
+    sevenz_rust::decompress_with_extract_fn(reader, dest, |entry, reader, _dest_path| {
         if !op_id.is_empty() && !is_active(op_id) {
-            return Ok(false);
+            return Err(sevenz_rust::Error::other("Operation cancelled"));
         }
         count += 1;
         let name = entry.name().to_string();
@@ -471,20 +552,41 @@ fn extract_7z(
             "total": 0,
             "name": name.clone(),
         }));
-        let out_path = safe_entry_path(entry.name(), dest_path)
+        let out_path = safe_entry_path(entry.name(), dest)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
         if entry.is_directory() {
             fs::create_dir_all(&out_path).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+            ensure_path_within_dest(&out_path, dest, &name)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
         } else {
+            let entry_size = entry.size() as u64;
+            if cumulative_bytes.saturating_add(entry_size) > MAX_DECOMPRESSED_SIZE {
+                return Err(sevenz_rust::Error::other(
+                    "Decompressed size limit exceeded (50 GB)",
+                ));
+            }
             if let Some(parent) = out_path.parent() {
                 fs::create_dir_all(parent).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+                ensure_path_within_dest(parent, dest, &name)
+                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
             }
             let mut outfile = fs::File::create(&out_path).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
-            std::io::copy(reader, &mut outfile).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+            let written = std::io::copy(reader, &mut outfile).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+            cumulative_bytes = cumulative_bytes.saturating_add(written);
+            if cumulative_bytes > MAX_DECOMPRESSED_SIZE {
+                return Err(sevenz_rust::Error::other(
+                    "Decompressed size limit exceeded (50 GB)",
+                ));
+            }
         }
         Ok(true)
     })
-    .map_err(|e| e.to_string())
+    .map_err(|e| match e {
+        sevenz_rust::Error::Other(message) if message.as_ref() == "Operation cancelled" => {
+            "Operation cancelled".to_string()
+        }
+        other => other.to_string(),
+    })
 }
 
 fn extract_tar_xz(
@@ -506,17 +608,31 @@ fn extract_tar_entries<R: std::io::Read>(
     webview: &tauri::WebviewWindow,
 ) -> Result<(), String> {
     let mut count = 0usize;
+    let mut cumulative_bytes: u64 = 0;
     for entry in tar.entries().map_err(|e| e.to_string())? {
         if !op_id.is_empty() && !is_active(op_id) {
             return Err("Operation cancelled".to_string());
         }
 
         let mut entry = entry.map_err(|e| e.to_string())?;
+        let entry_type = entry.header().entry_type();
         let name = entry
             .path()
             .map_err(|e| e.to_string())?
             .to_string_lossy()
             .to_string();
+
+        if entry_type.is_symlink() || entry_type.is_hard_link() {
+            return Err(format!(
+                "Symlink and hard link entries are not supported: {}",
+                name
+            ));
+        }
+
+        cumulative_bytes = cumulative_bytes.saturating_add(entry.size());
+        if cumulative_bytes > MAX_DECOMPRESSED_SIZE {
+            return Err("Decompressed size limit exceeded (50 GB)".to_string());
+        }
 
         count += 1;
         let _ = webview.emit("extract-progress", serde_json::json!({
@@ -591,7 +707,7 @@ pub async fn list_archive_contents(archive_path: String) -> Result<Vec<ArchiveEn
                         is_directory: entry.is_directory(),
                         compressed_size: entry.compressed_size as u64,
                     });
-                    Ok(false)
+                    Ok(true)
                 })
                 .map_err(|e| e.to_string())?;
                 Ok(entries)

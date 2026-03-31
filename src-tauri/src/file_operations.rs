@@ -12,6 +12,14 @@ use tauri::Emitter;
 static ACTIVE_CHECKSUMS: std::sync::LazyLock<Mutex<HashSet<String>>> =
     std::sync::LazyLock::new(|| Mutex::new(HashSet::new()));
 
+static FILE_OP_LOCK: std::sync::LazyLock<Mutex<()>> =
+    std::sync::LazyLock::new(|| Mutex::new(()));
+
+const DEFAULT_READ_FILE_CONTENT_LIMIT_BYTES: u64 = 10 * 1024 * 1024;
+const MAX_READ_FILE_CONTENT_LIMIT_BYTES: u64 = 64 * 1024 * 1024;
+const DEFAULT_FILE_DATA_URL_LIMIT_BYTES: u64 = 50 * 1024 * 1024;
+const MAX_FILE_DATA_URL_LIMIT_BYTES: u64 = 100 * 1024 * 1024;
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ItemProperties {
@@ -175,9 +183,7 @@ pub async fn create_file(parent_path: String, file_name: String) -> Result<Strin
 pub async fn delete_item(item_path: String) -> Result<(), String> {
     log::debug!("[FileOps] delete_item: {}", item_path);
     let path = crate::validate_existing_path(&item_path, "Item")?;
-    if path.parent().is_none() {
-        return Err("Cannot delete a root directory".to_string());
-    }
+    crate::ensure_not_root_path(&path, "delete")?;
     let result = if path.is_dir() {
         fs::remove_dir_all(&path).map_err(|e| format!("Failed to delete directory: {}", e))
     } else {
@@ -193,9 +199,7 @@ pub async fn delete_item(item_path: String) -> Result<(), String> {
 pub async fn trash_item(item_path: String) -> Result<(), String> {
     log::debug!("[FileOps] trash_item: {}", item_path);
     let path = crate::validate_existing_path(&item_path, "Item")?;
-    if path.parent().is_none() {
-        return Err("Cannot trash a root directory".to_string());
-    }
+    crate::ensure_not_root_path(&path, "trash")?;
     let result = trash::delete(&path).map_err(|e| format!("Failed to trash item: {}", e));
     if result.is_ok() {
         undo::clear_undo_redo_for_path(&path.to_string_lossy())?;
@@ -258,6 +262,7 @@ pub async fn copy_items(
     app: tauri::AppHandle,
 ) -> Result<(), String> {
     log::debug!("[FileOps] copy_items: {} items -> {}", source_paths.len(), dest_path);
+    let _lock = FILE_OP_LOCK.lock().map_err(|e| format!("File operation lock error: {}", e))?;
     let dest = crate::validate_existing_path(&dest_path, "Destination")?;
     let behavior = conflict_behavior.unwrap_or_else(|| "ask".to_string());
     let resolutions = conflict_resolutions.unwrap_or_default();
@@ -314,40 +319,7 @@ pub async fn copy_items(
 }
 
 fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<(), String> {
-    fs::create_dir_all(dest).map_err(|e| format!("Failed to create directory: {}", e))?;
-    for entry_result in fs::read_dir(src).map_err(|e| e.to_string())? {
-        let entry = entry_result.map_err(|e| e.to_string())?;
-        let entry_path = entry.path();
-        let target = dest.join(entry.file_name());
-        let meta = fs::symlink_metadata(&entry_path).map_err(|e| e.to_string())?;
-        if meta.file_type().is_symlink() {
-            #[cfg(unix)]
-            {
-                let link_target = fs::read_link(&entry_path).map_err(|e| e.to_string())?;
-                std::os::unix::fs::symlink(&link_target, &target)
-                    .map_err(|e| format!("Failed to create symlink: {}", e))?;
-            }
-            #[cfg(windows)]
-            {
-                let link_target = fs::read_link(&entry_path).map_err(|e| e.to_string())?;
-                let is_dir_link = fs::symlink_metadata(&entry_path)
-                    .map(|linked_meta| linked_meta.is_dir())
-                    .unwrap_or(false);
-                if is_dir_link {
-                    std::os::windows::fs::symlink_dir(&link_target, &target)
-                        .map_err(|e| format!("Failed to create symlink: {}", e))?;
-                } else {
-                    std::os::windows::fs::symlink_file(&link_target, &target)
-                        .map_err(|e| format!("Failed to create symlink: {}", e))?;
-                }
-            }
-        } else if meta.is_dir() {
-            copy_dir_recursive(&entry_path, &target)?;
-        } else {
-            fs::copy(&entry_path, &target).map_err(|e| e.to_string())?;
-        }
-    }
-    Ok(())
+    crate::fs_utils::copy_dir_recursive(src, dest)
 }
 
 fn copy_symlink_path(source: &Path, target: &Path) -> Result<(), String> {
@@ -361,10 +333,11 @@ fn copy_symlink_path(source: &Path, target: &Path) -> Result<(), String> {
 
     #[cfg(windows)]
     {
-        let source_meta = fs::symlink_metadata(source).map_err(|e| e.to_string())?;
-        let is_dir_link = source_meta.is_dir() || fs::metadata(source)
+        let is_dir_link = fs::metadata(source)
             .map(|m| m.is_dir())
-            .unwrap_or(false);
+            .unwrap_or_else(|_| {
+                link_target.is_dir()
+            });
         if is_dir_link {
             std::os::windows::fs::symlink_dir(&link_target, target)
                 .map_err(|e| format!("Failed to create symlink: {}", e))
@@ -407,6 +380,7 @@ pub async fn move_items(
     app: tauri::AppHandle,
 ) -> Result<(), String> {
     log::debug!("[FileOps] move_items: {} items -> {}", source_paths.len(), dest_path);
+    let _lock = FILE_OP_LOCK.lock().map_err(|e| format!("File operation lock error: {}", e))?;
     let dest = crate::validate_existing_path(&dest_path, "Destination")?;
     let behavior = conflict_behavior.unwrap_or_else(|| "ask".to_string());
     let resolutions = conflict_resolutions.unwrap_or_default();
@@ -663,7 +637,18 @@ fn plan_file_operations(
 }
 
 fn is_cross_device_error(err: &std::io::Error) -> bool {
-    matches!(err.raw_os_error(), Some(17) | Some(18))
+    #[cfg(unix)]
+    {
+        err.kind() == std::io::ErrorKind::CrossesDevices || matches!(err.raw_os_error(), Some(18))
+    }
+    #[cfg(windows)]
+    {
+        err.kind() == std::io::ErrorKind::CrossesDevices || matches!(err.raw_os_error(), Some(17))
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        err.kind() == std::io::ErrorKind::CrossesDevices
+    }
 }
 
 fn move_path_with_fallback(source: &Path, target: &Path) -> Result<(), String> {
@@ -796,7 +781,14 @@ fn remove_paths_reversed(paths: &[PathBuf]) {
 
 fn rollback_moves(completed: &[CompletedMove]) {
     for item in completed.iter().rev() {
-        let _ = move_path_with_fallback(&item.dest_path, &item.source_path);
+        if let Err(e) = move_path_with_fallback(&item.dest_path, &item.source_path) {
+            log::error!(
+                "[FileOps] Rollback failed: {} -> {}: {}",
+                item.dest_path.display(),
+                item.source_path.display(),
+                e
+            );
+        }
     }
 }
 
@@ -988,7 +980,9 @@ pub async fn read_file_content(
     max_size: Option<u64>,
 ) -> Result<String, String> {
     let path = crate::validate_existing_path(&file_path, "File")?;
-    let limit = max_size.unwrap_or(10 * 1024 * 1024);
+    let limit = max_size
+        .unwrap_or(DEFAULT_READ_FILE_CONTENT_LIMIT_BYTES)
+        .min(MAX_READ_FILE_CONTENT_LIMIT_BYTES);
 
     tokio::task::spawn_blocking(move || {
         let meta = fs::metadata(&path).map_err(|e| e.to_string())?;
@@ -1015,7 +1009,9 @@ pub async fn get_file_data_url(
     max_size: Option<u64>,
 ) -> Result<String, String> {
     let path = crate::validate_existing_path(&file_path, "File")?;
-    let limit = max_size.unwrap_or(50 * 1024 * 1024);
+    let limit = max_size
+        .unwrap_or(DEFAULT_FILE_DATA_URL_LIMIT_BYTES)
+        .min(MAX_FILE_DATA_URL_LIMIT_BYTES);
 
     tokio::task::spawn_blocking(move || {
         let meta = fs::metadata(&path).map_err(|e| e.to_string())?;
@@ -1212,6 +1208,7 @@ pub async fn batch_rename(
                     "[FileOps] batch_rename: failed to restore staged temp {:?} to {:?}: {}",
                     temp_path, original_path, e
                 );
+                let _ = fs::remove_file(temp_path);
             }
         }
     }
@@ -1235,13 +1232,20 @@ pub async fn create_symlink(target_path: String, link_path: String) -> Result<()
 
     #[cfg(target_os = "windows")]
     {
-        if target.is_dir() {
+        let result = if target.is_dir() {
             std::os::windows::fs::symlink_dir(&target, &link)
-                .map_err(|e| format!("Failed to create symlink: {}", e))
         } else {
             std::os::windows::fs::symlink_file(&target, &link)
-                .map_err(|e| format!("Failed to create symlink: {}", e))
-        }
+        };
+        result.map_err(|e| {
+            if e.raw_os_error() == Some(1314) {
+                "Creating symlinks requires administrator privileges on Windows. \
+                 Run the app as administrator or enable Developer Mode in Windows Settings."
+                    .to_string()
+            } else {
+                format!("Failed to create symlink: {}", e)
+            }
+        })
     }
 }
 
@@ -1657,19 +1661,26 @@ fn get_windows_system_clipboard_text_paths() -> Vec<String> {
                 Err(_) => return Vec::new(),
             };
 
-            let ptr = GlobalLock(std::mem::transmute::<_, HGLOBAL>(handle.0));
+            let hglobal = std::mem::transmute::<_, HGLOBAL>(handle.0);
+            let ptr = GlobalLock(hglobal);
             if ptr.is_null() {
+                return Vec::new();
+            }
+
+            let max_units = GlobalSize(hglobal) / std::mem::size_of::<u16>();
+            if max_units == 0 {
+                let _ = GlobalUnlock(hglobal);
                 return Vec::new();
             }
 
             let wide = ptr as *const u16;
             let mut len = 0usize;
-            while *wide.add(len) != 0 {
+            while len < max_units && *wide.add(len) != 0 {
                 len += 1;
             }
             let slice = std::slice::from_raw_parts(wide, len);
             let text = String::from_utf16_lossy(slice);
-            let _ = GlobalUnlock(std::mem::transmute::<_, HGLOBAL>(handle.0));
+            let _ = GlobalUnlock(hglobal);
             parse_clipboard_paths(&text)
         })();
 
@@ -1961,36 +1972,60 @@ pub async fn calculate_checksum(
                 "sha512" => {
                     let mut hasher = Sha512::new();
                     let mut buf = [0u8; 8192];
+                    let mut read_total = 0u64;
                     use std::io::Seek;
                     file.seek(std::io::SeekFrom::Start(0)).map_err(|e| e.to_string())?;
                     loop {
                         let n = file.read(&mut buf).map_err(|e| e.to_string())?;
                         if n == 0 { break; }
                         hasher.update(&buf[..n]);
+                        read_total += n as u64;
+                        if read_total % (1024 * 1024) == 0 {
+                            let percent = if file_size > 0 { (read_total as f64 / file_size as f64) * 100.0 } else { 100.0 };
+                            let _ = webview.emit("checksum-progress", serde_json::json!({
+                                "operationId": op_id, "percent": percent, "algorithm": algo
+                            }));
+                        }
                     }
                     hex::encode(hasher.finalize())
                 },
                 "md5" => {
                     let mut hasher = Md5::new();
                     let mut buf = [0u8; 8192];
+                    let mut read_total = 0u64;
                     use std::io::Seek;
                     file.seek(std::io::SeekFrom::Start(0)).map_err(|e| e.to_string())?;
                     loop {
                         let n = file.read(&mut buf).map_err(|e| e.to_string())?;
                         if n == 0 { break; }
                         hasher.update(&buf[..n]);
+                        read_total += n as u64;
+                        if read_total % (1024 * 1024) == 0 {
+                            let percent = if file_size > 0 { (read_total as f64 / file_size as f64) * 100.0 } else { 100.0 };
+                            let _ = webview.emit("checksum-progress", serde_json::json!({
+                                "operationId": op_id, "percent": percent, "algorithm": algo
+                            }));
+                        }
                     }
                     hex::encode(hasher.finalize())
                 },
                 "crc32" => {
                     let mut hasher = crc32fast::Hasher::new();
                     let mut buf = [0u8; 8192];
+                    let mut read_total = 0u64;
                     use std::io::Seek;
                     file.seek(std::io::SeekFrom::Start(0)).map_err(|e| e.to_string())?;
                     loop {
                         let n = file.read(&mut buf).map_err(|e| e.to_string())?;
                         if n == 0 { break; }
                         hasher.update(&buf[..n]);
+                        read_total += n as u64;
+                        if read_total % (1024 * 1024) == 0 {
+                            let percent = if file_size > 0 { (read_total as f64 / file_size as f64) * 100.0 } else { 100.0 };
+                            let _ = webview.emit("checksum-progress", serde_json::json!({
+                                "operationId": op_id, "percent": percent, "algorithm": algo
+                            }));
+                        }
                     }
                     format!("{:08x}", hasher.finalize())
                 },

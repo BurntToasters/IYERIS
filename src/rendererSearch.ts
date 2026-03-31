@@ -25,6 +25,7 @@ type SearchDeps = {
   setHomeViewActive: (active: boolean) => void;
   searchDebounceMs: number;
   searchHistoryMax: number;
+  announceToScreenReader?: (message: string) => void;
 };
 
 export function createSearchController(deps: SearchDeps) {
@@ -193,11 +194,13 @@ export function createSearchController(deps: SearchDeps) {
     }
   }
 
-  function closeSearch() {
+  function closeSearch(options: { restoreCurrentPath?: boolean } = {}) {
     ensureElements();
     if (!searchBarWrapper || !searchInput || !searchScopeToggle || !searchFiltersPanel) return;
+    const shouldRestoreCurrentPath = options.restoreCurrentPath ?? true;
     searchRequestId += 1;
     cancelActiveSearch();
+    deps.hideLoading();
     if (searchDebounceTimeout) {
       clearTimeout(searchDebounceTimeout);
       searchDebounceTimeout = null;
@@ -225,7 +228,7 @@ export function createSearchController(deps: SearchDeps) {
     syncSaveBtnState();
 
     const currentPath = deps.getCurrentPath();
-    if (currentPath) {
+    if (shouldRestoreCurrentPath && currentPath) {
       deps.navigateTo(currentPath);
     }
   }
@@ -305,6 +308,8 @@ export function createSearchController(deps: SearchDeps) {
   }
 
   async function performSearch() {
+    let loadingShown = false;
+    let operationIdForCleanup: string | null = null;
     try {
       ensureElements();
       if (!searchInput) return;
@@ -326,6 +331,7 @@ export function createSearchController(deps: SearchDeps) {
       cancelActiveSearch();
       const operationId = deps.createDirectoryOperationId('search');
       activeSearchOperationId = operationId;
+      operationIdForCleanup = operationId;
 
       // Validate regex BEFORE touching history or clearing the grid
       const hasFilters = hasActiveFilters() || searchInContents || isRegexMode;
@@ -354,6 +360,7 @@ export function createSearchController(deps: SearchDeps) {
       addToSearchHistory(query);
 
       deps.showLoading('Searching...');
+      loadingShown = true;
 
       let result;
 
@@ -464,13 +471,26 @@ export function createSearchController(deps: SearchDeps) {
       }
 
       if (currentRequestId !== searchRequestId) return;
-      deps.hideLoading();
       deps.updateStatusBar();
       activeSearchOperationId = null;
-    } catch (error) {
-      deps.hideLoading();
+
+      // Announce result count to screen readers
+      const resultCount = (deps.getFileGrid()?.querySelectorAll('.file-item') ?? []).length;
+      deps.announceToScreenReader?.(
+        resultCount === 0
+          ? 'No results found'
+          : `${resultCount} result${resultCount !== 1 ? 's' : ''} found`
+      );
+    } catch {
       deps.showToast('Search failed unexpectedly', 'Search Error', 'error');
       activeSearchOperationId = null;
+    } finally {
+      if (loadingShown) {
+        deps.hideLoading();
+      }
+      if (operationIdForCleanup && activeSearchOperationId === operationIdForCleanup) {
+        activeSearchOperationId = null;
+      }
     }
   }
 
@@ -547,11 +567,15 @@ export function createSearchController(deps: SearchDeps) {
     if (dropdown) dropdown.style.display = 'none';
   }
 
-  function clearSearchHistory() {
+  async function clearSearchHistory() {
     const settings = deps.getCurrentSettings();
     settings.searchHistory = [];
-    deps.saveSettingsWithTimestamp(settings);
     hideSearchHistoryDropdown();
+    const result = await deps.saveSettingsWithTimestamp(settings);
+    if (!result.success) {
+      deps.showToast(result.error || 'Failed to clear search history', 'History', 'error');
+      return;
+    }
     deps.showToast('Search history cleared', 'History', 'success');
   }
 
@@ -603,7 +627,7 @@ export function createSearchController(deps: SearchDeps) {
   function loadSavedSearch(index: number): void {
     const settings = deps.getCurrentSettings();
     if (!settings.savedSearches || index < 0 || index >= settings.savedSearches.length) return;
-    const saved = settings.savedSearches[index];
+    const saved = settings.savedSearches[index]!;
 
     ensureElements();
     if (!searchBarWrapper || !searchInput || !searchScopeToggle) return;
@@ -658,7 +682,7 @@ export function createSearchController(deps: SearchDeps) {
     syncSearchScopeAria();
     syncSearchFilterAria();
     searchBtn?.addEventListener('click', toggleSearch);
-    searchClose?.addEventListener('click', closeSearch);
+    searchClose?.addEventListener('click', () => closeSearch());
     searchScopeToggle?.addEventListener('click', toggleSearchScope);
 
     searchSaveBtn?.addEventListener('click', saveCurrentSearch);
@@ -683,8 +707,8 @@ export function createSearchController(deps: SearchDeps) {
 
     searchRegexToggle?.addEventListener('click', () => {
       isRegexMode = !isRegexMode;
-      searchRegexToggle!.classList.toggle('active', isRegexMode);
-      searchRegexToggle!.setAttribute('aria-pressed', String(isRegexMode));
+      searchRegexToggle?.classList.toggle('active', isRegexMode);
+      searchRegexToggle?.setAttribute('aria-pressed', String(isRegexMode));
       if (isSearchMode && searchInput?.value) {
         debouncedSearch();
       }
@@ -831,13 +855,13 @@ export function createSearchController(deps: SearchDeps) {
           idx = idx > 0 ? idx - 1 : items.length - 1;
         }
         active?.classList.remove('dropdown-active');
-        items[idx].classList.add('dropdown-active');
-        items[idx].scrollIntoView({ block: 'nearest' });
+        items[idx]!.classList.add('dropdown-active');
+        items[idx]!.scrollIntoView({ block: 'nearest' });
       } else if (e.key === 'Enter') {
         const active = dropdown.querySelector<HTMLElement>('.dropdown-active');
         if (active) {
           e.preventDefault();
-          active.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+          active.dispatchEvent(new MouseEvent('click', { bubbles: true }));
         }
       } else if (e.key === 'Escape') {
         hideSearchHistoryDropdown();
@@ -909,6 +933,14 @@ export function createSearchController(deps: SearchDeps) {
     return searchInput;
   }
 
+  function cleanup(): void {
+    cancelActiveSearch();
+    if (searchDebounceTimeout) {
+      clearTimeout(searchDebounceTimeout);
+      searchDebounceTimeout = null;
+    }
+  }
+
   return {
     initListeners,
     toggleSearch,
@@ -917,6 +949,7 @@ export function createSearchController(deps: SearchDeps) {
     performSearch,
     debouncedSearch,
     cancelActiveSearch,
+    cleanup,
     updateContentSearchToggle,
     updateSearchPlaceholder,
     showSearchHistoryDropdown,

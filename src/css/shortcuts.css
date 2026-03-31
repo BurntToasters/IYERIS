@@ -13,7 +13,7 @@
   display: inline-block;
   padding: 3px 8px;
   background: rgba(0, 0, 0, 0.3);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--active-color);
   border-radius: 4px;
   font-family: var(--font-mono);
   font-size: 12px;
@@ -46,10 +46,10 @@
 }
 
 .shortcuts-section {
-  background: rgba(255, 255, 255, 0.02);
+  background: color-mix(in srgb, var(--text-primary) 2%, transparent);
   padding: 20px;
   border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  border: 1px solid color-mix(in srgb, var(--text-primary) 5%, transparent);
 }
 
 .shortcuts-section h3 {
@@ -57,7 +57,7 @@
   font-size: 16px;
   font-weight: 600;
   color: var(--accent-color);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid var(--active-color);
   padding-bottom: 8px;
 }
 
@@ -66,7 +66,7 @@
   justify-content: space-between;
   align-items: center;
   padding: 10px 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  border-bottom: 1px solid color-mix(in srgb, var(--text-primary) 3%, transparent);
 }
 
 .shortcut-item:last-child {
@@ -118,8 +118,8 @@
 .shortcut-keys kbd {
   display: inline-block;
   padding: 4px 10px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: color-mix(in srgb, var(--text-primary) 5%, transparent);
+  border: 1px solid var(--active-color);
   border-radius: 4px;
   font-family: 'Segoe UI', 'Roboto', sans-serif;
   font-size: 12px;
@@ -156,8 +156,8 @@
 .shortcuts-note kbd {
   display: inline-block;
   padding: 2px 6px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: color-mix(in srgb, var(--text-primary) 5%, transparent);
+  border: 1px solid var(--active-color);
   border-radius: 3px;
   font-size: 11px;
   font-weight: 500;

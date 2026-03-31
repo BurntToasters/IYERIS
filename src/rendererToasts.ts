@@ -61,11 +61,12 @@ export function createToastManager(options: ToastOptions) {
     };
 
     toast.innerHTML = `
-    <span class="toast-icon" aria-hidden="true">${options.twemojiImg(String.fromCodePoint(parseInt(icons[type], 16)), 'twemoji')}</span>
+    <span class="toast-icon" aria-hidden="true">${options.twemojiImg(String.fromCodePoint(parseInt(icons[type] ?? '2139', 16)), 'twemoji')}</span>
     <div class="toast-content">
       ${title ? `<div class="toast-title">${escapeHtml(title)}</div>` : ''}
       <div class="toast-message">${escapeHtml(message)}</div>
     </div>
+    <button class="toast-dismiss" aria-label="Dismiss">&times;</button>
   `;
 
     if (actions && actions.length > 0) {
@@ -100,6 +101,14 @@ export function createToastManager(options: ToastOptions) {
         processToastQueue();
       }, TOAST_ANIMATION_MS);
     };
+
+    const dismissBtn = toast.querySelector('.toast-dismiss');
+    if (dismissBtn) {
+      dismissBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        removeToast();
+      });
+    }
 
     toast.addEventListener('click', removeToast);
     const duration = actions && actions.length > 0 ? options.durationMs * 2 : options.durationMs;

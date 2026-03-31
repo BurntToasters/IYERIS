@@ -1,5 +1,7 @@
 use std::fs;
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 use std::path::Path;
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -33,6 +35,23 @@ fn was_recently_focused() -> bool {
 
 #[cfg(target_os = "linux")]
 const DESKTOP_EXEC_FIELD_REGEX: &str = "%[fFuUdDnNickvm]";
+
+#[cfg(target_os = "windows")]
+fn is_valid_windows_filetype(value: &str) -> bool {
+    !value.is_empty()
+        && value
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-')
+}
+
+#[cfg(target_os = "windows")]
+fn is_valid_windows_extension(value: &str) -> bool {
+    value.starts_with('.')
+        && value.len() > 1
+        && value[1..]
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+}
 
 #[cfg(target_os = "linux")]
 fn tokenize_exec_command(command: &str) -> Vec<String> {
@@ -184,6 +203,23 @@ fn load_desktop_entry(desktop_file_name: &str) -> Option<(String, String)> {
 }
 
 #[cfg(target_os = "linux")]
+fn is_path_in_directory(path: &Path, dir: &Path) -> bool {
+    let canonical_path = path.canonicalize();
+    let canonical_dir = dir.canonicalize();
+    match (canonical_path, canonical_dir) {
+        (Ok(path_value), Ok(dir_value)) => path_value.starts_with(dir_value),
+        _ => false,
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn is_trusted_desktop_entry_path(path: &Path) -> bool {
+    desktop_search_paths()
+        .into_iter()
+        .any(|dir| is_path_in_directory(path, &dir))
+}
+
+#[cfg(target_os = "linux")]
 fn parse_mime_cache_apps(mime_type: &str) -> Vec<String> {
     let mut desktop_files: Vec<String> = Vec::new();
     let cache_files = {
@@ -218,6 +254,137 @@ fn parse_mime_cache_apps(mime_type: &str) -> Vec<String> {
     }
 
     desktop_files
+}
+
+#[cfg(target_os = "linux")]
+fn collect_linux_open_with_apps(path: &Path) -> Vec<(String, String)> {
+    let mut desktop_ids: Vec<String> = Vec::new();
+    let mut apps: Vec<(String, String)> = Vec::new();
+
+    if let Ok(mime_output) = Command::new("xdg-mime")
+        .args(["query", "filetype", &path.to_string_lossy()])
+        .output()
+    {
+        if mime_output.status.success() {
+            let mime_type = String::from_utf8_lossy(&mime_output.stdout).trim().to_string();
+            if !mime_type.is_empty() {
+                if let Ok(default_output) =
+                    Command::new("xdg-mime").args(["query", "default", &mime_type]).output()
+                {
+                    if default_output.status.success() {
+                        let desktop_id =
+                            String::from_utf8_lossy(&default_output.stdout).trim().to_string();
+                        if !desktop_id.is_empty() {
+                            desktop_ids.push(desktop_id);
+                        }
+                    }
+                }
+
+                for desktop_id in parse_mime_cache_apps(&mime_type) {
+                    if !desktop_ids.contains(&desktop_id) {
+                        desktop_ids.push(desktop_id);
+                    }
+                }
+            }
+        }
+    }
+
+    for desktop_id in desktop_ids.into_iter().take(20) {
+        if let Some((name, _exec)) = load_desktop_entry(&desktop_id) {
+            apps.push((desktop_id, name));
+        }
+    }
+
+    if apps.is_empty() {
+        apps.push(("default".to_string(), "Default Application".to_string()));
+    }
+
+    apps
+}
+
+#[cfg(target_os = "windows")]
+fn collect_windows_open_with_apps(path: &Path) -> Vec<(String, String)> {
+    let ext = path
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(|value| format!(".{}", value.to_ascii_lowercase()))
+        .filter(|value| is_valid_windows_extension(value))
+        .unwrap_or_default();
+
+    let mut apps: Vec<(String, String)> = Vec::new();
+    if !ext.is_empty() {
+        if let Ok(assoc_output) = {
+            use std::os::windows::process::CommandExt;
+            Command::new("cmd")
+                .args(["/C", "assoc", &ext])
+                .creation_flags(0x08000000)
+                .output()
+        } {
+            if assoc_output.status.success() {
+                let assoc_text = String::from_utf8_lossy(&assoc_output.stdout).trim().to_string();
+                if let Some(file_type) = assoc_text.split('=').nth(1).map(|value| value.trim()) {
+                    if is_valid_windows_filetype(file_type) {
+                        if let Ok(ftype_output) = {
+                            use std::os::windows::process::CommandExt;
+                            Command::new("cmd")
+                                .args(["/C", "ftype", file_type])
+                                .creation_flags(0x08000000)
+                                .output()
+                        } {
+                            if ftype_output.status.success() {
+                                let ftype_text =
+                                    String::from_utf8_lossy(&ftype_output.stdout).trim().to_string();
+                                if let Some(command) = ftype_text.split('=').nth(1) {
+                                    let command = command.trim();
+                                    let executable = if command.starts_with('"') {
+                                        command
+                                            .trim_start_matches('"')
+                                            .split('"')
+                                            .next()
+                                            .unwrap_or("")
+                                            .to_string()
+                                    } else {
+                                        command
+                                            .split_whitespace()
+                                            .next()
+                                            .unwrap_or("")
+                                            .to_string()
+                                    };
+                                    if !executable.is_empty() {
+                                        let name = Path::new(&executable)
+                                            .file_stem()
+                                            .and_then(|value| value.to_str())
+                                            .unwrap_or("Default Application")
+                                            .to_string();
+                                        apps.push((executable, name));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    for (id, name) in [
+        ("notepad.exe".to_string(), "Notepad".to_string()),
+        ("mspaint.exe".to_string(), "Paint".to_string()),
+        ("wordpad.exe".to_string(), "WordPad".to_string()),
+    ] {
+        if !apps
+            .iter()
+            .any(|(existing_id, _)| existing_id.eq_ignore_ascii_case(&id))
+        {
+            apps.push((id, name));
+        }
+    }
+
+    if apps.is_empty() {
+        apps.push(("default".to_string(), "Default Application".to_string()));
+    }
+
+    apps
 }
 
 #[tauri::command]
@@ -606,12 +773,35 @@ pub fn relaunch_app(app: tauri::AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 pub fn get_licenses(app: tauri::AppHandle) -> Result<String, String> {
-    let resource_path = app
-        .path()
-        .resource_dir()
-        .map_err(|e: tauri::Error| e.to_string())?;
-    let licenses_path = resource_path.join("licenses.json");
-    fs::read_to_string(&licenses_path).map_err(|e| format!("Failed to read licenses: {}", e))
+    if let Some(asset) = app.asset_resolver().get("licenses.json".to_string()) {
+        return String::from_utf8(asset.bytes)
+            .map_err(|e| format!("Failed to decode bundled licenses.json: {}", e));
+    }
+
+    let mut attempted_paths: Vec<String> = Vec::new();
+
+    if let Ok(resource_path) = app.path().resource_dir() {
+        for candidate in ["licenses.json", "public/licenses.json", "dist/licenses.json"] {
+            let licenses_path = resource_path.join(candidate);
+            attempted_paths.push(licenses_path.display().to_string());
+            if let Ok(content) = fs::read_to_string(&licenses_path) {
+                return Ok(content);
+            }
+        }
+    }
+
+    for candidate in ["licenses.json", "public/licenses.json", "dist/licenses.json"] {
+        let licenses_path = std::path::Path::new(candidate);
+        attempted_paths.push(licenses_path.display().to_string());
+        if let Ok(content) = fs::read_to_string(licenses_path) {
+            return Ok(content);
+        }
+    }
+
+    Err(format!(
+        "Failed to read licenses: licenses.json was not found in bundled assets or known paths (tried: {})",
+        attempted_paths.join(", ")
+    ))
 }
 
 #[tauri::command]
@@ -783,6 +973,31 @@ pub async fn get_open_with_apps(file_path: String) -> Result<Vec<serde_json::Val
     {
         let path = crate::validate_existing_path(&file_path, "File")?;
         let output = tokio::task::spawn_blocking(move || {
+            let jxa_code = r#"ObjC.import('AppKit');
+ObjC.import('Foundation');
+const env = $.NSProcessInfo.processInfo.environment;
+const filePath = ObjC.unwrap(env.objectForKey('FILE_PATH'));
+const fileUrl = $.NSURL.fileURLWithPath(filePath);
+const apps = $.NSWorkspace.sharedWorkspace.urlsForApplicationsToOpenURL(fileUrl);
+const fm = $.NSFileManager.defaultManager;
+const result = [];
+for (let i = 0; i < apps.count; i++) {
+  const appUrl = apps.objectAtIndex(i);
+  const appPath = ObjC.unwrap(appUrl.path);
+  const displayName = ObjC.unwrap(fm.displayNameAtPath(appPath));
+  result.push({ id: appPath, name: displayName });
+}
+JSON.stringify(result);"#;
+            let jxa_output = std::process::Command::new("osascript")
+                .args(["-l", "JavaScript", "-e", jxa_code])
+                .env("FILE_PATH", path.to_string_lossy().as_ref())
+                .output();
+            if let Ok(output) = jxa_output {
+                if output.status.success() {
+                    return Ok(output);
+                }
+            }
+
             let swift_code = r#"import AppKit; import Foundation;
 let url = URL(fileURLWithPath: ProcessInfo.processInfo.environment["FILE_PATH"]!);
 let apps = NSWorkspace.shared.urlsForApplications(toOpen: url);
@@ -813,86 +1028,8 @@ print(String(data: data, encoding: .utf8)!)"#;
 
     #[cfg(target_os = "windows")]
     {
-        fn is_valid_windows_filetype(value: &str) -> bool {
-            !value.is_empty()
-                && value
-                    .chars()
-                    .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-')
-        }
-
         let path = crate::validate_existing_path(&file_path, "File")?;
-        let ext = path
-            .extension()
-            .and_then(|value| value.to_str())
-            .map(|value| format!(".{}", value.to_ascii_lowercase()))
-            .unwrap_or_default();
-
-        let mut apps: Vec<(String, String)> = Vec::new();
-        if !ext.is_empty() {
-            if let Ok(assoc_output) = {
-                use std::os::windows::process::CommandExt;
-                Command::new("cmd").args(["/C", "assoc", &ext]).creation_flags(0x08000000).output()
-            } {
-                if assoc_output.status.success() {
-                    let assoc_text = String::from_utf8_lossy(&assoc_output.stdout).trim().to_string();
-                    if let Some(file_type) = assoc_text.split('=').nth(1).map(|value| value.trim()) {
-                        if is_valid_windows_filetype(file_type) {
-                            if let Ok(ftype_output) = {
-                                use std::os::windows::process::CommandExt;
-                                Command::new("cmd").args(["/C", "ftype", file_type]).creation_flags(0x08000000).output()
-                            } {
-                                if ftype_output.status.success() {
-                                    let ftype_text =
-                                        String::from_utf8_lossy(&ftype_output.stdout).trim().to_string();
-                                    if let Some(command) = ftype_text.split('=').nth(1) {
-                                        let command = command.trim();
-                                        let executable = if command.starts_with('"') {
-                                            command
-                                                .trim_start_matches('"')
-                                                .split('"')
-                                                .next()
-                                                .unwrap_or("")
-                                                .to_string()
-                                        } else {
-                                            command
-                                                .split_whitespace()
-                                                .next()
-                                                .unwrap_or("")
-                                                .to_string()
-                                        };
-                                        if !executable.is_empty() {
-                                            let name = Path::new(&executable)
-                                                .file_stem()
-                                                .and_then(|value| value.to_str())
-                                                .unwrap_or("Default Application")
-                                                .to_string();
-                                            apps.push((executable, name));
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        for (id, name) in [
-            ("notepad.exe".to_string(), "Notepad".to_string()),
-            ("mspaint.exe".to_string(), "Paint".to_string()),
-            ("wordpad.exe".to_string(), "WordPad".to_string()),
-        ] {
-            if !apps.iter().any(|(existing_id, _)| {
-                existing_id.eq_ignore_ascii_case(&id)
-            }) {
-                apps.push((id, name));
-            }
-        }
-
-        if apps.is_empty() {
-            apps.push(("default".to_string(), "Default Application".to_string()));
-        }
-
+        let apps = collect_windows_open_with_apps(&path);
         Ok(apps
             .into_iter()
             .map(|(id, name)| serde_json::json!({ "id": id, "name": name }))
@@ -902,46 +1039,7 @@ print(String(data: data, encoding: .utf8)!)"#;
     #[cfg(target_os = "linux")]
     {
         let path = crate::validate_existing_path(&file_path, "File")?;
-        let mut desktop_ids: Vec<String> = Vec::new();
-        let mut apps: Vec<(String, String)> = Vec::new();
-
-        if let Ok(mime_output) = Command::new("xdg-mime")
-            .args(["query", "filetype", &path.to_string_lossy()])
-            .output()
-        {
-            if mime_output.status.success() {
-                let mime_type = String::from_utf8_lossy(&mime_output.stdout).trim().to_string();
-                if !mime_type.is_empty() {
-                    if let Ok(default_output) =
-                        Command::new("xdg-mime").args(["query", "default", &mime_type]).output()
-                    {
-                        if default_output.status.success() {
-                            let desktop_id =
-                                String::from_utf8_lossy(&default_output.stdout).trim().to_string();
-                            if !desktop_id.is_empty() {
-                                desktop_ids.push(desktop_id);
-                            }
-                        }
-                    }
-
-                    for desktop_id in parse_mime_cache_apps(&mime_type) {
-                        if !desktop_ids.contains(&desktop_id) {
-                            desktop_ids.push(desktop_id);
-                        }
-                    }
-                }
-            }
-        }
-
-        for desktop_id in desktop_ids.into_iter().take(20) {
-            if let Some((name, _exec)) = load_desktop_entry(&desktop_id) {
-                apps.push((desktop_id, name));
-            }
-        }
-
-        if apps.is_empty() {
-            apps.push(("default".to_string(), "Default Application".to_string()));
-        }
+        let apps = collect_linux_open_with_apps(&path);
 
         Ok(apps
             .into_iter()
@@ -961,8 +1059,11 @@ pub async fn open_file_with_app(file_path: String, app_id: String) -> Result<(),
     log::debug!("[System] open_file_with_app: {} with {}", file_path, app_id);
     #[cfg(target_os = "macos")]
     {
+        let path = crate::validate_existing_path(&file_path, "File")?;
         std::process::Command::new("open")
-            .args(["-a", &app_id, &file_path])
+            .arg("-a")
+            .arg(&app_id)
+            .arg(path.as_os_str())
             .spawn()
             .map_err(|e| e.to_string())?;
         Ok(())
@@ -970,12 +1071,21 @@ pub async fn open_file_with_app(file_path: String, app_id: String) -> Result<(),
 
     #[cfg(target_os = "windows")]
     {
+        let path = crate::validate_existing_path(&file_path, "File")?;
         if app_id.is_empty() || app_id == "default" {
-            return open::that(&file_path).map_err(|e| e.to_string());
+            return open::that(&path).map_err(|e| e.to_string());
+        }
+
+        let allowed_apps = collect_windows_open_with_apps(&path);
+        if !allowed_apps
+            .iter()
+            .any(|(allowed_id, _)| allowed_id.eq_ignore_ascii_case(&app_id))
+        {
+            return Err("Selected application is not allowed for this file type.".to_string());
         }
 
         Command::new(&app_id)
-            .arg(&file_path)
+            .arg(path.as_os_str())
             .spawn()
             .map_err(|e| e.to_string())?;
         Ok(())
@@ -983,13 +1093,21 @@ pub async fn open_file_with_app(file_path: String, app_id: String) -> Result<(),
 
     #[cfg(target_os = "linux")]
     {
+        let path = crate::validate_existing_path(&file_path, "File")?;
         if app_id.is_empty() || app_id == "default" {
-            return open::that(&file_path).map_err(|e| e.to_string());
+            return open::that(&path).map_err(|e| e.to_string());
+        }
+
+        let allowed_apps = collect_linux_open_with_apps(&path);
+        if !allowed_apps.iter().any(|(allowed_id, _)| allowed_id == &app_id) {
+            return Err("Selected application is not allowed for this file type.".to_string());
         }
 
         if app_id.ends_with(".desktop") {
             if let Some((_name, exec_line)) = load_desktop_entry(&app_id) {
-                if let Some((command, args)) = build_linux_exec_invocation(&exec_line, Some(&file_path)) {
+                if let Some((command, args)) =
+                    build_linux_exec_invocation(&exec_line, Some(path.to_string_lossy().as_ref()))
+                {
                     Command::new(command)
                         .args(args)
                         .spawn()
@@ -1000,11 +1118,7 @@ pub async fn open_file_with_app(file_path: String, app_id: String) -> Result<(),
             return Err("Failed to launch selected desktop application.".to_string());
         }
 
-        Command::new(&app_id)
-            .arg(&file_path)
-            .spawn()
-            .map_err(|e| e.to_string())?;
-        Ok(())
+        Err("Only .desktop launchers are supported on Linux.".to_string())
     }
 
     #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
@@ -1021,6 +1135,12 @@ pub async fn launch_desktop_entry(file_path: String) -> Result<(), String> {
         let path = crate::validate_existing_path(&file_path, "Desktop entry")?;
         if path.extension().and_then(|ext| ext.to_str()) != Some("desktop") {
             return Err("Selected file is not a .desktop entry.".to_string());
+        }
+        if !is_trusted_desktop_entry_path(&path) {
+            return Err(
+                "Only desktop entries from trusted application directories can be launched."
+                    .to_string(),
+            );
         }
 
         let content = fs::read_to_string(&path)

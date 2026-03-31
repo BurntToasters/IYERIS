@@ -38,15 +38,15 @@ export function createSettingsModalController(deps: SettingsModalDeps) {
     sections.forEach((s) => s.classList.remove('active'));
 
     if (tabs.length > 0) {
-      const firstId = tabs[0].getAttribute('data-tab');
+      const firstId = tabs[0]!.getAttribute('data-tab');
       if (firstId) {
         deps.activateSettingsTab(firstId, true);
       } else {
-        tabs[0].classList.add('active');
-        if (sections.length > 0) sections[0].classList.add('active');
+        tabs[0]!.classList.add('active');
+        if (sections.length > 0) sections[0]!.classList.add('active');
       }
     } else if (sections.length > 0) {
-      sections[0].classList.add('active');
+      sections[0]!.classList.add('active');
     }
 
     const settings = deps.getCurrentSettings();

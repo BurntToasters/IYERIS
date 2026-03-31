@@ -403,7 +403,7 @@ describe('sanitizeSettings', () => {
           activeTabId: 't',
         },
       });
-      expect(result.tabState!.tabs[0].historyIndex).toBe(1);
+      expect(result.tabState!.tabs[0]!.historyIndex).toBe(1);
     });
 
     it('defaults activeTabId when missing', () => {

@@ -274,7 +274,7 @@ describe('rendererShortcutsUi', () => {
     });
 
     it('shows warning for reserved shortcut', () => {
-      const { deps, ctrl } = setupCapture();
+      const { deps } = setupCapture();
       deps.reservedShortcutLookup.set('Ctrl+Q', { label: 'Quit', actionId: 'quit' });
       vi.mocked(deps.serializeShortcut).mockReturnValue('Ctrl+Q');
 
@@ -293,7 +293,7 @@ describe('rendererShortcutsUi', () => {
     });
 
     it('shows warning for conflicting shortcut', () => {
-      const { deps, ctrl } = setupCapture();
+      const { deps } = setupCapture();
       deps.shortcutLookup.set('Ctrl+B', 'action-b');
       vi.mocked(deps.serializeShortcut).mockReturnValue('Ctrl+B');
 
@@ -312,7 +312,7 @@ describe('rendererShortcutsUi', () => {
     });
 
     it('allows same shortcut for same action (no conflict)', () => {
-      const { deps, ctrl } = setupCapture();
+      const { deps } = setupCapture();
       deps.shortcutLookup.set('Ctrl+A', 'action-a');
       vi.mocked(deps.serializeShortcut).mockReturnValue('Ctrl+A');
 
@@ -330,7 +330,7 @@ describe('rendererShortcutsUi', () => {
     });
 
     it('allows reserved shortcut for same action', () => {
-      const { deps, ctrl } = setupCapture();
+      const { deps } = setupCapture();
       deps.reservedShortcutLookup.set('Ctrl+A', { label: 'Select All', actionId: 'action-a' });
       vi.mocked(deps.serializeShortcut).mockReturnValue('Ctrl+A');
 
@@ -444,7 +444,7 @@ describe('rendererShortcutsUi', () => {
     });
 
     it('resets to Mac defaults (Meta) not Linux defaults (Ctrl)', () => {
-      const { deps, ctrl } = setupMacCapture();
+      const { deps } = setupMacCapture();
       const resetBtn = document.querySelector(
         '[data-shortcut-action="reset"]'
       ) as HTMLButtonElement;

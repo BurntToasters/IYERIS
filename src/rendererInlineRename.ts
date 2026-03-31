@@ -128,6 +128,7 @@ export function createInlineRenameController(deps: InlineRenameDeps) {
     input.type = 'text';
     input.className = 'file-name-input';
     input.value = currentName;
+    input.setAttribute('aria-label', 'Rename file');
     const nameContainer = fileItem.querySelector('.file-text') as HTMLElement | null;
     const inputParent = nameContainer || fileItem;
     inputParent.style.position = 'relative';
@@ -150,14 +151,19 @@ export function createInlineRenameController(deps: InlineRenameDeps) {
     const showInlineError = (message: string) => {
       clearInlineError();
       input.classList.add('input-error');
+      input.setAttribute('aria-invalid', 'true');
       errorTooltip = document.createElement('div');
       errorTooltip.className = 'rename-error-tooltip';
+      errorTooltip.id = 'rename-error-msg';
       errorTooltip.textContent = message;
+      input.setAttribute('aria-describedby', 'rename-error-msg');
       inputParent.appendChild(errorTooltip);
     };
 
     const clearInlineError = () => {
       input.classList.remove('input-error');
+      input.removeAttribute('aria-invalid');
+      input.removeAttribute('aria-describedby');
       if (errorTooltip) {
         errorTooltip.remove();
         errorTooltip = null;

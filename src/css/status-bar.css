@@ -10,7 +10,7 @@
   padding: 0 var(--status-bar-padding-h);
   font-size: var(--font-size-status);
   color: var(--text-secondary);
-  z-index: 100;
+  z-index: var(--z-toolbar);
   border-radius: 0;
   border-bottom: none;
   border-left: none;

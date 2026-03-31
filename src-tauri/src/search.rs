@@ -2,7 +2,7 @@ use chrono::{NaiveDate, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs;
-use std::io::Read;
+use std::io::BufRead;
 use std::sync::Mutex;
 use walkdir::WalkDir;
 
@@ -47,9 +47,9 @@ struct ParsedFilters {
 fn is_search_active(op_id: &str) -> bool {
     match ACTIVE_SEARCHES.lock() {
         Ok(s) => s.contains(op_id),
-        Err(e) => {
-            log::warn!("[Search] ACTIVE_SEARCHES mutex poisoned: {}", e);
-            false
+        Err(poisoned) => {
+            log::warn!("[Search] ACTIVE_SEARCHES mutex poisoned, recovering");
+            poisoned.into_inner().contains(op_id)
         }
     }
 }
@@ -309,33 +309,37 @@ pub async fn search_files_content(
                 continue;
             }
 
-            let mut file = match fs::File::open(entry_path) {
+            let file = match fs::File::open(entry_path) {
                 Ok(f) => f,
                 Err(_) => continue,
             };
 
-            let mut content = String::new();
-            if file.read_to_string(&mut content).is_err() {
-                continue;
+            let reader = std::io::BufReader::new(file);
+            let mut matched_context: Option<String> = None;
+
+            for line_result in reader.lines() {
+                let line = match line_result {
+                    Ok(l) => l,
+                    Err(_) => break, // binary or encoding error, skip file
+                };
+                if let Some(regex) = &regex {
+                    if let Some(m) = regex.find(&line) {
+                        let start = line[..m.start()].char_indices()
+                            .rev()
+                            .nth(49)
+                            .map(|(i, _)| i)
+                            .unwrap_or(0);
+                        let end = line[m.start()..].char_indices()
+                            .nth(m.len() + 50)
+                            .map(|(i, _)| m.start() + i)
+                            .unwrap_or(line.len());
+                        matched_context = Some(line[start..end].to_string());
+                        break;
+                    }
+                }
             }
 
-            let matched_position = if let Some(regex) = &regex {
-                regex.find(&content).map(|match_result| (match_result.start(), match_result.end() - match_result.start()))
-            } else {
-                None
-            };
-
-            if let Some((pos, match_len)) = matched_position {
-                let start = content[..pos].char_indices()
-                    .rev()
-                    .nth(49)
-                    .map(|(i, _)| i)
-                    .unwrap_or(0);
-                let end = content[pos..].char_indices()
-                    .nth(match_len + 50)
-                    .map(|(i, _)| pos + i)
-                    .unwrap_or(content.len());
-                let context = content[start..end].to_string();
+            if let Some(context) = matched_context {
 
                 let modified = meta
                     .modified()
@@ -427,7 +431,7 @@ pub async fn search_index(
 
 #[tauri::command]
 pub async fn rebuild_index(app: tauri::AppHandle) -> Result<(), String> {
-    indexer::trigger_rebuild(&app);
+    indexer::trigger_rebuild(&app).await;
     Ok(())
 }
 

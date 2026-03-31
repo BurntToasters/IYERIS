@@ -69,7 +69,7 @@ function applyCssVariables(settings: Settings): void {
   if (
     settings.gridColumns &&
     settings.gridColumns !== 'auto' &&
-    /^[a-z0-9\s(),%.\-]+$/i.test(settings.gridColumns)
+    /^[a-z0-9\s(),%.-]+$/i.test(settings.gridColumns)
   ) {
     document.documentElement.style.setProperty('--grid-columns', settings.gridColumns);
   } else {

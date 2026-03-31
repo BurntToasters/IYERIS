@@ -1,4 +1,5 @@
 import type { Settings } from './types';
+import { devLog } from './shared.js';
 
 interface SupportUiDeps {
   activateModal: (modal: HTMLElement) => void;
@@ -193,7 +194,7 @@ export function createSupportUiController(deps: SupportUiDeps) {
         }
       })
       .catch((err) => {
-        console.error('Failed to copy:', err);
+        devLog('SupportUi', 'Failed to copy', err);
       });
   }
 
@@ -210,12 +211,12 @@ export function createSupportUiController(deps: SupportUiDeps) {
         const target = event.target as HTMLElement | null;
         const link = target?.closest('a.license-link') as HTMLAnchorElement | null;
         if (!link) return;
+        event.preventDefault();
 
         const url = link.dataset.url || link.getAttribute('href');
         const safeUrl = sanitizeExternalUrl(url);
         if (!safeUrl) return;
 
-        event.preventDefault();
         deps.openExternal(safeUrl);
       });
     }
@@ -250,7 +251,12 @@ export function createSupportUiController(deps: SupportUiDeps) {
     document.getElementById('support-popup-dismiss')?.addEventListener('click', async () => {
       const settings = deps.getCurrentSettings();
       settings.supportPopupDismissed = true;
-      await deps.saveSettingsWithTimestamp(settings);
+      const result = await deps.saveSettingsWithTimestamp(settings);
+      if (!result.success) {
+        devLog('Support', 'Failed to persist support popup dismissal', {
+          error: result.error || 'Unknown error',
+        });
+      }
       hideSupportPopup();
     });
 

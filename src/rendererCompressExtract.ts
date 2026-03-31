@@ -18,6 +18,23 @@ function getArchiveBaseName(filePath: string): string {
   return path.basename(filePath, path.extname(filePath));
 }
 
+function sanitizeArchiveExtractFolderName(name: string): string {
+  const normalized = name.trim().replace(/[\\/]+/g, '_');
+  const cleaned = Array.from(normalized)
+    .map((char) => {
+      const code = char.charCodeAt(0);
+      if (code < 0x20 || '<>:"|?*'.includes(char)) return '_';
+      return char;
+    })
+    .join('')
+    .replace(/\.+$/g, '')
+    .trim();
+  if (!cleaned || cleaned === '.' || cleaned === '..') {
+    return 'extracted';
+  }
+  return cleaned;
+}
+
 type CompressExtractDeps = {
   getCurrentPath: () => string;
   getSelectedItems: () => Set<string>;
@@ -73,7 +90,8 @@ export function createCompressExtractController(deps: CompressExtractDeps) {
   }
 
   function buildArchiveExtractPath(baseFolder: string, archivePath: string): string {
-    return joinFilePath(baseFolder, getArchiveBaseName(archivePath));
+    const safeFolderName = sanitizeArchiveExtractFolderName(getArchiveBaseName(archivePath));
+    return joinFilePath(baseFolder, safeFolderName);
   }
 
   async function handleCompress(
@@ -101,7 +119,7 @@ export function createCompressExtractController(deps: CompressExtractDeps) {
     if (customName) {
       archiveName = customName;
     } else if (selectedPaths.length === 1) {
-      const itemName = path.basename(selectedPaths[0]);
+      const itemName = path.basename(selectedPaths[0]!);
       const nameWithoutExt = itemName.replace(/\.[^/.]+$/, '');
       archiveName = `${nameWithoutExt}${extension}`;
     } else {
@@ -139,7 +157,14 @@ export function createCompressExtractController(deps: CompressExtractDeps) {
       }
     };
 
-    const cleanupProgressHandler = window.tauriAPI.onCompressProgress(progressHandler);
+    const rawCompressCleanup = window.tauriAPI.onCompressProgress(progressHandler);
+    let compressProgressCleaned = false;
+    const cleanupProgressHandler = () => {
+      if (!compressProgressCleaned) {
+        compressProgressCleaned = true;
+        rawCompressCleanup();
+      }
+    };
 
     try {
       const operation = deps.getOperation(operationId);
@@ -282,7 +307,7 @@ export function createCompressExtractController(deps: CompressExtractDeps) {
       if (match) {
         els.methodSelect.value = currentMethod;
       } else if (options.length > 0) {
-        els.methodSelect.value = options[0].value;
+        els.methodSelect.value = options[0]!.value;
       }
     }
 
@@ -325,7 +350,7 @@ export function createCompressExtractController(deps: CompressExtractDeps) {
 
     let baseName: string;
     if (selectedPaths.length === 1) {
-      const itemName = path.basename(selectedPaths[0]);
+      const itemName = path.basename(selectedPaths[0]!);
       baseName = itemName.replace(/\.(tar\.gz|tgz|tar\.bz2|tar\.xz|[^/.]+)$/i, '');
     } else {
       baseName = `${path.basename(deps.getCurrentPath())}_${selectedPaths.length}_items`;
@@ -402,7 +427,8 @@ export function createCompressExtractController(deps: CompressExtractDeps) {
     if (!isTarFormat) {
       const level = els.levelSelect?.value;
       if (level != null && level !== '5') {
-        advancedOptions.compressionLevel = parseInt(level, 10);
+        const parsedLevel = parseInt(level, 10);
+        if (!isNaN(parsedLevel)) advancedOptions.compressionLevel = parsedLevel;
       }
 
       const defaultMethodForFormat: Record<string, string> = { '7z': 'LZMA2', zip: 'Deflate' };
@@ -469,7 +495,7 @@ export function createCompressExtractController(deps: CompressExtractDeps) {
         tar: '.tar',
         'tar.gz': '.tar.gz',
       };
-      const ext = extMap[els.formatSelect!.value] || '.7z';
+      const ext = (els.formatSelect ? extMap[els.formatSelect.value] : undefined) || '.7z';
       if (els.nameInput) {
         const current = els.nameInput.value;
         const withoutExt = current.replace(/\.(zip|7z|tar\.gz|tgz|tar)$/i, '');
@@ -665,7 +691,14 @@ export function createCompressExtractController(deps: CompressExtractDeps) {
       }
     };
 
-    const cleanupProgressHandler = window.tauriAPI.onExtractProgress(progressHandler);
+    const rawExtractCleanup = window.tauriAPI.onExtractProgress(progressHandler);
+    let extractProgressCleaned = false;
+    const cleanupProgressHandler = () => {
+      if (!extractProgressCleaned) {
+        extractProgressCleaned = true;
+        rawExtractCleanup();
+      }
+    };
 
     try {
       const operation = deps.getOperation(operationId);

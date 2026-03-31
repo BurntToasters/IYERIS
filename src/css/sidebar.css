@@ -83,7 +83,7 @@
   cursor: pointer;
   color: var(--text-primary);
   transition: var(--transition-standard);
-  z-index: 50;
+  z-index: var(--z-sidebar-header);
   flex-shrink: 0;
 }
 
@@ -125,7 +125,7 @@
   height: 100%;
   cursor: col-resize;
   background: transparent;
-  z-index: 20;
+  z-index: var(--z-sidebar);
 }
 
 .sidebar-resize-handle:hover,

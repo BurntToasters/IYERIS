@@ -6,7 +6,7 @@ const ESCAPE_MAP: Record<string, string> = {
   "'": '&#039;',
 };
 const ESCAPE_RE = /[&<>"']/g;
-const escapeReplacer = (m: string): string => ESCAPE_MAP[m];
+const escapeReplacer = (m: string): string => ESCAPE_MAP[m] ?? '';
 
 export function escapeHtml(text: unknown): string {
   if (text === null || text === undefined) return '';
@@ -30,12 +30,12 @@ export function setDevMode(enabled: boolean): void {
   devModeEnabled = enabled;
   if (enabled) {
     (globalThis as Record<string, unknown>).__iyerisLogger = {
-      debug: (...args: unknown[]) => console.debug('[IYERIS]', ...args),
-      info: (...args: unknown[]) => console.info('[IYERIS]', ...args),
-      warn: (...args: unknown[]) => console.warn('[IYERIS]', ...args),
-      error: (...args: unknown[]) => console.error('[IYERIS]', ...args),
+      debug: (...args: unknown[]) => globalThis.console.debug('[IYERIS]', ...args),
+      info: (...args: unknown[]) => globalThis.console.info('[IYERIS]', ...args),
+      warn: (...args: unknown[]) => globalThis.console.warn('[IYERIS]', ...args),
+      error: (...args: unknown[]) => globalThis.console.error('[IYERIS]', ...args),
     };
-    console.info('[IYERIS] Dev mode enabled — verbose logging active');
+    globalThis.console.info('[IYERIS] Dev mode enabled — verbose logging active');
   }
 }
 
@@ -45,13 +45,13 @@ export function isDevMode(): boolean {
 
 export function devLog(category: string, ...args: unknown[]): void {
   if (devModeEnabled) {
-    console.debug(`[${category}]`, ...args);
+    globalThis.console.debug(`[${category}]`, ...args);
   }
 }
 
 export function ignoreError(error: unknown): void {
   if (devModeEnabled) {
-    console.warn('[Ignored error]', error);
+    globalThis.console.warn('[Ignored error]', error);
   } else if (
     typeof globalThis !== 'undefined' &&
     typeof (globalThis as Record<string, unknown>).__iyerisLogger === 'object'
@@ -102,6 +102,8 @@ const DANGEROUS_TAGS = new Set([
 ]);
 
 const SAFE_URL_PATTERN = /^(?:https?|mailto|#):/i;
+const SAFE_RESOURCE_URL_PATTERN = /^(?:asset:|https:\/\/asset\.localhost\/)/i;
+const HAS_SCHEME_PATTERN = /^[a-z][a-z0-9+.-]*:/i;
 
 export function sanitizeMarkdownHtml(html: string): string {
   const template = document.createElement('template');
@@ -126,6 +128,13 @@ export function sanitizeMarkdownHtml(html: string): string {
           val &&
           !val.startsWith('#') &&
           !SAFE_URL_PATTERN.test(val)
+        ) {
+          el.removeAttribute(attr.name);
+        } else if (
+          (attr.name === 'src' || attr.name === 'action') &&
+          val &&
+          (/^\s*\/\//.test(val) ||
+            (HAS_SCHEME_PATTERN.test(val) && !SAFE_RESOURCE_URL_PATTERN.test(val)))
         ) {
           el.removeAttribute(attr.name);
         }

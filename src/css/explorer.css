@@ -25,7 +25,6 @@ body::before {
     radial-gradient(ellipse 120% 60% at 50% 120%, rgba(0, 0, 0, 0.25), transparent 60%);
   z-index: -1;
   pointer-events: none;
-  will-change: transform;
 }
 
 .glass-panel {
@@ -87,7 +86,7 @@ select:focus-visible {
   letter-spacing: 0.04em;
   text-transform: uppercase;
   box-shadow: var(--shadow-lg);
-  z-index: 1000;
+  z-index: var(--z-dropdown);
   pointer-events: none;
 }
 
@@ -141,7 +140,7 @@ select:focus-visible {
 
 .empty-icon {
   opacity: 0.6;
-  filter: drop-shadow(0 0 20px rgba(0, 120, 212, 0.15));
+  filter: drop-shadow(0 0 20px rgba(var(--accent-rgb), 0.15));
 }
 
 .empty-icon .twemoji-xlarge {
@@ -222,7 +221,7 @@ select:focus-visible {
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-small);
   box-shadow: var(--shadow-md);
-  z-index: 1001;
+  z-index: var(--z-dropdown-above);
 }
 
 .context-submenu.flip-left {
@@ -267,11 +266,11 @@ select:focus-visible {
     transform 0.15s ease,
     opacity 0.15s ease;
   border: 2px solid transparent;
-  background: rgba(255, 255, 255, 0.05);
+  background: color-mix(in srgb, var(--text-primary) 5%, transparent);
 }
 
 .folder-icon-option:hover {
-  background: rgba(255, 255, 255, 0.12);
+  background: var(--surface-border);
   transform: scale(1.1);
 }
 
@@ -309,7 +308,7 @@ select:focus-visible {
 
 .file-hover-card {
   position: fixed;
-  z-index: 9999;
+  z-index: var(--z-progress);
   background: var(--bg-secondary);
   border: 1px solid var(--separator);
   border-radius: var(--radius-medium);

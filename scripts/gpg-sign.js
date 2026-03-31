@@ -21,13 +21,15 @@ const GPG_PASSPHRASE = process.env.GPG_PASSPHRASE;
 const GH_TOKEN = process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
 const REPO_OWNER = process.env.GH_REPO_OWNER || 'BurntToasters';
 const REPO_NAME = process.env.GH_REPO_NAME || 'IYERIS';
-const RELEASE_DOWNLOAD_BASE_URL = (
-  process.env.RELEASE_DOWNLOAD_BASE_URL ||
-  `https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/latest/download`
-).replace(/\/+$/, '');
 const TAG_DOWNLOAD_BASE_URL = `https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/${encodeURIComponent(TAG)}`;
+const RELEASE_DOWNLOAD_BASE_URL = (
+  process.env.RELEASE_DOWNLOAD_BASE_URL || TAG_DOWNLOAD_BASE_URL
+).replace(/\/+$/, '');
 const RELEASE_NOTES = process.env.RELEASE_NOTES || '';
 const RELEASE_PUB_DATE = process.env.RELEASE_PUB_DATE || new Date().toISOString();
+const ALLOW_ASSET_REPLACE = !/^(0|false|no|off)$/i.test(
+  String(process.env.ALLOW_ASSET_REPLACE || 'true').trim()
+);
 const REQUIRED_LINUX_TARGETS = (process.env.REQUIRED_LINUX_TARGETS || '').trim();
 const REQUIRE_LINUX_AARCH64 = /^(1|true|yes|on)$/i.test(
   String(process.env.REQUIRE_LINUX_AARCH64 || '').trim()
@@ -592,9 +594,13 @@ function signFile(filePath) {
   const asc = `${filePath}.asc`;
   const args = ['--batch', '--yes', '--armor', '--detach-sign'];
   if (GPG_KEY_ID) args.push('--local-user', GPG_KEY_ID);
-  if (GPG_PASSPHRASE) args.push('--pinentry-mode', 'loopback', '--passphrase', GPG_PASSPHRASE);
+  const usePassphraseStdin = Boolean(GPG_PASSPHRASE);
+  if (usePassphraseStdin) args.push('--pinentry-mode', 'loopback', '--passphrase-fd', '0');
   args.push('--output', asc, filePath);
-  const result = spawnSync('gpg', args, { stdio: 'pipe' });
+  const result = spawnSync('gpg', args, {
+    stdio: 'pipe',
+    input: usePassphraseStdin ? `${GPG_PASSPHRASE}\n` : undefined,
+  });
   if (result.error) throw result.error;
   if (result.status !== 0)
     throw new Error(`GPG signing failed: ${result.stderr?.toString() || 'unknown error'}`);
@@ -636,7 +642,11 @@ function ghRequest(method, endpoint, body) {
           if (res.statusCode >= 200 && res.statusCode < 300) resolve(json);
           else reject(new Error(`GitHub ${res.statusCode}: ${json.message || data}`));
         } catch {
-          resolve(data);
+          if (res.statusCode >= 200 && res.statusCode < 300) {
+            resolve(data);
+          } else {
+            reject(new Error(`GitHub ${res.statusCode}: ${data || 'Non-JSON error response'}`));
+          }
         }
       });
     });
@@ -726,6 +736,11 @@ async function uploadAssetWithReplace(release, filePath) {
     const assets = await listReleaseAssets(release.id);
     const existing = assets.find((a) => a?.name === fileName && typeof a.id === 'number');
     if (!existing) throw err;
+    if (!release.draft && !ALLOW_ASSET_REPLACE) {
+      throw new Error(
+        `Refusing to replace existing asset "${fileName}" on published release ${TAG}. Set ALLOW_ASSET_REPLACE=true to override.`
+      );
+    }
     await ghRequest('DELETE', `/repos/${REPO_OWNER}/${REPO_NAME}/releases/assets/${existing.id}`);
     await uploadAsset(release.upload_url, filePath);
   }
@@ -740,10 +755,9 @@ async function syncBetaManifestsToLatestStable(uploadedFiles, currentReleaseId) 
   try {
     latestStable = await ghRequest('GET', `/repos/${REPO_OWNER}/${REPO_NAME}/releases/latest`);
   } catch (err) {
-    console.warn(
-      `  ! Could not load latest stable release: ${err instanceof Error ? err.message : String(err)}`
+    throw new Error(
+      `Could not load latest stable release for beta manifest sync: ${err instanceof Error ? err.message : String(err)}`
     );
-    return;
   }
   if (!latestStable?.id || !latestStable?.upload_url) return;
   if (latestStable.id === currentReleaseId) return;
@@ -792,6 +806,11 @@ async function main() {
 
   console.log('[5/5] Uploading to GitHub...');
   const release = await getOrCreateRelease();
+  if (!release?.draft && !ALLOW_ASSET_REPLACE) {
+    throw new Error(
+      `Release ${TAG} already exists as published. Refusing to mutate it without ALLOW_ASSET_REPLACE=true.`
+    );
+  }
   console.log(`  Release: ${release.html_url || TAG}`);
   const everything = fs
     .readdirSync(releaseDir)

@@ -23,6 +23,7 @@ function trapModalFocus(e: KeyboardEvent): void {
   }
   const first = focusable[0];
   const last = focusable[focusable.length - 1];
+  if (!first || !last) return;
   const active = document.activeElement as HTMLElement | null;
   if (e.shiftKey && active === first) {
     e.preventDefault();
@@ -47,7 +48,7 @@ export function activateModal(modal: HTMLElement, options?: { restoreFocus?: boo
   document.addEventListener('keydown', trapModalFocus, true);
   const focusable = getFocusableElements(modal);
   if (focusable.length > 0) {
-    focusable[0].focus({ preventScroll: true });
+    focusable[0]!.focus({ preventScroll: true });
   } else {
     modal.focus({ preventScroll: true });
   }

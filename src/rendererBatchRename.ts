@@ -1,4 +1,4 @@
-import { escapeHtml } from './shared.js';
+import { escapeHtml, getErrorMessage } from './shared.js';
 import { rendererPath as path } from './rendererUtils.js';
 
 type BatchRenameDeps = {
@@ -28,6 +28,19 @@ interface RenamePreviewItem {
 export function createBatchRenameController(deps: BatchRenameDeps) {
   let currentMode: RenameMode = 'find-replace';
   let selectedFiles: Array<{ name: string; path: string }> = [];
+
+  function isSafeRegex(pattern: string): boolean {
+    if (pattern.length > 500) return false;
+    // Reject nested quantifiers that cause catastrophic backtracking
+    if (/(\+|\*|\{)\s*\??(\+|\*|\{)/.test(pattern)) return false;
+    if (/\(\?[^)]*\(\?/.test(pattern)) return false;
+    try {
+      new RegExp(pattern);
+      return true;
+    } catch {
+      return false;
+    }
+  }
 
   function showBatchRenameModal() {
     const selected = deps.getSelectedItems();
@@ -93,7 +106,7 @@ export function createBatchRenameController(deps: BatchRenameDeps) {
     const items: RenamePreviewItem[] = [];
 
     for (let i = 0; i < selectedFiles.length; i++) {
-      const file = selectedFiles[i];
+      const file = selectedFiles[i]!;
       let newName = file.name;
       let error: string | undefined;
 
@@ -112,15 +125,11 @@ export function createBatchRenameController(deps: BatchRenameDeps) {
 
           if (findText) {
             if (useRegex?.checked) {
-              if (findText.length > 1000) {
-                error = 'Regex too long (max 1000 characters)';
+              if (!isSafeRegex(findText)) {
+                error = 'Invalid or unsafe regex pattern';
               } else {
-                try {
-                  const regex = new RegExp(findText, 'g');
-                  newName = file.name.replace(regex, replaceText);
-                } catch {
-                  error = 'Invalid regex';
-                }
+                const regex = new RegExp(findText, 'g');
+                newName = file.name.replace(regex, replaceText);
               }
             } else {
               newName = file.name.split(findText).join(replaceText);
@@ -242,8 +251,8 @@ export function createBatchRenameController(deps: BatchRenameDeps) {
       deps.showToast(`Renamed ${toRename.length} item(s)`, 'Batch Rename', 'success');
       deps.refresh();
       await deps.updateUndoRedoState();
-    } catch {
-      deps.showToast('Batch rename failed', 'Error', 'error');
+    } catch (error) {
+      deps.showToast('Batch rename failed: ' + getErrorMessage(error), 'Error', 'error');
     }
   }
 

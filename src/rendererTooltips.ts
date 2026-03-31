@@ -3,13 +3,44 @@ import { getById } from './rendererDom.js';
 let tooltipElement: HTMLElement | null = null;
 let tooltipTimeout: NodeJS.Timeout | null = null;
 let currentTooltipAnchor: HTMLElement | null = null;
+let mouseoverDebounceTimeout: ReturnType<typeof setTimeout> | null = null;
 const TOOLTIP_DELAY = 500;
+const tooltipTrackedElements = new Set<HTMLElement>();
+let detachTooltipListeners: (() => void) | null = null;
 
 export function initTooltipSystem(): void {
+  if (detachTooltipListeners) {
+    detachTooltipListeners();
+    detachTooltipListeners = null;
+  }
+  if (tooltipTimeout) {
+    clearTimeout(tooltipTimeout);
+    tooltipTimeout = null;
+  }
+  if (mouseoverDebounceTimeout) {
+    clearTimeout(mouseoverDebounceTimeout);
+    mouseoverDebounceTimeout = null;
+  }
+  for (const htmlEl of tooltipTrackedElements) {
+    if (htmlEl.dataset.originalTitle) {
+      htmlEl.setAttribute('title', htmlEl.dataset.originalTitle);
+      delete htmlEl.dataset.originalTitle;
+    }
+  }
+  tooltipTrackedElements.clear();
+  if (currentTooltipAnchor) {
+    currentTooltipAnchor.removeAttribute('aria-describedby');
+    currentTooltipAnchor = null;
+  }
   tooltipElement = getById('ui-tooltip');
   if (!tooltipElement) return;
 
-  document.addEventListener('mouseover', (e) => {
+  const mouseOverHandler = (e: MouseEvent) => {
+    if (mouseoverDebounceTimeout) return;
+    mouseoverDebounceTimeout = setTimeout(() => {
+      mouseoverDebounceTimeout = null;
+    }, 50);
+
     const target = e.target as HTMLElement;
     const titleAttr =
       target.getAttribute('title') || target.closest('[title]')?.getAttribute('title');
@@ -25,6 +56,7 @@ export function initTooltipSystem(): void {
       if (actualTarget) {
         actualTarget.dataset.originalTitle = titleAttr;
         actualTarget.removeAttribute('title');
+        tooltipTrackedElements.add(actualTarget);
       }
 
       if (tooltipTimeout) clearTimeout(tooltipTimeout);
@@ -32,9 +64,9 @@ export function initTooltipSystem(): void {
         showTooltip(titleAttr, actualTarget || target);
       }, TOOLTIP_DELAY);
     }
-  });
+  };
 
-  document.addEventListener('mouseout', (e) => {
+  const mouseOutHandler = (e: MouseEvent) => {
     const target = e.target as HTMLElement;
     const actualTarget = target.hasAttribute('data-original-title')
       ? target
@@ -48,6 +80,7 @@ export function initTooltipSystem(): void {
     if (actualTarget && actualTarget.dataset.originalTitle) {
       actualTarget.setAttribute('title', actualTarget.dataset.originalTitle);
       delete actualTarget.dataset.originalTitle;
+      tooltipTrackedElements.delete(actualTarget);
     }
 
     if (currentTooltipAnchor) {
@@ -56,26 +89,32 @@ export function initTooltipSystem(): void {
     }
 
     hideTooltip();
-  });
+  };
 
-  document.addEventListener(
-    'scroll',
-    () => {
-      if (tooltipTimeout) {
-        clearTimeout(tooltipTimeout);
-        tooltipTimeout = null;
+  const scrollHandler = () => {
+    if (tooltipTimeout) {
+      clearTimeout(tooltipTimeout);
+      tooltipTimeout = null;
+    }
+    hideTooltip();
+    for (const htmlEl of tooltipTrackedElements) {
+      if (htmlEl.dataset.originalTitle) {
+        htmlEl.setAttribute('title', htmlEl.dataset.originalTitle);
+        delete htmlEl.dataset.originalTitle;
       }
-      hideTooltip();
-      document.querySelectorAll('[data-original-title]').forEach((el) => {
-        const htmlEl = el as HTMLElement;
-        if (htmlEl.dataset.originalTitle) {
-          htmlEl.setAttribute('title', htmlEl.dataset.originalTitle);
-          delete htmlEl.dataset.originalTitle;
-        }
-      });
-    },
-    true
-  );
+    }
+    tooltipTrackedElements.clear();
+  };
+
+  detachTooltipListeners = () => {
+    document.removeEventListener('mouseover', mouseOverHandler);
+    document.removeEventListener('mouseout', mouseOutHandler);
+    document.removeEventListener('scroll', scrollHandler, true);
+  };
+
+  document.addEventListener('mouseover', mouseOverHandler);
+  document.addEventListener('mouseout', mouseOutHandler);
+  document.addEventListener('scroll', scrollHandler, true);
 }
 
 function showTooltip(text: string, anchor: HTMLElement): void {

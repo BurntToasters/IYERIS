@@ -81,16 +81,15 @@ describe('rendererGitStatus', () => {
     });
 
     it('handles fetch errors gracefully', async () => {
-      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const consoleSpy = vi.spyOn(console, 'debug').mockImplementation(() => {});
       const deps = makeDeps({
         getGitStatus: vi.fn(async () => {
           throw new Error('network fail');
         }),
       });
       const ctrl = createGitStatusController(deps as any);
-      await ctrl.fetchGitStatusAsync('/test/dir');
-      expect(consoleError).toHaveBeenCalled();
-      consoleError.mockRestore();
+      await expect(ctrl.fetchGitStatusAsync('/test/dir')).resolves.not.toThrow();
+      consoleSpy.mockRestore();
     });
 
     it('ignores stale requests', async () => {
@@ -177,7 +176,6 @@ describe('rendererGitStatus', () => {
 
       for (let i = 0; i < 101; i++) {
         const path = `/test/dir${i}`;
-        const current = { ...deps, getCurrentPath: () => path };
         ctrl.gitStatusCache.set(`${path}|all`, {
           timestamp: Date.now(),
           isGitRepo: true,

@@ -1,5 +1,5 @@
 import type { Settings } from './types';
-import { escapeHtml } from './shared.js';
+import { devLog, escapeHtml } from './shared.js';
 import { clearHtml, setHtml } from './rendererDom.js';
 import { twemojiImg } from './rendererUtils.js';
 
@@ -13,8 +13,8 @@ export function parsePath(filePath: string): ParsePathResult {
   const normalizedPath = filePath.replace(/\\/g, '/');
   const segments = normalizedPath.split('/').filter((s) => s.length > 0);
   if (isWindows && !isUnc && segments.length > 0) {
-    if (!segments[0].includes(':')) {
-      segments[0] = segments[0] + ':';
+    if (!segments[0]!.includes(':')) {
+      segments[0] = segments[0]! + ':';
     }
   }
 
@@ -87,7 +87,11 @@ export function createNavigationController(deps: NavigationDeps) {
   let breadcrumbDelegated = false;
 
   const ensureElements = () => {
-    if (!breadcrumbContainer) breadcrumbContainer = deps.getBreadcrumbContainer();
+    const newContainer = deps.getBreadcrumbContainer();
+    if (newContainer !== breadcrumbContainer) {
+      breadcrumbContainer = newContainer;
+      breadcrumbDelegated = false;
+    }
     if (!breadcrumbMenu) breadcrumbMenu = deps.getBreadcrumbMenu();
     if (!addressInput) addressInput = deps.getAddressInput();
   };
@@ -280,18 +284,23 @@ export function createNavigationController(deps: NavigationDeps) {
       e.preventDefault();
       e.stopPropagation();
       item.classList.remove('drag-over');
-      const draggedPaths = await deps.getDraggedPaths(e);
-      if (draggedPaths.length === 0) {
+      try {
+        const draggedPaths = await deps.getDraggedPaths(e);
+        if (draggedPaths.length === 0) {
+          deps.hideDropIndicator();
+          return;
+        }
+        if (draggedPaths.includes(path)) {
+          deps.hideDropIndicator();
+          return;
+        }
+        const operation = deps.getDragOperation(e);
+        await deps.handleDrop(draggedPaths, path, operation);
+      } catch (error) {
+        devLog('Navigation', 'Breadcrumb drop handler failed', error);
+      } finally {
         deps.hideDropIndicator();
-        return;
       }
-      if (draggedPaths.includes(path)) {
-        deps.hideDropIndicator();
-        return;
-      }
-      const operation = deps.getDragOperation(e);
-      await deps.handleDrop(draggedPaths, path, operation);
-      deps.hideDropIndicator();
     });
   }
 
@@ -391,7 +400,7 @@ export function createNavigationController(deps: NavigationDeps) {
           const startIndex = breadcrumbMenuFocusIndex + 1;
           for (let i = 0; i < items.length; i++) {
             const idx = (startIndex + i) % items.length;
-            const text = items[idx].textContent?.trim().toLowerCase() || '';
+            const text = items[idx]?.textContent?.trim().toLowerCase() || '';
             if (text.startsWith(char)) {
               focusBreadcrumbMenuItem(idx);
               return;
@@ -420,7 +429,7 @@ export function createNavigationController(deps: NavigationDeps) {
       item.tabIndex = itemIndex === safeIndex ? 0 : -1;
     });
     breadcrumbMenuFocusIndex = safeIndex;
-    items[safeIndex].focus({ preventScroll: true });
+    items[safeIndex]!.focus({ preventScroll: true });
   }
 
   async function showBreadcrumbMenu(targetPath: string, anchor: HTMLElement): Promise<void> {

@@ -10,6 +10,7 @@ vi.mock('../shared.js', () => ({
   assignKey: <T extends object>(obj: T, key: keyof T, value: T[keyof T]) => {
     obj[key] = value;
   },
+  getErrorMessage: (err: unknown) => (err instanceof Error ? err.message : String(err)),
   RESERVED_KEYS: new Set(['__proto__', 'constructor', 'prototype']),
   sanitizeStringArray: (value: unknown) => {
     if (!Array.isArray(value)) return [];
@@ -323,7 +324,7 @@ describe('rendererSettingsActions extended', () => {
 
       await vi.waitFor(() => {
         expect(deps.showToast).toHaveBeenCalledWith(
-          'No valid settings found in file',
+          'Invalid settings file format',
           'Import',
           'warning'
         );
@@ -336,7 +337,7 @@ describe('rendererSettingsActions extended', () => {
 
       await vi.waitFor(() => {
         expect(deps.showToast).toHaveBeenCalledWith(
-          'Failed to import settings: Invalid file format',
+          expect.stringContaining('Failed to import settings'),
           'Import',
           'error'
         );

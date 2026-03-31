@@ -12,6 +12,7 @@ type SelectionDeps = {
   getViewMode: () => 'grid' | 'list' | 'column';
   getFileGrid: () => HTMLElement | null;
   openFileEntry: (file: FileItem) => void;
+  announceToScreenReader?: (message: string) => void;
 };
 
 export function createSelectionController(deps: SelectionDeps) {
@@ -30,6 +31,11 @@ export function createSelectionController(deps: SelectionDeps) {
     bottom: number;
   }[] = [];
   let gridColumnsCache: { value: number; time: number } | null = null;
+  let fileItemsArrayCache: HTMLElement[] | null = null;
+
+  window.addEventListener('resize', () => {
+    gridColumnsCache = null;
+  });
 
   function setSelectedState(fileItem: HTMLElement, selected: boolean) {
     fileItem.classList.toggle('selected', selected);
@@ -54,7 +60,7 @@ export function createSelectionController(deps: SelectionDeps) {
     if (activeItem && document.contains(activeItem)) return;
     const fileItems = getFileItemsArray();
     if (fileItems.length === 0) return;
-    setActiveItem(fileItems[0], false);
+    setActiveItem(fileItems[0]!, false);
   }
 
   function toggleSelection(fileItem: HTMLElement) {
@@ -73,8 +79,11 @@ export function createSelectionController(deps: SelectionDeps) {
     deps.updateStatusBar();
     setActiveItem(fileItem, true);
 
+    const count = selectedItems.size;
+    deps.announceToScreenReader?.(`${count} item${count !== 1 ? 's' : ''} selected`);
+
     if (deps.isPreviewVisible() && selectedItems.size === 1) {
-      const selectedPath = Array.from(selectedItems)[0];
+      const selectedPath = Array.from(selectedItems)[0]!;
       const file = deps.getFileByPath(selectedPath);
       if (file && file.isFile) {
         deps.updatePreview(file);
@@ -88,15 +97,19 @@ export function createSelectionController(deps: SelectionDeps) {
 
   function clearSelection() {
     lastSelectedIndex = -1;
-    const scope = getSelectionScope();
-    scope.querySelectorAll('.file-item.selected').forEach((item) => {
-      setSelectedState(item as HTMLElement, false);
-    });
     const selectedItems = deps.getSelectedItems();
+    if (selectedItems.size > 0) {
+      const scope = getSelectionScope();
+      const selectedEls = scope.querySelectorAll('.file-item.selected');
+      selectedEls.forEach((item) => {
+        setSelectedState(item as HTMLElement, false);
+      });
+    }
     selectedItems.clear();
     deps.onSelectionChanged?.();
     deps.updateStatusBar();
     ensureActiveItem();
+    deps.announceToScreenReader?.('Selection cleared');
 
     if (deps.isPreviewVisible()) {
       deps.clearPreview();
@@ -116,12 +129,15 @@ export function createSelectionController(deps: SelectionDeps) {
     deps.onSelectionChanged?.();
     deps.updateStatusBar();
     ensureActiveItem();
+
+    const count = selectedItems.size;
+    deps.announceToScreenReader?.(`${count} item${count !== 1 ? 's' : ''} selected`);
   }
 
   function openSelectedItem() {
     const selectedItems = deps.getSelectedItems();
     if (selectedItems.size !== 1) return;
-    const itemPath = Array.from(selectedItems)[0];
+    const itemPath = Array.from(selectedItems)[0]!;
     const item = deps.getFileByPath(itemPath);
     if (item) {
       void deps.openFileEntry(item);
@@ -136,15 +152,21 @@ export function createSelectionController(deps: SelectionDeps) {
   }
 
   function getFileItemsArray(): HTMLElement[] {
+    if (fileItemsArrayCache) return fileItemsArrayCache;
     const scope = getSelectionScope();
-    return Array.from(scope.querySelectorAll('.file-item')) as HTMLElement[];
+    fileItemsArrayCache = Array.from(scope.querySelectorAll('.file-item')) as HTMLElement[];
+    return fileItemsArrayCache;
+  }
+
+  function invalidateFileItemsCache(): void {
+    fileItemsArrayCache = null;
   }
 
   function getGridColumns(): number {
     const fileGrid = deps.getFileGrid();
     if (!fileGrid || deps.getViewMode() === 'list') return 1;
     const now = Date.now();
-    if (gridColumnsCache && now - gridColumnsCache.time < 200) return gridColumnsCache.value;
+    if (gridColumnsCache && now - gridColumnsCache.time < 1000) return gridColumnsCache.value;
     const gridStyle = window.getComputedStyle(fileGrid);
     const columns = gridStyle.getPropertyValue('grid-template-columns').split(' ').length;
     const result = columns || 1;
@@ -266,7 +288,7 @@ export function createSelectionController(deps: SelectionDeps) {
       clearSelection();
       const selectedItems = deps.getSelectedItems();
       for (let i = start; i <= end; i++) {
-        const item = fileItems[i];
+        const item = fileItems[i]!;
         setSelectedState(item, true);
         const itemPath = item.getAttribute('data-path');
         if (itemPath) {
@@ -275,7 +297,7 @@ export function createSelectionController(deps: SelectionDeps) {
       }
     } else {
       clearSelection();
-      const item = fileItems[index];
+      const item = fileItems[index]!;
       setSelectedState(item, true);
       const itemPath = item.getAttribute('data-path');
       if (itemPath) {
@@ -284,12 +306,12 @@ export function createSelectionController(deps: SelectionDeps) {
     }
 
     lastSelectedIndex = index;
-    setActiveItem(fileItems[index], true);
+    setActiveItem(fileItems[index]!, true);
     deps.onSelectionChanged?.();
     deps.updateStatusBar();
 
     if (deps.isPreviewVisible() && deps.getSelectedItems().size === 1) {
-      const itemPath = Array.from(deps.getSelectedItems())[0];
+      const itemPath = Array.from(deps.getSelectedItems())[0]!;
       const fileItem = deps.getFileByPath(itemPath);
       if (fileItem) {
         deps.updatePreview(fileItem);
@@ -303,7 +325,8 @@ export function createSelectionController(deps: SelectionDeps) {
     if (!fileView || !selectionRect) return;
 
     fileView.addEventListener('mousedown', (e) => {
-      const target = e.target as HTMLElement;
+      if (!(e.target instanceof HTMLElement)) return;
+      const target = e.target;
       if (target.closest('.file-item') || target.closest('.empty-state') || e.button !== 0) {
         return;
       }
@@ -346,9 +369,13 @@ export function createSelectionController(deps: SelectionDeps) {
         });
 
       e.preventDefault();
+
+      document.addEventListener('mousemove', onRubberBandMouseMove);
+      document.addEventListener('mouseup', onRubberBandMouseUp);
+      window.addEventListener('blur', onRubberBandBlur);
     });
 
-    document.addEventListener('mousemove', (e) => {
+    const onRubberBandMouseMove = (e: MouseEvent) => {
       if (!isRubberBandActive || !rubberBandStart) return;
       if (rubberBandRafId !== null) return;
 
@@ -392,9 +419,9 @@ export function createSelectionController(deps: SelectionDeps) {
         deps.onSelectionChanged?.();
         deps.updateStatusBar();
       });
-    });
+    };
 
-    document.addEventListener('mouseup', () => {
+    const cleanupRubberBand = () => {
       if (!isRubberBandActive) return;
       isRubberBandActive = false;
       rubberBandStart = null;
@@ -404,19 +431,13 @@ export function createSelectionController(deps: SelectionDeps) {
         rubberBandRafId = null;
       }
       selectionRect.classList.remove('active');
-    });
+      document.removeEventListener('mousemove', onRubberBandMouseMove);
+      document.removeEventListener('mouseup', onRubberBandMouseUp);
+      window.removeEventListener('blur', onRubberBandBlur);
+    };
 
-    window.addEventListener('blur', () => {
-      if (!isRubberBandActive) return;
-      isRubberBandActive = false;
-      rubberBandStart = null;
-      cachedItemRects = [];
-      if (rubberBandRafId !== null) {
-        cancelAnimationFrame(rubberBandRafId);
-        rubberBandRafId = null;
-      }
-      selectionRect.classList.remove('active');
-    });
+    const onRubberBandMouseUp = () => cleanupRubberBand();
+    const onRubberBandBlur = () => cleanupRubberBand();
   }
 
   return {
@@ -432,5 +453,6 @@ export function createSelectionController(deps: SelectionDeps) {
     isRubberBandActive: () => isRubberBandActive,
     ensureActiveItem,
     invalidateGridColumnsCache,
+    invalidateFileItemsCache,
   };
 }

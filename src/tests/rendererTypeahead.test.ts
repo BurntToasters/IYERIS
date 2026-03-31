@@ -101,8 +101,8 @@ describe('rendererTypeahead', () => {
       ctrl.handleInput('p');
 
       expect(deps.clearSelection).toHaveBeenCalled();
-      expect(items[1].classList.contains('selected')).toBe(true);
-      expect(items[1].getAttribute('aria-selected')).toBe('true');
+      expect(items[1]!.classList.contains('selected')).toBe(true);
+      expect(items[1]!.getAttribute('aria-selected')).toBe('true');
       expect(selected.has('/pkg')).toBe(true);
       expect(deps.updateStatusBar).toHaveBeenCalled();
     });
@@ -110,13 +110,13 @@ describe('rendererTypeahead', () => {
     it('matches case-insensitively', () => {
       const deps = makeDeps();
       const items = [createFileItem('Hello.txt', '/hello')];
-      document.body.appendChild(items[0]);
+      document.body.appendChild(items[0]!);
       deps.getFileItems.mockReturnValue(items);
       deps.getSelectedItems.mockReturnValue(new Set<string>());
 
       const ctrl = createTypeaheadController(deps);
       ctrl.handleInput('h');
-      expect(items[0].classList.contains('selected')).toBe(true);
+      expect(items[0]!.classList.contains('selected')).toBe(true);
     });
 
     it('does nothing when no match found', () => {
@@ -135,15 +135,15 @@ describe('rendererTypeahead', () => {
         createFileItem('apple.txt', '/apple'),
         createFileItem('banana.txt', '/banana'),
       ];
-      items[0].tabIndex = 0;
+      items[0]!.tabIndex = 0;
       items.forEach((i) => document.body.appendChild(i));
       deps.getFileItems.mockReturnValue(items);
       deps.getSelectedItems.mockReturnValue(new Set<string>());
 
       const ctrl = createTypeaheadController(deps);
       ctrl.handleInput('b');
-      expect(items[0].tabIndex).toBe(-1);
-      expect(items[1].tabIndex).toBe(0);
+      expect(items[0]!.tabIndex).toBe(-1);
+      expect(items[1]!.tabIndex).toBe(0);
     });
 
     it('focuses and scrolls matched item into view', () => {

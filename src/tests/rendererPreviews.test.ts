@@ -33,6 +33,7 @@ vi.mock('../rendererHighlight.js', () => ({
 vi.mock('../shared.js', () => ({
   escapeHtml: vi.fn((s: string) => s.replace(/</g, '&lt;').replace(/>/g, '&gt;')),
   getErrorMessage: vi.fn((e: unknown) => (e instanceof Error ? e.message : String(e))),
+  ignoreError: () => {},
 }));
 
 vi.mock('../rendererDom.js', () => ({

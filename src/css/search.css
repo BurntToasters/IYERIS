@@ -1,7 +1,7 @@
 .search-bar-wrapper {
   position: relative;
   width: 100%;
-  z-index: 200;
+  z-index: var(--z-navigation);
 }
 
 @keyframes dropdown-slide {
@@ -62,7 +62,7 @@
 
 .history-clear:hover,
 .history-clear.dropdown-active {
-  background: rgba(232, 17, 35, 0.2);
+  background: color-mix(in srgb, var(--danger-color) 20%, transparent);
   color: var(--danger-hover);
 }
 
@@ -88,7 +88,7 @@
   height: 14px;
   padding: 0 4px;
   background: var(--accent-color);
-  color: var(--text-primary);
+  color: var(--text-on-accent);
   font-size: 9px;
   font-weight: 600;
   border-radius: 7px;
@@ -98,13 +98,13 @@
 }
 
 .search-filter-toggle:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--active-color);
   color: var(--text-primary);
 }
 
 .search-filter-toggle.active {
   background: var(--accent-color);
-  color: var(--text-primary);
+  color: var(--text-on-accent);
 }
 
 .search-filters-panel {
@@ -116,7 +116,7 @@
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-medium);
   box-shadow: var(--shadow-md);
-  z-index: 5000;
+  z-index: var(--z-command-palette);
   padding: 16px;
   animation: dropdown-slide var(--animation-duration) var(--animation-easing);
 }
@@ -211,7 +211,7 @@
 
 .search-filter-btn.primary {
   background: var(--accent-color);
-  color: var(--text-primary);
+  color: var(--text-on-accent);
 }
 
 .search-filter-btn.primary:hover {
@@ -219,12 +219,12 @@
 }
 
 .search-filter-btn.secondary {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--active-color);
   color: var(--text-primary);
 }
 
 .search-filter-btn.secondary:hover {
-  background: rgba(255, 255, 255, 0.15);
+  background: color-mix(in srgb, var(--text-primary) 15%, transparent);
 }
 
 body.theme-light .search-filter-btn.secondary {
@@ -237,6 +237,7 @@ body.theme-light .search-filter-btn.secondary:hover {
 
 .search-filter-group .search-content-toggle {
   display: flex;
+  position: relative;
   align-items: center;
   gap: 10px;
   cursor: pointer;
@@ -247,14 +248,28 @@ body.theme-light .search-filter-btn.secondary:hover {
 }
 
 .search-content-toggle input {
-  display: none;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  clip-path: inset(50%);
+  border: 0;
+  white-space: nowrap;
+}
+
+.search-content-toggle input:focus-visible + .toggle-slider-small {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 2px;
 }
 
 .toggle-slider-small {
   display: inline-block;
   width: 36px;
   height: 20px;
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--active-color);
   border-radius: 10px;
   position: relative;
   transition: background 0.2s;
@@ -308,7 +323,7 @@ body.theme-light .toggle-slider-small {
   padding: 6px 8px;
   border-radius: 4px;
   margin-top: 6px;
-  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -331,7 +346,7 @@ body.theme-light .toggle-slider-small {
 }
 
 .history-clear:active {
-  background: rgba(232, 17, 35, 0.3);
+  background: color-mix(in srgb, var(--danger-color) 30%, transparent);
 }
 
 .history-empty {
@@ -371,7 +386,7 @@ body.theme-light .toggle-slider-small {
 
 .search-bar input::selection {
   background: var(--accent-color);
-  color: var(--text-primary);
+  color: var(--text-on-accent);
 }
 
 .search-icon {
@@ -501,7 +516,16 @@ body.theme-light .toggle-slider-small {
   opacity: 1;
 }
 
+.saved-search-item:focus-within .saved-search-delete {
+  opacity: 1;
+}
+
 .saved-search-item .saved-search-delete:hover {
+  color: var(--danger-color);
+}
+
+.saved-search-item .saved-search-delete:focus-visible {
+  opacity: 1;
   color: var(--danger-color);
 }
 
@@ -582,7 +606,7 @@ body.theme-light .toggle-slider-small {
 }
 
 .search-regex-toggle .regex-label {
-  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   font-weight: 600;
   color: var(--text-secondary);
@@ -604,7 +628,7 @@ body.theme-light .toggle-slider-small {
 }
 
 .search-regex-toggle.active .regex-label {
-  color: var(--text-primary);
+  color: var(--text-on-accent);
 }
 
 .search-regex-toggle.active:hover {

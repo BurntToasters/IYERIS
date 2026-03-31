@@ -157,7 +157,7 @@ body.platform-linux .file-item.selected {
   align-items: center;
   gap: 6px;
   box-shadow: var(--shadow-xl);
-  z-index: 1000;
+  z-index: var(--z-dropdown);
 }
 
 .drop-indicator-action {
@@ -312,7 +312,7 @@ body.reduce-motion .file-item.spring-loading {
 }
 
 .file-checkbox .checkbox-mark {
-  color: white;
+  color: var(--text-primary);
   font-size: 11px;
   font-weight: bold;
   opacity: 0;
@@ -439,12 +439,12 @@ body:not(.show-file-checkboxes) .file-checkbox {
   transform: translateX(-50%);
   margin-top: 4px;
   padding: 4px 8px;
-  background: var(--error-color, #ef4444);
-  color: #fff;
+  background: var(--error-color);
+  color: var(--text-primary);
   font-size: 11px;
   border-radius: 4px;
   white-space: nowrap;
-  z-index: 100;
+  z-index: var(--z-toolbar);
   pointer-events: none;
 }
 

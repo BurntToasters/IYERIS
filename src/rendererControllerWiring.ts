@@ -75,7 +75,7 @@ import {
   formatFileSize,
   getFileIcon,
 } from './rendererFileIcons.js';
-import { escapeHtml, getErrorMessage } from './shared.js';
+import { escapeHtml, getErrorMessage, ignoreError } from './shared.js';
 import {
   SEARCH_DEBOUNCE_MS,
   TOAST_DURATION_MS,
@@ -515,6 +515,7 @@ export function wireControllers(deps: WiringDeps) {
     setHomeViewActive: (active) => deps.late.setHomeViewActive(active),
     searchDebounceMs: SEARCH_DEBOUNCE_MS,
     searchHistoryMax: SEARCH_HISTORY_MAX,
+    announceToScreenReader,
   });
 
   const previewController = createPreviewController({
@@ -525,6 +526,9 @@ export function wireControllers(deps: WiringDeps) {
     getFileExtension,
     getFileIcon,
     openFileEntry,
+    openExternal: (url) => {
+      void window.tauriAPI.openFile(url);
+    },
     onModalOpen: activateModal,
     onModalClose: deactivateModal,
   });
@@ -543,6 +547,7 @@ export function wireControllers(deps: WiringDeps) {
     getViewMode: () => deps.getViewMode(),
     getFileGrid: () => fileGrid,
     openFileEntry,
+    announceToScreenReader,
   });
 
   const {
@@ -563,6 +568,7 @@ export function wireControllers(deps: WiringDeps) {
     openSearch,
     performSearch,
     cancelActiveSearch,
+    cleanup: cleanupSearch,
     showSearchHistoryDropdown,
     hideSearchHistoryDropdown,
     clearSearchHistory,
@@ -585,6 +591,7 @@ export function wireControllers(deps: WiringDeps) {
     isRubberBandActive,
     ensureActiveItem,
     invalidateGridColumnsCache,
+    invalidateFileItemsCache,
   } = selectionController;
   clearSelection = selectionController.clearSelection;
 
@@ -814,12 +821,12 @@ export function wireControllers(deps: WiringDeps) {
       void deps.late.navigateTo(pathValue, force);
     },
     watchDirectory: (pathValue) => {
-      window.tauriAPI.watchDirectory(pathValue).catch(() => {});
+      window.tauriAPI.watchDirectory(pathValue).catch(ignoreError);
     },
     debouncedSaveSettings: deps.debouncedSaveSettings,
     saveSettingsWithTimestamp: deps.saveSettingsWithTimestamp,
     cancelDirectoryRequest: () => cancelDirectoryRequest(),
-    closeSearch: () => closeSearch(),
+    closeSearch: (options) => closeSearch(options),
     isSearchModeActive: () => isSearchModeActive(),
     resetTypeahead: () => resetTypeahead(),
     fetchGitStatusAsync: (path: string) => fetchGitStatusAsync(path),
@@ -879,7 +886,7 @@ export function wireControllers(deps: WiringDeps) {
     const nextIndex = hi + delta;
     if (nextIndex < 0 || nextIndex >= h.length) return;
     deps.setHistoryIndex(nextIndex);
-    void deps.late.navigateTo(h[nextIndex], true);
+    void deps.late.navigateTo(h[nextIndex]!, true);
   }
 
   function goBack() {
@@ -1283,6 +1290,7 @@ export function wireControllers(deps: WiringDeps) {
     openSearch,
     performSearch,
     cancelActiveSearch,
+    cleanupSearch,
     showSearchHistoryDropdown,
     hideSearchHistoryDropdown,
     clearSearchHistory,
@@ -1313,6 +1321,7 @@ export function wireControllers(deps: WiringDeps) {
     isRubberBandActive,
     ensureActiveItem,
     invalidateGridColumnsCache,
+    invalidateFileItemsCache,
 
     thumbnails,
     hoverCardController,

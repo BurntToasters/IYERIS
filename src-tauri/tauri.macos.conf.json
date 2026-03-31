@@ -9,6 +9,8 @@
         "minHeight": 500,
         "resizable": true,
         "decorations": true,
+        "visible": false,
+        "backgroundColor": "#181818",
         "titleBarStyle": "Overlay",
         "hiddenTitle": true
       }

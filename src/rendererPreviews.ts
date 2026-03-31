@@ -1,5 +1,5 @@
 import type { FileItem, ItemProperties } from './types';
-import { escapeHtml, getErrorMessage, sanitizeMarkdownHtml } from './shared.js';
+import { escapeHtml, getErrorMessage, ignoreError, sanitizeMarkdownHtml } from './shared.js';
 import { getById } from './rendererDom.js';
 import { encodeFileUrl, twemojiImg } from './rendererUtils.js';
 import { createPdfViewer, type PdfViewerHandle } from './rendererPdfViewer.js';
@@ -31,10 +31,30 @@ export function createPreviewController(deps: PreviewDeps) {
   const loadingHtml = (label: string) =>
     `<div class="preview-loading"><div class="spinner"></div><p>Loading ${label}...</p></div>`;
 
+  const sanitizeExternalHref = (href: string | null): string | null => {
+    if (!href) return null;
+    const trimmed = href.trim();
+    if (!trimmed || trimmed.startsWith('#')) return null;
+    try {
+      const parsed = new URL(trimmed);
+      if (
+        parsed.protocol === 'http:' ||
+        parsed.protocol === 'https:' ||
+        parsed.protocol === 'mailto:'
+      ) {
+        return parsed.toString();
+      }
+    } catch {
+      return null;
+    }
+    return null;
+  };
+
   let previewPanel: HTMLElement | null = null;
   let previewContent: HTMLElement | null = null;
   let previewToggleBtn: HTMLButtonElement | null = null;
   let previewCloseBtn: HTMLButtonElement | null = null;
+  let resizeHandler: (() => void) | null = null;
 
   const ensureElements = () => {
     if (!previewPanel) previewPanel = getById('preview-panel');
@@ -66,31 +86,42 @@ export function createPreviewController(deps: PreviewDeps) {
 
   function syncPreviewToggleState() {
     ensureElements();
+    const viewportBlocksPanel =
+      typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 900px)').matches;
+    const effectiveVisibility = isPreviewPanelVisible && !viewportBlocksPanel;
     if (previewToggleBtn) {
-      previewToggleBtn.setAttribute('aria-pressed', String(isPreviewPanelVisible));
-      previewToggleBtn.setAttribute('aria-expanded', String(isPreviewPanelVisible));
+      previewToggleBtn.setAttribute('aria-pressed', String(effectiveVisibility));
+      previewToggleBtn.setAttribute('aria-expanded', String(effectiveVisibility));
       previewToggleBtn.setAttribute('aria-controls', 'preview-panel');
     }
     if (previewPanel) {
-      previewPanel.setAttribute('aria-hidden', String(!isPreviewPanelVisible));
+      previewPanel.setAttribute('aria-hidden', String(!effectiveVisibility));
     }
   }
 
   function togglePreviewPanel() {
     ensureElements();
     if (!previewPanel) return;
-    isPreviewPanelVisible = !isPreviewPanelVisible;
-    if (isPreviewPanelVisible) {
+    const viewportBlocksPanel =
+      typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 900px)').matches;
+    if (!isPreviewPanelVisible) {
+      if (viewportBlocksPanel) {
+        previewPanel.style.display = 'none';
+        syncPreviewToggleState();
+        return;
+      }
+      isPreviewPanelVisible = true;
       previewPanel.style.display = 'flex';
       const selectedItems = deps.getSelectedItems();
       if (selectedItems.size === 1) {
-        const selectedPath = Array.from(selectedItems)[0];
+        const selectedPath = Array.from(selectedItems)[0]!;
         const file = deps.getFileByPath(selectedPath);
         if (file && file.isFile) {
           updatePreview(file);
         }
       }
     } else {
+      isPreviewPanelVisible = false;
       if (previewContent) {
         previewContent.querySelectorAll('video, audio').forEach((el) => {
           (el as HTMLMediaElement).pause();
@@ -258,12 +289,14 @@ export function createPreviewController(deps: PreviewDeps) {
       });
       img.addEventListener('error', () => {
         if (requestId !== previewRequestId) return;
-        previewContent!.innerHTML = `
-        <div class="preview-error">
-          Failed to load image
-        </div>
-        ${generateFileInfo(file, info)}
-      `;
+        if (previewContent) {
+          previewContent.innerHTML = `
+          <div class="preview-error">
+            Failed to load image
+          </div>
+          ${generateFileInfo(file, info)}
+        `;
+        }
       });
     }
   }
@@ -401,7 +434,7 @@ export function createPreviewController(deps: PreviewDeps) {
           const codeBlock = previewContent?.querySelector('code');
           if (codeBlock) hl.highlightElement?.(codeBlock);
         })
-        .catch(() => {});
+        .catch(ignoreError);
     }
   }
 
@@ -626,6 +659,18 @@ export function createPreviewController(deps: PreviewDeps) {
 
   function initPreviewUi() {
     ensureElements();
+    if (resizeHandler) window.removeEventListener('resize', resizeHandler);
+    resizeHandler = () => {
+      if (
+        previewPanel &&
+        typeof window.matchMedia === 'function' &&
+        window.matchMedia('(max-width: 900px)').matches
+      ) {
+        previewPanel.style.display = 'none';
+      }
+      syncPreviewToggleState();
+    };
+    window.addEventListener('resize', resizeHandler);
     if (previewToggleBtn) {
       previewToggleBtn.addEventListener('click', togglePreviewPanel);
     }
@@ -646,6 +691,18 @@ export function createPreviewController(deps: PreviewDeps) {
         if (previewPanel) previewPanel.style.display = 'none';
         previewRequestId++;
         syncPreviewToggleState();
+      });
+    }
+
+    if (previewContent) {
+      previewContent.addEventListener('click', (event) => {
+        const target = event.target as HTMLElement | null;
+        const link = target?.closest('.preview-markdown a') as HTMLAnchorElement | null;
+        if (!link) return;
+        event.preventDefault();
+        const safeHref = sanitizeExternalHref(link.getAttribute('href'));
+        if (!safeHref) return;
+        deps.openExternal(safeHref);
       });
     }
 

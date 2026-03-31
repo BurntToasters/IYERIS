@@ -36,7 +36,7 @@ body.platform-darwin .file-view::-webkit-scrollbar {
 }
 
 body.platform-darwin .file-view::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.3);
+  background: var(--scrollbar-thumb-hover-bg);
   border-radius: 4px;
   border: 2px solid transparent;
   background-clip: padding-box;
@@ -47,7 +47,7 @@ body.platform-darwin .file-view::-webkit-scrollbar-thumb {
   border: 1px solid var(--accent-color);
   background: rgba(var(--accent-rgb), 0.15);
   pointer-events: none;
-  z-index: 100;
+  z-index: var(--z-toolbar);
   display: none;
   border-radius: 2px;
 }
@@ -65,14 +65,14 @@ body.platform-win32 .file-view::-webkit-scrollbar {
 }
 
 body.platform-win32 .file-view::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2);
+  background: var(--scrollbar-thumb-bg);
   border-radius: 0;
   border: 3px solid transparent;
   background-clip: padding-box;
 }
 
 body.platform-win32 .file-view::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.35);
+  background: color-mix(in srgb, var(--text-primary) 35%, transparent);
 }
 
 body.platform-linux .file-view {

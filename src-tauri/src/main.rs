@@ -4,6 +4,7 @@ mod archive;
 mod directory;
 mod elevated;
 mod file_operations;
+mod fs_utils;
 mod indexer;
 mod platform;
 mod search;
@@ -83,6 +84,14 @@ pub(crate) fn validate_existing_path(raw: &str, label: &str) -> Result<PathBuf, 
     }
 }
 
+pub(crate) fn ensure_not_root_path(path: &Path, action: &str) -> Result<(), String> {
+    let canonical = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    if canonical.parent().is_none() {
+        return Err(format!("Cannot {} a root directory", action));
+    }
+    Ok(())
+}
+
 fn early_settings_path() -> Option<PathBuf> {
     #[cfg(target_os = "windows")]
     let base = std::env::var("APPDATA").ok().map(PathBuf::from);
@@ -116,14 +125,8 @@ fn read_early_setting_bool(key: &str) -> bool {
         .unwrap_or(false)
 }
 
-fn main() {
-    let args: Vec<String> = std::env::args().collect();
-    let dev_mode = args.iter().any(|a| a == "--dev" || a == "--verbose");
-    let start_minimized = args.iter().any(|a| a == "--minimized");
-    DEV_MODE.store(dev_mode, Ordering::Relaxed);
-
-    let disable_hw_accel = read_early_setting_bool("disableHardwareAcceleration");
-
+/// Set environment variables that must be configured before any threads are spawned.
+fn setup_environment(disable_hw_accel: bool, dev_mode: bool) {
     #[cfg(target_os = "windows")]
     {
         if dev_mode {
@@ -156,6 +159,22 @@ fn main() {
             }
         }
     }
+
+    // Suppress unused parameter warnings on platforms that don't use them.
+    let _ = (disable_hw_accel, dev_mode);
+}
+
+fn main() {
+    let args: Vec<String> = std::env::args().collect();
+    let dev_mode = args.iter().any(|a| a == "--dev" || a == "--verbose");
+    let start_minimized = args
+        .iter()
+        .any(|a| a == "--minimized" || a == "--hidden");
+    DEV_MODE.store(dev_mode, Ordering::Relaxed);
+
+    let _disable_hw_accel = read_early_setting_bool("disableHardwareAcceleration");
+
+    setup_environment(_disable_hw_accel, dev_mode);
 
     if dev_mode {
         let mut builder = env_logger::Builder::new();
@@ -238,6 +257,9 @@ fn main() {
                 #[cfg(target_os = "macos")]
                 {
                     let _ = app.handle().set_dock_visibility(false);
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.hide();
+                    }
                 }
             } else if let Some(window) = app.get_webview_window("main") {
                 let _ = window.show();
@@ -253,8 +275,14 @@ fn main() {
                     log::debug!("[Setup] System tray initialized");
                 }
                 Err(error) => {
-                    eprintln!("Tray setup failed: {}", error);
                     log::warn!("[Setup] Tray setup failed: {}", error);
+                    if let Some(window) = app.get_webview_window("main") {
+                        use tauri::Emitter;
+                        let _ = window.emit(
+                            "tray-setup-failed",
+                            serde_json::json!({ "error": error.to_string() }),
+                        );
+                    }
                 }
             }
             let settings_json = settings::get_settings(app.handle().clone())
@@ -440,9 +468,19 @@ fn main() {
         .build(tauri::generate_context!())
     {
         Ok(app) => {
-            app.run(|app_handle, event| {
+            #[cfg(target_os = "macos")]
+            let launched_minimized_at_start = start_minimized;
+            #[cfg(target_os = "macos")]
+            let launch_instant = std::time::Instant::now();
+
+            app.run(move |app_handle, event| {
                 #[cfg(target_os = "macos")]
                 if let tauri::RunEvent::Reopen { has_visible_windows, .. } = event {
+                    if launched_minimized_at_start
+                        && launch_instant.elapsed() < std::time::Duration::from_secs(10)
+                    {
+                        return;
+                    }
                     if !has_visible_windows {
                         let _ = app_handle.set_dock_visibility(true);
                         if let Some(window) = app_handle.get_webview_window("main") {
@@ -477,7 +515,10 @@ mod tests {
     fn make_temp_path_includes_purpose() {
         let base = Path::new("/tmp/test.json");
         let temp = make_temp_path(base, "download");
-        let name = temp.file_name().unwrap().to_str().unwrap();
+        let name = temp
+            .file_name()
+            .and_then(|n| n.to_str())
+            .expect("temp path should have a valid UTF-8 filename");
         assert!(name.contains("download"));
         assert!(name.ends_with(".tmp"));
     }

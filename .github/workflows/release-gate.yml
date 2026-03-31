@@ -61,31 +61,26 @@ jobs:
             target: x86_64-pc-windows-msvc
             bundles: nsis,msi
             label: win-x64
-            msstore_arch: x64
             experimental: false
           - os: windows-latest
             target: aarch64-pc-windows-msvc
             bundles: nsis,msi
             label: win-arm64
-            msstore_arch: arm64
             experimental: false
           - os: macos-latest
             target: universal-apple-darwin
             bundles: dmg,app
             label: mac-universal
-            msstore_arch: ''
             experimental: false
           - os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             bundles: appimage,deb,rpm
             label: linux-x64
-            msstore_arch: ''
             experimental: false
           - os: ubuntu-22.04
             target: aarch64-unknown-linux-gnu
             bundles: appimage,deb,rpm
             label: linux-arm64
-            msstore_arch: ''
             experimental: true
 
     runs-on: ${{ matrix.os }}
@@ -132,7 +127,13 @@ jobs:
       - run: npm run licenses
 
       - name: Build
-        run: node scripts/tauri-build.js --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
+        shell: bash
+        run: |
+          EXTRA_FLAGS="--require-tauri-signing"
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            EXTRA_FLAGS="$EXTRA_FLAGS --require-macos-signing --require-macos-notarization"
+          fi
+          node scripts/tauri-build.js $EXTRA_FLAGS --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
@@ -140,14 +141,6 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-
-      - name: Package Microsoft Store artifact
-        if: matrix.msstore_arch != ''
-        run: node scripts/msstore-pack.js ${{ matrix.msstore_arch }}
-        env:
-          MSSTORE_IDENTITY_NAME: ${{ secrets.MSSTORE_IDENTITY_NAME }}
-          MSSTORE_PUBLISHER: ${{ secrets.MSSTORE_PUBLISHER }}
-          MSSTORE_PUBLISHER_DISPLAY_NAME: ${{ secrets.MSSTORE_PUBLISHER_DISPLAY_NAME }}
 
       - name: Verify Linux x64 bundle outputs
         if: matrix.target == 'x86_64-unknown-linux-gnu'
@@ -198,8 +191,6 @@ jobs:
             src-tauri/target/**/bundle/**/*.deb.sig
             src-tauri/target/**/bundle/**/*.rpm
             src-tauri/target/**/bundle/**/*.rpm.sig
-            msstore/**/*.msix
-            msstore/**/*.msixbundle
 
   flatpak:
     needs: verify
