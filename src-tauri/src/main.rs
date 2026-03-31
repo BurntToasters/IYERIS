@@ -125,6 +125,10 @@ fn read_early_setting_bool(key: &str) -> bool {
         .unwrap_or(false)
 }
 
+fn has_minimized_launch_arg(args: &[String]) -> bool {
+    args.iter().any(|a| a == "--minimized" || a == "--hidden")
+}
+
 /// Set environment variables that must be configured before any threads are spawned.
 fn setup_environment(disable_hw_accel: bool, dev_mode: bool) {
     #[cfg(target_os = "windows")]
@@ -167,36 +171,38 @@ fn setup_environment(disable_hw_accel: bool, dev_mode: bool) {
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let dev_mode = args.iter().any(|a| a == "--dev" || a == "--verbose");
-    let mut start_minimized = args
-        .iter()
-        .any(|a| a == "--minimized" || a == "--hidden");
+    let mut start_minimized = has_minimized_launch_arg(&args);
     DEV_MODE.store(dev_mode, Ordering::Relaxed);
 
     #[cfg(target_os = "macos")]
-    if !start_minimized && read_early_setting_bool("startOnLogin") {
-        if let Ok(output) = std::process::Command::new("sysctl")
-            .args(["-n", "kern.boottime"])
-            .output()
-        {
-            if let Ok(text) = std::string::String::from_utf8(output.stdout) {
-                if let Some(sec_str) = text
-                    .split("sec = ")
-                    .nth(1)
-                    .and_then(|s| s.split(',')
-                    .next())
-                {
-                    if let Ok(boot_epoch) = sec_str.trim().parse::<u64>() {
-                        let now = std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .unwrap_or_default()
-                            .as_secs();
-                        let uptime = now.saturating_sub(boot_epoch);
-                        if uptime < 120 {
-                            log::info!(
-                                "[Autostart] startOnLogin fallback: uptime {}s < 120s, starting minimized",
-                                uptime
-                            );
-                            start_minimized = true;
+    {
+        let early_start_on_login = read_early_setting_bool("startOnLogin");
+
+        if !start_minimized && early_start_on_login {
+            if let Ok(output) = std::process::Command::new("sysctl")
+                .args(["-n", "kern.boottime"])
+                .output()
+            {
+                if let Ok(text) = std::string::String::from_utf8(output.stdout) {
+                    if let Some(sec_str) = text
+                        .split("sec = ")
+                        .nth(1)
+                        .and_then(|s| s.split(',')
+                        .next())
+                    {
+                        if let Ok(boot_epoch) = sec_str.trim().parse::<u64>() {
+                            let now = std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap_or_default()
+                                .as_secs();
+                            let uptime = now.saturating_sub(boot_epoch);
+                            if uptime < 120 {
+                                log::info!(
+                                    "[Autostart] startOnLogin fallback: uptime {}s < 120s, starting minimized",
+                                    uptime
+                                );
+                                start_minimized = true;
+                            }
                         }
                     }
                 }
@@ -240,7 +246,13 @@ fn main() {
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     let builder = builder
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            #[cfg(target_os = "macos")]
+            if has_minimized_launch_arg(&args) {
+                log::debug!("[SingleInstance] Ignoring minimized relaunch request");
+                return;
+            }
+
             #[cfg(target_os = "macos")]
             {
                 let _ = app.set_dock_visibility(true);
@@ -577,4 +589,17 @@ mod tests {
     fn validate_path_rejects_relative() {
         assert!(validate_path("relative/path", "Test").is_err());
     }
+
+    #[test]
+    fn has_minimized_launch_arg_detects_supported_flags() {
+        let args = vec!["app".to_string(), "--minimized".to_string()];
+        assert!(has_minimized_launch_arg(&args));
+
+        let args = vec!["app".to_string(), "--hidden".to_string()];
+        assert!(has_minimized_launch_arg(&args));
+
+        let args = vec!["app".to_string(), "--dev".to_string()];
+        assert!(!has_minimized_launch_arg(&args));
+    }
+
 }
