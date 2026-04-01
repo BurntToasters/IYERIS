@@ -341,7 +341,7 @@ fn main() {
                 .ok()
                 .and_then(|v| v.get("startOnLogin").and_then(|f| f.as_bool()))
                 .unwrap_or(false);
-            {
+            if !cfg!(debug_assertions) {
                 use tauri_plugin_autostart::ManagerExt;
                 if start_on_login {
                     let _ = app.autolaunch().enable();
