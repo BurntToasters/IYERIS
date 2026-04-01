@@ -594,9 +594,9 @@ pub fn close_window(window: tauri::Window) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn open_new_window(app: tauri::AppHandle) -> Result<(), String> {
+pub async fn open_new_window(app: tauri::AppHandle) -> Result<(), String> {
     log::debug!("[System] open_new_window");
-    let label = format!("window-{}", WINDOW_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed));
+    let label = format!("window-{}", WINDOW_COUNTER.fetch_add(1, Ordering::Relaxed));
 
     let builder = tauri::WebviewWindowBuilder::new(
         &app,
@@ -606,7 +606,8 @@ pub fn open_new_window(app: tauri::AppHandle) -> Result<(), String> {
     .title("IYERIS")
     .inner_size(1200.0, 800.0)
     .min_inner_size(800.0, 500.0)
-    .background_color(tauri::utils::config::Color(24, 24, 24, 255));
+    .visible(true)
+    .focused(true);
 
     #[cfg(target_os = "macos")]
     let builder = builder.decorations(true).title_bar_style(tauri::TitleBarStyle::Overlay).hidden_title(true);
@@ -1201,6 +1202,9 @@ pub fn should_minimize_to_tray(app: &tauri::AppHandle) -> bool {
 
 #[tauri::command]
 pub fn set_autostart(app: tauri::AppHandle, enabled: bool) -> Result<(), String> {
+    if cfg!(debug_assertions) {
+        return Ok(());
+    }
     use tauri_plugin_autostart::ManagerExt;
     let manager = app.autolaunch();
     if enabled {
