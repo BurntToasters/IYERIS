@@ -1,6 +1,6 @@
 [package]
 name = "iyeris"
-version = "2.0.8-beta.4"
+version = "2.0.8"
 description = "A beautiful cross-platform file explorer."
 authors = ["BurntToasters <code@rosie.run>"]
 edition = "2021"
