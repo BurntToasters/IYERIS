@@ -413,7 +413,7 @@ export function createThumbnailController(deps: ThumbnailDeps) {
     item: FileItem,
     fileItem: HTMLElement
   ): void {
-    iconDiv.innerHTML = '';
+    iconDiv.replaceChildren();
     const img = document.createElement('img');
     img.src = thumbnailUrl;
     img.className = 'file-thumbnail';

@@ -358,7 +358,7 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
 
   function renderHomeQuickAccess(): void {
     if (!homeQuickAccess) return;
-    homeQuickAccess.innerHTML = '';
+    homeQuickAccess.replaceChildren();
 
     if (!currentHomeSettings.showQuickAccess) return;
 
@@ -452,7 +452,7 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
 
   function renderHomeRecents(): void {
     if (!homeRecents) return;
-    homeRecents.innerHTML = '';
+    homeRecents.replaceChildren();
 
     if (!currentHomeSettings.showRecents) return;
 
@@ -497,7 +497,7 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
 
   function renderHomeBookmarks(): void {
     if (!homeBookmarks) return;
-    homeBookmarks.innerHTML = '';
+    homeBookmarks.replaceChildren();
 
     if (!currentHomeSettings.showBookmarks) return;
 
@@ -546,14 +546,14 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
     if (!homeDrives) return;
 
     if (!currentHomeSettings.showDrives) {
-      homeDrives.innerHTML = '';
+      homeDrives.replaceChildren();
       return;
     }
 
     if (!drives) {
       homeDrives.innerHTML = '<div class="home-empty">Loading drives...</div>';
     } else {
-      homeDrives.innerHTML = '';
+      homeDrives.replaceChildren();
     }
 
     let driveList: DriveInfo[] = drives || [];
@@ -571,7 +571,7 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
       return;
     }
 
-    homeDrives.innerHTML = '';
+    homeDrives.replaceChildren();
 
     driveList.forEach((drive) => {
       const driveLabel = drive.label || drive.path;
@@ -649,7 +649,7 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
 
   function renderSectionOrderList(): void {
     if (!homeSectionOrder) return;
-    homeSectionOrder.innerHTML = '';
+    homeSectionOrder.replaceChildren();
 
     const ordered = tempHomeSettings.sectionOrder || [];
     ordered.forEach((sectionId) => {
@@ -722,7 +722,7 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
     rerender: () => void
   ): void {
     if (!container) return;
-    container.innerHTML = '';
+    container.replaceChildren();
 
     const hiddenSet = new Set(tempHomeSettings[hiddenKey]);
     const itemsByAction = new Map(HOME_QUICK_ACCESS_ITEMS.map((item) => [item.action, item]));

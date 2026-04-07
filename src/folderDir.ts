@@ -350,7 +350,7 @@ export function createFolderTreeManager(deps: FolderTreeDependencies): FolderTre
   };
 
   const render = (drives: string[]): void => {
-    folderTree.innerHTML = '';
+    folderTree.replaceChildren();
     folderTreeNodeMap.clear();
     folderTreeExpandedPaths.clear();
 

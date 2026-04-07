@@ -103,7 +103,7 @@ async function renderPage(
   await page.render({ canvasContext: ctx, viewport }).promise;
 
   if (textLayerEl && lib.TextLayer) {
-    textLayerEl.innerHTML = '';
+    textLayerEl.replaceChildren();
     textLayerEl.style.width = `${cssViewport.width}px`;
     textLayerEl.style.height = `${cssViewport.height}px`;
 

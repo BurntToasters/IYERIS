@@ -341,6 +341,14 @@ pub async fn get_directory_contents(
             items.push(metadata_to_file_item(&entry_path, &meta));
             loaded += 1;
 
+            if loaded >= 100_000 {
+                log::warn!(
+                    "[Directory] directory listing capped at 100,000 entries: {}",
+                    progress_path
+                );
+                break;
+            }
+
             if loaded % 200 == 0 {
                 let _ = webview.emit(
                     "directory-contents-progress",
@@ -474,11 +482,31 @@ pub async fn get_drives() -> Result<Vec<DriveInfo>, String> {
             if !home.is_empty() && home != "/" {
                 drives.push(build_drive("Home".into(), home, String::new(), false));
             }
-            if let Ok(entries) = fs::read_dir("/media") {
-                for entry in entries.filter_map(|e| e.map_err(|err| log::warn!("[Directory] /media entry error: {}", err)).ok()) {
-                    let mount = entry.path().to_string_lossy().to_string();
-                    let name = entry.file_name().to_string_lossy().to_string();
-                    drives.push(build_drive(name, mount, String::new(), true));
+            for mount_dir in &["/media", "/mnt", "/run/media"] {
+                if let Ok(entries) = fs::read_dir(mount_dir) {
+                    for entry in entries.filter_map(|e| e.map_err(|err| log::warn!("[Directory] {} entry error: {}", mount_dir, err)).ok()) {
+                        let entry_path = entry.path();
+                        let mount = entry_path.to_string_lossy().to_string();
+                        let name = entry.file_name().to_string_lossy().to_string();
+                        if !drives.iter().any(|d| d.mount_point == mount) {
+                            if entry_path.is_dir() {
+                                if *mount_dir == "/run/media" {
+                                    // /run/media/<user>/<device> — enumerate subdirectories
+                                    if let Ok(sub_entries) = fs::read_dir(&entry_path) {
+                                        for sub_entry in sub_entries.filter_map(|e| e.ok()) {
+                                            let sub_mount = sub_entry.path().to_string_lossy().to_string();
+                                            let sub_name = sub_entry.file_name().to_string_lossy().to_string();
+                                            if !drives.iter().any(|d| d.mount_point == sub_mount) {
+                                                drives.push(build_drive(sub_name, sub_mount, String::new(), true));
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    drives.push(build_drive(name, mount, String::new(), true));
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }

@@ -32,9 +32,13 @@ export function createSelectionController(deps: SelectionDeps) {
   }[] = [];
   let gridColumnsCache: { value: number; time: number } | null = null;
   let fileItemsArrayCache: HTMLElement[] | null = null;
+  let resizeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
   window.addEventListener('resize', () => {
-    gridColumnsCache = null;
+    if (resizeDebounceTimer) clearTimeout(resizeDebounceTimer);
+    resizeDebounceTimer = setTimeout(() => {
+      gridColumnsCache = null;
+    }, 150);
   });
 
   function setSelectedState(fileItem: HTMLElement, selected: boolean) {

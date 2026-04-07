@@ -211,6 +211,7 @@ export function createSearchController(deps: SearchDeps) {
     isSearchMode = false;
     isGlobalSearch = false;
     isRegexMode = false;
+    searchInContents = false;
     if (searchRegexToggle) {
       searchRegexToggle.classList.remove('active');
       searchRegexToggle.setAttribute('aria-pressed', 'false');

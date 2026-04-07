@@ -1,5 +1,6 @@
 .file-view {
   flex: 1;
+  min-height: 0;
   padding: var(--spacing-lg);
   overflow-y: auto;
   position: relative;

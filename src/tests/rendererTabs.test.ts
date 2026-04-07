@@ -111,6 +111,9 @@ describe('createTabsController', () => {
     document.body.innerHTML = `
       <div id="tab-bar"><div id="tab-list"></div><button id="new-tab-btn"></button></div>
     `;
+    (window as any).tauriAPI = {
+      getItemProperties: vi.fn().mockResolvedValue({ success: true }),
+    };
   });
 
   describe('initializeTabs', () => {
@@ -365,7 +368,7 @@ describe('createTabsController', () => {
       expect(deps.navigateTo).not.toHaveBeenCalled();
     });
 
-    it('restores cached files instead of navigating', () => {
+    it('restores cached files instead of navigating', async () => {
       const deps = createMockDeps();
       deps._settings.tabState = {
         tabs: [
@@ -396,9 +399,11 @@ describe('createTabsController', () => {
       tab2.cachedFiles = [{ name: 'cached.txt' } as any];
 
       ctrl.switchToTab('tab-2');
+      await vi.waitFor(() => {
+        expect(deps.renderFiles).toHaveBeenCalled();
+      });
 
       expect(deps.navigateTo).not.toHaveBeenCalled();
-      expect(deps.renderFiles).toHaveBeenCalled();
     });
   });
 

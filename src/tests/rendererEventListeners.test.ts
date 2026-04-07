@@ -265,9 +265,9 @@ function setupTauriAPIMock() {
   (window as any).tauriAPI = {
     onClipboardChanged: vi.fn(() => vi.fn()),
     onSettingsChanged: vi.fn(() => vi.fn()),
-    minimizeWindow: vi.fn(),
-    maximizeWindow: vi.fn(),
-    closeWindow: vi.fn(),
+    minimizeWindow: vi.fn().mockResolvedValue(undefined),
+    maximizeWindow: vi.fn().mockResolvedValue(undefined),
+    closeWindow: vi.fn().mockResolvedValue(undefined),
   };
 }
 

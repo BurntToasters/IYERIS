@@ -544,7 +544,7 @@ export function createPreviewController(deps: PreviewDeps) {
       }
 
       activePdfViewer = viewer;
-      previewContent.innerHTML = '';
+      previewContent.replaceChildren();
 
       const wrapper = document.createElement('div');
       wrapper.className = 'preview-pdf-container';

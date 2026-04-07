@@ -439,10 +439,14 @@ export function createClipboardController(deps: ClipboardDeps) {
     }
   }
 
+  let pasteInProgress = false;
+
   async function pasteFromClipboard() {
+    if (pasteInProgress) return;
     const currentPath = deps.getCurrentPath();
     if (!currentPath) return;
 
+    pasteInProgress = true;
     try {
       if (!clipboard || clipboard.paths.length === 0) {
         const currentSettings = deps.getCurrentSettings();
@@ -544,6 +548,8 @@ export function createClipboardController(deps: ClipboardDeps) {
       deps.showToast('Paste operation failed', 'Error', 'error', [
         { label: 'Retry', onClick: () => void pasteFromClipboard() },
       ]);
+    } finally {
+      pasteInProgress = false;
     }
   }
 

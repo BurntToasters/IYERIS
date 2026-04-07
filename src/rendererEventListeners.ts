@@ -218,13 +218,15 @@ export function createEventListenersController(config: EventListenersConfig) {
   }
 
   function initWindowControlListeners(): void {
-    const windowControls: Array<[string, () => void]> = [
+    const windowControls: Array<[string, () => Promise<void>]> = [
       ['minimize-btn', () => window.tauriAPI.minimizeWindow()],
       ['maximize-btn', () => window.tauriAPI.maximizeWindow()],
       ['close-btn', () => window.tauriAPI.closeWindow()],
     ];
     windowControls.forEach(([id, action]) => {
-      document.getElementById(id)?.addEventListener('click', action);
+      document.getElementById(id)?.addEventListener('click', () => {
+        action().catch((err: unknown) => console.error(`Window control "${id}" failed:`, err));
+      });
     });
   }
 

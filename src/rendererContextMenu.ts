@@ -618,7 +618,7 @@ export function createContextMenuController(deps: ContextMenuDeps) {
           return;
         }
 
-        panel.innerHTML = '';
+        panel.replaceChildren();
         for (const app of result.apps) {
           const btn = document.createElement('button');
           btn.className = 'context-menu-item';

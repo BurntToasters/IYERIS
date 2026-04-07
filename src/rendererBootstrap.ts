@@ -119,10 +119,8 @@ export function createBootstrapController(config: BootstrapConfig) {
       patchShortcutTextForMac();
     }
 
-    await config.loadSettings();
-    devLog('Bootstrap', 'Settings loaded');
-    await config.loadHomeSettings();
-    devLog('Bootstrap', 'Home settings loaded');
+    await Promise.all([config.loadSettings(), config.loadHomeSettings()]);
+    devLog('Bootstrap', 'Settings and home settings loaded');
     config.renderSidebarQuickAccess();
 
     config.initTooltipSystem();

@@ -45,8 +45,8 @@
 
 .context-menu-item:focus-visible {
   background: var(--accent-light);
-  outline: 2px solid var(--accent-color);
-  outline-offset: -2px;
+  box-shadow: var(--focus-ring);
+  outline: none;
 }
 
 .context-menu-item.focused .submenu-arrow {

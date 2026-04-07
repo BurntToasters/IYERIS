@@ -745,7 +745,7 @@ function renderSidebarQuickAccess() {
   const grid = document.getElementById('sidebar-quick-access-grid');
   if (!grid) return;
 
-  grid.innerHTML = '';
+  grid.replaceChildren();
 
   const homeDiv = document.createElement('div');
   homeDiv.className = 'nav-item quick-action';
@@ -910,7 +910,7 @@ function loadRecentFiles() {
   const recentSection = document.getElementById('recent-section');
   if (!recentList || !recentSection) return;
 
-  recentList.innerHTML = '';
+  recentList.replaceChildren();
 
   if (currentSettings.showRecentFiles === false) {
     recentSection.style.display = 'none';
@@ -1397,7 +1397,7 @@ async function navigateTo(path: string, skipHistoryUpdate = false, trigger = 'di
     thumbnails.clearPendingThumbnailLoads();
 
     showLoading('Loading folder...');
-    if (fileGrid) fileGrid.innerHTML = '';
+    if (fileGrid) fileGrid.replaceChildren();
     const request = startDirectoryRequest(path);
     requestId = request.requestId;
     devLog('Navigate', `[${navigationId}] directory request`, {
@@ -1711,10 +1711,13 @@ function setupMoreActionsMenu() {
   const menu = document.getElementById('more-actions-menu');
   if (!btn || !menu) return;
 
+  const menuEl = menu;
+  const btnEl = btn;
+
   function closeMenu() {
-    menu.style.display = 'none';
-    btn.setAttribute('aria-expanded', 'false');
-    menu.querySelectorAll('.focused').forEach((el) => el.classList.remove('focused'));
+    menuEl.style.display = 'none';
+    btnEl.setAttribute('aria-expanded', 'false');
+    menuEl.querySelectorAll('.focused').forEach((el) => el.classList.remove('focused'));
   }
 
   btn.addEventListener('click', (e) => {
@@ -1909,7 +1912,25 @@ function refresh(reason = 'unspecified') {
     refreshDebounceTimer = null;
     if (!isNavigating && !isSearchModeActive() && currentPath) {
       devLog('Refresh', 'Executing debounced refresh', { reason, currentPath });
-      navigateTo(currentPath, false, `refresh:${reason}`);
+      const savedSelection = new Set(selectedItems);
+      navigateTo(currentPath, false, `refresh:${reason}`)
+        .then(() => {
+          if (savedSelection.size > 0) {
+            for (const itemPath of savedSelection) {
+              const el = fileElementMap.get(itemPath);
+              if (el) {
+                el.classList.add('selected');
+                el.setAttribute('aria-selected', 'true');
+                selectedItems.add(itemPath);
+              }
+            }
+            if (selectedItems.size > 0) {
+              markSelectionDirty();
+              updateStatusBar();
+            }
+          }
+        })
+        .catch(ignoreError);
     } else {
       devLog('Refresh', 'Skipped debounced refresh execution', {
         reason,
@@ -1933,11 +1954,13 @@ async function setViewMode(nextMode: 'grid' | 'list' | 'column') {
   await applyViewMode();
 
   currentSettings.viewMode = viewMode;
-  void saveSettingsWithTimestamp(currentSettings).then((result) => {
-    if (!result.success) {
-      notifySettingsSaveError(result.error);
-    }
-  });
+  void saveSettingsWithTimestamp(currentSettings)
+    .then((result) => {
+      if (!result.success) {
+        notifySettingsSaveError(result.error);
+      }
+    })
+    .catch(ignoreError);
 }
 
 late.navigateTo = navigateTo;

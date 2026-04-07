@@ -133,6 +133,12 @@ describe('rendererTabs extended', () => {
     setupDOM();
   });
 
+  beforeEach(() => {
+    (window as any).tauriAPI = {
+      getItemProperties: vi.fn().mockResolvedValue({ success: true }),
+    };
+  });
+
   afterEach(() => {
     vi.restoreAllMocks();
   });
@@ -411,7 +417,7 @@ describe('rendererTabs extended', () => {
   });
 
   describe('restoreTabView', () => {
-    it('activates home mode when path is the home view path', () => {
+    it('activates home mode when path is the home view path', async () => {
       const deps = createMockDeps();
       deps._settings.tabState = {
         tabs: [
@@ -442,14 +448,15 @@ describe('rendererTabs extended', () => {
       homeTab.cachedFiles = [];
 
       ctrl.switchToTab('tab-home');
-
-      expect(deps.setHomeViewActive).toHaveBeenCalledWith(true);
+      await vi.waitFor(() => {
+        expect(deps.setHomeViewActive).toHaveBeenCalledWith(true);
+      });
 
       expect(deps.renderFiles).not.toHaveBeenCalled();
       expect(deps.renderColumnView).not.toHaveBeenCalled();
     });
 
-    it('renders column view when viewMode is column', () => {
+    it('renders column view when viewMode is column', async () => {
       const deps = createMockDeps();
       deps._setViewMode('column');
       deps._settings.tabState = {
@@ -481,13 +488,15 @@ describe('rendererTabs extended', () => {
       tab2.cachedFiles = [{ name: 'file.txt' } as any];
 
       ctrl.switchToTab('tab-2');
+      await vi.waitFor(() => {
+        expect(deps.setHomeViewActive).toHaveBeenCalledWith(false);
+      });
 
-      expect(deps.setHomeViewActive).toHaveBeenCalledWith(false);
       expect(deps.renderColumnView).toHaveBeenCalled();
       expect(deps.renderFiles).not.toHaveBeenCalled();
     });
 
-    it('renders files when viewMode is grid (non-column, non-home)', () => {
+    it('renders files when viewMode is grid (non-column, non-home)', async () => {
       const deps = createMockDeps();
       deps._setViewMode('grid');
       deps._settings.tabState = {
@@ -519,12 +528,14 @@ describe('rendererTabs extended', () => {
       tabs.find((t) => t.id === 'tab-2')!.cachedFiles = cachedFiles;
 
       ctrl.switchToTab('tab-2');
+      await vi.waitFor(() => {
+        expect(deps.renderFiles).toHaveBeenCalledWith(cachedFiles);
+      });
 
       expect(deps.setHomeViewActive).toHaveBeenCalledWith(false);
-      expect(deps.renderFiles).toHaveBeenCalledWith(cachedFiles);
     });
 
-    it('updates address input value on restore', () => {
+    it('updates address input value on restore', async () => {
       const deps = createMockDeps();
       deps._settings.tabState = {
         tabs: [
@@ -554,10 +565,12 @@ describe('rendererTabs extended', () => {
       tabs.find((t) => t.id === 'tab-2')!.cachedFiles = [{ name: 'x.txt' } as any];
 
       ctrl.switchToTab('tab-2');
+      await vi.waitFor(() => {
+        expect(deps.updateBreadcrumb).toHaveBeenCalledWith('/two');
+      });
 
       const addressInput = document.getElementById('address-input') as HTMLInputElement;
       expect(addressInput.value).toBe('/two');
-      expect(deps.updateBreadcrumb).toHaveBeenCalledWith('/two');
       expect(deps.updateNavigationButtons).toHaveBeenCalled();
     });
   });

@@ -191,23 +191,27 @@ pub async fn search_files(
             }
 
             let entry_path = entry.path();
-            let name = entry
+            let name_cow = entry
                 .file_name()
-                .to_string_lossy()
-                .to_string();
+                .to_string_lossy();
 
             let name_matches = if let Some(regex) = &regex {
-                regex.is_match(&name)
+                regex.is_match(&name_cow)
             } else {
-                name.to_lowercase().contains(&query_lower)
+                name_cow.to_lowercase().contains(&query_lower)
             };
 
             if name_matches {
                 let meta = match entry.metadata() {
                     Ok(m) => m,
-                    Err(_) => continue,
+                    Err(e) => {
+                        if e.io_error().map_or(true, |io_err| io_err.kind() != std::io::ErrorKind::NotFound) {
+                            log::debug!("[Search] metadata error for {}: {}", entry_path.display(), e);
+                        }
+                        continue;
+                    }
                 };
-                if !matches_filters(entry_path, &meta, &parsed_filters) {
+                if !matches_filters(&entry_path, &meta, &parsed_filters) {
                     continue;
                 }
 
@@ -219,19 +223,20 @@ pub async fn search_files(
                     .unwrap_or(0.0);
 
                 results.push(SearchResult {
-                    name,
-                    path: entry_path.to_string_lossy().to_string(),
+                    name: name_cow.into_owned(),
+                    path: entry_path.to_string_lossy().into_owned(),
                     is_directory: meta.is_dir(),
                     size: meta.len(),
                     modified,
                     extension: entry_path
                         .extension()
-                        .map(|e| e.to_string_lossy().to_string())
+                        .map(|e| e.to_string_lossy().into_owned())
                         .unwrap_or_default(),
                     match_context: None,
                 });
 
                 if results.len() >= 10000 {
+                    log::info!("[Search] Results capped at 10000 for query {:?}", query);
                     break;
                 }
             }

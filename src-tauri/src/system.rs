@@ -406,7 +406,120 @@ pub fn get_system_accent_color() -> Result<serde_json::Value, String> {
         }))
     }
 
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        let accent = (|| -> Option<String> {
+            let output = std::process::Command::new("reg")
+                .args([
+                    "query",
+                    "HKCU\\SOFTWARE\\Microsoft\\Windows\\DWM",
+                    "/v",
+                    "ColorizationColor",
+                ])
+                .creation_flags(0x08000000)
+                .output()
+                .ok()?;
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            for line in stdout.lines() {
+                if let Some(pos) = line.find("0x") {
+                    if let Ok(val) = u32::from_str_radix(line[pos + 2..].trim(), 16) {
+                        let r = (val >> 16) & 0xFF;
+                        let g = (val >> 8) & 0xFF;
+                        let b = val & 0xFF;
+                        return Some(format!("{:02X}{:02X}{:02X}", r, g, b));
+                    }
+                }
+            }
+            None
+        })()
+        .unwrap_or_else(|| "0078D4".into());
+
+        let is_dark = (|| -> Option<bool> {
+            let output = std::process::Command::new("reg")
+                .args([
+                    "query",
+                    "HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+                    "/v",
+                    "AppsUseLightTheme",
+                ])
+                .creation_flags(0x08000000)
+                .output()
+                .ok()?;
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            for line in stdout.lines() {
+                if line.contains("0x0") {
+                    return Some(true);
+                }
+                if line.contains("0x1") {
+                    return Some(false);
+                }
+            }
+            None
+        })()
+        .unwrap_or(false);
+
+        Ok(serde_json::json!({
+            "accentColor": accent,
+            "isDarkMode": is_dark,
+        }))
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let accent = (|| -> Option<String> {
+            let output = std::process::Command::new("gsettings")
+                .args(["get", "org.gnome.desktop.interface", "accent-color"])
+                .output()
+                .ok()?;
+            if output.status.success() {
+                let color = String::from_utf8_lossy(&output.stdout).trim().trim_matches('\'').to_string();
+                let mapped = match color.as_str() {
+                    "blue" => "3584E4",
+                    "teal" => "2190A4",
+                    "green" => "3A944A",
+                    "yellow" => "C88800",
+                    "orange" => "ED5B00",
+                    "red" => "E62D42",
+                    "pink" => "D56199",
+                    "purple" => "9141AC",
+                    "slate" => "6F8396",
+                    _ => return None,
+                };
+                return Some(mapped.into());
+            }
+            None
+        })()
+        .unwrap_or_else(|| "3584E4".into());
+
+        let is_dark = (|| -> Option<bool> {
+            let output = std::process::Command::new("gsettings")
+                .args(["get", "org.gnome.desktop.interface", "color-scheme"])
+                .output()
+                .ok()?;
+            if output.status.success() {
+                let scheme = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                return Some(scheme.contains("dark"));
+            }
+            let output = std::process::Command::new("gsettings")
+                .args(["get", "org.gnome.desktop.interface", "gtk-theme"])
+                .output()
+                .ok()?;
+            if output.status.success() {
+                let theme = String::from_utf8_lossy(&output.stdout).trim().to_lowercase();
+                return Some(theme.contains("dark"));
+            }
+            None
+        })()
+        .unwrap_or(false);
+
+        Ok(serde_json::json!({
+            "accentColor": accent,
+            "isDarkMode": is_dark,
+        }))
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
     {
         Ok(serde_json::json!({
             "accentColor": "0078D4",
@@ -470,6 +583,16 @@ pub fn get_system_text_scale() -> f64 {
                 return val;
             }
         }
+        if let Ok(val) = std::env::var("QT_SCALE_FACTOR") {
+            if let Ok(scale) = val.parse::<f64>() {
+                return scale;
+            }
+        }
+        if let Ok(val) = std::env::var("GDK_SCALE") {
+            if let Ok(scale) = val.parse::<f64>() {
+                return scale;
+            }
+        }
         1.0
     }
 
@@ -519,6 +642,11 @@ pub fn is_mas() -> bool {
 #[tauri::command]
 pub fn is_flatpak() -> bool {
     std::env::var("FLATPAK_ID").is_ok()
+}
+
+#[tauri::command]
+pub fn is_snap() -> bool {
+    std::env::var("SNAP").is_ok()
 }
 
 #[tauri::command]
@@ -1021,10 +1149,24 @@ print(String(data: data, encoding: .utf8)!)"#;
         if output.status.success() {
             let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
             if let Ok(apps) = serde_json::from_str::<Vec<serde_json::Value>>(&stdout) {
-                return Ok(apps);
+                if !apps.is_empty() {
+                    return Ok(apps);
+                }
             }
         }
-        Ok(vec![])
+        let fallback_apps: Vec<(&str, &str)> = vec![
+            ("/System/Applications/TextEdit.app", "TextEdit"),
+            ("/System/Applications/Preview.app", "Preview"),
+            ("/Applications/Safari.app", "Safari"),
+            ("/System/Applications/Utilities/Terminal.app", "Terminal"),
+            ("/System/Applications/QuickTime Player.app", "QuickTime Player"),
+        ];
+        let available: Vec<serde_json::Value> = fallback_apps
+            .into_iter()
+            .filter(|(path, _)| std::path::Path::new(path).exists())
+            .map(|(id, name)| serde_json::json!({ "id": id, "name": name }))
+            .collect();
+        Ok(available)
     }
 
     #[cfg(target_os = "windows")]

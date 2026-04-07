@@ -246,7 +246,7 @@ export function createFileRenderController(config: FileRenderConfig) {
       animationCleanupTimer = null;
     }
     config.resetThumbnailObserver();
-    fileGrid.innerHTML = '';
+    fileGrid.replaceChildren();
     renderItemIndex = 0;
     disableEntryAnimation = false;
     disableThumbnailRendering = false;
@@ -337,7 +337,7 @@ export function createFileRenderController(config: FileRenderConfig) {
           comparison = config.nameCollator.compare(a.name, b.name);
           break;
         case 'date':
-          comparison = (modifiedCache?.get(a) || 0) - (modifiedCache?.get(b) || 0);
+          comparison = (modifiedCache?.get(a) ?? -Infinity) - (modifiedCache?.get(b) ?? -Infinity);
           break;
         case 'size':
           comparison = a.size - b.size;

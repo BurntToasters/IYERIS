@@ -150,7 +150,7 @@ export function createQuicklookController(deps: QuicklookDeps) {
       }
     } else if (VIDEO_EXTENSIONS.has(ext)) {
       const fileUrl = encodeFileUrl(file.path);
-      quicklookContent.innerHTML = '';
+      quicklookContent.replaceChildren();
       const video = document.createElement('video');
       video.controls = true;
       video.autoplay = deps.getCurrentSettings().autoPlayVideos || false;
@@ -164,7 +164,7 @@ export function createQuicklookController(deps: QuicklookDeps) {
       quicklookInfo.textContent = quickInfo(file);
     } else if (AUDIO_EXTENSIONS.has(ext)) {
       const fileUrl = encodeFileUrl(file.path);
-      quicklookContent.innerHTML = '';
+      quicklookContent.replaceChildren();
       const container = document.createElement('div');
       container.className = 'preview-audio-container';
       const icon = document.createElement('div');

@@ -29,6 +29,7 @@ body.liquid-glass {
     0 24px 48px rgba(0, 0, 0, 0.35), 0 8px 16px rgba(0, 0, 0, 0.2),
     inset 0 1px 0 rgba(255, 255, 255, 0.1);
   --liquid-glass-menu-bg: color-mix(in srgb, var(--surface-1) 74%, transparent);
+  --liquid-glass-context-menu-bg: color-mix(in srgb, var(--surface-1) 74%, transparent);
   --liquid-glass-menu-border-color: color-mix(in srgb, var(--panel-border) 85%, transparent);
   --liquid-glass-menu-radius: 14px;
   --liquid-glass-menu-filter: blur(var(--liquid-glass-blur))

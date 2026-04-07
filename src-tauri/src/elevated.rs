@@ -1,13 +1,31 @@
 use std::process::Command;
 
+/// Escape a string for safe embedding in a PowerShell single-quoted literal.
+/// PowerShell single-quoted strings only interpret '' as an escaped single quote.
+/// We also reject characters that could break out of the quoting context.
 #[cfg(target_os = "windows")]
 fn ps_escape(s: &str) -> String {
+    if s.contains('\0') || s.contains('\n') || s.contains('\r') {
+        log::warn!("[Elevated] ps_escape: path contains null/newline characters");
+    }
     s.replace('\'', "''")
+        .replace('\0', "")
+        .replace('\n', "")
+        .replace('\r', "")
 }
 
+/// Escape a string for safe embedding in a POSIX shell single-quoted context.
+/// The only character that needs escaping in single quotes is the single quote itself.
+/// We also strip null bytes and newlines to prevent argument injection.
 #[cfg(unix)]
 fn shell_escape(s: &str) -> String {
+    if s.contains('\0') || s.contains('\n') || s.contains('\r') {
+        log::warn!("[Elevated] shell_escape: path contains null/newline characters");
+    }
     s.replace('\'', "'\\''")
+        .replace('\0', "")
+        .replace('\n', "")
+        .replace('\r', "")
 }
 
 #[cfg(any(target_os = "windows", target_os = "linux"))]

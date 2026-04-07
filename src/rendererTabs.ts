@@ -56,7 +56,7 @@ interface TabsDeps {
   updateBreadcrumb: (path: string) => void;
   updateNavigationButtons: () => void;
   setHomeViewActive: (active: boolean) => void;
-  navigateTo: (path: string, force?: boolean) => void;
+  navigateTo: (path: string, force?: boolean) => Promise<void> | void;
   watchDirectory: (path: string) => void;
 
   cancelDirectoryRequest?: () => void;
@@ -326,9 +326,24 @@ export function createTabsController(deps: TabsDeps) {
     if (newTab.path) {
       if (newTab.cachedFiles !== undefined) {
         deps.cancelDirectoryRequest?.();
-        restoreTabView(newTab);
-        updateTabCacheAccess(newTab.id);
-        deps.setFileViewScrollTop(newTab.scrollPosition);
+        // Validate directory still exists before restoring cached view
+        window.tauriAPI
+          .getItemProperties(newTab.path)
+          .then((result) => {
+            if (result.success) {
+              restoreTabView(newTab);
+              updateTabCacheAccess(newTab.id);
+              deps.setFileViewScrollTop(newTab.scrollPosition);
+            } else {
+              // Directory no longer exists — clear cache and navigate fresh
+              delete newTab.cachedFiles;
+              Promise.resolve(deps.navigateTo(newTab.path, true)).catch(ignoreError);
+            }
+          })
+          .catch(() => {
+            delete newTab.cachedFiles;
+            Promise.resolve(deps.navigateTo(newTab.path, true)).catch(ignoreError);
+          });
       } else {
         void (async () => {
           try {

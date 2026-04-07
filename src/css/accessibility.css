@@ -129,3 +129,41 @@ body.reduce-motion .glass-panel {
   backdrop-filter: none;
   background: var(--bg-secondary);
 }
+
+@media (prefers-contrast: more) {
+  :root {
+    --panel-border: var(--text-secondary);
+    --focus-ring: 0 0 0 3px var(--accent-color);
+    --focus-ring-strong: 0 0 0 4px var(--accent-color);
+  }
+
+  .file-item:hover,
+  .nav-item:hover,
+  .context-menu-item:hover {
+    outline: 1px solid var(--text-secondary);
+  }
+}
+
+@media (forced-colors: active) {
+  :root {
+    --accent-color: Highlight;
+    --text-primary: CanvasText;
+    --text-secondary: CanvasText;
+    --bg-primary: Canvas;
+    --surface-0: Canvas;
+    --surface-1: Canvas;
+    --panel-border: CanvasText;
+  }
+
+  .file-item:focus-visible,
+  .nav-item:focus-visible,
+  .context-menu-item:focus-visible {
+    outline: 2px solid Highlight;
+  }
+
+  button,
+  input,
+  select {
+    border: 1px solid CanvasText;
+  }
+}
