@@ -29,6 +29,7 @@
   flex-direction: column;
   min-width: 150px;
   width: 220px;
+  max-width: 400px;
   flex-shrink: 0;
   border-right: 1px solid var(--hover-color);
   overflow-y: auto;

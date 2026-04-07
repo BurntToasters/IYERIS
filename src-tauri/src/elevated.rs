@@ -167,18 +167,25 @@ async fn run_elevated_file_op(op: &str, source: &str, dest: Option<&str>) -> Res
     let op = op.to_string();
 
     tokio::task::spawn_blocking(move || {
+        let dest_str = match op.as_str() {
+            "copy" | "move" => {
+                Some(dest.as_deref().ok_or_else(|| format!("Destination required for {}", op))?)
+            }
+            _ => None,
+        };
+
         #[cfg(target_os = "windows")]
         {
             let script = match op.as_str() {
                 "copy" => format!(
                     "Copy-Item -LiteralPath '{}' -Destination '{}' -Recurse -Force",
                     ps_escape(&source),
-                    ps_escape(dest.as_deref().unwrap_or(""))
+                    ps_escape(dest_str.unwrap_or_default())
                 ),
                 "move" => format!(
                     "Move-Item -LiteralPath '{}' -Destination '{}' -Force",
                     ps_escape(&source),
-                    ps_escape(dest.as_deref().unwrap_or(""))
+                    ps_escape(dest_str.unwrap_or_default())
                 ),
                 "delete" => format!(
                     "Remove-Item -LiteralPath '{}' -Recurse -Force",
@@ -217,7 +224,7 @@ async fn run_elevated_file_op(op: &str, source: &str, dest: Option<&str>) -> Res
         #[cfg(target_os = "macos")]
         {
             let src = shell_escape(&source);
-            let dst = shell_escape(dest.as_deref().unwrap_or(""));
+            let dst = shell_escape(dest_str.unwrap_or_default());
             let cmd = match op.as_str() {
                 "copy" => format!("cp -R '{}' '{}'", src, dst),
                 "move" => format!("mv '{}' '{}'", src, dst),
@@ -245,8 +252,8 @@ async fn run_elevated_file_op(op: &str, source: &str, dest: Option<&str>) -> Res
         #[cfg(target_os = "linux")]
         {
             let (cmd, args) = match op.as_str() {
-                "copy" => ("cp", vec!["-r", &source, dest.as_deref().unwrap_or("")]),
-                "move" => ("mv", vec![&source as &str, dest.as_deref().unwrap_or("")]),
+                "copy" => ("cp", vec!["-r", &source, dest_str.unwrap_or_default()]),
+                "move" => ("mv", vec![&source as &str, dest_str.unwrap_or_default()]),
                 "delete" => ("rm", vec!["-rf", &source]),
                 _ => return Err(format!("Unknown operation: {}", op)),
             };

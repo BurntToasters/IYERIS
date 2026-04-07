@@ -128,12 +128,14 @@ pub fn watch_directory(
                             "[Watcher] [{}] Watched directory removed, emitting watched-dir-removed",
                             event_id
                         );
-                        let _ = app.emit(
+                        if let Err(e) = app.emit(
                             "watched-dir-removed",
                             serde_json::json!({
                                 "dirPath": watch_path.to_string_lossy(),
                             }),
-                        );
+                        ) {
+                            log::warn!("[Watcher] Failed to emit watched-dir-removed: {}", e);
+                        }
                         break;
                     }
                     if decision != "emit" {
@@ -165,7 +167,7 @@ pub fn watch_directory(
                         event_kind,
                         relevant_paths
                     );
-                    let _ = app.emit(
+                    if let Err(e) = app.emit(
                         "directory-changed",
                         serde_json::json!({
                             "dirPath": watch_path.to_string_lossy(),
@@ -173,7 +175,9 @@ pub fn watch_directory(
                             "eventKind": event_kind,
                             "eventPaths": relevant_paths,
                         }),
-                    );
+                    ) {
+                        log::warn!("[Watcher] Failed to emit directory-changed: {}", e);
+                    }
                 }
                 Err(error) => log::warn!("[Watcher] notify error: {}", error),
             }

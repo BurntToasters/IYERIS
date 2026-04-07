@@ -383,7 +383,7 @@
 }
 
 .folder-tree[data-tree-indent-mode='legacy'] .tree-item {
-  padding-left: calc(6px + var(--tree-item-depth, 0) * 12px);
+  padding-left: calc(6px + min(var(--tree-item-depth, 0) * 12px, 120px));
 }
 
 .tree-item:hover {

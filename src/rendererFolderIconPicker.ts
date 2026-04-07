@@ -87,7 +87,12 @@ export function createFolderIconPickerController(deps: FolderIconPickerDeps) {
       currentSettings.folderIcons = {};
     }
     currentSettings.folderIcons[folderPath] = icon;
-    await deps.saveSettings();
+    try {
+      await deps.saveSettings();
+    } catch {
+      deps.showToast('Failed to save folder icon', 'Error', 'error');
+      return;
+    }
     const currentPath = deps.getCurrentPath();
     if (currentPath) navigateTo(currentPath);
     deps.showToast('Folder icon updated', 'Success', 'success');
@@ -101,7 +106,12 @@ export function createFolderIconPickerController(deps: FolderIconPickerDeps) {
       currentSettings.folderIcons[folderIconPickerPath]
     ) {
       delete currentSettings.folderIcons[folderIconPickerPath];
-      await deps.saveSettings();
+      try {
+        await deps.saveSettings();
+      } catch {
+        deps.showToast('Failed to save folder icon', 'Error', 'error');
+        return;
+      }
       const currentPath = deps.getCurrentPath();
       if (currentPath) navigateTo(currentPath);
       deps.showToast('Folder icon reset to default', 'Success', 'success');

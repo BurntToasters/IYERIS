@@ -378,9 +378,14 @@ export function createPreviewController(deps: PreviewDeps) {
     if (requestId !== previewRequestId) return;
 
     if (md) {
-      const rendered = sanitizeMarkdownHtml(
-        md.marked.parse(result.content, { async: false, breaks: true }) as string
-      );
+      let rendered: string;
+      try {
+        rendered = sanitizeMarkdownHtml(
+          md.marked.parse(result.content, { async: false, breaks: true }) as string
+        );
+      } catch {
+        rendered = `<pre class="preview-text"><code>${escapeHtml(result.content)}</code></pre>`;
+      }
       previewContent.innerHTML = `
       ${result.isTruncated ? `<div class="preview-truncated">${twemojiImg(String.fromCodePoint(0x26a0), 'twemoji')} File truncated to first 100KB</div>` : ''}
       <div class="preview-markdown">${rendered}</div>

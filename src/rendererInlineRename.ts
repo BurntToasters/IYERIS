@@ -224,29 +224,27 @@ export function createInlineRenameController(deps: InlineRenameDeps) {
               if (confirmed) {
                 const elevResult = await window.tauriAPI.elevatedRename(itemPath, newName);
                 if (!elevResult.success) {
-                  renameInProgress = false;
                   showInlineError(elevResult.error || 'Elevated rename failed');
                   input.focus();
                   return;
                 }
               } else {
-                renameInProgress = false;
                 showInlineError('Operation cancelled');
                 input.focus();
                 return;
               }
             } else {
-              renameInProgress = false;
               showInlineError(result.error || 'Rename failed');
               input.focus();
               return;
             }
           }
         } catch {
-          renameInProgress = false;
           showInlineError('Rename failed');
           input.focus();
           return;
+        } finally {
+          renameInProgress = false;
         }
         renameHandled = true;
         cleanup();

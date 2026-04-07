@@ -38,6 +38,7 @@
 
 .breadcrumb-item:focus-within {
   background: var(--interactive-hover);
+  box-shadow: var(--focus-ring);
 }
 
 .breadcrumb-label,

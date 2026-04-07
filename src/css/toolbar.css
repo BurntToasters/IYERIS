@@ -234,6 +234,8 @@ body.platform-linux .toolbar-button:active:not(:disabled) {
   right: 0;
   z-index: var(--z-dropdown-above);
   min-width: 140px;
+  max-height: 60vh;
+  overflow-y: auto;
   padding: 4px;
   background: var(--dropdown-bg);
   border: 1px solid var(--glass-border);

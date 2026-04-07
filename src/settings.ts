@@ -148,8 +148,25 @@ function sanitizeCustomTheme(value: unknown): Settings['customTheme'] | undefine
   ) {
     return undefined;
   }
+  const isValidColor = (v: string) => {
+    const t = v.trim();
+    if (/^#[0-9A-Fa-f]{3,8}$/.test(t)) return true;
+    if (/^(?:rgba?|hsla?|oklch|color-mix)\s*\(/.test(t) && t.endsWith(')')) return true;
+    return false;
+  };
+  if (
+    !isValidColor(accentColor) ||
+    !isValidColor(bgPrimary) ||
+    !isValidColor(bgSecondary) ||
+    !isValidColor(textPrimary) ||
+    !isValidColor(textSecondary) ||
+    !isValidColor(glassBg) ||
+    !isValidColor(glassBorder)
+  ) {
+    return undefined;
+  }
   return {
-    name,
+    name: name.slice(0, 100),
     accentColor,
     bgPrimary,
     bgSecondary,
@@ -157,7 +174,7 @@ function sanitizeCustomTheme(value: unknown): Settings['customTheme'] | undefine
     textSecondary,
     glassBg,
     glassBorder,
-    iconHue: typeof iconHue === 'string' ? iconHue : accentColor,
+    iconHue: typeof iconHue === 'string' && isValidColor(iconHue) ? iconHue : accentColor,
   };
 }
 
@@ -330,7 +347,12 @@ export function sanitizeSettings(
   }
 
   // String settings
-  if (typeof raw.startupPath === 'string') clean.startupPath = raw.startupPath;
+  if (typeof raw.startupPath === 'string') {
+    const sp = raw.startupPath.trim();
+    if (sp === '' || /^[/~]/.test(sp) || /^[A-Za-z]:[\\/]/.test(sp)) {
+      clean.startupPath = sp;
+    }
+  }
 
   // Positive number settings
   for (const key of [
