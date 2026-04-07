@@ -409,7 +409,7 @@ export function createTabsController(deps: TabsDeps) {
     void deps.navigateTo(tabPath, true);
 
     renderTabs();
-    debouncedSaveTabState();
+    saveTabState();
   }
 
   function closeTab(tabId: string) {
@@ -454,7 +454,7 @@ export function createTabsController(deps: TabsDeps) {
     }
 
     renderTabs();
-    debouncedSaveTabState();
+    saveTabState();
   }
 
   function saveTabState(immediate = false): Promise<unknown> | void {

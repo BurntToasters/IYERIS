@@ -12,6 +12,7 @@ type TauriApi = {
   elevatedCopyBatch: ReturnType<typeof vi.fn>;
   elevatedMoveBatch: ReturnType<typeof vi.fn>;
   elevatedDeleteBatch: ReturnType<typeof vi.fn>;
+  getItemProperties: ReturnType<typeof vi.fn>;
 };
 
 function setupTauriApi(overrides: Partial<TauriApi> = {}): TauriApi {
@@ -25,6 +26,7 @@ function setupTauriApi(overrides: Partial<TauriApi> = {}): TauriApi {
     elevatedCopyBatch: vi.fn().mockResolvedValue({ success: true }),
     elevatedMoveBatch: vi.fn().mockResolvedValue({ success: true }),
     elevatedDeleteBatch: vi.fn().mockResolvedValue({ success: true }),
+    getItemProperties: vi.fn().mockResolvedValue({ success: true }),
     ...overrides,
   };
   Object.defineProperty(window, 'tauriAPI', {

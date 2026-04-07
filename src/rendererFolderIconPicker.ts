@@ -26,6 +26,21 @@ const FOLDER_ICON_OPTIONS = [
 
 export function createFolderIconPickerController(deps: FolderIconPickerDeps) {
   let folderIconPickerPath: string | null = null;
+  let gridDelegationAttached = false;
+
+  function attachGridDelegation(grid: HTMLElement): void {
+    if (gridDelegationAttached) return;
+    gridDelegationAttached = true;
+    grid.addEventListener('click', (e) => {
+      const option = (e.target as HTMLElement).closest('.folder-icon-option') as HTMLElement | null;
+      if (!option) return;
+      const icon = option.dataset.icon;
+      if (icon && folderIconPickerPath) {
+        setFolderIcon(folderIconPickerPath, icon);
+        hideFolderIconPicker();
+      }
+    });
+  }
 
   function showFolderIconPicker(folderPath: string) {
     const modal = document.getElementById('folder-icon-modal');
@@ -35,6 +50,7 @@ export function createFolderIconPickerController(deps: FolderIconPickerDeps) {
     if (!modal || !pathDisplay || !grid) return;
 
     folderIconPickerPath = folderPath;
+    attachGridDelegation(grid);
 
     const folderName = folderPath.split(/[/\\]/).pop() || folderPath;
     pathDisplay.textContent = folderName;
@@ -51,16 +67,6 @@ export function createFolderIconPickerController(deps: FolderIconPickerDeps) {
       </div>
     `;
     }).join('');
-
-    grid.querySelectorAll('.folder-icon-option').forEach((option) => {
-      option.addEventListener('click', () => {
-        const icon = (option as HTMLElement).dataset.icon;
-        if (icon && folderIconPickerPath) {
-          setFolderIcon(folderIconPickerPath, icon);
-          hideFolderIconPicker();
-        }
-      });
-    });
 
     modal.style.display = 'flex';
     deps.activateModal(modal);

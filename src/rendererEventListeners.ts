@@ -311,7 +311,7 @@ export function createEventListenersController(config: EventListenersConfig) {
     config.syncSidebarToggleState();
 
     const addressInput = config.getAddressInput();
-    addressInput?.addEventListener('keypress', (e) => {
+    addressInput?.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         const value = addressInput.value.trim();
         if (value === config.homeViewLabel) {
@@ -786,7 +786,8 @@ export function createEventListenersController(config: EventListenersConfig) {
     const fileGrid = config.getFileGrid();
     if (fileGrid) {
       fileGrid.addEventListener('click', (e) => {
-        if (e.target === fileGrid) config.clearSelection();
+        const target = e.target as HTMLElement;
+        if (target === fileGrid || !target.closest('.file-item')) config.clearSelection();
       });
     }
     initContextMenuListeners();

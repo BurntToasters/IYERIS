@@ -9,6 +9,7 @@ type ClipboardTauriApi = {
   copyItems: ReturnType<typeof vi.fn>;
   moveItems: ReturnType<typeof vi.fn>;
   selectFolder: ReturnType<typeof vi.fn>;
+  getItemProperties: ReturnType<typeof vi.fn>;
 };
 
 function setupTauriApi(overrides: Partial<ClipboardTauriApi> = {}): ClipboardTauriApi {
@@ -19,6 +20,7 @@ function setupTauriApi(overrides: Partial<ClipboardTauriApi> = {}): ClipboardTau
     copyItems: vi.fn().mockResolvedValue({ success: true }),
     moveItems: vi.fn().mockResolvedValue({ success: true }),
     selectFolder: vi.fn().mockResolvedValue({ success: true, path: '/target' }),
+    getItemProperties: vi.fn().mockResolvedValue({ success: true }),
     ...overrides,
   };
 

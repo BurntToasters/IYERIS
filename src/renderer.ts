@@ -69,6 +69,8 @@ async function saveSettingsWithTimestamp(settings: Settings) {
 }
 
 let settingsSaveTimeout: ReturnType<typeof setTimeout> | null = null;
+let settingsSaveInFlight = false;
+let settingsSavePending = false;
 let lastSettingsSaveErrorAt = 0;
 
 function notifySettingsSaveError(error?: string): void {
@@ -78,27 +80,38 @@ function notifySettingsSaveError(error?: string): void {
   showToast(`Failed to save settings: ${error || 'Operation failed'}`, 'Error', 'error');
 }
 
+function executeSettingsSave(): void {
+  if (settingsSaveInFlight) {
+    settingsSavePending = true;
+    return;
+  }
+  settingsSaveInFlight = true;
+  settingsSavePending = false;
+  saveSettingsWithTimestamp(currentSettings)
+    .then((result) => {
+      if (!result.success) {
+        notifySettingsSaveError(result.error);
+      }
+    })
+    .catch((error) => {
+      notifySettingsSaveError(getErrorMessage(error));
+    })
+    .finally(() => {
+      settingsSaveInFlight = false;
+      if (settingsSavePending) {
+        executeSettingsSave();
+      }
+    });
+}
+
 function debouncedSaveSettings(delay: number = SETTINGS_SAVE_DEBOUNCE_MS) {
   if (settingsSaveTimeout) {
     clearTimeout(settingsSaveTimeout);
   }
-  const timeoutId = setTimeout(() => {
-    saveSettingsWithTimestamp(currentSettings)
-      .then((result) => {
-        if (!result.success) {
-          notifySettingsSaveError(result.error);
-        }
-      })
-      .catch((error) => {
-        notifySettingsSaveError(getErrorMessage(error));
-      })
-      .finally(() => {
-        if (settingsSaveTimeout === timeoutId) {
-          settingsSaveTimeout = null;
-        }
-      });
+  settingsSaveTimeout = setTimeout(() => {
+    settingsSaveTimeout = null;
+    executeSettingsSave();
   }, delay);
-  settingsSaveTimeout = timeoutId;
 }
 
 const ipcCleanupFunctions: (() => void)[] = [];
@@ -1012,8 +1025,16 @@ const bootstrapController = createBootstrapController({
   initTooltipSystem,
   initCommandPalette,
   setupEventListeners: () => {
-    setupEventListeners();
-    setupMoreActionsMenu();
+    try {
+      setupEventListeners();
+    } catch (err) {
+      console.error('[EventListeners] setup failed:', err);
+    }
+    try {
+      setupMoreActionsMenu();
+    } catch (err) {
+      console.error('[MoreActions] setup failed:', err);
+    }
   },
   loadDrives: () => loadDrives(),
   initializeTabs,
@@ -1690,41 +1711,7 @@ function setupMoreActionsMenu() {
   const menu = document.getElementById('more-actions-menu');
   if (!btn || !menu) return;
 
-  function showMenu() {
-    if (!menu || !btn) return;
-    const rect = btn.getBoundingClientRect();
-    menu.style.display = 'block';
-
-    const menuRect = menu.getBoundingClientRect();
-    let left = rect.left;
-    let top = rect.bottom + 5;
-
-    if (left + menuRect.width > window.innerWidth) {
-      left = window.innerWidth - menuRect.width - 10;
-    }
-    if (top + menuRect.height > window.innerHeight) {
-      top = rect.top - menuRect.height - 5;
-    }
-    if (left < 10) left = 10;
-    if (top < 10) top = 10;
-
-    menu.style.left = left + 'px';
-    menu.style.top = top + 'px';
-    btn.setAttribute('aria-expanded', 'true');
-
-    void updateUndoRedoState();
-
-    const items = Array.from(menu.querySelectorAll<HTMLElement>('.context-menu-item'));
-    const firstEnabled = items.find((el) => !(el as HTMLButtonElement).disabled);
-    if (firstEnabled) {
-      firstEnabled.classList.add('focused');
-      firstEnabled.tabIndex = 0;
-      firstEnabled.focus({ preventScroll: true });
-    }
-  }
-
-  function hideMenu() {
-    if (!menu || !btn) return;
+  function closeMenu() {
     menu.style.display = 'none';
     btn.setAttribute('aria-expanded', 'false');
     menu.querySelectorAll('.focused').forEach((el) => el.classList.remove('focused'));
@@ -1732,51 +1719,90 @@ function setupMoreActionsMenu() {
 
   btn.addEventListener('click', (e) => {
     e.stopPropagation();
-    if (menu.style.display === 'block') {
-      hideMenu();
+    const isOpen = menu.style.display === 'block';
+    if (isOpen) {
+      closeMenu();
     } else {
-      showMenu();
+      hideSortMenu();
+      hideContextMenu();
+      hideEmptySpaceContextMenu();
+
+      menu.style.display = 'block';
+
+      const rect = btn.getBoundingClientRect();
+      const menuRect = menu.getBoundingClientRect();
+      let left = rect.left;
+      let top = rect.bottom + 5;
+
+      if (left + menuRect.width > window.innerWidth) {
+        left = window.innerWidth - menuRect.width - 10;
+      }
+      if (top + menuRect.height > window.innerHeight) {
+        top = rect.top - menuRect.height - 5;
+      }
+      if (left < 10) left = 10;
+      if (top < 10) top = 10;
+
+      menu.style.left = left + 'px';
+      menu.style.top = top + 'px';
+      btn.setAttribute('aria-expanded', 'true');
+
+      void updateUndoRedoState();
+
+      const items = Array.from(menu.querySelectorAll<HTMLElement>('.context-menu-item'));
+      const firstEnabled = items.find((el) => !(el as HTMLButtonElement).disabled);
+      if (firstEnabled) {
+        firstEnabled.classList.add('focused');
+        firstEnabled.tabIndex = 0;
+        firstEnabled.focus({ preventScroll: true });
+      }
     }
   });
 
-  const undoItem = document.getElementById('more-undo-btn');
-  const redoItem = document.getElementById('more-redo-btn');
-
-  undoItem?.addEventListener('click', () => {
-    hideMenu();
-    void performUndo();
-  });
-  redoItem?.addEventListener('click', () => {
-    hideMenu();
-    void performRedo();
+  // Close when clicking outside
+  document.addEventListener('click', (e) => {
+    if (menu.style.display !== 'block') return;
+    if (!btn.contains(e.target as Node) && !menu.contains(e.target as Node)) {
+      closeMenu();
+    }
   });
 
+  // Menu item actions
+  menu.addEventListener('click', (e) => {
+    const item = (e.target as HTMLElement).closest('.context-menu-item') as HTMLElement | null;
+    if (!item) return;
+    e.stopPropagation();
+    closeMenu();
+    if (item.id === 'more-undo-btn') void performUndo();
+    else if (item.id === 'more-redo-btn') void performRedo();
+  });
+
+  // Keyboard navigation
   menu.addEventListener('keydown', (e) => {
     const items = Array.from(menu.querySelectorAll<HTMLElement>('.context-menu-item'));
     const focusedIndex = items.findIndex((el) => el.classList.contains('focused'));
 
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault();
+      const enabledItems = items.filter((el) => !el.hasAttribute('disabled'));
+      if (enabledItems.length === 0) return;
+      const enabledFocusedIndex = enabledItems.findIndex((el) => el.classList.contains('focused'));
       const dir = e.key === 'ArrowDown' ? 1 : -1;
-      const next = (focusedIndex + dir + items.length) % items.length;
-      items.forEach((el, i) => {
-        el.classList.toggle('focused', i === next);
-        el.tabIndex = i === next ? 0 : -1;
+      const next = (enabledFocusedIndex + dir + enabledItems.length) % enabledItems.length;
+      items.forEach((el) => {
+        el.classList.remove('focused');
+        el.tabIndex = -1;
       });
-      items[next]!.focus({ preventScroll: true });
+      enabledItems[next]!.classList.add('focused');
+      enabledItems[next]!.tabIndex = 0;
+      enabledItems[next]!.focus({ preventScroll: true });
     } else if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
       if (focusedIndex >= 0) items[focusedIndex]!.click();
     } else if (e.key === 'Escape') {
       e.preventDefault();
-      hideMenu();
+      closeMenu();
       btn.focus();
-    }
-  });
-
-  document.addEventListener('mousedown', (e) => {
-    if (menu.style.display === 'block' && !menu.contains(e.target as Node) && e.target !== btn) {
-      hideMenu();
     }
   });
 }

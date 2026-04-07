@@ -203,6 +203,12 @@ body.liquid-glass .glass-panel {
   position: relative;
 }
 
+body.liquid-glass .sort-menu.glass-panel,
+body.liquid-glass .progress-panel.glass-panel,
+body.liquid-glass .status-bar.glass-panel {
+  position: fixed;
+}
+
 body.liquid-glass .glass-panel::before {
   content: '';
   position: absolute;

@@ -457,6 +457,34 @@ export function createClipboardController(deps: ClipboardDeps) {
       const clipboardSnapshot = cloneClipboardState(clipboard);
       if (!clipboardSnapshot) return;
 
+      // For cut operations, validate source paths still exist
+      if (clipboardSnapshot.operation === 'cut') {
+        const validationResults = await Promise.all(
+          clipboardSnapshot.paths.map((p) =>
+            window.tauriAPI.getItemProperties(p).then(
+              (r) => ({ path: p, exists: r.success }),
+              () => ({ path: p, exists: false })
+            )
+          )
+        );
+        const missing = validationResults.filter((r) => !r.exists);
+        if (missing.length > 0) {
+          const validPaths = validationResults.filter((r) => r.exists).map((r) => r.path);
+          if (validPaths.length === 0) {
+            clipboard = null;
+            updateCutVisuals();
+            deps.showToast('Source files no longer exist', 'Paste Failed', 'error');
+            return;
+          }
+          clipboardSnapshot.paths = validPaths;
+          deps.showToast(
+            `${missing.length} file(s) no longer exist and were skipped`,
+            'Paste',
+            'warning'
+          );
+        }
+      }
+
       const isCopy = clipboardSnapshot.operation === 'copy';
       const conflictBehavior = deps.getCurrentSettings().fileConflictBehavior || 'ask';
       const result = isCopy

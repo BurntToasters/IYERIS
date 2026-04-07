@@ -1103,7 +1103,7 @@ describe('createEventListenersController', () => {
 
       const input = document.getElementById('address-input') as HTMLInputElement;
       input.value = '/usr/local/bin';
-      input.dispatchEvent(new KeyboardEvent('keypress', { key: 'Enter', bubbles: true }));
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
 
       expect(config.navigateTo).toHaveBeenCalledWith('/usr/local/bin');
     });
@@ -1115,7 +1115,7 @@ describe('createEventListenersController', () => {
 
       const input = document.getElementById('address-input') as HTMLInputElement;
       input.value = 'Home';
-      input.dispatchEvent(new KeyboardEvent('keypress', { key: 'Enter', bubbles: true }));
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
 
       expect(config.navigateTo).toHaveBeenCalledWith('~home');
     });

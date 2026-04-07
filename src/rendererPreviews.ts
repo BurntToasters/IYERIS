@@ -564,9 +564,11 @@ export function createPreviewController(deps: PreviewDeps) {
       const infoHtml = generateFileInfo(file, info);
       const infoWrapper = document.createElement('div');
       infoWrapper.innerHTML = infoHtml;
+      const fragment = document.createDocumentFragment();
       while (infoWrapper.firstChild) {
-        previewContent.appendChild(infoWrapper.firstChild);
+        fragment.appendChild(infoWrapper.firstChild);
       }
+      previewContent.appendChild(fragment);
     } catch {
       if (requestId !== previewRequestId) return;
       previewContent.innerHTML = `
