@@ -8,6 +8,8 @@ const mockInstallUpdate = vi.hoisted(() => vi.fn());
 const mockRestartAsAdmin = vi.hoisted(() => vi.fn());
 const mockOnUpdateDownloadProgress = vi.hoisted(() => vi.fn());
 const mockOpenFile = vi.hoisted(() => vi.fn());
+const mockGetAppVersion = vi.hoisted(() => vi.fn());
+const mockGetSettings = vi.hoisted(() => vi.fn());
 
 type MockElement = {
   innerHTML: string;
@@ -110,6 +112,8 @@ describe('rendererUpdateActions extended coverage', () => {
     mockRestartAsAdmin.mockReset();
     mockOnUpdateDownloadProgress.mockReset();
     mockOpenFile.mockReset();
+    mockGetAppVersion.mockReset();
+    mockGetSettings.mockReset();
     mockOnUpdateDownloadProgress.mockImplementation(
       (
         _cb: (progress: {
@@ -122,6 +126,13 @@ describe('rendererUpdateActions extended coverage', () => {
         return () => {};
       }
     );
+    mockGetAppVersion.mockResolvedValue('v3.0.0-beta.1');
+    mockGetSettings.mockResolvedValue({
+      success: true,
+      settings: {
+        updateChannel: 'auto',
+      },
+    });
 
     (window as any).tauriAPI = {
       checkForUpdates: mockCheckForUpdates,
@@ -130,6 +141,8 @@ describe('rendererUpdateActions extended coverage', () => {
       restartAsAdmin: mockRestartAsAdmin,
       onUpdateDownloadProgress: mockOnUpdateDownloadProgress,
       openFile: mockOpenFile,
+      getAppVersion: mockGetAppVersion,
+      getSettings: mockGetSettings,
     };
 
     showDialog = vi.fn().mockResolvedValue(overrides?.showDialogReturn ?? true);
@@ -315,6 +328,78 @@ describe('rendererUpdateActions extended coverage', () => {
         false
       );
       expect(checkUpdatesBtn.disabled).toBe(false);
+    });
+
+    it('appends beta-manifest guidance for beta auto channel when beta manifest is missing', async () => {
+      const controller = setup();
+      mockCheckForUpdates.mockResolvedValue({
+        success: false,
+        error: 'Request failed with status 404 for windows-beta.json',
+      });
+      mockGetAppVersion.mockResolvedValue('v3.0.0-beta.1');
+      mockGetSettings.mockResolvedValue({
+        success: true,
+        settings: {
+          updateChannel: 'auto',
+        },
+      });
+
+      await controller.checkForUpdates();
+
+      expect(showDialog).toHaveBeenCalledTimes(1);
+      const [, dialogMessage] = showDialog.mock.calls[0];
+      expect(dialogMessage).toContain(
+        'Failed to check for updates: Request failed with status 404 for windows-beta.json'
+      );
+      expect(dialogMessage).toContain(
+        "This is most likely due to the latest STABLE release being fairly new and the next beta hasn't been released yet."
+      );
+    });
+
+    it('appends beta-manifest guidance for beta update channel when beta manifest is missing', async () => {
+      const controller = setup();
+      mockCheckForUpdates.mockResolvedValue({
+        success: false,
+        error: 'Request failed with status 404 for windows-beta.json',
+      });
+      mockGetAppVersion.mockResolvedValue('v3.0.0-beta.1');
+      mockGetSettings.mockResolvedValue({
+        success: true,
+        settings: {
+          updateChannel: 'beta',
+        },
+      });
+
+      await controller.checkForUpdates();
+
+      expect(showDialog).toHaveBeenCalledTimes(1);
+      const [, dialogMessage] = showDialog.mock.calls[0];
+      expect(dialogMessage).toContain(
+        "This is most likely due to the latest STABLE release being fairly new and the next beta hasn't been released yet."
+      );
+    });
+
+    it('does not append beta-manifest guidance when update channel is stable', async () => {
+      const controller = setup();
+      mockCheckForUpdates.mockResolvedValue({
+        success: false,
+        error: 'Request failed with status 404 for windows-beta.json',
+      });
+      mockGetAppVersion.mockResolvedValue('v3.0.0-beta.1');
+      mockGetSettings.mockResolvedValue({
+        success: true,
+        settings: {
+          updateChannel: 'stable',
+        },
+      });
+
+      await controller.checkForUpdates();
+
+      expect(showDialog).toHaveBeenCalledTimes(1);
+      const [, dialogMessage] = showDialog.mock.calls[0];
+      expect(dialogMessage).toBe(
+        'Failed to check for updates: Request failed with status 404 for windows-beta.json'
+      );
     });
   });
 
