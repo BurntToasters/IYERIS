@@ -657,6 +657,7 @@ export interface TauriAPI {
   getGitStatus: (dirPath: string, includeUntracked?: boolean) => Promise<GitStatusResponse>;
   getGitBranch: (dirPath: string) => Promise<GitBranchResponse>;
   listArchiveContents: (archivePath: string) => Promise<ArchiveListResponse>;
+  getEmbeddedOfficeThumbnail: (filePath: string, maxSize?: number) => Promise<FileDataUrlResponse>;
 
   getCachedThumbnail: (filePath: string) => Promise<ThumbnailCacheResponse>;
   saveCachedThumbnail: (filePath: string, dataUrl: string) => Promise<ThumbnailSaveResponse>;

@@ -445,6 +445,7 @@ fn main() {
             archive::extract_archive,
             archive::cancel_archive_operation,
             archive::list_archive_contents,
+            archive::get_embedded_office_thumbnail,
             // Settings
             settings::get_settings,
             settings::save_settings,

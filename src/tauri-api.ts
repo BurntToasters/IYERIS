@@ -1122,6 +1122,17 @@ const tauriAPI: TauriAPI = {
       return { success: false, error: String(e) } as never;
     }
   },
+  getEmbeddedOfficeThumbnail: async (filePath, maxSize) => {
+    try {
+      const dataUrl = await invoke<string>('get_embedded_office_thumbnail', {
+        filePath,
+        maxSize: maxSize ?? null,
+      });
+      return { success: true, dataUrl } as never;
+    } catch (e) {
+      return { success: false, error: String(e) } as never;
+    }
+  },
 
   getCachedThumbnail: async (filePath) => {
     try {

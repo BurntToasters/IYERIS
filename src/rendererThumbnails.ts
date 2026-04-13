@@ -275,6 +275,16 @@ export function createThumbnailController(deps: ThumbnailDeps) {
     return generatePdfThumbnailPdfJs(pdfUrl, quality);
   }
 
+  async function generateOfficeThumbnail(filePath: string): Promise<string> {
+    const maxBytes =
+      (deps.getCurrentSettings().maxThumbnailSizeMB || DEFAULT_MAX_THUMBNAIL_SIZE_MB) * 1024 * 1024;
+    const result = await window.tauriAPI.getEmbeddedOfficeThumbnail(filePath, maxBytes);
+    if (!result.success) {
+      throw new Error(result.error);
+    }
+    return result.dataUrl;
+  }
+
   function loadThumbnail(fileItem: HTMLElement, item: FileItem) {
     const cached = thumbnailCache.get(item.path);
     if (cached) {
@@ -309,6 +319,7 @@ export function createThumbnailController(deps: ThumbnailDeps) {
 
         if (
           thumbnailType !== 'pdf' &&
+          thumbnailType !== 'office' &&
           item.size >
             (currentSettings.maxThumbnailSizeMB || DEFAULT_MAX_THUMBNAIL_SIZE_MB) * 1024 * 1024
         ) {
@@ -350,20 +361,31 @@ export function createThumbnailController(deps: ThumbnailDeps) {
         let thumbnailUrl = fileUrl;
         let shouldCacheToDisk = false;
 
-        const thumbnailGenerators: Record<string, (url: string) => Promise<string>> = {
-          video: generateVideoThumbnail,
-          audio: generateAudioWaveform,
-          pdf: generatePdfThumbnail,
-        };
-        const generator = thumbnailGenerators[thumbnailType];
-        if (generator) {
+        if (thumbnailType === 'office') {
           try {
-            thumbnailUrl = await generator(fileUrl);
+            thumbnailUrl = await generateOfficeThumbnail(item.path);
             shouldCacheToDisk = true;
           } catch {
             if (iconDiv) iconDiv.innerHTML = deps.getFileIcon(item.name);
             fileItem.classList.remove('has-thumbnail');
             return;
+          }
+        } else {
+          const thumbnailGenerators: Record<string, (url: string) => Promise<string>> = {
+            video: generateVideoThumbnail,
+            audio: generateAudioWaveform,
+            pdf: generatePdfThumbnail,
+          };
+          const generator = thumbnailGenerators[thumbnailType];
+          if (generator) {
+            try {
+              thumbnailUrl = await generator(fileUrl);
+              shouldCacheToDisk = true;
+            } catch {
+              if (iconDiv) iconDiv.innerHTML = deps.getFileIcon(item.name);
+              fileItem.classList.remove('has-thumbnail');
+              return;
+            }
           }
         }
 

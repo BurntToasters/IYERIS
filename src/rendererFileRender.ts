@@ -7,6 +7,7 @@ import {
   VIDEO_EXTENSIONS,
   AUDIO_EXTENSIONS,
   PDF_EXTENSIONS,
+  OFFICE_THUMBNAIL_EXTENSIONS,
 } from './fileTypes.js';
 import {
   getFileExtension,
@@ -32,6 +33,7 @@ const THUMBNAIL_TYPE_MAP: [Set<string>, string][] = [
   [VIDEO_EXTENSIONS, 'video'],
   [AUDIO_EXTENSIONS, 'audio'],
   [PDF_EXTENSIONS, 'pdf'],
+  [OFFICE_THUMBNAIL_EXTENSIONS, 'office'],
 ];
 
 function getThumbnailType(ext: string): string | null {
