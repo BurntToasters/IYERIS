@@ -1,6 +1,6 @@
 {
   "name": "iyeris",
-  "version": "2.1.0-beta.1",
+  "version": "2.1.0-beta.2",
   "private": true,
   "type": "module",
   "description": "A beautiful cross-platform file explorer built with Tauri, featuring a simple yet advanced modern design.",
@@ -93,7 +93,7 @@
     "flatpak:bundle": "node scripts/flatpak-bundle.js",
     "flatpak:clean": "node scripts/dist-tools.js clean-flatpak",
     "prerelease:prepare": "node scripts/release-warning.js",
-    "release:prepare": "npm ci && npm run sync-version && npm run icons:normalize && cargo check --manifest-path src-tauri/Cargo.toml -q && npm run dist:clean-release-artifacts && node scripts/update-metainfo.js",
+    "release:prepare": "npm ci && npm run sync-version && cargo check --manifest-path src-tauri/Cargo.toml -q && npm run dist:clean-release-artifacts && node scripts/update-metainfo.js",
     "release:finalize": "dotenv -e .env -- node scripts/post-release-assets.js && git fetch origin && git reset --hard @{u} && git clean -fd",
     "release:finalize:hard": "npm run release:finalize",
     "release:win": "npm run release:prepare && npm run build:win && npm run release:sign:gpg && npm run release:finalize",
