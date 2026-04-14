@@ -25,6 +25,7 @@ interface CommandPaletteActions {
   goForward: () => void;
   goUp: () => void;
   goHome: () => void;
+  findDuplicates: () => void;
   showSettingsModal: () => void;
   showShortcutsModal: () => void;
   selectAll: () => void;
@@ -164,6 +165,7 @@ export function createCommandPaletteController(deps: CommandPaletteDeps) {
       goForward,
       goUp,
       goHome,
+      findDuplicates,
       showSettingsModal,
       showShortcutsModal,
       selectAll,
@@ -205,6 +207,15 @@ export function createCommandPaletteController(deps: CommandPaletteDeps) {
       ['go-forward', 'Go Forward', 'Navigate to next folder', '➡️', goForward, 'r', ['forward']],
       ['go-up', 'Go Up', 'Navigate to parent folder', '⬆️', goUp, 'r', ['parent']],
       ['go-home', 'Go Home', 'Navigate to home view', '🏠', goHome, 'r', ['start']],
+      [
+        'find-duplicates',
+        'Find Duplicates',
+        'Scan current folder for duplicate files',
+        '🧬',
+        findDuplicates,
+        undefined,
+        ['dupes', 'dedupe', 'integrity'],
+      ],
       ['settings', 'Settings', 'Open settings', '⚙️', showSettingsModal, 'r', ['preferences']],
       [
         'shortcuts',

@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('../shared.js', () => ({
@@ -178,5 +179,78 @@ describe('createToastManager', () => {
     expect(mockElement.setAttribute).toHaveBeenCalledWith('role', 'status');
 
     vi.unstubAllGlobals();
+  });
+
+  it('renders action buttons and executes action callbacks', () => {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const action = vi.fn();
+
+    const manager = createToastManager({
+      durationMs: 200,
+      maxVisible: 2,
+      getContainer: () => container,
+      twemojiImg: () => '<img />',
+    });
+
+    manager.showToast('Retry this', 'Upload', 'warning', [{ label: 'Retry', onClick: action }]);
+
+    const actionBtn = container.querySelector('.toast-action-btn') as HTMLButtonElement;
+    expect(actionBtn).toBeTruthy();
+    expect(actionBtn.textContent).toBe('Retry');
+
+    actionBtn.click();
+    expect(action).toHaveBeenCalledTimes(1);
+
+    vi.advanceTimersByTime(1000);
+    expect(container.children.length).toBe(0);
+  });
+
+  it('dismiss button removes toast and dequeues the next one', () => {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+
+    const manager = createToastManager({
+      durationMs: 500,
+      maxVisible: 1,
+      getContainer: () => container,
+      twemojiImg: () => '<img />',
+    });
+
+    manager.showToast('First', 'A', 'info');
+    manager.showToast('Second', 'B', 'info');
+
+    const firstDismiss = container.querySelector('.toast-dismiss') as HTMLButtonElement;
+    expect(firstDismiss).toBeTruthy();
+    firstDismiss.click();
+
+    vi.advanceTimersByTime(1000);
+
+    expect(container.children.length).toBe(1);
+    expect(container.textContent).toContain('Second');
+  });
+
+  it('clicking toast and dismiss does not remove twice', () => {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const removeChildSpy = vi.spyOn(container, 'removeChild');
+
+    const manager = createToastManager({
+      durationMs: 500,
+      maxVisible: 1,
+      getContainer: () => container,
+      twemojiImg: () => '<img />',
+    });
+
+    manager.showToast('Only once', '', 'info');
+
+    const toast = container.querySelector('.toast') as HTMLElement;
+    const dismiss = container.querySelector('.toast-dismiss') as HTMLButtonElement;
+    toast.click();
+    dismiss.click();
+
+    vi.advanceTimersByTime(1000);
+
+    expect(removeChildSpy).toHaveBeenCalledTimes(1);
   });
 });

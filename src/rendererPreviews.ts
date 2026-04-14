@@ -1,7 +1,7 @@
 import type { FileItem, ItemProperties } from './types';
 import { escapeHtml, getErrorMessage, ignoreError, sanitizeMarkdownHtml } from './shared.js';
 import { getById } from './rendererDom.js';
-import { encodeFileUrl, twemojiImg } from './rendererUtils.js';
+import { encodeFileUrl, getFileDataUrlWithCache, twemojiImg } from './rendererUtils.js';
 import { createPdfViewer, type PdfViewerHandle } from './rendererPdfViewer.js';
 import { loadHighlightJs, getLanguageForExt } from './rendererHighlight.js';
 import { createQuicklookController, type QuicklookDeps } from './rendererQuicklook.js';
@@ -289,14 +289,36 @@ export function createPreviewController(deps: PreviewDeps) {
       });
       img.addEventListener('error', () => {
         if (requestId !== previewRequestId) return;
-        if (previewContent) {
-          previewContent.innerHTML = `
-          <div class="preview-error">
-            Failed to load image
-          </div>
-          ${generateFileInfo(file, info)}
-        `;
-        }
+        void (async () => {
+          if (img.dataset.fallbackAttempted === 'true') {
+            if (previewContent) {
+              previewContent.innerHTML = `
+              <div class="preview-error">
+                Failed to load image
+              </div>
+              ${generateFileInfo(file, info)}
+            `;
+            }
+            return;
+          }
+          img.dataset.fallbackAttempted = 'true';
+          const dataUrl = await getFileDataUrlWithCache(
+            file.path,
+            (deps.getCurrentSettings().maxPreviewSizeMB || 50) * 1024 * 1024
+          );
+          if (!dataUrl || requestId !== previewRequestId) {
+            if (previewContent) {
+              previewContent.innerHTML = `
+              <div class="preview-error">
+                Failed to load image
+              </div>
+              ${generateFileInfo(file, info)}
+            `;
+            }
+            return;
+          }
+          img.src = dataUrl;
+        })();
       });
     }
   }
@@ -471,6 +493,20 @@ export function createPreviewController(deps: PreviewDeps) {
     </video>
     ${generateFileInfo(file, info)}
   `;
+
+    const videoEl = previewContent.querySelector('.preview-video') as HTMLVideoElement | null;
+    if (videoEl) {
+      videoEl.addEventListener('error', () => {
+        void (async () => {
+          if (videoEl.dataset.fallbackAttempted === 'true') return;
+          videoEl.dataset.fallbackAttempted = 'true';
+          const dataUrl = await getFileDataUrlWithCache(file.path, maxSizeMB * 1024 * 1024);
+          if (!dataUrl || requestId !== previewRequestId) return;
+          videoEl.src = dataUrl;
+          videoEl.load();
+        })();
+      });
+    }
   }
 
   async function showAudioPreview(file: FileItem, requestId: number) {
@@ -492,6 +528,23 @@ export function createPreviewController(deps: PreviewDeps) {
     </div>
     ${generateFileInfo(file, info)}
   `;
+
+    const audioEl = previewContent.querySelector('.preview-audio') as HTMLAudioElement | null;
+    if (audioEl) {
+      audioEl.addEventListener('error', () => {
+        void (async () => {
+          if (audioEl.dataset.fallbackAttempted === 'true') return;
+          audioEl.dataset.fallbackAttempted = 'true';
+          const dataUrl = await getFileDataUrlWithCache(
+            file.path,
+            (deps.getCurrentSettings().maxPreviewSizeMB || 50) * 1024 * 1024
+          );
+          if (!dataUrl || requestId !== previewRequestId) return;
+          audioEl.src = dataUrl;
+          audioEl.load();
+        })();
+      });
+    }
   }
 
   async function showPdfPreview(file: FileItem, requestId: number) {
@@ -533,7 +586,7 @@ export function createPreviewController(deps: PreviewDeps) {
     if (requestId !== previewRequestId) return;
     const info = props.success ? props.properties : null;
 
-    const fileUrl = encodeFileUrl(file.path);
+    let fileUrl = encodeFileUrl(file.path);
 
     try {
       const viewer = await createPdfViewer(fileUrl, {
@@ -575,6 +628,54 @@ export function createPreviewController(deps: PreviewDeps) {
       }
       previewContent.appendChild(fragment);
     } catch {
+      const fallbackDataUrl = await getFileDataUrlWithCache(file.path, maxSizeMB * 1024 * 1024);
+      if (fallbackDataUrl && fallbackDataUrl !== fileUrl && requestId === previewRequestId) {
+        try {
+          fileUrl = fallbackDataUrl;
+          const viewer = await createPdfViewer(fileUrl, {
+            maxWidth: 600,
+            containerClass: 'preview-panel-pdf',
+            showPageControls: true,
+            onError: (msg) => console.error('[Preview] PDF error:', msg),
+          });
+
+          if (requestId !== previewRequestId) {
+            viewer.destroy();
+            return;
+          }
+
+          activePdfViewer = viewer;
+          previewContent.replaceChildren();
+
+          const wrapper = document.createElement('div');
+          wrapper.className = 'preview-pdf-container';
+          wrapper.appendChild(viewer.element);
+          previewContent.appendChild(wrapper);
+
+          const actionsDiv = document.createElement('div');
+          actionsDiv.className = 'preview-pdf-actions';
+          const openBtn = document.createElement('button');
+          openBtn.className = 'preview-pdf-open-btn';
+          openBtn.title = 'Open in default application';
+          openBtn.innerHTML = `${twemojiImg(String.fromCodePoint(0x1f4c4), 'twemoji-small')} Open in Default App`;
+          openBtn.addEventListener('click', () => void window.tauriAPI.openFile(file.path));
+          actionsDiv.appendChild(openBtn);
+          previewContent.appendChild(actionsDiv);
+
+          const infoHtml = generateFileInfo(file, info);
+          const infoWrapper = document.createElement('div');
+          infoWrapper.innerHTML = infoHtml;
+          const fragment = document.createDocumentFragment();
+          while (infoWrapper.firstChild) {
+            fragment.appendChild(infoWrapper.firstChild);
+          }
+          previewContent.appendChild(fragment);
+          return;
+        } catch {
+          // fall through to existing error UI
+        }
+      }
+
       if (requestId !== previewRequestId) return;
       previewContent.innerHTML = `
       <div class="preview-error">

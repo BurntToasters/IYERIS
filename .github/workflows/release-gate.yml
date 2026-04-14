@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  RUST_VERSION: 'stable'
+  RUST_VERSION: '1.94.0'
 
 jobs:
   verify:
@@ -165,6 +165,26 @@ jobs:
       - name: Create macOS zip
         if: runner.os == 'macOS'
         run: node scripts/zip-macos.js
+
+      - name: Verify macOS bundle outputs
+        if: matrix.target == 'universal-apple-darwin'
+        run: |
+          check_bundle() {
+            label="$1"
+            pattern="$2"
+            count="$(find src-tauri/target -type f -name "$pattern" | wc -l | tr -d ' ')"
+            echo "$label: $count"
+            if [ "$count" -eq 0 ]; then
+              echo "Missing required macOS artifact: $label ($pattern)" >&2
+              exit 1
+            fi
+          }
+          check_bundle "DMG" "*.dmg"
+          check_bundle "DMG signature" "*.dmg.sig"
+          check_bundle "App archive" "*.app.tar.gz"
+          check_bundle "App archive signature" "*.app.tar.gz.sig"
+          check_bundle "ZIP archive" "*.zip"
+          check_bundle "ZIP signature" "*.zip.sig"
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v7

@@ -234,6 +234,27 @@ export function createPropertiesDialogController(deps: PropertiesDialogDeps) {
         <code id="checksum-sha256-value"></code>
         <button class="property-btn-copy" id="copy-sha256-btn" title="Copy SHA-256">${twemojiImg(String.fromCodePoint(0x1f4cb), 'twemoji')}</button>
       </div>
+    </div>
+    <div class="property-row" id="checksum-sha512-row" style="display: none;">
+      <div class="property-label">SHA-512:</div>
+      <div class="property-value property-checksum">
+        <code id="checksum-sha512-value"></code>
+        <button class="property-btn-copy" id="copy-sha512-btn" title="Copy SHA-512">${twemojiImg(String.fromCodePoint(0x1f4cb), 'twemoji')}</button>
+      </div>
+    </div>
+    <div class="property-row" id="checksum-blake3-row" style="display: none;">
+      <div class="property-label">BLAKE3:</div>
+      <div class="property-value property-checksum">
+        <code id="checksum-blake3-value"></code>
+        <button class="property-btn-copy" id="copy-blake3-btn" title="Copy BLAKE3">${twemojiImg(String.fromCodePoint(0x1f4cb), 'twemoji')}</button>
+      </div>
+    </div>
+    <div class="property-row" id="checksum-crc32-row" style="display: none;">
+      <div class="property-label">CRC32:</div>
+      <div class="property-value property-checksum">
+        <code id="checksum-crc32-value"></code>
+        <button class="property-btn-copy" id="copy-crc32-btn" title="Copy CRC32">${twemojiImg(String.fromCodePoint(0x1f4cb), 'twemoji')}</button>
+      </div>
     </div>`;
     }
 
@@ -418,10 +439,19 @@ export function createPropertiesDialogController(deps: PropertiesDialogDeps) {
       const progressText = document.getElementById('checksum-progress-text');
       const md5Row = document.getElementById('checksum-md5-row');
       const sha256Row = document.getElementById('checksum-sha256-row');
+      const sha512Row = document.getElementById('checksum-sha512-row');
+      const blake3Row = document.getElementById('checksum-blake3-row');
+      const crc32Row = document.getElementById('checksum-crc32-row');
       const md5Value = document.getElementById('checksum-md5-value');
       const sha256Value = document.getElementById('checksum-sha256-value');
+      const sha512Value = document.getElementById('checksum-sha512-value');
+      const blake3Value = document.getElementById('checksum-blake3-value');
+      const crc32Value = document.getElementById('checksum-crc32-value');
       const copyMd5Btn = document.getElementById('copy-md5-btn');
       const copySha256Btn = document.getElementById('copy-sha256-btn');
+      const copySha512Btn = document.getElementById('copy-sha512-btn');
+      const copyBlake3Btn = document.getElementById('copy-blake3-btn');
+      const copyCrc32Btn = document.getElementById('copy-crc32-btn');
 
       if (calculateBtn) {
         calculateBtn.addEventListener('click', async () => {
@@ -440,7 +470,7 @@ export function createPropertiesDialogController(deps: PropertiesDialogDeps) {
             const result = await window.tauriAPI.calculateChecksum(
               props.path,
               checksumOperationId,
-              ['md5', 'sha256']
+              ['md5', 'sha256', 'sha512', 'blake3', 'crc32']
             );
 
             if (!result.success) {
@@ -455,6 +485,18 @@ export function createPropertiesDialogController(deps: PropertiesDialogDeps) {
               if (result.result.sha256 && sha256Row && sha256Value) {
                 sha256Value.textContent = result.result.sha256;
                 sha256Row.style.display = 'flex';
+              }
+              if (result.result.sha512 && sha512Row && sha512Value) {
+                sha512Value.textContent = result.result.sha512;
+                sha512Row.style.display = 'flex';
+              }
+              if (result.result.blake3 && blake3Row && blake3Value) {
+                blake3Value.textContent = result.result.blake3;
+                blake3Row.style.display = 'flex';
+              }
+              if (result.result.crc32 && crc32Row && crc32Value) {
+                crc32Value.textContent = result.result.crc32;
+                crc32Row.style.display = 'flex';
               }
             }
           } catch (error) {
@@ -497,6 +539,27 @@ export function createPropertiesDialogController(deps: PropertiesDialogDeps) {
         copySha256Btn.addEventListener('click', () => {
           window.tauriAPI.writeToSystemClipboard(sha256Value.textContent || '').catch(ignoreError);
           deps.showToast('SHA-256 copied to clipboard', 'Copied', 'success');
+        });
+      }
+
+      if (copySha512Btn && sha512Value) {
+        copySha512Btn.addEventListener('click', () => {
+          window.tauriAPI.writeToSystemClipboard(sha512Value.textContent || '').catch(ignoreError);
+          deps.showToast('SHA-512 copied to clipboard', 'Copied', 'success');
+        });
+      }
+
+      if (copyBlake3Btn && blake3Value) {
+        copyBlake3Btn.addEventListener('click', () => {
+          window.tauriAPI.writeToSystemClipboard(blake3Value.textContent || '').catch(ignoreError);
+          deps.showToast('BLAKE3 copied to clipboard', 'Copied', 'success');
+        });
+      }
+
+      if (copyCrc32Btn && crc32Value) {
+        copyCrc32Btn.addEventListener('click', () => {
+          window.tauriAPI.writeToSystemClipboard(crc32Value.textContent || '').catch(ignoreError);
+          deps.showToast('CRC32 copied to clipboard', 'Copied', 'success');
         });
       }
     }

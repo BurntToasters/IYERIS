@@ -23,6 +23,7 @@ const rustTimeoutMs = process.platform === 'win32' ? 1_200_000 : 600_000;
 function createInitialResults() {
   return {
     typecheck: { status: 'pending' },
+    typecheckTest: { status: 'pending' },
     lint: { status: 'pending' },
     lintTest: { status: 'pending' },
     format: { status: 'pending' },
@@ -108,6 +109,9 @@ ${colors.reset}`);
     `${colors.bold}TypeCheck:${colors.reset}  ${results.typecheck.status === 'passed' ? `${colors.green}✓ PASS` : `${colors.red}✗ FAIL`}${colors.reset}`
   );
   console.log(
+    `${colors.bold}TypeCheck(Test):${colors.reset}  ${results.typecheckTest.status === 'passed' ? `${colors.green}✓ PASS` : `${colors.red}✗ FAIL`}${colors.reset}`
+  );
+  console.log(
     `${colors.bold}Lint:${colors.reset}       ${results.lint.status === 'passed' ? `${colors.green}✓ PASS` : `${colors.red}✗ FAIL`}${colors.reset}`
   );
   console.log(
@@ -138,6 +142,7 @@ function main() {
   const npm = getNpmCommand();
   printBanner();
   runCommand('typecheck', npm, ['run', 'typecheck'], null, results);
+  runCommand('typecheckTest', npm, ['run', 'typecheck:test'], null, results);
   runCommand('lint', npm, ['run', 'lint:prod'], null, results);
   runCommand('lintTest', npm, ['run', 'lint:test'], null, results);
   runCommand('format', npm, ['run', 'format:check'], null, results);

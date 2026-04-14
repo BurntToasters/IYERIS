@@ -44,6 +44,7 @@ function createDeps(selectedItems: Set<string>, fileElementMap: Map<string, HTML
         fileConflictBehavior: 'ask',
       }) as never,
     showToast: vi.fn(),
+    showConfirm: vi.fn().mockResolvedValue(true),
     handleDrop: vi.fn().mockResolvedValue(undefined),
     refresh: vi.fn(),
     updateUndoRedoState: vi.fn().mockResolvedValue(undefined),

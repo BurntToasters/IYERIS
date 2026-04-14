@@ -1,15 +1,25 @@
+use regex::Regex;
 use serde::Serialize;
 use std::collections::HashSet;
 use std::fs;
-use std::io::BufReader;
+use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tauri::Emitter;
 
 static ACTIVE_OPS: std::sync::LazyLock<Mutex<HashSet<String>>> =
     std::sync::LazyLock::new(|| Mutex::new(HashSet::new()));
+static RELATIONSHIP_TAG_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
+    Regex::new(r#"(?is)<Relationship\b[^>]*>"#).expect("relationship tag regex")
+});
+static XML_ATTRIBUTE_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
+    Regex::new(r#"(?is)([A-Za-z_:][A-Za-z0-9_.:-]*)\s*=\s*(['\"])(.*?)\2"#)
+        .expect("xml attribute regex")
+});
 
 const MAX_DECOMPRESSED_SIZE: u64 = 53_687_091_200; // 50 GB
+const DEFAULT_OFFICE_THUMBNAIL_LIMIT_BYTES: u64 = 8 * 1024 * 1024;
+const MAX_OFFICE_THUMBNAIL_LIMIT_BYTES: u64 = 20 * 1024 * 1024;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -762,4 +772,245 @@ pub async fn list_archive_contents(archive_path: String) -> Result<Vec<ArchiveEn
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn get_embedded_office_thumbnail(
+    file_path: String,
+    max_size: Option<u64>,
+) -> Result<String, String> {
+    let office_file = crate::validate_existing_path(&file_path, "Office file")?;
+    let limit = max_size
+        .unwrap_or(DEFAULT_OFFICE_THUMBNAIL_LIMIT_BYTES)
+        .min(MAX_OFFICE_THUMBNAIL_LIMIT_BYTES);
+
+    tokio::task::spawn_blocking(move || extract_embedded_office_thumbnail_data_url(&office_file, limit))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+fn extract_embedded_office_thumbnail_data_url(path: &Path, limit: u64) -> Result<String, String> {
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+    if !is_supported_office_extension(&ext) {
+        return Err("Embedded thumbnails are only supported for ZIP-based Office formats".into());
+    }
+
+    let file = fs::File::open(path).map_err(|e| e.to_string())?;
+    let mut zip = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
+
+    let mut candidates = vec!["Thumbnails/thumbnail.png".to_string()];
+
+    if let Some(target) = find_ooxml_thumbnail_relation_target(&mut zip) {
+        candidates.push(target);
+    }
+
+    candidates.extend([
+        "docProps/thumbnail.jpeg".to_string(),
+        "docProps/thumbnail.jpg".to_string(),
+        "docProps/thumbnail.png".to_string(),
+    ]);
+
+    let mut seen = HashSet::new();
+    let mut deduped = Vec::new();
+    for candidate in candidates {
+        let key = candidate.to_ascii_lowercase();
+        if seen.insert(key) {
+            deduped.push(candidate);
+        }
+    }
+
+    let entry_name = deduped
+        .iter()
+        .find_map(|candidate| find_zip_entry_case_insensitive(&mut zip, candidate))
+        .ok_or_else(|| "No embedded thumbnail found in this document".to_string())?;
+
+    let mut entry = zip.by_name(&entry_name).map_err(|e| e.to_string())?;
+    if entry.is_dir() {
+        return Err("Embedded thumbnail entry is a directory".to_string());
+    }
+    if entry.size() > limit {
+        return Err("Embedded thumbnail is too large".to_string());
+    }
+
+    let mut data = Vec::new();
+    let mut limited = (&mut entry).take(limit + 1);
+    limited.read_to_end(&mut data).map_err(|e| e.to_string())?;
+    if data.len() as u64 > limit {
+        return Err("Embedded thumbnail is too large".to_string());
+    }
+
+    let mime = detect_image_mime(&entry_name, &data)
+        .ok_or_else(|| "Embedded thumbnail image format is not supported".to_string())?;
+
+    Ok(format!("data:{};base64,{}", mime, base64_encode(&data)))
+}
+
+fn is_supported_office_extension(ext: &str) -> bool {
+    matches!(
+        ext,
+        "docx"
+            | "docm"
+            | "dotx"
+            | "dotm"
+            | "xlsx"
+            | "xlsm"
+            | "xltx"
+            | "xltm"
+            | "pptx"
+            | "pptm"
+            | "ppsx"
+            | "odt"
+            | "ods"
+            | "odp"
+    )
+}
+
+fn find_zip_entry_case_insensitive<R: Read + std::io::Seek>(
+    zip: &mut zip::ZipArchive<R>,
+    target: &str,
+) -> Option<String> {
+    for index in 0..zip.len() {
+        let entry = zip.by_index(index).ok()?;
+        if entry.name().eq_ignore_ascii_case(target) {
+            return Some(entry.name().to_string());
+        }
+    }
+    None
+}
+
+fn find_ooxml_thumbnail_relation_target<R: Read + std::io::Seek>(
+    zip: &mut zip::ZipArchive<R>,
+) -> Option<String> {
+    let rels_name = find_zip_entry_case_insensitive(zip, "_rels/.rels")?;
+    let mut rels_entry = zip.by_name(&rels_name).ok()?;
+    let mut rels_xml = String::new();
+    rels_entry.read_to_string(&mut rels_xml).ok()?;
+    parse_thumbnail_target_from_relationships(&rels_xml)
+}
+
+fn parse_thumbnail_target_from_relationships(xml: &str) -> Option<String> {
+    let relationship_types = [
+        "http://schemas.openxmlformats.org/package/2006/relationships/metadata/thumbnail",
+        "http://schemas.openxmlformats.org/officeDocument/2006/relationships/metadata/thumbnail",
+        "http://purl.oclc.org/ooxml/officeDocument/relationships/metadata/thumbnail",
+    ];
+
+    for tag_match in RELATIONSHIP_TAG_RE.find_iter(xml) {
+        let tag = tag_match.as_str();
+        let Some(rel_type) = extract_xml_attr(tag, "Type") else {
+            continue;
+        };
+        if !relationship_types
+            .iter()
+            .any(|expected| rel_type.eq_ignore_ascii_case(expected))
+        {
+            continue;
+        }
+        let Some(target) = extract_xml_attr(tag, "Target") else {
+            continue;
+        };
+        if let Some(path) = normalize_zip_target_path(&target) {
+            return Some(path);
+        }
+    }
+
+    None
+}
+
+fn extract_xml_attr(tag: &str, attr_name: &str) -> Option<String> {
+    for captures in XML_ATTRIBUTE_RE.captures_iter(tag) {
+        let key = captures.get(1)?.as_str();
+        if key.eq_ignore_ascii_case(attr_name) {
+            return Some(captures.get(3)?.as_str().to_string());
+        }
+    }
+    None
+}
+
+fn normalize_zip_target_path(target: &str) -> Option<String> {
+    let without_fragment = target.split('#').next()?.split('?').next()?.replace('\\', "/");
+    let trimmed = without_fragment.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let mut parts: Vec<String> = Vec::new();
+    for component in Path::new(trimmed.trim_start_matches('/')).components() {
+        match component {
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                if parts.pop().is_none() {
+                    return None;
+                }
+            }
+            std::path::Component::Normal(part) => {
+                parts.push(part.to_string_lossy().to_string());
+            }
+            _ => return None,
+        }
+    }
+
+    if parts.is_empty() {
+        None
+    } else {
+        Some(parts.join("/"))
+    }
+}
+
+fn detect_image_mime(path: &str, data: &[u8]) -> Option<&'static str> {
+    let ext = Path::new(path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+
+    match ext.as_str() {
+        "png" => return Some("image/png"),
+        "jpg" | "jpeg" => return Some("image/jpeg"),
+        "gif" => return Some("image/gif"),
+        "webp" => return Some("image/webp"),
+        _ => {}
+    }
+
+    if data.starts_with(&[0x89, b'P', b'N', b'G', b'\r', b'\n', 0x1A, b'\n']) {
+        return Some("image/png");
+    }
+    if data.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        return Some("image/jpeg");
+    }
+    if data.starts_with(b"GIF87a") || data.starts_with(b"GIF89a") {
+        return Some("image/gif");
+    }
+    if data.len() >= 12 && &data[0..4] == b"RIFF" && &data[8..12] == b"WEBP" {
+        return Some("image/webp");
+    }
+    None
+}
+
+fn base64_encode(data: &[u8]) -> String {
+    const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut result = String::with_capacity((data.len() + 2) / 3 * 4);
+    for chunk in data.chunks(3) {
+        let b0 = chunk[0] as u32;
+        let b1 = if chunk.len() > 1 { chunk[1] as u32 } else { 0 };
+        let b2 = if chunk.len() > 2 { chunk[2] as u32 } else { 0 };
+        let n = (b0 << 16) | (b1 << 8) | b2;
+        result.push(CHARS[(n >> 18 & 63) as usize] as char);
+        result.push(CHARS[(n >> 12 & 63) as usize] as char);
+        if chunk.len() > 1 {
+            result.push(CHARS[(n >> 6 & 63) as usize] as char);
+        } else {
+            result.push('=');
+        }
+        if chunk.len() > 2 {
+            result.push(CHARS[(n & 63) as usize] as char);
+        } else {
+            result.push('=');
+        }
+    }
+    result
 }

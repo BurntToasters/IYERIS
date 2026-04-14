@@ -325,6 +325,22 @@ export const PRESENTATION_EXTENSIONS = new Set([
   'odp',
   'key',
 ]);
+export const OFFICE_THUMBNAIL_EXTENSIONS = new Set([
+  'docx',
+  'docm',
+  'dotx',
+  'dotm',
+  'xlsx',
+  'xlsm',
+  'xltx',
+  'xltm',
+  'pptx',
+  'pptm',
+  'ppsx',
+  'odt',
+  'ods',
+  'odp',
+]);
 export const VIDEO_MIME_TYPES: Record<string, string> = {
   mp4: 'video/mp4',
   m4v: 'video/x-m4v',

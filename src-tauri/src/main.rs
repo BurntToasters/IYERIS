@@ -171,6 +171,7 @@ fn setup_environment(disable_hw_accel: bool, dev_mode: bool) {
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let dev_mode = args.iter().any(|a| a == "--dev" || a == "--verbose");
+    #[allow(unused_mut)]
     let mut start_minimized = has_minimized_launch_arg(&args);
     DEV_MODE.store(dev_mode, Ordering::Relaxed);
 
@@ -246,9 +247,9 @@ fn main() {
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     let builder = builder
-        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             #[cfg(target_os = "macos")]
-            if has_minimized_launch_arg(&args) {
+            if has_minimized_launch_arg(&_args) {
                 log::debug!("[SingleInstance] Ignoring minimized relaunch request");
                 return;
             }
@@ -445,6 +446,7 @@ fn main() {
             archive::extract_archive,
             archive::cancel_archive_operation,
             archive::list_archive_contents,
+            archive::get_embedded_office_thumbnail,
             // Settings
             settings::get_settings,
             settings::save_settings,
@@ -509,6 +511,7 @@ fn main() {
             // Checksum
             file_operations::calculate_checksum,
             file_operations::cancel_checksum_calculation,
+            file_operations::find_duplicate_files,
             // Undo/redo
             undo::undo_action,
             undo::redo_action,
