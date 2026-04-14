@@ -1,5 +1,10 @@
 import { escapeHtml } from './shared.js';
 import { convertFileSrc } from '@tauri-apps/api/core';
+import pLimit from 'p-limit';
+
+const PREVIEW_DATA_URL_CACHE_MAX = 64;
+const previewDataUrlCache = new Map<string, string>();
+const previewDataUrlLimiter = pLimit(2);
 
 export function isWindowsPath(value: string): boolean {
   return /^[A-Za-z]:[\\/]/.test(value) || value.startsWith('\\\\');
@@ -61,6 +66,43 @@ export const rendererPath = {
 
 export function encodeFileUrl(filePath: string): string {
   return convertFileSrc(filePath);
+}
+
+function setPreviewDataUrlCache(filePath: string, dataUrl: string): void {
+  if (previewDataUrlCache.has(filePath)) {
+    previewDataUrlCache.delete(filePath);
+  } else if (previewDataUrlCache.size >= PREVIEW_DATA_URL_CACHE_MAX) {
+    const oldest = previewDataUrlCache.keys().next().value;
+    if (oldest) {
+      previewDataUrlCache.delete(oldest);
+    }
+  }
+  previewDataUrlCache.set(filePath, dataUrl);
+}
+
+export async function getFileDataUrlWithCache(
+  filePath: string,
+  maxSize?: number
+): Promise<string | null> {
+  const cached = previewDataUrlCache.get(filePath);
+  if (cached) {
+    previewDataUrlCache.delete(filePath);
+    previewDataUrlCache.set(filePath, cached);
+    return cached;
+  }
+
+  return previewDataUrlLimiter(async () => {
+    const result = await window.tauriAPI.getFileDataUrl(filePath, maxSize);
+    if (!result.success || !result.dataUrl) {
+      return null;
+    }
+    setPreviewDataUrlCache(filePath, result.dataUrl);
+    return result.dataUrl;
+  });
+}
+
+export function clearPreviewDataUrlCache(): void {
+  previewDataUrlCache.clear();
 }
 
 function emojiToCodepoint(emoji: string): string {

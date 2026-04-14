@@ -7,7 +7,7 @@ const INDEX_STATUS_POLL_MS = 1500;
 type IndexStatusSnapshot = {
   isIndexing: boolean;
   indexedFiles: number;
-  lastIndexTime?: string | number | null;
+  lastIndexTime?: string | number | Date | null;
 };
 
 interface IndexerConfig {

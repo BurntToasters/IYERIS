@@ -420,6 +420,64 @@ describe('sanitizeSettings', () => {
     });
   });
 
+  describe('savedSearches', () => {
+    it('preserves valid saved search metadata', () => {
+      const result = sanitizeSettings({
+        savedSearches: [
+          {
+            name: 'Recent docs',
+            query: 'report',
+            isGlobal: false,
+            isRegex: false,
+            createdAt: '2025-01-01T00:00:00.000Z',
+            lastUsedAt: '2025-01-02T00:00:00.000Z',
+            useCount: 4.7,
+            scopePath: '/workspace/docs',
+          },
+        ],
+      });
+
+      expect(result.savedSearches).toEqual([
+        {
+          name: 'Recent docs',
+          query: 'report',
+          isGlobal: false,
+          isRegex: false,
+          createdAt: '2025-01-01T00:00:00.000Z',
+          lastUsedAt: '2025-01-02T00:00:00.000Z',
+          useCount: 4,
+          scopePath: '/workspace/docs',
+        },
+      ]);
+    });
+
+    it('drops invalid saved search metadata values', () => {
+      const result = sanitizeSettings({
+        savedSearches: [
+          {
+            name: 'Bad preset',
+            query: 'test',
+            isGlobal: true,
+            isRegex: false,
+            createdAt: 123,
+            lastUsedAt: null,
+            useCount: -2,
+            scopePath: 42,
+          },
+        ],
+      });
+
+      expect(result.savedSearches).toEqual([
+        {
+          name: 'Bad preset',
+          query: 'test',
+          isGlobal: true,
+          isRegex: false,
+        },
+      ]);
+    });
+  });
+
   describe('prototype pollution protection', () => {
     it('ignores __proto__ in shortcuts', () => {
       const malicious = JSON.parse('{"shortcuts": {"__proto__": ["evil"]}}');

@@ -15,6 +15,7 @@ const mockCreatePdfViewer = vi.hoisted(() => vi.fn());
 const mockLoadPdfJs = vi.hoisted(() => vi.fn());
 const mockLoadHighlightJs = vi.hoisted(() => vi.fn());
 const mockGetLanguageForExt = vi.hoisted(() => vi.fn(() => null));
+const mockGetFileDataUrlWithCache = vi.hoisted(() => vi.fn().mockResolvedValue(null));
 
 vi.mock('../rendererQuicklook.js', () => ({
   createQuicklookController: mockCreateQuicklookController,
@@ -42,6 +43,7 @@ vi.mock('../rendererDom.js', () => ({
 
 vi.mock('../rendererUtils.js', () => ({
   encodeFileUrl: vi.fn((p: string) => `file://${p}`),
+  getFileDataUrlWithCache: mockGetFileDataUrlWithCache,
   twemojiImg: vi.fn((_code: string, _cls: string) => '<img class="twemoji" />'),
 }));
 
@@ -108,6 +110,7 @@ let mockTauriAPI: any;
 describe('rendererPreviews', () => {
   beforeEach(() => {
     buildDOM();
+    mockGetFileDataUrlWithCache.mockResolvedValue(null);
     mockTauriAPI = {
       getItemProperties: vi.fn().mockResolvedValue({
         success: true,

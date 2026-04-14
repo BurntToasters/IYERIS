@@ -10,6 +10,11 @@ type FileConflictBehavior = 'ask' | 'rename' | 'skip' | 'overwrite';
 type ConflictResolution = 'rename' | 'skip' | 'overwrite' | 'cancel';
 type ConflictDecision = Exclude<ConflictResolution, 'cancel'>;
 
+const sessionConflictDefaults: Record<'copy' | 'move', ConflictDecision | null> = {
+  copy: null,
+  move: null,
+};
+
 let pendingUpdate: Update | null = null;
 let updateDownloadInProgress = false;
 let currentUpdateChannel: 'auto' | 'beta' | 'stable' = 'auto';
@@ -207,12 +212,19 @@ async function runFileOperationWithConflictResolution(
         return { success: false as const, error };
       }
 
+      const sessionDefault = sessionConflictDefaults[operation];
+      if (sessionDefault) {
+        conflictResolutions[conflictItem] = sessionDefault;
+        continue;
+      }
+
       const resolution = await promptConflictResolution(conflictItem, operation);
       if (resolution === 'cancel') {
         return { success: false as const, error: 'Operation cancelled' };
       }
 
       conflictResolutions[conflictItem] = resolution;
+      sessionConflictDefaults[operation] = resolution;
     }
   }
 }
@@ -1063,7 +1075,16 @@ const tauriAPI: TauriAPI = {
         operationId,
         algorithms,
       });
-      return { success: true, result: { md5: result.md5, sha256: result.sha256 } } as never;
+      return {
+        success: true,
+        result: {
+          md5: result.md5,
+          sha256: result.sha256,
+          sha512: result.sha512,
+          blake3: result.blake3,
+          crc32: result.crc32,
+        },
+      } as never;
     } catch (e) {
       return { success: false, error: String(e) } as never;
     }
@@ -1129,6 +1150,22 @@ const tauriAPI: TauriAPI = {
         maxSize: maxSize ?? null,
       });
       return { success: true, dataUrl } as never;
+    } catch (e) {
+      return { success: false, error: String(e) } as never;
+    }
+  },
+
+  findDuplicateFiles: async (dirPath, minSize, includeHidden) => {
+    try {
+      const groups = await invoke<Array<{ size: number; hash: string; paths: string[] }>>(
+        'find_duplicate_files',
+        {
+          dirPath,
+          minSize: minSize ?? null,
+          includeHidden: includeHidden ?? null,
+        }
+      );
+      return { success: true, groups } as never;
     } catch (e) {
       return { success: false, error: String(e) } as never;
     }

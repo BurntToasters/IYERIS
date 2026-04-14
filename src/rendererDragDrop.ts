@@ -14,7 +14,7 @@ interface DragDropConfig {
     type: string,
     actions?: ToastAction[]
   ) => void;
-  showConfirm: (message: string, title: string, type: 'warning') => Promise<boolean>;
+  showConfirm?: (message: string, title: string, type: 'warning') => Promise<boolean>;
   getFileGrid: () => HTMLElement | null;
   getFileView: () => HTMLElement | null;
   getDropIndicator: () => HTMLElement | null;
@@ -309,11 +309,13 @@ export function createDragDropController(config: DragDropConfig) {
 
       if (!result.success) {
         if (isPermissionDeniedError(result.error)) {
-          const confirmed = await config.showConfirm(
-            'This operation requires administrator privileges. You will be prompted to authorize.',
-            'Elevated Permissions Required',
-            'warning'
-          );
+          const confirmed = config.showConfirm
+            ? await config.showConfirm(
+                'This operation requires administrator privileges. You will be prompted to authorize.',
+                'Elevated Permissions Required',
+                'warning'
+              )
+            : false;
           if (confirmed) {
             const elevResult =
               operation === 'copy'

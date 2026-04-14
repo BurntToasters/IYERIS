@@ -65,6 +65,16 @@ export async function loadHighlightJs(): Promise<HighlightJs | null> {
   if (hljsLoading) return hljsLoading;
 
   hljsLoading = new Promise((resolve) => {
+    let settled = false;
+    const settle = (value: HighlightJs | null, clearLoading = false): void => {
+      if (settled) return;
+      settled = true;
+      if (clearLoading) {
+        hljsLoading = null;
+      }
+      resolve(value);
+    };
+
     const existingLink = document.querySelector('link[data-highlightjs="theme"]');
     if (!existingLink) {
       const link = document.createElement('link');
@@ -78,20 +88,24 @@ export async function loadHighlightJs(): Promise<HighlightJs | null> {
       'script[data-highlightjs="core"]'
     ) as HTMLScriptElement | null;
     if (existingScript) {
-      existingScript.addEventListener('load', () => {
-        const globalHljs = (window as Window & { hljs?: HighlightJs }).hljs || null;
-        hljs = globalHljs;
-        resolve(hljs);
-      });
-      existingScript.addEventListener('error', () => {
-        hljsLoading = null;
-        resolve(null);
-      });
       const existingGlobal = (window as Window & { hljs?: HighlightJs }).hljs;
       if (existingGlobal) {
         hljs = existingGlobal;
-        resolve(hljs);
+        settle(hljs);
+        return;
       }
+
+      const onLoad = () => {
+        const globalHljs = (window as Window & { hljs?: HighlightJs }).hljs || null;
+        hljs = globalHljs;
+        settle(hljs);
+      };
+      const onError = () => {
+        settle(null, true);
+      };
+
+      existingScript.addEventListener('load', onLoad, { once: true });
+      existingScript.addEventListener('error', onError, { once: true });
       return;
     }
 
@@ -101,11 +115,10 @@ export async function loadHighlightJs(): Promise<HighlightJs | null> {
     script.onload = () => {
       const globalHljs = (window as Window & { hljs?: HighlightJs }).hljs || null;
       hljs = globalHljs;
-      resolve(hljs);
+      settle(hljs);
     };
     script.onerror = () => {
-      hljsLoading = null;
-      resolve(null);
+      settle(null, true);
     };
     document.head.appendChild(script);
   });

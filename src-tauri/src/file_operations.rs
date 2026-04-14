@@ -48,6 +48,14 @@ pub struct ItemProperties {
     pub permissions: u32,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DuplicateGroup {
+    pub size: u64,
+    pub hash: String,
+    pub paths: Vec<String>,
+}
+
 enum OpenTarget {
     FilePath(PathBuf),
     External(String),
@@ -1024,7 +1032,8 @@ pub async fn get_file_data_url(
             .and_then(|e| e.to_str())
             .unwrap_or("")
             .to_lowercase();
-        let mime = match ext.as_str() {
+        let inferred_mime = infer::get(&data).map(|kind| kind.mime_type().to_string());
+        let fallback_mime = match ext.as_str() {
             "png" => "image/png",
             "jpg" | "jpeg" => "image/jpeg",
             "gif" => "image/gif",
@@ -1033,8 +1042,14 @@ pub async fn get_file_data_url(
             "bmp" => "image/bmp",
             "ico" => "image/x-icon",
             "pdf" => "application/pdf",
+            "mp4" => "video/mp4",
+            "webm" => "video/webm",
+            "ogg" => "audio/ogg",
+            "mp3" => "audio/mpeg",
+            "wav" => "audio/wav",
             _ => "application/octet-stream",
         };
+        let mime = inferred_mime.as_deref().unwrap_or(fallback_mime);
         use std::io::Write;
         let mut buf = Vec::new();
         write!(buf, "data:{};base64,", mime).map_err(|e| e.to_string())?;
@@ -1068,6 +1083,123 @@ fn base64_encode(data: &[u8]) -> String {
         }
     }
     result
+}
+
+fn sample_blake3(path: &Path, sample_size: usize) -> Result<String, String> {
+    let mut file = fs::File::open(path).map_err(|e| e.to_string())?;
+    let mut hasher = blake3::Hasher::new();
+    let mut buf = vec![0u8; sample_size.min(256 * 1024)];
+    let n = file.read(&mut buf).map_err(|e| e.to_string())?;
+    hasher.update(&buf[..n]);
+    Ok(hasher.finalize().to_hex().to_string())
+}
+
+fn full_blake3(path: &Path) -> Result<String, String> {
+    let mut file = fs::File::open(path).map_err(|e| e.to_string())?;
+    let mut hasher = blake3::Hasher::new();
+    let mut buf = [0u8; 8192];
+    loop {
+        let n = file.read(&mut buf).map_err(|e| e.to_string())?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+    Ok(hasher.finalize().to_hex().to_string())
+}
+
+#[tauri::command]
+pub async fn find_duplicate_files(
+    dir_path: String,
+    min_size: Option<u64>,
+    include_hidden: Option<bool>,
+) -> Result<Vec<DuplicateGroup>, String> {
+    let root = crate::validate_existing_path(&dir_path, "Directory")?;
+    if !root.is_dir() {
+        return Err("Path is not a directory".to_string());
+    }
+
+    let threshold = min_size.unwrap_or(1);
+    let include_hidden = include_hidden.unwrap_or(false);
+
+    tokio::task::spawn_blocking(move || {
+        let mut by_size: HashMap<u64, Vec<PathBuf>> = HashMap::new();
+
+        for entry in walkdir::WalkDir::new(&root).follow_links(false) {
+            let entry = match entry {
+                Ok(value) => value,
+                Err(_) => continue,
+            };
+
+            if !entry.file_type().is_file() {
+                continue;
+            }
+
+            let file_name = entry.file_name().to_string_lossy();
+            if !include_hidden && file_name.starts_with('.') {
+                continue;
+            }
+
+            let path = entry.path();
+            let size = match fs::metadata(path) {
+                Ok(meta) => meta.len(),
+                Err(_) => continue,
+            };
+
+            if size < threshold {
+                continue;
+            }
+
+            by_size.entry(size).or_default().push(path.to_path_buf());
+        }
+
+        let mut groups: Vec<DuplicateGroup> = Vec::new();
+
+        for (size, candidates) in by_size {
+            if candidates.len() < 2 {
+                continue;
+            }
+
+            let mut by_fast_hash: HashMap<String, Vec<PathBuf>> = HashMap::new();
+            for candidate in candidates {
+                let fast_hash = sample_blake3(&candidate, 64 * 1024)?;
+                by_fast_hash.entry(fast_hash).or_default().push(candidate);
+            }
+
+            for (_fast_hash, fast_candidates) in by_fast_hash {
+                if fast_candidates.len() < 2 {
+                    continue;
+                }
+
+                let mut by_full_hash: HashMap<String, Vec<PathBuf>> = HashMap::new();
+                for candidate in fast_candidates {
+                    let full_hash = full_blake3(&candidate)?;
+                    by_full_hash.entry(full_hash).or_default().push(candidate);
+                }
+
+                for (full_hash, dupes) in by_full_hash {
+                    if dupes.len() < 2 {
+                        continue;
+                    }
+                    let mut paths = dupes
+                        .into_iter()
+                        .map(|path| path.to_string_lossy().to_string())
+                        .collect::<Vec<_>>();
+                    paths.sort();
+                    groups.push(DuplicateGroup {
+                        size,
+                        hash: full_hash,
+                        paths,
+                    });
+                }
+            }
+        }
+
+        groups.sort_by(|a, b| b.size.cmp(&a.size).then(a.hash.cmp(&b.hash)));
+        Ok(groups)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -2028,6 +2160,26 @@ pub async fn calculate_checksum(
                         }
                     }
                     format!("{:08x}", hasher.finalize())
+                },
+                "blake3" => {
+                    let mut hasher = blake3::Hasher::new();
+                    let mut buf = [0u8; 8192];
+                    let mut read_total = 0u64;
+                    use std::io::Seek;
+                    file.seek(std::io::SeekFrom::Start(0)).map_err(|e| e.to_string())?;
+                    loop {
+                        let n = file.read(&mut buf).map_err(|e| e.to_string())?;
+                        if n == 0 { break; }
+                        hasher.update(&buf[..n]);
+                        read_total += n as u64;
+                        if read_total % (1024 * 1024) == 0 {
+                            let percent = if file_size > 0 { (read_total as f64 / file_size as f64) * 100.0 } else { 100.0 };
+                            let _ = webview.emit("checksum-progress", serde_json::json!({
+                                "operationId": op_id, "percent": percent, "algorithm": algo
+                            }));
+                        }
+                    }
+                    hasher.finalize().to_hex().to_string()
                 },
                 _ => return Err(format!("Unknown algorithm: {}", algo)),
             };

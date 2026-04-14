@@ -411,6 +411,10 @@ export function sanitizeSettings(
           query: string;
           isGlobal: boolean;
           isRegex: boolean;
+          createdAt?: string;
+          lastUsedAt?: string;
+          useCount?: number;
+          scopePath?: string;
           filters?: Record<string, unknown>;
         } =>
           !!s &&
@@ -426,6 +430,18 @@ export function sanitizeSettings(
         query: String(s.query).slice(0, 500),
         isGlobal: !!s.isGlobal,
         isRegex: !!s.isRegex,
+        ...(typeof s.createdAt === 'string' && s.createdAt.length <= 64
+          ? { createdAt: s.createdAt }
+          : {}),
+        ...(typeof s.lastUsedAt === 'string' && s.lastUsedAt.length <= 64
+          ? { lastUsedAt: s.lastUsedAt }
+          : {}),
+        ...(typeof s.useCount === 'number' && Number.isFinite(s.useCount) && s.useCount >= 0
+          ? { useCount: Math.floor(s.useCount) }
+          : {}),
+        ...(typeof s.scopePath === 'string' && s.scopePath.length <= 2000
+          ? { scopePath: s.scopePath }
+          : {}),
         ...(s.filters && typeof s.filters === 'object'
           ? {
               filters: {

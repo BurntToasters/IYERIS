@@ -173,6 +173,114 @@ describe('Search controller — extended', () => {
       const dropdown = document.getElementById('search-history-dropdown')!;
       expect(dropdown.style.display).toBe('none');
     });
+
+    it('orders saved searches by recency and shows scope badge', () => {
+      const deps = createDeps({
+        settingsOverrides: {
+          savedSearches: [
+            {
+              name: 'Older',
+              query: 'old-query',
+              isGlobal: false,
+              isRegex: false,
+              lastUsedAt: '2024-01-01T00:00:00.000Z',
+              scopePath: '/workspace/old',
+            },
+            {
+              name: 'Newer',
+              query: 'new-query',
+              isGlobal: true,
+              isRegex: false,
+              lastUsedAt: '2025-01-01T00:00:00.000Z',
+            },
+          ],
+        },
+      });
+      const ctrl = createSearchController(deps as any);
+      ctrl.showSearchHistoryDropdown();
+
+      const dropdown = document.getElementById('search-history-dropdown')!;
+      const html = dropdown.innerHTML;
+      expect(html.indexOf('Newer')).toBeLessThan(html.indexOf('Older'));
+      expect(html).toContain('Scoped');
+    });
+  });
+
+  describe('saved search presets', () => {
+    it('stores metadata when saving a new preset', () => {
+      const promptSpy = vi.spyOn(window, 'prompt').mockReturnValue('My Preset');
+      const deps = createDeps({ settingsOverrides: { savedSearches: [] } });
+      const ctrl = createSearchController(deps as any);
+      ctrl.toggleSearch();
+      ctrl.setQuery('invoice');
+
+      ctrl.saveCurrentSearch();
+
+      const saved = (deps.settings.savedSearches as any[])[0];
+      expect(saved.name).toBe('My Preset');
+      expect(saved.query).toBe('invoice');
+      expect(saved.scopePath).toBe('/workspace');
+      expect(saved.useCount).toBe(0);
+      expect(typeof saved.createdAt).toBe('string');
+      expect(typeof saved.lastUsedAt).toBe('string');
+      promptSpy.mockRestore();
+    });
+
+    it('updates existing preset by name without creating duplicates', () => {
+      const promptSpy = vi.spyOn(window, 'prompt').mockReturnValue('reports');
+      const deps = createDeps({
+        settingsOverrides: {
+          savedSearches: [
+            {
+              name: 'Reports',
+              query: 'old',
+              isGlobal: false,
+              isRegex: false,
+              createdAt: '2024-01-01T00:00:00.000Z',
+              useCount: 7,
+            },
+          ],
+        },
+      });
+      const ctrl = createSearchController(deps as any);
+      ctrl.toggleSearch();
+      ctrl.setQuery('new-query');
+
+      ctrl.saveCurrentSearch();
+
+      expect((deps.settings.savedSearches as any[]).length).toBe(1);
+      const saved = (deps.settings.savedSearches as any[])[0];
+      expect(saved.query).toBe('new-query');
+      expect(saved.createdAt).toBe('2024-01-01T00:00:00.000Z');
+      expect(saved.useCount).toBe(7);
+      promptSpy.mockRestore();
+    });
+
+    it('increments usage metadata and navigates to saved scope on load', () => {
+      const deps = createDeps({
+        settingsOverrides: {
+          savedSearches: [
+            {
+              name: 'Scoped',
+              query: 'alpha',
+              isGlobal: false,
+              isRegex: false,
+              scopePath: '/workspace/project',
+              useCount: 1,
+            },
+          ],
+        },
+      });
+      const ctrl = createSearchController(deps as any);
+
+      ctrl.loadSavedSearch(0);
+
+      const saved = (deps.settings.savedSearches as any[])[0];
+      expect(saved.useCount).toBe(2);
+      expect(typeof saved.lastUsedAt).toBe('string');
+      expect(deps.debouncedSaveSettings).toHaveBeenCalled();
+      expect(deps.navigateTo).toHaveBeenCalledWith('/workspace/project');
+    });
   });
 
   describe('hideSearchHistoryDropdown', () => {

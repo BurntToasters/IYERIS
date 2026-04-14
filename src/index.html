@@ -1413,6 +1413,73 @@
       </div>
     </div>
 
+    <div class="modal-overlay" id="duplicate-finder-modal" style="display: none">
+      <div
+        class="modal glass-panel duplicate-finder-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="duplicate-finder-title"
+      >
+        <div class="modal-header">
+          <h3 id="duplicate-finder-title">
+            <img src="/twemoji/1f9ec.svg" class="twemoji" alt="" draggable="false" />
+            Duplicate Finder
+          </h3>
+          <button class="modal-close" id="duplicate-finder-close" aria-label="Close">✕</button>
+        </div>
+        <div class="modal-content duplicate-finder-content">
+          <div class="duplicate-finder-controls">
+            <div class="duplicate-finder-field duplicate-finder-field-root">
+              <label for="duplicate-finder-root">Scan root</label>
+              <div class="duplicate-finder-root" id="duplicate-finder-root" title=""></div>
+            </div>
+            <div class="duplicate-finder-field">
+              <label for="duplicate-finder-min-size">Minimum file size (MB)</label>
+              <input
+                type="number"
+                id="duplicate-finder-min-size"
+                class="settings-input"
+                min="0"
+                step="0.1"
+                value="1"
+              />
+            </div>
+            <div class="duplicate-finder-field duplicate-finder-field-inline">
+              <label class="duplicate-finder-checkbox">
+                <input type="checkbox" id="duplicate-finder-include-hidden" />
+                Include hidden files
+              </label>
+            </div>
+            <div class="duplicate-finder-field duplicate-finder-actions-inline">
+              <button class="modal-button primary" id="duplicate-finder-scan-btn">Scan</button>
+              <button class="modal-button" id="duplicate-finder-select-all">Select All</button>
+              <button class="modal-button" id="duplicate-finder-select-none">Select None</button>
+            </div>
+          </div>
+
+          <div class="duplicate-finder-status" id="duplicate-finder-status" data-tone="info">
+            Ready to scan.
+          </div>
+          <div class="duplicate-finder-summary" id="duplicate-finder-summary">
+            Run a scan to see duplicate groups.
+          </div>
+
+          <div class="duplicate-finder-groups" id="duplicate-finder-groups">
+            <div class="duplicate-finder-empty">Run a scan to see duplicate groups.</div>
+          </div>
+        </div>
+        <div class="modal-footer duplicate-finder-footer">
+          <button class="modal-button" id="duplicate-finder-cancel">Close</button>
+          <button class="modal-button" id="duplicate-finder-export-btn" disabled>
+            Export Selected
+          </button>
+          <button class="modal-button warning" id="duplicate-finder-delete-btn" disabled>
+            Delete Selected Duplicates
+          </button>
+        </div>
+      </div>
+    </div>
+
     <div class="archive-operations-panel" id="archive-operations-panel" style="display: none">
       <div class="archive-operations-header">
         <span

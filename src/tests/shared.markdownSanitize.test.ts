@@ -20,12 +20,16 @@ describe('sanitizeMarkdownHtml resource URLs', () => {
 
   it('keeps relative and trusted asset src URLs', () => {
     const output = sanitizeMarkdownHtml(
-      '<img src="./local.png"><img src="/images/a.png"><img src="asset:/safe.png"><img src="https://asset.localhost/safe.png"><img src="http://asset.localhost/safe.png">'
+      '<img src="./local.png"><img src="/images/a.png"><img src="https://asset.localhost/safe.png"><img src="http://asset.localhost/safe.png">'
     );
     expect(output).toContain('src="./local.png"');
     expect(output).toContain('src="/images/a.png"');
-    expect(output).toContain('src="asset:/safe.png"');
     expect(output).toContain('src="https://asset.localhost/safe.png"');
     expect(output).toContain('src="http://asset.localhost/safe.png"');
+  });
+
+  it('removes non-localhost asset scheme src URLs', () => {
+    const output = sanitizeMarkdownHtml('<img src="asset:/safe.png">');
+    expect(output).toBe('<img>');
   });
 });

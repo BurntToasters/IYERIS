@@ -7,6 +7,7 @@ const mockGetLanguageForExt = vi.hoisted(() => vi.fn());
 const mockEscapeHtml = vi.hoisted(() => vi.fn((t: string) => t));
 const mockGetById = vi.hoisted(() => vi.fn());
 const mockEncodeFileUrl = vi.hoisted(() => vi.fn((p: string) => `file://${p}`));
+const mockGetFileDataUrlWithCache = vi.hoisted(() => vi.fn().mockResolvedValue(null));
 const mockTwemojiImg = vi.hoisted(() => vi.fn((_e: string, _c: string) => '<img class="twemoji">'));
 
 const mockImageExtensions = vi.hoisted(() => new Set(['png', 'jpg', 'jpeg', 'gif', 'webp']));
@@ -45,6 +46,7 @@ vi.mock('../rendererDom.js', () => ({
 
 vi.mock('../rendererUtils.js', () => ({
   encodeFileUrl: mockEncodeFileUrl,
+  getFileDataUrlWithCache: mockGetFileDataUrlWithCache,
   twemojiImg: mockTwemojiImg,
 }));
 
@@ -91,6 +93,7 @@ function createDeps(overrides: Partial<QuicklookDeps> = {}): QuicklookDeps {
     }),
     getFileIcon: vi.fn(() => '<span class="icon">📄</span>'),
     openFileEntry: vi.fn(),
+    openExternal: vi.fn(),
     onModalOpen: vi.fn(),
     onModalClose: vi.fn(),
     ...overrides,
@@ -139,6 +142,7 @@ describe('createQuicklookController', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockGetFileDataUrlWithCache.mockResolvedValue(null);
     dom = setupDom();
     deps = createDeps();
     (window as any).tauriAPI = {
@@ -431,7 +435,9 @@ describe('createQuicklookController', () => {
         const img = dom.content.querySelector('img')!;
         img.dispatchEvent(new Event('error'));
 
-        expect(dom.content.innerHTML).toContain('Failed to load image');
+        await vi.waitFor(() => {
+          expect(dom.content.innerHTML).toContain('Failed to load image');
+        });
       });
 
       it('ignores load event if quicklook was closed/changed', async () => {
@@ -620,12 +626,15 @@ describe('createQuicklookController', () => {
           .fn()
           .mockResolvedValue({ success: true, content: '%PDF-1.4' });
         mockCreatePdfViewer.mockRejectedValue(new Error('PDF render failed'));
+        mockGetFileDataUrlWithCache.mockResolvedValue(null);
 
         const ctrl = createQuicklookController(deps as any);
         const file = makeFile({ name: 'doc.pdf', path: '/home/user/doc.pdf' });
         await ctrl.showQuickLookForFile(file);
 
-        expect(dom.content.innerHTML).toContain('Failed to render PDF');
+        await vi.waitFor(() => {
+          expect(dom.content.innerHTML).toContain('Failed to render PDF');
+        });
       });
 
       it('sets PDF info text with prefix', async () => {
