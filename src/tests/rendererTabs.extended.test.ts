@@ -895,4 +895,223 @@ describe('rendererTabs extended', () => {
       expect(item.dataset.tabId).toBe('my-tab-id');
     });
   });
+
+  describe('tab context menu actions and lifecycle', () => {
+    function seedTabs(deps: ReturnType<typeof createMockDeps>) {
+      deps._settings.tabState = {
+        tabs: [
+          {
+            id: 'tab-1',
+            path: '/one',
+            history: ['/one'],
+            historyIndex: 0,
+            selectedItems: [] as string[],
+            scrollPosition: 0,
+          },
+          {
+            id: 'tab-2',
+            path: '/two',
+            history: ['/two'],
+            historyIndex: 0,
+            selectedItems: [] as string[],
+            scrollPosition: 0,
+          },
+          {
+            id: 'tab-3',
+            path: '/three',
+            history: ['/three'],
+            historyIndex: 0,
+            selectedItems: [] as string[],
+            scrollPosition: 0,
+          },
+        ],
+        activeTabId: 'tab-3',
+      };
+    }
+
+    it('opens context menu from tab contextmenu event', () => {
+      const deps = createMockDeps();
+      seedTabs(deps);
+      const ctrl = createTabsController(deps);
+      ctrl.initializeTabs();
+
+      const tab = document.querySelector<HTMLElement>('.tab-item[data-tab-id="tab-2"]')!;
+      const event = new MouseEvent('contextmenu', {
+        bubbles: true,
+        cancelable: true,
+        clientX: 64,
+        clientY: 72,
+      });
+      tab.dispatchEvent(event);
+
+      const menu = document.querySelector('.tab-context-menu') as HTMLElement;
+      expect(event.defaultPrevented).toBe(true);
+      expect(menu).toBeTruthy();
+      expect(menu.style.left).toBe('64px');
+      expect(menu.style.top).toBe('72px');
+    });
+
+    it('Close Other Tabs keeps only the clicked tab', async () => {
+      const deps = createMockDeps();
+      seedTabs(deps);
+      const ctrl = createTabsController(deps);
+      ctrl.initializeTabs();
+
+      const tab = document.querySelector<HTMLElement>('.tab-item[data-tab-id="tab-2"]')!;
+      tab.dispatchEvent(
+        new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 1, clientY: 1 })
+      );
+
+      const menuItems = Array.from(
+        document.querySelectorAll<HTMLElement>('.tab-context-menu-item')
+      );
+      menuItems[1]!.click();
+
+      expect(deps._getTabs().length).toBe(1);
+      expect(deps._getTabs()[0]!.id).toBe('tab-2');
+      expect(deps._getActiveTabId()).toBe('tab-2');
+      await vi.waitFor(() => {
+        expect(deps.navigateTo).toHaveBeenCalledWith('/two', true);
+      });
+    });
+
+    it('Close Tabs to the Right trims tabs and rehomes active tab when needed', async () => {
+      const deps = createMockDeps();
+      seedTabs(deps);
+      const ctrl = createTabsController(deps);
+      ctrl.initializeTabs();
+
+      const tab = document.querySelector<HTMLElement>('.tab-item[data-tab-id="tab-1"]')!;
+      tab.dispatchEvent(
+        new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 1, clientY: 1 })
+      );
+
+      const menuItems = Array.from(
+        document.querySelectorAll<HTMLElement>('.tab-context-menu-item')
+      );
+      menuItems[2]!.click();
+
+      expect(deps._getTabs().map((t) => t.id)).toEqual(['tab-1']);
+      expect(deps._getActiveTabId()).toBe('tab-1');
+      await vi.waitFor(() => {
+        expect(deps.navigateTo).toHaveBeenCalledWith('/one', true);
+      });
+    });
+
+    it('Duplicate Tab creates a new tab for the same path', async () => {
+      const deps = createMockDeps();
+      seedTabs(deps);
+      const ctrl = createTabsController(deps);
+      ctrl.initializeTabs();
+
+      const tab = document.querySelector<HTMLElement>('.tab-item[data-tab-id="tab-2"]')!;
+      tab.dispatchEvent(
+        new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 1, clientY: 1 })
+      );
+
+      const menuItems = Array.from(
+        document.querySelectorAll<HTMLElement>('.tab-context-menu-item')
+      );
+      const initialCount = deps._getTabs().length;
+      menuItems[3]!.click();
+
+      expect(deps._getTabs().length).toBe(initialCount + 1);
+      await vi.waitFor(() => {
+        expect(deps.navigateTo).toHaveBeenCalledWith('/two', true);
+      });
+    });
+
+    it('supports context menu keyboard nav and escape dismissal', () => {
+      const deps = createMockDeps();
+      seedTabs(deps);
+      const ctrl = createTabsController(deps);
+      ctrl.initializeTabs();
+
+      const tab = document.querySelector<HTMLElement>('.tab-item[data-tab-id="tab-2"]')!;
+      tab.dispatchEvent(
+        new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 1, clientY: 1 })
+      );
+
+      const menu = document.querySelector('.tab-context-menu') as HTMLElement;
+      expect(menu).toBeTruthy();
+
+      menu.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+      menu.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
+      menu.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+
+      expect(document.querySelector('.tab-context-menu')).toBeNull();
+    });
+  });
+
+  describe('save, restore, and cleanup controls', () => {
+    it('restoreClosedTab reopens the most recently closed tab path', async () => {
+      const deps = createMockDeps();
+      deps._settings.tabState = {
+        tabs: [
+          {
+            id: 'tab-1',
+            path: '/one',
+            history: ['/one'],
+            historyIndex: 0,
+            selectedItems: [] as string[],
+            scrollPosition: 0,
+          },
+          {
+            id: 'tab-2',
+            path: '/two',
+            history: ['/two'],
+            historyIndex: 0,
+            selectedItems: [] as string[],
+            scrollPosition: 0,
+          },
+        ],
+        activeTabId: 'tab-1',
+      };
+      const ctrl = createTabsController(deps);
+      ctrl.initializeTabs();
+
+      ctrl.closeTab('tab-2');
+      const beforeRestore = deps._getTabs().length;
+
+      ctrl.restoreClosedTab();
+
+      expect(deps._getTabs().length).toBe(beforeRestore + 1);
+      await vi.waitFor(() => {
+        expect(deps.navigateTo).toHaveBeenCalledWith('/two', true);
+      });
+    });
+
+    it('saveTabState(true) persists via saveSettingsWithTimestamp', async () => {
+      const deps = createMockDeps();
+      const ctrl = createTabsController(deps);
+      ctrl.initializeTabs();
+
+      await ctrl.saveTabState(true);
+
+      expect(deps.saveSettingsWithTimestamp).toHaveBeenCalledTimes(1);
+    });
+
+    it('updateCurrentTabPath updates active tab path and saves state', () => {
+      const deps = createMockDeps();
+      const ctrl = createTabsController(deps);
+      ctrl.initializeTabs();
+
+      ctrl.updateCurrentTabPath('/updated/path');
+
+      expect(deps._getTabs()[0]!.path).toBe('/updated/path');
+      expect(deps.debouncedSaveSettings).toHaveBeenCalled();
+    });
+
+    it('cleanup clears pending save timeout', () => {
+      const deps = createMockDeps();
+      const ctrl = createTabsController(deps);
+      ctrl.initializeTabs();
+
+      const pending = setTimeout(() => {}, 1000);
+      deps.setSaveTabStateTimeout(pending);
+      ctrl.cleanup();
+
+      expect(deps.getSaveTabStateTimeout()).toBeNull();
+    });
+  });
 });
