@@ -1,6 +1,6 @@
 {
   "name": "iyeris",
-  "version": "2.1.0-beta.2",
+  "version": "2.1.0-beta.3",
   "private": true,
   "type": "module",
   "description": "A beautiful cross-platform file explorer built with Tauri, featuring a simple yet advanced modern design.",
@@ -84,6 +84,9 @@
     "rust:target:mac:x64": "rustup target add x86_64-apple-darwin",
     "rust:target:mac:arm64": "rustup target add aarch64-apple-darwin",
     "rust:target:mac": "npm run rust:target:mac:x64 && npm run rust:target:mac:arm64",
+    "rust:target:linux:x64": "rustup target add x86_64-unknown-linux-gnu",
+    "rust:target:linux:arm64": "rustup target add aarch64-unknown-linux-gnu",
+    "rust:target:linux": "npm run rust:target:linux:x64 && npm run rust:target:linux:arm64",
     "build:win:x64": "npm run rust:target:win:x64 && npm run sync-version && npm run licenses && dotenv -e .env -- node scripts/tauri-build.js --require-tauri-signing --target x86_64-pc-windows-msvc --bundles nsis,msi",
     "build:win:arm64": "npm run rust:target:win:arm64 && npm run sync-version && npm run licenses && dotenv -e .env -- node scripts/tauri-build.js --require-tauri-signing --target aarch64-pc-windows-msvc --bundles nsis,msi",
     "build:win": "npm run build:win:x64 && npm run build:win:arm64",
