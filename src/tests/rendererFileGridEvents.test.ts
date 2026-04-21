@@ -5,6 +5,7 @@ vi.mock('../shared.js', () => ({
   devLog: vi.fn(),
 }));
 
+import type { FileItem } from '../types';
 import { devLog } from '../shared.js';
 import { createFileGridEventsController } from '../rendererFileGridEvents';
 
@@ -16,8 +17,24 @@ type DragEventOptions = {
   clientY?: number;
 };
 
-function createDragEvent(type: string, options: DragEventOptions = {}): DragEvent {
-  const event = new Event(type, { bubbles: true, cancelable: true }) as DragEvent;
+type MockDataTransfer = {
+  effectAllowed: string;
+  dropEffect: string;
+  types: string[];
+  files: {
+    length: number;
+  };
+  setData: ReturnType<typeof vi.fn>;
+  setDragImage: ReturnType<typeof vi.fn>;
+};
+
+function createDragEvent(
+  type: string,
+  options: DragEventOptions = {}
+): DragEvent & { dataTransfer: MockDataTransfer | null } {
+  const event = new Event(type, { bubbles: true, cancelable: true }) as DragEvent & {
+    dataTransfer: MockDataTransfer | null;
+  };
 
   Object.defineProperty(event, 'clientX', {
     configurable: true,
@@ -57,7 +74,7 @@ function createDragEvent(type: string, options: DragEventOptions = {}): DragEven
 function createConfig() {
   const fileGrid = document.getElementById('file-grid') as HTMLElement;
   const selectedItems = new Set<string>();
-  const fileItems = {
+  const fileItems: Record<string, FileItem> = {
     '/dest/test.txt': {
       name: 'test.txt',
       path: '/dest/test.txt',
@@ -92,9 +109,9 @@ function createConfig() {
 
   const config = {
     getFileGrid: () => fileGrid,
-    getFileItemData: vi.fn((fileItem: HTMLElement) => {
+    getFileItemData: vi.fn<(fileItem: HTMLElement) => FileItem | null>((fileItem: HTMLElement) => {
       const path = fileItem.dataset.path || '';
-      return (fileItems as Record<string, unknown>)[path] ?? null;
+      return fileItems[path] ?? null;
     }),
     getSelectedItems: () => selectedItems,
     getTabsEnabled: vi.fn().mockReturnValue(true),
@@ -287,11 +304,8 @@ describe('createFileGridEventsController', () => {
     const dragEvent = createDragEvent('dragstart');
     fileItem.dispatchEvent(dragEvent);
 
-    const dataTransfer = dragEvent.dataTransfer as {
-      effectAllowed: string;
-      setData: ReturnType<typeof vi.fn>;
-      setDragImage: ReturnType<typeof vi.fn>;
-    };
+    const dataTransfer = dragEvent.dataTransfer;
+    if (!dataTransfer) throw new Error('missing dataTransfer');
 
     expect(dataTransfer.effectAllowed).toBe('copyMove');
     expect(dataTransfer.setData).toHaveBeenCalledWith(
@@ -353,7 +367,7 @@ describe('createFileGridEventsController', () => {
     const invalidDragEvent = createDragEvent('dragover', { types: ['Files'], filesLength: 0 });
     dirItem.dispatchEvent(invalidDragEvent);
     expect(config.consumeEvent).toHaveBeenCalledTimes(1);
-    expect((invalidDragEvent.dataTransfer as { dropEffect: string }).dropEffect).toBe('none');
+    expect(invalidDragEvent.dataTransfer?.dropEffect).toBe('none');
 
     const validDragEvent = createDragEvent('dragover', { types: ['text/plain'] });
     dirItem.dispatchEvent(validDragEvent);
