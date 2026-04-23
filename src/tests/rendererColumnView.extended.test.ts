@@ -1295,4 +1295,149 @@ describe('createColumnViewController — extended', () => {
       expect(deps.handleDrop).toHaveBeenCalledWith(['/src/file.txt'], '/root/target', 'copy');
     });
   });
+
+  describe('pane keyboard navigation', () => {
+    it('returns early when pane has no selectable items', async () => {
+      const { columnView } = await setupRenderedColumn('/empty', {
+        '/': [],
+        '/empty': [],
+      });
+
+      const pane = columnView.querySelector('.column-pane:last-child') as HTMLElement;
+      expect(pane.querySelectorAll('.column-item:not(.placeholder)').length).toBe(0);
+
+      expect(() =>
+        pane.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }))
+      ).not.toThrow();
+    });
+
+    it('navigates items with ArrowDown and ArrowUp, including wrap-around', async () => {
+      const { columnView } = await setupRenderedColumn('/nav', {
+        '/': [],
+        '/nav': [
+          makeFileItem('a.txt', '/nav/a.txt', false),
+          makeFileItem('b.txt', '/nav/b.txt', false),
+          makeFileItem('c.txt', '/nav/c.txt', false),
+        ],
+      });
+
+      const pane = columnView.querySelector('.column-pane:last-child') as HTMLElement;
+      const items = Array.from(
+        pane.querySelectorAll('.column-item:not(.placeholder)')
+      ) as HTMLElement[];
+      expect(items.length).toBe(3);
+
+      const paneQuery = pane.querySelector.bind(pane);
+      const querySpy = vi.spyOn(pane, 'querySelector').mockImplementation((selector: string) => {
+        if (selector === '.column-item:focus') return items[0] as unknown as Element;
+        return paneQuery(selector);
+      });
+      const focusItem1 = vi.spyOn(items[1]!, 'focus');
+      pane.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+      expect(focusItem1).toHaveBeenCalled();
+
+      querySpy.mockImplementation((selector: string) => {
+        if (selector === '.column-item:focus') return items[2] as unknown as Element;
+        return paneQuery(selector);
+      });
+      const focusItem0 = vi.spyOn(items[0]!, 'focus');
+      pane.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+      expect(focusItem0).toHaveBeenCalled();
+
+      querySpy.mockImplementation((selector: string) => {
+        if (selector === '.column-item:focus') return items[0] as unknown as Element;
+        return paneQuery(selector);
+      });
+      const focusItem2 = vi.spyOn(items[2]!, 'focus');
+      pane.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
+      expect(focusItem2).toHaveBeenCalled();
+    });
+
+    it('handles ArrowRight into a directory and ArrowLeft back to previous pane', async () => {
+      const { columnView, deps } = await setupRenderedColumn('/parent', {
+        '/': [],
+        '/parent': [makeFileItem('child', '/parent/child', true)],
+        '/parent/child': [makeFileItem('nested.txt', '/parent/child/nested.txt', false)],
+      });
+
+      const parentPane = columnView.querySelector('.column-pane:last-child') as HTMLElement;
+      const childDir = findItemByName(columnView, 'child')!;
+      const parentPaneQuery = parentPane.querySelector.bind(parentPane);
+      vi.spyOn(parentPane, 'querySelector').mockImplementation((selector: string) => {
+        if (selector === '.column-item:focus') return childDir as unknown as Element;
+        return parentPaneQuery(selector);
+      });
+
+      parentPane.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+      await vi.advanceTimersByTimeAsync(150);
+
+      expect(deps.addressInput.value).toBe('/parent/child');
+
+      const childPane = columnView.querySelector(
+        '.column-pane[data-path="/parent/child"]'
+      ) as HTMLElement;
+      const nestedFile = findItemByName(columnView, 'nested.txt')!;
+      const childPaneQuery = childPane.querySelector.bind(childPane);
+      vi.spyOn(childPane, 'querySelector').mockImplementation((selector: string) => {
+        if (selector === '.column-item:focus') return nestedFile as unknown as Element;
+        return childPaneQuery(selector);
+      });
+      const childDirFocusSpy = vi.spyOn(childDir, 'focus');
+      childPane.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+
+      expect(childDirFocusSpy).toHaveBeenCalled();
+    });
+
+    it('falls back to first item in previous pane on ArrowLeft when no expanded item exists', async () => {
+      const { columnView } = await setupRenderedColumn('/base/next', {
+        '/': [],
+        '/base': [
+          makeFileItem('next', '/base/next', true),
+          makeFileItem('sibling', '/base/sibling', true),
+        ],
+        '/base/next': [makeFileItem('leaf.txt', '/base/next/leaf.txt', false)],
+      });
+
+      const currentPane = columnView.querySelector(
+        '.column-pane[data-path="/base/next"]'
+      ) as HTMLElement;
+      const prevPane = columnView.querySelector('.column-pane[data-path="/base"]') as HTMLElement;
+      const prevItems = Array.from(
+        prevPane.querySelectorAll('.column-item:not(.placeholder)')
+      ) as HTMLElement[];
+      prevItems.forEach((item) => item.classList.remove('expanded'));
+      prevItems.forEach((item) => item.blur());
+      const prevPaneQuery = prevPane.querySelector.bind(prevPane);
+      vi.spyOn(prevPane, 'querySelector').mockImplementation((selector: string) => {
+        if (selector === '.column-item.expanded, .column-item:focus') return null;
+        return prevPaneQuery(selector);
+      });
+
+      const firstPrev = prevItems[0]!;
+      const focusSpy = vi.spyOn(firstPrev, 'focus');
+
+      const currentItem = findItemByName(columnView, 'leaf.txt')!;
+      currentItem.focus();
+      currentPane.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+
+      expect(focusSpy).toHaveBeenCalled();
+    });
+
+    it('activates focused item on Enter and Space keys', async () => {
+      const { columnView } = await setupRenderedColumn('/keys', {
+        '/': [],
+        '/keys': [makeFileItem('run.txt', '/keys/run.txt', false)],
+      });
+
+      const pane = columnView.querySelector('.column-pane:last-child') as HTMLElement;
+      const item = findItemByName(columnView, 'run.txt')!;
+      const clickSpy = vi.spyOn(item, 'click');
+
+      item.focus();
+      pane.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      pane.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
+
+      expect(clickSpy).toHaveBeenCalledTimes(2);
+    });
+  });
 });
