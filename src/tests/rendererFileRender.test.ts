@@ -173,6 +173,24 @@ describe('createFileRenderController', () => {
       expect(config.getFolderIcon).toHaveBeenCalledWith('/home/user/Projects');
     });
 
+    it('uses app-bundle icon path and application type for app bundles', () => {
+      const config = createMockConfig();
+      const ctrl = createFileRenderController(config);
+      const item = makeItem({
+        name: 'Example.app',
+        path: '/Applications/Example.app',
+        isDirectory: true,
+        isFile: false,
+        isAppBundle: true,
+      });
+
+      const el = ctrl.createFileItem(item);
+
+      expect(el.dataset.isAppBundle).toBe('true');
+      expect(el.querySelector('.file-type')?.textContent).toBe('Application');
+      expect(config.getFolderIcon).not.toHaveBeenCalled();
+    });
+
     it('shows file size for files and "--" for directories', () => {
       const config = createMockConfig();
       const ctrl = createFileRenderController(config);
@@ -709,6 +727,42 @@ describe('createFileRenderController', () => {
       const ctrl = createFileRenderController(config);
 
       expect(() => ctrl.disconnectVirtualizedObserver()).not.toThrow();
+    });
+
+    it('disconnects active virtualized observer', () => {
+      const observe = vi.fn();
+      const unobserve = vi.fn();
+      const disconnect = vi.fn();
+      const originalIntersectionObserver = globalThis.IntersectionObserver;
+
+      class MockIntersectionObserver {
+        constructor() {}
+        observe = observe;
+        unobserve = unobserve;
+        disconnect = disconnect;
+      }
+
+      (globalThis as any).IntersectionObserver = MockIntersectionObserver;
+
+      const config = createMockConfig();
+      const ctrl = createFileRenderController(config);
+      const items = Array.from({ length: 1200 }, (_, i) =>
+        makeItem({ name: `item${i}.txt`, path: `/item${i}.txt` })
+      );
+
+      ctrl.renderFiles(items);
+      ctrl.disconnectVirtualizedObserver();
+      ctrl.disconnectVirtualizedObserver();
+
+      expect(observe).toHaveBeenCalled();
+      expect(unobserve).not.toHaveBeenCalled();
+      expect(disconnect).toHaveBeenCalledTimes(1);
+
+      if (originalIntersectionObserver) {
+        (globalThis as any).IntersectionObserver = originalIntersectionObserver;
+      } else {
+        delete (globalThis as any).IntersectionObserver;
+      }
     });
   });
 });
