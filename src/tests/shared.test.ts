@@ -1,5 +1,16 @@
-import { describe, it, expect } from 'vitest';
-import { escapeHtml, getErrorMessage } from '../shared';
+// @vitest-environment jsdom
+import { describe, it, expect, vi } from 'vitest';
+import {
+  escapeHtml,
+  getErrorMessage,
+  setDevMode,
+  isDevMode,
+  devLog,
+  ignoreError,
+  assignKey,
+  isRecord,
+  sanitizeStringArray,
+} from '../shared';
 
 describe('escapeHtml', () => {
   it('escapes ampersands', () => {
@@ -102,5 +113,65 @@ describe('getErrorMessage', () => {
   it('handles empty Error message', () => {
     const error = new Error('');
     expect(getErrorMessage(error)).toBe('');
+  });
+});
+
+describe('dev mode logging utilities', () => {
+  it('enables and disables dev mode', () => {
+    setDevMode(true);
+    expect(isDevMode()).toBe(true);
+    setDevMode(false);
+    expect(isDevMode()).toBe(false);
+  });
+
+  it('routes devLog to console.debug when enabled', () => {
+    const debugSpy = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    setDevMode(true);
+    devLog('Search', 'hello');
+    expect(debugSpy).toHaveBeenCalledWith('[Search]', 'hello');
+    setDevMode(false);
+    debugSpy.mockRestore();
+  });
+
+  it('ignoreError logs to warn in dev mode', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    setDevMode(true);
+    ignoreError('ignored');
+    expect(warnSpy).toHaveBeenCalledWith('[Ignored error]', 'ignored');
+    setDevMode(false);
+    warnSpy.mockRestore();
+  });
+
+  it('ignoreError uses __iyerisLogger.debug when available outside dev mode', () => {
+    setDevMode(false);
+    const loggerDebug = vi.fn();
+    (globalThis as any).__iyerisLogger = { debug: loggerDebug };
+    ignoreError(new Error('boom'));
+    expect(loggerDebug).toHaveBeenCalledWith('[Ignored error]', 'boom');
+    delete (globalThis as any).__iyerisLogger;
+  });
+});
+
+describe('shared utility helpers', () => {
+  it('assignKey mutates object key', () => {
+    const obj = { a: 1, b: 2 };
+    assignKey(obj, 'a', 42);
+    expect(obj.a).toBe(42);
+  });
+
+  it('isRecord accepts plain objects and null-prototype objects', () => {
+    expect(isRecord({ x: 1 })).toBe(true);
+    expect(isRecord(Object.create(null))).toBe(true);
+  });
+
+  it('isRecord rejects arrays, null, and primitives', () => {
+    expect(isRecord([])).toBe(false);
+    expect(isRecord(null)).toBe(false);
+    expect(isRecord('x')).toBe(false);
+  });
+
+  it('sanitizeStringArray keeps only string entries', () => {
+    expect(sanitizeStringArray(['a', 1, 'b', null, 'c'])).toEqual(['a', 'b', 'c']);
+    expect(sanitizeStringArray('not-array')).toEqual([]);
   });
 });

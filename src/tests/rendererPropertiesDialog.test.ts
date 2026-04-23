@@ -88,6 +88,8 @@ describe('rendererPropertiesDialog', () => {
       }),
       cancelChecksumCalculation: vi.fn().mockResolvedValue(undefined),
       onChecksumProgress: vi.fn(() => vi.fn()),
+      setPermissions: vi.fn().mockResolvedValue({ success: true }),
+      setAttributes: vi.fn().mockResolvedValue({ success: true }),
       writeToSystemClipboard: vi.fn().mockResolvedValue(undefined),
     };
     (window as any).tauriAPI = mockTauriAPI;
@@ -119,6 +121,134 @@ describe('rendererPropertiesDialog', () => {
       expect(content.innerHTML).toContain('File');
       expect(content.innerHTML).toContain('/home/user/test.txt');
       expect(content.innerHTML).toContain('1,024 bytes');
+    });
+
+    it('renders symlink target, shortcut target, and mac tags', () => {
+      const deps = makeDeps();
+      const ctrl = createPropertiesDialogController(deps);
+      const props = {
+        ...makeFileProps(),
+        isSymlink: true,
+        symlinkTarget: '/real/target',
+        shortcutTarget: '/shortcut/target',
+        macTags: ['Red\n6', 'Custom'],
+      };
+
+      ctrl.showPropertiesDialog(props as any);
+
+      const content = document.getElementById('properties-content')!;
+      expect(content.innerHTML).toContain('Symbolic Link');
+      expect(content.innerHTML).toContain('/real/target');
+      expect(content.innerHTML).toContain('/shortcut/target');
+      expect(content.innerHTML).toContain('Tags:');
+      expect(content.innerHTML).toContain('Red');
+      expect(content.innerHTML).toContain('Custom');
+    });
+
+    it('renders permissions editor and owner/group when mode is present', () => {
+      const deps = makeDeps();
+      const ctrl = createPropertiesDialogController(deps);
+      const props = {
+        ...makeFileProps(),
+        mode: 0o755,
+        owner: 'alice',
+        group: 'staff',
+      };
+
+      ctrl.showPropertiesDialog(props as any);
+
+      const content = document.getElementById('properties-content')!;
+      expect(content.innerHTML).toContain('<code>rwxr-xr-x</code>');
+      expect((document.getElementById('perm-octal-input') as HTMLInputElement).value).toBe('755');
+      expect(content.innerHTML).toContain('alice:staff');
+    });
+
+    it('shows validation toast for invalid octal permissions', () => {
+      const deps = makeDeps();
+      const ctrl = createPropertiesDialogController(deps);
+      ctrl.showPropertiesDialog({ ...makeFileProps(), mode: 0o644 } as any);
+
+      const input = document.getElementById('perm-octal-input') as HTMLInputElement;
+      input.value = '999';
+      document.getElementById('apply-perms-btn')!.click();
+
+      expect(deps.showToast).toHaveBeenCalledWith(
+        'Invalid permissions (use octal, e.g. 755)',
+        'Error',
+        'error'
+      );
+      expect(mockTauriAPI.setPermissions).not.toHaveBeenCalled();
+    });
+
+    it('applies permissions and shows success toast', async () => {
+      const deps = makeDeps();
+      const ctrl = createPropertiesDialogController(deps);
+      ctrl.showPropertiesDialog({ ...makeFileProps(), mode: 0o644 } as any);
+
+      const input = document.getElementById('perm-octal-input') as HTMLInputElement;
+      input.value = '755';
+      document.getElementById('apply-perms-btn')!.click();
+
+      await vi.waitFor(() => {
+        expect(mockTauriAPI.setPermissions).toHaveBeenCalledWith('/home/user/test.txt', 0o755);
+      });
+      expect(deps.showToast).toHaveBeenCalledWith('Permissions updated', 'Success', 'success');
+    });
+
+    it('shows fallback error toast when setting permissions fails without error text', async () => {
+      mockTauriAPI.setPermissions.mockResolvedValue({ success: false, error: '' });
+      const deps = makeDeps();
+      const ctrl = createPropertiesDialogController(deps);
+      ctrl.showPropertiesDialog({ ...makeFileProps(), mode: 0o644 } as any);
+
+      (document.getElementById('perm-octal-input') as HTMLInputElement).value = '644';
+      document.getElementById('apply-perms-btn')!.click();
+
+      await vi.waitFor(() => {
+        expect(deps.showToast).toHaveBeenCalledWith(
+          'Failed to update permissions',
+          'Error',
+          'error'
+        );
+      });
+    });
+
+    it('shows exception toast when setting permissions throws', async () => {
+      mockTauriAPI.setPermissions.mockRejectedValue(new Error('chmod failed'));
+      const deps = makeDeps();
+      const ctrl = createPropertiesDialogController(deps);
+      ctrl.showPropertiesDialog({ ...makeFileProps(), mode: 0o644 } as any);
+
+      (document.getElementById('perm-octal-input') as HTMLInputElement).value = '600';
+      document.getElementById('apply-perms-btn')!.click();
+
+      await vi.waitFor(() => {
+        expect(deps.showToast).toHaveBeenCalledWith('chmod failed', 'Error', 'error');
+      });
+    });
+
+    it('updates checksum progress text and bar from progress events', () => {
+      let onProgress: ((progress: any) => void) | null = null;
+      mockTauriAPI.onChecksumProgress.mockImplementation((cb: (progress: any) => void) => {
+        onProgress = cb;
+        return vi.fn();
+      });
+      mockTauriAPI.calculateChecksum.mockReturnValue(new Promise(() => {}));
+
+      const deps = makeDeps();
+      const ctrl = createPropertiesDialogController(deps);
+      ctrl.showPropertiesDialog(makeFileProps() as any);
+      document.getElementById('calculate-checksum-btn')!.click();
+
+      const opId = mockTauriAPI.calculateChecksum.mock.calls[0][1];
+      onProgress!({ operationId: opId, algorithm: 'md5', percent: 42.5 });
+
+      expect(document.getElementById('checksum-progress-bar')!.style.width).toBe('42.5%');
+      expect(document.getElementById('checksum-progress-text')!.textContent).toContain(
+        'Calculating MD5... 42.5%'
+      );
+
+      ctrl.cleanup();
     });
 
     it('renders checksum section for files', () => {
@@ -486,6 +616,98 @@ describe('rendererPropertiesDialog', () => {
       });
       expect(document.getElementById('folder-stats-row')!.style.display).toBe('none');
     });
+
+    it('renders editable attributes row when hidden attribute metadata is available', async () => {
+      const deps = makeDeps();
+      const ctrl = createPropertiesDialogController(deps);
+      ctrl.showPropertiesDialog({
+        ...makeDirProps(),
+        mode: 0o755,
+        isReadOnly: true,
+        isHiddenAttr: false,
+        isSystemAttr: true,
+      } as any);
+
+      const attrsBtn = document.getElementById('apply-attrs-btn');
+      expect(attrsBtn).not.toBeNull();
+      expect(document.getElementById('attr-readonly')).not.toBeNull();
+      expect(document.getElementById('attr-hidden')).not.toBeNull();
+      expect(document.getElementById('properties-content')!.innerHTML).toContain('System');
+
+      document.getElementById('attr-hidden')!.dispatchEvent(new Event('click'));
+      attrsBtn!.click();
+      await vi.waitFor(() => {
+        expect(mockTauriAPI.setAttributes).toHaveBeenCalled();
+      });
+      expect(deps.showToast).toHaveBeenCalledWith('Attributes updated', 'Success', 'success');
+    });
+
+    it('shows fallback error when setAttributes fails without message', async () => {
+      mockTauriAPI.setAttributes.mockResolvedValue({ success: false, error: '' });
+      const deps = makeDeps();
+      const ctrl = createPropertiesDialogController(deps);
+      ctrl.showPropertiesDialog({
+        ...makeDirProps(),
+        mode: 0o755,
+        isReadOnly: false,
+        isHiddenAttr: true,
+      } as any);
+
+      document.getElementById('apply-attrs-btn')!.click();
+
+      await vi.waitFor(() => {
+        expect(deps.showToast).toHaveBeenCalledWith(
+          'Failed to update attributes',
+          'Error',
+          'error'
+        );
+      });
+    });
+
+    it('shows exception toast when setAttributes throws', async () => {
+      mockTauriAPI.setAttributes.mockRejectedValue(new Error('attrs failed'));
+      const deps = makeDeps();
+      const ctrl = createPropertiesDialogController(deps);
+      ctrl.showPropertiesDialog({
+        ...makeDirProps(),
+        mode: 0o755,
+        isReadOnly: false,
+        isHiddenAttr: true,
+      } as any);
+
+      document.getElementById('apply-attrs-btn')!.click();
+
+      await vi.waitFor(() => {
+        expect(deps.showToast).toHaveBeenCalledWith('attrs failed', 'Error', 'error');
+      });
+    });
+
+    it('updates folder-size progress text and bar from progress events', () => {
+      let onProgress: ((progress: any) => void) | null = null;
+      mockTauriAPI.onFolderSizeProgress.mockImplementation((cb: (progress: any) => void) => {
+        onProgress = cb;
+        return vi.fn();
+      });
+      mockTauriAPI.calculateFolderSize.mockReturnValue(new Promise(() => {}));
+
+      const deps = makeDeps();
+      const ctrl = createPropertiesDialogController(deps);
+      ctrl.showPropertiesDialog(makeDirProps() as any);
+      document.getElementById('calculate-folder-size-btn')!.click();
+
+      const opId = mockTauriAPI.calculateFolderSize.mock.calls[0][1];
+      onProgress!({ operationId: opId, fileCount: 3, folderCount: 1, calculatedSize: 1536 });
+
+      expect(document.getElementById('folder-size-progress-text')!.textContent).toContain(
+        '3 files, 1 folders'
+      );
+      expect(document.getElementById('folder-size-progress-bar')!.style.width).toBe('100%');
+      expect(
+        document.getElementById('folder-size-progress-bar')!.classList.contains('indeterminate')
+      ).toBe(true);
+
+      ctrl.cleanup();
+    });
   });
 
   describe('close modal', () => {
@@ -584,6 +806,22 @@ describe('rendererPropertiesDialog', () => {
       const deps = makeDeps();
       const ctrl = createPropertiesDialogController(deps);
       ctrl.cleanup();
+    });
+
+    it('cancels active folder-size operation when cleanup is called', () => {
+      mockTauriAPI.calculateFolderSize.mockReturnValue(new Promise(() => {}));
+      const folderProgressCleanup = vi.fn();
+      mockTauriAPI.onFolderSizeProgress.mockReturnValue(folderProgressCleanup);
+
+      const deps = makeDeps();
+      const ctrl = createPropertiesDialogController(deps);
+      ctrl.showPropertiesDialog(makeDirProps() as any);
+
+      document.getElementById('calculate-folder-size-btn')!.click();
+      ctrl.cleanup();
+
+      expect(mockTauriAPI.cancelFolderSizeCalculation).toHaveBeenCalled();
+      expect(folderProgressCleanup).toHaveBeenCalled();
     });
   });
 

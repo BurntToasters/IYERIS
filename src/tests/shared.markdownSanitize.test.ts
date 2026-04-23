@@ -32,4 +32,19 @@ describe('sanitizeMarkdownHtml resource URLs', () => {
     const output = sanitizeMarkdownHtml('<img src="asset:/safe.png">');
     expect(output).toBe('<img>');
   });
+
+  it('removes inline event handlers and style attributes', () => {
+    const output = sanitizeMarkdownHtml(
+      '<a href="https://example.com" onclick="alert(1)" style="color:red">x</a>'
+    );
+    expect(output).toContain('href="https://example.com"');
+    expect(output).not.toContain('onclick=');
+    expect(output).not.toContain('style=');
+  });
+
+  it('removes unsupported href schemes but keeps # anchors', () => {
+    const output = sanitizeMarkdownHtml('<a href="ftp://example.com">bad</a><a href="#ok">ok</a>');
+    expect(output).toContain('<a>bad</a>');
+    expect(output).toContain('<a href="#ok">ok</a>');
+  });
 });

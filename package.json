@@ -51,7 +51,7 @@
     "tauri:build": "npm run sync-version && npm run licenses && node scripts/tauri-build.js --require-tauri-signing",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:cov": "vitest run --coverage",
+    "test:cov": "vitest run --coverage --coverage.reportsDirectory=coverage-headless",
     "test:all": "node scripts/test-all.js",
     "typecheck": "tsc --noEmit",
     "typecheck:test": "tsc --noEmit -p tsconfig.test.json",
