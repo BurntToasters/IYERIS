@@ -95,6 +95,39 @@ function makeFileItem(name: string, itemPath: string, isDirectory: boolean, isHi
   };
 }
 
+function makeDragEvent(
+  type: string,
+  dataTransferOverrides: Partial<{
+    types: string[];
+    files: File[];
+    dropEffect: string;
+    effectAllowed: string;
+    setData: (format: string, data: string) => void;
+  }> = {},
+  coords: { clientX?: number; clientY?: number } = {}
+): Event {
+  const event = new Event(type, { bubbles: true, cancelable: true });
+  const dataTransfer = {
+    types: [] as string[],
+    files: [] as File[],
+    dropEffect: '',
+    effectAllowed: '',
+    setData: vi.fn(),
+    ...dataTransferOverrides,
+  };
+  Object.defineProperty(event, 'dataTransfer', {
+    value: dataTransfer,
+    configurable: true,
+  });
+  if (coords.clientX !== undefined) {
+    Object.defineProperty(event, 'clientX', { value: coords.clientX, configurable: true });
+  }
+  if (coords.clientY !== undefined) {
+    Object.defineProperty(event, 'clientY', { value: coords.clientY, configurable: true });
+  }
+  return event;
+}
+
 describe('createColumnViewController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -915,6 +948,71 @@ describe('createColumnViewController', () => {
 
         expect(mockTauriAPI.setDragData).toHaveBeenCalled();
       });
+
+      it('does not clear selection on dragstart when item already selected', async () => {
+        const deps = createDeps();
+        deps.getCurrentPath = () => '/drag';
+
+        const items = [makeFileItem('selected.txt', '/drag/selected.txt', false)];
+        mockTauriAPI.getDirectoryContents.mockImplementation((colPath: string) => {
+          if (colPath === '/drag') return Promise.resolve({ success: true, contents: items });
+          return Promise.resolve({ success: true, contents: [] });
+        });
+
+        const controller = createColumnViewController(deps as any);
+        await controller.renderColumnView();
+
+        const item = Array.from(document.querySelectorAll('.column-item')).find(
+          (el) => el.querySelector('.column-item-name')?.textContent === 'selected.txt'
+        ) as HTMLElement;
+        expect(item).toBeTruthy();
+
+        item.classList.add('selected');
+        item.setAttribute('aria-selected', 'true');
+        deps.getSelectedItems().add('/drag/selected.txt');
+        (deps.clearSelection as any).mockClear();
+
+        const dataTransfer = {
+          effectAllowed: '',
+          setData: vi.fn(),
+          types: [] as string[],
+          files: [] as File[],
+        };
+        const dragEvent = makeDragEvent('dragstart', dataTransfer);
+        item.dispatchEvent(dragEvent);
+
+        expect(deps.clearSelection).not.toHaveBeenCalled();
+        expect(dataTransfer.setData).toHaveBeenCalled();
+      });
+
+      it('clears drag-over markers and drop UI on dragend', async () => {
+        const deps = createDeps();
+        deps.getCurrentPath = () => '/drag';
+
+        const items = [makeFileItem('end.txt', '/drag/end.txt', false)];
+        mockTauriAPI.getDirectoryContents.mockImplementation((colPath: string) => {
+          if (colPath === '/drag') return Promise.resolve({ success: true, contents: items });
+          return Promise.resolve({ success: true, contents: [] });
+        });
+
+        const controller = createColumnViewController(deps as any);
+        await controller.renderColumnView();
+
+        const item = Array.from(document.querySelectorAll('.column-item')).find(
+          (el) => el.querySelector('.column-item-name')?.textContent === 'end.txt'
+        ) as HTMLElement;
+        expect(item).toBeTruthy();
+
+        const strayDragOver = document.createElement('div');
+        strayDragOver.className = 'column-item drag-over';
+        document.body.appendChild(strayDragOver);
+
+        item.dispatchEvent(makeDragEvent('dragend'));
+
+        expect(document.querySelectorAll('.column-item.drag-over').length).toBe(0);
+        expect(deps.clearSpringLoad).toHaveBeenCalled();
+        expect(deps.hideDropIndicator).toHaveBeenCalled();
+      });
     });
 
     describe('exception handling in getDirectoryContents', () => {
@@ -929,6 +1027,258 @@ describe('createColumnViewController', () => {
 
         const columnView = document.getElementById('column-view')!;
         expect(columnView.textContent).toContain('Error loading folder');
+      });
+    });
+
+    describe('additional branch coverage', () => {
+      it('sets dropEffect to none for pane dragover without supported payload', async () => {
+        const deps = createDeps();
+        deps.getCurrentPath = () => '/pane';
+        mockTauriAPI.getDirectoryContents.mockImplementation((colPath: string) => {
+          if (colPath === '/pane') {
+            return Promise.resolve({
+              success: true,
+              contents: [makeFileItem('file.txt', '/pane/file.txt', false)],
+            });
+          }
+          return Promise.resolve({ success: true, contents: [] });
+        });
+
+        const controller = createColumnViewController(deps as any);
+        await controller.renderColumnView();
+
+        const pane = document.querySelectorAll('.column-pane')[1] as HTMLElement;
+        expect(pane).toBeTruthy();
+
+        const event = makeDragEvent('dragover', {
+          types: [],
+          files: [],
+          dropEffect: 'move',
+        });
+        pane.dispatchEvent(event);
+
+        expect((event as any).dataTransfer.dropEffect).toBe('none');
+        expect(deps.showDropIndicator).not.toHaveBeenCalled();
+      });
+
+      it('shows already-in-directory toast for pane drop', async () => {
+        const deps = createDeps();
+        deps.getCurrentPath = () => '/drop';
+        deps.getDraggedPaths = vi.fn().mockResolvedValue(['/drop/file.txt']);
+        mockTauriAPI.getDirectoryContents.mockImplementation((colPath: string) => {
+          if (colPath === '/drop') {
+            return Promise.resolve({
+              success: true,
+              contents: [makeFileItem('file.txt', '/drop/file.txt', false)],
+            });
+          }
+          return Promise.resolve({ success: true, contents: [] });
+        });
+
+        const controller = createColumnViewController(deps as any);
+        await controller.renderColumnView();
+
+        const pane = document.querySelectorAll('.column-pane')[1] as HTMLElement;
+        expect(pane).toBeTruthy();
+        pane.dispatchEvent(makeDragEvent('drop', { types: ['text/plain'], files: [] }));
+        await Promise.resolve();
+
+        expect(deps.showToast).toHaveBeenCalledWith(
+          'Items are already in this directory',
+          'Info',
+          'info'
+        );
+        expect(deps.handleDrop).not.toHaveBeenCalled();
+      });
+
+      it('handles pane drop for external files', async () => {
+        const deps = createDeps();
+        deps.getCurrentPath = () => '/drop';
+        deps.getDragOperation = vi.fn().mockReturnValue('copy');
+        deps.getDraggedPaths = vi.fn().mockResolvedValue(['/external/file.txt']);
+        mockTauriAPI.getDirectoryContents.mockImplementation((colPath: string) => {
+          if (colPath === '/drop') {
+            return Promise.resolve({
+              success: true,
+              contents: [makeFileItem('x', '/drop/x', false)],
+            });
+          }
+          return Promise.resolve({ success: true, contents: [] });
+        });
+
+        const controller = createColumnViewController(deps as any);
+        await controller.renderColumnView();
+
+        const pane = document.querySelectorAll('.column-pane')[1] as HTMLElement;
+        pane.dispatchEvent(makeDragEvent('drop', { types: ['text/plain'], files: [] }));
+
+        await vi.waitFor(() => {
+          expect(deps.getDraggedPaths).toHaveBeenCalled();
+        });
+        expect(deps.handleDrop).toHaveBeenCalledWith(['/external/file.txt'], '/drop', 'copy');
+        await vi.waitFor(() => {
+          expect(deps.hideDropIndicator).toHaveBeenCalled();
+        });
+      });
+
+      it('handles directory dragleave/drop branches on item targets', async () => {
+        const deps = createDeps();
+        deps.getCurrentPath = () => '/parent';
+        mockTauriAPI.getDirectoryContents.mockImplementation((colPath: string) => {
+          if (colPath === '/parent') {
+            return Promise.resolve({
+              success: true,
+              contents: [makeFileItem('child', '/parent/child', true)],
+            });
+          }
+          if (colPath === '/parent/child') {
+            return Promise.resolve({ success: true, contents: [] });
+          }
+          return Promise.resolve({ success: true, contents: [] });
+        });
+
+        const controller = createColumnViewController(deps as any);
+        await controller.renderColumnView();
+
+        const dirItem = Array.from(document.querySelectorAll('.column-item')).find(
+          (el) => el.querySelector('.column-item-name')?.textContent === 'child'
+        ) as HTMLElement;
+        expect(dirItem).toBeTruthy();
+
+        dirItem.dispatchEvent(makeDragEvent('dragover', { types: ['text/plain'], files: [] }));
+        expect(deps.scheduleSpringLoad).toHaveBeenCalledWith(dirItem, expect.any(Function));
+
+        Object.defineProperty(dirItem, 'getBoundingClientRect', {
+          value: () => ({ left: 0, right: 100, top: 0, bottom: 100 }),
+          configurable: true,
+        });
+        dirItem.dispatchEvent(makeDragEvent('dragleave', {}, { clientX: 120, clientY: 120 }));
+        expect(deps.clearSpringLoad).toHaveBeenCalledWith(dirItem);
+
+        deps.getDraggedPaths = vi.fn().mockResolvedValue(['/parent/child']);
+        (deps.handleDrop as any).mockClear();
+        dirItem.dispatchEvent(makeDragEvent('drop', { types: ['text/plain'], files: [] }));
+        await Promise.resolve();
+        expect(deps.handleDrop).not.toHaveBeenCalled();
+
+        deps.getDraggedPaths = vi.fn().mockResolvedValue(['/outside/item.txt']);
+        dirItem.dispatchEvent(makeDragEvent('drop', { types: ['text/plain'], files: [] }));
+        await Promise.resolve();
+        expect(deps.handleDrop).toHaveBeenCalledWith(
+          ['/outside/item.txt'],
+          '/parent/child',
+          'move'
+        );
+      });
+
+      it('reconciles current path to parent when file clicked and current path drifted', async () => {
+        let currentPath = '/parent';
+        const deps = createDeps({
+          getCurrentPath: () => currentPath,
+          setCurrentPath: (value: string) => {
+            currentPath = value;
+          },
+          folderTreeManager: {
+            ensurePathVisible: vi.fn(() => {
+              throw new Error('tree failure');
+            }),
+          },
+        });
+
+        mockTauriAPI.getDirectoryContents.mockImplementation((colPath: string) => {
+          if (colPath === '/parent') {
+            return Promise.resolve({
+              success: true,
+              contents: [makeFileItem('note.txt', '/parent/note.txt', false)],
+            });
+          }
+          return Promise.resolve({ success: true, contents: [] });
+        });
+
+        const controller = createColumnViewController(deps as any);
+        await controller.renderColumnView();
+
+        currentPath = '/other';
+        const fileItem = Array.from(document.querySelectorAll('.column-item')).find(
+          (el) => el.querySelector('.column-item-name')?.textContent === 'note.txt'
+        ) as HTMLElement;
+        expect(fileItem).toBeTruthy();
+
+        fileItem.dispatchEvent(new Event('click', { bubbles: true }));
+        await Promise.resolve();
+
+        expect(currentPath).toBe('/parent');
+        expect(deps.addressInput.value).toBe('/parent');
+        expect(deps.updateBreadcrumb).toHaveBeenCalledWith('/parent');
+      });
+
+      it('updates current path from context menu when opening item in parent column', async () => {
+        let currentPath = '/parent/child';
+        const deps = createDeps({
+          getCurrentPath: () => currentPath,
+          setCurrentPath: (value: string) => {
+            currentPath = value;
+          },
+        });
+        mockTauriAPI.getDirectoryContents.mockImplementation((colPath: string) => {
+          if (colPath === '/parent') {
+            return Promise.resolve({
+              success: true,
+              contents: [makeFileItem('ctx.txt', '/parent/ctx.txt', false)],
+            });
+          }
+          return Promise.resolve({ success: true, contents: [] });
+        });
+
+        const controller = createColumnViewController(deps as any);
+        await controller.renderColumnView();
+
+        const parentPane = document.querySelector('[data-path="/parent"]') as HTMLElement;
+        const fileItem = Array.from(parentPane.querySelectorAll('.column-item')).find(
+          (el) => el.querySelector('.column-item-name')?.textContent === 'ctx.txt'
+        ) as HTMLElement;
+        expect(fileItem).toBeTruthy();
+
+        const contextEvent = new MouseEvent('contextmenu', {
+          bubbles: true,
+          cancelable: true,
+          clientX: 24,
+          clientY: 40,
+        });
+        Object.defineProperty(contextEvent, 'pageX', { value: 24 });
+        Object.defineProperty(contextEvent, 'pageY', { value: 40 });
+
+        fileItem.dispatchEvent(contextEvent);
+
+        expect(currentPath).toBe('/parent');
+        expect(deps.addressInput.value).toBe('/parent');
+        expect(deps.updateBreadcrumb).toHaveBeenCalledWith('/parent');
+        expect(deps.showContextMenu).toHaveBeenCalledWith(
+          24,
+          40,
+          expect.objectContaining({ path: '/parent/ctx.txt' })
+        );
+      });
+
+      it('renders symlink badge when file item is symlink', async () => {
+        const deps = createDeps();
+        deps.getCurrentPath = () => '/sym';
+        const symlinkFile = {
+          ...makeFileItem('link.txt', '/sym/link.txt', false),
+          isSymlink: true,
+        };
+
+        mockTauriAPI.getDirectoryContents.mockImplementation((colPath: string) => {
+          if (colPath === '/sym') {
+            return Promise.resolve({ success: true, contents: [symlinkFile] });
+          }
+          return Promise.resolve({ success: true, contents: [] });
+        });
+
+        const controller = createColumnViewController(deps as any);
+        await controller.renderColumnView();
+
+        expect(document.querySelector('.symlink-badge')).not.toBeNull();
       });
     });
   });

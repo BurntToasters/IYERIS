@@ -194,6 +194,60 @@ describe('createThemeEditorController', () => {
       const modal = document.getElementById('theme-editor-modal')!;
       expect(modal.style.display).toBe('none');
     });
+
+    it('restores saved custom snapshot when closing with unsaved changes', async () => {
+      const deps = createDeps();
+      deps.settings.theme = 'custom';
+      deps.settings.customTheme = {
+        name: 'Saved Custom',
+        accentColor: '#112233',
+        bgPrimary: '#111111',
+        bgSecondary: '#222222',
+        textPrimary: '#eeeeee',
+        textSecondary: '#bbbbbb',
+        glassBg: '#ffffff',
+        glassBorder: '#112233',
+        iconHue: '#112233',
+      };
+      const ctrl = createThemeEditorController(deps as any);
+      ctrl.showThemeEditor();
+      ctrl.setupThemeEditorListeners();
+
+      const accentInput = document.getElementById('theme-accent-color') as HTMLInputElement;
+      accentInput.value = '#abcdef';
+      accentInput.dispatchEvent(new Event('input'));
+      expect(document.documentElement.style.getPropertyValue('--custom-accent-color')).toBe(
+        '#abcdef'
+      );
+
+      await ctrl.hideThemeEditor(true);
+
+      expect(document.documentElement.style.getPropertyValue('--custom-accent-color')).toBe(
+        '#112233'
+      );
+      expect(deps.applySettings).not.toHaveBeenCalled();
+    });
+
+    it('clears custom colors and reapplies settings when theme was not custom', async () => {
+      const deps = createDeps();
+      deps.settings.theme = 'default';
+      const ctrl = createThemeEditorController(deps as any);
+      ctrl.showThemeEditor();
+      ctrl.setupThemeEditorListeners();
+
+      const accentInput = document.getElementById('theme-accent-color') as HTMLInputElement;
+      accentInput.value = '#654321';
+      accentInput.dispatchEvent(new Event('input'));
+      expect(document.documentElement.style.getPropertyValue('--custom-accent-color')).toBe(
+        '#654321'
+      );
+
+      await ctrl.hideThemeEditor(true);
+
+      expect(document.documentElement.style.getPropertyValue('--custom-accent-color')).toBe('');
+      expect(deps.applySettings).toHaveBeenCalledTimes(1);
+      expect(deps.applySettings).toHaveBeenCalledWith(deps.settings);
+    });
   });
 
   describe('updateCustomThemeUI', () => {
@@ -233,6 +287,31 @@ describe('createThemeEditorController', () => {
       ctrl.updateCustomThemeUI();
       const select = document.getElementById('theme-select') as HTMLSelectElement;
       expect(select.value).toBe('custom');
+    });
+
+    it('does not sync select when syncSelect is false', () => {
+      const deps = createDeps();
+      deps.settings.theme = 'custom';
+      deps.settings.customTheme = { name: 'Theme' } as never;
+      const ctrl = createThemeEditorController(deps as any);
+      const select = document.getElementById('theme-select') as HTMLSelectElement;
+      select.value = 'default';
+
+      ctrl.updateCustomThemeUI({ syncSelect: false });
+
+      expect(select.value).toBe('default');
+    });
+
+    it('uses selectedTheme override when computing description state', () => {
+      const deps = createDeps();
+      deps.settings.theme = 'default';
+      deps.settings.customTheme = { name: 'Override Theme' } as never;
+      const ctrl = createThemeEditorController(deps as any);
+
+      ctrl.updateCustomThemeUI({ selectedTheme: 'custom' });
+
+      const desc = document.getElementById('custom-theme-description')!;
+      expect(desc.textContent).toContain('Currently using: Override Theme');
     });
   });
 
@@ -341,6 +420,32 @@ describe('createThemeEditorController', () => {
       });
     });
 
+    it('ignores save clicks while a save is already in progress', async () => {
+      const deps = createDeps();
+      let resolveSave: ((value: { success: boolean }) => void) | undefined;
+      deps.saveSettingsWithTimestamp = vi.fn().mockImplementation(
+        () =>
+          new Promise<{ success: boolean }>((resolve) => {
+            resolveSave = resolve;
+          })
+      );
+      const ctrl = createThemeEditorController(deps as any);
+      ctrl.showThemeEditor();
+      ctrl.setupThemeEditorListeners();
+
+      const saveBtn = document.getElementById('theme-editor-save')!;
+      saveBtn.click();
+      saveBtn.click();
+
+      expect(deps.saveSettingsWithTimestamp).toHaveBeenCalledTimes(1);
+      expect(deps.setCurrentSettingsTheme).toHaveBeenCalledTimes(1);
+
+      resolveSave?.({ success: true });
+      await vi.waitFor(() => {
+        expect(deps.showToast).toHaveBeenCalledWith('Custom theme saved!', 'Theme', 'success');
+      });
+    });
+
     it('open-theme-editor-btn opens the editor', () => {
       const deps = createDeps();
       const ctrl = createThemeEditorController(deps as any);
@@ -349,6 +454,19 @@ describe('createThemeEditorController', () => {
       btn.click();
       const modal = document.getElementById('theme-editor-modal')!;
       expect(modal.style.display).toBe('flex');
+    });
+
+    it('clicking modal overlay closes the editor', () => {
+      const deps = createDeps();
+      const ctrl = createThemeEditorController(deps as any);
+      ctrl.setupThemeEditorListeners();
+      ctrl.showThemeEditor();
+
+      const modal = document.getElementById('theme-editor-modal')!;
+      modal.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+      expect(modal.style.display).toBe('none');
+      expect(deps.deactivateModal).toHaveBeenCalledWith(modal);
     });
   });
 });

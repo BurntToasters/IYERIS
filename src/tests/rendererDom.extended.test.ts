@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getById, setHtml, clearHtml } from '../rendererDom';
 
 describe('rendererDom', () => {
@@ -38,6 +38,23 @@ describe('rendererDom', () => {
       const second = getById('test-el');
       expect(second).not.toBe(first);
       expect(second!.textContent).toBe('new');
+    });
+
+    it('evicts oldest cache entry when max cache size is exceeded', () => {
+      document.body.innerHTML = Array.from(
+        { length: 205 },
+        (_, i) => `<div id="el-${i}">${i}</div>`
+      ).join('');
+
+      for (let i = 0; i < 205; i += 1) {
+        getById(`el-${i}`);
+      }
+
+      const domSpy = vi.spyOn(document, 'getElementById');
+      getById('el-0');
+
+      expect(domSpy).toHaveBeenCalledWith('el-0');
+      domSpy.mockRestore();
     });
   });
 

@@ -1369,5 +1369,209 @@ describe('rendererPreviews', () => {
         value: previousMatchMedia,
       });
     });
+
+    it('handles markdown link sanitation edge cases and allows mailto links', () => {
+      const deps = createDeps();
+      const ctrl = createPreviewController(deps as any);
+      ctrl.initPreviewUi();
+
+      const content = document.getElementById('preview-content') as HTMLElement;
+
+      content.innerHTML =
+        '<div class="preview-markdown"><a id="no-href">NoHref</a><a id="hash" href="#frag">Hash</a><a id="bad" href="not a valid url">Bad</a><a id="mail" href="mailto:test@example.com">Mail</a></div>';
+
+      (document.getElementById('no-href') as HTMLAnchorElement).click();
+      (document.getElementById('hash') as HTMLAnchorElement).click();
+      (document.getElementById('bad') as HTMLAnchorElement).click();
+      (document.getElementById('mail') as HTMLAnchorElement).click();
+
+      expect(deps.openExternal).toHaveBeenCalledTimes(1);
+      expect(deps.openExternal).toHaveBeenCalledWith('mailto:test@example.com');
+    });
+
+    it('handles missing preview content container without throwing', () => {
+      const deps = createDeps();
+      const ctrl = createPreviewController(deps as any);
+      document.getElementById('preview-content')?.remove();
+
+      expect(() => ctrl.showEmptyPreview()).not.toThrow();
+    });
+
+    it('destroys active PDF viewer before rendering next preview', async () => {
+      mockTauriAPI.readFileContent.mockResolvedValue({
+        success: true,
+        content: '%PDF-1.7 data',
+      });
+      const viewer = {
+        element: document.createElement('div'),
+        destroy: vi.fn(),
+        goToPage: vi.fn(),
+        getCurrentPage: vi.fn(() => 1),
+        getPageCount: vi.fn(() => 1),
+      };
+      mockCreatePdfViewer.mockResolvedValue(viewer);
+
+      const deps = createDeps();
+      const ctrl = createPreviewController(deps as any);
+      ctrl.updatePreview(makeFile({ name: 'one.pdf', path: '/home/user/one.pdf', size: 100 }));
+
+      await vi.waitFor(() => {
+        expect(document.querySelector('.preview-pdf-container')).toBeTruthy();
+      });
+
+      ctrl.updatePreview(makeFile({ name: 'note.txt', path: '/home/user/note.txt' }));
+
+      await vi.waitFor(() => {
+        expect(viewer.destroy).toHaveBeenCalled();
+      });
+    });
+
+    it('updates image dimensions on image load', async () => {
+      const deps = createDeps();
+      const ctrl = createPreviewController(deps as any);
+      ctrl.updatePreview(makeFile({ name: 'dims.jpg', path: '/home/user/dims.jpg', size: 200 }));
+
+      await vi.waitFor(() => {
+        expect(document.querySelector('.preview-image')).toBeTruthy();
+      });
+
+      const img = document.querySelector('.preview-image') as HTMLImageElement;
+      Object.defineProperty(img, 'naturalWidth', { configurable: true, value: 1920 });
+      Object.defineProperty(img, 'naturalHeight', { configurable: true, value: 1080 });
+      img.dispatchEvent(new Event('load'));
+
+      const dimensions = document.getElementById('preview-image-dimensions') as HTMLElement;
+      expect(dimensions.textContent).toBe('1920 × 1080');
+    });
+
+    it('shows image error UI on repeated image load errors', async () => {
+      mockGetFileDataUrlWithCache.mockResolvedValue('data:image/png;base64,first');
+
+      const deps = createDeps();
+      const ctrl = createPreviewController(deps as any);
+      ctrl.updatePreview(makeFile({ name: 'retry.jpg', path: '/home/user/retry.jpg', size: 200 }));
+
+      await vi.waitFor(() => {
+        expect(document.querySelector('.preview-image')).toBeTruthy();
+      });
+
+      const img = document.querySelector('.preview-image') as HTMLImageElement;
+      img.dispatchEvent(new Event('error'));
+      await vi.waitFor(() => {
+        expect(img.src).toContain('data:image/png;base64,first');
+      });
+
+      img.dispatchEvent(new Event('error'));
+      await vi.waitFor(() => {
+        const content = document.getElementById('preview-content') as HTMLElement;
+        expect(content.innerHTML).toContain('Failed to load image');
+      });
+    });
+
+    it('uses markdown operation-failed fallback and language fallback class', async () => {
+      mockTauriAPI.readFileContent.mockResolvedValueOnce({
+        success: false,
+      });
+      const deps = createDeps();
+      const ctrl = createPreviewController(deps as any);
+
+      ctrl.updatePreview(makeFile({ name: 'broken.md', path: '/home/user/broken.md' }));
+      await vi.waitFor(() => {
+        const content = document.getElementById('preview-content') as HTMLElement;
+        expect(content.innerHTML).toContain('Operation failed');
+      });
+
+      mockTauriAPI.readFileContent.mockResolvedValueOnce({
+        success: true,
+        content: 'plain markdown',
+        isTruncated: true,
+      });
+      mockLoadMarked.mockResolvedValueOnce(null);
+      mockGetLanguageForExt.mockReturnValue('markdown' as any);
+
+      ctrl.updatePreview(makeFile({ name: 'fallback.md', path: '/home/user/fallback.md' }));
+      await vi.waitFor(() => {
+        const content = document.getElementById('preview-content') as HTMLElement;
+        expect(content.innerHTML).toContain('File truncated to first 100KB');
+        expect(content.innerHTML).toContain('language-markdown');
+      });
+    });
+
+    it('skips syntax highlight apply path when highlighter loader returns null', async () => {
+      mockLoadHighlightJs.mockResolvedValue(null);
+      mockGetLanguageForExt.mockReturnValue('javascript' as any);
+
+      const deps = createDeps();
+      deps.getCurrentSettings.mockReturnValue({
+        maxPreviewSizeMB: 50,
+        enableSyntaxHighlighting: true,
+      } as any);
+      const ctrl = createPreviewController(deps as any);
+      ctrl.updatePreview(makeFile({ name: 'nullhl.js', path: '/home/user/nullhl.js' }));
+
+      await vi.waitFor(() => {
+        expect(mockLoadHighlightJs).toHaveBeenCalled();
+      });
+    });
+
+    it('does not retry fallback fetch on second media error', async () => {
+      mockGetFileDataUrlWithCache.mockReset();
+      mockGetFileDataUrlWithCache.mockResolvedValue('data:video/mp4;base64,one');
+
+      const deps = createDeps();
+      const ctrl = createPreviewController(deps as any);
+
+      ctrl.updatePreview(makeFile({ name: 'twice.mp4', path: '/home/user/twice.mp4', size: 200 }));
+      await vi.waitFor(() => {
+        expect(document.querySelector('.preview-video')).toBeTruthy();
+      });
+
+      const videoEl = document.querySelector('.preview-video') as HTMLVideoElement;
+      (videoEl as any).load = vi.fn();
+      videoEl.dispatchEvent(new Event('error'));
+      await vi.waitFor(() => {
+        expect(videoEl.src).toContain('data:video/mp4;base64,one');
+      });
+      videoEl.dispatchEvent(new Event('error'));
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(mockGetFileDataUrlWithCache).toHaveBeenCalledTimes(1);
+    });
+
+    it('destroys stale PDF viewer results when request changes before viewer resolves', async () => {
+      mockTauriAPI.readFileContent.mockResolvedValue({
+        success: true,
+        content: '%PDF-1.4 delayed',
+      });
+
+      let resolveViewer: ((v: any) => void) | null = null;
+      const viewerPromise = new Promise((resolve) => {
+        resolveViewer = resolve;
+      });
+      mockCreatePdfViewer.mockReturnValue(viewerPromise as any);
+
+      const deps = createDeps();
+      const ctrl = createPreviewController(deps as any);
+      ctrl.updatePreview(makeFile({ name: 'stale.pdf', path: '/home/user/stale.pdf', size: 100 }));
+
+      await vi.waitFor(() => {
+        expect(mockCreatePdfViewer).toHaveBeenCalled();
+      });
+
+      ctrl.clearPreview();
+
+      const staleViewer = {
+        element: document.createElement('div'),
+        destroy: vi.fn(),
+        goToPage: vi.fn(),
+        getCurrentPage: vi.fn(() => 1),
+        getPageCount: vi.fn(() => 1),
+      };
+      resolveViewer!(staleViewer);
+
+      await vi.waitFor(() => {
+        expect(staleViewer.destroy).toHaveBeenCalled();
+      });
+    });
   });
 });

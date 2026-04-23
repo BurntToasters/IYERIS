@@ -4,6 +4,7 @@ import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 vi.mock('../shared.js', () => ({
   escapeHtml: (s: string) => s,
   ignoreError: () => {},
+  getErrorMessage: (e: unknown) => (e instanceof Error ? e.message : String(e)),
   assignKey: <T extends object>(obj: T, key: keyof T, value: T[keyof T]) => {
     obj[key] = value;
   },
@@ -1185,5 +1186,245 @@ describe('onHomeSettingsChanged — external updates', () => {
     settingsCallback!({ showQuickAccess: false });
 
     expect(qaToggle.checked).toBe(false);
+  });
+});
+
+describe('additional branch coverage — home controller', () => {
+  let api: ReturnType<typeof createMockTauriAPI>;
+
+  beforeEach(() => {
+    createMinimalDom();
+    api = createMockTauriAPI();
+    (window as unknown as Record<string, unknown>).tauriAPI = api;
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('shows empty quick-access message when all quick-access items are hidden', async () => {
+    api.getHomeSettings.mockResolvedValue({
+      success: true,
+      settings: {
+        hiddenQuickAccessItems: [
+          'userhome',
+          'desktop',
+          'documents',
+          'downloads',
+          'music',
+          'videos',
+          'browse',
+          'trash',
+        ],
+      },
+    });
+
+    const opts = createOptions();
+    const ctrl = createHomeController(
+      opts as unknown as Parameters<typeof createHomeController>[0]
+    );
+    await ctrl.loadHomeSettings();
+    ctrl.renderHomeQuickAccess();
+
+    const qa = document.getElementById('home-quick-access') as HTMLElement;
+    expect(qa.innerHTML).toContain('No quick access items enabled');
+  });
+
+  it('shows toast when opening recent file fails after openPath throws', async () => {
+    api.getItemProperties.mockResolvedValue({ success: false } as any);
+    const opts = createOptions();
+    opts.openPath.mockRejectedValue(new Error('open failed'));
+
+    const ctrl = createHomeController(
+      opts as unknown as Parameters<typeof createHomeController>[0]
+    );
+    await ctrl.loadHomeSettings();
+    ctrl.setupHomeSettingsListeners();
+    ctrl.renderHomeRecents();
+
+    const item = document.querySelector('#home-recents .home-recent-item') as HTMLElement;
+    item.click();
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(opts.showToast).toHaveBeenCalledWith(
+      expect.stringContaining('Failed to open file'),
+      'Error',
+      'error'
+    );
+  });
+
+  it('returns cached setup cleanup, then resets after cleanup execution', async () => {
+    const externalCleanup = vi.fn();
+    api.onHomeSettingsChanged.mockImplementation(((cb: any) => {
+      void cb;
+      return externalCleanup;
+    }) as any);
+
+    const opts = createOptions();
+    const ctrl = createHomeController(
+      opts as unknown as Parameters<typeof createHomeController>[0]
+    );
+    await ctrl.loadHomeSettings();
+
+    const cleanupA = ctrl.setupHomeSettingsListeners();
+    const cleanupB = ctrl.setupHomeSettingsListeners();
+    expect(cleanupB).toBe(cleanupA);
+
+    cleanupA();
+    expect(externalCleanup).toHaveBeenCalled();
+
+    const cleanupC = ctrl.setupHomeSettingsListeners();
+    expect(cleanupC).not.toBe(cleanupA);
+  });
+
+  it('ignores unchanged external home settings payloads', async () => {
+    let settingsCallback: ((settings: any) => void) | null = null;
+    api.onHomeSettingsChanged.mockImplementation(((cb: any) => {
+      settingsCallback = cb;
+      return () => {};
+    }) as any);
+
+    const opts = createOptions();
+    const ctrl = createHomeController(
+      opts as unknown as Parameters<typeof createHomeController>[0]
+    );
+    await ctrl.loadHomeSettings();
+    ctrl.setupHomeSettingsListeners();
+
+    api.getDriveInfo.mockClear();
+    settingsCallback!(ctrl.getHomeSettings());
+
+    expect(api.getDriveInfo).not.toHaveBeenCalled();
+  });
+
+  it('uses drive path as label when drive label is missing', async () => {
+    api.getHomeSettings.mockResolvedValue({
+      success: true,
+      settings: { showDiskUsage: false },
+    });
+
+    const opts = createOptions();
+    const ctrl = createHomeController(
+      opts as unknown as Parameters<typeof createHomeController>[0]
+    );
+    await ctrl.loadHomeSettings();
+
+    await ctrl.renderHomeDrives([{ path: '/vol/no-label', label: '' }] as any);
+
+    const drives = document.getElementById('home-drives') as HTMLElement;
+    expect(drives.textContent).toContain('/vol/no-label');
+  });
+
+  it('ignores stale async drive renders when a newer render finishes first', async () => {
+    let resolveDrives: ((value: Array<{ path: string; label: string }>) => void) | null = null;
+    const delayedDriveInfo = new Promise<Array<{ path: string; label: string }>>((resolve) => {
+      resolveDrives = resolve;
+    });
+    api.getDriveInfo.mockReturnValueOnce(delayedDriveInfo as any);
+    api.getHomeSettings.mockResolvedValue({
+      success: true,
+      settings: { showDiskUsage: false },
+    });
+
+    const opts = createOptions();
+    const ctrl = createHomeController(
+      opts as unknown as Parameters<typeof createHomeController>[0]
+    );
+    await ctrl.loadHomeSettings();
+
+    const firstRender = ctrl.renderHomeDrives();
+    const secondRender = ctrl.renderHomeDrives([{ path: '/fresh', label: 'Fresh' }] as any);
+    resolveDrives!([{ path: '/stale', label: 'Stale' }]);
+    await Promise.all([firstRender, secondRender]);
+
+    const drives = document.getElementById('home-drives') as HTMLElement;
+    expect(drives.textContent).toContain('Fresh');
+    expect(drives.textContent).not.toContain('Stale');
+  });
+
+  it('falls back to usage unavailable when drive usage rendering throws', async () => {
+    api.getHomeSettings.mockResolvedValue({
+      success: true,
+      settings: { showDiskUsage: true },
+    });
+    api.getDiskSpace.mockResolvedValue({ success: true, total: 1000, free: 500 } as any);
+
+    const opts = createOptions();
+    opts.formatFileSize.mockImplementation(() => {
+      throw new Error('format failed');
+    });
+
+    const ctrl = createHomeController(
+      opts as unknown as Parameters<typeof createHomeController>[0]
+    );
+    await ctrl.loadHomeSettings();
+
+    await ctrl.renderHomeDrives([{ path: '/boom', label: 'Boom' }] as any);
+    await new Promise((r) => setTimeout(r, 20));
+
+    const meta = document.querySelector('.home-drive-meta') as HTMLElement;
+    const bar = document.querySelector('.home-drive-bar span') as HTMLElement;
+    expect(meta.textContent).toBe('Usage unavailable');
+    expect(bar.style.width).toBe('0%');
+  });
+
+  it('keeps quick-access order unchanged when drop source action is invalid', async () => {
+    const opts = createOptions();
+    const ctrl = createHomeController(
+      opts as unknown as Parameters<typeof createHomeController>[0]
+    );
+    await ctrl.loadHomeSettings();
+    ctrl.setupHomeSettingsListeners();
+
+    (document.getElementById('home-customize-btn') as HTMLButtonElement).click();
+
+    const optionLabels = Array.from(
+      document.querySelectorAll('#home-quick-access-options .home-option-label')
+    ).map((el) => (el as HTMLElement).textContent);
+
+    const dropTarget = document.querySelector(
+      '#home-quick-access-options .home-option'
+    ) as HTMLElement;
+    const dropEvent = Object.assign(new Event('drop', { bubbles: true, cancelable: true }), {
+      dataTransfer: { getData: () => 'invalid-action' },
+    });
+    dropTarget.dispatchEvent(dropEvent);
+
+    const optionLabelsAfter = Array.from(
+      document.querySelectorAll('#home-quick-access-options .home-option-label')
+    ).map((el) => (el as HTMLElement).textContent);
+
+    expect(optionLabelsAfter).toEqual(optionLabels);
+  });
+
+  it('re-checking hidden quick-access option removes it from hidden list', async () => {
+    api.getHomeSettings.mockResolvedValue({
+      success: true,
+      settings: { hiddenQuickAccessItems: ['desktop'] },
+    });
+
+    const opts = createOptions();
+    const ctrl = createHomeController(
+      opts as unknown as Parameters<typeof createHomeController>[0]
+    );
+    await ctrl.loadHomeSettings();
+    ctrl.setupHomeSettingsListeners();
+
+    (document.getElementById('home-customize-btn') as HTMLButtonElement).click();
+
+    const desktopCheckbox = document.querySelector(
+      '#home-quick-access-options input[data-action="desktop"]'
+    ) as HTMLInputElement;
+    expect(desktopCheckbox.checked).toBe(false);
+
+    desktopCheckbox.checked = true;
+    desktopCheckbox.dispatchEvent(new Event('change', { bubbles: true }));
+
+    api.saveHomeSettings.mockResolvedValue({ success: true });
+    (document.getElementById('home-settings-save') as HTMLButtonElement).click();
+    await new Promise((r) => setTimeout(r, 10));
+
+    const saved = (api.saveHomeSettings as any).mock.calls.at(-1)?.[0];
+    expect(saved.hiddenQuickAccessItems).not.toContain('desktop');
   });
 });
