@@ -23,6 +23,10 @@ type UpdateActionsDeps = {
 };
 
 const RELEASES_LATEST_URL = 'https://github.com/BurntToasters/IYERIS/releases/latest';
+const BETA_CHANNEL_NO_MANIFEST_HINT =
+  "This is most likely due to the latest STABLE release being fairly new and the next beta hasn't been released yet.";
+const BETA_VERSION_REGEX = /-(beta|alpha|rc)/i;
+const NOT_FOUND_REGEX = /\b404\b|not\s+found/i;
 
 export function createUpdateActionsController(deps: UpdateActionsDeps) {
   let isDownloading = false;
@@ -108,6 +112,33 @@ export function createUpdateActionsController(deps: UpdateActionsDeps) {
     const toggleBtn = getStatusToggleButton();
     if (toggleBtn) {
       toggleBtn.hidden = true;
+    }
+  }
+
+  function isLikelyMissingBetaManifest(errorMessage: string): boolean {
+    const normalized = errorMessage.toLowerCase();
+    const mentionsBetaTarget =
+      normalized.includes('beta.json') ||
+      normalized.includes('-beta') ||
+      normalized.includes('/beta') ||
+      normalized.includes('\\beta');
+    return mentionsBetaTarget && NOT_FOUND_REGEX.test(normalized);
+  }
+
+  async function shouldShowMissingBetaManifestHint(errorMessage: string): Promise<boolean> {
+    if (!isLikelyMissingBetaManifest(errorMessage)) return false;
+    try {
+      const [appVersion, settingsResult] = await Promise.all([
+        window.tauriAPI.getAppVersion(),
+        window.tauriAPI.getSettings(),
+      ]);
+      if (!settingsResult.success) return false;
+      const isBetaBuild = BETA_VERSION_REGEX.test(appVersion);
+      if (!isBetaBuild) return false;
+      const selectedChannel = settingsResult.settings.updateChannel;
+      return selectedChannel === 'beta' || (selectedChannel === 'auto' && isBetaBuild);
+    } catch {
+      return false;
     }
   }
 
@@ -233,20 +264,19 @@ export function createUpdateActionsController(deps: UpdateActionsDeps) {
           );
         }
       } else {
-        await deps.showDialog(
-          'Update Check Failed',
-          `Failed to check for updates: ${result.error}`,
-          'error',
-          false
-        );
+        const showBetaManifestHint = await shouldShowMissingBetaManifestHint(result.error);
+        const errorMessage = showBetaManifestHint
+          ? `Failed to check for updates: ${result.error}\n\n${BETA_CHANNEL_NO_MANIFEST_HINT}`
+          : `Failed to check for updates: ${result.error}`;
+        await deps.showDialog('Update Check Failed', errorMessage, 'error', false);
       }
     } catch (error) {
-      await deps.showDialog(
-        'Update Check Failed',
-        `An error occurred while checking for updates: ${getErrorMessage(error)}`,
-        'error',
-        false
-      );
+      const message = getErrorMessage(error);
+      const showBetaManifestHint = await shouldShowMissingBetaManifestHint(message);
+      const dialogMessage = showBetaManifestHint
+        ? `An error occurred while checking for updates: ${message}\n\n${BETA_CHANNEL_NO_MANIFEST_HINT}`
+        : `An error occurred while checking for updates: ${message}`;
+      await deps.showDialog('Update Check Failed', dialogMessage, 'error', false);
     } finally {
       btn.disabled = false;
       if (!startedBackgroundDownload) {

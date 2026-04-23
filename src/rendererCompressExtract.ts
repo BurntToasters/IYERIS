@@ -284,7 +284,7 @@ export function createCompressExtractController(deps: CompressExtractDeps) {
 
     if (els.methodSelect) {
       const currentMethod = els.methodSelect.value;
-      els.methodSelect.innerHTML = '';
+      els.methodSelect.replaceChildren();
 
       if (is7z) {
         for (const m of ['LZMA2', 'LZMA', 'PPMd', 'BZip2', 'Deflate']) {

@@ -32,10 +32,15 @@ export function createSelectionController(deps: SelectionDeps) {
   }[] = [];
   let gridColumnsCache: { value: number; time: number } | null = null;
   let fileItemsArrayCache: HTMLElement[] | null = null;
+  let resizeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
-  window.addEventListener('resize', () => {
-    gridColumnsCache = null;
-  });
+  const onResize = () => {
+    if (resizeDebounceTimer) clearTimeout(resizeDebounceTimer);
+    resizeDebounceTimer = setTimeout(() => {
+      gridColumnsCache = null;
+    }, 150);
+  };
+  window.addEventListener('resize', onResize);
 
   function setSelectedState(fileItem: HTMLElement, selected: boolean) {
     fileItem.classList.toggle('selected', selected);
@@ -440,6 +445,14 @@ export function createSelectionController(deps: SelectionDeps) {
     const onRubberBandBlur = () => cleanupRubberBand();
   }
 
+  function destroy() {
+    window.removeEventListener('resize', onResize);
+    if (resizeDebounceTimer) {
+      clearTimeout(resizeDebounceTimer);
+      resizeDebounceTimer = null;
+    }
+  }
+
   return {
     toggleSelection,
     clearSelection,
@@ -454,5 +467,6 @@ export function createSelectionController(deps: SelectionDeps) {
     ensureActiveItem,
     invalidateGridColumnsCache,
     invalidateFileItemsCache,
+    destroy,
   };
 }

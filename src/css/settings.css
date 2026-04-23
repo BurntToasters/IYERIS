@@ -57,6 +57,7 @@
 
 .settings-sidebar {
   width: calc(210px * var(--settings-scale));
+  min-height: 0;
   background:
     linear-gradient(
       180deg,

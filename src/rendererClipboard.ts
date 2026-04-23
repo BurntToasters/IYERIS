@@ -439,10 +439,14 @@ export function createClipboardController(deps: ClipboardDeps) {
     }
   }
 
+  let pasteInProgress = false;
+
   async function pasteFromClipboard() {
+    if (pasteInProgress) return;
     const currentPath = deps.getCurrentPath();
     if (!currentPath) return;
 
+    pasteInProgress = true;
     try {
       if (!clipboard || clipboard.paths.length === 0) {
         const currentSettings = deps.getCurrentSettings();
@@ -456,6 +460,34 @@ export function createClipboardController(deps: ClipboardDeps) {
       }
       const clipboardSnapshot = cloneClipboardState(clipboard);
       if (!clipboardSnapshot) return;
+
+      // For cut operations, validate source paths still exist
+      if (clipboardSnapshot.operation === 'cut') {
+        const validationResults = await Promise.all(
+          clipboardSnapshot.paths.map((p) =>
+            window.tauriAPI.getItemProperties(p).then(
+              (r) => ({ path: p, exists: r.success }),
+              () => ({ path: p, exists: false })
+            )
+          )
+        );
+        const missing = validationResults.filter((r) => !r.exists);
+        if (missing.length > 0) {
+          const validPaths = validationResults.filter((r) => r.exists).map((r) => r.path);
+          if (validPaths.length === 0) {
+            clipboard = null;
+            updateCutVisuals();
+            deps.showToast('Source files no longer exist', 'Paste Failed', 'error');
+            return;
+          }
+          clipboardSnapshot.paths = validPaths;
+          deps.showToast(
+            `${missing.length} file(s) no longer exist and were skipped`,
+            'Paste',
+            'warning'
+          );
+        }
+      }
 
       const isCopy = clipboardSnapshot.operation === 'copy';
       const conflictBehavior = deps.getCurrentSettings().fileConflictBehavior || 'ask';
@@ -516,6 +548,8 @@ export function createClipboardController(deps: ClipboardDeps) {
       deps.showToast('Paste operation failed', 'Error', 'error', [
         { label: 'Retry', onClick: () => void pasteFromClipboard() },
       ]);
+    } finally {
+      pasteInProgress = false;
     }
   }
 

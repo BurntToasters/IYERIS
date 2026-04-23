@@ -146,6 +146,7 @@ export function createInlineRenameController(deps: InlineRenameDeps) {
     }
 
     let renameHandled = false;
+    let renameInProgress = false;
     let errorTooltip: HTMLElement | null = null;
 
     const showInlineError = (message: string) => {
@@ -196,17 +197,17 @@ export function createInlineRenameController(deps: InlineRenameDeps) {
     };
 
     const finishRename = async () => {
-      if (renameHandled) {
+      if (renameHandled || renameInProgress) {
         return;
       }
-      renameHandled = true;
+      renameInProgress = true;
 
       const newName = input.value.trim();
 
       if (newName && newName !== currentName) {
         const filenameError = getFilenameError(newName);
         if (filenameError) {
-          renameHandled = false;
+          renameInProgress = false;
           showInlineError(filenameError);
           input.focus();
           return;
@@ -223,35 +224,35 @@ export function createInlineRenameController(deps: InlineRenameDeps) {
               if (confirmed) {
                 const elevResult = await window.tauriAPI.elevatedRename(itemPath, newName);
                 if (!elevResult.success) {
-                  renameHandled = false;
                   showInlineError(elevResult.error || 'Elevated rename failed');
                   input.focus();
                   return;
                 }
               } else {
-                renameHandled = false;
                 showInlineError('Operation cancelled');
                 input.focus();
                 return;
               }
             } else {
-              renameHandled = false;
               showInlineError(result.error || 'Rename failed');
               input.focus();
               return;
             }
           }
         } catch {
-          renameHandled = false;
           showInlineError('Rename failed');
           input.focus();
           return;
+        } finally {
+          renameInProgress = false;
         }
+        renameHandled = true;
         cleanup();
         nameElement.textContent = newName;
         deps.announceToScreenReader?.(`Renamed to ${newName}`);
         await deps.navigateTo(deps.getCurrentPath());
       } else {
+        renameHandled = true;
         cleanup();
       }
     };

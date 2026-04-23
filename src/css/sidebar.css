@@ -383,7 +383,7 @@
 }
 
 .folder-tree[data-tree-indent-mode='legacy'] .tree-item {
-  padding-left: calc(6px + var(--tree-item-depth, 0) * 12px);
+  padding-left: calc(6px + min(var(--tree-item-depth, 0) * 12px, 120px));
 }
 
 .tree-item:hover {
@@ -487,13 +487,13 @@
 }
 
 .tree-item:focus-visible {
-  outline: 2px solid var(--accent-color);
-  outline-offset: 2px;
+  box-shadow: var(--focus-ring);
+  outline: none;
 }
 
 .nav-item:focus-visible {
   background: var(--interactive-selected);
-  box-shadow: inset 0 0 0 2px rgba(var(--accent-rgb), 0.5);
+  box-shadow: var(--focus-ring);
   outline: none;
 }
 

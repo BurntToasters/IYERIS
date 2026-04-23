@@ -293,7 +293,7 @@ describe('rendererSettingsActions extended', () => {
       expect(merged.customTheme.bgPrimary).toBe('#112233');
     });
 
-    it('passes through customTheme with string fields', async () => {
+    it('rejects customTheme with invalid color fields', async () => {
       const deps = makeDeps();
       triggerImport(
         deps,
@@ -315,7 +315,7 @@ describe('rendererSettingsActions extended', () => {
         expect(deps.setCurrentSettings).toHaveBeenCalled();
       });
       const merged = deps.setCurrentSettings.mock.calls[0][0];
-      expect(merged.customTheme.accentColor).toBe('not-hex');
+      expect(merged.customTheme).toBeUndefined();
     });
 
     it('shows warning for non-record import', async () => {

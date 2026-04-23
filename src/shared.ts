@@ -102,7 +102,7 @@ const DANGEROUS_TAGS = new Set([
 ]);
 
 const SAFE_URL_PATTERN = /^(?:https?|mailto|#):/i;
-const SAFE_RESOURCE_URL_PATTERN = /^(?:asset:|https?:\/\/asset\.localhost\/)/i;
+const SAFE_RESOURCE_URL_PATTERN = /^(?:https?:\/\/asset\.localhost\/)/i;
 const HAS_SCHEME_PATTERN = /^[a-z][a-z0-9+.-]*:/i;
 
 export function sanitizeMarkdownHtml(html: string): string {

@@ -265,9 +265,9 @@ function setupTauriAPIMock() {
   (window as any).tauriAPI = {
     onClipboardChanged: vi.fn(() => vi.fn()),
     onSettingsChanged: vi.fn(() => vi.fn()),
-    minimizeWindow: vi.fn(),
-    maximizeWindow: vi.fn(),
-    closeWindow: vi.fn(),
+    minimizeWindow: vi.fn().mockResolvedValue(undefined),
+    maximizeWindow: vi.fn().mockResolvedValue(undefined),
+    closeWindow: vi.fn().mockResolvedValue(undefined),
   };
 }
 
@@ -1103,7 +1103,7 @@ describe('createEventListenersController', () => {
 
       const input = document.getElementById('address-input') as HTMLInputElement;
       input.value = '/usr/local/bin';
-      input.dispatchEvent(new KeyboardEvent('keypress', { key: 'Enter', bubbles: true }));
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
 
       expect(config.navigateTo).toHaveBeenCalledWith('/usr/local/bin');
     });
@@ -1115,7 +1115,7 @@ describe('createEventListenersController', () => {
 
       const input = document.getElementById('address-input') as HTMLInputElement;
       input.value = 'Home';
-      input.dispatchEvent(new KeyboardEvent('keypress', { key: 'Enter', bubbles: true }));
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
 
       expect(config.navigateTo).toHaveBeenCalledWith('~home');
     });
@@ -1209,6 +1209,396 @@ describe('createEventListenersController', () => {
       onSettings(oldSettings);
 
       expect(config.setCurrentSettings).not.toHaveBeenCalled();
+    });
+
+    it('merges unsaved settings form state when settings modal is open', () => {
+      const config = createMockConfig();
+      const ctrl = createEventListenersController(config);
+      ctrl.setupEventListeners();
+
+      document.getElementById('settings-modal')!.style.display = 'flex';
+      document.getElementById('shortcuts-modal')!.style.display = 'flex';
+
+      const themeSelect = document.createElement('select');
+      themeSelect.id = 'theme-select';
+      themeSelect.innerHTML = '<option value="custom">Custom</option>';
+      themeSelect.value = 'custom';
+      document.body.appendChild(themeSelect);
+
+      const previousSavedState = {
+        theme: 'dark',
+        showHiddenFiles: false,
+      } as unknown as SettingsFormState;
+      const currentFormState = {
+        theme: 'custom',
+        showHiddenFiles: true,
+      } as unknown as SettingsFormState;
+      const nextSavedState = {
+        theme: 'light',
+        showHiddenFiles: false,
+      } as unknown as SettingsFormState;
+
+      config.getSavedState.mockReturnValue(previousSavedState);
+      config.captureSettingsFormState.mockReturnValue(currentFormState);
+      config.buildSettingsFormStateFromSettings.mockReturnValue(nextSavedState);
+
+      const onSettings = (window.tauriAPI.onSettingsChanged as ReturnType<typeof vi.fn>).mock
+        .calls[0][0];
+      onSettings(makeSettings({ _timestamp: 220, theme: 'light' }));
+
+      expect(config.setSavedState).toHaveBeenCalledWith(nextSavedState);
+      expect(config.resetRedoState).toHaveBeenCalled();
+      expect(config.applySettingsFormState).toHaveBeenCalledWith(
+        expect.objectContaining({ theme: 'custom', showHiddenFiles: true })
+      );
+      expect(config.updateCustomThemeUI).toHaveBeenCalledWith({
+        syncSelect: false,
+        selectedTheme: 'custom',
+      });
+      expect(config.syncShortcutBindingsFromSettings).toHaveBeenCalledWith(expect.any(Object), {
+        render: true,
+      });
+    });
+
+    it('uses default theme refresh path when settings modal is closed', () => {
+      const config = createMockConfig();
+      const ctrl = createEventListenersController(config);
+      ctrl.setupEventListeners();
+
+      document.getElementById('settings-modal')!.style.display = 'none';
+      document.getElementById('shortcuts-modal')!.style.display = 'none';
+
+      const onSettings = (window.tauriAPI.onSettingsChanged as ReturnType<typeof vi.fn>).mock
+        .calls[0][0];
+      onSettings(makeSettings({ _timestamp: 250 }));
+
+      expect(config.updateCustomThemeUI).toHaveBeenCalledWith();
+      expect(config.syncShortcutBindingsFromSettings).toHaveBeenCalledWith(expect.any(Object), {
+        render: false,
+      });
+    });
+  });
+
+  describe('additional action and keyboard branches', () => {
+    it('logs window control failures when tauri action rejects', async () => {
+      const config = createMockConfig();
+      const ctrl = createEventListenersController(config);
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      (window.tauriAPI.minimizeWindow as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+        new Error('minimize-failed')
+      );
+
+      ctrl.setupEventListeners();
+      document.getElementById('minimize-btn')!.click();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(errorSpy).toHaveBeenCalledWith(
+        'Window control "minimize-btn" failed:',
+        expect.any(Error)
+      );
+      errorSpy.mockRestore();
+    });
+
+    it('handles overflow menu toggle and outside close behavior', () => {
+      const config = createMockConfig();
+      const ctrl = createEventListenersController(config);
+      ctrl.setupEventListeners();
+
+      const overflowBtn = document.getElementById('selection-overflow-btn')!;
+      const overflowMenu = document.getElementById('selection-overflow-menu')!;
+
+      overflowBtn.click();
+      expect(overflowMenu.style.display).toBe('block');
+      expect(overflowBtn.getAttribute('aria-expanded')).toBe('true');
+
+      overflowMenu.click();
+      expect(overflowMenu.style.display).toBe('none');
+      expect(overflowBtn.getAttribute('aria-expanded')).toBe('false');
+
+      overflowBtn.click();
+      document.body.click();
+      expect(overflowMenu.style.display).toBe('none');
+    });
+
+    it('handles selection action buttons and status-hidden activation', () => {
+      const config = createMockConfig();
+      const settings = makeSettings({ showHiddenFiles: false });
+      config.getCurrentSettings.mockReturnValue(settings);
+      const ctrl = createEventListenersController(config);
+      ctrl.setupEventListeners();
+
+      document.getElementById('selection-copy-btn')!.click();
+      document.getElementById('selection-cut-btn')!.click();
+      document.getElementById('selection-move-btn')!.click();
+      document.getElementById('selection-rename-btn')!.click();
+      document.getElementById('selection-delete-btn')!.click();
+
+      expect(config.copyToClipboard).toHaveBeenCalled();
+      expect(config.cutToClipboard).toHaveBeenCalled();
+      expect(config.moveSelectedToFolder).toHaveBeenCalled();
+      expect(config.renameSelected).toHaveBeenCalled();
+      expect(config.deleteSelected).toHaveBeenCalled();
+
+      const statusHidden = document.getElementById('status-hidden')!;
+      statusHidden.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      expect(settings.showHiddenFiles).toBe(true);
+      expect(
+        (document.getElementById('show-hidden-files-toggle') as HTMLInputElement).checked
+      ).toBe(true);
+      expect(config.saveSettings).toHaveBeenCalled();
+      expect(config.refresh).toHaveBeenCalledWith('status-hidden-click');
+    });
+
+    it('wires sort/bookmark/sidebar buttons and mouse back/forward buttons', () => {
+      const config = createMockConfig();
+      const ctrl = createEventListenersController(config);
+      ctrl.setupEventListeners();
+
+      document
+        .getElementById('sort-btn')!
+        .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      document.getElementById('bookmark-add-btn')!.click();
+      document.getElementById('sidebar-toggle')!.click();
+
+      document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 3 }));
+      document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 4 }));
+
+      expect(config.showSortMenu).toHaveBeenCalled();
+      expect(config.addBookmark).toHaveBeenCalled();
+      expect(config.setSidebarCollapsed).toHaveBeenCalled();
+      expect(config.goBack).toHaveBeenCalled();
+      expect(config.goForward).toHaveBeenCalled();
+    });
+
+    it('blocks non-safe actions in editable contexts and allows safe actions', () => {
+      const config = createMockConfig();
+      const ctrl = createEventListenersController(config);
+      const addressInput = document.getElementById('address-input') as HTMLInputElement;
+      addressInput.focus();
+
+      const blocked = ctrl.runShortcutAction('refresh', new KeyboardEvent('keydown', { key: 'r' }));
+      const safe = ctrl.runShortcutAction('settings', new KeyboardEvent('keydown', { key: 's' }));
+      const blockedPaste = ctrl.runShortcutAction(
+        'paste',
+        new KeyboardEvent('keydown', { key: 'v' })
+      );
+
+      expect(blocked).toBe(false);
+      expect(safe).toBe(true);
+      expect(blockedPaste).toBe(false);
+      expect(config.refresh).not.toHaveBeenCalled();
+      expect(config.showSettingsModal).toHaveBeenCalled();
+    });
+
+    it('handles next-tab action when current active tab is missing', () => {
+      const config = createMockConfig();
+      config.getTabsEnabled.mockReturnValue(true);
+      config.getTabs.mockReturnValue([{ id: 'tab-1' }, { id: 'tab-2' }]);
+      config.getActiveTabId.mockReturnValue('missing-tab');
+      const ctrl = createEventListenersController(config);
+
+      const result = ctrl.runShortcutAction(
+        'next-tab',
+        new KeyboardEvent('keydown', { key: 'Tab' })
+      );
+
+      expect(result).toBe(true);
+      expect(config.switchToTab).not.toHaveBeenCalled();
+    });
+
+    it('short-circuits keyboard handling for capture, menu nav handlers, and overlays', () => {
+      const captureConfig = createMockConfig();
+      captureConfig.isShortcutCaptureActive.mockReturnValue(true);
+      const captureCtrl = createEventListenersController(captureConfig);
+      captureCtrl.setupEventListeners();
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'F2', bubbles: true }));
+      expect(captureConfig.renameSelected).not.toHaveBeenCalled();
+
+      const ctxNavConfig = createMockConfig();
+      ctxNavConfig.handleContextMenuKeyNav.mockReturnValue(true);
+      const ctxNavCtrl = createEventListenersController(ctxNavConfig);
+      ctxNavCtrl.setupEventListeners();
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }));
+      expect(ctxNavConfig.deleteSelected).not.toHaveBeenCalled();
+
+      const sortNavConfig = createMockConfig();
+      sortNavConfig.handleSortMenuKeyNav.mockReturnValue(true);
+      const sortNavCtrl = createEventListenersController(sortNavConfig);
+      sortNavCtrl.setupEventListeners();
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }));
+      expect(sortNavConfig.deleteSelected).not.toHaveBeenCalled();
+
+      const overlayConfig = createMockConfig();
+      const overlayCtrl = createEventListenersController(overlayConfig);
+      overlayCtrl.setupEventListeners();
+      document.getElementById('sort-menu')!.style.display = 'block';
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }));
+      expect(overlayConfig.deleteSelected).not.toHaveBeenCalled();
+    });
+
+    it('handles F6 pane cycling, quick actions, and focus-only navigation branches', () => {
+      const config = createMockConfig();
+      const sidebar = document.createElement('div');
+      sidebar.id = 'sidebar';
+      const treeItem = document.createElement('div');
+      treeItem.className = 'tree-item';
+      treeItem.tabIndex = 0;
+      const treeFocusSpy = vi.spyOn(treeItem, 'focus');
+      sidebar.appendChild(treeItem);
+      document.body.appendChild(sidebar);
+
+      const breadcrumb = document.createElement('div');
+      breadcrumb.id = 'breadcrumb-container';
+      breadcrumb.style.display = 'block';
+      document.body.appendChild(breadcrumb);
+
+      const addressInput = document.getElementById('address-input') as HTMLInputElement;
+      addressInput.style.display = 'none';
+      const addressFocusSpy = vi.spyOn(addressInput, 'focus');
+      const addressSelectSpy = vi.spyOn(addressInput, 'select');
+
+      const ctrl = createEventListenersController(config);
+      ctrl.setupEventListeners();
+
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'F6', bubbles: true }));
+      expect(treeFocusSpy).toHaveBeenCalled();
+
+      sidebar.classList.add('collapsed');
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'F6', bubbles: true }));
+      expect(breadcrumb.style.display).toBe('none');
+      expect(addressInput.style.display).toBe('block');
+      expect(addressFocusSpy).toHaveBeenCalled();
+      expect(addressSelectSpy).toHaveBeenCalled();
+
+      treeItem.focus();
+
+      document.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'F10', shiftKey: true, bubbles: true })
+      );
+      expect(config.showContextMenuForSelected).toHaveBeenCalled();
+
+      document.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key: ' ',
+          code: 'Space',
+          ctrlKey: true,
+          bubbles: true,
+        })
+      );
+      expect(config.toggleSelectionAtCursor).toHaveBeenCalled();
+
+      document.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key: 'ArrowRight',
+          ctrlKey: true,
+          bubbles: true,
+        })
+      );
+      expect(config.navigateFileGridFocusOnly).toHaveBeenCalledWith('ArrowRight');
+    });
+
+    it('handles fixed and user shortcut resolution branches in keyboard listener', () => {
+      const fixedConfig = createMockConfig();
+      fixedConfig.getFixedShortcutActionIdFromEvent.mockReturnValue('refresh');
+      const fixedCtrl = createEventListenersController(fixedConfig);
+      fixedCtrl.setupEventListeners();
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'x', bubbles: true }));
+      expect(fixedConfig.refresh).toHaveBeenCalledWith('shortcut-refresh');
+
+      const fallbackConfig = createMockConfig();
+      fallbackConfig.getFixedShortcutActionIdFromEvent.mockReturnValue('unknown-action');
+      fallbackConfig.getShortcutActionIdFromEvent.mockReturnValue('refresh');
+      const fallbackCtrl = createEventListenersController(fallbackConfig);
+      fallbackCtrl.setupEventListeners();
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'x', bubbles: true }));
+      expect(fallbackConfig.refresh).toHaveBeenCalledWith('shortcut-refresh');
+    });
+
+    it('opens empty-space context menu and routes global click menu actions', () => {
+      const config = createMockConfig();
+      const ctrl = createEventListenersController(config);
+      ctrl.setupEventListeners();
+
+      const fileView = document.getElementById('file-view')!;
+      const fileViewContextEvent = new MouseEvent('contextmenu', {
+        bubbles: true,
+        cancelable: true,
+      });
+      fileView.dispatchEvent(fileViewContextEvent);
+      expect(config.showEmptySpaceContextMenu).toHaveBeenCalled();
+
+      const sortMenu = document.getElementById('sort-menu')!;
+      sortMenu.style.display = 'block';
+      const sortItem = document.createElement('div');
+      sortItem.className = 'context-menu-item';
+      sortItem.dataset.sort = 'name';
+      sortMenu.appendChild(sortItem);
+      sortItem.click();
+      expect(config.changeSortMode).toHaveBeenCalledWith('name');
+
+      sortMenu.style.display = 'none';
+      const emptyMenu = document.getElementById('empty-space-context-menu')!;
+      emptyMenu.style.display = 'block';
+      const emptyItem = document.createElement('div');
+      emptyItem.className = 'context-menu-item';
+      emptyItem.dataset.action = 'new-folder';
+      emptyMenu.appendChild(emptyItem);
+      emptyItem.click();
+      expect(config.handleEmptySpaceContextMenuAction).toHaveBeenCalledWith('new-folder');
+      expect(config.hideEmptySpaceContextMenu).toHaveBeenCalled();
+
+      emptyMenu.style.display = 'none';
+      config.getContextMenuData.mockReturnValue({
+        name: 'a.txt',
+        path: '/a.txt',
+        isDirectory: false,
+      } as any);
+      const ctxMenu = document.getElementById('context-menu')!;
+      const ctxItem = document.createElement('div');
+      ctxItem.className = 'context-menu-item';
+      ctxItem.dataset.action = 'open';
+      ctxItem.dataset.format = 'default';
+      ctxMenu.appendChild(ctxItem);
+      ctxItem.click();
+      expect(config.handleContextMenuAction).toHaveBeenCalledWith(
+        'open',
+        expect.objectContaining({ path: '/a.txt' }),
+        'default'
+      );
+      expect(config.hideContextMenu).toHaveBeenCalled();
+    });
+
+    it('handles breadcrumb and context-menu listener edge branches', () => {
+      const config = createMockConfig();
+      const breadcrumbMenu = document.createElement('div');
+      breadcrumbMenu.id = 'breadcrumb-menu';
+      document.body.appendChild(breadcrumbMenu);
+      config.getBreadcrumbMenuElement.mockReturnValue(breadcrumbMenu);
+      config.isBreadcrumbMenuOpen.mockReturnValue(true);
+      const ctrl = createEventListenersController(config);
+      ctrl.setupEventListeners();
+
+      const outside = document.createElement('div');
+      document.body.appendChild(outside);
+      outside.click();
+      expect(config.hideBreadcrumbMenu).toHaveBeenCalled();
+
+      config.getCurrentPath.mockReturnValue('');
+      const fileView = document.getElementById('file-view')!;
+      fileView.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+      expect(config.hideContextMenu).toHaveBeenCalled();
+      expect(config.hideEmptySpaceContextMenu).toHaveBeenCalled();
+
+      const fileItem = document.createElement('div');
+      fileItem.className = 'file-item';
+      document.getElementById('file-grid')!.appendChild(fileItem);
+      const fileItemContextEvent = new MouseEvent('contextmenu', {
+        bubbles: true,
+        cancelable: true,
+      });
+      fileItem.dispatchEvent(fileItemContextEvent);
+      expect(fileItemContextEvent.defaultPrevented).toBe(false);
     });
   });
 });

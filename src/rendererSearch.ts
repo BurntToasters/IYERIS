@@ -211,6 +211,7 @@ export function createSearchController(deps: SearchDeps) {
     isSearchMode = false;
     isGlobalSearch = false;
     isRegexMode = false;
+    searchInContents = false;
     if (searchRegexToggle) {
       searchRegexToggle.classList.remove('active');
       searchRegexToggle.setAttribute('aria-pressed', 'false');
@@ -512,21 +513,43 @@ export function createSearchController(deps: SearchDeps) {
 
   function renderSavedSearchesSection(): string {
     const settings = deps.getCurrentSettings();
-    const saved = settings.savedSearches || [];
+    const saved = (settings.savedSearches || [])
+      .map((entry, index) => ({ entry, index }))
+      .sort((a, b) => {
+        const aLastUsed = Date.parse(a.entry.lastUsedAt || a.entry.createdAt || '');
+        const bLastUsed = Date.parse(b.entry.lastUsedAt || b.entry.createdAt || '');
+        if (Number.isFinite(aLastUsed) && Number.isFinite(bLastUsed) && aLastUsed !== bLastUsed) {
+          return bLastUsed - aLastUsed;
+        }
+        const aUseCount = a.entry.useCount ?? 0;
+        const bUseCount = b.entry.useCount ?? 0;
+        if (aUseCount !== bUseCount) return bUseCount - aUseCount;
+        return a.entry.name.localeCompare(b.entry.name);
+      });
+
     if (saved.length === 0) return '';
 
     const items = saved
-      .map((s, i) => {
+      .map(({ entry: s, index }) => {
         const badges: string[] = [];
         if (s.isGlobal) badges.push('<span class="saved-search-badge">Global</span>');
         if (s.isRegex) badges.push('<span class="saved-search-badge">Regex</span>');
+        if (!s.isGlobal && s.scopePath)
+          badges.push('<span class="saved-search-badge">Scoped</span>');
         if (s.filters && Object.keys(s.filters).length > 0)
           badges.push('<span class="saved-search-badge">Filtered</span>');
-        return `<div class="saved-search-item" data-saved-index="${i}">
+        const tooltipParts = [s.query];
+        if (!s.isGlobal && s.scopePath) {
+          tooltipParts.push(`Scope: ${s.scopePath}`);
+        }
+        if (s.useCount && s.useCount > 0) {
+          tooltipParts.push(`Used ${s.useCount} time${s.useCount === 1 ? '' : 's'}`);
+        }
+        return `<div class="saved-search-item" data-saved-index="${index}">
             ${twemojiImg(String.fromCodePoint(0x2b50), 'twemoji')}
-            <span class="saved-search-name" title="${escapeHtml(s.query)}">${escapeHtml(s.name)}</span>
+            <span class="saved-search-name" title="${escapeHtml(tooltipParts.join('\n'))}">${escapeHtml(s.name)}</span>
             <span class="saved-search-badges">${badges.join('')}</span>
-            <button class="saved-search-delete" data-delete-index="${i}" title="Delete saved search" aria-label="Delete saved search ${escapeHtml(s.name)}">&times;</button>
+            <button class="saved-search-delete" data-delete-index="${index}" title="Delete saved search" aria-label="Delete saved search ${escapeHtml(s.name)}">&times;</button>
           </div>`;
       })
       .join('');
@@ -593,16 +616,27 @@ export function createSearchController(deps: SearchDeps) {
     const settings = deps.getCurrentSettings();
     if (!settings.savedSearches) settings.savedSearches = [];
 
-    if (settings.savedSearches.length >= 50) {
+    const now = new Date().toISOString();
+    const normalizedName = name.trim().slice(0, 100);
+    const existingIndex = settings.savedSearches.findIndex(
+      (entry) => entry.name.toLowerCase() === normalizedName.toLowerCase()
+    );
+    const existing = existingIndex >= 0 ? settings.savedSearches[existingIndex] : null;
+
+    if (settings.savedSearches.length >= 50 && existingIndex < 0) {
       deps.showToast('Maximum of 50 saved searches reached', 'Save Search', 'warning');
       return;
     }
 
     const entry: SavedSearch = {
-      name: name.trim().slice(0, 100),
+      name: normalizedName,
       query,
       isGlobal: isGlobalSearch,
       isRegex: isRegexMode,
+      createdAt: existing?.createdAt || now,
+      lastUsedAt: now,
+      useCount: existing?.useCount ?? 0,
+      scopePath: isGlobalSearch ? undefined : deps.getCurrentPath(),
     };
 
     if (hasActiveFilters()) {
@@ -610,9 +644,17 @@ export function createSearchController(deps: SearchDeps) {
       entry.filters = filtersCopy;
     }
 
-    settings.savedSearches.push(entry);
+    if (existingIndex >= 0) {
+      settings.savedSearches[existingIndex] = entry;
+    } else {
+      settings.savedSearches.push(entry);
+    }
     deps.debouncedSaveSettings();
-    deps.showToast(`Search "${entry.name}" saved`, 'Saved Search', 'success');
+    deps.showToast(
+      existingIndex >= 0 ? `Search "${entry.name}" updated` : `Search "${entry.name}" saved`,
+      'Saved Search',
+      'success'
+    );
   }
 
   function deleteSavedSearch(index: number): void {
@@ -628,6 +670,13 @@ export function createSearchController(deps: SearchDeps) {
     const settings = deps.getCurrentSettings();
     if (!settings.savedSearches || index < 0 || index >= settings.savedSearches.length) return;
     const saved = settings.savedSearches[index]!;
+
+    saved.lastUsedAt = new Date().toISOString();
+    saved.useCount = (saved.useCount ?? 0) + 1;
+    if (!saved.isGlobal && !saved.scopePath) {
+      saved.scopePath = deps.getCurrentPath();
+    }
+    deps.debouncedSaveSettings();
 
     ensureElements();
     if (!searchBarWrapper || !searchInput || !searchScopeToggle) return;
@@ -654,6 +703,10 @@ export function createSearchController(deps: SearchDeps) {
       currentSearchFilters = {};
     }
     updateFilterBadge();
+
+    if (!saved.isGlobal && saved.scopePath && !isHomeViewPath(saved.scopePath)) {
+      deps.navigateTo(saved.scopePath);
+    }
 
     searchInput.value = saved.query;
     syncSaveBtnState();

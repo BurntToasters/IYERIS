@@ -198,7 +198,7 @@ export function createShortcutsUiController(deps: ShortcutsUiDeps) {
     const container = document.getElementById('shortcuts-modal-sections');
     if (!container) return;
 
-    container.innerHTML = '';
+    container.replaceChildren();
     const defaults = deps.getDefaultShortcuts();
     const fixedShortcutsByCategory = getFixedShortcutsByCategory();
     const shortcutBindings = deps.getShortcutBindings();

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { createClipboardController } from '../rendererClipboard';
+import { createClipboardController, isPermissionDeniedError } from '../rendererClipboard';
 
 type TauriApi = {
   setClipboard: ReturnType<typeof vi.fn>;
@@ -12,6 +12,7 @@ type TauriApi = {
   elevatedCopyBatch: ReturnType<typeof vi.fn>;
   elevatedMoveBatch: ReturnType<typeof vi.fn>;
   elevatedDeleteBatch: ReturnType<typeof vi.fn>;
+  getItemProperties: ReturnType<typeof vi.fn>;
 };
 
 function setupTauriApi(overrides: Partial<TauriApi> = {}): TauriApi {
@@ -25,6 +26,7 @@ function setupTauriApi(overrides: Partial<TauriApi> = {}): TauriApi {
     elevatedCopyBatch: vi.fn().mockResolvedValue({ success: true }),
     elevatedMoveBatch: vi.fn().mockResolvedValue({ success: true }),
     elevatedDeleteBatch: vi.fn().mockResolvedValue({ success: true }),
+    getItemProperties: vi.fn().mockResolvedValue({ success: true }),
     ...overrides,
   };
   Object.defineProperty(window, 'tauriAPI', {
@@ -281,7 +283,66 @@ describe('createClipboardController — extended', () => {
     });
   });
 
+  describe('copySelectedToFolder', () => {
+    it('does nothing when nothing is selected', async () => {
+      setupTauriApi();
+      const deps = createDeps({ selectedItems: new Set<string>() });
+      const ctrl = createClipboardController(deps);
+      await ctrl.copySelectedToFolder();
+      expect(deps.handleDrop).not.toHaveBeenCalled();
+    });
+
+    it('does nothing when folder selection is cancelled', async () => {
+      setupTauriApi({
+        selectFolder: vi.fn().mockResolvedValue({ success: false }),
+      });
+      const deps = createDeps({ selectedItems: new Set(['/a.txt']) });
+      const ctrl = createClipboardController(deps);
+      await ctrl.copySelectedToFolder();
+      expect(deps.handleDrop).not.toHaveBeenCalled();
+    });
+
+    it('prevents copy when source is already in destination', async () => {
+      setupTauriApi({
+        selectFolder: vi.fn().mockResolvedValue({ success: true, path: '/target' }),
+      });
+      const deps = createDeps({ selectedItems: new Set(['/target/file.txt']) });
+      const ctrl = createClipboardController(deps);
+      await ctrl.copySelectedToFolder();
+      expect(deps.showToast).toHaveBeenCalledWith(
+        'Items are already in this directory',
+        'Info',
+        'info'
+      );
+      expect(deps.handleDrop).not.toHaveBeenCalled();
+    });
+
+    it('copies items to selected folder', async () => {
+      setupTauriApi({
+        selectFolder: vi.fn().mockResolvedValue({ success: true, path: '/new-dest' }),
+      });
+      const deps = createDeps({ selectedItems: new Set(['/a.txt', '/b.txt']) });
+      const ctrl = createClipboardController(deps);
+      await ctrl.copySelectedToFolder();
+      expect(deps.handleDrop).toHaveBeenCalledWith(
+        expect.arrayContaining(['/a.txt', '/b.txt']),
+        '/new-dest',
+        'copy'
+      );
+    });
+  });
+
   describe('pasteIntoFolder', () => {
+    it('returns early when target folder path is empty', async () => {
+      setupTauriApi();
+      const deps = createDeps();
+      const ctrl = createClipboardController(deps);
+
+      await ctrl.pasteIntoFolder('');
+
+      expect(deps.showToast).not.toHaveBeenCalled();
+    });
+
     it('moves items for system cut clipboard data', async () => {
       const tauriApi = setupTauriApi({
         getSystemClipboardData: vi.fn().mockResolvedValue({
@@ -323,6 +384,157 @@ describe('createClipboardController — extended', () => {
         'Success',
         'success'
       );
+    });
+
+    it('pastes local clipboard items into folder and refreshes', async () => {
+      const tauriApi = setupTauriApi();
+      const deps = createDeps();
+      const ctrl = createClipboardController(deps);
+      ctrl.setClipboard({ operation: 'copy', paths: ['/from/local.txt'] });
+
+      await ctrl.pasteIntoFolder('/target');
+
+      expect(tauriApi.copyItems).toHaveBeenCalledWith(['/from/local.txt'], '/target', 'ask');
+      expect(deps.showToast).toHaveBeenCalledWith(
+        '1 item(s) copied into folder',
+        'Success',
+        'success'
+      );
+      expect(deps.refresh).toHaveBeenCalledTimes(1);
+    });
+
+    it('shows operation failed toast for local paste errors', async () => {
+      setupTauriApi({
+        copyItems: vi.fn().mockResolvedValue({ success: false, error: 'copy denied' }),
+      });
+      const deps = createDeps();
+      const ctrl = createClipboardController(deps);
+      ctrl.setClipboard({ operation: 'copy', paths: ['/from/local.txt'] });
+
+      await ctrl.pasteIntoFolder('/target');
+
+      expect(deps.showToast).toHaveBeenCalledWith('copy denied', 'Error', 'error');
+    });
+
+    it('shows paste operation failed when local folder paste throws', async () => {
+      setupTauriApi({
+        copyItems: vi.fn().mockRejectedValue(new Error('ipc down')),
+      });
+      const deps = createDeps();
+      const ctrl = createClipboardController(deps);
+      ctrl.setClipboard({ operation: 'copy', paths: ['/from/local.txt'] });
+
+      await ctrl.pasteIntoFolder('/target');
+
+      expect(deps.showToast).toHaveBeenCalledWith('Paste operation failed', 'Error', 'error');
+    });
+  });
+
+  describe('duplicateItems', () => {
+    it('returns when duplicate path list is empty', async () => {
+      setupTauriApi();
+      const deps = createDeps();
+      const ctrl = createClipboardController(deps);
+
+      await ctrl.duplicateItems([]);
+
+      expect(deps.showToast).not.toHaveBeenCalled();
+    });
+
+    it('duplicates items successfully', async () => {
+      const tauriApi = setupTauriApi();
+      const deps = createDeps({ currentPath: '/dest-dir' });
+      const ctrl = createClipboardController(deps);
+
+      await ctrl.duplicateItems(['/a.txt', '/b.txt']);
+
+      expect(tauriApi.copyItems).toHaveBeenCalledWith(['/a.txt', '/b.txt'], '/dest-dir', 'rename');
+      expect(deps.showToast).toHaveBeenCalledWith('2 item(s) duplicated', 'Success', 'success');
+      expect(deps.refresh).toHaveBeenCalledTimes(1);
+    });
+
+    it('uses elevated duplicate when permission is denied', async () => {
+      const tauriApi = setupTauriApi({
+        copyItems: vi.fn().mockResolvedValue({ success: false, error: 'EACCES' }),
+        elevatedCopyBatch: vi.fn().mockResolvedValue({ success: true }),
+      });
+      const deps = createDeps();
+      const ctrl = createClipboardController(deps);
+
+      await ctrl.duplicateItems(['/a.txt']);
+
+      expect(deps.showConfirm).toHaveBeenCalled();
+      expect(tauriApi.elevatedCopyBatch).toHaveBeenCalledWith(['/a.txt'], '/dest');
+      expect(deps.showToast).toHaveBeenCalledWith(
+        '1 item(s) duplicated (elevated)',
+        'Success',
+        'success'
+      );
+    });
+
+    it('shows cancellation toast when elevated duplicate is declined', async () => {
+      setupTauriApi({
+        copyItems: vi.fn().mockResolvedValue({ success: false, error: 'permission denied' }),
+      });
+      const deps = createDeps();
+      deps.showConfirm = vi.fn().mockResolvedValue(false);
+      const ctrl = createClipboardController(deps);
+
+      await ctrl.duplicateItems(['/a.txt']);
+
+      expect(deps.showToast).toHaveBeenCalledWith('Operation cancelled', 'Info', 'info');
+    });
+
+    it('shows duplicate failed when duplicate operation throws', async () => {
+      setupTauriApi({
+        copyItems: vi.fn().mockRejectedValue(new Error('broken copy')),
+      });
+      const deps = createDeps();
+      const ctrl = createClipboardController(deps);
+
+      await ctrl.duplicateItems(['/a.txt']);
+
+      expect(deps.showToast).toHaveBeenCalledWith('Duplicate failed', 'Error', 'error');
+    });
+  });
+
+  describe('pasteFromClipboard concurrency', () => {
+    it('ignores a second paste request while one is in progress', async () => {
+      let resolveCopy: ((value: { success: boolean }) => void) | undefined;
+      const copyItems = vi.fn(
+        () =>
+          new Promise<{ success: boolean }>((resolve) => {
+            resolveCopy = resolve;
+          })
+      );
+      setupTauriApi({ copyItems });
+      const deps = createDeps();
+      const ctrl = createClipboardController(deps);
+      ctrl.setClipboard({ operation: 'copy', paths: ['/a.txt'] });
+
+      const first = ctrl.pasteFromClipboard();
+      const second = ctrl.pasteFromClipboard();
+
+      expect(copyItems).toHaveBeenCalledTimes(1);
+
+      resolveCopy?.({ success: true });
+      await first;
+      await second;
+    });
+  });
+
+  describe('isPermissionDeniedError', () => {
+    it('detects common permission denied messages', () => {
+      expect(isPermissionDeniedError('EACCES: permission denied')).toBe(true);
+      expect(isPermissionDeniedError('Operation not permitted')).toBe(true);
+      expect(isPermissionDeniedError('errno 13')).toBe(true);
+      expect(isPermissionDeniedError('Access is denied')).toBe(true);
+    });
+
+    it('returns false for non-permission errors or empty input', () => {
+      expect(isPermissionDeniedError('file not found')).toBe(false);
+      expect(isPermissionDeniedError('')).toBe(false);
+      expect(isPermissionDeniedError()).toBe(false);
     });
   });
 

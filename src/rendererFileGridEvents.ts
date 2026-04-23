@@ -156,7 +156,7 @@ export function createFileGridEventsController(config: FileGridEventsConfig) {
         dragImage.style.top = '-1000px';
         document.body.appendChild(dragImage);
         e.dataTransfer.setDragImage(dragImage, 0, 0);
-        requestAnimationFrame(() => dragImage.remove());
+        setTimeout(() => dragImage.remove(), 0);
       }
     });
 

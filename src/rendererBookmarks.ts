@@ -49,7 +49,7 @@ export function createBookmarksController(deps: BookmarksDeps) {
 
   function loadBookmarks() {
     if (!bookmarksList) return;
-    bookmarksList.innerHTML = '';
+    bookmarksList.replaceChildren();
 
     const currentSettings = getCurrentSettings();
     if (!currentSettings.bookmarks || currentSettings.bookmarks.length === 0) {
@@ -116,6 +116,9 @@ export function createBookmarksController(deps: BookmarksDeps) {
         const isBookmarkDrag = e.dataTransfer.types.includes('text/iyeris-bookmark');
         const operation = getDragOperation(e);
         e.dataTransfer.dropEffect = isBookmarkDrag ? 'move' : operation;
+        for (const sibling of bookmarkItem.parentElement?.querySelectorAll('.drag-over') ?? []) {
+          if (sibling !== bookmarkItem) sibling.classList.remove('drag-over');
+        }
         bookmarkItem.classList.add('drag-over');
         if (!isBookmarkDrag) {
           showDropIndicator(operation, bookmarkPath, e.clientX, e.clientY);

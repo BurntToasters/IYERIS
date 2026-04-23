@@ -44,9 +44,12 @@ export function createToastManager(options: ToastOptions) {
       return;
     }
 
-    visibleToastCount++;
     const container = options.getContainer();
-    if (!container) return;
+    if (!container) {
+      toastQueue.push({ message, title, type, actions });
+      return;
+    }
+    visibleToastCount++;
 
     const toast = document.createElement('div');
     toast.className = `toast ${type}`;

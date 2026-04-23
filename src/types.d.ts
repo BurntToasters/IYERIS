@@ -48,6 +48,10 @@ export interface SavedSearch {
   query: string;
   isGlobal: boolean;
   isRegex: boolean;
+  createdAt?: string;
+  lastUsedAt?: string;
+  useCount?: number;
+  scopePath?: string;
   filters?: {
     fileType?: string;
     minSize?: number;
@@ -254,7 +258,16 @@ export interface FolderSizeResult {
 export interface ChecksumResult {
   md5?: string;
   sha256?: string;
+  sha512?: string;
+  blake3?: string;
+  crc32?: string;
   error?: string;
+}
+
+export interface DuplicateGroup {
+  size: number;
+  hash: string;
+  paths: string[];
 }
 
 export interface IpcSuccess {
@@ -344,6 +357,8 @@ export type IndexStatusResponse = IpcResult<{ status: IndexStatus }>;
 export type FolderSizeResponse = IpcResult<{ result: FolderSizeResult }>;
 
 export type ChecksumResponse = IpcResult<{ result: ChecksumResult }>;
+
+export type DuplicateScanResponse = IpcResult<{ groups: DuplicateGroup[] }>;
 
 export type ThumbnailCacheResponse = IpcResult<{ dataUrl: string }>;
 
@@ -657,6 +672,13 @@ export interface TauriAPI {
   getGitStatus: (dirPath: string, includeUntracked?: boolean) => Promise<GitStatusResponse>;
   getGitBranch: (dirPath: string) => Promise<GitBranchResponse>;
   listArchiveContents: (archivePath: string) => Promise<ArchiveListResponse>;
+  getEmbeddedOfficeThumbnail: (filePath: string, maxSize?: number) => Promise<FileDataUrlResponse>;
+
+  findDuplicateFiles: (
+    dirPath: string,
+    minSize?: number,
+    includeHidden?: boolean
+  ) => Promise<DuplicateScanResponse>;
 
   getCachedThumbnail: (filePath: string) => Promise<ThumbnailCacheResponse>;
   saveCachedThumbnail: (filePath: string, dataUrl: string) => Promise<ThumbnailSaveResponse>;

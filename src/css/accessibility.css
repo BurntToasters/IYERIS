@@ -103,6 +103,12 @@ body.reduce-transparency .toolbar {
   -webkit-backdrop-filter: none !important;
 }
 
+body.reduce-transparency .sidebar {
+  background: var(--bg-secondary) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -128,4 +134,74 @@ body.reduce-motion .toggle-slider::before {
 body.reduce-motion .glass-panel {
   backdrop-filter: none;
   background: var(--bg-secondary);
+}
+
+@media (prefers-contrast: more) {
+  :root {
+    --panel-border: var(--text-secondary);
+    --focus-ring: 0 0 0 3px var(--accent-color);
+    --focus-ring-strong: 0 0 0 4px var(--accent-color);
+  }
+
+  .file-item:hover,
+  .nav-item:hover,
+  .context-menu-item:hover {
+    outline: 1px solid var(--text-secondary);
+  }
+}
+
+@media (forced-colors: active) {
+  :root {
+    --accent-color: Highlight;
+    --text-primary: CanvasText;
+    --text-secondary: CanvasText;
+    --bg-primary: Canvas;
+    --surface-0: Canvas;
+    --surface-1: Canvas;
+    --panel-border: CanvasText;
+  }
+
+  .file-item:focus-visible,
+  .nav-item:focus-visible,
+  .context-menu-item:focus-visible {
+    outline: 2px solid Highlight;
+  }
+
+  button,
+  input,
+  select {
+    border: 1px solid CanvasText;
+  }
+
+  .sidebar,
+  .toolbar,
+  .modal,
+  .context-menu,
+  .toast,
+  .dropdown-menu {
+    background: Canvas;
+    color: CanvasText;
+    border-color: CanvasText;
+  }
+
+  .file-item.selected {
+    background: Highlight;
+    color: HighlightText;
+  }
+
+  .toggle-slider {
+    border: 1px solid CanvasText;
+  }
+
+  .toggle-slider::before {
+    background: CanvasText;
+  }
+
+  input:checked + .toggle-slider {
+    background: Highlight;
+  }
+
+  input:checked + .toggle-slider::before {
+    background: HighlightText;
+  }
 }

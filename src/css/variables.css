@@ -187,10 +187,10 @@
   --z-modal-stacked: 3000;
   --z-tour: 3200;
   --z-command-palette: 5000;
-  --z-progress: 9000;
-  --z-toast: 10000;
-  --z-toast-above: 10001;
-  --z-tooltip: 99999;
+  --z-progress: 6000;
+  --z-toast: 7000;
+  --z-toast-above: 7001;
+  --z-tooltip: 8000;
 }
 
 body.platform-darwin {

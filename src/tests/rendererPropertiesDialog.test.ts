@@ -78,7 +78,13 @@ describe('rendererPropertiesDialog', () => {
       onFolderSizeProgress: vi.fn(() => vi.fn()),
       calculateChecksum: vi.fn().mockResolvedValue({
         success: true,
-        result: { md5: 'abc123def456', sha256: 'deadbeef0123456789abcdef' },
+        result: {
+          md5: 'abc123def456',
+          sha256: 'deadbeef0123456789abcdef',
+          sha512: 'sha512value',
+          blake3: 'blake3value',
+          crc32: 'crc32value',
+        },
       }),
       cancelChecksumCalculation: vi.fn().mockResolvedValue(undefined),
       onChecksumProgress: vi.fn(() => vi.fn()),
@@ -145,8 +151,31 @@ describe('rendererPropertiesDialog', () => {
       expect(document.getElementById('checksum-sha256-value')!.textContent).toBe(
         'deadbeef0123456789abcdef'
       );
+      expect(document.getElementById('checksum-sha512-value')!.textContent).toBe('sha512value');
+      expect(document.getElementById('checksum-blake3-value')!.textContent).toBe('blake3value');
+      expect(document.getElementById('checksum-crc32-value')!.textContent).toBe('crc32value');
       expect(document.getElementById('checksum-md5-row')!.style.display).toBe('flex');
       expect(document.getElementById('checksum-sha256-row')!.style.display).toBe('flex');
+      expect(document.getElementById('checksum-sha512-row')!.style.display).toBe('flex');
+      expect(document.getElementById('checksum-blake3-row')!.style.display).toBe('flex');
+      expect(document.getElementById('checksum-crc32-row')!.style.display).toBe('flex');
+    });
+
+    it('requests all checksum algorithms', async () => {
+      const deps = makeDeps();
+      const ctrl = createPropertiesDialogController(deps);
+      ctrl.showPropertiesDialog(makeFileProps() as any);
+
+      document.getElementById('calculate-checksum-btn')!.click();
+      await vi.waitFor(() => {
+        expect(mockTauriAPI.calculateChecksum).toHaveBeenCalled();
+      });
+
+      expect(mockTauriAPI.calculateChecksum).toHaveBeenCalledWith(
+        '/home/user/test.txt',
+        expect.stringMatching(/^checksum_/),
+        ['md5', 'sha256', 'sha512', 'blake3', 'crc32']
+      );
     });
 
     it('hides calculate button during checksum calculation', async () => {
@@ -262,6 +291,59 @@ describe('rendererPropertiesDialog', () => {
         'Copied',
         'success'
       );
+    });
+
+    it('copies SHA-512 to clipboard', async () => {
+      const deps = makeDeps();
+      const ctrl = createPropertiesDialogController(deps);
+      ctrl.showPropertiesDialog(makeFileProps() as any);
+
+      document.getElementById('calculate-checksum-btn')!.click();
+      await vi.waitFor(() => {
+        expect(document.getElementById('checksum-sha512-value')!.textContent).toBe('sha512value');
+      });
+
+      document.getElementById('copy-sha512-btn')!.click();
+      expect(window.tauriAPI.writeToSystemClipboard).toHaveBeenCalledWith('sha512value');
+      expect(deps.showToast).toHaveBeenCalledWith(
+        'SHA-512 copied to clipboard',
+        'Copied',
+        'success'
+      );
+    });
+
+    it('copies BLAKE3 to clipboard', async () => {
+      const deps = makeDeps();
+      const ctrl = createPropertiesDialogController(deps);
+      ctrl.showPropertiesDialog(makeFileProps() as any);
+
+      document.getElementById('calculate-checksum-btn')!.click();
+      await vi.waitFor(() => {
+        expect(document.getElementById('checksum-blake3-value')!.textContent).toBe('blake3value');
+      });
+
+      document.getElementById('copy-blake3-btn')!.click();
+      expect(window.tauriAPI.writeToSystemClipboard).toHaveBeenCalledWith('blake3value');
+      expect(deps.showToast).toHaveBeenCalledWith(
+        'BLAKE3 copied to clipboard',
+        'Copied',
+        'success'
+      );
+    });
+
+    it('copies CRC32 to clipboard', async () => {
+      const deps = makeDeps();
+      const ctrl = createPropertiesDialogController(deps);
+      ctrl.showPropertiesDialog(makeFileProps() as any);
+
+      document.getElementById('calculate-checksum-btn')!.click();
+      await vi.waitFor(() => {
+        expect(document.getElementById('checksum-crc32-value')!.textContent).toBe('crc32value');
+      });
+
+      document.getElementById('copy-crc32-btn')!.click();
+      expect(window.tauriAPI.writeToSystemClipboard).toHaveBeenCalledWith('crc32value');
+      expect(deps.showToast).toHaveBeenCalledWith('CRC32 copied to clipboard', 'Copied', 'success');
     });
   });
 

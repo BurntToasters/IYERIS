@@ -43,6 +43,7 @@ body::before {
     100vh - var(--titlebar-height) - var(--status-bar-height) - var(--container-edge-padding-top) -
       var(--container-edge-padding-bottom)
   );
+  min-height: 0;
   padding: var(--container-edge-padding-top) var(--container-edge-padding)
     var(--container-edge-padding-bottom);
   gap: var(--container-gap);
@@ -62,8 +63,8 @@ body::before {
 button:focus-visible,
 input:focus-visible,
 select:focus-visible {
-  outline: 2px solid var(--accent-color);
-  outline-offset: 2px;
+  box-shadow: var(--focus-ring);
+  outline: none;
 }
 
 .toolbar-button:focus-visible {

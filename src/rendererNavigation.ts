@@ -141,7 +141,7 @@ export function createNavigationController(deps: NavigationDeps) {
     addressInput.style.display = 'none';
     clearHtml(breadcrumbContainer);
 
-    const container = breadcrumbContainer;
+    const fragment = document.createDocumentFragment();
 
     segments.forEach((segment, index) => {
       const item = document.createElement('div');
@@ -167,15 +167,17 @@ export function createNavigationController(deps: NavigationDeps) {
       item.appendChild(label);
       item.appendChild(caret);
 
-      container.appendChild(item);
+      fragment.appendChild(item);
 
       if (index < segments.length - 1) {
         const separator = document.createElement('span');
         separator.className = 'breadcrumb-separator';
         separator.textContent = isWindows ? '›' : '/';
-        container.appendChild(separator);
+        fragment.appendChild(separator);
       }
     });
+
+    breadcrumbContainer.appendChild(fragment);
   }
 
   function toggleBreadcrumbMode(): void {

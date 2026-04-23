@@ -15,6 +15,8 @@ const mockCreatePdfViewer = vi.hoisted(() => vi.fn());
 const mockLoadPdfJs = vi.hoisted(() => vi.fn());
 const mockLoadHighlightJs = vi.hoisted(() => vi.fn());
 const mockGetLanguageForExt = vi.hoisted(() => vi.fn(() => null));
+const mockGetFileDataUrlWithCache = vi.hoisted(() => vi.fn().mockResolvedValue(null));
+const mockLoadMarked = vi.hoisted(() => vi.fn());
 
 vi.mock('../rendererQuicklook.js', () => ({
   createQuicklookController: mockCreateQuicklookController,
@@ -34,6 +36,7 @@ vi.mock('../shared.js', () => ({
   escapeHtml: vi.fn((s: string) => s.replace(/</g, '&lt;').replace(/>/g, '&gt;')),
   getErrorMessage: vi.fn((e: unknown) => (e instanceof Error ? e.message : String(e))),
   ignoreError: () => {},
+  sanitizeMarkdownHtml: vi.fn((html: string) => html),
 }));
 
 vi.mock('../rendererDom.js', () => ({
@@ -42,6 +45,7 @@ vi.mock('../rendererDom.js', () => ({
 
 vi.mock('../rendererUtils.js', () => ({
   encodeFileUrl: vi.fn((p: string) => `file://${p}`),
+  getFileDataUrlWithCache: mockGetFileDataUrlWithCache,
   twemojiImg: vi.fn((_code: string, _cls: string) => '<img class="twemoji" />'),
 }));
 
@@ -54,6 +58,10 @@ vi.mock('../fileTypes.js', () => ({
   AUDIO_EXTENSIONS: new Set(['mp3', 'wav', 'ogg', 'flac', 'aac']),
   PDF_EXTENSIONS: new Set(['pdf']),
   ARCHIVE_EXTENSIONS: new Set(['zip', 'tar', 'gz', '7z', 'rar']),
+}));
+
+vi.mock('../rendererMarkdown.js', () => ({
+  loadMarked: mockLoadMarked,
 }));
 
 import { createPreviewController } from '../rendererPreviews';
@@ -74,6 +82,7 @@ function createDeps() {
       return dot >= 0 ? name.slice(dot + 1).toLowerCase() : '';
     }),
     getFileIcon: vi.fn(() => '<span class="file-icon">📄</span>'),
+    openExternal: vi.fn(),
     openFileEntry: vi.fn(),
     onModalOpen: vi.fn(),
     onModalClose: vi.fn(),
@@ -108,6 +117,7 @@ let mockTauriAPI: any;
 describe('rendererPreviews', () => {
   beforeEach(() => {
     buildDOM();
+    mockGetFileDataUrlWithCache.mockResolvedValue(null);
     mockTauriAPI = {
       getItemProperties: vi.fn().mockResolvedValue({
         success: true,
@@ -149,6 +159,8 @@ describe('rendererPreviews', () => {
     mockLoadHighlightJs.mockReset();
     mockGetLanguageForExt.mockReset();
     mockGetLanguageForExt.mockReturnValue(null);
+    mockLoadMarked.mockReset();
+    mockLoadMarked.mockResolvedValue(null);
   });
 
   afterEach(() => {
@@ -1148,6 +1160,214 @@ describe('rendererPreviews', () => {
 
       ctrl.clearPreview();
       expect(mockViewer.destroy).toHaveBeenCalled();
+    });
+  });
+
+  describe('additional branch coverage', () => {
+    it('keeps panel hidden when viewport blocks preview panel', () => {
+      const previousMatchMedia = window.matchMedia;
+      Object.defineProperty(window, 'matchMedia', {
+        configurable: true,
+        value: vi.fn().mockReturnValue({ matches: true }),
+      });
+
+      const deps = createDeps();
+      const ctrl = createPreviewController(deps as any);
+      const panel = document.getElementById('preview-panel') as HTMLElement;
+      panel.style.display = 'none';
+
+      ctrl.togglePreviewPanel();
+
+      expect(ctrl.isPreviewVisible()).toBe(false);
+      expect(panel.style.display).toBe('none');
+
+      Object.defineProperty(window, 'matchMedia', {
+        configurable: true,
+        value: previousMatchMedia,
+      });
+    });
+
+    it('renders markdown output and opens only safe external links', async () => {
+      const deps = createDeps();
+      const ctrl = createPreviewController(deps as any);
+      ctrl.initPreviewUi();
+
+      mockLoadMarked.mockResolvedValue({
+        marked: {
+          parse: vi.fn(() => '<p><a href="https://example.com/docs">Docs</a></p>'),
+        },
+      });
+
+      const mdFile = makeFile({ name: 'README.md', path: '/home/user/README.md' });
+      ctrl.updatePreview(mdFile);
+
+      await vi.waitFor(() => {
+        const content = document.getElementById('preview-content')!;
+        expect(content.innerHTML).toContain('preview-markdown');
+      });
+
+      const safeLink = document.querySelector('.preview-markdown a') as HTMLAnchorElement;
+      safeLink.click();
+      expect(deps.openExternal).toHaveBeenCalledWith('https://example.com/docs');
+
+      const content = document.getElementById('preview-content')!;
+      content.innerHTML =
+        '<div class="preview-markdown"><a href="javascript:alert(1)">Bad</a></div>';
+      const badLink = content.querySelector('a') as HTMLAnchorElement;
+      badLink.click();
+      expect(deps.openExternal).toHaveBeenCalledTimes(1);
+    });
+
+    it('falls back for markdown parser failure and markdown-loader absence', async () => {
+      const deps = createDeps();
+      const ctrl = createPreviewController(deps as any);
+
+      mockLoadMarked.mockResolvedValue({
+        marked: {
+          parse: vi.fn(() => {
+            throw new Error('md parse error');
+          }),
+        },
+      });
+
+      const file = makeFile({ name: 'notes.md', path: '/home/user/notes.md' });
+      ctrl.updatePreview(file);
+      await vi.waitFor(() => {
+        const content = document.getElementById('preview-content')!;
+        expect(content.innerHTML).toContain('<pre class="preview-text">');
+      });
+
+      mockLoadMarked.mockResolvedValue(null);
+      ctrl.updatePreview(file);
+      await vi.waitFor(() => {
+        const content = document.getElementById('preview-content')!;
+        expect(content.innerHTML).toContain('<pre class="preview-text">');
+      });
+    });
+
+    it('applies image fallback data URL after image load error', async () => {
+      mockGetFileDataUrlWithCache.mockResolvedValue('data:image/png;base64,abc123');
+
+      const deps = createDeps();
+      const ctrl = createPreviewController(deps as any);
+      const file = makeFile({ name: 'fail.jpg', path: '/home/user/fail.jpg', size: 500 });
+      ctrl.updatePreview(file);
+
+      await vi.waitFor(() => {
+        expect(document.querySelector('.preview-image')).toBeTruthy();
+      });
+
+      const img = document.querySelector('.preview-image') as HTMLImageElement;
+      img.dispatchEvent(new Event('error'));
+
+      await vi.waitFor(() => {
+        expect(img.src).toContain('data:image/png;base64,abc123');
+      });
+    });
+
+    it('applies video and audio fallback data URLs after media errors', async () => {
+      mockGetFileDataUrlWithCache
+        .mockResolvedValueOnce('data:video/mp4;base64,vid')
+        .mockResolvedValueOnce('data:audio/mp3;base64,aud');
+
+      const deps = createDeps();
+      const ctrl = createPreviewController(deps as any);
+
+      const videoFile = makeFile({ name: 'err.mp4', path: '/home/user/err.mp4', size: 500 });
+      ctrl.updatePreview(videoFile);
+      await vi.waitFor(() => {
+        expect(document.querySelector('.preview-video')).toBeTruthy();
+      });
+      const videoEl = document.querySelector('.preview-video') as HTMLVideoElement;
+      (videoEl as any).load = vi.fn();
+      videoEl.dispatchEvent(new Event('error'));
+      await vi.waitFor(() => {
+        expect(videoEl.src).toContain('data:video/mp4;base64,vid');
+      });
+
+      const audioFile = makeFile({ name: 'err.mp3', path: '/home/user/err.mp3', size: 500 });
+      ctrl.updatePreview(audioFile);
+      await vi.waitFor(() => {
+        expect(document.querySelector('.preview-audio')).toBeTruthy();
+      });
+      const audioEl = document.querySelector('.preview-audio') as HTMLAudioElement;
+      (audioEl as any).load = vi.fn();
+      audioEl.dispatchEvent(new Event('error'));
+      await vi.waitFor(() => {
+        expect(audioEl.src).toContain('data:audio/mp3;base64,aud');
+      });
+    });
+
+    it('uses PDF data-url fallback viewer path when initial viewer creation fails', async () => {
+      mockTauriAPI.readFileContent.mockResolvedValue({
+        success: true,
+        content: '%PDF-1.4 fallback',
+      });
+
+      mockGetFileDataUrlWithCache.mockResolvedValue('data:application/pdf;base64,fallback');
+
+      const firstViewerFailure = Promise.reject(new Error('primary viewer failed'));
+      firstViewerFailure.catch(() => {});
+      mockCreatePdfViewer.mockReturnValueOnce(firstViewerFailure as any);
+
+      const fallbackViewerElement = document.createElement('div');
+      fallbackViewerElement.className = 'pdf-viewer-fallback';
+      const fallbackViewer = {
+        element: fallbackViewerElement,
+        destroy: vi.fn(),
+        goToPage: vi.fn(),
+        getCurrentPage: vi.fn(() => 1),
+        getPageCount: vi.fn(() => 1),
+      };
+      mockCreatePdfViewer.mockResolvedValueOnce(fallbackViewer);
+
+      const deps = createDeps();
+      const ctrl = createPreviewController(deps as any);
+      const file = makeFile({ name: 'retry.pdf', path: '/home/user/retry.pdf', size: 1000 });
+      ctrl.updatePreview(file);
+
+      await vi.waitFor(() => {
+        const content = document.getElementById('preview-content')!;
+        expect(content.innerHTML).toContain('preview-pdf-container');
+      });
+      expect(mockCreatePdfViewer).toHaveBeenCalledTimes(2);
+    });
+
+    it('hides panel on resize for compact viewports and cleans media on close', () => {
+      const previousMatchMedia = window.matchMedia;
+      Object.defineProperty(window, 'matchMedia', {
+        configurable: true,
+        value: vi.fn().mockReturnValue({ matches: true }),
+      });
+
+      const deps = createDeps();
+      const ctrl = createPreviewController(deps as any);
+      ctrl.initPreviewUi();
+
+      const panel = document.getElementById('preview-panel') as HTMLElement;
+      panel.style.display = 'flex';
+      window.dispatchEvent(new Event('resize'));
+      expect(panel.style.display).toBe('none');
+
+      ctrl.togglePreviewPanel();
+      const content = document.getElementById('preview-content') as HTMLElement;
+      content.innerHTML = '<video id="v" src="/a.mp4"></video><audio id="a" src="/b.mp3"></audio>';
+      const v = document.getElementById('v') as HTMLVideoElement;
+      const a = document.getElementById('a') as HTMLAudioElement;
+      (v as any).pause = vi.fn();
+      (a as any).pause = vi.fn();
+
+      document.getElementById('preview-close')!.click();
+
+      expect((v as any).pause).toHaveBeenCalled();
+      expect((a as any).pause).toHaveBeenCalled();
+      expect(v.getAttribute('src')).toBeNull();
+      expect(a.getAttribute('src')).toBeNull();
+
+      Object.defineProperty(window, 'matchMedia', {
+        configurable: true,
+        value: previousMatchMedia,
+      });
     });
   });
 });

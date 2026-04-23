@@ -87,7 +87,7 @@ export function createColumnViewController(deps: ColumnViewDeps) {
 
     cancelColumnOperations();
     if (isHomeViewPath(deps.getCurrentPath())) {
-      deps.columnView.innerHTML = '';
+      deps.columnView.replaceChildren();
       return;
     }
 
@@ -107,7 +107,7 @@ export function createColumnViewController(deps: ColumnViewDeps) {
     const savedScrollLeft = deps.columnView.scrollLeft;
 
     try {
-      deps.columnView.innerHTML = '';
+      deps.columnView.replaceChildren();
       columnPaths = [];
 
       if (!deps.getCurrentPath()) {

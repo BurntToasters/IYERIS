@@ -1,7 +1,7 @@
 import type { FileItem, Settings } from './types';
 import { devLog, escapeHtml, ignoreError, sanitizeMarkdownHtml } from './shared.js';
 import { getById } from './rendererDom.js';
-import { encodeFileUrl, twemojiImg } from './rendererUtils.js';
+import { encodeFileUrl, getFileDataUrlWithCache, twemojiImg } from './rendererUtils.js';
 import { createPdfViewer, type PdfViewerHandle } from './rendererPdfViewer.js';
 import { loadHighlightJs, getLanguageForExt } from './rendererHighlight.js';
 import {
@@ -141,8 +141,30 @@ export function createQuicklookController(deps: QuicklookDeps) {
           if (requestId !== quicklookRequestId || currentQuicklookFile?.path !== file.path) {
             return;
           }
-          if (quicklookContent)
-            quicklookContent.innerHTML = `<div class="preview-error">Failed to load image</div>`;
+          void (async () => {
+            if (img.dataset.fallbackAttempted === 'true') {
+              if (quicklookContent) {
+                quicklookContent.innerHTML = `<div class="preview-error">Failed to load image</div>`;
+              }
+              return;
+            }
+            img.dataset.fallbackAttempted = 'true';
+            const dataUrl = await getFileDataUrlWithCache(
+              file.path,
+              (deps.getCurrentSettings().maxPreviewSizeMB || 50) * 1024 * 1024
+            );
+            if (
+              !dataUrl ||
+              requestId !== quicklookRequestId ||
+              currentQuicklookFile?.path !== file.path
+            ) {
+              if (quicklookContent) {
+                quicklookContent.innerHTML = `<div class="preview-error">Failed to load image</div>`;
+              }
+              return;
+            }
+            img.src = dataUrl;
+          })();
         });
         wrapper.appendChild(img);
         quicklookContent.appendChild(wrapper);
@@ -150,7 +172,7 @@ export function createQuicklookController(deps: QuicklookDeps) {
       }
     } else if (VIDEO_EXTENSIONS.has(ext)) {
       const fileUrl = encodeFileUrl(file.path);
-      quicklookContent.innerHTML = '';
+      quicklookContent.replaceChildren();
       const video = document.createElement('video');
       video.controls = true;
       video.autoplay = deps.getCurrentSettings().autoPlayVideos || false;
@@ -160,11 +182,24 @@ export function createQuicklookController(deps: QuicklookDeps) {
       source.type = VIDEO_MIME_TYPES[ext] || 'video/*';
       video.appendChild(source);
       video.appendChild(document.createTextNode('Your browser does not support the video tag.'));
+      video.addEventListener('error', () => {
+        void (async () => {
+          if (video.dataset.fallbackAttempted === 'true') return;
+          video.dataset.fallbackAttempted = 'true';
+          const dataUrl = await getFileDataUrlWithCache(
+            file.path,
+            (deps.getCurrentSettings().maxPreviewSizeMB || 50) * 1024 * 1024
+          );
+          if (!dataUrl) return;
+          video.src = dataUrl;
+          video.load();
+        })();
+      });
       quicklookContent.appendChild(video);
       quicklookInfo.textContent = quickInfo(file);
     } else if (AUDIO_EXTENSIONS.has(ext)) {
       const fileUrl = encodeFileUrl(file.path);
-      quicklookContent.innerHTML = '';
+      quicklookContent.replaceChildren();
       const container = document.createElement('div');
       container.className = 'preview-audio-container';
       const icon = document.createElement('div');
@@ -179,6 +214,19 @@ export function createQuicklookController(deps: QuicklookDeps) {
       source.type = AUDIO_MIME_TYPES[ext] || 'audio/*';
       audio.appendChild(source);
       audio.appendChild(document.createTextNode('Your browser does not support the audio tag.'));
+      audio.addEventListener('error', () => {
+        void (async () => {
+          if (audio.dataset.fallbackAttempted === 'true') return;
+          audio.dataset.fallbackAttempted = 'true';
+          const dataUrl = await getFileDataUrlWithCache(
+            file.path,
+            (deps.getCurrentSettings().maxPreviewSizeMB || 50) * 1024 * 1024
+          );
+          if (!dataUrl) return;
+          audio.src = dataUrl;
+          audio.load();
+        })();
+      });
       container.appendChild(icon);
       container.appendChild(audio);
       quicklookContent.appendChild(container);
@@ -196,7 +244,7 @@ export function createQuicklookController(deps: QuicklookDeps) {
         return;
       }
 
-      const fileUrl = encodeFileUrl(file.path);
+      let fileUrl = encodeFileUrl(file.path);
       quicklookContent.innerHTML = '';
 
       try {
@@ -219,6 +267,39 @@ export function createQuicklookController(deps: QuicklookDeps) {
         container.appendChild(viewer.element);
         quicklookContent.appendChild(container);
       } catch {
+        const fallbackDataUrl = await getFileDataUrlWithCache(
+          file.path,
+          (deps.getCurrentSettings().maxPreviewSizeMB || 50) * 1024 * 1024
+        );
+        if (
+          fallbackDataUrl &&
+          fallbackDataUrl !== fileUrl &&
+          requestId === quicklookRequestId &&
+          currentQuicklookFile?.path === file.path
+        ) {
+          try {
+            fileUrl = fallbackDataUrl;
+            const viewer = await createPdfViewer(fileUrl, {
+              maxWidth: 900,
+              containerClass: 'quicklook-pdf',
+              showPageControls: true,
+              onError: (msg) => devLog('QuickLook', 'PDF error', msg),
+            });
+            if (requestId !== quicklookRequestId || currentQuicklookFile?.path !== file.path) {
+              viewer.destroy();
+              return;
+            }
+            (quicklookModal as PdfViewerElement).__pdfViewer = viewer;
+            const container = document.createElement('div');
+            container.className = 'preview-pdf-container quicklook-pdf';
+            container.appendChild(viewer.element);
+            quicklookContent.appendChild(container);
+            quicklookInfo.textContent = quickInfo(file, 'PDF \u2022 ');
+            return;
+          } catch {
+            // fall through to error render
+          }
+        }
         if (requestId !== quicklookRequestId || currentQuicklookFile?.path !== file.path) return;
         quicklookContent.innerHTML = `<div class="preview-error">Failed to render PDF</div>`;
       }
@@ -230,12 +311,17 @@ export function createQuicklookController(deps: QuicklookDeps) {
         const md = await loadMarked();
         if (requestId !== quicklookRequestId || currentQuicklookFile?.path !== file.path) return;
         if (md) {
-          const rendered = sanitizeMarkdownHtml(
-            md.marked.parse(result.content, {
-              async: false,
-              breaks: true,
-            }) as string
-          );
+          let rendered: string;
+          try {
+            rendered = sanitizeMarkdownHtml(
+              md.marked.parse(result.content, {
+                async: false,
+                breaks: true,
+              }) as string
+            );
+          } catch {
+            rendered = `<pre class="preview-text"><code>${escapeHtml(result.content)}</code></pre>`;
+          }
           quicklookContent.innerHTML = `
           ${result.isTruncated ? `<div class="preview-truncated">${twemojiImg(String.fromCodePoint(0x26a0), 'twemoji')} File truncated to first 100KB</div>` : ''}
           <div class="preview-markdown">${rendered}</div>

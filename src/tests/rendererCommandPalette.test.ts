@@ -32,6 +32,7 @@ function createDeps(overrides: Record<string, unknown> = {}) {
       goForward: vi.fn(),
       goUp: vi.fn(),
       goHome: vi.fn(),
+      findDuplicates: vi.fn(),
       showSettingsModal: vi.fn(),
       showShortcutsModal: vi.fn(),
       selectAll: vi.fn(),
@@ -441,6 +442,25 @@ describe('createCommandPaletteController', () => {
       const items = document.querySelectorAll('.command-palette-item');
       (items[0] as HTMLElement).click();
       expect(deps.actions.addNewTab).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('find-duplicates command', () => {
+    it('calls findDuplicates action when selected', () => {
+      const deps = createDeps();
+      const ctrl = createCommandPaletteController(deps);
+      ctrl.initCommandPalette();
+      ctrl.showCommandPalette();
+      vi.advanceTimersByTime(100);
+
+      const input = document.getElementById('command-palette-input') as HTMLInputElement;
+      input.value = 'Find Duplicates';
+      input.dispatchEvent(new Event('input'));
+
+      const items = document.querySelectorAll('.command-palette-item');
+      expect(items.length).toBeGreaterThanOrEqual(1);
+      (items[0] as HTMLElement).click();
+      expect(deps.actions.findDuplicates).toHaveBeenCalled();
     });
   });
 });

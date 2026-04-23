@@ -32,6 +32,11 @@
     opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+body.reduce-motion .toast,
+body.reduce-motion .toast.removing {
+  animation: none;
+}
+
 .toast:hover {
   transform: none;
   box-shadow: var(--shadow-lg);

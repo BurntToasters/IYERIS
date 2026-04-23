@@ -1,6 +1,6 @@
 [package]
 name = "iyeris"
-version = "2.0.9"
+version = "2.1.0"
 description = "A beautiful cross-platform file explorer."
 authors = ["BurntToasters <code@rosie.run>"]
 edition = "2021"
@@ -28,8 +28,10 @@ notify = { version = "7", default-features = false, features = ["macos_kqueue"] 
 walkdir = "2"
 sha2 = "0.10"
 md-5 = "0.10"
+blake3 = "1"
 crc32fast = "1"
 hex = "0.4"
+infer = "0.19"
 zip = "2"
 tar = "0.4"
 flate2 = "1"

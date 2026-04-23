@@ -218,13 +218,15 @@ export function createEventListenersController(config: EventListenersConfig) {
   }
 
   function initWindowControlListeners(): void {
-    const windowControls: Array<[string, () => void]> = [
+    const windowControls: Array<[string, () => Promise<void>]> = [
       ['minimize-btn', () => window.tauriAPI.minimizeWindow()],
       ['maximize-btn', () => window.tauriAPI.maximizeWindow()],
       ['close-btn', () => window.tauriAPI.closeWindow()],
     ];
     windowControls.forEach(([id, action]) => {
-      document.getElementById(id)?.addEventListener('click', action);
+      document.getElementById(id)?.addEventListener('click', () => {
+        action().catch((err: unknown) => console.error(`Window control "${id}" failed:`, err));
+      });
     });
   }
 
@@ -311,7 +313,7 @@ export function createEventListenersController(config: EventListenersConfig) {
     config.syncSidebarToggleState();
 
     const addressInput = config.getAddressInput();
-    addressInput?.addEventListener('keypress', (e) => {
+    addressInput?.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         const value = addressInput.value.trim();
         if (value === config.homeViewLabel) {
@@ -786,7 +788,8 @@ export function createEventListenersController(config: EventListenersConfig) {
     const fileGrid = config.getFileGrid();
     if (fileGrid) {
       fileGrid.addEventListener('click', (e) => {
-        if (e.target === fileGrid) config.clearSelection();
+        const target = e.target as HTMLElement;
+        if (target === fileGrid || !target.closest('.file-item')) config.clearSelection();
       });
     }
     initContextMenuListeners();

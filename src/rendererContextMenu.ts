@@ -475,6 +475,45 @@ export function createContextMenuController(deps: ContextMenuDeps) {
       hasSubmenu: boolean
     ): boolean => {
       if (!menu || menu.style.display !== 'block') return false;
+
+      // If a submenu is open, navigate within it for ArrowDown/Up/Enter
+      if (hasSubmenu) {
+        const activeSubmenu = menu.querySelector<HTMLElement>(
+          '.context-submenu[style*="display: block"]'
+        );
+        if (activeSubmenu) {
+          const submenuItems = Array.from(
+            activeSubmenu.querySelectorAll<HTMLElement>('.context-menu-item')
+          ).filter((el) => el.style.display !== 'none' && el.offsetParent !== null);
+          if (submenuItems.length > 0) {
+            const focusedSubIdx = submenuItems.findIndex((el) => el.classList.contains('focused'));
+            if (e.key === 'ArrowDown') {
+              e.preventDefault();
+              const nextIdx = focusedSubIdx < submenuItems.length - 1 ? focusedSubIdx + 1 : 0;
+              submenuItems.forEach((el) => el.classList.remove('focused'));
+              submenuItems[nextIdx]!.classList.add('focused');
+              submenuItems[nextIdx]!.scrollIntoView({ block: 'nearest' });
+              submenuItems[nextIdx]!.focus({ preventScroll: true });
+              return true;
+            }
+            if (e.key === 'ArrowUp') {
+              e.preventDefault();
+              const nextIdx = focusedSubIdx > 0 ? focusedSubIdx - 1 : submenuItems.length - 1;
+              submenuItems.forEach((el) => el.classList.remove('focused'));
+              submenuItems[nextIdx]!.classList.add('focused');
+              submenuItems[nextIdx]!.scrollIntoView({ block: 'nearest' });
+              submenuItems[nextIdx]!.focus({ preventScroll: true });
+              return true;
+            }
+            if (e.key === 'Enter' && focusedSubIdx >= 0) {
+              e.preventDefault();
+              submenuItems[focusedSubIdx]!.click();
+              return true;
+            }
+          }
+        }
+      }
+
       if (e.key === 'ArrowDown') {
         e.preventDefault();
         setFocusIdx(navigateContextMenu(menu, 'down', getFocusIdx()));
@@ -579,7 +618,7 @@ export function createContextMenuController(deps: ContextMenuDeps) {
           return;
         }
 
-        panel.innerHTML = '';
+        panel.replaceChildren();
         for (const app of result.apps) {
           const btn = document.createElement('button');
           btn.className = 'context-menu-item';

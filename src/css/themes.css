@@ -31,8 +31,8 @@ body.theme-light {
   --glass-border: rgba(0, 0, 0, 0.08);
   --glass-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
   --text-primary: #1a1a1a;
-  --text-secondary: rgba(0, 0, 0, 0.75);
-  --text-tertiary: rgba(0, 0, 0, 0.65);
+  --text-secondary: rgba(0, 0, 0, 0.8);
+  --text-tertiary: rgba(0, 0, 0, 0.7);
   --text-on-accent: #ffffff;
   --accent-color: #0066b8;
   --accent-rgb: 0, 102, 184;

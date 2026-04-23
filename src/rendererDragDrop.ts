@@ -14,7 +14,7 @@ interface DragDropConfig {
     type: string,
     actions?: ToastAction[]
   ) => void;
-  showConfirm: (message: string, title: string, type: 'warning') => Promise<boolean>;
+  showConfirm?: (message: string, title: string, type: 'warning') => Promise<boolean>;
   getFileGrid: () => HTMLElement | null;
   getFileView: () => HTMLElement | null;
   getDropIndicator: () => HTMLElement | null;
@@ -30,6 +30,8 @@ interface DragDropConfig {
 export function createDragDropController(config: DragDropConfig) {
   let springLoadedTimeout: NodeJS.Timeout | null = null;
   let springLoadedFolder: HTMLElement | null = null;
+  let springLoadAnimTimer: NodeJS.Timeout | null = null;
+  let dropInProgress = false;
 
   function isAbsolutePath(value: string): boolean {
     return value.startsWith('/') || /^[A-Za-z]:[\\/]/.test(value) || value.startsWith('\\\\');
@@ -224,6 +226,10 @@ export function createDragDropController(config: DragDropConfig) {
         clearTimeout(springLoadedTimeout);
         springLoadedTimeout = null;
       }
+      if (springLoadAnimTimer) {
+        clearTimeout(springLoadAnimTimer);
+        springLoadAnimTimer = null;
+      }
       springLoadedFolder?.classList.remove('spring-loading');
       springLoadedFolder = target;
       springLoadedTimeout = setTimeout(() => {
@@ -234,10 +240,11 @@ export function createDragDropController(config: DragDropConfig) {
         springLoadedFolder = null;
         springLoadedTimeout = null;
       }, SPRING_LOAD_DELAY);
-      setTimeout(() => {
+      springLoadAnimTimer = setTimeout(() => {
         if (springLoadedFolder === target) {
           target.classList.add('spring-loading');
         }
+        springLoadAnimTimer = null;
       }, SPRING_LOAD_DELAY / 2);
     }
   }
@@ -247,6 +254,10 @@ export function createDragDropController(config: DragDropConfig) {
       if (springLoadedTimeout) {
         clearTimeout(springLoadedTimeout);
         springLoadedTimeout = null;
+      }
+      if (springLoadAnimTimer) {
+        clearTimeout(springLoadAnimTimer);
+        springLoadAnimTimer = null;
       }
       springLoadedFolder?.classList.remove('spring-loading');
       springLoadedFolder = null;
@@ -281,6 +292,8 @@ export function createDragDropController(config: DragDropConfig) {
     destPath: string,
     operation: 'copy' | 'move'
   ): Promise<void> {
+    if (dropInProgress) return;
+    dropInProgress = true;
     devLog('DragDrop', `handleDrop: ${operation} ${sourcePaths.length} item(s) to ${destPath}`);
     const showToast = config.getShowToast();
     try {
@@ -296,11 +309,13 @@ export function createDragDropController(config: DragDropConfig) {
 
       if (!result.success) {
         if (isPermissionDeniedError(result.error)) {
-          const confirmed = await config.showConfirm(
-            'This operation requires administrator privileges. You will be prompted to authorize.',
-            'Elevated Permissions Required',
-            'warning'
-          );
+          const confirmed = config.showConfirm
+            ? await config.showConfirm(
+                'This operation requires administrator privileges. You will be prompted to authorize.',
+                'Elevated Permissions Required',
+                'warning'
+              )
+            : false;
           if (confirmed) {
             const elevResult =
               operation === 'copy'
@@ -355,6 +370,8 @@ export function createDragDropController(config: DragDropConfig) {
           onClick: () => void handleDrop(sourcePaths, destPath, operation),
         },
       ]);
+    } finally {
+      dropInProgress = false;
     }
   }
 

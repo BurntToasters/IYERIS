@@ -1,13 +1,31 @@
 use std::process::Command;
 
+/// Escape a string for safe embedding in a PowerShell single-quoted literal.
+/// PowerShell single-quoted strings only interpret '' as an escaped single quote.
+/// We also reject characters that could break out of the quoting context.
 #[cfg(target_os = "windows")]
 fn ps_escape(s: &str) -> String {
+    if s.contains('\0') || s.contains('\n') || s.contains('\r') {
+        log::warn!("[Elevated] ps_escape: path contains null/newline characters");
+    }
     s.replace('\'', "''")
+        .replace('\0', "")
+        .replace('\n', "")
+        .replace('\r', "")
 }
 
+/// Escape a string for safe embedding in a POSIX shell single-quoted context.
+/// The only character that needs escaping in single quotes is the single quote itself.
+/// We also strip null bytes and newlines to prevent argument injection.
 #[cfg(unix)]
 fn shell_escape(s: &str) -> String {
+    if s.contains('\0') || s.contains('\n') || s.contains('\r') {
+        log::warn!("[Elevated] shell_escape: path contains null/newline characters");
+    }
     s.replace('\'', "'\\''")
+        .replace('\0', "")
+        .replace('\n', "")
+        .replace('\r', "")
 }
 
 #[cfg(any(target_os = "windows", target_os = "linux"))]
@@ -149,18 +167,25 @@ async fn run_elevated_file_op(op: &str, source: &str, dest: Option<&str>) -> Res
     let op = op.to_string();
 
     tokio::task::spawn_blocking(move || {
+        let dest_str = match op.as_str() {
+            "copy" | "move" => {
+                Some(dest.as_deref().ok_or_else(|| format!("Destination required for {}", op))?)
+            }
+            _ => None,
+        };
+
         #[cfg(target_os = "windows")]
         {
             let script = match op.as_str() {
                 "copy" => format!(
                     "Copy-Item -LiteralPath '{}' -Destination '{}' -Recurse -Force",
                     ps_escape(&source),
-                    ps_escape(dest.as_deref().unwrap_or(""))
+                    ps_escape(dest_str.unwrap_or_default())
                 ),
                 "move" => format!(
                     "Move-Item -LiteralPath '{}' -Destination '{}' -Force",
                     ps_escape(&source),
-                    ps_escape(dest.as_deref().unwrap_or(""))
+                    ps_escape(dest_str.unwrap_or_default())
                 ),
                 "delete" => format!(
                     "Remove-Item -LiteralPath '{}' -Recurse -Force",
@@ -199,7 +224,7 @@ async fn run_elevated_file_op(op: &str, source: &str, dest: Option<&str>) -> Res
         #[cfg(target_os = "macos")]
         {
             let src = shell_escape(&source);
-            let dst = shell_escape(dest.as_deref().unwrap_or(""));
+            let dst = shell_escape(dest_str.unwrap_or_default());
             let cmd = match op.as_str() {
                 "copy" => format!("cp -R '{}' '{}'", src, dst),
                 "move" => format!("mv '{}' '{}'", src, dst),
@@ -227,8 +252,8 @@ async fn run_elevated_file_op(op: &str, source: &str, dest: Option<&str>) -> Res
         #[cfg(target_os = "linux")]
         {
             let (cmd, args) = match op.as_str() {
-                "copy" => ("cp", vec!["-r", &source, dest.as_deref().unwrap_or("")]),
-                "move" => ("mv", vec![&source as &str, dest.as_deref().unwrap_or("")]),
+                "copy" => ("cp", vec!["-r", &source, dest_str.unwrap_or_default()]),
+                "move" => ("mv", vec![&source as &str, dest_str.unwrap_or_default()]),
                 "delete" => ("rm", vec!["-rf", &source]),
                 _ => return Err(format!("Unknown operation: {}", op)),
             };

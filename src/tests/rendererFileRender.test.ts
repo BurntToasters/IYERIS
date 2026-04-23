@@ -250,6 +250,17 @@ describe('createFileRenderController', () => {
       expect(el.dataset.thumbnailType).toBe('video');
     });
 
+    it('sets thumbnail attributes for office files', () => {
+      const config = createMockConfig();
+      const ctrl = createFileRenderController(config);
+      const item = makeItem({ name: 'document.docx', path: '/document.docx' });
+
+      const el = ctrl.createFileItem(item);
+
+      expect(el.classList.contains('has-thumbnail')).toBe(true);
+      expect(el.dataset.thumbnailType).toBe('office');
+    });
+
     it('does not set thumbnail for non-media files', () => {
       const config = createMockConfig();
       const ctrl = createFileRenderController(config);

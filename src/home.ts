@@ -119,7 +119,11 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
   let tempHomeSettings: HomeSettings = createDefaultHomeSettings();
   let homeSettingsHasUnsavedChanges = false;
   const driveUsageCache = new Map<string, { timestamp: number; total: number; free: number }>();
+  const driveUsageInFlight = new Map<string, Promise<{ total: number; free: number } | null>>();
+  let homeDrivesRenderToken = 0;
   let draggedSectionId: string | null = null;
+  let homeDelegatedListenersBound = false;
+  let homeSettingsListenersCleanup: (() => void) | null = null;
 
   function normalizeOrderedList<T>(
     raw: T[],
@@ -281,6 +285,9 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
   }
 
   function setupHomeDelegatedListeners(): void {
+    if (homeDelegatedListenersBound) return;
+    homeDelegatedListenersBound = true;
+
     const handleClick = (container: HTMLElement | null, handler: (target: HTMLElement) => void) => {
       if (!container) return;
       container.addEventListener('click', (e) => {
@@ -358,7 +365,7 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
 
   function renderHomeQuickAccess(): void {
     if (!homeQuickAccess) return;
-    homeQuickAccess.innerHTML = '';
+    homeQuickAccess.replaceChildren();
 
     if (!currentHomeSettings.showQuickAccess) return;
 
@@ -452,7 +459,7 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
 
   function renderHomeRecents(): void {
     if (!homeRecents) return;
-    homeRecents.innerHTML = '';
+    homeRecents.replaceChildren();
 
     if (!currentHomeSettings.showRecents) return;
 
@@ -497,7 +504,7 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
 
   function renderHomeBookmarks(): void {
     if (!homeBookmarks) return;
-    homeBookmarks.innerHTML = '';
+    homeBookmarks.replaceChildren();
 
     if (!currentHomeSettings.showBookmarks) return;
 
@@ -529,31 +536,52 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
       return { total: cached.total, free: cached.free };
     }
 
-    try {
-      const result = await window.tauriAPI.getDiskSpace(drive);
-      if (!result.success || typeof result.total !== 'number' || typeof result.free !== 'number') {
-        return null;
-      }
-
-      driveUsageCache.set(drive, { total: result.total, free: result.free, timestamp: Date.now() });
-      return { total: result.total, free: result.free };
-    } catch {
-      return null;
+    const pending = driveUsageInFlight.get(drive);
+    if (pending) {
+      return pending;
     }
+
+    const request = (async () => {
+      try {
+        const result = await window.tauriAPI.getDiskSpace(drive);
+        if (
+          !result.success ||
+          typeof result.total !== 'number' ||
+          typeof result.free !== 'number'
+        ) {
+          return null;
+        }
+
+        driveUsageCache.set(drive, {
+          total: result.total,
+          free: result.free,
+          timestamp: Date.now(),
+        });
+        return { total: result.total, free: result.free };
+      } catch {
+        return null;
+      } finally {
+        driveUsageInFlight.delete(drive);
+      }
+    })();
+
+    driveUsageInFlight.set(drive, request);
+    return request;
   }
 
   async function renderHomeDrives(drives?: DriveInfo[]): Promise<void> {
+    const renderToken = ++homeDrivesRenderToken;
     if (!homeDrives) return;
 
     if (!currentHomeSettings.showDrives) {
-      homeDrives.innerHTML = '';
+      homeDrives.replaceChildren();
       return;
     }
 
     if (!drives) {
       homeDrives.innerHTML = '<div class="home-empty">Loading drives...</div>';
     } else {
-      homeDrives.innerHTML = '';
+      homeDrives.replaceChildren();
     }
 
     let driveList: DriveInfo[] = drives || [];
@@ -566,12 +594,16 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
       }
     }
 
+    if (renderToken !== homeDrivesRenderToken || !homeDrives) {
+      return;
+    }
+
     if (!driveList || driveList.length === 0) {
       homeDrives.innerHTML = '<div class="home-empty">No drives found</div>';
       return;
     }
 
-    homeDrives.innerHTML = '';
+    homeDrives.replaceChildren();
 
     driveList.forEach((drive) => {
       const driveLabel = drive.label || drive.path;
@@ -610,6 +642,9 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
       void (async () => {
         try {
           const usage = await getDriveUsage(drive.path);
+          if (renderToken !== homeDrivesRenderToken || !homeDrives.contains(card)) {
+            return;
+          }
           if (!usage || !meta || !bar) {
             if (meta) meta.textContent = 'Usage unavailable';
             if (bar) bar.style.width = '0%';
@@ -621,6 +656,9 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
           bar.style.width = `${Math.min(100, Math.max(4, percent))}%`;
         } catch (e) {
           ignoreError(e);
+          if (renderToken !== homeDrivesRenderToken || !homeDrives.contains(card)) {
+            return;
+          }
           if (meta) meta.textContent = 'Usage unavailable';
           if (bar) bar.style.width = '0%';
         }
@@ -649,7 +687,7 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
 
   function renderSectionOrderList(): void {
     if (!homeSectionOrder) return;
-    homeSectionOrder.innerHTML = '';
+    homeSectionOrder.replaceChildren();
 
     const ordered = tempHomeSettings.sectionOrder || [];
     ordered.forEach((sectionId) => {
@@ -722,7 +760,7 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
     rerender: () => void
   ): void {
     if (!container) return;
-    container.innerHTML = '';
+    container.replaceChildren();
 
     const hiddenSet = new Set(tempHomeSettings[hiddenKey]);
     const itemsByAction = new Map(HOME_QUICK_ACCESS_ITEMS.map((item) => [item.action, item]));
@@ -853,23 +891,41 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
   }
 
   function setupHomeSettingsListeners(): () => void {
-    setupHomeDelegatedListeners();
-    homeCustomizeBtn?.addEventListener('click', () => openHomeSettingsModal());
-    homeSettingsClose?.addEventListener('click', () => void closeHomeSettingsModal());
-    homeSettingsCancel?.addEventListener('click', () => void closeHomeSettingsModal());
-    homeSettingsSave?.addEventListener('click', () => void saveHomeSettings());
+    if (homeSettingsListenersCleanup) {
+      return homeSettingsListenersCleanup;
+    }
 
-    homeSettingsReset?.addEventListener('click', () => {
+    setupHomeDelegatedListeners();
+
+    const onCustomizeClick = () => openHomeSettingsModal();
+    const onCloseClick = () => {
+      void closeHomeSettingsModal();
+    };
+    const onCancelClick = () => {
+      void closeHomeSettingsModal();
+    };
+    const onSaveClick = () => {
+      void saveHomeSettings();
+    };
+    const onResetClick = () => {
       tempHomeSettings = createDefaultHomeSettings();
       homeSettingsHasUnsavedChanges = true;
       syncHomeSettingsModal();
-    });
+    };
 
-    homeSettingsModal?.addEventListener('click', (e) => {
+    homeCustomizeBtn?.addEventListener('click', onCustomizeClick);
+    homeSettingsClose?.addEventListener('click', onCloseClick);
+    homeSettingsCancel?.addEventListener('click', onCancelClick);
+    homeSettingsSave?.addEventListener('click', onSaveClick);
+    homeSettingsReset?.addEventListener('click', onResetClick);
+
+    const onModalBackdropClick = (e: MouseEvent) => {
       if (e.target === homeSettingsModal) {
-        closeHomeSettingsModal();
+        void closeHomeSettingsModal();
       }
-    });
+    };
+
+    homeSettingsModal?.addEventListener('click', onModalBackdropClick);
 
     const toggleBindings: [HTMLInputElement | null, keyof HomeSettings][] = [
       [homeToggleQuickAccess, 'showQuickAccess'],
@@ -879,11 +935,16 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
       [homeToggleDiskUsage, 'showDiskUsage'],
       [homeToggleCompact, 'compactCards'],
     ];
+
+    const toggleCleanupPairs: Array<{ el: HTMLInputElement; handler: () => void }> = [];
     for (const [el, key] of toggleBindings) {
-      el?.addEventListener('change', () => {
+      if (!el) continue;
+      const onToggleChange = () => {
         assignKey(tempHomeSettings, key, el.checked as HomeSettings[keyof HomeSettings]);
         homeSettingsHasUnsavedChanges = true;
-      });
+      };
+      toggleCleanupPairs.push({ el, handler: onToggleChange });
+      el.addEventListener('change', onToggleChange);
     }
 
     const cleanupHomeSettingsListener = window.tauriAPI.onHomeSettingsChanged((settings) => {
@@ -896,7 +957,25 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
         syncHomeSettingsModal();
       }
     });
-    return cleanupHomeSettingsListener;
+
+    const cleanup = () => {
+      homeCustomizeBtn?.removeEventListener('click', onCustomizeClick);
+      homeSettingsClose?.removeEventListener('click', onCloseClick);
+      homeSettingsCancel?.removeEventListener('click', onCancelClick);
+      homeSettingsSave?.removeEventListener('click', onSaveClick);
+      homeSettingsReset?.removeEventListener('click', onResetClick);
+      homeSettingsModal?.removeEventListener('click', onModalBackdropClick);
+      for (const pair of toggleCleanupPairs) {
+        pair.el.removeEventListener('change', pair.handler);
+      }
+      cleanupHomeSettingsListener();
+      if (homeSettingsListenersCleanup === cleanup) {
+        homeSettingsListenersCleanup = null;
+      }
+    };
+
+    homeSettingsListenersCleanup = cleanup;
+    return cleanup;
   }
 
   return {

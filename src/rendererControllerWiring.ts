@@ -31,6 +31,7 @@ import { createSupportUiController } from './rendererSupportUi.js';
 import { createExternalLinksController } from './rendererExternalLinks.js';
 import { createPropertiesDialogController } from './rendererPropertiesDialog.js';
 import { createUpdateActionsController } from './rendererUpdateActions.js';
+import { createDuplicateFinderController } from './rendererDuplicateFinder.js';
 import { createColumnViewController } from './rendererColumnView.js';
 import { createCompressExtractController } from './rendererCompressExtract.js';
 import { createBookmarksController } from './rendererBookmarks.js';
@@ -919,6 +920,18 @@ export function wireControllers(deps: WiringDeps) {
     deps.late.navigateTo(parentPath);
   }
 
+  const duplicateFinderController = createDuplicateFinderController({
+    getCurrentPath: () => deps.getCurrentPath(),
+    isHomeViewPath,
+    formatFileSize,
+    showToast,
+    showConfirm,
+    onModalOpen: activateModal,
+    onModalClose: deactivateModal,
+    refresh: (reason?: string) => deps.late.refresh(reason),
+    navigateTo: (pathValue) => deps.late.navigateTo(pathValue),
+  });
+
   const commandPaletteController = createCommandPaletteController({
     activateModal,
     deactivateModal,
@@ -950,6 +963,9 @@ export function wireControllers(deps: WiringDeps) {
       },
       goHome: () => {
         deps.late.navigateTo(HOME_VIEW_PATH);
+      },
+      findDuplicates: () => {
+        void duplicateFinderController.openDuplicateFinderModal();
       },
       showSettingsModal: () => {
         showSettingsModal();
