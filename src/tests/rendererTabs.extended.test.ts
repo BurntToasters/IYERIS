@@ -975,6 +975,47 @@ describe('rendererTabs extended', () => {
       });
     });
 
+    it('Close Other Tabs restores cached keep-tab view and scroll', async () => {
+      vi.useFakeTimers();
+      try {
+        const cancelDirectoryRequest = vi.fn();
+        const setFileViewScrollTop = vi.fn();
+        const deps = createMockDeps({
+          cancelDirectoryRequest,
+          setFileViewScrollTop,
+        });
+        seedTabs(deps);
+        const ctrl = createTabsController(deps);
+        ctrl.initializeTabs();
+
+        const keepTab = deps._getTabs().find((t) => t.id === 'tab-2')!;
+        keepTab.cachedFiles = [{ name: 'cached-two.txt' } as any];
+        keepTab.scrollPosition = 77;
+
+        const tab = document.querySelector<HTMLElement>('.tab-item[data-tab-id="tab-2"]')!;
+        tab.dispatchEvent(
+          new MouseEvent('contextmenu', {
+            bubbles: true,
+            cancelable: true,
+            clientX: 1,
+            clientY: 1,
+          })
+        );
+
+        const menuItems = Array.from(
+          document.querySelectorAll<HTMLElement>('.tab-context-menu-item')
+        );
+        menuItems[1]!.click();
+
+        expect(cancelDirectoryRequest).toHaveBeenCalled();
+        expect(deps.renderFiles).toHaveBeenCalledWith(keepTab.cachedFiles);
+        await vi.advanceTimersByTimeAsync(60);
+        expect(setFileViewScrollTop).toHaveBeenCalledWith(77);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it('Close Tabs to the Right trims tabs and rehomes active tab when needed', async () => {
       const deps = createMockDeps();
       seedTabs(deps);
@@ -996,6 +1037,47 @@ describe('rendererTabs extended', () => {
       await vi.waitFor(() => {
         expect(deps.navigateTo).toHaveBeenCalledWith('/one', true);
       });
+    });
+
+    it('Close Tabs to the Right restores cached last tab and scroll', async () => {
+      vi.useFakeTimers();
+      try {
+        const cancelDirectoryRequest = vi.fn();
+        const setFileViewScrollTop = vi.fn();
+        const deps = createMockDeps({
+          cancelDirectoryRequest,
+          setFileViewScrollTop,
+        });
+        seedTabs(deps);
+        const ctrl = createTabsController(deps);
+        ctrl.initializeTabs();
+
+        const lastTab = deps._getTabs().find((t) => t.id === 'tab-1')!;
+        lastTab.cachedFiles = [{ name: 'cached-one.txt' } as any];
+        lastTab.scrollPosition = 42;
+
+        const tab = document.querySelector<HTMLElement>('.tab-item[data-tab-id="tab-1"]')!;
+        tab.dispatchEvent(
+          new MouseEvent('contextmenu', {
+            bubbles: true,
+            cancelable: true,
+            clientX: 1,
+            clientY: 1,
+          })
+        );
+
+        const menuItems = Array.from(
+          document.querySelectorAll<HTMLElement>('.tab-context-menu-item')
+        );
+        menuItems[2]!.click();
+
+        expect(cancelDirectoryRequest).toHaveBeenCalled();
+        expect(deps.renderFiles).toHaveBeenCalledWith(lastTab.cachedFiles);
+        await vi.advanceTimersByTimeAsync(60);
+        expect(setFileViewScrollTop).toHaveBeenCalledWith(42);
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it('Duplicate Tab creates a new tab for the same path', async () => {
@@ -1039,6 +1121,102 @@ describe('rendererTabs extended', () => {
       menu.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
       menu.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
 
+      expect(document.querySelector('.tab-context-menu')).toBeNull();
+    });
+
+    it('clamps context menu position when it would overflow viewport bounds', () => {
+      const deps = createMockDeps();
+      seedTabs(deps);
+      const ctrl = createTabsController(deps);
+      ctrl.initializeTabs();
+
+      Object.defineProperty(window, 'innerWidth', {
+        value: 300,
+        configurable: true,
+      });
+      Object.defineProperty(window, 'innerHeight', {
+        value: 200,
+        configurable: true,
+      });
+
+      const rectSpy = vi
+        .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+        .mockImplementation(function (this: HTMLElement) {
+          if (this.classList.contains('tab-context-menu')) {
+            return {
+              x: 280,
+              y: 190,
+              left: 280,
+              top: 190,
+              width: 120,
+              height: 90,
+              right: 400,
+              bottom: 280,
+              toJSON: () => ({}),
+            } as DOMRect;
+          }
+          return {
+            x: 0,
+            y: 0,
+            left: 0,
+            top: 0,
+            width: 0,
+            height: 0,
+            right: 0,
+            bottom: 0,
+            toJSON: () => ({}),
+          } as DOMRect;
+        });
+
+      const tab = document.querySelector<HTMLElement>('.tab-item[data-tab-id="tab-2"]')!;
+      tab.dispatchEvent(
+        new MouseEvent('contextmenu', {
+          bubbles: true,
+          cancelable: true,
+          clientX: 280,
+          clientY: 190,
+        })
+      );
+
+      const menu = document.querySelector('.tab-context-menu') as HTMLElement;
+      expect(menu.style.left).toBe('176px');
+      expect(menu.style.top).toBe('106px');
+      rectSpy.mockRestore();
+    });
+
+    it('activates focused context menu action on Enter key', () => {
+      const deps = createMockDeps();
+      seedTabs(deps);
+      const ctrl = createTabsController(deps);
+      ctrl.initializeTabs();
+
+      const tab = document.querySelector<HTMLElement>('.tab-item[data-tab-id="tab-2"]')!;
+      tab.dispatchEvent(
+        new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 10, clientY: 10 })
+      );
+
+      const menu = document.querySelector('.tab-context-menu') as HTMLElement;
+      menu.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+
+      expect(deps._getTabs().map((t) => t.id)).toEqual(['tab-1', 'tab-3']);
+      expect(document.querySelector('.tab-context-menu')).toBeNull();
+    });
+
+    it('activates focused context menu action on Space key', () => {
+      const deps = createMockDeps();
+      seedTabs(deps);
+      const ctrl = createTabsController(deps);
+      ctrl.initializeTabs();
+
+      const tab = document.querySelector<HTMLElement>('.tab-item[data-tab-id="tab-2"]')!;
+      tab.dispatchEvent(
+        new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 10, clientY: 10 })
+      );
+
+      const menu = document.querySelector('.tab-context-menu') as HTMLElement;
+      menu.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
+
+      expect(deps._getTabs().map((t) => t.id)).toEqual(['tab-1', 'tab-3']);
       expect(document.querySelector('.tab-context-menu')).toBeNull();
     });
   });

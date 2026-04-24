@@ -1,9 +1,11 @@
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
 import {
   isWindowsPath,
   normalizeWindowsPath,
   rendererPath,
   encodeFileUrl,
+  getFileDataUrlWithCache,
+  clearPreviewDataUrlCache,
   twemojiImg,
 } from '../rendererUtils';
 
@@ -15,6 +17,8 @@ beforeAll(() => {
     },
   };
 });
+
+let getFileDataUrlMock: ReturnType<typeof vi.fn>;
 
 describe('isWindowsPath', () => {
   it('recognises drive letter paths', () => {
@@ -166,6 +170,10 @@ describe('rendererPath.join', () => {
   it('preserves leading slash', () => {
     expect(rendererPath.join('/home', 'user')).toBe('/home/user');
   });
+
+  it('uses backslashes when first segment is a Windows path', () => {
+    expect(rendererPath.join('C:\\Users', 'alice', 'docs')).toBe('C:\\Users\\alice\\docs');
+  });
 });
 
 describe('encodeFileUrl', () => {
@@ -232,5 +240,68 @@ describe('twemojiImg', () => {
   it('generates correct src path', () => {
     const result = twemojiImg('⚠');
     expect(result).toContain('src="/twemoji/');
+  });
+});
+
+describe('getFileDataUrlWithCache', () => {
+  beforeEach(() => {
+    clearPreviewDataUrlCache();
+    getFileDataUrlMock = vi.fn(async (filePath: string) => ({
+      success: true,
+      dataUrl: `data:${filePath}`,
+    }));
+    (globalThis as any).window.tauriAPI = {
+      getFileDataUrl: getFileDataUrlMock,
+    };
+  });
+
+  it('returns cached value on second lookup', async () => {
+    const first = await getFileDataUrlWithCache('/a.txt');
+    const second = await getFileDataUrlWithCache('/a.txt');
+
+    expect(first).toBe('data:/a.txt');
+    expect(second).toBe('data:/a.txt');
+    expect(getFileDataUrlMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns null for unsuccessful responses', async () => {
+    getFileDataUrlMock.mockResolvedValueOnce({ success: false });
+    await expect(getFileDataUrlWithCache('/bad.txt')).resolves.toBeNull();
+  });
+
+  it('evicts oldest entry after cache limit is exceeded', async () => {
+    for (let i = 0; i < 65; i += 1) {
+      await getFileDataUrlWithCache(`/file-${i}.txt`);
+    }
+    expect(getFileDataUrlMock).toHaveBeenCalledTimes(65);
+
+    await getFileDataUrlWithCache('/file-0.txt');
+    expect(getFileDataUrlMock).toHaveBeenCalledTimes(66);
+  });
+
+  it('clears cache when requested', async () => {
+    await getFileDataUrlWithCache('/clear-me.txt');
+    clearPreviewDataUrlCache();
+    await getFileDataUrlWithCache('/clear-me.txt');
+
+    expect(getFileDataUrlMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('refreshes existing key when duplicate requests race', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    getFileDataUrlMock.mockImplementation(async () => {
+      await gate;
+      return { success: true, dataUrl: 'data:/race.txt' };
+    });
+
+    const p1 = getFileDataUrlWithCache('/race.txt');
+    const p2 = getFileDataUrlWithCache('/race.txt');
+    release();
+
+    await expect(Promise.all([p1, p2])).resolves.toEqual(['data:/race.txt', 'data:/race.txt']);
+    expect(getFileDataUrlMock).toHaveBeenCalledTimes(2);
   });
 });

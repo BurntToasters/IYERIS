@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "IYERIS",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "identifier": "run.rosie.iyeris",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -82,7 +82,7 @@
         "https://github.com/BurntToasters/IYERIS/releases/latest/download/latest-{{target}}-{{arch}}.json",
         "https://github.com/BurntToasters/IYERIS/releases/download/v{{current_version}}/latest-{{target}}-{{arch}}.json"
       ],
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDQ1NTNBOTc5QTJFMkI4OTAKUldTUXVPS2llYWxUUlExc3Jtb0krdVFtUnFXYTZMdVdoVWJ3VWxjT3pCZHUyMjByWHpyV3l5TVAK"
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEZDNzY0QzNGQTREMDVENjMKUldSalhkQ2tQMHgyL0Q1MzVEckJXU05jS0ZMa2lqOGdGZnoxTHpYL1J5Y2JhdFVwNzY1bmFreEIK"
     }
   }
 }

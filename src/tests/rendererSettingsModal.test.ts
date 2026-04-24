@@ -396,6 +396,48 @@ describe('rendererSettingsModal', () => {
   });
 
   describe('hideSettingsModal', () => {
+    it('does not close modal when settings are dirty and discard is cancelled', async () => {
+      const deps = makeDeps();
+      deps.isSettingsDirty.mockReturnValue(true);
+      deps.showConfirm.mockResolvedValue(false);
+
+      const ctrl = createSettingsModalController(deps as any);
+      await ctrl.showSettingsModal();
+      await ctrl.hideSettingsModal();
+
+      const modal = document.getElementById('settings-modal')!;
+      expect(deps.showConfirm).toHaveBeenCalledWith(
+        'You have unsaved changes. Are you sure you want to close without saving?',
+        'Unsaved Changes',
+        'warning'
+      );
+      expect(modal.style.display).toBe('flex');
+      expect(deps.deactivateModal).not.toHaveBeenCalled();
+      expect(deps.stopIndexStatusPolling).not.toHaveBeenCalled();
+      expect(deps.onSettingsModalHide).not.toHaveBeenCalled();
+    });
+
+    it('closes modal when settings are dirty and discard is confirmed', async () => {
+      const deps = makeDeps();
+      deps.isSettingsDirty.mockReturnValue(true);
+      deps.showConfirm.mockResolvedValue(true);
+
+      const ctrl = createSettingsModalController(deps as any);
+      await ctrl.showSettingsModal();
+      await ctrl.hideSettingsModal();
+
+      const modal = document.getElementById('settings-modal')!;
+      expect(deps.showConfirm).toHaveBeenCalledWith(
+        'You have unsaved changes. Are you sure you want to close without saving?',
+        'Unsaved Changes',
+        'warning'
+      );
+      expect(modal.style.display).toBe('none');
+      expect(deps.deactivateModal).toHaveBeenCalledWith(modal);
+      expect(deps.stopIndexStatusPolling).toHaveBeenCalled();
+      expect(deps.onSettingsModalHide).toHaveBeenCalled();
+    });
+
     it('hides the modal and deactivates it', async () => {
       const deps = makeDeps();
       const ctrl = createSettingsModalController(deps as any);

@@ -24,9 +24,10 @@ type UpdateActionsDeps = {
 
 const RELEASES_LATEST_URL = 'https://github.com/BurntToasters/IYERIS/releases/latest';
 const BETA_CHANNEL_NO_MANIFEST_HINT =
-  "This is most likely due to the latest STABLE release being fairly new and the next beta hasn't been released yet.";
+  'This is usually because the latest STABLE released was just pushed, meaning the next beta needs to be released for the beta json manifests to publish';
 const BETA_VERSION_REGEX = /-(beta|alpha|rc)/i;
-const NOT_FOUND_REGEX = /\b404\b|not\s+found/i;
+const NOT_FOUND_REGEX = /\b404\b|not\s+found/;
+const INVALID_RELEASE_JSON_FETCH_REGEX = /could\s+not\s+fetch\s+a\s+valid\s+release\s+json/;
 
 export function createUpdateActionsController(deps: UpdateActionsDeps) {
   let isDownloading = false;
@@ -122,7 +123,10 @@ export function createUpdateActionsController(deps: UpdateActionsDeps) {
       normalized.includes('-beta') ||
       normalized.includes('/beta') ||
       normalized.includes('\\beta');
-    return mentionsBetaTarget && NOT_FOUND_REGEX.test(normalized);
+    const likelyNotFoundManifest = NOT_FOUND_REGEX.test(normalized);
+    const failedToFetchReleaseJson = INVALID_RELEASE_JSON_FETCH_REGEX.test(normalized);
+    if (mentionsBetaTarget) return likelyNotFoundManifest || failedToFetchReleaseJson;
+    return failedToFetchReleaseJson;
   }
 
   async function shouldShowMissingBetaManifestHint(errorMessage: string): Promise<boolean> {

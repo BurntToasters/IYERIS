@@ -73,6 +73,8 @@ function setupSearchDOM() {
     </div>
     <button id="search-btn"></button>
     <button id="search-close"></button>
+    <button id="search-save-btn" disabled></button>
+    <button id="search-regex-toggle"></button>
     <button id="search-scope-toggle"><img src="" alt="" /></button>
     <button id="search-filter-toggle"></button>
     <div id="search-filters-panel" style="display:none">
@@ -890,6 +892,75 @@ describe('rendererSearch — extended2', () => {
     });
   });
 
+  describe('initListeners — search input keydown', () => {
+    it('hides history dropdown on Escape when dropdown is open', () => {
+      const deps = createDeps();
+      deps.settings.searchHistory = ['alpha'];
+      const ctrl = createSearchController(deps as any);
+      ctrl.initListeners();
+      ctrl.toggleSearch();
+      ctrl.showSearchHistoryDropdown();
+
+      const dropdown = document.getElementById('search-history-dropdown')!;
+      expect(dropdown.style.display).toBe('block');
+
+      const input = document.getElementById('search-input')!;
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+
+      expect(dropdown.style.display).toBe('none');
+    });
+
+    it('moves active dropdown item with ArrowDown and ArrowUp', () => {
+      const deps = createDeps();
+      deps.settings.searchHistory = ['alpha', 'beta'];
+      const ctrl = createSearchController(deps as any);
+      ctrl.initListeners();
+      ctrl.toggleSearch();
+      ctrl.showSearchHistoryDropdown();
+
+      const input = document.getElementById('search-input')!;
+      const dropdown = document.getElementById('search-history-dropdown')!;
+      const items = dropdown.querySelectorAll<HTMLElement>('.history-item');
+      expect(items).toHaveLength(2);
+      const scrollIntoViewMock = vi.fn();
+      items.forEach((item) => {
+        Object.defineProperty(item, 'scrollIntoView', {
+          value: scrollIntoViewMock,
+          configurable: true,
+        });
+      });
+
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+      expect(items[0]!.classList.contains('dropdown-active')).toBe(true);
+
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+      expect(items[1]!.classList.contains('dropdown-active')).toBe(true);
+
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
+      expect(items[0]!.classList.contains('dropdown-active')).toBe(true);
+    });
+
+    it('dispatches click on active dropdown item when Enter is pressed', () => {
+      const deps = createDeps();
+      deps.settings.searchHistory = ['alpha'];
+      const ctrl = createSearchController(deps as any);
+      ctrl.initListeners();
+      ctrl.toggleSearch();
+      ctrl.showSearchHistoryDropdown();
+
+      const input = document.getElementById('search-input')!;
+      const dropdown = document.getElementById('search-history-dropdown')!;
+      const firstItem = dropdown.querySelector<HTMLElement>('.history-item')!;
+      const clickSpy = vi.fn();
+      firstItem.addEventListener('click', clickSpy);
+      firstItem.classList.add('dropdown-active');
+
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+
+      expect(clickSpy).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('initListeners — search input event', () => {
     it('closes search when input becomes empty', () => {
       const deps = createDeps();
@@ -937,6 +1008,28 @@ describe('rendererSearch — extended2', () => {
 
       expect(mockSearchFiles).not.toHaveBeenCalled();
     });
+
+    it('syncs save button disabled state from trimmed query', () => {
+      const deps = createDeps();
+      const ctrl = createSearchController(deps as any);
+      ctrl.initListeners();
+      ctrl.toggleSearch();
+
+      const input = document.getElementById('search-input') as HTMLInputElement;
+      const saveBtn = document.getElementById('search-save-btn') as HTMLButtonElement;
+
+      expect(saveBtn.disabled).toBe(true);
+
+      input.value = '  keep  ';
+      input.dispatchEvent(new Event('input'));
+      expect(saveBtn.disabled).toBe(false);
+
+      input.value = '   ';
+      input.dispatchEvent(new Event('input'));
+      expect(saveBtn.disabled).toBe(true);
+
+      ctrl.cleanup();
+    });
   });
 
   describe('debouncedSearch', () => {
@@ -956,6 +1049,48 @@ describe('rendererSearch — extended2', () => {
       await vi.advanceTimersByTimeAsync(deps.searchDebounceMs + 10);
 
       expect(mockSearchFiles).toHaveBeenCalledTimes(1);
+    });
+
+    it('cleanup clears pending debounce timeout before search runs', async () => {
+      const deps = createDeps();
+      const ctrl = createSearchController(deps as any);
+      ctrl.initListeners();
+      ctrl.toggleSearch();
+      ctrl.setQuery('cleanup');
+
+      ctrl.debouncedSearch();
+      ctrl.cleanup();
+
+      await vi.advanceTimersByTimeAsync(deps.searchDebounceMs + 10);
+
+      expect(mockSearchFiles).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('initListeners — regex toggle', () => {
+    it('toggles regex mode and triggers debounced search when query exists', async () => {
+      mockSearchFiles.mockResolvedValue({ success: true, results: [] });
+
+      const deps = createDeps();
+      const ctrl = createSearchController(deps as any);
+      ctrl.initListeners();
+      ctrl.toggleSearch();
+      ctrl.setQuery('^file_\\d+$');
+
+      const regexBtn = document.getElementById('search-regex-toggle') as HTMLButtonElement;
+      regexBtn.click();
+
+      expect(regexBtn.classList.contains('active')).toBe(true);
+      expect(regexBtn.getAttribute('aria-pressed')).toBe('true');
+
+      await vi.advanceTimersByTimeAsync(deps.searchDebounceMs + 10);
+
+      expect(mockSearchFiles).toHaveBeenCalledWith(
+        '/workspace',
+        '^file_\\d+$',
+        expect.objectContaining({ regex: true }),
+        'op-1'
+      );
     });
   });
 
@@ -1055,6 +1190,65 @@ describe('rendererSearch — extended2', () => {
 
       expect(mockSearchFiles).not.toHaveBeenCalled();
       expect(mockSearchIndex).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('initListeners — history dropdown click handlers', () => {
+    it('deletes saved search through dropdown delete button', () => {
+      const deps = createDeps({
+        settingsOverrides: {
+          savedSearches: [
+            {
+              name: 'Delete me',
+              query: 'alpha',
+              isGlobal: false,
+              isRegex: false,
+              createdAt: '2025-01-01T00:00:00.000Z',
+            },
+          ],
+        },
+      });
+      const ctrl = createSearchController(deps as any);
+      ctrl.initListeners();
+      ctrl.showSearchHistoryDropdown();
+
+      const deleteBtn = document.querySelector<HTMLElement>('[data-delete-index="0"]')!;
+      deleteBtn.click();
+
+      expect((deps.settings.savedSearches as any[]).length).toBe(0);
+      expect(deps.debouncedSaveSettings).toHaveBeenCalled();
+      expect(deps.showToast).toHaveBeenCalledWith('Removed "Delete me"', 'Saved Search', 'info');
+    });
+
+    it('loads saved search through dropdown saved-search item click', async () => {
+      mockSearchFiles.mockResolvedValue({ success: true, results: [] });
+
+      const deps = createDeps({
+        settingsOverrides: {
+          savedSearches: [
+            {
+              name: 'Scoped search',
+              query: 'invoice',
+              isGlobal: false,
+              isRegex: false,
+              scopePath: '/workspace/project',
+              createdAt: '2025-01-01T00:00:00.000Z',
+            },
+          ],
+        },
+      });
+      const ctrl = createSearchController(deps as any);
+      ctrl.initListeners();
+      ctrl.showSearchHistoryDropdown();
+
+      const savedItem = document.querySelector<HTMLElement>('[data-saved-index="0"]')!;
+      savedItem.click();
+      await Promise.resolve();
+
+      expect(deps.navigateTo).toHaveBeenCalledWith('/workspace/project');
+      expect(mockSearchFiles).toHaveBeenCalled();
+      expect((document.getElementById('search-input') as HTMLInputElement).value).toBe('invoice');
+      expect(document.getElementById('search-history-dropdown')!.style.display).toBe('none');
     });
   });
 

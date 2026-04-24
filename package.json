@@ -1,6 +1,6 @@
 {
   "name": "iyeris",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "private": true,
   "type": "module",
   "description": "A beautiful cross-platform file explorer built with Tauri, featuring a simple yet advanced modern design.",
@@ -51,7 +51,7 @@
     "tauri:build": "npm run sync-version && npm run licenses && node scripts/tauri-build.js --require-tauri-signing",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:cov": "vitest run --coverage",
+    "test:cov": "vitest run --coverage --coverage.reportsDirectory=coverage-headless",
     "test:all": "node scripts/test-all.js",
     "typecheck": "tsc --noEmit",
     "typecheck:test": "tsc --noEmit -p tsconfig.test.json",

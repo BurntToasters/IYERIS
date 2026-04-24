@@ -7,6 +7,7 @@ vi.mock('../rendererUtils.js', () => ({
 }));
 
 import { createFileRenderController } from '../rendererFileRender';
+import * as rendererFileIcons from '../rendererFileIcons';
 
 function makeItem(overrides: Partial<FileItem> = {}): FileItem {
   return {
@@ -173,6 +174,24 @@ describe('createFileRenderController', () => {
       expect(config.getFolderIcon).toHaveBeenCalledWith('/home/user/Projects');
     });
 
+    it('uses app-bundle icon path and application type for app bundles', () => {
+      const config = createMockConfig();
+      const ctrl = createFileRenderController(config);
+      const item = makeItem({
+        name: 'Example.app',
+        path: '/Applications/Example.app',
+        isDirectory: true,
+        isFile: false,
+        isAppBundle: true,
+      });
+
+      const el = ctrl.createFileItem(item);
+
+      expect(el.dataset.isAppBundle).toBe('true');
+      expect(el.querySelector('.file-type')?.textContent).toBe('Application');
+      expect(config.getFolderIcon).not.toHaveBeenCalled();
+    });
+
     it('shows file size for files and "--" for directories', () => {
       const config = createMockConfig();
       const ctrl = createFileRenderController(config);
@@ -287,6 +306,85 @@ describe('createFileRenderController', () => {
       const typeEl = el.querySelector('.file-type');
       expect(typeEl?.textContent).toBe('Folder');
     });
+
+    it('sets shortcut dataset and type label', () => {
+      const config = createMockConfig();
+      const ctrl = createFileRenderController(config);
+      const item = makeItem({
+        name: 'My Shortcut.lnk',
+        path: '/My Shortcut.lnk',
+        isShortcut: true,
+      });
+
+      const el = ctrl.createFileItem(item);
+
+      expect(el.dataset.isShortcut).toBe('true');
+      expect(el.querySelector('.file-type')?.textContent).toBe('Shortcut');
+    });
+
+    it('sets desktop-entry dataset and application type label', () => {
+      const config = createMockConfig();
+      const ctrl = createFileRenderController(config);
+      const item = makeItem({
+        name: 'App.desktop',
+        path: '/App.desktop',
+        isDesktopEntry: true,
+      });
+
+      const el = ctrl.createFileItem(item);
+
+      expect(el.dataset.isDesktopEntry).toBe('true');
+      expect(el.querySelector('.file-type')?.textContent).toBe('Application');
+    });
+
+    it('renders symlink badge when item is symlink', () => {
+      const config = createMockConfig();
+      const ctrl = createFileRenderController(config);
+      const item = makeItem({
+        name: 'link.txt',
+        path: '/link.txt',
+        isSymlink: true,
+      });
+
+      const el = ctrl.createFileItem(item);
+
+      expect(el.querySelector('.symlink-badge')).toBeTruthy();
+    });
+
+    it('keeps leading-dot filename visible when extension hiding is enabled', () => {
+      const config = createMockConfig();
+      config.getCurrentSettings.mockReturnValue(makeSettings({ showFileExtensions: false }));
+      const ctrl = createFileRenderController(config);
+
+      const el = ctrl.createFileItem(makeItem({ name: '.env', path: '/.env' }));
+
+      expect(el.querySelector('.file-name')?.textContent).toBe('.env');
+    });
+
+    it('renders plain-text icon fallback when icon markup has no element root', () => {
+      const config = createMockConfig();
+      const iconSpy = vi.spyOn(rendererFileIcons, 'getFileIcon').mockReturnValue('PLAIN_ICON');
+      const ctrl = createFileRenderController(config);
+
+      const el = ctrl.createFileItem(makeItem({ name: 'plain.bin', path: '/plain.bin' }));
+
+      expect(el.querySelector('.file-icon')?.textContent).toContain('PLAIN_ICON');
+      iconSpy.mockRestore();
+    });
+
+    it('omits match line number markup when not provided', () => {
+      const config = createMockConfig();
+      const ctrl = createFileRenderController(config);
+      const item = {
+        ...makeItem({ name: 'code.ts', path: '/code.ts' }),
+        matchContext: 'function hello world',
+      };
+
+      const el = ctrl.createFileItem(item, 'hello');
+
+      const matchCtx = el.querySelector('.match-context');
+      expect(matchCtx?.innerHTML).not.toContain('match-line-number');
+    });
   });
 
   describe('renderFiles', () => {
@@ -314,6 +412,24 @@ describe('createFileRenderController', () => {
       const emptyState = document.getElementById('empty-state')!;
       expect(emptyState.style.display).toBe('flex');
       expect(config.updateStatusBar).toHaveBeenCalled();
+    });
+
+    it('handles empty render when empty-state element is absent', () => {
+      const config = createMockConfig();
+      config.getEmptyState.mockReturnValue(null);
+      const ctrl = createFileRenderController(config);
+
+      expect(() => ctrl.renderFiles([])).not.toThrow();
+      expect(config.updateStatusBar).toHaveBeenCalled();
+    });
+
+    it('returns early when file grid is missing', () => {
+      const config = createMockConfig();
+      config.getFileGrid.mockReturnValue(null);
+      const ctrl = createFileRenderController(config);
+
+      expect(() => ctrl.renderFiles([makeItem()])).not.toThrow();
+      expect(config.clearSelection).not.toHaveBeenCalled();
     });
 
     it('shows search-specific empty text when searchQuery is provided', () => {
@@ -482,6 +598,81 @@ describe('createFileRenderController', () => {
       expect(paths).toEqual(['/oldest.txt', '/middle.txt', '/newest.txt']);
     });
 
+    it('sorts by date when modified values are strings', () => {
+      const config = createMockConfig();
+      config.getCurrentSettings.mockReturnValue(makeSettings({ sortBy: 'date', sortOrder: 'asc' }));
+      const ctrl = createFileRenderController(config);
+      const items = [
+        makeItem({ name: 'new.txt', path: '/new.txt', modified: '2025-03-01T00:00:00Z' as any }),
+        makeItem({ name: 'old.txt', path: '/old.txt', modified: '2024-01-01T00:00:00Z' as any }),
+      ];
+
+      ctrl.renderFiles(items);
+
+      const grid = document.getElementById('file-grid')!;
+      const paths = Array.from(grid.querySelectorAll('.file-item')).map((el) =>
+        el.getAttribute('data-path')
+      );
+      expect(paths).toEqual(['/old.txt', '/new.txt']);
+    });
+
+    it('sorts by type extension when sortBy is type', () => {
+      const config = createMockConfig();
+      config.getCurrentSettings.mockReturnValue(makeSettings({ sortBy: 'type', sortOrder: 'asc' }));
+      const ctrl = createFileRenderController(config);
+      const items = [
+        makeItem({ name: 'z.txt', path: '/z.txt' }),
+        makeItem({ name: 'a.jpg', path: '/a.jpg' }),
+        makeItem({ name: 'b.mp3', path: '/b.mp3' }),
+      ];
+
+      ctrl.renderFiles(items);
+
+      const grid = document.getElementById('file-grid')!;
+      const paths = Array.from(grid.querySelectorAll('.file-item')).map((el) =>
+        el.getAttribute('data-path')
+      );
+      expect(paths).toEqual(['/a.jpg', '/b.mp3', '/z.txt']);
+    });
+
+    it('falls back to name sorting when sortBy is unknown', () => {
+      const config = createMockConfig();
+      config.getCurrentSettings.mockReturnValue(makeSettings({ sortBy: 'weird' as any }));
+      const ctrl = createFileRenderController(config);
+      const items = [
+        makeItem({ name: 'banana.txt', path: '/banana.txt' }),
+        makeItem({ name: 'apple.txt', path: '/apple.txt' }),
+      ];
+
+      ctrl.renderFiles(items);
+
+      const grid = document.getElementById('file-grid')!;
+      const paths = Array.from(grid.querySelectorAll('.file-item')).map((el) =>
+        el.getAttribute('data-path')
+      );
+      expect(paths).toEqual(['/apple.txt', '/banana.txt']);
+    });
+
+    it('falls back to default name+asc when sort settings are empty', () => {
+      const config = createMockConfig();
+      config.getCurrentSettings.mockReturnValue(
+        makeSettings({ sortBy: '' as any, sortOrder: '' as any })
+      );
+      const ctrl = createFileRenderController(config);
+      const items = [
+        makeItem({ name: 'banana.txt', path: '/banana.txt' }),
+        makeItem({ name: 'apple.txt', path: '/apple.txt' }),
+      ];
+
+      ctrl.renderFiles(items);
+
+      const grid = document.getElementById('file-grid')!;
+      const paths = Array.from(grid.querySelectorAll('.file-item')).map((el) =>
+        el.getAttribute('data-path')
+      );
+      expect(paths).toEqual(['/apple.txt', '/banana.txt']);
+    });
+
     it('shows large folder toast for 10000+ items', () => {
       const config = createMockConfig();
       const ctrl = createFileRenderController(config);
@@ -551,6 +742,20 @@ describe('createFileRenderController', () => {
       ctrl.renderFiles(items);
 
       expect(config.setDisableThumbnailRendering).toHaveBeenCalledWith(true);
+    });
+
+    it('does not add thumbnail hooks when thumbnail rendering is disabled for huge lists', () => {
+      const config = createMockConfig();
+      const ctrl = createFileRenderController(config);
+      const items = Array.from({ length: 1200 }, (_, i) =>
+        makeItem({ name: `image${i}.jpg`, path: `/image${i}.jpg` })
+      );
+
+      ctrl.renderFiles(items);
+
+      const first = document.querySelector('.file-item') as HTMLElement;
+      expect(first.classList.contains('has-thumbnail')).toBe(false);
+      expect(config.observeThumbnailItem).not.toHaveBeenCalled();
     });
 
     it('clears git cache and cut paths on render', () => {
@@ -701,6 +906,40 @@ describe('createFileRenderController', () => {
 
       expect(() => ctrl.resetVirtualizedRender()).not.toThrow();
     });
+
+    it('disconnects observer and removes sentinel when virtualized render is reset', () => {
+      const observe = vi.fn();
+      const disconnect = vi.fn();
+
+      class MockIntersectionObserver {
+        constructor() {}
+        observe = observe;
+        unobserve = vi.fn();
+        disconnect = disconnect;
+      }
+
+      const original = (globalThis as any).IntersectionObserver;
+      (globalThis as any).IntersectionObserver = MockIntersectionObserver;
+
+      const config = createMockConfig();
+      const ctrl = createFileRenderController(config);
+      const items = Array.from({ length: 1200 }, (_, i) =>
+        makeItem({ name: `item${i}.txt`, path: `/item${i}.txt` })
+      );
+      ctrl.renderFiles(items);
+      expect(document.querySelector('#file-grid > div[style*="height: 1px"]')).toBeTruthy();
+
+      ctrl.resetVirtualizedRender();
+
+      expect(disconnect).toHaveBeenCalledTimes(1);
+      expect(document.querySelector('#file-grid > div[style*="height: 1px"]')).toBeFalsy();
+
+      if (original) {
+        (globalThis as any).IntersectionObserver = original;
+      } else {
+        delete (globalThis as any).IntersectionObserver;
+      }
+    });
   });
 
   describe('disconnectVirtualizedObserver', () => {
@@ -709,6 +948,145 @@ describe('createFileRenderController', () => {
       const ctrl = createFileRenderController(config);
 
       expect(() => ctrl.disconnectVirtualizedObserver()).not.toThrow();
+    });
+
+    it('disconnects active virtualized observer', () => {
+      const observe = vi.fn();
+      const unobserve = vi.fn();
+      const disconnect = vi.fn();
+      const originalIntersectionObserver = globalThis.IntersectionObserver;
+
+      class MockIntersectionObserver {
+        constructor() {}
+        observe = observe;
+        unobserve = unobserve;
+        disconnect = disconnect;
+      }
+
+      (globalThis as any).IntersectionObserver = MockIntersectionObserver;
+
+      const config = createMockConfig();
+      const ctrl = createFileRenderController(config);
+      const items = Array.from({ length: 1200 }, (_, i) =>
+        makeItem({ name: `item${i}.txt`, path: `/item${i}.txt` })
+      );
+
+      ctrl.renderFiles(items);
+      ctrl.disconnectVirtualizedObserver();
+      ctrl.disconnectVirtualizedObserver();
+
+      expect(observe).toHaveBeenCalled();
+      expect(unobserve).not.toHaveBeenCalled();
+      expect(disconnect).toHaveBeenCalledTimes(1);
+
+      if (originalIntersectionObserver) {
+        (globalThis as any).IntersectionObserver = originalIntersectionObserver;
+      } else {
+        delete (globalThis as any).IntersectionObserver;
+      }
+    });
+  });
+
+  describe('virtualized rendering', () => {
+    it('appends additional batches through observer intersections and cleans sentinel at end', () => {
+      const observe = vi.fn();
+      const unobserve = vi.fn();
+      const disconnect = vi.fn();
+      let callback:
+        | ((entries: Array<{ isIntersecting: boolean; target: Element }>) => void)
+        | null = null;
+      let observedTarget: Element | null = null;
+      const original = (globalThis as any).IntersectionObserver;
+
+      class MockIntersectionObserver {
+        constructor(cb: typeof callback) {
+          callback = cb as any;
+        }
+        observe = (target: Element) => {
+          observedTarget = target;
+          observe(target);
+        };
+        unobserve = unobserve;
+        disconnect = disconnect;
+      }
+
+      (globalThis as any).IntersectionObserver = MockIntersectionObserver;
+
+      const config = createMockConfig();
+      const ctrl = createFileRenderController(config);
+      const items = Array.from({ length: 1200 }, (_, i) =>
+        makeItem({ name: `v${i}.txt`, path: `/v${i}.txt` })
+      );
+
+      ctrl.renderFiles(items);
+
+      for (let i = 0; i < 12; i++) {
+        callback?.([{ isIntersecting: true, target: observedTarget as Element }]);
+      }
+
+      const grid = document.getElementById('file-grid')!;
+      expect(grid.querySelectorAll('.file-item').length).toBe(1200);
+      expect(observe).toHaveBeenCalled();
+      expect(unobserve).toHaveBeenCalled();
+      expect(document.querySelector('#file-grid > div[style*="height: 1px"]')).toBeFalsy();
+
+      if (original) {
+        (globalThis as any).IntersectionObserver = original;
+      } else {
+        delete (globalThis as any).IntersectionObserver;
+      }
+    });
+
+    it('handles virtualization when file-view root is missing', () => {
+      document.body.innerHTML = `
+        <div id="file-grid"></div>
+        <div id="empty-state" style="display:none">
+          <p>This folder is empty</p>
+          <div class="empty-actions"></div>
+          <div class="empty-hint"></div>
+        </div>
+      `;
+      const config = createMockConfig();
+      const ctrl = createFileRenderController(config);
+      const items = Array.from({ length: 1200 }, (_, i) =>
+        makeItem({ name: `x${i}.txt`, path: `/x${i}.txt` })
+      );
+
+      expect(() => ctrl.renderFiles(items)).not.toThrow();
+      expect(document.querySelectorAll('.file-item').length).toBe(120);
+    });
+  });
+
+  describe('batch render token guards', () => {
+    it('ignores stale requestAnimationFrame batch after a newer render', () => {
+      const rafCallbacks: Array<FrameRequestCallback> = [];
+      const rafSpy = vi
+        .spyOn(globalThis, 'requestAnimationFrame')
+        .mockImplementation((cb: FrameRequestCallback) => {
+          rafCallbacks.push(cb);
+          return 1;
+        });
+
+      const config = createMockConfig();
+      const ctrl = createFileRenderController(config);
+      const firstItems = Array.from({ length: 100 }, (_, i) =>
+        makeItem({ name: `old${i}.txt`, path: `/old${i}.txt` })
+      );
+
+      ctrl.renderFiles(firstItems);
+      ctrl.renderFiles([makeItem({ name: 'new.txt', path: '/new.txt' })]);
+
+      for (const cb of rafCallbacks) {
+        cb(0);
+      }
+
+      const grid = document.getElementById('file-grid')!;
+      const paths = Array.from(grid.querySelectorAll('.file-item')).map((el) =>
+        el.getAttribute('data-path')
+      );
+      expect(paths).toEqual(['/new.txt']);
+
+      rafSpy.mockRestore();
     });
   });
 });

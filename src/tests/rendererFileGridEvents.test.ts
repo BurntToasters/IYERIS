@@ -177,6 +177,42 @@ describe('createFileGridEventsController', () => {
     expect(controller.getFileItemElement(document.createTextNode('x'))).toBeNull();
   });
 
+  it('no-ops setup when file grid is unavailable', () => {
+    const { config } = createConfig();
+    config.getFileGrid = () => null;
+    const controller = createFileGridEventsController(config);
+
+    expect(() => controller.setupFileGridEventDelegation()).not.toThrow();
+  });
+
+  it('swaps animated preview image source on mouse enter/leave only when eligible', () => {
+    const { config, fileGrid } = createConfig();
+    const controller = createFileGridEventsController(config);
+    controller.setupFileGridEventDelegation();
+
+    const animated = document.createElement('img');
+    animated.dataset.animated = 'true';
+    animated.dataset.animatedSrc = '/img/animated.gif';
+    animated.dataset.staticSrc = '/img/static.png';
+    animated.src = '/img/static.png';
+    fileGrid.appendChild(animated);
+
+    animated.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+    expect(animated.src).toContain('/img/animated.gif');
+
+    animated.dispatchEvent(new MouseEvent('mouseleave', { bubbles: true }));
+    expect(animated.src).toContain('/img/static.png');
+
+    const nonAnimated = document.createElement('img');
+    nonAnimated.dataset.animated = 'false';
+    nonAnimated.dataset.animatedSrc = '/img/unused.gif';
+    nonAnimated.src = '/img/original.png';
+    fileGrid.appendChild(nonAnimated);
+
+    nonAnimated.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+    expect(nonAnimated.src).toContain('/img/original.png');
+  });
+
   it('suppresses open when ctrl/cmd multi-select is followed by fast double click', () => {
     const { config, fileGrid } = createConfig();
     const controller = createFileGridEventsController(config);
@@ -217,6 +253,18 @@ describe('createFileGridEventsController', () => {
     expect(config.toggleSelection).toHaveBeenCalledTimes(2);
   });
 
+  it('ignores click and double click events from non-file targets', () => {
+    const { config, fileGrid } = createConfig();
+    const controller = createFileGridEventsController(config);
+    controller.setupFileGridEventDelegation();
+
+    fileGrid.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    fileGrid.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+
+    expect(config.toggleSelection).not.toHaveBeenCalled();
+    expect(config.openFileEntry).not.toHaveBeenCalled();
+  });
+
   it('does not open entry on modified double click', () => {
     const { config, fileGrid } = createConfig();
     const controller = createFileGridEventsController(config);
@@ -224,6 +272,18 @@ describe('createFileGridEventsController', () => {
 
     const fileItem = fileGrid.querySelector('.file-item') as HTMLElement;
     fileItem.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, shiftKey: true }));
+
+    expect(config.openFileEntry).not.toHaveBeenCalled();
+  });
+
+  it('skips opening on double click when file item metadata is unavailable', () => {
+    const { config, fileGrid } = createConfig();
+    const controller = createFileGridEventsController(config);
+    controller.setupFileGridEventDelegation();
+
+    (config.getFileItemData as ReturnType<typeof vi.fn>).mockReturnValueOnce(null);
+    const fileItem = fileGrid.querySelector('.file-item') as HTMLElement;
+    fileItem.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
 
     expect(config.openFileEntry).not.toHaveBeenCalled();
   });
@@ -253,6 +313,29 @@ describe('createFileGridEventsController', () => {
       })
     );
     expect(config.addNewTab).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores auxclick when button is not middle or target is not a file item', () => {
+    const { config, fileGrid } = createConfig();
+    const controller = createFileGridEventsController(config);
+    controller.setupFileGridEventDelegation();
+
+    const dirItem = fileGrid.querySelector('[data-path="/dest/folder"]') as HTMLElement;
+    const leftClick = new MouseEvent('auxclick', {
+      bubbles: true,
+      cancelable: true,
+      button: 0,
+    });
+    dirItem.dispatchEvent(leftClick);
+    expect(leftClick.defaultPrevented).toBe(false);
+
+    const gridClick = new MouseEvent('auxclick', {
+      bubbles: true,
+      cancelable: true,
+      button: 1,
+    });
+    fileGrid.dispatchEvent(gridClick);
+    expect(config.addNewTab).not.toHaveBeenCalled();
   });
 
   it('shows context menu and selects item if it was not selected', () => {
@@ -288,6 +371,23 @@ describe('createFileGridEventsController', () => {
     expect(config.clearSelection).not.toHaveBeenCalled();
     expect(config.toggleSelection).not.toHaveBeenCalled();
     expect(config.showContextMenu).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores context menu for non-file targets or missing file item data', () => {
+    const { config, fileGrid } = createConfig();
+    const controller = createFileGridEventsController(config);
+    controller.setupFileGridEventDelegation();
+
+    fileGrid.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+    expect(config.showContextMenu).not.toHaveBeenCalled();
+
+    const unknownItem = document.createElement('div');
+    unknownItem.className = 'file-item';
+    unknownItem.dataset.path = '/unknown/item';
+    fileGrid.appendChild(unknownItem);
+    unknownItem.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+
+    expect(config.showContextMenu).not.toHaveBeenCalled();
   });
 
   it('sets drag payload and drag image for multi-selection', () => {
@@ -330,6 +430,24 @@ describe('createFileGridEventsController', () => {
     fileItem.dispatchEvent(dragEvent);
 
     expect(config.setDragData).not.toHaveBeenCalled();
+  });
+
+  it('ignores delegated drag events when the target is not a file item', async () => {
+    const { config, fileGrid } = createConfig();
+    const controller = createFileGridEventsController(config);
+    controller.setupFileGridEventDelegation();
+
+    fileGrid.dispatchEvent(createDragEvent('dragstart'));
+    fileGrid.dispatchEvent(createDragEvent('dragend'));
+    fileGrid.dispatchEvent(createDragEvent('dragover'));
+    fileGrid.dispatchEvent(createDragEvent('dragleave'));
+    fileGrid.dispatchEvent(createDragEvent('drop'));
+    await Promise.resolve();
+
+    expect(config.setDragData).not.toHaveBeenCalled();
+    expect(config.clearDragData).not.toHaveBeenCalled();
+    expect(config.consumeEvent).not.toHaveBeenCalled();
+    expect(config.clearSpringLoad).not.toHaveBeenCalled();
   });
 
   it('cleans drag state on dragend', () => {
@@ -383,6 +501,19 @@ describe('createFileGridEventsController', () => {
     expect(config.navigateTo).toHaveBeenCalledWith('/dest/folder');
   });
 
+  it('returns early on dragover when no dataTransfer is present', () => {
+    const { config, fileGrid } = createConfig();
+    const controller = createFileGridEventsController(config);
+    controller.setupFileGridEventDelegation();
+
+    const dirItem = fileGrid.querySelector('[data-path="/dest/folder"]') as HTMLElement;
+    dirItem.dispatchEvent(createDragEvent('dragover', { noDataTransfer: true }));
+
+    expect(config.consumeEvent).toHaveBeenCalledTimes(1);
+    expect(config.getDragOperation).not.toHaveBeenCalled();
+    expect(config.showDropIndicator).not.toHaveBeenCalled();
+  });
+
   it('clears spring load on dragleave when pointer leaves directory bounds', () => {
     const { config, fileGrid } = createConfig();
     const controller = createFileGridEventsController(config);
@@ -407,6 +538,21 @@ describe('createFileGridEventsController', () => {
     expect(dirItem.classList.contains('drag-over')).toBe(false);
     expect(config.clearSpringLoad).toHaveBeenCalledWith(dirItem);
     expect(config.hideDropIndicator).toHaveBeenCalled();
+  });
+
+  it('ignores dragleave and drop on app bundle directories', async () => {
+    const { config, fileGrid } = createConfig();
+    const controller = createFileGridEventsController(config);
+    controller.setupFileGridEventDelegation();
+
+    const appBundleItem = fileGrid.querySelector('[data-path="/dest/app.app"]') as HTMLElement;
+    appBundleItem.dispatchEvent(createDragEvent('dragleave'));
+    appBundleItem.dispatchEvent(createDragEvent('drop'));
+    await Promise.resolve();
+
+    expect(config.consumeEvent).not.toHaveBeenCalled();
+    expect(config.clearSpringLoad).not.toHaveBeenCalled();
+    expect(config.handleDrop).not.toHaveBeenCalled();
   });
 
   it('runs drop handler for valid payload and destination', async () => {

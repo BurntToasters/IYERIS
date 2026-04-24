@@ -4,6 +4,7 @@ import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 const mockCreatePdfViewer = vi.hoisted(() => vi.fn());
 const mockLoadHighlightJs = vi.hoisted(() => vi.fn());
 const mockGetLanguageForExt = vi.hoisted(() => vi.fn());
+const mockDevLog = vi.hoisted(() => vi.fn());
 const mockEscapeHtml = vi.hoisted(() => vi.fn((t: string) => t));
 const mockGetById = vi.hoisted(() => vi.fn());
 const mockEncodeFileUrl = vi.hoisted(() => vi.fn((p: string) => `file://${p}`));
@@ -35,6 +36,7 @@ vi.mock('../rendererHighlight.js', () => ({
 }));
 
 vi.mock('../shared.js', () => ({
+  devLog: mockDevLog,
   escapeHtml: mockEscapeHtml,
   sanitizeMarkdownHtml: (html: string) => html,
   ignoreError: () => {},
@@ -62,6 +64,7 @@ vi.mock('../fileTypes.js', () => ({
 }));
 
 import { createQuicklookController, type QuicklookDeps } from '../rendererQuicklook';
+import * as rendererMarkdown from '../rendererMarkdown';
 import type { FileItem, Settings } from '../types';
 
 function makeFile(overrides: Partial<FileItem> = {}): FileItem {
@@ -215,6 +218,43 @@ describe('createQuicklookController', () => {
       expect(deps.openFileEntry).not.toHaveBeenCalled();
     });
 
+    it('opens only sanitized external markdown links', () => {
+      const ctrl = createQuicklookController(deps as any);
+      ctrl.initQuicklookUi();
+
+      dom.content.innerHTML = `
+        <div class="preview-markdown">
+          <a id="safe-link" href="https://example.com/docs">Docs</a>
+          <a id="blocked-link" href="javascript:alert(1)">Bad</a>
+          <a id="hash-link" href="#section">Anchor</a>
+          <a id="invalid-link" href="not a valid url">Invalid</a>
+        </div>
+      `;
+
+      (dom.content.querySelector('#safe-link') as HTMLAnchorElement).click();
+      (dom.content.querySelector('#blocked-link') as HTMLAnchorElement).click();
+      (dom.content.querySelector('#hash-link') as HTMLAnchorElement).click();
+      (dom.content.querySelector('#invalid-link') as HTMLAnchorElement).click();
+
+      expect(deps.openExternal).toHaveBeenCalledTimes(1);
+      expect(deps.openExternal).toHaveBeenCalledWith('https://example.com/docs');
+    });
+
+    it('supports mailto links in markdown preview', () => {
+      const ctrl = createQuicklookController(deps as any);
+      ctrl.initQuicklookUi();
+
+      dom.content.innerHTML = `
+        <div class="preview-markdown">
+          <a id="mail-link" href="mailto:test@example.com">Mail</a>
+        </div>
+      `;
+
+      (dom.content.querySelector('#mail-link') as HTMLAnchorElement).click();
+
+      expect(deps.openExternal).toHaveBeenCalledWith('mailto:test@example.com');
+    });
+
     it('does not throw when elements are missing', () => {
       mockGetById.mockReturnValue(null);
       const ctrl = createQuicklookController(deps as any);
@@ -272,6 +312,28 @@ describe('createQuicklookController', () => {
       ctrl.closeQuickLook();
       expect(mockDestroy).toHaveBeenCalled();
       expect((dom.modal as any).__pdfViewer).toBeNull();
+    });
+
+    it('pauses and unloads video/audio elements during close', async () => {
+      const ctrl = createQuicklookController(deps as any);
+      await ctrl.showQuickLookForFile(makeFile({ name: 'clip.mp4', path: '/home/user/clip.mp4' }));
+      await ctrl.showQuickLookForFile(makeFile({ name: 'song.mp3', path: '/home/user/song.mp3' }));
+
+      const video = document.createElement('video');
+      video.setAttribute('src', 'video-src');
+      const audio = dom.content.querySelector('audio') as HTMLAudioElement;
+      const videoPause = vi.fn();
+      const audioPause = vi.fn();
+      Object.defineProperty(video, 'pause', { value: videoPause, configurable: true });
+      Object.defineProperty(audio, 'pause', { value: audioPause, configurable: true });
+      dom.content.appendChild(video);
+
+      ctrl.closeQuickLook();
+
+      expect(videoPause).toHaveBeenCalledTimes(1);
+      expect(audioPause).toHaveBeenCalledTimes(1);
+      expect(video.getAttribute('src')).toBeNull();
+      expect(audio.getAttribute('src')).toBeNull();
     });
 
     it('does not throw when elements are missing', () => {
@@ -440,6 +502,77 @@ describe('createQuicklookController', () => {
         });
       });
 
+      it('applies image data-url fallback after load error', async () => {
+        mockGetFileDataUrlWithCache.mockResolvedValue('data:image/png;base64,AAAA');
+        const ctrl = createQuicklookController(deps as any);
+        const file = makeFile({ name: 'recover.png', path: '/home/user/recover.png', size: 100 });
+        await ctrl.showQuickLookForFile(file);
+
+        const img = dom.content.querySelector('img') as HTMLImageElement;
+        img.dispatchEvent(new Event('error'));
+
+        await vi.waitFor(() => {
+          expect(img.src).toContain('data:image/png;base64,AAAA');
+        });
+      });
+
+      it('shows fallback error immediately on repeated image errors', async () => {
+        mockGetFileDataUrlWithCache.mockResolvedValue('data:image/png;base64,AAAA');
+        const ctrl = createQuicklookController(deps as any);
+        const file = makeFile({
+          name: 'broken-again.png',
+          path: '/home/user/broken-again.png',
+          size: 100,
+        });
+        await ctrl.showQuickLookForFile(file);
+
+        const img = dom.content.querySelector('img') as HTMLImageElement;
+        img.dataset.fallbackAttempted = 'true';
+        img.dispatchEvent(new Event('error'));
+
+        await vi.waitFor(() => {
+          expect(dom.content.innerHTML).toContain('Failed to load image');
+        });
+        expect(mockGetFileDataUrlWithCache).not.toHaveBeenCalled();
+      });
+
+      it('ignores image fallback result when quicklook target changed', async () => {
+        let resolveDataUrl: (value: string | null) => void = () => {};
+        mockGetFileDataUrlWithCache.mockReturnValue(
+          new Promise((resolve) => {
+            resolveDataUrl = resolve;
+          })
+        );
+        const ctrl = createQuicklookController(deps as any);
+        const file1 = makeFile({ name: 'first.png', path: '/home/user/first.png', size: 100 });
+        await ctrl.showQuickLookForFile(file1);
+
+        const firstImg = dom.content.querySelector('img') as HTMLImageElement;
+        firstImg.dispatchEvent(new Event('error'));
+
+        const file2 = makeFile({ name: 'second.png', path: '/home/user/second.png', size: 100 });
+        await ctrl.showQuickLookForFile(file2);
+
+        resolveDataUrl('data:image/png;base64,BBBB');
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(dom.content.innerHTML).toContain('Failed to load image');
+      });
+
+      it('does not prefix dimensions when image has no intrinsic size', async () => {
+        const ctrl = createQuicklookController(deps as any);
+        const file = makeFile({ name: 'nodims.png', path: '/home/user/nodims.png', size: 5000 });
+        await ctrl.showQuickLookForFile(file);
+
+        const img = dom.content.querySelector('img') as HTMLImageElement;
+        Object.defineProperty(img, 'naturalWidth', { value: 0, configurable: true });
+        Object.defineProperty(img, 'naturalHeight', { value: 0, configurable: true });
+        img.dispatchEvent(new Event('load'));
+
+        expect(dom.info.textContent).not.toContain('×');
+      });
+
       it('ignores load event if quicklook was closed/changed', async () => {
         const ctrl = createQuicklookController(deps as any);
         const file = makeFile({ name: 'photo.png', path: '/home/user/photo.png', size: 5000 });
@@ -516,6 +649,37 @@ describe('createQuicklookController', () => {
 
         expect(dom.info.textContent).toBeTruthy();
       });
+
+      it('attempts video data-url fallback after playback error', async () => {
+        mockGetFileDataUrlWithCache.mockResolvedValue('data:video/mp4;base64,AAAA');
+        const ctrl = createQuicklookController(deps as any);
+        const file = makeFile({ name: 'broken.mp4', path: '/home/user/broken.mp4' });
+        await ctrl.showQuickLookForFile(file);
+
+        const video = dom.content.querySelector('video') as HTMLVideoElement;
+        const loadSpy = vi.fn();
+        Object.defineProperty(video, 'load', { value: loadSpy, configurable: true });
+        video.dispatchEvent(new Event('error'));
+
+        await vi.waitFor(() => {
+          expect(video.src).toContain('data:video/mp4;base64,AAAA');
+        });
+        expect(loadSpy).toHaveBeenCalledTimes(1);
+      });
+
+      it('does not retry video fallback after first attempt', async () => {
+        mockGetFileDataUrlWithCache.mockResolvedValue('data:video/mp4;base64,AAAA');
+        const ctrl = createQuicklookController(deps as any);
+        const file = makeFile({ name: 'no-retry.mp4', path: '/home/user/no-retry.mp4' });
+        await ctrl.showQuickLookForFile(file);
+
+        const video = dom.content.querySelector('video') as HTMLVideoElement;
+        video.dataset.fallbackAttempted = 'true';
+        video.dispatchEvent(new Event('error'));
+        await Promise.resolve();
+
+        expect(mockGetFileDataUrlWithCache).not.toHaveBeenCalled();
+      });
     });
 
     describe('audio preview', () => {
@@ -566,6 +730,37 @@ describe('createQuicklookController', () => {
         const source = dom.content.querySelector('source')!;
         expect(source.type).toBe('audio/*');
         mockAudioExtensions.delete('flac');
+      });
+
+      it('attempts audio data-url fallback after playback error', async () => {
+        mockGetFileDataUrlWithCache.mockResolvedValue('data:audio/mpeg;base64,AAAA');
+        const ctrl = createQuicklookController(deps as any);
+        const file = makeFile({ name: 'broken.mp3', path: '/home/user/broken.mp3' });
+        await ctrl.showQuickLookForFile(file);
+
+        const audio = dom.content.querySelector('audio') as HTMLAudioElement;
+        const loadSpy = vi.fn();
+        Object.defineProperty(audio, 'load', { value: loadSpy, configurable: true });
+        audio.dispatchEvent(new Event('error'));
+
+        await vi.waitFor(() => {
+          expect(audio.src).toContain('data:audio/mpeg;base64,AAAA');
+        });
+        expect(loadSpy).toHaveBeenCalledTimes(1);
+      });
+
+      it('does not retry audio fallback after first attempt', async () => {
+        mockGetFileDataUrlWithCache.mockResolvedValue('data:audio/mpeg;base64,AAAA');
+        const ctrl = createQuicklookController(deps as any);
+        const file = makeFile({ name: 'no-retry.mp3', path: '/home/user/no-retry.mp3' });
+        await ctrl.showQuickLookForFile(file);
+
+        const audio = dom.content.querySelector('audio') as HTMLAudioElement;
+        audio.dataset.fallbackAttempted = 'true';
+        audio.dispatchEvent(new Event('error'));
+        await Promise.resolve();
+
+        expect(mockGetFileDataUrlWithCache).not.toHaveBeenCalled();
       });
     });
 
@@ -637,6 +832,35 @@ describe('createQuicklookController', () => {
         });
       });
 
+      it('uses data-url fallback when initial PDF viewer creation fails', async () => {
+        (window as any).tauriAPI.readFileContent = vi
+          .fn()
+          .mockResolvedValue({ success: true, content: '%PDF-1.4' });
+        const fallbackViewer = {
+          element: document.createElement('div'),
+          destroy: vi.fn(),
+          goToPage: vi.fn(),
+          getPageCount: vi.fn(),
+          getCurrentPage: vi.fn(),
+          zoomIn: vi.fn(),
+          zoomOut: vi.fn(),
+          resetZoom: vi.fn(),
+          getZoom: vi.fn(),
+        };
+        mockCreatePdfViewer
+          .mockRejectedValueOnce(new Error('primary failed'))
+          .mockResolvedValueOnce(fallbackViewer);
+        mockGetFileDataUrlWithCache.mockResolvedValue('data:application/pdf;base64,AAAA');
+
+        const ctrl = createQuicklookController(deps as any);
+        const file = makeFile({ name: 'fallback.pdf', path: '/home/user/fallback.pdf' });
+        await ctrl.showQuickLookForFile(file);
+
+        expect(mockCreatePdfViewer).toHaveBeenCalledTimes(2);
+        expect((dom.modal as any).__pdfViewer).toBe(fallbackViewer);
+        expect(dom.content.innerHTML).toContain('preview-pdf-container');
+      });
+
       it('sets PDF info text with prefix', async () => {
         (window as any).tauriAPI.readFileContent = vi
           .fn()
@@ -685,6 +909,33 @@ describe('createQuicklookController', () => {
         await ctrl.showQuickLookForFile(file);
 
         expect((dom.modal as any).__pdfViewer).toBe(mockViewer);
+      });
+
+      it('wires pdf onError callback', async () => {
+        (window as any).tauriAPI.readFileContent = vi
+          .fn()
+          .mockResolvedValue({ success: true, content: '%PDF-1.4' });
+
+        const mockViewer = {
+          element: document.createElement('div'),
+          destroy: vi.fn(),
+          goToPage: vi.fn(),
+          getPageCount: vi.fn(),
+          getCurrentPage: vi.fn(),
+          zoomIn: vi.fn(),
+          zoomOut: vi.fn(),
+          resetZoom: vi.fn(),
+          getZoom: vi.fn(),
+        };
+        mockCreatePdfViewer.mockResolvedValue(mockViewer);
+
+        const ctrl = createQuicklookController(deps as any);
+        await ctrl.showQuickLookForFile(makeFile({ name: 'err.pdf', path: '/home/user/err.pdf' }));
+
+        const options = mockCreatePdfViewer.mock.calls[0]?.[1];
+        expect(typeof options?.onError).toBe('function');
+        options?.onError?.('boom');
+        expect(mockDevLog).toHaveBeenCalledWith('QuickLook', 'PDF error', 'boom');
       });
 
       it('destroys viewer if quicklook changed during PDF load', async () => {
@@ -743,6 +994,138 @@ describe('createQuicklookController', () => {
         await showPromise;
 
         expect(mockCreatePdfViewer).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('markdown preview', () => {
+      it('renders markdown HTML and truncation warning', async () => {
+        const loadMarkedSpy = vi.spyOn(rendererMarkdown, 'loadMarked').mockResolvedValue({
+          marked: {
+            parse: vi.fn(() => '<h1>Hello</h1>'),
+          },
+        } as any);
+        (window as any).tauriAPI.readFileContent = vi.fn().mockResolvedValue({
+          success: true,
+          content: '# Hello',
+          isTruncated: true,
+        });
+
+        const ctrl = createQuicklookController(deps as any);
+        const file = makeFile({ name: 'doc.md', path: '/home/user/doc.md' });
+        await ctrl.showQuickLookForFile(file);
+
+        expect(dom.content.innerHTML).toContain('preview-markdown');
+        expect(dom.content.innerHTML).toContain('<h1>Hello</h1>');
+        expect(dom.content.innerHTML).toContain('File truncated to first 100KB');
+        expect(dom.info.textContent).toContain('1024 B');
+        loadMarkedSpy.mockRestore();
+      });
+
+      it('falls back to plain text when markdown parser throws', async () => {
+        const loadMarkedSpy = vi.spyOn(rendererMarkdown, 'loadMarked').mockResolvedValue({
+          marked: {
+            parse: vi.fn(() => {
+              throw new Error('parse failed');
+            }),
+          },
+        } as any);
+        (window as any).tauriAPI.readFileContent = vi.fn().mockResolvedValue({
+          success: true,
+          content: '# Broken markdown',
+        });
+
+        const ctrl = createQuicklookController(deps as any);
+        const file = makeFile({ name: 'broken.md', path: '/home/user/broken.md' });
+        await ctrl.showQuickLookForFile(file);
+
+        expect(dom.content.innerHTML).toContain('preview-text');
+        expect(dom.content.innerHTML).toContain('# Broken markdown');
+        loadMarkedSpy.mockRestore();
+      });
+
+      it('falls back to plain text when marked is unavailable', async () => {
+        const loadMarkedSpy = vi.spyOn(rendererMarkdown, 'loadMarked').mockResolvedValue(null);
+        (window as any).tauriAPI.readFileContent = vi.fn().mockResolvedValue({
+          success: true,
+          content: 'plain markdown text',
+          isTruncated: true,
+        });
+
+        const ctrl = createQuicklookController(deps as any);
+        const file = makeFile({ name: 'plain.md', path: '/home/user/plain.md' });
+        await ctrl.showQuickLookForFile(file);
+
+        expect(dom.content.innerHTML).toContain('preview-text');
+        expect(dom.content.innerHTML).toContain('plain markdown text');
+        expect(dom.content.innerHTML).toContain('preview-truncated');
+        loadMarkedSpy.mockRestore();
+      });
+
+      it('shows error when markdown read fails', async () => {
+        (window as any).tauriAPI.readFileContent = vi.fn().mockResolvedValue({
+          success: false,
+          error: 'denied',
+        });
+
+        const ctrl = createQuicklookController(deps as any);
+        const file = makeFile({ name: 'locked.md', path: '/home/user/locked.md' });
+        await ctrl.showQuickLookForFile(file);
+
+        expect(dom.content.innerHTML).toContain('Failed to load markdown');
+      });
+
+      it('aborts markdown preview if quicklook changed during read', async () => {
+        let resolveRead: (value: any) => void = () => {};
+        (window as any).tauriAPI.readFileContent = vi.fn().mockReturnValue(
+          new Promise((resolve) => {
+            resolveRead = resolve;
+          })
+        );
+
+        const ctrl = createQuicklookController(deps as any);
+        const first = makeFile({ name: 'first.md', path: '/home/user/first.md' });
+        const showPromise = ctrl.showQuickLookForFile(first);
+
+        await ctrl.showQuickLookForFile(
+          makeFile({ name: 'other.bin', path: '/home/user/other.bin', size: 2048 })
+        );
+
+        resolveRead({ success: true, content: '# old markdown' });
+        await showPromise;
+
+        expect(dom.content.innerHTML).not.toContain('old markdown');
+      });
+
+      it('aborts markdown render if quicklook changed during marked load', async () => {
+        let resolveMarked: (value: any) => void = () => {};
+        const loadMarkedSpy = vi.spyOn(rendererMarkdown, 'loadMarked').mockReturnValue(
+          new Promise((resolve) => {
+            resolveMarked = resolve;
+          }) as Promise<any>
+        );
+        (window as any).tauriAPI.readFileContent = vi.fn().mockResolvedValue({
+          success: true,
+          content: '# delayed markdown',
+        });
+
+        const ctrl = createQuicklookController(deps as any);
+        const showPromise = ctrl.showQuickLookForFile(
+          makeFile({ name: 'first.md', path: '/home/user/first.md' })
+        );
+
+        await ctrl.showQuickLookForFile(
+          makeFile({ name: 'later.bin', path: '/home/user/later.bin', size: 2222 })
+        );
+
+        resolveMarked({
+          marked: {
+            parse: vi.fn(() => '<h1>Should not render</h1>'),
+          },
+        });
+        await showPromise;
+
+        expect(dom.content.innerHTML).not.toContain('Should not render');
+        loadMarkedSpy.mockRestore();
       });
     });
 

@@ -352,7 +352,7 @@ describe('rendererUpdateActions extended coverage', () => {
         'Failed to check for updates: Request failed with status 404 for windows-beta.json'
       );
       expect(dialogMessage).toContain(
-        "This is most likely due to the latest STABLE release being fairly new and the next beta hasn't been released yet."
+        'This is usually because the latest STABLE released was just pushed, meaning the next beta needs to be released for the beta json manifests to publish'
       );
     });
 
@@ -375,7 +375,33 @@ describe('rendererUpdateActions extended coverage', () => {
       expect(showDialog).toHaveBeenCalledTimes(1);
       const [, dialogMessage] = showDialog.mock.calls[0];
       expect(dialogMessage).toContain(
-        "This is most likely due to the latest STABLE release being fairly new and the next beta hasn't been released yet."
+        'This is usually because the latest STABLE released was just pushed, meaning the next beta needs to be released for the beta json manifests to publish'
+      );
+    });
+
+    it('appends beta-manifest guidance when updater cannot fetch valid release JSON', async () => {
+      const controller = setup();
+      mockCheckForUpdates.mockResolvedValue({
+        success: false,
+        error: 'Could not fetch a valid release JSON from the remote',
+      });
+      mockGetAppVersion.mockResolvedValue('v3.0.0-beta.1');
+      mockGetSettings.mockResolvedValue({
+        success: true,
+        settings: {
+          updateChannel: 'auto',
+        },
+      });
+
+      await controller.checkForUpdates();
+
+      expect(showDialog).toHaveBeenCalledTimes(1);
+      const [, dialogMessage] = showDialog.mock.calls[0];
+      expect(dialogMessage).toContain(
+        'Failed to check for updates: Could not fetch a valid release JSON from the remote'
+      );
+      expect(dialogMessage).toContain(
+        'This is usually because the latest STABLE released was just pushed, meaning the next beta needs to be released for the beta json manifests to publish'
       );
     });
 
