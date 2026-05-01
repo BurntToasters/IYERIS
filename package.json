@@ -6,7 +6,7 @@
   "description": "A beautiful cross-platform file explorer built with Tauri, featuring a simple yet advanced modern design.",
   "dependencies": {
     "@highlightjs/cdn-assets": "^11.11.1",
-    "@tauri-apps/api": "^2.0.0",
+    "@tauri-apps/api": "^2.11.0",
     "@tauri-apps/plugin-dialog": "^2.6.0",
     "@tauri-apps/plugin-notification": "^2.3.3",
     "@tauri-apps/plugin-process": "^2.0.0",
@@ -15,18 +15,18 @@
     "marked": "^18.0.2",
     "p-limit": "^7.2.0",
     "pdfjs-dist": "^5.4.624",
-    "zod": "^4.1.5"
+    "zod": "^4.4.1"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@tauri-apps/cli": "^2.0.0",
+    "@tauri-apps/cli": "^2.11.0",
     "@types/node": "^25.0.3",
     "@vitest/coverage-v8": "^4.0.18",
     "cross-env": "^10.1.0",
     "dotenv-cli": "^11.0.0",
     "eslint": "^10.0.0",
     "husky": "^9.1.7",
-    "jsdom": "^29.0.1",
+    "jsdom": "^29.1.1",
     "lint-staged": "^16.1.0",
     "npm-license-crawler": "^0.2.1",
     "prettier": "^3.5.3",
