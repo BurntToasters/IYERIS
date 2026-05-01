@@ -28,11 +28,11 @@ body::before {
 }
 
 .glass-panel {
-  background: var(--surface-overlay);
+  background: var(--chrome-surface);
   backdrop-filter: blur(10px) saturate(120%);
   -webkit-backdrop-filter: blur(10px) saturate(120%);
-  border: 1px solid var(--panel-border);
-  box-shadow: var(--glass-shadow);
+  border: 1px solid var(--native-divider);
+  box-shadow: var(--native-elevation-1);
   border-radius: var(--radius-medium);
   will-change: transform;
 }
@@ -427,13 +427,17 @@ body.dual-pane-enabled.active-pane-right #dual-pane-secondary {
   display: flex;
   gap: 8px;
   align-items: center;
+  flex-wrap: wrap;
   padding: 8px 10px 6px;
-  border-bottom: 1px solid var(--panel-border);
+  border-bottom: 1px solid var(--native-divider);
 }
 
 .dual-pane-header-btn {
+  width: auto;
+  min-width: 78px;
   height: 30px;
   padding: 0 10px;
+  white-space: nowrap;
   font-size: 12px;
 }
 
@@ -441,7 +445,7 @@ body.dual-pane-enabled.active-pane-right #dual-pane-secondary {
   padding: 8px 10px;
   font-size: 12px;
   color: var(--text-secondary);
-  border-bottom: 1px solid var(--panel-border);
+  border-bottom: 1px solid var(--native-divider);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -455,20 +459,133 @@ body.dual-pane-enabled.active-pane-right #dual-pane-secondary {
   padding: 4px;
 }
 
+.dual-pane-list.drag-over {
+  background: rgba(var(--system-accent-rgb, var(--accent-rgb)), 0.05);
+  box-shadow: inset 0 0 0 1px rgba(var(--system-accent-rgb, var(--accent-rgb)), 0.35);
+}
+
+.dual-pane-item.drag-over {
+  position: relative;
+  background: rgba(var(--system-accent-rgb, var(--accent-rgb)), 0.2);
+  border-color: rgba(var(--system-accent-rgb, var(--accent-rgb)), 0.55);
+  box-shadow: 0 0 0 2px rgba(var(--system-accent-rgb, var(--accent-rgb)), 0.28);
+}
+
+.dual-pane-item.drag-over::after {
+  content: '↳';
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--accent-color) 55%, transparent);
+  background: color-mix(in srgb, var(--accent-color) 22%, transparent);
+  color: var(--text-primary);
+  font-size: 10px;
+  line-height: 1;
+}
+
+.dual-pane-item.spring-loading {
+  animation: spring-load-pulse 0.4s ease-in-out infinite;
+}
+
 .dual-pane-item {
   display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 8px;
+  grid-template-columns: var(--list-col-name) var(--list-col-type) var(--list-col-size) var(
+      --list-col-modified
+    );
   align-items: center;
-  border-radius: 8px;
+  justify-items: stretch;
+  width: 100%;
+  min-height: var(--list-item-min-height);
+  padding: var(--list-item-padding-v) var(--list-item-padding-h);
+  border-radius: var(--radius-small);
   border: 1px solid transparent;
-  padding: 7px 8px;
   cursor: default;
+  content-visibility: auto;
+  contain: layout style paint;
+  contain-intrinsic-size: 40px;
 }
 
 .dual-pane-item:hover {
   background: var(--hover-color);
-  border-color: var(--panel-border);
+  border-color: var(--native-divider);
+}
+
+.dual-pane-item .file-main {
+  flex-direction: row;
+  justify-content: flex-start;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.dual-pane-item .file-checkbox {
+  display: none;
+}
+
+.dual-pane-item .file-text {
+  align-items: flex-start;
+}
+
+.dual-pane-item .file-name {
+  text-align: left;
+  flex: 1;
+  -webkit-line-clamp: 1;
+  line-clamp: 1;
+  min-width: 0;
+}
+
+.dual-pane-item .file-icon {
+  font-size: var(--icon-size-list);
+  margin-bottom: 0;
+  width: var(--icon-size-list);
+  height: var(--icon-size-list);
+  min-width: var(--icon-size-list);
+  min-height: var(--icon-size-list);
+  flex-shrink: 0;
+}
+
+.dual-pane-item .file-info {
+  display: contents;
+}
+
+.dual-pane-item .file-type,
+.dual-pane-item .file-size,
+.dual-pane-item .file-modified {
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dual-pane-item .file-size,
+.dual-pane-item .file-modified {
+  text-align: right;
+}
+
+.dual-pane-item.has-thumbnail .file-icon {
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  min-height: 40px;
+  border-radius: 4px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.dual-pane-item.has-thumbnail .file-thumbnail {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 4px;
 }
 
 .dual-pane-item-name {

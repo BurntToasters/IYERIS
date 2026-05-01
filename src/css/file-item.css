@@ -175,10 +175,16 @@ body.platform-linux .file-item.selected {
 
 .drop-indicator-path {
   max-width: 240px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--text-primary) 14%, transparent);
+  background: color-mix(in srgb, var(--surface-2) 78%, transparent);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 10px;
 }
 
 .file-item.dragging {

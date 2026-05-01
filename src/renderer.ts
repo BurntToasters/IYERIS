@@ -122,10 +122,14 @@ let secondaryPaneItems: FileItem[] = [];
 let history: string[] = [];
 let historyIndex: number = -1;
 let selectedItems: Set<string> = new Set();
+let primaryPaneSelectedItems: Set<string> = new Set();
+let secondaryPaneSelectedItems: Set<string> = new Set();
 let selectedItemsSizeBytes = 0;
 let selectedItemsSizeDirty = true;
 let viewMode: ViewMode = 'grid';
 let allFiles: FileItem[] = [];
+const secondaryFilePathMap = new Map<string, FileItem>();
+const secondaryFileElementMap = new Map<string, HTMLElement>();
 let hiddenFilesCount = 0;
 let platformOS: string = '';
 let canUndo: boolean = false;
@@ -141,6 +145,11 @@ function markSelectionDirty(): void {
 
 function setSelectedItemsState(value: Set<string>): void {
   selectedItems = value;
+  if (currentSettings.dualPaneEnabled && currentSettings.activePane === 'right') {
+    secondaryPaneSelectedItems = new Set(value);
+  } else {
+    primaryPaneSelectedItems = new Set(value);
+  }
   markSelectionDirty();
 }
 
@@ -152,6 +161,8 @@ function renderSecondaryPaneItems(items: FileItem[]): void {
   const list = getDualPaneElement<HTMLElement>('dual-pane-secondary-list');
   if (!list) return;
   list.replaceChildren();
+  secondaryFilePathMap.clear();
+  secondaryFileElementMap.clear();
   if (items.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'dual-pane-empty';
@@ -159,13 +170,105 @@ function renderSecondaryPaneItems(items: FileItem[]): void {
     list.appendChild(empty);
     return;
   }
-  const sorted = [...items].sort((a, b) => NAME_COLLATOR.compare(a.name, b.name));
+  const sortBy = currentSettings.sortBy || 'name';
+  const sortOrder = currentSettings.sortOrder || 'asc';
+  const sorted = [...items].sort((a, b) => {
+    const dirSort = (b.isDirectory ? 1 : 0) - (a.isDirectory ? 1 : 0);
+    if (dirSort !== 0) return dirSort;
+    const comparison =
+      sortBy === 'date'
+        ? new Date(a.modified).getTime() - new Date(b.modified).getTime()
+        : sortBy === 'size'
+          ? a.size - b.size
+          : sortBy === 'type'
+            ? (() => {
+                const extA = path.extname(a.name).toLowerCase();
+                const extB = path.extname(b.name).toLowerCase();
+                return NAME_COLLATOR.compare(extA, extB);
+              })()
+            : NAME_COLLATOR.compare(a.name, b.name);
+    return sortOrder === 'asc' ? comparison : -comparison;
+  });
+  let thumbnailCount = 0;
+  const thumbnailCap = 400;
   for (const item of sorted) {
+    secondaryFilePathMap.set(item.path, item);
     const row = document.createElement('div');
-    row.className = 'dual-pane-item';
+    row.className = 'file-item dual-pane-item';
     row.dataset.path = item.path;
     row.dataset.directory = String(item.isDirectory);
-    row.innerHTML = `<span>${getFileIcon(item.name)}</span><span class="dual-pane-item-name">${escapeHtml(item.name)}</span>`;
+    row.dataset.isDirectory = String(item.isDirectory);
+    row.tabIndex = -1;
+    row.setAttribute('role', 'option');
+    row.setAttribute('aria-selected', 'false');
+    const icon = getFileIcon(item.name);
+    const thumbType = item.isDirectory
+      ? ''
+      : path.extname(item.name).toLowerCase().replace('.', '');
+    const canThumb =
+      !item.isDirectory &&
+      [
+        'png',
+        'jpg',
+        'jpeg',
+        'gif',
+        'webp',
+        'bmp',
+        'tiff',
+        'avif',
+        'heic',
+        'heif',
+        'mp4',
+        'mov',
+        'mkv',
+        'avi',
+        'webm',
+        'mp3',
+        'wav',
+        'flac',
+        'm4a',
+        'aac',
+        'ogg',
+        'pdf',
+        'docx',
+        'xlsx',
+        'pptx',
+      ].includes(thumbType);
+    if (canThumb && thumbnailCount < thumbnailCap) {
+      row.classList.add('has-thumbnail');
+      row.dataset.thumbnailType = ['pdf'].includes(thumbType)
+        ? 'pdf'
+        : ['docx', 'xlsx', 'pptx'].includes(thumbType)
+          ? 'office'
+          : ['mp4', 'mov', 'mkv', 'avi', 'webm'].includes(thumbType)
+            ? 'video'
+            : ['mp3', 'wav', 'flac', 'm4a', 'aac', 'ogg'].includes(thumbType)
+              ? 'audio'
+              : 'image';
+      thumbnailCount++;
+    }
+    row.innerHTML = `
+      <div class="file-main">
+        <div class="file-checkbox"><span class="checkbox-mark">✓</span></div>
+        <div class="file-icon">${icon}</div>
+        <div class="file-text">
+          <div class="file-name dual-pane-item-name">${escapeHtml(item.name)}</div>
+        </div>
+      </div>
+      <div class="file-info">
+        <span class="file-type">${item.isDirectory ? 'Folder' : escapeHtml(path.extname(item.name).replace('.', '').toUpperCase() || 'File')}</span>
+        <span class="file-size">${item.isDirectory ? '--' : formatFileSize(item.size)}</span>
+        <span class="file-modified">${DATE_FORMATTER.format(new Date(item.modified))}</span>
+      </div>
+    `;
+    secondaryFileElementMap.set(item.path, row);
+    if (secondaryPaneSelectedItems.has(item.path)) {
+      row.classList.add('selected');
+      row.setAttribute('aria-selected', 'true');
+    }
+    if (row.classList.contains('has-thumbnail')) {
+      thumbnails.observeThumbnailItem(row, 'dual-pane-secondary-list');
+    }
     list.appendChild(row);
   }
 }
@@ -175,20 +278,47 @@ function syncDualPaneControls(): void {
   const secondary = getDualPaneElement<HTMLElement>('dual-pane-secondary');
   const copyBtn = getDualPaneElement<HTMLButtonElement>('copy-to-other-pane-btn');
   const moveBtn = getDualPaneElement<HTMLButtonElement>('move-to-other-pane-btn');
+  const hasSelection = selectedItems.size > 0;
+  const hasTargetPath =
+    currentSettings.activePane === 'right' ? Boolean(currentPath) : Boolean(secondaryPanePath);
   if (secondary) secondary.style.display = enabled ? 'flex' : 'none';
   if (copyBtn) {
     copyBtn.style.display = enabled ? '' : 'none';
-    copyBtn.disabled = !enabled || !secondaryPanePath || selectedItems.size === 0;
+    copyBtn.disabled = !enabled || !hasTargetPath || !hasSelection;
   }
   if (moveBtn) {
     moveBtn.style.display = enabled ? '' : 'none';
-    moveBtn.disabled = !enabled || !secondaryPanePath || selectedItems.size === 0;
+    moveBtn.disabled = !enabled || !hasTargetPath || !hasSelection;
   }
 }
 
+function syncPaneSelectionVisuals(): void {
+  fileElementMap.forEach((el, itemPath) => {
+    const isSelected = primaryPaneSelectedItems.has(itemPath);
+    el.classList.toggle('selected', isSelected);
+    el.setAttribute('aria-selected', isSelected ? 'true' : 'false');
+  });
+  secondaryFileElementMap.forEach((el, itemPath) => {
+    const isSelected = secondaryPaneSelectedItems.has(itemPath);
+    el.classList.toggle('selected', isSelected);
+    el.setAttribute('aria-selected', isSelected ? 'true' : 'false');
+  });
+}
+
 function setActivePane(pane: 'left' | 'right', persist = true): void {
+  if (currentSettings.activePane !== pane) {
+    if (currentSettings.activePane === 'right') {
+      secondaryPaneSelectedItems = new Set(selectedItems);
+      setSelectedItemsState(new Set(primaryPaneSelectedItems));
+    } else {
+      primaryPaneSelectedItems = new Set(selectedItems);
+      setSelectedItemsState(new Set(secondaryPaneSelectedItems));
+    }
+  }
   currentSettings.activePane = pane;
   document.body.classList.toggle('active-pane-right', pane === 'right');
+  syncPaneSelectionVisuals();
+  updateStatusBar();
   if (persist) {
     debouncedSaveSettings();
   }
@@ -210,11 +340,18 @@ async function loadSecondaryPane(pathValue: string): Promise<void> {
     }
     secondaryPanePath = pathValue;
     secondaryPaneItems = result.contents || [];
+    const validSecondaryPaths = new Set(secondaryPaneItems.map((item) => item.path));
+    secondaryPaneSelectedItems = new Set(
+      Array.from(secondaryPaneSelectedItems).filter((itemPath) => validSecondaryPaths.has(itemPath))
+    );
     if (pathLabel) {
       pathLabel.textContent = secondaryPanePath;
       pathLabel.title = secondaryPanePath;
     }
     renderSecondaryPaneItems(secondaryPaneItems);
+    if (currentSettings.activePane === 'right') {
+      setSelectedItemsState(new Set(secondaryPaneSelectedItems));
+    }
     syncDualPaneControls();
   } catch (error) {
     showToast(getErrorMessage(error), 'Dual Pane', 'error');
@@ -292,6 +429,18 @@ const isMainWindow = window.tauriAPI.getWindowLabel() === 'main';
 
 const wired = wireControllers({
   getCurrentPath: () => currentPath,
+  getSearchScopePath: () => {
+    if (currentSettings.dualPaneEnabled === true && currentSettings.activePane === 'right') {
+      return secondaryPanePath || currentPath;
+    }
+    return currentPath;
+  },
+  getSearchScopeLabel: () => {
+    if (currentSettings.dualPaneEnabled === true && currentSettings.activePane === 'right') {
+      return 'right pane';
+    }
+    return 'files';
+  },
   setCurrentPath: (v) => {
     currentPath = v;
   },
@@ -672,7 +821,9 @@ function applySettings(settings: Settings) {
   } else if (!settings.dualPaneEnabled) {
     secondaryPanePath = '';
     secondaryPaneItems = [];
+    secondaryPaneSelectedItems.clear();
     renderSecondaryPaneItems([]);
+    setActivePane('left', false);
   }
   syncDualPaneControls();
 
@@ -1061,8 +1212,12 @@ async function addToRecentFiles(filePath: string) {
 }
 
 function updateStatusBar() {
+  const activeItems =
+    currentSettings.dualPaneEnabled === true && currentSettings.activePane === 'right'
+      ? secondaryPaneItems
+      : allFiles;
   if (statusItems) {
-    statusItems.textContent = `${allFiles.length} item${allFiles.length !== 1 ? 's' : ''}`;
+    statusItems.textContent = `${activeItems.length} item${activeItems.length !== 1 ? 's' : ''}`;
   }
 
   if (statusSelected) {
@@ -1114,6 +1269,21 @@ function updateStatusBar() {
       const prefix = folderName ? `${folderName}: ` : '';
       announceToScreenReader(`${prefix}${allFiles.length} item${allFiles.length !== 1 ? 's' : ''}`);
     }
+  }
+  const statusPane = document.getElementById('status-pane');
+  const statusPaneText = document.getElementById('status-pane-text');
+  if (statusPane && statusPaneText) {
+    const dualPaneEnabled = currentSettings.dualPaneEnabled === true;
+    statusPane.style.display = dualPaneEnabled ? 'inline-flex' : 'none';
+    statusPaneText.textContent = currentSettings.activePane === 'right' ? 'Right' : 'Left';
+  }
+  const statusViewMode = document.getElementById('status-view-mode');
+  const statusViewModeText = document.getElementById('status-view-mode-text');
+  if (statusViewMode && statusViewModeText) {
+    const viewLabel = viewMode === 'column' ? 'Columns' : viewMode === 'list' ? 'List' : 'Grid';
+    const sortLabel = `${currentSettings.sortBy} ${currentSettings.sortOrder.toUpperCase()}`;
+    statusViewMode.style.display = 'inline-flex';
+    statusViewModeText.textContent = `${viewLabel} · ${sortLabel}`;
   }
   syncDualPaneControls();
 }
@@ -1341,7 +1511,7 @@ const eventListenersController = createEventListenersController({
     const selectedPaths = Array.from(selectedItems);
     if (selectedPaths.length === 0) return;
     const firstPath = selectedPaths[0]!;
-    const item = allFiles.find((f) => f.path === firstPath);
+    const item = filePathMap.get(firstPath) ?? secondaryFilePathMap.get(firstPath);
     if (!item) return;
     const el = document.querySelector<HTMLElement>(
       `.file-item[data-path="${CSS.escape(firstPath)}"]`
@@ -1363,17 +1533,21 @@ const eventListenersController = createEventListenersController({
   },
   ensureActiveItem: () => ensureActiveItem(),
   toggleSelectionAtCursor: () => {
-    const fileGrid = document.getElementById('file-grid');
-    if (!fileGrid) return;
-    const activeItem = fileGrid.querySelector<HTMLElement>('.file-item[tabindex="0"]');
+    const isSecondary =
+      currentSettings.dualPaneEnabled === true && currentSettings.activePane === 'right';
+    const scope = document.getElementById(isSecondary ? 'dual-pane-secondary-list' : 'file-grid');
+    if (!scope) return;
+    const activeItem = scope.querySelector<HTMLElement>('.file-item[tabindex="0"]');
     if (activeItem) {
       toggleSelection(activeItem);
     }
   },
   navigateFileGridFocusOnly: (key: string) => {
-    const fileGrid = document.getElementById('file-grid');
-    if (!fileGrid) return;
-    const items = Array.from(fileGrid.querySelectorAll<HTMLElement>('.file-item'));
+    const isSecondary =
+      currentSettings.dualPaneEnabled === true && currentSettings.activePane === 'right';
+    const scope = document.getElementById(isSecondary ? 'dual-pane-secondary-list' : 'file-grid');
+    if (!scope) return;
+    const items = Array.from(scope.querySelectorAll<HTMLElement>('.file-item'));
     if (items.length === 0) return;
 
     const active = fileGrid.querySelector<HTMLElement>('.file-item[tabindex="0"]');
@@ -1678,9 +1852,9 @@ const { setupFileGridEventDelegation } = fileGridEventsController;
 async function renameSelected() {
   if (selectedItems.size !== 1) return;
   const itemPath = Array.from(selectedItems)[0]!;
-  const fileItem = fileElementMap.get(itemPath);
+  const fileItem = fileElementMap.get(itemPath) ?? secondaryFileElementMap.get(itemPath);
   if (fileItem) {
-    const item = filePathMap.get(itemPath);
+    const item = filePathMap.get(itemPath) ?? secondaryFilePathMap.get(itemPath);
     if (item) {
       inlineRenameController.startInlineRename(fileItem, item.name, item.path);
     }
@@ -2082,8 +2256,9 @@ late.updateDangerousOptionsVisibility = updateDangerousOptionsVisibility;
 late.setViewMode = setViewMode;
 late.setHomeViewActive = setHomeViewActive;
 late.updateNavigationButtons = updateNavigationButtons;
-late.getFileByPath = (p) => filePathMap.get(p);
-late.getFileItemData = getFileItemData;
+late.getFileByPath = (p) => filePathMap.get(p) ?? secondaryFilePathMap.get(p);
+late.getFileItemData = (el) =>
+  getFileItemData(el) ?? secondaryFilePathMap.get(el.dataset.path || '') ?? null;
 
 async function toggleView() {
   const viewModeCycle: ViewMode[] = ['grid', 'list', 'column'];
@@ -2206,20 +2381,38 @@ async function chooseFolderAndApply(onPathSelected: (selectedPath: string) => vo
 }
 
 async function copySelectionToOtherPane(): Promise<void> {
-  if (!secondaryPanePath || selectedItems.size === 0) return;
-  const ok = await clipboardController.copySelectedToDestination(secondaryPanePath);
+  if (selectedItems.size === 0) return;
+  const destinationPath =
+    currentSettings.dualPaneEnabled && currentSettings.activePane === 'right'
+      ? currentPath
+      : secondaryPanePath;
+  if (!destinationPath) return;
+  const ok = await clipboardController.copySelectedToDestination(destinationPath);
   if (ok) {
-    void loadSecondaryPane(secondaryPanePath);
-    refresh('dual-pane-copy');
+    if (secondaryPanePath) void loadSecondaryPane(secondaryPanePath);
+    if (currentSettings.activePane === 'right') {
+      refresh('dual-pane-copy-from-secondary');
+    } else {
+      refresh('dual-pane-copy-from-primary');
+    }
   }
 }
 
 async function moveSelectionToOtherPane(): Promise<void> {
-  if (!secondaryPanePath || selectedItems.size === 0) return;
-  const ok = await clipboardController.moveSelectedToDestination(secondaryPanePath);
+  if (selectedItems.size === 0) return;
+  const destinationPath =
+    currentSettings.dualPaneEnabled && currentSettings.activePane === 'right'
+      ? currentPath
+      : secondaryPanePath;
+  if (!destinationPath) return;
+  const ok = await clipboardController.moveSelectedToDestination(destinationPath);
   if (ok) {
-    void loadSecondaryPane(secondaryPanePath);
-    refresh('dual-pane-move');
+    if (secondaryPanePath) void loadSecondaryPane(secondaryPanePath);
+    if (currentSettings.activePane === 'right') {
+      refresh('dual-pane-move-from-secondary');
+    } else {
+      refresh('dual-pane-move-from-primary');
+    }
   }
 }
 
@@ -2362,7 +2555,7 @@ document.getElementById('dual-pane-secondary')?.addEventListener('mousedown', ()
 
 document.getElementById('dual-pane-secondary-list')?.addEventListener('dblclick', (event) => {
   const target = event.target as HTMLElement | null;
-  const row = target?.closest<HTMLElement>('.dual-pane-item');
+  const row = target?.closest<HTMLElement>('.file-item');
   if (!row) return;
   const itemPath = row.dataset.path || '';
   if (!itemPath) return;
@@ -2371,6 +2564,203 @@ document.getElementById('dual-pane-secondary-list')?.addEventListener('dblclick'
     return;
   }
   void window.tauriAPI.openFile(itemPath);
+});
+
+window.addEventListener('dual-pane-open-directory', (event: Event) => {
+  const customEvent = event as CustomEvent<{ path?: string }>;
+  const targetPath = customEvent.detail?.path;
+  if (!targetPath) return;
+  void loadSecondaryPane(targetPath);
+});
+
+function clearSecondarySelection(): void {
+  secondaryPaneSelectedItems.clear();
+  secondaryFileElementMap.forEach((el) => {
+    el.classList.remove('selected');
+    el.setAttribute('aria-selected', 'false');
+  });
+  setSelectedItemsState(new Set());
+  updateStatusBar();
+}
+
+function selectSecondaryItem(itemPath: string, append = false): void {
+  if (!append) {
+    secondaryPaneSelectedItems.clear();
+    secondaryFileElementMap.forEach((el) => {
+      el.classList.remove('selected');
+      el.setAttribute('aria-selected', 'false');
+    });
+  }
+  secondaryPaneSelectedItems.add(itemPath);
+  const row = secondaryFileElementMap.get(itemPath);
+  if (row) {
+    row.classList.add('selected');
+    row.setAttribute('aria-selected', 'true');
+  }
+  setSelectedItemsState(new Set(secondaryPaneSelectedItems));
+  updateStatusBar();
+}
+
+function clearSecondaryDropVisuals(): void {
+  document.getElementById('dual-pane-secondary-list')?.classList.remove('drag-over');
+  document.querySelectorAll('.dual-pane-item.drag-over').forEach((el) => {
+    el.classList.remove('drag-over', 'spring-loading');
+  });
+}
+
+document.getElementById('dual-pane-secondary-list')?.addEventListener('click', (event) => {
+  const target = event.target as HTMLElement | null;
+  const row = target?.closest<HTMLElement>('.file-item');
+  if (!row) {
+    clearSecondarySelection();
+    return;
+  }
+  if (currentSettings.dualPaneEnabled) {
+    setActivePane('right');
+  }
+  const itemPath = row.dataset.path || '';
+  if (!itemPath) return;
+  const toggle = event.metaKey || event.ctrlKey;
+  if (toggle && secondaryPaneSelectedItems.has(itemPath)) {
+    secondaryPaneSelectedItems.delete(itemPath);
+    row.classList.remove('selected');
+    row.setAttribute('aria-selected', 'false');
+    setSelectedItemsState(new Set(secondaryPaneSelectedItems));
+    updateStatusBar();
+  } else {
+    selectSecondaryItem(itemPath, toggle);
+  }
+});
+
+document.getElementById('dual-pane-secondary-list')?.addEventListener('contextmenu', (event) => {
+  const target = event.target as HTMLElement | null;
+  const row = target?.closest<HTMLElement>('.file-item');
+  if (!row) return;
+  event.preventDefault();
+  if (currentSettings.dualPaneEnabled) {
+    setActivePane('right');
+  }
+  const itemPath = row.dataset.path || '';
+  if (!itemPath) return;
+  if (!secondaryPaneSelectedItems.has(itemPath)) {
+    selectSecondaryItem(itemPath, false);
+  }
+  const item = secondaryFilePathMap.get(itemPath);
+  if (item) {
+    showContextMenu(event.pageX, event.pageY, item);
+  }
+});
+
+document.getElementById('dual-pane-secondary-list')?.addEventListener('dragstart', (event) => {
+  const target = event.target as HTMLElement | null;
+  const row = target?.closest<HTMLElement>('.file-item');
+  if (!row || !event.dataTransfer) return;
+  if (currentSettings.dualPaneEnabled) {
+    setActivePane('right');
+  }
+  const itemPath = row.dataset.path || '';
+  if (!itemPath) return;
+  if (!secondaryPaneSelectedItems.has(itemPath)) {
+    selectSecondaryItem(itemPath, false);
+  }
+  const selectedPaths = Array.from(secondaryPaneSelectedItems);
+  event.dataTransfer.effectAllowed = 'copyMove';
+  event.dataTransfer.setData('text/plain', JSON.stringify(selectedPaths));
+  window.tauriAPI.setDragData(selectedPaths).catch(ignoreError);
+  row.classList.add('dragging');
+});
+
+document.getElementById('dual-pane-secondary-list')?.addEventListener('dragend', (event) => {
+  const target = event.target as HTMLElement | null;
+  const row = target?.closest<HTMLElement>('.file-item');
+  row?.classList.remove('dragging');
+  clearSecondaryDropVisuals();
+  clearSpringLoad();
+  hideDropIndicator();
+  window.tauriAPI.clearDragData().catch(ignoreError);
+});
+
+document.getElementById('dual-pane-secondary-list')?.addEventListener('dragover', (event) => {
+  event.preventDefault();
+  const target = event.target as HTMLElement | null;
+  const row = target?.closest<HTMLElement>('.file-item');
+  const operation = getDragOperation(event);
+  if (event.dataTransfer) event.dataTransfer.dropEffect = operation;
+
+  if (row && row.dataset.isDirectory === 'true' && row.dataset.isAppBundle !== 'true') {
+    document.querySelectorAll('.dual-pane-item.drag-over').forEach((el) => {
+      if (el !== row) el.classList.remove('drag-over', 'spring-loading');
+    });
+    document.getElementById('dual-pane-secondary-list')?.classList.remove('drag-over');
+    row.classList.add('drag-over');
+    const itemPath = row.dataset.path || '';
+    if (itemPath) {
+      showDropIndicator(operation, itemPath, event.clientX, event.clientY);
+      scheduleSpringLoad(row, () => {
+        row.classList.remove('drag-over', 'spring-loading');
+        void loadSecondaryPane(itemPath);
+      });
+      return;
+    }
+  }
+
+  clearSpringLoad();
+  document.querySelectorAll('.dual-pane-item.drag-over').forEach((el) => {
+    el.classList.remove('drag-over', 'spring-loading');
+  });
+  document.getElementById('dual-pane-secondary-list')?.classList.add('drag-over');
+  if (secondaryPanePath) {
+    showDropIndicator(operation, secondaryPanePath, event.clientX, event.clientY);
+  }
+});
+
+document.getElementById('dual-pane-secondary-list')?.addEventListener('dragleave', (event) => {
+  const list = document.getElementById('dual-pane-secondary-list');
+  if (!list) return;
+  const rect = list.getBoundingClientRect();
+  if (
+    event.clientX < rect.left ||
+    event.clientX >= rect.right ||
+    event.clientY < rect.top ||
+    event.clientY >= rect.bottom
+  ) {
+    clearSecondaryDropVisuals();
+    clearSpringLoad();
+    hideDropIndicator();
+  }
+});
+
+document.getElementById('dual-pane-secondary-list')?.addEventListener('drop', async (event) => {
+  event.preventDefault();
+  const target = event.target as HTMLElement | null;
+  const row = target?.closest<HTMLElement>('.file-item');
+  clearSecondaryDropVisuals();
+  clearSpringLoad();
+  try {
+    const draggedPaths = await getDraggedPaths(event);
+    if (draggedPaths.length === 0) return;
+    const operation = getDragOperation(event);
+    let destinationPath = secondaryPanePath;
+    if (row && row.dataset.isDirectory === 'true') {
+      destinationPath = row.dataset.path || destinationPath;
+    }
+    if (!destinationPath) return;
+    const sameDirectory = draggedPaths.some(
+      (draggedPath) => path.dirname(draggedPath) === destinationPath
+    );
+    if (sameDirectory) {
+      showToast('Items are already in this directory', 'Info', 'info');
+      return;
+    }
+    await handleDrop(draggedPaths, destinationPath, operation);
+    if (secondaryPanePath) {
+      void loadSecondaryPane(secondaryPanePath);
+    }
+  } catch (error) {
+    showToast(getErrorMessage(error), 'Drag and Drop', 'error');
+  } finally {
+    hideDropIndicator();
+  }
 });
 
 document.addEventListener('mousedown', (e) => {

@@ -1,8 +1,8 @@
 .home-view {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-xxxl);
-  padding: 12px;
+  gap: var(--spacing-xxl);
+  padding: 10px;
   padding-bottom: 56px;
   position: relative;
   min-height: 100%;
@@ -46,8 +46,8 @@
 
 .home-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 6px;
 }
 
 .home-list {
@@ -59,10 +59,10 @@
 .home-item {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
+  gap: 8px;
+  padding: 8px 10px;
   border-radius: var(--radius-small);
-  min-height: calc(var(--control-height-lg) + 4px);
+  min-height: calc(var(--control-height-lg) + 2px);
   background: color-mix(in srgb, var(--surface-1) 92%, transparent);
   border: 1px solid var(--panel-border);
   color: var(--text-secondary);
@@ -130,10 +130,10 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  padding: 10px 12px;
+  gap: 8px;
+  padding: 8px 10px;
   border-radius: var(--radius-small);
-  min-height: calc(var(--control-height-lg) + 4px);
+  min-height: calc(var(--control-height-lg) + 2px);
   background: color-mix(in srgb, var(--surface-1) 92%, transparent);
   border: 1px solid var(--panel-border);
   color: var(--text-secondary);
@@ -200,8 +200,8 @@
 .home-drive-card {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 12px;
+  gap: 6px;
+  padding: 9px 10px;
   border-radius: var(--radius-small);
   border: 1px solid var(--panel-border);
   background: color-mix(in srgb, var(--surface-1) 92%, transparent);

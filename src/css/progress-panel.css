@@ -7,10 +7,10 @@
   display: flex;
   flex-direction: column;
   z-index: var(--z-progress);
-  background: var(--bg-secondary);
-  border: 1px solid var(--separator);
+  background: var(--chrome-surface-raised);
+  border: 1px solid var(--native-divider);
   border-radius: var(--radius-medium);
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--native-elevation-2);
   overflow: hidden;
   animation: progressPanelSlideIn 0.3s var(--animation-easing);
 }
@@ -35,8 +35,8 @@
   align-items: center;
   justify-content: space-between;
   padding: 10px 12px;
-  border-bottom: 1px solid var(--separator);
-  background: var(--bg-primary);
+  border-bottom: 1px solid var(--native-divider);
+  background: color-mix(in srgb, var(--chrome-surface) 88%, transparent);
 }
 
 .progress-panel-title {
@@ -89,8 +89,8 @@
   display: grid;
   gap: 6px;
   padding: 10px;
-  background: var(--bg-primary);
-  border: 1px solid var(--separator);
+  background: color-mix(in srgb, var(--surface-1) 90%, transparent);
+  border: 1px solid var(--native-divider);
   border-radius: var(--radius-small);
 }
 

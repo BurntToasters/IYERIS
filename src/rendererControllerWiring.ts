@@ -131,6 +131,8 @@ export interface LateBound {
 
 export interface WiringDeps {
   getCurrentPath(): string;
+  getSearchScopePath?(): string;
+  getSearchScopeLabel?(): string;
   setCurrentPath(value: string): void;
   getCurrentSettings(): Settings;
   setCurrentSettings(settings: Settings): void;
@@ -174,6 +176,15 @@ export interface WiringDeps {
 }
 
 function getFileItemsArray(): HTMLElement[] {
+  const isRightPaneActive =
+    document.body.classList.contains('dual-pane-enabled') &&
+    document.body.classList.contains('active-pane-right');
+  const scope = isRightPaneActive
+    ? document.getElementById('dual-pane-secondary-list')
+    : document.getElementById('file-grid');
+  if (scope) {
+    return Array.from(scope.querySelectorAll('.file-item')) as HTMLElement[];
+  }
   return Array.from(document.querySelectorAll('.file-item')) as HTMLElement[];
 }
 
@@ -482,6 +493,8 @@ export function wireControllers(deps: WiringDeps) {
 
   const searchController = createSearchController({
     getCurrentPath: () => deps.getCurrentPath(),
+    getSearchScopePath: deps.getSearchScopePath ? () => deps.getSearchScopePath!() : undefined,
+    getSearchScopeLabel: deps.getSearchScopeLabel ? () => deps.getSearchScopeLabel!() : undefined,
     getCurrentSettings: () => deps.getCurrentSettings(),
     setAllFiles: (files) => {
       deps.setAllFiles(files);
@@ -529,8 +542,31 @@ export function wireControllers(deps: WiringDeps) {
     clearPreview: () => previewController.clearPreview(),
     getFileByPath: (p) => deps.late.getFileByPath(p),
     getViewMode: () => deps.getViewMode(),
-    getFileGrid: () => fileGrid,
-    openFileEntry,
+    getFileGrid: () => {
+      const isRightPaneActive =
+        deps.getCurrentSettings().dualPaneEnabled === true &&
+        deps.getCurrentSettings().activePane === 'right';
+      if (isRightPaneActive) {
+        return document.getElementById('dual-pane-secondary-list') as HTMLElement | null;
+      }
+      return fileGrid;
+    },
+    openFileEntry: (file) => {
+      const isRightPaneActive =
+        deps.getCurrentSettings().dualPaneEnabled === true &&
+        deps.getCurrentSettings().activePane === 'right';
+      if (isRightPaneActive && file.isDirectory) {
+        window.dispatchEvent(
+          new CustomEvent('dual-pane-open-directory', {
+            detail: { path: file.path },
+          })
+        );
+      } else if (isRightPaneActive && file.isFile) {
+        void window.tauriAPI.openFile(file.path);
+      } else {
+        void openFileEntry(file);
+      }
+    },
     announceToScreenReader,
   });
 

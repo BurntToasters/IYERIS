@@ -10,24 +10,24 @@
 .context-menu {
   position: fixed;
   z-index: var(--z-dropdown);
-  padding: 4px;
+  padding: 6px;
   min-width: 240px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--separator);
+  background: var(--chrome-surface-raised);
+  border: 1px solid var(--native-divider);
   border-radius: var(--radius-small);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--native-elevation-2);
   animation: menu-fade var(--animation-duration) var(--animation-easing);
 }
 
 .context-menu-item {
-  padding: 6px 10px;
+  padding: 7px 10px;
   border: none;
   border-radius: 5px;
   background: none;
   cursor: pointer;
   transition: var(--transition-standard);
-  font-size: 13px;
-  font-weight: 400;
+  font-size: 12.5px;
+  font-weight: 500;
   font-family: inherit;
   display: flex;
   align-items: center;
@@ -66,7 +66,7 @@
 .context-menu-separator {
   height: 1px;
   background: var(--separator);
-  margin: 3px 4px;
+  margin: 4px 6px;
 }
 
 .context-menu-item.has-submenu {

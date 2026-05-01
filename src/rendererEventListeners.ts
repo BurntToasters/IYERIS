@@ -640,7 +640,7 @@ export function createEventListenersController(config: EventListenersConfig) {
     addressInput.select();
   }
 
-  const PANE_ORDER = ['sidebar', 'address-bar', 'file-grid'] as const;
+  const PANE_ORDER = ['sidebar', 'address-bar', 'file-grid', 'secondary-grid'] as const;
 
   function cyclePaneFocus(reverse: boolean): void {
     const activeEl = document.activeElement as HTMLElement | null;
@@ -660,6 +660,11 @@ export function createEventListenersController(config: EventListenersConfig) {
         activeEl.classList.contains('file-item')
       )
         currentPane = 2;
+      else if (
+        activeEl.closest('#dual-pane-secondary-list') ||
+        activeEl.closest('#dual-pane-secondary')
+      )
+        currentPane = 3;
     }
 
     const step = reverse ? -1 : 1;
@@ -690,6 +695,13 @@ export function createEventListenersController(config: EventListenersConfig) {
       } else if (pane === 'file-grid') {
         config.focusFileGrid();
         return;
+      } else if (pane === 'secondary-grid') {
+        const secondary = document.getElementById('dual-pane-secondary-list');
+        const firstItem = secondary?.querySelector<HTMLElement>('.file-item');
+        if (firstItem) {
+          firstItem.focus();
+          return;
+        }
       }
     }
   }

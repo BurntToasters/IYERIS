@@ -1,7 +1,7 @@
 .file-view {
   flex: 1;
   min-height: 0;
-  padding: var(--spacing-lg);
+  padding: var(--spacing-md);
   overflow-y: auto;
   position: relative;
 }
@@ -88,7 +88,7 @@ body.platform-linux .file-view {
     minmax(var(--grid-min-column), 1fr)
   );
   gap: var(--file-grid-gap-row) var(--file-grid-gap-col);
-  padding: var(--spacing-lg);
+  padding: var(--spacing-md);
 }
 
 .list-header {
@@ -109,7 +109,7 @@ body.platform-linux .file-view {
     color-mix(in srgb, var(--surface-0) 88%, transparent)
   );
   border-bottom: 1px solid var(--panel-border);
-  font-size: 11.5px;
+  font-size: 11px;
   text-transform: none;
   letter-spacing: 0.015em;
   color: var(--text-tertiary);

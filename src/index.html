@@ -198,7 +198,7 @@
 
       <div class="main-content">
         <div class="toolbar glass-panel" role="toolbar" aria-label="Main toolbar">
-          <div class="toolbar-left">
+          <div class="toolbar-left" role="group" aria-label="Navigation and selection">
             <button class="toolbar-button" id="back-btn" title="Back" aria-label="Go back" disabled>
               <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
                 <path
@@ -308,7 +308,7 @@
             </span>
           </div>
 
-          <div class="toolbar-center">
+          <div class="toolbar-center" role="group" aria-label="Path and search">
             <div class="address-bar-wrapper">
               <div class="address-bar glass-input">
                 <span class="address-icon"
@@ -495,8 +495,8 @@
             </div>
           </div>
 
-          <div class="toolbar-right">
-            <div class="toolbar-group toolbar-actions">
+          <div class="toolbar-right" role="group" aria-label="Commands and view modes">
+            <div class="toolbar-group toolbar-actions" role="group" aria-label="File commands">
               <button
                 class="toolbar-button"
                 id="search-btn"
@@ -650,7 +650,7 @@
               </button>
             </div>
             <div class="toolbar-divider" aria-hidden="true"></div>
-            <div class="toolbar-group toolbar-view">
+            <div class="toolbar-group toolbar-view" role="group" aria-label="View modes">
               <div class="view-options" id="view-options" role="radiogroup" aria-label="View mode">
                 <button
                   class="view-option"
@@ -2383,7 +2383,10 @@
                     <span class="toggle-slider"></span>
                   </label>
                 </div>
-                <div class="setting-item" data-searchable="operation queue progress panel collapsed">
+                <div
+                  class="setting-item"
+                  data-searchable="operation queue progress panel collapsed"
+                >
                   <div class="setting-info">
                     <label for="operation-panel-collapsed-toggle">Collapse Operation Queue</label>
                     <p class="setting-description">
@@ -3044,7 +3047,10 @@
 
               <div class="settings-card">
                 <div class="settings-card-header">Native Integration</div>
-                <div class="setting-item" data-searchable="open in iyeris finder explorer nautilus dolphin integration shell">
+                <div
+                  class="setting-item"
+                  data-searchable="open in iyeris finder explorer nautilus dolphin integration shell"
+                >
                   <div class="setting-info">
                     <label>Open in IYERIS</label>
                     <p class="setting-description" id="native-integration-status-text">
@@ -3434,6 +3440,9 @@
         </span>
       </div>
       <div class="status-right">
+        <span id="status-pane" class="status-pane" title="Active pane">
+          Pane <strong id="status-pane-text">Left</strong>
+        </span>
         <span
           id="status-view-mode"
           class="status-view-mode"

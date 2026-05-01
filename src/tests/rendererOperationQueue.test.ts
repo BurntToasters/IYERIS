@@ -10,6 +10,7 @@ vi.mock('../rendererDom.js', () => ({
 
 vi.mock('../shared.js', () => ({
   escapeHtml: (value: string) => value,
+  devLog: vi.fn(),
 }));
 
 import { createOperationQueueController } from '../rendererOperationQueue';
@@ -101,5 +102,32 @@ describe('createOperationQueueController', () => {
 
     expect(cancelArchiveOperation).toHaveBeenCalledWith('op-1');
     expect(controller.getOperation('op-1')?.status).toBe('cancelling');
+  });
+
+  it('tracks file-operation progress by operationId when provided', () => {
+    const controller = createController();
+    controller.bindFileOperationProgress();
+    const callback = (window.tauriAPI.onFileOperationProgress as ReturnType<typeof vi.fn>).mock
+      .calls[0]?.[0];
+    expect(callback).toBeTypeOf('function');
+
+    callback({
+      operationId: 'copy-1',
+      operation: 'copy',
+      current: 1,
+      total: 2,
+      name: 'foo.txt',
+    });
+    callback({
+      operationId: 'copy-2',
+      operation: 'copy',
+      current: 1,
+      total: 2,
+      name: 'bar.txt',
+    });
+
+    expect(controller.getOperation('copy-1')).toBeTruthy();
+    expect(controller.getOperation('copy-2')).toBeTruthy();
+    expect(controller.getOperation('copy') || controller.getOperation('file-copy')).toBeFalsy();
   });
 });

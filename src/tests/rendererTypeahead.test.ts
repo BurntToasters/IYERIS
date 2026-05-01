@@ -129,6 +129,28 @@ describe('rendererTypeahead', () => {
       expect(deps.clearSelection).not.toHaveBeenCalled();
     });
 
+    it('cycles through single-letter matches on repeated key presses', () => {
+      const deps = makeDeps();
+      const items = [
+        createFileItem('alpha.txt', '/alpha'),
+        createFileItem('apps.txt', '/apps'),
+        createFileItem('beta.txt', '/beta'),
+      ];
+      items.forEach((i) => document.body.appendChild(i));
+      deps.getFileItems.mockReturnValue(items);
+      const selected = new Set<string>();
+      deps.getSelectedItems.mockReturnValue(selected);
+
+      const ctrl = createTypeaheadController(deps);
+      ctrl.handleInput('a');
+      expect(selected.has('/alpha')).toBe(true);
+
+      selected.clear();
+      selected.add('/alpha');
+      ctrl.handleInput('a');
+      expect(selected.has('/apps')).toBe(true);
+    });
+
     it('updates tabindex on matched item and resets previous', () => {
       const deps = makeDeps();
       const items = [

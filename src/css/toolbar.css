@@ -6,7 +6,9 @@
   min-height: var(--toolbar-height);
   position: relative;
   z-index: var(--z-toolbar);
-  box-shadow: none;
+  background: var(--chrome-surface);
+  border: 1px solid var(--native-divider);
+  box-shadow: var(--native-elevation-1);
 }
 
 .toolbar .view-options {
@@ -36,17 +38,17 @@
   align-items: center;
   gap: var(--toolbar-left-right-gap);
   min-height: var(--toolbar-group-height);
-  padding: 2px 5px;
-  border-radius: var(--radius-medium);
-  background: color-mix(in srgb, var(--surface-2) 76%, transparent);
-  border: 1px solid var(--panel-border);
+  padding: 1px 4px;
+  border-radius: var(--radius-small);
+  background: color-mix(in srgb, var(--chrome-surface) 90%, transparent);
+  border: 1px solid var(--native-divider);
 }
 
 .toolbar-divider {
   width: 1px;
   height: var(--toolbar-separator-height);
-  background: var(--panel-border);
-  margin: 0 6px;
+  background: var(--native-divider);
+  margin: 0 4px;
 }
 
 .view-option {
@@ -82,7 +84,7 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
   min-width: 0;
 }
 
@@ -96,7 +98,7 @@
 .toolbar-button {
   width: var(--control-height-lg);
   height: var(--control-height-lg);
-  border: none;
+  border: 1px solid transparent;
   background: transparent;
   color: var(--text-primary);
   border-radius: var(--radius-small);
@@ -110,12 +112,13 @@
 
 .toolbar-button:hover:not(:disabled) {
   background: var(--interactive-hover);
+  border-color: var(--native-divider);
   box-shadow: none;
   transform: none;
 }
 
 .toolbar-button:active:not(:disabled) {
-  background: var(--interactive-active);
+  background: color-mix(in srgb, var(--interactive-active) 76%, var(--surface-2));
   transform: none;
 }
 
@@ -168,11 +171,11 @@ body.platform-linux .toolbar-button:active:not(:disabled) {
 .selection-indicator {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   flex-wrap: wrap;
   row-gap: 4px;
-  padding: 4px 9px;
-  margin-left: 8px;
+  padding: 3px 7px;
+  margin-left: 6px;
   background: color-mix(in srgb, var(--interactive-selected) 90%, transparent);
   border-radius: var(--radius-small);
   font-size: 11px;

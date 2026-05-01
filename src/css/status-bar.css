@@ -15,10 +15,10 @@
   border-bottom: none;
   border-left: none;
   border-right: none;
-  border-top: 1px solid var(--panel-border);
-  background: color-mix(in srgb, var(--surface-1) 95%, transparent);
+  border-top: 1px solid var(--native-divider);
+  background: var(--chrome-surface);
   backdrop-filter: none;
-  box-shadow: none;
+  box-shadow: 0 -1px 0 rgba(255, 255, 255, 0.03);
   will-change: transform;
 }
 
@@ -31,7 +31,7 @@ body.platform-linux .status-bar {
 .status-left,
 .status-right {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   align-items: center;
 }
 
@@ -219,8 +219,25 @@ body.theme-light .status-version:hover {
   align-items: center;
   gap: var(--spacing-sm);
   padding: 2px var(--spacing-md);
-  background: color-mix(in srgb, var(--surface-2) 85%, transparent);
+  background: color-mix(in srgb, var(--surface-2) 74%, transparent);
+  border: 1px solid var(--native-divider);
   border-radius: var(--radius-small);
+  .status-pane {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    padding: 2px var(--spacing-md);
+    background: color-mix(in srgb, var(--accent-color) 14%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent-color) 28%, transparent);
+    border-radius: var(--radius-small);
+    font-size: var(--font-size-status);
+    color: var(--text-primary);
+  }
+
+  .status-pane strong {
+    font-weight: 650;
+    color: var(--accent-color);
+  }
   font-size: var(--font-size-status);
   font-family: var(--font-mono);
 }

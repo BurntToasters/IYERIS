@@ -1,6 +1,6 @@
 import type { OperationKind, OperationQueueItem, OperationStatus } from './types';
 import { clearHtml, getById } from './rendererDom.js';
-import { escapeHtml } from './shared.js';
+import { devLog, escapeHtml } from './shared.js';
 
 type QueueUpdate = {
   status?: OperationStatus;
@@ -135,6 +135,21 @@ export function createOperationQueueController(deps: QueueDeps) {
     operation.current = operation.total > 0 ? operation.total : operation.current;
     operation.error = error;
     operation.updatedAt = Date.now();
+    const elapsedMs = operation.updatedAt - operation.createdAt;
+    if (status === 'failed') {
+      devLog('OperationQueue', `${operation.kind} failed`, {
+        id,
+        name: operation.name,
+        elapsedMs,
+        error: error || 'unknown',
+      });
+    } else if (elapsedMs >= 5000) {
+      devLog('OperationQueue', `${operation.kind} completed`, {
+        id,
+        name: operation.name,
+        elapsedMs,
+      });
+    }
     if (timers.has(id)) clearTimeout(timers.get(id));
     timers.set(
       id,
