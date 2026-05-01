@@ -76,6 +76,10 @@ fn exclude_segments() -> HashSet<&'static str> {
         "nvidia",
         "amd",
         "lost+found",
+        ".spotlight-v100",
+        ".trashes",
+        ".fseventsd",
+        ".documentrevisions-v100",
     ]
     .into_iter()
     .collect()

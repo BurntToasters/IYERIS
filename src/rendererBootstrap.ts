@@ -182,44 +182,47 @@ export function createBootstrapController(config: BootstrapConfig) {
     const isStoreVersion = mas || flatpak || msStore;
 
     if (typeof requestIdleCallback !== 'undefined') {
-      requestIdleCallback(() => {
-        if (isStoreVersion) {
-          const updateBtn = document.getElementById('check-updates-btn');
-          if (updateBtn) {
-            updateBtn.style.display = 'none';
-          }
-
-          const autoCheckToggle = document.getElementById('auto-check-updates-toggle');
-          if (autoCheckToggle) {
-            const settingItem = autoCheckToggle.closest('.setting-item') as HTMLElement;
-            if (settingItem) {
-              settingItem.style.display = 'none';
+      requestIdleCallback(
+        () => {
+          if (isStoreVersion) {
+            const updateBtn = document.getElementById('check-updates-btn');
+            if (updateBtn) {
+              updateBtn.style.display = 'none';
             }
-          }
 
-          const updatesCards = document.querySelectorAll('.settings-card-header');
-          updatesCards.forEach((header) => {
-            if (header.textContent === 'Updates') {
-              const card = header.closest('.settings-card') as HTMLElement;
-              if (card) {
-                card.style.display = 'none';
+            const autoCheckToggle = document.getElementById('auto-check-updates-toggle');
+            if (autoCheckToggle) {
+              const settingItem = autoCheckToggle.closest('.setting-item') as HTMLElement;
+              if (settingItem) {
+                settingItem.style.display = 'none';
               }
             }
-          });
-        }
 
-        if (mas || msStore) {
-          const settingsCards = document.querySelectorAll('.settings-card-header');
-          settingsCards.forEach((header) => {
-            if (header.textContent === 'Developer Options') {
-              const card = header.closest('.settings-card') as HTMLElement;
-              if (card) {
-                card.style.display = 'none';
+            const updatesCards = document.querySelectorAll('.settings-card-header');
+            updatesCards.forEach((header) => {
+              if (header.textContent === 'Updates') {
+                const card = header.closest('.settings-card') as HTMLElement;
+                if (card) {
+                  card.style.display = 'none';
+                }
               }
-            }
-          });
-        }
-      });
+            });
+          }
+
+          if (mas || msStore) {
+            const settingsCards = document.querySelectorAll('.settings-card-header');
+            settingsCards.forEach((header) => {
+              if (header.textContent === 'Developer Options') {
+                const card = header.closest('.settings-card') as HTMLElement;
+                if (card) {
+                  card.style.display = 'none';
+                }
+              }
+            });
+          }
+        },
+        { timeout: 5000 }
+      );
     }
 
     setTimeout(() => {

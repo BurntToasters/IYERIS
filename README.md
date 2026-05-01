@@ -74,7 +74,8 @@
 </div>
 
 ### Flatpak Installation:
-* You can use this quick command on linux to pull the latest flatpak binary from this repo and install it: <div><code>cd ~/Downloads && wget https://github.com/BurntToasters/IYERIS/releases/latest/download/IYERIS-Linux-x86_64.flatpak && flatpak install --user -y ./IYERIS-Linux-x86_64.flatpak</code></div>
+
+- You can use this quick command on linux to pull the latest flatpak binary from this repo and install it: <div><code>cd ~/Downloads && wget https://github.com/BurntToasters/IYERIS/releases/latest/download/IYERIS-Linux-x86_64.flatpak && flatpak install --user -y ./IYERIS-Linux-x86_64.flatpak</code></div>
 
 ### <p align="center">ℹ️ More information on IYERIS is available at: <b>https://iyeris.app</b></p>
 
@@ -83,7 +84,9 @@
 ### 📌 Checkout the roadmap and more <b>[➡️HERE!](https://help.rosie.run/iyeris/en-us/feature-set-and-roadmap)</b>
 
 ## Customize
+
 ### Customize the look of IYERIS with a set of our built-in themes, or use the theme editor and get creative!
+
 <p align="center">
   <img width="45%" height="1012" alt="IYERIS-Color1" src="https://prod.rosie.run/apps/iyeris/_static/v1/Color1.png" />
 &nbsp;
@@ -95,7 +98,9 @@
 </p>
 
 ## Multiple Views
+
 ### IYERIS supports Tile, List, and Column viewing for files.
+
 <p align="center">
   <img width="45%" height="1012" alt="IYERIS-View1" src="https://prod.rosie.run/apps/iyeris/_static/v1/Browse1.png" />
 &nbsp;
@@ -106,7 +111,9 @@
 </p>
 
 ## Archive and Compress!
+
 ### IYERIS comes with 7zip built in allowing you to compress and uncompress files with ease! Advanced users can also choose extra compression options!
+
 <p align="center">
   <img width="45%" height="1012" alt="IYERIS-Compress1" src="https://prod.rosie.run/apps/iyeris/_static/v1/Compress1.png" />
 &nbsp;
@@ -115,7 +122,9 @@
 </p>
 
 ## File Previews
+
 ### Preview supported files, and see their file properties and permissions!
+
 <p align="center">
   <img width="45%" height="1012" alt="IYERIS-View1" src="https://prod.rosie.run/apps/iyeris/_static/v1/Properties.png" />
 &nbsp;
@@ -126,6 +135,7 @@
 </p>
 
 # Build from source
-***MOST*** of IYERIS's deps are handled by NodeJS 22-24 by running `npm i`.<br>
-***HOWEVER***, Tauri V2 uses rust and is required for a user to manuall install if they want to build IYERIS from source. Checkout how to install rust [here](https://rust-lang.org/tools/install/).
+
+**_MOST_** of IYERIS's deps are handled by NodeJS 22-24 by running `npm i`.<br>
+**_HOWEVER_**, Tauri V2 uses rust and is required for a user to manually install if they want to build IYERIS from source. Checkout how to install rust [here](https://rust-lang.org/tools/install/).
 Please check out [build-setup.md](https://github.com/BurntToasters/IYERIS/blob/main/build-setup.md) in this repo for more info about each operating system's requirements to build IYERIS.

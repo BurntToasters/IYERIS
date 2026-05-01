@@ -9,12 +9,11 @@ use tauri::Emitter;
 
 static ACTIVE_OPS: std::sync::LazyLock<Mutex<HashSet<String>>> =
     std::sync::LazyLock::new(|| Mutex::new(HashSet::new()));
-static RELATIONSHIP_TAG_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
-    Regex::new(r#"(?is)<Relationship\b[^>]*>"#).expect("relationship tag regex")
+static RELATIONSHIP_TAG_RE: std::sync::LazyLock<Option<Regex>> = std::sync::LazyLock::new(|| {
+    Regex::new(r#"(?is)<Relationship\b[^>]*>"#).ok()
 });
-static XML_ATTRIBUTE_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
-    Regex::new(r#"(?is)([A-Za-z_:][A-Za-z0-9_.:-]*)\s*=\s*(['\"])(.*?)\2"#)
-        .expect("xml attribute regex")
+static XML_ATTRIBUTE_RE: std::sync::LazyLock<Option<Regex>> = std::sync::LazyLock::new(|| {
+    Regex::new(r#"(?is)([A-Za-z_:][A-Za-z0-9_.:-]*)\s*=\s*(['\"])(.*?)\2"#).ok()
 });
 
 const MAX_DECOMPRESSED_SIZE: u64 = 53_687_091_200; // 50 GB
@@ -968,7 +967,8 @@ fn parse_thumbnail_target_from_relationships(xml: &str) -> Option<String> {
         "http://purl.oclc.org/ooxml/officeDocument/relationships/metadata/thumbnail",
     ];
 
-    for tag_match in RELATIONSHIP_TAG_RE.find_iter(xml) {
+    let re = RELATIONSHIP_TAG_RE.as_ref()?;
+    for tag_match in re.find_iter(xml) {
         let tag = tag_match.as_str();
         let Some(rel_type) = extract_xml_attr(tag, "Type") else {
             continue;
@@ -991,7 +991,8 @@ fn parse_thumbnail_target_from_relationships(xml: &str) -> Option<String> {
 }
 
 fn extract_xml_attr(tag: &str, attr_name: &str) -> Option<String> {
-    for captures in XML_ATTRIBUTE_RE.captures_iter(tag) {
+    let re = XML_ATTRIBUTE_RE.as_ref()?;
+    for captures in re.captures_iter(tag) {
         let key = captures.get(1)?.as_str();
         if key.eq_ignore_ascii_case(attr_name) {
             return Some(captures.get(3)?.as_str().to_string());

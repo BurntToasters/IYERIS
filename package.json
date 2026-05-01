@@ -20,7 +20,7 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@tauri-apps/cli": "^2.11.0",
-    "@types/node": "^25.0.3",
+    "@types/node": "^22",
     "@vitest/coverage-v8": "^4.0.18",
     "cross-env": "^10.1.0",
     "dotenv-cli": "^11.0.0",
@@ -60,6 +60,7 @@
     "lint:prod": "eslint src/ --ignore-pattern src/tests/ --max-warnings 0",
     "lint:test": "eslint src/tests/",
     "lint:fix": "eslint src/ --fix",
+    "audit": "npm audit --production --audit-level=high",
     "format": "prettier --write \"src/**/*.{ts,css,html}\" \".github/workflows/*.{yml,yaml}\" \"scripts/*.js\" \"vitest.config.ts\"",
     "format:check": "prettier --check \"src/**/*.{ts,css,html}\" \".github/workflows/*.{yml,yaml}\" \"scripts/*.js\" \"vitest.config.ts\"",
     "licenses": "npm run licenses:npm && npm run licenses:cargo",

@@ -78,12 +78,20 @@ export function createClipboardController(deps: ClipboardDeps) {
     return a.paths.every((pathValue, index) => pathValue === b.paths[index]);
   }
 
-  function clearClipboardIfUnchanged(snapshot: ClipboardState): void {
+  async function clearClipboardIfUnchanged(snapshot: ClipboardState): Promise<void> {
     if (!snapshot || snapshot.operation !== 'cut') return;
     if (!isSameClipboardState(clipboard, snapshot)) return;
     clipboard = null;
-    window.tauriAPI.setClipboard(null).catch(ignoreError);
-    void updateClipboardIndicator().catch(ignoreError);
+    try {
+      await window.tauriAPI.setClipboard(null);
+    } catch {
+      /* ignore */
+    }
+    try {
+      await updateClipboardIndicator();
+    } catch {
+      /* ignore */
+    }
   }
 
   async function getSystemClipboardData(): Promise<{

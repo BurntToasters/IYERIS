@@ -35,11 +35,16 @@
             "$APPCACHE/**",
             "$APPLOG/**",
             "$RESOURCE/**",
+            "$TEMP/**",
             "$HOME/.ssh/**",
             "$HOME/.gnupg/**",
             "$HOME/.aws/**",
             "$HOME/.docker/**",
-            "$HOME/.kube/**"
+            "$HOME/.kube/**",
+            "**/.config/**/secrets*",
+            "**/id_rsa",
+            "**/id_ed25519",
+            "**/.netrc"
           ]
         }
       }

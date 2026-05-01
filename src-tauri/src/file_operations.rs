@@ -17,7 +17,7 @@ static FILE_OP_LOCK: std::sync::LazyLock<Mutex<()>> = std::sync::LazyLock::new(|
 const DEFAULT_READ_FILE_CONTENT_LIMIT_BYTES: u64 = 10 * 1024 * 1024;
 const MAX_READ_FILE_CONTENT_LIMIT_BYTES: u64 = 64 * 1024 * 1024;
 const DEFAULT_FILE_DATA_URL_LIMIT_BYTES: u64 = 50 * 1024 * 1024;
-const MAX_FILE_DATA_URL_LIMIT_BYTES: u64 = 100 * 1024 * 1024;
+const MAX_FILE_DATA_URL_LIMIT_BYTES: u64 = 50 * 1024 * 1024;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]

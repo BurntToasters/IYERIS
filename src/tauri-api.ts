@@ -640,7 +640,13 @@ const tauriAPI: TauriAPI = {
     }
   },
   getPlatform: () => invoke('get_platform'),
-  getWindowLabel: () => getCurrentWebviewWindow().label,
+  getWindowLabel: () => {
+    try {
+      return getCurrentWebviewWindow().label;
+    } catch {
+      return 'unknown';
+    }
+  },
   getAppVersion: () => invoke('get_app_version'),
   getSystemAccentColor: () => invoke('get_system_accent_color'),
   isMas: () => invoke('is_mas'),

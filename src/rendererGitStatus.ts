@@ -11,7 +11,7 @@ type GitStatusDeps = {
 };
 
 const GIT_STATUS_CACHE_TTL_MS = 3000;
-const GIT_STATUS_CACHE_MAX = 100;
+const GIT_STATUS_CACHE_MAX = 500;
 
 export function createGitStatusController(deps: GitStatusDeps) {
   const { getCurrentSettings, getCurrentPath, getFileElement, getGitStatus, getGitBranch } = deps;

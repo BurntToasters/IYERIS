@@ -7,6 +7,8 @@ import {
   COLUMN_VIEW_SCROLL_DELAY_MS,
 } from './rendererLocalConstants.js';
 
+const EMPTY_FOLDER_LABEL = 'Empty folder';
+
 type ColumnViewDeps = {
   columnView: HTMLElement;
   getCurrentPath: () => string;
@@ -634,7 +636,7 @@ export function createColumnViewController(deps: ColumnViewDeps) {
         : sortedItems.filter((item) => !item.isHidden);
 
       if (visibleItems.length === 0) {
-        pane.innerHTML = '<div class="column-item placeholder">Empty folder</div>';
+        pane.innerHTML = `<div class="column-item placeholder">${EMPTY_FOLDER_LABEL}</div>`;
       } else {
         visibleItems.forEach((fileItem) => {
           pane.appendChild(createColumnItemElement(fileItem, columnIndex, pane));

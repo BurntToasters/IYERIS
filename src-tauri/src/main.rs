@@ -391,7 +391,9 @@ fn main() {
                 let _ = window.show();
                 let _ = window.set_focus();
                 if let Some(open_path) = first_open_path_arg(&_args) {
-                    let _ = window.emit("native-open-path", open_path);
+                    if let Err(e) = window.emit("native-open-path", open_path) {
+                        log::warn!("[SingleInstance] emit native-open-path failed: {}", e);
+                    }
                 }
             } else {
                 let windows = app.webview_windows();
@@ -403,7 +405,9 @@ fn main() {
                     let _ = w.show();
                     let _ = w.set_focus();
                     if let Some(open_path) = first_open_path_arg(&_args) {
-                        let _ = w.emit("native-open-path", open_path);
+                        if let Err(e) = w.emit("native-open-path", open_path) {
+                            log::warn!("[SingleInstance] emit native-open-path failed: {}", e);
+                        }
                     }
                 }
             }
@@ -433,10 +437,14 @@ fn main() {
                 .find(|window| window.is_focused().unwrap_or(false))
                 .cloned();
             if let Some(window) = focused_window.or_else(|| app.get_webview_window("main")) {
-                let _ = window.emit("native-menu-command", id);
+                if let Err(e) = window.emit("native-menu-command", id) {
+                    log::warn!("[Menu] emit failed: {}", e);
+                }
             } else {
                 for window in windows.values() {
-                    let _ = window.emit("native-menu-command", id.clone());
+                    if let Err(e) = window.emit("native-menu-command", id.clone()) {
+                        log::warn!("[Menu] emit failed: {}", e);
+                    }
                 }
             }
         })
@@ -483,7 +491,9 @@ fn main() {
             }
             if let Some(open_path) = first_open_path_arg(&args) {
                 if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.emit("native-open-path", open_path);
+                    if let Err(e) = window.emit("native-open-path", open_path) {
+                        log::warn!("[Setup] emit native-open-path failed: {}", e);
+                    }
                 }
             }
 
