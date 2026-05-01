@@ -10,19 +10,19 @@
 .context-menu {
   position: fixed;
   z-index: var(--z-dropdown);
-  padding: 6px;
-  min-width: 220px;
-  background: var(--dropdown-bg);
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-medium);
-  box-shadow: var(--shadow-lg);
+  padding: 4px;
+  min-width: 240px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--separator);
+  border-radius: var(--radius-small);
+  box-shadow: var(--shadow-md);
   animation: menu-fade var(--animation-duration) var(--animation-easing);
 }
 
 .context-menu-item {
-  padding: 6px 12px;
+  padding: 6px 10px;
   border: none;
-  border-radius: var(--radius-small);
+  border-radius: 5px;
   background: none;
   cursor: pointer;
   transition: var(--transition-standard);
@@ -35,6 +35,12 @@
   width: 100%;
   text-align: left;
   color: var(--text-primary);
+}
+
+.context-menu-item.is-disabled {
+  cursor: default;
+  opacity: 0.45;
+  pointer-events: none;
 }
 
 .context-menu-item:hover,
@@ -60,7 +66,7 @@
 .context-menu-separator {
   height: 1px;
   background: var(--separator);
-  margin: 4px 0;
+  margin: 3px 4px;
 }
 
 .context-menu-item.has-submenu {
@@ -97,10 +103,10 @@
 }
 
 body.platform-darwin .context-menu {
-  border-radius: var(--radius-medium);
+  border-radius: 8px;
   padding: 4px;
-  background: var(--dropdown-bg);
-  border: 1px solid var(--glass-border);
+  background: var(--bg-secondary);
+  border: 1px solid var(--separator);
   box-shadow: var(--shadow-md);
 }
 

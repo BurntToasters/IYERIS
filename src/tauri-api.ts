@@ -10,11 +10,6 @@ type FileConflictBehavior = 'ask' | 'rename' | 'skip' | 'overwrite';
 type ConflictResolution = 'rename' | 'skip' | 'overwrite' | 'cancel';
 type ConflictDecision = Exclude<ConflictResolution, 'cancel'>;
 
-const sessionConflictDefaults: Record<'copy' | 'move', ConflictDecision | null> = {
-  copy: null,
-  move: null,
-};
-
 let pendingUpdate: Update | null = null;
 let updateDownloadInProgress = false;
 let currentUpdateChannel: 'auto' | 'beta' | 'stable' = 'auto';
@@ -191,6 +186,7 @@ async function runFileOperationWithConflictResolution(
 ) {
   const behavior = conflictBehavior ?? 'ask';
   const conflictResolutions: Record<string, ConflictDecision> = {};
+  let operationDefault: ConflictDecision | null = null;
 
   while (true) {
     try {
@@ -212,9 +208,8 @@ async function runFileOperationWithConflictResolution(
         return { success: false as const, error };
       }
 
-      const sessionDefault = sessionConflictDefaults[operation];
-      if (sessionDefault) {
-        conflictResolutions[conflictItem] = sessionDefault;
+      if (operationDefault) {
+        conflictResolutions[conflictItem] = operationDefault;
         continue;
       }
 
@@ -224,7 +219,7 @@ async function runFileOperationWithConflictResolution(
       }
 
       conflictResolutions[conflictItem] = resolution;
-      sessionConflictDefaults[operation] = resolution;
+      operationDefault = resolution;
     }
   }
 }
@@ -1246,6 +1241,33 @@ const tauriAPI: TauriAPI = {
     wrap(() => invoke('create_symlink', { targetPath, linkPath })),
   shareItems: (filePaths) => wrap(() => invoke('share_items', { filePaths })),
   launchDesktopEntry: (filePath) => wrap(() => invoke('launch_desktop_entry', { filePath })),
+  getNativeIntegrationStatus: async () => {
+    try {
+      const data = await invoke<Record<string, unknown>>('get_native_integration_status');
+      return {
+        success: true,
+        supported: data.supported as boolean,
+        installed: data.installed as boolean,
+        message: data.message as string,
+      } as never;
+    } catch (e) {
+      return { success: false, error: String(e) } as never;
+    }
+  },
+  installNativeIntegration: () => wrap(() => invoke('install_native_integration')),
+  uninstallNativeIntegration: () => wrap(() => invoke('uninstall_native_integration')),
+  onNativeMenuCommand: (callback) => {
+    const unlisten = listen('native-menu-command', (event) => callback(String(event.payload)));
+    return () => {
+      unlisten.then((fn) => fn()).catch(ignoreError);
+    };
+  },
+  onNativeOpenPath: (callback) => {
+    const unlisten = listen('native-open-path', (event) => callback(String(event.payload)));
+    return () => {
+      unlisten.then((fn) => fn()).catch(ignoreError);
+    };
+  },
   setUpdateChannel: (channel) => {
     currentUpdateChannel = channel === 'beta' ? 'beta' : channel === 'stable' ? 'stable' : 'auto';
   },

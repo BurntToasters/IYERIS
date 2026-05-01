@@ -17,8 +17,7 @@ static FILE_INDEX: std::sync::LazyLock<Arc<RwLock<FileIndex>>> =
 
 static BUILD_CANCEL: AtomicBool = AtomicBool::new(false);
 
-static BUILD_MUTEX: std::sync::LazyLock<Mutex<()>> =
-    std::sync::LazyLock::new(|| Mutex::new(()));
+static BUILD_MUTEX: std::sync::LazyLock<Mutex<()>> = std::sync::LazyLock::new(|| Mutex::new(()));
 
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -51,22 +50,54 @@ pub struct FileIndex {
 
 fn exclude_segments() -> HashSet<&'static str> {
     [
-        "node_modules", ".git", ".cache", "cache", "caches", ".trash", "trash",
-        "$recycle.bin", "system volume information", ".npm", ".docker",
-        "appdata", "programdata", "windows", "program files", "program files (x86)",
-        "$windows.~bt", "$windows.~ws", "recovery", "perflogs", "library",
-        "$winreagent", "config.msi", "msocache", "intel", "nvidia", "amd",
-        "proc", "sys", "dev", "run", "boot",
-        "private", "lost+found",
-    ].into_iter().collect()
+        "node_modules",
+        ".git",
+        ".cache",
+        ".trash",
+        "trash",
+        "$recycle.bin",
+        "system volume information",
+        ".npm",
+        ".docker",
+        ".snap",
+        "appdata",
+        "programdata",
+        "windows",
+        "program files",
+        "program files (x86)",
+        "$windows.~bt",
+        "$windows.~ws",
+        "recovery",
+        "perflogs",
+        "$winreagent",
+        "config.msi",
+        "msocache",
+        "intel",
+        "nvidia",
+        "amd",
+        "lost+found",
+    ]
+    .into_iter()
+    .collect()
 }
 
 fn exclude_files() -> HashSet<&'static str> {
     [
-        "pagefile.sys", "hiberfil.sys", "swapfile.sys", "dumpstack.log.tmp",
-        "dumpstack.log", ".ds_store", "thumbs.db", "desktop.ini",
-        "ntuser.dat", "ntuser.dat.log", "ntuser.dat.log1", "ntuser.dat.log2",
-    ].into_iter().collect()
+        "pagefile.sys",
+        "hiberfil.sys",
+        "swapfile.sys",
+        "dumpstack.log.tmp",
+        "dumpstack.log",
+        ".ds_store",
+        "thumbs.db",
+        "desktop.ini",
+        "ntuser.dat",
+        "ntuser.dat.log",
+        "ntuser.dat.log1",
+        "ntuser.dat.log2",
+    ]
+    .into_iter()
+    .collect()
 }
 
 fn should_exclude(path: &Path, excl_segments: &HashSet<&str>, excl_files: &HashSet<&str>) -> bool {
@@ -92,7 +123,14 @@ fn get_index_locations() -> Vec<PathBuf> {
 
     if let Some(user_dirs) = directories::UserDirs::new() {
         let home = user_dirs.home_dir();
-        for dir in &["Desktop", "Documents", "Downloads", "Pictures", "Music", "Videos"] {
+        for dir in &[
+            "Desktop",
+            "Documents",
+            "Downloads",
+            "Pictures",
+            "Music",
+            "Videos",
+        ] {
             let p = home.join(dir);
             if p.exists() {
                 locations.push(p);
@@ -134,7 +172,10 @@ fn get_index_locations() -> Vec<PathBuf> {
     #[cfg(target_os = "macos")]
     {
         if let Ok(entries) = fs::read_dir("/Volumes") {
-            for entry in entries.filter_map(|e| e.map_err(|err| log::warn!("[Indexer] /Volumes entry error: {}", err)).ok()) {
+            for entry in entries.filter_map(|e| {
+                e.map_err(|err| log::warn!("[Indexer] /Volumes entry error: {}", err))
+                    .ok()
+            }) {
                 let p = entry.path();
                 if p.to_string_lossy() != "/Volumes/Macintosh HD" {
                     locations.push(p);
@@ -162,7 +203,10 @@ fn build_index_sync() -> Vec<IndexEntry> {
             .follow_links(false)
             .into_iter()
             .filter_entry(|e| !should_exclude(e.path(), &excl_segments, &excl_files))
-            .filter_map(|e| e.map_err(|err| log::warn!("[Indexer] walk error: {}", err)).ok())
+            .filter_map(|e| {
+                e.map_err(|err| log::warn!("[Indexer] walk error: {}", err))
+                    .ok()
+            })
         {
             if is_build_cancelled() || entries.len() >= MAX_INDEX_SIZE {
                 break;
@@ -256,7 +300,11 @@ fn save_index_to_disk(path: &Path, entries: &[IndexEntry]) -> Result<(), String>
 
     if let Err(e) = fs::rename(&tmp, path) {
         if let Err(cleanup_err) = fs::remove_file(&tmp) {
-            log::warn!("[Indexer] Failed to clean up temp file {}: {}", tmp.display(), cleanup_err);
+            log::warn!(
+                "[Indexer] Failed to clean up temp file {}: {}",
+                tmp.display(),
+                cleanup_err
+            );
         }
         return Err(e.to_string());
     }
@@ -278,10 +326,7 @@ pub fn initialize_index(app: &tauri::AppHandle) {
                     .map(|dt| dt.to_rfc3339())
                     .unwrap_or_default()
             });
-            log::info!(
-                "Loaded {} index entries from disk",
-                index.entries.len()
-            );
+            log::info!("Loaded {} index entries from disk", index.entries.len());
         }
     }
 
@@ -368,4 +413,50 @@ pub async fn trigger_rebuild(app: &tauri::AppHandle) {
 
 pub fn cancel_build() {
     set_build_cancelled(true);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn should_exclude_skips_node_modules() {
+        let segs = exclude_segments();
+        let files = exclude_files();
+        let p = Path::new("/home/u/proj/node_modules/pkg/index.js");
+        assert!(should_exclude(p, &segs, &files));
+    }
+
+    #[test]
+    fn should_not_exclude_plain_cache_folder_name() {
+        let segs = exclude_segments();
+        let files = exclude_files();
+        let p = Path::new("/home/u/proj/build/cache/output.bin");
+        assert!(!should_exclude(p, &segs, &files));
+    }
+
+    #[test]
+    fn should_exclude_dot_cache() {
+        let segs = exclude_segments();
+        let files = exclude_files();
+        let p = Path::new("/home/u/.cache/foo");
+        assert!(should_exclude(p, &segs, &files));
+    }
+
+    #[test]
+    fn should_not_exclude_macos_library_tree() {
+        let segs = exclude_segments();
+        let files = exclude_files();
+        let p = Path::new("/Users/dev/Library/Fonts/Arial.ttf");
+        assert!(!should_exclude(p, &segs, &files));
+    }
+
+    #[test]
+    fn should_exclude_dot_snap() {
+        let segs = exclude_segments();
+        let files = exclude_files();
+        let p = Path::new("/home/u/.snap/somepkg");
+        assert!(should_exclude(p, &segs, &files));
+    }
 }

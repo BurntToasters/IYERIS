@@ -18,7 +18,7 @@ import { createSelectionController } from './rendererSelection.js';
 import { createToastManager } from './rendererToasts.js';
 import { createHoverCardController } from './rendererHoverCard.js';
 import { createTypeaheadController } from './rendererTypeahead.js';
-import { createArchiveOperationsController } from './rendererArchiveOperations.js';
+import { createOperationQueueController } from './rendererOperationQueue.js';
 import { createTabsController } from './rendererTabs.js';
 import { createCommandPaletteController } from './rendererCommandPalette.js';
 import { createShortcutsUiController } from './rendererShortcutsUi.js';
@@ -196,18 +196,26 @@ export function wireControllers(deps: WiringDeps) {
   let hideSettingsModal!: () => void | Promise<void>;
   /* eslint-enable prefer-const */
 
-  const archiveOperationsController = createArchiveOperationsController({
+  const operationQueueController = createOperationQueueController({
     cancelArchiveOperation: (operationId) => window.tauriAPI.cancelArchiveOperation(operationId),
+    cancelChecksumCalculation: (operationId) =>
+      window.tauriAPI.cancelChecksumCalculation(operationId),
+    getOperationPanelCollapsed: () => deps.getCurrentSettings().operationPanelCollapsed === true,
+    setOperationPanelCollapsed: (collapsed) => {
+      deps.getCurrentSettings().operationPanelCollapsed = collapsed;
+      deps.debouncedSaveSettings(100);
+    },
   });
 
   const {
     generateOperationId,
     addOperation,
     updateOperation,
+    completeOperation,
     removeOperation,
     getOperation,
-    cleanup: cleanupArchiveOperations,
-  } = archiveOperationsController;
+    cleanup: cleanupOperationQueue,
+  } = operationQueueController;
 
   const sortController = createSortController({
     getSortBtn: () => sortBtn,
@@ -292,35 +300,7 @@ export function wireControllers(deps: WiringDeps) {
   );
   deps.getIpcCleanupFunctions().push(cleanupDirectoryContentsProgress);
 
-  let fileOperationProgressToastId: string | null = null;
-  const cleanupFileOperationProgress = window.tauriAPI.onFileOperationProgress((progress) => {
-    const label = progress.operation === 'copy' ? 'Copying' : 'Moving';
-    const message = `${label} ${progress.current} of ${progress.total}`;
-    if (fileOperationProgressToastId) {
-      const existing = document.getElementById(fileOperationProgressToastId);
-      const msgEl = existing?.querySelector('.toast-message');
-      if (msgEl) {
-        msgEl.textContent = message;
-        return;
-      }
-    }
-    fileOperationProgressToastId = `file-op-progress-${Date.now()}`;
-    const container = document.getElementById('toast-container');
-    if (container) {
-      const toast = document.createElement('div');
-      toast.id = fileOperationProgressToastId;
-      toast.className = 'toast toast-info';
-      const msgDiv = document.createElement('div');
-      msgDiv.className = 'toast-message';
-      msgDiv.textContent = message;
-      toast.appendChild(msgDiv);
-      container.appendChild(toast);
-      setTimeout(() => {
-        toast.remove();
-        fileOperationProgressToastId = null;
-      }, 3000);
-    }
-  });
+  const cleanupFileOperationProgress = operationQueueController.bindFileOperationProgress();
   deps.getIpcCleanupFunctions().push(cleanupFileOperationProgress);
 
   const createDirectoryOperationId = directoryLoader.createOperationId;
@@ -443,9 +423,14 @@ export function wireControllers(deps: WiringDeps) {
     deactivateModal,
     addToRecentFiles: (p) => deps.late.addToRecentFiles(p),
     generateOperationId,
-    addOperation,
-    getOperation,
-    updateOperation,
+    addOperation: (id, type, name) => addOperation(id, type, name, { cancellable: true }),
+    getOperation: (id) => {
+      const operation = getOperation(id);
+      return operation ? { aborted: operation.status === 'cancelling' } : undefined;
+    },
+    updateOperation: (id, current, total, currentFile) =>
+      updateOperation(id, { current, total, currentFile, status: 'active' }),
+    completeOperation,
     removeOperation,
     isWindowsPlatform,
   });
@@ -507,9 +492,7 @@ export function wireControllers(deps: WiringDeps) {
     updateStatusBar: () => deps.late.updateStatusBar(),
     showToast,
     createDirectoryOperationId,
-    navigateTo: (pathValue) => {
-      void deps.late.navigateTo(pathValue);
-    },
+    navigateTo: (pathValue) => deps.late.navigateTo(pathValue),
     debouncedSaveSettings: deps.debouncedSaveSettings,
     saveSettingsWithTimestamp: deps.saveSettingsWithTimestamp,
     getFileGrid: () => fileGrid,
@@ -578,6 +561,8 @@ export function wireControllers(deps: WiringDeps) {
     getSearchInputElement,
     setQuery: setSearchQuery,
     focusInput: focusSearchInput,
+    updateContentSearchToggle,
+    updateSearchPlaceholder,
   } = searchController;
 
   const {
@@ -626,6 +611,7 @@ export function wireControllers(deps: WiringDeps) {
     clearSelection,
     getSelectedItems: () => deps.getSelectedItems(),
     updateStatusBar: () => deps.late.updateStatusBar(),
+    selectSingleItem: (fileItem) => selectionController.selectSingleItem(fileItem),
   });
 
   const { handleInput: handleTypeaheadInput, reset: resetTypeahead } = typeaheadController;
@@ -716,6 +702,16 @@ export function wireControllers(deps: WiringDeps) {
     duplicateItems: (paths) => clipboardController.duplicateItems(paths),
     moveSelectedToFolder: () => clipboardController.moveSelectedToFolder(),
     copySelectedToFolder: () => clipboardController.copySelectedToFolder(),
+    moveSelectedToDestination: (destinationPath) =>
+      clipboardController.moveSelectedToDestination(destinationPath),
+    copySelectedToDestination: (destinationPath) =>
+      clipboardController.copySelectedToDestination(destinationPath),
+    getRecentTransferDestinations: () => deps.getCurrentSettings().recentTransferDestinations ?? [],
+    setRecentTransferDestinations: (destinations) => {
+      const settings = deps.getCurrentSettings();
+      settings.recentTransferDestinations = destinations;
+      deps.debouncedSaveSettings(100);
+    },
     shareItems: async (filePaths) => {
       const result = await window.tauriAPI.shareItems(filePaths);
       if (!result.success) {
@@ -1005,6 +1001,52 @@ export function wireControllers(deps: WiringDeps) {
   hideCommandPalette = commandPaletteController.hideCommandPalette;
   syncCommandShortcuts = commandPaletteController.syncCommandShortcuts;
 
+  const cleanupNativeMenuCommand =
+    window.tauriAPI.onNativeMenuCommand?.((command) => {
+      const run: Record<string, () => void> = {
+        'new-window': () => void window.tauriAPI.openNewWindow(),
+        'new-tab': () => void addNewTab(),
+        'new-file': () => void inlineRenameController.createNewFile(),
+        'new-folder': () => void inlineRenameController.createNewFolder(),
+        copy: () => clipboardController.copyToClipboard(),
+        cut: () => clipboardController.cutToClipboard(),
+        paste: () => void clipboardController.pasteFromClipboard(),
+        rename: () => void deps.late.renameSelected(),
+        delete: () => void deps.late.deleteSelected(),
+        refresh: () => deps.late.refresh('native-menu'),
+        back: () => goBack(),
+        forward: () => goForward(),
+        up: () => goUp(),
+        home: () => void deps.late.navigateTo(HOME_VIEW_PATH),
+        'view-grid': () => void deps.late.setViewMode('grid'),
+        'view-list': () => void deps.late.setViewMode('list'),
+        'view-column': () => void deps.late.setViewMode('column'),
+        'dual-pane': () => {
+          const settings = deps.getCurrentSettings();
+          settings.dualPaneEnabled = !settings.dualPaneEnabled;
+          deps.late.applySettings(settings);
+          deps.debouncedSaveSettings(100);
+          showToast(
+            settings.dualPaneEnabled ? 'Dual pane enabled' : 'Dual pane disabled',
+            'View',
+            'info'
+          );
+        },
+        'command-palette': () => showCommandPalette(),
+        'find-duplicates': () => void duplicateFinderController.openDuplicateFinderModal(),
+        settings: () => showSettingsModal(),
+        shortcuts: () => showShortcutsModal(),
+      };
+      run[command]?.();
+    }) ?? (() => {});
+  deps.getIpcCleanupFunctions().push(cleanupNativeMenuCommand);
+
+  const cleanupNativeOpenPath =
+    window.tauriAPI.onNativeOpenPath?.((openPath) => {
+      void openPathWithArchivePrompt(openPath, undefined, true);
+    }) ?? (() => {});
+  deps.getIpcCleanupFunctions().push(cleanupNativeOpenPath);
+
   const shortcutsUi = createShortcutsUiController({
     isMacPlatform,
     formatShortcutKeyLabel,
@@ -1202,13 +1244,14 @@ export function wireControllers(deps: WiringDeps) {
   onSettingsModalHide = handleSettingsModalClosed;
 
   return {
-    archiveOperationsController,
+    operationQueueController,
     generateOperationId,
     addOperation,
     updateOperation,
+    completeOperation,
     removeOperation,
     getOperation,
-    cleanupArchiveOperations,
+    cleanupOperationQueue,
 
     sortController,
     showSortMenu,
@@ -1315,6 +1358,8 @@ export function wireControllers(deps: WiringDeps) {
     getSearchInputElement,
     setSearchQuery,
     focusSearchInput,
+    updateContentSearchToggle,
+    updateSearchPlaceholder,
 
     previewController,
     initPreviewUi,

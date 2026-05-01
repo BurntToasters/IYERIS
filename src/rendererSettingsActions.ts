@@ -32,6 +32,59 @@ export function createSettingsActionsController(deps: SettingsActionsDeps) {
   }
 
   function initSettingsActions(): void {
+    const nativeStatus = document.getElementById('native-integration-status-text');
+    const nativeInstallBtn = document.getElementById(
+      'native-integration-install-btn'
+    ) as HTMLButtonElement | null;
+    const nativeUninstallBtn = document.getElementById(
+      'native-integration-uninstall-btn'
+    ) as HTMLButtonElement | null;
+
+    const refreshNativeIntegrationStatus = async () => {
+      if (!nativeStatus || !nativeInstallBtn || !nativeUninstallBtn) return;
+      nativeInstallBtn.disabled = true;
+      nativeUninstallBtn.disabled = true;
+      nativeStatus.textContent = 'Checking integration status...';
+
+      const status = await window.tauriAPI.getNativeIntegrationStatus();
+      if (!status.success) {
+        nativeStatus.textContent = status.error || 'Failed to load integration status';
+        return;
+      }
+
+      nativeStatus.textContent = status.message;
+      if (!status.supported) {
+        nativeInstallBtn.disabled = true;
+        nativeUninstallBtn.disabled = true;
+        return;
+      }
+
+      nativeInstallBtn.disabled = status.installed;
+      nativeUninstallBtn.disabled = !status.installed;
+    };
+
+    nativeInstallBtn?.addEventListener('click', async () => {
+      const result = await window.tauriAPI.installNativeIntegration();
+      if (!result.success) {
+        deps.showToast(result.error || 'Install failed', 'Native Integration', 'error');
+        return;
+      }
+      deps.showToast('Open in IYERIS integration installed', 'Native Integration', 'success');
+      await refreshNativeIntegrationStatus();
+    });
+
+    nativeUninstallBtn?.addEventListener('click', async () => {
+      const result = await window.tauriAPI.uninstallNativeIntegration();
+      if (!result.success) {
+        deps.showToast(result.error || 'Uninstall failed', 'Native Integration', 'error');
+        return;
+      }
+      deps.showToast('Open in IYERIS integration removed', 'Native Integration', 'success');
+      await refreshNativeIntegrationStatus();
+    });
+
+    void refreshNativeIntegrationStatus();
+
     document.getElementById('export-settings-btn')?.addEventListener('click', async () => {
       let url: string | null = null;
       try {

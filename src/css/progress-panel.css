@@ -1,14 +1,22 @@
 .progress-panel {
   position: fixed;
-  bottom: var(--spacing-massive);
-  right: var(--spacing-massive);
-  width: 360px;
-  max-height: 400px;
+  bottom: 18px;
+  right: 18px;
+  width: min(420px, calc(100vw - 36px));
+  max-height: min(520px, calc(100vh - 72px));
   display: flex;
   flex-direction: column;
   z-index: var(--z-progress);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+  background: var(--bg-secondary);
+  border: 1px solid var(--separator);
+  border-radius: var(--radius-medium);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
   animation: progressPanelSlideIn 0.3s var(--animation-easing);
+}
+
+.progress-panel.is-collapsed {
+  width: auto;
 }
 
 @keyframes progressPanelSlideIn {
@@ -26,8 +34,9 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--spacing-xxl) var(--spacing-xxxl);
+  padding: 10px 12px;
   border-bottom: 1px solid var(--separator);
+  background: var(--bg-primary);
 }
 
 .progress-panel-title {
@@ -70,8 +79,92 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: var(--spacing-lg);
+  padding: 10px;
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-lg);
+  gap: 8px;
+}
+
+.operation-queue-item {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  background: var(--bg-primary);
+  border: 1px solid var(--separator);
+  border-radius: var(--radius-small);
+}
+
+.operation-queue-item.is-done {
+  border-color: rgba(74, 222, 128, 0.35);
+}
+
+.operation-queue-item.is-failed {
+  border-color: rgba(248, 113, 113, 0.45);
+}
+
+.operation-queue-header,
+.operation-queue-title {
+  display: flex;
+  align-items: center;
+}
+
+.operation-queue-header {
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.operation-queue-title {
+  min-width: 0;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.operation-queue-status {
+  flex: 0 0 auto;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.operation-queue-name,
+.operation-queue-file {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.operation-queue-name {
+  color: var(--text-primary);
+  font-size: 12px;
+}
+
+.operation-queue-file {
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.operation-queue-progress {
+  height: 5px;
+  overflow: hidden;
+  background: var(--separator);
+  border-radius: 999px;
+}
+
+.operation-queue-progress-fill {
+  height: 100%;
+  background: var(--accent-color);
+  transition: width 0.16s ease;
+}
+
+.operation-queue-cancel {
+  justify-self: end;
+  padding: 4px 8px;
+  border: 1px solid var(--separator);
+  border-radius: var(--radius-small);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
 }

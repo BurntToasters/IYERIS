@@ -324,10 +324,18 @@ export function createSelectionController(deps: SelectionDeps) {
     }
   }
 
+  function selectSingleItem(fileItem: HTMLElement): void {
+    const fileItems = getFileItemsArray();
+    const index = fileItems.indexOf(fileItem);
+    if (index === -1) return;
+    selectItemAtIndex(fileItems, index, false, -1);
+  }
+
   function setupRubberBandSelection(): void {
     const fileView = document.getElementById('file-view');
     const selectionRect = document.getElementById('selection-rect');
     if (!fileView || !selectionRect) return;
+    let rubberBandLastIndex = -1;
 
     fileView.addEventListener('mousedown', (e) => {
       if (!(e.target instanceof HTMLElement)) return;
@@ -415,6 +423,10 @@ export function createSelectionController(deps: SelectionDeps) {
           if (intersects && cached.path) {
             setSelectedState(cached.el, true);
             nextSelection.add(cached.path);
+            const currentIndex = getFileItemsArray().indexOf(cached.el);
+            if (currentIndex !== -1) {
+              rubberBandLastIndex = currentIndex;
+            }
           } else if (!rubberBandInitialSelection.has(cached.path)) {
             setSelectedState(cached.el, false);
           }
@@ -431,6 +443,9 @@ export function createSelectionController(deps: SelectionDeps) {
       isRubberBandActive = false;
       rubberBandStart = null;
       cachedItemRects = [];
+      if (rubberBandLastIndex >= 0) {
+        lastSelectedIndex = rubberBandLastIndex;
+      }
       if (rubberBandRafId !== null) {
         cancelAnimationFrame(rubberBandRafId);
         rubberBandRafId = null;
@@ -467,6 +482,7 @@ export function createSelectionController(deps: SelectionDeps) {
     ensureActiveItem,
     invalidateGridColumnsCache,
     invalidateFileItemsCache,
+    selectSingleItem,
     destroy,
   };
 }

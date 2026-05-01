@@ -403,6 +403,86 @@ body.theme-github {
   min-height: 0;
 }
 
+body.dual-pane-enabled .content-wrapper {
+  gap: var(--spacing-md);
+}
+
+body.dual-pane-enabled .file-view {
+  flex: 1 1 0;
+}
+
+.dual-pane-secondary {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+body.dual-pane-enabled:not(.active-pane-right) #file-view,
+body.dual-pane-enabled.active-pane-right #dual-pane-secondary {
+  outline: 2px solid color-mix(in srgb, var(--accent-color) 65%, transparent);
+  outline-offset: -2px;
+}
+
+.dual-pane-header {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 10px 6px;
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.dual-pane-header-btn {
+  height: 30px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.dual-pane-path {
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--panel-border);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dual-pane-list {
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+  min-height: 0;
+  padding: 4px;
+}
+
+.dual-pane-item {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px;
+  align-items: center;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  padding: 7px 8px;
+  cursor: default;
+}
+
+.dual-pane-item:hover {
+  background: var(--hover-color);
+  border-color: var(--panel-border);
+}
+
+.dual-pane-item-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dual-pane-empty {
+  padding: 12px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
 body.preview-right .content-wrapper {
   flex-direction: row;
 }

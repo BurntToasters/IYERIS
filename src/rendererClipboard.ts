@@ -285,51 +285,82 @@ export function createClipboardController(deps: ClipboardDeps) {
     setClipboardSelection('cut');
   }
 
-  async function moveSelectedToFolder(): Promise<void> {
-    const selectedItems = deps.getSelectedItems();
-    if (selectedItems.size === 0) return;
-    const result = await window.tauriAPI.selectFolder();
-    if (!result.success) return;
-
-    const destPath = result.path;
-    const sourcePaths = Array.from(selectedItems);
-    const alreadyInDest = sourcePaths.some((sourcePath) => {
+  function isSourceAlreadyInDestination(sourcePaths: string[], destPath: string): boolean {
+    return sourcePaths.some((sourcePath) => {
       const parentDir = path.dirname(sourcePath);
       return parentDir === destPath || sourcePath === destPath;
     });
+  }
+
+  async function moveSelectedToFolder(): Promise<string | null> {
+    const selectedItems = deps.getSelectedItems();
+    if (selectedItems.size === 0) return null;
+    const result = await window.tauriAPI.selectFolder();
+    if (!result.success) return null;
+
+    const destPath = result.path;
+    const sourcePaths = Array.from(selectedItems);
+    const alreadyInDest = isSourceAlreadyInDestination(sourcePaths, destPath);
 
     if (alreadyInDest) {
       deps.showToast('Items are already in this directory', 'Info', 'info');
-      return;
+      return null;
     }
 
     await deps.handleDrop(sourcePaths, destPath, 'move');
+    return destPath;
   }
 
-  async function copySelectedToFolder(): Promise<void> {
+  async function copySelectedToFolder(): Promise<string | null> {
     const selectedItems = deps.getSelectedItems();
-    if (selectedItems.size === 0) return;
+    if (selectedItems.size === 0) return null;
     const result = await window.tauriAPI.selectFolder();
-    if (!result.success) return;
+    if (!result.success) return null;
 
     const destPath = result.path;
     const sourcePaths = Array.from(selectedItems);
-    const alreadyInDest = sourcePaths.some((sourcePath) => {
-      const parentDir = path.dirname(sourcePath);
-      return parentDir === destPath || sourcePath === destPath;
-    });
+    const alreadyInDest = isSourceAlreadyInDestination(sourcePaths, destPath);
 
     if (alreadyInDest) {
       deps.showToast('Items are already in this directory', 'Info', 'info');
-      return;
+      return null;
     }
 
     await deps.handleDrop(sourcePaths, destPath, 'copy');
+    return destPath;
+  }
+
+  async function moveSelectedToDestination(destPath: string): Promise<boolean> {
+    if (!destPath) return false;
+    const selectedItems = deps.getSelectedItems();
+    if (selectedItems.size === 0) return false;
+    const sourcePaths = Array.from(selectedItems);
+    if (isSourceAlreadyInDestination(sourcePaths, destPath)) {
+      deps.showToast('Items are already in this directory', 'Info', 'info');
+      return false;
+    }
+    await deps.handleDrop(sourcePaths, destPath, 'move');
+    return true;
+  }
+
+  async function copySelectedToDestination(destPath: string): Promise<boolean> {
+    if (!destPath) return false;
+    const selectedItems = deps.getSelectedItems();
+    if (selectedItems.size === 0) return false;
+    const sourcePaths = Array.from(selectedItems);
+    if (isSourceAlreadyInDestination(sourcePaths, destPath)) {
+      deps.showToast('Items are already in this directory', 'Info', 'info');
+      return false;
+    }
+    await deps.handleDrop(sourcePaths, destPath, 'copy');
+    return true;
   }
 
   async function pasteIntoFolder(folderPath: string): Promise<void> {
     if (!folderPath) return;
+    if (pasteInProgress) return;
 
+    pasteInProgress = true;
     try {
       if (!clipboard || clipboard.paths.length === 0) {
         const currentSettings = deps.getCurrentSettings();
@@ -343,6 +374,34 @@ export function createClipboardController(deps: ClipboardDeps) {
       }
       const clipboardSnapshot = cloneClipboardState(clipboard);
       if (!clipboardSnapshot) return;
+      if (clipboardSnapshot.operation === 'cut') {
+        const validationResults = await Promise.all(
+          clipboardSnapshot.paths.map((p) =>
+            window.tauriAPI.getItemProperties(p).then(
+              (r) => ({ path: p, exists: r.success }),
+              () => ({ path: p, exists: false })
+            )
+          )
+        );
+        const validPaths = validationResults.filter((r) => r.exists).map((r) => r.path);
+        const missingCount = validationResults.length - validPaths.length;
+        if (validPaths.length === 0) {
+          clipboard = null;
+          updateCutVisuals();
+          deps.showToast('Source files no longer exist', 'Paste Failed', 'error');
+          return;
+        }
+        if (missingCount > 0) {
+          clipboardSnapshot.paths = validPaths;
+          clipboard = { operation: 'cut', paths: [...validPaths] };
+          window.tauriAPI.setClipboard(clipboard).catch(ignoreError);
+          deps.showToast(
+            `${missingCount} file(s) no longer exist and were skipped`,
+            'Paste',
+            'warning'
+          );
+        }
+      }
 
       const isCopy = clipboardSnapshot.operation === 'copy';
       const conflictBehavior = deps.getCurrentSettings().fileConflictBehavior || 'ask';
@@ -399,6 +458,8 @@ export function createClipboardController(deps: ClipboardDeps) {
       deps.refresh();
     } catch {
       deps.showToast('Paste operation failed', 'Error', 'error');
+    } finally {
+      pasteInProgress = false;
     }
   }
 
@@ -580,6 +641,8 @@ export function createClipboardController(deps: ClipboardDeps) {
     cutToClipboard,
     moveSelectedToFolder,
     copySelectedToFolder,
+    moveSelectedToDestination,
+    copySelectedToDestination,
     pasteFromClipboard,
     pasteIntoFolder,
     duplicateItems,

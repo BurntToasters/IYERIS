@@ -630,6 +630,24 @@
                   <circle cx="13" cy="8" r="1.5" fill="currentColor" />
                 </svg>
               </button>
+              <button
+                class="toolbar-button"
+                id="copy-to-other-pane-btn"
+                title="Copy to Other Pane"
+                aria-label="Copy selection to other pane"
+                style="display: none"
+              >
+                <img src="/twemoji/27a1.svg" class="twemoji" alt="➡️" draggable="false" />
+              </button>
+              <button
+                class="toolbar-button"
+                id="move-to-other-pane-btn"
+                title="Move to Other Pane"
+                aria-label="Move selection to other pane"
+                style="display: none"
+              >
+                <img src="/twemoji/1f69a.svg" class="twemoji" alt="🚚" draggable="false" />
+              </button>
             </div>
             <div class="toolbar-divider" aria-hidden="true"></div>
             <div class="toolbar-group toolbar-view">
@@ -877,6 +895,42 @@
             ></div>
             <div class="selection-rect" id="selection-rect" aria-hidden="true"></div>
           </div>
+          <div
+            class="file-view glass-panel dual-pane-secondary"
+            id="dual-pane-secondary"
+            role="region"
+            aria-label="Secondary pane"
+            style="display: none"
+          >
+            <div class="dual-pane-header">
+              <button
+                class="toolbar-button dual-pane-header-btn"
+                id="dual-pane-secondary-open-here-btn"
+                title="Open in primary pane"
+                aria-label="Open this path in primary pane"
+              >
+                Open Here
+              </button>
+              <button
+                class="toolbar-button dual-pane-header-btn"
+                id="dual-pane-secondary-browse-btn"
+                title="Choose folder for secondary pane"
+                aria-label="Choose folder for secondary pane"
+              >
+                Browse
+              </button>
+              <button
+                class="toolbar-button dual-pane-header-btn"
+                id="dual-pane-secondary-sync-btn"
+                title="Sync secondary pane to primary"
+                aria-label="Sync secondary pane to primary"
+              >
+                Sync
+              </button>
+            </div>
+            <div class="dual-pane-path" id="dual-pane-secondary-path"></div>
+            <div class="dual-pane-list" id="dual-pane-secondary-list"></div>
+          </div>
 
           <div class="preview-panel glass-panel" id="preview-panel" style="display: none">
             <div class="preview-resize-handle" id="preview-resize-handle"></div>
@@ -989,7 +1043,8 @@
         tabindex="0"
       >
         <img src="/twemoji/2702.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" />
-        Cut <span class="context-menu-shortcut">Ctrl+X</span>
+        <span class="context-menu-label">Cut</span>
+        <span class="context-menu-shortcut">Ctrl+X</span>
       </button>
       <button
         type="button"
@@ -1079,6 +1134,13 @@
             />
             Copy To...
           </button>
+          <div
+            class="context-menu-separator"
+            id="copy-move-recent-separator"
+            role="separator"
+            style="display: none"
+          ></div>
+          <div id="copy-move-recent-list"></div>
         </div>
       </div>
       <button
@@ -1264,7 +1326,8 @@
         tabindex="0"
       >
         <img src="/twemoji/1f5d1.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" />
-        Delete <span class="context-menu-shortcut">Del</span>
+        <span class="context-menu-label">Delete</span>
+        <span class="context-menu-shortcut">Del</span>
       </button>
       <div class="context-menu-separator" role="separator"></div>
       <button
@@ -2295,6 +2358,46 @@
               </div>
 
               <div class="settings-card">
+                <div class="settings-card-header">Workspace</div>
+                <div class="setting-item" data-searchable="dual pane split view two panel">
+                  <div class="setting-info">
+                    <label for="dual-pane-toggle">Dual Pane Mode</label>
+                    <p class="setting-description">
+                      Keep a second file pane visible for quick copy and move workflows
+                    </p>
+                  </div>
+                  <label class="toggle-switch">
+                    <input type="checkbox" id="dual-pane-toggle" />
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+                <div class="setting-item" data-searchable="native menu menubar file edit view">
+                  <div class="setting-info">
+                    <label for="native-menu-toggle">Native App Menu</label>
+                    <p class="setting-description">
+                      Use the operating system menu bar. Requires restart.
+                    </p>
+                  </div>
+                  <label class="toggle-switch">
+                    <input type="checkbox" id="native-menu-toggle" />
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+                <div class="setting-item" data-searchable="operation queue progress panel collapsed">
+                  <div class="setting-info">
+                    <label for="operation-panel-collapsed-toggle">Collapse Operation Queue</label>
+                    <p class="setting-description">
+                      Start with operation queue details hidden until expanded
+                    </p>
+                  </div>
+                  <label class="toggle-switch">
+                    <input type="checkbox" id="operation-panel-collapsed-toggle" />
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+              </div>
+
+              <div class="settings-card">
                 <div class="settings-card-header">Preview</div>
                 <div class="setting-item" data-searchable="syntax highlighting code preview color">
                   <div class="setting-info">
@@ -2936,6 +3039,32 @@
                     <option value="beta">Beta</option>
                     <option value="stable">Stable</option>
                   </select>
+                </div>
+              </div>
+
+              <div class="settings-card">
+                <div class="settings-card-header">Native Integration</div>
+                <div class="setting-item" data-searchable="open in iyeris finder explorer nautilus dolphin integration shell">
+                  <div class="setting-info">
+                    <label>Open in IYERIS</label>
+                    <p class="setting-description" id="native-integration-status-text">
+                      Checking integration status...
+                    </p>
+                  </div>
+                  <div class="settings-inline-actions">
+                    <button class="modal-button" id="native-integration-install-btn" type="button">
+                      <img src="/twemoji/2795.svg" class="twemoji" alt="➕" draggable="false" />
+                      Install
+                    </button>
+                    <button
+                      class="modal-button"
+                      id="native-integration-uninstall-btn"
+                      type="button"
+                    >
+                      <img src="/twemoji/2796.svg" class="twemoji" alt="➖" draggable="false" />
+                      Uninstall
+                    </button>
+                  </div>
                 </div>
               </div>
 

@@ -117,6 +117,8 @@ function debouncedSaveSettings(delay: number = SETTINGS_SAVE_DEBOUNCE_MS) {
 const ipcCleanupFunctions: (() => void)[] = [];
 
 let currentPath: string = '';
+let secondaryPanePath = '';
+let secondaryPaneItems: FileItem[] = [];
 let history: string[] = [];
 let historyIndex: number = -1;
 let selectedItems: Set<string> = new Set();
@@ -140,6 +142,83 @@ function markSelectionDirty(): void {
 function setSelectedItemsState(value: Set<string>): void {
   selectedItems = value;
   markSelectionDirty();
+}
+
+function getDualPaneElement<T extends HTMLElement>(id: string): T | null {
+  return document.getElementById(id) as T | null;
+}
+
+function renderSecondaryPaneItems(items: FileItem[]): void {
+  const list = getDualPaneElement<HTMLElement>('dual-pane-secondary-list');
+  if (!list) return;
+  list.replaceChildren();
+  if (items.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'dual-pane-empty';
+    empty.textContent = 'No items';
+    list.appendChild(empty);
+    return;
+  }
+  const sorted = [...items].sort((a, b) => NAME_COLLATOR.compare(a.name, b.name));
+  for (const item of sorted) {
+    const row = document.createElement('div');
+    row.className = 'dual-pane-item';
+    row.dataset.path = item.path;
+    row.dataset.directory = String(item.isDirectory);
+    row.innerHTML = `<span>${getFileIcon(item.name)}</span><span class="dual-pane-item-name">${escapeHtml(item.name)}</span>`;
+    list.appendChild(row);
+  }
+}
+
+function syncDualPaneControls(): void {
+  const enabled = currentSettings.dualPaneEnabled === true;
+  const secondary = getDualPaneElement<HTMLElement>('dual-pane-secondary');
+  const copyBtn = getDualPaneElement<HTMLButtonElement>('copy-to-other-pane-btn');
+  const moveBtn = getDualPaneElement<HTMLButtonElement>('move-to-other-pane-btn');
+  if (secondary) secondary.style.display = enabled ? 'flex' : 'none';
+  if (copyBtn) {
+    copyBtn.style.display = enabled ? '' : 'none';
+    copyBtn.disabled = !enabled || !secondaryPanePath || selectedItems.size === 0;
+  }
+  if (moveBtn) {
+    moveBtn.style.display = enabled ? '' : 'none';
+    moveBtn.disabled = !enabled || !secondaryPanePath || selectedItems.size === 0;
+  }
+}
+
+function setActivePane(pane: 'left' | 'right', persist = true): void {
+  currentSettings.activePane = pane;
+  document.body.classList.toggle('active-pane-right', pane === 'right');
+  if (persist) {
+    debouncedSaveSettings();
+  }
+}
+
+async function loadSecondaryPane(pathValue: string): Promise<void> {
+  if (!pathValue) return;
+  const pathLabel = getDualPaneElement<HTMLElement>('dual-pane-secondary-path');
+  try {
+    const result = await window.tauriAPI.getDirectoryContents(
+      pathValue,
+      undefined,
+      currentSettings.showHiddenFiles,
+      false
+    );
+    if (!result.success) {
+      showToast(result.error || 'Failed to load secondary pane', 'Dual Pane', 'error');
+      return;
+    }
+    secondaryPanePath = pathValue;
+    secondaryPaneItems = result.contents || [];
+    if (pathLabel) {
+      pathLabel.textContent = secondaryPanePath;
+      pathLabel.title = secondaryPanePath;
+    }
+    renderSecondaryPaneItems(secondaryPaneItems);
+    syncDualPaneControls();
+  } catch (error) {
+    showToast(getErrorMessage(error), 'Dual Pane', 'error');
+  }
 }
 
 function clearSelectedItemsState(): void {
@@ -280,7 +359,7 @@ const wired = wireControllers({
 });
 
 const {
-  cleanupArchiveOperations,
+  cleanupOperationQueue,
   showSortMenu,
   hideSortMenu,
   updateSortIndicators,
@@ -358,6 +437,8 @@ const {
   getSearchInputElement,
   setSearchQuery,
   focusSearchInput,
+  updateContentSearchToggle,
+  updateSearchPlaceholder,
   previewController,
   initPreviewUi,
   showQuickLook,
@@ -579,8 +660,26 @@ function applySettings(settings: Settings) {
 
   loadBookmarks();
   loadRecentFiles();
+  document.body.classList.toggle('dual-pane-enabled', settings.dualPaneEnabled === true);
+  setActivePane(settings.activePane === 'right' ? 'right' : 'left', false);
+  if (
+    settings.dualPaneEnabled &&
+    !secondaryPanePath &&
+    currentPath &&
+    !isHomeViewPath(currentPath)
+  ) {
+    void loadSecondaryPane(currentPath);
+  } else if (!settings.dualPaneEnabled) {
+    secondaryPanePath = '';
+    secondaryPaneItems = [];
+    renderSecondaryPaneItems([]);
+  }
+  syncDualPaneControls();
 
   window.tauriAPI.setUpdateChannel(settings.updateChannel || 'auto');
+
+  updateContentSearchToggle();
+  updateSearchPlaceholder();
 
   warnIfMultipleScalingActive(settings);
 }
@@ -1016,6 +1115,7 @@ function updateStatusBar() {
       announceToScreenReader(`${prefix}${allFiles.length} item${allFiles.length !== 1 ? 's' : ''}`);
     }
   }
+  syncDualPaneControls();
 }
 
 const bootstrapController = createBootstrapController({
@@ -1210,6 +1310,7 @@ const eventListenersController = createEventListenersController({
   moveSelectedToFolder: () => clipboardController.moveSelectedToFolder(),
   clipboardOnClipboardChanged: (c) => clipboardController.setClipboard(c),
   clipboardUpdateCutVisuals: () => clipboardController.updateCutVisuals(),
+  clipboardUpdateIndicator: () => clipboardController.updateClipboardIndicator(),
   zoomIn,
   zoomOut,
   zoomReset,
@@ -1442,6 +1543,9 @@ async function navigateTo(path: string, skipHistoryUpdate = false, trigger = 'di
       ignoreError(error);
     }
     addToDirectoryHistory(path);
+    if (currentSettings.dualPaneEnabled === true && !secondaryPanePath) {
+      void loadSecondaryPane(path);
+    }
 
     if (!skipHistoryUpdate && (historyIndex === -1 || history[historyIndex] !== path)) {
       history = history.slice(0, historyIndex + 1);
@@ -2101,11 +2205,33 @@ async function chooseFolderAndApply(onPathSelected: (selectedPath: string) => vo
   }
 }
 
+async function copySelectionToOtherPane(): Promise<void> {
+  if (!secondaryPanePath || selectedItems.size === 0) return;
+  const ok = await clipboardController.copySelectedToDestination(secondaryPanePath);
+  if (ok) {
+    void loadSecondaryPane(secondaryPanePath);
+    refresh('dual-pane-copy');
+  }
+}
+
+async function moveSelectionToOtherPane(): Promise<void> {
+  if (!secondaryPanePath || selectedItems.size === 0) return;
+  const ok = await clipboardController.moveSelectedToDestination(secondaryPanePath);
+  if (ok) {
+    void loadSecondaryPane(secondaryPanePath);
+    refresh('dual-pane-move');
+  }
+}
+
 bindClickBindings([
   ['settings-btn', showSettingsModal],
   ['settings-close', hideSettingsModal],
   ['save-settings-btn', saveSettings],
   ['reset-settings-btn', resetSettings],
+  ['copy-to-other-pane-btn', () => void copySelectionToOtherPane()],
+  ['move-to-other-pane-btn', () => void moveSelectionToOtherPane()],
+  ['dual-pane-secondary-open-here-btn', () => void navigateTo(secondaryPanePath)],
+  ['dual-pane-secondary-sync-btn', () => void loadSecondaryPane(currentPath)],
 ]);
 document.getElementById('start-tour-btn')?.addEventListener('click', () => {
   hideSettingsModal();
@@ -2121,6 +2247,11 @@ document.getElementById('browse-startup-path-btn')?.addEventListener('click', as
       'startup-path-input'
     ) as HTMLInputElement | null;
     if (startupPathInput) startupPathInput.value = selectedPath;
+  });
+});
+document.getElementById('dual-pane-secondary-browse-btn')?.addEventListener('click', async () => {
+  await chooseFolderAndApply((selectedPath) => {
+    void loadSecondaryPane(selectedPath);
   });
 });
 const extractModal = document.getElementById('extract-modal') as HTMLElement | null;
@@ -2216,6 +2347,31 @@ function bindHistoryDropdownOnFocus(element: HTMLElement | null, showDropdown: (
 const searchInputElement = getSearchInputElement();
 bindHistoryDropdownOnFocus(searchInputElement, showSearchHistoryDropdown);
 bindHistoryDropdownOnFocus(addressInput, showDirectoryHistoryDropdown);
+
+fileView?.addEventListener('mousedown', () => {
+  if (currentSettings.dualPaneEnabled) {
+    setActivePane('left');
+  }
+});
+
+document.getElementById('dual-pane-secondary')?.addEventListener('mousedown', () => {
+  if (currentSettings.dualPaneEnabled) {
+    setActivePane('right');
+  }
+});
+
+document.getElementById('dual-pane-secondary-list')?.addEventListener('dblclick', (event) => {
+  const target = event.target as HTMLElement | null;
+  const row = target?.closest<HTMLElement>('.dual-pane-item');
+  if (!row) return;
+  const itemPath = row.dataset.path || '';
+  if (!itemPath) return;
+  if (row.dataset.directory === 'true') {
+    void loadSecondaryPane(itemPath);
+    return;
+  }
+  void window.tauriAPI.openFile(itemPath);
+});
 
 document.addEventListener('mousedown', (e) => {
   const target = e.target as HTMLElement;
@@ -2318,7 +2474,7 @@ window.addEventListener('beforeunload', () => {
     settingsSaveTimeout = null;
   }
   cleanupTabs();
-  cleanupArchiveOperations();
+  cleanupOperationQueue();
 
   [filePathMap, fileElementMap].forEach((cache) => cache.clear());
   diskSpaceController.clearCache();

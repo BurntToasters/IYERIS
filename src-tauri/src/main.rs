@@ -19,7 +19,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 static TEMP_FILE_COUNTER: AtomicU64 = AtomicU64::new(1);
 static DEV_MODE: AtomicBool = AtomicBool::new(false);
@@ -168,6 +168,136 @@ fn setup_environment(disable_hw_accel: bool, dev_mode: bool) {
     let _ = (disable_hw_accel, dev_mode);
 }
 
+fn first_open_path_arg(args: &[String]) -> Option<String> {
+    args.iter()
+        .skip(1)
+        .find(|arg| {
+            !arg.starts_with("--")
+                && std::path::Path::new(arg).is_absolute()
+                && std::path::Path::new(arg).exists()
+        })
+        .cloned()
+}
+
+fn setup_native_menu(app: &tauri::App) -> tauri::Result<()> {
+    use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
+
+    let handle = app.handle();
+    let file = Submenu::with_items(
+        handle,
+        "File",
+        true,
+        &[
+            &MenuItem::with_id(
+                handle,
+                "new-window",
+                "New Window",
+                true,
+                Some("CmdOrCtrl+N"),
+            )?,
+            &MenuItem::with_id(handle, "new-tab", "New Tab", true, Some("CmdOrCtrl+T"))?,
+            &PredefinedMenuItem::separator(handle)?,
+            &MenuItem::with_id(handle, "new-file", "New File", true, None::<&str>)?,
+            &MenuItem::with_id(
+                handle,
+                "new-folder",
+                "New Folder",
+                true,
+                Some("CmdOrCtrl+Shift+N"),
+            )?,
+            &PredefinedMenuItem::separator(handle)?,
+            &PredefinedMenuItem::quit(handle, None)?,
+        ],
+    )?;
+    let edit = Submenu::with_items(
+        handle,
+        "Edit",
+        true,
+        &[
+            &MenuItem::with_id(handle, "copy", "Copy", true, Some("CmdOrCtrl+C"))?,
+            &MenuItem::with_id(handle, "cut", "Cut", true, Some("CmdOrCtrl+X"))?,
+            &MenuItem::with_id(handle, "paste", "Paste", true, Some("CmdOrCtrl+V"))?,
+            &MenuItem::with_id(handle, "rename", "Rename", true, Some("F2"))?,
+            &MenuItem::with_id(handle, "delete", "Delete", true, Some("Delete"))?,
+        ],
+    )?;
+    let view = Submenu::with_items(
+        handle,
+        "View",
+        true,
+        &[
+            &MenuItem::with_id(handle, "view-grid", "Grid", true, Some("CmdOrCtrl+1"))?,
+            &MenuItem::with_id(handle, "view-list", "List", true, Some("CmdOrCtrl+2"))?,
+            &MenuItem::with_id(handle, "view-column", "Column", true, Some("CmdOrCtrl+3"))?,
+            &MenuItem::with_id(
+                handle,
+                "dual-pane",
+                "Dual Pane",
+                true,
+                Some("CmdOrCtrl+Shift+D"),
+            )?,
+            &MenuItem::with_id(handle, "refresh", "Refresh", true, Some("F5"))?,
+        ],
+    )?;
+    let go = Submenu::with_items(
+        handle,
+        "Go",
+        true,
+        &[
+            &MenuItem::with_id(handle, "back", "Back", true, Some("Alt+Left"))?,
+            &MenuItem::with_id(handle, "forward", "Forward", true, Some("Alt+Right"))?,
+            &MenuItem::with_id(handle, "up", "Up", true, Some("Alt+Up"))?,
+            &MenuItem::with_id(handle, "home", "Home", true, Some("CmdOrCtrl+H"))?,
+        ],
+    )?;
+    let tools = Submenu::with_items(
+        handle,
+        "Tools",
+        true,
+        &[
+            &MenuItem::with_id(
+                handle,
+                "command-palette",
+                "Command Palette",
+                true,
+                Some("CmdOrCtrl+Shift+P"),
+            )?,
+            &MenuItem::with_id(
+                handle,
+                "find-duplicates",
+                "Find Duplicates",
+                true,
+                None::<&str>,
+            )?,
+            &MenuItem::with_id(handle, "settings", "Settings", true, Some("CmdOrCtrl+,"))?,
+        ],
+    )?;
+    let window = Submenu::with_items(
+        handle,
+        "Window",
+        true,
+        &[
+            &PredefinedMenuItem::minimize(handle, None)?,
+            &PredefinedMenuItem::close_window(handle, None)?,
+        ],
+    )?;
+    let help = Submenu::with_items(
+        handle,
+        "Help",
+        true,
+        &[&MenuItem::with_id(
+            handle,
+            "shortcuts",
+            "Keyboard Shortcuts",
+            true,
+            Some("CmdOrCtrl+/"),
+        )?],
+    )?;
+    let menu = Menu::with_items(handle, &[&file, &edit, &view, &go, &tools, &window, &help])?;
+    app.set_menu(menu)?;
+    Ok(())
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let dev_mode = args.iter().any(|a| a == "--dev" || a == "--verbose");
@@ -188,8 +318,7 @@ fn main() {
                     if let Some(sec_str) = text
                         .split("sec = ")
                         .nth(1)
-                        .and_then(|s| s.split(',')
-                        .next())
+                        .and_then(|s| s.split(',').next())
                     {
                         if let Ok(boot_epoch) = sec_str.trim().parse::<u64>() {
                             let now = std::time::SystemTime::now()
@@ -261,6 +390,9 @@ fn main() {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.show();
                 let _ = window.set_focus();
+                if let Some(open_path) = first_open_path_arg(&_args) {
+                    let _ = window.emit("native-open-path", open_path);
+                }
             } else {
                 let windows = app.webview_windows();
                 let target = windows
@@ -270,6 +402,9 @@ fn main() {
                 if let Some(w) = target {
                     let _ = w.show();
                     let _ = w.set_focus();
+                    if let Some(open_path) = first_open_path_arg(&_args) {
+                        let _ = w.emit("native-open-path", open_path);
+                    }
                 }
             }
         }))
@@ -290,8 +425,40 @@ fn main() {
             zoom_levels: Mutex::new(HashMap::new()),
             tray: Mutex::new(None),
         })
+        .on_menu_event(|app, event| {
+            let id = event.id().as_ref().to_string();
+            let windows = app.webview_windows();
+            let focused_window = windows
+                .values()
+                .find(|window| window.is_focused().unwrap_or(false))
+                .cloned();
+            if let Some(window) = focused_window.or_else(|| app.get_webview_window("main")) {
+                let _ = window.emit("native-menu-command", id);
+            } else {
+                for window in windows.values() {
+                    let _ = window.emit("native-menu-command", id.clone());
+                }
+            }
+        })
         .setup(move |app| {
             log::debug!("[Setup] App setup starting");
+            let settings_json =
+                settings::get_settings(app.handle().clone()).unwrap_or_else(|_| "{}".to_string());
+            log::debug!("[Setup] Settings loaded ({} bytes)", settings_json.len());
+            let settings_value =
+                serde_json::from_str::<serde_json::Value>(&settings_json).unwrap_or_default();
+
+            let native_menu_enabled = settings_value
+                .get("nativeMenuEnabled")
+                .and_then(|flag| flag.as_bool())
+                .unwrap_or(true);
+            if native_menu_enabled {
+                if let Err(error) = setup_native_menu(app) {
+                    log::warn!("[Setup] Native menu setup failed: {}", error);
+                }
+            } else {
+                log::debug!("[Setup] Native menu disabled by settings");
+            }
 
             #[cfg(not(target_os = "macos"))]
             {
@@ -314,6 +481,11 @@ fn main() {
                 let _ = window.show();
                 log::debug!("[Setup] Showing main window");
             }
+            if let Some(open_path) = first_open_path_arg(&args) {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.emit("native-open-path", open_path);
+                }
+            }
 
             match system::setup_tray(app) {
                 Ok(tray) => {
@@ -334,13 +506,9 @@ fn main() {
                     }
                 }
             }
-            let settings_json = settings::get_settings(app.handle().clone())
-                .unwrap_or_else(|_| "{}".to_string());
-            log::debug!("[Setup] Settings loaded ({} bytes)", settings_json.len());
-
-            let start_on_login = serde_json::from_str::<serde_json::Value>(&settings_json)
-                .ok()
-                .and_then(|v| v.get("startOnLogin").and_then(|f| f.as_bool()))
+            let start_on_login = settings_value
+                .get("startOnLogin")
+                .and_then(|f| f.as_bool())
                 .unwrap_or(false);
             if !cfg!(debug_assertions) {
                 use tauri_plugin_autostart::ManagerExt;
@@ -351,9 +519,9 @@ fn main() {
                 }
             }
 
-            let enable_indexer = serde_json::from_str::<serde_json::Value>(&settings_json)
-                .ok()
-                .and_then(|value| value.get("enableIndexer").and_then(|flag| flag.as_bool()))
+            let enable_indexer = settings_value
+                .get("enableIndexer")
+                .and_then(|flag| flag.as_bool())
                 .unwrap_or(true);
 
             if enable_indexer {
@@ -488,6 +656,9 @@ fn main() {
             system::get_open_with_apps,
             system::open_file_with_app,
             system::launch_desktop_entry,
+            system::get_native_integration_status,
+            system::install_native_integration,
+            system::uninstall_native_integration,
             // Elevated operations
             elevated::elevated_copy,
             elevated::elevated_move,
@@ -527,7 +698,11 @@ fn main() {
 
             app.run(move |app_handle, event| {
                 #[cfg(target_os = "macos")]
-                if let tauri::RunEvent::Reopen { has_visible_windows, .. } = event {
+                if let tauri::RunEvent::Reopen {
+                    has_visible_windows,
+                    ..
+                } = event
+                {
                     if launched_minimized_at_start
                         && launch_instant.elapsed() < std::time::Duration::from_secs(10)
                     {
@@ -605,5 +780,4 @@ mod tests {
         let args = vec!["app".to_string(), "--dev".to_string()];
         assert!(!has_minimized_launch_arg(&args));
     }
-
 }

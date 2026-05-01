@@ -3,8 +3,7 @@ use std::io::Write;
 use std::sync::Mutex;
 use tauri::{Emitter, Manager};
 
-static SETTINGS_LOCK: std::sync::LazyLock<Mutex<()>> =
-    std::sync::LazyLock::new(|| Mutex::new(()));
+static SETTINGS_LOCK: std::sync::LazyLock<Mutex<()>> = std::sync::LazyLock::new(|| Mutex::new(()));
 
 fn settings_dir(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
     let dir = app
@@ -63,13 +62,14 @@ pub fn save_settings(app: tauri::AppHandle, settings: String) -> Result<(), Stri
     log::debug!("[Settings] save_settings ({} bytes)", settings.len());
     let _lock = SETTINGS_LOCK.lock().map_err(|e| e.to_string())?;
 
-    let parsed: serde_json::Value = serde_json::from_str(&settings)
-        .map_err(|e| format!("Invalid settings JSON: {}", e))?;
+    let parsed: serde_json::Value =
+        serde_json::from_str(&settings).map_err(|e| format!("Invalid settings JSON: {}", e))?;
 
     let path = settings_path(&app)?;
     write_json_file(&path, &settings)?;
 
-    let enable_indexer = parsed.get("enableIndexer")
+    let enable_indexer = parsed
+        .get("enableIndexer")
         .and_then(|flag| flag.as_bool())
         .unwrap_or(true);
 

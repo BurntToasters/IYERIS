@@ -80,7 +80,9 @@ fn parse_filters(raw: Option<serde_json::Value>) -> ParsedFilters {
     .unwrap_or_default();
 
     ParsedFilters {
-        file_type: raw_filters.file_type.map(|value| value.trim().to_ascii_lowercase()),
+        file_type: raw_filters
+            .file_type
+            .map(|value| value.trim().to_ascii_lowercase()),
         min_size: raw_filters.min_size,
         max_size: raw_filters.max_size,
         date_from_ms: raw_filters
@@ -150,6 +152,15 @@ fn matches_filters(
     true
 }
 
+fn build_safe_regex(pattern: &str, case_insensitive: bool) -> Result<regex::Regex, String> {
+    regex::RegexBuilder::new(pattern)
+        .case_insensitive(case_insensitive)
+        .size_limit(1_000_000)
+        .dfa_size_limit(1_000_000)
+        .build()
+        .map_err(|e| format!("Invalid regex: {}", e))
+}
+
 #[tauri::command]
 pub async fn search_files(
     dir_path: String,
@@ -165,7 +176,7 @@ pub async fn search_files(
         if query.len() > 1024 {
             return Err("Regex pattern too long (max 1024 characters)".to_string());
         }
-        Some(regex::Regex::new(&query).map_err(|e| format!("Invalid regex: {}", e))?)
+        Some(build_safe_regex(&query, false)?)
     } else {
         None
     };
@@ -184,16 +195,17 @@ pub async fn search_files(
             .max_depth(20)
             .follow_links(false)
             .into_iter()
-            .filter_map(|e| e.map_err(|err| log::warn!("[Search] walk error: {}", err)).ok())
+            .filter_map(|e| {
+                e.map_err(|err| log::warn!("[Search] walk error: {}", err))
+                    .ok()
+            })
         {
             if !search_op_id.is_empty() && !is_search_active(&search_op_id) {
                 break;
             }
 
             let entry_path = entry.path();
-            let name_cow = entry
-                .file_name()
-                .to_string_lossy();
+            let name_cow = entry.file_name().to_string_lossy();
 
             let name_matches = if let Some(regex) = &regex {
                 regex.is_match(&name_cow)
@@ -205,8 +217,14 @@ pub async fn search_files(
                 let meta = match entry.metadata() {
                     Ok(m) => m,
                     Err(e) => {
-                        if e.io_error().map_or(true, |io_err| io_err.kind() != std::io::ErrorKind::NotFound) {
-                            log::debug!("[Search] metadata error for {}: {}", entry_path.display(), e);
+                        if e.io_error()
+                            .map_or(true, |io_err| io_err.kind() != std::io::ErrorKind::NotFound)
+                        {
+                            log::debug!(
+                                "[Search] metadata error for {}: {}",
+                                entry_path.display(),
+                                e
+                            );
                         }
                         continue;
                     }
@@ -262,7 +280,11 @@ pub async fn search_files_content(
     filters: Option<serde_json::Value>,
     operation_id: Option<String>,
 ) -> Result<Vec<SearchResult>, String> {
-    log::debug!("[Search] search_files_content: q={:?} in {}", query, dir_path);
+    log::debug!(
+        "[Search] search_files_content: q={:?} in {}",
+        query,
+        dir_path
+    );
     let path = crate::validate_existing_path(&dir_path, "Directory")?;
     let op_id = operation_id.unwrap_or_default();
     let parsed_filters = parse_filters(filters);
@@ -273,9 +295,7 @@ pub async fn search_files_content(
         Some(regex::Regex::new(&query).map_err(|e| format!("Invalid regex: {}", e))?)
     } else {
         Some(
-            regex::RegexBuilder::new(&regex::escape(&query))
-                .case_insensitive(true)
-                .build()
+            build_safe_regex(&regex::escape(&query), true)
                 .map_err(|e| format!("Regex build error: {}", e))?,
         )
     };
@@ -295,7 +315,10 @@ pub async fn search_files_content(
             .max_depth(20)
             .follow_links(false)
             .into_iter()
-            .filter_map(|e| e.map_err(|err| log::warn!("[Search] content walk error: {}", err)).ok())
+            .filter_map(|e| {
+                e.map_err(|err| log::warn!("[Search] content walk error: {}", err))
+                    .ok()
+            })
         {
             if !search_op_id.is_empty() && !is_search_active(&search_op_id) {
                 break;
@@ -329,12 +352,14 @@ pub async fn search_files_content(
                 };
                 if let Some(regex) = &regex {
                     if let Some(m) = regex.find(&line) {
-                        let start = line[..m.start()].char_indices()
+                        let start = line[..m.start()]
+                            .char_indices()
                             .rev()
                             .nth(49)
                             .map(|(i, _)| i)
                             .unwrap_or(0);
-                        let end = line[m.start()..].char_indices()
+                        let end = line[m.start()..]
+                            .char_indices()
                             .nth(m.len() + 50)
                             .map(|(i, _)| m.start() + i)
                             .unwrap_or(line.len());
@@ -345,7 +370,6 @@ pub async fn search_files_content(
             }
 
             if let Some(context) = matched_context {
-
                 let modified = meta
                     .modified()
                     .ok()

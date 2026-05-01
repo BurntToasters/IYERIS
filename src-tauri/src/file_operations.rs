@@ -12,8 +12,7 @@ use tauri::Emitter;
 static ACTIVE_CHECKSUMS: std::sync::LazyLock<Mutex<HashSet<String>>> =
     std::sync::LazyLock::new(|| Mutex::new(HashSet::new()));
 
-static FILE_OP_LOCK: std::sync::LazyLock<Mutex<()>> =
-    std::sync::LazyLock::new(|| Mutex::new(()));
+static FILE_OP_LOCK: std::sync::LazyLock<Mutex<()>> = std::sync::LazyLock::new(|| Mutex::new(()));
 
 const DEFAULT_READ_FILE_CONTENT_LIMIT_BYTES: u64 = 10 * 1024 * 1024;
 const MAX_READ_FILE_CONTENT_LIMIT_BYTES: u64 = 64 * 1024 * 1024;
@@ -95,8 +94,7 @@ pub(crate) fn validate_child_name(raw_name: &str, label: &str) -> Result<String,
             .to_ascii_uppercase();
         let reserved = [
             "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7",
-            "COM8", "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8",
-            "LPT9",
+            "COM8", "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
         ];
         if reserved.contains(&base_upper.as_str()) {
             return Err(format!("{} uses a reserved Windows filename", label));
@@ -245,10 +243,10 @@ pub async fn rename_item(old_path: String, new_name: String) -> Result<String, S
     log::debug!("[FileOps] rename_item: {} -> {}", old_path, new_name);
     let path = crate::validate_existing_path(&old_path, "Item")?;
     let new_name = validate_child_name(&new_name, "New name")?;
-    let parent = path
-        .parent()
-        .ok_or("Cannot determine parent directory")?;
-    let canonical_parent = parent.canonicalize().map_err(|e| format!("Cannot resolve parent directory: {}", e))?;
+    let parent = path.parent().ok_or("Cannot determine parent directory")?;
+    let canonical_parent = parent
+        .canonicalize()
+        .map_err(|e| format!("Cannot resolve parent directory: {}", e))?;
     let new_path = canonical_parent.join(&new_name);
     fs::rename(&path, &new_path).map_err(|e| {
         if e.kind() == std::io::ErrorKind::AlreadyExists {
@@ -269,13 +267,26 @@ pub async fn copy_items(
     conflict_resolutions: Option<HashMap<String, String>>,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
-    log::debug!("[FileOps] copy_items: {} items -> {}", source_paths.len(), dest_path);
-    let _lock = FILE_OP_LOCK.lock().map_err(|e| format!("File operation lock error: {}", e))?;
+    log::debug!(
+        "[FileOps] copy_items: {} items -> {}",
+        source_paths.len(),
+        dest_path
+    );
+    let _lock = FILE_OP_LOCK
+        .lock()
+        .map_err(|e| format!("File operation lock error: {}", e))?;
     let dest = crate::validate_existing_path(&dest_path, "Destination")?;
     let behavior = conflict_behavior.unwrap_or_else(|| "ask".to_string());
     let resolutions = conflict_resolutions.unwrap_or_default();
     let planned = plan_file_operations(&source_paths, &dest, &behavior, "copy", &resolutions)?;
     let total = planned.len();
+    let progress_operation_id = format!(
+        "copy-{}",
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    );
     let mut copied_paths: Vec<PathBuf> = Vec::new();
     let mut backups: HashMap<String, OverwriteBackup> = HashMap::new();
 
@@ -289,9 +300,8 @@ pub async fn copy_items(
             } else if source_meta.is_dir() {
                 copy_dir_recursive(&item.source_path, &item.dest_path)?;
             } else {
-                fs::copy(&item.source_path, &item.dest_path).map_err(|e| {
-                    format!("Failed to copy {}: {}", item.item_name, e)
-                })?;
+                fs::copy(&item.source_path, &item.dest_path)
+                    .map_err(|e| format!("Failed to copy {}: {}", item.item_name, e))?;
             }
             copied_paths.push(item.dest_path.clone());
 
@@ -299,6 +309,7 @@ pub async fn copy_items(
                 let _ = app.emit(
                     "file-operation-progress",
                     serde_json::json!({
+                        "operationId": progress_operation_id,
                         "operation": "copy",
                         "current": index + 1,
                         "total": total,
@@ -343,9 +354,7 @@ fn copy_symlink_path(source: &Path, target: &Path) -> Result<(), String> {
     {
         let is_dir_link = fs::metadata(source)
             .map(|m| m.is_dir())
-            .unwrap_or_else(|_| {
-                link_target.is_dir()
-            });
+            .unwrap_or_else(|_| link_target.is_dir());
         if is_dir_link {
             std::os::windows::fs::symlink_dir(&link_target, target)
                 .map_err(|e| format!("Failed to create symlink: {}", e))
@@ -387,13 +396,26 @@ pub async fn move_items(
     conflict_resolutions: Option<HashMap<String, String>>,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
-    log::debug!("[FileOps] move_items: {} items -> {}", source_paths.len(), dest_path);
-    let _lock = FILE_OP_LOCK.lock().map_err(|e| format!("File operation lock error: {}", e))?;
+    log::debug!(
+        "[FileOps] move_items: {} items -> {}",
+        source_paths.len(),
+        dest_path
+    );
+    let _lock = FILE_OP_LOCK
+        .lock()
+        .map_err(|e| format!("File operation lock error: {}", e))?;
     let dest = crate::validate_existing_path(&dest_path, "Destination")?;
     let behavior = conflict_behavior.unwrap_or_else(|| "ask".to_string());
     let resolutions = conflict_resolutions.unwrap_or_default();
     let planned = plan_file_operations(&source_paths, &dest, &behavior, "move", &resolutions)?;
     let total = planned.len();
+    let progress_operation_id = format!(
+        "move-{}",
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    );
     let mut moved_paths: Vec<String> = Vec::new();
     let mut original_paths: Vec<String> = Vec::new();
     let mut completed_moves: Vec<CompletedMove> = Vec::new();
@@ -415,6 +437,7 @@ pub async fn move_items(
                 let _ = app.emit(
                     "file-operation-progress",
                     serde_json::json!({
+                        "operationId": progress_operation_id,
                         "operation": "move",
                         "current": index + 1,
                         "total": total,
@@ -568,7 +591,10 @@ fn plan_file_operations(
         let base_target = dest.join(&item_name);
         let base_key = normalize_case_key(&base_target);
         if reserved.contains(&base_key) {
-            return Err(format!("Multiple items share the same name: \"{}\"", item_name));
+            return Err(format!(
+                "Multiple items share the same name: \"{}\"",
+                item_name
+            ));
         }
 
         if metadata.is_dir() {
@@ -595,7 +621,9 @@ fn plan_file_operations(
                             .as_deref()
                         {
                             Some("overwrite") => (target, true),
-                            Some("rename") => (create_renamed_target(dest, &item_name, &reserved), false),
+                            Some("rename") => {
+                                (create_renamed_target(dest, &item_name, &reserved), false)
+                            }
                             Some("skip") => continue,
                             Some("cancel") => return Err("Operation cancelled".to_string()),
                             Some(_) => {
@@ -618,7 +646,10 @@ fn plan_file_operations(
         let source_key = normalize_case_key(&src);
         let destination_key = normalize_case_key(&resolved.0);
         if source_key == destination_key {
-            return Err(format!("Cannot {} \"{}\" onto itself", operation, item_name));
+            return Err(format!(
+                "Cannot {} \"{}\" onto itself",
+                operation, item_name
+            ));
         }
         if reserved.contains(&destination_key) {
             return Err(format!(
@@ -684,19 +715,28 @@ fn move_path_with_fallback(source: &Path, target: &Path) -> Result<(), String> {
         copy_symlink_path(source, target)?;
         if let Err(e) = remove_symlink_path(source) {
             let _ = remove_existing_path(target);
-            return Err(format!("Failed to remove source symlink after cross-device move: {}", e));
+            return Err(format!(
+                "Failed to remove source symlink after cross-device move: {}",
+                e
+            ));
         }
     } else if is_directory {
         copy_dir_recursive(source, target)?;
         if let Err(e) = fs::remove_dir_all(source) {
             let _ = fs::remove_dir_all(target);
-            return Err(format!("Failed to remove source after cross-device move: {}", e));
+            return Err(format!(
+                "Failed to remove source after cross-device move: {}",
+                e
+            ));
         }
     } else {
         fs::copy(source, target).map_err(|e| e.to_string())?;
         if let Err(e) = fs::remove_file(source) {
             let _ = fs::remove_file(target);
-            return Err(format!("Failed to remove source after cross-device move: {}", e));
+            return Err(format!(
+                "Failed to remove source after cross-device move: {}",
+                e
+            ));
         }
     }
     Ok(())
@@ -863,16 +903,18 @@ pub async fn get_item_properties(item_path: String) -> Result<ItemProperties, St
                     use std::os::windows::process::CommandExt;
                     cmd.creation_flags(0x08000000);
                 }
-                cmd.output()
-                    .ok()
-                    .and_then(|o| {
-                        if o.status.success() {
-                            let t = String::from_utf8_lossy(&o.stdout).trim().to_string();
-                            if t.is_empty() { None } else { Some(t) }
-                        } else {
+                cmd.output().ok().and_then(|o| {
+                    if o.status.success() {
+                        let t = String::from_utf8_lossy(&o.stdout).trim().to_string();
+                        if t.is_empty() {
                             None
+                        } else {
+                            Some(t)
                         }
-                    })
+                    } else {
+                        None
+                    }
+                })
             }
         } else {
             None
@@ -943,9 +985,7 @@ pub async fn set_permissions(item_path: String, mode: u32) -> Result<(), String>
 #[tauri::command]
 pub async fn set_attributes(item_path: String, attrs: serde_json::Value) -> Result<(), String> {
     let path = crate::validate_existing_path(&item_path, "Item")?;
-    let read_only = attrs
-        .get("readOnly")
-        .and_then(|value| value.as_bool());
+    let read_only = attrs.get("readOnly").and_then(|value| value.as_bool());
     let hidden = attrs.get("hidden").and_then(|value| value.as_bool());
 
     if let Some(is_read_only) = read_only {
@@ -968,7 +1008,7 @@ pub async fn set_attributes(item_path: String, attrs: serde_json::Value) -> Resu
             cmd.creation_flags(0x08000000);
             cmd.output()
         }
-            .map_err(|e| format!("Failed to update hidden attribute: {}", e))?;
+        .map_err(|e| format!("Failed to update hidden attribute: {}", e))?;
         if !output.status.success() {
             return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
         }
@@ -983,10 +1023,7 @@ pub async fn set_attributes(item_path: String, attrs: serde_json::Value) -> Resu
 }
 
 #[tauri::command]
-pub async fn read_file_content(
-    file_path: String,
-    max_size: Option<u64>,
-) -> Result<String, String> {
+pub async fn read_file_content(file_path: String, max_size: Option<u64>) -> Result<String, String> {
     let path = crate::validate_existing_path(&file_path, "File")?;
     let limit = max_size
         .unwrap_or(DEFAULT_READ_FILE_CONTENT_LIMIT_BYTES)
@@ -1012,10 +1049,7 @@ pub async fn read_file_content(
 }
 
 #[tauri::command]
-pub async fn get_file_data_url(
-    file_path: String,
-    max_size: Option<u64>,
-) -> Result<String, String> {
+pub async fn get_file_data_url(file_path: String, max_size: Option<u64>) -> Result<String, String> {
     let path = crate::validate_existing_path(&file_path, "File")?;
     let limit = max_size
         .unwrap_or(DEFAULT_FILE_DATA_URL_LIMIT_BYTES)
@@ -1203,9 +1237,7 @@ pub async fn find_duplicate_files(
 }
 
 #[tauri::command]
-pub async fn batch_rename(
-    items: Vec<serde_json::Value>,
-) -> Result<Vec<serde_json::Value>, String> {
+pub async fn batch_rename(items: Vec<serde_json::Value>) -> Result<Vec<serde_json::Value>, String> {
     struct RenameOp {
         old_path_str: String,
         old_path: PathBuf,
@@ -1256,7 +1288,11 @@ pub async fn batch_rename(
             }
         };
         old_path_set.insert(old_path.clone());
-        plan.push(Ok(RenameOp { old_path_str, old_path, new_path }));
+        plan.push(Ok(RenameOp {
+            old_path_str,
+            old_path,
+            new_path,
+        }));
     }
 
     // Phase 1: pre-move any source files whose destination is also a source being renamed
@@ -1270,7 +1306,10 @@ pub async fn batch_rename(
         {
             let temp_path = op.new_path.with_file_name(format!(
                 ".iyeris-rename-tmp-{}",
-                op.new_path.file_name().unwrap_or_default().to_string_lossy()
+                op.new_path
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
             ));
             if let Err(e) = fs::rename(&op.new_path, &temp_path) {
                 // Roll back any temp renames already completed
@@ -1338,7 +1377,9 @@ pub async fn batch_rename(
             if let Err(e) = fs::rename(temp_path, original_path) {
                 log::warn!(
                     "[FileOps] batch_rename: failed to restore staged temp {:?} to {:?}: {}",
-                    temp_path, original_path, e
+                    temp_path,
+                    original_path,
+                    e
                 );
                 let _ = fs::remove_file(temp_path);
             }
@@ -1531,9 +1572,7 @@ fn decode_file_uri_path(raw: &str) -> Option<String> {
         }
 
         let mut local_path = path_part;
-        if local_path.starts_with('/')
-            && local_path.len() >= 3
-            && local_path.as_bytes()[2] == b':'
+        if local_path.starts_with('/') && local_path.len() >= 3 && local_path.as_bytes()[2] == b':'
         {
             local_path = local_path[1..].to_string();
         } else if local_path.is_empty() && !authority.is_empty() {
@@ -1587,7 +1626,11 @@ fn parse_clipboard_paths(text: &str) -> Vec<String> {
     let mut seen: HashSet<String> = HashSet::new();
     let mut paths: Vec<String> = Vec::new();
 
-    for line in text.lines().map(|line| line.trim()).filter(|line| !line.is_empty()) {
+    for line in text
+        .lines()
+        .map(|line| line.trim())
+        .filter(|line| !line.is_empty())
+    {
         let candidate = if let Some(path) = decode_file_uri_path(line) {
             Some(path)
         } else if is_absolute_path_like(line) {
@@ -1619,7 +1662,12 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_nanos();
-        dir.push(format!("iyeris-{}-{}-{}", prefix, std::process::id(), nonce));
+        dir.push(format!(
+            "iyeris-{}-{}-{}",
+            prefix,
+            std::process::id(),
+            nonce
+        ));
         fs::create_dir_all(&dir).unwrap();
         dir
     }
@@ -1680,13 +1728,11 @@ mod tests {
 
         let _ = fs::remove_dir_all(&dir);
         assert!(planned.is_err());
-        assert!(
-            planned
-                .err()
-                .unwrap()
-                .to_ascii_lowercase()
-                .contains("onto itself")
-        );
+        assert!(planned
+            .err()
+            .unwrap()
+            .to_ascii_lowercase()
+            .contains("onto itself"));
     }
 
     #[test]
@@ -1705,13 +1751,11 @@ mod tests {
 
         let _ = fs::remove_dir_all(&dir);
         assert!(planned.is_err());
-        assert!(
-            planned
-                .err()
-                .unwrap()
-                .to_ascii_lowercase()
-                .contains("onto itself")
-        );
+        assert!(planned
+            .err()
+            .unwrap()
+            .to_ascii_lowercase()
+            .contains("onto itself"));
     }
 }
 
@@ -1962,7 +2006,10 @@ pub fn get_system_clipboard_files(
 
 #[tauri::command]
 pub fn write_to_system_clipboard(text: String) -> Result<(), String> {
-    log::debug!("[Clipboard] write_to_system_clipboard ({} chars)", text.len());
+    log::debug!(
+        "[Clipboard] write_to_system_clipboard ({} chars)",
+        text.len()
+    );
     #[cfg(target_os = "windows")]
     {
         return write_windows_system_clipboard_text(&text);
@@ -1975,7 +2022,9 @@ pub fn write_to_system_clipboard(text: String) -> Result<(), String> {
         let mut child = cmd.spawn().map_err(|e| e.to_string())?;
         if let Some(mut stdin) = child.stdin.take() {
             use std::io::Write;
-            stdin.write_all(text.as_bytes()).map_err(|e| e.to_string())?;
+            stdin
+                .write_all(text.as_bytes())
+                .map_err(|e| e.to_string())?;
         }
         child.wait().map_err(|e| e.to_string())?;
         return Ok(());
@@ -1989,7 +2038,9 @@ pub fn write_to_system_clipboard(text: String) -> Result<(), String> {
             let mut child = cmd.spawn().map_err(|e| e.to_string())?;
             if let Some(mut stdin) = child.stdin.take() {
                 use std::io::Write;
-                stdin.write_all(text.as_bytes()).map_err(|e| e.to_string())?;
+                stdin
+                    .write_all(text.as_bytes())
+                    .map_err(|e| e.to_string())?;
             }
             child.wait().map_err(|e| e.to_string())?;
             Ok(())
@@ -2019,23 +2070,22 @@ pub fn set_drag_data(
     state: tauri::State<'_, crate::AppState>,
     paths: Vec<String>,
 ) -> Result<(), String> {
+    for path in &paths {
+        crate::validate_existing_path(path, "Drag item")?;
+    }
     let mut drag = state.drag.lock().map_err(|e| e.to_string())?;
     drag.paths = paths;
     Ok(())
 }
 
 #[tauri::command]
-pub fn get_drag_data(
-    state: tauri::State<'_, crate::AppState>,
-) -> Result<Vec<String>, String> {
+pub fn get_drag_data(state: tauri::State<'_, crate::AppState>) -> Result<Vec<String>, String> {
     let drag = state.drag.lock().map_err(|e| e.to_string())?;
     Ok(drag.paths.clone())
 }
 
 #[tauri::command]
-pub fn clear_drag_data(
-    state: tauri::State<'_, crate::AppState>,
-) -> Result<(), String> {
+pub fn clear_drag_data(state: tauri::State<'_, crate::AppState>) -> Result<(), String> {
     let mut drag = state.drag.lock().map_err(|e| e.to_string())?;
     drag.paths.clear();
     Ok(())
@@ -2056,139 +2106,176 @@ pub async fn calculate_checksum(
     }
 
     let op_id = operation_id.clone();
-    let result = tokio::task::spawn_blocking(move || {
-        use sha2::{Sha256, Sha512, Digest};
-        use md5::Md5;
+    let result =
+        tokio::task::spawn_blocking(move || {
+            use md5::Md5;
+            use sha2::{Digest, Sha256, Sha512};
 
-        const MAX_CHECKSUM_SIZE: u64 = 4 * 1024 * 1024 * 1024; // 4 GB
-        let file_size = fs::metadata(&path).map_err(|e| e.to_string())?.len();
-        if file_size > MAX_CHECKSUM_SIZE {
-            return Err(format!(
-                "File too large for checksum ({} MB, max {} MB)",
-                file_size / (1024 * 1024),
-                MAX_CHECKSUM_SIZE / (1024 * 1024)
-            ));
-        }
-        let mut file = fs::File::open(&path).map_err(|e| e.to_string())?;
-        let mut results = serde_json::Map::new();
+            const MAX_CHECKSUM_SIZE: u64 = 4 * 1024 * 1024 * 1024; // 4 GB
+            let file_size = fs::metadata(&path).map_err(|e| e.to_string())?.len();
+            if file_size > MAX_CHECKSUM_SIZE {
+                return Err(format!(
+                    "File too large for checksum ({} MB, max {} MB)",
+                    file_size / (1024 * 1024),
+                    MAX_CHECKSUM_SIZE / (1024 * 1024)
+                ));
+            }
+            let mut file = fs::File::open(&path).map_err(|e| e.to_string())?;
+            let mut results = serde_json::Map::new();
 
-        for algo in &algorithms {
-            {
-                let active = ACTIVE_CHECKSUMS.lock().map_err(|e| e.to_string())?;
-                if !active.contains(&op_id) {
-                    return Err("Checksum cancelled".to_string());
+            for algo in &algorithms {
+                {
+                    let active = ACTIVE_CHECKSUMS.lock().map_err(|e| e.to_string())?;
+                    if !active.contains(&op_id) {
+                        return Err("Checksum cancelled".to_string());
+                    }
                 }
+
+                let hash =
+                    match algo.to_lowercase().as_str() {
+                        "sha256" => {
+                            let mut hasher = Sha256::new();
+                            let mut buf = [0u8; 8192];
+                            let mut read_total = 0u64;
+                            use std::io::Seek;
+                            file.seek(std::io::SeekFrom::Start(0))
+                                .map_err(|e| e.to_string())?;
+                            loop {
+                                let n = file.read(&mut buf).map_err(|e| e.to_string())?;
+                                if n == 0 {
+                                    break;
+                                }
+                                hasher.update(&buf[..n]);
+                                read_total += n as u64;
+                                if read_total % (1024 * 1024) == 0 {
+                                    let percent = if file_size > 0 {
+                                        (read_total as f64 / file_size as f64) * 100.0
+                                    } else {
+                                        100.0
+                                    };
+                                    let _ = webview.emit("checksum-progress", serde_json::json!({
+                                "operationId": op_id, "percent": percent, "algorithm": algo
+                            }));
+                                }
+                            }
+                            hex::encode(hasher.finalize())
+                        }
+                        "sha512" => {
+                            let mut hasher = Sha512::new();
+                            let mut buf = [0u8; 8192];
+                            let mut read_total = 0u64;
+                            use std::io::Seek;
+                            file.seek(std::io::SeekFrom::Start(0))
+                                .map_err(|e| e.to_string())?;
+                            loop {
+                                let n = file.read(&mut buf).map_err(|e| e.to_string())?;
+                                if n == 0 {
+                                    break;
+                                }
+                                hasher.update(&buf[..n]);
+                                read_total += n as u64;
+                                if read_total % (1024 * 1024) == 0 {
+                                    let percent = if file_size > 0 {
+                                        (read_total as f64 / file_size as f64) * 100.0
+                                    } else {
+                                        100.0
+                                    };
+                                    let _ = webview.emit("checksum-progress", serde_json::json!({
+                                "operationId": op_id, "percent": percent, "algorithm": algo
+                            }));
+                                }
+                            }
+                            hex::encode(hasher.finalize())
+                        }
+                        "md5" => {
+                            let mut hasher = Md5::new();
+                            let mut buf = [0u8; 8192];
+                            let mut read_total = 0u64;
+                            use std::io::Seek;
+                            file.seek(std::io::SeekFrom::Start(0))
+                                .map_err(|e| e.to_string())?;
+                            loop {
+                                let n = file.read(&mut buf).map_err(|e| e.to_string())?;
+                                if n == 0 {
+                                    break;
+                                }
+                                hasher.update(&buf[..n]);
+                                read_total += n as u64;
+                                if read_total % (1024 * 1024) == 0 {
+                                    let percent = if file_size > 0 {
+                                        (read_total as f64 / file_size as f64) * 100.0
+                                    } else {
+                                        100.0
+                                    };
+                                    let _ = webview.emit("checksum-progress", serde_json::json!({
+                                "operationId": op_id, "percent": percent, "algorithm": algo
+                            }));
+                                }
+                            }
+                            hex::encode(hasher.finalize())
+                        }
+                        "crc32" => {
+                            let mut hasher = crc32fast::Hasher::new();
+                            let mut buf = [0u8; 8192];
+                            let mut read_total = 0u64;
+                            use std::io::Seek;
+                            file.seek(std::io::SeekFrom::Start(0))
+                                .map_err(|e| e.to_string())?;
+                            loop {
+                                let n = file.read(&mut buf).map_err(|e| e.to_string())?;
+                                if n == 0 {
+                                    break;
+                                }
+                                hasher.update(&buf[..n]);
+                                read_total += n as u64;
+                                if read_total % (1024 * 1024) == 0 {
+                                    let percent = if file_size > 0 {
+                                        (read_total as f64 / file_size as f64) * 100.0
+                                    } else {
+                                        100.0
+                                    };
+                                    let _ = webview.emit("checksum-progress", serde_json::json!({
+                                "operationId": op_id, "percent": percent, "algorithm": algo
+                            }));
+                                }
+                            }
+                            format!("{:08x}", hasher.finalize())
+                        }
+                        "blake3" => {
+                            let mut hasher = blake3::Hasher::new();
+                            let mut buf = [0u8; 8192];
+                            let mut read_total = 0u64;
+                            use std::io::Seek;
+                            file.seek(std::io::SeekFrom::Start(0))
+                                .map_err(|e| e.to_string())?;
+                            loop {
+                                let n = file.read(&mut buf).map_err(|e| e.to_string())?;
+                                if n == 0 {
+                                    break;
+                                }
+                                hasher.update(&buf[..n]);
+                                read_total += n as u64;
+                                if read_total % (1024 * 1024) == 0 {
+                                    let percent = if file_size > 0 {
+                                        (read_total as f64 / file_size as f64) * 100.0
+                                    } else {
+                                        100.0
+                                    };
+                                    let _ = webview.emit("checksum-progress", serde_json::json!({
+                                "operationId": op_id, "percent": percent, "algorithm": algo
+                            }));
+                                }
+                            }
+                            hasher.finalize().to_hex().to_string()
+                        }
+                        _ => return Err(format!("Unknown algorithm: {}", algo)),
+                    };
+                results.insert(algo.clone(), serde_json::Value::String(hash));
             }
 
-            let hash = match algo.to_lowercase().as_str() {
-                "sha256" => {
-                    let mut hasher = Sha256::new();
-                    let mut buf = [0u8; 8192];
-                    let mut read_total = 0u64;
-                    use std::io::Seek;
-                    file.seek(std::io::SeekFrom::Start(0)).map_err(|e| e.to_string())?;
-                    loop {
-                        let n = file.read(&mut buf).map_err(|e| e.to_string())?;
-                        if n == 0 { break; }
-                        hasher.update(&buf[..n]);
-                        read_total += n as u64;
-                        if read_total % (1024 * 1024) == 0 {
-                            let percent = if file_size > 0 { (read_total as f64 / file_size as f64) * 100.0 } else { 100.0 };
-                            let _ = webview.emit("checksum-progress", serde_json::json!({
-                                "operationId": op_id, "percent": percent, "algorithm": algo
-                            }));
-                        }
-                    }
-                    hex::encode(hasher.finalize())
-                },
-                "sha512" => {
-                    let mut hasher = Sha512::new();
-                    let mut buf = [0u8; 8192];
-                    let mut read_total = 0u64;
-                    use std::io::Seek;
-                    file.seek(std::io::SeekFrom::Start(0)).map_err(|e| e.to_string())?;
-                    loop {
-                        let n = file.read(&mut buf).map_err(|e| e.to_string())?;
-                        if n == 0 { break; }
-                        hasher.update(&buf[..n]);
-                        read_total += n as u64;
-                        if read_total % (1024 * 1024) == 0 {
-                            let percent = if file_size > 0 { (read_total as f64 / file_size as f64) * 100.0 } else { 100.0 };
-                            let _ = webview.emit("checksum-progress", serde_json::json!({
-                                "operationId": op_id, "percent": percent, "algorithm": algo
-                            }));
-                        }
-                    }
-                    hex::encode(hasher.finalize())
-                },
-                "md5" => {
-                    let mut hasher = Md5::new();
-                    let mut buf = [0u8; 8192];
-                    let mut read_total = 0u64;
-                    use std::io::Seek;
-                    file.seek(std::io::SeekFrom::Start(0)).map_err(|e| e.to_string())?;
-                    loop {
-                        let n = file.read(&mut buf).map_err(|e| e.to_string())?;
-                        if n == 0 { break; }
-                        hasher.update(&buf[..n]);
-                        read_total += n as u64;
-                        if read_total % (1024 * 1024) == 0 {
-                            let percent = if file_size > 0 { (read_total as f64 / file_size as f64) * 100.0 } else { 100.0 };
-                            let _ = webview.emit("checksum-progress", serde_json::json!({
-                                "operationId": op_id, "percent": percent, "algorithm": algo
-                            }));
-                        }
-                    }
-                    hex::encode(hasher.finalize())
-                },
-                "crc32" => {
-                    let mut hasher = crc32fast::Hasher::new();
-                    let mut buf = [0u8; 8192];
-                    let mut read_total = 0u64;
-                    use std::io::Seek;
-                    file.seek(std::io::SeekFrom::Start(0)).map_err(|e| e.to_string())?;
-                    loop {
-                        let n = file.read(&mut buf).map_err(|e| e.to_string())?;
-                        if n == 0 { break; }
-                        hasher.update(&buf[..n]);
-                        read_total += n as u64;
-                        if read_total % (1024 * 1024) == 0 {
-                            let percent = if file_size > 0 { (read_total as f64 / file_size as f64) * 100.0 } else { 100.0 };
-                            let _ = webview.emit("checksum-progress", serde_json::json!({
-                                "operationId": op_id, "percent": percent, "algorithm": algo
-                            }));
-                        }
-                    }
-                    format!("{:08x}", hasher.finalize())
-                },
-                "blake3" => {
-                    let mut hasher = blake3::Hasher::new();
-                    let mut buf = [0u8; 8192];
-                    let mut read_total = 0u64;
-                    use std::io::Seek;
-                    file.seek(std::io::SeekFrom::Start(0)).map_err(|e| e.to_string())?;
-                    loop {
-                        let n = file.read(&mut buf).map_err(|e| e.to_string())?;
-                        if n == 0 { break; }
-                        hasher.update(&buf[..n]);
-                        read_total += n as u64;
-                        if read_total % (1024 * 1024) == 0 {
-                            let percent = if file_size > 0 { (read_total as f64 / file_size as f64) * 100.0 } else { 100.0 };
-                            let _ = webview.emit("checksum-progress", serde_json::json!({
-                                "operationId": op_id, "percent": percent, "algorithm": algo
-                            }));
-                        }
-                    }
-                    hasher.finalize().to_hex().to_string()
-                },
-                _ => return Err(format!("Unknown algorithm: {}", algo)),
-            };
-            results.insert(algo.clone(), serde_json::Value::String(hash));
-        }
-
-        Ok(serde_json::Value::Object(results))
-    })
-    .await;
+            Ok(serde_json::Value::Object(results))
+        })
+        .await;
 
     if let Ok(mut active) = ACTIVE_CHECKSUMS.lock() {
         active.remove(&operation_id);

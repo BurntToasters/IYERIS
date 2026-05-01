@@ -1211,6 +1211,20 @@ describe('createEventListenersController', () => {
       expect(config.setCurrentSettings).not.toHaveBeenCalled();
     });
 
+    it('applies settings when payload has no timestamp (treat as external update)', () => {
+      const config = createMockConfig();
+      const ctrl = createEventListenersController(config);
+      ctrl.setupEventListeners();
+
+      const onSettings = (window.tauriAPI.onSettingsChanged as ReturnType<typeof vi.fn>).mock
+        .calls[0][0];
+      const { _timestamp: _ignored, ...rest } = makeSettings({ theme: 'light' });
+      onSettings(rest);
+
+      expect(config.setCurrentSettings).toHaveBeenCalled();
+      expect(config.applySettings).toHaveBeenCalled();
+    });
+
     it('merges unsaved settings form state when settings modal is open', () => {
       const config = createMockConfig();
       const ctrl = createEventListenersController(config);

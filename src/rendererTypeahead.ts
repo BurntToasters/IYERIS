@@ -6,6 +6,7 @@ type TypeaheadDeps = {
   clearSelection: () => void;
   getSelectedItems: () => Set<string>;
   updateStatusBar: () => void;
+  selectSingleItem?: (item: HTMLElement) => void;
 };
 
 export function createTypeaheadController(deps: TypeaheadDeps) {
@@ -62,21 +63,25 @@ export function createTypeaheadController(deps: TypeaheadDeps) {
     });
 
     if (match) {
-      deps.clearSelection();
-      match.classList.add('selected');
-      match.setAttribute('aria-selected', 'true');
-      const itemPath = match.getAttribute('data-path');
-      if (itemPath) {
-        deps.getSelectedItems().add(itemPath);
+      if (deps.selectSingleItem) {
+        deps.selectSingleItem(match);
+      } else {
+        deps.clearSelection();
+        match.classList.add('selected');
+        match.setAttribute('aria-selected', 'true');
+        const itemPath = match.getAttribute('data-path');
+        if (itemPath) {
+          deps.getSelectedItems().add(itemPath);
+        }
+        const active = document.querySelector<HTMLElement>('.file-item[tabindex="0"]');
+        if (active && active !== match) {
+          active.tabIndex = -1;
+        }
+        match.tabIndex = 0;
+        match.focus({ preventScroll: true });
+        match.scrollIntoView({ block: 'nearest' });
+        deps.updateStatusBar();
       }
-      const active = document.querySelector<HTMLElement>('.file-item[tabindex="0"]');
-      if (active && active !== match) {
-        active.tabIndex = -1;
-      }
-      match.tabIndex = 0;
-      match.focus({ preventScroll: true });
-      match.scrollIntoView({ block: 'nearest' });
-      deps.updateStatusBar();
     }
   }
 

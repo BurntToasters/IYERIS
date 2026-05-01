@@ -34,10 +34,7 @@ fn copy_dir_recursive_inner(
         .map_err(|e| format!("Failed to resolve path {}: {}", src.display(), e))?;
     let key = canonical.to_string_lossy().to_string();
     if !visited.insert(key) {
-        log::warn!(
-            "[fs_utils] Skipping directory cycle: {}",
-            src.display()
-        );
+        log::warn!("[fs_utils] Skipping directory cycle: {}", src.display());
         return Ok(());
     }
 
@@ -54,7 +51,11 @@ fn copy_dir_recursive_inner(
         let entry = match entry_result {
             Ok(e) => e,
             Err(err) => {
-                log::warn!("[fs_utils] Skipping unreadable entry in {}: {}", src.display(), err);
+                log::warn!(
+                    "[fs_utils] Skipping unreadable entry in {}: {}",
+                    src.display(),
+                    err
+                );
                 continue;
             }
         };

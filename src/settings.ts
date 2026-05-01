@@ -30,6 +30,7 @@ export function createDefaultSettings(): Settings {
     searchHistory: [],
     savedSearches: [],
     directoryHistory: [],
+    recentTransferDestinations: [],
     enableIndexer: true,
     minimizeToTray: false,
     startOnLogin: false,
@@ -80,6 +81,10 @@ export function createDefaultSettings(): Settings {
     showFileExtensions: true,
     maxSearchHistoryItems: 5,
     maxDirectoryHistoryItems: 5,
+    dualPaneEnabled: false,
+    activePane: 'left',
+    nativeMenuEnabled: true,
+    operationPanelCollapsed: false,
   };
 }
 
@@ -275,6 +280,9 @@ export function sanitizeSettings(
     bookmarks: [...defaults.bookmarks],
     searchHistory: [...defaults.searchHistory],
     directoryHistory: [...defaults.directoryHistory],
+    recentTransferDestinations: defaults.recentTransferDestinations
+      ? [...defaults.recentTransferDestinations]
+      : [],
     recentFiles: defaults.recentFiles ? [...defaults.recentFiles] : [],
     folderIcons: defaults.folderIcons ? { ...defaults.folderIcons } : {},
     tabState: defaults.tabState ? { ...defaults.tabState } : undefined,
@@ -323,6 +331,9 @@ export function sanitizeSettings(
     'tourPromptDismissed',
     'tourCompleted',
     'skipFullDiskAccessPrompt',
+    'dualPaneEnabled',
+    'nativeMenuEnabled',
+    'operationPanelCollapsed',
   ];
   for (const key of BOOLEAN_KEYS) {
     if (typeof raw[key] === 'boolean') assignKey(clean, key, raw[key] as Settings[keyof Settings]);
@@ -354,6 +365,10 @@ export function sanitizeSettings(
     }
   }
 
+  if (raw.activePane === 'left' || raw.activePane === 'right') {
+    clean.activePane = raw.activePane;
+  }
+
   // Positive number settings
   for (const key of [
     'maxThumbnailSizeMB',
@@ -379,10 +394,23 @@ export function sanitizeSettings(
   if (customTheme) clean.customTheme = customTheme;
 
   // String array settings
-  for (const key of ['bookmarks', 'searchHistory', 'directoryHistory', 'recentFiles'] as const) {
+  for (const key of [
+    'bookmarks',
+    'searchHistory',
+    'directoryHistory',
+    'recentTransferDestinations',
+    'recentFiles',
+  ] as const) {
     if (Array.isArray(raw[key])) {
       const sanitized = sanitizeStringArray(raw[key]);
-      const maxLen = key === 'bookmarks' ? 500 : key === 'recentFiles' ? 200 : 100;
+      const maxLen =
+        key === 'bookmarks'
+          ? 500
+          : key === 'recentFiles'
+            ? 200
+            : key === 'recentTransferDestinations'
+              ? 20
+              : 100;
       clean[key] = sanitized.slice(0, maxLen);
     }
   }

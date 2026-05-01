@@ -73,10 +73,14 @@ function createDeps() {
     getTabsEnabled: vi.fn().mockReturnValue(true),
     pasteIntoFolder: vi.fn().mockResolvedValue(undefined),
     duplicateItems: vi.fn().mockResolvedValue(undefined),
-    moveSelectedToFolder: vi.fn().mockResolvedValue(undefined),
-    copySelectedToFolder: vi.fn().mockResolvedValue(undefined),
+    moveSelectedToFolder: vi.fn().mockResolvedValue(null),
+    copySelectedToFolder: vi.fn().mockResolvedValue(null),
+    moveSelectedToDestination: vi.fn().mockResolvedValue(true),
+    copySelectedToDestination: vi.fn().mockResolvedValue(true),
     shareItems: vi.fn().mockResolvedValue(undefined),
     hasClipboardContent: vi.fn().mockReturnValue(false),
+    getRecentTransferDestinations: vi.fn().mockReturnValue([]),
+    setRecentTransferDestinations: vi.fn(),
   };
 }
 
