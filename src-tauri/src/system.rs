@@ -54,6 +54,11 @@ fn is_valid_windows_extension(value: &str) -> bool {
 
 #[cfg(target_os = "linux")]
 fn tokenize_exec_command(command: &str) -> Vec<String> {
+    if let Ok(parsed) = shell_words::split(command) {
+        if !parsed.is_empty() {
+            return parsed;
+        }
+    }
     let mut tokens = Vec::new();
     let mut current = String::new();
     let mut quote: Option<char> = None;
@@ -166,6 +171,8 @@ fn desktop_search_paths() -> Vec<PathBuf> {
         PathBuf::from("/usr/share/applications"),
         PathBuf::from("/usr/local/share/applications"),
         PathBuf::from("/var/lib/flatpak/exports/share/applications"),
+        PathBuf::from("/var/lib/snapd/desktop/applications"),
+        PathBuf::from("/snap/share/applications"),
     ];
     if let Ok(home) = std::env::var("HOME") {
         paths.push(Path::new(&home).join(".local/share/applications"));
@@ -263,14 +270,25 @@ fn collect_linux_open_with_apps(path: &Path) -> Vec<(String, String)> {
     let mut desktop_ids: Vec<String> = Vec::new();
     let mut apps: Vec<(String, String)> = Vec::new();
 
-    if let Ok(mime_output) = Command::new("xdg-mime")
+    let mime_lookup = Command::new("xdg-mime")
         .args(["query", "filetype", &path.to_string_lossy()])
         .output()
-    {
-        if mime_output.status.success() {
-            let mime_type = String::from_utf8_lossy(&mime_output.stdout)
-                .trim()
-                .to_string();
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .filter(|s| !s.is_empty())
+        .or_else(|| {
+            Command::new("file")
+                .args(["--mime-type", "-b", &path.to_string_lossy()])
+                .output()
+                .ok()
+                .filter(|o| o.status.success())
+                .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+                .filter(|s| !s.is_empty())
+        });
+
+    if let Some(mime_type) = mime_lookup {
+        {
             if !mime_type.is_empty() {
                 if let Ok(default_output) = Command::new("xdg-mime")
                     .args(["query", "default", &mime_type])
@@ -1199,7 +1217,7 @@ pub async fn get_open_with_apps(file_path: String) -> Result<Vec<serde_json::Val
     #[cfg(target_os = "macos")]
     {
         let path = crate::validate_existing_path(&file_path, "File")?;
-        let output = tokio::task::spawn_blocking(move || {
+        let blocking = tokio::task::spawn_blocking(move || {
             let jxa_code = r#"ObjC.import('AppKit');
 ObjC.import('Foundation');
 const env = $.NSProcessInfo.processInfo.environment;
@@ -1239,10 +1257,12 @@ print(String(data: data, encoding: .utf8)!)"#;
                 .args(["-e", swift_code])
                 .env("FILE_PATH", path.to_string_lossy().as_ref())
                 .output()
-        })
-        .await
-        .map_err(|e| e.to_string())?
-        .map_err(|e| e.to_string())?;
+        });
+        let output = tokio::time::timeout(std::time::Duration::from_secs(8), blocking)
+            .await
+            .map_err(|_| "Timed out querying available applications".to_string())?
+            .map_err(|e| e.to_string())?
+            .map_err(|e| e.to_string())?;
 
         if output.status.success() {
             let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();

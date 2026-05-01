@@ -16,6 +16,9 @@ export const HOME_QUICK_ACCESS_ITEMS: Array<{ action: string; label: string; ico
 ];
 
 const HOME_QUICK_ACCESS_ACTIONS = new Set(HOME_QUICK_ACCESS_ITEMS.map((item) => item.action));
+const HOME_QUICK_ACCESS_ITEMS_BY_ACTION = new Map(
+  HOME_QUICK_ACCESS_ITEMS.map((item) => [item.action, item])
+);
 const HOME_SECTION_IDS = ['quick-access', 'recents', 'bookmarks', 'drives'] as const;
 type HomeSectionId = (typeof HOME_SECTION_IDS)[number];
 const isHomeSectionId = (value: string): value is HomeSectionId =>
@@ -134,10 +137,32 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
     return [...filtered, ...allDefaults.filter((d) => !filtered.includes(d))];
   }
 
+  function homeSettingsEqual(a: HomeSettings, b: HomeSettings): boolean {
+    if (a === b) return true;
+    if (
+      a.showQuickAccess !== b.showQuickAccess ||
+      a.showRecents !== b.showRecents ||
+      a.showBookmarks !== b.showBookmarks ||
+      a.showDrives !== b.showDrives ||
+      a.showDiskUsage !== b.showDiskUsage ||
+      a.compactCards !== b.compactCards
+    )
+      return false;
+    const arrEq = (x: string[], y: string[]) =>
+      x.length === y.length && x.every((v, i) => v === y[i]);
+    return (
+      arrEq(a.hiddenQuickAccessItems, b.hiddenQuickAccessItems) &&
+      arrEq(a.quickAccessOrder, b.quickAccessOrder) &&
+      arrEq(a.sectionOrder, b.sectionOrder) &&
+      arrEq(a.pinnedRecents, b.pinnedRecents) &&
+      arrEq(a.sidebarQuickAccessOrder, b.sidebarQuickAccessOrder) &&
+      arrEq(a.hiddenSidebarQuickAccessItems, b.hiddenSidebarQuickAccessItems)
+    );
+  }
+
   function normalizeHomeSettings(settings?: Partial<HomeSettings> | null): HomeSettings {
     const sanitized = sanitizeHomeSettings(settings);
     const merged = sanitized;
-
     merged.sectionOrder = normalizeOrderedList(
       Array.isArray(merged.sectionOrder)
         ? merged.sectionOrder.filter((id): id is string => typeof id === 'string')
@@ -346,7 +371,7 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
     hiddenKey: 'hiddenQuickAccessItems' | 'hiddenSidebarQuickAccessItems'
   ): Array<{ action: string; label: string; icon: number }> {
     const hiddenSet = new Set(currentHomeSettings[hiddenKey] || []);
-    const itemsByAction = new Map(HOME_QUICK_ACCESS_ITEMS.map((item) => [item.action, item]));
+    const itemsByAction = HOME_QUICK_ACCESS_ITEMS_BY_ACTION;
     return (currentHomeSettings[orderKey] || [])
       .map((action) => itemsByAction.get(action))
       .filter(
@@ -763,7 +788,7 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
     container.replaceChildren();
 
     const hiddenSet = new Set(tempHomeSettings[hiddenKey]);
-    const itemsByAction = new Map(HOME_QUICK_ACCESS_ITEMS.map((item) => [item.action, item]));
+    const itemsByAction = HOME_QUICK_ACCESS_ITEMS_BY_ACTION;
     const orderedItems = (tempHomeSettings[orderKey] || [])
       .map((action) => itemsByAction.get(action))
       .filter((item): item is { action: string; label: string; icon: number } => !!item);
@@ -949,7 +974,7 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
 
     const cleanupHomeSettingsListener = window.tauriAPI.onHomeSettingsChanged((settings) => {
       const incoming = normalizeHomeSettings(settings);
-      if (JSON.stringify(incoming) === JSON.stringify(currentHomeSettings)) return;
+      if (homeSettingsEqual(incoming, currentHomeSettings)) return;
       currentHomeSettings = incoming;
       applyHomeSettings(currentHomeSettings);
       if (homeSettingsModal && homeSettingsModal.style.display === 'flex') {

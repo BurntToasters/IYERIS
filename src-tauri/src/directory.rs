@@ -488,7 +488,9 @@ pub async fn get_drives() -> Result<Vec<DriveInfo>, String> {
         #[cfg(target_os = "linux")]
         {
             drives.push(build_drive("Root".into(), "/".into(), "ext4".into(), false));
-            let home = std::env::var("HOME").unwrap_or_default();
+            let home = directories::BaseDirs::new()
+                .map(|b| b.home_dir().to_string_lossy().to_string())
+                .unwrap_or_else(|| std::env::var("HOME").unwrap_or_default());
             if !home.is_empty() && home != "/" {
                 drives.push(build_drive("Home".into(), home, String::new(), false));
             }

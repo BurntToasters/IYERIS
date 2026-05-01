@@ -80,6 +80,7 @@ export function createFolderTreeManager(deps: FolderTreeDependencies): FolderTre
   } = deps;
 
   const folderTreeNodeMap = new Map<string, TreeNode>();
+  const FOLDER_TREE_NODE_MAP_MAX = 5000;
   const folderTreeExpandedPaths = new Set<string>();
   const loadingPaths = new Set<string>();
   let focusedTreePath: string | null = null;
@@ -154,6 +155,10 @@ export function createFolderTreeManager(deps: FolderTreeDependencies): FolderTre
     children.setAttribute('role', 'group');
 
     folderTreeNodeMap.set(nodePath, { item, children, depth });
+    if (folderTreeNodeMap.size > FOLDER_TREE_NODE_MAP_MAX) {
+      const firstKey = folderTreeNodeMap.keys().next().value;
+      if (firstKey && firstKey !== nodePath) folderTreeNodeMap.delete(firstKey);
+    }
 
     item.addEventListener('click', (e) => {
       const target = e.target as HTMLElement;

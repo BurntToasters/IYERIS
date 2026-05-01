@@ -227,8 +227,16 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
   },
 ];
 
+function detectPlatformSync(): string {
+  if (typeof navigator === 'undefined') return 'win32';
+  const ua = (navigator.userAgent || navigator.platform || '').toLowerCase();
+  if (ua.includes('mac')) return 'darwin';
+  if (ua.includes('win')) return 'win32';
+  return 'linux';
+}
+
 export function getDefaultShortcuts(platform?: string): Record<string, ShortcutBinding> {
-  const resolvedPlatform = platform ?? 'win32';
+  const resolvedPlatform = platform ?? detectPlatformSync();
   const isMac = resolvedPlatform === 'darwin';
   const map: Record<string, ShortcutBinding> = {};
   for (const def of SHORTCUT_DEFINITIONS) {

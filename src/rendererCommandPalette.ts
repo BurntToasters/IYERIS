@@ -383,6 +383,7 @@ export function createCommandPaletteController(deps: CommandPaletteDeps) {
 
     resultsContainer.setAttribute('role', 'listbox');
 
+    const fragment = document.createDocumentFragment();
     cmds.forEach((cmd, index) => {
       const item = document.createElement('div');
       item.className = 'command-palette-item';
@@ -428,8 +429,9 @@ export function createCommandPaletteController(deps: CommandPaletteDeps) {
         setCommandPaletteFocus(index);
       });
 
-      resultsContainer.appendChild(item);
+      fragment.appendChild(item);
     });
+    resultsContainer.appendChild(fragment);
   }
 
   function setCommandPaletteFocus(index: number): void {

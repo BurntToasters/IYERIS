@@ -99,15 +99,18 @@ pub fn watch_directory(
         );
     }
 
-    std::thread::spawn(move || {
+    tokio::task::spawn_blocking(move || {
         let debounce_duration = Duration::from_millis(500);
         let startup_suppression_duration = Duration::from_millis(1500);
         let watch_started_at = Instant::now();
         let mut last_emit = Instant::now() - debounce_duration;
+        let mut consecutive_errors: u32 = 0;
+        const MAX_CONSECUTIVE_ERRORS: u32 = 5;
 
         while let Ok(event) = rx.recv() {
             match event {
                 Ok(event) => {
+                    consecutive_errors = 0;
                     let event_id = WATCH_EVENT_COUNTER.fetch_add(1, Ordering::Relaxed);
                     let now = Instant::now();
                     let event_kind = format!("{:?}", event.kind);
@@ -184,7 +187,18 @@ pub fn watch_directory(
                         log::warn!("[Watcher] Failed to emit directory-changed: {}", e);
                     }
                 }
-                Err(error) => log::warn!("[Watcher] notify error: {}", error),
+                Err(error) => {
+                    log::warn!("[Watcher] notify error: {}", error);
+                    consecutive_errors += 1;
+                    if consecutive_errors >= MAX_CONSECUTIVE_ERRORS {
+                        log::warn!(
+                            "[Watcher] Aborting after {} consecutive errors for {}",
+                            consecutive_errors,
+                            watch_path.to_string_lossy()
+                        );
+                        break;
+                    }
+                }
             }
         }
         log::debug!(

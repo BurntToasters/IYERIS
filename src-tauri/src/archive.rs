@@ -17,6 +17,7 @@ static XML_ATTRIBUTE_RE: std::sync::LazyLock<Option<Regex>> = std::sync::LazyLoc
 });
 
 const MAX_DECOMPRESSED_SIZE: u64 = 53_687_091_200; // 50 GB
+const MAX_ARCHIVE_DEPTH: usize = 20;
 const DEFAULT_OFFICE_THUMBNAIL_LIMIT_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_OFFICE_THUMBNAIL_LIMIT_BYTES: u64 = 20 * 1024 * 1024;
 
@@ -42,6 +43,7 @@ fn is_active(op_id: &str) -> bool {
 
 fn safe_entry_path(entry_name: &str, dest: &Path) -> Result<PathBuf, String> {
     let mut component_path = dest.to_path_buf();
+    let mut depth: usize = 0;
     for component in std::path::Path::new(entry_name).components() {
         match component {
             std::path::Component::ParentDir
@@ -51,6 +53,13 @@ fn safe_entry_path(entry_name: &str, dest: &Path) -> Result<PathBuf, String> {
             }
             std::path::Component::CurDir => {}
             std::path::Component::Normal(part) => {
+                depth += 1;
+                if depth > MAX_ARCHIVE_DEPTH {
+                    return Err(format!(
+                        "Archive entry exceeds max nesting depth ({}): {}",
+                        MAX_ARCHIVE_DEPTH, entry_name
+                    ));
+                }
                 component_path.push(part);
                 if let Ok(meta) = fs::symlink_metadata(&component_path) {
                     if meta.file_type().is_symlink() {

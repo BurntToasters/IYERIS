@@ -1279,4 +1279,4 @@ const tauriAPI: TauriAPI = {
   },
 };
 
-(window as unknown as { tauriAPI: TauriAPI }).tauriAPI = tauriAPI;
+(window as Window).tauriAPI = tauriAPI;
