@@ -99,7 +99,7 @@ pub fn watch_directory(
         );
     }
 
-    tokio::task::spawn_blocking(move || {
+    std::thread::spawn(move || {
         let debounce_duration = Duration::from_millis(500);
         let startup_suppression_duration = Duration::from_millis(1500);
         let watch_started_at = Instant::now();
