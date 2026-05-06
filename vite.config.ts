@@ -14,17 +14,26 @@ export default defineConfig({
         main: resolve(import.meta.dirname, "src/index.html"),
       },
       output: {
-        manualChunks: {
-          "tauri-core": ["@tauri-apps/api"],
-          "tauri-plugins": [
-            "@tauri-apps/plugin-dialog",
-            "@tauri-apps/plugin-notification",
-            "@tauri-apps/plugin-process",
-            "@tauri-apps/plugin-updater",
-          ],
-          previews: ["pdfjs-dist", "marked", "@highlightjs/cdn-assets"],
-          search: ["fuse.js"],
-          validation: ["zod"],
+        manualChunks: (id: string) => {
+          if (id.includes("node_modules/@tauri-apps/api")) return "tauri-core";
+          if (
+            id.includes("node_modules/@tauri-apps/plugin-dialog") ||
+            id.includes("node_modules/@tauri-apps/plugin-notification") ||
+            id.includes("node_modules/@tauri-apps/plugin-process") ||
+            id.includes("node_modules/@tauri-apps/plugin-updater")
+          ) {
+            return "tauri-plugins";
+          }
+          if (
+            id.includes("node_modules/pdfjs-dist") ||
+            id.includes("node_modules/marked") ||
+            id.includes("node_modules/@highlightjs/cdn-assets")
+          ) {
+            return "previews";
+          }
+          if (id.includes("node_modules/fuse.js")) return "search";
+          if (id.includes("node_modules/zod")) return "validation";
+          return undefined;
         },
       },
     },
