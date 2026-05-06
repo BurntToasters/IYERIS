@@ -23,7 +23,10 @@ fn is_noise_change_path(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
-fn classify_directory_change_event(event: &Event, watch_path: &Path) -> (&'static str, Vec<String>) {
+fn classify_directory_change_event(
+    event: &Event,
+    watch_path: &Path,
+) -> (&'static str, Vec<String>) {
     let is_meaningful_kind = matches!(
         event.kind,
         EventKind::Create(_)
@@ -39,9 +42,7 @@ fn classify_directory_change_event(event: &Event, watch_path: &Path) -> (&'stati
         return ("no-paths", Vec::new());
     }
 
-    if matches!(event.kind, EventKind::Remove(_))
-        && event.paths.iter().any(|p| p == watch_path)
-    {
+    if matches!(event.kind, EventKind::Remove(_)) && event.paths.iter().any(|p| p == watch_path) {
         return ("watched-dir-removed", Vec::new());
     }
 
@@ -67,7 +68,11 @@ pub fn watch_directory(
     app: tauri::AppHandle,
 ) -> Result<(), String> {
     let window_label = window.label().to_string();
-    log::debug!("[Watcher] watch_directory request: {} (window={})", dir_path, window_label);
+    log::debug!(
+        "[Watcher] watch_directory request: {} (window={})",
+        dir_path,
+        window_label
+    );
     let path = crate::validate_existing_path(&dir_path, "Directory")?;
     let path_display = path.to_string_lossy().to_string();
 
@@ -96,13 +101,16 @@ pub fn watch_directory(
 
     std::thread::spawn(move || {
         let debounce_duration = Duration::from_millis(500);
-        let startup_suppression_duration = Duration::from_millis(800);
+        let startup_suppression_duration = Duration::from_millis(1500);
         let watch_started_at = Instant::now();
         let mut last_emit = Instant::now() - debounce_duration;
+        let mut consecutive_errors: u32 = 0;
+        const MAX_CONSECUTIVE_ERRORS: u32 = 5;
 
         while let Ok(event) = rx.recv() {
             match event {
                 Ok(event) => {
+                    consecutive_errors = 0;
                     let event_id = WATCH_EVENT_COUNTER.fetch_add(1, Ordering::Relaxed);
                     let now = Instant::now();
                     let event_kind = format!("{:?}", event.kind);
@@ -179,7 +187,18 @@ pub fn watch_directory(
                         log::warn!("[Watcher] Failed to emit directory-changed: {}", e);
                     }
                 }
-                Err(error) => log::warn!("[Watcher] notify error: {}", error),
+                Err(error) => {
+                    log::warn!("[Watcher] notify error: {}", error);
+                    consecutive_errors += 1;
+                    if consecutive_errors >= MAX_CONSECUTIVE_ERRORS {
+                        log::warn!(
+                            "[Watcher] Aborting after {} consecutive errors for {}",
+                            consecutive_errors,
+                            watch_path.to_string_lossy()
+                        );
+                        break;
+                    }
+                }
             }
         }
         log::debug!(
@@ -188,10 +207,13 @@ pub fn watch_directory(
         );
     });
 
-    w.insert(window_label, DirectoryWatcher {
-        _watcher: new_watcher,
-        _path: path,
-    });
+    w.insert(
+        window_label,
+        DirectoryWatcher {
+            _watcher: new_watcher,
+            _path: path,
+        },
+    );
 
     Ok(())
 }
@@ -202,7 +224,10 @@ pub fn unwatch_directory(
     state: tauri::State<'_, crate::AppState>,
 ) -> Result<(), String> {
     let window_label = window.label().to_string();
-    log::debug!("[Watcher] unwatch_directory request (window={})", window_label);
+    log::debug!(
+        "[Watcher] unwatch_directory request (window={})",
+        window_label
+    );
     let mut w = state.watchers.lock().map_err(|e| e.to_string())?;
     w.remove(&window_label);
     Ok(())

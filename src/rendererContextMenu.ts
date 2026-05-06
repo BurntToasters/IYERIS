@@ -37,10 +37,14 @@ type ContextMenuDeps = {
   getTabsEnabled: () => boolean;
   pasteIntoFolder: (folderPath: string) => Promise<void>;
   duplicateItems: (paths: string[]) => Promise<void>;
-  moveSelectedToFolder: () => Promise<void>;
-  copySelectedToFolder: () => Promise<void>;
+  moveSelectedToFolder: () => Promise<string | null>;
+  copySelectedToFolder: () => Promise<string | null>;
+  moveSelectedToDestination: (destinationPath: string) => Promise<boolean>;
+  copySelectedToDestination: (destinationPath: string) => Promise<boolean>;
   shareItems: (filePaths: string[]) => Promise<void>;
   hasClipboardContent: () => boolean;
+  getRecentTransferDestinations: () => string[];
+  setRecentTransferDestinations: (destinations: string[]) => void;
 };
 
 export function createContextMenuController(deps: ContextMenuDeps) {
@@ -65,7 +69,14 @@ export function createContextMenuController(deps: ContextMenuDeps) {
   let elOpenWithAppsPanel: HTMLElement | null = null;
   let elPasteInto: HTMLElement | null = null;
   let elDuplicate: HTMLElement | null = null;
+  let elRename: HTMLElement | null = null;
+  let elDelete: HTMLElement | null = null;
+  let elOpen: HTMLElement | null = null;
+  let elCut: HTMLElement | null = null;
+  let elCopy: HTMLElement | null = null;
   let elCopyMoveSubmenu: HTMLElement | null = null;
+  let elCopyMoveRecentList: HTMLElement | null = null;
+  let elCopyMoveRecentSeparator: HTMLElement | null = null;
   let elAdvancedSubmenu: HTMLElement | null = null;
   let elShare: HTMLElement | null = null;
   let elShowPackageContents: HTMLElement | null = null;
@@ -88,7 +99,20 @@ export function createContextMenuController(deps: ContextMenuDeps) {
     if (!elOpenWithAppsPanel) elOpenWithAppsPanel = document.getElementById('open-with-apps-panel');
     if (!elPasteInto) elPasteInto = document.getElementById('paste-into-item');
     if (!elDuplicate) elDuplicate = document.getElementById('duplicate-item');
+    if (!elRename)
+      elRename = elContextMenu?.querySelector('[data-action="rename"]') as HTMLElement | null;
+    if (!elDelete)
+      elDelete = elContextMenu?.querySelector('[data-action="delete"]') as HTMLElement | null;
+    if (!elOpen)
+      elOpen = elContextMenu?.querySelector('[data-action="open"]') as HTMLElement | null;
+    if (!elCut) elCut = elContextMenu?.querySelector('[data-action="cut"]') as HTMLElement | null;
+    if (!elCopy)
+      elCopy = elContextMenu?.querySelector('[data-action="copy"]') as HTMLElement | null;
     if (!elCopyMoveSubmenu) elCopyMoveSubmenu = document.getElementById('copy-move-submenu');
+    if (!elCopyMoveRecentList)
+      elCopyMoveRecentList = document.getElementById('copy-move-recent-list');
+    if (!elCopyMoveRecentSeparator)
+      elCopyMoveRecentSeparator = document.getElementById('copy-move-recent-separator');
     if (!elAdvancedSubmenu) elAdvancedSubmenu = document.getElementById('advanced-submenu');
     if (!elShare) elShare = document.getElementById('share-item');
     if (!elShowPackageContents)
@@ -120,10 +144,148 @@ export function createContextMenuController(deps: ContextMenuDeps) {
     const items = menu.querySelectorAll('.context-menu-item');
     return Array.from(items).filter((item) => {
       const el = item as HTMLElement;
-      const parent = el.parentElement;
-      if (parent?.classList.contains('context-submenu')) return false;
+      if (el.closest('.context-submenu')) return false;
+      if (el.classList.contains('is-disabled') || el.getAttribute('aria-disabled') === 'true')
+        return false;
       return el.style.display !== 'none' && el.offsetParent !== null;
     }) as HTMLElement[];
+  }
+
+  function setItemDisabled(el: HTMLElement | null, disabled: boolean) {
+    if (!el) return;
+    el.classList.toggle('is-disabled', disabled);
+    el.setAttribute('aria-disabled', String(disabled));
+    el.setAttribute('tabindex', disabled ? '-1' : '0');
+  }
+
+  function setMenuLabel(el: HTMLElement | null, baseLabel: string, selectedCount: number) {
+    if (!el) return;
+    const label = selectedCount > 1 ? `${baseLabel} ${selectedCount} items` : baseLabel;
+    const labelEl = el.querySelector('.context-menu-label');
+    if (labelEl) {
+      labelEl.textContent = label;
+    }
+  }
+
+  function normalizeRecentDestinations(destinations: string[]): string[] {
+    const deduped: string[] = [];
+    const seen = new Set<string>();
+    for (const destination of destinations) {
+      const trimmed = destination.trim();
+      if (!trimmed) continue;
+      const key = trimmed.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      deduped.push(trimmed);
+      if (deduped.length >= 8) break;
+    }
+    return deduped;
+  }
+
+  function rememberRecentDestination(destinationPath: string): void {
+    const destination = destinationPath.trim();
+    if (!destination) return;
+    const next = normalizeRecentDestinations([
+      destination,
+      ...deps.getRecentTransferDestinations(),
+    ]);
+    deps.setRecentTransferDestinations(next);
+  }
+
+  function isDestinationInvalidForSelection(
+    destinationPath: string,
+    fallbackItemPath: string
+  ): boolean {
+    const selected = deps.getSelectedItems();
+    const sourcePaths = selected.size > 0 ? Array.from(selected) : [fallbackItemPath];
+    return sourcePaths.some((sourcePath) => {
+      const parentDir = path.dirname(sourcePath);
+      return parentDir === destinationPath || sourcePath === destinationPath;
+    });
+  }
+
+  function renderRecentDestinationItems(fallbackItemPath: string): void {
+    if (!elCopyMoveRecentList || !elCopyMoveRecentSeparator) return;
+    elCopyMoveRecentList.replaceChildren();
+    const destinations = normalizeRecentDestinations(deps.getRecentTransferDestinations());
+
+    if (destinations.length === 0) {
+      elCopyMoveRecentSeparator.style.display = 'none';
+      return;
+    }
+
+    for (const destinationPath of destinations) {
+      const destinationName = path.basename(destinationPath) || destinationPath;
+      const invalidTarget = isDestinationInvalidForSelection(destinationPath, fallbackItemPath);
+
+      const moveItem = document.createElement('button');
+      moveItem.type = 'button';
+      moveItem.className = 'context-menu-item';
+      moveItem.dataset.action = 'move-to-recent';
+      moveItem.dataset.destination = destinationPath;
+      moveItem.setAttribute('role', 'menuitem');
+      moveItem.setAttribute('tabindex', '0');
+      moveItem.title = destinationPath;
+      moveItem.innerHTML = `
+        <img src="/twemoji/1f4e4.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" />
+        Move to ${escapeLabel(destinationName)}
+      `;
+      setItemDisabled(moveItem, invalidTarget);
+      elCopyMoveRecentList.appendChild(moveItem);
+
+      const copyItem = document.createElement('button');
+      copyItem.type = 'button';
+      copyItem.className = 'context-menu-item';
+      copyItem.dataset.action = 'copy-to-recent';
+      copyItem.dataset.destination = destinationPath;
+      copyItem.setAttribute('role', 'menuitem');
+      copyItem.setAttribute('tabindex', '0');
+      copyItem.title = destinationPath;
+      copyItem.innerHTML = `
+        <img src="/twemoji/1f4e5.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" />
+        Copy to ${escapeLabel(destinationName)}
+      `;
+      setItemDisabled(copyItem, invalidTarget);
+      elCopyMoveRecentList.appendChild(copyItem);
+    }
+
+    elCopyMoveRecentSeparator.style.display = 'block';
+  }
+
+  function escapeLabel(value: string): string {
+    return value.replace(/[&<>"']/g, (char) => {
+      switch (char) {
+        case '&':
+          return '&amp;';
+        case '<':
+          return '&lt;';
+        case '>':
+          return '&gt;';
+        case '"':
+          return '&quot;';
+        case "'":
+          return '&#39;';
+        default:
+          return char;
+      }
+    });
+  }
+
+  function normalizeSeparators(menu: HTMLElement) {
+    const children = Array.from(menu.children) as HTMLElement[];
+    let hasVisibleItem = false;
+    let pendingSeparator: HTMLElement | null = null;
+    for (const child of children) {
+      if (child.classList.contains('context-menu-separator')) {
+        child.style.display = 'none';
+        pendingSeparator = child;
+        continue;
+      }
+      if (child.style.display === 'none') continue;
+      if (hasVisibleItem && pendingSeparator) pendingSeparator.style.display = 'block';
+      hasVisibleItem = true;
+      pendingSeparator = null;
+    }
   }
 
   function navigateContextMenu(
@@ -159,7 +321,11 @@ export function createContextMenuController(deps: ContextMenuDeps) {
     if (item.classList.contains('has-submenu')) {
       const submenu = item.querySelector('.context-submenu') as HTMLElement;
       if (submenu) {
+        menu.querySelectorAll<HTMLElement>('.context-menu-item.has-submenu').forEach((parent) => {
+          if (parent !== item) parent.setAttribute('aria-expanded', 'false');
+        });
         submenu.style.display = 'block';
+        item.setAttribute('aria-expanded', 'true');
         const submenuItems = submenu.querySelectorAll(
           '.context-menu-item'
         ) as NodeListOf<HTMLElement>;
@@ -190,6 +356,8 @@ export function createContextMenuController(deps: ContextMenuDeps) {
       if (el) el.style.display = condition ? 'flex' : 'none';
     };
     const isBundle = !!item.isAppBundle;
+    const selectedCount = Math.max(deps.getSelectedItems().size, 1);
+    const isMultiSelect = selectedCount > 1;
     showIf(elAddToBookmarks, item.isDirectory && !isBundle);
     showIf(elOpenInNewTab, item.isDirectory && !isBundle && deps.getTabsEnabled());
     showIf(elChangeFolderIcon, item.isDirectory && !isBundle);
@@ -202,23 +370,35 @@ export function createContextMenuController(deps: ContextMenuDeps) {
     showIf(elBatchRename, deps.getSelectedItems().size >= 2);
     showIf(elPasteInto, item.isDirectory && !isBundle && deps.hasClipboardContent());
     showIf(elDuplicate, true);
+    showIf(elRename, !isMultiSelect);
     showIf(elCopyMoveSubmenu, true);
     showIf(elAdvancedSubmenu, true);
     showIf(elShare, !item.isDirectory || isBundle);
     showIf(elShowPackageContents, isBundle);
+    setItemDisabled(elOpen, isMultiSelect);
+    setMenuLabel(elCopy, 'Copy', selectedCount);
+    setMenuLabel(elCut, 'Cut', selectedCount);
+    setMenuLabel(elDelete, 'Delete', selectedCount);
+    setMenuLabel(elDuplicate, 'Duplicate', selectedCount);
+    renderRecentDestinationItems(item.path);
 
     if (elOpenWithSubmenu && !item.isDirectory) {
       setupOpenWithSubmenu(elOpenWithSubmenu, item);
     }
 
     contextMenu.style.display = 'block';
+    normalizeSeparators(contextMenu);
     positionMenuInViewport(contextMenu, x, y);
 
-    const submenus = contextMenu.querySelectorAll('.context-submenu');
+    const submenus = contextMenu.querySelectorAll<HTMLElement>('.context-submenu');
     const menuRight =
       parseFloat(contextMenu.style.left) + contextMenu.getBoundingClientRect().width;
     const shouldFlip = menuRight + 160 > window.innerWidth - 10;
+    contextMenu.querySelectorAll<HTMLElement>('.context-menu-item.has-submenu').forEach((item) => {
+      item.setAttribute('aria-expanded', 'false');
+    });
     submenus.forEach((submenu) => {
+      submenu.style.display = '';
       submenu.classList.toggle('flip-left', shouldFlip);
     });
 
@@ -229,6 +409,14 @@ export function createContextMenuController(deps: ContextMenuDeps) {
     ensureElements();
     if (elContextMenu) {
       elContextMenu.style.display = 'none';
+      elContextMenu.querySelectorAll<HTMLElement>('.context-submenu').forEach((submenu) => {
+        submenu.style.display = '';
+      });
+      elContextMenu
+        .querySelectorAll<HTMLElement>('.context-menu-item.has-submenu')
+        .forEach((item) => {
+          item.setAttribute('aria-expanded', 'false');
+        });
       contextMenuData = null;
       clearContextMenuFocus(elContextMenu);
       contextMenuFocusedIndex = -1;
@@ -243,6 +431,7 @@ export function createContextMenuController(deps: ContextMenuDeps) {
 
     emptySpaceMenuFocusedIndex = -1;
     elEmptySpaceContextMenu.style.display = 'block';
+    normalizeSeparators(elEmptySpaceContextMenu);
     positionMenuInViewport(elEmptySpaceContextMenu, x, y);
     emptySpaceMenuFocusedIndex = navigateContextMenu(
       elEmptySpaceContextMenu,
@@ -297,7 +486,7 @@ export function createContextMenuController(deps: ContextMenuDeps) {
   async function handleContextMenuAction(
     action: string | undefined,
     item: FileItem,
-    format?: string
+    actionParam?: string
   ) {
     try {
       switch (action) {
@@ -319,6 +508,10 @@ export function createContextMenuController(deps: ContextMenuDeps) {
 
         case 'preview-pdf':
           await deps.showQuickLookForFile(item);
+          break;
+
+        case 'refresh':
+          await deps.navigateTo(deps.getCurrentPath());
           break;
 
         case 'rename': {
@@ -386,7 +579,7 @@ export function createContextMenuController(deps: ContextMenuDeps) {
           break;
 
         case 'compress':
-          await deps.handleCompress(format || 'zip');
+          await deps.handleCompress(actionParam || 'zip');
           break;
 
         case 'compress-advanced':
@@ -447,11 +640,31 @@ export function createContextMenuController(deps: ContextMenuDeps) {
         }
 
         case 'move-to':
-          await deps.moveSelectedToFolder();
+          {
+            const destinationPath = await deps.moveSelectedToFolder();
+            if (destinationPath) rememberRecentDestination(destinationPath);
+          }
           break;
 
         case 'copy-to':
-          await deps.copySelectedToFolder();
+          {
+            const destinationPath = await deps.copySelectedToFolder();
+            if (destinationPath) rememberRecentDestination(destinationPath);
+          }
+          break;
+
+        case 'move-to-recent':
+          if (actionParam) {
+            const moved = await deps.moveSelectedToDestination(actionParam);
+            if (moved) rememberRecentDestination(actionParam);
+          }
+          break;
+
+        case 'copy-to-recent':
+          if (actionParam) {
+            const copied = await deps.copySelectedToDestination(actionParam);
+            if (copied) rememberRecentDestination(actionParam);
+          }
           break;
 
         case 'share':
@@ -484,7 +697,13 @@ export function createContextMenuController(deps: ContextMenuDeps) {
         if (activeSubmenu) {
           const submenuItems = Array.from(
             activeSubmenu.querySelectorAll<HTMLElement>('.context-menu-item')
-          ).filter((el) => el.style.display !== 'none' && el.offsetParent !== null);
+          ).filter(
+            (el) =>
+              el.style.display !== 'none' &&
+              el.offsetParent !== null &&
+              !el.classList.contains('is-disabled') &&
+              el.getAttribute('aria-disabled') !== 'true'
+          );
           if (submenuItems.length > 0) {
             const focusedSubIdx = submenuItems.findIndex((el) => el.classList.contains('focused'));
             if (e.key === 'ArrowDown') {
@@ -557,6 +776,7 @@ export function createContextMenuController(deps: ContextMenuDeps) {
           });
           const parentItem = activeSubmenu.closest<HTMLElement>('.context-menu-item.has-submenu');
           if (parentItem) {
+            parentItem.setAttribute('aria-expanded', 'false');
             parentItem.classList.add('focused');
             parentItem.focus({ preventScroll: true });
           }

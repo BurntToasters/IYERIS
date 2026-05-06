@@ -111,6 +111,7 @@ type EventListenersConfig = {
     newClipboard: { operation: 'copy' | 'cut'; paths: string[] } | null
   ) => void;
   clipboardUpdateCutVisuals: () => void;
+  clipboardUpdateIndicator: () => void;
   zoomIn: () => void;
   zoomOut: () => void;
   zoomReset: () => void;
@@ -166,18 +167,23 @@ export function createEventListenersController(config: EventListenersConfig) {
     const cleanupClipboard = window.tauriAPI.onClipboardChanged((newClipboard) => {
       config.clipboardOnClipboardChanged(newClipboard);
       config.clipboardUpdateCutVisuals();
+      config.clipboardUpdateIndicator?.();
     });
     config.getIpcCleanupFunctions().push(cleanupClipboard);
 
     const cleanupSettings = window.tauriAPI.onSettingsChanged((rawSettings) => {
       const newSettings = sanitizeSettings(rawSettings);
+      const localSettings = config.getCurrentSettings();
       const currentTimestamp =
-        typeof config.getCurrentSettings()._timestamp === 'number'
-          ? config.getCurrentSettings()._timestamp
+        typeof localSettings._timestamp === 'number' && Number.isFinite(localSettings._timestamp)
+          ? localSettings._timestamp
           : 0;
-      const newTimestamp = typeof newSettings._timestamp === 'number' ? newSettings._timestamp : 0;
+      const newTimestamp =
+        typeof newSettings._timestamp === 'number' && Number.isFinite(newSettings._timestamp)
+          ? newSettings._timestamp
+          : 0;
 
-      if ((newTimestamp as number) < (currentTimestamp as number)) {
+      if (newTimestamp > 0 && newTimestamp < currentTimestamp) {
         return;
       }
 
@@ -294,6 +300,7 @@ export function createEventListenersController(config: EventListenersConfig) {
     });
 
     document.addEventListener('mouseup', (e) => {
+      if (isOverlayOpen() || isEditableElementActive()) return;
       if (e.button === 3) {
         e.preventDefault();
         config.goBack();
@@ -362,7 +369,9 @@ export function createEventListenersController(config: EventListenersConfig) {
     return (
       activeElement.tagName === 'INPUT' ||
       activeElement.tagName === 'TEXTAREA' ||
-      activeElement.isContentEditable
+      activeElement.tagName === 'SELECT' ||
+      activeElement.isContentEditable ||
+      activeElement.closest('[contenteditable="true"]') !== null
     );
   }
 
@@ -631,7 +640,7 @@ export function createEventListenersController(config: EventListenersConfig) {
     addressInput.select();
   }
 
-  const PANE_ORDER = ['sidebar', 'address-bar', 'file-grid'] as const;
+  const PANE_ORDER = ['sidebar', 'address-bar', 'file-grid', 'secondary-grid'] as const;
 
   function cyclePaneFocus(reverse: boolean): void {
     const activeEl = document.activeElement as HTMLElement | null;
@@ -651,6 +660,11 @@ export function createEventListenersController(config: EventListenersConfig) {
         activeEl.classList.contains('file-item')
       )
         currentPane = 2;
+      else if (
+        activeEl.closest('#dual-pane-secondary-list') ||
+        activeEl.closest('#dual-pane-secondary')
+      )
+        currentPane = 3;
     }
 
     const step = reverse ? -1 : 1;
@@ -681,6 +695,13 @@ export function createEventListenersController(config: EventListenersConfig) {
       } else if (pane === 'file-grid') {
         config.focusFileGrid();
         return;
+      } else if (pane === 'secondary-grid') {
+        const secondary = document.getElementById('dual-pane-secondary-list');
+        const firstItem = secondary?.querySelector<HTMLElement>('.file-item');
+        if (firstItem) {
+          firstItem.focus();
+          return;
+        }
       }
     }
   }
@@ -695,6 +716,20 @@ export function createEventListenersController(config: EventListenersConfig) {
       const menuItem = target.closest('.context-menu-item') as HTMLElement;
 
       if (menuItem) {
+        if (
+          menuItem.classList.contains('has-submenu') &&
+          !menuItem.dataset.action &&
+          !menuItem.dataset.sort
+        ) {
+          return;
+        }
+        if (
+          menuItem.classList.contains('is-disabled') ||
+          menuItem.getAttribute('aria-disabled') === 'true'
+        ) {
+          return;
+        }
+
         if (sortMenu && sortMenu.style.display === 'block') {
           const sortType = menuItem.getAttribute('data-sort');
           if (sortType) {
@@ -714,7 +749,7 @@ export function createEventListenersController(config: EventListenersConfig) {
           void config.handleContextMenuAction(
             menuItem.dataset.action,
             ctxData,
-            menuItem.dataset.format
+            menuItem.dataset.format || menuItem.dataset.destination
           );
           config.hideContextMenu();
           return;
@@ -754,23 +789,31 @@ export function createEventListenersController(config: EventListenersConfig) {
 
   function initContextMenuListeners(): void {
     document.addEventListener('contextmenu', (e) => {
-      if (!(e.target instanceof HTMLElement) || !e.target.closest('.file-item')) {
+      if (!(e.target instanceof HTMLElement)) return;
+      const target = e.target;
+      const inFileItem = !!target.closest('.file-item');
+      if (inFileItem) return;
+
+      const editableTarget = target.closest('input, textarea, [contenteditable="true"]');
+      if (editableTarget) {
+        config.hideContextMenu();
+        config.hideEmptySpaceContextMenu();
+        return;
+      }
+
+      const clickedOnFileView =
+        target.closest('#file-view') ||
+        target.id === 'file-view' ||
+        target.closest('.file-grid') ||
+        target.id === 'file-grid' ||
+        target.closest('.empty-state') ||
+        target.id === 'empty-state';
+      if (clickedOnFileView && config.getCurrentPath()) {
         e.preventDefault();
-        if (!(e.target instanceof HTMLElement)) return;
-        const target = e.target;
-        const clickedOnFileView =
-          target.closest('#file-view') ||
-          target.id === 'file-view' ||
-          target.closest('.file-grid') ||
-          target.id === 'file-grid' ||
-          target.closest('.empty-state') ||
-          target.id === 'empty-state';
-        if (clickedOnFileView && config.getCurrentPath()) {
-          config.showEmptySpaceContextMenu(e.pageX, e.pageY);
-        } else {
-          config.hideContextMenu();
-          config.hideEmptySpaceContextMenu();
-        }
+        config.showEmptySpaceContextMenu(e.pageX, e.pageY);
+      } else {
+        config.hideContextMenu();
+        config.hideEmptySpaceContextMenu();
       }
     });
   }

@@ -9,15 +9,15 @@ use tauri::Emitter;
 
 static ACTIVE_OPS: std::sync::LazyLock<Mutex<HashSet<String>>> =
     std::sync::LazyLock::new(|| Mutex::new(HashSet::new()));
-static RELATIONSHIP_TAG_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
-    Regex::new(r#"(?is)<Relationship\b[^>]*>"#).expect("relationship tag regex")
+static RELATIONSHIP_TAG_RE: std::sync::LazyLock<Option<Regex>> = std::sync::LazyLock::new(|| {
+    Regex::new(r#"(?is)<Relationship\b[^>]*>"#).ok()
 });
-static XML_ATTRIBUTE_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
-    Regex::new(r#"(?is)([A-Za-z_:][A-Za-z0-9_.:-]*)\s*=\s*(['\"])(.*?)\2"#)
-        .expect("xml attribute regex")
+static XML_ATTRIBUTE_RE: std::sync::LazyLock<Option<Regex>> = std::sync::LazyLock::new(|| {
+    Regex::new(r#"(?is)([A-Za-z_:][A-Za-z0-9_.:-]*)\s*=\s*(['\"])(.*?)\2"#).ok()
 });
 
 const MAX_DECOMPRESSED_SIZE: u64 = 53_687_091_200; // 50 GB
+const MAX_ARCHIVE_DEPTH: usize = 20;
 const DEFAULT_OFFICE_THUMBNAIL_LIMIT_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_OFFICE_THUMBNAIL_LIMIT_BYTES: u64 = 20 * 1024 * 1024;
 
@@ -43,6 +43,7 @@ fn is_active(op_id: &str) -> bool {
 
 fn safe_entry_path(entry_name: &str, dest: &Path) -> Result<PathBuf, String> {
     let mut component_path = dest.to_path_buf();
+    let mut depth: usize = 0;
     for component in std::path::Path::new(entry_name).components() {
         match component {
             std::path::Component::ParentDir
@@ -52,6 +53,13 @@ fn safe_entry_path(entry_name: &str, dest: &Path) -> Result<PathBuf, String> {
             }
             std::path::Component::CurDir => {}
             std::path::Component::Normal(part) => {
+                depth += 1;
+                if depth > MAX_ARCHIVE_DEPTH {
+                    return Err(format!(
+                        "Archive entry exceeds max nesting depth ({}): {}",
+                        MAX_ARCHIVE_DEPTH, entry_name
+                    ));
+                }
                 component_path.push(part);
                 if let Ok(meta) = fs::symlink_metadata(&component_path) {
                     if meta.file_type().is_symlink() {
@@ -86,9 +94,12 @@ fn safe_entry_path(entry_name: &str, dest: &Path) -> Result<PathBuf, String> {
 
 fn ensure_path_within_dest(path: &Path, dest: &Path, entry_name: &str) -> Result<(), String> {
     let canonical_dest = dest.canonicalize().unwrap_or_else(|_| dest.to_path_buf());
-    let canonical_path = path
-        .canonicalize()
-        .map_err(|e| format!("Failed to resolve extraction path for {}: {}", entry_name, e))?;
+    let canonical_path = path.canonicalize().map_err(|e| {
+        format!(
+            "Failed to resolve extraction path for {}: {}",
+            entry_name, e
+        )
+    })?;
     if !canonical_path.starts_with(&canonical_dest) {
         return Err(format!("Path traversal detected: {}", entry_name));
     }
@@ -129,7 +140,12 @@ pub async fn compress_files(
     webview: tauri::WebviewWindow,
     _app: tauri::AppHandle,
 ) -> Result<(), String> {
-    log::debug!("[Archive] compress: {} items -> {} (fmt={:?})", source_paths.len(), output_path, format);
+    log::debug!(
+        "[Archive] compress: {} items -> {} (fmt={:?})",
+        source_paths.len(),
+        output_path,
+        format
+    );
     let output = crate::validate_path(&output_path, "Output")?;
     let output_cmp = canonicalize_for_comparison(&output);
     for source in &source_paths {
@@ -153,13 +169,11 @@ pub async fn compress_files(
     }
 
     let compress_op_id = op_id.clone();
-    let result = tokio::task::spawn_blocking(move || {
-        match fmt.as_str() {
-            "zip" => compress_zip(&source_paths, &output, &compress_op_id, &webview),
-            "tar.gz" | "tgz" => compress_tar_gz(&source_paths, &output, &compress_op_id, &webview),
-            "7z" => compress_7z(&source_paths, &output, &compress_op_id, &webview),
-            _ => Err(format!("Unsupported format: {}", fmt)),
-        }
+    let result = tokio::task::spawn_blocking(move || match fmt.as_str() {
+        "zip" => compress_zip(&source_paths, &output, &compress_op_id, &webview),
+        "tar.gz" | "tgz" => compress_tar_gz(&source_paths, &output, &compress_op_id, &webview),
+        "7z" => compress_7z(&source_paths, &output, &compress_op_id, &webview),
+        _ => Err(format!("Unsupported format: {}", fmt)),
     })
     .await;
 
@@ -196,9 +210,11 @@ fn compress_zip(
             if path.is_dir() {
                 add_dir_to_zip(&mut zip, &path, &path, &options, op_id)?;
             } else {
-                let name = path.file_name()
+                let name = path
+                    .file_name()
                     .ok_or_else(|| format!("Invalid path: {}", path.display()))?
-                    .to_string_lossy().to_string();
+                    .to_string_lossy()
+                    .to_string();
                 zip.start_file(&name, options).map_err(|e| e.to_string())?;
                 let mut source_file = fs::File::open(&path).map_err(|e| e.to_string())?;
                 std::io::copy(&mut source_file, &mut zip).map_err(|e| e.to_string())?;
@@ -235,7 +251,13 @@ fn add_dir_to_zip(
     options: &zip::write::SimpleFileOptions,
     op_id: &str,
 ) -> Result<(), String> {
-    for entry in fs::read_dir(dir).map_err(|e| e.to_string())?.filter_map(|e| e.map_err(|err| log::warn!("[Archive] zip dir entry error: {}", err)).ok()) {
+    for entry in fs::read_dir(dir)
+        .map_err(|e| e.to_string())?
+        .filter_map(|e| {
+            e.map_err(|err| log::warn!("[Archive] zip dir entry error: {}", err))
+                .ok()
+        })
+    {
         if !op_id.is_empty() && !is_active(op_id) {
             return Err("Operation cancelled".to_string());
         }
@@ -270,56 +292,67 @@ fn compress_tar_gz(
     webview: &tauri::WebviewWindow,
 ) -> Result<(), String> {
     let result = (|| -> Result<(), String> {
-    let file = fs::File::create(output).map_err(|e| e.to_string())?;
-    let enc = flate2::write::GzEncoder::new(file, flate2::Compression::default());
-    let mut tar = tar::Builder::new(enc);
-    tar.follow_symlinks(false);
+        let file = fs::File::create(output).map_err(|e| e.to_string())?;
+        let enc = flate2::write::GzEncoder::new(file, flate2::Compression::default());
+        let mut tar = tar::Builder::new(enc);
+        tar.follow_symlinks(false);
 
-    let total = sources.len() as u64;
-    let mut count = 0u64;
+        let total = sources.len() as u64;
+        let mut count = 0u64;
 
-    for source in sources {
-        if !op_id.is_empty() && !is_active(op_id) {
-            return Err("Operation cancelled".to_string());
-        }
-        let path = PathBuf::from(source);
-        let name = path.file_name()
-            .ok_or_else(|| format!("Invalid path: {}", path.display()))?
-            .to_string_lossy().to_string();
-        if path.is_dir() {
-            let base = path.parent().unwrap_or(&path);
-            for entry in walkdir::WalkDir::new(&path).into_iter().filter_map(|e| e.ok()) {
-                if !op_id.is_empty() && !is_active(op_id) {
-                    return Err("Operation cancelled".to_string());
-                }
-                let meta = fs::symlink_metadata(entry.path()).map_err(|e| e.to_string())?;
-                if meta.file_type().is_symlink() {
-                    continue;
-                }
-                let rel = entry.path().strip_prefix(base).unwrap_or(entry.path());
-                if meta.is_dir() {
-                    tar.append_dir(rel, entry.path()).map_err(|e| e.to_string())?;
-                } else {
-                    tar.append_path_with_name(entry.path(), rel).map_err(|e| e.to_string())?;
-                }
+        for source in sources {
+            if !op_id.is_empty() && !is_active(op_id) {
+                return Err("Operation cancelled".to_string());
             }
-        } else {
-            tar.append_path_with_name(&path, &name).map_err(|e| e.to_string())?;
+            let path = PathBuf::from(source);
+            let name = path
+                .file_name()
+                .ok_or_else(|| format!("Invalid path: {}", path.display()))?
+                .to_string_lossy()
+                .to_string();
+            if path.is_dir() {
+                let base = path.parent().unwrap_or(&path);
+                for entry in walkdir::WalkDir::new(&path)
+                    .into_iter()
+                    .filter_map(|e| e.ok())
+                {
+                    if !op_id.is_empty() && !is_active(op_id) {
+                        return Err("Operation cancelled".to_string());
+                    }
+                    let meta = fs::symlink_metadata(entry.path()).map_err(|e| e.to_string())?;
+                    if meta.file_type().is_symlink() {
+                        continue;
+                    }
+                    let rel = entry.path().strip_prefix(base).unwrap_or(entry.path());
+                    if meta.is_dir() {
+                        tar.append_dir(rel, entry.path())
+                            .map_err(|e| e.to_string())?;
+                    } else {
+                        tar.append_path_with_name(entry.path(), rel)
+                            .map_err(|e| e.to_string())?;
+                    }
+                }
+            } else {
+                tar.append_path_with_name(&path, &name)
+                    .map_err(|e| e.to_string())?;
+            }
+            count += 1;
+            let _ = webview.emit(
+                "compress-progress",
+                serde_json::json!({
+                    "operationId": op_id,
+                    "current": count,
+                    "total": total,
+                    "name": name,
+                }),
+            );
         }
-        count += 1;
-        let _ = webview.emit("compress-progress", serde_json::json!({
-            "operationId": op_id,
-            "current": count,
-            "total": total,
-            "name": name,
-        }));
-    }
 
-    tar.into_inner()
-        .map_err(|e| e.to_string())?
-        .finish()
-        .map_err(|e| e.to_string())?;
-    Ok(())
+        tar.into_inner()
+            .map_err(|e| e.to_string())?
+            .finish()
+            .map_err(|e| e.to_string())?;
+        Ok(())
     })();
 
     if result.is_err() {
@@ -335,44 +368,50 @@ fn compress_7z(
     webview: &tauri::WebviewWindow,
 ) -> Result<(), String> {
     let result = (|| -> Result<(), String> {
-    let sz = sevenz_rust::SevenZWriter::create(output).map_err(|e| e.to_string())?;
-    let sz_cell = std::cell::RefCell::new(sz);
-    let total = sources.len() as u64;
-    let mut count = 0u64;
+        let sz = sevenz_rust::SevenZWriter::create(output).map_err(|e| e.to_string())?;
+        let sz_cell = std::cell::RefCell::new(sz);
+        let total = sources.len() as u64;
+        let mut count = 0u64;
 
-    for source in sources {
-        if !op_id.is_empty() && !is_active(op_id) {
-            drop(sz_cell);
-            let _ = fs::remove_file(output);
-            return Err("Operation cancelled".to_string());
+        for source in sources {
+            if !op_id.is_empty() && !is_active(op_id) {
+                drop(sz_cell);
+                let _ = fs::remove_file(output);
+                return Err("Operation cancelled".to_string());
+            }
+
+            let path = PathBuf::from(source);
+            let name = path
+                .file_name()
+                .ok_or_else(|| format!("Invalid path: {}", path.display()))?
+                .to_string_lossy()
+                .to_string();
+
+            if path.is_dir() {
+                add_dir_to_7z(&sz_cell, &path, &name, op_id)?;
+            } else {
+                let source_file = fs::File::open(&path).map_err(|e| e.to_string())?;
+                let entry = sevenz_rust::SevenZArchiveEntry::from_path(&path, name.clone());
+                sz_cell
+                    .borrow_mut()
+                    .push_archive_entry(entry, Some(source_file))
+                    .map_err(|e| e.to_string())?;
+            }
+
+            count += 1;
+            let _ = webview.emit(
+                "compress-progress",
+                serde_json::json!({
+                    "operationId": op_id,
+                    "current": count,
+                    "total": total,
+                    "name": name,
+                }),
+            );
         }
 
-        let path = PathBuf::from(source);
-        let name = path.file_name()
-            .ok_or_else(|| format!("Invalid path: {}", path.display()))?
-            .to_string_lossy().to_string();
-
-        if path.is_dir() {
-            add_dir_to_7z(&sz_cell, &path, &name, op_id)?;
-        } else {
-            let source_file = fs::File::open(&path).map_err(|e| e.to_string())?;
-            let entry = sevenz_rust::SevenZArchiveEntry::from_path(&path, name.clone());
-            sz_cell.borrow_mut()
-                .push_archive_entry(entry, Some(source_file))
-                .map_err(|e| e.to_string())?;
-        }
-
-        count += 1;
-        let _ = webview.emit("compress-progress", serde_json::json!({
-            "operationId": op_id,
-            "current": count,
-            "total": total,
-            "name": name,
-        }));
-    }
-
-    sz_cell.into_inner().finish().map_err(|e| e.to_string())?;
-    Ok(())
+        sz_cell.into_inner().finish().map_err(|e| e.to_string())?;
+        Ok(())
     })();
 
     if result.is_err() {
@@ -387,7 +426,13 @@ fn add_dir_to_7z(
     prefix: &str,
     op_id: &str,
 ) -> Result<(), String> {
-    for entry in fs::read_dir(dir).map_err(|e| e.to_string())?.filter_map(|e| e.map_err(|err| log::warn!("[Archive] 7z dir entry error: {}", err)).ok()) {
+    for entry in fs::read_dir(dir)
+        .map_err(|e| e.to_string())?
+        .filter_map(|e| {
+            e.map_err(|err| log::warn!("[Archive] 7z dir entry error: {}", err))
+                .ok()
+        })
+    {
         if !op_id.is_empty() && !is_active(op_id) {
             return Err("Operation cancelled".to_string());
         }
@@ -486,12 +531,15 @@ fn extract_zip(
         let name = entry.name().to_string();
         let out_path = safe_entry_path(&name, dest)?;
 
-        let _ = webview.emit("extract-progress", serde_json::json!({
-            "operationId": op_id,
-            "current": i + 1,
-            "total": total,
-            "name": name,
-        }));
+        let _ = webview.emit(
+            "extract-progress",
+            serde_json::json!({
+                "operationId": op_id,
+                "current": i + 1,
+                "total": total,
+                "name": name,
+            }),
+        );
 
         if entry.is_dir() {
             fs::create_dir_all(&out_path).map_err(|e| e.to_string())?;
@@ -556,16 +604,20 @@ fn extract_7z(
         }
         count += 1;
         let name = entry.name().to_string();
-        let _ = webview.emit("extract-progress", serde_json::json!({
-            "operationId": op_id,
-            "current": count,
-            "total": 0,
-            "name": name.clone(),
-        }));
+        let _ = webview.emit(
+            "extract-progress",
+            serde_json::json!({
+                "operationId": op_id,
+                "current": count,
+                "total": 0,
+                "name": name.clone(),
+            }),
+        );
         let out_path = safe_entry_path(entry.name(), dest)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
         if entry.is_directory() {
-            fs::create_dir_all(&out_path).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+            fs::create_dir_all(&out_path)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
             ensure_path_within_dest(&out_path, dest, &name)
                 .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
         } else {
@@ -576,12 +628,15 @@ fn extract_7z(
                 ));
             }
             if let Some(parent) = out_path.parent() {
-                fs::create_dir_all(parent).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+                fs::create_dir_all(parent)
+                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
                 ensure_path_within_dest(parent, dest, &name)
                     .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
             }
-            let mut outfile = fs::File::create(&out_path).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
-            let written = std::io::copy(reader, &mut outfile).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+            let mut outfile = fs::File::create(&out_path)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+            let written = std::io::copy(reader, &mut outfile)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
             cumulative_bytes = cumulative_bytes.saturating_add(written);
             if cumulative_bytes > MAX_DECOMPRESSED_SIZE {
                 return Err(sevenz_rust::Error::other(
@@ -645,12 +700,15 @@ fn extract_tar_entries<R: std::io::Read>(
         }
 
         count += 1;
-        let _ = webview.emit("extract-progress", serde_json::json!({
-            "operationId": op_id,
-            "current": count,
-            "total": 0,
-            "name": name,
-        }));
+        let _ = webview.emit(
+            "extract-progress",
+            serde_json::json!({
+                "operationId": op_id,
+                "current": count,
+                "total": 0,
+                "name": name,
+            }),
+        );
 
         let unpacked = entry.unpack_in(dest).map_err(|e| e.to_string())?;
         if !unpacked {
@@ -690,7 +748,12 @@ pub async fn list_archive_contents(archive_path: String) -> Result<Vec<ArchiveEn
                     entries.push(ArchiveEntry {
                         name: entry
                             .enclosed_name()
-                            .map(|p| p.file_name().unwrap_or_default().to_string_lossy().to_string())
+                            .map(|p| {
+                                p.file_name()
+                                    .unwrap_or_default()
+                                    .to_string_lossy()
+                                    .to_string()
+                            })
                             .unwrap_or_default(),
                         path: entry.name().to_string(),
                         size: entry.size(),
@@ -705,20 +768,24 @@ pub async fn list_archive_contents(archive_path: String) -> Result<Vec<ArchiveEn
                 let mut entries = Vec::new();
                 let file = fs::File::open(&archive).map_err(|e| e.to_string())?;
                 let reader = BufReader::new(file);
-                sevenz_rust::decompress_with_extract_fn(reader, Path::new(""), |entry, _reader, _dest| {
-                    entries.push(ArchiveEntry {
-                        name: Path::new(entry.name())
-                            .file_name()
-                            .unwrap_or_default()
-                            .to_string_lossy()
-                            .to_string(),
-                        path: entry.name().to_string(),
-                        size: entry.size() as u64,
-                        is_directory: entry.is_directory(),
-                        compressed_size: entry.compressed_size as u64,
-                    });
-                    Ok(true)
-                })
+                sevenz_rust::decompress_with_extract_fn(
+                    reader,
+                    Path::new(""),
+                    |entry, _reader, _dest| {
+                        entries.push(ArchiveEntry {
+                            name: Path::new(entry.name())
+                                .file_name()
+                                .unwrap_or_default()
+                                .to_string_lossy()
+                                .to_string(),
+                            path: entry.name().to_string(),
+                            size: entry.size() as u64,
+                            is_directory: entry.is_directory(),
+                            compressed_size: entry.compressed_size as u64,
+                        });
+                        Ok(true)
+                    },
+                )
                 .map_err(|e| e.to_string())?;
                 Ok(entries)
             }
@@ -729,7 +796,11 @@ pub async fn list_archive_contents(archive_path: String) -> Result<Vec<ArchiveEn
                 let mut entries = Vec::new();
                 for entry in tar.entries().map_err(|e| e.to_string())? {
                     let entry = entry.map_err(|e| e.to_string())?;
-                    let path_str = entry.path().map_err(|e| e.to_string())?.to_string_lossy().to_string();
+                    let path_str = entry
+                        .path()
+                        .map_err(|e| e.to_string())?
+                        .to_string_lossy()
+                        .to_string();
                     let name = Path::new(&path_str)
                         .file_name()
                         .unwrap_or_default()
@@ -751,7 +822,11 @@ pub async fn list_archive_contents(archive_path: String) -> Result<Vec<ArchiveEn
                 let mut entries = Vec::new();
                 for entry in tar.entries().map_err(|e| e.to_string())? {
                     let entry = entry.map_err(|e| e.to_string())?;
-                    let path_str = entry.path().map_err(|e| e.to_string())?.to_string_lossy().to_string();
+                    let path_str = entry
+                        .path()
+                        .map_err(|e| e.to_string())?
+                        .to_string_lossy()
+                        .to_string();
                     let name = Path::new(&path_str)
                         .file_name()
                         .unwrap_or_default()
@@ -784,9 +859,11 @@ pub async fn get_embedded_office_thumbnail(
         .unwrap_or(DEFAULT_OFFICE_THUMBNAIL_LIMIT_BYTES)
         .min(MAX_OFFICE_THUMBNAIL_LIMIT_BYTES);
 
-    tokio::task::spawn_blocking(move || extract_embedded_office_thumbnail_data_url(&office_file, limit))
-        .await
-        .map_err(|e| e.to_string())?
+    tokio::task::spawn_blocking(move || {
+        extract_embedded_office_thumbnail_data_url(&office_file, limit)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 fn extract_embedded_office_thumbnail_data_url(path: &Path, limit: u64) -> Result<String, String> {
@@ -899,7 +976,8 @@ fn parse_thumbnail_target_from_relationships(xml: &str) -> Option<String> {
         "http://purl.oclc.org/ooxml/officeDocument/relationships/metadata/thumbnail",
     ];
 
-    for tag_match in RELATIONSHIP_TAG_RE.find_iter(xml) {
+    let re = RELATIONSHIP_TAG_RE.as_ref()?;
+    for tag_match in re.find_iter(xml) {
         let tag = tag_match.as_str();
         let Some(rel_type) = extract_xml_attr(tag, "Type") else {
             continue;
@@ -922,7 +1000,8 @@ fn parse_thumbnail_target_from_relationships(xml: &str) -> Option<String> {
 }
 
 fn extract_xml_attr(tag: &str, attr_name: &str) -> Option<String> {
-    for captures in XML_ATTRIBUTE_RE.captures_iter(tag) {
+    let re = XML_ATTRIBUTE_RE.as_ref()?;
+    for captures in re.captures_iter(tag) {
         let key = captures.get(1)?.as_str();
         if key.eq_ignore_ascii_case(attr_name) {
             return Some(captures.get(3)?.as_str().to_string());
@@ -932,7 +1011,12 @@ fn extract_xml_attr(tag: &str, attr_name: &str) -> Option<String> {
 }
 
 fn normalize_zip_target_path(target: &str) -> Option<String> {
-    let without_fragment = target.split('#').next()?.split('?').next()?.replace('\\', "/");
+    let without_fragment = target
+        .split('#')
+        .next()?
+        .split('?')
+        .next()?
+        .replace('\\', "/");
     let trimmed = without_fragment.trim();
     if trimmed.is_empty() {
         return None;

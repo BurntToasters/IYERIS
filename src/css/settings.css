@@ -623,6 +623,13 @@ body.platform-darwin .macos-login-warning {
   gap: 10px;
 }
 
+.settings-inline-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .setting-why {
   margin-top: 6px;
   padding: 8px 10px;

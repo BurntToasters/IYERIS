@@ -171,7 +171,7 @@ export function createPropertiesDialogController(deps: PropertiesDialogDeps) {
 
     if (props.mode !== undefined) {
       html += `<div class="property-separator"></div>`;
-      if (props.isHiddenAttr !== undefined) {
+      if (props.isHiddenAttr != null) {
         html += `
     <div class="property-row">
       <div class="property-label">Attributes:</div>

@@ -58,6 +58,7 @@ type CompressExtractDeps = {
   addOperation: (id: string, type: 'compress' | 'extract', name: string) => void;
   getOperation: (id: string) => { aborted: boolean } | undefined;
   updateOperation: (id: string, current: number, total: number, currentFile: string) => void;
+  completeOperation: (id: string, status: 'done' | 'failed', error?: string) => void;
   removeOperation: (id: string) => void;
   isWindowsPlatform: () => boolean;
 };
@@ -183,9 +184,9 @@ export function createCompressExtractController(deps: CompressExtractDeps) {
       );
 
       cleanupProgressHandler();
-      deps.removeOperation(operationId);
 
       if (!result.success) {
+        deps.completeOperation(operationId, 'failed', result.error || 'Compression failed');
         deps.showToast(result.error || 'Compression failed', 'Error', 'error', [
           {
             label: 'Retry',
@@ -194,11 +195,12 @@ export function createCompressExtractController(deps: CompressExtractDeps) {
         ]);
         return;
       }
+      deps.completeOperation(operationId, 'done');
       deps.showToast(`Created ${archiveName}`, 'Compressed Successfully', 'success');
       await deps.navigateTo(deps.getCurrentPath());
     } catch (error) {
       cleanupProgressHandler();
-      deps.removeOperation(operationId);
+      deps.completeOperation(operationId, 'failed', getErrorMessage(error));
       deps.showToast(getErrorMessage(error), 'Compression Error', 'error', [
         { label: 'Retry', onClick: () => void handleCompress(format, customName, advancedOptions) },
       ]);
@@ -711,9 +713,9 @@ export function createCompressExtractController(deps: CompressExtractDeps) {
       const result = await window.tauriAPI.extractArchive(archivePath, destPath, operationId);
 
       cleanupProgressHandler();
-      deps.removeOperation(operationId);
 
       if (!result.success) {
+        deps.completeOperation(operationId, 'failed', result.error || 'Extraction failed');
         deps.showToast(result.error || 'Extraction failed', 'Error', 'error', [
           {
             label: 'Retry',
@@ -722,6 +724,7 @@ export function createCompressExtractController(deps: CompressExtractDeps) {
         ]);
         return;
       }
+      deps.completeOperation(operationId, 'done');
       deps.showToast(`Extracted to ${destPath}`, 'Extraction Complete', 'success');
       if (trackRecent) {
         deps.addToRecentFiles(archivePath);
@@ -731,7 +734,7 @@ export function createCompressExtractController(deps: CompressExtractDeps) {
       }
     } catch (error) {
       cleanupProgressHandler();
-      deps.removeOperation(operationId);
+      deps.completeOperation(operationId, 'failed', getErrorMessage(error));
       deps.showToast(getErrorMessage(error), 'Extraction Error', 'error', [
         {
           label: 'Retry',

@@ -69,6 +69,7 @@ function createDeps() {
     addOperation: vi.fn(),
     getOperation: vi.fn().mockReturnValue({ aborted: false }),
     updateOperation: vi.fn(),
+    completeOperation: vi.fn(),
     removeOperation: vi.fn(),
     isWindowsPlatform: vi.fn().mockReturnValue(false),
   };
@@ -349,7 +350,7 @@ describe('createCompressExtractController', () => {
         'error',
         expect.any(Array)
       );
-      expect(deps.removeOperation).toHaveBeenCalledWith('op-1');
+      expect(deps.completeOperation).toHaveBeenCalledWith('op-1', 'failed', 'network error');
     });
 
     it('registers and cleans up compress progress handler', async () => {
@@ -973,7 +974,7 @@ describe('createCompressExtractController', () => {
         'error',
         expect.any(Array)
       );
-      expect(deps.removeOperation).toHaveBeenCalledWith('op-1');
+      expect(deps.completeOperation).toHaveBeenCalledWith('op-1', 'failed', 'permission denied');
     });
 
     it('shows error for unsupported archive format', async () => {

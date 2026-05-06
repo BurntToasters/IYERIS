@@ -34,10 +34,7 @@ fn copy_dir_recursive_inner(
         .map_err(|e| format!("Failed to resolve path {}: {}", src.display(), e))?;
     let key = canonical.to_string_lossy().to_string();
     if !visited.insert(key) {
-        log::warn!(
-            "[fs_utils] Skipping directory cycle: {}",
-            src.display()
-        );
+        log::warn!("[fs_utils] Skipping directory cycle: {}", src.display());
         return Ok(());
     }
 
@@ -54,7 +51,11 @@ fn copy_dir_recursive_inner(
         let entry = match entry_result {
             Ok(e) => e,
             Err(err) => {
-                log::warn!("[fs_utils] Skipping unreadable entry in {}: {}", src.display(), err);
+                log::warn!(
+                    "[fs_utils] Skipping unreadable entry in {}: {}",
+                    src.display(),
+                    err
+                );
                 continue;
             }
         };
@@ -84,15 +85,22 @@ fn copy_symlink(source: &Path, target: &Path) -> Result<(), String> {
 
     #[cfg(windows)]
     {
+        fn map_win_symlink_err(e: std::io::Error) -> String {
+            if e.raw_os_error() == Some(1314) || e.raw_os_error() == Some(5) {
+                "Failed to create symlink: Administrator privileges required (or enable Developer Mode)".to_string()
+            } else {
+                format!("Failed to create symlink: {}", e)
+            }
+        }
         let is_dir_link = fs::symlink_metadata(source)
             .map(|m| m.is_dir())
             .unwrap_or(false);
         if is_dir_link {
             std::os::windows::fs::symlink_dir(&link_target, target)
-                .map_err(|e| format!("Failed to create symlink: {}", e))?;
+                .map_err(map_win_symlink_err)?;
         } else {
             std::os::windows::fs::symlink_file(&link_target, target)
-                .map_err(|e| format!("Failed to create symlink: {}", e))?;
+                .map_err(map_win_symlink_err)?;
         }
     }
 

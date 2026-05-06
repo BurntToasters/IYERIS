@@ -292,7 +292,8 @@ export function createTabsController(deps: TabsDeps) {
     if (history.length > MAX_HISTORY_PER_TAB) {
       const trimCount = history.length - MAX_HISTORY_PER_TAB;
       currentTab.history = history.slice(trimCount);
-      currentTab.historyIndex = Math.max(0, historyIndex - trimCount);
+      const adjusted = historyIndex - trimCount;
+      currentTab.historyIndex = Math.min(currentTab.history.length - 1, Math.max(0, adjusted));
     } else {
       currentTab.history = [...history];
       currentTab.historyIndex = historyIndex;

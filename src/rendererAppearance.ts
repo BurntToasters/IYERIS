@@ -27,6 +27,7 @@ const CLASS_TOGGLES: Array<[className: string, enabled: (settings: Settings) => 
   ['show-file-checkboxes', (settings) => settings.showFileCheckboxes === true],
   ['compact-file-info', (settings) => settings.compactFileInfo === true],
   ['hide-file-extensions', (settings) => settings.showFileExtensions === false],
+  ['dual-pane-enabled', (settings) => settings.dualPaneEnabled === true],
 ];
 
 type AppearanceDeps = {

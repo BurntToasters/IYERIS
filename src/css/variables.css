@@ -40,6 +40,9 @@
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.2);
   --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.28);
   --shadow-xl: 0 12px 32px rgba(0, 0, 0, 0.35);
+  --native-elevation-1: 0 1px 0 rgba(255, 255, 255, 0.03), 0 3px 10px rgba(0, 0, 0, 0.18);
+  --native-elevation-2: 0 1px 0 rgba(255, 255, 255, 0.04), 0 8px 20px rgba(0, 0, 0, 0.26);
+  --native-divider: color-mix(in srgb, var(--text-primary) 10%, transparent);
 
   --focus-ring: 0 0 0 2px rgba(var(--accent-rgb), 0.5);
   --focus-ring-strong: 0 0 0 3px rgba(var(--accent-rgb), 0.6);
@@ -56,6 +59,8 @@
   --surface-1: var(--bg-secondary);
   --surface-2: color-mix(in srgb, var(--surface-1) 90%, transparent);
   --surface-overlay: var(--glass-bg);
+  --chrome-surface: color-mix(in srgb, var(--surface-1) 92%, transparent);
+  --chrome-surface-raised: color-mix(in srgb, var(--surface-1) 84%, transparent);
   --panel-border: var(--surface-border);
   --panel-border-strong: var(--surface-border-strong);
   --interactive-hover: var(--hover-color);
@@ -66,9 +71,9 @@
   --titlebar-height: 32px;
   --tab-bar-height: 32px;
 
-  --radius-small: 6px;
-  --radius-medium: 10px;
-  --radius-large: 14px;
+  --radius-small: 5px;
+  --radius-medium: 8px;
+  --radius-large: 12px;
 
   --font-family:
     -apple-system, BlinkMacSystemFont, 'Segoe UI Variable', 'Segoe UI', system-ui, ui-sans-serif,
@@ -94,10 +99,10 @@
   --scrollbar-thumb-bg: rgba(255, 255, 255, 0.15);
   --scrollbar-thumb-hover-bg: rgba(255, 255, 255, 0.25);
 
-  --font-size-base: 13px;
+  --font-size-base: 12.5px;
   --font-size-file-name: 12px;
   --font-size-nav: 12px;
-  --font-size-section-title: 11px;
+  --font-size-section-title: 10.5px;
   --font-size-status: 11px;
   --font-size-breadcrumb: 12px;
 
@@ -111,23 +116,23 @@
   --icon-size-status: 12px;
   --icon-size-settings-tab: 18px;
 
-  --toolbar-height: 38px;
-  --toolbar-padding-v: 6px;
-  --toolbar-padding-h: 9px;
-  --toolbar-group-height: 32px;
-  --control-height-sm: 24px;
-  --control-height-md: 28px;
-  --control-height-lg: 32px;
-  --status-bar-height: 22px;
-  --address-bar-height: 26px;
+  --toolbar-height: 36px;
+  --toolbar-padding-v: 4px;
+  --toolbar-padding-h: 6px;
+  --toolbar-group-height: 28px;
+  --control-height-sm: 20px;
+  --control-height-md: 24px;
+  --control-height-lg: 28px;
+  --status-bar-height: 21px;
+  --address-bar-height: 24px;
   --sidebar-width: 180px;
   --sidebar-width-collapsed: 44px;
   --preview-panel-width: 260px;
   --preview-panel-height: 220px;
   --grid-columns: auto-fill;
 
-  --file-grid-gap-row: 10px;
-  --file-grid-gap-col: 12px;
+  --file-grid-gap-row: 8px;
+  --file-grid-gap-col: 10px;
   --file-item-padding-v: 6px;
   --file-item-padding-h: 4px;
   --list-item-padding-v: 6px;
@@ -138,12 +143,12 @@
   --list-col-size: 90px;
   --list-col-modified: 160px;
   --list-header-height: 30px;
-  --nav-item-padding-v: 5px;
-  --nav-item-padding-h: 8px;
+  --nav-item-padding-v: 4px;
+  --nav-item-padding-h: 7px;
   --nav-item-gap: 8px;
-  --sidebar-section-gap: 16px;
-  --sidebar-padding-v: 10px;
-  --sidebar-padding-h: 8px;
+  --sidebar-section-gap: 12px;
+  --sidebar-padding-v: 8px;
+  --sidebar-padding-h: 6px;
   --container-gap: 10px;
   --container-edge-padding: 6px;
   --container-edge-padding-top: 6px;

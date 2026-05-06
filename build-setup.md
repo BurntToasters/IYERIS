@@ -5,7 +5,7 @@
 - **Version:** Windows 10 x64 or later.
 - **Terminal:** Powershell 7.5.4 or later.
   - This is required due to the use of unix-like commands on windows.
-- **NodeJS:** Node.js `v24.13.0` or later (LTS): [https://nodejs.org/en/download](https://nodejs.org/en/download)
+- **NodeJS:** Node.js `>=22` (tested on `v24.x` LTS): [https://nodejs.org/en/download](https://nodejs.org/en/download)
 
 ---
 
@@ -15,7 +15,7 @@
 - **XCode Developer Tools:** `xcode-select --install`.
 - **Homebrew:** [https://brew.sh](https://brew.sh).
 - **Terminal:** Integrated terminal (or any 3rd party terminal) running ZSH.
-- **NodeJS:** Node.js `v24.13.0` or later (LTS): [https://nodejs.org/en/download](https://nodejs.org/en/download)
+- **NodeJS:** Node.js `>=22` (tested on `v24.x` LTS): [https://nodejs.org/en/download](https://nodejs.org/en/download)
 
 ---
 
@@ -31,7 +31,7 @@
   - **Flatpak:** (configured with [Flathub](https://flathub.org/en/setup)):
   - **Required Flatpak runtimes:** `org.freedesktop.Platform`, `org.freedesktop.Sdk` (check [run.rosie.iyeris.yml](run.rosie.iyeris.yml) for specific versions)
 - **Terminal:** Integrated terminal (or any 3rd party terminal) running Bash or ZSH.
-- **NodeJS:** Node.js `v24.13.0` or later (LTS): [https://nodejs.org/en/download](https://nodejs.org/en/download)
+- **NodeJS:** Node.js `>=22` (tested on `v24.x` LTS): [https://nodejs.org/en/download](https://nodejs.org/en/download)
 
 ## Extra
 

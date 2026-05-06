@@ -72,7 +72,11 @@ fn create_temp_script(extension: &str, content: &str) -> Result<std::path::PathB
 #[cfg(any(target_os = "windows", target_os = "linux"))]
 fn cleanup_temp_script(script_path: &std::path::Path) {
     if let Err(e) = std::fs::remove_file(script_path) {
-        log::warn!("[Elevated] Failed to clean up temp script {}: {}", script_path.display(), e);
+        log::warn!(
+            "[Elevated] Failed to clean up temp script {}: {}",
+            script_path.display(),
+            e
+        );
     }
 }
 
@@ -281,7 +285,10 @@ async fn run_elevated_file_op(op: &str, source: &str, dest: Option<&str>) -> Res
 }
 
 #[tauri::command]
-pub async fn elevated_copy_batch(source_paths: Vec<String>, dest_path: String) -> Result<(), String> {
+pub async fn elevated_copy_batch(
+    source_paths: Vec<String>,
+    dest_path: String,
+) -> Result<(), String> {
     for p in &source_paths {
         crate::validate_existing_path(p, "Source")?;
     }
@@ -294,7 +301,10 @@ pub async fn elevated_copy_batch(source_paths: Vec<String>, dest_path: String) -
 }
 
 #[tauri::command]
-pub async fn elevated_move_batch(source_paths: Vec<String>, dest_path: String) -> Result<(), String> {
+pub async fn elevated_move_batch(
+    source_paths: Vec<String>,
+    dest_path: String,
+) -> Result<(), String> {
     for p in &source_paths {
         crate::validate_existing_path(p, "Source")?;
     }
@@ -312,10 +322,7 @@ pub async fn elevated_delete_batch(item_paths: Vec<String>) -> Result<(), String
         let path = crate::validate_existing_path(p, "Item")?;
         crate::ensure_not_root_path(&path, "delete")?;
     }
-    let items: Vec<(String, Option<String>)> = item_paths
-        .into_iter()
-        .map(|s| (s, None))
-        .collect();
+    let items: Vec<(String, Option<String>)> = item_paths.into_iter().map(|s| (s, None)).collect();
     run_elevated_batch_op("delete", items.clone()).await?;
     for (item_path, _) in &items {
         crate::undo::clear_undo_redo_for_path(item_path)?;
@@ -323,7 +330,10 @@ pub async fn elevated_delete_batch(item_paths: Vec<String>) -> Result<(), String
     Ok(())
 }
 
-async fn run_elevated_batch_op(op: &str, items: Vec<(String, Option<String>)>) -> Result<(), String> {
+async fn run_elevated_batch_op(
+    op: &str,
+    items: Vec<(String, Option<String>)>,
+) -> Result<(), String> {
     if items.is_empty() {
         return Ok(());
     }

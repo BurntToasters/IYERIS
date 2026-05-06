@@ -43,6 +43,9 @@ export const TOGGLE_MAPPINGS: ReadonlyArray<readonly [string, keyof Settings]> =
   ['auto-play-videos-toggle', 'autoPlayVideos'],
   ['compact-file-info-toggle', 'compactFileInfo'],
   ['show-file-extensions-toggle', 'showFileExtensions'],
+  ['dual-pane-toggle', 'dualPaneEnabled'],
+  ['native-menu-toggle', 'nativeMenuEnabled'],
+  ['operation-panel-collapsed-toggle', 'operationPanelCollapsed'],
 ] as const;
 
 export const SELECT_MAPPINGS: ReadonlyArray<readonly [string, keyof Settings, readonly string[]]> =

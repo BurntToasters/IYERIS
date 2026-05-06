@@ -40,10 +40,14 @@ function createDeps() {
     getTabsEnabled: vi.fn().mockReturnValue(true),
     pasteIntoFolder: vi.fn().mockResolvedValue(undefined),
     duplicateItems: vi.fn().mockResolvedValue(undefined),
-    moveSelectedToFolder: vi.fn().mockResolvedValue(undefined),
-    copySelectedToFolder: vi.fn().mockResolvedValue(undefined),
+    moveSelectedToFolder: vi.fn().mockResolvedValue(null),
+    copySelectedToFolder: vi.fn().mockResolvedValue(null),
+    moveSelectedToDestination: vi.fn().mockResolvedValue(true),
+    copySelectedToDestination: vi.fn().mockResolvedValue(true),
     shareItems: vi.fn().mockResolvedValue(undefined),
     hasClipboardContent: vi.fn().mockReturnValue(false),
+    getRecentTransferDestinations: vi.fn().mockReturnValue([]),
+    setRecentTransferDestinations: vi.fn(),
   };
 }
 
@@ -411,6 +415,32 @@ describe('handleContextMenuAction - all branches', () => {
       isDirectory: false,
     } as FileItem);
     expect(deps.shareItems).toHaveBeenCalledWith(['/x']);
+  });
+
+  it('handles recent destination actions and updates recents list', async () => {
+    const deps = createDeps();
+    const ctrl = createContextMenuController(deps);
+    const item = { path: '/x', name: 'x', isDirectory: false } as FileItem;
+
+    deps.moveSelectedToFolder.mockResolvedValue('/dest-a');
+    deps.copySelectedToFolder.mockResolvedValue('/dest-b');
+    deps.getRecentTransferDestinations.mockReturnValue(['/dest-b', '/dest-c']);
+
+    await ctrl.handleContextMenuAction('move-to', item);
+    expect(deps.setRecentTransferDestinations).toHaveBeenCalledWith([
+      '/dest-a',
+      '/dest-b',
+      '/dest-c',
+    ]);
+
+    await ctrl.handleContextMenuAction('copy-to', item);
+    expect(deps.setRecentTransferDestinations).toHaveBeenCalledWith(['/dest-b', '/dest-c']);
+
+    await ctrl.handleContextMenuAction('move-to-recent', item, '/dest-d');
+    expect(deps.moveSelectedToDestination).toHaveBeenCalledWith('/dest-d');
+
+    await ctrl.handleContextMenuAction('copy-to-recent', item, '/dest-e');
+    expect(deps.copySelectedToDestination).toHaveBeenCalledWith('/dest-e');
   });
 
   it('routes action errors through the generic error toast', async () => {

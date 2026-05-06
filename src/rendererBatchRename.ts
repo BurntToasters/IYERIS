@@ -225,8 +225,13 @@ export function createBatchRenameController(deps: BatchRenameDeps) {
     }
 
     const newNames = new Set<string>();
+    const isCaseInsensitiveFS =
+      typeof navigator !== 'undefined' &&
+      (navigator.platform.toLowerCase().includes('mac') ||
+        navigator.platform.toLowerCase().includes('win'));
+    const dedupKey = (n: string) => (isCaseInsensitiveFS ? n.toLowerCase() : n);
     for (const item of toRename) {
-      if (newNames.has(item.newName.toLowerCase())) {
+      if (newNames.has(dedupKey(item.newName))) {
         deps.showToast(
           `Duplicate name "${item.newName}" would be created`,
           'Batch Rename Error',
@@ -234,7 +239,7 @@ export function createBatchRenameController(deps: BatchRenameDeps) {
         );
         return;
       }
-      newNames.add(item.newName.toLowerCase());
+      newNames.add(dedupKey(item.newName));
     }
 
     try {

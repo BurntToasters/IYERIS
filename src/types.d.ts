@@ -86,6 +86,7 @@ export interface Settings {
   searchHistory: string[];
   savedSearches: SavedSearch[];
   directoryHistory: string[];
+  recentTransferDestinations?: string[];
   enableIndexer: boolean;
   minimizeToTray: boolean;
   startOnLogin: boolean;
@@ -113,6 +114,10 @@ export interface Settings {
   listColumnWidths?: ListColumnWidths;
   sidebarWidth?: number;
   previewPanelWidth?: number;
+  dualPaneEnabled?: boolean;
+  activePane?: 'left' | 'right';
+  nativeMenuEnabled?: boolean;
+  operationPanelCollapsed?: boolean;
 
   reduceMotion: boolean;
   highContrast: boolean;
@@ -484,10 +489,29 @@ export interface ArchiveProgress {
 }
 
 export interface FileOperationProgress {
+  operationId?: string;
   operation: 'copy' | 'move';
   current: number;
   total: number;
   name: string;
+}
+
+export type OperationKind = 'copy' | 'move' | 'duplicate' | 'compress' | 'extract' | 'checksum';
+
+export type OperationStatus = 'queued' | 'active' | 'done' | 'failed' | 'cancelling';
+
+export interface OperationQueueItem {
+  id: string;
+  kind: OperationKind;
+  name: string;
+  status: OperationStatus;
+  current: number;
+  total: number;
+  currentFile: string;
+  cancellable: boolean;
+  error?: string;
+  createdAt: number;
+  updatedAt: number;
 }
 
 export interface ChecksumProgress {
@@ -696,6 +720,13 @@ export interface TauriAPI {
   createSymlink: (targetPath: string, linkPath: string) => Promise<IpcResult>;
   shareItems: (filePaths: string[]) => Promise<IpcResult>;
   launchDesktopEntry: (filePath: string) => Promise<IpcResult>;
+  getNativeIntegrationStatus: () => Promise<
+    IpcResult<{ supported: boolean; installed: boolean; message: string }>
+  >;
+  installNativeIntegration: () => Promise<IpcResult>;
+  uninstallNativeIntegration: () => Promise<IpcResult>;
+  onNativeMenuCommand: (callback: (command: string) => void) => () => void;
+  onNativeOpenPath: (callback: (path: string) => void) => () => void;
 }
 
 declare global {

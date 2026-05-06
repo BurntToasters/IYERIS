@@ -6,6 +6,8 @@ import { isHomeViewPath } from './home.js';
 
 type SearchDeps = {
   getCurrentPath: () => string;
+  getSearchScopePath?: () => string;
+  getSearchScopeLabel?: () => string;
   getCurrentSettings: () => Settings;
   setAllFiles: (files: FileItem[]) => void;
   renderFiles: (files: FileItem[], highlight?: string) => void;
@@ -18,7 +20,7 @@ type SearchDeps = {
     type: 'success' | 'error' | 'info' | 'warning'
   ) => void;
   createDirectoryOperationId: (scope: string) => string;
-  navigateTo: (path: string) => void;
+  navigateTo: (path: string) => Promise<void>;
   debouncedSaveSettings: () => void;
   saveSettingsWithTimestamp: (settings: Settings) => Promise<{ success: boolean; error?: string }>;
   getFileGrid: () => HTMLElement | null;
@@ -29,6 +31,10 @@ type SearchDeps = {
 };
 
 export function createSearchController(deps: SearchDeps) {
+  function getLocalSearchPath(): string {
+    return deps.getSearchScopePath ? deps.getSearchScopePath() : deps.getCurrentPath();
+  }
+
   let searchDebounceTimeout: ReturnType<typeof setTimeout> | null = null;
   let searchRequestId = 0;
   let currentSearchFilters: SearchFilters = {};
@@ -230,7 +236,7 @@ export function createSearchController(deps: SearchDeps) {
 
     const currentPath = deps.getCurrentPath();
     if (shouldRestoreCurrentPath && currentPath) {
-      deps.navigateTo(currentPath);
+      void deps.navigateTo(currentPath);
     }
   }
 
@@ -304,13 +310,15 @@ export function createSearchController(deps: SearchDeps) {
     if (isGlobalSearch) {
       searchInput.placeholder = 'Search all files...';
     } else {
-      searchInput.placeholder = 'Search files...';
+      const scopeLabel = deps.getSearchScopeLabel?.();
+      searchInput.placeholder = scopeLabel ? `Search ${scopeLabel}...` : 'Search files...';
     }
   }
 
   async function performSearch() {
     let loadingShown = false;
     let operationIdForCleanup: string | null = null;
+    let currentRequestId = 0;
     try {
       ensureElements();
       if (!searchInput) return;
@@ -318,17 +326,19 @@ export function createSearchController(deps: SearchDeps) {
       if (!query) {
         searchRequestId += 1;
         cancelActiveSearch();
+        closeSearch();
         return;
       }
 
-      if (!isGlobalSearch && isHomeViewPath(deps.getCurrentPath())) {
+      const localSearchPath = getLocalSearchPath();
+      if (!isGlobalSearch && isHomeViewPath(localSearchPath)) {
         deps.showToast('Open a folder or use global search', 'Search', 'info');
         return;
       }
 
-      if (!isGlobalSearch && !deps.getCurrentPath()) return;
+      if (!isGlobalSearch && !localSearchPath) return;
 
-      const currentRequestId = ++searchRequestId;
+      currentRequestId = ++searchRequestId;
       cancelActiveSearch();
       const operationId = deps.createDirectoryOperationId('search');
       activeSearchOperationId = operationId;
@@ -367,6 +377,12 @@ export function createSearchController(deps: SearchDeps) {
 
       if (isHomeViewPath(deps.getCurrentPath())) {
         deps.setHomeViewActive(false);
+      }
+      const columnView = document.getElementById('column-view');
+      const fileGrid = deps.getFileGrid();
+      if (columnView && fileGrid && columnView.style.display !== 'none') {
+        columnView.style.display = 'none';
+        fileGrid.style.display = '';
       }
 
       if (isGlobalSearch) {
@@ -442,14 +458,14 @@ export function createSearchController(deps: SearchDeps) {
       } else {
         if (searchInContents) {
           result = await window.tauriAPI.searchFilesWithContent(
-            deps.getCurrentPath(),
+            localSearchPath,
             query,
             hasFilters ? currentSearchFilters : undefined,
             operationId
           );
         } else {
           result = await window.tauriAPI.searchFiles(
-            deps.getCurrentPath(),
+            localSearchPath,
             query,
             hasFilters ? currentSearchFilters : undefined,
             operationId
@@ -486,7 +502,7 @@ export function createSearchController(deps: SearchDeps) {
       deps.showToast('Search failed unexpectedly', 'Search Error', 'error');
       activeSearchOperationId = null;
     } finally {
-      if (loadingShown) {
+      if (loadingShown && currentRequestId === searchRequestId) {
         deps.hideLoading();
       }
       if (operationIdForCleanup && activeSearchOperationId === operationIdForCleanup) {
@@ -636,7 +652,7 @@ export function createSearchController(deps: SearchDeps) {
       createdAt: existing?.createdAt || now,
       lastUsedAt: now,
       useCount: existing?.useCount ?? 0,
-      scopePath: isGlobalSearch ? undefined : deps.getCurrentPath(),
+      scopePath: isGlobalSearch ? undefined : getLocalSearchPath(),
     };
 
     if (hasActiveFilters()) {
@@ -666,7 +682,7 @@ export function createSearchController(deps: SearchDeps) {
     showSearchHistoryDropdown();
   }
 
-  function loadSavedSearch(index: number): void {
+  async function loadSavedSearch(index: number): Promise<void> {
     const settings = deps.getCurrentSettings();
     if (!settings.savedSearches || index < 0 || index >= settings.savedSearches.length) return;
     const saved = settings.savedSearches[index]!;
@@ -705,14 +721,14 @@ export function createSearchController(deps: SearchDeps) {
     updateFilterBadge();
 
     if (!saved.isGlobal && saved.scopePath && !isHomeViewPath(saved.scopePath)) {
-      deps.navigateTo(saved.scopePath);
+      await deps.navigateTo(saved.scopePath);
     }
 
     searchInput.value = saved.query;
     syncSaveBtnState();
     searchInput.focus();
     hideSearchHistoryDropdown();
-    performSearch();
+    await performSearch();
   }
 
   function openSearch(isGlobal: boolean): void {
@@ -753,7 +769,7 @@ export function createSearchController(deps: SearchDeps) {
       const savedItem = target.closest<HTMLElement>('[data-saved-index]');
       if (savedItem) {
         const idx = parseInt(savedItem.dataset.savedIndex || '', 10);
-        if (!isNaN(idx)) loadSavedSearch(idx);
+        if (!isNaN(idx)) void loadSavedSearch(idx);
         return;
       }
     });
@@ -943,6 +959,12 @@ export function createSearchController(deps: SearchDeps) {
     if (!isSearchMode) return { active: false, text: '' };
     const query = searchInput?.value || '';
     let searchText = isGlobalSearch ? 'Global' : 'Search';
+    if (!isGlobalSearch) {
+      const scopeLabel = deps.getSearchScopeLabel?.();
+      if (scopeLabel && scopeLabel !== 'files') {
+        searchText += ` (${scopeLabel})`;
+      }
+    }
 
     if (query) {
       const truncated = query.length > 20 ? query.slice(0, 20) + '...' : query;

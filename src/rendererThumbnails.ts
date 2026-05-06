@@ -28,8 +28,7 @@ export function createThumbnailController(deps: ThumbnailDeps) {
   const pendingThumbnailLoads: Array<() => void> = [];
   const inflightThumbnails = new Set<string>();
 
-  let thumbnailObserver: IntersectionObserver | null = null;
-  let thumbnailObserverRoot: HTMLElement | null = null;
+  const thumbnailObservers = new Map<string, IntersectionObserver>();
 
   function enqueueThumbnailLoad(loadFn: () => Promise<void>): boolean {
     const execute = async () => {
@@ -56,30 +55,21 @@ export function createThumbnailController(deps: ThumbnailDeps) {
   }
 
   function resetThumbnailObserver(): void {
-    if (thumbnailObserver) {
-      thumbnailObserver.disconnect();
-      thumbnailObserver = null;
-    }
-    thumbnailObserverRoot = null;
+    thumbnailObservers.forEach((observer) => observer.disconnect());
+    thumbnailObservers.clear();
   }
 
   function disconnectThumbnailObserver(): void {
-    if (thumbnailObserver) {
-      thumbnailObserver.disconnect();
-    }
+    thumbnailObservers.forEach((observer) => observer.disconnect());
   }
 
-  function getThumbnailObserver(): IntersectionObserver | null {
-    const scrollContainer = document.getElementById('file-view');
+  function getThumbnailObserver(rootId = 'file-view'): IntersectionObserver | null {
+    const scrollContainer = document.getElementById(rootId);
     if (!scrollContainer) return null;
-    if (thumbnailObserver && thumbnailObserverRoot === scrollContainer) return thumbnailObserver;
+    const existing = thumbnailObservers.get(rootId);
+    if (existing) return existing;
 
-    if (thumbnailObserver) {
-      thumbnailObserver.disconnect();
-    }
-
-    thumbnailObserverRoot = scrollContainer;
-    thumbnailObserver = new IntersectionObserver(
+    const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
           if (entry.isIntersecting) {
@@ -89,7 +79,7 @@ export function createThumbnailController(deps: ThumbnailDeps) {
 
             if (item && fileItem.classList.contains('has-thumbnail')) {
               loadThumbnail(fileItem, item);
-              thumbnailObserver?.unobserve(fileItem);
+              observer.unobserve(fileItem);
             }
           }
         });
@@ -100,11 +90,12 @@ export function createThumbnailController(deps: ThumbnailDeps) {
         threshold: 0.01,
       }
     );
-    return thumbnailObserver;
+    thumbnailObservers.set(rootId, observer);
+    return observer;
   }
 
-  function observeThumbnailItem(fileItem: HTMLElement): void {
-    const observer = getThumbnailObserver();
+  function observeThumbnailItem(fileItem: HTMLElement, rootId = 'file-view'): void {
+    const observer = getThumbnailObserver(rootId);
     if (observer) {
       observer.observe(fileItem);
     }

@@ -279,6 +279,15 @@ export function createDragDropController(config: DragDropConfig) {
     );
   }
 
+  function isDescendantPath(child: string, parent: string): boolean {
+    if (!child || !parent) return false;
+    const norm = (p: string) => p.replace(/[/\\]+$/, '').replace(/\\/g, '/');
+    const c = norm(child);
+    const p = norm(parent);
+    if (c === p) return false;
+    return c.toLowerCase().startsWith(p.toLowerCase() + '/');
+  }
+
   function isDropIntoCurrentDirectory(draggedPaths: string[], destinationPath: string): boolean {
     return draggedPaths.some((dragPath: string) => {
       if (!dragPath) return false;
@@ -293,6 +302,16 @@ export function createDragDropController(config: DragDropConfig) {
     operation: 'copy' | 'move'
   ): Promise<void> {
     if (dropInProgress) return;
+    for (const sp of sourcePaths) {
+      if (sp === destPath || isDescendantPath(destPath, sp)) {
+        config.getShowToast()(
+          'Cannot drop a folder into itself or a descendant',
+          'Invalid Drop',
+          'warning'
+        );
+        return;
+      }
+    }
     dropInProgress = true;
     devLog('DragDrop', `handleDrop: ${operation} ${sourcePaths.length} item(s) to ${destPath}`);
     const showToast = config.getShowToast();
