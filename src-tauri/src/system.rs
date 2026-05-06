@@ -4,6 +4,8 @@ use std::path::Path;
 use std::path::PathBuf;
 #[cfg(any(target_os = "windows", target_os = "linux"))]
 use std::process::Command;
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::Manager;

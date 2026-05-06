@@ -178,6 +178,7 @@ function createMockConfig() {
     moveSelectedToFolder: vi.fn(),
     clipboardOnClipboardChanged: vi.fn(),
     clipboardUpdateCutVisuals: vi.fn(),
+    clipboardUpdateIndicator: vi.fn(),
     zoomIn: vi.fn(),
     zoomOut: vi.fn(),
     zoomReset: vi.fn(),
