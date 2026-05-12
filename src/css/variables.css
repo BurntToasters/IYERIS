@@ -5,26 +5,26 @@
 }
 
 :root {
-  --glass-bg: rgba(28, 28, 28, 0.96);
-  --glass-border: rgba(255, 255, 255, 0.1);
-  --glass-shadow: 0 1px 2px rgba(0, 0, 0, 0.24);
-  --text-primary: #ffffff;
-  --text-secondary: rgba(255, 255, 255, 0.8);
-  --text-tertiary: rgba(255, 255, 255, 0.75);
+  --glass-bg: rgba(40, 40, 42, 0.82);
+  --glass-border: rgba(255, 255, 255, 0.16);
+  --glass-shadow: 0 10px 30px rgba(0, 0, 0, 0.18), 0 1px 0 rgba(255, 255, 255, 0.05);
+  --text-primary: rgba(255, 255, 255, 0.96);
+  --text-secondary: rgba(255, 255, 255, 0.72);
+  --text-tertiary: rgba(255, 255, 255, 0.54);
   --text-on-accent: #ffffff;
-  --accent-color: #0078d4;
-  --accent-rgb: 0, 120, 212;
-  --accent-hover: #106ebe;
-  --accent-active: #005a9e;
+  --accent-color: #0a84ff;
+  --accent-rgb: 10, 132, 255;
+  --accent-hover: #3794ff;
+  --accent-active: #006edb;
   --accent-gradient: linear-gradient(135deg, var(--accent-color) 0%, var(--accent-hover) 100%);
-  --hover-color: rgba(255, 255, 255, 0.06);
-  --active-color: rgba(255, 255, 255, 0.1);
-  --danger-color: #e81123;
-  --danger-hover: #ff6b6b;
-  --danger-active: #d60017;
-  --success-color: #107c10;
-  --warning-color: #ff8c00;
-  --error-color: #ef4444;
+  --hover-color: rgba(255, 255, 255, 0.08);
+  --active-color: rgba(255, 255, 255, 0.13);
+  --danger-color: #ff453a;
+  --danger-hover: #ff6961;
+  --danger-active: #d70015;
+  --success-color: #30d158;
+  --warning-color: #ff9f0a;
+  --error-color: #ff453a;
 
   --git-modified: #e5a34d;
   --git-added: #4caf50;
@@ -33,34 +33,34 @@
   --git-untracked: #b0b0b0;
   --git-conflict: #ef5350;
 
-  --accent-light: rgba(var(--accent-rgb), 0.14);
-  --accent-medium: rgba(var(--accent-rgb), 0.22);
-  --accent-strong: rgba(var(--accent-rgb), 0.35);
+  --accent-light: rgba(var(--accent-rgb), 0.16);
+  --accent-medium: rgba(var(--accent-rgb), 0.26);
+  --accent-strong: rgba(var(--accent-rgb), 0.42);
 
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.2);
-  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.28);
-  --shadow-xl: 0 12px 32px rgba(0, 0, 0, 0.35);
-  --native-elevation-1: 0 1px 0 rgba(255, 255, 255, 0.03), 0 3px 10px rgba(0, 0, 0, 0.18);
-  --native-elevation-2: 0 1px 0 rgba(255, 255, 255, 0.04), 0 8px 20px rgba(0, 0, 0, 0.26);
-  --native-divider: color-mix(in srgb, var(--text-primary) 10%, transparent);
+  --shadow-md: 0 6px 18px rgba(0, 0, 0, 0.18);
+  --shadow-lg: 0 18px 44px rgba(0, 0, 0, 0.26);
+  --shadow-xl: 0 26px 68px rgba(0, 0, 0, 0.34);
+  --native-elevation-1: 0 1px 0 rgba(255, 255, 255, 0.05), 0 8px 22px rgba(0, 0, 0, 0.16);
+  --native-elevation-2: 0 1px 0 rgba(255, 255, 255, 0.06), 0 18px 42px rgba(0, 0, 0, 0.24);
+  --native-divider: color-mix(in srgb, var(--text-primary) 12%, transparent);
 
   --focus-ring: 0 0 0 2px rgba(var(--accent-rgb), 0.5);
   --focus-ring-strong: 0 0 0 3px rgba(var(--accent-rgb), 0.6);
-  --glass-modal-bg: rgba(28, 28, 28, 0.98);
-  --glass-modal-border: rgba(255, 255, 255, 0.12);
-  --bg-primary: #181818;
-  --bg-primary-rgb: 24, 24, 24;
-  --bg-secondary: #212121;
-  --dropdown-bg: rgba(34, 34, 34, 0.98);
-  --separator: rgba(255, 255, 255, 0.08);
+  --glass-modal-bg: rgba(38, 38, 40, 0.94);
+  --glass-modal-border: rgba(255, 255, 255, 0.14);
+  --bg-primary: #1f1f21;
+  --bg-primary-rgb: 31, 31, 33;
+  --bg-secondary: #2a2a2c;
+  --dropdown-bg: rgba(45, 45, 48, 0.96);
+  --separator: rgba(255, 255, 255, 0.1);
   --surface-border: color-mix(in srgb, var(--text-primary) 12%, transparent);
   --surface-border-strong: color-mix(in srgb, var(--text-primary) 18%, transparent);
   --surface-0: var(--bg-primary);
   --surface-1: var(--bg-secondary);
-  --surface-2: color-mix(in srgb, var(--surface-1) 90%, transparent);
+  --surface-2: color-mix(in srgb, var(--surface-1) 88%, var(--text-primary) 3%);
   --surface-overlay: var(--glass-bg);
-  --chrome-surface: color-mix(in srgb, var(--surface-1) 92%, transparent);
-  --chrome-surface-raised: color-mix(in srgb, var(--surface-1) 84%, transparent);
+  --chrome-surface: color-mix(in srgb, var(--surface-1) 84%, transparent);
+  --chrome-surface-raised: color-mix(in srgb, var(--surface-1) 92%, var(--text-primary) 3%);
   --panel-border: var(--surface-border);
   --panel-border-strong: var(--surface-border-strong);
   --interactive-hover: var(--hover-color);
@@ -68,24 +68,26 @@
   --interactive-selected: var(--accent-light);
   --interactive-selected-border: var(--accent-strong);
 
-  --titlebar-height: 32px;
+  --titlebar-height: 34px;
   --tab-bar-height: 32px;
 
-  --radius-small: 5px;
-  --radius-medium: 8px;
-  --radius-large: 12px;
+  --radius-small: 7px;
+  --radius-medium: 10px;
+  --radius-large: 14px;
 
   --font-family:
-    -apple-system, BlinkMacSystemFont, 'Segoe UI Variable', 'Segoe UI', system-ui, ui-sans-serif,
-    Helvetica, Arial, sans-serif;
-  --font-mono: 'Cascadia Code', 'Fira Code', Consolas, Monaco, 'Courier New', monospace;
+    -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'Segoe UI Variable',
+    'Segoe UI', system-ui, ui-sans-serif, Helvetica, Arial, sans-serif;
+  --font-mono:
+    'SF Mono', ui-monospace, 'Cascadia Code', 'Fira Code', Consolas, Monaco, 'Courier New',
+    monospace;
 
   --system-accent-color: var(--accent-color);
   --system-accent-rgb: var(--accent-rgb);
   --themed-icon-hue: 200deg;
 
-  --animation-duration: 200ms;
-  --animation-easing: cubic-bezier(0.33, 1, 0.68, 1);
+  --animation-duration: 180ms;
+  --animation-easing: cubic-bezier(0.25, 0.1, 0.25, 1);
   --transition-standard:
     background-color var(--animation-duration) var(--animation-easing),
     border-color var(--animation-duration) var(--animation-easing),
@@ -94,68 +96,68 @@
     transform var(--animation-duration) var(--animation-easing),
     opacity var(--animation-duration) var(--animation-easing);
 
-  --scrollbar-width: 10px;
-  --scrollbar-thumb-radius: 5px;
-  --scrollbar-thumb-bg: rgba(255, 255, 255, 0.15);
-  --scrollbar-thumb-hover-bg: rgba(255, 255, 255, 0.25);
+  --scrollbar-width: 9px;
+  --scrollbar-thumb-radius: 999px;
+  --scrollbar-thumb-bg: rgba(255, 255, 255, 0.18);
+  --scrollbar-thumb-hover-bg: rgba(255, 255, 255, 0.32);
 
-  --font-size-base: 12.5px;
+  --font-size-base: 12px;
   --font-size-file-name: 12px;
   --font-size-nav: 12px;
-  --font-size-section-title: 10.5px;
+  --font-size-section-title: 11px;
   --font-size-status: 11px;
   --font-size-breadcrumb: 12px;
 
   --opacity-muted: 0.4;
 
-  --icon-size-grid: 26px;
+  --icon-size-grid: 32px;
   --icon-size-list: 12px;
   --icon-size-nav: 16px;
-  --icon-size-sidebar-toggle: 26px;
+  --icon-size-sidebar-toggle: 24px;
   --icon-size-spinner: 32px;
   --icon-size-status: 12px;
   --icon-size-settings-tab: 18px;
 
-  --toolbar-height: 36px;
-  --toolbar-padding-v: 4px;
-  --toolbar-padding-h: 6px;
-  --toolbar-group-height: 28px;
-  --control-height-sm: 20px;
+  --toolbar-height: 42px;
+  --toolbar-padding-v: 6px;
+  --toolbar-padding-h: 8px;
+  --toolbar-group-height: 30px;
+  --control-height-sm: 22px;
   --control-height-md: 24px;
-  --control-height-lg: 28px;
+  --control-height-lg: 30px;
   --status-bar-height: 21px;
-  --address-bar-height: 24px;
-  --sidebar-width: 180px;
+  --address-bar-height: 28px;
+  --sidebar-width: 196px;
   --sidebar-width-collapsed: 44px;
   --preview-panel-width: 260px;
   --preview-panel-height: 220px;
   --grid-columns: auto-fill;
 
-  --file-grid-gap-row: 8px;
-  --file-grid-gap-col: 10px;
+  --file-grid-gap-row: 10px;
+  --file-grid-gap-col: 12px;
   --file-item-padding-v: 6px;
-  --file-item-padding-h: 4px;
-  --list-item-padding-v: 6px;
-  --list-item-padding-h: 9px;
-  --list-item-min-height: 30px;
+  --file-item-padding-h: 6px;
+  --list-item-padding-v: 4px;
+  --list-item-padding-h: 10px;
+  --list-item-min-height: 28px;
   --list-col-name: minmax(220px, 1fr);
   --list-col-type: 140px;
   --list-col-size: 90px;
   --list-col-modified: 160px;
   --list-header-height: 30px;
-  --nav-item-padding-v: 4px;
-  --nav-item-padding-h: 7px;
+  --nav-item-padding-v: 5px;
+  --nav-item-padding-h: 9px;
   --nav-item-gap: 8px;
-  --sidebar-section-gap: 12px;
-  --sidebar-padding-v: 8px;
-  --sidebar-padding-h: 6px;
-  --container-gap: 10px;
-  --container-edge-padding: 6px;
-  --container-edge-padding-top: 6px;
+  --sidebar-section-gap: 14px;
+  --sidebar-padding-v: 10px;
+  --sidebar-padding-h: 8px;
+  --container-gap: 8px;
+  --container-edge-padding: 8px;
+  --container-edge-padding-top: 8px;
   --container-edge-padding-bottom: 0px;
-  --grid-min-column: 82px;
-  --file-icon-margin-bottom: 4px;
-  --toolbar-gap: 6px;
+  --grid-min-column: 92px;
+  --file-icon-margin-bottom: 6px;
+  --toolbar-gap: 8px;
   --toolbar-left-right-gap: 4px;
   --toolbar-separator-height: 16px;
   --toolbar-separator-margin-v: 0;
@@ -199,10 +201,10 @@
 }
 
 body.platform-darwin {
-  --animation-duration: 250ms;
+  --animation-duration: 180ms;
   --animation-easing: cubic-bezier(0.2, 0.8, 0.2, 1);
   --scrollbar-width: 8px;
-  --scrollbar-thumb-radius: 4px;
+  --scrollbar-thumb-radius: 999px;
   --radius-small: 8px;
   --radius-medium: 12px;
   --titlebar-height: 38px;
