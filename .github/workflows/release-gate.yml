@@ -135,12 +135,16 @@ jobs:
           fi
           node scripts/tauri-build.js $EXTRA_FLAGS --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
         env:
+          # H7: scope Apple-only secrets to the macOS matrix shard so a
+          # compromised step on any non-mac runner cannot exfiltrate them.
+          # Tauri signing keys are required on every shard for updater bundle
+          # signing, so they remain unscoped.
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_SIGNING_IDENTITY: ${{ runner.os == 'macOS' && secrets.APPLE_SIGNING_IDENTITY || '' }}
+          APPLE_ID: ${{ runner.os == 'macOS' && secrets.APPLE_ID || '' }}
+          APPLE_PASSWORD: ${{ runner.os == 'macOS' && secrets.APPLE_PASSWORD || '' }}
+          APPLE_TEAM_ID: ${{ runner.os == 'macOS' && secrets.APPLE_TEAM_ID || '' }}
 
       - name: Verify Linux x64 bundle outputs
         if: matrix.target == 'x86_64-unknown-linux-gnu'
@@ -252,9 +256,11 @@ jobs:
     permissions:
       contents: write
     env:
+      # H8: only expose the boolean presence flag at job-level. The actual
+      # secret values are scoped to the two steps that need them
+      # (Validate signing configuration + Sign and upload) so npm ci /
+      # checkout / download-artifact cannot see them.
       HAS_GPG_KEY: ${{ secrets.GPG_PRIVATE_KEY != '' }}
-      GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}
-      GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
     steps:
       - uses: actions/checkout@v6
 
@@ -304,6 +310,9 @@ jobs:
           ls -lh release/
 
       - name: Validate signing configuration
+        env:
+          GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
         run: |
           if [ "${HAS_GPG_KEY}" != "true" ]; then
             echo "Missing GPG_PRIVATE_KEY secret." >&2

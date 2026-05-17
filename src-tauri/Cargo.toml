@@ -12,6 +12,9 @@ mas = []
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
+[dev-dependencies]
+tempfile = "3"
+
 [dependencies]
 tauri = { version = "2", features = ["tray-icon", "protocol-asset", "image-png"] }
 serde = { version = "1", features = ["derive"] }
@@ -66,6 +69,9 @@ windows = { version = "0.58", features = [
 
 [target.'cfg(target_os = "linux")'.dependencies]
 nix = { version = "0.29", features = ["fs", "user"] }
+
+[lints.rust]
+unsafe_code = "warn"
 
 [profile.release]
 panic = "abort"

@@ -247,6 +247,23 @@ pub async fn rename_item(old_path: String, new_name: String) -> Result<String, S
     let canonical_parent = parent
         .canonicalize()
         .map_err(|e| format!("Cannot resolve parent directory: {}", e))?;
+    // H6: canonicalize the source as well and verify that its canonical
+    // parent matches the canonical parent we just computed. Otherwise
+    // a path like `/tmp/userdir/link -> /etc` would have parent=link, and
+    // canonicalize(parent) would resolve to /etc, letting a rename land
+    // in a privileged directory the user merely happens to have a symlink to.
+    let canonical_source = path
+        .canonicalize()
+        .map_err(|e| format!("Cannot resolve source path: {}", e))?;
+    let canonical_source_parent = canonical_source
+        .parent()
+        .ok_or("Cannot determine canonical source parent")?;
+    if canonical_source_parent != canonical_parent {
+        return Err(
+            "Refusing to rename: source resolves outside its apparent parent (symlink trick)"
+                .to_string(),
+        );
+    }
     let new_path = canonical_parent.join(&new_name);
     fs::rename(&path, &new_path).map_err(|e| {
         if e.kind() == std::io::ErrorKind::AlreadyExists {
@@ -964,6 +981,15 @@ pub async fn get_item_properties(item_path: String) -> Result<ItemProperties, St
 pub async fn set_permissions(item_path: String, mode: u32) -> Result<(), String> {
     let path = crate::validate_existing_path(&item_path, "Item")?;
 
+    // M3: refuse to operate on symlinks. `fs::set_permissions` follows symlinks,
+    // which would let a user chmod the target of a symlink they don't own.
+    // The standard library doesn't expose AT_SYMLINK_NOFOLLOW for chmod, so
+    // the simplest correct behavior is to refuse.
+    let meta = fs::symlink_metadata(&path).map_err(|e| e.to_string())?;
+    if meta.file_type().is_symlink() {
+        return Err("Refusing to change permissions on a symlink".to_string());
+    }
+
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -973,7 +999,6 @@ pub async fn set_permissions(item_path: String, mode: u32) -> Result<(), String>
 
     #[cfg(not(unix))]
     {
-        let meta = fs::metadata(&path).map_err(|e| e.to_string())?;
         let mut perms = meta.permissions();
         perms.set_readonly(mode & 0o200 == 0);
         fs::set_permissions(&path, perms).map_err(|e| e.to_string())?;
@@ -987,6 +1012,13 @@ pub async fn set_attributes(item_path: String, attrs: serde_json::Value) -> Resu
     let path = crate::validate_existing_path(&item_path, "Item")?;
     let read_only = attrs.get("readOnly").and_then(|value| value.as_bool());
     let hidden = attrs.get("hidden").and_then(|value| value.as_bool());
+
+    // M3: same as set_permissions — refuse symlinks so an attribute change
+    // doesn't silently apply to the target.
+    let meta_for_check = fs::symlink_metadata(&path).map_err(|e| e.to_string())?;
+    if meta_for_check.file_type().is_symlink() {
+        return Err("Refusing to change attributes on a symlink".to_string());
+    }
 
     if let Some(is_read_only) = read_only {
         let mut perms = fs::metadata(&path)
@@ -1142,6 +1174,14 @@ fn full_blake3(path: &Path) -> Result<String, String> {
     Ok(hasher.finalize().to_hex().to_string())
 }
 
+// M4: cap individual files we will hash during duplicate detection.
+// Hashing a 50 GB file end-to-end blocks a worker thread for a long time
+// and can OOM when many large candidates exist. Files larger than this
+// are still listed as same-size matches but are NOT compared by content.
+const DUPLICATE_HASH_MAX_FILE_BYTES: u64 = 4 * 1024 * 1024 * 1024; // 4 GiB
+// Cap on total bytes hashed in a single duplicate-finder run as a safety net.
+const DUPLICATE_HASH_TOTAL_BYTES_LIMIT: u64 = 64 * 1024 * 1024 * 1024; // 64 GiB
+
 #[tauri::command]
 pub async fn find_duplicate_files(
     dir_path: String,
@@ -1183,9 +1223,20 @@ pub async fn find_duplicate_files(
             if size < threshold {
                 continue;
             }
+            // M4: skip files that exceed the per-file hash cap. They're
+            // unlikely to be true duplicates by happy accident.
+            if size > DUPLICATE_HASH_MAX_FILE_BYTES {
+                log::debug!(
+                    "[FileOps] find_duplicate_files: skipping {} ({} bytes > cap)",
+                    path.display(),
+                    size
+                );
+                continue;
+            }
 
             by_size.entry(size).or_default().push(path.to_path_buf());
         }
+        let mut total_hashed_bytes: u64 = 0;
 
         let mut groups: Vec<DuplicateGroup> = Vec::new();
 
@@ -1207,7 +1258,18 @@ pub async fn find_duplicate_files(
 
                 let mut by_full_hash: HashMap<String, Vec<PathBuf>> = HashMap::new();
                 for candidate in fast_candidates {
+                    // M4: bail if we've already hashed more than the total cap.
+                    // Returns the partial groups computed so far rather than
+                    // failing the whole command — the user still gets results.
+                    if total_hashed_bytes > DUPLICATE_HASH_TOTAL_BYTES_LIMIT {
+                        log::warn!(
+                            "[FileOps] find_duplicate_files: total hash budget exceeded ({} bytes), returning partial results",
+                            total_hashed_bytes
+                        );
+                        return Ok(groups);
+                    }
                     let full_hash = full_blake3(&candidate)?;
+                    total_hashed_bytes = total_hashed_bytes.saturating_add(size);
                     by_full_hash.entry(full_hash).or_default().push(candidate);
                 }
 

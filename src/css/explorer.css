@@ -34,7 +34,6 @@ body::before {
   border: 1px solid var(--native-divider);
   box-shadow: var(--native-elevation-1);
   border-radius: var(--radius-medium);
-  will-change: transform;
 }
 
 .container {

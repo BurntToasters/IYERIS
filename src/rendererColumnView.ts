@@ -638,9 +638,13 @@ export function createColumnViewController(deps: ColumnViewDeps) {
       if (visibleItems.length === 0) {
         pane.innerHTML = `<div class="column-item placeholder">${EMPTY_FOLDER_LABEL}</div>`;
       } else {
-        visibleItems.forEach((fileItem) => {
-          pane.appendChild(createColumnItemElement(fileItem, columnIndex, pane));
-        });
+        // M25: build into a DocumentFragment first so the browser only does
+        // one layout pass for the whole list instead of one per row.
+        const fragment = document.createDocumentFragment();
+        for (const fileItem of visibleItems) {
+          fragment.appendChild(createColumnItemElement(fileItem, columnIndex, pane));
+        }
+        pane.appendChild(fragment);
       }
     } catch {
       pane.innerHTML = '<div class="column-item placeholder">Error loading folder</div>';
