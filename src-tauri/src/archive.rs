@@ -12,8 +12,11 @@ static ACTIVE_OPS: std::sync::LazyLock<Mutex<HashSet<String>>> =
 static RELATIONSHIP_TAG_RE: std::sync::LazyLock<Option<Regex>> = std::sync::LazyLock::new(|| {
     Regex::new(r#"(?is)<Relationship\b[^>]*>"#).ok()
 });
+// Rust's regex crate does not support backreferences. Use alternation so we
+// match either a double-quoted or single-quoted attribute value, then strip
+// the matching quote characters in extract_xml_attr().
 static XML_ATTRIBUTE_RE: std::sync::LazyLock<Option<Regex>> = std::sync::LazyLock::new(|| {
-    Regex::new(r#"(?is)([A-Za-z_:][A-Za-z0-9_.:-]*)\s*=\s*(['\"])(.*?)\2"#).ok()
+    Regex::new(r#"(?is)([A-Za-z_:][A-Za-z0-9_.:-]*)\s*=\s*("[^"]*"|'[^']*')"#).ok()
 });
 
 const MAX_DECOMPRESSED_SIZE: u64 = 53_687_091_200; // 50 GB
@@ -299,7 +302,7 @@ fn add_dir_to_zip(
         let name = relative.to_string_lossy().to_string();
 
         if meta.is_dir() {
-            zip.add_directory(&format!("{}/", name), *options)
+            zip.add_directory(format!("{}/", name), *options)
                 .map_err(|e| e.to_string())?;
             add_dir_to_zip(zip, &path, base, options, op_id)?;
         } else {
@@ -649,11 +652,11 @@ fn extract_7z(
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
         if entry.is_directory() {
             fs::create_dir_all(&out_path)
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+                .map_err(|e| std::io::Error::other(e.to_string()))?;
             ensure_path_within_dest(&out_path, dest, &name)
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+                .map_err(std::io::Error::other)?;
         } else {
-            let entry_size = entry.size() as u64;
+            let entry_size = entry.size();
             if cumulative_bytes.saturating_add(entry_size) > MAX_DECOMPRESSED_SIZE {
                 return Err(sevenz_rust::Error::other(
                     "Decompressed size limit exceeded (50 GB)",
@@ -661,14 +664,14 @@ fn extract_7z(
             }
             if let Some(parent) = out_path.parent() {
                 fs::create_dir_all(parent)
-                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+                    .map_err(|e| std::io::Error::other(e.to_string()))?;
                 ensure_path_within_dest(parent, dest, &name)
-                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+                    .map_err(std::io::Error::other)?;
             }
             let mut outfile = fs::File::create(&out_path)
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+                .map_err(|e| std::io::Error::other(e.to_string()))?;
             let written = std::io::copy(reader, &mut outfile)
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+                .map_err(|e| std::io::Error::other(e.to_string()))?;
             cumulative_bytes = cumulative_bytes.saturating_add(written);
             if cumulative_bytes > MAX_DECOMPRESSED_SIZE {
                 return Err(sevenz_rust::Error::other(
@@ -870,9 +873,9 @@ pub async fn list_archive_contents(archive_path: String) -> Result<Vec<ArchiveEn
                                 .to_string_lossy()
                                 .to_string(),
                             path: entry.name().to_string(),
-                            size: entry.size() as u64,
+                            size: entry.size(),
                             is_directory: entry.is_directory(),
-                            compressed_size: entry.compressed_size as u64,
+                            compressed_size: entry.compressed_size,
                         });
                         Ok(true)
                     },
@@ -1095,7 +1098,9 @@ fn extract_xml_attr(tag: &str, attr_name: &str) -> Option<String> {
     for captures in re.captures_iter(tag) {
         let key = captures.get(1)?.as_str();
         if key.eq_ignore_ascii_case(attr_name) {
-            return Some(captures.get(3)?.as_str().to_string());
+            // Capture group 2 includes the surrounding quotes; strip them.
+            let quoted = captures.get(2)?.as_str();
+            return Some(quoted[1..quoted.len() - 1].to_string());
         }
     }
     None
@@ -1118,9 +1123,7 @@ fn normalize_zip_target_path(target: &str) -> Option<String> {
         match component {
             std::path::Component::CurDir => {}
             std::path::Component::ParentDir => {
-                if parts.pop().is_none() {
-                    return None;
-                }
+                parts.pop()?;
             }
             std::path::Component::Normal(part) => {
                 parts.push(part.to_string_lossy().to_string());
@@ -1168,7 +1171,7 @@ fn detect_image_mime(path: &str, data: &[u8]) -> Option<&'static str> {
 
 fn base64_encode(data: &[u8]) -> String {
     const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut result = String::with_capacity((data.len() + 2) / 3 * 4);
+    let mut result = String::with_capacity(data.len().div_ceil(3) * 4);
     for chunk in data.chunks(3) {
         let b0 = chunk[0] as u32;
         let b1 = if chunk.len() > 1 { chunk[1] as u32 } else { 0 };
@@ -1395,5 +1398,53 @@ mod tests {
     #[test]
     fn max_archive_depth_is_20() {
         assert_eq!(MAX_ARCHIVE_DEPTH, 20);
+    }
+
+    // --- OOXML thumbnail relation parsing ----------------------------------
+    // Regression guard: the XML_ATTRIBUTE_RE regex must compile (Rust's regex
+    // crate does not support backreferences — the previous `\2` version
+    // silently produced a `None` regex, breaking all Office thumbnails).
+
+    #[test]
+    fn xml_attribute_regex_compiles() {
+        assert!(XML_ATTRIBUTE_RE.is_some(), "XML_ATTRIBUTE_RE failed to compile");
+    }
+
+    #[test]
+    fn extract_xml_attr_double_quoted() {
+        let tag = r#"<Relationship Id="rId1" Type="thumbnail" Target="docProps/thumbnail.jpeg"/>"#;
+        assert_eq!(extract_xml_attr(tag, "Type"), Some("thumbnail".to_string()));
+        assert_eq!(
+            extract_xml_attr(tag, "Target"),
+            Some("docProps/thumbnail.jpeg".to_string())
+        );
+    }
+
+    #[test]
+    fn extract_xml_attr_single_quoted() {
+        let tag = r#"<Relationship Id='rId1' Type='thumbnail' Target='docProps/thumbnail.jpeg'/>"#;
+        assert_eq!(extract_xml_attr(tag, "Type"), Some("thumbnail".to_string()));
+        assert_eq!(
+            extract_xml_attr(tag, "Target"),
+            Some("docProps/thumbnail.jpeg".to_string())
+        );
+    }
+
+    #[test]
+    fn extract_xml_attr_case_insensitive_key() {
+        let tag = r#"<Relationship type="thumbnail"/>"#;
+        assert_eq!(extract_xml_attr(tag, "Type"), Some("thumbnail".to_string()));
+    }
+
+    #[test]
+    fn parse_thumbnail_target_finds_relationship() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/thumbnail" Target="docProps/thumbnail.jpeg"/>
+</Relationships>"#;
+        assert_eq!(
+            parse_thumbnail_target_from_relationships(xml),
+            Some("docProps/thumbnail.jpeg".to_string())
+        );
     }
 }

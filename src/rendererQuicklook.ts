@@ -102,6 +102,7 @@ export function createQuicklookController(deps: QuicklookDeps) {
     if (IMAGE_EXTENSIONS.has(ext)) {
       const settings = deps.getCurrentSettings();
       if (file.size > (settings.maxThumbnailSizeMB || 10) * 1024 * 1024) {
+        // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
         quicklookContent.innerHTML = `<div class="preview-error">Image too large to preview</div>`;
         quicklookInfo.textContent = quickInfo(file);
       } else {
@@ -144,6 +145,7 @@ export function createQuicklookController(deps: QuicklookDeps) {
           void (async () => {
             if (img.dataset.fallbackAttempted === 'true') {
               if (quicklookContent) {
+                // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
                 quicklookContent.innerHTML = `<div class="preview-error">Failed to load image</div>`;
               }
               return;
@@ -159,6 +161,7 @@ export function createQuicklookController(deps: QuicklookDeps) {
               currentQuicklookFile?.path !== file.path
             ) {
               if (quicklookContent) {
+                // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
                 quicklookContent.innerHTML = `<div class="preview-error">Failed to load image</div>`;
               }
               return;
@@ -239,6 +242,7 @@ export function createQuicklookController(deps: QuicklookDeps) {
         typeof headerResult.content !== 'string' ||
         !headerResult.content.startsWith('%PDF-')
       ) {
+        // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
         quicklookContent.innerHTML = `<div class="preview-error">${twemojiImg(String.fromCodePoint(0x26a0), 'twemoji')} File does not appear to be a valid PDF</div>`;
         quicklookInfo.textContent = quickInfo(file);
         return;
@@ -301,6 +305,7 @@ export function createQuicklookController(deps: QuicklookDeps) {
           }
         }
         if (requestId !== quicklookRequestId || currentQuicklookFile?.path !== file.path) return;
+        // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
         quicklookContent.innerHTML = `<div class="preview-error">Failed to render PDF</div>`;
       }
       quicklookInfo.textContent = quickInfo(file, 'PDF \u2022 ');
@@ -322,11 +327,13 @@ export function createQuicklookController(deps: QuicklookDeps) {
           } catch {
             rendered = `<pre class="preview-text"><code>${escapeHtml(result.content)}</code></pre>`;
           }
+          // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
           quicklookContent.innerHTML = `
           ${result.isTruncated ? `<div class="preview-truncated">${twemojiImg(String.fromCodePoint(0x26a0), 'twemoji')} File truncated to first 100KB</div>` : ''}
           <div class="preview-markdown">${rendered}</div>
         `;
         } else {
+          // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
           quicklookContent.innerHTML = `
           ${result.isTruncated ? `<div class="preview-truncated">${twemojiImg(String.fromCodePoint(0x26a0), 'twemoji')} File truncated to first 100KB</div>` : ''}
           <pre class="preview-text"><code>${escapeHtml(result.content)}</code></pre>
@@ -334,6 +341,7 @@ export function createQuicklookController(deps: QuicklookDeps) {
         }
         quicklookInfo.textContent = quickInfo(file);
       } else {
+        // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
         quicklookContent.innerHTML = `<div class="preview-error">Failed to load markdown</div>`;
       }
     } else if (TEXT_EXTENSIONS.has(ext)) {
@@ -343,6 +351,7 @@ export function createQuicklookController(deps: QuicklookDeps) {
       }
       if (result.success && typeof result.content === 'string') {
         const lang = getLanguageForExt(ext);
+        // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
         quicklookContent.innerHTML = `
         ${result.isTruncated ? `<div class="preview-truncated">${twemojiImg(String.fromCodePoint(0x26a0), 'twemoji')} File truncated to first 100KB</div>` : ''}
         <pre class="preview-text"><code class="${lang ? `language-${lang}` : ''}">${escapeHtml(result.content)}</code></pre>
@@ -364,9 +373,11 @@ export function createQuicklookController(deps: QuicklookDeps) {
             .catch(ignoreError);
         }
       } else {
+        // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
         quicklookContent.innerHTML = `<div class="preview-error">Failed to load text</div>`;
       }
     } else {
+      // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
       quicklookContent.innerHTML = `
       <div class="preview-unsupported">
         <div class="preview-unsupported-icon">${deps.getFileIcon(file.name)}</div>

@@ -1129,7 +1129,7 @@ pub async fn get_file_data_url(file_path: String, max_size: Option<u64>) -> Resu
 
 fn base64_encode(data: &[u8]) -> String {
     const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut result = String::with_capacity((data.len() + 2) / 3 * 4);
+    let mut result = String::with_capacity(data.len().div_ceil(3) * 4);
     for chunk in data.chunks(3) {
         let b0 = chunk[0] as u32;
         let b1 = if chunk.len() > 1 { chunk[1] as u32 } else { 0 };
@@ -1993,9 +1993,9 @@ fn get_system_clipboard_files_internal() -> Vec<String> {
 
     #[cfg(target_os = "macos")]
     {
-        return run_command_capture("pbpaste", &[])
+        run_command_capture("pbpaste", &[])
             .map(|output| parse_clipboard_paths(&output))
-            .unwrap_or_default();
+            .unwrap_or_default()
     }
 
     #[cfg(target_os = "linux")]
@@ -2089,7 +2089,7 @@ pub fn write_to_system_clipboard(text: String) -> Result<(), String> {
                 .map_err(|e| e.to_string())?;
         }
         child.wait().map_err(|e| e.to_string())?;
-        return Ok(());
+        Ok(())
     }
 
     #[cfg(target_os = "linux")]
@@ -2209,7 +2209,7 @@ pub async fn calculate_checksum(
                                 }
                                 hasher.update(&buf[..n]);
                                 read_total += n as u64;
-                                if read_total % (1024 * 1024) == 0 {
+                                if read_total.is_multiple_of(1024 * 1024) {
                                     let percent = if file_size > 0 {
                                         (read_total as f64 / file_size as f64) * 100.0
                                     } else {
@@ -2236,7 +2236,7 @@ pub async fn calculate_checksum(
                                 }
                                 hasher.update(&buf[..n]);
                                 read_total += n as u64;
-                                if read_total % (1024 * 1024) == 0 {
+                                if read_total.is_multiple_of(1024 * 1024) {
                                     let percent = if file_size > 0 {
                                         (read_total as f64 / file_size as f64) * 100.0
                                     } else {
@@ -2263,7 +2263,7 @@ pub async fn calculate_checksum(
                                 }
                                 hasher.update(&buf[..n]);
                                 read_total += n as u64;
-                                if read_total % (1024 * 1024) == 0 {
+                                if read_total.is_multiple_of(1024 * 1024) {
                                     let percent = if file_size > 0 {
                                         (read_total as f64 / file_size as f64) * 100.0
                                     } else {
@@ -2290,7 +2290,7 @@ pub async fn calculate_checksum(
                                 }
                                 hasher.update(&buf[..n]);
                                 read_total += n as u64;
-                                if read_total % (1024 * 1024) == 0 {
+                                if read_total.is_multiple_of(1024 * 1024) {
                                     let percent = if file_size > 0 {
                                         (read_total as f64 / file_size as f64) * 100.0
                                     } else {
@@ -2317,7 +2317,7 @@ pub async fn calculate_checksum(
                                 }
                                 hasher.update(&buf[..n]);
                                 read_total += n as u64;
-                                if read_total % (1024 * 1024) == 0 {
+                                if read_total.is_multiple_of(1024 * 1024) {
                                     let percent = if file_size > 0 {
                                         (read_total as f64 / file_size as f64) * 100.0
                                     } else {

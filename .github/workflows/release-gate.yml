@@ -51,6 +51,16 @@ jobs:
       - run: npm run test:all
       - run: npm run build
 
+      - name: npm audit (production deps)
+        run: npm audit --production --audit-level=high
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: cargo audit
+        run: cargo audit
+        working-directory: src-tauri
+
   build:
     needs: verify
     strategy:

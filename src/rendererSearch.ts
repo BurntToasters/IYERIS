@@ -86,6 +86,7 @@ export function createSearchController(deps: SearchDeps) {
 
     const suggestionsHtml = suggestions.map((s) => `<li>${escapeHtml(s)}</li>`).join('');
 
+    // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
     fileGrid.innerHTML = `<div class="search-empty-state">
       ${twemojiImg(String.fromCodePoint(0x1f50d), 'twemoji-large', 'Search')}
       <h3>No results found</h3>

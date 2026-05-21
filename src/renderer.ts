@@ -247,6 +247,7 @@ function renderSecondaryPaneItems(items: FileItem[]): void {
               : 'image';
       thumbnailCount++;
     }
+    // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
     row.innerHTML = `
       <div class="file-main">
         <div class="file-checkbox"><span class="checkbox-mark">✓</span></div>
@@ -1003,6 +1004,7 @@ function renderSidebarQuickAccess() {
   homeDiv.setAttribute('role', 'button');
   homeDiv.tabIndex = 0;
   homeDiv.setAttribute('aria-label', 'Navigate to Home');
+  // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
   homeDiv.innerHTML = `
     <span class="nav-icon" aria-hidden="true">${twemojiImg(String.fromCodePoint(0x1f3e0), 'twemoji')}</span>
     <span class="nav-label">Home</span>
@@ -1031,6 +1033,7 @@ function renderSidebarQuickAccess() {
     div.setAttribute('aria-label', `Navigate to ${item.label}`);
 
     const icon = twemojiImg(String.fromCodePoint(item.icon), 'twemoji');
+    // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
     div.innerHTML = `
       <span class="nav-icon" aria-hidden="true">${icon}</span>
       <span class="nav-label">${escapeHtml(item.label)}</span>
@@ -1182,6 +1185,7 @@ function loadRecentFiles() {
     const name = pathParts[pathParts.length - 1] || filePath;
     const icon = getFileIcon(name);
 
+    // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
     recentItem.innerHTML = `
       <span class="nav-icon">${icon}</span>
       <span class="nav-label" title="${escapeHtml(filePath)}">${escapeHtml(name)}</span>
@@ -1355,6 +1359,7 @@ async function loadDrives() {
       const driveItem = document.createElement('div');
       driveItem.className = 'nav-item';
       driveItem.title = drive.path;
+      // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
       driveItem.innerHTML = `
       <span class="nav-icon">${twemojiImg(String.fromCodePoint(0x1f4be), 'twemoji')}</span>
       <span class="nav-label">${escapeHtml(driveLabel)}</span>

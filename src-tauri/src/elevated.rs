@@ -23,9 +23,7 @@ fn shell_escape(s: &str) -> String {
         log::warn!("[Elevated] shell_escape: path contains null/newline characters");
     }
     s.replace('\'', "'\\''")
-        .replace('\0', "")
-        .replace('\n', "")
-        .replace('\r', "")
+        .replace(['\0', '\n', '\r'], "")
 }
 
 /// Escape a string for safe embedding in an AppleScript double-quoted string literal.
@@ -35,9 +33,7 @@ fn shell_escape(s: &str) -> String {
 fn osa_escape(s: &str) -> String {
     s.replace('\\', "\\\\")
         .replace('"', "\\\"")
-        .replace('\0', "")
-        .replace('\n', "")
-        .replace('\r', "")
+        .replace(['\0', '\n', '\r'], "")
 }
 
 /// Defense-in-depth: reject paths that contain shell metacharacters before any
@@ -495,7 +491,6 @@ async fn run_elevated_batch_op(
         return run_elevated_file_op(op, src, dst.as_deref()).await;
     }
     let op = op.to_string();
-    let items = items;
 
     tokio::task::spawn_blocking(move || {
         #[cfg(target_os = "windows")]

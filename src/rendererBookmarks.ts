@@ -68,6 +68,7 @@ export function createBookmarksController(deps: BookmarksDeps) {
       bookmarkItem.tabIndex = 0;
       bookmarkItem.setAttribute('aria-label', `Open bookmark ${name}`);
 
+      // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
       bookmarkItem.innerHTML = `
       <span class="bookmark-icon">${twemojiImg(String.fromCodePoint(0x2b50), 'twemoji')}</span>
       <span class="bookmark-label">${escapeHtml(name)}</span>

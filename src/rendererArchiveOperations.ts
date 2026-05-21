@@ -142,6 +142,7 @@ export function createArchiveOperationsController(deps: ArchiveOperationsDeps) {
       const percent =
         operation.total > 0 ? Math.round((operation.current / operation.total) * 100) : 0;
 
+      // eslint-disable-next-line no-restricted-syntax -- icon is a fixed codepoint; name/id/currentFile via escapeHtml(); current/total/percent are numbers
       item.innerHTML = `
       <div class="archive-operation-header">
         <div class="archive-operation-title">

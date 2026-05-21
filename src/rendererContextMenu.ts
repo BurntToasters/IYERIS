@@ -226,6 +226,7 @@ export function createContextMenuController(deps: ContextMenuDeps) {
       moveItem.setAttribute('role', 'menuitem');
       moveItem.setAttribute('tabindex', '0');
       moveItem.title = destinationPath;
+      // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
       moveItem.innerHTML = `
         <img src="/twemoji/1f4e4.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" />
         Move to ${escapeLabel(destinationName)}
@@ -241,6 +242,7 @@ export function createContextMenuController(deps: ContextMenuDeps) {
       copyItem.setAttribute('role', 'menuitem');
       copyItem.setAttribute('tabindex', '0');
       copyItem.title = destinationPath;
+      // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
       copyItem.innerHTML = `
         <img src="/twemoji/1f4e5.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" />
         Copy to ${escapeLabel(destinationName)}

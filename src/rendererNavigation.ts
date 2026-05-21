@@ -505,6 +505,7 @@ export function createNavigationController(deps: NavigationDeps) {
       item.type = 'button';
       item.setAttribute('role', 'menuitem');
       item.tabIndex = -1;
+      // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
       item.innerHTML = `
       <span class="nav-icon">${deps.getFolderIcon(entry.path)}</span>
       <span>${escapeHtml(entry.name)}</span>

@@ -1108,7 +1108,7 @@ pub fn export_diagnostics(app: tauri::AppHandle) -> Result<String, String> {
         },
         "settings": settings_summary,
     });
-    Ok(serde_json::to_string_pretty(&info).map_err(|e| e.to_string())?)
+    serde_json::to_string_pretty(&info).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -1531,11 +1531,11 @@ pub async fn get_native_integration_status() -> Result<serde_json::Value, String
                     .exists()
             })
             .unwrap_or(false);
-        return Ok(serde_json::json!({
+        Ok(serde_json::json!({
             "supported": true,
             "installed": installed,
             "message": if installed { "Finder service installed" } else { "Finder service not installed" },
-        }));
+        }))
     }
 
     #[cfg(target_os = "linux")]
@@ -1621,7 +1621,7 @@ pub async fn install_native_integration() -> Result<(), String> {
             ),
         )
         .map_err(|e| e.to_string())?;
-        return Ok(());
+        Ok(())
     }
 
     #[cfg(target_os = "linux")]
@@ -1688,7 +1688,7 @@ pub async fn uninstall_native_integration() -> Result<(), String> {
                 Path::new(&home).join("Library/Services/Open in IYERIS.workflow"),
             );
         }
-        return Ok(());
+        Ok(())
     }
 
     #[cfg(target_os = "linux")]

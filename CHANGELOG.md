@@ -5,12 +5,12 @@
 
 # ⬇️ Downloads
 
-| <img height="20" src="https://github.com/user-attachments/assets/340d360e-79b1-4c70-bfab-d944085f75df" /> Windows                                                                                                  | <img height="20" src="https://github.com/user-attachments/assets/42d7e887-4616-4e8c-b1d3-e44e01340f8c" /> MacOS         | <img height="20" src="https://github.com/user-attachments/assets/e0cc4f33-4516-408b-9c5c-be71a3ac316b" /> Linux                                                                                                                                 |
+| <img height="20" src="https://github.com/user-attachments/assets/340d360e-79b1-4c70-bfab-d944085f75df" /> Windows                                                                                                  | <img height="20" src="https://github.com/user-attachments/assets/42d7e887-4616-4e8c-b1d3-e44e01340f8c" /> macOS         | <img height="20" src="https://github.com/user-attachments/assets/e0cc4f33-4516-408b-9c5c-be71a3ac316b" /> Linux                                                                                                                                 |
 | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **EXE:** [x64](https://github.com/BurntToasters/IYERIS/releases/download/v2.2.0-beta.3/IYERIS-Win-x64.exe) / [arm64](https://github.com/BurntToasters/IYERIS/releases/download/v2.2.0-beta.3/IYERIS-Win-arm64.exe) | **[Universal DMG](https://github.com/BurntToasters/IYERIS/releases/download/v2.2.0-beta.3/IYERIS-MacOS-universal.dmg)** | **AppImage:** [x64](https://github.com/BurntToasters/IYERIS/releases/download/v2.2.0-beta.3/IYERIS-Linux-x86_64.AppImage) <!--/ [arm64](https://github.com/BurntToasters/IYERIS/releases/download/v2.2.0-beta.3/IYERIS-Linux-arm64.AppImage)--> |
-| <div align="center"><a href="https://apps.microsoft.com/detail/9pkgd6lkcl5j?referrer=appbadge&mode=full"><img src="https://get.microsoft.com/images/en-us%20light.svg" width="150"/></a></div>                     | **[Universal ZIP](https://github.com/BurntToasters/IYERIS/releases/download/v2.2.0-beta.3/IYERIS-MacOS-universal.zip)** | **DEB:** [x64](https://github.com/BurntToasters/IYERIS/releases/download/v2.2.0-beta.3/IYERIS-Linux-amd64.deb) <!--/ [arm64](https://github.com/BurntToasters/IYERIS/releases/download/v2.2.0-beta.3/IYERIS-Linux-arm64.deb)-->                 |
-| _See MSI note below_                                                                                                                                                                                               |                                                                                                                         | **RPM:** [x64](https://github.com/BurntToasters/IYERIS/releases/download/v2.2.0-beta.3/IYERIS-Linux-x86_64.rpm) <!--/ [arm64](https://github.com/BurntToasters/IYERIS/releases/download/v2.2.0-beta.3/IYERIS-Linux-aarch64.rpm)-->              |
-|                                                                                                                                                                                                                    |                                                                                                                         | **Flatpak:** [x64](https://github.com/BurntToasters/IYERIS/releases/download/v2.2.0-beta.3/IYERIS-Linux-x86_64.flatpak) <!--/ [arm64](https://github.com/BurntToasters/IYERIS/releases/download/v2.2.0-beta.3/IYERIS-Linux-aarch64.flatpak)-->  |
+| **EXE:** [x64](https://github.com/BurntToasters/IYERIS/releases/download/v2.2.0-beta.4/IYERIS-Win-x64.exe) / [arm64](https://github.com/BurntToasters/IYERIS/releases/download/v2.2.0-beta.4/IYERIS-Win-arm64.exe) | **[Universal DMG](https://github.com/BurntToasters/IYERIS/releases/download/v2.2.0-beta.4/IYERIS-MacOS-universal.dmg)** | **AppImage:** [x64](https://github.com/BurntToasters/IYERIS/releases/download/v2.2.0-beta.4/IYERIS-Linux-x86_64.AppImage) <!--/ [arm64](https://github.com/BurntToasters/IYERIS/releases/download/v2.2.0-beta.4/IYERIS-Linux-arm64.AppImage)--> |
+| <div align="center"><a href="https://apps.microsoft.com/detail/9pkgd6lkcl5j?referrer=appbadge&mode=full"><img src="https://get.microsoft.com/images/en-us%20light.svg" width="150"/></a></div>                     | **[Universal ZIP](https://github.com/BurntToasters/IYERIS/releases/download/v2.2.0-beta.4/IYERIS-MacOS-universal.zip)** | **DEB:** [x64](https://github.com/BurntToasters/IYERIS/releases/download/v2.2.0-beta.4/IYERIS-Linux-amd64.deb) <!--/ [arm64](https://github.com/BurntToasters/IYERIS/releases/download/v2.2.0-beta.4/IYERIS-Linux-arm64.deb)-->                 |
+| _See MSI note below_                                                                                                                                                                                               |                                                                                                                         | **RPM:** [x64](https://github.com/BurntToasters/IYERIS/releases/download/v2.2.0-beta.4/IYERIS-Linux-x86_64.rpm) <!--/ [arm64](https://github.com/BurntToasters/IYERIS/releases/download/v2.2.0-beta.4/IYERIS-Linux-aarch64.rpm)-->              |
+|                                                                                                                                                                                                                    |                                                                                                                         | **Flatpak:** [x64](https://github.com/BurntToasters/IYERIS/releases/download/v2.2.0-beta.4/IYERIS-Linux-x86_64.flatpak) <!--/ [arm64](https://github.com/BurntToasters/IYERIS/releases/download/v2.2.0-beta.4/IYERIS-Linux-aarch64.flatpak)-->  |
 
 ### ℹ️ Enjoying IYERIS? Consider [❤️ Supporting Me! ❤️](https://rosie.run/support)
 
@@ -41,7 +41,7 @@ The difference is noticeably even without a direct comparison, but I'm still goi
 
 IYERIS v1 is EOL and you cant update in the app from V1 to V2. I wish that was possible but Tauri and Electron are two completely separate frameworks and I cant on my own create a cross-framework updater especially only for a one time use. Additionally I updated the bundleID as I wanted it to fit in line with my new bundleID style and this framework requires a manual install, I figured this is the best time to do it.
 
-You **SHOULD** uninstall the old IYERIS V1 before installing and using IYERIS V2. They will probably both work installed on one machine as their data is saved in different areas (except for mac if you save the app to /Applications this will overwrite either or), but I do not recommend this at all. I excpet that to have stability issues and there really is no reason to keep the EOL V1 installed.
+You **SHOULD** uninstall the old IYERIS V1 before installing and using IYERIS V2. They will probably both work installed on one machine as their data is saved in different areas (except for mac if you save the app to /Applications this will overwrite either or), but I do not recommend this at all. I except that to have stability issues and there really is no reason to keep the EOL V1 installed.
 
 ## Linux arm64:
 
@@ -50,6 +50,15 @@ One thing I wanted to make work for the initial V2 release isn't possible right 
 </details>
 
 ### Please checkout the readme for more info on IYERIS!
+
+## Changes in `v2.2.0-beta.4:`
+
+- **Security:** Completed a full pre-release security audit pass. Tightened Tauri capability scoping, asset-scope deny lists for sensitive paths, and CSP directives.
+  - Added an ESLint `no-restricted-syntax` rule to catch future unreviewed `innerHTML` + template-literal patterns; reviewed and annotated all 75 existing sites across the frontend.
+- **Thumbnails:** Fixed an issue where Office document thumbnails (`.docx`, `.xlsx`, `.pptx`) were never shown. The XML attribute regex used a backreference that Rust's `regex` crate does not support, causing extraction to silently always return nothing.
+- **Testing:** Added `cargo audit` and `npm audit --production` checks to both the CI workflow (runs on every PR and push) and the release-gate workflow.
+- **Codebase:** Added `audit.toml` documenting 18 transitive advisories from Tauri, gtk-rs, and notify that cannot be resolved without upstream changes. Applied Clippy idiom improvements to the Rust backend.
+- **PKG:** Updated packages.
 
 ## Changes in `v2.2.0-beta.3:`
 
@@ -77,7 +86,7 @@ One thing I wanted to make work for the initial V2 release isn't possible right 
 _Beta 1 Releases of IYERIS don't include any changes besides pkg updates, and are meant to sync beta users to the latest STABLE._
 
 - **Ver:** Bumped version to `v2.2.0`.
-- **PKG:** Updated packges.
+- **PKG:** Updated packages.
 
 ## Changes in `v2.1.0:`
 
@@ -95,7 +104,7 @@ _Beta 1 Releases of IYERIS don't include any changes besides pkg updates, and ar
 <details>
   <summary>FULL V2 CHANGELOG</summary>
 
-## Changes in `2.1.2:`
+## Changes in `v2.1.2:`
 
 - **PKG:** Updated packages.
 
@@ -128,5 +137,7 @@ As a precautionary measure and also due to my new protocols after this really du
 
 - **GPG Signed:** My public key is attached to every release to ensure authenticity.
 - **GPG Key:** You can get my public GPG key here: [https://tuxedo.rosie.run/GPG/BurntToasters_0xF2FBC20F_public.asc](https://tuxedo.rosie.run/GPG/BurntToasters_0xF2FBC20F_public.asc)
-- **Code Signing:** MacOS releases are fully signed. Windows releases are not signed by an org, but are signed by my GPG signature (same with Linux).
+- **Code Signing:** macOS releases are fully signed. Windows releases are not signed by an org, but are signed by my GPG signature (same with Linux).
 - **Legacy Binaries:** Separate x64/arm64 Windows binaries are deprecated in favor of the Universal installer. They are still listed in the downloads section, but the universal installer is recommended for simplicity.
+
+### This changelog is made using the BCLS standard: https://github.com/BurntToasters/BCLS

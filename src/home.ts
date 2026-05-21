@@ -284,6 +284,7 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
       item.dataset[options.dataAttr.name] = options.dataAttr.value;
     }
 
+    // eslint-disable-next-line no-restricted-syntax -- icon is from a fixed codepoint map; label/subtitle via escapeHtml()
     item.innerHTML = `
       <span class="home-item-icon">${options.icon}</span>
       <span class="home-item-text">
@@ -508,6 +509,7 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
       item.tabIndex = 0;
       item.dataset.recentPath = filePath;
       item.setAttribute('aria-label', `Open recent: ${name}`);
+      // eslint-disable-next-line no-restricted-syntax -- icon from getFileIcon() map; name/filePath via escapeHtml(); isPinned is boolean
       item.innerHTML = `
         <div class="home-recent-main">
           <span class="home-item-icon">${icon}</span>
@@ -652,6 +654,7 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
       card.tabIndex = 0;
       card.title = drive.path;
       card.dataset.drivePath = drive.path;
+      // eslint-disable-next-line no-restricted-syntax -- icon from fixed map; driveLabel via escapeHtml(); rest is static
       card.innerHTML = `
         <div class="home-drive-header">
           <span class="home-item-icon">${icon}</span>
@@ -723,6 +726,7 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
       const row = document.createElement('div');
       row.className = 'home-section-order-item';
       row.dataset.section = sectionId;
+      // eslint-disable-next-line no-restricted-syntax -- label via escapeHtml(); rest is static
       row.innerHTML = `
         <span class="home-section-order-handle" aria-hidden="true">:::</span>
         <span class="home-section-order-label">${escapeHtml(label)}</span>
@@ -797,6 +801,7 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
       const option = document.createElement('label');
       option.className = 'home-option';
       option.draggable = true;
+      // eslint-disable-next-line no-restricted-syntax -- item.action/icon/label come from a static internal config array, not user input; label also via escapeHtml()
       option.innerHTML = `
         <input type="checkbox" data-action="${item.action}" ${hiddenSet.has(item.action) ? '' : 'checked'}>
         <span class="home-option-icon">${twemojiImg(String.fromCodePoint(item.icon), 'twemoji')}</span>

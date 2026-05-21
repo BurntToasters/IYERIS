@@ -236,6 +236,7 @@ export function createColumnViewController(deps: ColumnViewDeps) {
         item.setAttribute('aria-selected', 'false');
         item.dataset.path = drive.path;
         item.title = drive.path;
+        // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
         item.innerHTML = `
         <span class="column-item-icon"><img src="/twemoji/1f4bf.svg" class="twemoji" alt="💿" draggable="false" /></span>
         <span class="column-item-name">${escapeHtml(drive.label || drive.path)}</span>
@@ -458,6 +459,7 @@ export function createColumnViewController(deps: ColumnViewDeps) {
       ? '<span class="symlink-badge" aria-label="Symbolic link">⤳</span>'
       : '';
 
+    // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
     item.innerHTML = `
           <span class="column-item-icon">${icon}${symlinkBadge}</span>
           <span class="column-item-name">${escapeHtml(fileItem.name)}</span>
@@ -636,6 +638,7 @@ export function createColumnViewController(deps: ColumnViewDeps) {
         : sortedItems.filter((item) => !item.isHidden);
 
       if (visibleItems.length === 0) {
+        // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
         pane.innerHTML = `<div class="column-item placeholder">${EMPTY_FOLDER_LABEL}</div>`;
       } else {
         // M25: build into a DocumentFragment first so the browser only does

@@ -267,6 +267,7 @@ export function createOperationQueueController(deps: QueueDeps) {
               : `${operation.current} / ${operation.total || '?'}`;
       const card = document.createElement('div');
       card.className = `operation-queue-item is-${operation.status}`;
+      // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
       card.innerHTML = `
         <div class="operation-queue-header">
           <div class="operation-queue-title">

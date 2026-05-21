@@ -476,6 +476,7 @@ export function createFileRenderController(config: FileRenderConfig) {
       ? '<span class="symlink-badge" aria-label="Symbolic link">⤳</span>'
       : '';
 
+    // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
     fileItem.innerHTML = `
     <div class="file-main">
       <div class="file-checkbox"><span class="checkbox-mark">✓</span></div>
