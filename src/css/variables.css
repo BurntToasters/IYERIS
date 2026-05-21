@@ -5,12 +5,12 @@
 }
 
 :root {
-  --glass-bg: rgba(40, 40, 42, 0.82);
+  --glass-bg: rgba(28, 28, 28, 0.96);
   --glass-border: rgba(255, 255, 255, 0.16);
   --glass-shadow: 0 10px 30px rgba(0, 0, 0, 0.18), 0 1px 0 rgba(255, 255, 255, 0.05);
   --text-primary: rgba(255, 255, 255, 0.96);
-  --text-secondary: rgba(255, 255, 255, 0.72);
-  --text-tertiary: rgba(255, 255, 255, 0.54);
+  --text-secondary: rgba(255, 255, 255, 0.8);
+  --text-tertiary: rgba(255, 255, 255, 0.75);
   --text-on-accent: #ffffff;
   --accent-color: #0a84ff;
   --accent-rgb: 10, 132, 255;
@@ -46,12 +46,12 @@
 
   --focus-ring: 0 0 0 2px rgba(var(--accent-rgb), 0.5);
   --focus-ring-strong: 0 0 0 3px rgba(var(--accent-rgb), 0.6);
-  --glass-modal-bg: rgba(38, 38, 40, 0.94);
+  --glass-modal-bg: rgba(28, 28, 28, 0.98);
   --glass-modal-border: rgba(255, 255, 255, 0.14);
-  --bg-primary: #1f1f21;
-  --bg-primary-rgb: 31, 31, 33;
-  --bg-secondary: #2a2a2c;
-  --dropdown-bg: rgba(45, 45, 48, 0.96);
+  --bg-primary: #181818;
+  --bg-primary-rgb: 24, 24, 24;
+  --bg-secondary: #212121;
+  --dropdown-bg: rgba(34, 34, 34, 0.98);
   --separator: rgba(255, 255, 255, 0.1);
   --surface-border: color-mix(in srgb, var(--text-primary) 12%, transparent);
   --surface-border-strong: color-mix(in srgb, var(--text-primary) 18%, transparent);

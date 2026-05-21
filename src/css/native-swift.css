@@ -709,6 +709,19 @@ body.theme-light .modal-footer {
   color: var(--text-primary);
 }
 
+.empty-action-btn:active,
+.search-filter-btn:active {
+  background: var(--active-color);
+  transform: scale(0.98);
+}
+
+.empty-action-btn:focus-visible,
+.search-filter-btn:focus-visible {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgba(var(--accent-rgb), 0.2);
+}
+
 .modal-button.primary,
 .modal-button.primary:hover,
 .search-filter-btn.primary,
@@ -716,6 +729,11 @@ body.theme-light .modal-footer {
   background: var(--system-accent-color, var(--accent-color));
   border-color: var(--system-accent-color, var(--accent-color));
   color: var(--text-on-accent);
+}
+
+.search-filter-btn.primary:active {
+  background: var(--accent-active);
+  border-color: var(--accent-active);
 }
 
 .close-button,

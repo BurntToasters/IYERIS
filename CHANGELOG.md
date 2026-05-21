@@ -59,6 +59,7 @@ One thing I wanted to make work for the initial V2 release isn't possible right 
 - **Testing:** Added `cargo audit` and `npm audit --production` checks to both the CI workflow (runs on every PR and push) and the release-gate workflow.
 - **Codebase:** Added `audit.toml` documenting 18 transitive advisories from Tauri, gtk-rs, and notify that cannot be resolved without upstream changes. Applied Clippy idiom improvements to the Rust backend.
 - **PKG:** Updated packages.
+- **UI:** Fixed a UI regression from beta 3 where the background colors were washed out.
 
 ## Changes in `v2.2.0-beta.3:`
 
