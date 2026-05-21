@@ -224,6 +224,7 @@ export function createShortcutsUiController(deps: ShortcutsUiDeps) {
 
       const section = document.createElement('div');
       section.className = 'shortcuts-section';
+      // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
       section.innerHTML = `<h3>${escapeHtml(category)}</h3>`;
 
       for (const def of remappable) {
@@ -237,6 +238,7 @@ export function createShortcutsUiController(deps: ShortcutsUiDeps) {
         const item = document.createElement('div');
         item.className = 'shortcut-item';
         item.dataset.shortcutId = def.id;
+        // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
         item.innerHTML = `
         <div class="shortcut-info">
           <span class="shortcut-description">${escapeHtml(def.title)}</span>
@@ -253,6 +255,7 @@ export function createShortcutsUiController(deps: ShortcutsUiDeps) {
       for (const fixedItem of fixed) {
         const item = document.createElement('div');
         item.className = 'shortcut-item fixed';
+        // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
         item.innerHTML = `
         <div class="shortcut-info">
           <span class="shortcut-description">${escapeHtml(fixedItem.title)}</span>

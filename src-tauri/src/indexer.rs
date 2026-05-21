@@ -297,7 +297,40 @@ fn save_index_to_disk(path: &Path, entries: &[IndexEntry]) -> Result<(), String>
     let json = serde_json::to_string(&data).map_err(|e| e.to_string())?;
     let tmp = crate::make_temp_path(path, "index");
 
-    let mut file = fs::File::create(&tmp).map_err(|e| e.to_string())?;
+    // L2: create_new + O_NOFOLLOW (on Unix). Without this, if a local
+    // attacker symlinked the temp path before us, File::create would
+    // truncate-through-the-symlink and write our index data to a path
+    // they chose. create_new makes the create fail if the path exists at all.
+    let mut file = {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            // libc::O_NOFOLLOW = 0o400000 on Linux, 0x0100 on macOS — use the
+            // libc constant via nix if available, but the stdlib OpenOptions
+            // already has create_new() which is enough to defeat the pre-planted
+            // symlink (open fails with EEXIST). Add O_NOFOLLOW for belt+suspenders
+            // in case the parent path traversal contains a symlink we don't expect.
+            const O_NOFOLLOW: i32 = if cfg!(target_os = "linux") {
+                0o400000
+            } else {
+                0x0100
+            };
+            fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .custom_flags(O_NOFOLLOW)
+                .open(&tmp)
+                .map_err(|e| e.to_string())?
+        }
+        #[cfg(not(unix))]
+        {
+            fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&tmp)
+                .map_err(|e| e.to_string())?
+        }
+    };
     file.write_all(json.as_bytes()).map_err(|e| e.to_string())?;
     file.sync_all().map_err(|e| e.to_string())?;
     drop(file);

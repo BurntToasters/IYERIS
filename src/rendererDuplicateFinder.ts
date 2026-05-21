@@ -173,6 +173,7 @@ export function createDuplicateFinderController(deps: DuplicateFinderDeps) {
     if (!groupsEl) return;
 
     if (groups.length === 0) {
+      // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
       groupsEl.innerHTML = `<div class="duplicate-finder-empty">No duplicate groups found.</div>`;
       syncSummaryAndActions();
       return;

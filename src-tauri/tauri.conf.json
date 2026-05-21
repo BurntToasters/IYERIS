@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "IYERIS",
-  "version": "2.2.0-beta.2",
+  "version": "2.2.0-beta.4",
   "identifier": "run.rosie.iyeris",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -10,6 +10,7 @@
     "frontendDist": "../dist"
   },
   "app": {
+    "withGlobalTauri": false,
     "windows": [
       {
         "title": "IYERIS",
@@ -41,10 +42,47 @@
             "$HOME/.aws/**",
             "$HOME/.docker/**",
             "$HOME/.kube/**",
+            "$HOME/.config/gh/**",
+            "$HOME/.config/git/credentials",
+            "$HOME/.git-credentials",
+            "$HOME/.npmrc",
+            "$HOME/.yarnrc",
+            "$HOME/.yarnrc.yml",
+            "$HOME/.pypirc",
+            "$HOME/.cargo/credentials*",
+            "$HOME/.gem/credentials",
+            "$HOME/.password-store/**",
+            "$HOME/.config/1Password/**",
+            "$HOME/.config/Bitwarden/**",
+            "$HOME/.config/google-chrome/**",
+            "$HOME/.config/BraveSoftware/**",
+            "$HOME/.config/chromium/**",
+            "$HOME/.mozilla/firefox/**",
+            "$HOME/Library/Application Support/Google/Chrome/**",
+            "$HOME/Library/Application Support/Firefox/**",
+            "$HOME/Library/Application Support/BraveSoftware/**",
+            "$HOME/Library/Group Containers/2BUA8C4S2C.com.1password/**",
+            "$HOME/Library/Keychains/**",
+            "$HOME/Library/Cookies/**",
+            "$HOME/Library/Mail/**",
+            "$HOME/Library/Messages/**",
             "**/.config/**/secrets*",
+            "**/.netrc",
+            "**/authorized_keys",
+            "**/known_hosts",
             "**/id_rsa",
+            "**/id_dsa",
+            "**/id_ecdsa",
             "**/id_ed25519",
-            "**/.netrc"
+            "**/*_rsa",
+            "**/*_dsa",
+            "**/*_ecdsa",
+            "**/*_ed25519",
+            "**/*.pem",
+            "**/*.key",
+            "**/*.pfx",
+            "**/*.p12",
+            "**/login.keychain*"
           ]
         }
       }

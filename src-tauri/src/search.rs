@@ -218,7 +218,7 @@ pub async fn search_files(
                     Ok(m) => m,
                     Err(e) => {
                         if e.io_error()
-                            .map_or(true, |io_err| io_err.kind() != std::io::ErrorKind::NotFound)
+                            .is_none_or(|io_err| io_err.kind() != std::io::ErrorKind::NotFound)
                         {
                             log::debug!(
                                 "[Search] metadata error for {}: {}",
@@ -229,7 +229,7 @@ pub async fn search_files(
                         continue;
                     }
                 };
-                if !matches_filters(&entry_path, &meta, &parsed_filters) {
+                if !matches_filters(entry_path, &meta, &parsed_filters) {
                     continue;
                 }
 

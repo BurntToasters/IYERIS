@@ -1,0 +1,44 @@
+# cargo-audit configuration
+# https://docs.rs/cargo-audit/latest/cargo_audit/config/index.html
+#
+# All ignored advisories are for transitive dependencies pulled in by Tauri /
+# wry / notify that we cannot upgrade on our own. Each entry documents the
+# direct dependency that pulls in the affected crate. When Tauri/notify
+# upgrade to refreshed bindings, retest by removing the relevant IDs and
+# running `cargo audit` again.
+
+[advisories]
+ignore = [
+  # gtk-rs 0.18.x family: unmaintained GTK3 bindings, pulled in by wry on Linux
+  # for webkit2gtk integration. Cannot remove without dropping Tauri's Linux
+  # webview support.
+  "RUSTSEC-2024-0411", # gdkwayland-sys
+  "RUSTSEC-2024-0412", # gdk
+  "RUSTSEC-2024-0413", # atk
+  "RUSTSEC-2024-0414", # gdkx11-sys
+  "RUSTSEC-2024-0415", # gtk
+  "RUSTSEC-2024-0416", # atk-sys
+  "RUSTSEC-2024-0417", # gdkx11
+  "RUSTSEC-2024-0418", # gdk-sys
+  "RUSTSEC-2024-0419", # gtk3-macros
+  "RUSTSEC-2024-0420", # gtk-sys
+  "RUSTSEC-2024-0429", # glib unsoundness in VariantStrIter — Tauri does not
+                      # expose VariantStrIter to user code; risk is bounded to
+                      # internal webkit2gtk paths.
+
+  # notify v7 transitive: instant is unmaintained but is only used internally
+  # for change-event timestamps in our watcher. No exposed API surface.
+  "RUSTSEC-2024-0384", # instant (notify > notify-types > instant)
+
+  # gtk-rs proc-macro support: same transitive as gtk-rs above.
+  "RUSTSEC-2024-0370", # proc-macro-error
+
+  # urlpattern dependency tree pulled in by tauri-utils. unic-* crates are
+  # frozen Unicode tables — replaced upstream by `icu` family, awaiting tauri
+  # rebase.
+  "RUSTSEC-2025-0075", # unic-char-range
+  "RUSTSEC-2025-0080", # unic-common
+  "RUSTSEC-2025-0081", # unic-char-property
+  "RUSTSEC-2025-0098", # unic-ucd-version
+  "RUSTSEC-2025-0100", # unic-ucd-ident
+]

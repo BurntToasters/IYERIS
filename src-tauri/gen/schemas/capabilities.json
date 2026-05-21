@@ -12,7 +12,6 @@
       "core:webview:default",
       "dialog:default",
       "updater:default",
-      "process:default",
       "notification:default",
       "autostart:default",
       {
@@ -20,5 +19,12 @@
         "allow": [{ "label": "main" }, { "label": "window-*" }]
       }
     ]
+  },
+  "main-window": {
+    "identifier": "main-window",
+    "description": "Permissions restricted to the main window (M8: prevent spawned webview windows from inheriting process:default).",
+    "local": true,
+    "windows": ["main"],
+    "permissions": ["process:default"]
   }
 }

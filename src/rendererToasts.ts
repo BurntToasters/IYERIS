@@ -63,6 +63,7 @@ export function createToastManager(options: ToastOptions) {
       warning: '26a0',
     };
 
+    // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
     toast.innerHTML = `
     <span class="toast-icon" aria-hidden="true">${options.twemojiImg(String.fromCodePoint(parseInt(icons[type] ?? '2139', 16)), 'twemoji')}</span>
     <div class="toast-content">

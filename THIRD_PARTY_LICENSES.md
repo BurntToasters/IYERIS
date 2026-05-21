@@ -25,21 +25,13 @@ For the full license text, see: https://creativecommons.org/licenses/by/4.0/
 
 ---
 
-## 7-Zip
+## sevenz-rust
 
-IYERIS bundles the 7za command-line executable from 7-Zip for archive compression and extraction. The 7za binary is distributed via the `7zip-bin` npm package (MIT-licensed wrapper), but the binary itself is a separate work by Igor Pavlov.
+IYERIS uses the `sevenz-rust` Rust crate for reading 7z archives. The crate is a pure-Rust implementation; no 7-Zip executable or binary is bundled with IYERIS.
 
-**Project:** 7-Zip  
-**Source:** https://www.7-zip.org  
-**License:** LGPL-2.1-or-later (GNU Lesser General Public License v2.1 or later)  
-**Copyright:** Copyright (C) 1999-2024 Igor Pavlov
-
-**License Text (summary):**
-7-Zip is free software distributed under the GNU LGPL. You can use 7-Zip on any computer, including in commercial organizations. You don't need to register or pay for 7-Zip.
-
-The unRAR restriction applies: you may not use the unRAR source code to create a RAR archiver or to re-create the RAR compression algorithm.
-
-For the full license text, see: https://www.7-zip.org/license.txt
+**Project:** sevenz-rust  
+**Source:** https://github.com/dyz1990/sevenz-rust  
+**License:** Apache-2.0
 
 ---
 

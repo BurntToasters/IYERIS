@@ -66,6 +66,7 @@ export function createPreviewController(deps: PreviewDeps) {
   function showEmptyPreview() {
     ensureElements();
     if (!previewContent) return;
+    // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
     previewContent.innerHTML = `
     <div class="preview-empty">
       <div class="preview-empty-icon">${twemojiImg(String.fromCodePoint(0x1f441), 'twemoji-xlarge')}</div>
@@ -170,6 +171,7 @@ export function createPreviewController(deps: PreviewDeps) {
     } catch (error) {
       ensureElements();
       if (previewContent) {
+        // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
         previewContent.innerHTML = `<div class="preview-error">Preview failed: ${escapeHtml(getErrorMessage(error))}</div>`;
       }
     }
@@ -185,6 +187,7 @@ export function createPreviewController(deps: PreviewDeps) {
       if (requestId !== previewRequestId) return;
 
       if (!result.success) {
+        // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
         previewContent.innerHTML = `
         <div class="preview-error">
           Failed to list archive contents: ${escapeHtml(result.error || 'Operation failed')}
@@ -236,6 +239,7 @@ export function createPreviewController(deps: PreviewDeps) {
       previewContent.innerHTML = html;
     } catch (error) {
       if (requestId !== previewRequestId) return;
+      // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
       previewContent.innerHTML = `
       <div class="preview-error">
         Failed to list archive contents: ${escapeHtml(getErrorMessage(error))}
@@ -253,6 +257,7 @@ export function createPreviewController(deps: PreviewDeps) {
     const settings = deps.getCurrentSettings();
     if (file.size > (settings.maxPreviewSizeMB || 50) * 1024 * 1024) {
       if (requestId !== previewRequestId) return;
+      // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
       previewContent.innerHTML = `
       <div class="preview-error">
         Failed to load image: ${escapeHtml('File too large to preview')}
@@ -268,6 +273,7 @@ export function createPreviewController(deps: PreviewDeps) {
     const fileUrl = encodeFileUrl(file.path);
     const altText = escapeHtml(file.name);
 
+    // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
     previewContent.innerHTML = `
     <div class="preview-image-wrapper">
       <img src="${fileUrl}" class="preview-image" alt="${altText}">
@@ -292,6 +298,7 @@ export function createPreviewController(deps: PreviewDeps) {
         void (async () => {
           if (img.dataset.fallbackAttempted === 'true') {
             if (previewContent) {
+              // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
               previewContent.innerHTML = `
               <div class="preview-error">
                 Failed to load image
@@ -308,6 +315,7 @@ export function createPreviewController(deps: PreviewDeps) {
           );
           if (!dataUrl || requestId !== previewRequestId) {
             if (previewContent) {
+              // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
               previewContent.innerHTML = `
               <div class="preview-error">
                 Failed to load image
@@ -361,6 +369,7 @@ export function createPreviewController(deps: PreviewDeps) {
     };
     const brand = cameraFormats[ext] || 'Camera';
 
+    // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
     previewContent.innerHTML = `
     <div class="preview-raw-info">
       <div class="preview-raw-icon">${twemojiImg(String.fromCodePoint(0x1f4f7), 'twemoji-xlarge')}</div>
@@ -383,6 +392,7 @@ export function createPreviewController(deps: PreviewDeps) {
     if (requestId !== previewRequestId) return;
 
     if (!result.success) {
+      // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
       previewContent.innerHTML = `
       <div class="preview-error">
         Failed to load markdown: ${escapeHtml(result.error || 'Operation failed')}
@@ -408,6 +418,7 @@ export function createPreviewController(deps: PreviewDeps) {
       } catch {
         rendered = `<pre class="preview-text"><code>${escapeHtml(result.content)}</code></pre>`;
       }
+      // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
       previewContent.innerHTML = `
       ${result.isTruncated ? `<div class="preview-truncated">${twemojiImg(String.fromCodePoint(0x26a0), 'twemoji')} File truncated to first 100KB</div>` : ''}
       <div class="preview-markdown">${rendered}</div>
@@ -415,6 +426,7 @@ export function createPreviewController(deps: PreviewDeps) {
     `;
     } else {
       const lang = getLanguageForExt(deps.getFileExtension(file.name));
+      // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
       previewContent.innerHTML = `
       ${result.isTruncated ? `<div class="preview-truncated">${twemojiImg(String.fromCodePoint(0x26a0), 'twemoji')} File truncated to first 100KB</div>` : ''}
       <pre class="preview-text"><code class="${lang ? `language-${lang}` : ''}">${escapeHtml(result.content)}</code></pre>
@@ -432,6 +444,7 @@ export function createPreviewController(deps: PreviewDeps) {
     if (requestId !== previewRequestId) return;
 
     if (!result.success) {
+      // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
       previewContent.innerHTML = `
       <div class="preview-error">
         Failed to load text: ${escapeHtml(result.error || 'Operation failed')}
@@ -447,6 +460,7 @@ export function createPreviewController(deps: PreviewDeps) {
     const ext = deps.getFileExtension(file.name);
     const lang = getLanguageForExt(ext);
 
+    // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
     previewContent.innerHTML = `
     ${result.isTruncated ? `<div class="preview-truncated">${twemojiImg(String.fromCodePoint(0x26a0), 'twemoji')} File truncated to first 50KB</div>` : ''}
     <pre class="preview-text"><code class="${lang ? `language-${lang}` : ''}">${escapeHtml(result.content)}</code></pre>
@@ -472,6 +486,7 @@ export function createPreviewController(deps: PreviewDeps) {
     const settings = deps.getCurrentSettings();
     const maxSizeMB = settings.maxPreviewSizeMB || 50;
     if (file.size > maxSizeMB * 1024 * 1024) {
+      // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
       previewContent.innerHTML = `
       <div class="preview-error">
         Video file too large to preview (>${maxSizeMB}MB)
@@ -487,6 +502,7 @@ export function createPreviewController(deps: PreviewDeps) {
 
     const fileUrl = encodeFileUrl(file.path);
 
+    // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
     previewContent.innerHTML = `
     <video src="${fileUrl}" class="preview-video" controls controlsList="nodownload" ${settings.autoPlayVideos ? 'autoplay' : ''}>
       Your browser does not support the video tag.
@@ -519,6 +535,7 @@ export function createPreviewController(deps: PreviewDeps) {
 
     const fileUrl = encodeFileUrl(file.path);
 
+    // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
     previewContent.innerHTML = `
     <div class="preview-audio-container">
       <div class="preview-audio-icon">${twemojiImg(String.fromCodePoint(0x1f3b5), 'twemoji-xlarge')}</div>
@@ -559,6 +576,7 @@ export function createPreviewController(deps: PreviewDeps) {
     const settings = deps.getCurrentSettings();
     const maxSizeMB = settings.maxPreviewSizeMB || 50;
     if (file.size > maxSizeMB * 1024 * 1024) {
+      // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
       previewContent.innerHTML = `
       <div class="preview-error">
         ${twemojiImg(String.fromCodePoint(0x26a0), 'twemoji')} PDF file too large to preview (>${maxSizeMB}MB)
@@ -571,6 +589,7 @@ export function createPreviewController(deps: PreviewDeps) {
     const headerResult = await window.tauriAPI.readFileContent(file.path, 16);
     if (requestId !== previewRequestId) return;
     if (!headerResult.success || !headerResult.content.startsWith('%PDF-')) {
+      // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
       previewContent.innerHTML = `
       <div class="preview-error">
         ${twemojiImg(String.fromCodePoint(0x26a0), 'twemoji')} File does not appear to be a valid PDF
@@ -614,6 +633,7 @@ export function createPreviewController(deps: PreviewDeps) {
       const openBtn = document.createElement('button');
       openBtn.className = 'preview-pdf-open-btn';
       openBtn.title = 'Open in default application';
+      // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
       openBtn.innerHTML = `${twemojiImg(String.fromCodePoint(0x1f4c4), 'twemoji-small')} Open in Default App`;
       openBtn.addEventListener('click', () => void window.tauriAPI.openFile(file.path));
       actionsDiv.appendChild(openBtn);
@@ -657,6 +677,7 @@ export function createPreviewController(deps: PreviewDeps) {
           const openBtn = document.createElement('button');
           openBtn.className = 'preview-pdf-open-btn';
           openBtn.title = 'Open in default application';
+          // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
           openBtn.innerHTML = `${twemojiImg(String.fromCodePoint(0x1f4c4), 'twemoji-small')} Open in Default App`;
           openBtn.addEventListener('click', () => void window.tauriAPI.openFile(file.path));
           actionsDiv.appendChild(openBtn);
@@ -677,6 +698,7 @@ export function createPreviewController(deps: PreviewDeps) {
       }
 
       if (requestId !== previewRequestId) return;
+      // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
       previewContent.innerHTML = `
       <div class="preview-error">
         Failed to render PDF
@@ -704,6 +726,7 @@ export function createPreviewController(deps: PreviewDeps) {
     if (requestId !== previewRequestId) return;
     const info = props.success ? props.properties : null;
 
+    // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
     previewContent.innerHTML = `
     <div class="preview-unsupported">
       <div class="preview-unsupported-icon">${deps.getFileIcon(file.name)}</div>

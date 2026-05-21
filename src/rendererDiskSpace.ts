@@ -71,6 +71,7 @@ export function createDiskSpaceController(deps: DiskSpaceControllerDeps) {
     const usageState =
       usedPercentNumeric > 90 ? 'critical' : usedPercentNumeric > 80 ? 'warning' : 'healthy';
 
+    // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
     element.innerHTML = `
     <span class="status-disk">
       ${twemojiImg(String.fromCodePoint(0x1f4be), 'twemoji')} ${freeStr} free of ${totalStr}
@@ -83,6 +84,7 @@ export function createDiskSpaceController(deps: DiskSpaceControllerDeps) {
   }
 
   function renderDiskSpaceUnavailable(element: HTMLElement, message: string): void {
+    // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
     element.innerHTML = `
     <span class="status-disk status-disk-unavailable">
       ${twemojiImg(String.fromCodePoint(0x26a0), 'twemoji')} ${escapeHtml(message)}

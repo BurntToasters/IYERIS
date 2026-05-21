@@ -39,6 +39,19 @@ export default tseslint.config(
       'no-useless-escape': 'warn',
 
       'no-empty': ['error', { allowEmptyCatch: true }],
+
+      // innerHTML with template literals is a XSS-prone pattern. All user data
+      // must go through escapeHtml(). Reviewed, safe sites carry a disable
+      // comment so future unreviewed uses are caught here.
+      'no-restricted-syntax': [
+        'warn',
+        {
+          selector:
+            'AssignmentExpression[left.property.name="innerHTML"][right.type="TemplateLiteral"]',
+          message:
+            'innerHTML with template literals risks XSS. Ensure all user data uses escapeHtml(), then add an eslint-disable-next-line comment documenting the review.',
+        },
+      ],
     },
   },
   {

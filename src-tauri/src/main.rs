@@ -168,15 +168,42 @@ fn setup_environment(disable_hw_accel: bool, dev_mode: bool) {
     let _ = (disable_hw_accel, dev_mode);
 }
 
+/// M7: returns a path passed in argv to a single-instance / startup launch,
+/// after additional sanity checks. Previously any absolute existing path was
+/// accepted; the frontend would then navigate the user to whatever showed up.
+/// We now also:
+///  * reject control characters and NUL bytes
+///  * skip paths with shell metacharacters (those are valid filenames in
+///    principle but a normal "Open in IYERIS" shell integration will never
+///    produce one — the cost of refusing is low and the upside is making
+///    automated targeting harder)
+///  * canonicalize and refuse symlink-via-parent traversal (same shape as
+///    the rename guard in file_operations)
 fn first_open_path_arg(args: &[String]) -> Option<String> {
-    args.iter()
-        .skip(1)
-        .find(|arg| {
-            !arg.starts_with("--")
-                && std::path::Path::new(arg).is_absolute()
-                && std::path::Path::new(arg).exists()
-        })
-        .cloned()
+    for arg in args.iter().skip(1) {
+        if arg.starts_with("--") {
+            continue;
+        }
+        if arg.chars().any(|c| c == '\0' || (c.is_control() && c != '\t')) {
+            log::warn!("[SingleInstance] rejecting arg with control character");
+            continue;
+        }
+        if arg.chars().any(|c| matches!(c, '`' | '\n' | '\r')) {
+            log::warn!("[SingleInstance] rejecting arg with shell metacharacter");
+            continue;
+        }
+        let path = std::path::Path::new(arg);
+        if !path.is_absolute() {
+            continue;
+        }
+        match path.canonicalize() {
+            Ok(canonical) if canonical.exists() => {
+                return Some(canonical.to_string_lossy().to_string());
+            }
+            _ => continue,
+        }
+    }
+    None
 }
 
 fn setup_native_menu(app: &tauri::App) -> tauri::Result<()> {
@@ -451,10 +478,27 @@ fn main() {
         .setup(move |app| {
             log::debug!("[Setup] App setup starting");
             let settings_json =
-                settings::get_settings(app.handle().clone()).unwrap_or_else(|_| "{}".to_string());
+                settings::get_settings(app.handle().clone()).unwrap_or_else(|err| {
+                    log::warn!(
+                        "[Setup] Failed to read settings: {}; falling back to defaults",
+                        err
+                    );
+                    "{}".to_string()
+                });
             log::debug!("[Setup] Settings loaded ({} bytes)", settings_json.len());
-            let settings_value =
-                serde_json::from_str::<serde_json::Value>(&settings_json).unwrap_or_default();
+            // L3: explicitly distinguish "valid JSON" from "fell back to {}"
+            // so a malformed settings file produces a warning instead of
+            // silently losing user preferences.
+            let settings_value = match serde_json::from_str::<serde_json::Value>(&settings_json) {
+                Ok(v) => v,
+                Err(err) => {
+                    log::warn!(
+                        "[Setup] Settings file is not valid JSON ({}); using defaults",
+                        err
+                    );
+                    serde_json::Value::default()
+                }
+            };
 
             let native_menu_enabled = settings_value
                 .get("nativeMenuEnabled")

@@ -303,6 +303,7 @@ export function createThumbnailController(deps: ThumbnailDeps) {
         const iconDiv = fileItem.querySelector('.file-icon');
 
         if (iconDiv) {
+          // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
           iconDiv.innerHTML = `<div class="spinner" style="width: 30px; height: 30px; border-width: 2px;"></div>`;
         }
 

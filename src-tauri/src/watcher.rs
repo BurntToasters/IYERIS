@@ -78,8 +78,32 @@ pub fn watch_directory(
 
     // Build and start the new watcher BEFORE dropping the old one.
     // If watcher creation fails the existing watcher remains active.
-    let (tx, rx) = mpsc::channel::<notify::Result<Event>>();
-    let mut new_watcher = notify::recommended_watcher(tx).map_err(|e| e.to_string())?;
+    //
+    // M5: previously this was an unbounded `mpsc::channel`. A noisy directory
+    // (e.g. a tight touch loop, an unzip into the watched dir, build-system
+    // churn) could fill the channel faster than the debouncer drains it,
+    // growing heap until the consumer caught up. Now we use a bounded
+    // sync_channel and drop overflow events. The debouncer's job is to coalesce
+    // anyway, so dropping individual events is harmless — the next emit will
+    // still trigger a refresh.
+    const WATCH_CHANNEL_CAPACITY: usize = 1024;
+    let (tx, rx) = mpsc::sync_channel::<notify::Result<Event>>(WATCH_CHANNEL_CAPACITY);
+    let mut new_watcher = notify::recommended_watcher(move |res: notify::Result<Event>| {
+        if let Err(e) = tx.try_send(res) {
+            match e {
+                mpsc::TrySendError::Full(_) => {
+                    log::warn!(
+                        "[Watcher] channel full ({} events); dropping event",
+                        WATCH_CHANNEL_CAPACITY
+                    );
+                }
+                mpsc::TrySendError::Disconnected(_) => {
+                    log::debug!("[Watcher] channel disconnected; watcher thread exiting");
+                }
+            }
+        }
+    })
+    .map_err(|e| e.to_string())?;
     new_watcher
         .watch(&path, RecursiveMode::NonRecursive)
         .map_err(|e| e.to_string())?;

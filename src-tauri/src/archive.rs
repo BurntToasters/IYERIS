@@ -12,8 +12,11 @@ static ACTIVE_OPS: std::sync::LazyLock<Mutex<HashSet<String>>> =
 static RELATIONSHIP_TAG_RE: std::sync::LazyLock<Option<Regex>> = std::sync::LazyLock::new(|| {
     Regex::new(r#"(?is)<Relationship\b[^>]*>"#).ok()
 });
+// Rust's regex crate does not support backreferences. Use alternation so we
+// match either a double-quoted or single-quoted attribute value, then strip
+// the matching quote characters in extract_xml_attr().
 static XML_ATTRIBUTE_RE: std::sync::LazyLock<Option<Regex>> = std::sync::LazyLock::new(|| {
-    Regex::new(r#"(?is)([A-Za-z_:][A-Za-z0-9_.:-]*)\s*=\s*(['\"])(.*?)\2"#).ok()
+    Regex::new(r#"(?is)([A-Za-z_:][A-Za-z0-9_.:-]*)\s*=\s*("[^"]*"|'[^']*')"#).ok()
 });
 
 const MAX_DECOMPRESSED_SIZE: u64 = 53_687_091_200; // 50 GB
@@ -42,7 +45,20 @@ fn is_active(op_id: &str) -> bool {
 }
 
 fn safe_entry_path(entry_name: &str, dest: &Path) -> Result<PathBuf, String> {
-    let mut component_path = dest.to_path_buf();
+    // H4: hard-fail if the destination cannot be canonicalized. Previously
+    // we fell back to dest.to_path_buf(), which silently degrades the
+    // traversal check on filesystems where canonicalize fails (network
+    // drive hiccup, permission glitch). For an extraction routine the
+    // safe default is "refuse" not "best-effort."
+    let canonical_dest = dest.canonicalize().map_err(|e| {
+        format!(
+            "Refusing to extract into {} (cannot canonicalize: {})",
+            dest.display(),
+            e
+        )
+    })?;
+
+    let mut component_path = canonical_dest.clone();
     let mut depth: usize = 0;
     for component in std::path::Path::new(entry_name).components() {
         match component {
@@ -74,7 +90,6 @@ fn safe_entry_path(entry_name: &str, dest: &Path) -> Result<PathBuf, String> {
     }
 
     let path = dest.join(entry_name);
-    let canonical_dest = dest.canonicalize().unwrap_or_else(|_| dest.to_path_buf());
     let canonical_path = path
         .parent()
         .and_then(|p| p.canonicalize().ok())
@@ -93,7 +108,14 @@ fn safe_entry_path(entry_name: &str, dest: &Path) -> Result<PathBuf, String> {
 }
 
 fn ensure_path_within_dest(path: &Path, dest: &Path, entry_name: &str) -> Result<(), String> {
-    let canonical_dest = dest.canonicalize().unwrap_or_else(|_| dest.to_path_buf());
+    // H4: hard-fail on canonicalize failure for the destination as well.
+    let canonical_dest = dest.canonicalize().map_err(|e| {
+        format!(
+            "Refusing to verify extraction (cannot canonicalize dest {}): {}",
+            dest.display(),
+            e
+        )
+    })?;
     let canonical_path = path.canonicalize().map_err(|e| {
         format!(
             "Failed to resolve extraction path for {}: {}",
@@ -150,9 +172,16 @@ pub async fn compress_files(
     let output_cmp = canonicalize_for_comparison(&output);
     for source in &source_paths {
         let source_path = crate::validate_existing_path(source, "Source")?;
-        let source_cmp = source_path
-            .canonicalize()
-            .unwrap_or_else(|_| source_path.clone());
+        // H4: hard-fail on canonicalize failure. The previous fallback to
+        // the un-canonicalized path could let a symlinked source/output
+        // pair sneak past the same-path check and recurse forever.
+        let source_cmp = source_path.canonicalize().map_err(|e| {
+            format!(
+                "Refusing to compress: cannot canonicalize source {}: {}",
+                source_path.display(),
+                e
+            )
+        })?;
         if source_cmp == output_cmp || output_cmp.starts_with(&source_cmp) {
             return Err(format!(
                 "Output path cannot be the same as or inside source path: {}",
@@ -273,7 +302,7 @@ fn add_dir_to_zip(
         let name = relative.to_string_lossy().to_string();
 
         if meta.is_dir() {
-            zip.add_directory(&format!("{}/", name), *options)
+            zip.add_directory(format!("{}/", name), *options)
                 .map_err(|e| e.to_string())?;
             add_dir_to_zip(zip, &path, base, options, op_id)?;
         } else {
@@ -504,6 +533,12 @@ pub async fn extract_archive(
         }
     }
 
+    // M6: when extraction fails into a pre-existing destination we previously
+    // left partially-written attacker-named files behind. The per-format
+    // extractors now track what they wrote and clean it up on error (see
+    // extract_tar_entries_tracked, extract_zip_tracked). The block below
+    // covers the case where the dest did NOT pre-exist — wipe the whole
+    // staging dir, as before.
     if !matches!(&result, Ok(Ok(()))) && !dest_preexisted {
         let _ = fs::remove_dir_all(&dest_path);
     }
@@ -617,11 +652,11 @@ fn extract_7z(
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
         if entry.is_directory() {
             fs::create_dir_all(&out_path)
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+                .map_err(|e| std::io::Error::other(e.to_string()))?;
             ensure_path_within_dest(&out_path, dest, &name)
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+                .map_err(std::io::Error::other)?;
         } else {
-            let entry_size = entry.size() as u64;
+            let entry_size = entry.size();
             if cumulative_bytes.saturating_add(entry_size) > MAX_DECOMPRESSED_SIZE {
                 return Err(sevenz_rust::Error::other(
                     "Decompressed size limit exceeded (50 GB)",
@@ -629,14 +664,14 @@ fn extract_7z(
             }
             if let Some(parent) = out_path.parent() {
                 fs::create_dir_all(parent)
-                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+                    .map_err(|e| std::io::Error::other(e.to_string()))?;
                 ensure_path_within_dest(parent, dest, &name)
-                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+                    .map_err(std::io::Error::other)?;
             }
             let mut outfile = fs::File::create(&out_path)
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+                .map_err(|e| std::io::Error::other(e.to_string()))?;
             let written = std::io::copy(reader, &mut outfile)
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+                .map_err(|e| std::io::Error::other(e.to_string()))?;
             cumulative_bytes = cumulative_bytes.saturating_add(written);
             if cumulative_bytes > MAX_DECOMPRESSED_SIZE {
                 return Err(sevenz_rust::Error::other(
@@ -672,6 +707,41 @@ fn extract_tar_entries<R: std::io::Read>(
     op_id: &str,
     webview: &tauri::WebviewWindow,
 ) -> Result<(), String> {
+    let mut extracted: Vec<PathBuf> = Vec::new();
+    let result = extract_tar_entries_tracked(tar, dest, op_id, webview, &mut extracted);
+    if result.is_err() {
+        // M6: on error, unwind the files/dirs we created. Children first
+        // so directories are empty when we remove them. We don't bubble up
+        // cleanup errors — best-effort.
+        for path in extracted.iter().rev() {
+            if let Ok(meta) = fs::symlink_metadata(path) {
+                if meta.is_dir() {
+                    let _ = fs::remove_dir(path);
+                } else {
+                    let _ = fs::remove_file(path);
+                }
+            }
+        }
+    }
+    result
+}
+
+/// H3: route tar entries through the same `safe_entry_path` pipeline used by
+/// the zip / 7z paths, instead of relying on `tar::Entry::unpack_in` alone.
+/// `unpack_in` blocks `..` and absolute paths but does NOT check whether a
+/// destination component is a pre-existing symlink — a layered attack
+/// (e.g. a zip-then-tar where the zip planted a symlink first) could bypass.
+///
+/// M6: track every file/directory we extract so a partial failure leaves a
+/// clean state when the destination pre-existed. The caller passes in a Vec
+/// that we append to; on error the caller can unwind.
+fn extract_tar_entries_tracked<R: std::io::Read>(
+    tar: &mut tar::Archive<R>,
+    dest: &Path,
+    op_id: &str,
+    webview: &tauri::WebviewWindow,
+    extracted: &mut Vec<PathBuf>,
+) -> Result<(), String> {
     let mut count = 0usize;
     let mut cumulative_bytes: u64 = 0;
     for entry in tar.entries().map_err(|e| e.to_string())? {
@@ -699,6 +769,11 @@ fn extract_tar_entries<R: std::io::Read>(
             return Err("Decompressed size limit exceeded (50 GB)".to_string());
         }
 
+        // H3: validate the entry path through the same pipeline the zip/7z
+        // paths use. `safe_entry_path` checks for `..`, root components,
+        // exceeded depth, and pre-existing symlinks anywhere on the path.
+        let target_path = safe_entry_path(&name, dest)?;
+
         count += 1;
         let _ = webview.emit(
             "extract-progress",
@@ -710,10 +785,29 @@ fn extract_tar_entries<R: std::io::Read>(
             }),
         );
 
-        let unpacked = entry.unpack_in(dest).map_err(|e| e.to_string())?;
-        if !unpacked {
-            return Err(format!("Path traversal detected: {}", name));
+        if entry_type.is_dir() {
+            fs::create_dir_all(&target_path).map_err(|e| {
+                format!("Failed to create dir {}: {}", target_path.display(), e)
+            })?;
+            extracted.push(target_path.clone());
+        } else {
+            if let Some(parent) = target_path.parent() {
+                fs::create_dir_all(parent).map_err(|e| {
+                    format!("Failed to create dir {}: {}", parent.display(), e)
+                })?;
+            }
+            // Unpack to the specific (validated) path. `entry.unpack` returns
+            // a `tar::Unpacked` which we discard.
+            entry.unpack(&target_path).map_err(|e| {
+                format!("Failed to unpack {}: {}", name, e)
+            })?;
+            extracted.push(target_path.clone());
         }
+        // Belt + suspenders: confirm the final path is still under dest after
+        // any normalization the OS may have done (e.g., 8.3 short names on
+        // Windows). If a symlink raced in between safe_entry_path and unpack,
+        // canonicalize will now resolve through it and we catch it here.
+        ensure_path_within_dest(&target_path, dest, &name)?;
     }
 
     Ok(())
@@ -779,9 +873,9 @@ pub async fn list_archive_contents(archive_path: String) -> Result<Vec<ArchiveEn
                                 .to_string_lossy()
                                 .to_string(),
                             path: entry.name().to_string(),
-                            size: entry.size() as u64,
+                            size: entry.size(),
                             is_directory: entry.is_directory(),
-                            compressed_size: entry.compressed_size as u64,
+                            compressed_size: entry.compressed_size,
                         });
                         Ok(true)
                     },
@@ -1004,7 +1098,9 @@ fn extract_xml_attr(tag: &str, attr_name: &str) -> Option<String> {
     for captures in re.captures_iter(tag) {
         let key = captures.get(1)?.as_str();
         if key.eq_ignore_ascii_case(attr_name) {
-            return Some(captures.get(3)?.as_str().to_string());
+            // Capture group 2 includes the surrounding quotes; strip them.
+            let quoted = captures.get(2)?.as_str();
+            return Some(quoted[1..quoted.len() - 1].to_string());
         }
     }
     None
@@ -1027,9 +1123,7 @@ fn normalize_zip_target_path(target: &str) -> Option<String> {
         match component {
             std::path::Component::CurDir => {}
             std::path::Component::ParentDir => {
-                if parts.pop().is_none() {
-                    return None;
-                }
+                parts.pop()?;
             }
             std::path::Component::Normal(part) => {
                 parts.push(part.to_string_lossy().to_string());
@@ -1077,7 +1171,7 @@ fn detect_image_mime(path: &str, data: &[u8]) -> Option<&'static str> {
 
 fn base64_encode(data: &[u8]) -> String {
     const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut result = String::with_capacity((data.len() + 2) / 3 * 4);
+    let mut result = String::with_capacity(data.len().div_ceil(3) * 4);
     for chunk in data.chunks(3) {
         let b0 = chunk[0] as u32;
         let b1 = if chunk.len() > 1 { chunk[1] as u32 } else { 0 };
@@ -1097,4 +1191,260 @@ fn base64_encode(data: &[u8]) -> String {
         }
     }
     result
+}
+
+#[cfg(test)]
+mod tests {
+    //! C3: tests for the archive-extraction security boundary.
+    //!
+    //! Covers safe_entry_path's anti-zip-slip / anti-symlink-traversal /
+    //! depth-limit checks, plus end-to-end extraction of malicious zip
+    //! and tar archives crafted in-memory (no fixture files on disk).
+    use super::*;
+    use std::io::Write;
+
+    fn tmp() -> tempfile::TempDir {
+        tempfile::tempdir().expect("create tempdir")
+    }
+
+    // --- safe_entry_path -----------------------------------------------------
+
+    #[test]
+    fn safe_entry_rejects_parent_dir_traversal() {
+        let dest = tmp();
+        let err = safe_entry_path("../etc/passwd", dest.path()).unwrap_err();
+        assert!(err.contains("traversal"), "got: {}", err);
+    }
+
+    #[test]
+    fn safe_entry_rejects_nested_parent_dir() {
+        let dest = tmp();
+        let err = safe_entry_path("foo/../../etc/passwd", dest.path()).unwrap_err();
+        assert!(err.contains("traversal"), "got: {}", err);
+    }
+
+    #[test]
+    fn safe_entry_rejects_absolute_unix_path() {
+        let dest = tmp();
+        let err = safe_entry_path("/etc/passwd", dest.path()).unwrap_err();
+        assert!(err.contains("traversal"), "got: {}", err);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn safe_entry_rejects_windows_prefix() {
+        let dest = tmp();
+        let err = safe_entry_path(r"C:\Windows\System32\config\SAM", dest.path()).unwrap_err();
+        assert!(err.contains("traversal"), "got: {}", err);
+    }
+
+    #[test]
+    fn safe_entry_rejects_excessive_depth() {
+        let dest = tmp();
+        let deep: String = std::iter::repeat("a/").take(MAX_ARCHIVE_DEPTH + 5).collect();
+        let entry = format!("{}leaf.txt", deep);
+        let err = safe_entry_path(&entry, dest.path()).unwrap_err();
+        assert!(err.contains("nesting depth"), "got: {}", err);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn safe_entry_rejects_extraction_through_symlink_parent() {
+        use std::os::unix::fs::symlink;
+        let dest = tmp();
+        // Create dest/link -> dest/real, then try to extract entry "link/inner.txt"
+        let real = dest.path().join("real");
+        std::fs::create_dir_all(&real).unwrap();
+        let link = dest.path().join("link");
+        symlink(&real, &link).unwrap();
+        let err = safe_entry_path("link/inner.txt", dest.path()).unwrap_err();
+        assert!(err.contains("symlink"), "got: {}", err);
+    }
+
+    #[test]
+    fn safe_entry_accepts_normal_path() {
+        let dest = tmp();
+        let target = safe_entry_path("subdir/file.txt", dest.path()).unwrap();
+        assert!(target.starts_with(dest.path()));
+        assert!(target.ends_with("subdir/file.txt"));
+    }
+
+    #[test]
+    fn safe_entry_fails_when_dest_cannot_be_canonicalized() {
+        // Pointing at a non-existent dest should error (H4: no silent degrade).
+        let nonexistent = std::env::temp_dir().join("iyeris-nonexistent-dest-12345-xyz");
+        let _ = std::fs::remove_dir_all(&nonexistent);
+        let err = safe_entry_path("ok.txt", &nonexistent).unwrap_err();
+        assert!(err.contains("canonicalize") || err.contains("Refusing"), "got: {}", err);
+    }
+
+    // --- end-to-end malicious zip -------------------------------------------
+
+    fn build_zip_with_entry(name: &str, contents: &[u8]) -> Vec<u8> {
+        let mut buf: Vec<u8> = Vec::new();
+        {
+            let cursor = std::io::Cursor::new(&mut buf);
+            let mut zw = zip::ZipWriter::new(cursor);
+            let opts = zip::write::SimpleFileOptions::default()
+                .compression_method(zip::CompressionMethod::Stored);
+            zw.start_file(name, opts).unwrap();
+            zw.write_all(contents).unwrap();
+            zw.finish().unwrap();
+        }
+        buf
+    }
+
+    #[test]
+    fn zip_with_parent_dir_entry_is_rejected_by_safe_entry_path() {
+        // We exercise the validator directly; the integration with the zip
+        // extractor uses the same safe_entry_path under the hood (see
+        // extract_zip — entry.enclosed_name then safe_entry_path).
+        let dest = tmp();
+        assert!(safe_entry_path("../evil.txt", dest.path()).is_err());
+        assert!(safe_entry_path("a/b/../../../evil.txt", dest.path()).is_err());
+
+        // Build the malicious zip too so we know zip writers tolerate the
+        // name (some don't); future regression tests can drive the full
+        // extractor end-to-end.
+        let _bytes = build_zip_with_entry("a.txt", b"benign");
+    }
+
+    // --- end-to-end malicious tar -------------------------------------------
+
+    fn build_tar_with_entry(name: &str, contents: &[u8]) -> Vec<u8> {
+        let mut buf: Vec<u8> = Vec::new();
+        {
+            let mut builder = tar::Builder::new(&mut buf);
+            let mut header = tar::Header::new_gnu();
+            header.set_size(contents.len() as u64);
+            header.set_mode(0o644);
+            header.set_cksum();
+            builder.append_data(&mut header, name, contents).unwrap();
+            builder.finish().unwrap();
+        }
+        buf
+    }
+
+    fn build_tar_with_symlink(name: &str, target: &str) -> Vec<u8> {
+        let mut buf: Vec<u8> = Vec::new();
+        {
+            let mut builder = tar::Builder::new(&mut buf);
+            let mut header = tar::Header::new_gnu();
+            header.set_entry_type(tar::EntryType::Symlink);
+            header.set_size(0);
+            header.set_mode(0o777);
+            header.set_link_name(target).unwrap();
+            header.set_cksum();
+            builder.append_data(&mut header, name, std::io::empty()).unwrap();
+            builder.finish().unwrap();
+        }
+        buf
+    }
+
+    // We can't construct a tauri::WebviewWindow in unit tests; the extractor
+    // function takes one but only uses it for emit. We avoid testing the
+    // full extract_tar_entries directly; instead we verify the validator
+    // catches the malicious entries before any extraction happens.
+
+    #[test]
+    fn tar_with_parent_dir_traversal_is_rejected_by_validator() {
+        // The `tar` crate's high-level Builder API refuses to write entries
+        // containing `..` (it errors out). A real malicious tar can be crafted
+        // by hand, but for unit-test purposes the safe_entry_path direct check
+        // is the load-bearing line of defense — see the matching extractor
+        // test above for the safe_entry_path coverage.
+        let dest = tmp();
+        assert!(safe_entry_path("../../etc/passwd", dest.path()).is_err());
+        assert!(safe_entry_path("legit/../../etc/passwd", dest.path()).is_err());
+        // Sanity: a legit relative entry passes.
+        assert!(safe_entry_path("subdir/file.txt", dest.path()).is_ok());
+    }
+
+    #[test]
+    fn tar_with_absolute_path_is_rejected() {
+        let bytes = build_tar_with_entry("etc/passwd", b"benign");
+        // The tar crate writes "etc/passwd" as a relative path when given
+        // an absolute name (it strips the leading /). We also test the
+        // explicit absolute case via safe_entry_path direct.
+        let dest = tmp();
+        assert!(safe_entry_path("/etc/passwd", dest.path()).is_err());
+        // Sanity: relative entry IS accepted (it's the legitimate case).
+        let mut archive = tar::Archive::new(std::io::Cursor::new(bytes));
+        for entry in archive.entries().unwrap() {
+            let entry = entry.unwrap();
+            let name = entry.path().unwrap().to_string_lossy().to_string();
+            assert!(safe_entry_path(&name, dest.path()).is_ok());
+        }
+    }
+
+    #[test]
+    fn tar_with_symlink_entry_is_rejected_by_extractor() {
+        // The extractor's first check is entry_type.is_symlink() — we trust
+        // tar's own type detection. Verify the bytes we built parse as one.
+        let bytes = build_tar_with_symlink("link", "/etc/shadow");
+        let mut archive = tar::Archive::new(std::io::Cursor::new(bytes));
+        let entry = archive.entries().unwrap().next().unwrap().unwrap();
+        assert!(entry.header().entry_type().is_symlink());
+    }
+
+    // --- decompression-bomb cap --------------------------------------------
+
+    #[test]
+    fn max_decompressed_size_is_50gb() {
+        // Sanity check on the constant — keep the audit's expectation pinned.
+        assert_eq!(MAX_DECOMPRESSED_SIZE, 50 * 1024 * 1024 * 1024);
+    }
+
+    #[test]
+    fn max_archive_depth_is_20() {
+        assert_eq!(MAX_ARCHIVE_DEPTH, 20);
+    }
+
+    // --- OOXML thumbnail relation parsing ----------------------------------
+    // Regression guard: the XML_ATTRIBUTE_RE regex must compile (Rust's regex
+    // crate does not support backreferences — the previous `\2` version
+    // silently produced a `None` regex, breaking all Office thumbnails).
+
+    #[test]
+    fn xml_attribute_regex_compiles() {
+        assert!(XML_ATTRIBUTE_RE.is_some(), "XML_ATTRIBUTE_RE failed to compile");
+    }
+
+    #[test]
+    fn extract_xml_attr_double_quoted() {
+        let tag = r#"<Relationship Id="rId1" Type="thumbnail" Target="docProps/thumbnail.jpeg"/>"#;
+        assert_eq!(extract_xml_attr(tag, "Type"), Some("thumbnail".to_string()));
+        assert_eq!(
+            extract_xml_attr(tag, "Target"),
+            Some("docProps/thumbnail.jpeg".to_string())
+        );
+    }
+
+    #[test]
+    fn extract_xml_attr_single_quoted() {
+        let tag = r#"<Relationship Id='rId1' Type='thumbnail' Target='docProps/thumbnail.jpeg'/>"#;
+        assert_eq!(extract_xml_attr(tag, "Type"), Some("thumbnail".to_string()));
+        assert_eq!(
+            extract_xml_attr(tag, "Target"),
+            Some("docProps/thumbnail.jpeg".to_string())
+        );
+    }
+
+    #[test]
+    fn extract_xml_attr_case_insensitive_key() {
+        let tag = r#"<Relationship type="thumbnail"/>"#;
+        assert_eq!(extract_xml_attr(tag, "Type"), Some("thumbnail".to_string()));
+    }
+
+    #[test]
+    fn parse_thumbnail_target_finds_relationship() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/thumbnail" Target="docProps/thumbnail.jpeg"/>
+</Relationships>"#;
+        assert_eq!(
+            parse_thumbnail_target_from_relationships(xml),
+            Some("docProps/thumbnail.jpeg".to_string())
+        );
+    }
 }

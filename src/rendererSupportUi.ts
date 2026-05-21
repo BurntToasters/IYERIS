@@ -111,6 +111,7 @@ export function createSupportUiController(deps: SupportUiDeps) {
       const result = await window.tauriAPI.getLicenses();
 
       if (!result.success) {
+        // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
         licensesContent.innerHTML = `<p style="color: var(--error-color); text-align: center;">Error loading licenses: ${deps.escapeHtml(
           result.error || 'Unknown error'
         )}</p>`;
@@ -162,6 +163,7 @@ export function createSupportUiController(deps: SupportUiDeps) {
 
       licensesContent.innerHTML = html;
     } catch (error) {
+      // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
       licensesContent.innerHTML = `<p style="color: var(--error-color); text-align: center;">Error: ${deps.escapeHtml(
         deps.getErrorMessage(error)
       )}</p>`;

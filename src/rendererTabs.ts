@@ -270,6 +270,7 @@ export function createTabsController(deps: TabsDeps) {
         ? twemojiImg(String.fromCodePoint(0x1f3e0), 'twemoji')
         : '<img src="/twemoji/1f4c2.svg" class="twemoji" alt="📂" draggable="false" />';
 
+      // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
       tabElement.innerHTML = `
       <span class="tab-icon">
         ${tabIcon}

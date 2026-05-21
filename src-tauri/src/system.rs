@@ -1108,7 +1108,7 @@ pub fn export_diagnostics(app: tauri::AppHandle) -> Result<String, String> {
         },
         "settings": settings_summary,
     });
-    Ok(serde_json::to_string_pretty(&info).map_err(|e| e.to_string())?)
+    serde_json::to_string_pretty(&info).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -1340,9 +1340,30 @@ pub async fn open_file_with_app(file_path: String, app_id: String) -> Result<(),
         if !is_app_bundle {
             return Err("Selected application must be a .app bundle.".to_string());
         }
+        // M9: require the .app bundle to live under a trusted root. Without
+        // this, a planted /tmp/Evil.app could be picked from the "Open with"
+        // dialog and launched. macOS launch services normally surface only
+        // apps in these locations; this just enforces it.
+        let canonical_app = app_path
+            .canonicalize()
+            .map_err(|e| format!("Cannot resolve application path: {}", e))?;
+        let canonical_str = canonical_app.to_string_lossy();
+        let home = std::env::var("HOME").unwrap_or_default();
+        let allowed_roots: Vec<String> = vec![
+            "/Applications/".to_string(),
+            "/System/Applications/".to_string(),
+            "/System/Library/CoreServices/".to_string(),
+            format!("{}/Applications/", home),
+        ];
+        if !allowed_roots.iter().any(|root| canonical_str.starts_with(root)) {
+            return Err(
+                "Selected application must live under /Applications, /System/Applications, /System/Library/CoreServices, or ~/Applications."
+                    .to_string(),
+            );
+        }
         std::process::Command::new("open")
             .arg("-a")
-            .arg(app_path.as_os_str())
+            .arg(canonical_app.as_os_str())
             .arg(path.as_os_str())
             .spawn()
             .map_err(|e| e.to_string())?;
@@ -1459,6 +1480,30 @@ fn app_exe_string() -> Result<String, String> {
         .map(|path| path.to_string_lossy().to_string())
 }
 
+/// H1: reject the current exe path for native-integration installation if it
+/// contains shell metacharacters or quote characters. The installation writes
+/// the path verbatim into an AppleScript / Bash / Registry template, and a
+/// path containing `"`, `$`, `\\`, etc. would either break the template or
+/// (worse) make the registered entry a shell-injection primitive that fires
+/// on every right-click. Today the install path is a vendor-controlled
+/// .app / .exe / AppImage and never contains these characters, but if a
+/// future Tauri release ever generates one with weird path encoding we want
+/// to refuse rather than silently writing a broken/exploitable workflow.
+fn validate_native_integration_exe_path(exe: &str) -> Result<(), String> {
+    for ch in exe.chars() {
+        if matches!(
+            ch,
+            '"' | '$' | '`' | ';' | '|' | '&' | '<' | '>' | '\n' | '\r' | '\0'
+        ) {
+            return Err(format!(
+                "Refusing to install native integration: exe path contains shell metacharacter {:?}",
+                ch
+            ));
+        }
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn get_native_integration_status() -> Result<serde_json::Value, String> {
     #[cfg(target_os = "windows")]
@@ -1486,11 +1531,11 @@ pub async fn get_native_integration_status() -> Result<serde_json::Value, String
                     .exists()
             })
             .unwrap_or(false);
-        return Ok(serde_json::json!({
+        Ok(serde_json::json!({
             "supported": true,
             "installed": installed,
             "message": if installed { "Finder service installed" } else { "Finder service not installed" },
-        }));
+        }))
     }
 
     #[cfg(target_os = "linux")]
@@ -1524,6 +1569,7 @@ pub async fn get_native_integration_status() -> Result<serde_json::Value, String
 #[tauri::command]
 pub async fn install_native_integration() -> Result<(), String> {
     let exe = app_exe_string()?;
+    validate_native_integration_exe_path(&exe)?; // H1
 
     #[cfg(target_os = "windows")]
     {
@@ -1575,7 +1621,7 @@ pub async fn install_native_integration() -> Result<(), String> {
             ),
         )
         .map_err(|e| e.to_string())?;
-        return Ok(());
+        Ok(())
     }
 
     #[cfg(target_os = "linux")]
@@ -1642,7 +1688,7 @@ pub async fn uninstall_native_integration() -> Result<(), String> {
                 Path::new(&home).join("Library/Services/Open in IYERIS.workflow"),
             );
         }
-        return Ok(());
+        Ok(())
     }
 
     #[cfg(target_os = "linux")]

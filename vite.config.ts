@@ -31,7 +31,6 @@ export default defineConfig({
           ) {
             return "previews";
           }
-          if (id.includes("node_modules/fuse.js")) return "search";
           if (id.includes("node_modules/zod")) return "validation";
           return undefined;
         },

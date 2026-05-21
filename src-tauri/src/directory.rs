@@ -354,7 +354,7 @@ pub async fn get_directory_contents(
                 break;
             }
 
-            if loaded % 200 == 0 {
+            if loaded.is_multiple_of(200) {
                 let _ = webview.emit(
                     "directory-contents-progress",
                     serde_json::json!({
@@ -539,15 +539,14 @@ pub async fn get_drives() -> Result<Vec<DriveInfo>, String> {
     })
     .await
     .map_err(|e| e.to_string())
-    .map(|result| {
-        if let Ok(drives) = &result {
+    .inspect(|result| {
+        if let Ok(drives) = result {
             log::debug!(
                 "[Directory] get_drives completed: count={} elapsed={}ms",
                 drives.len(),
                 started_at.elapsed().as_millis()
             );
         }
-        result
     })?
 }
 
@@ -611,7 +610,7 @@ pub async fn get_disk_space(drive_path: String) -> Result<serde_json::Value, Str
     })
     .await
     .map_err(|e| e.to_string())
-    .map(|result| {
+    .inspect(|result| {
         if result.is_ok() {
             log::debug!(
                 "[Directory] get_disk_space completed in {}ms for {}",
@@ -619,7 +618,6 @@ pub async fn get_disk_space(drive_path: String) -> Result<serde_json::Value, Str
                 drive_path
             );
         }
-        result
     })?
 }
 
@@ -657,7 +655,7 @@ pub async fn calculate_folder_size(
                 if meta.is_file() {
                     total = total.saturating_add(meta.len());
                     file_count += 1;
-                    if file_count % 500 == 0 {
+                    if file_count.is_multiple_of(500) {
                         let _ = webview.emit(
                             "folder-size-progress",
                             serde_json::json!({

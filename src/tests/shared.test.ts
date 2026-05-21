@@ -10,6 +10,9 @@ import {
   assignKey,
   isRecord,
   sanitizeStringArray,
+  debounce,
+  notifyIpcFailure,
+  reportIpcError,
 } from '../shared';
 
 describe('escapeHtml', () => {
@@ -173,5 +176,68 @@ describe('shared utility helpers', () => {
   it('sanitizeStringArray keeps only string entries', () => {
     expect(sanitizeStringArray(['a', 1, 'b', null, 'c'])).toEqual(['a', 'b', 'c']);
     expect(sanitizeStringArray('not-array')).toEqual([]);
+  });
+});
+
+describe('debounce (L13)', () => {
+  it('only fires once for a burst of calls', () => {
+    vi.useFakeTimers();
+    const fn = vi.fn();
+    const d = debounce(fn, 100);
+    d(1);
+    d(2);
+    d(3);
+    expect(fn).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(150);
+    expect(fn).toHaveBeenCalledTimes(1);
+    expect(fn).toHaveBeenCalledWith(3);
+    vi.useRealTimers();
+  });
+
+  it('cancel() prevents the pending call', () => {
+    vi.useFakeTimers();
+    const fn = vi.fn();
+    const d = debounce(fn, 100);
+    d(1);
+    d.cancel();
+    vi.advanceTimersByTime(200);
+    expect(fn).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+});
+
+describe('notifyIpcFailure (L14)', () => {
+  it('uses result.error when present and non-empty', () => {
+    const toast = vi.fn();
+    notifyIpcFailure({ error: 'Permission denied' }, 'Failed to do thing', toast, 'Title');
+    expect(toast).toHaveBeenCalledWith('Permission denied', 'Title', 'error');
+  });
+
+  it('falls back when error is empty', () => {
+    const toast = vi.fn();
+    notifyIpcFailure({ error: '' }, 'Failed to do thing', toast, 'Title');
+    expect(toast).toHaveBeenCalledWith('Failed to do thing', 'Title', 'error');
+  });
+
+  it('falls back when error is null/missing', () => {
+    const toast = vi.fn();
+    notifyIpcFailure({}, 'Fallback', toast, 'Title');
+    expect(toast).toHaveBeenCalledWith('Fallback', 'Title', 'error');
+    notifyIpcFailure(null, 'Fallback', toast, 'Title');
+    expect(toast).toHaveBeenLastCalledWith('Fallback', 'Title', 'error');
+  });
+});
+
+describe('reportIpcError (L15)', () => {
+  it('formats context + error.message', () => {
+    const toast = vi.fn();
+    reportIpcError(new Error('disk full'), 'Save failed', toast, 'Settings');
+    expect(toast).toHaveBeenCalledWith('Save failed: disk full', 'Settings', 'error');
+  });
+
+  it('handles non-Error errors', () => {
+    const toast = vi.fn();
+    reportIpcError('plain string', 'Op failed', toast);
+    expect(toast).toHaveBeenCalledWith('Op failed: plain string', undefined, 'error');
   });
 });

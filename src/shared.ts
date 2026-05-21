@@ -67,6 +67,89 @@ export function ignoreError(error: unknown): void {
   }
 }
 
+/**
+ * L13: shared debounce helper. Six modules were rolling their own variant of
+ * "timer + setTimeout + clearTimeout"; this factor eliminates that.
+ *
+ * Returns a callable wrapper plus a `cancel()` method for tear-down.
+ */
+export interface DebouncedFn<Args extends unknown[]> {
+  (...args: Args): void;
+  cancel(): void;
+}
+
+export function debounce<Args extends unknown[]>(
+  fn: (...args: Args) => void,
+  ms: number
+): DebouncedFn<Args> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const wrapper = ((...args: Args) => {
+    if (timer !== null) clearTimeout(timer);
+    timer = setTimeout(() => {
+      timer = null;
+      fn(...args);
+    }, ms);
+  }) as DebouncedFn<Args>;
+  wrapper.cancel = () => {
+    if (timer !== null) {
+      clearTimeout(timer);
+      timer = null;
+    }
+  };
+  return wrapper;
+}
+
+/**
+ * L14: standard pattern for reporting an IPC failure to the user. The previous
+ * code had ~26 sites that wrote `showToast(result.error || 'fallback', 'Title', 'error')`;
+ * this helper consolidates the fallback logic so callers don't keep
+ * re-implementing it. Pass any IpcResult-like object plus a sensible fallback.
+ *
+ * showToast is renderer-only; this helper accepts it as a parameter so shared.ts
+ * stays free of renderer imports.
+ */
+type ToastFn = (message: string, title?: string, kind?: 'error' | 'info' | 'warn') => void;
+
+export function notifyIpcFailure(
+  result: { error?: string | null } | unknown,
+  fallback: string,
+  toast: ToastFn,
+  title?: string
+): void {
+  let message = fallback;
+  if (
+    result &&
+    typeof result === 'object' &&
+    'error' in result &&
+    typeof (result as { error?: unknown }).error === 'string'
+  ) {
+    const err = (result as { error: string }).error;
+    if (err.length > 0) message = err;
+  }
+  toast(message, title, 'error');
+  if (devModeEnabled) {
+    globalThis.console.debug('[IpcFailure]', { title, message, result });
+  }
+}
+
+/**
+ * L15: drop-in replacement for the most common ignoreError pattern when the
+ * error IS user-visible. Use this instead of ignoreError when the user should
+ * see the failure as a toast.
+ */
+export function reportIpcError(
+  error: unknown,
+  context: string,
+  toast: ToastFn,
+  title?: string
+): void {
+  const msg = getErrorMessage(error);
+  toast(`${context}: ${msg}`, title, 'error');
+  if (devModeEnabled) {
+    globalThis.console.warn(`[${context}]`, error);
+  }
+}
+
 export function assignKey<T extends object>(obj: T, key: keyof T, value: T[keyof T]): void {
   obj[key] = value;
 }
@@ -99,7 +182,36 @@ const DANGEROUS_TAGS = new Set([
   'MATH',
   'TEMPLATE',
   'APPLET',
+  'FRAME',
+  'FRAMESET',
+  'PORTAL',
+  'AUDIO',
+  'VIDEO',
+  'SOURCE',
+  'TRACK',
 ]);
+
+// Attributes that can carry JS or load arbitrary resources. Stripped unconditionally.
+const DANGEROUS_ATTRS = new Set([
+  'formaction',
+  'background',
+  'poster',
+  'srcset',
+  'imagesrcset',
+  'ping',
+  'sandbox',
+  'allow',
+  'allowfullscreen',
+  'csp',
+  'dirname',
+  'http-equiv',
+  'manifest',
+  'xmlns',
+  'contextmenu',
+]);
+
+// URL-bearing attributes — value is checked against the URL allowlists below.
+const URL_ATTRS = new Set(['href', 'src', 'action', 'cite', 'longdesc', 'data', 'usemap']);
 
 const SAFE_URL_PATTERN = /^(?:https?|mailto|#):/i;
 const SAFE_RESOURCE_URL_PATTERN = /^(?:https?:\/\/asset\.localhost\/)/i;
@@ -117,21 +229,35 @@ export function sanitizeMarkdownHtml(html: string): string {
       continue;
     }
     for (const attr of Array.from(el.attributes)) {
-      if (attr.name.startsWith('on') || attr.name === 'style') {
+      const lowered = attr.name.toLowerCase();
+      // Strip event handlers, inline style, and the dangerous attribute set.
+      if (lowered.startsWith('on') || lowered === 'style' || DANGEROUS_ATTRS.has(lowered)) {
         el.removeAttribute(attr.name);
-      } else if (attr.name === 'href' || attr.name === 'src' || attr.name === 'action') {
+        continue;
+      }
+      // Strip any namespaced attribute that resolves to a URL (xlink:href is the classic SVG-in-HTML XSS vector,
+      // but SVG should already be removed; defense in depth).
+      if (lowered.includes(':') && (lowered.endsWith(':href') || lowered.endsWith(':src'))) {
+        el.removeAttribute(attr.name);
+        continue;
+      }
+      if (URL_ATTRS.has(lowered)) {
         const val = attr.value.trim();
-        if (/^\s*javascript\s*:/i.test(val) || /^\s*data\s*:/i.test(val)) {
+        if (
+          /^\s*javascript\s*:/i.test(val) ||
+          /^\s*data\s*:/i.test(val) ||
+          /^\s*vbscript\s*:/i.test(val)
+        ) {
           el.removeAttribute(attr.name);
         } else if (
-          attr.name === 'href' &&
+          lowered === 'href' &&
           val &&
           !val.startsWith('#') &&
           !SAFE_URL_PATTERN.test(val)
         ) {
           el.removeAttribute(attr.name);
         } else if (
-          (attr.name === 'src' || attr.name === 'action') &&
+          lowered !== 'href' &&
           val &&
           (/^\s*\/\//.test(val) ||
             (HAS_SCHEME_PATTERN.test(val) && !SAFE_RESOURCE_URL_PATTERN.test(val)))

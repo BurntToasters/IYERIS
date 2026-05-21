@@ -405,6 +405,7 @@ export function createCommandPaletteController(deps: CommandPaletteDeps) {
       `;
       }
 
+      // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
       item.innerHTML = `
       <div class="command-palette-item-left">
         ${cmd.icon ? `<span class="command-palette-item-icon">${deps.twemojiImg(cmd.icon, 'twemoji command-palette-emoji')}</span>` : ''}

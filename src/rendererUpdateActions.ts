@@ -67,6 +67,7 @@ export function createUpdateActionsController(deps: UpdateActionsDeps) {
 
     const icon = downloadStatusVisible ? 0x1f441 : 0x1f50d;
     const label = downloadStatusVisible ? 'Hide Download Status' : 'Show Download Status';
+    // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
     toggleBtn.innerHTML = `${twemojiImg(String.fromCodePoint(icon), 'twemoji')} ${label}`;
     toggleBtn.setAttribute('aria-expanded', String(downloadStatusVisible));
   }
@@ -102,6 +103,7 @@ export function createUpdateActionsController(deps: UpdateActionsDeps) {
   function setCheckUpdatesButtonDefault(): void {
     const checkUpdatesBtn = getCheckUpdatesButton();
     if (!checkUpdatesBtn) return;
+    // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
     checkUpdatesBtn.innerHTML = `${twemojiImg(String.fromCodePoint(0x1f504), 'twemoji')} Check for Updates`;
     checkUpdatesBtn.classList.remove('primary');
     checkUpdatesBtn.disabled = false;
@@ -183,6 +185,7 @@ export function createUpdateActionsController(deps: UpdateActionsDeps) {
 
     let startedBackgroundDownload = false;
     const originalHTML = btn.innerHTML;
+    // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
     btn.innerHTML = `${twemojiImg(String.fromCodePoint(0x1f504), 'twemoji')} Checking...`;
     btn.disabled = true;
 
@@ -302,6 +305,7 @@ export function createUpdateActionsController(deps: UpdateActionsDeps) {
     if (checkUpdatesBtn) {
       checkUpdatesBtn.classList.remove('primary');
       checkUpdatesBtn.disabled = false;
+      // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
       checkUpdatesBtn.innerHTML = `${twemojiImg(String.fromCodePoint(0x2b07), 'twemoji')} Downloading...`;
     }
 
@@ -314,6 +318,7 @@ export function createUpdateActionsController(deps: UpdateActionsDeps) {
         `Downloading update: ${percent}% (${transferred} / ${total}) at ${speed}/s`
       );
       if (checkUpdatesBtn) {
+        // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
         checkUpdatesBtn.innerHTML = `${twemojiImg(String.fromCodePoint(0x2b07), 'twemoji')} Downloading ${percent}%`;
       }
     });
@@ -355,6 +360,7 @@ export function createUpdateActionsController(deps: UpdateActionsDeps) {
 
     const checkUpdatesBtn = getCheckUpdatesButton();
     if (checkUpdatesBtn) {
+      // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
       checkUpdatesBtn.innerHTML = `${twemojiImg(String.fromCodePoint(0x2705), 'twemoji')} Update Ready`;
       checkUpdatesBtn.classList.add('primary');
     }

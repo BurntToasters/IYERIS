@@ -1,6 +1,6 @@
 {
   "name": "iyeris",
-  "version": "2.2.0-beta.2",
+  "version": "2.2.0-beta.4",
   "private": true,
   "type": "module",
   "description": "A beautiful cross-platform file explorer built with Tauri, featuring a simple yet advanced modern design.",
@@ -11,7 +11,6 @@
     "@tauri-apps/plugin-notification": "^2.3.3",
     "@tauri-apps/plugin-process": "^2.0.0",
     "@tauri-apps/plugin-updater": "^2.10.0",
-    "fuse.js": "^7.1.0",
     "marked": "^18.0.2",
     "p-limit": "^7.2.0",
     "pdfjs-dist": "^5.4.624",
@@ -34,6 +33,9 @@
     "typescript-eslint": "^8.53.0",
     "vite": "^8.0.2",
     "vitest": "^4.0.16"
+  },
+  "overrides": {
+    "lodash": "4.17.21"
   },
   "engines": {
     "node": ">=22",
@@ -70,8 +72,8 @@
     "icons:normalize": "node scripts/normalize-iconsets.js",
     "wc": "npm run win-compiler:x64",
     "vi": "node scripts/vi.js",
-    "b": "git fetch && git switch beta && npm run vi",
-    "r": "git switch main && npm run vi && npm run gitprune:force",
+    "b": "git fetch origin && git reset --hard && git clean -fd && git switch -C beta origin/beta && git reset --hard origin/beta && git clean -fd && npm run vi",
+    "r": "git fetch origin && git reset --hard && git clean -fd && git switch -C main origin/main && git reset --hard origin/main && git clean -fd && npm run vi && npm run gitprune:force",
     "u": "npm update && cd ./src-tauri && cargo update && cd .. && npm run release:prepare && npm run format && npm run test:all",
     "win-compiler:x64": "powershell -NoProfile -ExecutionPolicy Bypass -NoExit -Command \"& 'C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\Common7\\Tools\\Launch-VsDevShell.ps1' -SkipAutomaticLocation\"",
     "win-compiler:arm64": "powershell -NoProfile -ExecutionPolicy Bypass -NoExit -Command \"& 'C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\Common7\\Tools\\Launch-VsDevShell.ps1' -SkipAutomaticLocation -Arch arm64 -HostArch amd64\"",

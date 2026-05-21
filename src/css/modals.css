@@ -104,7 +104,6 @@
   justify-content: center;
   z-index: var(--z-modal);
   animation: fadeIn 0.2s cubic-bezier(0.33, 1, 0.68, 1);
-  will-change: transform;
 }
 
 .modal {

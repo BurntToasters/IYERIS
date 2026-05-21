@@ -251,6 +251,7 @@ export function createBootstrapController(config: BootstrapConfig) {
 
         const checkUpdatesBtn = document.getElementById('check-updates-btn');
         if (checkUpdatesBtn) {
+          // eslint-disable-next-line no-restricted-syntax -- twemojiImg uses a hardcoded codepoint; text is static
           checkUpdatesBtn.innerHTML = `${twemojiImg(String.fromCodePoint(0x1f389), 'twemoji')} Update Available!`;
           checkUpdatesBtn.classList.add('primary');
         }

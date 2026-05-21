@@ -649,9 +649,7 @@ pub async fn undo_action() -> Result<UndoRedoState, String> {
             push_redo_action(UndoAction::Rename(data))?;
         }
         UndoAction::Move(data) => {
-            if let Err(err) = execute_move_undo(data.clone()) {
-                return Err(err);
-            }
+            execute_move_undo(data.clone())?;
             push_redo_action(UndoAction::Move(data))?;
         }
         UndoAction::Create(data) => match execute_create_undo(&data) {
