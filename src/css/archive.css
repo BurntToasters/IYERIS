@@ -16,7 +16,7 @@
   align-items: center;
   gap: 8px;
   padding: 6px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-small);
   font-size: 12px;
   transition: background 0.15s ease;
 }
@@ -57,12 +57,12 @@
   right: 20px;
   width: 350px;
   max-height: 400px;
-  background: var(--bg-secondary);
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-  border: 1px solid var(--separator);
-  border-radius: var(--radius-large);
-  box-shadow: var(--shadow-lg);
+  background: var(--chrome-surface-raised);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  border: 1px solid var(--native-divider);
+  border-radius: var(--radius-medium);
+  box-shadow: var(--native-elevation-2);
   z-index: var(--z-modal);
   overflow: hidden;
   animation: slideInFromRight 0.3s cubic-bezier(0.33, 1, 0.68, 1);
@@ -81,14 +81,14 @@
 
 .archive-operations-header {
   padding: 14px 16px;
-  border-bottom: 1px solid var(--separator);
+  border-bottom: 1px solid var(--native-divider);
   font-size: 14px;
   font-weight: 600;
   color: var(--text-primary);
   display: flex;
   align-items: center;
   gap: 8px;
-  background: var(--bg-primary);
+  background: color-mix(in srgb, var(--chrome-surface) 88%, transparent);
 }
 
 .archive-operations-list {
@@ -115,9 +115,9 @@
 }
 
 .archive-operation-item {
-  background: var(--bg-primary);
-  border: 1px solid var(--separator);
-  border-radius: var(--radius-medium);
+  background: color-mix(in srgb, var(--surface-1) 90%, transparent);
+  border: 1px solid var(--native-divider);
+  border-radius: var(--radius-small);
   padding: 12px;
   margin-bottom: 8px;
   animation: archive-operation-fade-in 0.2s cubic-bezier(0.33, 1, 0.68, 1);
@@ -172,18 +172,16 @@
 .archive-operation-cancel {
   background: color-mix(in srgb, var(--danger-color) 15%, transparent);
   border: 1px solid color-mix(in srgb, var(--danger-color) 30%, transparent);
-  border-radius: 6px;
+  border-radius: var(--radius-small);
   padding: 4px 10px;
   font-size: 11px;
   font-weight: 600;
-  color: #ff6b6b;
+  color: var(--danger-color);
   cursor: pointer;
   transition:
     background-color 0.15s ease,
     border-color 0.15s ease,
     color 0.15s ease,
-    box-shadow 0.15s ease,
-    transform 0.15s ease,
     opacity 0.15s ease;
   flex-shrink: 0;
 }
@@ -194,7 +192,7 @@
 }
 
 .archive-operation-cancel:active {
-  transform: scale(0.95);
+  background: color-mix(in srgb, var(--danger-color) 30%, transparent);
 }
 
 .archive-operation-file {
@@ -221,31 +219,7 @@
 
 .archive-progress-bar {
   height: 100%;
-  background: linear-gradient(
-    90deg,
-    var(--accent-color) 0%,
-    color-mix(in srgb, var(--accent-color) 70%, var(--accent-light) 30%) 33%,
-    color-mix(in srgb, var(--accent-color) 30%, var(--accent-light) 70%) 66%,
-    var(--accent-light) 100%
-  );
+  background: var(--accent-color);
   border-radius: 2px;
   transition: width 0.3s ease;
-  position: relative;
-  overflow: hidden;
-}
-
-.archive-progress-bar::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    color-mix(in srgb, var(--text-primary) 30%, transparent),
-    transparent
-  );
-  animation: progress-shimmer 1.5s infinite;
 }

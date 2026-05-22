@@ -31,8 +31,8 @@ body.theme-light {
   --glass-border: rgba(0, 0, 0, 0.08);
   --glass-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
   --text-primary: #1a1a1a;
-  --text-secondary: rgba(0, 0, 0, 0.8);
-  --text-tertiary: rgba(0, 0, 0, 0.7);
+  --text-secondary: rgba(0, 0, 0, 0.55);
+  --text-tertiary: rgba(0, 0, 0, 0.45);
   --text-on-accent: #ffffff;
   --accent-color: #0066b8;
   --accent-rgb: 0, 102, 184;
@@ -63,13 +63,6 @@ body.theme-light {
   --themed-icon-hue: 210deg;
 
   background-color: var(--bg-primary);
-  background-image: linear-gradient(180deg, rgba(0, 0, 0, 0.02), rgba(255, 255, 255, 0));
-}
-
-body.theme-light::before {
-  background:
-    radial-gradient(ellipse 120% 60% at 50% -20%, rgba(255, 255, 255, 0.6), transparent 60%),
-    radial-gradient(ellipse 120% 60% at 50% 120%, rgba(0, 0, 0, 0.04), transparent 60%);
 }
 
 body.theme-light .glass-panel {
@@ -108,8 +101,8 @@ body.theme-light .empty-action-btn {
 }
 
 body.theme-light .empty-action-btn:hover {
-  background: var(--accent-color);
-  border-color: var(--accent-color);
+  background: var(--hover-color);
+  border-color: rgba(0, 0, 0, 0.16);
   color: var(--text-primary);
 }
 
@@ -181,8 +174,8 @@ body.theme-light .toolbar-button:active:not(:disabled) {
 }
 
 body.theme-light .toolbar-group {
-  background: rgba(0, 0, 0, 0.03);
-  border-color: rgba(0, 0, 0, 0.08);
+  background: transparent;
+  border: none;
 }
 
 body.theme-light .view-options {
@@ -195,7 +188,7 @@ body.theme-light .view-option.active {
 }
 
 body.theme-light .list-header {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(245, 245, 245, 0.96));
+  background: rgba(245, 245, 247, 0.92);
   border-bottom: 1px solid rgba(0, 0, 0, 0.1);
 }
 

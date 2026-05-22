@@ -38,10 +38,9 @@
   align-items: center;
   gap: var(--toolbar-left-right-gap);
   min-height: var(--toolbar-group-height);
-  padding: 1px 4px;
-  border-radius: var(--radius-small);
-  background: color-mix(in srgb, var(--chrome-surface) 90%, transparent);
-  border: 1px solid var(--native-divider);
+  padding: 0;
+  background: transparent;
+  border: none;
 }
 
 .toolbar-divider {
@@ -129,7 +128,7 @@
 }
 
 body.platform-darwin .toolbar-button {
-  border-radius: 8px;
+  border-radius: 7px;
   transition: var(--transition-standard);
 }
 

@@ -109,6 +109,10 @@
   border-radius: 3px;
 }
 
+body.platform-darwin .preview-content:not(:hover)::-webkit-scrollbar-thumb {
+  background: transparent;
+}
+
 .preview-empty {
   display: flex;
   flex-direction: column;
@@ -132,7 +136,7 @@
 
 .preview-image {
   width: 100%;
-  border-radius: 8px;
+  border-radius: var(--radius-small);
   margin-bottom: 15px;
   object-fit: contain;
   max-height: 300px;
@@ -140,7 +144,7 @@
 
 .preview-text {
   background: color-mix(in srgb, var(--surface-2) 80%, transparent);
-  border-radius: 8px;
+  border-radius: var(--radius-small);
   padding: 15px;
   font-family: var(--font-mono);
   font-size: 12px;
@@ -168,7 +172,7 @@ pre.preview-text code.hljs {
 
 .preview-info {
   background: color-mix(in srgb, var(--surface-2) 85%, transparent);
-  border-radius: 8px;
+  border-radius: var(--radius-small);
   padding: 15px;
 }
 
@@ -204,7 +208,7 @@ pre.preview-text code.hljs {
 .preview-truncated {
   background: color-mix(in srgb, var(--warning-color) 10%, transparent);
   border: 1px solid color-mix(in srgb, var(--warning-color) 30%, transparent);
-  border-radius: 6px;
+  border-radius: var(--radius-small);
   padding: 8px 12px;
   margin-bottom: 15px;
   font-size: 12px;
@@ -215,7 +219,7 @@ pre.preview-text code.hljs {
 .preview-error {
   background: rgba(217, 115, 115, 0.1);
   border: 1px solid var(--danger-color);
-  border-radius: 6px;
+  border-radius: var(--radius-small);
   padding: 15px;
   margin-bottom: 15px;
   font-size: 13px;
@@ -245,8 +249,8 @@ pre.preview-text code.hljs {
   gap: 15px;
   padding: 30px;
   text-align: center;
-  background: linear-gradient(135deg, rgba(40, 40, 50, 0.6) 0%, rgba(30, 30, 40, 0.8) 100%);
-  border-radius: 12px;
+  background: var(--surface-2);
+  border-radius: var(--radius-medium);
   margin-bottom: 15px;
 }
 
@@ -274,7 +278,7 @@ pre.preview-text code.hljs {
 .preview-video {
   max-width: 100%;
   max-height: 60vh;
-  border-radius: 8px;
+  border-radius: var(--radius-small);
   background: #000;
 }
 
@@ -408,7 +412,7 @@ body.preview-bottom .preview-content {
 .preview-markdown pre {
   background: var(--surface-2);
   border: 1px solid var(--separator);
-  border-radius: 6px;
+  border-radius: var(--radius-small);
   padding: 10px 12px;
   overflow-x: auto;
   margin: 10px 0;
@@ -440,7 +444,7 @@ body.preview-bottom .preview-content {
 
 .preview-markdown img {
   max-width: 100%;
-  border-radius: 6px;
+  border-radius: var(--radius-small);
 }
 
 .preview-markdown table {

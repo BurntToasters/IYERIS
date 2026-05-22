@@ -9,8 +9,8 @@
   --glass-border: rgba(255, 255, 255, 0.16);
   --glass-shadow: 0 10px 30px rgba(0, 0, 0, 0.18), 0 1px 0 rgba(255, 255, 255, 0.05);
   --text-primary: rgba(255, 255, 255, 0.96);
-  --text-secondary: rgba(255, 255, 255, 0.8);
-  --text-tertiary: rgba(255, 255, 255, 0.75);
+  --text-secondary: rgba(255, 255, 255, 0.55);
+  --text-tertiary: rgba(255, 255, 255, 0.42);
   --text-on-accent: #ffffff;
   --accent-color: #0a84ff;
   --accent-rgb: 10, 132, 255;
@@ -44,14 +44,14 @@
   --native-elevation-2: 0 1px 0 rgba(255, 255, 255, 0.06), 0 18px 42px rgba(0, 0, 0, 0.24);
   --native-divider: color-mix(in srgb, var(--text-primary) 12%, transparent);
 
-  --focus-ring: 0 0 0 2px rgba(var(--accent-rgb), 0.5);
-  --focus-ring-strong: 0 0 0 3px rgba(var(--accent-rgb), 0.6);
+  --focus-ring: 0 0 0 3px rgba(var(--accent-rgb), 0.32);
+  --focus-ring-strong: 0 0 0 4px rgba(var(--accent-rgb), 0.42);
   --glass-modal-bg: rgba(28, 28, 28, 0.98);
   --glass-modal-border: rgba(255, 255, 255, 0.14);
   --bg-primary: #181818;
   --bg-primary-rgb: 24, 24, 24;
-  --bg-secondary: #212121;
-  --dropdown-bg: rgba(34, 34, 34, 0.98);
+  --bg-secondary: #252525;
+  --dropdown-bg: rgba(38, 38, 38, 0.98);
   --separator: rgba(255, 255, 255, 0.1);
   --surface-border: color-mix(in srgb, var(--text-primary) 12%, transparent);
   --surface-border-strong: color-mix(in srgb, var(--text-primary) 18%, transparent);
@@ -201,12 +201,16 @@
 }
 
 body.platform-darwin {
-  --animation-duration: 180ms;
-  --animation-easing: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --animation-duration: 220ms;
+  --animation-easing: cubic-bezier(0.22, 1, 0.36, 1);
   --scrollbar-width: 8px;
   --scrollbar-thumb-radius: 999px;
-  --radius-small: 8px;
-  --radius-medium: 12px;
+  --radius-small: 6px;
+  --radius-medium: 10px;
+  --titlebar-height: 32px;
+}
+
+body.platform-darwin.tabs-enabled {
   --titlebar-height: 38px;
 }
 
