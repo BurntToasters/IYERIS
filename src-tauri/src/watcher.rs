@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 
 pub struct DirectoryWatcher {
     _watcher: notify::RecommendedWatcher,
@@ -109,6 +109,7 @@ pub fn watch_directory(
         .map_err(|e| e.to_string())?;
 
     let watch_path = path.clone();
+    let thread_window_label = window_label.clone();
     log::debug!("[Watcher] Started watcher thread for {}", path_display);
 
     // Acquire the watcher map lock BEFORE spawning the thread so that
@@ -167,6 +168,21 @@ pub fn watch_directory(
                             }),
                         ) {
                             log::warn!("[Watcher] Failed to emit watched-dir-removed: {}", e);
+                        }
+                        // Drop our own map entry so the now-defunct watcher
+                        // doesn't keep an OS handle on the deleted directory.
+                        // Guard on _path so we never evict a watcher that a
+                        // concurrent watch_directory call may have replaced us with.
+                        if let Some(state) = app.try_state::<crate::AppState>() {
+                            if let Ok(mut watchers) = state.watchers.lock() {
+                                if watchers
+                                    .get(&thread_window_label)
+                                    .map(|existing| existing._path == watch_path)
+                                    .unwrap_or(false)
+                                {
+                                    watchers.remove(&thread_window_label);
+                                }
+                            }
                         }
                         break;
                     }

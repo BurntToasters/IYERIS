@@ -1573,7 +1573,16 @@ pub async fn install_native_integration() -> Result<(), String> {
 
     #[cfg(target_os = "windows")]
     {
-        let command = format!("\"{}\" \"%1\"", exe.replace('\\', "\\\\"));
+        // The exe path is passed verbatim — `reg add /d` stores its argument
+        // literally and does NOT unescape backslashes, so any escaping here
+        // (e.g. doubling `\`) ends up stored in the registry and produces a
+        // broken `C:\\Users\\...` command that Explorer cannot resolve. H1
+        // already guarantees the path contains no shell metacharacters or
+        // quote chars, so it is safe to embed as-is inside the surrounding
+        // double quotes.
+        let command = format!("\"{}\" \"%1\"", exe);
+        // Per-verb icon: show the app's own icon next to the menu entry.
+        let icon = format!("\"{}\",0", exe);
         let pairs = [
             (r"HKCU\Software\Classes\*\shell\IYERIS", "Open in IYERIS"),
             (
@@ -1581,24 +1590,26 @@ pub async fn install_native_integration() -> Result<(), String> {
                 "Open in IYERIS",
             ),
         ];
+
+        fn run_reg(args: &[&str]) -> Result<(), String> {
+            let status = Command::new("reg")
+                .args(args)
+                .creation_flags(0x08000000)
+                .status()
+                .map_err(|e| format!("Failed to run reg: {}", e))?;
+            if !status.success() {
+                return Err(format!(
+                    "reg exited with status {} while writing context-menu entry",
+                    status.code().unwrap_or(-1)
+                ));
+            }
+            Ok(())
+        }
+
         for (key, label) in pairs {
-            Command::new("reg")
-                .args(["add", key, "/ve", "/d", label, "/f"])
-                .creation_flags(0x08000000)
-                .status()
-                .map_err(|e| e.to_string())?;
-            Command::new("reg")
-                .args([
-                    "add",
-                    &format!(r"{}\command", key),
-                    "/ve",
-                    "/d",
-                    &command,
-                    "/f",
-                ])
-                .creation_flags(0x08000000)
-                .status()
-                .map_err(|e| e.to_string())?;
+            run_reg(&["add", key, "/ve", "/d", label, "/f"])?;
+            run_reg(&["add", key, "/v", "Icon", "/d", &icon, "/f"])?;
+            run_reg(&["add", &format!(r"{}\command", key), "/ve", "/d", &command, "/f"])?;
         }
         Ok(())
     }
@@ -1629,14 +1640,27 @@ pub async fn install_native_integration() -> Result<(), String> {
         let home = std::env::var("HOME").map_err(|_| "HOME is not set".to_string())?;
         let service_dir = Path::new(&home).join(".local/share/kio/servicemenus");
         fs::create_dir_all(&service_dir).map_err(|e| e.to_string())?;
+        let service_file = service_dir.join("iyeris-open.desktop");
+        // Use `ServiceTypes=` (the current KDE key) rather than the legacy
+        // `X-KDE-ServiceTypes=`, which newer Plasma (5.85+/6) does not honor.
         fs::write(
-            service_dir.join("iyeris-open.desktop"),
+            &service_file,
             format!(
-                "[Desktop Entry]\nType=Service\nMimeType=all/all;inode/directory;\nActions=openInIyeris;openParentInIyeris;\nX-KDE-ServiceTypes=KonqPopupMenu/Plugin\n\n[Desktop Action openInIyeris]\nName=Open in IYERIS\nExec=\"{}\" %f\n\n[Desktop Action openParentInIyeris]\nName=Open Parent in IYERIS\nExec=sh -c '\"{}\" \"$(dirname \"$1\")\"' -- %f\n",
+                "[Desktop Entry]\nType=Service\nMimeType=all/all;inode/directory;\nActions=openInIyeris;openParentInIyeris;\nServiceTypes=KonqPopupMenu/Plugin\n\n[Desktop Action openInIyeris]\nName=Open in IYERIS\nExec=\"{}\" %f\n\n[Desktop Action openParentInIyeris]\nName=Open Parent in IYERIS\nExec=sh -c '\"{}\" \"$(dirname \"$1\")\"' -- %f\n",
                 exe, exe
             ),
         )
         .map_err(|e| e.to_string())?;
+        // KDE Plasma 5.85+ / 6 only loads servicemenus from this non-standard
+        // user location if the .desktop file is marked executable; without this
+        // the entry is silently ignored. (The nautilus script below is chmod'd
+        // for the same reason.)
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&service_file, fs::Permissions::from_mode(0o755))
+                .map_err(|e| e.to_string())?;
+        }
 
         let nautilus_dir = Path::new(&home).join(".local/share/nautilus/scripts");
         fs::create_dir_all(&nautilus_dir).map_err(|e| e.to_string())?;
