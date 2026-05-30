@@ -70,7 +70,6 @@ body.theme-light {
   background-image: none;
 }
 
-
 .glass-panel,
 body.theme-light .glass-panel {
   background: var(--chrome-surface);
@@ -858,7 +857,9 @@ body.platform-darwin .context-submenu {
   backdrop-filter: blur(32px) saturate(160%);
   -webkit-backdrop-filter: blur(32px) saturate(160%);
   border: 1px solid var(--native-divider);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28), 0 1px 0 rgba(255, 255, 255, 0.06);
+  box-shadow:
+    0 8px 24px rgba(0, 0, 0, 0.28),
+    0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
 body.platform-darwin .context-menu-item {

@@ -498,7 +498,9 @@
   min-width: 360px;
   max-width: 480px;
   border-radius: 14px;
-  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.32), 0 0 0 0.5px rgba(255, 255, 255, 0.06);
+  box-shadow:
+    0 24px 48px rgba(0, 0, 0, 0.32),
+    0 0 0 0.5px rgba(255, 255, 255, 0.06);
 }
 
 .dialog-modal {

@@ -421,7 +421,6 @@ body:not(.show-file-checkboxes) .file-checkbox {
   font-weight: 400;
 }
 
-
 .file-item.renaming .file-name {
   display: none;
 }
@@ -480,7 +479,8 @@ body:not(.show-file-checkboxes) .file-checkbox {
   min-height: var(--list-item-min-height);
 }
 
-.file-grid.list-view .file-item:nth-child(even of :not(.file-item-hidden)):not(.selected):not(:hover) {
+.file-grid.list-view
+  .file-item:nth-child(even of :not(.file-item-hidden)):not(.selected):not(:hover) {
   background: color-mix(in srgb, var(--text-primary) 2.5%, transparent);
 }
 

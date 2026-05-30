@@ -38,6 +38,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: ${{ env.RUST_VERSION }}
+          components: clippy
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
@@ -63,6 +64,24 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Typecheck (app + tests)
+        run: |
+          npm run typecheck
+          npm run typecheck:test
+
+      - name: Lint
+        # lint:prod is app source with --max-warnings 0 (strict). Test files
+        # use innerHTML with static fixtures, which trips the XSS guard rule;
+        # those are reviewed and intentionally excluded from the strict gate.
+        run: npm run lint:prod
+
+      - name: Clippy
+        # -D warnings fails on any clippy lint or rustc warning, except the
+        # deliberate unsafe_code markers (crate sets unsafe_code = "warn" to
+        # self-document justified FFI/env blocks; those should not fail CI).
+        run: cargo clippy --all-targets -- -D warnings -A unsafe_code
+        working-directory: src-tauri
 
       - name: Run test suite and formatting checks
         run: npm run test:all

@@ -1514,11 +1514,11 @@ pub async fn get_native_integration_status() -> Result<serde_json::Value, String
             .output()
             .map(|out| out.status.success())
             .unwrap_or(false);
-        return Ok(serde_json::json!({
+        Ok(serde_json::json!({
             "supported": true,
             "installed": installed,
             "message": if installed { "Windows context menu entries installed" } else { "Windows context menu entries not installed" },
-        }));
+        }))
     }
 
     #[cfg(target_os = "macos")]
@@ -1600,7 +1600,7 @@ pub async fn install_native_integration() -> Result<(), String> {
                 .status()
                 .map_err(|e| e.to_string())?;
         }
-        return Ok(());
+        Ok(())
     }
 
     #[cfg(target_os = "macos")]
@@ -1678,7 +1678,7 @@ pub async fn uninstall_native_integration() -> Result<(), String> {
                 .creation_flags(0x08000000)
                 .status();
         }
-        return Ok(());
+        Ok(())
     }
 
     #[cfg(target_os = "macos")]

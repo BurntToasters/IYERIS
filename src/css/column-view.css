@@ -102,7 +102,7 @@ body.platform-darwin .column-pane:not(:hover)::-webkit-scrollbar-thumb {
 }
 
 .column-item.expanded {
-  background: rgba(var(--accent-rgb), 0.10);
+  background: rgba(var(--accent-rgb), 0.1);
 }
 
 .column-item.drag-over {
