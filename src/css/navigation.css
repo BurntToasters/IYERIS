@@ -101,8 +101,7 @@
 }
 
 #address-input::selection {
-  background: var(--accent-color);
-  color: var(--text-primary);
+  background: rgba(var(--accent-rgb), 0.35);
 }
 
 .breadcrumb-item:focus-visible,

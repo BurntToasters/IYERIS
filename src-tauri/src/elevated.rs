@@ -8,10 +8,7 @@ fn ps_escape(s: &str) -> String {
     if s.contains('\0') || s.contains('\n') || s.contains('\r') {
         log::warn!("[Elevated] ps_escape: path contains null/newline characters");
     }
-    s.replace('\'', "''")
-        .replace('\0', "")
-        .replace('\n', "")
-        .replace('\r', "")
+    s.replace('\'', "''").replace(['\0', '\n', '\r'], "")
 }
 
 /// Escape a string for safe embedding in a POSIX shell single-quoted context.
@@ -306,7 +303,6 @@ async fn run_elevated_file_op(op: &str, source: &str, dest: Option<&str>) -> Res
             let script_path = create_temp_script("ps1", &script)?;
 
             let output = {
-                #[allow(unsafe_code)]
                 use std::os::windows::process::CommandExt;
                 let result = Command::new("powershell")
                     .args([
@@ -520,7 +516,6 @@ async fn run_elevated_batch_op(
             let script_path = create_temp_script("ps1", &script)?;
 
             let output = {
-                #[allow(unsafe_code)]
                 use std::os::windows::process::CommandExt;
                 let result = Command::new("powershell")
                     .args([

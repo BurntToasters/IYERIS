@@ -1,12 +1,12 @@
 .command-palette-modal {
-  max-width: 640px;
+  max-width: 620px;
   width: 90%;
-  max-height: 500px;
+  max-height: 480px;
   display: flex;
   flex-direction: column;
   padding: 0;
-  margin-top: 15vh;
-  animation: commandPaletteSlideIn 0.2s var(--animation-easing);
+  margin-top: 22vh;
+  animation: commandPaletteSlideIn 0.22s var(--animation-easing);
 }
 
 .command-palette-header {
@@ -88,26 +88,21 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--spacing-xxl);
-  padding: var(--spacing-lg) var(--spacing-xxl);
+  padding: 5px var(--spacing-xxl);
   border-radius: var(--radius-small);
   cursor: pointer;
-  transition:
-    background-color 0.15s var(--animation-easing),
-    border-color 0.15s var(--animation-easing),
-    color 0.15s var(--animation-easing),
-    box-shadow 0.15s var(--animation-easing),
-    transform 0.15s var(--animation-easing),
-    opacity 0.15s var(--animation-easing);
+  transition: background-color 0.12s var(--animation-easing);
   background: transparent;
+  min-height: 36px;
 }
 
 .command-palette-item:hover,
 .command-palette-item.focused {
-  background: rgba(var(--accent-rgb), 0.12);
+  background: var(--interactive-hover);
 }
 
 .command-palette-item.focused {
-  box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), 0.3);
+  background: rgba(var(--accent-rgb), 0.13);
 }
 
 .command-palette-item-left {

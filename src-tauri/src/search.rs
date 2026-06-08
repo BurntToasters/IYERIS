@@ -292,7 +292,10 @@ pub async fn search_files_content(
         if query.len() > 1024 {
             return Err("Regex pattern too long (max 1024 characters)".to_string());
         }
-        Some(regex::Regex::new(&query).map_err(|e| format!("Invalid regex: {}", e))?)
+        // Route user-supplied regex through build_safe_regex so the same
+        // size/dfa ReDoS caps apply here as in search_files and the literal
+        // content path. Previously this used a bare Regex::new with no limits.
+        Some(build_safe_regex(&query, false)?)
     } else {
         Some(
             build_safe_regex(&regex::escape(&query), true)

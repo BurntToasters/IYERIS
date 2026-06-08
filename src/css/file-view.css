@@ -50,7 +50,7 @@ body.platform-darwin .file-view::-webkit-scrollbar-thumb {
   pointer-events: none;
   z-index: var(--z-toolbar);
   display: none;
-  border-radius: 2px;
+  border-radius: var(--radius-small);
 }
 
 .selection-rect.active {
@@ -67,7 +67,7 @@ body.platform-win32 .file-view::-webkit-scrollbar {
 
 body.platform-win32 .file-view::-webkit-scrollbar-thumb {
   background: var(--scrollbar-thumb-bg);
-  border-radius: 0;
+  border-radius: var(--scrollbar-thumb-radius);
   border: 3px solid transparent;
   background-clip: padding-box;
 }
@@ -103,11 +103,7 @@ body.platform-linux .file-view {
   position: sticky;
   top: 0;
   z-index: 5;
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--surface-0) 96%, transparent),
-    color-mix(in srgb, var(--surface-0) 88%, transparent)
-  );
+  background: var(--surface-0);
   border-bottom: 1px solid var(--panel-border);
   font-size: 11px;
   text-transform: none;

@@ -1512,7 +1512,7 @@ pub async fn resolve_shortcut(shortcut_path: String) -> Result<String, String> {
         if target.is_empty() {
             return Err("Shortcut target path is empty.".to_string());
         }
-        return Ok(target);
+        Ok(target)
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -1899,7 +1899,7 @@ fn get_windows_system_clipboard_text_paths() -> Vec<String> {
                 Err(_) => return Vec::new(),
             };
 
-            let hglobal = std::mem::transmute::<_, HGLOBAL>(handle.0);
+            let hglobal = HGLOBAL(handle.0);
             let ptr = GlobalLock(hglobal);
             if ptr.is_null() {
                 return Vec::new();
@@ -1988,7 +1988,7 @@ fn get_system_clipboard_files_internal() -> Vec<String> {
         if !files.is_empty() {
             return files;
         }
-        return get_windows_system_clipboard_text_paths();
+        get_windows_system_clipboard_text_paths()
     }
 
     #[cfg(target_os = "macos")]
@@ -2074,7 +2074,7 @@ pub fn write_to_system_clipboard(text: String) -> Result<(), String> {
     );
     #[cfg(target_os = "windows")]
     {
-        return write_windows_system_clipboard_text(&text);
+        write_windows_system_clipboard_text(&text)
     }
 
     #[cfg(target_os = "macos")]

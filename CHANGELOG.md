@@ -7,10 +7,10 @@
 
 | <img height="20" src="https://github.com/user-attachments/assets/340d360e-79b1-4c70-bfab-d944085f75df" /> Windows                                                                                                  | <img height="20" src="https://github.com/user-attachments/assets/42d7e887-4616-4e8c-b1d3-e44e01340f8c" /> macOS         | <img height="20" src="https://github.com/user-attachments/assets/e0cc4f33-4516-408b-9c5c-be71a3ac316b" /> Linux                                                                                                                                 |
 | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **EXE:** [x64](https://github.com/BurntToasters/IYERIS/releases/download/v2.2.0-beta.4/IYERIS-Win-x64.exe) / [arm64](https://github.com/BurntToasters/IYERIS/releases/download/v2.2.0-beta.4/IYERIS-Win-arm64.exe) | **[Universal DMG](https://github.com/BurntToasters/IYERIS/releases/download/v2.2.0-beta.4/IYERIS-MacOS-universal.dmg)** | **AppImage:** [x64](https://github.com/BurntToasters/IYERIS/releases/download/v2.2.0-beta.4/IYERIS-Linux-x86_64.AppImage) <!--/ [arm64](https://github.com/BurntToasters/IYERIS/releases/download/v2.2.0-beta.4/IYERIS-Linux-arm64.AppImage)--> |
-| <div align="center"><a href="https://apps.microsoft.com/detail/9pkgd6lkcl5j?referrer=appbadge&mode=full"><img src="https://get.microsoft.com/images/en-us%20light.svg" width="150"/></a></div>                     | **[Universal ZIP](https://github.com/BurntToasters/IYERIS/releases/download/v2.2.0-beta.4/IYERIS-MacOS-universal.zip)** | **DEB:** [x64](https://github.com/BurntToasters/IYERIS/releases/download/v2.2.0-beta.4/IYERIS-Linux-amd64.deb) <!--/ [arm64](https://github.com/BurntToasters/IYERIS/releases/download/v2.2.0-beta.4/IYERIS-Linux-arm64.deb)-->                 |
-| _See MSI note below_                                                                                                                                                                                               |                                                                                                                         | **RPM:** [x64](https://github.com/BurntToasters/IYERIS/releases/download/v2.2.0-beta.4/IYERIS-Linux-x86_64.rpm) <!--/ [arm64](https://github.com/BurntToasters/IYERIS/releases/download/v2.2.0-beta.4/IYERIS-Linux-aarch64.rpm)-->              |
-|                                                                                                                                                                                                                    |                                                                                                                         | **Flatpak:** [x64](https://github.com/BurntToasters/IYERIS/releases/download/v2.2.0-beta.4/IYERIS-Linux-x86_64.flatpak) <!--/ [arm64](https://github.com/BurntToasters/IYERIS/releases/download/v2.2.0-beta.4/IYERIS-Linux-aarch64.flatpak)-->  |
+| **EXE:** [x64](https://github.com/BurntToasters/IYERIS/releases/download/v2.2.0-beta.5/IYERIS-Win-x64.exe) / [arm64](https://github.com/BurntToasters/IYERIS/releases/download/v2.2.0-beta.5/IYERIS-Win-arm64.exe) | **[Universal DMG](https://github.com/BurntToasters/IYERIS/releases/download/v2.2.0-beta.5/IYERIS-MacOS-universal.dmg)** | **AppImage:** [x64](https://github.com/BurntToasters/IYERIS/releases/download/v2.2.0-beta.5/IYERIS-Linux-x86_64.AppImage) <!--/ [arm64](https://github.com/BurntToasters/IYERIS/releases/download/v2.2.0-beta.5/IYERIS-Linux-arm64.AppImage)--> |
+| <div align="center"><a href="https://apps.microsoft.com/detail/9pkgd6lkcl5j?referrer=appbadge&mode=full"><img src="https://get.microsoft.com/images/en-us%20light.svg" width="150"/></a></div>                     | **[Universal ZIP](https://github.com/BurntToasters/IYERIS/releases/download/v2.2.0-beta.5/IYERIS-MacOS-universal.zip)** | **DEB:** [x64](https://github.com/BurntToasters/IYERIS/releases/download/v2.2.0-beta.5/IYERIS-Linux-amd64.deb) <!--/ [arm64](https://github.com/BurntToasters/IYERIS/releases/download/v2.2.0-beta.5/IYERIS-Linux-arm64.deb)-->                 |
+| _See MSI note below_                                                                                                                                                                                               |                                                                                                                         | **RPM:** [x64](https://github.com/BurntToasters/IYERIS/releases/download/v2.2.0-beta.5/IYERIS-Linux-x86_64.rpm) <!--/ [arm64](https://github.com/BurntToasters/IYERIS/releases/download/v2.2.0-beta.5/IYERIS-Linux-aarch64.rpm)-->              |
+|                                                                                                                                                                                                                    |                                                                                                                         | **Flatpak:** [x64](https://github.com/BurntToasters/IYERIS/releases/download/v2.2.0-beta.5/IYERIS-Linux-x86_64.flatpak) <!--/ [arm64](https://github.com/BurntToasters/IYERIS/releases/download/v2.2.0-beta.5/IYERIS-Linux-aarch64.flatpak)-->  |
 
 ### ℹ️ Enjoying IYERIS? Consider [❤️ Supporting Me! ❤️](https://rosie.run/support)
 
@@ -51,6 +51,17 @@ One thing I wanted to make work for the initial V2 release isn't possible right 
 
 ### Please checkout the readme for more info on IYERIS!
 
+## Changes in `v2.2.0-beta.5 [RC]:`
+
+- **UI: Multiple Fixes**
+  - Fixed issues with color contrast with WebView2 (Windows).
+  - Fixed an issue where the main sidebar and the settings sidebar did not have rounded padding.
+  - Removed dead UI code.
+  - More improvements to the UI including more "Liquid Glass" fixes.
+- **Codebase:** More stabilization to the codebase.
+- **Open In IYERIS:** Fixed multiple stability issues with the opt-in open in IYERIS setting.
+- **PKG:** Updated packages.
+
 ## Changes in `v2.2.0-beta.4:`
 
 - **Security:** Completed a full pre-release security audit pass. Tightened Tauri capability scoping, asset-scope deny lists for sensitive paths, and CSP directives.
@@ -69,7 +80,7 @@ One thing I wanted to make work for the initial V2 release isn't possible right 
 ## Changes in `v2.2.0-beta.2:`
 
 - **NEW - Dual Pane Mode:** Added an optional second file pane with pane switching, browse/sync/open controls, copy and move to the other pane, pane-aware search, secondary-pane selection, thumbnails, and drag/drop workflows.
-- **NEW - Native Integration:** Added installable Open in IYERIS entries for Windows, macOS, and Linux file managers, plus support for opening paths passed from native shell integrations and single-instance launches.
+- **NEW - Native Integration:** Added installable Open in IYERIS entries for Windows and Linux file managers, plus support for opening paths passed from native shell integrations and single-instance launches.
 - **NEW - Operation Queue:** Added a collapsible operation queue panel that tracks copy, move, compress, extract, and checksum progress, with cancellation where the backend supports it.
 - **UI:** Refined the explorer chrome, context menus, progress panel, toolbar groups, status bar, and active-pane indicators for a denser native-feeling layout.
 - **UI:** Improved context-menu behavior for multi-selection, submenu focus, disabled items, recent copy/move destinations, empty-space actions, and keyboard navigation.

@@ -57,19 +57,16 @@
 
 .settings-sidebar {
   width: calc(210px * var(--settings-scale));
+  margin: calc(12px * var(--settings-scale)) 0 calc(12px * var(--settings-scale))
+    calc(12px * var(--settings-scale));
   min-height: 0;
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--text-primary) 3%, transparent) 0%,
-      transparent 30%
-    ),
-    var(--surface-1);
-  border-right: 1px solid var(--panel-border);
-  padding: calc(12px * var(--settings-scale)) calc(10px * var(--settings-scale));
+  background: var(--surface-1);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-medium);
+  padding: calc(10px * var(--settings-scale)) calc(8px * var(--settings-scale));
   display: flex;
   flex-direction: column;
-  gap: calc(4px * var(--settings-scale));
+  gap: 1px;
   overflow-y: auto;
 }
 
@@ -77,18 +74,17 @@
   background: transparent;
   border: 1px solid transparent;
   color: var(--text-secondary);
-  padding: calc(8px * var(--settings-scale)) calc(10px * var(--settings-scale))
-    calc(8px * var(--settings-scale)) calc(14px * var(--settings-scale));
+  padding: calc(5px * var(--settings-scale)) calc(8px * var(--settings-scale));
   text-align: left;
   cursor: pointer;
-  border-radius: 8px;
+  border-radius: 7px;
   transition: var(--transition-standard);
   font-size: 12.5px;
   font-weight: 500;
-  min-height: var(--control-height-lg);
+  min-height: 30px;
   display: flex;
   align-items: center;
-  gap: calc(8px * var(--settings-scale));
+  gap: calc(10px * var(--settings-scale));
   position: relative;
 }
 
@@ -100,29 +96,16 @@
 .settings-tab.active {
   background: var(--interactive-selected);
   color: var(--text-primary);
-  border-color: var(--interactive-selected-border);
+  border-color: transparent;
 }
 
 .settings-tab.has-matches:not(.active) {
   color: var(--text-primary);
 }
 
+/* Left accent stripe removed — active state uses fill only */
 .settings-tab::before {
-  content: '';
-  position: absolute;
-  left: 8px;
-  top: 8px;
-  bottom: 8px;
-  width: 3px;
-  border-radius: 999px;
-  background: transparent;
-  opacity: 0;
-  transition: opacity var(--animation-duration) var(--animation-easing);
-}
-
-.settings-tab.active::before {
-  background: var(--accent-color);
-  opacity: 1;
+  display: none;
 }
 
 .settings-tab:focus-visible {
@@ -131,10 +114,17 @@
   box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.3);
 }
 
+/* Squircle icon tile — accent-tinted background */
 .settings-tab .twemoji {
-  width: var(--icon-size-settings-tab);
-  height: var(--icon-size-settings-tab);
-  opacity: 0.8;
+  width: 22px;
+  height: 22px;
+  min-width: 22px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent-color) 15%, transparent);
+  padding: 4px;
+  box-sizing: border-box;
+  object-fit: contain;
+  opacity: 1;
 }
 
 .settings-tab.active .twemoji {
@@ -190,12 +180,12 @@
 }
 
 .settings-sidebar-label {
-  font-size: 10px;
+  font-size: 10.5px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.04em;
   color: var(--text-tertiary);
-  padding: calc(8px * var(--settings-scale)) calc(12px * var(--settings-scale))
+  padding: calc(10px * var(--settings-scale)) calc(10px * var(--settings-scale))
     calc(4px * var(--settings-scale));
 }
 
@@ -219,7 +209,7 @@
     calc(6px * var(--settings-scale)) calc(30px * var(--settings-scale));
   background: var(--surface-1);
   border: 1px solid var(--panel-border);
-  border-radius: 8px;
+  border-radius: 7px;
   color: var(--text-primary);
   font-size: 12.5px;
   transition:
@@ -324,9 +314,9 @@
 
 .settings-quick-actions {
   margin: calc(16px * var(--settings-scale)) 0 0;
-  padding: calc(12px * var(--settings-scale));
-  border: 1px solid var(--panel-border);
-  border-radius: 12px;
+  padding: calc(10px * var(--settings-scale));
+  border: 1px solid var(--native-divider);
+  border-radius: var(--radius-medium);
   background: color-mix(in srgb, var(--surface-1) 90%, transparent);
 }
 
@@ -387,7 +377,7 @@
 
 .settings-section h4 {
   margin: 0 0 calc(12px * var(--settings-scale)) 0;
-  font-size: 18px;
+  font-size: 15px;
   font-weight: 600;
   color: var(--text-primary);
   display: flex;
@@ -395,12 +385,8 @@
   justify-content: space-between;
   gap: 10px;
   flex-wrap: wrap;
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  padding: calc(8px * var(--settings-scale)) 0 calc(10px * var(--settings-scale));
-  background: var(--surface-0);
-  border-bottom: 1px solid var(--panel-border);
+  padding: 12px 0 16px;
+  background: transparent;
 }
 
 .settings-section-title {
@@ -412,10 +398,10 @@
 .settings-section-reset {
   margin-left: auto;
   background: transparent;
-  border: 1px solid var(--panel-border);
+  border: 1px solid var(--native-divider);
   color: var(--text-secondary);
-  font-size: 11.5px;
-  padding: 4px 10px;
+  font-size: 11px;
+  padding: 3px 10px;
   border-radius: 999px;
   cursor: pointer;
   transition:
@@ -431,14 +417,14 @@
 }
 
 .settings-section h4 .twemoji {
-  width: 24px;
-  height: 24px;
+  width: 18px;
+  height: 18px;
 }
 
 .settings-card {
   background: transparent;
-  border: 1px solid var(--panel-border);
-  border-radius: 12px;
+  border: 1px solid var(--native-divider);
+  border-radius: 10px;
   padding: 0;
   margin-bottom: calc(8px * var(--settings-scale));
   overflow: hidden;
@@ -453,10 +439,10 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
   padding: calc(8px * var(--settings-scale)) calc(12px * var(--settings-scale));
-  background: color-mix(in srgb, var(--surface-1) 85%, transparent);
-  border-bottom: 1px solid var(--panel-border);
+  background: transparent;
+  border-bottom: 1px solid var(--native-divider);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -524,13 +510,13 @@
 }
 
 .settings-chip {
-  border: 1px solid var(--surface-border);
+  border: 1px solid var(--native-divider);
   background: rgba(var(--accent-rgb), 0.12);
   color: var(--text-primary);
   font-size: 11px;
   text-transform: none;
   padding: 3px 8px;
-  border-radius: 999px;
+  border-radius: var(--radius-small);
   cursor: pointer;
   transition:
     background 0.15s ease,
@@ -547,9 +533,10 @@
 }
 
 .settings-card .setting-item {
-  padding: calc(9px * var(--settings-scale)) calc(12px * var(--settings-scale));
+  padding: calc(10px * var(--settings-scale)) calc(14px * var(--settings-scale));
   margin-bottom: 0;
-  border-bottom: 1px solid var(--panel-border);
+  min-height: 32px;
+  border-bottom: 1px solid var(--native-divider);
   transition: background-color 0.15s ease;
 }
 
@@ -588,7 +575,7 @@
 }
 
 .setting-description {
-  font-size: 12.5px;
+  font-size: 12px;
   color: var(--text-secondary);
   margin: 0;
   line-height: 1.5;
@@ -821,10 +808,9 @@ body.compact-ui .settings-sidebar {
 }
 
 body.compact-ui .settings-tab {
-  padding: calc(8px * var(--settings-scale)) calc(10px * var(--settings-scale))
-    calc(8px * var(--settings-scale)) calc(14px * var(--settings-scale));
+  padding: calc(4px * var(--settings-scale)) calc(8px * var(--settings-scale));
   font-size: 12px;
-  min-height: calc(32px * var(--settings-scale));
+  min-height: calc(28px * var(--settings-scale));
 }
 
 body.compact-ui .settings-pages {
@@ -837,8 +823,8 @@ body.compact-ui .settings-section {
 
 body.compact-ui .settings-section h4 {
   margin-bottom: calc(12px * var(--settings-scale));
-  font-size: 18px;
-  padding: calc(8px * var(--settings-scale)) 0 calc(10px * var(--settings-scale));
+  font-size: 15px;
+  padding: 10px 0 14px;
 }
 
 body.compact-ui .settings-card {
@@ -1165,11 +1151,12 @@ body.reduce-motion .settings-tab {
 
   .settings-sidebar {
     width: 100%;
+    margin: calc(12px * var(--settings-scale)) calc(12px * var(--settings-scale)) 0;
     flex-direction: row;
     gap: calc(6px * var(--settings-scale));
     padding: calc(10px * var(--settings-scale)) calc(12px * var(--settings-scale));
-    border-right: none;
-    border-bottom: 1px solid var(--separator);
+    border: 1px solid var(--separator);
+    border-radius: var(--radius-medium);
     overflow-x: auto;
     overflow-y: hidden;
   }
@@ -1186,8 +1173,7 @@ body.reduce-motion .settings-tab {
   }
 
   .settings-tab {
-    padding: calc(8px * var(--settings-scale)) calc(12px * var(--settings-scale))
-      calc(8px * var(--settings-scale)) calc(16px * var(--settings-scale));
+    padding: calc(5px * var(--settings-scale)) calc(10px * var(--settings-scale));
     font-size: 13px;
   }
 

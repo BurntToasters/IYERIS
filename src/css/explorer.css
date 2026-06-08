@@ -5,26 +5,11 @@ body {
   text-rendering: optimizeLegibility;
   overflow: hidden;
   background-color: var(--surface-0);
-  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(0, 0, 0, 0.02));
   color: var(--text-primary);
   height: 100vh;
   font-size: var(--font-size-base);
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
   filter: none;
-}
-
-body::before {
-  content: '';
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background:
-    radial-gradient(ellipse 120% 60% at 50% -20%, rgba(255, 255, 255, 0.04), transparent 60%),
-    radial-gradient(ellipse 120% 60% at 50% 120%, rgba(0, 0, 0, 0.25), transparent 60%);
-  z-index: -1;
-  pointer-events: none;
 }
 
 .glass-panel {
@@ -170,10 +155,11 @@ select:focus-visible {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 18px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--separator);
-  border-radius: var(--radius-medium);
+  padding: 6px 18px;
+  min-height: 28px;
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
+  border: 1px solid var(--native-divider);
+  border-radius: var(--radius-small);
   color: var(--text-primary);
   font-size: 13px;
   font-weight: 500;

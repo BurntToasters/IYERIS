@@ -1,7 +1,7 @@
 .preview-pdf-container {
   position: relative;
   width: 100%;
-  border-radius: 8px;
+  border-radius: var(--radius-small);
   overflow: hidden;
   background: var(--hover-color, rgba(255, 255, 255, 0.03));
   margin-bottom: 12px;
@@ -22,7 +22,7 @@
   overflow: auto;
   display: flex;
   justify-content: center;
-  border-radius: 6px;
+  border-radius: var(--radius-small);
 }
 
 .pdfjs-page-wrapper {
@@ -38,7 +38,7 @@
 
 .pdfjs-canvas {
   display: block;
-  border-radius: 6px;
+  border-radius: var(--radius-small);
   box-shadow: var(--shadow-md, 0 2px 12px rgba(0, 0, 0, 0.25));
   max-width: 100%;
   height: auto;
@@ -50,7 +50,7 @@
   gap: 12px;
   margin-top: 10px;
   padding: 6px 14px;
-  border-radius: 8px;
+  border-radius: var(--radius-small);
   background: var(--hover-color, rgba(255, 255, 255, 0.06));
   border: 1px solid var(--surface-border, rgba(255, 255, 255, 0.08));
 }
@@ -62,7 +62,7 @@
   width: 28px;
   height: 28px;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-small);
   background: var(--hover-color, rgba(255, 255, 255, 0.08));
   color: var(--text-primary);
   font-size: 18px;
@@ -103,7 +103,7 @@
   width: 28px;
   height: 28px;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-small);
   background: var(--hover-color, rgba(255, 255, 255, 0.08));
   color: var(--text-primary);
   font-size: 16px;
@@ -155,7 +155,7 @@
   gap: 6px;
   padding: 7px 16px;
   border: 1px solid var(--surface-border, rgba(255, 255, 255, 0.12));
-  border-radius: 8px;
+  border-radius: var(--radius-small);
   background: var(--hover-color, rgba(255, 255, 255, 0.06));
   color: var(--text-primary);
   font-size: 12px;
@@ -197,5 +197,5 @@
 }
 
 .textLayer ::selection {
-  background: rgba(0, 100, 255, 0.3);
+  background: rgba(var(--accent-rgb), 0.3);
 }

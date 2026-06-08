@@ -242,7 +242,8 @@
     background: var(--liquid-glass-sidebar-bg);
     backdrop-filter: var(--liquid-glass-sidebar-filter);
     -webkit-backdrop-filter: var(--liquid-glass-sidebar-filter);
-    border-right: 1px solid var(--liquid-glass-sidebar-border-color);
+    border: 1px solid var(--liquid-glass-sidebar-border-color);
+    border-radius: var(--liquid-glass-radius);
   }
 
   body.liquid-glass .titlebar {
@@ -301,6 +302,34 @@
     border-radius: var(--liquid-glass-card-radius);
   }
 
+  body.liquid-glass .search-filters-panel,
+  body.liquid-glass .preview-panel,
+  body.liquid-glass .settings-sidebar,
+  body.liquid-glass .archive-operations-panel,
+  body.liquid-glass .progress-panel,
+  body.liquid-glass .home-customize-btn {
+    background: var(--liquid-glass-card-bg);
+    backdrop-filter: var(--liquid-glass-card-filter);
+    -webkit-backdrop-filter: var(--liquid-glass-card-filter);
+    border: 1px solid var(--liquid-glass-card-border-color);
+    box-shadow: var(--liquid-glass-panel-shadow);
+  }
+
+  body.liquid-glass .search-filters-panel,
+  body.liquid-glass .preview-panel,
+  body.liquid-glass .settings-sidebar,
+  body.liquid-glass .archive-operations-panel,
+  body.liquid-glass .progress-panel {
+    border-radius: var(--liquid-glass-radius);
+  }
+
+  body.liquid-glass .preview-header,
+  body.liquid-glass .archive-operations-header,
+  body.liquid-glass .progress-panel-header {
+    background: color-mix(in srgb, var(--liquid-glass-card-bg) 82%, transparent);
+    border-color: var(--liquid-glass-card-border-color);
+  }
+
   body.liquid-glass .zoom-popup {
     background: var(--liquid-glass-popup-bg);
     backdrop-filter: var(--liquid-glass-popup-filter);
@@ -320,7 +349,13 @@
   body.reduce-transparency.liquid-glass .toolbar,
   body.reduce-transparency.liquid-glass .address-bar,
   body.reduce-transparency.liquid-glass .search-bar,
+  body.reduce-transparency.liquid-glass .search-filters-panel,
+  body.reduce-transparency.liquid-glass .preview-panel,
+  body.reduce-transparency.liquid-glass .settings-sidebar,
+  body.reduce-transparency.liquid-glass .archive-operations-panel,
+  body.reduce-transparency.liquid-glass .progress-panel,
   body.reduce-transparency.liquid-glass .file-hover-card,
+  body.reduce-transparency.liquid-glass .home-customize-btn,
   body.reduce-transparency.liquid-glass .zoom-popup,
   body.performance-mode.liquid-glass .glass-panel,
   body.performance-mode.liquid-glass .context-submenu,
@@ -331,7 +366,13 @@
   body.performance-mode.liquid-glass .toolbar,
   body.performance-mode.liquid-glass .address-bar,
   body.performance-mode.liquid-glass .search-bar,
+  body.performance-mode.liquid-glass .search-filters-panel,
+  body.performance-mode.liquid-glass .preview-panel,
+  body.performance-mode.liquid-glass .settings-sidebar,
+  body.performance-mode.liquid-glass .archive-operations-panel,
+  body.performance-mode.liquid-glass .progress-panel,
   body.performance-mode.liquid-glass .file-hover-card,
+  body.performance-mode.liquid-glass .home-customize-btn,
   body.performance-mode.liquid-glass .zoom-popup {
     backdrop-filter: none;
     -webkit-backdrop-filter: none;

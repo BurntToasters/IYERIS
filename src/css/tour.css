@@ -1,7 +1,9 @@
 #support-popup-modal,
 #tour-prompt-modal,
 #fda-prompt-modal {
-  background: rgba(0, 0, 0, 0.85);
+  background: rgba(0, 0, 0, 0.38);
+  backdrop-filter: blur(12px) saturate(130%);
+  -webkit-backdrop-filter: blur(12px) saturate(130%);
 }
 
 .support-popup-modal,
@@ -9,7 +11,7 @@
 .fda-prompt-modal {
   max-width: 380px;
   text-align: center;
-  animation: popupSlideIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  animation: popupSlideIn 0.26s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .support-popup-body,

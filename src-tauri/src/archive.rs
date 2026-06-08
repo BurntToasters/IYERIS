@@ -1241,7 +1241,7 @@ mod tests {
     #[test]
     fn safe_entry_rejects_excessive_depth() {
         let dest = tmp();
-        let deep: String = std::iter::repeat("a/").take(MAX_ARCHIVE_DEPTH + 5).collect();
+        let deep: String = "a/".repeat(MAX_ARCHIVE_DEPTH + 5);
         let entry = format!("{}leaf.txt", deep);
         let err = safe_entry_path(&entry, dest.path()).unwrap_err();
         assert!(err.contains("nesting depth"), "got: {}", err);
