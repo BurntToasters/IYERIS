@@ -124,12 +124,14 @@
 
 .sidebar-resize-handle {
   position: absolute;
-  top: 0;
+  top: var(--radius-small);
+  bottom: var(--radius-small);
   right: -3px;
   width: 6px;
-  height: 100%;
+  height: auto;
   cursor: col-resize;
   background: transparent;
+  border-radius: 999px;
   z-index: var(--z-sidebar);
 }
 

@@ -53,6 +53,11 @@ One thing I wanted to make work for the initial V2 release isn't possible right 
 
 ## Changes in `v2.2.0-beta.5 [RC]:`
 
+- **UI: Multiple Fixes**
+  - Fixed issues with color contrast with WebView2 (Windows).
+  - Fixed an issue where the main sidebar and the settings sidebar did not have rounded padding.
+  - Removed dead UI code.
+  - More improvements to the UI including more "Liquid Glass" fixes.
 - **Codebase:** More stabilization to the codebase.
 - **Open In IYERIS:** Fixed multiple stability issues with the opt-in open in IYERIS setting.
 - **PKG:** Updated packages.

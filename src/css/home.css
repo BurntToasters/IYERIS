@@ -84,8 +84,8 @@
 
 .home-item:focus-visible {
   background: var(--interactive-selected);
-  outline: 3px solid rgba(var(--accent-rgb), 0.6);
-  outline-offset: 2px;
+  box-shadow: var(--focus-ring-strong);
+  outline: none;
 }
 
 .home-item-icon {
@@ -143,6 +143,12 @@
 .home-recent-item:hover {
   background: var(--interactive-hover);
   color: var(--text-primary);
+}
+
+.home-recent-item:focus-visible {
+  background: var(--interactive-selected);
+  box-shadow: var(--focus-ring-strong);
+  outline: none;
 }
 
 .home-recent-main {
@@ -212,6 +218,12 @@
   color: var(--text-primary);
 }
 
+.home-drive-card:focus-visible {
+  background: var(--interactive-selected);
+  box-shadow: var(--focus-ring-strong);
+  outline: none;
+}
+
 .home-drive-header {
   display: flex;
   align-items: center;
@@ -240,9 +252,11 @@
 }
 
 .home-customize-btn {
-  position: absolute;
-  right: 12px;
+  position: sticky;
+  align-self: flex-end;
+  right: auto;
   bottom: 12px;
+  margin: 4px 2px 0 auto;
   width: 36px;
   height: 36px;
   border-radius: 999px;
@@ -275,6 +289,12 @@
 
 .home-customize-btn:active {
   background: var(--interactive-active);
+}
+
+.home-customize-btn:focus-visible {
+  background: var(--interactive-selected);
+  box-shadow: var(--focus-ring-strong);
+  outline: none;
 }
 
 .home-toggle-grid {

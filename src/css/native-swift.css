@@ -70,6 +70,34 @@ body.theme-light {
   background-image: none;
 }
 
+body.platform-win32:not(.theme-light):not(.theme-dark):not(.theme-custom):not(.theme-nord):not(
+    .theme-catppuccin
+  ):not(.theme-dracula):not(.theme-solarized):not(.theme-github) {
+  --glass-bg: color-mix(in srgb, var(--surface-1) 96%, var(--surface-0) 4%);
+  --glass-border: color-mix(in srgb, var(--text-primary) 20%, transparent);
+  --glass-shadow: 0 8px 22px rgba(0, 0, 0, 0.22);
+  --text-secondary: color-mix(in srgb, var(--text-primary) 78%, transparent);
+  --text-tertiary: color-mix(in srgb, var(--text-primary) 62%, transparent);
+  --hover-color: color-mix(in srgb, var(--text-primary) 10%, transparent);
+  --active-color: color-mix(in srgb, var(--text-primary) 16%, transparent);
+  --separator: color-mix(in srgb, var(--text-primary) 18%, transparent);
+  --surface-border: color-mix(in srgb, var(--text-primary) 18%, transparent);
+  --surface-border-strong: color-mix(in srgb, var(--text-primary) 28%, transparent);
+  --surface-overlay: var(--glass-bg);
+  --chrome-surface: color-mix(in srgb, var(--surface-1) 96%, var(--surface-0) 4%);
+  --chrome-surface-raised: color-mix(in srgb, var(--surface-1) 92%, var(--text-primary) 8%);
+  --panel-border: var(--surface-border);
+  --panel-border-strong: var(--surface-border-strong);
+  --interactive-hover: var(--hover-color);
+  --interactive-active: var(--active-color);
+  --interactive-selected: rgba(var(--system-accent-rgb, var(--accent-rgb)), 0.22);
+  --interactive-selected-border: rgba(var(--system-accent-rgb, var(--accent-rgb)), 0.42);
+  --native-divider: color-mix(in srgb, var(--text-primary) 20%, transparent);
+  --dropdown-bg: var(--chrome-surface-raised);
+  --scrollbar-thumb-bg: color-mix(in srgb, var(--text-primary) 30%, transparent);
+  --scrollbar-thumb-hover-bg: color-mix(in srgb, var(--text-primary) 44%, transparent);
+}
+
 .glass-panel,
 body.theme-light .glass-panel {
   background: var(--chrome-surface);
@@ -162,20 +190,18 @@ body.platform-darwin .titlebar {
 }
 
 .sidebar {
-  border-radius: 0;
-  border: none;
-  border-right: 1px solid var(--native-divider);
-  background: color-mix(in srgb, var(--chrome-surface) 88%, transparent);
+  padding: calc(var(--sidebar-padding-v) + 2px) calc(var(--sidebar-padding-h) + 2px);
+  border-radius: var(--radius-medium);
+  border: 1px solid var(--native-divider);
+  background: color-mix(in srgb, var(--chrome-surface) 90%, transparent);
   box-shadow: none;
   backdrop-filter: blur(24px) saturate(150%);
   -webkit-backdrop-filter: blur(24px) saturate(150%);
 }
 
 .sidebar.glass-panel {
-  border-radius: 0;
-  border-left: none;
-  border-top: none;
-  border-bottom: none;
+  border-radius: var(--radius-medium);
+  border: 1px solid var(--native-divider);
 }
 
 .sidebar-section {
@@ -768,7 +794,8 @@ body.theme-light .modal-footer {
 
 .settings-sidebar {
   background: color-mix(in srgb, var(--chrome-surface) 88%, transparent);
-  border-right: 1px solid var(--native-divider);
+  border: 1px solid var(--native-divider);
+  border-radius: var(--radius-medium);
 }
 
 .settings-tab {
@@ -914,10 +941,8 @@ body.platform-darwin .context-menu-item {
   border-color: color-mix(in srgb, var(--warning-color) 38%, transparent);
 }
 
-.search-panel,
-.search-results,
+.search-filters-panel,
 .preview-panel,
-.properties-panel,
 .archive-operations-panel,
 .progress-panel,
 .file-hover-card,
@@ -956,6 +981,26 @@ body.theme-light.liquid-glass {
   --liquid-glass-statusbar-bg: rgba(246, 246, 248, 0.74);
 }
 
+body.platform-win32.liquid-glass {
+  --liquid-glass-panel-bg: var(--chrome-surface);
+  --liquid-glass-sidebar-bg: var(--chrome-surface);
+  --liquid-glass-toolbar-bg: var(--chrome-surface);
+  --liquid-glass-titlebar-bg: var(--chrome-surface);
+  --liquid-glass-statusbar-bg: var(--chrome-surface);
+  --liquid-glass-menu-bg: var(--dropdown-bg);
+  --liquid-glass-context-menu-bg: var(--dropdown-bg);
+  --liquid-glass-dropdown-bg: var(--dropdown-bg);
+  --liquid-glass-card-bg: var(--chrome-surface-raised);
+  --liquid-glass-popup-bg: var(--chrome-surface-raised);
+  --liquid-glass-panel-border-color: var(--native-divider);
+  --liquid-glass-sidebar-border-color: var(--native-divider);
+  --liquid-glass-menu-border-color: var(--native-divider);
+  --liquid-glass-dropdown-border-color: var(--native-divider);
+  --liquid-glass-card-border-color: var(--native-divider);
+  --liquid-glass-toast-border-color: var(--native-divider);
+  --liquid-glass-panel-shadow: var(--glass-shadow);
+}
+
 body.liquid-glass .glass-panel::before {
   opacity: 0.55;
 }
@@ -965,6 +1010,52 @@ body.liquid-glass .toolbar,
 body.liquid-glass .titlebar,
 body.liquid-glass .status-bar {
   box-shadow: none;
+}
+
+body.platform-win32 .glass-panel,
+body.platform-win32 .titlebar,
+body.platform-win32 .toolbar,
+body.platform-win32 .sidebar,
+body.platform-win32 .status-bar,
+body.platform-win32 .address-bar,
+body.platform-win32 .search-bar,
+body.platform-win32 .context-menu,
+body.platform-win32 .context-submenu,
+body.platform-win32 .breadcrumb-menu,
+body.platform-win32 .history-dropdown,
+body.platform-win32 .sort-menu,
+body.platform-win32 .selection-overflow-menu,
+body.platform-win32 .command-palette-modal,
+body.platform-win32 .toast,
+body.platform-win32 .search-filters-panel,
+body.platform-win32 .preview-panel,
+body.platform-win32 .settings-sidebar,
+body.platform-win32 .archive-operations-panel,
+body.platform-win32 .progress-panel,
+body.platform-win32 .file-hover-card,
+body.platform-win32 .home-customize-btn,
+body.platform-win32 .zoom-popup {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+body.platform-win32 .glass-panel,
+body.platform-win32 .toolbar,
+body.platform-win32 .file-view,
+body.platform-win32 .column-view,
+body.platform-win32 .home-item,
+body.platform-win32 .home-recent-item,
+body.platform-win32 .home-drive-card {
+  border-color: var(--native-divider);
+}
+
+body.platform-win32 .sidebar {
+  background: var(--chrome-surface);
+  border-color: var(--panel-border-strong);
+}
+
+body.platform-win32.liquid-glass .glass-panel::before {
+  display: none;
 }
 
 body.platform-darwin *::-webkit-scrollbar {

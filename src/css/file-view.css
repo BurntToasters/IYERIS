@@ -67,7 +67,7 @@ body.platform-win32 .file-view::-webkit-scrollbar {
 
 body.platform-win32 .file-view::-webkit-scrollbar-thumb {
   background: var(--scrollbar-thumb-bg);
-  border-radius: 0;
+  border-radius: var(--scrollbar-thumb-radius);
   border: 3px solid transparent;
   background-clip: padding-box;
 }

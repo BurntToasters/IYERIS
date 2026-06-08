@@ -35,9 +35,8 @@ body.platform-win32 .glass-input {
 }
 
 body.platform-win32 .glass-input:focus-visible {
-  border-color: transparent;
-  border-bottom-color: var(--system-accent-color, var(--accent-color));
-  box-shadow: none;
+  border-color: var(--system-accent-color, var(--accent-color));
+  box-shadow: 0 0 0 3px rgba(var(--system-accent-rgb, var(--accent-rgb)), 0.24);
 }
 
 body.platform-linux .glass-input {

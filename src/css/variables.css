@@ -219,7 +219,7 @@ body.platform-win32 {
   --animation-easing: cubic-bezier(0.4, 0, 0.2, 1);
   --scrollbar-width: 12px;
   --scrollbar-thumb-radius: 0px;
-  --radius-small: 4px;
+  --radius-small: 6px;
   --radius-medium: 8px;
   --titlebar-height: 36px;
 }
