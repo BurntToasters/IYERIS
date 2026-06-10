@@ -22,7 +22,7 @@
 
 ### Version 3 Its Here!!
 
-Hello everyone! From IYERIS V1 -> V2 we saw a dramatic back and front end change. From a basic skeleton UI, to a full working electron version of IYERIS in V1, to a much more lightweight Tauri V2 version in V2 with better UI/UX, to now an even better and professional UI in V3 using Lucide Icons instead of twemoji. These drastic UI changes and more new features (see below) have constituded a major version instead of the previous `v2.2.0` beta version number I was previously using. It may not be a complete feature list since it's a beta, but it's a good portion of what to expect in the final release!
+Hello everyone! From IYERIS V1 -> V2 we saw a dramatic back and front end change. From a basic skeleton UI, to a full working electron version of IYERIS in V1, to a much more lightweight Tauri V2 version in V2 with better UI/UX, to now an even better and professional UI in V3 using Lucide Icons instead of twemoji. These drastic UI changes and more new features (see below) have constituted a major version instead of the previous `v2.2.0` beta version number I was previously using. It may not be a complete feature list since it's a beta, but it's a good portion of what to expect in the final release!
 
 - **NEW - Dual Pane Mode:**
   - Added an optional second file pane with pane switching, browse/sync/open controls, copy/move to the other pane, pane-aware search, secondary-pane selection, thumbnails, and drag/drop workflows.
