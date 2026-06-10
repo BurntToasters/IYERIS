@@ -105,6 +105,7 @@ export function createLayoutController(config: LayoutConfig) {
     const shouldCollapse =
       typeof collapsed === 'boolean' ? collapsed : !sidebar.classList.contains('collapsed');
     sidebar.classList.toggle('collapsed', shouldCollapse);
+    document.body.classList.toggle('sidebar-collapsed', shouldCollapse);
     if (toggle) {
       toggle.setAttribute('aria-expanded', String(!shouldCollapse));
     }
@@ -114,7 +115,9 @@ export function createLayoutController(config: LayoutConfig) {
     const sidebar = document.querySelector('.sidebar') as HTMLElement | null;
     const toggle = document.getElementById('sidebar-toggle');
     if (!sidebar || !toggle) return;
-    toggle.setAttribute('aria-expanded', String(!sidebar.classList.contains('collapsed')));
+    const isCollapsed = sidebar.classList.contains('collapsed');
+    toggle.setAttribute('aria-expanded', String(!isCollapsed));
+    document.body.classList.toggle('sidebar-collapsed', isCollapsed);
   }
 
   function setupSidebarResize(): void {

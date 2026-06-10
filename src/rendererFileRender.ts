@@ -82,7 +82,7 @@ export function createFileRenderController(config: FileRenderConfig) {
   let renderItemIndex = 0;
   const animationCleanupItems: HTMLElement[] = [];
   let animationCleanupTimer: ReturnType<typeof setTimeout> | null = null;
-  const fileIconNodeCache = new Map<string, HTMLElement>();
+  const fileIconNodeCache = new Map<string, Element>();
 
   let disableEntryAnimation = false;
   let disableThumbnailRendering = false;
@@ -169,19 +169,19 @@ export function createFileRenderController(config: FileRenderConfig) {
     }
   }
 
-  function createFileIconNode(iconHtml: string): HTMLElement {
+  function createFileIconNode(iconHtml: string): Element {
     const cached = fileIconNodeCache.get(iconHtml);
     if (cached) {
-      return cached.cloneNode(true) as HTMLElement;
+      return cached.cloneNode(true) as Element;
     }
     const wrapper = document.createElement('div');
     wrapper.innerHTML = iconHtml;
     const first = wrapper.firstElementChild;
-    const node = first instanceof HTMLElement ? first : document.createElement('span');
-    if (!(first instanceof HTMLElement)) {
+    const node = first ? first : document.createElement('span');
+    if (!first) {
       node.textContent = iconHtml;
     }
-    fileIconNodeCache.set(iconHtml, node.cloneNode(true) as HTMLElement);
+    fileIconNodeCache.set(iconHtml, node.cloneNode(true) as Element);
     return node;
   }
 
