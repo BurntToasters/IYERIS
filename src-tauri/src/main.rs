@@ -638,6 +638,7 @@ fn main() {
             file_operations::rename_item,
             file_operations::copy_items,
             file_operations::move_items,
+            file_operations::cancel_file_operation,
             file_operations::get_item_properties,
             file_operations::set_permissions,
             file_operations::set_attributes,

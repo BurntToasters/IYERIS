@@ -60,8 +60,15 @@ function getDefaultSteps(isMac: boolean): TourStep[] {
     },
     {
       target: '#search-btn',
-      title: 'Powerful Search',
+      title: 'Global Search',
       description: `Search files and folders with advanced filters. Press ${mod}F to search the current folder, or ${isMac ? '⇧⌘F' : 'Shift+Ctrl+F'} for global search.`,
+      prefer: 'bottom',
+    },
+    {
+      target: '#search-scope-toggle',
+      title: 'Search Scope',
+      description:
+        'Switch between the current folder and global search, then save useful searches so you can run them again later.',
       prefer: 'bottom',
     },
     {
@@ -76,6 +83,34 @@ function getDefaultSteps(isMac: boolean): TourStep[] {
       description:
         'Switch between Grid, List, and Column views to browse your files the way you prefer.',
       prefer: 'bottom',
+    },
+    {
+      target: '#more-actions-btn',
+      title: 'File Workflows',
+      description:
+        'Use More Actions for archive tools, batch rename, duplicate finder, properties, and other power actions on selected files.',
+      prefer: 'bottom',
+    },
+    {
+      target: '#preview-toggle-btn',
+      title: 'Preview and Quick Look',
+      description:
+        'Toggle the preview panel for side-by-side inspection, or press Space on a selected file for a focused Quick Look.',
+      prefer: 'bottom',
+    },
+    {
+      target: '.status-bar',
+      title: 'Operation Queue',
+      description:
+        'Large copy, move, delete, duplicate, compress, extract, and checksum jobs appear in the operation queue with progress, ETA, cancel, and retry.',
+      prefer: 'top',
+    },
+    {
+      target: '#settings-btn',
+      title: 'Dual Pane and Updates',
+      description:
+        'Settings includes Dual Pane Mode for two-panel transfers, indexing options for faster global search, and update channels for stable or beta releases.',
+      prefer: 'left',
     },
     {
       target: '#settings-btn',

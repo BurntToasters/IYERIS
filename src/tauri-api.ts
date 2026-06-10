@@ -182,7 +182,8 @@ async function runFileOperationWithConflictResolution(
   operation: 'copy' | 'move',
   sourcePaths: string[],
   destPath: string,
-  conflictBehavior?: FileConflictBehavior
+  conflictBehavior?: FileConflictBehavior,
+  operationId?: string
 ) {
   const behavior = conflictBehavior ?? 'ask';
   const conflictResolutions: Record<string, ConflictDecision> = {};
@@ -195,6 +196,7 @@ async function runFileOperationWithConflictResolution(
         destPath,
         conflictBehavior: behavior,
         conflictResolutions: behavior === 'ask' ? conflictResolutions : null,
+        operationId: operationId ?? null,
       });
       return { success: true as const };
     } catch (e) {
@@ -496,21 +498,23 @@ const tauriAPI: TauriAPI = {
     };
   },
 
-  copyItems: (sourcePaths, destPath, conflictBehavior) =>
+  copyItems: (sourcePaths, destPath, conflictBehavior, operationId) =>
     runFileOperationWithConflictResolution(
       'copy_items',
       'copy',
       sourcePaths,
       destPath,
-      conflictBehavior
+      conflictBehavior,
+      operationId
     ) as never,
-  moveItems: (sourcePaths, destPath, conflictBehavior) =>
+  moveItems: (sourcePaths, destPath, conflictBehavior, operationId) =>
     runFileOperationWithConflictResolution(
       'move_items',
       'move',
       sourcePaths,
       destPath,
-      conflictBehavior
+      conflictBehavior,
+      operationId
     ) as never,
   showConflictDialog: (fileName, operation) =>
     promptConflictResolution(fileName, operation as 'copy' | 'move') as never,
@@ -950,6 +954,8 @@ const tauriAPI: TauriAPI = {
       unlisten.then((fn) => fn()).catch(ignoreError);
     };
   },
+  cancelFileOperation: (operationId) =>
+    wrap(() => invoke('cancel_file_operation', { operationId })),
   onSystemResumed: (callback) => {
     bindSystemFallbacks();
     systemResumedCallbacks.add(callback);

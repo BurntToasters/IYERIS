@@ -509,6 +509,11 @@ const wired = wireControllers({
 });
 
 const {
+  generateOperationId,
+  addOperation,
+  updateOperation,
+  completeOperation,
+  isOperationCancelling,
   cleanupOperationQueue,
   showSortMenu,
   hideSortMenu,
@@ -1889,27 +1894,43 @@ async function deleteSelected(permanent = false) {
   }
 
   const itemsSnapshot = Array.from(selectedItems);
+  const operationId = generateOperationId();
+  addOperation(operationId, 'delete', `${count} item${plural}${permanent ? ' permanently' : ''}`, {
+    cancellable: true,
+    total: itemsSnapshot.length,
+    retry: () => void deleteSelected(permanent),
+  });
   const DELETE_BATCH_SIZE = 20;
   const allResults: PromiseSettledResult<{ success: boolean; error?: string }>[] = [];
+  const processedPaths: string[] = [];
   for (let i = 0; i < itemsSnapshot.length; i += DELETE_BATCH_SIZE) {
+    if (isOperationCancelling(operationId)) break;
     const batch = itemsSnapshot.slice(i, i + DELETE_BATCH_SIZE);
     const batchResults = await Promise.allSettled(
       batch.map((p) => (permanent ? window.tauriAPI.deleteItem(p) : window.tauriAPI.trashItem(p)))
     );
     allResults.push(...batchResults);
+    processedPaths.push(...batch);
+    updateOperation(operationId, {
+      current: allResults.length,
+      total: itemsSnapshot.length,
+      currentFile: batch[batch.length - 1] || 'Deleting...',
+      status: 'active',
+    });
   }
   const successCount = allResults.filter((r) => r.status === 'fulfilled' && r.value.success).length;
   const failCount = allResults.length - successCount;
+  const cancelled = isOperationCancelling(operationId);
 
   const permissionFailedPaths: string[] = [];
   for (let i = 0; i < allResults.length; i++) {
     const r = allResults[i]!;
     if (r.status === 'fulfilled' && !r.value.success && isPermissionDeniedError(r.value.error)) {
-      permissionFailedPaths.push(itemsSnapshot[i]!);
+      permissionFailedPaths.push(processedPaths[i]!);
     }
   }
 
-  if (permissionFailedPaths.length > 0) {
+  if (!cancelled && permissionFailedPaths.length > 0) {
     const needsPermanentFallback = !permanent;
     const confirmed = await showConfirm(
       needsPermanentFallback
@@ -1919,6 +1940,10 @@ async function deleteSelected(permanent = false) {
       needsPermanentFallback ? 'error' : 'warning'
     );
     if (confirmed) {
+      updateOperation(operationId, {
+        currentFile: 'Waiting for elevated permissions...',
+        status: 'active',
+      });
       const elevResult = await window.tauriAPI.elevatedDeleteBatch(permissionFailedPaths);
       if (elevResult.success) {
         const totalSuccess = successCount + permissionFailedPaths.length;
@@ -1935,9 +1960,19 @@ async function deleteSelected(permanent = false) {
             'error'
           );
         }
+        if (unresolvedFailures > 0) {
+          completeOperation(
+            operationId,
+            'failed',
+            `${unresolvedFailures} item(s) could not be deleted`
+          );
+        } else {
+          completeOperation(operationId, 'done');
+        }
         refresh(effectivePermanent ? 'delete-selected-permanent' : 'delete-selected');
         return;
       }
+      completeOperation(operationId, 'failed', elevResult.error || 'Elevated delete failed');
       showToast(elevResult.error || 'Elevated delete failed', 'Error', 'error');
     }
   }
@@ -1968,12 +2003,25 @@ async function deleteSelected(permanent = false) {
     }
     refresh(permanent ? 'delete-selected-permanent' : 'delete-selected');
   }
-  if (failCount > 0) {
+  if (cancelled) {
+    completeOperation(
+      operationId,
+      'failed',
+      `Cancelled after ${successCount} item${successCount === 1 ? '' : 's'}`
+    );
+  } else if (failCount > 0) {
+    completeOperation(
+      operationId,
+      'failed',
+      `${failCount} item${failCount > 1 ? 's' : ''} could not be deleted`
+    );
     showToast(
       `${failCount} item${failCount > 1 ? 's' : ''} could not be deleted`,
       'Partial Failure',
       'error'
     );
+  } else {
+    completeOperation(operationId, 'done');
   }
 }
 

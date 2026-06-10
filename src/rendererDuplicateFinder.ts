@@ -16,6 +16,19 @@ type DuplicateFinderDeps = {
   onModalClose: (modal: HTMLElement) => void;
   refresh: (reason?: string) => void;
   navigateTo: (pathValue: string) => Promise<void> | void;
+  generateOperationId?: () => string;
+  addOperation?: (
+    id: string,
+    kind: 'delete',
+    name: string,
+    options?: { cancellable?: boolean; total?: number; retry?: () => void }
+  ) => void;
+  updateOperation?: (
+    id: string,
+    update: { current?: number; total?: number; currentFile?: string; status?: 'active' }
+  ) => void;
+  completeOperation?: (id: string, status: 'done' | 'failed', error?: string) => void;
+  isOperationCancelling?: (id: string) => boolean;
 };
 
 function groupKey(group: DuplicateGroup): string {
@@ -303,18 +316,36 @@ export function createDuplicateFinderController(deps: DuplicateFinderDeps) {
     deleteInProgress = true;
     setStatus('Deleting selected duplicate files...', 'info');
     syncSummaryAndActions();
+    const operationId =
+      deps.generateOperationId?.() ??
+      `duplicate_delete_${Date.now()}_${Math.random().toString(36)}`;
+    deps.addOperation?.(operationId, 'delete', `${candidatePaths.length} duplicate file(s)`, {
+      cancellable: true,
+      total: candidatePaths.length,
+      retry: () => void deleteSelectedDuplicates(),
+    });
 
     try {
       const DELETE_BATCH_SIZE = 20;
       const settledResults: Array<PromiseSettledResult<{ success: boolean; error?: string }>> = [];
+      const processedPaths: string[] = [];
 
       for (let index = 0; index < candidatePaths.length; index += DELETE_BATCH_SIZE) {
+        if (deps.isOperationCancelling?.(operationId)) break;
         const batch = candidatePaths.slice(index, index + DELETE_BATCH_SIZE);
         const batchResults = await Promise.allSettled(
           batch.map((filePath) => window.tauriAPI.trashItem(filePath))
         );
         settledResults.push(...batchResults);
+        processedPaths.push(...batch);
+        deps.updateOperation?.(operationId, {
+          current: settledResults.length,
+          total: candidatePaths.length,
+          currentFile: batch[batch.length - 1] || 'Deleting...',
+          status: 'active',
+        });
       }
+      const cancelled = deps.isOperationCancelling?.(operationId) === true;
 
       const successPaths: string[] = [];
       const permissionFailedPaths: string[] = [];
@@ -322,7 +353,7 @@ export function createDuplicateFinderController(deps: DuplicateFinderDeps) {
 
       for (let index = 0; index < settledResults.length; index++) {
         const result = settledResults[index]!;
-        const sourcePath = candidatePaths[index]!;
+        const sourcePath = processedPaths[index]!;
 
         if (result.status === 'fulfilled') {
           if (result.value.success) {
@@ -337,7 +368,7 @@ export function createDuplicateFinderController(deps: DuplicateFinderDeps) {
         }
       }
 
-      if (permissionFailedPaths.length > 0) {
+      if (!cancelled && permissionFailedPaths.length > 0) {
         const elevateConfirmed = await deps.showConfirm(
           `${permissionFailedPaths.length} file(s) require administrator privileges. Attempt elevated deletion for those files?`,
           'Elevated Delete',
@@ -345,10 +376,19 @@ export function createDuplicateFinderController(deps: DuplicateFinderDeps) {
         );
 
         if (elevateConfirmed) {
+          deps.updateOperation?.(operationId, {
+            currentFile: 'Waiting for elevated permissions...',
+            status: 'active',
+          });
           const elevatedResult = await window.tauriAPI.elevatedDeleteBatch(permissionFailedPaths);
           if (elevatedResult.success) {
             successPaths.push(...permissionFailedPaths);
           } else {
+            deps.completeOperation?.(
+              operationId,
+              'failed',
+              elevatedResult.error || 'Elevated delete failed'
+            );
             deps.showToast(
               elevatedResult.error || 'Elevated delete failed',
               'Duplicate Finder',
@@ -373,11 +413,24 @@ export function createDuplicateFinderController(deps: DuplicateFinderDeps) {
       }
 
       if (otherFailures.length > 0) {
+        deps.completeOperation?.(
+          operationId,
+          'failed',
+          `${otherFailures.length} duplicate file(s) could not be deleted`
+        );
         deps.showToast(
           `${otherFailures.length} duplicate file(s) could not be deleted`,
           'Duplicate Finder',
           'error'
         );
+      } else if (cancelled) {
+        deps.completeOperation?.(
+          operationId,
+          'failed',
+          `Cancelled after ${successPaths.length} file(s)`
+        );
+      } else {
+        deps.completeOperation?.(operationId, 'done');
       }
 
       if (groups.length === 0) {
@@ -386,6 +439,7 @@ export function createDuplicateFinderController(deps: DuplicateFinderDeps) {
         setStatus('Duplicate selection updated.', 'success');
       }
     } catch (error) {
+      deps.completeOperation?.(operationId, 'failed', getErrorMessage(error));
       deps.showToast(getErrorMessage(error), 'Duplicate Finder', 'error');
       setStatus('Delete operation failed.', 'error');
     } finally {

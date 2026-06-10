@@ -670,7 +670,7 @@ describe('tour.extended', () => {
 
       expect(titleEl.textContent).toBe('Welcome to Home');
 
-      expect(stepCountEl.textContent).toBe('Step 1 of 7');
+      expect(stepCountEl.textContent).toBe('Step 1 of 12');
     });
 
     it('navigates through multiple default steps', () => {

@@ -11,6 +11,8 @@ use tauri::Emitter;
 
 static ACTIVE_CHECKSUMS: std::sync::LazyLock<Mutex<HashSet<String>>> =
     std::sync::LazyLock::new(|| Mutex::new(HashSet::new()));
+static ACTIVE_FILE_OPERATIONS: std::sync::LazyLock<Mutex<HashSet<String>>> =
+    std::sync::LazyLock::new(|| Mutex::new(HashSet::new()));
 
 static FILE_OP_LOCK: std::sync::LazyLock<Mutex<()>> = std::sync::LazyLock::new(|| Mutex::new(()));
 
@@ -282,6 +284,7 @@ pub async fn copy_items(
     dest_path: String,
     conflict_behavior: Option<String>,
     conflict_resolutions: Option<HashMap<String, String>>,
+    operation_id: Option<String>,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
     log::debug!(
@@ -297,19 +300,24 @@ pub async fn copy_items(
     let resolutions = conflict_resolutions.unwrap_or_default();
     let planned = plan_file_operations(&source_paths, &dest, &behavior, "copy", &resolutions)?;
     let total = planned.len();
-    let progress_operation_id = format!(
-        "copy-{}",
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos()
-    );
+    let progress_operation_id = operation_id.unwrap_or_else(|| {
+        format!(
+            "copy-{}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        )
+    });
+    register_file_operation(&progress_operation_id)?;
     let mut copied_paths: Vec<PathBuf> = Vec::new();
     let mut backups: HashMap<String, OverwriteBackup> = HashMap::new();
 
     let operation = (|| -> Result<(), String> {
         for (index, item) in planned.iter().enumerate() {
+            ensure_file_operation_active(&progress_operation_id)?;
             ensure_overwrite_backup(&mut backups, item)?;
+            ensure_file_operation_active(&progress_operation_id)?;
 
             let source_meta = fs::symlink_metadata(&item.source_path).map_err(|e| e.to_string())?;
             if source_meta.file_type().is_symlink() {
@@ -337,6 +345,8 @@ pub async fn copy_items(
         }
         Ok(())
     })();
+
+    unregister_file_operation(&progress_operation_id);
 
     if let Err(error) = operation {
         remove_paths_reversed(&copied_paths);
@@ -411,6 +421,7 @@ pub async fn move_items(
     dest_path: String,
     conflict_behavior: Option<String>,
     conflict_resolutions: Option<HashMap<String, String>>,
+    operation_id: Option<String>,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
     log::debug!(
@@ -426,13 +437,16 @@ pub async fn move_items(
     let resolutions = conflict_resolutions.unwrap_or_default();
     let planned = plan_file_operations(&source_paths, &dest, &behavior, "move", &resolutions)?;
     let total = planned.len();
-    let progress_operation_id = format!(
-        "move-{}",
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos()
-    );
+    let progress_operation_id = operation_id.unwrap_or_else(|| {
+        format!(
+            "move-{}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        )
+    });
+    register_file_operation(&progress_operation_id)?;
     let mut moved_paths: Vec<String> = Vec::new();
     let mut original_paths: Vec<String> = Vec::new();
     let mut completed_moves: Vec<CompletedMove> = Vec::new();
@@ -440,7 +454,9 @@ pub async fn move_items(
 
     let operation = (|| -> Result<(), String> {
         for (index, item) in planned.iter().enumerate() {
+            ensure_file_operation_active(&progress_operation_id)?;
             ensure_overwrite_backup(&mut backups, item)?;
+            ensure_file_operation_active(&progress_operation_id)?;
             move_path_with_fallback(&item.source_path, &item.dest_path)?;
 
             moved_paths.push(item.dest_path.to_string_lossy().to_string());
@@ -466,6 +482,8 @@ pub async fn move_items(
         Ok(())
     })();
 
+    unregister_file_operation(&progress_operation_id);
+
     if let Err(error) = operation {
         rollback_moves(&completed_moves);
         restore_overwrite_backups(&backups, true);
@@ -475,6 +493,37 @@ pub async fn move_items(
 
     cleanup_backups(&backups);
     undo::push_move_action(moved_paths, original_paths, dest_path)?;
+    Ok(())
+}
+
+fn register_file_operation(operation_id: &str) -> Result<(), String> {
+    let mut active = ACTIVE_FILE_OPERATIONS
+        .lock()
+        .map_err(|e| format!("File operation state lock error: {}", e))?;
+    active.insert(operation_id.to_string());
+    Ok(())
+}
+
+fn unregister_file_operation(operation_id: &str) {
+    if let Ok(mut active) = ACTIVE_FILE_OPERATIONS.lock() {
+        active.remove(operation_id);
+    }
+}
+
+fn ensure_file_operation_active(operation_id: &str) -> Result<(), String> {
+    let active = ACTIVE_FILE_OPERATIONS
+        .lock()
+        .map_err(|e| format!("File operation state lock error: {}", e))?;
+    if active.contains(operation_id) {
+        Ok(())
+    } else {
+        Err("Operation cancelled".to_string())
+    }
+}
+
+#[tauri::command]
+pub async fn cancel_file_operation(operation_id: String) -> Result<(), String> {
+    unregister_file_operation(&operation_id);
     Ok(())
 }
 

@@ -14,6 +14,7 @@ type QueueUpdate = {
 type QueueDeps = {
   cancelArchiveOperation: (operationId: string) => Promise<{ success: boolean; error?: string }>;
   cancelChecksumCalculation: (operationId: string) => Promise<{ success: boolean; error?: string }>;
+  cancelFileOperation?: (operationId: string) => Promise<{ success: boolean; error?: string }>;
   getOperationPanelCollapsed: () => boolean;
   setOperationPanelCollapsed: (collapsed: boolean) => void;
 };
@@ -25,6 +26,7 @@ function iconForKind(kind: OperationKind): string {
     {
       copy: 'file',
       move: 'upload',
+      delete: 'trash-2',
       duplicate: 'copy',
       compress: 'folder-archive',
       extract: 'package',
@@ -38,6 +40,7 @@ function titleForKind(kind: OperationKind): string {
     {
       copy: 'Copying',
       move: 'Moving',
+      delete: 'Deleting',
       duplicate: 'Duplicating',
       compress: 'Compressing',
       extract: 'Extracting',
@@ -66,9 +69,16 @@ export function createOperationQueueController(deps: QueueDeps) {
     document.getElementById('progress-panel-content')?.addEventListener('click', (event) => {
       const target = event.target as HTMLElement;
       const cancelButton = target.closest<HTMLButtonElement>('.operation-queue-cancel');
-      if (!cancelButton) return;
-      const id = cancelButton.dataset.id;
-      if (id) cancelOperation(id);
+      const retryButton = target.closest<HTMLButtonElement>('.operation-queue-retry');
+      if (cancelButton) {
+        const id = cancelButton.dataset.id;
+        if (id) cancelOperation(id);
+        return;
+      }
+      if (retryButton) {
+        const id = retryButton.dataset.id;
+        if (id) retryOperation(id);
+      }
     });
   }
 
@@ -96,7 +106,7 @@ export function createOperationQueueController(deps: QueueDeps) {
     id: string,
     kind: OperationKind,
     name: string,
-    options: { cancellable?: boolean; total?: number } = {}
+    options: { cancellable?: boolean; total?: number; retry?: () => void } = {}
   ): void {
     if (timers.has(id)) {
       clearTimeout(timers.get(id));
@@ -111,6 +121,7 @@ export function createOperationQueueController(deps: QueueDeps) {
       total: options.total ?? 0,
       currentFile: 'Preparing...',
       cancellable: options.cancellable ?? false,
+      retry: options.retry,
       createdAt: Date.now(),
       updatedAt: Date.now(),
     });
@@ -185,15 +196,17 @@ export function createOperationQueueController(deps: QueueDeps) {
     operation.currentFile = 'Cancelling...';
     operation.updatedAt = Date.now();
     scheduleRender();
+    if (operation.kind === 'delete') return;
     const cancel =
       operation.kind === 'checksum'
         ? deps.cancelChecksumCalculation(id)
         : operation.kind === 'compress' || operation.kind === 'extract'
           ? deps.cancelArchiveOperation(id)
-          : Promise.resolve({
+          : (deps.cancelFileOperation?.(id) ??
+            Promise.resolve({
               success: false,
               error: 'Cancel is not available for this operation',
-            });
+            }));
     cancel
       .then((result) => {
         if (!result.success) {
@@ -205,6 +218,32 @@ export function createOperationQueueController(deps: QueueDeps) {
       .catch((error) => {
         completeOperation(id, 'failed', String(error));
       });
+  }
+
+  function retryOperation(id: string): void {
+    const operation = operations.get(id);
+    if (!operation || operation.status !== 'failed' || !operation.retry) return;
+    const retry = operation.retry;
+    removeOperation(id);
+    retry();
+  }
+
+  function isOperationCancelling(id: string): boolean {
+    return operations.get(id)?.status === 'cancelling';
+  }
+
+  function formatEta(operation: OperationQueueItem): string {
+    if (operation.status !== 'active' || operation.current <= 0 || operation.total <= 0) return '';
+    if (operation.current >= operation.total) return '';
+    const elapsedMs = Date.now() - operation.createdAt;
+    if (elapsedMs < 1000) return '';
+    const remaining = operation.total - operation.current;
+    const msPerItem = elapsedMs / operation.current;
+    const etaSeconds = Math.max(1, Math.round((remaining * msPerItem) / 1000));
+    if (etaSeconds < 60) return `ETA ${etaSeconds}s`;
+    const minutes = Math.floor(etaSeconds / 60);
+    const seconds = etaSeconds % 60;
+    return `ETA ${minutes}m ${seconds}s`;
   }
 
   function bindFileOperationProgress(): () => void {
@@ -265,7 +304,12 @@ export function createOperationQueueController(deps: QueueDeps) {
             ? 'Failed'
             : operation.status === 'cancelling'
               ? 'Cancelling'
-              : `${operation.current} / ${operation.total || '?'}`;
+              : [
+                  operation.total > 0 ? `${operation.current} / ${operation.total}` : 'Working',
+                  formatEta(operation),
+                ]
+                  .filter(Boolean)
+                  .join(' • ');
       const card = document.createElement('div');
       card.className = `operation-queue-item is-${operation.status}`;
       // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
@@ -287,6 +331,11 @@ export function createOperationQueueController(deps: QueueDeps) {
             ? `<button class="operation-queue-cancel" data-id="${escapeHtml(operation.id)}" type="button">Cancel</button>`
             : ''
         }
+        ${
+          operation.retry && operation.status === 'failed'
+            ? `<button class="operation-queue-retry" data-id="${escapeHtml(operation.id)}" type="button">Retry</button>`
+            : ''
+        }
       `;
       content.appendChild(card);
     }
@@ -304,6 +353,7 @@ export function createOperationQueueController(deps: QueueDeps) {
     completeOperation,
     removeOperation,
     getOperation,
+    isOperationCancelling,
     bindFileOperationProgress,
     cleanup,
   };

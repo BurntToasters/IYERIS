@@ -496,7 +496,14 @@ export interface FileOperationProgress {
   name: string;
 }
 
-export type OperationKind = 'copy' | 'move' | 'duplicate' | 'compress' | 'extract' | 'checksum';
+export type OperationKind =
+  | 'copy'
+  | 'move'
+  | 'delete'
+  | 'duplicate'
+  | 'compress'
+  | 'extract'
+  | 'checksum';
 
 export type OperationStatus = 'queued' | 'active' | 'done' | 'failed' | 'cancelling';
 
@@ -510,6 +517,7 @@ export interface OperationQueueItem {
   currentFile: string;
   cancellable: boolean;
   error?: string;
+  retry?: () => void;
   createdAt: number;
   updatedAt: number;
 }
@@ -585,12 +593,14 @@ export interface TauriAPI {
   copyItems: (
     sourcePaths: string[],
     destPath: string,
-    conflictBehavior?: ConflictBehavior
+    conflictBehavior?: ConflictBehavior,
+    operationId?: string
   ) => Promise<IpcResult>;
   moveItems: (
     sourcePaths: string[],
     destPath: string,
-    conflictBehavior?: ConflictBehavior
+    conflictBehavior?: ConflictBehavior,
+    operationId?: string
   ) => Promise<IpcResult>;
   showConflictDialog: (
     fileName: string,
@@ -670,6 +680,7 @@ export interface TauriAPI {
   onCompressProgress: (callback: (progress: ArchiveProgress) => void) => () => void;
   onExtractProgress: (callback: (progress: ArchiveProgress) => void) => () => void;
   onFileOperationProgress: (callback: (progress: FileOperationProgress) => void) => () => void;
+  cancelFileOperation: (operationId: string) => Promise<IpcResult>;
   onSystemResumed: (callback: () => void) => () => void;
   onDirectoryChanged: (callback: (data: DirectoryChangedEvent) => void) => () => void;
   onWatchedDirRemoved: (callback: (data: WatchedDirRemovedEvent) => void) => () => void;
