@@ -7,10 +7,10 @@
 
 | <img height="20" src="https://github.com/user-attachments/assets/340d360e-79b1-4c70-bfab-d944085f75df" /> Windows                                                                                                  | <img height="20" src="https://github.com/user-attachments/assets/42d7e887-4616-4e8c-b1d3-e44e01340f8c" /> macOS         | <img height="20" src="https://github.com/user-attachments/assets/e0cc4f33-4516-408b-9c5c-be71a3ac316b" /> Linux                                                                                                                                 |
 | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **EXE:** [x64](https://github.com/BurntToasters/IYERIS/releases/download/v2.2.0-beta.5/IYERIS-Win-x64.exe) / [arm64](https://github.com/BurntToasters/IYERIS/releases/download/v2.2.0-beta.5/IYERIS-Win-arm64.exe) | **[Universal DMG](https://github.com/BurntToasters/IYERIS/releases/download/v2.2.0-beta.5/IYERIS-MacOS-universal.dmg)** | **AppImage:** [x64](https://github.com/BurntToasters/IYERIS/releases/download/v2.2.0-beta.5/IYERIS-Linux-x86_64.AppImage) <!--/ [arm64](https://github.com/BurntToasters/IYERIS/releases/download/v2.2.0-beta.5/IYERIS-Linux-arm64.AppImage)--> |
-| <div align="center"><a href="https://apps.microsoft.com/detail/9pkgd6lkcl5j?referrer=appbadge&mode=full"><img src="https://get.microsoft.com/images/en-us%20light.svg" width="150"/></a></div>                     | **[Universal ZIP](https://github.com/BurntToasters/IYERIS/releases/download/v2.2.0-beta.5/IYERIS-MacOS-universal.zip)** | **DEB:** [x64](https://github.com/BurntToasters/IYERIS/releases/download/v2.2.0-beta.5/IYERIS-Linux-amd64.deb) <!--/ [arm64](https://github.com/BurntToasters/IYERIS/releases/download/v2.2.0-beta.5/IYERIS-Linux-arm64.deb)-->                 |
-| _See MSI note below_                                                                                                                                                                                               |                                                                                                                         | **RPM:** [x64](https://github.com/BurntToasters/IYERIS/releases/download/v2.2.0-beta.5/IYERIS-Linux-x86_64.rpm) <!--/ [arm64](https://github.com/BurntToasters/IYERIS/releases/download/v2.2.0-beta.5/IYERIS-Linux-aarch64.rpm)-->              |
-|                                                                                                                                                                                                                    |                                                                                                                         | **Flatpak:** [x64](https://github.com/BurntToasters/IYERIS/releases/download/v2.2.0-beta.5/IYERIS-Linux-x86_64.flatpak) <!--/ [arm64](https://github.com/BurntToasters/IYERIS/releases/download/v2.2.0-beta.5/IYERIS-Linux-aarch64.flatpak)-->  |
+| **EXE:** [x64](https://github.com/BurntToasters/IYERIS/releases/download/v3.0.0-beta.1/IYERIS-Win-x64.exe) / [arm64](https://github.com/BurntToasters/IYERIS/releases/download/v3.0.0-beta.1/IYERIS-Win-arm64.exe) | **[Universal DMG](https://github.com/BurntToasters/IYERIS/releases/download/v3.0.0-beta.1/IYERIS-MacOS-universal.dmg)** | **AppImage:** [x64](https://github.com/BurntToasters/IYERIS/releases/download/v3.0.0-beta.1/IYERIS-Linux-x86_64.AppImage) <!--/ [arm64](https://github.com/BurntToasters/IYERIS/releases/download/v3.0.0-beta.1/IYERIS-Linux-arm64.AppImage)--> |
+| <div align="center"><a href="https://apps.microsoft.com/detail/9pkgd6lkcl5j?referrer=appbadge&mode=full"><img src="https://get.microsoft.com/images/en-us%20light.svg" width="150"/></a></div>                     | **[Universal ZIP](https://github.com/BurntToasters/IYERIS/releases/download/v3.0.0-beta.1/IYERIS-MacOS-universal.zip)** | **DEB:** [x64](https://github.com/BurntToasters/IYERIS/releases/download/v3.0.0-beta.1/IYERIS-Linux-amd64.deb) <!--/ [arm64](https://github.com/BurntToasters/IYERIS/releases/download/v3.0.0-beta.1/IYERIS-Linux-arm64.deb)-->                 |
+| _See MSI note below_                                                                                                                                                                                               |                                                                                                                         | **RPM:** [x64](https://github.com/BurntToasters/IYERIS/releases/download/v3.0.0-beta.1/IYERIS-Linux-x86_64.rpm) <!--/ [arm64](https://github.com/BurntToasters/IYERIS/releases/download/v3.0.0-beta.1/IYERIS-Linux-aarch64.rpm)-->              |
+|                                                                                                                                                                                                                    |                                                                                                                         | **Flatpak:** [x64](https://github.com/BurntToasters/IYERIS/releases/download/v3.0.0-beta.1/IYERIS-Linux-x86_64.flatpak) <!--/ [arm64](https://github.com/BurntToasters/IYERIS/releases/download/v3.0.0-beta.1/IYERIS-Linux-aarch64.flatpak)-->  |
 
 ### ℹ️ Enjoying IYERIS? Consider [❤️ Supporting Me! ❤️](https://rosie.run/support)
 
@@ -18,58 +18,39 @@
 
 ### Please checkout the readme for more info on IYERIS!
 
-## Changes in `v2.2.0-beta.6 [RC2]:`
+## Changes in `v3.0.0-beta.1:`
 
-- **NEW - Lucide Icons:** Twemoji has been fully replaced for a much more professonal looking icon sceme: Lucide Icons.
+### Version 3 Its Here!!
 
-## Changes in `v2.2.0-beta.5 [RC]:`
+Hello everyone! From IYERIS V1 -> V2 we saw a dramatic back and front end change. From a basic skeleton UI, to a full working electron version of IYERIS in V1, to a much more lightweight Tauri V2 version in V2 with better UI/UX, to now an even better and professional UI in V3 using Lucide Icons instead of twemoji. These drastic UI changes and more new features (see below) have constituded a major version instead of the previous `v2.2.0` beta version number I was previously using. It may not be a complete feature list since it's a beta, but it's a good portion of what to expect in the final release!
 
-- **UI: Multiple Fixes**
-  - Fixed issues with color contrast with WebView2 (Windows).
-  - Fixed an issue where the main sidebar and the settings sidebar did not have rounded padding.
-  - Removed dead UI code.
-  - More improvements to the UI including more "Liquid Glass" fixes.
-- **Codebase:** More stabilization to the codebase.
-- **Open In IYERIS:** Fixed multiple stability issues with the opt-in open in IYERIS setting.
-- **PKG:** Updated packages.
-
-## Changes in `v2.2.0-beta.4:`
-
-- **Security:** Completed a full pre-release security audit pass. Tightened Tauri capability scoping, asset-scope deny lists for sensitive paths, and CSP directives.
-  - Added an ESLint `no-restricted-syntax` rule to catch future unreviewed `innerHTML` + template-literal patterns; reviewed and annotated all 75 existing sites across the frontend.
-- **Thumbnails:** Fixed an issue where Office document thumbnails (`.docx`, `.xlsx`, `.pptx`) were never shown. The XML attribute regex used a backreference that Rust's `regex` crate does not support, causing extraction to silently always return nothing.
-- **Testing:** Added `cargo audit` and `npm audit --production` checks to both the CI workflow (runs on every PR and push) and the release-gate workflow.
-- **Codebase:** Added `audit.toml` documenting 18 transitive advisories from Tauri, gtk-rs, and notify that cannot be resolved without upstream changes. Applied Clippy idiom improvements to the Rust backend.
-- **PKG:** Updated packages.
-- **UI:** Fixed a UI regression from beta 3 where the background colors were washed out.
-
-## Changes in `v2.2.0-beta.3:`
-
-- **UI:** NEW UI! IYERIS's UI has been improved once again to more closely mimic a "SWIFTUI-Like" UI.
-- **PKG:** Updated packages.
-
-## Changes in `v2.2.0-beta.2:`
-
-- **NEW - Dual Pane Mode:** Added an optional second file pane with pane switching, browse/sync/open controls, copy and move to the other pane, pane-aware search, secondary-pane selection, thumbnails, and drag/drop workflows.
-- **NEW - Native Integration:** Added installable Open in IYERIS entries for Windows and Linux file managers, plus support for opening paths passed from native shell integrations and single-instance launches.
-- **NEW - Operation Queue:** Added a collapsible operation queue panel that tracks copy, move, compress, extract, and checksum progress, with cancellation where the backend supports it.
-- **UI:** Refined the explorer chrome, context menus, progress panel, toolbar groups, status bar, and active-pane indicators for a denser native-feeling layout.
-- **UI:** Improved context-menu behavior for multi-selection, submenu focus, disabled items, recent copy/move destinations, empty-space actions, and keyboard navigation.
-- **Stability:** Hardened clipboard, paste, watcher, directory listing, Git status, search, thumbnail, archive, and file-operation paths to reduce hangs, stale state, duplicate paste attempts, and crashy edge cases.
-- **Security:** Tightened archive extraction limits, thumbnail cache limits, regex search bounds, and Tauri asset-scope exclusions for sensitive paths such as SSH keys, Docker/Kubernetes config, AWS config, and `.netrc`.
-- **Windows:** Improved symlink error messages when Administrator privileges or Developer Mode are required.
-- **Linux:** Improved home drive detection and native file-manager integration entries for KDE and Nautilus.
-- **Testing:** Added and updated coverage for the operation queue, thumbnails, typeahead, context menus, event listeners, compression/extraction, and renderer flows.
-- **Codebase:** Added GitHub issue and pull-request templates, refreshed build documentation, and added a production audit script.
-- **Tauri:** Updated Tauri API and CLI packages to `v2.11.0`.
-- **PKG:** Updated packages.
-
-## Changes in `v2.2.0-beta.1:`
-
-_Beta 1 Releases of IYERIS don't include any changes besides pkg updates, and are meant to sync beta users to the latest STABLE._
-
-- **Ver:** Bumped version to `v2.2.0`.
-- **PKG:** Updated packages.
+- **NEW - Dual Pane Mode:**
+  - Added an optional second file pane with pane switching, browse/sync/open controls, copy/move to the other pane, pane-aware search, secondary-pane selection, thumbnails, and drag/drop workflows.
+  - Refined context-menu behavior for multi-selection, submenu focus, disabled items, recent copy/move destinations, empty-space actions, and keyboard navigation.
+- **NEW - Native SwiftUI-Like Redesign:**
+  - Completely redesigned the user interface to mimic a high-end native SwiftUI-like experience, with border spacing and color contrast fixes.
+  - Fully replaced Twemoji with modern, professional **Lucide Icons** across the interface.
+  - Refined explorer chrome, context menus, progress panel, toolbar groups, status bar, and active-pane indicators for a denser native-feeling layout.
+  - Implemented visual and functional "Liquid Glass" styling, resolving various layout spacing and contrast issues.
+  - Blended application container elements, ensuring paddings, margins, and borders dock seamlessly with native windows.
+- **NEW - OS Shell Integration:**
+  - Added installable _Open in IYERIS_ entries for Windows and Linux file managers (Explorer, KDE, Nautilus).
+  - Supported opening paths passed from native shell integrations and single-instance launches.
+  - Improved home drive detection and native file-manager integration entries.
+  - Improved symlink error handling and messages on Windows (when Admin privileges or Developer Mode are required).
+- **NEW - Operation Queue:**
+  - Added a collapsible operation queue panel that tracks copy, move, compress, extract, and checksum progress, with cancellation support where the backend allows.
+- **Security & Stability Audits:**
+  - Completed a comprehensive pre-release security audit pass: tightened Tauri capability scoping, asset-scope deny lists for sensitive paths (e.g., SSH keys, Kubernetes/Docker configs, AWS configs, `.netrc`), and Content Security Policy (CSP) directives.
+  - Hardened clipboard, paste, watcher, directory listing, Git status, search, thumbnail, archive, and file-operation paths to reduce hangs, stale state, duplicate paste attempts, and crashy edge cases.
+  - Added cargo audit and npm audit checks to CI and release-gate workflows.
+  - Implemented an ESLint `no-restricted-syntax` rule to prevent unsafe `innerHTML` usage with template literals; reviewed and annotated all 75 existing frontend sites.
+  - Tightened archive extraction limits, thumbnail cache limits, and regex search bounds.
+  - Fixed an issue where Office document thumbnails (`.docx`, `.xlsx`, `.pptx`) were never shown due to regex backreference incompatibility in Rust.
+- **Testing & Infrastructure:**
+  - Significantly expanded backend headless and frontend testing coverage, including tests for the operation queue, thumbnails, typeahead, context menus, event listeners, compression/extraction, and renderer flows.
+  - Updated Tauri API and CLI packages to `v2.11.0`.
+  - Upgraded packages and overall codebase dependencies.
 
 ## Changes in `v2.1.0:`
 
