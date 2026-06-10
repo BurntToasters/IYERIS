@@ -3,7 +3,7 @@ import type { ToastAction } from './rendererToasts.js';
 import { isArchivePath } from './rendererCompressExtract.js';
 import { PDF_EXTENSIONS } from './fileTypes.js';
 import { getErrorMessage } from './shared.js';
-import { rendererPath as path } from './rendererUtils.js';
+import { rendererPath as path, renderIcon } from './rendererUtils.js';
 
 type ContextMenuDeps = {
   getFileExtension: (filename: string) => string;
@@ -228,7 +228,7 @@ export function createContextMenuController(deps: ContextMenuDeps) {
       moveItem.title = destinationPath;
       // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
       moveItem.innerHTML = `
-        <img src="/twemoji/1f4e4.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" />
+        ${renderIcon('upload', 'twemoji')}
         Move to ${escapeLabel(destinationName)}
       `;
       setItemDisabled(moveItem, invalidTarget);
@@ -244,7 +244,7 @@ export function createContextMenuController(deps: ContextMenuDeps) {
       copyItem.title = destinationPath;
       // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
       copyItem.innerHTML = `
-        <img src="/twemoji/1f4e5.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" />
+        ${renderIcon('download', 'twemoji')}
         Copy to ${escapeLabel(destinationName)}
       `;
       setItemDisabled(copyItem, invalidTarget);

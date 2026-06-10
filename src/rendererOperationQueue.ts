@@ -1,6 +1,7 @@
 import type { OperationKind, OperationQueueItem, OperationStatus } from './types';
 import { clearHtml, getById } from './rendererDom.js';
 import { devLog, escapeHtml } from './shared.js';
+import { renderIcon } from './rendererUtils.js';
 
 type QueueUpdate = {
   status?: OperationStatus;
@@ -22,12 +23,12 @@ const COMPLETE_REMOVE_DELAY_MS = 4000;
 function iconForKind(kind: OperationKind): string {
   return (
     {
-      copy: '1f4c4',
-      move: '1f4e4',
-      duplicate: '1f4d1',
-      compress: '1f5dc',
-      extract: '1f4e6',
-      checksum: '1f9ee',
+      copy: 'file',
+      move: 'upload',
+      duplicate: 'copy',
+      compress: 'folder-archive',
+      extract: 'package',
+      checksum: 'hash',
     } satisfies Record<OperationKind, string>
   )[kind];
 }
@@ -271,7 +272,7 @@ export function createOperationQueueController(deps: QueueDeps) {
       card.innerHTML = `
         <div class="operation-queue-header">
           <div class="operation-queue-title">
-            <img src="/twemoji/${iconForKind(operation.kind)}.svg" class="twemoji" alt="" draggable="false" aria-hidden="true" />
+            ${renderIcon(iconForKind(operation.kind), 'twemoji')}
             <span>${escapeHtml(titleForKind(operation.kind))}</span>
           </div>
           <span class="operation-queue-status">${escapeHtml(statusLabel)}</span>

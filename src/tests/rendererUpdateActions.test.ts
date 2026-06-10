@@ -105,10 +105,10 @@ describe('createUpdateActionsController', () => {
 
   function setup(options: SetupOptions = {}) {
     const checkUpdatesBtn = createMockElement(
-      '<img src="/twemoji/1f503.svg" class="twemoji" alt="🔃" draggable="false" /> Check for Updates'
+      '<span class="twemoji" data-icon="1f503" alt="🔃"></span> Check for Updates'
     );
     const toggleStatusBtn = createMockElement(
-      '<img src="/twemoji/1f50d.svg" class="twemoji" alt="🔍" draggable="false" /> Show Download Status'
+      '<span class="twemoji" data-icon="1f50d" alt="🔍"></span> Show Download Status'
     );
     toggleStatusBtn.hidden = true;
     toggleStatusBtn.setAttribute('aria-expanded', 'false');

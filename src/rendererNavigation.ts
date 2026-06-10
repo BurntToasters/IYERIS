@@ -575,10 +575,10 @@ export function createNavigationController(deps: NavigationDeps) {
         history
           .map(
             (item) =>
-              `<div class="history-item" data-path="${escapeHtml(item)}">${twemojiImg(String.fromCodePoint(0x1f4c1), 'twemoji')} ${escapeHtml(item)}</div>`
+              `<div class="history-item" data-path="${escapeHtml(item)}">${twemojiImg('folder', 'twemoji')} ${escapeHtml(item)}</div>`
           )
           .join('') +
-          `<div class="history-clear" data-action="clear-directory">${twemojiImg(String.fromCodePoint(0x1f5d1), 'twemoji')} Clear Directory History</div>`
+          `<div class="history-clear" data-action="clear-directory">${twemojiImg('trash-2', 'twemoji')} Clear Directory History</div>`
       );
     }
 

@@ -16,40 +16,11 @@
 
 ---
 
-<details>
-  <summary># Welcome to IYERIS 2.0!!!</summary>
-
-_2.0... Already?!_ I hear you say. Yes, here we are.
-
-## Why are we already on 2.0 when 1.0 was released just a few weeks ago?!
-
-Im glad you asked! I started working on fun cross-platform apps with electronjs because it was the easiest way to integrate everything together. For the last year and a half I learned a lot about how electron works and this allowed me to expand my knowledge and move to another framework: **Tauri V2**.
-
-Tauri V2 uses rust for the backend and uses the user's operating system's native Web Renderer, meaning an entire chromium browser isn't installed and bundled with IYERIS anymore. Yes it still relies on web technologies in many aspects, however it is extremely efficient compared to electron.
-On top of the INSANE reduction in app and download size for IYERIS it also uses WAY less CPU and Memory as well! Running more like a native app rather than a web browser :) Something you'd probably want a file browser to do lol.
-
-I have been working on this migration ever since IYERIS 0.8.0. I worked on it on a few now gone git REPOs as I kept scrapping it. I wasn't satisfied with the outcomes of these migrations until I toyed around with Tauri more by creating [Zinnia](https://github.com/BurntToasters/Zinnia) and [S3 Sidekick](https://github.com/BurntToasters/S3-Sidekick). Those two projects helped me understand the rust and Tauri components even better to the point where I was able to locally start my migration from electron to Tauri V2. Its been a lot of work and still more to come, but I hope you all enjoy this major update!
-
-## App Size Difference
-
-The difference is noticeably even without a direct comparison, but I'm still going to show a comparison :P
-**Windows exe x64:** 116 MB (Electron) vs **7.88 MB** with Tauri V2.
-
-- Yes you read that right, a staggering **91%** decrease in file size not just for windows, but to ALL operating systems as well!
-
-## Breaking Changes
-
-IYERIS v1 is EOL and you cant update in the app from V1 to V2. I wish that was possible but Tauri and Electron are two completely separate frameworks and I cant on my own create a cross-framework updater especially only for a one time use. Additionally I updated the bundleID as I wanted it to fit in line with my new bundleID style and this framework requires a manual install, I figured this is the best time to do it.
-
-You **SHOULD** uninstall the old IYERIS V1 before installing and using IYERIS V2. They will probably both work installed on one machine as their data is saved in different areas (except for mac if you save the app to /Applications this will overwrite either or), but I do not recommend this at all. I except that to have stability issues and there really is no reason to keep the EOL V1 installed.
-
-## Linux arm64:
-
-One thing I wanted to make work for the initial V2 release isn't possible right now for me. Rust requires x64 and arm64 c compilers and packages and having apt (I currently use ubuntu vms to release linux binaries) is just annoying to deal with. They will come back but for now are gone.
-
-</details>
-
 ### Please checkout the readme for more info on IYERIS!
+
+## Changes in `v2.2.0-beta.6 [RC2]:`
+
+- **NEW - Lucide Icons:** Twemoji has been fully replaced for a much more professonal looking icon sceme: Lucide Icons.
 
 ## Changes in `v2.2.0-beta.5 [RC]:`
 

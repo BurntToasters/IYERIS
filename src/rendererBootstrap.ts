@@ -97,7 +97,17 @@ export function createBootstrapController(config: BootstrapConfig) {
     }
   }
 
+  function initializeStaticIcons(): void {
+    document.querySelectorAll('[data-icon]').forEach((el) => {
+      const iconName = el.getAttribute('data-icon');
+      if (iconName) {
+        el.outerHTML = twemojiImg(iconName, el.className || 'twemoji');
+      }
+    });
+  }
+
   async function init() {
+    initializeStaticIcons();
     const [platform, mas, flatpak, msStore, appVersion, devMode] = await Promise.all([
       window.tauriAPI.getPlatform().catch(() => 'unknown'),
       window.tauriAPI.isMas().catch(() => false),
@@ -251,8 +261,8 @@ export function createBootstrapController(config: BootstrapConfig) {
 
         const checkUpdatesBtn = document.getElementById('check-updates-btn');
         if (checkUpdatesBtn) {
-          // eslint-disable-next-line no-restricted-syntax -- twemojiImg uses a hardcoded codepoint; text is static
-          checkUpdatesBtn.innerHTML = `${twemojiImg(String.fromCodePoint(0x1f389), 'twemoji')} Update Available!`;
+          // eslint-disable-next-line no-restricted-syntax -- static HTML template
+          checkUpdatesBtn.innerHTML = `${twemojiImg('sparkles', 'twemoji')} Update Available!`;
           checkUpdatesBtn.classList.add('primary');
         }
       });

@@ -4,15 +4,15 @@ import { assignKey, devLog, escapeHtml, getErrorMessage, ignoreError } from './s
 
 export const HOME_VIEW_PATH = 'iyeris://home';
 export const HOME_VIEW_LABEL = 'Home';
-export const HOME_QUICK_ACCESS_ITEMS: Array<{ action: string; label: string; icon: number }> = [
-  { action: 'userhome', label: 'Home Folder', icon: 0x1f532 },
-  { action: 'desktop', label: 'Desktop', icon: 0x1f5a5 },
-  { action: 'documents', label: 'Documents', icon: 0x1f4c4 },
-  { action: 'downloads', label: 'Downloads', icon: 0x1f4e5 },
-  { action: 'music', label: 'Music', icon: 0x1f3b5 },
-  { action: 'videos', label: 'Videos', icon: 0x1f3ac },
-  { action: 'browse', label: 'Browse', icon: 0x1f4c2 },
-  { action: 'trash', label: 'Trash', icon: 0x1f5d1 },
+export const HOME_QUICK_ACCESS_ITEMS: Array<{ action: string; label: string; icon: string }> = [
+  { action: 'userhome', label: 'Home Folder', icon: 'home' },
+  { action: 'desktop', label: 'Desktop', icon: 'monitor' },
+  { action: 'documents', label: 'Documents', icon: 'file' },
+  { action: 'downloads', label: 'Downloads', icon: 'download' },
+  { action: 'music', label: 'Music', icon: 'music' },
+  { action: 'videos', label: 'Videos', icon: 'video' },
+  { action: 'browse', label: 'Browse', icon: 'folder' },
+  { action: 'trash', label: 'Trash', icon: 'trash-2' },
 ];
 
 const HOME_QUICK_ACCESS_ACTIONS = new Set(HOME_QUICK_ACCESS_ITEMS.map((item) => item.action));
@@ -66,7 +66,7 @@ export type HomeController = {
   renderHomeQuickAccess: () => void;
   renderHomeDrives: (drives?: DriveInfo[]) => Promise<void>;
   getHomeSettings: () => HomeSettings;
-  getVisibleSidebarQuickAccessItems: () => Array<{ action: string; label: string; icon: number }>;
+  getVisibleSidebarQuickAccessItems: () => Array<{ action: string; label: string; icon: string }>;
   closeHomeSettingsModal: (skipConfirmation?: boolean) => Promise<void>;
 };
 
@@ -370,13 +370,13 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
   function getVisibleQuickAccessItems(
     orderKey: 'quickAccessOrder' | 'sidebarQuickAccessOrder',
     hiddenKey: 'hiddenQuickAccessItems' | 'hiddenSidebarQuickAccessItems'
-  ): Array<{ action: string; label: string; icon: number }> {
+  ): Array<{ action: string; label: string; icon: string }> {
     const hiddenSet = new Set(currentHomeSettings[hiddenKey] || []);
     const itemsByAction = HOME_QUICK_ACCESS_ITEMS_BY_ACTION;
     return (currentHomeSettings[orderKey] || [])
       .map((action) => itemsByAction.get(action))
       .filter(
-        (item): item is { action: string; label: string; icon: number } =>
+        (item): item is { action: string; label: string; icon: string } =>
           !!item && !hiddenSet.has(item.action)
       );
   }
@@ -402,7 +402,7 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
     }
 
     visibleItems.forEach((item) => {
-      const icon = twemojiImg(String.fromCodePoint(item.icon), 'twemoji');
+      const icon = twemojiImg(item.icon, 'twemoji');
       const homeItem = createHomeItem({
         label: item.label,
         icon,
@@ -521,7 +521,7 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
         <button class="home-recent-pin ${isPinned ? 'active' : ''}" aria-label="${
           isPinned ? 'Unpin' : 'Pin'
         }">
-          <span class="home-recent-pin-icon" aria-hidden="true"></span>
+          ${twemojiImg('1f4cc', 'home-recent-pin-icon')}
         </button>
       `;
 
@@ -544,7 +544,7 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
     settings.bookmarks.forEach((bookmarkPath) => {
       const pathParts = bookmarkPath.split(/[/\\]/);
       const name = pathParts[pathParts.length - 1] || bookmarkPath;
-      const icon = twemojiImg(String.fromCodePoint(0x2b50), 'twemoji');
+      const icon = twemojiImg('star', 'twemoji');
       const bookmarkItem = createHomeItem({
         label: name,
         subtitle: bookmarkPath,
@@ -634,7 +634,7 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
 
     driveList.forEach((drive) => {
       const driveLabel = drive.label || drive.path;
-      const icon = twemojiImg(String.fromCodePoint(0x1f4be), 'twemoji');
+      const icon = twemojiImg('save', 'twemoji');
 
       if (!currentHomeSettings.showDiskUsage) {
         const driveItem = createHomeItem({
@@ -795,7 +795,7 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
     const itemsByAction = HOME_QUICK_ACCESS_ITEMS_BY_ACTION;
     const orderedItems = (tempHomeSettings[orderKey] || [])
       .map((action) => itemsByAction.get(action))
-      .filter((item): item is { action: string; label: string; icon: number } => !!item);
+      .filter((item): item is { action: string; label: string; icon: string } => !!item);
 
     for (const item of orderedItems) {
       const option = document.createElement('label');
@@ -804,7 +804,7 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
       // eslint-disable-next-line no-restricted-syntax -- item.action/icon/label come from a static internal config array, not user input; label also via escapeHtml()
       option.innerHTML = `
         <input type="checkbox" data-action="${item.action}" ${hiddenSet.has(item.action) ? '' : 'checked'}>
-        <span class="home-option-icon">${twemojiImg(String.fromCodePoint(item.icon), 'twemoji')}</span>
+        <span class="home-option-icon">${twemojiImg(item.icon, 'twemoji')}</span>
         <span class="home-option-label">${escapeHtml(item.label)}</span>
       `;
 

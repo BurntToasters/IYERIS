@@ -394,7 +394,7 @@ export function wireControllers(deps: WiringDeps) {
     activateModal,
     deactivateModal,
     twemojiImg,
-    folderIcon: twemojiImg(String.fromCodePoint(0x1f4c1), 'twemoji file-icon'),
+    folderIcon: twemojiImg('folder', 'twemoji file-icon'),
   });
 
   const inlineRenameController = createInlineRenameController({

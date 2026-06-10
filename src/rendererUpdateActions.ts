@@ -65,10 +65,10 @@ export function createUpdateActionsController(deps: UpdateActionsDeps) {
     const toggleBtn = getStatusToggleButton();
     if (!toggleBtn) return;
 
-    const icon = downloadStatusVisible ? 0x1f441 : 0x1f50d;
+    const iconName = downloadStatusVisible ? 'eye' : 'search';
     const label = downloadStatusVisible ? 'Hide Download Status' : 'Show Download Status';
     // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
-    toggleBtn.innerHTML = `${twemojiImg(String.fromCodePoint(icon), 'twemoji')} ${label}`;
+    toggleBtn.innerHTML = `${twemojiImg(iconName, 'twemoji')} ${label}`;
     toggleBtn.setAttribute('aria-expanded', String(downloadStatusVisible));
   }
 
@@ -104,7 +104,7 @@ export function createUpdateActionsController(deps: UpdateActionsDeps) {
     const checkUpdatesBtn = getCheckUpdatesButton();
     if (!checkUpdatesBtn) return;
     // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
-    checkUpdatesBtn.innerHTML = `${twemojiImg(String.fromCodePoint(0x1f504), 'twemoji')} Check for Updates`;
+    checkUpdatesBtn.innerHTML = `${twemojiImg('refresh-cw', 'twemoji')} Check for Updates`;
     checkUpdatesBtn.classList.remove('primary');
     checkUpdatesBtn.disabled = false;
   }
@@ -186,7 +186,7 @@ export function createUpdateActionsController(deps: UpdateActionsDeps) {
     let startedBackgroundDownload = false;
     const originalHTML = btn.innerHTML;
     // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
-    btn.innerHTML = `${twemojiImg(String.fromCodePoint(0x1f504), 'twemoji')} Checking...`;
+    btn.innerHTML = `${twemojiImg('refresh-cw', 'twemoji')} Checking...`;
     btn.disabled = true;
 
     try {
@@ -306,7 +306,7 @@ export function createUpdateActionsController(deps: UpdateActionsDeps) {
       checkUpdatesBtn.classList.remove('primary');
       checkUpdatesBtn.disabled = false;
       // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
-      checkUpdatesBtn.innerHTML = `${twemojiImg(String.fromCodePoint(0x2b07), 'twemoji')} Downloading...`;
+      checkUpdatesBtn.innerHTML = `${twemojiImg('download', 'twemoji')} Downloading...`;
     }
 
     progressCleanup = window.tauriAPI.onUpdateDownloadProgress((progress) => {
@@ -319,7 +319,7 @@ export function createUpdateActionsController(deps: UpdateActionsDeps) {
       );
       if (checkUpdatesBtn) {
         // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
-        checkUpdatesBtn.innerHTML = `${twemojiImg(String.fromCodePoint(0x2b07), 'twemoji')} Downloading ${percent}%`;
+        checkUpdatesBtn.innerHTML = `${twemojiImg('download', 'twemoji')} Downloading ${percent}%`;
       }
     });
 
@@ -361,7 +361,7 @@ export function createUpdateActionsController(deps: UpdateActionsDeps) {
     const checkUpdatesBtn = getCheckUpdatesButton();
     if (checkUpdatesBtn) {
       // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
-      checkUpdatesBtn.innerHTML = `${twemojiImg(String.fromCodePoint(0x2705), 'twemoji')} Update Ready`;
+      checkUpdatesBtn.innerHTML = `${twemojiImg('check-circle', 'twemoji')} Update Ready`;
       checkUpdatesBtn.classList.add('primary');
     }
 

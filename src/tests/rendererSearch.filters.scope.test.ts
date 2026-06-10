@@ -28,7 +28,8 @@ vi.mock('../rendererDom.js', () => ({
 }));
 
 vi.mock('../rendererUtils.js', () => ({
-  twemojiImg: () => '<img>',
+  twemojiImg: (emoji: string, className?: string, alt?: string) =>
+    `<svg class="${className || ''}" data-icon="${emoji}" data-alt="${alt || ''}"></svg>`,
 }));
 
 vi.mock('../home.js', () => ({
@@ -1113,7 +1114,7 @@ describe('rendererSearch — extended2', () => {
       expect(ctrl.isGlobalSearch()).toBe(false);
     });
 
-    it('updates scope toggle img src and alt', () => {
+    it('updates scope toggle svg and alt', () => {
       const deps = createDeps();
       const ctrl = createSearchController(deps as any);
       ctrl.initListeners();
@@ -1122,14 +1123,15 @@ describe('rendererSearch — extended2', () => {
       const scopeToggle = document.getElementById('search-scope-toggle')!;
       scopeToggle.click();
 
-      const img = scopeToggle.querySelector('img')!;
-      expect(img.src).toContain('1f30d.svg');
-      expect(img.alt).toBe('🌍');
+      let svg = scopeToggle.querySelector('svg')!;
+      expect(svg.getAttribute('data-icon')).toBe('globe');
+      expect(svg.getAttribute('data-alt')).toBe('🌍');
 
       scopeToggle.click();
 
-      expect(img.src).toContain('1f4c1.svg');
-      expect(img.alt).toBe('📁');
+      svg = scopeToggle.querySelector('svg')!;
+      expect(svg.getAttribute('data-icon')).toBe('folder');
+      expect(svg.getAttribute('data-alt')).toBe('📁');
     });
 
     it('updates aria-pressed attribute', () => {

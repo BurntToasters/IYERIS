@@ -103,7 +103,7 @@ export function createPropertiesDialogController(deps: PropertiesDialogDeps) {
       <div class="property-label">Contents:</div>
       <div class="property-value">
         <span id="folder-size-info">Not calculated</span>
-        <button class="property-btn" id="calculate-folder-size-btn">${twemojiImg(String.fromCodePoint(0x1f4ca), 'twemoji')} Calculate Size</button>
+        <button class="property-btn" id="calculate-folder-size-btn">${twemojiImg('bar-chart-3', 'twemoji')} Calculate Size</button>
       </div>
     </div>
     <div class="property-row" id="folder-size-progress-row" style="display: none;">
@@ -113,7 +113,7 @@ export function createPropertiesDialogController(deps: PropertiesDialogDeps) {
           <div class="property-progress-bar" id="folder-size-progress-bar"></div>
         </div>
         <div class="property-progress-text" id="folder-size-progress-text">Calculating...</div>
-        <button class="property-btn property-btn-cancel" id="cancel-folder-size-btn">${twemojiImg(String.fromCodePoint(0x274c), 'twemoji')} Cancel</button>
+        <button class="property-btn property-btn-cancel" id="cancel-folder-size-btn">${twemojiImg('x', 'twemoji')} Cancel</button>
       </div>
     </div>
     <div class="property-row" id="folder-stats-row" style="display: none;">
@@ -208,7 +208,7 @@ export function createPropertiesDialogController(deps: PropertiesDialogDeps) {
     <div class="property-row property-checksum-header">
       <div class="property-label">Checksums:</div>
       <div class="property-value">
-        <button class="property-btn" id="calculate-checksum-btn">${twemojiImg(String.fromCodePoint(0x1f510), 'twemoji')} Calculate Checksums</button>
+        <button class="property-btn" id="calculate-checksum-btn">${twemojiImg('key', 'twemoji')} Calculate Checksums</button>
       </div>
     </div>
     <div class="property-row" id="checksum-progress-row" style="display: none;">
@@ -218,42 +218,42 @@ export function createPropertiesDialogController(deps: PropertiesDialogDeps) {
           <div class="property-progress-bar" id="checksum-progress-bar"></div>
         </div>
         <div class="property-progress-text" id="checksum-progress-text">Calculating...</div>
-        <button class="property-btn property-btn-cancel" id="cancel-checksum-btn">${twemojiImg(String.fromCodePoint(0x274c), 'twemoji')} Cancel</button>
+        <button class="property-btn property-btn-cancel" id="cancel-checksum-btn">${twemojiImg('x', 'twemoji')} Cancel</button>
       </div>
     </div>
     <div class="property-row" id="checksum-md5-row" style="display: none;">
       <div class="property-label">MD5:</div>
       <div class="property-value property-checksum">
         <code id="checksum-md5-value"></code>
-        <button class="property-btn-copy" id="copy-md5-btn" title="Copy MD5">${twemojiImg(String.fromCodePoint(0x1f4cb), 'twemoji')}</button>
+        <button class="property-btn-copy" id="copy-md5-btn" title="Copy MD5">${twemojiImg('clipboard', 'twemoji')}</button>
       </div>
     </div>
     <div class="property-row" id="checksum-sha256-row" style="display: none;">
       <div class="property-label">SHA-256:</div>
       <div class="property-value property-checksum">
         <code id="checksum-sha256-value"></code>
-        <button class="property-btn-copy" id="copy-sha256-btn" title="Copy SHA-256">${twemojiImg(String.fromCodePoint(0x1f4cb), 'twemoji')}</button>
+        <button class="property-btn-copy" id="copy-sha256-btn" title="Copy SHA-256">${twemojiImg('clipboard', 'twemoji')}</button>
       </div>
     </div>
     <div class="property-row" id="checksum-sha512-row" style="display: none;">
       <div class="property-label">SHA-512:</div>
       <div class="property-value property-checksum">
         <code id="checksum-sha512-value"></code>
-        <button class="property-btn-copy" id="copy-sha512-btn" title="Copy SHA-512">${twemojiImg(String.fromCodePoint(0x1f4cb), 'twemoji')}</button>
+        <button class="property-btn-copy" id="copy-sha512-btn" title="Copy SHA-512">${twemojiImg('clipboard', 'twemoji')}</button>
       </div>
     </div>
     <div class="property-row" id="checksum-blake3-row" style="display: none;">
       <div class="property-label">BLAKE3:</div>
       <div class="property-value property-checksum">
         <code id="checksum-blake3-value"></code>
-        <button class="property-btn-copy" id="copy-blake3-btn" title="Copy BLAKE3">${twemojiImg(String.fromCodePoint(0x1f4cb), 'twemoji')}</button>
+        <button class="property-btn-copy" id="copy-blake3-btn" title="Copy BLAKE3">${twemojiImg('clipboard', 'twemoji')}</button>
       </div>
     </div>
     <div class="property-row" id="checksum-crc32-row" style="display: none;">
       <div class="property-label">CRC32:</div>
       <div class="property-value property-checksum">
         <code id="checksum-crc32-value"></code>
-        <button class="property-btn-copy" id="copy-crc32-btn" title="Copy CRC32">${twemojiImg(String.fromCodePoint(0x1f4cb), 'twemoji')}</button>
+        <button class="property-btn-copy" id="copy-crc32-btn" title="Copy CRC32">${twemojiImg('clipboard', 'twemoji')}</button>
       </div>
     </div>`;
     }

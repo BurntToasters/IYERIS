@@ -12,8 +12,8 @@ export function createExternalLinksController(deps: ExternalLinksDeps) {
     document.getElementById('rosie-link')?.addEventListener('click', () => {
       deps.openExternal('https://rosie.run/support');
     });
-    document.getElementById('twemoji-cc-link')?.addEventListener('click', () => {
-      deps.openExternal('https://github.com/jdecked/twemoji');
+    document.getElementById('lucide-cc-link')?.addEventListener('click', () => {
+      deps.openExternal('https://github.com/lucide-icons/lucide');
     });
     document.getElementById('help-link')?.addEventListener('click', () => {
       deps.openExternal('https://help.rosie.run/iyeris/en-us/faq');
@@ -44,9 +44,9 @@ export function createExternalLinksController(deps: ExternalLinksDeps) {
       e.preventDefault();
       deps.openExternal('https://rosie.run');
     });
-    document.getElementById('about-twemoji-link')?.addEventListener('click', (e) => {
+    document.getElementById('about-lucide-link')?.addEventListener('click', (e) => {
       e.preventDefault();
-      deps.openExternal('https://github.com/jdecked/twemoji');
+      deps.openExternal('https://github.com/lucide-icons/lucide');
     });
     document.getElementById('about-7zip-link')?.addEventListener('click', (e) => {
       e.preventDefault();

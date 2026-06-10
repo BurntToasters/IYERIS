@@ -96,17 +96,14 @@ export function showDialog(
     }
 
     const icons: Record<DialogType, string> = {
-      info: '2139',
-      warning: '26a0',
-      error: '274c',
-      success: '2705',
-      question: '2753',
+      info: 'info',
+      warning: 'alert-triangle',
+      error: 'x',
+      success: 'check-circle',
+      question: 'help-circle',
     };
 
-    dialogIcon.innerHTML = twemojiImg(
-      String.fromCodePoint(parseInt(icons[type] || icons.info, 16)),
-      'twemoji'
-    );
+    dialogIcon.innerHTML = twemojiImg(icons[type] || icons.info, 'twemoji');
     dialogTitle.textContent = title;
     dialogContent.textContent = message;
 

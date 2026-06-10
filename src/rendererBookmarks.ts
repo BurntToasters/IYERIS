@@ -1,6 +1,6 @@
 import type { Settings } from './types';
 import { escapeHtml, getErrorMessage } from './shared.js';
-import { twemojiImg } from './rendererUtils.js';
+import { renderIcon } from './rendererUtils.js';
 import { isHomeViewPath } from './home.js';
 
 type BookmarksDeps = {
@@ -70,9 +70,9 @@ export function createBookmarksController(deps: BookmarksDeps) {
 
       // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
       bookmarkItem.innerHTML = `
-      <span class="bookmark-icon">${twemojiImg(String.fromCodePoint(0x2b50), 'twemoji')}</span>
+      <span class="bookmark-icon">${renderIcon('star', 'twemoji')}</span>
       <span class="bookmark-label">${escapeHtml(name)}</span>
-      <button class="bookmark-remove" type="button" title="Remove bookmark" aria-label="Remove bookmark">${twemojiImg(String.fromCodePoint(0x274c), 'twemoji')}</button>
+      <button class="bookmark-remove" type="button" title="Remove bookmark" aria-label="Remove bookmark">${renderIcon('x', 'twemoji')}</button>
     `;
 
       bookmarkItem.addEventListener('click', (e) => {
