@@ -1,4 +1,5 @@
 import type { Settings } from './types';
+import { normalizeIconName } from './rendererUtils.js';
 
 type FolderIconPickerDeps = {
   getCurrentSettings: () => Settings;
@@ -17,11 +18,49 @@ type FolderIconPickerDeps = {
 };
 
 const FOLDER_ICON_OPTIONS = [
-  0x1f4c1, 0x1f4c2, 0x1f4c3, 0x1f5c2, 0x1f5c3, 0x1f4bc, 0x2b50, 0x1f31f, 0x2764, 0x1f499, 0x1f49a,
-  0x1f49b, 0x1f4a1, 0x1f3ae, 0x1f3b5, 0x1f3ac, 0x1f4f7, 0x1f4f9, 0x1f4da, 0x1f4d6, 0x1f4dd, 0x270f,
-  0x1f4bb, 0x1f5a5, 0x1f3e0, 0x1f3e2, 0x1f6e0, 0x2699, 0x1f512, 0x1f513, 0x1f4e6, 0x1f4e5, 0x1f4e4,
-  0x1f5d1, 0x2601, 0x1f310, 0x1f680, 0x2708, 0x1f697, 0x1f6b2, 0x26bd, 0x1f3c0, 0x1f352, 0x1f34e,
-  0x1f33f, 0x1f333, 0x1f308, 0x2600,
+  'folder',
+  'folder-open',
+  'file-text',
+  'contact',
+  'archive',
+  'briefcase',
+  'star',
+  'sparkles',
+  'heart',
+  'lightbulb',
+  'gamepad-2',
+  'music',
+  'clapperboard',
+  'camera',
+  'video',
+  'library',
+  'book-open',
+  'pencil',
+  'laptop',
+  'monitor',
+  'home',
+  'building',
+  'wrench',
+  'settings',
+  'lock',
+  'unlock',
+  'package',
+  'inbox',
+  'upload',
+  'trash-2',
+  'cloud',
+  'globe',
+  'rocket',
+  'plane',
+  'car',
+  'bike',
+  'activity',
+  'trophy',
+  'apple',
+  'leaf',
+  'trees',
+  'sun',
+  'palette',
 ];
 
 export function createFolderIconPickerController(deps: FolderIconPickerDeps) {
@@ -56,14 +95,14 @@ export function createFolderIconPickerController(deps: FolderIconPickerDeps) {
     pathDisplay.textContent = folderName;
 
     const currentSettings = deps.getCurrentSettings();
-    const currentIcon = currentSettings.folderIcons?.[folderPath];
+    const rawIcon = currentSettings.folderIcons?.[folderPath];
+    const currentIcon = rawIcon ? normalizeIconName(rawIcon) : undefined;
 
-    grid.innerHTML = FOLDER_ICON_OPTIONS.map((code) => {
-      const emoji = String.fromCodePoint(code);
-      const isSelected = currentIcon === emoji;
+    grid.innerHTML = FOLDER_ICON_OPTIONS.map((iconName) => {
+      const isSelected = currentIcon === iconName;
       return `
-      <div class="folder-icon-option${isSelected ? ' selected' : ''}" data-icon="${emoji}">
-        ${deps.twemojiImg(emoji, 'twemoji')}
+      <div class="folder-icon-option${isSelected ? ' selected' : ''}" data-icon="${iconName}">
+        ${deps.twemojiImg(iconName, 'twemoji')}
       </div>
     `;
     }).join('');

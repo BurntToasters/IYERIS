@@ -74,7 +74,7 @@ export function createDiskSpaceController(deps: DiskSpaceControllerDeps) {
     // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
     element.innerHTML = `
     <span class="status-disk">
-      ${twemojiImg(String.fromCodePoint(0x1f4be), 'twemoji')} ${freeStr} free of ${totalStr}
+      ${twemojiImg('save', 'twemoji')} ${freeStr} free of ${totalStr}
       <span class="status-disk-meter">
         <span class="status-disk-meter-fill ${usageState}" style="width: ${usedPercent}%"></span>
       </span>
@@ -87,7 +87,7 @@ export function createDiskSpaceController(deps: DiskSpaceControllerDeps) {
     // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
     element.innerHTML = `
     <span class="status-disk status-disk-unavailable">
-      ${twemojiImg(String.fromCodePoint(0x26a0), 'twemoji')} ${escapeHtml(message)}
+      ${twemojiImg('alert-triangle', 'twemoji')} ${escapeHtml(message)}
     </span>
   `;
   }

@@ -69,7 +69,7 @@ export function createPreviewController(deps: PreviewDeps) {
     // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
     previewContent.innerHTML = `
     <div class="preview-empty">
-      <div class="preview-empty-icon">${twemojiImg(String.fromCodePoint(0x1f441), 'twemoji-xlarge')}</div>
+      <div class="preview-empty-icon">${twemojiImg('eye', 'twemoji-xlarge')}</div>
       <p>Select a file to preview</p>
       <small>Press Space for quick look</small>
     </div>
@@ -372,7 +372,7 @@ export function createPreviewController(deps: PreviewDeps) {
     // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
     previewContent.innerHTML = `
     <div class="preview-raw-info">
-      <div class="preview-raw-icon">${twemojiImg(String.fromCodePoint(0x1f4f7), 'twemoji-xlarge')}</div>
+      <div class="preview-raw-icon">${twemojiImg('camera', 'twemoji-xlarge')}</div>
       <div class="preview-raw-details">
         <strong>${ext} RAW Image</strong>
         <p>${brand} RAW format</p>
@@ -420,7 +420,7 @@ export function createPreviewController(deps: PreviewDeps) {
       }
       // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
       previewContent.innerHTML = `
-      ${result.isTruncated ? `<div class="preview-truncated">${twemojiImg(String.fromCodePoint(0x26a0), 'twemoji')} File truncated to first 100KB</div>` : ''}
+      ${result.isTruncated ? `<div class="preview-truncated">${twemojiImg('alert-triangle', 'twemoji')} File truncated to first 100KB</div>` : ''}
       <div class="preview-markdown">${rendered}</div>
       ${generateFileInfo(file, info)}
     `;
@@ -428,7 +428,7 @@ export function createPreviewController(deps: PreviewDeps) {
       const lang = getLanguageForExt(deps.getFileExtension(file.name));
       // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
       previewContent.innerHTML = `
-      ${result.isTruncated ? `<div class="preview-truncated">${twemojiImg(String.fromCodePoint(0x26a0), 'twemoji')} File truncated to first 100KB</div>` : ''}
+      ${result.isTruncated ? `<div class="preview-truncated">${twemojiImg('alert-triangle', 'twemoji')} File truncated to first 100KB</div>` : ''}
       <pre class="preview-text"><code class="${lang ? `language-${lang}` : ''}">${escapeHtml(result.content)}</code></pre>
       ${generateFileInfo(file, info)}
     `;
@@ -462,7 +462,7 @@ export function createPreviewController(deps: PreviewDeps) {
 
     // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
     previewContent.innerHTML = `
-    ${result.isTruncated ? `<div class="preview-truncated">${twemojiImg(String.fromCodePoint(0x26a0), 'twemoji')} File truncated to first 50KB</div>` : ''}
+    ${result.isTruncated ? `<div class="preview-truncated">${twemojiImg('alert-triangle', 'twemoji')} File truncated to first 50KB</div>` : ''}
     <pre class="preview-text"><code class="${lang ? `language-${lang}` : ''}">${escapeHtml(result.content)}</code></pre>
     ${generateFileInfo(file, info)}
   `;
@@ -538,7 +538,7 @@ export function createPreviewController(deps: PreviewDeps) {
     // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
     previewContent.innerHTML = `
     <div class="preview-audio-container">
-      <div class="preview-audio-icon">${twemojiImg(String.fromCodePoint(0x1f3b5), 'twemoji-xlarge')}</div>
+      <div class="preview-audio-icon">${twemojiImg('music', 'twemoji-xlarge')}</div>
       <audio src="${fileUrl}" class="preview-audio" controls controlsList="nodownload">
         Your browser does not support the audio tag.
       </audio>
@@ -579,7 +579,7 @@ export function createPreviewController(deps: PreviewDeps) {
       // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
       previewContent.innerHTML = `
       <div class="preview-error">
-        ${twemojiImg(String.fromCodePoint(0x26a0), 'twemoji')} PDF file too large to preview (>${maxSizeMB}MB)
+        ${twemojiImg('alert-triangle', 'twemoji')} PDF file too large to preview (>${maxSizeMB}MB)
       </div>
       ${generateFileInfo(file, null)}
     `;
@@ -592,7 +592,7 @@ export function createPreviewController(deps: PreviewDeps) {
       // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
       previewContent.innerHTML = `
       <div class="preview-error">
-        ${twemojiImg(String.fromCodePoint(0x26a0), 'twemoji')} File does not appear to be a valid PDF
+        ${twemojiImg('alert-triangle', 'twemoji')} File does not appear to be a valid PDF
       </div>
       ${generateFileInfo(file, null)}
     `;
@@ -634,7 +634,7 @@ export function createPreviewController(deps: PreviewDeps) {
       openBtn.className = 'preview-pdf-open-btn';
       openBtn.title = 'Open in default application';
       // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
-      openBtn.innerHTML = `${twemojiImg(String.fromCodePoint(0x1f4c4), 'twemoji-small')} Open in Default App`;
+      openBtn.innerHTML = `${twemojiImg('file', 'twemoji-small')} Open in Default App`;
       openBtn.addEventListener('click', () => void window.tauriAPI.openFile(file.path));
       actionsDiv.appendChild(openBtn);
       previewContent.appendChild(actionsDiv);
@@ -678,7 +678,7 @@ export function createPreviewController(deps: PreviewDeps) {
           openBtn.className = 'preview-pdf-open-btn';
           openBtn.title = 'Open in default application';
           // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
-          openBtn.innerHTML = `${twemojiImg(String.fromCodePoint(0x1f4c4), 'twemoji-small')} Open in Default App`;
+          openBtn.innerHTML = `${twemojiImg('file', 'twemoji-small')} Open in Default App`;
           openBtn.addEventListener('click', () => void window.tauriAPI.openFile(file.path));
           actionsDiv.appendChild(openBtn);
           previewContent.appendChild(actionsDiv);
@@ -705,7 +705,7 @@ export function createPreviewController(deps: PreviewDeps) {
       </div>
       <div class="preview-pdf-actions">
         <button class="preview-pdf-open-btn" title="Open in default application">
-          ${twemojiImg(String.fromCodePoint(0x1f4c4), 'twemoji-small')} Open in Default App
+          ${twemojiImg('file', 'twemoji-small')} Open in Default App
         </button>
       </div>
       ${generateFileInfo(file, info)}

@@ -4,6 +4,7 @@ import type { FileItem, Settings } from '../types';
 
 vi.mock('../rendererUtils.js', () => ({
   twemojiImg: (emoji: string, cls: string) => `<img class="${cls}" alt="${emoji}">`,
+  renderIcon: (emoji: string, cls: string) => `<img class="${cls || 'twemoji'}" alt="${emoji}">`,
 }));
 
 import { createFileRenderController } from '../rendererFileRender';

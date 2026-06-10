@@ -207,7 +207,7 @@ export function createQuicklookController(deps: QuicklookDeps) {
       container.className = 'preview-audio-container';
       const icon = document.createElement('div');
       icon.className = 'preview-audio-icon';
-      icon.innerHTML = twemojiImg(String.fromCodePoint(0x1f3b5), 'twemoji-large');
+      icon.innerHTML = twemojiImg('music', 'twemoji-large');
       const audio = document.createElement('audio');
       audio.controls = true;
       audio.autoplay = deps.getCurrentSettings().autoPlayVideos || false;
@@ -243,7 +243,7 @@ export function createQuicklookController(deps: QuicklookDeps) {
         !headerResult.content.startsWith('%PDF-')
       ) {
         // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
-        quicklookContent.innerHTML = `<div class="preview-error">${twemojiImg(String.fromCodePoint(0x26a0), 'twemoji')} File does not appear to be a valid PDF</div>`;
+        quicklookContent.innerHTML = `<div class="preview-error">${twemojiImg('alert-triangle', 'twemoji')} File does not appear to be a valid PDF</div>`;
         quicklookInfo.textContent = quickInfo(file);
         return;
       }
@@ -329,13 +329,13 @@ export function createQuicklookController(deps: QuicklookDeps) {
           }
           // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
           quicklookContent.innerHTML = `
-          ${result.isTruncated ? `<div class="preview-truncated">${twemojiImg(String.fromCodePoint(0x26a0), 'twemoji')} File truncated to first 100KB</div>` : ''}
+          ${result.isTruncated ? `<div class="preview-truncated">${twemojiImg('alert-triangle', 'twemoji')} File truncated to first 100KB</div>` : ''}
           <div class="preview-markdown">${rendered}</div>
         `;
         } else {
           // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
           quicklookContent.innerHTML = `
-          ${result.isTruncated ? `<div class="preview-truncated">${twemojiImg(String.fromCodePoint(0x26a0), 'twemoji')} File truncated to first 100KB</div>` : ''}
+          ${result.isTruncated ? `<div class="preview-truncated">${twemojiImg('alert-triangle', 'twemoji')} File truncated to first 100KB</div>` : ''}
           <pre class="preview-text"><code>${escapeHtml(result.content)}</code></pre>
         `;
         }
@@ -353,7 +353,7 @@ export function createQuicklookController(deps: QuicklookDeps) {
         const lang = getLanguageForExt(ext);
         // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
         quicklookContent.innerHTML = `
-        ${result.isTruncated ? `<div class="preview-truncated">${twemojiImg(String.fromCodePoint(0x26a0), 'twemoji')} File truncated to first 100KB</div>` : ''}
+        ${result.isTruncated ? `<div class="preview-truncated">${twemojiImg('alert-triangle', 'twemoji')} File truncated to first 100KB</div>` : ''}
         <pre class="preview-text"><code class="${lang ? `language-${lang}` : ''}">${escapeHtml(result.content)}</code></pre>
       `;
         quicklookInfo.textContent = quickInfo(file);

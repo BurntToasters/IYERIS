@@ -14,7 +14,7 @@ function makeDeps() {
 const BUTTON_IDS = [
   'github-btn',
   'rosie-link',
-  'twemoji-cc-link',
+  'lucide-cc-link',
   'help-link',
   'heart-button',
   'status-version',
@@ -24,7 +24,7 @@ const BUTTON_IDS = [
   'about-licenses-btn',
   'about-shortcuts-btn',
   'about-rosie-link',
-  'about-twemoji-link',
+  'about-lucide-link',
   'about-7zip-link',
 ];
 
@@ -54,11 +54,11 @@ describe('rendererExternalLinks', () => {
     expect(deps.openExternal).toHaveBeenCalledWith('https://rosie.run/support');
   });
 
-  it('twemoji-cc-link opens twemoji repo', () => {
+  it('lucide-cc-link opens lucide repo', () => {
     const deps = makeDeps();
     createExternalLinksController(deps).initExternalLinks();
-    document.getElementById('twemoji-cc-link')!.click();
-    expect(deps.openExternal).toHaveBeenCalledWith('https://github.com/jdecked/twemoji');
+    document.getElementById('lucide-cc-link')!.click();
+    expect(deps.openExternal).toHaveBeenCalledWith('https://github.com/lucide-icons/lucide');
   });
 
   it('help-link opens FAQ URL', () => {
@@ -145,15 +145,15 @@ describe('rendererExternalLinks', () => {
     expect(deps.openExternal).toHaveBeenCalledWith('https://rosie.run');
   });
 
-  it('about-twemoji-link prevents default and opens twemoji repo', () => {
+  it('about-lucide-link prevents default and opens lucide repo', () => {
     const deps = makeDeps();
     createExternalLinksController(deps).initExternalLinks();
-    const el = document.getElementById('about-twemoji-link')! as HTMLAnchorElement;
+    const el = document.getElementById('about-lucide-link')! as HTMLAnchorElement;
     const event = new MouseEvent('click', { bubbles: true, cancelable: true });
     const spy = vi.spyOn(event, 'preventDefault');
     el.dispatchEvent(event);
     expect(spy).toHaveBeenCalled();
-    expect(deps.openExternal).toHaveBeenCalledWith('https://github.com/jdecked/twemoji');
+    expect(deps.openExternal).toHaveBeenCalledWith('https://github.com/lucide-icons/lucide');
   });
 
   it('about-7zip-link prevents default and opens 7-Zip website', () => {

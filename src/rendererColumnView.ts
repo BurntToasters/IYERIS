@@ -1,6 +1,6 @@
 import type { Settings, FileItem, DriveInfo, DirectoryResponse } from './types';
 import { devLog, escapeHtml, ignoreError } from './shared.js';
-import { isWindowsPath, rendererPath as path } from './rendererUtils.js';
+import { isWindowsPath, rendererPath as path, twemojiImg } from './rendererUtils.js';
 import { isHomeViewPath } from './home.js';
 import {
   COLUMN_VIEW_RENDER_TIMEOUT_MS,
@@ -238,7 +238,7 @@ export function createColumnViewController(deps: ColumnViewDeps) {
         item.title = drive.path;
         // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
         item.innerHTML = `
-        <span class="column-item-icon"><img src="/twemoji/1f4bf.svg" class="twemoji" alt="💿" draggable="false" /></span>
+        <span class="column-item-icon">${twemojiImg('1f4bf', 'twemoji')}</span>
         <span class="column-item-name">${escapeHtml(drive.label || drive.path)}</span>
         <span class="column-item-arrow">▸</span>
       `;
@@ -452,7 +452,7 @@ export function createColumnViewController(deps: ColumnViewDeps) {
     }
 
     const icon = fileItem.isDirectory
-      ? '<img src="/twemoji/1f4c1.svg" class="twemoji" alt="📁" draggable="false" />'
+      ? twemojiImg('1f4c1', 'twemoji')
       : deps.getFileIcon(fileItem.name);
 
     const symlinkBadge = fileItem.isSymlink

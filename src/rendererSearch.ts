@@ -88,7 +88,7 @@ export function createSearchController(deps: SearchDeps) {
 
     // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
     fileGrid.innerHTML = `<div class="search-empty-state">
-      ${twemojiImg(String.fromCodePoint(0x1f50d), 'twemoji-large', 'Search')}
+      ${twemojiImg('search', 'twemoji-large', 'Search')}
       <h3>No results found</h3>
       <p>No files matching "${escapeHtml(query)}" were found.</p>
       <ul>${suggestionsHtml}</ul>
@@ -123,11 +123,11 @@ export function createSearchController(deps: SearchDeps) {
     searchScopeToggle.title = global
       ? 'Global Search (All Indexed Files)'
       : 'Local Search (Current Folder)';
-    const img = searchScopeToggle.querySelector('img');
-    if (img) {
-      img.src = global ? '/twemoji/1f30d.svg' : '/twemoji/1f4c1.svg';
-      img.alt = global ? '🌍' : '📁';
-    }
+    searchScopeToggle.innerHTML = twemojiImg(
+      global ? 'globe' : 'folder',
+      'twemoji',
+      global ? '🌍' : '📁'
+    );
   }
 
   const ensureElements = () => {
@@ -563,7 +563,7 @@ export function createSearchController(deps: SearchDeps) {
           tooltipParts.push(`Used ${s.useCount} time${s.useCount === 1 ? '' : 's'}`);
         }
         return `<div class="saved-search-item" data-saved-index="${index}">
-            ${twemojiImg(String.fromCodePoint(0x2b50), 'twemoji')}
+            ${twemojiImg('star', 'twemoji')}
             <span class="saved-search-name" title="${escapeHtml(tooltipParts.join('\n'))}">${escapeHtml(s.name)}</span>
             <span class="saved-search-badges">${badges.join('')}</span>
             <button class="saved-search-delete" data-delete-index="${index}" title="Delete saved search" aria-label="Delete saved search ${escapeHtml(s.name)}">&times;</button>
@@ -590,11 +590,11 @@ export function createSearchController(deps: SearchDeps) {
         history
           .map(
             (item) =>
-              `<div class="history-item" data-query="${escapeHtml(item)}">${twemojiImg(String.fromCodePoint(0x1f50d), 'twemoji')} ${escapeHtml(item)}</div>`
+              `<div class="history-item" data-query="${escapeHtml(item)}">${twemojiImg('search', 'twemoji')} ${escapeHtml(item)}</div>`
           )
           .join('') +
         (history.length > 0
-          ? `<div class="history-clear" data-action="clear-search">${twemojiImg(String.fromCodePoint(0x1f5d1), 'twemoji')} Clear Search History</div>`
+          ? `<div class="history-clear" data-action="clear-search">${twemojiImg('trash-2', 'twemoji')} Clear Search History</div>`
           : '');
     }
 

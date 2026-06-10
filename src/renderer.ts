@@ -1006,7 +1006,7 @@ function renderSidebarQuickAccess() {
   homeDiv.setAttribute('aria-label', 'Navigate to Home');
   // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
   homeDiv.innerHTML = `
-    <span class="nav-icon" aria-hidden="true">${twemojiImg(String.fromCodePoint(0x1f3e0), 'twemoji')}</span>
+    <span class="nav-icon" aria-hidden="true">${twemojiImg('home', 'twemoji')}</span>
     <span class="nav-label">Home</span>
   `;
   homeDiv.addEventListener('click', () => handleQuickAction('home'));
@@ -1032,7 +1032,7 @@ function renderSidebarQuickAccess() {
     div.tabIndex = 0;
     div.setAttribute('aria-label', `Navigate to ${item.label}`);
 
-    const icon = twemojiImg(String.fromCodePoint(item.icon), 'twemoji');
+    const icon = twemojiImg(item.icon, 'twemoji');
     // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
     div.innerHTML = `
       <span class="nav-icon" aria-hidden="true">${icon}</span>
@@ -1361,7 +1361,7 @@ async function loadDrives() {
       driveItem.title = drive.path;
       // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
       driveItem.innerHTML = `
-      <span class="nav-icon">${twemojiImg(String.fromCodePoint(0x1f4be), 'twemoji')}</span>
+      <span class="nav-icon">${twemojiImg('save', 'twemoji')}</span>
       <span class="nav-label">${escapeHtml(driveLabel)}</span>
     `;
       driveItem.addEventListener('click', () => navigateTo(drive.path));
@@ -1873,7 +1873,7 @@ async function deleteSelected(permanent = false) {
 
   if (permanent) {
     const confirmed = await showConfirm(
-      `${twemojiImg(String.fromCodePoint(0x26a0), 'twemoji')} PERMANENTLY delete ${count} item${plural}? This CANNOT be undone!`,
+      `${twemojiImg('alert-triangle', 'twemoji')} PERMANENTLY delete ${count} item${plural}? This CANNOT be undone!`,
       'Permanent Delete',
       'error'
     );

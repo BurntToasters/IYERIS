@@ -193,9 +193,6 @@
   width: 14px;
   height: 14px;
   display: block;
-  background-color: currentColor;
-  mask: url('/twemoji/1f4cc.svg') center / contain no-repeat;
-  -webkit-mask: url('/twemoji/1f4cc.svg') center / contain no-repeat;
 }
 
 .home-drive-card {
@@ -276,9 +273,6 @@
   width: 16px;
   height: 16px;
   display: block;
-  background-color: currentColor;
-  mask: url('/twemoji/270f.svg') center / contain no-repeat;
-  -webkit-mask: url('/twemoji/270f.svg') center / contain no-repeat;
 }
 
 .home-customize-btn:hover {
