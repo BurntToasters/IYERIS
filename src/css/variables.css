@@ -151,9 +151,9 @@
   --sidebar-section-gap: 14px;
   --sidebar-padding-v: 10px;
   --sidebar-padding-h: 8px;
-  --container-gap: 8px;
-  --container-edge-padding: 8px;
-  --container-edge-padding-top: 8px;
+  --container-gap: 0px;
+  --container-edge-padding: 0px;
+  --container-edge-padding-top: 0px;
   --container-edge-padding-bottom: 0px;
   --grid-min-column: 92px;
   --file-icon-margin-bottom: 6px;
@@ -279,7 +279,7 @@ body.compact-ui {
   --sidebar-section-gap: 12px;
   --sidebar-padding-v: 6px;
   --sidebar-padding-h: 6px;
-  --container-gap: 6px;
+  --container-gap: 0px;
   --grid-min-column: 70px;
   --file-icon-margin-bottom: 3px;
   --toolbar-gap: 4px;
@@ -337,9 +337,9 @@ body.large-ui {
   --sidebar-section-gap: 20px;
   --sidebar-padding-v: 12px;
   --sidebar-padding-h: 10px;
-  --container-gap: 12px;
-  --container-edge-padding: 8px;
-  --container-edge-padding-top: 8px;
+  --container-gap: 0px;
+  --container-edge-padding: 0px;
+  --container-edge-padding-top: 0px;
   --container-edge-padding-bottom: 0px;
   --grid-min-column: 98px;
   --file-icon-margin-bottom: 8px;

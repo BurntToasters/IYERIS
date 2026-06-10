@@ -2,6 +2,14 @@ body {
   letter-spacing: 0;
   background: var(--surface-0);
   color: var(--text-primary);
+  --native-divider: color-mix(in srgb, var(--text-primary) 12%, transparent);
+  --surface-border: color-mix(in srgb, var(--text-primary) 12%, transparent);
+  --surface-border-strong: color-mix(in srgb, var(--text-primary) 18%, transparent);
+  --surface-2: color-mix(in srgb, var(--surface-1) 88%, var(--text-primary) 3%);
+  --chrome-surface: color-mix(in srgb, var(--surface-1) 84%, transparent);
+  --chrome-surface-raised: color-mix(in srgb, var(--surface-1) 92%, var(--text-primary) 3%);
+  --panel-border: var(--surface-border);
+  --panel-border-strong: var(--surface-border-strong);
 }
 
 body,
@@ -119,6 +127,31 @@ body.theme-light .glass-panel {
 
 body.platform-darwin .titlebar {
   padding-left: 78px;
+  background: color-mix(in srgb, var(--chrome-surface) 90%, transparent);
+  border-bottom: none !important;
+  box-shadow: none !important;
+  position: relative;
+}
+
+body.platform-darwin .titlebar::after {
+  content: '';
+  position: absolute;
+  left: var(--sidebar-width-current, var(--sidebar-width));
+  top: 0;
+  height: 100%;
+  width: 1px;
+  background: var(--native-divider) !important;
+  z-index: 9999 !important;
+  display: block !important;
+  transition: left var(--animation-duration) var(--animation-easing);
+}
+
+body.sidebar-collapsed.platform-darwin .titlebar::after {
+  left: var(--sidebar-width-collapsed);
+}
+
+body.platform-darwin .main-content {
+  border-top: 1px solid var(--native-divider);
 }
 
 .titlebar-icon {
@@ -186,13 +219,14 @@ body.platform-darwin .titlebar {
 }
 
 .main-content {
-  gap: 8px;
+  gap: 0;
 }
 
 .sidebar {
   padding: calc(var(--sidebar-padding-v) + 2px) calc(var(--sidebar-padding-h) + 2px);
-  border-radius: var(--radius-medium);
-  border: 1px solid var(--native-divider);
+  border-radius: 0;
+  border: none;
+  border-right: 1px solid var(--native-divider);
   background: color-mix(in srgb, var(--chrome-surface) 90%, transparent);
   box-shadow: none;
   backdrop-filter: blur(24px) saturate(150%);
@@ -200,8 +234,9 @@ body.platform-darwin .titlebar {
 }
 
 .sidebar.glass-panel {
-  border-radius: var(--radius-medium);
-  border: 1px solid var(--native-divider);
+  border-radius: 0;
+  border: none;
+  border-right: 1px solid var(--native-divider);
 }
 
 .sidebar-section {
@@ -303,8 +338,9 @@ body.platform-darwin .titlebar {
   padding: var(--toolbar-padding-v) var(--toolbar-padding-h);
   gap: var(--toolbar-gap);
   background: color-mix(in srgb, var(--chrome-surface) 90%, transparent);
-  border: 1px solid var(--native-divider);
-  border-radius: var(--radius-medium);
+  border: none;
+  border-bottom: 1px solid var(--native-divider);
+  border-radius: 0;
   box-shadow: none;
   backdrop-filter: blur(20px) saturate(145%);
   -webkit-backdrop-filter: blur(20px) saturate(145%);
@@ -442,8 +478,9 @@ body.theme-light .glass-input,
 
 .file-view {
   padding: 4px;
-  border-radius: var(--radius-medium);
-  background: color-mix(in srgb, var(--surface-1) 32%, transparent);
+  border-radius: 0;
+  background: transparent;
+  border: none !important;
 }
 
 .file-grid {
@@ -576,10 +613,10 @@ body.theme-light .file-item.selected:hover {
 }
 
 .column-view {
-  border-radius: var(--radius-medium);
+  border-radius: 0;
   overflow: auto hidden;
-  background: color-mix(in srgb, var(--surface-1) 36%, transparent);
-  border: 1px solid var(--native-divider);
+  background: transparent;
+  border: none;
 }
 
 .column-pane {
@@ -649,6 +686,10 @@ body.theme-light .file-item.selected:hover {
   background: var(--chrome-surface-raised);
   border-color: var(--native-divider);
   box-shadow: var(--native-elevation-1);
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
+  margin: 0;
 }
 
 .status-bar {
@@ -942,7 +983,6 @@ body.platform-darwin .context-menu-item {
 }
 
 .search-filters-panel,
-.preview-panel,
 .archive-operations-panel,
 .progress-panel,
 .file-hover-card,
@@ -951,6 +991,18 @@ body.platform-darwin .context-menu-item {
   border: 1px solid var(--native-divider);
   background: color-mix(in srgb, var(--surface-1) 76%, transparent);
   box-shadow: none;
+}
+
+body.preview-right .preview-panel {
+  border-radius: 0;
+  border: none;
+  border-left: 1px solid var(--native-divider);
+}
+
+body.preview-bottom .preview-panel {
+  border-radius: 0;
+  border: none;
+  border-top: 1px solid var(--native-divider);
 }
 
 .drop-indicator,
