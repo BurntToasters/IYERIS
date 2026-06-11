@@ -12,6 +12,7 @@ type ConflictDecision = Exclude<ConflictResolution, 'cancel'>;
 
 let pendingUpdate: Update | null = null;
 let updateDownloadInProgress = false;
+let updateReadyToInstall = false;
 let currentUpdateChannel: 'auto' | 'beta' | 'stable' = 'auto';
 let cachedPlatformOS: string | null = null;
 let lastWatchedDirectoryPath = '';
@@ -187,7 +188,6 @@ async function runFileOperationWithConflictResolution(
 ) {
   const behavior = conflictBehavior ?? 'ask';
   const conflictResolutions: Record<string, ConflictDecision> = {};
-  let operationDefault: ConflictDecision | null = null;
 
   while (true) {
     try {
@@ -210,18 +210,12 @@ async function runFileOperationWithConflictResolution(
         return { success: false as const, error };
       }
 
-      if (operationDefault) {
-        conflictResolutions[conflictItem] = operationDefault;
-        continue;
-      }
-
       const resolution = await promptConflictResolution(conflictItem, operation);
       if (resolution === 'cancel') {
         return { success: false as const, error: 'Operation cancelled' };
       }
 
       conflictResolutions[conflictItem] = resolution;
-      operationDefault = resolution;
     }
   }
 }
@@ -738,6 +732,7 @@ const tauriAPI: TauriAPI = {
       const update = target ? await check({ target }) : await check();
       if (update) {
         pendingUpdate = update;
+        updateReadyToInstall = false;
         updateAvailableCallbacks.forEach((cb) => {
           try {
             cb({
@@ -757,7 +752,7 @@ const tauriAPI: TauriAPI = {
           isBeta,
         } as never;
       }
-      if (!updateDownloadInProgress) {
+      if (!updateDownloadInProgress && !updateReadyToInstall) {
         pendingUpdate = null;
       }
       return {
@@ -768,7 +763,7 @@ const tauriAPI: TauriAPI = {
         isBeta,
       } as never;
     } catch (e) {
-      if (!updateDownloadInProgress) {
+      if (!updateDownloadInProgress && !updateReadyToInstall) {
         pendingUpdate = null;
       }
       const message = String(e);
@@ -785,6 +780,7 @@ const tauriAPI: TauriAPI = {
     try {
       if (!pendingUpdate) return { success: false as const, error: 'No update available' };
       updateDownloadInProgress = true;
+      updateReadyToInstall = false;
       let downloaded = 0;
       let contentLength = 0;
       await pendingUpdate.download((event) => {
@@ -807,6 +803,7 @@ const tauriAPI: TauriAPI = {
             }
           });
         } else if (event.event === 'Finished') {
+          updateReadyToInstall = true;
           updateDownloadedCallbacks.forEach((cb) => {
             try {
               cb({ version: pendingUpdate?.version ?? '' });
@@ -820,14 +817,16 @@ const tauriAPI: TauriAPI = {
       return { success: true as const };
     } catch (e) {
       updateDownloadInProgress = false;
+      updateReadyToInstall = false;
       return { success: false as const, error: String(e) };
     }
   },
   installUpdate: async () => {
     try {
-      if (pendingUpdate) {
-        await pendingUpdate.install();
-      }
+      if (!pendingUpdate) return { success: false as const, error: 'No update available' };
+      await pendingUpdate.install();
+      updateReadyToInstall = false;
+      pendingUpdate = null;
       const { relaunch } = await import('@tauri-apps/plugin-process');
       await relaunch();
       return { success: true as const };

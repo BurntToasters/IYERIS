@@ -287,6 +287,19 @@ describe('createUpdateActionsController', () => {
     expect(ctx.toggleStatusBtn.hidden).toBe(false);
   });
 
+  it('re-prompts install from the button after the user defers restart', async () => {
+    const ctx = setup();
+    ctx.showDialog.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+
+    await ctx.controller.handleUpdateDownloaded({ version: '1.2.3' });
+    await ctx.controller.checkForUpdates();
+
+    expect(ctx.checkForUpdates).not.toHaveBeenCalled();
+    expect(ctx.installUpdate).toHaveBeenCalledTimes(1);
+    expect(ctx.showDialog).toHaveBeenCalledTimes(2);
+    expect(ctx.checkUpdatesBtn.innerHTML).toContain('Update Ready');
+  });
+
   it('clears terminal download status when settings modal closes', async () => {
     const ctx = setup();
 
@@ -572,7 +585,8 @@ describe('createUpdateActionsController', () => {
       'Update Install Failed',
       'error'
     );
-    expect(ctx.checkUpdatesBtn.innerHTML).toContain('Check for Updates');
+    expect(ctx.checkUpdatesBtn.innerHTML).toContain('Update Ready');
+    expect(ctx.checkUpdatesBtn.classList.contains('primary')).toBe(true);
   });
 
   it('silent check respects guards and starts background download only when eligible', async () => {

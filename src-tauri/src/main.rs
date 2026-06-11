@@ -125,6 +125,12 @@ fn read_early_setting_bool(key: &str) -> bool {
         .unwrap_or(false)
 }
 
+fn contains_disallowed_open_path_char(value: &str) -> bool {
+    value
+        .chars()
+        .any(|c| matches!(c, '$' | '`' | ';' | '|' | '&' | '<' | '>' | '\n' | '\r'))
+}
+
 fn has_minimized_launch_arg(args: &[String]) -> bool {
     args.iter().any(|a| a == "--minimized" || a == "--hidden")
 }
@@ -191,7 +197,7 @@ fn first_open_path_arg(args: &[String]) -> Option<String> {
             log::warn!("[SingleInstance] rejecting arg with control character");
             continue;
         }
-        if arg.chars().any(|c| matches!(c, '`' | '\n' | '\r')) {
+        if contains_disallowed_open_path_char(arg) {
             log::warn!("[SingleInstance] rejecting arg with shell metacharacter");
             continue;
         }
@@ -837,5 +843,31 @@ mod tests {
 
         let args = vec!["app".to_string(), "--dev".to_string()];
         assert!(!has_minimized_launch_arg(&args));
+    }
+
+    #[test]
+    fn first_open_path_arg_rejects_shell_metacharacters() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let suspicious = temp.path().join("bad$name.txt");
+        let args = vec!["app".to_string(), suspicious.to_string_lossy().to_string()];
+        assert!(first_open_path_arg(&args).is_none());
+    }
+
+    #[test]
+    fn first_open_path_arg_accepts_existing_absolute_path() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let file_path = temp.path().join("ok.txt");
+        std::fs::write(&file_path, "ok").expect("write temp file");
+        let args = vec!["app".to_string(), file_path.to_string_lossy().to_string()];
+        assert_eq!(
+            first_open_path_arg(&args),
+            Some(
+                file_path
+                    .canonicalize()
+                    .expect("canonical path")
+                    .to_string_lossy()
+                    .to_string()
+            )
+        );
     }
 }

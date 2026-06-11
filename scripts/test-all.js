@@ -28,7 +28,9 @@ function createInitialResults() {
     lintTest: { status: 'pending' },
     format: { status: 'pending' },
     test: { status: 'pending', passed: null, failed: null, files: null },
-    rust: { status: 'pending' },
+    rustCheck: { status: 'pending' },
+    rustClippy: { status: 'pending' },
+    rustTest: { status: 'pending' },
   };
 }
 
@@ -124,7 +126,13 @@ ${colors.reset}`);
     `${colors.bold}Tests:${colors.reset}      ${results.test.status === 'passed' ? `${colors.green}✓ PASS` : `${colors.red}✗ FAIL`}${colors.reset} (${results.test.passed ?? 'n/a'} passed${results.test.failed > 0 ? `, ${results.test.failed} failed` : ''}${results.test.files ? `, ${results.test.files} files` : ''})`
   );
   console.log(
-    `${colors.bold}Rust Check:${colors.reset} ${results.rust.status === 'passed' ? `${colors.green}✓ PASS` : `${colors.red}✗ FAIL`}${colors.reset}`
+    `${colors.bold}Rust Check:${colors.reset} ${results.rustCheck.status === 'passed' ? `${colors.green}✓ PASS` : `${colors.red}✗ FAIL`}${colors.reset}`
+  );
+  console.log(
+    `${colors.bold}Rust Clippy:${colors.reset} ${results.rustClippy.status === 'passed' ? `${colors.green}✓ PASS` : `${colors.red}✗ FAIL`}${colors.reset}`
+  );
+  console.log(
+    `${colors.bold}Rust Test:${colors.reset} ${results.rustTest.status === 'passed' ? `${colors.green}✓ PASS` : `${colors.red}✗ FAIL`}${colors.reset}`
   );
   console.log('');
   if (allPassed) {
@@ -147,9 +155,46 @@ function main() {
   runCommand('lintTest', npm, ['run', 'lint:test'], null, results);
   runCommand('format', npm, ['run', 'format:check'], null, results);
   runCommand('test', npm, ['run', 'test:cov'], parseTest, results);
-  runCommand('rust', 'cargo', ['check', '--manifest-path', 'src-tauri/Cargo.toml'], null, results, {
-    timeout: rustTimeoutMs,
-  });
+  runCommand(
+    'rustCheck',
+    'cargo',
+    ['check', '--manifest-path', 'src-tauri/Cargo.toml'],
+    null,
+    results,
+    {
+      timeout: rustTimeoutMs,
+    }
+  );
+  runCommand(
+    'rustClippy',
+    'cargo',
+    [
+      'clippy',
+      '--manifest-path',
+      'src-tauri/Cargo.toml',
+      '--all-targets',
+      '--',
+      '-D',
+      'warnings',
+      '-A',
+      'unsafe_code',
+    ],
+    null,
+    results,
+    {
+      timeout: rustTimeoutMs,
+    }
+  );
+  runCommand(
+    'rustTest',
+    'cargo',
+    ['test', '--manifest-path', 'src-tauri/Cargo.toml', '--all-targets'],
+    null,
+    results,
+    {
+      timeout: rustTimeoutMs,
+    }
+  );
   return printSummary(results);
 }
 

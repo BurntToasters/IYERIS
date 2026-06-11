@@ -34,6 +34,7 @@ export function createUpdateActionsController(deps: UpdateActionsDeps) {
   let progressCleanup: (() => void) | null = null;
   let downloadStatusVisible = false;
   let latestDownloadStatus = '';
+  let installReadyVersion: string | null = null;
 
   function getCheckUpdatesButton(): HTMLButtonElement | null {
     return document.getElementById('check-updates-btn') as HTMLButtonElement | null;
@@ -109,6 +110,42 @@ export function createUpdateActionsController(deps: UpdateActionsDeps) {
     checkUpdatesBtn.disabled = false;
   }
 
+  function setCheckUpdatesButtonInstallReady(version: string): void {
+    installReadyVersion = version;
+    const checkUpdatesBtn = getCheckUpdatesButton();
+    if (!checkUpdatesBtn) return;
+    // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
+    checkUpdatesBtn.innerHTML = `${twemojiImg('check-circle', 'twemoji')} Update Ready`;
+    checkUpdatesBtn.classList.add('primary');
+    checkUpdatesBtn.disabled = false;
+  }
+
+  async function promptInstallReadyUpdate(version: string): Promise<void> {
+    setCheckUpdatesButtonInstallReady(version);
+
+    const shouldRestart = await deps.showDialog(
+      'Update Ready',
+      `Update v${version} has been downloaded and is ready to install.\n\nWould you like to restart now to apply the update?`,
+      'success',
+      true
+    );
+
+    if (!shouldRestart) return;
+
+    const installResult = await window.tauriAPI.installUpdate();
+    if (installResult.success) {
+      installReadyVersion = null;
+      return;
+    }
+
+    deps.showToast(
+      installResult.error || 'Failed to install update. Please try again.',
+      'Update Install Failed',
+      'error'
+    );
+    setCheckUpdatesButtonInstallReady(version);
+  }
+
   function clearDownloadStatusUi(): void {
     latestDownloadStatus = '';
     setDownloadStatusVisibility(false);
@@ -171,6 +208,11 @@ export function createUpdateActionsController(deps: UpdateActionsDeps) {
   async function checkForUpdates(): Promise<void> {
     const btn = getCheckUpdatesButton();
     if (!btn) return;
+
+    if (installReadyVersion) {
+      await promptInstallReadyUpdate(installReadyVersion);
+      return;
+    }
 
     if (isDownloading) {
       showDownloadStatusControls();
@@ -331,6 +373,7 @@ export function createUpdateActionsController(deps: UpdateActionsDeps) {
 
         if (!result.success) {
           const errorMessage = result.error || 'Failed to download update.';
+          installReadyVersion = null;
           setDownloadStatus(`Download failed: ${errorMessage}`);
           setDownloadStatusVisibility(true);
           deps.showToast(errorMessage, 'Download Failed', 'error');
@@ -343,6 +386,7 @@ export function createUpdateActionsController(deps: UpdateActionsDeps) {
       .catch((error) => {
         stopProgressListener();
         isDownloading = false;
+        installReadyVersion = null;
         const errorMessage = getErrorMessage(error);
         setDownloadStatus(`Download failed: ${errorMessage}`);
         setDownloadStatusVisibility(true);
@@ -357,36 +401,11 @@ export function createUpdateActionsController(deps: UpdateActionsDeps) {
     isDownloading = false;
     showDownloadStatusControls();
     setDownloadStatus(`Update v${info.version} is downloaded and ready to install.`);
-
-    const checkUpdatesBtn = getCheckUpdatesButton();
-    if (checkUpdatesBtn) {
-      // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
-      checkUpdatesBtn.innerHTML = `${twemojiImg('check-circle', 'twemoji')} Update Ready`;
-      checkUpdatesBtn.classList.add('primary');
-    }
-
-    const shouldRestart = await deps.showDialog(
-      'Update Ready',
-      `Update v${info.version} has been downloaded and is ready to install.\n\nWould you like to restart now to apply the update?`,
-      'success',
-      true
-    );
-
-    if (shouldRestart) {
-      const installResult = await window.tauriAPI.installUpdate();
-      if (!installResult.success) {
-        deps.showToast(
-          installResult.error || 'Failed to install update. Please try again.',
-          'Update Install Failed',
-          'error'
-        );
-        setCheckUpdatesButtonDefault();
-      }
-    }
+    await promptInstallReadyUpdate(info.version);
   }
 
   async function silentCheckAndDownload(): Promise<void> {
-    if (isDownloading) return;
+    if (isDownloading || installReadyVersion) return;
     try {
       const result = await window.tauriAPI.checkForUpdates();
       if (!result.success) return;

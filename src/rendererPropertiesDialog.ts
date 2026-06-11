@@ -406,6 +406,7 @@ export function createPropertiesDialogController(deps: PropertiesDialogDeps) {
               folderSizeProgressCleanup = null;
             }
             if (progressRow) progressRow.style.display = 'none';
+            calculateBtn.style.display = 'inline-flex';
             if (progressBar) {
               progressBar.classList.remove('indeterminate');
               progressBar.style.width = '0%';
@@ -508,6 +509,7 @@ export function createPropertiesDialogController(deps: PropertiesDialogDeps) {
               checksumProgressCleanup = null;
             }
             if (progressRow) progressRow.style.display = 'none';
+            calculateBtn.style.display = 'inline-flex';
             if (progressBar) progressBar.style.width = '0%';
           }
         });
