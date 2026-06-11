@@ -20,6 +20,29 @@ const DEFAULT_READ_FILE_CONTENT_LIMIT_BYTES: u64 = 10 * 1024 * 1024;
 const MAX_READ_FILE_CONTENT_LIMIT_BYTES: u64 = 64 * 1024 * 1024;
 const DEFAULT_FILE_DATA_URL_LIMIT_BYTES: u64 = 50 * 1024 * 1024;
 const MAX_FILE_DATA_URL_LIMIT_BYTES: u64 = 50 * 1024 * 1024;
+const SENSITIVE_READ_DIR_NAMES: &[&str] = &[
+    ".ssh",
+    ".gnupg",
+    ".aws",
+    ".docker",
+    ".kube",
+    ".password-store",
+    "keychains",
+];
+const SENSITIVE_READ_FILE_NAMES: &[&str] = &[
+    ".netrc",
+    ".npmrc",
+    ".pypirc",
+    ".git-credentials",
+    "authorized_keys",
+    "known_hosts",
+    "id_rsa",
+    "id_dsa",
+    "id_ecdsa",
+    "id_ed25519",
+    "login.keychain",
+];
+const SENSITIVE_READ_EXTENSIONS: &[&str] = &["pem", "key", "pfx", "p12"];
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -60,6 +83,29 @@ pub struct DuplicateGroup {
 enum OpenTarget {
     FilePath(PathBuf),
     External(String),
+}
+
+fn ensure_safe_preview_read_path(path: &Path) -> Result<(), String> {
+    for component in path.components() {
+        let std::path::Component::Normal(value) = component else {
+            continue;
+        };
+        let name = value.to_string_lossy().to_lowercase();
+        if SENSITIVE_READ_DIR_NAMES.contains(&name.as_str())
+            || SENSITIVE_READ_FILE_NAMES.contains(&name.as_str())
+        {
+            return Err(format!(
+                "Preview blocked for sensitive path component: {}",
+                value.to_string_lossy()
+            ));
+        }
+    }
+    if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+        if SENSITIVE_READ_EXTENSIONS.contains(&ext.to_lowercase().as_str()) {
+            return Err("Preview blocked for sensitive file type".to_string());
+        }
+    }
+    Ok(())
 }
 
 pub(crate) fn validate_child_name(raw_name: &str, label: &str) -> Result<String, String> {
@@ -1189,6 +1235,7 @@ pub async fn set_attributes(item_path: String, attrs: serde_json::Value) -> Resu
 #[tauri::command]
 pub async fn read_file_content(file_path: String, max_size: Option<u64>) -> Result<String, String> {
     let path = crate::validate_existing_path(&file_path, "File")?;
+    ensure_safe_preview_read_path(&path)?;
     let limit = max_size
         .unwrap_or(DEFAULT_READ_FILE_CONTENT_LIMIT_BYTES)
         .min(MAX_READ_FILE_CONTENT_LIMIT_BYTES);
@@ -1215,6 +1262,7 @@ pub async fn read_file_content(file_path: String, max_size: Option<u64>) -> Resu
 #[tauri::command]
 pub async fn get_file_data_url(file_path: String, max_size: Option<u64>) -> Result<String, String> {
     let path = crate::validate_existing_path(&file_path, "File")?;
+    ensure_safe_preview_read_path(&path)?;
     let limit = max_size
         .unwrap_or(DEFAULT_FILE_DATA_URL_LIMIT_BYTES)
         .min(MAX_FILE_DATA_URL_LIMIT_BYTES);
@@ -1871,6 +1919,19 @@ mod tests {
     fn percent_decode_lossy_decodes_hex_sequences() {
         assert_eq!(percent_decode_lossy("Alpha%20Beta"), "Alpha Beta");
         assert_eq!(percent_decode_lossy("%2fpath%2Ffile"), "/path/file");
+    }
+
+    #[test]
+    fn preview_read_guard_rejects_sensitive_paths() {
+        assert!(ensure_safe_preview_read_path(Path::new("/home/me/.ssh/id_rsa")).is_err());
+        assert!(ensure_safe_preview_read_path(Path::new("/home/me/.aws/config")).is_err());
+        assert!(ensure_safe_preview_read_path(Path::new("/home/me/cert.pem")).is_err());
+    }
+
+    #[test]
+    fn preview_read_guard_allows_normal_paths() {
+        assert!(ensure_safe_preview_read_path(Path::new("/home/me/Documents/readme.txt")).is_ok());
+        assert!(ensure_safe_preview_read_path(Path::new("/tmp/photo.png")).is_ok());
     }
 
     #[cfg(target_os = "windows")]

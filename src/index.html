@@ -1691,11 +1691,10 @@
                 <select id="compress-format" class="settings-select">
                   <option value="7z">7z</option>
                   <option value="zip">zip</option>
-                  <option value="tar">tar</option>
                   <option value="tar.gz">tar.gz</option>
                 </select>
               </div>
-              <div class="compress-option-field">
+              <div class="compress-option-field" id="compress-level-field">
                 <label class="compress-option-label" for="compress-level">Compression level</label>
                 <select id="compress-level" class="settings-select">
                   <option value="0">Store (no compression)</option>
@@ -1706,7 +1705,7 @@
                   <option value="9">Ultra</option>
                 </select>
               </div>
-              <div class="compress-option-field" id="compress-method-field">
+              <div class="compress-option-field" id="compress-method-field" hidden>
                 <label class="compress-option-label" for="compress-method"
                   >Compression method</label
                 >
@@ -1719,7 +1718,7 @@
                   <option value="Deflate64">Deflate64</option>
                 </select>
               </div>
-              <div class="compress-option-field" id="compress-dictionary-field">
+              <div class="compress-option-field" id="compress-dictionary-field" hidden>
                 <label class="compress-option-label" for="compress-dictionary"
                   >Dictionary size</label
                 >
@@ -1736,7 +1735,7 @@
                   <option value="128m">128 MB</option>
                 </select>
               </div>
-              <div class="compress-option-field" id="compress-solid-field">
+              <div class="compress-option-field" id="compress-solid-field" hidden>
                 <label class="compress-option-label" for="compress-solid">Solid block size</label>
                 <select id="compress-solid" class="settings-select">
                   <option value="" selected>Default</option>
@@ -1748,7 +1747,7 @@
                   <option value="on">Solid</option>
                 </select>
               </div>
-              <div class="compress-option-field" id="compress-threads-field">
+              <div class="compress-option-field" id="compress-threads-field" hidden>
                 <label class="compress-option-label" for="compress-threads">CPU threads</label>
                 <select id="compress-threads" class="settings-select">
                   <option value="" selected>Auto</option>
@@ -1761,7 +1760,7 @@
               </div>
             </div>
             <div class="compress-options-right">
-              <fieldset class="compress-option-fieldset" id="compress-encryption-fieldset">
+              <fieldset class="compress-option-fieldset" id="compress-encryption-fieldset" hidden>
                 <legend>Encryption</legend>
                 <div class="compress-option-field">
                   <label class="compress-option-label" for="compress-password">Password</label>
@@ -1812,7 +1811,7 @@
                   </label>
                 </div>
               </fieldset>
-              <div class="compress-option-field" id="compress-split-field">
+              <div class="compress-option-field" id="compress-split-field" hidden>
                 <label class="compress-option-label" for="compress-split">Split to volumes</label>
                 <select id="compress-split" class="settings-select">
                   <option value="" selected>No splitting</option>

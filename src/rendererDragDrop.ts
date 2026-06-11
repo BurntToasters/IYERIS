@@ -4,6 +4,7 @@ import { rendererPath as path } from './rendererUtils.js';
 import { devLog } from './shared.js';
 
 const SPRING_LOAD_DELAY = 800;
+const NATIVE_DROP_CACHE_MS = 1500;
 
 interface DragDropConfig {
   getCurrentPath: () => string;
@@ -41,12 +42,15 @@ export function createDragDropController(config: DragDropConfig) {
   let springLoadedFolder: HTMLElement | null = null;
   let springLoadAnimTimer: NodeJS.Timeout | null = null;
   let dropInProgress = false;
+  let nativeDropPaths: string[] = [];
+  let nativeDropPathsAt = 0;
+  let nativeDragDropUnlisten: (() => void) | null = null;
 
   function updateQueued(
     operationId: string | undefined,
     update: { currentFile?: string; status?: 'active' }
   ): void {
-    if (operationId) updateQueued(operationId, update);
+    if (operationId) config.updateOperation?.(operationId, update);
   }
 
   function completeQueued(
@@ -54,7 +58,7 @@ export function createDragDropController(config: DragDropConfig) {
     status: 'done' | 'failed',
     error?: string
   ): void {
-    if (operationId) completeQueued(operationId, status, error);
+    if (operationId) config.completeOperation?.(operationId, status, error);
   }
 
   function isAbsolutePath(value: string): boolean {
@@ -138,6 +142,17 @@ export function createDragDropController(config: DragDropConfig) {
     return Array.from(normalized);
   }
 
+  function consumeNativeDropPaths(): string[] {
+    if (nativeDropPaths.length === 0) return [];
+    if (Date.now() - nativeDropPathsAt > NATIVE_DROP_CACHE_MS) {
+      nativeDropPaths = [];
+      return [];
+    }
+    const paths = nativeDropPaths;
+    nativeDropPaths = [];
+    return paths;
+  }
+
   function extractPathsFromText(textData: string): string[] {
     const trimmed = textData.trim();
     if (!trimmed) return [];
@@ -202,6 +217,10 @@ export function createDragDropController(config: DragDropConfig) {
           }
         })
       );
+    }
+
+    if (draggedPaths.length === 0) {
+      draggedPaths = consumeNativeDropPaths();
     }
 
     if (draggedPaths.length === 0) {
@@ -596,6 +615,22 @@ export function createDragDropController(config: DragDropConfig) {
   function initDragAndDropListeners(): void {
     initFileGridDragAndDrop();
     initFileViewDragAndDrop();
+    if (!nativeDragDropUnlisten && window.tauriAPI.onNativeDragDrop) {
+      nativeDragDropUnlisten = window.tauriAPI.onNativeDragDrop((event) => {
+        if (event.type === 'drop' || event.type === 'enter') {
+          nativeDropPaths = normalizeDraggedPaths(event.paths || []);
+          nativeDropPathsAt = Date.now();
+        } else if (event.type === 'leave') {
+          nativeDropPaths = [];
+        }
+      });
+    }
+  }
+
+  function destroyDragAndDropListeners(): void {
+    nativeDragDropUnlisten?.();
+    nativeDragDropUnlisten = null;
+    nativeDropPaths = [];
   }
 
   return {
@@ -607,5 +642,6 @@ export function createDragDropController(config: DragDropConfig) {
     clearSpringLoad,
     handleDrop,
     initDragAndDropListeners,
+    destroyDragAndDropListeners,
   };
 }

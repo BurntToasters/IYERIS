@@ -393,6 +393,12 @@ export interface ClipboardOperation {
   paths: string[];
 }
 
+export interface NativeDragDropEvent {
+  type: 'enter' | 'over' | 'drop' | 'leave';
+  paths?: string[];
+  position?: { x: number; y: number };
+}
+
 export interface IndexEntry {
   name: string;
   path: string;
@@ -589,6 +595,7 @@ export interface TauriAPI {
   getDragData: () => Promise<{ paths: string[] } | null>;
   clearDragData: () => Promise<void>;
   getPathForFile?: (file: File) => string;
+  onNativeDragDrop: (callback: (event: NativeDragDropEvent) => void) => () => void;
 
   onSettingsChanged: (callback: (settings: Settings) => void) => () => void;
   onHomeSettingsChanged: (callback: (settings: HomeSettings) => void) => () => void;

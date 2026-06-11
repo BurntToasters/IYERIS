@@ -21,8 +21,8 @@ jobs:
 
       - name: Guard release branch
         run: |
-          if [ "${GITHUB_REF}" != "refs/heads/main" ]; then
-            echo "Release workflow must be run from refs/heads/main (current: ${GITHUB_REF})." >&2
+          if [ "${GITHUB_REF}" != "refs/heads/main" ] && [[ "${GITHUB_REF}" != refs/heads/next-* ]]; then
+            echo "Release workflow must be run from refs/heads/main or refs/heads/next-* (current: ${GITHUB_REF})." >&2
             exit 1
           fi
 

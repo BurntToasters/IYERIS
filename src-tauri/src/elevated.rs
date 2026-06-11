@@ -32,14 +32,16 @@ fn osa_escape(s: &str) -> String {
         .replace(['\0', '\n', '\r'], "")
 }
 
-/// Defense-in-depth: reject paths that contain shell metacharacters before any
-/// elevated operation. Legitimate filenames may contain `$`, `|`, `;`, `&`, backtick,
-/// `<`, `>`, but allowing them through to a privileged shell is not worth the risk
-/// for the rare case where a user needs admin to manipulate such a file. The user
-/// can rename the file in userland first.
-///
-/// Also rejects paths that start with `-` (would be parsed as a flag by cp/mv/rm)
-/// and paths with control characters or NUL bytes.
+#[cfg(target_os = "windows")]
+fn ps_encoded_command(script: &str) -> String {
+    use base64::{engine::general_purpose, Engine as _};
+    let bytes: Vec<u8> = script
+        .encode_utf16()
+        .flat_map(|unit| unit.to_le_bytes())
+        .collect();
+    general_purpose::STANDARD.encode(bytes)
+}
+
 fn validate_elevated_path(path: &str, label: &str) -> Result<(), String> {
     if path.is_empty() {
         return Err(format!("{} path is empty", label));
@@ -73,59 +75,6 @@ fn validate_elevated_path(path: &str, label: &str) -> Result<(), String> {
         ));
     }
     Ok(())
-}
-
-#[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
-fn create_temp_script(extension: &str, content: &str) -> Result<std::path::PathBuf, String> {
-    use std::io::Write;
-    let temp_dir = std::env::temp_dir();
-    let script_path = temp_dir.join(format!(
-        "iyeris_elevated_{}_{}.{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos(),
-        extension
-    ));
-
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        #[allow(unsafe_code)] // none here — OpenOptions::mode is safe
-        let mut f = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .mode(0o700)
-            .open(&script_path)
-            .map_err(|e| format!("Failed to create temp script: {}", e))?;
-        f.write_all(content.as_bytes())
-            .map_err(|e| format!("Failed to write temp script: {}", e))?;
-    }
-
-    #[cfg(not(unix))]
-    {
-        let mut f = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&script_path)
-            .map_err(|e| format!("Failed to create temp script: {}", e))?;
-        f.write_all(content.as_bytes())
-            .map_err(|e| format!("Failed to write temp script: {}", e))?;
-    }
-
-    Ok(script_path)
-}
-
-#[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
-fn cleanup_temp_script(script_path: &std::path::Path) {
-    if let Err(e) = std::fs::remove_file(script_path) {
-        log::warn!(
-            "[Elevated] Failed to clean up temp script {}: {}",
-            script_path.display(),
-            e
-        );
-    }
 }
 
 /// Linux: verify the current_exe lives under a trusted system path before
@@ -297,23 +246,21 @@ async fn run_elevated_file_op(op: &str, source: &str, dest: Option<&str>) -> Res
                 _ => return Err(format!("Unknown operation: {}", op)),
             };
 
-            let script_path = create_temp_script("ps1", &script)?;
+            let encoded = ps_encoded_command(&script);
 
             let output = {
                 use std::os::windows::process::CommandExt;
-                let result = Command::new("powershell")
+                Command::new("powershell")
                     .args([
                         "-Command",
                         &format!(
-                            "$p = Start-Process powershell -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','{}' -Verb RunAs -Wait -PassThru; exit $p.ExitCode",
-                            ps_escape(&script_path.display().to_string())
+                            "$p = Start-Process powershell -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-EncodedCommand','{}' -Verb RunAs -Wait -PassThru; exit $p.ExitCode",
+                            encoded
                         ),
                     ])
                     .creation_flags(0x08000000)
                     .output()
-                    .map_err(|e| e.to_string());
-                cleanup_temp_script(&script_path);
-                result?
+                    .map_err(|e| e.to_string())?
             };
 
             if !output.status.success() {
@@ -353,13 +300,7 @@ async fn run_elevated_file_op(op: &str, source: &str, dest: Option<&str>) -> Res
                 _ => return Err(format!("Unknown operation: {}", op)),
             };
 
-            let script_content = format!("#!/bin/sh\nset -e\n{}\n", line);
-            let script_path = create_temp_script("sh", &script_content)?;
-            let script_path_str = script_path.to_string_lossy().to_string();
-
-            // The script path is system-generated (PID + nanos) and is unlikely
-            // to contain shell metacharacters, but escape it defensively anyway.
-            let osa = osa_escape(&format!("/bin/sh '{}'", shell_escape(&script_path_str)));
+            let osa = osa_escape(&line);
             let output = Command::new("osascript")
                 .args([
                     "-e",
@@ -368,9 +309,8 @@ async fn run_elevated_file_op(op: &str, source: &str, dest: Option<&str>) -> Res
                         osa
                     ),
                 ])
-                .output();
-            cleanup_temp_script(&script_path);
-            let output = output.map_err(|e| e.to_string())?;
+                .output()
+                .map_err(|e| e.to_string())?;
 
             if !output.status.success() {
                 return Err(format!(
@@ -510,23 +450,21 @@ async fn run_elevated_batch_op(
                 lines.push(line);
             }
             let script = lines.join("\n");
-            let script_path = create_temp_script("ps1", &script)?;
+            let encoded = ps_encoded_command(&script);
 
             let output = {
                 use std::os::windows::process::CommandExt;
-                let result = Command::new("powershell")
+                Command::new("powershell")
                     .args([
                         "-Command",
                         &format!(
-                            "$p = Start-Process powershell -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','{}' -Verb RunAs -Wait -PassThru; exit $p.ExitCode",
-                            ps_escape(&script_path.display().to_string())
+                            "$p = Start-Process powershell -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-EncodedCommand','{}' -Verb RunAs -Wait -PassThru; exit $p.ExitCode",
+                            encoded
                         ),
                     ])
                     .creation_flags(0x08000000)
                     .output()
-                    .map_err(|e| e.to_string());
-                cleanup_temp_script(&script_path);
-                result?
+                    .map_err(|e| e.to_string())?
             };
             if !output.status.success() {
                 return Err(format!(
@@ -538,9 +476,7 @@ async fn run_elevated_batch_op(
 
         #[cfg(target_os = "macos")]
         {
-            // Same approach as the single-item macOS path: build a script,
-            // run it through osascript once. cp -RP / mv / rm -rf with --.
-            let mut lines = vec!["#!/bin/sh".to_string(), "set -e".to_string()];
+            let mut lines = Vec::new();
             for (src, dst) in &items {
                 let line = match op.as_str() {
                     "copy" => format!(
@@ -561,11 +497,8 @@ async fn run_elevated_batch_op(
                 };
                 lines.push(line);
             }
-            let script_content = lines.join("\n") + "\n";
-            let script_path = create_temp_script("sh", &script_content)?;
-            let script_path_str = script_path.to_string_lossy().to_string();
-
-            let osa = osa_escape(&format!("/bin/sh '{}'", shell_escape(&script_path_str)));
+            let script_content = lines.join(" && ");
+            let osa = osa_escape(&script_content);
             let output = Command::new("osascript")
                 .args([
                     "-e",
@@ -574,9 +507,8 @@ async fn run_elevated_batch_op(
                         osa
                     ),
                 ])
-                .output();
-            cleanup_temp_script(&script_path);
-            let output = output.map_err(|e| e.to_string())?;
+                .output()
+                .map_err(|e| e.to_string())?;
             if !output.status.success() {
                 return Err(format!(
                     "Elevated operation failed: {}",
@@ -609,13 +541,11 @@ async fn run_elevated_batch_op(
                 lines.push(line);
             }
             let script_content = lines.join("\n");
-            let script_path = create_temp_script("sh", &script_content)?;
 
             let output = Command::new("pkexec")
-                .args(["--", "sh", "--", &script_path.to_string_lossy()])
-                .output();
-            cleanup_temp_script(&script_path);
-            let output = output.map_err(|e| e.to_string())?;
+                .args(["--", "sh", "-c", &script_content])
+                .output()
+                .map_err(|e| e.to_string())?;
             if !output.status.success() {
                 return Err(format!(
                     "Elevated operation failed: {}",

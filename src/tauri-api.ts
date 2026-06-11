@@ -1,8 +1,10 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
+import type { DragDropEvent } from '@tauri-apps/api/webview';
 import type { Update } from '@tauri-apps/plugin-updater';
-import type { TauriAPI, Settings, HomeSettings, LicensesData } from './types';
+import type { TauriAPI, Settings, HomeSettings, LicensesData, NativeDragDropEvent } from './types';
 import { devLog, ignoreError } from './shared.js';
 
 type SpecialDirectory = 'desktop' | 'documents' | 'downloads' | 'music' | 'videos';
@@ -464,6 +466,20 @@ const tauriAPI: TauriAPI = {
   },
   clearDragData: () => invoke('clear_drag_data'),
   getPathForFile: () => '',
+  onNativeDragDrop: (callback) => {
+    const unlisten = getCurrentWebview().onDragDropEvent((event) => {
+      const payload = event.payload as DragDropEvent;
+      const normalized: NativeDragDropEvent = {
+        type: payload.type,
+      };
+      if ('paths' in payload) normalized.paths = payload.paths;
+      if ('position' in payload) normalized.position = payload.position;
+      callback(normalized);
+    });
+    return () => {
+      unlisten.then((fn) => fn()).catch(ignoreError);
+    };
+  },
 
   onSettingsChanged: (callback) => {
     const unlisten = listen('settings-changed', (event) => {
