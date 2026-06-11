@@ -18,6 +18,7 @@
 @import './home.css' layer(features);
 @import './properties.css' layer(features);
 @import './archive.css' layer(features);
+@import './utility-drawer.css' layer(features);
 @import './about.css' layer(features);
 @import './theme-editor.css' layer(features);
 @import './themes.css' layer(overrides);

@@ -184,7 +184,10 @@ fn first_open_path_arg(args: &[String]) -> Option<String> {
         if arg.starts_with("--") {
             continue;
         }
-        if arg.chars().any(|c| c == '\0' || (c.is_control() && c != '\t')) {
+        if arg
+            .chars()
+            .any(|c| c == '\0' || (c.is_control() && c != '\t'))
+        {
             log::warn!("[SingleInstance] rejecting arg with control character");
             continue;
         }

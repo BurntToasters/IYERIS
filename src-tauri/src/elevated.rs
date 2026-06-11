@@ -19,8 +19,7 @@ fn shell_escape(s: &str) -> String {
     if s.contains('\0') || s.contains('\n') || s.contains('\r') {
         log::warn!("[Elevated] shell_escape: path contains null/newline characters");
     }
-    s.replace('\'', "'\\''")
-        .replace(['\0', '\n', '\r'], "")
+    s.replace('\'', "'\\''").replace(['\0', '\n', '\r'], "")
 }
 
 /// Escape a string for safe embedding in an AppleScript double-quoted string literal.
@@ -147,9 +146,9 @@ fn verify_trusted_exe_path(exe: &std::path::Path) -> Result<std::path::PathBuf, 
         "/opt/",
         "/snap/",
         "/var/lib/flatpak/",
-        "/app/",            // flatpak runtime
-        "/run/host/usr/",   // flatpak host fallback
-        "/Applications/",   // unlikely on Linux but harmless
+        "/app/",          // flatpak runtime
+        "/run/host/usr/", // flatpak host fallback
+        "/Applications/", // unlikely on Linux but harmless
     ];
     let s = canonical.to_string_lossy();
     if TRUSTED_PREFIXES.iter().any(|p| s.starts_with(p)) {
@@ -213,7 +212,8 @@ pub async fn restart_as_admin() -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
         let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-        #[allow(unsafe_code)] // creation_flags is the platform-correct way to suppress the console window
+        #[allow(unsafe_code)]
+        // creation_flags is the platform-correct way to suppress the console window
         {
             use std::os::windows::process::CommandExt;
             Command::new("powershell")
@@ -243,10 +243,7 @@ pub async fn restart_as_admin() -> Result<(), String> {
         Command::new("osascript")
             .args([
                 "-e",
-                &format!(
-                    "do shell script \"{}\" with administrator privileges",
-                    osa
-                ),
+                &format!("do shell script \"{}\" with administrator privileges", osa),
             ])
             .spawn()
             .map_err(|e| format!("Failed to restart as admin: {}", e))?;

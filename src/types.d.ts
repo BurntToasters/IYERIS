@@ -118,6 +118,9 @@ export interface Settings {
   activePane?: 'left' | 'right';
   nativeMenuEnabled?: boolean;
   operationPanelCollapsed?: boolean;
+  utilityDrawerCollapsed?: boolean;
+  enableAutoChecksum?: boolean;
+  defaultChecksumAlgorithm?: 'sha256' | 'md5' | 'blake3' | 'sha512' | 'crc32';
 
   reduceMotion: boolean;
   highContrast: boolean;
@@ -562,7 +565,7 @@ export interface TauriAPI {
   setPermissions: (itemPath: string, mode: number) => Promise<IpcResult>;
   setAttributes: (
     itemPath: string,
-    attrs: { readOnly?: boolean; hidden?: boolean }
+    attrs: { readOnly?: boolean; hidden?: boolean; system?: boolean }
   ) => Promise<IpcResult>;
   getSettings: () => Promise<SettingsResponse>;
   saveSettings: (settings: Settings) => Promise<IpcResult>;

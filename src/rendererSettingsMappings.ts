@@ -8,6 +8,7 @@ import {
   GRID_COLUMNS_VALUES,
   UPDATE_CHANNEL_VALUES,
   THUMBNAIL_QUALITY_VALUES,
+  CHECKSUM_ALGORITHM_VALUES,
 } from './constants.js';
 
 export const TOGGLE_MAPPINGS: ReadonlyArray<readonly [string, keyof Settings]> = [
@@ -46,6 +47,7 @@ export const TOGGLE_MAPPINGS: ReadonlyArray<readonly [string, keyof Settings]> =
   ['dual-pane-toggle', 'dualPaneEnabled'],
   ['native-menu-toggle', 'nativeMenuEnabled'],
   ['operation-panel-collapsed-toggle', 'operationPanelCollapsed'],
+  ['enable-auto-checksum-toggle', 'enableAutoChecksum'],
 ] as const;
 
 export const SELECT_MAPPINGS: ReadonlyArray<readonly [string, keyof Settings, readonly string[]]> =
@@ -59,6 +61,7 @@ export const SELECT_MAPPINGS: ReadonlyArray<readonly [string, keyof Settings, re
     ['thumbnail-quality-select', 'thumbnailQuality', THUMBNAIL_QUALITY_VALUES],
     ['preview-panel-position-select', 'previewPanelPosition', PREVIEW_POSITION_VALUES],
     ['grid-columns-select', 'gridColumns', GRID_COLUMNS_VALUES],
+    ['default-checksum-algo-select', 'defaultChecksumAlgorithm', CHECKSUM_ALGORITHM_VALUES],
   ] as const;
 
 export const INT_RANGE_MAPPINGS: ReadonlyArray<readonly [string, keyof Settings, number, number]> =

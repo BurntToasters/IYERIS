@@ -45,7 +45,9 @@ fn trim_cache_if_needed(dir: &PathBuf) -> Result<(), String> {
         if !metadata.is_file() {
             continue;
         }
-        let modified = metadata.modified().unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+        let modified = metadata
+            .modified()
+            .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
         total_bytes = total_bytes.saturating_add(metadata.len());
         entries.push((entry.path(), metadata.len(), modified));
     }

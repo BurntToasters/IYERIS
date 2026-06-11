@@ -12,6 +12,7 @@ import {
   THUMBNAIL_QUALITY_VALUES as THUMBNAIL_QUALITY_ARRAY,
   PREVIEW_POSITION_VALUES as PREVIEW_PANEL_ARRAY,
   GRID_COLUMNS_VALUES as GRID_COLUMNS_ARRAY,
+  CHECKSUM_ALGORITHM_VALUES as CHECKSUM_ALGORITHM_ARRAY,
 } from './constants.js';
 
 export function createDefaultSettings(): Settings {
@@ -85,6 +86,9 @@ export function createDefaultSettings(): Settings {
     activePane: 'left',
     nativeMenuEnabled: true,
     operationPanelCollapsed: false,
+    utilityDrawerCollapsed: true,
+    enableAutoChecksum: true,
+    defaultChecksumAlgorithm: 'sha256',
   };
 }
 
@@ -98,6 +102,9 @@ const FILE_CONFLICT_VALUES = new Set<Settings['fileConflictBehavior']>(FILE_CONF
 const THUMBNAIL_QUALITY_VALUES = new Set<Settings['thumbnailQuality']>(THUMBNAIL_QUALITY_ARRAY);
 const PREVIEW_PANEL_VALUES = new Set<Settings['previewPanelPosition']>(PREVIEW_PANEL_ARRAY);
 const GRID_COLUMNS_VALUES = new Set<Settings['gridColumns']>(GRID_COLUMNS_ARRAY);
+const CHECKSUM_ALGORITHM_VALUES = new Set<Settings['defaultChecksumAlgorithm']>(
+  CHECKSUM_ALGORITHM_ARRAY
+);
 
 function sanitizeEnum<T extends string>(value: unknown, allowed: Set<T>): T | null {
   if (typeof value !== 'string') return null;
@@ -334,6 +341,8 @@ export function sanitizeSettings(
     'dualPaneEnabled',
     'nativeMenuEnabled',
     'operationPanelCollapsed',
+    'utilityDrawerCollapsed',
+    'enableAutoChecksum',
   ];
   for (const key of BOOLEAN_KEYS) {
     if (typeof raw[key] === 'boolean') assignKey(clean, key, raw[key] as Settings[keyof Settings]);
@@ -351,6 +360,7 @@ export function sanitizeSettings(
     ['thumbnailQuality', THUMBNAIL_QUALITY_VALUES as Set<string>],
     ['previewPanelPosition', PREVIEW_PANEL_VALUES as Set<string>],
     ['gridColumns', GRID_COLUMNS_VALUES as Set<string>],
+    ['defaultChecksumAlgorithm', CHECKSUM_ALGORITHM_VALUES as Set<string>],
   ];
   for (const [key, allowed] of ENUM_FIELDS) {
     const val = sanitizeEnum(raw[key], allowed);

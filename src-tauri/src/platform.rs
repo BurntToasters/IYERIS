@@ -147,7 +147,9 @@ pub async fn get_git_branch(dir_path: String) -> Result<String, String> {
             }
 
             match cmd.output() {
-                Ok(out) if out.status.success() => Ok(String::from_utf8_lossy(&out.stdout).trim().to_string()),
+                Ok(out) if out.status.success() => {
+                    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+                }
                 Ok(out) => Err(String::from_utf8_lossy(&out.stderr).trim().to_string()),
                 Err(error) => Err(error.to_string()),
             }

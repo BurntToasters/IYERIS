@@ -9,9 +9,8 @@ use tauri::Emitter;
 
 static ACTIVE_OPS: std::sync::LazyLock<Mutex<HashSet<String>>> =
     std::sync::LazyLock::new(|| Mutex::new(HashSet::new()));
-static RELATIONSHIP_TAG_RE: std::sync::LazyLock<Option<Regex>> = std::sync::LazyLock::new(|| {
-    Regex::new(r#"(?is)<Relationship\b[^>]*>"#).ok()
-});
+static RELATIONSHIP_TAG_RE: std::sync::LazyLock<Option<Regex>> =
+    std::sync::LazyLock::new(|| Regex::new(r#"(?is)<Relationship\b[^>]*>"#).ok());
 // Rust's regex crate does not support backreferences. Use alternation so we
 // match either a double-quoted or single-quoted attribute value, then strip
 // the matching quote characters in extract_xml_attr().
@@ -651,10 +650,8 @@ fn extract_7z(
         let out_path = safe_entry_path(entry.name(), dest)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
         if entry.is_directory() {
-            fs::create_dir_all(&out_path)
-                .map_err(|e| std::io::Error::other(e.to_string()))?;
-            ensure_path_within_dest(&out_path, dest, &name)
-                .map_err(std::io::Error::other)?;
+            fs::create_dir_all(&out_path).map_err(|e| std::io::Error::other(e.to_string()))?;
+            ensure_path_within_dest(&out_path, dest, &name).map_err(std::io::Error::other)?;
         } else {
             let entry_size = entry.size();
             if cumulative_bytes.saturating_add(entry_size) > MAX_DECOMPRESSED_SIZE {
@@ -663,13 +660,11 @@ fn extract_7z(
                 ));
             }
             if let Some(parent) = out_path.parent() {
-                fs::create_dir_all(parent)
-                    .map_err(|e| std::io::Error::other(e.to_string()))?;
-                ensure_path_within_dest(parent, dest, &name)
-                    .map_err(std::io::Error::other)?;
+                fs::create_dir_all(parent).map_err(|e| std::io::Error::other(e.to_string()))?;
+                ensure_path_within_dest(parent, dest, &name).map_err(std::io::Error::other)?;
             }
-            let mut outfile = fs::File::create(&out_path)
-                .map_err(|e| std::io::Error::other(e.to_string()))?;
+            let mut outfile =
+                fs::File::create(&out_path).map_err(|e| std::io::Error::other(e.to_string()))?;
             let written = std::io::copy(reader, &mut outfile)
                 .map_err(|e| std::io::Error::other(e.to_string()))?;
             cumulative_bytes = cumulative_bytes.saturating_add(written);
@@ -786,21 +781,19 @@ fn extract_tar_entries_tracked<R: std::io::Read>(
         );
 
         if entry_type.is_dir() {
-            fs::create_dir_all(&target_path).map_err(|e| {
-                format!("Failed to create dir {}: {}", target_path.display(), e)
-            })?;
+            fs::create_dir_all(&target_path)
+                .map_err(|e| format!("Failed to create dir {}: {}", target_path.display(), e))?;
             extracted.push(target_path.clone());
         } else {
             if let Some(parent) = target_path.parent() {
-                fs::create_dir_all(parent).map_err(|e| {
-                    format!("Failed to create dir {}: {}", parent.display(), e)
-                })?;
+                fs::create_dir_all(parent)
+                    .map_err(|e| format!("Failed to create dir {}: {}", parent.display(), e))?;
             }
             // Unpack to the specific (validated) path. `entry.unpack` returns
             // a `tar::Unpacked` which we discard.
-            entry.unpack(&target_path).map_err(|e| {
-                format!("Failed to unpack {}: {}", name, e)
-            })?;
+            entry
+                .unpack(&target_path)
+                .map_err(|e| format!("Failed to unpack {}: {}", name, e))?;
             extracted.push(target_path.clone());
         }
         // Belt + suspenders: confirm the final path is still under dest after
@@ -1275,7 +1268,11 @@ mod tests {
         let nonexistent = std::env::temp_dir().join("iyeris-nonexistent-dest-12345-xyz");
         let _ = std::fs::remove_dir_all(&nonexistent);
         let err = safe_entry_path("ok.txt", &nonexistent).unwrap_err();
-        assert!(err.contains("canonicalize") || err.contains("Refusing"), "got: {}", err);
+        assert!(
+            err.contains("canonicalize") || err.contains("Refusing"),
+            "got: {}",
+            err
+        );
     }
 
     // --- end-to-end malicious zip -------------------------------------------
@@ -1335,7 +1332,9 @@ mod tests {
             header.set_mode(0o777);
             header.set_link_name(target).unwrap();
             header.set_cksum();
-            builder.append_data(&mut header, name, std::io::empty()).unwrap();
+            builder
+                .append_data(&mut header, name, std::io::empty())
+                .unwrap();
             builder.finish().unwrap();
         }
         buf
@@ -1407,7 +1406,10 @@ mod tests {
 
     #[test]
     fn xml_attribute_regex_compiles() {
-        assert!(XML_ATTRIBUTE_RE.is_some(), "XML_ATTRIBUTE_RE failed to compile");
+        assert!(
+            XML_ATTRIBUTE_RE.is_some(),
+            "XML_ATTRIBUTE_RE failed to compile"
+        );
     }
 
     #[test]

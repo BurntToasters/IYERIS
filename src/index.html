@@ -948,6 +948,151 @@
             </div>
           </div>
         </div>
+
+        <!-- Collapsible Global Bottom Utility Drawer -->
+        <div id="utility-drawer" class="utility-drawer glass-panel collapsed" style="display: none">
+          <div class="utility-drawer-header" id="utility-drawer-header">
+            <div class="utility-drawer-title">
+              <span class="utility-drawer-icon" id="utility-drawer-toggle-icon"></span>
+              <strong>Utility Dashboard</strong>
+            </div>
+            <div class="utility-drawer-status" id="utility-drawer-status">No selection</div>
+            <button
+              class="utility-drawer-toggle-btn"
+              id="utility-drawer-toggle-btn"
+              aria-label="Toggle utility drawer"
+            >
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 16 16"
+                aria-hidden="true"
+                id="utility-drawer-chevron"
+              >
+                <path
+                  d="M2 11 L8 5 L14 11"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+            </button>
+          </div>
+          <div class="utility-drawer-body" id="utility-drawer-body" style="display: none">
+            <!-- Left Panel: File Metadata & Copy Options -->
+            <div class="utility-section utility-meta-section">
+              <h4>File Metadata</h4>
+              <div class="meta-field">
+                <span class="meta-label">Path:</span>
+                <span class="meta-value" id="utility-meta-path">-</span>
+              </div>
+              <div class="meta-field">
+                <span class="meta-label">Size:</span>
+                <span class="meta-value" id="utility-meta-size">-</span>
+              </div>
+              <div class="utility-actions">
+                <button class="drawer-action-btn" id="utility-copy-path-btn" title="Copy Full Path">
+                  Copy Path
+                </button>
+                <button class="drawer-action-btn" id="utility-copy-name-btn" title="Copy Filename">
+                  Copy Name
+                </button>
+                <button class="drawer-action-btn" id="utility-copy-uri-btn" title="Copy File URI">
+                  Copy URI
+                </button>
+              </div>
+            </div>
+
+            <!-- Middle Panel: Permissions & OS Attributes -->
+            <div class="utility-section utility-perms-section">
+              <h4>Permissions & Attributes</h4>
+
+              <!-- POSIX Permissions (Mac/Linux only) -->
+              <div id="utility-posix-perms" class="posix-perms-wrapper" style="display: none">
+                <div class="posix-grid">
+                  <div class="grid-header"></div>
+                  <div class="grid-header">R</div>
+                  <div class="grid-header">W</div>
+                  <div class="grid-header">X</div>
+
+                  <div class="grid-label">Owner</div>
+                  <input type="checkbox" id="perm-ur" data-perm="owner-read" />
+                  <input type="checkbox" id="perm-uw" data-perm="owner-write" />
+                  <input type="checkbox" id="perm-ux" data-perm="owner-execute" />
+
+                  <div class="grid-label">Group</div>
+                  <input type="checkbox" id="perm-gr" data-perm="group-read" />
+                  <input type="checkbox" id="perm-gw" data-perm="group-write" />
+                  <input type="checkbox" id="perm-gx" data-perm="group-execute" />
+
+                  <div class="grid-label">Others</div>
+                  <input type="checkbox" id="perm-or" data-perm="others-read" />
+                  <input type="checkbox" id="perm-ow" data-perm="others-write" />
+                  <input type="checkbox" id="perm-ox" data-perm="others-execute" />
+                </div>
+                <div class="posix-octal-actions">
+                  <label for="posix-octal-input">Octal:</label>
+                  <input type="text" id="posix-octal-input" maxlength="4" placeholder="0755" />
+                  <button class="drawer-action-btn" id="utility-apply-posix-btn">Apply</button>
+                </div>
+              </div>
+
+              <!-- Windows Attributes (Windows only) -->
+              <div id="utility-win-attrs" class="win-attrs-wrapper" style="display: none">
+                <div class="win-attrs-grid">
+                  <label
+                    ><input type="checkbox" id="attr-readonly" data-attr="readOnly" />
+                    Read-only</label
+                  >
+                  <label
+                    ><input type="checkbox" id="attr-hidden" data-attr="hidden" /> Hidden</label
+                  >
+                  <label
+                    ><input type="checkbox" id="attr-system" data-attr="system" /> System</label
+                  >
+                </div>
+                <button class="drawer-action-btn" id="utility-apply-win-btn">Apply</button>
+              </div>
+
+              <div id="utility-no-perms-placeholder" class="perms-placeholder">
+                Select a local file or folder
+              </div>
+            </div>
+
+            <!-- Right Panel: Checksum Operations -->
+            <div class="utility-section utility-checksum-section">
+              <h4>Checksum Calculator</h4>
+              <div class="checksum-controls">
+                <select id="utility-checksum-algo" class="drawer-select">
+                  <option value="sha256">SHA-256</option>
+                  <option value="md5">MD5</option>
+                  <option value="blake3">Blake3</option>
+                  <option value="sha512">SHA-512</option>
+                  <option value="crc32">CRC32</option>
+                </select>
+                <button class="drawer-action-btn" id="utility-calc-checksum-btn">Calculate</button>
+              </div>
+              <div class="checksum-result-wrapper">
+                <textarea
+                  id="utility-checksum-value"
+                  class="checksum-value-area"
+                  readonly
+                  placeholder="Result hash will appear here..."
+                ></textarea>
+                <button
+                  class="drawer-action-btn icon-only-btn"
+                  id="utility-copy-checksum-btn"
+                  title="Copy Hash"
+                  disabled
+                >
+                  Copy
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -2198,6 +2343,44 @@
                   <select id="sort-order-select" class="settings-select">
                     <option value="asc">Ascending</option>
                     <option value="desc">Descending</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="settings-card">
+                <div class="settings-card-header">Utility Dashboard</div>
+                <div
+                  class="setting-item"
+                  data-searchable="checksum auto automatic hash hashcode file size"
+                >
+                  <div class="setting-info">
+                    <label for="enable-auto-checksum-toggle">Auto-Calculate Checksums</label>
+                    <p class="setting-description">
+                      Automatically calculate file checksum hashes for files smaller than 50MB when
+                      selected
+                    </p>
+                  </div>
+                  <label class="toggle-switch">
+                    <input type="checkbox" id="enable-auto-checksum-toggle" />
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+                <div
+                  class="setting-item"
+                  data-searchable="checksum algorithm hash default type algorithm md5 sha256 blake3"
+                >
+                  <div class="setting-info">
+                    <label for="default-checksum-algo-select">Default Checksum Algorithm</label>
+                    <p class="setting-description">
+                      The default algorithm to use for checksum calculation on selection
+                    </p>
+                  </div>
+                  <select id="default-checksum-algo-select" class="settings-select">
+                    <option value="sha256">SHA-256</option>
+                    <option value="md5">MD5</option>
+                    <option value="blake3">Blake3</option>
+                    <option value="sha512">SHA-512</option>
+                    <option value="crc32">CRC32</option>
                   </select>
                 </div>
               </div>

@@ -1,11 +1,11 @@
 use std::fs;
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
 use std::path::Path;
 #[cfg(target_os = "linux")]
 use std::path::PathBuf;
 #[cfg(any(target_os = "windows", target_os = "linux"))]
 use std::process::Command;
-#[cfg(target_os = "windows")]
-use std::os::windows::process::CommandExt;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::Manager;
@@ -1355,7 +1355,10 @@ pub async fn open_file_with_app(file_path: String, app_id: String) -> Result<(),
             "/System/Library/CoreServices/".to_string(),
             format!("{}/Applications/", home),
         ];
-        if !allowed_roots.iter().any(|root| canonical_str.starts_with(root)) {
+        if !allowed_roots
+            .iter()
+            .any(|root| canonical_str.starts_with(root))
+        {
             return Err(
                 "Selected application must live under /Applications, /System/Applications, /System/Library/CoreServices, or ~/Applications."
                     .to_string(),
@@ -1609,7 +1612,14 @@ pub async fn install_native_integration() -> Result<(), String> {
         for (key, label) in pairs {
             run_reg(&["add", key, "/ve", "/d", label, "/f"])?;
             run_reg(&["add", key, "/v", "Icon", "/d", &icon, "/f"])?;
-            run_reg(&["add", &format!(r"{}\command", key), "/ve", "/d", &command, "/f"])?;
+            run_reg(&[
+                "add",
+                &format!(r"{}\command", key),
+                "/ve",
+                "/d",
+                &command,
+                "/f",
+            ])?;
         }
         Ok(())
     }

@@ -2,7 +2,7 @@ use crate::undo;
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::io::Read;
+use std::io::{Read, Seek};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Mutex;
@@ -146,6 +146,68 @@ fn parse_open_target(file_path: &str) -> Result<OpenTarget, String> {
     Ok(OpenTarget::FilePath(crate::validate_existing_path(
         value, "File",
     )?))
+}
+
+fn resolve_item_is_directory(path: &Path, meta: &fs::Metadata) -> bool {
+    if meta.file_type().is_symlink() {
+        fs::metadata(path)
+            .map(|target| target.is_dir())
+            .unwrap_or(false)
+    } else {
+        meta.is_dir()
+    }
+}
+
+fn checksum_operation_is_active(operation_id: &str) -> Result<bool, String> {
+    let active = ACTIVE_CHECKSUMS.lock().map_err(|e| e.to_string())?;
+    Ok(active.contains(operation_id))
+}
+
+fn read_file_chunks<FChunk, FActive, FProgress>(
+    file: &mut fs::File,
+    file_size: u64,
+    mut on_chunk: FChunk,
+    mut is_active: FActive,
+    mut emit_progress: FProgress,
+) -> Result<(), String>
+where
+    FChunk: FnMut(&[u8]),
+    FActive: FnMut() -> Result<bool, String>,
+    FProgress: FnMut(f64),
+{
+    let mut buf = [0u8; 8192];
+    let mut read_total = 0u64;
+    let mut next_progress_emit = 1024_u64 * 1024;
+    file.seek(std::io::SeekFrom::Start(0))
+        .map_err(|e| e.to_string())?;
+
+    loop {
+        if !is_active()? {
+            return Err("Checksum cancelled".to_string());
+        }
+
+        let n = file.read(&mut buf).map_err(|e| e.to_string())?;
+        if n == 0 {
+            break;
+        }
+
+        on_chunk(&buf[..n]);
+        read_total += n as u64;
+
+        if read_total >= next_progress_emit || read_total == file_size {
+            let percent = if file_size > 0 {
+                (read_total as f64 / file_size as f64) * 100.0
+            } else {
+                100.0
+            };
+            emit_progress(percent);
+            while next_progress_emit <= read_total {
+                next_progress_emit += 1024_u64 * 1024;
+            }
+        }
+    }
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -939,6 +1001,7 @@ pub async fn get_item_properties(item_path: String) -> Result<ItemProperties, St
     } else {
         None
     };
+    let is_directory = resolve_item_is_directory(&path, &meta);
 
     #[cfg(unix)]
     let (owner, group) = {
@@ -1003,7 +1066,7 @@ pub async fn get_item_properties(item_path: String) -> Result<ItemProperties, St
         name: name.clone(),
         path: path.to_string_lossy().to_string(),
         size: meta.len(),
-        is_directory: meta.is_dir(),
+        is_directory,
         is_symlink,
         symlink_target,
         is_shortcut,
@@ -1061,6 +1124,7 @@ pub async fn set_attributes(item_path: String, attrs: serde_json::Value) -> Resu
     let path = crate::validate_existing_path(&item_path, "Item")?;
     let read_only = attrs.get("readOnly").and_then(|value| value.as_bool());
     let hidden = attrs.get("hidden").and_then(|value| value.as_bool());
+    let system = attrs.get("system").and_then(|value| value.as_bool());
 
     // M3: same as set_permissions — refuse symlinks so an attribute change
     // doesn't silently apply to the target.
@@ -1095,9 +1159,28 @@ pub async fn set_attributes(item_path: String, attrs: serde_json::Value) -> Resu
         }
     }
 
+    #[cfg(target_os = "windows")]
+    if let Some(is_system) = system {
+        let system_flag = if is_system { "+s" } else { "-s" };
+        let path_str = path.to_string_lossy().to_string();
+        let output = {
+            let mut cmd = Command::new("attrib");
+            cmd.args([system_flag, &path_str]);
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x08000000);
+            cmd.output()
+        }
+        .map_err(|e| format!("Failed to update system attribute: {}", e))?;
+        if !output.status.success() {
+            return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+        }
+    }
+
     #[cfg(not(target_os = "windows"))]
-    if hidden.is_some() {
-        return Err("Hidden attribute updates are only supported on Windows.".to_string());
+    if hidden.is_some() || system.is_some() {
+        return Err(
+            "Hidden and System attribute updates are only supported on Windows.".to_string(),
+        );
     }
 
     Ok(())
@@ -1228,7 +1311,7 @@ fn full_blake3(path: &Path) -> Result<String, String> {
 // and can OOM when many large candidates exist. Files larger than this
 // are still listed as same-size matches but are NOT compared by content.
 const DUPLICATE_HASH_MAX_FILE_BYTES: u64 = 4 * 1024 * 1024 * 1024; // 4 GiB
-// Cap on total bytes hashed in a single duplicate-finder run as a safety net.
+                                                                   // Cap on total bytes hashed in a single duplicate-finder run as a safety net.
 const DUPLICATE_HASH_TOTAL_BYTES_LIMIT: u64 = 64 * 1024 * 1024 * 1024; // 64 GiB
 
 #[tauri::command]
@@ -1765,6 +1848,7 @@ fn parse_clipboard_paths(text: &str) -> Vec<String> {
 mod tests {
     use super::*;
     use std::fs;
+    use std::io::Write;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn make_test_temp_dir(prefix: &str) -> PathBuf {
@@ -1867,6 +1951,58 @@ mod tests {
             .unwrap()
             .to_ascii_lowercase()
             .contains("onto itself"));
+    }
+
+    #[test]
+    fn read_file_chunks_stops_when_cancelled_mid_stream() {
+        let dir = make_test_temp_dir("checksum-cancel");
+        let file_path = dir.join("sample.bin");
+        let mut file = fs::File::create(&file_path).unwrap();
+        file.write_all(&vec![b'x'; 32 * 1024]).unwrap();
+        drop(file);
+
+        let mut file = fs::File::open(&file_path).unwrap();
+        let mut saw_chunks = 0usize;
+        let mut should_continue_calls = 0usize;
+        let result = read_file_chunks(
+            &mut file,
+            32 * 1024,
+            |_| {
+                saw_chunks += 1;
+            },
+            || {
+                should_continue_calls += 1;
+                Ok(should_continue_calls < 3)
+            },
+            |_| {},
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Checksum cancelled");
+        assert!(saw_chunks > 0);
+        assert!(saw_chunks < 4);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn get_item_properties_treats_symlinked_directory_as_directory() {
+        use std::os::unix::fs::symlink;
+
+        let dir = make_test_temp_dir("symlink-dir-props");
+        let target_dir = dir.join("target");
+        let link_dir = dir.join("target-link");
+        fs::create_dir(&target_dir).unwrap();
+        symlink(&target_dir, &link_dir).unwrap();
+
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let props = runtime
+            .block_on(get_item_properties(link_dir.to_string_lossy().to_string()))
+            .unwrap();
+
+        let _ = fs::remove_dir_all(&dir);
+        assert!(props.is_symlink);
+        assert!(props.is_directory);
     }
 }
 
@@ -2217,176 +2353,136 @@ pub async fn calculate_checksum(
     }
 
     let op_id = operation_id.clone();
-    let result =
-        tokio::task::spawn_blocking(move || {
-            use md5::Md5;
-            use sha2::{Digest, Sha256, Sha512};
+    let result = tokio::task::spawn_blocking(move || {
+        use md5::Md5;
+        use sha2::{Digest, Sha256, Sha512};
 
-            const MAX_CHECKSUM_SIZE: u64 = 4 * 1024 * 1024 * 1024; // 4 GB
-            let file_size = fs::metadata(&path).map_err(|e| e.to_string())?.len();
-            if file_size > MAX_CHECKSUM_SIZE {
-                return Err(format!(
-                    "File too large for checksum ({} MB, max {} MB)",
-                    file_size / (1024 * 1024),
-                    MAX_CHECKSUM_SIZE / (1024 * 1024)
-                ));
+        const MAX_CHECKSUM_SIZE: u64 = 4 * 1024 * 1024 * 1024; // 4 GB
+        let file_size = fs::metadata(&path).map_err(|e| e.to_string())?.len();
+        if file_size > MAX_CHECKSUM_SIZE {
+            return Err(format!(
+                "File too large for checksum ({} MB, max {} MB)",
+                file_size / (1024 * 1024),
+                MAX_CHECKSUM_SIZE / (1024 * 1024)
+            ));
+        }
+        let mut file = fs::File::open(&path).map_err(|e| e.to_string())?;
+        let mut results = serde_json::Map::new();
+
+        for algo in &algorithms {
+            if !checksum_operation_is_active(&op_id)? {
+                return Err("Checksum cancelled".to_string());
             }
-            let mut file = fs::File::open(&path).map_err(|e| e.to_string())?;
-            let mut results = serde_json::Map::new();
 
-            for algo in &algorithms {
-                {
-                    let active = ACTIVE_CHECKSUMS.lock().map_err(|e| e.to_string())?;
-                    if !active.contains(&op_id) {
-                        return Err("Checksum cancelled".to_string());
-                    }
+            let hash = match algo.to_lowercase().as_str() {
+                "sha256" => {
+                    let mut hasher = Sha256::new();
+                    read_file_chunks(
+                        &mut file,
+                        file_size,
+                        |chunk| {
+                            hasher.update(chunk);
+                        },
+                        || checksum_operation_is_active(&op_id),
+                        |percent| {
+                            let _ = webview.emit(
+                                "checksum-progress",
+                                serde_json::json!({
+                                    "operationId": op_id, "percent": percent, "algorithm": algo
+                                }),
+                            );
+                        },
+                    )?;
+                    hex::encode(hasher.finalize())
                 }
+                "sha512" => {
+                    let mut hasher = Sha512::new();
+                    read_file_chunks(
+                        &mut file,
+                        file_size,
+                        |chunk| {
+                            hasher.update(chunk);
+                        },
+                        || checksum_operation_is_active(&op_id),
+                        |percent| {
+                            let _ = webview.emit(
+                                "checksum-progress",
+                                serde_json::json!({
+                                    "operationId": op_id, "percent": percent, "algorithm": algo
+                                }),
+                            );
+                        },
+                    )?;
+                    hex::encode(hasher.finalize())
+                }
+                "md5" => {
+                    let mut hasher = Md5::new();
+                    read_file_chunks(
+                        &mut file,
+                        file_size,
+                        |chunk| {
+                            hasher.update(chunk);
+                        },
+                        || checksum_operation_is_active(&op_id),
+                        |percent| {
+                            let _ = webview.emit(
+                                "checksum-progress",
+                                serde_json::json!({
+                                    "operationId": op_id, "percent": percent, "algorithm": algo
+                                }),
+                            );
+                        },
+                    )?;
+                    hex::encode(hasher.finalize())
+                }
+                "crc32" => {
+                    let mut hasher = crc32fast::Hasher::new();
+                    read_file_chunks(
+                        &mut file,
+                        file_size,
+                        |chunk| {
+                            hasher.update(chunk);
+                        },
+                        || checksum_operation_is_active(&op_id),
+                        |percent| {
+                            let _ = webview.emit(
+                                "checksum-progress",
+                                serde_json::json!({
+                                    "operationId": op_id, "percent": percent, "algorithm": algo
+                                }),
+                            );
+                        },
+                    )?;
+                    format!("{:08x}", hasher.finalize())
+                }
+                "blake3" => {
+                    let mut hasher = blake3::Hasher::new();
+                    read_file_chunks(
+                        &mut file,
+                        file_size,
+                        |chunk| {
+                            hasher.update(chunk);
+                        },
+                        || checksum_operation_is_active(&op_id),
+                        |percent| {
+                            let _ = webview.emit(
+                                "checksum-progress",
+                                serde_json::json!({
+                                    "operationId": op_id, "percent": percent, "algorithm": algo
+                                }),
+                            );
+                        },
+                    )?;
+                    hasher.finalize().to_hex().to_string()
+                }
+                _ => return Err(format!("Unknown algorithm: {}", algo)),
+            };
+            results.insert(algo.clone(), serde_json::Value::String(hash));
+        }
 
-                let hash =
-                    match algo.to_lowercase().as_str() {
-                        "sha256" => {
-                            let mut hasher = Sha256::new();
-                            let mut buf = [0u8; 8192];
-                            let mut read_total = 0u64;
-                            use std::io::Seek;
-                            file.seek(std::io::SeekFrom::Start(0))
-                                .map_err(|e| e.to_string())?;
-                            loop {
-                                let n = file.read(&mut buf).map_err(|e| e.to_string())?;
-                                if n == 0 {
-                                    break;
-                                }
-                                hasher.update(&buf[..n]);
-                                read_total += n as u64;
-                                if read_total.is_multiple_of(1024 * 1024) {
-                                    let percent = if file_size > 0 {
-                                        (read_total as f64 / file_size as f64) * 100.0
-                                    } else {
-                                        100.0
-                                    };
-                                    let _ = webview.emit("checksum-progress", serde_json::json!({
-                                "operationId": op_id, "percent": percent, "algorithm": algo
-                            }));
-                                }
-                            }
-                            hex::encode(hasher.finalize())
-                        }
-                        "sha512" => {
-                            let mut hasher = Sha512::new();
-                            let mut buf = [0u8; 8192];
-                            let mut read_total = 0u64;
-                            use std::io::Seek;
-                            file.seek(std::io::SeekFrom::Start(0))
-                                .map_err(|e| e.to_string())?;
-                            loop {
-                                let n = file.read(&mut buf).map_err(|e| e.to_string())?;
-                                if n == 0 {
-                                    break;
-                                }
-                                hasher.update(&buf[..n]);
-                                read_total += n as u64;
-                                if read_total.is_multiple_of(1024 * 1024) {
-                                    let percent = if file_size > 0 {
-                                        (read_total as f64 / file_size as f64) * 100.0
-                                    } else {
-                                        100.0
-                                    };
-                                    let _ = webview.emit("checksum-progress", serde_json::json!({
-                                "operationId": op_id, "percent": percent, "algorithm": algo
-                            }));
-                                }
-                            }
-                            hex::encode(hasher.finalize())
-                        }
-                        "md5" => {
-                            let mut hasher = Md5::new();
-                            let mut buf = [0u8; 8192];
-                            let mut read_total = 0u64;
-                            use std::io::Seek;
-                            file.seek(std::io::SeekFrom::Start(0))
-                                .map_err(|e| e.to_string())?;
-                            loop {
-                                let n = file.read(&mut buf).map_err(|e| e.to_string())?;
-                                if n == 0 {
-                                    break;
-                                }
-                                hasher.update(&buf[..n]);
-                                read_total += n as u64;
-                                if read_total.is_multiple_of(1024 * 1024) {
-                                    let percent = if file_size > 0 {
-                                        (read_total as f64 / file_size as f64) * 100.0
-                                    } else {
-                                        100.0
-                                    };
-                                    let _ = webview.emit("checksum-progress", serde_json::json!({
-                                "operationId": op_id, "percent": percent, "algorithm": algo
-                            }));
-                                }
-                            }
-                            hex::encode(hasher.finalize())
-                        }
-                        "crc32" => {
-                            let mut hasher = crc32fast::Hasher::new();
-                            let mut buf = [0u8; 8192];
-                            let mut read_total = 0u64;
-                            use std::io::Seek;
-                            file.seek(std::io::SeekFrom::Start(0))
-                                .map_err(|e| e.to_string())?;
-                            loop {
-                                let n = file.read(&mut buf).map_err(|e| e.to_string())?;
-                                if n == 0 {
-                                    break;
-                                }
-                                hasher.update(&buf[..n]);
-                                read_total += n as u64;
-                                if read_total.is_multiple_of(1024 * 1024) {
-                                    let percent = if file_size > 0 {
-                                        (read_total as f64 / file_size as f64) * 100.0
-                                    } else {
-                                        100.0
-                                    };
-                                    let _ = webview.emit("checksum-progress", serde_json::json!({
-                                "operationId": op_id, "percent": percent, "algorithm": algo
-                            }));
-                                }
-                            }
-                            format!("{:08x}", hasher.finalize())
-                        }
-                        "blake3" => {
-                            let mut hasher = blake3::Hasher::new();
-                            let mut buf = [0u8; 8192];
-                            let mut read_total = 0u64;
-                            use std::io::Seek;
-                            file.seek(std::io::SeekFrom::Start(0))
-                                .map_err(|e| e.to_string())?;
-                            loop {
-                                let n = file.read(&mut buf).map_err(|e| e.to_string())?;
-                                if n == 0 {
-                                    break;
-                                }
-                                hasher.update(&buf[..n]);
-                                read_total += n as u64;
-                                if read_total.is_multiple_of(1024 * 1024) {
-                                    let percent = if file_size > 0 {
-                                        (read_total as f64 / file_size as f64) * 100.0
-                                    } else {
-                                        100.0
-                                    };
-                                    let _ = webview.emit("checksum-progress", serde_json::json!({
-                                "operationId": op_id, "percent": percent, "algorithm": algo
-                            }));
-                                }
-                            }
-                            hasher.finalize().to_hex().to_string()
-                        }
-                        _ => return Err(format!("Unknown algorithm: {}", algo)),
-                    };
-                results.insert(algo.clone(), serde_json::Value::String(hash));
-            }
-
-            Ok(serde_json::Value::Object(results))
-        })
-        .await;
+        Ok(serde_json::Value::Object(results))
+    })
+    .await;
 
     if let Ok(mut active) = ACTIVE_CHECKSUMS.lock() {
         active.remove(&operation_id);

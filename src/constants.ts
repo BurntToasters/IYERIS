@@ -60,6 +60,13 @@ export const THUMBNAIL_QUALITY_VALUES = [
   'medium',
   'high',
 ] as const satisfies readonly Settings['thumbnailQuality'][];
+export const CHECKSUM_ALGORITHM_VALUES = [
+  'sha256',
+  'md5',
+  'blake3',
+  'sha512',
+  'crc32',
+] as const satisfies readonly NonNullable<Settings['defaultChecksumAlgorithm']>[];
 
 export function isOneOf<T extends readonly string[]>(
   value: string,
