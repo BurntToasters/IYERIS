@@ -71,7 +71,7 @@
   padding-top: 2px;
 }
 
-.sidebar.collapsed .sidebar-resize-handle {
+body.sidebar-collapsed .sidebar-resize-handle {
   display: none;
 }
 
@@ -124,20 +124,28 @@
 
 .sidebar-resize-handle {
   position: absolute;
-  top: var(--radius-small);
-  bottom: var(--radius-small);
-  right: -3px;
-  width: 6px;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--sidebar-width-current, var(--sidebar-width)) - 2px);
+  width: 10px;
   height: auto;
   cursor: col-resize;
   background: transparent;
   border-radius: 999px;
-  z-index: var(--z-sidebar);
+  z-index: var(--z-sidebar-header);
 }
 
 .sidebar-resize-handle:hover,
 .sidebar-resize-handle.resizing {
-  background: color-mix(in srgb, var(--interactive-selected) 80%, transparent);
+  background: linear-gradient(
+    90deg,
+    transparent 0,
+    transparent 2px,
+    color-mix(in srgb, var(--interactive-selected) 80%, transparent) 2px,
+    color-mix(in srgb, var(--interactive-selected) 80%, transparent) 5px,
+    transparent 5px,
+    transparent 100%
+  );
 }
 
 .sidebar::-webkit-scrollbar {

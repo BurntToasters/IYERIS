@@ -23,7 +23,7 @@
 @import './theme-editor.css' layer(features);
 @import './themes.css' layer(overrides);
 @import './liquid-glass.css' layer(overrides);
-@import './native-swift.css' layer(overrides);
+@import './ui3.css' layer(overrides);
 @import './accessibility.css' layer(overrides);
 @import './settings.css' layer(features);
 @import './shortcuts.css' layer(features);

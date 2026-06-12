@@ -20,6 +20,8 @@
 
 ## Changes in `v3.0.0-beta.2:`
 
+- **UI:** Fixed an issue with the resize area for the quick access panel.
+- **Codebase:** Main new UI file has been renamed to `ui3.css`. Name pending.
 - **Copy/Move:** Copy and move now accept frontend operation IDs can can be cancelled from file queue.
 - **File actions:** Improvements to Paste, drag/drop, duplicate, select, and duplicated finder.
 - **Queue:** Queue now shows ETA and cancel, retry, and fail state recovery.
