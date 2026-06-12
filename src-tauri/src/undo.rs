@@ -233,13 +233,12 @@ fn action_contains_path(action: &UndoAction, paths: &HashSet<String>) -> bool {
 fn expand_related_paths(stack: &[UndoAction], paths_to_remove: &mut HashSet<String>) {
     for action in stack.iter().rev() {
         match action {
-            UndoAction::Rename(data) => {
+            UndoAction::Rename(data)
                 if paths_to_remove.contains(&data.old_path)
-                    || paths_to_remove.contains(&data.new_path)
-                {
-                    paths_to_remove.insert(data.old_path.clone());
-                    paths_to_remove.insert(data.new_path.clone());
-                }
+                    || paths_to_remove.contains(&data.new_path) =>
+            {
+                paths_to_remove.insert(data.old_path.clone());
+                paths_to_remove.insert(data.new_path.clone());
             }
             UndoAction::BatchRename(data) => {
                 for rename in &data.renames {

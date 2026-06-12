@@ -2250,7 +2250,7 @@ fn get_system_clipboard_files_internal() -> Vec<String> {
             .or_else(|| run_command_capture("xclip", &["-selection", "clipboard", "-o"]))
             .or_else(|| run_command_capture("xsel", &["--clipboard", "--output"]))
             .unwrap_or_default();
-        return parse_clipboard_paths(&text);
+        parse_clipboard_paths(&text)
     }
 
     #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
@@ -2363,7 +2363,7 @@ pub fn write_to_system_clipboard(text: String) -> Result<(), String> {
         if try_copy("xsel", &["--clipboard", "--input"]).is_ok() {
             return Ok(());
         }
-        return Err("No clipboard tool found".into());
+        Err("No clipboard tool found".into())
     }
 
     #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]

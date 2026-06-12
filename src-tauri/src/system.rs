@@ -1554,11 +1554,11 @@ pub async fn get_native_integration_status() -> Result<serde_json::Value, String
                         .exists()
             })
             .unwrap_or(false);
-        return Ok(serde_json::json!({
+        Ok(serde_json::json!({
             "supported": true,
             "installed": installed,
             "message": if installed { "Linux file manager entries installed" } else { "Linux file manager entries not installed" },
-        }));
+        }))
     }
 
     #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
@@ -1689,7 +1689,7 @@ pub async fn install_native_integration() -> Result<(), String> {
             fs::set_permissions(&script, fs::Permissions::from_mode(0o755))
                 .map_err(|e| e.to_string())?;
         }
-        return Ok(());
+        Ok(())
     }
 
     #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
@@ -1735,7 +1735,7 @@ pub async fn uninstall_native_integration() -> Result<(), String> {
                 Path::new(&home).join(".local/share/nautilus/scripts/Open in IYERIS"),
             );
         }
-        return Ok(());
+        Ok(())
     }
 
     #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
