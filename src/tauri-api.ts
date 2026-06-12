@@ -1,8 +1,10 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
+import type { DragDropEvent } from '@tauri-apps/api/webview';
 import type { Update } from '@tauri-apps/plugin-updater';
-import type { TauriAPI, Settings, HomeSettings, LicensesData } from './types';
+import type { TauriAPI, Settings, HomeSettings, LicensesData, NativeDragDropEvent } from './types';
 import { devLog, ignoreError } from './shared.js';
 
 type SpecialDirectory = 'desktop' | 'documents' | 'downloads' | 'music' | 'videos';
@@ -12,6 +14,7 @@ type ConflictDecision = Exclude<ConflictResolution, 'cancel'>;
 
 let pendingUpdate: Update | null = null;
 let updateDownloadInProgress = false;
+let updateReadyToInstall = false;
 let currentUpdateChannel: 'auto' | 'beta' | 'stable' = 'auto';
 let cachedPlatformOS: string | null = null;
 let lastWatchedDirectoryPath = '';
@@ -182,11 +185,11 @@ async function runFileOperationWithConflictResolution(
   operation: 'copy' | 'move',
   sourcePaths: string[],
   destPath: string,
-  conflictBehavior?: FileConflictBehavior
+  conflictBehavior?: FileConflictBehavior,
+  operationId?: string
 ) {
   const behavior = conflictBehavior ?? 'ask';
   const conflictResolutions: Record<string, ConflictDecision> = {};
-  let operationDefault: ConflictDecision | null = null;
 
   while (true) {
     try {
@@ -195,6 +198,7 @@ async function runFileOperationWithConflictResolution(
         destPath,
         conflictBehavior: behavior,
         conflictResolutions: behavior === 'ask' ? conflictResolutions : null,
+        operationId: operationId ?? null,
       });
       return { success: true as const };
     } catch (e) {
@@ -208,18 +212,12 @@ async function runFileOperationWithConflictResolution(
         return { success: false as const, error };
       }
 
-      if (operationDefault) {
-        conflictResolutions[conflictItem] = operationDefault;
-        continue;
-      }
-
       const resolution = await promptConflictResolution(conflictItem, operation);
       if (resolution === 'cancel') {
         return { success: false as const, error: 'Operation cancelled' };
       }
 
       conflictResolutions[conflictItem] = resolution;
-      operationDefault = resolution;
     }
   }
 }
@@ -468,6 +466,20 @@ const tauriAPI: TauriAPI = {
   },
   clearDragData: () => invoke('clear_drag_data'),
   getPathForFile: () => '',
+  onNativeDragDrop: (callback) => {
+    const unlisten = getCurrentWebview().onDragDropEvent((event) => {
+      const payload = event.payload as DragDropEvent;
+      const normalized: NativeDragDropEvent = {
+        type: payload.type,
+      };
+      if ('paths' in payload) normalized.paths = payload.paths;
+      if ('position' in payload) normalized.position = payload.position;
+      callback(normalized);
+    });
+    return () => {
+      unlisten.then((fn) => fn()).catch(ignoreError);
+    };
+  },
 
   onSettingsChanged: (callback) => {
     const unlisten = listen('settings-changed', (event) => {
@@ -496,21 +508,23 @@ const tauriAPI: TauriAPI = {
     };
   },
 
-  copyItems: (sourcePaths, destPath, conflictBehavior) =>
+  copyItems: (sourcePaths, destPath, conflictBehavior, operationId) =>
     runFileOperationWithConflictResolution(
       'copy_items',
       'copy',
       sourcePaths,
       destPath,
-      conflictBehavior
+      conflictBehavior,
+      operationId
     ) as never,
-  moveItems: (sourcePaths, destPath, conflictBehavior) =>
+  moveItems: (sourcePaths, destPath, conflictBehavior, operationId) =>
     runFileOperationWithConflictResolution(
       'move_items',
       'move',
       sourcePaths,
       destPath,
-      conflictBehavior
+      conflictBehavior,
+      operationId
     ) as never,
   showConflictDialog: (fileName, operation) =>
     promptConflictResolution(fileName, operation as 'copy' | 'move') as never,
@@ -734,6 +748,7 @@ const tauriAPI: TauriAPI = {
       const update = target ? await check({ target }) : await check();
       if (update) {
         pendingUpdate = update;
+        updateReadyToInstall = false;
         updateAvailableCallbacks.forEach((cb) => {
           try {
             cb({
@@ -753,7 +768,7 @@ const tauriAPI: TauriAPI = {
           isBeta,
         } as never;
       }
-      if (!updateDownloadInProgress) {
+      if (!updateDownloadInProgress && !updateReadyToInstall) {
         pendingUpdate = null;
       }
       return {
@@ -764,7 +779,7 @@ const tauriAPI: TauriAPI = {
         isBeta,
       } as never;
     } catch (e) {
-      if (!updateDownloadInProgress) {
+      if (!updateDownloadInProgress && !updateReadyToInstall) {
         pendingUpdate = null;
       }
       const message = String(e);
@@ -781,6 +796,7 @@ const tauriAPI: TauriAPI = {
     try {
       if (!pendingUpdate) return { success: false as const, error: 'No update available' };
       updateDownloadInProgress = true;
+      updateReadyToInstall = false;
       let downloaded = 0;
       let contentLength = 0;
       await pendingUpdate.download((event) => {
@@ -803,6 +819,7 @@ const tauriAPI: TauriAPI = {
             }
           });
         } else if (event.event === 'Finished') {
+          updateReadyToInstall = true;
           updateDownloadedCallbacks.forEach((cb) => {
             try {
               cb({ version: pendingUpdate?.version ?? '' });
@@ -816,14 +833,16 @@ const tauriAPI: TauriAPI = {
       return { success: true as const };
     } catch (e) {
       updateDownloadInProgress = false;
+      updateReadyToInstall = false;
       return { success: false as const, error: String(e) };
     }
   },
   installUpdate: async () => {
     try {
-      if (pendingUpdate) {
-        await pendingUpdate.install();
-      }
+      if (!pendingUpdate) return { success: false as const, error: 'No update available' };
+      await pendingUpdate.install();
+      updateReadyToInstall = false;
+      pendingUpdate = null;
       const { relaunch } = await import('@tauri-apps/plugin-process');
       await relaunch();
       return { success: true as const };
@@ -950,6 +969,8 @@ const tauriAPI: TauriAPI = {
       unlisten.then((fn) => fn()).catch(ignoreError);
     };
   },
+  cancelFileOperation: (operationId) =>
+    wrap(() => invoke('cancel_file_operation', { operationId })),
   onSystemResumed: (callback) => {
     bindSystemFallbacks();
     systemResumedCallbacks.add(callback);

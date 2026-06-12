@@ -41,6 +41,12 @@ describe('tauri asset protocol scope', () => {
         '$HOME/.aws/**',
         '$HOME/.docker/**',
         '$HOME/.kube/**',
+        '**/.ssh/**',
+        '**/.gnupg/**',
+        '**/.aws/**',
+        '**/.docker/**',
+        '**/.kube/**',
+        '**/.password-store/**',
       ])
     );
   });

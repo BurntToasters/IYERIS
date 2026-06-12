@@ -96,8 +96,7 @@ fn copy_symlink(source: &Path, target: &Path) -> Result<(), String> {
             .map(|m| m.is_dir())
             .unwrap_or(false);
         if is_dir_link {
-            std::os::windows::fs::symlink_dir(&link_target, target)
-                .map_err(map_win_symlink_err)?;
+            std::os::windows::fs::symlink_dir(&link_target, target).map_err(map_win_symlink_err)?;
         } else {
             std::os::windows::fs::symlink_file(&link_target, target)
                 .map_err(map_win_symlink_err)?;

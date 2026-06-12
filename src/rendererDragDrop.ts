@@ -4,6 +4,7 @@ import { rendererPath as path } from './rendererUtils.js';
 import { devLog } from './shared.js';
 
 const SPRING_LOAD_DELAY = 800;
+const NATIVE_DROP_CACHE_MS = 1500;
 
 interface DragDropConfig {
   getCurrentPath: () => string;
@@ -25,6 +26,15 @@ interface DragDropConfig {
   navigateTo: (path: string) => Promise<void>;
   updateUndoRedoState: () => Promise<void>;
   getPlatformOS: () => string;
+  generateOperationId?: () => string;
+  addOperation?: (
+    id: string,
+    kind: 'copy' | 'move',
+    name: string,
+    options?: { cancellable?: boolean; total?: number; retry?: () => void }
+  ) => void;
+  updateOperation?: (id: string, update: { currentFile?: string; status?: 'active' }) => void;
+  completeOperation?: (id: string, status: 'done' | 'failed', error?: string) => void;
 }
 
 export function createDragDropController(config: DragDropConfig) {
@@ -32,6 +42,24 @@ export function createDragDropController(config: DragDropConfig) {
   let springLoadedFolder: HTMLElement | null = null;
   let springLoadAnimTimer: NodeJS.Timeout | null = null;
   let dropInProgress = false;
+  let nativeDropPaths: string[] = [];
+  let nativeDropPathsAt = 0;
+  let nativeDragDropUnlisten: (() => void) | null = null;
+
+  function updateQueued(
+    operationId: string | undefined,
+    update: { currentFile?: string; status?: 'active' }
+  ): void {
+    if (operationId) config.updateOperation?.(operationId, update);
+  }
+
+  function completeQueued(
+    operationId: string | undefined,
+    status: 'done' | 'failed',
+    error?: string
+  ): void {
+    if (operationId) config.completeOperation?.(operationId, status, error);
+  }
 
   function isAbsolutePath(value: string): boolean {
     return value.startsWith('/') || /^[A-Za-z]:[\\/]/.test(value) || value.startsWith('\\\\');
@@ -114,6 +142,17 @@ export function createDragDropController(config: DragDropConfig) {
     return Array.from(normalized);
   }
 
+  function consumeNativeDropPaths(): string[] {
+    if (nativeDropPaths.length === 0) return [];
+    if (Date.now() - nativeDropPathsAt > NATIVE_DROP_CACHE_MS) {
+      nativeDropPaths = [];
+      return [];
+    }
+    const paths = nativeDropPaths;
+    nativeDropPaths = [];
+    return paths;
+  }
+
   function extractPathsFromText(textData: string): string[] {
     const trimmed = textData.trim();
     if (!trimmed) return [];
@@ -178,6 +217,10 @@ export function createDragDropController(config: DragDropConfig) {
           }
         })
       );
+    }
+
+    if (draggedPaths.length === 0) {
+      draggedPaths = consumeNativeDropPaths();
     }
 
     if (draggedPaths.length === 0) {
@@ -315,6 +358,22 @@ export function createDragDropController(config: DragDropConfig) {
     dropInProgress = true;
     devLog('DragDrop', `handleDrop: ${operation} ${sourcePaths.length} item(s) to ${destPath}`);
     const showToast = config.getShowToast();
+    const operationId = config.addOperation
+      ? (config.generateOperationId?.() ?? `drop_${Date.now()}_${Math.random().toString(36)}`)
+      : undefined;
+    const retry = () => void handleDrop(sourcePaths, destPath, operation);
+    if (operationId) {
+      config.addOperation?.(
+        operationId,
+        operation,
+        `${sourcePaths.length} item(s) to ${path.basename(destPath) || destPath}`,
+        {
+          cancellable: true,
+          total: sourcePaths.length,
+          retry,
+        }
+      );
+    }
     try {
       const conflictBehavior = (config.getCurrentSettings().fileConflictBehavior || 'ask') as
         | 'rename'
@@ -323,8 +382,12 @@ export function createDragDropController(config: DragDropConfig) {
         | 'overwrite';
       const result =
         operation === 'copy'
-          ? await window.tauriAPI.copyItems(sourcePaths, destPath, conflictBehavior)
-          : await window.tauriAPI.moveItems(sourcePaths, destPath, conflictBehavior);
+          ? operationId
+            ? await window.tauriAPI.copyItems(sourcePaths, destPath, conflictBehavior, operationId)
+            : await window.tauriAPI.copyItems(sourcePaths, destPath, conflictBehavior)
+          : operationId
+            ? await window.tauriAPI.moveItems(sourcePaths, destPath, conflictBehavior, operationId)
+            : await window.tauriAPI.moveItems(sourcePaths, destPath, conflictBehavior);
 
       if (!result.success) {
         if (isPermissionDeniedError(result.error)) {
@@ -336,11 +399,16 @@ export function createDragDropController(config: DragDropConfig) {
               )
             : false;
           if (confirmed) {
+            updateQueued(operationId, {
+              currentFile: 'Waiting for elevated permissions...',
+              status: 'active',
+            });
             const elevResult =
               operation === 'copy'
                 ? await window.tauriAPI.elevatedCopyBatch(sourcePaths, destPath)
                 : await window.tauriAPI.elevatedMoveBatch(sourcePaths, destPath);
             if (elevResult.success) {
+              completeQueued(operationId, 'done');
               showToast(
                 `${operation === 'copy' ? 'Copied' : 'Moved'} ${sourcePaths.length} item(s) (elevated)`,
                 'Success',
@@ -354,12 +422,19 @@ export function createDragDropController(config: DragDropConfig) {
               config.clearSelection();
               return;
             }
+            completeQueued(
+              operationId,
+              'failed',
+              elevResult.error || `Elevated ${operation} failed`
+            );
             showToast(elevResult.error || `Elevated ${operation} failed`, 'Error', 'error');
             return;
           }
+          completeQueued(operationId, 'failed', 'Operation cancelled');
           showToast('Operation cancelled', 'Info', 'info');
           return;
         }
+        completeQueued(operationId, 'failed', result.error || `Failed to ${operation} items`);
         showToast(result.error || `Failed to ${operation} items`, 'Error', 'error', [
           {
             label: 'Retry',
@@ -368,6 +443,7 @@ export function createDragDropController(config: DragDropConfig) {
         ]);
         return;
       }
+      completeQueued(operationId, 'done');
       showToast(
         `${operation === 'copy' ? 'Copied' : 'Moved'} ${sourcePaths.length} item(s)`,
         'Success',
@@ -383,6 +459,7 @@ export function createDragDropController(config: DragDropConfig) {
       config.clearSelection();
     } catch (error) {
       console.error(`Error during ${operation}:`, error);
+      completeQueued(operationId, 'failed', String(error));
       showToast(`Failed to ${operation} items`, 'Error', 'error', [
         {
           label: 'Retry',
@@ -538,6 +615,22 @@ export function createDragDropController(config: DragDropConfig) {
   function initDragAndDropListeners(): void {
     initFileGridDragAndDrop();
     initFileViewDragAndDrop();
+    if (!nativeDragDropUnlisten && window.tauriAPI.onNativeDragDrop) {
+      nativeDragDropUnlisten = window.tauriAPI.onNativeDragDrop((event) => {
+        if (event.type === 'drop' || event.type === 'enter') {
+          nativeDropPaths = normalizeDraggedPaths(event.paths || []);
+          nativeDropPathsAt = Date.now();
+        } else if (event.type === 'leave') {
+          nativeDropPaths = [];
+        }
+      });
+    }
+  }
+
+  function destroyDragAndDropListeners(): void {
+    nativeDragDropUnlisten?.();
+    nativeDragDropUnlisten = null;
+    nativeDropPaths = [];
   }
 
   return {
@@ -549,5 +642,6 @@ export function createDragDropController(config: DragDropConfig) {
     clearSpringLoad,
     handleDrop,
     initDragAndDropListeners,
+    destroyDragAndDropListeners,
   };
 }

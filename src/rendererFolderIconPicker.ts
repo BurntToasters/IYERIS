@@ -1,5 +1,6 @@
 import type { Settings } from './types';
 import { normalizeIconName } from './rendererUtils.js';
+import { FOLDER_ICON_VALUES, isOneOf } from './constants.js';
 
 type FolderIconPickerDeps = {
   getCurrentSettings: () => Settings;
@@ -17,51 +18,7 @@ type FolderIconPickerDeps = {
   folderIcon: string;
 };
 
-const FOLDER_ICON_OPTIONS = [
-  'folder',
-  'folder-open',
-  'file-text',
-  'contact',
-  'archive',
-  'briefcase',
-  'star',
-  'sparkles',
-  'heart',
-  'lightbulb',
-  'gamepad-2',
-  'music',
-  'clapperboard',
-  'camera',
-  'video',
-  'library',
-  'book-open',
-  'pencil',
-  'laptop',
-  'monitor',
-  'home',
-  'building',
-  'wrench',
-  'settings',
-  'lock',
-  'unlock',
-  'package',
-  'inbox',
-  'upload',
-  'trash-2',
-  'cloud',
-  'globe',
-  'rocket',
-  'plane',
-  'car',
-  'bike',
-  'activity',
-  'trophy',
-  'apple',
-  'leaf',
-  'trees',
-  'sun',
-  'palette',
-];
+const FOLDER_ICON_OPTIONS = FOLDER_ICON_VALUES;
 
 export function createFolderIconPickerController(deps: FolderIconPickerDeps) {
   let folderIconPickerPath: string | null = null;
@@ -96,7 +53,9 @@ export function createFolderIconPickerController(deps: FolderIconPickerDeps) {
 
     const currentSettings = deps.getCurrentSettings();
     const rawIcon = currentSettings.folderIcons?.[folderPath];
-    const currentIcon = rawIcon ? normalizeIconName(rawIcon) : undefined;
+    const normalizedIcon = rawIcon ? normalizeIconName(rawIcon) : undefined;
+    const currentIcon =
+      normalizedIcon && isOneOf(normalizedIcon, FOLDER_ICON_OPTIONS) ? normalizedIcon : undefined;
 
     grid.innerHTML = FOLDER_ICON_OPTIONS.map((iconName) => {
       const isSelected = currentIcon === iconName;
@@ -121,11 +80,16 @@ export function createFolderIconPickerController(deps: FolderIconPickerDeps) {
   }
 
   async function setFolderIcon(folderPath: string, icon: string) {
+    const normalizedIcon = normalizeIconName(icon);
+    if (!isOneOf(normalizedIcon, FOLDER_ICON_OPTIONS)) {
+      deps.showToast('Invalid folder icon', 'Error', 'error');
+      return;
+    }
     const currentSettings = deps.getCurrentSettings();
     if (!currentSettings.folderIcons) {
       currentSettings.folderIcons = {};
     }
-    currentSettings.folderIcons[folderPath] = icon;
+    currentSettings.folderIcons[folderPath] = normalizedIcon;
     try {
       await deps.saveSettings();
     } catch {
@@ -166,7 +130,10 @@ export function createFolderIconPickerController(deps: FolderIconPickerDeps) {
     const currentSettings = deps.getCurrentSettings();
     const customIcon = currentSettings.folderIcons?.[folderPath];
     if (customIcon) {
-      return deps.twemojiImg(customIcon, 'twemoji file-icon');
+      const normalizedIcon = normalizeIconName(customIcon);
+      if (isOneOf(normalizedIcon, FOLDER_ICON_OPTIONS)) {
+        return deps.twemojiImg(normalizedIcon, 'twemoji file-icon');
+      }
     }
     return deps.folderIcon;
   }

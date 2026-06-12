@@ -70,6 +70,8 @@ export function createSettingsUiController(deps: SettingsUiDeps) {
     'max-thumbnail-size-input': 'maxThumbnailSizeMB',
     'thumbnail-quality-select': 'thumbnailQuality',
     'dangerous-options-toggle': 'showDangerousOptions',
+    'enable-auto-checksum-toggle': 'enableAutoChecksum',
+    'default-checksum-algo-select': 'defaultChecksumAlgorithm',
   };
 
   function setSuppressSettingsTracking(value: boolean) {

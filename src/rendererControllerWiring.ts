@@ -211,6 +211,7 @@ export function wireControllers(deps: WiringDeps) {
     cancelArchiveOperation: (operationId) => window.tauriAPI.cancelArchiveOperation(operationId),
     cancelChecksumCalculation: (operationId) =>
       window.tauriAPI.cancelChecksumCalculation(operationId),
+    cancelFileOperation: (operationId) => window.tauriAPI.cancelFileOperation(operationId),
     getOperationPanelCollapsed: () => deps.getCurrentSettings().operationPanelCollapsed === true,
     setOperationPanelCollapsed: (collapsed) => {
       deps.getCurrentSettings().operationPanelCollapsed = collapsed;
@@ -225,6 +226,7 @@ export function wireControllers(deps: WiringDeps) {
     completeOperation,
     removeOperation,
     getOperation,
+    isOperationCancelling,
     cleanup: cleanupOperationQueue,
   } = operationQueueController;
 
@@ -284,6 +286,10 @@ export function wireControllers(deps: WiringDeps) {
     navigateTo: (p) => deps.late.navigateTo(p),
     updateUndoRedoState: () => deps.late.updateUndoRedoState(),
     getPlatformOS: () => deps.getPlatformOS(),
+    generateOperationId,
+    addOperation,
+    updateOperation,
+    completeOperation,
   });
   const {
     getDragOperation,
@@ -685,6 +691,10 @@ export function wireControllers(deps: WiringDeps) {
     showToast,
     showConfirm,
     handleDrop,
+    generateOperationId,
+    addOperation,
+    updateOperation,
+    completeOperation,
     refresh: () => deps.late.refresh('clipboard-operation'),
     updateUndoRedoState: () => deps.late.updateUndoRedoState(),
   });
@@ -962,6 +972,11 @@ export function wireControllers(deps: WiringDeps) {
     onModalClose: deactivateModal,
     refresh: (reason?: string) => deps.late.refresh(reason),
     navigateTo: (pathValue) => deps.late.navigateTo(pathValue),
+    generateOperationId,
+    addOperation,
+    updateOperation,
+    completeOperation,
+    isOperationCancelling,
   });
 
   const commandPaletteController = createCommandPaletteController({
@@ -1287,6 +1302,7 @@ export function wireControllers(deps: WiringDeps) {
     completeOperation,
     removeOperation,
     getOperation,
+    isOperationCancelling,
     cleanupOperationQueue,
 
     sortController,

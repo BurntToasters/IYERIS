@@ -1,5 +1,5 @@
 use regex::Regex;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs;
 use std::io::{BufReader, Read};
@@ -9,9 +9,8 @@ use tauri::Emitter;
 
 static ACTIVE_OPS: std::sync::LazyLock<Mutex<HashSet<String>>> =
     std::sync::LazyLock::new(|| Mutex::new(HashSet::new()));
-static RELATIONSHIP_TAG_RE: std::sync::LazyLock<Option<Regex>> = std::sync::LazyLock::new(|| {
-    Regex::new(r#"(?is)<Relationship\b[^>]*>"#).ok()
-});
+static RELATIONSHIP_TAG_RE: std::sync::LazyLock<Option<Regex>> =
+    std::sync::LazyLock::new(|| Regex::new(r#"(?is)<Relationship\b[^>]*>"#).ok());
 // Rust's regex crate does not support backreferences. Use alternation so we
 // match either a double-quoted or single-quoted attribute value, then strip
 // the matching quote characters in extract_xml_attr().
@@ -23,6 +22,12 @@ const MAX_DECOMPRESSED_SIZE: u64 = 53_687_091_200; // 50 GB
 const MAX_ARCHIVE_DEPTH: usize = 20;
 const DEFAULT_OFFICE_THUMBNAIL_LIMIT_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_OFFICE_THUMBNAIL_LIMIT_BYTES: u64 = 20 * 1024 * 1024;
+
+#[derive(Clone, Copy, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AdvancedCompressOptions {
+    compression_level: Option<u32>,
+}
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -152,13 +157,42 @@ fn canonicalize_for_comparison(path: &Path) -> PathBuf {
     absolute
 }
 
+fn cleanup_extracted_paths(extracted: &[PathBuf]) {
+    for path in extracted.iter().rev() {
+        if let Ok(meta) = fs::symlink_metadata(path) {
+            if meta.is_dir() {
+                let _ = fs::remove_dir(path);
+            } else {
+                let _ = fs::remove_file(path);
+            }
+        }
+    }
+}
+
+fn create_dir_all_tracked(path: &Path, extracted: &mut Vec<PathBuf>) -> Result<(), String> {
+    let mut created = Vec::new();
+    let mut cursor = Some(path);
+    while let Some(current) = cursor {
+        if current.exists() {
+            break;
+        }
+        created.push(current.to_path_buf());
+        cursor = current.parent();
+    }
+    fs::create_dir_all(path).map_err(|e| e.to_string())?;
+    for created_path in created.into_iter().rev() {
+        extracted.push(created_path);
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn compress_files(
     source_paths: Vec<String>,
     output_path: String,
     format: Option<String>,
     operation_id: Option<String>,
-    _advanced_options: Option<serde_json::Value>,
+    advanced_options: Option<serde_json::Value>,
     webview: tauri::WebviewWindow,
     _app: tauri::AppHandle,
 ) -> Result<(), String> {
@@ -190,6 +224,9 @@ pub async fn compress_files(
         }
     }
     let fmt = format.unwrap_or_else(|| "zip".to_string());
+    let options = advanced_options
+        .and_then(|value| serde_json::from_value::<AdvancedCompressOptions>(value).ok())
+        .unwrap_or_default();
     let op_id = operation_id.unwrap_or_default();
 
     if !op_id.is_empty() {
@@ -199,8 +236,10 @@ pub async fn compress_files(
 
     let compress_op_id = op_id.clone();
     let result = tokio::task::spawn_blocking(move || match fmt.as_str() {
-        "zip" => compress_zip(&source_paths, &output, &compress_op_id, &webview),
-        "tar.gz" | "tgz" => compress_tar_gz(&source_paths, &output, &compress_op_id, &webview),
+        "zip" => compress_zip(&source_paths, &output, &compress_op_id, options, &webview),
+        "tar.gz" | "tgz" => {
+            compress_tar_gz(&source_paths, &output, &compress_op_id, options, &webview)
+        }
         "7z" => compress_7z(&source_paths, &output, &compress_op_id, &webview),
         _ => Err(format!("Unsupported format: {}", fmt)),
     })
@@ -219,12 +258,20 @@ fn compress_zip(
     sources: &[String],
     output: &Path,
     op_id: &str,
+    advanced_options: AdvancedCompressOptions,
     webview: &tauri::WebviewWindow,
 ) -> Result<(), String> {
     let file = fs::File::create(output).map_err(|e| e.to_string())?;
     let mut zip = zip::ZipWriter::new(file);
+    let level = advanced_options.compression_level.map(|level| level.min(9));
+    let method = if level == Some(0) {
+        zip::CompressionMethod::Stored
+    } else {
+        zip::CompressionMethod::Deflated
+    };
     let options = zip::write::SimpleFileOptions::default()
-        .compression_method(zip::CompressionMethod::Deflated);
+        .compression_method(method)
+        .compression_level(level.map(i64::from));
 
     let mut count = 0u64;
     let total = sources.len() as u64;
@@ -318,11 +365,13 @@ fn compress_tar_gz(
     sources: &[String],
     output: &Path,
     op_id: &str,
+    advanced_options: AdvancedCompressOptions,
     webview: &tauri::WebviewWindow,
 ) -> Result<(), String> {
     let result = (|| -> Result<(), String> {
         let file = fs::File::create(output).map_err(|e| e.to_string())?;
-        let enc = flate2::write::GzEncoder::new(file, flate2::Compression::default());
+        let level = advanced_options.compression_level.unwrap_or(6).min(9);
+        let enc = flate2::write::GzEncoder::new(file, flate2::Compression::new(level));
         let mut tar = tar::Builder::new(enc);
         tar.follow_symlinks(false);
 
@@ -556,48 +605,63 @@ fn extract_zip(
     let mut zip = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
     let total = zip.len();
     let mut cumulative_bytes: u64 = 0;
+    let mut extracted: Vec<PathBuf> = Vec::new();
 
-    for i in 0..total {
-        if !op_id.is_empty() && !is_active(op_id) {
-            return Err("Operation cancelled".to_string());
+    let result = (|| {
+        for i in 0..total {
+            if !op_id.is_empty() && !is_active(op_id) {
+                return Err("Operation cancelled".to_string());
+            }
+
+            let mut entry = zip.by_index(i).map_err(|e| e.to_string())?;
+            let name = entry.name().to_string();
+            let out_path = safe_entry_path(&name, dest)?;
+
+            let _ = webview.emit(
+                "extract-progress",
+                serde_json::json!({
+                    "operationId": op_id,
+                    "current": i + 1,
+                    "total": total,
+                    "name": name,
+                }),
+            );
+
+            if entry.is_dir() {
+                create_dir_all_tracked(&out_path, &mut extracted)?;
+                ensure_path_within_dest(&out_path, dest, &name)?;
+            } else {
+                if out_path.exists() {
+                    return Err(format!(
+                        "Refusing to overwrite existing extraction path: {}",
+                        out_path.display()
+                    ));
+                }
+                let entry_size = entry.size();
+                if cumulative_bytes.saturating_add(entry_size) > MAX_DECOMPRESSED_SIZE {
+                    return Err("Decompressed size limit exceeded (50 GB)".to_string());
+                }
+                if let Some(parent) = out_path.parent() {
+                    create_dir_all_tracked(parent, &mut extracted)?;
+                    ensure_path_within_dest(parent, dest, &name)?;
+                }
+                let mut outfile = fs::File::create(&out_path).map_err(|e| e.to_string())?;
+                extracted.push(out_path.clone());
+                let written = std::io::copy(&mut entry, &mut outfile).map_err(|e| e.to_string())?;
+                cumulative_bytes = cumulative_bytes.saturating_add(written);
+                if cumulative_bytes > MAX_DECOMPRESSED_SIZE {
+                    return Err("Decompressed size limit exceeded (50 GB)".to_string());
+                }
+            }
         }
 
-        let mut entry = zip.by_index(i).map_err(|e| e.to_string())?;
-        let name = entry.name().to_string();
-        let out_path = safe_entry_path(&name, dest)?;
+        Ok(())
+    })();
 
-        let _ = webview.emit(
-            "extract-progress",
-            serde_json::json!({
-                "operationId": op_id,
-                "current": i + 1,
-                "total": total,
-                "name": name,
-            }),
-        );
-
-        if entry.is_dir() {
-            fs::create_dir_all(&out_path).map_err(|e| e.to_string())?;
-            ensure_path_within_dest(&out_path, dest, &name)?;
-        } else {
-            let entry_size = entry.size();
-            if cumulative_bytes.saturating_add(entry_size) > MAX_DECOMPRESSED_SIZE {
-                return Err("Decompressed size limit exceeded (50 GB)".to_string());
-            }
-            if let Some(parent) = out_path.parent() {
-                fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-                ensure_path_within_dest(parent, dest, &name)?;
-            }
-            let mut outfile = fs::File::create(&out_path).map_err(|e| e.to_string())?;
-            let written = std::io::copy(&mut entry, &mut outfile).map_err(|e| e.to_string())?;
-            cumulative_bytes = cumulative_bytes.saturating_add(written);
-            if cumulative_bytes > MAX_DECOMPRESSED_SIZE {
-                return Err("Decompressed size limit exceeded (50 GB)".to_string());
-            }
-        }
+    if result.is_err() {
+        cleanup_extracted_paths(&extracted);
     }
-
-    Ok(())
+    result
 }
 
 fn extract_tar_gz(
@@ -633,55 +697,64 @@ fn extract_7z(
     let reader = BufReader::new(file);
     let mut count = 0usize;
     let mut cumulative_bytes: u64 = 0;
-    sevenz_rust::decompress_with_extract_fn(reader, dest, |entry, reader, _dest_path| {
-        if !op_id.is_empty() && !is_active(op_id) {
-            return Err(sevenz_rust::Error::other("Operation cancelled"));
-        }
-        count += 1;
-        let name = entry.name().to_string();
-        let _ = webview.emit(
-            "extract-progress",
-            serde_json::json!({
-                "operationId": op_id,
-                "current": count,
-                "total": 0,
-                "name": name.clone(),
-            }),
-        );
-        let out_path = safe_entry_path(entry.name(), dest)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
-        if entry.is_directory() {
-            fs::create_dir_all(&out_path)
-                .map_err(|e| std::io::Error::other(e.to_string()))?;
-            ensure_path_within_dest(&out_path, dest, &name)
-                .map_err(std::io::Error::other)?;
-        } else {
-            let entry_size = entry.size();
-            if cumulative_bytes.saturating_add(entry_size) > MAX_DECOMPRESSED_SIZE {
-                return Err(sevenz_rust::Error::other(
-                    "Decompressed size limit exceeded (50 GB)",
-                ));
+    let mut extracted: Vec<PathBuf> = Vec::new();
+    let result =
+        sevenz_rust::decompress_with_extract_fn(reader, dest, |entry, reader, _dest_path| {
+            if !op_id.is_empty() && !is_active(op_id) {
+                return Err(sevenz_rust::Error::other("Operation cancelled"));
             }
-            if let Some(parent) = out_path.parent() {
-                fs::create_dir_all(parent)
+            count += 1;
+            let name = entry.name().to_string();
+            let _ = webview.emit(
+                "extract-progress",
+                serde_json::json!({
+                    "operationId": op_id,
+                    "current": count,
+                    "total": 0,
+                    "name": name.clone(),
+                }),
+            );
+            let out_path = safe_entry_path(entry.name(), dest)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
+            if entry.is_directory() {
+                create_dir_all_tracked(&out_path, &mut extracted).map_err(std::io::Error::other)?;
+                ensure_path_within_dest(&out_path, dest, &name).map_err(std::io::Error::other)?;
+            } else {
+                if out_path.exists() {
+                    return Err(sevenz_rust::Error::other(format!(
+                        "Refusing to overwrite existing extraction path: {}",
+                        out_path.display()
+                    )));
+                }
+                let entry_size = entry.size();
+                if cumulative_bytes.saturating_add(entry_size) > MAX_DECOMPRESSED_SIZE {
+                    return Err(sevenz_rust::Error::other(
+                        "Decompressed size limit exceeded (50 GB)",
+                    ));
+                }
+                if let Some(parent) = out_path.parent() {
+                    create_dir_all_tracked(parent, &mut extracted)
+                        .map_err(std::io::Error::other)?;
+                    ensure_path_within_dest(parent, dest, &name).map_err(std::io::Error::other)?;
+                }
+                let mut outfile = fs::File::create(&out_path)
                     .map_err(|e| std::io::Error::other(e.to_string()))?;
-                ensure_path_within_dest(parent, dest, &name)
-                    .map_err(std::io::Error::other)?;
+                extracted.push(out_path.clone());
+                let written = std::io::copy(reader, &mut outfile)
+                    .map_err(|e| std::io::Error::other(e.to_string()))?;
+                cumulative_bytes = cumulative_bytes.saturating_add(written);
+                if cumulative_bytes > MAX_DECOMPRESSED_SIZE {
+                    return Err(sevenz_rust::Error::other(
+                        "Decompressed size limit exceeded (50 GB)",
+                    ));
+                }
             }
-            let mut outfile = fs::File::create(&out_path)
-                .map_err(|e| std::io::Error::other(e.to_string()))?;
-            let written = std::io::copy(reader, &mut outfile)
-                .map_err(|e| std::io::Error::other(e.to_string()))?;
-            cumulative_bytes = cumulative_bytes.saturating_add(written);
-            if cumulative_bytes > MAX_DECOMPRESSED_SIZE {
-                return Err(sevenz_rust::Error::other(
-                    "Decompressed size limit exceeded (50 GB)",
-                ));
-            }
-        }
-        Ok(true)
-    })
-    .map_err(|e| match e {
+            Ok(true)
+        });
+    if result.is_err() {
+        cleanup_extracted_paths(&extracted);
+    }
+    result.map_err(|e| match e {
         sevenz_rust::Error::Other(message) if message.as_ref() == "Operation cancelled" => {
             "Operation cancelled".to_string()
         }
@@ -710,18 +783,7 @@ fn extract_tar_entries<R: std::io::Read>(
     let mut extracted: Vec<PathBuf> = Vec::new();
     let result = extract_tar_entries_tracked(tar, dest, op_id, webview, &mut extracted);
     if result.is_err() {
-        // M6: on error, unwind the files/dirs we created. Children first
-        // so directories are empty when we remove them. We don't bubble up
-        // cleanup errors — best-effort.
-        for path in extracted.iter().rev() {
-            if let Ok(meta) = fs::symlink_metadata(path) {
-                if meta.is_dir() {
-                    let _ = fs::remove_dir(path);
-                } else {
-                    let _ = fs::remove_file(path);
-                }
-            }
-        }
+        cleanup_extracted_paths(&extracted);
     }
     result
 }
@@ -786,22 +848,23 @@ fn extract_tar_entries_tracked<R: std::io::Read>(
         );
 
         if entry_type.is_dir() {
-            fs::create_dir_all(&target_path).map_err(|e| {
-                format!("Failed to create dir {}: {}", target_path.display(), e)
-            })?;
-            extracted.push(target_path.clone());
+            create_dir_all_tracked(&target_path, extracted)
+                .map_err(|e| format!("Failed to create dir {}: {}", target_path.display(), e))?;
         } else {
-            if let Some(parent) = target_path.parent() {
-                fs::create_dir_all(parent).map_err(|e| {
-                    format!("Failed to create dir {}: {}", parent.display(), e)
-                })?;
+            if target_path.exists() {
+                return Err(format!(
+                    "Refusing to overwrite existing extraction path: {}",
+                    target_path.display()
+                ));
             }
-            // Unpack to the specific (validated) path. `entry.unpack` returns
-            // a `tar::Unpacked` which we discard.
-            entry.unpack(&target_path).map_err(|e| {
-                format!("Failed to unpack {}: {}", name, e)
-            })?;
+            if let Some(parent) = target_path.parent() {
+                create_dir_all_tracked(parent, extracted)
+                    .map_err(|e| format!("Failed to create dir {}: {}", parent.display(), e))?;
+            }
             extracted.push(target_path.clone());
+            entry
+                .unpack(&target_path)
+                .map_err(|e| format!("Failed to unpack {}: {}", name, e))?;
         }
         // Belt + suspenders: confirm the final path is still under dest after
         // any normalization the OS may have done (e.g., 8.3 short names on
@@ -1275,7 +1338,11 @@ mod tests {
         let nonexistent = std::env::temp_dir().join("iyeris-nonexistent-dest-12345-xyz");
         let _ = std::fs::remove_dir_all(&nonexistent);
         let err = safe_entry_path("ok.txt", &nonexistent).unwrap_err();
-        assert!(err.contains("canonicalize") || err.contains("Refusing"), "got: {}", err);
+        assert!(
+            err.contains("canonicalize") || err.contains("Refusing"),
+            "got: {}",
+            err
+        );
     }
 
     // --- end-to-end malicious zip -------------------------------------------
@@ -1335,7 +1402,9 @@ mod tests {
             header.set_mode(0o777);
             header.set_link_name(target).unwrap();
             header.set_cksum();
-            builder.append_data(&mut header, name, std::io::empty()).unwrap();
+            builder
+                .append_data(&mut header, name, std::io::empty())
+                .unwrap();
             builder.finish().unwrap();
         }
         buf
@@ -1407,7 +1476,10 @@ mod tests {
 
     #[test]
     fn xml_attribute_regex_compiles() {
-        assert!(XML_ATTRIBUTE_RE.is_some(), "XML_ATTRIBUTE_RE failed to compile");
+        assert!(
+            XML_ATTRIBUTE_RE.is_some(),
+            "XML_ATTRIBUTE_RE failed to compile"
+        );
     }
 
     #[test]

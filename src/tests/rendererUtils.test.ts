@@ -226,6 +226,12 @@ describe('twemojiImg', () => {
     expect(result).toContain('aria-label="my folder"');
   });
 
+  it('escapes custom alt text in svg attributes', () => {
+    const result = twemojiImg('📁', 'twemoji', 'folder\" onload=\"alert(1)');
+    expect(result).toContain('aria-label="folder&quot; onload=&quot;alert(1)"');
+    expect(result).not.toContain('onload="alert(1)');
+  });
+
   it('handles emoji directly and resolves it to Lucide icon', () => {
     const result = twemojiImg('📁');
     expect(result).toContain('aria-label="folder"');

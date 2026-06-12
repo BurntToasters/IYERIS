@@ -2,6 +2,7 @@ import { convertFileSrc } from '@tauri-apps/api/core';
 import pLimit from 'p-limit';
 import * as lucide from 'lucide';
 import type { IconNode } from 'lucide';
+import { escapeHtml } from './shared.js';
 
 const PREVIEW_DATA_URL_CACHE_MAX = 64;
 const previewDataUrlCache = new Map<string, string>();
@@ -233,6 +234,10 @@ function camelToKebab(str: string): string {
   return str.replace(/([a-z0-9]|(?=[A-Z]))([A-Z])/g, '$1-$2').toLowerCase();
 }
 
+function escapeSvgAttr(value: unknown): string {
+  return escapeHtml(String(value));
+}
+
 function iconToSvg(icon: IconNode, extraAttrs: Record<string, string> = {}): string {
   if (!icon || !Array.isArray(icon)) return '';
 
@@ -253,7 +258,7 @@ function iconToSvg(icon: IconNode, extraAttrs: Record<string, string> = {}): str
   const attrStr = Object.entries(combinedAttrs)
     .map(([k, v]) => {
       const kebabKey = camelToKebab(k);
-      return `${kebabKey}="${v}"`;
+      return `${kebabKey}="${escapeSvgAttr(v)}"`;
     })
     .join(' ');
 
@@ -263,7 +268,7 @@ function iconToSvg(icon: IconNode, extraAttrs: Record<string, string> = {}): str
         .filter(([, v]) => v !== undefined)
         .map(([k, v]) => {
           const kebabKey = camelToKebab(k);
-          return `${kebabKey}="${v}"`;
+          return `${kebabKey}="${escapeSvgAttr(v)}"`;
         })
         .join(' ');
       return `<${childTag} ${childAttrStr}></${childTag}>`;

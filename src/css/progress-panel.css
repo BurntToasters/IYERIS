@@ -157,7 +157,8 @@
   transition: width 0.16s ease;
 }
 
-.operation-queue-cancel {
+.operation-queue-cancel,
+.operation-queue-retry {
   justify-self: end;
   padding: 4px 8px;
   border: 1px solid var(--native-divider);
@@ -170,7 +171,8 @@
   transition: background var(--animation-duration) var(--animation-easing);
 }
 
-.operation-queue-cancel:hover {
+.operation-queue-cancel:hover,
+.operation-queue-retry:hover {
   background: var(--interactive-hover);
   color: var(--text-primary);
 }

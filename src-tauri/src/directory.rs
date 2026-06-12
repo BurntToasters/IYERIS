@@ -505,29 +505,27 @@ pub async fn get_drives() -> Result<Vec<DriveInfo>, String> {
                         let entry_path = entry.path();
                         let mount = entry_path.to_string_lossy().to_string();
                         let name = entry.file_name().to_string_lossy().to_string();
-                        if !drives.iter().any(|d| d.mount_point == mount) {
-                            if entry_path.is_dir() {
-                                if *mount_dir == "/run/media" {
-                                    // /run/media/<user>/<device> — enumerate subdirectories
-                                    if let Ok(sub_entries) = fs::read_dir(&entry_path) {
-                                        for sub_entry in sub_entries.filter_map(|e| e.ok()) {
-                                            let sub_mount =
-                                                sub_entry.path().to_string_lossy().to_string();
-                                            let sub_name =
-                                                sub_entry.file_name().to_string_lossy().to_string();
-                                            if !drives.iter().any(|d| d.mount_point == sub_mount) {
-                                                drives.push(build_drive(
-                                                    sub_name,
-                                                    sub_mount,
-                                                    String::new(),
-                                                    true,
-                                                ));
-                                            }
+                        if !drives.iter().any(|d| d.mount_point == mount) && entry_path.is_dir() {
+                            if *mount_dir == "/run/media" {
+                                // /run/media/<user>/<device> — enumerate subdirectories
+                                if let Ok(sub_entries) = fs::read_dir(&entry_path) {
+                                    for sub_entry in sub_entries.filter_map(|e| e.ok()) {
+                                        let sub_mount =
+                                            sub_entry.path().to_string_lossy().to_string();
+                                        let sub_name =
+                                            sub_entry.file_name().to_string_lossy().to_string();
+                                        if !drives.iter().any(|d| d.mount_point == sub_mount) {
+                                            drives.push(build_drive(
+                                                sub_name,
+                                                sub_mount,
+                                                String::new(),
+                                                true,
+                                            ));
                                         }
                                     }
-                                } else {
-                                    drives.push(build_drive(name, mount, String::new(), true));
                                 }
+                            } else {
+                                drives.push(build_drive(name, mount, String::new(), true));
                             }
                         }
                     }

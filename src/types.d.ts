@@ -118,6 +118,9 @@ export interface Settings {
   activePane?: 'left' | 'right';
   nativeMenuEnabled?: boolean;
   operationPanelCollapsed?: boolean;
+  utilityDrawerCollapsed?: boolean;
+  enableAutoChecksum?: boolean;
+  defaultChecksumAlgorithm?: 'sha256' | 'md5' | 'blake3' | 'sha512' | 'crc32';
 
   reduceMotion: boolean;
   highContrast: boolean;
@@ -390,6 +393,12 @@ export interface ClipboardOperation {
   paths: string[];
 }
 
+export interface NativeDragDropEvent {
+  type: 'enter' | 'over' | 'drop' | 'leave';
+  paths?: string[];
+  position?: { x: number; y: number };
+}
+
 export interface IndexEntry {
   name: string;
   path: string;
@@ -496,7 +505,14 @@ export interface FileOperationProgress {
   name: string;
 }
 
-export type OperationKind = 'copy' | 'move' | 'duplicate' | 'compress' | 'extract' | 'checksum';
+export type OperationKind =
+  | 'copy'
+  | 'move'
+  | 'delete'
+  | 'duplicate'
+  | 'compress'
+  | 'extract'
+  | 'checksum';
 
 export type OperationStatus = 'queued' | 'active' | 'done' | 'failed' | 'cancelling';
 
@@ -510,6 +526,7 @@ export interface OperationQueueItem {
   currentFile: string;
   cancellable: boolean;
   error?: string;
+  retry?: () => void;
   createdAt: number;
   updatedAt: number;
 }
@@ -554,7 +571,7 @@ export interface TauriAPI {
   setPermissions: (itemPath: string, mode: number) => Promise<IpcResult>;
   setAttributes: (
     itemPath: string,
-    attrs: { readOnly?: boolean; hidden?: boolean }
+    attrs: { readOnly?: boolean; hidden?: boolean; system?: boolean }
   ) => Promise<IpcResult>;
   getSettings: () => Promise<SettingsResponse>;
   saveSettings: (settings: Settings) => Promise<IpcResult>;
@@ -578,6 +595,7 @@ export interface TauriAPI {
   getDragData: () => Promise<{ paths: string[] } | null>;
   clearDragData: () => Promise<void>;
   getPathForFile?: (file: File) => string;
+  onNativeDragDrop: (callback: (event: NativeDragDropEvent) => void) => () => void;
 
   onSettingsChanged: (callback: (settings: Settings) => void) => () => void;
   onHomeSettingsChanged: (callback: (settings: HomeSettings) => void) => () => void;
@@ -585,12 +603,14 @@ export interface TauriAPI {
   copyItems: (
     sourcePaths: string[],
     destPath: string,
-    conflictBehavior?: ConflictBehavior
+    conflictBehavior?: ConflictBehavior,
+    operationId?: string
   ) => Promise<IpcResult>;
   moveItems: (
     sourcePaths: string[],
     destPath: string,
-    conflictBehavior?: ConflictBehavior
+    conflictBehavior?: ConflictBehavior,
+    operationId?: string
   ) => Promise<IpcResult>;
   showConflictDialog: (
     fileName: string,
@@ -670,6 +690,7 @@ export interface TauriAPI {
   onCompressProgress: (callback: (progress: ArchiveProgress) => void) => () => void;
   onExtractProgress: (callback: (progress: ArchiveProgress) => void) => () => void;
   onFileOperationProgress: (callback: (progress: FileOperationProgress) => void) => () => void;
+  cancelFileOperation: (operationId: string) => Promise<IpcResult>;
   onSystemResumed: (callback: () => void) => () => void;
   onDirectoryChanged: (callback: (data: DirectoryChangedEvent) => void) => () => void;
   onWatchedDirRemoved: (callback: (data: WatchedDirRemovedEvent) => void) => () => void;

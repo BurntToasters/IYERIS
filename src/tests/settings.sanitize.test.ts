@@ -323,8 +323,18 @@ describe('sanitizeSettings', () => {
     });
 
     it('filters non-string values from record', () => {
-      const result = sanitizeSettings({ folderIcons: { '/a': 'icon', '/b': 42 } });
-      expect(result.folderIcons).toEqual({ '/a': 'icon' });
+      const result = sanitizeSettings({ folderIcons: { '/a': 'folder', '/b': 42 } });
+      expect(result.folderIcons).toEqual({ '/a': 'folder' });
+    });
+
+    it('filters unsafe icon values from record', () => {
+      const result = sanitizeSettings({
+        folderIcons: {
+          '/a': 'star',
+          '/b': '"><img src=x onerror=alert(1)>',
+        },
+      });
+      expect(result.folderIcons).toEqual({ '/a': 'star' });
     });
 
     it('ignores reserved keys in folderIcons', () => {

@@ -136,7 +136,7 @@ body.platform-darwin .titlebar {
 body.platform-darwin .titlebar::after {
   content: '';
   position: absolute;
-  left: var(--sidebar-width-current, var(--sidebar-width));
+  left: calc(var(--sidebar-width-current, var(--sidebar-width)) - 1px);
   top: 0;
   height: 100%;
   width: 1px;
@@ -147,11 +147,7 @@ body.platform-darwin .titlebar::after {
 }
 
 body.sidebar-collapsed.platform-darwin .titlebar::after {
-  left: var(--sidebar-width-collapsed);
-}
-
-body.platform-darwin .main-content {
-  border-top: 1px solid var(--native-divider);
+  left: calc(var(--sidebar-width-collapsed) - 1px);
 }
 
 .titlebar-icon {
@@ -330,15 +326,26 @@ body.platform-darwin .main-content {
 
 .sidebar-resize-handle:hover,
 .sidebar-resize-handle.resizing {
-  background: color-mix(in srgb, var(--system-accent-color, var(--accent-color)) 36%, transparent);
+  background: linear-gradient(
+    90deg,
+    transparent 0,
+    transparent 2px,
+    color-mix(in srgb, var(--system-accent-color, var(--accent-color)) 36%, transparent) 2px,
+    color-mix(in srgb, var(--system-accent-color, var(--accent-color)) 36%, transparent) 5px,
+    transparent 5px,
+    transparent 100%
+  );
 }
 
 .toolbar {
   min-height: var(--toolbar-height);
+  width: calc(100% + 1px);
+  margin-left: -1px;
   padding: var(--toolbar-padding-v) var(--toolbar-padding-h);
   gap: var(--toolbar-gap);
   background: color-mix(in srgb, var(--chrome-surface) 90%, transparent);
   border: none;
+  border-top: 1px solid var(--native-divider);
   border-bottom: 1px solid var(--native-divider);
   border-radius: 0;
   box-shadow: none;

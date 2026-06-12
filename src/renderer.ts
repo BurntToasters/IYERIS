@@ -25,6 +25,8 @@ import { createFileRenderController } from './rendererFileRender.js';
 import { createFileGridEventsController } from './rendererFileGridEvents.js';
 import { createEventListenersController } from './rendererEventListeners.js';
 import { createBootstrapController } from './rendererBootstrap.js';
+import { createUtilityDrawerController } from './rendererUtilityDrawer.js';
+import { moveGridFocusWithinScope } from './rendererSelection.js';
 import { applyAppearance } from './rendererAppearance.js';
 import {
   SETTINGS_SAVE_DEBOUNCE_MS,
@@ -47,6 +49,7 @@ import { wireControllers, type LateBound } from './rendererControllerWiring.js';
 import { isOneOf } from './constants.js';
 
 const fileElementMap: Map<string, HTMLElement> = new Map();
+let utilityDrawerController: ReturnType<typeof createUtilityDrawerController> | null = null;
 const driveLabelByPath = new Map<string, string>();
 let cachedDriveInfo: DriveInfo[] = [];
 
@@ -155,6 +158,12 @@ function setSelectedItemsState(value: Set<string>): void {
 
 function getDualPaneElement<T extends HTMLElement>(id: string): T | null {
   return document.getElementById(id) as T | null;
+}
+
+function getActiveFileGridScope(): HTMLElement | null {
+  const isSecondary =
+    currentSettings.dualPaneEnabled === true && currentSettings.activePane === 'right';
+  return document.getElementById(isSecondary ? 'dual-pane-secondary-list' : 'file-grid');
 }
 
 function renderSecondaryPaneItems(items: FileItem[]): void {
@@ -509,6 +518,11 @@ const wired = wireControllers({
 });
 
 const {
+  generateOperationId,
+  addOperation,
+  updateOperation,
+  completeOperation,
+  isOperationCancelling,
   cleanupOperationQueue,
   showSortMenu,
   hideSortMenu,
@@ -1290,6 +1304,14 @@ function updateStatusBar() {
     statusViewModeText.textContent = `${viewLabel} · ${sortLabel}`;
   }
   syncDualPaneControls();
+  if (utilityDrawerController) {
+    if (selectedItems.size === 1) {
+      const firstSelectedPath = Array.from(selectedItems)[0];
+      utilityDrawerController.updateSelection(firstSelectedPath || null);
+    } else {
+      utilityDrawerController.updateSelection(null);
+    }
+  }
 }
 
 const bootstrapController = createBootstrapController({
@@ -1528,12 +1550,12 @@ const eventListenersController = createEventListenersController({
   },
   focusFileGrid: () => {
     ensureActiveItem();
-    const fileGrid = document.getElementById('file-grid');
-    const activeItem = fileGrid?.querySelector<HTMLElement>('.file-item[tabindex="0"]');
+    const scope = getActiveFileGridScope();
+    const activeItem = scope?.querySelector<HTMLElement>('.file-item[tabindex="0"]');
     if (activeItem) {
       activeItem.focus();
     } else {
-      fileGrid?.focus();
+      scope?.focus();
     }
   },
   ensureActiveItem: () => ensureActiveItem(),
@@ -1548,45 +1570,9 @@ const eventListenersController = createEventListenersController({
     }
   },
   navigateFileGridFocusOnly: (key: string) => {
-    const isSecondary =
-      currentSettings.dualPaneEnabled === true && currentSettings.activePane === 'right';
-    const scope = document.getElementById(isSecondary ? 'dual-pane-secondary-list' : 'file-grid');
+    const scope = getActiveFileGridScope();
     if (!scope) return;
-    const items = Array.from(scope.querySelectorAll<HTMLElement>('.file-item'));
-    if (items.length === 0) return;
-
-    const active = fileGrid.querySelector<HTMLElement>('.file-item[tabindex="0"]');
-    let currentIndex = active ? items.indexOf(active) : 0;
-    if (currentIndex === -1) currentIndex = 0;
-
-    const gridStyle = window.getComputedStyle(fileGrid);
-    const columns =
-      viewMode === 'list'
-        ? 1
-        : gridStyle.getPropertyValue('grid-template-columns').split(' ').length || 1;
-
-    let newIndex = currentIndex;
-    switch (key) {
-      case 'ArrowUp':
-        newIndex = Math.max(0, currentIndex - columns);
-        break;
-      case 'ArrowDown':
-        newIndex = Math.min(items.length - 1, currentIndex + columns);
-        break;
-      case 'ArrowLeft':
-        newIndex = Math.max(0, currentIndex - 1);
-        break;
-      case 'ArrowRight':
-        newIndex = Math.min(items.length - 1, currentIndex + 1);
-        break;
-    }
-
-    if (newIndex !== currentIndex) {
-      if (active) active.tabIndex = -1;
-      items[newIndex]!.tabIndex = 0;
-      items[newIndex]!.focus({ preventScroll: true });
-      items[newIndex]!.scrollIntoView({ block: 'nearest' });
-    }
+    moveGridFocusWithinScope(scope, key, viewMode);
   },
   initSettingsTabs,
   initSettingsUi,
@@ -1829,6 +1815,11 @@ const fileRenderController = createFileRenderController({
 const { renderFiles, resetVirtualizedRender } = fileRenderController;
 const filePathMap = fileRenderController.getFilePathMap();
 const getFileItemData = fileRenderController.getFileItemData;
+utilityDrawerController = createUtilityDrawerController({
+  getCurrentSettings: () => currentSettings,
+  saveSettingsWithTimestamp: (settings) => saveSettingsWithTimestamp(settings),
+  showToast: (m, t, ty) => showToast(m, t, ty as 'success' | 'error' | 'info' | 'warning'),
+});
 
 const fileGridEventsController = createFileGridEventsController({
   getFileGrid: () => fileGrid,
@@ -1889,27 +1880,43 @@ async function deleteSelected(permanent = false) {
   }
 
   const itemsSnapshot = Array.from(selectedItems);
+  const operationId = generateOperationId();
+  addOperation(operationId, 'delete', `${count} item${plural}${permanent ? ' permanently' : ''}`, {
+    cancellable: true,
+    total: itemsSnapshot.length,
+    retry: () => void deleteSelected(permanent),
+  });
   const DELETE_BATCH_SIZE = 20;
   const allResults: PromiseSettledResult<{ success: boolean; error?: string }>[] = [];
+  const processedPaths: string[] = [];
   for (let i = 0; i < itemsSnapshot.length; i += DELETE_BATCH_SIZE) {
+    if (isOperationCancelling(operationId)) break;
     const batch = itemsSnapshot.slice(i, i + DELETE_BATCH_SIZE);
     const batchResults = await Promise.allSettled(
       batch.map((p) => (permanent ? window.tauriAPI.deleteItem(p) : window.tauriAPI.trashItem(p)))
     );
     allResults.push(...batchResults);
+    processedPaths.push(...batch);
+    updateOperation(operationId, {
+      current: allResults.length,
+      total: itemsSnapshot.length,
+      currentFile: batch[batch.length - 1] || 'Deleting...',
+      status: 'active',
+    });
   }
   const successCount = allResults.filter((r) => r.status === 'fulfilled' && r.value.success).length;
   const failCount = allResults.length - successCount;
+  const cancelled = isOperationCancelling(operationId);
 
   const permissionFailedPaths: string[] = [];
   for (let i = 0; i < allResults.length; i++) {
     const r = allResults[i]!;
     if (r.status === 'fulfilled' && !r.value.success && isPermissionDeniedError(r.value.error)) {
-      permissionFailedPaths.push(itemsSnapshot[i]!);
+      permissionFailedPaths.push(processedPaths[i]!);
     }
   }
 
-  if (permissionFailedPaths.length > 0) {
+  if (!cancelled && permissionFailedPaths.length > 0) {
     const needsPermanentFallback = !permanent;
     const confirmed = await showConfirm(
       needsPermanentFallback
@@ -1919,6 +1926,10 @@ async function deleteSelected(permanent = false) {
       needsPermanentFallback ? 'error' : 'warning'
     );
     if (confirmed) {
+      updateOperation(operationId, {
+        currentFile: 'Waiting for elevated permissions...',
+        status: 'active',
+      });
       const elevResult = await window.tauriAPI.elevatedDeleteBatch(permissionFailedPaths);
       if (elevResult.success) {
         const totalSuccess = successCount + permissionFailedPaths.length;
@@ -1935,9 +1946,19 @@ async function deleteSelected(permanent = false) {
             'error'
           );
         }
+        if (unresolvedFailures > 0) {
+          completeOperation(
+            operationId,
+            'failed',
+            `${unresolvedFailures} item(s) could not be deleted`
+          );
+        } else {
+          completeOperation(operationId, 'done');
+        }
         refresh(effectivePermanent ? 'delete-selected-permanent' : 'delete-selected');
         return;
       }
+      completeOperation(operationId, 'failed', elevResult.error || 'Elevated delete failed');
       showToast(elevResult.error || 'Elevated delete failed', 'Error', 'error');
     }
   }
@@ -1968,12 +1989,25 @@ async function deleteSelected(permanent = false) {
     }
     refresh(permanent ? 'delete-selected-permanent' : 'delete-selected');
   }
-  if (failCount > 0) {
+  if (cancelled) {
+    completeOperation(
+      operationId,
+      'failed',
+      `Cancelled after ${successCount} item${successCount === 1 ? '' : 's'}`
+    );
+  } else if (failCount > 0) {
+    completeOperation(
+      operationId,
+      'failed',
+      `${failCount} item${failCount > 1 ? 's' : ''} could not be deleted`
+    );
     showToast(
       `${failCount} item${failCount > 1 ? 's' : ''} could not be deleted`,
       'Partial Failure',
       'error'
     );
+  } else {
+    completeOperation(operationId, 'done');
   }
 }
 
@@ -2823,6 +2857,9 @@ document.addEventListener('mousedown', (e) => {
 (async () => {
   try {
     await bootstrapInit();
+    if (utilityDrawerController) {
+      utilityDrawerController.init();
+    }
   } catch (error) {
     devLog('Init', 'Failed to initialize IYERIS', error);
     alert('Failed to start IYERIS: ' + getErrorMessage(error));

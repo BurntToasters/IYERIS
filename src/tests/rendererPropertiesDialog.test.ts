@@ -289,6 +289,7 @@ describe('rendererPropertiesDialog', () => {
       expect(document.getElementById('checksum-sha512-row')!.style.display).toBe('flex');
       expect(document.getElementById('checksum-blake3-row')!.style.display).toBe('flex');
       expect(document.getElementById('checksum-crc32-row')!.style.display).toBe('flex');
+      expect(document.getElementById('calculate-checksum-btn')!.style.display).toBe('inline-flex');
     });
 
     it('requests all checksum algorithms', async () => {
@@ -335,6 +336,7 @@ describe('rendererPropertiesDialog', () => {
       await vi.waitFor(() => {
         expect(deps.showToast).toHaveBeenCalledWith('File locked', 'Error', 'error');
       });
+      expect(document.getElementById('calculate-checksum-btn')!.style.display).toBe('inline-flex');
     });
 
     it('suppresses toast for cancelled checksum', async () => {
@@ -351,6 +353,7 @@ describe('rendererPropertiesDialog', () => {
         expect(mockTauriAPI.calculateChecksum).toHaveBeenCalled();
       });
       expect(deps.showToast).not.toHaveBeenCalled();
+      expect(document.getElementById('calculate-checksum-btn')!.style.display).toBe('inline-flex');
     });
 
     it('shows error toast on checksum exception', async () => {
@@ -363,6 +366,7 @@ describe('rendererPropertiesDialog', () => {
       await vi.waitFor(() => {
         expect(deps.showToast).toHaveBeenCalledWith('Network error', 'Error', 'error');
       });
+      expect(document.getElementById('calculate-checksum-btn')!.style.display).toBe('inline-flex');
     });
 
     it('cancels checksum calculation', async () => {
@@ -515,6 +519,9 @@ describe('rendererPropertiesDialog', () => {
       const statsContent = document.getElementById('folder-stats-content')!;
       expect(statsContent.innerHTML).toContain('.txt');
       expect(statsContent.innerHTML).toContain('.js');
+      expect(document.getElementById('calculate-folder-size-btn')!.style.display).toBe(
+        'inline-flex'
+      );
     });
 
     it('handles folder size error', async () => {
@@ -534,6 +541,9 @@ describe('rendererPropertiesDialog', () => {
           'Error: Permission denied'
         );
       });
+      expect(document.getElementById('calculate-folder-size-btn')!.style.display).toBe(
+        'inline-flex'
+      );
     });
 
     it('suppresses error message for cancelled calculation', async () => {
@@ -554,6 +564,9 @@ describe('rendererPropertiesDialog', () => {
 
       const info = document.getElementById('folder-size-info')!.textContent;
       expect(info).not.toContain('Error');
+      expect(document.getElementById('calculate-folder-size-btn')!.style.display).toBe(
+        'inline-flex'
+      );
     });
 
     it('handles folder size exception', async () => {
@@ -570,6 +583,9 @@ describe('rendererPropertiesDialog', () => {
           'Error: Disk failure'
         );
       });
+      expect(document.getElementById('calculate-folder-size-btn')!.style.display).toBe(
+        'inline-flex'
+      );
     });
 
     it('cancels folder size calculation', async () => {

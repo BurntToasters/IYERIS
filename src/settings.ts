@@ -12,6 +12,8 @@ import {
   THUMBNAIL_QUALITY_VALUES as THUMBNAIL_QUALITY_ARRAY,
   PREVIEW_POSITION_VALUES as PREVIEW_PANEL_ARRAY,
   GRID_COLUMNS_VALUES as GRID_COLUMNS_ARRAY,
+  CHECKSUM_ALGORITHM_VALUES as CHECKSUM_ALGORITHM_ARRAY,
+  FOLDER_ICON_VALUES as FOLDER_ICON_ARRAY,
 } from './constants.js';
 
 export function createDefaultSettings(): Settings {
@@ -85,6 +87,9 @@ export function createDefaultSettings(): Settings {
     activePane: 'left',
     nativeMenuEnabled: true,
     operationPanelCollapsed: false,
+    utilityDrawerCollapsed: true,
+    enableAutoChecksum: true,
+    defaultChecksumAlgorithm: 'sha256',
   };
 }
 
@@ -98,6 +103,9 @@ const FILE_CONFLICT_VALUES = new Set<Settings['fileConflictBehavior']>(FILE_CONF
 const THUMBNAIL_QUALITY_VALUES = new Set<Settings['thumbnailQuality']>(THUMBNAIL_QUALITY_ARRAY);
 const PREVIEW_PANEL_VALUES = new Set<Settings['previewPanelPosition']>(PREVIEW_PANEL_ARRAY);
 const GRID_COLUMNS_VALUES = new Set<Settings['gridColumns']>(GRID_COLUMNS_ARRAY);
+const CHECKSUM_ALGORITHM_VALUES = new Set<Settings['defaultChecksumAlgorithm']>(
+  CHECKSUM_ALGORITHM_ARRAY
+);
 
 function sanitizeEnum<T extends string>(value: unknown, allowed: Set<T>): T | null {
   if (typeof value !== 'string') return null;
@@ -199,14 +207,18 @@ function sanitizeShortcuts(
   return result;
 }
 
-function sanitizeStringRecord(value: unknown): Record<string, string> {
+function sanitizeFolderIcons(value: unknown): Record<string, string> {
   const result: Record<string, string> = {};
   if (!isRecord(value)) return result;
+  const allowed = new Set<string>(FOLDER_ICON_ARRAY);
+  const legacyCodepoint = /^[0-9a-f]{2,6}(?:-[0-9a-f]{2,6})*$/i;
   for (const key of Object.keys(value)) {
     if (RESERVED_KEYS.has(key)) continue;
     const item = value[key];
-    if (typeof item === 'string') {
-      result[key] = item;
+    if (typeof item !== 'string') continue;
+    const normalized = item.toLowerCase().trim();
+    if (allowed.has(normalized) || legacyCodepoint.test(normalized)) {
+      result[key] = normalized;
     }
   }
   return result;
@@ -334,6 +346,8 @@ export function sanitizeSettings(
     'dualPaneEnabled',
     'nativeMenuEnabled',
     'operationPanelCollapsed',
+    'utilityDrawerCollapsed',
+    'enableAutoChecksum',
   ];
   for (const key of BOOLEAN_KEYS) {
     if (typeof raw[key] === 'boolean') assignKey(clean, key, raw[key] as Settings[keyof Settings]);
@@ -351,6 +365,7 @@ export function sanitizeSettings(
     ['thumbnailQuality', THUMBNAIL_QUALITY_VALUES as Set<string>],
     ['previewPanelPosition', PREVIEW_PANEL_VALUES as Set<string>],
     ['gridColumns', GRID_COLUMNS_VALUES as Set<string>],
+    ['defaultChecksumAlgorithm', CHECKSUM_ALGORITHM_VALUES as Set<string>],
   ];
   for (const [key, allowed] of ENUM_FIELDS) {
     const val = sanitizeEnum(raw[key], allowed);
@@ -417,7 +432,7 @@ export function sanitizeSettings(
 
   clean.shortcuts = sanitizeShortcuts(raw.shortcuts, clean.shortcuts);
   if (raw.folderIcons && isRecord(raw.folderIcons))
-    clean.folderIcons = sanitizeStringRecord(raw.folderIcons);
+    clean.folderIcons = sanitizeFolderIcons(raw.folderIcons);
 
   const listColumnWidths = sanitizeListColumnWidths(raw.listColumnWidths);
   if (listColumnWidths) clean.listColumnWidths = listColumnWidths;

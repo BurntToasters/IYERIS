@@ -58,9 +58,8 @@ export async function loadPdfJs(): Promise<PdfjsLib | null> {
 
   pdfjsLoading = (async () => {
     try {
-      // Use indirect import to bypass Vite's static analysis of public dir files
-      const importModule = new Function('url', 'return import(url)');
-      const mod = await importModule('/vendor/pdfjs/pdf.min.mjs');
+      const modulePath = '/vendor/pdfjs/pdf.min.mjs';
+      const mod = await import(/* @vite-ignore */ modulePath);
       mod.GlobalWorkerOptions.workerSrc = '/vendor/pdfjs/pdf.worker.min.mjs';
       pdfjsLib = mod as PdfjsLib;
       return pdfjsLib;

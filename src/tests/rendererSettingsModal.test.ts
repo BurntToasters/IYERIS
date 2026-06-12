@@ -53,6 +53,9 @@ function makeDeps() {
       maxDirectoryHistoryItems: 15,
       showFileHoverCard: false,
       showFileCheckboxes: true,
+      enableAutoChecksum: true,
+      defaultChecksumAlgorithm: 'sha256',
+      utilityDrawerCollapsed: true,
       theme: 'dark',
     })),
     activateModal: vi.fn(),
@@ -109,6 +112,7 @@ const CHECKBOX_IDS = [
   'show-file-extensions-toggle',
   'show-file-hover-card-toggle',
   'show-file-checkboxes-toggle',
+  'enable-auto-checksum-toggle',
 ];
 
 const SELECT_IDS: Record<string, string[]> = {
@@ -120,6 +124,7 @@ const SELECT_IDS: Record<string, string[]> = {
   'thumbnail-quality-select': ['low', 'medium', 'high'],
   'preview-panel-position-select': ['right', 'bottom'],
   'grid-columns-select': ['auto', '3', '4', '5', '6', '8'],
+  'default-checksum-algo-select': ['sha256', 'md5', 'blake3', 'sha512', 'crc32'],
 };
 
 const INPUT_IDS = [
@@ -219,6 +224,9 @@ describe('rendererSettingsModal', () => {
       expect(
         (document.getElementById('show-file-checkboxes-toggle') as HTMLInputElement).checked
       ).toBe(true);
+      expect(
+        (document.getElementById('enable-auto-checksum-toggle') as HTMLInputElement).checked
+      ).toBe(true);
     });
 
     it('populates selects from settings', async () => {
@@ -244,6 +252,9 @@ describe('rendererSettingsModal', () => {
         (document.getElementById('preview-panel-position-select') as HTMLSelectElement).value
       ).toBe('bottom');
       expect((document.getElementById('grid-columns-select') as HTMLSelectElement).value).toBe('6');
+      expect(
+        (document.getElementById('default-checksum-algo-select') as HTMLSelectElement).value
+      ).toBe('sha256');
     });
 
     it('populates input values from settings', async () => {

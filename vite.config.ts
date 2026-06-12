@@ -8,6 +8,7 @@ export default defineConfig({
     outDir: "../dist",
     emptyOutDir: true,
     target: "es2022",
+    chunkSizeWarningLimit: 1000,
     sourcemap: process.env.NODE_ENV === "production" ? false : "inline",
     rolldownOptions: {
       input: {

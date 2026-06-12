@@ -9,6 +9,7 @@ import {
   THEME_VALUES,
   THUMBNAIL_QUALITY_VALUES,
   UPDATE_CHANNEL_VALUES,
+  CHECKSUM_ALGORITHM_VALUES,
 } from '../constants';
 import { INT_RANGE_MAPPINGS, SELECT_MAPPINGS, TOGGLE_MAPPINGS } from '../rendererSettingsMappings';
 
@@ -40,6 +41,9 @@ describe('rendererSettingsMappings', () => {
     expect(selectMap.get('thumbnail-quality-select')?.values).toEqual(THUMBNAIL_QUALITY_VALUES);
     expect(selectMap.get('preview-panel-position-select')?.values).toEqual(PREVIEW_POSITION_VALUES);
     expect(selectMap.get('grid-columns-select')?.values).toEqual(GRID_COLUMNS_VALUES);
+    expect(selectMap.get('default-checksum-algo-select')?.values).toEqual(
+      CHECKSUM_ALGORITHM_VALUES
+    );
   });
 
   it('declares valid integer input ranges', () => {

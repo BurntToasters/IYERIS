@@ -132,6 +132,8 @@
   --preview-panel-width: 260px;
   --preview-panel-height: 220px;
   --grid-columns: auto-fill;
+  --utility-drawer-header-height: 28px;
+  --utility-drawer-body-height: 145px;
 
   --file-grid-gap-row: 10px;
   --file-grid-gap-col: 12px;
