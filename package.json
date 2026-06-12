@@ -14,7 +14,7 @@
     "fuse.js": "^7.1.0",
     "marked": "^18.0.2",
     "p-limit": "^7.2.0",
-    "pdfjs-dist": "^5.4.624",
+    "pdfjs-dist": "^6.0.227",
     "zod": "^4.1.5"
   },
   "devDependencies": {
