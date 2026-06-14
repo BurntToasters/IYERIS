@@ -234,6 +234,24 @@ export function createEventListenersController(config: EventListenersConfig) {
         action().catch((err: unknown) => console.error(`Window control "${id}" failed:`, err));
       });
     });
+
+    // Handle titlebar double-click to maximize/restore on non-macOS platforms
+    if (!document.body.classList.contains('platform-darwin')) {
+      const titlebar = document.querySelector('.titlebar');
+      titlebar?.addEventListener('dblclick', (e) => {
+        const target = e.target as HTMLElement;
+        if (
+          target.closest(
+            'button, input, select, textarea, .titlebar-button, .tab, .tab-item, .tab-new-btn, .tab-close-btn'
+          )
+        ) {
+          return;
+        }
+        window.tauriAPI.maximizeWindow().catch((err: unknown) => {
+          console.error('Window double-click maximize failed:', err);
+        });
+      });
+    }
   }
 
   function initActionButtonListeners(): void {

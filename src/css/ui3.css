@@ -245,34 +245,6 @@ body.sidebar-collapsed.platform-darwin .titlebar::after {
   gap: 4px;
 }
 
-.tab-item {
-  height: calc(var(--titlebar-height) - 12px);
-  padding: 2px 9px;
-  border: 1px solid transparent;
-  border-radius: 7px;
-  background: transparent;
-}
-
-.tab-item:hover {
-  background: var(--interactive-hover);
-}
-
-.tab-item.active {
-  background: color-mix(in srgb, var(--text-primary) 9%, transparent);
-  border-color: color-mix(in srgb, var(--text-primary) 8%, transparent);
-  box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 8%, transparent);
-}
-
-.tab-item .tab-title {
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.tab-new-btn,
-.tab-item .tab-close {
-  border-radius: 7px;
-}
-
 .container {
   gap: var(--container-gap);
   padding: var(--container-edge-padding-top) var(--container-edge-padding)
@@ -1254,4 +1226,21 @@ body.large-ui .file-item {
   .sidebar {
     width: min(var(--sidebar-width-current, var(--sidebar-width)), 42vw);
   }
+}
+
+/* Window Inactive dimming styles */
+body.window-inactive .titlebar-title {
+  opacity: 0.45;
+}
+
+body.window-inactive .titlebar-icon {
+  opacity: 0.45;
+}
+
+body.window-inactive .titlebar-button {
+  opacity: 0.45;
+}
+
+body.window-inactive .modal {
+  opacity: 0.88;
 }

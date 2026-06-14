@@ -135,7 +135,6 @@ body.platform-linux .file-item.selected {
 
 .file-item:focus {
   outline: none;
-  box-shadow: var(--focus-ring);
 }
 
 .file-item:focus-visible {

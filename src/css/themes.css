@@ -227,7 +227,7 @@ body.theme-light .file-grid.drag-over {
   border-color: rgba(var(--system-accent-rgb, var(--accent-rgb)), 0.25);
 }
 
-body.theme-light .file-item:focus {
+body.theme-light .file-item:focus-visible {
   box-shadow: 0 0 0 2px rgba(var(--system-accent-rgb, var(--accent-rgb)), 0.4);
 }
 
