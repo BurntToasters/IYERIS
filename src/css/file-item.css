@@ -114,8 +114,8 @@ body.platform-darwin .file-item.selected {
   border-color: transparent;
 }
 
-body.platform-darwin :root:not(:focus-within) .file-item.selected,
-body:not(:focus-within) .file-item.selected {
+body.platform-darwin.window-inactive .file-item.selected,
+body.window-inactive .file-item.selected {
   background: color-mix(in srgb, var(--text-primary) 14%, transparent);
 }
 

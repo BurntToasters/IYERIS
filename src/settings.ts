@@ -66,7 +66,7 @@ export function createDefaultSettings(): Settings {
     liquidGlassMode: false,
     uiDensity: 'default',
     updateChannel: 'auto',
-    themedIcons: false,
+    themedIcons: true,
     disableHardwareAcceleration: false,
     useSystemFontSize: false,
 

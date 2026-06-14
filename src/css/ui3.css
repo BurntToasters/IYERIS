@@ -1,3 +1,68 @@
+html,
+body {
+  -webkit-user-select: none;
+  user-select: none;
+  overscroll-behavior: none;
+}
+
+input,
+textarea,
+select,
+[contenteditable='true'],
+.selectable-text {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* Align with native OS human interface guidelines: default cursor for UI elements, pointer for external links only */
+button,
+select,
+[role='button'],
+[role='tab'],
+[role='menuitem'],
+.titlebar-button,
+.tab-item,
+.tab-close,
+.tab-new-btn,
+.file-item,
+.file-checkbox,
+.toggle-slider,
+.nav-item,
+.bookmark-item,
+.recent-item,
+.folder-tree-item,
+.column-item,
+.context-menu-item,
+.tab-context-menu-item,
+.breadcrumb-item,
+.sidebar-toggle,
+.section-toggle,
+.section-action,
+.toolbar-button,
+.view-option,
+.selection-action,
+.modal-button,
+.empty-action-btn,
+.search-filter-btn,
+.toast-action-btn,
+.settings-tab,
+.settings-tab-btn,
+.history-item,
+.search-filter-toggle,
+.search-regex-toggle,
+.search-scope-toggle,
+.search-close,
+.search-save-btn,
+.theme-card,
+.home-item,
+.home-recent-item,
+.home-drive-card,
+.home-customize-btn,
+.zoom-popup,
+.zoom-btn {
+  cursor: default !important;
+}
+
 body {
   letter-spacing: 0;
   background: var(--surface-0);
@@ -516,16 +581,16 @@ body.theme-light .file-item.selected {
   box-shadow: none;
 }
 
-body:not(:focus-within) .file-item.selected,
-body.theme-light:not(:focus-within) .file-item.selected {
+body.window-inactive .file-item.selected,
+body.theme-light.window-inactive .file-item.selected {
   background: color-mix(in srgb, var(--text-primary) 14%, transparent);
   border-color: transparent;
 }
 
-body:not(:focus-within) .nav-item.active,
-body:not(:focus-within) .tree-item.active,
-body:not(:focus-within) .bookmark-item.active,
-body:not(:focus-within) .column-item.selected {
+body.window-inactive .nav-item.active,
+body.window-inactive .tree-item.active,
+body.window-inactive .bookmark-item.active,
+body.window-inactive .column-item.selected {
   background: color-mix(in srgb, var(--text-primary) 12%, transparent);
   box-shadow: none;
 }
@@ -1117,31 +1182,37 @@ body.platform-win32.liquid-glass .glass-panel::before {
   display: none;
 }
 
-body.platform-darwin *::-webkit-scrollbar {
-  width: 7px;
-  height: 7px;
+::-webkit-scrollbar {
+  width: var(--scrollbar-width, 8px);
+  height: var(--scrollbar-width, 8px);
 }
 
-body.platform-darwin *::-webkit-scrollbar-track {
+::-webkit-scrollbar-track {
   background: transparent;
 }
 
-body.platform-darwin *::-webkit-scrollbar-thumb {
+::-webkit-scrollbar-thumb {
   background: transparent;
-  border-radius: 999px;
-  transition: background 180ms ease-out;
+  border-radius: var(--scrollbar-thumb-radius, 999px);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  transition: background-color var(--animation-duration) var(--animation-easing);
 }
 
-body.platform-darwin *:hover::-webkit-scrollbar-thumb,
-body.platform-darwin *:focus-within::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--text-primary) 28%, transparent);
+*:hover::-webkit-scrollbar-thumb,
+*:focus-within::-webkit-scrollbar-thumb {
+  background-color: var(--scrollbar-thumb-bg);
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }
 
-body.platform-darwin *::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in srgb, var(--text-primary) 44%, transparent);
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--scrollbar-thumb-hover-bg) !important;
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }
 
-body.platform-darwin *::-webkit-scrollbar-corner {
+::-webkit-scrollbar-corner {
   background: transparent;
 }
 

@@ -407,39 +407,39 @@ body.theme-light pre.preview-text code.hljs {
 }
 
 body.theme-dark {
-  background-color: #1d2b3e;
+  background-color: #0f1722;
   background-image: radial-gradient(
     ellipse 120% 120% at 50% 50%,
-    rgba(50, 100, 180, 0.03) 0%,
+    rgba(10, 132, 255, 0.035) 0%,
     transparent 60%
   );
-  --bg-primary: #1f2d41;
-  --bg-primary-rgb: 31, 45, 65;
-  --bg-secondary: #263548;
-  --dropdown-bg: #263548;
-  --text-primary: #e8eef7;
-  --text-secondary: #c5d1e3;
-  --text-tertiary: #93a5be;
-  --glass-bg: rgba(31, 45, 65, 0.8);
-  --glass-border: rgba(232, 238, 247, 0.1);
+  --bg-primary: #131b26;
+  --bg-primary-rgb: 19, 27, 38;
+  --bg-secondary: #1b2432;
+  --dropdown-bg: #1b2432;
+  --text-primary: #f0f5fc;
+  --text-secondary: #c9d7e9;
+  --text-tertiary: #8da2bb;
+  --glass-bg: rgba(19, 27, 38, 0.8);
+  --glass-border: rgba(240, 245, 252, 0.1);
   --themed-icon-hue: 210deg;
 }
 
 body.theme-dark::before {
   background:
-    radial-gradient(ellipse 80% 60% at 20% 50%, rgba(50, 110, 200, 0.035) 0%, transparent 60%),
-    radial-gradient(ellipse 70% 50% at 80% 80%, rgba(70, 130, 220, 0.025) 0%, transparent 60%),
-    radial-gradient(ellipse 60% 40% at 40% 20%, rgba(60, 100, 180, 0.02) 0%, transparent 60%);
+    radial-gradient(ellipse 80% 60% at 20% 50%, rgba(10, 132, 255, 0.03) 0%, transparent 60%),
+    radial-gradient(ellipse 70% 50% at 80% 80%, rgba(10, 132, 255, 0.02) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 40% at 40% 20%, rgba(10, 132, 255, 0.015) 0%, transparent 60%);
 }
 
 body.theme-dark .status-bar {
-  background: rgba(31, 45, 65, 0.95);
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(19, 27, 38, 0.95);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 body.theme-dark .status-left span,
 body.theme-dark .status-right span {
-  color: rgba(255, 255, 255, 0.95);
+  color: var(--text-primary);
 }
 
 body.theme-dark code.hljs {
@@ -458,7 +458,7 @@ body.theme-nord {
   --dropdown-bg: #3b4252;
   --text-primary: #eceff4;
   --text-secondary: #d8dee9;
-  --text-tertiary: #a3be8c;
+  --text-tertiary: #4c566a;
   --glass-bg: rgba(46, 52, 64, 0.8);
   --glass-border: rgba(236, 239, 244, 0.1);
   --danger-color: #bf616a;
@@ -519,8 +519,8 @@ body.theme-dracula {
   --bg-secondary: #44475a;
   --dropdown-bg: #44475a;
   --text-primary: #f8f8f2;
-  --text-secondary: #f8f8f2;
-  --text-tertiary: #7284b8;
+  --text-secondary: #d1d2e0;
+  --text-tertiary: #6272a4;
   --glass-bg: rgba(40, 42, 54, 0.8);
   --glass-border: rgba(248, 248, 242, 0.1);
   --danger-color: #ff5555;
@@ -549,9 +549,9 @@ body.theme-solarized {
   --bg-primary-rgb: 0, 43, 54;
   --bg-secondary: #073642;
   --dropdown-bg: #073642;
-  --text-primary: #839496;
-  --text-secondary: #93a1a1;
-  --text-tertiary: #657b83;
+  --text-primary: #93a1a1;
+  --text-secondary: #839496;
+  --text-tertiary: #586e75;
   --glass-bg: rgba(0, 43, 54, 0.8);
   --glass-border: rgba(131, 148, 150, 0.1);
   --danger-color: #dc322f;
@@ -610,19 +610,19 @@ body.theme-solarized,
 body.theme-github {
   --hover-color: color-mix(in srgb, var(--text-primary) 6%, transparent);
   --active-color: color-mix(in srgb, var(--text-primary) 10%, transparent);
-  --separator: color-mix(in srgb, var(--text-primary) 12%, transparent);
+  --separator: color-mix(in srgb, var(--text-primary) 16%, transparent);
   --surface-0: var(--bg-primary);
   --surface-1: var(--bg-secondary);
   --surface-2: color-mix(in srgb, var(--bg-secondary) 88%, transparent);
   --surface-overlay: var(--glass-bg);
-  --panel-border: color-mix(in srgb, var(--text-primary) 12%, transparent);
-  --panel-border-strong: color-mix(in srgb, var(--text-primary) 20%, transparent);
+  --panel-border: color-mix(in srgb, var(--text-primary) 16%, transparent);
+  --panel-border-strong: color-mix(in srgb, var(--text-primary) 28%, transparent);
   --interactive-hover: var(--hover-color);
   --interactive-active: var(--active-color);
   --interactive-selected: var(--accent-light);
   --interactive-selected-border: var(--accent-strong);
   --glass-modal-bg: rgba(var(--bg-primary-rgb), 0.98);
-  --glass-modal-border: color-mix(in srgb, var(--text-primary) 12%, transparent);
+  --glass-modal-border: color-mix(in srgb, var(--text-primary) 16%, transparent);
 }
 
 body.theme-custom {
