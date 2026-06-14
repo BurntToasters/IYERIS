@@ -108,6 +108,13 @@ export function createBootstrapController(config: BootstrapConfig) {
 
   async function init() {
     initializeStaticIcons();
+
+    window.addEventListener('focus', () => {
+      document.body.classList.remove('window-inactive');
+    });
+    window.addEventListener('blur', () => {
+      document.body.classList.add('window-inactive');
+    });
     const [platform, mas, flatpak, msStore, appVersion, devMode] = await Promise.all([
       window.tauriAPI.getPlatform().catch(() => 'unknown'),
       window.tauriAPI.isMas().catch(() => false),
