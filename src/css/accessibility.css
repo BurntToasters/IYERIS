@@ -141,6 +141,9 @@ body.reduce-motion .glass-panel {
     --panel-border: var(--text-secondary);
     --focus-ring: 0 0 0 3px var(--accent-color);
     --focus-ring-strong: 0 0 0 4px var(--accent-color);
+    /* Flatten muted text (and thus placeholders) to full contrast. */
+    --text-secondary: var(--text-primary);
+    --text-tertiary: var(--text-primary);
   }
 
   .file-item:hover,

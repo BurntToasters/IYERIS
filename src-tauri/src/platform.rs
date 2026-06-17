@@ -67,7 +67,15 @@ pub async fn get_git_status(
         tokio::task::spawn_blocking(move || {
             let mut probe_cmd = Command::new("git");
             probe_cmd
-                .args(["rev-parse", "--is-inside-work-tree"])
+                // hardening: a malicious repo config must not run an fsmonitor binary/hooks
+                .args([
+                    "-c",
+                    "core.fsmonitor=false",
+                    "-c",
+                    "core.hooksPath=/dev/null",
+                    "rev-parse",
+                    "--is-inside-work-tree",
+                ])
                 .current_dir(&path);
             #[cfg(target_os = "windows")]
             probe_cmd.creation_flags(0x08000000);
@@ -87,7 +95,15 @@ pub async fn get_git_status(
             // spaces/unicode/special chars. For rename/copy records (X = R or C)
             // git emits the destination path first, then the original path as a
             // separate NUL-terminated field; we surface the destination.
-            let mut args = vec!["status", "--porcelain", "-z"];
+            let mut args = vec![
+                "-c",
+                "core.fsmonitor=false",
+                "-c",
+                "core.hooksPath=/dev/null",
+                "status",
+                "--porcelain",
+                "-z",
+            ];
             if include_untracked {
                 args.push("-uall");
             }
@@ -131,13 +147,29 @@ pub async fn get_git_branch(dir_path: String) -> Result<String, String> {
         GIT_TIMEOUT,
         tokio::task::spawn_blocking(move || {
             let mut cmd = Command::new("git");
-            cmd.args(["rev-parse", "--abbrev-ref", "HEAD"])
-                .current_dir(&path);
+            cmd.args([
+                "-c",
+                "core.fsmonitor=false",
+                "-c",
+                "core.hooksPath=/dev/null",
+                "rev-parse",
+                "--abbrev-ref",
+                "HEAD",
+            ])
+            .current_dir(&path);
             #[cfg(target_os = "windows")]
             cmd.creation_flags(0x08000000);
             let mut probe_cmd = Command::new("git");
             probe_cmd
-                .args(["rev-parse", "--is-inside-work-tree"])
+                // hardening: a malicious repo config must not run an fsmonitor binary/hooks
+                .args([
+                    "-c",
+                    "core.fsmonitor=false",
+                    "-c",
+                    "core.hooksPath=/dev/null",
+                    "rev-parse",
+                    "--is-inside-work-tree",
+                ])
                 .current_dir(&path);
             #[cfg(target_os = "windows")]
             probe_cmd.creation_flags(0x08000000);

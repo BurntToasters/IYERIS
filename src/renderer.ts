@@ -1594,6 +1594,41 @@ const eventListenersController = createEventListenersController({
 });
 const { setupEventListeners } = eventListenersController;
 
+function hideFileViewError(): void {
+  const el = document.getElementById('fileview-error');
+  if (el) el.style.display = 'none';
+}
+
+let fileViewErrorWired = false;
+function showFileViewError(message: string): void {
+  if (!fileViewErrorWired) {
+    fileViewErrorWired = true;
+    document.getElementById('fileview-error-retry')?.addEventListener('click', () => {
+      hideFileViewError();
+      void navigateTo(currentPath, true);
+    });
+    document.getElementById('fileview-error-terminal')?.addEventListener('click', () => {
+      if (currentPath) window.tauriAPI.openTerminal(currentPath).catch(ignoreError);
+    });
+    document.getElementById('fileview-error-fda')?.addEventListener('click', () => {
+      window.tauriAPI.requestFullDiskAccess().catch(ignoreError);
+    });
+  }
+  hideLoading();
+  if (emptyState) emptyState.style.display = 'none';
+  if (listHeader) listHeader.style.display = 'none';
+  if (fileGrid) fileGrid.replaceChildren();
+  const msgEl = document.getElementById('fileview-error-message');
+  if (msgEl) msgEl.textContent = message || 'This folder could not be opened.';
+  const fdaBtn = document.getElementById('fileview-error-fda');
+  if (fdaBtn) {
+    fdaBtn.style.display =
+      platformOS === 'darwin' && isPermissionDeniedError(message) ? 'inline-flex' : 'none';
+  }
+  const el = document.getElementById('fileview-error');
+  if (el) el.style.display = 'flex';
+}
+
 async function navigateTo(path: string, skipHistoryUpdate = false, trigger = 'direct') {
   if (!path) {
     devLog('Navigate', 'Ignored empty navigation request', { trigger });
@@ -1663,6 +1698,7 @@ async function navigateTo(path: string, skipHistoryUpdate = false, trigger = 'di
     thumbnails.clearPendingThumbnailLoads();
 
     showLoading('Loading folder...');
+    hideFileViewError();
     if (fileGrid) fileGrid.replaceChildren();
     const request = startDirectoryRequest(path);
     requestId = request.requestId;
@@ -1694,7 +1730,7 @@ async function navigateTo(path: string, skipHistoryUpdate = false, trigger = 'di
         error: result.error || 'Unknown error',
       });
       devLog('Navigate', 'Error loading directory', result.error);
-      showToast(result.error || 'Unknown error', 'Error Loading Directory', 'error');
+      showFileViewError(result.error || 'This folder could not be opened.');
       return;
     }
 
@@ -1761,7 +1797,7 @@ async function navigateTo(path: string, skipHistoryUpdate = false, trigger = 'di
       durationMs: Date.now() - navigationStartAt,
     });
     devLog('Navigate', 'Error navigating', error);
-    showToast(getErrorMessage(error), 'Error Loading Directory', 'error');
+    showFileViewError(getErrorMessage(error));
   } finally {
     const isCurrentRequest = directoryLoader.isCurrentRequest(requestId);
     finishDirectoryRequest(requestId);

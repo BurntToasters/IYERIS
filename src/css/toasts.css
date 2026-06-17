@@ -159,6 +159,17 @@ body.reduce-motion .toast.removing {
   padding: 0;
 }
 
+/* WCAG 2.2 SC 2.5.8: 24px pointer target without enlarging the visible circle. */
+.toast-dismiss::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 24px;
+  height: 24px;
+  transform: translate(-50%, -50%);
+}
+
 .toast:hover .toast-dismiss {
   opacity: 1;
 }

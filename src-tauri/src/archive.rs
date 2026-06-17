@@ -647,7 +647,12 @@ fn extract_zip(
                 }
                 let mut outfile = fs::File::create(&out_path).map_err(|e| e.to_string())?;
                 extracted.push(out_path.clone());
-                let written = std::io::copy(&mut entry, &mut outfile).map_err(|e| e.to_string())?;
+                // Bound the copy so a single entry that under-declares entry.size()
+                // (zip bomb) cannot write past the cap before the post-check fires.
+                let remaining = MAX_DECOMPRESSED_SIZE.saturating_sub(cumulative_bytes);
+                let mut limited = (&mut entry).take(remaining.saturating_add(1));
+                let written =
+                    std::io::copy(&mut limited, &mut outfile).map_err(|e| e.to_string())?;
                 cumulative_bytes = cumulative_bytes.saturating_add(written);
                 if cumulative_bytes > MAX_DECOMPRESSED_SIZE {
                     return Err("Decompressed size limit exceeded (50 GB)".to_string());
@@ -740,7 +745,10 @@ fn extract_7z(
                 let mut outfile = fs::File::create(&out_path)
                     .map_err(|e| std::io::Error::other(e.to_string()))?;
                 extracted.push(out_path.clone());
-                let written = std::io::copy(reader, &mut outfile)
+                // Bound the copy (zip-bomb defense): a single entry cannot exceed the cap.
+                let remaining = MAX_DECOMPRESSED_SIZE.saturating_sub(cumulative_bytes);
+                let mut limited = reader.take(remaining.saturating_add(1));
+                let written = std::io::copy(&mut limited, &mut outfile)
                     .map_err(|e| std::io::Error::other(e.to_string()))?;
                 cumulative_bytes = cumulative_bytes.saturating_add(written);
                 if cumulative_bytes > MAX_DECOMPRESSED_SIZE {

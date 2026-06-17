@@ -85,7 +85,7 @@ enum OpenTarget {
     External(String),
 }
 
-fn ensure_safe_preview_read_path(path: &Path) -> Result<(), String> {
+pub(crate) fn ensure_safe_preview_read_path(path: &Path) -> Result<(), String> {
     for component in path.components() {
         let std::path::Component::Normal(value) = component else {
             continue;
@@ -400,76 +400,83 @@ pub async fn copy_items(
         source_paths.len(),
         dest_path
     );
-    let _lock = FILE_OP_LOCK
-        .lock()
-        .map_err(|e| format!("File operation lock error: {}", e))?;
-    let dest = crate::validate_existing_path(&dest_path, "Destination")?;
-    let behavior = conflict_behavior.unwrap_or_else(|| "ask".to_string());
-    let resolutions = conflict_resolutions.unwrap_or_default();
-    let planned = plan_file_operations(&source_paths, &dest, &behavior, "copy", &resolutions)?;
-    let total = planned.len();
-    let progress_operation_id = operation_id.unwrap_or_else(|| {
-        format!(
-            "copy-{}",
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_nanos()
-        )
-    });
-    register_file_operation(&progress_operation_id)?;
-    let mut copied_paths: Vec<PathBuf> = Vec::new();
-    let mut backups: HashMap<String, OverwriteBackup> = HashMap::new();
+    // Run blocking filesystem work off the async runtime so concurrent copies
+    // can't starve tokio workers or park them on the std mutex.
+    tokio::task::spawn_blocking(move || -> Result<(), String> {
+        let _lock = FILE_OP_LOCK
+            .lock()
+            .map_err(|e| format!("File operation lock error: {}", e))?;
+        let dest = crate::validate_existing_path(&dest_path, "Destination")?;
+        let behavior = conflict_behavior.unwrap_or_else(|| "ask".to_string());
+        let resolutions = conflict_resolutions.unwrap_or_default();
+        let planned = plan_file_operations(&source_paths, &dest, &behavior, "copy", &resolutions)?;
+        let total = planned.len();
+        let progress_operation_id = operation_id.unwrap_or_else(|| {
+            format!(
+                "copy-{}",
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_nanos()
+            )
+        });
+        register_file_operation(&progress_operation_id)?;
+        let mut copied_paths: Vec<PathBuf> = Vec::new();
+        let mut backups: HashMap<String, OverwriteBackup> = HashMap::new();
 
-    let operation = (|| -> Result<(), String> {
-        for (index, item) in planned.iter().enumerate() {
-            ensure_file_operation_active(&progress_operation_id)?;
-            ensure_overwrite_backup(&mut backups, item)?;
-            ensure_file_operation_active(&progress_operation_id)?;
+        let operation = (|| -> Result<(), String> {
+            for (index, item) in planned.iter().enumerate() {
+                ensure_file_operation_active(&progress_operation_id)?;
+                ensure_overwrite_backup(&mut backups, item)?;
+                ensure_file_operation_active(&progress_operation_id)?;
 
-            let source_meta = fs::symlink_metadata(&item.source_path).map_err(|e| e.to_string())?;
-            if source_meta.file_type().is_symlink() {
-                copy_symlink_path(&item.source_path, &item.dest_path)?;
-            } else if source_meta.is_dir() {
-                copy_dir_recursive(&item.source_path, &item.dest_path)?;
-            } else {
-                fs::copy(&item.source_path, &item.dest_path)
-                    .map_err(|e| format!("Failed to copy {}: {}", item.item_name, e))?;
+                let source_meta =
+                    fs::symlink_metadata(&item.source_path).map_err(|e| e.to_string())?;
+                if source_meta.file_type().is_symlink() {
+                    copy_symlink_path(&item.source_path, &item.dest_path)?;
+                } else if source_meta.is_dir() {
+                    copy_dir_recursive(&item.source_path, &item.dest_path)?;
+                } else {
+                    fs::copy(&item.source_path, &item.dest_path)
+                        .map_err(|e| format!("Failed to copy {}: {}", item.item_name, e))?;
+                }
+                copied_paths.push(item.dest_path.clone());
+
+                if total > 1 {
+                    let _ = app.emit(
+                        "file-operation-progress",
+                        serde_json::json!({
+                            "operationId": progress_operation_id,
+                            "operation": "copy",
+                            "current": index + 1,
+                            "total": total,
+                            "name": item.item_name,
+                        }),
+                    );
+                }
             }
-            copied_paths.push(item.dest_path.clone());
+            Ok(())
+        })();
 
-            if total > 1 {
-                let _ = app.emit(
-                    "file-operation-progress",
-                    serde_json::json!({
-                        "operationId": progress_operation_id,
-                        "operation": "copy",
-                        "current": index + 1,
-                        "total": total,
-                        "name": item.item_name,
-                    }),
-                );
-            }
+        unregister_file_operation(&progress_operation_id);
+
+        if let Err(error) = operation {
+            remove_paths_reversed(&copied_paths);
+            restore_overwrite_backups(&backups, false);
+            cleanup_backups(&backups);
+            return Err(error);
         }
-        Ok(())
-    })();
 
-    unregister_file_operation(&progress_operation_id);
-
-    if let Err(error) = operation {
-        remove_paths_reversed(&copied_paths);
-        restore_overwrite_backups(&backups, false);
         cleanup_backups(&backups);
-        return Err(error);
-    }
 
-    cleanup_backups(&backups);
+        for item in &planned {
+            let _ = undo::push_create_action(&item.dest_path, item.is_directory);
+        }
 
-    for item in &planned {
-        let _ = undo::push_create_action(&item.dest_path, item.is_directory);
-    }
-
-    Ok(())
+        Ok(())
+    })
+    .await
+    .map_err(|e| format!("Copy operation failed: {}", e))?
 }
 
 fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<(), String> {
@@ -537,71 +544,76 @@ pub async fn move_items(
         source_paths.len(),
         dest_path
     );
-    let _lock = FILE_OP_LOCK
-        .lock()
-        .map_err(|e| format!("File operation lock error: {}", e))?;
-    let dest = crate::validate_existing_path(&dest_path, "Destination")?;
-    let behavior = conflict_behavior.unwrap_or_else(|| "ask".to_string());
-    let resolutions = conflict_resolutions.unwrap_or_default();
-    let planned = plan_file_operations(&source_paths, &dest, &behavior, "move", &resolutions)?;
-    let total = planned.len();
-    let progress_operation_id = operation_id.unwrap_or_else(|| {
-        format!(
-            "move-{}",
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_nanos()
-        )
-    });
-    register_file_operation(&progress_operation_id)?;
-    let mut moved_paths: Vec<String> = Vec::new();
-    let mut original_paths: Vec<String> = Vec::new();
-    let mut completed_moves: Vec<CompletedMove> = Vec::new();
-    let mut backups: HashMap<String, OverwriteBackup> = HashMap::new();
+    // Run blocking filesystem work off the async runtime (see copy_items).
+    tokio::task::spawn_blocking(move || -> Result<(), String> {
+        let _lock = FILE_OP_LOCK
+            .lock()
+            .map_err(|e| format!("File operation lock error: {}", e))?;
+        let dest = crate::validate_existing_path(&dest_path, "Destination")?;
+        let behavior = conflict_behavior.unwrap_or_else(|| "ask".to_string());
+        let resolutions = conflict_resolutions.unwrap_or_default();
+        let planned = plan_file_operations(&source_paths, &dest, &behavior, "move", &resolutions)?;
+        let total = planned.len();
+        let progress_operation_id = operation_id.unwrap_or_else(|| {
+            format!(
+                "move-{}",
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_nanos()
+            )
+        });
+        register_file_operation(&progress_operation_id)?;
+        let mut moved_paths: Vec<String> = Vec::new();
+        let mut original_paths: Vec<String> = Vec::new();
+        let mut completed_moves: Vec<CompletedMove> = Vec::new();
+        let mut backups: HashMap<String, OverwriteBackup> = HashMap::new();
 
-    let operation = (|| -> Result<(), String> {
-        for (index, item) in planned.iter().enumerate() {
-            ensure_file_operation_active(&progress_operation_id)?;
-            ensure_overwrite_backup(&mut backups, item)?;
-            ensure_file_operation_active(&progress_operation_id)?;
-            move_path_with_fallback(&item.source_path, &item.dest_path)?;
+        let operation = (|| -> Result<(), String> {
+            for (index, item) in planned.iter().enumerate() {
+                ensure_file_operation_active(&progress_operation_id)?;
+                ensure_overwrite_backup(&mut backups, item)?;
+                ensure_file_operation_active(&progress_operation_id)?;
+                move_path_with_fallback(&item.source_path, &item.dest_path)?;
 
-            moved_paths.push(item.dest_path.to_string_lossy().to_string());
-            original_paths.push(item.source_path.to_string_lossy().to_string());
-            completed_moves.push(CompletedMove {
-                source_path: item.source_path.clone(),
-                dest_path: item.dest_path.clone(),
-            });
+                moved_paths.push(item.dest_path.to_string_lossy().to_string());
+                original_paths.push(item.source_path.to_string_lossy().to_string());
+                completed_moves.push(CompletedMove {
+                    source_path: item.source_path.clone(),
+                    dest_path: item.dest_path.clone(),
+                });
 
-            if total > 1 {
-                let _ = app.emit(
-                    "file-operation-progress",
-                    serde_json::json!({
-                        "operationId": progress_operation_id,
-                        "operation": "move",
-                        "current": index + 1,
-                        "total": total,
-                        "name": item.item_name,
-                    }),
-                );
+                if total > 1 {
+                    let _ = app.emit(
+                        "file-operation-progress",
+                        serde_json::json!({
+                            "operationId": progress_operation_id,
+                            "operation": "move",
+                            "current": index + 1,
+                            "total": total,
+                            "name": item.item_name,
+                        }),
+                    );
+                }
             }
+            Ok(())
+        })();
+
+        unregister_file_operation(&progress_operation_id);
+
+        if let Err(error) = operation {
+            rollback_moves(&completed_moves);
+            restore_overwrite_backups(&backups, true);
+            cleanup_backups(&backups);
+            return Err(error);
         }
-        Ok(())
-    })();
 
-    unregister_file_operation(&progress_operation_id);
-
-    if let Err(error) = operation {
-        rollback_moves(&completed_moves);
-        restore_overwrite_backups(&backups, true);
         cleanup_backups(&backups);
-        return Err(error);
-    }
-
-    cleanup_backups(&backups);
-    undo::push_move_action(moved_paths, original_paths, dest_path)?;
-    Ok(())
+        undo::push_move_action(moved_paths, original_paths, dest_path)?;
+        Ok(())
+    })
+    .await
+    .map_err(|e| format!("Move operation failed: {}", e))?
 }
 
 fn register_file_operation(operation_id: &str) -> Result<(), String> {
@@ -2407,6 +2419,7 @@ pub async fn calculate_checksum(
     webview: tauri::WebviewWindow,
 ) -> Result<serde_json::Value, String> {
     let path = crate::validate_existing_path(&file_path, "File")?;
+    ensure_safe_preview_read_path(&path)?; // don't hash secrets (ssh keys, .pem, etc.)
 
     {
         let mut active = ACTIVE_CHECKSUMS.lock().map_err(|e| e.to_string())?;

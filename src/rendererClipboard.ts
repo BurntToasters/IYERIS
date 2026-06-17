@@ -105,7 +105,8 @@ export function createClipboardController(deps: ClipboardDeps) {
     operationId: string | undefined,
     update: { currentFile?: string; status?: 'active' }
   ): void {
-    if (operationId) updateQueued(operationId, update);
+    // Delegate to the operation-queue dep (must NOT call itself — infinite recursion).
+    if (operationId) deps.updateOperation?.(operationId, update);
   }
 
   function completeQueued(
@@ -113,7 +114,7 @@ export function createClipboardController(deps: ClipboardDeps) {
     status: 'done' | 'failed',
     error?: string
   ): void {
-    if (operationId) completeQueued(operationId, status, error);
+    if (operationId) deps.completeOperation?.(operationId, status, error);
   }
 
   function copyItemsQueued(

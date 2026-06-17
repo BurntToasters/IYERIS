@@ -340,6 +340,11 @@ pub async fn search_files_content(
                 continue;
             }
 
+            // Don't scan/return snippets from secret files (ssh keys, .pem, credentials).
+            if crate::file_operations::ensure_safe_preview_read_path(entry_path).is_err() {
+                continue;
+            }
+
             let file = match fs::File::open(entry_path) {
                 Ok(f) => f,
                 Err(_) => continue,
