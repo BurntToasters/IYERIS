@@ -16,6 +16,7 @@ import { createPreviewController } from './rendererPreviews.js';
 import { createSearchController } from './rendererSearch.js';
 import { createSelectionController } from './rendererSelection.js';
 import { createToastManager } from './rendererToasts.js';
+import { t } from './i18n.js';
 import { createHoverCardController } from './rendererHoverCard.js';
 import { createTypeaheadController } from './rendererTypeahead.js';
 import { createOperationQueueController } from './rendererOperationQueue.js';
@@ -390,6 +391,15 @@ export function wireControllers(deps: WiringDeps) {
     twemojiImg,
   });
   showToast = toastManager.showToast;
+
+  const cleanupDirectoryTruncated = window.tauriAPI.onDirectoryTruncated((payload) => {
+    showToast(
+      t('toast.largeFolder.message', { count: payload.count.toLocaleString() }),
+      t('toast.largeFolder.title'),
+      'warning'
+    );
+  });
+  deps.getIpcCleanupFunctions().push(cleanupDirectoryTruncated);
 
   folderIconPickerController = createFolderIconPickerController({
     getCurrentSettings: () => deps.getCurrentSettings(),

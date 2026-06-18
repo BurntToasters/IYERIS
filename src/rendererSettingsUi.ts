@@ -530,6 +530,9 @@ export function createSettingsUiController(deps: SettingsUiDeps) {
     searchInput.addEventListener('input', () => {
       if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
       searchDebounceTimer = setTimeout(() => {
+        // Skip if the input was detached (modal closed / test torn down) so a
+        // pending timer can't touch a gone document.
+        if (!searchInput.isConnected) return;
         applySettingsSearch(searchInput.value);
       }, SETTINGS_SEARCH_DEBOUNCE_MS);
     });

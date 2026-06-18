@@ -1,6 +1,5 @@
 import type { Settings, FileItem, DriveInfo } from './types';
-import { assignKey, escapeHtml, getErrorMessage, ignoreError, devLog } from './shared.js';
-import { clearHtml } from './rendererDom.js';
+import { assignKey, getErrorMessage, ignoreError, devLog } from './shared.js';
 import type { TabData } from './rendererTabs.js';
 import { showConfirm } from './rendererModals.js';
 import { isPermissionDeniedError } from './rendererClipboard.js';
@@ -13,14 +12,8 @@ import {
 } from './rendererUtils.js';
 import { createDefaultSettings, sanitizeSettings } from './settings.js';
 
-import {
-  HOME_VIEW_LABEL,
-  HOME_VIEW_PATH,
-  HOME_QUICK_ACCESS_ITEMS,
-  isHomeViewPath,
-} from './home.js';
+import { HOME_VIEW_LABEL, HOME_VIEW_PATH, isHomeViewPath } from './home.js';
 
-import { formatFileSize, getFileIcon } from './rendererFileIcons.js';
 import { createFileRenderController } from './rendererFileRender.js';
 import { createFileGridEventsController } from './rendererFileGridEvents.js';
 import { createEventListenersController } from './rendererEventListeners.js';
@@ -33,10 +26,8 @@ import {
   SEARCH_HISTORY_MAX,
   DIRECTORY_HISTORY_MAX,
   SUPPORT_POPUP_DELAY_MS,
-  MAX_RECENT_FILES,
   NAME_COLLATOR,
   DATE_FORMATTER,
-  SPECIAL_DIRECTORY_ACTIONS,
   consumeEvent,
   type ViewMode,
 } from './rendererLocalConstants.js';
@@ -46,6 +37,10 @@ import {
   INT_RANGE_MAPPINGS,
 } from './rendererSettingsMappings.js';
 import { wireControllers, type LateBound } from './rendererControllerWiring.js';
+import { createDualPaneController } from './rendererDualPane.js';
+import { createStatusBarController } from './rendererStatusBar.js';
+import { createRecentFilesController } from './rendererRecentFiles.js';
+import { createSidebarController } from './rendererSidebar.js';
 import { isOneOf } from './constants.js';
 
 const fileElementMap: Map<string, HTMLElement> = new Map();
@@ -120,8 +115,6 @@ function debouncedSaveSettings(delay: number = SETTINGS_SAVE_DEBOUNCE_MS) {
 const ipcCleanupFunctions: (() => void)[] = [];
 
 let currentPath: string = '';
-let secondaryPanePath = '';
-let secondaryPaneItems: FileItem[] = [];
 let history: string[] = [];
 let historyIndex: number = -1;
 let selectedItems: Set<string> = new Set();
@@ -131,8 +124,6 @@ let selectedItemsSizeBytes = 0;
 let selectedItemsSizeDirty = true;
 let viewMode: ViewMode = 'grid';
 let allFiles: FileItem[] = [];
-const secondaryFilePathMap = new Map<string, FileItem>();
-const secondaryFileElementMap = new Map<string, HTMLElement>();
 let hiddenFilesCount = 0;
 let platformOS: string = '';
 let canUndo: boolean = false;
@@ -154,218 +145,6 @@ function setSelectedItemsState(value: Set<string>): void {
     primaryPaneSelectedItems = new Set(value);
   }
   markSelectionDirty();
-}
-
-function getDualPaneElement<T extends HTMLElement>(id: string): T | null {
-  return document.getElementById(id) as T | null;
-}
-
-function getActiveFileGridScope(): HTMLElement | null {
-  const isSecondary =
-    currentSettings.dualPaneEnabled === true && currentSettings.activePane === 'right';
-  return document.getElementById(isSecondary ? 'dual-pane-secondary-list' : 'file-grid');
-}
-
-function renderSecondaryPaneItems(items: FileItem[]): void {
-  const list = getDualPaneElement<HTMLElement>('dual-pane-secondary-list');
-  if (!list) return;
-  list.replaceChildren();
-  secondaryFilePathMap.clear();
-  secondaryFileElementMap.clear();
-  if (items.length === 0) {
-    const empty = document.createElement('div');
-    empty.className = 'dual-pane-empty';
-    empty.textContent = 'No items';
-    list.appendChild(empty);
-    return;
-  }
-  const sortBy = currentSettings.sortBy || 'name';
-  const sortOrder = currentSettings.sortOrder || 'asc';
-  const sorted = [...items].sort((a, b) => {
-    const dirSort = (b.isDirectory ? 1 : 0) - (a.isDirectory ? 1 : 0);
-    if (dirSort !== 0) return dirSort;
-    const comparison =
-      sortBy === 'date'
-        ? new Date(a.modified).getTime() - new Date(b.modified).getTime()
-        : sortBy === 'size'
-          ? a.size - b.size
-          : sortBy === 'type'
-            ? (() => {
-                const extA = path.extname(a.name).toLowerCase();
-                const extB = path.extname(b.name).toLowerCase();
-                return NAME_COLLATOR.compare(extA, extB);
-              })()
-            : NAME_COLLATOR.compare(a.name, b.name);
-    return sortOrder === 'asc' ? comparison : -comparison;
-  });
-  let thumbnailCount = 0;
-  const thumbnailCap = 400;
-  for (const item of sorted) {
-    secondaryFilePathMap.set(item.path, item);
-    const row = document.createElement('div');
-    row.className = 'file-item dual-pane-item';
-    row.dataset.path = item.path;
-    row.dataset.directory = String(item.isDirectory);
-    row.dataset.isDirectory = String(item.isDirectory);
-    row.tabIndex = -1;
-    row.setAttribute('role', 'option');
-    row.setAttribute('aria-selected', 'false');
-    const icon = getFileIcon(item.name);
-    const thumbType = item.isDirectory
-      ? ''
-      : path.extname(item.name).toLowerCase().replace('.', '');
-    const canThumb =
-      !item.isDirectory &&
-      [
-        'png',
-        'jpg',
-        'jpeg',
-        'gif',
-        'webp',
-        'bmp',
-        'tiff',
-        'avif',
-        'heic',
-        'heif',
-        'mp4',
-        'mov',
-        'mkv',
-        'avi',
-        'webm',
-        'mp3',
-        'wav',
-        'flac',
-        'm4a',
-        'aac',
-        'ogg',
-        'pdf',
-        'docx',
-        'xlsx',
-        'pptx',
-      ].includes(thumbType);
-    if (canThumb && thumbnailCount < thumbnailCap) {
-      row.classList.add('has-thumbnail');
-      row.dataset.thumbnailType = ['pdf'].includes(thumbType)
-        ? 'pdf'
-        : ['docx', 'xlsx', 'pptx'].includes(thumbType)
-          ? 'office'
-          : ['mp4', 'mov', 'mkv', 'avi', 'webm'].includes(thumbType)
-            ? 'video'
-            : ['mp3', 'wav', 'flac', 'm4a', 'aac', 'ogg'].includes(thumbType)
-              ? 'audio'
-              : 'image';
-      thumbnailCount++;
-    }
-    // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
-    row.innerHTML = `
-      <div class="file-main">
-        <div class="file-checkbox"><span class="checkbox-mark">✓</span></div>
-        <div class="file-icon">${icon}</div>
-        <div class="file-text">
-          <div class="file-name dual-pane-item-name">${escapeHtml(item.name)}</div>
-        </div>
-      </div>
-      <div class="file-info">
-        <span class="file-type">${item.isDirectory ? 'Folder' : escapeHtml(path.extname(item.name).replace('.', '').toUpperCase() || 'File')}</span>
-        <span class="file-size">${item.isDirectory ? '--' : formatFileSize(item.size)}</span>
-        <span class="file-modified">${DATE_FORMATTER.format(new Date(item.modified))}</span>
-      </div>
-    `;
-    secondaryFileElementMap.set(item.path, row);
-    if (secondaryPaneSelectedItems.has(item.path)) {
-      row.classList.add('selected');
-      row.setAttribute('aria-selected', 'true');
-    }
-    if (row.classList.contains('has-thumbnail')) {
-      thumbnails.observeThumbnailItem(row, 'dual-pane-secondary-list');
-    }
-    list.appendChild(row);
-  }
-}
-
-function syncDualPaneControls(): void {
-  const enabled = currentSettings.dualPaneEnabled === true;
-  const secondary = getDualPaneElement<HTMLElement>('dual-pane-secondary');
-  const copyBtn = getDualPaneElement<HTMLButtonElement>('copy-to-other-pane-btn');
-  const moveBtn = getDualPaneElement<HTMLButtonElement>('move-to-other-pane-btn');
-  const hasSelection = selectedItems.size > 0;
-  const hasTargetPath =
-    currentSettings.activePane === 'right' ? Boolean(currentPath) : Boolean(secondaryPanePath);
-  if (secondary) secondary.style.display = enabled ? 'flex' : 'none';
-  if (copyBtn) {
-    copyBtn.style.display = enabled ? '' : 'none';
-    copyBtn.disabled = !enabled || !hasTargetPath || !hasSelection;
-  }
-  if (moveBtn) {
-    moveBtn.style.display = enabled ? '' : 'none';
-    moveBtn.disabled = !enabled || !hasTargetPath || !hasSelection;
-  }
-}
-
-function syncPaneSelectionVisuals(): void {
-  fileElementMap.forEach((el, itemPath) => {
-    const isSelected = primaryPaneSelectedItems.has(itemPath);
-    el.classList.toggle('selected', isSelected);
-    el.setAttribute('aria-selected', isSelected ? 'true' : 'false');
-  });
-  secondaryFileElementMap.forEach((el, itemPath) => {
-    const isSelected = secondaryPaneSelectedItems.has(itemPath);
-    el.classList.toggle('selected', isSelected);
-    el.setAttribute('aria-selected', isSelected ? 'true' : 'false');
-  });
-}
-
-function setActivePane(pane: 'left' | 'right', persist = true): void {
-  if (currentSettings.activePane !== pane) {
-    if (currentSettings.activePane === 'right') {
-      secondaryPaneSelectedItems = new Set(selectedItems);
-      setSelectedItemsState(new Set(primaryPaneSelectedItems));
-    } else {
-      primaryPaneSelectedItems = new Set(selectedItems);
-      setSelectedItemsState(new Set(secondaryPaneSelectedItems));
-    }
-  }
-  currentSettings.activePane = pane;
-  document.body.classList.toggle('active-pane-right', pane === 'right');
-  syncPaneSelectionVisuals();
-  updateStatusBar();
-  if (persist) {
-    debouncedSaveSettings();
-  }
-}
-
-async function loadSecondaryPane(pathValue: string): Promise<void> {
-  if (!pathValue) return;
-  const pathLabel = getDualPaneElement<HTMLElement>('dual-pane-secondary-path');
-  try {
-    const result = await window.tauriAPI.getDirectoryContents(
-      pathValue,
-      undefined,
-      currentSettings.showHiddenFiles,
-      false
-    );
-    if (!result.success) {
-      showToast(result.error || 'Failed to load secondary pane', 'Dual Pane', 'error');
-      return;
-    }
-    secondaryPanePath = pathValue;
-    secondaryPaneItems = result.contents || [];
-    const validSecondaryPaths = new Set(secondaryPaneItems.map((item) => item.path));
-    secondaryPaneSelectedItems = new Set(
-      Array.from(secondaryPaneSelectedItems).filter((itemPath) => validSecondaryPaths.has(itemPath))
-    );
-    if (pathLabel) {
-      pathLabel.textContent = secondaryPanePath;
-      pathLabel.title = secondaryPanePath;
-    }
-    renderSecondaryPaneItems(secondaryPaneItems);
-    if (currentSettings.activePane === 'right') {
-      setSelectedItemsState(new Set(secondaryPaneSelectedItems));
-    }
-    syncDualPaneControls();
-  } catch (error) {
-    showToast(getErrorMessage(error), 'Dual Pane', 'error');
-  }
 }
 
 function clearSelectedItemsState(): void {
@@ -413,7 +192,6 @@ import {
   viewOptions,
   listHeader,
   folderTree,
-  drivesList,
   sortBtn,
   bookmarkAddBtn,
   selectionCopyBtn,
@@ -421,13 +199,6 @@ import {
   selectionMoveBtn,
   selectionRenameBtn,
   selectionDeleteBtn,
-  statusItems,
-  statusSelected,
-  statusSearch,
-  statusSearchText,
-  selectionIndicator,
-  selectionCount,
-  statusHidden,
   announceToScreenReader,
 } from './rendererElements.js';
 
@@ -441,7 +212,7 @@ const wired = wireControllers({
   getCurrentPath: () => currentPath,
   getSearchScopePath: () => {
     if (currentSettings.dualPaneEnabled === true && currentSettings.activePane === 'right') {
-      return secondaryPanePath || currentPath;
+      return dualPane.getSecondaryPanePath() || currentPath;
     }
     return currentPath;
   },
@@ -687,6 +458,73 @@ const {
 } = wired;
 const showToast = toastManager.showToast;
 
+const dualPane = createDualPaneController({
+  getCurrentSettings: () => currentSettings,
+  getCurrentPath: () => currentPath,
+  getSelectedItems: () => selectedItems,
+  setSelectedItems: (v) => setSelectedItemsState(v),
+  getPrimaryPaneSelected: () => primaryPaneSelectedItems,
+  setPrimaryPaneSelected: (v) => {
+    primaryPaneSelectedItems = v;
+  },
+  getSecondaryPaneSelected: () => secondaryPaneSelectedItems,
+  setSecondaryPaneSelected: (v) => {
+    secondaryPaneSelectedItems = v;
+  },
+  getFileElementMap: () => fileElementMap,
+  updateStatusBar: () => updateStatusBar(),
+  debouncedSaveSettings: (delay) => debouncedSaveSettings(delay),
+  showToast,
+  refresh: (reason) => refresh(reason),
+  navigateTo: (p) => {
+    void navigateTo(p);
+  },
+  observeThumbnailItem: (row, scope) => thumbnails.observeThumbnailItem(row, scope),
+  showContextMenu: (x, y, item) => showContextMenu(x, y, item),
+  getDragOperation: (e) => getDragOperation(e),
+  getDraggedPaths: (e) => getDraggedPaths(e),
+  showDropIndicator: (op, p, x, y) => showDropIndicator(op, p, x, y),
+  hideDropIndicator: () => hideDropIndicator(),
+  scheduleSpringLoad: (row, action) => scheduleSpringLoad(row, action),
+  clearSpringLoad: () => clearSpringLoad(),
+  handleDrop: (paths, dest, op) => handleDrop(paths, dest, op),
+  copySelectedToDestination: (dest) => clipboardController.copySelectedToDestination(dest),
+  moveSelectedToDestination: (dest) => clipboardController.moveSelectedToDestination(dest),
+});
+const { getActiveFileGridScope, syncDualPaneControls, setActivePane, loadSecondaryPane } = dualPane;
+
+const statusBarController = createStatusBarController({
+  getCurrentSettings: () => currentSettings,
+  getSelectedItems: () => selectedItems,
+  getAllFiles: () => allFiles,
+  getSecondaryPaneItems: () => dualPane.getSecondaryPaneItems(),
+  getSelectedItemsSizeBytes: () => getSelectedItemsSizeBytes(),
+  getHiddenFilesCount: () => hiddenFilesCount,
+  getCurrentPath: () => currentPath,
+  getViewMode: () => viewMode,
+  getSearchStatusText: () => getSearchStatusText(),
+  syncDualPaneControls: () => syncDualPaneControls(),
+  updateUtilitySelection: (p) => utilityDrawerController?.updateSelection(p),
+});
+const { update: updateStatusBar } = statusBarController;
+
+const { loadRecentFiles, addToRecentFiles } = createRecentFilesController({
+  getCurrentSettings: () => currentSettings,
+  debouncedSaveSettings: () => debouncedSaveSettings(),
+  openPath: (filePath, name, isDirectory) => openPathWithArchivePrompt(filePath, name, isDirectory),
+  renderHomeRecents: () => homeController.renderHomeRecents(),
+});
+
+const { renderSidebarQuickAccess, handleQuickAction, loadDrives } = createSidebarController({
+  getCurrentSettings: () => currentSettings,
+  navigateTo: (p) => navigateTo(p),
+  showToast,
+  getVisibleSidebarQuickAccessItems: () => homeController.getVisibleSidebarQuickAccessItems(),
+  renderHomeDrives: (drives) => homeController.renderHomeDrives(drives),
+  cacheDriveInfo: (drives) => cacheDriveInfo(drives),
+  renderFolderTree: (drivePaths) => folderTreeManager.render(drivePaths),
+});
+
 function syncOsAccessibilityPreferences(settings: Settings): void {
   const isFirstLaunch = (settings.launchCount || 0) === 0;
 
@@ -828,16 +666,13 @@ function applySettings(settings: Settings) {
   setActivePane(settings.activePane === 'right' ? 'right' : 'left', false);
   if (
     settings.dualPaneEnabled &&
-    !secondaryPanePath &&
+    !dualPane.getSecondaryPanePath() &&
     currentPath &&
     !isHomeViewPath(currentPath)
   ) {
     void loadSecondaryPane(currentPath);
   } else if (!settings.dualPaneEnabled) {
-    secondaryPanePath = '';
-    secondaryPaneItems = [];
-    secondaryPaneSelectedItems.clear();
-    renderSecondaryPaneItems([]);
+    dualPane.clearSecondaryPane();
     setActivePane('left', false);
   }
   syncDualPaneControls();
@@ -1006,65 +841,6 @@ async function resetSettings() {
   }
 }
 
-function renderSidebarQuickAccess() {
-  const grid = document.getElementById('sidebar-quick-access-grid');
-  if (!grid) return;
-
-  grid.replaceChildren();
-
-  const homeDiv = document.createElement('div');
-  homeDiv.className = 'nav-item quick-action';
-  homeDiv.dataset.action = 'home';
-  homeDiv.setAttribute('role', 'button');
-  homeDiv.tabIndex = 0;
-  homeDiv.setAttribute('aria-label', 'Navigate to Home');
-  // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
-  homeDiv.innerHTML = `
-    <span class="nav-icon" aria-hidden="true">${twemojiImg('home', 'twemoji')}</span>
-    <span class="nav-label">Home</span>
-  `;
-  homeDiv.addEventListener('click', () => handleQuickAction('home'));
-  homeDiv.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      handleQuickAction('home');
-    }
-  });
-  grid.appendChild(homeDiv);
-
-  const visibleItems = homeController.getVisibleSidebarQuickAccessItems();
-  const itemsByAction = new Map(HOME_QUICK_ACCESS_ITEMS.map((item) => [item.action, item]));
-
-  visibleItems.forEach((item) => {
-    const itemData = itemsByAction.get(item.action);
-    if (!itemData) return;
-
-    const div = document.createElement('div');
-    div.className = 'nav-item quick-action';
-    div.dataset.action = item.action;
-    div.setAttribute('role', 'button');
-    div.tabIndex = 0;
-    div.setAttribute('aria-label', `Navigate to ${item.label}`);
-
-    const icon = twemojiImg(item.icon, 'twemoji');
-    // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
-    div.innerHTML = `
-      <span class="nav-icon" aria-hidden="true">${icon}</span>
-      <span class="nav-label">${escapeHtml(item.label)}</span>
-    `;
-
-    div.addEventListener('click', () => handleQuickAction(item.action));
-    div.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        handleQuickAction(item.action);
-      }
-    });
-
-    grid.appendChild(div);
-  });
-}
-
 function setHomeViewActive(active: boolean): void {
   if (!homeView) return;
   homeView.style.display = active ? 'flex' : 'none';
@@ -1114,203 +890,6 @@ function setHomeViewActive(active: boolean): void {
     viewOptions
       .querySelectorAll('button')
       .forEach((button) => ((button as HTMLButtonElement).disabled = disableFileActions));
-  }
-}
-
-async function handleQuickAction(action?: string | null): Promise<void> {
-  if (!action) return;
-
-  try {
-    if (action === 'home') {
-      navigateTo(HOME_VIEW_PATH);
-      return;
-    }
-
-    if (action === 'userhome') {
-      const homePath = await window.tauriAPI.getHomeDirectory();
-      if (homePath) {
-        navigateTo(homePath);
-      } else {
-        showToast('Failed to open Home Folder', 'Quick Access', 'error');
-      }
-      return;
-    }
-
-    const specialAction = SPECIAL_DIRECTORY_ACTIONS[action];
-    if (specialAction) {
-      const result = await window.tauriAPI.getSpecialDirectory(specialAction.key);
-      if (!result.success) {
-        showToast(
-          result.error || `Failed to open ${specialAction.label} folder`,
-          'Quick Access',
-          'error'
-        );
-        return;
-      }
-      navigateTo(result.path);
-      return;
-    }
-
-    if (action === 'browse') {
-      const result = await window.tauriAPI.selectFolder();
-      if (result.success) {
-        navigateTo(result.path);
-      }
-      return;
-    }
-
-    if (action === 'trash') {
-      const result = await window.tauriAPI.openTrash();
-      if (!result.success) {
-        showToast(result.error || 'Failed to open trash folder', 'Error', 'error');
-        return;
-      }
-      showToast('Opening system trash folder', 'Info', 'info');
-    }
-  } catch (error) {
-    showToast(getErrorMessage(error), 'Quick Access', 'error');
-  }
-}
-
-function loadRecentFiles() {
-  const recentList = document.getElementById('recent-list');
-  const recentSection = document.getElementById('recent-section');
-  if (!recentList || !recentSection) return;
-
-  recentList.replaceChildren();
-
-  if (currentSettings.showRecentFiles === false) {
-    recentSection.style.display = 'none';
-    return;
-  }
-
-  if (!currentSettings.recentFiles || currentSettings.recentFiles.length === 0) {
-    recentSection.style.display = 'block';
-    recentList.innerHTML = '<div class="sidebar-empty">No recent files yet</div>';
-    return;
-  }
-
-  recentSection.style.display = 'block';
-
-  currentSettings.recentFiles.forEach((filePath) => {
-    const recentItem = document.createElement('div');
-    recentItem.className = 'nav-item recent-item';
-    const pathParts = filePath.split(/[/\\]/);
-    const name = pathParts[pathParts.length - 1] || filePath;
-    const icon = getFileIcon(name);
-
-    // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
-    recentItem.innerHTML = `
-      <span class="nav-icon">${icon}</span>
-      <span class="nav-label" title="${escapeHtml(filePath)}">${escapeHtml(name)}</span>
-    `;
-
-    recentItem.addEventListener('click', () => {
-      void openPathWithArchivePrompt(filePath, name, false);
-    });
-
-    recentList.appendChild(recentItem);
-  });
-}
-
-async function addToRecentFiles(filePath: string) {
-  if (!filePath || filePath.startsWith('http://') || filePath.startsWith('https://')) return;
-
-  if (!currentSettings.recentFiles) {
-    currentSettings.recentFiles = [];
-  }
-
-  currentSettings.recentFiles = currentSettings.recentFiles.filter((f) => f !== filePath);
-  currentSettings.recentFiles.unshift(filePath);
-  currentSettings.recentFiles = currentSettings.recentFiles.slice(0, MAX_RECENT_FILES);
-
-  debouncedSaveSettings();
-  loadRecentFiles();
-  homeController.renderHomeRecents();
-}
-
-function updateStatusBar() {
-  const activeItems =
-    currentSettings.dualPaneEnabled === true && currentSettings.activePane === 'right'
-      ? secondaryPaneItems
-      : allFiles;
-  if (statusItems) {
-    statusItems.textContent = `${activeItems.length} item${activeItems.length !== 1 ? 's' : ''}`;
-  }
-
-  if (statusSelected) {
-    if (selectedItems.size > 0) {
-      const totalSize = getSelectedItemsSizeBytes();
-      const sizeStr = formatFileSize(totalSize);
-      statusSelected.textContent = `${selectedItems.size} selected (${sizeStr})`;
-      statusSelected.style.display = 'inline';
-    } else {
-      statusSelected.style.display = 'none';
-    }
-  }
-
-  if (selectionIndicator && selectionCount) {
-    if (selectedItems.size > 0) {
-      selectionCount.textContent = String(selectedItems.size);
-      selectionIndicator.style.display = 'inline-flex';
-    } else {
-      selectionIndicator.style.display = 'none';
-    }
-  }
-
-  if (statusHidden) {
-    if (!currentSettings.showHiddenFiles) {
-      const hiddenCount = hiddenFilesCount;
-      if (hiddenCount > 0) {
-        statusHidden.textContent = `(+${hiddenCount} hidden)`;
-        statusHidden.style.display = 'inline';
-        statusHidden.title = 'Click to show hidden files';
-      } else {
-        statusHidden.style.display = 'none';
-      }
-    } else {
-      statusHidden.style.display = 'none';
-    }
-  }
-
-  if (statusSearch && statusSearchText) {
-    const searchStatus = getSearchStatusText();
-    if (searchStatus.active) {
-      statusSearchText.textContent = searchStatus.text;
-      statusSearch.style.display = 'inline-flex';
-      announceToScreenReader(
-        `Search results: ${allFiles.length} item${allFiles.length !== 1 ? 's' : ''} found`
-      );
-    } else {
-      statusSearch.style.display = 'none';
-      const folderName = currentPath ? currentPath.split(/[\\/]/).pop() || currentPath : '';
-      const prefix = folderName ? `${folderName}: ` : '';
-      announceToScreenReader(`${prefix}${allFiles.length} item${allFiles.length !== 1 ? 's' : ''}`);
-    }
-  }
-  const statusPane = document.getElementById('status-pane');
-  const statusPaneText = document.getElementById('status-pane-text');
-  if (statusPane && statusPaneText) {
-    const dualPaneEnabled = currentSettings.dualPaneEnabled === true;
-    statusPane.style.display = dualPaneEnabled ? 'inline-flex' : 'none';
-    statusPaneText.textContent = currentSettings.activePane === 'right' ? 'Right' : 'Left';
-  }
-  const statusViewMode = document.getElementById('status-view-mode');
-  const statusViewModeText = document.getElementById('status-view-mode-text');
-  if (statusViewMode && statusViewModeText) {
-    const viewLabel = viewMode === 'column' ? 'Columns' : viewMode === 'list' ? 'List' : 'Grid';
-    const sortLabel = `${currentSettings.sortBy} ${currentSettings.sortOrder.toUpperCase()}`;
-    statusViewMode.style.display = 'inline-flex';
-    statusViewModeText.textContent = `${viewLabel} · ${sortLabel}`;
-  }
-  syncDualPaneControls();
-  if (utilityDrawerController) {
-    if (selectedItems.size === 1) {
-      const firstSelectedPath = Array.from(selectedItems)[0];
-      utilityDrawerController.updateSelection(firstSelectedPath || null);
-    } else {
-      utilityDrawerController.updateSelection(null);
-    }
   }
 }
 
@@ -1368,40 +947,6 @@ const {
   setFolderTreeVisibility,
   setFolderTreeSpacingMode,
 } = bootstrapController;
-
-async function loadDrives() {
-  if (!drivesList) return;
-  try {
-    const drives = await window.tauriAPI.getDriveInfo();
-    cacheDriveInfo(drives);
-    clearHtml(drivesList);
-
-    drives.forEach((drive) => {
-      const driveLabel = drive.label || drive.path;
-      const driveItem = document.createElement('div');
-      driveItem.className = 'nav-item';
-      driveItem.title = drive.path;
-      // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
-      driveItem.innerHTML = `
-      <span class="nav-icon">${twemojiImg('save', 'twemoji')}</span>
-      <span class="nav-label">${escapeHtml(driveLabel)}</span>
-    `;
-      driveItem.addEventListener('click', () => navigateTo(drive.path));
-      drivesList.appendChild(driveItem);
-    });
-
-    const drivePaths = drives.map((drive) => drive.path);
-    void homeController.renderHomeDrives(drives);
-
-    if (currentSettings.showFolderTree !== false) {
-      folderTreeManager.render(drivePaths);
-    } else if (folderTree) {
-      clearHtml(folderTree);
-    }
-  } catch (error) {
-    devLog('Drives', 'Failed to load drives', error);
-  }
-}
 
 const eventListenersController = createEventListenersController({
   getCurrentSettings: () => currentSettings,
@@ -1538,7 +1083,7 @@ const eventListenersController = createEventListenersController({
     const selectedPaths = Array.from(selectedItems);
     if (selectedPaths.length === 0) return;
     const firstPath = selectedPaths[0]!;
-    const item = filePathMap.get(firstPath) ?? secondaryFilePathMap.get(firstPath);
+    const item = filePathMap.get(firstPath) ?? dualPane.getSecondaryFilePathMap().get(firstPath);
     if (!item) return;
     const el = document.querySelector<HTMLElement>(
       `.file-item[data-path="${CSS.escape(firstPath)}"]`
@@ -1744,7 +1289,7 @@ async function navigateTo(path: string, skipHistoryUpdate = false, trigger = 'di
       ignoreError(error);
     }
     addToDirectoryHistory(path);
-    if (currentSettings.dualPaneEnabled === true && !secondaryPanePath) {
+    if (currentSettings.dualPaneEnabled === true && !dualPane.getSecondaryPanePath()) {
       void loadSecondaryPane(path);
     }
 
@@ -1884,9 +1429,10 @@ const { setupFileGridEventDelegation } = fileGridEventsController;
 async function renameSelected() {
   if (selectedItems.size !== 1) return;
   const itemPath = Array.from(selectedItems)[0]!;
-  const fileItem = fileElementMap.get(itemPath) ?? secondaryFileElementMap.get(itemPath);
+  const fileItem =
+    fileElementMap.get(itemPath) ?? dualPane.getSecondaryFileElementMap().get(itemPath);
   if (fileItem) {
-    const item = filePathMap.get(itemPath) ?? secondaryFilePathMap.get(itemPath);
+    const item = filePathMap.get(itemPath) ?? dualPane.getSecondaryFilePathMap().get(itemPath);
     if (item) {
       inlineRenameController.startInlineRename(fileItem, item.name, item.path);
     }
@@ -2331,9 +1877,9 @@ late.updateDangerousOptionsVisibility = updateDangerousOptionsVisibility;
 late.setViewMode = setViewMode;
 late.setHomeViewActive = setHomeViewActive;
 late.updateNavigationButtons = updateNavigationButtons;
-late.getFileByPath = (p) => filePathMap.get(p) ?? secondaryFilePathMap.get(p);
+late.getFileByPath = (p) => filePathMap.get(p) ?? dualPane.getSecondaryFilePathMap().get(p);
 late.getFileItemData = (el) =>
-  getFileItemData(el) ?? secondaryFilePathMap.get(el.dataset.path || '') ?? null;
+  getFileItemData(el) ?? dualPane.getSecondaryFilePathMap().get(el.dataset.path || '') ?? null;
 
 async function toggleView() {
   const viewModeCycle: ViewMode[] = ['grid', 'list', 'column'];
@@ -2455,51 +2001,11 @@ async function chooseFolderAndApply(onPathSelected: (selectedPath: string) => vo
   }
 }
 
-async function copySelectionToOtherPane(): Promise<void> {
-  if (selectedItems.size === 0) return;
-  const destinationPath =
-    currentSettings.dualPaneEnabled && currentSettings.activePane === 'right'
-      ? currentPath
-      : secondaryPanePath;
-  if (!destinationPath) return;
-  const ok = await clipboardController.copySelectedToDestination(destinationPath);
-  if (ok) {
-    if (secondaryPanePath) void loadSecondaryPane(secondaryPanePath);
-    if (currentSettings.activePane === 'right') {
-      refresh('dual-pane-copy-from-secondary');
-    } else {
-      refresh('dual-pane-copy-from-primary');
-    }
-  }
-}
-
-async function moveSelectionToOtherPane(): Promise<void> {
-  if (selectedItems.size === 0) return;
-  const destinationPath =
-    currentSettings.dualPaneEnabled && currentSettings.activePane === 'right'
-      ? currentPath
-      : secondaryPanePath;
-  if (!destinationPath) return;
-  const ok = await clipboardController.moveSelectedToDestination(destinationPath);
-  if (ok) {
-    if (secondaryPanePath) void loadSecondaryPane(secondaryPanePath);
-    if (currentSettings.activePane === 'right') {
-      refresh('dual-pane-move-from-secondary');
-    } else {
-      refresh('dual-pane-move-from-primary');
-    }
-  }
-}
-
 bindClickBindings([
   ['settings-btn', showSettingsModal],
   ['settings-close', hideSettingsModal],
   ['save-settings-btn', saveSettings],
   ['reset-settings-btn', resetSettings],
-  ['copy-to-other-pane-btn', () => void copySelectionToOtherPane()],
-  ['move-to-other-pane-btn', () => void moveSelectionToOtherPane()],
-  ['dual-pane-secondary-open-here-btn', () => void navigateTo(secondaryPanePath)],
-  ['dual-pane-secondary-sync-btn', () => void loadSecondaryPane(currentPath)],
 ]);
 document.getElementById('start-tour-btn')?.addEventListener('click', () => {
   hideSettingsModal();
@@ -2515,11 +2021,6 @@ document.getElementById('browse-startup-path-btn')?.addEventListener('click', as
       'startup-path-input'
     ) as HTMLInputElement | null;
     if (startupPathInput) startupPathInput.value = selectedPath;
-  });
-});
-document.getElementById('dual-pane-secondary-browse-btn')?.addEventListener('click', async () => {
-  await chooseFolderAndApply((selectedPath) => {
-    void loadSecondaryPane(selectedPath);
   });
 });
 const extractModal = document.getElementById('extract-modal') as HTMLElement | null;
@@ -2616,227 +2117,7 @@ const searchInputElement = getSearchInputElement();
 bindHistoryDropdownOnFocus(searchInputElement, showSearchHistoryDropdown);
 bindHistoryDropdownOnFocus(addressInput, showDirectoryHistoryDropdown);
 
-fileView?.addEventListener('mousedown', () => {
-  if (currentSettings.dualPaneEnabled) {
-    setActivePane('left');
-  }
-});
-
-document.getElementById('dual-pane-secondary')?.addEventListener('mousedown', () => {
-  if (currentSettings.dualPaneEnabled) {
-    setActivePane('right');
-  }
-});
-
-document.getElementById('dual-pane-secondary-list')?.addEventListener('dblclick', (event) => {
-  const target = event.target as HTMLElement | null;
-  const row = target?.closest<HTMLElement>('.file-item');
-  if (!row) return;
-  const itemPath = row.dataset.path || '';
-  if (!itemPath) return;
-  if (row.dataset.directory === 'true') {
-    void loadSecondaryPane(itemPath);
-    return;
-  }
-  void window.tauriAPI.openFile(itemPath);
-});
-
-window.addEventListener('dual-pane-open-directory', (event: Event) => {
-  const customEvent = event as CustomEvent<{ path?: string }>;
-  const targetPath = customEvent.detail?.path;
-  if (!targetPath) return;
-  void loadSecondaryPane(targetPath);
-});
-
-function clearSecondarySelection(): void {
-  secondaryPaneSelectedItems.clear();
-  secondaryFileElementMap.forEach((el) => {
-    el.classList.remove('selected');
-    el.setAttribute('aria-selected', 'false');
-  });
-  setSelectedItemsState(new Set());
-  updateStatusBar();
-}
-
-function selectSecondaryItem(itemPath: string, append = false): void {
-  if (!append) {
-    secondaryPaneSelectedItems.clear();
-    secondaryFileElementMap.forEach((el) => {
-      el.classList.remove('selected');
-      el.setAttribute('aria-selected', 'false');
-    });
-  }
-  secondaryPaneSelectedItems.add(itemPath);
-  const row = secondaryFileElementMap.get(itemPath);
-  if (row) {
-    row.classList.add('selected');
-    row.setAttribute('aria-selected', 'true');
-  }
-  setSelectedItemsState(new Set(secondaryPaneSelectedItems));
-  updateStatusBar();
-}
-
-function clearSecondaryDropVisuals(): void {
-  document.getElementById('dual-pane-secondary-list')?.classList.remove('drag-over');
-  document.querySelectorAll('.dual-pane-item.drag-over').forEach((el) => {
-    el.classList.remove('drag-over', 'spring-loading');
-  });
-}
-
-document.getElementById('dual-pane-secondary-list')?.addEventListener('click', (event) => {
-  const target = event.target as HTMLElement | null;
-  const row = target?.closest<HTMLElement>('.file-item');
-  if (!row) {
-    clearSecondarySelection();
-    return;
-  }
-  if (currentSettings.dualPaneEnabled) {
-    setActivePane('right');
-  }
-  const itemPath = row.dataset.path || '';
-  if (!itemPath) return;
-  const toggle = event.metaKey || event.ctrlKey;
-  if (toggle && secondaryPaneSelectedItems.has(itemPath)) {
-    secondaryPaneSelectedItems.delete(itemPath);
-    row.classList.remove('selected');
-    row.setAttribute('aria-selected', 'false');
-    setSelectedItemsState(new Set(secondaryPaneSelectedItems));
-    updateStatusBar();
-  } else {
-    selectSecondaryItem(itemPath, toggle);
-  }
-});
-
-document.getElementById('dual-pane-secondary-list')?.addEventListener('contextmenu', (event) => {
-  const target = event.target as HTMLElement | null;
-  const row = target?.closest<HTMLElement>('.file-item');
-  if (!row) return;
-  event.preventDefault();
-  if (currentSettings.dualPaneEnabled) {
-    setActivePane('right');
-  }
-  const itemPath = row.dataset.path || '';
-  if (!itemPath) return;
-  if (!secondaryPaneSelectedItems.has(itemPath)) {
-    selectSecondaryItem(itemPath, false);
-  }
-  const item = secondaryFilePathMap.get(itemPath);
-  if (item) {
-    showContextMenu(event.pageX, event.pageY, item);
-  }
-});
-
-document.getElementById('dual-pane-secondary-list')?.addEventListener('dragstart', (event) => {
-  const target = event.target as HTMLElement | null;
-  const row = target?.closest<HTMLElement>('.file-item');
-  if (!row || !event.dataTransfer) return;
-  if (currentSettings.dualPaneEnabled) {
-    setActivePane('right');
-  }
-  const itemPath = row.dataset.path || '';
-  if (!itemPath) return;
-  if (!secondaryPaneSelectedItems.has(itemPath)) {
-    selectSecondaryItem(itemPath, false);
-  }
-  const selectedPaths = Array.from(secondaryPaneSelectedItems);
-  event.dataTransfer.effectAllowed = 'copyMove';
-  event.dataTransfer.setData('text/plain', JSON.stringify(selectedPaths));
-  window.tauriAPI.setDragData(selectedPaths).catch(ignoreError);
-  row.classList.add('dragging');
-});
-
-document.getElementById('dual-pane-secondary-list')?.addEventListener('dragend', (event) => {
-  const target = event.target as HTMLElement | null;
-  const row = target?.closest<HTMLElement>('.file-item');
-  row?.classList.remove('dragging');
-  clearSecondaryDropVisuals();
-  clearSpringLoad();
-  hideDropIndicator();
-  window.tauriAPI.clearDragData().catch(ignoreError);
-});
-
-document.getElementById('dual-pane-secondary-list')?.addEventListener('dragover', (event) => {
-  event.preventDefault();
-  const target = event.target as HTMLElement | null;
-  const row = target?.closest<HTMLElement>('.file-item');
-  const operation = getDragOperation(event);
-  if (event.dataTransfer) event.dataTransfer.dropEffect = operation;
-
-  if (row && row.dataset.isDirectory === 'true' && row.dataset.isAppBundle !== 'true') {
-    document.querySelectorAll('.dual-pane-item.drag-over').forEach((el) => {
-      if (el !== row) el.classList.remove('drag-over', 'spring-loading');
-    });
-    document.getElementById('dual-pane-secondary-list')?.classList.remove('drag-over');
-    row.classList.add('drag-over');
-    const itemPath = row.dataset.path || '';
-    if (itemPath) {
-      showDropIndicator(operation, itemPath, event.clientX, event.clientY);
-      scheduleSpringLoad(row, () => {
-        row.classList.remove('drag-over', 'spring-loading');
-        void loadSecondaryPane(itemPath);
-      });
-      return;
-    }
-  }
-
-  clearSpringLoad();
-  document.querySelectorAll('.dual-pane-item.drag-over').forEach((el) => {
-    el.classList.remove('drag-over', 'spring-loading');
-  });
-  document.getElementById('dual-pane-secondary-list')?.classList.add('drag-over');
-  if (secondaryPanePath) {
-    showDropIndicator(operation, secondaryPanePath, event.clientX, event.clientY);
-  }
-});
-
-document.getElementById('dual-pane-secondary-list')?.addEventListener('dragleave', (event) => {
-  const list = document.getElementById('dual-pane-secondary-list');
-  if (!list) return;
-  const rect = list.getBoundingClientRect();
-  if (
-    event.clientX < rect.left ||
-    event.clientX >= rect.right ||
-    event.clientY < rect.top ||
-    event.clientY >= rect.bottom
-  ) {
-    clearSecondaryDropVisuals();
-    clearSpringLoad();
-    hideDropIndicator();
-  }
-});
-
-document.getElementById('dual-pane-secondary-list')?.addEventListener('drop', async (event) => {
-  event.preventDefault();
-  const target = event.target as HTMLElement | null;
-  const row = target?.closest<HTMLElement>('.file-item');
-  clearSecondaryDropVisuals();
-  clearSpringLoad();
-  try {
-    const draggedPaths = await getDraggedPaths(event);
-    if (draggedPaths.length === 0) return;
-    const operation = getDragOperation(event);
-    let destinationPath = secondaryPanePath;
-    if (row && row.dataset.isDirectory === 'true') {
-      destinationPath = row.dataset.path || destinationPath;
-    }
-    if (!destinationPath) return;
-    const sameDirectory = draggedPaths.some(
-      (draggedPath) => path.dirname(draggedPath) === destinationPath
-    );
-    if (sameDirectory) {
-      showToast('Items are already in this directory', 'Info', 'info');
-      return;
-    }
-    await handleDrop(draggedPaths, destinationPath, operation);
-    if (secondaryPanePath) {
-      void loadSecondaryPane(secondaryPanePath);
-    }
-  } catch (error) {
-    showToast(getErrorMessage(error), 'Drag and Drop', 'error');
-  } finally {
-    hideDropIndicator();
-  }
-});
+dualPane.setupListeners();
 
 document.addEventListener('mousedown', (e) => {
   const target = e.target as HTMLElement;

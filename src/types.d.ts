@@ -707,6 +707,9 @@ export interface TauriAPI {
   onDirectoryContentsProgress: (
     callback: (progress: DirectoryContentsProgress) => void
   ) => () => void;
+  onDirectoryTruncated: (
+    callback: (payload: { dirPath: string; count: number }) => void
+  ) => () => void;
   calculateChecksum: (
     filePath: string,
     operationId: string,

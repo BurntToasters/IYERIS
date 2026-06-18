@@ -351,6 +351,10 @@ pub async fn get_directory_contents(
                     "[Directory] directory listing capped at 100,000 entries: {}",
                     progress_path
                 );
+                let _ = webview.emit(
+                    "directory-truncated",
+                    serde_json::json!({ "dirPath": progress_path, "count": loaded }),
+                );
                 break;
             }
 
