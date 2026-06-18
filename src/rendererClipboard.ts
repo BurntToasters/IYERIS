@@ -2,6 +2,7 @@ import type { Settings } from './types';
 import type { ToastAction } from './rendererToasts.js';
 import { rendererPath as path } from './rendererUtils.js';
 import { devLog, ignoreError } from './shared.js';
+import { t } from './i18n.js';
 
 type ClipboardState = { operation: 'copy' | 'cut'; paths: string[] } | null;
 
@@ -222,7 +223,7 @@ export function createClipboardController(deps: ClipboardDeps) {
       if (moveResult.success) {
         completeQueued(operationId, 'done');
         deps.showToast(
-          `${systemClipboard.paths.length} item(s) moved from system clipboard`,
+          t('clipboard.movedFromSystem', { count: systemClipboard.paths.length }),
           'Success',
           'success'
         );
@@ -232,7 +233,7 @@ export function createClipboardController(deps: ClipboardDeps) {
 
       if (isPermissionDeniedError(moveResult.error)) {
         const confirmed = await deps.showConfirm(
-          'This operation requires administrator privileges. You will be prompted to authorize.',
+          t('clipboard.elevatedConfirm'),
           'Elevated Permissions Required',
           'warning'
         );
@@ -248,7 +249,7 @@ export function createClipboardController(deps: ClipboardDeps) {
           if (elevResult.success) {
             completeQueued(operationId, 'done');
             deps.showToast(
-              `${systemClipboard.paths.length} item(s) moved (elevated)`,
+              t('clipboard.movedElevated', { count: systemClipboard.paths.length }),
               'Success',
               'success'
             );
@@ -283,7 +284,7 @@ export function createClipboardController(deps: ClipboardDeps) {
     if (!copyResult.success) {
       if (isPermissionDeniedError(copyResult.error)) {
         const confirmed = await deps.showConfirm(
-          'This operation requires administrator privileges. You will be prompted to authorize.',
+          t('clipboard.elevatedConfirm'),
           'Elevated Permissions Required',
           'warning'
         );
@@ -299,7 +300,7 @@ export function createClipboardController(deps: ClipboardDeps) {
           if (elevResult.success) {
             completeQueued(operationId, 'done');
             deps.showToast(
-              `${systemClipboard.paths.length} item(s) pasted (elevated)`,
+              t('clipboard.pastedElevated', { count: systemClipboard.paths.length }),
               'Success',
               'success'
             );
@@ -326,7 +327,7 @@ export function createClipboardController(deps: ClipboardDeps) {
 
     completeQueued(operationId, 'done');
     deps.showToast(
-      `${systemClipboard.paths.length} item(s) pasted from system clipboard`,
+      t('clipboard.pastedFromSystem', { count: systemClipboard.paths.length }),
       'Success',
       'success'
     );
@@ -377,7 +378,9 @@ export function createClipboardController(deps: ClipboardDeps) {
     updateCutVisuals();
     void updateClipboardIndicator().catch(ignoreError);
     deps.showToast(
-      `${selectedItems.size} item(s) ${operation === 'cut' ? 'cut' : 'copied'}`,
+      operation === 'cut'
+        ? t('clipboard.cut', { count: selectedItems.size })
+        : t('clipboard.copied', { count: selectedItems.size }),
       'Clipboard',
       'success'
     );
@@ -409,7 +412,7 @@ export function createClipboardController(deps: ClipboardDeps) {
     const alreadyInDest = isSourceAlreadyInDestination(sourcePaths, destPath);
 
     if (alreadyInDest) {
-      deps.showToast('Items are already in this directory', 'Info', 'info');
+      deps.showToast(t('toast.alreadyInDirectory'), 'Info', 'info');
       return null;
     }
 
@@ -428,7 +431,7 @@ export function createClipboardController(deps: ClipboardDeps) {
     const alreadyInDest = isSourceAlreadyInDestination(sourcePaths, destPath);
 
     if (alreadyInDest) {
-      deps.showToast('Items are already in this directory', 'Info', 'info');
+      deps.showToast(t('toast.alreadyInDirectory'), 'Info', 'info');
       return null;
     }
 
@@ -442,7 +445,7 @@ export function createClipboardController(deps: ClipboardDeps) {
     if (selectedItems.size === 0) return false;
     const sourcePaths = Array.from(selectedItems);
     if (isSourceAlreadyInDestination(sourcePaths, destPath)) {
-      deps.showToast('Items are already in this directory', 'Info', 'info');
+      deps.showToast(t('toast.alreadyInDirectory'), 'Info', 'info');
       return false;
     }
     await deps.handleDrop(sourcePaths, destPath, 'move');
@@ -455,7 +458,7 @@ export function createClipboardController(deps: ClipboardDeps) {
     if (selectedItems.size === 0) return false;
     const sourcePaths = Array.from(selectedItems);
     if (isSourceAlreadyInDestination(sourcePaths, destPath)) {
-      deps.showToast('Items are already in this directory', 'Info', 'info');
+      deps.showToast(t('toast.alreadyInDirectory'), 'Info', 'info');
       return false;
     }
     await deps.handleDrop(sourcePaths, destPath, 'copy');
@@ -494,18 +497,14 @@ export function createClipboardController(deps: ClipboardDeps) {
         if (validPaths.length === 0) {
           clipboard = null;
           updateCutVisuals();
-          deps.showToast('Source files no longer exist', 'Paste Failed', 'error');
+          deps.showToast(t('toast.sourceFilesGone'), 'Paste Failed', 'error');
           return;
         }
         if (missingCount > 0) {
           clipboardSnapshot.paths = validPaths;
           clipboard = { operation: 'cut', paths: [...validPaths] };
           window.tauriAPI.setClipboard(clipboard).catch(ignoreError);
-          deps.showToast(
-            `${missingCount} file(s) no longer exist and were skipped`,
-            'Paste',
-            'warning'
-          );
+          deps.showToast(t('clipboard.filesSkipped', { count: missingCount }), 'Paste', 'warning');
         }
       }
 
@@ -540,7 +539,13 @@ export function createClipboardController(deps: ClipboardDeps) {
             if (elevResult.success) {
               completeQueued(operationId, 'done');
               deps.showToast(
-                `${clipboardSnapshot.paths.length} item(s) ${isCopy ? 'copied' : 'moved'} into folder (elevated)`,
+                isCopy
+                  ? t('clipboard.copiedIntoFolderElevated', {
+                      count: clipboardSnapshot.paths.length,
+                    })
+                  : t('clipboard.movedIntoFolderElevated', {
+                      count: clipboardSnapshot.paths.length,
+                    }),
                 'Success',
                 'success'
               );
@@ -566,7 +571,9 @@ export function createClipboardController(deps: ClipboardDeps) {
       }
       completeQueued(operationId, 'done');
       deps.showToast(
-        `${clipboardSnapshot.paths.length} item(s) ${isCopy ? 'copied' : 'moved'} into folder`,
+        isCopy
+          ? t('clipboard.copiedIntoFolder', { count: clipboardSnapshot.paths.length })
+          : t('clipboard.movedIntoFolder', { count: clipboardSnapshot.paths.length }),
         'Success',
         'success'
       );
@@ -613,7 +620,11 @@ export function createClipboardController(deps: ClipboardDeps) {
             const elevResult = await window.tauriAPI.elevatedCopyBatch(paths, currentPath);
             if (elevResult.success) {
               completeQueued(operationId, 'done');
-              deps.showToast(`${paths.length} item(s) duplicated (elevated)`, 'Success', 'success');
+              deps.showToast(
+                t('clipboard.duplicatedElevated', { count: paths.length }),
+                'Success',
+                'success'
+              );
               deps.refresh();
               return;
             }
@@ -630,7 +641,7 @@ export function createClipboardController(deps: ClipboardDeps) {
         return;
       }
       completeQueued(operationId, 'done');
-      deps.showToast(`${paths.length} item(s) duplicated`, 'Success', 'success');
+      deps.showToast(t('clipboard.duplicated', { count: paths.length }), 'Success', 'success');
       deps.refresh();
     } catch (error) {
       completeQueued(operationId, 'failed', String(error));
@@ -676,12 +687,12 @@ export function createClipboardController(deps: ClipboardDeps) {
           if (validPaths.length === 0) {
             clipboard = null;
             updateCutVisuals();
-            deps.showToast('Source files no longer exist', 'Paste Failed', 'error');
+            deps.showToast(t('toast.sourceFilesGone'), 'Paste Failed', 'error');
             return;
           }
           clipboardSnapshot.paths = validPaths;
           deps.showToast(
-            `${missing.length} file(s) no longer exist and were skipped`,
+            t('clipboard.filesSkipped', { count: missing.length }),
             'Paste',
             'warning'
           );
@@ -724,7 +735,9 @@ export function createClipboardController(deps: ClipboardDeps) {
             if (elevResult.success) {
               completeQueued(operationId, 'done');
               deps.showToast(
-                `${clipboardSnapshot.paths.length} item(s) ${isCopy ? 'copied' : 'moved'} (elevated)`,
+                isCopy
+                  ? t('clipboard.copiedElevated', { count: clipboardSnapshot.paths.length })
+                  : t('clipboard.movedElevated', { count: clipboardSnapshot.paths.length }),
                 'Success',
                 'success'
               );
@@ -752,7 +765,9 @@ export function createClipboardController(deps: ClipboardDeps) {
       }
       completeQueued(operationId, 'done');
       deps.showToast(
-        `${clipboardSnapshot.paths.length} item(s) ${isCopy ? 'copied' : 'moved'}`,
+        isCopy
+          ? t('clipboard.copied', { count: clipboardSnapshot.paths.length })
+          : t('clipboard.moved', { count: clipboardSnapshot.paths.length }),
         'Success',
         'success'
       );

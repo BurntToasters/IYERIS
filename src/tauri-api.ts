@@ -13,6 +13,8 @@ import {
   RawSearchResultSchema,
   RawArchiveEntrySchema,
   RawFolderSizeSchema,
+  RawDuplicateGroupSchema,
+  RawGitStatusSchema,
   validateIpc,
 } from './rendererSchemas.js';
 
@@ -1162,19 +1164,17 @@ const tauriAPI: TauriAPI = {
   },
   getGitStatus: async (dirPath, includeUntracked) => {
     try {
-      const result = await invoke<Record<string, unknown>>('get_git_status', {
+      const raw = await invoke<Record<string, unknown>>('get_git_status', {
         dirPath,
         includeUntracked: includeUntracked ?? null,
       });
+      const result = validateIpc(RawGitStatusSchema, raw, 'GitStatus');
       const statuses: Array<{ path: string; status: string }> = [];
-      for (const f of (result.modified as string[]) || [])
-        statuses.push({ path: f, status: 'modified' });
-      for (const f of (result.added as string[]) || []) statuses.push({ path: f, status: 'added' });
-      for (const f of (result.deleted as string[]) || [])
-        statuses.push({ path: f, status: 'deleted' });
-      for (const f of (result.untracked as string[]) || [])
-        statuses.push({ path: f, status: 'untracked' });
-      return { success: true, isGitRepo: result.isGitRepo as boolean, statuses } as never;
+      for (const f of result.modified || []) statuses.push({ path: f, status: 'modified' });
+      for (const f of result.added || []) statuses.push({ path: f, status: 'added' });
+      for (const f of result.deleted || []) statuses.push({ path: f, status: 'deleted' });
+      for (const f of result.untracked || []) statuses.push({ path: f, status: 'untracked' });
+      return { success: true, isGitRepo: result.isGitRepo, statuses } as never;
     } catch (e) {
       return { success: false, error: String(e) } as never;
     }
@@ -1223,15 +1223,15 @@ const tauriAPI: TauriAPI = {
 
   findDuplicateFiles: async (dirPath, minSize, includeHidden) => {
     try {
-      const groups = await invoke<Array<{ size: number; hash: string; paths: string[] }>>(
-        'find_duplicate_files',
-        {
-          dirPath,
-          minSize: minSize ?? null,
-          includeHidden: includeHidden ?? null,
-        }
-      );
-      return { success: true, groups } as never;
+      const groups = await invoke<Record<string, unknown>[]>('find_duplicate_files', {
+        dirPath,
+        minSize: minSize ?? null,
+        includeHidden: includeHidden ?? null,
+      });
+      return {
+        success: true,
+        groups: groups.map((g) => validateIpc(RawDuplicateGroupSchema, g, 'DuplicateGroup')),
+      } as never;
     } catch (e) {
       return { success: false, error: String(e) } as never;
     }

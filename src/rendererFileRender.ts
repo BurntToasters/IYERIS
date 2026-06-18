@@ -48,6 +48,7 @@ type FileRenderConfig = {
   getEmptyState: () => HTMLElement | null;
   getCurrentSettings: () => Settings;
   getFileElementMap: () => Map<string, HTMLElement>;
+  isSelected?: (path: string) => boolean;
   showToast: (message: string, title: string, type: ToastType) => void;
   clearSelection: () => void;
   updateStatusBar: () => void;
@@ -408,7 +409,9 @@ export function createFileRenderController(config: FileRenderConfig) {
     if (item.isShortcut) fileItem.dataset.isShortcut = 'true';
     if (item.isDesktopEntry) fileItem.dataset.isDesktopEntry = 'true';
     fileItem.setAttribute('role', 'option');
-    fileItem.setAttribute('aria-selected', 'false');
+    const isSelected = config.isSelected?.(item.path) ?? false;
+    fileItem.setAttribute('aria-selected', isSelected ? 'true' : 'false');
+    if (isSelected) fileItem.classList.add('selected');
 
     let icon: string;
     if (item.isAppBundle) {

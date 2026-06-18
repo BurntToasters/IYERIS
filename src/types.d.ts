@@ -75,6 +75,7 @@ export interface Settings {
     | 'solarized'
     | 'github';
   useSystemTheme: boolean;
+  language?: string;
   sortBy: 'name' | 'date' | 'size' | 'type';
   sortOrder: 'asc' | 'desc';
   bookmarks: string[];

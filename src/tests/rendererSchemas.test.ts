@@ -166,3 +166,45 @@ describe('RawFolderSizeSchema', () => {
     expect(v.folderCount).toBe(1);
   });
 });
+
+import { RawDuplicateGroupSchema, RawGitStatusSchema } from '../rendererSchemas';
+
+describe('RawDuplicateGroupSchema', () => {
+  it('parses a duplicate group', () => {
+    const v = validateIpc(
+      RawDuplicateGroupSchema,
+      { size: 1024, hash: 'abc123', paths: ['/a.txt', '/copy/a.txt'] },
+      'DuplicateGroup'
+    );
+    expect(v.paths).toHaveLength(2);
+    expect(v.hash).toBe('abc123');
+  });
+});
+
+describe('RawGitStatusSchema', () => {
+  it('parses a git status payload', () => {
+    const v = validateIpc(
+      RawGitStatusSchema,
+      {
+        isGitRepo: true,
+        modified: ['m.txt'],
+        added: [],
+        deleted: ['d.txt'],
+        untracked: ['u.txt'],
+      },
+      'GitStatus'
+    );
+    expect(v.isGitRepo).toBe(true);
+    expect(v.modified).toEqual(['m.txt']);
+    expect(v.deleted).toEqual(['d.txt']);
+  });
+
+  it('falls back (non-fatal) when arrays are the wrong type', () => {
+    const v = validateIpc(
+      RawGitStatusSchema,
+      { isGitRepo: true, modified: 'oops', added: [], deleted: [], untracked: [] },
+      'GitStatus'
+    );
+    expect((v as Record<string, unknown>).modified).toBe('oops');
+  });
+});

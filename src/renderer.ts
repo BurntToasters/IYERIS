@@ -11,6 +11,7 @@ import {
   twemojiImg,
 } from './rendererUtils.js';
 import { createDefaultSettings, sanitizeSettings } from './settings.js';
+import { setLocale, detectLocale } from './i18n.js';
 
 import { HOME_VIEW_LABEL, HOME_VIEW_PATH, isHomeViewPath } from './home.js';
 
@@ -613,6 +614,9 @@ async function applySystemFontSize(): Promise<void> {
 
 function applySettings(settings: Settings) {
   devLog('Settings', 'applySettings', { viewMode: settings.viewMode, theme: settings.theme });
+  setLocale(
+    detectLocale(settings.language && settings.language !== 'auto' ? settings.language : undefined)
+  );
   applyAppearance(settings, {
     applyCustomThemeColors,
     clearCustomThemeColors,
@@ -1367,6 +1371,7 @@ async function navigateTo(path: string, skipHistoryUpdate = false, trigger = 'di
 const fileRenderController = createFileRenderController({
   getFileGrid: () => fileGrid,
   getEmptyState: () => emptyState,
+  isSelected: (p) => selectedItems.has(p),
   getCurrentSettings: () => currentSettings,
   getFileElementMap: () => fileElementMap,
   showToast: (m, t, ty) => showToast(m, t, ty),

@@ -78,7 +78,7 @@ describe('createClipboardController', () => {
     });
     expect(document.getElementById('status-clipboard')!.style.display).toBe('inline-flex');
     expect(document.getElementById('status-clipboard-text')!.textContent).toBe('1 copied');
-    expect(deps.showToast).toHaveBeenCalledWith('1 item(s) copied', 'Clipboard', 'success');
+    expect(deps.showToast).toHaveBeenCalledWith('1 item copied', 'Clipboard', 'success');
   });
 
   it('cuts selected items and marks file elements as cut', async () => {
@@ -111,7 +111,7 @@ describe('createClipboardController', () => {
 
     expect(tauriApi.copyItems).toHaveBeenCalledWith(['/src/file.txt'], '/dest', 'ask');
     expect(deps.refresh).toHaveBeenCalledTimes(1);
-    expect(deps.showToast).toHaveBeenCalledWith('1 item(s) copied', 'Success', 'success');
+    expect(deps.showToast).toHaveBeenCalledWith('1 item copied', 'Success', 'success');
   });
 
   it('pastes local clipboard using move operation and clears clipboard', async () => {
@@ -145,7 +145,7 @@ describe('createClipboardController', () => {
 
     expect(tauriApi.copyItems).toHaveBeenCalledWith(['/tmp/a.txt'], '/dest', 'ask');
     expect(deps.showToast).toHaveBeenCalledWith(
-      '1 item(s) pasted from system clipboard',
+      '1 item pasted from system clipboard',
       'Success',
       'success'
     );
@@ -205,7 +205,7 @@ describe('createClipboardController with operation queue wired', () => {
     expect(deps.addOperation).toHaveBeenCalledTimes(1);
     expect(deps.completeOperation).toHaveBeenCalledWith('op-1', 'done', undefined);
     expect(deps.refresh).toHaveBeenCalledTimes(1);
-    expect(deps.showToast).toHaveBeenCalledWith('1 item(s) copied', 'Success', 'success');
+    expect(deps.showToast).toHaveBeenCalledWith('1 item copied', 'Success', 'success');
   });
 
   it('reaches the elevated path (updateQueued must not throw before backend call)', async () => {

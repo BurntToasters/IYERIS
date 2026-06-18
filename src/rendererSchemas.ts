@@ -91,6 +91,22 @@ export const RawFolderSizeSchema = z.object({
 });
 export type RawFolderSize = z.infer<typeof RawFolderSizeSchema>;
 
+export const RawDuplicateGroupSchema = z.object({
+  size: z.number(),
+  hash: z.string(),
+  paths: z.array(z.string()),
+});
+export type RawDuplicateGroup = z.infer<typeof RawDuplicateGroupSchema>;
+
+export const RawGitStatusSchema = z.object({
+  isGitRepo: z.boolean(),
+  modified: z.array(z.string()),
+  added: z.array(z.string()),
+  deleted: z.array(z.string()),
+  untracked: z.array(z.string()),
+});
+export type RawGitStatus = z.infer<typeof RawGitStatusSchema>;
+
 /**
  * Validate an IPC payload against a schema. Non-fatal: returns parsed data on
  * success, otherwise logs the issues and returns the raw value cast to the

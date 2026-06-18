@@ -1,5 +1,6 @@
 import type { Settings, FileItem } from './types';
 import { escapeHtml, getErrorMessage, ignoreError } from './shared.js';
+import { t } from './i18n.js';
 import { rendererPath as path } from './rendererUtils.js';
 import { formatFileSize, getFileIcon } from './rendererFileIcons.js';
 import { NAME_COLLATOR, DATE_FORMATTER } from './rendererLocalConstants.js';
@@ -236,7 +237,7 @@ export function createDualPaneController(deps: DualPaneDeps) {
         false
       );
       if (!result.success) {
-        deps.showToast(result.error || 'Failed to load secondary pane', 'Dual Pane', 'error');
+        deps.showToast(result.error || t('toast.dualPane.loadFailed'), 'Dual Pane', 'error');
         return;
       }
       secondaryPanePath = pathValue;
@@ -541,7 +542,7 @@ export function createDualPaneController(deps: DualPaneDeps) {
           (draggedPath) => path.dirname(draggedPath) === destinationPath
         );
         if (sameDirectory) {
-          deps.showToast('Items are already in this directory', 'Info', 'info');
+          deps.showToast(t('toast.alreadyInDirectory'), 'Info', 'info');
           return;
         }
         await deps.handleDrop(draggedPaths, destinationPath, operation);
