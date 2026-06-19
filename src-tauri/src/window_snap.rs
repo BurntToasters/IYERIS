@@ -253,11 +253,9 @@ mod win {
                 }
                 return LRESULT(0);
             }
-            WM_NCMOUSELEAVE => {
-                if set_hovered(hwnd, false) {
-                    if let Some(window) = window_for(hwnd) {
-                        let _ = window.emit("snap-max-hover", false);
-                    }
+            WM_NCMOUSELEAVE if set_hovered(hwnd, false) => {
+                if let Some(window) = window_for(hwnd) {
+                    let _ = window.emit("snap-max-hover", false);
                 }
             }
             _ => {}
