@@ -17,7 +17,7 @@ jobs:
   verify:
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Guard release branch
         run: |
@@ -86,7 +86,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     continue-on-error: ${{ matrix.experimental }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v6
         with:
@@ -216,7 +216,7 @@ jobs:
     needs: verify
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v6
         with:
@@ -256,7 +256,7 @@ jobs:
       GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}
       GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v6
         with:
