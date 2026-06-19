@@ -26,6 +26,8 @@ export default defineConfig({
         'src/rendererStatusBar.ts',
         'src/rendererRecentFiles.ts',
         'src/rendererSidebar.ts',
+        // Windows-only native Snap Layouts wiring (DOM + IPC; untestable in jsdom).
+        'src/rendererSnapLayout.ts',
       ],
       thresholds: {
         lines: 92,

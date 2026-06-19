@@ -79,6 +79,13 @@
   background: var(--interactive-hover);
 }
 
+/* Mirrors :hover for the maximize button: on Windows a native Snap Layouts
+   overlay sits on top of it, suppressing the CSS :hover, so the native side
+   emits hover and we reflect it via this class. */
+.titlebar-button.snap-hover {
+  background: var(--interactive-hover);
+}
+
 .titlebar-button:active {
   background: var(--interactive-active);
 }

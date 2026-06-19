@@ -3,6 +3,7 @@ import type { ToastType } from './rendererToasts.js';
 import type { SettingsFormState } from './rendererSettingsUi.js';
 import { sanitizeSettings } from './settings.js';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { initSnapLayout } from './rendererSnapLayout.js';
 
 // Titlebar maximize/restore glyphs (static, no user data). Match the 12x12 SVGs in index.html.
 const MAXIMIZE_ICON =
@@ -274,6 +275,9 @@ export function createEventListenersController(config: EventListenersConfig) {
     });
 
     initMaximizeStateSync();
+
+    // Windows 11 Snap Layouts: native overlay over the maximize button.
+    initSnapLayout((cleanup) => config.getIpcCleanupFunctions().push(cleanup));
 
     // Handle titlebar double-click to maximize/restore on non-macOS platforms
     if (!document.body.classList.contains('platform-darwin')) {

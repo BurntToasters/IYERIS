@@ -13,6 +13,7 @@ mod system;
 mod thumbnails;
 mod undo;
 mod watcher;
+mod window_snap;
 
 use std::collections::HashMap;
 use std::io::Write;
@@ -615,6 +616,7 @@ fn main() {
                 system::record_focus_lost();
             }
             if let tauri::WindowEvent::Destroyed = event {
+                window_snap::on_window_destroyed(window);
                 let app = window.app_handle();
                 if system::should_minimize_to_tray(app)
                     && !system::has_other_visible_windows(app, window.label())
@@ -751,6 +753,8 @@ fn main() {
             undo::undo_action,
             undo::redo_action,
             undo::get_undo_redo_state,
+            // Window / Snap Layouts (Windows)
+            window_snap::set_snap_overlay_bounds,
         ])
         .build(tauri::generate_context!())
     {
