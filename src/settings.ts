@@ -21,6 +21,7 @@ export function createDefaultSettings(): Settings {
     shortcuts: getDefaultShortcuts(),
     theme: 'default',
     useSystemTheme: false,
+    language: 'auto',
     sortBy: 'name',
     sortOrder: 'asc',
     bookmarks: [],
@@ -382,6 +383,14 @@ export function sanitizeSettings(
 
   if (raw.activePane === 'left' || raw.activePane === 'right') {
     clean.activePane = raw.activePane;
+  }
+
+  // language — 'auto' or a BCP-47-ish code (letters, optional region). Else keep default.
+  if (typeof raw.language === 'string') {
+    const lang = raw.language.trim().toLowerCase();
+    if (lang === 'auto' || /^[a-z]{2,3}(-[a-z0-9]{2,8})?$/.test(lang)) {
+      clean.language = lang;
+    }
   }
 
   // Positive number settings

@@ -2,6 +2,7 @@ import type { ToastAction } from './rendererToasts.js';
 import { isPermissionDeniedError } from './rendererClipboard.js';
 import { rendererPath as path } from './rendererUtils.js';
 import { devLog } from './shared.js';
+import { t } from './i18n.js';
 
 const SPRING_LOAD_DELAY = 800;
 const NATIVE_DROP_CACHE_MS = 1500;
@@ -529,7 +530,7 @@ export function createDragDropController(config: DragDropConfig) {
         }
 
         if (isDropIntoCurrentDirectory(draggedPaths, currentPath)) {
-          config.getShowToast()('Items are already in this directory', 'Info', 'info');
+          config.getShowToast()(t('toast.alreadyInDirectory'), 'Info', 'info');
           return;
         }
 
@@ -597,7 +598,7 @@ export function createDragDropController(config: DragDropConfig) {
         }
 
         if (isDropIntoCurrentDirectory(draggedPaths, currentPath)) {
-          config.getShowToast()('Items are already in this directory', 'Info', 'info');
+          config.getShowToast()(t('toast.alreadyInDirectory'), 'Info', 'info');
           return;
         }
 

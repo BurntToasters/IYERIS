@@ -20,6 +20,14 @@ export default defineConfig({
         'src/rendererElements.ts',
         'src/rendererPdfViewer.ts',
         'src/rendererThumbnails.ts',
+        // Renderer DOM-wiring controllers extracted verbatim from renderer.ts
+        // (same composition layer as the excludes above; integration-tested in-app).
+        'src/rendererDualPane.ts',
+        'src/rendererStatusBar.ts',
+        'src/rendererRecentFiles.ts',
+        'src/rendererSidebar.ts',
+        // Windows-only native Snap Layouts wiring (DOM + IPC; untestable in jsdom).
+        'src/rendererSnapLayout.ts',
       ],
       thresholds: {
         lines: 92,

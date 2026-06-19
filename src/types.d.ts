@@ -75,6 +75,7 @@ export interface Settings {
     | 'solarized'
     | 'github';
   useSystemTheme: boolean;
+  language?: string;
   sortBy: 'name' | 'date' | 'size' | 'type';
   sortOrder: 'asc' | 'desc';
   bookmarks: string[];
@@ -706,6 +707,9 @@ export interface TauriAPI {
   ) => () => void;
   onDirectoryContentsProgress: (
     callback: (progress: DirectoryContentsProgress) => void
+  ) => () => void;
+  onDirectoryTruncated: (
+    callback: (payload: { dirPath: string; count: number }) => void
   ) => () => void;
   calculateChecksum: (
     filePath: string,

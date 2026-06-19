@@ -272,3 +272,22 @@ pub fn unwatch_directory(
     w.remove(&window_label);
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn detects_os_noise_files() {
+        assert!(is_noise_change_path(Path::new("/x/.DS_Store")));
+        assert!(is_noise_change_path(Path::new("/x/Thumbs.db")));
+        assert!(is_noise_change_path(Path::new("/x/desktop.ini")));
+    }
+
+    #[test]
+    fn real_files_are_not_noise() {
+        assert!(!is_noise_change_path(Path::new("/x/report.txt")));
+        assert!(!is_noise_change_path(Path::new("/x/.ds_store_notes.md")));
+    }
+}

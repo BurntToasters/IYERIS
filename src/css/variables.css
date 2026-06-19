@@ -9,8 +9,8 @@
   --glass-border: rgba(255, 255, 255, 0.16);
   --glass-shadow: 0 10px 30px rgba(0, 0, 0, 0.18), 0 1px 0 rgba(255, 255, 255, 0.05);
   --text-primary: rgba(255, 255, 255, 0.96);
-  --text-secondary: rgba(255, 255, 255, 0.55);
-  --text-tertiary: rgba(255, 255, 255, 0.42);
+  --text-secondary: rgba(255, 255, 255, 0.62);
+  --text-tertiary: rgba(255, 255, 255, 0.56); /* WCAG AA on dark bg */
   --text-on-accent: #ffffff;
   --accent-color: #0a84ff;
   --accent-rgb: 10, 132, 255;
@@ -122,7 +122,7 @@
   --toolbar-padding-v: 6px;
   --toolbar-padding-h: 8px;
   --toolbar-group-height: 30px;
-  --control-height-sm: 22px;
+  --control-height-sm: 24px;
   --control-height-md: 24px;
   --control-height-lg: 30px;
   --status-bar-height: 21px;
@@ -256,7 +256,7 @@ body.compact-ui {
   --toolbar-padding-v: 4px;
   --toolbar-padding-h: 6px;
   --toolbar-group-height: 28px;
-  --control-height-sm: 22px;
+  --control-height-sm: 24px;
   --control-height-md: 26px;
   --control-height-lg: 30px;
   --status-bar-height: 18px;

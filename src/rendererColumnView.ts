@@ -2,6 +2,7 @@ import type { Settings, FileItem, DriveInfo, DirectoryResponse } from './types';
 import { devLog, escapeHtml, ignoreError } from './shared.js';
 import { isWindowsPath, rendererPath as path, twemojiImg } from './rendererUtils.js';
 import { isHomeViewPath } from './home.js';
+import { t } from './i18n.js';
 import {
   COLUMN_VIEW_RENDER_TIMEOUT_MS,
   COLUMN_VIEW_SCROLL_DELAY_MS,
@@ -313,7 +314,7 @@ export function createColumnViewController(deps: ColumnViewDeps) {
       });
 
       if (alreadyInCurrentDir) {
-        deps.showToast('Items are already in this directory', 'Info', 'info');
+        deps.showToast(t('toast.alreadyInDirectory'), 'Info', 'info');
         deps.hideDropIndicator();
         return;
       }

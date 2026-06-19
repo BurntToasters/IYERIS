@@ -78,7 +78,7 @@ describe('createClipboardController', () => {
     });
     expect(document.getElementById('status-clipboard')!.style.display).toBe('inline-flex');
     expect(document.getElementById('status-clipboard-text')!.textContent).toBe('1 copied');
-    expect(deps.showToast).toHaveBeenCalledWith('1 item(s) copied', 'Clipboard', 'success');
+    expect(deps.showToast).toHaveBeenCalledWith('1 item copied', 'Clipboard', 'success');
   });
 
   it('cuts selected items and marks file elements as cut', async () => {
@@ -111,7 +111,7 @@ describe('createClipboardController', () => {
 
     expect(tauriApi.copyItems).toHaveBeenCalledWith(['/src/file.txt'], '/dest', 'ask');
     expect(deps.refresh).toHaveBeenCalledTimes(1);
-    expect(deps.showToast).toHaveBeenCalledWith('1 item(s) copied', 'Success', 'success');
+    expect(deps.showToast).toHaveBeenCalledWith('1 item copied', 'Success', 'success');
   });
 
   it('pastes local clipboard using move operation and clears clipboard', async () => {
@@ -145,7 +145,7 @@ describe('createClipboardController', () => {
 
     expect(tauriApi.copyItems).toHaveBeenCalledWith(['/tmp/a.txt'], '/dest', 'ask');
     expect(deps.showToast).toHaveBeenCalledWith(
-      '1 item(s) pasted from system clipboard',
+      '1 item pasted from system clipboard',
       'Success',
       'success'
     );
@@ -168,5 +168,63 @@ describe('createClipboardController', () => {
       'info'
     );
     expect(tauriApi.selectFolder).toHaveBeenCalledTimes(1);
+  });
+});
+
+// Regression: with the operation queue wired (production config), the queued
+// helpers must delegate to deps — not recurse into themselves. Pre-fix these
+// threw RangeError, surfacing a false "Paste failed" and breaking elevated ops.
+describe('createClipboardController with operation queue wired', () => {
+  beforeEach(() => {
+    document.body.innerHTML = `
+      <div id="status-clipboard" style="display:none">
+        <span id="status-clipboard-text"></span>
+      </div>
+    `;
+  });
+
+  function createQueueDeps(selectedItems: Set<string>) {
+    return {
+      ...createDeps(selectedItems, new Map()),
+      generateOperationId: vi.fn(() => 'op-1'),
+      addOperation: vi.fn(),
+      updateOperation: vi.fn(),
+      completeOperation: vi.fn(),
+    };
+  }
+
+  it('completes a queued paste without recursing (no RangeError)', async () => {
+    const deps = createQueueDeps(new Set());
+    const tauriApi = setupTauriApi();
+    const controller = createClipboardController(deps);
+    controller.setClipboard({ operation: 'copy', paths: ['/src/file.txt'] });
+
+    await expect(controller.pasteFromClipboard()).resolves.toBeUndefined();
+
+    expect(tauriApi.copyItems).toHaveBeenCalledWith(['/src/file.txt'], '/dest', 'ask', 'op-1');
+    expect(deps.addOperation).toHaveBeenCalledTimes(1);
+    expect(deps.completeOperation).toHaveBeenCalledWith('op-1', 'done', undefined);
+    expect(deps.refresh).toHaveBeenCalledTimes(1);
+    expect(deps.showToast).toHaveBeenCalledWith('1 item copied', 'Success', 'success');
+  });
+
+  it('reaches the elevated path (updateQueued must not throw before backend call)', async () => {
+    const deps = createQueueDeps(new Set());
+    const elevatedCopyBatch = vi.fn().mockResolvedValue({ success: true });
+    setupTauriApi({
+      copyItems: vi.fn().mockResolvedValue({ success: false, error: 'permission denied' }),
+      elevatedCopyBatch,
+    } as never);
+    const controller = createClipboardController(deps);
+    controller.setClipboard({ operation: 'copy', paths: ['/src/file.txt'] });
+
+    await controller.pasteFromClipboard();
+
+    expect(deps.updateOperation).toHaveBeenCalledWith('op-1', {
+      currentFile: 'Waiting for elevated permissions...',
+      status: 'active',
+    });
+    expect(elevatedCopyBatch).toHaveBeenCalledWith(['/src/file.txt'], '/dest');
+    expect(deps.completeOperation).toHaveBeenCalledWith('op-1', 'done', undefined);
   });
 });

@@ -351,6 +351,10 @@ pub async fn get_directory_contents(
                     "[Directory] directory listing capped at 100,000 entries: {}",
                     progress_path
                 );
+                let _ = webview.emit(
+                    "directory-truncated",
+                    serde_json::json!({ "dirPath": progress_path, "count": loaded }),
+                );
                 break;
             }
 
@@ -691,4 +695,24 @@ pub async fn cancel_folder_size_calculation(operation_id: String) -> Result<(), 
     let mut calcs = ACTIVE_FOLDER_CALCS.lock().map_err(|e| e.to_string())?;
     calcs.remove(&operation_id);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn dotfiles_are_hidden() {
+        assert!(is_hidden(".bashrc", Path::new("/home/u/.bashrc")));
+        assert!(is_hidden(".git", Path::new("/repo/.git")));
+    }
+
+    #[test]
+    fn regular_files_are_not_hidden() {
+        let tmp = tempfile::tempdir().unwrap();
+        let p = tmp.path().join("visible.txt");
+        std::fs::write(&p, "x").unwrap();
+        assert!(!is_hidden("visible.txt", &p));
+    }
 }

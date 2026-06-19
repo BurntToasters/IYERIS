@@ -47,9 +47,14 @@ export default tseslint.config(
         'warn',
         {
           selector:
-            'AssignmentExpression[left.property.name="innerHTML"][right.type="TemplateLiteral"]',
+            'AssignmentExpression[left.property.name=/^(inner|outer)HTML$/][right.type="TemplateLiteral"]',
           message:
-            'innerHTML with template literals risks XSS. Ensure all user data uses escapeHtml(), then add an eslint-disable-next-line comment documenting the review.',
+            'innerHTML/outerHTML with template literals risks XSS. Ensure all user data uses escapeHtml(), then add an eslint-disable-next-line comment documenting the review.',
+        },
+        {
+          selector: 'CallExpression[callee.property.name="insertAdjacentHTML"] > TemplateLiteral',
+          message:
+            'insertAdjacentHTML with template literals risks XSS. Ensure all user data uses escapeHtml(), then add an eslint-disable-next-line comment documenting the review.',
         },
       ],
     },

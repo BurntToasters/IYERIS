@@ -565,12 +565,16 @@ pub async fn extract_archive(
         if full_name.ends_with(".tar.xz") || full_name.ends_with(".txz") {
             return extract_tar_xz(&archive, &dest, &extract_op_id, &webview);
         }
+        if full_name.ends_with(".tar.gz") || full_name.ends_with(".tgz") {
+            return extract_tar_gz(&archive, &dest, &extract_op_id, &webview);
+        }
         match ext.as_str() {
             "zip" => extract_zip(&archive, &dest, &extract_op_id, &webview),
-            "gz" | "tgz" => extract_tar_gz(&archive, &dest, &extract_op_id, &webview),
             "tar" => extract_tar(&archive, &dest, &extract_op_id, &webview),
             "7z" => extract_7z(&archive, &dest, &extract_op_id, &webview),
-            "xz" => extract_tar_xz(&archive, &dest, &extract_op_id, &webview),
+            // Plain single-file compressed streams (not tarballs).
+            "gz" => extract_gzip_single(&archive, &dest),
+            "xz" => extract_xz_single(&archive, &dest),
             _ => Err(format!("Unsupported archive format: {}", ext)),
         }
     })
@@ -647,7 +651,12 @@ fn extract_zip(
                 }
                 let mut outfile = fs::File::create(&out_path).map_err(|e| e.to_string())?;
                 extracted.push(out_path.clone());
-                let written = std::io::copy(&mut entry, &mut outfile).map_err(|e| e.to_string())?;
+                // Bound the copy so a single entry that under-declares entry.size()
+                // (zip bomb) cannot write past the cap before the post-check fires.
+                let remaining = MAX_DECOMPRESSED_SIZE.saturating_sub(cumulative_bytes);
+                let mut limited = (&mut entry).take(remaining.saturating_add(1));
+                let written =
+                    std::io::copy(&mut limited, &mut outfile).map_err(|e| e.to_string())?;
                 cumulative_bytes = cumulative_bytes.saturating_add(written);
                 if cumulative_bytes > MAX_DECOMPRESSED_SIZE {
                     return Err("Decompressed size limit exceeded (50 GB)".to_string());
@@ -740,7 +749,10 @@ fn extract_7z(
                 let mut outfile = fs::File::create(&out_path)
                     .map_err(|e| std::io::Error::other(e.to_string()))?;
                 extracted.push(out_path.clone());
-                let written = std::io::copy(reader, &mut outfile)
+                // Bound the copy (zip-bomb defense): a single entry cannot exceed the cap.
+                let remaining = MAX_DECOMPRESSED_SIZE.saturating_sub(cumulative_bytes);
+                let mut limited = reader.take(remaining.saturating_add(1));
+                let written = std::io::copy(&mut limited, &mut outfile)
                     .map_err(|e| std::io::Error::other(e.to_string()))?;
                 cumulative_bytes = cumulative_bytes.saturating_add(written);
                 if cumulative_bytes > MAX_DECOMPRESSED_SIZE {
@@ -772,6 +784,55 @@ fn extract_tar_xz(
     let dec = xz2::read::XzDecoder::new(file);
     let mut tar = tar::Archive::new(dec);
     extract_tar_entries(&mut tar, dest, op_id, webview)
+}
+
+// Extract a plain single-file compressed stream (foo.gz / foo.xz, not a tarball).
+// Output name = archive name minus its final extension, written into dest.
+fn extract_compressed_single<R: std::io::Read>(
+    reader: R,
+    archive: &Path,
+    dest: &Path,
+) -> Result<(), String> {
+    let stem = archive
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| "Cannot determine output file name".to_string())?;
+    let out_path = safe_entry_path(&stem, dest)?;
+    if out_path.exists() {
+        return Err(format!(
+            "Refusing to overwrite existing extraction path: {}",
+            out_path.display()
+        ));
+    }
+    if let Some(parent) = out_path.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        ensure_path_within_dest(parent, dest, &stem)?;
+    }
+    let mut outfile = fs::File::create(&out_path).map_err(|e| e.to_string())?;
+    // Bound the copy so a malicious stream can't exceed the cap (decompression bomb).
+    let mut limited = reader.take(MAX_DECOMPRESSED_SIZE.saturating_add(1));
+    let written = std::io::copy(&mut limited, &mut outfile).map_err(|e| {
+        let _ = fs::remove_file(&out_path);
+        e.to_string()
+    })?;
+    if written > MAX_DECOMPRESSED_SIZE {
+        let _ = fs::remove_file(&out_path);
+        return Err("Decompressed size limit exceeded (50 GB)".to_string());
+    }
+    Ok(())
+}
+
+fn extract_gzip_single(archive: &Path, dest: &Path) -> Result<(), String> {
+    let file = fs::File::open(archive).map_err(|e| e.to_string())?;
+    let dec = flate2::read::GzDecoder::new(file);
+    extract_compressed_single(dec, archive, dest)
+}
+
+fn extract_xz_single(archive: &Path, dest: &Path) -> Result<(), String> {
+    let file = fs::File::open(archive).map_err(|e| e.to_string())?;
+    let dec = xz2::read::XzDecoder::new(file);
+    extract_compressed_single(dec, archive, dest)
 }
 
 fn extract_tar_entries<R: std::io::Read>(
@@ -888,11 +949,33 @@ pub async fn list_archive_contents(archive_path: String) -> Result<Vec<ArchiveEn
     let archive = crate::validate_existing_path(&archive_path, "Archive")?;
 
     tokio::task::spawn_blocking(move || {
+        // Bound listing of crafted archives with huge entry counts (DoS guard).
+        const MAX_LIST_ENTRIES: usize = 100_000;
         let ext = archive
             .extension()
             .and_then(|e| e.to_str())
             .unwrap_or("")
             .to_lowercase();
+
+        // Plain single-file compressed streams list as one entry (not tarballs).
+        let full_name = archive.to_string_lossy().to_lowercase();
+        let is_plain_gz = ext == "gz" && !full_name.ends_with(".tar.gz");
+        let is_plain_xz = ext == "xz" && !full_name.ends_with(".tar.xz");
+        if is_plain_gz || is_plain_xz {
+            let stem = archive
+                .file_stem()
+                .map(|s| s.to_string_lossy().to_string())
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| "extracted".to_string());
+            let compressed = fs::metadata(&archive).map(|m| m.len()).unwrap_or(0);
+            return Ok(vec![ArchiveEntry {
+                name: stem.clone(),
+                path: stem,
+                size: 0,
+                is_directory: false,
+                compressed_size: compressed,
+            }]);
+        }
 
         match ext.as_str() {
             "zip" => {
@@ -900,7 +983,7 @@ pub async fn list_archive_contents(archive_path: String) -> Result<Vec<ArchiveEn
                 let mut zip = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
                 let mut entries = Vec::new();
 
-                for i in 0..zip.len() {
+                for i in 0..zip.len().min(MAX_LIST_ENTRIES) {
                     let entry = zip.by_index(i).map_err(|e| e.to_string())?;
                     entries.push(ArchiveEntry {
                         name: entry
@@ -929,17 +1012,19 @@ pub async fn list_archive_contents(archive_path: String) -> Result<Vec<ArchiveEn
                     reader,
                     Path::new(""),
                     |entry, _reader, _dest| {
-                        entries.push(ArchiveEntry {
-                            name: Path::new(entry.name())
-                                .file_name()
-                                .unwrap_or_default()
-                                .to_string_lossy()
-                                .to_string(),
-                            path: entry.name().to_string(),
-                            size: entry.size(),
-                            is_directory: entry.is_directory(),
-                            compressed_size: entry.compressed_size,
-                        });
+                        if entries.len() < MAX_LIST_ENTRIES {
+                            entries.push(ArchiveEntry {
+                                name: Path::new(entry.name())
+                                    .file_name()
+                                    .unwrap_or_default()
+                                    .to_string_lossy()
+                                    .to_string(),
+                                path: entry.name().to_string(),
+                                size: entry.size(),
+                                is_directory: entry.is_directory(),
+                                compressed_size: entry.compressed_size,
+                            });
+                        }
                         Ok(true)
                     },
                 )
@@ -953,6 +1038,9 @@ pub async fn list_archive_contents(archive_path: String) -> Result<Vec<ArchiveEn
                 let mut entries = Vec::new();
                 for entry in tar.entries().map_err(|e| e.to_string())? {
                     let entry = entry.map_err(|e| e.to_string())?;
+                    if entries.len() >= MAX_LIST_ENTRIES {
+                        break;
+                    }
                     let path_str = entry
                         .path()
                         .map_err(|e| e.to_string())?
@@ -979,6 +1067,9 @@ pub async fn list_archive_contents(archive_path: String) -> Result<Vec<ArchiveEn
                 let mut entries = Vec::new();
                 for entry in tar.entries().map_err(|e| e.to_string())? {
                     let entry = entry.map_err(|e| e.to_string())?;
+                    if entries.len() >= MAX_LIST_ENTRIES {
+                        break;
+                    }
                     let path_str = entry
                         .path()
                         .map_err(|e| e.to_string())?
@@ -1265,6 +1356,46 @@ mod tests {
     //! and tar archives crafted in-memory (no fixture files on disk).
     use super::*;
     use std::io::Write;
+
+    #[test]
+    fn extracts_plain_gzip_single_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let gz_path = tmp.path().join("note.txt.gz");
+        {
+            let f = fs::File::create(&gz_path).unwrap();
+            let mut enc = flate2::write::GzEncoder::new(f, flate2::Compression::default());
+            enc.write_all(b"hello world").unwrap();
+            enc.finish().unwrap();
+        }
+        let dest = tmp.path().join("out");
+        fs::create_dir_all(&dest).unwrap();
+
+        extract_gzip_single(&gz_path, &dest).unwrap();
+
+        assert_eq!(
+            fs::read_to_string(dest.join("note.txt")).unwrap(),
+            "hello world"
+        );
+    }
+
+    #[test]
+    fn plain_gzip_refuses_overwrite() {
+        let tmp = tempfile::tempdir().unwrap();
+        let gz_path = tmp.path().join("data.gz");
+        {
+            let f = fs::File::create(&gz_path).unwrap();
+            let mut enc = flate2::write::GzEncoder::new(f, flate2::Compression::default());
+            enc.write_all(b"x").unwrap();
+            enc.finish().unwrap();
+        }
+        let dest = tmp.path().join("out");
+        fs::create_dir_all(&dest).unwrap();
+        fs::write(dest.join("data"), b"existing").unwrap();
+
+        assert!(extract_gzip_single(&gz_path, &dest).is_err());
+        // existing file must be untouched
+        assert_eq!(fs::read_to_string(dest.join("data")).unwrap(), "existing");
+    }
 
     fn tmp() -> tempfile::TempDir {
         tempfile::tempdir().expect("create tempdir")

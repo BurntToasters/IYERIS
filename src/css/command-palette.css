@@ -146,7 +146,7 @@
 
 .command-palette-key {
   padding: 3px var(--spacing-md);
-  background: rgba(255, 255, 255, 0.05);
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
   border: 1px solid var(--separator);
   border-radius: var(--radius-small);
   font-size: 10px;

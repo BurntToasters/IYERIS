@@ -105,3 +105,40 @@ fn copy_symlink(source: &Path, target: &Path) -> Result<(), String> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn copies_nested_directory_tree() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src = tmp.path().join("src");
+        let dst = tmp.path().join("dst");
+        fs::create_dir_all(src.join("sub")).unwrap();
+        fs::write(src.join("a.txt"), "hello").unwrap();
+        fs::write(src.join("sub/b.txt"), "world").unwrap();
+
+        copy_dir_recursive(&src, &dst).unwrap();
+
+        assert_eq!(fs::read_to_string(dst.join("a.txt")).unwrap(), "hello");
+        assert_eq!(fs::read_to_string(dst.join("sub/b.txt")).unwrap(), "world");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn copies_symlink_as_symlink_without_following() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src = tmp.path().join("src");
+        let dst = tmp.path().join("dst");
+        fs::create_dir_all(&src).unwrap();
+        fs::write(src.join("target.txt"), "data").unwrap();
+        std::os::unix::fs::symlink("target.txt", src.join("link.txt")).unwrap();
+
+        copy_dir_recursive(&src, &dst).unwrap();
+
+        let meta = fs::symlink_metadata(dst.join("link.txt")).unwrap();
+        assert!(meta.file_type().is_symlink());
+    }
+}

@@ -509,6 +509,39 @@ describe('jumpToFirstSettingMatch (via initSettingsSearch)', () => {
     vi.useRealTimers();
   });
 
+  it('debounced search bails when the input is detached (leaked-timer guard)', () => {
+    vi.useFakeTimers();
+    setUpSettingsModal('<input type="text" id="settings-search" value="" />');
+    addSettingsTab('general');
+    const section = addSettingsSection(
+      'general',
+      `
+      <div class="settings-card">
+        <div class="settings-card-header">Card</div>
+        <div class="setting-item">Hidden Files</div>
+      </div>
+    `
+    );
+    section.classList.add('active');
+
+    const ctrl = makeController();
+    ctrl.initSettingsUi();
+
+    const searchInput = document.getElementById('settings-search') as HTMLInputElement;
+    searchInput.value = 'hidden';
+    searchInput.dispatchEvent(new Event('input'));
+
+    // Simulate the modal closing / env teardown before the 200ms debounce fires.
+    searchInput.remove();
+    expect(() => vi.advanceTimersByTime(300)).not.toThrow();
+
+    // Guard bailed: applySettingsSearch never ran, so nothing was highlighted.
+    const item = section.querySelector('.setting-item')!;
+    expect(item.classList.contains('search-highlight')).toBe(false);
+
+    vi.useRealTimers();
+  });
+
   it('does nothing when no match exists', () => {
     setUpSettingsModal('<input type="text" id="settings-search" value="" />');
     addSettingsTab('general');

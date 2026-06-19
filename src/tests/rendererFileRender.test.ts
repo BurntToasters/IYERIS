@@ -158,6 +158,26 @@ describe('createFileRenderController', () => {
       expect(el.draggable).toBe(true);
     });
 
+    it('reflects selection state at creation when isSelected is provided', () => {
+      const config = {
+        ...createMockConfig(),
+        isSelected: (p: string) => p === '/home/user/sel.txt',
+      };
+      const ctrl = createFileRenderController(config);
+
+      const selected = ctrl.createFileItem(
+        makeItem({ name: 'sel.txt', path: '/home/user/sel.txt' })
+      );
+      expect(selected.classList.contains('selected')).toBe(true);
+      expect(selected.getAttribute('aria-selected')).toBe('true');
+
+      const other = ctrl.createFileItem(
+        makeItem({ name: 'other.txt', path: '/home/user/other.txt' })
+      );
+      expect(other.classList.contains('selected')).toBe(false);
+      expect(other.getAttribute('aria-selected')).toBe('false');
+    });
+
     it('creates a DOM element for a directory', () => {
       const config = createMockConfig();
       const ctrl = createFileRenderController(config);

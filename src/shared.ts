@@ -1,3 +1,5 @@
+import DOMPurify from 'dompurify';
+
 const ESCAPE_MAP: Record<string, string> = {
   '&': '&amp;',
   '<': '&lt;',
@@ -217,58 +219,49 @@ const SAFE_URL_PATTERN = /^(?:https?|mailto|#):/i;
 const SAFE_RESOURCE_URL_PATTERN = /^(?:https?:\/\/asset\.localhost\/)/i;
 const HAS_SCHEME_PATTERN = /^[a-z][a-z0-9+.-]*:/i;
 
+const PURIFY_FORBID_TAGS = Array.from(DANGEROUS_TAGS, (t) => t.toLowerCase());
+
+// Layer IYERIS's strict URL allowlist onto DOMPurify (href: http/https/mailto/#;
+// resource URLs: relative or http(s)://asset.localhost only). Registered once.
+let purifyHookInstalled = false;
+function installPurifyHook(): void {
+  if (purifyHookInstalled) return;
+  purifyHookInstalled = true;
+  DOMPurify.addHook('uponSanitizeAttribute', (_node, data) => {
+    const name = data.attrName;
+    if (!name) return;
+    if (name.startsWith('on') || name === 'style' || DANGEROUS_ATTRS.has(name)) {
+      data.keepAttr = false;
+      return;
+    }
+    if (name.includes(':') && (name.endsWith(':href') || name.endsWith(':src'))) {
+      data.keepAttr = false;
+      return;
+    }
+    if (URL_ATTRS.has(name)) {
+      const val = (data.attrValue ?? '').trim();
+      if (/^\s*(?:javascript|data|vbscript)\s*:/i.test(val)) {
+        data.keepAttr = false;
+      } else if (name === 'href') {
+        if (val && !val.startsWith('#') && !SAFE_URL_PATTERN.test(val)) data.keepAttr = false;
+      } else if (
+        val &&
+        (/^\s*\/\//.test(val) ||
+          (HAS_SCHEME_PATTERN.test(val) && !SAFE_RESOURCE_URL_PATTERN.test(val)))
+      ) {
+        data.keepAttr = false;
+      }
+    }
+  });
+}
+
 export function sanitizeMarkdownHtml(html: string): string {
-  const template = document.createElement('template');
-  template.innerHTML = html;
-  const walker = document.createTreeWalker(template.content, NodeFilter.SHOW_ELEMENT);
-  const toRemove: Element[] = [];
-  while (walker.nextNode()) {
-    const el = walker.currentNode as Element;
-    if (DANGEROUS_TAGS.has(el.tagName)) {
-      toRemove.push(el);
-      continue;
-    }
-    for (const attr of Array.from(el.attributes)) {
-      const lowered = attr.name.toLowerCase();
-      // Strip event handlers, inline style, and the dangerous attribute set.
-      if (lowered.startsWith('on') || lowered === 'style' || DANGEROUS_ATTRS.has(lowered)) {
-        el.removeAttribute(attr.name);
-        continue;
-      }
-      // Strip any namespaced attribute that resolves to a URL (xlink:href is the classic SVG-in-HTML XSS vector,
-      // but SVG should already be removed; defense in depth).
-      if (lowered.includes(':') && (lowered.endsWith(':href') || lowered.endsWith(':src'))) {
-        el.removeAttribute(attr.name);
-        continue;
-      }
-      if (URL_ATTRS.has(lowered)) {
-        const val = attr.value.trim();
-        if (
-          /^\s*javascript\s*:/i.test(val) ||
-          /^\s*data\s*:/i.test(val) ||
-          /^\s*vbscript\s*:/i.test(val)
-        ) {
-          el.removeAttribute(attr.name);
-        } else if (
-          lowered === 'href' &&
-          val &&
-          !val.startsWith('#') &&
-          !SAFE_URL_PATTERN.test(val)
-        ) {
-          el.removeAttribute(attr.name);
-        } else if (
-          lowered !== 'href' &&
-          val &&
-          (/^\s*\/\//.test(val) ||
-            (HAS_SCHEME_PATTERN.test(val) && !SAFE_RESOURCE_URL_PATTERN.test(val)))
-        ) {
-          el.removeAttribute(attr.name);
-        }
-      }
-    }
-  }
-  for (const el of toRemove) el.remove();
-  const div = document.createElement('div');
-  div.appendChild(template.content.cloneNode(true));
-  return div.innerHTML;
+  installPurifyHook();
+  // DOMPurify does the hardened parse/strip; the hook above layers IYERIS's
+  // stricter URL policy on top. Single sanitize pass (no parse→serialize→reparse).
+  return DOMPurify.sanitize(html, {
+    FORBID_TAGS: PURIFY_FORBID_TAGS,
+    FORBID_ATTR: Array.from(DANGEROUS_ATTRS),
+    ALLOW_DATA_ATTR: false,
+  });
 }

@@ -332,6 +332,8 @@ export function createTabsController(deps: TabsDeps) {
         window.tauriAPI
           .getItemProperties(newTab.path)
           .then((result) => {
+            // Bail if the user switched away while this awaited (stale restore race).
+            if (deps.getActiveTabId() !== tabId) return;
             if (result.success) {
               restoreTabView(newTab);
               updateTabCacheAccess(newTab.id);
@@ -343,6 +345,7 @@ export function createTabsController(deps: TabsDeps) {
             }
           })
           .catch(() => {
+            if (deps.getActiveTabId() !== tabId) return;
             delete newTab.cachedFiles;
             Promise.resolve(deps.navigateTo(newTab.path, true)).catch(ignoreError);
           });

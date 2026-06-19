@@ -6,6 +6,17 @@ import type { DragDropEvent } from '@tauri-apps/api/webview';
 import type { Update } from '@tauri-apps/plugin-updater';
 import type { TauriAPI, Settings, HomeSettings, LicensesData, NativeDragDropEvent } from './types';
 import { devLog, ignoreError } from './shared.js';
+import {
+  RawFileItemSchema,
+  RawDriveInfoSchema,
+  RawItemPropertiesSchema,
+  RawSearchResultSchema,
+  RawArchiveEntrySchema,
+  RawFolderSizeSchema,
+  RawDuplicateGroupSchema,
+  RawGitStatusSchema,
+  validateIpc,
+} from './rendererSchemas.js';
 
 type SpecialDirectory = 'desktop' | 'documents' | 'downloads' | 'music' | 'videos';
 type FileConflictBehavior = 'ask' | 'rename' | 'skip' | 'overwrite';
@@ -86,22 +97,47 @@ async function wrap(
 }
 
 function buildFileItem(raw: Record<string, unknown>) {
+  const v = validateIpc(RawFileItemSchema, raw, 'FileItem');
   return {
-    name: raw.name as string,
-    path: raw.path as string,
-    isDirectory: raw.isDirectory as boolean,
-    isFile: !(raw.isDirectory as boolean),
-    isSymlink: (raw.isSymlink as boolean) ?? false,
-    isBrokenSymlink: (raw.isBrokenSymlink as boolean) ?? false,
-    isAppBundle: (raw.isAppBundle as boolean) ?? false,
-    isShortcut: (raw.isShortcut as boolean) ?? false,
-    isDesktopEntry: (raw.isDesktopEntry as boolean) ?? false,
-    symlinkTarget: (raw.symlinkTarget as string) ?? undefined,
-    shortcutTarget: (raw.shortcutTarget as string) ?? undefined,
-    isHidden: (raw.isHidden as boolean) ?? false,
-    size: raw.size as number,
-    modified: new Date(raw.modified as number),
+    name: v.name,
+    path: v.path,
+    isDirectory: v.isDirectory,
+    isFile: !v.isDirectory,
+    isSymlink: v.isSymlink ?? false,
+    isBrokenSymlink: v.isBrokenSymlink ?? false,
+    isAppBundle: v.isAppBundle ?? false,
+    isShortcut: v.isShortcut ?? false,
+    isDesktopEntry: v.isDesktopEntry ?? false,
+    symlinkTarget: v.symlinkTarget ?? undefined,
+    shortcutTarget: v.shortcutTarget ?? undefined,
+    isHidden: v.isHidden ?? false,
+    size: v.size,
+    modified: new Date(v.modified),
     isSystemProtected: false,
+  };
+}
+
+// Search returns SearchResult (no symlink/hidden flags), so it gets its own
+// schema; the output keeps the FileItem shape the renderer expects.
+function buildSearchResultItem(raw: Record<string, unknown>) {
+  const v = validateIpc(RawSearchResultSchema, raw, 'SearchResult');
+  return {
+    name: v.name,
+    path: v.path,
+    isDirectory: v.isDirectory,
+    isFile: !v.isDirectory,
+    isSymlink: false,
+    isBrokenSymlink: false,
+    isAppBundle: false,
+    isShortcut: false,
+    isDesktopEntry: false,
+    symlinkTarget: undefined,
+    shortcutTarget: undefined,
+    isHidden: false,
+    size: v.size,
+    modified: new Date(v.modified),
+    isSystemProtected: false,
+    matchContext: v.matchContext ?? undefined,
   };
 }
 
@@ -272,7 +308,10 @@ const tauriAPI: TauriAPI = {
     devLog('IPC', 'get_drive_info request');
     try {
       const drives = await invoke<Record<string, unknown>[]>('get_drive_info');
-      const mapped = drives.map((d) => ({ path: d.mountPoint as string, label: d.name as string }));
+      const mapped = drives.map((d) => {
+        const v = validateIpc(RawDriveInfoSchema, d, 'DriveInfo');
+        return { path: v.mountPoint, label: v.name };
+      });
       logIpcTiming('get_drive_info', elapsedMs(startedAt), { driveCount: mapped.length });
       return mapped;
     } catch {
@@ -343,25 +382,26 @@ const tauriAPI: TauriAPI = {
   getItemProperties: async (itemPath) => {
     try {
       const props = await invoke<Record<string, unknown>>('get_item_properties', { itemPath });
+      const v = validateIpc(RawItemPropertiesSchema, props, 'ItemProperties');
       return {
         success: true,
         properties: {
-          path: props.path as string,
-          name: props.name as string,
-          size: props.size as number,
-          isDirectory: props.isDirectory as boolean,
-          isFile: !(props.isDirectory as boolean),
-          isSymlink: (props.isSymlink as boolean) ?? false,
-          isHidden: (props.isHidden as boolean) ?? false,
-          created: new Date(props.created as number),
-          modified: new Date(props.modified as number),
-          accessed: new Date(props.accessed as number),
-          mode: props.permissions as number,
-          isReadOnly: props.readonly as boolean,
-          isHiddenAttr: props.isHiddenAttr as boolean | undefined,
-          isSystemAttr: props.isSystemAttr as boolean | undefined,
-          owner: props.owner as string | undefined,
-          group: props.group as string | undefined,
+          path: v.path,
+          name: v.name,
+          size: v.size,
+          isDirectory: v.isDirectory,
+          isFile: !v.isDirectory,
+          isSymlink: v.isSymlink ?? false,
+          isHidden: v.isHidden ?? false,
+          created: new Date(v.created),
+          modified: new Date(v.modified),
+          accessed: new Date(v.accessed),
+          mode: v.permissions,
+          isReadOnly: v.readonly,
+          isHiddenAttr: v.isHiddenAttr ?? undefined,
+          isSystemAttr: v.isSystemAttr ?? undefined,
+          owner: v.owner ?? undefined,
+          group: v.group ?? undefined,
         },
       } as never;
     } catch (e) {
@@ -536,7 +576,7 @@ const tauriAPI: TauriAPI = {
         filters: filters ? JSON.stringify(filters) : null,
         operationId: operationId ?? null,
       });
-      return { success: true, results: results.map(buildFileItem) } as never;
+      return { success: true, results: results.map(buildSearchResultItem) } as never;
     } catch (e) {
       return { success: false, error: String(e) } as never;
     }
@@ -551,10 +591,7 @@ const tauriAPI: TauriAPI = {
       });
       return {
         success: true,
-        results: results.map((r) => ({
-          ...buildFileItem(r),
-          matchContext: r.matchContext as string | undefined,
-        })),
+        results: results.map(buildSearchResultItem),
       } as never;
     } catch (e) {
       return { success: false, error: String(e) } as never;
@@ -569,10 +606,7 @@ const tauriAPI: TauriAPI = {
       });
       return {
         success: true,
-        results: results.map((r) => ({
-          ...buildFileItem(r),
-          matchContext: r.matchContext as string | undefined,
-        })),
+        results: results.map(buildSearchResultItem),
       } as never;
     } catch (e) {
       return { success: false, error: String(e) } as never;
@@ -1053,12 +1087,13 @@ const tauriAPI: TauriAPI = {
         folderPath,
         operationId,
       });
+      const v = validateIpc(RawFolderSizeSchema, result, 'FolderSize');
       return {
         success: true,
         result: {
-          totalSize: result.totalSize ?? 0,
-          fileCount: result.fileCount ?? 0,
-          folderCount: result.folderCount ?? 0,
+          totalSize: v.totalSize ?? 0,
+          fileCount: v.fileCount ?? 0,
+          folderCount: v.folderCount ?? 0,
         },
       } as never;
     } catch (e) {
@@ -1084,6 +1119,14 @@ const tauriAPI: TauriAPI = {
   },
   onDirectoryContentsProgress: (callback) => {
     const unlisten = listen('directory-contents-progress', (event) => {
+      callback(event.payload as never);
+    });
+    return () => {
+      unlisten.then((fn) => fn()).catch(ignoreError);
+    };
+  },
+  onDirectoryTruncated: (callback) => {
+    const unlisten = listen('directory-truncated', (event) => {
       callback(event.payload as never);
     });
     return () => {
@@ -1121,19 +1164,17 @@ const tauriAPI: TauriAPI = {
   },
   getGitStatus: async (dirPath, includeUntracked) => {
     try {
-      const result = await invoke<Record<string, unknown>>('get_git_status', {
+      const raw = await invoke<Record<string, unknown>>('get_git_status', {
         dirPath,
         includeUntracked: includeUntracked ?? null,
       });
+      const result = validateIpc(RawGitStatusSchema, raw, 'GitStatus');
       const statuses: Array<{ path: string; status: string }> = [];
-      for (const f of (result.modified as string[]) || [])
-        statuses.push({ path: f, status: 'modified' });
-      for (const f of (result.added as string[]) || []) statuses.push({ path: f, status: 'added' });
-      for (const f of (result.deleted as string[]) || [])
-        statuses.push({ path: f, status: 'deleted' });
-      for (const f of (result.untracked as string[]) || [])
-        statuses.push({ path: f, status: 'untracked' });
-      return { success: true, isGitRepo: result.isGitRepo as boolean, statuses } as never;
+      for (const f of result.modified || []) statuses.push({ path: f, status: 'modified' });
+      for (const f of result.added || []) statuses.push({ path: f, status: 'added' });
+      for (const f of result.deleted || []) statuses.push({ path: f, status: 'deleted' });
+      for (const f of result.untracked || []) statuses.push({ path: f, status: 'untracked' });
+      return { success: true, isGitRepo: result.isGitRepo, statuses } as never;
     } catch (e) {
       return { success: false, error: String(e) } as never;
     }
@@ -1153,13 +1194,16 @@ const tauriAPI: TauriAPI = {
       });
       return {
         success: true,
-        entries: entries.map((e) => ({
-          name: e.name as string,
-          path: e.path as string,
-          size: e.size as number,
-          isDirectory: e.isDirectory as boolean,
-          compressedSize: e.compressedSize as number,
-        })),
+        entries: entries.map((e) => {
+          const v = validateIpc(RawArchiveEntrySchema, e, 'ArchiveEntry');
+          return {
+            name: v.name,
+            path: v.path,
+            size: v.size,
+            isDirectory: v.isDirectory,
+            compressedSize: v.compressedSize,
+          };
+        }),
       } as never;
     } catch (e) {
       return { success: false, error: String(e) } as never;
@@ -1179,15 +1223,15 @@ const tauriAPI: TauriAPI = {
 
   findDuplicateFiles: async (dirPath, minSize, includeHidden) => {
     try {
-      const groups = await invoke<Array<{ size: number; hash: string; paths: string[] }>>(
-        'find_duplicate_files',
-        {
-          dirPath,
-          minSize: minSize ?? null,
-          includeHidden: includeHidden ?? null,
-        }
-      );
-      return { success: true, groups } as never;
+      const groups = await invoke<Record<string, unknown>[]>('find_duplicate_files', {
+        dirPath,
+        minSize: minSize ?? null,
+        includeHidden: includeHidden ?? null,
+      });
+      return {
+        success: true,
+        groups: groups.map((g) => validateIpc(RawDuplicateGroupSchema, g, 'DuplicateGroup')),
+      } as never;
     } catch (e) {
       return { success: false, error: String(e) } as never;
     }

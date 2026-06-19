@@ -151,6 +151,34 @@ select:focus-visible {
   margin: 8px 0;
 }
 
+/* Distinct error/permission-denied state (separate from the empty-folder state). */
+.fileview-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 12px;
+  color: var(--text-secondary);
+  padding: 40px;
+  text-align: center;
+  animation: emptyFadeIn 0.3s ease;
+}
+
+.fileview-error h3 {
+  font-size: 16px;
+  margin: 0;
+  color: var(--text-primary);
+}
+
+.fileview-error-message {
+  font-size: 13px;
+  margin: 0;
+  max-width: 460px;
+  color: var(--text-secondary);
+  word-break: break-word;
+}
+
 .empty-action-btn {
   display: flex;
   align-items: center;
@@ -373,9 +401,8 @@ body.theme-catppuccin,
 body.theme-dracula,
 body.theme-solarized,
 body.theme-github {
-  --hover-color: color-mix(in srgb, var(--text-primary) 6%, transparent);
-  --active-color: color-mix(in srgb, var(--text-primary) 10%, transparent);
-  --separator: color-mix(in srgb, var(--text-primary) 12%, transparent);
+  /* hover/active/separator are single-sourced in themes.css; keep only the
+     modal tokens unique to this block to avoid a split-brain --separator. */
   --glass-modal-bg: rgba(var(--bg-primary-rgb), 0.98);
   --glass-modal-border: color-mix(in srgb, var(--text-primary) 12%, transparent);
 }

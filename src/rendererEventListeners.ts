@@ -2,6 +2,14 @@ import type { Settings, FileItem } from './types';
 import type { ToastType } from './rendererToasts.js';
 import type { SettingsFormState } from './rendererSettingsUi.js';
 import { sanitizeSettings } from './settings.js';
+import { getCurrentWindow } from '@tauri-apps/api/window';
+import { initSnapLayout } from './rendererSnapLayout.js';
+
+// Titlebar maximize/restore glyphs (static, no user data). Match the 12x12 SVGs in index.html.
+const MAXIMIZE_ICON =
+  '<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><rect x="1" y="1" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.5" /></svg>';
+const RESTORE_ICON =
+  '<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M3.5 3.5 V1.5 H10.5 V8.5 H8.5" fill="none" stroke="currentColor" stroke-width="1.5" /><rect x="1.5" y="3.5" width="7" height="7" fill="none" stroke="currentColor" stroke-width="1.5" /></svg>';
 
 type EventListenersConfig = {
   getCurrentSettings: () => Settings;
@@ -223,6 +231,37 @@ export function createEventListenersController(config: EventListenersConfig) {
     config.getIpcCleanupFunctions().push(cleanupSettings);
   }
 
+  function initMaximizeStateSync(): void {
+    const maxBtn = document.getElementById('maximize-btn');
+    if (!maxBtn) return;
+    let appWindow: ReturnType<typeof getCurrentWindow>;
+    try {
+      appWindow = getCurrentWindow();
+    } catch {
+      return; // not running under Tauri (e.g. test/jsdom) — leave the static icon
+    }
+    const sync = (): void => {
+      appWindow
+        .isMaximized()
+        .then((maximized) => {
+          maxBtn.innerHTML = maximized ? RESTORE_ICON : MAXIMIZE_ICON;
+          const label = maximized ? 'Restore' : 'Maximize';
+          maxBtn.title = label;
+          maxBtn.setAttribute('aria-label', `${label} window`);
+        })
+        .catch(() => {});
+    };
+    sync();
+    let debounce: ReturnType<typeof setTimeout> | null = null;
+    appWindow
+      .onResized(() => {
+        if (debounce) clearTimeout(debounce);
+        debounce = setTimeout(sync, 120);
+      })
+      .then((unlisten) => config.getIpcCleanupFunctions().push(unlisten))
+      .catch(() => {});
+  }
+
   function initWindowControlListeners(): void {
     const windowControls: Array<[string, () => Promise<void>]> = [
       ['minimize-btn', () => window.tauriAPI.minimizeWindow()],
@@ -234,6 +273,11 @@ export function createEventListenersController(config: EventListenersConfig) {
         action().catch((err: unknown) => console.error(`Window control "${id}" failed:`, err));
       });
     });
+
+    initMaximizeStateSync();
+
+    // Windows 11 Snap Layouts: native overlay over the maximize button.
+    initSnapLayout((cleanup) => config.getIpcCleanupFunctions().push(cleanup));
 
     // Handle titlebar double-click to maximize/restore on non-macOS platforms
     if (!document.body.classList.contains('platform-darwin')) {
