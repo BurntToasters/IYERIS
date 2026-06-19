@@ -18,7 +18,24 @@
 
 ### Please checkout the readme for more info on IYERIS!
 
-## Changes in `v3.0.0-beta.4:`
+## Changes in `v3.0.0-beta.4 (RC1):`
+
+### Release Candidate 1
+
+This is the first Release Candidate for IYERIS `v3.0.0`. The app is stable and feature-complete for `v3`. The main remaining item before stable is runtime validation of the new Windows Snap Layouts behavior below — everything else is signed off.
+
+- **NEW - Windows 11 Snap Layouts:** Implemented native Snap Layouts support for the custom titlebar on Windows without any third-party plugin. A transparent native Win32 overlay sits over the maximize button and returns the correct OS hit-test code (`HTMAXBUTTON`), so hovering the maximize button now shows the Windows 11 Snap flyout. Click still toggles maximize/restore as expected.
+- **Security:** Fixed an issue where the clipboard operation queue could recurse infinitely during rapid concurrent copy/paste cycles.
+- **Security:** Added an extraction size limit to protect against zip-bomb archives consuming excessive disk space.
+- **Security:** Hardened git status and branch checks to block malicious `core.fsmonitor` and `core.hooksPath` overrides in untrusted repositories from executing arbitrary code.
+- **Security:** Added sensitive-path guards to content-search and file-checksum operations.
+- **Codebase:** Added Zod-based IPC schema validation (`validateIpc()`) at all major frontend/backend boundaries — `FileItem`, `DriveInfo`, `ItemProperties`, `SearchResult`, `ArchiveEntry`, `FolderSize`, `DuplicateGroup`, and `GitStatus` — catching malformed data at the edge.
+- **Codebase:** Added `src/i18n.ts`, an internationalization framework with `t()`, `{placeholder}` interpolation, and `singular|plural` pluralization for future localization support. Status bar, toast, and clipboard strings are migrated. Full string localization is deferred post-`v3.0.0`.
+- **Codebase:** Refactored `renderer.ts` into focused controller modules (`rendererDualPane`, `rendererStatusBar`, `rendererRecentFiles`, `rendererSidebar`) to improve long-term maintainability.
+- **Windows:** Moved file copy and move operations to a dedicated thread pool to prevent blocking the async runtime during large transfers.
+- **UI:** Fixed an issue where file items did not reflect their selection state on initial render in grid and list view.
+- **Testing:** Expanded test coverage to 2,813 tests across 97 files.
+- **PKG:** Updated packages.
 
 ## Changes in `v3.0.0-beta.3:`
 
