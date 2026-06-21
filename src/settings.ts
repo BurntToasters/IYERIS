@@ -20,7 +20,7 @@ export function createDefaultSettings(): Settings {
   return {
     shortcuts: getDefaultShortcuts(),
     theme: 'default',
-    useSystemTheme: false,
+    useSystemTheme: true,
     language: 'auto',
     sortBy: 'name',
     sortOrder: 'asc',

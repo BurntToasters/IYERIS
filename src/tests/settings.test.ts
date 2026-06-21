@@ -12,6 +12,7 @@ describe('createDefaultSettings', () => {
     const settings = createDefaultSettings();
     expect(settings.theme).toBe('default');
     expect(settings.viewMode).toBe('grid');
+    expect(settings.useSystemTheme).toBe(true);
   });
 
   it('has correct default sorting settings', () => {
