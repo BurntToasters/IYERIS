@@ -18,7 +18,9 @@
 
 ### Please checkout the readme for more info on IYERIS!
 
-## Changes in `v3.0.0-beta.4 (RC2):`
+## Changes in `v3.0.0-beta.5 (RC2):`
+
+- **Codebase:** Misc and general fixes in prep for STABLE v3.
 
 ## Changes in `v3.0.0-beta.4 (RC1):`
 
