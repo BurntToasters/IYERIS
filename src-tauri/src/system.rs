@@ -861,9 +861,12 @@ pub async fn open_terminal(dir_path: String) -> Result<(), String> {
                 .spawn()
                 .map_err(|e| e.to_string())?;
         } else {
-            let cd_command = format!("cd /d \"{}\"", path.display());
+            // Pass the path via current_dir so it is never embedded in a shell
+            // command string — avoids %VAR% expansion in folder names. (W1)
+            use std::os::windows::process::CommandExt;
             std::process::Command::new("cmd")
-                .args(["/c", "start", "", "cmd", "/k", &cd_command])
+                .current_dir(&path)
+                .creation_flags(0x00000010) // CREATE_NEW_CONSOLE
                 .spawn()
                 .map_err(|e| e.to_string())?;
         }

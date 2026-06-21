@@ -1,6 +1,6 @@
 {
   "name": "iyeris",
-  "version": "3.0.0-beta.4",
+  "version": "3.0.0-beta.5",
   "private": true,
   "type": "module",
   "description": "A beautiful cross-platform file explorer built with Tauri, featuring a simple yet advanced modern design.",
@@ -11,7 +11,7 @@
     "@tauri-apps/plugin-notification": "^2.3.3",
     "@tauri-apps/plugin-process": "^2.0.0",
     "@tauri-apps/plugin-updater": "^2.10.0",
-    "dompurify": "^3.4.10",
+    "dompurify": "^3.4.11",
     "lucide": "^1.17.0",
     "marked": "^18.0.2",
     "p-limit": "^7.2.0",

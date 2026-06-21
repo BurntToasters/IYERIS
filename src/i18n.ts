@@ -7,6 +7,18 @@ export type TranslationParams = Record<string, string | number>;
 const catalogs: Record<string, Messages> = {};
 let currentLocale = 'en';
 
+/** Cached Intl.PluralRules instances keyed by locale (creation is non-trivial). */
+const pluralRulesCache = new Map<string, Intl.PluralRules>();
+
+function getPluralRules(locale: string): Intl.PluralRules {
+  let pr = pluralRulesCache.get(locale);
+  if (!pr) {
+    pr = new Intl.PluralRules(locale);
+    pluralRulesCache.set(locale, pr);
+  }
+  return pr;
+}
+
 /** Register (or extend) a locale's message catalog. */
 export function registerCatalog(locale: string, messages: Messages): void {
   catalogs[locale] = { ...(catalogs[locale] ?? {}), ...messages };
@@ -43,7 +55,16 @@ export function detectLocale(preferred?: string): string {
 /**
  * Translate a key. Falls back to the `en` catalog, then to the key itself
  * (with a dev warning) so a missing string is visible but never throws.
- * Supports "{name}" interpolation and "one|other" pluralization via `count`.
+ *
+ * Pluralization via `count`:
+ *   - Legacy format:  "singular|plural"
+ *     → index 0 for `one`, last index for everything else (Intl.PluralRules).
+ *   - Extended format: "one:file|few:files|many:files|other:files"
+ *     → category matched by Intl.PluralRules; falls back to `other`.
+ *     Supports all CLDR categories (zero/one/two/few/many/other) so locales
+ *     like Russian or Arabic work correctly once their catalogs are added.
+ *
+ * Supports "{name}" placeholder interpolation.
  */
 export function t(key: string, params?: TranslationParams): string {
   const message = catalogs[currentLocale]?.[key] ?? catalogs.en?.[key];
@@ -54,7 +75,19 @@ export function t(key: string, params?: TranslationParams): string {
   let resolved = message;
   if (params && typeof params.count === 'number' && message.includes('|')) {
     const forms = message.split('|');
-    resolved = (params.count === 1 ? forms[0] : forms[1]) ?? message;
+    const pr = getPluralRules(currentLocale);
+    const category = pr.select(params.count);
+
+    // Extended named-category format: "one:file|few:files|other:files"
+    if (forms.some((f) => /^(?:zero|one|two|few|many|other):/.test(f))) {
+      const match = forms.find((f) => f.startsWith(`${category}:`));
+      const fallback = forms.find((f) => f.startsWith('other:'));
+      const chosen = match ?? fallback ?? forms[0];
+      resolved = chosen?.replace(/^[a-z]+:/, '') ?? message;
+    } else {
+      // Legacy "singular|plural": index 0 = one form, last = other form.
+      resolved = (category === 'one' ? forms[0] : forms[forms.length - 1]) ?? message;
+    }
   }
   return resolved.replace(/\{(\w+)\}/g, (_match, name: string) =>
     params && name in params ? String(params[name]) : `{${name}}`

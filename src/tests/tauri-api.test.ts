@@ -64,4 +64,26 @@ describe('tauriAPI conflict handling', () => {
       })
     );
   });
+
+  it('passes compression advanced options as a JSON object to native code', async () => {
+    mockInvoke.mockResolvedValueOnce(undefined);
+
+    await import('../tauri-api');
+
+    const result = await window.tauriAPI.compressFiles(
+      ['/tmp/source.txt'],
+      '/tmp/source.zip',
+      'zip',
+      'op-advanced',
+      { compressionLevel: 9 }
+    );
+
+    expect(result).toEqual({ success: true });
+    expect(mockInvoke).toHaveBeenCalledWith(
+      'compress_files',
+      expect.objectContaining({
+        advancedOptions: { compressionLevel: 9 },
+      })
+    );
+  });
 });

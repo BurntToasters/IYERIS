@@ -33,6 +33,10 @@ ignore = [
   # gtk-rs proc-macro support: same transitive as gtk-rs above.
   "RUSTSEC-2024-0370", # proc-macro-error
 
+  # env_logger -> jiff -> defmt proc-macro support. Build-time macro helper is
+  # unmaintained, no runtime parser/input surface in IYERIS.
+  "RUSTSEC-2026-0173", # proc-macro-error2
+
   # urlpattern dependency tree pulled in by tauri-utils. unic-* crates are
   # frozen Unicode tables — replaced upstream by `icu` family, awaiting tauri
   # rebase.

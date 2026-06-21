@@ -976,7 +976,7 @@ const tauriAPI: TauriAPI = {
         outputPath,
         format: format ?? null,
         operationId: operationId ?? null,
-        advancedOptions: advancedOptions ? JSON.stringify(advancedOptions) : null,
+        advancedOptions: advancedOptions ?? null,
       })
     ),
   extractArchive: (archivePath, destPath, operationId) =>

@@ -44,7 +44,7 @@ export default tseslint.config(
       // must go through escapeHtml(). Reviewed, safe sites carry a disable
       // comment so future unreviewed uses are caught here.
       'no-restricted-syntax': [
-        'warn',
+        'error',
         {
           selector:
             'AssignmentExpression[left.property.name=/^(inner|outer)HTML$/][right.type="TemplateLiteral"]',
