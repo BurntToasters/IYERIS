@@ -403,14 +403,9 @@ pub async fn copy_items(
     // Run blocking filesystem work off the async runtime so concurrent copies
     // can't starve tokio workers or park them on the std mutex.
     tokio::task::spawn_blocking(move || -> Result<(), String> {
-        let _lock = FILE_OP_LOCK
-            .lock()
-            .map_err(|e| format!("File operation lock error: {}", e))?;
-        let dest = crate::validate_existing_path(&dest_path, "Destination")?;
-        let behavior = conflict_behavior.unwrap_or_else(|| "ask".to_string());
-        let resolutions = conflict_resolutions.unwrap_or_default();
-        let planned = plan_file_operations(&source_paths, &dest, &behavior, "copy", &resolutions)?;
-        let total = planned.len();
+        // Register the operation ID BEFORE waiting on the lock so that
+        // cancel_file_operation can mark it cancelled while we queue. We then
+        // re-check active status immediately after acquiring the lock.
         let progress_operation_id = operation_id.unwrap_or_else(|| {
             format!(
                 "copy-{}",
@@ -421,6 +416,18 @@ pub async fn copy_items(
             )
         });
         register_file_operation(&progress_operation_id)?;
+        // Guard ensures the id is unregistered on every exit path below.
+        let _active_guard = ActiveOpGuard(progress_operation_id.clone());
+        let _lock = FILE_OP_LOCK
+            .lock()
+            .map_err(|e| format!("File operation lock error: {}", e))?;
+        // Re-check: the user may have cancelled while we waited for the lock.
+        ensure_file_operation_active(&progress_operation_id)?;
+        let dest = crate::validate_existing_path(&dest_path, "Destination")?;
+        let behavior = conflict_behavior.unwrap_or_else(|| "ask".to_string());
+        let resolutions = conflict_resolutions.unwrap_or_default();
+        let planned = plan_file_operations(&source_paths, &dest, &behavior, "copy", &resolutions)?;
+        let total = planned.len();
         let mut copied_paths: Vec<PathBuf> = Vec::new();
         let mut backups: HashMap<String, OverwriteBackup> = HashMap::new();
 
@@ -430,35 +437,39 @@ pub async fn copy_items(
                 ensure_overwrite_backup(&mut backups, item)?;
                 ensure_file_operation_active(&progress_operation_id)?;
 
+                // Track the destination BEFORE writing so a partially-written
+                // file/folder (e.g. a cancelled mid-folder copy) is cleaned up
+                // by remove_paths_reversed on error.
+                copied_paths.push(item.dest_path.clone());
+
                 let source_meta =
                     fs::symlink_metadata(&item.source_path).map_err(|e| e.to_string())?;
                 if source_meta.file_type().is_symlink() {
                     copy_symlink_path(&item.source_path, &item.dest_path)?;
                 } else if source_meta.is_dir() {
-                    copy_dir_recursive(&item.source_path, &item.dest_path)?;
+                    crate::fs_utils::copy_dir_recursive_cancellable(
+                        &item.source_path,
+                        &item.dest_path,
+                        &|| !is_file_operation_active_bool(&progress_operation_id),
+                    )?;
                 } else {
                     fs::copy(&item.source_path, &item.dest_path)
                         .map_err(|e| format!("Failed to copy {}: {}", item.item_name, e))?;
                 }
-                copied_paths.push(item.dest_path.clone());
 
-                if total > 1 {
-                    let _ = app.emit(
-                        "file-operation-progress",
-                        serde_json::json!({
-                            "operationId": progress_operation_id,
-                            "operation": "copy",
-                            "current": index + 1,
-                            "total": total,
-                            "name": item.item_name,
-                        }),
-                    );
-                }
+                let _ = app.emit(
+                    "file-operation-progress",
+                    serde_json::json!({
+                        "operationId": progress_operation_id,
+                        "operation": "copy",
+                        "current": index + 1,
+                        "total": total,
+                        "name": item.item_name,
+                    }),
+                );
             }
             Ok(())
         })();
-
-        unregister_file_operation(&progress_operation_id);
 
         if let Err(error) = operation {
             remove_paths_reversed(&copied_paths);
@@ -546,14 +557,8 @@ pub async fn move_items(
     );
     // Run blocking filesystem work off the async runtime (see copy_items).
     tokio::task::spawn_blocking(move || -> Result<(), String> {
-        let _lock = FILE_OP_LOCK
-            .lock()
-            .map_err(|e| format!("File operation lock error: {}", e))?;
-        let dest = crate::validate_existing_path(&dest_path, "Destination")?;
-        let behavior = conflict_behavior.unwrap_or_else(|| "ask".to_string());
-        let resolutions = conflict_resolutions.unwrap_or_default();
-        let planned = plan_file_operations(&source_paths, &dest, &behavior, "move", &resolutions)?;
-        let total = planned.len();
+        // Register the operation ID BEFORE waiting on the lock so that
+        // cancel_file_operation can mark it cancelled while we queue.
         let progress_operation_id = operation_id.unwrap_or_else(|| {
             format!(
                 "move-{}",
@@ -564,6 +569,18 @@ pub async fn move_items(
             )
         });
         register_file_operation(&progress_operation_id)?;
+        // Guard ensures the id is unregistered on every exit path below.
+        let _active_guard = ActiveOpGuard(progress_operation_id.clone());
+        let _lock = FILE_OP_LOCK
+            .lock()
+            .map_err(|e| format!("File operation lock error: {}", e))?;
+        // Re-check: the user may have cancelled while we waited for the lock.
+        ensure_file_operation_active(&progress_operation_id)?;
+        let dest = crate::validate_existing_path(&dest_path, "Destination")?;
+        let behavior = conflict_behavior.unwrap_or_else(|| "ask".to_string());
+        let resolutions = conflict_resolutions.unwrap_or_default();
+        let planned = plan_file_operations(&source_paths, &dest, &behavior, "move", &resolutions)?;
+        let total = planned.len();
         let mut moved_paths: Vec<String> = Vec::new();
         let mut original_paths: Vec<String> = Vec::new();
         let mut completed_moves: Vec<CompletedMove> = Vec::new();
@@ -583,23 +600,19 @@ pub async fn move_items(
                     dest_path: item.dest_path.clone(),
                 });
 
-                if total > 1 {
-                    let _ = app.emit(
-                        "file-operation-progress",
-                        serde_json::json!({
-                            "operationId": progress_operation_id,
-                            "operation": "move",
-                            "current": index + 1,
-                            "total": total,
-                            "name": item.item_name,
-                        }),
-                    );
-                }
+                let _ = app.emit(
+                    "file-operation-progress",
+                    serde_json::json!({
+                        "operationId": progress_operation_id,
+                        "operation": "move",
+                        "current": index + 1,
+                        "total": total,
+                        "name": item.item_name,
+                    }),
+                );
             }
             Ok(())
         })();
-
-        unregister_file_operation(&progress_operation_id);
 
         if let Err(error) = operation {
             rollback_moves(&completed_moves);
@@ -638,6 +651,26 @@ fn ensure_file_operation_active(operation_id: &str) -> Result<(), String> {
         Ok(())
     } else {
         Err("Operation cancelled".to_string())
+    }
+}
+
+/// Boolean variant — used by the cancellable dir-copy callback where an
+/// `Err` return is not available (closure returns `bool`, not `Result`).
+fn is_file_operation_active_bool(operation_id: &str) -> bool {
+    ACTIVE_FILE_OPERATIONS
+        .lock()
+        .map(|set| set.contains(operation_id))
+        .unwrap_or(true) // on lock poisoning assume still active
+}
+
+/// RAII guard that unregisters an operation id on drop, so the id is removed
+/// from ACTIVE_FILE_OPERATIONS on every exit path (early `?`, cancel, panic),
+/// not just the happy path. Registered before the FILE_OP_LOCK wait so a
+/// cancel issued while queued is observed once we acquire the lock.
+struct ActiveOpGuard(String);
+impl Drop for ActiveOpGuard {
+    fn drop(&mut self) {
+        unregister_file_operation(&self.0);
     }
 }
 

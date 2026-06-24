@@ -411,6 +411,9 @@ export function createCommandPaletteController(deps: CommandPaletteDeps) {
 
     clearHtml(resultsContainer);
     commandPaletteFocusedIndex = -1;
+    // Clear any stale aria-activedescendant so assistive technology doesn't
+    // announce a removed option id after the results list is rebuilt.
+    commandPaletteInput?.removeAttribute('aria-activedescendant');
 
     if (cmds.length === 0) {
       resultsContainer.style.display = 'none';

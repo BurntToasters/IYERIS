@@ -75,6 +75,7 @@ function createDeps(overrides: Record<string, unknown> = {}) {
 }
 
 function setupNavDOM() {
+  // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
   document.body.innerHTML = `
     <div class="address-bar-wrapper">
       <div class="address-bar">

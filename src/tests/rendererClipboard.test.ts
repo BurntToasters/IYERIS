@@ -53,6 +53,7 @@ function createDeps(selectedItems: Set<string>, fileElementMap: Map<string, HTML
 
 describe('createClipboardController', () => {
   beforeEach(() => {
+    // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
     document.body.innerHTML = `
       <div id="status-clipboard" style="display:none">
         <span id="status-clipboard-text"></span>
@@ -176,6 +177,7 @@ describe('createClipboardController', () => {
 // threw RangeError, surfacing a false "Paste failed" and breaking elevated ops.
 describe('createClipboardController with operation queue wired', () => {
   beforeEach(() => {
+    // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
     document.body.innerHTML = `
       <div id="status-clipboard" style="display:none">
         <span id="status-clipboard-text"></span>

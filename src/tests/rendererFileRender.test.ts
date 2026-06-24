@@ -128,6 +128,7 @@ describe('createFileRenderController', () => {
         disconnect() {}
       };
     }
+    // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
     document.body.innerHTML = `
       <div id="file-view">
         <div id="file-grid"></div>
@@ -1059,6 +1060,7 @@ describe('createFileRenderController', () => {
     });
 
     it('handles virtualization when file-view root is missing', () => {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="file-grid"></div>
         <div id="empty-state" style="display:none">

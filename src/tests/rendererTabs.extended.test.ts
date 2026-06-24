@@ -122,6 +122,7 @@ function createMockDeps(overrides: Record<string, any> = {}) {
 }
 
 function setupDOM() {
+  // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
   document.body.innerHTML = `
     <div id="tab-bar"><div id="tab-list" role="tablist"></div><button id="new-tab-btn"></button></div>
     <input id="address-input" />

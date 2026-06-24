@@ -56,6 +56,7 @@ describe('rendererSupportUi', () => {
         },
       }));
 
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="licenses-modal" style="display:none">
           <div id="licenses-content"></div>
@@ -83,6 +84,7 @@ describe('rendererSupportUi', () => {
         },
       }));
 
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="licenses-modal" style="display:none">
           <div id="licenses-content"></div>
@@ -109,6 +111,7 @@ describe('rendererSupportUi', () => {
         },
       }));
 
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="licenses-modal" style="display:none">
           <div id="licenses-content"></div>
@@ -135,6 +138,7 @@ describe('rendererSupportUi', () => {
         },
       }));
 
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="licenses-modal" style="display:none">
           <div id="licenses-content"></div>
@@ -161,6 +165,7 @@ describe('rendererSupportUi', () => {
         },
       }));
 
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="licenses-modal" style="display:none">
           <div id="licenses-content"></div>
@@ -187,6 +192,7 @@ describe('rendererSupportUi', () => {
         },
       }));
 
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="licenses-modal" style="display:none">
           <div id="licenses-content"></div>
@@ -210,6 +216,7 @@ describe('rendererSupportUi', () => {
         },
       }));
 
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="licenses-modal" style="display:none">
           <div id="licenses-content"></div>
@@ -232,6 +239,7 @@ describe('rendererSupportUi', () => {
         },
       }));
 
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="licenses-modal" style="display:none">
           <div id="licenses-content"></div>
@@ -248,6 +256,7 @@ describe('rendererSupportUi', () => {
 
   describe('showLicensesModal', () => {
     it('shows the modal and populates content', async () => {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="licenses-modal" style="display:none">
           <div id="licenses-content"></div>
@@ -271,6 +280,7 @@ describe('rendererSupportUi', () => {
         error: 'Could not read',
       }));
 
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="licenses-modal" style="display:none">
           <div id="licenses-content"></div>
@@ -289,6 +299,7 @@ describe('rendererSupportUi', () => {
         throw new Error('Network down');
       });
 
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="licenses-modal" style="display:none">
           <div id="licenses-content"></div>
@@ -310,6 +321,7 @@ describe('rendererSupportUi', () => {
     });
 
     it('does nothing without content element', async () => {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `<div id="licenses-modal" style="display:none"></div>`;
 
       const deps = makeDeps();
@@ -332,6 +344,7 @@ describe('rendererSupportUi', () => {
         },
       }));
 
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="licenses-modal" style="display:none">
           <div id="licenses-content"></div>
@@ -367,6 +380,7 @@ describe('rendererSupportUi', () => {
 
   describe('copyLicensesText', () => {
     it('copies licenses content to clipboard', async () => {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="licenses-content">License text here</div>
         <button id="copy-licenses-btn">Copy</button>
@@ -395,6 +409,7 @@ describe('rendererSupportUi', () => {
 
   describe('initLicensesUi', () => {
     it('registers click listeners on buttons', () => {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <button id="licenses-btn"></button>
         <button id="licenses-close"></button>
@@ -412,6 +427,7 @@ describe('rendererSupportUi', () => {
     });
 
     it('handles link clicks with sanitization', () => {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="licenses-content">
           <a class="license-link" href="https://example.com" data-url="https://example.com">Link</a>
@@ -430,6 +446,7 @@ describe('rendererSupportUi', () => {
     });
 
     it('ignores links with unsafe protocols', () => {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="licenses-content">
           <a class="license-link" href="javascript:alert(1)" data-url="javascript:alert(1)">Bad</a>
@@ -447,6 +464,7 @@ describe('rendererSupportUi', () => {
     });
 
     it('closes modal on overlay click', () => {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="licenses-modal" style="display:flex"></div>
       `;
@@ -494,6 +512,7 @@ describe('rendererSupportUi', () => {
 
   describe('initSupportPopup', () => {
     it('registers dismiss button that saves settings', async () => {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="support-popup-modal" style="display:flex"></div>
         <button id="support-popup-dismiss"></button>
@@ -514,6 +533,7 @@ describe('rendererSupportUi', () => {
     });
 
     it('registers yes button that opens external link', () => {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="support-popup-modal" style="display:flex"></div>
         <button id="support-popup-dismiss"></button>

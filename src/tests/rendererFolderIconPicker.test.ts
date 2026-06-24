@@ -25,6 +25,7 @@ function createDeps(overrides: Record<string, unknown> = {}) {
 }
 
 function setupDOM() {
+  // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
   document.body.innerHTML = `
     <div id="folder-icon-modal" style="display:none">
       <span id="folder-icon-path"></span>
@@ -132,6 +133,7 @@ describe('createFolderIconPickerController', () => {
     });
 
     it('does nothing when grid element is missing', () => {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="folder-icon-modal" style="display:none">
           <span id="folder-icon-path"></span>
@@ -146,6 +148,7 @@ describe('createFolderIconPickerController', () => {
     });
 
     it('does nothing when path display element is missing', () => {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="folder-icon-modal" style="display:none">
           <div id="folder-icon-grid"></div>

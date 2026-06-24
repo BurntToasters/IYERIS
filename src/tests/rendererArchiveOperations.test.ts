@@ -23,6 +23,7 @@ import { ARCHIVE_RENDER_THROTTLE_MS, ARCHIVE_COMPLETION_DELAY_MS } from '../rend
 describe('createArchiveOperationsController', () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
     document.body.innerHTML = `
       <div id="archive-operations-panel" style="display:none">
         <div id="archive-operations-list"></div>
@@ -126,6 +127,7 @@ describe('createArchiveOperationsController', () => {
   });
 
   it('handles missing list element and nonexistent operation ids as no-ops', () => {
+    // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
     document.body.innerHTML = `
       <div id="archive-operations-panel" style="display:none"></div>
     `;
@@ -147,6 +149,7 @@ describe('createArchiveOperationsController', () => {
   });
 
   it('supports rendering when panel element is missing', () => {
+    // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
     document.body.innerHTML = `
       <div id="archive-operations-list"></div>
     `;

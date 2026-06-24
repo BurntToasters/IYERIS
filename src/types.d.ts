@@ -729,8 +729,17 @@ export interface TauriAPI {
     includeHidden?: boolean
   ) => Promise<DuplicateScanResponse>;
 
-  getCachedThumbnail: (filePath: string) => Promise<ThumbnailCacheResponse>;
-  saveCachedThumbnail: (filePath: string, dataUrl: string) => Promise<ThumbnailSaveResponse>;
+  getCachedThumbnail: (
+    filePath: string,
+    mtimeMs?: number,
+    fileSize?: number
+  ) => Promise<ThumbnailCacheResponse>;
+  saveCachedThumbnail: (
+    filePath: string,
+    dataUrl: string,
+    mtimeMs?: number,
+    fileSize?: number
+  ) => Promise<ThumbnailSaveResponse>;
   clearThumbnailCache: () => Promise<ThumbnailClearResponse>;
   getThumbnailCacheSize: () => Promise<ThumbnailCacheSizeResponse>;
 

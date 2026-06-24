@@ -273,9 +273,10 @@ export function createDuplicateFinderController(deps: DuplicateFinderDeps) {
 
     const validKeys = new Set(groups.map((group) => groupKey(group)));
     selectedGroupKeys = new Set([...selectedGroupKeys].filter((key) => validKeys.has(key)));
-    if (selectedGroupKeys.size === 0 && groups.length > 0) {
-      selectedGroupKeys = new Set(groups.map((group) => groupKey(group)));
-    }
+    // Do NOT auto-reselect all remaining groups after a delete: that would
+    // arm the Delete button over groups the user never chose, which is a
+    // destructive footgun. Leave the selection empty and let the user
+    // explicitly re-select.
   }
 
   async function exportSelectedGroups(): Promise<void> {
@@ -350,6 +351,7 @@ export function createDuplicateFinderController(deps: DuplicateFinderDeps) {
       const successPaths: string[] = [];
       const permissionFailedPaths: string[] = [];
       const otherFailures: string[] = [];
+      let elevatedDeleteFailed = false;
 
       for (let index = 0; index < settledResults.length; index++) {
         const result = settledResults[index]!;
@@ -384,6 +386,8 @@ export function createDuplicateFinderController(deps: DuplicateFinderDeps) {
           if (elevatedResult.success) {
             successPaths.push(...permissionFailedPaths);
           } else {
+            // Complete the operation here and bail; do NOT push to otherFailures
+            // which would trigger a second completeOperation + toast below.
             deps.completeOperation?.(
               operationId,
               'failed',
@@ -394,7 +398,7 @@ export function createDuplicateFinderController(deps: DuplicateFinderDeps) {
               'Duplicate Finder',
               'error'
             );
-            otherFailures.push(...permissionFailedPaths);
+            elevatedDeleteFailed = true;
           }
         } else {
           otherFailures.push(...permissionFailedPaths);
@@ -412,7 +416,17 @@ export function createDuplicateFinderController(deps: DuplicateFinderDeps) {
         );
       }
 
-      if (otherFailures.length > 0) {
+      if (elevatedDeleteFailed) {
+        // The operation was already completed as 'failed' in the elevated
+        // branch above. Don't complete again; just surface any other failures.
+        if (otherFailures.length > 0) {
+          deps.showToast(
+            `${otherFailures.length} duplicate file(s) could not be deleted`,
+            'Duplicate Finder',
+            'error'
+          );
+        }
+      } else if (otherFailures.length > 0) {
         deps.completeOperation?.(
           operationId,
           'failed',

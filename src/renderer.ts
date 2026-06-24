@@ -931,7 +931,9 @@ const bootstrapController = createBootstrapController({
   setCurrentSettings: (s) => {
     currentSettings = s;
   },
-  saveSettings: () => saveSettings(),
+  saveSettings: () => {
+    void saveSettingsWithTimestamp(currentSettings);
+  },
   setPlatformOS: (os) => {
     platformOS = os;
   },
@@ -992,7 +994,9 @@ const eventListenersController = createEventListenersController({
   deleteSelected: (permanent) => deleteSelected(permanent),
   performUndo,
   performRedo,
-  saveSettings: () => saveSettings(),
+  saveSettings: () => {
+    void saveSettingsWithTimestamp(currentSettings);
+  },
   openSelectedItem,
   selectFirstItem,
   selectLastItem,
@@ -1064,7 +1068,7 @@ const eventListenersController = createEventListenersController({
     currentSettings.showHiddenFiles = !currentSettings.showHiddenFiles;
     const toggle = document.getElementById('show-hidden-files-toggle') as HTMLInputElement | null;
     if (toggle) toggle.checked = currentSettings.showHiddenFiles;
-    saveSettings();
+    void saveSettingsWithTimestamp(currentSettings);
     refresh('toggle-hidden-files');
   },
   showPropertiesForSelected: () => {
@@ -1198,38 +1202,41 @@ async function navigateTo(path: string, skipHistoryUpdate = false, trigger = 'di
   }
 
   if (isHomeViewPath(path)) {
-    resetTypeahead();
+    try {
+      resetTypeahead();
 
-    if (isSearchModeActive()) {
-      closeSearch({ restoreCurrentPath: false });
+      if (isSearchModeActive()) {
+        closeSearch({ restoreCurrentPath: false });
+      }
+
+      thumbnails.disconnectThumbnailObserver();
+      thumbnails.clearPendingThumbnailLoads();
+
+      hideLoading();
+
+      currentPath = HOME_VIEW_PATH;
+      updateCurrentTabPath(path);
+      if (addressInput) addressInput.value = HOME_VIEW_LABEL;
+      updateBreadcrumb(path);
+
+      if (!skipHistoryUpdate && (historyIndex === -1 || history[historyIndex] !== path)) {
+        history = history.slice(0, historyIndex + 1);
+        history.push(path);
+        historyIndex = history.length - 1;
+      }
+
+      updateNavigationButtons();
+      setHomeViewActive(true);
+      announceToScreenReader('Home view');
+      devLog('Navigate', `[${navigationId}] completed`, {
+        source: 'home',
+        path: HOME_VIEW_PATH,
+        trigger,
+        durationMs: Date.now() - navigationStartAt,
+      });
+    } finally {
+      isNavigating = false;
     }
-
-    thumbnails.disconnectThumbnailObserver();
-    thumbnails.clearPendingThumbnailLoads();
-
-    hideLoading();
-
-    currentPath = HOME_VIEW_PATH;
-    updateCurrentTabPath(path);
-    if (addressInput) addressInput.value = HOME_VIEW_LABEL;
-    updateBreadcrumb(path);
-
-    if (!skipHistoryUpdate && (historyIndex === -1 || history[historyIndex] !== path)) {
-      history = history.slice(0, historyIndex + 1);
-      history.push(path);
-      historyIndex = history.length - 1;
-    }
-
-    updateNavigationButtons();
-    setHomeViewActive(true);
-    announceToScreenReader('Home view');
-    isNavigating = false;
-    devLog('Navigate', `[${navigationId}] completed`, {
-      source: 'home',
-      path: HOME_VIEW_PATH,
-      trigger,
-      durationMs: Date.now() - navigationStartAt,
-    });
     return;
   }
 
@@ -1547,6 +1554,7 @@ async function deleteSelected(permanent = false) {
       }
       completeOperation(operationId, 'failed', elevResult.error || 'Elevated delete failed');
       showToast(elevResult.error || 'Elevated delete failed', 'Error', 'error');
+      return;
     }
   }
 

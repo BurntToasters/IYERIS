@@ -103,6 +103,7 @@ function makeFile(overrides: Partial<FileItem> = {}): FileItem {
 }
 
 function buildDOM() {
+  // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
   document.body.innerHTML = `
     <div id="preview-panel" style="display:none">
       <div id="preview-content"></div>

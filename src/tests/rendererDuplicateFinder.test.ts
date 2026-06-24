@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDuplicateFinderController } from '../rendererDuplicateFinder';
 
 function setupModalDom(): void {
+  // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
   document.body.innerHTML = `
     <div id="duplicate-finder-modal" style="display:none">
       <button id="duplicate-finder-close"></button>
@@ -320,8 +321,11 @@ describe('rendererDuplicateFinder', () => {
       expect(deps.showToast).toHaveBeenCalledWith('elevated failed', 'Duplicate Finder', 'error');
     });
 
-    expect(deps.showToast).toHaveBeenCalledWith(
-      '3 duplicate file(s) could not be deleted',
+    // Only one error toast should fire — the specific elevated-delete error.
+    // The generic "N file(s) could not be deleted" toast must NOT appear
+    // because the operation was already completed as failed above.
+    expect(deps.showToast).not.toHaveBeenCalledWith(
+      expect.stringContaining('could not be deleted'),
       'Duplicate Finder',
       'error'
     );

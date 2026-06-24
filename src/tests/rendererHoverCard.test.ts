@@ -31,6 +31,7 @@ function makeDeps(overrides: Partial<Deps> = {}): Deps {
 }
 
 function setupHoverCardDom() {
+  // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
   document.body.innerHTML = `
     <div id="file-hover-card" class="file-hover-card">
       <div id="hover-card-thumbnail"></div>
@@ -502,6 +503,7 @@ describe('rendererHoverCard', () => {
     });
 
     it('works when optional extra-row elements are absent', () => {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="file-hover-card" class="file-hover-card">
           <div id="hover-card-thumbnail"></div>

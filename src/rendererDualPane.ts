@@ -38,6 +38,9 @@ export interface DualPaneDeps {
 export function createDualPaneController(deps: DualPaneDeps) {
   let secondaryPanePath = '';
   let secondaryPaneItems: FileItem[] = [];
+  // Monotonically-increasing counter used to discard stale loadSecondaryPane
+  // responses when a newer navigation was triggered before the earlier one resolved.
+  let secondaryPaneLoadRequestId = 0;
   const secondaryFilePathMap = new Map<string, FileItem>();
   const secondaryFileElementMap = new Map<string, HTMLElement>();
 
@@ -227,6 +230,7 @@ export function createDualPaneController(deps: DualPaneDeps) {
 
   async function loadSecondaryPane(pathValue: string): Promise<void> {
     if (!pathValue) return;
+    const requestId = ++secondaryPaneLoadRequestId;
     const settings = deps.getCurrentSettings();
     const pathLabel = getDualPaneElement<HTMLElement>('dual-pane-secondary-path');
     try {
@@ -236,6 +240,8 @@ export function createDualPaneController(deps: DualPaneDeps) {
         settings.showHiddenFiles,
         false
       );
+      // Discard if a newer navigation completed first.
+      if (requestId !== secondaryPaneLoadRequestId) return;
       if (!result.success) {
         deps.showToast(result.error || t('toast.dualPane.loadFailed'), 'Dual Pane', 'error');
         return;
@@ -402,6 +408,11 @@ export function createDualPaneController(deps: DualPaneDeps) {
       const target = event.target as HTMLElement | null;
       const row = target?.closest<HTMLElement>('.file-item');
       if (!row) {
+        // Switch active pane first so clearSecondarySelection doesn't wipe
+        // the left pane's selection via setSelectedItems.
+        if (deps.getCurrentSettings().dualPaneEnabled) {
+          setActivePane('right');
+        }
         clearSecondarySelection();
         return;
       }

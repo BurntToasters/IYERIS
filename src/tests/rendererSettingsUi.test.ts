@@ -723,6 +723,7 @@ describe('updateSettingsCardSummaries', () => {
   });
 
   it('builds summary from checkbox setting items', () => {
+    // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
     document.body.innerHTML = `
       <div class="settings-card">
         <span class="settings-card-summary"></span>
@@ -742,6 +743,7 @@ describe('updateSettingsCardSummaries', () => {
   });
 
   it('builds summary from unchecked checkbox', () => {
+    // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
     document.body.innerHTML = `
       <div class="settings-card">
         <span class="settings-card-summary"></span>
@@ -761,6 +763,7 @@ describe('updateSettingsCardSummaries', () => {
   });
 
   it('builds summary from select element using selected option text', () => {
+    // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
     document.body.innerHTML = `
       <div class="settings-card">
         <span class="settings-card-summary"></span>
@@ -783,6 +786,7 @@ describe('updateSettingsCardSummaries', () => {
   });
 
   it('shows "Not set" for empty text input', () => {
+    // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
     document.body.innerHTML = `
       <div class="settings-card">
         <span class="settings-card-summary"></span>
@@ -801,6 +805,7 @@ describe('updateSettingsCardSummaries', () => {
   });
 
   it('limits to 2 items per card summary', () => {
+    // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
     document.body.innerHTML = `
       <div class="settings-card">
         <span class="settings-card-summary"></span>
@@ -819,6 +824,7 @@ describe('updateSettingsCardSummaries', () => {
   });
 
   it('uses bullet separator between items', () => {
+    // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
     document.body.innerHTML = `
       <div class="settings-card">
         <span class="settings-card-summary"></span>
@@ -835,6 +841,7 @@ describe('updateSettingsCardSummaries', () => {
   });
 
   it('sets empty text when card has no items', () => {
+    // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
     document.body.innerHTML = `
       <div class="settings-card">
         <span class="settings-card-summary"></span>
@@ -849,6 +856,7 @@ describe('updateSettingsCardSummaries', () => {
   });
 
   it('skips items without a label', () => {
+    // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
     document.body.innerHTML = `
       <div class="settings-card">
         <span class="settings-card-summary"></span>
@@ -864,6 +872,7 @@ describe('updateSettingsCardSummaries', () => {
   });
 
   it('skips items without an input', () => {
+    // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
     document.body.innerHTML = `
       <div class="settings-card">
         <span class="settings-card-summary"></span>
@@ -879,6 +888,7 @@ describe('updateSettingsCardSummaries', () => {
   });
 
   it('shows text input value when non-empty', () => {
+    // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
     document.body.innerHTML = `
       <div class="settings-card">
         <span class="settings-card-summary"></span>
@@ -1019,6 +1029,7 @@ describe('syncQuickActionsFromMain', () => {
   });
 
   it('syncs quick toggle checked state from main toggle', () => {
+    // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
     document.body.innerHTML = `
       <input type="checkbox" id="show-hidden-files-toggle" checked />
       <input type="checkbox" id="quick-hidden" data-sync-target="show-hidden-files-toggle" />
@@ -1032,6 +1043,7 @@ describe('syncQuickActionsFromMain', () => {
   });
 
   it('syncs unchecked state', () => {
+    // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
     document.body.innerHTML = `
       <input type="checkbox" id="show-hidden-files-toggle" />
       <input type="checkbox" id="quick-hidden" data-sync-target="show-hidden-files-toggle" checked />

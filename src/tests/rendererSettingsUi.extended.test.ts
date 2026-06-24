@@ -1765,6 +1765,7 @@ describe('forEachQuickTogglePair (via syncQuickActionsFromMain)', () => {
   });
 
   it('skips quick toggles without data-sync-target', () => {
+    // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
     document.body.innerHTML = `
       <input type="checkbox" id="no-target" />
     `;
@@ -1775,6 +1776,7 @@ describe('forEachQuickTogglePair (via syncQuickActionsFromMain)', () => {
   });
 
   it('handles non-checkbox target gracefully (no crash)', () => {
+    // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
     document.body.innerHTML = `
       <input type="text" id="text-target" value="hello" />
       <input type="checkbox" id="quick-sync" data-sync-target="text-target" />

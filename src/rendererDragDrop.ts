@@ -582,6 +582,10 @@ export function createDragDropController(config: DragDropConfig) {
 
     fileView.addEventListener('drop', async (e) => {
       if (isDropTargetContentItem(e.target)) {
+        // Clean up drag state before the early return so the highlight
+        // doesn't get stuck when dropping onto a file item.
+        fileView.classList.remove('drag-over');
+        hideDropIndicator();
         return;
       }
 

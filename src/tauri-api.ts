@@ -460,7 +460,11 @@ const tauriAPI: TauriAPI = {
   getHomeSettingsPath: () => invoke('get_home_settings_path'),
 
   setClipboard: (clipboardData) => invoke('set_clipboard', { clipboardData }),
-  getClipboard: () => invoke('get_clipboard'),
+  // Resolve to null on failure so a clipboard-read error never blocks startup.
+  getClipboard: () =>
+    (invoke('get_clipboard') as Promise<import('./types').ClipboardOperation | null>).catch(
+      () => null
+    ),
   getSystemClipboardData: async () => {
     try {
       const data = await invoke<{ operation?: string; paths?: string[] } | null>(
@@ -1237,9 +1241,13 @@ const tauriAPI: TauriAPI = {
     }
   },
 
-  getCachedThumbnail: async (filePath) => {
+  getCachedThumbnail: async (filePath, mtimeMs, fileSize) => {
     try {
-      const dataUrl = await invoke<string | null>('get_cached_thumbnail', { filePath });
+      const dataUrl = await invoke<string | null>('get_cached_thumbnail', {
+        filePath,
+        mtimeMs,
+        fileSize,
+      });
       return dataUrl
         ? ({ success: true, dataUrl } as never)
         : ({ success: false, error: 'Not cached' } as never);
@@ -1247,8 +1255,8 @@ const tauriAPI: TauriAPI = {
       return { success: false, error: String(e) } as never;
     }
   },
-  saveCachedThumbnail: (filePath, dataUrl) =>
-    wrap(() => invoke('save_cached_thumbnail', { filePath, dataUrl })),
+  saveCachedThumbnail: (filePath, dataUrl, mtimeMs, fileSize) =>
+    wrap(() => invoke('save_cached_thumbnail', { filePath, dataUrl, mtimeMs, fileSize })),
   clearThumbnailCache: () => wrap(() => invoke('clear_thumbnail_cache')),
   getThumbnailCacheSize: async () => {
     try {

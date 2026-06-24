@@ -59,6 +59,7 @@ describe('rendererTooltips', () => {
 
   describe('with tooltip DOM', () => {
     beforeEach(() => {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="ui-tooltip" class="ui-tooltip" style="display:none">
           <span class="ui-tooltip-content"></span>

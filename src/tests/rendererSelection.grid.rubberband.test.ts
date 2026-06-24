@@ -37,6 +37,7 @@ function createDeps() {
 }
 
 function setupDOM(): void {
+  // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
   document.body.innerHTML = `
     <div id="file-view">
       <div id="file-grid" style="display:grid;grid-template-columns:repeat(3,100px)"></div>

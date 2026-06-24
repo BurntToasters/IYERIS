@@ -477,6 +477,7 @@ describe('createCompressExtractController', () => {
 
   describe('showCompressOptionsModal', () => {
     function createCompressModalDOM() {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="compress-options-modal" style="display:none">
           <input id="compress-archive-name" type="text" />
@@ -597,6 +598,7 @@ describe('createCompressExtractController', () => {
 
   describe('hideCompressOptionsModal', () => {
     it('hides the modal and deactivates it', () => {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="compress-options-modal" style="display:flex"></div>
       `;
@@ -617,6 +619,7 @@ describe('createCompressExtractController', () => {
 
   describe('showExtractModal', () => {
     function createExtractModalDOM() {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="extract-modal" style="display:none">
           <span id="extract-modal-message"></span>
@@ -668,6 +671,7 @@ describe('createCompressExtractController', () => {
 
   describe('hideExtractModal', () => {
     it('hides the extract modal', () => {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="extract-modal" style="display:flex"></div>
       `;
@@ -694,6 +698,7 @@ describe('createCompressExtractController', () => {
     });
 
     it('shows extract modal for archive file', async () => {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="extract-modal" style="display:none">
           <span id="extract-modal-message"></span>
@@ -726,6 +731,7 @@ describe('createCompressExtractController', () => {
     });
 
     it('passes fileName to showExtractModal', async () => {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="extract-modal" style="display:none">
           <span id="extract-modal-message"></span>
@@ -759,6 +765,7 @@ describe('createCompressExtractController', () => {
     });
 
     it('opens archive file entry with extract modal', async () => {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="extract-modal" style="display:none">
           <span id="extract-modal-message"></span>
@@ -805,6 +812,7 @@ describe('createCompressExtractController', () => {
     });
 
     it('does nothing when no archive path is set', async () => {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <input id="extract-destination-input" type="text" value="/dest" />
       `;
@@ -814,6 +822,7 @@ describe('createCompressExtractController', () => {
     });
 
     it('shows warning when destination is empty', async () => {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="extract-modal" style="display:flex">
           <span id="extract-modal-message"></span>
@@ -836,6 +845,7 @@ describe('createCompressExtractController', () => {
     });
 
     it('extracts archive successfully', async () => {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="extract-modal" style="display:flex">
           <span id="extract-modal-message"></span>
@@ -860,6 +870,7 @@ describe('createCompressExtractController', () => {
     });
 
     it('tracks recent files after successful extraction by default', async () => {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="extract-modal" style="display:flex">
           <span id="extract-modal-message"></span>
@@ -875,6 +886,7 @@ describe('createCompressExtractController', () => {
     });
 
     it('does not track recent files when trackRecent is false', async () => {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="extract-modal" style="display:flex">
           <span id="extract-modal-message"></span>
@@ -890,6 +902,7 @@ describe('createCompressExtractController', () => {
     });
 
     it('refreshes current directory after extraction if dest matches current path', async () => {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="extract-modal" style="display:flex">
           <span id="extract-modal-message"></span>
@@ -909,6 +922,7 @@ describe('createCompressExtractController', () => {
     });
 
     it('shows error when extraction fails', async () => {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="extract-modal" style="display:flex">
           <span id="extract-modal-message"></span>
@@ -933,6 +947,7 @@ describe('createCompressExtractController', () => {
     });
 
     it('shows generic error when extraction fails without error message', async () => {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="extract-modal" style="display:flex">
           <span id="extract-modal-message"></span>
@@ -954,6 +969,7 @@ describe('createCompressExtractController', () => {
     });
 
     it('handles extraction exception', async () => {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="extract-modal" style="display:flex">
           <span id="extract-modal-message"></span>
@@ -976,6 +992,7 @@ describe('createCompressExtractController', () => {
     });
 
     it('shows error for unsupported archive format', async () => {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="extract-modal" style="display:flex">
           <span id="extract-modal-message"></span>
@@ -996,6 +1013,7 @@ describe('createCompressExtractController', () => {
     });
 
     it('aborts early when operation is already aborted before extract call', async () => {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="extract-modal" style="display:flex">
           <span id="extract-modal-message"></span>
@@ -1013,6 +1031,7 @@ describe('createCompressExtractController', () => {
     });
 
     it('handles empty destination in handleExtract', async () => {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="extract-modal" style="display:flex">
           <span id="extract-modal-message"></span>
@@ -1041,6 +1060,7 @@ describe('createCompressExtractController', () => {
     });
 
     it('clears preview when baseFolder is empty', () => {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="extract-modal" style="display:none">
           <span id="extract-modal-message"></span>
@@ -1057,6 +1077,7 @@ describe('createCompressExtractController', () => {
     });
 
     it('shows preview path when baseFolder is given', () => {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="extract-modal" style="display:none">
           <span id="extract-modal-message"></span>
@@ -1073,6 +1094,7 @@ describe('createCompressExtractController', () => {
     });
 
     it('does nothing when no archive path is set', () => {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `<span id="extract-preview-path"></span>`;
       const ctrl = createCompressExtractController(deps as any);
       ctrl.updateExtractPreview('/some/path');
@@ -1085,6 +1107,7 @@ describe('createCompressExtractController', () => {
 
   describe('setupCompressOptionsModal', () => {
     function createFullCompressModalDOM() {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="compress-options-modal" style="display:none">
           <input id="compress-archive-name" type="text" value="test.7z" />
@@ -1385,6 +1408,7 @@ describe('createCompressExtractController', () => {
 
   describe('confirmCompressOptions', () => {
     function createFullCompressModalDOM() {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="compress-options-modal" style="display:none">
           <input id="compress-archive-name" type="text" value="test.7z" />
@@ -1829,6 +1853,7 @@ describe('createCompressExtractController', () => {
 
   describe('updateCompressOptionsVisibility (via format changes)', () => {
     function createVisibilityDOM() {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="compress-options-modal" style="display:none">
           <input id="compress-archive-name" type="text" value="test.7z" />
@@ -2018,6 +2043,7 @@ describe('createCompressExtractController', () => {
 
   describe('updateCompressPreviewPath', () => {
     function createPreviewDOM() {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="compress-options-modal">
           <input id="compress-archive-name" type="text" value="" />
@@ -2060,6 +2086,7 @@ describe('createCompressExtractController', () => {
   describe('joinFilePath on Windows platform', () => {
     it('uses backslashes for Windows paths in extract preview', () => {
       deps.isWindowsPlatform.mockReturnValue(true);
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="extract-modal" style="display:none">
           <span id="extract-modal-message"></span>
@@ -2078,6 +2105,7 @@ describe('createCompressExtractController', () => {
 
     it('handles forward slashes in Windows context', () => {
       deps.isWindowsPlatform.mockReturnValue(true);
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="extract-modal" style="display:none">
           <span id="extract-modal-message"></span>
@@ -2096,6 +2124,7 @@ describe('createCompressExtractController', () => {
 
   describe('handleExtract progress handler', () => {
     it('registers and cleans up extract progress handler', async () => {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="extract-modal" style="display:flex">
           <span id="extract-modal-message"></span>
@@ -2114,6 +2143,7 @@ describe('createCompressExtractController', () => {
     });
 
     it('extract progress handler updates operation', async () => {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="extract-modal" style="display:flex">
           <span id="extract-modal-message"></span>
@@ -2144,6 +2174,7 @@ describe('createCompressExtractController', () => {
     });
 
     it('extract progress handler ignores different operationIds', async () => {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="extract-modal" style="display:flex">
           <span id="extract-modal-message"></span>
@@ -2174,6 +2205,7 @@ describe('createCompressExtractController', () => {
     });
 
     it('extract progress handler skips update when aborted', async () => {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="extract-modal" style="display:flex">
           <span id="extract-modal-message"></span>
@@ -2212,6 +2244,7 @@ describe('createCompressExtractController', () => {
 
   describe('getArchiveBaseName (tested indirectly through extract)', () => {
     it('strips .tar.gz from archive name in extract path', async () => {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="extract-modal" style="display:flex">
           <span id="extract-modal-message"></span>
@@ -2234,6 +2267,7 @@ describe('createCompressExtractController', () => {
     });
 
     it('strips .zip from archive name in extract path', async () => {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="extract-modal" style="display:flex">
           <span id="extract-modal-message"></span>
@@ -2251,6 +2285,7 @@ describe('createCompressExtractController', () => {
     });
 
     it('sanitizes dangerous archive base names in extract path', async () => {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="extract-modal" style="display:flex">
           <span id="extract-modal-message"></span>

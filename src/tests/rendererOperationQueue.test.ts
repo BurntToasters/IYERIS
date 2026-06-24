@@ -21,6 +21,7 @@ describe('createOperationQueueController', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     collapsed = false;
+    // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
     document.body.innerHTML = `
       <div id="progress-panel" style="display:none">
         <button id="progress-panel-close"></button>

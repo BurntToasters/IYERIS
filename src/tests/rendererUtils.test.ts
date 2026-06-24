@@ -227,7 +227,7 @@ describe('twemojiImg', () => {
   });
 
   it('escapes custom alt text in svg attributes', () => {
-    const result = twemojiImg('📁', 'twemoji', 'folder\" onload=\"alert(1)');
+    const result = twemojiImg('📁', 'twemoji', 'folder" onload="alert(1)');
     expect(result).toContain('aria-label="folder&quot; onload=&quot;alert(1)"');
     expect(result).not.toContain('onload="alert(1)');
   });

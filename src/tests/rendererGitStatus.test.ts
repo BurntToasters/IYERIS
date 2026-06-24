@@ -190,6 +190,7 @@ describe('rendererGitStatus', () => {
 
   describe('updateGitBranch', () => {
     it('displays branch name on success', async () => {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <span id="status-git-branch" style="display:none">
           <span id="status-git-branch-name"></span>
@@ -204,6 +205,7 @@ describe('rendererGitStatus', () => {
     });
 
     it('hides branch when git disabled', async () => {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <span id="status-git-branch" style="display:inline-flex">
           <span id="status-git-branch-name"></span>
@@ -218,6 +220,7 @@ describe('rendererGitStatus', () => {
     });
 
     it('hides branch on failure', async () => {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <span id="status-git-branch" style="display:inline-flex">
           <span id="status-git-branch-name"></span>
@@ -232,6 +235,7 @@ describe('rendererGitStatus', () => {
     });
 
     it('hides branch on exception', async () => {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <span id="status-git-branch" style="display:inline-flex">
           <span id="status-git-branch-name"></span>
@@ -255,6 +259,7 @@ describe('rendererGitStatus', () => {
     });
 
     it('hides when dirPath differs from currentPath', async () => {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <span id="status-git-branch" style="display:inline-flex">
           <span id="status-git-branch-name"></span>

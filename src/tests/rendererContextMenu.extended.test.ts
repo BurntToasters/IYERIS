@@ -553,6 +553,7 @@ function exposeOffsetParent(element: HTMLElement) {
 }
 
 function buildMenus() {
+  // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
   document.body.innerHTML = `
     <div id="context-menu" style="display:none;position:absolute">
       <div id="open-item" class="context-menu-item">Open</div>

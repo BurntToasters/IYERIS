@@ -304,6 +304,10 @@ export function createTabsController(deps: TabsDeps) {
     if (deps.getAllFiles().length <= MAX_CACHED_FILES_PER_TAB) {
       currentTab.cachedFiles = [...deps.getAllFiles()];
       updateTabCacheAccess(currentTab.id);
+    } else {
+      // Discard any stale cache so a switch-back triggers a fresh load
+      // instead of restoring files from a previously-visited smaller dir.
+      delete currentTab.cachedFiles;
     }
   }
 
@@ -681,7 +685,11 @@ export function createTabsController(deps: TabsDeps) {
     };
     dismissTimeoutId = setTimeout(() => {
       dismissTimeoutId = null;
-      document.addEventListener('mousedown', activeDismissHandler!, { once: true });
+      // Do NOT use { once: true }: a mousedown inside the menu (on a disabled
+      // item or chrome) would consume the listener without closing it, making
+      // the menu permanently undismissable. The listener removes itself via
+      // hideTabContextMenu when the target is actually outside the menu.
+      document.addEventListener('mousedown', activeDismissHandler!);
     }, 0);
   }
 

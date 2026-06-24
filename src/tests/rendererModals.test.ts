@@ -189,6 +189,7 @@ describe('rendererModals', () => {
 
   describe('showDialog', () => {
     function setupDialogDom() {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="dialog-modal" style="display:none">
           <span id="dialog-icon"></span>
@@ -272,6 +273,7 @@ describe('rendererModals', () => {
 
   describe('showAlert', () => {
     it('wraps showDialog with defaults', async () => {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="dialog-modal" style="display:none">
           <span id="dialog-icon"></span>
@@ -292,6 +294,7 @@ describe('rendererModals', () => {
 
   describe('showConfirm', () => {
     it('wraps showDialog with cancel visible', async () => {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="dialog-modal" style="display:none">
           <span id="dialog-icon"></span>
@@ -311,6 +314,7 @@ describe('rendererModals', () => {
     });
 
     it('returns true when OK clicked', async () => {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="dialog-modal" style="display:none">
           <span id="dialog-icon"></span>

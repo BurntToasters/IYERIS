@@ -121,7 +121,8 @@ export function createColumnViewController(deps: ColumnViewDeps) {
       const isWindows = isWindowsPath(deps.getCurrentPath());
 
       if (isWindows) {
-        const parts = deps.getCurrentPath().split('\\').filter(Boolean);
+        // Normalize forward-slashes so Windows paths like C:/foo work too.
+        const parts = deps.getCurrentPath().replace(/\//g, '\\').split('\\').filter(Boolean);
         for (let i = 0; i < parts.length; i++) {
           if (i === 0) {
             columnPaths.push(parts[0] + '\\');

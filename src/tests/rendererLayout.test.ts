@@ -291,6 +291,7 @@ describe('rendererLayout', () => {
 
   describe('setupSidebarSections', () => {
     it('toggles collapsed class on section toggle click', () => {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div class="sidebar-section" data-collapsible="true">
           <button class="section-toggle"></button>
@@ -345,6 +346,7 @@ describe('rendererLayout', () => {
     });
 
     it('calls changeSortMode on cell click', () => {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="list-header">
           <div class="list-header-cell" data-sort="name">Name</div>
@@ -360,6 +362,7 @@ describe('rendererLayout', () => {
     });
 
     it('calls changeSortMode on Enter keydown', () => {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="list-header">
           <div class="list-header-cell" data-sort="size">Size</div>
@@ -377,6 +380,7 @@ describe('rendererLayout', () => {
     });
 
     it('calls changeSortMode on Space keydown', () => {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="list-header">
           <div class="list-header-cell" data-sort="type">Type</div>
@@ -394,6 +398,7 @@ describe('rendererLayout', () => {
     });
 
     it('ignores click on resize handle', () => {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="list-header">
           <div class="list-header-cell" data-sort="name">
@@ -410,6 +415,7 @@ describe('rendererLayout', () => {
     });
 
     it('handles column resize mousedown/mousemove/mouseup', () => {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="list-header">
           <div class="list-header-cell" data-sort="type" style="width:200px">
