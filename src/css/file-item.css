@@ -590,3 +590,49 @@ body:not(.show-file-checkboxes) .file-checkbox {
 .file-item.has-thumbnail[data-thumbnail-type='pdf'] .file-thumbnail {
   object-fit: contain;
 }
+
+.file-item.animate-paste-in {
+  animation: pasteIn var(--operation-animate-duration, 80ms) ease-out forwards;
+}
+
+.file-item.animate-delete-out {
+  animation: deleteOut var(--operation-animate-duration, 60ms) ease-in forwards;
+}
+
+.file-item.animate-rename-flash {
+  animation: renameFlash var(--operation-animate-duration, 150ms) ease-in-out;
+}
+
+@keyframes pasteIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes deleteOut {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+
+@keyframes renameFlash {
+  0%,
+  100% {
+    border-color: transparent;
+    box-shadow: none;
+  }
+  50% {
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 1px var(--accent-color);
+  }
+}

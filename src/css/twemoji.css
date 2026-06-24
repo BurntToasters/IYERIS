@@ -175,3 +175,41 @@ body.themed-icons .twemoji:hover,
 body.themed-icons .lucide-icon:hover {
   opacity: 1;
 }
+
+/* Folder Icon Style Customizations */
+
+/* Outline (default): stroke-only, no fill */
+body.folder-style-outline .file-item[data-is-directory='true'] .file-icon svg,
+body.folder-style-outline .folder-tree-icon svg,
+body.folder-style-outline .nav-icon svg,
+body.folder-style-outline .bookmark-icon svg {
+  fill: none !important;
+}
+
+/* Filled: fill folder SVG with a light tint of its color (currentColor) */
+body.folder-style-filled .file-item[data-is-directory='true'] .file-icon svg,
+body.folder-style-filled .folder-tree-icon svg,
+body.folder-style-filled .nav-icon svg,
+body.folder-style-filled .bookmark-icon svg {
+  fill: currentColor !important;
+  fill-opacity: 0.16 !important;
+}
+
+/* Colored: apply a folder-blue or accent-color tint with fill */
+body.folder-style-colored .file-item[data-is-directory='true'] .file-icon svg,
+body.folder-style-colored .folder-tree-icon svg,
+body.folder-style-colored .nav-icon svg,
+body.folder-style-colored .bookmark-icon svg {
+  color: var(--accent-color, #007aff) !important;
+  fill: var(--accent-color, #007aff) !important;
+  fill-opacity: 0.16 !important;
+}
+
+/* Monochrome: neutral grey stroke and no fill */
+body.folder-style-monochrome .file-item[data-is-directory='true'] .file-icon svg,
+body.folder-style-monochrome .folder-tree-icon svg,
+body.folder-style-monochrome .nav-icon svg,
+body.folder-style-monochrome .bookmark-icon svg {
+  color: var(--text-secondary, #8e8e93) !important;
+  fill: none !important;
+}

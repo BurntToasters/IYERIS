@@ -46,6 +46,8 @@ export function createSettingsUiController(deps: SettingsUiDeps) {
     'max-preview-size-input': 'maxPreviewSizeMB',
     'grid-columns-select': 'gridColumns',
     'icon-size-slider': 'iconSize',
+    'nav-transition-duration-slider': 'navTransitionDuration',
+    'operation-animation-slider': 'operationAnimationDuration',
     'compact-file-info-toggle': 'compactFileInfo',
     'show-file-extensions-toggle': 'showFileExtensions',
     'reduce-motion-toggle': 'reduceMotion',
@@ -72,6 +74,7 @@ export function createSettingsUiController(deps: SettingsUiDeps) {
     'dangerous-options-toggle': 'showDangerousOptions',
     'enable-auto-checksum-toggle': 'enableAutoChecksum',
     'default-checksum-algo-select': 'defaultChecksumAlgorithm',
+    'folder-icon-style-select': 'folderIconStyle',
   };
 
   function setSuppressSettingsTracking(value: boolean) {
@@ -95,6 +98,22 @@ export function createSettingsUiController(deps: SettingsUiDeps) {
     const iconSizeValue = document.getElementById('icon-size-value');
     if (iconSizeSlider && iconSizeValue) {
       iconSizeValue.textContent = iconSizeSlider.value;
+    }
+
+    const navTransitionDurationSlider = document.getElementById(
+      'nav-transition-duration-slider'
+    ) as HTMLInputElement | null;
+    const navTransitionDurationValue = document.getElementById('nav-transition-duration-value');
+    if (navTransitionDurationSlider && navTransitionDurationValue) {
+      navTransitionDurationValue.textContent = navTransitionDurationSlider.value;
+    }
+
+    const operationAnimationSlider = document.getElementById(
+      'operation-animation-slider'
+    ) as HTMLInputElement | null;
+    const operationAnimationValue = document.getElementById('operation-animation-value');
+    if (operationAnimationSlider && operationAnimationValue) {
+      operationAnimationValue.textContent = operationAnimationSlider.value;
     }
 
     const dangerousOptionsToggle = document.getElementById(

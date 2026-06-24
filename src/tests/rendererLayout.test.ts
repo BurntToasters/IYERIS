@@ -161,7 +161,7 @@ describe('rendererLayout', () => {
       cfg.getCurrentSettings().previewPanelWidth = 50;
       ctrl.applyPreviewPanelWidth();
       expect(document.documentElement.style.getPropertyValue('--preview-panel-width')).toBe(
-        '200px'
+        '180px'
       );
     });
 

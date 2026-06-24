@@ -266,9 +266,36 @@ export function createTabsController(deps: TabsDeps) {
         ? deps.homeViewLabel
         : pathParts[pathParts.length - 1] || tab.path || 'New Tab';
       const tabTitle = isHomeTab ? deps.homeViewLabel : tab.path;
-      const tabIcon = isHomeTab
-        ? twemojiImg('home', 'twemoji')
-        : twemojiImg('folder-open', 'twemoji');
+
+      const isTabRootPath = (p: string): boolean => {
+        if (!p) return false;
+        if (p === '/') return true;
+        return /^[a-zA-Z]:[/\\]?$/.test(p);
+      };
+
+      let tabIcon: string;
+      if (isHomeTab) {
+        tabIcon = twemojiImg('home', 'twemoji');
+      } else if (isTabRootPath(tab.path)) {
+        tabIcon = twemojiImg('save', 'twemoji');
+      } else {
+        const lowerName = folderName.toLowerCase();
+        if (lowerName === 'desktop') {
+          tabIcon = twemojiImg('monitor', 'twemoji');
+        } else if (lowerName === 'documents') {
+          tabIcon = twemojiImg('file', 'twemoji');
+        } else if (lowerName === 'downloads') {
+          tabIcon = twemojiImg('download', 'twemoji');
+        } else if (lowerName === 'music') {
+          tabIcon = twemojiImg('music', 'twemoji');
+        } else if (lowerName === 'videos' || lowerName === 'movies') {
+          tabIcon = twemojiImg('video', 'twemoji');
+        } else if (lowerName === 'trash' || lowerName === '.trash') {
+          tabIcon = twemojiImg('trash-2', 'twemoji');
+        } else {
+          tabIcon = twemojiImg('folder-open', 'twemoji');
+        }
+      }
 
       // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
       tabElement.innerHTML = `

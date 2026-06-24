@@ -75,3 +75,18 @@ body.platform-darwin .ui-tooltip-arrow {
   border-right: none;
   border-top: none;
 }
+
+.tooltip-shortcut {
+  font-family: var(--font-mono, SFMono-Regular, Consolas, Menlo, monospace);
+  font-size: 9px;
+  color: var(--text-tertiary);
+  background: color-mix(in srgb, var(--surface-3) 40%, rgba(0, 0, 0, 0.2));
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  padding: 1px 4px;
+  margin-left: 6px;
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+  line-height: 1;
+}

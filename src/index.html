@@ -199,7 +199,14 @@
       <div class="main-content">
         <div class="toolbar glass-panel" role="toolbar" aria-label="Main toolbar">
           <div class="toolbar-left" role="group" aria-label="Navigation and selection">
-            <button class="toolbar-button" id="back-btn" title="Back" aria-label="Go back" disabled>
+            <button
+              class="toolbar-button"
+              id="back-btn"
+              title="Back"
+              aria-label="Go back"
+              data-shortcut-action="go-back"
+              disabled
+            >
               <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
                 <path
                   d="M10 2 L4 8 L10 14"
@@ -216,6 +223,7 @@
               id="forward-btn"
               title="Forward"
               aria-label="Go forward"
+              data-shortcut-action="go-forward"
               disabled
             >
               <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
@@ -234,6 +242,7 @@
               id="up-btn"
               title="Up"
               aria-label="Go to parent folder"
+              data-shortcut-action="go-up"
               disabled
             >
               <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
@@ -502,6 +511,7 @@
                 id="search-btn"
                 title="Search (Ctrl+F)"
                 aria-label="Search files"
+                data-shortcut-action="search"
               >
                 <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
                   <circle
@@ -542,6 +552,7 @@
                 id="refresh-btn"
                 title="Refresh (F5)"
                 aria-label="Refresh current folder"
+                data-shortcut-action="refresh"
               >
                 <svg width="16" height="16" viewBox="0 0 512 512" aria-hidden="true">
                   <g transform="translate(0 -540.36)">
@@ -570,6 +581,7 @@
                 id="new-file-btn"
                 title="New File"
                 aria-label="Create new file"
+                data-shortcut-action="new-file"
               >
                 <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
                   <path
@@ -599,6 +611,7 @@
                 id="new-folder-btn"
                 title="New Folder"
                 aria-label="Create new folder"
+                data-shortcut-action="new-folder"
               >
                 <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
                   <path
@@ -696,6 +709,14 @@
                   </svg>
                 </button>
               </div>
+              <div
+                class="sort-badge"
+                id="grid-sort-badge"
+                style="display: none"
+                title="Change sort direction"
+              >
+                <span id="grid-sort-badge-text">Name ▲</span>
+              </div>
               <button
                 class="toolbar-button"
                 id="view-toggle-btn"
@@ -714,6 +735,7 @@
                 id="preview-toggle-btn"
                 title="Toggle Preview Panel"
                 aria-label="Toggle preview panel"
+                data-shortcut-action="toggle-preview-panel"
                 aria-pressed="false"
               >
                 <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
@@ -744,6 +766,7 @@
                 id="settings-btn"
                 title="Settings"
                 aria-label="Open settings"
+                data-shortcut-action="settings"
               >
                 <span class="twemoji" data-icon="2699" alt="⚙️"></span>
               </button>
@@ -985,6 +1008,14 @@
             </div>
             <div class="utility-drawer-status" id="utility-drawer-status">No selection</div>
             <button
+              class="utility-customize-btn"
+              id="utility-customize-btn"
+              title="Customize Dashboard"
+            >
+              <span class="twemoji" data-icon="2699" alt="⚙️"></span>
+              <span>Customize</span>
+            </button>
+            <button
               class="utility-drawer-toggle-btn"
               id="utility-drawer-toggle-btn"
               aria-label="Toggle utility drawer"
@@ -1199,6 +1230,7 @@
         Preview PDF
       </button>
       <div class="context-menu-separator" role="separator"></div>
+      <div class="context-menu-group-label" aria-hidden="true">Clipboard</div>
       <button
         type="button"
         class="context-menu-item"
@@ -1332,6 +1364,7 @@
         </div>
       </div>
       <div class="context-menu-separator" role="separator"></div>
+      <div class="context-menu-group-label" aria-hidden="true">Transform</div>
       <div
         class="context-menu-item has-submenu"
         id="compress-item"
@@ -1414,6 +1447,7 @@
         Extract Here
       </button>
       <div class="context-menu-separator" role="separator"></div>
+      <div class="context-menu-group-label" aria-hidden="true">Manage</div>
       <button
         type="button"
         class="context-menu-item"
@@ -1446,6 +1480,7 @@
         <span class="context-menu-shortcut">Del</span>
       </button>
       <div class="context-menu-separator" role="separator"></div>
+      <div class="context-menu-group-label" aria-hidden="true">Extras</div>
       <button
         type="button"
         class="context-menu-item"
@@ -2213,6 +2248,21 @@
                 </div>
                 <div
                   class="setting-item"
+                  data-searchable="folder icon style appearance outline filled colored monochrome customization"
+                >
+                  <div class="setting-info">
+                    <label for="folder-icon-style-select">Folder Icon Style</label>
+                    <p class="setting-description">Select the visual appearance of folder icons</p>
+                  </div>
+                  <select id="folder-icon-style-select" class="settings-select">
+                    <option value="outline">Outline</option>
+                    <option value="filled">Filled</option>
+                    <option value="colored">Colored</option>
+                    <option value="monochrome">Monochrome</option>
+                  </select>
+                </div>
+                <div
+                  class="setting-item"
                   data-searchable="theme color scheme custom customize editor"
                 >
                   <div class="setting-info">
@@ -2638,6 +2688,48 @@
                     max="128"
                     step="8"
                     value="64"
+                  />
+                </div>
+                <div
+                  class="setting-item"
+                  data-searchable="navigation transition speed animation slider duration duration-ms"
+                >
+                  <div class="setting-info">
+                    <label for="nav-transition-duration-slider">Navigation Transition Speed</label>
+                    <p class="setting-description">
+                      Slide animation speed (0-400ms):
+                      <span id="nav-transition-duration-value">200</span>ms
+                    </p>
+                  </div>
+                  <input
+                    type="range"
+                    id="nav-transition-duration-slider"
+                    class="settings-slider"
+                    min="0"
+                    max="400"
+                    step="50"
+                    value="200"
+                  />
+                </div>
+                <div
+                  class="setting-item"
+                  data-searchable="file operation animation duration speed transition slider"
+                >
+                  <div class="setting-info">
+                    <label for="operation-animation-slider">File Operation Animation Speed</label>
+                    <p class="setting-description">
+                      Speed of file operation animations (0-200ms):
+                      <span id="operation-animation-value">100</span>ms
+                    </p>
+                  </div>
+                  <input
+                    type="range"
+                    id="operation-animation-slider"
+                    class="settings-slider"
+                    min="0"
+                    max="200"
+                    step="20"
+                    value="100"
                   />
                 </div>
                 <div class="setting-item" data-searchable="compact file info details small dense">

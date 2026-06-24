@@ -101,6 +101,25 @@ describe('createClipboardController', () => {
     expect(document.getElementById('status-clipboard-text')!.textContent).toBe('1 cut');
   });
 
+  it('keeps clipboard indicator hidden when status bar clipboard item is disabled', async () => {
+    const selected = new Set<string>(['/a']);
+    const fileMap = new Map<string, HTMLElement>([['/a', document.getElementById('file-a')!]]);
+    setupTauriApi();
+    const deps = createDeps(selected, fileMap);
+    deps.getCurrentSettings = () =>
+      ({
+        globalClipboard: true,
+        fileConflictBehavior: 'ask',
+        statusBarItems: { clipboard: false },
+      }) as never;
+    const controller = createClipboardController(deps);
+
+    controller.copyToClipboard();
+    await Promise.resolve();
+
+    expect(document.getElementById('status-clipboard')!.style.display).toBe('none');
+  });
+
   it('pastes local clipboard using copy operation', async () => {
     const selected = new Set<string>();
     const deps = createDeps(selected, new Map());
@@ -150,6 +169,28 @@ describe('createClipboardController', () => {
       'Success',
       'success'
     );
+  });
+
+  it('registers recently pasted system paths with destination separator style', async () => {
+    const selected = new Set<string>();
+    const deps = {
+      ...createDeps(selected, new Map()),
+      getCurrentPath: () => 'C:\\Dest',
+      registerRecentlyPastedPaths: vi.fn(),
+    };
+    const tauriApi = setupTauriApi({
+      getSystemClipboardData: vi.fn().mockResolvedValue({
+        operation: 'copy',
+        paths: ['C:\\Src\\a.txt'],
+      }),
+      copyItems: vi.fn().mockResolvedValue({ success: true }),
+    });
+    const controller = createClipboardController(deps);
+
+    await controller.pasteFromClipboard();
+
+    expect(tauriApi.copyItems).toHaveBeenCalledWith(['C:\\Src\\a.txt'], 'C:\\Dest', 'ask');
+    expect(deps.registerRecentlyPastedPaths).toHaveBeenCalledWith(['C:\\Dest\\a.txt']);
   });
 
   it('prevents moving to same destination folder', async () => {

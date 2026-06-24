@@ -1,12 +1,15 @@
 import type { Settings } from './types';
 import { formatFileSize } from './rendererFileIcons.js';
 import { isWindowsPath } from './rendererUtils.js';
-import { ignoreError } from './shared.js';
+import { ignoreError, escapeHtml } from './shared.js';
+import { DASHBOARD_WIDGET_KEYS } from './constants.js';
 
 type UtilityDrawerConfig = {
   getCurrentSettings: () => Settings;
   saveSettingsWithTimestamp: (settings: Settings) => Promise<unknown>;
   showToast: (message: string, title: string, type: 'success' | 'info' | 'error') => void;
+  getCurrentPath?: () => string;
+  navigateTo?: (path: string) => void;
 };
 
 export function createUtilityDrawerController(config: UtilityDrawerConfig) {
@@ -18,6 +21,8 @@ export function createUtilityDrawerController(config: UtilityDrawerConfig) {
   let platformOS = '';
   let inProgressChecksumId: string | null = null;
   let selectionRequestId = 0;
+  let storageRequestId = 0;
+  let isEditMode = false;
 
   // Cache elements
   const drawerEl = document.getElementById('utility-drawer');
@@ -25,6 +30,11 @@ export function createUtilityDrawerController(config: UtilityDrawerConfig) {
   const toggleBtn = document.getElementById('utility-drawer-toggle-btn');
   const bodyEl = document.getElementById('utility-drawer-body');
   const statusEl = document.getElementById('utility-drawer-status');
+
+  // Keep references to the original sections before we dynamically manipulate them
+  const originalMeta = bodyEl?.querySelector('.utility-meta-section') as HTMLElement | null;
+  const originalPerms = bodyEl?.querySelector('.utility-perms-section') as HTMLElement | null;
+  const originalChecksum = bodyEl?.querySelector('.utility-checksum-section') as HTMLElement | null;
 
   // Metadata elements
   const metaPathEl = document.getElementById('utility-meta-path');
@@ -76,7 +86,7 @@ export function createUtilityDrawerController(config: UtilityDrawerConfig) {
   ) as HTMLButtonElement | null;
 
   function init(): void {
-    if (!drawerEl || !headerEl) return;
+    if (!drawerEl || !headerEl || !bodyEl) return;
 
     // Detect platform OS early
     window.tauriAPI
@@ -95,14 +105,38 @@ export function createUtilityDrawerController(config: UtilityDrawerConfig) {
       checksumAlgoSelect.value = settings.defaultChecksumAlgorithm || 'sha256';
     }
 
+    // Detach the original sections initially so we can lay them out inside the quick-info card
+    if (originalMeta) originalMeta.remove();
+    if (originalPerms) originalPerms.remove();
+    if (originalChecksum) originalChecksum.remove();
+
     // Bind Expand/Collapse click events
     headerEl.addEventListener('click', (e) => {
-      // Prevent collapse if clicking the chevron button or inside header buttons
-      if ((e.target as HTMLElement).closest('.utility-drawer-toggle-btn')) return;
+      // Prevent collapse if clicking the chevron button, customize button, or inside header buttons
+      if (
+        (e.target as HTMLElement).closest('.utility-drawer-toggle-btn') ||
+        (e.target as HTMLElement).closest('.utility-customize-btn')
+      )
+        return;
       toggleDrawer();
     });
 
     toggleBtn?.addEventListener('click', toggleDrawer);
+
+    // Bind customize dashboard button
+    const customizeBtn = document.getElementById('utility-customize-btn');
+    customizeBtn?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      isEditMode = !isEditMode;
+      if (isEditMode) {
+        customizeBtn.classList.add('active');
+        drawerEl.classList.add('edit-mode');
+      } else {
+        customizeBtn.classList.remove('active');
+        drawerEl.classList.remove('edit-mode');
+      }
+      renderWidgets();
+    });
 
     // Bind path copy buttons
     copyPathBtn?.addEventListener('click', () => {
@@ -175,6 +209,17 @@ export function createUtilityDrawerController(config: UtilityDrawerConfig) {
       }
     });
 
+    // Listen for recent operations changes to dynamically update that widget
+    document.addEventListener('recent-operations-changed', () => {
+      const contentEl = bodyEl.querySelector('.recent-operations-content') as HTMLElement | null;
+      if (contentEl) {
+        renderRecentOperations(contentEl);
+      }
+    });
+
+    // Render dashboard widgets
+    renderWidgets();
+
     // Make drawer visible
     drawerEl.style.display = 'flex';
   }
@@ -198,6 +243,369 @@ export function createUtilityDrawerController(config: UtilityDrawerConfig) {
     settings.utilityDrawerCollapsed = nextState;
     setCollapsedState(nextState);
     config.saveSettingsWithTimestamp(settings).catch(ignoreError);
+  }
+
+  // Dashboard layout rendering
+  const ALL_POSSIBLE_WIDGETS = [...DASHBOARD_WIDGET_KEYS];
+  const POSSIBLE_WIDGET_SET = new Set<string>(ALL_POSSIBLE_WIDGETS);
+
+  function getActiveWidgets(settings: Settings): string[] {
+    const active = (settings.dashboardWidgets || ALL_POSSIBLE_WIDGETS).filter(
+      (widget, index, widgets) =>
+        POSSIBLE_WIDGET_SET.has(widget) && widgets.indexOf(widget) === index
+    );
+    return active.length > 0 ? active : [...ALL_POSSIBLE_WIDGETS];
+  }
+
+  function friendlyWidgetName(key: string): string {
+    switch (key) {
+      case 'quick-info':
+        return 'Quick Info';
+      case 'recent-operations':
+        return 'Recent Operations';
+      case 'storage-overview':
+        return 'Storage Overview';
+      case 'favorites':
+        return 'Favorites';
+      default:
+        return key;
+    }
+  }
+
+  function renderWidgets(): void {
+    if (!bodyEl) return;
+    bodyEl.innerHTML = '';
+
+    const settings = config.getCurrentSettings();
+    const activeWidgets = getActiveWidgets(settings);
+
+    activeWidgets.forEach((widgetKey, idx) => {
+      const card = document.createElement('div');
+      card.className = `utility-widget-card ${widgetKey}-card`;
+      card.dataset.widget = widgetKey;
+      if (isEditMode) {
+        card.classList.add('edit-active');
+      }
+
+      // Card Header
+      const header = document.createElement('div');
+      header.className = 'utility-widget-header';
+
+      const title = document.createElement('span');
+      title.className = 'widget-title';
+      title.textContent = friendlyWidgetName(widgetKey);
+      header.appendChild(title);
+
+      // Edit controls
+      if (isEditMode) {
+        const controls = document.createElement('div');
+        controls.className = 'widget-controls';
+
+        const leftBtn = document.createElement('button');
+        leftBtn.className = 'widget-control-btn btn-left';
+        leftBtn.innerHTML = '◀';
+        leftBtn.title = 'Move Left';
+        if (idx === 0) leftBtn.disabled = true;
+        leftBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          moveWidget(widgetKey, -1);
+        });
+
+        const rightBtn = document.createElement('button');
+        rightBtn.className = 'widget-control-btn btn-right';
+        rightBtn.innerHTML = '▶';
+        rightBtn.title = 'Move Right';
+        if (idx === activeWidgets.length - 1) rightBtn.disabled = true;
+        rightBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          moveWidget(widgetKey, 1);
+        });
+
+        const removeBtn = document.createElement('button');
+        removeBtn.className = 'widget-control-btn btn-remove';
+        removeBtn.innerHTML = '✕';
+        removeBtn.title = 'Remove Widget';
+        removeBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          removeWidget(widgetKey);
+        });
+
+        controls.appendChild(leftBtn);
+        controls.appendChild(rightBtn);
+        controls.appendChild(removeBtn);
+        header.appendChild(controls);
+      }
+
+      card.appendChild(header);
+
+      // Card Content
+      const content = document.createElement('div');
+      content.className = `utility-widget-content ${widgetKey}-content`;
+
+      if (widgetKey === 'quick-info') {
+        content.style.display = 'flex';
+        content.style.gap = 'var(--spacing-xxl)';
+        content.style.flex = '1';
+        content.style.minHeight = '0';
+        if (originalMeta) content.appendChild(originalMeta);
+        if (originalPerms) content.appendChild(originalPerms);
+        if (originalChecksum) content.appendChild(originalChecksum);
+      } else if (widgetKey === 'recent-operations') {
+        renderRecentOperations(content);
+      } else if (widgetKey === 'storage-overview') {
+        renderStorageOverview(content);
+      } else if (widgetKey === 'favorites') {
+        renderFavorites(content);
+      }
+
+      card.appendChild(content);
+      bodyEl.appendChild(card);
+    });
+
+    // Render "Add Widgets" panel at the end of the scroll container in Edit Mode
+    if (isEditMode) {
+      const inactiveWidgets = ALL_POSSIBLE_WIDGETS.filter((w) => !activeWidgets.includes(w));
+      if (inactiveWidgets.length > 0) {
+        const addCard = document.createElement('div');
+        addCard.className = 'utility-widget-card add-widgets-card';
+        addCard.style.width = '250px';
+        addCard.style.minWidth = '250px';
+
+        const addHeader = document.createElement('div');
+        addHeader.className = 'utility-widget-header';
+        const addTitle = document.createElement('span');
+        addTitle.className = 'widget-title';
+        addTitle.textContent = 'Add Widgets';
+        addHeader.appendChild(addTitle);
+        addCard.appendChild(addHeader);
+
+        const addContent = document.createElement('div');
+        addContent.className = 'utility-widget-content add-widgets-content';
+        addContent.style.display = 'flex';
+        addContent.style.flexDirection = 'column';
+        addContent.style.gap = '8px';
+        addContent.style.justifyContent = 'center';
+        addContent.style.height = '100%';
+
+        inactiveWidgets.forEach((widgetKey) => {
+          const btn = document.createElement('button');
+          btn.className = 'drawer-action-btn';
+          btn.textContent = `+ ${friendlyWidgetName(widgetKey)}`;
+          btn.addEventListener('click', () => {
+            addWidget(widgetKey);
+          });
+          addContent.appendChild(btn);
+        });
+
+        addCard.appendChild(addContent);
+        bodyEl.appendChild(addCard);
+      }
+    }
+  }
+
+  function getOpIconEmoji(kind: string): string {
+    switch (kind) {
+      case 'copy':
+        return '📄';
+      case 'move':
+        return '📦';
+      case 'delete':
+        return '🗑️';
+      case 'duplicate':
+        return '👥';
+      case 'compress':
+        return '🤐';
+      case 'extract':
+        return '📂';
+      case 'checksum':
+        return '🔑';
+      default:
+        return '⚙️';
+    }
+  }
+
+  function renderRecentOperations(contentEl: HTMLElement): void {
+    const win = window as unknown as {
+      recentOperations?: Array<{
+        id: string;
+        kind: string;
+        name: string;
+        status: string;
+        timestamp: number;
+      }>;
+    };
+    const ops = win.recentOperations || [];
+    if (ops.length === 0) {
+      contentEl.innerHTML = '<div class="empty-widget-state">No recent operations</div>';
+      return;
+    }
+
+    contentEl.innerHTML = '';
+    const list = document.createElement('div');
+    list.className = 'recent-ops-list';
+
+    ops.slice(0, 5).forEach((op) => {
+      const item = document.createElement('div');
+      item.className = 'recent-op-item';
+
+      const icon = document.createElement('span');
+      icon.className = 'op-icon twemoji';
+      icon.innerHTML = getOpIconEmoji(op.kind);
+
+      const details = document.createElement('div');
+      details.className = 'op-details';
+
+      const name = document.createElement('div');
+      name.className = 'op-name';
+      name.textContent = op.name;
+
+      const status = document.createElement('span');
+      status.className = `op-status status-${op.status}`;
+      status.textContent = op.status;
+
+      details.appendChild(name);
+      details.appendChild(status);
+      item.appendChild(icon);
+      item.appendChild(details);
+
+      list.appendChild(item);
+    });
+
+    contentEl.appendChild(list);
+  }
+
+  function renderStorageOverview(contentEl: HTMLElement): void {
+    const reqId = ++storageRequestId;
+    const currentPath = activeItemPath || (config.getCurrentPath ? config.getCurrentPath() : '/');
+    window.tauriAPI
+      .getDiskSpace(currentPath)
+      .then((res) => {
+        if (reqId !== storageRequestId) return;
+        if (
+          res.success &&
+          typeof res.total === 'number' &&
+          typeof res.free === 'number' &&
+          res.total > 0
+        ) {
+          const freeStr = formatFileSize(res.free);
+          const totalStr = formatFileSize(res.total);
+          const used = res.total - res.free;
+          const usedStr = formatFileSize(used);
+          const percent = ((used / res.total) * 100).toFixed(1);
+          const percentNumeric = parseFloat(percent);
+
+          const usageState =
+            percentNumeric > 90 ? 'critical' : percentNumeric > 80 ? 'warning' : 'healthy';
+
+          const escapedPath = escapeHtml(currentPath);
+          // eslint-disable-next-line no-restricted-syntax -- escaped via escapeHtml(); rest is static markup
+          contentEl.innerHTML = `
+            <div class="storage-widget-details">
+              <div class="storage-path" title="${escapedPath}">Volume: <code>${escapedPath}</code></div>
+              <div class="storage-text">${freeStr} free of ${totalStr}</div>
+              <div class="storage-progress-bar">
+                <div class="storage-progress-fill ${usageState}" style="width: ${percent}%"></div>
+              </div>
+              <div class="storage-percent">${percent}% used (${usedStr} used)</div>
+            </div>
+          `;
+        } else {
+          contentEl.innerHTML = '<div class="empty-widget-state">Storage info unavailable</div>';
+        }
+      })
+      .catch(() => {
+        if (reqId !== storageRequestId) return;
+        contentEl.innerHTML = '<div class="empty-widget-state">Storage info unavailable</div>';
+      });
+  }
+
+  function renderFavorites(contentEl: HTMLElement): void {
+    const settings = config.getCurrentSettings();
+    const bookmarks = settings.bookmarks || [];
+    if (bookmarks.length === 0) {
+      contentEl.innerHTML = '<div class="empty-widget-state">No favorites saved</div>';
+      return;
+    }
+
+    contentEl.innerHTML = '';
+    const list = document.createElement('div');
+    list.className = 'favorites-list';
+
+    bookmarks.forEach((path) => {
+      const item = document.createElement('div');
+      item.className = 'favorite-item';
+      item.title = path;
+
+      const icon = document.createElement('span');
+      icon.className = 'favorite-icon twemoji';
+      icon.innerHTML = '⭐';
+
+      const name = document.createElement('span');
+      name.className = 'favorite-name';
+      const parts = path.split(/[\\/]/);
+      name.textContent = parts[parts.length - 1] || path;
+
+      item.appendChild(icon);
+      item.appendChild(name);
+
+      item.addEventListener('click', () => {
+        if (config.navigateTo) {
+          config.navigateTo(path);
+        }
+      });
+
+      list.appendChild(item);
+    });
+
+    contentEl.appendChild(list);
+  }
+
+  function removeWidget(key: string): void {
+    const settings = config.getCurrentSettings();
+    settings.dashboardWidgets = getActiveWidgets(settings).filter((w) => w !== key);
+    config
+      .saveSettingsWithTimestamp(settings)
+      .then(() => {
+        renderWidgets();
+      })
+      .catch(ignoreError);
+  }
+
+  function moveWidget(key: string, direction: number): void {
+    const settings = config.getCurrentSettings();
+    const list = getActiveWidgets(settings);
+    const index = list.indexOf(key);
+    if (index === -1) return;
+    const targetIndex = index + direction;
+    if (targetIndex < 0 || targetIndex >= list.length) return;
+
+    const temp = list[index]!;
+    list[index] = list[targetIndex]!;
+    list[targetIndex] = temp;
+
+    settings.dashboardWidgets = list;
+    config
+      .saveSettingsWithTimestamp(settings)
+      .then(() => {
+        renderWidgets();
+      })
+      .catch(ignoreError);
+  }
+
+  function addWidget(key: string): void {
+    const settings = config.getCurrentSettings();
+    const list = getActiveWidgets(settings);
+    if (!POSSIBLE_WIDGET_SET.has(key)) return;
+    if (!list.includes(key)) {
+      list.push(key);
+    }
+    settings.dashboardWidgets = list;
+    config
+      .saveSettingsWithTimestamp(settings)
+      .then(() => {
+        renderWidgets();
+      })
+      .catch(ignoreError);
   }
 
   // Update selection bindings
@@ -228,6 +636,14 @@ export function createUtilityDrawerController(config: UtilityDrawerConfig) {
       if (placeholderEl) placeholderEl.style.display = 'flex';
       if (checksumValueArea) checksumValueArea.value = '';
 
+      // Update storage overview if widget is active
+      const storageContent = bodyEl?.querySelector(
+        '.storage-overview-content'
+      ) as HTMLElement | null;
+      if (storageContent) {
+        renderStorageOverview(storageContent);
+      }
+
       return;
     }
 
@@ -239,6 +655,12 @@ export function createUtilityDrawerController(config: UtilityDrawerConfig) {
 
     // Enable path utility actions
     toggleButtonsState(false);
+
+    // Update storage overview if widget is active to reflect the selected item's volume
+    const storageContent = bodyEl?.querySelector('.storage-overview-content') as HTMLElement | null;
+    if (storageContent) {
+      renderStorageOverview(storageContent);
+    }
 
     // Call properties query
     window.tauriAPI

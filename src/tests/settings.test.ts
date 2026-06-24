@@ -100,6 +100,13 @@ describe('createDefaultSettings', () => {
     expect(settings.folderIcons).toEqual({});
   });
 
+  it('has correct default transition, animation durations and folder icon style', () => {
+    const settings = createDefaultSettings();
+    expect(settings.navTransitionDuration).toBe(200);
+    expect(settings.operationAnimationDuration).toBe(100);
+    expect(settings.folderIconStyle).toBe('outline');
+  });
+
   it('returns a new object each time', () => {
     const settings1 = createDefaultSettings();
     const settings2 = createDefaultSettings();

@@ -82,6 +82,27 @@ function applyCssVariables(settings: Settings): void {
   } else {
     document.documentElement.style.removeProperty('--icon-size-grid');
   }
+
+  if (typeof settings.navTransitionDuration === 'number' && settings.navTransitionDuration >= 0) {
+    document.documentElement.style.setProperty(
+      '--nav-transition-duration',
+      `${settings.navTransitionDuration}ms`
+    );
+  } else {
+    document.documentElement.style.removeProperty('--nav-transition-duration');
+  }
+
+  if (
+    typeof settings.operationAnimationDuration === 'number' &&
+    settings.operationAnimationDuration >= 0
+  ) {
+    document.documentElement.style.setProperty(
+      '--operation-animate-duration',
+      `${settings.operationAnimationDuration}ms`
+    );
+  } else {
+    document.documentElement.style.removeProperty('--operation-animate-duration');
+  }
 }
 
 function applyClassToggles(settings: Settings): void {
@@ -96,4 +117,13 @@ export function applyAppearance(settings: Settings, deps: AppearanceDeps): void 
   applyDensity(settings);
   applyCssVariables(settings);
   applyPreviewPanelPosition(settings);
+
+  const folderStyle = settings.folderIconStyle || 'outline';
+  document.body.classList.remove(
+    'folder-style-outline',
+    'folder-style-filled',
+    'folder-style-colored',
+    'folder-style-monochrome'
+  );
+  document.body.classList.add(`folder-style-${folderStyle}`);
 }

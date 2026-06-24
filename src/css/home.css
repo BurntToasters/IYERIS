@@ -76,10 +76,38 @@
 .home-item:hover {
   background: var(--interactive-hover);
   color: var(--text-primary);
+  transform: scale(1.02);
 }
 
 .home-item:active {
   background: var(--interactive-active);
+  transform: scale(0.99);
+}
+
+/* Per-action color tints for Quick Access icons */
+.home-item[data-home-color='blue'] .home-item-icon {
+  color: #3b82f6;
+}
+.home-item[data-home-color='purple'] .home-item-icon {
+  color: #a78bfa;
+}
+.home-item[data-home-color='amber'] .home-item-icon {
+  color: #f59e0b;
+}
+.home-item[data-home-color='green'] .home-item-icon {
+  color: #22c55e;
+}
+.home-item[data-home-color='pink'] .home-item-icon {
+  color: #ec4899;
+}
+.home-item[data-home-color='red'] .home-item-icon {
+  color: #ef4444;
+}
+.home-item[data-home-color='teal'] .home-item-icon {
+  color: #14b8a6;
+}
+.home-item[data-home-color='gray'] .home-item-icon {
+  color: var(--text-tertiary);
 }
 
 .home-item:focus-visible {

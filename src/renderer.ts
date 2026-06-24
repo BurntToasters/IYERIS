@@ -43,6 +43,7 @@ import { createStatusBarController } from './rendererStatusBar.js';
 import { createRecentFilesController } from './rendererRecentFiles.js';
 import { createSidebarController } from './rendererSidebar.js';
 import { isOneOf } from './constants.js';
+import { renderSkeleton, clearSkeleton } from './rendererSkeleton.js';
 
 const fileElementMap: Map<string, HTMLElement> = new Map();
 let utilityDrawerController: ReturnType<typeof createUtilityDrawerController> | null = null;
@@ -121,6 +122,8 @@ let historyIndex: number = -1;
 let selectedItems: Set<string> = new Set();
 let primaryPaneSelectedItems: Set<string> = new Set();
 let secondaryPaneSelectedItems: Set<string> = new Set();
+let recentlyPastedPaths: Set<string> = new Set();
+let recentlyRenamedPath: string | null = null;
 let selectedItemsSizeBytes = 0;
 let selectedItemsSizeDirty = true;
 let viewMode: ViewMode = 'grid';
@@ -506,6 +509,9 @@ const statusBarController = createStatusBarController({
   getSearchStatusText: () => getSearchStatusText(),
   syncDualPaneControls: () => syncDualPaneControls(),
   updateUtilitySelection: (p) => utilityDrawerController?.updateSelection(p),
+  saveSettings: () => debouncedSaveSettings(),
+  updateGitBranch: (p) => updateGitBranch(p),
+  updateClipboardIndicator: () => clipboardController.updateClipboardIndicator(),
 });
 const { update: updateStatusBar } = statusBarController;
 
@@ -895,6 +901,7 @@ function setHomeViewActive(active: boolean): void {
       .querySelectorAll('button')
       .forEach((button) => ((button as HTMLButtonElement).disabled = disableFileActions));
   }
+  updateSortIndicators();
 }
 
 const bootstrapController = createBootstrapController({
@@ -1182,6 +1189,33 @@ function showFileViewError(message: string): void {
   if (el) el.style.display = 'flex';
 }
 
+function detectNavigationDirection(oldPath: string, newPath: string, trigger: string): boolean {
+  if (trigger === 'back') return false;
+  if (trigger === 'forward') return true;
+  if (trigger === 'up') return false;
+
+  if (isHomeViewPath(newPath)) return false;
+  if (isHomeViewPath(oldPath)) return true;
+
+  const cleanOld = oldPath.replace(/\\/g, '/').replace(/\/$/, '');
+  const cleanNew = newPath.replace(/\\/g, '/').replace(/\/$/, '');
+
+  if (cleanNew.startsWith(cleanOld + '/')) {
+    return true;
+  }
+  if (cleanOld.startsWith(cleanNew + '/')) {
+    return false;
+  }
+
+  const oldSegments = cleanOld.split('/').filter(Boolean);
+  const newSegments = cleanNew.split('/').filter(Boolean);
+  if (newSegments.length !== oldSegments.length) {
+    return newSegments.length > oldSegments.length;
+  }
+
+  return true;
+}
+
 async function navigateTo(path: string, skipHistoryUpdate = false, trigger = 'direct') {
   if (!path) {
     devLog('Navigate', 'Ignored empty navigation request', { trigger });
@@ -1214,6 +1248,7 @@ async function navigateTo(path: string, skipHistoryUpdate = false, trigger = 'di
 
       hideLoading();
 
+      const isForward = detectNavigationDirection(currentPath, path, trigger);
       currentPath = HOME_VIEW_PATH;
       updateCurrentTabPath(path);
       if (addressInput) addressInput.value = HOME_VIEW_LABEL;
@@ -1227,6 +1262,12 @@ async function navigateTo(path: string, skipHistoryUpdate = false, trigger = 'di
 
       updateNavigationButtons();
       setHomeViewActive(true);
+
+      if (homeView && trigger !== 'tab') {
+        homeView.classList.remove('nav-forward', 'nav-back');
+        void homeView.offsetWidth; // Force reflow
+        homeView.classList.add(isForward ? 'nav-forward' : 'nav-back');
+      }
       announceToScreenReader('Home view');
       devLog('Navigate', `[${navigationId}] completed`, {
         source: 'home',
@@ -1255,7 +1296,13 @@ async function navigateTo(path: string, skipHistoryUpdate = false, trigger = 'di
 
     showLoading('Loading folder...');
     hideFileViewError();
-    if (fileGrid) fileGrid.replaceChildren();
+    if (fileGrid) {
+      if (viewMode === 'grid' || viewMode === 'list') {
+        renderSkeleton(fileGrid, viewMode);
+      } else {
+        fileGrid.replaceChildren();
+      }
+    }
     const request = startDirectoryRequest(path);
     requestId = request.requestId;
     devLog('Navigate', `[${navigationId}] directory request`, {
@@ -1290,6 +1337,7 @@ async function navigateTo(path: string, skipHistoryUpdate = false, trigger = 'di
       return;
     }
 
+    const isForward = detectNavigationDirection(currentPath, path, trigger);
     currentPath = path;
     updateCurrentTabPath(path);
     if (addressInput) addressInput.value = path;
@@ -1317,6 +1365,39 @@ async function navigateTo(path: string, skipHistoryUpdate = false, trigger = 'di
     } else {
       renderFiles(result.contents || []);
       invalidateFileItemsCache();
+    }
+
+    if (fileView && trigger !== 'tab') {
+      fileView.classList.remove('nav-forward', 'nav-back');
+      void fileView.offsetWidth; // Force reflow
+      fileView.classList.add(isForward ? 'nav-forward' : 'nav-back');
+    }
+
+    // Trigger paste-in and rename-flash micro-animations
+    if (recentlyPastedPaths.size > 0) {
+      recentlyPastedPaths.forEach((p) => {
+        const itemEl = document.querySelector<HTMLElement>(`[data-path="${CSS.escape(p)}"]`);
+        if (itemEl) {
+          itemEl.classList.add('animate-paste-in');
+          setTimeout(() => {
+            itemEl.classList.remove('animate-paste-in');
+          }, 400);
+        }
+      });
+      recentlyPastedPaths.clear();
+    }
+
+    if (recentlyRenamedPath) {
+      const itemEl = document.querySelector<HTMLElement>(
+        `[data-path="${CSS.escape(recentlyRenamedPath)}"]`
+      );
+      if (itemEl) {
+        itemEl.classList.add('animate-rename-flash');
+        setTimeout(() => {
+          itemEl.classList.remove('animate-rename-flash');
+        }, 600);
+      }
+      recentlyRenamedPath = null;
     }
     devLog('Navigate', `[${navigationId}] render complete`, {
       path,
@@ -1358,6 +1439,7 @@ async function navigateTo(path: string, skipHistoryUpdate = false, trigger = 'di
     const isCurrentRequest = directoryLoader.isCurrentRequest(requestId);
     finishDirectoryRequest(requestId);
     if (isCurrentRequest) {
+      if (fileGrid) clearSkeleton(fileGrid);
       hideLoading();
       isNavigating = false;
       devLog('Navigate', `[${navigationId}] finalized`, {
@@ -1412,6 +1494,8 @@ utilityDrawerController = createUtilityDrawerController({
   getCurrentSettings: () => currentSettings,
   saveSettingsWithTimestamp: (settings) => saveSettingsWithTimestamp(settings),
   showToast: (m, t, ty) => showToast(m, t, ty as 'success' | 'error' | 'info' | 'warning'),
+  getCurrentPath: () => currentPath,
+  navigateTo: (p) => navigateTo(p),
 });
 
 const fileGridEventsController = createFileGridEventsController({
@@ -1474,6 +1558,7 @@ async function deleteSelected(permanent = false) {
   }
 
   const itemsSnapshot = Array.from(selectedItems);
+
   const operationId = generateOperationId();
   addOperation(operationId, 'delete', `${count} item${plural}${permanent ? ' permanently' : ''}`, {
     cancellable: true,
@@ -1549,11 +1634,19 @@ async function deleteSelected(permanent = false) {
         } else {
           completeOperation(operationId, 'done');
         }
-        refresh(effectivePermanent ? 'delete-selected-permanent' : 'delete-selected');
+        refreshAfterDeleteAnimation(
+          permissionFailedPaths,
+          effectivePermanent ? 'delete-selected-permanent' : 'delete-selected'
+        );
         return;
       }
       completeOperation(operationId, 'failed', elevResult.error || 'Elevated delete failed');
       showToast(elevResult.error || 'Elevated delete failed', 'Error', 'error');
+      refresh(
+        permanent || needsPermanentFallback
+          ? 'delete-selected-permanent-failed'
+          : 'delete-selected-failed'
+      );
       return;
     }
   }
@@ -1582,7 +1675,14 @@ async function deleteSelected(permanent = false) {
     } else {
       showToast(msg, 'Success', 'success');
     }
-    refresh(permanent ? 'delete-selected-permanent' : 'delete-selected');
+    const successfulPaths = processedPaths.filter((_path, index) => {
+      const result = allResults[index];
+      return result?.status === 'fulfilled' && result.value.success;
+    });
+    refreshAfterDeleteAnimation(
+      successfulPaths,
+      permanent ? 'delete-selected-permanent' : 'delete-selected'
+    );
   }
   if (cancelled) {
     completeOperation(
@@ -1604,6 +1704,27 @@ async function deleteSelected(permanent = false) {
   } else {
     completeOperation(operationId, 'done');
   }
+}
+
+function refreshAfterDeleteAnimation(paths: string[], reason: string): void {
+  const duration =
+    typeof currentSettings.operationAnimationDuration === 'number'
+      ? currentSettings.operationAnimationDuration
+      : 100;
+  const shouldAnimate =
+    duration > 0 &&
+    !document.body.classList.contains('reduce-motion') &&
+    !document.body.classList.contains('performance-mode');
+  if (!shouldAnimate || paths.length === 0) {
+    refresh(reason);
+    return;
+  }
+
+  paths.forEach((p) => {
+    const itemEl = fileGrid?.querySelector<HTMLElement>(`[data-path="${CSS.escape(p)}"]`);
+    itemEl?.classList.add('animate-delete-out');
+  });
+  window.setTimeout(() => refresh(reason), Math.min(duration, 200));
 }
 
 async function updateUndoRedoState() {
@@ -1766,7 +1887,7 @@ function navigateHistory(delta: -1 | 1): void {
   const nextIndex = historyIndex + delta;
   if (nextIndex < 0 || nextIndex >= history.length) return;
   historyIndex = nextIndex;
-  void navigateTo(history[historyIndex]!, true);
+  void navigateTo(history[historyIndex]!, true, delta === -1 ? 'back' : 'forward');
 }
 
 function goBack() {
@@ -1795,7 +1916,7 @@ function goUp() {
   if (isRootPath(currentPath)) return;
   const parentPath = path.dirname(currentPath);
   if (!parentPath) return;
-  navigateTo(parentPath);
+  navigateTo(parentPath, false, 'up');
 }
 
 function refresh(reason = 'unspecified') {
@@ -1890,6 +2011,12 @@ late.updateDangerousOptionsVisibility = updateDangerousOptionsVisibility;
 late.setViewMode = setViewMode;
 late.setHomeViewActive = setHomeViewActive;
 late.updateNavigationButtons = updateNavigationButtons;
+late.registerRecentlyPastedPaths = (paths) => {
+  recentlyPastedPaths = new Set(paths);
+};
+late.setRecentlyRenamedPath = (p) => {
+  recentlyRenamedPath = p;
+};
 late.getFileByPath = (p) => filePathMap.get(p) ?? dualPane.getSecondaryFilePathMap().get(p);
 late.getFileItemData = (el) =>
   getFileItemData(el) ?? dualPane.getSecondaryFilePathMap().get(el.dataset.path || '') ?? null;
@@ -1985,6 +2112,7 @@ function updateViewModeControls() {
     listHeader.style.display =
       viewMode === 'list' && !isHomeViewPath(currentPath) ? 'grid' : 'none';
   }
+  updateSortIndicators();
 }
 
 function setupViewOptions(): void {

@@ -54,11 +54,27 @@ type ClipboardDeps = {
   completeOperation?: (id: string, status: 'done' | 'failed', error?: string) => void;
   refresh: () => void;
   updateUndoRedoState: () => Promise<void>;
+  registerRecentlyPastedPaths?: (paths: string[]) => void;
 };
 
 export function createClipboardController(deps: ClipboardDeps) {
   let clipboard: ClipboardState = null;
   let cutPaths = new Set<string>();
+
+  const joinDestinationPath = (dest: string, name: string): string => {
+    const separator = dest.includes('\\') && !dest.includes('/') ? '\\' : '/';
+    return dest.replace(/[\\/]+$/, '') + separator + name;
+  };
+
+  const registerPasted = (paths: string[], dest: string) => {
+    if (deps.registerRecentlyPastedPaths) {
+      const expectedPaths = paths.map((p) => {
+        const name = path.basename(p);
+        return joinDestinationPath(dest, name || p);
+      });
+      deps.registerRecentlyPastedPaths(expectedPaths);
+    }
+  };
   let elIndicator: HTMLElement | null = null;
   let elIndicatorText: HTMLElement | null = null;
 
@@ -227,6 +243,7 @@ export function createClipboardController(deps: ClipboardDeps) {
           'Success',
           'success'
         );
+        registerPasted(systemClipboard.paths, destPath);
         deps.refresh();
         return true;
       }
@@ -253,6 +270,7 @@ export function createClipboardController(deps: ClipboardDeps) {
               'Success',
               'success'
             );
+            registerPasted(systemClipboard.paths, destPath);
             deps.refresh();
             return true;
           }
@@ -304,6 +322,7 @@ export function createClipboardController(deps: ClipboardDeps) {
               'Success',
               'success'
             );
+            registerPasted(systemClipboard.paths, destPath);
             deps.refresh();
             return true;
           }
@@ -331,6 +350,7 @@ export function createClipboardController(deps: ClipboardDeps) {
       'Success',
       'success'
     );
+    registerPasted(systemClipboard.paths, destPath);
     deps.refresh();
     return true;
   }
@@ -339,6 +359,12 @@ export function createClipboardController(deps: ClipboardDeps) {
     devLog('Clipboard', 'updateClipboardIndicator called');
     const { indicator, text: indicatorText } = resolveClipboardIndicatorElements();
     if (!indicator || !indicatorText) return;
+
+    if (deps.getCurrentSettings().statusBarItems?.clipboard === false) {
+      indicator.style.display = 'none';
+      indicator.title = 'Clipboard contents';
+      return;
+    }
 
     if (clipboard && clipboard.paths.length > 0) {
       const count = clipboard.paths.length;
@@ -351,6 +377,11 @@ export function createClipboardController(deps: ClipboardDeps) {
       if (deps.getCurrentSettings().globalClipboard !== false) {
         const systemClipboard = await getSystemClipboardData();
         if (systemClipboard && systemClipboard.paths.length > 0) {
+          if (deps.getCurrentSettings().statusBarItems?.clipboard === false) {
+            indicator.style.display = 'none';
+            indicator.title = 'Clipboard contents';
+            return;
+          }
           indicatorText.textContent =
             systemClipboard.operation === 'cut'
               ? `${systemClipboard.paths.length} from system (cut)`

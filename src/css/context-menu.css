@@ -49,6 +49,11 @@
   color: var(--text-primary);
 }
 
+.context-menu-item:hover .context-menu-shortcut,
+.context-menu-item.focused .context-menu-shortcut {
+  opacity: 0.7;
+}
+
 .context-menu-item:focus-visible {
   background: var(--accent-light);
   box-shadow: var(--focus-ring);
@@ -67,6 +72,17 @@
   height: 1px;
   background: var(--separator);
   margin: 4px 6px;
+}
+
+.context-menu-group-label {
+  font-size: 10px;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-tertiary);
+  padding: 6px 12px 2px;
+  pointer-events: none;
+  user-select: none;
 }
 
 .context-menu-item.has-submenu {
@@ -119,7 +135,24 @@ body.platform-darwin .context-menu-item {
 
 body.platform-darwin .context-menu-item:hover,
 body.platform-darwin .context-menu-item.focused {
-  background: var(--interactive-hover);
+  background: var(--system-accent-color, var(--accent-color));
+  color: #fff;
+}
+
+body.platform-darwin .context-menu-item:hover .context-menu-shortcut,
+body.platform-darwin .context-menu-item.focused .context-menu-shortcut {
+  color: rgba(255, 255, 255, 0.72);
+  opacity: 1;
+}
+
+body.platform-darwin .context-menu-item:hover .twemoji,
+body.platform-darwin .context-menu-item.focused .twemoji {
+  filter: brightness(10);
+}
+
+body.platform-darwin .context-menu-item:active {
+  background: color-mix(in srgb, var(--system-accent-color, var(--accent-color)) 82%, #000);
+  color: #fff;
 }
 
 body.platform-darwin .context-menu-separator {

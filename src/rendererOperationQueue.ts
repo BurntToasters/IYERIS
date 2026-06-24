@@ -125,6 +125,30 @@ export function createOperationQueueController(deps: QueueDeps) {
       createdAt: Date.now(),
       updatedAt: Date.now(),
     });
+
+    const win = window as unknown as {
+      recentOperations?: Array<{
+        id: string;
+        kind: string;
+        name: string;
+        status: string;
+        timestamp: number;
+      }>;
+    };
+    const globalRecent = win.recentOperations || [];
+    if (!globalRecent.some((o) => o.id === id)) {
+      globalRecent.unshift({
+        id,
+        kind,
+        name,
+        status: 'active',
+        timestamp: Date.now(),
+      });
+      if (globalRecent.length > 20) globalRecent.pop();
+      win.recentOperations = globalRecent;
+      document.dispatchEvent(new CustomEvent('recent-operations-changed'));
+    }
+
     showPanel();
     scheduleRender();
   }
@@ -155,6 +179,23 @@ export function createOperationQueueController(deps: QueueDeps) {
     operation.current = operation.total > 0 ? operation.total : operation.current;
     operation.error = error;
     operation.updatedAt = Date.now();
+
+    const win = window as unknown as {
+      recentOperations?: Array<{
+        id: string;
+        kind: string;
+        name: string;
+        status: string;
+        timestamp: number;
+      }>;
+    };
+    const globalRecent = win.recentOperations || [];
+    const op = globalRecent.find((o) => o.id === id);
+    if (op) {
+      op.status = status;
+      document.dispatchEvent(new CustomEvent('recent-operations-changed'));
+    }
+
     const elapsedMs = operation.updatedAt - operation.createdAt;
     if (status === 'failed') {
       devLog('OperationQueue', `${operation.kind} failed`, {

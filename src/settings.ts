@@ -14,6 +14,7 @@ import {
   GRID_COLUMNS_VALUES as GRID_COLUMNS_ARRAY,
   CHECKSUM_ALGORITHM_VALUES as CHECKSUM_ALGORITHM_ARRAY,
   FOLDER_ICON_VALUES as FOLDER_ICON_ARRAY,
+  DASHBOARD_WIDGET_KEYS as DASHBOARD_WIDGET_ARRAY,
 } from './constants.js';
 
 export function createDefaultSettings(): Settings {
@@ -46,6 +47,17 @@ export function createDefaultSettings(): Settings {
     skipFullDiskAccessPrompt: false,
     recentFiles: [],
     folderIcons: {},
+    statusBarItems: {
+      items: true,
+      selected: true,
+      hidden: true,
+      search: true,
+      pane: true,
+      viewMode: true,
+      gitBranch: true,
+      clipboard: true,
+    },
+    dashboardWidgets: ['quick-info', 'recent-operations', 'storage-overview', 'favorites'],
     showRecentFiles: true,
     showFolderTree: true,
     useLegacyTreeSpacing: false,
@@ -91,6 +103,9 @@ export function createDefaultSettings(): Settings {
     utilityDrawerCollapsed: true,
     enableAutoChecksum: true,
     defaultChecksumAlgorithm: 'sha256',
+    navTransitionDuration: 200,
+    operationAnimationDuration: 100,
+    folderIconStyle: 'outline',
   };
 }
 
@@ -107,6 +122,13 @@ const GRID_COLUMNS_VALUES = new Set<Settings['gridColumns']>(GRID_COLUMNS_ARRAY)
 const CHECKSUM_ALGORITHM_VALUES = new Set<Settings['defaultChecksumAlgorithm']>(
   CHECKSUM_ALGORITHM_ARRAY
 );
+const DASHBOARD_WIDGET_VALUES = new Set<string>(DASHBOARD_WIDGET_ARRAY);
+const FOLDER_ICON_STYLE_VALUES = new Set<Settings['folderIconStyle']>([
+  'outline',
+  'filled',
+  'colored',
+  'monochrome',
+]);
 
 function sanitizeEnum<T extends string>(value: unknown, allowed: Set<T>): T | null {
   if (typeof value !== 'string') return null;
@@ -220,6 +242,26 @@ function sanitizeFolderIcons(value: unknown): Record<string, string> {
     const normalized = item.toLowerCase().trim();
     if (allowed.has(normalized) || legacyCodepoint.test(normalized)) {
       result[key] = normalized;
+    }
+  }
+  return result;
+}
+
+function sanitizeStatusBarItems(value: unknown): Record<string, boolean> {
+  const result: Record<string, boolean> = {
+    items: true,
+    selected: true,
+    hidden: true,
+    search: true,
+    pane: true,
+    viewMode: true,
+    gitBranch: true,
+    clipboard: true,
+  };
+  if (!isRecord(value)) return result;
+  for (const key of Object.keys(result)) {
+    if (typeof value[key] === 'boolean') {
+      result[key] = value[key] as boolean;
     }
   }
   return result;
@@ -367,6 +409,7 @@ export function sanitizeSettings(
     ['previewPanelPosition', PREVIEW_PANEL_VALUES as Set<string>],
     ['gridColumns', GRID_COLUMNS_VALUES as Set<string>],
     ['defaultChecksumAlgorithm', CHECKSUM_ALGORITHM_VALUES as Set<string>],
+    ['folderIconStyle', FOLDER_ICON_STYLE_VALUES as Set<string>],
   ];
   for (const [key, allowed] of ENUM_FIELDS) {
     const val = sanitizeEnum(raw[key], allowed);
@@ -408,6 +451,13 @@ export function sanitizeSettings(
   const iconSizeVal = sanitizeInt(raw.iconSize, 32, 128);
   if (iconSizeVal !== null) clean.iconSize = iconSizeVal;
 
+  const navTransitionDurationVal = sanitizeInt(raw.navTransitionDuration, 0, 400);
+  if (navTransitionDurationVal !== null) clean.navTransitionDuration = navTransitionDurationVal;
+
+  const operationAnimationDurationVal = sanitizeInt(raw.operationAnimationDuration, 0, 200);
+  if (operationAnimationDurationVal !== null)
+    clean.operationAnimationDuration = operationAnimationDurationVal;
+
   // Non-negative integer settings
   for (const key of ['maxSearchHistoryItems', 'maxDirectoryHistoryItems', 'launchCount'] as const) {
     const val = sanitizeInt(raw[key], 0, null);
@@ -439,9 +489,20 @@ export function sanitizeSettings(
     }
   }
 
+  if (Array.isArray(raw.dashboardWidgets)) {
+    const sanitized = sanitizeStringArray(raw.dashboardWidgets)
+      .filter((item) => DASHBOARD_WIDGET_VALUES.has(item))
+      .filter((item, index, items) => items.indexOf(item) === index);
+    if (sanitized.length > 0) {
+      clean.dashboardWidgets = sanitized;
+    }
+  }
+
   clean.shortcuts = sanitizeShortcuts(raw.shortcuts, clean.shortcuts);
   if (raw.folderIcons && isRecord(raw.folderIcons))
     clean.folderIcons = sanitizeFolderIcons(raw.folderIcons);
+
+  clean.statusBarItems = sanitizeStatusBarItems(raw.statusBarItems);
 
   const listColumnWidths = sanitizeListColumnWidths(raw.listColumnWidths);
   if (listColumnWidths) clean.listColumnWidths = listColumnWidths;

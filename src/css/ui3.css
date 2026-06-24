@@ -986,8 +986,6 @@ body.platform-darwin .context-menu-item {
   border-radius: 7px;
 }
 
-.context-menu-item:hover,
-.context-menu-item.focused,
 .breadcrumb-menu-item:hover,
 .selection-overflow-item:hover,
 .command-palette-item:hover,
@@ -995,7 +993,6 @@ body.platform-darwin .context-menu-item {
   background: var(--interactive-hover);
 }
 
-.context-menu-item:active,
 .breadcrumb-menu-item:active,
 .selection-overflow-item:active {
   background: var(--interactive-active);

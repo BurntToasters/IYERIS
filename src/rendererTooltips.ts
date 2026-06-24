@@ -117,6 +117,12 @@ export function initTooltipSystem(): void {
   document.addEventListener('scroll', scrollHandler, true);
 }
 
+let shortcutFormatter: ((actionId: string) => string | null) | null = null;
+
+export function setShortcutFormatter(formatter: (actionId: string) => string | null): void {
+  shortcutFormatter = formatter;
+}
+
 function showTooltip(text: string, anchor: HTMLElement): void {
   if (!tooltipElement) return;
 
@@ -125,7 +131,19 @@ function showTooltip(text: string, anchor: HTMLElement): void {
 
   const content = tooltipElement.querySelector('.ui-tooltip-content');
   if (content) {
-    content.textContent = text;
+    const actionId = anchor.dataset.shortcutAction;
+    const shortcutStr = actionId && shortcutFormatter ? shortcutFormatter(actionId) : null;
+    if (shortcutStr) {
+      let baseText = text;
+      const parenIndex = baseText.indexOf('(');
+      if (parenIndex > 0) {
+        baseText = baseText.substring(0, parenIndex).trim();
+      }
+      // eslint-disable-next-line no-restricted-syntax -- static tooltip text and system shortcut string are safe
+      content.innerHTML = `${baseText} <span class="tooltip-shortcut">${shortcutStr}</span>`;
+    } else {
+      content.textContent = text;
+    }
   }
 
   tooltipElement.style.display = 'block';

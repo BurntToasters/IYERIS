@@ -23,6 +23,34 @@
   border: 1px solid var(--panel-border);
 }
 
+.toolbar .sort-badge {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  height: var(--toolbar-group-height);
+  background: color-mix(in srgb, var(--surface-2) 80%, transparent);
+  border-radius: var(--radius-small);
+  border: 1px solid var(--panel-border);
+  font-size: 11px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.15s ease;
+  margin-left: 4px;
+}
+
+.toolbar .sort-badge:hover {
+  background: var(--interactive-hover);
+  color: var(--text-primary);
+  border-color: var(--accent-color);
+}
+
+.toolbar .sort-badge:active {
+  background: var(--interactive-active);
+  transform: scale(0.97);
+}
+
 .toolbar-left,
 .toolbar-right {
   display: flex;

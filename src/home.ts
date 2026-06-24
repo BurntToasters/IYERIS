@@ -401,6 +401,17 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
       return;
     }
 
+    const HOME_ACTION_COLORS: Record<string, string> = {
+      userhome: 'blue',
+      desktop: 'purple',
+      documents: 'amber',
+      downloads: 'green',
+      music: 'pink',
+      videos: 'red',
+      browse: 'teal',
+      trash: 'gray',
+    };
+
     visibleItems.forEach((item) => {
       const icon = twemojiImg(item.icon, 'twemoji');
       const homeItem = createHomeItem({
@@ -409,6 +420,8 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
         ariaLabel: `Open ${item.label}`,
         dataAttr: { name: 'quickAction', value: item.action },
       });
+      const color = HOME_ACTION_COLORS[item.action];
+      if (color) homeItem.dataset.homeColor = color;
       homeQuickAccess.appendChild(homeItem);
     });
   }

@@ -67,6 +67,20 @@ export const CHECKSUM_ALGORITHM_VALUES = [
   'sha512',
   'crc32',
 ] as const satisfies readonly NonNullable<Settings['defaultChecksumAlgorithm']>[];
+
+export const DASHBOARD_WIDGET_KEYS = [
+  'quick-info',
+  'recent-operations',
+  'storage-overview',
+  'favorites',
+] as const;
+
+export const FOLDER_ICON_STYLE_VALUES = [
+  'outline',
+  'filled',
+  'colored',
+  'monochrome',
+] as const satisfies readonly NonNullable<Settings['folderIconStyle']>[];
 export const FOLDER_ICON_VALUES = [
   'folder',
   'folder-open',

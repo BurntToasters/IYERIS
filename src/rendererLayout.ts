@@ -4,7 +4,7 @@ type ListColumnKey = 'name' | 'type' | 'size' | 'modified';
 
 const SIDEBAR_MIN_WIDTH = 140;
 const SIDEBAR_MAX_WIDTH = 360;
-const PREVIEW_MIN_WIDTH = 200;
+const PREVIEW_MIN_WIDTH = 180;
 const PREVIEW_MAX_WIDTH = 520;
 
 const LIST_COLUMN_MIN_WIDTHS: Record<string, number> = {
@@ -213,6 +213,11 @@ export function createLayoutController(config: LayoutConfig) {
       document.body.style.userSelect = 'none';
       document.addEventListener('mousemove', onMouseMove);
       document.addEventListener('mouseup', onMouseUp);
+    });
+
+    previewResizeHandle.addEventListener('dblclick', (e) => {
+      e.preventDefault();
+      setPreviewPanelWidth(260, true);
     });
   }
 

@@ -43,6 +43,7 @@ import { createFolderIconPickerController } from './rendererFolderIconPicker.js'
 import { createInlineRenameController } from './rendererInlineRename.js';
 import { createGitStatusController } from './rendererGitStatus.js';
 import { createSortController } from './rendererSort.js';
+import { setShortcutFormatter } from './rendererTooltips.js';
 import { createZoomController } from './rendererZoom.js';
 import { createIndexerController } from './rendererIndexer.js';
 import { createLayoutController } from './rendererLayout.js';
@@ -128,6 +129,8 @@ export interface LateBound {
   updateNavigationButtons(): void;
   getFileByPath(path: string): FileItem | undefined;
   getFileItemData(el: HTMLElement): FileItem | null;
+  registerRecentlyPastedPaths(paths: string[]): void;
+  setRecentlyRenamedPath(path: string | null): void;
 }
 
 export interface WiringDeps {
@@ -422,6 +425,7 @@ export function wireControllers(deps: WiringDeps) {
     showConfirm,
     isHomeViewPath,
     announceToScreenReader,
+    setRecentlyRenamedPath: (p) => deps.late.setRecentlyRenamedPath(p),
   });
 
   function isWindowsPlatform(): boolean {
@@ -707,6 +711,7 @@ export function wireControllers(deps: WiringDeps) {
     completeOperation,
     refresh: () => deps.late.refresh('clipboard-operation'),
     updateUndoRedoState: () => deps.late.updateUndoRedoState(),
+    registerRecentlyPastedPaths: (paths) => deps.late.registerRecentlyPastedPaths(paths),
   });
 
   const batchRenameController = createBatchRenameController({
@@ -871,7 +876,7 @@ export function wireControllers(deps: WiringDeps) {
     updateNavigationButtons: () => deps.late.updateNavigationButtons(),
     setHomeViewActive: (active) => deps.late.setHomeViewActive(active),
     navigateTo: (pathValue, force) => {
-      void deps.late.navigateTo(pathValue, force);
+      void deps.late.navigateTo(pathValue, force, 'tab');
     },
     watchDirectory: (pathValue) => {
       window.tauriAPI.watchDirectory(pathValue).catch(ignoreError);
@@ -932,6 +937,44 @@ export function wireControllers(deps: WiringDeps) {
     reservedShortcutLookup,
     shortcutDefinitionById,
   } = shortcutEngine;
+
+  setShortcutFormatter((actionId: string) => {
+    let binding: ShortcutBinding | undefined;
+    if (actionId === 'refresh') {
+      binding = isMacPlatform() ? ['Meta', 'R'] : ['Ctrl', 'R'];
+    } else {
+      binding = getShortcutBinding(actionId);
+    }
+    if (!binding || binding.length === 0) return null;
+
+    const isMac = isMacPlatform();
+    if (isMac) {
+      return binding
+        .map((key) => {
+          if (key === 'Meta') return '⌘';
+          if (key === 'Shift') return '⇧';
+          if (key === 'Alt') return '⌥';
+          if (key === 'Ctrl') return '⌃';
+          if (key === 'ArrowLeft') return '←';
+          if (key === 'ArrowRight') return '→';
+          if (key === 'ArrowUp') return '↑';
+          if (key === 'ArrowDown') return '↓';
+          return key.toUpperCase();
+        })
+        .join('');
+    } else {
+      return binding
+        .map((key) => {
+          if (key === 'Meta') return 'Win';
+          if (key === 'ArrowLeft') return 'Left';
+          if (key === 'ArrowRight') return 'Right';
+          if (key === 'ArrowUp') return 'Up';
+          if (key === 'ArrowDown') return 'Down';
+          return key;
+        })
+        .join('+');
+    }
+  });
 
   function navigateHistory(delta: -1 | 1): void {
     const hi = deps.getHistoryIndex();

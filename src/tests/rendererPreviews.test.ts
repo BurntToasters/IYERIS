@@ -219,6 +219,32 @@ describe('rendererPreviews', () => {
       expect(ctrl.isPreviewVisible()).toBe(false);
     });
 
+    it('hides the preview panel if close animationend never fires at runtime', () => {
+      vi.useFakeTimers();
+      const previousNodeEnv = process.env.NODE_ENV;
+      process.env.NODE_ENV = 'production';
+      try {
+        const deps = createDeps();
+        const ctrl = createPreviewController(deps as any);
+        ctrl.initPreviewUi();
+        ctrl.togglePreviewPanel();
+
+        const panel = document.getElementById('preview-panel')!;
+        expect(panel.style.display).toBe('flex');
+
+        document.getElementById('preview-close')!.click();
+        expect(panel.classList.contains('closing')).toBe(true);
+
+        vi.advanceTimersByTime(350);
+
+        expect(panel.style.display).toBe('none');
+        expect(panel.classList.contains('closing')).toBe(false);
+      } finally {
+        process.env.NODE_ENV = previousNodeEnv;
+        vi.useRealTimers();
+      }
+    });
+
     it('initializes quicklook UI', () => {
       const deps = createDeps();
       const ctrl = createPreviewController(deps as any);

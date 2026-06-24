@@ -16,45 +16,52 @@ describe('rendererUtilityDrawer', () => {
         <div id="utility-drawer-header">
           <button id="utility-drawer-toggle-btn" aria-expanded="false">Toggle</button>
           <div id="utility-drawer-status">No selection</div>
+          <button id="utility-customize-btn" class="utility-customize-btn">Customize</button>
         </div>
         <div id="utility-drawer-body">
-          <span id="utility-meta-path">-</span>
-          <span id="utility-meta-size">-</span>
-          
-          <button id="utility-copy-path-btn">Copy Path</button>
-          <button id="utility-copy-name-btn">Copy Name</button>
-          <button id="utility-copy-uri-btn">Copy URI</button>
-          
-          <div id="utility-no-perms-placeholder"></div>
-          
-          <div id="utility-posix-perms" style="display:none">
-            <input type="checkbox" id="perm-ur" />
-            <input type="checkbox" id="perm-uw" />
-            <input type="checkbox" id="perm-ux" />
-            <input type="checkbox" id="perm-gr" />
-            <input type="checkbox" id="perm-gw" />
-            <input type="checkbox" id="perm-gx" />
-            <input type="checkbox" id="perm-or" />
-            <input type="checkbox" id="perm-ow" />
-            <input type="checkbox" id="perm-ox" />
-            <input type="text" id="posix-octal-input" />
-            <button id="utility-apply-posix-btn">Apply POSIX</button>
+          <div class="utility-section utility-meta-section">
+            <span id="utility-meta-path">-</span>
+            <span id="utility-meta-size">-</span>
+
+            <button id="utility-copy-path-btn">Copy Path</button>
+            <button id="utility-copy-name-btn">Copy Name</button>
+            <button id="utility-copy-uri-btn">Copy URI</button>
+          </div>
+
+          <div class="utility-section utility-perms-section">
+            <div id="utility-no-perms-placeholder"></div>
+
+            <div id="utility-posix-perms" style="display:none">
+              <input type="checkbox" id="perm-ur" />
+              <input type="checkbox" id="perm-uw" />
+              <input type="checkbox" id="perm-ux" />
+              <input type="checkbox" id="perm-gr" />
+              <input type="checkbox" id="perm-gw" />
+              <input type="checkbox" id="perm-gx" />
+              <input type="checkbox" id="perm-or" />
+              <input type="checkbox" id="perm-ow" />
+              <input type="checkbox" id="perm-ox" />
+              <input type="text" id="posix-octal-input" />
+              <button id="utility-apply-posix-btn">Apply POSIX</button>
+            </div>
+
+            <div id="utility-win-attrs" style="display:none">
+              <input type="checkbox" id="attr-readonly" />
+              <input type="checkbox" id="attr-hidden" />
+              <input type="checkbox" id="attr-system" />
+              <button id="utility-apply-win-btn">Apply Windows</button>
+            </div>
           </div>
           
-          <div id="utility-win-attrs" style="display:none">
-            <input type="checkbox" id="attr-readonly" />
-            <input type="checkbox" id="attr-hidden" />
-            <input type="checkbox" id="attr-system" />
-            <button id="utility-apply-win-btn">Apply Windows</button>
+          <div class="utility-section utility-checksum-section">
+            <select id="utility-checksum-algo">
+              <option value="sha256">SHA-256</option>
+              <option value="md5">MD5</option>
+            </select>
+            <button id="utility-calc-checksum-btn">Calculate</button>
+            <textarea id="utility-checksum-value"></textarea>
+            <button id="utility-copy-checksum-btn">Copy</button>
           </div>
-          
-          <select id="utility-checksum-algo">
-            <option value="sha256">SHA-256</option>
-            <option value="md5">MD5</option>
-          </select>
-          <button id="utility-calc-checksum-btn">Calculate</button>
-          <textarea id="utility-checksum-value"></textarea>
-          <button id="utility-copy-checksum-btn">Copy</button>
         </div>
       </div>
     `;
@@ -66,6 +73,8 @@ describe('rendererUtilityDrawer', () => {
       utilityDrawerCollapsed: false,
       enableAutoChecksum: true,
       defaultChecksumAlgorithm: 'sha256',
+      dashboardWidgets: ['quick-info', 'recent-operations', 'storage-overview', 'favorites'],
+      bookmarks: ['/path/to/bookmark1'],
     } as any;
 
     showToastMock = vi.fn();
@@ -95,6 +104,8 @@ describe('rendererUtilityDrawer', () => {
         (window as any)._triggerChecksumProgress = callback;
         return () => {};
       }),
+      getDiskSpace: vi.fn().mockResolvedValue({ success: true, total: 1000, free: 500 }),
+      undoAction: vi.fn().mockResolvedValue({ success: true }),
     };
 
     (window as any).tauriAPI = mockTauriAPI;
@@ -513,5 +524,110 @@ describe('rendererUtilityDrawer', () => {
     algoSelect.dispatchEvent(new Event('change'));
 
     expect(mockTauriAPI.calculateChecksum).not.toHaveBeenCalled();
+  });
+
+  it('renders dynamic widgets on initialization', () => {
+    const ctrl = createUtilityDrawerController({
+      getCurrentSettings: () => settings,
+      saveSettingsWithTimestamp: saveSettingsMock,
+      showToast: showToastMock,
+      getCurrentPath: () => '/home',
+      navigateTo: vi.fn(),
+    });
+
+    ctrl.init();
+
+    const body = document.getElementById('utility-drawer-body');
+    expect(body?.querySelector('.quick-info-card')).toBeTruthy();
+    expect(body?.querySelector('.recent-operations-card')).toBeTruthy();
+    expect(body?.querySelector('.storage-overview-card')).toBeTruthy();
+    expect(body?.querySelector('.favorites-card')).toBeTruthy();
+  });
+
+  it('ignores unknown dashboard widget ids and falls back when none are valid', () => {
+    settings.dashboardWidgets = ['ghost-widget', 'favorites', 'favorites', 'missing-widget'];
+    const ctrl = createUtilityDrawerController({
+      getCurrentSettings: () => settings,
+      saveSettingsWithTimestamp: saveSettingsMock,
+      showToast: showToastMock,
+      getCurrentPath: () => '/home',
+      navigateTo: vi.fn(),
+    });
+
+    ctrl.init();
+
+    const body = document.getElementById('utility-drawer-body');
+    expect(body?.querySelector('.ghost-widget-card')).toBeNull();
+    expect(body?.querySelectorAll('.favorites-card')).toHaveLength(1);
+
+    buildDOM();
+    settings.dashboardWidgets = ['ghost-widget'];
+    const fallbackCtrl = createUtilityDrawerController({
+      getCurrentSettings: () => settings,
+      saveSettingsWithTimestamp: saveSettingsMock,
+      showToast: showToastMock,
+      getCurrentPath: () => '/home',
+      navigateTo: vi.fn(),
+    });
+    fallbackCtrl.init();
+    const resetBody = document.getElementById('utility-drawer-body');
+    expect(resetBody?.querySelector('.quick-info-card')).toBeTruthy();
+    expect(resetBody?.querySelector('.recent-operations-card')).toBeTruthy();
+    expect(resetBody?.querySelector('.storage-overview-card')).toBeTruthy();
+    expect(resetBody?.querySelector('.favorites-card')).toBeTruthy();
+  });
+
+  it('handles edit mode: reordering, removing and adding widgets', async () => {
+    const ctrl = createUtilityDrawerController({
+      getCurrentSettings: () => settings,
+      saveSettingsWithTimestamp: saveSettingsMock,
+      showToast: showToastMock,
+      getCurrentPath: () => '/home',
+      navigateTo: vi.fn(),
+    });
+
+    ctrl.init();
+
+    const customizeBtn = document.getElementById('utility-customize-btn');
+    expect(customizeBtn).toBeTruthy();
+    customizeBtn?.click();
+
+    const body = document.getElementById('utility-drawer-body');
+    const firstCard = body?.querySelector('.quick-info-card');
+    expect(firstCard?.querySelector('.widget-controls')).toBeTruthy();
+
+    const favoritesCard = body?.querySelector('.favorites-card');
+    const removeBtn = favoritesCard?.querySelector('.btn-remove') as HTMLButtonElement;
+    expect(removeBtn).toBeTruthy();
+    removeBtn.click();
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(saveSettingsMock).toHaveBeenCalled();
+    expect(settings.dashboardWidgets).not.toContain('favorites');
+
+    const addCard = body?.querySelector('.add-widgets-card');
+    expect(addCard).toBeTruthy();
+    const addFavBtn = addCard?.querySelector('.drawer-action-btn') as HTMLButtonElement;
+    expect(addFavBtn?.textContent).toContain('Favorites');
+
+    addFavBtn.click();
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(settings.dashboardWidgets).toContain('favorites');
+  });
+
+  it('renders storage overview card and updates on selection', async () => {
+    const ctrl = createUtilityDrawerController({
+      getCurrentSettings: () => settings,
+      saveSettingsWithTimestamp: saveSettingsMock,
+      showToast: showToastMock,
+      getCurrentPath: () => '/home',
+      navigateTo: vi.fn(),
+    });
+
+    ctrl.init();
+    expect(mockTauriAPI.getDiskSpace).toHaveBeenCalledWith('/home');
   });
 });

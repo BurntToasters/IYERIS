@@ -10,18 +10,31 @@
 
 .preview-resize-handle {
   position: absolute;
-  left: -3px;
+  left: -5px;
   top: 0;
-  width: 6px;
+  width: 10px;
   height: 100%;
   cursor: col-resize;
   background: transparent;
   z-index: var(--z-sidebar);
 }
 
-.preview-resize-handle:hover,
-.preview-resize-handle.resizing {
-  background: rgba(var(--accent-rgb), 0.2);
+.preview-resize-handle::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 4px;
+  width: 2px;
+  height: 100%;
+  background: transparent;
+  transition:
+    background-color 0.15s ease,
+    opacity 0.15s ease;
+}
+
+.preview-resize-handle:hover::after,
+.preview-resize-handle.resizing::after {
+  background: var(--accent-color);
 }
 
 @keyframes slideInRight {
@@ -119,19 +132,49 @@ body.platform-darwin .preview-content:not(:hover)::-webkit-scrollbar-thumb {
   align-items: center;
   justify-content: center;
   height: 100%;
-  gap: 10px;
-  color: var(--text-secondary);
+  padding: var(--spacing-lg);
+  color: var(--text-tertiary);
   text-align: center;
 }
 
-.preview-empty-icon {
-  font-size: 48px;
+.preview-empty-illustration {
+  margin-bottom: var(--spacing-md);
+  color: var(--text-tertiary);
   opacity: 0.5;
+  animation: preview-empty-float 3s ease-in-out infinite;
+}
+
+.preview-empty-svg {
+  display: block;
+}
+
+.preview-empty-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  margin: 0 0 6px 0;
 }
 
 .preview-empty small {
-  font-size: 12px;
-  opacity: 0.7;
+  font-size: 11px;
+  color: var(--text-tertiary);
+  background: color-mix(in srgb, var(--surface-3) 40%, rgba(0, 0, 0, 0.15));
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  padding: 2px 6px;
+  margin-top: 4px;
+  display: inline-block;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.05);
+}
+
+@keyframes preview-empty-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
 }
 
 .preview-image {
@@ -464,4 +507,49 @@ body.preview-bottom .preview-content {
 .preview-markdown th {
   background: var(--surface-2);
   font-weight: 600;
+}
+
+.preview-panel.closing {
+  animation: slideOutRight 0.2s ease-in forwards;
+}
+
+body.preview-bottom .preview-panel.closing {
+  animation: slideOutDown 0.18s ease-in forwards;
+}
+
+.preview-content.fade-in-active {
+  animation: contentCrossfade 0.15s ease-out forwards;
+}
+
+@keyframes slideOutRight {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+}
+
+@keyframes slideOutDown {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+}
+
+@keyframes contentCrossfade {
+  from {
+    opacity: 0.4;
+    transform: scale(0.995);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }

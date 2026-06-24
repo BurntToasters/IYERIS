@@ -85,6 +85,10 @@ export function createNavigationController(deps: NavigationDeps) {
   let breadcrumbMenuAnchor: HTMLElement | null = null;
   let breadcrumbMenuFocusIndex = -1;
   let breadcrumbDelegated = false;
+  let activePath = '';
+  let isBreadcrumbCollapsed = false;
+  let breadcrumbFullWidth = 0;
+  let resizeObserver: ResizeObserver | null = null;
 
   const ensureElements = () => {
     const newContainer = deps.getBreadcrumbContainer();
@@ -102,6 +106,7 @@ export function createNavigationController(deps: NavigationDeps) {
     ensureBreadcrumbDelegation();
 
     hideBreadcrumbMenu();
+    activePath = currentPath;
 
     const displayPath = currentPath ? deps.getPathDisplayValue(currentPath) : '';
 
@@ -115,6 +120,8 @@ export function createNavigationController(deps: NavigationDeps) {
     if (deps.isHomeViewPath(currentPath)) {
       breadcrumbContainer.style.display = 'inline-flex';
       addressInput.style.display = 'none';
+      isBreadcrumbCollapsed = false;
+      breadcrumbFullWidth = 0;
       clearHtml(breadcrumbContainer);
       const item = document.createElement('div');
       item.className = 'breadcrumb-item';
@@ -128,7 +135,7 @@ export function createNavigationController(deps: NavigationDeps) {
       return;
     }
 
-    const { segments, isWindows, isUnc } = parsePath(currentPath);
+    const { segments } = parsePath(currentPath);
 
     if (segments.length === 0) {
       breadcrumbContainer.style.display = 'none';
@@ -139,45 +146,198 @@ export function createNavigationController(deps: NavigationDeps) {
 
     breadcrumbContainer.style.display = 'inline-flex';
     addressInput.style.display = 'none';
+
+    if (segments.length < 4) {
+      renderBreadcrumb(currentPath, false);
+      isBreadcrumbCollapsed = false;
+      breadcrumbFullWidth = 0;
+    } else {
+      // Render full to measure
+      renderBreadcrumb(currentPath, false);
+      isBreadcrumbCollapsed = false;
+
+      const scrollWidth = breadcrumbContainer.scrollWidth;
+      const clientWidth = breadcrumbContainer.clientWidth;
+
+      if (clientWidth > 0 && scrollWidth > clientWidth) {
+        breadcrumbFullWidth = scrollWidth;
+        renderBreadcrumb(currentPath, true);
+      } else if (clientWidth > 0) {
+        breadcrumbFullWidth = scrollWidth;
+      }
+    }
+  }
+
+  function renderBreadcrumb(currentPath: string, collapse: boolean): void {
+    if (!breadcrumbContainer) return;
     clearHtml(breadcrumbContainer);
 
+    const { segments, isWindows, isUnc } = parsePath(currentPath);
     const fragment = document.createDocumentFragment();
 
-    segments.forEach((segment, index) => {
-      const item = document.createElement('div');
-      item.className = 'breadcrumb-item';
-      const targetPath = buildPathFromSegments(segments, index, isWindows, isUnc);
-      item.title = targetPath;
-      item.dataset.path = targetPath;
+    if (collapse && segments.length >= 4) {
+      // Collapsed rendering: Show first, overflow, and last two segments
+      fragment.appendChild(createBreadcrumbItem(segments, 0, isWindows, isUnc));
+      fragment.appendChild(createSeparator(isWindows));
 
-      const label = document.createElement('button');
-      label.type = 'button';
-      label.className = 'breadcrumb-label';
-      label.textContent = segment;
+      const overflowItem = document.createElement('button');
+      overflowItem.type = 'button';
+      overflowItem.className = 'breadcrumb-item breadcrumb-overflow';
+      overflowItem.textContent = '…';
+      overflowItem.setAttribute('aria-haspopup', 'menu');
+      overflowItem.setAttribute('aria-expanded', 'false');
+      overflowItem.setAttribute('aria-controls', 'breadcrumb-menu');
+      overflowItem.setAttribute('aria-label', 'Show collapsed folders');
+      fragment.appendChild(overflowItem);
 
-      const caret = document.createElement('button');
-      caret.type = 'button';
-      caret.className = 'breadcrumb-caret';
-      caret.textContent = '▾';
-      caret.setAttribute('aria-haspopup', 'menu');
-      caret.setAttribute('aria-expanded', 'false');
-      caret.setAttribute('aria-controls', 'breadcrumb-menu');
-      caret.setAttribute('aria-label', `Open folder menu for ${segment}`);
+      fragment.appendChild(createSeparator(isWindows));
+      fragment.appendChild(createBreadcrumbItem(segments, segments.length - 2, isWindows, isUnc));
+      fragment.appendChild(createSeparator(isWindows));
+      fragment.appendChild(createBreadcrumbItem(segments, segments.length - 1, isWindows, isUnc));
 
-      item.appendChild(label);
-      item.appendChild(caret);
+      isBreadcrumbCollapsed = true;
+    } else {
+      // Full rendering
+      segments.forEach((segment, index) => {
+        fragment.appendChild(createBreadcrumbItem(segments, index, isWindows, isUnc));
 
-      fragment.appendChild(item);
+        if (index < segments.length - 1) {
+          fragment.appendChild(createSeparator(isWindows));
+        }
+      });
 
-      if (index < segments.length - 1) {
-        const separator = document.createElement('span');
-        separator.className = 'breadcrumb-separator';
-        separator.textContent = isWindows ? '›' : '/';
-        fragment.appendChild(separator);
-      }
-    });
+      isBreadcrumbCollapsed = false;
+    }
 
     breadcrumbContainer.appendChild(fragment);
+  }
+
+  function createBreadcrumbItem(
+    segments: string[],
+    index: number,
+    isWindows: boolean,
+    isUnc: boolean
+  ): HTMLElement {
+    const item = document.createElement('div');
+    item.className = 'breadcrumb-item';
+    const targetPath = buildPathFromSegments(segments, index, isWindows, isUnc);
+    item.title = targetPath;
+    item.dataset.path = targetPath;
+
+    const label = document.createElement('button');
+    label.type = 'button';
+    label.className = 'breadcrumb-label';
+    label.textContent = segments[index]!;
+
+    const caret = document.createElement('button');
+    caret.type = 'button';
+    caret.className = 'breadcrumb-caret';
+    caret.textContent = '▾';
+    caret.setAttribute('aria-haspopup', 'menu');
+    caret.setAttribute('aria-expanded', 'false');
+    caret.setAttribute('aria-controls', 'breadcrumb-menu');
+    caret.setAttribute('aria-label', `Open folder menu for ${segments[index]}`);
+
+    item.appendChild(label);
+    item.appendChild(caret);
+
+    return item;
+  }
+
+  function createSeparator(isWindows: boolean): HTMLElement {
+    const separator = document.createElement('span');
+    separator.className = 'breadcrumb-separator';
+    separator.textContent = isWindows ? '›' : '/';
+    return separator;
+  }
+
+  function handleResize(): void {
+    if (!isBreadcrumbMode || !activePath || !breadcrumbContainer) return;
+    const { segments } = parsePath(activePath);
+    if (segments.length < 4) return;
+
+    const availableWidth = breadcrumbContainer.clientWidth;
+    if (availableWidth === 0) return;
+
+    if (isBreadcrumbCollapsed) {
+      if (availableWidth >= breadcrumbFullWidth) {
+        renderBreadcrumb(activePath, false);
+      }
+    } else {
+      if (breadcrumbContainer.scrollWidth > availableWidth) {
+        breadcrumbFullWidth = breadcrumbContainer.scrollWidth;
+        renderBreadcrumb(activePath, true);
+      }
+    }
+  }
+
+  function showBreadcrumbCollapsedMenu(anchor: HTMLElement): void {
+    ensureElements();
+    if (!breadcrumbMenu || !activePath) return;
+    const menu = breadcrumbMenu;
+
+    if (breadcrumbMenuPath === 'collapsed-menu' && menu.style.display === 'block') {
+      hideBreadcrumbMenu();
+      return;
+    }
+
+    breadcrumbMenuPath = 'collapsed-menu';
+    breadcrumbMenuAnchor = anchor;
+    breadcrumbMenuAnchor.setAttribute('aria-expanded', 'true');
+    menu.style.display = 'block';
+    breadcrumbMenuFocusIndex = -1;
+
+    const wrapper = anchor.closest('.address-bar-wrapper') as HTMLElement | null;
+    if (wrapper) {
+      const rect = anchor.getBoundingClientRect();
+      const wrapperRect = wrapper.getBoundingClientRect();
+      menu.style.left = `${Math.max(0, rect.left - wrapperRect.left)}px`;
+      menu.style.top = `${rect.bottom - wrapperRect.top + 4}px`;
+    }
+
+    clearHtml(menu);
+
+    const { segments, isWindows, isUnc } = parsePath(activePath);
+    // Collapsed segments are indices 1 to segments.length - 3
+    const collapsedIndices: number[] = [];
+    for (let i = 1; i <= segments.length - 3; i++) {
+      collapsedIndices.push(i);
+    }
+
+    collapsedIndices.forEach((idx) => {
+      const segment = segments[idx]!;
+      const targetPath = buildPathFromSegments(segments, idx, isWindows, isUnc);
+
+      const item = document.createElement('button');
+      item.className = 'breadcrumb-menu-item';
+      item.type = 'button';
+      item.setAttribute('role', 'menuitem');
+      item.tabIndex = -1;
+
+      // eslint-disable-next-line no-restricted-syntax
+      item.innerHTML = `
+        <span class="nav-icon">${deps.getFolderIcon(targetPath)}</span>
+        <span>${escapeHtml(segment)}</span>
+      `;
+
+      item.addEventListener('click', () => {
+        hideBreadcrumbMenu();
+        deps.navigateTo(targetPath);
+      });
+
+      item.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          hideBreadcrumbMenu();
+          deps.navigateTo(targetPath);
+        }
+      });
+
+      menu.appendChild(item);
+    });
+
+    menu.setAttribute('aria-busy', 'false');
+    focusBreadcrumbMenuItem(0);
   }
 
   function toggleBreadcrumbMode(): void {
@@ -208,6 +368,14 @@ export function createNavigationController(deps: NavigationDeps) {
 
     breadcrumbContainer.addEventListener('click', (e) => {
       const target = e.target as HTMLElement;
+
+      const overflowItem = target.closest<HTMLElement>('.breadcrumb-overflow');
+      if (overflowItem) {
+        e.stopPropagation();
+        showBreadcrumbCollapsedMenu(overflowItem);
+        return;
+      }
+
       const path = getItemPath(target);
       if (!path) return;
 
@@ -222,6 +390,19 @@ export function createNavigationController(deps: NavigationDeps) {
 
     breadcrumbContainer.addEventListener('keydown', (e) => {
       const target = e.target as HTMLElement;
+
+      const overflowItem = target.closest<HTMLElement>('.breadcrumb-overflow');
+      if (overflowItem) {
+        if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown' || e.key === 'F4') {
+          e.preventDefault();
+          showBreadcrumbCollapsedMenu(overflowItem);
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          hideBreadcrumbMenu();
+        }
+        return;
+      }
+
       const item = target.closest<HTMLElement>('.breadcrumb-item');
       const path = item?.dataset.path;
       if (!path) return;
@@ -324,6 +505,13 @@ export function createNavigationController(deps: NavigationDeps) {
           }
         }
       });
+
+      if (typeof ResizeObserver !== 'undefined' && !resizeObserver) {
+        resizeObserver = new ResizeObserver(() => {
+          handleResize();
+        });
+        resizeObserver.observe(addressBar);
+      }
     }
 
     if (addressInput) {

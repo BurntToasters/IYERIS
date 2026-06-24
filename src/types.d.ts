@@ -149,6 +149,11 @@ export interface Settings {
   showFileExtensions: boolean;
   maxSearchHistoryItems: number;
   maxDirectoryHistoryItems: number;
+  navTransitionDuration?: number;
+  operationAnimationDuration?: number;
+  folderIconStyle?: 'outline' | 'filled' | 'colored' | 'monochrome';
+  statusBarItems?: Record<string, boolean>;
+  dashboardWidgets?: string[];
 }
 
 export interface HomeSettings {
