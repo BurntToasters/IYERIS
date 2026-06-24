@@ -48,6 +48,7 @@ function makeDirProps() {
 }
 
 function buildDOM() {
+  // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
   document.body.innerHTML = `
     <div id="properties-modal" style="display:none"></div>
     <div id="properties-content"></div>

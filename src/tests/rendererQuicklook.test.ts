@@ -222,6 +222,7 @@ describe('createQuicklookController', () => {
       const ctrl = createQuicklookController(deps as any);
       ctrl.initQuicklookUi();
 
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       dom.content.innerHTML = `
         <div class="preview-markdown">
           <a id="safe-link" href="https://example.com/docs">Docs</a>
@@ -244,6 +245,7 @@ describe('createQuicklookController', () => {
       const ctrl = createQuicklookController(deps as any);
       ctrl.initQuicklookUi();
 
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       dom.content.innerHTML = `
         <div class="preview-markdown">
           <a id="mail-link" href="mailto:test@example.com">Mail</a>

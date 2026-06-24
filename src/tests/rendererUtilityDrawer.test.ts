@@ -10,7 +10,7 @@ describe('rendererUtilityDrawer', () => {
   let saveSettingsMock: any;
 
   function buildDOM(): void {
-    // eslint-disable-next-line no-restricted-syntax
+    // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
     document.body.innerHTML = `
       <div id="utility-drawer">
         <div id="utility-drawer-header">

@@ -108,6 +108,7 @@ function createMockDeps() {
 
 describe('createTabsController', () => {
   beforeEach(() => {
+    // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
     document.body.innerHTML = `
       <div id="tab-bar"><div id="tab-list"></div><button id="new-tab-btn"></button></div>
     `;

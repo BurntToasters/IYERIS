@@ -152,6 +152,7 @@ export function createBookmarksController(deps: BookmarksDeps) {
           const fromIndex = currentSettings.bookmarks.indexOf(draggedPath);
           const toIndex = currentSettings.bookmarks.indexOf(bookmarkPath);
           if (fromIndex === -1 || toIndex === -1 || fromIndex === toIndex) return;
+          const previousBookmarks = [...currentSettings.bookmarks];
           const updated = [...currentSettings.bookmarks];
           updated.splice(fromIndex, 1);
           updated.splice(toIndex, 0, draggedPath);
@@ -160,6 +161,7 @@ export function createBookmarksController(deps: BookmarksDeps) {
           if (saveResult.success) {
             loadBookmarks();
           } else {
+            currentSettings.bookmarks = previousBookmarks;
             showToast('Failed to reorder bookmarks', 'Bookmarks', 'error');
           }
           hideDropIndicator();
@@ -261,6 +263,8 @@ export function createBookmarksController(deps: BookmarksDeps) {
       loadBookmarks();
       showToast('Bookmark added', 'Bookmarks', 'success');
     } else {
+      // Roll back the in-memory mutation so disk and memory stay in sync.
+      currentSettings.bookmarks = currentSettings.bookmarks.filter((b) => b !== path);
       showToast('Failed to add bookmark', 'Error', 'error');
     }
   }
@@ -269,6 +273,7 @@ export function createBookmarksController(deps: BookmarksDeps) {
     const currentSettings = getCurrentSettings();
     if (!currentSettings.bookmarks) return;
 
+    const previousBookmarks = [...currentSettings.bookmarks];
     currentSettings.bookmarks = currentSettings.bookmarks.filter((b) => b !== path);
     const result = await saveSettingsWithTimestamp(currentSettings);
 
@@ -276,6 +281,7 @@ export function createBookmarksController(deps: BookmarksDeps) {
       loadBookmarks();
       showToast('Bookmark removed', 'Bookmarks', 'success');
     } else {
+      currentSettings.bookmarks = previousBookmarks;
       showToast('Failed to remove bookmark', 'Error', 'error');
     }
   }

@@ -68,6 +68,7 @@ function createDeps(overrides: Record<string, unknown> = {}) {
 }
 
 function setupSearchDOM() {
+  // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
   document.body.innerHTML = `
     <div class="search-bar-wrapper" style="display:none">
       <input id="search-input" type="text" />

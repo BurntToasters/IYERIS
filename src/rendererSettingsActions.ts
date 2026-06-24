@@ -46,21 +46,30 @@ export function createSettingsActionsController(deps: SettingsActionsDeps) {
       nativeUninstallBtn.disabled = true;
       nativeStatus.textContent = 'Checking integration status...';
 
-      const status = await window.tauriAPI.getNativeIntegrationStatus();
-      if (!status.success) {
-        nativeStatus.textContent = status.error || 'Failed to load integration status';
-        return;
-      }
+      try {
+        const status = await window.tauriAPI.getNativeIntegrationStatus();
+        if (!status.success) {
+          nativeStatus.textContent = status.error || 'Failed to load integration status';
+          nativeInstallBtn.disabled = false;
+          nativeUninstallBtn.disabled = false;
+          return;
+        }
 
-      nativeStatus.textContent = status.message;
-      if (!status.supported) {
-        nativeInstallBtn.disabled = true;
-        nativeUninstallBtn.disabled = true;
-        return;
-      }
+        nativeStatus.textContent = status.message;
+        if (!status.supported) {
+          nativeInstallBtn.disabled = true;
+          nativeUninstallBtn.disabled = true;
+          return;
+        }
 
-      nativeInstallBtn.disabled = status.installed;
-      nativeUninstallBtn.disabled = !status.installed;
+        nativeInstallBtn.disabled = status.installed;
+        nativeUninstallBtn.disabled = !status.installed;
+      } catch {
+        // Re-enable buttons so the user can retry rather than being stuck.
+        nativeStatus.textContent = 'Failed to check integration status';
+        nativeInstallBtn.disabled = false;
+        nativeUninstallBtn.disabled = false;
+      }
     };
 
     nativeInstallBtn?.addEventListener('click', async () => {
@@ -161,12 +170,12 @@ export function createSettingsActionsController(deps: SettingsActionsDeps) {
       );
       if (confirmed) {
         const nextSettings = { ...deps.getCurrentSettings(), searchHistory: [] };
-        deps.setCurrentSettings(nextSettings);
         const saveResult = await deps.saveSettingsWithTimestamp(nextSettings);
         if (!saveResult.success) {
           deps.showToast(saveResult.error || 'Failed to clear search history', 'Data', 'error');
           return;
         }
+        deps.setCurrentSettings(nextSettings);
         deps.showToast('Search history cleared', 'Data', 'success');
       }
     });
@@ -178,12 +187,12 @@ export function createSettingsActionsController(deps: SettingsActionsDeps) {
       );
       if (confirmed) {
         const nextSettings = { ...deps.getCurrentSettings(), bookmarks: [] };
-        deps.setCurrentSettings(nextSettings);
         const saveResult = await deps.saveSettingsWithTimestamp(nextSettings);
         if (!saveResult.success) {
           deps.showToast(saveResult.error || 'Failed to clear bookmarks', 'Data', 'error');
           return;
         }
+        deps.setCurrentSettings(nextSettings);
         deps.loadBookmarks();
         deps.showToast('Bookmarks cleared', 'Data', 'success');
       }

@@ -70,6 +70,7 @@ function createConfig(overrides: Record<string, unknown> = {}) {
 
 describe('createDragDropController — extended', () => {
   beforeEach(() => {
+    // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
     document.body.innerHTML = `
       <div id="file-view">
         <div class="column-view">

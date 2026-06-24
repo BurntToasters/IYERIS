@@ -7,6 +7,7 @@ describe('rendererThumbnails dual-root observers', () => {
   const originalIntersectionObserver = globalThis.IntersectionObserver;
 
   beforeEach(() => {
+    // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
     document.body.innerHTML = `
       <div id="file-view"></div>
       <div id="dual-pane-secondary-list"></div>

@@ -12,6 +12,7 @@ function makeSettings(overrides: Partial<Settings> = {}): Settings {
 }
 
 function setupTourDOM(): void {
+  // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
   document.body.innerHTML = `
     <div id="tour-prompt-modal" style="display:none"></div>
     <button id="tour-prompt-skip"></button>

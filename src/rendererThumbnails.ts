@@ -334,7 +334,12 @@ export function createThumbnailController(deps: ThumbnailDeps) {
           return;
         }
 
-        const diskCacheResult = await window.tauriAPI.getCachedThumbnail(item.path);
+        const thumbMtime = item.modified instanceof Date ? item.modified.getTime() : item.modified;
+        const diskCacheResult = await window.tauriAPI.getCachedThumbnail(
+          item.path,
+          thumbMtime,
+          item.size
+        );
         if (diskCacheResult.success) {
           if (!document.body.contains(fileItem)) return;
           cacheThumbnail(item.path, diskCacheResult.dataUrl);
@@ -390,7 +395,14 @@ export function createThumbnailController(deps: ThumbnailDeps) {
           renderThumbnailImage(iconDiv as HTMLElement, thumbnailUrl, item, fileItem);
 
           if (shouldCacheToDisk && thumbnailUrl.startsWith('data:')) {
-            window.tauriAPI.saveCachedThumbnail(item.path, thumbnailUrl).catch(ignoreError);
+            window.tauriAPI
+              .saveCachedThumbnail(
+                item.path,
+                thumbnailUrl,
+                item.modified instanceof Date ? item.modified.getTime() : item.modified,
+                item.size
+              )
+              .catch(ignoreError);
           }
         }
       } catch {

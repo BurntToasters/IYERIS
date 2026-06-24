@@ -17,9 +17,11 @@ fn cache_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     Ok(dir)
 }
 
-fn cache_key(file_path: &str) -> String {
+fn cache_key(file_path: &str, mtime_ms: u64, size: u64) -> String {
     use sha2::{Digest, Sha256};
-    let hash = Sha256::digest(file_path.as_bytes());
+    // Include mtime and size so a modified file doesn't serve a stale thumbnail.
+    let input = format!("{}|{}|{}", file_path, mtime_ms, size);
+    let hash = Sha256::digest(input.as_bytes());
     hex::encode(&hash[..16])
 }
 
@@ -75,9 +77,13 @@ fn trim_cache_if_needed(dir: &PathBuf) -> Result<(), String> {
 pub fn get_cached_thumbnail(
     app: tauri::AppHandle,
     file_path: String,
+    mtime_ms: Option<u64>,
+    file_size: Option<u64>,
 ) -> Result<Option<String>, String> {
     let dir = cache_dir(&app)?;
-    let key = cache_key(&file_path);
+    // Key on the same caller-supplied mtime/size that save uses, so the read
+    // and write keys are byte-identical (no cross-path float/units mismatch).
+    let key = cache_key(&file_path, mtime_ms.unwrap_or(0), file_size.unwrap_or(0));
     let thumb_path = dir.join(&key);
 
     match fs::read_to_string(&thumb_path) {
@@ -92,12 +98,14 @@ pub fn save_cached_thumbnail(
     app: tauri::AppHandle,
     file_path: String,
     data_url: String,
+    mtime_ms: Option<u64>,
+    file_size: Option<u64>,
 ) -> Result<(), String> {
     if data_url.len() > MAX_THUMBNAIL_BYTES {
         return Err("Thumbnail payload too large".to_string());
     }
     let dir = cache_dir(&app)?;
-    let key = cache_key(&file_path);
+    let key = cache_key(&file_path, mtime_ms.unwrap_or(0), file_size.unwrap_or(0));
     let thumb_path = dir.join(&key);
 
     // Atomic write (temp + rename) so concurrent saves / cache trims can't

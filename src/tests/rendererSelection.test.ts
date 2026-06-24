@@ -41,6 +41,7 @@ function addFileItems(paths: string[]): HTMLElement[] {
 
 describe('createSelectionController', () => {
   beforeEach(() => {
+    // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
     document.body.innerHTML = `
       <div id="file-view">
         <div id="file-grid" style="display:grid;grid-template-columns:repeat(3, 1fr)"></div>
@@ -340,6 +341,7 @@ describe('createSelectionController', () => {
 
   describe('moveGridFocusWithinScope', () => {
     it('uses the provided scope when moving focus in grid mode', () => {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="file-grid" style="display:grid;grid-template-columns:repeat(2, 1fr)">
           <div class="file-item" data-path="/left-a" tabindex="0"></div>
@@ -370,6 +372,7 @@ describe('createSelectionController', () => {
 
     it('moves by one item in list mode', () => {
       const scope = document.getElementById('file-grid') as HTMLElement;
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       scope.innerHTML = `
         <div class="file-item" data-path="/a" tabindex="0"></div>
         <div class="file-item" data-path="/b" tabindex="-1"></div>

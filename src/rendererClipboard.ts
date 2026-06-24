@@ -691,6 +691,8 @@ export function createClipboardController(deps: ClipboardDeps) {
             return;
           }
           clipboardSnapshot.paths = validPaths;
+          clipboard = { operation: 'cut', paths: [...validPaths] };
+          window.tauriAPI.setClipboard(clipboard).catch(ignoreError);
           deps.showToast(
             t('clipboard.filesSkipped', { count: missing.length }),
             'Paste',

@@ -78,6 +78,13 @@ export function createPreviewController(deps: PreviewDeps) {
 
   function clearPreview() {
     previewRequestId++;
+    // Stop any playing media before clearing content.
+    if (previewContent) {
+      previewContent.querySelectorAll('video, audio').forEach((el) => {
+        (el as HTMLMediaElement).pause();
+        (el as HTMLMediaElement).removeAttribute('src');
+      });
+    }
     if (activePdfViewer) {
       activePdfViewer.destroy();
       activePdfViewer = null;
@@ -137,6 +144,13 @@ export function createPreviewController(deps: PreviewDeps) {
 
   function updatePreview(file: FileItem) {
     const requestId = ++previewRequestId;
+    // Stop any playing media before swapping in new content.
+    if (previewContent) {
+      previewContent.querySelectorAll('video, audio').forEach((el) => {
+        (el as HTMLMediaElement).pause();
+        (el as HTMLMediaElement).removeAttribute('src');
+      });
+    }
     if (activePdfViewer) {
       activePdfViewer.destroy();
       activePdfViewer = null;

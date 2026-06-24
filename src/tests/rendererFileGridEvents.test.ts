@@ -150,6 +150,7 @@ function createConfig() {
 describe('createFileGridEventsController', () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
     document.body.innerHTML = `
       <div id="file-grid" class="drag-over">
         <div class="file-item" data-path="/dest/test.txt" data-is-directory="false"></div>

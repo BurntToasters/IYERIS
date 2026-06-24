@@ -132,6 +132,14 @@ export function createOperationQueueController(deps: QueueDeps) {
   function updateOperation(id: string, update: QueueUpdate): void {
     const operation = operations.get(id);
     if (!operation) return;
+    // Ignore late progress events for already-terminal operations to prevent
+    // flickering the card back to 'active' and resetting the auto-remove timer.
+    if (
+      operation.status === 'done' ||
+      operation.status === 'failed' ||
+      operation.status === 'cancelling'
+    )
+      return;
     Object.assign(operation, update, { updatedAt: Date.now() });
     scheduleRender();
   }
