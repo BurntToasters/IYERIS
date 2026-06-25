@@ -1214,6 +1214,40 @@ describe('rendererPreviews', () => {
       });
     });
 
+    it('restores an open preview panel after resizing back from compact viewport', () => {
+      const previousMatchMedia = window.matchMedia;
+      let isCompact = false;
+      Object.defineProperty(window, 'matchMedia', {
+        configurable: true,
+        value: vi.fn(() => ({ matches: isCompact })),
+      });
+
+      const deps = createDeps();
+      const ctrl = createPreviewController(deps as any);
+      ctrl.initPreviewUi();
+
+      const panel = document.getElementById('preview-panel') as HTMLElement;
+      const toggleBtn = document.getElementById('preview-toggle-btn')!;
+      ctrl.togglePreviewPanel();
+      expect(panel.style.display).toBe('flex');
+      expect(toggleBtn.getAttribute('aria-expanded')).toBe('true');
+
+      isCompact = true;
+      window.dispatchEvent(new Event('resize'));
+      expect(panel.style.display).toBe('none');
+      expect(toggleBtn.getAttribute('aria-expanded')).toBe('false');
+
+      isCompact = false;
+      window.dispatchEvent(new Event('resize'));
+      expect(panel.style.display).toBe('flex');
+      expect(toggleBtn.getAttribute('aria-expanded')).toBe('true');
+
+      Object.defineProperty(window, 'matchMedia', {
+        configurable: true,
+        value: previousMatchMedia,
+      });
+    });
+
     it('renders markdown output and opens only safe external links', async () => {
       const deps = createDeps();
       const ctrl = createPreviewController(deps as any);

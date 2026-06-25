@@ -23,12 +23,16 @@
 
 ### ℹ️ Enjoying IYERIS? Consider [❤️ Supporting Me! ❤️](https://rosie.run/support)
 
-### RC3 hardening pass
+### RC4 hardening pass
 
-This build focuses on stale-state cleanup, file-operation cancellation, and more
-headless regression coverage before stable.
+This build focuses on final UI polish, release-note cleanup, and more headless
+regression coverage before stable.
 
-## Changes in `v3.0.0-beta.6 (RC4):`
+## Changes in `v3.0.0-beta.7 (RC4):`
+
+- **UI:** Fixed preview panel state after resizing through compact layouts so an open preview reliably returns when the window is widened again.
+- **UI:** Matched paste-in animations across app-internal copy/cut paste, paste-into-folder, and system clipboard paste flows.
+- **Testing:** Added regression coverage for preview resize recovery and local paste animation registration, bringing the suite to 2,900 tests across 112 files.
 
 ## Changes in `v3.0.0-beta.6 (RC3):`
 

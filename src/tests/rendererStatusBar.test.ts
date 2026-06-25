@@ -43,7 +43,7 @@ describe('rendererStatusBar', () => {
       <button id="selection-move-btn"></button>
       <button id="selection-rename-btn"></button>
       <button id="selection-delete-btn"></button>
-      
+
       <div class="status-bar">
         <span id="status-items"></span>
         <span id="status-hidden" style="display: none"></span>

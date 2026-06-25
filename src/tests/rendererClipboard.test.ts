@@ -122,7 +122,10 @@ describe('createClipboardController', () => {
 
   it('pastes local clipboard using copy operation', async () => {
     const selected = new Set<string>();
-    const deps = createDeps(selected, new Map());
+    const deps = {
+      ...createDeps(selected, new Map()),
+      registerRecentlyPastedPaths: vi.fn(),
+    };
     const tauriApi = setupTauriApi();
     const controller = createClipboardController(deps);
     controller.setClipboard({ operation: 'copy', paths: ['/src/file.txt'] });
@@ -130,6 +133,7 @@ describe('createClipboardController', () => {
     await controller.pasteFromClipboard();
 
     expect(tauriApi.copyItems).toHaveBeenCalledWith(['/src/file.txt'], '/dest', 'ask');
+    expect(deps.registerRecentlyPastedPaths).toHaveBeenCalledWith(['/dest/file.txt']);
     expect(deps.refresh).toHaveBeenCalledTimes(1);
     expect(deps.showToast).toHaveBeenCalledWith('1 item copied', 'Success', 'success');
   });

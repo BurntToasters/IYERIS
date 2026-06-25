@@ -585,6 +585,7 @@ export function createClipboardController(deps: ClipboardDeps) {
                 clearClipboardIfUnchanged(clipboardSnapshot);
               }
               updateCutVisuals();
+              registerPasted(clipboardSnapshot.paths, folderPath);
               deps.refresh();
               return;
             }
@@ -615,6 +616,7 @@ export function createClipboardController(deps: ClipboardDeps) {
       }
 
       updateCutVisuals();
+      registerPasted(clipboardSnapshot.paths, folderPath);
       deps.refresh();
     } catch {
       deps.showToast('Paste operation failed', 'Error', 'error');
@@ -779,6 +781,7 @@ export function createClipboardController(deps: ClipboardDeps) {
                 clearClipboardIfUnchanged(clipboardSnapshot);
               }
               updateCutVisuals();
+              registerPasted(clipboardSnapshot.paths, currentPath);
               deps.refresh();
               return;
             }
@@ -811,6 +814,7 @@ export function createClipboardController(deps: ClipboardDeps) {
       }
 
       updateCutVisuals();
+      registerPasted(clipboardSnapshot.paths, currentPath);
       deps.refresh();
     } catch {
       deps.showToast('Paste operation failed', 'Error', 'error', [

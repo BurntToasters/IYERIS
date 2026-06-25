@@ -879,12 +879,14 @@ export function createPreviewController(deps: PreviewDeps) {
     ensureElements();
     if (resizeHandler) window.removeEventListener('resize', resizeHandler);
     resizeHandler = () => {
-      if (
-        previewPanel &&
-        typeof window.matchMedia === 'function' &&
-        window.matchMedia('(max-width: 900px)').matches
-      ) {
-        previewPanel.style.display = 'none';
+      if (previewPanel && typeof window.matchMedia === 'function') {
+        const viewportBlocksPanel = window.matchMedia('(max-width: 900px)').matches;
+        if (viewportBlocksPanel) {
+          previewPanel.style.display = 'none';
+        } else if (isPreviewPanelVisible) {
+          previewPanel.classList.remove('closing');
+          previewPanel.style.display = 'flex';
+        }
       }
       syncPreviewToggleState();
     };
