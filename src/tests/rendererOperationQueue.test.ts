@@ -53,7 +53,7 @@ describe('createOperationQueueController', () => {
     });
   }
 
-  it('renders active operation cards in progress panel', () => {
+  it('surfaces the panel for an operation that keeps running past the grace delay', () => {
     const controller = createController();
 
     controller.addOperation('op-1', 'compress', 'bundle.zip', { cancellable: true });
@@ -65,6 +65,11 @@ describe('createOperationQueueController', () => {
 
     const panel = document.getElementById('progress-panel') as HTMLElement;
     const content = document.getElementById('progress-panel-content') as HTMLElement;
+    // Still hidden during the grace window — only the card DOM is prepared.
+    expect(panel.style.display).toBe('none');
+
+    vi.advanceTimersByTime(600);
+
     expect(panel.style.display).toBe('flex');
     expect(content.textContent).toContain('Compressing');
     expect(content.textContent).toContain('bundle.zip');
@@ -73,6 +78,20 @@ describe('createOperationQueueController', () => {
       (content.querySelector('.operation-queue-progress-fill') as HTMLElement).style.width
     ).toBe('50%');
     expect(content.querySelector('.operation-queue-cancel')).toBeTruthy();
+  });
+
+  it('does not surface the panel for a quick successful operation', () => {
+    const controller = createController();
+
+    controller.addOperation('op-1', 'delete', 'File.txt');
+    controller.completeOperation('op-1', 'done');
+
+    const panel = document.getElementById('progress-panel') as HTMLElement;
+    // Quick success finishes before the grace timer — the toast covers it and
+    // the panel never opens, even after the grace window would have elapsed.
+    expect(panel.style.display).toBe('none');
+    vi.advanceTimersByTime(600);
+    expect(panel.style.display).toBe('none');
   });
 
   it('marks operation done then removes it after delay', () => {
@@ -85,6 +104,29 @@ describe('createOperationQueueController', () => {
     vi.advanceTimersByTime(4000);
     expect(controller.getOperation('op-1')).toBeUndefined();
     expect((document.getElementById('progress-panel') as HTMLElement).style.display).toBe('none');
+  });
+
+  it('does not un-minimize the panel when a minimized operation succeeds', () => {
+    collapsed = true;
+    const controller = createController();
+
+    controller.addOperation('op-1', 'delete', 'File.txt');
+    expect(collapsed).toBe(true);
+
+    controller.completeOperation('op-1', 'done');
+    expect(collapsed).toBe(true);
+  });
+
+  it('un-minimizes the panel when an operation fails', () => {
+    collapsed = true;
+    const controller = createController();
+
+    controller.addOperation('op-1', 'copy', 'File.txt');
+    expect(collapsed).toBe(true);
+
+    controller.completeOperation('op-1', 'failed', 'disk full');
+    expect(collapsed).toBe(false);
+    expect((document.getElementById('progress-panel') as HTMLElement).style.display).toBe('flex');
   });
 
   it('routes cancellable archive operations through cancel API', () => {

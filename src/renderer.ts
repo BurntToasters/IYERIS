@@ -2001,6 +2001,20 @@ function refresh(reason = 'unspecified') {
   }
   refreshDebounceTimer = setTimeout(() => {
     refreshDebounceTimer = null;
+    if (document.body.classList.contains('pending-created-item-rename')) {
+      devLog('Refresh', 'Skipped debounced refresh (created item rename pending)', {
+        reason,
+        currentPath,
+      });
+      return;
+    }
+    if (document.querySelector('.file-item.renaming')) {
+      devLog('Refresh', 'Skipped debounced refresh (inline rename active)', {
+        reason,
+        currentPath,
+      });
+      return;
+    }
     if (!isNavigating && !isSearchModeActive() && currentPath) {
       devLog('Refresh', 'Executing debounced refresh', { reason, currentPath });
       const savedSelection = new Set(selectedItems);

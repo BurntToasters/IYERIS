@@ -1,14 +1,14 @@
-<!-- > [!NOTE]
-> 🅱️ This is a Beta build. -->
+> [!NOTE]
+> 🅱️ This is a Beta build.
 
 # ⬇️ Downloads
 
-| <img height="20" src="https://raw.githubusercontent.com/BurntToasters/bcls/main/media/windows.png" /> Windows                                                                                        | <img height="20" src="https://raw.githubusercontent.com/BurntToasters/bcls/main/media/mac.png" /> macOS          | <img height="20" src="https://raw.githubusercontent.com/BurntToasters/bcls/main/media/linux.png" /> Linux                                                                                                                           |
-| :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **EXE:** [x64](https://github.com/BurntToasters/IYERIS/releases/download/v3.0.0/IYERIS-Win-x64.exe) / [arm64](https://github.com/BurntToasters/IYERIS/releases/download/v3.0.0/IYERIS-Win-arm64.exe) | **[Universal DMG](https://github.com/BurntToasters/IYERIS/releases/download/v3.0.0/IYERIS-MacOS-universal.dmg)** | **AppImage:** [x64](https://github.com/BurntToasters/IYERIS/releases/download/v3.0.0/IYERIS-Linux-x86_64.AppImage) <!-- / [arm64](https://github.com/BurntToasters/IYERIS/releases/download/v3.0.0/IYERIS-Linux-arm64.AppImage) --> |
-| <div align="center"><a href="https://apps.microsoft.com/detail/9pkgd6lkcl5j?referrer=appbadge&mode=full"><img src="https://get.microsoft.com/images/en-us%20light.svg" width="150"/></a></div>       | **[Universal ZIP](https://github.com/BurntToasters/IYERIS/releases/download/v3.0.0/IYERIS-MacOS-universal.zip)** | **DEB:** [x64](https://github.com/BurntToasters/IYERIS/releases/download/v3.0.0/IYERIS-Linux-amd64.deb) <!-- / [arm64](https://github.com/BurntToasters/IYERIS/releases/download/v3.0.0/IYERIS-Linux-arm64.deb) -->                 |
-|                                                                                                                                                                                                      |                                                                                                                  | **RPM:** [x64](https://github.com/BurntToasters/IYERIS/releases/download/v3.0.0/IYERIS-Linux-x86_64.rpm) <!-- / [arm64](https://github.com/BurntToasters/IYERIS/releases/download/v3.0.0/IYERIS-Linux-aarch64.rpm) -->              |
-|                                                                                                                                                                                                      |                                                                                                                  | **Flatpak:** [x64](https://github.com/BurntToasters/IYERIS/releases/download/v3.0.0/IYERIS-Linux-x86_64.flatpak) <!-- / [arm64](https://github.com/BurntToasters/IYERIS/releases/download/v3.0.0/IYERIS-Linux-aarch64.flatpak) -->  |
+| <img height="20" src="https://raw.githubusercontent.com/BurntToasters/bcls/main/media/windows.png" /> Windows                                                                                                      | <img height="20" src="https://raw.githubusercontent.com/BurntToasters/bcls/main/media/mac.png" /> macOS                 | <img height="20" src="https://raw.githubusercontent.com/BurntToasters/bcls/main/media/linux.png" /> Linux                                                                                                                                         |
+| :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **EXE:** [x64](https://github.com/BurntToasters/IYERIS/releases/download/v3.0.0-beta.7/IYERIS-Win-x64.exe) / [arm64](https://github.com/BurntToasters/IYERIS/releases/download/v3.0.0-beta.7/IYERIS-Win-arm64.exe) | **[Universal DMG](https://github.com/BurntToasters/IYERIS/releases/download/v3.0.0-beta.7/IYERIS-MacOS-universal.dmg)** | **AppImage:** [x64](https://github.com/BurntToasters/IYERIS/releases/download/v3.0.0-beta.7/IYERIS-Linux-x86_64.AppImage) <!-- / [arm64](https://github.com/BurntToasters/IYERIS/releases/download/v3.0.0-beta.7/IYERIS-Linux-arm64.AppImage) --> |
+| <div align="center"><a href="https://apps.microsoft.com/detail/9pkgd6lkcl5j?referrer=appbadge&mode=full"><img src="https://get.microsoft.com/images/en-us%20light.svg" width="150"/></a></div>                     | **[Universal ZIP](https://github.com/BurntToasters/IYERIS/releases/download/v3.0.0-beta.7/IYERIS-MacOS-universal.zip)** | **DEB:** [x64](https://github.com/BurntToasters/IYERIS/releases/download/v3.0.0-beta.7/IYERIS-Linux-amd64.deb) <!-- / [arm64](https://github.com/BurntToasters/IYERIS/releases/download/v3.0.0-beta.7/IYERIS-Linux-arm64.deb) -->                 |
+|                                                                                                                                                                                                                    |                                                                                                                         | **RPM:** [x64](https://github.com/BurntToasters/IYERIS/releases/download/v3.0.0-beta.7/IYERIS-Linux-x86_64.rpm) <!-- / [arm64](https://github.com/BurntToasters/IYERIS/releases/download/v3.0.0-beta.7/IYERIS-Linux-aarch64.rpm) -->              |
+|                                                                                                                                                                                                                    |                                                                                                                         | **Flatpak:** [x64](https://github.com/BurntToasters/IYERIS/releases/download/v3.0.0-beta.7/IYERIS-Linux-x86_64.flatpak) <!-- / [arm64](https://github.com/BurntToasters/IYERIS/releases/download/v3.0.0-beta.7/IYERIS-Linux-aarch64.flatpak) -->  |
 
 > [!IMPORTANT]
 > The `.sig` files in this repo are NOT normal gpg signatures — they are for Tauri V2's
@@ -22,6 +22,24 @@
 > in-case people would like to build their own :)
 
 ### ℹ️ Enjoying IYERIS? Consider [❤️ Supporting Me! ❤️](https://rosie.run/support)
+
+## Changes in `v3.0.0-beta.7 (LAST RC):`
+
+- **Security:** Closed the archive audit pass with tar extraction entry caps, symlink-safe deletes, compress depth limits, and metadata-only 7z listing so previews no longer decompress entire archives into memory.
+- **Security:** Migrated 7z support from unmaintained `sevenz-rust` to `sevenz-rust2`, including updated third-party license credits.
+- **Security:** Re-validates elevated copy/move/delete paths immediately before privileged execution to narrow the TOCTOU window between IPC checks and admin prompts.
+- **Security:** Tooltip `title` attributes are now built with DOM APIs instead of `innerHTML`, closing an XSS footgun on crafted filenames.
+- **Security:** IPC schema validation now fails closed — malformed backend records are dropped or rejected instead of being cast through unchecked.
+- **Codebase:** Fixed pre-stable UI/backend mismatches found in the V3 audit, including batch-rename collision checks against existing folders, same-directory cut/paste guards, file-view retry using the failed path, deferred refresh during navigation, folder-tree cache eviction for detached nodes, and idempotent breadcrumb/preview listener wiring.
+- **UI:** Dual pane secondary pane now supports keyboard navigation, active-row focus, F6 pane cycling, and selection restore after directory refresh.
+- **UI:** Added skeleton loading placeholders for grid and list views while directory contents load.
+- **UI:** Status bar context menu and external status-item refresh for quicker toggles from the footer.
+- **Codebase:** Pending settings changes now flush on tab hide, `pagehide`, and unload so debounced toggles are less likely to be lost on abrupt exit.
+- **Codebase:** Expanded the i18n catalog to dual pane, drag-and-drop, sidebar quick access, and settings error toasts.
+- **Codebase:** Aligned compress UI advanced options with backend format capabilities and added an archive capability audit script for CI.
+- **Codebase:** Updated Husky pre-commit wiring for the current Husky release (removed deprecated shim).
+- **Testing:** Expanded headless coverage to 2,914 tests across 115 files, including dual pane, archive capabilities, and IPC validation regressions.
+- **PKG:** Updated packages.
 
 ## Changes in `v3.0.0:`
 
