@@ -102,6 +102,65 @@ fn validate_elevated_path(path: &str, label: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Re-resolve paths immediately before spawning the privileged helper to narrow
+/// the TOCTOU window between IPC validation and elevation.
+fn resolve_elevated_source_before_exec(source: &str, op: &str) -> Result<String, String> {
+    validate_elevated_path(source, "Source")?;
+    let path = crate::validate_existing_path(source, "Source")?;
+    std::fs::symlink_metadata(&path).map_err(|e| {
+        format!("Source path no longer accessible before elevation: {}", e)
+    })?;
+    if op == "delete" {
+        crate::ensure_not_root_path(&path, "delete")?;
+        return Ok(source.to_string());
+    }
+    let canonical = path
+        .canonicalize()
+        .map_err(|e| format!("Cannot canonicalize source before elevation: {}", e))?;
+    crate::ensure_not_root_path(&canonical, op)?;
+    Ok(canonical.to_string_lossy().to_string())
+}
+
+fn resolve_elevated_dest_before_exec(dest: &str) -> Result<String, String> {
+    validate_elevated_path(dest, "Destination")?;
+    let path = crate::validate_path(dest, "Destination")?;
+    let parent = path
+        .parent()
+        .ok_or_else(|| "Destination has no parent directory".to_string())?;
+    let parent_meta = std::fs::symlink_metadata(parent).map_err(|e| {
+        format!("Destination parent no longer accessible before elevation: {}", e)
+    })?;
+    if parent_meta.file_type().is_symlink() {
+        return Err(
+            "Destination parent is a symbolic link — refusing elevated operation".to_string(),
+        );
+    }
+    let parent_canonical = parent
+        .canonicalize()
+        .map_err(|e| format!("Cannot canonicalize destination parent: {}", e))?;
+    crate::ensure_not_root_path(&parent_canonical, "destination parent")?;
+    let file_name = path
+        .file_name()
+        .ok_or_else(|| "Destination has no file name".to_string())?;
+    let resolved = parent_canonical.join(file_name);
+    let resolved_str = resolved.to_string_lossy().to_string();
+    validate_elevated_path(&resolved_str, "Destination")?;
+    Ok(resolved_str)
+}
+
+fn resolve_elevated_paths_before_exec(
+    op: &str,
+    source: &str,
+    dest: Option<&str>,
+) -> Result<(String, Option<String>), String> {
+    let source = resolve_elevated_source_before_exec(source, op)?;
+    let dest = match dest {
+        Some(d) => Some(resolve_elevated_dest_before_exec(d)?),
+        None => None,
+    };
+    Ok((source, dest))
+}
+
 /// Linux: verify the current_exe lives under a trusted system path before
 /// re-launching it via pkexec/osascript/powershell. Without this check, a
 /// writable install location (snap extraction dir, sideloaded AppImage,
@@ -244,6 +303,8 @@ async fn run_elevated_file_op(op: &str, source: &str, dest: Option<&str>) -> Res
     let op = op.to_string();
 
     tokio::task::spawn_blocking(move || {
+        let (source, dest) =
+            resolve_elevated_paths_before_exec(&op, &source, dest.as_deref())?;
         let dest_str = match op.as_str() {
             "copy" | "move" => {
                 Some(dest.as_deref().ok_or_else(|| format!("Destination required for {}", op))?)
@@ -447,10 +508,19 @@ async fn run_elevated_batch_op(
     let op = op.to_string();
 
     tokio::task::spawn_blocking(move || {
+        let mut resolved_items: Vec<(String, Option<String>)> = Vec::with_capacity(items.len());
+        for (src, dst) in &items {
+            resolved_items.push(resolve_elevated_paths_before_exec(
+                &op,
+                src,
+                dst.as_deref(),
+            )?);
+        }
+
         #[cfg(target_os = "windows")]
         {
             let mut lines = Vec::new();
-            for (src, dst) in &items {
+            for (src, dst) in &resolved_items {
                 let line = match op.as_str() {
                     "copy" => elevated_windows_copy_command(src, dst.as_deref().unwrap_or("")),
                     "move" => format!(
@@ -494,7 +564,7 @@ async fn run_elevated_batch_op(
         #[cfg(target_os = "macos")]
         {
             let mut lines = Vec::new();
-            for (src, dst) in &items {
+            for (src, dst) in &resolved_items {
                 let line = match op.as_str() {
                     "copy" => format!(
                         "/bin/cp -RP -- '{}' '{}'",
@@ -537,7 +607,7 @@ async fn run_elevated_batch_op(
         #[cfg(target_os = "linux")]
         {
             let mut lines = vec!["#!/bin/sh".to_string(), "set -e".to_string()];
-            for (src, dst) in &items {
+            for (src, dst) in &resolved_items {
                 let line = match op.as_str() {
                     "copy" => format!(
                         "cp -RP -- '{}' '{}'",

@@ -6,6 +6,7 @@ import { twemojiImg } from './rendererUtils.js';
 import { HOME_QUICK_ACCESS_ITEMS, HOME_VIEW_PATH } from './home.js';
 import { SPECIAL_DIRECTORY_ACTIONS } from './rendererLocalConstants.js';
 import { drivesList, folderTree } from './rendererElements.js';
+import { t } from './i18n.js';
 
 interface QuickAccessItem {
   action: string;
@@ -97,7 +98,7 @@ export function createSidebarController(deps: SidebarDeps) {
         if (homePath) {
           deps.navigateTo(homePath);
         } else {
-          deps.showToast('Failed to open Home Folder', 'Quick Access', 'error');
+          deps.showToast(t('sidebar.openHomeFailed'), t('sidebar.quickAccess'), 'error');
         }
         return;
       }
@@ -107,8 +108,8 @@ export function createSidebarController(deps: SidebarDeps) {
         const result = await window.tauriAPI.getSpecialDirectory(specialAction.key);
         if (!result.success) {
           deps.showToast(
-            result.error || `Failed to open ${specialAction.label} folder`,
-            'Quick Access',
+            result.error || t('sidebar.openSpecialFailed', { label: specialAction.label }),
+            t('sidebar.quickAccess'),
             'error'
           );
           return;
@@ -128,13 +129,13 @@ export function createSidebarController(deps: SidebarDeps) {
       if (action === 'trash') {
         const result = await window.tauriAPI.openTrash();
         if (!result.success) {
-          deps.showToast(result.error || 'Failed to open trash folder', 'Error', 'error');
+          deps.showToast(result.error || t('sidebar.openTrashFailed'), t('common.error'), 'error');
           return;
         }
-        deps.showToast('Opening system trash folder', 'Info', 'info');
+        deps.showToast(t('sidebar.openingTrash'), t('common.info'), 'info');
       }
     } catch (error) {
-      deps.showToast(getErrorMessage(error), 'Quick Access', 'error');
+      deps.showToast(getErrorMessage(error), t('sidebar.quickAccess'), 'error');
     }
   }
 

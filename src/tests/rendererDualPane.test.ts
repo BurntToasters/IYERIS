@@ -96,6 +96,8 @@ function createDeps() {
     handleDrop: vi.fn().mockResolvedValue(undefined),
     copySelectedToDestination: vi.fn().mockResolvedValue(true),
     moveSelectedToDestination: vi.fn().mockResolvedValue(true),
+    ensureActiveItem: vi.fn(),
+    invalidateFileItemsCache: vi.fn(),
   };
 }
 
@@ -119,7 +121,9 @@ describe('createDualPaneController', () => {
     const controller = createDualPaneController(deps as any);
 
     controller.renderSecondaryPaneItems([]);
-    expect(document.getElementById('dual-pane-secondary-list')!.textContent).toContain('No items');
+    expect(document.getElementById('dual-pane-secondary-list')!.textContent).toContain(
+      'dualPane.empty'
+    );
 
     const items: FileItem[] = [
       {
@@ -129,6 +133,7 @@ describe('createDualPaneController', () => {
         isFile: true,
         size: 12,
         modified: new Date('2025-01-01'),
+        isHidden: false,
       },
     ];
     controller.renderSecondaryPaneItems(items);
@@ -147,7 +152,7 @@ describe('createDualPaneController', () => {
 
     await controller.loadSecondaryPane('/home/user/right');
 
-    expect(deps.showToast).toHaveBeenCalledWith('permission denied', 'Dual Pane', 'error');
+    expect(deps.showToast).toHaveBeenCalledWith('permission denied', 'dualPane.title', 'error');
   });
 
   it('switches active pane and persists selection buckets', () => {
@@ -160,5 +165,7 @@ describe('createDualPaneController', () => {
     expect(deps.getCurrentSettings().activePane).toBe('right');
     expect(document.body.classList.contains('active-pane-right')).toBe(true);
     expect(deps.getPrimaryPaneSelected().has('/home/user/left/a.txt')).toBe(true);
+    expect(deps.invalidateFileItemsCache).toHaveBeenCalled();
+    expect(deps.ensureActiveItem).toHaveBeenCalled();
   });
 });

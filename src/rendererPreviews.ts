@@ -60,6 +60,7 @@ export function createPreviewController(deps: PreviewDeps) {
   let previewContent: HTMLElement | null = null;
   let previewToggleBtn: HTMLButtonElement | null = null;
   let previewCloseBtn: HTMLButtonElement | null = null;
+  let previewUiWired = false;
   let resizeHandler: (() => void) | null = null;
   let closeAnimationEndListener: ((e: AnimationEvent) => void) | null = null;
   let closeAnimationFallbackTimer: number | null = null;
@@ -906,6 +907,8 @@ export function createPreviewController(deps: PreviewDeps) {
 
   function initPreviewUi() {
     ensureElements();
+    if (previewUiWired) return;
+    previewUiWired = true;
     if (resizeHandler) window.removeEventListener('resize', resizeHandler);
     resizeHandler = () => {
       if (previewPanel && typeof window.matchMedia === 'function') {

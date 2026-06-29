@@ -428,17 +428,21 @@ export function createDragDropController(config: DragDropConfig) {
               'failed',
               elevResult.error || `Elevated ${operation} failed`
             );
-            showToast(elevResult.error || `Elevated ${operation} failed`, 'Error', 'error');
+            showToast(
+              elevResult.error || t('dragDrop.elevatedFailed', { operation }),
+              t('common.error'),
+              'error'
+            );
             return false;
           }
           completeQueued(operationId, 'failed', 'Operation cancelled');
-          showToast('Operation cancelled', 'Info', 'info');
+          showToast(t('dragDrop.operationCancelled'), t('common.info'), 'info');
           return false;
         }
         completeQueued(operationId, 'failed', result.error || `Failed to ${operation} items`);
-        showToast(result.error || `Failed to ${operation} items`, 'Error', 'error', [
+        showToast(result.error || t('dragDrop.failed', { operation }), t('common.error'), 'error', [
           {
-            label: 'Retry',
+            label: t('common.retry'),
             onClick: () => void handleDrop(sourcePaths, destPath, operation),
           },
         ]);
@@ -462,9 +466,9 @@ export function createDragDropController(config: DragDropConfig) {
     } catch (error) {
       console.error(`Error during ${operation}:`, error);
       completeQueued(operationId, 'failed', String(error));
-      showToast(`Failed to ${operation} items`, 'Error', 'error', [
+      showToast(t('dragDrop.failed', { operation }), t('common.error'), 'error', [
         {
-          label: 'Retry',
+          label: t('common.retry'),
           onClick: () => void handleDrop(sourcePaths, destPath, operation),
         },
       ]);
@@ -535,7 +539,7 @@ export function createDragDropController(config: DragDropConfig) {
         }
 
         if (isDropIntoCurrentDirectory(draggedPaths, currentPath)) {
-          config.getShowToast()(t('toast.alreadyInDirectory'), 'Info', 'info');
+          config.getShowToast()(t('toast.alreadyInDirectory'), t('common.info'), 'info');
           return;
         }
 
@@ -610,7 +614,7 @@ export function createDragDropController(config: DragDropConfig) {
         }
 
         if (isDropIntoCurrentDirectory(draggedPaths, currentPath)) {
-          config.getShowToast()(t('toast.alreadyInDirectory'), 'Info', 'info');
+          config.getShowToast()(t('toast.alreadyInDirectory'), t('common.info'), 'info');
           return;
         }
 

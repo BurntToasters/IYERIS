@@ -98,6 +98,7 @@ async function wrap(
 
 function buildFileItem(raw: Record<string, unknown>) {
   const v = validateIpc(RawFileItemSchema, raw, 'FileItem');
+  if (!v) return null;
   return {
     name: v.name,
     path: v.path,
@@ -121,6 +122,7 @@ function buildFileItem(raw: Record<string, unknown>) {
 // schema; the output keeps the FileItem shape the renderer expects.
 function buildSearchResultItem(raw: Record<string, unknown>) {
   const v = validateIpc(RawSearchResultSchema, raw, 'SearchResult');
+  if (!v) return null;
   return {
     name: v.name,
     path: v.path,
@@ -279,7 +281,10 @@ const tauriAPI: TauriAPI = {
         operationId: operationId ?? null,
         itemCount: items.length,
       });
-      return { success: true, contents: items.map(buildFileItem) } as never;
+      return {
+        success: true,
+        contents: items.map(buildFileItem).filter((item) => item !== null),
+      } as never;
     } catch (e) {
       const durationMs = elapsedMs(startedAt);
       devLog('IPC', `get_directory_contents failed in ${durationMs.toFixed(1)}ms`, {
@@ -308,10 +313,13 @@ const tauriAPI: TauriAPI = {
     devLog('IPC', 'get_drive_info request');
     try {
       const drives = await invoke<Record<string, unknown>[]>('get_drive_info');
-      const mapped = drives.map((d) => {
-        const v = validateIpc(RawDriveInfoSchema, d, 'DriveInfo');
-        return { path: v.mountPoint, label: v.name };
-      });
+      const mapped = drives
+        .map((d) => {
+          const v = validateIpc(RawDriveInfoSchema, d, 'DriveInfo');
+          if (!v) return null;
+          return { path: v.mountPoint, label: v.name };
+        })
+        .filter((d): d is { path: string; label: string } => d !== null);
       logIpcTiming('get_drive_info', elapsedMs(startedAt), { driveCount: mapped.length });
       return mapped;
     } catch (e) {
@@ -383,6 +391,9 @@ const tauriAPI: TauriAPI = {
     try {
       const props = await invoke<Record<string, unknown>>('get_item_properties', { itemPath });
       const v = validateIpc(RawItemPropertiesSchema, props, 'ItemProperties');
+      if (!v) {
+        return { success: false, error: 'Invalid item properties from backend' } as never;
+      }
       return {
         success: true,
         properties: {
@@ -587,7 +598,10 @@ const tauriAPI: TauriAPI = {
         filters: filters ? JSON.stringify(filters) : null,
         operationId: operationId ?? null,
       });
-      return { success: true, results: results.map(buildSearchResultItem) } as never;
+      return {
+        success: true,
+        results: results.map(buildSearchResultItem).filter((item) => item !== null),
+      } as never;
     } catch (e) {
       return { success: false, error: String(e) } as never;
     }
@@ -602,7 +616,7 @@ const tauriAPI: TauriAPI = {
       });
       return {
         success: true,
-        results: results.map(buildSearchResultItem),
+        results: results.map(buildSearchResultItem).filter((item) => item !== null),
       } as never;
     } catch (e) {
       return { success: false, error: String(e) } as never;
@@ -617,7 +631,7 @@ const tauriAPI: TauriAPI = {
       });
       return {
         success: true,
-        results: results.map(buildSearchResultItem),
+        results: results.map(buildSearchResultItem).filter((item) => item !== null),
       } as never;
     } catch (e) {
       return { success: false, error: String(e) } as never;
@@ -1108,6 +1122,9 @@ const tauriAPI: TauriAPI = {
         operationId,
       });
       const v = validateIpc(RawFolderSizeSchema, result, 'FolderSize');
+      if (!v) {
+        return { success: false, error: 'Invalid folder size from backend' } as never;
+      }
       return {
         success: true,
         result: {
@@ -1189,6 +1206,9 @@ const tauriAPI: TauriAPI = {
         includeUntracked: includeUntracked ?? null,
       });
       const result = validateIpc(RawGitStatusSchema, raw, 'GitStatus');
+      if (!result) {
+        return { success: false, error: 'Invalid git status from backend' } as never;
+      }
       const statuses: Array<{ path: string; status: string }> = [];
       for (const f of result.modified || []) statuses.push({ path: f, status: 'modified' });
       for (const f of result.added || []) statuses.push({ path: f, status: 'added' });
@@ -1214,16 +1234,19 @@ const tauriAPI: TauriAPI = {
       });
       return {
         success: true,
-        entries: entries.map((e) => {
-          const v = validateIpc(RawArchiveEntrySchema, e, 'ArchiveEntry');
-          return {
-            name: v.name,
-            path: v.path,
-            size: v.size,
-            isDirectory: v.isDirectory,
-            compressedSize: v.compressedSize,
-          };
-        }),
+        entries: entries
+          .map((e) => {
+            const v = validateIpc(RawArchiveEntrySchema, e, 'ArchiveEntry');
+            if (!v) return null;
+            return {
+              name: v.name,
+              path: v.path,
+              size: v.size,
+              isDirectory: v.isDirectory,
+              compressedSize: v.compressedSize,
+            };
+          })
+          .filter((entry) => entry !== null),
       } as never;
     } catch (e) {
       return { success: false, error: String(e) } as never;
@@ -1253,9 +1276,9 @@ const tauriAPI: TauriAPI = {
       );
       return {
         success: true,
-        groups: payload.groups.map((g) =>
-          validateIpc(RawDuplicateGroupSchema, g, 'DuplicateGroup')
-        ),
+        groups: payload.groups
+          .map((g) => validateIpc(RawDuplicateGroupSchema, g, 'DuplicateGroup'))
+          .filter((group) => group !== null),
         partial: payload.partial,
       } as never;
     } catch (e) {

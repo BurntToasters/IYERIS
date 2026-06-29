@@ -85,6 +85,7 @@ export function createNavigationController(deps: NavigationDeps) {
   let breadcrumbMenuAnchor: HTMLElement | null = null;
   let breadcrumbMenuFocusIndex = -1;
   let breadcrumbDelegated = false;
+  let breadcrumbListenersWired = false;
   let activePath = '';
   let isBreadcrumbCollapsed = false;
   let breadcrumbFullWidth = 0;
@@ -490,6 +491,8 @@ export function createNavigationController(deps: NavigationDeps) {
   function setupBreadcrumbListeners(): void {
     ensureElements();
     ensureBreadcrumbDelegation();
+    if (breadcrumbListenersWired) return;
+    breadcrumbListenersWired = true;
 
     const addressBar = document.querySelector('.address-bar');
     if (addressBar) {

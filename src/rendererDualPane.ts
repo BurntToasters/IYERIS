@@ -33,6 +33,8 @@ export interface DualPaneDeps {
   handleDrop: (paths: string[], destPath: string, operation: 'copy' | 'move') => Promise<boolean>;
   copySelectedToDestination: (destPath: string) => Promise<boolean>;
   moveSelectedToDestination: (destPath: string) => Promise<boolean>;
+  ensureActiveItem: () => void;
+  invalidateFileItemsCache: () => void;
 }
 
 export function createDualPaneController(deps: DualPaneDeps) {
@@ -65,7 +67,7 @@ export function createDualPaneController(deps: DualPaneDeps) {
     if (items.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'dual-pane-empty';
-      empty.textContent = 'No items';
+      empty.textContent = t('dualPane.empty');
       list.appendChild(empty);
       return;
     }
@@ -156,7 +158,7 @@ export function createDualPaneController(deps: DualPaneDeps) {
         </div>
       </div>
       <div class="file-info">
-        <span class="file-type">${item.isDirectory ? 'Folder' : escapeHtml(path.extname(item.name).replace('.', '').toUpperCase() || 'File')}</span>
+        <span class="file-type">${item.isDirectory ? t('fileType.folder') : escapeHtml(path.extname(item.name).replace('.', '').toUpperCase() || t('fileType.file'))}</span>
         <span class="file-size">${item.isDirectory ? '--' : formatFileSize(item.size)}</span>
         <span class="file-modified">${DATE_FORMATTER.format(new Date(item.modified))}</span>
       </div>
@@ -170,6 +172,9 @@ export function createDualPaneController(deps: DualPaneDeps) {
         deps.observeThumbnailItem(row, 'dual-pane-secondary-list');
       }
       list.appendChild(row);
+    }
+    if (settings.activePane === 'right' && items.length > 0) {
+      deps.ensureActiveItem();
     }
   }
 
@@ -223,6 +228,8 @@ export function createDualPaneController(deps: DualPaneDeps) {
     document.body.classList.toggle('active-pane-right', pane === 'right');
     syncPaneSelectionVisuals();
     deps.updateStatusBar();
+    deps.invalidateFileItemsCache();
+    deps.ensureActiveItem();
     if (persist) {
       deps.debouncedSaveSettings();
     }
@@ -243,7 +250,11 @@ export function createDualPaneController(deps: DualPaneDeps) {
       // Discard if a newer navigation completed first.
       if (requestId !== secondaryPaneLoadRequestId) return;
       if (!result.success) {
-        deps.showToast(result.error || t('toast.dualPane.loadFailed'), 'Dual Pane', 'error');
+        deps.showToast(
+          result.error || t('toast.dualPane.loadFailed'),
+          t('dualPane.title'),
+          'error'
+        );
         return;
       }
       secondaryPanePath = pathValue;
@@ -266,7 +277,7 @@ export function createDualPaneController(deps: DualPaneDeps) {
       }
       syncDualPaneControls();
     } catch (error) {
-      deps.showToast(getErrorMessage(error), 'Dual Pane', 'error');
+      deps.showToast(getErrorMessage(error), t('dualPane.title'), 'error');
     }
   }
 
@@ -318,6 +329,18 @@ export function createDualPaneController(deps: DualPaneDeps) {
     deps.updateStatusBar();
   }
 
+  function setSecondaryActiveRow(itemPath: string): void {
+    secondaryFileElementMap.forEach((el) => {
+      el.tabIndex = -1;
+    });
+    const row = secondaryFileElementMap.get(itemPath);
+    if (row) {
+      row.tabIndex = 0;
+      row.focus({ preventScroll: true });
+      row.scrollIntoView({ block: 'nearest' });
+    }
+  }
+
   function selectSecondaryItem(itemPath: string, append = false): void {
     const secondaryPaneSelectedItems = deps.getSecondaryPaneSelected();
     if (!append) {
@@ -333,6 +356,7 @@ export function createDualPaneController(deps: DualPaneDeps) {
       row.classList.add('selected');
       row.setAttribute('aria-selected', 'true');
     }
+    setSecondaryActiveRow(itemPath);
     deps.setSelectedItems(new Set(secondaryPaneSelectedItems));
     deps.updateStatusBar();
   }
@@ -553,7 +577,7 @@ export function createDualPaneController(deps: DualPaneDeps) {
           (draggedPath) => path.dirname(draggedPath) === destinationPath
         );
         if (sameDirectory) {
-          deps.showToast(t('toast.alreadyInDirectory'), 'Info', 'info');
+          deps.showToast(t('toast.alreadyInDirectory'), t('common.info'), 'info');
           return;
         }
         await deps.handleDrop(draggedPaths, destinationPath, operation);
@@ -561,7 +585,7 @@ export function createDualPaneController(deps: DualPaneDeps) {
           void loadSecondaryPane(secondaryPanePath);
         }
       } catch (error) {
-        deps.showToast(getErrorMessage(error), 'Drag and Drop', 'error');
+        deps.showToast(getErrorMessage(error), t('dragDrop.title'), 'error');
       } finally {
         deps.hideDropIndicator();
       }

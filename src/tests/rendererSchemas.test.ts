@@ -39,11 +39,10 @@ describe('validateIpc + RawFileItemSchema', () => {
     expect(v.name).toBe('a.txt');
   });
 
-  it('falls back to the raw payload (non-fatal) on a type mismatch', () => {
+  it('returns null on a type mismatch instead of passing through raw data', () => {
     const bad = { ...validFileItem, size: 'huge' };
     const v = validateIpc(RawFileItemSchema, bad, 'FileItem');
-    // Non-throwing: returns the raw value so the UI keeps working on drift.
-    expect((v as Record<string, unknown>).size).toBe('huge');
+    expect(v).toBeNull();
   });
 });
 
@@ -199,12 +198,12 @@ describe('RawGitStatusSchema', () => {
     expect(v.deleted).toEqual(['d.txt']);
   });
 
-  it('falls back (non-fatal) when arrays are the wrong type', () => {
+  it('returns null when arrays are the wrong type', () => {
     const v = validateIpc(
       RawGitStatusSchema,
       { isGitRepo: true, modified: 'oops', added: [], deleted: [], untracked: [] },
       'GitStatus'
     );
-    expect((v as Record<string, unknown>).modified).toBe('oops');
+    expect(v).toBeNull();
   });
 });

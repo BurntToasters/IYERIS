@@ -129,6 +129,7 @@ type EventListenersConfig = {
   togglePreviewPanel: () => void;
   showContextMenuForSelected: () => void;
   focusFileGrid: () => void;
+  focusSecondaryPane: () => void;
   ensureActiveItem: () => void;
   toggleSelectionAtCursor: () => void;
   navigateFileGridFocusOnly: (key: string) => void;
@@ -780,12 +781,8 @@ export function createEventListenersController(config: EventListenersConfig) {
         config.focusFileGrid();
         return;
       } else if (pane === 'secondary-grid') {
-        const secondary = document.getElementById('dual-pane-secondary-list');
-        const firstItem = secondary?.querySelector<HTMLElement>('.file-item');
-        if (firstItem) {
-          firstItem.focus();
-          return;
-        }
+        config.focusSecondaryPane();
+        return;
       }
     }
   }

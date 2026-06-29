@@ -11,7 +11,7 @@ import {
   twemojiImg,
 } from './rendererUtils.js';
 import { createDefaultSettings, sanitizeSettings } from './settings.js';
-import { setLocale, detectLocale } from './i18n.js';
+import { setLocale, detectLocale, t } from './i18n.js';
 
 import { HOME_VIEW_LABEL, HOME_VIEW_PATH, isHomeViewPath } from './home.js';
 
@@ -77,7 +77,11 @@ function notifySettingsSaveError(error?: string): void {
   const now = Date.now();
   if (now - lastSettingsSaveErrorAt < 5000) return;
   lastSettingsSaveErrorAt = now;
-  showToast(`Failed to save settings: ${error || 'Operation failed'}`, 'Error', 'error');
+  showToast(
+    t('toast.settingsSaveFailed', { error: error || t('common.operationFailed') }),
+    t('common.error'),
+    'error'
+  );
 }
 
 function executeSettingsSave(): void {
@@ -114,6 +118,15 @@ function debouncedSaveSettings(delay: number = SETTINGS_SAVE_DEBOUNCE_MS) {
   }, delay);
 }
 
+function flushDebouncedSettingsSave(): void {
+  if (!settingsSaveTimeout) return;
+  clearTimeout(settingsSaveTimeout);
+  settingsSaveTimeout = null;
+  if (isResettingSettings) return;
+  currentSettings._timestamp = Date.now();
+  void window.tauriAPI.saveSettingsSync(currentSettings);
+}
+
 const ipcCleanupFunctions: (() => void)[] = [];
 
 let currentPath: string = '';
@@ -135,6 +148,7 @@ let canRedo: boolean = false;
 let folderTreeEnabled: boolean = true;
 let isNavigating: boolean = false;
 let refreshDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+let pendingRefreshReason: string | null = null;
 let navigationSequence = 0;
 
 function markSelectionDirty(): void {
@@ -494,6 +508,8 @@ const dualPane = createDualPaneController({
   handleDrop: (paths, dest, op) => handleDrop(paths, dest, op),
   copySelectedToDestination: (dest) => clipboardController.copySelectedToDestination(dest),
   moveSelectedToDestination: (dest) => clipboardController.moveSelectedToDestination(dest),
+  ensureActiveItem: () => ensureActiveItem(),
+  invalidateFileItemsCache: () => invalidateFileItemsCache(),
 });
 const { getActiveFileGridScope, syncDualPaneControls, setActivePane, loadSecondaryPane } = dualPane;
 
@@ -1131,6 +1147,18 @@ const eventListenersController = createEventListenersController({
       scope?.focus();
     }
   },
+  focusSecondaryPane: () => {
+    if (!currentSettings.dualPaneEnabled) return;
+    setActivePane('right');
+    ensureActiveItem();
+    const scope = document.getElementById('dual-pane-secondary-list');
+    const activeItem = scope?.querySelector<HTMLElement>('.file-item[tabindex="0"]');
+    if (activeItem) {
+      activeItem.focus();
+    } else {
+      scope?.focus();
+    }
+  },
   ensureActiveItem: () => ensureActiveItem(),
   toggleSelectionAtCursor: () => {
     const isSecondary =
@@ -1458,6 +1486,11 @@ async function navigateTo(path: string, skipHistoryUpdate = false, trigger = 'di
       if (fileGrid) clearSkeleton(fileGrid);
       hideLoading();
       isNavigating = false;
+      if (pendingRefreshReason) {
+        const deferredReason = pendingRefreshReason;
+        pendingRefreshReason = null;
+        refresh(deferredReason);
+      }
       devLog('Navigate', `[${navigationId}] finalized`, {
         path,
         requestId,
@@ -1941,6 +1974,7 @@ function refresh(reason = 'unspecified') {
     return;
   }
   if (isNavigating) {
+    pendingRefreshReason = reason;
     devLog('Refresh', 'Skipped refresh (navigation already in progress)', {
       reason,
       currentPath,
@@ -1972,20 +2006,24 @@ function refresh(reason = 'unspecified') {
       const savedSelection = new Set(selectedItems);
       navigateTo(currentPath, false, `refresh:${reason}`)
         .then(() => {
-          if (savedSelection.size > 0) {
-            for (const itemPath of savedSelection) {
+          const valid = new Set<string>();
+          for (const itemPath of savedSelection) {
+            if (filePathMap.has(itemPath)) valid.add(itemPath);
+          }
+          if (valid.size === 0) return;
+          setSelectedItemsState(valid);
+          if (currentSettings.dualPaneEnabled) {
+            dualPane.syncPaneSelectionVisuals();
+          } else {
+            for (const itemPath of valid) {
               const el = fileElementMap.get(itemPath);
               if (el) {
                 el.classList.add('selected');
                 el.setAttribute('aria-selected', 'true');
-                selectedItems.add(itemPath);
               }
             }
-            if (selectedItems.size > 0) {
-              markSelectionDirty();
-              updateStatusBar();
-            }
           }
+          updateStatusBar();
         })
         .catch(ignoreError);
     } else {
@@ -2374,6 +2412,7 @@ document.addEventListener('mousedown', (e) => {
 })();
 
 window.addEventListener('beforeunload', () => {
+  flushDebouncedSettingsSave();
   stopIndexStatusPolling();
   cleanupSearch();
   cleanupHoverCard();
@@ -2430,4 +2469,14 @@ window.addEventListener('beforeunload', () => {
     }
   }
   ipcCleanupFunctions.length = 0;
+});
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') {
+    flushDebouncedSettingsSave();
+  }
+});
+
+window.addEventListener('pagehide', () => {
+  flushDebouncedSettingsSave();
 });
