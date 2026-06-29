@@ -702,6 +702,18 @@ export function createClipboardController(deps: ClipboardDeps) {
       const clipboardSnapshot = cloneClipboardState(clipboard);
       if (!clipboardSnapshot) return;
 
+      // Cut + paste into the same directory is a no-op move that the backend
+      // rejects; surface it clearly instead of a confusing error. (Copy into
+      // the same dir is allowed — it creates a duplicate.)
+      if (
+        clipboardSnapshot.operation === 'cut' &&
+        clipboardSnapshot.paths.length > 0 &&
+        clipboardSnapshot.paths.every((p) => path.dirname(p) === currentPath)
+      ) {
+        deps.showToast(t('toast.alreadyInDirectory'), 'Info', 'info');
+        return;
+      }
+
       // For cut operations, validate source paths still exist
       if (clipboardSnapshot.operation === 'cut') {
         const validationResults = await Promise.all(

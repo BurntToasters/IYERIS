@@ -30,7 +30,7 @@ export interface DualPaneDeps {
   hideDropIndicator: () => void;
   scheduleSpringLoad: (row: HTMLElement, action: () => void) => void;
   clearSpringLoad: () => void;
-  handleDrop: (paths: string[], destPath: string, operation: 'copy' | 'move') => Promise<void>;
+  handleDrop: (paths: string[], destPath: string, operation: 'copy' | 'move') => Promise<boolean>;
   copySelectedToDestination: (destPath: string) => Promise<boolean>;
   moveSelectedToDestination: (destPath: string) => Promise<boolean>;
 }

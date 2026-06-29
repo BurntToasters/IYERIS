@@ -16,7 +16,7 @@ type BookmarksDeps = {
     sourcePaths: string[],
     destPath: string,
     operation: 'copy' | 'move'
-  ) => Promise<void>;
+  ) => Promise<boolean>;
   showDropIndicator: (
     action: 'copy' | 'move' | 'add',
     destPath: string,

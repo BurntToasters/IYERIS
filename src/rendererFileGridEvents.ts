@@ -24,7 +24,7 @@ type FileGridEventsConfig = {
   hideDropIndicator: () => void;
   scheduleSpringLoad: (el: HTMLElement, action: () => void) => void;
   clearSpringLoad: (el?: HTMLElement) => void;
-  handleDrop: (paths: string[], destPath: string, operation: 'copy' | 'move') => Promise<void>;
+  handleDrop: (paths: string[], destPath: string, operation: 'copy' | 'move') => Promise<boolean>;
   setDragData: (paths: string[]) => void;
   clearDragData: () => void;
 };

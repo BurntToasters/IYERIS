@@ -553,6 +553,7 @@ export function wireControllers(deps: WiringDeps) {
     openExternal: (url) => {
       void openFileWithFeedback(url, showToast);
     },
+    showToast,
     onModalOpen: activateModal,
     onModalClose: deactivateModal,
   });

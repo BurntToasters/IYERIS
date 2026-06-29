@@ -65,7 +65,7 @@ type NavigationDeps = {
   showDropIndicator: (operation: OperationType, targetPath: string, x: number, y: number) => void;
   hideDropIndicator: () => void;
   getDraggedPaths: (event: DragEvent) => Promise<string[]>;
-  handleDrop: (paths: string[], targetPath: string, operation: OperationType) => Promise<void>;
+  handleDrop: (paths: string[], targetPath: string, operation: OperationType) => Promise<boolean>;
   debouncedSaveSettings: () => void;
   saveSettingsWithTimestamp: (settings: Settings) => Promise<{ success: boolean; error?: string }>;
   showToast: (

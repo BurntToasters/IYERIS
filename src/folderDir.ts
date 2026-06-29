@@ -21,7 +21,7 @@ interface FolderTreeDependencies {
   getFolderIcon: (path: string) => string;
   getBasename: (path: string) => string;
   navigateTo: (path: string) => void | Promise<void>;
-  handleDrop: (paths: string[], destPath: string, operation: DragOperation) => Promise<void>;
+  handleDrop: (paths: string[], destPath: string, operation: DragOperation) => Promise<boolean>;
   getDraggedPaths: (event: DragEvent) => Promise<string[]>;
   getDragOperation: (event: DragEvent) => DragOperation;
   scheduleSpringLoad: (target: HTMLElement, action: () => void) => void;

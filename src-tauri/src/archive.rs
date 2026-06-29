@@ -552,17 +552,19 @@ fn parse_dictionary_size(value: &str) -> Option<u32> {
     amount.checked_mul(unit)
 }
 
-fn build_lzma2_options(options: &AdvancedCompressOptions) -> sevenz_rust::lzma::LZMA2Options {
-    use sevenz_rust::lzma::LZMA2Options;
+fn build_lzma2_options(
+    options: &AdvancedCompressOptions,
+) -> sevenz_rust2::encoder_options::Lzma2Options {
+    use sevenz_rust2::encoder_options::Lzma2Options;
 
     let preset = options.compression_level.unwrap_or(5).min(9);
-    let mut lzma2 = LZMA2Options::with_preset(preset);
+    let mut lzma2 = Lzma2Options::from_level(preset);
     if let Some(dict) = options
         .dictionary_size
         .as_deref()
         .and_then(parse_dictionary_size)
     {
-        lzma2.dict_size = dict;
+        lzma2.set_dictionary_size(dict);
     }
     lzma2
 }
@@ -575,7 +577,7 @@ fn compress_7z(
     webview: &tauri::WebviewWindow,
 ) -> Result<(), String> {
     let result = (|| -> Result<(), String> {
-        let mut sz = sevenz_rust::SevenZWriter::create(output).map_err(|e| e.to_string())?;
+        let mut sz = sevenz_rust2::ArchiveWriter::create(output).map_err(|e| e.to_string())?;
         let lzma2 = build_lzma2_options(&advanced_options);
         let password = advanced_options
             .password
@@ -586,7 +588,7 @@ fn compress_7z(
 
         if let Some(password_value) = password.as_deref() {
             sz.set_content_methods(vec![
-                sevenz_rust::AesEncoderOptions::new(password_value.into()).into(),
+                sevenz_rust2::encoder_options::AesEncoderOptions::new(password_value.into()).into(),
                 lzma2.into(),
             ]);
             sz.set_encrypt_header(advanced_options.encrypt_file_names.unwrap_or(false));
@@ -619,7 +621,7 @@ fn compress_7z(
             } else {
                 ensure_compress_entry_depth(&name)?;
                 let source_file = fs::File::open(&path).map_err(|e| e.to_string())?;
-                let entry = sevenz_rust::SevenZArchiveEntry::from_path(&path, name.clone());
+                let entry = sevenz_rust2::ArchiveEntry::from_path(&path, name.clone());
                 sz_cell
                     .borrow_mut()
                     .push_archive_entry(entry, Some(source_file))
@@ -649,7 +651,7 @@ fn compress_7z(
 }
 
 fn add_dir_to_7z(
-    sz: &std::cell::RefCell<sevenz_rust::SevenZWriter<fs::File>>,
+    sz: &std::cell::RefCell<sevenz_rust2::ArchiveWriter<fs::File>>,
     dir: &Path,
     prefix: &str,
     op_id: &str,
@@ -676,7 +678,7 @@ fn add_dir_to_7z(
         } else {
             ensure_compress_entry_depth(&name)?;
             let source_file = fs::File::open(&path).map_err(|e| e.to_string())?;
-            let archive_entry = sevenz_rust::SevenZArchiveEntry::from_path(&path, name);
+            let archive_entry = sevenz_rust2::ArchiveEntry::from_path(&path, name);
             sz.borrow_mut()
                 .push_archive_entry(archive_entry, Some(source_file))
                 .map_err(|e| e.to_string())?;
@@ -920,13 +922,13 @@ fn extract_7z(
     let mut count = 0usize;
     let mut cumulative_bytes: u64 = 0;
     let mut extracted: Vec<PathBuf> = Vec::new();
-    let sevenz_password = sevenz_rust::Password::from(password.unwrap_or(""));
+    let sevenz_password = sevenz_rust2::Password::from(password.unwrap_or(""));
 
-    let extract_fn = |entry: &sevenz_rust::SevenZArchiveEntry,
+    let extract_fn = |entry: &sevenz_rust2::ArchiveEntry,
                       reader: &mut dyn Read,
                       _dest_path: &PathBuf| {
         if !op_id.is_empty() && !is_active(op_id) {
-            return Err(sevenz_rust::Error::other("Operation cancelled"));
+            return Err(sevenz_rust2::Error::Other("Operation cancelled".into()));
         }
         count += 1;
         let name = entry.name().to_string();
@@ -946,15 +948,18 @@ fn extract_7z(
             ensure_path_within_dest(&out_path, dest, &name).map_err(std::io::Error::other)?;
         } else {
             if out_path.exists() {
-                return Err(sevenz_rust::Error::other(format!(
-                    "Refusing to overwrite existing extraction path: {}",
-                    out_path.display()
-                )));
+                return Err(sevenz_rust2::Error::Other(
+                    format!(
+                        "Refusing to overwrite existing extraction path: {}",
+                        out_path.display()
+                    )
+                    .into(),
+                ));
             }
             let entry_size = entry.size();
             if cumulative_bytes.saturating_add(entry_size) > MAX_DECOMPRESSED_SIZE {
-                return Err(sevenz_rust::Error::other(
-                    "Decompressed size limit exceeded (50 GB)",
+                return Err(sevenz_rust2::Error::Other(
+                    "Decompressed size limit exceeded (50 GB)".into(),
                 ));
             }
             if let Some(parent) = out_path.parent() {
@@ -970,8 +975,8 @@ fn extract_7z(
                 .map_err(|e| std::io::Error::other(e.to_string()))?;
             cumulative_bytes = cumulative_bytes.saturating_add(written);
             if cumulative_bytes > MAX_DECOMPRESSED_SIZE {
-                return Err(sevenz_rust::Error::other(
-                    "Decompressed size limit exceeded (50 GB)",
+                return Err(sevenz_rust2::Error::Other(
+                    "Decompressed size limit exceeded (50 GB)".into(),
                 ));
             }
         }
@@ -979,15 +984,20 @@ fn extract_7z(
     };
 
     let result = if password.map(str::is_empty).unwrap_or(true) {
-        sevenz_rust::decompress_with_extract_fn(reader, dest, extract_fn)
+        sevenz_rust2::decompress_with_extract_fn(reader, dest, extract_fn)
     } else {
-        sevenz_rust::decompress_with_extract_fn_and_password(reader, dest, sevenz_password, extract_fn)
+        sevenz_rust2::decompress_with_extract_fn_and_password(
+            reader,
+            dest,
+            sevenz_password,
+            extract_fn,
+        )
     };
     if result.is_err() {
         cleanup_extracted_paths(&extracted);
     }
     result.map_err(|e| match e {
-        sevenz_rust::Error::Other(message) if message.as_ref() == "Operation cancelled" => {
+        sevenz_rust2::Error::Other(message) if message.as_ref() == "Operation cancelled" => {
             "Operation cancelled".to_string()
         }
         other => other.to_string(),
@@ -1094,6 +1104,16 @@ fn extract_tar_entries_tracked<R: std::io::Read>(
     for entry in tar.entries().map_err(|e| e.to_string())? {
         if !op_id.is_empty() && !is_active(op_id) {
             return Err("Operation cancelled".to_string());
+        }
+
+        // Bound entry count to stop crafted archives with millions of tiny
+        // (often zero-byte) entries that never trip the byte cap but exhaust
+        // inodes/CPU. Mirrors the zip path's MAX_EXTRACT_ENTRIES guard.
+        if count >= MAX_EXTRACT_ENTRIES {
+            return Err(format!(
+                "Archive entry count exceeds limit ({})",
+                MAX_EXTRACT_ENTRIES
+            ));
         }
 
         let mut entry = entry.map_err(|e| e.to_string())?;
@@ -1234,10 +1254,10 @@ pub async fn list_archive_contents(archive_path: String) -> Result<Vec<ArchiveEn
             }
             "7z" => {
                 let file = fs::File::open(&archive).map_err(|e| e.to_string())?;
-                let len = file.metadata().map_err(|e| e.to_string())?.len();
                 let mut reader = BufReader::new(file);
                 let sevenz_archive =
-                    sevenz_rust::Archive::read(&mut reader, len, &[]).map_err(|e| e.to_string())?;
+                    sevenz_rust2::Archive::read(&mut reader, &sevenz_rust2::Password::empty())
+                        .map_err(|e| e.to_string())?;
                 let entries = sevenz_archive
                     .files
                     .iter()

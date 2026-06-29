@@ -97,6 +97,7 @@ function createDeps(overrides: Partial<QuicklookDeps> = {}): QuicklookDeps {
     getFileIcon: vi.fn(() => '<span class="icon">📄</span>'),
     openFileEntry: vi.fn(),
     openExternal: vi.fn(),
+    showToast: vi.fn(),
     onModalOpen: vi.fn(),
     onModalClose: vi.fn(),
     ...overrides,

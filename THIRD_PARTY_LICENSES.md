@@ -30,12 +30,12 @@ SOFTWARE.
 
 ---
 
-## sevenz-rust
+## sevenz-rust2
 
-IYERIS uses the `sevenz-rust` Rust crate for reading 7z archives. The crate is a pure-Rust implementation; no 7-Zip executable or binary is bundled with IYERIS.
+IYERIS uses the `sevenz-rust2` Rust crate for reading and writing 7z archives. The crate is a pure-Rust implementation; no 7-Zip executable or binary is bundled with IYERIS.
 
-**Project:** sevenz-rust  
-**Source:** https://github.com/dyz1990/sevenz-rust  
+**Project:** sevenz-rust2
+**Source:** https://github.com/hasenbanck/sevenz-rust2
 **License:** Apache-2.0
 
 ---

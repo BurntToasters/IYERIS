@@ -139,8 +139,13 @@ function showTooltip(text: string, anchor: HTMLElement): void {
       if (parenIndex > 0) {
         baseText = baseText.substring(0, parenIndex).trim();
       }
-      // eslint-disable-next-line no-restricted-syntax -- static tooltip text and system shortcut string are safe
-      content.innerHTML = `${baseText} <span class="tooltip-shortcut">${shortcutStr}</span>`;
+      // Build via DOM so user-controlled title text (filenames/paths) is never
+      // parsed as HTML. textContent escapes; only the static span is markup.
+      content.textContent = baseText + ' ';
+      const shortcutSpan = document.createElement('span');
+      shortcutSpan.className = 'tooltip-shortcut';
+      shortcutSpan.textContent = shortcutStr;
+      content.appendChild(shortcutSpan);
     } else {
       content.textContent = text;
     }

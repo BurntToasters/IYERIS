@@ -1173,15 +1173,18 @@ function hideFileViewError(): void {
 }
 
 let fileViewErrorWired = false;
-function showFileViewError(message: string): void {
+let lastFailedNavPath = '';
+function showFileViewError(message: string, attemptedPath?: string): void {
+  lastFailedNavPath = attemptedPath || currentPath;
   if (!fileViewErrorWired) {
     fileViewErrorWired = true;
     document.getElementById('fileview-error-retry')?.addEventListener('click', () => {
       hideFileViewError();
-      void navigateTo(currentPath, true);
+      void navigateTo(lastFailedNavPath || currentPath, true);
     });
     document.getElementById('fileview-error-terminal')?.addEventListener('click', () => {
-      if (currentPath) window.tauriAPI.openTerminal(currentPath).catch(ignoreError);
+      const target = lastFailedNavPath || currentPath;
+      if (target) window.tauriAPI.openTerminal(target).catch(ignoreError);
     });
     document.getElementById('fileview-error-fda')?.addEventListener('click', () => {
       window.tauriAPI.requestFullDiskAccess().catch(ignoreError);
@@ -1346,7 +1349,7 @@ async function navigateTo(path: string, skipHistoryUpdate = false, trigger = 'di
         error: result.error || 'Unknown error',
       });
       devLog('Navigate', 'Error loading directory', result.error);
-      showFileViewError(result.error || 'This folder could not be opened.');
+      showFileViewError(result.error || 'This folder could not be opened.', path);
       return;
     }
 
@@ -1447,7 +1450,7 @@ async function navigateTo(path: string, skipHistoryUpdate = false, trigger = 'di
       durationMs: Date.now() - navigationStartAt,
     });
     devLog('Navigate', 'Error navigating', error);
-    showFileViewError(getErrorMessage(error));
+    showFileViewError(getErrorMessage(error), path);
   } finally {
     const isCurrentRequest = directoryLoader.isCurrentRequest(requestId);
     finishDirectoryRequest(requestId);

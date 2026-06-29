@@ -30,6 +30,11 @@ export type QuicklookDeps = {
   getFileIcon: (name: string) => string;
   openFileEntry: (file: FileItem) => void;
   openExternal: (url: string) => void;
+  showToast: (
+    message: string,
+    title: string,
+    type: 'success' | 'error' | 'info' | 'warning'
+  ) => void;
   onModalOpen?: (modal: HTMLElement) => void;
   onModalClose?: (modal: HTMLElement) => void;
 };

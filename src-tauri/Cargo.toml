@@ -39,7 +39,7 @@ infer = "0.19"
 zip = "2"
 tar = "0.4"
 flate2 = "1"
-sevenz-rust = { version = "0.6", features = ["compress", "aes256"] }
+sevenz-rust2 = { version = "0.21", features = ["compress", "aes256", "util"] }
 xz2 = "0.1"
 bzip2 = "0.5"
 glob = "0.3"

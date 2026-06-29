@@ -307,7 +307,14 @@ pub async fn delete_item(item_path: String) -> Result<(), String> {
     log::debug!("[FileOps] delete_item: {}", item_path);
     let path = crate::validate_existing_path(&item_path, "Item")?;
     crate::ensure_not_root_path(&path, "delete")?;
-    let result = if path.is_dir() {
+    // Use symlink_metadata (lstat): a symlink that points at a directory must
+    // be unlinked, NOT recursed into. path.is_dir() follows the link and would
+    // route a symlink-to-dir into remove_dir_all (which then either fails or,
+    // worse on some platforms, could affect the target).
+    let meta = fs::symlink_metadata(&path).map_err(|e| format!("Failed to access item: {}", e))?;
+    let result = if meta.file_type().is_symlink() {
+        fs::remove_file(&path).map_err(|e| format!("Failed to delete symlink: {}", e))
+    } else if meta.is_dir() {
         fs::remove_dir_all(&path).map_err(|e| format!("Failed to delete directory: {}", e))
     } else {
         fs::remove_file(&path).map_err(|e| format!("Failed to delete file: {}", e))

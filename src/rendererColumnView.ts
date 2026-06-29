@@ -38,7 +38,7 @@ type ColumnViewDeps = {
     sourcePaths: string[],
     destPath: string,
     operation: 'copy' | 'move'
-  ) => Promise<void>;
+  ) => Promise<boolean>;
   scheduleSpringLoad: (target: HTMLElement, action: () => void) => void;
   clearSpringLoad: (target?: HTMLElement) => void;
   createDirectoryOperationId: (prefix: string) => string;
