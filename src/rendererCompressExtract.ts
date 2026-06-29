@@ -1,5 +1,17 @@
 import type { FileItem } from './types';
 import type { ToastAction } from './rendererToasts.js';
+import {
+  COMPRESS_FORMAT_METHODS,
+  getVisibleCompressMethods,
+  getVisibleCompressUi,
+  methodSupportsDictionary,
+  type CompressFormat,
+} from './compressFormatCapabilities.js';
+import {
+  EXTRACTABLE_ARCHIVE_DESCRIPTION,
+  isExtractableArchivePath,
+  supportsExtractPassword,
+} from './archiveFormatCapabilities.js';
 import { ARCHIVE_SUFFIXES } from './fileTypes.js';
 import { getErrorMessage } from './shared.js';
 import { normalizeWindowsPath, rendererPath as path } from './rendererUtils.js';
@@ -261,6 +273,69 @@ export function createCompressExtractController(deps: CompressExtractDeps) {
     };
   }
 
+  function isCompressFormat(format: string): format is CompressFormat {
+    return format === '7z' || format === 'zip' || format === 'tar.gz';
+  }
+
+  function buildFormatAdvancedOptions(
+    format: CompressFormat,
+    els: ReturnType<typeof getCompressOptionsElements>
+  ): Record<string, unknown> {
+    const ui = getVisibleCompressUi(format);
+    const advancedOptions: Record<string, unknown> = {};
+
+    if (ui.compressionLevel) {
+      const level = els.levelSelect?.value;
+      if (level != null && level !== '5') {
+        const parsedLevel = parseInt(level, 10);
+        if (!isNaN(parsedLevel)) advancedOptions.compressionLevel = parsedLevel;
+      }
+    }
+
+    if (ui.compressionMethod) {
+      const defaultMethodForFormat: Record<'7z' | 'zip', string> = {
+        '7z': 'LZMA2',
+        zip: 'Deflate',
+      };
+      const method =
+        els.methodSelect?.value || defaultMethodForFormat[format as '7z' | 'zip'] || '';
+      if (method && method !== defaultMethodForFormat[format as '7z' | 'zip']) {
+        advancedOptions.method = method;
+      }
+    }
+
+    if (ui.dictionarySize) {
+      const defaultMethodForFormat: Record<'7z' | 'zip', string> = {
+        '7z': 'LZMA2',
+        zip: 'Deflate',
+      };
+      const method = ui.compressionMethod
+        ? els.methodSelect?.value || defaultMethodForFormat[format as '7z' | 'zip'] || ''
+        : defaultMethodForFormat[format as '7z' | 'zip'] || '';
+      const dict = els.dictionarySelect?.value;
+      if (dict && methodSupportsDictionary(format, method)) {
+        advancedOptions.dictionarySize = dict;
+      }
+    }
+
+    if (ui.solidBlockSize && format === '7z') {
+      const solid = els.solidSelect?.value;
+      if (solid) advancedOptions.solidBlockSize = solid;
+    }
+
+    if (ui.cpuThreads) {
+      const threads = els.threadsSelect?.value;
+      if (threads) advancedOptions.cpuThreads = threads;
+    }
+
+    if (ui.splitVolume) {
+      const split = els.splitSelect?.value;
+      if (split) advancedOptions.splitVolume = split;
+    }
+
+    return advancedOptions;
+  }
+
   function updateCompressOptionsVisibility() {
     const els = getCompressOptionsElements();
     if (!els.formatSelect) return;
@@ -275,32 +350,83 @@ export function createCompressExtractController(deps: CompressExtractDeps) {
     }
 
     const fmt = els.formatSelect.value;
-    const supportsCompressionLevel = fmt === 'zip' || fmt === 'tar.gz';
+    if (!isCompressFormat(fmt)) return;
+    const ui = getVisibleCompressUi(fmt);
 
-    if (els.levelField) els.levelField.hidden = !supportsCompressionLevel;
-    if (els.methodField) els.methodField.hidden = true;
-    if (els.dictionaryField) els.dictionaryField.hidden = true;
-    if (els.solidField) els.solidField.hidden = true;
-    if (els.threadsField) els.threadsField.hidden = true;
-    if (els.encryptionFieldset) els.encryptionFieldset.hidden = true;
-    if (els.encryptNamesField) els.encryptNamesField.hidden = true;
-    if (els.encryptionMethodField) els.encryptionMethodField.hidden = true;
-    if (els.splitField) els.splitField.hidden = true;
+    if (els.levelField) els.levelField.hidden = !ui.compressionLevel;
+    if (els.methodField) els.methodField.hidden = !ui.compressionMethod;
+    if (els.solidField) els.solidField.hidden = !ui.solidBlockSize;
+    if (els.threadsField) els.threadsField.hidden = !ui.cpuThreads;
+    if (els.encryptionFieldset) els.encryptionFieldset.hidden = !ui.encryption;
+    if (els.encryptNamesField) els.encryptNamesField.hidden = !ui.encryptFileNames;
+    if (els.encryptionMethodField) els.encryptionMethodField.hidden = !ui.encryptionMethod;
+    if (els.splitField) els.splitField.hidden = !ui.splitVolume;
 
     if (els.levelSelect) {
-      els.levelSelect.disabled = !supportsCompressionLevel;
-      if (!supportsCompressionLevel) {
+      els.levelSelect.disabled = !ui.compressionLevel;
+      for (const option of Array.from(els.levelSelect.options)) {
+        if (option.value === '0') {
+          option.hidden = !ui.allowStoreLevel;
+          option.disabled = !ui.allowStoreLevel;
+        }
+      }
+      if (!ui.allowStoreLevel && els.levelSelect.value === '0') {
         els.levelSelect.value = '5';
-      } else if (els.levelSelect.value === '0' && !els.levelSelect.dataset.userChoseStore) {
+        delete els.levelSelect.dataset.userChoseStore;
+      } else if (
+        ui.allowStoreLevel &&
+        els.levelSelect.value === '0' &&
+        !els.levelSelect.dataset.userChoseStore
+      ) {
         els.levelSelect.value = '5';
       }
     }
 
-    if (els.dictionarySelect) {
-      els.dictionarySelect.value = '';
+    if (els.methodSelect && ui.compressionMethod) {
+      const currentMethod = els.methodSelect.value;
+      const formatMethods = getVisibleCompressMethods(fmt);
+      const defaultMethod = formatMethods[0] ?? '';
+      els.methodSelect.replaceChildren();
+
+      for (const m of formatMethods) {
+        const opt = document.createElement('option');
+        opt.value = m;
+        opt.textContent = m;
+        els.methodSelect.appendChild(opt);
+      }
+
+      const options = Array.from(els.methodSelect.options);
+      const match = options.find((o) => o.value === currentMethod);
+      if (match && formatMethods.includes(currentMethod)) {
+        els.methodSelect.value = currentMethod;
+      } else if (defaultMethod) {
+        els.methodSelect.value = defaultMethod;
+      } else if (options.length > 0) {
+        els.methodSelect.value = options[0]!.value;
+      }
     }
 
+    updateDictionaryVisibility(els, fmt, ui);
     updateCompressPreviewPath();
+  }
+
+  function updateDictionaryVisibility(
+    els: ReturnType<typeof getCompressOptionsElements>,
+    fmt: CompressFormat,
+    ui = getVisibleCompressUi(fmt)
+  ) {
+    const defaultMethodForFormat: Record<'7z' | 'zip', string> = {
+      '7z': 'LZMA2',
+      zip: 'Deflate',
+    };
+    const selectedMethod = ui.compressionMethod
+      ? els.methodSelect?.value || defaultMethodForFormat[fmt as '7z' | 'zip'] || ''
+      : defaultMethodForFormat[fmt as '7z' | 'zip'] || '';
+    const dictionarySupported = ui.dictionarySize && methodSupportsDictionary(fmt, selectedMethod);
+    if (els.dictionaryField) els.dictionaryField.hidden = !dictionarySupported;
+    if (!dictionarySupported && els.dictionarySelect) {
+      els.dictionarySelect.value = '';
+    }
   }
 
   function updateCompressPreviewPath() {
@@ -385,13 +511,30 @@ export function createCompressExtractController(deps: CompressExtractDeps) {
       archiveName = archiveName.replace(/\.(zip|7z|tar\.gz|tgz|tar)$/i, '') + expectedExt;
     }
 
-    const advancedOptions: Record<string, unknown> = {};
+    if (!isCompressFormat(format)) {
+      deps.showToast('Unsupported compression format', 'Error', 'error');
+      return;
+    }
 
-    if (format === 'zip' || format === 'tar.gz') {
-      const level = els.levelSelect?.value;
-      if (level != null && level !== '5') {
-        const parsedLevel = parseInt(level, 10);
-        if (!isNaN(parsedLevel)) advancedOptions.compressionLevel = parsedLevel;
+    const ui = getVisibleCompressUi(format);
+    const password = (ui.encryption && els.passwordInput?.value) || '';
+    const passwordConfirm = (ui.encryption && els.passwordConfirm?.value) || '';
+
+    if (password && password !== passwordConfirm) {
+      deps.showToast('Passwords do not match', 'Password Mismatch', 'warning');
+      els.passwordConfirm?.focus();
+      return;
+    }
+
+    const advancedOptions = buildFormatAdvancedOptions(format, els);
+
+    if (password) {
+      advancedOptions.password = password;
+      if (ui.encryptFileNames && els.encryptNamesCheck?.checked) {
+        advancedOptions.encryptFileNames = true;
+      }
+      if (ui.encryptionMethod) {
+        advancedOptions.encryptionMethod = els.encryptionMethodSelect?.value || 'AES256';
       }
     }
 
@@ -431,11 +574,21 @@ export function createCompressExtractController(deps: CompressExtractDeps) {
         els.nameInput.value = `${withoutExt}${ext}`;
       }
       if (els.levelSelect) delete els.levelSelect.dataset.userChoseStore;
+      if (els.formatSelect && isCompressFormat(els.formatSelect.value) && els.methodSelect) {
+        const defaultMethod = COMPRESS_FORMAT_METHODS[els.formatSelect.value][0];
+        if (defaultMethod) els.methodSelect.value = defaultMethod;
+      }
       updateCompressOptionsVisibility();
     });
 
     els.nameInput?.addEventListener('input', updateCompressPreviewPath);
-    els.methodSelect?.addEventListener('change', updateCompressOptionsVisibility);
+    els.methodSelect?.addEventListener('change', () => {
+      const els = getCompressOptionsElements();
+      const fmt = els.formatSelect?.value;
+      if (fmt && isCompressFormat(fmt)) {
+        updateDictionaryVisibility(els, fmt);
+      }
+    });
 
     els.levelSelect?.addEventListener('change', () => {
       if (els.levelSelect) {
@@ -500,6 +653,16 @@ export function createCompressExtractController(deps: CompressExtractDeps) {
     message.textContent = `Extract ${name}?`;
     updateExtractPreview(baseFolder);
 
+    const passwordInput = document.getElementById('extract-password') as HTMLInputElement | null;
+    const passwordField = document.getElementById('extract-password-field') as HTMLElement | null;
+    if (passwordField) {
+      passwordField.hidden = !supportsExtractPassword(archivePath);
+    }
+    if (passwordInput) {
+      passwordInput.value = '';
+      passwordInput.type = 'password';
+    }
+
     modal.style.display = 'flex';
     deps.activateModal(modal);
     input.focus();
@@ -514,6 +677,11 @@ export function createCompressExtractController(deps: CompressExtractDeps) {
     }
     extractModalArchivePath = null;
     extractModalTrackRecent = true;
+    const passwordInput = document.getElementById('extract-password') as HTMLInputElement | null;
+    if (passwordInput) {
+      passwordInput.value = '';
+      passwordInput.type = 'password';
+    }
   }
 
   async function openPathWithArchivePrompt(
@@ -522,7 +690,7 @@ export function createCompressExtractController(deps: CompressExtractDeps) {
     trackRecent: boolean = true
   ): Promise<void> {
     if (!filePath) return;
-    if (isArchivePath(filePath)) {
+    if (isExtractableArchivePath(filePath)) {
       showExtractModal(filePath, fileName, trackRecent);
       return;
     }
@@ -576,14 +744,17 @@ export function createCompressExtractController(deps: CompressExtractDeps) {
     }
     const archivePath = extractModalArchivePath;
     const trackRecent = extractModalTrackRecent;
+    const passwordInput = document.getElementById('extract-password') as HTMLInputElement | null;
+    const password = passwordInput?.value.trim() || undefined;
     hideExtractModal();
-    await handleExtract(archivePath, baseFolder, trackRecent);
+    await handleExtract(archivePath, baseFolder, trackRecent, password);
   }
 
   async function handleExtract(
     archivePath: string,
     destBaseFolder: string,
-    trackRecent: boolean = true
+    trackRecent: boolean = true,
+    password?: string
   ) {
     const baseFolder = destBaseFolder.trim();
     if (!baseFolder) {
@@ -591,9 +762,9 @@ export function createCompressExtractController(deps: CompressExtractDeps) {
       return;
     }
 
-    if (!isArchivePath(archivePath)) {
+    if (!isExtractableArchivePath(archivePath)) {
       deps.showToast(
-        'Unsupported archive format. Supported: .zip, .7z, .rar, .tar.gz, and more',
+        `Unsupported archive format. Supported: ${EXTRACTABLE_ARCHIVE_DESCRIPTION}`,
         'Error',
         'error'
       );
@@ -637,7 +808,12 @@ export function createCompressExtractController(deps: CompressExtractDeps) {
         return;
       }
 
-      const result = await window.tauriAPI.extractArchive(archivePath, destPath, operationId);
+      const result = await window.tauriAPI.extractArchive(
+        archivePath,
+        destPath,
+        operationId,
+        password
+      );
 
       cleanupProgressHandler();
 
@@ -646,7 +822,7 @@ export function createCompressExtractController(deps: CompressExtractDeps) {
         deps.showToast(result.error || 'Extraction failed', 'Error', 'error', [
           {
             label: 'Retry',
-            onClick: () => void handleExtract(archivePath, destBaseFolder, trackRecent),
+            onClick: () => void handleExtract(archivePath, destBaseFolder, trackRecent, password),
           },
         ]);
         return;

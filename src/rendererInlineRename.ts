@@ -5,7 +5,7 @@ import { isPermissionDeniedError } from './rendererClipboard.js';
 type InlineRenameDeps = {
   getCurrentPath: () => string;
   getAllFiles: () => FileItem[];
-  navigateTo: (path: string) => Promise<void>;
+  navigateTo: (path: string, skipHistoryUpdate?: boolean) => Promise<void>;
   showToast: (
     message: string,
     title: string,
@@ -16,12 +16,16 @@ type InlineRenameDeps = {
   isHomeViewPath: (path: string) => boolean;
   announceToScreenReader?: (message: string) => void;
   setRecentlyRenamedPath?: (path: string | null) => void;
+  selectCreatedItem?: (path: string) => void;
 };
 
 const INVALID_FILENAME_CHARS = /[<>:"|?*]/;
 const RESERVED_NAMES = /^(CON|PRN|AUX|NUL|COM\d|LPT\d)(\.|$)/i;
 const BIDI_CONTROL_CHARS = /[\u200E\u200F\u202A-\u202E\u2066-\u2069]/;
 const MAX_FILENAME_LENGTH = 255;
+const CREATED_ITEM_RENAME_DELAY_MS = 50;
+const CREATED_ITEM_RENAME_MAX_ATTEMPTS = 20;
+const PENDING_CREATED_ITEM_RENAME_CLASS = 'pending-created-item-rename';
 
 function hasControlChars(name: string): boolean {
   for (let i = 0; i < name.length; i++) {
@@ -54,6 +58,82 @@ function getFilenameError(name: string): string | null {
 
 export function createInlineRenameController(deps: InlineRenameDeps) {
   let pendingRenameTimeout: ReturnType<typeof setTimeout> | null = null;
+
+  function setPendingCreatedItemRename(active: boolean) {
+    if (typeof document === 'undefined') return;
+    document.body?.classList.toggle(PENDING_CREATED_ITEM_RENAME_CLASS, active);
+  }
+
+  function clearPendingCreatedItemRename() {
+    if (pendingRenameTimeout) {
+      clearTimeout(pendingRenameTimeout);
+      pendingRenameTimeout = null;
+    }
+    setPendingCreatedItemRename(false);
+  }
+
+  function findFileItemByPath(itemPath: string, itemName?: string): HTMLElement | null {
+    if (typeof document === 'undefined') return null;
+    const fileItems = document.querySelectorAll('.file-item');
+    for (const item of Array.from(fileItems)) {
+      if (item.getAttribute('data-path') === itemPath) {
+        return item as HTMLElement;
+      }
+    }
+    if (!itemName) return null;
+    const posixSuffix = `/${itemName}`;
+    const windowsSuffix = `\\${itemName}`;
+    const suffixMatches = Array.from(fileItems).filter((item) => {
+      const candidatePath = item.getAttribute('data-path') || '';
+      return candidatePath.endsWith(posixSuffix) || candidatePath.endsWith(windowsSuffix);
+    });
+    return suffixMatches.length === 1 ? (suffixMatches[0] as HTMLElement) : null;
+  }
+
+  function getResolvedFileItemPath(fileItem: HTMLElement, fallbackPath: string): string {
+    return fileItem.getAttribute('data-path') || fallbackPath;
+  }
+
+  function scheduleCreatedItemRename(createdPath: string, createdName: string, parentPath: string) {
+    clearPendingCreatedItemRename();
+    setPendingCreatedItemRename(true);
+
+    const tryStartRename = (attempt: number) => {
+      pendingRenameTimeout = null;
+      if (typeof document === 'undefined') {
+        setPendingCreatedItemRename(false);
+        return;
+      }
+      if (deps.getCurrentPath() !== parentPath) {
+        setPendingCreatedItemRename(false);
+        return;
+      }
+
+      const fileItem = findFileItemByPath(createdPath, createdName);
+      if (fileItem) {
+        const resolvedPath = getResolvedFileItemPath(fileItem, createdPath);
+        setPendingCreatedItemRename(false);
+        deps.selectCreatedItem?.(resolvedPath);
+        fileItem.classList.add('selected');
+        fileItem.setAttribute('aria-selected', 'true');
+        fileItem.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+        startInlineRename(fileItem, createdName, resolvedPath);
+        return;
+      }
+
+      if (attempt < CREATED_ITEM_RENAME_MAX_ATTEMPTS) {
+        pendingRenameTimeout = setTimeout(
+          () => tryStartRename(attempt + 1),
+          CREATED_ITEM_RENAME_DELAY_MS
+        );
+        return;
+      }
+
+      setPendingCreatedItemRename(false);
+    };
+
+    pendingRenameTimeout = setTimeout(() => tryStartRename(0), CREATED_ITEM_RENAME_DELAY_MS);
+  }
 
   async function createNewFile() {
     await createNewFileWithInlineRename();
@@ -93,20 +173,8 @@ export function createInlineRenameController(deps: InlineRenameDeps) {
     }
 
     const createdPath = result.path;
-    await deps.navigateTo(currentPath);
-    if (pendingRenameTimeout) clearTimeout(pendingRenameTimeout);
-    pendingRenameTimeout = setTimeout(() => {
-      pendingRenameTimeout = null;
-      if (typeof document === 'undefined') return;
-      if (deps.getCurrentPath() !== currentPath) return;
-      const fileItems = document.querySelectorAll('.file-item');
-      for (const item of Array.from(fileItems)) {
-        if (item.getAttribute('data-path') === createdPath) {
-          startInlineRename(item as HTMLElement, finalName, createdPath);
-          break;
-        }
-      }
-    }, 100);
+    await deps.navigateTo(currentPath, true);
+    scheduleCreatedItemRename(createdPath, finalName, currentPath);
   }
 
   async function createNewFileWithInlineRename() {

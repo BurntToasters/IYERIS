@@ -20,6 +20,11 @@ type QueueDeps = {
 };
 
 const COMPLETE_REMOVE_DELAY_MS = 4000;
+// Quick operations (a single-file delete/copy/move) complete almost instantly
+// and are already announced by the toast — popping the panel open for them is
+// noise. We only surface the panel once an operation has been running for this
+// long, or immediately on failure.
+const PANEL_SHOW_DELAY_MS = 600;
 
 function iconForKind(kind: OperationKind): string {
   return (
@@ -52,6 +57,11 @@ function titleForKind(kind: OperationKind): string {
 export function createOperationQueueController(deps: QueueDeps) {
   const operations = new Map<string, OperationQueueItem>();
   const timers = new Map<string, ReturnType<typeof setTimeout>>();
+  const showTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  // Gate on whether the panel should be visible at all. New operations don't
+  // flip this on immediately — only the show-delay grace timer or a failure
+  // does. This keeps quick successes from flashing the panel open.
+  let shouldShowPanel = false;
   let listenerInitialized = false;
   let renderQueued = false;
 
@@ -91,15 +101,46 @@ export function createOperationQueueController(deps: QueueDeps) {
     });
   }
 
-  function showPanel(): void {
+  // Arm a grace timer for a freshly-added operation. If the operation is still
+  // running once it fires, surface the panel (respecting the user's collapse
+  // preference). Quick operations that finish first never trip this, so they
+  // stay quiet and let the toast announce them.
+  function schedulePanelShow(id: string): void {
+    if (shouldShowPanel) return;
+    if (showTimers.has(id)) clearTimeout(showTimers.get(id));
+    showTimers.set(
+      id,
+      setTimeout(() => {
+        showTimers.delete(id);
+        const operation = operations.get(id);
+        if (operation && operation.status === 'active') {
+          shouldShowPanel = true;
+          scheduleRender();
+        }
+      }, PANEL_SHOW_DELAY_MS)
+    );
+  }
+
+  function clearPanelShow(id: string): void {
+    if (showTimers.has(id)) {
+      clearTimeout(showTimers.get(id));
+      showTimers.delete(id);
+    }
+  }
+
+  // Force the panel open (un-minimized) so the user can't miss it. Used for
+  // failures, where the error needs attention.
+  function revealPanel(): void {
+    shouldShowPanel = true;
     deps.setOperationPanelCollapsed(false);
-    const panel = document.getElementById('progress-panel');
-    if (panel) panel.style.display = 'flex';
+    scheduleRender();
   }
 
   function hidePanelIfEmpty(): void {
+    if (operations.size !== 0) return;
+    shouldShowPanel = false;
     const panel = document.getElementById('progress-panel');
-    if (panel && operations.size === 0) panel.style.display = 'none';
+    if (panel) panel.style.display = 'none';
   }
 
   function addOperation(
@@ -149,7 +190,7 @@ export function createOperationQueueController(deps: QueueDeps) {
       document.dispatchEvent(new CustomEvent('recent-operations-changed'));
     }
 
-    showPanel();
+    schedulePanelShow(id);
     scheduleRender();
   }
 
@@ -179,6 +220,15 @@ export function createOperationQueueController(deps: QueueDeps) {
     operation.current = operation.total > 0 ? operation.total : operation.current;
     operation.error = error;
     operation.updatedAt = Date.now();
+    clearPanelShow(id);
+
+    // On failure, force the panel open (un-minimized) so the error is visible.
+    // Successes never open the panel on their own — if it's already showing
+    // (a longer operation crossed the grace timer) the Done card lingers
+    // briefly; otherwise the toast is the only confirmation.
+    if (status === 'failed') {
+      revealPanel();
+    }
 
     const win = window as unknown as {
       recentOperations?: Array<{
@@ -229,6 +279,7 @@ export function createOperationQueueController(deps: QueueDeps) {
       clearTimeout(timers.get(id));
       timers.delete(id);
     }
+    clearPanelShow(id);
     operations.delete(id);
     scheduleRender();
     hidePanelIfEmpty();
@@ -329,11 +380,15 @@ export function createOperationQueueController(deps: QueueDeps) {
     const collapsed = deps.getOperationPanelCollapsed();
     panel.classList.toggle('is-collapsed', collapsed);
     if (operations.size === 0) {
+      shouldShowPanel = false;
       panel.style.display = 'none';
       clearHtml(content);
       return;
     }
-    panel.style.display = 'flex';
+    // Keep the panel hidden until something decides it's worth surfacing
+    // (grace timer elapsed on a still-running op, or a failure). The card DOM
+    // is still built below so it's ready the moment the panel is revealed.
+    panel.style.display = shouldShowPanel ? 'flex' : 'none';
     if (collapsed) {
       content.innerHTML = '';
       return;
@@ -372,7 +427,7 @@ export function createOperationQueueController(deps: QueueDeps) {
         </div>
         <div class="operation-queue-name" title="${escapeHtml(operation.name)}">${escapeHtml(operation.name)}</div>
         <div class="operation-queue-file">${escapeHtml(operation.error || operation.currentFile || '')}</div>
-        <div class="operation-queue-progress" aria-hidden="true">
+        <div class="operation-queue-progress">
           <div class="operation-queue-progress-fill" style="width:${percent}%"></div>
         </div>
         ${
@@ -393,6 +448,8 @@ export function createOperationQueueController(deps: QueueDeps) {
   function cleanup(): void {
     for (const timer of timers.values()) clearTimeout(timer);
     timers.clear();
+    for (const timer of showTimers.values()) clearTimeout(timer);
+    showTimers.clear();
   }
 
   return {

@@ -222,6 +222,8 @@ pre.preview-text code.hljs {
 .preview-info-item {
   display: flex;
   justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
   padding: 8px 0;
   border-bottom: 1px solid var(--panel-border);
   font-size: 13px;
@@ -234,18 +236,20 @@ pre.preview-text code.hljs {
 }
 
 .preview-info-label {
+  flex: 0 0 auto;
   color: var(--text-secondary);
   font-weight: 500;
+  white-space: nowrap;
 }
 
 .preview-info-value {
+  flex: 1 1 auto;
+  min-width: 0;
   color: var(--text-primary);
   text-align: right;
-  max-width: 180px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  word-break: break-all;
 }
 
 .preview-truncated {

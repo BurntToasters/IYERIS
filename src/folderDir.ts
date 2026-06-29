@@ -21,7 +21,7 @@ interface FolderTreeDependencies {
   getFolderIcon: (path: string) => string;
   getBasename: (path: string) => string;
   navigateTo: (path: string) => void | Promise<void>;
-  handleDrop: (paths: string[], destPath: string, operation: DragOperation) => Promise<void>;
+  handleDrop: (paths: string[], destPath: string, operation: DragOperation) => Promise<boolean>;
   getDraggedPaths: (event: DragEvent) => Promise<string[]>;
   getDragOperation: (event: DragEvent) => DragOperation;
   scheduleSpringLoad: (target: HTMLElement, action: () => void) => void;
@@ -156,8 +156,14 @@ export function createFolderTreeManager(deps: FolderTreeDependencies): FolderTre
 
     folderTreeNodeMap.set(nodePath, { item, children, depth });
     if (folderTreeNodeMap.size > FOLDER_TREE_NODE_MAP_MAX) {
-      const firstKey = folderTreeNodeMap.keys().next().value;
-      if (firstKey && firstKey !== nodePath) folderTreeNodeMap.delete(firstKey);
+      for (const key of folderTreeNodeMap.keys()) {
+        if (key === nodePath) continue;
+        const stale = folderTreeNodeMap.get(key);
+        if (stale && !stale.item.isConnected) {
+          folderTreeNodeMap.delete(key);
+          break;
+        }
+      }
     }
 
     item.addEventListener('click', (e) => {

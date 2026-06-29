@@ -47,6 +47,9 @@ vi.mock('../rendererUtils.js', () => ({
   encodeFileUrl: vi.fn((p: string) => `file://${p}`),
   getFileDataUrlWithCache: mockGetFileDataUrlWithCache,
   twemojiImg: vi.fn((_code: string, _cls: string) => '<img class="twemoji" />'),
+  openFileWithFeedback: vi.fn(async (filePath: string) => {
+    await (globalThis as any).window?.tauriAPI?.openFile?.(filePath);
+  }),
 }));
 
 vi.mock('../fileTypes.js', () => ({

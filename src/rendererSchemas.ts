@@ -5,9 +5,9 @@ import { devLog } from './shared.js';
 // (#[serde(rename_all = "camelCase")]). Unknown keys are stripped (zod default),
 // so extra backend fields never fail validation.
 //
-// Validation is intentionally NON-FATAL: on a mismatch we log the issues (dev)
-// and fall back to the raw payload, so backend/field drift becomes a visible
-// signal without breaking the UI on data we can't fully exercise here.
+// Validation is intentionally non-fatal: on a mismatch we log the issues (dev)
+// and return null so callers can drop or fail the record instead of trusting
+// an unvalidated payload.
 
 export const RawFileItemSchema = z.object({
   name: z.string(),
@@ -107,14 +107,9 @@ export const RawGitStatusSchema = z.object({
 });
 export type RawGitStatus = z.infer<typeof RawGitStatusSchema>;
 
-/**
- * Validate an IPC payload against a schema. Non-fatal: returns parsed data on
- * success, otherwise logs the issues and returns the raw value cast to the
- * schema type (keeps current behavior if the backend shape drifts).
- */
-export function validateIpc<T>(schema: z.ZodType<T>, raw: unknown, label: string): T {
+export function validateIpc<T>(schema: z.ZodType<T>, raw: unknown, label: string): T | null {
   const result = schema.safeParse(raw);
   if (result.success) return result.data;
   devLog('IPC', `payload validation failed for ${label}`, result.error.issues);
-  return raw as T;
+  return null;
 }

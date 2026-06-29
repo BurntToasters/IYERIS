@@ -372,7 +372,10 @@ export type FolderSizeResponse = IpcResult<{ result: FolderSizeResult }>;
 
 export type ChecksumResponse = IpcResult<{ result: ChecksumResult }>;
 
-export type DuplicateScanResponse = IpcResult<{ groups: DuplicateGroup[] }>;
+export type DuplicateScanResponse = IpcResult<{
+  groups: DuplicateGroup[];
+  partial?: boolean;
+}>;
 
 export type ThumbnailCacheResponse = IpcResult<{ dataUrl: string }>;
 
@@ -690,7 +693,8 @@ export interface TauriAPI {
   extractArchive: (
     archivePath: string,
     destPath: string,
-    operationId?: string
+    operationId?: string,
+    password?: string
   ) => Promise<IpcResult>;
   cancelArchiveOperation: (operationId: string) => Promise<IpcResult>;
   onCompressProgress: (callback: (progress: ArchiveProgress) => void) => () => void;
