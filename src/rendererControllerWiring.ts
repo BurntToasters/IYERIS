@@ -59,6 +59,7 @@ import {
 import {
   isWindowsPath,
   normalizeWindowsPath,
+  openFileWithFeedback,
   rendererPath as path,
   twemojiImg,
 } from './rendererUtils.js';
@@ -372,6 +373,7 @@ export function wireControllers(deps: WiringDeps) {
     getRenderedPaths: () => deps.getFileElementMap().keys(),
     getGitStatus: (dir, untracked) => window.tauriAPI.getGitStatus(dir, untracked),
     getGitBranch: (dir) => window.tauriAPI.getGitBranch(dir),
+    showToast,
   });
 
   const { clearGitIndicators, fetchGitStatusAsync, updateGitBranch, applyGitIndicatorsToPaths } =
@@ -419,13 +421,18 @@ export function wireControllers(deps: WiringDeps) {
   const inlineRenameController = createInlineRenameController({
     getCurrentPath: () => deps.getCurrentPath(),
     getAllFiles: () => deps.getAllFiles(),
-    navigateTo: (p) => deps.late.navigateTo(p),
+    navigateTo: (p, skipHistoryUpdate) => deps.late.navigateTo(p, skipHistoryUpdate),
     showToast,
     showAlert,
     showConfirm,
     isHomeViewPath,
     announceToScreenReader,
     setRecentlyRenamedPath: (p) => deps.late.setRecentlyRenamedPath(p),
+    selectCreatedItem: (p) => {
+      deps.setSelectedItems(new Set([p]));
+      deps.markSelectionDirty();
+      deps.late.updateStatusBar();
+    },
   });
 
   function isWindowsPlatform(): boolean {
@@ -544,8 +551,9 @@ export function wireControllers(deps: WiringDeps) {
     getFileIcon,
     openFileEntry,
     openExternal: (url) => {
-      void window.tauriAPI.openFile(url);
+      void openFileWithFeedback(url, showToast);
     },
+    showToast,
     onModalOpen: activateModal,
     onModalClose: deactivateModal,
   });
@@ -582,7 +590,7 @@ export function wireControllers(deps: WiringDeps) {
           })
         );
       } else if (isRightPaneActive && file.isFile) {
-        void window.tauriAPI.openFile(file.path);
+        void openFileWithFeedback(file.path, showToast);
       } else {
         void openFileEntry(file);
       }
@@ -722,6 +730,7 @@ export function wireControllers(deps: WiringDeps) {
     deactivateModal,
     refresh: () => deps.late.refresh('batch-rename'),
     updateUndoRedoState: () => deps.late.updateUndoRedoState(),
+    showConfirm: (message, title, type) => showConfirm(message, title, type),
   });
   batchRenameController.initListeners();
 

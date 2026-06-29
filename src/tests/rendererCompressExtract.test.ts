@@ -860,7 +860,8 @@ describe('createCompressExtractController', () => {
       expect(api.extractArchive).toHaveBeenCalledWith(
         '/home/user/archive.zip',
         expect.stringContaining('archive'),
-        'op-1'
+        'op-1',
+        undefined
       );
       expect(deps.showToast).toHaveBeenCalledWith(
         expect.stringContaining('Extracted to'),
@@ -1009,6 +1010,50 @@ describe('createCompressExtractController', () => {
         expect.stringContaining('Unsupported archive format'),
         'Error',
         'error'
+      );
+    });
+
+    it('rejects .rar archives before calling backend', async () => {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
+      document.body.innerHTML = `
+        <div id="extract-modal" style="display:flex">
+          <span id="extract-modal-message"></span>
+          <input id="extract-destination-input" type="text" value="/home/user" />
+          <span id="extract-preview-path"></span>
+        </div>
+      `;
+      const ctrl = createCompressExtractController(deps as any);
+      ctrl.showExtractModal('/home/user/archive.rar');
+      await ctrl.confirmExtractModal();
+
+      expect(api.extractArchive).not.toHaveBeenCalled();
+      expect(deps.showToast).toHaveBeenCalledWith(
+        expect.stringContaining('Unsupported archive format'),
+        'Error',
+        'error'
+      );
+    });
+
+    it('passes extract password to backend', async () => {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
+      document.body.innerHTML = `
+        <div id="extract-modal" style="display:flex">
+          <span id="extract-modal-message"></span>
+          <input id="extract-destination-input" type="text" value="/home/user" />
+          <input id="extract-password" type="password" />
+          <span id="extract-preview-path"></span>
+        </div>
+      `;
+      const ctrl = createCompressExtractController(deps as any);
+      ctrl.showExtractModal('/home/user/archive.7z');
+      (document.getElementById('extract-password') as HTMLInputElement).value = 'secret';
+      await ctrl.confirmExtractModal();
+
+      expect(api.extractArchive).toHaveBeenCalledWith(
+        '/home/user/archive.7z',
+        expect.stringContaining('archive'),
+        'op-1',
+        'secret'
       );
     });
 
@@ -1504,7 +1549,7 @@ describe('createCompressExtractController', () => {
       });
     });
 
-    it('ignores unsupported password fields', async () => {
+    it('warns when passwords do not match', async () => {
       createFullCompressModalDOM();
       const ctrl = createCompressExtractController(deps as any);
       ctrl.setupCompressOptionsModal();
@@ -1523,17 +1568,16 @@ describe('createCompressExtractController', () => {
       confirmBtn.click();
 
       await vi.waitFor(() => {
-        expect(api.compressFiles).toHaveBeenCalledWith(
-          expect.any(Array),
-          expect.any(String),
-          'zip',
-          'op-1',
-          undefined
+        expect(deps.showToast).toHaveBeenCalledWith(
+          'Passwords do not match',
+          'Password Mismatch',
+          'warning'
         );
       });
+      expect(api.compressFiles).not.toHaveBeenCalled();
     });
 
-    it('does not pass password in advancedOptions for 7z format', async () => {
+    it('passes password in advancedOptions for 7z format', async () => {
       createFullCompressModalDOM();
       const ctrl = createCompressExtractController(deps as any);
       ctrl.setupCompressOptionsModal();
@@ -1561,12 +1605,12 @@ describe('createCompressExtractController', () => {
           expect.any(String),
           '7z',
           'op-1',
-          undefined
+          expect.objectContaining({ password: 'secret' })
         );
       });
     });
 
-    it('does not pass encryptFileNames for 7z with password and encrypt names checked', async () => {
+    it('passes encryptFileNames for 7z with password and encrypt names checked', async () => {
       createFullCompressModalDOM();
       const ctrl = createCompressExtractController(deps as any);
       ctrl.setupCompressOptionsModal();
@@ -1596,12 +1640,12 @@ describe('createCompressExtractController', () => {
           expect.any(String),
           '7z',
           'op-1',
-          undefined
+          expect.objectContaining({ password: 'secret', encryptFileNames: true })
         );
       });
     });
 
-    it('does not pass encryptionMethod for zip with password', async () => {
+    it('passes zip password and encryption method to backend', async () => {
       createFullCompressModalDOM();
       const ctrl = createCompressExtractController(deps as any);
       ctrl.setupCompressOptionsModal();
@@ -1628,6 +1672,89 @@ describe('createCompressExtractController', () => {
           expect.any(Array),
           expect.any(String),
           'zip',
+          'op-1',
+          expect.objectContaining({ password: 'pass', encryptionMethod: 'AES256' })
+        );
+      });
+    });
+
+    it('warns when zip method is not supported by the backend', async () => {
+      createFullCompressModalDOM();
+      const ctrl = createCompressExtractController(deps as any);
+      ctrl.setupCompressOptionsModal();
+
+      deps.getSelectedItems.mockReturnValue(new Set(['/home/user/documents/a.txt']));
+      ctrl.showCompressOptionsModal();
+
+      const levelSelect = document.getElementById('compress-level') as HTMLSelectElement;
+      levelSelect.value = '9';
+
+      const confirmBtn = document.getElementById('compress-options-confirm') as HTMLElement;
+      confirmBtn.click();
+
+      await vi.waitFor(() => {
+        expect(api.compressFiles).toHaveBeenCalledWith(
+          expect.any(Array),
+          expect.any(String),
+          'zip',
+          'op-1',
+          expect.objectContaining({ compressionLevel: 9 })
+        );
+      });
+    });
+
+    it('does not send unsupported 7z compression methods', async () => {
+      createFullCompressModalDOM();
+      const ctrl = createCompressExtractController(deps as any);
+      ctrl.setupCompressOptionsModal();
+
+      deps.getSelectedItems.mockReturnValue(new Set(['/home/user/documents/a.txt']));
+      ctrl.showCompressOptionsModal();
+
+      const formatSelect = document.getElementById('compress-format') as HTMLSelectElement;
+      formatSelect.value = '7z';
+      formatSelect.dispatchEvent(new Event('change'));
+
+      const methodField = document.getElementById('compress-method-field') as HTMLElement;
+      expect(methodField.hidden).toBe(true);
+
+      const confirmBtn = document.getElementById('compress-options-confirm') as HTMLElement;
+      confirmBtn.click();
+
+      await vi.waitFor(() => {
+        expect(api.compressFiles).toHaveBeenCalledWith(
+          expect.any(Array),
+          expect.any(String),
+          '7z',
+          'op-1',
+          undefined
+        );
+      });
+    });
+
+    it('hides unsupported solid block size field for 7z', async () => {
+      createFullCompressModalDOM();
+      const ctrl = createCompressExtractController(deps as any);
+      ctrl.setupCompressOptionsModal();
+
+      deps.getSelectedItems.mockReturnValue(new Set(['/home/user/documents/a.txt']));
+      ctrl.showCompressOptionsModal();
+
+      const formatSelect = document.getElementById('compress-format') as HTMLSelectElement;
+      formatSelect.value = '7z';
+      formatSelect.dispatchEvent(new Event('change'));
+
+      const solidField = document.getElementById('compress-solid-field') as HTMLElement;
+      expect(solidField.hidden).toBe(true);
+
+      const confirmBtn = document.getElementById('compress-options-confirm') as HTMLElement;
+      confirmBtn.click();
+
+      await vi.waitFor(() => {
+        expect(api.compressFiles).toHaveBeenCalledWith(
+          expect.any(Array),
+          expect.any(String),
+          '7z',
           'op-1',
           undefined
         );
@@ -1659,7 +1786,7 @@ describe('createCompressExtractController', () => {
       });
     });
 
-    it('does not pass method when selected', async () => {
+    it('hides unsupported cpu threads field for zip', async () => {
       createFullCompressModalDOM();
       const ctrl = createCompressExtractController(deps as any);
       ctrl.setupCompressOptionsModal();
@@ -1667,8 +1794,8 @@ describe('createCompressExtractController', () => {
       deps.getSelectedItems.mockReturnValue(new Set(['/home/user/documents/a.txt']));
       ctrl.showCompressOptionsModal();
 
-      const methodSelect = document.getElementById('compress-method') as HTMLSelectElement;
-      methodSelect.value = 'PPMd';
+      const threadsField = document.getElementById('compress-threads-field') as HTMLElement;
+      expect(threadsField.hidden).toBe(true);
 
       const confirmBtn = document.getElementById('compress-options-confirm') as HTMLElement;
       confirmBtn.click();
@@ -1684,7 +1811,7 @@ describe('createCompressExtractController', () => {
       });
     });
 
-    it('does not include solidBlockSize for 7z format', async () => {
+    it('hides unsupported split volume field for zip', async () => {
       createFullCompressModalDOM();
       const ctrl = createCompressExtractController(deps as any);
       ctrl.setupCompressOptionsModal();
@@ -1692,62 +1819,8 @@ describe('createCompressExtractController', () => {
       deps.getSelectedItems.mockReturnValue(new Set(['/home/user/documents/a.txt']));
       ctrl.showCompressOptionsModal();
 
-      const solidSelect = document.getElementById('compress-solid') as HTMLSelectElement;
-      solidSelect.value = '4g';
-
-      const formatSelect = document.getElementById('compress-format') as HTMLSelectElement;
-      formatSelect.value = '7z';
-      formatSelect.dispatchEvent(new Event('change'));
-
-      const confirmBtn = document.getElementById('compress-options-confirm') as HTMLElement;
-      confirmBtn.click();
-
-      await vi.waitFor(() => {
-        expect(api.compressFiles).toHaveBeenCalledWith(
-          expect.any(Array),
-          expect.any(String),
-          '7z',
-          'op-1',
-          undefined
-        );
-      });
-    });
-
-    it('does not include cpuThreads when selected', async () => {
-      createFullCompressModalDOM();
-      const ctrl = createCompressExtractController(deps as any);
-      ctrl.setupCompressOptionsModal();
-
-      deps.getSelectedItems.mockReturnValue(new Set(['/home/user/documents/a.txt']));
-      ctrl.showCompressOptionsModal();
-
-      const threadsSelect = document.getElementById('compress-threads') as HTMLSelectElement;
-      threadsSelect.value = '4';
-
-      const confirmBtn = document.getElementById('compress-options-confirm') as HTMLElement;
-      confirmBtn.click();
-
-      await vi.waitFor(() => {
-        expect(api.compressFiles).toHaveBeenCalledWith(
-          expect.any(Array),
-          expect.any(String),
-          'zip',
-          'op-1',
-          undefined
-        );
-      });
-    });
-
-    it('does not include splitVolume when selected', async () => {
-      createFullCompressModalDOM();
-      const ctrl = createCompressExtractController(deps as any);
-      ctrl.setupCompressOptionsModal();
-
-      deps.getSelectedItems.mockReturnValue(new Set(['/home/user/documents/a.txt']));
-      ctrl.showCompressOptionsModal();
-
-      const splitSelect = document.getElementById('compress-split') as HTMLSelectElement;
-      splitSelect.value = '100m';
+      const splitField = document.getElementById('compress-split-field') as HTMLElement;
+      expect(splitField.hidden).toBe(true);
 
       const confirmBtn = document.getElementById('compress-options-confirm') as HTMLElement;
       confirmBtn.click();
@@ -1821,7 +1894,7 @@ describe('createCompressExtractController', () => {
       });
     });
 
-    it('does not pass dictionarySize for 7z format', async () => {
+    it('passes dictionarySize for 7z format', async () => {
       createFullCompressModalDOM();
       const ctrl = createCompressExtractController(deps as any);
       ctrl.setupCompressOptionsModal();
@@ -1829,12 +1902,12 @@ describe('createCompressExtractController', () => {
       deps.getSelectedItems.mockReturnValue(new Set(['/home/user/documents/a.txt']));
       ctrl.showCompressOptionsModal();
 
-      const dictionarySelect = document.getElementById('compress-dictionary') as HTMLSelectElement;
-      dictionarySelect.value = '64m';
-
       const formatSelect = document.getElementById('compress-format') as HTMLSelectElement;
       formatSelect.value = '7z';
       formatSelect.dispatchEvent(new Event('change'));
+
+      const dictionarySelect = document.getElementById('compress-dictionary') as HTMLSelectElement;
+      dictionarySelect.value = '64m';
 
       const confirmBtn = document.getElementById('compress-options-confirm') as HTMLElement;
       confirmBtn.click();
@@ -1845,7 +1918,7 @@ describe('createCompressExtractController', () => {
           expect.any(String),
           '7z',
           'op-1',
-          undefined
+          expect.objectContaining({ dictionarySize: '64m' })
         );
       });
     });
@@ -1896,12 +1969,16 @@ describe('createCompressExtractController', () => {
       `;
     }
 
-    it('hides unsupported fields for 7z format', () => {
+    it('shows 7z-specific fields supported by backend', () => {
       createVisibilityDOM();
       deps.getSelectedItems.mockReturnValue(new Set(['/home/user/documents/a.txt']));
       const ctrl = createCompressExtractController(deps as any);
       ctrl.setupCompressOptionsModal();
       ctrl.showCompressOptionsModal();
+
+      const formatSelect = document.getElementById('compress-format') as HTMLSelectElement;
+      formatSelect.value = '7z';
+      formatSelect.dispatchEvent(new Event('change'));
 
       const solidField = document.getElementById('compress-solid-field') as HTMLElement;
       const encryptNamesField = document.getElementById(
@@ -1910,10 +1987,16 @@ describe('createCompressExtractController', () => {
       const encryptionFieldset = document.getElementById(
         'compress-encryption-fieldset'
       ) as HTMLElement;
+      const methodField = document.getElementById('compress-method-field') as HTMLElement;
+      const threadsField = document.getElementById('compress-threads-field') as HTMLElement;
+      const splitField = document.getElementById('compress-split-field') as HTMLElement;
 
       expect(solidField.hidden).toBe(true);
-      expect(encryptNamesField.hidden).toBe(true);
-      expect(encryptionFieldset.hidden).toBe(true);
+      expect(methodField.hidden).toBe(true);
+      expect(threadsField.hidden).toBe(true);
+      expect(splitField.hidden).toBe(true);
+      expect(encryptNamesField.hidden).toBe(false);
+      expect(encryptionFieldset.hidden).toBe(false);
     });
 
     it('hides advanced fields for tar.gz format', () => {
@@ -1941,7 +2024,7 @@ describe('createCompressExtractController', () => {
       expect(levelSelect.value).toBe('5');
     });
 
-    it('hides method field for zip format', () => {
+    it('shows method field for zip format', () => {
       createVisibilityDOM();
       deps.getSelectedItems.mockReturnValue(new Set(['/home/user/documents/a.txt']));
       const ctrl = createCompressExtractController(deps as any);
@@ -1953,10 +2036,10 @@ describe('createCompressExtractController', () => {
       formatSelect.dispatchEvent(new Event('change'));
 
       const methodField = document.getElementById('compress-method-field') as HTMLElement;
-      expect(methodField.hidden).toBe(true);
+      expect(methodField.hidden).toBe(false);
     });
 
-    it('keeps compression level available for tar.gz and hides it for 7z', () => {
+    it('keeps compression level available for tar.gz and 7z', () => {
       createVisibilityDOM();
       deps.getSelectedItems.mockReturnValue(new Set(['/home/user/documents/a.txt']));
       const ctrl = createCompressExtractController(deps as any);
@@ -1973,7 +2056,7 @@ describe('createCompressExtractController', () => {
 
       formatSelect.value = '7z';
       formatSelect.dispatchEvent(new Event('change'));
-      expect(levelSelect.disabled).toBe(true);
+      expect(levelSelect.disabled).toBe(false);
       expect(levelSelect.value).toBe('5');
     });
 
@@ -2002,13 +2085,17 @@ describe('createCompressExtractController', () => {
       ctrl.setupCompressOptionsModal();
       ctrl.showCompressOptionsModal();
 
+      const formatSelect = document.getElementById('compress-format') as HTMLSelectElement;
+      formatSelect.value = '7z';
+      formatSelect.dispatchEvent(new Event('change'));
+
       const encryptionMethodField = document.getElementById(
         'compress-encryption-method-field'
       ) as HTMLElement;
       expect(encryptionMethodField.hidden).toBe(true);
     });
 
-    it('hides encryption method field for zip format', () => {
+    it('shows encryption method field for zip format', () => {
       createVisibilityDOM();
       deps.getSelectedItems.mockReturnValue(new Set(['/home/user/documents/a.txt']));
       const ctrl = createCompressExtractController(deps as any);
@@ -2022,7 +2109,7 @@ describe('createCompressExtractController', () => {
       const encryptionMethodField = document.getElementById(
         'compress-encryption-method-field'
       ) as HTMLElement;
-      expect(encryptionMethodField.hidden).toBe(true);
+      expect(encryptionMethodField.hidden).toBe(false);
     });
 
     it('hides threads field for tar.gz format', () => {
@@ -2259,7 +2346,8 @@ describe('createCompressExtractController', () => {
       expect(api.extractArchive).toHaveBeenCalledWith(
         '/home/user/backup.tar.gz',
         expect.stringContaining('backup'),
-        'op-1'
+        'op-1',
+        undefined
       );
 
       const destPath = api.extractArchive.mock.calls[0][1] as string;

@@ -129,6 +129,7 @@ type EventListenersConfig = {
   togglePreviewPanel: () => void;
   showContextMenuForSelected: () => void;
   focusFileGrid: () => void;
+  focusSecondaryPane: () => void;
   ensureActiveItem: () => void;
   toggleSelectionAtCursor: () => void;
   navigateFileGridFocusOnly: (key: string) => void;
@@ -549,6 +550,28 @@ export function createEventListenersController(config: EventListenersConfig) {
           ['shortcuts-modal', 'flex', config.hideShortcutsModal],
           ['licenses-modal', 'flex', config.hideLicensesModal],
           ['home-settings-modal', 'flex', () => config.closeHomeSettingsModal()],
+          ['properties-modal', 'flex', () => document.getElementById('properties-close')?.click()],
+          [
+            'batch-rename-modal',
+            'flex',
+            () => document.getElementById('batch-rename-cancel')?.click(),
+          ],
+          [
+            'theme-editor-modal',
+            'flex',
+            () => document.getElementById('theme-editor-cancel')?.click(),
+          ],
+          [
+            'folder-icon-modal',
+            'flex',
+            () => document.getElementById('folder-icon-cancel')?.click(),
+          ],
+          ['fda-prompt-modal', 'flex', () => document.getElementById('fda-prompt-later')?.click()],
+          [
+            'support-popup-modal',
+            'flex',
+            () => document.getElementById('support-popup-dismiss')?.click(),
+          ],
           ['sort-menu', 'block', config.hideSortMenu],
           ['context-menu', 'block', config.hideContextMenu],
           ['empty-space-context-menu', 'block', config.hideEmptySpaceContextMenu],
@@ -758,12 +781,8 @@ export function createEventListenersController(config: EventListenersConfig) {
         config.focusFileGrid();
         return;
       } else if (pane === 'secondary-grid') {
-        const secondary = document.getElementById('dual-pane-secondary-list');
-        const firstItem = secondary?.querySelector<HTMLElement>('.file-item');
-        if (firstItem) {
-          firstItem.focus();
-          return;
-        }
+        config.focusSecondaryPane();
+        return;
       }
     }
   }

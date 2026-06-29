@@ -11,7 +11,7 @@ import {
   twemojiImg,
 } from './rendererUtils.js';
 import { createDefaultSettings, sanitizeSettings } from './settings.js';
-import { setLocale, detectLocale } from './i18n.js';
+import { setLocale, detectLocale, t } from './i18n.js';
 
 import { HOME_VIEW_LABEL, HOME_VIEW_PATH, isHomeViewPath } from './home.js';
 
@@ -77,7 +77,11 @@ function notifySettingsSaveError(error?: string): void {
   const now = Date.now();
   if (now - lastSettingsSaveErrorAt < 5000) return;
   lastSettingsSaveErrorAt = now;
-  showToast(`Failed to save settings: ${error || 'Operation failed'}`, 'Error', 'error');
+  showToast(
+    t('toast.settingsSaveFailed', { error: error || t('common.operationFailed') }),
+    t('common.error'),
+    'error'
+  );
 }
 
 function executeSettingsSave(): void {
@@ -114,6 +118,15 @@ function debouncedSaveSettings(delay: number = SETTINGS_SAVE_DEBOUNCE_MS) {
   }, delay);
 }
 
+function flushDebouncedSettingsSave(): void {
+  if (!settingsSaveTimeout) return;
+  clearTimeout(settingsSaveTimeout);
+  settingsSaveTimeout = null;
+  if (isResettingSettings) return;
+  currentSettings._timestamp = Date.now();
+  void window.tauriAPI.saveSettingsSync(currentSettings);
+}
+
 const ipcCleanupFunctions: (() => void)[] = [];
 
 let currentPath: string = '';
@@ -135,6 +148,7 @@ let canRedo: boolean = false;
 let folderTreeEnabled: boolean = true;
 let isNavigating: boolean = false;
 let refreshDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+let pendingRefreshReason: string | null = null;
 let navigationSequence = 0;
 
 function markSelectionDirty(): void {
@@ -494,6 +508,8 @@ const dualPane = createDualPaneController({
   handleDrop: (paths, dest, op) => handleDrop(paths, dest, op),
   copySelectedToDestination: (dest) => clipboardController.copySelectedToDestination(dest),
   moveSelectedToDestination: (dest) => clipboardController.moveSelectedToDestination(dest),
+  ensureActiveItem: () => ensureActiveItem(),
+  invalidateFileItemsCache: () => invalidateFileItemsCache(),
 });
 const { getActiveFileGridScope, syncDualPaneControls, setActivePane, loadSecondaryPane } = dualPane;
 
@@ -719,6 +735,8 @@ function openNewWindow() {
 
 async function saveSettings() {
   const previousTabsEnabled = tabsEnabled;
+  const previousDisableHwAccel = currentSettings.disableHardwareAcceleration;
+  const previousNativeMenu = currentSettings.nativeMenuEnabled ?? true;
 
   for (const [id, key] of TOGGLE_MAPPINGS) {
     const el = document.getElementById(id) as HTMLInputElement | null;
@@ -813,6 +831,17 @@ async function saveSettings() {
   clearSettingsChanged();
   hideSettingsModal();
   showToast('Settings saved successfully!', 'Settings', 'success');
+  const needsRestart =
+    previousDisableHwAccel !== currentSettings.disableHardwareAcceleration ||
+    previousNativeMenu !== (currentSettings.nativeMenuEnabled ?? true);
+  if (needsRestart) {
+    showToast(
+      'Restart IYERIS to apply hardware acceleration or native menu changes.',
+      'Restart Required',
+      'info',
+      [{ label: 'Restart', onClick: () => void window.tauriAPI.relaunchApp() }]
+    );
+  }
   if (currentPath) {
     refresh('settings-saved');
   }
@@ -1118,6 +1147,18 @@ const eventListenersController = createEventListenersController({
       scope?.focus();
     }
   },
+  focusSecondaryPane: () => {
+    if (!currentSettings.dualPaneEnabled) return;
+    setActivePane('right');
+    ensureActiveItem();
+    const scope = document.getElementById('dual-pane-secondary-list');
+    const activeItem = scope?.querySelector<HTMLElement>('.file-item[tabindex="0"]');
+    if (activeItem) {
+      activeItem.focus();
+    } else {
+      scope?.focus();
+    }
+  },
   ensureActiveItem: () => ensureActiveItem(),
   toggleSelectionAtCursor: () => {
     const isSecondary =
@@ -1160,15 +1201,18 @@ function hideFileViewError(): void {
 }
 
 let fileViewErrorWired = false;
-function showFileViewError(message: string): void {
+let lastFailedNavPath = '';
+function showFileViewError(message: string, attemptedPath?: string): void {
+  lastFailedNavPath = attemptedPath || currentPath;
   if (!fileViewErrorWired) {
     fileViewErrorWired = true;
     document.getElementById('fileview-error-retry')?.addEventListener('click', () => {
       hideFileViewError();
-      void navigateTo(currentPath, true);
+      void navigateTo(lastFailedNavPath || currentPath, true);
     });
     document.getElementById('fileview-error-terminal')?.addEventListener('click', () => {
-      if (currentPath) window.tauriAPI.openTerminal(currentPath).catch(ignoreError);
+      const target = lastFailedNavPath || currentPath;
+      if (target) window.tauriAPI.openTerminal(target).catch(ignoreError);
     });
     document.getElementById('fileview-error-fda')?.addEventListener('click', () => {
       window.tauriAPI.requestFullDiskAccess().catch(ignoreError);
@@ -1333,7 +1377,7 @@ async function navigateTo(path: string, skipHistoryUpdate = false, trigger = 'di
         error: result.error || 'Unknown error',
       });
       devLog('Navigate', 'Error loading directory', result.error);
-      showFileViewError(result.error || 'This folder could not be opened.');
+      showFileViewError(result.error || 'This folder could not be opened.', path);
       return;
     }
 
@@ -1434,7 +1478,7 @@ async function navigateTo(path: string, skipHistoryUpdate = false, trigger = 'di
       durationMs: Date.now() - navigationStartAt,
     });
     devLog('Navigate', 'Error navigating', error);
-    showFileViewError(getErrorMessage(error));
+    showFileViewError(getErrorMessage(error), path);
   } finally {
     const isCurrentRequest = directoryLoader.isCurrentRequest(requestId);
     finishDirectoryRequest(requestId);
@@ -1442,6 +1486,11 @@ async function navigateTo(path: string, skipHistoryUpdate = false, trigger = 'di
       if (fileGrid) clearSkeleton(fileGrid);
       hideLoading();
       isNavigating = false;
+      if (pendingRefreshReason) {
+        const deferredReason = pendingRefreshReason;
+        pendingRefreshReason = null;
+        refresh(deferredReason);
+      }
       devLog('Navigate', `[${navigationId}] finalized`, {
         path,
         requestId,
@@ -1561,7 +1610,7 @@ async function deleteSelected(permanent = false) {
 
   const operationId = generateOperationId();
   addOperation(operationId, 'delete', `${count} item${plural}${permanent ? ' permanently' : ''}`, {
-    cancellable: true,
+    cancellable: false,
     total: itemsSnapshot.length,
     retry: () => void deleteSelected(permanent),
   });
@@ -1925,10 +1974,19 @@ function refresh(reason = 'unspecified') {
     return;
   }
   if (isNavigating) {
+    pendingRefreshReason = reason;
     devLog('Refresh', 'Skipped refresh (navigation already in progress)', {
       reason,
       currentPath,
     });
+    return;
+  }
+  if (document.body.classList.contains('pending-created-item-rename')) {
+    devLog('Refresh', 'Skipped refresh (created item rename pending)', { reason, currentPath });
+    return;
+  }
+  if (document.querySelector('.file-item.renaming')) {
+    devLog('Refresh', 'Skipped refresh (inline rename active)', { reason, currentPath });
     return;
   }
   if (isSearchModeActive()) {
@@ -1943,25 +2001,43 @@ function refresh(reason = 'unspecified') {
   }
   refreshDebounceTimer = setTimeout(() => {
     refreshDebounceTimer = null;
+    if (document.body.classList.contains('pending-created-item-rename')) {
+      devLog('Refresh', 'Skipped debounced refresh (created item rename pending)', {
+        reason,
+        currentPath,
+      });
+      return;
+    }
+    if (document.querySelector('.file-item.renaming')) {
+      devLog('Refresh', 'Skipped debounced refresh (inline rename active)', {
+        reason,
+        currentPath,
+      });
+      return;
+    }
     if (!isNavigating && !isSearchModeActive() && currentPath) {
       devLog('Refresh', 'Executing debounced refresh', { reason, currentPath });
       const savedSelection = new Set(selectedItems);
       navigateTo(currentPath, false, `refresh:${reason}`)
         .then(() => {
-          if (savedSelection.size > 0) {
-            for (const itemPath of savedSelection) {
+          const valid = new Set<string>();
+          for (const itemPath of savedSelection) {
+            if (filePathMap.has(itemPath)) valid.add(itemPath);
+          }
+          if (valid.size === 0) return;
+          setSelectedItemsState(valid);
+          if (currentSettings.dualPaneEnabled) {
+            dualPane.syncPaneSelectionVisuals();
+          } else {
+            for (const itemPath of valid) {
               const el = fileElementMap.get(itemPath);
               if (el) {
                 el.classList.add('selected');
                 el.setAttribute('aria-selected', 'true');
-                selectedItems.add(itemPath);
               }
             }
-            if (selectedItems.size > 0) {
-              markSelectionDirty();
-              updateStatusBar();
-            }
           }
+          updateStatusBar();
         })
         .catch(ignoreError);
     } else {
@@ -2179,6 +2255,16 @@ const extractDestinationInput = document.getElementById(
 extractConfirm?.addEventListener('click', () => {
   void confirmExtractModal();
 });
+const extractPasswordInput = document.getElementById('extract-password') as HTMLInputElement | null;
+const extractPasswordToggle = document.getElementById('extract-password-toggle');
+extractPasswordToggle?.addEventListener('click', () => {
+  if (!extractPasswordInput) return;
+  const show = extractPasswordInput.type === 'password';
+  extractPasswordInput.type = show ? 'text' : 'password';
+  if (extractPasswordToggle instanceof HTMLButtonElement) {
+    extractPasswordToggle.title = show ? 'Hide password' : 'Show password';
+  }
+});
 extractBrowseBtn?.addEventListener('click', async () => {
   await chooseFolderAndApply((selectedPath) => {
     if (!extractDestinationInput) return;
@@ -2320,11 +2406,27 @@ document.addEventListener('mousedown', (e) => {
     }
   } catch (error) {
     devLog('Init', 'Failed to initialize IYERIS', error);
-    alert('Failed to start IYERIS: ' + getErrorMessage(error));
+    const message = 'Failed to start IYERIS: ' + getErrorMessage(error);
+    const dialogModal = document.getElementById('dialog-modal');
+    const dialogMessage = document.getElementById('dialog-message');
+    const dialogTitle = document.getElementById('dialog-title');
+    if (dialogModal && dialogMessage) {
+      if (dialogTitle) dialogTitle.textContent = 'Startup Error';
+      dialogMessage.textContent = message;
+      dialogModal.style.display = 'flex';
+    } else {
+      const alert = document.createElement('div');
+      alert.setAttribute('role', 'alert');
+      alert.style.padding = '24px';
+      alert.style.fontFamily = 'system-ui';
+      alert.textContent = message;
+      document.body.replaceChildren(alert);
+    }
   }
 })();
 
 window.addEventListener('beforeunload', () => {
+  flushDebouncedSettingsSave();
   stopIndexStatusPolling();
   cleanupSearch();
   cleanupHoverCard();
@@ -2381,4 +2483,14 @@ window.addEventListener('beforeunload', () => {
     }
   }
   ipcCleanupFunctions.length = 0;
+});
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') {
+    flushDebouncedSettingsSave();
+  }
+});
+
+window.addEventListener('pagehide', () => {
+  flushDebouncedSettingsSave();
 });

@@ -104,33 +104,35 @@ body.platform-linux .file-item:active {
 }
 
 .file-item.selected {
-  background: rgba(var(--system-accent-rgb, var(--accent-rgb)), 0.22);
-  border-color: transparent;
-  box-shadow: none;
+  background: var(--file-selection-bg);
+  border-color: var(--file-selection-border);
+  box-shadow: var(--file-selection-shadow);
 }
 
 body.platform-darwin .file-item.selected {
-  background: rgba(var(--system-accent-rgb, var(--accent-rgb)), 0.24);
-  border-color: transparent;
+  background: var(--file-selection-hover-bg);
+  border-color: var(--file-selection-border);
 }
 
 body.platform-darwin.window-inactive .file-item.selected,
 body.window-inactive .file-item.selected {
-  background: color-mix(in srgb, var(--text-primary) 14%, transparent);
+  background: var(--file-selection-inactive-bg);
+  border-color: var(--file-selection-inactive-border);
+  box-shadow: var(--file-selection-inactive-shadow);
 }
 
 body.platform-win32 .file-item.selected {
-  background: rgba(var(--system-accent-rgb, var(--accent-rgb)), 0.16);
-  border-color: rgba(var(--system-accent-rgb, var(--accent-rgb)), 0.3);
+  background: var(--file-selection-bg);
+  border-color: var(--file-selection-border);
 }
 
 body.platform-linux .file-item.selected {
-  background: rgba(var(--system-accent-rgb, var(--accent-rgb)), 0.18);
-  border-color: rgba(var(--system-accent-rgb, var(--accent-rgb)), 0.3);
+  background: var(--file-selection-bg);
+  border-color: var(--file-selection-border);
 }
 
 .file-item.selected:hover {
-  background: rgba(var(--system-accent-rgb, var(--accent-rgb)), 0.24);
+  background: var(--file-selection-hover-bg);
 }
 
 .file-item:focus {

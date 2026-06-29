@@ -16,6 +16,7 @@ static FILE_INDEX: std::sync::LazyLock<Arc<RwLock<FileIndex>>> =
     std::sync::LazyLock::new(|| Arc::new(RwLock::new(FileIndex::default())));
 
 static BUILD_CANCEL: AtomicBool = AtomicBool::new(false);
+static INDEXER_ENABLED: AtomicBool = AtomicBool::new(true);
 
 static BUILD_MUTEX: std::sync::LazyLock<Mutex<()>> = std::sync::LazyLock::new(|| Mutex::new(()));
 
@@ -416,6 +417,9 @@ fn run_index_build(app: &tauri::AppHandle) {
 }
 
 pub fn search_in_index(query: &str) -> Vec<IndexEntry> {
+    if !INDEXER_ENABLED.load(Ordering::Relaxed) {
+        return Vec::new();
+    }
     let query_lower = query.to_lowercase();
     let index = match FILE_INDEX.read() {
         Ok(idx) => idx,
@@ -450,6 +454,28 @@ pub async fn trigger_rebuild(app: &tauri::AppHandle) {
 
 pub fn cancel_build() {
     set_build_cancelled(true);
+}
+
+pub fn set_enabled(enabled: bool, app: Option<&tauri::AppHandle>) {
+    INDEXER_ENABLED.store(enabled, Ordering::Relaxed);
+    if enabled {
+        return;
+    }
+    set_build_cancelled(true);
+    if let Ok(mut index) = FILE_INDEX.write() {
+        index.entries.clear();
+        index.is_building = false;
+        index.last_built = None;
+    }
+    if let Some(app) = app {
+        if let Ok(path) = index_path(app) {
+            let _ = fs::remove_file(path);
+        }
+    }
+}
+
+pub fn is_enabled() -> bool {
+    INDEXER_ENABLED.load(Ordering::Relaxed)
 }
 
 #[cfg(test)]

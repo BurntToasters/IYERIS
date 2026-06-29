@@ -1,5 +1,5 @@
 import type { Settings, FileItem, DriveInfo, DirectoryResponse } from './types';
-import { devLog, escapeHtml, ignoreError } from './shared.js';
+import { devLog, escapeHtml, getErrorMessage, ignoreError } from './shared.js';
 import { isWindowsPath, rendererPath as path, twemojiImg } from './rendererUtils.js';
 import { isHomeViewPath } from './home.js';
 import { t } from './i18n.js';
@@ -38,7 +38,7 @@ type ColumnViewDeps = {
     sourcePaths: string[],
     destPath: string,
     operation: 'copy' | 'move'
-  ) => Promise<void>;
+  ) => Promise<boolean>;
   scheduleSpringLoad: (target: HTMLElement, action: () => void) => void;
   clearSpringLoad: (target?: HTMLElement) => void;
   createDirectoryOperationId: (prefix: string) => string;
@@ -249,6 +249,7 @@ export function createColumnViewController(deps: ColumnViewDeps) {
       });
     } catch (error) {
       devLog('ColumnView', 'renderDriveColumn failed', error);
+      deps.showToast(getErrorMessage(error), 'Drives', 'error');
       pane.innerHTML = '<div class="column-item placeholder">Error loading drives</div>';
     }
 

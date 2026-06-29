@@ -65,7 +65,7 @@ type NavigationDeps = {
   showDropIndicator: (operation: OperationType, targetPath: string, x: number, y: number) => void;
   hideDropIndicator: () => void;
   getDraggedPaths: (event: DragEvent) => Promise<string[]>;
-  handleDrop: (paths: string[], targetPath: string, operation: OperationType) => Promise<void>;
+  handleDrop: (paths: string[], targetPath: string, operation: OperationType) => Promise<boolean>;
   debouncedSaveSettings: () => void;
   saveSettingsWithTimestamp: (settings: Settings) => Promise<{ success: boolean; error?: string }>;
   showToast: (
@@ -85,6 +85,7 @@ export function createNavigationController(deps: NavigationDeps) {
   let breadcrumbMenuAnchor: HTMLElement | null = null;
   let breadcrumbMenuFocusIndex = -1;
   let breadcrumbDelegated = false;
+  let breadcrumbListenersWired = false;
   let activePath = '';
   let isBreadcrumbCollapsed = false;
   let breadcrumbFullWidth = 0;
@@ -490,6 +491,8 @@ export function createNavigationController(deps: NavigationDeps) {
   function setupBreadcrumbListeners(): void {
     ensureElements();
     ensureBreadcrumbDelegation();
+    if (breadcrumbListenersWired) return;
+    breadcrumbListenersWired = true;
 
     const addressBar = document.querySelector('.address-bar');
     if (addressBar) {

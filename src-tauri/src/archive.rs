@@ -6,6 +6,7 @@ use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tauri::Emitter;
+use zip::unstable::write::FileOptionsExt;
 
 static ACTIVE_OPS: std::sync::LazyLock<Mutex<HashSet<String>>> =
     std::sync::LazyLock::new(|| Mutex::new(HashSet::new()));
@@ -20,13 +21,60 @@ static XML_ATTRIBUTE_RE: std::sync::LazyLock<Option<Regex>> = std::sync::LazyLoc
 
 const MAX_DECOMPRESSED_SIZE: u64 = 53_687_091_200; // 50 GB
 const MAX_ARCHIVE_DEPTH: usize = 20;
+const MAX_EXTRACT_ENTRIES: usize = 100_000;
 const DEFAULT_OFFICE_THUMBNAIL_LIMIT_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_OFFICE_THUMBNAIL_LIMIT_BYTES: u64 = 20 * 1024 * 1024;
 
-#[derive(Clone, Copy, Default, Deserialize)]
+#[derive(Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct AdvancedCompressOptions {
     compression_level: Option<u32>,
+    dictionary_size: Option<String>,
+    password: Option<String>,
+    encrypt_file_names: Option<bool>,
+    method: Option<String>,
+    encryption_method: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ArchiveExtractKind {
+    TarXz,
+    TarGz,
+    TarBz2,
+    Zip,
+    Tar,
+    SevenZ,
+    GzipSingle,
+    XzSingle,
+}
+
+fn resolve_extract_kind(archive: &Path) -> Result<ArchiveExtractKind, String> {
+    let full_name = archive.to_string_lossy().to_lowercase();
+    if full_name.ends_with(".tar.xz") || full_name.ends_with(".txz") {
+        return Ok(ArchiveExtractKind::TarXz);
+    }
+    if full_name.ends_with(".tar.gz") || full_name.ends_with(".tgz") {
+        return Ok(ArchiveExtractKind::TarGz);
+    }
+    if full_name.ends_with(".tar.bz2") || full_name.ends_with(".tbz2") || full_name.ends_with(".tbz")
+    {
+        return Ok(ArchiveExtractKind::TarBz2);
+    }
+
+    let ext = archive
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+
+    match ext.as_str() {
+        "zip" => Ok(ArchiveExtractKind::Zip),
+        "tar" => Ok(ArchiveExtractKind::Tar),
+        "7z" => Ok(ArchiveExtractKind::SevenZ),
+        "gz" => Ok(ArchiveExtractKind::GzipSingle),
+        "xz" => Ok(ArchiveExtractKind::XzSingle),
+        _ => Err(format!("Unsupported archive format: {}", ext)),
+    }
 }
 
 #[derive(Serialize)]
@@ -110,6 +158,20 @@ fn safe_entry_path(entry_name: &str, dest: &Path) -> Result<PathBuf, String> {
         return Err(format!("Path traversal detected: {}", entry_name));
     }
     Ok(path)
+}
+
+fn ensure_compress_entry_depth(entry_name: &str) -> Result<(), String> {
+    let depth = std::path::Path::new(entry_name)
+        .components()
+        .filter(|component| matches!(component, std::path::Component::Normal(_)))
+        .count();
+    if depth > MAX_ARCHIVE_DEPTH {
+        return Err(format!(
+            "Archive path exceeds max nesting depth ({}): {}",
+            MAX_ARCHIVE_DEPTH, entry_name
+        ));
+    }
+    Ok(())
 }
 
 fn ensure_path_within_dest(path: &Path, dest: &Path, entry_name: &str) -> Result<(), String> {
@@ -240,7 +302,7 @@ pub async fn compress_files(
         "tar.gz" | "tgz" => {
             compress_tar_gz(&source_paths, &output, &compress_op_id, options, &webview)
         }
-        "7z" => compress_7z(&source_paths, &output, &compress_op_id, &webview),
+        "7z" => compress_7z(&source_paths, &output, &compress_op_id, options, &webview),
         _ => Err(format!("Unsupported format: {}", fmt)),
     })
     .await;
@@ -254,6 +316,36 @@ pub async fn compress_files(
     result.map_err(|e| e.to_string())?
 }
 
+fn zip_entry_options<'a>(
+    advanced_options: &'a AdvancedCompressOptions,
+) -> zip::write::FileOptions<'a, ()> {
+    let level = advanced_options.compression_level.map(|level| level.min(9));
+    let method = match advanced_options.method.as_deref() {
+        Some("BZip2") => zip::CompressionMethod::Bzip2,
+        Some("LZMA") => zip::CompressionMethod::Lzma,
+        _ if level == Some(0) => zip::CompressionMethod::Stored,
+        _ => zip::CompressionMethod::Deflated,
+    };
+
+    let mut options = zip::write::FileOptions::default()
+        .compression_method(method)
+        .compression_level(level.map(i64::from));
+
+    if let Some(password) = advanced_options
+        .password
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        options = match advanced_options.encryption_method.as_deref() {
+            Some("ZipCrypto") => options.with_deprecated_encryption(password.as_bytes()),
+            _ => options.with_aes_encryption(zip::AesMode::Aes256, password),
+        };
+    }
+
+    options
+}
+
 fn compress_zip(
     sources: &[String],
     output: &Path,
@@ -263,15 +355,6 @@ fn compress_zip(
 ) -> Result<(), String> {
     let file = fs::File::create(output).map_err(|e| e.to_string())?;
     let mut zip = zip::ZipWriter::new(file);
-    let level = advanced_options.compression_level.map(|level| level.min(9));
-    let method = if level == Some(0) {
-        zip::CompressionMethod::Stored
-    } else {
-        zip::CompressionMethod::Deflated
-    };
-    let options = zip::write::SimpleFileOptions::default()
-        .compression_method(method)
-        .compression_level(level.map(i64::from));
 
     let mut count = 0u64;
     let total = sources.len() as u64;
@@ -284,13 +367,15 @@ fn compress_zip(
             }
 
             if path.is_dir() {
-                add_dir_to_zip(&mut zip, &path, &path, &options, op_id)?;
+                add_dir_to_zip(&mut zip, &path, &path, &advanced_options, op_id)?;
             } else {
                 let name = path
                     .file_name()
                     .ok_or_else(|| format!("Invalid path: {}", path.display()))?
                     .to_string_lossy()
                     .to_string();
+                ensure_compress_entry_depth(&name)?;
+                let options = zip_entry_options(&advanced_options);
                 zip.start_file(&name, options).map_err(|e| e.to_string())?;
                 let mut source_file = fs::File::open(&path).map_err(|e| e.to_string())?;
                 std::io::copy(&mut source_file, &mut zip).map_err(|e| e.to_string())?;
@@ -324,7 +409,7 @@ fn add_dir_to_zip(
     zip: &mut zip::ZipWriter<fs::File>,
     dir: &Path,
     base: &Path,
-    options: &zip::write::SimpleFileOptions,
+    advanced_options: &AdvancedCompressOptions,
     op_id: &str,
 ) -> Result<(), String> {
     for entry in fs::read_dir(dir)
@@ -349,11 +434,15 @@ fn add_dir_to_zip(
         let name = relative.to_string_lossy().to_string();
 
         if meta.is_dir() {
-            zip.add_directory(format!("{}/", name), *options)
+            ensure_compress_entry_depth(&format!("{}/", name))?;
+            let options = zip_entry_options(advanced_options);
+            zip.add_directory(format!("{}/", name), options)
                 .map_err(|e| e.to_string())?;
-            add_dir_to_zip(zip, &path, base, options, op_id)?;
+            add_dir_to_zip(zip, &path, base, advanced_options, op_id)?;
         } else {
-            zip.start_file(&name, *options).map_err(|e| e.to_string())?;
+            ensure_compress_entry_depth(&name)?;
+            let options = zip_entry_options(advanced_options);
+            zip.start_file(&name, options).map_err(|e| e.to_string())?;
             let mut source_file = fs::File::open(&path).map_err(|e| e.to_string())?;
             std::io::copy(&mut source_file, zip).map_err(|e| e.to_string())?;
         }
@@ -402,6 +491,8 @@ fn compress_tar_gz(
                         continue;
                     }
                     let rel = entry.path().strip_prefix(base).unwrap_or(entry.path());
+                    let rel_name = rel.to_string_lossy();
+                    ensure_compress_entry_depth(&rel_name)?;
                     if meta.is_dir() {
                         tar.append_dir(rel, entry.path())
                             .map_err(|e| e.to_string())?;
@@ -411,6 +502,7 @@ fn compress_tar_gz(
                     }
                 }
             } else {
+                ensure_compress_entry_depth(&name)?;
                 tar.append_path_with_name(&path, &name)
                     .map_err(|e| e.to_string())?;
             }
@@ -439,14 +531,72 @@ fn compress_tar_gz(
     result
 }
 
+fn parse_dictionary_size(value: &str) -> Option<u32> {
+    let trimmed = value.trim().to_ascii_lowercase();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let (number, unit) = trimmed
+        .strip_suffix("kb")
+        .map(|n| (n, 1024u32))
+        .or_else(|| trimmed.strip_suffix('k').map(|n| (n, 1024u32)))
+        .or_else(|| trimmed.strip_suffix("mb").map(|n| (n, 1024u32 * 1024)))
+        .or_else(|| trimmed.strip_suffix('m').map(|n| (n, 1024u32 * 1024)))
+        .or_else(|| trimmed.strip_suffix("gb").map(|n| (n, 1024u32 * 1024 * 1024)))
+        .or_else(|| trimmed.strip_suffix('g').map(|n| (n, 1024u32 * 1024 * 1024)))
+        .or_else(|| trimmed.strip_suffix('b').map(|n| (n, 1u32)))
+        .unwrap_or((trimmed.as_str(), 1));
+
+    let amount: u32 = number.parse().ok()?;
+    amount.checked_mul(unit)
+}
+
+fn build_lzma2_options(
+    options: &AdvancedCompressOptions,
+) -> sevenz_rust2::encoder_options::Lzma2Options {
+    use sevenz_rust2::encoder_options::Lzma2Options;
+
+    let preset = options.compression_level.unwrap_or(5).min(9);
+    let mut lzma2 = Lzma2Options::from_level(preset);
+    if let Some(dict) = options
+        .dictionary_size
+        .as_deref()
+        .and_then(parse_dictionary_size)
+    {
+        lzma2.set_dictionary_size(dict);
+    }
+    lzma2
+}
+
 fn compress_7z(
     sources: &[String],
     output: &Path,
     op_id: &str,
+    advanced_options: AdvancedCompressOptions,
     webview: &tauri::WebviewWindow,
 ) -> Result<(), String> {
     let result = (|| -> Result<(), String> {
-        let sz = sevenz_rust::SevenZWriter::create(output).map_err(|e| e.to_string())?;
+        let mut sz = sevenz_rust2::ArchiveWriter::create(output).map_err(|e| e.to_string())?;
+        let lzma2 = build_lzma2_options(&advanced_options);
+        let password = advanced_options
+            .password
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_owned);
+
+        if let Some(password_value) = password.as_deref() {
+            sz.set_content_methods(vec![
+                sevenz_rust2::encoder_options::AesEncoderOptions::new(password_value.into()).into(),
+                lzma2.into(),
+            ]);
+            sz.set_encrypt_header(advanced_options.encrypt_file_names.unwrap_or(false));
+        } else {
+            sz.set_content_methods(vec![lzma2.into()]);
+            sz.set_encrypt_header(false);
+        }
+
         let sz_cell = std::cell::RefCell::new(sz);
         let total = sources.len() as u64;
         let mut count = 0u64;
@@ -466,10 +616,12 @@ fn compress_7z(
                 .to_string();
 
             if path.is_dir() {
+                ensure_compress_entry_depth(&format!("{}/", name))?;
                 add_dir_to_7z(&sz_cell, &path, &name, op_id)?;
             } else {
+                ensure_compress_entry_depth(&name)?;
                 let source_file = fs::File::open(&path).map_err(|e| e.to_string())?;
-                let entry = sevenz_rust::SevenZArchiveEntry::from_path(&path, name.clone());
+                let entry = sevenz_rust2::ArchiveEntry::from_path(&path, name.clone());
                 sz_cell
                     .borrow_mut()
                     .push_archive_entry(entry, Some(source_file))
@@ -499,7 +651,7 @@ fn compress_7z(
 }
 
 fn add_dir_to_7z(
-    sz: &std::cell::RefCell<sevenz_rust::SevenZWriter<fs::File>>,
+    sz: &std::cell::RefCell<sevenz_rust2::ArchiveWriter<fs::File>>,
     dir: &Path,
     prefix: &str,
     op_id: &str,
@@ -521,10 +673,12 @@ fn add_dir_to_7z(
         }
         let name = format!("{}/{}", prefix, entry.file_name().to_string_lossy());
         if meta.is_dir() {
+            ensure_compress_entry_depth(&format!("{}/", name))?;
             add_dir_to_7z(sz, &path, &name, op_id)?;
         } else {
+            ensure_compress_entry_depth(&name)?;
             let source_file = fs::File::open(&path).map_err(|e| e.to_string())?;
-            let archive_entry = sevenz_rust::SevenZArchiveEntry::from_path(&path, name);
+            let archive_entry = sevenz_rust2::ArchiveEntry::from_path(&path, name);
             sz.borrow_mut()
                 .push_archive_entry(archive_entry, Some(source_file))
                 .map_err(|e| e.to_string())?;
@@ -538,6 +692,7 @@ pub async fn extract_archive(
     archive_path: String,
     dest_path: String,
     operation_id: Option<String>,
+    password: Option<String>,
     webview: tauri::WebviewWindow,
     _app: tauri::AppHandle,
 ) -> Result<(), String> {
@@ -547,6 +702,11 @@ pub async fn extract_archive(
     let dest_preexisted = dest.exists();
     fs::create_dir_all(&dest).map_err(|e| e.to_string())?;
     let op_id = operation_id.unwrap_or_default();
+    let extract_password = password
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned);
 
     if !op_id.is_empty() {
         let mut ops = ACTIVE_OPS.lock().map_err(|e| e.to_string())?;
@@ -555,27 +715,46 @@ pub async fn extract_archive(
 
     let extract_op_id = op_id.clone();
     let result = tokio::task::spawn_blocking(move || {
-        let ext = archive
-            .extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("")
-            .to_lowercase();
-
-        let full_name = archive.to_string_lossy().to_lowercase();
-        if full_name.ends_with(".tar.xz") || full_name.ends_with(".txz") {
-            return extract_tar_xz(&archive, &dest, &extract_op_id, &webview);
-        }
-        if full_name.ends_with(".tar.gz") || full_name.ends_with(".tgz") {
-            return extract_tar_gz(&archive, &dest, &extract_op_id, &webview);
-        }
-        match ext.as_str() {
-            "zip" => extract_zip(&archive, &dest, &extract_op_id, &webview),
-            "tar" => extract_tar(&archive, &dest, &extract_op_id, &webview),
-            "7z" => extract_7z(&archive, &dest, &extract_op_id, &webview),
-            // Plain single-file compressed streams (not tarballs).
-            "gz" => extract_gzip_single(&archive, &dest),
-            "xz" => extract_xz_single(&archive, &dest),
-            _ => Err(format!("Unsupported archive format: {}", ext)),
+        let kind = resolve_extract_kind(&archive)?;
+        match kind {
+            ArchiveExtractKind::TarXz => {
+                extract_tar_xz(&archive, &dest, &extract_op_id, &webview, extract_password.as_deref())
+            }
+            ArchiveExtractKind::TarGz => {
+                extract_tar_gz(&archive, &dest, &extract_op_id, &webview, extract_password.as_deref())
+            }
+            ArchiveExtractKind::TarBz2 => {
+                extract_tar_bz2(&archive, &dest, &extract_op_id, &webview, extract_password.as_deref())
+            }
+            ArchiveExtractKind::Zip => extract_zip(
+                &archive,
+                &dest,
+                &extract_op_id,
+                &webview,
+                extract_password.as_deref(),
+            ),
+            ArchiveExtractKind::Tar => {
+                extract_tar(&archive, &dest, &extract_op_id, &webview, extract_password.as_deref())
+            }
+            ArchiveExtractKind::SevenZ => extract_7z(
+                &archive,
+                &dest,
+                &extract_op_id,
+                &webview,
+                extract_password.as_deref(),
+            ),
+            ArchiveExtractKind::GzipSingle => {
+                if extract_password.is_some() {
+                    return Err("Password-protected .gz files are not supported".to_string());
+                }
+                extract_gzip_single(&archive, &dest)
+            }
+            ArchiveExtractKind::XzSingle => {
+                if extract_password.is_some() {
+                    return Err("Password-protected .xz files are not supported".to_string());
+                }
+                extract_xz_single(&archive, &dest)
+            }
         }
     })
     .await;
@@ -604,12 +783,20 @@ fn extract_zip(
     dest: &Path,
     op_id: &str,
     webview: &tauri::WebviewWindow,
+    password: Option<&str>,
 ) -> Result<(), String> {
     let file = fs::File::open(archive).map_err(|e| e.to_string())?;
     let mut zip = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
     let total = zip.len();
+    if total > MAX_EXTRACT_ENTRIES {
+        return Err(format!(
+            "Archive contains too many entries ({} > {})",
+            total, MAX_EXTRACT_ENTRIES
+        ));
+    }
     let mut cumulative_bytes: u64 = 0;
     let mut extracted: Vec<PathBuf> = Vec::new();
+    let password_bytes = password.map(|value| value.as_bytes());
 
     let result = (|| {
         for i in 0..total {
@@ -617,7 +804,10 @@ fn extract_zip(
                 return Err("Operation cancelled".to_string());
             }
 
-            let mut entry = zip.by_index(i).map_err(|e| e.to_string())?;
+            let mut entry = match password_bytes {
+                Some(pwd) => zip.by_index_decrypt(i, pwd).map_err(|e| e.to_string())?,
+                None => zip.by_index(i).map_err(|e| e.to_string())?,
+            };
             let name = entry.name().to_string();
             let out_path = safe_entry_path(&name, dest)?;
 
@@ -678,9 +868,29 @@ fn extract_tar_gz(
     dest: &Path,
     op_id: &str,
     webview: &tauri::WebviewWindow,
+    password: Option<&str>,
 ) -> Result<(), String> {
+    if password.is_some() {
+        return Err("Password-protected tar.gz archives are not supported".to_string());
+    }
     let file = fs::File::open(archive).map_err(|e| e.to_string())?;
     let dec = flate2::read::GzDecoder::new(file);
+    let mut tar = tar::Archive::new(dec);
+    extract_tar_entries(&mut tar, dest, op_id, webview)
+}
+
+fn extract_tar_bz2(
+    archive: &Path,
+    dest: &Path,
+    op_id: &str,
+    webview: &tauri::WebviewWindow,
+    password: Option<&str>,
+) -> Result<(), String> {
+    if password.is_some() {
+        return Err("Password-protected tar.bz2 archives are not supported".to_string());
+    }
+    let file = fs::File::open(archive).map_err(|e| e.to_string())?;
+    let dec = bzip2::read::BzDecoder::new(file);
     let mut tar = tar::Archive::new(dec);
     extract_tar_entries(&mut tar, dest, op_id, webview)
 }
@@ -690,7 +900,11 @@ fn extract_tar(
     dest: &Path,
     op_id: &str,
     webview: &tauri::WebviewWindow,
+    password: Option<&str>,
 ) -> Result<(), String> {
+    if password.is_some() {
+        return Err("Password-protected tar archives are not supported".to_string());
+    }
     let file = fs::File::open(archive).map_err(|e| e.to_string())?;
     let mut tar = tar::Archive::new(file);
     extract_tar_entries(&mut tar, dest, op_id, webview)
@@ -701,73 +915,89 @@ fn extract_7z(
     dest: &Path,
     op_id: &str,
     webview: &tauri::WebviewWindow,
+    password: Option<&str>,
 ) -> Result<(), String> {
     let file = fs::File::open(archive).map_err(|e| e.to_string())?;
     let reader = BufReader::new(file);
     let mut count = 0usize;
     let mut cumulative_bytes: u64 = 0;
     let mut extracted: Vec<PathBuf> = Vec::new();
-    let result =
-        sevenz_rust::decompress_with_extract_fn(reader, dest, |entry, reader, _dest_path| {
-            if !op_id.is_empty() && !is_active(op_id) {
-                return Err(sevenz_rust::Error::other("Operation cancelled"));
-            }
-            count += 1;
-            let name = entry.name().to_string();
-            let _ = webview.emit(
-                "extract-progress",
-                serde_json::json!({
-                    "operationId": op_id,
-                    "current": count,
-                    "total": 0,
-                    "name": name.clone(),
-                }),
-            );
-            let out_path = safe_entry_path(entry.name(), dest)
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
-            if entry.is_directory() {
-                create_dir_all_tracked(&out_path, &mut extracted).map_err(std::io::Error::other)?;
-                ensure_path_within_dest(&out_path, dest, &name).map_err(std::io::Error::other)?;
-            } else {
-                if out_path.exists() {
-                    return Err(sevenz_rust::Error::other(format!(
+    let sevenz_password = sevenz_rust2::Password::from(password.unwrap_or(""));
+
+    let extract_fn = |entry: &sevenz_rust2::ArchiveEntry,
+                      reader: &mut dyn Read,
+                      _dest_path: &PathBuf| {
+        if !op_id.is_empty() && !is_active(op_id) {
+            return Err(sevenz_rust2::Error::Other("Operation cancelled".into()));
+        }
+        count += 1;
+        let name = entry.name().to_string();
+        let _ = webview.emit(
+            "extract-progress",
+            serde_json::json!({
+                "operationId": op_id,
+                "current": count,
+                "total": 0,
+                "name": name.clone(),
+            }),
+        );
+        let out_path = safe_entry_path(entry.name(), dest)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
+        if entry.is_directory() {
+            create_dir_all_tracked(&out_path, &mut extracted).map_err(std::io::Error::other)?;
+            ensure_path_within_dest(&out_path, dest, &name).map_err(std::io::Error::other)?;
+        } else {
+            if out_path.exists() {
+                return Err(sevenz_rust2::Error::Other(
+                    format!(
                         "Refusing to overwrite existing extraction path: {}",
                         out_path.display()
-                    )));
-                }
-                let entry_size = entry.size();
-                if cumulative_bytes.saturating_add(entry_size) > MAX_DECOMPRESSED_SIZE {
-                    return Err(sevenz_rust::Error::other(
-                        "Decompressed size limit exceeded (50 GB)",
-                    ));
-                }
-                if let Some(parent) = out_path.parent() {
-                    create_dir_all_tracked(parent, &mut extracted)
-                        .map_err(std::io::Error::other)?;
-                    ensure_path_within_dest(parent, dest, &name).map_err(std::io::Error::other)?;
-                }
-                let mut outfile = fs::File::create(&out_path)
-                    .map_err(|e| std::io::Error::other(e.to_string()))?;
-                extracted.push(out_path.clone());
-                // Bound the copy (zip-bomb defense): a single entry cannot exceed the cap.
-                let remaining = MAX_DECOMPRESSED_SIZE.saturating_sub(cumulative_bytes);
-                let mut limited = reader.take(remaining.saturating_add(1));
-                let written = std::io::copy(&mut limited, &mut outfile)
-                    .map_err(|e| std::io::Error::other(e.to_string()))?;
-                cumulative_bytes = cumulative_bytes.saturating_add(written);
-                if cumulative_bytes > MAX_DECOMPRESSED_SIZE {
-                    return Err(sevenz_rust::Error::other(
-                        "Decompressed size limit exceeded (50 GB)",
-                    ));
-                }
+                    )
+                    .into(),
+                ));
             }
-            Ok(true)
-        });
+            let entry_size = entry.size();
+            if cumulative_bytes.saturating_add(entry_size) > MAX_DECOMPRESSED_SIZE {
+                return Err(sevenz_rust2::Error::Other(
+                    "Decompressed size limit exceeded (50 GB)".into(),
+                ));
+            }
+            if let Some(parent) = out_path.parent() {
+                create_dir_all_tracked(parent, &mut extracted).map_err(std::io::Error::other)?;
+                ensure_path_within_dest(parent, dest, &name).map_err(std::io::Error::other)?;
+            }
+            let mut outfile = fs::File::create(&out_path)
+                .map_err(|e| std::io::Error::other(e.to_string()))?;
+            extracted.push(out_path.clone());
+            let remaining = MAX_DECOMPRESSED_SIZE.saturating_sub(cumulative_bytes);
+            let mut limited = reader.take(remaining.saturating_add(1));
+            let written = std::io::copy(&mut limited, &mut outfile)
+                .map_err(|e| std::io::Error::other(e.to_string()))?;
+            cumulative_bytes = cumulative_bytes.saturating_add(written);
+            if cumulative_bytes > MAX_DECOMPRESSED_SIZE {
+                return Err(sevenz_rust2::Error::Other(
+                    "Decompressed size limit exceeded (50 GB)".into(),
+                ));
+            }
+        }
+        Ok(true)
+    };
+
+    let result = if password.map(str::is_empty).unwrap_or(true) {
+        sevenz_rust2::decompress_with_extract_fn(reader, dest, extract_fn)
+    } else {
+        sevenz_rust2::decompress_with_extract_fn_and_password(
+            reader,
+            dest,
+            sevenz_password,
+            extract_fn,
+        )
+    };
     if result.is_err() {
         cleanup_extracted_paths(&extracted);
     }
     result.map_err(|e| match e {
-        sevenz_rust::Error::Other(message) if message.as_ref() == "Operation cancelled" => {
+        sevenz_rust2::Error::Other(message) if message.as_ref() == "Operation cancelled" => {
             "Operation cancelled".to_string()
         }
         other => other.to_string(),
@@ -779,7 +1009,11 @@ fn extract_tar_xz(
     dest: &Path,
     op_id: &str,
     webview: &tauri::WebviewWindow,
+    password: Option<&str>,
 ) -> Result<(), String> {
+    if password.is_some() {
+        return Err("Password-protected tar.xz archives are not supported".to_string());
+    }
     let file = fs::File::open(archive).map_err(|e| e.to_string())?;
     let dec = xz2::read::XzDecoder::new(file);
     let mut tar = tar::Archive::new(dec);
@@ -872,6 +1106,16 @@ fn extract_tar_entries_tracked<R: std::io::Read>(
             return Err("Operation cancelled".to_string());
         }
 
+        // Bound entry count to stop crafted archives with millions of tiny
+        // (often zero-byte) entries that never trip the byte cap but exhaust
+        // inodes/CPU. Mirrors the zip path's MAX_EXTRACT_ENTRIES guard.
+        if count >= MAX_EXTRACT_ENTRIES {
+            return Err(format!(
+                "Archive entry count exceeds limit ({})",
+                MAX_EXTRACT_ENTRIES
+            ));
+        }
+
         let mut entry = entry.map_err(|e| e.to_string())?;
         let entry_type = entry.header().entry_type();
         let name = entry
@@ -961,6 +1205,10 @@ pub async fn list_archive_contents(archive_path: String) -> Result<Vec<ArchiveEn
         let full_name = archive.to_string_lossy().to_lowercase();
         let is_plain_gz = ext == "gz" && !full_name.ends_with(".tar.gz");
         let is_plain_xz = ext == "xz" && !full_name.ends_with(".tar.xz");
+        let is_tar_bz2 = full_name.ends_with(".tar.bz2")
+            || full_name.ends_with(".tbz2")
+            || full_name.ends_with(".tbz");
+        let is_tar_xz = full_name.ends_with(".tar.xz") || full_name.ends_with(".txz");
         if is_plain_gz || is_plain_xz {
             let stem = archive
                 .file_stem()
@@ -1005,35 +1253,92 @@ pub async fn list_archive_contents(archive_path: String) -> Result<Vec<ArchiveEn
                 Ok(entries)
             }
             "7z" => {
-                let mut entries = Vec::new();
                 let file = fs::File::open(&archive).map_err(|e| e.to_string())?;
-                let reader = BufReader::new(file);
-                sevenz_rust::decompress_with_extract_fn(
-                    reader,
-                    Path::new(""),
-                    |entry, _reader, _dest| {
-                        if entries.len() < MAX_LIST_ENTRIES {
-                            entries.push(ArchiveEntry {
-                                name: Path::new(entry.name())
-                                    .file_name()
-                                    .unwrap_or_default()
-                                    .to_string_lossy()
-                                    .to_string(),
-                                path: entry.name().to_string(),
-                                size: entry.size(),
-                                is_directory: entry.is_directory(),
-                                compressed_size: entry.compressed_size,
-                            });
-                        }
-                        Ok(true)
-                    },
-                )
-                .map_err(|e| e.to_string())?;
+                let mut reader = BufReader::new(file);
+                let sevenz_archive =
+                    sevenz_rust2::Archive::read(&mut reader, &sevenz_rust2::Password::empty())
+                        .map_err(|e| e.to_string())?;
+                let entries = sevenz_archive
+                    .files
+                    .iter()
+                    .take(MAX_LIST_ENTRIES)
+                    .map(|entry| ArchiveEntry {
+                        name: Path::new(entry.name())
+                            .file_name()
+                            .unwrap_or_default()
+                            .to_string_lossy()
+                            .to_string(),
+                        path: entry.name().to_string(),
+                        size: entry.size(),
+                        is_directory: entry.is_directory(),
+                        compressed_size: entry.compressed_size,
+                    })
+                    .collect();
                 Ok(entries)
             }
             "gz" | "tgz" => {
                 let file = fs::File::open(&archive).map_err(|e| e.to_string())?;
                 let dec = flate2::read::GzDecoder::new(file);
+                let mut tar = tar::Archive::new(dec);
+                let mut entries = Vec::new();
+                for entry in tar.entries().map_err(|e| e.to_string())? {
+                    let entry = entry.map_err(|e| e.to_string())?;
+                    if entries.len() >= MAX_LIST_ENTRIES {
+                        break;
+                    }
+                    let path_str = entry
+                        .path()
+                        .map_err(|e| e.to_string())?
+                        .to_string_lossy()
+                        .to_string();
+                    let name = Path::new(&path_str)
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .to_string();
+                    entries.push(ArchiveEntry {
+                        name,
+                        path: path_str,
+                        size: entry.size(),
+                        is_directory: entry.header().entry_type().is_dir(),
+                        compressed_size: entry.size(),
+                    });
+                }
+                Ok(entries)
+            }
+            "bz2" | "tbz2" | "tbz" if is_tar_bz2 => {
+                let file = fs::File::open(&archive).map_err(|e| e.to_string())?;
+                let dec = bzip2::read::BzDecoder::new(file);
+                let mut tar = tar::Archive::new(dec);
+                let mut entries = Vec::new();
+                for entry in tar.entries().map_err(|e| e.to_string())? {
+                    let entry = entry.map_err(|e| e.to_string())?;
+                    if entries.len() >= MAX_LIST_ENTRIES {
+                        break;
+                    }
+                    let path_str = entry
+                        .path()
+                        .map_err(|e| e.to_string())?
+                        .to_string_lossy()
+                        .to_string();
+                    let name = Path::new(&path_str)
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .to_string();
+                    entries.push(ArchiveEntry {
+                        name,
+                        path: path_str,
+                        size: entry.size(),
+                        is_directory: entry.header().entry_type().is_dir(),
+                        compressed_size: entry.size(),
+                    });
+                }
+                Ok(entries)
+            }
+            "xz" | "txz" if is_tar_xz => {
+                let file = fs::File::open(&archive).map_err(|e| e.to_string())?;
+                let dec = xz2::read::XzDecoder::new(file);
                 let mut tar = tar::Archive::new(dec);
                 let mut entries = Vec::new();
                 for entry in tar.entries().map_err(|e| e.to_string())? {

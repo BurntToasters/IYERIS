@@ -321,7 +321,7 @@ export function createDuplicateFinderController(deps: DuplicateFinderDeps) {
       deps.generateOperationId?.() ??
       `duplicate_delete_${Date.now()}_${Math.random().toString(36)}`;
     deps.addOperation?.(operationId, 'delete', `${candidatePaths.length} duplicate file(s)`, {
-      cancellable: true,
+      cancellable: false,
       total: candidatePaths.length,
       retry: () => void deleteSelectedDuplicates(),
     });
@@ -508,6 +508,14 @@ export function createDuplicateFinderController(deps: DuplicateFinderDeps) {
         return total + Math.max(0, group.paths.length - 1);
       }, 0);
       const reclaimableBytes = computeReclaimableBytes(groups);
+
+      if (result.partial) {
+        deps.showToast(
+          'Scan stopped early after hashing limit. Results may be incomplete.',
+          'Duplicate Finder',
+          'warning'
+        );
+      }
 
       if (groups.length === 0) {
         setStatus('No duplicate files were found for this scan.', 'success');

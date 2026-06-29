@@ -344,8 +344,8 @@ export function createDragDropController(config: DragDropConfig) {
     sourcePaths: string[],
     destPath: string,
     operation: 'copy' | 'move'
-  ): Promise<void> {
-    if (dropInProgress) return;
+  ): Promise<boolean> {
+    if (dropInProgress) return false;
     for (const sp of sourcePaths) {
       if (sp === destPath || isDescendantPath(destPath, sp)) {
         config.getShowToast()(
@@ -353,7 +353,7 @@ export function createDragDropController(config: DragDropConfig) {
           'Invalid Drop',
           'warning'
         );
-        return;
+        return false;
       }
     }
     dropInProgress = true;
@@ -421,28 +421,32 @@ export function createDragDropController(config: DragDropConfig) {
               }
               await config.navigateTo(config.getCurrentPath());
               config.clearSelection();
-              return;
+              return true;
             }
             completeQueued(
               operationId,
               'failed',
               elevResult.error || `Elevated ${operation} failed`
             );
-            showToast(elevResult.error || `Elevated ${operation} failed`, 'Error', 'error');
-            return;
+            showToast(
+              elevResult.error || t('dragDrop.elevatedFailed', { operation }),
+              t('common.error'),
+              'error'
+            );
+            return false;
           }
           completeQueued(operationId, 'failed', 'Operation cancelled');
-          showToast('Operation cancelled', 'Info', 'info');
-          return;
+          showToast(t('dragDrop.operationCancelled'), t('common.info'), 'info');
+          return false;
         }
         completeQueued(operationId, 'failed', result.error || `Failed to ${operation} items`);
-        showToast(result.error || `Failed to ${operation} items`, 'Error', 'error', [
+        showToast(result.error || t('dragDrop.failed', { operation }), t('common.error'), 'error', [
           {
-            label: 'Retry',
+            label: t('common.retry'),
             onClick: () => void handleDrop(sourcePaths, destPath, operation),
           },
         ]);
-        return;
+        return false;
       }
       completeQueued(operationId, 'done');
       showToast(
@@ -458,15 +462,17 @@ export function createDragDropController(config: DragDropConfig) {
 
       await config.navigateTo(config.getCurrentPath());
       config.clearSelection();
+      return true;
     } catch (error) {
       console.error(`Error during ${operation}:`, error);
       completeQueued(operationId, 'failed', String(error));
-      showToast(`Failed to ${operation} items`, 'Error', 'error', [
+      showToast(t('dragDrop.failed', { operation }), t('common.error'), 'error', [
         {
-          label: 'Retry',
+          label: t('common.retry'),
           onClick: () => void handleDrop(sourcePaths, destPath, operation),
         },
       ]);
+      return false;
     } finally {
       dropInProgress = false;
     }
@@ -526,11 +532,14 @@ export function createDragDropController(config: DragDropConfig) {
         const currentPath = config.getCurrentPath();
 
         if (draggedPaths.length === 0 || !currentPath) {
+          if (draggedPaths.length === 0 && e.dataTransfer?.files.length) {
+            config.getShowToast()('Could not resolve dropped file paths', 'Drop Failed', 'warning');
+          }
           return;
         }
 
         if (isDropIntoCurrentDirectory(draggedPaths, currentPath)) {
-          config.getShowToast()(t('toast.alreadyInDirectory'), 'Info', 'info');
+          config.getShowToast()(t('toast.alreadyInDirectory'), t('common.info'), 'info');
           return;
         }
 
@@ -598,11 +607,14 @@ export function createDragDropController(config: DragDropConfig) {
         const currentPath = config.getCurrentPath();
 
         if (draggedPaths.length === 0 || !currentPath) {
+          if (draggedPaths.length === 0 && e.dataTransfer?.files.length) {
+            config.getShowToast()('Could not resolve dropped file paths', 'Drop Failed', 'warning');
+          }
           return;
         }
 
         if (isDropIntoCurrentDirectory(draggedPaths, currentPath)) {
-          config.getShowToast()(t('toast.alreadyInDirectory'), 'Info', 'info');
+          config.getShowToast()(t('toast.alreadyInDirectory'), t('common.info'), 'info');
           return;
         }
 

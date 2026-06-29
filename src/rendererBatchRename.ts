@@ -13,6 +13,11 @@ type BatchRenameDeps = {
   deactivateModal: (el: HTMLElement) => void;
   refresh: () => void;
   updateUndoRedoState: () => Promise<void>;
+  showConfirm: (
+    message: string,
+    title?: string,
+    type?: 'info' | 'warning' | 'error' | 'success' | 'question'
+  ) => Promise<boolean>;
 };
 
 type RenameMode = 'find-replace' | 'sequential' | 'extension';
@@ -246,6 +251,36 @@ export function createBatchRenameController(deps: BatchRenameDeps) {
         return;
       }
       newNames.add(dedupKey(item.newName));
+    }
+
+    // Also guard against collisions with files already in the directory that
+    // are NOT part of this batch. Renaming a.txt -> b.txt when an untouched
+    // b.txt exists would otherwise hit the backend and overwrite or error.
+    const renamedPaths = new Set(toRename.map((i) => i.oldPath));
+    const existingNames = new Set(
+      deps
+        .getAllFiles()
+        .filter((f) => !renamedPaths.has(f.path))
+        .map((f) => dedupKey(f.name))
+    );
+    for (const item of toRename) {
+      if (existingNames.has(dedupKey(item.newName))) {
+        deps.showToast(
+          `"${item.newName}" already exists in this folder`,
+          'Batch Rename Error',
+          'error'
+        );
+        return;
+      }
+    }
+
+    if (toRename.length > 20) {
+      const confirmed = await deps.showConfirm(
+        `Rename ${toRename.length} items?`,
+        'Batch Rename',
+        'question'
+      );
+      if (!confirmed) return;
     }
 
     try {

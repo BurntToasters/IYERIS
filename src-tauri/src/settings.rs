@@ -82,7 +82,9 @@ pub fn save_settings(app: tauri::AppHandle, settings: String) -> Result<(), Stri
     if enable_indexer && !indexer_was_enabled {
         crate::indexer::initialize_index(&app);
     } else if !enable_indexer {
-        crate::indexer::cancel_build();
+        crate::indexer::set_enabled(false, Some(&app));
+    } else if enable_indexer {
+        crate::indexer::set_enabled(true, None);
     }
 
     Ok(())

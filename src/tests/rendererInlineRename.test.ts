@@ -21,6 +21,7 @@ function createDeps() {
     showAlert: vi.fn(async () => {}),
     showConfirm: vi.fn(async () => true),
     isHomeViewPath: vi.fn((p: string) => p === 'iyeris://home'),
+    selectCreatedItem: vi.fn(),
   };
 }
 
@@ -59,7 +60,7 @@ describe('createNewItemWithInlineRename', () => {
 
     const api = window.tauriAPI as unknown as Record<string, ReturnType<typeof vi.fn>>;
     expect(api.createFile).toHaveBeenCalledWith('/workspace', 'File.txt');
-    expect(deps.navigateTo).toHaveBeenCalledWith('/workspace');
+    expect(deps.navigateTo).toHaveBeenCalledWith('/workspace', true);
   });
 
   it('creates a folder', async () => {
@@ -69,7 +70,7 @@ describe('createNewItemWithInlineRename', () => {
 
     const api = window.tauriAPI as unknown as Record<string, ReturnType<typeof vi.fn>>;
     expect(api.createFolder).toHaveBeenCalledWith('/workspace', 'New Folder');
-    expect(deps.navigateTo).toHaveBeenCalledWith('/workspace');
+    expect(deps.navigateTo).toHaveBeenCalledWith('/workspace', true);
   });
 
   it('shows toast when on home view', async () => {
@@ -189,10 +190,78 @@ describe('createNewItemWithInlineRename', () => {
 
     const ctrl = createInlineRenameController(deps as any);
     await ctrl.createNewItemWithInlineRename('file');
-    await vi.advanceTimersByTimeAsync(120);
+    expect(document.body.classList.contains('pending-created-item-rename')).toBe(true);
+    await vi.advanceTimersByTimeAsync(60);
 
+    expect(deps.selectCreatedItem).toHaveBeenCalledWith('/workspace/File.txt');
+    expect(document.body.classList.contains('pending-created-item-rename')).toBe(false);
+    expect(fileItem.classList.contains('selected')).toBe(true);
+    expect(fileItem.getAttribute('aria-selected')).toBe('true');
     expect(fileItem.classList.contains('renaming')).toBe(true);
     expect(fileItem.querySelector('.file-name-input')).not.toBeNull();
+  });
+
+  it('retries inline rename until refreshed item is present', async () => {
+    const deps = createDeps();
+    const api = window.tauriAPI as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    api.createFolder.mockResolvedValue({ success: true, path: '/workspace/New Folder' });
+
+    const ctrl = createInlineRenameController(deps as any);
+    await ctrl.createNewItemWithInlineRename('folder');
+    await vi.advanceTimersByTimeAsync(60);
+    expect(document.body.classList.contains('pending-created-item-rename')).toBe(true);
+
+    const fileItem = document.createElement('div');
+    fileItem.className = 'file-item';
+    fileItem.setAttribute('data-path', '/workspace/New Folder');
+    const textContainer = document.createElement('div');
+    textContainer.className = 'file-text';
+    const nameEl = document.createElement('span');
+    nameEl.className = 'file-name';
+    nameEl.textContent = 'New Folder';
+    textContainer.appendChild(nameEl);
+    fileItem.appendChild(textContainer);
+    document.body.appendChild(fileItem);
+
+    await vi.advanceTimersByTimeAsync(60);
+
+    expect(deps.selectCreatedItem).toHaveBeenCalledWith('/workspace/New Folder');
+    expect(document.body.classList.contains('pending-created-item-rename')).toBe(false);
+    expect(fileItem.classList.contains('selected')).toBe(true);
+    expect(fileItem.classList.contains('renaming')).toBe(true);
+  });
+
+  it('falls back to rendered item path when created path prefix differs', async () => {
+    const deps = createDeps();
+    const api = window.tauriAPI as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    api.createFolder.mockResolvedValue({
+      success: true,
+      path: '/System/Volumes/Data/Users/dev/New Folder',
+    });
+
+    const fileItem = document.createElement('div');
+    fileItem.className = 'file-item';
+    fileItem.setAttribute('data-path', '/Users/dev/New Folder');
+    const textContainer = document.createElement('div');
+    textContainer.className = 'file-text';
+    const nameEl = document.createElement('span');
+    nameEl.className = 'file-name';
+    nameEl.textContent = 'New Folder';
+    textContainer.appendChild(nameEl);
+    fileItem.appendChild(textContainer);
+    document.body.appendChild(fileItem);
+
+    const ctrl = createInlineRenameController(deps as any);
+    await ctrl.createNewItemWithInlineRename('folder');
+    await vi.advanceTimersByTimeAsync(60);
+
+    expect(deps.selectCreatedItem).toHaveBeenCalledWith('/Users/dev/New Folder');
+    const input = fileItem.querySelector('.file-name-input') as HTMLInputElement;
+    input.value = 'Renamed Folder';
+    input.dispatchEvent(new KeyboardEvent('keypress', { key: 'Enter' }));
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(api.renameItem).toHaveBeenCalledWith('/Users/dev/New Folder', 'Renamed Folder');
   });
 
   it('does not start inline rename when path changes before timer fires', async () => {
@@ -217,8 +286,9 @@ describe('createNewItemWithInlineRename', () => {
     const ctrl = createInlineRenameController(deps as any);
     await ctrl.createNewItemWithInlineRename('file');
     currentPath = '/workspace/other';
-    await vi.advanceTimersByTimeAsync(120);
+    await vi.advanceTimersByTimeAsync(60);
 
+    expect(document.body.classList.contains('pending-created-item-rename')).toBe(false);
     expect(fileItem.classList.contains('renaming')).toBe(false);
     expect(fileItem.querySelector('.file-name-input')).toBeNull();
   });
@@ -257,7 +327,7 @@ describe('createNewItemWithInlineRename', () => {
     const ctrl = createInlineRenameController(deps as any);
     await ctrl.createNewItemWithInlineRename('file');
     await ctrl.createNewItemWithInlineRename('file');
-    await vi.advanceTimersByTimeAsync(120);
+    await vi.advanceTimersByTimeAsync(60);
 
     expect(firstItem.classList.contains('renaming')).toBe(false);
     expect(secondItem.classList.contains('renaming')).toBe(true);

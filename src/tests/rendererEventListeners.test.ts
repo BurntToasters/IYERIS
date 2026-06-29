@@ -188,6 +188,7 @@ function createMockConfig() {
     togglePreviewPanel: vi.fn(),
     showContextMenuForSelected: vi.fn(),
     focusFileGrid: vi.fn(),
+    focusSecondaryPane: vi.fn(),
     ensureActiveItem: vi.fn(),
     toggleSelectionAtCursor: vi.fn(),
     navigateFileGridFocusOnly: vi.fn(),
