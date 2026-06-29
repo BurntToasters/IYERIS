@@ -9,11 +9,11 @@
       </td>
       <td valign="middle" align="center">
         <p align="center">
-  <img width="45%" height="1012" alt="IYERIS-1" src="https://prod.rosie.run/apps/iyeris/_static/v1/Color3.png" />
+  <img width="45%" height="1012" alt="IYERIS-1" src="https://prod.rosie.run/apps/iyeris/_static/v3/Color3.png" />
 &nbsp;
-<img width="45%" height="1012" alt="IYERIS-2" src="https://prod.rosie.run/apps/iyeris/_static/v1/Color1.png" />
+<img width="45%" height="1012" alt="IYERIS-2" src="https://prod.rosie.run/apps/iyeris/_static/v3/Color1.png" />
 &nbsp;
-<img width="45%" height="1012" alt="IYERIS-9-3" src="https://prod.rosie.run/apps/iyeris/_static/v1/Color2.png" />
+<img width="45%" height="1012" alt="IYERIS-9-3" src="https://prod.rosie.run/apps/iyeris/_static/v3/Color2.png" />
 </p>
       </td>
     </tr>
@@ -88,13 +88,13 @@
 ### Customize the look of IYERIS with a set of our built-in themes, or use the theme editor and get creative!
 
 <p align="center">
-  <img width="45%" height="1012" alt="IYERIS-Color1" src="https://prod.rosie.run/apps/iyeris/_static/v1/Color1.png" />
+  <img width="45%" height="1012" alt="IYERIS-Color1" src="https://prod.rosie.run/apps/iyeris/_static/v3/Color1.png" />
 &nbsp;
-<img width="45%" height="1012" alt="IYERIS-Color2" src="https://prod.rosie.run/apps/iyeris/_static/v1/Color2.png" />
+<img width="45%" height="1012" alt="IYERIS-Color2" src="https://prod.rosie.run/apps/iyeris/_static/v3/Color2.png" />
 &nbsp;
-<img width="45%" height="1012" alt="IYERIS-Color3" src="https://prod.rosie.run/apps/iyeris/_static/v1/Color3.png" />
+<img width="45%" height="1012" alt="IYERIS-Color3" src="https://prod.rosie.run/apps/iyeris/_static/v3/Color3.png" />
 &nbsp;
-<img width="45%" height="1012" alt="IYERIS-Color4" src="https://prod.rosie.run/apps/iyeris/_static/v1/Color4.png" />
+<img width="45%" height="1012" alt="IYERIS-Color4" src="https://prod.rosie.run/apps/iyeris/_static/v3/Color4.png" />
 </p>
 
 ## Multiple Views
@@ -102,11 +102,11 @@
 ### IYERIS supports Tile, List, and Column viewing for files.
 
 <p align="center">
-  <img width="45%" height="1012" alt="IYERIS-View1" src="https://prod.rosie.run/apps/iyeris/_static/v1/Browse1.png" />
+  <img width="45%" height="1012" alt="IYERIS-View1" src="https://prod.rosie.run/apps/iyeris/_static/v3/Browse1.png" />
 &nbsp;
-<img width="45%" height="1012" alt="IYERIS-View2" src="https://prod.rosie.run/apps/iyeris/_static/v1/Browse2.png" />
+<img width="45%" height="1012" alt="IYERIS-View2" src="https://prod.rosie.run/apps/iyeris/_static/v3/Browse2.png" />
 &nbsp;
-<img width="45%" height="1012" alt="IYERIS-View3" src="https://prod.rosie.run/apps/iyeris/_static/v1/Browse3.png" />
+<img width="45%" height="1012" alt="IYERIS-View3" src="https://prod.rosie.run/apps/iyeris/_static/v3/Browse3.png" />
 &nbsp;
 </p>
 
@@ -115,9 +115,9 @@
 ### IYERIS includes built-in archive support (ZIP, 7z, tar, tar.gz, tar.bz2, tar.xz, and plain .gz/.xz) for compress and extract. Advanced users can choose extra compression options. RAR, CAB, ISO, and other formats are not supported for extract.
 
 <p align="center">
-  <img width="45%" height="1012" alt="IYERIS-Compress1" src="https://prod.rosie.run/apps/iyeris/_static/v1/Compress1.png" />
+  <img width="45%" height="1012" alt="IYERIS-Compress1" src="https://prod.rosie.run/apps/iyeris/_static/v3/Compress1.png" />
 &nbsp;
-<img width="45%" height="1012" alt="IYERIS-Compress2" src="https://prod.rosie.run/apps/iyeris/_static/v1/Compress2.png" />
+<img width="45%" height="1012" alt="IYERIS-Compress2" src="https://prod.rosie.run/apps/iyeris/_static/v3/Compress2.png" />
 &nbsp;
 </p>
 
@@ -126,11 +126,11 @@
 ### Preview supported files, and see their file properties and permissions!
 
 <p align="center">
-  <img width="45%" height="1012" alt="IYERIS-View1" src="https://prod.rosie.run/apps/iyeris/_static/v1/Properties.png" />
+  <img width="45%" height="1012" alt="IYERIS-View1" src="https://prod.rosie.run/apps/iyeris/_static/v3/Properties.png" />
 &nbsp;
-<img width="45%" height="1012" alt="IYERIS-View2" src="https://prod.rosie.run/apps/iyeris/_static/v1/Appearence%20Img.png" />
+<img width="45%" height="1012" alt="IYERIS-View2" src="https://prod.rosie.run/apps/iyeris/_static/v3/Appearence%20Img.png" />
 &nbsp;
-<img width="45%" height="1012" alt="IYERIS-View3" src="https://prod.rosie.run/apps/iyeris/_static/v1/Appearence%20Text.png" />
+<img width="45%" height="1012" alt="IYERIS-View3" src="https://prod.rosie.run/apps/iyeris/_static/v3/Appearence%20Text.png" />
 &nbsp;
 </p>
 
